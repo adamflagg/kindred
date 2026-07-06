@@ -384,3 +384,21 @@ describe('self_referential disposition reason (issue #941)', () => {
     expect(getDispositionSortRank('self_referential')).toBe(1)
   })
 })
+
+describe('stale_dated_note disposition (#1801)', () => {
+  it('renders as a declined-family badge', () => {
+    expect(getDispositionClasses('stale_dated_note')).toContain('rose')
+  })
+
+  it('has a friendly display name', () => {
+    expect(formatDispositionReason('stale_dated_note')).toBe('Stale note (3+ yrs old)')
+  })
+
+  it('shows the reason line under a Declined chip', () => {
+    expect(shouldShowReasonInStatus('declined', 'stale_dated_note')).toBe(true)
+  })
+
+  it('sorts with the declined group', () => {
+    expect(getDispositionSortRank('stale_dated_note')).toBe(0)
+  })
+})

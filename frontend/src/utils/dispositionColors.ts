@@ -53,6 +53,7 @@ export const DECLINED_REASONS = new Set([
   'target_not_attending',
   'target_not_enrolled',
   'requester_not_attending',
+  'stale_dated_note',
 ])
 
 /** Get Tailwind classes for a disposition reason badge. */
@@ -112,6 +113,7 @@ const DISPOSITION_DISPLAY_NAMES: Record<string, string> = {
   target_not_attending: 'Not attending',
   target_not_enrolled: 'Not enrolled',
   requester_not_attending: 'Requester not attending',
+  stale_dated_note: 'Stale note (3+ yrs old)',
 }
 
 /** Format a disposition reason for display using friendly names. */

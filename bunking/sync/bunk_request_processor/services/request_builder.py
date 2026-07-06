@@ -15,6 +15,7 @@ from ..core.models import (
     RequestType,
 )
 from ..disposition.disposition_rules import determine_disposition
+from ..disposition.stale_note import is_stale_dated_note
 from ..processing.first_request_detector import detect_first_request
 from ..shared.constants import SourceField
 
@@ -247,26 +248,50 @@ class RequestBuilder:
         Returns:
             Tuple of (status, disposition_reason). AGE_PREFERENCE routes through
             disposition rules regardless of resolution — direction alone determines
-            status (#1406). Unresolved names (other request types) return (PENDING, "").
+            status (#1406). Unresolved names (other request types) return (PENDING, ""),
+            except stale dated notes (#1801), which decline even when unresolved.
             Resolved matches go through disposition rules (business gates + quality).
         """
         age_direction = parsed_req.age_preference.value if parsed_req.age_preference else None
 
+        # #1801: staleness is deterministic on the entry text plus the authorship
+        # timestamps stripped into staff_metadata upstream — computed before the
+        # unresolved early-return so a stale note with an unresolvable name
+        # declines instead of lingering in the review queue.
+        stale = is_stale_dated_note(
+            parsed_req.source_field,
+            parsed_req.raw_text,
+            self.year,
+            staff_metadata=parsed_req.metadata.get("staff_metadata"),
+        )
+
         # AGE_PREFERENCE is resolution-independent: disposition_rules._age_preference_rules
         # routes by direction alone. Delegate to avoid duplicating the literals (#1411).
         if parsed_req.request_type == RequestType.AGE_PREFERENCE:
-            disposition = determine_disposition(parsed_req.request_type, age_direction=age_direction)
+            disposition = determine_disposition(
+                parsed_req.request_type, age_direction=age_direction, is_stale_dated_note=stale
+            )
             return disposition.status, disposition.reason
 
         person_cm_id = resolution_info.get("person_cm_id")
+        conflict_type = resolution_info.get("conflict_type")
+
+        if stale:
+            # requester_not_attending has priority 0 in disposition_rules —
+            # pass it through so the stale gate can't mask it.
+            disposition = determine_disposition(
+                parsed_req.request_type,
+                requester_is_inactive=conflict_type == "requester_not_attending",
+                is_stale_dated_note=stale,
+            )
+            metadata["declined_reason"] = disposition.reason
+            return disposition.status, disposition.reason
 
         # Unresolved: no person ID, or negative hash-based ID for an unmatched name.
         if person_cm_id is None or person_cm_id < 0:
             return RequestStatus.PENDING, ""
 
         # Resolved match — apply disposition rules
-        conflict_type = resolution_info.get("conflict_type")
-
         disposition = determine_disposition(
             parsed_req.request_type,
             resolution_method=resolution_info.get("resolution_method", "unknown"),

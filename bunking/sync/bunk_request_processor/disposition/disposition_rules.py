@@ -2,10 +2,12 @@
 
 Determines RESOLVED/PENDING/DECLINED for resolved matches.
 Unresolved names (person=None or cm_id<0) are PENDING by definition
-and never reach these rules.
+and never reach these rules — with one exception: stale dated notes
+(#1801) decline even when the name is unresolved, so a 3+ year old
+note can't linger in the review queue.
 
-Rules only apply AFTER resolution (Phase 2 or Phase 3) has identified
-a candidate person. Business gates check enrollment/session.
+Otherwise rules only apply AFTER resolution (Phase 2 or Phase 3) has
+identified a candidate person. Business gates check enrollment/session.
 Resolution quality checks determine auto-resolve vs staff review.
 """
 
@@ -52,6 +54,7 @@ def determine_disposition(
     session_match: bool = True,
     age_direction: str | None = None,
     auto_resolve_threshold: float = AUTO_RESOLVE_THRESHOLD,
+    is_stale_dated_note: bool = False,
 ) -> Disposition:
     """Apply priority-ordered disposition rules to a resolved match.
 
@@ -60,6 +63,12 @@ def determine_disposition(
     # Requester not attending takes priority over all other rules
     if requester_is_inactive:
         return Disposition(RequestStatus.DECLINED, "requester_not_attending", 0)
+
+    # #1801: a staff-note entry dated 3+ years before the current season is
+    # historical record, not current intent — decline across all request types.
+    # Staff can flip it back to resolved in request management if it still matters.
+    if is_stale_dated_note:
+        return Disposition(RequestStatus.DECLINED, "stale_dated_note", 9)
 
     if request_type == RequestType.AGE_PREFERENCE:
         return _age_preference_rules(age_direction)

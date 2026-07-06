@@ -1,7 +1,8 @@
 """Tests for post-resolution disposition rules.
 
 Rules only apply to resolved matches (person found). Unresolved names
-are PENDING by definition — handled upstream in request_builder.
+are PENDING by definition — handled upstream in request_builder — with
+one exception: stale dated notes (#1801) decline even when unresolved.
 """
 
 import sys
@@ -270,3 +271,36 @@ class TestRequesterNotAttending:
         )
         assert d.status == RequestStatus.DECLINED
         assert d.reason == "requester_not_attending"
+
+
+class TestStaleDatedNoteGate:
+    """#1801: stale dated staff notes auto-decline across all request types."""
+
+    def test_stale_declines_age_preference(self):
+        d = determine_disposition(RequestType.AGE_PREFERENCE, age_direction="younger", is_stale_dated_note=True)
+        assert d.status == RequestStatus.DECLINED
+        assert d.reason == "stale_dated_note"
+
+    def test_stale_declines_bunk_with_even_on_exact_match(self):
+        d = determine_disposition(
+            RequestType.BUNK_WITH,
+            resolution_method="exact_match",
+            match_confidence=1.0,
+            is_stale_dated_note=True,
+        )
+        assert d.status == RequestStatus.DECLINED
+        assert d.reason == "stale_dated_note"
+
+    def test_stale_declines_not_bunk_with(self):
+        d = determine_disposition(RequestType.NOT_BUNK_WITH, match_confidence=0.95, is_stale_dated_note=True)
+        assert d.status == RequestStatus.DECLINED
+        assert d.reason == "stale_dated_note"
+
+    def test_requester_not_attending_still_wins(self):
+        d = determine_disposition(RequestType.BUNK_WITH, requester_is_inactive=True, is_stale_dated_note=True)
+        assert d.reason == "requester_not_attending"
+
+    def test_default_false_leaves_behavior_unchanged(self):
+        d = determine_disposition(RequestType.AGE_PREFERENCE, age_direction="younger", is_stale_dated_note=False)
+        assert d.status == RequestStatus.RESOLVED
+        assert d.reason == "directional_preference"
