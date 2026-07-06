@@ -53,6 +53,13 @@ def add_age_preference_satisfaction_vars(
     docs/reference/solver-config-decisions.md) will be the right home for any
     future non-MP modeling.
 
+    AG sessions build nothing at all: AG cabin membership is enrollment-driven
+    (everyone in the AG session lands in its cabin), so preferences don't
+    drive AG placement. Building vars here would let parent_paramount turn an
+    MP age_preference into a hard must-satisfy-one over per-bunk cleanliness —
+    while the AG-skipping impossibility pre-check (check_request below) never
+    records such a request as impossible — risking an undiagnosed INFEASIBLE.
+
     Args:
         ctx: Solver context with model, assignments, and mappings
         requests_by_person: Dict mapping person_cm_id to their MP age_preference
@@ -64,6 +71,10 @@ def add_age_preference_satisfaction_vars(
         requester into a clean bunk and thus satisfies the request. Consumed
         by parent_paramount's hard must-satisfy-one constraint via summation.
     """
+    if is_ag_session(ctx.bunks):
+        logger.info("AG session: skipping age-preference satisfaction vars (enrollment determines cabin)")
+        return {}
+
     bunk_has_grade = _build_bunk_has_grade_vars(ctx)
 
     forcing_indicators_by_req_id: dict[str, list[cp_model.IntVar]] = {}
@@ -260,9 +271,11 @@ class AgePreferenceImpossibility(HardConstraintImpossibility):
         session = ctx.person_session.get(req.requester_person_cm_id)
         if session is None:
             return None
-        # AG enrollment sessions have exactly one cabin — there is no assignment
-        # decision, so placement-derived pre-checks don't apply. Mirrors the
-        # is_ag_session_bunk skips in grade_spread/grade_ratio/cabin_occupancy.
+        # AG cabin membership is enrollment-driven — everyone in the AG session
+        # lands in its cabin, so there is no preference-driven assignment
+        # decision and placement-derived pre-checks don't apply. Mirrors the
+        # is_ag_session_bunk skips in grade_spread/grade_ratio/cabin_occupancy
+        # and the matching skip in add_age_preference_satisfaction_vars above.
         if is_ag_session(ctx.bunks_by_session.get(session, [])):
             return None
         # grade=0 is the "unknown grade" sentinel set by data_fetcher when the

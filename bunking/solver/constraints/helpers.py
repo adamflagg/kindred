@@ -65,9 +65,12 @@ def is_ag_session_bunk(bunk: DirectBunk) -> bool:
 def is_ag_session(bunks: list[DirectBunk]) -> bool:
     """Check if a session's bunks are all AG cabins.
 
-    An AG enrollment session has exactly one cabin, so there is no assignment
-    decision to make — everyone enrolled lands in that cabin. Placement-derived
-    checks (grade spread, age-preference pools, …) don't apply there.
+    AG cabin membership is enrollment-driven: everyone enrolled in an AG
+    session lands in its cabin, so there is no preference-driven assignment
+    decision. Placement-derived checks (grade spread, age-preference pools, …)
+    and preference modeling don't apply there. The check is session-typed, not
+    cabin-counted — it holds even when a plan pairs several AG cabins to one
+    session cm_id (#1800).
     """
     return bool(bunks) and all(is_ag_session_bunk(b) for b in bunks)
 

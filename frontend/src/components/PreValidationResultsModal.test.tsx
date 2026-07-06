@@ -768,7 +768,7 @@ describe('PreValidationResultsModal — per-reason hint copy', () => {
     ['pair_no_shared_bunk', 'cross-gender request — confirm with the family'],
     [
       'age_pref_no_eligible_grade',
-      'no peers in the requested direction — preference cannot be met',
+      'no peers in the requested direction — preference may not be met',
     ],
     ['malformed', 'request is missing a name — needs parent resubmission'],
     // self_conflict is emitted by bunking/solver/constraints/self_conflict.py

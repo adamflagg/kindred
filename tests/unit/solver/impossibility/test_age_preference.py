@@ -220,9 +220,10 @@ def test_all_strictly_older_pool_wants_younger_still_fires(mock_config):
 
 
 def test_ag_session_skips_age_preference_check(mock_config):
-    """AG enrollment sessions have exactly one cabin — no assignment decision
-    exists, so placement-derived pre-checks don't apply (#1752). Mirrors the
-    is_ag_session_bunk skips in grade_spread/grade_ratio/cabin_occupancy."""
+    """AG cabin membership is enrollment-driven — everyone in the AG session
+    lands in its cabin, so placement-derived pre-checks don't apply (#1752).
+    Mirrors the is_ag_session_bunk skips in grade_spread/grade_ratio/
+    cabin_occupancy."""
     requester = make_person(1, session=100, gender="F", grade=10)
     p_same = make_person(2, session=100, gender="F", grade=10)
     p_older = make_person(3, session=100, gender="F", grade=11)
@@ -236,6 +237,31 @@ def test_ag_session_skips_age_preference_check(mock_config):
     )
     ag_bunk = make_bunk(10, session=100, gender="AG", name="AG Cabin 3")
     input_data = make_input([requester, p_same, p_older], [ag_bunk], [req])
+    ctx = _build_context(input_data, mock_config)
+
+    assert PREDICATE.check_request(req, ctx) is None
+
+
+def test_multi_bunk_ag_session_skips_age_preference_check(mock_config):
+    """A single AG session can carry several AG cabins (#1800's plan-level
+    pairing) — the skip is session-typed, not cabin-counted, because AG
+    placement is enrollment-driven either way."""
+    requester = make_person(1, session=100, gender="F", grade=10)
+    p_same = make_person(2, session=100, gender="F", grade=10)
+    p_older = make_person(3, session=100, gender="F", grade=11)
+    req = make_request(
+        "r1",
+        requester=1,
+        requestee=None,
+        request_type="age_preference",
+        age_preference_target="younger",
+        session=100,
+    )
+    ag_bunks = [
+        make_bunk(10, session=100, gender="AG", name="AG Cabin 3"),
+        make_bunk(20, session=100, gender="AG", name="AG Cabin 4"),
+    ]
+    input_data = make_input([requester, p_same, p_older], ag_bunks, [req])
     ctx = _build_context(input_data, mock_config)
 
     assert PREDICATE.check_request(req, ctx) is None
