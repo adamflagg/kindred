@@ -68,7 +68,7 @@ dev = [
     "pytest>=9.0.3",
     "pytest-asyncio>=1.3.0",
     "pytest-cov>=7.1.0",
-    "coverage>=7.14.0",
+    "coverage>=7.15.0",
     "playwright>=1.60.0",
     # Linting & formatting
     "ruff>=0.15.17",
