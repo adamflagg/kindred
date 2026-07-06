@@ -769,7 +769,7 @@ requires-dist = [
     { name = "openpyxl", specifier = ">=3.1.5" },
     { name = "ortools", specifier = ">=9.15.6755" },
     { name = "pandas", specifier = ">=3.0.3" },
-    { name = "pocketbase", specifier = ">=0.17.1" },
+    { name = "pocketbase", specifier = ">=0.17.3" },
     { name = "psutil", specifier = ">=7.2.2" },
     { name = "pydantic", specifier = ">=2.13.4" },
     { name = "pydantic-settings", specifier = ">=2.14.2" },
@@ -1258,14 +1258,14 @@ wheels = [
 
 [[package]]
 name = "pocketbase"
-version = "0.17.1"
+version = "0.17.3"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "httpx" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/67/0e/b0d4cfa334500143e0f5f60fde5d2cc5222e622f65b20b529d4b2eda5b91/pocketbase-0.17.1.tar.gz", hash = "sha256:51f338bea05990045e060edfe751fe81d555a63f68d07378b625f87807437d94", size = 17106, upload-time = "2026-05-08T14:23:01.956Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/8b/9d/613b0e70d9168f38706c9c7e83e7252609a05e77f0045bb78ac3ba1d4484/pocketbase-0.17.3.tar.gz", hash = "sha256:11de4d412fddc98e72030fa78b395972eaa646c36c06aa2506d8a26cd251cb00", size = 17486, upload-time = "2026-05-20T16:23:25.692Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/59/50/0914e2db5ee4899fce50b8de0b292dc16b5a9f7f2f08271bb8c59afce060/pocketbase-0.17.1-py3-none-any.whl", hash = "sha256:6f2f86f1c26343f18e2a1992df9d48de8ffd0465ef744fdd484026cc1794274f", size = 28998, upload-time = "2026-05-08T14:23:00.449Z" },
+    { url = "https://files.pythonhosted.org/packages/a5/9d/66bf04043a779ae8da403e6a302503cbefd0604cb362361b4d8868a5d3f8/pocketbase-0.17.3-py3-none-any.whl", hash = "sha256:44810514244b0c7260c5aba8c4fe78bed178ff10d0870c00aa67498cde397147", size = 29370, upload-time = "2026-05-20T16:23:26.418Z" },
 ]
 
 [[package]]
