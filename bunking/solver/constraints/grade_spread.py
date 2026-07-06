@@ -82,6 +82,8 @@ class GradeCompatibilityImpossibility(HardConstraintImpossibility):
 
     Pair: if |a.grade - b.grade| > (MAX_UNIQUE_GRADES_PER_BUNK - 1), the pair
     cannot co-occupy ANY bunk satisfying grade_spread + grade_adjacency.
+    Exception: pairs sharing an AG session are skipped — AG bunks are exempt
+    from both constraints, so the claim doesn't hold there (see check_pair).
     """
 
     name = "grade_compatibility"
