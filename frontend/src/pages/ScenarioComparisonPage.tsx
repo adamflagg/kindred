@@ -132,7 +132,7 @@ async function fetchGroupEntries(
 }
 
 // Types for comparison
-interface CamperAssignment {
+export interface CamperAssignment {
   personId: string
   personCmId: number
   name: string
@@ -213,6 +213,49 @@ export function getExportButtonLabel(filter: 'moved' | 'all'): string {
 // eslint-disable-next-line react-refresh/only-export-components -- pure utility, exported for tests
 export function getExportButtonTitle(filter: 'moved' | 'all'): string {
   return filter === 'moved' ? 'Export moved campers to CSV' : 'Export all campers to CSV'
+}
+
+/**
+ * Drop staff from a scenario's campers by intersecting with the enrolled set.
+ *
+ * Staff hold `bunk_assignments` but no enrolled attendee row (#1791), and this
+ * applies to BOTH production and draft assignments: "copy from production"
+ * copies raw production `bunk_assignments` (staff included) into the draft table
+ * and manual draft edits resolve a person without an enrollment gate, so the
+ * solver-only "drafts are already staff-free" assumption doesn't hold.
+ *
+ * `enrolledReady` must be true only once the enrolled query has *successfully*
+ * resolved a non-empty set. While it is loading, disabled, errored, or resolved
+ * empty we return campers unchanged (fail-open) so a transient/failed fetch
+ * degrades to unfiltered rather than blanking the side.
+ */
+// eslint-disable-next-line react-refresh/only-export-components -- pure utility, exported for tests
+export function excludeStaffAssignments(
+  campers: CamperAssignment[],
+  enrolledPersonCmIds: ReadonlySet<number>,
+  enrolledReady: boolean
+): CamperAssignment[] {
+  return enrolledReady
+    ? filterToEnrolled(campers, (c) => c.personCmId, enrolledPersonCmIds)
+    : campers
+}
+
+/**
+ * Whether to warn that camper counts may include staff.
+ *
+ * When the enrolled-attendee lookup fails we degrade to unfiltered counts rather
+ * than blanking a side — but a production comparison must say so instead of
+ * silently re-including staff. Draft-vs-draft comparisons don't warn: their
+ * staff contamination only comes from copy-from-production, and the common case
+ * is a solver draft that is already clean.
+ */
+// eslint-disable-next-line react-refresh/only-export-components -- pure utility, exported for tests
+export function shouldWarnEnrollmentUnavailable(
+  isEnrolledError: boolean,
+  leftScenarioId: string,
+  rightScenarioId: string
+): boolean {
+  return isEnrolledError && (leftScenarioId === 'production' || rightScenarioId === 'production')
 }
 
 function useGroupMap(
@@ -316,13 +359,17 @@ export default function ScenarioComparisonPage() {
     enabled: !!user && sessionCmId > 0,
   })
 
-  // Enrolled attendee cm_ids for this session. Staff hold production
-  // bunk_assignments but aren't enrolled attendees, so comparison metrics built
-  // from raw production assignments over-count them (#1791). Draft assignments
-  // come from the solver, which already excludes staff, so only production
-  // needs the intersection.
-  const { data: enrolledPersonCmIds = new Set<number>() } = useQuery({
-    queryKey: ['enrolled-attendee-cmids', sessionCmId, currentYear],
+  // Enrolled attendee cm_ids for this session. Staff hold bunk_assignments but
+  // aren't enrolled attendees, so comparison metrics built from raw assignments
+  // over-count them (#1791). This set is intersected against BOTH production and
+  // draft assignments (see excludeStaffAssignments) — "copy from production"
+  // seeds staff into draft rows too, so drafts aren't guaranteed staff-free.
+  const {
+    data: enrolledPersonCmIds = new Set<number>(),
+    isSuccess: isEnrolledLoaded,
+    isError: isEnrolledError,
+  } = useQuery({
+    queryKey: queryKeys.enrolledAttendeeCmIds(sessionCmId, currentYear),
     queryFn: async () => {
       const attendees = await pb.collection<AttendeesResponse>('attendees').getFullList({
         filter: pb.filter(
@@ -479,24 +526,27 @@ export default function ScenarioComparisonPage() {
     []
   )
 
-  // Get left and right assignments
-  // Production assignments include staff (they have bunk_assignments but no
-  // attendee row); drop them by intersecting with the enrolled set. Guard on a
-  // non-empty set so an in-flight enrolled query degrades to unfiltered rather
-  // than briefly blanking the production side (#1791).
+  // Get left and right assignments.
+  // Both production and draft assignments can include staff (they hold
+  // bunk_assignments but no enrolled attendee row); drop them by intersecting
+  // with the enrolled set. Only filter once the enrolled query has resolved a
+  // non-empty set, so a loading/errored/empty lookup degrades to unfiltered
+  // rather than blanking a side (#1791). On genuine error we also surface a
+  // warning (see shouldWarnEnrollmentUnavailable) instead of silently including
+  // staff.
+  const enrolledReady = isEnrolledLoaded && enrolledPersonCmIds.size > 0
   const excludeStaff = useCallback(
     (campers: CamperAssignment[]) =>
-      enrolledPersonCmIds.size > 0
-        ? filterToEnrolled(campers, (c) => c.personCmId, enrolledPersonCmIds)
-        : campers,
-    [enrolledPersonCmIds]
+      excludeStaffAssignments(campers, enrolledPersonCmIds, enrolledReady),
+    [enrolledPersonCmIds, enrolledReady]
   )
 
   const leftAssignments = useMemo(() => {
-    if (leftScenarioId === 'production') {
-      return excludeStaff(normalizeAssignments(productionAssignments as ExpandedAssignment[]))
-    }
-    return normalizeAssignments(leftDraftAssignments as ExpandedAssignment[])
+    const raw =
+      leftScenarioId === 'production'
+        ? normalizeAssignments(productionAssignments as ExpandedAssignment[])
+        : normalizeAssignments(leftDraftAssignments as ExpandedAssignment[])
+    return excludeStaff(raw)
   }, [
     leftScenarioId,
     productionAssignments,
@@ -506,10 +556,11 @@ export default function ScenarioComparisonPage() {
   ])
 
   const rightAssignments = useMemo(() => {
-    if (rightScenarioId === 'production') {
-      return excludeStaff(normalizeAssignments(productionAssignments as ExpandedAssignment[]))
-    }
-    return normalizeAssignments(rightDraftAssignments as ExpandedAssignment[])
+    const raw =
+      rightScenarioId === 'production'
+        ? normalizeAssignments(productionAssignments as ExpandedAssignment[])
+        : normalizeAssignments(rightDraftAssignments as ExpandedAssignment[])
+    return excludeStaff(raw)
   }, [
     rightScenarioId,
     productionAssignments,
@@ -892,6 +943,17 @@ export default function ScenarioComparisonPage() {
           </div>
         ) : (
           <>
+            {/* Enrolled-attendee lookup failed: counts fall back to unfiltered,
+                so warn that a production side may include staff (#1791). */}
+            {shouldWarnEnrollmentUnavailable(isEnrolledError, leftScenarioId, rightScenarioId) && (
+              <div
+                role="alert"
+                className="mb-6 rounded-lg border border-amber-400 bg-amber-50/60 px-4 py-3 text-sm text-amber-800 dark:bg-amber-900/20 dark:text-amber-200"
+              >
+                Couldn't verify enrollment for this session — camper counts may include staff.
+              </div>
+            )}
+
             {/* Validation Score Comparison - Detailed breakdown */}
             <ValidationSection
               isLoading={isValidationLoading}

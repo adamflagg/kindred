@@ -8,8 +8,11 @@ import {
   ValidationSection,
   getExportButtonLabel,
   getExportButtonTitle,
+  excludeStaffAssignments,
+  shouldWarnEnrollmentUnavailable,
   DEFAULT_VIEW_MODE,
   VIEW_MODE_TABS,
+  type CamperAssignment,
   type ValidationResult,
   type ValidationStatistics,
 } from './ScenarioComparisonPage'
@@ -558,5 +561,53 @@ describe('ValidationSection — asymmetric data (left valid, right null)', () =>
 
     // Left scenario name should be visible
     expect(screen.getByText('Left')).toBeInTheDocument()
+  })
+})
+
+// ─── #1791 F3: staff exclusion applies to BOTH production and draft ───────────
+// "Copy from production" (scenarios.py copies raw bunk_assignments, staff
+// included) and manual draft edits can seed staff into draft rows, so the draft
+// side needs the same enrolled-set intersection production gets — not the
+// solver-only "drafts are already clean" assumption.
+describe('excludeStaffAssignments (#1791 staff exclusion, prod + draft)', () => {
+  const enrolled = new Set<number>([1001, 1002, 1003])
+  const staff: CamperAssignment = {
+    ...liam,
+    personId: 's1',
+    personCmId: 9001,
+    name: 'Staff Person',
+  }
+
+  it('drops campers whose personCmId is not in the enrolled set when ready', () => {
+    const result = excludeStaffAssignments([liam, staff, olivia], enrolled, true)
+    expect(result.map((c) => c.personCmId)).toEqual([1001, 1002])
+  })
+
+  it('returns campers unchanged when NOT ready, even with a populated enrolled set (fail-open on loading/error)', () => {
+    const result = excludeStaffAssignments([liam, staff], enrolled, false)
+    expect(result.map((c) => c.personCmId)).toEqual([1001, 9001])
+  })
+
+  it('is a no-op for an already staff-free list (e.g. a solver draft)', () => {
+    expect(excludeStaffAssignments([liam, olivia, emma], enrolled, true)).toHaveLength(3)
+  })
+})
+
+// ─── #1791 F2: surface a failed enrolled lookup instead of silently ──────────
+// re-including staff. When the enrolled query errors we degrade to unfiltered
+// (never blank the side), but a production comparison must warn that counts may
+// include staff rather than fail silently.
+describe('shouldWarnEnrollmentUnavailable (#1791 F2)', () => {
+  it('warns when the enrolled query errored and a production side is shown', () => {
+    expect(shouldWarnEnrollmentUnavailable(true, 'production', 'scenX')).toBe(true)
+    expect(shouldWarnEnrollmentUnavailable(true, 'scenX', 'production')).toBe(true)
+  })
+
+  it('does not warn on error for a draft-vs-draft comparison', () => {
+    expect(shouldWarnEnrollmentUnavailable(true, 'scenA', 'scenB')).toBe(false)
+  })
+
+  it('does not warn when the enrolled query has no error', () => {
+    expect(shouldWarnEnrollmentUnavailable(false, 'production', 'scenA')).toBe(false)
   })
 })

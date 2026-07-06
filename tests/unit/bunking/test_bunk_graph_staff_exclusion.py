@@ -85,3 +85,68 @@ def test_build_bunk_graph_excludes_staff_member_end_to_end() -> None:
     assert camper_id in graph.nodes
     assert staff_id not in graph.nodes
     assert graph.number_of_nodes() == 1
+
+
+def _pb_with_attendees(attendees: object) -> MagicMock:
+    """Build a mock PB where the ATTENDEES lookup behaves per ``attendees``.
+
+    ``attendees`` may be a list (returned from ``get_full_list``) or an
+    Exception instance (raised from ``get_full_list``). Two members are always
+    assigned to the bunk: camper 1001 and staff 9001, both resolvable as persons.
+    """
+    camper_id, staff_id = 1001, 9001
+
+    def _collection_side_effect(name: str) -> MagicMock:
+        col = MagicMock()
+        if name == "bunk_assignments":
+            col.get_full_list.return_value = [_assignment(camper_id), _assignment(staff_id)]
+        elif name == "attendees":
+            if isinstance(attendees, Exception):
+                col.get_full_list.side_effect = attendees
+            else:
+                col.get_full_list.return_value = attendees
+        elif name == "bunk_requests":
+            col.get_full_list.return_value = []
+        elif name == "persons":
+
+            def _get_first(flt: str, *_a: object, **_kw: object) -> SimpleNamespace:
+                if str(camper_id) in flt:
+                    return _person(camper_id, "Emma")
+                if str(staff_id) in flt:
+                    return _person(staff_id, "Staff")
+                raise RuntimeError(f"no person for {flt!r}")
+
+            col.get_first_list_item.side_effect = _get_first
+        else:
+            col.get_full_list.return_value = []
+            col.get_first_list_item.side_effect = RuntimeError("no record")
+        return col
+
+    pb = MagicMock()
+    pb.collection.side_effect = _collection_side_effect
+    return pb
+
+
+def test_build_bunk_graph_fails_open_when_attendee_lookup_raises() -> None:
+    """If the ATTENDEES query errors, filtering is skipped rather than blanking
+    the graph — the fail-open path documented on ``_enrolled_member_cm_ids``.
+    Both members (including the staff row) survive as nodes."""
+    pb = _pb_with_attendees(RuntimeError("attendees collection unavailable"))
+
+    graph = SocialGraphBuilder(pb=pb).build_bunk_graph(year=2026, bunk_cm_id=555, session_cm_id=999)
+
+    assert 1001 in graph.nodes
+    assert 9001 in graph.nodes  # staff not excluded: enrollment could not be resolved
+    assert graph.number_of_nodes() == 2
+
+
+def test_build_bunk_graph_fails_open_when_no_enrolled_attendee_resolves() -> None:
+    """An empty ATTENDEES result (attendee data unavailable) resolves to ``None``,
+    signalling the caller to skip filtering rather than drop every member."""
+    pb = _pb_with_attendees([])  # zero enrolled attendees resolved
+
+    graph = SocialGraphBuilder(pb=pb).build_bunk_graph(year=2026, bunk_cm_id=555, session_cm_id=999)
+
+    assert 1001 in graph.nodes
+    assert 9001 in graph.nodes
+    assert graph.number_of_nodes() == 2
