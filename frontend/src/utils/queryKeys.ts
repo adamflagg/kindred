@@ -45,6 +45,10 @@ export const queryKeys = {
   // Enrollment (Tier 1 - sync data)
   enrolledCampers: (personCmId: number, year: number) =>
     ['enrolled-campers', personCmId, year] as const,
+  // Enrolled attendee cm_ids for a whole session — used to exclude staff from
+  // scenario-comparison counts (staff hold assignments but no attendee row, #1791).
+  enrolledAttendeeCmIds: (sessionCmId: number, year: number) =>
+    ['enrolled-attendee-cmids', sessionCmId, year] as const,
 
   // Historical data (Tier 1 - sync data)
   historicalBunking: (personCmId: number, year: number) =>
