@@ -2,10 +2,12 @@
 
 Determines RESOLVED/PENDING/DECLINED for resolved matches.
 Unresolved names (person=None or cm_id<0) are PENDING by definition
-and never reach these rules.
+and never reach these rules — with one exception: stale dated notes
+(#1801) decline even when the name is unresolved, so a 3+ year old
+note can't linger in the review queue.
 
-Rules only apply AFTER resolution (Phase 2 or Phase 3) has identified
-a candidate person. Business gates check enrollment/session.
+Otherwise rules only apply AFTER resolution (Phase 2 or Phase 3) has
+identified a candidate person. Business gates check enrollment/session.
 Resolution quality checks determine auto-resolve vs staff review.
 """
 

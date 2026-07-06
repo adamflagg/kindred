@@ -1,7 +1,8 @@
 """Tests for post-resolution disposition rules.
 
 Rules only apply to resolved matches (person found). Unresolved names
-are PENDING by definition — handled upstream in request_builder.
+are PENDING by definition — handled upstream in request_builder — with
+one exception: stale dated notes (#1801) decline even when unresolved.
 """
 
 import sys

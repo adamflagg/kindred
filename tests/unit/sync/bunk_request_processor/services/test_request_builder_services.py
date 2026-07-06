@@ -871,3 +871,61 @@ class TestStaleDatedNoteStatus:
         status, reason = builder.determine_request_status(parsed, {}, {})
         assert status == RequestStatus.RESOLVED
         assert reason == "directional_preference"
+
+    def test_requester_not_attending_beats_stale_note(self, builder: RequestBuilder) -> None:
+        # disposition_rules gives requester_not_attending priority 0 — the
+        # stale gate must not mask it at the builder level (#1804 review).
+        parsed = self._parsed(
+            raw_text="2019 - Bunk with younger kids next yr",
+            target_name="Emma Johnson",
+            request_type=RequestType.BUNK_WITH,
+            age_preference=None,
+        )
+        resolution = {
+            "person_cm_id": 12345,
+            "resolution_method": "exact_match",
+            "confidence": 1.0,
+            "conflict_type": "requester_not_attending",
+        }
+        status, reason = builder.determine_request_status(parsed, resolution, {})
+        assert status == RequestStatus.DECLINED
+        assert reason == "requester_not_attending"
+
+    def test_staff_metadata_current_timestamp_not_stale(self, builder: RequestBuilder) -> None:
+        # Production bunking_notes arrive datestamp-stripped; the current-year
+        # authorship timestamp lives in metadata["staff_metadata"] and must
+        # protect an old year prefix from the stale gate (#1804 review).
+        parsed = self._parsed(
+            raw_text="2019 - old context, re-confirmed",
+            metadata={
+                "staff_metadata": {
+                    "staff_name": "Riley Sam",
+                    "timestamp": "May 22 2026  4:04PM",
+                    "all_staff": [{"staff": "Riley Sam", "timestamp": "May 22 2026  4:04PM"}],
+                }
+            },
+        )
+        status, reason = builder.determine_request_status(parsed, {}, {})
+        assert status == RequestStatus.RESOLVED
+        assert reason == "directional_preference"
+
+    def test_staff_metadata_stale_timestamp_declines(self, builder: RequestBuilder) -> None:
+        # Datestamp-only convention: no year survives in the stripped text —
+        # staleness must come from the authorship timestamp.
+        parsed = self._parsed(
+            raw_text="Wants Emma Johnson",
+            target_name="Emma Johnson",
+            request_type=RequestType.BUNK_WITH,
+            age_preference=None,
+            metadata={
+                "staff_metadata": {
+                    "staff_name": "Samuel Johnson",
+                    "timestamp": "Jun  1 2020  9:00AM",
+                    "all_staff": [{"staff": "Samuel Johnson", "timestamp": "Jun  1 2020  9:00AM"}],
+                }
+            },
+        )
+        resolution = {"person_cm_id": 12345, "resolution_method": "exact_match", "confidence": 1.0}
+        status, reason = builder.determine_request_status(parsed, resolution, {})
+        assert status == RequestStatus.DECLINED
+        assert reason == "stale_dated_note"
