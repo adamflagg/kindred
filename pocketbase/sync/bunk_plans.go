@@ -5,8 +5,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
-	"regexp"
-	"strconv"
+	"slices"
 	"strings"
 
 	"github.com/camp/kindred/pocketbase/campminder"
@@ -160,39 +159,77 @@ func (s *BunkPlansSync) loadMappings() error {
 	return nil
 }
 
-// extractGradeRange extracts grade range from a name.
-// Returns (min, max) grade numbers. For single grades, min == max.
-// Returns (0, 0) if no grades found.
-func extractGradeRange(name string) (minGrade, maxGrade int) {
-	// Pattern 1: "X/Y" format (e.g., "9/10", "7/8")
-	slashPattern := regexp.MustCompile(`(\d+)/(\d+)`)
-	if matches := slashPattern.FindStringSubmatch(name); len(matches) >= 3 {
-		minGrade, _ = strconv.Atoi(matches[1])
-		maxGrade, _ = strconv.Atoi(matches[2])
-		return minGrade, maxGrade
+// pairAGBunksToSessions decides which AG session each AG bunk in a plan maps to.
+//
+// CampMinder's plan payload is two flat lists (BunkIDs, SessionIDs) with no
+// per-bunk pairing, so the sync must decide. The AG bunk's cabin number is a
+// physical location in the unit layout (5-6 Eilat, 7-8 Haifa, 9-10 Chalutzim 1
+// — see frontend/src/utils/unitMapping.ts), NOT a grade, so no grade matching
+// is possible (kindred#1749: AG-6 hosting the 7th/8th-grade AG session).
+//
+// Rules:
+//   - one AG session in the plan (every year since 2026): all AG bunks map to it
+//   - multiple AG sessions: deterministic pairing, sorted bunk cm_id ⇄ sorted
+//     session cm_id, leftover bunks onto the last session. Sibling AG sessions
+//     always share the same parent session (same bunking board), so a
+//     provisional pairing is display-equivalent before assignments exist —
+//     and camper assignments resolve to each camper's own enrolled AG session
+//     regardless (see findMatchingSession in bunk_assignments.go). Staff
+//     assignments lack enrollments and resolve via bunkPlanBunkToSession, so
+//     they DO trust this pairing — in a multi-AG-session year a staff row can
+//     land on the sibling session (accepted; matches pre-#1749-fix behavior).
+//
+// Only bunks/sessions known to PocketBase participate; returns an empty map
+// when the plan has no AG sessions. An AG session left without any paired
+// bunk gets no bunk_plans rows — the caller warns when that happens.
+func pairAGBunksToSessions(
+	bunkCMIDs, sessionCMIDs []int,
+	bunkNames map[int]string,
+	sessionInfo map[int]sessionInfoData,
+) map[int]int {
+	agSessions := make([]int, 0, len(sessionCMIDs))
+	for _, id := range sessionCMIDs {
+		if info, ok := sessionInfo[id]; ok && info.SessionType == "ag" {
+			agSessions = append(agSessions, id)
+		}
 	}
 
-	// Pattern 2: "Xth - Yth" or "X & Y" format (e.g., "7th - 9th", "9th & 10th")
-	rangePattern := regexp.MustCompile(`(\d+)(?:st|nd|rd|th)?\s*[-–&]\s*(\d+)(?:st|nd|rd|th)?`)
-	if matches := rangePattern.FindStringSubmatch(name); len(matches) >= 3 {
-		minGrade, _ = strconv.Atoi(matches[1])
-		maxGrade, _ = strconv.Atoi(matches[2])
-		return minGrade, maxGrade
+	pairing := make(map[int]int)
+	if len(agSessions) == 0 {
+		return pairing
 	}
+	slices.Sort(agSessions)
 
-	// Pattern 3: Single number after "AG-" or "AG " (e.g., "AG-8", "AG 10")
-	singlePattern := regexp.MustCompile(`AG[-\s](\d+)`)
-	if matches := singlePattern.FindStringSubmatch(name); len(matches) >= 2 {
-		grade, _ := strconv.Atoi(matches[1])
-		return grade, grade
+	agBunks := make([]int, 0, len(bunkCMIDs))
+	for _, id := range bunkCMIDs {
+		if name, ok := bunkNames[id]; ok && isAGBunk(name) {
+			agBunks = append(agBunks, id)
+		}
 	}
+	slices.Sort(agBunks)
 
-	return 0, 0
+	for i, bunkCMID := range agBunks {
+		if i < len(agSessions) {
+			pairing[bunkCMID] = agSessions[i]
+		} else {
+			pairing[bunkCMID] = agSessions[len(agSessions)-1]
+		}
+	}
+	return pairing
 }
 
-// gradeInRange checks if a grade is within a range (inclusive)
-func gradeInRange(grade, minGrade, maxGrade int) bool {
-	return grade >= minGrade && grade <= maxGrade
+// toCMIDSlice converts a raw JSON ID list ([]any of float64/int) to []int
+func toCMIDSlice(raw []any) []int {
+	ids := make([]int, 0, len(raw))
+	for _, v := range raw {
+		switch n := v.(type) {
+		case float64:
+			ids = append(ids, int(n))
+		case int:
+			ids = append(ids, n)
+		}
+	}
+	return ids
 }
 
 // isAGBunk checks if a bunk is an All-Gender bunk based on its name
@@ -291,18 +328,36 @@ func (s *BunkPlansSync) processBunkPlan(planData map[string]any) (int, error) {
 		return 0, nil
 	}
 
-	// Create a bunk plan for each bunk-session combination
-	for _, bunkIDRaw := range bunkIDs {
-		bunkCMID := 0
-		switch v := bunkIDRaw.(type) {
-		case float64:
-			bunkCMID = int(v)
-		case int:
-			bunkCMID = v
-		default:
-			continue
-		}
+	// Convert raw ID lists up front — the AG pairing needs whole-plan visibility
+	bunkCMIDs := toCMIDSlice(bunkIDs)
+	sessionCMIDs := toCMIDSlice(sessionIDs)
 
+	// Decide which AG session each AG bunk belongs to (kindred#1749)
+	agPairing := pairAGBunksToSessions(bunkCMIDs, sessionCMIDs, s.bunkNames, s.sessionInfo)
+
+	// An AG session with no paired AG bunk gets zero bunk_plans rows and drops
+	// out of downstream session resolution (bunkPlanSessionsList) — the same
+	// silent-blackhole shape #1749 fixed. Can't pair what isn't there, so warn.
+	agSessionCount := 0
+	for _, sessionCMID := range sessionCMIDs {
+		if info, ok := s.sessionInfo[sessionCMID]; ok && info.SessionType == "ag" {
+			agSessionCount++
+		}
+	}
+	pairedSessions := make(map[int]bool, len(agPairing))
+	for _, sessionCMID := range agPairing {
+		pairedSessions[sessionCMID] = true
+	}
+	if agSessionCount > len(pairedSessions) {
+		slog.Warn("Plan has more AG sessions than AG bunks; unpaired AG sessions get no bunk_plans rows",
+			"plan_id", int(planID),
+			"plan_name", name,
+			"ag_sessions", agSessionCount,
+			"ag_bunks_paired", len(pairedSessions))
+	}
+
+	// Create a bunk plan for each bunk-session combination
+	for _, bunkCMID := range bunkCMIDs {
 		// Validate bunk exists
 		if !s.validBunkCMIDs[bunkCMID] {
 			s.DebugLog("Skipping bunk plan: bunk not in PocketBase",
@@ -312,23 +367,9 @@ func (s *BunkPlansSync) processBunkPlan(planData map[string]any) (int, error) {
 			continue
 		}
 
-		// Get bunk name for AG filtering
-		bunkName := s.bunkNames[bunkCMID]
-		bunkIsAG := isAGBunk(bunkName)
-		// Extract bunk grade (e.g., "AG-8" → 8, 8)
-		bunkGradeMin, bunkGradeMax := extractGradeRange(bunkName)
+		bunkIsAG := isAGBunk(s.bunkNames[bunkCMID])
 
-		for _, sessionIDRaw := range sessionIDs {
-			sessionCMID := 0
-			switch v := sessionIDRaw.(type) {
-			case float64:
-				sessionCMID = int(v)
-			case int:
-				sessionCMID = v
-			default:
-				continue
-			}
-
+		for _, sessionCMID := range sessionCMIDs {
 			// Validate session exists
 			if !s.validSessionCMIDs[sessionCMID] {
 				s.DebugLog("Skipping bunk plan: session not in PocketBase",
@@ -339,38 +380,16 @@ func (s *BunkPlansSync) processBunkPlan(planData map[string]any) (int, error) {
 				continue
 			}
 
-			// AG filtering: Only create bunk_plans where bunk and session are compatible
-			// - AG sessions should only have bunk_plans for AG bunks with matching grades
-			// - Non-AG sessions should only have bunk_plans for non-AG bunks
+			// AG filtering: AG sessions take exactly the AG bunk(s) paired to
+			// them by pairAGBunksToSessions; main sessions never take AG bunks
+			// (those reach the board via the AG child session).
 			sessionData := s.sessionInfo[sessionCMID]
-			sessionIsAG := sessionData.SessionType == "ag"
 
-			if sessionIsAG {
-				// AG session: only include AG bunks with matching grades
-				if !bunkIsAG {
-					// Skip non-AG bunk for AG session
+			if sessionData.SessionType == "ag" {
+				if agPairing[bunkCMID] != sessionCMID {
+					// Non-AG bunk, or AG bunk paired to a sibling AG session
 					s.skippedAGPlans++
 					continue
-				}
-				// Both are AG - check if bunk grade is within session's grade range
-				// e.g., AG-8 bunk should match "7th - 9th grades" session (8 is in [7,9])
-				sessionGradeMin, sessionGradeMax := extractGradeRange(sessionData.Name)
-				if bunkGradeMin > 0 && sessionGradeMin > 0 {
-					// Check if bunk's grade overlaps with session's grade range
-					// For single-grade bunks (AG-8), check if grade is in session range
-					if bunkGradeMin == bunkGradeMax {
-						// Single grade bunk - must be within session range
-						if !gradeInRange(bunkGradeMin, sessionGradeMin, sessionGradeMax) {
-							s.skippedAGPlans++
-							continue
-						}
-					} else {
-						// Range bunk - check for any overlap
-						if bunkGradeMax < sessionGradeMin || bunkGradeMin > sessionGradeMax {
-							s.skippedAGPlans++
-							continue
-						}
-					}
 				}
 			} else if sessionData.SessionType == sessionTypeMain && bunkIsAG {
 				// Main session should not include AG bunks (they go through AG sessions)
