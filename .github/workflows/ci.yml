@@ -99,7 +99,7 @@ jobs:
         persist-credentials: false
 
     - name: Check for file changes
-      uses: dorny/paths-filter@fbd0ab8f3e69293af611ebaee6363fc25e6d187d # v4
+      uses: dorny/paths-filter@7b450fff21473bca461d4b92ce414b9d0420d706 # v4
       id: filter
       with:
         filters: |
@@ -260,7 +260,7 @@ jobs:
         cache-dependency-path: pocketbase/go.sum
 
     - name: Cache apt packages
-      uses: awalsh128/cache-apt-pkgs-action@5513791f75b039e2a79653b1a92238d3fb8d99b4 # v1.6.2
+      uses: awalsh128/cache-apt-pkgs-action@553a35bb8ebd9fcabcb1c9451aa4c98e1b4ca8a9 # v1.6.3
       with:
         packages: shellcheck
         version: shellcheck-v1
@@ -284,7 +284,7 @@ jobs:
 
     - name: Go linting
       if: needs.detect-changes.outputs.backend == 'true'
-      uses: golangci/golangci-lint-action@82606bf257cbaff209d206a39f5134f0cfbfd2ee # v9
+      uses: golangci/golangci-lint-action@ba0d7d2ec06a0ea1cb5fa41b2e4a3ab91d21278a # v9
       with:
         version: v2.9.0
         working-directory: pocketbase
