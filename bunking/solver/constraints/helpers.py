@@ -62,6 +62,19 @@ def is_ag_session_bunk(bunk: DirectBunk) -> bool:
     return "AG" in bunk.name.upper()
 
 
+def is_ag_session(bunks: list[DirectBunk]) -> bool:
+    """Check if a session's bunks are all AG cabins.
+
+    AG cabin membership is enrollment-driven: everyone enrolled in an AG
+    session lands in its cabin, so there is no preference-driven assignment
+    decision. Placement-derived checks (grade spread, age-preference pools, …)
+    and preference modeling don't apply there. The check is session-typed, not
+    cabin-counted — it holds even when a plan pairs several AG cabins to one
+    session cm_id (#1800).
+    """
+    return bool(bunks) and all(is_ag_session_bunk(b) for b in bunks)
+
+
 def calculate_edge_extreme_threshold(standard_capacity: int, max_percentage: float) -> int:
     """Calculate threshold for edge bunk exemption from existing config values.
 

@@ -10,7 +10,7 @@ from bunking.logging_config import get_logger
 from bunking.solver.constants import MAX_UNIQUE_GRADES_PER_BUNK
 
 from .base import SolverContext
-from .helpers import get_eligible_campers_for_bunk, is_ag_session_bunk
+from .helpers import get_eligible_campers_for_bunk, is_ag_session, is_ag_session_bunk
 
 logger = get_logger(__name__)
 
@@ -82,6 +82,8 @@ class GradeCompatibilityImpossibility(HardConstraintImpossibility):
 
     Pair: if |a.grade - b.grade| > (MAX_UNIQUE_GRADES_PER_BUNK - 1), the pair
     cannot co-occupy ANY bunk satisfying grade_spread + grade_adjacency.
+    Exception: pairs sharing an AG session are skipped — AG bunks are exempt
+    from both constraints, so the claim doesn't hold there (see check_pair).
     """
 
     name = "grade_compatibility"
@@ -100,6 +102,18 @@ class GradeCompatibilityImpossibility(HardConstraintImpossibility):
         requester = ctx.person_by_cm_id.get(req.requester_person_cm_id)
         requestee = ctx.person_by_cm_id.get(req.requested_person_cm_id)
         if requester is None or requestee is None:
+            return None
+        # AG bunks are exempt from grade_spread/grade_adjacency (see the
+        # is_ag_session_bunk skips above), so the "cannot co-occupy any bunk"
+        # claim is false for a pair whose shared session is AG — skip it.
+        # Cross-session pairs fall through: SessionBoundaryImpossibility owns
+        # that reason, and the grade gap stays reportable alongside it.
+        session = ctx.person_session.get(req.requester_person_cm_id)
+        if (
+            session is not None
+            and session == ctx.person_session.get(req.requested_person_cm_id)
+            and is_ag_session(ctx.bunks_by_session.get(session, []))
+        ):
             return None
         max_gap = self._max_gap()
         gap = abs(requester.grade - requestee.grade)

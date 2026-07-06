@@ -16,6 +16,7 @@ from ortools.sat.python import cp_model
 from bunking.config import ConfigLoader
 from bunking.logging_config import get_logger
 from bunking.models_v2 import (
+    DirectBunk,
     DirectBunkAssignment,
     DirectBunkRequest,
     DirectSolverInput,
@@ -43,6 +44,7 @@ from .constraints.grade_adjacency import add_grade_adjacency_constraints
 from .constraints.grade_ratio import add_grade_ratio_constraints
 from .constraints.grade_spread import add_grade_spread_constraints
 from .constraints.group_locks import add_group_lock_constraints
+from .constraints.helpers import is_ag_session
 from .constraints.level_progression import add_level_progression_constraints
 from .constraints.overflow_minimization import add_overflow_minimization_objective
 from .constraints.parent_paramount import add_must_satisfy_one_request_constraints
@@ -1616,6 +1618,29 @@ class DirectBunkingSolver:
         # classify as STAFF (never in material_request_ids), so no exclusion needed.
         yielded_request_ids: set[str] = {y["nbw_request_id"] for y in self.parent_nbw_yields}
 
+        # AG-session age_preference requests are possible and material but have
+        # no solver representation by design — AG cabin membership is
+        # enrollment-driven (see add_age_preference_satisfaction_vars), so
+        # parent_paramount never tries to enforce them. Excluding them from the
+        # material_parent_unmet trigger keeps mp_constraint_bug_signal a true
+        # "hard constraint failed to bind" alarm, and excluding them from the
+        # met/total rate counters keeps the denominators to requests the solver
+        # actually has a path to satisfy (same principle as the impossibility
+        # gate above).
+        session_bunks: dict[int, list[DirectBunk]] = {}
+        for bunk in self.bunks:
+            session_bunks.setdefault(bunk.session_cm_id, []).append(bunk)
+        ag_session_ids = {sid for sid, bunks in session_bunks.items() if is_ag_session(bunks)}
+        ag_suppressed_request_ids: set[str] = set()
+        if ag_session_ids:
+            for requests in self.input.requests_by_person.values():
+                for r in requests:
+                    if r.request_type != "age_preference":
+                        continue
+                    requester = self.input.person_by_cm_id.get(r.requester_person_cm_id)
+                    if requester is not None and requester.session_cm_id in ag_session_ids:
+                        ag_suppressed_request_ids.add(r.id)
+
         for person_cm_id, requests in self.input.requests_by_person.items():
             # Frozen locked-roster campers are removed from the working set, so
             # they have no row in person_to_bunk; skip them. The must-place
@@ -1634,10 +1659,18 @@ class DirectBunkingSolver:
             satisfied_ids_for_person: set[str] = set(all_satisfied.get(person_cm_id, []))
 
             resolved_mp = [
-                r for r in resolved_requests if r.id in self.material_request_ids and r.id not in yielded_request_ids
+                r
+                for r in resolved_requests
+                if r.id in self.material_request_ids
+                and r.id not in yielded_request_ids
+                and r.id not in ag_suppressed_request_ids
             ]
             resolved_possible_mp = [r for r in resolved_mp if r.id not in impossible_request_ids]
-            resolved_possible = [r for r in resolved_requests if r.id not in impossible_request_ids]
+            resolved_possible = [
+                r
+                for r in resolved_requests
+                if r.id not in impossible_request_ids and r.id not in ag_suppressed_request_ids
+            ]
 
             # Request-level "Optimized" (MP) rate.
             mp_requests_total += len(resolved_possible_mp)
@@ -1670,7 +1703,12 @@ class DirectBunkingSolver:
 
             resolved_possible = [r for r in self.possible_requests.get(person_cm_id, []) if r.status == "resolved"]
             resolved_possible_count[person_cm_id] = len(resolved_possible)
-            if any(r.id in self.material_request_ids and r.id not in yielded_request_ids for r in resolved_possible):
+            if any(
+                r.id in self.material_request_ids
+                and r.id not in yielded_request_ids
+                and r.id not in ag_suppressed_request_ids
+                for r in resolved_possible
+            ):
                 material_parent_unmet.append(person_cm_id)
             else:
                 other_unmet.append(person_cm_id)

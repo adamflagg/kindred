@@ -245,17 +245,19 @@ function renderSubtext(
 
     case 'age_pref_no_eligible_grade': {
       const dir = item.detail?.['direction'] as 'older' | 'younger' | undefined
+      // Describe the session pool, not a camp-wide grade position — in
+      // narrow-grade sessions "already at oldest grade" reads false (#1752).
       if (dir === 'older' && item.detail?.['pool_max_grade'] !== undefined) {
         return (
           <div className="text-xs text-stone-600">
-            <strong>Wants older</strong> — already at oldest grade
+            <strong>Wants older</strong> — no older peers in this session
           </div>
         )
       }
       if (dir === 'younger' && item.detail?.['pool_min_grade'] !== undefined) {
         return (
           <div className="text-xs text-stone-600">
-            <strong>Wants younger</strong> — already at youngest grade
+            <strong>Wants younger</strong> — no younger peers in this session
           </div>
         )
       }

@@ -12,6 +12,8 @@
  * The helper unit tests plus TypeScript checking provide sufficient coverage.
  */
 import { describe, expect, it } from 'vitest'
+import { readFileSync } from 'fs'
+import { resolve } from 'path'
 import {
   DEFAULT_SHOW_CROSS_SCOPE_EDGES,
   buildBunksFilter,
@@ -190,5 +192,18 @@ describe('sessionBunks derivation — sort order', () => {
     ]
     const result = deriveSessionBunks(bunks, 2)
     expect(result.map((b) => b.name)).toEqual(['B-1', 'B-2', 'B-3'])
+  })
+})
+
+// ─── Cross-scope legend label (#1752 addendum) ────────────────────────────────
+
+describe('cross-scope legend label', () => {
+  it('labels ghost nodes honestly for unassigned targets, not just "In another bunk"', () => {
+    // Ghost nodes derive from the session graph, so a cross-scope target can be
+    // unassigned (GhostNode.bunk_name is nullable) — the legend entry must not
+    // claim every violet node is "In another bunk". Source-content assertion:
+    // the legend is inline JSX behind cytoscape/provider setup (see header note).
+    const source = readFileSync(resolve(__dirname, './BunkSocialGraphModal.tsx'), 'utf-8')
+    expect(source).toContain('In another bunk / unassigned')
   })
 })

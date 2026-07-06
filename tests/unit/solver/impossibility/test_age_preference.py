@@ -111,6 +111,162 @@ def test_age_pref_skips_check_when_requester_grade_is_unknown(mock_config):
     assert PREDICATE.check_request(req, ctx) is None
 
 
+def test_all_same_grade_pool_wants_younger_is_satisfiable(mock_config):
+    """Pool entirely at the requester's grade: an all-equal bunk satisfies
+    'younger' per the canonical semantics (has younger OR no older), so the
+    pre-check must not flag it (#1752 false positive)."""
+    requester = make_person(1, session=100, gender="F", grade=10)
+    peers = [make_person(i, session=100, gender="F", grade=10) for i in (2, 3, 4)]
+    req = make_request(
+        "r1",
+        requester=1,
+        requestee=None,
+        request_type="age_preference",
+        age_preference_target="younger",
+        session=100,
+    )
+    input_data = make_input([requester, *peers], [make_bunk(10, session=100, gender="F")], [req])
+    ctx = _build_context(input_data, mock_config)
+
+    assert PREDICATE.check_request(req, ctx) is None
+
+
+def test_all_same_grade_pool_wants_older_is_satisfiable(mock_config):
+    """Symmetric to the 'younger' case: all-equal bunk satisfies 'older'
+    (has older OR no younger)."""
+    requester = make_person(1, session=100, gender="F", grade=6)
+    peers = [make_person(i, session=100, gender="F", grade=6) for i in (2, 3)]
+    req = make_request(
+        "r1",
+        requester=1,
+        requestee=None,
+        request_type="age_preference",
+        age_preference_target="older",
+        session=100,
+    )
+    input_data = make_input([requester, *peers], [make_bunk(10, session=100, gender="F")], [req])
+    ctx = _build_context(input_data, mock_config)
+
+    assert PREDICATE.check_request(req, ctx) is None
+
+
+def test_same_and_older_pool_wants_younger_fires_with_pool_bounds(mock_config):
+    """Same-grade + older peers, no younger: satisfaction depends on landing an
+    all-same-grade bunk, so the risk warning stays — and the detail must carry
+    BOTH pool bounds so the frontend can describe the pool."""
+    requester = make_person(1, session=100, gender="F", grade=10)
+    p_same = make_person(2, session=100, gender="F", grade=10)
+    p_older = make_person(3, session=100, gender="F", grade=11)
+    req = make_request(
+        "r1",
+        requester=1,
+        requestee=None,
+        request_type="age_preference",
+        age_preference_target="younger",
+        session=100,
+    )
+    input_data = make_input([requester, p_same, p_older], [make_bunk(10, session=100, gender="F")], [req])
+    ctx = _build_context(input_data, mock_config)
+
+    reason = PREDICATE.check_request(req, ctx)
+    assert reason is not None
+    assert reason.code == "age_pref_no_eligible_grade"
+    assert reason.detail["pool_min_grade"] == 10
+    assert reason.detail["pool_max_grade"] == 11
+
+
+def test_same_and_younger_pool_wants_older_fires_with_pool_bounds(mock_config):
+    """Mirror of the younger risk case: same-grade + younger peers, no older."""
+    requester = make_person(1, session=100, gender="F", grade=5)
+    p_same = make_person(2, session=100, gender="F", grade=5)
+    p_younger = make_person(3, session=100, gender="F", grade=4)
+    req = make_request(
+        "r1",
+        requester=1,
+        requestee=None,
+        request_type="age_preference",
+        age_preference_target="older",
+        session=100,
+    )
+    input_data = make_input([requester, p_same, p_younger], [make_bunk(10, session=100, gender="F")], [req])
+    ctx = _build_context(input_data, mock_config)
+
+    reason = PREDICATE.check_request(req, ctx)
+    assert reason is not None
+    assert reason.code == "age_pref_no_eligible_grade"
+    assert reason.detail["pool_min_grade"] == 4
+    assert reason.detail["pool_max_grade"] == 5
+
+
+def test_all_strictly_older_pool_wants_younger_still_fires(mock_config):
+    """Every peer strictly older: genuinely impossible (any bunk has older,
+    none younger) — the warning must survive the boundary fix."""
+    requester = make_person(1, session=100, gender="F", grade=9)
+    peers = [make_person(i, session=100, gender="F", grade=10) for i in (2, 3)]
+    req = make_request(
+        "r1",
+        requester=1,
+        requestee=None,
+        request_type="age_preference",
+        age_preference_target="younger",
+        session=100,
+    )
+    input_data = make_input([requester, *peers], [make_bunk(10, session=100, gender="F")], [req])
+    ctx = _build_context(input_data, mock_config)
+
+    reason = PREDICATE.check_request(req, ctx)
+    assert reason is not None
+    assert reason.code == "age_pref_no_eligible_grade"
+
+
+def test_ag_session_skips_age_preference_check(mock_config):
+    """AG cabin membership is enrollment-driven — everyone in the AG session
+    lands in its cabin, so placement-derived pre-checks don't apply (#1752).
+    Mirrors the is_ag_session_bunk skips in grade_spread/grade_ratio/
+    cabin_occupancy."""
+    requester = make_person(1, session=100, gender="F", grade=10)
+    p_same = make_person(2, session=100, gender="F", grade=10)
+    p_older = make_person(3, session=100, gender="F", grade=11)
+    req = make_request(
+        "r1",
+        requester=1,
+        requestee=None,
+        request_type="age_preference",
+        age_preference_target="younger",
+        session=100,
+    )
+    ag_bunk = make_bunk(10, session=100, gender="AG", name="AG Cabin 3")
+    input_data = make_input([requester, p_same, p_older], [ag_bunk], [req])
+    ctx = _build_context(input_data, mock_config)
+
+    assert PREDICATE.check_request(req, ctx) is None
+
+
+def test_multi_bunk_ag_session_skips_age_preference_check(mock_config):
+    """A single AG session can carry several AG cabins (#1800's plan-level
+    pairing) — the skip is session-typed, not cabin-counted, because AG
+    placement is enrollment-driven either way."""
+    requester = make_person(1, session=100, gender="F", grade=10)
+    p_same = make_person(2, session=100, gender="F", grade=10)
+    p_older = make_person(3, session=100, gender="F", grade=11)
+    req = make_request(
+        "r1",
+        requester=1,
+        requestee=None,
+        request_type="age_preference",
+        age_preference_target="younger",
+        session=100,
+    )
+    ag_bunks = [
+        make_bunk(10, session=100, gender="AG", name="AG Cabin 3"),
+        make_bunk(20, session=100, gender="AG", name="AG Cabin 4"),
+    ]
+    input_data = make_input([requester, p_same, p_older], ag_bunks, [req])
+    ctx = _build_context(input_data, mock_config)
+
+    assert PREDICATE.check_request(req, ctx) is None
+
+
 def test_age_pref_ignores_peers_with_unknown_grade(mock_config):
     """Peers whose grade is 0 (unknown) should not be treated as 'younger than everyone'."""
     requester = make_person(1, session=100, gender="F", grade=5)

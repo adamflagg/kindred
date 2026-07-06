@@ -24,9 +24,10 @@ from bunking.logging_config import get_logger
 from bunking.sync.bunk_request_processor.core.models import RequestType
 
 from .base import SolverContext
+from .helpers import is_ag_session
 
 if TYPE_CHECKING:
-    from bunking.models_v2 import DirectBunkRequest
+    from bunking.models_v2 import DirectBunk, DirectBunkRequest
 
 logger = get_logger(__name__)
 
@@ -52,6 +53,17 @@ def add_age_preference_satisfaction_vars(
     docs/reference/solver-config-decisions.md) will be the right home for any
     future non-MP modeling.
 
+    Requests from AG-session campers build nothing at all: AG cabin membership
+    is enrollment-driven (everyone in the AG session lands in its cabin), so
+    preferences don't drive AG placement. Building vars here would let
+    parent_paramount turn an MP age_preference into a hard must-satisfy-one
+    over per-bunk cleanliness — while the AG-skipping impossibility pre-check
+    (check_request below) never records such a request as impossible — risking
+    an undiagnosed INFEASIBLE. The skip is scoped to the REQUESTER'S OWN
+    session: a production solve bundles a main session with its related AG
+    session (solver_runner fetches them together), so ``ctx.bunks`` mixes
+    non-AG and AG bunks and a whole-solve check would never fire.
+
     Args:
         ctx: Solver context with model, assignments, and mappings
         requests_by_person: Dict mapping person_cm_id to their MP age_preference
@@ -63,6 +75,10 @@ def add_age_preference_satisfaction_vars(
         requester into a clean bunk and thus satisfies the request. Consumed
         by parent_paramount's hard must-satisfy-one constraint via summation.
     """
+    bunks_by_session: dict[int, list[DirectBunk]] = {}
+    for bunk in ctx.bunks:
+        bunks_by_session.setdefault(bunk.session_cm_id, []).append(bunk)
+
     bunk_has_grade = _build_bunk_has_grade_vars(ctx)
 
     forcing_indicators_by_req_id: dict[str, list[cp_model.IntVar]] = {}
@@ -73,6 +89,12 @@ def add_age_preference_satisfaction_vars(
 
         person_idx = ctx.person_idx_map[person_cm_id]
         person = ctx.person_by_cm_id[person_cm_id]
+        if is_ag_session(bunks_by_session.get(person.session_cm_id, [])):
+            logger.debug(
+                f"AG-session camper {person_cm_id}: skipping age-preference "
+                "satisfaction vars (enrollment determines cabin)"
+            )
+            continue
         person_grade = person.grade
 
         for request in requests:
@@ -259,6 +281,13 @@ class AgePreferenceImpossibility(HardConstraintImpossibility):
         session = ctx.person_session.get(req.requester_person_cm_id)
         if session is None:
             return None
+        # AG cabin membership is enrollment-driven — everyone in the AG session
+        # lands in its cabin, so there is no preference-driven assignment
+        # decision and placement-derived pre-checks don't apply. Mirrors the
+        # is_ag_session_bunk skips in grade_spread/grade_ratio/cabin_occupancy
+        # and the matching skip in add_age_preference_satisfaction_vars above.
+        if is_ag_session(ctx.bunks_by_session.get(session, [])):
+            return None
         # grade=0 is the "unknown grade" sentinel set by data_fetcher when the
         # source record has no grade. Refuse to call impossible on either side
         # without real grades — defer to the solver rather than emit a spurious
@@ -287,30 +316,37 @@ class AgePreferenceImpossibility(HardConstraintImpossibility):
                 },
             )
         grades = [p.grade for p in same_gender_peers]
-        if target == "older" and max(grades) <= requester.grade:
+        pool_min, pool_max = min(grades), max(grades)
+        # An all-same-grade pool satisfies either direction (canonical semantics
+        # in bunking/utils/age_preference.py: "older" passes with no younger
+        # bunkmates, "younger" passes with no older) — so only flag when peers
+        # exist on the wrong side of the requester and none on the requested side.
+        if target == "older" and pool_max <= requester.grade and pool_min < requester.grade:
             return ImpossibilityReason(
                 code="age_pref_no_eligible_grade",
                 message=(
                     f"Camper is at grade {requester.grade}; no older same-gender "
-                    f"peer exists in session {session} (pool max: {max(grades)})."
+                    f"peer exists in session {session} (pool: {pool_min}-{pool_max})."
                 ),
                 detail={
                     "direction": "older",
                     "requester_grade": requester.grade,
-                    "pool_max_grade": max(grades),
+                    "pool_min_grade": pool_min,
+                    "pool_max_grade": pool_max,
                 },
             )
-        if target == "younger" and min(grades) >= requester.grade:
+        if target == "younger" and pool_min >= requester.grade and pool_max > requester.grade:
             return ImpossibilityReason(
                 code="age_pref_no_eligible_grade",
                 message=(
                     f"Camper is at grade {requester.grade}; no younger same-gender "
-                    f"peer exists in session {session} (pool min: {min(grades)})."
+                    f"peer exists in session {session} (pool: {pool_min}-{pool_max})."
                 ),
                 detail={
                     "direction": "younger",
                     "requester_grade": requester.grade,
-                    "pool_min_grade": min(grades),
+                    "pool_min_grade": pool_min,
+                    "pool_max_grade": pool_max,
                 },
             )
         return None
