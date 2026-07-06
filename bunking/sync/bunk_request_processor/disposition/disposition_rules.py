@@ -52,6 +52,7 @@ def determine_disposition(
     session_match: bool = True,
     age_direction: str | None = None,
     auto_resolve_threshold: float = AUTO_RESOLVE_THRESHOLD,
+    is_stale_dated_note: bool = False,
 ) -> Disposition:
     """Apply priority-ordered disposition rules to a resolved match.
 
@@ -60,6 +61,12 @@ def determine_disposition(
     # Requester not attending takes priority over all other rules
     if requester_is_inactive:
         return Disposition(RequestStatus.DECLINED, "requester_not_attending", 0)
+
+    # #1801: a staff-note entry dated 3+ years before the current season is
+    # historical record, not current intent — decline across all request types.
+    # Staff can flip it back to resolved in request management if it still matters.
+    if is_stale_dated_note:
+        return Disposition(RequestStatus.DECLINED, "stale_dated_note", 9)
 
     if request_type == RequestType.AGE_PREFERENCE:
         return _age_preference_rules(age_direction)

@@ -815,3 +815,59 @@ class TestBuilderPlaceholderInvariant:
 
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
+
+
+class TestStaleDatedNoteStatus:
+    """#1801: determine_request_status auto-declines stale dated staff notes."""
+
+    @pytest.fixture
+    def builder(self) -> RequestBuilder:
+        return RequestBuilder(
+            temporal_name_cache=None,
+            year=2026,
+            auto_resolve_threshold=0.85,
+        )
+
+    def _parsed(self, **overrides: Any) -> ParsedRequest:
+        base: dict[str, Any] = {
+            "raw_text": "2019 - Bunk with younger kids next yr",
+            "target_name": None,
+            "request_type": RequestType.AGE_PREFERENCE,
+            "age_preference": AgePreference.YOUNGER,
+            "confidence": 0.9,
+            "source_field": "bunking_notes",
+            "csv_position": 1,
+            "metadata": {},
+            "notes": None,
+        }
+        base.update(overrides)
+        return ParsedRequest(**base)
+
+    def test_stale_prefixed_age_preference_declines(self, builder: RequestBuilder) -> None:
+        status, reason = builder.determine_request_status(self._parsed(), {}, {})
+        assert status == RequestStatus.DECLINED
+        assert reason == "stale_dated_note"
+
+    def test_stale_datestamped_bunk_with_declines(self, builder: RequestBuilder) -> None:
+        parsed = self._parsed(
+            raw_text="Wants Emma Johnson EMMA JOHNSON (Jun  1 2020  9:00AM)",
+            target_name="Emma Johnson",
+            request_type=RequestType.BUNK_WITH,
+            age_preference=None,
+        )
+        resolution = {"person_cm_id": 12345, "resolution_method": "exact_match", "confidence": 1.0}
+        status, reason = builder.determine_request_status(parsed, resolution, {})
+        assert status == RequestStatus.DECLINED
+        assert reason == "stale_dated_note"
+
+    def test_recent_dated_note_unaffected(self, builder: RequestBuilder) -> None:
+        parsed = self._parsed(raw_text="2025 - Bunk with younger kids")
+        status, reason = builder.determine_request_status(parsed, {}, {})
+        assert status == RequestStatus.RESOLVED
+        assert reason == "directional_preference"
+
+    def test_structured_source_field_unaffected(self, builder: RequestBuilder) -> None:
+        parsed = self._parsed(source_field="socialize_with")
+        status, reason = builder.determine_request_status(parsed, {}, {})
+        assert status == RequestStatus.RESOLVED
+        assert reason == "directional_preference"
