@@ -140,6 +140,62 @@ def test_build_bunk_graph_fails_open_when_attendee_lookup_raises() -> None:
     assert graph.number_of_nodes() == 2
 
 
+def test_build_bunk_graph_excludes_staff_enrolled_only_in_non_bunking_session() -> None:
+    """A real staff member (18+) can hold a bunk_assignment AND an enrolled
+    Family Camp attendee row in the same year. The enrolled lookup must be scoped
+    to bunking session types, so a family-camp enrollment does not rescue them
+    from staff exclusion (#1791 F1)."""
+    camper_id, staff_id = 1001, 9001
+
+    # Each canned attendee row carries the session_type of the session it belongs
+    # to. The camper is enrolled in a bunking session; the staff member only has a
+    # Family Camp row.
+    attendee_rows = [
+        SimpleNamespace(person_id=camper_id, session_type="main"),
+        SimpleNamespace(person_id=staff_id, session_type="family_camp"),
+    ]
+
+    def _attendees_get_full_list(*_a: object, **kwargs: object) -> list[SimpleNamespace]:
+        # Simulate server-side session-type scoping: a row survives only if its
+        # session_type passes the query filter (or the filter has no type scope,
+        # i.e. the unscoped pre-fix behaviour that this test must fail against).
+        query_params = kwargs.get("query_params", {})
+        filt = query_params.get("filter", "") if isinstance(query_params, dict) else ""
+        return [r for r in attendee_rows if "session_type" not in filt or f'session_type = "{r.session_type}"' in filt]
+
+    def _collection_side_effect(name: str) -> MagicMock:
+        col = MagicMock()
+        if name == "bunk_assignments":
+            col.get_full_list.return_value = [_assignment(camper_id), _assignment(staff_id)]
+        elif name == "attendees":
+            col.get_full_list.side_effect = _attendees_get_full_list
+        elif name == "bunk_requests":
+            col.get_full_list.return_value = []
+        elif name == "persons":
+
+            def _get_first(flt: str, *_a: object, **_kw: object) -> SimpleNamespace:
+                if str(camper_id) in flt:
+                    return _person(camper_id, "Emma")
+                if str(staff_id) in flt:
+                    return _person(staff_id, "Staff")
+                raise RuntimeError(f"no person for {flt!r}")
+
+            col.get_first_list_item.side_effect = _get_first
+        else:
+            col.get_full_list.return_value = []
+            col.get_first_list_item.side_effect = RuntimeError("no record")
+        return col
+
+    pb = MagicMock()
+    pb.collection.side_effect = _collection_side_effect
+
+    graph = SocialGraphBuilder(pb=pb).build_bunk_graph(year=2026, bunk_cm_id=555, session_cm_id=999)
+
+    assert camper_id in graph.nodes
+    assert staff_id not in graph.nodes  # family-camp enrollment must not rescue staff
+    assert graph.number_of_nodes() == 1
+
+
 def test_build_bunk_graph_fails_open_when_no_enrolled_attendee_resolves() -> None:
     """An empty ATTENDEES result (attendee data unavailable) resolves to ``None``,
     signalling the caller to skip filtering rather than drop every member."""

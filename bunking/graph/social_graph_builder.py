@@ -23,6 +23,9 @@ from bunking.logging_config import get_logger
 from bunking.satisfaction import BucketCount, RequestBucket, camper_satisfaction
 from bunking.satisfaction.aggregate import bucket_status
 from bunking.sync.bunk_request_processor.core.models import RequestType
+from bunking.sync.bunk_request_processor.data.repositories.session_repository import (
+    VALID_BUNKING_SESSION_TYPES,
+)
 from bunking.sync.bunk_request_processor.shared.constants import SourceField
 from pocketbase import PocketBase
 
@@ -173,17 +176,22 @@ class SocialGraphBuilder:
         """cm_ids of the given members who are enrolled attendees (``status_id = 2``).
 
         Scoped to the member set so the query stays small regardless of session
-        size and works for AG bunks whose members span a sub-session. Returns
-        ``None`` if the lookup fails, signalling the caller to skip staff
-        filtering rather than blank the graph.
+        size and works for AG bunks whose members span a sub-session. Also scoped
+        to bunking session types (``VALID_BUNKING_SESSION_TYPES``): a real staff
+        member can also hold an enrolled Family Camp attendee row the same year,
+        and a year-only check would let that non-bunking enrollment rescue them
+        from staff exclusion (#1791). Scoping by *type* (not a single session id)
+        keeps AG cross-sub-session members. Returns ``None`` if the lookup fails,
+        signalling the caller to skip staff filtering rather than blank the graph.
         """
         unique = set(member_cm_ids)
         if not unique:
             return set()
         try:
             clauses = " || ".join(f"person_id = {cm_id}" for cm_id in unique)
+            type_clause = " || ".join(f'session.session_type = "{t}"' for t in sorted(VALID_BUNKING_SESSION_TYPES))
             attendees = self.pb.collection(ATTENDEES).get_full_list(
-                query_params={"filter": f"({clauses}) && year = {year} && status_id = 2"}
+                query_params={"filter": f"({clauses}) && year = {year} && status_id = 2 && ({type_clause})"}
             )
         except Exception as e:
             logger.error(f"Error fetching enrolled attendees for staff exclusion: {e}")
