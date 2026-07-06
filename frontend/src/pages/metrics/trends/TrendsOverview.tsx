@@ -57,8 +57,7 @@ function buildGroupedChartData(
   // Access breakdown arrays via unknown cast to avoid strict type narrowing
   const getBreakdown = (yearData: YearEnrollment): Array<Record<string, unknown>> | undefined =>
     (yearData as unknown as Record<string, unknown>)[breakdownKey] as
-      | Array<Record<string, unknown>>
-      | undefined
+      Array<Record<string, unknown>> | undefined
 
   // Collect all categories and their totals
   const categoryTotals = new Map<string, number>()

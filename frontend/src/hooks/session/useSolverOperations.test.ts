@@ -188,8 +188,7 @@ describe('solver result statistics', () => {
     }
 
     const validation = solverStats['request_validation'] as
-      | { impossible_requests?: number }
-      | undefined
+      { impossible_requests?: number } | undefined
     const hasImpossibleRequests =
       validation?.impossible_requests && validation.impossible_requests > 0
 

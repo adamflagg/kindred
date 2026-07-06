@@ -313,13 +313,7 @@ export interface PipelineSummaryFilters {
 // =============================================================================
 
 export type PipelinePhase =
-  | 'pre_phase1'
-  | 'phase1'
-  | 'validation'
-  | 'phase2'
-  | 'historical'
-  | 'phase3'
-  | 'post_pipeline'
+  'pre_phase1' | 'phase1' | 'validation' | 'phase2' | 'historical' | 'phase3' | 'post_pipeline'
 
 /** Canonical ordering of pipeline phases, used by canvas and page. */
 export const PHASE_ORDER: PipelinePhase[] = [
@@ -357,11 +351,7 @@ export type PipelineStage =
   | 'dedup_save'
 
 export type StageGroup =
-  | 'pre_processing'
-  | 'ai_parse'
-  | 'validation'
-  | 'resolution'
-  | 'finalization'
+  'pre_processing' | 'ai_parse' | 'validation' | 'resolution' | 'finalization'
 
 /** Maps each granular stage back to its parent PipelinePhase for trace data access and re-runs. */
 export const STAGE_TO_PHASE: Record<PipelineStage, PipelinePhase> = {

@@ -3,10 +3,7 @@
  */
 
 export type SourceFieldType =
-  | 'bunk_request_form'
-  | 'staff_not_bunk_with'
-  | 'bunking_notes'
-  | 'internal_notes'
+  'bunk_request_form' | 'staff_not_bunk_with' | 'bunking_notes' | 'internal_notes'
 
 export interface ParsedIntent {
   request_type: string

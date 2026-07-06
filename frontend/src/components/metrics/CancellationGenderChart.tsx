@@ -13,11 +13,7 @@ import { getGenderColor } from './genderColors'
 
 // Prior status color variants derived from gender base color
 type PriorStatus =
-  | 'was_enrolled'
-  | 'was_waitlisted'
-  | 'was_applied'
-  | 'other_prior_status'
-  | 'unknown'
+  'was_enrolled' | 'was_waitlisted' | 'was_applied' | 'other_prior_status' | 'unknown'
 
 const PRIOR_STATUS_LABELS: Record<PriorStatus, string> = {
   was_enrolled: 'Was Enrolled',

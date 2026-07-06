@@ -182,11 +182,7 @@ export function SessionConfigTable() {
   }, [thresholdRecords])
 
   type EditableField =
-    | 'min_grade'
-    | 'max_grade'
-    | 'capacity_override'
-    | 'participant_goal'
-    | 'session_fee'
+    'min_grade' | 'max_grade' | 'capacity_override' | 'participant_goal' | 'session_fee'
 
   const handleChange = (rowKey: string, field: EditableField, value: string) => {
     setRows((prev) =>

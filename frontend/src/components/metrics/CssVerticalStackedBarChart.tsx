@@ -44,8 +44,7 @@ interface CssVerticalStackedBarChartProps {
   showTotalLabel?: boolean
   labelFormat?: ((item: Record<string, unknown>) => string) | undefined
   renderTooltip?:
-    | ((item: Record<string, unknown>, segments: VerticalStackedSegment[]) => ReactNode)
-    | undefined
+    ((item: Record<string, unknown>, segments: VerticalStackedSegment[]) => ReactNode) | undefined
   rotateLabels?: boolean
   onBarClick?: ((item: Record<string, unknown>) => void) | undefined
   className?: string

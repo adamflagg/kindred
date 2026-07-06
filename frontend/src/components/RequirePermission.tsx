@@ -4,8 +4,7 @@ import { FullPageSpinner } from './FullPageSpinner'
 import PermissionDeniedPage from '../pages/PermissionDeniedPage'
 
 type RequirePermissionProps = { children: React.ReactNode } & (
-  | { permission: string; anyOf?: never }
-  | { permission?: never; anyOf: string[] }
+  { permission: string; anyOf?: never } | { permission?: never; anyOf: string[] }
 )
 
 export const RequirePermission = (props: RequirePermissionProps) => {
