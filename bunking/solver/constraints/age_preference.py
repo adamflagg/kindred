@@ -27,7 +27,7 @@ from .base import SolverContext
 from .helpers import is_ag_session
 
 if TYPE_CHECKING:
-    from bunking.models_v2 import DirectBunkRequest
+    from bunking.models_v2 import DirectBunk, DirectBunkRequest
 
 logger = get_logger(__name__)
 
@@ -53,12 +53,16 @@ def add_age_preference_satisfaction_vars(
     docs/reference/solver-config-decisions.md) will be the right home for any
     future non-MP modeling.
 
-    AG sessions build nothing at all: AG cabin membership is enrollment-driven
-    (everyone in the AG session lands in its cabin), so preferences don't
-    drive AG placement. Building vars here would let parent_paramount turn an
-    MP age_preference into a hard must-satisfy-one over per-bunk cleanliness —
-    while the AG-skipping impossibility pre-check (check_request below) never
-    records such a request as impossible — risking an undiagnosed INFEASIBLE.
+    Requests from AG-session campers build nothing at all: AG cabin membership
+    is enrollment-driven (everyone in the AG session lands in its cabin), so
+    preferences don't drive AG placement. Building vars here would let
+    parent_paramount turn an MP age_preference into a hard must-satisfy-one
+    over per-bunk cleanliness — while the AG-skipping impossibility pre-check
+    (check_request below) never records such a request as impossible — risking
+    an undiagnosed INFEASIBLE. The skip is scoped to the REQUESTER'S OWN
+    session: a production solve bundles a main session with its related AG
+    session (solver_runner fetches them together), so ``ctx.bunks`` mixes
+    non-AG and AG bunks and a whole-solve check would never fire.
 
     Args:
         ctx: Solver context with model, assignments, and mappings
@@ -71,9 +75,9 @@ def add_age_preference_satisfaction_vars(
         requester into a clean bunk and thus satisfies the request. Consumed
         by parent_paramount's hard must-satisfy-one constraint via summation.
     """
-    if is_ag_session(ctx.bunks):
-        logger.info("AG session: skipping age-preference satisfaction vars (enrollment determines cabin)")
-        return {}
+    bunks_by_session: dict[int, list[DirectBunk]] = {}
+    for bunk in ctx.bunks:
+        bunks_by_session.setdefault(bunk.session_cm_id, []).append(bunk)
 
     bunk_has_grade = _build_bunk_has_grade_vars(ctx)
 
@@ -85,6 +89,12 @@ def add_age_preference_satisfaction_vars(
 
         person_idx = ctx.person_idx_map[person_cm_id]
         person = ctx.person_by_cm_id[person_cm_id]
+        if is_ag_session(bunks_by_session.get(person.session_cm_id, [])):
+            logger.debug(
+                f"AG-session camper {person_cm_id}: skipping age-preference "
+                "satisfaction vars (enrollment determines cabin)"
+            )
+            continue
         person_grade = person.grade
 
         for request in requests:

@@ -26,6 +26,15 @@ Mechanism:
 Campers whose every MP request is impossible (filtered out of
 ``ctx.possible_requests``) are recorded in
 ``ctx.mp_set_entirely_impossible`` and skipped.
+
+Deliberate exception — AG-session campers: age_preference requests from
+campers in AG sessions have no solver representation at all
+(``add_age_preference_satisfaction_vars`` skips them; AG cabin membership is
+enrollment-driven, so preferences don't drive AG placement). Such requests are
+possible and material yet build no forcing vars, so a camper whose only MP
+requests are AG age_preferences gets no hard constraint here — by design, not
+by omission. The post-solve diagnostic excludes them from the
+``material_parent_unmet`` alarm for the same reason.
 """
 
 from __future__ import annotations
@@ -190,10 +199,13 @@ def add_must_satisfy_one_request_constraints(ctx: SolverContext) -> None:
             constraints_added += 1
             continue
 
-        # No forcing vars built. Entirely-impossible MP campers are already
-        # recorded in ctx.mp_set_entirely_impossible by _validate_requests
-        # (single source of truth: validate_impossibility) — nothing to derive
-        # here. Campers with no MP requests at all also land here harmlessly.
+        # No forcing vars built. Three cases land here: entirely-impossible MP
+        # campers (already recorded in ctx.mp_set_entirely_impossible by
+        # _validate_requests; single source of truth: validate_impossibility),
+        # campers with no MP requests at all, and AG-session campers whose MP
+        # requests are all age_preference (deliberately unenforced — no solver
+        # representation; see the module docstring and
+        # add_age_preference_satisfaction_vars). All are harmless by design.
         logger.debug(f"Camper {person_cm_id}: no forcing vars built — no hard constraint added")
 
     # Step 4: end-of-build logging
