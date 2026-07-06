@@ -63,14 +63,12 @@ export function adjustLabelPositions(cy: Core): void {
           if (other.node.id() === node.id()) continue
 
           // Check if rectangles overlap
-          if (
-            !(
-              labelRight < other.left ||
-              labelLeft > other.right ||
-              labelBottom < other.top ||
-              labelTop > other.bottom
-            )
-          ) {
+          if (!(
+            labelRight < other.left ||
+            labelLeft > other.right ||
+            labelBottom < other.top ||
+            labelTop > other.bottom
+          )) {
             collision = true
             offsetY += 15 // Move down
             break

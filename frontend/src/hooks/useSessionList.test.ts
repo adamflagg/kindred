@@ -47,8 +47,7 @@ describe('useSessionList', () => {
     await waitFor(() => expect(result.current.isSuccess).toBe(true))
 
     const callArg = mockGetFullList.mock.calls[0]?.[0] as
-      | { filter?: string; sort?: string }
-      | undefined
+      { filter?: string; sort?: string } | undefined
     expect(callArg?.filter).toBeDefined()
     expect(callArg?.filter).toContain('year = 2026')
     expect(callArg?.filter).toContain('session_type = "main"')
@@ -123,8 +122,7 @@ describe('useSessionList', () => {
     await waitFor(() => expect(result.current.isSuccess).toBe(true))
     expect(mockCollection).toHaveBeenCalledWith('attendees')
     const attendeesCallArg = attendeesGetFullList.mock.calls[0]?.[0] as
-      | { filter?: string; fields?: string }
-      | undefined
+      { filter?: string; fields?: string } | undefined
     expect(attendeesCallArg?.filter).toContain('year = 2026')
     expect(attendeesCallArg?.filter).toContain('status_id = 2')
   })

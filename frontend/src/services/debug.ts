@@ -77,10 +77,7 @@ export interface ClearAnalysisResponse {
 }
 
 export type SourceFieldType =
-  | 'bunk_request_form'
-  | 'staff_not_bunk_with'
-  | 'bunking_notes'
-  | 'internal_notes'
+  'bunk_request_form' | 'staff_not_bunk_with' | 'bunking_notes' | 'internal_notes'
 
 export interface ParseAnalysisFilters {
   session_cm_id?: number | undefined

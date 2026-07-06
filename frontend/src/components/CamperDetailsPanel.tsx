@@ -486,8 +486,7 @@ export default function CamperDetailsPanel({
             const primaryAttendee = sortedAttendees[0]
             if (!primaryAttendee) return null
             const primaryExpand = primaryAttendee.expand as
-              | { session?: ExpandedSession }
-              | undefined
+              { session?: ExpandedSession } | undefined
             const session = primaryExpand?.session
 
             let bunkName = null
@@ -502,8 +501,7 @@ export default function CamperDetailsPanel({
                   })
                 if (assignments.length > 0 && assignments[0]) {
                   const assignmentExpand = assignments[0].expand as
-                    | { bunk?: ExpandedBunk }
-                    | undefined
+                    { bunk?: ExpandedBunk } | undefined
                   bunkName = assignmentExpand?.bunk?.name ?? null
                 }
               } catch {

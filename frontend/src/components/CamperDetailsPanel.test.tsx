@@ -76,22 +76,20 @@ vi.mock('../contexts/AuthContext', () => ({
 
 // Configurable mock for getSatisfiedRequestInfo — overridden in alert tests.
 // Default returns empty CamperSatisfaction so existing tests are unaffected.
-let mockGetSatisfiedRequestInfo = vi.fn(
-  (personCmId: number): CamperSatisfaction => ({
-    person_cm_id: personCmId,
-    per_request: [] as PerRequestStatus[],
-    counted_totals: {
-      material_parent: { satisfied: 0, total: 0 },
-      staff: { satisfied: 0, total: 0 },
-    },
-    immaterial: { satisfied: 0, total: 0 },
-    flags: {
-      parent_min_one_violation: false,
-      staff_unsatisfied_alert: false,
-      has_any_counted_request: false,
-    },
-  })
-)
+let mockGetSatisfiedRequestInfo = vi.fn((personCmId: number): CamperSatisfaction => ({
+  person_cm_id: personCmId,
+  per_request: [] as PerRequestStatus[],
+  counted_totals: {
+    material_parent: { satisfied: 0, total: 0 },
+    staff: { satisfied: 0, total: 0 },
+  },
+  immaterial: { satisfied: 0, total: 0 },
+  flags: {
+    parent_min_one_violation: false,
+    staff_unsatisfied_alert: false,
+    has_any_counted_request: false,
+  },
+}))
 
 // Mock useBunkRequestContext — CamperDetailsPanel uses getSatisfiedRequestInfo
 // from BunkRequestProvider to derive the unsatisfied-requests alert in parity

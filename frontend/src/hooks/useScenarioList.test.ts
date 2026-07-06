@@ -42,8 +42,7 @@ describe('useScenarioList', () => {
     await waitFor(() => expect(result.current.isSuccess).toBe(true))
 
     const callArg = mockGetFullList.mock.calls[0]?.[0] as
-      | { filter?: string; expand?: string }
-      | undefined
+      { filter?: string; expand?: string } | undefined
     expect(callArg?.filter).toContain('year = 2026')
     expect(callArg?.expand).toBe('session')
   })

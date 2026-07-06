@@ -37,8 +37,7 @@ export interface CssVerticalGroupedBarChartProps {
   yAxisFormat?: ((tick: number) => string) | undefined
   rotateLabels?: boolean
   renderTooltip?:
-    | ((item: Record<string, unknown>, series: GroupedBarSeries[]) => ReactNode)
-    | undefined
+    ((item: Record<string, unknown>, series: GroupedBarSeries[]) => ReactNode) | undefined
   onBarClick?: ((item: Record<string, unknown>, seriesKey: string) => void) | undefined
   className?: string
   /** Override default inter-group gap (px) computed by calculateColumnSizing */

@@ -519,8 +519,7 @@ export default function SocialNetworkGraph({ sessionCmId }: SocialNetworkGraphPr
     // Detached on cleanup so the long-lived shared worker doesn't keep a
     // closure reference to a destroyed cy.
     let pendingWorkerListener:
-      | ((event: MessageEvent<LayoutWorkerOutput & { token?: number }>) => void)
-      | null = null
+      ((event: MessageEvent<LayoutWorkerOutput & { token?: number }>) => void) | null = null
 
     void addAllElements().then(() => {
       if (cancelled || !cyRef.current || cyRef.current !== cy || cy.destroyed()) return
