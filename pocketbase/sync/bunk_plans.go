@@ -5,7 +5,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
-	"sort"
+	"slices"
 	"strings"
 
 	"github.com/camp/kindred/pocketbase/campminder"
@@ -174,10 +174,14 @@ func (s *BunkPlansSync) loadMappings() error {
 //     always share the same parent session (same bunking board), so a
 //     provisional pairing is display-equivalent before assignments exist —
 //     and camper assignments resolve to each camper's own enrolled AG session
-//     regardless (see findMatchingSession in bunk_assignments.go).
+//     regardless (see findMatchingSession in bunk_assignments.go). Staff
+//     assignments lack enrollments and resolve via bunkPlanBunkToSession, so
+//     they DO trust this pairing — in a multi-AG-session year a staff row can
+//     land on the sibling session (accepted; matches pre-#1749-fix behavior).
 //
 // Only bunks/sessions known to PocketBase participate; returns an empty map
-// when the plan has no AG sessions.
+// when the plan has no AG sessions. An AG session left without any paired
+// bunk gets no bunk_plans rows — the caller warns when that happens.
 func pairAGBunksToSessions(
 	bunkCMIDs, sessionCMIDs []int,
 	bunkNames map[int]string,
@@ -194,7 +198,7 @@ func pairAGBunksToSessions(
 	if len(agSessions) == 0 {
 		return pairing
 	}
-	sort.Ints(agSessions)
+	slices.Sort(agSessions)
 
 	agBunks := make([]int, 0, len(bunkCMIDs))
 	for _, id := range bunkCMIDs {
@@ -202,7 +206,7 @@ func pairAGBunksToSessions(
 			agBunks = append(agBunks, id)
 		}
 	}
-	sort.Ints(agBunks)
+	slices.Sort(agBunks)
 
 	for i, bunkCMID := range agBunks {
 		if i < len(agSessions) {
@@ -330,6 +334,27 @@ func (s *BunkPlansSync) processBunkPlan(planData map[string]any) (int, error) {
 
 	// Decide which AG session each AG bunk belongs to (kindred#1749)
 	agPairing := pairAGBunksToSessions(bunkCMIDs, sessionCMIDs, s.bunkNames, s.sessionInfo)
+
+	// An AG session with no paired AG bunk gets zero bunk_plans rows and drops
+	// out of downstream session resolution (bunkPlanSessionsList) — the same
+	// silent-blackhole shape #1749 fixed. Can't pair what isn't there, so warn.
+	agSessionCount := 0
+	for _, sessionCMID := range sessionCMIDs {
+		if info, ok := s.sessionInfo[sessionCMID]; ok && info.SessionType == "ag" {
+			agSessionCount++
+		}
+	}
+	pairedSessions := make(map[int]bool, len(agPairing))
+	for _, sessionCMID := range agPairing {
+		pairedSessions[sessionCMID] = true
+	}
+	if agSessionCount > len(pairedSessions) {
+		slog.Warn("Plan has more AG sessions than AG bunks; unpaired AG sessions get no bunk_plans rows",
+			"plan_id", int(planID),
+			"plan_name", name,
+			"ag_sessions", agSessionCount,
+			"ag_bunks_paired", len(pairedSessions))
+	}
 
 	// Create a bunk plan for each bunk-session combination
 	for _, bunkCMID := range bunkCMIDs {

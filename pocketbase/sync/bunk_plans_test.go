@@ -10,25 +10,25 @@ import (
 // Pairing must never interpret it as one. See kindred#1749: AG-6 hosting the
 // 7th/8th-grade AG session was silently dropped by the old grade heuristic.
 func TestPairAGBunksToSessions_SingleAGSession_AllAGBunksMap(t *testing.T) {
-	// 2026 regression case: Session 2 plan (12424) — AG-6 (51897) must map to
-	// the "7th & 8th grades" AG session even though its cabin number is 6.
+	// 2026 regression case: the AG-6 cabin must map to the 7th/8th-grade AG
+	// session even though its cabin number is 6.
 	bunkNames := map[int]string{
-		4261:  "B-1",
-		4262:  "G-1",
-		51897: "AG-6",
+		101: "B-1",
+		102: "G-1",
+		106: "AG-6",
 	}
 	sessionInfo := map[int]sessionInfoData{
-		1235404: {Name: "Session 2", SessionType: "main"},
-		1378704: {Name: "All-Gender Cabin-Session 2 (7th & 8th grades)", SessionType: "ag"},
+		1000001: {Name: "Session 2", SessionType: "main"},
+		1000002: {Name: "All-Gender Cabin-Session 2 (7th & 8th grades)", SessionType: "ag"},
 	}
 
 	got := pairAGBunksToSessions(
-		[]int{4261, 4262, 51897},
-		[]int{1235404, 1378704},
+		[]int{101, 102, 106},
+		[]int{1000001, 1000002},
 		bunkNames, sessionInfo,
 	)
 
-	want := map[int]int{51897: 1378704}
+	want := map[int]int{106: 1000002}
 	if !reflect.DeepEqual(got, want) {
 		t.Errorf("pairAGBunksToSessions() = %v, want %v (cabin number must not be treated as a grade)", got, want)
 	}
@@ -36,14 +36,14 @@ func TestPairAGBunksToSessions_SingleAGSession_AllAGBunksMap(t *testing.T) {
 
 func TestPairAGBunksToSessions_NoAGSession_EmptyPairing(t *testing.T) {
 	bunkNames := map[int]string{
-		4259:  "Aleph",
-		51897: "AG-6",
+		104: "Aleph",
+		106: "AG-6",
 	}
 	sessionInfo := map[int]sessionInfoData{
-		1356533: {Name: "Session 2a", SessionType: "embedded"},
+		1000003: {Name: "Session 2a", SessionType: "embedded"},
 	}
 
-	got := pairAGBunksToSessions([]int{4259, 51897}, []int{1356533}, bunkNames, sessionInfo)
+	got := pairAGBunksToSessions([]int{104, 106}, []int{1000003}, bunkNames, sessionInfo)
 
 	if len(got) != 0 {
 		t.Errorf("pairAGBunksToSessions() = %v, want empty (no AG session in plan)", got)
@@ -57,24 +57,24 @@ func TestPairAGBunksToSessions_TwoAGSessions_DeterministicZip(t *testing.T) {
 	// the provisional pairing is display-equivalent pre-assignments; camper
 	// assignments later resolve via each camper's own AG enrollment.
 	bunkNames := map[int]string{
-		66366: "AG-10",
-		70109: "AG-8",
+		108: "AG-8",
+		110: "AG-10",
 	}
 	sessionInfo := map[int]sessionInfoData{
-		1235404: {Name: "Session 2", SessionType: "main"},
-		1344557: {Name: "All-Gender Cabin-Session 2 (9th & 10th grades)", SessionType: "ag"},
-		1371790: {Name: "All-Gender Cabin-Session 2 (7th - 9th grades)", SessionType: "ag"},
+		1000001: {Name: "Session 2", SessionType: "main"},
+		1000004: {Name: "All-Gender Cabin-Session 2 (9th & 10th grades)", SessionType: "ag"},
+		1000005: {Name: "All-Gender Cabin-Session 2 (7th - 9th grades)", SessionType: "ag"},
 	}
 
 	want := map[int]int{
-		66366: 1344557, // lowest bunk cm_id → lowest AG session cm_id
-		70109: 1371790,
+		108: 1000004, // lowest bunk cm_id → lowest AG session cm_id
+		110: 1000005,
 	}
 
 	// Result must not depend on input slice order.
 	orderings := [][2][]int{
-		{{66366, 70109}, {1235404, 1344557, 1371790}},
-		{{70109, 66366}, {1371790, 1235404, 1344557}},
+		{{108, 110}, {1000001, 1000004, 1000005}},
+		{{110, 108}, {1000005, 1000001, 1000004}},
 	}
 	for i, o := range orderings {
 		got := pairAGBunksToSessions(o[0], o[1], bunkNames, sessionInfo)
@@ -125,18 +125,18 @@ func TestPairAGBunksToSessions_MoreSessionsThanBunks_FirstSessionsPaired(t *test
 func TestPairAGBunksToSessions_UnknownBunksAndSessions_Ignored(t *testing.T) {
 	// Bunks with no known name and sessions with no metadata (not in PB) must
 	// not participate in pairing.
-	bunkNames := map[int]string{51897: "AG-6"}
+	bunkNames := map[int]string{106: "AG-6"}
 	sessionInfo := map[int]sessionInfoData{
-		1378704: {Name: "All-Gender Cabin-Session 2 (7th & 8th grades)", SessionType: "ag"},
+		1000002: {Name: "All-Gender Cabin-Session 2 (7th & 8th grades)", SessionType: "ag"},
 	}
 
 	got := pairAGBunksToSessions(
-		[]int{51897, 99999},   // 99999: unknown bunk
-		[]int{1378704, 88888}, // 88888: unknown session
+		[]int{106, 99999},     // 99999: unknown bunk
+		[]int{1000002, 88888}, // 88888: unknown session
 		bunkNames, sessionInfo,
 	)
 
-	want := map[int]int{51897: 1378704}
+	want := map[int]int{106: 1000002}
 	if !reflect.DeepEqual(got, want) {
 		t.Errorf("pairAGBunksToSessions() = %v, want %v", got, want)
 	}
