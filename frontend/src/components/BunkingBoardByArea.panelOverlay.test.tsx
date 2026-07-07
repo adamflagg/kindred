@@ -54,7 +54,7 @@ vi.mock('./BunkCard', () => ({
     }
     onCamperClick?: (camper: { id: string; person_cm_id: number; name: string }) => void
   }) => (
-    <div data-bunk-card data-bunk-cm-id={bunk.cm_id} data-testid={`bunk-${bunk.id}`}>
+    <div data-bunk-card data-testid={`bunk-${bunk.id}`}>
       {bunk.campers.map((c) => (
         <button
           key={c.id}
