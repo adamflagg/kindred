@@ -169,6 +169,55 @@ migrate((app) => {
 | `min: null, max: null` for text | `min: 0, max: 0` (0 → PB default 5000-char cap, NOT unlimited) | N/A — both normalize to the 5000 default for text |
 | `min: 0, max: 0` for number | `min: null, max: null` (null = no limit for number) | `max: 0` enforced as literal maximum of 0, rejects all positive values |
 
+## Error Handling in Data Migrations
+
+Data migrations that check "does this row already exist?" wrap the lookup in a
+`try/catch` because `findFirstRecordByFilter` **throws** on the expected no-match
+path (`sql: no rows in result set`) — it does not return null. The convention is
+to **catch only the lookup, and keep the mutating op (`save`/`delete`) outside the
+catch** so a genuine DB error surfaces instead of being reinterpreted as "not
+found":
+
+```js
+// CORRECT — catch scopes the lookup only; the mutation is outside it
+let record
+try {
+  record = app.findFirstRecordByFilter("config", `config_key = "${key}"`)
+} catch {
+  // already gone — findFirstRecordByFilter throws on no match
+}
+if (record) app.delete(record)   // real delete errors (FK, perms) still surface
+```
+
+For the seed/ensure-exists shape, the same rule applies — the `app.save(record)`
+that runs after the `if (existing) return` guard hits the same DB one line later,
+so a genuine failure is not masked, only deferred by a line:
+
+```js
+let existing
+try {
+  existing = app.findFirstRecordByFilter("config", `config_key = "${key}"`)
+} catch {
+  existing = null
+}
+if (existing) return
+// ...build record...
+app.save(record)   // surfaces a real DB error here
+```
+
+**Why not a narrow `isNotFoundError(err)` helper?** PocketBase's JSVM throws a
+plain Go error *string*, not a structured error with `.status === 404`, so
+narrowing means brittle substring matching on an internal message. Combined with
+the fact that migration filters are static string literals (a malformed filter
+fails deterministically on the first apply everywhere, including CI) and that the
+mutating op surfaces real errors one line later, the broad catch is acceptable.
+`pb_migrations/` files are also evaluated in isolation with no shared-import
+mechanism, so a "shared helper" would be duplicated into every file. Decision
+recorded in #1731 (Formalize the existing convention; do not retrofit).
+
+**Do not** put the mutation *inside* the catch — that swallows FK/permission/
+runtime errors on the write itself, which are real failures you want to see.
+
 ## Migration Checklist
 
 Before committing any migration:
