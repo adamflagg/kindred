@@ -51,7 +51,7 @@ dependencies = [
     "tqdm>=4.68.3",
     # Scheduling
     "APScheduler>=3.11.2",
-    "croniter>=6.2.2",
+    "croniter>=6.2.3",
     # File processing
     "openpyxl>=3.1.5",
     # System
