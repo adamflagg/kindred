@@ -2,7 +2,50 @@ package rbac
 
 import (
 	"testing"
+
+	"github.com/pocketbase/pocketbase/core"
 )
+
+// TestExtractBusinessCategoryReadsRealRecordMetadata exercises the runtime path
+// the pure decideConfigWrite tests bypass: reading metadata.business_category off
+// an actual *core.Record. Record.Get on a json field returns types.JSONRaw
+// ([]byte), NOT a map[string]any — the original extractBusinessCategory asserted
+// map[string]any and silently returned "", which made guardConfigWrite deny
+// EVERY non-admin config write (existingCategory was always ""). This test locks
+// in that extractBusinessCategory decodes the real stored/post-body value.
+func TestExtractBusinessCategoryReadsRealRecordMetadata(t *testing.T) {
+	collection := core.NewBaseCollection("config")
+	collection.Fields.Add(&core.JSONField{Name: "metadata"})
+
+	newRecordWithMetadata := func(meta any) *core.Record {
+		rec := core.NewRecord(collection)
+		rec.Set("metadata", meta)
+		return rec
+	}
+
+	cases := []struct {
+		name string
+		meta any
+		want string
+	}{
+		{"json object with category", map[string]any{"business_category": "registration"}, "registration"},
+		{"json object without category key", map[string]any{"friendly_name": "x"}, ""},
+		{"empty metadata", map[string]any{}, ""},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			rec := newRecordWithMetadata(tc.meta)
+			if got := extractBusinessCategory(rec.Get("metadata")); got != tc.want {
+				t.Fatalf("extractBusinessCategory(record.Get(%q)) = %q, want %q", "metadata", got, tc.want)
+			}
+		})
+	}
+
+	// The decoded-map path (e.g. a request body value) must still work.
+	if got := extractBusinessCategory(map[string]any{"business_category": "solver"}); got != "solver" {
+		t.Fatalf("extractBusinessCategory(map) = %q, want %q", got, "solver")
+	}
+}
 
 func TestDecideConfigWrite(t *testing.T) {
 	tests := []struct {
@@ -10,110 +53,93 @@ func TestDecideConfigWrite(t *testing.T) {
 		isSuperuser           bool
 		isAdmin               bool
 		hasRegistrationManage bool
-		existingCategory      string
-		newCategory           string
-		newCategoryProvided   bool
-		bodyReadable          bool
+		originalCategory      string // stored category (empty for creates)
+		resultCategory        string // post-body category that will be saved
+		isCreate              bool
 		want                  configWriteDecision
 	}{
 		{
 			// Regression: a PocketBase superuser writing config via the _/ admin
 			// dashboard has neither is_admin nor cached_permissions, so without an
 			// explicit bypass it was wrongly denied "Missing registration.manage".
-			name:         "superuser bypasses all checks",
-			isSuperuser:  true,
-			bodyReadable: true,
-			want:         configWriteAllow,
+			name:        "superuser bypasses all checks",
+			isSuperuser: true,
+			want:        configWriteAllow,
 		},
 		{
-			name:             "superuser without admin/permission on a solver config is still allowed",
-			isSuperuser:      true,
-			existingCategory: "solver",
-			bodyReadable:     true,
-			want:             configWriteAllow,
-		},
-		{
-			name:             "admin bypasses all checks",
+			name:             "admin bypasses all checks on a solver config",
 			isAdmin:          true,
-			existingCategory: "solver",
-			bodyReadable:     true,
+			originalCategory: "solver",
+			resultCategory:   "solver",
 			want:             configWriteAllow,
-		},
-		{
-			// Admins bypass before the fail-closed body check, so an unreadable
-			// body must not affect them.
-			name:         "admin allowed even when request body is unreadable",
-			isAdmin:      true,
-			bodyReadable: false,
-			want:         configWriteAllow,
 		},
 		{
 			name:             "non-admin without registration.manage is denied",
-			existingCategory: "registration",
-			bodyReadable:     true,
+			originalCategory: "registration",
+			resultCategory:   "registration",
 			want:             configWriteDenyMissingPermission,
 		},
 		{
-			name:                  "registration.manage on a registration config is allowed",
+			name:                  "registration.manage editing a registration config is allowed",
 			hasRegistrationManage: true,
-			existingCategory:      "registration",
-			bodyReadable:          true,
+			originalCategory:      "registration",
+			resultCategory:        "registration",
 			want:                  configWriteAllow,
 		},
 		{
-			name:                  "registration.manage on a non-registration config is denied",
+			// Eligibility: the STORED category must be registration. Reading the
+			// original (not the post-body) value blocks relabelling a solver
+			// config to "registration" in the same PATCH to gain edit access.
+			name:                  "registration.manage editing a solver config is denied",
 			hasRegistrationManage: true,
-			existingCategory:      "solver",
-			bodyReadable:          true,
+			originalCategory:      "solver",
+			resultCategory:        "solver",
 			want:                  configWriteDenyWrongCategory,
 		},
 		{
-			name:                  "registration.manage mutating category is denied",
+			name:                  "registration.manage relabelling a solver config to registration is denied",
 			hasRegistrationManage: true,
-			existingCategory:      "registration",
-			newCategory:           "solver",
-			newCategoryProvided:   true,
-			bodyReadable:          true,
+			originalCategory:      "solver",
+			resultCategory:        "registration",
+			want:                  configWriteDenyWrongCategory,
+		},
+		{
+			name:                  "registration.manage mutating category to solver is denied",
+			hasRegistrationManage: true,
+			originalCategory:      "registration",
+			resultCategory:        "solver",
 			want:                  configWriteDenyCategoryMutation,
 		},
 		{
-			name:                  "registration.manage same-category update is allowed",
+			// #1732: blanking the category — whether by sending business_category:""
+			// or by omitting it under json-replace semantics — yields an empty
+			// resulting category and must be denied.
+			name:                  "registration.manage blanking category is denied",
 			hasRegistrationManage: true,
-			existingCategory:      "registration",
-			newCategory:           "registration",
-			newCategoryProvided:   true,
-			bodyReadable:          true,
+			originalCategory:      "registration",
+			resultCategory:        "",
+			want:                  configWriteDenyCategoryMutation,
+		},
+		{
+			name:                  "registration.manage creating a registration config is allowed",
+			hasRegistrationManage: true,
+			resultCategory:        "registration",
+			isCreate:              true,
 			want:                  configWriteAllow,
 		},
 		{
-			// #1732: an explicit business_category:"" is a mutation away from
-			// "registration" and must be denied, not silently allowed.
-			name:                  "registration.manage blanking category (explicit empty) is denied",
+			name:                  "registration.manage creating a solver config is denied",
 			hasRegistrationManage: true,
-			existingCategory:      "registration",
-			newCategory:           "",
-			newCategoryProvided:   true,
-			bodyReadable:          true,
-			want:                  configWriteDenyCategoryMutation,
+			resultCategory:        "solver",
+			isCreate:              true,
+			want:                  configWriteDenyWrongCategory,
 		},
 		{
-			// A true omission (no business_category in the body) leaves the
-			// category untouched and stays allowed.
-			name:                  "registration.manage omitting category is allowed",
+			name:                  "registration.manage creating a category-less config is denied",
 			hasRegistrationManage: true,
-			existingCategory:      "registration",
-			newCategoryProvided:   false,
-			bodyReadable:          true,
-			want:                  configWriteAllow,
-		},
-		{
-			// #1732: if the request body can't be read we cannot verify the write
-			// isn't mutating the category, so a non-admin write fails closed.
-			name:                  "registration.manage with unreadable body is denied (fail closed)",
-			hasRegistrationManage: true,
-			existingCategory:      "registration",
-			bodyReadable:          false,
-			want:                  configWriteDenyCategoryMutation,
+			resultCategory:        "",
+			isCreate:              true,
+			want:                  configWriteDenyWrongCategory,
 		},
 	}
 
@@ -123,10 +149,9 @@ func TestDecideConfigWrite(t *testing.T) {
 				tt.isSuperuser,
 				tt.isAdmin,
 				tt.hasRegistrationManage,
-				tt.existingCategory,
-				tt.newCategory,
-				tt.newCategoryProvided,
-				tt.bodyReadable,
+				tt.originalCategory,
+				tt.resultCategory,
+				tt.isCreate,
 			)
 			if got != tt.want {
 				t.Errorf("decideConfigWrite() = %v, want %v", got, tt.want)

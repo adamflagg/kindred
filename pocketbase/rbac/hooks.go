@@ -10,6 +10,7 @@ import (
 	"github.com/pocketbase/pocketbase"
 	"github.com/pocketbase/pocketbase/apis"
 	"github.com/pocketbase/pocketbase/core"
+	"github.com/pocketbase/pocketbase/tools/types"
 )
 
 // flattenPermissions takes permission arrays from multiple roles,
@@ -80,29 +81,35 @@ func recomputeUserPermissions(app *pocketbase.PocketBase, userID string) error {
 
 const permRegistrationManage = "registration.manage"
 
-// extractBusinessCategory extracts metadata.business_category from a raw value.
-// PocketBase decodes JSON fields into map[string]any, so a direct assertion suffices.
+// extractBusinessCategory reads metadata.business_category from a raw config
+// metadata value. The representation differs by source: Record.Get on a json
+// field returns a types.JSONRaw ([]byte), while a parsed request body yields a
+// map[string]any — handle both. Returns "" if the value is absent, unparseable,
+// or has no business_category key.
 func extractBusinessCategory(raw any) string {
-	cat, _ := extractBusinessCategoryWithPresence(raw)
+	var m map[string]any
+	switch v := raw.(type) {
+	case map[string]any:
+		m = v
+	case types.JSONRaw:
+		if len(v) == 0 {
+			return ""
+		}
+		if err := json.Unmarshal(v, &m); err != nil {
+			return ""
+		}
+	case []byte:
+		if len(v) == 0 {
+			return ""
+		}
+		if err := json.Unmarshal(v, &m); err != nil {
+			return ""
+		}
+	default:
+		return ""
+	}
+	cat, _ := m["business_category"].(string)
 	return cat
-}
-
-// extractBusinessCategoryWithPresence extracts metadata.business_category from a
-// raw value and reports whether the business_category key was present at all.
-// The presence flag lets the write policy tell an explicit empty string
-// (business_category: "", a category mutation) apart from a true omission
-// (the key absent, leaving the category untouched).
-func extractBusinessCategoryWithPresence(raw any) (string, bool) {
-	m, ok := raw.(map[string]any)
-	if !ok {
-		return "", false
-	}
-	v, present := m["business_category"]
-	if !present {
-		return "", false
-	}
-	cat, _ := v.(string)
-	return cat, present
 }
 
 // configWriteDecision is the authorization outcome for a config write, extracted
@@ -119,14 +126,19 @@ const (
 // decideConfigWrite is the pure authorization policy for a config write.
 //
 // Superusers (PocketBase _/ admin dashboard) and admins bypass every check.
-// Non-admins need registration.manage AND may only touch registration-category
-// configs — both on the existing record and in the incoming body (newCategory),
-// the latter preventing category mutation. newCategory == "" means the body did
-// not change the category.
+// A non-admin needs registration.manage AND may only write registration-category
+// configs, enforced on two categories:
+//   - originalCategory — the STORED value. For updates it must be "registration",
+//     so a non-admin can't edit a solver config (or relabel one to "registration"
+//     in the same write to gain access). Empty/ignored for creates.
+//   - resultCategory — the value that will be SAVED (post-body). It must be
+//     "registration" in all cases, so the config can't be moved out of the
+//     registration bucket by setting another category, blanking it, or dropping
+//     the metadata key.
 func decideConfigWrite(
 	isSuperuser, isAdmin, hasRegistrationManage bool,
-	existingCategory, newCategory string,
-	newCategoryProvided, bodyReadable bool,
+	originalCategory, resultCategory string,
+	isCreate bool,
 ) configWriteDecision {
 	if isSuperuser || isAdmin {
 		return configWriteAllow
@@ -134,58 +146,50 @@ func decideConfigWrite(
 	if !hasRegistrationManage {
 		return configWriteDenyMissingPermission
 	}
-	if !isRegistrationConfig(existingCategory) {
+	// Eligibility (updates only): the stored row must already be a registration
+	// config. Creates have no stored row, so this is governed by the result check.
+	if !isCreate && !isRegistrationConfig(originalCategory) {
 		return configWriteDenyWrongCategory
 	}
-	// Fail closed: if the request body couldn't be read we can't verify the
-	// write isn't mutating the category, so deny it for this non-admin user.
-	if !bodyReadable {
-		return configWriteDenyCategoryMutation
-	}
-	// An explicitly provided category that isn't "registration" is a mutation
-	// away from the registration bucket. newCategoryProvided distinguishes an
-	// explicit blanking (business_category: "", denied) from a true omission
-	// (key absent, category left untouched, allowed) — the empty string alone
-	// can't tell those apart, which was the #1732 fail-open.
-	if newCategoryProvided && !isRegistrationConfig(newCategory) {
+	// The resulting row must remain (or, for creates, be) a registration config.
+	if !isRegistrationConfig(resultCategory) {
+		if isCreate {
+			return configWriteDenyWrongCategory
+		}
 		return configWriteDenyCategoryMutation
 	}
 	return configWriteAllow
 }
 
-// guardConfigWrite ensures non-admin users can only write registration-category configs.
-// Superusers and admin users bypass this check (they can write any config).
-// Non-admin users with registration.manage can only write configs where
-// metadata.business_category is "registration" — both on the existing record
-// AND in the incoming request body (to prevent category mutation).
-func guardConfigWrite(e *core.RecordRequestEvent) error {
+// guardConfigWrite ensures non-admin users can only write registration-category
+// configs. Superusers and admin users bypass this check (they can write any
+// config). Non-admin users with registration.manage can only write configs whose
+// metadata.business_category is "registration" — evaluated on the stored record
+// (eligibility) and on the resulting post-body record (to prevent category
+// mutation). isCreate is true for OnRecordCreateRequest, where there is no stored
+// record yet.
+//
+// e.Record already has the request body applied (PocketBase's form.Load runs
+// before this request hook), so e.Record.Get reads the resulting state that will
+// be saved, and e.Record.Original() reads the untouched stored state.
+func guardConfigWrite(e *core.RecordRequestEvent, isCreate bool) error {
 	if e.Auth == nil {
 		return apis.NewUnauthorizedError("Authentication required", nil)
 	}
 
-	// Pull the incoming body's business_category (if any) to detect mutation.
-	// bodyReadable stays false if RequestInfo() errors, so a non-admin write we
-	// can't inspect fails closed rather than silently skipping the mutation check.
-	newCategory := ""
-	newCategoryProvided := false
-	bodyReadable := false
-	if info, err := e.RequestInfo(); err == nil && info != nil {
-		bodyReadable = true
-		if info.Body != nil {
-			if newMeta, ok := info.Body["metadata"]; ok {
-				newCategory, newCategoryProvided = extractBusinessCategoryWithPresence(newMeta)
-			}
-		}
+	originalCategory := ""
+	if !isCreate {
+		originalCategory = extractBusinessCategory(e.Record.Original().Get("metadata"))
 	}
+	resultCategory := extractBusinessCategory(e.Record.Get("metadata"))
 
 	switch decideConfigWrite(
 		e.Auth.IsSuperuser(),
 		e.Auth.GetBool("is_admin"),
 		slices.Contains(e.Auth.GetStringSlice("cached_permissions"), permRegistrationManage),
-		extractBusinessCategory(e.Record.Get("metadata")),
-		newCategory,
-		newCategoryProvided,
-		bodyReadable,
+		originalCategory,
+		resultCategory,
+		isCreate,
 	) {
 	case configWriteDenyMissingPermission:
 		return apis.NewForbiddenError("Missing registration.manage permission", nil)
@@ -242,8 +246,12 @@ func RegisterHooks(app *pocketbase.PocketBase) {
 
 	// Guard config writes: non-admin users with registration.manage can only
 	// write to configs with business_category = "registration"
-	app.OnRecordCreateRequest("config").BindFunc(guardConfigWrite)
-	app.OnRecordUpdateRequest("config").BindFunc(guardConfigWrite)
+	app.OnRecordCreateRequest("config").BindFunc(func(e *core.RecordRequestEvent) error {
+		return guardConfigWrite(e, true)
+	})
+	app.OnRecordUpdateRequest("config").BindFunc(func(e *core.RecordRequestEvent) error {
+		return guardConfigWrite(e, false)
+	})
 
 	// Invalidate FastAPI metrics cache when registration config changes
 	registerConfigHooks(app)
