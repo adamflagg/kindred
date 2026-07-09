@@ -19,7 +19,15 @@ from ..shared.constants import (
 
 
 class RequestType(Enum):
-    """Types of bunk requests"""
+    """Types of bunk requests (sync-pipeline domain layer).
+
+    Deliberately duplicated with ``bunking.models.RequestType``: this domain
+    core stays free of upstream (solver/Pydantic) dependencies, so the enum is
+    redefined here rather than imported. The two must stay in lockstep — the
+    value that crosses the layer boundary is the string, not the class.
+    ``tests/unit/sync/bunk_request_processor/core/test_request_type_contract.py``
+    fails CI if the members or base class drift; add new members to both sides.
+    """
 
     BUNK_WITH = "bunk_with"
     NOT_BUNK_WITH = "not_bunk_with"

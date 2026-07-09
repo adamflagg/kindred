@@ -6,6 +6,17 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationInfo, field_seriali
 
 
 class RequestType(Enum):
+    """Types of bunk requests (solver/scenario layer).
+
+    Deliberately duplicated with
+    ``bunking.sync.bunk_request_processor.core.models.RequestType``: the sync
+    pipeline's domain core is kept free of this Pydantic-adjacent module, so the
+    two enums are separate by design rather than accident. They must stay in
+    lockstep — the value that crosses the layer boundary is the string, not the
+    class. ``tests/unit/sync/bunk_request_processor/core/test_request_type_contract.py``
+    fails CI if the members or base class drift; add new members to both sides.
+    """
+
     BUNK_WITH = "bunk_with"
     NOT_BUNK_WITH = "not_bunk_with"
     AGE_PREFERENCE = "age_preference"
