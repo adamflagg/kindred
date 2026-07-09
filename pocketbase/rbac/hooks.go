@@ -83,12 +83,26 @@ const permRegistrationManage = "registration.manage"
 // extractBusinessCategory extracts metadata.business_category from a raw value.
 // PocketBase decodes JSON fields into map[string]any, so a direct assertion suffices.
 func extractBusinessCategory(raw any) string {
+	cat, _ := extractBusinessCategoryWithPresence(raw)
+	return cat
+}
+
+// extractBusinessCategoryWithPresence extracts metadata.business_category from a
+// raw value and reports whether the business_category key was present at all.
+// The presence flag lets the write policy tell an explicit empty string
+// (business_category: "", a category mutation) apart from a true omission
+// (the key absent, leaving the category untouched).
+func extractBusinessCategoryWithPresence(raw any) (string, bool) {
 	m, ok := raw.(map[string]any)
 	if !ok {
-		return ""
+		return "", false
 	}
-	cat, _ := m["business_category"].(string)
-	return cat
+	v, present := m["business_category"]
+	if !present {
+		return "", false
+	}
+	cat, _ := v.(string)
+	return cat, present
 }
 
 // configWriteDecision is the authorization outcome for a config write, extracted
@@ -112,6 +126,7 @@ const (
 func decideConfigWrite(
 	isSuperuser, isAdmin, hasRegistrationManage bool,
 	existingCategory, newCategory string,
+	newCategoryProvided, bodyReadable bool,
 ) configWriteDecision {
 	if isSuperuser || isAdmin {
 		return configWriteAllow
@@ -122,7 +137,17 @@ func decideConfigWrite(
 	if !isRegistrationConfig(existingCategory) {
 		return configWriteDenyWrongCategory
 	}
-	if newCategory != "" && !isRegistrationConfig(newCategory) {
+	// Fail closed: if the request body couldn't be read we can't verify the
+	// write isn't mutating the category, so deny it for this non-admin user.
+	if !bodyReadable {
+		return configWriteDenyCategoryMutation
+	}
+	// An explicitly provided category that isn't "registration" is a mutation
+	// away from the registration bucket. newCategoryProvided distinguishes an
+	// explicit blanking (business_category: "", denied) from a true omission
+	// (key absent, category left untouched, allowed) — the empty string alone
+	// can't tell those apart, which was the #1732 fail-open.
+	if newCategoryProvided && !isRegistrationConfig(newCategory) {
 		return configWriteDenyCategoryMutation
 	}
 	return configWriteAllow
@@ -139,10 +164,17 @@ func guardConfigWrite(e *core.RecordRequestEvent) error {
 	}
 
 	// Pull the incoming body's business_category (if any) to detect mutation.
+	// bodyReadable stays false if RequestInfo() errors, so a non-admin write we
+	// can't inspect fails closed rather than silently skipping the mutation check.
 	newCategory := ""
-	if info, err := e.RequestInfo(); err == nil && info != nil && info.Body != nil {
-		if newMeta, ok := info.Body["metadata"]; ok {
-			newCategory = extractBusinessCategory(newMeta)
+	newCategoryProvided := false
+	bodyReadable := false
+	if info, err := e.RequestInfo(); err == nil && info != nil {
+		bodyReadable = true
+		if info.Body != nil {
+			if newMeta, ok := info.Body["metadata"]; ok {
+				newCategory, newCategoryProvided = extractBusinessCategoryWithPresence(newMeta)
+			}
 		}
 	}
 
@@ -152,6 +184,8 @@ func guardConfigWrite(e *core.RecordRequestEvent) error {
 		slices.Contains(e.Auth.GetStringSlice("cached_permissions"), permRegistrationManage),
 		extractBusinessCategory(e.Record.Get("metadata")),
 		newCategory,
+		newCategoryProvided,
+		bodyReadable,
 	) {
 	case configWriteDenyMissingPermission:
 		return apis.NewForbiddenError("Missing registration.manage permission", nil)

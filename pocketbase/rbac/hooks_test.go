@@ -12,43 +12,59 @@ func TestDecideConfigWrite(t *testing.T) {
 		hasRegistrationManage bool
 		existingCategory      string
 		newCategory           string
+		newCategoryProvided   bool
+		bodyReadable          bool
 		want                  configWriteDecision
 	}{
 		{
 			// Regression: a PocketBase superuser writing config via the _/ admin
 			// dashboard has neither is_admin nor cached_permissions, so without an
 			// explicit bypass it was wrongly denied "Missing registration.manage".
-			name:        "superuser bypasses all checks",
-			isSuperuser: true,
-			want:        configWriteAllow,
+			name:         "superuser bypasses all checks",
+			isSuperuser:  true,
+			bodyReadable: true,
+			want:         configWriteAllow,
 		},
 		{
 			name:             "superuser without admin/permission on a solver config is still allowed",
 			isSuperuser:      true,
 			existingCategory: "solver",
+			bodyReadable:     true,
 			want:             configWriteAllow,
 		},
 		{
 			name:             "admin bypasses all checks",
 			isAdmin:          true,
 			existingCategory: "solver",
+			bodyReadable:     true,
 			want:             configWriteAllow,
+		},
+		{
+			// Admins bypass before the fail-closed body check, so an unreadable
+			// body must not affect them.
+			name:         "admin allowed even when request body is unreadable",
+			isAdmin:      true,
+			bodyReadable: false,
+			want:         configWriteAllow,
 		},
 		{
 			name:             "non-admin without registration.manage is denied",
 			existingCategory: "registration",
+			bodyReadable:     true,
 			want:             configWriteDenyMissingPermission,
 		},
 		{
 			name:                  "registration.manage on a registration config is allowed",
 			hasRegistrationManage: true,
 			existingCategory:      "registration",
+			bodyReadable:          true,
 			want:                  configWriteAllow,
 		},
 		{
 			name:                  "registration.manage on a non-registration config is denied",
 			hasRegistrationManage: true,
 			existingCategory:      "solver",
+			bodyReadable:          true,
 			want:                  configWriteDenyWrongCategory,
 		},
 		{
@@ -56,6 +72,8 @@ func TestDecideConfigWrite(t *testing.T) {
 			hasRegistrationManage: true,
 			existingCategory:      "registration",
 			newCategory:           "solver",
+			newCategoryProvided:   true,
+			bodyReadable:          true,
 			want:                  configWriteDenyCategoryMutation,
 		},
 		{
@@ -63,7 +81,39 @@ func TestDecideConfigWrite(t *testing.T) {
 			hasRegistrationManage: true,
 			existingCategory:      "registration",
 			newCategory:           "registration",
+			newCategoryProvided:   true,
+			bodyReadable:          true,
 			want:                  configWriteAllow,
+		},
+		{
+			// #1732: an explicit business_category:"" is a mutation away from
+			// "registration" and must be denied, not silently allowed.
+			name:                  "registration.manage blanking category (explicit empty) is denied",
+			hasRegistrationManage: true,
+			existingCategory:      "registration",
+			newCategory:           "",
+			newCategoryProvided:   true,
+			bodyReadable:          true,
+			want:                  configWriteDenyCategoryMutation,
+		},
+		{
+			// A true omission (no business_category in the body) leaves the
+			// category untouched and stays allowed.
+			name:                  "registration.manage omitting category is allowed",
+			hasRegistrationManage: true,
+			existingCategory:      "registration",
+			newCategoryProvided:   false,
+			bodyReadable:          true,
+			want:                  configWriteAllow,
+		},
+		{
+			// #1732: if the request body can't be read we cannot verify the write
+			// isn't mutating the category, so a non-admin write fails closed.
+			name:                  "registration.manage with unreadable body is denied (fail closed)",
+			hasRegistrationManage: true,
+			existingCategory:      "registration",
+			bodyReadable:          false,
+			want:                  configWriteDenyCategoryMutation,
 		},
 	}
 
@@ -75,6 +125,8 @@ func TestDecideConfigWrite(t *testing.T) {
 				tt.hasRegistrationManage,
 				tt.existingCategory,
 				tt.newCategory,
+				tt.newCategoryProvided,
+				tt.bodyReadable,
 			)
 			if got != tt.want {
 				t.Errorf("decideConfigWrite() = %v, want %v", got, tt.want)
