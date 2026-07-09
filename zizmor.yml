@@ -25,11 +25,9 @@ rules:
   artipacked:
     # claude.yml: claude-code-action needs credentials to push commits to PRs
     # release.yml: pushes tags via git push, needs credentials
-    # dependabot-lockfile-fixup.yml: needs credentials to push lock file fixes
     ignore:
       - claude.yml
       - release.yml
-      - dependabot-lockfile-fixup.yml
 
   cache-poisoning:
     # CI never publishes release artifacts - caching is internal only
@@ -43,20 +41,10 @@ rules:
       - cd.yml
       - claude.yml
       - release.yml
-      - dependabot-lockfile-fixup.yml
 
   bot-conditions:
     # dependabot-auto-merge.yml: actor check is an optimization gate;
     # the actual validation is done by dependabot/fetch-metadata which
     # verifies the PR was genuinely created by Dependabot
-    # dependabot-lockfile-fixup.yml: same pattern — actor gate ensures
-    # only Dependabot PRs trigger lock file regeneration
     ignore:
       - dependabot-auto-merge.yml
-      - dependabot-lockfile-fixup.yml
-
-  ref-injection:
-    # dependabot-lockfile-fixup.yml: uses github.head_ref to checkout
-    # the Dependabot branch for pushing fixes back; gated by actor check
-    ignore:
-      - dependabot-lockfile-fixup.yml
