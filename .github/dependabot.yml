@@ -1,9 +1,6 @@
 # Dependabot version updates configuration
 # Docs: https://docs.github.com/code-security/dependabot/dependabot-version-updates/configuration-options-for-the-dependabot.yml-file
 #
-# Lock file fix-up: dependabot-lockfile-fixup.yml auto-regenerates stale lock
-# files (npm + uv) when Dependabot misses transitive dependency updates.
-#
 # Security: cooldown delays updates by 3 days after publication, giving the
 # community time to catch compromised releases before auto-merge picks them up.
 
