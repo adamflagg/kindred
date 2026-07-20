@@ -37,7 +37,7 @@ dependencies = [
     "ortools>=9.15.6755",
     # Data processing
     "pandas>=3.0.3",
-    "tzdata>=2026.2",
+    "tzdata>=2026.3",
     "networkx>=3.6.1",
     # Configuration & validation
     "pydantic>=2.13.4",
