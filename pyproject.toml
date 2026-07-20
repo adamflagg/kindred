@@ -48,7 +48,7 @@ dependencies = [
     "PyJWT[crypto]>=2.13.0",
     # CLI & utilities
     "rich>=15.0.0",
-    "tqdm>=4.68.3",
+    "tqdm>=4.68.4",
     # Scheduling
     "APScheduler>=3.11.2",
     "croniter>=6.2.4",
