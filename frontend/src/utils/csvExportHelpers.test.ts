@@ -132,6 +132,33 @@ describe('buildCamperRows', () => {
     expect(row![6]).toBe('7') // grade
   })
 
+  // Runtime data from CampMinder can have a missing age/grade even though the
+  // Camper type declares them as `number`. The cell must be '' — never the
+  // literal string "null"/"undefined" (which String(null/undefined) produces).
+  it('uses empty string for age when null', () => {
+    const camper = makeCamper({ age: null })
+    const rows = buildCamperRows([camper], [makeSession()])
+    expect(rows[0]![5]).toBe('') // age, not "null"
+  })
+
+  it('uses empty string for age when undefined', () => {
+    const camper = makeCamper({ age: undefined })
+    const rows = buildCamperRows([camper], [makeSession()])
+    expect(rows[0]![5]).toBe('') // age, not "undefined"
+  })
+
+  it('uses empty string for grade when null', () => {
+    const camper = makeCamper({ grade: null })
+    const rows = buildCamperRows([camper], [makeSession()])
+    expect(rows[0]![6]).toBe('') // grade, not "null"
+  })
+
+  it('uses empty string for grade when undefined', () => {
+    const camper = makeCamper({ grade: undefined })
+    const rows = buildCamperRows([camper], [makeSession()])
+    expect(rows[0]![6]).toBe('') // grade, not "undefined"
+  })
+
   it('filters to only girls when filterGender is F', () => {
     const campers = [
       makeCamper({ person_cm_id: 2000001, gender: 'F', first_name: 'Emma', last_name: 'Johnson' }),
@@ -227,6 +254,13 @@ describe('buildMovedRows', () => {
   it('handles empty moved list', () => {
     const rows = buildMovedRows([])
     expect(rows).toHaveLength(0)
+  })
+
+  it('uses empty string for null/undefined age and grade (not "null")', () => {
+    const move = makeMove({ age: null as unknown as number, grade: undefined as unknown as number })
+    const rows = buildMovedRows([move])
+    expect(rows[0]![6]).toBe('') // age
+    expect(rows[0]![7]).toBe('') // grade
   })
 
   it('sorts moved rows by first name (case-insensitive), then last name', () => {

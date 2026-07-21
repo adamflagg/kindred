@@ -179,7 +179,22 @@ describe('downloadCsv', () => {
 
     downloadCsv('a,b', 'file.csv')
 
-    expect(blobSpy).toHaveBeenCalledWith(['a,b'], { type: 'text/csv;charset=utf-8;' })
+    expect(blobSpy).toHaveBeenCalledWith(['\uFEFF', 'a,b'], { type: 'text/csv;charset=utf-8;' })
+  })
+
+  // Excel-on-Windows ignores the blob MIME charset when a downloaded .csv is
+  // double-clicked; it decodes with the system ANSI code page unless a UTF-8
+  // BOM leads the file. Prepending U+FEFF makes accented names render correctly
+  // (Excel and Google Sheets both strip the BOM on import).
+  it('prepends a UTF-8 BOM as the first blob part', () => {
+    const blobSpy = vi.spyOn(globalThis, 'Blob')
+    makeMockAnchor()
+
+    downloadCsv('name\nJosé', 'file.csv')
+
+    const parts = blobSpy.mock.calls[0]?.[0] as string[]
+    expect(parts[0]).toBe('\uFEFF')
+    expect(parts[1]).toBe('name\nJosé')
   })
 
   // #996 — Firefox requires anchor to be in the DOM before click()
