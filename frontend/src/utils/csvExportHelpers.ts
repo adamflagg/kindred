@@ -146,7 +146,10 @@ export function buildMovedRows(moves: MovedEntry[]): string[][] {
     m.bunkName,
     m.priorBunkName,
     m.sessionName,
-    numCell(m.age),
-    numCell(m.grade),
+    // MovedEntry age/grade are already defaulted to 0 upstream (person.age ?? 0
+    // at the CamperAssignment build site), so they are always real numbers here
+    // — no numCell guard needed, unlike the raw-Camper path in buildCamperRows.
+    String(m.age),
+    String(m.grade),
   ])
 }

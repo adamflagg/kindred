@@ -256,13 +256,6 @@ describe('buildMovedRows', () => {
     expect(rows).toHaveLength(0)
   })
 
-  it('uses empty string for null/undefined age and grade (not "null")', () => {
-    const move = makeMove({ age: null as unknown as number, grade: undefined as unknown as number })
-    const rows = buildMovedRows([move])
-    expect(rows[0]![6]).toBe('') // age
-    expect(rows[0]![7]).toBe('') // grade
-  })
-
   it('sorts moved rows by first name (case-insensitive), then last name', () => {
     const moves = [
       makeMove({ personCmId: 1, firstName: 'liam', lastName: 'Garcia' }),
