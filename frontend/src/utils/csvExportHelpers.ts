@@ -52,6 +52,16 @@ function compareNames(aFirst: string, aLast: string, bFirst: string, bLast: stri
   return aLast.toLocaleLowerCase().localeCompare(bLast.toLocaleLowerCase())
 }
 
+/**
+ * Coerce a numeric cell to a string, emitting '' for null/undefined instead of
+ * the literal "null"/"undefined" that String() would produce. Runtime data from
+ * CampMinder can have a missing age/grade even though the Camper type declares
+ * them as `number`.
+ */
+function numCell(value: number | null | undefined): string {
+  return value == null ? '' : String(value)
+}
+
 // ---------------------------------------------------------------------------
 // buildCamperRows
 // ---------------------------------------------------------------------------
@@ -97,8 +107,8 @@ export function buildCamperRows(
       c.last_name ?? '',
       bunkName,
       sessionName,
-      String(c.age),
-      String(c.grade),
+      numCell(c.age),
+      numCell(c.grade),
     ]
   })
 }
@@ -136,6 +146,9 @@ export function buildMovedRows(moves: MovedEntry[]): string[][] {
     m.bunkName,
     m.priorBunkName,
     m.sessionName,
+    // MovedEntry age/grade are already defaulted to 0 upstream (person.age ?? 0
+    // at the CamperAssignment build site), so they are always real numbers here
+    // — no numCell guard needed, unlike the raw-Camper path in buildCamperRows.
     String(m.age),
     String(m.grade),
   ])
