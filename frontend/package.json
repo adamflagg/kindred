@@ -70,7 +70,7 @@
     "eslint-plugin-react-hooks": {
       "eslint": "^10.0.0"
     },
-    "flatted": ">=3.4.2",
+    "flatted": ">=3.4.3",
     "js-yaml": "^4.3.0"
   },
   "devDependencies": {
