@@ -68,32 +68,7 @@ Full reference: `/docs/reference/cli-commands.md`. Per-surface test invocations 
 
 Format: `type(scope): description` — breaking changes: `feat(api)!: description`
 
-| Scope | Area |
-|-------|------|
-| `frontend` | React, hooks, pages, styles |
-| `api` | FastAPI, Python backend |
-| `sync` | Go sync, CampMinder |
-| `pb` | PocketBase schema, migrations |
-| `solver` | OR-Tools solver |
-| `docker` | Dockerfiles, compose |
-| `ci` | GitHub Actions |
-| `auth` | Authentication, OAuth, permissions |
-| `google` | Google Sheets/Drive API |
-| `logging` | Logging configuration |
-| `release` | Release scripts, versioning |
-| `config` | Configuration files, incl. agent config (CLAUDE.md, skills) |
-| `tests` | Test infrastructure (distinct from the `test:` type) |
-| `scripts` | Dev/utility scripts |
-| `deps` | Dependencies |
-| `deps-dev` | Dev dependency updates |
-| `docs` | Documentation files in `docs/` |
-| `security` | Security hardening, CVE fixes |
-| `metrics` | Analytics, dashboards, statistics |
-| `graph` | Social network graph features |
-| `rbac` | Roles, permissions, access control |
-| `data` | Data models, schema changes |
-
-Scope is **required** and enforced by commitlint — `commitlint.config.js` is the source of truth for both scopes and types. Which `type` to use: `docs/reference/commit-conventions.md`
+Scope is **required** and enforced by commitlint, which rejects the commit if you get it wrong. `commitlint.config.js` is the source of truth — read its `scope-enum` and `type-enum` rather than trusting a copy here, which is how this file previously drifted five scopes out of date. Which `type` to use: `docs/reference/commit-conventions.md`
 
 Commit at logical checkpoints, not micro-commits. Never sweep others' changes into your commits — check `git status` first.
 
