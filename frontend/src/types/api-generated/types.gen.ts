@@ -7355,7 +7355,11 @@ export type ClearParseAnalysisApiDebugParseAnalysisDeleteData = {
      * Filter by source field
      */
     source_field?:
-      'bunk_request_form' | 'staff_not_bunk_with' | 'bunking_notes' | 'internal_notes' | null
+      | 'bunk_request_form'
+      | 'staff_not_bunk_with'
+      | 'bunking_notes'
+      | 'internal_notes'
+      | null
   }
   url: '/api/debug/parse-analysis'
 }
@@ -7396,7 +7400,11 @@ export type ListParseAnalysisApiDebugParseAnalysisGetData = {
      * Filter by source field
      */
     source_field?:
-      'bunk_request_form' | 'staff_not_bunk_with' | 'bunking_notes' | 'internal_notes' | null
+      | 'bunk_request_form'
+      | 'staff_not_bunk_with'
+      | 'bunking_notes'
+      | 'internal_notes'
+      | null
     /**
      * Limit
      *
@@ -7547,7 +7555,11 @@ export type ListOriginalRequestsApiDebugOriginalRequestsGetData = {
      * Filter by source field
      */
     source_field?:
-      'bunk_request_form' | 'staff_not_bunk_with' | 'bunking_notes' | 'internal_notes' | null
+      | 'bunk_request_form'
+      | 'staff_not_bunk_with'
+      | 'bunking_notes'
+      | 'internal_notes'
+      | null
     /**
      * Limit
      *
@@ -7679,7 +7691,11 @@ export type ListOriginalRequestsWithParseStatusApiDebugOriginalRequestsWithParse
      * Filter by source field
      */
     source_field?:
-      'bunk_request_form' | 'staff_not_bunk_with' | 'bunking_notes' | 'internal_notes' | null
+      | 'bunk_request_form'
+      | 'staff_not_bunk_with'
+      | 'bunking_notes'
+      | 'internal_notes'
+      | null
     /**
      * Limit
      *
@@ -7733,7 +7749,11 @@ export type ListOriginalRequestsGroupedApiDebugOriginalRequestsGroupedGetData = 
      * Filter by source field
      */
     source_field?:
-      'bunk_request_form' | 'staff_not_bunk_with' | 'bunking_notes' | 'internal_notes' | null
+      | 'bunk_request_form'
+      | 'staff_not_bunk_with'
+      | 'bunking_notes'
+      | 'internal_notes'
+      | null
     /**
      * Limit
      *
