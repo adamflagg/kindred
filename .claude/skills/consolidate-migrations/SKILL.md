@@ -13,104 +13,85 @@ description: >
 
 # Consolidate Migrations — One Table At A Time
 
-Collapses every modify-migration touching one PocketBase table into the
-table's original CREATE migration. Empirically verified by spinning up two
-scratch DBs (proposed set + current set) and diffing their `_collections`
-schemas. Each round produces a net REDUCTION in `pb_migrations/` file
-count — no helper migration files added.
+Collapses every modify-migration touching one PocketBase table into the table's
+original CREATE migration. Verified empirically by spinning up two scratch DBs
+(proposed set + current set) and diffing their `_collections` schemas. Each round
+produces a net REDUCTION in `pb_migrations/` file count — no helper files added.
 
-## Convention
+**Reference files (read when you reach the relevant step):**
 
-The tracking doc lives in the project's **main repo**, never in worktrees.
-Always resolve the absolute path before reading or writing:
+| File | When |
+|------|------|
+| `reference/edge-cases.md` | Step 6 onward — multi-save collapsing, field-order rules, multi-table trims, built-in collections |
+| `reference/templates.md` | Steps 9–11 — tracking-doc entry, commit message, PR body |
+
+Spec: `docs/superpowers/specs/2026-05-08-migration-consolidation-design.md`
+
+## Convention: the tracking doc lives in the main repo
+
+Never in worktrees. Always resolve the absolute path before reading or writing:
 
 ```bash
 MAIN_REPO=$(dirname "$(git rev-parse --git-common-dir)")
 TRACKING_DOC="$MAIN_REPO/docs/plans/migration-consolidation.md"
 ```
 
-`git rev-parse --git-common-dir` returns the canonical `.git` directory
-regardless of whether you're invoked from a worktree (where `.git` is a
-file pointing into the main repo) or the main repo itself. Use
-`$TRACKING_DOC` for **all** Read and Write calls — never a
-worktree-relative path. Worktree copies are stale snapshots; edits there
-are lost on cleanup.
+`git rev-parse --git-common-dir` returns the canonical `.git` directory whether
+you're in a worktree or the main repo. Use `$TRACKING_DOC` for **all** Read and
+Write calls — worktree copies are stale snapshots and edits there are lost on
+cleanup.
 
-If `$TRACKING_DOC` doesn't exist, the bootstrap PR for this skill should
-have seeded it. Tell the user to run the seed step first; do NOT create
-it from scratch in this skill.
-
-Spec: `docs/superpowers/specs/2026-05-08-migration-consolidation-design.md`.
+If `$TRACKING_DOC` doesn't exist, the bootstrap PR should have seeded it. Tell the
+user to run the seed step; do NOT create it from scratch here.
 
 ## Prerequisites
 
-This skill assumes the bootstrap PR has shipped:
-- `scripts/dev/migration-schema-diff.sh` (TDD'd, on `main`)
+Assumes the bootstrap PR has shipped. Stop and tell the user if any are missing:
+
+- `scripts/dev/migration-schema-diff.sh` (on `main`)
 - `scripts/dev/verify-consolidation.sh` (orchestrator, on `main`)
 - `pocketbase/main.go` OnServe hook calling `migrate history-sync` (on `main`)
-- `docs/plans/migration-consolidation.md` (the tracking doc, gitignored)
+- `docs/plans/migration-consolidation.md` (tracking doc, gitignored)
 
-If any are missing, stop and tell the user.
-
-## Step 0: Reconcile pending PRs, then compress prior-round detail blocks
+## Step 0: Reconcile pending PRs, compress prior rounds
 
 ### 0a. Reconcile `[⏳]` IN PROGRESS entries against actual PR state
 
-Before anything else, scan per-table sections for `[⏳] IN PROGRESS`
-entries. Each one cites a PR number (e.g. `(PR #1263 awaiting merge)`).
+Scan per-table sections for `[⏳] IN PROGRESS` entries. Each cites a PR number.
 Resolve each via `gh pr view <PR#> --json state,mergeCommit`:
 
 | PR state | Action |
 |----------|--------|
-| `MERGED` | Flip backlog row and per-table header to `[x] DONE <merge-date>`. The detail block stays full for now (Step 0b will compress on the next invocation once `origin/main` propagates). Update header to `(PR #<N> merged)`. |
-| `OPEN` | Leave unchanged. The round is still pending review or merge. |
-| `CLOSED` (without merge) | Revert backlog row to `[ ]` not started. Delete the per-table detail block (the local work is gone). Append a one-line entry under "Cross-cutting findings" recording the abandoned attempt with date and PR link, so the next round on that table knows there was a prior attempt. |
+| `MERGED` | Flip backlog row and per-table header to `[x] DONE <merge-date>`, header to `(PR #<N> merged)`. Detail block stays full — Step 0b compresses it next invocation once `origin/main` propagates. |
+| `OPEN` | Leave unchanged; still pending review or merge. |
+| `CLOSED` (unmerged) | Revert backlog row to `[ ]`. Delete the per-table detail block (local work is gone). Append a one-line entry under "Cross-cutting findings" recording the abandoned attempt with date and PR link. |
 
-If an `[⏳]` entry has no PR number recorded (e.g. the round was
-interrupted before Step 11), prompt the user: keep, finish, or discard.
+If an `[⏳]` entry has no PR number (round interrupted before Step 11), prompt the
+user: keep, finish, or discard.
 
 ### 0b. Compress completed rounds whose deletions landed on `origin/main`
 
-For any `[x] DONE` round whose absorbed-file deletions are present in
-`origin/main` (verified via `git log origin/main -- pocketbase/pb_migrations/<filename>` returning a delete commit), compress that round's full
-detail block into a single line under the table's "Rounds (compressed
-history)" log:
+For any `[x] DONE` round whose absorbed-file deletions are present on
+`origin/main` (verify with
+`git log origin/main -- pocketbase/pb_migrations/<filename>` returning a delete
+commit), compress that round's detail block to a single line — format in
+`reference/templates.md`. Detail is recoverable from the PR's git diff.
+Cross-cutting findings stay in their dedicated section regardless.
 
-```markdown
-- YYYY-MM-DD — round N — absorbed M files (#X, #Y, ...) into base #BBB — verified ✅
-```
-
-Remove the verbose detail block. Detail is recoverable from the
-consolidation PR's git diff. Cross-cutting findings stay in their
-dedicated section regardless.
-
-## Step 1: Read tracking doc
+## Step 1: Read the tracking doc
 
 ```bash
 cat "$TRACKING_DOC"
 ```
 
-Note current backlog statuses, in-progress rounds, auto-gen disposition,
-and cross-cutting findings.
+Note backlog statuses, in-progress rounds, auto-gen disposition, cross-cutting
+findings.
 
 ## Step 2: List candidate tables
 
 ```bash
 cd "$MAIN_REPO/pocketbase/pb_migrations"
 for f in *.js; do
-  # Catch BOTH literal lookups (findCollectionByNameOrId("foo")) AND
-  # indirect lookups where the table name lives in an array iterated by
-  # a loop variable (`const tables = ["foo", "bar"]; ... for (const name of tables) findCollectionByNameOrId(name)`).
-  # The seed-time grep used to look only inside `findCollectionByNameOrId("...")`
-  # and missed indirect-lookup files like 1500000074_rbac_tier1_rules.js
-  # — that bug is what required adding the array-name fallback below.
-  # Emit every quoted snake_case-ish token. Intentionally no filtering —
-  # rule predicates and other non-tables get mixed in, and the user
-  # eyeballs the ranked output below to ignore obvious non-tables. The
-  # original narrower grep (only `findCollectionByNameOrId("...")` /
-  # `name: "..."`) missed an indirect-lookup file (1500000074) where the
-  # table name lives in an array iterated by a `setRules()` helper, so
-  # we widened it to catch any quoted occurrence.
   matches=$(grep -oE '"[a-z][a-z0-9_]+"' "$f" | sort -u | tr -d '"')
   for tbl in $matches; do
     echo "$tbl|$f"
@@ -118,30 +99,21 @@ for f in *.js; do
 done | awk -F'|' '{count[$1]++} END {for (t in count) if (count[t] > 1) print count[t], t}' | sort -rn | head -30
 ```
 
-The grep above is intentionally noisy (catches every quoted snake_case-ish
-token). Eyeball the top of the list, ignore obvious non-tables (`bunk_with`,
-`not_bunk_with`, rule strings, etc.), and cross-reference against the
-tracking doc's backlog. Filter out tables in `[x] DONE` or `[⏳] IN PROGRESS`
-status — the latter still has work locked behind an open PR and isn't a
-candidate for a parallel round (see Step 0a for reconciliation rules).
+The grep is **intentionally noisy** — it emits every quoted snake_case-ish token
+with no filtering. A narrower grep (only `findCollectionByNameOrId("...")`) missed
+indirect-lookup files like `1500000074_rbac_tier1_rules.js`, where the table name
+lives in an array iterated by a `setRules()` helper. Breadth is the point; you
+filter by eye.
 
-The user picks one, or you suggest the highest-count candidate not yet
-started.
+Ignore obvious non-tables (`bunk_with`, `not_bunk_with`, rule strings) and
+cross-reference the backlog. Skip tables marked `[x] DONE` or `[⏳] IN PROGRESS` —
+the latter is locked behind an open PR (see Step 0a).
 
-**Important — re-tally before locking in a candidate.** The raw count
-above includes:
-- files that merely *reference* the table via a relation field
-  (`collectionId: someTableCol.id`)
-- files where the table name appears as a string but isn't actually
-  mutated (e.g., a comment, a log message, a select-value enum that
-  happens to share a name)
-
-Before committing to a round, re-classify each candidate file by hand:
-count only files whose mutations actually target this table (`fields.add`,
-`fields.removeByName`, `<rule> =`, index changes, data backfills, or a
-loop body that calls `findCollectionByNameOrId(name)` where `name` was
-sourced from an array containing this table). See Step 5 for the full
-classification table.
+**Re-tally before locking in a candidate.** The raw count includes files that
+merely *reference* the table via a relation field (`collectionId: someTableCol.id`)
+and files where the name appears in a comment, log message, or select-value enum.
+Re-classify by hand, counting only files whose mutations actually target this
+table. Classification table in Step 5.
 
 ## Step 3: Surface auto-generated PB UI migrations
 
@@ -150,41 +122,27 @@ ls "$MAIN_REPO/pocketbase/pb_migrations" | awk -F_ '{print $1}' \
   | awk 'length($1) >= 10 && $1+0 > 1700000000'
 ```
 
-For any file printed, check the disposition table in the tracking doc.
-If absent, ask the user:
-- Fold into the merged CREATE (when this table is consolidated)?
-- Leave alone (treat as untouchable)?
-- Investigate later (re-surface next invocation)?
+For any file printed, check the disposition table in the tracking doc. If absent,
+ask the user: fold into the merged CREATE, leave alone, or investigate later.
+Record the answer.
 
-Record the disposition in the tracking doc.
+**`*_updated_users.js` → leave alone by default.** Gitignored per existing repo
+convention: per-deployment local state from PB's admin UI, not migration code we
+own. Don't fold, don't delete. The narrow users-only gitignore is intentional —
+do not propose extending it.
 
-**Default disposition for `*_updated_users.js`:** these files are gitignored
-by existing repo convention (per `.gitignore`). They're per-deployment
-local state from PB's admin UI, not migration code we own. The skill
-should NOT fold them into merged CREATEs and should NOT delete them.
-Each deployment maintains its own copy. Disposition defaults to "leave alone"
-unless the user overrides explicitly. **The narrow gitignore (users-only)
-is intentional.** Do not propose extending it to other tables.
-
-**Default disposition for `*_updated_<other-table>.js`:** these are
-**not** gitignored — they're tracked, committed, shipped autogen
-migrations from intentional admin-UI edits (column reorder, field
-add/edit, rule change, etc.). Default is **"fold into merged CREATE"**
-during the next consolidation round for that table. The user wants
-admin-UI edits compressed into the table's merged CREATE alongside the
-rest of the chain — same treatment as any hand-written modify migration.
-The reorder/edit ends up reflected in the final-state field order or
-field properties of the merged CREATE; the autogen file is deleted.
+**`*_updated_<other-table>.js` → fold into merged CREATE by default.** These are
+tracked, committed, shipped autogen migrations from intentional admin-UI edits.
+Same treatment as any hand-written modify migration; the autogen file is deleted.
 
 ## Step 4: User picks the table
 
-Hold for user input. Don't auto-pick. If the user says "you choose,"
-suggest the highest re-tallied count from Step 2.
+Hold for user input. Don't auto-pick. If the user says "you choose," suggest the
+highest re-tallied count from Step 2.
 
 ## Step 4a: Create a worktree for this round
 
-Every consolidation round happens in a worktree, never the main repo folder.
-Even if the user invokes the skill from `~/kindred`, create a worktree.
+Every round happens in a worktree, even if invoked from `~/kindred`.
 
 ```bash
 WORKTREE_NAME="consolidate-${TABLE}-$(date +%Y%m%d)"
@@ -192,69 +150,62 @@ WORKTREE_NAME="consolidate-${TABLE}-$(date +%Y%m%d)"
 WORKTREE_DIR="$HOME/kindred-worktrees/$WORKTREE_NAME"
 ```
 
-All filesystem writes from Step 7 onward target `$WORKTREE_DIR/...`, NEVER
-`$MAIN_REPO/...`. The tracking doc is the only artifact in `$MAIN_REPO`
-(gitignored, not branched).
+All filesystem writes from Step 7 onward target `$WORKTREE_DIR/...`, never
+`$MAIN_REPO/...`. The tracking doc is the only artifact in `$MAIN_REPO`.
 
-If a worktree with that name already exists, append `-$(date +%H%M)` and retry.
+If that worktree name exists, append `-$(date +%H%M)` and retry.
 
 ## Step 5: Walk the chosen table's migration chain
 
-For the chosen table T, enumerate every file that mutates T. For each,
-classify:
+For table T, enumerate every file that mutates T and classify each:
 
 | Mutation kind | Detection |
 |---------------|-----------|
 | Field add | `collection.fields.add(new Field(...))` after `findCollectionByNameOrId("T")` |
 | Field remove | `collection.fields.removeByName(...)` |
-| Field property edit | `field.values = ...`, `field.max = ...` etc. on a field of T |
+| Field property edit | `field.values = ...`, `field.max = ...` on a field of T |
 | Rule change | `collection.<list\|view\|create\|update\|delete>Rule = ...` |
 | Index change | `collection.indexes = [...]`, `addIndex`, `removeIndex` |
 | Data backfill | `app.db().newQuery("UPDATE T ...")` or `INSERT INTO T` |
 | Seed insert | `app.save(record)` against T (typically config-style tables) |
-| **Indirect mutation via array** | File defines an array containing `"T"` and iterates it through a helper that runs schema/rule changes, e.g. `for (const name of tables) { setRules(name, ...) }`. **These are easy to miss with literal-string greps** — always also `grep -l '"T"'` (any quoted occurrence) and inspect the surrounding control flow. The bug that surfaced this rule was 1500000074_rbac_tier1_rules.js, which iterated 18 collections through a `setRules()` helper and was missed at seed time. |
-
-Build an in-memory ordered mutation log. Note any files that touch
-*other* tables too — those are multi-table and will be **trimmed**, not
-deleted.
-
-**Robust enumeration command** (assumes `$WORKTREE_DIR` was set in Step 4a):
+| **Indirect mutation via array** | File defines an array containing `"T"` and iterates it through a helper that runs schema/rule changes. **Easy to miss with literal-string greps** — see the enumeration command below. |
 
 ```bash
-# All files that mention T as a quoted string (catches indirect lookups
-# through arrays that the literal `findCollectionByNameOrId("T")` grep
-# would miss).
 grep -lE '"T"' "$WORKTREE_DIR/pocketbase/pb_migrations"/*.js
 ```
 
-Then for each file printed, eyeball the context to decide whether T is
-actually mutated, merely referenced (relation `collectionId`), or just
-mentioned in a comment / log / unrelated string.
+For each file printed, inspect the surrounding control flow to decide whether T is
+actually mutated, merely referenced (relation `collectionId`), or just mentioned
+in a comment/log/unrelated string.
+
+Build an in-memory ordered mutation log. Note files that touch *other* tables —
+those get **trimmed**, not deleted.
 
 ## Step 6: Build the merged CREATE in memory
 
-Take the original CREATE file as base. Apply mutations in order. Collapse:
+Take the original CREATE as base and apply mutations in order. Collapse:
+
 - add field X + later drop X → no field
-- add field X + later change X.max → field with final max
-- add field X + later set X.required → field with final required
+- add field X + later change `X.max` / `X.required` → field with final value
 - rule changes → final rule wins
 - index changes → final index set
-- backfills classified as **unreachable** on fresh DB → drop (with note)
-- backfills classified as **reachable** → flag for user confirmation
-- seed inserts (against config-style tables) → fold into merged CREATE's `up()`
+- backfills unreachable on a fresh DB → drop (with note)
+- backfills reachable → flag for user confirmation
+- seed inserts against config-style tables → fold into merged `up()`
 
-Preserve the original collection ID verbatim (e.g., `id: "col_bunk_requests"`).
-Subsequent migrations may reference it.
+Preserve the original collection ID verbatim (e.g. `id: "col_bunk_requests"`).
 
-**Filename invariant (load-bearing for prod boot).** The merged CREATE MUST
-keep the *exact* basename of the original CREATE migration — same timestamp,
-same name, same extension. Prod's `_migrations` table keys on filename: the
-original CREATE's row is what makes PB skip the merged file on boot. A
-renamed merged CREATE is seen as a never-applied migration, PB tries to
-re-create the existing collection, and boot crashes with a unique-constraint
-error. The OnServe history-sync hook only *removes* orphan rows for deleted
-files; it does not suppress new files. Never bump the timestamp, never
-rename for cosmetics, never split into a new file.
+**Read `reference/edge-cases.md` before writing the merged file** — multi-save
+collapsing (§9) and field ordering (§10) are where rounds actually fail.
+
+**Filename invariant — load-bearing for prod boot.** The merged CREATE MUST keep
+the *exact* basename of the original CREATE: same timestamp, name, extension.
+Prod's `_migrations` table keys on filename; the original CREATE's row is what
+makes PB skip the merged file on boot. A renamed merged CREATE looks like a
+never-applied migration, PB tries to re-create the existing collection, and boot
+crashes with a unique-constraint error. The OnServe history-sync hook only
+*removes* orphan rows for deleted files; it does not suppress new ones. Never bump
+the timestamp, never rename for cosmetics, never split into a new file.
 
 ## Step 7: Empirical schema-diff verification
 
@@ -265,321 +216,66 @@ trap 'rm -rf "$SCRATCH"' EXIT INT TERM
 mkdir -p "$SCRATCH/proposed"
 cp "$WORKTREE_DIR"/pocketbase/pb_migrations/*.js "$SCRATCH/proposed/"
 
-# 1) Replace base CREATE with the merged version
-# 2) Delete absorbed files from $SCRATCH/proposed/
-# 3) Trim multi-table files (write trimmed versions in-place)
-# (do these steps with Write/Edit tools using the in-memory mutation log)
+# With Write/Edit tools, using the in-memory mutation log:
+#   1) replace base CREATE with the merged version
+#   2) delete absorbed files from $SCRATCH/proposed/
+#   3) trim multi-table files in place
 
 "$WORKTREE_DIR/scripts/dev/verify-consolidation.sh" \
   "$SCRATCH/proposed" \
   "$WORKTREE_DIR/pocketbase/pb_migrations"
 ```
 
-Exit 0: proceed to Step 8. Exit 1: drift detected. Save the diff output
-to the tracking doc under that table's "Verification failed" section
-(timestamped), abort the round, exit non-zero. The user re-invokes after
-fixing the merged CREATE.
+Exit 0 → Step 8. Exit 1 → drift: save the diff to the tracking doc under that
+table's "Verification failed" section (timestamped), abort the round, exit
+non-zero. The user re-invokes after fixing the merged CREATE.
 
-**Override path:** if the user explicitly states "override verification:
-<reason>" in their next prompt, record the rationale in the per-table
-section and proceed despite the diff. Never silent-override.
+**Override path:** only if the user explicitly says "override verification:
+<reason>". Record the rationale in the per-table section. Never silent-override.
 
 ## Step 8: Write changes to the working tree
 
-Once verification passes, mirror the same operations to the real
-`pb_migrations/` dir (not the scratch dir):
+Mirror the verified operations to the real `pb_migrations/` dir:
 
-1. Replace the base CREATE migration with the merged version — **same
-   filename as origin/main** (see "Filename invariant" in Step 6). Verify:
+1. Replace the base CREATE with the merged version — **same filename as
+   `origin/main`** (see Step 6). Verify:
    ```bash
    git -C "$WORKTREE_DIR" ls-tree origin/main pocketbase/pb_migrations/ \
      | grep -q " $(basename "$BASE_CREATE")$" \
      || { echo "merged CREATE filename drifted from origin/main — abort"; exit 1; }
    ```
-2. Delete fully-absorbed migration files (`rm` them — no helper migration
-   needed; the OnServe history-sync hook in `pocketbase/main.go` cleans
-   the orphan `_migrations` rows automatically on next prod boot)
-3. Trim multi-table migration files (write trimmed versions in-place)
+2. `rm` fully-absorbed migration files — no helper migration needed; the OnServe
+   history-sync hook cleans orphan `_migrations` rows on next prod boot.
+3. Write trimmed versions of multi-table files in place.
 
 ## Step 9: Update the tracking doc — mark IN PROGRESS
 
-The local consolidation is done but the PR doesn't exist yet (Step 11
-opens it). Mark the table as `[⏳] IN PROGRESS` so future invocations
-know the work is locked behind an open PR. Step 11 will edit this entry
-once the PR number exists; Step 0a of a future invocation flips
-`[⏳]` → `[x] DONE` once `gh pr view` confirms the merge.
-
-1. In the backlog table, change the status cell from `[ ]` to `[⏳]`.
-2. Append (or update) the per-table section. Use IN PROGRESS, not DONE,
-   and leave a `(PR pending — set in Step 11)` placeholder:
-
-```markdown
-### <table> — [⏳] IN PROGRESS <date> (PR pending — set in Step 11)
-
-**Rounds (compressed history):**
-- <date> — round N — absorbed M files (#X, #Y, ...) into base #BBB — verified ✅ locally; pending PR merge
-
-**Round N detail (kept for reference until next round compresses):**
-
-<full detail block: absorbed migrations, trimmed multi-table files,
- final schema, surprises / cross-cutting findings>
-```
-
-Add cross-cutting findings if anything novel surfaced (e.g., a
-multi-table migration was trimmed and the remainder is queued for another
-table's future round).
-
-**Why `[⏳]` not `[x]`:** the table can't be picked up by a parallel
-session while the PR is open, but if the PR gets closed-without-merge,
-Step 0a reverts the row to `[ ]` and the table goes back into the
-backlog. Premature `[x] DONE` would silently strand the table.
+The local work is done but the PR doesn't exist yet. Mark the table `[⏳] IN
+PROGRESS` so future invocations know it's locked behind a pending PR. Templates
+and the rationale for `[⏳]` over `[x]`: `reference/templates.md`.
 
 ## Step 10: Print summary
 
-| Field | Value |
-|-------|-------|
-| Table consolidated | T |
-| Round number | N |
-| Files absorbed | M (deleted) + K (trimmed multi-table) |
-| Net migration count delta | -M (no new files) |
-| Verification | ✅ schema match |
-| PR title | "refactor(pb): consolidate $TABLE migrations (round N, -M files)" |
+Summary table format: `reference/templates.md`. Print it, then proceed directly to
+Step 11 — do NOT stop and ask.
 
-Print the table, then proceed directly to Step 11 — do NOT stop and ask.
+After the PR merges and prod restarts, the OnServe hook calls `migrate
+history-sync` on first boot, removing orphan `_migrations` rows for absorbed
+files. Fresh deploys see it as a no-op.
 
-After the PR merges to main and prod restarts, the OnServe hook in
-`pocketbase/main.go` automatically calls `migrate history-sync` on first
-boot, removing orphan `_migrations` rows for the absorbed files. Fresh
-deploys see this hook as a no-op.
+## Step 11: Commit, push, open PR
 
-## Step 11: Auto-commit, push, open PR
-
-Stage the migration changes, commit with the standard consolidation
-message, push, and open a PR. All git operations run from `$WORKTREE_DIR`.
-
-```bash
-cd "$WORKTREE_DIR"
-git add pocketbase/pb_migrations/
-git commit -m "$(cat <<'EOF'
-refactor(pb): consolidate $TABLE migrations (round N, -M files)
-
-<one-paragraph summary of what was absorbed/trimmed and the verified
-final state — fields, indexes, rules. Mirrors the per-table tracking-doc
-entry but written for the squash-merge commit log.>
-
-Co-Authored-By: Claude Opus 4.7 (1M context) <noreply@anthropic.com>
-EOF
-)"
-git push -u origin "$(git branch --show-current)"
-```
-
-Then open the PR:
-
-```bash
-gh pr create --title "refactor(pb): consolidate $TABLE migrations (round N, -M files)" --body "$(cat <<'EOF'
-## Summary
-- Collapses M modify-migrations into base #BBB (CREATE)
-- <multi-table trim notes if any>
-- Net delta: **-M files** in `pocketbase/pb_migrations/`
-- Verified empirically by `scripts/dev/verify-consolidation.sh`: schemas match between proposed (1 file) and current (M+1 files)
-
-Absorbed:
-- `<file1>` — <one-line summary>
-- `<file2>` — <one-line summary>
-- ...
-
-Final state of `$TABLE`: <field count>, <index count>, <rules summary>.
-
-## Test plan
-- [x] Local schema-diff harness passes (`schemas match`)
-- [ ] CI green
-- [ ] After merge, prod boot's OnServe `migrate history-sync` hook auto-cleans the orphan `_migrations` rows for the M absorbed files
-
-🤖 Generated with [Claude Code](https://claude.com/claude-code)
-EOF
-)"
-```
-
-Capture the PR number from `gh pr create` output for Step 12 AND for
-the tracking doc update below.
-
-```bash
-PR_URL=$(gh pr create --title "..." --body "...")
-PR_NUM=$(echo "$PR_URL" | grep -oE '[0-9]+$')
-```
-
-**Update the tracking doc with the actual PR number.** Replace the
-`(PR pending — set in Step 11)` placeholder from Step 9 with
-`(PR #$PR_NUM awaiting merge)` in both the backlog row's Notes column
-(if any) and the per-table section header. This record is what Step 0a
-of future invocations uses to reconcile the entry's state via
-`gh pr view <PR#> --json state`.
-
-If pre-push hooks fail, fix the underlying issue and retry — never use
-`--no-verify`. If the commit hits a commitlint warning about footer
-spacing, that's non-blocking and the commit succeeds.
+Commit message, PR body, and the tracking-doc PR-number update: see
+`reference/templates.md`. All git operations run from `$WORKTREE_DIR`.
 
 ## Step 12: Auto-invoke scan-it
-
-Immediately invoke the `scan-it` skill against the new PR:
 
 ```
 Skill tool: scan-it <PR#>
 ```
 
-scan-it runs the internal code-review chain (5 parallel reviewer agents
-+ Haiku scoring) plus pulls CodeRabbit findings, dedupes, and presents a
-table. Hold for user input on which findings (if any) to action.
+scan-it runs the internal review chain plus CodeRabbit findings, dedupes, and
+presents a table. Hold for user input on which findings to action.
 
-If the user accepts the consolidation as-is (no fixes) or asks for "handle
-it", invoke `handle-it` to enable auto-merge, monitor CI, and clean up
-the worktree.
-
-## Edge cases the skill must handle
-
-See spec §"Edge cases" for full detail. Quick reference:
-
-1. **Multi-table migrations** — trim, don't delete; cross-cutting log entry.
-2. **Data backfills** — drop if unreachable on fresh DB; flag if reachable.
-3. **Built-in collections** (e.g., `_pb_users_auth_`) — merge target is the
-   first migration WE wrote that touches it; merged file uses
-   `findCollectionByNameOrId(...)` not `new Collection(...)`.
-4. **Auto-generated PB UI migrations** — surface for user disposition,
-   never auto-skip.
-5. **Verification failure** — abort with diff written to tracking doc;
-   override only with explicit user statement.
-6. **Hardcoded collection IDs** — preserve verbatim in merged CREATE.
-7. **Indexes** — only the final set in the merged CREATE.
-8. **Merged CREATE comments** — the merged file reads like a fresh CREATE
-   migration. Do NOT include comments referencing absorbed/deleted file
-   numbers ("From #1500000092", "added in #095", consolidated-migrations
-   block headers, etc.). Those filenames vanish after the round ships and
-   the references rot. Keep functional comments only when they explain WHY
-   a non-obvious value was chosen ("max=200 because CampMinder caps name
-   at 200"). The commit message and tracking-doc per-round detail block
-   carry the historical context.
-9. **Collapse `app.save()` calls — only when truly redundant**
-
-   When the original CREATE used multiple `app.save()` calls, evaluate
-   whether the consolidated form still needs them. Four patterns to
-   recognize:
-
-   a. **Self-referencing relation (NOT collapsible on PB v0.23)** —
-      original does `app.save(collection)` then `collection.fields.add(new
-      Field({..., collectionId: SELF_ID}))` then `app.save(collection)`.
-      It LOOKS collapsible because `SELF_ID` is a hardcoded constant, but
-      PB v0.23's `app.save()` validates `relation.collectionId` against
-      existing rows in `_collections` at save time. The self-collection
-      doesn't exist yet during the first save, so a self-relation in the
-      initial `fields:` array fails with `"The relation collection
-      doesn't exist"`. **Keep the two-save pattern.** This was empirically
-      confirmed during the bunk_requests round 1 attempt (PR #1243 + the
-      bunk_requests consolidation): the harness rejected the collapsed
-      form with the exact error above.
-
-   b. **Cross-collection refs with hardcoded ID (collapsible)** — when
-      collection A's relation field references collection B's hardcoded
-      ID, AND B is created in an earlier migration, the relation can sit
-      in A's initial `fields:` array. The validation passes because B
-      already exists in `_collections`. This is the only "hardcoded ID
-      collapse" pattern that actually works on PB v0.23.
-
-   c. **Seed-data inserts (NOT collapsible)** — original does
-      `app.save(collection)` then `new Record(collection)` followed by
-      `app.save(record)` for each seed row. The Record constructor needs
-      a saved collection (it copies the schema by reference). **Keep
-      multi-save.** Pattern is common for `config`, `roles`, and other
-      lookup-style tables.
-
-   d. **Cross-collection circular refs (NOT collapsible)** — rare; two
-      collections reference each other via relation fields and neither
-      can be created with both fields populated. Keep both saves; document
-      in the commit message.
-
-   The verification harness must still pass after any collapse — if a
-   collapse breaks the diff (or PB rejects the save with a validation
-   error), restore the original multi-save structure.
-
-10. **Field order matters — match the final-state order, however it was reached**
-
-    The harness compares JSON dumps of `_collections`, and PB serializes
-    fields in the order they were added (or rearranged) across all
-    `fields.add()` / `collection.fields = [...]` / initial-fields-array
-    operations. The diff is **order-sensitive**: a correctly merged
-    CREATE that ends up with the same set of fields but a different
-    array order fails verification with a noise diff even though the
-    SQL schema is functionally identical.
-
-    **Underlying invariant:** the merged CREATE must produce the same
-    final field order as the natural-build chain. That's all that
-    matters. The harness verifies it.
-
-    **Default heuristic — preserve historical add sequence.** When no
-    reorder migration exists in the chain (the common case), the final
-    order is just the chronological add order. Concretely, if the chain
-    was:
-    - #018 CREATE: fields A, B, C, ..., created, updated (initial array)
-    - #018 second save: add `merged_into` (self-relation)
-    - #092: add `disposition_reason`, `resolution_method`
-    - #095: add `source_fragment`
-
-    Then the merged CREATE produces final order: `A, B, C, ..., created,
-    updated, merged_into, disposition_reason, resolution_method,
-    source_fragment` — matching the historical sequence. In practice:
-    original initial-array fields stay in the initial array; fields
-    added by later migrations are added via `fields.add()` calls in
-    the second save (or a later save), in the order their original
-    migrations ran. Don't shove everything into the initial fields
-    array even if it would technically work — the resulting field order
-    drifts from the comparison DB and the harness flags it.
-
-    **When the chain contains a manual reorder (PB admin UI auto-gen).**
-    Reordering columns in PB's admin UI generates a
-    `<timestamp>_updated_<table>.js` migration that rewrites
-    `collection.fields` to a new order. With one of these in the chain,
-    "historical add sequence" is **not** the right answer — the
-    *post-reorder* order is. The default disposition for these files is
-    **fold into the merged CREATE** (see Step 3): the user's manual
-    edits get compressed alongside hand-written modify migrations.
-
-    To fold a reorder cleanly, arrange fields in the merged CREATE's
-    initial-fields-array (and any subsequent `fields.add()` calls) so
-    the resulting JSON dump matches the reordered final state. PB's
-    `fields.add()` always appends to the end, so a self-relation added
-    in a second save (per rule 9a) lands AFTER any fields you put in
-    the initial array. If the user's reorder placed the self-relation
-    in the middle of the field list, you cannot reproduce that order
-    with two saves alone — the merged CREATE will need a third save
-    that explicitly rearranges via `collection.fields = [...]`. The
-    harness will tell you exactly which fields drifted; iterate until
-    it passes.
-
-    Fallback: if folding the reorder gets too gnarly for a particular
-    round (e.g., self-relation positioned mid-array, or multiple
-    interleaved reorders), set disposition to "leave alone" for that
-    file and pick it up in a subsequent round. Record the deferral in
-    the tracking doc's auto-gen disposition table with a brief reason.
-
-    **Field removal preserves relative order.** PB's `removeByName()`
-    deletes the field from the array entirely; remaining fields keep
-    their relative order. So a field dropped by a later migration (e.g.,
-    `source` dropped by #103) just disappears from the merged CREATE's
-    initial fields array without renumbering anything else.
-
-    **Verification always wins.** Whatever heuristic you apply, the
-    harness compares JSON dumps. If you miss the order, `schemas differ`
-    fires and the diff tells you exactly which fields are misplaced.
-    Never silent.
-
-    Discovered during the bunk_requests round 1 (2026-05-08) — the first
-    merged CREATE put the three new text fields in the initial fields
-    array, which produced the right SET of fields but the wrong ORDER,
-    and the harness reported `schemas differ` on a pure-ordering diff.
-
-    **Gitignore for auto-gen migrations is narrow — and intentionally so.**
-    Only `*_updated_users.js` is excluded; users-collection edits are
-    per-deployment local state. Every other `*_updated_<table>.js` IS
-    tracked, committed, and shipped — those are intentional admin-UI
-    edits the user wants applied everywhere. Default disposition for
-    those is **fold into merged CREATE** (see Step 3). Do not propose
-    broadening the gitignore.
+If the user accepts as-is or says "handle it", invoke `handle-it` to enable
+auto-merge, monitor CI, and clean up the worktree.
