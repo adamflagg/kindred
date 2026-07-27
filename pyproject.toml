@@ -75,7 +75,7 @@ dev = [
     # Type checking
     "mypy>=2.1.0",
     "types-requests>=2.33.0.20260518",
-    "types-PyYAML>=6.0.12.20260518",
+    "types-PyYAML>=6.0.12.20260724",
     "types-psutil>=7.2.2.20260518",
     "pandas-stubs>=3.0.3.260530",
     # Security
