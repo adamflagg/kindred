@@ -71,8 +71,10 @@
       "eslint": "^10.0.0"
     },
     "brace-expansion": ">=5.0.8",
-    "flatted": ">=3.4.2",
-    "js-yaml": "^4.3.0"
+    "flatted": ">=3.4.3",
+    "js-yaml": "^4.3.0",
+    "postcss": ">=8.5.23",
+    "undici": ">=7.29.0"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
