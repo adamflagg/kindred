@@ -1068,7 +1068,11 @@ describe('PostValidationResultsModal — KPI tiles use MSP signal', () => {
 })
 
 describe('PostValidationResultsModal — Impossible by reason kicker', () => {
-  it('renders the "see Pre-Check or export PDF" kicker', () => {
+  // #1717 folded the per-camper impossibility detail into "Families to contact"
+  // in this same modal, so the kicker no longer sends staff to the pre-check or
+  // the PDF (whose export button sits in this modal's own footer). It now just
+  // says what the tiles are and that they're a summary.
+  it('kicker describes the tiles, and points nowhere else', () => {
     const impossibilityReport = makeImpossibilityReport({
       by_reason: {
         grade_compatibility: [
@@ -1094,9 +1098,9 @@ describe('PostValidationResultsModal — Impossible by reason kicker', () => {
         impossibilityReport={impossibilityReport}
       />
     )
-    expect(
-      screen.getByText(/see Pre-Check or export PDF for full per-camper detail/i)
-    ).toBeInTheDocument()
+    expect(screen.getByText(/every impossible request grouped by cause/i)).toBeInTheDocument()
+    // The stale cross-references must be gone, not merely reworded around.
+    expect(screen.queryByText(/see Pre-Check/i)).not.toBeInTheDocument()
   })
 })
 

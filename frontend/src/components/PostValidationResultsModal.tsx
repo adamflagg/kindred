@@ -1107,7 +1107,7 @@ export function PostCheckContents({
                 <div className="rounded-xl border border-stone-200 bg-stone-50 p-4">
                   <h3 className="text-sm font-semibold text-stone-900">Impossible by reason</h3>
                   <p className="mt-0.5 text-xs text-stone-500">
-                    Summary only — see Pre-Check or export PDF for full per-camper detail
+                    Every impossible request grouped by cause — summary only
                   </p>
                   <ul className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-3">
                     {Object.entries(impossibilityReport.by_reason).map(([code, items]) => {
