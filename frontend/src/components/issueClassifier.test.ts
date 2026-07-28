@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest'
-import { extractBunkName } from './issueClassifier'
+import { extractBunkName, ISSUE_SEVERITY, COHORT_SEVERITY } from './issueClassifier'
+import { REASON_SEVERITY } from './impossibility/reasonHints'
 
 describe('extractBunkName', () => {
   it('reads bunk_name from issue.details when present (preferred path)', () => {
@@ -96,5 +97,30 @@ describe('extractBunkName', () => {
     it('returns "Unknown" when nothing matches', () => {
       expect(extractBunkName({ type: 'x', message: 'totally unstructured noise' })).toBe('Unknown')
     })
+  })
+})
+
+describe('issue classification', () => {
+  it('does NOT assign unassigned_camper a cabin severity (surfaced via dedicated block; #1712)', () => {
+    // unassigned_camper would inflate the cabin count without adding a rendered
+    // cabin row, since the section body renders from BUNK_LEVEL_ISSUE_TYPES only.
+    expect(ISSUE_SEVERITY['unassigned_camper']).toBeUndefined()
+  })
+  it('marks capacity red, composition nits amber', () => {
+    expect(ISSUE_SEVERITY['capacity_violation']).toBe('red')
+    expect(ISSUE_SEVERITY['age_spread_warning']).toBe('amber')
+    expect(ISSUE_SEVERITY['isolation_risk']).toBe('amber')
+  })
+  it('marks every family cohort red (real misses)', () => {
+    expect(COHORT_SEVERITY['got_nothing']).toBe('red')
+    expect(COHORT_SEVERITY['sacrificed_mp']).toBe('red')
+  })
+  it('reason severity: policy conflicts red, data/enrollment amber', () => {
+    expect(REASON_SEVERITY.grade_compatibility).toBe('red')
+    expect(REASON_SEVERITY.pair_no_shared_bunk).toBe('red')
+    expect(REASON_SEVERITY.self_conflict).toBe('red')
+    expect(REASON_SEVERITY.target_not_in_solver).toBe('amber')
+    expect(REASON_SEVERITY.malformed).toBe('amber')
+    expect(REASON_SEVERITY.age_pref_no_eligible_grade).toBe('amber')
   })
 })
