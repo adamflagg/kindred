@@ -3,11 +3,7 @@ import { friendlyReasonLabel } from '../impossibility/reasonHints'
 import { isMaterialRequest } from '../../utils/requestBucket'
 
 export type FamilyCohort =
-  | 'got_nothing'
-  | 'violated'
-  | 'priority_unmet'
-  | 'sacrificed_mp'
-  | 'impossible_request'
+  'got_nothing' | 'violated' | 'priority_unmet' | 'sacrificed_mp' | 'impossible_request'
 
 export type FamilySubRow = {
   session: string
