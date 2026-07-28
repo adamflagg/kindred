@@ -370,6 +370,7 @@ describe('useTour', () => {
         config: lastCall!,
         state: { activeIndex: 0 } as never,
         driver: mockDriverInstance as never,
+        index: 0,
       })
     })
     await flushAndAdvance(1000)
@@ -409,6 +410,7 @@ describe('useTour', () => {
         config: lastCall!,
         state: { activeIndex: 0 } as never,
         driver: mockDriverInstance as never,
+        index: 0,
       })
     })
 
@@ -464,6 +466,7 @@ describe('useTour', () => {
         config: lastCall!,
         state: { activeIndex: 1 } as never,
         driver: mockDriverInstance as never,
+        index: 1,
       })
     })
     await flushAndAdvance(1000)
@@ -520,6 +523,7 @@ describe('useTour', () => {
         config: lastCall!,
         state: { activeIndex: 0 } as never,
         driver: mockDriverInstance as never,
+        index: 0,
       })
     })
 
