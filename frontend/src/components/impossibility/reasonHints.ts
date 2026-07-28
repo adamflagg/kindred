@@ -37,6 +37,19 @@ export const FRIENDLY_REASON_LABELS: Record<ReasonCode, string> = {
   self_conflict: 'Contradicting requests',
 }
 
+// Severity for impossibility reasons folded into the post-check.
+// Red = the family asked for something that conflicts with how we bunk (worth a call).
+// Amber = unfulfillable for data/enrollment reasons (FYI, nothing to do).
+export const REASON_SEVERITY: Record<ReasonCode, 'red' | 'amber'> = {
+  grade_compatibility: 'red',
+  pair_no_shared_bunk: 'red',
+  self_conflict: 'red',
+  target_not_in_solver: 'amber',
+  malformed: 'amber',
+  cross_session: 'amber', // auto-declined upstream — rarely reaches post-check
+  age_pref_no_eligible_grade: 'amber',
+}
+
 export function friendlyReasonLabel(code: string): string {
   return FRIENDLY_REASON_LABELS[code as ReasonCode] ?? code
 }

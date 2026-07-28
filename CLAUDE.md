@@ -1,25 +1,16 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+Guidance for Claude Code when working in this repository.
 
 ## Kindred
 
-Kindred finds campers who belong together and places them in the right cabins. A constraint satisfaction solver for optimizing summer camp cabin assignments using Google OR-Tools with a full CampMinder data integration system.
+Kindred finds campers who belong together and places them in the right cabins. A constraint satisfaction solver for summer camp cabin assignments (Google OR-Tools) with a full CampMinder data integration system.
+
+**Key data principle:** all cross-table relationships use CampMinder IDs, never PocketBase IDs. This is what keeps data intact across syncs.
 
 ---
 
 ## 1. Architecture
-
-### System Architecture
-
-#### Multi-Container Architecture
-```text
-CampMinder API → Go Sync ─┐
-                          │
-React Frontend ──────────┼──→ 4 Docker containers
-                          │
-OR-Tools Solver ─────────┘
-```
 
 | Container | Port | Technology | Purpose |
 |-----------|------|------------|---------|
@@ -29,14 +20,11 @@ OR-Tools Solver ─────────┘
 | **kindred-init** | — | Go + shell | One-shot admin/OIDC setup |
 | **React Frontend** | 3000 | TypeScript + Vite | Dev server with HMR (development only) |
 
-**Routing (Inverse Pattern)**: Caddy routes specific PocketBase patterns (`/api/collections/*`, `/api/files/*`, `/api/realtime`, `/api/custom/*`, `/api/oauth2-redirect`) to PocketBase. All other `/api/*` requests go to FastAPI. This eliminates route enumeration - new FastAPI endpoints automatically work. See `docker/Caddyfile` (prod) and `frontend/Caddyfile` (dev) for routing rules.
-
-#### Key Data Principle
-**All cross-table relationships use CampMinder IDs, never PocketBase IDs.** This ensures data integrity during syncs.
+Caddy uses an **inverse routing pattern** — new FastAPI endpoints work without touching the Caddyfile. Details: `api/CLAUDE.md`.
 
 ### Codebase Map
 
-Subdir `CLAUDE.md` files load automatically when you edit files in that area — they contain conventions, gotchas, and commands specific to each surface. Root file (this one) covers cross-cutting rules; surface specifics live below.
+Subdir `CLAUDE.md` files load automatically when you work in that area — they hold the conventions, gotchas, and commands for each surface. This root file covers only what spans surfaces.
 
 | Surface | Where | Subdir context |
 |---------|-------|----------------|
@@ -47,9 +35,12 @@ Subdir `CLAUDE.md` files load automatically when you edit files in that area —
 | React UI | `frontend/src/` | `frontend/CLAUDE.md` |
 | Tests (pytest + Vitest) | `tests/`, `frontend/src/**/*.test.ts` | `tests/CLAUDE.md` |
 
-Harness improvements roadmap: `docs/reference/claude-harness-improvements.md`.
+**Two footguns worth reading up front, because you hit them before you'd open the subdir file:**
 
-### 📚 Full Documentation
+- **Writing a PocketBase migration?** `pocketbase/CLAUDE.md` + `docs/reference/pocketbase-migrations.md` are mandatory. Both the file-numbering rule and the v0.23 field syntax fail *silently* if you guess.
+- **Touching CampMinder data tables?** Every one carries a required `year` field — CampMinder reuses session IDs across years. See `pocketbase/CLAUDE.md`.
+
+### Full Documentation
 
 See `/docs`:
 - `architecture/` — sync-layer, bunk-request-pipeline, session-types, metrics-module, data-model, solver-internals
@@ -57,55 +48,29 @@ See `/docs`:
 - `api/` — solver-api, response-examples
 - `reference/` — cli-commands, issue-triage, pocketbase-migrations, tables, commit-conventions, git-workflow, oauth2-setup
 
+Harness improvements roadmap: `docs/reference/claude-harness-improvements.md`.
+
 ---
 
 ## 2. Daily Workflow
-
-### Quick Development Commands
 
 ```bash
 ./scripts/start_dev.sh                                    # Start all services
 curl -X POST "http://localhost:8090/api/custom/sync/run?year=2025&service=all" # Trigger sync
 uv run pytest tests/                                      # Python tests
-uv run pytest tests/path/test_file.py::test_name          # Single Python test
-uv run pytest tests/ -k "keyword"                         # Python tests by keyword
 cd pocketbase && go test ./...                            # Go tests
 cd frontend && npx vitest run                             # Frontend tests (one-shot)
-cd frontend && npx vitest run src/path/file.test.ts       # Single frontend test
 ```
 
-Full reference: `/docs/reference/cli-commands.md`
+Full reference: `/docs/reference/cli-commands.md`. Per-surface test invocations live in each subdir `CLAUDE.md`.
 
 ### Commit Conventions
 
-Format: `type(scope): description` — Breaking changes: `feat(api)!: description`
+Format: `type(scope): description` — breaking changes: `feat(api)!: description`
 
-| Scope | Area |
-|-------|------|
-| `frontend` | React, hooks, pages, styles |
-| `api` | FastAPI, Python backend |
-| `sync` | Go sync, CampMinder |
-| `pb` | PocketBase schema, migrations |
-| `solver` | OR-Tools solver |
-| `docker` | Dockerfiles, compose |
-| `ci` | GitHub Actions |
-| `google` | Google Sheets/Drive API |
-| `scripts` | Dev/utility scripts |
-| `deps` | Dependencies |
-| `deps-dev` | Dev dependency updates |
-| `docs` | Documentation |
-| `security` | Security hardening, CVE fixes |
-| `metrics` | Analytics, dashboards, statistics |
-| `graph` | Social network graph features |
-| `rbac` | Roles, permissions, access control |
-| `data` | Data models, schema changes |
+Scope is **required** and enforced by commitlint, which rejects the commit if you get it wrong. `commitlint.config.js` is the source of truth — read its `scope-enum` and `type-enum` rather than trusting a copy here, which is how this file previously drifted five scopes out of date. Which `type` to use: `docs/reference/commit-conventions.md`
 
-**Which `type` to use** — the full decision procedure: `docs/reference/commit-conventions.md`
-
-**Commit behavior:**
-- Commit at logical checkpoints, not micro-commits
-- Squash related commits before pushing
-- Never add others' changes to your commits (check `git status` first)
+Commit at logical checkpoints, not micro-commits. Never sweep others' changes into your commits — check `git status` first.
 
 ### Configuration Locations
 
@@ -118,194 +83,83 @@ Format: `type(scope): description` — Breaking changes: `feat(api)!: descriptio
 | `frontend/vite.config.ts` | Frontend build configuration |
 | `pocketbase/pb_migrations/*.js` | Database schema (source of truth) |
 
-### Logging Standards
+Runtime config is **database-driven** — the PocketBase `config` table, not JSON files. AI settings are the exception: env vars (`AI_API_KEY`, `AI_MODEL`, `AI_PROVIDER`).
+
+### Logging
 
 Format: `2026-01-06T14:05:52Z [source] LEVEL message key=value...`. `LOG_LEVEL=INFO` (default) suppresses health checks; `DEBUG` for verbose. Language-specific setup: `bunking/CLAUDE.md` (Python), `pocketbase/CLAUDE.md` (Go).
 
 ### Git Hooks (Lefthook)
 
-Hooks are managed by [lefthook](https://github.com/evilmartians/lefthook) via `.lefthook.yml`.
+Managed via `.lefthook.yml`. Setup once after cloning: `./scripts/setup-git-hooks.sh`
 
-**Setup:** `./scripts/setup-git-hooks.sh` (run once after cloning)
-
-| Stage | Trigger | What runs | Speed |
-|-------|---------|-----------|-------|
-| **pre-commit** | Every commit | Formatters on staged files (prettier, ruff format, gofmt) | <1s |
-| **commit-msg** | Every commit | commitlint validation | Instant |
-| **pre-push** | Every push | Type checks (mypy, tsc), go build, fast linters (ruff, shellcheck, pb-js-lint), full mockable pytest (`SKIP_POCKETBASE_TESTS=true`, xdist) | ~40s |
-| **post-merge** | After pull | Worktree cleanup notifications | ~5s |
+| Stage | What runs | Speed |
+|-------|-----------|-------|
+| **pre-commit** | Formatters on staged files (prettier, ruff format, gofmt) | <1s |
+| **commit-msg** | commitlint validation | Instant |
+| **pre-push** | Type checks (mypy, tsc), go build, fast linters (ruff, shellcheck, pb-js-lint), full mockable pytest | ~40s |
+| **post-merge** | Worktree cleanup notifications | ~5s |
 
 Escape hatches and manual runs: `docs/reference/git-workflow.md`
 
-### Error Handling Conventions
+### Error Handling
 
-Surface-specific — see `frontend/CLAUDE.md` (ErrorBoundary + QueryGuard patterns) and `api/CLAUDE.md` (global FastAPI exception handler).
+Surface-specific — `frontend/CLAUDE.md` (ErrorBoundary + QueryGuard) and `api/CLAUDE.md` (global FastAPI exception handler).
 
 ---
 
 ## 3. Domain Knowledge
 
-### Domain References
+Read the relevant doc before working in these areas:
 
-> **Sync layer:** `docs/architecture/sync-layer.md` — Read before adding/modifying sync jobs.
->
-> **Bunk-request pipeline:** `docs/architecture/bunk-request-pipeline.md` — Read before working on CSV upload, original_bunk_requests, bunk request processing, name resolution, or the AI parse/disambiguation pipeline.
->
-> **Metrics module:** `docs/architecture/metrics-module.md` — Read before adding/modifying metrics.
->
-> **Session types:** `docs/architecture/session-types.md` — Read before working with sessions, bunking, or AG logic.
+- **`docs/architecture/sync-layer.md`** — before adding/modifying sync jobs
+- **`docs/architecture/bunk-request-pipeline.md`** — CSV upload, `original_bunk_requests`, request processing, name resolution, AI parse/disambiguation
+- **`docs/architecture/metrics-module.md`** — before adding/modifying metrics
+- **`docs/architecture/session-types.md`** — sessions, bunking, AG logic
 
-### Development Notes
+**Attendee filtering:** the solver treats `status_id = 2` as active enrolled. Easy to miss and silently wrong if you filter differently.
 
-#### Invariants (cross-cutting)
-Internalize these — violating them produces incorrect code or data corruption. Surface-specific invariants live in the corresponding subdir CLAUDE.md.
+### Tooling
 
-1. **CampMinder IDs** — all cross-table relationships use CM IDs, never PocketBase IDs
-2. **Sync order matters** — sessions → attendees → persons → bunks → plans → assignments → requests
-3. **Family-camp data syncs alongside summer data** — summer-camp views must filter `session_type` against `VALID_SUMMER_SESSION_TYPES` (frontend) / `valid_summer_session_types` equivalents
-4. **Config is database-driven** — PocketBase `config` table, not JSON files. AI settings via env vars (`AI_API_KEY`, `AI_MODEL`, `AI_PROVIDER`)
-5. **Year-aware syncs** — uses `season_id` from config; ready for new year with config update
-6. **Sequential session syncs** — sessions 1-4 run sequentially with independent history
-7. **WAL checkpoint required** after database modifications
-8. **Attendee filtering** — solver uses `status_id = 2` for active enrolled attendees
-
-#### Tooling Notes
-1. **Language Versions** — Python 3.14+, Go 1.26+, Node 22+, TypeScript 6.0+/ES2022
-2. **Use uv** — `uv sync` to install, `uv run <cmd>` to execute
-3. **AI model** — GPT-5-nano via `AI_MODEL` env var ($0.05/$0.40 per M tokens, reasoning enabled)
-4. **Token caching** — CampMinder JWT cached in `~/.campminder_token_cache.json`
-5. **IPv4 in production** — Caddy/Vite configs use `127.0.0.1`; scripts may use localhost
+- **Versions** — Python 3.14+, Go 1.26+, Node 22+, TypeScript 6.0+/ES2022
+- **Use uv** — `uv sync` to install, `uv run <cmd>` to execute
+- **AI model** — GPT-5-nano via `AI_MODEL` env var (reasoning enabled)
+- **Token caching** — CampMinder JWT cached in `~/.campminder_token_cache.json`
+- **IPv4 in production** — Caddy/Vite configs use `127.0.0.1`; scripts may use localhost
 
 ---
 
 ## 4. Critical Rules
 
-**These are non-negotiable. They protect parallel-agent work, production data, and release integrity.**
-
 ### Worktrees & Branches
 
-**NEVER commit or push to `main`.** All changes go through a feature branch and PR. Main is protected; direct pushes fail anyway.
+**Never commit or push to `main`.** All changes go through a feature branch and PR.
 
-**ALWAYS create worktrees via `./scripts/worktree/new.sh` — never bare `git worktree add`, never `EnterWorktree`.** Before starting ANY feature work:
-```bash
-./scripts/worktree/new.sh <descriptive-feature-name>
-cd ../kindred-worktrees/<feature-name>
-```
+**Create worktrees with `./scripts/worktree/new.sh <feature-name>`** — never bare `git worktree add`, never `EnterWorktree`. The script handles port allocation (so parallel worktrees don't collide), branch naming, DB seed from main, and local-config symlinks. A `PreToolUse` hook blocks the bare command; if it denies a call, switch to `new.sh`.
 
-The script does setup `git worktree add` skips: port allocation (Vite/FastAPI/Caddy/PocketBase offsets so parallel worktrees don't collide), branch naming (`feature/<name>`), DB seed from main, local-config symlinks. Bypassing it has caused parallel-agent port collisions on recent PRs.
-
-A `PreToolUse` hook (`.claude/hooks/worktree-guard.sh`) blocks direct `git worktree add` invocations. If it denies a call, that's working as intended — switch to `new.sh`.
-
-**When can I work in the main repo folder?** Only if BOTH conditions are met:
-
-| Condition | How to Verify |
-|-----------|---------------|
-| **A) Frontend-only change the user wants to preview** | Ask: "This is a frontend change - do you want to preview it in the main repo before I create a worktree?" |
-| **B) User confirms solo work** | Ask: "Are we working solo without other agents, so it's safe to work in the main repo?" |
-
-If the user doesn't explicitly confirm BOTH, **create a worktree**.
-
-```text
-Starting new work?
-├─ Is it a frontend preview AND user confirmed solo work?
-│  └─ YES to BOTH → OK to work in main folder on a branch
-│  └─ NO to either → CREATE A WORKTREE
-└─ When in doubt → CREATE A WORKTREE
-```
-
-**Why this matters:** multiple agents may be working in parallel on different features; working in the main folder can collide with their uncommitted changes; worktrees provide complete isolation (code, database, ports); the seeded worktree database protects production data.
+Working directly in the main repo folder needs the user's explicit say-so — assume a worktree otherwise, since other agents may hold uncommitted changes there.
 
 Worktree mechanics (ports, isolation, cleanup): `docs/reference/git-workflow.md`
 
-### Year Data Integrity
-
-**The problem:** CampMinder reuses session IDs across years. The `year` field prevents data contamination.
-
-**Prevention rules:**
-1. **Year field required** — All CampMinder data tables (`attendees`, `bunk_assignments`, `bunk_plans`, etc.) have a required `year` field
-2. **Go sync enforces year** — All sync operations filter by `CAMPMINDER_SEASON_ID` from `.env`
-3. **Frontend year dropdown is display-only** — Does not affect sync jobs
-
-**Schema pattern:**
-- **Relation fields** (`person`, `session`, `bunk`) for PocketBase joins
-- **CampMinder IDs** (`cm_id`, `person_id`) for sync lookups
-- **Unique indexes** include year (e.g., `person_id, year, session`)
-
-### PocketBase Migrations
-
-> **MANDATORY:** Read `docs/reference/pocketbase-migrations.md` before writing ANY migration. PocketBase v0.23+ changed field property syntax — the old `options: {}` wrapper is silently ignored, so fields fall back to PB defaults (text capped at 5000 chars, not your declared value) and over-cap writes are rejected.
-
-**Numbering rule:** New migrations MUST use a number greater than the highest filename in `pocketbase/pb_migrations/` on `origin/main`. Do not fill numbering gaps left by past consolidations.
-
-```bash
-HIGHEST=$(git ls-tree -r origin/main pocketbase/pb_migrations/ \
-  | awk '{print $4}' | grep -oE '15000[0-9]{5}' | sort -u | tail -1)
-NEXT=$((HIGHEST + 1))
-```
-
-Within an unmerged PR you may iterate, rename, or renumber your own new migrations freely — reset the dev DB to re-apply if you change a filename or content. Once merged to `main`, the file is frozen; if a competing PR landed on `main` first and took your number, bump above the new HEAD.
-
-History: gaps may exist from migration consolidation runs (skill: `consolidate-migrations`, gitignored tracking doc: `docs/plans/migration-consolidation.md`). Those numbers are NOT free for reuse — they're "burned" to preserve a monotonically increasing record. The OnServe history-sync hook in `pocketbase/main.go` keeps prod's `_migrations` table in sync with the on-disk file list automatically on every server boot.
-
 ### Secrets, Privacy & Test Data
 
-#### Environment & Private Files
-**Environment secrets:** Loaded from `.env` by `start_dev.sh`.
+**Environment secrets** load from `.env` via `start_dev.sh`.
 
-**Private files** (branding, staff lists, assets): Stored in private `kindred-local` repo.
-- **Local dev**: Run `scripts/setup/setup-local-config.sh` to symlink files
-- **CI/CD**: Cloned via deploy key during Docker build
+**Private files** (branding, staff lists, assets) live in the private `kindred-local` repo: `config/branding.local.json`, `config/staff_list.json`, `local/assets/`, `CLAUDE.local.md`, `frontend/vite.config.local.ts`, `scripts/vault.config`, `docs/camp/`. Local dev symlinks them via `scripts/setup/setup-local-config.sh`; CI/CD clones via deploy key. Without them the system falls back to generic "Kindred" branding.
 
-Files: `config/branding.local.json`, `config/staff_list.json`, `local/assets/`, `CLAUDE.local.md`, `frontend/vite.config.local.ts`, `scripts/vault.config`, `docs/camp/`
-
-#### NEVER Use Real Personal Information
-All code, tests, comments, and documentation MUST use fictional data:
-
-1. **Camper/Family Names**: Use the standard fake name list (Emma Johnson, Liam Garcia, Olivia Chen, etc.)
-2. **Staff Names**: Use names from `config/staff_list.json` (all fictional)
-3. **Schools**: Use fictional school names (Riverside Elementary, Oak Valley Middle, Hillcrest High)
-4. **Phone/Email**: Use obviously fake data (555-0100, <test@example.com>)
-5. **Camp Branding**: Use `{camp_name}` placeholder in prompts, never hardcode camp names
-6. **Session IDs**: Use generic IDs (1000001, 1000002) in examples, not real CampMinder IDs
-
-#### Branding Configuration
-Generic "Kindred" branding by default. Camp-specific branding from `kindred-local` repo:
-- `config/branding.local.json` - Camp name, descriptions, SSO display name
-- `local/assets/` - Camp logos (`camp-logo.png`, `camp-logo-nav.png`)
-
-Without these files (or symlinks), the system uses generic defaults.
+**Never use real personal information** in code, tests, comments, docs, commits, issues, or PRs — real camper/family/staff names, schools, or CampMinder IDs. Use the fictional set (list and examples in `tests/CLAUDE.md`), `{camp_name}` placeholders instead of hardcoded camp names, and generic session IDs. This applies to public artifacts most of all: a name that reaches a GitHub issue or PR body is a real privacy leak.
 
 OAuth2 / OIDC setup: `docs/reference/oauth2-setup.md`
 
-### Test-Driven Development (TDD)
+### Test-Driven Development
 
-**You MUST follow TDD methodology for all new feature development:**
-
-1. **Write Tests FIRST**: Create failing tests that define the expected behavior
-2. **Verify Tests Fail**: Run tests to confirm they fail before writing implementation (red phase)
-3. **Implement to Pass Tests**: Write minimal code to make tests pass
-4. **Never Modify Tests to Match Implementation**: Tests define the spec, not the other way around
-
-Tests and implementation may be in the same commit — PRs are squash-merged so commit granularity doesn't matter. What matters is the **workflow discipline**: tests are written first and verified failing before implementation begins.
-
-**Anti-patterns to avoid:**
-- ❌ Writing tests after implementation
-- ❌ Modifying tests to match implementation behavior
-- ❌ Skipping the "red" phase (tests must fail first)
-
-**Remember**: Tests are the SPECIFICATION. Implementation must conform to tests, not the other way around!
+Write failing tests first, verify they fail, then implement. **Tests are the specification — never edit a test to match what the implementation happens to do.** Tests and implementation may land in the same commit (PRs are squash-merged); what matters is the order you write them in. Marker semantics and which tests are skipped in CI: `tests/CLAUDE.md`.
 
 ### CI/CD & Branch Protection
 
-**CI** runs on every push (~2-3 min): linting (ruff, eslint, golangci-lint), type checking (mypy, TypeScript), unit tests (Python, Go, TypeScript).
+**CI** runs on every push (~2-3 min): linting, type checking, unit tests.
+**CD** runs on merge to main (~10-15 min): Docker builds, Trivy scanning, integration tests, images tagged `latest` and `sha-<commit>`.
 
-**CD** runs on every merge to main (~10-15 min): Docker image builds, Trivy security scanning, integration tests, pushes images tagged `latest` and `sha-<commit>`.
+`main` is protected by a GitHub Ruleset: required "CI Summary" status check, required linear history (squash only), and **no bypass actors** — admins included. Every change needs a PR with green CI; there is no emergency override.
 
-**Branch protection** — `main` is protected by a GitHub Ruleset:
-- **Required status check "CI Summary"** — all CI checks must pass before merge
-- **Required linear history** — squash merge only, no merge commits
-- **No bypass actors** — even admins cannot push directly to main
-
-**Implications:** all changes require a PR; CI must pass before merge; squash-merge only; no emergency bypass.
-
-Release process (version tags, running the Release workflow): `docs/reference/git-workflow.md`
+Release process: `docs/reference/git-workflow.md`

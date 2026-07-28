@@ -161,6 +161,8 @@ export interface ValidationStatistics {
   material_parent_request_satisfaction_rate?: number
   campers_with_unsatisfied_material_parent_requests?: number
   unsatisfied_material_parent_persons?: Array<{ cm_id: number; name: string }>
+  /** Campers with no bunk requests at all — hidden as a non-issue in the post-check footer. */
+  campers_with_no_requests?: number
   best_effort_parent_requests?: number
   satisfied_best_effort_parent_requests?: number
   best_effort_parent_request_satisfaction_rate?: number
@@ -213,6 +215,8 @@ export interface ValidationStatistics {
     session_cm_id: number
     reason_codes: string[]
     honored_in_plan: boolean
+    /** True when every impossible request was still honored (met via always-place). */
+    fully_honored?: boolean
     /** Cabin that met the preference when honored_in_plan; null/absent otherwise. */
     bunk_name?: string | null
   }>

@@ -47,6 +47,28 @@ export interface PostCheckIssue {
  * for every bunk-level type). Falls back to format-specific regex parsing of
  * `issue.message` for older payloads or unexpected shapes.
  */
+export type Severity = 'red' | 'amber'
+
+/** Issue[] type → severity. Over-capacity is serious; the rest are FYI nits. */
+export const ISSUE_SEVERITY: Record<string, Severity> = {
+  capacity_violation: 'red',
+  age_spread_warning: 'amber',
+  grade_ratio_warning: 'amber',
+  grade_spread_warning: 'amber',
+  grade_adjacency_warning: 'amber',
+  age_flow_inversion: 'amber',
+  isolation_risk: 'amber',
+}
+
+/** Family-cohort → severity. All cohorts are real misses → worth a call. Keyed by FamilyCohort string. */
+export const COHORT_SEVERITY: Record<string, Severity> = {
+  got_nothing: 'red',
+  sacrificed_mp: 'red',
+  violated: 'red',
+  priority_unmet: 'red',
+  impossible_request: 'red', // overridden per-reason at render via REASON_SEVERITY
+}
+
 export function extractBunkName(issue: IssueLike): string {
   const structured = issue.details?.['bunk_name']
   if (typeof structured === 'string' && structured.length > 0) return structured

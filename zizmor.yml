@@ -48,3 +48,21 @@ rules:
     # verifies the PR was genuinely created by Dependabot
     ignore:
       - dependabot-auto-merge.yml
+
+  dependabot-cooldown:
+    # dependabot.yml sets `cooldown: default-days: 3` on all 7 update blocks.
+    # zizmor wants >= 7. The 3 is deliberate and stays.
+    #
+    # Cooldown trades supply-chain safety (wait out a compromised release
+    # before auto-filing) against CVE remediation latency. This repo's
+    # security-audit CI reads live advisory databases, so a fresh CVE turns
+    # every PR *and* main red until the fix is bumped in — remediation speed
+    # is load-bearing here, and a 7-day floor would hold that gate shut for a
+    # week. On 2026-07-27 two npm advisories blocked the entire frontend PR
+    # queue; the unblock was a same-day bump.
+    #
+    # 7 days is a sound default for a team repo with someone on call. For a
+    # solo-maintained repo where the maintainer *is* the CVE response, the
+    # faster loop is worth more than the extra soak time.
+    ignore:
+      - dependabot.yml

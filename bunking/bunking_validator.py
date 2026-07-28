@@ -1049,6 +1049,25 @@ class BunkingValidator:
                 satisfied_mp_requesters.add(int(pid))
             except TypeError, ValueError:
                 continue
+        # Satisfied vs total material-request counts per requester, so we can tell
+        # a fully-honored camper (every material request met -> safe to drop from
+        # the contact list) from a partially-honored one (some still unmet).
+        satisfied_count_by_req: dict[int, int] = {}
+        for pid, reqs in satisfied_material_parent_by_person.items():
+            try:
+                satisfied_count_by_req[int(pid)] = len(reqs)
+            except TypeError, ValueError:
+                continue
+        # Ungated (raw) count is intentional: every member of this cohort is
+        # *entirely* impossible (_gated(reqs) is empty), so the raw material-request
+        # count IS the impossible-request denominator. Partial-impossible campers
+        # never reach this cohort by construction.
+        total_count_by_req: dict[int, int] = {}
+        for pid, reqs in material_parent_by_person.items():
+            try:
+                total_count_by_req[int(pid)] = len(reqs)
+            except TypeError, ValueError:
+                continue
         bunks_map = bunk_by_id or {}
         for entry in impossible_mp_cohort or []:
             entry_cm_id = entry.get("cm_id")
@@ -1061,7 +1080,13 @@ class BunkingValidator:
                 honored_asgn = assignments_by_person.get(str(entry_cm_id))
                 honored_bunk = bunks_map.get(honored_asgn.bunk_cm_id) if honored_asgn else None
                 bunk_name = honored_bunk.name if honored_bunk else None
-            stats.mp_campers_entirely_impossible.append({**entry, "honored_in_plan": honored, "bunk_name": bunk_name})
+            fully_honored = False
+            if honored and isinstance(entry_cm_id, int):
+                total_mat = total_count_by_req.get(entry_cm_id, 0)
+                fully_honored = total_mat > 0 and satisfied_count_by_req.get(entry_cm_id, 0) == total_mat
+            stats.mp_campers_entirely_impossible.append(
+                {**entry, "honored_in_plan": honored, "fully_honored": fully_honored, "bunk_name": bunk_name}
+            )
 
         # Best-effort parent (socialize_with source_field) stats.
         stats.best_effort_parent_requests = sum(len(reqs) for reqs in best_effort_parent_by_person.values())

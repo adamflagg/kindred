@@ -46,7 +46,12 @@ export function buildCsvContent(headers: string[], rows: string[][]): string {
  * @param filename   - The filename to suggest (e.g. "bunk-B-6A-2025-04-23.csv")
  */
 export function downloadCsv(csvContent: string, filename: string): void {
-  const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' })
+  // Prepend a UTF-8 BOM (U+FEFF). Excel-on-Windows ignores the blob MIME
+  // charset when a downloaded .csv is double-clicked and decodes with the
+  // system ANSI code page unless a BOM leads the file — without it, accented
+  // names (José, Núñez) render as mojibake. Excel and Google Sheets both strip
+  // the BOM on import.
+  const blob = new Blob(['\uFEFF', csvContent], { type: 'text/csv;charset=utf-8;' })
   const url = URL.createObjectURL(blob)
   const a = document.createElement('a')
   a.href = url
