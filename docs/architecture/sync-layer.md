@@ -51,8 +51,19 @@ When implementing a new sync job, ALL of these steps must be completed. Missing 
 | `RunDailySync()` orderedJobs | Add job ID string in correct position (respects dependencies) |
 | `RunSyncWithOptions()` servicesToRun | Add to default services list for historical syncs |
 | `RunSyncWithOptions()` re-registration | Add `NewXxxSync(o.app, yearClient)` call in historical re-registration block (~line 815) |
+| `syncJobMeta` | Add a `{id, Phase, description}` entry — this is what drives phase grouping and the status UI |
 
 **Common mistake**: Registering the service but forgetting to add to `orderedJobs` - job won't run in daily sync!
+
+### 2b. Orchestrator Test (`orchestrator_test.go`) — REQUIRED, and easy to miss
+
+`TestRunSyncWithOptionsPhaseOrdering` pins the unified job list **exhaustively** via its
+`expectedOrder` slice. A new job that is registered correctly everywhere else still fails the suite
+with a job-count mismatch (`expected 22 jobs, got 23`) until it is added there, in the same position
+as in `orderedJobs`.
+
+This is a genuine registration site, not a test that "happens to break" — it is the only thing
+asserting the daily and historical lists stay in step.
 
 ### 3. API Endpoint (`api.go`)
 
@@ -107,6 +118,12 @@ For jobs with other custom parameters (session, etc.), similar pattern applies.
 | `sync/table_exporter.go` | Add entry to `SyncJobToCollections` map (required for export skip optimization) |
 
 **Export skip optimization**: When a sync job has no changes (Created=0, Updated=0, Deleted=0, Errors=0), its corresponding sheet export is skipped. The `SyncJobToCollections` map links sync job names to their PocketBase collections so the export system knows which sheets can be skipped.
+
+**The two rows above are independent.** A job may need a `SyncJobToCollections` entry and **no**
+export config at all — that is the correct shape for anything writing data that must never reach a
+spreadsheet. `lodging_assignments` is the worked example: it is in the map so the skip optimisation
+knows what it writes, and deliberately absent from `GetReadableYearExports()`, with
+`sync/lodging_phi_test.go` asserting that membership in the map never implies an export.
 
 Example for a new `widgets` sync that populates the `widgets` table:
 ```go
