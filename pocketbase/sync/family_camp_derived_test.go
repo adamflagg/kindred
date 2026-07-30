@@ -1614,6 +1614,15 @@ func TestProcessRegistrationsBoolFieldsOrAcrossPersons(t *testing.T) {
 	// Defect 2's field. CampMinder stores the whole option sentence here, so
 	// this also proves the sentence parser reaches the column and not just
 	// parseBoolFieldValue's unit test.
+	// This used to pair an opt-out with a blocker and assert the opt-out won.
+	// That fixture was the kindred#1874 conflict, and the blocker now wins it --
+	// see TestProcessRegistrationsOptOutLosesToABlockerInTheSameHousehold, which
+	// covers that case in both member orders.
+	//
+	// The property this subtest exists for is narrower and still holds: the arm
+	// accumulates across BOTH field names rather than assigning, so a second
+	// member cannot clobber the first. Two agreeing members prove that without
+	// depending on how a disagreement resolves.
 	t.Run("opt out VIP reads Adult-Opt Out and the sentence values", func(t *testing.T) {
 		regs := s.processRegistrations(nil, []customValueEntry{
 			{
@@ -1624,14 +1633,17 @@ func TestProcessRegistrationsBoolFieldsOrAcrossPersons(t *testing.T) {
 			{
 				householdPBID: "hh_chen",
 				fieldName:     "FAM CAMP-Opt Out VIP",
-				value:         "No, I am only able to attend with this accommodation in place",
+				value:         "Yes, please register regardless of cabin type",
 			},
 		})
 		if len(regs) != 1 {
 			t.Fatalf("expected 1 registration, got %d", len(regs))
 		}
 		if !regs[0].optOutVIP {
-			t.Error("Adult-Opt Out=Yes did not survive a later No; arm is assigning, not ORing")
+			t.Error("Adult-Opt Out=Yes did not reach the column; the arm is not reading both field names")
+		}
+		if regs[0].accommodationIsMandatory {
+			t.Error("two opt-outs and no blocker must not be mandatory")
 		}
 	})
 
@@ -1905,6 +1917,52 @@ func TestProcessRegistrationsOptOutMakesTheNeedAWarning(t *testing.T) {
 	}
 	if regs[0].accommodationIsMandatory {
 		t.Error("an opted-out accommodation is a warning, not a blocker")
+	}
+}
+
+// TestProcessRegistrationsOptOutLosesToABlockerInTheSameHousehold is kindred#1874.
+//
+// The two columns are a three-state answer wearing two booleans, and they must
+// stay mutually exclusive: a blocker anywhere in the household outranks another
+// member's "I'll come anyway". A plain OR over optedOut collapsed the blocker
+// into a warning for the 3 households a year whose members disagree, which is
+// the fail-UNSAFE direction -- it reads as "this family will cope" when someone
+// said they cannot attend without the accommodation.
+//
+// Order is varied because a running OR is order-sensitive and a finalization
+// pass is not; asserting only one order would pass on a fix that works by luck.
+func TestProcessRegistrationsOptOutLosesToABlockerInTheSameHousehold(t *testing.T) {
+	ts := time.Date(2025, 4, 21, 0, 0, 0, 0, time.UTC)
+	const optOut = "Yes, please register regardless of cabin type"
+	const blocker = "No, I am only able to attend with this accommodation in place"
+
+	for _, tc := range []struct {
+		name   string
+		first  string
+		second string
+	}{
+		{"opt-out answered first", optOut, blocker},
+		{"blocker answered first", blocker, optOut},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			s := NewFamilyCampDerivedSync(nil)
+			regs := s.processRegistrations(nil, []customValueEntry{
+				{householdPBID: "hh_garcia", fieldName: "FAM CAMP-Opt Out VIP",
+					value: tc.first, lastUpdated: ts},
+				{householdPBID: "hh_garcia", fieldName: "Adult-Opt Out",
+					value: tc.second, lastUpdated: ts},
+			})
+			if len(regs) != 1 {
+				t.Fatalf("registrations = %d, want 1", len(regs))
+			}
+			if !regs[0].accommodationIsMandatory {
+				t.Error("a blocker in the household must survive another member's opt-out")
+			}
+			if regs[0].optOutVIP {
+				t.Error("opt_out_vip must be false once any member answered blocker; " +
+					"the two are mutually exclusive by construction")
+			}
+		})
 	}
 }
 
