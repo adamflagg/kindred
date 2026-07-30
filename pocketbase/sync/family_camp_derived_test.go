@@ -1384,7 +1384,8 @@ func TestLoadFieldDefinitionsTrimsNames(t *testing.T) {
 }
 
 // TestNormalizeFieldName pins the trimming rule itself so callers other than
-// loadFieldDefinitions (see lodging_fields.go) can rely on it.
+// loadFieldDefinitions can rely on it — Phase B's lodging_fields.go registry
+// will be the second one. That file does not exist yet.
 func TestNormalizeFieldName(t *testing.T) {
 	cases := map[string]string{
 		"Family Camp-Physician ":   "Family Camp-Physician",
@@ -1480,4 +1481,84 @@ func TestProcessRegistrationsAccommodationSuccessor(t *testing.T) {
 	if len(adultRegs) != 1 || !adultRegs[0].needsAccommodation {
 		t.Error("Housing Accomodation (one m) did not set needsAccommodation")
 	}
+}
+
+// TestProcessRegistrationsBoolFieldsOrAcrossPersons pins the OR aggregation
+// itself, which is the behavior that changed when these two arms stopped
+// assigning and started ORing.
+//
+// The "No" deliberately comes LAST in every case: under the previous
+// last-wins assignment each of these would collapse to false, so a passing
+// run proves the OR is real rather than incidental. processRegistrations
+// iterates person values, and a household has several people, so disagreement
+// between household members is the normal case, not an edge case.
+func TestProcessRegistrationsBoolFieldsOrAcrossPersons(t *testing.T) {
+	s := NewFamilyCampDerivedSync(nil)
+
+	t.Run("accommodation ORs across household members", func(t *testing.T) {
+		regs := s.processRegistrations(nil, []customValueEntry{
+			{householdPBID: "hh_johnson", fieldName: "Housing Accommodation", value: "Yes"},
+			{householdPBID: "hh_johnson", fieldName: "Housing Accommodation", value: "No"},
+		})
+		if len(regs) != 1 {
+			t.Fatalf("expected 1 registration, got %d", len(regs))
+		}
+		if !regs[0].needsAccommodation {
+			t.Error("a later No overwrote an earlier Yes; the arm is assigning, not ORing")
+		}
+	})
+
+	t.Run("accommodation ORs across field generations", func(t *testing.T) {
+		regs := s.processRegistrations(nil, []customValueEntry{
+			{householdPBID: "hh_garcia", fieldName: "Housing Accommodation", value: "Yes"},
+			{householdPBID: "hh_garcia", fieldName: "Housing Accomodation", value: "No"},
+			{householdPBID: "hh_garcia", fieldName: "FAM Camp-Accommodation", value: "No"},
+		})
+		if len(regs) != 1 || !regs[0].needsAccommodation {
+			t.Error("a Yes on one generation was lost to a No on another")
+		}
+	})
+
+	// Defect 2's field. CampMinder stores the whole option sentence here, so
+	// this also proves the sentence parser reaches the column and not just
+	// parseBoolFieldValue's unit test.
+	t.Run("opt out VIP reads Adult-Opt Out and the sentence values", func(t *testing.T) {
+		regs := s.processRegistrations(nil, []customValueEntry{
+			{
+				householdPBID: "hh_chen",
+				fieldName:     "Adult-Opt Out",
+				value:         "Yes, please register regardless of cabin type",
+			},
+			{
+				householdPBID: "hh_chen",
+				fieldName:     "FAM CAMP-Opt Out VIP",
+				value:         "No, I am only able to attend with this accommodation in place",
+			},
+		})
+		if len(regs) != 1 {
+			t.Fatalf("expected 1 registration, got %d", len(regs))
+		}
+		if !regs[0].optOutVIP {
+			t.Error("Adult-Opt Out=Yes did not survive a later No; arm is assigning, not ORing")
+		}
+	})
+
+	// The softer reading must stay opt-in: an all-No household is a blocker,
+	// not a warning (spec 4.5).
+	t.Run("all-No household does not opt out", func(t *testing.T) {
+		regs := s.processRegistrations(nil, []customValueEntry{
+			{
+				householdPBID: "hh_riley",
+				fieldName:     "FAM CAMP-Opt Out VIP",
+				value:         "No, I am only able to attend with this accommodation in place",
+			},
+			{householdPBID: "hh_riley", fieldName: "Housing Accommodation", value: "Yes"},
+		})
+		if len(regs) != 1 {
+			t.Fatalf("expected 1 registration, got %d", len(regs))
+		}
+		if regs[0].optOutVIP {
+			t.Error("optOutVIP set true with no affirmative answer")
+		}
+	})
 }

@@ -285,8 +285,14 @@ func (s *FamilyCampDerivedSync) loadFieldDefinitions(_ context.Context) (map[str
 // Two reasons a field lands here: it dropped the "Family Camp" prefix in a later
 // generation (Housing Accommodation succeeded FAM Camp-Accommodation in 2025), or
 // CampMinder spelled it inconsistently (Housing Accomodation, one m, is the
-// Adult-partition twin of Housing Accommodation). Names are comments; the ids
-// are the contract.
+// Adult-partition twin of Housing Accommodation).
+//
+// Scope: these ids govern only whether a definition is ADMITTED into the field
+// map, so admission survives a rename. Semantic routing downstream still
+// switches on the display name, so a rename in CampMinder would silently stop
+// an answer reaching its column — the same failure this allowlist exists to
+// fix. Closing that half needs the cm_id-keyed registry in lodging_fields.go
+// (Phase B); until it lands, the names below are load-bearing, not decorative.
 var extraFieldCMIDs = map[int]bool{
 	274057: true, // Housing Accommodation        (Camper) — successor to FAM Camp-Accommodation
 	274055: true, // Housing Accomodation  (sic)  (Adult)
@@ -304,10 +310,12 @@ var extraFieldCMIDs = map[int]bool{
 // normalizeFieldName trims a CampMinder custom-field display name.
 //
 // CampMinder does not validate these names, and at least one shipped field
-// carries a trailing space: "Family Camp-Physician " (cm_id 39680). Every
-// lookup in this file compares field names by exact string equality, so an
-// untrimmed name silently matches nothing. Trim once, at the load boundary,
-// so every downstream comparison is against a canonical name.
+// carries a trailing space: "Family Camp-Physician " (cm_id 39680). The
+// switch and map lookups in this file compare field names by exact string
+// equality (the substring checks in isFamilyCampField and processAdults are
+// unaffected), so an untrimmed name silently matches nothing. Trim once, at
+// the load boundary, so every downstream comparison is against a canonical
+// name.
 func normalizeFieldName(name string) string {
 	return strings.TrimSpace(name)
 }
@@ -601,8 +609,9 @@ func (s *FamilyCampDerivedSync) processRegistrations(
 			}
 		// Retired after 2024 (645 values that year, 0 since) and no successor
 		// exists. Kept because spec 4.4 forbids auto-inferring retirement and
-		// because this plan backfills 2024. lodging_field_mappings carries the
-		// passive "0 values this year" warning instead.
+		// because this plan backfills 2024. The passive "0 values this year"
+		// warning will live in lodging_field_mappings, a collection Phase B
+		// adds — it does not exist yet.
 		case "Family Camp-Goals Attending":
 			if reg.goals == "" {
 				reg.goals = v.value
@@ -793,6 +802,10 @@ func extractAdultNumberFromField(fieldName string) int {
 // Anchoring on the leading word rather than the whole string is what makes both
 // shapes work. It must stay an anchor and not a substring search: "No, yes is
 // not my answer" and "Not yes" are both false, and "Yesterday" is not a yes.
+//
+// The bare tokens "yes", "y", "true" and "1" also return true, so plain-answer
+// fields (FAM Camp-Accommodation and both Housing Accommodation spellings all
+// store a bare "Yes"/"No") work unchanged.
 func parseBoolFieldValue(value string) bool {
 	lower := strings.ToLower(strings.TrimSpace(value))
 	switch lower {
