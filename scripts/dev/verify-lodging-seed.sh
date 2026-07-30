@@ -76,5 +76,29 @@ n=$(q "SELECT COUNT(*) FROM lodging_units WHERE is_confirmed = 1")
 n=$(q "SELECT COUNT(*) FROM lodging_units WHERE allocation_default = 'staff_default'")
 [[ "$n" -ge 1 ]] || note "expected at least one staff_default unit"
 
+# --- aliases ---
+[[ "$(q "SELECT COUNT(*) FROM lodging_unit_aliases")" -ge 90 ]] || note "expected >=90 aliases, got $(q "SELECT COUNT(*) FROM lodging_unit_aliases")"
+
+# alias_string -> expected member unit codes (comma-joined, sorted)
+alias_members() {
+  # Several alias strings contain an apostrophe ("Doctor's House", "Cloud's
+  # Rest") — double it for the SQL string literal, or the query is a syntax
+  # error rather than a legitimate empty-result failure.
+  local esc="${1//\'/\'\'}"
+  q "SELECT group_concat(code) FROM (SELECT u.code FROM lodging_unit_aliases al, json_each(al.member_units) je JOIN lodging_units u ON u.id = je.value WHERE al.alias_string = '$esc' ORDER BY u.code)"
+}
+
+[[ "$(alias_members "Golden Triangle - Doctor's House")" == "gt-wawona" ]] || note "GT Doctor's House should resolve to gt-wawona, got $(alias_members "Golden Triangle - Doctor's House")"
+[[ "$(alias_members "Health Center - Doctor's House")" == "hc-doctors-house" ]] || note "HC Doctor's House should resolve to hc-doctors-house"
+[[ "$(alias_members "Doctor's House")" == "hc-doctors-house" ]] || note "bare Doctor's House should resolve to hc-doctors-house"
+[[ "$(alias_members "Teen Village 1")" == "tawonga-village-1" ]] || note "Teen Village 1 should alias Tawonga Village 1"
+[[ "$(alias_members "Tawonga Village 1")" == "tawonga-village-1" ]] || note "Tawonga Village 1 should alias itself"
+# Multi-member aliases denote merges.
+[[ "$(alias_members "Golden Triangle - Tenaya 1and2")" == "gt-tenaya-1,gt-tenaya-2" ]] || note "Tenaya 1and2 should have 2 members"
+[[ "$(alias_members "Golden Triangle - Tioga 1and2")" == "gt-tioga-1,gt-tioga-2" ]] || note "Tioga 1and2 should have 2 members"
+[[ "$(alias_members "Health Center - Downstairs 1and2")" == "hc-downstairs-a,hc-downstairs-b" ]] || note "Downstairs 1and2 should have 2 members"
+# The double-space string really is in the data — do not trim it.
+[[ "$(alias_members "Health Center Downstairs  - Room A")" == "hc-downstairs-a" ]] || note "double-space Room A alias missing"
+
 if [[ "$fail" -ne 0 ]]; then echo "verify-lodging-seed: FAILED" >&2; exit 1; fi
 echo "verify-lodging-seed: OK"
