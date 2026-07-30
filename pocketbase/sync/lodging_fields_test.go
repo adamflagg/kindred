@@ -26,6 +26,69 @@ func TestLodgingSourceFieldsAreUnique(t *testing.T) {
 	}
 }
 
+// TestLodgingRequestFieldsAreWellFormed guards the request-layer registry the
+// same way, and additionally that it stays DISJOINT from lodgingSourceFields.
+//
+// Disjointness is not tidiness. lodging_field_mappings has a UNIQUE index on
+// field_cm_id, and the assignment ingest raises spec 4.4's zero-values warning
+// by walking lodgingSourceFields and comparing against counts only IT collects
+// -- so a request field appearing in that slice would file a work-queue issue
+// every single run, for a field that is being read correctly by somebody else.
+func TestLodgingRequestFieldsAreWellFormed(t *testing.T) {
+	assignment := map[int]string{}
+	for _, f := range lodgingSourceFields {
+		assignment[f.CMID] = f.Name
+	}
+
+	seen := map[int]string{}
+	for _, f := range lodgingRequestFields {
+		if prev, dup := seen[f.CMID]; dup {
+			t.Errorf("cm_id %d is registered twice: %q and %q", f.CMID, prev, f.Name)
+		}
+		seen[f.CMID] = f.Name
+
+		if prev, clash := assignment[f.CMID]; clash {
+			t.Errorf("cm_id %d (%q) is in both registries, also as %q", f.CMID, f.Name, prev)
+		}
+		if f.Name == "" || f.Target == "" {
+			t.Errorf("cm_id %d has an empty name (%q) or target (%q)", f.CMID, f.Name, f.Target)
+		}
+		if f.Name != normalizeFieldName(f.Name) {
+			t.Errorf("%q is not in canonical (trimmed) form; the switch compares by exact equality", f.Name)
+		}
+		if f.Grain != grainHousehold && f.Grain != grainPerson {
+			t.Errorf("%q (cm_id %d) has grain %q", f.Name, f.CMID, f.Grain)
+		}
+	}
+}
+
+// TestLodgingRequestFieldNamesResolveThroughCMID is the point of the registry:
+// staff rename these in CampMinder, and family_camp_derived.go routes on the
+// display name. Resolving the name back from the cm_id is what stops a rename
+// from silently disconnecting an answer from its column.
+func TestLodgingRequestFieldNamesResolveThroughCMID(t *testing.T) {
+	app := newLodgingTestApp(t)
+
+	renamed := addFieldDef(t, app, cmIDShareCabinsRegistration, "FC Cabin Sharing 2027")
+	untouched := addFieldDef(t, app, cmIDSharedRequest, "Shared-request")
+	addFieldDef(t, app, 999999, "SVI-Vehicle Make") // unrelated
+
+	got, err := LodgingRequestFieldNames(app)
+	if err != nil {
+		t.Fatalf("LodgingRequestFieldNames: %v", err)
+	}
+
+	if got[renamed] != fieldShareCabinsRegistration {
+		t.Errorf("renamed field resolved to %q, want %q", got[renamed], fieldShareCabinsRegistration)
+	}
+	if got[untouched] != fieldSharedRequest {
+		t.Errorf("field resolved to %q, want %q", got[untouched], fieldSharedRequest)
+	}
+	if len(got) != 2 {
+		t.Errorf("expected exactly 2 resolved defs, got %d: %v", len(got), got)
+	}
+}
+
 // TestLodgingFieldDefIDsMapsByCMID proves resolution goes through cm_id, not the
 // display name (spec 4.4). The fixture renames a field to something the name
 // would never match; the mapping must still be found.

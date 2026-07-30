@@ -655,8 +655,10 @@ export type FamilyCampAdultsRecord = {
 }
 
 export type FamilyCampMedicalRecord = {
+  accommodation_explain?: string
   additional_info?: string
   allergy_info?: string
+  bathroom_explain?: string
   cpap_info?: string
   created: IsoAutoDateString
   dietary_info?: string
@@ -668,20 +670,37 @@ export type FamilyCampMedicalRecord = {
   year: number
 }
 
+export const FamilyCampRegistrationsShareCabinGateOptions = {
+  no_share: 'no_share',
+  maybe_mutual: 'maybe_mutual',
+  yes_share: 'yes_share',
+} as const
+export type FamilyCampRegistrationsShareCabinGateOptions =
+  (typeof FamilyCampRegistrationsShareCabinGateOptions)[keyof typeof FamilyCampRegistrationsShareCabinGateOptions]
 export type FamilyCampRegistrationsRecord = {
+  accommodation_is_mandatory?: boolean
   arrival_eta?: string
   cabin_assignment?: string
   created: IsoAutoDateString
   goals?: string
+  has_infant?: boolean
   household: RecordIdString
   id: string
   needs_accommodation?: boolean
+  needs_power?: boolean
+  needs_private_bathroom?: boolean
   notes?: string
   opt_out_vip?: boolean
+  request_last_updated?: IsoDateString
+  request_source_field?: string
+  request_text?: string
+  share_cabin_gate?: FamilyCampRegistrationsShareCabinGateOptions
   share_cabin_preference?: string
-  shared_cabin_with?: string
+  shared_cabin_modes_raw?: string
   special_occasions?: string
   updated: IsoAutoDateString
+  wants_near?: boolean
+  wants_with?: boolean
   year: number
 }
 
