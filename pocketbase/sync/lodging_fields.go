@@ -79,7 +79,10 @@ const (
 // key -- resolution goes through the cm_ids above. They exist as constants only
 // because the same literals appear in family_camp_derived.go's name-routed
 // switch, and goconst counts a third occurrence as drift waiting to happen.
-const fieldNameFamilyCampCabin = "Family Camp Cabin"
+const (
+	fieldNameFamilyCampCabin           = "Family Camp Cabin"
+	fieldNameReportableFamilyCampCabin = "Reportable Family Camp Cabin"
+)
 
 // lodgingSourceField is one CampMinder custom field the lodging ingest reads.
 type lodgingSourceField struct {
@@ -100,7 +103,7 @@ type lodgingSourceField struct {
 var lodgingSourceFields = []lodgingSourceField{
 	{CMID: cmIDFamilyCampCabin, Name: fieldNameFamilyCampCabin,
 		Target: targetCabinAssignmentHousehold, Grain: grainHousehold},
-	{CMID: cmIDReportableFamilyCampCabin, Name: "Reportable Family Camp Cabin",
+	{CMID: cmIDReportableFamilyCampCabin, Name: fieldNameReportableFamilyCampCabin,
 		Target: targetCabinAssignmentPerson, Grain: grainPerson},
 }
 

@@ -63,48 +63,54 @@ func TestPHICollectionsAreNotExported(t *testing.T) {
 	}
 }
 
-// TestLodgingCollectionsAreNotExported: nothing this plan created goes to
-// Sheets. lodging_ingest_issues carries verbatim request text, and
-// lodging_assignments ties a household to a room -- neither belongs in a
-// spreadsheet that gets shared around.
-func TestLodgingCollectionsAreNotExported(t *testing.T) {
-	forbidden := map[string]bool{
-		"lodging_assignments":        true,
-		"lodging_assignment_history": true,
-		"lodging_merges":             true,
-		"lodging_availability":       true,
-		"lodging_ingest_issues":      true,
-		"lodging_field_mappings":     true,
+// TestLodgingCollectionsAreNeverExported guards the claim SyncJobToCollections
+// makes about the lodging ingest: its entry exists so the export-skip
+// optimisation knows which collections the job writes, NOT because any of them
+// is exported.
+//
+// The distinction matters because the two lists look interchangeable and are
+// not. SyncJobToCollections is a write manifest; GetReadableYearExports is a
+// publish list that ships rows to Google Sheets. lodging_assignments and
+// lodging_assignment_history carry per-household and per-person placement --
+// who slept where -- which is exactly the shape of data family_camp_medical is
+// deliberately kept out of the publish list for.
+//
+// Without this test the invariant is a comment, and the failure mode is silent:
+// a future lodging-board export lands in GetReadableYearExports, nothing goes
+// red, and placement data reaches a spreadsheet.
+//
+// This arrived on the Phase B2 branch (#1880) and supersedes the two narrower
+// tests Phase C carried in its place. Those named the lodging collections in a
+// literal list and keyed the manifest check off a string literal, because
+// serviceNameLodgingAssignments did not exist on this branch yet. It does now,
+// so the prefix scan below covers every lodging collection including ones not
+// yet written, and the manifest half is live rather than inert.
+func TestLodgingCollectionsAreNeverExported(t *testing.T) {
+	exported := map[string]string{}
+	for _, cfg := range GetReadableYearExports() {
+		exported[cfg.Collection] = "GetReadableYearExports"
+	}
+	for _, cfg := range GetReadableGlobalExports() {
+		exported[cfg.Collection] = "GetReadableGlobalExports"
 	}
 
-	for _, cfg := range append(GetReadableYearExports(), GetReadableGlobalExports()...) {
-		if forbidden[cfg.Collection] {
-			t.Errorf("lodging collection %q is exported to sheet %q", cfg.Collection, cfg.SheetName)
+	for collection, where := range exported {
+		if strings.HasPrefix(collection, "lodging_") {
+			t.Errorf("%s exports %q; lodging collections carry placement data and must not ship to Sheets",
+				where, collection)
 		}
 	}
-}
 
-// TestSyncJobToCollectionsIsNotAnExportList guards against the easy misreading
-// of the entry the ingest phase adds to that map. It exists ONLY so the
-// export-skip optimisation knows which collections a job writes; membership must
-// never imply an export.
-//
-// The job name is written as a literal rather than serviceNameLodgingAssignments
-// because that constant ships on the ingest branch, not this one. A missing key
-// yields a nil slice and the loop simply does not run, so this test is inert
-// here and becomes live the moment the two branches meet -- which is the point
-// at which the misreading it guards against becomes possible.
-func TestSyncJobToCollectionsIsNotAnExportList(t *testing.T) {
-	exported := map[string]bool{}
-	for _, cfg := range append(GetReadableYearExports(), GetReadableGlobalExports()...) {
-		exported[cfg.Collection] = true
+	// The write manifest is the other half of the claim: every collection the
+	// ingest writes has to be listed there, or the export-skip optimisation
+	// silently misses it.
+	written, ok := SyncJobToCollections[serviceNameLodgingAssignments]
+	if !ok {
+		t.Fatal("lodging_assignments missing from SyncJobToCollections")
 	}
-
-	for _, job := range []string{"lodging_assignments", "family_camp_derived"} {
-		for _, collection := range SyncJobToCollections[job] {
-			if exported[collection] {
-				t.Errorf("%q is both in SyncJobToCollections[%q] and exported", collection, job)
-			}
+	for _, collection := range written {
+		if where, isExported := exported[collection]; isExported {
+			t.Errorf("%s is both written by the ingest and exported by %s", collection, where)
 		}
 	}
 }

@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/pocketbase/dbx"
 	"github.com/pocketbase/pocketbase/core"
 )
 
@@ -39,6 +40,27 @@ type Attribution struct {
 	Candidates []SessionWindow
 	Reason     string
 	BestGuess  string
+}
+
+// SessionCMID returns the attributed session's CampMinder id, or 0 when nothing
+// was attributed.
+//
+// The placement tables require this column (migration 1500000124): camp_sessions
+// is unique on (cm_id, year), so its PB record id is scoped to one season and
+// cannot carry a cross-year question. Reading the id off the matching candidate
+// rather than re-querying keeps the pair consistent -- an assignment whose
+// session_cm_id disagreed with its session relation would be worse than either
+// alone.
+func (a Attribution) SessionCMID() int {
+	if a.SessionID == "" {
+		return 0
+	}
+	for _, c := range a.Candidates {
+		if c.ID == a.SessionID {
+			return c.CMID
+		}
+	}
+	return 0
 }
 
 // CandidateCMIDs returns the candidate session CampMinder ids, for the queue item.
@@ -214,11 +236,11 @@ func loadPersonHouseholdCMIDs(app core.App, year int) (map[int]int, error) {
 // a one-weekend one, so an ambiguous_session becomes a CONFIDENT WRONG
 // attribution once Task 11 starts writing assignments. `id` is unique and
 // immutable, so it is a stable page key.
-func findAllRecords(app core.App, collection, filter string) ([]*core.Record, error) {
+func findAllRecords(app core.App, collection, filter string, params ...dbx.Params) ([]*core.Record, error) {
 	const perPage = 500
 	var all []*core.Record
 	for page := 1; ; page++ {
-		batch, err := app.FindRecordsByFilter(collection, filter, "id", perPage, (page-1)*perPage)
+		batch, err := app.FindRecordsByFilter(collection, filter, "id", perPage, (page-1)*perPage, params...)
 		if err != nil {
 			return nil, fmt.Errorf("querying %s page %d: %w", collection, page, err)
 		}

@@ -72,6 +72,7 @@ export interface SyncStatusResponse {
   // Transform phase (derived tables)
   camper_history: SyncStatus
   family_camp_derived: SyncStatus
+  lodging_assignments: SyncStatus
   staff_skills: SyncStatus
   financial_aid_applications: SyncStatus
   household_demographics: SyncStatus

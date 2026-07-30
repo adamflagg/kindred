@@ -14,7 +14,7 @@ has_field() {
     WHERE _collections.name = '$1' AND json_extract(value, '\$.name') = '$2'"
 }
 
-# All ten columns 1500000123 adds. request_last_updated was missing from this
+# All ten columns 1500000126 adds. request_last_updated was missing from this
 # list, so the one column spec 4.1's precedence logic reads was the one the gate
 # could not have caught going away.
 for f in share_cabin_gate wants_near wants_with request_text request_source_field \

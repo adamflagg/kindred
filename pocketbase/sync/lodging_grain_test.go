@@ -68,12 +68,18 @@ func TestValidateAssignmentGrain(t *testing.T) {
 // invariant has no database backing.
 func TestAssignmentGrainIllegalStatesReallySaveInPocketBase(t *testing.T) {
 	app := newLodgingTestApp(t)
-	sess := addSession(t, app, 1309514, "Family Camp 1", "family",
+	sess := addSession(t, app, cmIDFamilyCamp1, "Family Camp 1", "family",
 		"2025-05-23 07:00:00.000Z", "2025-05-26 07:00:00.000Z", 2025)
 
 	// Neither party, no placement: the emptiest illegal row there is.
+	//
+	// session and session_cm_id are supplied only because migration 1500000124
+	// makes them required, which is a separate invariant PocketBase DOES enforce.
+	// Leaving session_cm_id out would fail this test on that column instead, and
+	// the grain question -- the one thing it exists to answer -- would go untested.
 	id := saveRecord(t, app, "lodging_assignments", map[string]any{
-		"session": sess, "year": 2025, "source": "campminder_sync",
+		"session": sess, "session_cm_id": cmIDFamilyCamp1, "year": 2025,
+		"source": "campminder_sync",
 	})
 	if id == "" {
 		t.Fatal("expected PocketBase to accept the row (that is the point of this test)")

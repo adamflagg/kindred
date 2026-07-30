@@ -209,6 +209,13 @@ export const YEAR_SYNC_TYPES = [
     phase: 'transform' as SyncPhase,
   },
   {
+    id: 'lodging_assignments',
+    name: 'Lodging Assignments',
+    icon: BedDouble,
+    color: 'text-amber-600',
+    phase: 'transform' as SyncPhase,
+  },
+  {
     id: 'staff_skills',
     name: 'Staff Skills',
     icon: Sparkles,
