@@ -270,12 +270,35 @@ func (s *FamilyCampDerivedSync) loadFieldDefinitions(_ context.Context) (map[str
 
 	for _, record := range records {
 		name := normalizeFieldName(record.GetString("name"))
-		if isFamilyCampField(name) {
+		if isFamilyCampField(name) || extraFieldCMIDs[record.GetInt("cm_id")] {
 			result[record.Id] = name
 		}
 	}
 
 	return result, nil
+}
+
+// extraFieldCMIDs lists source fields the family-camp NAME heuristic cannot see,
+// matched on custom_field_defs.cm_id per spec 4.4 ("Source fields are matched on
+// custom_field_defs.cm_id, not the user-editable display name").
+//
+// Two reasons a field lands here: it dropped the "Family Camp" prefix in a later
+// generation (Housing Accommodation succeeded FAM Camp-Accommodation in 2025), or
+// CampMinder spelled it inconsistently (Housing Accomodation, one m, is the
+// Adult-partition twin of Housing Accommodation). Names are comments; the ids
+// are the contract.
+var extraFieldCMIDs = map[int]bool{
+	274057: true, // Housing Accommodation        (Camper) — successor to FAM Camp-Accommodation
+	274055: true, // Housing Accomodation  (sic)  (Adult)
+	274058: true, // Housing Accommodation-Yes    (Camper)
+	274059: true, // Housing-Bathroom             (Camper) — PHI narrative, spec 5
+	274053: true, // Adult-Bathroom               (Adult)
+	274054: true, // Bathroom-Yes                 (Adult)  — PHI narrative, spec 5
+	256933: true, // Adult-CPAP                   (Adult)
+	257248: true, // Adult-Infant                 (Adult)
+	256935: true, // Adult-Opt Out                (Adult)
+	274133: true, // Shared-request               (Camper) — request free text, spec 4.1
+	206286: true, // COVID-19 Bunking Requests    (Camper) — 2nd request detail, misleading legacy name
 }
 
 // normalizeFieldName trims a CampMinder custom-field display name.
@@ -576,6 +599,10 @@ func (s *FamilyCampDerivedSync) processRegistrations(
 			if reg.specialOccasions == "" {
 				reg.specialOccasions = v.value
 			}
+		// Retired after 2024 (645 values that year, 0 since) and no successor
+		// exists. Kept because spec 4.4 forbids auto-inferring retirement and
+		// because this plan backfills 2024. lodging_field_mappings carries the
+		// passive "0 values this year" warning instead.
 		case "Family Camp-Goals Attending":
 			if reg.goals == "" {
 				reg.goals = v.value
@@ -584,10 +611,15 @@ func (s *FamilyCampDerivedSync) processRegistrations(
 			if reg.notes == "" {
 				reg.notes = v.value
 			}
-		case "FAM Camp-Accommodation":
-			reg.needsAccommodation = parseBoolFieldValue(v.value)
-		case "FAM CAMP-Opt Out VIP":
-			reg.optOutVIP = parseBoolFieldValue(v.value)
+		// Three generations of the same question. FAM Camp-Accommodation retired
+		// after 2024 (5 values in 2025, 0 in 2026); Housing Accommodation is the
+		// Camper successor and Housing Accomodation (one m) the Adult twin. Any
+		// "yes" among them means the household needs an accommodation, so this
+		// arm ORs rather than first-wins.
+		case "FAM Camp-Accommodation", "Housing Accommodation", "Housing Accomodation":
+			reg.needsAccommodation = reg.needsAccommodation || parseBoolFieldValue(v.value)
+		case "FAM CAMP-Opt Out VIP", "Adult-Opt Out":
+			reg.optOutVIP = reg.optOutVIP || parseBoolFieldValue(v.value)
 		}
 	}
 

@@ -8,7 +8,9 @@ import (
 	"testing"
 
 	"github.com/pocketbase/pocketbase/core"
-	"github.com/pocketbase/pocketbase/tests"
+	// Aliased: this file has several local table-driven `tests` variables that
+	// would shadow the package name (gocritic importShadow).
+	pbtests "github.com/pocketbase/pocketbase/tests"
 )
 
 // Test data constants
@@ -1325,7 +1327,7 @@ func extractRegistrationsFromHouseholds(values []testHouseholdCustomValue) map[i
 // leading and trailing whitespace in text fields.
 func newFieldDefsTestApp(t *testing.T, defs map[int]string) core.App {
 	t.Helper()
-	app, err := tests.NewTestApp()
+	app, err := pbtests.NewTestApp()
 	if err != nil {
 		t.Fatalf("NewTestApp: %v", err)
 	}
@@ -1395,5 +1397,87 @@ func TestNormalizeFieldName(t *testing.T) {
 		if got := normalizeFieldName(in); got != want {
 			t.Errorf("normalizeFieldName(%q) = %q, want %q", in, got, want)
 		}
+	}
+}
+
+// TestLoadFieldDefinitionsIncludesCMIDAllowlist covers the retired-field defect.
+// "Housing Accommodation" (cm_id 274057) succeeded "FAM Camp-Accommodation"
+// (223999) in 2025, but its NAME matches none of the family-camp substrings that
+// isFamilyCampField tests, so the name heuristic alone cannot reach it. Spec 4.4
+// requires matching on cm_id for exactly this reason: display names are
+// user-editable and CampMinder's own spelling is inconsistent ("Housing
+// Accomodation", one m, is the Adult-partition twin).
+func TestLoadFieldDefinitionsIncludesCMIDAllowlist(t *testing.T) {
+	app := newFieldDefsTestApp(t, map[int]string{
+		223999: "FAM Camp-Accommodation", // retired but kept for 2023/2024 backfill
+		274057: "Housing Accommodation",  // Camper successor, name heuristic misses it
+		274055: "Housing Accomodation",   // Adult twin, CampMinder's own typo
+		274133: "Shared-request",         // request-layer free text (spec 4.1)
+		206286: "COVID-19 Bunking Requests",
+		34140:  "CA-Register for Family Camp", // matched by the NAME heuristic
+		999999: "SVI-Vehicle Make",            // unrelated: must NOT be loaded
+	})
+
+	s := NewFamilyCampDerivedSync(app)
+	got, err := s.loadFieldDefinitions(context.Background())
+	if err != nil {
+		t.Fatalf("loadFieldDefinitions: %v", err)
+	}
+
+	loaded := make(map[string]bool, len(got))
+	for _, name := range got {
+		loaded[name] = true
+	}
+
+	for _, want := range []string{
+		"FAM Camp-Accommodation",
+		"Housing Accommodation",
+		"Housing Accomodation",
+		"Shared-request",
+		"COVID-19 Bunking Requests",
+		"CA-Register for Family Camp",
+	} {
+		if !loaded[want] {
+			t.Errorf("loadFieldDefinitions did not load %q", want)
+		}
+	}
+	if loaded["SVI-Vehicle Make"] {
+		t.Error("loadFieldDefinitions loaded an unrelated field; the allowlist is too wide")
+	}
+}
+
+// TestProcessRegistrationsAccommodationSuccessor proves the successor field
+// actually reaches the needs_accommodation column, not merely the field map.
+func TestProcessRegistrationsAccommodationSuccessor(t *testing.T) {
+	s := NewFamilyCampDerivedSync(nil)
+
+	// 2026-shaped input: only the successor field is answered.
+	personValues := []customValueEntry{
+		{householdPBID: "hh_emma", fieldName: "Housing Accommodation", value: "Yes"},
+	}
+	regs := s.processRegistrations(nil, personValues)
+	if len(regs) != 1 {
+		t.Fatalf("expected 1 registration, got %d", len(regs))
+	}
+	if !regs[0].needsAccommodation {
+		t.Error("Housing Accommodation=Yes did not set needsAccommodation")
+	}
+
+	// 2024-shaped input: only the retired field is answered. Still works.
+	legacy := []customValueEntry{
+		{householdPBID: "hh_liam", fieldName: "FAM Camp-Accommodation", value: "Yes"},
+	}
+	legacyRegs := s.processRegistrations(nil, legacy)
+	if len(legacyRegs) != 1 || !legacyRegs[0].needsAccommodation {
+		t.Error("retired FAM Camp-Accommodation stopped working; 2024 backfill would lose it")
+	}
+
+	// Adult partition, CampMinder's own misspelling.
+	adult := []customValueEntry{
+		{householdPBID: "hh_noah", fieldName: "Housing Accomodation", value: "Yes"},
+	}
+	adultRegs := s.processRegistrations(nil, adult)
+	if len(adultRegs) != 1 || !adultRegs[0].needsAccommodation {
+		t.Error("Housing Accomodation (one m) did not set needsAccommodation")
 	}
 }
