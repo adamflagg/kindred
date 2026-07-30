@@ -269,13 +269,55 @@ func (s *FamilyCampDerivedSync) loadFieldDefinitions(_ context.Context) (map[str
 	}
 
 	for _, record := range records {
-		name := record.GetString("name")
-		if isFamilyCampField(name) {
+		name := normalizeFieldName(record.GetString("name"))
+		if isFamilyCampField(name) || extraFieldCMIDs[record.GetInt("cm_id")] {
 			result[record.Id] = name
 		}
 	}
 
 	return result, nil
+}
+
+// extraFieldCMIDs lists source fields the family-camp NAME heuristic cannot see,
+// matched on custom_field_defs.cm_id per spec 4.4 ("Source fields are matched on
+// custom_field_defs.cm_id, not the user-editable display name").
+//
+// Two reasons a field lands here: it dropped the "Family Camp" prefix in a later
+// generation (Housing Accommodation succeeded FAM Camp-Accommodation in 2025), or
+// CampMinder spelled it inconsistently (Housing Accomodation, one m, is the
+// Adult-partition twin of Housing Accommodation).
+//
+// Scope: these ids govern only whether a definition is ADMITTED into the field
+// map, so admission survives a rename. Semantic routing downstream still
+// switches on the display name, so a rename in CampMinder would silently stop
+// an answer reaching its column — the same failure this allowlist exists to
+// fix. Closing that half needs the cm_id-keyed registry in lodging_fields.go
+// (Phase B); until it lands, the names below are load-bearing, not decorative.
+var extraFieldCMIDs = map[int]bool{
+	274057: true, // Housing Accommodation        (Camper) — successor to FAM Camp-Accommodation
+	274055: true, // Housing Accomodation  (sic)  (Adult)
+	274058: true, // Housing Accommodation-Yes    (Camper)
+	274059: true, // Housing-Bathroom             (Camper) — PHI narrative, spec 5
+	274053: true, // Adult-Bathroom               (Adult)
+	274054: true, // Bathroom-Yes                 (Adult)  — PHI narrative, spec 5
+	256933: true, // Adult-CPAP                   (Adult)
+	257248: true, // Adult-Infant                 (Adult)
+	256935: true, // Adult-Opt Out                (Adult)
+	274133: true, // Shared-request               (Camper) — request free text, spec 4.1
+	206286: true, // COVID-19 Bunking Requests    (Camper) — 2nd request detail, misleading legacy name
+}
+
+// normalizeFieldName trims a CampMinder custom-field display name.
+//
+// CampMinder does not validate these names, and at least one shipped field
+// carries a trailing space: "Family Camp-Physician " (cm_id 39680). The
+// switch and map lookups in this file compare field names by exact string
+// equality (the substring checks in isFamilyCampField and processAdults are
+// unaffected), so an untrimmed name silently matches nothing. Trim once, at
+// the load boundary, so every downstream comparison is against a canonical
+// name.
+func normalizeFieldName(name string) string {
+	return strings.TrimSpace(name)
 }
 
 // isFamilyCampField checks if a field name is related to family camp
@@ -565,6 +607,11 @@ func (s *FamilyCampDerivedSync) processRegistrations(
 			if reg.specialOccasions == "" {
 				reg.specialOccasions = v.value
 			}
+		// Retired after 2024 (645 values that year, 0 since) and no successor
+		// exists. Kept because spec 4.4 forbids auto-inferring retirement and
+		// because this plan backfills 2024. The passive "0 values this year"
+		// warning will live in lodging_field_mappings, a collection Phase B
+		// adds — it does not exist yet.
 		case "Family Camp-Goals Attending":
 			if reg.goals == "" {
 				reg.goals = v.value
@@ -573,10 +620,15 @@ func (s *FamilyCampDerivedSync) processRegistrations(
 			if reg.notes == "" {
 				reg.notes = v.value
 			}
-		case "FAM Camp-Accommodation":
-			reg.needsAccommodation = parseBoolFieldValue(v.value)
-		case "FAM CAMP-Opt Out VIP":
-			reg.optOutVIP = parseBoolFieldValue(v.value)
+		// Three generations of the same question. FAM Camp-Accommodation retired
+		// after 2024 (5 values in 2025, 0 in 2026); Housing Accommodation is the
+		// Camper successor and Housing Accomodation (one m) the Adult twin. Any
+		// "yes" among them means the household needs an accommodation, so this
+		// arm ORs rather than first-wins.
+		case "FAM Camp-Accommodation", "Housing Accommodation", "Housing Accomodation":
+			reg.needsAccommodation = reg.needsAccommodation || parseBoolFieldValue(v.value)
+		case "FAM CAMP-Opt Out VIP", "Adult-Opt Out":
+			reg.optOutVIP = reg.optOutVIP || parseBoolFieldValue(v.value)
 		}
 	}
 
@@ -739,10 +791,44 @@ func extractAdultNumberFromField(fieldName string) int {
 	return 0
 }
 
-// parseBoolFieldValue parses boolean values from custom field strings
+// parseBoolFieldValue parses boolean values from custom field strings.
+//
+// CampMinder single-select fields store the FULL option text, not a token, so a
+// yes/no question can arrive as a whole sentence:
+//
+//	"Yes, please register regardless of cabin type"          -> true
+//	"No, I am only able to attend with this accommodation..."  -> false
+//
+// Anchoring on the leading word rather than the whole string is what makes both
+// shapes work. It must stay an anchor and not a substring search: "No, yes is
+// not my answer" and "Not yes" are both false, and "Yesterday" is not a yes.
+//
+// The bare tokens "yes", "y", "true" and "1" also return true, so plain-answer
+// fields (FAM Camp-Accommodation and both Housing Accommodation spellings all
+// store a bare "Yes"/"No") work unchanged.
 func parseBoolFieldValue(value string) bool {
 	lower := strings.ToLower(strings.TrimSpace(value))
-	return lower == boolYes || lower == boolTrueStr || lower == "1"
+	switch lower {
+	case boolYes, boolTrueStr, "1", "y":
+		return true
+	case "":
+		return false
+	}
+
+	// Leading-token match: "yes" followed by a separator, never mid-word.
+	const yesPrefix = boolYes
+	if !strings.HasPrefix(lower, yesPrefix) {
+		return false
+	}
+	rest := lower[len(yesPrefix):]
+	if rest == "" {
+		return true
+	}
+	switch rest[0] {
+	case ' ', ',', '.', ';', ':', '-', '(':
+		return true
+	}
+	return false
 }
 
 // ============================================================================

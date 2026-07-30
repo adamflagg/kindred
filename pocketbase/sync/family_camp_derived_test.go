@@ -1,10 +1,16 @@
 package sync
 
 import (
+	"context"
 	"fmt"
 	"slices"
 	"strings"
 	"testing"
+
+	"github.com/pocketbase/pocketbase/core"
+	// Aliased: this file has several local table-driven `tests` variables that
+	// would shadow the package name (gocritic importShadow).
+	pbtests "github.com/pocketbase/pocketbase/tests"
 )
 
 // Test data constants
@@ -317,18 +323,24 @@ func TestMedicalDeduplicationByHousehold(t *testing.T) {
 	}
 }
 
-// TestBoolFieldParsing tests parsing of boolean custom field values
+// TestBoolFieldParsing exercises the PRODUCTION parseBoolFieldValue. The previous
+// version of this test called a byte-identical local copy, which is why the
+// sentence-prefixed cases below went undetected: fixing production code could
+// not have made the old test fail.
 func TestBoolFieldParsing(t *testing.T) {
 	tests := []struct {
 		value    string
 		expected bool
 	}{
+		// Plain answers (FAM Camp-Accommodation, Housing Accommodation,
+		// FAM CAMP-bathroom all store bare "Yes" / "No").
 		{"Yes", true},
 		{"yes", true},
 		{"YES", true},
 		{"True", true},
 		{"true", true},
 		{"1", true},
+		{"y", true},
 		{"No", false},
 		{"no", false},
 		{"NO", false},
@@ -337,14 +349,28 @@ func TestBoolFieldParsing(t *testing.T) {
 		{"0", false},
 		{"", false},
 		{"N/A", false},
-		{"Maybe", false}, // Non-standard values treated as false
+		{"Maybe", false},
+		// Sentence-prefixed answers. CampMinder stores the whole option text for
+		// single-select fields; FAM CAMP-Opt Out VIP has exactly these two values.
+		{"Yes, please register regardless of cabin type", true},
+		{"No, I am only able to attend with this accommodation in place", false},
+		// Spacing and casing variants of the same shape.
+		{"yes, please register regardless of cabin type", true},
+		{"  Yes, please register regardless of cabin type  ", true},
+		{"Yes - I need this", true},
+		{"Yes I need this", true},
+		// Must NOT match: "yes" appearing anywhere other than the leading token.
+		{"Not yes", false},
+		{"Maybe yes, maybe no", false},
+		{"No, yes is not my answer", false},
+		{"Yesterday", false},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.value, func(t *testing.T) {
-			result := parseBoolField(tt.value)
+			result := parseBoolFieldValue(tt.value)
 			if result != tt.expected {
-				t.Errorf("parseBoolField(%q) = %v, want %v", tt.value, result, tt.expected)
+				t.Errorf("parseBoolFieldValue(%q) = %v, want %v", tt.value, result, tt.expected)
 			}
 		})
 	}
@@ -747,12 +773,6 @@ func aggregateMedicalByHousehold(values []testPersonCustomValue) map[int]*testMe
 	}
 
 	return result
-}
-
-// parseBoolField parses boolean values from custom field strings
-func parseBoolField(value string) bool {
-	lower := strings.ToLower(strings.TrimSpace(value))
-	return lower == boolYes || lower == boolTrueStr || lower == "1"
 }
 
 // ============================================================================
@@ -1288,11 +1308,257 @@ func extractRegistrationsFromHouseholds(values []testHouseholdCustomValue) map[i
 		case "Family Camp-Anything else":
 			reg.Notes = v.Value
 		case "FAM Camp-Accommodation":
-			reg.NeedsAccommodation = parseBoolField(v.Value)
+			reg.NeedsAccommodation = parseBoolFieldValue(v.Value)
 		case "FAM CAMP-Opt Out VIP":
-			reg.OptOutVIP = parseBoolField(v.Value)
+			reg.OptOutVIP = parseBoolFieldValue(v.Value)
 		}
 	}
 
 	return result
+}
+
+// ============================================================================
+// Source-field correctness (spec 4.4) - these call the PRODUCTION functions
+// ============================================================================
+
+// newFieldDefsTestApp returns a throwaway PocketBase app with a custom_field_defs
+// collection shaped like production's (cm_id + name), pre-populated with the
+// given (cm_id, name) pairs. Names are stored VERBATIM - PocketBase preserves
+// leading and trailing whitespace in text fields.
+func newFieldDefsTestApp(t *testing.T, defs map[int]string) core.App {
+	t.Helper()
+	app, err := pbtests.NewTestApp()
+	if err != nil {
+		t.Fatalf("NewTestApp: %v", err)
+	}
+	t.Cleanup(app.Cleanup)
+
+	col := core.NewBaseCollection("custom_field_defs")
+	col.Fields.Add(&core.NumberField{Name: "cm_id"})
+	col.Fields.Add(&core.TextField{Name: "name"})
+	if err := app.Save(col); err != nil {
+		t.Fatalf("save custom_field_defs: %v", err)
+	}
+	for cmID, name := range defs {
+		r := core.NewRecord(col)
+		r.Set("cm_id", cmID)
+		r.Set("name", name)
+		if err := app.Save(r); err != nil {
+			t.Fatalf("save field def %d: %v", cmID, err)
+		}
+	}
+	return app
+}
+
+// TestLoadFieldDefinitionsTrimsNames is a regression test for the trailing-space
+// defect. CampMinder ships "Family Camp-Physician " (cm_id 39680) with a trailing
+// space, while processMedical looks it up as "Family Camp-Physician". Before the
+// fix the exact-match lookup missed every Physician answer ever recorded.
+func TestLoadFieldDefinitionsTrimsNames(t *testing.T) {
+	app := newFieldDefsTestApp(t, map[int]string{
+		39680: "Family Camp-Physician ", // trailing space, verbatim from CampMinder
+		39681: "Family Camp-Physician If Yes",
+		36526: "Family Camp-Goals Attending",
+	})
+
+	s := NewFamilyCampDerivedSync(app)
+	got, err := s.loadFieldDefinitions(context.Background())
+	if err != nil {
+		t.Fatalf("loadFieldDefinitions: %v", err)
+	}
+
+	want := map[string]bool{
+		"Family Camp-Physician":        true,
+		"Family Camp-Physician If Yes": true,
+		"Family Camp-Goals Attending":  true,
+	}
+	for _, name := range got {
+		if !want[name] {
+			t.Errorf("loadFieldDefinitions returned %q; expected a trimmed name", name)
+		}
+		delete(want, name)
+	}
+	for missing := range want {
+		t.Errorf("loadFieldDefinitions did not return %q", missing)
+	}
+}
+
+// TestNormalizeFieldName pins the trimming rule itself so callers other than
+// loadFieldDefinitions can rely on it — Phase B's lodging_fields.go registry
+// will be the second one. That file does not exist yet.
+func TestNormalizeFieldName(t *testing.T) {
+	cases := map[string]string{
+		"Family Camp-Physician ":   "Family Camp-Physician",
+		" Family Camp Cabin":       "Family Camp Cabin",
+		"\tFAM CAMP-Shared Cabin ": "FAM CAMP-Shared Cabin",
+		"Family Camp Cabin":        "Family Camp Cabin",
+		"":                         "",
+	}
+	for in, want := range cases {
+		if got := normalizeFieldName(in); got != want {
+			t.Errorf("normalizeFieldName(%q) = %q, want %q", in, got, want)
+		}
+	}
+}
+
+// TestLoadFieldDefinitionsIncludesCMIDAllowlist covers the retired-field defect.
+// "Housing Accommodation" (cm_id 274057) succeeded "FAM Camp-Accommodation"
+// (223999) in 2025, but its NAME matches none of the family-camp substrings that
+// isFamilyCampField tests, so the name heuristic alone cannot reach it. Spec 4.4
+// requires matching on cm_id for exactly this reason: display names are
+// user-editable and CampMinder's own spelling is inconsistent ("Housing
+// Accomodation", one m, is the Adult-partition twin).
+func TestLoadFieldDefinitionsIncludesCMIDAllowlist(t *testing.T) {
+	app := newFieldDefsTestApp(t, map[int]string{
+		223999: "FAM Camp-Accommodation", // retired but kept for 2023/2024 backfill
+		274057: "Housing Accommodation",  // Camper successor, name heuristic misses it
+		274055: "Housing Accomodation",   // Adult twin, CampMinder's own typo
+		274133: "Shared-request",         // request-layer free text (spec 4.1)
+		206286: "COVID-19 Bunking Requests",
+		34140:  "CA-Register for Family Camp", // matched by the NAME heuristic
+		999999: "SVI-Vehicle Make",            // unrelated: must NOT be loaded
+	})
+
+	s := NewFamilyCampDerivedSync(app)
+	got, err := s.loadFieldDefinitions(context.Background())
+	if err != nil {
+		t.Fatalf("loadFieldDefinitions: %v", err)
+	}
+
+	loaded := make(map[string]bool, len(got))
+	for _, name := range got {
+		loaded[name] = true
+	}
+
+	for _, want := range []string{
+		"FAM Camp-Accommodation",
+		"Housing Accommodation",
+		"Housing Accomodation",
+		"Shared-request",
+		"COVID-19 Bunking Requests",
+		"CA-Register for Family Camp",
+	} {
+		if !loaded[want] {
+			t.Errorf("loadFieldDefinitions did not load %q", want)
+		}
+	}
+	if loaded["SVI-Vehicle Make"] {
+		t.Error("loadFieldDefinitions loaded an unrelated field; the allowlist is too wide")
+	}
+}
+
+// TestProcessRegistrationsAccommodationSuccessor proves the successor field
+// actually reaches the needs_accommodation column, not merely the field map.
+func TestProcessRegistrationsAccommodationSuccessor(t *testing.T) {
+	s := NewFamilyCampDerivedSync(nil)
+
+	// 2026-shaped input: only the successor field is answered.
+	personValues := []customValueEntry{
+		{householdPBID: "hh_emma", fieldName: "Housing Accommodation", value: "Yes"},
+	}
+	regs := s.processRegistrations(nil, personValues)
+	if len(regs) != 1 {
+		t.Fatalf("expected 1 registration, got %d", len(regs))
+	}
+	if !regs[0].needsAccommodation {
+		t.Error("Housing Accommodation=Yes did not set needsAccommodation")
+	}
+
+	// 2024-shaped input: only the retired field is answered. Still works.
+	legacy := []customValueEntry{
+		{householdPBID: "hh_liam", fieldName: "FAM Camp-Accommodation", value: "Yes"},
+	}
+	legacyRegs := s.processRegistrations(nil, legacy)
+	if len(legacyRegs) != 1 || !legacyRegs[0].needsAccommodation {
+		t.Error("retired FAM Camp-Accommodation stopped working; 2024 backfill would lose it")
+	}
+
+	// Adult partition, CampMinder's own misspelling.
+	adult := []customValueEntry{
+		{householdPBID: "hh_noah", fieldName: "Housing Accomodation", value: "Yes"},
+	}
+	adultRegs := s.processRegistrations(nil, adult)
+	if len(adultRegs) != 1 || !adultRegs[0].needsAccommodation {
+		t.Error("Housing Accomodation (one m) did not set needsAccommodation")
+	}
+}
+
+// TestProcessRegistrationsBoolFieldsOrAcrossPersons pins the OR aggregation
+// itself, which is the behavior that changed when these two arms stopped
+// assigning and started ORing.
+//
+// The "No" deliberately comes LAST in every case: under the previous
+// last-wins assignment each of these would collapse to false, so a passing
+// run proves the OR is real rather than incidental. processRegistrations
+// iterates person values, and a household has several people, so disagreement
+// between household members is the normal case, not an edge case.
+func TestProcessRegistrationsBoolFieldsOrAcrossPersons(t *testing.T) {
+	s := NewFamilyCampDerivedSync(nil)
+
+	t.Run("accommodation ORs across household members", func(t *testing.T) {
+		regs := s.processRegistrations(nil, []customValueEntry{
+			{householdPBID: "hh_johnson", fieldName: "Housing Accommodation", value: "Yes"},
+			{householdPBID: "hh_johnson", fieldName: "Housing Accommodation", value: "No"},
+		})
+		if len(regs) != 1 {
+			t.Fatalf("expected 1 registration, got %d", len(regs))
+		}
+		if !regs[0].needsAccommodation {
+			t.Error("a later No overwrote an earlier Yes; the arm is assigning, not ORing")
+		}
+	})
+
+	t.Run("accommodation ORs across field generations", func(t *testing.T) {
+		regs := s.processRegistrations(nil, []customValueEntry{
+			{householdPBID: "hh_garcia", fieldName: "Housing Accommodation", value: "Yes"},
+			{householdPBID: "hh_garcia", fieldName: "Housing Accomodation", value: "No"},
+			{householdPBID: "hh_garcia", fieldName: "FAM Camp-Accommodation", value: "No"},
+		})
+		if len(regs) != 1 || !regs[0].needsAccommodation {
+			t.Error("a Yes on one generation was lost to a No on another")
+		}
+	})
+
+	// Defect 2's field. CampMinder stores the whole option sentence here, so
+	// this also proves the sentence parser reaches the column and not just
+	// parseBoolFieldValue's unit test.
+	t.Run("opt out VIP reads Adult-Opt Out and the sentence values", func(t *testing.T) {
+		regs := s.processRegistrations(nil, []customValueEntry{
+			{
+				householdPBID: "hh_chen",
+				fieldName:     "Adult-Opt Out",
+				value:         "Yes, please register regardless of cabin type",
+			},
+			{
+				householdPBID: "hh_chen",
+				fieldName:     "FAM CAMP-Opt Out VIP",
+				value:         "No, I am only able to attend with this accommodation in place",
+			},
+		})
+		if len(regs) != 1 {
+			t.Fatalf("expected 1 registration, got %d", len(regs))
+		}
+		if !regs[0].optOutVIP {
+			t.Error("Adult-Opt Out=Yes did not survive a later No; arm is assigning, not ORing")
+		}
+	})
+
+	// The softer reading must stay opt-in: an all-No household is a blocker,
+	// not a warning (spec 4.5).
+	t.Run("all-No household does not opt out", func(t *testing.T) {
+		regs := s.processRegistrations(nil, []customValueEntry{
+			{
+				householdPBID: "hh_riley",
+				fieldName:     "FAM CAMP-Opt Out VIP",
+				value:         "No, I am only able to attend with this accommodation in place",
+			},
+			{householdPBID: "hh_riley", fieldName: "Housing Accommodation", value: "Yes"},
+		})
+		if len(regs) != 1 {
+			t.Fatalf("expected 1 registration, got %d", len(regs))
+		}
+		if regs[0].optOutVIP {
+			t.Error("optOutVIP set true with no affirmative answer")
+		}
+	})
 }

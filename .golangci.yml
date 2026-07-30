@@ -54,6 +54,11 @@ linters:
       extra-words:
         - typo: "cancelled"
           correction: "cancelled"
+        # CampMinder ships a custom field literally named "Housing Accomodation"
+        # (one m) alongside the correctly-spelled "Housing Accommodation". Both
+        # are real field names we must match on, so the typo is data, not a bug.
+        - typo: "accomodation"
+          correction: "accomodation"
     lll:
       line-length: 120
     nakedret:
