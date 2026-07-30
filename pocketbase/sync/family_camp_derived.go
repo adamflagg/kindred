@@ -7,6 +7,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/pocketbase/pocketbase/core"
 )
@@ -92,13 +93,35 @@ type registrationData struct {
 	householdPBID        string
 	cabinAssignment      string
 	shareCabinPreference string
-	sharedCabinWith      string
-	arrivalETA           string
-	specialOccasions     string
-	goals                string
-	notes                string
-	needsAccommodation   bool
-	optOutVIP            bool
+	// Renamed from sharedCabinWith by Task 16's migration. It never held "who
+	// they want to share with" -- it holds the pipe-delimited NEAR/WITH
+	// multi-select verbatim. wantsNear / wantsWith below are the parsed form.
+	sharedCabinModesRaw string
+	arrivalETA          string
+	specialOccasions    string
+	goals               string
+	notes               string
+	needsAccommodation  bool
+	optOutVIP           bool
+
+	// Household-grain request layer (spec 4). shareCabinPreference and
+	// sharedCabinModesRaw above stay as the RAW profile values; these are the
+	// normalised, deduplicated versions the board reads.
+	shareCabinGate     string
+	wantsNear          bool
+	wantsWith          bool
+	requestText        string
+	requestSourceField string
+	requestLastUpdated time.Time
+
+	// Derived accessibility flags. Spec 5.3: the board shows a flag, never the
+	// narrative -- that lives in family_camp_medical.
+	needsPrivateBathroom     bool
+	needsPower               bool
+	accommodationIsMandatory bool
+
+	// Housing-suitability signal rather than an accessibility need (kindred#1876).
+	hasInfant bool
 }
 
 // medicalData holds extracted medical information
@@ -110,6 +133,10 @@ type medicalData struct {
 	allergyInfo      string
 	dietaryInfo      string
 	additionalInfo   string
+	// PHI narrative. Detailed medical disclosures about named individuals.
+	// Never logged, never exported (see lodging_phi_test.go).
+	bathroomExplain      string
+	accommodationExplain string
 }
 
 // Sync executes the family camp derived computation
@@ -369,6 +396,10 @@ type customValueEntry struct {
 	householdPBID string
 	fieldName     string
 	value         string
+	// lastUpdated is CampMinder's own edit timestamp for this value. Spec 4.1
+	// resolves a form-vs-registration conflict by comparing these, not by field
+	// name precedence, so it has to survive the load.
+	lastUpdated time.Time
 }
 
 // loadHouseholdCustomValues loads household custom values for family camp fields
@@ -403,10 +434,12 @@ func (s *FamilyCampDerivedSync) loadHouseholdCustomValues(
 			householdID := record.GetString("household")
 			value := record.GetString("value")
 			if householdID != "" && value != "" {
+				parsed, _ := ParseCampMinderTimestamp(record.GetString("last_updated"))
 				result = append(result, customValueEntry{
 					householdPBID: householdID,
 					fieldName:     fieldName,
 					value:         value,
+					lastUpdated:   parsed,
 				})
 			}
 		}
@@ -454,10 +487,12 @@ func (s *FamilyCampDerivedSync) loadPersonCustomValues(
 			value := record.GetString("value")
 
 			if householdID != "" && value != "" {
+				parsed, _ := ParseCampMinderTimestamp(record.GetString("last_updated"))
 				result = append(result, customValueEntry{
 					householdPBID: householdID,
 					fieldName:     fieldName,
 					value:         value,
+					lastUpdated:   parsed,
 				})
 			}
 		}
@@ -596,8 +631,8 @@ func (s *FamilyCampDerivedSync) processRegistrations(
 				reg.shareCabinPreference = v.value
 			}
 		case fieldSharedCabinForm:
-			if reg.sharedCabinWith == "" {
-				reg.sharedCabinWith = v.value
+			if reg.sharedCabinModesRaw == "" {
+				reg.sharedCabinModesRaw = v.value
 			}
 		case "Family Camp-Trans ETA":
 			if reg.arrivalETA == "" {
@@ -628,23 +663,147 @@ func (s *FamilyCampDerivedSync) processRegistrations(
 		case "FAM Camp-Accommodation", "Housing Accommodation", "Housing Accomodation":
 			reg.needsAccommodation = reg.needsAccommodation || parseBoolFieldValue(v.value)
 		case "FAM CAMP-Opt Out VIP", "Adult-Opt Out":
-			reg.optOutVIP = reg.optOutVIP || parseBoolFieldValue(v.value)
+			optedOut := parseBoolFieldValue(v.value)
+			// NOTE (kindred#1874): this OR is retained deliberately, and it is
+			// fail-UNSAFE. Household members disagree -- 3 households in 2025 --
+			// and one member's "Yes, please register regardless of cabin type"
+			// ORs over another's "No, I am only able to attend with this
+			// accommodation in place", collapsing a blocker into a warning.
+			// opt_out_vip is therefore NOT the blocker gate and must never be
+			// read as one. accommodationIsMandatory below is the honest signal:
+			// it is set from any ANSWERED, non-opted-out value, so a conflict
+			// surfaces as mandatory rather than being collapsed away.
+			reg.optOutVIP = reg.optOutVIP || optedOut
+			// "Yes, please register regardless of cabin type" (90 values) means
+			// the family will come anyway, so the need is a warning. "No, I am
+			// only able to attend with this accommodation in place" (39) makes it
+			// a blocker. An UNANSWERED question must stay soft, which is why this
+			// keys off a non-empty value rather than off !optedOut alone.
+			if strings.TrimSpace(v.value) != "" && !optedOut {
+				reg.accommodationIsMandatory = true
+			}
+		// Derived accessibility flags. The narrative behind each of these lives
+		// in family_camp_medical and never reaches this table (spec 5.3).
+		case "FAM CAMP-bathroom", "Adult-Bathroom":
+			reg.needsPrivateBathroom = reg.needsPrivateBathroom || parseBoolFieldValue(v.value)
+		case "FAM CAMP-CPAP", "Family Camp-CPAP", "Adult-CPAP":
+			// Deliberately NOT parseBoolFieldValue -- these three fields are
+			// multi-option selects, and every option starts "Yes" (kindred#1875).
+			ans := classifyCPAPAnswer(v.value)
+			reg.needsPower = reg.needsPower || ans.power
+			reg.needsPrivateBathroom = reg.needsPrivateBathroom || ans.bathroom
+		case "Adult-Infant":
+			// Housing-suitability signal, not an accessibility need (kindred#1876).
+			// Women's and Men's Weekend share one form: for women this asks
+			// whether they are bringing an infant, which matters because of
+			// nursing; "I'm attending Men's Weekend" (21 values) is how a male
+			// registrant says the question does not apply. It correctly parses
+			// false and must NOT be special-cased -- the data is not dirty.
+			reg.hasInfant = reg.hasInfant || parseBoolFieldValue(v.value)
 		}
 	}
+
+	s.applyHouseholdRequests(regMap, personValues)
 
 	// Convert to slice
 	var result []*registrationData
 	for _, reg := range regMap {
 		// Only include if has some data
 		if reg.cabinAssignment != "" || reg.shareCabinPreference != "" ||
-			reg.sharedCabinWith != "" || reg.arrivalETA != "" ||
+			reg.sharedCabinModesRaw != "" || reg.arrivalETA != "" ||
 			reg.specialOccasions != "" || reg.goals != "" ||
-			reg.notes != "" || reg.needsAccommodation || reg.optOutVIP {
+			reg.notes != "" || reg.needsAccommodation || reg.optOutVIP ||
+			reg.shareCabinGate != "" || reg.requestText != "" ||
+			reg.wantsNear || reg.wantsWith ||
+			reg.needsPrivateBathroom || reg.needsPower || reg.hasInfant {
 			result = append(result, reg)
 		}
 	}
 
 	return result
+}
+
+// cpapAnswer is the result of classifying one answer to a CPAP field.
+type cpapAnswer struct {
+	power    bool
+	bathroom bool
+}
+
+// classifyCPAPAnswer splits a CPAP-field answer into the need it actually
+// describes. The three CPAP fields LOOK boolean and are not: they are
+// multi-option selects where the qualifier after "Yes" says which need the
+// family has, and parseBoolFieldValue -- which anchors on the leading token --
+// reads all of them as true.
+//
+//	Yes                                                     ->  power  (14 values)
+//	Yes, outlet needed for CPAP machine                     ->  power  (16)
+//	Yes, bathroom or other housing accommodation for a
+//	medical (not CPAP related) or accessibility-related
+//	reason needed                                           ->  bathroom (75)
+//
+// The 75 bathroom answers say "not CPAP related" in so many words; treating
+// them as power reserves an outlet cabin for a family that asked for a
+// private bathroom, and loses the bathroom signal at the same time.
+//
+// A bare "Yes" is power: the field is named CPAP, and the qualified options
+// were added later when the camp widened the question to cover non-CPAP
+// accessibility needs. It does not also set bathroom -- bathroom units are
+// scarce and that would be an inference, not a statement.
+func classifyCPAPAnswer(value string) cpapAnswer {
+	if !parseBoolFieldValue(value) {
+		return cpapAnswer{}
+	}
+	lower := strings.ToLower(value)
+	switch {
+	case strings.Contains(lower, "bathroom"):
+		// Checked FIRST: this option's own text contains "CPAP", inside the
+		// phrase "not CPAP related", so an outlet test would match it too.
+		return cpapAnswer{bathroom: true}
+	case strings.Contains(lower, "outlet"), strings.Contains(lower, "cpap machine"):
+		return cpapAnswer{power: true}
+	default:
+		return cpapAnswer{power: true}
+	}
+}
+
+// applyHouseholdRequests folds the person-partition request fields onto the
+// household rows.
+//
+// Spec 4.2 is mandatory here: those fields are person-partition, so a household
+// with two enrolled children stores the same text twice (observed at n=2 and
+// n=3). Collapsing before anything reads the text is the difference between one
+// request and two.
+//
+// The gate, the NEAR/WITH modes and the free text all come out of
+// CollapseToHouseholdGrain, which resolves the form-vs-registration conflict by
+// last_updated per spec 4.1. Keying on the households PB record id is correct
+// here because that is what family_camp_registrations.household stores.
+func (s *FamilyCampDerivedSync) applyHouseholdRequests(
+	regMap map[string]*registrationData, personValues []customValueEntry,
+) {
+	values := make([]PersonRequestValue, 0, len(personValues))
+	for _, v := range personValues {
+		values = append(values, PersonRequestValue{
+			HouseholdKey: v.householdPBID,
+			FieldName:    v.fieldName,
+			Value:        v.value,
+			LastUpdated:  v.lastUpdated,
+		})
+	}
+
+	for householdPBID, req := range CollapseToHouseholdGrain(values) {
+		reg, ok := regMap[householdPBID]
+		if !ok {
+			reg = &registrationData{householdPBID: householdPBID}
+			regMap[householdPBID] = reg
+		}
+		reg.shareCabinGate = req.Gate
+		reg.wantsNear = req.WantsNear
+		reg.wantsWith = req.WantsWith
+		reg.requestText = req.RequestText
+		reg.requestSourceField = req.SourceField
+		reg.requestLastUpdated = req.LastUpdated
+	}
 }
 
 // processMedical extracts medical data from person custom values
@@ -672,7 +831,9 @@ func (s *FamilyCampDerivedSync) processMedical(personValues []customValueEntry) 
 
 		// CPAP info
 		cpapParts := []string{}
-		for _, key := range []string{"Family Camp-CPAP", "FAM CAMP-CPAP"} {
+		// Adult-CPAP is the Adult-partition twin; without it, an adult-only
+		// answer sets the needs_power flag with no narrative behind it.
+		for _, key := range []string{"Family Camp-CPAP", "FAM CAMP-CPAP", "Adult-CPAP"} {
 			if v, ok := fields[key]; ok && v != "" {
 				cpapParts = append(cpapParts, v)
 				break
@@ -728,10 +889,27 @@ func (s *FamilyCampDerivedSync) processMedical(personValues []customValueEntry) 
 			med.additionalInfo = v
 		}
 
+		// PHI narrative for the two accessibility questions. These sentences
+		// describe named individuals' medical circumstances, so they live only
+		// here -- family_camp_medical is admin-gated on all five rules and is
+		// absent from every export config (lodging_phi_test.go asserts that).
+		bathroomParts := []string{}
+		for _, key := range []string{"Housing-Bathroom", "Bathroom-Yes"} {
+			if v, ok := fields[key]; ok && v != "" {
+				bathroomParts = append(bathroomParts, v)
+			}
+		}
+		med.bathroomExplain = strings.Join(bathroomParts, "; ")
+
+		if v, ok := fields["Housing Accommodation-Yes"]; ok && v != "" {
+			med.accommodationExplain = v
+		}
+
 		// Only include if has some data
 		if med.cpapInfo != "" || med.physicianInfo != "" ||
 			med.specialNeedsInfo != "" || med.allergyInfo != "" ||
-			med.dietaryInfo != "" || med.additionalInfo != "" {
+			med.dietaryInfo != "" || med.additionalInfo != "" ||
+			med.bathroomExplain != "" || med.accommodationExplain != "" {
 			result = append(result, med)
 		}
 	}
@@ -952,13 +1130,50 @@ func (s *FamilyCampDerivedSync) adultNeedsUpdate(existing *core.Record, adult *a
 func (s *FamilyCampDerivedSync) registrationNeedsUpdate(existing *core.Record, reg *registrationData) bool {
 	return existing.GetString("cabin_assignment") != reg.cabinAssignment ||
 		existing.GetString("share_cabin_preference") != reg.shareCabinPreference ||
-		existing.GetString("shared_cabin_with") != reg.sharedCabinWith ||
+		existing.GetString("shared_cabin_modes_raw") != reg.sharedCabinModesRaw ||
 		existing.GetString("arrival_eta") != reg.arrivalETA ||
 		existing.GetString("special_occasions") != reg.specialOccasions ||
 		existing.GetString("goals") != reg.goals ||
 		existing.GetString("notes") != reg.notes ||
 		existing.GetBool("needs_accommodation") != reg.needsAccommodation ||
-		existing.GetBool("opt_out_vip") != reg.optOutVIP
+		existing.GetBool("opt_out_vip") != reg.optOutVIP ||
+		existing.GetString("share_cabin_gate") != reg.shareCabinGate ||
+		existing.GetBool("wants_near") != reg.wantsNear ||
+		existing.GetBool("wants_with") != reg.wantsWith ||
+		existing.GetString("request_text") != reg.requestText ||
+		existing.GetString("request_source_field") != reg.requestSourceField ||
+		existing.GetString("request_last_updated") != formatRequestStamp(reg.requestLastUpdated) ||
+		existing.GetBool("needs_private_bathroom") != reg.needsPrivateBathroom ||
+		existing.GetBool("needs_power") != reg.needsPower ||
+		existing.GetBool("accommodation_is_mandatory") != reg.accommodationIsMandatory ||
+		existing.GetBool("has_infant") != reg.hasInfant
+}
+
+// setRegistrationRequestFields writes the household-grain request layer and the
+// derived housing flags. Shared by the create and update branches so the two
+// cannot drift -- PocketBase Set on a column the schema lacks is a silent no-op,
+// so a field written in only one branch fails invisibly on the other path.
+func setRegistrationRequestFields(record *core.Record, reg *registrationData) {
+	record.Set("share_cabin_gate", reg.shareCabinGate)
+	record.Set("wants_near", reg.wantsNear)
+	record.Set("wants_with", reg.wantsWith)
+	record.Set("request_text", reg.requestText)
+	record.Set("request_source_field", reg.requestSourceField)
+	record.Set("request_last_updated", formatRequestStamp(reg.requestLastUpdated))
+	record.Set("needs_private_bathroom", reg.needsPrivateBathroom)
+	record.Set("needs_power", reg.needsPower)
+	record.Set("accommodation_is_mandatory", reg.accommodationIsMandatory)
+	record.Set("has_infant", reg.hasInfant)
+}
+
+// formatRequestStamp renders requestLastUpdated for the PocketBase date column.
+// A zero time becomes the empty string rather than a year-1 date, so an
+// unanswered request reads as absent instead of as an implausibly old answer.
+func formatRequestStamp(t time.Time) string {
+	if t.IsZero() {
+		return ""
+	}
+	return t.UTC().Format("2006-01-02 15:04:05.000Z")
 }
 
 // medicalNeedsUpdate checks if a medical record needs updating
@@ -968,7 +1183,9 @@ func (s *FamilyCampDerivedSync) medicalNeedsUpdate(existing *core.Record, med *m
 		existing.GetString("special_needs_info") != med.specialNeedsInfo ||
 		existing.GetString("allergy_info") != med.allergyInfo ||
 		existing.GetString("dietary_info") != med.dietaryInfo ||
-		existing.GetString("additional_info") != med.additionalInfo
+		existing.GetString("additional_info") != med.additionalInfo ||
+		existing.GetString("bathroom_explain") != med.bathroomExplain ||
+		existing.GetString("accommodation_explain") != med.accommodationExplain
 }
 
 // ============================================================================
@@ -1068,13 +1285,14 @@ func (s *FamilyCampDerivedSync) upsertRegistrations(
 			if s.registrationNeedsUpdate(existingRecord, reg) {
 				existingRecord.Set("cabin_assignment", reg.cabinAssignment)
 				existingRecord.Set("share_cabin_preference", reg.shareCabinPreference)
-				existingRecord.Set("shared_cabin_with", reg.sharedCabinWith)
+				existingRecord.Set("shared_cabin_modes_raw", reg.sharedCabinModesRaw)
 				existingRecord.Set("arrival_eta", reg.arrivalETA)
 				existingRecord.Set("special_occasions", reg.specialOccasions)
 				existingRecord.Set("goals", reg.goals)
 				existingRecord.Set("notes", reg.notes)
 				existingRecord.Set("needs_accommodation", reg.needsAccommodation)
 				existingRecord.Set("opt_out_vip", reg.optOutVIP)
+				setRegistrationRequestFields(existingRecord, reg)
 
 				if err := s.App.Save(existingRecord); err != nil {
 					slog.Error("Error updating registration record", "household", reg.householdPBID, "error", err)
@@ -1092,13 +1310,14 @@ func (s *FamilyCampDerivedSync) upsertRegistrations(
 			record.Set("year", year)
 			record.Set("cabin_assignment", reg.cabinAssignment)
 			record.Set("share_cabin_preference", reg.shareCabinPreference)
-			record.Set("shared_cabin_with", reg.sharedCabinWith)
+			record.Set("shared_cabin_modes_raw", reg.sharedCabinModesRaw)
 			record.Set("arrival_eta", reg.arrivalETA)
 			record.Set("special_occasions", reg.specialOccasions)
 			record.Set("goals", reg.goals)
 			record.Set("notes", reg.notes)
 			record.Set("needs_accommodation", reg.needsAccommodation)
 			record.Set("opt_out_vip", reg.optOutVIP)
+			setRegistrationRequestFields(record, reg)
 
 			if err := s.App.Save(record); err != nil {
 				slog.Error("Error creating registration record", "household", reg.householdPBID, "error", err)
@@ -1141,6 +1360,8 @@ func (s *FamilyCampDerivedSync) upsertMedical(
 				existingRecord.Set("allergy_info", med.allergyInfo)
 				existingRecord.Set("dietary_info", med.dietaryInfo)
 				existingRecord.Set("additional_info", med.additionalInfo)
+				existingRecord.Set("bathroom_explain", med.bathroomExplain)
+				existingRecord.Set("accommodation_explain", med.accommodationExplain)
 
 				if err := s.App.Save(existingRecord); err != nil {
 					slog.Error("Error updating medical record", "household", med.householdPBID, "error", err)
@@ -1162,6 +1383,8 @@ func (s *FamilyCampDerivedSync) upsertMedical(
 			record.Set("allergy_info", med.allergyInfo)
 			record.Set("dietary_info", med.dietaryInfo)
 			record.Set("additional_info", med.additionalInfo)
+			record.Set("bathroom_explain", med.bathroomExplain)
+			record.Set("accommodation_explain", med.accommodationExplain)
 
 			if err := s.App.Save(record); err != nil {
 				slog.Error("Error creating medical record", "household", med.householdPBID, "error", err)

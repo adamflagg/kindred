@@ -6,6 +6,7 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/pocketbase/pocketbase/core"
 	// Aliased: this file has several local table-driven `tests` variables that
@@ -184,7 +185,7 @@ func TestRegistrationFieldMapping(t *testing.T) {
 	fieldMappings := map[string]string{
 		"Family Camp Cabin":             "cabin_assignment",
 		"FAM CAMP-Share Cabins":         "share_cabin_preference",
-		"FAM CAMP-Shared Cabin":         "shared_cabin_with",
+		"FAM CAMP-Shared Cabin":         "shared_cabin_modes_raw",
 		"Family Camp-Trans ETA":         "arrival_eta",
 		"Family Camp-Special occasions": "special_occasions",
 		"Family Camp-Goals Attending":   "goals",
@@ -649,7 +650,7 @@ func mapRegistrationField(fieldName string) string {
 	mappings := map[string]string{
 		"Family Camp Cabin":             "cabin_assignment",
 		"FAM CAMP-Share Cabins":         "share_cabin_preference",
-		"FAM CAMP-Shared Cabin":         "shared_cabin_with",
+		"FAM CAMP-Shared Cabin":         "shared_cabin_modes_raw",
 		"Family Camp-Trans ETA":         "arrival_eta",
 		"Family Camp-Special occasions": "special_occasions",
 		"Family Camp-Goals Attending":   "goals",
@@ -1561,4 +1562,300 @@ func TestProcessRegistrationsBoolFieldsOrAcrossPersons(t *testing.T) {
 			t.Error("optOutVIP set true with no affirmative answer")
 		}
 	})
+}
+
+// cpapBathroomOption is the multi-option CPAP answer whose own text contains
+// "CPAP" -- inside "not CPAP related" -- which is why bathroom must be tested
+// before any outlet/CPAP-machine match.
+const cpapBathroomOption = "Yes, bathroom or other housing accommodation for a medical " +
+	"(not CPAP related) or accessibility-related reason needed"
+
+// testRequestText is one parent's answer, stored against each enrolled child.
+const testRequestText = "the Johnson family"
+
+// TestProcessRegistrationsCollapsesDuplicateRequests is spec 4.2 at the
+// integration point. The request fields are person-partition, so two enrolled
+// children carry one parent's answer twice.
+func TestProcessRegistrationsCollapsesDuplicateRequests(t *testing.T) {
+	s := NewFamilyCampDerivedSync(nil)
+	ts := time.Date(2025, 4, 21, 17, 51, 0, 0, time.UTC)
+
+	// Two siblings in one household, same parent answer stored twice.
+	personValues := []customValueEntry{
+		{householdPBID: "hh_garcia", fieldName: "Shared-request",
+			value: testRequestText, lastUpdated: ts},
+		{householdPBID: "hh_garcia", fieldName: "Shared-request",
+			value: testRequestText, lastUpdated: ts},
+	}
+
+	regs := s.processRegistrations(nil, personValues)
+	if len(regs) != 1 {
+		t.Fatalf("registrations = %d, want 1", len(regs))
+	}
+	if regs[0].requestText != testRequestText {
+		t.Errorf("requestText = %q; the duplicate was not collapsed", regs[0].requestText)
+	}
+}
+
+// TestProcessRegistrationsParsesGateAndModes: the 3-state gate and the two edge
+// types, from the real option sentences.
+func TestProcessRegistrationsParsesGateAndModes(t *testing.T) {
+	s := NewFamilyCampDerivedSync(nil)
+	ts := time.Date(2025, 4, 21, 0, 0, 0, 0, time.UTC)
+
+	personValues := []customValueEntry{
+		{householdPBID: "hh_garcia", fieldName: fieldShareCabinsRegistration, lastUpdated: ts,
+			value: "Maybe, I am open to sharing a large camper cabin if a specific family " +
+				"that I know wants to share a cabin with my family."},
+		{householdPBID: "hh_garcia", fieldName: fieldSharedCabinForm, lastUpdated: ts,
+			value: "Share a cabin WITH a specific family that I know (please include names below " +
+				"and ensure that the request is mutual).|House my family NEAR a specific family " +
+				"that I know (please include names below)"},
+	}
+
+	regs := s.processRegistrations(nil, personValues)
+	if len(regs) != 1 {
+		t.Fatalf("registrations = %d, want 1", len(regs))
+	}
+	if regs[0].shareCabinGate != gateMaybeMutual {
+		t.Errorf("shareCabinGate = %q, want %q", regs[0].shareCabinGate, gateMaybeMutual)
+	}
+	if !regs[0].wantsNear || !regs[0].wantsWith {
+		t.Errorf("wantsNear=%v wantsWith=%v; 24 households ask for both",
+			regs[0].wantsNear, regs[0].wantsWith)
+	}
+}
+
+// TestProcessRegistrationsDerivedAccessibilityFlags: the board gets booleans,
+// never the narrative (spec 5.3).
+func TestProcessRegistrationsDerivedAccessibilityFlags(t *testing.T) {
+	s := NewFamilyCampDerivedSync(nil)
+	ts := time.Date(2025, 4, 21, 0, 0, 0, 0, time.UTC)
+
+	personValues := []customValueEntry{
+		{householdPBID: "hh_garcia", fieldName: "FAM CAMP-bathroom", value: "Yes", lastUpdated: ts},
+		{householdPBID: "hh_garcia", fieldName: "FAM CAMP-CPAP", value: "Yes", lastUpdated: ts},
+		{householdPBID: "hh_garcia", fieldName: "FAM CAMP-Opt Out VIP", lastUpdated: ts,
+			value: "No, I am only able to attend with this accommodation in place"},
+	}
+
+	regs := s.processRegistrations(nil, personValues)
+	if len(regs) != 1 {
+		t.Fatalf("registrations = %d, want 1", len(regs))
+	}
+	r := regs[0]
+	if !r.needsPrivateBathroom {
+		t.Error("needsPrivateBathroom not set from FAM CAMP-bathroom=Yes")
+	}
+	// Bare "Yes" on a CPAP field is power: the field is named CPAP and the
+	// qualified options came later.
+	if !r.needsPower {
+		t.Error("needsPower not set from FAM CAMP-CPAP=Yes")
+	}
+	if !r.accommodationIsMandatory {
+		t.Error(`"No, I am only able to attend with this accommodation in place" must be a blocker`)
+	}
+	if r.optOutVIP {
+		t.Error("optOutVIP should be false for the No answer")
+	}
+}
+
+// TestClassifyCPAPAnswer pins the option-level split. kindred#1875: the three
+// CPAP fields are multi-option selects, and parseBoolFieldValue reads every
+// option below as true.
+func TestClassifyCPAPAnswer(t *testing.T) {
+	cases := []struct {
+		name         string
+		value        string
+		wantPower    bool
+		wantBathroom bool
+	}{
+		{"bare yes is power", "Yes", true, false},
+		{"outlet option", "Yes, outlet needed for CPAP machine", true, false},
+		{"bathroom option is NOT power", cpapBathroomOption, false, true},
+		{"bathroom option, lowercased", strings.ToLower(cpapBathroomOption), false, true},
+		{"no", "No", false, false},
+		{"unanswered", "", false, false},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := classifyCPAPAnswer(tc.value)
+			if got.power != tc.wantPower || got.bathroom != tc.wantBathroom {
+				t.Errorf("classifyCPAPAnswer(%q) = {power:%v bathroom:%v}, want {power:%v bathroom:%v}",
+					tc.value, got.power, got.bathroom, tc.wantPower, tc.wantBathroom)
+			}
+		})
+	}
+}
+
+// TestProcessRegistrationsCPAPBathroomIsNotPower is the 75-record case at the
+// integration point: the household asked for a bathroom and said so in the
+// same breath as "not CPAP related". It must not be given an outlet cabin.
+func TestProcessRegistrationsCPAPBathroomIsNotPower(t *testing.T) {
+	s := NewFamilyCampDerivedSync(nil)
+	ts := time.Date(2025, 4, 21, 0, 0, 0, 0, time.UTC)
+
+	regs := s.processRegistrations(nil, []customValueEntry{
+		{householdPBID: "hh_garcia", fieldName: "FAM CAMP-CPAP", value: cpapBathroomOption, lastUpdated: ts},
+	})
+	if len(regs) != 1 {
+		t.Fatalf("registrations = %d, want 1", len(regs))
+	}
+	if regs[0].needsPower {
+		t.Error(`"not CPAP related" must not set needsPower (75 records)`)
+	}
+	if !regs[0].needsPrivateBathroom {
+		t.Error("the bathroom-qualified CPAP answer is a needsPrivateBathroom signal")
+	}
+}
+
+// TestProcessRegistrationsHasInfant: Adult-Infant was allowlisted with no
+// consumer in any phase (kindred#1876). It is a housing signal, so it gets one.
+// The N/A option must not read as yes, and must not be special-cased either.
+func TestProcessRegistrationsHasInfant(t *testing.T) {
+	ts := time.Date(2025, 4, 21, 0, 0, 0, 0, time.UTC)
+
+	cases := []struct {
+		name  string
+		value string
+		want  bool
+	}{
+		{"yes", "Yes", true},
+		{"no", "No", false},
+		{"men's weekend registrant is not a yes", "I'm attending Men's Weekend", false},
+		{"unanswered", "", false},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			s := NewFamilyCampDerivedSync(nil)
+			regs := s.processRegistrations(nil, []customValueEntry{
+				// Paired with a second signal so the "has some data" guard keeps
+				// the row even when hasInfant is false.
+				{householdPBID: "hh_garcia", fieldName: "FAM CAMP-bathroom", value: "Yes", lastUpdated: ts},
+				{householdPBID: "hh_garcia", fieldName: "Adult-Infant", value: tc.value, lastUpdated: ts},
+			})
+			if len(regs) != 1 {
+				t.Fatalf("registrations = %d, want 1", len(regs))
+			}
+			if regs[0].hasInfant != tc.want {
+				t.Errorf("hasInfant for %q = %v, want %v", tc.value, regs[0].hasInfant, tc.want)
+			}
+		})
+	}
+}
+
+// TestProcessRegistrationsHasInfantORsAcrossHousehold: unlike opt_out_vip, OR
+// is fail-SAFE here -- one adult bringing an infant means the household has one.
+func TestProcessRegistrationsHasInfantORsAcrossHousehold(t *testing.T) {
+	s := NewFamilyCampDerivedSync(nil)
+	ts := time.Date(2025, 4, 21, 0, 0, 0, 0, time.UTC)
+
+	regs := s.processRegistrations(nil, []customValueEntry{
+		{householdPBID: "hh_garcia", fieldName: "Adult-Infant", value: "No", lastUpdated: ts},
+		{householdPBID: "hh_garcia", fieldName: "Adult-Infant", value: "Yes", lastUpdated: ts},
+	})
+	if len(regs) != 1 {
+		t.Fatalf("registrations = %d, want 1", len(regs))
+	}
+	if !regs[0].hasInfant {
+		t.Error("one Yes in the household must set hasInfant")
+	}
+}
+
+// TestProcessMedicalCPAPIncludesAdultField: Adult-CPAP is admitted by
+// extraFieldCMIDs but processMedical never read it, so a household where only
+// the accompanying adult answers produced an empty cpap_info. kindred#1875.
+func TestProcessMedicalCPAPIncludesAdultField(t *testing.T) {
+	s := NewFamilyCampDerivedSync(nil)
+	ts := time.Date(2025, 4, 21, 0, 0, 0, 0, time.UTC)
+
+	meds := s.processMedical([]customValueEntry{
+		{householdPBID: "hh_garcia", fieldName: "Adult-CPAP", lastUpdated: ts,
+			value: "Yes, outlet needed for CPAP machine"},
+	})
+	if len(meds) != 1 {
+		t.Fatalf("medical rows = %d, want 1", len(meds))
+	}
+	if meds[0].cpapInfo == "" {
+		t.Error("cpapInfo empty; an adult-only CPAP answer was dropped")
+	}
+}
+
+// TestProcessRegistrationsOptOutMakesTheNeedAWarning: the other polarity.
+func TestProcessRegistrationsOptOutMakesTheNeedAWarning(t *testing.T) {
+	s := NewFamilyCampDerivedSync(nil)
+	ts := time.Date(2025, 4, 21, 0, 0, 0, 0, time.UTC)
+
+	regs := s.processRegistrations(nil, []customValueEntry{
+		{householdPBID: "hh_garcia", fieldName: "FAM CAMP-bathroom", value: "Yes", lastUpdated: ts},
+		{householdPBID: "hh_garcia", fieldName: "FAM CAMP-Opt Out VIP", lastUpdated: ts,
+			value: "Yes, please register regardless of cabin type"},
+	})
+	if len(regs) != 1 {
+		t.Fatalf("registrations = %d, want 1", len(regs))
+	}
+	if !regs[0].optOutVIP {
+		t.Error(`"Yes, please register regardless of cabin type" must parse true`)
+	}
+	if regs[0].accommodationIsMandatory {
+		t.Error("an opted-out accommodation is a warning, not a blocker")
+	}
+}
+
+// TestProcessRegistrationsUnansweredOptOutIsNotMandatory: the default must be
+// the softer reading, or every household with no answer becomes a blocker.
+func TestProcessRegistrationsUnansweredOptOutIsNotMandatory(t *testing.T) {
+	s := NewFamilyCampDerivedSync(nil)
+	ts := time.Date(2025, 4, 21, 0, 0, 0, 0, time.UTC)
+
+	regs := s.processRegistrations(nil, []customValueEntry{
+		{householdPBID: "hh_garcia", fieldName: "FAM CAMP-bathroom", value: "Yes", lastUpdated: ts},
+	})
+	if len(regs) != 1 {
+		t.Fatalf("registrations = %d, want 1", len(regs))
+	}
+	if regs[0].accommodationIsMandatory {
+		t.Error("an unanswered opt-out question must not make the need mandatory")
+	}
+}
+
+// TestProcessMedicalRoutesNarrativeToTheAdminGatedTable: the sentences explaining
+// a bathroom or accommodation need are PHI and belong only in
+// family_camp_medical (spec 5.1).
+func TestProcessMedicalRoutesNarrativeToTheAdminGatedTable(t *testing.T) {
+	s := NewFamilyCampDerivedSync(nil)
+	ts := time.Date(2025, 4, 21, 0, 0, 0, 0, time.UTC)
+
+	// Deliberately non-specific placeholder text: never put a real disclosure,
+	// or a real name, in a test fixture.
+	const bathroomText = "requires an in-unit bathroom for a documented condition"
+	const accommodationText = "requires ground-floor access"
+
+	personValues := []customValueEntry{
+		{householdPBID: "hh_garcia", fieldName: "Housing-Bathroom", value: bathroomText, lastUpdated: ts},
+		{householdPBID: "hh_garcia", fieldName: "Housing Accommodation-Yes",
+			value: accommodationText, lastUpdated: ts},
+	}
+
+	med := s.processMedical(personValues)
+	if len(med) != 1 {
+		t.Fatalf("medical rows = %d, want 1", len(med))
+	}
+	if med[0].bathroomExplain != bathroomText {
+		t.Errorf("bathroomExplain = %q", med[0].bathroomExplain)
+	}
+	if med[0].accommodationExplain != accommodationText {
+		t.Errorf("accommodationExplain = %q", med[0].accommodationExplain)
+	}
+
+	// And the same input must not put narrative on the registration row.
+	regs := s.processRegistrations(nil, personValues)
+	for _, r := range regs {
+		if strings.Contains(r.requestText, "documented condition") ||
+			strings.Contains(r.notes, "documented condition") {
+			t.Error("PHI narrative reached family_camp_registrations")
+		}
+	}
 }
