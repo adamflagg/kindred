@@ -1,6 +1,12 @@
 #!/usr/bin/env bash
 # Applies pocketbase/pb_migrations to a throwaway DB and asserts the lodging
-# schema. Exits non-zero with a specific message on the first failure.
+# schema.
+#
+# Exit codes: 0 = all assertions passed. 1 = one or more assertions FAILED.
+# 2 = could not run the check at all (missing tool/binary, PocketBase never
+# booted). Assertions do NOT short-circuit: note() records a failure and
+# execution continues, so a run reports EVERY violation at once rather than
+# stopping at the first — that is what makes the FAIL count usable as progress.
 #
 # Why serve-and-kill: `pocketbase migrate up` silently skips JS migrations.
 # jsvm captures MigrationsDir at plugin-registration time (before flag parsing),
@@ -12,6 +18,13 @@ set -euo pipefail
 REPO_ROOT=$(git rev-parse --show-toplevel)
 PB_BIN="$REPO_ROOT/pocketbase/pocketbase"
 MIG_DIR="$REPO_ROOT/pocketbase/pb_migrations"
+
+# Check tools up front so a missing one exits 2 (cannot run) rather than 127
+# midway through, which would read as an assertion failure. Same contract as
+# scripts/dev/migration-schema-diff.sh.
+for cmd in sqlite3 curl python3; do
+  command -v "$cmd" >/dev/null 2>&1 || { echo "error: required command '$cmd' not found" >&2; exit 2; }
+done
 
 [[ -x "$PB_BIN" ]] || { echo "error: $PB_BIN missing; run: cd pocketbase && go build -o pocketbase ." >&2; exit 2; }
 
@@ -113,7 +126,7 @@ ms=$(field_prop lodging_unit_aliases member_units maxSelect || true)
 # (household_cm_id = 0), collide them, and permit only ONE adult assignment per
 # session. This assertion exists because that bug was caught in review.
 for idx in idx_lodging_assign_hh_live idx_lodging_assign_person_live; do
-  sql=$(sqlite3 "$DB" "SELECT COALESCE(sql,'') FROM sqlite_master WHERE type='index' AND name='$idx'")
+  sql=$(sqlite3 "$DB" "SELECT COALESCE(sql,'') FROM sqlite_master WHERE type='index' AND name='$idx'" || true)
   if [[ -z "$sql" ]]; then
     note "index $idx missing"
   elif [[ "$sql" == *"!= ''"* ]]; then

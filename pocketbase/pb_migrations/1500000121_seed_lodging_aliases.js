@@ -23,6 +23,23 @@
  */
 
 migrate((app) => {
+  // Idempotency lookup. findFirstRecordByFilter returns sql.ErrNoRows verbatim
+  // when nothing matches (core/record_query.go:454, v0.39.9), which surfaces here
+  // as "sql: no rows in result set" — that is the "not seeded yet" signal.
+  //
+  // ANY other error (malformed filter, DB lock, closed connection) is real. A bare
+  // `catch { return null }` would treat it as "not seeded", insert a duplicate, and
+  // die on the unique index with validation_not_unique — hiding the actual cause.
+  // So: rethrow anything that is not the not-found case.
+  const findSeeded = (collection, filter, params) => {
+    try {
+      return app.findFirstRecordByFilter(collection, filter, params);
+    } catch (e) {
+      if (String(e).indexOf("no rows in result set") === -1) throw e;
+      return null;
+    }
+  };
+
   // [alias_string, [unit_codes], valid_from_year, valid_to_year]
   // null year = no bound.
   const ALIASES = [
@@ -148,16 +165,11 @@ migrate((app) => {
     // Filtering on `= null` would therefore never match, so a re-run would
     // re-insert and die on the unique index with validation_not_unique.
     const wantYear = a[2] === null ? 0 : a[2];
-    let existing;
-    try {
-      existing = app.findFirstRecordByFilter(
-        "lodging_unit_aliases",
-        "alias_string = {:s} && valid_from_year = {:y}",
-        { s: a[0], y: wantYear }
-      );
-    } catch (_e) {
-      existing = null;
-    }
+    const existing = findSeeded(
+      "lodging_unit_aliases",
+      "alias_string = {:s} && valid_from_year = {:y}",
+      { s: a[0], y: wantYear }
+    );
     if (existing) continue;
 
     const memberIds = [];

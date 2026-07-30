@@ -11,6 +11,14 @@
  *
  * Either unit (an atomic room) or merge (a merged slot) is set, not both.
  *
+ * !! NEITHER XOR IS ENFORCED BY THIS SCHEMA. !! Both pairs are optional fields,
+ * there is no CHECK constraint, and the partial unique indexes below only dedupe
+ * WITHIN a grain — they do not reject a row with both set or neither. All three
+ * illegal states are accepted by the DB today (verified live). This is deliberate
+ * per spec 3.5/9a: the invariant lives above the database. The consequence is that
+ * it is guaranteed NOWHERE until Plan 2 adds tests and Plan 3 adds write-path
+ * guards. Do not read the two rules above as storage guarantees.
+ *
  * History is append-only and mirrors attendee_status_history's shape
  * (detected_at / old_* / new_* / session / year). It exists because CampMinder
  * stores ONE cabin value per household per YEAR: a household attending two

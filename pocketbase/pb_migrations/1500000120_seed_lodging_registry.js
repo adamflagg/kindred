@@ -27,6 +27,23 @@
  */
 
 migrate((app) => {
+  // Idempotency lookup. findFirstRecordByFilter returns sql.ErrNoRows verbatim
+  // when nothing matches (core/record_query.go:454, v0.39.9), which surfaces here
+  // as "sql: no rows in result set" — that is the "not seeded yet" signal.
+  //
+  // ANY other error (malformed filter, DB lock, closed connection) is real. A bare
+  // `catch { return null }` would treat it as "not seeded", insert a duplicate, and
+  // die on the unique index with validation_not_unique — hiding the actual cause.
+  // So: rethrow anything that is not the not-found case.
+  const findSeeded = (collection, filter, params) => {
+    try {
+      return app.findFirstRecordByFilter(collection, filter, params);
+    } catch (e) {
+      if (String(e).indexOf("no rows in result set") === -1) throw e;
+      return null;
+    }
+  };
+
   // Building/grouping rows — never bookable, never counted toward capacity.
   const CONTAINER_CODES = ["gt-kitty", "gt-tenaya", "gt-tioga", "gt-clouds-rest", "gt-wawona", "hc-downstairs", "tawonga-village-5"];
 
@@ -45,12 +62,7 @@ migrate((app) => {
   const areaIds = {};
   for (let i = 0; i < AREAS.length; i++) {
     const a = AREAS[i];
-    let rec;
-    try {
-      rec = app.findFirstRecordByFilter("lodging_areas", "code = {:c}", { c: a.code });
-    } catch (_e) {
-      rec = null;
-    }
+    let rec = findSeeded("lodging_areas", "code = {:c}", { c: a.code });
     if (!rec) {
       rec = new Record(areasCol);
       rec.set("code", a.code);
@@ -195,12 +207,7 @@ migrate((app) => {
   // Pass 1: create every unit without parent_unit (parents may appear later).
   for (let i = 0; i < UNITS.length; i++) {
     const u = UNITS[i];
-    let rec;
-    try {
-      rec = app.findFirstRecordByFilter("lodging_units", "code = {:c}", { c: u[2] });
-    } catch (_e) {
-      rec = null;
-    }
+    let rec = findSeeded("lodging_units", "code = {:c}", { c: u[2] });
     if (!rec) {
       rec = new Record(unitsCol);
       rec.set("area", areaIds[u[0]]);

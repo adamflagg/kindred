@@ -56,8 +56,8 @@ migrate((app) => {
       },
       { type: "text", name: "name", required: true, presentable: true, min: 1, max: 200, pattern: "" },
       { type: "text", name: "code", required: true, presentable: false, min: 1, max: 100, pattern: "" },
-      // Self-relation: the building a room belongs to. Display/adjacency only —
-      // NOT merge state. collectionId is patched below, after the collection exists.
+      // NOTE: parent_unit is NOT declared here. It is a self-relation, so it needs
+      // this collection's own id — added after app.save(units) below.
       { type: "number", name: "map_x", required: false, presentable: false, min: 0, max: 1, onlyInt: false },
       { type: "number", name: "map_y", required: false, presentable: false, min: 0, max: 1, onlyInt: false },
       { type: "number", name: "sleeps", required: false, presentable: false, min: null, max: null, onlyInt: true },
@@ -98,7 +98,11 @@ migrate((app) => {
   });
   app.save(units);
 
-  // Add the self-relation now that lodging_units has an id.
+  // parent_unit: the building a room belongs to. Display/adjacency grouping only
+  // — NOT merge state (merges are explicit member sets in lodging_merges, because
+  // they are frequently partial). Added here rather than in the field list above
+  // because a self-relation needs the collection's own id, which only exists once
+  // app.save(units) has run.
   const unitsCol = app.findCollectionByNameOrId("lodging_units");
   unitsCol.fields.add(new Field({
     type: "relation", name: "parent_unit", required: false, presentable: false,
