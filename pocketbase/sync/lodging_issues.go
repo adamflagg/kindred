@@ -166,10 +166,12 @@ func (r *IssueRecorder) Flush(now time.Time) (created, updated int, err error) {
 //     row whose scenario is the empty string, `scenario = {:sc}` with sc="" returns
 //     0 rows, while the same comparison written as a bare SQL literal returns it.
 //     So empty values have to be literals.
-//   - Everything else must stay parameterised. Real cabin strings contain
-//     apostrophes ("Golden Triangle - Doctor's House"), and interpolating one
-//     into a quoted SQL literal is a syntax error, not a miss -- the exact bug
-//     that left Plan 1's alias verifier unable to pass no matter what was seeded.
+//   - Everything else must stay parameterised. Several real cabin strings carry
+//     an apostrophe, and interpolating one into a quoted SQL literal is a syntax
+//     error rather than a miss -- the exact bug that left Plan 1's alias verifier
+//     unable to pass no matter what was seeded. (The strings themselves are not
+//     quoted here: verify-no-hardcoded-lodging.sh forbids unit names in
+//     application source, comments included. See lodging_issues_test.go.)
 func eqOrEmpty(column, paramName, value string, params dbx.Params) string {
 	if value == "" {
 		return column + " = ''"
