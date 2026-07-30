@@ -321,18 +321,24 @@ func TestMedicalDeduplicationByHousehold(t *testing.T) {
 	}
 }
 
-// TestBoolFieldParsing tests parsing of boolean custom field values
+// TestBoolFieldParsing exercises the PRODUCTION parseBoolFieldValue. The previous
+// version of this test called a byte-identical local copy, which is why the
+// sentence-prefixed cases below went undetected: fixing production code could
+// not have made the old test fail.
 func TestBoolFieldParsing(t *testing.T) {
 	tests := []struct {
 		value    string
 		expected bool
 	}{
+		// Plain answers (FAM Camp-Accommodation, Housing Accommodation,
+		// FAM CAMP-bathroom all store bare "Yes" / "No").
 		{"Yes", true},
 		{"yes", true},
 		{"YES", true},
 		{"True", true},
 		{"true", true},
 		{"1", true},
+		{"y", true},
 		{"No", false},
 		{"no", false},
 		{"NO", false},
@@ -341,14 +347,28 @@ func TestBoolFieldParsing(t *testing.T) {
 		{"0", false},
 		{"", false},
 		{"N/A", false},
-		{"Maybe", false}, // Non-standard values treated as false
+		{"Maybe", false},
+		// Sentence-prefixed answers. CampMinder stores the whole option text for
+		// single-select fields; FAM CAMP-Opt Out VIP has exactly these two values.
+		{"Yes, please register regardless of cabin type", true},
+		{"No, I am only able to attend with this accommodation in place", false},
+		// Spacing and casing variants of the same shape.
+		{"yes, please register regardless of cabin type", true},
+		{"  Yes, please register regardless of cabin type  ", true},
+		{"Yes - I need this", true},
+		{"Yes I need this", true},
+		// Must NOT match: "yes" appearing anywhere other than the leading token.
+		{"Not yes", false},
+		{"Maybe yes, maybe no", false},
+		{"No, yes is not my answer", false},
+		{"Yesterday", false},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.value, func(t *testing.T) {
-			result := parseBoolField(tt.value)
+			result := parseBoolFieldValue(tt.value)
 			if result != tt.expected {
-				t.Errorf("parseBoolField(%q) = %v, want %v", tt.value, result, tt.expected)
+				t.Errorf("parseBoolFieldValue(%q) = %v, want %v", tt.value, result, tt.expected)
 			}
 		})
 	}
@@ -751,12 +771,6 @@ func aggregateMedicalByHousehold(values []testPersonCustomValue) map[int]*testMe
 	}
 
 	return result
-}
-
-// parseBoolField parses boolean values from custom field strings
-func parseBoolField(value string) bool {
-	lower := strings.ToLower(strings.TrimSpace(value))
-	return lower == boolYes || lower == boolTrueStr || lower == "1"
 }
 
 // ============================================================================
@@ -1292,9 +1306,9 @@ func extractRegistrationsFromHouseholds(values []testHouseholdCustomValue) map[i
 		case "Family Camp-Anything else":
 			reg.Notes = v.Value
 		case "FAM Camp-Accommodation":
-			reg.NeedsAccommodation = parseBoolField(v.Value)
+			reg.NeedsAccommodation = parseBoolFieldValue(v.Value)
 		case "FAM CAMP-Opt Out VIP":
-			reg.OptOutVIP = parseBoolField(v.Value)
+			reg.OptOutVIP = parseBoolFieldValue(v.Value)
 		}
 	}
 

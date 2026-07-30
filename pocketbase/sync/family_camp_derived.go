@@ -750,10 +750,40 @@ func extractAdultNumberFromField(fieldName string) int {
 	return 0
 }
 
-// parseBoolFieldValue parses boolean values from custom field strings
+// parseBoolFieldValue parses boolean values from custom field strings.
+//
+// CampMinder single-select fields store the FULL option text, not a token, so a
+// yes/no question can arrive as a whole sentence:
+//
+//	"Yes, please register regardless of cabin type"          -> true
+//	"No, I am only able to attend with this accommodation..."  -> false
+//
+// Anchoring on the leading word rather than the whole string is what makes both
+// shapes work. It must stay an anchor and not a substring search: "No, yes is
+// not my answer" and "Not yes" are both false, and "Yesterday" is not a yes.
 func parseBoolFieldValue(value string) bool {
 	lower := strings.ToLower(strings.TrimSpace(value))
-	return lower == boolYes || lower == boolTrueStr || lower == "1"
+	switch lower {
+	case boolYes, boolTrueStr, "1", "y":
+		return true
+	case "":
+		return false
+	}
+
+	// Leading-token match: "yes" followed by a separator, never mid-word.
+	const yesPrefix = boolYes
+	if !strings.HasPrefix(lower, yesPrefix) {
+		return false
+	}
+	rest := lower[len(yesPrefix):]
+	if rest == "" {
+		return true
+	}
+	switch rest[0] {
+	case ' ', ',', '.', ';', ':', '-', '(':
+		return true
+	}
+	return false
 }
 
 // ============================================================================
