@@ -10,6 +10,7 @@
 
 export const Permission = {
   BUNKING_MANAGE: 'bunking.manage',
+  LODGING_PHI: 'lodging.phi',
   METRICS_FINANCIAL: 'metrics.financial',
   METRICS_GEO: 'metrics.geo',
   REGISTRATION_MANAGE: 'registration.manage',
