@@ -77,6 +77,12 @@ migrate((app) => {
   regs.fields.add(new Field({
     type: "bool", name: "accommodation_is_mandatory", required: false, presentable: false
   }));
+  // From "Adult-Infant". Women's and Men's Weekend share one registration form:
+  // for a Women's Weekend registrant this asks whether she is bringing an
+  // infant, which matters because of nursing; "I'm attending Men's Weekend" is
+  // how a male registrant says the question does not apply. A housing
+  // suitability signal -- privacy and quiet -- not an accessibility need.
+  regs.fields.add(new Field({ type: "bool", name: "has_infant", required: false, presentable: false }));
   app.save(regs);
 
   const medical = app.findCollectionByNameOrId("family_camp_medical");
@@ -101,7 +107,7 @@ migrate((app) => {
   for (const name of [
     "share_cabin_gate", "wants_near", "wants_with", "request_text",
     "request_source_field", "request_last_updated", "needs_private_bathroom",
-    "needs_power", "accommodation_is_mandatory"
+    "needs_power", "accommodation_is_mandatory", "has_infant"
   ]) {
     regs.fields.removeByName(name);
   }
