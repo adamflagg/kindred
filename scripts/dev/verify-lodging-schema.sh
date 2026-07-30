@@ -16,7 +16,19 @@ MIG_DIR="$REPO_ROOT/pocketbase/pb_migrations"
 [[ -x "$PB_BIN" ]] || { echo "error: $PB_BIN missing; run: cd pocketbase && go build -o pocketbase ." >&2; exit 2; }
 
 SCRATCH=$(mktemp -d)
-trap 'rm -rf "$SCRATCH"' EXIT
+PB_PID=""
+# Trap INT and TERM as well as EXIT, and kill the background PocketBase from
+# inside the handler. A signal arriving during the up-to-40s health poll would
+# otherwise run only the EXIT handler, deleting $SCRATCH but orphaning a
+# `pocketbase serve` bound to the ephemeral port.
+cleanup() {
+  if [[ -n "$PB_PID" ]]; then
+    kill "$PB_PID" 2>/dev/null || true
+    wait "$PB_PID" 2>/dev/null || true
+  fi
+  rm -rf "$SCRATCH"
+}
+trap cleanup EXIT INT TERM
 
 DB_DIR="$SCRATCH/data/pb_data"
 mkdir -p "$DB_DIR"
@@ -29,15 +41,18 @@ LOG="$SCRATCH/boot.log"
 
 "$PB_BIN" serve --http="127.0.0.1:$PORT" --dir "$DB_DIR" \
   --hooksDir "$HOOKS_DIR" --automigrate=true > "$LOG" 2>&1 &
-PID=$!
+PB_PID=$!
 
 ok=0
 for _ in $(seq 1 200); do
   if curl -sf "http://127.0.0.1:$PORT/api/health" >/dev/null 2>&1; then ok=1; break; fi
   sleep 0.2
 done
-kill "$PID" 2>/dev/null || true
-wait "$PID" 2>/dev/null || true
+# Stop PocketBase before querying, so sqlite3 reads a settled database. The trap
+# is the safety net for signal paths; this kill makes it a no-op on normal paths.
+kill "$PB_PID" 2>/dev/null || true
+wait "$PB_PID" 2>/dev/null || true
+PB_PID=""
 
 if [[ "$ok" -ne 1 ]]; then
   echo "error: pocketbase serve never came up; log:" >&2; cat "$LOG" >&2; exit 2
@@ -58,7 +73,8 @@ for c in lodging_areas lodging_units lodging_unit_aliases lodging_merges \
   [[ "$n" -eq 1 ]] || note "collection $c missing"
 done
 
-# field_limit <collection> <field> <json-path> <expected>
+# field_prop <collection> <field> <json-path> — prints the property value, or
+# empty string if the collection or field is absent. Callers compare the result.
 field_prop() {
   sqlite3 "$DB" "SELECT json_extract(value, '\$.$3') FROM _collections, json_each(_collections.fields) WHERE _collections.name = '$1' AND json_extract(value, '\$.name') = '$2'"
 }
