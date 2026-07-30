@@ -113,7 +113,13 @@ func newLodgingTestApp(t *testing.T) core.App {
 	saveCollection(t, app, aliases)
 
 	merges := core.NewBaseCollection("lodging_merges")
-	merges.Fields.Add(&core.RelationField{Name: "session", CollectionId: sessions.Id, MaxSelect: 1})
+	// Required, mirroring production. cascadeDelete=false only blocks deleting
+	// the parent session while the relation is REQUIRED (migration 1500000124),
+	// so a fixture that leaves it optional can save detached placement rows that
+	// production rejects -- and would pass a test for the very bug #1879 was.
+	merges.Fields.Add(&core.RelationField{
+		Name: "session", CollectionId: sessions.Id, MaxSelect: 1, Required: true,
+	})
 	// Required, mirroring migration 1500000124. PocketBase treats an unset number
 	// as 0 and a required number rejects 0, so a writer that forgets this column
 	// fails loudly here instead of only in production.
@@ -126,7 +132,10 @@ func newLodgingTestApp(t *testing.T) core.App {
 	saveCollection(t, app, merges)
 
 	assignments := core.NewBaseCollection("lodging_assignments")
-	assignments.Fields.Add(&core.RelationField{Name: "session", CollectionId: sessions.Id, MaxSelect: 1})
+	// Required, mirroring production. See the merges note above.
+	assignments.Fields.Add(&core.RelationField{
+		Name: "session", CollectionId: sessions.Id, MaxSelect: 1, Required: true,
+	})
 	// Required, mirroring migration 1500000124. See the merges note above.
 	assignments.Fields.Add(&core.NumberField{Name: "session_cm_id", Required: true, OnlyInt: true})
 	assignments.Fields.Add(&core.NumberField{Name: "year"})

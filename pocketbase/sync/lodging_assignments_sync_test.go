@@ -499,3 +499,218 @@ func TestLodgingAssignmentsRegisteredEverywhere(t *testing.T) {
 		t.Error("lodging_assignments missing from SyncJobToCollections; its sheets would never be skipped")
 	}
 }
+
+// TestLodgingAssignmentsSyncDryRunWritesNothing: DryRun's contract is "compute
+// but do not write". Two of ingestValue's write paths sit UPSTREAM of the
+// placement write -- recordHistory for a string no alias covers, and
+// placementFor -> EnsureMerge for a multi-room alias -- so a guard placed just
+// before upsertAssignment leaves rows behind in two tables it never mentions.
+func TestLodgingAssignmentsSyncDryRunWritesNothing(t *testing.T) {
+	app := newLodgingTestApp(t)
+	sess := addSession(t, app, cmIDFamilyCamp1, "Family Camp 1", "family",
+		testSessionStart, testSessionEnd, 2025)
+	t1 := addUnit(t, app, "gt-tioga-1")
+	t2 := addUnit(t, app, "gt-tioga-2")
+	addAlias(t, app, "Golden Triangle - Tioga 1and2", []string{t1, t2}, 0, 0)
+	cabinDef := addFieldDef(t, app, cmIDFamilyCampCabin, fieldNameFamilyCampCabin)
+
+	// Household on a two-room alias: reaches EnsureMerge.
+	hh := addHousehold(t, app, 9001, 2025)
+	emma := addPerson(t, app, 5001, 9001, 2025, hh)
+	addAttendee(t, app, emma, sess, 5001, 2, 2025)
+	addHouseholdValue(t, app, hh, cabinDef, "Golden Triangle - Tioga 1and2", testLastUpdated, 2025)
+
+	// Household on a string no alias covers: reaches recordHistory.
+	hh2 := addHousehold(t, app, 9002, 2025)
+	liam := addPerson(t, app, 5002, 9002, 2025, hh2)
+	addAttendee(t, app, liam, sess, 5002, 2, 2025)
+	addHouseholdValue(t, app, hh2, cabinDef, "Tuolumne 7", testLastUpdated, 2025)
+
+	s := NewLodgingAssignmentsSync(app)
+	s.Year = 2025
+	s.DryRun = true
+	if err := s.Sync(context.Background()); err != nil {
+		t.Fatalf("Sync: %v", err)
+	}
+
+	for _, collection := range []string{
+		"lodging_assignments", "lodging_assignment_history",
+		"lodging_merges", "lodging_ingest_issues",
+	} {
+		rows, err := app.FindRecordsByFilter(collection, "", "", 0, 0)
+		if err != nil {
+			t.Fatalf("reading %s: %v", collection, err)
+		}
+		if len(rows) != 0 {
+			t.Errorf("dry run wrote %d rows to %s; want 0", len(rows), collection)
+		}
+	}
+}
+
+// TestLodgingAssignmentsSyncUpdatesPartySizeInSameCabin: party_size is
+// recomputed every run, so a household that gains an occupant without changing
+// cabin must still have the new count persisted. The label is the MOVE
+// detector; it is not the change detector.
+func TestLodgingAssignmentsSyncUpdatesPartySizeInSameCabin(t *testing.T) {
+	app := newLodgingTestApp(t)
+	seedOneWeekendHousehold(t, app)
+
+	s := NewLodgingAssignmentsSync(app)
+	s.Year = 2025
+	if err := s.Sync(context.Background()); err != nil {
+		t.Fatalf("first sync: %v", err)
+	}
+	rows, _ := app.FindRecordsByFilter("lodging_assignments", "", "", 0, 0)
+	if len(rows) != 1 {
+		t.Fatalf("assignments = %d, want 1", len(rows))
+	}
+	if got := rows[0].GetInt("party_size"); got != 4 {
+		t.Fatalf("party_size = %d, want 4 (2 children + 2 adults)", got)
+	}
+
+	// A third accompanying adult joins. The cabin string is untouched.
+	households, _ := app.FindRecordsByFilter("households", "cm_id = 9001", "", 1, 0)
+	if len(households) != 1 {
+		t.Fatalf("households = %d, want 1", len(households))
+	}
+	addFamilyCampAdult(t, app, households[0].Id, 2025, 3, "Olivia Martinez")
+
+	s2 := NewLodgingAssignmentsSync(app)
+	s2.Year = 2025
+	if err := s2.Sync(context.Background()); err != nil {
+		t.Fatalf("second sync: %v", err)
+	}
+
+	rows, _ = app.FindRecordsByFilter("lodging_assignments", "", "", 0, 0)
+	if len(rows) != 1 {
+		t.Fatalf("assignments after second sync = %d, want 1", len(rows))
+	}
+	if got := rows[0].GetInt("party_size"); got != 5 {
+		t.Errorf("party_size = %d, want 5 -- the recomputed size was discarded", got)
+	}
+	// Same cabin, so this is not a move and must not append a history row.
+	hist, _ := app.FindRecordsByFilter("lodging_assignment_history", "", "", 0, 0)
+	if len(hist) != 1 {
+		t.Errorf("history rows = %d, want 1; a party-size change is not a move", len(hist))
+	}
+}
+
+// TestLodgingAssignmentsSyncQueuesUnknownHousehold: spec 6.2 is "zero silent
+// drops". A cabin value whose household row is absent for the sync year has no
+// CampMinder id to key a placement on, but skipping it outright loses the
+// observation entirely -- and because the value is counted before the skip, even
+// the field_zero_values warning stays quiet.
+func TestLodgingAssignmentsSyncQueuesUnknownHousehold(t *testing.T) {
+	app := newLodgingTestApp(t)
+	addSession(t, app, cmIDFamilyCamp1, "Family Camp 1", "family",
+		testSessionStart, testSessionEnd, 2025)
+	unit := addUnit(t, app, "ridge-a")
+	addAlias(t, app, "Ridge A", []string{unit}, 0, 0)
+	cabinDef := addFieldDef(t, app, cmIDFamilyCampCabin, fieldNameFamilyCampCabin)
+
+	// The household row is scoped to 2024, so the 2025 lookup cannot see it.
+	hh := addHousehold(t, app, 9001, 2024)
+	addHouseholdValue(t, app, hh, cabinDef, "Ridge A", testLastUpdated, 2025)
+
+	s := NewLodgingAssignmentsSync(app)
+	s.Year = 2025
+	if err := s.Sync(context.Background()); err != nil {
+		t.Fatalf("a missing household must not fail the sync: %v", err)
+	}
+
+	issues, _ := app.FindRecordsByFilter("lodging_ingest_issues", "", "", 0, 0)
+	if len(issues) != 1 {
+		t.Fatalf("expected 1 work-queue item for the unkeyable value, got %d", len(issues))
+	}
+	if issues[0].GetString("kind") != issueUnknownParty {
+		t.Errorf("kind = %q, want %q", issues[0].GetString("kind"), issueUnknownParty)
+	}
+	if issues[0].GetString("raw_value") != "Ridge A" {
+		t.Errorf("raw_value = %q; the verbatim string must survive", issues[0].GetString("raw_value"))
+	}
+}
+
+// TestLodgingAssignmentsSyncQueuesUnknownPerson: the person-grain twin of
+// TestLodgingAssignmentsSyncQueuesUnknownHousehold.
+func TestLodgingAssignmentsSyncQueuesUnknownPerson(t *testing.T) {
+	app := newLodgingTestApp(t)
+	addSession(t, app, cmIDWomensWeekend, "Women's Weekend", "adult",
+		testAdultSessionStart, testAdultSessionEnd, 2025)
+	unit := addUnit(t, app, "ridge-a")
+	addAlias(t, app, "Ridge A", []string{unit}, 0, 0)
+	reportableDef := addFieldDef(t, app, cmIDReportableFamilyCampCabin, fieldNameReportableFamilyCampCabin)
+
+	// The person row is scoped to 2024, so the 2025 lookup cannot see it.
+	hh := addHousehold(t, app, 9001, 2024)
+	ava := addPerson(t, app, 5001, 9001, 2024, hh)
+	addPersonValue(t, app, ava, reportableDef, "Ridge A", testLastUpdated, 2025)
+
+	s := NewLodgingAssignmentsSync(app)
+	s.Year = 2025
+	if err := s.Sync(context.Background()); err != nil {
+		t.Fatalf("a missing person must not fail the sync: %v", err)
+	}
+
+	issues, _ := app.FindRecordsByFilter("lodging_ingest_issues", "", "", 0, 0)
+	if len(issues) != 1 {
+		t.Fatalf("expected 1 work-queue item for the unkeyable value, got %d", len(issues))
+	}
+	if issues[0].GetString("kind") != issueUnknownParty {
+		t.Errorf("kind = %q, want %q", issues[0].GetString("kind"), issueUnknownParty)
+	}
+}
+
+// TestLodgingAssignmentsSyncMergeLabelIgnoresMemberOrder: EnsureMerge keys a
+// merge on the member SET (unitSetKey sorts), so two aliases naming the same two
+// rooms in different orders share ONE merge row. The placement label has to be
+// canonical for the same reason -- an order-sensitive label would read as a move
+// on every run, re-saving the assignment and appending a history row for a
+// household that never left its cabin.
+func TestLodgingAssignmentsSyncMergeLabelIgnoresMemberOrder(t *testing.T) {
+	app := newLodgingTestApp(t)
+	sess := addSession(t, app, cmIDFamilyCamp1, "Family Camp 1", "family",
+		testSessionStart, testSessionEnd, 2025)
+	t1 := addUnit(t, app, "gt-tioga-1")
+	t2 := addUnit(t, app, "gt-tioga-2")
+	addAlias(t, app, "Golden Triangle - Tioga 1and2", []string{t1, t2}, 0, 0)
+	// The same two rooms, named the other way round. Staff type both.
+	addAlias(t, app, "Golden Triangle - Tioga 2and1", []string{t2, t1}, 0, 0)
+	cabinDef := addFieldDef(t, app, cmIDFamilyCampCabin, fieldNameFamilyCampCabin)
+
+	hh := addHousehold(t, app, 9001, 2025)
+	emma := addPerson(t, app, 5001, 9001, 2025, hh)
+	addAttendee(t, app, emma, sess, 5001, 2, 2025)
+	valueID := addHouseholdValue(t, app, hh, cabinDef,
+		"Golden Triangle - Tioga 1and2", testLastUpdated, 2025)
+
+	s := NewLodgingAssignmentsSync(app)
+	s.Year = 2025
+	if err := s.Sync(context.Background()); err != nil {
+		t.Fatalf("first sync: %v", err)
+	}
+
+	// CampMinder now carries the other spelling of the same two rooms.
+	rec, err := app.FindRecordById("household_custom_values", valueID)
+	if err != nil {
+		t.Fatalf("reloading the custom value: %v", err)
+	}
+	rec.Set("value", "Golden Triangle - Tioga 2and1")
+	if saveErr := app.Save(rec); saveErr != nil {
+		t.Fatalf("updating the custom value: %v", saveErr)
+	}
+
+	s2 := NewLodgingAssignmentsSync(app)
+	s2.Year = 2025
+	if err := s2.Sync(context.Background()); err != nil {
+		t.Fatalf("second sync: %v", err)
+	}
+
+	merges, _ := app.FindRecordsByFilter("lodging_merges", "", "", 0, 0)
+	if len(merges) != 1 {
+		t.Errorf("merges = %d, want 1; the same room set must not fork a second merge", len(merges))
+	}
+	hist, _ := app.FindRecordsByFilter("lodging_assignment_history", "", "", 0, 0)
+	if len(hist) != 1 {
+		t.Errorf("history rows = %d, want 1; reordering the members is not a move", len(hist))
+	}
+}

@@ -151,10 +151,14 @@ func (s *LodgingAssignmentsSync) Sync(ctx context.Context) error {
 	}
 
 	s.SyncSuccessful = true
-	if s.Stats.Created > 0 || s.Stats.Updated > 0 || s.Stats.Deleted > 0 {
-		if err := s.forceWALCheckpoint(); err != nil {
-			slog.Warn("WAL checkpoint failed", "error", err)
-		}
+	// Unconditional, unlike the sibling derived syncs that gate on
+	// Stats.Created/Updated/Deleted. Those counters only track assignment rows,
+	// and this job has three other writers that never touch them: writeHistory
+	// for unresolved placements, the work-queue Flush above, and
+	// UpsertFieldMappingStatus, which writes a row per source field on every run
+	// whatever it found. Reaching this line therefore means the database changed.
+	if err := s.forceWALCheckpoint(); err != nil {
+		slog.Warn("WAL checkpoint failed", "error", err)
 	}
 
 	slog.Info("Lodging assignment ingest completed",
@@ -203,7 +207,16 @@ func (s *LodgingAssignmentsSync) syncHouseholdGrain(
 
 		hhCMID := householdCMIDs[v.GetString("household")]
 		if hhCMID == 0 {
-			continue // household row missing for this year; nothing to key on
+			// No CampMinder id to key a placement on. The value was still
+			// observed, and counts[] above has already counted it, so dropping
+			// it here would hide it from the field_zero_values warning too.
+			s.issues.Record(Issue{
+				Kind:        issueUnknownParty,
+				RawValue:    v.GetString("value"),
+				SourceField: fieldNameFamilyCampCabin,
+				Year:        year,
+			})
+			continue
 		}
 
 		lastUpdated, _ := ParseCampMinderTimestamp(v.GetString("last_updated"))
@@ -260,7 +273,15 @@ func (s *LodgingAssignmentsSync) syncPersonGrain(
 
 		personCMID := personCMIDs[v.GetString("person")]
 		if personCMID == 0 {
-			continue // person row missing for this year; nothing to key on
+			// See the household-grain twin above: counted, unkeyable, and so
+			// invisible to every other signal unless it is queued here.
+			s.issues.Record(Issue{
+				Kind:        issueUnknownParty,
+				RawValue:    v.GetString("value"),
+				SourceField: fieldNameReportableFamilyCampCabin,
+				Year:        year,
+			})
+			continue
 		}
 
 		lastUpdated, _ := ParseCampMinderTimestamp(v.GetString("last_updated"))
@@ -359,7 +380,19 @@ func (s *LodgingAssignmentsSync) ingestValue(in *ingestContext) {
 	// old_unit / new_unit are TEXT for exactly this reason.
 	label := in.Raw
 	if res.Resolved {
-		label = strings.Join(res.UnitCodes, "+")
+		label = unitLabel(res.UnitCodes)
+	}
+
+	// Everything above this line computes; everything below it writes. The guard
+	// belongs here and not further down because two of the write paths are
+	// upstream of the placement itself: recordHistory inserts into
+	// lodging_assignment_history, and placementFor -> EnsureMerge inserts into
+	// lodging_merges. A guard placed just before upsertAssignment honors
+	// DryRun's "compute but do not write" for one table and breaks it for two.
+	// The work queue is unaffected either way -- Record is in-memory, and Sync
+	// returns before Flush on a dry run.
+	if s.DryRun {
+		return
 	}
 
 	if !res.Resolved {
@@ -385,19 +418,36 @@ func (s *LodgingAssignmentsSync) ingestValue(in *ingestContext) {
 	if err != nil {
 		slog.Error("Materializing merge", "raw", in.Raw, "error", err)
 		s.Stats.Errors++
+		s.recordWriteFailure(in)
 		return
 	}
 	input.UnitID, input.MergeID = unitID, mergeID
 
 	input.PartySize = s.partySize(in, attr.SessionID)
 
-	if s.DryRun {
-		return
-	}
 	if err := s.upsertAssignment(&input, in.Now); err != nil {
 		slog.Error("Upserting lodging assignment", "raw", in.Raw, "error", err)
 		s.Stats.Errors++
+		s.recordWriteFailure(in)
 	}
+}
+
+// recordWriteFailure queues a value the ingest resolved and attributed but could
+// not persist.
+//
+// Stats.Errors and the log line already record it, but Stats is never written
+// anywhere and the log rotates, so without this the value is accounted for
+// nowhere the morning after -- the silent drop spec 6.2 rules out, arrived at by
+// a different route than an unmapped string.
+func (s *LodgingAssignmentsSync) recordWriteFailure(in *ingestContext) {
+	s.issues.Record(Issue{
+		Kind:          issueWriteFailed,
+		RawValue:      in.Raw,
+		SourceField:   in.SourceField,
+		Year:          in.Year,
+		HouseholdCMID: in.HouseholdCMID,
+		PersonCMID:    in.PersonCMID,
+	})
 }
 
 // placementFor turns a resolution into the one placement column it belongs in.
@@ -440,9 +490,18 @@ func (s *LodgingAssignmentsSync) upsertAssignment(in *assignmentInput, now time.
 		return nil
 	}
 
-	oldLabel := ""
+	// Snapshot BEFORE the rec.Set calls below. rec aliases existing on the update
+	// path, so every Set mutates the record the comparison would read -- a
+	// changed-check written against existing after the Sets compares the new
+	// payload with itself and concludes nothing changed, every time.
+	oldLabel, oldUnit, oldMerge, oldSource := "", "", "", ""
+	oldPartySize := 0
 	if existing != nil {
 		oldLabel = s.labelOf(existing)
+		oldUnit = existing.GetString("unit")
+		oldMerge = existing.GetString("merge")
+		oldSource = existing.GetString("source")
+		oldPartySize = existing.GetInt("party_size")
 	}
 
 	rec := existing
@@ -468,7 +527,19 @@ func (s *LodgingAssignmentsSync) upsertAssignment(in *assignmentInput, now time.
 	rec.Set("party_size", in.PartySize)
 	rec.Set("source", sourceCampMinderSync)
 
-	if oldLabel == in.NewUnitLabel && !isNew {
+	// The label answers "did this party MOVE"; it does not answer "did anything
+	// change". party_size is recomputed every run from enrolment and the adults
+	// table, both of which move independently of the cabin string, so skipping
+	// on the label alone discards a corrected occupancy count for as long as the
+	// household stays put -- and buildPartySizeIndexes exists precisely because
+	// a wrong party size is a wrong cabin capacity.
+	changed := isNew ||
+		oldLabel != in.NewUnitLabel ||
+		oldUnit != in.UnitID ||
+		oldMerge != in.MergeID ||
+		oldPartySize != in.PartySize ||
+		oldSource != sourceCampMinderSync
+	if !changed {
 		s.Stats.Skipped++
 		return nil
 	}
@@ -479,6 +550,13 @@ func (s *LodgingAssignmentsSync) upsertAssignment(in *assignmentInput, now time.
 		s.Stats.Created++
 	} else {
 		s.Stats.Updated++
+	}
+
+	// History is a record of MOVES. A party-size correction in the same cabin is
+	// not one, and appending a row for it would fill the audit trail with
+	// old_unit == new_unit noise.
+	if !isNew && oldLabel == in.NewUnitLabel {
+		return nil
 	}
 
 	return s.writeHistory(&historyInput{
@@ -544,7 +622,22 @@ func (s *LodgingAssignmentsSync) labelOf(rec *core.Record) string {
 	for _, id := range merge.GetStringSlice("member_units") {
 		codes = append(codes, s.resolver.UnitCode(id))
 	}
-	return strings.Join(codes, "+")
+	return unitLabel(codes)
+}
+
+// unitLabel renders member unit codes as a placement label.
+//
+// The sort is what makes the label comparable. A merge is keyed on the member
+// SET, not the slice -- unitSetKey sorts, so two aliases naming the same rooms
+// in different orders resolve to ONE merge row, which then keeps whichever
+// order created it. Joining in stored order would make the label of that shared
+// row depend on which alias was seen first, so the same placement would read as
+// a move on the next run: a re-save and a history row for a household that never
+// left its cabin.
+func unitLabel(codes []string) string {
+	sorted := slices.Clone(codes)
+	slices.Sort(sorted)
+	return strings.Join(sorted, "+")
 }
 
 type historyInput struct {
