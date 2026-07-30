@@ -36,8 +36,14 @@ func unitSetKey(unitIDs []string) string {
 //
 // An empty scenario means the session's live plan, matching how PocketBase
 // stores an unset relation: TEXT, NOT NULL, defaulting to the empty string.
+//
+// sessionCMID is the session's CampMinder id and is REQUIRED by
+// lodging_merges.session_cm_id (migration 1500000124). It is passed in rather
+// than looked up so it comes from the same attribution that chose sessionID;
+// deriving it here would let the relation and the durable key disagree.
 func EnsureMerge(
-	app core.App, sessionID string, year int, scenario string, unitIDs []string, displayName string,
+	app core.App, sessionID string, sessionCMID, year int,
+	scenario string, unitIDs []string, displayName string,
 ) (string, error) {
 	// member_units is minSelect 2, maxSelect 20 (migration 1500000118). Checking
 	// both here gives a call-site error naming the member count, instead of a
@@ -71,6 +77,7 @@ func EnsureMerge(
 	}
 	rec := core.NewRecord(col)
 	rec.Set("session", sessionID)
+	rec.Set("session_cm_id", sessionCMID)
 	rec.Set("year", year)
 	rec.Set("scenario", scenario)
 	rec.Set("member_units", unitIDs)

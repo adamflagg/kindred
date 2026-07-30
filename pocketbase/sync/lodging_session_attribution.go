@@ -41,6 +41,27 @@ type Attribution struct {
 	BestGuess  string
 }
 
+// SessionCMID returns the attributed session's CampMinder id, or 0 when nothing
+// was attributed.
+//
+// The placement tables require this column (migration 1500000124): camp_sessions
+// is unique on (cm_id, year), so its PB record id is scoped to one season and
+// cannot carry a cross-year question. Reading the id off the matching candidate
+// rather than re-querying keeps the pair consistent -- an assignment whose
+// session_cm_id disagreed with its session relation would be worse than either
+// alone.
+func (a Attribution) SessionCMID() int {
+	if a.SessionID == "" {
+		return 0
+	}
+	for _, c := range a.Candidates {
+		if c.ID == a.SessionID {
+			return c.CMID
+		}
+	}
+	return 0
+}
+
 // CandidateCMIDs returns the candidate session CampMinder ids, for the queue item.
 func (a Attribution) CandidateCMIDs() []int {
 	out := make([]int, 0, len(a.Candidates))

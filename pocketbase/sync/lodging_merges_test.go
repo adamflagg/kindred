@@ -14,15 +14,15 @@ const testSessionEnd = "2025-05-26 07:00:00.000Z"
 // backfill run would create another merge row for the same two rooms.
 func TestEnsureMergeIsIdempotent(t *testing.T) {
 	app := newLodgingTestApp(t)
-	sess := addSession(t, app, 1309514, "Family Camp 1", "family", testSessionStart, testSessionEnd, 2025)
+	sess := addSession(t, app, cmIDFamilyCamp1, "Family Camp 1", "family", testSessionStart, testSessionEnd, 2025)
 	tioga1 := addUnit(t, app, "gt-tioga-1")
 	tioga2 := addUnit(t, app, "gt-tioga-2")
 
-	first, err := EnsureMerge(app, sess, 2025, "", []string{tioga1, tioga2}, "Tioga")
+	first, err := EnsureMerge(app, sess, cmIDFamilyCamp1, 2025, "", []string{tioga1, tioga2}, "Tioga")
 	if err != nil {
 		t.Fatalf("EnsureMerge first: %v", err)
 	}
-	second, err := EnsureMerge(app, sess, 2025, "", []string{tioga1, tioga2}, "Tioga")
+	second, err := EnsureMerge(app, sess, cmIDFamilyCamp1, 2025, "", []string{tioga1, tioga2}, "Tioga")
 	if err != nil {
 		t.Fatalf("EnsureMerge second: %v", err)
 	}
@@ -44,15 +44,15 @@ func TestEnsureMergeIsIdempotent(t *testing.T) {
 // SET of members and not the slice.
 func TestEnsureMergeIgnoresMemberOrder(t *testing.T) {
 	app := newLodgingTestApp(t)
-	sess := addSession(t, app, 1309514, "Family Camp 1", "family", testSessionStart, testSessionEnd, 2025)
+	sess := addSession(t, app, cmIDFamilyCamp1, "Family Camp 1", "family", testSessionStart, testSessionEnd, 2025)
 	a := addUnit(t, app, "gt-tenaya-1")
 	b := addUnit(t, app, "gt-tenaya-2")
 
-	first, err := EnsureMerge(app, sess, 2025, "", []string{a, b}, "Tenaya")
+	first, err := EnsureMerge(app, sess, cmIDFamilyCamp1, 2025, "", []string{a, b}, "Tenaya")
 	if err != nil {
 		t.Fatalf("EnsureMerge: %v", err)
 	}
-	second, err := EnsureMerge(app, sess, 2025, "", []string{b, a}, "Tenaya")
+	second, err := EnsureMerge(app, sess, cmIDFamilyCamp1, 2025, "", []string{b, a}, "Tenaya")
 	if err != nil {
 		t.Fatalf("EnsureMerge reversed: %v", err)
 	}
@@ -66,21 +66,21 @@ func TestEnsureMergeIgnoresMemberOrder(t *testing.T) {
 // because a merge is one weekend's arrangement, not a permanent building change.
 func TestEnsureMergeIsPerSessionAndScenario(t *testing.T) {
 	app := newLodgingTestApp(t)
-	sessA := addSession(t, app, 1309514, "Family Camp 1", "family", testSessionStart, testSessionEnd, 2025)
-	sessB := addSession(t, app, 1309519, "Family Camp 6", "family",
+	sessA := addSession(t, app, cmIDFamilyCamp1, "Family Camp 1", "family", testSessionStart, testSessionEnd, 2025)
+	sessB := addSession(t, app, cmIDFamilyCamp6, "Family Camp 6", "family",
 		"2025-09-18 07:00:00.000Z", "2025-09-21 07:00:00.000Z", 2025)
 	u1 := addUnit(t, app, "gt-tioga-1")
 	u2 := addUnit(t, app, "gt-tioga-2")
 
-	live, err := EnsureMerge(app, sessA, 2025, "", []string{u1, u2}, "Tioga")
+	live, err := EnsureMerge(app, sessA, cmIDFamilyCamp1, 2025, "", []string{u1, u2}, "Tioga")
 	if err != nil {
 		t.Fatalf("live merge: %v", err)
 	}
-	otherSession, err := EnsureMerge(app, sessB, 2025, "", []string{u1, u2}, "Tioga")
+	otherSession, err := EnsureMerge(app, sessB, cmIDFamilyCamp6, 2025, "", []string{u1, u2}, "Tioga")
 	if err != nil {
 		t.Fatalf("other-session merge: %v", err)
 	}
-	scenario, err := EnsureMerge(app, sessA, 2025, "scn_abc", []string{u1, u2}, "Tioga")
+	scenario, err := EnsureMerge(app, sessA, cmIDFamilyCamp1, 2025, "scn_abc", []string{u1, u2}, "Tioga")
 	if err != nil {
 		t.Fatalf("scenario merge: %v", err)
 	}
@@ -98,13 +98,13 @@ func TestEnsureMergeIsPerSessionAndScenario(t *testing.T) {
 // validation failure deep inside the backfill.
 func TestEnsureMergeRejectsFewerThanTwoMembers(t *testing.T) {
 	app := newLodgingTestApp(t)
-	sess := addSession(t, app, 1309514, "Family Camp 1", "family", testSessionStart, testSessionEnd, 2025)
+	sess := addSession(t, app, cmIDFamilyCamp1, "Family Camp 1", "family", testSessionStart, testSessionEnd, 2025)
 	only := addUnit(t, app, "ridge-a")
 
-	if _, err := EnsureMerge(app, sess, 2025, "", []string{only}, "Ridge A"); err == nil {
+	if _, err := EnsureMerge(app, sess, cmIDFamilyCamp1, 2025, "", []string{only}, "Ridge A"); err == nil {
 		t.Error("EnsureMerge accepted a single-member merge; member_units has minSelect 2")
 	}
-	if _, err := EnsureMerge(app, sess, 2025, "", nil, ""); err == nil {
+	if _, err := EnsureMerge(app, sess, cmIDFamilyCamp1, 2025, "", nil, ""); err == nil {
 		t.Error("EnsureMerge accepted an empty member set")
 	}
 }
@@ -115,14 +115,14 @@ func TestEnsureMergeRejectsFewerThanTwoMembers(t *testing.T) {
 // error deep inside the backfill instead of at the call site.
 func TestEnsureMergeRejectsMoreThanMaxMembers(t *testing.T) {
 	app := newLodgingTestApp(t)
-	sess := addSession(t, app, 1309514, "Family Camp 1", "family", testSessionStart, testSessionEnd, 2025)
+	sess := addSession(t, app, cmIDFamilyCamp1, "Family Camp 1", "family", testSessionStart, testSessionEnd, 2025)
 
 	tooMany := make([]string, 0, maxMergeMembers+1)
 	for i := range maxMergeMembers + 1 {
 		tooMany = append(tooMany, addUnit(t, app, fmt.Sprintf("unit-%02d", i)))
 	}
 
-	_, err := EnsureMerge(app, sess, 2025, "", tooMany, "Oversized")
+	_, err := EnsureMerge(app, sess, cmIDFamilyCamp1, 2025, "", tooMany, "Oversized")
 	if err == nil {
 		t.Fatalf("EnsureMerge accepted %d members; member_units has maxSelect %d",
 			len(tooMany), maxMergeMembers)

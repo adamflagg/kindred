@@ -7,6 +7,16 @@ import (
 	"github.com/pocketbase/pocketbase/tests"
 )
 
+// CampMinder ids for the fixture sessions. Shared across the lodging tests
+// because session_cm_id is a required column on the placement tables, so a
+// session's cm id is now asserted as often as its PB record id -- and the two
+// disagreeing is exactly the bug the durable key exists to prevent.
+const (
+	cmIDFamilyCamp1  = 1309514
+	cmIDFamilyCamp6  = 1309519
+	cmIDWinterFamily = 1354939
+)
+
 // newLodgingTestApp returns a throwaway PocketBase app carrying every collection
 // the lodging ingest reads or writes, shaped like production's.
 //
@@ -58,6 +68,16 @@ func newLodgingTestApp(t *testing.T) core.App {
 	attendees.Fields.Add(&core.NumberField{Name: "year"})
 	saveCollection(t, app, attendees)
 
+	// Accompanying adults, scraped from custom-field values rather than enrolled.
+	// CampMinder enrolls only the children for family camp, so party_size is wrong
+	// without this table.
+	adults := core.NewBaseCollection("family_camp_adults")
+	adults.Fields.Add(&core.RelationField{Name: "household", CollectionId: households.Id, MaxSelect: 1})
+	adults.Fields.Add(&core.NumberField{Name: "year"})
+	adults.Fields.Add(&core.NumberField{Name: "adult_number"})
+	adults.Fields.Add(&core.TextField{Name: "name"})
+	saveCollection(t, app, adults)
+
 	hcv := core.NewBaseCollection("household_custom_values")
 	hcv.Fields.Add(&core.RelationField{Name: "household", CollectionId: households.Id, MaxSelect: 1})
 	hcv.Fields.Add(&core.RelationField{Name: "field_definition", CollectionId: defs.Id, MaxSelect: 1})
@@ -94,6 +114,10 @@ func newLodgingTestApp(t *testing.T) core.App {
 
 	merges := core.NewBaseCollection("lodging_merges")
 	merges.Fields.Add(&core.RelationField{Name: "session", CollectionId: sessions.Id, MaxSelect: 1})
+	// Required, mirroring migration 1500000124. PocketBase treats an unset number
+	// as 0 and a required number rejects 0, so a writer that forgets this column
+	// fails loudly here instead of only in production.
+	merges.Fields.Add(&core.NumberField{Name: "session_cm_id", Required: true, OnlyInt: true})
 	merges.Fields.Add(&core.NumberField{Name: "year"})
 	merges.Fields.Add(&core.TextField{Name: "scenario"})
 	merges.Fields.Add(&core.RelationField{Name: "member_units", CollectionId: units.Id, MaxSelect: 20})
@@ -103,6 +127,8 @@ func newLodgingTestApp(t *testing.T) core.App {
 
 	assignments := core.NewBaseCollection("lodging_assignments")
 	assignments.Fields.Add(&core.RelationField{Name: "session", CollectionId: sessions.Id, MaxSelect: 1})
+	// Required, mirroring migration 1500000124. See the merges note above.
+	assignments.Fields.Add(&core.NumberField{Name: "session_cm_id", Required: true, OnlyInt: true})
 	assignments.Fields.Add(&core.NumberField{Name: "year"})
 	assignments.Fields.Add(&core.RelationField{Name: "unit", CollectionId: units.Id, MaxSelect: 1})
 	assignments.Fields.Add(&core.RelationField{Name: "merge", CollectionId: merges.Id, MaxSelect: 1})
@@ -120,6 +146,11 @@ func newLodgingTestApp(t *testing.T) core.App {
 	history.Fields.Add(&core.NumberField{Name: "household_cm_id"})
 	history.Fields.Add(&core.NumberField{Name: "person_cm_id"})
 	history.Fields.Add(&core.RelationField{Name: "session", CollectionId: sessions.Id, MaxSelect: 1})
+	// Optional here, unlike the placement tables: migration 1500000124 leaves the
+	// audit trail's session relation nullable so a history row outlives its
+	// session, and session_cm_id is what lets that surviving row still name the
+	// weekend it described.
+	history.Fields.Add(&core.NumberField{Name: "session_cm_id", OnlyInt: true})
 	history.Fields.Add(&core.NumberField{Name: "year"})
 	history.Fields.Add(&core.TextField{Name: "old_unit"})
 	history.Fields.Add(&core.TextField{Name: "new_unit"})
@@ -243,9 +274,24 @@ func addAlias(t *testing.T, app core.App, aliasString string, unitIDs []string, 
 	})
 }
 
-// NOTE: addHouseholdValue / addPersonValue belong here too, but their first
-// consumer is Task 11 (the household-grain sync), which ships in the B2 PR.
-// Adding them now would leave two permanently-unused helpers in this PR, and the
-// `unused` linter fails the pre-push hook on them. B2 appends them to this file
-// alongside the code that calls them. The custom-values collections themselves
-// are already built by newLodgingTestApp above, so nothing else has to move.
+// addFamilyCampAdult records one accompanying adult. These people are never
+// enrolled in CampMinder -- they exist only as custom-field values -- so they are
+// invisible to attendees and have to be counted separately for party_size.
+func addFamilyCampAdult(t *testing.T, app core.App, householdPBID string, year, adultNumber int, name string) {
+	t.Helper()
+	saveRecord(t, app, "family_camp_adults", map[string]any{
+		"household": householdPBID, "year": year, "adult_number": adultNumber, "name": name,
+	})
+}
+
+// addHouseholdValue stores one household custom-field answer. lastUpdated is
+// CampMinder's raw .NET DateTimeOffset string, not a PocketBase date.
+func addHouseholdValue(
+	t *testing.T, app core.App, householdPBID, fieldDefPBID, value, lastUpdated string, year int,
+) string {
+	t.Helper()
+	return saveRecord(t, app, "household_custom_values", map[string]any{
+		"household": householdPBID, "field_definition": fieldDefPBID,
+		"value": value, "last_updated": lastUpdated, "year": year,
+	})
+}
