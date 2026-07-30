@@ -55,7 +55,14 @@ var SyncJobToCollections = map[string][]string{
 	"household_custom_values": {"household_custom_values"},
 	"session_groups":          {"session_groups"},
 	// Derived tables
-	"family_camp_derived":        {"family_camp_adults", "family_camp_registrations", "family_camp_medical"},
+	"family_camp_derived": {"family_camp_adults", "family_camp_registrations", "family_camp_medical"},
+	// Assignment ingest. Present so the export-skip optimisation knows which
+	// collections this job writes -- NOT an export. None of these collections
+	// appears in GetReadableYearExports(), and lodging_phi_test.go asserts that.
+	"lodging_assignments": {
+		"lodging_assignments", "lodging_assignment_history",
+		"lodging_merges", "lodging_ingest_issues",
+	},
 	"staff_skills":               {"staff_skills"},
 	"financial_aid_applications": {"financial_aid_applications"},
 	"household_demographics":     {"household_demographics"},

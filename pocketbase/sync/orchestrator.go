@@ -80,6 +80,7 @@ var syncJobMeta = []JobMeta{
 	// Transform phase - PocketBase → PocketBase
 	{"camper_history", PhaseTransform, "Compute camper history from attendees"},
 	{"family_camp_derived", PhaseTransform, "Compute family camp tables from custom values"},
+	{"lodging_assignments", PhaseTransform, "Derive lodging assignments from CampMinder cabin fields"},
 	{"staff_skills", PhaseTransform, "Extract staff skills from person_custom_values"},
 	{"financial_aid_applications", PhaseTransform, "Extract FA applications from person_custom_values"},
 	{"household_demographics", PhaseTransform, "Compute household demographics from custom values"},
@@ -165,7 +166,7 @@ func GetDefaultUnifiedSyncJobs(includeCustomValues bool) []string {
 	// Transform phase: Always run using existing custom values data
 	// (same as daily sync behavior)
 	jobs = append(jobs,
-		"camper_history", "family_camp_derived", "staff_skills",
+		"camper_history", "family_camp_derived", "lodging_assignments", "staff_skills",
 		"financial_aid_applications", "household_demographics",
 		"camper_dietary", "camper_transportation", "quest_registrations",
 		"staff_applications", "staff_vehicle_info", "normalize_geographic",
@@ -719,6 +720,7 @@ func getDailySyncJobs() []string {
 		// New enrollments, session changes, etc. are reflected immediately.
 		"camper_history",
 		"family_camp_derived",
+		"lodging_assignments", // Derived: cabin custom fields -> lodging_assignments (+ history)
 		"staff_skills",
 		"financial_aid_applications",
 		"household_demographics",
@@ -1238,6 +1240,11 @@ func (o *Orchestrator) RunSyncWithOptions(ctx context.Context, opts Options) err
 		familyCampDerivedSync := NewFamilyCampDerivedSync(o.app)
 		familyCampDerivedSync.Year = opts.Year
 		o.RegisterService("family_camp_derived", familyCampDerivedSync)
+
+		// Lodging assignments (derived from the cabin custom fields)
+		lodgingAssignmentsSync := NewLodgingAssignmentsSync(o.app)
+		lodgingAssignmentsSync.Year = opts.Year
+		o.RegisterService("lodging_assignments", lodgingAssignmentsSync)
 
 		// Staff skills (derived from person_custom_values Skills- fields)
 		staffSkillsSync := NewStaffSkillsSync(o.app)
@@ -1812,6 +1819,9 @@ func (o *Orchestrator) InitializeSyncServices() error {
 
 	// Family camp derived tables (computes from custom values - on-demand)
 	o.RegisterService("family_camp_derived", NewFamilyCampDerivedSync(o.app))
+
+	// Lodging assignments (derived from the cabin custom fields - on-demand)
+	o.RegisterService("lodging_assignments", NewLodgingAssignmentsSync(o.app))
 
 	// Staff skills (derived from person_custom_values Skills- fields)
 	o.RegisterService("staff_skills", NewStaffSkillsSync(o.app))

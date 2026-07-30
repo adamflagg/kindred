@@ -31,6 +31,7 @@ const SYNC_DISPLAY_NAMES: Record<string, string> = {
   // Transform phase (derived tables)
   camper_history: 'Camper History',
   family_camp_derived: 'Weekend Programs',
+  lodging_assignments: 'Lodging Assignments',
   staff_skills: 'Staff Skills',
   financial_aid_applications: 'FA Applications',
   household_demographics: 'Demographics',

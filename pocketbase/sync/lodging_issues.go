@@ -26,6 +26,19 @@ const (
 	issueNoSession = "no_session"
 	// Spec 4.4's passive warning: a mapped field saw zero values this year.
 	issueFieldZeroValues = "field_zero_values"
+	// The household or person row the value hangs off does not exist for this
+	// year, so there is no CampMinder id to key a placement on. Skipping the
+	// value outright would be a silent drop, which spec 6.2 forbids -- and the
+	// value is counted before the skip, so even the field_zero_values warning
+	// stays quiet. Queue it instead: the fix is upstream, in whichever sync
+	// should have produced the missing row.
+	issueUnknownParty = "unknown_party"
+	// The placement resolved and attributed cleanly but could not be persisted
+	// -- a merge that would not materialize, or an assignment the database
+	// refused. Stats.Errors and the log already carry this, but neither is
+	// durable or queryable, so the value would otherwise vanish once the log
+	// rotates.
+	issueWriteFailed = "write_failed"
 )
 
 // Issue is one work-queue item. Zero-valued HouseholdCMID / PersonCMID mean "not

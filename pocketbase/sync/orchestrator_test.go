@@ -2402,7 +2402,7 @@ func TestRunSyncWithOptionsPhaseOrdering(t *testing.T) {
 			"session_groups", "sessions", "attendees", "persons",
 			"bunks", "bunk_plans", "bunk_assignments", "staff", "financial_transactions",
 			// Transform phase (same order as RunDailySync)
-			"camper_history", "family_camp_derived", "staff_skills",
+			"camper_history", "family_camp_derived", "lodging_assignments", "staff_skills",
 			"financial_aid_applications", "household_demographics",
 			"camper_dietary", "camper_transportation", "quest_registrations",
 			"staff_applications", "staff_vehicle_info", "normalize_geographic",
