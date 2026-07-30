@@ -346,3 +346,116 @@ func TestLodgingAssignmentsSyncMaterialisesMerges(t *testing.T) {
 		t.Errorf("merge session_cm_id = %d, want %d", merges[0].GetInt("session_cm_id"), cmIDFamilyCamp1)
 	}
 }
+
+// cmIDWomensWeekend is the adult weekend the person-grain tests place people in.
+const cmIDWomensWeekend = 1335115
+
+const testAdultSessionStart = "2025-10-16 07:00:00.000Z"
+const testAdultSessionEnd = "2025-10-19 07:00:00.000Z"
+
+// TestLodgingAssignmentsSyncPersonGrain: adult weekends enroll real persons, so
+// the placement keys on person_cm_id and household_cm_id stays 0.
+func TestLodgingAssignmentsSyncPersonGrain(t *testing.T) {
+	app := newLodgingTestApp(t)
+	womens := addSession(t, app, cmIDWomensWeekend, "Women's Weekend", "adult",
+		testAdultSessionStart, testAdultSessionEnd, 2025)
+	unit := addUnit(t, app, "river-c")
+	addAlias(t, app, "River C", []string{unit}, 0, 0)
+	def := addFieldDef(t, app, cmIDReportableFamilyCampCabin, fieldNameReportableFamilyCampCabin)
+
+	hh := addHousehold(t, app, 9001, 2025)
+	emma := addPerson(t, app, 5001, 9001, 2025, hh)
+	addAttendee(t, app, emma, womens, 5001, 2, 2025)
+	addPersonValue(t, app, emma, def, "River C", testLastUpdated, 2025)
+
+	s := NewLodgingAssignmentsSync(app)
+	s.Year = 2025
+	if err := s.Sync(context.Background()); err != nil {
+		t.Fatalf("Sync: %v", err)
+	}
+
+	rows, _ := app.FindRecordsByFilter("lodging_assignments", "", "", 0, 0)
+	if len(rows) != 1 {
+		t.Fatalf("assignments = %d, want 1", len(rows))
+	}
+	if rows[0].GetInt("person_cm_id") != 5001 {
+		t.Errorf("person_cm_id = %d, want 5001", rows[0].GetInt("person_cm_id"))
+	}
+	if rows[0].GetInt("household_cm_id") != 0 {
+		t.Errorf("household_cm_id = %d; the XOR requires 0 on a person row",
+			rows[0].GetInt("household_cm_id"))
+	}
+	if rows[0].GetInt("party_size") != 1 {
+		t.Errorf("party_size = %d, want 1 for an individual", rows[0].GetInt("party_size"))
+	}
+	if rows[0].GetInt("session_cm_id") != cmIDWomensWeekend {
+		t.Errorf("session_cm_id = %d, want %d", rows[0].GetInt("session_cm_id"), cmIDWomensWeekend)
+	}
+}
+
+// TestLodgingAssignmentsSyncPersonGrainManyPerSession is the case Plan 1's
+// pre-flight fix exists for: several individuals in one adult weekend. Had the
+// unique index predicate compared against the empty string instead of using
+// `> 0`, every person row (household_cm_id = 0) would have collided and only
+// ONE could exist.
+func TestLodgingAssignmentsSyncPersonGrainManyPerSession(t *testing.T) {
+	app := newLodgingTestApp(t)
+	womens := addSession(t, app, cmIDWomensWeekend, "Women's Weekend", "adult",
+		testAdultSessionStart, testAdultSessionEnd, 2025)
+	unit := addUnit(t, app, "river-c")
+	addAlias(t, app, "River C", []string{unit}, 0, 0)
+	def := addFieldDef(t, app, cmIDReportableFamilyCampCabin, fieldNameReportableFamilyCampCabin)
+	hh := addHousehold(t, app, 9001, 2025)
+
+	for i, cmID := range []int{5001, 5002, 5003} {
+		p := addPerson(t, app, cmID, 9001+i, 2025, hh)
+		addAttendee(t, app, p, womens, cmID, 2, 2025)
+		addPersonValue(t, app, p, def, "River C", testLastUpdated, 2025)
+	}
+
+	s := NewLodgingAssignmentsSync(app)
+	s.Year = 2025
+	if err := s.Sync(context.Background()); err != nil {
+		t.Fatalf("Sync: %v", err)
+	}
+
+	rows, _ := app.FindRecordsByFilter("lodging_assignments", "", "", 0, 0)
+	if len(rows) != 3 {
+		t.Errorf("assignments = %d, want 3 (one per individual)", len(rows))
+	}
+}
+
+// TestLodgingAssignmentsSyncPersonGrainNoEnrolment: 5 (2024) and 4 (2025)
+// Reportable Family Camp Cabin values belong to persons with no active
+// enrollment. Queue them; never drop them.
+func TestLodgingAssignmentsSyncPersonGrainNoEnrolment(t *testing.T) {
+	app := newLodgingTestApp(t)
+	addSession(t, app, cmIDWomensWeekend, "Women's Weekend", "adult",
+		testAdultSessionStart, testAdultSessionEnd, 2025)
+	unit := addUnit(t, app, "river-c")
+	addAlias(t, app, "River C", []string{unit}, 0, 0)
+	def := addFieldDef(t, app, cmIDReportableFamilyCampCabin, fieldNameReportableFamilyCampCabin)
+
+	hh := addHousehold(t, app, 9001, 2025)
+	noah := addPerson(t, app, 5003, 9001, 2025, hh)
+	// No attendee row at all -- cancelled before the season.
+	addPersonValue(t, app, noah, def, "River C", testLastUpdated, 2025)
+
+	s := NewLodgingAssignmentsSync(app)
+	s.Year = 2025
+	if err := s.Sync(context.Background()); err != nil {
+		t.Fatalf("Sync: %v", err)
+	}
+
+	rows, _ := app.FindRecordsByFilter("lodging_assignments", "", "", 0, 0)
+	if len(rows) != 0 {
+		t.Errorf("assignments = %d, want 0 without an enrolment", len(rows))
+	}
+	issues, _ := app.FindRecordsByFilter("lodging_ingest_issues", "", "", 0, 0)
+	if len(issues) != 1 || issues[0].GetString("kind") != issueNoSession {
+		t.Fatalf("expected 1 no_session item, got %d", len(issues))
+	}
+	if issues[0].GetInt("person_cm_id") != 5003 {
+		t.Errorf("person_cm_id = %d on the queue item, want 5003", issues[0].GetInt("person_cm_id"))
+	}
+}

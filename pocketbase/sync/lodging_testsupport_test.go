@@ -284,6 +284,18 @@ func addFamilyCampAdult(t *testing.T, app core.App, householdPBID string, year, 
 	})
 }
 
+// addPersonValue stores one person custom-field answer. Same shape as
+// addHouseholdValue; the person grain is where adult weekends live.
+func addPersonValue(
+	t *testing.T, app core.App, personPBID, fieldDefPBID, value, lastUpdated string, year int,
+) string {
+	t.Helper()
+	return saveRecord(t, app, "person_custom_values", map[string]any{
+		"person": personPBID, "field_definition": fieldDefPBID,
+		"value": value, "last_updated": lastUpdated, "year": year,
+	})
+}
+
 // addHouseholdValue stores one household custom-field answer. lastUpdated is
 // CampMinder's raw .NET DateTimeOffset string, not a PocketBase date.
 func addHouseholdValue(

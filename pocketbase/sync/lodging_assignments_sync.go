@@ -96,6 +96,10 @@ func (s *LodgingAssignmentsSync) Sync(ctx context.Context) error {
 		return hhErr
 	}
 
+	if personErr := s.syncPersonGrain(ctx, year, fieldTargets, counts, now); personErr != nil {
+		return personErr
+	}
+
 	if s.DryRun {
 		slog.Info("Dry run - computed but not writing", "year", year)
 		s.SyncSuccessful = true
@@ -159,7 +163,7 @@ func (s *LodgingAssignmentsSync) syncHouseholdGrain(
 	if err != nil {
 		return fmt.Errorf("building household session index: %w", err)
 	}
-	householdCMIDs, err := s.householdCMIDsByPBID(year)
+	householdCMIDs, err := s.cmIDsByPBID("households", year)
 	if err != nil {
 		return err
 	}
@@ -195,6 +199,61 @@ func (s *LodgingAssignmentsSync) syncHouseholdGrain(
 			Candidates:    sessionIndex[hhCMID],
 			LastUpdated:   lastUpdated,
 			Now:           now,
+		})
+	}
+	return nil
+}
+
+// syncPersonGrain ingests "Reportable Family Camp Cabin" -- partition
+// ["Camper","Adult"], person_custom_values, adult weekends.
+//
+// Measured against 2024/2025: every one of these values whose person has an
+// active enrolment is enrolled in an `adult` session and none in a `family` one,
+// so the candidate set is adult sessions. The handful with no enrolment at all
+// (5 in 2024, 4 in 2025) fall through to a no_session queue item.
+func (s *LodgingAssignmentsSync) syncPersonGrain(
+	ctx context.Context, year int, fieldTargets map[string]string, counts map[int]int, now time.Time,
+) error {
+	sessionIndex, err := BuildPersonSessionIndex(s.App, year, []string{sessionTypeAdult})
+	if err != nil {
+		return fmt.Errorf("building person session index: %w", err)
+	}
+	personCMIDs, err := s.cmIDsByPBID("persons", year)
+	if err != nil {
+		return err
+	}
+
+	values, err := findAllRecords(s.App, "person_custom_values",
+		fmt.Sprintf("year = %d && value != ''", year))
+	if err != nil {
+		return err
+	}
+
+	for _, v := range values {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		default:
+		}
+		if fieldTargets[v.GetString("field_definition")] != targetCabinAssignmentPerson {
+			continue
+		}
+		counts[cmIDReportableFamilyCampCabin]++
+
+		personCMID := personCMIDs[v.GetString("person")]
+		if personCMID == 0 {
+			continue // person row missing for this year; nothing to key on
+		}
+
+		lastUpdated, _ := ParseCampMinderTimestamp(v.GetString("last_updated"))
+		s.ingestValue(&ingestContext{
+			Year:        year,
+			Raw:         v.GetString("value"),
+			SourceField: fieldNameReportableFamilyCampCabin,
+			PersonCMID:  personCMID,
+			Candidates:  sessionIndex[personCMID],
+			LastUpdated: lastUpdated,
+			Now:         now,
 		})
 	}
 	return nil
@@ -533,11 +592,13 @@ func (s *LodgingAssignmentsSync) partySize(in *ingestContext, sessionID string) 
 	return enrolled + adultCount, nil
 }
 
-// householdCMIDsByPBID maps households PB record id -> CampMinder id, because
-// household_custom_values.household is a PB relation while every cross-table
-// key in this project is a CampMinder id.
-func (s *LodgingAssignmentsSync) householdCMIDsByPBID(year int) (map[string]int, error) {
-	records, err := findAllRecords(s.App, "households", fmt.Sprintf("year = %d", year))
+// cmIDsByPBID maps a collection's PB record id -> its CampMinder id for one
+// year. Both custom-value tables address their party by PB relation
+// (household_custom_values.household, person_custom_values.person) while every
+// cross-table key in this project is a CampMinder id, so each grain needs this
+// translation before it can key an assignment.
+func (s *LodgingAssignmentsSync) cmIDsByPBID(collection string, year int) (map[string]int, error) {
+	records, err := findAllRecords(s.App, collection, fmt.Sprintf("year = %d", year))
 	if err != nil {
 		return nil, err
 	}
