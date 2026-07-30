@@ -59,10 +59,15 @@ migrate((app) => {
   for (const name of ["lodging_merges", "lodging_availability", "lodging_assignments"]) {
     const col = app.findCollectionByNameOrId(name);
 
+    // No guard: a missing `session` is the one state this migration must never
+    // shrug at. Its whole purpose is to clear cascadeDelete on that field, so
+    // skipping quietly would report success while leaving kindred#1879's silent
+    // data loss fully in place.
     const rel = col.fields.getByName("session");
-    if (rel) {
-      rel.cascadeDelete = false;
+    if (!rel) {
+      throw new Error(`${name}: expected an existing "session" relation field`);
     }
+    rel.cascadeDelete = false;
 
     col.fields.add(new Field({
       type: "number", name: "session_cm_id", required: true, presentable: false,
@@ -83,9 +88,10 @@ migrate((app) => {
   for (const name of ["lodging_merges", "lodging_availability", "lodging_assignments"]) {
     const col = app.findCollectionByNameOrId(name);
     const rel = col.fields.getByName("session");
-    if (rel) {
-      rel.cascadeDelete = true;
+    if (!rel) {
+      throw new Error(`${name}: expected an existing "session" relation field`);
     }
+    rel.cascadeDelete = true;
     col.fields.removeByName("session_cm_id");
     app.save(col);
   }
