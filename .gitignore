@@ -332,3 +332,9 @@ docs/reference/solver-config-decisions.md
 # Synthetic no-PII seed fixture (issue #1623) — committed test data, not local config.
 # Override the repo-wide *.json ignore for the manifest; the .db.gz is not matched by *.db.
 !tests/fixtures/synthetic_pb/MANIFEST.json
+
+# Camp facility documents (site maps, floor plans) are private — this repo is public.
+# "2026 Map of Camp.pdf" is the source the lodging registry's map_x/map_y coordinates
+# were extracted from, and it lives at the repo root during that work. Ignore root-level
+# PDFs so a stray `git add -A` cannot publish a real facility layout. See CLAUDE.md §4.
+/*.pdf
