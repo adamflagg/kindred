@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"slices"
 	"strings"
 	"time"
 
@@ -33,6 +34,15 @@ type LodgingAssignmentsSync struct {
 
 	resolver *AliasResolver
 	issues   *IssueRecorder
+
+	// Party-size indexes, built once per run. partySize used to query per
+	// household: a filtered scan of persons (28k rows) plus a full paged scan of
+	// family_camp_adults (10k rows) for EVERY observed cabin value. At ~700
+	// households a 2024 backfill did not finish inside a ten-minute timeout.
+	// Three scans up front make it linear.
+	personsByHouseholdCMID  map[int][]*core.Record
+	enrolledByPersonSession map[string]int // "<personPBID>|<sessionPBID>" -> count
+	adultsByHouseholdPBID   map[string]int
 }
 
 // NewLodgingAssignmentsSync builds the service. Year 0 means "resolve from the
@@ -91,6 +101,10 @@ func (s *LodgingAssignmentsSync) Sync(ctx context.Context) error {
 
 	now := time.Now().UTC()
 	counts := map[int]int{}
+
+	if idxErr := s.buildPartySizeIndexes(year); idxErr != nil {
+		return idxErr
+	}
 
 	if hhErr := s.syncHouseholdGrain(ctx, year, fieldTargets, counts, now); hhErr != nil {
 		return hhErr
@@ -168,8 +182,13 @@ func (s *LodgingAssignmentsSync) syncHouseholdGrain(
 		return err
 	}
 
+	defIDs := defIDsForTarget(fieldTargets, targetCabinAssignmentHousehold)
+	if len(defIDs) == 0 {
+		return nil // the field is unmapped or disabled; nothing to read
+	}
+	params := dbx.Params{}
 	values, err := findAllRecords(s.App, "household_custom_values",
-		fmt.Sprintf("year = %d && value != ''", year))
+		fmt.Sprintf("year = %d && value != '' && %s", year, fieldDefClause(defIDs, params)), params)
 	if err != nil {
 		return err
 	}
@@ -179,9 +198,6 @@ func (s *LodgingAssignmentsSync) syncHouseholdGrain(
 		case <-ctx.Done():
 			return ctx.Err()
 		default:
-		}
-		if fieldTargets[v.GetString("field_definition")] != targetCabinAssignmentHousehold {
-			continue
 		}
 		counts[cmIDFamilyCampCabin]++
 
@@ -223,8 +239,13 @@ func (s *LodgingAssignmentsSync) syncPersonGrain(
 		return err
 	}
 
+	defIDs := defIDsForTarget(fieldTargets, targetCabinAssignmentPerson)
+	if len(defIDs) == 0 {
+		return nil // the field is unmapped or disabled; nothing to read
+	}
+	params := dbx.Params{}
 	values, err := findAllRecords(s.App, "person_custom_values",
-		fmt.Sprintf("year = %d && value != ''", year))
+		fmt.Sprintf("year = %d && value != '' && %s", year, fieldDefClause(defIDs, params)), params)
 	if err != nil {
 		return err
 	}
@@ -234,9 +255,6 @@ func (s *LodgingAssignmentsSync) syncPersonGrain(
 		case <-ctx.Done():
 			return ctx.Err()
 		default:
-		}
-		if fieldTargets[v.GetString("field_definition")] != targetCabinAssignmentPerson {
-			continue
 		}
 		counts[cmIDReportableFamilyCampCabin]++
 
@@ -257,6 +275,42 @@ func (s *LodgingAssignmentsSync) syncPersonGrain(
 		})
 	}
 	return nil
+}
+
+// defIDsForTarget returns the custom_field_defs PB ids mapped to one target
+// column, sorted so the generated filter is deterministic.
+func defIDsForTarget(fieldTargets map[string]string, target string) []string {
+	out := make([]string, 0, 2)
+	for defID, t := range fieldTargets {
+		if t == target {
+			out = append(out, defID)
+		}
+	}
+	slices.Sort(out)
+	return out
+}
+
+// fieldDefClause renders a parenthesised OR of field_definition equalities and
+// registers the bound parameters.
+//
+// This filtering has to happen in SQL, not in Go. person_custom_values holds
+// 1.6M rows -- 181k for a single year -- while at most two field definitions are
+// ever mapped, so reading the year and discarding the rest paged through
+// hundreds of thousands of rows via LIMIT/OFFSET, whose cost grows with the
+// offset. Scoping the query to the mapped definitions turns that into a few
+// hundred rows.
+//
+// The ids are PocketBase record ids rather than user input, but they stay
+// parameterised anyway: the cost is nil and the habit is what keeps an
+// apostrophe-bearing value from becoming a syntax error elsewhere in this file.
+func fieldDefClause(defIDs []string, params dbx.Params) string {
+	clauses := make([]string, 0, len(defIDs))
+	for i, id := range defIDs {
+		name := fmt.Sprintf("fd%d", i)
+		params[name] = id
+		clauses = append(clauses, "field_definition = {:"+name+"}")
+	}
+	return "(" + strings.Join(clauses, " || ") + ")"
 }
 
 // ingestContext is one observed cabin value, ready to resolve and attribute.
@@ -335,11 +389,7 @@ func (s *LodgingAssignmentsSync) ingestValue(in *ingestContext) {
 	}
 	input.UnitID, input.MergeID = unitID, mergeID
 
-	size, err := s.partySize(in, attr.SessionID)
-	if err != nil {
-		slog.Error("Computing party size", "raw", in.Raw, "error", err)
-	}
-	input.PartySize = size
+	input.PartySize = s.partySize(in, attr.SessionID)
 
 	if s.DryRun {
 		return
@@ -545,51 +595,80 @@ func (s *LodgingAssignmentsSync) recordHistory(
 	})
 }
 
+// buildPartySizeIndexes loads everything partySize needs in three scans.
+//
+// persons and attendees are hard requirements -- a wrong party size is a wrong
+// cabin capacity. The adults table is not: party_size is a display
+// denormalisation, and a child count alone is more useful to the board than
+// failing the whole ingest because that table is missing or unreadable, so a
+// failure there warns and leaves the index empty.
+func (s *LodgingAssignmentsSync) buildPartySizeIndexes(year int) error {
+	persons, err := findAllRecords(s.App, "persons", fmt.Sprintf("year = %d", year))
+	if err != nil {
+		return fmt.Errorf("indexing persons for party size: %w", err)
+	}
+	s.personsByHouseholdCMID = make(map[int][]*core.Record)
+	for _, p := range persons {
+		if hh := p.GetInt("household_id"); hh > 0 {
+			s.personsByHouseholdCMID[hh] = append(s.personsByHouseholdCMID[hh], p)
+		}
+	}
+
+	attendees, err := findAllRecords(s.App, "attendees",
+		fmt.Sprintf("year = %d && status_id = %d", year, statusIDActiveEnrolled))
+	if err != nil {
+		return fmt.Errorf("indexing attendees for party size: %w", err)
+	}
+	s.enrolledByPersonSession = make(map[string]int, len(attendees))
+	for _, a := range attendees {
+		s.enrolledByPersonSession[a.GetString("person")+"|"+a.GetString("session")]++
+	}
+
+	s.adultsByHouseholdPBID = make(map[string]int)
+	adults, err := findAllRecords(s.App, "family_camp_adults", fmt.Sprintf("year = %d", year))
+	if err != nil {
+		slog.Warn("Adult index unavailable; party sizes will cover children only",
+			"year", year, "error", err)
+		return nil //nolint:nilerr // see the doc comment
+	}
+	for _, a := range adults {
+		if hh := a.GetString("household"); hh != "" {
+			s.adultsByHouseholdPBID[hh]++
+		}
+	}
+	return nil
+}
+
 // partySize counts the people this placement has to hold: actively enrolled
 // persons for the session plus, at household grain, the accompanying adults
 // CampMinder does not enroll (they exist only as custom-field values, scraped
 // into family_camp_adults).
-func (s *LodgingAssignmentsSync) partySize(in *ingestContext, sessionID string) (int, error) {
+func (s *LodgingAssignmentsSync) partySize(in *ingestContext, sessionID string) int {
 	if in.PersonCMID > 0 {
-		return 1, nil
-	}
-	persons, err := findAllRecords(s.App, "persons",
-		fmt.Sprintf("year = %d && household_id = %d", in.Year, in.HouseholdCMID))
-	if err != nil {
-		return 0, err
-	}
-	enrolled := 0
-	for _, p := range persons {
-		rows, findErr := s.App.FindRecordsByFilter("attendees",
-			"person = {:p} && session = {:s} && status_id = {:st}", "", 1, 0, dbx.Params{
-				"p": p.Id, "s": sessionID, "st": statusIDActiveEnrolled,
-			})
-		if findErr != nil {
-			return 0, fmt.Errorf("counting attendees: %w", findErr)
-		}
-		enrolled += len(rows)
+		return 1
 	}
 
-	adults, err := findAllRecords(s.App, "family_camp_adults",
-		fmt.Sprintf("year = %d", in.Year))
-	if err != nil {
-		// Deliberate swallow: party_size is a display denormalisation, and a
-		// child count alone is more useful to the board than failing the whole
-		// ingest because the adults table is missing or unreadable.
-		slog.Warn("Adult count unavailable; party size covers children only",
-			"household_cm_id", in.HouseholdCMID, "error", err)
-		return enrolled, nil //nolint:nilerr // see above
-	}
-	adultCount := 0
-	for _, a := range adults {
-		for _, p := range persons {
-			if a.GetString("household") == p.GetString("household") && p.GetString("household") != "" {
-				adultCount++
-				break
-			}
+	enrolled := 0
+	householdPBIDs := make(map[string]bool, 1)
+	for _, p := range s.personsByHouseholdCMID[in.HouseholdCMID] {
+		// One bed per person: a duplicate attendee row for the same person and
+		// weekend is a data anomaly, not a second occupant, so this counts people
+		// with an enrolment rather than enrolment rows.
+		if s.enrolledByPersonSession[p.Id+"|"+sessionID] > 0 {
+			enrolled++
+		}
+		if hh := p.GetString("household"); hh != "" {
+			householdPBIDs[hh] = true
 		}
 	}
-	return enrolled + adultCount, nil
+
+	// Counted over the household's DISTINCT PocketBase ids, so an adult is
+	// counted once however many enrolled children share that household.
+	adultCount := 0
+	for hh := range householdPBIDs {
+		adultCount += s.adultsByHouseholdPBID[hh]
+	}
+	return enrolled + adultCount
 }
 
 // cmIDsByPBID maps a collection's PB record id -> its CampMinder id for one
@@ -622,17 +701,26 @@ func (s *LodgingAssignmentsSync) valueCountsByCMID(year int, fieldTargets map[st
 		cmIDByPBID[d.Id] = d.GetInt("cm_id")
 	}
 
+	// Scoped to the mapped definitions for the same reason as the grain scans:
+	// counting a prior year must not page through 181k person_custom_values rows.
+	defIDs := make([]string, 0, len(fieldTargets))
+	for defID := range fieldTargets {
+		defIDs = append(defIDs, defID)
+	}
+	if len(defIDs) == 0 {
+		return out, nil
+	}
+	slices.Sort(defIDs)
+
 	for _, collection := range []string{"household_custom_values", "person_custom_values"} {
-		rows, findErr := findAllRecords(s.App, collection, fmt.Sprintf("year = %d && value != ''", year))
+		params := dbx.Params{}
+		rows, findErr := findAllRecords(s.App, collection,
+			fmt.Sprintf("year = %d && value != '' && %s", year, fieldDefClause(defIDs, params)), params)
 		if findErr != nil {
 			return out, findErr
 		}
 		for _, r := range rows {
-			defPBID := r.GetString("field_definition")
-			if _, mapped := fieldTargets[defPBID]; !mapped {
-				continue
-			}
-			out[cmIDByPBID[defPBID]]++
+			out[cmIDByPBID[r.GetString("field_definition")]]++
 		}
 	}
 	return out, nil

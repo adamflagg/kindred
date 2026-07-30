@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/pocketbase/dbx"
 	"github.com/pocketbase/pocketbase/core"
 )
 
@@ -235,11 +236,11 @@ func loadPersonHouseholdCMIDs(app core.App, year int) (map[int]int, error) {
 // a one-weekend one, so an ambiguous_session becomes a CONFIDENT WRONG
 // attribution once Task 11 starts writing assignments. `id` is unique and
 // immutable, so it is a stable page key.
-func findAllRecords(app core.App, collection, filter string) ([]*core.Record, error) {
+func findAllRecords(app core.App, collection, filter string, params ...dbx.Params) ([]*core.Record, error) {
 	const perPage = 500
 	var all []*core.Record
 	for page := 1; ; page++ {
-		batch, err := app.FindRecordsByFilter(collection, filter, "id", perPage, (page-1)*perPage)
+		batch, err := app.FindRecordsByFilter(collection, filter, "id", perPage, (page-1)*perPage, params...)
 		if err != nil {
 			return nil, fmt.Errorf("querying %s page %d: %w", collection, page, err)
 		}
