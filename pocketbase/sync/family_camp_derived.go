@@ -269,13 +269,24 @@ func (s *FamilyCampDerivedSync) loadFieldDefinitions(_ context.Context) (map[str
 	}
 
 	for _, record := range records {
-		name := record.GetString("name")
+		name := normalizeFieldName(record.GetString("name"))
 		if isFamilyCampField(name) {
 			result[record.Id] = name
 		}
 	}
 
 	return result, nil
+}
+
+// normalizeFieldName trims a CampMinder custom-field display name.
+//
+// CampMinder does not validate these names, and at least one shipped field
+// carries a trailing space: "Family Camp-Physician " (cm_id 39680). Every
+// lookup in this file compares field names by exact string equality, so an
+// untrimmed name silently matches nothing. Trim once, at the load boundary,
+// so every downstream comparison is against a canonical name.
+func normalizeFieldName(name string) string {
+	return strings.TrimSpace(name)
 }
 
 // isFamilyCampField checks if a field name is related to family camp

@@ -1,10 +1,14 @@
 package sync
 
 import (
+	"context"
 	"fmt"
 	"slices"
 	"strings"
 	"testing"
+
+	"github.com/pocketbase/pocketbase/core"
+	"github.com/pocketbase/pocketbase/tests"
 )
 
 // Test data constants
@@ -1295,4 +1299,87 @@ func extractRegistrationsFromHouseholds(values []testHouseholdCustomValue) map[i
 	}
 
 	return result
+}
+
+// ============================================================================
+// Source-field correctness (spec 4.4) - these call the PRODUCTION functions
+// ============================================================================
+
+// newFieldDefsTestApp returns a throwaway PocketBase app with a custom_field_defs
+// collection shaped like production's (cm_id + name), pre-populated with the
+// given (cm_id, name) pairs. Names are stored VERBATIM - PocketBase preserves
+// leading and trailing whitespace in text fields.
+func newFieldDefsTestApp(t *testing.T, defs map[int]string) core.App {
+	t.Helper()
+	app, err := tests.NewTestApp()
+	if err != nil {
+		t.Fatalf("NewTestApp: %v", err)
+	}
+	t.Cleanup(app.Cleanup)
+
+	col := core.NewBaseCollection("custom_field_defs")
+	col.Fields.Add(&core.NumberField{Name: "cm_id"})
+	col.Fields.Add(&core.TextField{Name: "name"})
+	if err := app.Save(col); err != nil {
+		t.Fatalf("save custom_field_defs: %v", err)
+	}
+	for cmID, name := range defs {
+		r := core.NewRecord(col)
+		r.Set("cm_id", cmID)
+		r.Set("name", name)
+		if err := app.Save(r); err != nil {
+			t.Fatalf("save field def %d: %v", cmID, err)
+		}
+	}
+	return app
+}
+
+// TestLoadFieldDefinitionsTrimsNames is a regression test for the trailing-space
+// defect. CampMinder ships "Family Camp-Physician " (cm_id 39680) with a trailing
+// space, while processMedical looks it up as "Family Camp-Physician". Before the
+// fix the exact-match lookup missed every Physician answer ever recorded.
+func TestLoadFieldDefinitionsTrimsNames(t *testing.T) {
+	app := newFieldDefsTestApp(t, map[int]string{
+		39680: "Family Camp-Physician ", // trailing space, verbatim from CampMinder
+		39681: "Family Camp-Physician If Yes",
+		36526: "Family Camp-Goals Attending",
+	})
+
+	s := NewFamilyCampDerivedSync(app)
+	got, err := s.loadFieldDefinitions(context.Background())
+	if err != nil {
+		t.Fatalf("loadFieldDefinitions: %v", err)
+	}
+
+	want := map[string]bool{
+		"Family Camp-Physician":        true,
+		"Family Camp-Physician If Yes": true,
+		"Family Camp-Goals Attending":  true,
+	}
+	for _, name := range got {
+		if !want[name] {
+			t.Errorf("loadFieldDefinitions returned %q; expected a trimmed name", name)
+		}
+		delete(want, name)
+	}
+	for missing := range want {
+		t.Errorf("loadFieldDefinitions did not return %q", missing)
+	}
+}
+
+// TestNormalizeFieldName pins the trimming rule itself so callers other than
+// loadFieldDefinitions (see lodging_fields.go) can rely on it.
+func TestNormalizeFieldName(t *testing.T) {
+	cases := map[string]string{
+		"Family Camp-Physician ":   "Family Camp-Physician",
+		" Family Camp Cabin":       "Family Camp Cabin",
+		"\tFAM CAMP-Shared Cabin ": "FAM CAMP-Shared Cabin",
+		"Family Camp Cabin":        "Family Camp Cabin",
+		"":                         "",
+	}
+	for in, want := range cases {
+		if got := normalizeFieldName(in); got != want {
+			t.Errorf("normalizeFieldName(%q) = %q, want %q", in, got, want)
+		}
+	}
 }
