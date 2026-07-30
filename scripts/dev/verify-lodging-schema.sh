@@ -177,5 +177,29 @@ fn=$(field_prop lodging_field_mappings field_name max || true)
 ra=$(field_prop lodging_ingest_issues resolved_alias cascadeDelete || true)
 [[ "$ra" == "0" || "$ra" == "false" ]] || note "lodging_ingest_issues.resolved_alias cascadeDelete is '$ra' (expected false)"
 
+# kindred#1879: a camp_session vanishing from one CampMinder response must never
+# silently take its lodging rows with it. Orphan deletion is year-scoped
+# (sessions.go builds "year = N" and passes it to DeleteOrphans), so the exposure
+# is the CURRENT sync year only -- but within that year the loss is total and
+# silent. session is required on all three, so cascadeDelete = false makes
+# PocketBase refuse the parent delete with a 400 instead of cascading.
+for c in lodging_merges lodging_availability lodging_assignments; do
+  casc=$(field_prop "$c" session cascadeDelete || true)
+  [[ "$casc" == "0" || "$casc" == "false" ]] \
+    || note "$c.session cascadeDelete is '$casc' (expected false; see kindred#1879)"
+  req=$(field_prop "$c" session required || true)
+  [[ "$req" == "1" || "$req" == "true" ]] \
+    || note "$c.session required is '$req' -- cascadeDelete=false only blocks the delete while the relation is required"
+done
+
+# Each YEAR gets its own camp_sessions row (unique on cm_id + year), so a program
+# returning after a gap comes back with a different PB record id. Cross-year
+# questions ("same cabin as last year") can only be joined on the CampMinder id,
+# which is why the durable key sits beside the relation rather than replacing it.
+for c in lodging_merges lodging_availability lodging_assignments lodging_assignment_history; do
+  [[ "$(field_prop "$c" session_cm_id onlyInt || true)" == "1" ]] \
+    || note "$c.session_cm_id missing or not onlyInt (see kindred#1879)"
+done
+
 if [[ "$fail" -ne 0 ]]; then echo "verify-lodging-schema: FAILED" >&2; exit 1; fi
 echo "verify-lodging-schema: OK ($js_migs js migrations applied)"
