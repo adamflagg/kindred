@@ -2,6 +2,7 @@ package sync
 
 import (
 	"os"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -112,6 +113,54 @@ func TestLodgingCollectionsAreNeverExported(t *testing.T) {
 		if where, isExported := exported[collection]; isExported {
 			t.Errorf("%s is both written by the ingest and exported by %s", collection, where)
 		}
+	}
+}
+
+// TestFamilyCampDerivedManifestIsNotAnExportList is the family-camp half of the
+// same claim TestLodgingCollectionsAreNeverExported makes about the ingest, and
+// it is the half that matters most here: SyncJobToCollections["family_camp_derived"]
+// lists family_camp_medical, which is the PHI collection this whole file exists
+// to keep out of Google Sheets.
+//
+// The two lists look interchangeable and are not -- one is a write manifest, the
+// other a publish list -- and the cost of confusing them is different for each
+// job. For the ingest it is placement data; here it is medical narrative next to
+// a person's name.
+//
+// Kept as a separate test rather than folded into the merge from #1880: that one
+// is scoped to serviceNameLodgingAssignments and would not notice this.
+func TestFamilyCampDerivedManifestIsNotAnExportList(t *testing.T) {
+	exported := map[string]string{}
+	for _, cfg := range GetReadableYearExports() {
+		exported[cfg.Collection] = "GetReadableYearExports"
+	}
+	for _, cfg := range GetReadableGlobalExports() {
+		exported[cfg.Collection] = "GetReadableGlobalExports"
+	}
+
+	written, ok := SyncJobToCollections[serviceNameFamilyCampDerived]
+	if !ok {
+		t.Fatalf("%q missing from SyncJobToCollections", serviceNameFamilyCampDerived)
+	}
+
+	sawPHICollection := false
+	for _, collection := range written {
+		if slices.Contains(phiCollections, collection) {
+			sawPHICollection = true
+		}
+		if where, isExported := exported[collection]; isExported {
+			t.Errorf("%s is both written by %s and exported by %s",
+				collection, serviceNameFamilyCampDerived, where)
+		}
+	}
+
+	// Without this the test drifts into vacuity the day the manifest stops
+	// listing the PHI collection: the loop above would still pass, having
+	// checked nothing that matters.
+	if !sawPHICollection {
+		t.Errorf("%q no longer writes any collection in phiCollections (%v); "+
+			"either the manifest is wrong or this test needs rescoping",
+			serviceNameFamilyCampDerived, phiCollections)
 	}
 }
 
