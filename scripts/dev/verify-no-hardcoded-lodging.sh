@@ -9,16 +9,22 @@
 # that is not in NEEDLES will pass. Treat a green run as "the obvious cases are
 # clean", not "no unit name exists in source".
 set -euo pipefail
-REPO_ROOT=$(git rev-parse --show-toplevel)
-cd "$REPO_ROOT"
 
+# Preflight BEFORE the first git call — checking for git after invoking it is
+# pointless, since the missing binary would already have exited 127.
 for cmd in git grep; do
   command -v "$cmd" >/dev/null 2>&1 || { echo "error: required command '$cmd' not found" >&2; exit 2; }
 done
 
+REPO_ROOT=$(git rev-parse --show-toplevel)
+cd "$REPO_ROOT"
+
 # Distinctive unit strings that must never appear outside seed migrations.
 # Double-quoted so "Doctor's House" can carry its apostrophe.
-NEEDLES="Ridge Yurt|Tawonga Village|Manzanita|Tuolumne|Clouds Rest|Wawona|Half Dome|El Cap|Bayit|Tenaya|Tioga|Le Shack|Lofty|Kitty|Doctor's House"
+# "Cloud'?s Rest" matches both spellings on purpose: the canonical unit name is
+# "Clouds Rest" (1500000120) but every historical alias string is "Cloud's Rest"
+# with the apostrophe (1500000121), and a leak could copy either.
+NEEDLES="Ridge Yurt|Tawonga Village|Manzanita|Tuolumne|Cloud'?s Rest|Wawona|Half Dome|El Cap|Bayit|Tenaya|Tioga|Le Shack|Lofty|Kitty|Doctor's House"
 
 # --include='*.js' matters: pocketbase/pb_hooks/ is application JavaScript and
 # would otherwise go unscanned entirely. But scanning .js drags in two kinds of

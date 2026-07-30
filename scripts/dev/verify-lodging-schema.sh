@@ -15,16 +15,17 @@
 # repo's migrations dir. Same technique as scripts/dev/verify-consolidation.sh.
 set -euo pipefail
 
+# Check tools up front so a missing one exits 2 (cannot run) rather than 127
+# midway through, which would read as an assertion failure. Same contract as
+# scripts/dev/migration-schema-diff.sh. git is in the list and the list runs
+# BEFORE the first git call — checking after invoking it would never fire.
+for cmd in git sqlite3 curl python3; do
+  command -v "$cmd" >/dev/null 2>&1 || { echo "error: required command '$cmd' not found" >&2; exit 2; }
+done
+
 REPO_ROOT=$(git rev-parse --show-toplevel)
 PB_BIN="$REPO_ROOT/pocketbase/pocketbase"
 MIG_DIR="$REPO_ROOT/pocketbase/pb_migrations"
-
-# Check tools up front so a missing one exits 2 (cannot run) rather than 127
-# midway through, which would read as an assertion failure. Same contract as
-# scripts/dev/migration-schema-diff.sh.
-for cmd in sqlite3 curl python3; do
-  command -v "$cmd" >/dev/null 2>&1 || { echo "error: required command '$cmd' not found" >&2; exit 2; }
-done
 
 [[ -x "$PB_BIN" ]] || { echo "error: $PB_BIN missing; run: cd pocketbase && go build -o pocketbase ." >&2; exit 2; }
 

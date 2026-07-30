@@ -8,15 +8,15 @@
 # short-circuit; see verify-lodging-schema.sh.
 set -euo pipefail
 
+# Missing tool must exit 2 (cannot run), not 127 midway. Same contract as
+# scripts/dev/migration-schema-diff.sh. Runs BEFORE the first git call.
+for cmd in git sqlite3 curl python3; do
+  command -v "$cmd" >/dev/null 2>&1 || { echo "error: required command '$cmd' not found" >&2; exit 2; }
+done
+
 REPO_ROOT=$(git rev-parse --show-toplevel)
 PB_BIN="$REPO_ROOT/pocketbase/pocketbase"
 MIG_DIR="$REPO_ROOT/pocketbase/pb_migrations"
-
-# Missing tool must exit 2 (cannot run), not 127 midway. Same contract as
-# scripts/dev/migration-schema-diff.sh.
-for cmd in sqlite3 curl python3; do
-  command -v "$cmd" >/dev/null 2>&1 || { echo "error: required command '$cmd' not found" >&2; exit 2; }
-done
 
 [[ -x "$PB_BIN" ]] || { echo "error: $PB_BIN missing; run: cd pocketbase && go build -o pocketbase ." >&2; exit 2; }
 
