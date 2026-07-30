@@ -735,35 +735,46 @@ type cpapAnswer struct {
 // family has, and parseBoolFieldValue -- which anchors on the leading token --
 // reads all of them as true.
 //
-//	Yes                                                     ->  power  (14 values)
-//	Yes, outlet needed for CPAP machine                     ->  power  (16)
-//	Yes, bathroom or other housing accommodation for a
-//	medical (not CPAP related) or accessibility-related
-//	reason needed                                           ->  bathroom (75)
+// The four observed answer shapes, counted across FAM CAMP-CPAP and Adult-CPAP:
+//
+//	Yes                                             ->  power             (63)
+//	Yes, outlet needed for CPAP machine             ->  power             (73)
+//	Yes, bathroom or other housing accommodation
+//	for a medical (not CPAP related) or
+//	accessibility-related reason needed             ->  bathroom          (75)
+//	Yes, {we,I} need an outlet for a CPAP machine
+//	AND need a bathroom or other housing
+//	accommodation ...                               ->  power + bathroom  (20)
 //
 // The 75 bathroom answers say "not CPAP related" in so many words; treating
-// them as power reserves an outlet cabin for a family that asked for a
-// private bathroom, and loses the bathroom signal at the same time.
+// them as power reserves an outlet cabin for a family that asked for a private
+// bathroom, and loses the bathroom signal at the same time.
 //
-// A bare "Yes" is power: the field is named CPAP, and the qualified options
-// were added later when the camp widened the question to cover non-CPAP
-// accessibility needs. It does not also set bathroom -- bathroom units are
-// scarce and that would be an inference, not a statement.
+// The two needs are tested INDEPENDENTLY rather than as ordered branches. The
+// fourth option asks for both, and a switch returning on the first bathroom
+// match drops the outlet for all 20 of them -- leaving a CPAP machine without
+// power, which is the harmful direction to get wrong. Matching on "outlet"
+// keeps the bathroom-only option out of the power bucket without needing an
+// ordering rule: that option mentions CPAP, inside "not CPAP related", but
+// never an outlet.
+//
+// A bare "Yes" names neither need, and is power: the field is named CPAP, and
+// the qualified options were added later when the camp widened the question to
+// cover non-CPAP accessibility needs. It does not also set bathroom -- bathroom
+// units are scarce and that would be an inference, not a statement.
 func classifyCPAPAnswer(value string) cpapAnswer {
 	if !parseBoolFieldValue(value) {
 		return cpapAnswer{}
 	}
 	lower := strings.ToLower(value)
-	switch {
-	case strings.Contains(lower, "bathroom"):
-		// Checked FIRST: this option's own text contains "CPAP", inside the
-		// phrase "not CPAP related", so an outlet test would match it too.
-		return cpapAnswer{bathroom: true}
-	case strings.Contains(lower, "outlet"), strings.Contains(lower, "cpap machine"):
-		return cpapAnswer{power: true}
-	default:
-		return cpapAnswer{power: true}
+	out := cpapAnswer{
+		bathroom: strings.Contains(lower, "bathroom"),
+		power:    strings.Contains(lower, "outlet") || strings.Contains(lower, "cpap machine"),
 	}
+	if !out.bathroom && !out.power {
+		out.power = true
+	}
+	return out
 }
 
 // applyHouseholdRequests folds the person-partition request fields onto the

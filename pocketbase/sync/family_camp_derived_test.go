@@ -1570,6 +1570,15 @@ func TestProcessRegistrationsBoolFieldsOrAcrossPersons(t *testing.T) {
 const cpapBathroomOption = "Yes, bathroom or other housing accommodation for a medical " +
 	"(not CPAP related) or accessibility-related reason needed"
 
+// The two spellings of the fourth CPAP option, which asks for BOTH needs at
+// once. "we need" is the FAM CAMP-CPAP wording (13 values), "I need" the
+// Adult-CPAP one (7). Both contain "bathroom", so a classifier that returns on
+// the first bathroom match silently drops the outlet half for all 20.
+const cpapBothOptionFamily = "Yes, we need an outlet for a CPAP machine and need a bathroom " +
+	"or other housing accommodation for a medical or accessibility-related reason"
+const cpapBothOptionAdult = "Yes, I need an outlet for a CPAP machine and need a bathroom " +
+	"or other housing accommodation for a medical or accessibility-related reason"
+
 // testRequestText is one parent's answer, stored against each enrolled child.
 const testRequestText = "the Johnson family"
 
@@ -1674,6 +1683,10 @@ func TestClassifyCPAPAnswer(t *testing.T) {
 		{"outlet option", "Yes, outlet needed for CPAP machine", true, false},
 		{"bathroom option is NOT power", cpapBathroomOption, false, true},
 		{"bathroom option, lowercased", strings.ToLower(cpapBathroomOption), false, true},
+		// The fourth option asks for both. Reading it as bathroom-only leaves a
+		// CPAP machine without an outlet, which is the harmful direction.
+		{"both option (family wording)", cpapBothOptionFamily, true, true},
+		{"both option (adult wording)", cpapBothOptionAdult, true, true},
 		{"no", "No", false, false},
 		{"unanswered", "", false, false},
 	}
