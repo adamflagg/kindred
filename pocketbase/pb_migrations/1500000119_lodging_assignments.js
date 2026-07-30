@@ -100,7 +100,11 @@ migrate((app) => {
       // TEXT, not relations: an unresolvable historical string is still recorded.
       { type: "text", name: "old_unit", required: false, presentable: false, min: 0, max: 300, pattern: "" },
       { type: "text", name: "new_unit", required: false, presentable: false, min: 0, max: 300, pattern: "" },
-      { type: "text", name: "detected_at", required: true, presentable: false, min: 1, max: 50, pattern: "" },
+      // `date`, not `text` — matches attendee_status_history.detected_at
+      // (1500000057_attendee_status_history.js:83-90), the collection this
+      // deliberately mirrors. Using text would lose PB's date validation and
+      // would surface as an untyped string in the generated OpenAPI/TS types.
+      { type: "date", name: "detected_at", required: true, presentable: false, min: "", max: "" },
       { type: "text", name: "source_field", required: false, presentable: false, min: 0, max: 200, pattern: "" },
       { type: "autodate", name: "created", required: false, presentable: false, onCreate: true, onUpdate: false }
     ],
