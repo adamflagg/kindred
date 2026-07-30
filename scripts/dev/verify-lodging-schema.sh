@@ -142,9 +142,15 @@ for c in lodging_ingest_issues lodging_field_mappings; do
   [[ "$n" -eq 1 ]] || note "collection $c missing"
 done
 
+# Pinned exactly, and in order: kind is a SELECT, so this list -- not the Go
+# constants in lodging_issues.go -- is what PocketBase validates writes against.
+# A constant added on the Go side without the matching migration fails at save
+# time in production and nowhere else, because the test fixture models kind as a
+# plain text field. unknown_party and write_failed arrived in 1500000125.
 ik=$(field_prop lodging_ingest_issues kind values || true)
-[[ "$ik" == '["unresolved_alias","ambiguous_alias","ambiguous_session","no_session","field_zero_values"]' ]] \
-  || note "lodging_ingest_issues.kind values are $ik"
+want_ik='["unresolved_alias","ambiguous_alias","ambiguous_session","no_session","field_zero_values","unknown_party","write_failed"]'
+[[ "$ik" == "$want_ik" ]] \
+  || note "lodging_ingest_issues.kind values are $ik, want $want_ik"
 
 # The dedup index is what keeps a 472-row backfill from writing 472 issue rows.
 # Assert its COLUMNS, not just its name: an index that keeps the name but loses a
@@ -196,9 +202,28 @@ done
 # returning after a gap comes back with a different PB record id. Cross-year
 # questions ("same cabin as last year") can only be joined on the CampMinder id,
 # which is why the durable key sits beside the relation rather than replacing it.
+#
+# The required-ness is asymmetric on purpose and has to be checked, not assumed:
+# the three placement tables require the durable key so the assignment sync fails
+# loudly rather than writing rows that cannot survive a session being recreated,
+# while lodging_assignment_history leaves it optional because an audit row is
+# meant to outlive its session. A migration flipping either way would otherwise
+# pass this verifier in silence.
 for c in lodging_merges lodging_availability lodging_assignments lodging_assignment_history; do
   [[ "$(field_prop "$c" session_cm_id onlyInt || true)" == "1" ]] \
     || note "$c.session_cm_id missing or not onlyInt (see kindred#1879)"
+
+  # PocketBase renders this as a JSON boolean, so json_extract yields 1/0 -- but
+  # a false is sometimes omitted from the serialized field entirely, which comes
+  # back empty. Treat empty as false rather than as a mismatch.
+  req_cm=$(field_prop "$c" session_cm_id required || true)
+  if [[ "$c" == "lodging_assignment_history" ]]; then
+    [[ "$req_cm" == "0" || "$req_cm" == "false" || -z "$req_cm" ]] \
+      || note "$c.session_cm_id required is '$req_cm'; the audit trail must outlive its session (see kindred#1879)"
+  else
+    [[ "$req_cm" == "1" || "$req_cm" == "true" ]] \
+      || note "$c.session_cm_id required is '$req_cm', want required (see kindred#1879)"
+  fi
 done
 
 if [[ "$fail" -ne 0 ]]; then echo "verify-lodging-schema: FAILED" >&2; exit 1; fi

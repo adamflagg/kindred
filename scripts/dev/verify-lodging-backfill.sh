@@ -45,8 +45,14 @@ for year in "${YEARS[@]}"; do
     queued AS (
       SELECT DISTINCT raw_value AS raw FROM lodging_ingest_issues WHERE year = $year
     ),
+    -- lower(trim(...)) mirrors aliasLookupKey in lodging_alias_resolver.go
+    -- exactly: the resolver matches on strings.ToLower(strings.TrimSpace(raw)),
+    -- so comparing byte-for-byte here reports values that DO resolve as silent
+    -- drops. Inner whitespace stays significant because the resolver keeps it.
+    -- The queued comparison below is deliberately left verbatim -- raw_value
+    -- stores the string exactly as CampMinder gave it.
     resolved AS (
-      SELECT DISTINCT a.alias_string AS raw
+      SELECT DISTINCT lower(trim(a.alias_string)) AS raw
         FROM lodging_unit_aliases a
         WHERE (a.valid_from_year = 0 OR a.valid_from_year <= $year)
           AND (a.valid_to_year   = 0 OR a.valid_to_year   >= $year)
@@ -54,7 +60,7 @@ for year in "${YEARS[@]}"; do
     SELECT group_concat('[' || obs.raw || ']', ' ')
       FROM obs
       LEFT JOIN queued   ON queued.raw   = obs.raw
-      LEFT JOIN resolved ON resolved.raw = obs.raw
+      LEFT JOIN resolved ON resolved.raw = lower(trim(obs.raw))
       WHERE queued.raw IS NULL AND resolved.raw IS NULL
     ")
 
