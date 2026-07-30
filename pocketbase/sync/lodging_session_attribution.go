@@ -2,7 +2,7 @@ package sync
 
 import (
 	"fmt"
-	"sort"
+	"slices"
 	"strings"
 	"time"
 
@@ -55,10 +55,15 @@ func (a Attribution) CandidateCMIDs() []int {
 //
 // That column is TEXT, not a PocketBase date, and carries CampMinder's raw .NET
 // DateTimeOffset: "2025-04-21T17:51:11.5964281+00:00" -- seven fractional digits
-// and an explicit offset. Go's RFC3339 layout accepts both. The package's
-// ParseDate helper (date_utils.go:30) does NOT have a format for it and would
-// return "" with only a slog.Warn, so every attribution would lose its timestamp
-// without anything failing.
+// and an explicit offset. Go's RFC3339 layout accepts both.
+//
+// The package's ParseDate helper (date_utils.go) does parse this format -- its
+// DateFormats list leads with time.RFC3339 and time.Parse tolerates any number
+// of fractional-second digits. It is the wrong tool here for a different reason:
+// it returns a STRING formatted "2006-01-02 15:04:05Z", truncated to whole
+// seconds, and AttributeSession needs a time.Time to compare against session
+// start dates. Parsing here keeps the value typed and keeps the sub-second
+// precision ParseDate's round-trip would drop.
 func ParseCampMinderTimestamp(s string) (time.Time, bool) {
 	s = strings.TrimSpace(s)
 	if s == "" {
@@ -77,6 +82,12 @@ func ParseCampMinderTimestamp(s string) (time.Time, bool) {
 // LoadSessionWindows returns every camp_sessions row for the year whose
 // session_type is in sessionTypes, keyed by PB record id.
 func LoadSessionWindows(app core.App, year int, sessionTypes []string) (map[string]SessionWindow, error) {
+	// No types means no sessions. Falling through would build `year = N && ()`,
+	// which is a filter-parse error rather than the empty result a caller expects.
+	if len(sessionTypes) == 0 {
+		return map[string]SessionWindow{}, nil
+	}
+
 	quoted := make([]string, 0, len(sessionTypes))
 	for _, st := range sessionTypes {
 		quoted = append(quoted, "session_type = '"+st+"'")
@@ -131,9 +142,14 @@ func buildSessionIndex(
 		return nil, err
 	}
 
-	personToHousehold, err := loadPersonHouseholdCMIDs(app, year)
-	if err != nil {
-		return nil, err
+	// Only the household index needs the person -> household mapping, and
+	// building it is a full paged scan of persons for the year.
+	var personToHousehold map[int]int
+	if byHousehold {
+		personToHousehold, err = loadPersonHouseholdCMIDs(app, year)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	filter := fmt.Sprintf("year = %d && status_id = %d", year, statusIDActiveEnrolled)
@@ -167,8 +183,8 @@ func buildSessionIndex(
 	}
 
 	for key := range result {
-		sort.Slice(result[key], func(i, j int) bool {
-			return result[key][i].Start.Before(result[key][j].Start)
+		slices.SortFunc(result[key], func(a, b SessionWindow) int {
+			return a.Start.Compare(b.Start)
 		})
 	}
 	return result, nil
@@ -191,11 +207,18 @@ func loadPersonHouseholdCMIDs(app core.App, year int) (map[int]int, error) {
 
 // findAllRecords pages through a collection, matching the paging shape the other
 // derived syncs in this package use.
+//
+// The sort is not cosmetic. LIMIT/OFFSET over an unsorted result set lets SQLite
+// return a different row order per query, which silently skips or duplicates
+// rows past page 1 -- and a skipped attendee turns a two-weekend household into
+// a one-weekend one, so an ambiguous_session becomes a CONFIDENT WRONG
+// attribution once Task 11 starts writing assignments. `id` is unique and
+// immutable, so it is a stable page key.
 func findAllRecords(app core.App, collection, filter string) ([]*core.Record, error) {
 	const perPage = 500
 	var all []*core.Record
 	for page := 1; ; page++ {
-		batch, err := app.FindRecordsByFilter(collection, filter, "", perPage, (page-1)*perPage)
+		batch, err := app.FindRecordsByFilter(collection, filter, "id", perPage, (page-1)*perPage)
 		if err != nil {
 			return nil, fmt.Errorf("querying %s page %d: %w", collection, page, err)
 		}

@@ -20,6 +20,18 @@
  * counts behind its passive warning ("0 values in 2026, 171 in 2025"). The
  * mapping itself lives in Go (sync/lodging_fields.go): a new source field needs
  * a new target column, so it is a code change either way.
+ *
+ * lodging_field_mappings has NO `year` field, on purpose. The project-wide year
+ * invariant covers CampMinder-derived data tables; this is a per-field admin
+ * switch keyed to custom_field_defs.cm_id, and custom_field_defs itself carries
+ * no year and is unique on cm_id alone (migration 1500000002). The sibling
+ * registry tables are shaped the same way -- lodging_areas, lodging_units and
+ * lodging_unit_aliases have no year either, while the year-scoped placement
+ * tables (lodging_merges, lodging_availability, lodging_assignments) all do, as
+ * does lodging_ingest_issues below. Scoping the unique index per year would
+ * drop a human's is_enabled = false at every season rollover, which is exactly
+ * what spec 4.4 forbids. The year dimension this table does need is carried by
+ * last_seen_year / last_seen_count / prior_year_count.
  */
 
 migrate((app) => {

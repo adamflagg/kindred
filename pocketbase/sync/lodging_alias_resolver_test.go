@@ -1,7 +1,7 @@
 package sync
 
 import (
-	"sort"
+	"slices"
 	"testing"
 )
 
@@ -89,15 +89,12 @@ func TestAliasResolverMergeDenotingAlias(t *testing.T) {
 	if !got.Resolved || !got.IsMerge() {
 		t.Fatalf("expected a resolved merge, got %+v", got)
 	}
-	ids := append([]string{}, got.UnitIDs...)
-	sort.Strings(ids)
-	want := []string{tioga1, tioga2}
-	sort.Strings(want)
+	ids := slices.Sorted(slices.Values(got.UnitIDs))
+	want := slices.Sorted(slices.Values([]string{tioga1, tioga2}))
 	if ids[0] != want[0] || ids[1] != want[1] {
 		t.Errorf("UnitIDs = %v, want %v", ids, want)
 	}
-	codes := append([]string{}, got.UnitCodes...)
-	sort.Strings(codes)
+	codes := slices.Sorted(slices.Values(got.UnitCodes))
 	if codes[0] != "gt-tioga-1" || codes[1] != "gt-tioga-2" {
 		t.Errorf("UnitCodes = %v", codes)
 	}

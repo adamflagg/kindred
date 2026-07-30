@@ -142,8 +142,17 @@ func (r *IssueRecorder) Flush(now time.Time) (created, updated int, err error) {
 		}
 		rec.Set("occurrences", p.occurrences)
 		rec.Set("last_seen", stamp)
-		rec.Set("suggested_session", p.issue.SuggestedSession)
-		rec.Set("candidate_session_cm_ids", p.issue.CandidateCMIDs)
+		// The advisory fields are only overwritten when this run actually
+		// produced them. Record preserves the first non-empty suggestion within a
+		// run; blanking a stored one here would undo that across runs, and a
+		// re-run whose last_updated stops parsing would silently strip an open
+		// queue item of its one-click confirmation.
+		if isNew || p.issue.SuggestedSession != "" {
+			rec.Set("suggested_session", p.issue.SuggestedSession)
+		}
+		if isNew || len(p.issue.CandidateCMIDs) > 0 {
+			rec.Set("candidate_session_cm_ids", p.issue.CandidateCMIDs)
+		}
 
 		if saveErr := r.app.Save(rec); saveErr != nil {
 			return created, updated, fmt.Errorf("saving issue %q: %w", p.issue.RawValue, saveErr)

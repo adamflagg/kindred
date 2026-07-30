@@ -2,7 +2,7 @@ package sync
 
 import (
 	"fmt"
-	"sort"
+	"slices"
 	"strings"
 
 	"github.com/pocketbase/dbx"
@@ -13,12 +13,16 @@ import (
 // board can tell them apart from ones staff created by dropping a party.
 const mergeCreatedBySync = "campminder_sync"
 
+// maxMergeMembers mirrors lodging_merges.member_units maxSelect (migration
+// 1500000118). Kept in step by scripts/dev/verify-lodging-schema.sh.
+const maxMergeMembers = 20
+
 // unitSetKey gives a member set an order-independent identity. PocketBase
 // returns relation ids in storage order, which is not a guaranteed ordering, so
 // comparing slices directly would treat {a,b} and {b,a} as different merges.
 func unitSetKey(unitIDs []string) string {
-	sorted := append([]string(nil), unitIDs...)
-	sort.Strings(sorted)
+	sorted := slices.Clone(unitIDs)
+	slices.Sort(sorted)
 	return strings.Join(sorted, "\x00")
 }
 
@@ -35,8 +39,11 @@ func unitSetKey(unitIDs []string) string {
 func EnsureMerge(
 	app core.App, sessionID string, year int, scenario string, unitIDs []string, displayName string,
 ) (string, error) {
-	if len(unitIDs) < 2 {
-		return "", fmt.Errorf("merge needs at least 2 member units, got %d", len(unitIDs))
+	// member_units is minSelect 2, maxSelect 20 (migration 1500000118). Checking
+	// both here gives a call-site error naming the member count, instead of a
+	// PocketBase validation failure surfacing from app.Save deep in a backfill.
+	if len(unitIDs) < 2 || len(unitIDs) > maxMergeMembers {
+		return "", fmt.Errorf("merge needs between 2 and %d member units, got %d", maxMergeMembers, len(unitIDs))
 	}
 
 	// eqOrEmpty, not a bound parameter: a bound "" matches NOTHING in PocketBase,

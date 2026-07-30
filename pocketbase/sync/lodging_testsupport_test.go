@@ -146,6 +146,13 @@ func newLodgingTestApp(t *testing.T) core.App {
 	issues.Fields.Add(&core.DateField{Name: "last_seen"})
 	issues.Fields.Add(&core.BoolField{Name: "is_resolved"})
 	issues.Fields.Add(&core.TextField{Name: "resolution_note"})
+	// Mirrors idx_lodging_issues_dedup from migration 1500000122. Without it the
+	// Flush tests would only prove findExisting works, and a divergence between
+	// Issue.dedupKey() and the real unique index would pass here then fail in
+	// production. The index is the thing that keeps a 472-row backfill from
+	// writing 472 rows, so the tests have to exercise it.
+	issues.AddIndex("idx_lodging_issues_dedup", true,
+		"year, kind, raw_value, source_field, household_cm_id, person_cm_id", "")
 	saveCollection(t, app, issues)
 
 	mappings := core.NewBaseCollection("lodging_field_mappings")

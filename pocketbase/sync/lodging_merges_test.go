@@ -1,6 +1,8 @@
 package sync
 
 import (
+	"fmt"
+	"strings"
 	"testing"
 )
 
@@ -104,5 +106,31 @@ func TestEnsureMergeRejectsFewerThanTwoMembers(t *testing.T) {
 	}
 	if _, err := EnsureMerge(app, sess, 2025, "", nil, ""); err == nil {
 		t.Error("EnsureMerge accepted an empty member set")
+	}
+}
+
+// TestEnsureMergeRejectsMoreThanMaxMembers: member_units is minSelect 2,
+// maxSelect 20 (migration 1500000118). The lower bound is already guarded; the
+// upper one has to be too, or an oversized set fails as a PocketBase validation
+// error deep inside the backfill instead of at the call site.
+func TestEnsureMergeRejectsMoreThanMaxMembers(t *testing.T) {
+	app := newLodgingTestApp(t)
+	sess := addSession(t, app, 1309514, "Family Camp 1", "family", testSessionStart, testSessionEnd, 2025)
+
+	tooMany := make([]string, 0, maxMergeMembers+1)
+	for i := range maxMergeMembers + 1 {
+		tooMany = append(tooMany, addUnit(t, app, fmt.Sprintf("unit-%02d", i)))
+	}
+
+	_, err := EnsureMerge(app, sess, 2025, "", tooMany, "Oversized")
+	if err == nil {
+		t.Fatalf("EnsureMerge accepted %d members; member_units has maxSelect %d",
+			len(tooMany), maxMergeMembers)
+	}
+	// PocketBase would also reject this at save time, but only after the lookup
+	// query has run and with an error that names the field rather than the count.
+	// Assert OUR guard fired, or this test would pass with the guard deleted.
+	if !strings.Contains(err.Error(), "member units") {
+		t.Errorf("error was %q; want the call-site member-count guard, not a PocketBase validation error", err)
 	}
 }

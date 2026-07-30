@@ -153,9 +153,17 @@ func UpsertFieldMappingStatus(app core.App, year int, counts, priorCounts map[in
 		}
 		rec.Set("field_name", name)
 		rec.Set("target", f.Target)
-		rec.Set("last_seen_year", year)
-		rec.Set("last_seen_count", counts[f.CMID])
-		rec.Set("prior_year_count", priorCounts[f.CMID])
+
+		// last_seen_* means MOST RECENT, and the sync is year-parameterised, so
+		// Task 14's 2024/2025 backfill runs AFTER the current season has synced.
+		// Writing the backfill year's counts over the current ones would make
+		// spec 4.4's passive warning describe the wrong season. An older run
+		// still refreshes the name and target snapshot, but not the counters.
+		if year >= rec.GetInt("last_seen_year") {
+			rec.Set("last_seen_year", year)
+			rec.Set("last_seen_count", counts[f.CMID])
+			rec.Set("prior_year_count", priorCounts[f.CMID])
+		}
 
 		if err := app.Save(rec); err != nil {
 			return fmt.Errorf("saving mapping %d: %w", f.CMID, err)

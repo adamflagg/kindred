@@ -111,3 +111,80 @@ func TestUpsertFieldMappingStatusIsIdempotentAndNeverAutoDisables(t *testing.T) 
 		t.Errorf("field_name = %q, want %q", r.GetString("field_name"), "Family Camp Cabin")
 	}
 }
+
+// TestUpsertFieldMappingStatusDoesNotRegressOnOlderYearBackfill: Task 14
+// backfills 2024 and 2025 AFTER the current season has already synced, and the
+// sync is year-parameterised (`sync/run?year=2024`). Writing the backfill year's
+// counts over the current ones makes spec 4.4's passive warning describe the
+// wrong season -- "0 values in 2024" where staff expect "0 values in 2026, 171
+// in 2025". last_seen_* means MOST RECENT, so an older run must leave it alone.
+func TestUpsertFieldMappingStatusDoesNotRegressOnOlderYearBackfill(t *testing.T) {
+	app := newLodgingTestApp(t)
+	addFieldDef(t, app, cmIDFamilyCampCabin, "Family Camp Cabin")
+
+	// The current season's daily sync: no values yet this year, 171 last year.
+	if err := UpsertFieldMappingStatus(app, 2026,
+		map[int]int{cmIDFamilyCampCabin: 0}, map[int]int{cmIDFamilyCampCabin: 171}); err != nil {
+		t.Fatalf("current-year pass: %v", err)
+	}
+
+	// Task 14's backfill, run afterwards. Its counts belong to 2024.
+	if err := UpsertFieldMappingStatus(app, 2024,
+		map[int]int{cmIDFamilyCampCabin: 464}, map[int]int{cmIDFamilyCampCabin: 645}); err != nil {
+		t.Fatalf("backfill pass: %v", err)
+	}
+
+	rows, err := app.FindRecordsByFilter("lodging_field_mappings",
+		"field_cm_id = "+strconv.Itoa(cmIDFamilyCampCabin), "", 0, 0)
+	if err != nil {
+		t.Fatalf("find mappings: %v", err)
+	}
+	if len(rows) != 1 {
+		t.Fatalf("expected 1 mapping row, got %d", len(rows))
+	}
+	r := rows[0]
+	if r.GetInt("last_seen_year") != 2026 {
+		t.Errorf("last_seen_year = %d, want 2026 (a 2024 backfill must not rewind it)",
+			r.GetInt("last_seen_year"))
+	}
+	if r.GetInt("last_seen_count") != 0 {
+		t.Errorf("last_seen_count = %d, want 0 (2026's count, not the backfill's)",
+			r.GetInt("last_seen_count"))
+	}
+	if r.GetInt("prior_year_count") != 171 {
+		t.Errorf("prior_year_count = %d, want 171 (2025's count, not 2023's)",
+			r.GetInt("prior_year_count"))
+	}
+}
+
+// TestUpsertFieldMappingStatusAdvancesOnNewerYear is the other half: a LATER
+// year must still move the counters, or the warning freezes at whatever season
+// happened to run first.
+func TestUpsertFieldMappingStatusAdvancesOnNewerYear(t *testing.T) {
+	app := newLodgingTestApp(t)
+	addFieldDef(t, app, cmIDFamilyCampCabin, "Family Camp Cabin")
+
+	if err := UpsertFieldMappingStatus(app, 2025,
+		map[int]int{cmIDFamilyCampCabin: 171}, map[int]int{cmIDFamilyCampCabin: 112}); err != nil {
+		t.Fatalf("2025 pass: %v", err)
+	}
+	if err := UpsertFieldMappingStatus(app, 2026,
+		map[int]int{cmIDFamilyCampCabin: 0}, map[int]int{cmIDFamilyCampCabin: 171}); err != nil {
+		t.Fatalf("2026 pass: %v", err)
+	}
+
+	rows, err := app.FindRecordsByFilter("lodging_field_mappings",
+		"field_cm_id = "+strconv.Itoa(cmIDFamilyCampCabin), "", 0, 0)
+	if err != nil {
+		t.Fatalf("find mappings: %v", err)
+	}
+	if len(rows) != 1 {
+		t.Fatalf("expected 1 mapping row, got %d", len(rows))
+	}
+	if got := rows[0].GetInt("last_seen_year"); got != 2026 {
+		t.Errorf("last_seen_year = %d, want 2026", got)
+	}
+	if got := rows[0].GetInt("prior_year_count"); got != 171 {
+		t.Errorf("prior_year_count = %d, want 171", got)
+	}
+}

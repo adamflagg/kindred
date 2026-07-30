@@ -147,8 +147,20 @@ ik=$(field_prop lodging_ingest_issues kind values || true)
   || note "lodging_ingest_issues.kind values are $ik"
 
 # The dedup index is what keeps a 472-row backfill from writing 472 issue rows.
+# Assert its COLUMNS, not just its name: an index that keeps the name but loses a
+# key column (dropping `year` would merge every season's queue into one row)
+# passes a name-only check while silently breaking dedup. These six must stay in
+# step with Issue.dedupKey() in sync/lodging_issues.go.
 idx=$(sqlite3 "$DB" "SELECT COUNT(*) FROM sqlite_master WHERE type='index' AND name='idx_lodging_issues_dedup'")
-[[ "$idx" -eq 1 ]] || note "idx_lodging_issues_dedup missing"
+if [[ "$idx" -ne 1 ]]; then
+  note "idx_lodging_issues_dedup missing"
+else
+  dedup_sql=$(sqlite3 "$DB" "SELECT sql FROM sqlite_master WHERE type='index' AND name='idx_lodging_issues_dedup'")
+  [[ "$dedup_sql" == *UNIQUE* ]] || note "idx_lodging_issues_dedup is not UNIQUE: $dedup_sql"
+  for col in year kind raw_value source_field household_cm_id person_cm_id; do
+    [[ "$dedup_sql" == *"\`$col\`"* ]] || note "idx_lodging_issues_dedup missing column $col"
+  done
+fi
 
 fm=$(sqlite3 "$DB" "SELECT COUNT(*) FROM sqlite_master WHERE type='index' AND name='idx_lodging_field_map_cmid'")
 [[ "$fm" -eq 1 ]] || note "idx_lodging_field_map_cmid missing"

@@ -43,7 +43,8 @@ func TestIssueRecorderCollapsesRepeats(t *testing.T) {
 	app := newLodgingTestApp(t)
 	r := NewIssueRecorder(app, 2022)
 
-	for _, hh := range []int{9001, 9002, 9003, 9004, 9005} {
+	// Five different households hit the same unmapped string.
+	for range 5 {
 		r.Record(Issue{
 			Kind:        issueUnresolvedAlias,
 			RawValue:    "River Side - R1",
@@ -53,7 +54,6 @@ func TestIssueRecorderCollapsesRepeats(t *testing.T) {
 			// so the dedup key must collapse across households.
 			HouseholdCMID: 0,
 		})
-		_ = hh
 	}
 
 	if got := r.CountOf(issueUnresolvedAlias); got != 5 {
@@ -145,6 +145,48 @@ func TestIssueRecorderKeepsPerHouseholdIssuesSeparate(t *testing.T) {
 	}
 }
 
+// TestIssueRecorderFlushKeepsAnEarlierSuggestion: Record deliberately preserves
+// the first non-empty SuggestedSession ("later observations may carry a
+// suggestion the first did not"), so Flush must not undo that across runs. A
+// re-run whose last_updated stops parsing produces no suggestion; writing that
+// emptiness over an open queue item takes its one-click confirmation with it.
+func TestIssueRecorderFlushKeepsAnEarlierSuggestion(t *testing.T) {
+	app := newLodgingTestApp(t)
+	sess := addSession(t, app, 1309514, "Family Camp 1", "family",
+		"2025-05-23 07:00:00.000Z", "2025-05-26 07:00:00.000Z", 2025)
+
+	first := NewIssueRecorder(app, 2025)
+	first.Record(Issue{Kind: issueAmbiguousSession, RawValue: "Ridge A",
+		SourceField: fieldNameFamilyCampCabin, Year: 2025, HouseholdCMID: 9001,
+		SuggestedSession: sess, CandidateCMIDs: []int{1309514, 1354939}})
+	if _, _, err := first.Flush(testNow); err != nil {
+		t.Fatalf("first Flush: %v", err)
+	}
+
+	// The same item next run, but the timestamp no longer parses, so there is
+	// nothing to base a suggestion on.
+	second := NewIssueRecorder(app, 2025)
+	second.Record(Issue{Kind: issueAmbiguousSession, RawValue: "Ridge A",
+		SourceField: fieldNameFamilyCampCabin, Year: 2025, HouseholdCMID: 9001,
+		CandidateCMIDs: []int{1309514, 1354939}})
+	if _, updated, err := second.Flush(testNow); err != nil {
+		t.Fatalf("second Flush: %v", err)
+	} else if updated != 1 {
+		t.Fatalf("second Flush updated %d rows, want 1", updated)
+	}
+
+	rows, err := app.FindRecordsByFilter("lodging_ingest_issues", "", "", 0, 0)
+	if err != nil {
+		t.Fatalf("find issues: %v", err)
+	}
+	if len(rows) != 1 {
+		t.Fatalf("expected 1 issue row, got %d", len(rows))
+	}
+	if got := rows[0].GetString("suggested_session"); got != sess {
+		t.Errorf("suggested_session = %q, want %q -- a run with no suggestion must not blank the stored one", got, sess)
+	}
+}
+
 // TestIssueRecorderHandlesApostrophes: real cabin strings contain apostrophes
 // ("Golden Triangle - Doctor's House", "Golden Triangle - Cloud's Rest"). A
 // filter built by string concatenation would be a syntax error here, which is
@@ -163,7 +205,10 @@ func TestIssueRecorderHandlesApostrophes(t *testing.T) {
 	if err != nil {
 		t.Fatalf("find issues: %v", err)
 	}
-	if len(rows) != 1 || rows[0].GetString("raw_value") != "Golden Triangle - Doctor's House" {
-		t.Errorf("apostrophe string round-tripped as %q", rows[0].GetString("raw_value"))
+	if len(rows) != 1 {
+		t.Fatalf("expected 1 issue row, got %d", len(rows))
+	}
+	if got := rows[0].GetString("raw_value"); got != "Golden Triangle - Doctor's House" {
+		t.Errorf("apostrophe string round-tripped as %q", got)
 	}
 }

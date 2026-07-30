@@ -2,6 +2,7 @@ package sync
 
 import (
 	"fmt"
+	"slices"
 	"strings"
 
 	"github.com/pocketbase/pocketbase/core"
@@ -111,7 +112,11 @@ func (r *AliasResolver) Resolve(raw string, year int) AliasResolution {
 	case 0:
 		return out
 	case 1:
-		out.UnitIDs = matches[0].MemberUnitIDs
+		// Cloned, not aliased: the slice header inside matches[0] shares its
+		// backing array with the resolver's own byString map, so handing it
+		// straight out lets any caller that sorts in place permute the stored
+		// member list for the rest of the run.
+		out.UnitIDs = slices.Clone(matches[0].MemberUnitIDs)
 		out.UnitCodes = make([]string, 0, len(out.UnitIDs))
 		for _, id := range out.UnitIDs {
 			out.UnitCodes = append(out.UnitCodes, r.unitCode[id])

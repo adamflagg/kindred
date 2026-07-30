@@ -7,9 +7,11 @@ import (
 
 // TestParseCampMinderTimestamp pins the exact shape custom-value last_updated
 // arrives in. It is a TEXT column carrying CampMinder's raw .NET DateTimeOffset
-// -- seven fractional digits and a +00:00 offset. The package's own ParseDate
-// helper (date_utils.go) has no format for it and would return "" with only a
-// slog.Warn, silently costing every attribution its timestamp.
+// -- seven fractional digits and a +00:00 offset.
+//
+// ParseDate (date_utils.go) also parses this format; what it cannot do is hand
+// back a time.Time. It returns a whole-second string, and AttributeSession
+// compares against session start dates, so the typed parse is the point.
 func TestParseCampMinderTimestamp(t *testing.T) {
 	got, ok := ParseCampMinderTimestamp("2025-04-21T17:51:11.5964281+00:00")
 	if !ok {
