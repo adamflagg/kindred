@@ -574,7 +574,7 @@ func (s *FamilyCampDerivedSync) processRegistrations(
 
 		reg := regMap[v.householdPBID]
 
-		if v.fieldName == "Family Camp Cabin" && reg.cabinAssignment == "" {
+		if v.fieldName == fieldNameFamilyCampCabin && reg.cabinAssignment == "" {
 			reg.cabinAssignment = v.value
 		}
 	}
@@ -610,8 +610,8 @@ func (s *FamilyCampDerivedSync) processRegistrations(
 		// Retired after 2024 (645 values that year, 0 since) and no successor
 		// exists. Kept because spec 4.4 forbids auto-inferring retirement and
 		// because this plan backfills 2024. The passive "0 values this year"
-		// warning will live in lodging_field_mappings, a collection Phase B
-		// adds — it does not exist yet.
+		// warning lives in lodging_field_mappings (migration 1500000122), which
+		// UpsertFieldMappingStatus in lodging_fields.go populates.
 		case "Family Camp-Goals Attending":
 			if reg.goals == "" {
 				reg.goals = v.value
