@@ -691,14 +691,29 @@ Family camp registration details per household.
 | `household` | relation | Link to households |
 | `year` | number | Camp year |
 | `cabin_assignment` | text | Assigned cabin |
-| `share_cabin_preference` | text | Sharing preference |
-| `shared_cabin_with` | text | Actual cabin mates |
+| `share_cabin_preference` | text | Raw No/Maybe/Yes sharing sentence, verbatim from CampMinder |
+| `shared_cabin_modes_raw` | text | Raw pipe-delimited NEAR/WITH multi-select, verbatim. **Not** who they share with — it holds no names |
 | `arrival_eta` | text | Estimated arrival |
 | `special_occasions` | text | Special occasions |
 | `goals` | text | Goals for camp |
 | `notes` | text | Additional notes |
 | `needs_accommodation` | bool | Requires accommodation |
-| `opt_out_vip` | bool | Opted out of VIP |
+| `opt_out_vip` | bool | Will attend regardless of cabin type. **Write-only** — its OR across household members is fail-unsafe, so never read it as a blocker gate; use `accommodation_is_mandatory` |
+
+Request layer (household grain, spec 4) — normalised and deduplicated from the raw columns above:
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `share_cabin_gate` | select | `no_share` / `maybe_mutual` / `yes_share` |
+| `wants_near` | bool | Wants proximity — satisfied by map distance |
+| `wants_with` | bool | Wants co-housing — satisfied by sharing a slot |
+| `request_text` | text | Deduplicated free-text request, household grain |
+| `request_source_field` | text | Which source field the gate came from |
+| `request_last_updated` | date | When the request last changed; resolves form-vs-registration precedence |
+| `needs_private_bathroom` | bool | Derived flag; the narrative lives in `family_camp_medical` |
+| `needs_power` | bool | Derived flag (CPAP outlet) |
+| `accommodation_is_mandatory` | bool | The honest blocker signal — the household cannot attend without the accommodation |
+| `has_infant` | bool | Housing-suitability signal, not an accessibility need |
 
 **Unique**: `(household, year)`
 
@@ -707,6 +722,11 @@ Family camp registration details per household.
 ### family_camp_medical
 
 Family camp medical and dietary information per household.
+
+**PHI.** Every text column below is narrative medical disclosure about named
+individuals. Admin-gated on all five rules, absent from every export config, and
+never logged — `pocketbase/sync/lodging_phi_test.go` asserts all three. The
+board shows the derived booleans on `family_camp_registrations`, never these.
 
 | Field | Type | Description |
 |-------|------|-------------|
@@ -718,6 +738,8 @@ Family camp medical and dietary information per household.
 | `allergy_info` | text | Allergies |
 | `dietary_info` | text | Dietary restrictions |
 | `additional_info` | text | Additional medical info |
+| `bathroom_explain` | text | Why a private bathroom is needed |
+| `accommodation_explain` | text | Why a housing accommodation is needed |
 
 **Unique**: `(household, year)`
 

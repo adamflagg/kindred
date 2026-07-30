@@ -421,29 +421,40 @@ func TestFirstNonEmptyValueSelection(t *testing.T) {
 	}
 }
 
-// TestHouseholdCabinAssignment tests cabin assignment extraction from household custom values
+// TestHouseholdCabinAssignment drives the production extractor rather than a
+// test-local copy of the field->column mapping.
+//
+// It used to call extractRegistrationsFromHouseholds, a hand-rolled switch that
+// modeled the mapping itself. That made it blind by construction: any change to
+// how processRegistrations routes a field kept passing against the private copy.
+// The helper is gone; this is the same coverage against the real code path.
 func TestHouseholdCabinAssignment(t *testing.T) {
-	householdValues := []testHouseholdCustomValue{
-		{HouseholdCMID: 100, FieldName: "Family Camp Cabin", Value: "Cabin 12"},
-		{HouseholdCMID: 200, FieldName: "Family Camp Cabin", Value: ""},
+	s := NewFamilyCampDerivedSync(nil)
+
+	regs := s.processRegistrations([]customValueEntry{
+		{householdPBID: "hh_garcia", fieldName: fieldNameFamilyCampCabin, value: "Cabin 12"},
+		{householdPBID: "hh_johnson", fieldName: fieldNameFamilyCampCabin, value: ""},
+	}, nil)
+
+	byHousehold := make(map[string]*registrationData, len(regs))
+	for _, r := range regs {
+		byHousehold[r.householdPBID] = r
 	}
 
-	registrations := extractRegistrationsFromHouseholds(householdValues)
-
-	// Household 100 should have cabin assignment
-	if reg, ok := registrations[100]; ok {
-		if reg.CabinAssignment != "Cabin 12" {
-			t.Errorf("expected cabin 'Cabin 12', got %q", reg.CabinAssignment)
-		}
-	} else {
-		t.Error("expected registration for household 100")
+	reg, ok := byHousehold["hh_garcia"]
+	if !ok {
+		t.Fatal("expected a registration for the household with a cabin")
+	}
+	if reg.cabinAssignment != "Cabin 12" {
+		t.Errorf("cabinAssignment = %q, want %q", reg.cabinAssignment, "Cabin 12")
 	}
 
-	// Household 200 should exist but with empty cabin
-	if reg, ok := registrations[200]; ok {
-		if reg.CabinAssignment != "" {
-			t.Errorf("expected empty cabin for household 200, got %q", reg.CabinAssignment)
-		}
+	// A household whose only value is an EMPTY cabin has nothing to record, so
+	// it produces no row at all -- the "only include if has some data" gate.
+	// The old helper returned an entry here, which is precisely the kind of
+	// divergence a parallel mapping hides.
+	if _, exists := byHousehold["hh_johnson"]; exists {
+		t.Error("a household with only an empty cabin value must not produce a registration row")
 	}
 }
 
@@ -1276,47 +1287,13 @@ func simulateUpsertMedical(medical []*testMedical, existing map[string]*testMedR
 	return stats
 }
 
-// ============================================================================
-// Original test helpers (unchanged)
-// ============================================================================
-
-// extractRegistrationsFromHouseholds extracts registration info from household custom values
-func extractRegistrationsFromHouseholds(values []testHouseholdCustomValue) map[int]*testRegistration {
-	result := make(map[int]*testRegistration)
-
-	for _, v := range values {
-		if result[v.HouseholdCMID] == nil {
-			result[v.HouseholdCMID] = &testRegistration{
-				HouseholdCMID: v.HouseholdCMID,
-			}
-		}
-
-		reg := result[v.HouseholdCMID]
-
-		switch v.FieldName {
-		case "Family Camp Cabin":
-			reg.CabinAssignment = v.Value
-		case "FAM CAMP-Share Cabins":
-			reg.ShareCabinPreference = v.Value
-		case "FAM CAMP-Shared Cabin":
-			reg.SharedCabinWith = v.Value
-		case "Family Camp-Trans ETA":
-			reg.ArrivalETA = v.Value
-		case "Family Camp-Special occasions":
-			reg.SpecialOccasions = v.Value
-		case "Family Camp-Goals Attending":
-			reg.Goals = v.Value
-		case "Family Camp-Anything else":
-			reg.Notes = v.Value
-		case "FAM Camp-Accommodation":
-			reg.NeedsAccommodation = parseBoolFieldValue(v.Value)
-		case "FAM CAMP-Opt Out VIP":
-			reg.OptOutVIP = parseBoolFieldValue(v.Value)
-		}
-	}
-
-	return result
-}
+// extractRegistrationsFromHouseholds is deliberately absent. It was a
+// test-local re-implementation of processRegistrations' field->column mapping,
+// and it had already drifted: a single accommodation name where production ORs
+// across three generations, a single opt-out name, and last-wins assignment
+// where production is first-wins. Every case arm added to processRegistrations
+// widened the gap, and nothing failed. TestHouseholdCabinAssignment now drives
+// the production path instead.
 
 // ============================================================================
 // Source-field correctness (spec 4.4) - these call the PRODUCTION functions
@@ -1445,6 +1422,120 @@ func TestLoadFieldDefinitionsIncludesCMIDAllowlist(t *testing.T) {
 	}
 	if loaded["SVI-Vehicle Make"] {
 		t.Error("loadFieldDefinitions loaded an unrelated field; the allowlist is too wide")
+	}
+}
+
+// TestLoadFieldDefinitionsRoutesRenamedRequestFieldByCMID closes the half
+// extraFieldCMIDs could not. That allowlist decides only whether a definition is
+// ADMITTED; routing downstream still switches on the display name, so a rename
+// in CampMinder let an answer in and then dropped it on the floor. The
+// request-layer registry in lodging_fields.go resolves the canonical name from
+// the cm_id, so the switch sees the name it was written against.
+func TestLoadFieldDefinitionsRoutesRenamedRequestFieldByCMID(t *testing.T) {
+	app := newFieldDefsTestApp(t, map[int]string{
+		// Staff renamed both in CampMinder. Neither new name matches anything
+		// family_camp_derived.go's switch knows about.
+		cmIDShareCabinsRegistration: "FC Cabin Sharing 2027",
+		cmIDSharedRequest:           "Who do you want to bunk near?",
+	})
+
+	s := NewFamilyCampDerivedSync(app)
+	got, err := s.loadFieldDefinitions(context.Background())
+	if err != nil {
+		t.Fatalf("loadFieldDefinitions: %v", err)
+	}
+
+	loaded := make(map[string]bool, len(got))
+	for _, name := range got {
+		loaded[name] = true
+	}
+	for _, want := range []string{fieldShareCabinsRegistration, fieldSharedRequest} {
+		if !loaded[want] {
+			t.Errorf("a renamed request field did not resolve back to %q; got %v", want, got)
+		}
+	}
+}
+
+// TestProcessMedicalKeepsBothCamperAndAdultCPAPNarratives: the registration
+// flags OR across the three CPAP fields because they describe DIFFERENT PEOPLE
+// -- the Camper-partition generations and the Adult-partition twin. The
+// narrative behind those flags has to follow the same rule, or staff see a
+// bathroom flag with nothing in the admin-gated record explaining it.
+//
+// "Family Camp-CPAP" and "FAM CAMP-CPAP" are name-generations of the SAME
+// question, so those two still collapse to one; Adult-CPAP is a different
+// person and is always additive.
+func TestProcessMedicalKeepsBothCamperAndAdultCPAPNarratives(t *testing.T) {
+	s := NewFamilyCampDerivedSync(nil)
+	ts := time.Date(2025, 4, 21, 0, 0, 0, 0, time.UTC)
+
+	vals := []customValueEntry{
+		{householdPBID: "hh_garcia", fieldName: "FAM CAMP-CPAP",
+			value: "Yes, outlet needed for CPAP machine", lastUpdated: ts},
+		{householdPBID: "hh_garcia", fieldName: "Adult-CPAP",
+			value: cpapBathroomOption, lastUpdated: ts},
+	}
+
+	regs := s.processRegistrations(nil, vals)
+	if len(regs) != 1 {
+		t.Fatalf("registrations = %d, want 1", len(regs))
+	}
+	if !regs[0].needsPower || !regs[0].needsPrivateBathroom {
+		t.Fatalf("flags = power:%v bathroom:%v; both answers must raise their own flag",
+			regs[0].needsPower, regs[0].needsPrivateBathroom)
+	}
+
+	meds := s.processMedical(vals)
+	if len(meds) != 1 {
+		t.Fatalf("medical rows = %d, want 1", len(meds))
+	}
+	if !strings.Contains(meds[0].cpapInfo, "outlet") {
+		t.Errorf("cpapInfo lost the camper narrative: %q", meds[0].cpapInfo)
+	}
+	if !strings.Contains(strings.ToLower(meds[0].cpapInfo), "bathroom") {
+		t.Errorf("cpapInfo lost the adult narrative, leaving needs_private_bathroom "+
+			"with no explanation behind it: %q", meds[0].cpapInfo)
+	}
+}
+
+// TestProcessMedicalCollapsesCamperCPAPGenerations is the other half: the two
+// Camper-partition names are the same question asked twice, so answering both
+// must not duplicate the sentence in the medical record.
+func TestProcessMedicalCollapsesCamperCPAPGenerations(t *testing.T) {
+	s := NewFamilyCampDerivedSync(nil)
+	ts := time.Date(2025, 4, 21, 0, 0, 0, 0, time.UTC)
+
+	meds := s.processMedical([]customValueEntry{
+		{householdPBID: "hh_garcia", fieldName: "Family Camp-CPAP",
+			value: "Yes, outlet needed for CPAP machine", lastUpdated: ts},
+		{householdPBID: "hh_garcia", fieldName: "FAM CAMP-CPAP",
+			value: "Yes, outlet needed for CPAP machine", lastUpdated: ts},
+	})
+	if len(meds) != 1 {
+		t.Fatalf("medical rows = %d, want 1", len(meds))
+	}
+	if strings.Count(strings.ToLower(meds[0].cpapInfo), "outlet") != 1 {
+		t.Errorf("cpapInfo repeated one question's answer: %q", meds[0].cpapInfo)
+	}
+}
+
+// TestProcessRegistrationsMandatoryOnlyHouseholdSurvives: accommodation_is_mandatory
+// is the honest blocker signal (opt_out_vip's OR is fail-unsafe and must never be
+// read as one), so a household whose ONLY answer is the blocker cannot be the one
+// row that gets dropped before it is ever written.
+func TestProcessRegistrationsMandatoryOnlyHouseholdSurvives(t *testing.T) {
+	s := NewFamilyCampDerivedSync(nil)
+	ts := time.Date(2025, 4, 21, 0, 0, 0, 0, time.UTC)
+
+	regs := s.processRegistrations(nil, []customValueEntry{
+		{householdPBID: "hh_garcia", fieldName: "Adult-Opt Out", lastUpdated: ts,
+			value: "No, I am only able to attend with this accommodation in place"},
+	})
+	if len(regs) != 1 {
+		t.Fatalf("registrations = %d, want 1 -- the blocker was dropped", len(regs))
+	}
+	if !regs[0].accommodationIsMandatory {
+		t.Error("accommodationIsMandatory not set")
 	}
 }
 
@@ -1850,6 +1941,12 @@ func TestProcessMedicalRoutesNarrativeToTheAdminGatedTable(t *testing.T) {
 		{householdPBID: "hh_garcia", fieldName: "Housing-Bathroom", value: bathroomText, lastUpdated: ts},
 		{householdPBID: "hh_garcia", fieldName: "Housing Accommodation-Yes",
 			value: accommodationText, lastUpdated: ts},
+		// A real request, so the household actually produces a registration row.
+		// Without it processRegistrations returns nothing and the second half of
+		// this test asserts against an empty slice -- passing by checking
+		// nothing, which is the failure mode it exists to catch.
+		{householdPBID: "hh_garcia", fieldName: fieldSharedRequest,
+			value: "we bunk with them every year", lastUpdated: ts},
 	}
 
 	med := s.processMedical(personValues)
@@ -1865,10 +1962,16 @@ func TestProcessMedicalRoutesNarrativeToTheAdminGatedTable(t *testing.T) {
 
 	// And the same input must not put narrative on the registration row.
 	regs := s.processRegistrations(nil, personValues)
+	if len(regs) != 1 {
+		t.Fatalf("registrations = %d, want 1; an empty slice would make the "+
+			"assertions below vacuous", len(regs))
+	}
 	for _, r := range regs {
-		if strings.Contains(r.requestText, "documented condition") ||
-			strings.Contains(r.notes, "documented condition") {
-			t.Error("PHI narrative reached family_camp_registrations")
+		for _, field := range []string{r.requestText, r.notes, r.goals, r.specialOccasions} {
+			if strings.Contains(field, "documented condition") ||
+				strings.Contains(field, "ground-floor") {
+				t.Errorf("PHI narrative reached family_camp_registrations: %q", field)
+			}
 		}
 	}
 }

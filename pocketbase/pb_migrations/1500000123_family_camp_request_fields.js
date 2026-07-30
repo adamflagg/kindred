@@ -28,7 +28,26 @@
  *
  * PocketBase v0.23 syntax: fields.add(new Field({...})) on an existing
  * collection. A bare add({...}) silently does nothing.
+ *
+ * Every add goes through addField() below, which is a no-op when the column is
+ * already present. That matters while this migration is still unmerged: PB
+ * records an applied migration by FILENAME, so a column added to this file after
+ * a dev database already ran it would never appear there, and `Set` on a missing
+ * column is a silent no-op -- the value simply never persists, with nothing to
+ * notice. has_infant hit exactly that. Idempotent adds mean clearing the
+ * _migrations row is enough to pick the change up.
  */
+
+/**
+ * Adds a field unless the collection already has one by that name.
+ * @param {core.Collection} collection
+ * @param {core.Field} field
+ */
+function addField(collection, field) {
+  if (!collection.fields.getByName(field.name)) {
+    collection.fields.add(field);
+  }
+}
 
 migrate((app) => {
   const regs = app.findCollectionByNameOrId("family_camp_registrations");
@@ -43,38 +62,38 @@ migrate((app) => {
 
   // Normalised 3-state gate from "FAM CAMP-Share Cabins" (spec 4.3). The four
   // observed option sentences collapse onto these three.
-  regs.fields.add(new Field({
+  addField(regs, new Field({
     type: "select", name: "share_cabin_gate", required: false, presentable: false,
     values: ["no_share", "maybe_mutual", "yes_share"], maxSelect: 1
   }));
   // From "FAM CAMP-Shared Cabin", a pipe-delimited multi-select. NEAR and WITH
   // are different edge types (spec 4.3): proximity is satisfied by map distance,
   // co-housing by sharing a slot. 24 households ask for both.
-  regs.fields.add(new Field({ type: "bool", name: "wants_near", required: false, presentable: false }));
-  regs.fields.add(new Field({ type: "bool", name: "wants_with", required: false, presentable: false }));
+  addField(regs, new Field({ type: "bool", name: "wants_near", required: false, presentable: false }));
+  addField(regs, new Field({ type: "bool", name: "wants_with", required: false, presentable: false }));
   // Deduped free text at HOUSEHOLD grain. 4000 because several fields concatenate.
-  regs.fields.add(new Field({
+  addField(regs, new Field({
     type: "text", name: "request_text", required: false, presentable: false,
     min: 0, max: 4000, pattern: ""
   }));
-  regs.fields.add(new Field({
+  addField(regs, new Field({
     type: "text", name: "request_source_field", required: false, presentable: false,
     min: 0, max: 200, pattern: ""
   }));
-  regs.fields.add(new Field({
+  addField(regs, new Field({
     type: "date", name: "request_last_updated", required: false, presentable: false, min: "", max: ""
   }));
   // Derived accessibility flags -- spec 5.3: "The board/map shows a derived flag
   // only, never the narrative text."
-  regs.fields.add(new Field({
+  addField(regs, new Field({
     type: "bool", name: "needs_private_bathroom", required: false, presentable: false
   }));
-  regs.fields.add(new Field({ type: "bool", name: "needs_power", required: false, presentable: false }));
+  addField(regs, new Field({ type: "bool", name: "needs_power", required: false, presentable: false }));
   // From "FAM CAMP-Opt Out VIP": "Yes, please register regardless of cabin type"
   // (90) means the family will come anyway, so the need is a warning; "No, I am
   // only able to attend with this accommodation in place" (39) makes it a
   // blocker. Unanswered stays false, i.e. the softer reading.
-  regs.fields.add(new Field({
+  addField(regs, new Field({
     type: "bool", name: "accommodation_is_mandatory", required: false, presentable: false
   }));
   // From "Adult-Infant". Women's and Men's Weekend share one registration form:
@@ -82,18 +101,18 @@ migrate((app) => {
   // infant, which matters because of nursing; "I'm attending Men's Weekend" is
   // how a male registrant says the question does not apply. A housing
   // suitability signal -- privacy and quiet -- not an accessibility need.
-  regs.fields.add(new Field({ type: "bool", name: "has_infant", required: false, presentable: false }));
+  addField(regs, new Field({ type: "bool", name: "has_infant", required: false, presentable: false }));
   app.save(regs);
 
   const medical = app.findCollectionByNameOrId("family_camp_medical");
   // PHI narrative. "Housing-Bathroom" and "Bathroom-Yes" carry detailed medical
   // disclosures about named individuals. Never logged, never exported, never
   // rendered outside a permission-checked reveal.
-  medical.fields.add(new Field({
+  addField(medical, new Field({
     type: "text", name: "bathroom_explain", required: false, presentable: false,
     min: 0, max: 4000, pattern: ""
   }));
-  medical.fields.add(new Field({
+  addField(medical, new Field({
     type: "text", name: "accommodation_explain", required: false, presentable: false,
     min: 0, max: 4000, pattern: ""
   }));

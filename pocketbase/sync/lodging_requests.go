@@ -27,17 +27,49 @@ const (
 	fieldCovidBunkingRequests    = "COVID-19 Bunking Requests"
 )
 
+// Housing and accessibility source fields, paired with their cm_ids in
+// lodgingRequestFields. Constants rather than literals because the registry and
+// family_camp_derived.go's switch must compare against the SAME string: the
+// registry resolves a renamed field back to this name, and a switch case that
+// drifted from it would silently stop matching.
+const (
+	fieldFamCampBathroom  = "FAM CAMP-bathroom"
+	fieldAdultBathroom    = "Adult-Bathroom"
+	fieldFamCampCPAP      = "FAM CAMP-CPAP"
+	fieldFamilyCampCPAP   = "Family Camp-CPAP"
+	fieldAdultCPAP        = "Adult-CPAP"
+	fieldAdultInfant      = "Adult-Infant"
+	fieldFamCampOptOutVIP = "FAM CAMP-Opt Out VIP"
+	fieldAdultOptOut      = "Adult-Opt Out"
+)
+
 // NormalizeShareGate maps a raw gate answer onto the 3-state vocabulary.
 //
-// Order matters. Every option sentence contains "shar", and "No, we would prefer
-// not to share" and "Maybe, I am open to sharing" both start with a word that
-// decides the answer, so the leading token is what is tested -- not a substring
-// search for "yes"/"no".
+// Two things decide the answer, and BOTH are required.
+//
+// The leading token carries the polarity: CampMinder stores each option
+// sentence in full, and every one of them contains "shar", so a substring search
+// for "yes"/"no" would match the wrong half of "No, we would prefer not to
+// share". (The four prefix arms are mutually exclusive on a trimmed string, so
+// their order is not load-bearing -- an earlier version of this comment claimed
+// it was.)
+//
+// The sentence must also be ABOUT sharing a cabin, which is what the "shar"
+// guard below tests. Without it "No requests" -- the modes field's own
+// no-preference option, 269 rows in 2025 -- matches the "no " prefix and reads
+// as a hard decline. Because that field wins a timestamp tie and is normally
+// edited later than the registration gate, it then overwrote a genuine "Yes, I
+// would like to share" with no_share, and the household lost its eligibility for
+// staff pairing without anybody touching the gate question.
+//
+// Every real gate option says "share"/"sharing"; no NEAR/WITH mode option that
+// begins with a polarity token does. That asymmetry is the discriminator.
 func NormalizeShareGate(raw string) string {
 	lower := strings.ToLower(strings.TrimSpace(raw))
-	switch {
-	case lower == "":
+	if lower == "" || !strings.Contains(lower, "shar") {
 		return ""
+	}
+	switch {
 	case strings.HasPrefix(lower, "no,"), strings.HasPrefix(lower, "no "):
 		return gateNoShare
 	case strings.HasPrefix(lower, "maybe"):
@@ -55,15 +87,16 @@ func NormalizeShareGate(raw string) string {
 //
 // "No requests" is NOT a veto: it co-occurs with a real request in six observed
 // rows, so each option is read independently and a real one wins.
+// The two modes are tested INDEPENDENTLY, not as ordered switch arms, for the
+// same reason classifyCPAPAnswer's power and bathroom needs are: an option
+// naming both would otherwise set only whichever arm came first. No observed
+// 2025 option does name both, so this is a guard rather than a live fix -- but
+// the ordered form is one form rewrite away from silently dropping an edge.
 func ParseSharedCabinModes(raw string) (near, with bool) {
 	for _, option := range strings.Split(raw, "|") {
 		upper := strings.ToUpper(option)
-		switch {
-		case strings.Contains(upper, "NEAR"):
-			near = true
-		case strings.Contains(upper, "WITH"):
-			with = true
-		}
+		near = near || strings.Contains(upper, "NEAR")
+		with = with || strings.Contains(upper, "WITH")
 	}
 	return near, with
 }
@@ -132,6 +165,17 @@ func CollapseToHouseholdGrain(values []PersonRequestValue) map[string]*Household
 		if value == "" {
 			continue
 		}
+
+		// The household bucket and the LastUpdated bump used to happen here,
+		// before the switch below narrowed to request fields. Callers pass ALL
+		// of a household's person values in, so an ETA or a bathroom answer
+		// created a bucket and stamped request_last_updated -- leaving a
+		// freshly-touched request timestamp beside an empty gate and empty text.
+		// That column is what spec 4.1 resolves precedence with, so it has to
+		// mean "when the request changed" and nothing else.
+		if !isRequestField(v.FieldName) {
+			continue
+		}
 		a := get(v.HouseholdKey)
 		if v.LastUpdated.After(a.req.LastUpdated) {
 			a.req.LastUpdated = v.LastUpdated
@@ -169,6 +213,19 @@ func CollapseToHouseholdGrain(values []PersonRequestValue) map[string]*Household
 		out[hh] = a.req
 	}
 	return out
+}
+
+// isRequestField reports whether a field name is one the collapse reads. It
+// deliberately mirrors the switch in CollapseToHouseholdGrain: the two must
+// agree, or a field is either stamped without being read or read without being
+// stamped.
+func isRequestField(name string) bool {
+	switch name {
+	case fieldShareCabinsRegistration, fieldSharedCabinForm,
+		fieldSharedRequest, fieldShareComments, fieldCovidBunkingRequests:
+		return true
+	}
+	return false
 }
 
 // winsGate decides whether an incoming gate answer replaces the stored one.

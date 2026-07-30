@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log/slog"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -135,6 +136,13 @@ type medicalData struct {
 	additionalInfo   string
 	// PHI narrative. Detailed medical disclosures about named individuals.
 	// Never logged, never exported (see lodging_phi_test.go).
+	//
+	// The two below are the ones this plan added, but the never-log/never-export
+	// contract covers EVERY text field on this struct -- cpapInfo, physicianInfo,
+	// specialNeedsInfo, allergyInfo, dietaryInfo and additionalInfo carry the
+	// same kind of sentence. lodging_phi_test.go's phiColumns is the full list
+	// and the authority; this comment sits here only because it is where a
+	// future editor adding a field will be looking.
 	bathroomExplain      string
 	accommodationExplain string
 }
@@ -295,9 +303,24 @@ func (s *FamilyCampDerivedSync) loadFieldDefinitions(_ context.Context) (map[str
 		return nil, fmt.Errorf("querying field definitions: %w", err)
 	}
 
+	// Registered request fields resolve to the registry's canonical name rather
+	// than the one CampMinder currently reports, so a rename cannot disconnect
+	// an answer from the switch arm that routes it. Built from the same slice
+	// LodgingRequestFieldNames exposes; done inline here to avoid a second pass
+	// over custom_field_defs we have already loaded.
+	canonical := make(map[int]string, len(lodgingRequestFields))
+	for _, f := range lodgingRequestFields {
+		canonical[f.CMID] = f.Name
+	}
+
 	for _, record := range records {
+		cmID := record.GetInt("cm_id")
+		if registered, ok := canonical[cmID]; ok {
+			result[record.Id] = registered
+			continue
+		}
 		name := normalizeFieldName(record.GetString("name"))
-		if isFamilyCampField(name) || extraFieldCMIDs[record.GetInt("cm_id")] {
+		if isFamilyCampField(name) || extraFieldCMIDs[cmID] {
 			result[record.Id] = name
 		}
 	}
@@ -315,15 +338,20 @@ func (s *FamilyCampDerivedSync) loadFieldDefinitions(_ context.Context) (map[str
 // Adult-partition twin of Housing Accommodation).
 //
 // Scope: these ids govern only whether a definition is ADMITTED into the field
-// map, so admission survives a rename. Semantic routing downstream still
-// switches on the display name, so a rename in CampMinder would silently stop
-// an answer reaching its column — the same failure this allowlist exists to
-// fix. Closing that half needs the cm_id-keyed registry in lodging_fields.go
-// (Phase B); until it lands, the names below are load-bearing, not decorative.
+// map. Routing is handled separately, and for the fields that carry a request or
+// a housing flag it now goes through lodgingRequestFields, which resolves the
+// canonical display name from the cm_id — so a rename survives admission AND
+// routing. What is left here is the residue: fields admitted by id whose routing
+// is either by name heuristic or, for the two PHI narratives, by a name-keyed
+// lookup in processMedical.
+//
+// The entries duplicated in lodgingRequestFields are kept rather than deleted:
+// admission runs first, and leaving a field's admission dependent on the routing
+// registry would couple two things that fail differently.
 var extraFieldCMIDs = map[int]bool{
 	274057: true, // Housing Accommodation        (Camper) — successor to FAM Camp-Accommodation
 	274055: true, // Housing Accomodation  (sic)  (Adult)
-	274058: true, // Housing Accommodation-Yes    (Camper)
+	274058: true, // Housing Accommodation-Yes    (Camper) — PHI narrative, spec 5
 	274059: true, // Housing-Bathroom             (Camper) — PHI narrative, spec 5
 	274053: true, // Adult-Bathroom               (Adult)
 	274054: true, // Bathroom-Yes                 (Adult)  — PHI narrative, spec 5
@@ -419,7 +447,13 @@ func (s *FamilyCampDerivedSync) loadHouseholdCustomValues(
 		default:
 		}
 
-		records, err := s.App.FindRecordsByFilter("household_custom_values", filter, "", perPage, (page-1)*perPage)
+		// Sorted by id: offset paging without an ORDER BY lets SQLite return
+		// rows in an unspecified order, so a row can be skipped or seen twice
+		// across pages. Spec 4.1 now resolves gate precedence by comparing the
+		// registration answer against the form answer, and a skipped page means
+		// one of the two never arrives -- so the gate silently takes whichever
+		// value did. Same fix as lodging_session_attribution.go's paged read.
+		records, err := s.App.FindRecordsByFilter("household_custom_values", filter, "id", perPage, (page-1)*perPage)
 		if err != nil {
 			return nil, fmt.Errorf("querying household custom values page %d: %w", page, err)
 		}
@@ -470,7 +504,9 @@ func (s *FamilyCampDerivedSync) loadPersonCustomValues(
 		default:
 		}
 
-		records, err := s.App.FindRecordsByFilter("person_custom_values", filter, "", perPage, (page-1)*perPage)
+		// Sorted by id, for the reason spelled out in loadHouseholdCustomValues:
+		// this is the read the request-layer precedence depends on.
+		records, err := s.App.FindRecordsByFilter("person_custom_values", filter, "id", perPage, (page-1)*perPage)
 		if err != nil {
 			return nil, fmt.Errorf("querying person custom values page %d: %w", page, err)
 		}
@@ -662,7 +698,7 @@ func (s *FamilyCampDerivedSync) processRegistrations(
 		// arm ORs rather than first-wins.
 		case "FAM Camp-Accommodation", "Housing Accommodation", "Housing Accomodation":
 			reg.needsAccommodation = reg.needsAccommodation || parseBoolFieldValue(v.value)
-		case "FAM CAMP-Opt Out VIP", "Adult-Opt Out":
+		case fieldFamCampOptOutVIP, fieldAdultOptOut:
 			optedOut := parseBoolFieldValue(v.value)
 			// NOTE (kindred#1874): this OR is retained deliberately, and it is
 			// fail-UNSAFE. Household members disagree -- 3 households in 2025 --
@@ -684,15 +720,15 @@ func (s *FamilyCampDerivedSync) processRegistrations(
 			}
 		// Derived accessibility flags. The narrative behind each of these lives
 		// in family_camp_medical and never reaches this table (spec 5.3).
-		case "FAM CAMP-bathroom", "Adult-Bathroom":
+		case fieldFamCampBathroom, fieldAdultBathroom:
 			reg.needsPrivateBathroom = reg.needsPrivateBathroom || parseBoolFieldValue(v.value)
-		case "FAM CAMP-CPAP", "Family Camp-CPAP", "Adult-CPAP":
+		case fieldFamCampCPAP, fieldFamilyCampCPAP, fieldAdultCPAP:
 			// Deliberately NOT parseBoolFieldValue -- these three fields are
 			// multi-option selects, and every option starts "Yes" (kindred#1875).
 			ans := classifyCPAPAnswer(v.value)
 			reg.needsPower = reg.needsPower || ans.power
 			reg.needsPrivateBathroom = reg.needsPrivateBathroom || ans.bathroom
-		case "Adult-Infant":
+		case fieldAdultInfant:
 			// Housing-suitability signal, not an accessibility need (kindred#1876).
 			// Women's and Men's Weekend share one form: for women this asks
 			// whether they are bringing an infant, which matters because of
@@ -715,7 +751,12 @@ func (s *FamilyCampDerivedSync) processRegistrations(
 			reg.notes != "" || reg.needsAccommodation || reg.optOutVIP ||
 			reg.shareCabinGate != "" || reg.requestText != "" ||
 			reg.wantsNear || reg.wantsWith ||
-			reg.needsPrivateBathroom || reg.needsPower || reg.hasInfant {
+			reg.needsPrivateBathroom || reg.needsPower || reg.hasInfant ||
+			// accommodationIsMandatory belongs here for the same reason as the
+			// rest, and more so: opt_out_vip's OR is fail-unsafe, so this is the
+			// only honest blocker signal. A household whose only answer is the
+			// blocker was the one row that got dropped before it was written.
+			reg.accommodationIsMandatory {
 			result = append(result, reg)
 		}
 	}
@@ -840,15 +881,26 @@ func (s *FamilyCampDerivedSync) processMedical(personValues []customValueEntry) 
 			householdPBID: householdID,
 		}
 
-		// CPAP info
+		// CPAP info. The two Camper-partition names are generations of the SAME
+		// question, so they collapse to one answer; Adult-CPAP is a DIFFERENT
+		// PERSON and is therefore additive.
+		//
+		// That split has to match the flag logic in processRegistrations, which
+		// ORs across all three. A single first-wins loop over all three -- what
+		// this was -- meant a household with a camper "outlet needed" answer and
+		// an adult "bathroom ... needed" answer raised BOTH flags while the
+		// medical record kept only the camper's sentence, leaving
+		// needs_private_bathroom with nothing behind it in the one place staff
+		// can look for the reason.
 		cpapParts := []string{}
-		// Adult-CPAP is the Adult-partition twin; without it, an adult-only
-		// answer sets the needs_power flag with no narrative behind it.
-		for _, key := range []string{"Family Camp-CPAP", "FAM CAMP-CPAP", "Adult-CPAP"} {
+		for _, key := range []string{fieldFamilyCampCPAP, fieldFamCampCPAP} {
 			if v, ok := fields[key]; ok && v != "" {
 				cpapParts = append(cpapParts, v)
 				break
 			}
+		}
+		if v, ok := fields[fieldAdultCPAP]; ok && v != "" && !slices.Contains(cpapParts, v) {
+			cpapParts = append(cpapParts, v)
 		}
 		if v, ok := fields["Family Medical-CPAP Explain"]; ok && v != "" {
 			cpapParts = append(cpapParts, v)

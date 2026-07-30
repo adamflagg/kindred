@@ -19,6 +19,18 @@ const (
 	targetCabinAssignmentPerson    = "cabin_assignment_person"
 )
 
+// Target columns produced by the request layer (spec 4), on
+// family_camp_registrations.
+const (
+	targetShareCabinGate           = "share_cabin_gate"
+	targetSharedCabinModesRaw      = "shared_cabin_modes_raw"
+	targetRequestText              = "request_text"
+	targetNeedsPrivateBathroom     = "needs_private_bathroom"
+	targetNeedsPower               = "needs_power"
+	targetHasInfant                = "has_infant"
+	targetAccommodationIsMandatory = "accommodation_is_mandatory"
+)
+
 // CampMinder custom-field ids for the lodging sources.
 //
 // Spec 4.4: "Source fields are matched on custom_field_defs.cm_id, NOT the
@@ -37,6 +49,32 @@ const (
 	cmIDReportableFamilyCampCabin = 223823 // "Reportable Family Camp Cabin"
 )
 
+// CampMinder custom-field ids for the request layer (spec 4). Verified against
+// custom_field_defs on 2026-07-30, same basis as the two above: staff rename
+// these, so the id is the contract and the name is the payload.
+const (
+	// The 3-state gate and the NEAR/WITH modes.
+	cmIDShareCabinsRegistration = 240877 // "FAM CAMP-Share Cabins"
+	cmIDSharedCabinForm         = 263379 // "FAM CAMP-Shared Cabin"
+
+	// Free text, all three generations. COVID-19 Bunking Requests is a
+	// misleading legacy name for a live second request detail, not a dead field.
+	cmIDSharedRequest        = 274133 // "Shared-request"
+	cmIDShareComments        = 240598 // "FAM CAMP-Share Comments"
+	cmIDCovidBunkingRequests = 206286 // "COVID-19 Bunking Requests"
+
+	// Housing and accessibility. The CPAP fields are multi-option selects
+	// despite the boolean-looking name (kindred#1875).
+	cmIDFamCampBathroom  = 274056 // "FAM CAMP-bathroom"        (Camper)
+	cmIDAdultBathroom    = 274053 // "Adult-Bathroom"           (Adult)
+	cmIDFamCampCPAP      = 256582 // "FAM CAMP-CPAP"            (Camper)
+	cmIDFamilyCampCPAP   = 171577 // "Family Camp-CPAP"         (Camper, earlier generation)
+	cmIDAdultCPAP        = 256933 // "Adult-CPAP"               (Adult)
+	cmIDAdultInfant      = 257248 // "Adult-Infant"             (Adult)
+	cmIDFamCampOptOutVIP = 256927 // "FAM CAMP-Opt Out VIP"     (Camper)
+	cmIDAdultOptOut      = 256935 // "Adult-Opt Out"            (Adult)
+)
+
 // Display names of the source fields. These are documentation, not the matching
 // key -- resolution goes through the cm_ids above. They exist as constants only
 // because the same literals appear in family_camp_derived.go's name-routed
@@ -51,13 +89,104 @@ type lodgingSourceField struct {
 	Grain  string
 }
 
-// lodgingSourceFields is the assignment-source registry. Phase C appends the
-// request-layer fields to it.
+// lodgingSourceFields is the assignment-source registry: the fields whose values
+// become lodging_assignments rows.
+//
+// The request-layer fields live in lodgingRequestFields below rather than here,
+// which is a deliberate split and not an oversight. The assignment ingest walks
+// THIS slice to raise spec 4.4's zero-values warning, comparing against counts
+// only that ingest collects; a request field listed here would file a work-queue
+// issue on every run for a field another job is reading correctly.
 var lodgingSourceFields = []lodgingSourceField{
 	{CMID: cmIDFamilyCampCabin, Name: fieldNameFamilyCampCabin,
 		Target: targetCabinAssignmentHousehold, Grain: grainHousehold},
 	{CMID: cmIDReportableFamilyCampCabin, Name: "Reportable Family Camp Cabin",
 		Target: targetCabinAssignmentPerson, Grain: grainPerson},
+}
+
+// lodgingRequestFields is the request-layer registry (spec 4): every CampMinder
+// field family_camp_derived.go's switch routes into a family_camp_registrations
+// column.
+//
+// Its job is the half extraFieldCMIDs could not do. That allowlist decides
+// whether a definition is ADMITTED into the field map, so admission already
+// survived a CampMinder rename — but routing downstream compares display names
+// by exact equality, so a renamed field was admitted and then matched no case at
+// all. Its answer reached no column, and nothing went red. Resolving the
+// canonical Name from the CMID (see LodgingRequestFieldNames) closes that.
+//
+// Name is therefore NOT documentation here, unlike in lodgingSourceFields: it is
+// the value the switch compares against, so it has to stay exactly in step with
+// the case labels. The field-name constants are shared with that switch for
+// precisely that reason.
+var lodgingRequestFields = []lodgingSourceField{
+	{CMID: cmIDShareCabinsRegistration, Name: fieldShareCabinsRegistration,
+		Target: targetShareCabinGate, Grain: grainPerson},
+	{CMID: cmIDSharedCabinForm, Name: fieldSharedCabinForm,
+		Target: targetSharedCabinModesRaw, Grain: grainPerson},
+
+	{CMID: cmIDSharedRequest, Name: fieldSharedRequest,
+		Target: targetRequestText, Grain: grainPerson},
+	{CMID: cmIDShareComments, Name: fieldShareComments,
+		Target: targetRequestText, Grain: grainPerson},
+	{CMID: cmIDCovidBunkingRequests, Name: fieldCovidBunkingRequests,
+		Target: targetRequestText, Grain: grainPerson},
+
+	{CMID: cmIDFamCampBathroom, Name: fieldFamCampBathroom,
+		Target: targetNeedsPrivateBathroom, Grain: grainPerson},
+	{CMID: cmIDAdultBathroom, Name: fieldAdultBathroom,
+		Target: targetNeedsPrivateBathroom, Grain: grainPerson},
+
+	// These three target needs_power, but a bathroom-qualified option also sets
+	// needs_private_bathroom -- classifyCPAPAnswer owns that split. Target names
+	// the primary column; it is not a claim that the field writes only one.
+	{CMID: cmIDFamCampCPAP, Name: fieldFamCampCPAP,
+		Target: targetNeedsPower, Grain: grainPerson},
+	{CMID: cmIDFamilyCampCPAP, Name: fieldFamilyCampCPAP,
+		Target: targetNeedsPower, Grain: grainPerson},
+	{CMID: cmIDAdultCPAP, Name: fieldAdultCPAP,
+		Target: targetNeedsPower, Grain: grainPerson},
+
+	{CMID: cmIDAdultInfant, Name: fieldAdultInfant,
+		Target: targetHasInfant, Grain: grainPerson},
+
+	{CMID: cmIDFamCampOptOutVIP, Name: fieldFamCampOptOutVIP,
+		Target: targetAccommodationIsMandatory, Grain: grainPerson},
+	{CMID: cmIDAdultOptOut, Name: fieldAdultOptOut,
+		Target: targetAccommodationIsMandatory, Grain: grainPerson},
+}
+
+// LodgingRequestFieldNames maps custom_field_defs PB record id -> the canonical
+// display name family_camp_derived.go's switch routes on, for every registered
+// request field present in this database.
+//
+// Callers should overlay this on top of the name CampMinder currently reports,
+// so a field staff renamed still reaches its column.
+//
+// Unlike LodgingFieldDefIDs this does not consult disabledFieldCMIDs. There is
+// nothing coherent for an off switch to mean here: skipping the overlay would
+// not stop the field being read, it would only stop the rename being corrected,
+// so a "disabled" field would keep working right up until somebody renamed it.
+// When the request layer gains a real per-field off switch it belongs at the
+// admission boundary, not here.
+func LodgingRequestFieldNames(app core.App) (map[string]string, error) {
+	byCMID := make(map[int]string, len(lodgingRequestFields))
+	for _, f := range lodgingRequestFields {
+		byCMID[f.CMID] = f.Name
+	}
+
+	defs, err := app.FindRecordsByFilter("custom_field_defs", "", "", 0, 0)
+	if err != nil {
+		return nil, fmt.Errorf("loading custom_field_defs: %w", err)
+	}
+
+	result := make(map[string]string, len(byCMID))
+	for _, d := range defs {
+		if name, ok := byCMID[d.GetInt("cm_id")]; ok {
+			result[d.Id] = name
+		}
+	}
+	return result, nil
 }
 
 // LodgingFieldDefIDs maps custom_field_defs PB record id -> target column, for

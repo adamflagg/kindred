@@ -13,10 +13,14 @@ const (
 )
 
 // TestNormalizeShareGate pins the four real option sentences onto the 3-state
-// gate spec 4.3 defines. The sentences are stored in full by CampMinder, so
-// substring anchoring is the only workable approach -- but "No, we would prefer
-// not to share" and "Maybe, I am open to sharing" both contain "shar", so the
-// order of the checks matters.
+// gate spec 4.3 defines. CampMinder stores each option in full, so the leading
+// token is what decides the answer -- but a leading token alone is not enough,
+// which is what the "No requests" case below exists to prove.
+//
+// The check order does NOT matter: the four prefixes are mutually exclusive on
+// a trimmed string, so at most one arm can ever match. What matters is the
+// sharing-sentence guard, because that is the only thing separating a gate
+// answer from a mode option that happens to start with "No".
 func TestNormalizeShareGate(t *testing.T) {
 	cases := map[string]string{
 		"No, we would prefer not to share a camper cabin.": gateNoShare,
@@ -29,11 +33,85 @@ func TestNormalizeShareGate(t *testing.T) {
 		"":         "",
 		"  ":       "",
 		"Anything": "",
+		// The modes field's own "no requests" option -- 269 rows in 2025. It
+		// starts with "No " and is NOT a gate answer: it says the household
+		// named no specific family, not that it refuses to share.
+		"No requests": "",
 	}
 	for raw, want := range cases {
 		if got := NormalizeShareGate(raw); got != want {
 			t.Errorf("NormalizeShareGate(%.40q) = %q, want %q", raw, got, want)
 		}
+	}
+}
+
+// TestCollapseNoRequestsDoesNotVetoTheGate is the integration half of the case
+// above, and the one that actually cost data: the modes field wins a timestamp
+// tie and is normally edited later than the registration gate, so a bare "No
+// requests" on it overwrote a genuine "Yes, I would like to share" with a hard
+// decline. 269 of 2025's rows carry that exact value.
+func TestCollapseNoRequestsDoesNotVetoTheGate(t *testing.T) {
+	const yesShare = "Yes, I would like to share a large camper cabin with a family that I " +
+		"request or with a family with similarly aged kid(s) that I can meet at Camp."
+	registration := time.Date(2025, 1, 10, 0, 0, 0, 0, time.UTC)
+	laterForm := time.Date(2025, 6, 2, 0, 0, 0, 0, time.UTC)
+
+	for _, tc := range []struct {
+		name   string
+		formAt time.Time
+	}{
+		{"form is newer", laterForm},
+		{"exact timestamp tie", registration},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			got := CollapseToHouseholdGrain([]PersonRequestValue{
+				{HouseholdKey: hhA, FieldName: fieldShareCabinsRegistration,
+					Value: yesShare, LastUpdated: registration},
+				{HouseholdKey: hhA, FieldName: fieldSharedCabinForm,
+					Value: "No requests", LastUpdated: tc.formAt},
+			})
+			if got[hhA].Gate != gateYesShare {
+				t.Errorf("Gate = %q, want %q -- \"No requests\" is not a decline",
+					got[hhA].Gate, gateYesShare)
+			}
+			if got[hhA].SourceField != fieldShareCabinsRegistration {
+				t.Errorf("SourceField = %q, want the registration gate", got[hhA].SourceField)
+			}
+			if got[hhA].WantsNear || got[hhA].WantsWith {
+				t.Error(`"No requests" must not set a mode either`)
+			}
+		})
+	}
+}
+
+// TestCollapseDoesNotStampUnrelatedFields: request_last_updated is the column
+// spec 4.1 designates for resolving a form-vs-registration conflict, so it has
+// to mean "when the request was last touched". applyHouseholdRequests feeds
+// every person value in unfiltered, so a household that only answered an
+// unrelated question was getting a fresh-looking request timestamp beside an
+// empty gate and empty text.
+func TestCollapseDoesNotStampUnrelatedFields(t *testing.T) {
+	ts := time.Date(2025, 6, 2, 11, 0, 0, 0, time.UTC)
+
+	got := CollapseToHouseholdGrain([]PersonRequestValue{
+		{HouseholdKey: hhA, FieldName: "Family Camp-Trans ETA", Value: "3pm", LastUpdated: ts},
+	})
+	if req, ok := got[hhA]; ok && !req.LastUpdated.IsZero() {
+		t.Errorf("LastUpdated = %v for a household with no request at all", req.LastUpdated)
+	}
+
+	// A real request in the same household still carries its own timestamp,
+	// and an unrelated newer value must not advance it.
+	requestAt := time.Date(2025, 4, 21, 0, 0, 0, 0, time.UTC)
+	later := time.Date(2025, 9, 1, 0, 0, 0, 0, time.UTC)
+	got = CollapseToHouseholdGrain([]PersonRequestValue{
+		{HouseholdKey: hhB, FieldName: fieldSharedRequest,
+			Value: "we bunk with them every year", LastUpdated: requestAt},
+		{HouseholdKey: hhB, FieldName: "Family Camp-Trans ETA", Value: "3pm", LastUpdated: later},
+	})
+	if !got[hhB].LastUpdated.Equal(requestAt) {
+		t.Errorf("LastUpdated = %v, want %v -- an unrelated field advanced the request stamp",
+			got[hhB].LastUpdated, requestAt)
 	}
 }
 
@@ -59,6 +137,11 @@ func TestParseSharedCabinModes(t *testing.T) {
 		{with + "|" + near, true, true},
 		{near + "|" + none, true, false},
 		{"", false, false},
+		// One option naming both edge types. No observed 2025 option does this,
+		// so it is a guard rather than a live case -- but the two needs are
+		// independent for the same reason classifyCPAPAnswer's are, and an
+		// ordered switch silently drops whichever loses.
+		{"Share a cabin WITH or house my family NEAR a specific family", true, true},
 	}
 	for _, tc := range cases {
 		gotNear, gotWith := ParseSharedCabinModes(tc.raw)

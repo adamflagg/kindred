@@ -113,31 +113,92 @@ func TestSyncJobToCollectionsIsNotAnExportList(t *testing.T) {
 // exports. This greps the source rather than the runtime, because the failure
 // mode is a slog call somebody adds later while debugging.
 //
-// It reads family_camp_derived.go's own text: a slog line naming any PHI field
-// would put a disclosure into the log stream, which on this deployment goes to
-// the container log and from there wherever logs go.
+// It reads the source text of every file that handles narrative or request
+// text: a slog line naming any PHI field would put a disclosure into the log
+// stream, which on this deployment goes to the container log and from there
+// wherever logs go.
 func TestPHINarrativeIsNeverLogged(t *testing.T) {
-	src := readSourceFile(t, "family_camp_derived.go")
+	for _, file := range []string{"family_camp_derived.go", "lodging_requests.go"} {
+		for _, v := range phiLogViolations(readSourceFile(t, file)) {
+			t.Errorf("%s: %s", file, v)
+		}
+	}
+}
 
-	for _, line := range strings.Split(src, "\n") {
-		trimmed := strings.TrimSpace(line)
-		if !strings.HasPrefix(trimmed, "slog.") {
+// phiNarrativeExprs are the Go expressions that evaluate to narrative text.
+// Separate from phiColumns because a log line can name either the column or the
+// struct field that feeds it.
+var phiNarrativeExprs = []string{
+	"med.cpapInfo", "med.specialNeedsInfo", "med.allergyInfo",
+	"med.dietaryInfo", "med.additionalInfo", "med.bathroomExplain",
+	"med.accommodationExplain", "med.physicianInfo",
+	"reg.requestText", "req.RequestText", "a.req.RequestText",
+}
+
+// phiLogViolations returns one message per slog call that names PHI.
+//
+// It joins each call across lines before matching. The previous version tested
+// `strings.HasPrefix(trimmed, "slog.")` on individual lines, which meant gofmt
+// wrapping a long call -- exactly what happens when arguments are added to it --
+// moved the PHI argument onto a continuation line the scanner never looked at.
+// A guard with a formatting-dependent blind spot is worse than no guard, because
+// it reads as coverage.
+func phiLogViolations(src string) []string {
+	var out []string
+	lines := strings.Split(src, "\n")
+
+	for i := 0; i < len(lines); i++ {
+		start := strings.Index(lines[i], "slog.")
+		if start < 0 {
 			continue
 		}
+		// Accumulate until the call's parentheses balance, so the whole
+		// argument list is inspected however it happens to be wrapped.
+		call := lines[i][start:]
+		depth := parenDepth(call)
+		for j := i + 1; depth > 0 && j < len(lines) && j < i+12; j++ {
+			call += " " + strings.TrimSpace(lines[j])
+			depth += parenDepth(lines[j])
+			i = j
+		}
+
 		for _, phi := range phiColumns {
-			if strings.Contains(trimmed, phi) {
-				t.Errorf("a slog call references the PHI column %q:\n  %s", phi, trimmed)
+			if strings.Contains(call, `"`+phi+`"`) {
+				out = append(out, "a slog call references the PHI column "+phi+":\n  "+call)
 			}
 		}
-		for _, narrative := range []string{
-			"med.cpapInfo", "med.specialNeedsInfo", "med.allergyInfo",
-			"med.dietaryInfo", "med.additionalInfo", "med.bathroomExplain",
-			"med.accommodationExplain", "med.physicianInfo",
-			"reg.requestText",
-		} {
-			if strings.Contains(trimmed, narrative) {
-				t.Errorf("a slog call logs %s:\n  %s", narrative, trimmed)
+		for _, expr := range phiNarrativeExprs {
+			if strings.Contains(call, expr) {
+				out = append(out, "a slog call logs "+expr+":\n  "+call)
 			}
+		}
+	}
+	return out
+}
+
+func parenDepth(s string) int {
+	return strings.Count(s, "(") - strings.Count(s, ")")
+}
+
+// TestPHILogScannerCatchesWrappedCalls is the guard for the guard. The bug this
+// covers is not hypothetical: the line-anchored version passed on every input
+// below except the first.
+func TestPHILogScannerCatchesWrappedCalls(t *testing.T) {
+	cases := map[string]bool{
+		`slog.Info("x", "v", med.bathroomExplain)`:                                      true,
+		"slog.Info(\"x\",\n\t\"v\", med.bathroomExplain,\n)":                            true,
+		"if err != nil {\n\tslog.Error(\"x\",\n\t\t\"v\", med.accommodationExplain)\n}": true,
+		"slog.Info(\"x\",\n\t\"field\", \"bathroom_explain\")":                          true,
+		`slog.Info("saved", "household", med.householdPBID)`:                            false,
+		`bathroomParts = append(bathroomParts, med.bathroomExplain)`:                    false,
+	}
+	for src, wantViolation := range cases {
+		got := phiLogViolations(src)
+		if wantViolation && len(got) == 0 {
+			t.Errorf("scanner missed a PHI log call:\n%s", src)
+		}
+		if !wantViolation && len(got) > 0 {
+			t.Errorf("scanner false-positived on:\n%s\n  -> %v", src, got)
 		}
 	}
 }
