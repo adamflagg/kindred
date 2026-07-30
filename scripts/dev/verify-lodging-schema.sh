@@ -137,5 +137,33 @@ for idx in idx_lodging_assign_hh_live idx_lodging_assign_person_live; do
   fi
 done
 
+for c in lodging_ingest_issues lodging_field_mappings; do
+  n=$(sqlite3 "$DB" "SELECT COUNT(*) FROM _collections WHERE name = '$c'")
+  [[ "$n" -eq 1 ]] || note "collection $c missing"
+done
+
+ik=$(field_prop lodging_ingest_issues kind values || true)
+[[ "$ik" == '["unresolved_alias","ambiguous_alias","ambiguous_session","no_session","field_zero_values"]' ]] \
+  || note "lodging_ingest_issues.kind values are $ik"
+
+# The dedup index is what keeps a 472-row backfill from writing 472 issue rows.
+idx=$(sqlite3 "$DB" "SELECT COUNT(*) FROM sqlite_master WHERE type='index' AND name='idx_lodging_issues_dedup'")
+[[ "$idx" -eq 1 ]] || note "idx_lodging_issues_dedup missing"
+
+fm=$(sqlite3 "$DB" "SELECT COUNT(*) FROM sqlite_master WHERE type='index' AND name='idx_lodging_field_map_cmid'")
+[[ "$fm" -eq 1 ]] || note "idx_lodging_field_map_cmid missing"
+
+# Same options:{} trap as above, on the new collections: a silently-ignored max
+# shows up as 5000. raw_value is deliberately 500 (wider than alias_string's 300)
+# so a truncated request text still fits.
+rv=$(field_prop lodging_ingest_issues raw_value max || true)
+[[ "$rv" == "500" ]] || note "lodging_ingest_issues.raw_value max is '$rv' (expected 500)"
+fn=$(field_prop lodging_field_mappings field_name max || true)
+[[ "$fn" == "200" ]] || note "lodging_field_mappings.field_name max is '$fn' (expected 200)"
+
+# Plan 3 links a resolved alias item back to the alias row staff created from it.
+ra=$(field_prop lodging_ingest_issues resolved_alias cascadeDelete || true)
+[[ "$ra" == "0" || "$ra" == "false" ]] || note "lodging_ingest_issues.resolved_alias cascadeDelete is '$ra' (expected false)"
+
 if [[ "$fail" -ne 0 ]]; then echo "verify-lodging-schema: FAILED" >&2; exit 1; fi
 echo "verify-lodging-schema: OK ($js_migs js migrations applied)"
