@@ -591,11 +591,11 @@ func (s *FamilyCampDerivedSync) processRegistrations(
 
 		// Map fields (first non-empty wins)
 		switch v.fieldName {
-		case "FAM CAMP-Share Cabins":
+		case fieldShareCabinsRegistration:
 			if reg.shareCabinPreference == "" {
 				reg.shareCabinPreference = v.value
 			}
-		case "FAM CAMP-Shared Cabin":
+		case fieldSharedCabinForm:
 			if reg.sharedCabinWith == "" {
 				reg.sharedCabinWith = v.value
 			}
