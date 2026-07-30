@@ -574,7 +574,7 @@ func (s *FamilyCampDerivedSync) processRegistrations(
 
 		reg := regMap[v.householdPBID]
 
-		if v.fieldName == "Family Camp Cabin" && reg.cabinAssignment == "" {
+		if v.fieldName == fieldNameFamilyCampCabin && reg.cabinAssignment == "" {
 			reg.cabinAssignment = v.value
 		}
 	}
