@@ -78,6 +78,12 @@ migrate((app) => {
       // false = value is a seed guess (from historical peak occupancy), not staff-verified.
       { type: "bool", name: "is_confirmed", required: false, presentable: false },
       { type: "bool", name: "is_active", required: false, presentable: false },
+      // true = a building/grouping row that must never be booked or counted
+      // toward capacity (e.g. gt-tenaya, the building containing gt-tenaya-1..4).
+      // false = an ordinary bookable room. PocketBase's default for an unset
+      // bool is false, which is the safe default for units staff add later
+      // through the admin UI.
+      { type: "bool", name: "is_container", required: false, presentable: false },
       // max 4000 deliberately, NOT 5000: 5000 is PocketBase's silent default, so
       // the harness uses "max != 5000" to prove the options:{} trap was avoided.
       { type: "text", name: "notes", required: false, presentable: false, min: 0, max: 4000, pattern: "" },

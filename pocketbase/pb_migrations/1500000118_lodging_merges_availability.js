@@ -91,7 +91,13 @@ migrate((app) => {
     ],
     indexes: [
       "CREATE INDEX `idx_lodging_avail_session_year` ON `lodging_availability` (`session`, `year`)",
-      "CREATE INDEX `idx_lodging_avail_unit` ON `lodging_availability` (`unit`)"
+      "CREATE INDEX `idx_lodging_avail_unit` ON `lodging_availability` (`unit`)",
+      // At most one override per unit per session/scenario. Without this, a unit
+      // could hold both a reserved_staff row and a released_to_family row for the
+      // same (session, year, scenario), making "is this unit family-available?"
+      // non-deterministic. No WHERE predicate is needed: scenario is
+      // `TEXT DEFAULT '' NOT NULL`, so live (scenario-less) rows key on '' naturally.
+      "CREATE UNIQUE INDEX `idx_lodging_avail_unique` ON `lodging_availability` (`session`, `year`, `scenario`, `unit`)"
     ]
   });
   app.save(availability);

@@ -100,5 +100,12 @@ alias_members() {
 # The double-space string really is in the data — do not trim it.
 [[ "$(alias_members "Health Center Downstairs  - Room A")" == "hc-downstairs-a" ]] || note "double-space Room A alias missing"
 
+# Container rows (buildings) must never be countable/bookable rooms themselves,
+# and every leaf room's parent must itself be a container.
+n=$(q "SELECT COUNT(*) FROM lodging_units WHERE is_container = 1")
+[[ "$n" -eq 7 ]] || note "expected 7 container units, got $n"
+n=$(q "SELECT COUNT(*) FROM lodging_units c JOIN lodging_units p ON c.parent_unit = p.id WHERE p.is_container = 0")
+[[ "$n" -eq 0 ]] || note "$n units have a non-container parent"
+
 if [[ "$fail" -ne 0 ]]; then echo "verify-lodging-seed: FAILED" >&2; exit 1; fi
 echo "verify-lodging-seed: OK"

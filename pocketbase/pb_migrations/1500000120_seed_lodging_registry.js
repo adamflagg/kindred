@@ -5,7 +5,9 @@
  * Coordinates are label positions from the 2026 camp map, normalised to 0-1 on
  * its 792x612 canvas. `sleeps` is seeded from observed PEAK occupancy across
  * 2024-2025 assignments and is a GUESS — every row is written with
- * is_confirmed: false so the UI can flag unverified values.
+ * is_confirmed: false so the UI can flag unverified values. PocketBase number
+ * fields are `NUMERIC DEFAULT 0 NOT NULL`, so an unset `sleeps` stores as 0,
+ * not null — consumers must treat 0 as "unknown", not "zero capacity".
  *
  * Map notes worth preserving:
  *  - Ridge Side cabins are bare letters A-M on the map; River Side are v-prefixed
@@ -25,6 +27,9 @@
  */
 
 migrate((app) => {
+  // Building/grouping rows — never bookable, never counted toward capacity.
+  const CONTAINER_CODES = ["gt-kitty", "gt-tenaya", "gt-tioga", "gt-clouds-rest", "gt-wawona", "hc-downstairs", "tawonga-village-5"];
+
   const AREAS = [
     { code: "RIDGE", name: "Ridge Side", x: 0.5000, y: 0.2900, sort: 1 },
     { code: "RIVER", name: "River Side", x: 0.4900, y: 0.7000, sort: 2 },
@@ -77,7 +82,10 @@ migrate((app) => {
   }
 
   // [area, name, code, x, y, sleeps, bathroom, bathroom_group, parent_code, allocation]
-  // sleeps = observed peak people 2024-2025; null = never observed.
+  // sleeps = observed peak people 2024-2025; null here means never observed,
+  // which the loop below leaves unset — PocketBase then stores it as 0 (its
+  // NUMERIC NOT NULL default), so consumers must treat 0 as "unknown", not
+  // "zero capacity".
   const UNITS = [
     // --- Ridge Side (bare letters on the map) ---
     ["RIDGE", "Ridge A", "ridge-a", 0.4389, 0.3311, 5, "none", "", "", "family_pool"],
@@ -207,6 +215,7 @@ migrate((app) => {
       rec.set("allocation_default", u[9]);
       rec.set("is_confirmed", false);
       rec.set("is_active", true);
+      rec.set("is_container", CONTAINER_CODES.indexOf(u[2]) !== -1);
       app.save(rec);
     }
     unitIds[u[2]] = rec.id;

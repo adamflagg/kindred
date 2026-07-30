@@ -66,17 +66,20 @@ migrate((app) => {
       "CREATE INDEX `idx_lodging_assign_session_year` ON `lodging_assignments` (`session`, `year`)",
       "CREATE INDEX `idx_lodging_assign_household` ON `lodging_assignments` (`household_cm_id`, `year`)",
       "CREATE INDEX `idx_lodging_assign_person` ON `lodging_assignments` (`person_cm_id`, `year`)",
-      // One live (scenario-less) row per household per session, and per person.
+      // One row per household per session per scenario, and per person. scenario
+      // is a KEY COLUMN (not a predicate filter), so uniqueness holds both for the
+      // live plan (scenario = '') and INSIDE each saved scenario independently —
+      // scenario planning is exactly where a stray duplicate is most likely and
+      // least visible, so it gets the same guarantee as the live plan.
       //
       // The predicates MUST use `> 0`, not `!= ''`. PocketBase declares number
       // fields as `NUMERIC DEFAULT 0 NOT NULL`, so an unset household_cm_id is 0
       // — and SQLite evaluates `0 != ''` as TRUE (numeric-vs-text comparison).
       // With `!= ''` the household index would capture every person-grain row
       // (all household_cm_id = 0) and collide them, permitting only ONE adult
-      // assignment per session. Relations are `TEXT DEFAULT '' NOT NULL`, so
-      // `scenario = ''` is correct for "the live plan".
-      "CREATE UNIQUE INDEX `idx_lodging_assign_hh_live` ON `lodging_assignments` (`session`, `year`, `household_cm_id`) WHERE `household_cm_id` > 0 AND `scenario` = ''",
-      "CREATE UNIQUE INDEX `idx_lodging_assign_person_live` ON `lodging_assignments` (`session`, `year`, `person_cm_id`) WHERE `person_cm_id` > 0 AND `scenario` = ''"
+      // assignment per session.
+      "CREATE UNIQUE INDEX `idx_lodging_assign_hh_live` ON `lodging_assignments` (`session`, `year`, `household_cm_id`, `scenario`) WHERE `household_cm_id` > 0",
+      "CREATE UNIQUE INDEX `idx_lodging_assign_person_live` ON `lodging_assignments` (`session`, `year`, `person_cm_id`, `scenario`) WHERE `person_cm_id` > 0"
     ]
   });
   app.save(assignments);
