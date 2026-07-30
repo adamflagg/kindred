@@ -700,15 +700,12 @@ func (s *FamilyCampDerivedSync) processRegistrations(
 			reg.needsAccommodation = reg.needsAccommodation || parseBoolFieldValue(v.value)
 		case fieldFamCampOptOutVIP, fieldAdultOptOut:
 			optedOut := parseBoolFieldValue(v.value)
-			// NOTE (kindred#1874): this OR is retained deliberately, and it is
-			// fail-UNSAFE. Household members disagree -- 3 households in 2025 --
-			// and one member's "Yes, please register regardless of cabin type"
-			// ORs over another's "No, I am only able to attend with this
-			// accommodation in place", collapsing a blocker into a warning.
-			// opt_out_vip is therefore NOT the blocker gate and must never be
-			// read as one. accommodationIsMandatory below is the honest signal:
-			// it is set from any ANSWERED, non-opted-out value, so a conflict
-			// surfaces as mandatory rather than being collapsed away.
+			// Accumulated with OR here and then RESOLVED against the blocker in
+			// the finalization pass below (kindred#1874). Both steps are needed:
+			// this one cannot see the rest of the household, so on its own it
+			// let one member's "Yes, please register regardless of cabin type"
+			// override another's "No, I am only able to attend with this
+			// accommodation in place" -- 3 households a year.
 			reg.optOutVIP = reg.optOutVIP || optedOut
 			// "Yes, please register regardless of cabin type" (90 values) means
 			// the family will come anyway, so the need is a warning. "No, I am
@@ -744,6 +741,25 @@ func (s *FamilyCampDerivedSync) processRegistrations(
 	// Convert to slice
 	var result []*registrationData
 	for _, reg := range regMap {
+		// A blocker anywhere in the household outranks another member's opt-out
+		// (kindred#1874). Resolving it here rather than in the switch is what
+		// makes it order-independent: the switch sees one member at a time and
+		// cannot know a later one will answer blocker, so a running OR gave a
+		// different answer depending on which member CampMinder returned first.
+		//
+		// The two columns are a three-state answer wearing two booleans, and
+		// this is what keeps them mutually exclusive:
+		//
+		//	accommodationIsMandatory  -> some member cannot attend without it
+		//	optOutVIP                 -> answered, and the family will come anyway
+		//	both false                -> nobody answered
+		//
+		// Collapsing toward the blocker is the fail-SAFE direction. The reverse
+		// reads as "this family will cope" when someone said they cannot attend.
+		if reg.accommodationIsMandatory {
+			reg.optOutVIP = false
+		}
+
 		// Only include if has some data
 		if reg.cabinAssignment != "" || reg.shareCabinPreference != "" ||
 			reg.sharedCabinModesRaw != "" || reg.arrivalETA != "" ||
@@ -753,9 +769,9 @@ func (s *FamilyCampDerivedSync) processRegistrations(
 			reg.wantsNear || reg.wantsWith ||
 			reg.needsPrivateBathroom || reg.needsPower || reg.hasInfant ||
 			// accommodationIsMandatory belongs here for the same reason as the
-			// rest, and more so: opt_out_vip's OR is fail-unsafe, so this is the
-			// only honest blocker signal. A household whose only answer is the
-			// blocker was the one row that got dropped before it was written.
+			// rest, and more so: it is the blocker signal, and a household whose
+			// only answer is the blocker was the one row that got dropped before
+			// it was written.
 			reg.accommodationIsMandatory {
 			result = append(result, reg)
 		}
