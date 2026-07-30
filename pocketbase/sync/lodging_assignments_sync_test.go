@@ -459,3 +459,43 @@ func TestLodgingAssignmentsSyncPersonGrainNoEnrolment(t *testing.T) {
 		t.Errorf("person_cm_id = %d on the queue item, want 5003", issues[0].GetInt("person_cm_id"))
 	}
 }
+
+// TestLodgingAssignmentsRegisteredEverywhere: a job registered in some places
+// but not others is the single most common defect when adding a sync
+// (docs/architecture/sync-layer.md's own "Common Mistakes" table). Each miss is
+// silent -- the job simply never runs, or the GUI shows "idle" forever.
+func TestLodgingAssignmentsRegisteredEverywhere(t *testing.T) {
+	var inMeta bool
+	for _, m := range syncJobMeta {
+		if m.ID == serviceNameLodgingAssignments {
+			inMeta = true
+			if m.Phase != PhaseTransform {
+				t.Errorf("phase = %v, want PhaseTransform", m.Phase)
+			}
+		}
+	}
+	if !inMeta {
+		t.Error("lodging_assignments missing from syncJobMeta")
+	}
+
+	daily := getDailySyncJobs()
+	posDerived, posLodging := -1, -1
+	for i, id := range daily {
+		switch id {
+		case serviceNameFamilyCampDerived:
+			posDerived = i
+		case serviceNameLodgingAssignments:
+			posLodging = i
+		}
+	}
+	if posLodging < 0 {
+		t.Fatal("lodging_assignments missing from getDailySyncJobs; it would never run in the daily sync")
+	}
+	if posLodging < posDerived {
+		t.Error("lodging_assignments runs before family_camp_derived; it depends on the same source data")
+	}
+
+	if _, ok := SyncJobToCollections[serviceNameLodgingAssignments]; !ok {
+		t.Error("lodging_assignments missing from SyncJobToCollections; its sheets would never be skipped")
+	}
+}

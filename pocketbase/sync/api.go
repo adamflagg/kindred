@@ -417,6 +417,14 @@ func InitializeSyncService(app *pocketbase.PocketBase, e *core.ServeEvent) error
 			return handleFamilyCampDerivedSync(e, scheduler)
 		}))
 
+	// Lodging assignments sync
+	// Derives lodging_assignments from the CampMinder cabin custom fields
+	// Accepts required ?year=YYYY parameter
+	e.Router.POST("/api/custom/sync/lodging-assignments",
+		requirePermission("bunking.manage", func(e *core.RequestEvent) error {
+			return handleLodgingAssignmentsSync(e, scheduler)
+		}))
+
 	// Staff skills sync
 	// Extracts Skills- fields from person_custom_values into normalized table
 	// Accepts required ?year=YYYY parameter
@@ -919,6 +927,7 @@ func handleSyncStatus(e *core.RequestEvent, scheduler *Scheduler) error {
 		"camper_history",              // Computed camper denorm with retention metrics
 		"financial_transactions",      // Year-scoped financial data (depends on sessions, persons, households)
 		"family_camp_derived",         // Computed from person_custom_values, household_custom_values
+		"lodging_assignments",         // Derived: cabin custom fields -> lodging assignments
 		"staff_skills",                // Derived: staff skills extraction
 		"financial_aid_applications",  // Derived: FA applications computation
 		"household_demographics",      // Derived: household demographics computation
@@ -1980,6 +1989,73 @@ func handleFamilyCampDerivedSync(e *core.RequestEvent, scheduler *Scheduler) err
 
 	return e.JSON(http.StatusOK, map[string]any{
 		"message":  "Family camp derived computation started",
+		"status":   "started",
+		"syncType": syncType,
+		"year":     year,
+		"dry_run":  dryRun,
+	})
+}
+
+// handleLodgingAssignmentsSync handles the lodging assignment ingest endpoint.
+// Accepts a required ?year=YYYY parameter and an optional ?dry_run=true.
+func handleLodgingAssignmentsSync(e *core.RequestEvent, scheduler *Scheduler) error {
+	orchestrator := scheduler.GetOrchestrator()
+	syncType := serviceNameLodgingAssignments
+
+	if orchestrator.IsRunning(syncType) {
+		return e.JSON(http.StatusConflict, map[string]any{
+			"error":    "Lodging assignment ingest already in progress",
+			"status":   "running",
+			"syncType": syncType,
+		})
+	}
+
+	yearParam := e.Request.URL.Query().Get("year")
+	if yearParam == "" {
+		return e.JSON(http.StatusBadRequest, map[string]any{
+			"error": "Missing required year parameter. Use ?year=YYYY",
+		})
+	}
+	year, err := strconv.Atoi(yearParam)
+	if err != nil || year < 2017 || year > 2050 {
+		return e.JSON(http.StatusBadRequest, map[string]any{
+			"error": "Invalid year parameter. Must be between 2017 and 2050.",
+		})
+	}
+
+	dryRunParam := e.Request.URL.Query().Get("dry_run")
+	dryRun := dryRunParam == boolTrueStr || dryRunParam == "1"
+
+	service, ok := orchestrator.GetService(syncType).(*LodgingAssignmentsSync)
+	if !ok || service == nil {
+		return e.JSON(http.StatusInternalServerError, map[string]any{
+			"error": "Lodging assignments sync service not found",
+		})
+	}
+	service.Year = year
+	service.DryRun = dryRun
+
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
+		defer cancel()
+
+		slog.Info("Starting lodging_assignments ingest", "year", year, "dry_run", dryRun)
+		if err := orchestrator.RunSingleSync(ctx, syncType); err != nil {
+			slog.Error("Lodging assignment ingest failed", "year", year, "error", err)
+			return
+		}
+		stats := service.GetStats()
+		slog.Info("Lodging assignment ingest completed",
+			"year", year,
+			"created", stats.Created,
+			"updated", stats.Updated,
+			"skipped", stats.Skipped,
+			"errors", stats.Errors,
+		)
+	}()
+
+	return e.JSON(http.StatusOK, map[string]any{
+		"message":  "Lodging assignment ingest started",
 		"status":   "started",
 		"syncType": syncType,
 		"year":     year,

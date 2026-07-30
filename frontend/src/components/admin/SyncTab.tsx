@@ -21,6 +21,7 @@ import { useUnifiedSync } from '../../hooks/useUnifiedSync'
 import { useProcessRequests } from '../../hooks/useProcessRequests'
 import { useCamperHistorySync } from '../../hooks/useCamperHistorySync'
 import { useFamilyCampDerivedSync } from '../../hooks/useFamilyCampDerivedSync'
+import { useLodgingAssignmentsSync } from '../../hooks/useLodgingAssignmentsSync'
 import { useStaffSkillsSync } from '../../hooks/useStaffSkillsSync'
 import { useFinancialAidApplicationsSync } from '../../hooks/useFinancialAidApplicationsSync'
 import { useHouseholdDemographicsSync } from '../../hooks/useHouseholdDemographicsSync'
@@ -82,6 +83,7 @@ export function SyncTab() {
   const processRequests = useProcessRequests()
   const camperHistorySync = useCamperHistorySync()
   const familyCampDerivedSync = useFamilyCampDerivedSync()
+  const lodgingAssignmentsSync = useLodgingAssignmentsSync()
   const staffSkillsSync = useStaffSkillsSync()
   const faApplicationsSync = useFinancialAidApplicationsSync()
   const householdDemographicsSync = useHouseholdDemographicsSync()
@@ -182,6 +184,9 @@ export function SyncTab() {
           break
         case 'family_camp_derived':
           familyCampDerivedSync.mutate(syncYear)
+          break
+        case 'lodging_assignments':
+          lodgingAssignmentsSync.mutate(syncYear)
           break
         case 'staff_skills':
           staffSkillsSync.mutate(syncYear)
