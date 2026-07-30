@@ -1,0 +1,202 @@
+package sync
+
+import (
+	"fmt"
+	"time"
+
+	"github.com/pocketbase/dbx"
+	"github.com/pocketbase/pocketbase/core"
+)
+
+// Work-queue kinds. These strings must match lodging_ingest_issues.kind's select
+// values exactly (migration 1500000122); PocketBase rejects anything else.
+const (
+	// A cabin string with no alias row covering this year.
+	issueUnresolvedAlias = "unresolved_alias"
+	// Two or more alias rows whose year windows both contain this year, so the
+	// string resolves to more than one thing. Only reachable via the Plan 3
+	// admin UI, which can add overlapping windows the seed does not.
+	issueAmbiguousAlias = "ambiguous_alias"
+	// The household or person attends more than one weekend and CampMinder holds
+	// a single cabin value for the year. Spec 3.6 calls this out as the honest
+	// limit of backfill: flag it, do not guess.
+	issueAmbiguousSession = "ambiguous_session"
+	// A cabin value whose household or person has no active enrolment in a
+	// family/adult session that year -- cancelled, waitlisted, or in progress.
+	issueNoSession = "no_session"
+	// Spec 4.4's passive warning: a mapped field saw zero values this year.
+	issueFieldZeroValues = "field_zero_values"
+)
+
+// Issue is one work-queue item. Zero-valued HouseholdCMID / PersonCMID mean "not
+// specific to one party" and collapse the item across parties -- an unmapped
+// cabin string is one thing to fix, however many households hit it.
+type Issue struct {
+	Kind          string
+	RawValue      string
+	SourceField   string
+	Year          int
+	HouseholdCMID int
+	PersonCMID    int
+	// SuggestedSession is a camp_sessions PB record id, advisory only. No
+	// assignment row is ever written from it.
+	SuggestedSession string
+	CandidateCMIDs   []int
+}
+
+func (i *Issue) dedupKey() string {
+	return fmt.Sprintf("%d\x00%s\x00%s\x00%s\x00%d\x00%d",
+		i.Year, i.Kind, i.RawValue, i.SourceField, i.HouseholdCMID, i.PersonCMID)
+}
+
+type pendingIssue struct {
+	issue       Issue
+	occurrences int
+}
+
+// IssueRecorder accumulates work-queue items in memory and writes them once, so
+// a backfill that meets the same unmapped string 472 times produces one row with
+// occurrences=472 rather than 472 rows.
+type IssueRecorder struct {
+	app     core.App
+	year    int
+	pending map[string]*pendingIssue
+	order   []string // insertion order, so Flush is deterministic
+}
+
+// NewIssueRecorder returns a recorder that accumulates work-queue items for one
+// year. Call Flush once at the end of the run to write them.
+func NewIssueRecorder(app core.App, year int) *IssueRecorder {
+	return &IssueRecorder{
+		app:     app,
+		year:    year,
+		pending: make(map[string]*pendingIssue),
+	}
+}
+
+// Record adds one observation. Repeated identical observations increment the
+// occurrence count rather than queueing another item.
+//
+// Issue is passed by value on purpose: callers build one inline per observation
+// and the recorder keeps its own copy. Nothing here is hot path.
+//
+//nolint:gocritic // hugeParam, see above
+func (r *IssueRecorder) Record(i Issue) {
+	if i.Year == 0 {
+		i.Year = r.year
+	}
+	key := i.dedupKey()
+	if p, ok := r.pending[key]; ok {
+		p.occurrences++
+		// Later observations may carry a suggestion the first did not.
+		if p.issue.SuggestedSession == "" {
+			p.issue.SuggestedSession = i.SuggestedSession
+		}
+		return
+	}
+	r.pending[key] = &pendingIssue{issue: i, occurrences: 1}
+	r.order = append(r.order, key)
+}
+
+// CountOf returns the total observations recorded for a kind, across items.
+func (r *IssueRecorder) CountOf(kind string) int {
+	total := 0
+	for _, p := range r.pending {
+		if p.issue.Kind == kind {
+			total += p.occurrences
+		}
+	}
+	return total
+}
+
+// Flush upserts every accumulated item. occurrences is SET to what this run
+// observed rather than added to, so re-running the sync is idempotent.
+// is_resolved is written only on create -- once staff tick an item, a later sync
+// must not un-tick it.
+func (r *IssueRecorder) Flush(now time.Time) (created, updated int, err error) {
+	col, err := r.app.FindCollectionByNameOrId("lodging_ingest_issues")
+	if err != nil {
+		return 0, 0, fmt.Errorf("finding lodging_ingest_issues: %w", err)
+	}
+	stamp := now.UTC().Format("2006-01-02 15:04:05.000Z")
+
+	for _, key := range r.order {
+		p := r.pending[key]
+		existing, findErr := r.findExisting(&p.issue)
+		if findErr != nil {
+			return created, updated, findErr
+		}
+
+		rec := existing
+		isNew := rec == nil
+		if isNew {
+			rec = core.NewRecord(col)
+			rec.Set("kind", p.issue.Kind)
+			rec.Set("raw_value", p.issue.RawValue)
+			rec.Set("source_field", p.issue.SourceField)
+			rec.Set("year", p.issue.Year)
+			rec.Set("household_cm_id", p.issue.HouseholdCMID)
+			rec.Set("person_cm_id", p.issue.PersonCMID)
+			rec.Set("first_seen", stamp)
+			rec.Set("is_resolved", false)
+		}
+		rec.Set("occurrences", p.occurrences)
+		rec.Set("last_seen", stamp)
+		rec.Set("suggested_session", p.issue.SuggestedSession)
+		rec.Set("candidate_session_cm_ids", p.issue.CandidateCMIDs)
+
+		if saveErr := r.app.Save(rec); saveErr != nil {
+			return created, updated, fmt.Errorf("saving issue %q: %w", p.issue.RawValue, saveErr)
+		}
+		if isNew {
+			created++
+		} else {
+			updated++
+		}
+	}
+	return created, updated, nil
+}
+
+// eqOrEmpty renders a text-column equality clause into filter, registering a
+// bound parameter unless the value is empty.
+//
+// Two traps in one helper, both verified against a live PocketBase:
+//
+//   - A bound parameter whose value is the EMPTY STRING matches nothing. For a
+//     row whose scenario is the empty string, `scenario = {:sc}` with sc="" returns
+//     0 rows, while the same comparison written as a bare SQL literal returns it.
+//     So empty values have to be literals.
+//   - Everything else must stay parameterised. Real cabin strings contain
+//     apostrophes ("Golden Triangle - Doctor's House"), and interpolating one
+//     into a quoted SQL literal is a syntax error, not a miss -- the exact bug
+//     that left Plan 1's alias verifier unable to pass no matter what was seeded.
+func eqOrEmpty(column, paramName, value string, params dbx.Params) string {
+	if value == "" {
+		return column + " = ''"
+	}
+	params[paramName] = value
+	return column + " = {:" + paramName + "}"
+}
+
+// findExisting looks the item up on the same six columns as
+// idx_lodging_issues_dedup.
+func (r *IssueRecorder) findExisting(i *Issue) (*core.Record, error) {
+	params := dbx.Params{
+		"year":   i.Year,
+		"hh":     i.HouseholdCMID,
+		"person": i.PersonCMID,
+	}
+	filter := "year = {:year} && household_cm_id = {:hh} && person_cm_id = {:person} && " +
+		eqOrEmpty("kind", "kind", i.Kind, params) + " && " +
+		eqOrEmpty("raw_value", "raw", i.RawValue, params) + " && " +
+		eqOrEmpty("source_field", "field", i.SourceField, params)
+
+	rows, err := r.app.FindRecordsByFilter("lodging_ingest_issues", filter, "", 1, 0, params)
+	if err != nil {
+		return nil, fmt.Errorf("looking up issue %q: %w", i.RawValue, err)
+	}
+	if len(rows) == 0 {
+		return nil, nil
+	}
+	return rows[0], nil
+}
