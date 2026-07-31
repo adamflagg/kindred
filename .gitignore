@@ -95,6 +95,7 @@ pocketbase/pb_migrations/*_updated_users.js
 !pocketbase/main.go
 !pocketbase/main_*_test.go
 !pocketbase/sync/
+!pocketbase/lodging/
 !pocketbase/logging/
 !pocketbase/campminder/
 !pocketbase/ratelimit/
