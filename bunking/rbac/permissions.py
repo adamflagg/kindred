@@ -11,6 +11,7 @@ class Permission:
     """Permission codenames. Used in backend checks and exposed to frontend via API."""
 
     BUNKING_MANAGE = "bunking.manage"
+    LODGING_PHI = "lodging.phi"
     METRICS_FINANCIAL = "metrics.financial"
     METRICS_GEO = "metrics.geo"
     REGISTRATION_MANAGE = "registration.manage"
@@ -23,6 +24,7 @@ ALL_PERMISSIONS: frozenset[str] = frozenset(getattr(Permission, attr) for attr i
 
 PERMISSION_DESCRIPTIONS: dict[str, str] = {
     Permission.BUNKING_MANAGE: "Manage requests, scenarios, solver runs",
+    Permission.LODGING_PHI: "View medical narrative text behind weekend lodging accommodation flags",
     Permission.METRICS_FINANCIAL: "View financial projections and revenue data",
     Permission.METRICS_GEO: "View and manage geographic data",
     Permission.REGISTRATION_MANAGE: "Edit registration dates, budgets, and grade eligibility",

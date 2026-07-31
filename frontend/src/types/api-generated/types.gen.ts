@@ -59,6 +59,38 @@ export type AgSessionAvailability = {
 }
 
 /**
+ * AccessibilityFlagSummary
+ *
+ * Derived booleans ONLY. No narrative — see the module docstring.
+ */
+export type AccessibilityFlagSummary = {
+  /**
+   * Needs Private Bathroom
+   */
+  needs_private_bathroom?: boolean
+  /**
+   * Needs Power
+   */
+  needs_power?: boolean
+  /**
+   * Needs Accommodation
+   */
+  needs_accommodation?: boolean
+  /**
+   * Accommodation Is Mandatory
+   */
+  accommodation_is_mandatory?: boolean
+  /**
+   * Has Infant
+   */
+  has_infant?: boolean
+  /**
+   * Has Medical Narrative
+   */
+  has_medical_narrative?: boolean
+}
+
+/**
  * ApproveRequest
  *
  * Request body for approving a suggested canonical.
@@ -1694,6 +1726,54 @@ export type HistoricalTrendsResponse = {
 }
 
 /**
+ * HouseholdMedicalResponse
+ *
+ * PHI. Served by ONE permission-gated endpoint. Never nested elsewhere.
+ */
+export type HouseholdMedicalResponse = {
+  /**
+   * Household Cm Id
+   */
+  household_cm_id: number
+  /**
+   * Year
+   */
+  year: number
+  /**
+   * Cpap Info
+   */
+  cpap_info?: string
+  /**
+   * Physician Info
+   */
+  physician_info?: string
+  /**
+   * Special Needs Info
+   */
+  special_needs_info?: string
+  /**
+   * Allergy Info
+   */
+  allergy_info?: string
+  /**
+   * Dietary Info
+   */
+  dietary_info?: string
+  /**
+   * Additional Info
+   */
+  additional_info?: string
+  /**
+   * Bathroom Explain
+   */
+  bathroom_explain?: string
+  /**
+   * Accommodation Explain
+   */
+  accommodation_explain?: string
+}
+
+/**
  * IncrementalUpdateResponse
  *
  * Response with minimal update data
@@ -1715,6 +1795,98 @@ export type IncrementalUpdateResponse = {
    * Cache Invalidated
    */
   cache_invalidated?: boolean
+}
+
+/**
+ * LodgingUnitSummary
+ *
+ * One row of the lodging registry, as the roster sees it.
+ */
+export type LodgingUnitSummary = {
+  /**
+   * Unit Id
+   */
+  unit_id: string
+  /**
+   * Code
+   */
+  code: string
+  /**
+   * Name
+   */
+  name: string
+  /**
+   * Area Code
+   */
+  area_code?: string
+  /**
+   * Area Name
+   */
+  area_name?: string
+  /**
+   * Sleeps
+   */
+  sleeps?: number | null
+  /**
+   * Bathroom
+   */
+  bathroom?: 'unknown' | 'none' | 'private' | 'shared'
+  /**
+   * Bathroom Group
+   */
+  bathroom_group?: string
+  /**
+   * Near Bathhouse
+   */
+  near_bathhouse?: boolean
+  /**
+   * Has Power
+   */
+  has_power?: boolean
+  /**
+   * Has Ac
+   */
+  has_ac?: boolean
+  /**
+   * Has Fridge
+   */
+  has_fridge?: boolean
+  /**
+   * Is Accessible
+   */
+  is_accessible?: boolean
+  /**
+   * Is Confirmed
+   */
+  is_confirmed?: boolean
+  /**
+   * Is Active
+   */
+  is_active?: boolean
+  /**
+   * Is Container
+   */
+  is_container?: boolean
+  /**
+   * Allocation Default
+   */
+  allocation_default?: string
+  /**
+   * Reservation State
+   */
+  reservation_state?: string | null
+  /**
+   * Is Family Available
+   */
+  is_family_available?: boolean
+  /**
+   * Map X
+   */
+  map_x?: number | null
+  /**
+   * Map Y
+   */
+  map_y?: number | null
 }
 
 /**
@@ -2585,6 +2757,50 @@ export type ParsedIntent = {
   temporal_info?: {
     [key: string]: unknown
   } | null
+}
+
+/**
+ * PartyAdult
+ *
+ * An accompanying adult, from family_camp_adults.
+ */
+export type PartyAdult = {
+  /**
+   * Adult Number
+   */
+  adult_number?: number
+  /**
+   * Display Name
+   */
+  display_name?: string
+  /**
+   * Relationship
+   */
+  relationship?: string
+}
+
+/**
+ * PartyChild
+ *
+ * An enrolled child, from attendees -> persons.
+ */
+export type PartyChild = {
+  /**
+   * Person Cm Id
+   */
+  person_cm_id?: number
+  /**
+   * Display Name
+   */
+  display_name?: string
+  /**
+   * Age
+   */
+  age?: number | null
+  /**
+   * Grade
+   */
+  grade?: number | null
 }
 
 /**
@@ -4373,6 +4589,121 @@ export type RetentionTrendsResponse = {
 }
 
 /**
+ * RosterCounts
+ *
+ * Honest counts. Every capacity figure excludes container rows.
+ */
+export type RosterCounts = {
+  /**
+   * Parties Total
+   */
+  parties_total?: number
+  /**
+   * Parties Assigned
+   */
+  parties_assigned?: number
+  /**
+   * Parties Unassigned
+   */
+  parties_unassigned?: number
+  /**
+   * Units Total
+   */
+  units_total?: number
+  /**
+   * Units Family Available
+   */
+  units_family_available?: number
+  /**
+   * Units Reserved
+   */
+  units_reserved?: number
+  /**
+   * Beds Family Available
+   */
+  beds_family_available?: number
+  /**
+   * Units Capacity Unknown
+   */
+  units_capacity_unknown?: number
+  /**
+   * Units Unconfirmed
+   */
+  units_unconfirmed?: number
+  /**
+   * Units Missing Allocation
+   */
+  units_missing_allocation?: number
+  /**
+   * Unresolved Aliases
+   */
+  unresolved_aliases?: number
+}
+
+/**
+ * RosterParty
+ *
+ * One placeable party.
+ *
+ * Family camp enrols only children, so a party is a HOUSEHOLD. Adult
+ * weekends enrol individuals, so a party is a PERSON. Exactly one of
+ * household_cm_id / person_cm_id is non-zero, matching the dual grain of
+ * lodging_assignments.
+ */
+export type RosterParty = {
+  /**
+   * Grain
+   */
+  grain: 'household' | 'person'
+  /**
+   * Household Cm Id
+   */
+  household_cm_id?: number
+  /**
+   * Person Cm Id
+   */
+  person_cm_id?: number
+  /**
+   * Display Name
+   */
+  display_name?: string
+  /**
+   * Adults
+   */
+  adults?: Array<PartyAdult>
+  /**
+   * Children
+   */
+  children?: Array<PartyChild>
+  /**
+   * Party Size
+   */
+  party_size?: number
+  /**
+   * Unit Code
+   */
+  unit_code?: string
+  /**
+   * Unit Name
+   */
+  unit_name?: string
+  /**
+   * Is Merged Slot
+   */
+  is_merged_slot?: boolean
+  /**
+   * Arrival Eta
+   */
+  arrival_eta?: string
+  /**
+   * Is Returning
+   */
+  is_returning?: boolean
+  share?: ShareRequestSummary
+  flags?: AccessibilityFlagSummary
+}
+
+/**
  * RunFromPhaseRequest
  *
  * Request to cascade from a specific phase.
@@ -5010,6 +5341,40 @@ export type SessionLengthBySessionBreakdown = {
    * Total campers in this length category
    */
   total: number
+}
+
+/**
+ * ShareRequestSummary
+ *
+ * The household's cabin-sharing request, unresolved.
+ *
+ * Every field here is READ from an ingest-derived column. Do not recompute
+ * any of it from share_cabin_preference / shared_cabin_modes_raw, which are
+ * kept only as raw provenance: the Go normaliser carries two fixes this layer
+ * would lose, most importantly the guard that stops the modes field's own
+ * "No requests" option from reading as a hard decline.
+ */
+export type ShareRequestSummary = {
+  /**
+   * Preference
+   */
+  preference?: 'no_share' | 'maybe_mutual' | 'yes_share' | 'unknown'
+  /**
+   * Preference Raw
+   */
+  preference_raw?: string
+  /**
+   * Proximity
+   */
+  proximity?: Array<'near' | 'with' | 'similar_ages'>
+  /**
+   * Request Text
+   */
+  request_text?: string
+  /**
+   * Needs Resolution
+   */
+  needs_resolution?: boolean
 }
 
 /**
@@ -6025,6 +6390,87 @@ export type WeekOption = {
    * Whether this entry represents today's live data
    */
   is_today: boolean
+}
+
+/**
+ * WeekendRosterResponse
+ */
+export type WeekendRosterResponse = {
+  /**
+   * Year
+   */
+  year: number
+  /**
+   * Session Cm Id
+   */
+  session_cm_id: number
+  /**
+   * Session Name
+   */
+  session_name?: string
+  /**
+   * Session Type
+   */
+  session_type?: string
+  /**
+   * Parties
+   */
+  parties?: Array<RosterParty>
+  /**
+   * Units
+   */
+  units?: Array<LodgingUnitSummary>
+  counts?: RosterCounts
+}
+
+/**
+ * WeekendSessionListResponse
+ */
+export type WeekendSessionListResponse = {
+  /**
+   * Year
+   */
+  year: number
+  /**
+   * Sessions
+   */
+  sessions?: Array<WeekendSessionSummary>
+}
+
+/**
+ * WeekendSessionSummary
+ *
+ * One family or adult weekend.
+ */
+export type WeekendSessionSummary = {
+  /**
+   * Session Id
+   */
+  session_id: string
+  /**
+   * Session Cm Id
+   */
+  session_cm_id: number
+  /**
+   * Name
+   */
+  name: string
+  /**
+   * Session Type
+   */
+  session_type: string
+  /**
+   * Start Date
+   */
+  start_date?: string
+  /**
+   * End Date
+   */
+  end_date?: string
+  /**
+   * Sort Order
+   */
+  sort_order?: number
 }
 
 /**
@@ -9089,6 +9535,119 @@ export type GetSessionAvailabilityApiMetricsSessionAvailabilityGetResponses = {
 
 export type GetSessionAvailabilityApiMetricsSessionAvailabilityGetResponse =
   GetSessionAvailabilityApiMetricsSessionAvailabilityGetResponses[keyof GetSessionAvailabilityApiMetricsSessionAvailabilityGetResponses]
+
+export type ListWeekendSessionsApiLodgingSessionsGetData = {
+  body?: never
+  path?: never
+  query: {
+    /**
+     * Year
+     *
+     * Year to list weekend sessions for
+     */
+    year: number
+  }
+  url: '/api/lodging/sessions'
+}
+
+export type ListWeekendSessionsApiLodgingSessionsGetErrors = {
+  /**
+   * Validation Error
+   */
+  422: HttpValidationError
+}
+
+export type ListWeekendSessionsApiLodgingSessionsGetError =
+  ListWeekendSessionsApiLodgingSessionsGetErrors[keyof ListWeekendSessionsApiLodgingSessionsGetErrors]
+
+export type ListWeekendSessionsApiLodgingSessionsGetResponses = {
+  /**
+   * Successful Response
+   */
+  200: WeekendSessionListResponse
+}
+
+export type ListWeekendSessionsApiLodgingSessionsGetResponse =
+  ListWeekendSessionsApiLodgingSessionsGetResponses[keyof ListWeekendSessionsApiLodgingSessionsGetResponses]
+
+export type GetWeekendRosterApiLodgingRosterGetData = {
+  body?: never
+  path?: never
+  query: {
+    /**
+     * Year
+     *
+     * Year of the weekend
+     */
+    year: number
+    /**
+     * Session Cm Id
+     *
+     * CampMinder id of the weekend session
+     */
+    session_cm_id: number
+  }
+  url: '/api/lodging/roster'
+}
+
+export type GetWeekendRosterApiLodgingRosterGetErrors = {
+  /**
+   * Validation Error
+   */
+  422: HttpValidationError
+}
+
+export type GetWeekendRosterApiLodgingRosterGetError =
+  GetWeekendRosterApiLodgingRosterGetErrors[keyof GetWeekendRosterApiLodgingRosterGetErrors]
+
+export type GetWeekendRosterApiLodgingRosterGetResponses = {
+  /**
+   * Successful Response
+   */
+  200: WeekendRosterResponse
+}
+
+export type GetWeekendRosterApiLodgingRosterGetResponse =
+  GetWeekendRosterApiLodgingRosterGetResponses[keyof GetWeekendRosterApiLodgingRosterGetResponses]
+
+export type GetHouseholdMedicalApiLodgingHouseholdsHouseholdCmIdMedicalGetData = {
+  body?: never
+  path: {
+    /**
+     * Household Cm Id
+     */
+    household_cm_id: number
+  }
+  query: {
+    /**
+     * Year
+     *
+     * Year of the registration
+     */
+    year: number
+  }
+  url: '/api/lodging/households/{household_cm_id}/medical'
+}
+
+export type GetHouseholdMedicalApiLodgingHouseholdsHouseholdCmIdMedicalGetErrors = {
+  /**
+   * Validation Error
+   */
+  422: HttpValidationError
+}
+
+export type GetHouseholdMedicalApiLodgingHouseholdsHouseholdCmIdMedicalGetError =
+  GetHouseholdMedicalApiLodgingHouseholdsHouseholdCmIdMedicalGetErrors[keyof GetHouseholdMedicalApiLodgingHouseholdsHouseholdCmIdMedicalGetErrors]
+
+export type GetHouseholdMedicalApiLodgingHouseholdsHouseholdCmIdMedicalGetResponses = {
+  /**
+   * Successful Response
+   */
+  200: HouseholdMedicalResponse
+}
+
+export type GetHouseholdMedicalApiLodgingHouseholdsHouseholdCmIdMedicalGetResponse =
+  GetHouseholdMedicalApiLodgingHouseholdsHouseholdCmIdMedicalGetResponses[keyof GetHouseholdMedicalApiLodgingHouseholdsHouseholdCmIdMedicalGetResponses]
 
 export type GetGapsApiGeoGapsGetData = {
   body?: never

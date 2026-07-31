@@ -1,0 +1,121 @@
+"""PHI must not be reachable from any roster payload (spec §5).
+
+family_camp_medical holds detailed medical disclosures about named
+individuals — chronic conditions, post-surgical needs, CPAP dependence,
+infants. Spec §5 requires: derived flag on the board, narrative only behind
+an explicit permission-checked reveal, and never in an export payload.
+
+This test walks the model graph rather than eyeballing one class, so a PHI
+field smuggled into a nested model three levels down still fails.
+"""
+
+import re
+from pathlib import Path
+from typing import Any, get_args, get_origin
+
+from pydantic import BaseModel
+
+from api.schemas.lodging import (
+    PHI_FIELD_NAMES,
+    HouseholdMedicalResponse,
+    WeekendRosterResponse,
+    WeekendSessionListResponse,
+)
+
+REPO_ROOT = Path(__file__).resolve().parents[3]
+GO_PHI_GUARD = REPO_ROOT / "pocketbase" / "sync" / "lodging_phi_test.go"
+
+
+def _reachable_models(model: type[BaseModel], seen: set[type[BaseModel]] | None = None) -> set[type[BaseModel]]:
+    """Every BaseModel reachable from `model`, including through list/optional."""
+    seen = seen if seen is not None else set()
+    if model in seen:
+        return seen
+    seen.add(model)
+    for field in model.model_fields.values():
+        for candidate in _unwrap(field.annotation):
+            if isinstance(candidate, type) and issubclass(candidate, BaseModel):
+                _reachable_models(candidate, seen)
+    return seen
+
+
+def _unwrap(annotation: Any) -> list[Any]:
+    origin = get_origin(annotation)
+    if origin is None:
+        return [annotation]
+    out: list[Any] = []
+    for arg in get_args(annotation):
+        out.extend(_unwrap(arg))
+    return out
+
+
+def _all_field_names(model: type[BaseModel]) -> set[str]:
+    names: set[str] = set()
+    for reachable in _reachable_models(model):
+        names |= set(reachable.model_fields.keys())
+    return names
+
+
+def _go_phi_columns() -> set[str]:
+    """The phiColumns list from the Go export/logging guard."""
+    source = GO_PHI_GUARD.read_text()
+    block = re.search(r"var phiColumns = \[\]string\{(.*?)\}", source, re.DOTALL)
+    assert block, "could not find phiColumns in lodging_phi_test.go"
+    return set(re.findall(r'"([^"]+)"', block.group(1)))
+
+
+def test_phi_field_names_are_declared() -> None:
+    """The eight family_camp_medical narrative columns."""
+    assert (
+        frozenset(
+            {
+                "cpap_info",
+                "physician_info",
+                "special_needs_info",
+                "allergy_info",
+                "dietary_info",
+                "additional_info",
+                "bathroom_explain",
+                "accommodation_explain",
+            }
+        )
+        == PHI_FIELD_NAMES
+    )
+
+
+def test_phi_field_names_match_the_go_guard() -> None:
+    """Python and Go must agree on what counts as PHI.
+
+    Go's phiColumns keeps PHI out of exports and logs; this list keeps it out
+    of API payloads. A column added to family_camp_medical and registered in
+    only one of them is protected on one side and silently exposed on the
+    other — which is exactly how bathroom_explain and accommodation_explain
+    came to be missing from the original six-name Python list.
+    """
+    assert set(PHI_FIELD_NAMES) == _go_phi_columns()
+
+
+def test_roster_response_graph_contains_no_phi_field() -> None:
+    leaked = _all_field_names(WeekendRosterResponse) & PHI_FIELD_NAMES
+    assert not leaked, f"PHI fields reachable from the roster payload: {sorted(leaked)}"
+
+
+def test_session_list_response_graph_contains_no_phi_field() -> None:
+    leaked = _all_field_names(WeekendSessionListResponse) & PHI_FIELD_NAMES
+    assert not leaked, f"PHI fields reachable from the session list payload: {sorted(leaked)}"
+
+
+def test_household_medical_response_is_the_only_phi_carrier() -> None:
+    """The gated endpoint's model does carry the narrative — that is its job."""
+    assert set(HouseholdMedicalResponse.model_fields.keys()) >= PHI_FIELD_NAMES
+
+
+def test_roster_exposes_presence_flags_not_narrative() -> None:
+    from api.schemas.lodging import AccessibilityFlagSummary
+
+    names = set(AccessibilityFlagSummary.model_fields.keys())
+    assert "has_medical_narrative" in names
+    assert "needs_private_bathroom" in names
+    assert "needs_power" in names
+    assert "has_infant" in names
+    assert not names & PHI_FIELD_NAMES

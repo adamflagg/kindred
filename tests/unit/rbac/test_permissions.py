@@ -12,6 +12,7 @@ class TestPermissionConstants:
     def test_expected_permissions_exist(self):
         expected = {
             "bunking.manage",
+            "lodging.phi",
             "metrics.financial",
             "metrics.geo",
             "registration.manage",
@@ -23,6 +24,7 @@ class TestPermissionConstants:
 
     def test_permission_class_attributes_match_values(self):
         assert Permission.BUNKING_MANAGE == "bunking.manage"
+        assert Permission.LODGING_PHI == "lodging.phi"
         assert Permission.METRICS_FINANCIAL == "metrics.financial"
         assert Permission.METRICS_GEO == "metrics.geo"
         assert Permission.REGISTRATION_MANAGE == "registration.manage"

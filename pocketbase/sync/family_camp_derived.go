@@ -108,9 +108,13 @@ type registrationData struct {
 	// Household-grain request layer (spec 4). shareCabinPreference and
 	// sharedCabinModesRaw above stay as the RAW profile values; these are the
 	// normalised, deduplicated versions the board reads.
-	shareCabinGate     string
-	wantsNear          bool
-	wantsWith          bool
+	shareCabinGate string
+	wantsNear      bool
+	wantsWith      bool
+	// wantsSimilarAges implies wantsWith: the option it comes from is itself a
+	// "Share a cabin WITH" answer whose partner is unnamed, which is what makes
+	// these households the staff-matchable pool.
+	wantsSimilarAges   bool
 	requestText        string
 	requestSourceField string
 	requestLastUpdated time.Time
@@ -766,7 +770,7 @@ func (s *FamilyCampDerivedSync) processRegistrations(
 			reg.specialOccasions != "" || reg.goals != "" ||
 			reg.notes != "" || reg.needsAccommodation || reg.optOutVIP ||
 			reg.shareCabinGate != "" || reg.requestText != "" ||
-			reg.wantsNear || reg.wantsWith ||
+			reg.wantsNear || reg.wantsWith || reg.wantsSimilarAges ||
 			reg.needsPrivateBathroom || reg.needsPower || reg.hasInfant ||
 			// accommodationIsMandatory belongs here for the same reason as the
 			// rest, and more so: it is the blocker signal, and a household whose
@@ -868,6 +872,7 @@ func (s *FamilyCampDerivedSync) applyHouseholdRequests(
 		reg.shareCabinGate = req.Gate
 		reg.wantsNear = req.WantsNear
 		reg.wantsWith = req.WantsWith
+		reg.wantsSimilarAges = req.WantsSimilarAges
 		reg.requestText = req.RequestText
 		reg.requestSourceField = req.SourceField
 		reg.requestLastUpdated = req.LastUpdated
@@ -1219,6 +1224,7 @@ func (s *FamilyCampDerivedSync) registrationNeedsUpdate(existing *core.Record, r
 		existing.GetString("share_cabin_gate") != reg.shareCabinGate ||
 		existing.GetBool("wants_near") != reg.wantsNear ||
 		existing.GetBool("wants_with") != reg.wantsWith ||
+		existing.GetBool("wants_similar_ages") != reg.wantsSimilarAges ||
 		existing.GetString("request_text") != reg.requestText ||
 		existing.GetString("request_source_field") != reg.requestSourceField ||
 		existing.GetString("request_last_updated") != formatRequestStamp(reg.requestLastUpdated) ||
@@ -1236,6 +1242,7 @@ func setRegistrationRequestFields(record *core.Record, reg *registrationData) {
 	record.Set("share_cabin_gate", reg.shareCabinGate)
 	record.Set("wants_near", reg.wantsNear)
 	record.Set("wants_with", reg.wantsWith)
+	record.Set("wants_similar_ages", reg.wantsSimilarAges)
 	record.Set("request_text", reg.requestText)
 	record.Set("request_source_field", reg.requestSourceField)
 	record.Set("request_last_updated", formatRequestStamp(reg.requestLastUpdated))
