@@ -8,9 +8,9 @@
  * requests.
  *
  * Read-only in this slice: assignments come from CampMinder and are shown,
- * not edited. The registry behind it is not editable yet either — the
- * Admin -> Family Camp Lodging editor is Phase C (spec §3.8), so this page
- * links nowhere for corrections until that route exists.
+ * not edited. The registry behind it IS editable, though — Phase C added the
+ * Admin -> Family Camp Lodging editor (spec §3.8), and this page links admins
+ * straight to it for corrections to units, areas and cabin-name aliases.
  *
  * Everything rendered here is READ from ingest-derived columns. If a share
  * preference, proximity mode or request text looks wrong, the fix belongs in

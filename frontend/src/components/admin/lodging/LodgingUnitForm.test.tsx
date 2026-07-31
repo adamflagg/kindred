@@ -370,4 +370,31 @@ describe('LodgingUnitForm — beds', () => {
     const [payload] = createLodgingUnit.mock.calls[0] as [LodgingUnitInput]
     expect(payload.beds).toEqual([{ type: 'twin', count: 1 }])
   })
+
+  it('keeps the row while the count is being retyped, since only X removes a bed', async () => {
+    // Selecting "2" and typing "3" empties the field for one keystroke. If
+    // that empty value counts as 0 the row is filtered out mid-edit, taking
+    // the focused input with it, and staff cannot correct a count at all.
+    const user = userEvent.setup()
+    render(<LodgingUnitForm areas={AREAS} units={[]} onSaved={vi.fn()} onCancel={vi.fn()} />)
+
+    await user.selectOptions(screen.getByLabelText('Add a bed type'), 'queen')
+    await user.click(screen.getByRole('button', { name: 'Add bed' }))
+
+    const count = screen.getByLabelText('Queen count')
+    await user.clear(count)
+
+    expect(screen.getByLabelText('Queen count')).toBeInTheDocument()
+  })
+
+  it('still removes a bed through the X button', async () => {
+    const user = userEvent.setup()
+    render(<LodgingUnitForm areas={AREAS} units={[]} onSaved={vi.fn()} onCancel={vi.fn()} />)
+
+    await user.selectOptions(screen.getByLabelText('Add a bed type'), 'queen')
+    await user.click(screen.getByRole('button', { name: 'Add bed' }))
+    await user.click(screen.getByRole('button', { name: 'Remove Queen' }))
+
+    expect(screen.queryByLabelText('Queen count')).not.toBeInTheDocument()
+  })
 })

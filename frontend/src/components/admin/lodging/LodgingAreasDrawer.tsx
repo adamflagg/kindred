@@ -203,7 +203,13 @@ export function LodgingAreasDrawer({ open, onClose }: LodgingAreasDrawerProps) {
                     code: slugify(draftName),
                     map_x: 0,
                     map_y: 0,
-                    sort_order: areas.length + 1,
+                    // From the highest rank in use, not the count: sort_order
+                    // carries gaps as soon as an area is deleted, and
+                    // `length + 1` then reissues a value another area already
+                    // holds. groupUnitsByArea breaks that tie on insertion
+                    // order, so the units table would stack two zones at one
+                    // position.
+                    sort_order: Math.max(0, ...areas.map((a) => a.sort_order)) + 1,
                   })
                   setDraftName('')
                 }, 'Failed to create the area')

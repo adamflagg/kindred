@@ -52,6 +52,15 @@ export function LodgingAliasForm({ units, alias, onSaved, onCancel }: LodgingAli
     setIsSaving(true)
     const from = Number.parseInt(fromYear, 10)
     const to = Number.parseInt(toYear, 10)
+    // An inverted window matches no year, so the alias stops resolving and the
+    // string returns to the unresolved queue with nothing recording why. The
+    // check is here rather than on the inputs because either bound alone is
+    // legal — only the pair is wrong.
+    if (!Number.isNaN(from) && !Number.isNaN(to) && from > to) {
+      toast.error('The first year of the window cannot be after the last.')
+      setIsSaving(false)
+      return
+    }
     const payload = {
       alias_string: aliasString,
       member_units: memberUnits,

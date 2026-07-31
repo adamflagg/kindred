@@ -50,7 +50,13 @@ export function BedInventoryEditor({ beds, onChange }: BedInventoryEditorProps) 
                 aria-label={`${bedTypeLabel(bed.type)} count`}
                 value={bed.count}
                 onChange={(e) => {
-                  setCount(bed.type, Number.parseInt(e.target.value, 10) || 0)
+                  const next = Number.parseInt(e.target.value, 10)
+                  // A blank field is mid-edit, not a removal. Coercing it to 0
+                  // filters the row out on the first keystroke of a retype,
+                  // taking the focused input with it. The X button is the
+                  // removal affordance, and the only one.
+                  if (Number.isNaN(next)) return
+                  setCount(bed.type, next)
                 }}
               />
               <span className="flex-1">{bedTypeLabel(bed.type)}</span>

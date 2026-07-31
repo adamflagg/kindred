@@ -54,6 +54,19 @@ describe('descendantIds', () => {
     const units = [unit({ id: 'a', is_container: true }), unit({ id: 'b', parent_unit: 'a' })]
     expect(descendantIds('b', units)).toEqual(new Set())
   })
+
+  // Nothing upstream of this function stops a cycle being STORED: there is no
+  // Go hook or PocketBase rule on parent_unit, and the picker that prevents
+  // new ones is this very function. So the `result.has` guard is load-bearing
+  // against data that predates it, and a refactor that dropped it would hang
+  // the units panel rather than fail a test.
+  it('terminates on already-cyclic stored data', () => {
+    const units = [
+      unit({ id: 'a', parent_unit: 'b', is_container: true }),
+      unit({ id: 'b', parent_unit: 'a', is_container: true }),
+    ]
+    expect(descendantIds('a', units)).toEqual(new Set(['b', 'a']))
+  })
 })
 
 describe('directChildren', () => {

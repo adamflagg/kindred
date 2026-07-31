@@ -3,12 +3,23 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import type { ReactNode } from 'react'
-import { describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const deactivateLodgingUnit = vi.fn()
 const confirmLodgingUnits = vi.fn()
 const createLodgingUnit = vi.fn()
 const updateLodgingUnit = vi.fn()
+
+// These handles are module-scoped so `vi.mock` can close over them, which
+// means call records and resolved values outlive the test that set them.
+// Without this reset a `toHaveBeenCalledWith` can match a call an earlier
+// test made.
+beforeEach(() => {
+  deactivateLodgingUnit.mockReset()
+  confirmLodgingUnits.mockReset()
+  createLodgingUnit.mockReset()
+  updateLodgingUnit.mockReset()
+})
 
 function fixtureUnit(over: Record<string, unknown>) {
   return {
@@ -72,8 +83,18 @@ Element.prototype.scrollIntoView = vi.fn()
 
 import { LodgingUnitsPanel } from './LodgingUnitsPanel'
 
+// One client per TEST, built outside the render path. Constructing it inside
+// the wrapper body rebuilds it on every render of the wrapper, discarding the
+// cache and starting a fresh loading pass underneath assertions that already
+// resolved. (A `useState` initialiser would also fix that, but the hooks lint
+// rule rejects a hook in a helper this rule cannot see as a component.)
+let client: QueryClient
+
+beforeEach(() => {
+  client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+})
+
 function wrapper({ children }: { children: ReactNode }) {
-  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   return <QueryClientProvider client={client}>{children}</QueryClientProvider>
 }
 
@@ -188,6 +209,22 @@ describe('LodgingUnitsPanel', () => {
     expect(screen.queryByText('Cabin A')).not.toBeInTheDocument()
     // The other area is unaffected.
     expect(screen.getByText('North Lodge')).toBeInTheDocument()
+  })
+
+  it('reports the group toggle state to assistive tech, not just the chevron', async () => {
+    // The chevron is aria-hidden, so without aria-expanded a screen-reader
+    // user gets no signal that the zone collapsed and its rows left the table.
+    const user = userEvent.setup()
+    await renderPanel()
+
+    const toggle = screen.getByRole('button', { name: /North Zone/ })
+    expect(toggle).toHaveAttribute('aria-expanded', 'true')
+
+    await user.click(toggle)
+    expect(screen.getByRole('button', { name: /North Zone/ })).toHaveAttribute(
+      'aria-expanded',
+      'false'
+    )
   })
 
   it('drops units from the selection when their area collapses', async () => {

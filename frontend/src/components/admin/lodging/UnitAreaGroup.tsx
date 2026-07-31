@@ -47,6 +47,9 @@ export function UnitAreaGroup({
         <td colSpan={UNIT_SORT_COLUMNS.length + 2} className="p-0">
           <button
             type="button"
+            // The chevron is aria-hidden, so this is the only signal that the
+            // zone collapsed and its rows left the table.
+            aria-expanded={!isCollapsed}
             onClick={() => {
               onToggleCollapse(
                 group.areaId,

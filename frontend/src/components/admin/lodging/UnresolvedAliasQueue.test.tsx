@@ -62,8 +62,18 @@ const QUEUE_ROW = {
   resolution_note: '',
 }
 
+// One client per TEST, built outside the render path. Constructing it inside
+// the wrapper body rebuilds it on every render of the wrapper, discarding the
+// cache and starting a fresh loading pass underneath assertions that already
+// resolved. (A `useState` initialiser would also fix that, but the hooks lint
+// rule rejects a hook in a helper this rule cannot see as a component.)
+let client: QueryClient
+
+beforeEach(() => {
+  client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+})
+
 function wrapper({ children }: { children: ReactNode }) {
-  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   return <QueryClientProvider client={client}>{children}</QueryClientProvider>
 }
 
