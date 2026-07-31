@@ -16,7 +16,7 @@
  */
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Map, Plus } from 'lucide-react'
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import toast from 'react-hot-toast'
 
 import {
@@ -32,6 +32,7 @@ import { BUTTON_PRIMARY, BUTTON_SECONDARY } from './lodgingStyles'
 import { LodgingAreasDrawer } from './LodgingAreasDrawer'
 import { LodgingUnitForm } from './LodgingUnitForm'
 import { UnitAreaGroup } from './UnitAreaGroup'
+import { UnitBulkBar } from './UnitBulkBar'
 import { UnitsTableHeader } from './UnitsTableHeader'
 import { groupUnitsByArea, type UnitSort } from './unitSort'
 
@@ -42,6 +43,21 @@ export function LodgingUnitsPanel() {
   const [sort, setSort] = useState<UnitSort>({ field: 'name', desc: false })
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set())
+  const formRef = useRef<HTMLDivElement>(null)
+
+  /**
+   * Move attention to the editor whenever it opens — including switching
+   * straight from editing one unit to another, since the form never
+   * unmounts in between (see the `key` below). Without this, opening the
+   * form on a 93-row table produces no visible change below the fold, and
+   * the natural response — clicking Edit again, or on a different row — is
+   * exactly how a stale-record write would go unnoticed.
+   */
+  useEffect(() => {
+    if (editing === null) return
+    formRef.current?.scrollIntoView({ block: 'nearest' })
+    formRef.current?.querySelector<HTMLElement>('input, select, textarea')?.focus()
+  }, [editing])
 
   const unitsQuery = useQuery({
     queryKey: queryKeys.lodgingUnits(),
@@ -152,39 +168,26 @@ export function LodgingUnitsPanel() {
         </div>
       </div>
 
-      {/*
-        Floating, in the solver's action-bar grammar (`ConfigTab`): 93 rows
-        outrun a viewport, and an inline bar scrolls away exactly when staff
-        are still picking rows further down. Collapsing an area drops its units
-        from the selection, so the count here only ever covers visible rows.
-      */}
+      {/* Collapsing an area drops its units from the selection, so the count
+          here only ever covers rows still visible. */}
       {selected.size > 0 && (
-        <div className="animate-in slide-in-from-bottom-4 border-forest-300 bg-forest-50 dark:border-forest-600 dark:bg-forest-800 fixed right-4 bottom-4 z-50 flex flex-wrap items-center gap-3 rounded-xl border px-4 py-3 shadow-lg duration-200 sm:right-6 sm:bottom-6">
-          <span className="text-foreground text-sm font-semibold tabular-nums">
-            {selected.size} selected
-          </span>
-          <button
-            type="button"
-            onClick={() => void handleConfirm([...selected])}
-            className={BUTTON_PRIMARY}
-          >
-            Confirm {selected.size} selected
-          </button>
-          <button
-            type="button"
-            onClick={() => {
-              setSelected(new Set())
-            }}
-            className="text-muted-foreground hover:text-foreground text-sm font-medium hover:underline"
-          >
-            Clear
-          </button>
-        </div>
+        <UnitBulkBar
+          count={selected.size}
+          onConfirm={() => void handleConfirm([...selected])}
+          onClear={() => {
+            setSelected(new Set())
+          }}
+        />
       )}
 
       {editing !== null && (
-        <div className="card-lodge p-4">
+        <div ref={formRef} className="card-lodge p-4">
+          {/* Keyed on the record so React remounts rather than reusing the
+              same instance — otherwise the form's useState initialisers
+              never re-run when `unit` changes, and a submit after switching
+              records writes the PREVIOUS unit's fields to the new one. */}
           <LodgingUnitForm
+            key={editing === 'new' ? 'new' : editing.id}
             areas={areasQuery.data ?? []}
             units={unitsQuery.data ?? []}
             unit={editing === 'new' ? undefined : editing}

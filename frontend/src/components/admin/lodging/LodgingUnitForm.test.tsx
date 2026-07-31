@@ -194,7 +194,13 @@ describe('LodgingUnitForm — code autogeneration', () => {
 
 describe('LodgingUnitForm — spec fields Phase C omitted', () => {
   it('offers a parent unit picker that excludes the unit itself', () => {
-    const other = { ...UNIT, id: 'u2', name: 'North Lodge', code: 'north-lodge' }
+    const other = {
+      ...UNIT,
+      id: 'u2',
+      name: 'North Lodge',
+      code: 'north-lodge',
+      is_container: true,
+    }
     render(
       <LodgingUnitForm
         areas={AREAS}
@@ -235,6 +241,93 @@ describe('LodgingUnitForm — spec fields Phase C omitted', () => {
     expect(payload.has_ac).toBe(true)
     expect(payload.has_fridge).toBe(true)
     expect(payload.near_bathhouse).toBe(true)
+  })
+})
+
+describe('LodgingUnitForm — parent picker safety', () => {
+  it('excludes a non-container unit from the parent picker', () => {
+    const room = { ...UNIT, id: 'u2', name: 'Plain Room', code: 'plain-room', is_container: false }
+    render(
+      <LodgingUnitForm
+        areas={AREAS}
+        units={[UNIT, room]}
+        unit={UNIT}
+        onSaved={vi.fn()}
+        onCancel={vi.fn()}
+      />
+    )
+    const select = screen.getByLabelText<HTMLSelectElement>('Parent unit')
+    expect([...select.options].map((o) => o.value)).toEqual([''])
+  })
+
+  it("excludes the unit's own descendants, direct and grandchild, so a parent edit cannot create a cycle", () => {
+    const child = {
+      ...UNIT,
+      id: 'u2',
+      name: 'Child',
+      code: 'child',
+      parent_unit: 'u1',
+      is_container: true,
+    }
+    const grandchild = {
+      ...UNIT,
+      id: 'u3',
+      name: 'Grandchild',
+      code: 'grandchild',
+      parent_unit: 'u2',
+      is_container: true,
+    }
+    const unrelated = {
+      ...UNIT,
+      id: 'u4',
+      name: 'Unrelated Building',
+      code: 'unrelated',
+      is_container: true,
+    }
+    render(
+      <LodgingUnitForm
+        areas={AREAS}
+        units={[UNIT, child, grandchild, unrelated]}
+        unit={UNIT}
+        onSaved={vi.fn()}
+        onCancel={vi.fn()}
+      />
+    )
+    const select = screen.getByLabelText<HTMLSelectElement>('Parent unit')
+    expect([...select.options].map((o) => o.value)).toEqual(['', 'u4'])
+  })
+
+  it('disables "is a building" once a unit has children, so unticking it cannot orphan them under a non-container parent', () => {
+    const container = { ...UNIT, id: 'u1', name: 'Tioga Upstairs', is_container: true }
+    const child = { ...UNIT, id: 'u2', name: 'Tioga 1', code: 'tioga-1', parent_unit: 'u1' }
+    render(
+      <LodgingUnitForm
+        areas={AREAS}
+        units={[container, child]}
+        unit={container}
+        onSaved={vi.fn()}
+        onCancel={vi.fn()}
+      />
+    )
+    expect(
+      screen.getByLabelText('This row is a building or floor, not a bookable room')
+    ).toBeDisabled()
+    expect(screen.getByText(/list this as their parent/i)).toBeInTheDocument()
+  })
+
+  it('leaves "is a building" editable for a unit with no children', () => {
+    render(
+      <LodgingUnitForm
+        areas={AREAS}
+        units={[UNIT]}
+        unit={UNIT}
+        onSaved={vi.fn()}
+        onCancel={vi.fn()}
+      />
+    )
+    expect(
+      screen.getByLabelText('This row is a building or floor, not a bookable room')
+    ).not.toBeDisabled()
   })
 })
 

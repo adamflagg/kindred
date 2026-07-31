@@ -33,6 +33,7 @@ import type {
 import { amenitiesOf } from './unitAmenities'
 import { BUTTON_PRIMARY, BUTTON_SECONDARY, FIELD, LABEL, SECTION } from './lodgingStyles'
 import { slugify } from './unitCode'
+import { directChildren } from './unitTree'
 import { UnitAmenityFieldset } from './UnitAmenityFieldset'
 import { UnitCapacityFields } from './UnitCapacityFields'
 import { UnitIdentityFields } from './UnitIdentityFields'
@@ -40,7 +41,11 @@ import { UnitMapFields } from './UnitMapFields'
 
 export interface LodgingUnitFormProps {
   areas: LodgingAreaRecord[]
-  /** Every unit, for the parent picker. A unit may not be its own parent. */
+  /**
+   * Every unit — for the parent picker (see ./unitTree) and to know whether
+   * the unit being edited currently has children, which gates `is_container`
+   * below.
+   */
   units: LodgingUnitRecord[]
   /** Absent = create. `| undefined` is explicit for `exactOptionalPropertyTypes`. */
   unit?: LodgingUnitRecord | undefined
@@ -72,6 +77,9 @@ export function LodgingUnitForm({ areas, units, unit, onSaved, onCancel }: Lodgi
   const [isContainer, setIsContainer] = useState(unit?.is_container ?? false)
   const [notes, setNotes] = useState(unit?.notes ?? '')
   const [isSaving, setIsSaving] = useState(false)
+  // Untying this unit's children from it would leave them parented by a
+  // non-container — the exact state verify-lodging-seed.sh calls a failure.
+  const children = unit ? directChildren(unit.id, units) : []
 
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault()
@@ -157,12 +165,19 @@ export function LodgingUnitForm({ areas, units, unit, onSaved, onCancel }: Lodgi
           <input
             type="checkbox"
             checked={isContainer}
+            disabled={children.length > 0}
             onChange={(e) => {
               setIsContainer(e.target.checked)
             }}
           />
           This row is a building or floor, not a bookable room
         </label>
+        {children.length > 0 && (
+          <p className="text-muted-foreground text-xs">
+            Can&apos;t be unticked — {children.length} unit{children.length === 1 ? '' : 's'} list
+            this as their parent.
+          </p>
+        )}
       </div>
 
       <UnitMapFields value={map} onChange={setMap} />

@@ -11,6 +11,7 @@ import { useState } from 'react'
 import type { LodgingAreaRecord, LodgingUnitRecord } from '../../../types/lodging'
 import { FIELD, LABEL, SECTION } from './lodgingStyles'
 import { slugify } from './unitCode'
+import { parentCandidates } from './unitTree'
 
 export interface UnitIdentity {
   name: string
@@ -23,7 +24,12 @@ export interface UnitIdentityFieldsProps {
   value: UnitIdentity
   onChange: (next: UnitIdentity) => void
   areas: LodgingAreaRecord[]
-  /** Every unit, for the parent picker. A unit may not be its own parent. */
+  /**
+   * Every unit, for the parent picker. The picker offers only containers,
+   * never the unit itself, and never one of its own descendants — see
+   * ./unitTree for why (a non-container parent fails the seed verifier; a
+   * descendant parent is a cycle nothing downstream guards against).
+   */
   units: LodgingUnitRecord[]
   /** Absent on create, where the code stays hidden until staff ask for it. */
   unitId?: string | undefined
@@ -112,13 +118,11 @@ export function UnitIdentityFields({
           }}
         >
           <option value="">No parent</option>
-          {units
-            .filter((candidate) => candidate.id !== unitId)
-            .map((candidate) => (
-              <option key={candidate.id} value={candidate.id}>
-                {candidate.name}
-              </option>
-            ))}
+          {parentCandidates(unitId, units).map((candidate) => (
+            <option key={candidate.id} value={candidate.id}>
+              {candidate.name}
+            </option>
+          ))}
         </select>
       </label>
     </>

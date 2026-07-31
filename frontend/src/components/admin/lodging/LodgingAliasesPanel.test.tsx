@@ -58,6 +58,11 @@ vi.mock('../../../services/lodgingCrud', () => ({
 
 vi.mock('react-hot-toast', () => ({ default: { success: vi.fn(), error: vi.fn() } }))
 
+// jsdom has no layout engine and does not implement scrollIntoView; the
+// editor's open effect calls it, so it needs a stand-in rather than an
+// assertion on what it does.
+Element.prototype.scrollIntoView = vi.fn()
+
 import { LodgingAliasesPanel } from './LodgingAliasesPanel'
 
 function wrapper({ children }: { children: ReactNode }) {
@@ -155,5 +160,35 @@ describe('LodgingAliasesPanel — editing', () => {
 
     await user.click(screen.getByRole('button', { name: 'New alias' }))
     expect(screen.getByLabelText('Cabin string')).toHaveValue('')
+  })
+
+  it('does not leak a previous edit into a freshly opened create form', async () => {
+    // Regression for the silent-corruption bug: editing a1 (which has a
+    // year window) and then opening "New alias" without a `key` on the form
+    // left React reusing the same component instance, so a2's create would
+    // have submitted a1's member_units and valid_from_year.
+    const user = userEvent.setup()
+    render(<LodgingAliasesPanel />, { wrapper })
+    await waitFor(() => {
+      expect(screen.getByText('North Lodge - Whole')).toBeInTheDocument()
+    })
+
+    await user.click(screen.getByRole('button', { name: 'Edit North Lodge - Whole' }))
+    expect(screen.getByLabelText('Valid from year')).toHaveValue(2025)
+
+    await user.click(screen.getByRole('button', { name: 'New alias' }))
+    expect(screen.getByLabelText('Cabin string')).toHaveValue('')
+    expect(screen.queryByLabelText('Valid from year')).not.toBeInTheDocument()
+  })
+
+  it('moves focus into the form when the editor opens', async () => {
+    const user = userEvent.setup()
+    render(<LodgingAliasesPanel />, { wrapper })
+    await waitFor(() => {
+      expect(screen.getByText('North Lodge - Whole')).toBeInTheDocument()
+    })
+
+    await user.click(screen.getByRole('button', { name: 'New alias' }))
+    expect(screen.getByLabelText('Cabin string')).toHaveFocus()
   })
 })

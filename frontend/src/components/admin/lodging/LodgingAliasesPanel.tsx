@@ -12,7 +12,7 @@
  */
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Plus } from 'lucide-react'
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import toast from 'react-hot-toast'
 
 import {
@@ -39,6 +39,21 @@ function yearWindow(alias: LodgingAliasRecord): string {
 export function LodgingAliasesPanel() {
   const queryClient = useQueryClient()
   const [editing, setEditing] = useState<LodgingAliasRecord | 'new' | null>(null)
+  const formRef = useRef<HTMLDivElement>(null)
+
+  /**
+   * Move attention to the editor whenever it opens — including switching
+   * straight from editing one alias to another, since the form never
+   * unmounts in between (see the `key` below). Without this, opening the
+   * form on a 90-row table produces no visible change below the fold, and
+   * the natural response — clicking Edit again, or on a different row — is
+   * exactly how a stale-record write would go unnoticed.
+   */
+  useEffect(() => {
+    if (editing === null) return
+    formRef.current?.scrollIntoView({ block: 'nearest' })
+    formRef.current?.querySelector<HTMLElement>('input, select, textarea')?.focus()
+  }, [editing])
 
   const aliasesQuery = useQuery({
     queryKey: queryKeys.lodgingAliases(),
@@ -86,8 +101,13 @@ export function LodgingAliasesPanel() {
       </div>
 
       {editing !== null && (
-        <div className="card-lodge p-4">
+        <div ref={formRef} className="card-lodge p-4">
+          {/* Keyed on the record so React remounts rather than reusing the
+              same instance — otherwise the form's useState initialisers
+              never re-run when `alias` changes, and a submit after switching
+              records writes the PREVIOUS alias's fields to the new one. */}
           <LodgingAliasForm
+            key={editing === 'new' ? 'new' : editing.id}
             units={unitsQuery.data ?? []}
             alias={editing === 'new' ? undefined : editing}
             onSaved={refresh}

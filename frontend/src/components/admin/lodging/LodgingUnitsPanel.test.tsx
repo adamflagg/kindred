@@ -7,6 +7,8 @@ import { describe, expect, it, vi } from 'vitest'
 
 const deactivateLodgingUnit = vi.fn()
 const confirmLodgingUnits = vi.fn()
+const createLodgingUnit = vi.fn()
+const updateLodgingUnit = vi.fn()
 
 function fixtureUnit(over: Record<string, unknown>) {
   return {
@@ -56,11 +58,17 @@ vi.mock('../../../services/lodgingCrud', () => ({
     ]),
   deactivateLodgingUnit: (...args: unknown[]) => deactivateLodgingUnit(...args),
   confirmLodgingUnits: (...args: unknown[]) => confirmLodgingUnits(...args),
+  createLodgingUnit: (...args: unknown[]) => createLodgingUnit(...args),
+  updateLodgingUnit: (...args: unknown[]) => updateLodgingUnit(...args),
 }))
 
 vi.mock('react-hot-toast', () => ({ default: { success: vi.fn(), error: vi.fn() } }))
-vi.mock('./LodgingUnitForm', () => ({ LodgingUnitForm: () => <div>UNIT FORM</div> }))
 vi.mock('./LodgingAreasDrawer', () => ({ LodgingAreasDrawer: () => <div>AREAS DRAWER</div> }))
+
+// jsdom has no layout engine and does not implement scrollIntoView; the
+// editor's open effect calls it, so it needs a stand-in rather than an
+// assertion on what it does.
+Element.prototype.scrollIntoView = vi.fn()
 
 import { LodgingUnitsPanel } from './LodgingUnitsPanel'
 
@@ -217,5 +225,45 @@ describe('LodgingUnitsPanel', () => {
 
     expect(screen.getByRole('checkbox', { name: 'Select Cabin A' })).not.toBeChecked()
     expect(screen.queryByRole('button', { name: /Confirm \d+ selected/ })).not.toBeInTheDocument()
+  })
+})
+
+describe('LodgingUnitsPanel — edit form does not leak between records', () => {
+  it('does not leak a previous edit into a freshly opened create form', async () => {
+    // Regression for the silent-corruption bug: editing Cabin A, ticking
+    // "confirmed", and then opening "New unit" without a `key` on the form
+    // left React reusing the same component instance — a create would have
+    // silently submitted `is_confirmed: true`, switching the roster's fit
+    // check on for a cabin nobody has verified.
+    const user = userEvent.setup()
+    await renderPanel()
+
+    await user.click(screen.getByRole('button', { name: 'Edit Cabin A' }))
+    expect(screen.getByLabelText('Name')).toHaveValue('Cabin A')
+    await user.click(screen.getByLabelText('Amenities confirmed by staff'))
+    expect(screen.getByLabelText('Amenities confirmed by staff')).toBeChecked()
+
+    await user.click(screen.getByRole('button', { name: 'New unit' }))
+    expect(screen.getByLabelText('Name')).toHaveValue('')
+    expect(screen.getByLabelText('Amenities confirmed by staff')).not.toBeChecked()
+  })
+
+  it('does not leak one edited unit into the next when switching records directly', async () => {
+    const user = userEvent.setup()
+    await renderPanel()
+
+    await user.click(screen.getByRole('button', { name: 'Edit Cabin A' }))
+    expect(screen.getByLabelText('Name')).toHaveValue('Cabin A')
+
+    await user.click(screen.getByRole('button', { name: 'Edit North Lodge' }))
+    expect(screen.getByLabelText('Name')).toHaveValue('North Lodge')
+  })
+
+  it('moves focus into the form when the editor opens', async () => {
+    const user = userEvent.setup()
+    await renderPanel()
+
+    await user.click(screen.getByRole('button', { name: 'New unit' }))
+    expect(screen.getByLabelText('Name')).toHaveFocus()
   })
 })
