@@ -5,6 +5,7 @@
  */
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { render, screen, waitFor } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import type { ReactNode } from 'react'
 import { describe, expect, it, vi } from 'vitest'
 
@@ -103,5 +104,43 @@ describe('LodgingAliasesPanel', () => {
       expect(screen.getByText('Up to 2024')).toBeInTheDocument()
     })
     expect(screen.queryByText('0–2024')).not.toBeInTheDocument()
+  })
+})
+
+describe('LodgingAliasesPanel — editing', () => {
+  it('opens an editor for an existing alias', async () => {
+    const user = userEvent.setup()
+    render(<LodgingAliasesPanel />, { wrapper })
+    await waitFor(() => {
+      expect(screen.getByText('North Lodge - Whole')).toBeInTheDocument()
+    })
+
+    await user.click(screen.getByRole('button', { name: 'Edit North Lodge - Whole' }))
+    expect(screen.getByDisplayValue('North Lodge - Whole')).toBeInTheDocument()
+  })
+
+  it('keeps the year window behind a disclosure, since 94 of 100 aliases have none', async () => {
+    const user = userEvent.setup()
+    render(<LodgingAliasesPanel />, { wrapper })
+    await waitFor(() => {
+      expect(screen.getByText('North Lodge - Whole')).toBeInTheDocument()
+    })
+
+    await user.click(screen.getByRole('button', { name: 'Edit North Lodge - Whole' }))
+    expect(screen.queryByLabelText('Valid from year')).not.toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: /year window/i }))
+    expect(screen.getByLabelText('Valid from year')).toBeInTheDocument()
+  })
+
+  it('offers a create action', async () => {
+    const user = userEvent.setup()
+    render(<LodgingAliasesPanel />, { wrapper })
+    await waitFor(() => {
+      expect(screen.getByText('North Lodge - Whole')).toBeInTheDocument()
+    })
+
+    await user.click(screen.getByRole('button', { name: 'New alias' }))
+    expect(screen.getByLabelText('Cabin string')).toHaveValue('')
   })
 })

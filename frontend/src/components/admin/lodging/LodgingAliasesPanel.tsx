@@ -11,12 +11,19 @@
  * denote a merge.
  */
 import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { Plus } from 'lucide-react'
+import { useState } from 'react'
 import toast from 'react-hot-toast'
 
-import { deleteLodgingAlias, listLodgingAliases } from '../../../services/lodgingCrud'
+import {
+  deleteLodgingAlias,
+  listLodgingAliases,
+  listLodgingUnits,
+} from '../../../services/lodgingCrud'
 import type { LodgingAliasRecord } from '../../../types/lodging'
 import { queryKeys, userDataOptions } from '../../../utils/queryKeys'
 import { QueryGuard } from '../../QueryGuard'
+import { LodgingAliasForm } from './LodgingAliasForm'
 
 /** Stored 0 means "unbounded" — PocketBase never stores NULL in a number. */
 function yearWindow(alias: LodgingAliasRecord): string {
@@ -30,12 +37,23 @@ function yearWindow(alias: LodgingAliasRecord): string {
 
 export function LodgingAliasesPanel() {
   const queryClient = useQueryClient()
+  const [editing, setEditing] = useState<LodgingAliasRecord | 'new' | null>(null)
 
   const aliasesQuery = useQuery({
     queryKey: queryKeys.lodgingAliases(),
     ...userDataOptions,
     queryFn: listLodgingAliases,
   })
+  const unitsQuery = useQuery({
+    queryKey: queryKeys.lodgingUnits(),
+    ...userDataOptions,
+    queryFn: listLodgingUnits,
+  })
+
+  const refresh = () => {
+    setEditing(null)
+    void queryClient.invalidateQueries({ queryKey: queryKeys.lodgingAliases() })
+  }
 
   const handleDelete = async (alias: LodgingAliasRecord) => {
     try {
@@ -48,63 +66,105 @@ export function LodgingAliasesPanel() {
   }
 
   return (
-    <QueryGuard
-      isLoading={aliasesQuery.isLoading}
-      error={aliasesQuery.error}
-      data={aliasesQuery.data}
-      label="cabin name aliases"
-      emptyMessage="No aliases yet."
-    >
-      {(aliases) =>
-        aliases.length === 0 ? (
-          // See UnresolvedAliasQueue: QueryGuard's emptyMessage never fires for
-          // an empty array, only for absent data.
-          <p className="text-muted-foreground py-12 text-center text-sm">No aliases yet.</p>
-        ) : (
-          <div className="card-lodge overflow-x-auto p-4">
-            <table className="w-full text-left text-sm">
-              <thead>
-                <tr className="border-border text-muted-foreground border-b text-xs uppercase">
-                  <th className="pb-2">Cabin string</th>
-                  <th className="pb-2">Resolves to</th>
-                  <th className="pb-2">Years</th>
-                  <th className="pb-2">Source field</th>
-                  <th className="pb-2" />
-                </tr>
-              </thead>
-              <tbody>
-                {aliases.map((alias) => {
-                  const members = alias.expand?.member_units ?? []
-                  return (
-                    <tr key={alias.id} className="border-border/50 border-b">
-                      <td className="py-2 font-mono text-xs">{alias.alias_string}</td>
-                      <td className="py-2">
-                        <p>{members.map((unit) => unit.name).join(', ')}</p>
-                        <p className="text-muted-foreground text-xs">
-                          {members.length > 1
-                            ? `Merge of ${String(members.length)} units`
-                            : 'Single unit'}
-                        </p>
-                      </td>
-                      <td className="py-2">{yearWindow(alias)}</td>
-                      <td className="text-muted-foreground py-2 text-xs">{alias.source_field}</td>
-                      <td className="py-2 text-right">
-                        <button
-                          type="button"
-                          onClick={() => void handleDelete(alias)}
-                          className="text-muted-foreground text-xs font-medium hover:underline"
-                        >
-                          Delete
-                        </button>
-                      </td>
-                    </tr>
-                  )
-                })}
-              </tbody>
-            </table>
-          </div>
-        )
-      }
-    </QueryGuard>
+    <div className="flex flex-col gap-4">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <p className="text-muted-foreground max-w-2xl text-sm">
+          A wrong string, unit, or year window here silently misfiles a family&apos;s history into
+          the wrong building — the work queue only catches names it does not recognise at all.
+        </p>
+        <button
+          type="button"
+          onClick={() => {
+            setEditing('new')
+          }}
+          className="bg-primary inline-flex flex-shrink-0 items-center gap-1 rounded-md px-3 py-1.5 text-sm font-medium text-white"
+        >
+          <Plus className="h-4 w-4" />
+          New alias
+        </button>
+      </div>
+
+      {editing !== null && (
+        <div className="card-lodge p-4">
+          <LodgingAliasForm
+            units={unitsQuery.data ?? []}
+            alias={editing === 'new' ? undefined : editing}
+            onSaved={refresh}
+            onCancel={() => {
+              setEditing(null)
+            }}
+          />
+        </div>
+      )}
+
+      <QueryGuard
+        isLoading={aliasesQuery.isLoading}
+        error={aliasesQuery.error}
+        data={aliasesQuery.data}
+        label="cabin name aliases"
+        emptyMessage="No aliases yet."
+      >
+        {(aliases) =>
+          aliases.length === 0 ? (
+            // See UnresolvedAliasQueue: QueryGuard's emptyMessage never fires for
+            // an empty array, only for absent data.
+            <p className="text-muted-foreground py-12 text-center text-sm">No aliases yet.</p>
+          ) : (
+            <div className="card-lodge overflow-x-auto p-4">
+              <table className="w-full text-left text-sm">
+                <thead>
+                  <tr className="border-border text-muted-foreground border-b text-xs uppercase">
+                    <th className="pb-2">Cabin string</th>
+                    <th className="pb-2">Resolves to</th>
+                    <th className="pb-2">Years</th>
+                    <th className="pb-2">Source field</th>
+                    <th className="pb-2" />
+                  </tr>
+                </thead>
+                <tbody>
+                  {aliases.map((alias) => {
+                    const members = alias.expand?.member_units ?? []
+                    return (
+                      <tr key={alias.id} className="border-border/50 border-b">
+                        <td className="py-2 font-mono text-xs">{alias.alias_string}</td>
+                        <td className="py-2">
+                          <p>{members.map((unit) => unit.name).join(', ')}</p>
+                          <p className="text-muted-foreground text-xs">
+                            {members.length > 1
+                              ? `Merge of ${String(members.length)} units`
+                              : 'Single unit'}
+                          </p>
+                        </td>
+                        <td className="py-2">{yearWindow(alias)}</td>
+                        <td className="text-muted-foreground py-2 text-xs">{alias.source_field}</td>
+                        <td className="py-2 text-right">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setEditing(alias)
+                            }}
+                            aria-label={`Edit ${alias.alias_string}`}
+                            className="text-primary mr-3 text-xs font-medium hover:underline"
+                          >
+                            Edit
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => void handleDelete(alias)}
+                            className="text-muted-foreground text-xs font-medium hover:underline"
+                          >
+                            Delete
+                          </button>
+                        </td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )
+        }
+      </QueryGuard>
+    </div>
   )
 }
