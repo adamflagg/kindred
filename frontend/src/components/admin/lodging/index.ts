@@ -1,5 +1,5 @@
 export { LodgingAliasesPanel } from './LodgingAliasesPanel'
-export { LodgingAreasPanel } from './LodgingAreasPanel'
+export { LodgingAreasDrawer } from './LodgingAreasDrawer'
 export { LodgingSettingsTab } from './LodgingSettingsTab'
 export { LodgingUnitForm } from './LodgingUnitForm'
 export { LodgingUnitsPanel } from './LodgingUnitsPanel'

@@ -1,4 +1,4 @@
-/** The lodging settings host: four sections, driven by the route param. */
+/** The lodging settings host: three sections, driven by the route param. */
 import { render, screen } from '@testing-library/react'
 import { MemoryRouter, Route, Routes } from 'react-router'
 import { describe, expect, it, vi } from 'vitest'
@@ -6,7 +6,6 @@ import { describe, expect, it, vi } from 'vitest'
 import { ADMIN_TABS } from '../../../config/adminTabs'
 import { LodgingSettingsTab } from './LodgingSettingsTab'
 
-vi.mock('./LodgingAreasPanel', () => ({ LodgingAreasPanel: () => <div>AREAS PANEL</div> }))
 vi.mock('./LodgingUnitsPanel', () => ({ LodgingUnitsPanel: () => <div>UNITS PANEL</div> }))
 vi.mock('./LodgingAliasesPanel', () => ({ LodgingAliasesPanel: () => <div>ALIASES PANEL</div> }))
 vi.mock('./UnresolvedAliasQueue', () => ({ UnresolvedAliasQueue: () => <div>QUEUE PANEL</div> }))
@@ -37,11 +36,6 @@ describe('LodgingSettingsTab', () => {
     expect(screen.getByText('UNITS PANEL')).toBeInTheDocument()
   })
 
-  it('renders the areas section', () => {
-    renderAt('/admin/lodging/areas')
-    expect(screen.getByText('AREAS PANEL')).toBeInTheDocument()
-  })
-
   it('renders the aliases section', () => {
     renderAt('/admin/lodging/aliases')
     expect(screen.getByText('ALIASES PANEL')).toBeInTheDocument()
@@ -57,12 +51,8 @@ describe('LodgingSettingsTab', () => {
     expect(screen.getByText('UNITS PANEL')).toBeInTheDocument()
   })
 
-  it('links to all four sections', () => {
+  it('links to all three sections', () => {
     renderAt('/admin/lodging/units')
-    expect(screen.getByRole('link', { name: 'Areas' })).toHaveAttribute(
-      'href',
-      '/admin/lodging/areas'
-    )
     expect(screen.getByRole('link', { name: 'Units' })).toHaveAttribute(
       'href',
       '/admin/lodging/units'

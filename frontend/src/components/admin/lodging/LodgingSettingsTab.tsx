@@ -9,13 +9,11 @@
 import { Link, useParams } from 'react-router'
 
 import { LodgingAliasesPanel } from './LodgingAliasesPanel'
-import { LodgingAreasPanel } from './LodgingAreasPanel'
 import { LodgingUnitsPanel } from './LodgingUnitsPanel'
 import { UnresolvedAliasQueue } from './UnresolvedAliasQueue'
 
 const SECTIONS = [
   { id: 'units', label: 'Units' },
-  { id: 'areas', label: 'Areas' },
   { id: 'aliases', label: 'Cabin name aliases' },
   { id: 'unresolved', label: 'Unresolved names' },
 ] as const
@@ -51,7 +49,6 @@ export function LodgingSettingsTab() {
       </nav>
 
       {active === 'units' && <LodgingUnitsPanel />}
-      {active === 'areas' && <LodgingAreasPanel />}
       {active === 'aliases' && <LodgingAliasesPanel />}
       {active === 'unresolved' && <UnresolvedAliasQueue />}
     </div>
