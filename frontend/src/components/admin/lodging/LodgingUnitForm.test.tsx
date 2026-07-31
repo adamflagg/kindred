@@ -26,16 +26,39 @@ const AREAS: LodgingAreaRecord[] = [
   { id: 'area_1', name: 'North Zone', code: 'NORTH', map_x: 0.3, map_y: 0.2, sort_order: 1 },
 ]
 
+const UNIT: LodgingUnitRecord = {
+  id: 'u1',
+  area: 'area_1',
+  name: 'Cabin A',
+  code: 'cabin-a',
+  parent_unit: '',
+  map_x: 0.3,
+  map_y: 0.2,
+  sleeps: 0,
+  beds: null,
+  bathroom: 'none',
+  bathroom_group: '',
+  near_bathhouse: false,
+  has_power: false,
+  has_ac: false,
+  has_fridge: false,
+  is_accessible: false,
+  allocation_default: 'family_pool',
+  is_confirmed: false,
+  is_active: true,
+  is_container: false,
+  notes: '',
+}
+
 describe('LodgingUnitForm — create', () => {
   it('submits is_active true and an explicit allocation_default', async () => {
     createLodgingUnit.mockResolvedValue({ id: 'u1' })
     const onSaved = vi.fn()
     const user = userEvent.setup()
 
-    render(<LodgingUnitForm areas={AREAS} onSaved={onSaved} onCancel={vi.fn()} />)
+    render(<LodgingUnitForm areas={AREAS} units={[]} onSaved={onSaved} onCancel={vi.fn()} />)
 
     await user.type(screen.getByLabelText('Name'), 'Cabin N')
-    await user.type(screen.getByLabelText('Code'), 'cabin-n')
     await user.click(screen.getByRole('button', { name: 'Create unit' }))
 
     await waitFor(() => {
@@ -48,7 +71,7 @@ describe('LodgingUnitForm — create', () => {
   })
 
   it('offers no blank option for the allocation default', () => {
-    render(<LodgingUnitForm areas={AREAS} onSaved={vi.fn()} onCancel={vi.fn()} />)
+    render(<LodgingUnitForm areas={AREAS} units={[]} onSaved={vi.fn()} onCancel={vi.fn()} />)
     const select = screen.getByLabelText<HTMLSelectElement>('Allocation')
     const values = [...select.options].map((option) => option.value)
     expect(values).toEqual(['family_pool', 'staff_default'])
@@ -58,9 +81,8 @@ describe('LodgingUnitForm — create', () => {
     createLodgingUnit.mockResolvedValue({ id: 'u1' })
     const user = userEvent.setup()
 
-    render(<LodgingUnitForm areas={AREAS} onSaved={vi.fn()} onCancel={vi.fn()} />)
+    render(<LodgingUnitForm areas={AREAS} units={[]} onSaved={vi.fn()} onCancel={vi.fn()} />)
     await user.type(screen.getByLabelText('Name'), 'Cabin N')
-    await user.type(screen.getByLabelText('Code'), 'cabin-n')
     await user.click(screen.getByRole('button', { name: 'Create unit' }))
 
     await waitFor(() => {
@@ -74,12 +96,11 @@ describe('LodgingUnitForm — create', () => {
     createLodgingUnit.mockResolvedValue({ id: 'u1' })
     const user = userEvent.setup()
 
-    render(<LodgingUnitForm areas={AREAS} onSaved={vi.fn()} onCancel={vi.fn()} />)
+    render(<LodgingUnitForm areas={AREAS} units={[]} onSaved={vi.fn()} onCancel={vi.fn()} />)
     const bathroom = screen.getByLabelText<HTMLSelectElement>('Bathroom')
     expect([...bathroom.options].map((o) => o.value)).toEqual(['', 'none', 'private', 'shared'])
 
     await user.type(screen.getByLabelText('Name'), 'Cabin N')
-    await user.type(screen.getByLabelText('Code'), 'cabin-n')
     await user.click(screen.getByRole('button', { name: 'Create unit' }))
 
     await waitFor(() => {
@@ -91,32 +112,16 @@ describe('LodgingUnitForm — create', () => {
 })
 
 describe('LodgingUnitForm — edit', () => {
-  const UNIT: LodgingUnitRecord = {
-    id: 'u1',
-    area: 'area_1',
-    name: 'Cabin A',
-    code: 'cabin-a',
-    parent_unit: '',
-    map_x: 0.3,
-    map_y: 0.2,
-    sleeps: 0,
-    beds: null,
-    bathroom: 'none',
-    bathroom_group: '',
-    near_bathhouse: false,
-    has_power: false,
-    has_ac: false,
-    has_fridge: false,
-    is_accessible: false,
-    allocation_default: 'family_pool',
-    is_confirmed: false,
-    is_active: true,
-    is_container: false,
-    notes: '',
-  }
-
   it('shows a blank capacity field for a stored 0, never "0"', () => {
-    render(<LodgingUnitForm areas={AREAS} unit={UNIT} onSaved={vi.fn()} onCancel={vi.fn()} />)
+    render(
+      <LodgingUnitForm
+        areas={AREAS}
+        units={[UNIT]}
+        unit={UNIT}
+        onSaved={vi.fn()}
+        onCancel={vi.fn()}
+      />
+    )
     expect(screen.getByLabelText('Sleeps')).toHaveValue(null)
   })
 
@@ -124,7 +129,15 @@ describe('LodgingUnitForm — edit', () => {
     updateLodgingUnit.mockResolvedValue({ ...UNIT })
     const user = userEvent.setup()
 
-    render(<LodgingUnitForm areas={AREAS} unit={UNIT} onSaved={vi.fn()} onCancel={vi.fn()} />)
+    render(
+      <LodgingUnitForm
+        areas={AREAS}
+        units={[UNIT]}
+        unit={UNIT}
+        onSaved={vi.fn()}
+        onCancel={vi.fn()}
+      />
+    )
     await user.click(screen.getByRole('button', { name: 'Save unit' }))
 
     await waitFor(() => {
@@ -137,7 +150,15 @@ describe('LodgingUnitForm — edit', () => {
     updateLodgingUnit.mockResolvedValue({ ...UNIT })
     const user = userEvent.setup()
 
-    render(<LodgingUnitForm areas={AREAS} unit={UNIT} onSaved={vi.fn()} onCancel={vi.fn()} />)
+    render(
+      <LodgingUnitForm
+        areas={AREAS}
+        units={[UNIT]}
+        unit={UNIT}
+        onSaved={vi.fn()}
+        onCancel={vi.fn()}
+      />
+    )
     await user.click(screen.getByLabelText('Amenities confirmed by staff'))
     await user.click(screen.getByRole('button', { name: 'Save unit' }))
 
@@ -146,5 +167,114 @@ describe('LodgingUnitForm — edit', () => {
     })
     const [, payload] = updateLodgingUnit.mock.calls[0] as [string, LodgingUnitInput]
     expect(payload.is_confirmed).toBe(true)
+  })
+})
+
+describe('LodgingUnitForm — code autogeneration', () => {
+  it('derives a code from the name on create, so staff never type one', async () => {
+    createLodgingUnit.mockResolvedValue({ id: 'u1' })
+    const user = userEvent.setup()
+
+    render(<LodgingUnitForm areas={AREAS} units={[]} onSaved={vi.fn()} onCancel={vi.fn()} />)
+    await user.type(screen.getByLabelText('Name'), 'Cabin North 2')
+    await user.click(screen.getByRole('button', { name: 'Create unit' }))
+
+    await waitFor(() => {
+      expect(createLodgingUnit).toHaveBeenCalled()
+    })
+    const [payload] = createLodgingUnit.mock.calls[0] as [LodgingUnitInput]
+    expect(payload.code).toBe('cabin-north-2')
+  })
+
+  it('does not show the code field by default on create', () => {
+    render(<LodgingUnitForm areas={AREAS} units={[]} onSaved={vi.fn()} onCancel={vi.fn()} />)
+    expect(screen.queryByLabelText('Code')).not.toBeInTheDocument()
+  })
+})
+
+describe('LodgingUnitForm — spec fields Phase C omitted', () => {
+  it('offers a parent unit picker that excludes the unit itself', () => {
+    const other = { ...UNIT, id: 'u2', name: 'North Lodge', code: 'north-lodge' }
+    render(
+      <LodgingUnitForm
+        areas={AREAS}
+        units={[UNIT, other]}
+        unit={UNIT}
+        onSaved={vi.fn()}
+        onCancel={vi.fn()}
+      />
+    )
+    const select = screen.getByLabelText<HTMLSelectElement>('Parent unit')
+    const values = [...select.options].map((o) => o.value)
+    // '' (no parent) plus the other unit — never itself, which would be a cycle.
+    expect(values).toEqual(['', 'u2'])
+  })
+
+  it('submits the amenity fields the spec requires', async () => {
+    updateLodgingUnit.mockResolvedValue({ ...UNIT })
+    const user = userEvent.setup()
+
+    render(
+      <LodgingUnitForm
+        areas={AREAS}
+        units={[UNIT]}
+        unit={UNIT}
+        onSaved={vi.fn()}
+        onCancel={vi.fn()}
+      />
+    )
+    await user.click(screen.getByLabelText('Has A/C'))
+    await user.click(screen.getByLabelText('Has fridge'))
+    await user.click(screen.getByLabelText('Near bathhouse'))
+    await user.click(screen.getByRole('button', { name: 'Save unit' }))
+
+    await waitFor(() => {
+      expect(updateLodgingUnit).toHaveBeenCalled()
+    })
+    const [, payload] = updateLodgingUnit.mock.calls[0] as [string, LodgingUnitInput]
+    expect(payload.has_ac).toBe(true)
+    expect(payload.has_fridge).toBe(true)
+    expect(payload.near_bathhouse).toBe(true)
+  })
+})
+
+describe('LodgingUnitForm — beds', () => {
+  it('shows the suggested occupancy from the bed inventory', async () => {
+    const user = userEvent.setup()
+    render(<LodgingUnitForm areas={AREAS} units={[]} onSaved={vi.fn()} onCancel={vi.fn()} />)
+
+    await user.selectOptions(screen.getByLabelText('Add a bed type'), 'queen')
+    await user.click(screen.getByRole('button', { name: 'Add bed' }))
+
+    expect(screen.getByText(/Suggested: sleeps 2/i)).toBeInTheDocument()
+  })
+
+  it('adopts the suggestion into sleeps only when asked, never silently', async () => {
+    const user = userEvent.setup()
+    render(<LodgingUnitForm areas={AREAS} units={[]} onSaved={vi.fn()} onCancel={vi.fn()} />)
+
+    await user.selectOptions(screen.getByLabelText('Add a bed type'), 'queen')
+    await user.click(screen.getByRole('button', { name: 'Add bed' }))
+    expect(screen.getByLabelText('Sleeps')).toHaveValue(null)
+
+    await user.click(screen.getByRole('button', { name: 'Use suggested' }))
+    expect(screen.getByLabelText('Sleeps')).toHaveValue(2)
+  })
+
+  it('submits the bed inventory alongside sleeps', async () => {
+    createLodgingUnit.mockResolvedValue({ id: 'u1' })
+    const user = userEvent.setup()
+
+    render(<LodgingUnitForm areas={AREAS} units={[]} onSaved={vi.fn()} onCancel={vi.fn()} />)
+    await user.type(screen.getByLabelText('Name'), 'Cabin N')
+    await user.selectOptions(screen.getByLabelText('Add a bed type'), 'twin')
+    await user.click(screen.getByRole('button', { name: 'Add bed' }))
+    await user.click(screen.getByRole('button', { name: 'Create unit' }))
+
+    await waitFor(() => {
+      expect(createLodgingUnit).toHaveBeenCalled()
+    })
+    const [payload] = createLodgingUnit.mock.calls[0] as [LodgingUnitInput]
+    expect(payload.beds).toEqual([{ type: 'twin', count: 1 }])
   })
 })
