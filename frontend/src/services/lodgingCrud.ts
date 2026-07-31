@@ -68,8 +68,19 @@ export async function deleteLodgingArea(id: string): Promise<void> {
 /**
  * Persist a new area order as `sort_order` 1..n.
  *
- * Sequential rather than concurrent: the values are positional, and a partial
- * concurrent failure could leave two areas sharing an index.
+ * NOT ATOMIC, and sequential does not make it so. A reorder is a swap, so both
+ * swapped rows are rewritten; a failure between the two writes leaves them
+ * sharing a rank. Sequential only bounds the damage — the loop stops at the
+ * first failure, so what survives is a prefix rather than an arbitrary subset,
+ * and the caller surfaces the error.
+ *
+ * Deliberately not moved to PocketBase's batch API: it is used nowhere else in
+ * this repo and its endpoint must be enabled in instance settings, so adopting
+ * it here would fail closed with a 403 wherever that setting is off. The blast
+ * radius does not justify that — eight areas, admin-only, a visible error, and
+ * the next reorder overwrites every rank. `groupUnitsByArea` breaks a tie on
+ * insertion order, so the worst outcome is two zones stacking in an arbitrary
+ * but stable order until someone reorders again.
  */
 export async function reorderLodgingAreas(orderedIds: string[]): Promise<void> {
   for (const [index, id] of orderedIds.entries()) {
@@ -173,7 +184,37 @@ export async function updateLodgingAlias(
   return pb.collection(ALIASES).update<LodgingAliasRecord>(id, { ...input })
 }
 
+/**
+ * Delete an alias, reopening any work-queue item it resolved.
+ *
+ * Deleting an alias behind a RESOLVED queue row silences that row FOREVER.
+ * `resolved_alias` is cascadeDelete:false on purpose (migration 1500000122) so
+ * the audit trail survives — but `IssueRecorder.Flush` writes `is_resolved`
+ * only on create ("once staff tick an item, a later sync must not un-tick
+ * it"), and its dedup lookup matches the re-encountered cabin string to that
+ * same row. So the next ingest run bumps `occurrences` and leaves the row
+ * resolved: the string never returns to the queue and its placement never
+ * resolves again.
+ *
+ * Reopening first fixes both halves — the work item comes back, and clearing
+ * the reference is what lets the Go guard in `pocketbase/lodging` allow the
+ * delete at all. That guard is the backstop for paths that skip this function.
+ *
+ * Order matters: reopen, THEN delete. Reversed, a failure between the two
+ * leaves exactly the silent state this exists to prevent. This way a failure
+ * leaves an alias that still exists with its queue item reopened — a visible,
+ * self-correcting inconsistency rather than an invisible permanent one.
+ */
 export async function deleteLodgingAlias(id: string): Promise<void> {
+  const resolved = await pb.collection(INGEST_ISSUES).getFullList<LodgingIngestIssueRecord>({
+    filter: `resolved_alias = "${id}"`,
+  })
+  for (const issue of resolved) {
+    await pb.collection(INGEST_ISSUES).update(issue.id, {
+      is_resolved: false,
+      resolved_alias: '',
+    })
+  }
   await pb.collection(ALIASES).delete(id)
 }
 
@@ -204,6 +245,13 @@ export async function listUnresolvedAliasIssues(): Promise<LodgingIngestIssueRec
  * The alias is created FIRST: if the create fails, the queue row stays open,
  * which is the recoverable direction. Resolving first would lose the work item
  * on a failed create.
+ *
+ * If the SECOND write fails the alias is rolled back, because leaving it would
+ * make the natural retry produce a duplicate alias row carrying the same
+ * string and members — and two rows covering one string in one year is exactly
+ * the `ambiguous_alias` state, which the migration notes is only reachable
+ * through this admin UI. A failed rollback is swallowed so the staffer sees
+ * the queue-write error rather than a cleanup error about a different record.
  */
 export async function mapUnresolvedAlias(
   queueId: string,
@@ -221,10 +269,18 @@ export async function mapUnresolvedAlias(
     valid_to_year: options.validToYear,
     source_field: options.sourceField,
   })
-  await pb.collection(INGEST_ISSUES).update(queueId, {
-    is_resolved: true,
-    resolved_alias: alias.id,
-  })
+  try {
+    await pb.collection(INGEST_ISSUES).update(queueId, {
+      is_resolved: true,
+      resolved_alias: alias.id,
+    })
+  } catch (error) {
+    await pb
+      .collection(ALIASES)
+      .delete(alias.id)
+      .catch(() => undefined)
+    throw error
+  }
   return alias
 }
 

@@ -139,3 +139,41 @@ describe('LodgingAliasForm — year window', () => {
     expect(payload.valid_to_year).toBe(0)
   })
 })
+
+describe('LodgingAliasForm — which units may be members', () => {
+  const MIXED = [
+    fixtureUnit({ id: 'u1', name: 'Cabin A' }),
+    fixtureUnit({ id: 'u2', name: 'North Lodge', is_container: true }),
+    fixtureUnit({ id: 'u3', name: 'Old Hall', is_active: false }),
+  ]
+
+  // The header states one member is an atomic room and two or more denote a
+  // merge. A container is not a room, and an inactive unit is one staff
+  // retired — an alias pointing at either resolves history onto a place that
+  // is not bookable.
+  it('offers only active, non-container units', () => {
+    render(<LodgingAliasForm units={MIXED} onSaved={vi.fn()} onCancel={vi.fn()} />)
+
+    expect(screen.getByRole('checkbox', { name: 'Cabin A' })).toBeInTheDocument()
+    expect(screen.queryByRole('checkbox', { name: 'North Lodge' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('checkbox', { name: 'Old Hall' })).not.toBeInTheDocument()
+  })
+
+  // An alias edited years later may already name a unit that has since been
+  // retired or turned into a container. Hiding it would silently drop that
+  // member on the next save, which is a worse outcome than showing it.
+  it('still shows an existing member that has since been retired', () => {
+    const alias = {
+      id: 'a1',
+      alias_string: 'Old Hall - Whole',
+      member_units: ['u3'],
+      valid_from_year: 0,
+      valid_to_year: 0,
+      source_field: '',
+      notes: '',
+    }
+    render(<LodgingAliasForm units={MIXED} alias={alias} onSaved={vi.fn()} onCancel={vi.fn()} />)
+
+    expect(screen.getByRole('checkbox', { name: 'Old Hall' })).toBeChecked()
+  })
+})

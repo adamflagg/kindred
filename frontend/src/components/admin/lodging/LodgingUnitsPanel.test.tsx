@@ -9,6 +9,12 @@ const deactivateLodgingUnit = vi.fn()
 const confirmLodgingUnits = vi.fn()
 const createLodgingUnit = vi.fn()
 const updateLodgingUnit = vi.fn()
+const listLodgingAreas = vi.fn()
+
+const AREAS = [
+  { id: 'area_2', name: 'South Zone', code: 'SOUTH', map_x: 0, map_y: 0, sort_order: 2 },
+  { id: 'area_1', name: 'North Zone', code: 'NORTH', map_x: 0, map_y: 0, sort_order: 1 },
+]
 
 // These handles are module-scoped so `vi.mock` can close over them, which
 // means call records and resolved values outlive the test that set them.
@@ -19,6 +25,7 @@ beforeEach(() => {
   confirmLodgingUnits.mockReset()
   createLodgingUnit.mockReset()
   updateLodgingUnit.mockReset()
+  listLodgingAreas.mockReset().mockResolvedValue(AREAS)
 })
 
 function fixtureUnit(over: Record<string, unknown>) {
@@ -62,11 +69,7 @@ vi.mock('../../../services/lodgingCrud', () => ({
       }),
       fixtureUnit({ id: 'u3', name: 'Cabin B', code: 'cabin-b', area: 'area_1', sleeps: 4 }),
     ]),
-  listLodgingAreas: () =>
-    Promise.resolve([
-      { id: 'area_2', name: 'South Zone', code: 'SOUTH', map_x: 0, map_y: 0, sort_order: 2 },
-      { id: 'area_1', name: 'North Zone', code: 'NORTH', map_x: 0, map_y: 0, sort_order: 1 },
-    ]),
+  listLodgingAreas: () => listLodgingAreas(),
   deactivateLodgingUnit: (...args: unknown[]) => deactivateLodgingUnit(...args),
   confirmLodgingUnits: (...args: unknown[]) => confirmLodgingUnits(...args),
   createLodgingUnit: (...args: unknown[]) => createLodgingUnit(...args),
@@ -302,5 +305,40 @@ describe('LodgingUnitsPanel — edit form does not leak between records', () => 
 
     await user.click(screen.getByRole('button', { name: 'New unit' }))
     expect(screen.getByLabelText('Name')).toHaveFocus()
+  })
+})
+
+describe('LodgingUnitsPanel — areas query state', () => {
+  // groupUnitsByArea handles a missing area gracefully BY DESIGN, bucketing
+  // orphans under "No area" so a unit whose area was deleted stays visible.
+  // That is exactly what makes a failed areas fetch dangerous: every unit
+  // collapses into one unnamed group and it reads as data loss, not as a
+  // fetch that failed.
+  it('surfaces a failed areas fetch instead of silently ungrouping every unit', async () => {
+    listLodgingAreas.mockRejectedValue(new Error('network'))
+    render(<LodgingUnitsPanel />, { wrapper })
+
+    await waitFor(() => {
+      expect(screen.getByText(/areas could not be loaded/i)).toBeInTheDocument()
+    })
+    // The units themselves still render — the roster is readable, only the
+    // grouping is untrustworthy, and hiding the rows would be the worse call.
+    expect(screen.getByText('Cabin A')).toBeInTheDocument()
+  })
+
+  it('does not open the editor when there are no areas to assign a unit to', async () => {
+    // The Area select is a required relation with no blank option. Opening the
+    // form against an empty list offers a create whose only outcome is a
+    // server rejection the staffer reads as their own mistake.
+    listLodgingAreas.mockRejectedValue(new Error('network'))
+    const user = userEvent.setup()
+    render(<LodgingUnitsPanel />, { wrapper })
+    await waitFor(() => {
+      expect(screen.getByText('Cabin A')).toBeInTheDocument()
+    })
+
+    await user.click(screen.getByRole('button', { name: /New unit/ }))
+
+    expect(screen.queryByRole('button', { name: 'Create unit' })).not.toBeInTheDocument()
   })
 })

@@ -10,9 +10,13 @@
 //	§3.4 unmerging is blocked while the slot is occupied
 //	§3.8 deactivate, don't delete, for units with historical assignments
 //
-// Neither has any database backing, so both live here. So does the dual-grain
-// XOR: the DB currently accepts an assignment with neither unit nor merge,
-// with both, and with both household_cm_id and person_cm_id set.
+// lodging_ingest_issues.resolved_alias is the same shape and the worst case:
+// deleting the alias behind a RESOLVED queue item silences that item forever,
+// because ingest only ever writes is_resolved on create. See guardAliasDelete.
+//
+// None of these has any database backing, so they all live here. So does the
+// dual-grain XOR: the DB currently accepts an assignment with neither unit nor
+// merge, with both, and with both household_cm_id and person_cm_id set.
 //
 // These are MODEL-level hooks (OnRecordDelete / OnRecordCreate /
 // OnRecordUpdate), not the *Request variants, so they cover programmatic Go
@@ -29,9 +33,11 @@ import (
 )
 
 const (
-	collectionUnits       = "lodging_units"
-	collectionMerges      = "lodging_merges"
-	collectionAssignments = "lodging_assignments"
+	collectionUnits        = "lodging_units"
+	collectionMerges       = "lodging_merges"
+	collectionAssignments  = "lodging_assignments"
+	collectionAliases      = "lodging_unit_aliases"
+	collectionIngestIssues = "lodging_ingest_issues"
 )
 
 // RegisterHooks wires the lodging integrity guards onto the app.
@@ -46,6 +52,7 @@ func RegisterHooks(app *pocketbase.PocketBase) {
 func wireHooks(app core.App) {
 	app.OnRecordDelete(collectionUnits).BindFunc(guardUnitDelete)
 	app.OnRecordDelete(collectionMerges).BindFunc(guardMergeDelete)
+	app.OnRecordDelete(collectionAliases).BindFunc(guardAliasDelete)
 	app.OnRecordCreate(collectionAssignments).BindFunc(guardAssignmentGrain)
 	app.OnRecordUpdate(collectionAssignments).BindFunc(guardAssignmentGrain)
 }
@@ -116,6 +123,52 @@ func guardMergeDelete(e *core.RecordEvent) error {
 				"Cannot unmerge %q: one party is assigned to this slot. "+
 					"Reassign or clear that placement first, or it would be left with no cabin.",
 				e.Record.GetString("display_name"),
+			),
+			nil,
+		)
+	}
+	return e.Next()
+}
+
+// guardAliasDelete refuses to delete an alias a resolved queue item points at.
+//
+// This is the third optional-relation hole, and the worst of them, because it
+// fails SILENTLY and PERMANENTLY rather than merely orphaning a row.
+// `lodging_ingest_issues.resolved_alias` is declared cascadeDelete:false on
+// purpose (migration 1500000122) so deleting an alias does not destroy the
+// audit trail of it having been created. What that leaves behind is a queue
+// row still marked is_resolved.
+//
+// IssueRecorder.Flush (sync/lodging_issues.go) writes is_resolved only on
+// CREATE — "once staff tick an item, a later sync must not un-tick it" — and
+// findExisting matches the re-encountered cabin string on the same six
+// columns. So the next ingest run finds that row, bumps occurrences, and
+// leaves it resolved. The string never returns to the work queue, and the
+// placement never resolves again. Nothing surfaces it.
+//
+// The admin UI reopens the queue row before deleting, which clears the
+// reference and restores the work item. This guard is the backstop for every
+// path that does not: the PocketBase admin UI, and Go.
+func guardAliasDelete(e *core.RecordEvent) error {
+	records, err := e.App.FindRecordsByFilter(
+		collectionIngestIssues,
+		"resolved_alias = {:id}",
+		"",
+		0, // 0 = unlimited
+		0,
+		map[string]any{"id": e.Record.Id},
+	)
+	if err != nil {
+		return fmt.Errorf("count issues resolved by alias: %w", err)
+	}
+	if len(records) > 0 {
+		return apis.NewBadRequestError(
+			fmt.Sprintf(
+				"Cannot delete the alias %q: %d resolved work-queue item(s) point at it. "+
+					"Reopen those items first, or the cabin name they resolved would "+
+					"stop resolving without ever returning to the queue.",
+				e.Record.GetString("alias_string"),
+				len(records),
 			),
 			nil,
 		)

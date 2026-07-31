@@ -71,11 +71,27 @@ export function LodgingAliasesPanel() {
     void queryClient.invalidateQueries({ queryKey: queryKeys.lodgingAliases() })
   }
 
+  /**
+   * Deleting an alias un-resolves every cabin string it covered.
+   *
+   * `deleteLodgingAlias` reopens the work-queue items that pointed at it, so
+   * the strings come back as something staff can see and fix — which is why
+   * the ingest queue is invalidated here as well as the alias list.
+   */
   const handleDelete = async (alias: LodgingAliasRecord) => {
+    if (
+      !window.confirm(
+        `Delete the alias “${alias.alias_string}”? Any cabin name it resolved ` +
+          `returns to the unresolved queue.`
+      )
+    ) {
+      return
+    }
     try {
       await deleteLodgingAlias(alias.id)
       toast.success('Alias deleted')
       void queryClient.invalidateQueries({ queryKey: queryKeys.lodgingAliases() })
+      void queryClient.invalidateQueries({ queryKey: queryKeys.lodgingIngestIssues() })
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Failed to delete the alias')
     }
@@ -102,19 +118,31 @@ export function LodgingAliasesPanel() {
 
       {editing !== null && (
         <div ref={formRef} className="card-lodge p-4">
-          {/* Keyed on the record so React remounts rather than reusing the
-              same instance — otherwise the form's useState initialisers
-              never re-run when `alias` changes, and a submit after switching
-              records writes the PREVIOUS alias's fields to the new one. */}
-          <LodgingAliasForm
-            key={editing === 'new' ? 'new' : editing.id}
-            units={unitsQuery.data ?? []}
-            alias={editing === 'new' ? undefined : editing}
-            onSaved={refresh}
-            onCancel={() => {
-              setEditing(null)
-            }}
-          />
+          {/* The member checkboxes ARE this form's payload, so opening it
+              against an unloaded units list is not a degraded editor but a
+              destructive one: saving would strip the alias of its members.
+              Hence a state check rather than the usual `?? []`. */}
+          {unitsQuery.isError ? (
+            <p className="text-sm text-red-600 dark:text-red-400">
+              The units could not be loaded, so an alias cannot be edited right now.
+            </p>
+          ) : unitsQuery.isLoading ? (
+            <p className="text-muted-foreground text-sm">Loading units…</p>
+          ) : (
+            /* Keyed on the record so React remounts rather than reusing the
+               same instance — otherwise the form's useState initialisers
+               never re-run when `alias` changes, and a submit after switching
+               records writes the PREVIOUS alias's fields to the new one. */
+            <LodgingAliasForm
+              key={editing === 'new' ? 'new' : editing.id}
+              units={unitsQuery.data ?? []}
+              alias={editing === 'new' ? undefined : editing}
+              onSaved={refresh}
+              onCancel={() => {
+                setEditing(null)
+              }}
+            />
+          )}
         </div>
       )}
 
@@ -174,6 +202,7 @@ export function LodgingAliasesPanel() {
                           <button
                             type="button"
                             onClick={() => void handleDelete(alias)}
+                            aria-label={`Delete ${alias.alias_string}`}
                             className={`text-muted-foreground hover:text-foreground ${ACTION_LINK}`}
                           >
                             Delete

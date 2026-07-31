@@ -34,6 +34,7 @@ import {
   createLodgingAlias,
   createLodgingUnit,
   deactivateLodgingUnit,
+  deleteLodgingAlias,
   ignoreIngestIssue,
   listLodgingUnits,
   listUnresolvedAliasIssues,
@@ -142,6 +143,69 @@ describe('mapUnresolvedAlias', () => {
     await expect(mapUnresolvedAlias('q1', 'Some Cabin', [])).rejects.toThrow(/at least one unit/i)
     expect(create).not.toHaveBeenCalled()
   })
+
+  // Without this the natural staff retry produces a SECOND alias row carrying
+  // the same alias_string and member_units. Two alias rows covering one string
+  // in one year is exactly the state `ambiguous_alias` exists to flag, and the
+  // migration notes that kind is only reachable through this admin UI.
+  it('deletes the alias it just created when the queue update fails', async () => {
+    create.mockResolvedValueOnce({ id: 'alias_1' })
+    update.mockRejectedValueOnce(new Error('queue write failed'))
+    deleteRecord.mockResolvedValueOnce(undefined)
+
+    await expect(mapUnresolvedAlias('q1', 'Some Cabin', ['u1'])).rejects.toThrow(
+      'queue write failed'
+    )
+
+    expect(deleteRecord).toHaveBeenCalledWith('alias_1')
+  })
+
+  it('still reports the original failure when the rollback itself fails', async () => {
+    // The staffer needs to know the queue write failed. Surfacing a cleanup
+    // error instead would send them looking in the wrong place.
+    create.mockResolvedValueOnce({ id: 'alias_1' })
+    update.mockRejectedValueOnce(new Error('queue write failed'))
+    deleteRecord.mockRejectedValueOnce(new Error('rollback also failed'))
+
+    await expect(mapUnresolvedAlias('q1', 'Some Cabin', ['u1'])).rejects.toThrow(
+      'queue write failed'
+    )
+  })
+})
+
+describe('deleteLodgingAlias', () => {
+  // Deleting an alias behind a RESOLVED queue item silences that item forever:
+  // ingest writes is_resolved only on create, so the re-encountered cabin
+  // string updates the existing row without reopening it. Reopening first both
+  // restores the work item and clears the reference the Go guard checks.
+  it('reopens every queue item the alias resolved before deleting it', async () => {
+    getFullList.mockResolvedValueOnce([{ id: 'q1' }, { id: 'q2' }])
+
+    await deleteLodgingAlias('alias_1')
+
+    expect(update).toHaveBeenCalledWith('q1', { is_resolved: false, resolved_alias: '' })
+    expect(update).toHaveBeenCalledWith('q2', { is_resolved: false, resolved_alias: '' })
+    expect(deleteRecord).toHaveBeenCalledWith('alias_1')
+  })
+
+  it('deletes an alias no queue item points at without touching the queue', async () => {
+    getFullList.mockResolvedValueOnce([])
+
+    await deleteLodgingAlias('alias_1')
+
+    expect(update).not.toHaveBeenCalled()
+    expect(deleteRecord).toHaveBeenCalledWith('alias_1')
+  })
+
+  it('does not delete the alias when reopening a queue item fails', async () => {
+    // Otherwise the Go guard rejects the delete anyway and the staffer sees a
+    // confusing second error; worse, a partial reopen would be invisible.
+    getFullList.mockResolvedValueOnce([{ id: 'q1' }])
+    update.mockRejectedValueOnce(new Error('reopen failed'))
+
+    await expect(deleteLodgingAlias('alias_1')).rejects.toThrow('reopen failed')
+    expect(deleteRecord).not.toHaveBeenCalled()
+  })
 })
 
 describe('ignoreIngestIssue', () => {
@@ -187,5 +251,21 @@ describe('reorderLodgingAreas', () => {
     expect(update).toHaveBeenNthCalledWith(1, 'a3', { sort_order: 1 })
     expect(update).toHaveBeenNthCalledWith(2, 'a1', { sort_order: 2 })
     expect(update).toHaveBeenNthCalledWith(3, 'a2', { sort_order: 3 })
+  })
+
+  // Pinning the real behaviour rather than the behaviour the docstring used to
+  // claim. A mid-loop failure DOES leave a partial reorder, and because a
+  // reorder is a swap, the two swapped rows can end up sharing a rank: writing
+  // a3 -> 1 and then failing on a1 leaves a1 at its old 1 too. The loop stops
+  // rather than pressing on, so the surviving state is the shorter prefix, and
+  // the caller surfaces the error.
+  it('stops at the first failure and leaves the remaining areas untouched', async () => {
+    update.mockResolvedValueOnce({ id: 'a3' }).mockRejectedValueOnce(new Error('network'))
+
+    await expect(reorderLodgingAreas(['a3', 'a1', 'a2'])).rejects.toThrow('network')
+
+    expect(update).toHaveBeenCalledTimes(2)
+    expect(update).toHaveBeenNthCalledWith(1, 'a3', { sort_order: 1 })
+    expect(update).toHaveBeenNthCalledWith(2, 'a1', { sort_order: 2 })
   })
 })

@@ -16,6 +16,7 @@ import toast from 'react-hot-toast'
 
 import { createLodgingAlias, updateLodgingAlias } from '../../../services/lodgingCrud'
 import type { LodgingAliasRecord, LodgingUnitRecord } from '../../../types/lodging'
+import { eligibleAliasMembers } from './aliasMembers'
 import { BUTTON_PRIMARY, BUTTON_SECONDARY, FIELD, LABEL } from './lodgingStyles'
 
 export interface LodgingAliasFormProps {
@@ -97,7 +98,7 @@ export function LodgingAliasForm({ units, alias, onSaved, onCancel }: LodgingAli
 
       <fieldset className="flex flex-wrap gap-3">
         <legend className={LABEL}>Resolves to (pick two or more for a merge)</legend>
-        {units.map((unit) => (
+        {eligibleAliasMembers(units, memberUnits).map((unit) => (
           <label key={unit.id} className="inline-flex items-center gap-1.5 text-sm">
             <input
               type="checkbox"

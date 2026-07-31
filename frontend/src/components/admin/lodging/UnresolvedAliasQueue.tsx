@@ -27,6 +27,7 @@ import {
 import type { LodgingIngestIssueRecord } from '../../../types/lodging'
 import { queryKeys, userDataOptions } from '../../../utils/queryKeys'
 import { QueryGuard } from '../../QueryGuard'
+import { eligibleAliasMembers } from './aliasMembers'
 import { BUTTON_PRIMARY, BUTTON_SECONDARY, LABEL } from './lodgingStyles'
 
 /** Recorded on the queue row so an ignored entry says why, not just that. */
@@ -123,22 +124,36 @@ export function UnresolvedAliasQueue() {
                     </p>
                   </div>
 
-                  <fieldset className="flex flex-wrap gap-3">
-                    <legend className={LABEL}>Maps to (pick two or more for a merge)</legend>
-                    {(unitsQuery.data ?? []).map((unit) => (
-                      <label key={unit.id} className="inline-flex items-center gap-1.5 text-sm">
-                        <input
-                          type="checkbox"
-                          aria-label={unit.name}
-                          checked={chosen.includes(unit.id)}
-                          onChange={() => {
-                            toggleUnit(row.id, unit.id)
-                          }}
-                        />
-                        {unit.name}
-                      </label>
-                    ))}
-                  </fieldset>
+                  {/* The checkboxes are this screen's only mapping action, so
+                      a failed units fetch has to say so. Coerced to [], the
+                      row renders with nothing to pick and a disabled button,
+                      which reads as the queue being broken rather than as a
+                      fetch that failed. "Not a cabin" still works — it needs
+                      no unit. */}
+                  {unitsQuery.isError ? (
+                    <p className="text-sm text-red-600 dark:text-red-400">
+                      The units could not be loaded, so this name cannot be mapped right now.
+                    </p>
+                  ) : unitsQuery.isLoading ? (
+                    <p className="text-muted-foreground text-sm">Loading units…</p>
+                  ) : (
+                    <fieldset className="flex flex-wrap gap-3">
+                      <legend className={LABEL}>Maps to (pick two or more for a merge)</legend>
+                      {eligibleAliasMembers(unitsQuery.data ?? [], chosen).map((unit) => (
+                        <label key={unit.id} className="inline-flex items-center gap-1.5 text-sm">
+                          <input
+                            type="checkbox"
+                            aria-label={unit.name}
+                            checked={chosen.includes(unit.id)}
+                            onChange={() => {
+                              toggleUnit(row.id, unit.id)
+                            }}
+                          />
+                          {unit.name}
+                        </label>
+                      ))}
+                    </fieldset>
+                  )}
 
                   <div className="flex gap-2">
                     <button

@@ -180,22 +180,45 @@ export function LodgingUnitsPanel() {
         />
       )}
 
+      {/* groupUnitsByArea buckets an unknown area under "No area" by design,
+          so a unit whose area was deleted stays visible. That is precisely
+          what makes a FAILED areas fetch dangerous: every unit collapses into
+          one unnamed group, which reads as data loss rather than as a fetch
+          that failed. The rows stay — only the grouping is untrustworthy. */}
+      {areasQuery.isError && (
+        <p className="text-sm text-red-600 dark:text-red-400">
+          The areas could not be loaded, so these units are not grouped by zone and no unit can be
+          edited.
+        </p>
+      )}
+
       {editing !== null && (
         <div ref={formRef} className="card-lodge p-4">
-          {/* Keyed on the record so React remounts rather than reusing the
-              same instance — otherwise the form's useState initialisers
-              never re-run when `unit` changes, and a submit after switching
-              records writes the PREVIOUS unit's fields to the new one. */}
-          <LodgingUnitForm
-            key={editing === 'new' ? 'new' : editing.id}
-            areas={areasQuery.data ?? []}
-            units={unitsQuery.data ?? []}
-            unit={editing === 'new' ? undefined : editing}
-            onSaved={refresh}
-            onCancel={() => {
-              setEditing(null)
-            }}
-          />
+          {/* Area is a required relation with no blank option, so a form
+              opened against an empty area list can only end in a server
+              rejection the staffer reads as their own mistake. */}
+          {areasQuery.isSuccess ? (
+            /* Keyed on the record so React remounts rather than reusing the
+               same instance — otherwise the form's useState initialisers
+               never re-run when `unit` changes, and a submit after switching
+               records writes the PREVIOUS unit's fields to the new one. */
+            <LodgingUnitForm
+              key={editing === 'new' ? 'new' : editing.id}
+              areas={areasQuery.data}
+              units={unitsQuery.data ?? []}
+              unit={editing === 'new' ? undefined : editing}
+              onSaved={refresh}
+              onCancel={() => {
+                setEditing(null)
+              }}
+            />
+          ) : (
+            <p className="text-muted-foreground text-sm">
+              {areasQuery.isError
+                ? 'The areas could not be loaded, so a unit cannot be edited right now.'
+                : 'Loading areas…'}
+            </p>
+          )}
         </div>
       )}
 

@@ -8,34 +8,46 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 const mapUnresolvedAlias = vi.fn()
 const ignoreIngestIssue = vi.fn()
 const listUnresolvedAliasIssues = vi.fn()
+const listLodgingUnits = vi.fn()
+
+function unitFixture(over: Record<string, unknown>) {
+  return {
+    area: 'a1',
+    parent_unit: '',
+    map_x: 0,
+    map_y: 0,
+    sleeps: 4,
+    beds: null,
+    bathroom: 'none',
+    bathroom_group: '',
+    near_bathhouse: false,
+    has_power: false,
+    has_ac: false,
+    has_fridge: false,
+    is_accessible: false,
+    allocation_default: 'family_pool',
+    is_confirmed: true,
+    is_active: true,
+    is_container: false,
+    notes: '',
+    ...over,
+  }
+}
+
+const UNITS = [
+  unitFixture({ id: 'u1', name: 'North 1', code: 'north-1' }),
+  // A building. An alias member is an atomic room; a container is not
+  // bookable, so mapping a cabin string onto one describes a placement that
+  // cannot exist.
+  unitFixture({ id: 'u2', name: 'North Lodge', code: 'north-lodge', is_container: true }),
+  // Retired. Mapping a live cabin string onto it walks it back into the
+  // registry through the alias, undoing the deactivation.
+  unitFixture({ id: 'u3', name: 'Old Hall', code: 'old-hall', is_active: false }),
+]
 
 vi.mock('../../../services/lodgingCrud', () => ({
   listUnresolvedAliasIssues: () => listUnresolvedAliasIssues(),
-  listLodgingUnits: () =>
-    Promise.resolve([
-      {
-        id: 'u1',
-        area: 'a1',
-        name: 'North 1',
-        code: 'north-1',
-        parent_unit: '',
-        map_x: 0,
-        map_y: 0,
-        sleeps: 4,
-        bathroom: 'none',
-        bathroom_group: '',
-        near_bathhouse: false,
-        has_power: false,
-        has_ac: false,
-        has_fridge: false,
-        is_accessible: false,
-        allocation_default: 'family_pool',
-        is_confirmed: true,
-        is_active: true,
-        is_container: false,
-        notes: '',
-      },
-    ]),
+  listLodgingUnits: () => listLodgingUnits(),
   mapUnresolvedAlias: (...args: unknown[]) => mapUnresolvedAlias(...args),
   ignoreIngestIssue: (...args: unknown[]) => ignoreIngestIssue(...args),
 }))
@@ -81,6 +93,7 @@ beforeEach(() => {
   mapUnresolvedAlias.mockReset()
   ignoreIngestIssue.mockReset().mockResolvedValue({})
   listUnresolvedAliasIssues.mockReset().mockResolvedValue([QUEUE_ROW])
+  listLodgingUnits.mockReset().mockResolvedValue(UNITS)
 })
 
 describe('UnresolvedAliasQueue', () => {
@@ -148,5 +161,49 @@ describe('UnresolvedAliasQueue', () => {
     await waitFor(() => {
       expect(screen.getByText(/no unresolved cabin names/i)).toBeInTheDocument()
     })
+  })
+})
+
+describe('UnresolvedAliasQueue — which units may be mapped to', () => {
+  // This file's own header: "a member unit is an atomic room, and two or more
+  // denote a merge". A container is a building, not a room, and an inactive
+  // unit was deliberately retired — offering either re-enters it through the
+  // alias, which is the one write on this screen nothing downstream validates.
+  it('offers only active, non-container units', async () => {
+    render(<UnresolvedAliasQueue />, { wrapper })
+    await waitFor(() => {
+      expect(screen.getByRole('checkbox', { name: 'North 1' })).toBeInTheDocument()
+    })
+
+    expect(screen.queryByRole('checkbox', { name: 'North Lodge' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('checkbox', { name: 'Old Hall' })).not.toBeInTheDocument()
+  })
+})
+
+describe('UnresolvedAliasQueue — units query state', () => {
+  // The checkboxes are this screen's only action. Coerced to [], a failed
+  // units fetch renders a queue of rows with nothing to map them to, and
+  // "Map to selected units" stays disabled with no stated reason — which
+  // reads as the queue itself being broken.
+  it('says the units failed to load rather than showing an unmappable queue', async () => {
+    listLodgingUnits.mockRejectedValue(new Error('network'))
+    render(<UnresolvedAliasQueue />, { wrapper })
+
+    await waitFor(() => {
+      expect(screen.getByText(/units could not be loaded/i)).toBeInTheDocument()
+    })
+    // The queue row still renders: knowing WHICH strings are unresolved is
+    // useful even when the mapping action is unavailable.
+    expect(screen.getByText('North Lodge - 1and2')).toBeInTheDocument()
+  })
+
+  it('still offers "Not a cabin" when the units failed, since it needs no unit', async () => {
+    listLodgingUnits.mockRejectedValue(new Error('network'))
+    render(<UnresolvedAliasQueue />, { wrapper })
+
+    await waitFor(() => {
+      expect(screen.getByText(/units could not be loaded/i)).toBeInTheDocument()
+    })
+    expect(screen.getByRole('button', { name: 'Not a cabin' })).toBeEnabled()
   })
 })

@@ -9,6 +9,9 @@ import userEvent from '@testing-library/user-event'
 import type { ReactNode } from 'react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
+const deleteLodgingAlias = vi.fn()
+const listLodgingUnits = vi.fn()
+
 vi.mock('../../../services/lodgingCrud', () => ({
   listLodgingAliases: () =>
     Promise.resolve([
@@ -50,10 +53,10 @@ vi.mock('../../../services/lodgingCrud', () => ({
         expand: { member_units: [{ id: 'u4', name: 'Old Hall', code: 'old-hall' }] },
       },
     ]),
-  listLodgingUnits: () => Promise.resolve([]),
+  listLodgingUnits: () => listLodgingUnits(),
   createLodgingAlias: vi.fn(),
   updateLodgingAlias: vi.fn(),
-  deleteLodgingAlias: vi.fn(),
+  deleteLodgingAlias: (...args: unknown[]) => deleteLodgingAlias(...args),
 }))
 
 vi.mock('react-hot-toast', () => ({ default: { success: vi.fn(), error: vi.fn() } }))
@@ -74,6 +77,10 @@ let client: QueryClient
 
 beforeEach(() => {
   client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+  deleteLodgingAlias.mockReset().mockResolvedValue(undefined)
+  listLodgingUnits.mockReset().mockResolvedValue([])
+  // jsdom has no confirm(); default to "the staffer clicked OK".
+  vi.spyOn(window, 'confirm').mockReturnValue(true)
 })
 
 function wrapper({ children }: { children: ReactNode }) {
@@ -200,5 +207,59 @@ describe('LodgingAliasesPanel — editing', () => {
 
     await user.click(screen.getByRole('button', { name: 'New alias' }))
     expect(screen.getByLabelText('Cabin string')).toHaveFocus()
+  })
+})
+
+describe('LodgingAliasesPanel — deleting an alias', () => {
+  // Deleting an alias is not a display change: it un-resolves whatever cabin
+  // strings it covered, and this panel's own copy says a wrong mapping
+  // "silently misfiles a family's history into the wrong building".
+  it('asks before deleting', async () => {
+    const user = userEvent.setup()
+    render(<LodgingAliasesPanel />, { wrapper })
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'Delete Old Hall' })).toBeInTheDocument()
+    })
+
+    await user.click(screen.getByRole('button', { name: 'Delete Old Hall' }))
+
+    expect(window.confirm).toHaveBeenCalled()
+    await waitFor(() => {
+      expect(deleteLodgingAlias).toHaveBeenCalledWith('a3')
+    })
+  })
+
+  it('deletes nothing when the staffer cancels', async () => {
+    vi.spyOn(window, 'confirm').mockReturnValue(false)
+    const user = userEvent.setup()
+    render(<LodgingAliasesPanel />, { wrapper })
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'Delete Old Hall' })).toBeInTheDocument()
+    })
+
+    await user.click(screen.getByRole('button', { name: 'Delete Old Hall' }))
+
+    expect(deleteLodgingAlias).not.toHaveBeenCalled()
+  })
+})
+
+describe('LodgingAliasesPanel — units query state', () => {
+  // The editor's member checkboxes come from a SECOND query. Coerced to [],
+  // a failed units fetch opens an editor with nothing to pick, and saving
+  // then strips the alias of its members.
+  it('says so rather than opening an editor with no units to choose', async () => {
+    listLodgingUnits.mockRejectedValue(new Error('network'))
+    const user = userEvent.setup()
+    render(<LodgingAliasesPanel />, { wrapper })
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'Edit Old Hall' })).toBeInTheDocument()
+    })
+
+    await user.click(screen.getByRole('button', { name: 'Edit Old Hall' }))
+
+    await waitFor(() => {
+      expect(screen.getByText(/units could not be loaded/i)).toBeInTheDocument()
+    })
+    expect(screen.queryByRole('button', { name: 'Save alias' })).not.toBeInTheDocument()
   })
 })

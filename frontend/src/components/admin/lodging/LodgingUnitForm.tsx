@@ -15,9 +15,13 @@
  *    a unit no list query returns, which also matches neither branch of the
  *    family-availability rules.
  *
- * 2. A blank number field submits NO key rather than a 0. PocketBase cannot
- *    store NULL in a number column, so 0 is the only "unset" it has — and
- *    sending an explicit 0 would overwrite a real value with a false one.
+ * 2. A blank number field submits NO key ON CREATE, so PocketBase writes its
+ *    own 0. PocketBase cannot store NULL in a number column, so 0 is the only
+ *    "unset" it has. ON EDIT the rule inverts for `sleeps`: omitting the key
+ *    leaves the previous number in place, which makes clearing the field a
+ *    silent no-op, so the edit path sends an explicit 0 — the stored spelling
+ *    of UNKNOWN. `map_x` / `map_y` stay omit-on-blank in both directions;
+ *    they carry no UNKNOWN semantics a consumer reads.
  */
 import { useState } from 'react'
 import toast from 'react-hot-toast'
@@ -87,10 +91,21 @@ export function LodgingUnitForm({ areas, units, unit, onSaved, onCancel }: Lodgi
     const parsedSleeps = Number.parseInt(capacity.sleeps, 10)
     const parsedMapX = Number.parseFloat(map.x)
     const parsedMapY = Number.parseFloat(map.y)
+    // `code` is the join key both `bathroom_group` membership and the roster's
+    // `unit_code` match on. slugify keeps only [a-z0-9], so a name with no
+    // ASCII alphanumerics derives to '' — an empty join key matches nothing
+    // and does so silently, which is worse than refusing the save. The code
+    // disclosure is the way out, and it already shows staff what will be used.
+    const code = identity.code.trim() === '' ? slugify(identity.name) : identity.code.trim()
+    if (code === '') {
+      toast.error('This name produces no usable code. Open “set it manually” and enter one.')
+      setIsSaving(false)
+      return
+    }
     const payload: LodgingUnitInput = {
       area: identity.area,
       name: identity.name,
-      code: identity.code.trim() === '' ? slugify(identity.name) : identity.code.trim(),
+      code,
       parent_unit: identity.parent_unit,
       // Never omitted — see the header comment.
       is_active: isActive,
@@ -99,7 +114,11 @@ export function LodgingUnitForm({ areas, units, unit, onSaved, onCancel }: Lodgi
       notes,
       beds: capacity.beds,
       ...amenities,
-      ...(Number.isNaN(parsedSleeps) ? {} : { sleeps: parsedSleeps }),
+      // Create omits it so PocketBase writes its own 0. Edit sends an explicit
+      // 0, because 0 IS the stored representation of UNKNOWN — omitting the
+      // key would leave the previous number in place and make clearing the
+      // field a silent no-op the staffer believes worked.
+      ...(Number.isNaN(parsedSleeps) ? (unit ? { sleeps: 0 } : {}) : { sleeps: parsedSleeps }),
       ...(Number.isNaN(parsedMapX) ? {} : { map_x: parsedMapX }),
       ...(Number.isNaN(parsedMapY) ? {} : { map_y: parsedMapY }),
     }

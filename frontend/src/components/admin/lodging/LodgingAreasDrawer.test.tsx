@@ -8,6 +8,13 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 const reorderLodgingAreas = vi.fn()
 const updateLodgingArea = vi.fn()
 const createLodgingArea = vi.fn()
+const deleteLodgingArea = vi.fn()
+const listLodgingAreas = vi.fn()
+
+const AREAS = [
+  { id: 'a1', name: 'North Zone', code: 'NORTH', map_x: 0.2, map_y: 0.3, sort_order: 1 },
+  { id: 'a2', name: 'South Zone', code: 'SOUTH', map_x: 0.6, map_y: 0.7, sort_order: 3 },
+]
 
 // Module-scoped so `vi.mock` can close over them, so call records and resolved
 // values outlive the test that set them unless cleared here.
@@ -15,20 +22,21 @@ beforeEach(() => {
   reorderLodgingAreas.mockReset()
   updateLodgingArea.mockReset()
   createLodgingArea.mockReset()
+  deleteLodgingArea.mockReset().mockResolvedValue(undefined)
+  listLodgingAreas.mockReset().mockResolvedValue(AREAS)
+  // jsdom has no confirm(); default to "the staffer clicked OK" so only the
+  // tests that care about cancelling have to say so.
+  vi.spyOn(window, 'confirm').mockReturnValue(true)
 })
 
+// South Zone sits at 3, not 2: sort_order carries gaps as soon as anything is
+// deleted, and deriving the next value from the list LENGTH silently reissues
+// a value already in use.
 vi.mock('../../../services/lodgingCrud', () => ({
-  // South Zone sits at 3, not 2: sort_order carries gaps as soon as anything
-  // is deleted, and deriving the next value from the list LENGTH silently
-  // reissues a value already in use.
-  listLodgingAreas: () =>
-    Promise.resolve([
-      { id: 'a1', name: 'North Zone', code: 'NORTH', map_x: 0.2, map_y: 0.3, sort_order: 1 },
-      { id: 'a2', name: 'South Zone', code: 'SOUTH', map_x: 0.6, map_y: 0.7, sort_order: 3 },
-    ]),
+  listLodgingAreas: () => listLodgingAreas(),
   createLodgingArea: (...args: unknown[]) => createLodgingArea(...args),
   updateLodgingArea: (...args: unknown[]) => updateLodgingArea(...args),
-  deleteLodgingArea: vi.fn(),
+  deleteLodgingArea: (...args: unknown[]) => deleteLodgingArea(...args),
   reorderLodgingAreas: (...args: unknown[]) => reorderLodgingAreas(...args),
 }))
 
@@ -153,5 +161,114 @@ describe('LodgingAreasDrawer', () => {
     })
     const [payload] = createLodgingArea.mock.calls[0] as [{ sort_order: number; code: string }]
     expect(payload.code).toBe('WEST-ZONE')
+  })
+})
+
+describe('LodgingAreasDrawer — a rejected edit', () => {
+  // The inputs are uncontrolled (defaultValue), which React reads once on
+  // mount, and refresh() only runs on success. So a rejected rename left the
+  // value PocketBase refused sitting in the field, indistinguishable from a
+  // saved one, and it survived every later refetch.
+  it('restores the stored name when the rename is rejected', async () => {
+    updateLodgingArea.mockRejectedValue(new Error('nope'))
+    const user = userEvent.setup()
+    render(<LodgingAreasDrawer open onClose={vi.fn()} />, { wrapper })
+    await waitFor(() => {
+      expect(screen.getByDisplayValue('North Zone')).toBeInTheDocument()
+    })
+
+    const field = screen.getByLabelText('North Zone name')
+    await user.clear(field)
+    await user.type(field, 'Northern Zone')
+    await user.tab()
+
+    await waitFor(() => {
+      expect(updateLodgingArea).toHaveBeenCalled()
+    })
+    await waitFor(() => {
+      expect(screen.getByLabelText('North Zone name')).toHaveValue('North Zone')
+    })
+  })
+
+  it('restores the stored centroid when the save is rejected', async () => {
+    updateLodgingArea.mockRejectedValue(new Error('nope'))
+    const user = userEvent.setup()
+    render(<LodgingAreasDrawer open onClose={vi.fn()} />, { wrapper })
+    await waitFor(() => {
+      expect(screen.getByDisplayValue('North Zone')).toBeInTheDocument()
+    })
+
+    const x = screen.getByLabelText('North Zone map X')
+    await user.clear(x)
+    await user.type(x, '0.99')
+    await user.tab()
+
+    await waitFor(() => {
+      expect(updateLodgingArea).toHaveBeenCalled()
+    })
+    await waitFor(() => {
+      expect(screen.getByLabelText('North Zone map X')).toHaveValue(0.2)
+    })
+  })
+})
+
+describe('LodgingAreasDrawer — deleting an area', () => {
+  // The units table deliberately never offers delete (spec §3.8). Areas do,
+  // one click from a numeric input, and an area with no units deletes silently
+  // and unrecoverably.
+  it('asks before deleting', async () => {
+    const user = userEvent.setup()
+    render(<LodgingAreasDrawer open onClose={vi.fn()} />, { wrapper })
+    await waitFor(() => {
+      expect(screen.getByDisplayValue('North Zone')).toBeInTheDocument()
+    })
+
+    await user.click(screen.getByRole('button', { name: 'Delete North Zone' }))
+
+    expect(window.confirm).toHaveBeenCalled()
+    await waitFor(() => {
+      expect(deleteLodgingArea).toHaveBeenCalledWith('a1')
+    })
+  })
+
+  it('deletes nothing when the staffer cancels', async () => {
+    vi.spyOn(window, 'confirm').mockReturnValue(false)
+    const user = userEvent.setup()
+    render(<LodgingAreasDrawer open onClose={vi.fn()} />, { wrapper })
+    await waitFor(() => {
+      expect(screen.getByDisplayValue('North Zone')).toBeInTheDocument()
+    })
+
+    await user.click(screen.getByRole('button', { name: 'Delete North Zone' }))
+
+    expect(deleteLodgingArea).not.toHaveBeenCalled()
+  })
+})
+
+describe('LodgingAreasDrawer — areas query states', () => {
+  // `areas` fell back to [] for both pending and failed. The drawer then
+  // rendered an empty list with a live Add button, and the next sort_order
+  // computed off nothing — landing on 1, a rank an existing area already holds.
+  it('does not offer Add while the areas are still loading', async () => {
+    listLodgingAreas.mockReturnValue(new Promise(() => undefined))
+    const user = userEvent.setup()
+    render(<LodgingAreasDrawer open onClose={vi.fn()} />, { wrapper })
+
+    // Type a name first: Add is disabled on an empty name regardless, so
+    // asserting on the pristine form would pass without the query guard.
+    await user.type(screen.getByLabelText('New area'), 'West Zone')
+    expect(screen.getByRole('button', { name: 'Add' })).toBeDisabled()
+  })
+
+  it('reports a failed areas fetch rather than showing an empty list', async () => {
+    listLodgingAreas.mockRejectedValue(new Error('network'))
+    render(<LodgingAreasDrawer open onClose={vi.fn()} />, { wrapper })
+
+    // Wait on the error text, not the disabled button: Add is disabled while
+    // the query is merely pending too, so that assertion settles too early.
+    await waitFor(() => {
+      expect(screen.getByText(/could not be loaded/i)).toBeInTheDocument()
+    })
+    expect(screen.getByRole('button', { name: 'Add' })).toBeDisabled()
   })
 })

@@ -15,8 +15,10 @@ vi.mock('../../../services/lodgingCrud', () => ({
   updateLodgingUnit: (...args: unknown[]) => updateLodgingUnit(...args),
 }))
 
+const toastError = vi.fn()
+
 vi.mock('react-hot-toast', () => ({
-  default: { success: vi.fn(), error: vi.fn() },
+  default: { success: vi.fn(), error: (...args: unknown[]) => toastError(...args) },
 }))
 
 import type { LodgingAreaRecord, LodgingUnitInput, LodgingUnitRecord } from '../../../types/lodging'
@@ -396,5 +398,125 @@ describe('LodgingUnitForm — beds', () => {
     await user.click(screen.getByRole('button', { name: 'Remove Queen' }))
 
     expect(screen.queryByLabelText('Queen count')).not.toBeInTheDocument()
+  })
+})
+
+describe('LodgingUnitForm — clearing capacity on an existing unit', () => {
+  // On CREATE a blank field must omit `sleeps`, so PocketBase writes its own 0.
+  // On EDIT omitting it leaves the previous number in place, so clearing the
+  // field is a silent no-op: the form reopens showing the old value and the
+  // staffer believes they cleared it. 0 IS the stored representation of
+  // UNKNOWN, so writing it explicitly is the correct expression of "clear
+  // this", not a destructive one.
+  const SIX: LodgingUnitRecord = { ...UNIT, sleeps: 6 }
+
+  it('writes an explicit 0 when the capacity field is cleared', async () => {
+    updateLodgingUnit.mockResolvedValue({ ...SIX })
+    const user = userEvent.setup()
+
+    render(
+      <LodgingUnitForm
+        areas={AREAS}
+        units={[SIX]}
+        unit={SIX}
+        onSaved={vi.fn()}
+        onCancel={vi.fn()}
+      />
+    )
+    expect(screen.getByLabelText('Sleeps')).toHaveValue(6)
+    await user.clear(screen.getByLabelText('Sleeps'))
+    await user.click(screen.getByRole('button', { name: 'Save unit' }))
+
+    await waitFor(() => {
+      expect(updateLodgingUnit).toHaveBeenCalled()
+    })
+    const [, payload] = updateLodgingUnit.mock.calls[0] as [string, LodgingUnitInput]
+    expect(payload.sleeps).toBe(0)
+  })
+
+  it('still omits sleeps entirely on create, so PocketBase supplies the default', async () => {
+    createLodgingUnit.mockResolvedValue({ id: 'u9' })
+    const user = userEvent.setup()
+
+    render(<LodgingUnitForm areas={AREAS} units={[]} onSaved={vi.fn()} onCancel={vi.fn()} />)
+    await user.type(screen.getByLabelText('Name'), 'Cabin N')
+    await user.click(screen.getByRole('button', { name: 'Create unit' }))
+
+    await waitFor(() => {
+      expect(createLodgingUnit).toHaveBeenCalled()
+    })
+    const [payload] = createLodgingUnit.mock.calls[0] as [LodgingUnitInput]
+    expect(payload.sleeps).toBeUndefined()
+  })
+
+  it('leaves a real capacity untouched when the field is not cleared', async () => {
+    updateLodgingUnit.mockResolvedValue({ ...SIX })
+    const user = userEvent.setup()
+
+    render(
+      <LodgingUnitForm
+        areas={AREAS}
+        units={[SIX]}
+        unit={SIX}
+        onSaved={vi.fn()}
+        onCancel={vi.fn()}
+      />
+    )
+    await user.click(screen.getByRole('button', { name: 'Save unit' }))
+
+    await waitFor(() => {
+      expect(updateLodgingUnit).toHaveBeenCalled()
+    })
+    const [, payload] = updateLodgingUnit.mock.calls[0] as [string, LodgingUnitInput]
+    expect(payload.sleeps).toBe(6)
+  })
+})
+
+describe('LodgingUnitForm — an undeliverable code', () => {
+  // `code` is the join key `bathroom_group` membership and the roster's
+  // `unit_code` both match on. slugify strips everything outside [a-z0-9], so
+  // a name with no ASCII alphanumerics collapses to '' — worse than a rejected
+  // save, because an empty join key silently matches nothing.
+  it('refuses to submit when the name yields no usable code', async () => {
+    const user = userEvent.setup()
+    render(<LodgingUnitForm areas={AREAS} units={[]} onSaved={vi.fn()} onCancel={vi.fn()} />)
+
+    await user.type(screen.getByLabelText('Name'), '北棟')
+    await user.click(screen.getByRole('button', { name: 'Create unit' }))
+
+    await waitFor(() => {
+      expect(toastError).toHaveBeenCalled()
+    })
+    expect(createLodgingUnit).not.toHaveBeenCalled()
+  })
+
+  it('leaves the form usable after refusing', async () => {
+    const user = userEvent.setup()
+    render(<LodgingUnitForm areas={AREAS} units={[]} onSaved={vi.fn()} onCancel={vi.fn()} />)
+
+    await user.type(screen.getByLabelText('Name'), '北棟')
+    await user.click(screen.getByRole('button', { name: 'Create unit' }))
+
+    await waitFor(() => {
+      expect(toastError).toHaveBeenCalled()
+    })
+    expect(screen.getByRole('button', { name: 'Create unit' })).toBeEnabled()
+  })
+
+  it('accepts an explicit code that rescues an otherwise unslugifiable name', async () => {
+    createLodgingUnit.mockResolvedValue({ id: 'u9' })
+    const user = userEvent.setup()
+    render(<LodgingUnitForm areas={AREAS} units={[]} onSaved={vi.fn()} onCancel={vi.fn()} />)
+
+    await user.type(screen.getByLabelText('Name'), '北棟')
+    await user.click(screen.getByRole('button', { name: /set it manually/i }))
+    await user.type(screen.getByLabelText('Code'), 'north-wing')
+    await user.click(screen.getByRole('button', { name: 'Create unit' }))
+
+    await waitFor(() => {
+      expect(createLodgingUnit).toHaveBeenCalled()
+    })
+    const [payload] = createLodgingUnit.mock.calls[0] as [LodgingUnitInput]
+    expect(payload.code).toBe('north-wing')
   })
 })

@@ -49,6 +49,61 @@ func setupCollections(t *testing.T, app core.App) {
 	if err := app.Save(assignments); err != nil {
 		t.Fatalf("save lodging_assignments: %v", err)
 	}
+
+	aliases := core.NewBaseCollection("lodging_unit_aliases")
+	aliases.Fields.Add(&core.TextField{Name: "alias_string", Required: true})
+	if err := app.Save(aliases); err != nil {
+		t.Fatalf("save lodging_unit_aliases: %v", err)
+	}
+	// Distinct name rather than reusing `err`: a second `:=` on it would keep
+	// the outer binding live past the `if err := app.Save(...)` blocks above
+	// and turn each of them into a govet shadow report.
+	aliasesCol, aliasErr := app.FindCollectionByNameOrId("lodging_unit_aliases")
+	if aliasErr != nil {
+		t.Fatalf("find lodging_unit_aliases: %v", aliasErr)
+	}
+
+	issues := core.NewBaseCollection("lodging_ingest_issues")
+	issues.Fields.Add(&core.TextField{Name: "kind"})
+	issues.Fields.Add(&core.TextField{Name: "raw_value"})
+	issues.Fields.Add(&core.BoolField{Name: "is_resolved"})
+	issues.Fields.Add(&core.RelationField{
+		Name: "resolved_alias", CollectionId: aliasesCol.Id, MaxSelect: 1,
+	})
+	if err := app.Save(issues); err != nil {
+		t.Fatalf("save lodging_ingest_issues: %v", err)
+	}
+}
+
+func newAlias(t *testing.T, app core.App, aliasString string) *core.Record {
+	t.Helper()
+	col, err := app.FindCollectionByNameOrId("lodging_unit_aliases")
+	if err != nil {
+		t.Fatalf("find lodging_unit_aliases: %v", err)
+	}
+	r := core.NewRecord(col)
+	r.Set("alias_string", aliasString)
+	if err := app.Save(r); err != nil {
+		t.Fatalf("save alias %q: %v", aliasString, err)
+	}
+	return r
+}
+
+func newResolvedIssue(t *testing.T, app core.App, rawValue, aliasID string) *core.Record {
+	t.Helper()
+	col, err := app.FindCollectionByNameOrId("lodging_ingest_issues")
+	if err != nil {
+		t.Fatalf("find lodging_ingest_issues: %v", err)
+	}
+	r := core.NewRecord(col)
+	r.Set("kind", "unresolved_alias")
+	r.Set("raw_value", rawValue)
+	r.Set("is_resolved", true)
+	r.Set("resolved_alias", aliasID)
+	if err := app.Save(r); err != nil {
+		t.Fatalf("save issue %q: %v", rawValue, err)
+	}
+	return r
 }
 
 func newUnit(t *testing.T, app core.App, code, name string) *core.Record {
@@ -231,5 +286,75 @@ func TestAssignmentGrainXor(t *testing.T) {
 				t.Fatalf("expected a legal grain combination to save, got: %v", saveErr)
 			}
 		})
+	}
+}
+
+// Deleting an alias that a resolved queue item points at is the one path that
+// SILENCES the work queue permanently. IssueRecorder.Flush writes is_resolved
+// only on create (lodging_issues.go), so a re-encountered cabin string updates
+// the existing row without reopening it — the string never returns to the
+// queue, and the placement never resolves again.
+func TestDeletingAnAliasBehindAResolvedIssueIsBlocked(t *testing.T) {
+	app, err := tests.NewTestApp()
+	if err != nil {
+		t.Fatalf("NewTestApp: %v", err)
+	}
+	defer app.Cleanup()
+
+	setupCollections(t, app)
+	alias := newAlias(t, app, "legacy label")
+	newResolvedIssue(t, app, "legacy label", alias.Id)
+
+	wireHooks(app)
+
+	if err := app.Delete(alias); err == nil {
+		t.Fatal("expected the delete to be blocked, got nil error")
+	}
+	if _, err := app.FindRecordById("lodging_unit_aliases", alias.Id); err != nil {
+		t.Fatalf("alias should still exist after a blocked delete: %v", err)
+	}
+}
+
+func TestDeletingAnAliasNoIssuePointsAtIsAllowed(t *testing.T) {
+	app, err := tests.NewTestApp()
+	if err != nil {
+		t.Fatalf("NewTestApp: %v", err)
+	}
+	defer app.Cleanup()
+
+	setupCollections(t, app)
+	alias := newAlias(t, app, "unreferenced label")
+
+	wireHooks(app)
+
+	if err := app.Delete(alias); err != nil {
+		t.Fatalf("expected an unreferenced alias to delete cleanly, got: %v", err)
+	}
+}
+
+// The admin UI reopens the queue row before deleting, which both restores the
+// work item and clears the reference. That sequence must be permitted, or the
+// UI's own delete path is unreachable.
+func TestDeletingAnAliasIsAllowedOnceItsIssueIsReopened(t *testing.T) {
+	app, err := tests.NewTestApp()
+	if err != nil {
+		t.Fatalf("NewTestApp: %v", err)
+	}
+	defer app.Cleanup()
+
+	setupCollections(t, app)
+	alias := newAlias(t, app, "legacy label")
+	issue := newResolvedIssue(t, app, "legacy label", alias.Id)
+
+	wireHooks(app)
+
+	issue.Set("is_resolved", false)
+	issue.Set("resolved_alias", "")
+	if err := app.Save(issue); err != nil {
+		t.Fatalf("reopen issue: %v", err)
+	}
+
+	if err := app.Delete(alias); err != nil {
+		t.Fatalf("expected the delete to be allowed once reopened, got: %v", err)
 	}
 }
