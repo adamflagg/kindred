@@ -1,0 +1,223 @@
+"""Data access for the weekend lodging surface.
+
+Every PocketBase read behind /api/lodging lives here so the service layer is
+testable against mocks. Mirrors api/services/metrics_repository.py.
+
+Slice 1 reads the LIVE PLAN only: lodging_availability, lodging_merges and
+lodging_assignments each carry a nullable `scenario` relation, and an empty
+scenario means the session's live plan. Every filter here pins
+`scenario = ""`. Scenario-scoped reads are a later phase.
+
+Request answers are NOT re-parsed here. The Go ingest derives the share gate,
+the NEAR/WITH/similar-ages modes, the household-grain request text and the four
+housing flags into typed columns on `family_camp_registrations`; this layer
+reads those columns. See api/services/lodging_rules.py for why re-deriving them
+in Python would regress fixes that live only on the Go side.
+"""
+
+from __future__ import annotations
+
+import asyncio
+from collections import defaultdict
+from typing import TYPE_CHECKING, Any
+
+from api.constants.collections import (
+    ATTENDEES,
+    CAMP_SESSIONS,
+    FAMILY_CAMP_ADULTS,
+    FAMILY_CAMP_MEDICAL,
+    FAMILY_CAMP_REGISTRATIONS,
+    HOUSEHOLDS,
+    LODGING_ASSIGNMENTS,
+    LODGING_AVAILABILITY,
+    LODGING_INGEST_ISSUES,
+    LODGING_UNITS,
+)
+from api.constants.filters import ACTIVE_ENROLLED_FILTER
+from bunking.logging_config import get_logger
+
+if TYPE_CHECKING:
+    from pocketbase import PocketBase
+
+logger = get_logger(__name__)
+
+# camp_sessions.session_type values that this surface owns. Summer types
+# (main/embedded/ag/quest/...) belong to the bunking board, not here.
+WEEKEND_SESSION_TYPES = ("family", "adult")
+
+# Empty scenario = the live plan.
+LIVE_PLAN_FILTER = 'scenario = ""'
+
+# lodging_ingest_issues.kind for a cabin string that resolved to no unit. The
+# collection carries seven kinds and this surface reports only this one, so the
+# roster's "unmapped cabins" figure cannot silently absorb ambiguous-session or
+# write-failure rows. The migration's select list is the constraint on that
+# vocabulary, not any constant here.
+UNRESOLVED_ALIAS_KIND = "unresolved_alias"
+
+
+class LodgingRepository:
+    """PocketBase access layer for the weekend lodging surface."""
+
+    def __init__(self, pb: PocketBase) -> None:
+        self.pb = pb
+
+    async def fetch_weekend_sessions(self, year: int) -> list[Any]:
+        """All family + adult sessions for a year, in display order."""
+        type_filter = " || ".join(f'session_type = "{t}"' for t in WEEKEND_SESSION_TYPES)
+        return await asyncio.to_thread(
+            self.pb.collection(CAMP_SESSIONS).get_full_list,
+            query_params={
+                "filter": f"year = {year} && ({type_filter})",
+                "sort": "sort_order,start_date",
+            },
+        )
+
+    async def fetch_session(self, year: int, session_cm_id: int) -> Any | None:
+        """One weekend session by CampMinder id, or None."""
+        rows = await asyncio.to_thread(
+            self.pb.collection(CAMP_SESSIONS).get_full_list,
+            query_params={"filter": f"year = {year} && cm_id = {session_cm_id}"},
+        )
+        return rows[0] if rows else None
+
+    async def fetch_units(self) -> list[Any]:
+        """Every lodging unit with its area expanded.
+
+        Deliberately unfiltered: container rows and inactive units stay in
+        the payload so the roster can badge them. Only the CAPACITY COUNTS
+        exclude containers (spec §9a: naive SUM(sleeps) is 408 vs a true 389).
+        """
+        return await asyncio.to_thread(
+            self.pb.collection(LODGING_UNITS).get_full_list,
+            query_params={"expand": "area", "sort": "area.sort_order,name"},
+        )
+
+    async def fetch_availability(self, year: int, session_pb_id: str) -> list[Any]:
+        """Live-plan staff reservations / releases for one session."""
+        return await asyncio.to_thread(
+            self.pb.collection(LODGING_AVAILABILITY).get_full_list,
+            query_params={
+                "filter": f'session = "{session_pb_id}" && year = {year} && {LIVE_PLAN_FILTER}',
+            },
+        )
+
+    async def fetch_assignments(self, year: int, session_pb_id: str) -> list[Any]:
+        """Live-plan lodging assignments for one session."""
+        return await asyncio.to_thread(
+            self.pb.collection(LODGING_ASSIGNMENTS).get_full_list,
+            query_params={
+                "filter": f'session = "{session_pb_id}" && year = {year} && {LIVE_PLAN_FILTER}',
+                "expand": "unit,merge",
+            },
+        )
+
+    async def fetch_attendees_for_session(self, year: int, session_pb_id: str) -> list[Any]:
+        """Active-enrolled attendees for one session, with person expanded.
+
+        status_id = 2 is the single source of truth for enrolment; filtering
+        any other way is silently wrong.
+        """
+        return await asyncio.to_thread(
+            self.pb.collection(ATTENDEES).get_full_list,
+            query_params={
+                "filter": f'session = "{session_pb_id}" && year = {year} && {ACTIVE_ENROLLED_FILTER}',
+                "expand": "person",
+            },
+        )
+
+    async def fetch_households(self, year: int) -> dict[str, Any]:
+        """Households for a year, keyed by PocketBase record id."""
+        rows = await asyncio.to_thread(
+            self.pb.collection(HOUSEHOLDS).get_full_list,
+            query_params={"filter": f"year = {year}"},
+        )
+        return {row.id: row for row in rows}
+
+    async def fetch_prior_household_cm_ids(self, year: int) -> set[int]:
+        """CampMinder ids of every household seen in an EARLIER year.
+
+        This is the returning-family signal: households rows are per-year, so
+        a cm_id present before `year` means the family has been here before.
+        """
+        rows = await asyncio.to_thread(
+            self.pb.collection(HOUSEHOLDS).get_full_list,
+            query_params={"filter": f"year < {year}", "fields": "cm_id"},
+        )
+        return {int(getattr(row, "cm_id", 0)) for row in rows if getattr(row, "cm_id", 0)}
+
+    async def fetch_family_camp_adults(self, year: int) -> dict[str, list[Any]]:
+        """Accompanying adults grouped by household PB id, in adult_number order.
+
+        CampMinder enrols only the children for family camp; the adults exist
+        only as custom-field values scraped into this table.
+        """
+        rows = await asyncio.to_thread(
+            self.pb.collection(FAMILY_CAMP_ADULTS).get_full_list,
+            query_params={"filter": f"year = {year}", "sort": "adult_number"},
+        )
+        grouped: dict[str, list[Any]] = defaultdict(list)
+        for row in rows:
+            grouped[str(getattr(row, "household", ""))].append(row)
+        for adults in grouped.values():
+            adults.sort(key=lambda a: int(getattr(a, "adult_number", 0) or 0))
+        return dict(grouped)
+
+    async def fetch_family_camp_registrations(self, year: int) -> dict[str, Any]:
+        """Registration answers keyed by household PB id.
+
+        Carries the ingest-derived request layer -- share_cabin_gate,
+        wants_near / wants_with / wants_similar_ages, request_text -- and the
+        four PHI-free housing flags. Read those columns; do not re-derive them
+        from share_cabin_preference / shared_cabin_modes_raw, which are the raw
+        profile values kept for provenance.
+        """
+        rows = await asyncio.to_thread(
+            self.pb.collection(FAMILY_CAMP_REGISTRATIONS).get_full_list,
+            query_params={"filter": f"year = {year}"},
+        )
+        return {str(getattr(row, "household", "")): row for row in rows}
+
+    async def fetch_family_camp_medical(self, year: int) -> dict[str, Any]:
+        """PHI, keyed by household PB id.
+
+        CALLERS MUST NOT put these records into a roster payload. The roster
+        derives booleans from PRESENCE only; the narrative is served solely by
+        the permission-gated medical endpoint.
+        """
+        rows = await asyncio.to_thread(
+            self.pb.collection(FAMILY_CAMP_MEDICAL).get_full_list,
+            query_params={"filter": f"year = {year}"},
+        )
+        return {str(getattr(row, "household", "")): row for row in rows}
+
+    async def count_open_unresolved_aliases(self) -> int:
+        """Cabin strings ingest could not resolve, still awaiting triage.
+
+        One work queue, owned and solely written by the ingest layer. Narrowed
+        to the alias kind so the roster's unmapped-cabin figure does not absorb
+        the queue's six other kinds.
+        """
+        rows = await asyncio.to_thread(
+            self.pb.collection(LODGING_INGEST_ISSUES).get_full_list,
+            query_params={
+                "filter": f'kind = "{UNRESOLVED_ALIAS_KIND}" && is_resolved = false',
+                "fields": "id",
+            },
+        )
+        return len(rows)
+
+    async def count_unconfirmed_units(self) -> int:
+        """Bookable units whose amenity data is still a seed guess.
+
+        is_container = false because the seven building rows are not bookable
+        and their amenity values are meaningless.
+        """
+        rows = await asyncio.to_thread(
+            self.pb.collection(LODGING_UNITS).get_full_list,
+            query_params={
+                "filter": "is_confirmed = false && is_container = false && is_active = true",
+                "fields": "id",
+            },
+        )
+        return len(rows)
