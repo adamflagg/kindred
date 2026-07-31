@@ -8,7 +8,7 @@
  */
 import type { BathroomStoredValue } from '../../../types/lodging'
 import { AMENITY_FLAGS, type UnitAmenities } from './unitAmenities'
-import { FIELD, LABEL, SECTION } from './unitFormFields'
+import { FIELD, LABEL, SECTION } from './lodgingStyles'
 
 export interface UnitAmenityFieldsetProps {
   value: UnitAmenities

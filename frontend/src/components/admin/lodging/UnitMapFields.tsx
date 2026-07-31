@@ -6,7 +6,7 @@
  * Blank means unplaced, and an unplaced unit submits no coordinate at all
  * rather than pinning itself to the map's top-left corner.
  */
-import { FIELD, LABEL, SECTION } from './unitFormFields'
+import { FIELD, LABEL, SECTION } from './lodgingStyles'
 
 export interface UnitMapPosition {
   x: string

@@ -9,7 +9,8 @@
 import { useState } from 'react'
 
 import type { LodgingAreaRecord, LodgingUnitRecord } from '../../../types/lodging'
-import { FIELD, LABEL, SECTION, slugify } from './unitFormFields'
+import { FIELD, LABEL, SECTION } from './lodgingStyles'
+import { slugify } from './unitCode'
 
 export interface UnitIdentity {
   name: string

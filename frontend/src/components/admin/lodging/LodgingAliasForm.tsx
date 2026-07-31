@@ -16,9 +16,7 @@ import toast from 'react-hot-toast'
 
 import { createLodgingAlias, updateLodgingAlias } from '../../../services/lodgingCrud'
 import type { LodgingAliasRecord, LodgingUnitRecord } from '../../../types/lodging'
-
-const FIELD = 'border-border bg-background w-full rounded-md border px-2 py-1 text-sm'
-const LABEL = 'text-muted-foreground mb-1 block text-xs font-medium'
+import { BUTTON_PRIMARY, BUTTON_SECONDARY, FIELD, LABEL } from './lodgingStyles'
 
 export interface LodgingAliasFormProps {
   units: LodgingUnitRecord[]
@@ -138,7 +136,7 @@ export function LodgingAliasForm({ units, alias, onSaved, onCancel }: LodgingAli
           onClick={() => {
             setShowWindow(true)
           }}
-          className="text-muted-foreground w-fit text-xs font-medium hover:underline"
+          className="text-muted-foreground hover:text-foreground w-fit text-xs font-medium hover:underline"
         >
           Set a year window (only needed when a name was reused for a different building)
         </button>
@@ -148,15 +146,11 @@ export function LodgingAliasForm({ units, alias, onSaved, onCancel }: LodgingAli
         <button
           type="submit"
           disabled={isSaving || memberUnits.length === 0}
-          className="bg-primary rounded-md px-3 py-1.5 text-sm font-medium text-white disabled:opacity-50"
+          className={BUTTON_PRIMARY}
         >
           {alias ? 'Save alias' : 'Create alias'}
         </button>
-        <button
-          type="button"
-          onClick={onCancel}
-          className="border-border rounded-md border px-3 py-1.5 text-sm font-medium"
-        >
+        <button type="button" onClick={onCancel} className={BUTTON_SECONDARY}>
           Cancel
         </button>
       </div>

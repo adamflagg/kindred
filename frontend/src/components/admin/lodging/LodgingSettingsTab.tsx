@@ -6,16 +6,20 @@
  * in source code — not the area list, the unit list, the alias mapping, the
  * parent relations, the staff-default flags, or any amenity.
  */
+import { AlertCircle, BedDouble, Link2 } from 'lucide-react'
 import { Link, useParams } from 'react-router'
 
 import { LodgingAliasesPanel } from './LodgingAliasesPanel'
 import { LodgingUnitsPanel } from './LodgingUnitsPanel'
 import { UnresolvedAliasQueue } from './UnresolvedAliasQueue'
 
+// The summer session view's tab grammar (`SessionTabs`), not a second one.
+// An icon per section for the same reason it has them: three pills of similar
+// length are hard to reacquire after looking away at a 93-row table.
 const SECTIONS = [
-  { id: 'units', label: 'Units' },
-  { id: 'aliases', label: 'Cabin name aliases' },
-  { id: 'unresolved', label: 'Unresolved names' },
+  { id: 'units', label: 'Units', icon: BedDouble },
+  { id: 'aliases', label: 'Cabin name aliases', icon: Link2 },
+  { id: 'unresolved', label: 'Unresolved names', icon: AlertCircle },
 ] as const
 
 type SectionId = (typeof SECTIONS)[number]['id']
@@ -32,20 +36,31 @@ export function LodgingSettingsTab() {
 
   return (
     <div className="flex flex-col gap-4">
-      <nav className="flex flex-wrap gap-2" aria-label="Lodging settings sections">
-        {SECTIONS.map((entry) => (
-          <Link
-            key={entry.id}
-            to={`/admin/lodging/${entry.id}`}
-            className={`rounded-lg px-3 py-1.5 text-sm font-medium transition-colors ${
-              entry.id === active
-                ? 'bg-primary/10 text-primary'
-                : 'text-muted-foreground hover:bg-muted/50'
-            }`}
-          >
-            {entry.label}
-          </Link>
-        ))}
+      <nav className="border-border/50 border-b py-2" aria-label="Lodging settings sections">
+        <div className="flex flex-wrap items-center gap-1.5">
+          {SECTIONS.map((entry) => {
+            const Icon = entry.icon
+            const isActive = entry.id === active
+            return (
+              <Link
+                key={entry.id}
+                to={`/admin/lodging/${entry.id}`}
+                aria-current={isActive ? 'page' : undefined}
+                className={`flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold transition-all duration-200 ${
+                  isActive
+                    ? 'bg-primary text-primary-foreground shadow-lodge-sm'
+                    : // forest-800 where `SessionTabs` writes forest-950: the
+                      // scale stops at 900, so its dark hover generates no rule
+                      // at all. Matching the grammar, not the bug.
+                      'text-muted-foreground hover:text-foreground hover:bg-forest-50/50 dark:hover:bg-forest-800/60'
+                }`}
+              >
+                <Icon className="h-4 w-4" aria-hidden="true" />
+                <span>{entry.label}</span>
+              </Link>
+            )
+          })}
+        </div>
       </nav>
 
       {active === 'units' && <LodgingUnitsPanel />}

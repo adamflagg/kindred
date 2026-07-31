@@ -23,6 +23,7 @@ import {
 import type { LodgingAliasRecord } from '../../../types/lodging'
 import { queryKeys, userDataOptions } from '../../../utils/queryKeys'
 import { QueryGuard } from '../../QueryGuard'
+import { ACTION_LINK, BUTTON_PRIMARY, HEADER_ROW } from './lodgingStyles'
 import { LodgingAliasForm } from './LodgingAliasForm'
 
 /** Stored 0 means "unbounded" — PocketBase never stores NULL in a number. */
@@ -77,9 +78,9 @@ export function LodgingAliasesPanel() {
           onClick={() => {
             setEditing('new')
           }}
-          className="bg-primary inline-flex flex-shrink-0 items-center gap-1 rounded-md px-3 py-1.5 text-sm font-medium text-white"
+          className={`${BUTTON_PRIMARY} flex-shrink-0`}
         >
-          <Plus className="h-4 w-4" />
+          <Plus className="h-4 w-4" aria-hidden="true" />
           New alias
         </button>
       </div>
@@ -113,7 +114,7 @@ export function LodgingAliasesPanel() {
             <div className="card-lodge overflow-x-auto p-4">
               <table className="w-full text-left text-sm">
                 <thead>
-                  <tr className="border-border text-muted-foreground border-b text-xs uppercase">
+                  <tr className={HEADER_ROW}>
                     <th className="pb-2">Cabin string</th>
                     <th className="pb-2">Resolves to</th>
                     <th className="pb-2">Years</th>
@@ -126,8 +127,8 @@ export function LodgingAliasesPanel() {
                     const members = alias.expand?.member_units ?? []
                     return (
                       <tr key={alias.id} className="border-border/50 border-b">
-                        <td className="py-2 font-mono text-xs">{alias.alias_string}</td>
-                        <td className="py-2">
+                        <td className="py-1.5 font-mono text-xs">{alias.alias_string}</td>
+                        <td className="py-1.5">
                           <p>{members.map((unit) => unit.name).join(', ')}</p>
                           <p className="text-muted-foreground text-xs">
                             {members.length > 1
@@ -135,23 +136,25 @@ export function LodgingAliasesPanel() {
                               : 'Single unit'}
                           </p>
                         </td>
-                        <td className="py-2">{yearWindow(alias)}</td>
-                        <td className="text-muted-foreground py-2 text-xs">{alias.source_field}</td>
-                        <td className="py-2 text-right">
+                        <td className="py-1.5">{yearWindow(alias)}</td>
+                        <td className="text-muted-foreground py-1.5 text-xs">
+                          {alias.source_field}
+                        </td>
+                        <td className="py-1.5 text-right">
                           <button
                             type="button"
                             onClick={() => {
                               setEditing(alias)
                             }}
                             aria-label={`Edit ${alias.alias_string}`}
-                            className="text-primary mr-3 text-xs font-medium hover:underline"
+                            className={`text-primary mr-3 ${ACTION_LINK}`}
                           >
                             Edit
                           </button>
                           <button
                             type="button"
                             onClick={() => void handleDelete(alias)}
-                            className="text-muted-foreground text-xs font-medium hover:underline"
+                            className={`text-muted-foreground hover:text-foreground ${ACTION_LINK}`}
                           >
                             Delete
                           </button>

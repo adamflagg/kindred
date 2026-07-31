@@ -25,8 +25,7 @@ import {
 } from '../../../services/lodgingCrud'
 import type { LodgingAreaRecord } from '../../../types/lodging'
 import { queryKeys, userDataOptions } from '../../../utils/queryKeys'
-
-const FIELD = 'border-border bg-background rounded-md border px-2 py-1 text-sm'
+import { ACTION_LINK, BUTTON_PRIMARY, FIELD_INLINE as FIELD, LABEL } from './lodgingStyles'
 
 function slugify(name: string): string {
   return name
@@ -102,7 +101,10 @@ export function LodgingAreasDrawer({ open, onClose }: LodgingAreasDrawerProps) {
 
           <ul className="flex flex-col gap-3">
             {areas.map((area, index) => (
-              <li key={area.id} className="border-border flex flex-col gap-2 rounded-lg border p-3">
+              <li
+                key={area.id}
+                className="border-border hover:border-primary/50 flex flex-col gap-2 rounded-lg border p-3 transition-colors"
+              >
                 <div className="flex items-center gap-2">
                   <input
                     className={`${FIELD} flex-1`}
@@ -170,7 +172,7 @@ export function LodgingAreasDrawer({ open, onClose }: LodgingAreasDrawerProps) {
                       )
                     }
                     aria-label={`Delete ${area.name}`}
-                    className="text-muted-foreground ml-auto font-medium hover:underline"
+                    className={`text-muted-foreground hover:text-foreground ml-auto ${ACTION_LINK}`}
                   >
                     Delete
                   </button>
@@ -181,7 +183,7 @@ export function LodgingAreasDrawer({ open, onClose }: LodgingAreasDrawerProps) {
 
           <div className="border-border flex items-end gap-2 border-t pt-4">
             <label className="flex-1 text-sm">
-              <span className="text-muted-foreground mb-1 block text-xs font-medium">New area</span>
+              <span className={LABEL}>New area</span>
               <input
                 className={`${FIELD} w-full`}
                 value={draftName}
@@ -206,9 +208,9 @@ export function LodgingAreasDrawer({ open, onClose }: LodgingAreasDrawerProps) {
                   setDraftName('')
                 }, 'Failed to create the area')
               }
-              className="bg-primary inline-flex items-center gap-1 rounded-md px-3 py-1.5 text-sm font-medium text-white disabled:opacity-50"
+              className={BUTTON_PRIMARY}
             >
-              <Plus className="h-4 w-4" />
+              <Plus className="h-4 w-4" aria-hidden="true" />
               Add
             </button>
           </div>

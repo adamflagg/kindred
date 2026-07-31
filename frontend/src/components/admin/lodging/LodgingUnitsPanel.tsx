@@ -28,6 +28,7 @@ import {
 import type { LodgingUnitRecord } from '../../../types/lodging'
 import { queryKeys, userDataOptions } from '../../../utils/queryKeys'
 import { QueryGuard } from '../../QueryGuard'
+import { BUTTON_PRIMARY, BUTTON_SECONDARY, GROUP_HEADING, HEADER_ROW } from './lodgingStyles'
 import { LodgingAreasDrawer } from './LodgingAreasDrawer'
 import { LodgingUnitForm } from './LodgingUnitForm'
 import { LodgingUnitRow } from './LodgingUnitRow'
@@ -117,7 +118,9 @@ export function LodgingUnitsPanel() {
   }
 
   return (
-    <div className="flex flex-col gap-4">
+    // The floating bulk bar sits over the table, so a selection buys the last
+    // rows enough clearance to still reach their own actions.
+    <div className={`flex flex-col gap-4 ${selected.size > 0 ? 'pb-20' : ''}`}>
       <div className="flex flex-wrap items-center justify-between gap-3">
         <p className="text-muted-foreground max-w-2xl text-sm">
           Amenity values seeded from historical occupancy stay marked unconfirmed until staff verify
@@ -130,9 +133,9 @@ export function LodgingUnitsPanel() {
             onClick={() => {
               setAreasOpen(true)
             }}
-            className="border-border inline-flex items-center gap-1 rounded-md border px-3 py-1.5 text-sm font-medium"
+            className={BUTTON_SECONDARY}
           >
-            <Map className="h-4 w-4" />
+            <Map className="h-4 w-4" aria-hidden="true" />
             Areas
           </button>
           <button
@@ -140,21 +143,29 @@ export function LodgingUnitsPanel() {
             onClick={() => {
               setEditing('new')
             }}
-            className="bg-primary inline-flex items-center gap-1 rounded-md px-3 py-1.5 text-sm font-medium text-white"
+            className={BUTTON_PRIMARY}
           >
-            <Plus className="h-4 w-4" />
+            <Plus className="h-4 w-4" aria-hidden="true" />
             New unit
           </button>
         </div>
       </div>
 
+      {/*
+        Floating, in the solver's action-bar grammar (`ConfigTab`): 93 rows
+        outrun a viewport, and an inline bar scrolls away exactly when staff
+        are still picking rows further down. Collapsing an area drops its units
+        from the selection, so the count here only ever covers visible rows.
+      */}
       {selected.size > 0 && (
-        <div className="border-forest-300 bg-forest-50 dark:border-forest-800 dark:bg-forest-950/40 flex flex-wrap items-center gap-3 rounded-lg border px-4 py-2.5">
-          <span className="text-sm font-medium">{selected.size} selected</span>
+        <div className="animate-in slide-in-from-bottom-4 border-forest-300 bg-forest-50 dark:border-forest-600 dark:bg-forest-800 fixed right-4 bottom-4 z-50 flex flex-wrap items-center gap-3 rounded-xl border px-4 py-3 shadow-lg duration-200 sm:right-6 sm:bottom-6">
+          <span className="text-foreground text-sm font-semibold tabular-nums">
+            {selected.size} selected
+          </span>
           <button
             type="button"
             onClick={() => void handleConfirm([...selected])}
-            className="bg-primary rounded-md px-3 py-1.5 text-sm font-medium text-white"
+            className={BUTTON_PRIMARY}
           >
             Confirm {selected.size} selected
           </button>
@@ -163,7 +174,7 @@ export function LodgingUnitsPanel() {
             onClick={() => {
               setSelected(new Set())
             }}
-            className="text-muted-foreground text-sm font-medium hover:underline"
+            className="text-muted-foreground hover:text-foreground text-sm font-medium hover:underline"
           >
             Clear
           </button>
@@ -217,7 +228,7 @@ export function LodgingUnitsPanel() {
                   each area still collapses independently.
                 */}
                 <thead>
-                  <tr className="border-border text-muted-foreground border-b text-xs uppercase">
+                  <tr className={HEADER_ROW}>
                     <th className="pb-2" />
                     {UNIT_SORT_COLUMNS.map((col) => {
                       const isActive = sort.field === col.field
@@ -267,17 +278,26 @@ export function LodgingUnitsPanel() {
                                 group.units.map((u) => u.id)
                               )
                             }}
-                            className="hover:bg-muted/40 flex w-full items-center gap-2 py-2 text-left transition-colors"
+                            className="hover:bg-muted/40 focus-visible:ring-forest-500 bg-muted/20 flex w-full items-center gap-2 px-1 py-2 text-left transition-colors focus-visible:ring-2 focus-visible:outline-none"
                           >
                             {isCollapsed ? (
-                              <ChevronRight className="text-muted-foreground h-4 w-4" />
+                              <ChevronRight
+                                className="text-muted-foreground h-4 w-4"
+                                aria-hidden="true"
+                              />
                             ) : (
-                              <ChevronDown className="text-muted-foreground h-4 w-4" />
+                              <ChevronDown
+                                className="text-muted-foreground h-4 w-4"
+                                aria-hidden="true"
+                              />
                             )}
-                            <span className="font-display text-sm font-semibold">
-                              {group.areaName}
+                            {/* The roster's area headings, exactly: the unit
+                                name is what staff scan for, so the zone above
+                                it stays quieter than the rows it holds. */}
+                            <span className={GROUP_HEADING}>{group.areaName}</span>
+                            <span className="bg-muted text-muted-foreground rounded-full px-2 py-0.5 text-xs font-medium tabular-nums">
+                              {rows.length}
                             </span>
-                            <span className="text-muted-foreground text-xs">{rows.length}</span>
                           </button>
                         </td>
                       </tr>

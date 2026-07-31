@@ -31,7 +31,8 @@ import type {
   LodgingUnitRecord,
 } from '../../../types/lodging'
 import { amenitiesOf } from './unitAmenities'
-import { FIELD, LABEL, SECTION, slugify } from './unitFormFields'
+import { BUTTON_PRIMARY, BUTTON_SECONDARY, FIELD, LABEL, SECTION } from './lodgingStyles'
+import { slugify } from './unitCode'
 import { UnitAmenityFieldset } from './UnitAmenityFieldset'
 import { UnitCapacityFields } from './UnitCapacityFields'
 import { UnitIdentityFields } from './UnitIdentityFields'
@@ -166,8 +167,13 @@ export function LodgingUnitForm({ areas, units, unit, onSaved, onCancel }: Lodgi
 
       <UnitMapFields value={map} onChange={setMap} />
 
+      {/* Its own section, or it reads as a note about the map coordinates
+          above it. The field's label is for assistive tech only — the heading
+          is already the visible one, and two would be the same word twice. */}
+      <p className={SECTION}>Notes</p>
+
       <label className="text-sm sm:col-span-2">
-        <span className={LABEL}>Notes</span>
+        <span className="sr-only">Notes</span>
         <textarea
           className={FIELD}
           rows={2}
@@ -180,18 +186,10 @@ export function LodgingUnitForm({ areas, units, unit, onSaved, onCancel }: Lodgi
       </label>
 
       <div className="border-border/60 mt-1 flex gap-2 border-t pt-3 sm:col-span-2">
-        <button
-          type="submit"
-          disabled={isSaving}
-          className="bg-primary text-primary-foreground shadow-lodge-sm rounded-lg px-4 py-2 text-sm font-semibold transition-opacity disabled:opacity-50"
-        >
+        <button type="submit" disabled={isSaving} className={BUTTON_PRIMARY}>
           {unit ? 'Save unit' : 'Create unit'}
         </button>
-        <button
-          type="button"
-          onClick={onCancel}
-          className="border-border text-muted-foreground hover:text-foreground hover:bg-muted/50 rounded-lg border px-4 py-2 text-sm font-semibold transition-colors"
-        >
+        <button type="button" onClick={onCancel} className={BUTTON_SECONDARY}>
           Cancel
         </button>
       </div>

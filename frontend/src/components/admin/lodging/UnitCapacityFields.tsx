@@ -11,7 +11,7 @@
  */
 import { suggestedSleeps, type BedInventory } from '../../../types/beds'
 import { BedInventoryEditor } from './BedInventoryEditor'
-import { FIELD, LABEL, SECTION } from './unitFormFields'
+import { FIELD, LABEL, SECTION } from './lodgingStyles'
 
 export interface UnitCapacity {
   /** A string because blank is a real value: UNKNOWN. */

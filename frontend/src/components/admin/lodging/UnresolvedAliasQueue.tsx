@@ -27,6 +27,7 @@ import {
 import type { LodgingIngestIssueRecord } from '../../../types/lodging'
 import { queryKeys, userDataOptions } from '../../../utils/queryKeys'
 import { QueryGuard } from '../../QueryGuard'
+import { BUTTON_PRIMARY, BUTTON_SECONDARY, LABEL } from './lodgingStyles'
 
 /** Recorded on the queue row so an ignored entry says why, not just that. */
 const NOT_A_CABIN_NOTE = 'Marked by an admin as not a cabin name.'
@@ -123,9 +124,7 @@ export function UnresolvedAliasQueue() {
                   </div>
 
                   <fieldset className="flex flex-wrap gap-3">
-                    <legend className="text-muted-foreground mb-1 text-xs font-medium">
-                      Maps to (pick two or more for a merge)
-                    </legend>
+                    <legend className={LABEL}>Maps to (pick two or more for a merge)</legend>
                     {(unitsQuery.data ?? []).map((unit) => (
                       <label key={unit.id} className="inline-flex items-center gap-1.5 text-sm">
                         <input
@@ -146,14 +145,14 @@ export function UnresolvedAliasQueue() {
                       type="button"
                       disabled={chosen.length === 0}
                       onClick={() => void handleMap(row)}
-                      className="bg-primary rounded-md px-3 py-1.5 text-sm font-medium text-white disabled:opacity-50"
+                      className={BUTTON_PRIMARY}
                     >
                       Map to selected units
                     </button>
                     <button
                       type="button"
                       onClick={() => void handleIgnore(row)}
-                      className="border-border rounded-md border px-3 py-1.5 text-sm font-medium"
+                      className={BUTTON_SECONDARY}
                     >
                       Not a cabin
                     </button>

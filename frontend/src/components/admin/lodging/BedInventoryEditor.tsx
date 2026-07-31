@@ -10,8 +10,7 @@ import { Plus, X } from 'lucide-react'
 import { useState } from 'react'
 
 import { BED_TYPES, bedTypeLabel, type BedInventory, type BedType } from '../../../types/beds'
-
-const FIELD = 'border-border bg-background rounded-md border px-2 py-1 text-sm'
+import { BUTTON_SECONDARY, FIELD_INLINE as FIELD } from './lodgingStyles'
 
 export interface BedInventoryEditorProps {
   beds: BedInventory
@@ -89,12 +88,8 @@ export function BedInventoryEditor({ beds, onChange }: BedInventoryEditorProps) 
             </option>
           ))}
         </select>
-        <button
-          type="button"
-          onClick={addBed}
-          className="border-border inline-flex items-center gap-1 rounded-md border px-2 py-1 text-sm font-medium"
-        >
-          <Plus className="h-3.5 w-3.5" />
+        <button type="button" onClick={addBed} className={`${BUTTON_SECONDARY} px-3 py-1.5`}>
+          <Plus className="h-3.5 w-3.5" aria-hidden="true" />
           Add bed
         </button>
       </div>
