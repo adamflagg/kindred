@@ -104,9 +104,17 @@ func ParseSharedCabinModes(raw string) (near, with, similarAges bool) {
 		with = with || strings.Contains(upper, "WITH")
 		// CampMinder's live text is unhyphenated; the hyphenated spelling is
 		// accepted so a staff edit in CampMinder cannot silently zero the flag.
-		similarAges = similarAges ||
-			strings.Contains(upper, "SIMILARLY AGED") ||
+		optionHasSimilarAges := strings.Contains(upper, "SIMILARLY AGED") ||
 			strings.Contains(upper, "SIMILARLY-AGED")
+		similarAges = similarAges || optionHasSimilarAges
+		// Set explicitly rather than leaning on the WITH match above. The live
+		// sentence does contain "WITH", so this is redundant today -- but the
+		// hyphen guard on the line above exists precisely because staff edit
+		// these sentences, and an edit to "w/" would otherwise produce
+		// wants_similar_ages without wants_with: a state this function's
+		// doc comment, HouseholdRequest, family_camp_derived.go, migration
+		// 1500000127 and the Python schema all declare impossible.
+		with = with || optionHasSimilarAges
 	}
 	return near, with, similarAges
 }

@@ -150,6 +150,13 @@ func TestParseSharedCabinModes(t *testing.T) {
 		// staff edit these sentences. Both spellings are accepted so a hyphen
 		// added in CampMinder does not silently zero the flag.
 		{"Share a cabin WITH a family with similarly-aged kids", false, true, true},
+		// The invariant, isolated: no literal WITH anywhere in the sentence.
+		// Every other similarly-aged case above also contains "WITH", so they
+		// pass through the WITH substring match and prove nothing about
+		// similarAges implying with. A staff rewrite to "w/" is all it takes
+		// to reach this shape, and wants_similar_ages without wants_with is a
+		// state five comments in this codebase declare impossible.
+		{"Share a cabin w/ a family whose kids are similarly aged", false, true, true},
 		// All three at once, across the pipe.
 		{withOpen + "|" + near, true, true, true},
 	}
