@@ -8,20 +8,20 @@
 # execution continues, so a run reports EVERY violation at once rather than
 # stopping at the first — that is what makes the FAIL count usable as progress.
 #
-# Why serve-and-kill: `pocketbase migrate up` silently skips JS migrations.
-# jsvm captures MigrationsDir at plugin-registration time (before flag parsing),
-# so --migrationsDir is a no-op; jsvm always resolves
-# filepath.Join(app.DataDir(), "../pb_migrations"). We symlink that path to the
-# repo's migrations dir. Same technique as scripts/dev/verify-consolidation.sh.
+# Why serve-and-kill, the jsvm symlink trick, and the "0 .js migrations
+# applied" smoke check all live in scripts/dev/lib/pb-harness.sh, shared with
+# scripts/dev/verify-consolidation.sh and scripts/dev/verify-lodging-seed.sh.
 set -euo pipefail
 
+HERE=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
+# shellcheck source=lib/pb-harness.sh
+source "$HERE/lib/pb-harness.sh"
+
 # Check tools up front so a missing one exits 2 (cannot run) rather than 127
-# midway through, which would read as an assertion failure. Same contract as
-# scripts/dev/migration-schema-diff.sh. git is in the list and the list runs
-# BEFORE the first git call — checking after invoking it would never fire.
-for cmd in git sqlite3 curl python3; do
-  command -v "$cmd" >/dev/null 2>&1 || { echo "error: required command '$cmd' not found" >&2; exit 2; }
-done
+# midway through, which would read as an assertion failure. git is in the
+# list and the list runs BEFORE the first git call — checking after invoking
+# it would never fire.
+pb_harness_require_tools
 
 REPO_ROOT=$(git rev-parse --show-toplevel)
 PB_BIN="$REPO_ROOT/pocketbase/pocketbase"
@@ -30,53 +30,15 @@ MIG_DIR="$REPO_ROOT/pocketbase/pb_migrations"
 [[ -x "$PB_BIN" ]] || { echo "error: $PB_BIN missing; run: cd pocketbase && go build -o pocketbase ." >&2; exit 2; }
 
 SCRATCH=$(mktemp -d)
-PB_PID=""
-# Trap INT and TERM as well as EXIT, and kill the background PocketBase from
-# inside the handler. A signal arriving during the up-to-40s health poll would
-# otherwise run only the EXIT handler, deleting $SCRATCH but orphaning a
-# `pocketbase serve` bound to the ephemeral port.
-cleanup() {
-  if [[ -n "$PB_PID" ]]; then
-    kill "$PB_PID" 2>/dev/null || true
-    wait "$PB_PID" 2>/dev/null || true
-  fi
-  rm -rf "$SCRATCH"
-}
-trap cleanup EXIT INT TERM
+# shellcheck disable=SC2016  # deliberate: $SCRATCH expands when the trap fires, not here
+pb_harness_install_trap 'rm -rf "$SCRATCH"'
 
 DB_DIR="$SCRATCH/data/pb_data"
-mkdir -p "$DB_DIR"
-HOOKS_DIR=$(mktemp -d "$SCRATCH/empty-hooks-XXXX")
-# jsvm default resolution: <dataDir>/../pb_migrations
-ln -sfn "$MIG_DIR" "$SCRATCH/data/pb_migrations"
-
-PORT=$(python3 -c 'import socket; s=socket.socket(); s.bind(("127.0.0.1",0)); print(s.getsockname()[1]); s.close()')
 LOG="$SCRATCH/boot.log"
-
-"$PB_BIN" serve --http="127.0.0.1:$PORT" --dir "$DB_DIR" \
-  --hooksDir "$HOOKS_DIR" --automigrate=true > "$LOG" 2>&1 &
-PB_PID=$!
-
-ok=0
-for _ in $(seq 1 200); do
-  if curl -sf "http://127.0.0.1:$PORT/api/health" >/dev/null 2>&1; then ok=1; break; fi
-  sleep 0.2
-done
-# Stop PocketBase before querying, so sqlite3 reads a settled database. The trap
-# is the safety net for signal paths; this kill makes it a no-op on normal paths.
-kill "$PB_PID" 2>/dev/null || true
-wait "$PB_PID" 2>/dev/null || true
-PB_PID=""
-
-if [[ "$ok" -ne 1 ]]; then
-  echo "error: pocketbase serve never came up; log:" >&2; cat "$LOG" >&2; exit 2
-fi
+pb_harness_boot "$PB_BIN" "$DB_DIR" "$MIG_DIR" "$LOG"
 
 DB="$DB_DIR/data.db"
-js_migs=$(sqlite3 "$DB" "SELECT COUNT(*) FROM _migrations WHERE file LIKE '%.js'")
-if [[ "$js_migs" -lt 1 ]]; then
-  echo "error: 0 .js migrations applied — jsvm loading broke" >&2; cat "$LOG" >&2; exit 2
-fi
+js_migs="$PB_HARNESS_JS_MIGRATION_COUNT"
 
 fail=0
 note() { echo "FAIL: $*" >&2; fail=1; }

@@ -21,6 +21,10 @@ HERE=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 REPO_ROOT=$(cd "$HERE/../.." && pwd)
 DIFF_SCRIPT="$HERE/migration-schema-diff.sh"
 
+# shellcheck source=lib/pb-harness.sh
+source "$HERE/lib/pb-harness.sh"
+pb_harness_require_tools
+
 for d in "$PROPOSED_DIR" "$CURRENT_DIR"; do
   if [[ ! -d "$d" ]]; then
     echo "error: $d not a directory" >&2
@@ -28,8 +32,9 @@ for d in "$PROPOSED_DIR" "$CURRENT_DIR"; do
   fi
 done
 
-# Canonicalize to absolute paths so the symlink in pb_apply() resolves
-# correctly regardless of whether the caller passed relative or absolute paths.
+# Canonicalize to absolute paths so the symlink pb_harness_boot creates
+# resolves correctly regardless of whether the caller passed relative or
+# absolute paths.
 PROPOSED_DIR=$(cd "$PROPOSED_DIR" && pwd)
 CURRENT_DIR=$(cd "$CURRENT_DIR" && pwd)
 
@@ -46,77 +51,28 @@ fi
 # Build pocketbase binary once and reuse for both scratch DBs to avoid
 # paying go-build cost twice. Built in scratch dir so it's auto-cleaned.
 SCRATCH=$(mktemp -d -t pb-verify-XXXX)
-trap 'rm -rf "$SCRATCH"' EXIT INT TERM
+# shellcheck disable=SC2016  # deliberate: $SCRATCH expands when the trap fires, not here
+pb_harness_install_trap 'rm -rf "$SCRATCH"'
 
-# Apply all migrations in $mig_dir to a fresh DB at $db_dir via serve-and-kill.
-# Uses PB's real boot path (automigrate=true) which loads JS migrations through
-# the jsvm plugin — this is the only invocation path that actually runs them.
-# Plain `migrate up` silently skips JS migrations (PB v0.37 behavior, observed
-# 2026-05-08 during first consolidation round).
-#
-# IMPORTANT: jsvm.MustRegister() reads MigrationsDir before cobra parses CLI
-# flags (it runs at plugin registration time, not at serve time). Passing
-# --migrationsDir is therefore a no-op for jsvm — jsvm always falls back to
-# its default: filepath.Join(app.DataDir(), "../pb_migrations"). We exploit
-# this by symlinking $db_dir/../pb_migrations -> $mig_dir so the default
-# resolution lands on our scratch copy.
+# Apply all migrations in $mig_dir to a fresh DB at $db_dir via
+# pb_harness_boot, then assert more than just the PB defaults landed.
+# pb_harness_boot's own smoke check only guarantees >=1 .js migration
+# applied; this is a belt-and-suspenders check specific to comparing a
+# "proposed" migration set against reality.
 #
 # Args: <db_dir> <migrations_dir> <log_path>
-# Exits the harness (exit 2) on serve-failure or empty-apply (smoke check).
 pb_apply() {
   local db_dir="$1" mig_dir="$2" log="$3"
-  local hooks_dir
-  # Place hooks_dir under $SCRATCH so the outer EXIT trap reclaims it on every
-  # exit path, including the `exit 2` harness-error branches below.
-  hooks_dir=$(mktemp -d "$SCRATCH/pb-empty-hooks-XXXX")
 
-  # Symlink pb_migrations next to db_dir so jsvm's default path resolution
-  # finds $mig_dir when it computes filepath.Join(app.DataDir(), "../pb_migrations").
-  # Caller is responsible for placing $db_dir under its own parent directory
-  # (not a shared $SCRATCH) so the symlink target doesn't collide between
-  # successive pb_apply() invocations.
-  local parent_dir
-  parent_dir=$(dirname "$db_dir")
-  ln -sfn "$mig_dir" "$parent_dir/pb_migrations"
+  # This harness's own historical timeout (10s) rather than the shared
+  # default (40s) — scoped to just this call, reverts once it returns.
+  PB_HARNESS_HEALTH_ATTEMPTS=100 PB_HARNESS_HEALTH_INTERVAL=0.1 \
+    pb_harness_boot "$SCRATCH/pocketbase" "$db_dir" "$mig_dir" "$log"
 
-  local port
-  port=$(python3 -c 'import socket; s=socket.socket(); s.bind(("127.0.0.1",0)); print(s.getsockname()[1]); s.close()')
-
-  "$SCRATCH/pocketbase" serve --http="127.0.0.1:$port" \
-              --dir "$db_dir" \
-              --hooksDir "$hooks_dir" \
-              --automigrate=true \
-              > "$log" 2>&1 &
-  local pid=$!
-  # Ensure backgrounded PB is cleaned up on every exit path from this function.
-  trap 'kill "$pid" 2>/dev/null || true; wait "$pid" 2>/dev/null || true' RETURN
-
-  local ok=0
-  for _ in $(seq 1 100); do
-    if curl -sf "http://127.0.0.1:$port/api/health" >/dev/null 2>&1; then
-      ok=1; break
-    fi
-    sleep 0.1
-  done
-
-  kill "$pid" 2>/dev/null || true
-  wait "$pid" 2>/dev/null || true
-
-  if [[ "$ok" -ne 1 ]]; then
-    echo "error: pocketbase serve never came up against $mig_dir; log:" >&2
-    cat "$log" >&2
-    exit 2
-  fi
-
-  local coll_count js_mig_count
+  local coll_count
   coll_count=$(sqlite3 "$db_dir/data.db" "SELECT COUNT(*) FROM _collections")
-  js_mig_count=$(sqlite3 "$db_dir/data.db" "SELECT COUNT(*) FROM _migrations WHERE file LIKE '%.js'")
   if [[ "$coll_count" -le "$PB_DEFAULT_COLLECTIONS" ]]; then
     echo "error: smoke check failed — $coll_count collections in $db_dir (expected >$PB_DEFAULT_COLLECTIONS, only PB defaults applied)" >&2
-    exit 2
-  fi
-  if [[ "$js_mig_count" -lt 1 ]]; then
-    echo "error: smoke check failed — 0 .js entries in _migrations ($db_dir); jsvm migration loading broke" >&2
     exit 2
   fi
 }
@@ -125,12 +81,12 @@ echo ">> building pocketbase binary..."
 ( cd "$REPO_ROOT/pocketbase" && go build -o "$SCRATCH/pocketbase" . ) > "$SCRATCH/build.log" 2>&1 \
   || { echo "pocketbase build failed; log:"; cat "$SCRATCH/build.log"; exit 2; }
 
-# Each DB lives under its own slot directory so pb_apply's symlink target
-# ($parent_dir/pb_migrations) is unique per call. Without this, both calls
-# would target $SCRATCH/pb_migrations and the second invocation would clobber
-# the first's symlink. Sequential execution masks the bug today, but the
-# isolation costs nothing and makes the harness robust to future parallelism
-# or PB internals changes.
+# Each DB lives under its own slot directory so pb_harness_boot's symlink
+# target ($parent_dir/pb_migrations) is unique per call. Without this, both
+# calls would target $SCRATCH/pb_migrations and the second invocation would
+# clobber the first's symlink. Sequential execution masks the bug today, but
+# the isolation costs nothing and makes the harness robust to future
+# parallelism or PB internals changes.
 mkdir -p "$SCRATCH/slot_a/db_a" "$SCRATCH/slot_b/db_b"
 
 echo ">> applying PROPOSED migrations to DB-A..."
