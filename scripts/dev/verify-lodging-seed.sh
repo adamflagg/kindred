@@ -1,18 +1,21 @@
 #!/usr/bin/env bash
 # Asserts the lodging seed produced the expected rows. Applies migrations to a
-# throwaway DB using the same serve-and-kill technique as
-# scripts/dev/verify-lodging-schema.sh (see that file for why).
+# throwaway DB via scripts/dev/lib/pb-harness.sh (see that file for the
+# serve-and-kill technique and why it's needed), shared with
+# scripts/dev/verify-consolidation.sh and scripts/dev/verify-lodging-schema.sh.
 #
 # Exit codes: 0 = all assertions passed. 1 = one or more assertions FAILED.
 # 2 = could not run the check at all. Assertions aggregate rather than
 # short-circuit; see verify-lodging-schema.sh.
 set -euo pipefail
 
-# Missing tool must exit 2 (cannot run), not 127 midway. Same contract as
-# scripts/dev/migration-schema-diff.sh. Runs BEFORE the first git call.
-for cmd in git sqlite3 curl python3; do
-  command -v "$cmd" >/dev/null 2>&1 || { echo "error: required command '$cmd' not found" >&2; exit 2; }
-done
+HERE=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
+# shellcheck source=lib/pb-harness.sh
+source "$HERE/lib/pb-harness.sh"
+
+# Missing tool must exit 2 (cannot run), not 127 midway. Runs BEFORE the
+# first git call.
+pb_harness_require_tools
 
 REPO_ROOT=$(git rev-parse --show-toplevel)
 PB_BIN="$REPO_ROOT/pocketbase/pocketbase"
@@ -21,27 +24,12 @@ MIG_DIR="$REPO_ROOT/pocketbase/pb_migrations"
 [[ -x "$PB_BIN" ]] || { echo "error: $PB_BIN missing; run: cd pocketbase && go build -o pocketbase ." >&2; exit 2; }
 
 SCRATCH=$(mktemp -d)
-PB_PID=""
-# EXIT INT TERM, with the kill inside the handler — a signal during the health
-# poll would otherwise orphan a `pocketbase serve` on the ephemeral port.
-cleanup() {
-  if [[ -n "$PB_PID" ]]; then
-    kill "$PB_PID" 2>/dev/null || true
-    wait "$PB_PID" 2>/dev/null || true
-  fi
-  rm -rf "$SCRATCH"
-}
-trap cleanup EXIT INT TERM
+# shellcheck disable=SC2016  # deliberate: $SCRATCH expands when the trap fires, not here
+pb_harness_install_trap 'rm -rf "$SCRATCH"'
 
-DB_DIR="$SCRATCH/data/pb_data"; mkdir -p "$DB_DIR"
-HOOKS_DIR=$(mktemp -d "$SCRATCH/empty-hooks-XXXX")
-ln -sfn "$MIG_DIR" "$SCRATCH/data/pb_migrations"
-PORT=$(python3 -c 'import socket; s=socket.socket(); s.bind(("127.0.0.1",0)); print(s.getsockname()[1]); s.close()')
-"$PB_BIN" serve --http="127.0.0.1:$PORT" --dir "$DB_DIR" --hooksDir "$HOOKS_DIR" --automigrate=true > "$SCRATCH/boot.log" 2>&1 &
-PB_PID=$!
-ok=0; for _ in $(seq 1 200); do curl -sf "http://127.0.0.1:$PORT/api/health" >/dev/null 2>&1 && { ok=1; break; }; sleep 0.2; done
-kill "$PB_PID" 2>/dev/null || true; wait "$PB_PID" 2>/dev/null || true; PB_PID=""
-[[ "$ok" -eq 1 ]] || { echo "error: serve never came up" >&2; cat "$SCRATCH/boot.log" >&2; exit 2; }
+DB_DIR="$SCRATCH/data/pb_data"
+LOG="$SCRATCH/boot.log"
+pb_harness_boot "$PB_BIN" "$DB_DIR" "$MIG_DIR" "$LOG"
 
 DB="$DB_DIR/data.db"
 fail=0; note() { echo "FAIL: $*" >&2; fail=1; }
