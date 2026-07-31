@@ -171,16 +171,16 @@ class LodgingRosterService:
         )
 
     async def get_household_medical(self, year: int, household_cm_id: int) -> HouseholdMedicalResponse:
-        """PHI. The router gates this on Permission.LODGING_PHI."""
-        households, medical = await asyncio.gather(
-            self.repository.fetch_households(year),
-            self.repository.fetch_family_camp_medical(year),
-        )
-        household_pb_id = next(
-            (pb_id for pb_id, row in households.items() if _i(row, "cm_id") == household_cm_id),
-            "",
-        )
-        record = medical.get(household_pb_id)
+        """PHI. The router gates this on Permission.LODGING_PHI.
+
+        Two narrow reads, deliberately sequential: the household resolves the
+        PB id that the medical read is anchored to. The whole-year maps this
+        used to scan would put every family's narrative in memory to answer
+        one -- a PHI-surface problem before it is a performance one.
+        """
+        household = await self.repository.fetch_household_by_cm_id(year, household_cm_id)
+        household_pb_id = _s(household, "id") if household is not None else ""
+        record = await self.repository.fetch_medical_for_household(year, household_pb_id)
         if record is None:
             return HouseholdMedicalResponse(household_cm_id=household_cm_id, year=year)
         return HouseholdMedicalResponse(
@@ -217,9 +217,12 @@ class LodgingRosterService:
                     area_code=_s(area, "code") if area is not None else "",
                     area_name=_s(area, "name") if area is not None else "",
                     sleeps=unit_capacity(_i(unit, "sleeps")),
-                    # Slice 1 has no merges on the read surface, so a unit is
-                    # evaluated as its own one-element slot. When the board
-                    # ships, pass the merge's member codes here instead.
+                    # The units INVENTORY is not merge-aware in slice 1, so a
+                    # unit is evaluated as its own one-element slot. (Merges do
+                    # reach the roster elsewhere -- an assignment to a merge
+                    # sets RosterParty.is_merged_slot -- so the gap is here,
+                    # not on the surface as a whole.) When the board ships,
+                    # pass the merge's member codes here instead.
                     bathroom=cast(
                         Any,
                         effective_bathroom(

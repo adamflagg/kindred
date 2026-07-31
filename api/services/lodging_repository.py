@@ -55,6 +55,18 @@ LIVE_PLAN_FILTER = 'scenario = ""'
 # vocabulary, not any constant here.
 UNRESOLVED_ALIAS_KIND = "unresolved_alias"
 
+# Every read below pages through `get_full_list`, which walks LIMIT/OFFSET
+# without an ORDER BY unless one is given. SQLite may then return a different
+# row order per request, so a row past the first page can be skipped or
+# duplicated -- silently dropping a household from the roster. Reads with no
+# meaningful display order pin the record id, which is stable and indexed.
+# Same defect, same fix as the Go attribution reader in #1877.
+STABLE_SORT = "id"
+
+
+def _weekend_type_filter() -> str:
+    return " || ".join(f'session_type = "{t}"' for t in WEEKEND_SESSION_TYPES)
+
 
 class LodgingRepository:
     """PocketBase access layer for the weekend lodging surface."""
@@ -64,20 +76,29 @@ class LodgingRepository:
 
     async def fetch_weekend_sessions(self, year: int) -> list[Any]:
         """All family + adult sessions for a year, in display order."""
-        type_filter = " || ".join(f'session_type = "{t}"' for t in WEEKEND_SESSION_TYPES)
         return await asyncio.to_thread(
             self.pb.collection(CAMP_SESSIONS).get_full_list,
             query_params={
-                "filter": f"year = {year} && ({type_filter})",
+                "filter": f"year = {year} && ({_weekend_type_filter()})",
                 "sort": "sort_order,start_date",
             },
         )
 
     async def fetch_session(self, year: int, session_cm_id: int) -> Any | None:
-        """One weekend session by CampMinder id, or None."""
+        """One weekend session by CampMinder id, or None.
+
+        Type-filtered like fetch_weekend_sessions, and for a reason beyond
+        symmetry: build_roster branches on session_type and falls through to
+        the HOUSEHOLD grain for anything that is not "adult". Without this
+        filter a summer cm_id resolves here and is handed a family-grain
+        roster, instead of the 404 the router promises.
+        """
         rows = await asyncio.to_thread(
             self.pb.collection(CAMP_SESSIONS).get_full_list,
-            query_params={"filter": f"year = {year} && cm_id = {session_cm_id}"},
+            query_params={
+                "filter": f"year = {year} && cm_id = {session_cm_id} && ({_weekend_type_filter()})",
+                "sort": STABLE_SORT,
+            },
         )
         return rows[0] if rows else None
 
@@ -99,6 +120,7 @@ class LodgingRepository:
             self.pb.collection(LODGING_AVAILABILITY).get_full_list,
             query_params={
                 "filter": f'session = "{session_pb_id}" && year = {year} && {LIVE_PLAN_FILTER}',
+                "sort": STABLE_SORT,
             },
         )
 
@@ -109,6 +131,7 @@ class LodgingRepository:
             query_params={
                 "filter": f'session = "{session_pb_id}" && year = {year} && {LIVE_PLAN_FILTER}',
                 "expand": "unit,merge",
+                "sort": STABLE_SORT,
             },
         )
 
@@ -123,6 +146,7 @@ class LodgingRepository:
             query_params={
                 "filter": f'session = "{session_pb_id}" && year = {year} && {ACTIVE_ENROLLED_FILTER}',
                 "expand": "person",
+                "sort": STABLE_SORT,
             },
         )
 
@@ -130,9 +154,24 @@ class LodgingRepository:
         """Households for a year, keyed by PocketBase record id."""
         rows = await asyncio.to_thread(
             self.pb.collection(HOUSEHOLDS).get_full_list,
-            query_params={"filter": f"year = {year}"},
+            query_params={"filter": f"year = {year}", "sort": STABLE_SORT},
         )
         return {row.id: row for row in rows}
+
+    async def fetch_household_by_cm_id(self, year: int, household_cm_id: int) -> Any | None:
+        """One household by CampMinder id, or None.
+
+        The PHI path uses this instead of fetch_households: answering one
+        household must not materialise every family in the year.
+        """
+        rows = await asyncio.to_thread(
+            self.pb.collection(HOUSEHOLDS).get_full_list,
+            query_params={
+                "filter": f"year = {year} && cm_id = {household_cm_id}",
+                "sort": STABLE_SORT,
+            },
+        )
+        return rows[0] if rows else None
 
     async def fetch_prior_household_cm_ids(self, year: int) -> set[int]:
         """CampMinder ids of every household seen in an EARLIER year.
@@ -142,7 +181,7 @@ class LodgingRepository:
         """
         rows = await asyncio.to_thread(
             self.pb.collection(HOUSEHOLDS).get_full_list,
-            query_params={"filter": f"year < {year}", "fields": "cm_id"},
+            query_params={"filter": f"year < {year}", "fields": "cm_id", "sort": STABLE_SORT},
         )
         return {int(getattr(row, "cm_id", 0)) for row in rows if getattr(row, "cm_id", 0)}
 
@@ -174,7 +213,7 @@ class LodgingRepository:
         """
         rows = await asyncio.to_thread(
             self.pb.collection(FAMILY_CAMP_REGISTRATIONS).get_full_list,
-            query_params={"filter": f"year = {year}"},
+            query_params={"filter": f"year = {year}", "sort": STABLE_SORT},
         )
         return {str(getattr(row, "household", "")): row for row in rows}
 
@@ -183,13 +222,46 @@ class LodgingRepository:
 
         CALLERS MUST NOT put these records into a roster payload. The roster
         derives booleans from PRESENCE only; the narrative is served solely by
-        the permission-gated medical endpoint.
+        the permission-gated medical endpoint, which reads ONE household
+        through fetch_medical_for_household rather than this whole-year map.
         """
         rows = await asyncio.to_thread(
             self.pb.collection(FAMILY_CAMP_MEDICAL).get_full_list,
-            query_params={"filter": f"year = {year}"},
+            query_params={"filter": f"year = {year}", "sort": STABLE_SORT},
         )
         return {str(getattr(row, "household", "")): row for row in rows}
+
+    async def fetch_medical_for_household(self, year: int, household_pb_id: str) -> Any | None:
+        """PHI for ONE household, or None.
+
+        A blank id means the household did not resolve, and is never turned
+        into a query: an unanchored filter is how one family's narrative
+        reaches another family's request.
+        """
+        if not household_pb_id:
+            return None
+        rows = await asyncio.to_thread(
+            self.pb.collection(FAMILY_CAMP_MEDICAL).get_full_list,
+            query_params={
+                "filter": f'year = {year} && household = "{household_pb_id}"',
+                "sort": STABLE_SORT,
+            },
+        )
+        return rows[0] if rows else None
+
+    async def _count(self, collection: str, filter_str: str) -> int:
+        """Row count via the list total, without paging the rows in.
+
+        One page of one row carries the same `total_items` as the full list,
+        so a count never needs get_full_list.
+        """
+        result = await asyncio.to_thread(
+            self.pb.collection(collection).get_list,
+            1,
+            1,
+            query_params={"filter": filter_str, "fields": "id"},
+        )
+        return int(result.total_items)
 
     async def count_open_unresolved_aliases(self) -> int:
         """Cabin strings ingest could not resolve, still awaiting triage.
@@ -198,14 +270,10 @@ class LodgingRepository:
         to the alias kind so the roster's unmapped-cabin figure does not absorb
         the queue's six other kinds.
         """
-        rows = await asyncio.to_thread(
-            self.pb.collection(LODGING_INGEST_ISSUES).get_full_list,
-            query_params={
-                "filter": f'kind = "{UNRESOLVED_ALIAS_KIND}" && is_resolved = false',
-                "fields": "id",
-            },
+        return await self._count(
+            LODGING_INGEST_ISSUES,
+            f'kind = "{UNRESOLVED_ALIAS_KIND}" && is_resolved = false',
         )
-        return len(rows)
 
     async def count_unconfirmed_units(self) -> int:
         """Bookable units whose amenity data is still a seed guess.
@@ -213,11 +281,7 @@ class LodgingRepository:
         is_container = false because the seven building rows are not bookable
         and their amenity values are meaningless.
         """
-        rows = await asyncio.to_thread(
-            self.pb.collection(LODGING_UNITS).get_full_list,
-            query_params={
-                "filter": "is_confirmed = false && is_container = false && is_active = true",
-                "fields": "id",
-            },
+        return await self._count(
+            LODGING_UNITS,
+            "is_confirmed = false && is_container = false && is_active = true",
         )
-        return len(rows)

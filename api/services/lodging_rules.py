@@ -38,9 +38,11 @@ def unit_capacity(sleeps: int | None) -> int | None:
     """Return the bed count, or None when capacity is unknown.
 
     PocketBase declares number columns `NUMERIC DEFAULT 0 NOT NULL`, so a
-    `sleeps` value staff never filled in stores as 0 and never as NULL. Six
-    seeded units are in that state. 0 therefore means UNKNOWN: never render
-    it as "sleeps 0" and never sum it into a capacity total.
+    `sleeps` value staff never filled in stores as 0 and never as NULL. Nine
+    seeded units are in that state, five of them bookable -- the other four
+    are container rows, which no capacity count includes anyway. 0 therefore
+    means UNKNOWN: never render it as "sleeps 0" and never sum it into a
+    capacity total.
     """
     if sleeps is None or sleeps <= 0:
         return None

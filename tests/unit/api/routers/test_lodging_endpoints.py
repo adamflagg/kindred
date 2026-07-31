@@ -67,6 +67,29 @@ def _phi_user() -> AuthUser:
     return user
 
 
+def _medical_reads(**kwargs: Any) -> list[Any]:
+    """Two narrow reads: the household by cm_id, then its medical row."""
+    query_filter = kwargs.get("query_params", {}).get("filter", "")
+    if "cm_id = 2000001" in query_filter:
+        return [_rec(id="hh_1", cm_id=2000001)]
+    if 'household = "hh_1"' in query_filter:
+        return [
+            _rec(
+                id="med_1",
+                household="hh_1",
+                cpap_info="Uses a CPAP nightly",
+                physician_info="",
+                special_needs_info="",
+                allergy_info="",
+                dietary_info="",
+                additional_info="",
+                bathroom_explain="",
+                accommodation_explain="",
+            )
+        ]
+    return []
+
+
 @pytest.fixture
 def mock_pb() -> MagicMock:
     client = MagicMock()
@@ -162,27 +185,7 @@ class TestMedicalEndpointIsPermissionGated:
         assert Permission.LODGING_PHI in response.json()["detail"]
 
     def test_user_with_the_permission_gets_the_narrative(self, mock_pb: MagicMock) -> None:
-        def get_full_list(**kwargs: Any) -> list[Any]:
-            query_filter = kwargs.get("query_params", {}).get("filter", "")
-            if query_filter == "year = 2026":
-                return [
-                    _rec(id="hh_1", cm_id=2000001),
-                    _rec(
-                        id="med_1",
-                        household="hh_1",
-                        cpap_info="Uses a CPAP nightly",
-                        physician_info="",
-                        special_needs_info="",
-                        allergy_info="",
-                        dietary_info="",
-                        additional_info="",
-                        bathroom_explain="",
-                        accommodation_explain="",
-                    ),
-                ]
-            return []
-
-        mock_pb.collection.return_value.get_full_list.side_effect = get_full_list
+        mock_pb.collection.return_value.get_full_list.side_effect = _medical_reads
 
         with patch("api.routers.lodging.pb", mock_pb):
             app = _build_app(_phi_user(), mock_pb)
@@ -193,6 +196,49 @@ class TestMedicalEndpointIsPermissionGated:
         body = response.json()
         assert body["household_cm_id"] == 2000001
         assert body["cpap_info"] == "Uses a CPAP nightly"
+
+    def test_phi_reveal_is_logged_by_username_not_email(self, mock_pb: MagicMock) -> None:
+        """The audit trail identifies the caller without storing their email.
+
+        A PHI access log inherits the retention and access rules of the log
+        store, not of the PHI surface. `username` identifies the caller just
+        as well without putting an address into that store.
+        """
+        mock_pb.collection.return_value.get_full_list.side_effect = _medical_reads
+
+        with (
+            patch("api.routers.lodging.pb", mock_pb),
+            patch("api.routers.lodging.logger") as mock_logger,
+        ):
+            app = _build_app(_phi_user(), mock_pb)
+            TestClient(app).get("/api/lodging/households/2000001/medical", params={"year": 2026})
+
+        extra = mock_logger.info.call_args[1]["extra"]
+        assert extra["user"] == "TestNurse"
+        assert "nurse@example.com" not in str(extra.values())
+        assert extra["household_cm_id"] == 2000001
+        assert extra["year"] == 2026
+
+    def test_medical_read_does_not_load_the_whole_year(self, mock_pb: MagicMock) -> None:
+        """One household in, one household's PHI out.
+
+        Loading every family's medical row to answer one is a PHI-surface
+        problem before it is a performance one.
+        """
+        seen: list[str] = []
+
+        def record_filters(**kwargs: Any) -> list[Any]:
+            seen.append(kwargs.get("query_params", {}).get("filter", ""))
+            return _medical_reads(**kwargs)
+
+        mock_pb.collection.return_value.get_full_list.side_effect = record_filters
+
+        with patch("api.routers.lodging.pb", mock_pb):
+            app = _build_app(_phi_user(), mock_pb)
+            TestClient(app).get("/api/lodging/households/2000001/medical", params={"year": 2026})
+
+        assert seen, "the endpoint issued no reads"
+        assert all(f != "year = 2026" for f in seen), f"an unanchored whole-year read reached the PHI path: {seen}"
 
     def test_roster_payload_never_carries_medical_narrative(self, mock_pb: MagicMock) -> None:
         """Belt and braces over the schema-level boundary test.

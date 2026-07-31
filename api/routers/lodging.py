@@ -80,10 +80,12 @@ async def get_household_medical(
 
     The access is logged, but only its subject and the caller -- never a
     narrative field, which would put the disclosure into the log it is being
-    gated out of.
+    gated out of. The caller is recorded by `username`, not `email`: the log
+    store has its own retention and access rules, and the audit trail needs
+    to identify the caller, not carry an address into that store.
     """
     logger.info(
         "PHI reveal: lodging medical narrative accessed",
-        extra={"household_cm_id": household_cm_id, "year": year, "user": user.email},
+        extra={"household_cm_id": household_cm_id, "year": year, "user": user.username},
     )
     return await _service().get_household_medical(year, household_cm_id)

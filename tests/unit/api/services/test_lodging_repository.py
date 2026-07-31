@@ -54,6 +54,112 @@ class TestFetchWeekendSessions:
         assert '"main"' not in filter_str
 
 
+class TestFetchSession:
+    @pytest.mark.asyncio
+    async def test_filters_to_family_and_adult_types(self, repo: LodgingRepository, pb: MagicMock) -> None:
+        """A summer cm_id must not resolve here.
+
+        `build_roster` branches on session_type and falls through to the
+        household grain for anything that is not "adult", so an unfiltered
+        read hands a summer session a family-grain roster instead of the 404
+        the router promises.
+        """
+        await repo.fetch_session(2026, 900001)
+
+        pb.collection.assert_called_with("camp_sessions")
+        filter_str = _last_query(pb)["filter"]
+        assert "year = 2026" in filter_str
+        assert "cm_id = 900001" in filter_str
+        for session_type in WEEKEND_SESSION_TYPES:
+            assert f'session_type = "{session_type}"' in filter_str
+
+
+class TestStableSort:
+    """Every paginated read pins a sort key.
+
+    `get_full_list` walks pages with LIMIT/OFFSET. With no ORDER BY, SQLite
+    may return a different row order per request, so a row past page 1 can be
+    skipped or duplicated -- silently dropping a household from the roster.
+    Same defect CodeRabbit caught on the Go side in #1877.
+    """
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "call",
+        [
+            pytest.param(lambda r: r.fetch_session(2026, 1), id="fetch_session"),
+            pytest.param(lambda r: r.fetch_availability(2026, "s1"), id="fetch_availability"),
+            pytest.param(lambda r: r.fetch_assignments(2026, "s1"), id="fetch_assignments"),
+            pytest.param(lambda r: r.fetch_attendees_for_session(2026, "s1"), id="fetch_attendees"),
+            pytest.param(lambda r: r.fetch_households(2026), id="fetch_households"),
+            pytest.param(lambda r: r.fetch_prior_household_cm_ids(2026), id="fetch_prior_cm_ids"),
+            pytest.param(lambda r: r.fetch_family_camp_registrations(2026), id="fetch_registrations"),
+            pytest.param(lambda r: r.fetch_family_camp_medical(2026), id="fetch_medical"),
+            pytest.param(lambda r: r.fetch_weekend_sessions(2026), id="fetch_weekend_sessions"),
+            pytest.param(lambda r: r.fetch_units(), id="fetch_units"),
+            pytest.param(lambda r: r.fetch_family_camp_adults(2026), id="fetch_adults"),
+        ],
+    )
+    async def test_paginated_read_pins_a_sort_key(self, repo: LodgingRepository, pb: MagicMock, call: Any) -> None:
+        await call(repo)
+
+        assert _last_query(pb).get("sort"), "paginated read must pin a stable sort key"
+
+
+class TestNarrowPhiReads:
+    """The PHI path reads one household, never the whole year.
+
+    Loading every family's medical row to answer one is a PHI-surface
+    problem before it is a performance one.
+    """
+
+    @pytest.mark.asyncio
+    async def test_fetch_household_by_cm_id_filters_to_the_one_household(
+        self, repo: LodgingRepository, pb: MagicMock
+    ) -> None:
+        pb.collection.return_value.get_full_list.return_value = [_record(id="hh_1", cm_id=2000001)]
+
+        result = await repo.fetch_household_by_cm_id(2026, 2000001)
+
+        pb.collection.assert_called_with("households")
+        filter_str = _last_query(pb)["filter"]
+        assert "year = 2026" in filter_str
+        assert "cm_id = 2000001" in filter_str
+        assert result is not None
+        assert result.id == "hh_1"
+
+    @pytest.mark.asyncio
+    async def test_fetch_household_by_cm_id_returns_none_when_absent(self, repo: LodgingRepository) -> None:
+        assert await repo.fetch_household_by_cm_id(2026, 2000001) is None
+
+    @pytest.mark.asyncio
+    async def test_fetch_medical_for_household_filters_to_the_one_household(
+        self, repo: LodgingRepository, pb: MagicMock
+    ) -> None:
+        pb.collection.return_value.get_full_list.return_value = [_record(cpap_info="uses a CPAP")]
+
+        result = await repo.fetch_medical_for_household(2026, "hh_1")
+
+        pb.collection.assert_called_with("family_camp_medical")
+        filter_str = _last_query(pb)["filter"]
+        assert "year = 2026" in filter_str
+        assert 'household = "hh_1"' in filter_str
+        assert result is not None
+        assert result.cpap_info == "uses a CPAP"
+
+    @pytest.mark.asyncio
+    async def test_fetch_medical_for_household_returns_none_for_a_blank_id(
+        self, repo: LodgingRepository, pb: MagicMock
+    ) -> None:
+        """A blank PB id means the household did not resolve.
+
+        Never turn that into a query: an unanchored filter is how one
+        household's narrative reaches another household's request.
+        """
+        assert await repo.fetch_medical_for_household(2026, "") is None
+        pb.collection.return_value.get_full_list.assert_not_called()
+
+
 class TestFetchAssignments:
     @pytest.mark.asyncio
     async def test_reads_only_the_live_plan_and_expands_unit_and_merge(
@@ -146,7 +252,19 @@ class TestFetchFamilyCampRegistrations:
         assert result["hh_1"].share_cabin_gate == "yes_share"
 
 
+def _last_list_query(pb: MagicMock) -> dict[str, Any]:
+    call = pb.collection.return_value.get_list.call_args
+    params: dict[str, Any] = call[1]["query_params"]
+    return params
+
+
 class TestCounts:
+    """Counts ask the server for a total; they never page the rows in.
+
+    `get_full_list` fetches every matching row only to call len() on it. One
+    page of one row carries the same total_items.
+    """
+
     @pytest.mark.asyncio
     async def test_open_unresolved_aliases_reads_the_ingest_work_queue(
         self, repo: LodgingRepository, pb: MagicMock
@@ -157,27 +275,39 @@ class TestCounts:
         is a cabin string awaiting a mapping. Counting the whole table would
         report ambiguous-session and write-failure rows as unmapped cabins.
         """
-        pb.collection.return_value.get_full_list.return_value = [_record(), _record(), _record()]
+        pb.collection.return_value.get_list.return_value = _record(total_items=3)
 
         count = await repo.count_open_unresolved_aliases()
 
         pb.collection.assert_called_with("lodging_ingest_issues")
-        filter_str = _last_query(pb)["filter"]
+        filter_str = _last_list_query(pb)["filter"]
         assert 'kind = "unresolved_alias"' in filter_str
         assert "is_resolved = false" in filter_str
         assert count == 3
+        pb.collection.return_value.get_full_list.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_unconfirmed_units_excludes_containers_and_inactive(
         self, repo: LodgingRepository, pb: MagicMock
     ) -> None:
-        pb.collection.return_value.get_full_list.return_value = [_record()]
+        pb.collection.return_value.get_list.return_value = _record(total_items=1)
 
         count = await repo.count_unconfirmed_units()
 
         pb.collection.assert_called_with("lodging_units")
-        filter_str = _last_query(pb)["filter"]
+        filter_str = _last_list_query(pb)["filter"]
         assert "is_confirmed = false" in filter_str
         assert "is_container = false" in filter_str
         assert "is_active = true" in filter_str
         assert count == 1
+        pb.collection.return_value.get_full_list.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_counts_request_a_single_row(self, repo: LodgingRepository, pb: MagicMock) -> None:
+        pb.collection.return_value.get_list.return_value = _record(total_items=42)
+
+        await repo.count_unconfirmed_units()
+
+        args = pb.collection.return_value.get_list.call_args[0]
+        assert args[0] == 1, "page 1"
+        assert args[1] == 1, "one row is enough to carry total_items"

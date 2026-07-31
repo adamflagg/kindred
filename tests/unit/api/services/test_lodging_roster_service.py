@@ -79,6 +79,9 @@ def _repo(**overrides: Any) -> MagicMock:
         "fetch_family_camp_adults": {},
         "fetch_family_camp_registrations": {},
         "fetch_family_camp_medical": {},
+        # The PHI path reads one household, not the whole-year maps above.
+        "fetch_household_by_cm_id": None,
+        "fetch_medical_for_household": None,
         "count_open_unresolved_aliases": 0,
         "count_unconfirmed_units": 0,
     }
@@ -608,16 +611,19 @@ class TestMedicalFlagsAndNarrative:
     @pytest.mark.asyncio
     async def test_get_household_medical_returns_the_narrative(self) -> None:
         repo = _repo(
-            fetch_households={"hh_1": _rec(id="hh_1", cm_id=2000001)},
-            fetch_family_camp_medical={
-                "hh_1": _rec(cpap_info="Uses a CPAP nightly", allergy_info="Peanut"),
-            },
+            fetch_household_by_cm_id=_rec(id="hh_1", cm_id=2000001),
+            fetch_medical_for_household=_rec(cpap_info="Uses a CPAP nightly", allergy_info="Peanut"),
         )
         result = await LodgingRosterService(repo).get_household_medical(2026, 2000001)
 
         assert result.household_cm_id == 2000001
         assert result.cpap_info == "Uses a CPAP nightly"
         assert result.allergy_info == "Peanut"
+        # The medical read is anchored to the household the caller asked for.
+        repo.fetch_medical_for_household.assert_awaited_once_with(2026, "hh_1")
+        # ...and no whole-year map was materialised to get there.
+        repo.fetch_households.assert_not_awaited()
+        repo.fetch_family_camp_medical.assert_not_awaited()
 
     @pytest.mark.asyncio
     async def test_get_household_medical_for_an_unknown_household_is_empty(self) -> None:

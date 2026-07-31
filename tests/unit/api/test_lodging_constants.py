@@ -12,6 +12,7 @@ because the ingest model is a superset and its sole producer. There is one
 work queue, and this test pins that.
 """
 
+import re
 from pathlib import Path
 
 from api.constants import collections
@@ -52,6 +53,11 @@ def test_lodging_phi_permission_is_registered() -> None:
 
 
 def test_typescript_permission_file_mirrors_python() -> None:
-    """frontend/src/constants/permissions.ts declares it mirrors permissions.py."""
+    """frontend/src/constants/permissions.ts declares it mirrors permissions.py.
+
+    Matched by pattern rather than literal: the guarantee is that the key
+    and value are both present, and pinning the quote style and trailing
+    comma makes prettier's formatting a test failure.
+    """
     ts = (REPO_ROOT / "frontend" / "src" / "constants" / "permissions.ts").read_text()
-    assert "LODGING_PHI: 'lodging.phi'," in ts
+    assert re.search(r"""LODGING_PHI:\s*['"]lodging\.phi['"]""", ts)
