@@ -44,7 +44,7 @@ func readLodgingRBACMigration(t *testing.T) string {
 // bunkingManage rule, so non-admin bunking staff can confirm cabins and
 // resolve ingest names.
 //
-// Asserts on the migration FILE rather than runtime behaviour: applying JS
+// Asserts on the migration FILE rather than runtime behavior: applying JS
 // migrations from a Go test needs jsvm bootstrapped against the migrations
 // dir, which tests.NewTestApp() does not do. pb-js-lint checks syntax; this
 // locks in the semantics. Same approach as
