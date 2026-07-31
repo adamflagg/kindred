@@ -140,14 +140,6 @@ function CamperRedirect() {
   return <Navigate to={`/camper/${camperId}`} replace />
 }
 
-// /admin/lodging/:section -> /manage/lodging/:section, preserving the section.
-// The editor moved out of Admin when its writes moved from admin-only to
-// bunking.manage; this keeps every link staff already have working.
-function LodgingRedirect() {
-  const { section } = useParams<{ section?: string }>()
-  return <Navigate to={`/manage/lodging/${section ?? 'units'}`} replace />
-}
-
 // Smart redirect to first permitted manage tab
 function ManageRedirect() {
   const { isLoading } = useAuth()
@@ -265,15 +257,6 @@ function App() {
                                 }
                               />
                             </Route>
-                            {/* The lodging editor moved to /manage/lodging so
-                                bunking staff can reach it without admin. These
-                                keep old links and bookmarks working — without
-                                them, path="*" bounces the user silently home. */}
-                            <Route
-                              path="lodging"
-                              element={<Navigate to="/manage/lodging/units" replace />}
-                            />
-                            <Route path="lodging/:section" element={<LodgingRedirect />} />
                           </Route>
 
                           {/* Manage routes - staff-facing management tools */}

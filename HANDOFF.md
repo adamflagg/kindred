@@ -1,9 +1,9 @@
 # HANDOFF — Family Camp Lodging
 
 **State as of `1bcd90f1` on `main`.** All three plans are merged. The data layer, the ingest,
-the read API, the weekend surfaces and the writable admin surface are done.
+the read API, the weekend surfaces and the writable editor are done.
 `/weekend/sessions` lists the year's weekends; `/weekend/session/:id` shows one weekend's
-roster and inventory; `/admin/lodging/:section` edits the registry. **The next body of work
+roster and inventory; `/manage/lodging/:section` edits the registry. **The next body of work
 is the board and the map (spec §7.2) — see §4.**
 
 This is a working document. Edit it in place: tick what ships, rewrite "Next", delete what stops
@@ -19,7 +19,7 @@ Three plans, all merged. What remains is the board and the map — see §4.
 |---|---|---|
 | **1 — Data layer** | `lodging_*` collections, seed, alias registry | ✅ merged (`49d38ff8`, #1867) |
 | **2 — Ingest** | CampMinder cabin fields → assignments, requests, PHI split | ✅ merged — see below |
-| **3 — Surfaces** | Read API, `/weekend` roster, `/admin/lodging` editor | ✅ A (`f99a8ef7`, #1884), B (`37cf8d24`, #1890), C + units redesign (`1bcd90f1`, #1893) |
+| **3 — Surfaces** | Read API, `/weekend` roster, `/manage/lodging` editor | ✅ A (`f99a8ef7`, #1884), B (`37cf8d24`, #1890), C + units redesign (`1bcd90f1`, #1893) |
 
 Plan 2 shipped in four PRs:
 
@@ -86,10 +86,24 @@ Facts, not a work log. Do not re-verify or re-implement these.
   Phase C reuses these rather than re-deriving.
 - **`verify-no-hardcoded-lodging.sh` ignores comments and docstrings** (`scripts/dev/lib/
   drop_comment_hits.py`). It used to fail on prose, which is why it was red on `main` (#1891).
-- **`/admin/lodging/:section` is live** (`1bcd90f1`, #1893) — three sections: units, cabin-name
+- **`/manage/lodging/:section` is live** (`1bcd90f1`, #1893) — three sections: units, cabin-name
   aliases, and the unresolved-name work queue. Areas are a slide-in drawer over units, not a
   section. Writes go straight to PocketBase through `lodgingCrud.ts`; the Go hooks in
-  `pocketbase/lodging` are the integrity boundary.
+  `pocketbase/lodging` are the integrity boundary. It shipped at `/admin/lodging`; see the access
+  model below for why it moved and what still redirects.
+- **The access model is the summer board's, not admin-only.** Reads on every `lodging_*`
+  collection and every `/api/lodging/*` endpoint are open to any authenticated user; writes are
+  `admin || bunking.manage` (`1500000130`). Consequences worth holding:
+  - `lodging_field_mappings` is the ONE exception — still admin-only, because it is ingest
+    plumbing that decides what every lodging read *means*, not a cabin decision.
+  - **`lodging.phi` is now held by the Bunking Staff role** (closing #1887), so the roster's
+    medical reveal works for the staff doing placement. It stayed a separate permission from
+    `bunking.manage` deliberately: it can be revoked, or granted to someone who places nobody,
+    without touching write access.
+  - **No `/admin/lodging` redirect exists**, deliberately: the surface was never in anyone's
+    hands, so there are no bookmarks to preserve. `App.tsx`'s `path="*"` sends the old paths home.
+  - `AdminLayout` now returns `PermissionDeniedPage` when a user has no visible tab, so the
+    remaining admin routes are guarded rather than merely tab-filtered (#1895).
 - **Units is sortable, area-grouped, and confirmable in one click or in bulk.** That last part
   is the point: nothing on the roster judges a housing need against an unconfirmed cabin, and
   all 93 ship unconfirmed.
@@ -108,7 +122,13 @@ Facts, not a work log. Do not re-verify or re-implement these.
     on CREATE. Omitting on edit made clearing a capacity a silent no-op — the old number stayed.
 - **New modules worth knowing**: `unitTree.ts` (parent candidates, descendant walk),
   `aliasMembers.ts`, `unitCode.ts`, `unitAmenities.ts`, `lodgingStyles.ts`.
-- **Highest migration is `1500000129`.** Compute the next number from `main`, never from a branch.
+- **`record.get()` on a PocketBase json field returns the Go byte slice, and goja reports it as
+  an Array.** So `Array.isArray()` answers true, iterating yields BYTE VALUES, and writing them
+  back turns `["bunking.manage"]` into `[34,98,117,...]`. This shipped once and was caught only by
+  running the migration against a real database. Use `record.getString(field)` and `JSON.parse`.
+  The Go side has the same trap in a different shape — see `extractBusinessCategory` in
+  `pocketbase/rbac/hooks.go`, which handles `types.JSONRaw` separately from `map[string]any`.
+- **Highest migration is `1500000130`.** Compute the next number from `main`, never from a branch.
 
 ---
 
@@ -197,7 +217,7 @@ not exist yet. Assignments are still read-only; the registry is now editable.
   `BunkingBoardByArea.tsx`: the atom here is a household party of mixed ages, not a camper.
 - **(b) The map view** — a secondary tab rendering the camp map from `map_x`/`map_y`, for
   judging *near* requests and seeing whether a family sits beside a bathhouse or a staff
-  cabin. The coordinates have been in the schema since slice 1 for this, and `/admin/lodging`
+  cabin. The coordinates have been in the schema since slice 1 for this, and `/manage/lodging`
   now lets staff correct both unit positions and area centroids.
 
 Both operate on the same `lodging_assignments` + `lodging_merges` + `lodging_availability`
@@ -226,7 +246,7 @@ the only thing preventing a cycle. Writing the rule is the natural moment to add
 **0 of 93 units are confirmed**, so the roster reports *"Fit not verified"* for every
 constrained party. This was verified working end to end on real data (#1893): confirming one
 cabin dropped `units_unconfirmed` 82→81 and turned a real party from unverified into a genuine
-unmet (needs power, confirmed cabin has none). `/admin/lodging/units` now offers confirmation
+unmet (needs power, confirmed cabin has none). `/manage/lodging/units` now offers confirmation
 inline per row and in bulk. Until staff use it, the fit check stays dark.
 
 ### Open decisions the board will force
@@ -371,9 +391,11 @@ cd pocketbase && ./node_modules/.bin/eslint pb_migrations pb_hooks
 ./scripts/dev/test-pb-harness.sh && ./scripts/dev/test-verify-no-hardcoded-lodging.sh
 ./scripts/dev/verify-lodging-backfill.sh pocketbase/pb_data/data.db 2024 2025
 
-# Lodging admin surface (all under frontend/src/components/admin/lodging/)
+# Lodging editor. The route is /manage/lodging; the SOURCE still lives under
+# components/admin/lodging/ — deliberately not renamed, 32 files for no behaviour.
 cd frontend && npx vitest run src/components/admin/lodging/ src/types/beds.test.ts
 cd pocketbase && go test ./lodging/... -count=1   # incl. guardAliasDelete
+cd pocketbase && go test ./ -run TestLodgingRBAC -count=1   # migration 1500000130 semantics
 
 # Verify a push actually landed (a wrapper's "ok" is a claim, not evidence)
 git fetch -q && git rev-list --count origin/<branch>..HEAD   # must be 0
@@ -406,11 +428,9 @@ git fetch -q && git rev-list --count origin/<branch>..HEAD   # must be 0
   longer existed. Do not read a CodeRabbit pass as covering a branch that moved under it — check
   which commit it reviewed.
 
-- **#1895 — reads on `/admin/*` are not guarded.** `/admin/sync`, `/admin/config/:category` and
-  `/admin/lodging/:section` all render for any authenticated user. `AdminLayout` filters the tab
-  *list* only; there is no route guard. Writes are safe (PocketBase `is_admin` rules), reads are
-  not. Pre-existing and repo-wide — the fix belongs at the `AdminLayout` route group, not
-  per-route. **The most consequential of the four filed below.**
+- **#1895 is fixed** — `AdminLayout` returns `PermissionDeniedPage` when the user has no visible
+  tab, which is the route-group fix the issue asked for. Lodging left `/admin` entirely in the
+  same change. Kept here only so a reader of the issue knows where it went.
 - **#1894** — `dark:*-forest-950` classes generate nothing: the forest scale stops at 900, so 14
   occurrences across 8 files are dead dark-mode states. `SessionTabs` is one of them, which is
   how it propagates — other surfaces are told to copy its pill grammar.
@@ -420,12 +440,10 @@ git fetch -q && git rev-list --count origin/<branch>..HEAD   # must be 0
 - **#1897** — two competing sortable-header a11y shapes: `PipelineBatchList` and
   `UnitsTableHeader` use a focusable `<th>`; `SolverDebugImpossibilityModal` uses a `<button>`
   inside it. Standardise on the button, keep `aria-sort={undefined}`.
-- **#1887** — `lodging.phi` is granted to **no role**, and `1500000070_rbac_roles.js` was untouched
-  by #1884. `require_permission` admin-bypasses, so admins reach the medical endpoint and every
-  non-admin gets a 403 that no role edit resolves. Defensible as default-deny for PHI, but it will
-  surprise whoever first tries to give a health-centre lead access. Phase B's reveal already degrades
-  gracefully on a 403; **Phase C's admin surface is the natural place to actually grant it**, and
-  doing so is the first real exercise of that path.
+- **#1887 is fixed** — `lodging.phi` is granted to the Bunking Staff role by `1500000130`, which
+  also recomputes `users.cached_permissions` for its holders rather than trusting the Go `roles`
+  hook to fire during migration bootstrap. The reveal's 403 path is still live and still matters:
+  anyone authenticated can read the roster the button sits on.
 - **#1881** — two pre-existing package-wide patterns the ingest inherited rather than introduced:
   every individual-sync handler in `api.go` mutates the orchestrator's singleton service, and
   `SyncTab`'s card guard references no type-specific `isPending`. Both want **one sweep across all
