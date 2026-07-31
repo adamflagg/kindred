@@ -119,7 +119,23 @@ describe('LodgingAliasesPanel — editing', () => {
     expect(screen.getByDisplayValue('North Lodge - Whole')).toBeInTheDocument()
   })
 
-  it('keeps the year window behind a disclosure, since 94 of 100 aliases have none', async () => {
+  it('keeps the year window behind a disclosure when the alias has none', async () => {
+    const user = userEvent.setup()
+    render(<LodgingAliasesPanel />, { wrapper })
+    await waitFor(() => {
+      expect(screen.getByText('CabinA (legacy label)')).toBeInTheDocument()
+    })
+
+    // a2 carries no window (valid_from_year: 0, valid_to_year: 0) — the
+    // 94-of-100 case, where the field would just be noise on every edit.
+    await user.click(screen.getByRole('button', { name: 'Edit CabinA (legacy label)' }))
+    expect(screen.queryByLabelText('Valid from year')).not.toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: /year window/i }))
+    expect(screen.getByLabelText('Valid from year')).toBeInTheDocument()
+  })
+
+  it('opens the year window already expanded when the alias has one, so staff can see it is year-scoped', async () => {
     const user = userEvent.setup()
     render(<LodgingAliasesPanel />, { wrapper })
     await waitFor(() => {
@@ -127,10 +143,7 @@ describe('LodgingAliasesPanel — editing', () => {
     })
 
     await user.click(screen.getByRole('button', { name: 'Edit North Lodge - Whole' }))
-    expect(screen.queryByLabelText('Valid from year')).not.toBeInTheDocument()
-
-    await user.click(screen.getByRole('button', { name: /year window/i }))
-    expect(screen.getByLabelText('Valid from year')).toBeInTheDocument()
+    expect(screen.getByLabelText('Valid from year')).toHaveValue(2025)
   })
 
   it('offers a create action', async () => {

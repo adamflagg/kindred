@@ -34,11 +34,13 @@ export function LodgingAliasForm({ units, alias, onSaved, onCancel }: LodgingAli
     alias?.valid_from_year ? String(alias.valid_from_year) : ''
   )
   const [toYear, setToYear] = useState(alias?.valid_to_year ? String(alias.valid_to_year) : '')
-  // Always collapsed on open, even when the alias already carries a window:
-  // the point of the disclosure is that staff should not meet this field on
-  // every edit. The pre-populated from/to state above still round-trips the
-  // existing value on submit if the disclosure is never opened.
-  const [showWindow, setShowWindow] = useState(false)
+  // Collapsed unless the alias already has a window: an unset window is the
+  // 94-in-100 case and shouldn't be a field staff meet on every edit, but a
+  // SET window must stay visible in its own editor — hiding it is precisely
+  // how a wrong window (which does not error) goes unnoticed.
+  const [showWindow, setShowWindow] = useState(
+    Boolean(alias?.valid_from_year) || Boolean(alias?.valid_to_year)
+  )
   const [isSaving, setIsSaving] = useState(false)
 
   const toggleUnit = (id: string) => {
