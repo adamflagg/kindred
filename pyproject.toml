@@ -162,6 +162,11 @@ extraPaths = ["."]
 [tool.mypy]
 python_version = "3.14"
 plugins = ["pydantic.mypy"]
+# docs/plans/ is gitignored local-only scratch (.gitignore:330) — working
+# probe scripts that are never shipped and never imported. The pre-push hook
+# runs `mypy . --explicit-package-bases`, which walks them anyway and blocks
+# the push for anyone who happens to have one on disk.
+exclude = "^docs/plans/"
 # Strict mode - catch type errors, async/sync mismatches, missing attributes
 strict = true
 warn_return_any = true

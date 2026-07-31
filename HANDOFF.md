@@ -1,9 +1,10 @@
 # HANDOFF — Family Camp Lodging
 
-**State as of `37cf8d24` on `main`.** The data layer, the ingest, the read API and the weekend
-surfaces are all merged. `/weekend/sessions` lists the year's weekends; `/weekend/session/:id`
-shows one weekend's roster and inventory. **The next body of work is Plan 3 Phase C — the
-`/admin/lodging` editor, the Go integrity guards and the work-queue UI.**
+**State as of `1bcd90f1` on `main`.** All three plans are merged. The data layer, the ingest,
+the read API, the weekend surfaces and the writable admin surface are done.
+`/weekend/sessions` lists the year's weekends; `/weekend/session/:id` shows one weekend's
+roster and inventory; `/admin/lodging/:section` edits the registry. **The next body of work
+is the board and the map (spec §7.2) — see §4.**
 
 This is a working document. Edit it in place: tick what ships, rewrite "Next", delete what stops
 being true. It is not a changelog — `git log` is the changelog.
@@ -12,13 +13,13 @@ being true. It is not a changelog — `git log` is the changelog.
 
 ## 1. Programme status
 
-Three plans. The first two are done.
+Three plans, all merged. What remains is the board and the map — see §4.
 
 | Plan | Scope | Status |
 |---|---|---|
 | **1 — Data layer** | `lodging_*` collections, seed, alias registry | ✅ merged (`49d38ff8`, #1867) |
 | **2 — Ingest** | CampMinder cabin fields → assignments, requests, PHI split | ✅ merged — see below |
-| **3 — Surfaces** | Read API, `/weekend` roster, `/admin/lodging` editor | 🔶 A (`f99a8ef7`, #1884) and B (`37cf8d24`, #1890) merged; **C open** |
+| **3 — Surfaces** | Read API, `/weekend` roster, `/admin/lodging` editor | ✅ A (`f99a8ef7`, #1884), B (`37cf8d24`, #1890), C + units redesign (`1bcd90f1`, #1893) |
 
 Plan 2 shipped in four PRs:
 
@@ -85,7 +86,29 @@ Facts, not a work log. Do not re-verify or re-implement these.
   Phase C reuses these rather than re-deriving.
 - **`verify-no-hardcoded-lodging.sh` ignores comments and docstrings** (`scripts/dev/lib/
   drop_comment_hits.py`). It used to fail on prose, which is why it was red on `main` (#1891).
-- **Highest migration is `1500000127`.** Compute the next number from `main`, never from a branch.
+- **`/admin/lodging/:section` is live** (`1bcd90f1`, #1893) — three sections: units, cabin-name
+  aliases, and the unresolved-name work queue. Areas are a slide-in drawer over units, not a
+  section. Writes go straight to PocketBase through `lodgingCrud.ts`; the Go hooks in
+  `pocketbase/lodging` are the integrity boundary.
+- **Units is sortable, area-grouped, and confirmable in one click or in bulk.** That last part
+  is the point: nothing on the roster judges a housing need against an unconfirmed cabin, and
+  all 93 ship unconfirmed.
+- **Beds are inventory behind `sleeps`, not a replacement for it.** `frontend/src/types/beds.ts`
+  turns "2 twins and a queen" into a *suggested* occupancy staff adopt with one click. `sleeps`
+  remains the single number every consumer reads, so no Pydantic model changed.
+- **Three behaviours that are NOT what their names suggest** — these bit once already:
+  - **`deleteLodgingAlias` is not a plain delete.** It reopens every
+    `lodging_ingest_issues` row whose `resolved_alias` points at the alias (clearing
+    `is_resolved` and `resolved_alias`) *before* deleting. That order is load-bearing; reversed,
+    it leaves exactly the silent state described below.
+  - **`lodging_unit_aliases` has an `OnRecordDelete` guard** (`guardAliasDelete`). Deleting an
+    alias with resolved queue items behind it returns 400 from **every** path, including the
+    PocketBase admin UI.
+  - **`LodgingUnitForm` writes `sleeps: 0` on EDIT when the field is blank**, and omits the key
+    on CREATE. Omitting on edit made clearing a capacity a silent no-op — the old number stayed.
+- **New modules worth knowing**: `unitTree.ts` (parent candidates, descendant walk),
+  `aliasMembers.ts`, `unitCode.ts`, `unitAmenities.ts`, `lodgingStyles.ts`.
+- **Highest migration is `1500000129`.** Compute the next number from `main`, never from a branch.
 
 ---
 
@@ -161,56 +184,64 @@ Each of these was decided deliberately. Reopening one needs a reason, not a fres
 
 ---
 
-## 4. Next: Plan 3 Phase C — the Family Camp admin surface
+## 4. Next: the board and the map (spec §7.2)
 
-Plan: `docs/superpowers/plans/2026-07-30-family-camp-lodging-surfaces.md` (local-only, gitignored),
-Tasks 13–17. **Its Phase B header carries a SHIPPED block listing nine divergences** — read that
-first, because Phase C inherits the corrected shape, not the shape Tasks 7–12 describe.
+All three plans are merged. What the programme was building toward — placing parties — does
+not exist yet. Assignments are still read-only; the registry is now editable.
 
-| Phase | Tasks | Ships | Status |
-|---|---|---|---|
-| **A — Read API** | 1–6 | `/api/lodging/*`, `lodging.phi`, generated TS types | ✅ `f99a8ef7` (#1884) |
-| **B — Lander + roster** | 7–12 | `/weekend/sessions`, `/weekend/session/:id`, `/summary` | ✅ `37cf8d24` (#1890) |
-| **C — Admin CRUD** | 13–17 | `/admin/lodging` editor, Go integrity guards, work queue UI | ⬜ **next** |
+**The two surfaces the spec wants, as complements not alternatives:**
 
-### Task order, and why
+- **(a) The bunking board** — the primary surface, laid out like the summer board (unit
+  columns grouped by area, party cards as atoms, @dnd-kit drag). New `FamilyCard` and
+  `LodgingUnitCard` components, NOT conditionals inside the 849-line camper-coupled
+  `BunkingBoardByArea.tsx`: the atom here is a household party of mixed ages, not a camper.
+- **(b) The map view** — a secondary tab rendering the camp map from `map_x`/`map_y`, for
+  judging *near* requests and seeing whether a family sits beside a bathhouse or a staff
+  cabin. The coordinates have been in the schema since slice 1 for this, and `/admin/lodging`
+  now lets staff correct both unit positions and area centroids.
 
-1. **Task 13 — `pocketbase/lodging/hooks.go` integrity guards, first.** They are the invariants the
-   database does not enforce: `guardAssignmentGrain` (exactly one of unit/merge, exactly one of
-   household/person), `guardUnitDelete` (deactivate, never delete, when assignments exist),
-   `guardMergeDelete` (blocked at ≥1 occupant — stricter than spec §3.4, to close the
-   single-occupant orphan hole). Land these *before* the UI that can violate them.
-2. **Tasks 14–16 — the editor.** Writes go **straight to PocketBase, not through FastAPI**: all
-   four collections carry `createRule`/`updateRule`/`deleteRule` = `@request.auth.is_admin = true`,
-   so PocketBase is the authorisation boundary and Task 13 is the integrity boundary. Same pattern
-   as `frontend/src/components/admin/RegistrationDatesConfig.tsx`.
-3. **Task 17 — the work-queue UI** over `lodging_ingest_issues` filtered to
-   `kind = "unresolved_alias" && is_resolved = false`.
+Both operate on the same `lodging_assignments` + `lodging_merges` + `lodging_availability`
+state, so a change in one shows in the other. The map is a projection of the board, not a
+separate system of record.
 
-### What Phase C inherits that the plan does not describe
+### The merge-legality rule belongs with the board, and the data is ready for it
 
-- **Write the PocketBase record and input types now.** The plan puts them in Task 7; Phase B
-  deferred them because nothing there consumed them. `LodgingUnitInput` must keep `is_active` and
-  `allocation_default` **non-optional** — PocketBase has no per-field default for bool or select, so
-  a create that omits them yields an invisible unit that matches neither availability branch.
-- **Do NOT write a `LodgingUnresolvedAliasRecord`.** The work queue is `lodging_ingest_issues`; the
-  query key is already `queryKeys.lodgingIngestIssues()`.
-- **Confirming amenities switches on live behaviour.** `partyAttention` only judges a housing need
-  against a cabin whose `is_confirmed` is true; all 82 are false today, so the roster reports
-  *"Fit not verified"* for every constrained party. The moment Phase C lets staff confirm a cabin,
-  the `unmet` section starts populating — **that path has unit tests but has never run against real
-  data.** Expect it to be the first thing that looks wrong, and check it deliberately.
-- **`/weekend/session/:id` has no "Lodging settings" link.** It was removed in `03754754` because
-  `/admin/lodging` is not a registered route and `App.tsx`'s `path="*"` silently bounced the user
-  home. **Add the link back when Phase C registers the route** —
-  `frontend/src/pages/WeekendRosterPage.tsx`.
-- **Any new per-weekend figure belongs on `/api/lodging/summary`**, never on an N-call loop over
-  `/roster`. See §6.
-- **`lodging.phi` is granted to no role (#1887).** Admin bypass is the only route to the narrative
-  today. Phase C's admin surface is the natural place to fix it, and doing so is the first real test
-  of the 403 degradation path in `AccessibilityFlagList`.
+Deliberately deferred from #1893: nothing could create a merge, so the rule would have had no
+caller and no way to prove it right. What landed instead is the data it will read.
 
----
+**The rule: a merge is legal iff its members are the complete child set of some container.**
+Four intermediate containers were seeded (`1500000129`) — Tioga and Tenaya, upstairs and
+downstairs — because two real historical merges (`Tenaya 1and2`, `Tioga 1and2`) bind 2 rooms
+of a 4-room building and were previously inexpressible. Verified: all six historical merges
+are now the complete child set of exactly one container, and `{2,3}` correctly is not.
+
+`parent_unit` is editable in the admin UI, filtered to containers minus self minus descendants
+(`unitTree.ts`), and `is_container` is disabled while a unit has children. **There is still no
+server-side guard** — no `OnRecordUpdate` hook on `lodging_units` — so the frontend filter is
+the only thing preventing a cycle. Writing the rule is the natural moment to add the Go guard.
+
+### Before either surface: confirm some cabins
+
+`partyAttention` only judges a housing need against a cabin whose `is_confirmed` is true, and
+**0 of 93 units are confirmed**, so the roster reports *"Fit not verified"* for every
+constrained party. This was verified working end to end on real data (#1893): confirming one
+cabin dropped `units_unconfirmed` 82→81 and turned a real party from unverified into a genuine
+unmet (needs power, confirmed cabin has none). `/admin/lodging/units` now offers confirmation
+inline per row and in bulk. Until staff use it, the fit check stays dark.
+
+### Open decisions the board will force
+
+- **`lodging_merges` CRUD** — merges are a board action (spec §3.4), created mid-assignment
+  rather than configured up front. Nothing writes them yet. `guardMergeDelete` already protects
+  them.
+- **`lodging_availability`** — the per-session reserved/released overrides (spec §3.7). The
+  schema exists; no surface reads or writes it.
+- **`lodging.phi` is granted to no role (#1887).** Admin bypass is still the only route to the
+  narrative. The 403 degradation path in `AccessibilityFlagList` has never been exercised.
+- **Health Center room 5** — `hc-upstairs-hall` groups rooms 1, 2, 3, 4 and 6 but not 5. If 5
+  shares that hall's bathroom the group is incomplete, and a merge covering the hall would
+  never upgrade to `private` — the same bug that was fixed for Tioga/Tenaya 3+4 in
+  `1500000129`. **Unanswered; needs staff.**
 
 ## 5. CRITICAL: first action before anything else
 
@@ -284,8 +315,31 @@ the whole time. That is progress, not a hang — confirm with CPU, not the count
 - **Do not judge a housing need against an unconfirmed cabin.** `has_power: false` on an unconfirmed
   row means "nobody has said". Phase C makes confirmation possible — that is the moment this starts
   mattering, not a reason to relax it.
-- **Do not delete a `lodging_units` row that has assignments.** Deactivate. Task 13's
+- **Do not delete a `lodging_units` row that has assignments.** Deactivate.
   `guardUnitDelete` enforces it and no `deleteLodgingUnit` should exist.
+- **Do not "simplify" `deleteLodgingAlias` back into a plain `delete`.** It reopens the queue
+  rows the alias resolved, first. Skipping that silences the work queue **permanently** and
+  nothing surfaces it: `IssueRecorder.Flush` (`sync/lodging_issues.go`) writes `is_resolved`
+  only on CREATE — deliberately, so a later sync cannot un-tick what staff ticked — and its
+  dedup matches a re-encountered cabin string to that same row. So the next sync bumps
+  `occurrences` and leaves the row resolved. The string never returns to the queue and its
+  placement never resolves again. `resolved_alias` is `cascadeDelete: false` on purpose
+  (`1500000122`), which preserves the audit trail and loses the work item. Found post-merge on
+  #1893; `guardAliasDelete` is the backstop.
+- **Do not make a bulk mutation act on rows the user cannot see.** Collapsing an area group
+  deselects its units for this reason.
+- **Do not render an edit form without a `key` tied to the record being edited.** Both lodging
+  panels do (`key={editing === 'new' ? 'new' : editing.id}`). Without it React reuses the
+  component instance, `useState` initialisers never re-run, and submit writes the previous
+  record's field values against the new record's id — silently, for aliases.
+- **Do not lowercase an area `code`.** Every seeded area is uppercase (`RIDGE`, `GT`, `HC`,
+  `YURT`) and `code` is a join key. A reviewer suggested lowercasing it; that would break the
+  join. Pinned by a characterisation test.
+- **Do not "fix" `aria-sort={undefined}` to `"none"`** on inactive sortable columns. `undefined`
+  is correct and is the shape to standardise on (#1897). Also pinned by test.
+- **Do not use `?? []` to paper over a failed secondary query.** Each fallback hides an error
+  as an empty list. The alias editor's member checkboxes ARE the payload, so opening it against
+  a failed unit query and saving would strip every member.
 
 ---
 
@@ -316,6 +370,10 @@ cd pocketbase && ./node_modules/.bin/eslint pb_migrations pb_hooks
 ./scripts/dev/verify-no-hardcoded-lodging.sh
 ./scripts/dev/test-pb-harness.sh && ./scripts/dev/test-verify-no-hardcoded-lodging.sh
 ./scripts/dev/verify-lodging-backfill.sh pocketbase/pb_data/data.db 2024 2025
+
+# Lodging admin surface (all under frontend/src/components/admin/lodging/)
+cd frontend && npx vitest run src/components/admin/lodging/ src/types/beds.test.ts
+cd pocketbase && go test ./lodging/... -count=1   # incl. guardAliasDelete
 
 # Verify a push actually landed (a wrapper's "ok" is a claim, not evidence)
 git fetch -q && git rev-list --count origin/<branch>..HEAD   # must be 0
@@ -348,6 +406,20 @@ git fetch -q && git rev-list --count origin/<branch>..HEAD   # must be 0
   longer existed. Do not read a CodeRabbit pass as covering a branch that moved under it — check
   which commit it reviewed.
 
+- **#1895 — reads on `/admin/*` are not guarded.** `/admin/sync`, `/admin/config/:category` and
+  `/admin/lodging/:section` all render for any authenticated user. `AdminLayout` filters the tab
+  *list* only; there is no route guard. Writes are safe (PocketBase `is_admin` rules), reads are
+  not. Pre-existing and repo-wide — the fix belongs at the `AdminLayout` route group, not
+  per-route. **The most consequential of the four filed below.**
+- **#1894** — `dark:*-forest-950` classes generate nothing: the forest scale stops at 900, so 14
+  occurrences across 8 files are dead dark-mode states. `SessionTabs` is one of them, which is
+  how it propagates — other surfaces are told to copy its pill grammar.
+- **#1896** — data fetching is not extracted into custom hooks, against `frontend/CLAUDE.md:23`,
+  across 12 files. `queryKeys.lodgingAreas()` is declared twice in the lodging admin alone, each
+  with its own fallback, which is what made the `?? []` gap above possible.
+- **#1897** — two competing sortable-header a11y shapes: `PipelineBatchList` and
+  `UnitsTableHeader` use a focusable `<th>`; `SolverDebugImpossibilityModal` uses a `<button>`
+  inside it. Standardise on the button, keep `aria-sort={undefined}`.
 - **#1887** — `lodging.phi` is granted to **no role**, and `1500000070_rbac_roles.js` was untouched
   by #1884. `require_permission` admin-bypasses, so admins reach the medical endpoint and every
   non-admin gets a 403 that no role edit resolves. Defensible as default-deny for PHI, but it will
