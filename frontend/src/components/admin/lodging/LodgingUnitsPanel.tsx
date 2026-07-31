@@ -15,7 +15,7 @@
  * blocks deleting a referenced unit anyway, but the UI should not offer it.
  */
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { ChevronDown, ChevronRight, Map, Plus } from 'lucide-react'
+import { Map, Plus } from 'lucide-react'
 import { useState } from 'react'
 import toast from 'react-hot-toast'
 
@@ -28,11 +28,12 @@ import {
 import type { LodgingUnitRecord } from '../../../types/lodging'
 import { queryKeys, userDataOptions } from '../../../utils/queryKeys'
 import { QueryGuard } from '../../QueryGuard'
-import { BUTTON_PRIMARY, BUTTON_SECONDARY, GROUP_HEADING, HEADER_ROW } from './lodgingStyles'
+import { BUTTON_PRIMARY, BUTTON_SECONDARY } from './lodgingStyles'
 import { LodgingAreasDrawer } from './LodgingAreasDrawer'
 import { LodgingUnitForm } from './LodgingUnitForm'
-import { LodgingUnitRow } from './LodgingUnitRow'
-import { groupUnitsByArea, sortUnits, UNIT_SORT_COLUMNS, type UnitSort } from './unitSort'
+import { UnitAreaGroup } from './UnitAreaGroup'
+import { UnitsTableHeader } from './UnitsTableHeader'
+import { groupUnitsByArea, type UnitSort } from './unitSort'
 
 export function LodgingUnitsPanel() {
   const queryClient = useQueryClient()
@@ -217,109 +218,23 @@ export function LodgingUnitsPanel() {
           ) : (
             <div className="card-lodge overflow-x-auto p-4">
               <table className="w-full text-left text-sm">
-                {/*
-                  ONE shared thead, not one per area group. An earlier version
-                  rendered the header inside each area's own table; with two
-                  or more areas expanded at once (the default — nothing starts
-                  collapsed) that put multiple `columnheader`-role elements
-                  with the same name in the DOM, which is ambiguous for both
-                  assistive tech and `getByRole`. A single header with a
-                  `tbody` per area group keeps the sort control singular while
-                  each area still collapses independently.
-                */}
-                <thead>
-                  <tr className={HEADER_ROW}>
-                    <th className="pb-2" />
-                    {UNIT_SORT_COLUMNS.map((col) => {
-                      const isActive = sort.field === col.field
-                      return (
-                        <th
-                          key={col.field}
-                          role="columnheader"
-                          tabIndex={0}
-                          aria-sort={
-                            isActive ? (sort.desc ? 'descending' : 'ascending') : undefined
-                          }
-                          onClick={() => {
-                            toggleSort(col.field)
-                          }}
-                          onKeyDown={(e) => {
-                            if (e.key === 'Enter' || e.key === ' ') {
-                              e.preventDefault()
-                              toggleSort(col.field)
-                            }
-                          }}
-                          className="hover:text-foreground focus-visible:ring-forest-500 cursor-pointer pr-3 pb-2 select-none focus-visible:ring-2 focus-visible:outline-none"
-                        >
-                          {col.label}
-                          {isActive && (sort.desc ? ' ↓' : ' ↑')}
-                        </th>
-                      )
-                    })}
-                    <th className="pb-2" />
-                  </tr>
-                </thead>
-                {groupUnitsByArea(units, areasQuery.data ?? []).map((group) => {
-                  const isCollapsed = collapsed.has(group.areaId)
-                  const rows = sortUnits(group.units, sort)
-                  return (
-                    <tbody
-                      key={group.areaId}
-                      data-testid={`area-group-${group.areaId}`}
-                      className="border-border/50 border-b last:border-b-0"
-                    >
-                      <tr>
-                        <td colSpan={UNIT_SORT_COLUMNS.length + 2} className="p-0">
-                          <button
-                            type="button"
-                            onClick={() => {
-                              toggleGroup(
-                                group.areaId,
-                                group.units.map((u) => u.id)
-                              )
-                            }}
-                            className="hover:bg-muted/40 focus-visible:ring-forest-500 bg-muted/20 flex w-full items-center gap-2 px-1 py-2 text-left transition-colors focus-visible:ring-2 focus-visible:outline-none"
-                          >
-                            {isCollapsed ? (
-                              <ChevronRight
-                                className="text-muted-foreground h-4 w-4"
-                                aria-hidden="true"
-                              />
-                            ) : (
-                              <ChevronDown
-                                className="text-muted-foreground h-4 w-4"
-                                aria-hidden="true"
-                              />
-                            )}
-                            {/* The roster's area headings, exactly: the unit
-                                name is what staff scan for, so the zone above
-                                it stays quieter than the rows it holds. */}
-                            <span className={GROUP_HEADING}>{group.areaName}</span>
-                            <span className="bg-muted text-muted-foreground rounded-full px-2 py-0.5 text-xs font-medium tabular-nums">
-                              {rows.length}
-                            </span>
-                          </button>
-                        </td>
-                      </tr>
-                      {!isCollapsed &&
-                        rows.map((unit) => (
-                          <LodgingUnitRow
-                            key={unit.id}
-                            unit={unit}
-                            isSelected={selected.has(unit.id)}
-                            onToggleSelect={() => {
-                              setSelected((s) => toggleIn(s, unit.id))
-                            }}
-                            onEdit={() => {
-                              setEditing(unit)
-                            }}
-                            onConfirm={() => void handleConfirm([unit.id])}
-                            onDeactivate={() => void handleDeactivate(unit)}
-                          />
-                        ))}
-                    </tbody>
-                  )
-                })}
+                <UnitsTableHeader sort={sort} onToggleSort={toggleSort} />
+                {groupUnitsByArea(units, areasQuery.data ?? []).map((group) => (
+                  <UnitAreaGroup
+                    key={group.areaId}
+                    group={group}
+                    sort={sort}
+                    isCollapsed={collapsed.has(group.areaId)}
+                    selected={selected}
+                    onToggleCollapse={toggleGroup}
+                    onToggleSelect={(unitId) => {
+                      setSelected((s) => toggleIn(s, unitId))
+                    }}
+                    onEdit={setEditing}
+                    onConfirm={(unit) => void handleConfirm([unit.id])}
+                    onDeactivate={(unit) => void handleDeactivate(unit)}
+                  />
+                ))}
               </table>
             </div>
           )
