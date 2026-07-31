@@ -29,7 +29,7 @@ function party(overrides: Partial<RosterPartyRow> = {}): RosterPartyRow {
     household_cm_id: 2000001,
     person_cm_id: 0,
     display_name: 'The Johnson Family',
-    adults: [{ adult_number: 1, display_name: 'Olivia Johnson', relationship: 'Parent' }],
+    adults: [{ adult_number: 1, display_name: 'Samuel Johnson', relationship: 'Parent' }],
     children: [{ person_cm_id: 1000001, display_name: 'Emma Johnson', age: 9, grade: 4 }],
     party_size: 2,
     unit_code: 'ridge-a',
@@ -207,9 +207,9 @@ describe('partyBeds', () => {
     const withoutSize = party({
       adults: [
         { adult_number: 1, display_name: 'Olivia Chen' },
-        { adult_number: 2, display_name: 'Noah Chen' },
+        { adult_number: 2, display_name: 'Liam Garcia' },
       ],
-      children: [{ person_cm_id: 1, display_name: 'Emma Chen' }],
+      children: [{ person_cm_id: 1, display_name: 'Olivia Chen' }],
     })
     delete withoutSize.party_size
     expect(partyBeds(withoutSize)).toBe(3)

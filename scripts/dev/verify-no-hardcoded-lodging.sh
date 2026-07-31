@@ -12,7 +12,7 @@ set -euo pipefail
 
 # Preflight BEFORE the first git call — checking for git after invoking it is
 # pointless, since the missing binary would already have exited 127.
-for cmd in git grep; do
+for cmd in git grep python3; do
   command -v "$cmd" >/dev/null 2>&1 || { echo "error: required command '$cmd' not found" >&2; exit 2; }
 done
 
@@ -39,6 +39,15 @@ HITS=$(grep -rInE "$NEEDLES" \
   pocketbase/ api/ bunking/ frontend/src/ 2>/dev/null \
   | grep -v '_test\.\|\.test\.\|/tests\?/' \
   | grep -v 'frontend/src/data/cityGeo\.ts\|frontend/src/data/schoolGeo\.ts' || true)
+
+# Prose that names a unit to explain a rule is documentation, not the registry
+# living in code. Dropping comment and docstring hits is what makes this guard
+# green on a clean `main`: it failed on a docstring in lodging_rules.py, which
+# opened Phase C on a red that was not Phase C's (kindred#1891). A file that
+# cannot be parsed is treated as all code, so its hits survive.
+if [[ -n "$HITS" ]]; then
+  HITS=$(printf '%s\n' "$HITS" | python3 "$REPO_ROOT/scripts/dev/lib/drop_comment_hits.py")
+fi
 # cityGeo.ts / schoolGeo.ts are unrelated city/school geocoding lookup tables
 # (a different feature) that coincidentally contain place-name substrings
 # ("Manzanita, OR", "El Capitan, AZ", "Wawona, CA", "Tuolumne City, CA") — not
