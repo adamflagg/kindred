@@ -8,15 +8,16 @@
  * requests.
  *
  * Read-only in this slice: assignments come from CampMinder and are shown,
- * not edited. The registry behind it IS editable, at Admin -> Family Camp
- * Lodging, because a seed nobody can correct is worthless (spec §3.8).
+ * not edited. The registry behind it is not editable yet either — the
+ * Admin -> Family Camp Lodging editor is Phase C (spec §3.8), so this page
+ * links nowhere for corrections until that route exists.
  *
  * Everything rendered here is READ from ingest-derived columns. If a share
  * preference, proximity mode or request text looks wrong, the fix belongs in
  * the Go ingest so every surface sees the correction at once.
  */
 import { Listbox, ListboxButton, ListboxOption, ListboxOptions } from '@headlessui/react'
-import { ArrowLeft, ChevronDown, Home, Settings, Users } from 'lucide-react'
+import { ArrowLeft, ChevronDown, Home, Users } from 'lucide-react'
 import { useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router'
 
@@ -121,14 +122,6 @@ export default function WeekendRosterPage() {
               {selectedSession.session_type === 'adult' ? 'Adult' : 'Family'}
             </span>
           )}
-
-          <Link
-            to="/admin/lodging"
-            className="btn-secondary ml-auto flex items-center gap-1.5 px-3 py-2 text-sm"
-          >
-            <Settings className="h-4 w-4" />
-            Lodging settings
-          </Link>
         </div>
       </header>
 
@@ -137,7 +130,6 @@ export default function WeekendRosterPage() {
         error={rosterQuery.error}
         data={rosterQuery.data}
         label="weekend roster"
-        emptyMessage="No roster data for this weekend."
       >
         {(roster) => (
           <>

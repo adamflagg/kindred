@@ -110,6 +110,11 @@ function WeekendRow({
 }: {
   session: WeekendSession
   status: WeekendStatus
+  /**
+   * Always present in practice — the counts arrive with the sessions in one
+   * response — so the columns are simply omitted rather than showing a
+   * per-row spinner that would suggest a second request is still running.
+   */
   stats: WeekendStats | undefined
 }) {
   const isCompleted = status === 'completed'
@@ -180,7 +185,7 @@ function WeekendRow({
           </div>
         </div>
 
-        {stats ? (
+        {stats && (
           <>
             {/* Parties placed */}
             <div className="hidden w-[150px] flex-shrink-0 items-center justify-end gap-1.5 text-sm sm:flex">
@@ -208,10 +213,6 @@ function WeekendRow({
               )}
             </div>
           </>
-        ) : (
-          <div className="hidden w-[380px] flex-shrink-0 items-center justify-center sm:flex">
-            <div className="spinner-lodge h-4 w-4" />
-          </div>
         )}
 
         <ChevronRight className="text-muted-foreground group-hover:text-primary h-5 w-5 flex-shrink-0 transition-colors" />
@@ -263,15 +264,20 @@ export default function WeekendSessionList() {
             </div>
           </div>
 
+          {/* Held back until the counts arrive. The figures are derived from
+              the response, so rendering them early states a confident "0
+              parties" about a year nobody has counted yet. */}
           <div className="flex items-center gap-4 sm:gap-6">
-            <div className="text-right">
-              <div className="font-display text-xl font-bold text-white tabular-nums sm:text-2xl">
-                {totalParties}
+            {summaryQuery.data !== undefined && (
+              <div className="text-right">
+                <div className="font-display text-xl font-bold text-white tabular-nums sm:text-2xl">
+                  {totalParties}
+                </div>
+                <div className="text-forest-300 text-xs">
+                  <span className="hidden sm:inline">total </span>parties
+                </div>
               </div>
-              <div className="text-forest-300 text-xs">
-                <span className="hidden sm:inline">total </span>parties
-              </div>
-            </div>
+            )}
             {totalUnplaced > 0 && (
               <div className="text-right">
                 <div className="font-display text-xl font-bold text-amber-400 tabular-nums sm:text-2xl">
@@ -291,7 +297,6 @@ export default function WeekendSessionList() {
         error={summaryQuery.error}
         data={summaryQuery.data}
         label="weekend sessions"
-        emptyMessage="No family or adult sessions found for this year."
       >
         {() =>
           sessions.length === 0 ? (

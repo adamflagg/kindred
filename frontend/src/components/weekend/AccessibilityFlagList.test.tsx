@@ -8,6 +8,7 @@
  */
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { render, screen } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import type { ReactNode } from 'react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -193,5 +194,88 @@ describe('PHI reveal gate', () => {
     })
     expect(screen.queryByText('Medical detail on file')).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: /medical detail/i })).not.toBeInTheDocument()
+  })
+
+  it('offers no reveal for a party with no household to look up', () => {
+    // An adult weekend enrols the person, not a household, so there is no
+    // household id to fetch a narrative by. A button that can only ever
+    // request /households/0/medical is worse than no button.
+    isAdmin.value = true
+    render(
+      <AccessibilityFlagList
+        flags={flags({ has_medical_narrative: true })}
+        householdCmId={null}
+        year={2026}
+      />,
+      { wrapper }
+    )
+    expect(screen.queryByRole('button', { name: /medical detail/i })).not.toBeInTheDocument()
+    expect(screen.getByText('Medical detail on file')).toBeInTheDocument()
+  })
+})
+
+describe('the revealed narrative', () => {
+  async function reveal() {
+    isAdmin.value = true
+    render(
+      <AccessibilityFlagList
+        flags={flags({ has_medical_narrative: true })}
+        householdCmId={2000001}
+        year={2026}
+      />,
+      { wrapper }
+    )
+    await userEvent.click(screen.getByRole('button', { name: /show medical detail/i }))
+  }
+
+  it('renders each populated field under its own label', async () => {
+    medicalResult.value = {
+      data: { cpap_info: 'Needs an outlet by the bed', allergy_info: 'Peanuts' },
+      isLoading: false,
+      error: null,
+    }
+    await reveal()
+    expect(screen.getByText('CPAP')).toBeInTheDocument()
+    expect(screen.getByText('Needs an outlet by the bed')).toBeInTheDocument()
+    expect(screen.getByText('Allergies')).toBeInTheDocument()
+    expect(screen.getByText('Peanuts')).toBeInTheDocument()
+  })
+
+  it('omits the fields the household left blank', async () => {
+    medicalResult.value = {
+      data: { cpap_info: 'Needs an outlet by the bed', allergy_info: '' },
+      isLoading: false,
+      error: null,
+    }
+    await reveal()
+    expect(screen.getByText('CPAP')).toBeInTheDocument()
+    expect(screen.queryByText('Allergies')).not.toBeInTheDocument()
+  })
+
+  it('says it is loading while the request is in flight', async () => {
+    medicalResult.value = { data: undefined, isLoading: true, error: null }
+    await reveal()
+    expect(screen.getByText(/Loading medical detail/)).toBeInTheDocument()
+  })
+
+  it('renders a failure inline rather than failing the page', async () => {
+    // lodging.phi is granted to no role, so a 403 is the common case. It must
+    // read as a sentence in the row, not escalate to the ErrorBoundary.
+    medicalResult.value = {
+      data: undefined,
+      isLoading: false,
+      error: new Error('Forbidden: lodging.phi required'),
+    }
+    await reveal()
+    expect(screen.getByText('Forbidden: lodging.phi required')).toBeInTheDocument()
+  })
+
+  it('hides the narrative again when the reveal is toggled off', async () => {
+    medicalResult.value = { data: { allergy_info: 'Peanuts' }, isLoading: false, error: null }
+    await reveal()
+    expect(screen.getByText('Peanuts')).toBeInTheDocument()
+
+    await userEvent.click(screen.getByRole('button', { name: /hide medical detail/i }))
+    expect(screen.queryByText('Peanuts')).not.toBeInTheDocument()
   })
 })

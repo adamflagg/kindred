@@ -125,12 +125,12 @@ describe('header', () => {
     )
   })
 
-  it('links to the lodging settings so a wrong seed can be corrected', () => {
+  it('offers no lodging-settings link while the admin editor does not exist', () => {
+    // /admin/lodging is Phase C and is not a registered route, so the
+    // catch-all would bounce the user to the home page. A link that silently
+    // navigates somewhere else is worse than no link.
     renderPage()
-    expect(screen.getByRole('link', { name: /Lodging settings/i })).toHaveAttribute(
-      'href',
-      '/admin/lodging'
-    )
+    expect(screen.queryByRole('link', { name: /Lodging settings/i })).not.toBeInTheDocument()
   })
 
   it('says so when the URL names a weekend that does not exist', () => {

@@ -104,9 +104,13 @@ export function partyAttention(
     if (unmet.length > 0) {
       return { level: 'unmet', reason: unmet.map((need) => need.unmet).join(' · ') }
     }
-    if (!genericAccommodation) {
-      return { level: 'settled', reason: '' }
-    }
+    // Every specific need is answered. A generic accommodation can still be
+    // outstanding — no cabin field settles it — but the answered needs must
+    // not be dragged back into the reason, or a cabin the registry confirms
+    // has power reads as "we don't know whether this cabin has power".
+    return genericAccommodation
+      ? { level: 'unverified', reason: 'Accommodation' }
+      : { level: 'settled', reason: '' }
   }
 
   const outstanding: string[] = asked.map((need) => need.label)

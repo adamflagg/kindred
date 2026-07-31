@@ -252,6 +252,36 @@ describe('HouseholdRosterTable', () => {
     expect(screen.getByText('1 adult')).toBeInTheDocument()
   })
 
+  it('offers no medical reveal for a party that has no household', () => {
+    // Adult weekends enrol the person directly, so `household_cm_id` is 0 and
+    // there is nothing to look a narrative up by. The reveal would only ever
+    // request /households/0/medical, so the row says what it knows instead.
+    render(
+      <HouseholdRosterTable
+        parties={[
+          party({
+            grain: 'person',
+            household_cm_id: 0,
+            person_cm_id: 1000004,
+            display_name: 'Olivia Chen',
+            flags: {
+              needs_private_bathroom: false,
+              needs_power: false,
+              needs_accommodation: false,
+              accommodation_is_mandatory: false,
+              has_infant: false,
+              has_medical_narrative: true,
+            },
+          }),
+        ]}
+        year={2026}
+      />,
+      { wrapper }
+    )
+    expect(screen.queryByRole('button', { name: /medical detail/i })).not.toBeInTheDocument()
+    expect(screen.getByText('Medical detail on file')).toBeInTheDocument()
+  })
+
   it('keeps household and person parties with colliding ids as distinct rows', () => {
     // The two grains number independently, so a household cm_id can equal a
     // person cm_id. A key built from only one of them would collapse the rows.

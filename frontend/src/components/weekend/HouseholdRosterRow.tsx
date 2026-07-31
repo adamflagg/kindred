@@ -85,6 +85,10 @@ export function HouseholdRosterRow({ party, year, showRequests, unit }: Househol
   const adults = party.adults ?? []
   const children = party.children ?? []
   const showAdults = party.grain === 'household'
+  // A person-grain party has no household, and the API sends 0 rather than
+  // omitting the field. `null` says "nothing to look up" so the flag list
+  // does not offer a reveal that could never resolve.
+  const householdCmId = showAdults ? (party.household_cm_id ?? 0) : 0
 
   return (
     <tr className="border-border/40 hover:bg-muted/30 border-b align-top transition-colors">
@@ -173,7 +177,7 @@ export function HouseholdRosterRow({ party, year, showRequests, unit }: Househol
       <td className="py-3 pr-3">
         <AccessibilityFlagList
           flags={party.flags ?? NO_FLAGS}
-          householdCmId={party.household_cm_id ?? 0}
+          householdCmId={householdCmId > 0 ? householdCmId : null}
           year={year}
         />
       </td>

@@ -152,6 +152,31 @@ describe('partyAttention — does the cabin provide what was asked for', () => {
     expect(a.level).toBe('unverified')
   })
 
+  it('does not re-list a need the confirmed cabin already provides', () => {
+    // A generic accommodation keeps the party unverified, because no cabin
+    // field settles it. That must not drag the SPECIFIC needs back into the
+    // reason: a confirmed cabin with power has verifiably answered "Power",
+    // and saying otherwise reads as "we don't know if this cabin has power"
+    // when the registry says it does.
+    const a = partyAttention(
+      party({ flags: { needs_power: true, needs_accommodation: true } }),
+      unit({ is_confirmed: true, has_power: true })
+    )
+    expect(a.level).toBe('unverified')
+    expect(a.reason).toBe('Accommodation')
+  })
+
+  it('keeps the specific needs in the reason while the cabin is unconfirmed', () => {
+    // The mirror of the case above: without confirmation nothing is verified,
+    // so both the specific need and the generic accommodation are outstanding.
+    const a = partyAttention(
+      party({ flags: { needs_power: true, needs_accommodation: true } }),
+      unit({ is_confirmed: false, has_power: true })
+    )
+    expect(a.level).toBe('unverified')
+    expect(a.reason).toBe('Power · Accommodation')
+  })
+
   it('does not escalate on an infant, which is context rather than a request', () => {
     // Derived from the household's ages, not asked for. It informs which cabin
     // suits them; it is not an unfulfilled request.

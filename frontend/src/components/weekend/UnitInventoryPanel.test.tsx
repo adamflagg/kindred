@@ -158,6 +158,29 @@ describe('UnitInventoryPanel', () => {
     expect(screen.getByText('Ridge B')).toBeInTheDocument()
   })
 
+  it('keeps areas apart when they share a blank code but not a name', () => {
+    // An area row carrying a name and no code is possible — the API sends
+    // `code: ""` for anything it cannot resolve. Bucketing on the code alone
+    // then files the second area's cabins under the first area's heading and
+    // discards its name entirely.
+    render(
+      <UnitInventoryPanel
+        units={[
+          unit({ area_code: '', area_name: 'Ridge Side' }),
+          unit({
+            unit_id: 'u7',
+            code: 'river-a',
+            name: 'River A',
+            area_code: '',
+            area_name: 'River Side',
+          }),
+        ]}
+      />
+    )
+    expect(screen.getByText('Ridge Side')).toBeInTheDocument()
+    expect(screen.getByText('River Side')).toBeInTheDocument()
+  })
+
   it('explains an empty registry instead of rendering a bare panel', () => {
     render(<UnitInventoryPanel units={[]} />)
     expect(screen.getByText(/No lodging units in the registry yet/)).toBeInTheDocument()

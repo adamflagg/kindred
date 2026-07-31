@@ -92,10 +92,15 @@ export function UnitInventoryPanel({ units }: UnitInventoryPanelProps) {
     )
   }
 
+  // Keyed on the code AND the name. The code alone is not unique: the API
+  // sends `area_code: ""` for anything it cannot resolve, so two differently
+  // named areas would share a bucket and the second one's name would be
+  // silently discarded along with its heading.
   const byArea = new Map<string, { name: string; units: LodgingUnitRow[] }>()
   for (const unit of units) {
-    const key = unit.area_code ?? ''
-    const bucket = byArea.get(key) ?? { name: unit.area_name ?? 'Unassigned area', units: [] }
+    const name = unit.area_name ?? 'Unassigned area'
+    const key = `${unit.area_code ?? ''}::${name}`
+    const bucket = byArea.get(key) ?? { name, units: [] }
     bucket.units.push(unit)
     byArea.set(key, bucket)
   }

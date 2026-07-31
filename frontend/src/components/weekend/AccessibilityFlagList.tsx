@@ -24,7 +24,12 @@ import type { AccessibilityFlags } from '../../types/lodging'
 
 export interface AccessibilityFlagListProps {
   flags: AccessibilityFlags
-  householdCmId: number
+  /**
+   * The household the narrative belongs to, or `null` when the party has no
+   * household — an adult weekend enrols the person directly. There is then
+   * nothing to look a narrative up by, so the reveal is not offered.
+   */
+  householdCmId: number | null
   year: number
 }
 
@@ -54,8 +59,11 @@ function NeedRow({ label, icon: Icon, tone }: { label: string; icon: typeof Bath
 export function AccessibilityFlagList({ flags, householdCmId, year }: AccessibilityFlagListProps) {
   const { hasPermission } = usePermissions()
   const [revealed, setRevealed] = useState(false)
-  const canSeePhi = hasPermission(Permission.LODGING_PHI)
-  const { data, isLoading, error } = useHouseholdMedical(year, householdCmId, revealed && canSeePhi)
+  // Both halves are required: the permission, and a household to fetch by. A
+  // button that could only ever request /households/0/medical is worse than
+  // no button, because it fails every time it is pressed.
+  const canReveal = hasPermission(Permission.LODGING_PHI) && householdCmId !== null
+  const { data, isLoading, error } = useHouseholdMedical(year, householdCmId, revealed && canReveal)
 
   const mandatory = flags.accommodation_is_mandatory === true
   const hasNarrative = flags.has_medical_narrative === true
@@ -97,7 +105,7 @@ export function AccessibilityFlagList({ flags, householdCmId, year }: Accessibil
 
       {hasNarrative && (
         <div className="flex flex-col gap-1">
-          {canSeePhi ? (
+          {canReveal ? (
             // Every household in a real weekend has something on file (62 of
             // 62 in 2026), so this is a quiet icon: a text link repeated down
             // every row reads as decoration and stops being seen.
@@ -120,7 +128,7 @@ export function AccessibilityFlagList({ flags, householdCmId, year }: Accessibil
             <span className="text-muted-foreground px-2 text-xs">Medical detail on file</span>
           )}
 
-          {revealed && canSeePhi && (
+          {revealed && canReveal && (
             <div className="rounded-r-lg border-l-2 border-red-400 bg-red-50/60 px-3 py-2 text-sm text-red-900 dark:border-red-500/60 dark:bg-red-900/20 dark:text-red-200">
               {isLoading && (
                 <span className="inline-flex items-center gap-1.5">
