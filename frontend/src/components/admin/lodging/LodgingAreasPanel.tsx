@@ -120,30 +120,36 @@ export function LodgingAreasPanel() {
         label="lodging areas"
         emptyMessage="No areas yet."
       >
-        {(areas) => (
-          <ul className="card-lodge flex flex-col gap-2 p-4">
-            {areas.map((area) => (
-              <li key={area.id} className="flex flex-wrap items-center gap-2">
-                <input
-                  className={`${FIELD} max-w-64`}
-                  defaultValue={area.name}
-                  aria-label={`Name of ${area.code}`}
-                  onBlur={(e) => {
-                    if (e.target.value !== area.name) void handleRename(area, e.target.value)
-                  }}
-                />
-                <span className="text-muted-foreground text-xs">{area.code}</span>
-                <button
-                  type="button"
-                  onClick={() => void handleDelete(area)}
-                  className="text-muted-foreground ml-auto text-xs font-medium hover:underline"
-                >
-                  Delete
-                </button>
-              </li>
-            ))}
-          </ul>
-        )}
+        {(areas) =>
+          areas.length === 0 ? (
+            // QueryGuard's emptyMessage only fires on `!data`; an empty array is
+            // truthy and would otherwise render an empty card.
+            <p className="text-muted-foreground py-12 text-center text-sm">No areas yet.</p>
+          ) : (
+            <ul className="card-lodge flex flex-col gap-2 p-4">
+              {areas.map((area) => (
+                <li key={area.id} className="flex flex-wrap items-center gap-2">
+                  <input
+                    className={`${FIELD} max-w-64`}
+                    defaultValue={area.name}
+                    aria-label={`Name of ${area.code}`}
+                    onBlur={(e) => {
+                      if (e.target.value !== area.name) void handleRename(area, e.target.value)
+                    }}
+                  />
+                  <span className="text-muted-foreground text-xs">{area.code}</span>
+                  <button
+                    type="button"
+                    onClick={() => void handleDelete(area)}
+                    className="text-muted-foreground ml-auto text-xs font-medium hover:underline"
+                  >
+                    Delete
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )
+        }
       </QueryGuard>
     </div>
   )

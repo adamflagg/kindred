@@ -93,70 +93,76 @@ export function LodgingUnitsPanel() {
         label="lodging units"
         emptyMessage="No lodging units yet."
       >
-        {(units) => (
-          <div className="card-lodge overflow-x-auto p-4">
-            <table className="w-full text-left text-sm">
-              <thead>
-                <tr className="border-border text-muted-foreground border-b text-xs uppercase">
-                  <th className="pb-2">Unit</th>
-                  <th className="pb-2">Code</th>
-                  <th className="pb-2">Sleeps</th>
-                  <th className="pb-2">Allocation</th>
-                  <th className="pb-2">State</th>
-                  <th className="pb-2" />
-                </tr>
-              </thead>
-              <tbody>
-                {units.map((unit) => (
-                  <tr key={unit.id} className="border-border/50 border-b">
-                    <td className="py-2 font-medium">{unit.name}</td>
-                    <td className="text-muted-foreground py-2">{unit.code}</td>
-                    {/* 0 means UNKNOWN — PocketBase stores unset numbers as 0. */}
-                    <td className="py-2">{unit.sleeps > 0 ? unit.sleeps : '—'}</td>
-                    <td className="py-2">
-                      {unit.allocation_default === 'staff_default' ? 'Staff' : 'Family pool'}
-                    </td>
-                    <td className="flex flex-wrap gap-1 py-2">
-                      {unit.is_container && (
-                        <span className={`bg-muted text-muted-foreground ${PILL}`}>Building</span>
-                      )}
-                      {!unit.is_active && (
-                        <span className={`bg-muted text-muted-foreground ${PILL}`}>Inactive</span>
-                      )}
-                      {!unit.is_confirmed && (
-                        <span
-                          className={`bg-amber-100 text-amber-800 dark:bg-amber-950/40 dark:text-amber-300 ${PILL}`}
-                        >
-                          Unconfirmed
-                        </span>
-                      )}
-                    </td>
-                    <td className="py-2 text-right">
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setEditing(unit)
-                        }}
-                        className="text-primary mr-3 text-xs font-medium hover:underline"
-                      >
-                        Edit
-                      </button>
-                      {unit.is_active && (
+        {(units) =>
+          units.length === 0 ? (
+            // QueryGuard's emptyMessage only fires on `!data`; an empty array is
+            // truthy and would otherwise render a headers-only table.
+            <p className="text-muted-foreground py-12 text-center text-sm">No lodging units yet.</p>
+          ) : (
+            <div className="card-lodge overflow-x-auto p-4">
+              <table className="w-full text-left text-sm">
+                <thead>
+                  <tr className="border-border text-muted-foreground border-b text-xs uppercase">
+                    <th className="pb-2">Unit</th>
+                    <th className="pb-2">Code</th>
+                    <th className="pb-2">Sleeps</th>
+                    <th className="pb-2">Allocation</th>
+                    <th className="pb-2">State</th>
+                    <th className="pb-2" />
+                  </tr>
+                </thead>
+                <tbody>
+                  {units.map((unit) => (
+                    <tr key={unit.id} className="border-border/50 border-b">
+                      <td className="py-2 font-medium">{unit.name}</td>
+                      <td className="text-muted-foreground py-2">{unit.code}</td>
+                      {/* 0 means UNKNOWN — PocketBase stores unset numbers as 0. */}
+                      <td className="py-2">{unit.sleeps > 0 ? unit.sleeps : '—'}</td>
+                      <td className="py-2">
+                        {unit.allocation_default === 'staff_default' ? 'Staff' : 'Family pool'}
+                      </td>
+                      <td className="flex flex-wrap gap-1 py-2">
+                        {unit.is_container && (
+                          <span className={`bg-muted text-muted-foreground ${PILL}`}>Building</span>
+                        )}
+                        {!unit.is_active && (
+                          <span className={`bg-muted text-muted-foreground ${PILL}`}>Inactive</span>
+                        )}
+                        {!unit.is_confirmed && (
+                          <span
+                            className={`bg-amber-100 text-amber-800 dark:bg-amber-950/40 dark:text-amber-300 ${PILL}`}
+                          >
+                            Unconfirmed
+                          </span>
+                        )}
+                      </td>
+                      <td className="py-2 text-right">
                         <button
                           type="button"
-                          onClick={() => void handleDeactivate(unit)}
-                          className="text-muted-foreground text-xs font-medium hover:underline"
+                          onClick={() => {
+                            setEditing(unit)
+                          }}
+                          className="text-primary mr-3 text-xs font-medium hover:underline"
                         >
-                          Deactivate
+                          Edit
                         </button>
-                      )}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
+                        {unit.is_active && (
+                          <button
+                            type="button"
+                            onClick={() => void handleDeactivate(unit)}
+                            className="text-muted-foreground text-xs font-medium hover:underline"
+                          >
+                            Deactivate
+                          </button>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )
+        }
       </QueryGuard>
     </div>
   )
