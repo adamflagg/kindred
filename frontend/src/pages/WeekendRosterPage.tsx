@@ -17,7 +17,7 @@
  * the Go ingest so every surface sees the correction at once.
  */
 import { Listbox, ListboxButton, ListboxOption, ListboxOptions } from '@headlessui/react'
-import { ArrowLeft, ChevronDown, Home, Users } from 'lucide-react'
+import { ArrowLeft, ChevronDown, Home, Settings2, Users } from 'lucide-react'
 import { useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router'
 
@@ -33,6 +33,7 @@ import {
   WeekendStatsBar,
 } from '../components/weekend'
 import { useCurrentYear } from '../hooks/useCurrentYear'
+import { usePermissions } from '../hooks/usePermissions'
 import { useWeekendRoster, useWeekendSessions } from '../hooks/useWeekendRoster'
 
 type View = 'roster' | 'inventory'
@@ -41,6 +42,7 @@ export default function WeekendRosterPage() {
   const { sessionCmId } = useParams<{ sessionCmId: string }>()
   const navigate = useNavigate()
   const { currentYear } = useCurrentYear()
+  const { isAdmin } = usePermissions()
   const [view, setView] = useState<View>('roster')
 
   const selectedCmId = sessionCmId === undefined ? null : Number(sessionCmId)
@@ -121,6 +123,19 @@ export default function WeekendRosterPage() {
             >
               {selectedSession.session_type === 'adult' ? 'Adult' : 'Family'}
             </span>
+          )}
+
+          {/* Restored now that Phase C registers /admin/lodging. It was pulled
+              in 03754754 because App.tsx's path="*" silently bounced the user
+              home when the route did not exist. */}
+          {isAdmin && (
+            <Link
+              to="/admin/lodging/units"
+              className="text-muted-foreground hover:text-foreground ml-auto inline-flex items-center gap-1.5 text-sm transition-colors"
+            >
+              <Settings2 className="h-4 w-4" />
+              Lodging settings
+            </Link>
           )}
         </div>
       </header>

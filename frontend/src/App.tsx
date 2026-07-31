@@ -41,6 +41,11 @@ const SyncTab = lazy(() =>
 const ConfigTab = lazy(() =>
   import('./components/admin/ConfigTab').then((m) => ({ default: m.ConfigTab }))
 )
+const LodgingSettingsTab = lazy(() =>
+  import('./components/admin/lodging/LodgingSettingsTab').then((m) => ({
+    default: m.LodgingSettingsTab,
+  }))
+)
 const SheetsTab = lazy(() =>
   import('./components/admin/SheetsTab').then((m) => ({ default: m.SheetsTab }))
 )
@@ -247,6 +252,20 @@ function App() {
                                   <ErrorBoundary>
                                     <Suspense fallback={<PageSkeleton />}>
                                       <ConfigTab />
+                                    </Suspense>
+                                  </ErrorBoundary>
+                                }
+                              />
+                              <Route
+                                path="lodging"
+                                element={<Navigate to="/admin/lodging/units" replace />}
+                              />
+                              <Route
+                                path="lodging/:section"
+                                element={
+                                  <ErrorBoundary>
+                                    <Suspense fallback={<PageSkeleton />}>
+                                      <LodgingSettingsTab />
                                     </Suspense>
                                   </ErrorBoundary>
                                 }

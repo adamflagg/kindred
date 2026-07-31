@@ -1,8 +1,8 @@
 import type { LucideIcon } from 'lucide-react'
-import { RefreshCw, Sliders, Workflow, Database, Settings2 } from 'lucide-react'
+import { RefreshCw, Sliders, Workflow, Database, Settings2, Home } from 'lucide-react'
 
 export interface AdminTabConfig {
-  id: 'sync' | 'config'
+  id: 'sync' | 'config' | 'lodging'
   label: string
   path: string
   icon: LucideIcon
@@ -23,6 +23,13 @@ export const ADMIN_TABS: AdminTabConfig[] = [
     label: 'Configuration',
     path: '/admin/config',
     icon: Sliders,
+    requiredPermission: 'admin',
+  },
+  {
+    id: 'lodging',
+    label: 'Family Camp Lodging',
+    path: '/admin/lodging',
+    icon: Home,
     requiredPermission: 'admin',
   },
 ]

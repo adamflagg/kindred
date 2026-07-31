@@ -26,12 +26,14 @@ vi.mock('../hooks/useCurrentYear', () => ({
   useCurrentYear: () => ({ currentYear: 2026, setCurrentYear: vi.fn() }),
 }))
 
+let isAdmin = true
+
 vi.mock('../hooks/usePermissions', () => ({
   usePermissions: () => ({
-    isAdmin: true,
+    isAdmin,
     permissions: [],
-    hasPermission: () => true,
-    hasAnyPermission: () => true,
+    hasPermission: () => isAdmin,
+    hasAnyPermission: () => isAdmin,
   }),
 }))
 
@@ -70,6 +72,7 @@ function renderPage(cmId = '1000001') {
 
 beforeEach(() => {
   navigate.mockReset()
+  isAdmin = true
   sessionsQuery.data = { year: 2026, sessions: [FAMILY_CAMP_1, WOMENS] }
   sessionsQuery.isLoading = false
   sessionsQuery.error = null
@@ -125,10 +128,21 @@ describe('header', () => {
     )
   })
 
-  it('offers no lodging-settings link while the admin editor does not exist', () => {
-    // /admin/lodging is Phase C and is not a registered route, so the
-    // catch-all would bounce the user to the home page. A link that silently
-    // navigates somewhere else is worse than no link.
+  it('links an admin to the lodging editor', () => {
+    // Phase C registers /admin/lodging/:section, so the link resolves instead
+    // of being swallowed by App.tsx's catch-all. It points straight at the
+    // units section rather than the bare path, skipping one redirect hop.
+    renderPage()
+    expect(screen.getByRole('link', { name: /Lodging settings/i })).toHaveAttribute(
+      'href',
+      '/admin/lodging/units'
+    )
+  })
+
+  it('hides the lodging-settings link from a non-admin', () => {
+    // Every lodging collection gates writes on `@request.auth.is_admin`, so a
+    // non-admin following the link would reach a surface that 403s on save.
+    isAdmin = false
     renderPage()
     expect(screen.queryByRole('link', { name: /Lodging settings/i })).not.toBeInTheDocument()
   })
