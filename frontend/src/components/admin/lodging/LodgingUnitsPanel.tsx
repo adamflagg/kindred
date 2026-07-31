@@ -71,6 +71,27 @@ export function LodgingUnitsPanel() {
     return next
   }
 
+  /**
+   * Collapsing a group drops its units from the selection.
+   *
+   * The bulk bar's only subject is what staff can see. Left selected, a
+   * collapsed group would keep feeding "Confirm N selected" with rows that are
+   * no longer on screen — a bulk write whose targets nobody can check. The
+   * selection does not come back on expand: re-selecting rows staff last saw
+   * minutes ago would be the same surprise in the other direction.
+   */
+  const toggleGroup = (areaId: string, unitIds: string[]) => {
+    const collapsing = !collapsed.has(areaId)
+    setCollapsed((c) => toggleIn(c, areaId))
+    if (!collapsing) return
+    setSelected((current) => {
+      if (!unitIds.some((id) => current.has(id))) return current
+      const next = new Set(current)
+      for (const id of unitIds) next.delete(id)
+      return next
+    })
+  }
+
   const handleConfirm = async (ids: string[]) => {
     try {
       const count = await confirmLodgingUnits(ids)
@@ -241,7 +262,10 @@ export function LodgingUnitsPanel() {
                           <button
                             type="button"
                             onClick={() => {
-                              setCollapsed((c) => toggleIn(c, group.areaId))
+                              toggleGroup(
+                                group.areaId,
+                                group.units.map((u) => u.id)
+                              )
                             }}
                             className="hover:bg-muted/40 flex w-full items-center gap-2 py-2 text-left transition-colors"
                           >

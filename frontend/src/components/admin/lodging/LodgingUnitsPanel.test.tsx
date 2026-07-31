@@ -181,4 +181,41 @@ describe('LodgingUnitsPanel', () => {
     // The other area is unaffected.
     expect(screen.getByText('North Lodge')).toBeInTheDocument()
   })
+
+  it('drops units from the selection when their area collapses', async () => {
+    // Otherwise the bulk bar offers "Confirm 2 selected" over rows the user
+    // can no longer see — a bulk mutation with no visible subject.
+    const user = userEvent.setup()
+    await renderPanel()
+
+    await user.click(screen.getByRole('checkbox', { name: 'Select Cabin A' }))
+    await user.click(screen.getByRole('checkbox', { name: 'Select Cabin B' }))
+    expect(screen.getByRole('button', { name: /Confirm 2 selected/ })).toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: /North Zone/ }))
+    expect(screen.queryByRole('button', { name: /Confirm \d+ selected/ })).not.toBeInTheDocument()
+  })
+
+  it('keeps a selection in an area that stays open', async () => {
+    const user = userEvent.setup()
+    await renderPanel()
+
+    await user.click(screen.getByRole('checkbox', { name: 'Select Cabin A' }))
+    await user.click(screen.getByRole('checkbox', { name: 'Select North Lodge' }))
+    await user.click(screen.getByRole('button', { name: /North Zone/ }))
+
+    expect(screen.getByRole('button', { name: /Confirm 1 selected/ })).toBeInTheDocument()
+  })
+
+  it('does not re-select a group when it expands again', async () => {
+    const user = userEvent.setup()
+    await renderPanel()
+
+    await user.click(screen.getByRole('checkbox', { name: 'Select Cabin A' }))
+    await user.click(screen.getByRole('button', { name: /North Zone/ }))
+    await user.click(screen.getByRole('button', { name: /North Zone/ }))
+
+    expect(screen.getByRole('checkbox', { name: 'Select Cabin A' })).not.toBeChecked()
+    expect(screen.queryByRole('button', { name: /Confirm \d+ selected/ })).not.toBeInTheDocument()
+  })
 })
