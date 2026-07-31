@@ -105,7 +105,9 @@ describe('programUrls', () => {
   describe('getProgramHomeUrl', () => {
     it('returns correct home URL for each program', () => {
       expect(getProgramHomeUrl('summer')).toBe('/summer/sessions')
-      expect(getProgramHomeUrl('weekend')).toBe('/weekend/')
+      // Weekend now has a sessions lander of its own, so its home is the same
+      // shape as summer's rather than a bare program root.
+      expect(getProgramHomeUrl('weekend')).toBe('/weekend/sessions')
       expect(getProgramHomeUrl('analytics')).toBe('/analytics')
     })
   })

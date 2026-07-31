@@ -247,3 +247,31 @@ class HouseholdMedicalResponse(BaseModel):
     additional_info: str = ""
     bathroom_explain: str = ""
     accommodation_explain: str = ""
+
+
+class WeekendSummaryEntry(BaseModel):
+    """One weekend on the lander: who it is, and how its placement stands.
+
+    Carries the SAME `RosterCounts` the roster endpoint returns, produced by
+    the same code path, so the lander and the roster can never disagree about
+    a weekend.
+    """
+
+    session: WeekendSessionSummary
+    counts: RosterCounts
+
+
+class WeekendSummaryResponse(BaseModel):
+    """Every weekend in a year, with counts, in ONE request.
+
+    Exists because `/roster` is a composed read whose cost is dominated by
+    year-scoped work -- the unit registry, households, registrations, medical
+    and the prior-household set are identical for every weekend in the year.
+    Calling it once per weekend to fill a lander repeats that work N times: a
+    weekend with zero parties still costs ~3s, which is the whole tell. This
+    endpoint does the year-scoped fetches once and only the session-scoped
+    three (availability, assignments, attendees) per weekend.
+    """
+
+    year: int
+    weekends: list[WeekendSummaryEntry] = Field(default_factory=list)

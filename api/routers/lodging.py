@@ -13,6 +13,7 @@ from api.schemas.lodging import (
     HouseholdMedicalResponse,
     WeekendRosterResponse,
     WeekendSessionListResponse,
+    WeekendSummaryResponse,
 )
 from api.services.lodging_repository import LodgingRepository
 from api.services.lodging_roster_service import LodgingRosterService, SessionNotFoundError
@@ -43,6 +44,22 @@ async def list_weekend_sessions(
     summer session types belong to the bunking board.
     """
     return await _service().list_sessions(year)
+
+
+@router.get("/summary", response_model=WeekendSummaryResponse)
+async def get_weekend_summary(
+    year: int = Query(..., description="Year of the weekends", ge=2000, le=2100),
+    user: AuthUser = Depends(get_current_user),
+) -> WeekendSummaryResponse:
+    """Every weekend in a year with its counts, for the lander, in one request.
+
+    The lander needs a handful of figures per weekend. Getting them from
+    `/roster` costs one composed read each, and that read is dominated by
+    year-scoped work identical across every weekend -- so twelve weekends
+    repeat it twelve times. This does it once. The counts come from the same
+    helpers `/roster` uses, so the two can never disagree.
+    """
+    return await _service().build_summary(year)
 
 
 @router.get("/roster", response_model=WeekendRosterResponse)

@@ -55,7 +55,8 @@ const ManageRegistrationPage = lazy(() =>
     default: m.ManageRegistrationPage,
   }))
 )
-const WeekendHousingDashboard = lazy(() => import('./pages/WeekendHousingDashboard'))
+const WeekendSessionList = lazy(() => import('./pages/WeekendSessionList'))
+const WeekendRosterPage = lazy(() => import('./pages/WeekendRosterPage'))
 const ScenarioComparisonPage = lazy(() => import('./pages/ScenarioComparisonPage'))
 const PipelineDebugPage = lazy(() => import('./pages/summer/PipelineDebugPage'))
 const ParseAnalysisPage = lazy(() => import('./pages/summer/ParseAnalysisPage'))
@@ -599,12 +600,23 @@ function App() {
 
                           {/* Weekend Housing routes - with app layout */}
                           <Route path="/weekend" element={<AppLayout />}>
+                            <Route index element={<Navigate to="/weekend/sessions" replace />} />
                             <Route
-                              index
+                              path="sessions"
                               element={
                                 <ErrorBoundary>
                                   <Suspense fallback={<PageSkeleton />}>
-                                    <WeekendHousingDashboard />
+                                    <WeekendSessionList />
+                                  </Suspense>
+                                </ErrorBoundary>
+                              }
+                            />
+                            <Route
+                              path="session/:sessionCmId"
+                              element={
+                                <ErrorBoundary>
+                                  <Suspense fallback={<PageSkeleton />}>
+                                    <WeekendRosterPage />
                                   </Suspense>
                                 </ErrorBoundary>
                               }

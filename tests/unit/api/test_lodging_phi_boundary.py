@@ -20,6 +20,7 @@ from api.schemas.lodging import (
     HouseholdMedicalResponse,
     WeekendRosterResponse,
     WeekendSessionListResponse,
+    WeekendSummaryResponse,
 )
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
@@ -103,6 +104,17 @@ def test_roster_response_graph_contains_no_phi_field() -> None:
 def test_session_list_response_graph_contains_no_phi_field() -> None:
     leaked = _all_field_names(WeekendSessionListResponse) & PHI_FIELD_NAMES
     assert not leaked, f"PHI fields reachable from the session list payload: {sorted(leaked)}"
+
+
+def test_summary_response_graph_contains_no_phi_field() -> None:
+    """The lander batches counts for every weekend in a year.
+
+    It is built from the same helpers as the roster, so it inherits the same
+    exposure surface -- which is exactly why it needs its own walk. A model
+    added to the summary path would otherwise never be checked.
+    """
+    leaked = _all_field_names(WeekendSummaryResponse) & PHI_FIELD_NAMES
+    assert leaked == set(), f"PHI reachable from WeekendSummaryResponse: {sorted(leaked)}"
 
 
 def test_household_medical_response_is_the_only_phi_carrier() -> None:

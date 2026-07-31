@@ -469,6 +469,29 @@ export const queryKeys = {
 
   // Saved scenarios list (year-scoped) — see frontend/src/hooks/useScenarioList.ts
   scenariosList: (year: number) => ['scenarios', 'list', year] as const,
+
+  // Weekend lodging (family camp + adult weekends)
+  weekendSessions: (year: number) => ['weekend-sessions', year] as const,
+  /** The lander's single batched read: every weekend in a year, with counts. */
+  weekendSummary: (year: number) => ['weekend-summary', year] as const,
+  weekendRoster: (year: number, sessionCmId: number) =>
+    ['weekend-roster', year, sessionCmId] as const,
+  /** PHI. Only ever fetched behind an explicit, permission-checked reveal. */
+  householdMedical: (year: number, householdCmId: number) =>
+    ['household-medical', year, householdCmId] as const,
+
+  // Lodging registry (Family Camp admin settings). Not year-scoped: the
+  // registry is physical site inventory, and a unit outlives any one season.
+  lodgingAreas: () => ['lodging-areas'] as const,
+  lodgingUnits: () => ['lodging-units'] as const,
+  lodgingAliases: () => ['lodging-aliases'] as const,
+  /**
+   * The ingest work queue is `lodging_ingest_issues`, NOT a separate
+   * `lodging_unresolved_aliases` collection — the ingest is its sole producer
+   * and carries `kind`, candidate sessions and a suggested session that a
+   * narrower collection could not express.
+   */
+  lodgingIngestIssues: () => ['lodging-ingest-issues'] as const,
 }
 
 /**

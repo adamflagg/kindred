@@ -631,3 +631,79 @@ class TestMedicalFlagsAndNarrative:
 
         assert result.household_cm_id == 9999999
         assert result.cpap_info == ""
+
+
+class TestBuildSummary:
+    """The lander's batched read.
+
+    It exists for one reason: `build_roster` makes eleven fetches of which
+    eight are year-scoped, so filling a lander weekend-by-weekend repeats that
+    year-wide work once per weekend. The point of these tests is that the
+    batch does it ONCE and still agrees with the roster.
+    """
+
+    @pytest.mark.asyncio
+    async def test_year_scoped_reads_happen_once_for_the_whole_year(self) -> None:
+        repo = _repo(fetch_weekend_sessions=[FAMILY_SESSION, ADULT_SESSION])
+        service = LodgingRosterService(repo)
+
+        await service.build_summary(2026)
+
+        # Eight year-scoped fetches, two weekends: each must still be one call.
+        for method in (
+            "fetch_units",
+            "fetch_households",
+            "fetch_prior_household_cm_ids",
+            "fetch_family_camp_adults",
+            "fetch_family_camp_registrations",
+            "fetch_family_camp_medical",
+            "count_open_unresolved_aliases",
+            "count_unconfirmed_units",
+        ):
+            assert getattr(repo, method).await_count == 1, f"{method} was not batched"
+
+    @pytest.mark.asyncio
+    async def test_session_scoped_reads_happen_once_per_weekend(self) -> None:
+        repo = _repo(fetch_weekend_sessions=[FAMILY_SESSION, ADULT_SESSION])
+        service = LodgingRosterService(repo)
+
+        await service.build_summary(2026)
+
+        for method in ("fetch_availability", "fetch_assignments", "fetch_attendees_for_session"):
+            assert getattr(repo, method).await_count == 2, f"{method} should be per-weekend"
+
+    @pytest.mark.asyncio
+    async def test_returns_one_entry_per_weekend_carrying_its_identity(self) -> None:
+        repo = _repo(fetch_weekend_sessions=[FAMILY_SESSION, ADULT_SESSION])
+        service = LodgingRosterService(repo)
+
+        summary = await service.build_summary(2026)
+
+        assert summary.year == 2026
+        assert [entry.session.session_cm_id for entry in summary.weekends] == [1000001, 1000002]
+        assert [entry.session.session_type for entry in summary.weekends] == ["family", "adult"]
+
+    @pytest.mark.asyncio
+    async def test_counts_match_what_the_roster_reports_for_the_same_weekend(self) -> None:
+        """The lander links to the roster; they must not disagree about it."""
+        units = [
+            _unit("u1", "ridge-a", "Ridge A", sleeps=5),
+            _unit("u2", "wawona", "Wawona", sleeps=7, is_container=True),
+        ]
+        repo = _repo(fetch_weekend_sessions=[FAMILY_SESSION], fetch_session=FAMILY_SESSION, fetch_units=units)
+        service = LodgingRosterService(repo)
+
+        summary = await service.build_summary(2026)
+        roster = await service.build_roster(2026, 1000001)
+
+        assert summary.weekends[0].counts == roster.counts
+
+    @pytest.mark.asyncio
+    async def test_a_year_with_no_weekends_does_no_year_scoped_work(self) -> None:
+        repo = _repo(fetch_weekend_sessions=[])
+        service = LodgingRosterService(repo)
+
+        summary = await service.build_summary(2026)
+
+        assert summary.weekends == []
+        assert repo.fetch_units.await_count == 0
