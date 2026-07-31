@@ -127,28 +127,62 @@ func TestParseSharedCabinModes(t *testing.T) {
 	const none = "No requests"
 
 	cases := []struct {
-		raw                string
-		wantNear, wantWith bool
+		raw                             string
+		wantNear, wantWith, wantSimilar bool
 	}{
-		{near, true, false},
-		{with, false, true},
-		{withOpen, false, true},
-		{none, false, false},
-		{with + "|" + near, true, true},
-		{near + "|" + none, true, false},
-		{"", false, false},
+		{near, true, false, false},
+		{with, false, true, false},
+		// The similarly-aged option is a REFINEMENT of WITH, not a third axis:
+		// its sentence literally begins "Share a cabin WITH", so it is a
+		// co-housing request whose partner is simply unnamed. It therefore sets
+		// both -- anything consuming wants_with must still see this household.
+		{withOpen, false, true, true},
+		{none, false, false, false},
+		{with + "|" + near, true, true, false},
+		{near + "|" + none, true, false, false},
+		{"", false, false, false},
 		// One option naming both edge types. No observed 2025 option does this,
 		// so it is a guard rather than a live case -- but the two needs are
 		// independent for the same reason classifyCPAPAnswer's are, and an
 		// ordered switch silently drops whichever loses.
-		{"Share a cabin WITH or house my family NEAR a specific family", true, true},
+		{"Share a cabin WITH or house my family NEAR a specific family", true, true, false},
+		// CampMinder's live text is unhyphenated ("similarly aged kid(s)"), but
+		// staff edit these sentences. Both spellings are accepted so a hyphen
+		// added in CampMinder does not silently zero the flag.
+		{"Share a cabin WITH a family with similarly-aged kids", false, true, true},
+		// All three at once, across the pipe.
+		{withOpen + "|" + near, true, true, true},
 	}
 	for _, tc := range cases {
-		gotNear, gotWith := ParseSharedCabinModes(tc.raw)
-		if gotNear != tc.wantNear || gotWith != tc.wantWith {
-			t.Errorf("ParseSharedCabinModes(%.50q) = (%v, %v), want (%v, %v)",
-				tc.raw, gotNear, gotWith, tc.wantNear, tc.wantWith)
+		gotNear, gotWith, gotSimilar := ParseSharedCabinModes(tc.raw)
+		if gotNear != tc.wantNear || gotWith != tc.wantWith || gotSimilar != tc.wantSimilar {
+			t.Errorf("ParseSharedCabinModes(%.50q) = (%v, %v, %v), want (%v, %v, %v)",
+				tc.raw, gotNear, gotWith, gotSimilar, tc.wantNear, tc.wantWith, tc.wantSimilar)
 		}
+	}
+}
+
+// TestCollapseCarriesSimilarAgesToHouseholdGrain: the open-invitation flag has
+// to survive the person-to-household collapse like the other two modes, or the
+// staff-matchable pool is empty on the board no matter what families answered.
+func TestCollapseCarriesSimilarAgesToHouseholdGrain(t *testing.T) {
+	ts := time.Date(2025, 4, 21, 17, 51, 0, 0, time.UTC)
+	const withOpen = "Share a cabin WITH a family with similarly aged kid(s) that I can meet at " +
+		"Camp (we will make this happen if we have others interested as well)."
+
+	values := []PersonRequestValue{
+		{HouseholdKey: hhA, FieldName: fieldSharedCabinForm, Value: withOpen, LastUpdated: ts},
+	}
+
+	got := CollapseToHouseholdGrain(values)
+	if len(got) != 1 {
+		t.Fatalf("collapsed to %d households, want 1", len(got))
+	}
+	if !got[hhA].WantsSimilarAges {
+		t.Error("WantsSimilarAges = false; the open-invitation option was dropped by the collapse")
+	}
+	if !got[hhA].WantsWith {
+		t.Error("WantsWith = false; the similarly-aged option is still a WITH request")
 	}
 }
 

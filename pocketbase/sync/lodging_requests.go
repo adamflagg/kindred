@@ -87,18 +87,28 @@ func NormalizeShareGate(raw string) string {
 //
 // "No requests" is NOT a veto: it co-occurs with a real request in six observed
 // rows, so each option is read independently and a real one wins.
-// The two modes are tested INDEPENDENTLY, not as ordered switch arms, for the
+// The three modes are tested INDEPENDENTLY, not as ordered switch arms, for the
 // same reason classifyCPAPAnswer's power and bathroom needs are: an option
-// naming both would otherwise set only whichever arm came first. No observed
-// 2025 option does name both, so this is a guard rather than a live fix -- but
-// the ordered form is one form rewrite away from silently dropping an edge.
-func ParseSharedCabinModes(raw string) (near, with bool) {
+// naming more than one would otherwise set only whichever arm came first.
+//
+// similarAges is a REFINEMENT of with, not a third axis. Its option sentence
+// begins "Share a cabin WITH", so it is a co-housing request too -- what differs
+// is that the partner is unnamed, which makes these the households staff can
+// pair with each other. It therefore sets BOTH flags, and anything reading
+// wants_with alone still sees the household. Observed on 22 households across
+// 2025-2026.
+func ParseSharedCabinModes(raw string) (near, with, similarAges bool) {
 	for _, option := range strings.Split(raw, "|") {
 		upper := strings.ToUpper(option)
 		near = near || strings.Contains(upper, "NEAR")
 		with = with || strings.Contains(upper, "WITH")
+		// CampMinder's live text is unhyphenated; the hyphenated spelling is
+		// accepted so a staff edit in CampMinder cannot silently zero the flag.
+		similarAges = similarAges ||
+			strings.Contains(upper, "SIMILARLY AGED") ||
+			strings.Contains(upper, "SIMILARLY-AGED")
 	}
-	return near, with
+	return near, with, similarAges
 }
 
 // PersonRequestValue is one person-partition request value, already carrying the
@@ -120,9 +130,11 @@ type HouseholdRequest struct {
 	Gate         string
 	WantsNear    bool
 	WantsWith    bool
-	RequestText  string
-	SourceField  string
-	LastUpdated  time.Time
+	// WantsSimilarAges implies WantsWith -- see ParseSharedCabinModes.
+	WantsSimilarAges bool
+	RequestText      string
+	SourceField      string
+	LastUpdated      time.Time
 }
 
 // CollapseToHouseholdGrain implements spec 4.2, which is mandatory: the request
@@ -190,9 +202,10 @@ func CollapseToHouseholdGrain(values []PersonRequestValue) map[string]*Household
 				a.req.SourceField = v.FieldName
 			}
 			if v.FieldName == fieldSharedCabinForm {
-				near, with := ParseSharedCabinModes(value)
+				near, with, similarAges := ParseSharedCabinModes(value)
 				a.req.WantsNear = a.req.WantsNear || near
 				a.req.WantsWith = a.req.WantsWith || with
+				a.req.WantsSimilarAges = a.req.WantsSimilarAges || similarAges
 				if a.req.SourceField == "" {
 					a.req.SourceField = v.FieldName
 				}
