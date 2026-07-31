@@ -190,6 +190,27 @@ describe('LodgingAreasDrawer — a rejected edit', () => {
     })
   })
 
+  it('restores the stored centroid when the field is cleared rather than retyped', async () => {
+    // The early return on an unparseable value skipped the write, correctly —
+    // but left the empty box on screen. Same failure as a rejected write: the
+    // field disagrees with what is stored and survives every refetch, and here
+    // it reads as "this area has no map position", which is a real state.
+    const user = userEvent.setup()
+    render(<LodgingAreasDrawer open onClose={vi.fn()} />, { wrapper })
+    await waitFor(() => {
+      expect(screen.getByDisplayValue('North Zone')).toBeInTheDocument()
+    })
+
+    const x = screen.getByLabelText('North Zone map X')
+    await user.clear(x)
+    await user.tab()
+
+    expect(updateLodgingArea).not.toHaveBeenCalled()
+    await waitFor(() => {
+      expect(screen.getByLabelText('North Zone map X')).toHaveValue(0.2)
+    })
+  })
+
   it('restores the stored centroid when the save is rejected', async () => {
     updateLodgingArea.mockRejectedValue(new Error('nope'))
     const user = userEvent.setup()

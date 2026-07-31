@@ -107,11 +107,21 @@ export function LodgingAreasDrawer({ open, onClose }: LodgingAreasDrawerProps) {
     axis: 'map_x' | 'map_y',
     field: HTMLInputElement
   ) => {
+    const stored = String(area[axis])
     const value = Number.parseFloat(field.value)
-    if (Number.isNaN(value) || value === area[axis]) return
+    // Cleared or unparseable: skip the write, but put the stored value back.
+    // Leaving the empty box is the same failure a rejected write would be —
+    // the field disagrees with what is stored and survives every refetch —
+    // and here it reads as "this area has no map position", a real state that
+    // the later map view would render very differently.
+    if (Number.isNaN(value)) {
+      field.value = stored
+      return
+    }
+    if (value === area[axis]) return
     await saveField(
       field,
-      String(area[axis]),
+      stored,
       () => updateLodgingArea(area.id, { [axis]: value }),
       'Failed to save the centroid'
     )
