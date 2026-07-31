@@ -65,6 +65,18 @@ export async function deleteLodgingArea(id: string): Promise<void> {
   await pb.collection(AREAS).delete(id)
 }
 
+/**
+ * Persist a new area order as `sort_order` 1..n.
+ *
+ * Sequential rather than concurrent: the values are positional, and a partial
+ * concurrent failure could leave two areas sharing an index.
+ */
+export async function reorderLodgingAreas(orderedIds: string[]): Promise<void> {
+  for (const [index, id] of orderedIds.entries()) {
+    await pb.collection(AREAS).update(id, { sort_order: index + 1 })
+  }
+}
+
 // ── Units ─────────────────────────────────────────────────────────────────────
 
 export async function listLodgingUnits(): Promise<LodgingUnitRecord[]> {
@@ -115,6 +127,25 @@ export async function deactivateLodgingUnit(id: string): Promise<LodgingUnitReco
 /** Undo a deactivation. Distinct from create so it cannot reset other fields. */
 export async function reactivateLodgingUnit(id: string): Promise<LodgingUnitRecord> {
   return pb.collection(UNITS).update<LodgingUnitRecord>(id, { is_active: true })
+}
+
+/**
+ * Confirm a set of units in one staff action.
+ *
+ * Confirming is what lets the roster judge a housing need against a cabin at
+ * all — on an unconfirmed row `has_power: false` means "nobody has said", not
+ * "there is no power". With every unit seeded unconfirmed, doing this one form
+ * at a time is the difference between the fit check working and not.
+ *
+ * Every write is attempted even if one fails: aborting half way through a
+ * 40-unit selection leaves a state nobody can reason about. Returns how many
+ * actually landed so the caller can report honestly.
+ */
+export async function confirmLodgingUnits(ids: string[]): Promise<number> {
+  const results = await Promise.allSettled(
+    ids.map((id) => pb.collection(UNITS).update<LodgingUnitRecord>(id, { is_confirmed: true }))
+  )
+  return results.filter((r) => r.status === 'fulfilled').length
 }
 
 // ── Aliases ───────────────────────────────────────────────────────────────────

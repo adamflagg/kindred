@@ -30,6 +30,7 @@ vi.mock('../lib/pocketbase', () => ({ pb: { collection: (name: string) => collec
 
 import type { LodgingAliasRecord, LodgingUnitRecord } from '../types/lodging'
 import {
+  confirmLodgingUnits,
   createLodgingAlias,
   createLodgingUnit,
   deactivateLodgingUnit,
@@ -37,6 +38,7 @@ import {
   listLodgingUnits,
   listUnresolvedAliasIssues,
   mapUnresolvedAlias,
+  reorderLodgingAreas,
 } from './lodgingCrud'
 
 beforeEach(() => {
@@ -151,5 +153,39 @@ describe('ignoreIngestIssue', () => {
       is_resolved: true,
       resolution_note: 'Not a cabin name.',
     })
+  })
+})
+
+describe('confirmLodgingUnits', () => {
+  it('confirms every id and reports how many landed', async () => {
+    const confirmed = await confirmLodgingUnits(['u1', 'u2'])
+
+    expect(update).toHaveBeenNthCalledWith(1, 'u1', { is_confirmed: true })
+    expect(update).toHaveBeenNthCalledWith(2, 'u2', { is_confirmed: true })
+    expect(confirmed).toBe(2)
+  })
+
+  it('keeps going when one write fails, because a partial bulk action must be reportable', async () => {
+    update.mockRejectedValueOnce(new Error('nope')).mockResolvedValueOnce({ id: 'u2' })
+
+    const confirmed = await confirmLodgingUnits(['u1', 'u2'])
+
+    expect(update).toHaveBeenCalledTimes(2)
+    expect(confirmed).toBe(1)
+  })
+
+  it('does nothing for an empty selection', async () => {
+    expect(await confirmLodgingUnits([])).toBe(0)
+    expect(update).not.toHaveBeenCalled()
+  })
+})
+
+describe('reorderLodgingAreas', () => {
+  it('writes sort_order from 1 in the given order', async () => {
+    await reorderLodgingAreas(['a3', 'a1', 'a2'])
+
+    expect(update).toHaveBeenNthCalledWith(1, 'a3', { sort_order: 1 })
+    expect(update).toHaveBeenNthCalledWith(2, 'a1', { sort_order: 2 })
+    expect(update).toHaveBeenNthCalledWith(3, 'a2', { sort_order: 3 })
   })
 })
