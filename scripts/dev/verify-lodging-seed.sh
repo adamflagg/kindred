@@ -48,7 +48,10 @@ YURT|7
 TUOL|7
 MANZ|6
 TV|7
-GT|25
+# GT gained 4 intermediate containers in 1500000129 (Tioga/Tenaya
+# upstairs+downstairs) so partial merges are expressible. Containers are
+# never bookable and never counted — this is a structural row count.
+GT|29
 HC|11
 EOF
 
@@ -101,8 +104,10 @@ alias_members() {
 
 # Container rows (buildings) must never be countable/bookable rooms themselves,
 # and every leaf room's parent must itself be a container.
+# 1500000129 added 4 intermediate containers (Tioga/Tenaya upstairs +
+# downstairs), so 7 building-level containers becomes 11.
 n=$(q "SELECT COUNT(*) FROM lodging_units WHERE is_container = 1")
-[[ "$n" -eq 7 ]] || note "expected 7 container units, got $n"
+[[ "$n" -eq 11 ]] || note "expected 11 container units, got $n"
 n=$(q "SELECT COUNT(*) FROM lodging_units c JOIN lodging_units p ON c.parent_unit = p.id WHERE p.is_container = 0")
 [[ "$n" -eq 0 ]] || note "$n units have a non-container parent"
 
