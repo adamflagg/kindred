@@ -38,6 +38,7 @@ from .routers import (
     debug,
     geo,
     internal,
+    lodging,
     metrics,
     requests,
     satisfaction,
@@ -143,6 +144,7 @@ def create_app() -> FastAPI:
     app.include_router(debug.router)
     app.include_router(metrics.router)
     app.include_router(session_availability.router)
+    app.include_router(lodging.router)
     app.include_router(geo.router)
     app.include_router(internal.router)
 
