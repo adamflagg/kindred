@@ -187,7 +187,7 @@ func (s *StaffVehicleInfoSync) loadFieldDefinitions(_ context.Context) (map[stri
 	}
 
 	for _, record := range records {
-		name := record.GetString("name")
+		name := normalizeFieldName(record.GetString("name"))
 		if isStaffVehicleInfoField(name) {
 			result[record.Id] = name
 		}

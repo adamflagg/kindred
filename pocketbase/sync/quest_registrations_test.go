@@ -1,10 +1,48 @@
 package sync
 
 import (
+	"context"
 	"fmt"
 	"strings"
 	"testing"
 )
+
+// TestQuestRegistrationsLoadFieldDefinitionsTrimsNames is a regression test
+// for kindred#1873. isQuestRegistrationField admits by prefix, which a
+// trailing space would not defeat, but MapQuestFieldToColumn exact-matches
+// the trimmed literal downstream -- so an untrimmed name would be admitted
+// into the map and then silently fail to route. No untrimmed name exists in
+// this table today; this pins the fix against a future one.
+func TestQuestRegistrationsLoadFieldDefinitionsTrimsNames(t *testing.T) {
+	app := newFieldDefsTestApp(t, map[int]string{
+		1: "Q-Why come? ",           // trailing space
+		2: "Quest-Parent Signature", // already clean, must be unaffected
+	})
+
+	s := NewQuestRegistrationsSync(app)
+	got, err := s.loadFieldDefinitions(context.Background())
+	if err != nil {
+		t.Fatalf("loadFieldDefinitions: %v", err)
+	}
+
+	want := map[string]bool{
+		"Q-Why come?":            true,
+		"Quest-Parent Signature": true,
+	}
+	for _, name := range got {
+		if !want[name] {
+			t.Errorf("loadFieldDefinitions returned %q; expected a trimmed name", name)
+		}
+		delete(want, name)
+	}
+	for missing := range want {
+		t.Errorf("loadFieldDefinitions did not return %q", missing)
+	}
+
+	if col := MapQuestFieldToColumn("Q-Why come?"); col != colWhyCome {
+		t.Errorf("MapQuestFieldToColumn(%q) = %q, want %q", "Q-Why come?", col, colWhyCome)
+	}
+}
 
 // TestQuestRegistrationsSync_Name verifies the service name is correct
 func TestQuestRegistrationsSync_Name(t *testing.T) {

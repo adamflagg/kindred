@@ -1,12 +1,51 @@
 package sync
 
 import (
+	"context"
 	"fmt"
 	"strings"
 	"testing"
 
 	"github.com/pocketbase/pocketbase/core"
 )
+
+// TestCamperDietaryLoadFieldDefinitionsTrimsNames is a regression test for
+// kindred#1873: loadFieldDefinitions stored CampMinder display names verbatim,
+// so a trailing space (as shipped for staff_applications' three fields) would
+// have made isCamperDietaryField's exact-match admission miss the field
+// entirely. No untrimmed name exists in this table today, but nothing
+// prevents CampMinder from adding one -- this pins the fix so a future
+// occurrence is caught here instead of live.
+func TestCamperDietaryLoadFieldDefinitionsTrimsNames(t *testing.T) {
+	app := newFieldDefsTestApp(t, map[int]string{
+		1: "Family Medical-Dietary Needs ", // trailing space
+		2: "Family Medical-Additional",     // already clean, must be unaffected
+	})
+
+	s := NewCamperDietarySync(app)
+	got, err := s.loadFieldDefinitions(context.Background())
+	if err != nil {
+		t.Fatalf("loadFieldDefinitions: %v", err)
+	}
+
+	want := map[string]bool{
+		"Family Medical-Dietary Needs": true,
+		"Family Medical-Additional":    true,
+	}
+	for _, name := range got {
+		if !want[name] {
+			t.Errorf("loadFieldDefinitions returned %q; expected a trimmed name", name)
+		}
+		delete(want, name)
+	}
+	for missing := range want {
+		t.Errorf("loadFieldDefinitions did not return %q", missing)
+	}
+
+	if col := MapDietaryFieldToColumn("Family Medical-Dietary Needs"); col != colHasDietaryNeeds {
+		t.Errorf("MapDietaryFieldToColumn(%q) = %q, want %q", "Family Medical-Dietary Needs", col, colHasDietaryNeeds)
+	}
+}
 
 // TestCamperDietarySync_Name verifies the service name is correct
 func TestCamperDietarySync_Name(t *testing.T) {

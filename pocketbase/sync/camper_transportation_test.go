@@ -1,10 +1,48 @@
 package sync
 
 import (
+	"context"
 	"fmt"
 	"strings"
 	"testing"
 )
+
+// TestCamperTransportationLoadFieldDefinitionsTrimsNames is a regression test
+// for kindred#1873. isCamperTransportationField admits by "BUS-" prefix, which
+// a trailing space would not defeat, but MapTransportationFieldToColumn
+// exact-matches the trimmed literal downstream -- so an untrimmed name would
+// be admitted into the map and then silently fail to route. No untrimmed name
+// exists in this table today; this pins the fix against a future one.
+func TestCamperTransportationLoadFieldDefinitionsTrimsNames(t *testing.T) {
+	app := newFieldDefsTestApp(t, map[int]string{
+		1: "BUS-who is dropping off ", // trailing space
+		2: "BUS-to camp",              // already clean, must be unaffected
+	})
+
+	s := NewCamperTransportationSync(app)
+	got, err := s.loadFieldDefinitions(context.Background())
+	if err != nil {
+		t.Fatalf("loadFieldDefinitions: %v", err)
+	}
+
+	want := map[string]bool{
+		"BUS-who is dropping off": true,
+		"BUS-to camp":             true,
+	}
+	for _, name := range got {
+		if !want[name] {
+			t.Errorf("loadFieldDefinitions returned %q; expected a trimmed name", name)
+		}
+		delete(want, name)
+	}
+	for missing := range want {
+		t.Errorf("loadFieldDefinitions did not return %q", missing)
+	}
+
+	if col := MapTransportationFieldToColumn("BUS-who is dropping off"); col != colDropoffName {
+		t.Errorf("MapTransportationFieldToColumn(%q) = %q, want %q", "BUS-who is dropping off", col, colDropoffName)
+	}
+}
 
 // TestCamperTransportationSync_Name verifies the service name is correct
 func TestCamperTransportationSync_Name(t *testing.T) {

@@ -272,7 +272,7 @@ func (s *FinancialAidApplicationsSync) loadFieldDefinitions(_ context.Context) (
 	}
 
 	for _, record := range records {
-		name := record.GetString("name")
+		name := normalizeFieldName(record.GetString("name"))
 		if isFAFieldName(name) {
 			result[record.Id] = name
 		}

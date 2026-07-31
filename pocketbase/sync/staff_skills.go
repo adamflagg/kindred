@@ -310,7 +310,7 @@ func (s *StaffSkillsSync) loadSkillDefinitions(_ context.Context) ([]skillDefini
 	}
 
 	for _, record := range records {
-		name := record.GetString("name")
+		name := normalizeFieldName(record.GetString("name"))
 
 		// Filter: must be Skills- field with Staff partition
 		if !strings.HasPrefix(name, "Skills-") {

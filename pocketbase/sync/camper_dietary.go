@@ -205,7 +205,7 @@ func (s *CamperDietarySync) loadFieldDefinitions(_ context.Context) (map[string]
 	}
 
 	for _, record := range records {
-		name := record.GetString("name")
+		name := normalizeFieldName(record.GetString("name"))
 		if isCamperDietaryField(name) {
 			result[record.Id] = name
 		}
