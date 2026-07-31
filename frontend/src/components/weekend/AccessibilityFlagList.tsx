@@ -83,15 +83,22 @@ export function AccessibilityFlagList({ flags, householdCmId, year }: Accessibil
       {hasNarrative && (
         <div className="flex flex-col gap-1">
           {canSeePhi ? (
+            // Every household in a real weekend has something on file (62 of
+            // 62 in 2026), so this is icon-only: a text link repeated down
+            // every row reads as decoration and stops being seen.
             <button
               type="button"
               onClick={() => {
                 setRevealed((current) => !current)
               }}
-              className="text-primary inline-flex w-fit items-center gap-1 text-[11px] font-medium hover:underline"
+              aria-label={revealed ? 'Hide medical detail' : 'Show medical detail'}
+              aria-expanded={revealed}
+              title={revealed ? 'Hide medical detail' : 'Show medical detail'}
+              className={`hover:bg-muted focus-visible:ring-ring inline-flex w-fit rounded p-1 transition-colors focus-visible:ring-2 focus-visible:outline-none ${
+                revealed ? 'text-primary' : 'text-muted-foreground hover:text-foreground'
+              }`}
             >
-              <Eye className="h-3 w-3" />
-              {revealed ? 'Hide medical detail' : 'Show medical detail'}
+              <Eye className="h-3.5 w-3.5" />
             </button>
           ) : (
             <span className="text-muted-foreground text-[11px]">Medical detail on file</span>

@@ -64,8 +64,81 @@ function party(overrides: Partial<RosterPartyRow> = {}): RosterPartyRow {
 
 describe('HouseholdRosterTable', () => {
   it('shows an empty state rather than an empty table', () => {
+    // "Households" would be wrong for an adult weekend, which enrols people.
     render(<HouseholdRosterTable parties={[]} year={2026} />, { wrapper })
-    expect(screen.getByText('No households enrolled for this weekend yet.')).toBeInTheDocument()
+    expect(screen.getByText('No one is enrolled for this weekend.')).toBeInTheDocument()
+    expect(screen.getByText(/once registrations sync from CampMinder/)).toBeInTheDocument()
+  })
+
+  it('groups by attention, putting parties without a cabin above settled ones', () => {
+    render(
+      <HouseholdRosterTable
+        parties={[
+          party({ display_name: 'Settled Family', unit_name: 'Ridge A' }),
+          party({ display_name: 'Waiting Family', unit_name: '', household_cm_id: 2000002 }),
+        ]}
+        year={2026}
+      />,
+      { wrapper }
+    )
+    expect(screen.getByText('Needs a cabin')).toBeInTheDocument()
+    expect(screen.getByText('Settled')).toBeInTheDocument()
+
+    const names = screen.getAllByText(/Family$/).map((n) => n.textContent)
+    expect(names.indexOf('Waiting Family')).toBeLessThan(names.indexOf('Settled Family'))
+  })
+
+  it('does not draw section headings when every party shares one state', () => {
+    // An untouched adult weekend: heading the whole roster "Needs a cabin"
+    // repeats what the banner already said.
+    render(
+      <HouseholdRosterTable
+        parties={[
+          party({ display_name: 'One', unit_name: '' }),
+          party({ display_name: 'Two', unit_name: '', household_cm_id: 2000002 }),
+        ]}
+        year={2026}
+      />,
+      { wrapper }
+    )
+    expect(screen.queryByText('Needs a cabin')).not.toBeInTheDocument()
+  })
+
+  it('drops the Requests column entirely when no party has a request', () => {
+    // Adult weekends do not fill the share fields; a dead column is worse
+    // than no column.
+    render(
+      <HouseholdRosterTable
+        parties={[
+          party({
+            grain: 'person',
+            display_name: 'Olivia Chen',
+            children: [],
+            share: {
+              preference: 'unknown',
+              preference_raw: '',
+              proximity: [],
+              request_text: '',
+              needs_resolution: false,
+            },
+          }),
+        ]}
+        year={2026}
+      />,
+      { wrapper }
+    )
+    expect(screen.queryByText('Requests')).not.toBeInTheDocument()
+  })
+
+  it('keeps the Requests column when any party answered', () => {
+    render(
+      <HouseholdRosterTable
+        parties={[party({ share: { preference: 'yes_share', proximity: ['with'] } })]}
+        year={2026}
+      />,
+      { wrapper }
+    )
+    expect(screen.getByText('Requests')).toBeInTheDocument()
   })
 
   it('renders adults and children counts for a household party', () => {

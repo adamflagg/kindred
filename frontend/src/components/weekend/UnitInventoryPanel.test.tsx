@@ -94,9 +94,28 @@ describe('UnitInventoryPanel', () => {
     expect(screen.getByText('Building')).toBeInTheDocument()
   })
 
-  it('flags unconfirmed amenity data', () => {
-    render(<UnitInventoryPanel units={[unit({ is_confirmed: false })]} />)
+  it('badges the individual cabins whose amenities are unconfirmed', () => {
+    render(
+      <UnitInventoryPanel
+        units={[unit({ is_confirmed: false }), unit({ unit_id: 'u9', name: 'Ridge Z' })]}
+      />
+    )
     expect(screen.getByText('Unconfirmed')).toBeInTheDocument()
+  })
+
+  it('states it once, not per row, when nothing in the registry is confirmed', () => {
+    // 82 of 82 cabins are unconfirmed in 2026; a badge on every row stops
+    // being read, and the banner already reports the same fact.
+    render(
+      <UnitInventoryPanel
+        units={[
+          unit({ is_confirmed: false }),
+          unit({ unit_id: 'u9', name: 'Ridge Z', is_confirmed: false }),
+        ]}
+      />
+    )
+    expect(screen.getByText('No amenities confirmed yet')).toBeInTheDocument()
+    expect(screen.queryByText('Unconfirmed')).not.toBeInTheDocument()
   })
 
   it('groups units by area', () => {

@@ -15,7 +15,9 @@ import { Link } from 'react-router'
 
 import { QueryGuard } from '../components/QueryGuard'
 import {
+  formatSessionDates,
   HouseholdRosterTable,
+  partyBeds,
   RosterHealthBanner,
   UnitInventoryPanel,
   WeekendSessionPicker,
@@ -31,6 +33,13 @@ export default function WeekendRosterPage() {
 
   const sessionsQuery = useWeekendSessions(currentYear)
   const rosterQuery = useWeekendRoster(currentYear, selectedCmId)
+
+  const selectedSession = sessionsQuery.data?.sessions?.find(
+    (session) => session.session_cm_id === selectedCmId
+  )
+  const selectedDates = selectedSession
+    ? formatSessionDates(selectedSession.start_date, selectedSession.end_date)
+    : ''
 
   return (
     <div className="mx-auto flex max-w-7xl flex-col gap-6 px-4 py-6">
@@ -49,8 +58,13 @@ export default function WeekendRosterPage() {
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
             <h1 className="font-display text-foreground text-3xl font-bold">Weekend Housing</h1>
+            {/* The picker below already names the weekend; repeating it here
+                would say the same thing twice. The dates are what the header
+                can add. */}
             <p className="text-muted-foreground text-sm">
-              Family camps and adult weekends, {currentYear}
+              {selectedDates.length > 0
+                ? selectedDates
+                : `Family camps and adult weekends, ${String(currentYear)}`}
             </p>
           </div>
           <Link
@@ -91,7 +105,10 @@ export default function WeekendRosterPage() {
         >
           {(roster) => (
             <div className="flex flex-col gap-6">
-              <RosterHealthBanner counts={roster.counts ?? {}} />
+              <RosterHealthBanner
+                counts={roster.counts ?? {}}
+                bedsNeeded={(roster.parties ?? []).reduce((sum, p) => sum + partyBeds(p), 0)}
+              />
               <HouseholdRosterTable parties={roster.parties ?? []} year={currentYear} />
               <UnitInventoryPanel units={roster.units ?? []} />
             </div>

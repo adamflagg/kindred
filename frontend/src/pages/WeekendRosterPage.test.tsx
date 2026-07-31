@@ -90,8 +90,14 @@ describe('WeekendRosterPage', () => {
   it('prompts for a weekend when none is selected', () => {
     sessionsQuery.data = { year: 2026, sessions: [FAMILY_CAMP_1] }
     renderPage()
-    expect(screen.getByRole('button', { name: /Family Camp 1/ })).toBeInTheDocument()
+    expect(screen.getByRole('option', { name: /Family Camp 1/ })).toBeInTheDocument()
     expect(screen.getByText('Choose a weekend to see its roster.')).toBeInTheDocument()
+  })
+
+  it('names the year in the subtitle until a weekend is chosen', () => {
+    sessionsQuery.data = { year: 2026, sessions: [FAMILY_CAMP_1] }
+    renderPage()
+    expect(screen.getByText('Family camps and adult weekends, 2026')).toBeInTheDocument()
   })
 
   it('does not fetch a roster before a weekend is chosen', () => {

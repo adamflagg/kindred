@@ -5,16 +5,26 @@
  * the scraped `family_camp_adults` table and the party is a household.
  * Adult weekends: individuals enrol directly, so the party is one person and
  * has no children.
+ *
+ * The left rail is the page's scanning spine. It is drawn ONLY for parties
+ * that need something — a weekend that is fully placed and unconstrained shows
+ * no rails at all, so the design tells the truth about the weekend's state
+ * instead of decorating every row equally.
  */
 import { Clock, Repeat } from 'lucide-react'
+import { Fragment } from 'react'
 
 import type { AccessibilityFlags, RosterPartyRow, ShareRequest } from '../../types/lodging'
 import { AccessibilityFlagList } from './AccessibilityFlagList'
+import type { AttentionLevel } from './rosterAttention'
+import { partyAttention } from './rosterAttention'
 import { ShareRequestPanel } from './ShareRequestPanel'
 
 export interface HouseholdRosterRowProps {
   party: RosterPartyRow
   year: number
+  /** Adult weekends carry no share requests; the column is dropped entirely. */
+  showRequests: boolean
 }
 
 /** An unanswered request, used when the payload omits the block entirely. */
@@ -35,6 +45,21 @@ const NO_FLAGS: AccessibilityFlags = {
   has_medical_narrative: false,
 }
 
+/** Settled parties get no rail — absence is the signal. */
+const RAIL: Record<AttentionLevel, string> = {
+  required: 'border-red-500',
+  unplaced: 'border-amber-500',
+  constrained: 'border-sky-400 dark:border-sky-500',
+  settled: 'border-transparent',
+}
+
+const REASON_TONE: Record<AttentionLevel, string> = {
+  required: 'text-red-700 dark:text-red-400',
+  unplaced: 'text-amber-700 dark:text-amber-400',
+  constrained: 'text-muted-foreground',
+  settled: '',
+}
+
 function composition(party: RosterPartyRow): string {
   const adults = party.adults?.length ?? 0
   const children = party.children?.length ?? 0
@@ -45,39 +70,64 @@ function composition(party: RosterPartyRow): string {
   return parts.join(' · ')
 }
 
-export function HouseholdRosterRow({ party, year }: HouseholdRosterRowProps) {
-  const isAssigned = party.unit_name !== undefined && party.unit_name.length > 0
-  const unitLabel = isAssigned ? party.unit_name : 'Unassigned'
+export function HouseholdRosterRow({ party, year, showRequests }: HouseholdRosterRowProps) {
+  const isAssigned = (party.unit_name ?? '').length > 0
+  const attention = partyAttention(party)
+  const adults = party.adults ?? []
+  const children = party.children ?? []
+  const showAdults = party.grain === 'household'
 
   return (
-    <tr className="border-border/50 border-b align-top">
-      <td className="py-3 pr-4">
-        <div className="flex flex-wrap items-center gap-2">
+    <tr className="border-border/40 hover:bg-muted/30 border-b align-top transition-colors">
+      <td className={`border-l-[3px] py-3 pr-4 pl-3 ${RAIL[attention.level]}`}>
+        <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
           <span className="text-foreground text-sm font-semibold">{party.display_name}</span>
           {party.is_returning === true && (
-            <span className="inline-flex items-center gap-1 rounded-full bg-sky-100 px-2 py-0.5 text-[11px] font-medium text-sky-800 dark:bg-sky-950/40 dark:text-sky-300">
+            <span
+              title="Stayed with us before"
+              className="text-muted-foreground inline-flex items-center gap-1 text-[11px]"
+            >
               <Repeat className="h-3 w-3" />
               Returning
             </span>
           )}
         </div>
-        <p className="text-muted-foreground text-xs">{composition(party)}</p>
-        {/* An adult weekend enrols the individual directly, so the party IS
-            the adult and `display_name` above already named them. Repeating
-            the roster would print the same name twice. */}
-        {party.grain === 'household' && (
-          <p className="text-muted-foreground mt-1 text-xs">
-            {(party.adults ?? []).map((adult) => adult.display_name).join(', ')}
+        {/* Only the hard requirement gets words. "No cabin yet" would repeat
+            the Cabin column's "Unassigned", and a constraint list would repeat
+            the chips under Housing needs — the rail already says which state
+            the row is in. */}
+        {attention.level === 'required' && (
+          <p className={`mt-0.5 text-[11px] font-medium ${REASON_TONE[attention.level]}`}>
+            Accommodation required · {attention.reason}
           </p>
         )}
-        <p className="text-muted-foreground text-xs">
-          {(party.children ?? [])
-            .map((child) =>
-              child.age === null || child.age === undefined
-                ? child.display_name
-                : `${String(child.display_name)} (${String(child.age)})`
-            )
-            .join(', ')}
+        <p className="text-muted-foreground mt-1 text-xs tabular-nums">{composition(party)}</p>
+        {/* Members are reference detail, not scanning material — one wrapped
+            line rather than two stacked ones, so 62 rows stay a page. An
+            adult weekend enrols the individual directly, so the party IS the
+            adult and `display_name` above already named them. */}
+        <p className="text-muted-foreground/75 mt-0.5 text-xs leading-snug">
+          {showAdults &&
+            adults.map((adult, index) => (
+              <Fragment
+                key={`${String(adult.adult_number ?? index)}-${String(adult.display_name)}`}
+              >
+                {index > 0 && ', '}
+                {/* Each name is its own element so it stays one text node —
+                    a separator inside the span would split it. */}
+                <span>{adult.display_name}</span>
+              </Fragment>
+            ))}
+          {children.map((child, index) => (
+            <Fragment key={String(child.person_cm_id ?? index)}>
+              {(index > 0 || (showAdults && adults.length > 0)) && ' · '}
+              <span>
+                {child.age === null || child.age === undefined
+                  ? child.display_name
+                  : `${String(child.display_name)} (${String(child.age)})`}
+              </span>
+            </Fragment>
+          ))}
         </p>
       </td>
 
@@ -86,15 +136,18 @@ export function HouseholdRosterRow({ party, year }: HouseholdRosterRowProps) {
           <span
             className={`text-sm ${isAssigned ? 'text-foreground font-medium' : 'text-muted-foreground italic'}`}
           >
-            {unitLabel}
+            {isAssigned ? party.unit_name : 'Unassigned'}
           </span>
           {party.is_merged_slot === true && (
-            <span className="bg-muted text-muted-foreground rounded-full px-2 py-0.5 text-[11px] font-medium">
+            <span
+              title="Two rooms combined into one slot"
+              className="bg-muted text-muted-foreground rounded-full px-2 py-0.5 text-[11px] font-medium"
+            >
               Merged
             </span>
           )}
         </div>
-        {party.arrival_eta !== undefined && party.arrival_eta.length > 0 && (
+        {(party.arrival_eta ?? '').length > 0 && (
           <p className="text-muted-foreground mt-1 inline-flex items-center gap-1 text-xs">
             <Clock className="h-3 w-3" />
             {party.arrival_eta}
@@ -102,11 +155,13 @@ export function HouseholdRosterRow({ party, year }: HouseholdRosterRowProps) {
         )}
       </td>
 
-      <td className="py-3 pr-4">
-        <ShareRequestPanel share={party.share ?? NO_SHARE_REQUEST} />
-      </td>
+      {showRequests && (
+        <td className="py-3 pr-4">
+          <ShareRequestPanel share={party.share ?? NO_SHARE_REQUEST} />
+        </td>
+      )}
 
-      <td className="py-3">
+      <td className="py-3 pr-3">
         <AccessibilityFlagList
           flags={party.flags ?? NO_FLAGS}
           householdCmId={party.household_cm_id ?? 0}
