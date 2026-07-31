@@ -227,7 +227,7 @@ func (s *StaffApplicationsSync) loadFieldDefinitions(_ context.Context) (map[str
 	}
 
 	for _, record := range records {
-		name := record.GetString("name")
+		name := normalizeFieldName(record.GetString("name"))
 		if isStaffApplicationField(name) {
 			result[record.Id] = name
 		}

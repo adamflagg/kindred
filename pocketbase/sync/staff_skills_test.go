@@ -1,15 +1,92 @@
 package sync
 
 import (
+	"context"
 	"fmt"
 	"strings"
 	"testing"
 
 	"github.com/pocketbase/pocketbase/core"
+	pbtests "github.com/pocketbase/pocketbase/tests"
 )
 
 // testLastName is a standard test last name (testFirstName is defined in persons_test.go)
 const testLastName = "Johnson"
+
+// newSkillDefsTestApp returns a throwaway PocketBase app with a
+// custom_field_defs collection shaped like production's (cm_id + name +
+// partition), pre-populated with the given (cm_id, name) pairs, each tagged
+// with the Staff partition. Names are stored VERBATIM -- PocketBase preserves
+// leading and trailing whitespace in text fields.
+func newSkillDefsTestApp(t *testing.T, defs map[int]string) core.App {
+	t.Helper()
+	app, err := pbtests.NewTestApp()
+	if err != nil {
+		t.Fatalf("NewTestApp: %v", err)
+	}
+	t.Cleanup(app.Cleanup)
+
+	col := core.NewBaseCollection("custom_field_defs")
+	col.Fields.Add(&core.NumberField{Name: "cm_id"})
+	col.Fields.Add(&core.TextField{Name: "name"})
+	col.Fields.Add(&core.SelectField{
+		Name:      "partition",
+		Values:    []string{"None", "Family", "Alumnus", "Staff", "Camper", "Parent", "Adult"},
+		MaxSelect: 7,
+	})
+	if err := app.Save(col); err != nil {
+		t.Fatalf("save custom_field_defs: %v", err)
+	}
+	for cmID, name := range defs {
+		r := core.NewRecord(col)
+		r.Set("cm_id", cmID)
+		r.Set("name", name)
+		r.Set("partition", []string{"Staff"})
+		if err := app.Save(r); err != nil {
+			t.Fatalf("save field def %d: %v", cmID, err)
+		}
+	}
+	return app
+}
+
+// TestStaffSkillsLoadSkillDefinitionsTrimsNames is a regression test for
+// kindred#1873. loadSkillDefinitions admits by "Skills-" prefix, which a
+// trailing space would not defeat, but it is the derived skill string
+// (name with the prefix stripped) that gets written to staff_skills.skill_name
+// -- an untrimmed source name would silently carry the trailing space into
+// that column. No untrimmed name exists in this table today; this pins the
+// fix against a future one.
+func TestStaffSkillsLoadSkillDefinitionsTrimsNames(t *testing.T) {
+	app := newSkillDefsTestApp(t, map[int]string{
+		1: "Skills-Archery ", // trailing space
+		2: "Skills-Riflery",  // already clean, must be unaffected
+	})
+
+	s := NewStaffSkillsSync(app)
+	got, err := s.loadSkillDefinitions(context.Background())
+	if err != nil {
+		t.Fatalf("loadSkillDefinitions: %v", err)
+	}
+
+	want := map[string]string{
+		"Skills-Archery": "Archery",
+		"Skills-Riflery": "Riflery",
+	}
+	for _, def := range got {
+		wantSkill, ok := want[def.name]
+		if !ok {
+			t.Errorf("loadSkillDefinitions returned %q; expected a trimmed name", def.name)
+			continue
+		}
+		if def.skill != wantSkill {
+			t.Errorf("loadSkillDefinitions(%q).skill = %q, want %q", def.name, def.skill, wantSkill)
+		}
+		delete(want, def.name)
+	}
+	for missing := range want {
+		t.Errorf("loadSkillDefinitions did not return %q", missing)
+	}
+}
 
 // TestStaffSkillsSync_Name verifies the service name is correct
 func TestStaffSkillsSync_Name(t *testing.T) {

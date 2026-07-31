@@ -215,7 +215,7 @@ func (s *CamperTransportationSync) loadFieldDefinitions(_ context.Context) (map[
 	}
 
 	for _, record := range records {
-		name := record.GetString("name")
+		name := normalizeFieldName(record.GetString("name"))
 		if isCamperTransportationField(name) {
 			result[record.Id] = name
 			s.DebugLog("Found transportation field definition", "name", name, "pb_id", record.Id)

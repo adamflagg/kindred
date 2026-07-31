@@ -272,7 +272,7 @@ func (s *HouseholdDemographicsSync) loadFieldDefinitions(_ context.Context) (map
 	}
 
 	for _, record := range records {
-		name := record.GetString("name")
+		name := normalizeFieldName(record.GetString("name"))
 		// Include HH- prefixed fields (person level) and household-level fields we care about
 		if isHouseholdDemographicsField(name) {
 			result[record.Id] = name

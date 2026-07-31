@@ -1,9 +1,50 @@
 package sync
 
 import (
+	"context"
 	"strings"
 	"testing"
 )
+
+// TestFinancialAidApplicationsLoadFieldDefinitionsTrimsNames is a regression
+// test for kindred#1873. isFAFieldName admits "FA-" fields by prefix, which a
+// trailing space would not defeat, but mapFieldToApplication exact-matches the
+// trimmed literal downstream -- so an untrimmed name would be admitted into
+// the map and then silently fail to route. No untrimmed name exists in this
+// table today; this pins the fix against a future one.
+func TestFinancialAidApplicationsLoadFieldDefinitionsTrimsNames(t *testing.T) {
+	app := newFieldDefsTestApp(t, map[int]string{
+		1: "FA-Contact Parent Name ", // trailing space
+		2: "FA-Contact Parent Email", // already clean, must be unaffected
+	})
+
+	s := NewFinancialAidApplicationsSync(app)
+	got, err := s.loadFieldDefinitions(context.Background())
+	if err != nil {
+		t.Fatalf("loadFieldDefinitions: %v", err)
+	}
+
+	want := map[string]bool{
+		"FA-Contact Parent Name":  true,
+		"FA-Contact Parent Email": true,
+	}
+	for _, name := range got {
+		if !want[name] {
+			t.Errorf("loadFieldDefinitions returned %q; expected a trimmed name", name)
+		}
+		delete(want, name)
+	}
+	for missing := range want {
+		t.Errorf("loadFieldDefinitions did not return %q", missing)
+	}
+
+	app2 := &faApplicationData{}
+	s.mapFieldToApplication(app2, "FA-Contact Parent Name", "Emma Johnson")
+	if app2.contactFirstName != "Emma Johnson" {
+		t.Errorf("mapFieldToApplication did not route %q, contactFirstName = %q",
+			"FA-Contact Parent Name", app2.contactFirstName)
+	}
+}
 
 // TestFinancialAidApplicationsSync_Name verifies the service name is correct
 func TestFinancialAidApplicationsSync_Name(t *testing.T) {

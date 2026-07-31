@@ -1,11 +1,58 @@
 package sync
 
 import (
+	"context"
 	"testing"
 )
 
 // Test constants for fictional data
 const testCongregation = "Temple Beth El"
+
+// TestHouseholdDemographicsLoadFieldDefinitionsTrimsNames is a regression test
+// for kindred#1873. HH- prefixed fields are admitted by prefix, which a
+// trailing space would not defeat, but MapHHFieldToColumn exact-matches the
+// trimmed literal downstream -- so an untrimmed name would be admitted into
+// the map and then silently fail to route. The household-level fields
+// ("Center", "Custody Issues", "Board") are admitted by exact match, so an
+// untrimmed name there would fail admission itself. No untrimmed name exists
+// in this table today; this pins the fix against a future one.
+func TestHouseholdDemographicsLoadFieldDefinitionsTrimsNames(t *testing.T) {
+	app := newFieldDefsTestApp(t, map[int]string{
+		1: "HH-Family Description ", // trailing space
+		2: "Board ",                 // trailing space, exact-match admission
+		3: "HH-Military",            // already clean, must be unaffected
+	})
+
+	s := NewHouseholdDemographicsSync(app)
+	got, err := s.loadFieldDefinitions(context.Background())
+	if err != nil {
+		t.Fatalf("loadFieldDefinitions: %v", err)
+	}
+
+	want := map[string]bool{
+		"HH-Family Description": true,
+		"Board":                 true,
+		"HH-Military":           true,
+	}
+	for _, name := range got {
+		if !want[name] {
+			t.Errorf("loadFieldDefinitions returned %q; expected a trimmed name", name)
+		}
+		delete(want, name)
+	}
+	for missing := range want {
+		t.Errorf("loadFieldDefinitions did not return %q", missing)
+	}
+
+	const wantFamilyDescriptionCol = "family_description"
+	if col := MapHHFieldToColumn("HH-Family Description"); col != wantFamilyDescriptionCol {
+		t.Errorf("MapHHFieldToColumn(%q) = %q, want %q", "HH-Family Description", col, wantFamilyDescriptionCol)
+	}
+	const wantBoardMemberCol = "board_member"
+	if col := MapHouseholdFieldToColumn("Board"); col != wantBoardMemberCol {
+		t.Errorf("MapHouseholdFieldToColumn(%q) = %q, want %q", "Board", col, wantBoardMemberCol)
+	}
+}
 
 // ============================================================================
 // Service Identity Tests

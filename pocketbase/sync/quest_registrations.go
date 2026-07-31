@@ -253,7 +253,7 @@ func (s *QuestRegistrationsSync) loadFieldDefinitions(_ context.Context) (map[st
 	}
 
 	for _, record := range records {
-		name := record.GetString("name")
+		name := normalizeFieldName(record.GetString("name"))
 		if isQuestRegistrationField(name) {
 			result[record.Id] = name
 		}

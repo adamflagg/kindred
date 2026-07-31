@@ -1,8 +1,59 @@
 package sync
 
 import (
+	"context"
 	"testing"
 )
+
+// TestStaffApplicationsLoadFieldDefinitionsTrimsNames is a regression test for
+// kindred#1873: CampMinder ships "App-I responded to my stress ", "App-Someone
+// whose work I " and "App-My closest friend at camp " with a trailing space,
+// while MapStaffAppFieldToColumn exact-matches the trimmed literal. Before the
+// fix, loadFieldDefinitions stored the untrimmed name, so the switch never
+// matched and 3,492 answers across the three columns were silently dropped.
+func TestStaffApplicationsLoadFieldDefinitionsTrimsNames(t *testing.T) {
+	app := newFieldDefsTestApp(t, map[int]string{
+		1: "App-I responded to my stress ",  // trailing space, verbatim from CampMinder
+		2: "App-Someone whose work I ",      // trailing space, verbatim from CampMinder
+		3: "App-My closest friend at camp ", // trailing space, verbatim from CampMinder
+		4: "App-Why Tawonga?",               // already clean, must be unaffected
+	})
+
+	s := NewStaffApplicationsSync(app)
+	got, err := s.loadFieldDefinitions(context.Background())
+	if err != nil {
+		t.Fatalf("loadFieldDefinitions: %v", err)
+	}
+
+	want := map[string]bool{
+		"App-I responded to my stress":  true,
+		"App-Someone whose work I":      true,
+		"App-My closest friend at camp": true,
+		"App-Why Tawonga?":              true,
+	}
+	for _, name := range got {
+		if !want[name] {
+			t.Errorf("loadFieldDefinitions returned %q; expected a trimmed name", name)
+		}
+		delete(want, name)
+	}
+	for missing := range want {
+		t.Errorf("loadFieldDefinitions did not return %q", missing)
+	}
+
+	// The whole point: the trimmed names must round-trip through the routing
+	// switch, which is what silently dropped the three fields before the fix.
+	routingCases := map[string]string{
+		"App-I responded to my stress":  "stress_response",
+		"App-Someone whose work I":      "someone_admire",
+		"App-My closest friend at camp": "closest_friend",
+	}
+	for name, wantCol := range routingCases {
+		if gotCol := MapStaffAppFieldToColumn(name); gotCol != wantCol {
+			t.Errorf("MapStaffAppFieldToColumn(%q) = %q, want %q", name, gotCol, wantCol)
+		}
+	}
+}
 
 // TestStaffApplicationsServiceName verifies the service name constant
 func TestStaffApplicationsServiceName(t *testing.T) {
