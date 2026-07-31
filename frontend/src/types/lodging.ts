@@ -32,6 +32,7 @@ import type {
   WeekendSummaryEntry,
   WeekendSummaryResponse,
 } from './api-generated'
+import type { BedInventory } from './beds'
 
 // ── API response aliases ──────────────────────────────────────────────────────
 
@@ -147,6 +148,13 @@ export interface LodgingUnitRecord extends PocketBaseRecordBase {
   map_y: number
   /** 0 means UNKNOWN — PocketBase stores an unset number as 0, never null. */
   sleeps: number
+  /**
+   * Bed inventory. Detail behind `sleeps`, never a replacement for it —
+   * `sleeps` is what the roster and the capacity counts read. May be absent
+   * or null on a row written before migration 1500000128, so always read it
+   * through `normaliseBeds`.
+   */
+  beds: BedInventory | null
   bathroom: BathroomStoredValue
   bathroom_group: string
   near_bathhouse: boolean
@@ -250,6 +258,7 @@ export interface LodgingUnitInput {
   map_x?: number
   map_y?: number
   sleeps?: number
+  beds?: BedInventory
   bathroom?: BathroomStoredValue
   bathroom_group?: string
   near_bathhouse?: boolean

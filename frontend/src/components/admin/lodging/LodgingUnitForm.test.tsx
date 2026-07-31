@@ -100,6 +100,7 @@ describe('LodgingUnitForm — edit', () => {
     map_x: 0.3,
     map_y: 0.2,
     sleeps: 0,
+    beds: null,
     bathroom: 'none',
     bathroom_group: '',
     near_bathhouse: false,
