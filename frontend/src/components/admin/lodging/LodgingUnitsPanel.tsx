@@ -1,17 +1,26 @@
 /**
  * The unit list.
  *
- * Deactivate, never delete (spec §3.8): a unit with historical assignments
- * must stay resolvable so past placements still render. The Go guard in
- * pocketbase/lodging blocks a referenced unit's deletion anyway, but the UI
- * should not offer the action in the first place.
+ * Area is the outer ordering and each group collapses, because staff reason
+ * about the site by zone and a flat 93-row table loses that. The chosen column
+ * sorts within a zone (see ./unitSort).
+ *
+ * CONFIRMATION IS THE POINT OF THIS SCREEN. Every unit is seeded unconfirmed,
+ * and the roster refuses to judge a family's housing need against an
+ * unconfirmed cabin — on such a row `has_power: false` means "nobody has
+ * said", not "there is no power". So confirming is available inline per row
+ * and in bulk over a selection; it is never buried behind opening the form.
+ *
+ * Deactivate, never delete (spec §3.8). The Go guard in pocketbase/lodging
+ * blocks deleting a referenced unit anyway, but the UI should not offer it.
  */
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { Plus } from 'lucide-react'
+import { ChevronDown, ChevronRight, Map, Plus } from 'lucide-react'
 import { useState } from 'react'
 import toast from 'react-hot-toast'
 
 import {
+  confirmLodgingUnits,
   deactivateLodgingUnit,
   listLodgingAreas,
   listLodgingUnits,
@@ -19,13 +28,18 @@ import {
 import type { LodgingUnitRecord } from '../../../types/lodging'
 import { queryKeys, userDataOptions } from '../../../utils/queryKeys'
 import { QueryGuard } from '../../QueryGuard'
+import { LodgingAreasDrawer } from './LodgingAreasDrawer'
 import { LodgingUnitForm } from './LodgingUnitForm'
-
-const PILL = 'rounded-full px-2 py-0.5 text-xs'
+import { LodgingUnitRow } from './LodgingUnitRow'
+import { groupUnitsByArea, sortUnits, UNIT_SORT_COLUMNS, type UnitSort } from './unitSort'
 
 export function LodgingUnitsPanel() {
   const queryClient = useQueryClient()
   const [editing, setEditing] = useState<LodgingUnitRecord | 'new' | null>(null)
+  const [areasOpen, setAreasOpen] = useState(false)
+  const [sort, setSort] = useState<UnitSort>({ field: 'name', desc: false })
+  const [selected, setSelected] = useState<Set<string>>(new Set())
+  const [collapsed, setCollapsed] = useState<Set<string>>(new Set())
 
   const unitsQuery = useQuery({
     queryKey: queryKeys.lodgingUnits(),
@@ -40,7 +54,35 @@ export function LodgingUnitsPanel() {
 
   const refresh = () => {
     setEditing(null)
+    setSelected(new Set())
     void queryClient.invalidateQueries({ queryKey: queryKeys.lodgingUnits() })
+  }
+
+  const toggleSort = (field: UnitSort['field']) => {
+    setSort((current) =>
+      current.field === field ? { field, desc: !current.desc } : { field, desc: false }
+    )
+  }
+
+  const toggleIn = (set: Set<string>, id: string) => {
+    const next = new Set(set)
+    if (next.has(id)) next.delete(id)
+    else next.add(id)
+    return next
+  }
+
+  const handleConfirm = async (ids: string[]) => {
+    try {
+      const count = await confirmLodgingUnits(ids)
+      if (count < ids.length) {
+        toast.error(`Confirmed ${String(count)} of ${String(ids.length)} — the rest failed.`)
+      } else {
+        toast.success(count === 1 ? 'Unit confirmed' : `${String(count)} units confirmed`)
+      }
+      refresh()
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Failed to confirm')
+    }
   }
 
   const handleDeactivate = async (unit: LodgingUnitRecord) => {
@@ -55,28 +97,63 @@ export function LodgingUnitsPanel() {
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="flex items-center justify-between gap-3">
-        <p className="text-muted-foreground text-sm">
-          Every unit is editable. Amenity values seeded from historical occupancy stay marked
-          unconfirmed until staff verify them — and the roster will not judge a family&apos;s
-          housing need against an unconfirmed cabin.
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <p className="text-muted-foreground max-w-2xl text-sm">
+          Amenity values seeded from historical occupancy stay marked unconfirmed until staff verify
+          them — and the roster will not judge a family&apos;s housing need against an unconfirmed
+          cabin.
         </p>
-        <button
-          type="button"
-          onClick={() => {
-            setEditing('new')
-          }}
-          className="bg-primary inline-flex flex-shrink-0 items-center gap-1 rounded-md px-3 py-1.5 text-sm font-medium text-white"
-        >
-          <Plus className="h-4 w-4" />
-          New unit
-        </button>
+        <div className="flex flex-shrink-0 gap-2">
+          <button
+            type="button"
+            onClick={() => {
+              setAreasOpen(true)
+            }}
+            className="border-border inline-flex items-center gap-1 rounded-md border px-3 py-1.5 text-sm font-medium"
+          >
+            <Map className="h-4 w-4" />
+            Areas
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setEditing('new')
+            }}
+            className="bg-primary inline-flex items-center gap-1 rounded-md px-3 py-1.5 text-sm font-medium text-white"
+          >
+            <Plus className="h-4 w-4" />
+            New unit
+          </button>
+        </div>
       </div>
+
+      {selected.size > 0 && (
+        <div className="border-forest-300 bg-forest-50 dark:border-forest-800 dark:bg-forest-950/40 flex flex-wrap items-center gap-3 rounded-lg border px-4 py-2.5">
+          <span className="text-sm font-medium">{selected.size} selected</span>
+          <button
+            type="button"
+            onClick={() => void handleConfirm([...selected])}
+            className="bg-primary rounded-md px-3 py-1.5 text-sm font-medium text-white"
+          >
+            Confirm {selected.size} selected
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setSelected(new Set())
+            }}
+            className="text-muted-foreground text-sm font-medium hover:underline"
+          >
+            Clear
+          </button>
+        </div>
+      )}
 
       {editing !== null && (
         <div className="card-lodge p-4">
           <LodgingUnitForm
             areas={areasQuery.data ?? []}
+            units={unitsQuery.data ?? []}
             unit={editing === 'new' ? undefined : editing}
             onSaved={refresh}
             onCancel={() => {
@@ -85,6 +162,13 @@ export function LodgingUnitsPanel() {
           />
         </div>
       )}
+
+      <LodgingAreasDrawer
+        open={areasOpen}
+        onClose={() => {
+          setAreasOpen(false)
+        }}
+      />
 
       <QueryGuard
         isLoading={unitsQuery.isLoading}
@@ -101,64 +185,97 @@ export function LodgingUnitsPanel() {
           ) : (
             <div className="card-lodge overflow-x-auto p-4">
               <table className="w-full text-left text-sm">
+                {/*
+                  ONE shared thead, not one per area group. An earlier version
+                  rendered the header inside each area's own table; with two
+                  or more areas expanded at once (the default — nothing starts
+                  collapsed) that put multiple `columnheader`-role elements
+                  with the same name in the DOM, which is ambiguous for both
+                  assistive tech and `getByRole`. A single header with a
+                  `tbody` per area group keeps the sort control singular while
+                  each area still collapses independently.
+                */}
                 <thead>
                   <tr className="border-border text-muted-foreground border-b text-xs uppercase">
-                    <th className="pb-2">Unit</th>
-                    <th className="pb-2">Code</th>
-                    <th className="pb-2">Sleeps</th>
-                    <th className="pb-2">Allocation</th>
-                    <th className="pb-2">State</th>
+                    <th className="pb-2" />
+                    {UNIT_SORT_COLUMNS.map((col) => {
+                      const isActive = sort.field === col.field
+                      return (
+                        <th
+                          key={col.field}
+                          role="columnheader"
+                          tabIndex={0}
+                          aria-sort={
+                            isActive ? (sort.desc ? 'descending' : 'ascending') : undefined
+                          }
+                          onClick={() => {
+                            toggleSort(col.field)
+                          }}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter' || e.key === ' ') {
+                              e.preventDefault()
+                              toggleSort(col.field)
+                            }
+                          }}
+                          className="hover:text-foreground focus-visible:ring-forest-500 cursor-pointer pr-3 pb-2 select-none focus-visible:ring-2 focus-visible:outline-none"
+                        >
+                          {col.label}
+                          {isActive && (sort.desc ? ' ↓' : ' ↑')}
+                        </th>
+                      )
+                    })}
                     <th className="pb-2" />
                   </tr>
                 </thead>
-                <tbody>
-                  {units.map((unit) => (
-                    <tr key={unit.id} className="border-border/50 border-b">
-                      <td className="py-2 font-medium">{unit.name}</td>
-                      <td className="text-muted-foreground py-2">{unit.code}</td>
-                      {/* 0 means UNKNOWN — PocketBase stores unset numbers as 0. */}
-                      <td className="py-2">{unit.sleeps > 0 ? unit.sleeps : '—'}</td>
-                      <td className="py-2">
-                        {unit.allocation_default === 'staff_default' ? 'Staff' : 'Family pool'}
-                      </td>
-                      <td className="flex flex-wrap gap-1 py-2">
-                        {unit.is_container && (
-                          <span className={`bg-muted text-muted-foreground ${PILL}`}>Building</span>
-                        )}
-                        {!unit.is_active && (
-                          <span className={`bg-muted text-muted-foreground ${PILL}`}>Inactive</span>
-                        )}
-                        {!unit.is_confirmed && (
-                          <span
-                            className={`bg-amber-100 text-amber-800 dark:bg-amber-950/40 dark:text-amber-300 ${PILL}`}
-                          >
-                            Unconfirmed
-                          </span>
-                        )}
-                      </td>
-                      <td className="py-2 text-right">
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setEditing(unit)
-                          }}
-                          className="text-primary mr-3 text-xs font-medium hover:underline"
-                        >
-                          Edit
-                        </button>
-                        {unit.is_active && (
+                {groupUnitsByArea(units, areasQuery.data ?? []).map((group) => {
+                  const isCollapsed = collapsed.has(group.areaId)
+                  const rows = sortUnits(group.units, sort)
+                  return (
+                    <tbody
+                      key={group.areaId}
+                      data-testid={`area-group-${group.areaId}`}
+                      className="border-border/50 border-b last:border-b-0"
+                    >
+                      <tr>
+                        <td colSpan={UNIT_SORT_COLUMNS.length + 2} className="p-0">
                           <button
                             type="button"
-                            onClick={() => void handleDeactivate(unit)}
-                            className="text-muted-foreground text-xs font-medium hover:underline"
+                            onClick={() => {
+                              setCollapsed((c) => toggleIn(c, group.areaId))
+                            }}
+                            className="hover:bg-muted/40 flex w-full items-center gap-2 py-2 text-left transition-colors"
                           >
-                            Deactivate
+                            {isCollapsed ? (
+                              <ChevronRight className="text-muted-foreground h-4 w-4" />
+                            ) : (
+                              <ChevronDown className="text-muted-foreground h-4 w-4" />
+                            )}
+                            <span className="font-display text-sm font-semibold">
+                              {group.areaName}
+                            </span>
+                            <span className="text-muted-foreground text-xs">{rows.length}</span>
                           </button>
-                        )}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
+                        </td>
+                      </tr>
+                      {!isCollapsed &&
+                        rows.map((unit) => (
+                          <LodgingUnitRow
+                            key={unit.id}
+                            unit={unit}
+                            isSelected={selected.has(unit.id)}
+                            onToggleSelect={() => {
+                              setSelected((s) => toggleIn(s, unit.id))
+                            }}
+                            onEdit={() => {
+                              setEditing(unit)
+                            }}
+                            onConfirm={() => void handleConfirm([unit.id])}
+                            onDeactivate={() => void handleDeactivate(unit)}
+                          />
+                        ))}
+                    </tbody>
+                  )
+                })}
               </table>
             </div>
           )
