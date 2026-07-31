@@ -6474,6 +6474,44 @@ export type WeekendSessionSummary = {
 }
 
 /**
+ * WeekendSummaryEntry
+ *
+ * One weekend on the lander: who it is, and how its placement stands.
+ *
+ * Carries the SAME `RosterCounts` the roster endpoint returns, produced by
+ * the same code path, so the lander and the roster can never disagree about
+ * a weekend.
+ */
+export type WeekendSummaryEntry = {
+  session: WeekendSessionSummary
+  counts: RosterCounts
+}
+
+/**
+ * WeekendSummaryResponse
+ *
+ * Every weekend in a year, with counts, in ONE request.
+ *
+ * Exists because `/roster` is a composed read whose cost is dominated by
+ * year-scoped work -- the unit registry, households, registrations, medical
+ * and the prior-household set are identical for every weekend in the year.
+ * Calling it once per weekend to fill a lander repeats that work N times: a
+ * weekend with zero parties still costs ~3s, which is the whole tell. This
+ * endpoint does the year-scoped fetches once and only the session-scoped
+ * three (availability, assignments, attendees) per weekend.
+ */
+export type WeekendSummaryResponse = {
+  /**
+   * Year
+   */
+  year: number
+  /**
+   * Weekends
+   */
+  weekends?: Array<WeekendSummaryEntry>
+}
+
+/**
  * WeeklyDataPoint
  */
 export type WeeklyDataPoint = {
@@ -9569,6 +9607,40 @@ export type ListWeekendSessionsApiLodgingSessionsGetResponses = {
 
 export type ListWeekendSessionsApiLodgingSessionsGetResponse =
   ListWeekendSessionsApiLodgingSessionsGetResponses[keyof ListWeekendSessionsApiLodgingSessionsGetResponses]
+
+export type GetWeekendSummaryApiLodgingSummaryGetData = {
+  body?: never
+  path?: never
+  query: {
+    /**
+     * Year
+     *
+     * Year of the weekends
+     */
+    year: number
+  }
+  url: '/api/lodging/summary'
+}
+
+export type GetWeekendSummaryApiLodgingSummaryGetErrors = {
+  /**
+   * Validation Error
+   */
+  422: HttpValidationError
+}
+
+export type GetWeekendSummaryApiLodgingSummaryGetError =
+  GetWeekendSummaryApiLodgingSummaryGetErrors[keyof GetWeekendSummaryApiLodgingSummaryGetErrors]
+
+export type GetWeekendSummaryApiLodgingSummaryGetResponses = {
+  /**
+   * Successful Response
+   */
+  200: WeekendSummaryResponse
+}
+
+export type GetWeekendSummaryApiLodgingSummaryGetResponse =
+  GetWeekendSummaryApiLodgingSummaryGetResponses[keyof GetWeekendSummaryApiLodgingSummaryGetResponses]
 
 export type GetWeekendRosterApiLodgingRosterGetData = {
   body?: never

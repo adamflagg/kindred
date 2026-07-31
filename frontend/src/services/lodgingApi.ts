@@ -7,7 +7,12 @@
  * `credentials: 'include'` silently 401s (frontend/CLAUDE.md).
  */
 
-import type { HouseholdMedical, WeekendRoster, WeekendSessionList } from '../types/lodging'
+import type {
+  HouseholdMedical,
+  WeekendRoster,
+  WeekendSessionList,
+  WeekendSummary,
+} from '../types/lodging'
 
 const API_BASE = '/api/lodging'
 
@@ -43,6 +48,22 @@ export async function fetchWeekendSessions(
   const response = await fetchWithAuth(`${API_BASE}/sessions?year=${String(year)}`)
   if (!response.ok) throw await toError(response, 'Failed to load weekend sessions')
   return response.json() as Promise<WeekendSessionList>
+}
+
+/**
+ * Every weekend in a year with its counts, in ONE request.
+ *
+ * The lander used to call the roster once per weekend. That endpoint's cost is
+ * dominated by year-scoped work identical across weekends, so twelve weekends
+ * repeated it twelve times — a weekend with zero parties still took ~3s.
+ */
+export async function fetchWeekendSummary(
+  fetchWithAuth: FetchWithAuth,
+  year: number
+): Promise<WeekendSummary> {
+  const response = await fetchWithAuth(`${API_BASE}/summary?year=${String(year)}`)
+  if (!response.ok) throw await toError(response, 'Failed to load the weekend summary')
+  return response.json() as Promise<WeekendSummary>
 }
 
 /** The per-weekend roster: parties, unit inventory, and honest counts. */

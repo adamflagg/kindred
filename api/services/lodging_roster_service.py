@@ -30,6 +30,8 @@ from api.schemas.lodging import (
     WeekendRosterResponse,
     WeekendSessionListResponse,
     WeekendSessionSummary,
+    WeekendSummaryEntry,
+    WeekendSummaryResponse,
 )
 from api.services.lodging_rules import (
     effective_bathroom,
@@ -103,18 +105,21 @@ class LodgingRosterService:
         rows = await self.repository.fetch_weekend_sessions(year)
         return WeekendSessionListResponse(
             year=year,
-            sessions=[
-                WeekendSessionSummary(
-                    session_id=_s(row, "id"),
-                    session_cm_id=_i(row, "cm_id"),
-                    name=_s(row, "name"),
-                    session_type=_s(row, "session_type"),
-                    start_date=_s(row, "start_date"),
-                    end_date=_s(row, "end_date"),
-                    sort_order=_i(row, "sort_order"),
-                )
-                for row in rows
-            ],
+            sessions=[self._session_summary(row) for row in rows],
+        )
+
+    @staticmethod
+    def _session_summary(row: Any) -> WeekendSessionSummary:
+        """One weekend's identity. Shared so the lander and the session list
+        can never describe the same weekend differently."""
+        return WeekendSessionSummary(
+            session_id=_s(row, "id"),
+            session_cm_id=_i(row, "cm_id"),
+            name=_s(row, "name"),
+            session_type=_s(row, "session_type"),
+            start_date=_s(row, "start_date"),
+            end_date=_s(row, "end_date"),
+            sort_order=_i(row, "sort_order"),
         )
 
     async def build_roster(self, year: int, session_cm_id: int) -> WeekendRosterResponse:
@@ -169,6 +174,73 @@ class LodgingRosterService:
             units=unit_summaries,
             counts=counts,
         )
+
+    async def build_summary(self, year: int) -> WeekendSummaryResponse:
+        """Every weekend in the year with its counts, in one pass.
+
+        `build_roster` makes eleven fetches, of which EIGHT are year-scoped --
+        the unit registry, households, the prior-household set, family-camp
+        adults, registrations, medical, and two registry counts are identical
+        for every weekend in the year. Calling it once per weekend to fill the
+        lander repeats all eight N times, which is why a weekend with zero
+        parties still costs about three seconds.
+
+        So the year-scoped work happens once here, and only the three genuinely
+        session-scoped reads (availability, assignments, attendees) run per
+        weekend. The per-weekend numbers then come from the SAME
+        `_build_units` / `_build_parties` / `_build_counts` helpers the roster
+        uses, so the lander cannot drift from the page it links to.
+        """
+        sessions = await self.repository.fetch_weekend_sessions(year)
+        if not sessions:
+            return WeekendSummaryResponse(year=year, weekends=[])
+
+        async with asyncio.TaskGroup() as tg:
+            units_task = tg.create_task(self.repository.fetch_units())
+            households_task = tg.create_task(self.repository.fetch_households(year))
+            prior_task = tg.create_task(self.repository.fetch_prior_household_cm_ids(year))
+            adults_task = tg.create_task(self.repository.fetch_family_camp_adults(year))
+            registrations_task = tg.create_task(self.repository.fetch_family_camp_registrations(year))
+            medical_task = tg.create_task(self.repository.fetch_family_camp_medical(year))
+            aliases_task = tg.create_task(self.repository.count_open_unresolved_aliases())
+            unconfirmed_task = tg.create_task(self.repository.count_unconfirmed_units())
+
+        units = units_task.result()
+        households = households_task.result()
+        prior_cm_ids = prior_task.result()
+        adults_by_household = adults_task.result()
+        registrations = registrations_task.result()
+        medical = medical_task.result()
+        unresolved_aliases = aliases_task.result()
+        unconfirmed_units = unconfirmed_task.result()
+
+        async def _entry(session: Any) -> WeekendSummaryEntry:
+            session_pb_id = _s(session, "id")
+            async with asyncio.TaskGroup() as inner:
+                availability_task = inner.create_task(self.repository.fetch_availability(year, session_pb_id))
+                assignments_task = inner.create_task(self.repository.fetch_assignments(year, session_pb_id))
+                attendees_task = inner.create_task(self.repository.fetch_attendees_for_session(year, session_pb_id))
+
+            unit_summaries = self._build_units(units, availability_task.result())
+            parties = self._build_parties(
+                session_type=_s(session, "session_type"),
+                attendees=attendees_task.result(),
+                households=households,
+                prior_cm_ids=prior_cm_ids,
+                adults_by_household=adults_by_household,
+                registrations=registrations,
+                medical=medical,
+                assignments=assignments_task.result(),
+            )
+            return WeekendSummaryEntry(
+                session=self._session_summary(session),
+                counts=self._build_counts(unit_summaries, parties, unresolved_aliases, unconfirmed_units),
+            )
+
+        async with asyncio.TaskGroup() as tg:
+            entry_tasks = [tg.create_task(_entry(session)) for session in sessions]
+
+        return WeekendSummaryResponse(year=year, weekends=[task.result() for task in entry_tasks])
 
     async def get_household_medical(self, year: int, household_cm_id: int) -> HouseholdMedicalResponse:
         """PHI. The router gates this on Permission.LODGING_PHI.

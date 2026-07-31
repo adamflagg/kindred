@@ -472,6 +472,8 @@ export const queryKeys = {
 
   // Weekend lodging (family camp + adult weekends)
   weekendSessions: (year: number) => ['weekend-sessions', year] as const,
+  /** The lander's single batched read: every weekend in a year, with counts. */
+  weekendSummary: (year: number) => ['weekend-summary', year] as const,
   weekendRoster: (year: number, sessionCmId: number) =>
     ['weekend-roster', year, sessionCmId] as const,
   /** PHI. Only ever fetched behind an explicit, permission-checked reveal. */

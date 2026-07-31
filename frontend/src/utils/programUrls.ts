@@ -32,7 +32,7 @@ export function getProgramFromPath(path: string): Program | null {
 /** Home URL for each program — single source of truth for redirects and navigation */
 const PROGRAM_HOME: Record<Program, string> = {
   summer: '/summer/sessions',
-  weekend: '/weekend/',
+  weekend: '/weekend/sessions',
   analytics: '/analytics',
 }
 

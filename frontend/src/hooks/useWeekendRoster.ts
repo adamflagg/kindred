@@ -13,8 +13,14 @@ import {
   fetchHouseholdMedical,
   fetchWeekendRoster as fetchRoster,
   fetchWeekendSessions as fetchSessions,
+  fetchWeekendSummary as fetchSummary,
 } from '../services/lodgingApi'
-import type { HouseholdMedical, WeekendRoster, WeekendSessionList } from '../types/lodging'
+import type {
+  HouseholdMedical,
+  WeekendRoster,
+  WeekendSessionList,
+  WeekendSummary,
+} from '../types/lodging'
 import { queryKeys, userDataOptions } from '../utils/queryKeys'
 import { useApiWithAuth } from './useApiWithAuth'
 
@@ -25,6 +31,19 @@ export function useWeekendSessions(year: number) {
     queryKey: queryKeys.weekendSessions(year),
     ...userDataOptions,
     queryFn: () => fetchSessions(fetchWithAuth, year),
+  })
+}
+
+/**
+ * Every weekend in a year with its counts — the lander's whole data need in
+ * one request, instead of one roster call per weekend.
+ */
+export function useWeekendSummary(year: number) {
+  const { fetchWithAuth } = useApiWithAuth()
+  return useQuery<WeekendSummary>({
+    queryKey: queryKeys.weekendSummary(year),
+    ...userDataOptions,
+    queryFn: () => fetchSummary(fetchWithAuth, year),
   })
 }
 

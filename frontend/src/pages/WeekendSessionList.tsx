@@ -1,5 +1,5 @@
 /**
- * /weekend — the family & adult weekend lander.
+ * /weekend/sessions — the family & adult weekend lander.
  *
  * Deliberately the same page as the summer sessions lander, one program over:
  * forest gradient header with aggregate figures, then rows grouped by
@@ -8,11 +8,11 @@
  * holds a cabin whether or not it fills it — so the figures are parties and
  * spaces, not people and beds.
  *
- * Per-weekend figures come from the roster endpoint, one query per weekend in
- * parallel, matching how the summer lander loads its statistics. A row renders
- * its name and dates immediately and fills in numbers when they arrive.
+ * Per-weekend figures arrive in ONE request. Calling the roster endpoint per
+ * weekend meant twelve composed reads whose cost is dominated by year-scoped
+ * work identical across all of them — a weekend with zero parties still took
+ * ~3s — so `/api/lodging/summary` does that work once for the year.
  */
-import { useQueries } from '@tanstack/react-query'
 import {
   AlertCircle,
   Calendar,
@@ -26,15 +26,17 @@ import {
 import { Link } from 'react-router'
 
 import { QueryGuard } from '../components/QueryGuard'
-import { formatSessionDates, groupWeekends, todayKey } from '../components/weekend'
+import {
+  formatSessionDates,
+  groupWeekends,
+  splitWeekendName,
+  todayKey,
+} from '../components/weekend'
 import type { WeekendStatus } from '../components/weekend'
 import { getCampNameShort } from '../config/branding'
 import { useCurrentYear } from '../hooks/useCurrentYear'
-import { useApiWithAuth } from '../hooks/useApiWithAuth'
-import { useWeekendSessions } from '../hooks/useWeekendRoster'
-import { fetchWeekendRoster } from '../services/lodgingApi'
-import type { WeekendRoster, WeekendSession } from '../types/lodging'
-import { queryKeys, userDataOptions } from '../utils/queryKeys'
+import { useWeekendSummary } from '../hooks/useWeekendRoster'
+import type { RosterCountSummary, WeekendSession } from '../types/lodging'
 
 interface WeekendStats {
   parties: number
@@ -43,8 +45,7 @@ interface WeekendStats {
   spaces: number
 }
 
-function statsFrom(roster: WeekendRoster): WeekendStats {
-  const counts = roster.counts ?? {}
+function statsFrom(counts: RosterCountSummary): WeekendStats {
   return {
     parties: counts.parties_total ?? 0,
     placed: counts.parties_assigned ?? 0,
@@ -106,16 +107,15 @@ function WeekendRow({
   session,
   status,
   stats,
-  isLoadingStats,
 }: {
   session: WeekendSession
   status: WeekendStatus
   stats: WeekendStats | undefined
-  isLoadingStats: boolean
 }) {
   const isCompleted = status === 'completed'
   const isAdult = session.session_type === 'adult'
   const dates = formatSessionDates(session.start_date, session.end_date)
+  const { short, qualifier } = splitWeekendName(session.name)
 
   return (
     <Link
@@ -150,7 +150,7 @@ function WeekendRow({
                 isCompleted ? 'text-stone-600 dark:text-stone-400' : 'text-foreground'
               }`}
             >
-              {session.name}
+              {short}
             </h3>
             <span
               className={`rounded-full px-2 py-0.5 text-xs font-semibold ${
@@ -167,15 +167,20 @@ function WeekendRow({
               </span>
             )}
           </div>
-          {dates.length > 0 && (
-            <div className="text-muted-foreground mt-0.5 flex items-center gap-1.5 text-xs">
-              <Calendar className="h-3 w-3 flex-shrink-0" />
-              <span>{dates}</span>
-            </div>
-          )}
+          <div className="text-muted-foreground mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs">
+            {dates.length > 0 && (
+              <span className="inline-flex items-center gap-1.5">
+                <Calendar className="h-3 w-3 flex-shrink-0" />
+                {dates}
+              </span>
+            )}
+            {/* The half of the CampMinder name that says what the weekend is,
+                given the row's spare width rather than crammed into the title. */}
+            {qualifier.length > 0 && <span className="truncate">{qualifier}</span>}
+          </div>
         </div>
 
-        {stats && !isLoadingStats ? (
+        {stats ? (
           <>
             {/* Parties placed */}
             <div className="hidden w-[150px] flex-shrink-0 items-center justify-end gap-1.5 text-sm sm:flex">
@@ -217,41 +222,22 @@ function WeekendRow({
 
 export default function WeekendSessionList() {
   const { currentYear } = useCurrentYear()
-  const { fetchWithAuth } = useApiWithAuth()
-  const sessionsQuery = useWeekendSessions(currentYear)
-  const sessions = sessionsQuery.data?.sessions ?? []
-
-  const statsQueries = useQueries({
-    queries: sessions.map((session) => ({
-      queryKey: queryKeys.weekendRoster(currentYear, session.session_cm_id),
-      ...userDataOptions,
-      queryFn: () => fetchWeekendRoster(fetchWithAuth, currentYear, session.session_cm_id),
-    })),
-  })
+  // One request for the whole lander: identities and counts together.
+  const summaryQuery = useWeekendSummary(currentYear)
+  const entries = summaryQuery.data?.weekends ?? []
+  const sessions = entries.map((entry) => entry.session)
 
   const today = todayKey(new Date())
   const groups = groupWeekends(sessions, today)
-  const statsByCmId = new Map<number, { stats: WeekendStats | undefined; isLoading: boolean }>(
-    sessions.map((session, index) => {
-      const query = statsQueries[index]
-      return [
-        session.session_cm_id,
-        {
-          stats: query?.data ? statsFrom(query.data) : undefined,
-          isLoading: query?.isLoading ?? false,
-        },
-      ]
-    })
+  const statsByCmId = new Map<number, WeekendStats>(
+    entries.map((entry) => [entry.session.session_cm_id, statsFrom(entry.counts)])
   )
 
-  const totalParties = statsQueries.reduce(
-    (sum, query) => sum + (query.data ? statsFrom(query.data).parties : 0),
+  const totalParties = entries.reduce((sum, entry) => sum + (entry.counts.parties_total ?? 0), 0)
+  const totalUnplaced = [...groups.inProgress, ...groups.upcoming].reduce(
+    (sum, session) => sum + (statsByCmId.get(session.session_cm_id)?.unplaced ?? 0),
     0
   )
-  const totalUnplaced = [...groups.inProgress, ...groups.upcoming].reduce((sum, session) => {
-    const entry = statsByCmId.get(session.session_cm_id)
-    return sum + (entry?.stats?.unplaced ?? 0)
-  }, 0)
 
   const ordered: Array<[WeekendStatus, WeekendSession[]]> = [
     ['in-progress', groups.inProgress],
@@ -301,9 +287,9 @@ export default function WeekendSessionList() {
       </div>
 
       <QueryGuard
-        isLoading={sessionsQuery.isLoading}
-        error={sessionsQuery.error}
-        data={sessionsQuery.data}
+        isLoading={summaryQuery.isLoading}
+        error={summaryQuery.error}
+        data={summaryQuery.data}
         label="weekend sessions"
         emptyMessage="No family or adult sessions found for this year."
       >
@@ -324,22 +310,18 @@ export default function WeekendSessionList() {
                 group.length === 0 ? null : (
                   <div key={status}>
                     <StatusSectionHeader status={status} count={group.length} />
-                    {group.map((session) => {
-                      const entry = statsByCmId.get(session.session_cm_id)
-                      return (
-                        <div
-                          key={session.session_cm_id}
-                          className="border-b border-stone-200/80 last:border-b-0 dark:border-stone-700/80"
-                        >
-                          <WeekendRow
-                            session={session}
-                            status={status}
-                            stats={entry?.stats}
-                            isLoadingStats={entry?.isLoading ?? false}
-                          />
-                        </div>
-                      )
-                    })}
+                    {group.map((session) => (
+                      <div
+                        key={session.session_cm_id}
+                        className="border-b border-stone-200/80 last:border-b-0 dark:border-stone-700/80"
+                      >
+                        <WeekendRow
+                          session={session}
+                          status={status}
+                          stats={statsByCmId.get(session.session_cm_id)}
+                        />
+                      </div>
+                    ))}
                   </div>
                 )
               )}

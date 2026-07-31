@@ -600,8 +600,9 @@ function App() {
 
                           {/* Weekend Housing routes - with app layout */}
                           <Route path="/weekend" element={<AppLayout />}>
+                            <Route index element={<Navigate to="/weekend/sessions" replace />} />
                             <Route
-                              index
+                              path="sessions"
                               element={
                                 <ErrorBoundary>
                                   <Suspense fallback={<PageSkeleton />}>

@@ -1,5 +1,5 @@
 /**
- * /weekend — the family & adult weekend lander.
+ * /weekend/sessions — the family & adult weekend lander.
  *
  * Deliberately the summer sessions lander one program over: forest header,
  * aggregate figures, rows grouped by lifecycle. What diverges is the unit —
@@ -13,27 +13,17 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import WeekendSessionList from './WeekendSessionList'
 
-const sessionsQuery = { data: undefined as unknown, isLoading: false, error: null as Error | null }
+const summaryQuery = { data: undefined as unknown, isLoading: false, error: null as Error | null }
 
 vi.mock('../hooks/useWeekendRoster', () => ({
-  useWeekendSessions: () => sessionsQuery,
+  useWeekendSummary: () => summaryQuery,
 }))
 
 vi.mock('../hooks/useCurrentYear', () => ({
   useCurrentYear: () => ({ currentYear: 2026, setCurrentYear: vi.fn() }),
 }))
 
-vi.mock('../hooks/useApiWithAuth', () => ({
-  useApiWithAuth: () => ({ fetchWithAuth: vi.fn(), isAuthenticated: true, isAuthLoading: false }),
-}))
-
 vi.mock('../config/branding', () => ({ getCampNameShort: () => 'Camp' }))
-
-// Per-weekend figures come from the roster endpoint, one query per weekend.
-const rosterFor = vi.fn()
-vi.mock('../services/lodgingApi', () => ({
-  fetchWeekendRoster: (...args: unknown[]) => rosterFor(...args),
-}))
 
 function wrapper({ children }: { children: ReactNode }) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
@@ -63,10 +53,31 @@ const WOMENS = {
 }
 
 beforeEach(() => {
-  rosterFor.mockReset().mockResolvedValue({ counts: {} })
-  sessionsQuery.data = { year: 2026, sessions: [FAMILY_CAMP_1, WOMENS] }
-  sessionsQuery.isLoading = false
-  sessionsQuery.error = null
+  summaryQuery.data = {
+    year: 2026,
+    weekends: [
+      {
+        session: FAMILY_CAMP_1,
+        counts: {
+          parties_total: 62,
+          parties_assigned: 56,
+          parties_unassigned: 6,
+          units_family_available: 79,
+        },
+      },
+      {
+        session: WOMENS,
+        counts: {
+          parties_total: 123,
+          parties_assigned: 0,
+          parties_unassigned: 123,
+          units_family_available: 79,
+        },
+      },
+    ],
+  }
+  summaryQuery.isLoading = false
+  summaryQuery.error = null
 })
 
 describe('header', () => {
@@ -109,7 +120,7 @@ describe('rows', () => {
 
 describe('empty state', () => {
   it('invites a sync rather than showing a bare page', () => {
-    sessionsQuery.data = { year: 2026, sessions: [] }
+    summaryQuery.data = { year: 2026, weekends: [] }
     render(<WeekendSessionList />, { wrapper })
     expect(screen.getByText('No weekends found')).toBeInTheDocument()
     expect(screen.getByText(/once sessions sync from CampMinder/)).toBeInTheDocument()
@@ -118,15 +129,15 @@ describe('empty state', () => {
 
 describe('query states', () => {
   it('shows the loading state while sessions load', () => {
-    sessionsQuery.data = undefined
-    sessionsQuery.isLoading = true
+    summaryQuery.data = undefined
+    summaryQuery.isLoading = true
     render(<WeekendSessionList />, { wrapper })
     expect(screen.getByText(/Loading weekend sessions data/i)).toBeInTheDocument()
   })
 
   it('shows the error state when the sessions query fails', () => {
-    sessionsQuery.data = undefined
-    sessionsQuery.error = new Error('boom')
+    summaryQuery.data = undefined
+    summaryQuery.error = new Error('boom')
     render(<WeekendSessionList />, { wrapper })
     expect(screen.getByText(/Failed to load weekend sessions data: boom/i)).toBeInTheDocument()
   })

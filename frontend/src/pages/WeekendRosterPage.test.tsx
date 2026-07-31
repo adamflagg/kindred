@@ -43,7 +43,7 @@ vi.mock('react-router', async () => {
 const FAMILY_CAMP_1 = {
   session_id: 'sess_1',
   session_cm_id: 1000001,
-  name: 'Family Camp 1',
+  name: 'Family Camp 1: Memorial Day Weekend',
   session_type: 'family',
   start_date: '2026-05-22 07:00:00.000Z',
   end_date: '2026-05-25 07:00:00.000Z',
@@ -81,8 +81,14 @@ beforeEach(() => {
 describe('header', () => {
   it('makes the weekend name the title and the switcher', () => {
     renderPage()
-    expect(screen.getByRole('combobox', { name: /weekend/i })).toHaveValue('1000001')
-    expect(screen.getByRole('option', { name: 'Family Camp 1' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /Family Camp 1/ })).toBeInTheDocument()
+  })
+
+  it('shortens the CampMinder name to its identity in the title', () => {
+    // "Family Camp 1: Memorial Day Weekend" would wrap a title and swamp a
+    // picker; the description belongs on the lander row.
+    renderPage()
+    expect(screen.queryByText(/Memorial Day Weekend/)).not.toBeInTheDocument()
   })
 
   it('shows the weekend dates and its program type', () => {
@@ -99,13 +105,24 @@ describe('header', () => {
 
   it('navigates to the chosen weekend rather than swapping state in place', async () => {
     renderPage()
-    await userEvent.selectOptions(screen.getByRole('combobox', { name: /weekend/i }), '1000002')
+    await userEvent.click(screen.getByRole('button', { name: /Family Camp 1/ }))
+    await userEvent.click(await screen.findByRole('option', { name: "Women's Weekend" }))
     expect(navigate).toHaveBeenCalledWith('/weekend/session/1000002')
+  })
+
+  it('orders the picker by date, not by CampMinder sort_order', async () => {
+    renderPage()
+    await userEvent.click(screen.getByRole('button', { name: /Family Camp 1/ }))
+    const options = (await screen.findAllByRole('option')).map((o) => o.textContent)
+    expect(options).toEqual(['Family Camp 1', "Women's Weekend"])
   })
 
   it('offers a way back to the lander', () => {
     renderPage()
-    expect(screen.getByRole('link', { name: /All weekends/i })).toHaveAttribute('href', '/weekend')
+    expect(screen.getByRole('link', { name: /All weekends/i })).toHaveAttribute(
+      'href',
+      '/weekend/sessions'
+    )
   })
 
   it('links to the lodging settings so a wrong seed can be corrected', () => {
@@ -118,7 +135,7 @@ describe('header', () => {
 
   it('says so when the URL names a weekend that does not exist', () => {
     renderPage('9999999')
-    expect(screen.getByRole('option', { name: 'Weekend not found' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /Weekend not found/ })).toBeInTheDocument()
   })
 })
 

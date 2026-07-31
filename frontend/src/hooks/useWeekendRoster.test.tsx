@@ -8,14 +8,21 @@ import type { ReactNode } from 'react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { queryKeys } from '../utils/queryKeys'
-import { useHouseholdMedical, useWeekendRoster, useWeekendSessions } from './useWeekendRoster'
+import {
+  useHouseholdMedical,
+  useWeekendRoster,
+  useWeekendSessions,
+  useWeekendSummary,
+} from './useWeekendRoster'
 
 const fetchWeekendSessions = vi.fn()
+const fetchWeekendSummary = vi.fn()
 const fetchWeekendRoster = vi.fn()
 const fetchHouseholdMedical = vi.fn()
 
 vi.mock('../services/lodgingApi', () => ({
   fetchWeekendSessions: (...args: unknown[]) => fetchWeekendSessions(...args),
+  fetchWeekendSummary: (...args: unknown[]) => fetchWeekendSummary(...args),
   fetchWeekendRoster: (...args: unknown[]) => fetchWeekendRoster(...args),
   fetchHouseholdMedical: (...args: unknown[]) => fetchHouseholdMedical(...args),
 }))
@@ -31,6 +38,7 @@ function wrapper({ children }: { children: ReactNode }) {
 
 beforeEach(() => {
   fetchWeekendSessions.mockReset().mockResolvedValue({ year: 2026, sessions: [] })
+  fetchWeekendSummary.mockReset().mockResolvedValue({ year: 2026, weekends: [] })
   fetchWeekendRoster.mockReset().mockResolvedValue({ year: 2026, session_cm_id: 1000001 })
   fetchHouseholdMedical.mockReset().mockResolvedValue({ household_cm_id: 2000001, year: 2026 })
 })
@@ -43,6 +51,7 @@ describe('queryKeys', () => {
     expect(queryKeys.lodgingUnits()).toEqual(['lodging-units'])
     expect(queryKeys.lodgingAreas()).toEqual(['lodging-areas'])
     expect(queryKeys.lodgingAliases()).toEqual(['lodging-aliases'])
+    expect(queryKeys.weekendSummary(2026)).toEqual(['weekend-summary', 2026])
     expect(queryKeys.lodgingIngestIssues()).toEqual(['lodging-ingest-issues'])
   })
 })
@@ -54,6 +63,17 @@ describe('useWeekendSessions', () => {
     await waitFor(() => expect(result.current.isSuccess).toBe(true))
     expect(fetchWeekendSessions).toHaveBeenCalledTimes(1)
     const [, year] = fetchWeekendSessions.mock.calls[0] as [unknown, number]
+    expect(year).toBe(2026)
+  })
+})
+
+describe('useWeekendSummary', () => {
+  it('fetches the whole year once, which is the point of it', async () => {
+    const { result } = renderHook(() => useWeekendSummary(2026), { wrapper })
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true))
+    expect(fetchWeekendSummary).toHaveBeenCalledTimes(1)
+    const [, year] = fetchWeekendSummary.mock.calls[0] as [unknown, number]
     expect(year).toBe(2026)
   })
 })

@@ -15,6 +15,7 @@
  * preference, proximity mode or request text looks wrong, the fix belongs in
  * the Go ingest so every surface sees the correction at once.
  */
+import { Listbox, ListboxButton, ListboxOption, ListboxOptions } from '@headlessui/react'
 import { ArrowLeft, ChevronDown, Home, Settings, Users } from 'lucide-react'
 import { useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router'
@@ -25,6 +26,8 @@ import {
   formatSessionDates,
   HouseholdRosterTable,
   partyBeds,
+  shortWeekendName,
+  sortWeekendsByDate,
   UnitInventoryPanel,
   WeekendStatsBar,
 } from '../components/weekend'
@@ -43,7 +46,9 @@ export default function WeekendRosterPage() {
   const sessionsQuery = useWeekendSessions(currentYear)
   const rosterQuery = useWeekendRoster(currentYear, selectedCmId)
 
-  const sessions = sessionsQuery.data?.sessions ?? []
+  // Chronological, as the summer session picker is — CampMinder's sort_order
+  // is manual and does not track the calendar.
+  const sessions = sortWeekendsByDate(sessionsQuery.data?.sessions ?? [])
   const selectedSession = sessions.find((session) => session.session_cm_id === selectedCmId)
   const dates = selectedSession
     ? formatSessionDates(selectedSession.start_date, selectedSession.end_date)
@@ -61,7 +66,7 @@ export default function WeekendRosterPage() {
     <div>
       <header className="flex flex-col gap-2 pb-2">
         <Link
-          to="/weekend"
+          to="/weekend/sessions"
           className="text-muted-foreground hover:text-foreground inline-flex w-fit items-center gap-1.5 text-sm transition-colors"
         >
           <ArrowLeft className="h-4 w-4" />
@@ -72,30 +77,36 @@ export default function WeekendRosterPage() {
           {/* The weekend IS the title, and the title IS the switcher — the
               same move the summer session header makes with its session
               dropdown. */}
-          <div className="relative flex min-w-0 items-center">
-            <select
-              aria-label="Weekend"
+          <div className="flex flex-shrink-0 items-center gap-2">
+            <Home className="text-primary h-5 w-5 flex-shrink-0 sm:h-6 sm:w-6" />
+            <Listbox
               value={selectedCmId === null ? '' : String(selectedCmId)}
-              onChange={(event) => {
-                void navigate(`/weekend/session/${event.target.value}`)
+              onChange={(value: string) => {
+                void navigate(`/weekend/session/${value}`)
               }}
-              className="font-display hover:text-primary cursor-pointer appearance-none bg-transparent pr-7 text-xl font-bold transition-colors focus:outline-none sm:text-2xl"
             >
-              {selectedSession === undefined && (
-                <option value="">
-                  {sessionsQuery.isLoading ? 'Loading weekends…' : 'Weekend not found'}
-                </option>
-              )}
-              {sessions.map((session) => (
-                <option key={session.session_cm_id} value={String(session.session_cm_id)}>
-                  {session.name}
-                </option>
-              ))}
-            </select>
-            <ChevronDown
-              aria-hidden="true"
-              className="text-muted-foreground pointer-events-none absolute right-1 h-4 w-4"
-            />
+              <div className="relative">
+                <ListboxButton className="font-display hover:text-primary flex cursor-pointer items-center gap-1 bg-transparent text-xl font-bold transition-colors focus:outline-none sm:text-2xl">
+                  {selectedSession
+                    ? shortWeekendName(selectedSession.name)
+                    : sessionsQuery.isLoading
+                      ? 'Loading weekends…'
+                      : 'Weekend not found'}
+                  <ChevronDown className="text-muted-foreground h-4 w-4" />
+                </ListboxButton>
+                <ListboxOptions className="listbox-options w-auto min-w-[220px]">
+                  {sessions.map((session) => (
+                    <ListboxOption
+                      key={session.session_cm_id}
+                      value={String(session.session_cm_id)}
+                      className="listbox-option py-1.5"
+                    >
+                      {shortWeekendName(session.name)}
+                    </ListboxOption>
+                  ))}
+                </ListboxOptions>
+              </div>
+            </Listbox>
           </div>
 
           {dates.length > 0 && <span className="text-muted-foreground text-sm">{dates}</span>}

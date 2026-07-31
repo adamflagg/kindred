@@ -8,7 +8,12 @@
  */
 import { describe, expect, it, vi } from 'vitest'
 
-import { fetchHouseholdMedical, fetchWeekendRoster, fetchWeekendSessions } from './lodgingApi'
+import {
+  fetchHouseholdMedical,
+  fetchWeekendRoster,
+  fetchWeekendSessions,
+  fetchWeekendSummary,
+} from './lodgingApi'
 
 function okResponse(body: unknown): Response {
   return { ok: true, status: 200, json: async () => body } as Response
@@ -34,6 +39,25 @@ describe('fetchWeekendSessions', () => {
     })
 
     await expect(fetchWeekendSessions(mockFetch, 2026)).rejects.toThrow(/401/)
+  })
+})
+
+describe('fetchWeekendSummary', () => {
+  it('asks for the whole year in one request', () => {
+    // The lander used to call the roster once per weekend; that endpoint's
+    // cost is dominated by year-scoped work identical across weekends.
+    const mockFetch = vi.fn().mockResolvedValue(okResponse({ year: 2026, weekends: [] }))
+
+    return fetchWeekendSummary(mockFetch, 2026).then(() => {
+      expect(mockFetch).toHaveBeenCalledTimes(1)
+      const [url] = mockFetch.mock.calls[0] as [string]
+      expect(url).toBe('/api/lodging/summary?year=2026')
+    })
+  })
+
+  it('surfaces a failure rather than rendering an empty lander', async () => {
+    const mockFetch = vi.fn().mockResolvedValue({ ok: false, status: 500, json: async () => ({}) })
+    await expect(fetchWeekendSummary(mockFetch, 2026)).rejects.toThrow(/500/)
   })
 })
 

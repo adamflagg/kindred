@@ -17,5 +17,13 @@ export { ShareRequestPanel } from './ShareRequestPanel'
 export { UnitInventoryPanel } from './UnitInventoryPanel'
 export { WeekendSessionPicker } from './WeekendSessionPicker'
 export { WeekendStatsBar } from './WeekendStatsBar'
-export { calendarKey, groupWeekends, todayKey, weekendStatus } from './weekendStatus'
+export { shortWeekendName, splitWeekendName } from './weekendNames'
+export type { WeekendName } from './weekendNames'
+export {
+  calendarKey,
+  groupWeekends,
+  sortWeekendsByDate,
+  todayKey,
+  weekendStatus,
+} from './weekendStatus'
 export type { WeekendGroups, WeekendStatus } from './weekendStatus'

@@ -29,6 +29,8 @@ import type {
   WeekendRosterResponse,
   WeekendSessionListResponse,
   WeekendSessionSummary,
+  WeekendSummaryEntry,
+  WeekendSummaryResponse,
 } from './api-generated'
 
 // ── API response aliases ──────────────────────────────────────────────────────
@@ -49,6 +51,10 @@ export type LodgingUnitRow = LodgingUnitSummary
 export type ShareRequest = ShareRequestSummary
 /** Derived accessibility booleans. Never narrative text. */
 export type AccessibilityFlags = AccessibilityFlagSummary
+/** Every weekend in a year with its counts — the lander's single read. */
+export type WeekendSummary = WeekendSummaryResponse
+/** One weekend on the lander: identity plus the same counts the roster reports. */
+export type WeekendSummaryRow = WeekendSummaryEntry
 /** PHI. Only ever fetched from the permission-gated endpoint. */
 export type HouseholdMedical = HouseholdMedicalResponse
 /** A registered adult on a household party. */

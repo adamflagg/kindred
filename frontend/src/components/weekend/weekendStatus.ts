@@ -36,6 +36,17 @@ export function weekendStatus(session: WeekendSession, today: number): WeekendSt
   return 'in-progress'
 }
 
+/**
+ * Chronological order, as the summer sessions lander uses. CampMinder's
+ * `sort_order` is a manual field that does not track the calendar, so a
+ * picker sorted by it lists June after October.
+ */
+export function sortWeekendsByDate(sessions: WeekendSession[]): WeekendSession[] {
+  return [...sessions].sort(
+    (a, b) => (calendarKey(a.start_date) ?? 0) - (calendarKey(b.start_date) ?? 0)
+  )
+}
+
 export interface WeekendGroups {
   inProgress: WeekendSession[]
   upcoming: WeekendSession[]
@@ -47,12 +58,11 @@ export interface WeekendGroups {
  * weekend staff are standing in.
  */
 export function groupWeekends(sessions: WeekendSession[], today: number): WeekendGroups {
-  const byStart = (a: WeekendSession, b: WeekendSession) =>
-    (calendarKey(a.start_date) ?? 0) - (calendarKey(b.start_date) ?? 0)
-
   return {
-    inProgress: sessions.filter((s) => weekendStatus(s, today) === 'in-progress').sort(byStart),
-    upcoming: sessions.filter((s) => weekendStatus(s, today) === 'upcoming').sort(byStart),
-    completed: sessions.filter((s) => weekendStatus(s, today) === 'completed').sort(byStart),
+    inProgress: sortWeekendsByDate(
+      sessions.filter((s) => weekendStatus(s, today) === 'in-progress')
+    ),
+    upcoming: sortWeekendsByDate(sessions.filter((s) => weekendStatus(s, today) === 'upcoming')),
+    completed: sortWeekendsByDate(sessions.filter((s) => weekendStatus(s, today) === 'completed')),
   }
 }
