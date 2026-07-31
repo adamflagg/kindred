@@ -1,9 +1,9 @@
 # HANDOFF — Family Camp Lodging
 
-**State as of `abfdbe90` on `main`, with Plan 3 Phase B in review as PR #1890.** The data layer,
-the ingest and the read API are merged. Phase B — the `/weekend` lander and roster — is written,
-green and pushed, but **not merged**: it is in review, a scan agent is applying fixes to the same
-branch, and §4 is how you pick it up.
+**State as of `37cf8d24` on `main`.** The data layer, the ingest, the read API and the weekend
+surfaces are all merged. `/weekend/sessions` lists the year's weekends; `/weekend/session/:id`
+shows one weekend's roster and inventory. **The next body of work is Plan 3 Phase C — the
+`/admin/lodging` editor, the Go integrity guards and the work-queue UI.**
 
 This is a working document. Edit it in place: tick what ships, rewrite "Next", delete what stops
 being true. It is not a changelog — `git log` is the changelog.
@@ -18,7 +18,7 @@ Three plans. The first two are done.
 |---|---|---|
 | **1 — Data layer** | `lodging_*` collections, seed, alias registry | ✅ merged (`49d38ff8`, #1867) |
 | **2 — Ingest** | CampMinder cabin fields → assignments, requests, PHI split | ✅ merged — see below |
-| **3 — Surfaces** | Read API, `/weekend` roster, `/admin/lodging` editor | 🔶 A merged (`f99a8ef7`, #1884); **B in review (#1890)**; C open |
+| **3 — Surfaces** | Read API, `/weekend` roster, `/admin/lodging` editor | 🔶 A (`f99a8ef7`, #1884) and B (`37cf8d24`, #1890) merged; **C open** |
 
 Plan 2 shipped in four PRs:
 
@@ -70,6 +70,21 @@ Facts, not a work log. Do not re-verify or re-implement these.
   from `WeekendRosterResponse` to prove no PHI field is reachable. `PHI_FIELD_NAMES` has **eight**
   entries and a test pins it against Go's `phiColumns`, because the two guard different exits —
   Go keeps PHI out of exports and logs, Python keeps it out of API payloads.
+- **The weekend surfaces are live** (Phase B, `37cf8d24`): `/weekend/sessions` lander,
+  `/weekend/session/:sessionCmId` roster with Roster/Inventory tabs, and
+  `GET /api/lodging/summary?year=` — one batched read returning every weekend with its
+  `RosterCounts`. `/summary` exists because `/roster` makes eleven fetches of which **eight are
+  year-scoped**, so filling a lander weekend-by-weekend repeated that work N times; a weekend with
+  zero parties still cost ~3s. Measured: twelve weekends in one 4.0s / 5.9 KB call.
+- **`/summary` and `/roster` cannot disagree.** The batch runs the same
+  `_build_units` / `_build_parties` / `_build_counts` helpers, and
+  `TestBuildSummary::test_counts_match_what_the_roster_reports_for_the_same_weekend` asserts it.
+- **Shared weekend helpers live in `frontend/src/components/weekend/`**: `rosterAttention.ts`
+  (triage + `countUnmeasuredSpaces`), `weekendStatus.ts` (lifecycle + chronological sort),
+  `weekendNames.ts` (colon split), `sessionDates.ts` (PocketBase datetime → "May 22–25, 2026").
+  Phase C reuses these rather than re-deriving.
+- **`verify-no-hardcoded-lodging.sh` ignores comments and docstrings** (`scripts/dev/lib/
+  drop_comment_hits.py`). It used to fail on prose, which is why it was red on `main` (#1891).
 - **Highest migration is `1500000127`.** Compute the next number from `main`, never from a branch.
 
 ---
@@ -136,78 +151,72 @@ Each of these was decided deliberately. Reopening one needs a reason, not a fres
   pickers and keeps "Memorial Day Weekend" for the lander row. Lossless — inventing abbreviations
   is how a UI starts disagreeing with CampMinder about what a session is called.
 - **Lander counts come from `/api/lodging/summary`, never from N roster calls.** See §4.
+- **Contracts corrected in review (`03754754`), easy to mis-remember:**
+  `AccessibilityFlagListProps.householdCmId` is `number | null` — `null` means "no household to
+  look up" and suppresses the PHI reveal entirely, rather than requesting `/households/0/medical`.
+  `partyAttention`'s `unverified` reason lists only needs a confirmed cabin has *not* answered.
+  `UnitInventoryPanel` buckets areas on `` `${area_code}::${area_name}` `` because the API sends
+  `area_code: ""` for anything it cannot resolve. Neither weekend page passes `emptyMessage` to
+  `QueryGuard` — the nested components carry the real empty states.
 
 ---
 
-## 4. Next: intake Phase B's review, then Plan 3 Phase C
+## 4. Next: Plan 3 Phase C — the Family Camp admin surface
 
-Plan: `docs/superpowers/plans/2026-07-30-family-camp-lodging-surfaces.md` (local-only, gitignored).
-Its Phase B header carries a **SHIPPED** block listing nine ways the delivered work diverges from
-Tasks 7-12 — read that before treating the task list as the record.
+Plan: `docs/superpowers/plans/2026-07-30-family-camp-lodging-surfaces.md` (local-only, gitignored),
+Tasks 13–17. **Its Phase B header carries a SHIPPED block listing nine divergences** — read that
+first, because Phase C inherits the corrected shape, not the shape Tasks 7–12 describe.
 
 | Phase | Tasks | Ships | Status |
 |---|---|---|---|
-| **A — Read API** | 1-6 | `/api/lodging/*`, `lodging.phi`, generated TS types | ✅ `f99a8ef7` (#1884) |
-| **B — Lander + roster** | 7-12 | `/weekend/sessions`, `/weekend/session/:id`, `/api/lodging/summary` | 🔶 **in review, PR #1890** |
-| **C — Admin CRUD** | 13-17 | `/admin/lodging` editor, Go integrity guards, work queue UI | ⬜ after B merges |
+| **A — Read API** | 1–6 | `/api/lodging/*`, `lodging.phi`, generated TS types | ✅ `f99a8ef7` (#1884) |
+| **B — Lander + roster** | 7–12 | `/weekend/sessions`, `/weekend/session/:id`, `/summary` | ✅ `37cf8d24` (#1890) |
+| **C — Admin CRUD** | 13–17 | `/admin/lodging` editor, Go integrity guards, work queue UI | ⬜ **next** |
 
-### Your job, in order
+### Task order, and why
 
-1. **Intake the scan agent's fixes.** A scan agent is working the same branch and worktree. Its
-   catches so far are real bugs in Phase B's code, not style: `UnitInventoryPanel` bucketed areas on
-   `area_code` alone, so two areas both carrying `code: ""` collided and the second one's name was
-   silently dropped; and `partyAttention` dragged already-answered needs back into the `unverified`
-   reason, so a cabin the registry confirms *has* power could read "Power" as outstanding. Expect
-   more of that shape. Re-run the suites after taking them (§7) — several of these live in pure
-   helpers with dense tests, so a bad fix fails loudly rather than silently.
-2. **Review the work against the plan AND the owner's GUI direction.** The plan is the weaker of
-   the two here: it predates both the ingest request layer and any look at the summer surfaces. The
-   owner's direction, gathered over the session, is in §3 under "Locked by Phase B" — spaces not
-   beds, triage not listing, extend summer's visual language rather than invent one. Where the plan
-   and §3 disagree, §3 wins.
-3. **After #1890 merges, start Phase C** (Tasks 13-17): `pocketbase/lodging/hooks.go` integrity
-   guards, then the `/admin/lodging` editor, then the work-queue UI over
-   `lodging_ingest_issues`.
+1. **Task 13 — `pocketbase/lodging/hooks.go` integrity guards, first.** They are the invariants the
+   database does not enforce: `guardAssignmentGrain` (exactly one of unit/merge, exactly one of
+   household/person), `guardUnitDelete` (deactivate, never delete, when assignments exist),
+   `guardMergeDelete` (blocked at ≥1 occupant — stricter than spec §3.4, to close the
+   single-occupant orphan hole). Land these *before* the UI that can violate them.
+2. **Tasks 14–16 — the editor.** Writes go **straight to PocketBase, not through FastAPI**: all
+   four collections carry `createRule`/`updateRule`/`deleteRule` = `@request.auth.is_admin = true`,
+   so PocketBase is the authorisation boundary and Task 13 is the integrity boundary. Same pattern
+   as `frontend/src/components/admin/RegistrationDatesConfig.tsx`.
+3. **Task 17 — the work-queue UI** over `lodging_ingest_issues` filtered to
+   `kind = "unresolved_alias" && is_resolved = false`.
 
 ### What Phase C inherits that the plan does not describe
 
-- **`GET /api/lodging/summary?year=` exists.** Built because the lander needs per-weekend counts and
-  `/roster` is a composed read dominated by year-scoped work — eight of its eleven fetches are
-  identical for every weekend, so a weekend with **zero parties still cost ~3s**. Measured: twelve
-  weekends in one **4.0s / 5.9 KB** call against 12 x ~3s and ~1.2 MB. Its counts come from the same
-  `_build_units` / `_build_parties` / `_build_counts` helpers `/roster` uses, and
-  `TestBuildSummary::test_counts_match_what_the_roster_reports_for_the_same_weekend` asserts the two
-  agree. **Any new per-weekend figure belongs on this endpoint, not on a per-weekend roster call.**
-- **`frontend/src/components/weekend/` is the shared surface**: `rosterAttention.ts` (triage +
-  `countUnmeasuredSpaces`), `weekendStatus.ts` (lifecycle + chronological sort), `weekendNames.ts`
-  (colon split), `sessionDates.ts` (PocketBase datetime -> "May 22-25, 2026"), plus the components.
-  Phase C's admin UI should reuse these rather than re-deriving.
-- **The PocketBase record/input types the plan puts in Task 7 were deferred to Phase C** — nothing
-  in Phase B consumes them; only Task 14's `lodgingCrud.ts` does. Write them there, and do **not**
-  write a `LodgingUnresolvedAliasRecord`: the work queue is `lodging_ingest_issues`.
-- **`lodging.phi` is still granted to no role (#1887).** Admin bypass is the only route to the
-  narrative. Phase C's role editor is the natural place to fix it.
+- **Write the PocketBase record and input types now.** The plan puts them in Task 7; Phase B
+  deferred them because nothing there consumed them. `LodgingUnitInput` must keep `is_active` and
+  `allocation_default` **non-optional** — PocketBase has no per-field default for bool or select, so
+  a create that omits them yields an invisible unit that matches neither availability branch.
+- **Do NOT write a `LodgingUnresolvedAliasRecord`.** The work queue is `lodging_ingest_issues`; the
+  query key is already `queryKeys.lodgingIngestIssues()`.
+- **Confirming amenities switches on live behaviour.** `partyAttention` only judges a housing need
+  against a cabin whose `is_confirmed` is true; all 82 are false today, so the roster reports
+  *"Fit not verified"* for every constrained party. The moment Phase C lets staff confirm a cabin,
+  the `unmet` section starts populating — **that path has unit tests but has never run against real
+  data.** Expect it to be the first thing that looks wrong, and check it deliberately.
+- **`/weekend/session/:id` has no "Lodging settings" link.** It was removed in `03754754` because
+  `/admin/lodging` is not a registered route and `App.tsx`'s `path="*"` silently bounced the user
+  home. **Add the link back when Phase C registers the route** —
+  `frontend/src/pages/WeekendRosterPage.tsx`.
+- **Any new per-weekend figure belongs on `/api/lodging/summary`**, never on an N-call loop over
+  `/roster`. See §6.
+- **`lodging.phi` is granted to no role (#1887).** Admin bypass is the only route to the narrative
+  today. Phase C's admin surface is the natural place to fix it, and doing so is the first real test
+  of the 403 degradation path in `AccessibilityFlagList`.
 
 ---
 
 ## 5. CRITICAL: first action before anything else
 
-**Two gates, in this order.**
-
-**(a) The branch is shared. Check for work that is not yours before touching anything.**
-
-```bash
-cd ~/kindred-worktrees/lodging-roster
-git status --short                       # scan agent's fixes may be UNCOMMITTED here
-git fetch -q && git log --oneline -5 origin/feature/lodging-roster
-```
-
-Uncommitted files in that worktree are the scan agent's. **Do not `git add -A`** — stage only what
-you changed, or you will sweep their in-progress work into your commit.
-
-**(b) The request columns the roster renders are EMPTY until a sync runs.** Schema-only on any
-database that has not run `family_camp_derived` since #1878. Build against that and every party
-renders unknown/unflagged, and the API looks broken while working exactly as designed.
+**The columns and rows Phase C edits are EMPTY until a sync runs.** On any database that has not run
+`family_camp_derived` since #1878, the request columns are schema-only and the roster renders every
+party unknown/unflagged — the API looks broken while working exactly as designed.
 
 ```bash
 sqlite3 pocketbase/pb_data/data.db \
@@ -215,18 +224,18 @@ sqlite3 pocketbase/pb_data/data.db \
      FROM family_camp_registrations WHERE year >= 2025 GROUP BY year;"
 ```
 
-Only `gate` and `req` are meaningful there. **Do not add `SUM(wants_near!='')`** — `wants_near` is a
-boolean and SQLite evaluates `0 != ''` as TRUE, so that column reports the full row count on an
-empty database. If `gate`/`req` are `0`:
+Only `gate` and `req` are meaningful. **Do not add `SUM(wants_near!='')`** — `wants_near` is a
+boolean and SQLite evaluates `0 != ''` as TRUE, so that column reports the full row count on a
+completely empty database. If `gate`/`req` are `0`:
 
 ```bash
 ./scripts/start_dev.sh   # boots PocketBase, which applies 1500000127
+# then, with a users-collection admin token (see §9 — a _superusers token is REJECTED):
 curl -X POST "http://localhost:8090/api/custom/sync/run?year=2026&service=family_camp_derived"
 ```
 
-That endpoint needs a **users**-collection admin token, not a `_superusers` one, and FastAPI needs a
-`Bearer` prefix — see the memory pointer in §9. The job takes **~8-10 minutes per year** and reports
-`status: "running"` with a zero summary the whole time; that is progress, not a hang.
+The job takes **~8–10 minutes per year** and reports `status: "running"` with an all-zero summary
+the whole time. That is progress, not a hang — confirm with CPU, not the counters.
 
 ---
 
@@ -270,8 +279,13 @@ That endpoint needs a **users**-collection admin token, not a `_superusers` one,
 - **Do not run `golangci-lint` only at the end of a phase.** Per task. Several lint failures reached
   push time in this programme precisely because it was deferred.
 - **Do not commit `docs/superpowers/**` or `docs/plans/**`.** Gitignored, local-only, public repo.
-- **Do not `git add -A` in the lodging-roster worktree while the scan agent is working it.** Stage
-  the paths you touched.
+- **Do not re-add unit names to application source to make a rule readable.** The guard now ignores
+  comments and docstrings, so prose is fine; a string literal, list or map is not (spec §3.8).
+- **Do not judge a housing need against an unconfirmed cabin.** `has_power: false` on an unconfirmed
+  row means "nobody has said". Phase C makes confirmation possible — that is the moment this starts
+  mattering, not a reason to relax it.
+- **Do not delete a `lodging_units` row that has assignments.** Deactivate. Task 13's
+  `guardUnitDelete` enforces it and no `deleteLodgingUnit` should exist.
 
 ---
 
@@ -311,6 +325,8 @@ git fetch -q && git rev-list --count origin/<branch>..HEAD   # must be 0
 
 ## 8. Open issues
 
+- **#1891 is fixed** — `verify-no-hardcoded-lodging.sh` now ignores comments and docstrings and is
+  green on a clean `main`. Kept here only so a reader of the issue knows where it went.
 - **Free text carries PHI the boundary does not cover.** Families type medical detail into the
   *cabin-request* box: across 2026 family weekends, **12 of 232 request texts (5%)** contain health
   vocabulary, including at least one named diagnosis with the accommodation it requires. That text
@@ -320,19 +336,24 @@ git fetch -q && git rev-list --count origin/<branch>..HEAD   # must be 0
 - **`has_medical_narrative` is true for every household** (62 of 62 in 2026; 870 medical rows, 648
   with dietary/allergy text). Accurate, but it means the medical affordance appears on every row and
   therefore signals nothing. Worth deciding whether the flag should mean something narrower.
-- **Phase B was never verified in a browser after its last two commits.** The summer-language pass,
-  the lander, the route change, the `Listbox` and the batched endpoint are covered by tests and by
-  direct API measurement, but the lander has never been rendered. Boot the worktree stack and look
-  before merging.
+- **Phase B was never verified in a browser after its last three commits.** It is merged and green,
+  but nobody has *looked* at the lander, the Listbox switcher or the stats bar — they are covered by
+  tests and by direct API measurement only. Worth ten minutes with `./scripts/start_dev.sh` before
+  building Phase C on top of them.
 - **The summer campers tab was never mined.** `/summer/session/:id/campers` (`CampersView`) is the
   closest analogue to the roster table and likely has filter/sort affordances worth copying. Traced
   as far as the component and stopped.
+- **CodeRabbit reviewed #1890 only up to `2451582e`, three commits behind HEAD.** It never saw the
+  stats bar, the summer-language rewrite or the batched endpoint, and two files it did review no
+  longer existed. Do not read a CodeRabbit pass as covering a branch that moved under it — check
+  which commit it reviewed.
 
 - **#1887** — `lodging.phi` is granted to **no role**, and `1500000070_rbac_roles.js` was untouched
   by #1884. `require_permission` admin-bypasses, so admins reach the medical endpoint and every
   non-admin gets a 403 that no role edit resolves. Defensible as default-deny for PHI, but it will
-  surprise whoever first tries to give a health-centre lead access. **Phase B should assume the
-  narrative reveal is admin-only in practice** and degrade gracefully when the call 403s.
+  surprise whoever first tries to give a health-centre lead access. Phase B's reveal already degrades
+  gracefully on a 403; **Phase C's admin surface is the natural place to actually grant it**, and
+  doing so is the first real exercise of that path.
 - **#1881** — two pre-existing package-wide patterns the ingest inherited rather than introduced:
   every individual-sync handler in `api.go` mutates the orchestrator's singleton service, and
   `SyncTab`'s card guard references no type-specific `isPending`. Both want **one sweep across all

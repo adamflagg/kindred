@@ -38,9 +38,12 @@ if [[ -e "$JS_PROBE" || -e "$PY_PROBE" ]]; then
   exit 1
 fi
 
-echo "=== TEST 1: needles in application source should exit 1 and name file:line ==="
-echo '// leak: Tuolumne' > "$JS_PROBE"
-echo '# leak: Manzanita' > "$PY_PROBE"
+echo "=== TEST 1: needles in application CODE should exit 1 and name file:line ==="
+# Probes are code, not comments: spec 3.8 forbids the registry living in
+# source, and a registry lives in string literals. Comments are covered by
+# TEST 4, which requires the opposite result.
+echo 'const UNITS = ["Tuolumne 1"]' > "$JS_PROBE"
+echo 'UNITS = ["Manzanita 3"]' > "$PY_PROBE"
 
 set +e
 OUT=$("$GUARD_SCRIPT" 2>&1)
@@ -88,7 +91,7 @@ echo "=== TEST 3: probe filenames matching the guard's own test-file exclusion m
 TESTNAME_PROBE="$REPO_ROOT/pocketbase/pb_hooks/leak_probe_kindred1869_test.js"
 cleanup2() { rm -f "$TESTNAME_PROBE"; }
 trap 'cleanup2; cleanup' EXIT INT TERM
-echo '// leak: Tuolumne' > "$TESTNAME_PROBE"
+echo 'const UNITS = ["Tuolumne 1"]' > "$TESTNAME_PROBE"
 set +e
 OUT=$("$GUARD_SCRIPT" 2>&1)
 rc=$?
@@ -98,6 +101,44 @@ if [[ $rc -eq 0 ]]; then
   echo "PASS: confirmed a _test.js-named probe is excluded (exit 0) -- do not name real probes this way"
 else
   echo "FAIL: expected the _test.js-named probe to be silently excluded (exit 0), got $rc" >&2
+  echo "$OUT" >&2
+  exit 1
+fi
+
+echo
+echo "=== TEST 4: needles in comments and docstrings should NOT fail the guard ==="
+# kindred#1891: the guard failed on api/services/lodging_rules.py, whose
+# docstring names two units to explain why merging changes bathroom privacy.
+# That is prose about a rule, not the registry living in code -- and because
+# HANDOFF tells the next agent to run this gate, it opened Phase C on a red
+# that was not theirs.
+cat > "$PY_PROBE" <<'PROBE'
+"""Module docstring naming Tuolumne 1 and Tuolumne 2 to explain a rule."""
+
+
+def rule() -> str:
+    """Wawona is a container row, which is why it is excluded.
+
+    Tioga 1 and Tioga 2 are each shared until merged.
+    """
+    # Manzanita is mentioned here in a comment, deliberately.
+    return "ok"
+PROBE
+cat > "$JS_PROBE" <<'PROBE'
+// Le Shack is staff-default; this comment explains why.
+/* Half Dome and El Cap are container rows.
+   Bayit too. */
+module.exports = { ok: true }
+PROBE
+set +e
+OUT=$("$GUARD_SCRIPT" 2>&1)
+rc=$?
+set -e
+rm -f "$JS_PROBE" "$PY_PROBE"
+if [[ $rc -eq 0 ]]; then
+  echo "PASS: prose in comments and docstrings does not trip the guard"
+else
+  echo "FAIL: expected exit 0 for comment/docstring-only mentions, got $rc" >&2
   echo "$OUT" >&2
   exit 1
 fi
