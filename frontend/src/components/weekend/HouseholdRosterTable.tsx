@@ -8,13 +8,19 @@
  *
  * Read-only in this slice.
  */
-import type { RosterPartyRow } from '../../types/lodging'
+import type { LodgingUnitRow, RosterPartyRow } from '../../types/lodging'
 import { HouseholdRosterRow } from './HouseholdRosterRow'
-import { attentionSections } from './rosterAttention'
+import { attentionSections, indexUnitsByCode } from './rosterAttention'
 
 export interface HouseholdRosterTableProps {
   parties: RosterPartyRow[]
   year: number
+  /**
+   * The weekend's cabins, so a row can ask whether its own cabin provides
+   * what the family requested. Optional: without it every constrained party
+   * reports as unverified, which is the honest answer.
+   */
+  units?: LodgingUnitRow[]
 }
 
 const HEAD_CELL = 'text-muted-foreground pb-2 text-[10px] font-semibold tracking-[0.14em] uppercase'
@@ -31,7 +37,7 @@ function hasAnyRequest(parties: RosterPartyRow[]): boolean {
   })
 }
 
-export function HouseholdRosterTable({ parties, year }: HouseholdRosterTableProps) {
+export function HouseholdRosterTable({ parties, year, units = [] }: HouseholdRosterTableProps) {
   if (parties.length === 0) {
     return (
       <div className="card-lodge p-6">
@@ -43,7 +49,8 @@ export function HouseholdRosterTable({ parties, year }: HouseholdRosterTableProp
     )
   }
 
-  const sections = attentionSections(parties)
+  const unitsByCode = indexUnitsByCode(units)
+  const sections = attentionSections(parties, unitsByCode)
   // An untouched adult weekend is 123 parties all in one state; heading that
   // with "Needs a cabin (123)" repeats what the banner already said.
   const showSectionHeads = sections.length > 1
@@ -86,6 +93,7 @@ export function HouseholdRosterTable({ parties, year }: HouseholdRosterTableProp
                 party={party}
                 year={year}
                 showRequests={showRequests}
+                unit={unitsByCode.get(party.unit_code ?? '')}
               />
             ))}
           </tbody>

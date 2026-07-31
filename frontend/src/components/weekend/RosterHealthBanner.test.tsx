@@ -36,6 +36,7 @@ describe('placement figures', () => {
       <RosterHealthBanner
         counts={counts({ parties_total: 60, parties_assigned: 42, parties_unassigned: 18 })}
         bedsNeeded={231}
+        spacesUnmeasured={0}
       />
     )
     expect(screen.getByText('42 of 60 placed')).toBeInTheDocument()
@@ -47,6 +48,7 @@ describe('placement figures', () => {
       <RosterHealthBanner
         counts={counts({ parties_total: 60, parties_assigned: 60, parties_unassigned: 0 })}
         bedsNeeded={231}
+        spacesUnmeasured={0}
       />
     )
     expect(screen.getByText('Everyone has a cabin')).toBeInTheDocument()
@@ -57,6 +59,7 @@ describe('placement figures', () => {
       <RosterHealthBanner
         counts={counts({ parties_total: 0, parties_assigned: 0, parties_unassigned: 0 })}
         bedsNeeded={0}
+        spacesUnmeasured={0}
       />
     )
     expect(screen.getByText('No one enrolled yet')).toBeInTheDocument()
@@ -68,6 +71,7 @@ describe('placement figures', () => {
       <RosterHealthBanner
         counts={counts({ units_total: 82, units_family_available: 79, units_reserved: 3 })}
         bedsNeeded={231}
+        spacesUnmeasured={0}
       />
     )
     expect(screen.getByText('79 of 82 cabins open to families')).toBeInTheDocument()
@@ -79,6 +83,7 @@ describe('placement figures', () => {
       <RosterHealthBanner
         counts={counts({ units_total: 82, units_family_available: 82, units_reserved: 0 })}
         bedsNeeded={231}
+        spacesUnmeasured={0}
       />
     )
     expect(screen.queryByText(/held for staff/)).not.toBeInTheDocument()
@@ -86,16 +91,40 @@ describe('placement figures', () => {
 })
 
 describe('capacity', () => {
-  it('hands the bed figures to the ledger', () => {
+  it('hands families and spaces to the ledger, with beds as the footnote', () => {
     render(
       <RosterHealthBanner
-        counts={counts({ beds_family_available: 389, units_capacity_unknown: 5 })}
+        counts={counts({
+          parties_total: 62,
+          units_family_available: 79,
+          beds_family_available: 389,
+          units_capacity_unknown: 5,
+        })}
         bedsNeeded={231}
+        spacesUnmeasured={0}
       />
     )
-    expect(screen.getByText('231')).toBeInTheDocument()
-    expect(screen.getByText('of 389 available')).toBeInTheDocument()
-    expect(screen.getByText('5 cabins unmeasured')).toBeInTheDocument()
+    expect(screen.getByText('into 79 spaces')).toBeInTheDocument()
+    expect(screen.getByText('17 spaces spare')).toBeInTheDocument()
+    expect(screen.getByText(/231 beds needed across 389/)).toBeInTheDocument()
+  })
+
+  it('counts a space as what a family occupies whole, excluding held cabins', () => {
+    // `units_family_available` already drops container rows and staff holds,
+    // which is exactly the set a family can be placed into.
+    render(
+      <RosterHealthBanner
+        counts={counts({
+          parties_total: 62,
+          units_total: 82,
+          units_family_available: 79,
+          units_reserved: 3,
+        })}
+        bedsNeeded={231}
+        spacesUnmeasured={0}
+      />
+    )
+    expect(screen.getByText('into 79 spaces')).toBeInTheDocument()
   })
 
   it('does not repeat unknown capacity as a registry note', () => {
@@ -105,6 +134,7 @@ describe('capacity', () => {
       <RosterHealthBanner
         counts={counts({ beds_family_available: 389, units_capacity_unknown: 5 })}
         bedsNeeded={231}
+        spacesUnmeasured={0}
       />
     )
     expect(screen.queryByText(/units with unknown capacity/)).not.toBeInTheDocument()
@@ -117,6 +147,7 @@ describe('registry notes', () => {
       <RosterHealthBanner
         counts={counts({ units_total: 82, units_unconfirmed: 82 })}
         bedsNeeded={0}
+        spacesUnmeasured={0}
       />
     )
     expect(screen.getByText('No cabin amenities confirmed yet')).toBeInTheDocument()
@@ -128,18 +159,31 @@ describe('registry notes', () => {
       <RosterHealthBanner
         counts={counts({ units_total: 82, units_unconfirmed: 11 })}
         bedsNeeded={0}
+        spacesUnmeasured={0}
       />
     )
     expect(screen.getByText('11 of 82 cabins have unconfirmed amenities')).toBeInTheDocument()
   })
 
   it('surfaces cabin names the ingest could not map', () => {
-    render(<RosterHealthBanner counts={counts({ unresolved_aliases: 3 })} bedsNeeded={0} />)
+    render(
+      <RosterHealthBanner
+        counts={counts({ unresolved_aliases: 3 })}
+        bedsNeeded={0}
+        spacesUnmeasured={0}
+      />
+    )
     expect(screen.getByText('3 cabin names need mapping')).toBeInTheDocument()
   })
 
   it('surfaces cabins created without an allocation default', () => {
-    render(<RosterHealthBanner counts={counts({ units_missing_allocation: 2 })} bedsNeeded={0} />)
+    render(
+      <RosterHealthBanner
+        counts={counts({ units_missing_allocation: 2 })}
+        bedsNeeded={0}
+        spacesUnmeasured={0}
+      />
+    )
     expect(screen.getByText('2 cabins have no allocation default')).toBeInTheDocument()
   })
 
@@ -148,6 +192,7 @@ describe('registry notes', () => {
       <RosterHealthBanner
         counts={counts({ units_total: 82, units_unconfirmed: 0 })}
         bedsNeeded={231}
+        spacesUnmeasured={0}
       />
     )
     expect(screen.queryByText(/need mapping/)).not.toBeInTheDocument()
@@ -158,8 +203,8 @@ describe('registry notes', () => {
 
 describe('missing fields', () => {
   it('treats absent count fields as zero rather than rendering undefined', () => {
-    render(<RosterHealthBanner counts={{}} bedsNeeded={0} />)
+    render(<RosterHealthBanner counts={{}} bedsNeeded={0} spacesUnmeasured={0} />)
     expect(screen.getByText('0 of 0 placed')).toBeInTheDocument()
-    expect(screen.getByText('of 0 available')).toBeInTheDocument()
+    expect(screen.getByText('into 0 spaces')).toBeInTheDocument()
   })
 })

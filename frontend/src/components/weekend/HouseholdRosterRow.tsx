@@ -14,7 +14,12 @@
 import { Clock, Repeat } from 'lucide-react'
 import { Fragment } from 'react'
 
-import type { AccessibilityFlags, RosterPartyRow, ShareRequest } from '../../types/lodging'
+import type {
+  AccessibilityFlags,
+  LodgingUnitRow,
+  RosterPartyRow,
+  ShareRequest,
+} from '../../types/lodging'
 import { AccessibilityFlagList } from './AccessibilityFlagList'
 import type { AttentionLevel } from './rosterAttention'
 import { partyAttention } from './rosterAttention'
@@ -25,6 +30,8 @@ export interface HouseholdRosterRowProps {
   year: number
   /** Adult weekends carry no share requests; the column is dropped entirely. */
   showRequests: boolean
+  /** The assigned cabin, when it resolves. Undefined for a merged slot. */
+  unit?: LodgingUnitRow | undefined
 }
 
 /** An unanswered request, used when the payload omits the block entirely. */
@@ -48,15 +55,17 @@ const NO_FLAGS: AccessibilityFlags = {
 /** Settled parties get no rail — absence is the signal. */
 const RAIL: Record<AttentionLevel, string> = {
   required: 'border-red-500',
+  unmet: 'border-red-500',
   unplaced: 'border-amber-500',
-  constrained: 'border-sky-400 dark:border-sky-500',
+  unverified: 'border-sky-400 dark:border-sky-500',
   settled: 'border-transparent',
 }
 
 const REASON_TONE: Record<AttentionLevel, string> = {
   required: 'text-red-700 dark:text-red-400',
+  unmet: 'text-red-700 dark:text-red-400',
   unplaced: 'text-amber-700 dark:text-amber-400',
-  constrained: 'text-muted-foreground',
+  unverified: 'text-muted-foreground',
   settled: '',
 }
 
@@ -70,9 +79,9 @@ function composition(party: RosterPartyRow): string {
   return parts.join(' · ')
 }
 
-export function HouseholdRosterRow({ party, year, showRequests }: HouseholdRosterRowProps) {
+export function HouseholdRosterRow({ party, year, showRequests, unit }: HouseholdRosterRowProps) {
   const isAssigned = (party.unit_name ?? '').length > 0
-  const attention = partyAttention(party)
+  const attention = partyAttention(party, unit)
   const adults = party.adults ?? []
   const children = party.children ?? []
   const showAdults = party.grain === 'household'
@@ -92,13 +101,13 @@ export function HouseholdRosterRow({ party, year, showRequests }: HouseholdRoste
             </span>
           )}
         </div>
-        {/* Only the hard requirement gets words. "No cabin yet" would repeat
-            the Cabin column's "Unassigned", and a constraint list would repeat
-            the chips under Housing needs — the rail already says which state
-            the row is in. */}
-        {attention.level === 'required' && (
+        {/* Only the two states that name a real failure get words. "No cabin
+            yet" would repeat the Cabin column's "Unassigned", and an
+            unverified need would repeat the chips under Housing needs — the
+            rail and the section heading already carry the state. */}
+        {(attention.level === 'required' || attention.level === 'unmet') && (
           <p className={`mt-0.5 text-[11px] font-medium ${REASON_TONE[attention.level]}`}>
-            Accommodation required · {attention.reason}
+            {attention.level === 'required' ? 'Accommodation required' : attention.reason}
           </p>
         )}
         <p className="text-muted-foreground mt-1 text-xs tabular-nums">{composition(party)}</p>

@@ -3,6 +3,7 @@
  * All four query states must be handled (frontend/CLAUDE.md).
  */
 import { render, screen } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -107,6 +108,39 @@ describe('WeekendRosterPage', () => {
     // roster's own loading/empty states must not appear yet.
     expect(screen.queryByText(/Loading weekend roster data/i)).not.toBeInTheDocument()
     expect(screen.queryByText('No roster data for this weekend.')).not.toBeInTheDocument()
+  })
+
+  it('opens on the roster and offers the inventory beside it', async () => {
+    sessionsQuery.data = { year: 2026, sessions: [FAMILY_CAMP_1] }
+    rosterQuery.data = {
+      year: 2026,
+      session_cm_id: 1000001,
+      parties: [],
+      units: [
+        {
+          unit_id: 'u1',
+          code: 'ridge-a',
+          name: 'Ridge A',
+          area_code: 'RIDGE',
+          area_name: 'Ridge Side',
+          sleeps: 5,
+          is_confirmed: true,
+          is_container: false,
+          is_family_available: true,
+        },
+      ],
+      counts: {},
+    }
+    renderPage()
+    await userEvent.selectOptions(screen.getByRole('combobox', { name: /weekend/i }), '1000001')
+
+    expect(screen.getByRole('tab', { name: /Roster/ })).toHaveAttribute('aria-selected', 'true')
+    expect(screen.getByRole('tab', { name: /Inventory/ })).toHaveAttribute('aria-selected', 'false')
+    // The inventory is a tab away, not further down the same scroll.
+    expect(screen.queryByText('Ridge A')).not.toBeInTheDocument()
+
+    await userEvent.click(screen.getByRole('tab', { name: /Inventory/ }))
+    expect(screen.getByText('Ridge A')).toBeInTheDocument()
   })
 
   it('links to the lodging settings so a wrong seed can be corrected', () => {

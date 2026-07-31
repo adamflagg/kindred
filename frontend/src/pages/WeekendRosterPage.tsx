@@ -15,6 +15,7 @@ import { Link } from 'react-router'
 
 import { QueryGuard } from '../components/QueryGuard'
 import {
+  countUnmeasuredSpaces,
   formatSessionDates,
   HouseholdRosterTable,
   partyBeds,
@@ -30,6 +31,7 @@ export default function WeekendRosterPage() {
   const { clearProgram } = useProgram()
   const { currentYear } = useCurrentYear()
   const [selectedCmId, setSelectedCmId] = useState<number | null>(null)
+  const [view, setView] = useState<'roster' | 'inventory'>('roster')
 
   const sessionsQuery = useWeekendSessions(currentYear)
   const rosterQuery = useWeekendRoster(currentYear, selectedCmId)
@@ -108,9 +110,56 @@ export default function WeekendRosterPage() {
               <RosterHealthBanner
                 counts={roster.counts ?? {}}
                 bedsNeeded={(roster.parties ?? []).reduce((sum, p) => sum + partyBeds(p), 0)}
+                spacesUnmeasured={countUnmeasuredSpaces(roster.units ?? [])}
               />
-              <HouseholdRosterTable parties={roster.parties ?? []} year={currentYear} />
-              <UnitInventoryPanel units={roster.units ?? []} />
+
+              {/* The roster is worked through; the inventory is consulted.
+                  Stacking them made one long scroll — and this is the shape
+                  the board and map will slot into later. */}
+              <div className="border-border flex gap-1 border-b" role="tablist" aria-label="View">
+                {(
+                  [
+                    ['roster', 'Roster', (roster.parties ?? []).length],
+                    ['inventory', 'Inventory', (roster.units ?? []).length],
+                  ] as const
+                ).map(([key, label, count]) => (
+                  <button
+                    key={key}
+                    type="button"
+                    role="tab"
+                    id={`weekend-tab-${key}`}
+                    aria-selected={view === key}
+                    aria-controls={`weekend-panel-${key}`}
+                    onClick={() => {
+                      setView(key)
+                    }}
+                    className={`-mb-px rounded-t-lg border-b-2 px-4 py-2 text-sm font-medium transition-colors ${
+                      view === key
+                        ? 'border-primary text-primary'
+                        : 'text-muted-foreground hover:text-foreground border-transparent'
+                    }`}
+                  >
+                    {label}
+                    <span className="text-muted-foreground ml-2 text-xs tabular-nums">{count}</span>
+                  </button>
+                ))}
+              </div>
+
+              <div
+                role="tabpanel"
+                id={`weekend-panel-${view}`}
+                aria-labelledby={`weekend-tab-${view}`}
+              >
+                {view === 'roster' ? (
+                  <HouseholdRosterTable
+                    parties={roster.parties ?? []}
+                    year={currentYear}
+                    units={roster.units ?? []}
+                  />
+                ) : (
+                  <UnitInventoryPanel units={roster.units ?? []} />
+                )}
+              </div>
             </div>
           )}
         </QueryGuard>

@@ -25,9 +25,28 @@ export interface RosterHealthBannerProps {
   counts: RosterCountSummary
   /** Beds the enrolled parties need. Summed from the roster, not the counts. */
   bedsNeeded: number
+  /**
+   * Family spaces whose capacity nobody has recorded.
+   *
+   * NOT `counts.units_capacity_unknown` — that counts every unmeasured cabin
+   * including the ones held for staff, so on real 2026 data it reports 5 when
+   * only 2 of the 79 family spaces are actually unmeasured. Computed from the
+   * spaces the roster can place into.
+   */
+  spacesUnmeasured: number
 }
 
-export function RosterHealthBanner({ counts, bedsNeeded }: RosterHealthBannerProps) {
+/**
+ * A "space" is a bookable cabin or room — what a family occupies whole.
+ * `units_family_available` already excludes container rows and held cabins,
+ * which is exactly the set a family can be placed into.
+ */
+
+export function RosterHealthBanner({
+  counts,
+  bedsNeeded,
+  spacesUnmeasured,
+}: RosterHealthBannerProps) {
   // Pydantic defaults render as optional in TypeScript; the server always
   // populates them, but read sites still need `?? 0`.
   const partiesTotal = counts.parties_total ?? 0
@@ -56,9 +75,11 @@ export function RosterHealthBanner({ counts, bedsNeeded }: RosterHealthBannerPro
     <div className="card-lodge flex flex-col gap-5 p-5">
       <div className="grid gap-6 md:grid-cols-[minmax(0,1.15fr)_minmax(0,1fr)]">
         <CapacityLedger
+          families={partiesTotal}
+          spaces={unitsAvailable}
+          spacesUnmeasured={spacesUnmeasured}
           bedsNeeded={bedsNeeded}
           bedsAvailable={counts.beds_family_available ?? 0}
-          cabinsUnmeasured={counts.units_capacity_unknown ?? 0}
         />
 
         <div className="border-border/70 flex flex-col justify-center gap-3 md:border-l md:pl-6">

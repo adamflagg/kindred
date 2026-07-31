@@ -1,107 +1,98 @@
 /**
- * Does this weekend fit in the site, and what don't we know?
+ * Does this weekend fit in the site?
  *
  * A camper list cannot ask this — campers do not consume a fixed pool. A
- * weekend does: a set number of cabins, a set number of beds, one date.
+ * weekend does, and the unit of that pool is the SPACE, not the bed. A family
+ * holds a whole cabin whether or not it fills it, so a cabin sleeping 8 that
+ * houses a family of 3 leaves five beds no other family can use. Counting beds
+ * would report comfortable headroom on a weekend that has run out of rooms.
  *
- * The measure carries three bands, and the third is the point of the whole
- * component. Beds needed, beds still free, and a hatched INDETERMINATE band
- * standing for cabins nobody has measured. Most dashboards would round that
- * to zero and report a clean number; this one shows it, because "389 beds"
- * and "389 beds plus five cabins nobody has measured" are different facts and
- * staff plan differently under each.
+ * Beds are still real, they just answer a different question — whether a
+ * PARTICULAR family fits a PARTICULAR cabin — which belongs to the board. Here
+ * they are a footnote.
+ *
+ * The space count is provisional. Merging two cabins into one slot, or
+ * splitting one back into two, changes it, and those are board actions. The
+ * ledger says so rather than presenting the number as settled.
  */
+import { Layers } from 'lucide-react'
 
 export interface CapacityLedgerProps {
+  families: number
+  spaces: number
+  /** Spaces whose capacity nobody has recorded. Still spaces; just unsized. */
+  spacesUnmeasured: number
   bedsNeeded: number
   bedsAvailable: number
-  cabinsUnmeasured: number
 }
 
 export function CapacityLedger({
+  families,
+  spaces,
+  spacesUnmeasured,
   bedsNeeded,
   bedsAvailable,
-  cabinsUnmeasured,
 }: CapacityLedgerProps) {
-  const shortfall = Math.max(0, bedsNeeded - bedsAvailable)
-  const isShort = shortfall > 0
-  const hasUnmeasured = cabinsUnmeasured > 0
-
-  // The hatched band is deliberately a fixed slice rather than a scaled one:
-  // its width cannot be honest, because its size is exactly what is unknown.
-  const unmeasuredWidth = hasUnmeasured ? 12 : 0
-  const measuredWidth = 100 - unmeasuredWidth
+  const spare = spaces - families
+  const isShort = spare < 0
   const filledPercent =
-    bedsAvailable > 0 ? Math.min(100, (bedsNeeded / bedsAvailable) * 100) : bedsNeeded > 0 ? 100 : 0
-
+    spaces > 0 ? Math.min(100, (families / spaces) * 100) : families > 0 ? 100 : 0
   const fillTone = isShort ? 'bg-red-500 dark:bg-red-500/80' : 'bg-forest-500 dark:bg-forest-400'
 
-  const label = `${String(bedsNeeded)} of ${String(bedsAvailable)} beds needed${
-    hasUnmeasured
-      ? `, plus ${String(cabinsUnmeasured)} cabin${cabinsUnmeasured === 1 ? '' : 's'} of unknown capacity`
-      : ''
-  }`
+  const spareLabel = isShort
+    ? `${String(Math.abs(spare))} more families than spaces`
+    : spare === 0
+      ? 'No spare spaces'
+      : `${String(spare)} spaces spare`
 
   return (
     <div className="flex flex-col gap-3">
       <div className="flex items-baseline gap-3">
-        <span
-          className="font-display text-foreground text-5xl leading-none font-bold tabular-nums"
-          style={{ fontVariantNumeric: 'tabular-nums' }}
-        >
-          {bedsNeeded}
+        <span className="font-display text-foreground text-5xl leading-none font-bold tabular-nums">
+          {families}
         </span>
         <div className="flex flex-col">
-          <span className="text-foreground text-sm font-semibold">beds needed</span>
-          <span className="text-muted-foreground text-xs">of {bedsAvailable} available</span>
+          <span className="text-foreground text-sm font-semibold">families</span>
+          <span className="text-muted-foreground text-xs">into {spaces} spaces</span>
         </div>
       </div>
 
       <div
         role="img"
-        aria-label={label}
-        className="bg-muted/70 flex h-2.5 w-full overflow-hidden rounded-full"
+        aria-label={`${String(families)} families in ${String(spaces)} spaces`}
+        className="bg-muted/70 h-2.5 w-full overflow-hidden rounded-full"
       >
-        <div className="relative flex" style={{ width: `${String(measuredWidth)}%` }}>
-          <div
-            className={`h-full rounded-l-full transition-[width] duration-500 ${fillTone}`}
-            style={{ width: `${String(filledPercent)}%` }}
-          />
-        </div>
-        {hasUnmeasured && (
-          <div
-            className="h-full border-l border-white/40 dark:border-black/30"
-            style={{
-              width: `${String(unmeasuredWidth)}%`,
-              backgroundImage:
-                'repeating-linear-gradient(45deg, currentColor 0 2px, transparent 2px 6px)',
-              color: 'var(--color-bark-400)',
-              opacity: 0.75,
-            }}
-          />
-        )}
+        <div
+          className={`h-full rounded-full transition-[width] duration-500 ${fillTone}`}
+          style={{ width: `${String(filledPercent)}%` }}
+        />
       </div>
 
-      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs">
-        {isShort && (
-          <span className="font-semibold text-red-700 dark:text-red-400">
-            {shortfall} beds short
-          </span>
-        )}
-        {hasUnmeasured && (
-          <span className="text-muted-foreground inline-flex items-center gap-1.5">
-            <span
-              aria-hidden="true"
-              className="inline-block h-2.5 w-4 rounded-sm"
-              style={{
-                backgroundImage:
-                  'repeating-linear-gradient(45deg, currentColor 0 2px, transparent 2px 6px)',
-                color: 'var(--color-bark-400)',
-              }}
-            />
-            {cabinsUnmeasured} cabin{cabinsUnmeasured === 1 ? '' : 's'} unmeasured
-          </span>
-        )}
+      <div className="flex flex-col gap-1 text-xs">
+        <span
+          className={
+            isShort ? 'font-semibold text-red-700 dark:text-red-400' : 'text-foreground font-medium'
+          }
+        >
+          {spareLabel}
+          {spacesUnmeasured > 0 && (
+            <span className="text-muted-foreground font-normal">
+              {' · '}
+              {spacesUnmeasured} space{spacesUnmeasured === 1 ? '' : 's'} of unknown size
+            </span>
+          )}
+        </span>
+
+        <span className="text-muted-foreground inline-flex items-start gap-1.5">
+          <Layers className="mt-0.5 h-3 w-3 flex-shrink-0" />
+          Merging or splitting cabins on the board changes the space count.
+        </span>
+
+        {/* Beds answer "does this family fit this cabin", which is the board's
+            question. Kept visible, kept small. */}
+        <span className="text-muted-foreground/80">
+          {bedsNeeded} beds needed across {bedsAvailable} in those spaces
+        </span>
       </div>
     </div>
   )

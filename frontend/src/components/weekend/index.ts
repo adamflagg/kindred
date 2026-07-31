@@ -7,6 +7,8 @@ export {
   ATTENTION_LABEL,
   ATTENTION_ORDER,
   attentionSections,
+  countUnmeasuredSpaces,
+  indexUnitsByCode,
   partyAttention,
   partyBeds,
 } from './rosterAttention'
