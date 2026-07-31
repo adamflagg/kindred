@@ -63,9 +63,10 @@ export function useWeekendRoster(year: number, sessionCmId: number | null) {
  * reveal, so the narrative is never fetched speculatively and never sits in
  * the query cache for someone who only ever looked at the roster.
  *
- * `lodging.phi` is currently granted to no role, so in practice this 403s for
- * every non-admin. Callers must degrade gracefully rather than treat the
- * error as a page failure.
+ * `lodging.phi` is held by admins and the Bunking Staff role. The roster
+ * itself is readable by any authenticated user, so this 403s for most of the
+ * people who can see the page it sits on — callers must degrade gracefully
+ * rather than treat the error as a page failure.
  */
 export function useHouseholdMedical(year: number, householdCmId: number | null, enabled: boolean) {
   const { fetchWithAuth } = useApiWithAuth()

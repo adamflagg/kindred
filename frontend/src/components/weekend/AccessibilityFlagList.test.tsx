@@ -2,9 +2,10 @@
  * Accessibility flags are derived booleans. The medical NARRATIVE is behind
  * an explicit, permission-checked reveal (spec §5).
  *
- * `lodging.phi` is currently granted to no role, so in practice only admins
- * reach the narrative. The list must therefore degrade gracefully rather than
- * treat a 403 as a page failure.
+ * `lodging.phi` is held by admins and the Bunking Staff role, while the roster
+ * around it is readable by any authenticated user — so most viewers of this
+ * component cannot reach the narrative. The list must therefore degrade
+ * gracefully rather than treat a 403 as a page failure.
  */
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { render, screen } from '@testing-library/react'
@@ -173,8 +174,8 @@ describe('PHI reveal gate', () => {
   })
 
   it('offers the reveal to an admin, who bypasses the permission check', () => {
-    // lodging.phi is granted to no role, so admin bypass is the only route
-    // that currently reaches the narrative in practice.
+    // An admin holds no explicit permissions; hasPermission short-circuits on
+    // is_admin, so the reveal must appear without lodging.phi in the set.
     isAdmin.value = true
     render(
       <AccessibilityFlagList
@@ -259,8 +260,9 @@ describe('the revealed narrative', () => {
   })
 
   it('renders a failure inline rather than failing the page', async () => {
-    // lodging.phi is granted to no role, so a 403 is the common case. It must
-    // read as a sentence in the row, not escalate to the ErrorBoundary.
+    // Anyone can read the roster but only admins and bunking staff hold
+    // lodging.phi, so a 403 is a common case. It must read as a sentence in
+    // the row, not escalate to the ErrorBoundary.
     medicalResult.value = {
       data: undefined,
       isLoading: false,

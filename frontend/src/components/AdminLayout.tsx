@@ -4,6 +4,7 @@ import { ErrorBoundary } from './ErrorBoundary'
 import { useIsAdmin } from '../hooks/useIsAdmin'
 import { usePermissions } from '../hooks/usePermissions'
 import { ADMIN_TABS, type AdminTabConfig } from '../config/adminTabs'
+import PermissionDeniedPage from '../pages/PermissionDeniedPage'
 
 function AdminLayoutInner() {
   const location = useLocation()
@@ -14,6 +15,14 @@ function AdminLayoutInner() {
     (tab) =>
       tab.requiredPermission === 'authenticated' || isAdmin || hasPermission(tab.requiredPermission)
   )
+
+  // Filtering the tab list never stopped anyone typing the URL (#1895). The
+  // /manage routes each carry a RequirePermission; /admin has no equivalent,
+  // so the layout every admin route shares is where the guard belongs. A user
+  // with no visible tab has no business on the page at all.
+  if (visibleTabs.length === 0) {
+    return <PermissionDeniedPage />
+  }
 
   const isTabActive = (tab: AdminTabConfig) => location.pathname.startsWith(tab.path)
 
