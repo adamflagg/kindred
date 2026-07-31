@@ -18,7 +18,7 @@ export interface BedTypeDef {
   sleeps: number
 }
 
-export const BED_TYPES: readonly BedTypeDef[] = [
+export const BED_TYPES = [
   { id: 'twin', label: 'Twin', sleeps: 1 },
   { id: 'twin_bunk', label: 'Bunk (twin over twin)', sleeps: 2 },
   { id: 'full', label: 'Full', sleeps: 2 },
@@ -27,7 +27,7 @@ export const BED_TYPES: readonly BedTypeDef[] = [
   { id: 'futon', label: 'Futon', sleeps: 2 },
   { id: 'cot', label: 'Cot', sleeps: 1 },
   { id: 'trundle', label: 'Trundle', sleeps: 1 },
-] as const
+] as const satisfies readonly BedTypeDef[]
 
 export type BedType = (typeof BED_TYPES)[number]['id']
 
@@ -38,7 +38,7 @@ export interface BedEntry {
 
 export type BedInventory = BedEntry[]
 
-const BY_ID = new Map(BED_TYPES.map((b) => [b.id, b]))
+const BY_ID = new Map<string, BedTypeDef>(BED_TYPES.map((b) => [b.id, b]))
 
 export function bedTypeLabel(type: string): string {
   return BY_ID.get(type)?.label ?? type
@@ -88,7 +88,7 @@ export function normaliseBeds(value: unknown): BedInventory {
     const count = record['count']
     if (typeof type !== 'string' || !BY_ID.has(type)) continue
     if (typeof count !== 'number' || !Number.isFinite(count) || count <= 0) continue
-    out.push({ type, count: Math.floor(count) })
+    out.push({ type: type as BedType, count: Math.floor(count) })
   }
   return out
 }
