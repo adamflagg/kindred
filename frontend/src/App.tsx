@@ -55,7 +55,7 @@ const ManageRegistrationPage = lazy(() =>
     default: m.ManageRegistrationPage,
   }))
 )
-const WeekendHousingDashboard = lazy(() => import('./pages/WeekendHousingDashboard'))
+const WeekendRosterPage = lazy(() => import('./pages/WeekendRosterPage'))
 const ScenarioComparisonPage = lazy(() => import('./pages/ScenarioComparisonPage'))
 const PipelineDebugPage = lazy(() => import('./pages/summer/PipelineDebugPage'))
 const ParseAnalysisPage = lazy(() => import('./pages/summer/ParseAnalysisPage'))
@@ -604,7 +604,7 @@ function App() {
                               element={
                                 <ErrorBoundary>
                                   <Suspense fallback={<PageSkeleton />}>
-                                    <WeekendHousingDashboard />
+                                    <WeekendRosterPage />
                                   </Suspense>
                                 </ErrorBoundary>
                               }
