@@ -1,0 +1,133 @@
+/**
+ * The contextual stats bar, in the summer session view's grammar.
+ *
+ * It must stay honest on the two things this domain gets wrong: spaces are the
+ * capacity unit (not beds), and a note true of every cabin describes the
+ * registry rather than warning about it.
+ */
+import { render, screen } from '@testing-library/react'
+import { describe, expect, it } from 'vitest'
+
+import type { RosterCountSummary } from '../../types/lodging'
+import { WeekendStatsBar } from './WeekendStatsBar'
+
+function counts(overrides: Partial<RosterCountSummary> = {}): RosterCountSummary {
+  return {
+    parties_total: 62,
+    parties_assigned: 56,
+    parties_unassigned: 6,
+    units_total: 82,
+    units_family_available: 79,
+    units_reserved: 3,
+    beds_family_available: 389,
+    units_capacity_unknown: 5,
+    units_unconfirmed: 0,
+    units_missing_allocation: 0,
+    unresolved_aliases: 0,
+    ...overrides,
+  }
+}
+
+describe('WeekendStatsBar', () => {
+  it('reports placement as assigned over total', () => {
+    render(<WeekendStatsBar counts={counts()} bedsNeeded={223} spacesUnmeasured={2} />)
+    expect(screen.getByText('56')).toBeInTheDocument()
+    expect(screen.getByText('/62')).toBeInTheDocument()
+    expect(screen.getByText('placed')).toBeInTheDocument()
+  })
+
+  it('leads capacity with spaces and their spare count', () => {
+    render(<WeekendStatsBar counts={counts()} bedsNeeded={223} spacesUnmeasured={2} />)
+    expect(screen.getByText('79')).toBeInTheDocument()
+    expect(screen.getByText('spaces')).toBeInTheDocument()
+    expect(screen.getByText('(17 spare)')).toBeInTheDocument()
+  })
+
+  it('says short, not negative spare, when families outnumber spaces', () => {
+    render(
+      <WeekendStatsBar
+        counts={counts({ parties_total: 85 })}
+        bedsNeeded={300}
+        spacesUnmeasured={0}
+      />
+    )
+    expect(screen.getByText('(6 short)')).toBeInTheDocument()
+  })
+
+  it('keeps beds on the bar without letting them lead', () => {
+    render(<WeekendStatsBar counts={counts()} bedsNeeded={223} spacesUnmeasured={2} />)
+    expect(screen.getByText('223')).toBeInTheDocument()
+    expect(screen.getByText('/389')).toBeInTheDocument()
+    expect(screen.getByText('beds')).toBeInTheDocument()
+  })
+
+  it('reports unmeasured spaces beside the beds they are missing from', () => {
+    render(<WeekendStatsBar counts={counts()} bedsNeeded={223} spacesUnmeasured={2} />)
+    expect(screen.getByText('(2 unmeasured spaces)')).toBeInTheDocument()
+  })
+
+  it('singularises a lone unmeasured space', () => {
+    render(<WeekendStatsBar counts={counts()} bedsNeeded={223} spacesUnmeasured={1} />)
+    expect(screen.getByText('(1 unmeasured space)')).toBeInTheDocument()
+  })
+
+  it('notes held cabins as excluded from the space count', () => {
+    render(<WeekendStatsBar counts={counts()} bedsNeeded={223} spacesUnmeasured={0} />)
+    expect(screen.getByText('· 3 held')).toBeInTheDocument()
+  })
+
+  it('highlights parties still needing a cabin', () => {
+    render(<WeekendStatsBar counts={counts()} bedsNeeded={223} spacesUnmeasured={0} />)
+    expect(screen.getByText('need a cabin')).toBeInTheDocument()
+  })
+
+  it('drops the needs-a-cabin figure when everyone is placed', () => {
+    render(
+      <WeekendStatsBar
+        counts={counts({ parties_assigned: 62, parties_unassigned: 0 })}
+        bedsNeeded={223}
+        spacesUnmeasured={0}
+      />
+    )
+    expect(screen.queryByText('need a cabin')).not.toBeInTheDocument()
+  })
+
+  it('describes a wholly unconfirmed registry as a state, not a warning', () => {
+    render(
+      <WeekendStatsBar
+        counts={counts({ units_total: 82, units_unconfirmed: 82 })}
+        bedsNeeded={223}
+        spacesUnmeasured={0}
+      />
+    )
+    expect(screen.getByText(/No cabin amenities confirmed yet/)).toBeInTheDocument()
+  })
+
+  it('counts unconfirmed amenities when only some are outstanding', () => {
+    render(
+      <WeekendStatsBar
+        counts={counts({ units_total: 82, units_unconfirmed: 11 })}
+        bedsNeeded={223}
+        spacesUnmeasured={0}
+      />
+    )
+    expect(screen.getByText(/11 of 82 cabins have unconfirmed amenities/)).toBeInTheDocument()
+  })
+
+  it('surfaces unmapped cabin names and missing allocation defaults', () => {
+    render(
+      <WeekendStatsBar
+        counts={counts({ unresolved_aliases: 3, units_missing_allocation: 2 })}
+        bedsNeeded={223}
+        spacesUnmeasured={0}
+      />
+    )
+    expect(screen.getByText(/3 cabin names need mapping/)).toBeInTheDocument()
+    expect(screen.getByText(/2 cabins have no allocation default/)).toBeInTheDocument()
+  })
+
+  it('treats absent count fields as zero rather than rendering undefined', () => {
+    render(<WeekendStatsBar counts={{}} bedsNeeded={0} spacesUnmeasured={0} />)
+    expect(screen.getByText('(0 spare)')).toBeInTheDocument()
+  })
+})

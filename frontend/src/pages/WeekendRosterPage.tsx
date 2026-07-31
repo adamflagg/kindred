@@ -1,5 +1,11 @@
 /**
- * /weekend — the per-weekend lodging roster.
+ * /weekend/session/:sessionCmId — one weekend's lodging roster.
+ *
+ * Laid out as the summer session view is, one program over: a title that is
+ * itself the session switcher, a sticky pill-tab nav, a contextual stats bar,
+ * then the content. What diverges is the domain — parties into spaces rather
+ * than campers into bunks, and share/housing requirements rather than bunk
+ * requests.
  *
  * Read-only in this slice: assignments come from CampMinder and are shown,
  * not edited. The registry behind it IS editable, at Admin -> Family Camp
@@ -9,9 +15,9 @@
  * preference, proximity mode or request text looks wrong, the fix belongs in
  * the Go ingest so every surface sees the correction at once.
  */
-import { ArrowLeft, Settings } from 'lucide-react'
+import { ArrowLeft, ChevronDown, Home, Settings, Users } from 'lucide-react'
 import { useState } from 'react'
-import { Link } from 'react-router'
+import { Link, useNavigate, useParams } from 'react-router'
 
 import { QueryGuard } from '../components/QueryGuard'
 import {
@@ -19,59 +25,95 @@ import {
   formatSessionDates,
   HouseholdRosterTable,
   partyBeds,
-  RosterHealthBanner,
   UnitInventoryPanel,
-  WeekendSessionPicker,
+  WeekendStatsBar,
 } from '../components/weekend'
-import { useProgram } from '../contexts/ProgramContext'
 import { useCurrentYear } from '../hooks/useCurrentYear'
 import { useWeekendRoster, useWeekendSessions } from '../hooks/useWeekendRoster'
 
-export default function WeekendRosterPage() {
-  const { clearProgram } = useProgram()
-  const { currentYear } = useCurrentYear()
-  const [selectedCmId, setSelectedCmId] = useState<number | null>(null)
-  const [view, setView] = useState<'roster' | 'inventory'>('roster')
+type View = 'roster' | 'inventory'
 
+export default function WeekendRosterPage() {
+  const { sessionCmId } = useParams<{ sessionCmId: string }>()
+  const navigate = useNavigate()
+  const { currentYear } = useCurrentYear()
+  const [view, setView] = useState<View>('roster')
+
+  const selectedCmId = sessionCmId === undefined ? null : Number(sessionCmId)
   const sessionsQuery = useWeekendSessions(currentYear)
   const rosterQuery = useWeekendRoster(currentYear, selectedCmId)
 
-  const selectedSession = sessionsQuery.data?.sessions?.find(
-    (session) => session.session_cm_id === selectedCmId
-  )
-  const selectedDates = selectedSession
+  const sessions = sessionsQuery.data?.sessions ?? []
+  const selectedSession = sessions.find((session) => session.session_cm_id === selectedCmId)
+  const dates = selectedSession
     ? formatSessionDates(selectedSession.start_date, selectedSession.end_date)
     : ''
 
+  const parties = rosterQuery.data?.parties ?? []
+  const units = rosterQuery.data?.units ?? []
+
+  const TABS: Array<{ id: View; label: string; icon: typeof Users; count: number }> = [
+    { id: 'roster', label: 'Roster', icon: Users, count: parties.length },
+    { id: 'inventory', label: 'Inventory', icon: Home, count: units.length },
+  ]
+
   return (
-    <div className="mx-auto flex max-w-7xl flex-col gap-6 px-4 py-6">
-      <header className="flex flex-col gap-2">
+    <div>
+      <header className="flex flex-col gap-2 pb-2">
         <Link
-          to="/"
-          onClick={() => {
-            clearProgram()
-          }}
-          className="text-muted-foreground hover:text-foreground inline-flex w-fit items-center gap-2 text-sm transition-colors"
+          to="/weekend"
+          className="text-muted-foreground hover:text-foreground inline-flex w-fit items-center gap-1.5 text-sm transition-colors"
         >
           <ArrowLeft className="h-4 w-4" />
-          Back to program selection
+          All weekends
         </Link>
 
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div>
-            <h1 className="font-display text-foreground text-3xl font-bold">Weekend Housing</h1>
-            {/* The picker below already names the weekend; repeating it here
-                would say the same thing twice. The dates are what the header
-                can add. */}
-            <p className="text-muted-foreground text-sm">
-              {selectedDates.length > 0
-                ? selectedDates
-                : `Family camps and adult weekends, ${String(currentYear)}`}
-            </p>
+        <div className="flex flex-wrap items-center gap-3">
+          {/* The weekend IS the title, and the title IS the switcher — the
+              same move the summer session header makes with its session
+              dropdown. */}
+          <div className="relative flex min-w-0 items-center">
+            <select
+              aria-label="Weekend"
+              value={selectedCmId === null ? '' : String(selectedCmId)}
+              onChange={(event) => {
+                void navigate(`/weekend/session/${event.target.value}`)
+              }}
+              className="font-display hover:text-primary cursor-pointer appearance-none bg-transparent pr-7 text-xl font-bold transition-colors focus:outline-none sm:text-2xl"
+            >
+              {selectedSession === undefined && (
+                <option value="">
+                  {sessionsQuery.isLoading ? 'Loading weekends…' : 'Weekend not found'}
+                </option>
+              )}
+              {sessions.map((session) => (
+                <option key={session.session_cm_id} value={String(session.session_cm_id)}>
+                  {session.name}
+                </option>
+              ))}
+            </select>
+            <ChevronDown
+              aria-hidden="true"
+              className="text-muted-foreground pointer-events-none absolute right-1 h-4 w-4"
+            />
           </div>
+
+          {dates.length > 0 && <span className="text-muted-foreground text-sm">{dates}</span>}
+          {selectedSession && (
+            <span
+              className={`rounded-full px-2 py-0.5 text-xs font-semibold ${
+                selectedSession.session_type === 'adult'
+                  ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/50 dark:text-amber-300'
+                  : 'bg-forest-100 text-forest-700 dark:bg-forest-900/50 dark:text-forest-300'
+              }`}
+            >
+              {selectedSession.session_type === 'adult' ? 'Adult' : 'Family'}
+            </span>
+          )}
+
           <Link
             to="/admin/lodging"
-            className="border-border hover:bg-muted/50 text-foreground inline-flex items-center gap-2 rounded-lg border px-3 py-1.5 text-sm font-medium"
+            className="btn-secondary ml-auto flex items-center gap-1.5 px-3 py-2 text-sm"
           >
             <Settings className="h-4 w-4" />
             Lodging settings
@@ -80,90 +122,70 @@ export default function WeekendRosterPage() {
       </header>
 
       <QueryGuard
-        isLoading={sessionsQuery.isLoading}
-        error={sessionsQuery.error}
-        data={sessionsQuery.data}
-        label="weekend sessions"
-        emptyMessage="No family or adult sessions found for this year."
+        isLoading={rosterQuery.isLoading}
+        error={rosterQuery.error}
+        data={rosterQuery.data}
+        label="weekend roster"
+        emptyMessage="No roster data for this weekend."
       >
-        {(sessions) => (
-          <WeekendSessionPicker
-            sessions={sessions.sessions ?? []}
-            selectedCmId={selectedCmId}
-            onSelect={setSelectedCmId}
-          />
+        {(roster) => (
+          <>
+            {/* Unified navigation region — tabs + contextual stats, sticky,
+                exactly as the summer session view stacks them. */}
+            <div className="bg-background/95 sticky top-0 z-10 backdrop-blur-sm">
+              <nav className="border-border/50 border-b py-2" aria-label="View">
+                <div className="flex flex-wrap items-center gap-1.5" role="tablist">
+                  {TABS.map((tab) => {
+                    const Icon = tab.icon
+                    return (
+                      <button
+                        key={tab.id}
+                        type="button"
+                        role="tab"
+                        id={`weekend-tab-${tab.id}`}
+                        aria-selected={view === tab.id}
+                        aria-controls={`weekend-panel-${tab.id}`}
+                        onClick={() => {
+                          setView(tab.id)
+                        }}
+                        className={`flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold transition-all duration-200 ${
+                          view === tab.id
+                            ? 'bg-primary text-primary-foreground shadow-lodge-sm'
+                            : 'text-muted-foreground hover:text-foreground hover:bg-forest-50/50 dark:hover:bg-forest-950/30'
+                        }`}
+                      >
+                        <Icon className="h-4 w-4" />
+                        <span>
+                          {tab.label} ({tab.count})
+                        </span>
+                      </button>
+                    )
+                  })}
+                </div>
+              </nav>
+
+              <WeekendStatsBar
+                counts={roster.counts ?? {}}
+                bedsNeeded={parties.reduce((sum, party) => sum + partyBeds(party), 0)}
+                spacesUnmeasured={countUnmeasuredSpaces(units)}
+              />
+            </div>
+
+            <div
+              className="pt-4"
+              role="tabpanel"
+              id={`weekend-panel-${view}`}
+              aria-labelledby={`weekend-tab-${view}`}
+            >
+              {view === 'roster' ? (
+                <HouseholdRosterTable parties={parties} year={currentYear} units={units} />
+              ) : (
+                <UnitInventoryPanel units={units} />
+              )}
+            </div>
+          </>
         )}
       </QueryGuard>
-
-      {selectedCmId === null ? (
-        <p className="text-muted-foreground text-sm">Choose a weekend to see its roster.</p>
-      ) : (
-        <QueryGuard
-          isLoading={rosterQuery.isLoading}
-          error={rosterQuery.error}
-          data={rosterQuery.data}
-          label="weekend roster"
-          emptyMessage="No roster data for this weekend."
-        >
-          {(roster) => (
-            <div className="flex flex-col gap-6">
-              <RosterHealthBanner
-                counts={roster.counts ?? {}}
-                bedsNeeded={(roster.parties ?? []).reduce((sum, p) => sum + partyBeds(p), 0)}
-                spacesUnmeasured={countUnmeasuredSpaces(roster.units ?? [])}
-              />
-
-              {/* The roster is worked through; the inventory is consulted.
-                  Stacking them made one long scroll — and this is the shape
-                  the board and map will slot into later. */}
-              <div className="border-border flex gap-1 border-b" role="tablist" aria-label="View">
-                {(
-                  [
-                    ['roster', 'Roster', (roster.parties ?? []).length],
-                    ['inventory', 'Inventory', (roster.units ?? []).length],
-                  ] as const
-                ).map(([key, label, count]) => (
-                  <button
-                    key={key}
-                    type="button"
-                    role="tab"
-                    id={`weekend-tab-${key}`}
-                    aria-selected={view === key}
-                    aria-controls={`weekend-panel-${key}`}
-                    onClick={() => {
-                      setView(key)
-                    }}
-                    className={`-mb-px rounded-t-lg border-b-2 px-4 py-2 text-sm font-medium transition-colors ${
-                      view === key
-                        ? 'border-primary text-primary'
-                        : 'text-muted-foreground hover:text-foreground border-transparent'
-                    }`}
-                  >
-                    {label}
-                    <span className="text-muted-foreground ml-2 text-xs tabular-nums">{count}</span>
-                  </button>
-                ))}
-              </div>
-
-              <div
-                role="tabpanel"
-                id={`weekend-panel-${view}`}
-                aria-labelledby={`weekend-tab-${view}`}
-              >
-                {view === 'roster' ? (
-                  <HouseholdRosterTable
-                    parties={roster.parties ?? []}
-                    year={currentYear}
-                    units={roster.units ?? []}
-                  />
-                ) : (
-                  <UnitInventoryPanel units={roster.units ?? []} />
-                )}
-              </div>
-            </div>
-          )}
-        </QueryGuard>
-      )}
     </div>
   )
 }

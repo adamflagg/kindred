@@ -71,7 +71,7 @@ describe('derived flags', () => {
       />,
       { wrapper }
     )
-    expect(screen.getByText('Needs private bathroom')).toBeInTheDocument()
+    expect(screen.getByText('Private bathroom')).toBeInTheDocument()
   })
 
   it('renders the power need (CPAP)', () => {
@@ -83,7 +83,7 @@ describe('derived flags', () => {
       />,
       { wrapper }
     )
-    expect(screen.getByText('Needs power')).toBeInTheDocument()
+    expect(screen.getByText('Power')).toBeInTheDocument()
   })
 
   it('treats power and private bathroom as INDEPENDENT needs', () => {
@@ -98,8 +98,8 @@ describe('derived flags', () => {
       />,
       { wrapper }
     )
-    expect(screen.getByText('Needs power')).toBeInTheDocument()
-    expect(screen.queryByText('Needs private bathroom')).not.toBeInTheDocument()
+    expect(screen.getByText('Power')).toBeInTheDocument()
+    expect(screen.queryByText('Private bathroom')).not.toBeInTheDocument()
   })
 
   it('renders the infant flag', () => {

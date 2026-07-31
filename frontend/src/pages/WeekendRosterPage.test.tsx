@@ -1,16 +1,20 @@
 /**
- * The /weekend page: session picker, honest counts, roster, inventory.
- * All four query states must be handled (frontend/CLAUDE.md).
+ * /weekend/session/:sessionCmId — one weekend's roster.
+ *
+ * The weekend comes from the URL now, as a summer session does. Choosing
+ * between weekends belongs to the lander; this page's title doubles as the
+ * switcher, mirroring the summer session header.
  */
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { MemoryRouter } from 'react-router'
+import { MemoryRouter, Route, Routes } from 'react-router'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import WeekendRosterPage from './WeekendRosterPage'
 
 const sessionsQuery = { data: undefined as unknown, isLoading: false, error: null as Error | null }
 const rosterQuery = { data: undefined as unknown, isLoading: false, error: null as Error | null }
+const navigate = vi.fn()
 
 vi.mock('../hooks/useWeekendRoster', () => ({
   useWeekendSessions: () => sessionsQuery,
@@ -19,17 +23,7 @@ vi.mock('../hooks/useWeekendRoster', () => ({
 }))
 
 vi.mock('../hooks/useCurrentYear', () => ({
-  useCurrentYear: () => ({
-    currentYear: 2026,
-    setCurrentYear: vi.fn(),
-    availableYears: [2026],
-    isTransitioning: false,
-    isYearReady: true,
-  }),
-}))
-
-vi.mock('../contexts/ProgramContext', () => ({
-  useProgram: () => ({ currentProgram: 'weekend', setProgram: vi.fn(), clearProgram: vi.fn() }),
+  useCurrentYear: () => ({ currentYear: 2026, setCurrentYear: vi.fn() }),
 }))
 
 vi.mock('../hooks/usePermissions', () => ({
@@ -41,81 +35,116 @@ vi.mock('../hooks/usePermissions', () => ({
   }),
 }))
 
-function renderPage() {
-  return render(
-    <MemoryRouter>
-      <WeekendRosterPage />
-    </MemoryRouter>
-  )
-}
+vi.mock('react-router', async () => {
+  const actual = await vi.importActual<typeof import('react-router')>('react-router')
+  return { ...actual, useNavigate: () => navigate }
+})
 
 const FAMILY_CAMP_1 = {
   session_id: 'sess_1',
   session_cm_id: 1000001,
   name: 'Family Camp 1',
   session_type: 'family',
-  start_date: '2026-09-04',
-  end_date: '2026-09-07',
+  start_date: '2026-05-22 07:00:00.000Z',
+  end_date: '2026-05-25 07:00:00.000Z',
+}
+
+const WOMENS = {
+  session_id: 'sess_2',
+  session_cm_id: 1000002,
+  name: "Women's Weekend",
+  session_type: 'adult',
+  start_date: '2026-10-15 07:00:00.000Z',
+  end_date: '2026-10-18 07:00:00.000Z',
+}
+
+function renderPage(cmId = '1000001') {
+  return render(
+    <MemoryRouter initialEntries={[`/weekend/session/${cmId}`]}>
+      <Routes>
+        <Route path="/weekend/session/:sessionCmId" element={<WeekendRosterPage />} />
+      </Routes>
+    </MemoryRouter>
+  )
 }
 
 beforeEach(() => {
-  sessionsQuery.data = { year: 2026, sessions: [] }
+  navigate.mockReset()
+  sessionsQuery.data = { year: 2026, sessions: [FAMILY_CAMP_1, WOMENS] }
   sessionsQuery.isLoading = false
   sessionsQuery.error = null
-  rosterQuery.data = undefined
+  rosterQuery.data = { year: 2026, session_cm_id: 1000001, parties: [], units: [], counts: {} }
   rosterQuery.isLoading = false
   rosterQuery.error = null
 })
 
-describe('WeekendRosterPage', () => {
-  it('replaces the placeholder — no "Coming Soon" anywhere', () => {
+describe('header', () => {
+  it('makes the weekend name the title and the switcher', () => {
     renderPage()
-    expect(screen.queryByText('Coming Soon')).not.toBeInTheDocument()
-    expect(screen.queryByText('Weekend Housing Module')).not.toBeInTheDocument()
+    expect(screen.getByRole('combobox', { name: /weekend/i })).toHaveValue('1000001')
+    expect(screen.getByRole('option', { name: 'Family Camp 1' })).toBeInTheDocument()
   })
 
-  it('shows the loading state while sessions load', () => {
-    sessionsQuery.data = undefined
-    sessionsQuery.isLoading = true
+  it('shows the weekend dates and its program type', () => {
     renderPage()
-    expect(screen.getByText(/Loading weekend sessions data/i)).toBeInTheDocument()
+    expect(screen.getByText('May 22–25, 2026')).toBeInTheDocument()
+    expect(screen.getByText('Family')).toBeInTheDocument()
   })
 
-  it('shows the error state when the sessions query fails', () => {
-    sessionsQuery.data = undefined
-    sessionsQuery.error = new Error('boom')
-    renderPage()
-    expect(screen.getByText(/Failed to load weekend sessions data: boom/i)).toBeInTheDocument()
+  it('labels an adult weekend distinctly', () => {
+    rosterQuery.data = { year: 2026, session_cm_id: 1000002, parties: [], units: [], counts: {} }
+    renderPage('1000002')
+    expect(screen.getByText('Adult')).toBeInTheDocument()
   })
 
-  it('prompts for a weekend when none is selected', () => {
-    sessionsQuery.data = { year: 2026, sessions: [FAMILY_CAMP_1] }
+  it('navigates to the chosen weekend rather than swapping state in place', async () => {
     renderPage()
-    expect(screen.getByRole('option', { name: /Family Camp 1/ })).toBeInTheDocument()
-    expect(screen.getByText('Choose a weekend to see its roster.')).toBeInTheDocument()
+    await userEvent.selectOptions(screen.getByRole('combobox', { name: /weekend/i }), '1000002')
+    expect(navigate).toHaveBeenCalledWith('/weekend/session/1000002')
   })
 
-  it('names the year in the subtitle until a weekend is chosen', () => {
-    sessionsQuery.data = { year: 2026, sessions: [FAMILY_CAMP_1] }
+  it('offers a way back to the lander', () => {
     renderPage()
-    expect(screen.getByText('Family camps and adult weekends, 2026')).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: /All weekends/i })).toHaveAttribute('href', '/weekend')
   })
 
-  it('does not fetch a roster before a weekend is chosen', () => {
-    sessionsQuery.data = { year: 2026, sessions: [FAMILY_CAMP_1] }
+  it('links to the lodging settings so a wrong seed can be corrected', () => {
     renderPage()
-    // The roster query is enabled only once a session id exists, so the
-    // roster's own loading/empty states must not appear yet.
-    expect(screen.queryByText(/Loading weekend roster data/i)).not.toBeInTheDocument()
-    expect(screen.queryByText('No roster data for this weekend.')).not.toBeInTheDocument()
+    expect(screen.getByRole('link', { name: /Lodging settings/i })).toHaveAttribute(
+      'href',
+      '/admin/lodging'
+    )
   })
 
+  it('says so when the URL names a weekend that does not exist', () => {
+    renderPage('9999999')
+    expect(screen.getByRole('option', { name: 'Weekend not found' })).toBeInTheDocument()
+  })
+})
+
+describe('query states', () => {
+  it('shows the loading state while the roster loads', () => {
+    rosterQuery.data = undefined
+    rosterQuery.isLoading = true
+    renderPage()
+    expect(screen.getByText(/Loading weekend roster data/i)).toBeInTheDocument()
+  })
+
+  it('shows the error state when the roster query fails', () => {
+    rosterQuery.data = undefined
+    rosterQuery.error = new Error('boom')
+    renderPage()
+    expect(screen.getByText(/Failed to load weekend roster data: boom/i)).toBeInTheDocument()
+  })
+})
+
+describe('tabs', () => {
   it('opens on the roster and offers the inventory beside it', async () => {
-    sessionsQuery.data = { year: 2026, sessions: [FAMILY_CAMP_1] }
     rosterQuery.data = {
       year: 2026,
       session_cm_id: 1000001,
       parties: [],
+      counts: {},
       units: [
         {
           unit_id: 'u1',
@@ -129,13 +158,10 @@ describe('WeekendRosterPage', () => {
           is_family_available: true,
         },
       ],
-      counts: {},
     }
     renderPage()
-    await userEvent.selectOptions(screen.getByRole('combobox', { name: /weekend/i }), '1000001')
 
     expect(screen.getByRole('tab', { name: /Roster/ })).toHaveAttribute('aria-selected', 'true')
-    expect(screen.getByRole('tab', { name: /Inventory/ })).toHaveAttribute('aria-selected', 'false')
     // The inventory is a tab away, not further down the same scroll.
     expect(screen.queryByText('Ridge A')).not.toBeInTheDocument()
 
@@ -143,11 +169,16 @@ describe('WeekendRosterPage', () => {
     expect(screen.getByText('Ridge A')).toBeInTheDocument()
   })
 
-  it('links to the lodging settings so a wrong seed can be corrected', () => {
+  it('counts what each tab holds, as the summer session tabs do', () => {
+    rosterQuery.data = {
+      year: 2026,
+      session_cm_id: 1000001,
+      parties: [],
+      units: [],
+      counts: {},
+    }
     renderPage()
-    expect(screen.getByRole('link', { name: /Lodging settings/i })).toHaveAttribute(
-      'href',
-      '/admin/lodging'
-    )
+    expect(screen.getByRole('tab', { name: 'Roster (0)' })).toBeInTheDocument()
+    expect(screen.getByRole('tab', { name: 'Inventory (0)' })).toBeInTheDocument()
   })
 })

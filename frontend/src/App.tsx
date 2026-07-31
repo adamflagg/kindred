@@ -55,6 +55,7 @@ const ManageRegistrationPage = lazy(() =>
     default: m.ManageRegistrationPage,
   }))
 )
+const WeekendSessionList = lazy(() => import('./pages/WeekendSessionList'))
 const WeekendRosterPage = lazy(() => import('./pages/WeekendRosterPage'))
 const ScenarioComparisonPage = lazy(() => import('./pages/ScenarioComparisonPage'))
 const PipelineDebugPage = lazy(() => import('./pages/summer/PipelineDebugPage'))
@@ -601,6 +602,16 @@ function App() {
                           <Route path="/weekend" element={<AppLayout />}>
                             <Route
                               index
+                              element={
+                                <ErrorBoundary>
+                                  <Suspense fallback={<PageSkeleton />}>
+                                    <WeekendSessionList />
+                                  </Suspense>
+                                </ErrorBoundary>
+                              }
+                            />
+                            <Route
+                              path="session/:sessionCmId"
                               element={
                                 <ErrorBoundary>
                                   <Suspense fallback={<PageSkeleton />}>

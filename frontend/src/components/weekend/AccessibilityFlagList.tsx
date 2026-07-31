@@ -1,13 +1,17 @@
 /**
- * Derived accessibility flags, with the medical narrative behind an explicit
+ * Housing needs, with the medical narrative behind an explicit
  * permission-checked reveal (spec §5).
+ *
+ * Rendered as alert rows in the same grammar as `CamperAlertSection` on the
+ * summer side — icon, label, severity-tinted row — so a need reads the same
+ * wherever staff meet one. Severity ordering is fixed: red before amber
+ * before neutral.
  *
  * The API is the real boundary — /api/lodging/households/{id}/medical
  * requires `lodging.phi` and 403s otherwise. This UI gate exists so a user
  * who cannot see the narrative is not shown a button that always fails.
- *
  * `lodging.phi` is currently granted to NO role, so admin bypass is the only
- * route that reaches the narrative in practice. A failed reveal therefore
+ * route that reaches the narrative in practice; a failed reveal therefore
  * renders inline and never escalates into a page error.
  */
 import { Accessibility, Baby, Bath, Eye, Loader2, Plug, ShieldAlert } from 'lucide-react'
@@ -24,14 +28,26 @@ export interface AccessibilityFlagListProps {
   year: number
 }
 
-function Flag({ label, icon: Icon, tone }: { label: string; icon: typeof Bath; tone: string }) {
+type Tone = 'red' | 'amber' | 'neutral'
+
+const TONE_ROW: Record<Tone, string> = {
+  red: 'bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-300',
+  amber: 'bg-amber-50 dark:bg-amber-900/20 text-amber-700 dark:text-amber-300',
+  neutral: 'bg-muted/50 dark:bg-muted/30 text-foreground',
+}
+
+const TONE_ICON: Record<Tone, string> = {
+  red: 'text-red-500 dark:text-red-400',
+  amber: 'text-amber-500 dark:text-amber-400',
+  neutral: 'text-muted-foreground',
+}
+
+function NeedRow({ label, icon: Icon, tone }: { label: string; icon: typeof Bath; tone: Tone }) {
   return (
-    <span
-      className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium ${tone}`}
-    >
-      <Icon className="h-3 w-3" />
-      {label}
-    </span>
+    <li className={`flex items-center gap-2 rounded-lg px-2.5 py-1.5 text-sm ${TONE_ROW[tone]}`}>
+      <Icon className={`h-4 w-4 flex-shrink-0 ${TONE_ICON[tone]}`} aria-hidden="true" />
+      <span>{label}</span>
+    </li>
   )
 }
 
@@ -41,50 +57,49 @@ export function AccessibilityFlagList({ flags, householdCmId, year }: Accessibil
   const canSeePhi = hasPermission(Permission.LODGING_PHI)
   const { data, isLoading, error } = useHouseholdMedical(year, householdCmId, revealed && canSeePhi)
 
-  const neutral = 'bg-muted/60 text-foreground'
-  const warn = 'bg-amber-100 text-amber-800 dark:bg-amber-950/40 dark:text-amber-300'
-  const blocker = 'bg-red-100 text-red-800 dark:bg-red-950/40 dark:text-red-300'
-
   const mandatory = flags.accommodation_is_mandatory === true
-  const hasAnyFlag =
-    flags.needs_private_bathroom === true ||
-    flags.needs_power === true ||
-    flags.has_infant === true ||
-    flags.needs_accommodation === true
   const hasNarrative = flags.has_medical_narrative === true
 
-  if (!hasAnyFlag && !hasNarrative) return null
+  const needs: Array<{ key: string; label: string; icon: typeof Bath; tone: Tone }> = []
+  if (flags.needs_accommodation === true) {
+    needs.push({
+      key: 'accommodation',
+      label: mandatory ? 'Accommodation required' : 'Accommodation requested',
+      icon: mandatory ? ShieldAlert : Accessibility,
+      tone: mandatory ? 'red' : 'neutral',
+    })
+  }
+  // Power and private bathroom are INDEPENDENT needs. The source fields are
+  // multi-option and one option carries both — neither implies the other.
+  if (flags.needs_private_bathroom === true) {
+    needs.push({ key: 'bathroom', label: 'Private bathroom', icon: Bath, tone: 'amber' })
+  }
+  if (flags.needs_power === true) {
+    needs.push({ key: 'power', label: 'Power', icon: Plug, tone: 'amber' })
+  }
+  // Housing suitability, not a request: it informs which cabin suits them
+  // (crib space, bathroom proximity, who shares a wall) rather than gating it.
+  if (flags.has_infant === true) {
+    needs.push({ key: 'infant', label: 'Infant in party', icon: Baby, tone: 'neutral' })
+  }
+
+  if (needs.length === 0 && !hasNarrative) return null
 
   return (
     <div className="flex flex-col gap-1.5">
-      {hasAnyFlag && (
-        <div className="flex flex-wrap items-center gap-1.5">
-          {/* Power and private bathroom are INDEPENDENT needs. The source
-              fields are multi-option, and one option carries both — neither
-              flag implies the other. */}
-          {flags.needs_private_bathroom === true && (
-            <Flag label="Needs private bathroom" icon={Bath} tone={warn} />
-          )}
-          {flags.needs_power === true && <Flag label="Needs power" icon={Plug} tone={warn} />}
-          {/* Housing suitability, not an accessibility need -- neutral tone: it
-              informs unit choice (crib space, bathroom proximity, who shares a
-              wall) rather than gating it. */}
-          {flags.has_infant === true && <Flag label="Infant in party" icon={Baby} tone={neutral} />}
-          {flags.needs_accommodation === true && (
-            <Flag
-              label={mandatory ? 'Accommodation required' : 'Accommodation requested'}
-              icon={mandatory ? ShieldAlert : Accessibility}
-              tone={mandatory ? blocker : neutral}
-            />
-          )}
-        </div>
+      {needs.length > 0 && (
+        <ul className="space-y-1" role="list">
+          {needs.map((need) => (
+            <NeedRow key={need.key} label={need.label} icon={need.icon} tone={need.tone} />
+          ))}
+        </ul>
       )}
 
       {hasNarrative && (
         <div className="flex flex-col gap-1">
           {canSeePhi ? (
             // Every household in a real weekend has something on file (62 of
-            // 62 in 2026), so this is icon-only: a text link repeated down
+            // 62 in 2026), so this is a quiet icon: a text link repeated down
             // every row reads as decoration and stops being seen.
             <button
               type="button"
@@ -94,27 +109,28 @@ export function AccessibilityFlagList({ flags, householdCmId, year }: Accessibil
               aria-label={revealed ? 'Hide medical detail' : 'Show medical detail'}
               aria-expanded={revealed}
               title={revealed ? 'Hide medical detail' : 'Show medical detail'}
-              className={`hover:bg-muted focus-visible:ring-ring inline-flex w-fit rounded p-1 transition-colors focus-visible:ring-2 focus-visible:outline-none ${
+              className={`hover:bg-muted focus-visible:ring-ring inline-flex w-fit items-center gap-1.5 rounded-lg px-2 py-1 text-xs font-medium transition-colors focus-visible:ring-2 focus-visible:outline-none ${
                 revealed ? 'text-primary' : 'text-muted-foreground hover:text-foreground'
               }`}
             >
-              <Eye className="h-3.5 w-3.5" />
+              <Eye className="h-3.5 w-3.5 flex-shrink-0" />
+              Medical
             </button>
           ) : (
-            <span className="text-muted-foreground text-[11px]">Medical detail on file</span>
+            <span className="text-muted-foreground px-2 text-xs">Medical detail on file</span>
           )}
 
           {revealed && canSeePhi && (
-            <div className="bg-muted/40 rounded-md p-2 text-xs">
+            <div className="rounded-r-lg border-l-2 border-red-400 bg-red-50/60 px-3 py-2 text-sm text-red-900 dark:border-red-500/60 dark:bg-red-900/20 dark:text-red-200">
               {isLoading && (
-                <span className="text-muted-foreground inline-flex items-center gap-1">
-                  <Loader2 className="h-3 w-3 animate-spin" />
+                <span className="inline-flex items-center gap-1.5">
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
                   Loading medical detail…
                 </span>
               )}
-              {error && <span className="text-red-600 dark:text-red-400">{error.message}</span>}
+              {error && <span>{error.message}</span>}
               {data && (
-                <dl className="space-y-1">
+                <dl className="space-y-1.5">
                   {(
                     [
                       ['CPAP', data.cpap_info],
@@ -130,8 +146,10 @@ export function AccessibilityFlagList({ flags, householdCmId, year }: Accessibil
                     .filter(([, value]) => typeof value === 'string' && value.length > 0)
                     .map(([label, value]) => (
                       <div key={label}>
-                        <dt className="text-muted-foreground font-medium">{label}</dt>
-                        <dd className="text-foreground">{value}</dd>
+                        <dt className="text-xs font-bold tracking-wider uppercase opacity-70">
+                          {label}
+                        </dt>
+                        <dd className="whitespace-pre-wrap">{value}</dd>
                       </div>
                     ))}
                 </dl>

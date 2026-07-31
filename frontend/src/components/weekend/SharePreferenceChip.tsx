@@ -46,7 +46,7 @@ export function SharePreferenceChip({ preference, raw }: SharePreferenceChipProp
   return (
     <span
       title={raw !== undefined && raw.length > 0 ? raw : undefined}
-      className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${chip.className}`}
+      className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-semibold ${chip.className}`}
     >
       {chip.label}
     </span>

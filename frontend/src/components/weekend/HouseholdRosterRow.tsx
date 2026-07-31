@@ -94,9 +94,9 @@ export function HouseholdRosterRow({ party, year, showRequests, unit }: Househol
           {party.is_returning === true && (
             <span
               title="Stayed with us before"
-              className="text-muted-foreground inline-flex items-center gap-1 text-[11px]"
+              className="text-forest-700 dark:text-forest-300 bg-forest-100 dark:bg-forest-900/50 inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-semibold"
             >
-              <Repeat className="h-3 w-3" />
+              <Repeat className="h-3 w-3 flex-shrink-0" />
               Returning
             </span>
           )}
@@ -106,7 +106,7 @@ export function HouseholdRosterRow({ party, year, showRequests, unit }: Househol
             unverified need would repeat the chips under Housing needs — the
             rail and the section heading already carry the state. */}
         {(attention.level === 'required' || attention.level === 'unmet') && (
-          <p className={`mt-0.5 text-[11px] font-medium ${REASON_TONE[attention.level]}`}>
+          <p className={`mt-0.5 text-xs font-medium ${REASON_TONE[attention.level]}`}>
             {attention.level === 'required' ? 'Accommodation required' : attention.reason}
           </p>
         )}
@@ -150,7 +150,7 @@ export function HouseholdRosterRow({ party, year, showRequests, unit }: Househol
           {party.is_merged_slot === true && (
             <span
               title="Two rooms combined into one slot"
-              className="bg-muted text-muted-foreground rounded-full px-2 py-0.5 text-[11px] font-medium"
+              className="bg-muted text-muted-foreground rounded-full px-2 py-0.5 text-xs font-semibold"
             >
               Merged
             </span>

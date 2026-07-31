@@ -23,7 +23,7 @@ export interface HouseholdRosterTableProps {
   units?: LodgingUnitRow[]
 }
 
-const HEAD_CELL = 'text-muted-foreground pb-2 text-[10px] font-semibold tracking-[0.14em] uppercase'
+const HEAD_CELL = 'text-muted-foreground pb-2 text-xs font-bold tracking-wider uppercase'
 
 function hasAnyRequest(parties: RosterPartyRow[]): boolean {
   return parties.some((p) => {
@@ -40,7 +40,7 @@ function hasAnyRequest(parties: RosterPartyRow[]): boolean {
 export function HouseholdRosterTable({ parties, year, units = [] }: HouseholdRosterTableProps) {
   if (parties.length === 0) {
     return (
-      <div className="card-lodge p-6">
+      <div className="dark:bg-card rounded-xl border border-dashed border-stone-300 bg-white p-8 text-center dark:border-stone-600">
         <p className="text-foreground text-sm font-medium">No one is enrolled for this weekend.</p>
         <p className="text-muted-foreground mt-1 text-sm">
           Parties appear here once registrations sync from CampMinder.
@@ -58,7 +58,7 @@ export function HouseholdRosterTable({ parties, year, units = [] }: HouseholdRos
   const showRequests = hasAnyRequest(parties)
 
   return (
-    <div className="card-lodge overflow-x-auto">
+    <div className="dark:bg-card overflow-x-auto rounded-xl border border-stone-200 bg-white shadow-sm dark:border-stone-700">
       <table className="w-full min-w-3xl text-left">
         <thead>
           <tr className="border-border border-b">
@@ -76,10 +76,10 @@ export function HouseholdRosterTable({ parties, year, units = [] }: HouseholdRos
                 <th
                   scope="colgroup"
                   colSpan={showRequests ? 4 : 3}
-                  className="bg-muted/40 text-foreground border-border/60 border-y px-3 py-1.5 text-left text-[11px] font-semibold tracking-wide"
+                  className="bg-forest-50/70 dark:bg-forest-900/40 text-forest-800 dark:text-forest-200 border-border/60 border-y px-3 py-2 text-left text-xs font-bold tracking-wider uppercase"
                 >
                   {section.label}
-                  <span className="text-muted-foreground ml-2 font-normal tabular-nums">
+                  <span className="text-muted-foreground ml-2 font-semibold normal-case tabular-nums">
                     {section.parties.length}
                   </span>
                 </th>
