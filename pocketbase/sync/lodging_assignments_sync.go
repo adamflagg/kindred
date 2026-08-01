@@ -423,38 +423,12 @@ func (s *LodgingAssignmentsSync) ingestValue(in *ingestContext) {
 		SourceField:   in.SourceField,
 		NewUnitLabel:  label,
 	}
-	unitID, mergeID, verdict, err := s.placementFor(res, input.SessionID, input.SessionCMID, in.Year, in.Raw)
+	unitID, mergeID, err := s.placementFor(res, input.SessionID, input.SessionCMID, in.Year, in.Raw)
 	if err != nil {
 		slog.Error("Materializing merge", "raw", in.Raw, "error", err)
 		s.Stats.Errors++
 		s.recordWriteFailure(in)
 		return
-	}
-	if !verdict.Legal {
-		// ADVISORY, not a gate: flag the grouping and place it anyway.
-		//
-		// Every member_units set is hand-authored in the admin UI -- either
-		// LodgingAliasForm or picking units off the unresolved-alias queue --
-		// so an unconformant set is a human decision this code has strictly
-		// less context to overrule. Withholding the placement turned a
-		// debatable grouping into a family with no cabin, and no amount of
-		// container topology fixes the case where a building is whole for one
-		// session and split for another: aliases carry a year window, not a
-		// session.
-		//
-		// So the rule reports rather than blocks. The row tells staff which
-		// groupings do not match the registry; the assignment still lands, and
-		// the placement flows on through upsertAssignment, which records the
-		// observation in lodging_assignment_history like every other placed
-		// value.
-		s.issues.Record(Issue{
-			Kind:          issueIllegalMerge,
-			RawValue:      in.Raw,
-			SourceField:   in.SourceField,
-			Year:          in.Year,
-			HouseholdCMID: in.HouseholdCMID,
-			PersonCMID:    in.PersonCMID,
-		})
 	}
 	input.UnitID, input.MergeID = unitID, mergeID
 
@@ -486,32 +460,26 @@ func (s *LodgingAssignmentsSync) recordWriteFailure(in *ingestContext) {
 }
 
 // placementFor turns a resolution into the one placement column it belongs in.
-// A single room points straight at the unit; a multi-room alias is judged and
-// then materialized either way.
+// A single room points straight at the unit; a multi-room alias materializes a
+// merge binding exactly those rooms.
 //
-// The verdict is ADVISORY. It travels back to the caller so an unconformant
-// grouping can be queued for staff review, but it does not decide whether the
-// placement happens -- see the illegal branch in ingestValue for why.
-//
-// verdict is computed via JudgeMerge rather than PlacementIsLegal because it
-// carries MissingUnits, which a bool cannot. PlacementIsLegal remains the
-// shared predicate for callers that only need the yes/no -- recheckIllegalMerges
-// (pocketbase/lodging/hooks.go) asks exactly that question when deciding
-// whether an open advisory row has been made conformant.
+// NOTHING JUDGES THE MEMBER SET HERE, deliberately. Every member_units set is
+// hand-authored in the admin UI, the valid configurations are not enumerable as
+// tree shape, and no consumer needs a merge to match a container -- see
+// docs/architecture/lodging-occupancy.md. The ingest records what CampMinder
+// holds; constraints belong where a human is choosing, not here.
 func (s *LodgingAssignmentsSync) placementFor(
 	res AliasResolution, sessionID string, sessionCMID, year int, raw string,
-) (unitID, mergeID string, verdict MergeVerdict, err error) {
+) (unitID, mergeID string, err error) {
 	if !res.IsMerge() {
-		return res.UnitIDs[0], "", MergeVerdict{Legal: true}, nil
+		return res.UnitIDs[0], "", nil
 	}
-
-	verdict = JudgeMerge(s.unitTree, res.UnitIDs)
 
 	mergeID, err = EnsureMerge(s.App, sessionID, sessionCMID, year, "", res.UnitIDs, raw)
 	if err != nil {
-		return "", "", verdict, err
+		return "", "", err
 	}
-	return "", mergeID, verdict, nil
+	return "", mergeID, nil
 }
 
 // upsertAssignment writes the placement and appends a history row when the

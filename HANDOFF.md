@@ -230,25 +230,30 @@ Both operate on the same `lodging_assignments` + `lodging_merges` + `lodging_ava
 state, so a change in one shows in the other. The map is a projection of the board, not a
 separate system of record.
 
-### The merge-legality rule is BUILT, and its first caller is the ingest
+### The merge-legality rule was BUILT and then REMOVED — do not rebuild it
 
-**The rule: a merge is legal iff its members are the complete child set of some container.**
-It lives in `sync/lodging_merge_rules.go` as `JudgeMerge`, and the gate every caller should use
-is `PlacementIsLegal` — which short-circuits a single-unit resolution as legal *without* calling
-`JudgeMerge` at all. Mirror `PlacementIsLegal`, never `JudgeMerge`; that distinction has caused
-two bugs.
+A rule was written here — *a merge is legal iff its members are the complete child set of some
+container* — and taken back out before it ever shipped. Read
+`docs/architecture/lodging-occupancy.md` before proposing anything like it again, because the
+idea is genuinely appealing and wrong for reasons that are not obvious.
 
-It was deferred from #1893 on the reasoning that nothing could create a merge, so the rule would
-have no caller. That was wrong in a useful way: **the ingest was already creating merges.**
-`placementFor` materialised any 2–20 unit set an alias resolved to, stamped `campminder_sync`,
-with nothing checking it. The rule's first caller is therefore the ingest, not the board, and
-an illegal set now becomes an `illegal_merge` work-queue row with no placement written.
+The short version. Every `member_units` set is hand-authored in the admin UI, so an "illegal"
+merge is a human decision the ingest has less context to overrule. A deliberate partial booking
+and a mis-clicked one produce **byte-identical rows**, so the rule cannot discriminate between
+the case it is for and the case it is against. Nothing downstream consumes completeness —
+bathroom privacy comes off `bathroom_group`, and `parent_unit` / `is_container` appear nowhere
+in `api/` or `bunking/`. And the real configuration space (a house split between a family and a
+staff member, an extended family across two registrations, different rules for adult weekends)
+is not expressible as tree shape at all.
 
-Four intermediate containers were seeded (`1500000129`) because two real historical merges bind
-2 rooms of a 4-room building and were previously inexpressible. Verified on real data: all six
-historical merges are the complete child set of exactly one container, and the check produced
-**zero** `illegal_merge` rows across 2024/2025/2026 — the seed is clean, so the rule's
-real-world value is currently unproven on this dataset.
+Four intermediate containers were seeded (`1500000129`) partly so existing merges would satisfy
+that rule. **They stay** — independently, they encode a real floorplan distinction and fixed a
+`bathroom_group` bug where merging a pair left the slot scored `shared`.
+
+What actually needs building is the **other** axis: many parties in one unit. Sharing already
+happens throughout historical data and nothing models or guards it — two families in the same
+bedroom is currently possible and undetected. The staff-confirmed rules are written up in the
+occupancy doc.
 
 `parent_unit` is editable in the admin UI, filtered to containers minus self minus descendants
 (`unitTree.ts`), `is_container` is disabled while a unit has children, and `guardUnitParentCycle`
@@ -455,12 +460,11 @@ git fetch -q && git rev-list --count origin/<branch>..HEAD   # must be 0
   covers programmatic Go writes and the PocketBase admin UI, not just the REST path
   `1500000130` widened. There is deliberately no create binding: a new record has no
   descendants, so no create can close a cycle.
-  **One claim this issue carried was wrong and is corrected in the source:** a cycle does *not*
-  hang the merge-legality rule. `JudgeMerge` reads each member's direct parent one hop and then
-  flat-scans for absent siblings — it never traverses. The two things that do walk parent links,
-  `HasParentCycle` and `descendantIds`, both carry visited guards. That inaccuracy had
-  propagated into four comments across three files before it was traced back to its origin in
-  `hooks_test.go`; if you meet another copy of it, it is wrong.
+  **One claim this issue carried was wrong:** a cycle does *not* hang any merge rule — and with
+  that rule now removed, the only things that walk parent links at all are `HasParentCycle`
+  (`sync/lodging_unit_tree.go`) and `descendantIds` (`unitTree.ts`), which both carry visited
+  guards. That inaccuracy had propagated into four comments across three files before it was
+  traced to its origin in `hooks_test.go`; if you meet another copy of it, it is wrong.
 - **#1894** — `dark:*-forest-950` classes generate nothing: the forest scale stops at 900, so 14
   occurrences across 8 files are dead dark-mode states. `SessionTabs` is one of them, which is
   how it propagates — other surfaces are told to copy its pill grammar.

@@ -69,14 +69,6 @@ export function LodgingAliasesPanel() {
   const refresh = () => {
     setEditing(null)
     void queryClient.invalidateQueries({ queryKey: queryKeys.lodgingAliases() })
-    // An alias's member_units is the other half of "fix the alias, come back
-    // to Merge repairs and see the row gone" — narrowing or widening it can
-    // drain an open illegal-merge row. recheckIllegalMerges does react to an
-    // alias write now (#1899), and it runs server-side inside the same save
-    // this request already awaited — but the merge-repair panel's OWN cache
-    // has no way to know that happened, and still holds the row the server
-    // already closed. Only an invalidation here surfaces that.
-    void queryClient.invalidateQueries({ queryKey: queryKeys.lodgingIllegalMergeIssues() })
   }
 
   /**
@@ -100,10 +92,6 @@ export function LodgingAliasesPanel() {
       toast.success('Alias deleted')
       void queryClient.invalidateQueries({ queryKey: queryKeys.lodgingAliases() })
       void queryClient.invalidateQueries({ queryKey: queryKeys.lodgingIngestIssues() })
-      // deleteLodgingAlias reopens every queue row this alias resolved,
-      // regardless of kind — an illegal-merge row can point at it too, and it
-      // lives under its own cache key (see the comment in `refresh` above).
-      void queryClient.invalidateQueries({ queryKey: queryKeys.lodgingIllegalMergeIssues() })
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Failed to delete the alias')
     }

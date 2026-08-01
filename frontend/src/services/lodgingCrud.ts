@@ -300,15 +300,3 @@ export async function ignoreIngestIssue(
     resolution_note: note,
   })
 }
-
-/**
- * Open illegal-merge rows. Filtered server-side rather than fetched whole and
- * filtered in `groupIllegalMerges`, so a year with a long history does not
- * ship the resolved rows to the browser to be discarded.
- */
-export async function listIllegalMergeIssues(): Promise<LodgingIngestIssueRecord[]> {
-  return pb.collection(INGEST_ISSUES).getFullList<LodgingIngestIssueRecord>({
-    filter: 'kind = "illegal_merge" && is_resolved = false',
-    sort: 'raw_value,household_cm_id',
-  })
-}

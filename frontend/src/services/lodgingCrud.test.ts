@@ -36,7 +36,6 @@ import {
   deactivateLodgingUnit,
   deleteLodgingAlias,
   ignoreIngestIssue,
-  listIllegalMergeIssues,
   listLodgingUnits,
   listUnresolvedAliasIssues,
   mapUnresolvedAlias,
@@ -218,17 +217,6 @@ describe('ignoreIngestIssue', () => {
       is_resolved: true,
       resolution_note: 'Not a cabin name.',
     })
-  })
-})
-
-describe('listIllegalMergeIssues', () => {
-  it('reads the ingest work queue, unresolved illegal-merge rows only', async () => {
-    await listIllegalMergeIssues()
-
-    expect(collection).toHaveBeenCalledWith('lodging_ingest_issues')
-    const [options] = getFullList.mock.calls[0] as [{ filter?: string; sort?: string }]
-    expect(options.filter).toContain('kind = "illegal_merge"')
-    expect(options.filter).toContain('is_resolved = false')
   })
 })
 

@@ -17,53 +17,8 @@ func testTree() map[string]UnitNode {
 	}
 }
 
-func TestJudgeMergeAcceptsACompleteChildSet(t *testing.T) {
-	v := JudgeMerge(testTree(), []string{"r1", "r2"})
-	if !v.Legal {
-		t.Fatalf("expected {r1,r2} legal under 'up', got %+v", v)
-	}
-	if v.ContainerID != "up" {
-		t.Errorf("ContainerID = %q, want \"up\"", v.ContainerID)
-	}
-}
-
-func TestJudgeMergeIsOrderIndependent(t *testing.T) {
-	if !JudgeMerge(testTree(), []string{"r2", "r1"}).Legal {
-		t.Error("member order must not affect legality")
-	}
-}
-
-func TestJudgeMergeRejectsAPartialChildSet(t *testing.T) {
-	// {r2,r3} spans two containers and completes neither.
-	v := JudgeMerge(testTree(), []string{"r2", "r3"})
-	if v.Legal {
-		t.Fatal("expected {r2,r3} illegal")
-	}
-	if v.Reason == "" {
-		t.Error("an illegal verdict must carry a Reason for the work queue")
-	}
-}
-
 // The Health Center case: a set that is one member short of a container.
 // The missing member must be named, because that is the whole repair hint.
-func TestJudgeMergeNamesTheMissingMember(t *testing.T) {
-	tree := testTree()
-	tree["r5"] = UnitNode{ID: "r5", ParentID: "up"}
-	v := JudgeMerge(tree, []string{"r1", "r2"})
-	if v.Legal {
-		t.Fatal("with r5 under 'up', {r1,r2} is no longer complete")
-	}
-	if len(v.MissingUnits) != 1 || v.MissingUnits[0] != "r5" {
-		t.Errorf("MissingUnits = %v, want [r5]", v.MissingUnits)
-	}
-}
-
-func TestJudgeMergeRejectsFewerThanTwoMembers(t *testing.T) {
-	if JudgeMerge(testTree(), []string{"r1"}).Legal {
-		t.Error("a merge needs at least two members")
-	}
-}
-
 func TestHasParentCycleDetectsSelfAndDescendants(t *testing.T) {
 	tree := testTree()
 	if !HasParentCycle(tree, "up", "up") {
@@ -96,16 +51,3 @@ func TestHasParentCycleIgnoresAnUnrelatedPreExistingCycle(t *testing.T) {
 // The rule is "the complete child set of some CONTAINER," not merely "share
 // a parent." A set of rooms hanging off a non-container parent is exactly
 // the ingest-shaped irregularity this phase exists to catch.
-func TestJudgeMergeRejectsANonContainerParent(t *testing.T) {
-	tree := map[string]UnitNode{
-		"leaf": {ID: "leaf", ParentID: "root", IsContainer: false},
-		"c1":   {ID: "c1", ParentID: "leaf"}, "c2": {ID: "c2", ParentID: "leaf"},
-	}
-	v := JudgeMerge(tree, []string{"c1", "c2"})
-	if v.Legal {
-		t.Fatalf("expected {c1,c2} illegal under non-container 'leaf', got %+v", v)
-	}
-	if v.Reason == "" {
-		t.Error("an illegal verdict must carry a Reason for the work queue")
-	}
-}

@@ -22,7 +22,7 @@ func seedIssue(t *testing.T, app core.App, values map[string]any) string {
 func TestReplayIssueRefusesAnUnresolvedRow(t *testing.T) {
 	app := newLodgingTestApp(t)
 	id := seedIssue(t, app, map[string]any{
-		"kind":            issueIllegalMerge,
+		"kind":            issueWriteFailed,
 		"raw_value":       "Ridge 1and2",
 		"year":            2026,
 		"is_resolved":     false,
@@ -40,7 +40,7 @@ func TestReplayIssueRefusesAnUnresolvedRow(t *testing.T) {
 func TestReplayIssueRefusesARowWithNoParty(t *testing.T) {
 	app := newLodgingTestApp(t)
 	id := seedIssue(t, app, map[string]any{
-		"kind":            issueIllegalMerge,
+		"kind":            issueWriteFailed,
 		"raw_value":       "Ridge 1and2",
 		"year":            2026,
 		"is_resolved":     true,
@@ -59,7 +59,7 @@ func TestReplayIssueRefusesARowWithNoParty(t *testing.T) {
 func TestReplayIssueRefusesARowWithNoYear(t *testing.T) {
 	app := newLodgingTestApp(t)
 	id := seedIssue(t, app, map[string]any{
-		"kind":            issueIllegalMerge,
+		"kind":            issueWriteFailed,
 		"raw_value":       "Ridge 1and2",
 		"year":            0,
 		"is_resolved":     true,
@@ -80,7 +80,7 @@ func TestReplayIssuePlacesAHouseholdWithoutASync(t *testing.T) {
 	sessionID, unitID := seedOneWeekendHousehold(t, app)
 
 	id := seedIssue(t, app, map[string]any{
-		"kind":            issueIllegalMerge,
+		"kind":            issueWriteFailed,
 		"raw_value":       "Ridge A",
 		"source_field":    fieldNameFamilyCampCabin,
 		"year":            2025,
@@ -143,7 +143,7 @@ func TestReplayIssuePlacesAPersonOnAnAdultWeekend(t *testing.T) {
 	addAttendee(t, app, emma, womens, 5001, 2, 2025)
 
 	id := seedIssue(t, app, map[string]any{
-		"kind":         issueIllegalMerge,
+		"kind":         issueWriteFailed,
 		"raw_value":    "River C",
 		"source_field": fieldNameReportableFamilyCampCabin,
 		"year":         2025,
@@ -175,9 +175,10 @@ func TestReplayIssuePlacesAPersonOnAnAdultWeekend(t *testing.T) {
 	}
 }
 
-// The motivating repair for the illegal_merge kind: staff correct the unit
-// registry so the alias now names a container's complete child set, tick the
-// row, and the merge materializes on the click rather than 8-10 minutes later.
+// A multi-room alias materializes its merge on the click rather than 8-10
+// minutes later. Nothing judges the member set -- see
+// docs/architecture/lodging-occupancy.md -- so this covers the mechanics:
+// resolver, unit tree and EnsureMerge all reached from a replay.
 func TestReplayIssueMaterializesARepairedMerge(t *testing.T) {
 	app := newLodgingTestApp(t)
 	sess := addSession(t, app, cmIDFamilyCamp1, "Family Camp 1", "family",
@@ -192,7 +193,7 @@ func TestReplayIssueMaterializesARepairedMerge(t *testing.T) {
 	addAttendee(t, app, emma, sess, 5001, 2, 2025)
 
 	id := seedIssue(t, app, map[string]any{
-		"kind":            issueIllegalMerge,
+		"kind":            issueWriteFailed,
 		"raw_value":       "Ridge 1and2",
 		"source_field":    fieldNameFamilyCampCabin,
 		"year":            2025,
@@ -230,76 +231,6 @@ func TestReplayIssueMaterializesARepairedMerge(t *testing.T) {
 	}
 }
 
-// A repair that did not in fact repair anything must leave the queue honest.
-//
-// IssueRecorder.Flush writes is_resolved only on CREATE -- deliberately, so a
-// nightly sync cannot un-tick what staff ticked. A replay is a different actor:
-// it IS the click, and if the click placed nothing then the item is not done.
-// Without the re-open below, a half-finished repair writes no placement,
-// reports success, and leaves the row ticked and invisible in the open queue --
-// the "queue is a log, not a work queue" failure this whole task removes,
-// reintroduced on the failure path.
-// An advisory illegal_merge PLACES and stays open. Both halves matter:
-// the family gets a cabin, and the notice that the grouping does not match the
-// registry survives for staff to act on. Placed must report the placement --
-// anything inferring "recorded something, therefore placed nothing" now lies,
-// because ingestValue records on a path that succeeds.
-func TestReplayIssuePlacesAnAdvisoryIllegalMergeAndKeepsTheRowOpen(t *testing.T) {
-	app := newLodgingTestApp(t)
-	sess := addSession(t, app, cmIDFamilyCamp1, "Family Camp 1", "family",
-		testSessionStart, testSessionEnd, 2025)
-	building := addContainerUnit(t, app, "ridge")
-	r1 := addUnitWithParent(t, app, "ridge-1", building)
-	addUnitWithParent(t, app, "ridge-2", building)
-	// A third child nobody named: the alias below is still a PARTIAL child set.
-	r3 := addUnitWithParent(t, app, "ridge-3", building)
-	addAlias(t, app, "Ridge 1and3", []string{r1, r3}, 0, 0)
-
-	hh := addHousehold(t, app, 9001, 2025)
-	emma := addPerson(t, app, 5001, 9001, 2025, hh)
-	addAttendee(t, app, emma, sess, 5001, 2, 2025)
-
-	id := seedIssue(t, app, map[string]any{
-		"kind":            issueIllegalMerge,
-		"raw_value":       "Ridge 1and3",
-		"source_field":    fieldNameFamilyCampCabin,
-		"year":            2025,
-		"is_resolved":     true,
-		"household_cm_id": 9001,
-	})
-
-	res, err := ReplayIssue(app, id)
-	if err != nil {
-		t.Fatalf("ReplayIssue: %v", err)
-	}
-
-	if !res.Placed {
-		t.Error("result reports nothing placed, but an advisory merge does place")
-	}
-	if len(res.Blockers) != 1 || res.Blockers[0] != issueIllegalMerge {
-		t.Errorf("Blockers = %v, want [%s]", res.Blockers, issueIllegalMerge)
-	}
-
-	rows, _ := app.FindRecordsByFilter("lodging_assignments", "", "", 0, 0)
-	if len(rows) != 1 {
-		t.Errorf("assignments = %d, want 1; an advisory verdict does not withhold the placement",
-			len(rows))
-	}
-	// Flush upserts onto the same dedup key, so the row staff already ticked is
-	// the row that gets refreshed -- no second copy appears.
-	issues, _ := app.FindRecordsByFilter("lodging_ingest_issues", "", "", 0, 0)
-	if len(issues) != 1 {
-		t.Fatalf("queue rows = %d, want 1 (the same row, re-observed)", len(issues))
-	}
-	if issues[0].Id != id {
-		t.Errorf("replay queued a NEW row %q instead of updating %q", issues[0].Id, id)
-	}
-	if issues[0].GetBool("is_resolved") {
-		t.Error("the row is still ticked while the grouping remains unconformant; " +
-			"the advisory is invisible in the open queue and nothing will revisit it")
-	}
-}
-
 // A replay that DOES place must leave the row ticked. The re-open above is
 // conditional on failure; a blanket un-tick would bounce every repaired item
 // straight back into the queue.
@@ -308,7 +239,7 @@ func TestReplayIssueLeavesAPlacedRowResolved(t *testing.T) {
 	seedOneWeekendHousehold(t, app)
 
 	id := seedIssue(t, app, map[string]any{
-		"kind":            issueIllegalMerge,
+		"kind":            issueWriteFailed,
 		"raw_value":       "Ridge A",
 		"source_field":    fieldNameFamilyCampCabin,
 		"year":            2025,
@@ -479,7 +410,7 @@ func TestReplayIssueTicksARowWhoseBlockerIsGoneAndOpensTheNewOne(t *testing.T) {
 	addHouseholdValue(t, app, hh, cabinDef, "Ridge 1and2", testLastUpdated, 2025)
 
 	id := seedIssue(t, app, map[string]any{
-		"kind":            issueIllegalMerge,
+		"kind":            issueWriteFailed,
 		"raw_value":       "Ridge 1and2",
 		"source_field":    fieldNameFamilyCampCabin,
 		"year":            2025,
@@ -545,7 +476,7 @@ func TestReplayIssueTicksARowWhoseBlockerIsGoneAndOpensTheNewOne(t *testing.T) {
 func TestFindExistingMatchesOnTheWholeDedupTuple(t *testing.T) {
 	app := newLodgingTestApp(t)
 	stored := Issue{
-		Kind: issueIllegalMerge, RawValue: "Ridge 1and2",
+		Kind: issueWriteFailed, RawValue: "Ridge 1and2",
 		SourceField: fieldNameFamilyCampCabin, Year: 2025, HouseholdCMID: 9001,
 	}
 	rowID := seedIssue(t, app, map[string]any{
@@ -639,7 +570,7 @@ func TestReplayIssueReopensAnotherTickedRowItRehit(t *testing.T) {
 		"is_resolved":     true,
 		"household_cm_id": 9001,
 	}
-	mergeRow := map[string]any{"kind": issueIllegalMerge}
+	mergeRow := map[string]any{"kind": issueWriteFailed}
 	ambiguousRow := map[string]any{"kind": issueAmbiguousSession}
 	for k, v := range base {
 		mergeRow[k], ambiguousRow[k] = v, v
@@ -760,11 +691,11 @@ func TestReplayPartylessIssueRefusesRowsItCannotFanOut(t *testing.T) {
 		// A party-scoped row belongs to ReplayIssue: it names one party, and
 		// fanning out over everyone who wrote the string would replay strangers.
 		{"party-scoped, household", map[string]any{
-			"kind": issueIllegalMerge, "raw_value": "Ridge 1and2", "year": 2026,
+			"kind": issueWriteFailed, "raw_value": "Ridge 1and2", "year": 2026,
 			"is_resolved": true, "household_cm_id": 9001,
 		}},
 		{"party-scoped, person", map[string]any{
-			"kind": issueIllegalMerge, "raw_value": "River C", "year": 2026,
+			"kind": issueWriteFailed, "raw_value": "River C", "year": 2026,
 			"is_resolved": true, "person_cm_id": 5001,
 		}},
 		// Replaying an open item re-runs the same failing resolution and bumps
@@ -922,67 +853,6 @@ func TestReplayPartylessIssueFansOutToEveryPartyThatWroteTheString(t *testing.T)
 	}
 	if !queued.GetBool("is_resolved") {
 		t.Error("a fan-out that placed every party un-ticked the row it just repaired")
-	}
-}
-
-// The fan-out counts a party it placed even when the placement also raised an
-// ADVISORY illegal_merge.
-//
-// The count rests on "ingestValue records on no path that succeeds", and the
-// advisory branch breaks that premise: it records AND places. Counting raw
-// observations would report placed=0 for two families who each have a cabin,
-// and the hook would log a repair that worked as a repair that failed.
-func TestReplayPartylessIssueCountsPartiesPlacedWithAnAdvisoryMerge(t *testing.T) {
-	app := newLodgingTestApp(t)
-	_, parties := seedTwoHouseholdsSharingACabinString(t, app, "Ridge 1and3", 2026)
-
-	// Staff map the string to a PARTIAL child set: two rooms of a three-room
-	// building. Unconformant, so every placement raises an advisory.
-	building := addContainerUnit(t, app, "ridge")
-	r1 := addUnitWithParent(t, app, "ridge-1", building)
-	addUnitWithParent(t, app, "ridge-2", building)
-	r3 := addUnitWithParent(t, app, "ridge-3", building)
-	addAlias(t, app, "Ridge 1and3", []string{r1, r3}, 0, 0)
-
-	id := seedIssue(t, app, map[string]any{
-		"kind":         issueUnresolvedAlias,
-		"raw_value":    "Ridge 1and3",
-		"source_field": fieldNameFamilyCampCabin,
-		"year":         2026,
-		"is_resolved":  true,
-		"occurrences":  2,
-	})
-
-	placed, err := ReplayPartylessIssue(app, id)
-	if err != nil {
-		t.Fatalf("ReplayPartylessIssue: %v", err)
-	}
-	if placed != len(parties) {
-		t.Errorf("placed = %d, want %d; an advisory verdict does not withhold a placement",
-			placed, len(parties))
-	}
-
-	rows, err := app.FindRecordsByFilter("lodging_assignments", "", "", 0, 0)
-	if err != nil {
-		t.Fatalf("find assignments: %v", err)
-	}
-	if len(rows) != len(parties) {
-		t.Errorf("assignments = %d, want %d", len(rows), len(parties))
-	}
-
-	// The advisory itself still lands, so staff can see the grouping.
-	issues, err := app.FindRecordsByFilter("lodging_ingest_issues", "", "", 0, 0)
-	if err != nil {
-		t.Fatalf("find issues: %v", err)
-	}
-	advisory := 0
-	for _, row := range issues {
-		if row.GetString("kind") == issueIllegalMerge {
-			advisory++
-		}
-	}
-	if advisory == 0 {
-		t.Error("no illegal_merge advisory was recorded; the grouping is invisible to staff")
 	}
 }
 

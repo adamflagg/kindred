@@ -9,8 +9,6 @@ import userEvent from '@testing-library/user-event'
 import type { ReactNode } from 'react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { queryKeys } from '../../../utils/queryKeys'
-
 const deleteLodgingAlias = vi.fn()
 const listLodgingUnits = vi.fn()
 
@@ -210,29 +208,6 @@ describe('LodgingAliasesPanel — editing', () => {
     await user.click(screen.getByRole('button', { name: 'New alias' }))
     expect(screen.getByLabelText('Cabin string')).toHaveFocus()
   })
-
-  // Narrowing or widening an alias's member_units is exactly the "alias fix"
-  // that's supposed to drain a merge-repair row, but recheckIllegalMerges
-  // only re-runs on a lodging_units write — not an alias write. Until that
-  // lands, the merge-repair panel's OWN cache is what would otherwise show
-  // the row as still open after the fix, so this panel has to invalidate it.
-  it('invalidates the merge-repair queue after saving, since an alias fix can drain it', async () => {
-    const invalidateSpy = vi.spyOn(client, 'invalidateQueries')
-    const user = userEvent.setup()
-    render(<LodgingAliasesPanel />, { wrapper })
-    await waitFor(() => {
-      expect(screen.getByText('North Lodge - Whole')).toBeInTheDocument()
-    })
-
-    await user.click(screen.getByRole('button', { name: 'Edit North Lodge - Whole' }))
-    await user.click(screen.getByRole('button', { name: 'Save alias' }))
-
-    await waitFor(() => {
-      expect(invalidateSpy).toHaveBeenCalledWith({
-        queryKey: queryKeys.lodgingIllegalMergeIssues(),
-      })
-    })
-  })
 })
 
 describe('LodgingAliasesPanel — deleting an alias', () => {
@@ -265,28 +240,6 @@ describe('LodgingAliasesPanel — deleting an alias', () => {
     await user.click(screen.getByRole('button', { name: 'Delete Old Hall' }))
 
     expect(deleteLodgingAlias).not.toHaveBeenCalled()
-  })
-
-  // deleteLodgingAlias reopens whatever ingest-queue rows it resolved — that's
-  // why this handler already invalidates lodgingIngestIssues. An illegal-merge
-  // row can point at this same alias, so the merge-repair panel's own cache
-  // key needs the same treatment or a reopened row shows as still-drained
-  // there for up to staleTime.
-  it('invalidates the merge-repair queue too, since deleting an alias can reopen one', async () => {
-    const invalidateSpy = vi.spyOn(client, 'invalidateQueries')
-    const user = userEvent.setup()
-    render(<LodgingAliasesPanel />, { wrapper })
-    await waitFor(() => {
-      expect(screen.getByRole('button', { name: 'Delete Old Hall' })).toBeInTheDocument()
-    })
-
-    await user.click(screen.getByRole('button', { name: 'Delete Old Hall' }))
-
-    await waitFor(() => {
-      expect(invalidateSpy).toHaveBeenCalledWith({
-        queryKey: queryKeys.lodgingIllegalMergeIssues(),
-      })
-    })
   })
 })
 

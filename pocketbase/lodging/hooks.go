@@ -27,7 +27,6 @@ import (
 	"fmt"
 	"log/slog"
 
-	"github.com/pocketbase/dbx"
 	"github.com/pocketbase/pocketbase"
 	"github.com/pocketbase/pocketbase/apis"
 	"github.com/pocketbase/pocketbase/core"
@@ -60,18 +59,6 @@ func wireHooks(app core.App) {
 	app.OnRecordUpdate(collectionAssignments).BindFunc(guardAssignmentGrain)
 	app.OnRecordUpdate(collectionUnits).BindFunc(guardUnitParentCycle)
 	app.OnRecordAfterUpdateSuccess(collectionIngestIssues).BindFunc(replayOnResolve)
-	app.OnRecordAfterUpdateSuccess(collectionUnits).BindFunc(recheckIllegalMergesOnUpdate)
-	app.OnRecordAfterCreateSuccess(collectionUnits).BindFunc(recheckIllegalMerges)
-	// A verdict depends on the unit tree AND the alias's own member set --
-	// JudgeMerge judges the units an alias resolves to. Unconditional, unlike
-	// the units update binding: BuildUnitTree provably reads only two unit
-	// fields, but an alias's member_units, alias_string, valid_from_year and
-	// valid_to_year all change what a raw value resolves to, so a same-shaped
-	// diff gate here would be four fields wide and easy to get subtly wrong.
-	// Alias edits are human-rate against ~100 rows, so the unconditional path
-	// costs nothing worth guarding against.
-	app.OnRecordAfterUpdateSuccess(collectionAliases).BindFunc(recheckIllegalMerges)
-	app.OnRecordAfterCreateSuccess(collectionAliases).BindFunc(recheckIllegalMerges)
 }
 
 // countAssignments counts lodging_assignments rows whose `field` points at id.
@@ -232,6 +219,19 @@ func guardUnitParentCycle(e *core.RecordEvent) error {
 	if parentID == "" {
 		return e.Next()
 	}
+	// Judge the WRITE, not the stored state. A unit already on a cycle -- data
+	// predating this hook, which it cannot un-write -- would otherwise fail
+	// every edit that leaves parent_unit alone, including Confirm and
+	// Deactivate, with a message about a loop the write did not create. Bulk
+	// confirm would report a partial failure with no way to see why.
+	//
+	// Original() is blank on create, and a create cannot close a cycle (a new
+	// record has no descendants), so comparing "" to a real parent id there
+	// simply means the check runs -- harmless, and the create binding is
+	// deliberately absent anyway.
+	if e.Record.Original().GetString("parent_unit") == parentID {
+		return e.Next()
+	}
 	tree, err := sync.BuildUnitTree(e.App)
 	if err != nil {
 		return fmt.Errorf("checking for a parent cycle: %w", err)
@@ -323,9 +323,8 @@ func replayOnResolve(e *core.RecordEvent) error {
 	// no_session/ambiguous_session row for any of those parties' unrelated
 	// attribution failures as a side effect.
 	//
-	// The party-scoped branch is untouched: recheckIllegalMerges resolves an
-	// illegal_merge row with no resolved_alias by design (a repaired
-	// container, not a mapping), and that must still replay.
+	// Party-SCOPED rows are untouched by this check: resolved_alias means
+	// nothing for them either way.
 	kind := e.Record.GetString("kind")
 	isPartylessAliasKind := kind == "unresolved_alias" || kind == "ambiguous_alias"
 	if !partyScoped && isPartylessAliasKind && e.Record.GetString("resolved_alias") == "" {
@@ -351,102 +350,6 @@ func replayOnResolve(e *core.RecordEvent) error {
 	if err != nil {
 		e.App.Logger().Warn("Replaying a resolved lodging issue",
 			"issue", e.Record.Id, "party_scoped", partyScoped, "error", err)
-	}
-	return e.Next()
-}
-
-// recheckIllegalMergesOnUpdate is the OnRecordAfterUpdateSuccess binding for
-// lodging_units. It skips the expensive recheck below unless parent_unit or
-// is_container actually changed -- the only two fields BuildUnitTree reads, so
-// confirming, renaming, or activating/deactivating a unit cannot possibly
-// change any merge's legality.
-//
-// This matters under load: confirmLodgingUnits (frontend/src/services/
-// lodgingCrud.ts) bulk-confirms via Promise.allSettled, so a 93-unit confirm
-// is 93 CONCURRENT PATCHes. Without this early-out every one of them pays a
-// filtered issues query plus BuildUnitTree plus NewAliasResolver, and if a row
-// has become legal, all 93 race to resolve it.
-//
-// Split from the create binding rather than shared: a new record's Original()
-// is blank on every field, so this same diff would compare "" to "" and false
-// to false and wrongly skip a create that genuinely adds a child to a
-// container. recheckIllegalMerges stays the unconditional create binding.
-func recheckIllegalMergesOnUpdate(e *core.RecordEvent) error {
-	original := e.Record.Original()
-	if original.GetString("parent_unit") == e.Record.GetString("parent_unit") &&
-		original.GetBool("is_container") == e.Record.GetBool("is_container") {
-		return e.Next()
-	}
-	e.App.Logger().Info("Unit tree changed; re-checking illegal merges", "unit", e.Record.Id)
-	return recheckIllegalMerges(e)
-}
-
-// recheckIllegalMerges re-judges every open illegal_merge row after the unit
-// tree OR an alias's member set changes, and replays the ones that just
-// became legal.
-//
-// This is what makes "fix the registry once, drain twelve rows" true. The
-// override path drains a group because it writes is_resolved; adding a missing
-// child to a container, or narrowing an alias down to a legal set, writes
-// nothing to the queue on its own, so without this the rows stay open and the
-// placements never appear.
-//
-// Cost is bounded by the OPEN illegal_merge count (single digits to dozens),
-// not by the units or aliases table, and only fires on a unit create/update or
-// an alias create/update -- rare, human-initiated events (recheckIllegalMergesOnUpdate
-// further narrows the units update case to writes that could actually change a
-// verdict; the aliases bindings stay unconditional, see wireHooks).
-func recheckIllegalMerges(e *core.RecordEvent) error {
-	rows, err := e.App.FindRecordsByFilter(
-		collectionIngestIssues,
-		"kind = {:kind} && is_resolved = false",
-		"", 0, 0,
-		dbx.Params{"kind": "illegal_merge"},
-	)
-	if err != nil {
-		e.App.Logger().Warn("Re-checking illegal merges", "error", err)
-		return e.Next()
-	}
-	tree, err := sync.BuildUnitTree(e.App)
-	if err != nil {
-		e.App.Logger().Warn("Re-checking illegal merges", "error", err)
-		return e.Next()
-	}
-	resolver, err := sync.NewAliasResolver(e.App)
-	if err != nil {
-		e.App.Logger().Warn("Re-checking illegal merges", "error", err)
-		return e.Next()
-	}
-
-	for _, row := range rows {
-		// Re-judge BEFORE resolving. Resolving unconditionally and letting
-		// replay re-queue the still-broken ones would write
-		// "registry corrected" onto rows that were not, and reset their
-		// first_seen/occurrences by replacing them with fresh rows.
-		//
-		// PlacementIsLegal, not a bare JudgeMerge call: JudgeMerge alone calls a
-		// single-unit resolution illegal ("needs at least two"), which is right
-		// for JudgeMerge's own job but wrong here. placementFor treats a
-		// single-unit resolution as automatically legal -- it is not a merge at
-		// all -- so a repair that narrows an alias down to the one unit that
-		// actually belongs to it would sync clean while this check, asked
-		// directly, left the row open forever. placementFor and this call share
-		// the one predicate so they cannot drift apart on that question again.
-		res := resolver.Resolve(row.GetString("raw_value"), row.GetInt("year"))
-		if !res.Resolved || !sync.PlacementIsLegal(tree, res) {
-			continue // still broken; leave the row and its history alone
-		}
-
-		row.Set("is_resolved", true)
-		row.Set("resolution_note", "Registry corrected; merge is now legal.")
-		if err := e.App.Save(row); err != nil {
-			// One row failing must not abandon the rest, and must never fail
-			// the unit edit that triggered this.
-			e.App.Logger().Warn("Auto-resolving a repaired merge",
-				"issue", row.Id, "error", err)
-			continue
-		}
-		// The save fires replayOnResolve, which materializes the placement.
 	}
 	return e.Next()
 }

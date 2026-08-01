@@ -73,8 +73,7 @@ func setupCollections(t *testing.T, app core.App) {
 
 	aliases := core.NewBaseCollection("lodging_unit_aliases")
 	aliases.Fields.Add(&core.TextField{Name: "alias_string", Required: true})
-	// member_units, valid_from_year and valid_to_year back sync.AliasResolver,
-	// which recheckIllegalMerges uses to re-judge an open illegal_merge row.
+	// member_units, valid_from_year and valid_to_year back sync.AliasResolver.
 	aliases.Fields.Add(&core.RelationField{
 		Name: "member_units", CollectionId: unitsCol.Id, MaxSelect: 20,
 	})
@@ -150,61 +149,6 @@ func newUnit(t *testing.T, app core.App, code, name string) *core.Record {
 	r.Set("is_active", true)
 	if err := app.Save(r); err != nil {
 		t.Fatalf("save unit %q: %v", code, err)
-	}
-	return r
-}
-
-// newContainerUnit adds a building/grouping unit. JudgeMerge only accepts a
-// merge that is the COMPLETE child set of a container, so any merge fixture
-// needs one of these as the shared parent.
-func newContainerUnit(t *testing.T, app core.App, code, name string) *core.Record {
-	t.Helper()
-	col, err := app.FindCollectionByNameOrId("lodging_units")
-	if err != nil {
-		t.Fatalf("find lodging_units: %v", err)
-	}
-	r := core.NewRecord(col)
-	r.Set("code", code)
-	r.Set("name", name)
-	r.Set("is_active", true)
-	r.Set("is_container", true)
-	if err := app.Save(r); err != nil {
-		t.Fatalf("save container %q: %v", code, err)
-	}
-	return r
-}
-
-// newUnitWithParent is newUnit plus the parent_unit link a merge fixture needs.
-func newUnitWithParent(t *testing.T, app core.App, code, name, parentID string) *core.Record {
-	t.Helper()
-	col, err := app.FindCollectionByNameOrId("lodging_units")
-	if err != nil {
-		t.Fatalf("find lodging_units: %v", err)
-	}
-	r := core.NewRecord(col)
-	r.Set("code", code)
-	r.Set("name", name)
-	r.Set("is_active", true)
-	r.Set("parent_unit", parentID)
-	if err := app.Save(r); err != nil {
-		t.Fatalf("save unit %q: %v", code, err)
-	}
-	return r
-}
-
-// newAliasForUnits seeds an alias whose member_units the merge-legality rule
-// can resolve and judge -- unlike newAlias, which leaves member_units empty.
-func newAliasForUnits(t *testing.T, app core.App, aliasString string, unitIDs []string) *core.Record {
-	t.Helper()
-	col, err := app.FindCollectionByNameOrId("lodging_unit_aliases")
-	if err != nil {
-		t.Fatalf("find lodging_unit_aliases: %v", err)
-	}
-	r := core.NewRecord(col)
-	r.Set("alias_string", aliasString)
-	r.Set("member_units", unitIDs)
-	if err := app.Save(r); err != nil {
-		t.Fatalf("save alias %q: %v", aliasString, err)
 	}
 	return r
 }
@@ -585,12 +529,16 @@ func TestALegalReparentStillSaves(t *testing.T) {
 	}
 }
 
-// #1899 / spec §3.5: fixing the registry -- not just overriding a single row --
-// must drain the queue. Overriding a row writes is_resolved directly; adding a
-// missing child to a container writes nothing to lodging_ingest_issues at all,
-// so without recheckIllegalMerges this row would stay open forever even after
-// the registry is repaired.
-func TestRecheckIllegalMergesResolvesARepairedMerge(t *testing.T) {
+// The guard must judge the WRITE, not the stored state. A unit already sitting
+// on a cycle -- data that predates the guard, which it cannot un-write -- still
+// has to accept edits that leave parent_unit alone.
+//
+// Without the diff gate, Confirm and Deactivate both send parent_unit back
+// unchanged, HasParentCycle walks the loop that was already there, and the
+// PATCH fails with "That parent would create a loop in the unit tree." Bulk
+// confirm then reports "Confirmed N of M" with no way to see why, and the only
+// escape is clearing parent_unit by hand.
+func TestAnEditThatLeavesParentUnitAloneSurvivesAPreExistingCycle(t *testing.T) {
 	app, err := tests.NewTestApp()
 	if err != nil {
 		t.Fatalf("NewTestApp: %v", err)
@@ -598,67 +546,44 @@ func TestRecheckIllegalMergesResolvesARepairedMerge(t *testing.T) {
 	defer app.Cleanup()
 
 	setupCollections(t, app)
-	building := newContainerUnit(t, app, "wing", "Wing")
-	roomA := newUnitWithParent(t, app, "wing-a", "Wing A", building.Id)
-	roomB := newUnitWithParent(t, app, "wing-b", "Wing B", building.Id)
-	// roomC is a real, already-registered unit, but not yet a child of the
-	// container -- the registry gap the repair below closes.
-	roomC := newUnit(t, app, "wing-c", "Wing C")
-	newAliasForUnits(t, app, "wing-suite", []string{roomA.Id, roomB.Id, roomC.Id})
-	issue := newIssue(t, app, "illegal_merge", "wing-suite", 2026, 2000001, 0)
+	a := newUnit(t, app, "loop-a", "Loop A")
+	b := newUnit(t, app, "loop-b", "Loop B")
+
+	// Seed the cycle BEFORE wiring, standing in for rows written when no guard
+	// existed. a -> b -> a.
+	a.Set("parent_unit", b.Id)
+	if seedErr := app.Save(a); seedErr != nil {
+		t.Fatalf("seeding a->b: %v", seedErr)
+	}
+	b.Set("parent_unit", a.Id)
+	if seedErr := app.Save(b); seedErr != nil {
+		t.Fatalf("seeding b->a: %v", seedErr)
+	}
 
 	wireHooks(app)
 
-	roomC.Set("parent_unit", building.Id)
-	if err = app.Save(roomC); err != nil {
-		t.Fatalf("repairing the registry: %v", err)
-	}
-
-	got, err := app.FindRecordById("lodging_ingest_issues", issue.Id)
+	// Re-read before editing, because that is what the request path does:
+	// apis.recordUpdate fetches a fresh record and loads the body onto it, and
+	// PocketBase never refreshes originalData after a save. Reusing the record
+	// saved above would leave Original() holding its creation-time parent ("")
+	// and test a state no HTTP write can produce.
+	stored, err := app.FindRecordById(collectionUnits, a.Id)
 	if err != nil {
-		t.Fatalf("reloading the issue: %v", err)
+		t.Fatalf("reloading the unit: %v", err)
 	}
-	if !got.GetBool("is_resolved") {
-		t.Fatal("expected the repaired merge to auto-resolve the queue row")
-	}
-	if got.GetString("resolution_note") == "" {
-		t.Fatal("expected a resolution note explaining the auto-resolve")
-	}
-}
 
-// The negative case: a merge spanning two containers is not repairable by any
-// unit edit, so an unrelated unit save must leave the row exactly alone --
-// not resolved, and without a resolution note that would tell staff otherwise.
-func TestRecheckIllegalMergesLeavesAStillBrokenMergeAlone(t *testing.T) {
-	app, err := tests.NewTestApp()
-	if err != nil {
-		t.Fatalf("NewTestApp: %v", err)
+	// Exactly what the Confirm button sends: one unrelated field, parent_unit
+	// untouched.
+	stored.Set("is_confirmed", true)
+	if err := app.Save(stored); err != nil {
+		t.Fatalf("confirming a unit on a pre-existing cycle must be allowed, got: %v", err)
 	}
-	defer app.Cleanup()
 
-	setupCollections(t, app)
-	buildingOne := newContainerUnit(t, app, "north", "North")
-	buildingTwo := newContainerUnit(t, app, "south", "South")
-	roomD := newUnitWithParent(t, app, "north-1", "North 1", buildingOne.Id)
-	roomE := newUnitWithParent(t, app, "south-1", "South 1", buildingTwo.Id)
-	newAliasForUnits(t, app, "cross-campus", []string{roomD.Id, roomE.Id})
-	issue := newIssue(t, app, "illegal_merge", "cross-campus", 2026, 2000002, 0)
-
-	wireHooks(app)
-
-	// Touching an unrelated unit must not resolve this row: the merge really
-	// is still illegal.
-	newUnit(t, app, "unrelated", "Unrelated")
-
-	got, err := app.FindRecordById("lodging_ingest_issues", issue.Id)
-	if err != nil {
-		t.Fatalf("reloading the issue: %v", err)
-	}
-	if got.GetBool("is_resolved") {
-		t.Fatal("expected the still-broken merge to stay open")
-	}
-	if got.GetString("resolution_note") != "" {
-		t.Fatalf("expected no resolution note, got %q", got.GetString("resolution_note"))
+	// The guard still has to bite when the write actually moves parent_unit.
+	free := newUnit(t, app, "loop-c", "Loop C")
+	free.Set("parent_unit", free.Id)
+	if err := app.Save(free); err == nil {
+		t.Fatal("expected self-parenting to still be blocked, got nil error")
 	}
 }
 
@@ -771,188 +696,6 @@ func TestReplayOnResolveFiresOnceNotOnItsOwnResave(t *testing.T) {
 			"replayOnResolve replay-attempted %d time(s) across an open-row "+
 				"touch, one resolve, and one same-value resave, want 1 (log: %q)",
 			got, output)
-	}
-}
-
-// #1899 Important: recheckIllegalMerges pays a filtered issues query plus
-// BuildUnitTree plus NewAliasResolver -- three scans -- on every unit write.
-// Confirming, renaming, and activating/deactivating a unit cannot change any
-// merge's legality: BuildUnitTree reads only parent_unit and is_container.
-// confirmLodgingUnits bulk-confirms via Promise.allSettled, so a 93-unit
-// confirm is 93 CONCURRENT PATCHes; without this early-out every one of them
-// pays the full cost, and if a row has become legal, all 93 race to resolve
-// it.
-//
-// This only binds to the UPDATE path. A create's Original() is blank on every
-// field, so the same diff would wrongly skip a create that really does add a
-// child to a container -- recheckIllegalMerges stays the unconditional create
-// binding.
-func TestRecheckIllegalMergesOnUpdateSkipsIrrelevantFields(t *testing.T) {
-	app, err := tests.NewTestAppWithConfig(core.BaseAppConfig{
-		EncryptionEnv: "pb_test_env",
-		IsDev:         true,
-	})
-	if err != nil {
-		t.Fatalf("NewTestAppWithConfig: %v", err)
-	}
-	defer app.Cleanup()
-
-	setupCollections(t, app)
-	unit := newUnit(t, app, "ridge-a", "Ridge A")
-
-	wireHooks(app)
-
-	const marker = "Unit tree changed; re-checking illegal merges"
-
-	output := captureStdout(t, func() {
-		unit.Set("name", "Ridge A (confirmed)")
-		if err := app.Save(unit); err != nil {
-			t.Fatalf("renaming the unit: %v", err)
-		}
-	})
-	if strings.Contains(output, marker) {
-		t.Fatalf("renaming a unit triggered the expensive recheck: %q", output)
-	}
-
-	output = captureStdout(t, func() {
-		unit.Set("is_container", true)
-		if err := app.Save(unit); err != nil {
-			t.Fatalf("marking the unit a container: %v", err)
-		}
-	})
-	if !strings.Contains(output, marker) {
-		t.Fatalf("expected changing is_container to trigger the recheck, got: %q", output)
-	}
-}
-
-// #1899 Important: JudgeMerge alone calls a single-unit set illegal ("a merge
-// needs at least two member units") -- correct for JudgeMerge's own job, but
-// recheckIllegalMerges called it directly as the FULL legality test, which is
-// a second, narrower predicate than the one the sync actually places by.
-// placementFor treats a single-unit resolution as automatically legal
-// (!res.IsMerge() short-circuits before JudgeMerge is ever called), because a
-// resolution to one unit is not a merge at all -- it is a direct placement.
-//
-// So a legitimate repair -- narrowing an illegal_merge alias down to the one
-// unit that actually belongs to it, by editing the alias's member_units
-// rather than any unit's parent_unit -- would sync clean but leave the queue
-// row open forever, because the old check asked JudgeMerge a question it was
-// never designed to answer for this case. sync.PlacementIsLegal is the one
-// predicate both callers now share.
-func TestRecheckIllegalMergesAcceptsANarrowedSingleUnitRepair(t *testing.T) {
-	app, err := tests.NewTestApp()
-	if err != nil {
-		t.Fatalf("NewTestApp: %v", err)
-	}
-	defer app.Cleanup()
-
-	setupCollections(t, app)
-	building := newContainerUnit(t, app, "wing", "Wing")
-	roomA := newUnitWithParent(t, app, "wing-a", "Wing A", building.Id)
-	// The repair: the alias used to name a second unit that turned out not to
-	// belong to this string at all, so staff narrowed member_units down to
-	// roomA alone -- not a merge, a plain single-room resolution.
-	newAliasForUnits(t, app, "wing-suite", []string{roomA.Id})
-	issue := newIssue(t, app, "illegal_merge", "wing-suite", 2026, 2000003, 0)
-
-	wireHooks(app)
-
-	// The alias edit itself has no unit write to hang the recheck hook off,
-	// so trigger it the way any other unrelated unit create would (the create
-	// binding always runs the full recheck; see the doc comment above).
-	newUnit(t, app, "trigger", "Trigger")
-
-	got, err := app.FindRecordById("lodging_ingest_issues", issue.Id)
-	if err != nil {
-		t.Fatalf("reloading the issue: %v", err)
-	}
-	if !got.GetBool("is_resolved") {
-		t.Fatal("expected a repair narrowed to a single legal unit to resolve the row")
-	}
-}
-
-// #1899: a merge verdict depends on BOTH the unit tree and the alias's own
-// member set -- JudgeMerge judges the units an alias resolves to. Task 5
-// bound recheckIllegalMerges to lodging_units create/update only, so of the
-// repair panel's two affordances, fixing the REGISTRY drained the row (the
-// two tests above) but fixing the ALIAS did not: nothing fired, and the row
-// stayed open forever. This is the other half of "one fix drains the group."
-func TestRecheckIllegalMergesResolvesAWidenedAlias(t *testing.T) {
-	app, err := tests.NewTestApp()
-	if err != nil {
-		t.Fatalf("NewTestApp: %v", err)
-	}
-	defer app.Cleanup()
-
-	setupCollections(t, app)
-	building := newContainerUnit(t, app, "wing", "Wing")
-	roomA := newUnitWithParent(t, app, "wing-a", "Wing A", building.Id)
-	roomB := newUnitWithParent(t, app, "wing-b", "Wing B", building.Id)
-	roomC := newUnitWithParent(t, app, "wing-c", "Wing C", building.Id)
-	// The registry is already complete -- all three rooms are children of
-	// wing -- but the alias only names two of them, which is the repair below
-	// closes: editing the ALIAS, not any unit's parent_unit.
-	alias := newAliasForUnits(t, app, "wing-suite", []string{roomA.Id, roomB.Id})
-	issue := newIssue(t, app, "illegal_merge", "wing-suite", 2026, 2000004, 0)
-
-	wireHooks(app)
-
-	alias.Set("member_units", []string{roomA.Id, roomB.Id, roomC.Id})
-	if err = app.Save(alias); err != nil {
-		t.Fatalf("widening the alias: %v", err)
-	}
-
-	got, err := app.FindRecordById("lodging_ingest_issues", issue.Id)
-	if err != nil {
-		t.Fatalf("reloading the issue: %v", err)
-	}
-	if !got.GetBool("is_resolved") {
-		t.Fatal("expected widening the alias to the complete child set to resolve the row")
-	}
-	if got.GetString("resolution_note") == "" {
-		t.Fatal("expected a resolution note explaining the auto-resolve")
-	}
-}
-
-// The negative case, mirroring TestRecheckIllegalMergesLeavesAStillBrokenMergeAlone
-// but for the alias-edit path: a merge spanning two containers cannot be
-// repaired by any alias edit either, so an UNRELATED alias's save must leave
-// the row exactly alone.
-func TestRecheckIllegalMergesLeavesAStillBrokenMergeAloneOnUnrelatedAliasEdit(t *testing.T) {
-	app, err := tests.NewTestApp()
-	if err != nil {
-		t.Fatalf("NewTestApp: %v", err)
-	}
-	defer app.Cleanup()
-
-	setupCollections(t, app)
-	buildingOne := newContainerUnit(t, app, "north", "North")
-	buildingTwo := newContainerUnit(t, app, "south", "South")
-	roomD := newUnitWithParent(t, app, "north-1", "North 1", buildingOne.Id)
-	roomE := newUnitWithParent(t, app, "south-1", "South 1", buildingTwo.Id)
-	newAliasForUnits(t, app, "cross-campus", []string{roomD.Id, roomE.Id})
-	issue := newIssue(t, app, "illegal_merge", "cross-campus", 2026, 2000005, 0)
-
-	// A second, wholly unrelated alias -- editing it is the trigger, and must
-	// have no bearing on cross-campus's verdict.
-	unrelated := newAliasForUnits(t, app, "unrelated-suite", []string{roomD.Id})
-
-	wireHooks(app)
-
-	unrelated.Set("alias_string", "renamed-unrelated-suite")
-	if err = app.Save(unrelated); err != nil {
-		t.Fatalf("editing the unrelated alias: %v", err)
-	}
-
-	got, err := app.FindRecordById("lodging_ingest_issues", issue.Id)
-	if err != nil {
-		t.Fatalf("reloading the issue: %v", err)
-	}
-	if got.GetBool("is_resolved") {
-		t.Fatal("expected the still-broken merge to stay open after an unrelated alias edit")
-	}
-	if got.GetString("resolution_note") != "" {
-		t.Fatalf("expected no resolution note, got %q", got.GetString("resolution_note"))
 	}
 }
 

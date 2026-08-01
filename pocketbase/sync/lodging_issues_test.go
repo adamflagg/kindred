@@ -20,7 +20,6 @@ func TestIssueKindsMatchTheMigration(t *testing.T) {
 		"ambiguous_session",
 		"no_session",
 		"field_zero_values",
-		"illegal_merge",
 	}
 	got := []string{
 		issueUnresolvedAlias,
@@ -28,7 +27,6 @@ func TestIssueKindsMatchTheMigration(t *testing.T) {
 		issueAmbiguousSession,
 		issueNoSession,
 		issueFieldZeroValues,
-		issueIllegalMerge,
 	}
 	for i := range want {
 		if got[i] != want[i] {
