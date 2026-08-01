@@ -514,8 +514,11 @@ func TestDeletingAnAliasIsAllowedOnceItsIssueIsReopened(t *testing.T) {
 }
 
 // #1899: unitTree.ts filters the picker, but nothing stopped a direct write,
-// and 1500000130 widened who can make one. A cycle hangs both the descendant
-// walk and the merge-legality rule, which each follow parent links.
+// and 1500000130 widened who can make one. A cycle hangs the descendant walk
+// (HasParentCycle here, descendantIds in unitTree.ts) -- both walk parent
+// links, both now guard against it. JudgeMerge, the merge-legality rule, does
+// not walk parent links at all -- one hop per member, then a flat scan -- so
+// a cycle cannot hang it regardless.
 func TestSelfParentingAUnitIsBlocked(t *testing.T) {
 	app, err := tests.NewTestApp()
 	if err != nil {
