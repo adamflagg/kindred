@@ -306,8 +306,9 @@ func TestLodgingAssignmentsSyncMaterialisesMerges(t *testing.T) {
 	app := newLodgingTestApp(t)
 	sess := addSession(t, app, cmIDFamilyCamp1, "Family Camp 1", "family",
 		"2025-05-23 07:00:00.000Z", "2025-05-26 07:00:00.000Z", 2025)
-	t1 := addUnit(t, app, "gt-tioga-1")
-	t2 := addUnit(t, app, "gt-tioga-2")
+	bldg := addContainerUnit(t, app, "gt-tioga")
+	t1 := addUnitWithParent(t, app, "gt-tioga-1", bldg)
+	t2 := addUnitWithParent(t, app, "gt-tioga-2", bldg)
 	addAlias(t, app, "Golden Triangle - Tioga 1and2", []string{t1, t2}, 0, 0)
 	cabinDef := addFieldDef(t, app, cmIDFamilyCampCabin, fieldNameFamilyCampCabin)
 
@@ -500,6 +501,52 @@ func TestLodgingAssignmentsRegisteredEverywhere(t *testing.T) {
 	}
 }
 
+// An alias resolving to a partial child set must queue, not materialize. The
+// bug this pins: EnsureMerge accepts any 2-20 unit set, so before the rule a
+// bad alias produced a merge row stamped campminder_sync with nothing flagged.
+func TestPlacementForQueuesAnIllegalMergeAndWritesNothing(t *testing.T) {
+	s := &LodgingAssignmentsSync{
+		unitTree: map[string]UnitNode{
+			"bldg": {ID: "bldg", IsContainer: true},
+			"r1":   {ID: "r1", ParentID: "bldg"},
+			"r2":   {ID: "r2", ParentID: "bldg"},
+			"r3":   {ID: "r3", ParentID: "bldg"},
+		},
+	}
+	res := AliasResolution{Raw: "Some Building 1and2", UnitIDs: []string{"r1", "r2"}, Resolved: true}
+
+	unitID, mergeID, verdict, err := s.placementFor(res, "sess", 1, 2026, res.Raw)
+
+	if err != nil {
+		t.Fatalf("an illegal merge is a queue item, not an error: %v", err)
+	}
+	if verdict.Legal {
+		t.Fatal("expected an illegal verdict for a partial child set")
+	}
+	if unitID != "" || mergeID != "" {
+		t.Errorf("nothing may be placed: unitID=%q mergeID=%q", unitID, mergeID)
+	}
+	if len(verdict.MissingUnits) != 1 || verdict.MissingUnits[0] != "r3" {
+		t.Errorf("MissingUnits = %v, want [r3]", verdict.MissingUnits)
+	}
+}
+
+func TestPlacementForPassesASingleRoomStraightThrough(t *testing.T) {
+	s := &LodgingAssignmentsSync{unitTree: map[string]UnitNode{"r1": {ID: "r1"}}}
+	res := AliasResolution{Raw: "Room 1", UnitIDs: []string{"r1"}, Resolved: true}
+
+	unitID, mergeID, verdict, err := s.placementFor(res, "sess", 1, 2026, res.Raw)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if unitID != "r1" || mergeID != "" {
+		t.Errorf("unitID=%q mergeID=%q, want r1 and empty", unitID, mergeID)
+	}
+	if !verdict.Legal {
+		t.Error("a single room is not a merge and must not be judged illegal")
+	}
+}
+
 // TestLodgingAssignmentsSyncDryRunWritesNothing: DryRun's contract is "compute
 // but do not write". Two of ingestValue's write paths sit UPSTREAM of the
 // placement write -- recordHistory for a string no alias covers, and
@@ -670,8 +717,9 @@ func TestLodgingAssignmentsSyncMergeLabelIgnoresMemberOrder(t *testing.T) {
 	app := newLodgingTestApp(t)
 	sess := addSession(t, app, cmIDFamilyCamp1, "Family Camp 1", "family",
 		testSessionStart, testSessionEnd, 2025)
-	t1 := addUnit(t, app, "gt-tioga-1")
-	t2 := addUnit(t, app, "gt-tioga-2")
+	bldg := addContainerUnit(t, app, "gt-tioga")
+	t1 := addUnitWithParent(t, app, "gt-tioga-1", bldg)
+	t2 := addUnitWithParent(t, app, "gt-tioga-2", bldg)
 	addAlias(t, app, "Golden Triangle - Tioga 1and2", []string{t1, t2}, 0, 0)
 	// The same two rooms, named the other way round. Staff type both.
 	addAlias(t, app, "Golden Triangle - Tioga 2and1", []string{t2, t1}, 0, 0)

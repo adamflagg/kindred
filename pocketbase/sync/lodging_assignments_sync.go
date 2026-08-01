@@ -35,6 +35,10 @@ type LodgingAssignmentsSync struct {
 	resolver *AliasResolver
 	issues   *IssueRecorder
 
+	// unitTree backs the merge-legality rule. Built once per run alongside the
+	// resolver; ~93 rows.
+	unitTree map[string]UnitNode
+
 	// Party-size indexes, built once per run. partySize used to query per
 	// household: a filtered scan of persons (28k rows) plus a full paged scan of
 	// family_camp_adults (10k rows) for EVERY observed cabin value. At ~700
@@ -92,6 +96,11 @@ func (s *LodgingAssignmentsSync) Sync(ctx context.Context) error {
 	if s.resolver, err = NewAliasResolver(s.App); err != nil {
 		return fmt.Errorf("building alias resolver: %w", err)
 	}
+	tree, err := BuildUnitTree(s.App)
+	if err != nil {
+		return fmt.Errorf("building the unit tree: %w", err)
+	}
+	s.unitTree = tree
 	s.issues = NewIssueRecorder(s.App, year)
 
 	fieldTargets, err := LodgingFieldDefIDs(s.App)
@@ -414,11 +423,24 @@ func (s *LodgingAssignmentsSync) ingestValue(in *ingestContext) {
 		SourceField:   in.SourceField,
 		NewUnitLabel:  label,
 	}
-	unitID, mergeID, err := s.placementFor(res, input.SessionID, input.SessionCMID, in.Year, in.Raw)
+	unitID, mergeID, verdict, err := s.placementFor(res, input.SessionID, input.SessionCMID, in.Year, in.Raw)
 	if err != nil {
 		slog.Error("Materializing merge", "raw", in.Raw, "error", err)
 		s.Stats.Errors++
 		s.recordWriteFailure(in)
+		return
+	}
+	if !verdict.Legal {
+		// Queue and stop. History already carries the observed label, so the
+		// value is not lost -- only its placement is deferred to repair.
+		s.issues.Record(Issue{
+			Kind:          issueIllegalMerge,
+			RawValue:      in.Raw,
+			SourceField:   in.SourceField,
+			Year:          in.Year,
+			HouseholdCMID: in.HouseholdCMID,
+			PersonCMID:    in.PersonCMID,
+		})
 		return
 	}
 	input.UnitID, input.MergeID = unitID, mergeID
@@ -451,20 +473,30 @@ func (s *LodgingAssignmentsSync) recordWriteFailure(in *ingestContext) {
 }
 
 // placementFor turns a resolution into the one placement column it belongs in.
-// A multi-room alias is materialized as a merge row; a single room points
-// straight at the unit. Exactly one of the two is ever non-empty, which is what
-// ValidateAssignmentGrain then checks.
+// A single room points straight at the unit; a multi-room alias is judged
+// before it is materialized.
+//
+// An illegal set returns a zero placement and a non-Legal verdict, NOT an
+// error: the caller queues it as work. Returning an error would route it to
+// recordWriteFailure, which means "resolved and attributed but could not
+// persist" -- a different diagnosis pointing staff at the wrong repair.
 func (s *LodgingAssignmentsSync) placementFor(
 	res AliasResolution, sessionID string, sessionCMID, year int, raw string,
-) (unitID, mergeID string, err error) {
+) (unitID, mergeID string, verdict MergeVerdict, err error) {
 	if !res.IsMerge() {
-		return res.UnitIDs[0], "", nil
+		return res.UnitIDs[0], "", MergeVerdict{Legal: true}, nil
 	}
+
+	verdict = JudgeMerge(s.unitTree, res.UnitIDs)
+	if !verdict.Legal {
+		return "", "", verdict, nil
+	}
+
 	mergeID, err = EnsureMerge(s.App, sessionID, sessionCMID, year, "", res.UnitIDs, raw)
 	if err != nil {
-		return "", "", err
+		return "", "", verdict, err
 	}
-	return "", mergeID, nil
+	return "", mergeID, verdict, nil
 }
 
 // upsertAssignment writes the placement and appends a history row when the
