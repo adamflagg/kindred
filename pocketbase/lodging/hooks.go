@@ -62,6 +62,16 @@ func wireHooks(app core.App) {
 	app.OnRecordAfterUpdateSuccess(collectionIngestIssues).BindFunc(replayOnResolve)
 	app.OnRecordAfterUpdateSuccess(collectionUnits).BindFunc(recheckIllegalMergesOnUpdate)
 	app.OnRecordAfterCreateSuccess(collectionUnits).BindFunc(recheckIllegalMerges)
+	// A verdict depends on the unit tree AND the alias's own member set --
+	// JudgeMerge judges the units an alias resolves to. Unconditional, unlike
+	// the units update binding: BuildUnitTree provably reads only two unit
+	// fields, but an alias's member_units, alias_string, valid_from_year and
+	// valid_to_year all change what a raw value resolves to, so a same-shaped
+	// diff gate here would be four fields wide and easy to get subtly wrong.
+	// Alias edits are human-rate against ~100 rows, so the unconditional path
+	// costs nothing worth guarding against.
+	app.OnRecordAfterUpdateSuccess(collectionAliases).BindFunc(recheckIllegalMerges)
+	app.OnRecordAfterCreateSuccess(collectionAliases).BindFunc(recheckIllegalMerges)
 }
 
 // countAssignments counts lodging_assignments rows whose `field` points at id.
@@ -328,17 +338,20 @@ func recheckIllegalMergesOnUpdate(e *core.RecordEvent) error {
 }
 
 // recheckIllegalMerges re-judges every open illegal_merge row after the unit
-// tree changes, and replays the ones that just became legal.
+// tree OR an alias's member set changes, and replays the ones that just
+// became legal.
 //
 // This is what makes "fix the registry once, drain twelve rows" true. The
 // override path drains a group because it writes is_resolved; adding a missing
-// child to a container writes nothing to the queue, so without this the rows
-// stay open and the placements never appear.
+// child to a container, or narrowing an alias down to a legal set, writes
+// nothing to the queue on its own, so without this the rows stay open and the
+// placements never appear.
 //
 // Cost is bounded by the OPEN illegal_merge count (single digits to dozens),
-// not by the units table, and only fires on a unit create/update -- a rare,
-// human-initiated event (recheckIllegalMergesOnUpdate further narrows the
-// update case to writes that could actually change a verdict).
+// not by the units or aliases table, and only fires on a unit create/update or
+// an alias create/update -- rare, human-initiated events (recheckIllegalMergesOnUpdate
+// further narrows the units update case to writes that could actually change a
+// verdict; the aliases bindings stay unconditional, see wireHooks).
 func recheckIllegalMerges(e *core.RecordEvent) error {
 	rows, err := e.App.FindRecordsByFilter(
 		collectionIngestIssues,

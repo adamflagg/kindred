@@ -867,3 +867,88 @@ func TestRecheckIllegalMergesAcceptsANarrowedSingleUnitRepair(t *testing.T) {
 		t.Fatal("expected a repair narrowed to a single legal unit to resolve the row")
 	}
 }
+
+// #1899: a merge verdict depends on BOTH the unit tree and the alias's own
+// member set -- JudgeMerge judges the units an alias resolves to. Task 5
+// bound recheckIllegalMerges to lodging_units create/update only, so of the
+// repair panel's two affordances, fixing the REGISTRY drained the row (the
+// two tests above) but fixing the ALIAS did not: nothing fired, and the row
+// stayed open forever. This is the other half of "one fix drains the group."
+func TestRecheckIllegalMergesResolvesAWidenedAlias(t *testing.T) {
+	app, err := tests.NewTestApp()
+	if err != nil {
+		t.Fatalf("NewTestApp: %v", err)
+	}
+	defer app.Cleanup()
+
+	setupCollections(t, app)
+	building := newContainerUnit(t, app, "wing", "Wing")
+	roomA := newUnitWithParent(t, app, "wing-a", "Wing A", building.Id)
+	roomB := newUnitWithParent(t, app, "wing-b", "Wing B", building.Id)
+	roomC := newUnitWithParent(t, app, "wing-c", "Wing C", building.Id)
+	// The registry is already complete -- all three rooms are children of
+	// wing -- but the alias only names two of them, which is the repair below
+	// closes: editing the ALIAS, not any unit's parent_unit.
+	alias := newAliasForUnits(t, app, "wing-suite", []string{roomA.Id, roomB.Id})
+	issue := newIssue(t, app, "illegal_merge", "wing-suite", 2026, 2000004, 0)
+
+	wireHooks(app)
+
+	alias.Set("member_units", []string{roomA.Id, roomB.Id, roomC.Id})
+	if err = app.Save(alias); err != nil {
+		t.Fatalf("widening the alias: %v", err)
+	}
+
+	got, err := app.FindRecordById("lodging_ingest_issues", issue.Id)
+	if err != nil {
+		t.Fatalf("reloading the issue: %v", err)
+	}
+	if !got.GetBool("is_resolved") {
+		t.Fatal("expected widening the alias to the complete child set to resolve the row")
+	}
+	if got.GetString("resolution_note") == "" {
+		t.Fatal("expected a resolution note explaining the auto-resolve")
+	}
+}
+
+// The negative case, mirroring TestRecheckIllegalMergesLeavesAStillBrokenMergeAlone
+// but for the alias-edit path: a merge spanning two containers cannot be
+// repaired by any alias edit either, so an UNRELATED alias's save must leave
+// the row exactly alone.
+func TestRecheckIllegalMergesLeavesAStillBrokenMergeAloneOnUnrelatedAliasEdit(t *testing.T) {
+	app, err := tests.NewTestApp()
+	if err != nil {
+		t.Fatalf("NewTestApp: %v", err)
+	}
+	defer app.Cleanup()
+
+	setupCollections(t, app)
+	buildingOne := newContainerUnit(t, app, "north", "North")
+	buildingTwo := newContainerUnit(t, app, "south", "South")
+	roomD := newUnitWithParent(t, app, "north-1", "North 1", buildingOne.Id)
+	roomE := newUnitWithParent(t, app, "south-1", "South 1", buildingTwo.Id)
+	newAliasForUnits(t, app, "cross-campus", []string{roomD.Id, roomE.Id})
+	issue := newIssue(t, app, "illegal_merge", "cross-campus", 2026, 2000005, 0)
+
+	// A second, wholly unrelated alias -- editing it is the trigger, and must
+	// have no bearing on cross-campus's verdict.
+	unrelated := newAliasForUnits(t, app, "unrelated-suite", []string{roomD.Id})
+
+	wireHooks(app)
+
+	unrelated.Set("alias_string", "renamed-unrelated-suite")
+	if err = app.Save(unrelated); err != nil {
+		t.Fatalf("editing the unrelated alias: %v", err)
+	}
+
+	got, err := app.FindRecordById("lodging_ingest_issues", issue.Id)
+	if err != nil {
+		t.Fatalf("reloading the issue: %v", err)
+	}
+	if got.GetBool("is_resolved") {
+		t.Fatal("expected the still-broken merge to stay open after an unrelated alias edit")
+	}
+	if got.GetString("resolution_note") != "" {
+		t.Fatalf("expected no resolution note, got %q", got.GetString("resolution_note"))
+	}
+}
