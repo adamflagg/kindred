@@ -431,3 +431,147 @@ func TestReplayIssuePreservesTheSuggestionWhenTheObservationIsGone(t *testing.T)
 			row.GetString("suggested_session"), first)
 	}
 }
+
+// The discriminating case for the re-open rule: the blocker the row NAMES is
+// gone, and a different one is hit instead.
+//
+// Repairing the registry so the alias is a container's complete child set means
+// the illegal_merge genuinely WAS fixed. Re-opening that row would state
+// something false -- staff would go look at the merge and find nothing wrong --
+// while the real blocker sits in its own accurate row beside it. So the ticked
+// row stays ticked, and the new problem stands on its own. Nothing is lost:
+// the new row carries the remaining work, and the caller still learns from
+// Placed that the click did not finish the job.
+func TestReplayIssueTicksARowWhoseBlockerIsGoneAndOpensTheNewOne(t *testing.T) {
+	app := newLodgingTestApp(t)
+	fc1 := addSession(t, app, cmIDFamilyCamp1, "Family Camp 1", "family",
+		"2025-05-23 07:00:00.000Z", "2025-05-26 07:00:00.000Z", 2025)
+	fc6 := addSession(t, app, cmIDFamilyCamp6, "Family Camp 6", "family",
+		"2025-09-18 07:00:00.000Z", "2025-09-21 07:00:00.000Z", 2025)
+
+	// The repair staff just made: both rooms now hang off a container, so the
+	// alias names a COMPLETE child set and the merge is legal.
+	building := addContainerUnit(t, app, "ridge")
+	r1 := addUnitWithParent(t, app, "ridge-1", building)
+	r2 := addUnitWithParent(t, app, "ridge-2", building)
+	addAlias(t, app, "Ridge 1and2", []string{r1, r2}, 0, 0)
+
+	// ...but the household attends two weekends, and CampMinder holds one value
+	// for the year, so the value is now blocked on attribution instead.
+	cabinDef := addFieldDef(t, app, cmIDFamilyCampCabin, fieldNameFamilyCampCabin)
+	hh := addHousehold(t, app, 9001, 2025)
+	emma := addPerson(t, app, 5001, 9001, 2025, hh)
+	addAttendee(t, app, emma, fc1, 5001, 2, 2025)
+	addAttendee(t, app, emma, fc6, 5001, 2, 2025)
+	addHouseholdValue(t, app, hh, cabinDef, "Ridge 1and2", testLastUpdated, 2025)
+
+	id := seedIssue(t, app, map[string]any{
+		"kind":            issueIllegalMerge,
+		"raw_value":       "Ridge 1and2",
+		"source_field":    fieldNameFamilyCampCabin,
+		"year":            2025,
+		"is_resolved":     true,
+		"household_cm_id": 9001,
+	})
+
+	res, err := ReplayIssue(app, id)
+	if err != nil {
+		t.Fatalf("ReplayIssue: %v", err)
+	}
+
+	if res.Placed {
+		t.Error("result reports Placed, but an ambiguous session places nothing")
+	}
+	// Naming the OLD kind here would have the UI report the problem staff have
+	// just finished fixing.
+	if len(res.Blockers) != 1 || res.Blockers[0] != issueAmbiguousSession {
+		t.Errorf("Blockers = %v, want [%s] -- the CURRENT blocker, not the row's kind",
+			res.Blockers, issueAmbiguousSession)
+	}
+
+	original, err := app.FindRecordById("lodging_ingest_issues", id)
+	if err != nil {
+		t.Fatalf("reloading the original row: %v", err)
+	}
+	if !original.GetBool("is_resolved") {
+		t.Error("the illegal_merge row was re-opened, but that blocker is gone; " +
+			"staff would inspect the merge and find nothing wrong")
+	}
+
+	fresh, err := app.FindRecordsByFilter("lodging_ingest_issues",
+		"kind = {:kind}", "", 0, 0, map[string]any{"kind": issueAmbiguousSession})
+	if err != nil {
+		t.Fatalf("looking up the new row: %v", err)
+	}
+	if len(fresh) != 1 {
+		t.Fatalf("ambiguous_session rows = %d, want 1 carrying the remaining work", len(fresh))
+	}
+	if fresh[0].GetBool("is_resolved") {
+		t.Error("the new blocker was created already ticked; nothing would surface it")
+	}
+	if fresh[0].GetInt("household_cm_id") != 9001 {
+		t.Errorf("new row household_cm_id = %d, want 9001", fresh[0].GetInt("household_cm_id"))
+	}
+
+	rows, _ := app.FindRecordsByFilter("lodging_assignments", "", "", 0, 0)
+	if len(rows) != 0 {
+		t.Errorf("assignments = %d, want 0", len(rows))
+	}
+}
+
+// recordedAgain decides whether the row goes back into the open queue, so what
+// counts as "the same item" is load-bearing. It is the full dedup tuple, not
+// the kind: the same kind for a different party is a different queue item.
+//
+// ReplayIssue cannot currently produce a party mismatch -- it records against
+// the party it read off the row -- but the alias kinds record with no party at
+// all, so the party-less fan-out that will replay those can. This pins the rule
+// directly rather than waiting for that caller to discover it.
+func TestRecordedAgainComparesTheWholeDedupTuple(t *testing.T) {
+	replayed := Issue{
+		Kind: issueIllegalMerge, RawValue: "Ridge 1and2",
+		SourceField: fieldNameFamilyCampCabin, Year: 2025, HouseholdCMID: 9001,
+	}
+	vary := func(mutate func(*Issue)) Issue {
+		other := replayed
+		mutate(&other)
+		return other
+	}
+
+	cases := []struct {
+		name     string
+		recorded Issue
+		want     bool
+	}{
+		{"identical", replayed, true},
+		{"same kind, different household", vary(func(i *Issue) { i.HouseholdCMID = 9002 }), false},
+		{"same kind, party dropped", vary(func(i *Issue) { i.HouseholdCMID = 0 }), false},
+		{"same kind, person grain instead", vary(func(i *Issue) {
+			i.HouseholdCMID, i.PersonCMID = 0, 5001
+		}), false},
+		{"different kind", vary(func(i *Issue) { i.Kind = issueAmbiguousSession }), false},
+		{"different raw value", vary(func(i *Issue) { i.RawValue = "Ridge 1and3" }), false},
+		{"different source field", vary(func(i *Issue) {
+			i.SourceField = fieldNameReportableFamilyCampCabin
+		}), false},
+		{"different year", vary(func(i *Issue) { i.Year = 2024 }), false},
+		// Advisory columns are not part of the identity: a re-observation that
+		// gained a suggestion is still the same item.
+		{"same item, new suggestion", vary(func(i *Issue) { i.SuggestedSession = "s1" }), true},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := recordedAgain([]Issue{tc.recorded}, &replayed); got != tc.want {
+				t.Errorf("recordedAgain = %v, want %v", got, tc.want)
+			}
+		})
+	}
+
+	// The pass can record two items for one value; matching any one of them is
+	// enough to say the replayed item recurred.
+	mixed := []Issue{vary(func(i *Issue) { i.Kind = issueAmbiguousSession }), replayed}
+	if !recordedAgain(mixed, &replayed) {
+		t.Error("a match anywhere in the recorded set must count")
+	}
+}

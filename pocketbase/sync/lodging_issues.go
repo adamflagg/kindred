@@ -115,19 +115,23 @@ func (r *IssueRecorder) Record(i Issue) {
 	r.order = append(r.order, key)
 }
 
-// RecordedKinds returns the kind of every item accumulated so far, in the order
-// they were first recorded.
+// Recorded returns every item accumulated so far, in the order they were first
+// recorded.
 //
 // A whole-year sync has no use for this -- it queues thousands of items and
 // cares only about the flushed totals. A replay processes ONE value and has to
-// answer "did this click place the value, or is it still blocked, and by what",
-// which is precisely "what did the pass record". ingestValue can record two
-// items for one value (an alias failure and an attribution failure), so this
-// returns all of them rather than the first.
-func (r *IssueRecorder) RecordedKinds() []string {
-	out := make([]string, 0, len(r.order))
+// answer "did this click place the value, and if not, is the thing blocking it
+// still the thing the row NAMES", which is precisely "what did the pass
+// record". ingestValue can record two items for one value (an alias failure and
+// an attribution failure), so this returns all of them rather than the first.
+//
+// The items come back whole rather than as kinds, because the caller compares
+// them on the full dedup tuple: the same kind for a different party is a
+// different item.
+func (r *IssueRecorder) Recorded() []Issue {
+	out := make([]Issue, 0, len(r.order))
 	for _, key := range r.order {
-		out = append(out, r.pending[key].issue.Kind)
+		out = append(out, r.pending[key].issue)
 	}
 	return out
 }

@@ -103,25 +103,61 @@ func ReplayIssue(app core.App, issueID string) (ReplayResult, error) {
 		Now:           now,
 	})
 
-	result.Blockers = s.issues.RecordedKinds()
-	result.Placed = len(result.Blockers) == 0
+	recorded := s.issues.Recorded()
+	result.Blockers = make([]string, 0, len(recorded))
+	for i := range recorded {
+		result.Blockers = append(result.Blockers, recorded[i].Kind)
+	}
+	result.Placed = len(recorded) == 0
 
 	// A replay that placed the value records nothing, so this writes nothing. A
-	// replay that did NOT -- a registry still half-repaired -- lands on the same
-	// dedup key, refreshing the row staff already ticked rather than adding a
-	// second one. Flush SETS occurrences to what this pass observed, which is
-	// right here because a party-scoped row describes a single value: CampMinder
-	// holds one cabin answer per party per year.
+	// replay that hit the SAME problem again lands on the same dedup key,
+	// refreshing the row staff already ticked rather than adding a second one; a
+	// replay blocked by something else creates that item's own row, open. Flush
+	// SETS occurrences to what this pass observed, which is right here because a
+	// party-scoped row describes a single value: CampMinder holds one cabin
+	// answer per party per year.
 	if _, _, flushErr := s.issues.Flush(now); flushErr != nil {
 		return result, fmt.Errorf("flushing replay issues: %w", flushErr)
 	}
 
-	if !result.Placed {
+	// The row is only re-opened when this pass re-recorded the very item being
+	// replayed. If the named blocker is gone and a different one took its place,
+	// that repair really did land, and re-opening would send staff back to
+	// inspect something no longer wrong -- while the actual blocker sits in its
+	// own accurate row beside it, carrying the remaining work.
+	replayed := Issue{
+		Kind:          row.GetString("kind"),
+		RawValue:      raw,
+		SourceField:   row.GetString("source_field"),
+		Year:          year,
+		HouseholdCMID: householdCMID,
+		PersonCMID:    personCMID,
+	}
+	if recordedAgain(recorded, &replayed) {
 		if err := reopenIssue(app, issueID); err != nil {
 			return result, err
 		}
 	}
 	return result, nil
+}
+
+// recordedAgain reports whether this pass re-recorded the item being replayed.
+//
+// The comparison goes through Issue.dedupKey rather than matching fields by
+// hand, so it is the same tuple the unique index and Flush's findExisting use
+// -- (year, kind, raw_value, source_field, household_cm_id, person_cm_id). Kind
+// alone would be wrong: the same kind for a different party is a different
+// queue item, and a hand-rolled tuple here would be a fourth place that has to
+// be kept in step with idx_lodging_issues_dedup.
+func recordedAgain(recorded []Issue, replayed *Issue) bool {
+	key := replayed.dedupKey()
+	for i := range recorded {
+		if recorded[i].dedupKey() == key {
+			return true
+		}
+	}
+	return false
 }
 
 // reopenIssue puts a row back in the open queue after a replay that placed
