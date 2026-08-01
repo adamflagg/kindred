@@ -34,7 +34,7 @@ import { useProgram } from '../contexts/ProgramContext'
 import { getProgramFromPath, getProgramHomeUrl } from '../utils/programUrls'
 import { pb } from '../lib/pocketbase'
 import { VersionInfo } from '../components/VersionInfo'
-import { MANAGE_TABS } from '../config/manageTabs'
+import { MANAGE_TABS, canSeeTab } from '../config/manageTabs'
 import { PROGRAM_BUTTONS } from '../config/programButtons'
 import { useTour } from '../hooks/useTour'
 import { FeedbackModal } from '../components/FeedbackModal'
@@ -63,7 +63,9 @@ export const AppLayout = () => {
   const { theme, toggleTheme } = useTheme()
   const { user, isAuthenticated, logout } = useAuth()
   const { hasPermission, isAdmin } = usePermissions()
-  const canAccessManage = MANAGE_TABS.some((tab) => hasPermission(tab.requiredPermission))
+  const canAccessManage = MANAGE_TABS.some((tab) =>
+    canSeeTab(tab.access, { hasPermission, isAdmin })
+  )
   const { fetchWithAuth } = useApiWithAuth()
   const [isProgramMenuOpen, setIsProgramMenuOpen] = useState(false)
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false)
@@ -268,14 +270,6 @@ export const AppLayout = () => {
                     className={`nav-link-lodge ${isActiveRoute('/manage') ? 'active' : ''}`}
                   >
                     Manage
-                  </Link>
-                )}
-                {isAdmin && (
-                  <Link
-                    to="/admin"
-                    className={`nav-link-lodge ${isActiveRoute('/admin') ? 'active' : ''}`}
-                  >
-                    Admin
                   </Link>
                 )}
                 {activeProgram === 'summer' && isAdmin && (

@@ -568,7 +568,7 @@ export default function AllCampersView() {
             )}
 
             <Link
-              to="/admin"
+              to="/manage"
               className="text-forest-200 rounded-lg p-2 transition-colors hover:bg-white/10 hover:text-white"
               title="Admin Settings"
             >

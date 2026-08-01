@@ -270,3 +270,23 @@ describe('AllCampersView — teen program support', () => {
     await waitFor(() => expectHeadline(2, 'campers'))
   })
 })
+
+/**
+ * The header's gear button is the one rendered, ungated link to the admin
+ * surface. It pointed at /admin and survived the nav consolidation only
+ * because /admin still redirected; once those redirects were retired it would
+ * have become a dead link, so it has to name /manage directly.
+ */
+describe('AllCampersView — settings link target', () => {
+  it('points the settings gear at /manage, not the retired /admin', async () => {
+    setFixtures([SESSIONS.main] as CampSessionsResponse[], [
+      camper({ person_cm_id: 1, session_cm_id: SESSIONS.main.cm_id, name: 'Emma Johnson' }),
+    ])
+
+    render(<AllCampersView />, { wrapper: createWrapper() })
+    await waitFor(() => expect(screen.queryByText('Loading campers...')).not.toBeInTheDocument())
+
+    const settingsLink = screen.getByTitle('Admin Settings')
+    expect(settingsLink).toHaveAttribute('href', '/manage')
+  })
+})

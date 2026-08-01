@@ -6,7 +6,7 @@ import { useSolverConfig, type ConfigSection } from '../../hooks/useSolverConfig
 import { useUpdateSolverConfig, useResetSolverConfig } from '../../hooks/useSolverConfigMutation'
 import { SectionCard } from './SectionCard'
 import { ScaleGuideSidebar } from './ScaleGuideSidebar'
-import { CONFIG_CATEGORIES } from '../../config/adminTabs'
+import { CONFIG_CATEGORIES } from '../../config/manageTabs'
 
 export function ConfigTab() {
   const { category: activeCategory = 'solver' } = useParams<{ category: string }>()

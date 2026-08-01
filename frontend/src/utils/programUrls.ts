@@ -5,8 +5,16 @@ import type { Program } from '../contexts/ProgramContext'
  */
 export function getProgramUrl(path: string, program: Program): string {
   const cleanPath = path.startsWith('/') ? path.slice(1) : path
-  const sharedRoutes = ['user', 'users', 'campers', 'camper', 'admin']
-  if (sharedRoutes.some((route) => cleanPath.startsWith(route))) {
+  // 'manage' replaces 'admin' here: the nav consolidation moved Sync and
+  // Configuration under /manage and retired /admin/* outright, so an 'admin'
+  // entry would now name a route that does not exist.
+  const sharedRoutes = ['user', 'users', 'campers', 'camper', 'manage']
+  // Segment boundary, not a bare prefix — otherwise 'manage' matches
+  // 'management'/'manage-old' and 'user' matches 'userprofile'.
+  const isSharedRoute = sharedRoutes.some(
+    (route) => cleanPath === route || cleanPath.startsWith(`${route}/`)
+  )
+  if (isSharedRoute) {
     return `/${cleanPath}`
   }
   return `/${program}/${cleanPath}`
@@ -83,10 +91,6 @@ export function getCamperUrl(camperId: string | number): string {
 
 export function getAllCampersUrl(): string {
   return '/campers'
-}
-
-export function getAdminUrl(): string {
-  return '/admin'
 }
 
 export function getUsersUrl(): string {

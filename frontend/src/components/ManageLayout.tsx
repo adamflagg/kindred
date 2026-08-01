@@ -2,13 +2,19 @@ import { Link, Outlet, useLocation } from 'react-router'
 import { ClipboardList, AlertCircle } from 'lucide-react'
 import { ErrorBoundary } from './ErrorBoundary'
 import { usePermissions } from '../hooks/usePermissions'
-import { MANAGE_TABS, type ManageTabConfig } from '../config/manageTabs'
+import { MANAGE_TABS, canSeeTab, type ManageTabConfig } from '../config/manageTabs'
 
 function ManageLayoutInner() {
   const location = useLocation()
-  const { hasPermission } = usePermissions()
+  const { hasPermission, isAdmin } = usePermissions()
 
-  const visibleTabs = MANAGE_TABS.filter((tab) => hasPermission(tab.requiredPermission))
+  // No blanket admin check here (§2 of the nav-consolidation plan) — this
+  // layout hosts tabs with mixed access requirements (four permission-gated,
+  // two admin-only), so each tab route guards itself in App.tsx instead
+  // (RequirePermission or AdminRoute). A blanket isAdmin check here would
+  // lock every non-admin out of Geo/Sheets/Registration/Lodging too — the
+  // exact regression #450 fixed. Do not add one back.
+  const visibleTabs = MANAGE_TABS.filter((tab) => canSeeTab(tab.access, { hasPermission, isAdmin }))
 
   const isTabActive = (tab: ManageTabConfig) => location.pathname.startsWith(tab.path)
   const showTabs = visibleTabs.length > 1
@@ -23,14 +29,16 @@ function ManageLayoutInner() {
           </div>
           <div>
             <h1 className="font-display text-lg font-bold text-white sm:text-xl">Management</h1>
-            <p className="text-forest-200 text-xs sm:text-sm">Data management and exports</p>
+            <p className="text-forest-200 text-xs sm:text-sm">
+              Staff tools, sync operations and configuration
+            </p>
           </div>
         </div>
       </div>
 
       {/* Tabs — only shown if user has access to 2+ sections */}
       {showTabs && (
-        <div className="bg-muted/50 dark:bg-muted flex w-full gap-1.5 rounded-lg p-1.5 sm:w-fit">
+        <div className="bg-muted/50 dark:bg-muted flex w-full flex-wrap gap-1.5 rounded-lg p-1.5 sm:w-fit">
           {visibleTabs.map((tab) => {
             const Icon = tab.icon
             return (

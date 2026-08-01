@@ -3,7 +3,6 @@ import { render, screen } from '@testing-library/react'
 import { MemoryRouter, Route, Routes } from 'react-router'
 import { describe, expect, it, vi } from 'vitest'
 
-import { ADMIN_TABS } from '../../../config/adminTabs'
 import { MANAGE_TABS } from '../../../config/manageTabs'
 import { Permission } from '../../../constants/permissions'
 import { LodgingSettingsTab } from './LodgingSettingsTab'
@@ -31,11 +30,16 @@ describe('lodging tab registration', () => {
     const tab = MANAGE_TABS.find((t) => t.id === 'lodging')
     expect(tab).toBeDefined()
     expect(tab?.path).toBe('/manage/lodging')
-    expect(tab?.requiredPermission).toBe(Permission.BUNKING_MANAGE)
+    expect(tab?.access).toEqual({ kind: 'permission', codename: Permission.BUNKING_MANAGE })
   })
 
   it('no longer appears under Admin', () => {
-    expect(ADMIN_TABS.some((t) => t.path.startsWith('/admin/lodging'))).toBe(false)
+    // #1893: lodging deliberately left /admin entirely, with no redirect —
+    // it was never linked, so there were no bookmarks to preserve. Nav
+    // consolidation folded /admin into /manage as a mixed-access tab set, so
+    // this now checks the invariant across all six tabs, not just lodging's:
+    // nothing in MANAGE_TABS should ever point back under /admin.
+    expect(MANAGE_TABS.some((t) => t.path.startsWith('/admin'))).toBe(false)
   })
 })
 

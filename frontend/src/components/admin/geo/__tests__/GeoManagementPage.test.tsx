@@ -61,7 +61,7 @@ vi.mock('../../../../hooks/useCurrentYear', () => ({
   useYear: vi.fn(() => 2025),
 }))
 
-function renderPage(initialPath = '/admin/geo/cities') {
+function renderPage(initialPath = '/manage/geo/cities') {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   return render(
     <QueryClientProvider client={qc}>
