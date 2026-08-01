@@ -11,7 +11,6 @@ import {
   getSessionUrl,
   getCamperUrl,
   getAllCampersUrl,
-  getAdminUrl,
   getUsersUrl,
   getUserUrl,
   getSessionsListUrl,
@@ -94,7 +93,6 @@ describe('programUrls', () => {
     })
 
     it('does not prepend for shared routes', () => {
-      expect(getProgramUrl('admin', 'summer')).toBe('/admin')
       expect(getProgramUrl('campers', 'summer')).toBe('/campers')
       expect(getProgramUrl('user', 'summer')).toBe('/user')
       expect(getProgramUrl('users', 'summer')).toBe('/users')
@@ -102,13 +100,31 @@ describe('programUrls', () => {
     })
 
     // /admin was folded into /manage as one top-level nav tab (nav
-    // consolidation, #1895/#450). 'admin' stays in sharedRoutes too — the
-    // /admin redirects still resolve, and nothing calls this with an admin
-    // path — but 'manage' needs the same shared-route treatment now that it
-    // hosts the same kind of cross-program tools.
+    // consolidation, #1895/#450) and then retired outright — so 'manage' takes
+    // the shared-route slot 'admin' used to hold, and an admin path now gets
+    // the ordinary program prefix like any other unknown route.
     it('does not prepend for the manage route either', () => {
       expect(getProgramUrl('manage', 'summer')).toBe('/manage')
       expect(getProgramUrl('manage/sync', 'weekend')).toBe('/manage/sync')
+    })
+
+    it('no longer treats the retired admin path as shared', () => {
+      expect(getProgramUrl('admin', 'summer')).toBe('/summer/admin')
+    })
+
+    // CodeRabbit catch on the nav-consolidation PR: sharedRoutes.some(route =>
+    // cleanPath.startsWith(route)) has no segment boundary, so 'manage' also
+    // matches 'management' and 'manage-old', and 'user' matches 'userprofile'.
+    // No such route exists today, so this was latent — but widening the list
+    // (this PR added 'manage') is exactly the kind of change that turns
+    // latent into live, so it's fixed for all six entries at once here.
+    it('only matches shared routes at a segment boundary, not as a bare prefix', () => {
+      expect(getProgramUrl('management', 'summer')).toBe('/summer/management')
+      expect(getProgramUrl('manage-old', 'summer')).toBe('/summer/manage-old')
+      expect(getProgramUrl('userprofile', 'summer')).toBe('/summer/userprofile')
+      // The real shared routes still match, exactly and as a path prefix.
+      expect(getProgramUrl('manage', 'summer')).toBe('/manage')
+      expect(getProgramUrl('manage/sync', 'summer')).toBe('/manage/sync')
     })
   })
 
@@ -167,10 +183,6 @@ describe('programUrls', () => {
 
     it('getAllCampersUrl', () => {
       expect(getAllCampersUrl()).toBe('/campers')
-    })
-
-    it('getAdminUrl', () => {
-      expect(getAdminUrl()).toBe('/admin')
     })
 
     it('getUsersUrl', () => {

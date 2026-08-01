@@ -1,5 +1,5 @@
 /**
- * Route-wiring test for the /manage and /admin blocks in App.tsx.
+ * Route-wiring test for the /manage block in App.tsx.
  *
  * App.tsx wraps its routes in a heavy provider stack (theme, query client,
  * auth, program, year, scenario, lock-group) and hardcodes BrowserRouter, so
@@ -10,10 +10,14 @@
  * exercised. Task 4 (manageTabs.guard.test.ts) closes the gap this leaves:
  * it source-greps App.tsx itself to prove the real route table actually
  * matches this pattern.
+ *
+ * The /admin block is gone entirely — see the retirement test at the bottom.
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen } from '@testing-library/react'
-import { MemoryRouter, Routes, Route, Navigate, useParams } from 'react-router'
+import { readFileSync } from 'fs'
+import { resolve } from 'path'
+import { MemoryRouter, Routes, Route } from 'react-router'
 import { Permission } from './constants/permissions'
 import { RequirePermission } from './components/RequirePermission'
 import { AdminRoute } from './components/AdminRoute'
@@ -33,13 +37,6 @@ vi.mock('./hooks/usePermissions', () => ({
 vi.mock('./contexts/AuthContext', () => ({
   useAuth: () => ({ isLoading: false }),
 }))
-
-// Forwards :category the way a bare <Navigate> cannot — mirrors the redirect
-// App.tsx uses for /admin/config/:category -> /manage/config/:category.
-function AdminConfigRedirect() {
-  const { category } = useParams()
-  return <Navigate to={`/manage/config/${category}`} replace />
-}
 
 function RoutesUnderTest() {
   return (
@@ -69,9 +66,6 @@ function RoutesUnderTest() {
         }
       />
       <Route path="/manage" element={<div>Manage Redirect Landed</div>} />
-      <Route path="/admin" element={<Navigate to="/manage" replace />} />
-      <Route path="/admin/sync" element={<Navigate to="/manage/sync" replace />} />
-      <Route path="/admin/config/:category" element={<AdminConfigRedirect />} />
     </Routes>
   )
 }
@@ -84,7 +78,7 @@ function renderAt(path: string) {
   )
 }
 
-describe('/manage and /admin route wiring', () => {
+describe('/manage route wiring', () => {
   beforeEach(() => {
     mockHasPermission.mockReset()
     mockIsAdmin = false
@@ -119,16 +113,34 @@ describe('/manage and /admin route wiring', () => {
     expect(screen.getByText('Sync Content')).toBeInTheDocument()
   })
 
-  it('redirects /admin, /admin/sync and /admin/config/:category to /manage equivalents', () => {
+  it('renders config content for an admin', () => {
     mockIsAdmin = true
-
-    renderAt('/admin')
-    expect(screen.getByText('Manage Redirect Landed')).toBeInTheDocument()
-
-    renderAt('/admin/sync')
-    expect(screen.getByText('Sync Content')).toBeInTheDocument()
-
-    renderAt('/admin/config/solver')
+    renderAt('/manage/config/solver')
     expect(screen.getByText('Config Content')).toBeInTheDocument()
+  })
+})
+
+/**
+ * The nav consolidation originally kept /admin/* as permanent redirects to
+ * preserve bookmarks. That was retired: the repo owner was the only user of
+ * those paths, so there are no third-party bookmarks to honour and the
+ * redirects were pure carrying cost.
+ *
+ * Source-grep rather than a render test, for the same reason as
+ * manageTabs.guard.test.ts — this asserts against the *real* route table, not
+ * a reconstruction, so a reintroduced /admin route can't slip past.
+ */
+describe('/admin route retirement', () => {
+  const appSource = readFileSync(resolve(__dirname, './App.tsx'), 'utf-8')
+
+  it('declares no /admin route path anywhere in App.tsx', () => {
+    // Covers both the absolute form (path="/admin...") and the nested form
+    // (path="admin") that /summer/admin used.
+    expect(appSource).not.toMatch(/path="\/admin/)
+    expect(appSource).not.toMatch(/path="admin"/)
+  })
+
+  it('keeps no redirect helper for the retired /admin/config/:category path', () => {
+    expect(appSource).not.toContain('AdminConfigCategoryRedirect')
   })
 })

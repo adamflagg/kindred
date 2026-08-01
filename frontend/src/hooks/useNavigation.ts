@@ -6,7 +6,6 @@ import {
   getCamperUrl,
   getAllCampersUrl,
   getSessionsListUrl,
-  getAdminUrl,
   getUsersUrl,
   getUserUrl,
   getSummerUrl,
@@ -53,11 +52,6 @@ export function useNavigation() {
     void navigate(getSessionsListUrl())
   }, [navigate])
 
-  // Navigate to admin
-  const navigateToAdmin = useCallback(() => {
-    void navigate(getAdminUrl())
-  }, [navigate])
-
   // Navigate to users
   const navigateToUsers = useCallback(() => {
     void navigate(getUsersUrl())
@@ -93,7 +87,6 @@ export function useNavigation() {
     navigateToCamper,
     navigateToAllCampers,
     navigateToSessions,
-    navigateToAdmin,
     navigateToUsers,
     navigateToUser,
     navigateInProgram,
@@ -104,7 +97,6 @@ export function useNavigation() {
     getCamperUrl,
     getAllCampersUrl,
     getSessionsListUrl,
-    getAdminUrl,
     getUsersUrl,
     getUserUrl,
     getSummerUrl,

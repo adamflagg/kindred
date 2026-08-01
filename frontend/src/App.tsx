@@ -137,13 +137,6 @@ function CamperRedirect() {
   return <Navigate to={`/camper/${camperId}`} replace />
 }
 
-// Redirect helper for /admin/config/:category — a bare Navigate can't forward
-// the param, so this small component reads it and rebuilds the /manage path.
-function AdminConfigCategoryRedirect() {
-  const { category } = useParams()
-  return <Navigate to={`/manage/config/${category}`} replace />
-}
-
 // Smart redirect to first permitted manage tab
 function ManageRedirect() {
   const { isLoading } = useAuth()
@@ -226,20 +219,9 @@ function App() {
                             />
                           </Route>
 
-                          {/* Admin routes - permanent redirects into /manage (#1895, #450) */}
-                          <Route path="/admin" element={<Navigate to="/manage" replace />} />
-                          <Route
-                            path="/admin/sync"
-                            element={<Navigate to="/manage/sync" replace />}
-                          />
-                          <Route
-                            path="/admin/config"
-                            element={<Navigate to="/manage/config/solver" replace />}
-                          />
-                          <Route
-                            path="/admin/config/:category"
-                            element={<AdminConfigCategoryRedirect />}
-                          />
+                          {/* /admin/* is retired outright, not redirected — the repo owner
+                              was its only user, so there are no bookmarks to preserve.
+                              App.routes.test.tsx pins that no /admin route comes back. */}
 
                           {/* Manage routes - staff-facing management tools. Each tab route
                               below carries its own guard (RequirePermission or AdminRoute) —
@@ -377,7 +359,6 @@ function App() {
                             <Route path="camper/:camperId" element={<CamperRedirect />} />
                             <Route path="user" element={<Navigate to="/user" replace />} />
                             <Route path="users" element={<Navigate to="/users" replace />} />
-                            <Route path="admin" element={<Navigate to="/manage" replace />} />
                             {/* Debug routes — pipeline trace tool + prompt editor */}
                             <Route path="debug">
                               <Route
