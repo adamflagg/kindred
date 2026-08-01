@@ -275,37 +275,50 @@ export function MergeRepairPanel() {
         const rowsById = new Map(rows.map((row) => [row.id, row]))
 
         return (
-          <ul className="flex flex-col gap-4">
-            {groups.map((group) => {
-              const row = representativeRow(group, rowsById)
-              const enriched = enrichGroup(group, row, registryState)
+          <>
+            {/*
+              Says the quiet part out loud. These rows look like a blocked
+              work queue and are not one: the ingest placed every party
+              listed. Without this line the panel reads as an outage.
+            */}
+            <p className="text-muted-foreground mb-4 text-sm">
+              These groupings do not match the unit registry, so they are listed here for review.
+              Everyone has been placed — nothing below is waiting on you.
+            </p>
+            <ul className="flex flex-col gap-4">
+              {groups.map((group) => {
+                const row = representativeRow(group, rowsById)
+                const enriched = enrichGroup(group, row, registryState)
 
-              return (
-                <li key={group.key} className="card-lodge flex flex-col gap-3 p-4">
-                  <div>
-                    <p className="text-foreground font-mono text-sm font-semibold">
-                      {group.rawValues.join(', ')}
+                return (
+                  <li key={group.key} className="card-lodge flex flex-col gap-3 p-4">
+                    <div>
+                      <p className="text-foreground font-mono text-sm font-semibold">
+                        {group.rawValues.join(', ')}
+                      </p>
+                      <p className="text-muted-foreground text-xs">{enriched.sourceField}</p>
+                      <p className="text-sm">
+                        {partyLabel(group.partyCount)} placed on this cabin string
+                      </p>
+                    </div>
+
+                    <p className="text-muted-foreground text-sm">
+                      {verdictText(enriched.diagnosis)}
                     </p>
-                    <p className="text-muted-foreground text-xs">{enriched.sourceField}</p>
-                    <p className="text-sm">
-                      {partyLabel(group.partyCount)} blocked on this cabin string
-                    </p>
-                  </div>
 
-                  <p className="text-muted-foreground text-sm">{verdictText(enriched.diagnosis)}</p>
-
-                  <div className="flex gap-4">
-                    <Link to="/manage/lodging/aliases" className={ACTION_LINK}>
-                      Edit the alias
-                    </Link>
-                    <Link to={registryHref(enriched.diagnosis)} className={ACTION_LINK}>
-                      Edit the registry
-                    </Link>
-                  </div>
-                </li>
-              )
-            })}
-          </ul>
+                    <div className="flex gap-4">
+                      <Link to="/manage/lodging/aliases" className={ACTION_LINK}>
+                        Edit the alias
+                      </Link>
+                      <Link to={registryHref(enriched.diagnosis)} className={ACTION_LINK}>
+                        Edit the registry
+                      </Link>
+                    </div>
+                  </li>
+                )
+              })}
+            </ul>
+          </>
         )
       }}
     </QueryGuard>

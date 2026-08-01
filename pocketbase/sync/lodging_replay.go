@@ -96,10 +96,15 @@ func ReplayIssue(app core.App, issueID string) (ReplayResult, error) {
 
 	recorded := s.issues.Recorded()
 	result.Blockers = make([]string, 0, len(recorded))
+	result.Placed = true
 	for i := range recorded {
 		result.Blockers = append(result.Blockers, recorded[i].Kind)
+		// An advisory illegal_merge is recorded on a path that DID place, so it
+		// is reported in Blockers without clearing Placed.
+		if blocksPlacement(recorded[i].Kind) {
+			result.Placed = false
+		}
 	}
-	result.Placed = len(recorded) == 0
 
 	// A replay that placed the value records nothing, so this writes nothing. A
 	// replay that hit the SAME problem again lands on the same dedup key,
@@ -261,7 +266,7 @@ func ReplayPartylessIssue(app core.App, issueID string) (int, error) {
 	now := time.Now().UTC()
 	placed := 0
 	for _, p := range parties {
-		before := s.issues.Observations()
+		before := s.issues.BlockingObservations()
 		s.ingestValue(&ingestContext{
 			Year:          year,
 			Raw:           raw,
@@ -272,11 +277,14 @@ func ReplayPartylessIssue(app core.App, issueID string) (int, error) {
 			LastUpdated:   p.LastUpdated,
 			Now:           now,
 		})
-		// ingestValue queues an item on every path that fails to place and on no
-		// path that succeeds, so "recorded nothing" is the same evidence
-		// ReplayIssue's Placed rests on. Counted per party rather than per item:
-		// two parties blocked by this one string share a dedup key.
-		if s.issues.Observations() == before {
+		// ingestValue queues a BLOCKING item on every path that fails to place
+		// and on no path that succeeds, so "recorded no blocker" is the same
+		// evidence ReplayIssue's Placed rests on. The qualifier is load-bearing:
+		// an advisory illegal_merge is recorded alongside a placement that did
+		// happen, and counting it would report a placed party as a stuck one.
+		// Counted per party rather than per item: two parties blocked by this
+		// one string share a dedup key.
+		if s.issues.BlockingObservations() == before {
 			placed++
 		}
 	}

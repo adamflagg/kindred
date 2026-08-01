@@ -107,6 +107,19 @@ describe('MergeRepairPanel', () => {
     expect(screen.getByText(/3 parties/i)).toBeInTheDocument()
   })
 
+  // These rows are ADVISORY: the ingest placed every one of these parties and
+  // queued the row so staff can review the grouping. Copy saying "blocked"
+  // describes the old gating behaviour and would send staff hunting for
+  // families who are not missing a cabin.
+  it('says the parties were placed, never that they are blocked', async () => {
+    render(<MergeRepairPanel />, { wrapper })
+    await screen.findByText(/3 parties/i)
+    expect(screen.queryByText(/blocked/i)).toBeNull()
+    expect(screen.getByText(/3 parties placed/i)).toBeInTheDocument()
+    // And the panel says so once at the top, so the list does not read as an outage.
+    expect(screen.getByText(/everyone has been placed/i)).toBeInTheDocument()
+  })
+
   // NOTE: the two "override" tests that used to sit here are DELETED along with
   // the Accept-anyway affordance. Do not restore them — see the cut in
   // task-7-brief.md. What replaces them is a test that the panel offers

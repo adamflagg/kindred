@@ -40,10 +40,28 @@ const (
 	// rotates.
 	issueWriteFailed = "write_failed"
 	// issueIllegalMerge marks a cabin string whose alias resolves to a unit set
-	// that is not the complete child set of any container. The placement is NOT
-	// written; staff repair the registry and the row replays.
+	// that is not the complete child set of any container.
+	//
+	// ADVISORY: unlike every other kind, the placement IS written. The row is a
+	// review note about a grouping staff authored by hand, not a blocked work
+	// item -- see the illegal branch in ingestValue for why the rule reports
+	// instead of gating.
 	issueIllegalMerge = "illegal_merge"
 )
+
+// blocksPlacement reports whether recording this kind means no assignment was
+// written.
+//
+// Every kind but one is a blocker: the value could not be resolved, attributed
+// or persisted, so there is nothing in lodging_assignments. issueIllegalMerge
+// is the exception, and that exception invalidates the shortcut both replay
+// entry points used to rely on -- "ingestValue records on every path that fails
+// and none that succeeds". Anything reasoning from "recorded something" to
+// "placed nothing" must route through here or it will report a family who has a
+// cabin as a family who does not.
+func blocksPlacement(kind string) bool {
+	return kind != issueIllegalMerge
+}
 
 // Issue is one work-queue item. Zero-valued HouseholdCMID / PersonCMID mean "not
 // specific to one party" and collapse the item across parties -- an unmapped
@@ -148,6 +166,19 @@ func (r *IssueRecorder) Observations() int {
 	total := 0
 	for _, p := range r.pending {
 		total += p.occurrences
+	}
+	return total
+}
+
+// BlockingObservations is Observations restricted to kinds that actually
+// withheld a placement, which is what the fan-out's per-party "did this one
+// come through clean" question really means. See blocksPlacement.
+func (r *IssueRecorder) BlockingObservations() int {
+	total := 0
+	for _, p := range r.pending {
+		if blocksPlacement(p.issue.Kind) {
+			total += p.occurrences
+		}
 	}
 	return total
 }

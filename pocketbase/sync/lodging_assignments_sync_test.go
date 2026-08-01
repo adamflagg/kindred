@@ -501,33 +501,108 @@ func TestLodgingAssignmentsRegisteredEverywhere(t *testing.T) {
 	}
 }
 
-// An alias resolving to a partial child set must queue, not materialize. The
-// bug this pins: EnsureMerge accepts any 2-20 unit set, so before the rule a
-// bad alias produced a merge row stamped campminder_sync with nothing flagged.
-func TestPlacementForQueuesAnIllegalMergeAndWritesNothing(t *testing.T) {
-	s := &LodgingAssignmentsSync{
-		unitTree: map[string]UnitNode{
-			"bldg": {ID: "bldg", IsContainer: true},
-			"r1":   {ID: "r1", ParentID: "bldg"},
-			"r2":   {ID: "r2", ParentID: "bldg"},
-			"r3":   {ID: "r3", ParentID: "bldg"},
-		},
-	}
-	res := AliasResolution{Raw: "Some Building 1and2", UnitIDs: []string{"r1", "r2"}, Resolved: true}
+// A partial child set is ADVISORY: the rule flags the grouping for staff
+// review, it does not withhold the placement.
+//
+// Gating was the original design and it was wrong. Every member_units set is
+// hand-authored in the admin UI -- LodgingAliasForm, or picking units off the
+// unresolved-alias queue -- so an "illegal" set is a human decision the ingest
+// has strictly less context to overrule. Withholding turned a debatable
+// grouping into a family with no cabin at all, and it could not express the
+// real case where a building is whole for one session and split for another
+// (aliases carry a year window, not a session).
+func TestLodgingAssignmentsSyncPlacesAnAdvisoryIllegalMerge(t *testing.T) {
+	app := newLodgingTestApp(t)
+	sess := addSession(t, app, cmIDFamilyCamp1, "Family Camp 1", "family",
+		testSessionStart, testSessionEnd, 2025)
+	bldg := addContainerUnit(t, app, "gt-tioga")
+	t1 := addUnitWithParent(t, app, "gt-tioga-1", bldg)
+	t2 := addUnitWithParent(t, app, "gt-tioga-2", bldg)
+	addUnitWithParent(t, app, "gt-tioga-3", bldg) // the sibling the alias omits
+	addAlias(t, app, "Golden Triangle - Tioga 1and2", []string{t1, t2}, 0, 0)
+	cabinDef := addFieldDef(t, app, cmIDFamilyCampCabin, fieldNameFamilyCampCabin)
 
-	unitID, mergeID, verdict, err := s.placementFor(res, "sess", 1, 2026, res.Raw)
+	hh := addHousehold(t, app, 9001, 2025)
+	emma := addPerson(t, app, 5001, 9001, 2025, hh)
+	addAttendee(t, app, emma, sess, 5001, 2, 2025)
+	addHouseholdValue(t, app, hh, cabinDef,
+		"Golden Triangle - Tioga 1and2", testLastUpdated, 2025)
+
+	s := NewLodgingAssignmentsSync(app)
+	s.Year = 2025
+	if err := s.Sync(context.Background()); err != nil {
+		t.Fatalf("Sync: %v", err)
+	}
+
+	issues, err := app.FindRecordsByFilter("lodging_ingest_issues", "", "", 0, 0)
+	if err != nil {
+		t.Fatalf("find issues: %v", err)
+	}
+	advisory := 0
+	for _, row := range issues {
+		if row.GetString("kind") == issueIllegalMerge {
+			advisory++
+		}
+	}
+	if advisory != 1 {
+		t.Errorf("illegal_merge rows = %d, want 1; the grouping must still be flagged", advisory)
+	}
+
+	assignments, err := app.FindRecordsByFilter("lodging_assignments", "", "", 0, 0)
+	if err != nil {
+		t.Fatalf("find assignments: %v", err)
+	}
+	if len(assignments) != 1 {
+		t.Errorf("assignments = %d, want 1; an advisory verdict must not withhold the placement",
+			len(assignments))
+	}
+
+	merges, err := app.FindRecordsByFilter("lodging_merges", "", "", 0, 0)
+	if err != nil {
+		t.Fatalf("find merges: %v", err)
+	}
+	if len(merges) != 1 {
+		t.Errorf("merges = %d, want 1; the set staff authored must still be materialised", len(merges))
+	}
+}
+
+// placementFor reports the verdict and materialises the merge either way. The
+// verdict is information for the work queue, not a gate on the placement.
+func TestPlacementForReportsAnIllegalVerdictAndStillPlaces(t *testing.T) {
+	app := newLodgingTestApp(t)
+	sess := addSession(t, app, cmIDFamilyCamp1, "Family Camp 1", "family",
+		testSessionStart, testSessionEnd, 2026)
+	bldg := addContainerUnit(t, app, "bldg")
+	r1 := addUnitWithParent(t, app, "r1", bldg)
+	r2 := addUnitWithParent(t, app, "r2", bldg)
+	r3 := addUnitWithParent(t, app, "r3", bldg)
+
+	tree, err := BuildUnitTree(app)
+	if err != nil {
+		t.Fatalf("BuildUnitTree: %v", err)
+	}
+	s := NewLodgingAssignmentsSync(app)
+	s.Year = 2026
+	s.unitTree = tree
+
+	res := AliasResolution{Raw: "Some Building 1and2", UnitIDs: []string{r1, r2}, Resolved: true}
+
+	unitID, mergeID, verdict, err := s.placementFor(res, sess, cmIDFamilyCamp1, 2026, res.Raw)
 
 	if err != nil {
-		t.Fatalf("an illegal merge is a queue item, not an error: %v", err)
+		t.Fatalf("an advisory verdict is not an error: %v", err)
 	}
 	if verdict.Legal {
 		t.Fatal("expected an illegal verdict for a partial child set")
 	}
-	if unitID != "" || mergeID != "" {
-		t.Errorf("nothing may be placed: unitID=%q mergeID=%q", unitID, mergeID)
+	if len(verdict.MissingUnits) != 1 || verdict.MissingUnits[0] != r3 {
+		t.Errorf("MissingUnits = %v, want [%s]", verdict.MissingUnits, r3)
 	}
-	if len(verdict.MissingUnits) != 1 || verdict.MissingUnits[0] != "r3" {
-		t.Errorf("MissingUnits = %v, want [r3]", verdict.MissingUnits)
+	if unitID != "" {
+		t.Errorf("unitID = %q, want empty; a merge places through mergeID", unitID)
+	}
+	if mergeID == "" {
+		t.Error("mergeID is empty; the merge must materialise despite the advisory verdict")
 	}
 }
 

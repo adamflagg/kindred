@@ -239,7 +239,12 @@ func TestReplayIssueMaterializesARepairedMerge(t *testing.T) {
 // reports success, and leaves the row ticked and invisible in the open queue --
 // the "queue is a log, not a work queue" failure this whole task removes,
 // reintroduced on the failure path.
-func TestReplayIssueReopensARowItCouldNotPlace(t *testing.T) {
+// An advisory illegal_merge PLACES and stays open. Both halves matter:
+// the family gets a cabin, and the notice that the grouping does not match the
+// registry survives for staff to act on. Placed must report the placement --
+// anything inferring "recorded something, therefore placed nothing" now lies,
+// because ingestValue records on a path that succeeds.
+func TestReplayIssuePlacesAnAdvisoryIllegalMergeAndKeepsTheRowOpen(t *testing.T) {
 	app := newLodgingTestApp(t)
 	sess := addSession(t, app, cmIDFamilyCamp1, "Family Camp 1", "family",
 		testSessionStart, testSessionEnd, 2025)
@@ -268,16 +273,17 @@ func TestReplayIssueReopensARowItCouldNotPlace(t *testing.T) {
 		t.Fatalf("ReplayIssue: %v", err)
 	}
 
-	if res.Placed {
-		t.Error("result reports Placed, but an illegal merge places nothing")
+	if !res.Placed {
+		t.Error("result reports nothing placed, but an advisory merge does place")
 	}
 	if len(res.Blockers) != 1 || res.Blockers[0] != issueIllegalMerge {
 		t.Errorf("Blockers = %v, want [%s]", res.Blockers, issueIllegalMerge)
 	}
 
 	rows, _ := app.FindRecordsByFilter("lodging_assignments", "", "", 0, 0)
-	if len(rows) != 0 {
-		t.Errorf("assignments = %d, want 0; an illegal merge places nothing", len(rows))
+	if len(rows) != 1 {
+		t.Errorf("assignments = %d, want 1; an advisory verdict does not withhold the placement",
+			len(rows))
 	}
 	// Flush upserts onto the same dedup key, so the row staff already ticked is
 	// the row that gets refreshed -- no second copy appears.
@@ -289,8 +295,8 @@ func TestReplayIssueReopensARowItCouldNotPlace(t *testing.T) {
 		t.Errorf("replay queued a NEW row %q instead of updating %q", issues[0].Id, id)
 	}
 	if issues[0].GetBool("is_resolved") {
-		t.Error("the row is still ticked after a replay that placed nothing; " +
-			"it is invisible in the open queue and nothing will ever revisit it")
+		t.Error("the row is still ticked while the grouping remains unconformant; " +
+			"the advisory is invisible in the open queue and nothing will revisit it")
 	}
 }
 
@@ -916,6 +922,67 @@ func TestReplayPartylessIssueFansOutToEveryPartyThatWroteTheString(t *testing.T)
 	}
 	if !queued.GetBool("is_resolved") {
 		t.Error("a fan-out that placed every party un-ticked the row it just repaired")
+	}
+}
+
+// The fan-out counts a party it placed even when the placement also raised an
+// ADVISORY illegal_merge.
+//
+// The count rests on "ingestValue records on no path that succeeds", and the
+// advisory branch breaks that premise: it records AND places. Counting raw
+// observations would report placed=0 for two families who each have a cabin,
+// and the hook would log a repair that worked as a repair that failed.
+func TestReplayPartylessIssueCountsPartiesPlacedWithAnAdvisoryMerge(t *testing.T) {
+	app := newLodgingTestApp(t)
+	_, parties := seedTwoHouseholdsSharingACabinString(t, app, "Ridge 1and3", 2026)
+
+	// Staff map the string to a PARTIAL child set: two rooms of a three-room
+	// building. Unconformant, so every placement raises an advisory.
+	building := addContainerUnit(t, app, "ridge")
+	r1 := addUnitWithParent(t, app, "ridge-1", building)
+	addUnitWithParent(t, app, "ridge-2", building)
+	r3 := addUnitWithParent(t, app, "ridge-3", building)
+	addAlias(t, app, "Ridge 1and3", []string{r1, r3}, 0, 0)
+
+	id := seedIssue(t, app, map[string]any{
+		"kind":         issueUnresolvedAlias,
+		"raw_value":    "Ridge 1and3",
+		"source_field": fieldNameFamilyCampCabin,
+		"year":         2026,
+		"is_resolved":  true,
+		"occurrences":  2,
+	})
+
+	placed, err := ReplayPartylessIssue(app, id)
+	if err != nil {
+		t.Fatalf("ReplayPartylessIssue: %v", err)
+	}
+	if placed != len(parties) {
+		t.Errorf("placed = %d, want %d; an advisory verdict does not withhold a placement",
+			placed, len(parties))
+	}
+
+	rows, err := app.FindRecordsByFilter("lodging_assignments", "", "", 0, 0)
+	if err != nil {
+		t.Fatalf("find assignments: %v", err)
+	}
+	if len(rows) != len(parties) {
+		t.Errorf("assignments = %d, want %d", len(rows), len(parties))
+	}
+
+	// The advisory itself still lands, so staff can see the grouping.
+	issues, err := app.FindRecordsByFilter("lodging_ingest_issues", "", "", 0, 0)
+	if err != nil {
+		t.Fatalf("find issues: %v", err)
+	}
+	advisory := 0
+	for _, row := range issues {
+		if row.GetString("kind") == issueIllegalMerge {
+			advisory++
+		}
+	}
+	if advisory == 0 {
+		t.Error("no illegal_merge advisory was recorded; the grouping is invisible to staff")
 	}
 }
 

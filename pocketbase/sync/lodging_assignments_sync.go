@@ -431,8 +431,22 @@ func (s *LodgingAssignmentsSync) ingestValue(in *ingestContext) {
 		return
 	}
 	if !verdict.Legal {
-		// Queue and stop. History already carries the observed label, so the
-		// value is not lost -- only its placement is deferred to repair.
+		// ADVISORY, not a gate: flag the grouping and place it anyway.
+		//
+		// Every member_units set is hand-authored in the admin UI -- either
+		// LodgingAliasForm or picking units off the unresolved-alias queue --
+		// so an unconformant set is a human decision this code has strictly
+		// less context to overrule. Withholding the placement turned a
+		// debatable grouping into a family with no cabin, and no amount of
+		// container topology fixes the case where a building is whole for one
+		// session and split for another: aliases carry a year window, not a
+		// session.
+		//
+		// So the rule reports rather than blocks. The row tells staff which
+		// groupings do not match the registry; the assignment still lands, and
+		// the placement flows on through upsertAssignment, which records the
+		// observation in lodging_assignment_history like every other placed
+		// value.
 		s.issues.Record(Issue{
 			Kind:          issueIllegalMerge,
 			RawValue:      in.Raw,
@@ -441,7 +455,6 @@ func (s *LodgingAssignmentsSync) ingestValue(in *ingestContext) {
 			HouseholdCMID: in.HouseholdCMID,
 			PersonCMID:    in.PersonCMID,
 		})
-		return
 	}
 	input.UnitID, input.MergeID = unitID, mergeID
 
@@ -473,20 +486,18 @@ func (s *LodgingAssignmentsSync) recordWriteFailure(in *ingestContext) {
 }
 
 // placementFor turns a resolution into the one placement column it belongs in.
-// A single room points straight at the unit; a multi-room alias is judged
-// before it is materialized.
+// A single room points straight at the unit; a multi-room alias is judged and
+// then materialized either way.
 //
-// An illegal set returns a zero placement and a non-Legal verdict, NOT an
-// error: the caller queues it as work. Returning an error would route it to
-// recordWriteFailure, which means "resolved and attributed but could not
-// persist" -- a different diagnosis pointing staff at the wrong repair.
+// The verdict is ADVISORY. It travels back to the caller so an unconformant
+// grouping can be queued for staff review, but it does not decide whether the
+// placement happens -- see the illegal branch in ingestValue for why.
 //
-// The gate is PlacementIsLegal, not a bare verdict.Legal check: recheckIllegalMerges
-// asks the same "may this be placed" question, and it must be answered by one
-// function, not two inline copies of the same short-circuit that could drift.
-// verdict is still computed via JudgeMerge directly, because the illegal-path
-// caller reads verdict.MissingUnits for the repair hint, which a bool cannot
-// carry.
+// verdict is computed via JudgeMerge rather than PlacementIsLegal because it
+// carries MissingUnits, which a bool cannot. PlacementIsLegal remains the
+// shared predicate for callers that only need the yes/no -- recheckIllegalMerges
+// (pocketbase/lodging/hooks.go) asks exactly that question when deciding
+// whether an open advisory row has been made conformant.
 func (s *LodgingAssignmentsSync) placementFor(
 	res AliasResolution, sessionID string, sessionCMID, year int, raw string,
 ) (unitID, mergeID string, verdict MergeVerdict, err error) {
@@ -495,9 +506,6 @@ func (s *LodgingAssignmentsSync) placementFor(
 	}
 
 	verdict = JudgeMerge(s.unitTree, res.UnitIDs)
-	if !PlacementIsLegal(s.unitTree, res) {
-		return "", "", verdict, nil
-	}
 
 	mergeID, err = EnsureMerge(s.App, sessionID, sessionCMID, year, "", res.UnitIDs, raw)
 	if err != nil {
