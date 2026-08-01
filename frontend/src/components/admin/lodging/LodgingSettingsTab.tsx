@@ -6,20 +6,22 @@
  * in source code — not the area list, the unit list, the alias mapping, the
  * parent relations, the staff-default flags, or any amenity.
  */
-import { AlertCircle, BedDouble, Link2 } from 'lucide-react'
+import { AlertCircle, AlertTriangle, BedDouble, Link2 } from 'lucide-react'
 import { Link, useParams } from 'react-router'
 
 import { LodgingAliasesPanel } from './LodgingAliasesPanel'
 import { LodgingUnitsPanel } from './LodgingUnitsPanel'
+import { MergeRepairPanel } from './MergeRepairPanel'
 import { UnresolvedAliasQueue } from './UnresolvedAliasQueue'
 
 // The summer session view's tab grammar (`SessionTabs`), not a second one.
-// An icon per section for the same reason it has them: three pills of similar
+// An icon per section for the same reason it has them: four pills of similar
 // length are hard to reacquire after looking away at a 93-row table.
 const SECTIONS = [
   { id: 'units', label: 'Units', icon: BedDouble },
   { id: 'aliases', label: 'Cabin name aliases', icon: Link2 },
   { id: 'unresolved', label: 'Unresolved names', icon: AlertCircle },
+  { id: 'merges', label: 'Merge repairs', icon: AlertTriangle },
 ] as const
 
 type SectionId = (typeof SECTIONS)[number]['id']
@@ -66,6 +68,7 @@ export function LodgingSettingsTab() {
       {active === 'units' && <LodgingUnitsPanel />}
       {active === 'aliases' && <LodgingAliasesPanel />}
       {active === 'unresolved' && <UnresolvedAliasQueue />}
+      {active === 'merges' && <MergeRepairPanel />}
     </div>
   )
 }

@@ -10,6 +10,7 @@ import { LodgingSettingsTab } from './LodgingSettingsTab'
 vi.mock('./LodgingUnitsPanel', () => ({ LodgingUnitsPanel: () => <div>UNITS PANEL</div> }))
 vi.mock('./LodgingAliasesPanel', () => ({ LodgingAliasesPanel: () => <div>ALIASES PANEL</div> }))
 vi.mock('./UnresolvedAliasQueue', () => ({ UnresolvedAliasQueue: () => <div>QUEUE PANEL</div> }))
+vi.mock('./MergeRepairPanel', () => ({ MergeRepairPanel: () => <div>MERGES PANEL</div> }))
 
 function renderAt(path: string) {
   return render(
@@ -59,12 +60,17 @@ describe('LodgingSettingsTab', () => {
     expect(screen.getByText('QUEUE PANEL')).toBeInTheDocument()
   })
 
+  it('renders the merge repair queue', () => {
+    renderAt('/manage/lodging/merges')
+    expect(screen.getByText('MERGES PANEL')).toBeInTheDocument()
+  })
+
   it('falls back to units for an unknown section rather than rendering nothing', () => {
     renderAt('/manage/lodging/nonsense')
     expect(screen.getByText('UNITS PANEL')).toBeInTheDocument()
   })
 
-  it('links to all three sections', () => {
+  it('links to all four sections', () => {
     renderAt('/manage/lodging/units')
     expect(screen.getByRole('link', { name: 'Units' })).toHaveAttribute(
       'href',
@@ -77,6 +83,10 @@ describe('LodgingSettingsTab', () => {
     expect(screen.getByRole('link', { name: 'Unresolved names' })).toHaveAttribute(
       'href',
       '/manage/lodging/unresolved'
+    )
+    expect(screen.getByRole('link', { name: 'Merge repairs' })).toHaveAttribute(
+      'href',
+      '/manage/lodging/merges'
     )
   })
 })

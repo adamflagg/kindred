@@ -492,6 +492,14 @@ export const queryKeys = {
    * narrower collection could not express.
    */
   lodgingIngestIssues: () => ['lodging-ingest-issues'] as const,
+  /**
+   * A SEPARATE key from `lodgingIngestIssues`, not a shared one: both read
+   * `lodging_ingest_issues`, but filtered to a different `kind`
+   * (UnresolvedAliasQueue vs. MergeRepairPanel). Sharing one key would let
+   * whichever panel mounted first populate the cache, and the other would
+   * render that panel's rows under its own `kind` filter's staleTime window.
+   */
+  lodgingIllegalMergeIssues: () => ['lodging-illegal-merge-issues'] as const,
 }
 
 /**
