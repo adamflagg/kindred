@@ -25,5 +25,17 @@ dist-ssr
 
 # Local config overrides (*.local pattern above covers vite.config.local.ts)
 
+# tsc output from the .ts config files. Running tsc without --noEmit over this
+# directory emits a .js/.d.ts beside each config source; they are untracked but
+# not ignored, so they end up staged by a `git add -A`. Two reasons that hurts:
+# Vite resolves vite.config.js *before* vite.config.ts, so a stale artifact
+# silently shadows the real config, and vite.config.local.* is compiled from
+# the private kindred-local symlink, so committing it would leak camp config.
+# The inner * is load-bearing: it catches the .local and .local.example
+# variants too, which `*.config.js` alone would miss.
+*.config*.js
+*.config*.d.ts
+!eslint.config.js
+
 # Test coverage output
 coverage/
