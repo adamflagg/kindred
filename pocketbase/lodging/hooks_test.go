@@ -731,6 +731,18 @@ func TestReplayOnResolveFiresOnceNotOnItsOwnResave(t *testing.T) {
 	const marker = "Replaying a resolved lodging issue"
 
 	output := captureStdout(t, func() {
+		// The nightly sync's ROUTINE case, and the one the wasResolved half of
+		// the gate alone does not cover: Flush bumping occurrences/last_seen on
+		// a row that is still OPEN. False -> false must not replay-attempt at
+		// all -- a gate written as "skip only when it WAS already resolved"
+		// lets this one through, since wasResolved is false here too, and every
+		// re-hit open row would then pay a full ~1-2s newReplayScope on every
+		// sync.
+		issue.Set("raw_value", "Tuolumne 7") // no-op write: same value, still false
+		if err := app.Save(issue); err != nil {
+			t.Fatalf("touching the still-open issue: %v", err)
+		}
+
 		// The staff tick: a real false -> true transition. Every version of
 		// the hook, buggy or fixed, must replay-attempt exactly once for this.
 		issue.Set("is_resolved", true)
@@ -753,8 +765,9 @@ func TestReplayOnResolveFiresOnceNotOnItsOwnResave(t *testing.T) {
 
 	if got := strings.Count(output, marker); got != 1 {
 		t.Fatalf(
-			"replayOnResolve replay-attempted %d time(s) across one resolve "+
-				"and one same-value resave, want 1 (log: %q)", got, output)
+			"replayOnResolve replay-attempted %d time(s) across an open-row "+
+				"touch, one resolve, and one same-value resave, want 1 (log: %q)",
+			got, output)
 	}
 }
 
