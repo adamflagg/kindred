@@ -140,6 +140,24 @@ func ReplayIssue(app core.App, issueID string) (ReplayResult, error) {
 // does for a party-scoped replay. The count stays meaningful alongside an error
 // -- the assignments it counts are already committed -- and is 0 wherever
 // nothing was written.
+//
+// ROUTING IS NOT TOTAL, and a caller must not assume it is. The party guards
+// here and on ReplayIssue are exact complements, so no row is accepted by both
+// -- but this function carries three refusals ReplayIssue has no counterpart
+// for, and a party-less row of those shapes is refused by BOTH entry points and
+// replayable by neither:
+//
+//   - field_zero_values and unknown_party (below), by kind;
+//   - a row with no raw_value;
+//   - a row whose source_field is not a registered assignment source, or whose
+//     field is disabled or absent from custom_field_defs.
+//
+// field_zero_values is not hypothetical: this database holds an open one. A
+// caller has to surface the error rather than treat it as a failed repair, and
+// a UI should not offer a replay control on those rows at all.
+//
+// What IS accepted, then: unresolved_alias and ambiguous_alias -- the two kinds
+// the fan-out exists for.
 func ReplayPartylessIssue(app core.App, issueID string) (int, error) {
 	row, err := app.FindRecordById("lodging_ingest_issues", issueID)
 	if err != nil {
@@ -151,13 +169,26 @@ func ReplayPartylessIssue(app core.App, issueID string) (int, error) {
 	if row.GetInt("household_cm_id") > 0 || row.GetInt("person_cm_id") > 0 {
 		return 0, fmt.Errorf("issue %s is party-scoped; use ReplayIssue", issueID)
 	}
-	// The fourth party-less kind. Its raw_value names the FIELD that saw no
-	// values, not a cabin string, so a fan-out on it would search for parties
-	// whose cabin answer is the field's own name and place nothing. Refusing says
-	// so; returning 0 would look like a string nobody writes any more.
-	if row.GetString("kind") == issueFieldZeroValues {
+	// Two of the four party-less kinds route nowhere. Both would otherwise reach
+	// the fan-out, place nothing, and report a quiet success.
+	switch row.GetString("kind") {
+	case issueFieldZeroValues:
+		// Its raw_value names the FIELD that saw no values, not a cabin string, so
+		// a fan-out searches for parties whose cabin answer is the field's own
+		// name. Nothing here can repair it.
 		return 0, fmt.Errorf(
 			"issue %s is a field-level warning, not a cabin value; nothing to replay", issueID)
+	case issueUnknownParty:
+		// This one does name a real cabin string, which is what makes it
+		// dangerous. The row exists BECAUSE its party has no CampMinder id for the
+		// year -- and those are exactly the value rows partiesWritingValue skips,
+		// since a placement cannot be keyed on them. So the party the row is about
+		// can never be re-recorded and the row can never re-open; worse, if other
+		// households wrote the same string the click would report placing them
+		// while the named party stayed exactly as stuck as before. The repair is
+		// upstream, in whichever sync should have produced the party.
+		return 0, fmt.Errorf(
+			"issue %s names a party with no CampMinder id; its repair is upstream, not a replay", issueID)
 	}
 
 	year := row.GetInt("year")
@@ -182,20 +213,37 @@ func ReplayPartylessIssue(app core.App, issueID string) (int, error) {
 	}
 	byHousehold := field.Grain == grainHousehold
 
+	// Resolved here rather than inside partiesWritingValue so that "the field is
+	// switched off" is a refusal beside the other refusals, and cannot be
+	// mistaken downstream for "no party wrote this string". The two produce the
+	// same empty list and mean opposite things: one is a mapping a human has to
+	// restore, the other is nothing left to do.
+	fieldTargets, err := LodgingFieldDefIDs(app)
+	if err != nil {
+		return 0, fmt.Errorf("loading source field mappings: %w", err)
+	}
+	defIDs := defIDsForTarget(fieldTargets, field.Target)
+	if len(defIDs) == 0 {
+		return 0, fmt.Errorf(
+			"issue %s reads source field %q, which is disabled or absent from custom_field_defs; "+
+				"no value can be read through it", issueID, sourceField)
+	}
+
 	s, err := newReplayScope(app, year)
 	if err != nil {
 		return 0, err
 	}
 
-	parties, err := s.partiesWritingValue(year, field, raw)
+	parties, err := s.partiesWritingValue(year, field, defIDs, raw)
 	if err != nil {
 		return 0, fmt.Errorf("finding the parties that wrote %q: %w", raw, err)
 	}
 	if len(parties) == 0 {
-		// Nobody writes this string this year any more -- staff edited the
-		// CampMinder values after the row was queued, or the field was disabled.
-		// There is no placement to make and no party to keep an item open for, so
-		// the row stays ticked.
+		// The one quiet tick left, and the only one that earns it: the field is
+		// mapped and readable, and no party writes this string this year -- staff
+		// edited the CampMinder values after the row was queued. There is no
+		// placement to make and no party to keep an item open for, so the row
+		// stays ticked and the caller hears zero.
 		return 0, nil
 	}
 
@@ -307,20 +355,14 @@ func (p replayParty) cmID() int {
 // every weekend, so AttributeSession falls through to the last candidate and
 // Flush overwrites the stored suggestion with it.
 //
+// defIDs comes from the caller because an empty one is a refusal there, not an
+// empty result here: a field nobody mapped and a string nobody writes both
+// produce no parties and mean opposite things.
+//
 //nolint:gocritic // hugeParam: one registry row, passed by value like the registry itself
 func (s *LodgingAssignmentsSync) partiesWritingValue(
-	year int, field lodgingSourceField, raw string,
+	year int, field lodgingSourceField, defIDs []string, raw string,
 ) ([]replayParty, error) {
-	fieldTargets, err := LodgingFieldDefIDs(s.App)
-	if err != nil {
-		return nil, fmt.Errorf("loading source field mappings: %w", err)
-	}
-	defIDs := defIDsForTarget(fieldTargets, field.Target)
-	if len(defIDs) == 0 {
-		// Unmapped or disabled by hand -- the same early out the grain passes take.
-		return nil, nil
-	}
-
 	// Both value tables name their party relation after the grain.
 	byHousehold := field.Grain == grainHousehold
 	valueCollection, partyCollection := serviceNamePersonCustomValues, personsCollection

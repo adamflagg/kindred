@@ -792,6 +792,23 @@ func TestReplayPartylessIssueRefusesRowsItCannotFanOut(t *testing.T) {
 			"kind": issueUnresolvedAlias, "raw_value": "Nowhere Cabin",
 			"source_field": "Some Retired Field", "year": 2026, "is_resolved": true,
 		}},
+		// unknown_party is the third party-less kind and DOES name a cabin string,
+		// so it routes here -- but the row exists because its party has no
+		// CampMinder id, and those are exactly the value rows the fan-out skips.
+		// The party the row is about could never be re-recorded, so the row could
+		// never re-open; and if other households wrote the same string the click
+		// would report placed=N while the named party stayed unplaced.
+		{"unknown party", map[string]any{
+			"kind": issueUnknownParty, "raw_value": "Nowhere Cabin",
+			"source_field": fieldNameFamilyCampCabin, "year": 2026, "is_resolved": true,
+		}},
+		// No custom_field_defs row for the field, so no value can be read through
+		// it. Reporting 0 placements would be indistinguishable from "the string
+		// resolves and nobody writes it any more".
+		{"source field absent from custom_field_defs", map[string]any{
+			"kind": issueUnresolvedAlias, "raw_value": "Nowhere Cabin",
+			"source_field": fieldNameFamilyCampCabin, "year": 2026, "is_resolved": true,
+		}},
 	}
 
 	for _, tc := range cases {
@@ -805,6 +822,43 @@ func TestReplayPartylessIssueRefusesRowsItCannotFanOut(t *testing.T) {
 				t.Errorf("placed = %d on a refused row, want 0", placed)
 			}
 		})
+	}
+}
+
+// A hand-disabled source field is the same dead end as an absent one, and the
+// realistic one: somebody turned the mapping off in lodging_field_mappings.
+//
+// Everything else here is in place -- the string resolves, both households
+// wrote it, the placement would land -- so the off switch is the only thing
+// stopping the replay. Reporting a quiet zero would tick the row on the
+// strength of a mapping nobody restored.
+func TestReplayPartylessIssueRefusesARowWhoseSourceFieldIsDisabled(t *testing.T) {
+	app := newLodgingTestApp(t)
+	seedTwoHouseholdsSharingACabinString(t, app, "Ridge Cabin 9", 2026)
+	addAlias(t, app, "Ridge Cabin 9", []string{addUnit(t, app, "ridge-9")}, 0, 0)
+	saveRecord(t, app, "lodging_field_mappings", map[string]any{
+		"field_cm_id": cmIDFamilyCampCabin, "field_name": fieldNameFamilyCampCabin,
+		"target": targetCabinAssignmentHousehold, "is_enabled": false,
+	})
+
+	id := seedIssue(t, app, map[string]any{
+		"kind":         issueUnresolvedAlias,
+		"raw_value":    "Ridge Cabin 9",
+		"source_field": fieldNameFamilyCampCabin,
+		"year":         2026,
+		"is_resolved":  true,
+	})
+
+	placed, err := ReplayPartylessIssue(app, id)
+	if err == nil {
+		t.Fatalf("expected a refusal; got placed = %d and no error", placed)
+	}
+	if placed != 0 {
+		t.Errorf("placed = %d, want 0", placed)
+	}
+	rows, _ := app.FindRecordsByFilter("lodging_assignments", "", "", 0, 0)
+	if len(rows) != 0 {
+		t.Errorf("assignments = %d, want 0 through a disabled field", len(rows))
 	}
 }
 
@@ -975,20 +1029,18 @@ func TestReplayPartylessIssueCountsOnlyThePartiesItPlaced(t *testing.T) {
 	}
 }
 
-// One pass, two grains of item: this is the only caller that records a
-// party-LESS item and a party-SCOPED one together, because the alias kinds
-// carry no party while the attribution failure a fanned-out household hits
-// carries that household. Both have to land on their own row, and a household
-// the fan-out never reached has to keep its tick.
+// The other half of the re-open rule: a household the fan-out never reached
+// keeps its tick, even though its row names this same string.
 //
 // Scope, stated honestly: this does NOT discriminate a party-blind re-open
 // lookup, though the shape invites the reading. Probed -- with the party
 // columns dropped from reopenRecorded's filter both rows here still match, and
-// which one comes back is SQLite's ordering rather than the rule, so the probe
-// passes. The deterministic guard on the tuple is
-// TestFindExistingMatchesOnTheWholeDedupTuple, which seeds one row and asserts
-// hit or miss per varied field. What this test does hold is the observable
-// invariant those two grains have to satisfy at once.
+// a party-blind filter is a left prefix of idx_lodging_issues_dedup, so the
+// scan comes back ordered by household_cm_id and the stranger at 9003 sorts
+// AFTER the recorded party at 9002; the blind lookup gets the right row by
+// accident of index order. TestReplayPartylessIssueReopensEveryBlockedPartysRow
+// is the case that does discriminate, and
+// TestFindExistingMatchesOnTheWholeDedupTuple pins the lookup itself.
 func TestReplayPartylessIssueLeavesAnotherHouseholdsTickedRowAlone(t *testing.T) {
 	app := newLodgingTestApp(t)
 	_, _, _, parties := seedFanOutWithOneAmbiguousHousehold(t, app, "Ridge Cabin 9")
@@ -1039,6 +1091,83 @@ func TestReplayPartylessIssueLeavesAnotherHouseholdsTickedRowAlone(t *testing.T)
 	}
 	if blocked[0].GetBool("is_resolved") {
 		t.Error("the blocked household's row is ticked; its work would surface nowhere")
+	}
+}
+
+// The party dimension of the re-open lookup, and the first case that can
+// discriminate it.
+//
+// Two households wrote the string and BOTH are blocked on attribution, so
+// reopenRecorded holds two recorded items whose dedup tuples differ in nothing
+// but the party. A party-blind findExisting is LIMIT 1, so it returns the SAME
+// row for both: the first call un-ticks it, and the second finds that row
+// already open and takes the `if !row.GetBool("is_resolved") { continue }`
+// early-out. Exactly one row ends open where the rule requires two -- and that
+// holds whichever of the two the scan returns first, which is what makes this
+// order-independent where a stranger row is not.
+func TestReplayPartylessIssueReopensEveryBlockedPartysRow(t *testing.T) {
+	app := newLodgingTestApp(t)
+	_, parties := seedTwoHouseholdsSharingACabinString(t, app, "Ridge Cabin 9", 2025)
+	// The string resolves, so the alias row's own blocker is genuinely gone and
+	// the only thing this pass can record is the two attribution failures.
+	addAlias(t, app, "Ridge Cabin 9", []string{addUnit(t, app, "ridge-9")}, 0, 0)
+
+	// Both households attend a second weekend, so CampMinder's single value for
+	// the year cannot say which one it describes -- for either of them.
+	second := addSession(t, app, cmIDFamilyCamp6, "Family Camp 6", "family",
+		"2025-09-18 07:00:00.000Z", "2025-09-21 07:00:00.000Z", 2025)
+	for _, p := range parties {
+		addAttendee(t, app, p.PersonPBID, second, p.PersonCMID, 2, 2025)
+	}
+
+	// Staff worked and ticked both blockers before clicking the alias row.
+	ticked := make([]string, 0, len(parties))
+	for _, p := range parties {
+		ticked = append(ticked, seedIssue(t, app, map[string]any{
+			"kind":            issueAmbiguousSession,
+			"raw_value":       "Ridge Cabin 9",
+			"source_field":    fieldNameFamilyCampCabin,
+			"year":            2025,
+			"is_resolved":     true,
+			"household_cm_id": p.HouseholdCMID,
+		}))
+	}
+
+	id := seedIssue(t, app, map[string]any{
+		"kind":         issueUnresolvedAlias,
+		"raw_value":    "Ridge Cabin 9",
+		"source_field": fieldNameFamilyCampCabin,
+		"year":         2025,
+		"is_resolved":  true,
+	})
+
+	placed, err := ReplayPartylessIssue(app, id)
+	if err != nil {
+		t.Fatalf("ReplayPartylessIssue: %v", err)
+	}
+	if placed != 0 {
+		t.Errorf("placed = %d, want 0 -- both households are ambiguous", placed)
+	}
+
+	for i, rowID := range ticked {
+		row, findErr := app.FindRecordById("lodging_ingest_issues", rowID)
+		if findErr != nil {
+			t.Fatalf("reloading household %d's row: %v", parties[i].HouseholdCMID, findErr)
+		}
+		if row.GetBool("is_resolved") {
+			t.Errorf("household %d's row is still ticked after the pass re-hit it; "+
+				"the re-open matched on something coarser than the party",
+				parties[i].HouseholdCMID)
+		}
+	}
+
+	// The alias row's own blocker really is gone, so it stays ticked.
+	clicked, err := app.FindRecordById("lodging_ingest_issues", id)
+	if err != nil {
+		t.Fatalf("reloading the clicked row: %v", err)
+	}
+	if !clicked.GetBool("is_resolved") {
+		t.Error("the unresolved_alias row was re-opened, but the string resolves now")
 	}
 }
 
