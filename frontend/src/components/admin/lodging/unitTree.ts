@@ -3,11 +3,13 @@
  *
  * The parent picker (`UnitIdentityFields`) has to reject two things the API
  * does not stop: setting a unit's parent to one of its own descendants — a
- * cycle nothing walks today, but the merge-legality rule the plan defers is
- * the natural place an ancestor walk will appear — and a non-container
- * parent, which `scripts/dev/verify-lodging-seed.sh` treats as a seed
- * failure. There is no PocketBase rule or Go hook for either; this is the
- * only guard.
+ * cycle the merge-legality rule's own ancestor walk (JudgeMerge) would
+ * otherwise hang on — and a non-container parent, which
+ * `scripts/dev/verify-lodging-seed.sh` treats as a seed failure. The cycle
+ * case now has a server-side backstop too (`guardUnitParentCycle`, #1899),
+ * for the direct write this picker can't filter; the non-container case still
+ * has no PocketBase rule or Go hook at all. This filters both before either
+ * ever reaches a write.
  */
 import type { LodgingUnitRecord } from '../../../types/lodging'
 

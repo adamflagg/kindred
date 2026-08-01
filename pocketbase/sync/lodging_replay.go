@@ -453,6 +453,19 @@ func (s *LodgingAssignmentsSync) partiesWritingValue(
 // before reaching here, so a row can stay ticked with no placement behind it.
 // That is left alone deliberately -- the error is surfaced to the caller rather
 // than swallowed, and a re-click replays cleanly.
+//
+// One row it must NOT reopen (#1899): an unresolved_alias/ambiguous_alias row
+// ticked with resolved_alias still empty is an IGNORE, not a mapping --
+// ignoreIngestIssue leaves it empty on purpose, and mapUnresolvedAlias always
+// sets it. Both of this function's callers collapse these two kinds onto a
+// dedup key with no party in it, so ANY replay -- a party-scoped ReplayIssue
+// for an unrelated household, or ReplayPartylessIssue's own fan-out for a
+// different string -- that happens to also fail to resolve the SAME raw_value
+// lands on this row's exact key. Reopening it there would undo a staff
+// decision as a side effect of someone else's click. A row that WAS mapped
+// (resolved_alias set) but still fails to resolve some later year is a
+// different situation -- the mapping itself may no longer cover it -- and
+// must still reopen.
 func reopenRecorded(issues *IssueRecorder, recorded []Issue) error {
 	for i := range recorded {
 		row, err := issues.findExisting(&recorded[i])
@@ -468,12 +481,28 @@ func reopenRecorded(issues *IssueRecorder, recorded []Issue) error {
 		if !row.GetBool("is_resolved") {
 			continue
 		}
+		if isIgnoredPartylessAliasRow(recorded[i].Kind, row) {
+			continue
+		}
 		row.Set("is_resolved", false)
 		if err := issues.app.Save(row); err != nil {
 			return fmt.Errorf("reopening issue %s: %w", row.Id, err)
 		}
 	}
 	return nil
+}
+
+// isIgnoredPartylessAliasRow reports whether row is an unresolved_alias or
+// ambiguous_alias row staff resolved without mapping it. resolved_alias is
+// only a meaningful signal for these two kinds -- every other kind's
+// resolution path leaves it empty regardless, so checking it without this
+// kind guard would also block a legitimate reopen of, say, a manually
+// resolved no_session row that is still genuinely broken.
+func isIgnoredPartylessAliasRow(kind string, row *core.Record) bool {
+	if kind != issueUnresolvedAlias && kind != issueAmbiguousAlias {
+		return false
+	}
+	return row.GetString("resolved_alias") == ""
 }
 
 // observationTimestampFor reads last_updated off the source custom-value row

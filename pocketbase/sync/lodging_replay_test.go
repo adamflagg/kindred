@@ -930,15 +930,24 @@ func TestReplayPartylessIssueFansOutToEveryPartyThatWroteTheString(t *testing.T)
 func TestReplayPartylessIssueReopensARowWhoseStringStillDoesNotResolve(t *testing.T) {
 	app := newLodgingTestApp(t)
 	seedTwoHouseholdsSharingACabinString(t, app, "Nowhere Cabin", 2026)
-	// No alias: staff ticked the row without actually mapping the string.
+	// A REAL mapping exists -- resolved_alias is set, as production always
+	// sets it on a genuine map (#1899: mapUnresolvedAlias never leaves it
+	// empty; only ignoreIngestIssue does, and an ignored row must never
+	// reopen -- see TestReplayPartylessIssueDoesNotReopenAnIgnoredRow). But
+	// the alias covers 2027 onward, not 2026, so this year's occurrence of
+	// the string still does not resolve: reopening is the right outcome for
+	// a stale mapping, unlike for an ignore.
+	unit := addUnit(t, app, "gt-somewhere")
+	aliasID := addAlias(t, app, "Nowhere Cabin", []string{unit}, 2027, 0)
 
 	id := seedIssue(t, app, map[string]any{
-		"kind":         issueUnresolvedAlias,
-		"raw_value":    "Nowhere Cabin",
-		"source_field": fieldNameFamilyCampCabin,
-		"year":         2026,
-		"is_resolved":  true,
-		"occurrences":  2,
+		"kind":           issueUnresolvedAlias,
+		"raw_value":      "Nowhere Cabin",
+		"source_field":   fieldNameFamilyCampCabin,
+		"year":           2026,
+		"is_resolved":    true,
+		"occurrences":    2,
+		"resolved_alias": aliasID,
 	})
 
 	placed, err := ReplayPartylessIssue(app, id)
@@ -967,6 +976,90 @@ func TestReplayPartylessIssueReopensARowWhoseStringStillDoesNotResolve(t *testin
 	}
 	if got := issues[0].GetInt("occurrences"); got != 2 {
 		t.Errorf("occurrences = %d, want 2 -- one per household that still writes the string", got)
+	}
+}
+
+// #1899: the mirror of the test above. An unresolved_alias/ambiguous_alias
+// row ticked with resolved_alias EMPTY is an ignore -- ignoreIngestIssue
+// (frontend/src/services/lodgingCrud.ts) writes exactly this shape for "not a
+// cabin name" -- and a fan-out that re-fails identically for every party who
+// wrote the string must not undo that decision.
+func TestReplayPartylessIssueDoesNotReopenAnIgnoredRow(t *testing.T) {
+	app := newLodgingTestApp(t)
+	seedTwoHouseholdsSharingACabinString(t, app, "Not A Cabin", 2026)
+	// No alias, and none is coming: staff said this string is not a cabin
+	// name, which is exactly what resolved_alias staying empty records.
+
+	id := seedIssue(t, app, map[string]any{
+		"kind":         issueUnresolvedAlias,
+		"raw_value":    "Not A Cabin",
+		"source_field": fieldNameFamilyCampCabin,
+		"year":         2026,
+		"is_resolved":  true,
+		"occurrences":  2,
+		// resolved_alias intentionally omitted -- the ignore marker.
+	})
+
+	if _, err := ReplayPartylessIssue(app, id); err != nil {
+		t.Fatalf("ReplayPartylessIssue: %v", err)
+	}
+
+	got, err := app.FindRecordById("lodging_ingest_issues", id)
+	if err != nil {
+		t.Fatalf("reloading the issue: %v", err)
+	}
+	if !got.GetBool("is_resolved") {
+		t.Error("an ignored row must stay resolved after a fan-out that still " +
+			"cannot resolve the string -- reopening it undoes the ignore")
+	}
+}
+
+// #1899: the parked Task-4 item. unresolved_alias/ambiguous_alias collapse
+// their dedup key across every party, so a party-SCOPED replay of a
+// completely different issue can land on the exact same key if that party's
+// OWN cabin string also fails to resolve -- and before this fix, reopenRecorded
+// could not tell that collision apart from a genuine re-observation of the
+// row it was meant to touch.
+func TestReopenRecordedDoesNotReopenAnUnrelatedIgnoredRowDuringAPartyScopedReplay(t *testing.T) {
+	app := newLodgingTestApp(t)
+	_, parties := seedTwoHouseholdsSharingACabinString(t, app, "Not A Cabin", 2026)
+	// Nobody ever mapped "Not A Cabin" -- staff ignored it once, and it is
+	// exactly as unmapped now as it was then.
+
+	ignoredID := seedIssue(t, app, map[string]any{
+		"kind":         issueUnresolvedAlias,
+		"raw_value":    "Not A Cabin",
+		"source_field": fieldNameFamilyCampCabin,
+		"year":         2026,
+		"is_resolved":  true,
+		"occurrences":  2,
+	})
+
+	// A wholly separate, party-scoped row for parties[0] -- its own kind and
+	// history do not matter here. What matters is that replaying IT calls
+	// ingestValue for parties[0], whose own custom-field answer is the SAME
+	// "Not A Cabin" string, which re-records the ignored row's exact
+	// collapsed key as a side effect of a replay that was never about it.
+	unrelatedID := seedIssue(t, app, map[string]any{
+		"kind":            issueNoSession,
+		"raw_value":       "Not A Cabin",
+		"source_field":    fieldNameFamilyCampCabin,
+		"year":            2026,
+		"household_cm_id": parties[0].HouseholdCMID,
+		"is_resolved":     true,
+	})
+
+	if _, err := ReplayIssue(app, unrelatedID); err != nil {
+		t.Fatalf("ReplayIssue: %v", err)
+	}
+
+	got, err := app.FindRecordById("lodging_ingest_issues", ignoredID)
+	if err != nil {
+		t.Fatalf("reloading the ignored issue: %v", err)
+	}
+	if !got.GetBool("is_resolved") {
+		t.Error("an unrelated party-scoped replay reopened an ignored row it " +
+			"only shares a collapsed dedup key with")
 	}
 }
 

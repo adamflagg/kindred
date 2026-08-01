@@ -264,6 +264,15 @@ func guardUnitParentCycle(e *core.RecordEvent) error {
 // hook must SURFACE the refusal rather than assume every resolved row replays,
 // and Task 7 must not offer a replay control on a row nothing will accept.
 //
+// A fourth case this hook refuses on its own, before either entry point sees
+// it: an unresolved_alias/ambiguous_alias row resolved with resolved_alias
+// still empty, which is what ignoreIngestIssue writes for "not a cabin name."
+// ReplayPartylessIssue itself accepts those two kinds unconditionally, so
+// without this check a fan-out over every party who wrote the string would
+// re-fail identically for all of them and reopenRecorded would undo the
+// ignore. field_zero_values and unknown_party stay untouched by this check --
+// their own refusal inside ReplayPartylessIssue must still surface.
+//
 // A replay failure must NOT fail the resolve. Staff corrected the registry and
 // that correction is valid regardless; the placement can be picked up by the
 // next sync. Log and continue.
@@ -287,6 +296,41 @@ func replayOnResolve(e *core.RecordEvent) error {
 	}
 	partyScoped := e.Record.GetInt("household_cm_id") > 0 ||
 		e.Record.GetInt("person_cm_id") > 0
+
+	// An unresolved_alias/ambiguous_alias row resolved with no resolved_alias
+	// is an IGNORE, not a mapping: ignoreIngestIssue (frontend/src/services/
+	// lodgingCrud.ts) deliberately leaves resolved_alias empty -- that
+	// emptiness is what distinguishes an ignored row from a mapped one, per
+	// its own doc comment. mapUnresolvedAlias always sets it, so this does not
+	// touch the real mapping path.
+	//
+	// Scoped to those two kinds specifically, not "any party-less row with no
+	// resolved_alias": field_zero_values and unknown_party are ALSO
+	// party-less and ALSO never carry a resolved_alias, but their refusal has
+	// to keep reaching ReplayPartylessIssue so it surfaces (see
+	// TestReplayRefusalDoesNotBlockTheTick) -- resolved_alias means nothing
+	// for those two kinds, so treating its emptiness as an ignore marker
+	// there would swallow a refusal this hook is supposed to log.
+	//
+	// Fanning a replay out over every party who wrote this string when no
+	// alias resolves it can only re-fail identically for every one of them:
+	// ReplayPartylessIssue accepts unresolved_alias/ambiguous_alias
+	// unconditionally, so with nothing to skip on, ingestValue re-records the
+	// same collapsed issue, Flush writes it onto the row staff just ticked,
+	// and reopenRecorded flips is_resolved back to false -- undoing the
+	// ignore, after paying a full fan-out (a whole-year session index plus
+	// one ingestValue per party) for it, and risking a fresh
+	// no_session/ambiguous_session row for any of those parties' unrelated
+	// attribution failures as a side effect.
+	//
+	// The party-scoped branch is untouched: recheckIllegalMerges resolves an
+	// illegal_merge row with no resolved_alias by design (a repaired
+	// container, not a mapping), and that must still replay.
+	kind := e.Record.GetString("kind")
+	isPartylessAliasKind := kind == "unresolved_alias" || kind == "ambiguous_alias"
+	if !partyScoped && isPartylessAliasKind && e.Record.GetString("resolved_alias") == "" {
+		return e.Next()
+	}
 
 	var err error
 	if partyScoped {

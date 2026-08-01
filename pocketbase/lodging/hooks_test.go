@@ -952,3 +952,56 @@ func TestRecheckIllegalMergesLeavesAStillBrokenMergeAloneOnUnrelatedAliasEdit(t 
 		t.Fatalf("expected no resolution note, got %q", got.GetString("resolution_note"))
 	}
 }
+
+// #1899 CRITICAL, found in the final review: ignoreIngestIssue
+// (frontend/src/services/lodgingCrud.ts) resolves a party-less row with
+// resolved_alias deliberately left empty -- that emptiness is the marker
+// distinguishing an ignore from a mapping. Before this fix, replayOnResolve
+// had no check for it: the PATCH is a genuine false -> true transition, so it
+// routed straight to ReplayPartylessIssue, which accepts unresolved_alias
+// unconditionally. In production that fans out over every party who wrote the
+// string, re-fails identically for all of them since no alias exists,
+// Flush writes the re-observation onto the row staff just ticked, and
+// reopenRecorded flips is_resolved back to false -- staff see a success toast
+// and the row is still there.
+//
+// This schema has none of ReplayPartylessIssue's supporting collections
+// (persons, attendees, ...), so a replay attempt that reaches it fails
+// deterministically before ever reaching that far -- which is exactly what
+// makes counting the replay-attempt log line a reliable stand-in for "was a
+// replay attempted at all," the same technique as
+// TestReplayRefusalDoesNotBlockTheTick and
+// TestReplayOnResolveFiresOnceNotOnItsOwnResave.
+func TestIgnoringAPartylessRowDoesNotAttemptAReplay(t *testing.T) {
+	app, err := tests.NewTestAppWithConfig(core.BaseAppConfig{
+		EncryptionEnv: "pb_test_env",
+		IsDev:         true, // so app.Logger() prints synchronously; see captureStdout.
+	})
+	if err != nil {
+		t.Fatalf("NewTestAppWithConfig: %v", err)
+	}
+	defer app.Cleanup()
+
+	setupCollections(t, app)
+	// Party-less kind, no resolved_alias -- the exact shape ignoreIngestIssue
+	// writes for "not a cabin name."
+	issue := newIssue(t, app, "unresolved_alias", "Not A Cabin", 2026, 0, 0)
+
+	wireHooks(app)
+
+	const marker = "Replaying a resolved lodging issue"
+
+	output := captureStdout(t, func() {
+		// The ignore: is_resolved goes true, resolved_alias stays untouched
+		// (empty), same as ignoreIngestIssue's PATCH body.
+		issue.Set("is_resolved", true)
+		issue.Set("resolution_note", "Not a cabin name")
+		if err := app.Save(issue); err != nil {
+			t.Fatalf("ignoring the issue: %v", err)
+		}
+	})
+
+	if got := strings.Count(output, marker); got != 0 {
+		t.Fatalf("ignoring a party-less row attempted %d replay(s), want 0 (log: %q)", got, output)
+	}
+}
