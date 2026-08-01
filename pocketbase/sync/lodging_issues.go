@@ -39,6 +39,10 @@ const (
 	// durable or queryable, so the value would otherwise vanish once the log
 	// rotates.
 	issueWriteFailed = "write_failed"
+	// issueIllegalMerge marks a cabin string whose alias resolves to a unit set
+	// that is not the complete child set of any container. The placement is NOT
+	// written; staff repair the registry and the row replays.
+	issueIllegalMerge = "illegal_merge"
 )
 
 // Issue is one work-queue item. Zero-valued HouseholdCMID / PersonCMID mean "not
