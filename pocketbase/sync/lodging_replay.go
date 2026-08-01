@@ -32,9 +32,9 @@ type ReplayResult struct {
 // work queue.
 //
 // This is a SCOPED MINI-SYNC, not a pure function call. ingestValue needs the
-// resolver, the unit tree, the party-size indexes and the party's candidate
-// weekends. All four are rebuilt here for one party. That costs ~1-2s,
-// dominated by buildPartySizeIndexes' three table scans.
+// resolver, the party-size indexes and the party's candidate weekends. All
+// three are rebuilt here for one party. That costs ~1-2s, dominated by
+// buildPartySizeIndexes' three table scans.
 //
 // It deliberately calls ingestValue rather than reimplementing placement. A
 // second placement path would drift from the sync's, and the drift would show
@@ -301,7 +301,7 @@ func ReplayPartylessIssue(app core.App, issueID string) (int, error) {
 	return placed, nil
 }
 
-// newReplayScope wires a LodgingAssignmentsSync for one year with the four
+// newReplayScope wires a LodgingAssignmentsSync for one year with the three
 // things ingestValue needs and nothing a whole-year run needs.
 //
 // Both replay entry points build these, and they have to build them the same
@@ -435,10 +435,10 @@ func (s *LodgingAssignmentsSync) partiesWritingValue(
 // Scoping this to the RECORDED items rather than to the replayed row is what
 // makes the invariant hold. It re-opens the replayed row exactly when that
 // row's own blocker recurred, so a row whose named blocker is gone is still
-// never touched: repairing an illegal merge and then hitting an ambiguous
-// session means the merge really was fixed, and re-opening it would send staff
-// to inspect something no longer wrong while the real blocker sits in its own
-// accurate row. But it ALSO covers the row that is not the replayed one --
+// never touched: a write that failed last run and now succeeds, only to hit an
+// ambiguous session, means the write really was fixed -- re-opening that row
+// would send staff to inspect something no longer wrong while the real blocker
+// sits in its own accurate row. But it ALSO covers the row that is not the replayed one --
 // blockers accumulate across runs, staff tick them all, and a pass that re-hits
 // an already-ticked sibling would otherwise leave nothing open at all.
 //
