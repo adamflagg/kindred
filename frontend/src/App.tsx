@@ -219,10 +219,6 @@ function App() {
                             />
                           </Route>
 
-                          {/* /admin/* is retired outright, not redirected — the repo owner
-                              was its only user, so there are no bookmarks to preserve.
-                              App.routes.test.tsx pins that no /admin route comes back. */}
-
                           {/* Manage routes - staff-facing management tools. Each tab route
                               below carries its own guard (RequirePermission or AdminRoute) —
                               the layout has no blanket check, since the tabs it hosts have

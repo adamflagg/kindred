@@ -121,10 +121,7 @@ describe('/manage route wiring', () => {
 })
 
 /**
- * The nav consolidation originally kept /admin/* as permanent redirects to
- * preserve bookmarks. That was retired: the repo owner was the only user of
- * those paths, so there are no third-party bookmarks to honour and the
- * redirects were pure carrying cost.
+ * /admin/* was retired outright rather than kept as redirects.
  *
  * Source-grep rather than a render test, for the same reason as
  * manageTabs.guard.test.ts — this asserts against the *real* route table, not
