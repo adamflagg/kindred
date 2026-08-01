@@ -5,7 +5,11 @@ import type { Program } from '../contexts/ProgramContext'
  */
 export function getProgramUrl(path: string, program: Program): string {
   const cleanPath = path.startsWith('/') ? path.slice(1) : path
-  const sharedRoutes = ['user', 'users', 'campers', 'camper', 'admin']
+  // 'admin' stays even though nothing calls this with an admin path — the
+  // /admin redirects (nav consolidation) still resolve either way, and
+  // removing it isn't confirmed safe. 'manage' is added for the same
+  // treatment now that Sync and Configuration live under it too.
+  const sharedRoutes = ['user', 'users', 'campers', 'camper', 'admin', 'manage']
   if (sharedRoutes.some((route) => cleanPath.startsWith(route))) {
     return `/${cleanPath}`
   }

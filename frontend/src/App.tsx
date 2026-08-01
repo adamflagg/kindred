@@ -17,7 +17,7 @@ import { RequirePermission } from './components/RequirePermission'
 import { Permission } from './constants/permissions'
 import { usePermissions } from './hooks/usePermissions'
 import { useAuth } from './contexts/AuthContext'
-import { MANAGE_TABS } from './config/manageTabs'
+import { MANAGE_TABS, canSeeTab } from './config/manageTabs'
 import { AuthLayout } from './layouts/AuthLayout'
 import { AppLayout } from './layouts/AppLayout'
 import LoginPage from './pages/LoginPage'
@@ -32,9 +32,6 @@ const SessionView = lazy(() => import('./components/SessionView'))
 const SessionList = lazy(() => import('./components/SessionList'))
 const AllCampersView = lazy(() => import('./components/AllCampersView'))
 const CamperDetail = lazy(() => import('./components/CamperDetail'))
-const AdminLayout = lazy(() =>
-  import('./components/AdminLayout').then((m) => ({ default: m.AdminLayout }))
-)
 const SyncTab = lazy(() =>
   import('./components/admin/SyncTab').then((m) => ({ default: m.SyncTab }))
 )
@@ -140,14 +137,23 @@ function CamperRedirect() {
   return <Navigate to={`/camper/${camperId}`} replace />
 }
 
+// Redirect helper for /admin/config/:category — a bare Navigate can't forward
+// the param, so this small component reads it and rebuilds the /manage path.
+function AdminConfigCategoryRedirect() {
+  const { category } = useParams()
+  return <Navigate to={`/manage/config/${category}`} replace />
+}
+
 // Smart redirect to first permitted manage tab
 function ManageRedirect() {
   const { isLoading } = useAuth()
-  const { hasPermission } = usePermissions()
+  const { hasPermission, isAdmin } = usePermissions()
 
   if (isLoading) return null // parent Suspense shows skeleton
 
-  const firstPermitted = MANAGE_TABS.find((tab) => hasPermission(tab.requiredPermission))
+  const firstPermitted = MANAGE_TABS.find((tab) =>
+    canSeeTab(tab.access, { hasPermission, isAdmin })
+  )
   // eslint-disable-next-line @typescript-eslint/no-non-null-assertion -- MANAGE_TABS is a compile-time constant, always non-empty
   return <Navigate to={firstPermitted?.path ?? MANAGE_TABS[0]!.path} replace />
 }
@@ -220,46 +226,25 @@ function App() {
                             />
                           </Route>
 
-                          {/* Admin routes - nested tab navigation */}
-                          <Route path="/admin" element={<AppLayout />}>
-                            <Route index element={<Navigate to="/admin/sync" replace />} />
-                            <Route
-                              element={
-                                <ErrorBoundary>
-                                  <Suspense fallback={<PageSkeleton />}>
-                                    <AdminLayout />
-                                  </Suspense>
-                                </ErrorBoundary>
-                              }
-                            >
-                              <Route
-                                path="sync"
-                                element={
-                                  <ErrorBoundary>
-                                    <Suspense fallback={<PageSkeleton />}>
-                                      <SyncTab />
-                                    </Suspense>
-                                  </ErrorBoundary>
-                                }
-                              />
-                              <Route
-                                path="config"
-                                element={<Navigate to="/admin/config/solver" replace />}
-                              />
-                              <Route
-                                path="config/:category"
-                                element={
-                                  <ErrorBoundary>
-                                    <Suspense fallback={<PageSkeleton />}>
-                                      <ConfigTab />
-                                    </Suspense>
-                                  </ErrorBoundary>
-                                }
-                              />
-                            </Route>
-                          </Route>
+                          {/* Admin routes - permanent redirects into /manage (#1895, #450) */}
+                          <Route path="/admin" element={<Navigate to="/manage" replace />} />
+                          <Route
+                            path="/admin/sync"
+                            element={<Navigate to="/manage/sync" replace />}
+                          />
+                          <Route
+                            path="/admin/config"
+                            element={<Navigate to="/manage/config/solver" replace />}
+                          />
+                          <Route
+                            path="/admin/config/:category"
+                            element={<AdminConfigCategoryRedirect />}
+                          />
 
-                          {/* Manage routes - staff-facing management tools */}
+                          {/* Manage routes - staff-facing management tools. Each tab route
+                              below carries its own guard (RequirePermission or AdminRoute) —
+                              the layout has no blanket check, since the tabs it hosts have
+                              mixed access requirements (see manageTabs.ts TabAccess). */}
                           <Route path="/manage" element={<AppLayout />}>
                             <Route index element={<ManageRedirect />} />
                             <Route
@@ -323,6 +308,34 @@ function App() {
                                   </RequirePermission>
                                 }
                               />
+                              <Route
+                                path="sync"
+                                element={
+                                  <AdminRoute>
+                                    <ErrorBoundary>
+                                      <Suspense fallback={<PageSkeleton />}>
+                                        <SyncTab />
+                                      </Suspense>
+                                    </ErrorBoundary>
+                                  </AdminRoute>
+                                }
+                              />
+                              <Route
+                                path="config"
+                                element={<Navigate to="/manage/config/solver" replace />}
+                              />
+                              <Route
+                                path="config/:category"
+                                element={
+                                  <AdminRoute>
+                                    <ErrorBoundary>
+                                      <Suspense fallback={<PageSkeleton />}>
+                                        <ConfigTab />
+                                      </Suspense>
+                                    </ErrorBoundary>
+                                  </AdminRoute>
+                                }
+                              />
                             </Route>
                           </Route>
 
@@ -364,7 +377,7 @@ function App() {
                             <Route path="camper/:camperId" element={<CamperRedirect />} />
                             <Route path="user" element={<Navigate to="/user" replace />} />
                             <Route path="users" element={<Navigate to="/users" replace />} />
-                            <Route path="admin" element={<Navigate to="/admin" replace />} />
+                            <Route path="admin" element={<Navigate to="/manage" replace />} />
                             {/* Debug routes — pipeline trace tool + prompt editor */}
                             <Route path="debug">
                               <Route

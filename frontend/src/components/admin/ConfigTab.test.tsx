@@ -72,9 +72,9 @@ const renderWithRouter = (category: string) => {
 
   return render(
     <QueryClientProvider client={queryClient}>
-      <MemoryRouter initialEntries={[`/admin/config/${category}`]}>
+      <MemoryRouter initialEntries={[`/manage/config/${category}`]}>
         <Routes>
-          <Route path="/admin/config/:category" element={<ConfigTab />} />
+          <Route path="/manage/config/:category" element={<ConfigTab />} />
         </Routes>
       </MemoryRouter>
     </QueryClientProvider>
@@ -97,13 +97,13 @@ describe('ConfigTab', () => {
 
     // Check all instances point to correct paths
     for (const link of screen.getAllByRole('link', { name: /bunk optimizer/i })) {
-      expect(link).toHaveAttribute('href', '/admin/config/solver')
+      expect(link).toHaveAttribute('href', '/manage/config/solver')
     }
     for (const link of screen.getAllByRole('link', { name: /request processing/i })) {
-      expect(link).toHaveAttribute('href', '/admin/config/processing')
+      expect(link).toHaveAttribute('href', '/manage/config/processing')
     }
     for (const link of screen.getAllByRole('link', { name: /data & history/i })) {
-      expect(link).toHaveAttribute('href', '/admin/config/history')
+      expect(link).toHaveAttribute('href', '/manage/config/history')
     }
   })
 

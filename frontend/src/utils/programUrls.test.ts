@@ -100,6 +100,16 @@ describe('programUrls', () => {
       expect(getProgramUrl('users', 'summer')).toBe('/users')
       expect(getProgramUrl('camper/123', 'summer')).toBe('/camper/123')
     })
+
+    // /admin was folded into /manage as one top-level nav tab (nav
+    // consolidation, #1895/#450). 'admin' stays in sharedRoutes too — the
+    // /admin redirects still resolve, and nothing calls this with an admin
+    // path — but 'manage' needs the same shared-route treatment now that it
+    // hosts the same kind of cross-program tools.
+    it('does not prepend for the manage route either', () => {
+      expect(getProgramUrl('manage', 'summer')).toBe('/manage')
+      expect(getProgramUrl('manage/sync', 'weekend')).toBe('/manage/sync')
+    })
   })
 
   describe('getProgramHomeUrl', () => {

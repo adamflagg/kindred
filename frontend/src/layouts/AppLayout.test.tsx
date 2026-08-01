@@ -371,3 +371,35 @@ describe('AppLayout fresh-login crash guard', () => {
     expect(screen.queryByText(/Requests/)).not.toBeInTheDocument()
   })
 })
+
+// Nav consolidation: /admin folded into /manage as one top-level tab (#1895,
+// #450). There must be exactly one nav entry ("Manage"), never a separate
+// "Admin" entry — an admin having two nav links into the same layout would
+// be the old split resurfacing.
+describe('AppLayout Manage nav link', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    syncStatusSpy.mockImplementation(() => ({ data: null }))
+  })
+
+  it('shows no Manage link for a user with no manage-tab permission', () => {
+    mockPerms = { hasPermission: () => false, isAdmin: false }
+    renderAppLayout()
+    expect(screen.queryByRole('link', { name: 'Manage' })).toBeNull()
+    expect(screen.queryByRole('link', { name: 'Admin' })).toBeNull()
+  })
+
+  it('shows exactly one Manage link for a user with a single manage-tab permission', () => {
+    mockPerms = { hasPermission: (p: string) => p === 'metrics.geo', isAdmin: false }
+    renderAppLayout()
+    expect(screen.getAllByRole('link', { name: 'Manage' })).toHaveLength(1)
+    expect(screen.queryByRole('link', { name: 'Admin' })).toBeNull()
+  })
+
+  it('shows one Manage link for an admin, not two nav entries', () => {
+    mockPerms = { hasPermission: () => false, isAdmin: true }
+    renderAppLayout()
+    expect(screen.getAllByRole('link', { name: 'Manage' })).toHaveLength(1)
+    expect(screen.queryByRole('link', { name: 'Admin' })).toBeNull()
+  })
+})

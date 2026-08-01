@@ -3,7 +3,6 @@ import { render, screen } from '@testing-library/react'
 import { MemoryRouter, Route, Routes } from 'react-router'
 import { describe, expect, it, vi } from 'vitest'
 
-import { ADMIN_TABS } from '../../../config/adminTabs'
 import { MANAGE_TABS } from '../../../config/manageTabs'
 import { Permission } from '../../../constants/permissions'
 import { LodgingSettingsTab } from './LodgingSettingsTab'
@@ -31,11 +30,15 @@ describe('lodging tab registration', () => {
     const tab = MANAGE_TABS.find((t) => t.id === 'lodging')
     expect(tab).toBeDefined()
     expect(tab?.path).toBe('/manage/lodging')
-    expect(tab?.requiredPermission).toBe(Permission.BUNKING_MANAGE)
+    expect(tab?.access).toEqual({ kind: 'permission', codename: Permission.BUNKING_MANAGE })
   })
 
-  it('no longer appears under Admin', () => {
-    expect(ADMIN_TABS.some((t) => t.path.startsWith('/admin/lodging'))).toBe(false)
+  it('is never admin-gated', () => {
+    // /admin was folded into /manage as a mixed-access tab set (nav
+    // consolidation). The invariant that matters for lodging is that it
+    // stays a permission tab, not an admin one — an admin-gated lodging tab
+    // would hand sync and config to anyone with bunking.manage, or vice versa.
+    expect(MANAGE_TABS.find((t) => t.id === 'lodging')?.access.kind).toBe('permission')
   })
 })
 
