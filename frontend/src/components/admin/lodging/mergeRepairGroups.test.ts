@@ -31,7 +31,7 @@ describe('groupIllegalMerges', () => {
     ]
     const groups = groupIllegalMerges(rows)
     expect(groups).toHaveLength(1)
-    expect(groups[0]?.householdCount).toBe(3)
+    expect(groups[0]?.partyCount).toBe(3)
     expect(groups[0]?.issueIds).toEqual(['a', 'b', 'c'])
   })
 
@@ -39,6 +39,30 @@ describe('groupIllegalMerges', () => {
     const groups = groupIllegalMerges([
       issue({ id: 'a', raw_value: 'Building A 1and2' }),
       issue({ id: 'b', raw_value: 'Building B 3and4' }),
+    ])
+    expect(groups).toHaveLength(2)
+  })
+
+  // Two source fields feed this queue: household-grain `Family Camp Cabin`
+  // and person-grain `Reportable Family Camp Cabin`. Aliases are scoped by
+  // source_field, so the same cabin string from both is two different
+  // repairs, not one -- folding them would apply one shared resolution note
+  // to issues staff never reviewed together.
+  it('keeps the same raw_value apart when source_field differs', () => {
+    const groups = groupIllegalMerges([
+      issue({ id: 'a', source_field: 'Family Camp Cabin' }),
+      issue({ id: 'b', source_field: 'Reportable Family Camp Cabin' }),
+    ])
+    expect(groups).toHaveLength(2)
+  })
+
+  // Aliases are also scoped by a year window, and replay rebuilds a
+  // year-scoped resolution -- the same raw_value in two years is not
+  // necessarily the same fix.
+  it('keeps the same raw_value apart when year differs', () => {
+    const groups = groupIllegalMerges([
+      issue({ id: 'a', year: 2025 }),
+      issue({ id: 'b', year: 2026 }),
     ])
     expect(groups).toHaveLength(2)
   })
