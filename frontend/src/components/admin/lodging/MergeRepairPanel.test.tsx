@@ -167,6 +167,28 @@ describe('MergeRepairPanel — the verdict', () => {
     expect(screen.getByText(/North 3/)).toBeInTheDocument()
   })
 
+  // pocketbase/sync/lodging_merge_rules.go's PlacementIsLegal never routes a
+  // single-unit resolution through JudgeMerge at all — `!res.IsMerge() || ...`
+  // short-circuits it legal, because naming one unit is a direct placement,
+  // not a merge. JudgeMerge itself would say "needs at least two member
+  // units" and return Legal: false, which is right for JudgeMerge's own job
+  // but wrong here: a narrowed alias (exactly the repair this panel exists
+  // for) lands here, and must never render as "every other room is missing".
+  it('treats a narrowed single-unit alias as legal, not as a merge missing every sibling', async () => {
+    const SOLO_ALIAS: LodgingAliasRecord = { ...ALIAS, id: 'alias_2', member_units: ['n1'] }
+    vi.spyOn(crud, 'listLodgingUnits').mockResolvedValue([NORTH_LODGE, N1, N2, N3])
+    vi.spyOn(crud, 'listLodgingAliases').mockResolvedValue([SOLO_ALIAS])
+
+    render(<MergeRepairPanel />, { wrapper })
+
+    await waitFor(() => {
+      expect(screen.getByText(/3 parties/i)).toBeInTheDocument()
+    })
+    expect(screen.queryByText(/missing/i)).not.toBeInTheDocument()
+    expect(screen.queryByText(/North 2/)).not.toBeInTheDocument()
+    expect(screen.queryByText(/North 3/)).not.toBeInTheDocument()
+  })
+
   // The trap this guards: coercing a failed secondary query to `[]` computes
   // a member set of nothing, which would print "missing: " with nothing
   // after it — a repair hint that quietly becomes nonsense instead of an

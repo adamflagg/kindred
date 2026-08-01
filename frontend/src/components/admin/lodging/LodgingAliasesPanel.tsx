@@ -69,6 +69,12 @@ export function LodgingAliasesPanel() {
   const refresh = () => {
     setEditing(null)
     void queryClient.invalidateQueries({ queryKey: queryKeys.lodgingAliases() })
+    // An alias's member_units is the other half of "fix the alias, come back
+    // to Merge repairs and see the row gone" — narrowing or widening it can
+    // drain an open illegal-merge row. There is no Go hook on an alias write
+    // the way recheckIllegalMerges reacts to a unit write, so the merge-repair
+    // panel's own cache is exactly what would otherwise still show it open.
+    void queryClient.invalidateQueries({ queryKey: queryKeys.lodgingIllegalMergeIssues() })
   }
 
   /**
@@ -92,6 +98,10 @@ export function LodgingAliasesPanel() {
       toast.success('Alias deleted')
       void queryClient.invalidateQueries({ queryKey: queryKeys.lodgingAliases() })
       void queryClient.invalidateQueries({ queryKey: queryKeys.lodgingIngestIssues() })
+      // deleteLodgingAlias reopens every queue row this alias resolved,
+      // regardless of kind — an illegal-merge row can point at it too, and it
+      // lives under its own cache key (see the comment in `refresh` above).
+      void queryClient.invalidateQueries({ queryKey: queryKeys.lodgingIllegalMergeIssues() })
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Failed to delete the alias')
     }

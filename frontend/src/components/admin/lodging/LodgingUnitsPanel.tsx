@@ -74,6 +74,13 @@ export function LodgingUnitsPanel() {
     setEditing(null)
     setSelected(new Set())
     void queryClient.invalidateQueries({ queryKey: queryKeys.lodgingUnits() })
+    // A parent_unit / is_container change drains or opens illegal-merge rows
+    // via recheckIllegalMerges (pocketbase/lodging/hooks.go), but that hook
+    // rewrites the DATABASE row — it does not touch this browser's cache. The
+    // merge-repair panel reads lodging_ingest_issues under its own cache key,
+    // so without this a fixed row would still show open here for up to
+    // staleTime, or until an unrelated window blur/refocus.
+    void queryClient.invalidateQueries({ queryKey: queryKeys.lodgingIllegalMergeIssues() })
   }
 
   const toggleSort = (field: UnitSort['field']) => {

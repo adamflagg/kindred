@@ -5,6 +5,8 @@ import userEvent from '@testing-library/user-event'
 import type { ReactNode } from 'react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
+import { queryKeys } from '../../../utils/queryKeys'
+
 const deactivateLodgingUnit = vi.fn()
 const confirmLodgingUnits = vi.fn()
 const createLodgingUnit = vi.fn()
@@ -201,6 +203,25 @@ describe('LodgingUnitsPanel', () => {
     await user.click(screen.getByRole('button', { name: 'Deactivate Cabin A' }))
     await waitFor(() => {
       expect(deactivateLodgingUnit).toHaveBeenCalledWith('u1')
+    })
+  })
+
+  // A unit's parent_unit / is_container is what recheckIllegalMerges
+  // (pocketbase/lodging/hooks.go) reacts to, and the merge-repair panel reads
+  // this collection through its OWN cache key. Without this invalidation, the
+  // exact loop that panel exists for — fix the registry, come back, see the
+  // row gone — shows a stale open row for up to staleTime.
+  it('invalidates the merge-repair queue on refresh, since a unit edit can change a merge verdict', async () => {
+    const invalidateSpy = vi.spyOn(client, 'invalidateQueries')
+    const user = userEvent.setup()
+    await renderPanel()
+
+    await user.click(screen.getByRole('button', { name: 'Deactivate Cabin A' }))
+
+    await waitFor(() => {
+      expect(invalidateSpy).toHaveBeenCalledWith({
+        queryKey: queryKeys.lodgingIllegalMergeIssues(),
+      })
     })
   })
 

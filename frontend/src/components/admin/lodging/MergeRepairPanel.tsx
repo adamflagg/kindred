@@ -95,14 +95,32 @@ type MergeDiagnosis =
     }
 
 /**
- * Ports `JudgeMerge`'s "complete child set" rule to the browser, purely to
- * name the absent sibling for staff. This is a HINT, not an authority — the
- * server is still what decides legality on replay.
+ * SOURCE OF TRUTH: `pocketbase/sync/lodging_merge_rules.go` — `JudgeMerge` and
+ * `PlacementIsLegal`. This is a deliberate CLIENT-SIDE MIRROR of that Go rule,
+ * not an independent second implementation: no endpoint exposes the verdict
+ * `JudgeMerge` computes, so this exists purely to name the missing sibling
+ * for staff. It is a HINT, not an authority — the server is still what
+ * decides legality on replay. Any change to the Go rule (what counts as a
+ * container, how a shared parent is determined, the single-unit special case
+ * below) MUST be reflected here, or this panel renders a verdict the server
+ * disagrees with.
  */
 function diagnoseMerge(memberUnitIds: string[], units: LodgingUnitRecord[]): MergeDiagnosis {
   const byId = new Map(units.map((unit) => [unit.id, unit]))
   if (memberUnitIds.length === 0 || memberUnitIds.some((id) => !byId.has(id))) {
     return { kind: 'unmapped' }
+  }
+
+  // Mirrors `PlacementIsLegal`, not `JudgeMerge` directly: a resolution
+  // naming exactly one unit is a direct placement, not a merge, so it is
+  // unconditionally legal (`!res.IsMerge() || ...` short-circuits before
+  // `JudgeMerge` ever runs). `JudgeMerge` itself would call this "needs at
+  // least two member units" and report it illegal, which is right for
+  // `JudgeMerge`'s own job but wrong here — a narrowed alias (the repair path
+  // this panel exists for) lands exactly here, and must never render as
+  // "every other room in the building is missing".
+  if (memberUnitIds.length === 1) {
+    return { kind: 'now_legal' }
   }
 
   const parentIds = new Set(memberUnitIds.map((id) => byId.get(id)?.parent_unit ?? ''))
