@@ -140,6 +140,10 @@ func LoadSessionWindows(app core.App, year int, sessionTypes []string) (map[stri
 	return out, nil
 }
 
+// allParties is buildSessionIndex's "no CM-id filter": index the whole year.
+// A real CampMinder id is never 0, so the sentinel cannot collide with one.
+const allParties = 0
+
 // BuildHouseholdSessionIndex maps household CampMinder id -> the distinct
 // sessions that household is actively enrolled in.
 //
@@ -147,17 +151,27 @@ func LoadSessionWindows(app core.App, year int, sessionTypes []string) (map[stri
 // Two enrolled siblings at one weekend are ONE household-weekend, so the result
 // is deduplicated by session.
 func BuildHouseholdSessionIndex(app core.App, year int, sessionTypes []string) (map[int][]SessionWindow, error) {
-	return buildSessionIndex(app, year, sessionTypes, true)
+	return buildSessionIndex(app, year, sessionTypes, true, allParties)
 }
 
 // BuildPersonSessionIndex maps person CampMinder id -> that person's actively
 // enrolled sessions. Used for adult weekends, which enroll real persons.
 func BuildPersonSessionIndex(app core.App, year int, sessionTypes []string) (map[int][]SessionWindow, error) {
-	return buildSessionIndex(app, year, sessionTypes, false)
+	return buildSessionIndex(app, year, sessionTypes, false, allParties)
 }
 
+// buildSessionIndex is the one place a party's candidate weekends are derived,
+// for the whole-year sync pass and for a single-party replay alike.
+//
+// onlyCMID prunes the result to one party (allParties keeps everything). It
+// deliberately prunes in Go, AFTER the same queries the full pass runs, rather
+// than pushing a WHERE clause down: a filtered path that queries differently is
+// a second derivation of "which weekends could this value describe", and the
+// two drifting is exactly what makes a replayed placement disagree with the one
+// the next sync would have written. Replay pays a whole-year scan for that
+// guarantee, which is the smaller half of its ~1-2s cost.
 func buildSessionIndex(
-	app core.App, year int, sessionTypes []string, byHousehold bool,
+	app core.App, year int, sessionTypes []string, byHousehold bool, onlyCMID int,
 ) (map[int][]SessionWindow, error) {
 	windows, err := LoadSessionWindows(app, year, sessionTypes)
 	if err != nil {
@@ -193,6 +207,9 @@ func buildSessionIndex(
 			key = personToHousehold[key]
 		}
 		if key == 0 {
+			continue
+		}
+		if onlyCMID != allParties && key != onlyCMID {
 			continue
 		}
 

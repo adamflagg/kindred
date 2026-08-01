@@ -104,6 +104,11 @@ func newLodgingTestApp(t *testing.T) core.App {
 	units.Fields.Add(&core.BoolField{Name: "is_container"})
 	saveCollection(t, app, units)
 
+	// parent_unit is a self-relation, so it needs the collection's own id --
+	// added after the first save, same as production (1500000116).
+	units.Fields.Add(&core.RelationField{Name: "parent_unit", CollectionId: units.Id, MaxSelect: 1})
+	saveCollection(t, app, units)
+
 	aliases := core.NewBaseCollection("lodging_unit_aliases")
 	aliases.Fields.Add(&core.TextField{Name: "alias_string"})
 	aliases.Fields.Add(&core.RelationField{Name: "member_units", CollectionId: units.Id, MaxSelect: 20})
@@ -271,6 +276,26 @@ func addUnit(t *testing.T, app core.App, code string) string {
 	t.Helper()
 	return saveRecord(t, app, "lodging_units", map[string]any{
 		"code": code, "name": code, "is_active": true, "is_container": false,
+	})
+}
+
+// addContainerUnit adds a building/grouping row -- the parent a room hangs
+// off. Nothing validates a merge against this shape (see
+// docs/architecture/lodging-occupancy.md); it models physical structure.
+func addContainerUnit(t *testing.T, app core.App, code string) string {
+	t.Helper()
+	return saveRecord(t, app, "lodging_units", map[string]any{
+		"code": code, "name": code, "is_active": true, "is_container": true,
+	})
+}
+
+// addUnitWithParent is addUnit plus the parent_unit link a legal merge fixture
+// needs.
+func addUnitWithParent(t *testing.T, app core.App, code, parentID string) string {
+	t.Helper()
+	return saveRecord(t, app, "lodging_units", map[string]any{
+		"code": code, "name": code, "is_active": true, "is_container": false,
+		"parent_unit": parentID,
 	})
 }
 

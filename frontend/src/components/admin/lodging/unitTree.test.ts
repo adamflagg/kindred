@@ -1,8 +1,10 @@
 /**
- * The parent picker's only integrity guard, since there is no Go hook or
- * PocketBase rule behind `parent_unit` (see the header comment in
- * ./unitTree). These cases are the ones the final review proved reachable
- * through the picker: a direct child, a grandchild, and the unit itself.
+ * One of the parent picker's integrity guards. The other, `guardUnitParentCycle`
+ * (#1899), lives server-side and blocks a NEW cycle from being written, but
+ * cannot un-write one already sitting in the database from before it existed
+ * (see the header comment in ./unitTree). These cases are the ones the final
+ * review proved reachable through the picker: a direct child, a grandchild,
+ * and the unit itself.
  */
 import { describe, expect, it } from 'vitest'
 
@@ -55,9 +57,10 @@ describe('descendantIds', () => {
     expect(descendantIds('b', units)).toEqual(new Set())
   })
 
-  // Nothing upstream of this function stops a cycle being STORED: there is no
-  // Go hook or PocketBase rule on parent_unit, and the picker that prevents
-  // new ones is this very function. So the `result.has` guard is load-bearing
+  // guardUnitParentCycle (#1899) now blocks a NEW cycle from being written,
+  // but it cannot un-write one already sitting in the database from before
+  // that hook existed, and this function has no way to know whether the hook
+  // ran on any given row. So the `result.has` guard is still load-bearing
   // against data that predates it, and a refactor that dropped it would hang
   // the units panel rather than fail a test.
   it('terminates on already-cyclic stored data', () => {

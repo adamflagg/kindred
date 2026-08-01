@@ -86,7 +86,7 @@ reviews:
         - Field add() requires `new Field(...)` wrapper — bare object literal `add({...})` fails at server-boot apply time with "could not convert [object Object] to core.Field". Unit tests will NOT catch this.
         - Do NOT use the old `options: {}` wrapper for field properties — v0.23 flattens them. Using the old wrapper causes silent data truncation.
         - Filename numbering must exceed the highest filename on origin/main; never fill gaps left by consolidation runs (numbers are "burned" to preserve a monotonically increasing record).
-        - WAL checkpoint recommended after data-write migrations (`db.newQuery("PRAGMA wal_checkpoint(TRUNCATE)").execute()`).
+        - Do NOT ask for a per-migration WAL checkpoint. `runHistorySync` (pocketbase/main.go) runs `PRAGMA wal_checkpoint(TRUNCATE)` on every server boot, after migrations apply, so a per-migration one is redundant — which is why 0 of the 90+ migrations here have one.
         Reference: docs/reference/pocketbase-migrations.md and the `pocketbase-migrations` skill's `templates/add-fields.js`.
 
     - path: "frontend/**/*.{ts,tsx}"

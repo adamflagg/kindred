@@ -451,15 +451,21 @@ func (s *LodgingAssignmentsSync) recordWriteFailure(in *ingestContext) {
 }
 
 // placementFor turns a resolution into the one placement column it belongs in.
-// A multi-room alias is materialized as a merge row; a single room points
-// straight at the unit. Exactly one of the two is ever non-empty, which is what
-// ValidateAssignmentGrain then checks.
+// A single room points straight at the unit; a multi-room alias materializes a
+// merge binding exactly those rooms.
+//
+// NOTHING JUDGES THE MEMBER SET HERE, deliberately. Every member_units set is
+// hand-authored in the admin UI, the valid configurations are not enumerable as
+// tree shape, and no consumer needs a merge to match a container -- see
+// docs/architecture/lodging-occupancy.md. The ingest records what CampMinder
+// holds; constraints belong where a human is choosing, not here.
 func (s *LodgingAssignmentsSync) placementFor(
 	res AliasResolution, sessionID string, sessionCMID, year int, raw string,
 ) (unitID, mergeID string, err error) {
 	if !res.IsMerge() {
 		return res.UnitIDs[0], "", nil
 	}
+
 	mergeID, err = EnsureMerge(s.App, sessionID, sessionCMID, year, "", res.UnitIDs, raw)
 	if err != nil {
 		return "", "", err

@@ -1,10 +1,12 @@
 # HANDOFF — Family Camp Lodging
 
-**State as of `1bcd90f1` on `main`.** All three plans are merged. The data layer, the ingest,
-the read API, the weekend surfaces and the writable editor are done.
-`/weekend/sessions` lists the year's weekends; `/weekend/session/:id` shows one weekend's
-roster and inventory; `/manage/lodging/:section` edits the registry. **The next body of work
-is the board and the map (spec §7.2) — see §4.**
+**State as of Phase A of the ingest-repair work (#1903).** All three plans are merged, plus
+the queue drain. The data layer, the ingest, the read API, the weekend surfaces and the
+writable editor are done. `/weekend/sessions` lists the year's weekends;
+`/weekend/session/:id` shows one weekend's roster and inventory; `/manage/lodging/:section`
+edits the registry, and resolving a work-queue row now writes the placement on the click
+instead of on the next sync. **The next body of work is the board and the map (spec §7.2) —
+see §4.**
 
 This is a working document. Edit it in place: tick what ships, rewrite "Next", delete what stops
 being true. It is not a changelog — `git log` is the changelog.
@@ -13,7 +15,7 @@ being true. It is not a changelog — `git log` is the changelog.
 
 ## 1. Programme status
 
-Three plans, all merged. What remains is the board and the map — see §4.
+Three plans merged, plus one follow-on phase. What remains is the board and the map — see §4.
 
 | Plan | Scope | Status |
 |---|---|---|
@@ -32,6 +34,16 @@ Plan 2 shipped in four PRs:
 
 Task 15 was **rejected**, not deferred — see §3.
 
+After Plan 2, one follow-on phase:
+
+| Phase | Commit | What |
+|---|---|---|
+| A — ingest repair | #1903 | replay: drain the work queue without a re-sync; server-side `parent_unit` cycle guard (#1899) |
+
+**#1903 also removed a merge-legality rule it had itself just built.** That is the single most
+important thing to read before touching lodging constraints — §4 and
+`docs/architecture/lodging-occupancy.md`.
+
 ---
 
 ## 2. What is live on `main`
@@ -49,6 +61,20 @@ Facts, not a work log. Do not re-verify or re-implement these.
   `ambiguous_session`, `no_session`, `field_zero_values`, `unknown_party`, `write_failed`.
   The Go constants are *not* the constraint — the migration's select list is, and
   `verify-lodging-schema.sh` pins it exactly.
+- **The work queue drains without a re-sync** (#1903). Resolving a row fires `replayOnResolve`
+  (`pocketbase/lodging/hooks.go`), which routes by row shape: `ReplayIssue` for a party-scoped
+  row, `ReplayPartylessIssue` for a row standing for a cabin STRING, which fans out over every
+  party that wrote it. Measured on real data: one row 13 households shared produced **11
+  placements across 8 weekends in 0.92s**. The alternative was an 8–10 minute sync per year.
+  - **Routing is not total, deliberately.** `field_zero_values` and `unknown_party` rows are
+    refused by both entry points; a UI must surface the refusal rather than report a repair.
+  - The hook gates on the `false→true` **transition** of `is_resolved`, not on the value.
+    Gating on the value alone recurses: `Flush` re-saves an already-resolved row, which
+    re-fires the hook. `Original()` is what makes the gate work, and PocketBase never
+    refreshes it after a save.
+- **`lodging_units.parent_unit` has a server-side cycle guard** (#1899, `guardUnitParentCycle`).
+  It fires only when the write actually changes `parent_unit`, so a unit already sitting on a
+  legacy cycle can still be confirmed or deactivated.
 - **Backfill is validated end to end against real data.** 2024+2025 in ~7s, 1336 assignments, zero
   errors, idempotent on a second pass. `scripts/dev/verify-lodging-backfill.sh` is the gate.
 - **The request layer is household-grain.** Request fields are person-partition, so a household with
@@ -230,21 +256,36 @@ Both operate on the same `lodging_assignments` + `lodging_merges` + `lodging_ava
 state, so a change in one shows in the other. The map is a projection of the board, not a
 separate system of record.
 
-### The merge-legality rule belongs with the board, and the data is ready for it
+### The merge-legality rule was BUILT and then REMOVED — do not rebuild it
 
-Deliberately deferred from #1893: nothing could create a merge, so the rule would have had no
-caller and no way to prove it right. What landed instead is the data it will read.
+A rule was written here — *a merge is legal iff its members are the complete child set of some
+container* — and taken back out before it ever shipped. Read
+`docs/architecture/lodging-occupancy.md` before proposing anything like it again, because the
+idea is genuinely appealing and wrong for reasons that are not obvious.
 
-**The rule: a merge is legal iff its members are the complete child set of some container.**
-Four intermediate containers were seeded (`1500000129`) — Tioga and Tenaya, upstairs and
-downstairs — because two real historical merges (`Tenaya 1and2`, `Tioga 1and2`) bind 2 rooms
-of a 4-room building and were previously inexpressible. Verified: all six historical merges
-are now the complete child set of exactly one container, and `{2,3}` correctly is not.
+The short version. Every `member_units` set is hand-authored in the admin UI, so an "illegal"
+merge is a human decision the ingest has less context to overrule. A deliberate partial booking
+and a mis-clicked one produce **byte-identical rows**, so the rule cannot discriminate between
+the case it is for and the case it is against. Nothing downstream consumes completeness —
+bathroom privacy comes off `bathroom_group`, and `parent_unit` — the tree the rule walked —
+appears nowhere in `api/` or `bunking/`. (`is_container` is read there, but only to keep
+buildings out of bookable lists.) And the real configuration space (a house split between a family and a
+staff member, an extended family across two registrations, different rules for adult weekends)
+is not expressible as tree shape at all.
+
+Four intermediate containers were seeded (`1500000129`) partly so existing merges would satisfy
+that rule. **They stay** — independently, they encode a real floorplan distinction and fixed a
+`bathroom_group` bug where merging a pair left the slot scored `shared`.
+
+What actually needs building is the **other** axis: many parties in one unit. Sharing already
+happens throughout historical data and nothing models or guards it — two families in the same
+bedroom is currently possible and undetected. The staff-confirmed rules are written up in the
+occupancy doc.
 
 `parent_unit` is editable in the admin UI, filtered to containers minus self minus descendants
-(`unitTree.ts`), and `is_container` is disabled while a unit has children. **There is still no
-server-side guard** — no `OnRecordUpdate` hook on `lodging_units` — so the frontend filter is
-the only thing preventing a cycle. Writing the rule is the natural moment to add the Go guard.
+(`unitTree.ts`), `is_container` is disabled while a unit has children, and `guardUnitParentCycle`
+is now the server-side backstop (#1899). Both the frontend filter and the Go guard are worth
+having: the guard blocks *new* cycles but cannot retroactively clean data that already has one.
 
 ### Before either surface: confirm some cabins
 
@@ -258,8 +299,15 @@ inline per row and in bulk. Until staff use it, the fit check stays dark.
 ### Open decisions the board will force
 
 - **`lodging_merges` CRUD** — merges are a board action (spec §3.4), created mid-assignment
-  rather than configured up front. Nothing writes them yet. `guardMergeDelete` already protects
-  them.
+  rather than configured up front. Nothing but the ingest writes them yet, and **nothing
+  validates the member set** — see the removed rule above before adding a check. Note merges
+  carry `session` AND `scenario`; the alias table carries neither, which is why a rule keyed on
+  aliases could never express a building that is whole one weekend and split the next.
+  `guardMergeDelete` already protects them.
+- **Occupancy (#1907)** — how many parties may share one unit, which varies by unit class and
+  session type. This is the constraint the board actually needs and the one nothing models.
+  `docs/architecture/lodging-occupancy.md` has the staff-confirmed rules. Enforcement belongs
+  at the point a human is choosing — the board, or the picker — not in the ingest.
 - **`lodging_availability`** — the per-session reserved/released overrides (spec §3.7). The
   schema exists; no surface reads or writes it.
 - **`lodging.phi` is held by admins and the Bunking Staff role** (`1500000130`, closing #1887).
@@ -427,6 +475,18 @@ git fetch -q && git rev-list --count origin/<branch>..HEAD   # must be 0
   but nobody has *looked* at the lander, the Listbox switcher or the stats bar — they are covered by
   tests and by direct API measurement only. Worth ten minutes with `./scripts/start_dev.sh` before
   building Phase C on top of them.
+- **Nothing in #1903 was verified in a browser either.** The one visual check that phase got
+  covered a merge-repair panel that no longer exists. The replay path is proven by direct
+  measurement on real data, not by looking at it.
+- **#1907 — lodging occupancy is unmodelled**, and it is the constraint that matters. Nothing
+  stops two families being placed in the same bedroom; the unique indexes only stop one party
+  holding two placements. Staff-confirmed rules are in
+  `docs/architecture/lodging-occupancy.md`. **The board is the surface that will force this** —
+  read the doc before designing placement validation.
+- **#1908 — no test drives `replayOnResolve` through a replay that succeeds.** Every hook test
+  exercises refusal or failure. The success path is proven manually, so this is a missing
+  regression guard rather than missing evidence: the lodging test harness builds 5 collections
+  and a real replay needs ~13, and Go cannot share `_test.go` helpers across packages.
 - **The summer campers tab was never mined.** `/summer/session/:id/campers` (`CampersView`) is the
   closest analogue to the roster table and likely has filter/sort affordances worth copying. Traced
   as far as the component and stopped.
@@ -441,10 +501,16 @@ git fetch -q && git rev-list --count origin/<branch>..HEAD   # must be 0
   is-admin test, so a tab carrying an ordinary permission codename would slip past it. #387 put a
   `metrics.geo` tab under `/admin` and #450 had to move it out — the narrowed type makes a repeat
   a compile error. **Merging `/admin` into `/manage` must revisit that guard.**
-- **#1899 — `lodging_units.parent_unit` has no server-side cycle guard.** `unitTree.ts` filters
-  the picker; `pocketbase/lodging/hooks.go` has no `OnRecordUpdate` on units, so a direct write
-  can build a cycle that the descendant walk and the merge-legality rule both traverse.
-  Pre-existing, but `1500000130` widened who can reach it.
+- **#1899 is fixed** — `guardUnitParentCycle` is an `OnRecordUpdate` hook on `lodging_units`,
+  so a direct write can no longer close a loop. It runs at the model level, which means it also
+  covers programmatic Go writes and the PocketBase admin UI, not just the REST path
+  `1500000130` widened. There is deliberately no create binding: a new record has no
+  descendants, so no create can close a cycle.
+  **One claim this issue carried was wrong:** a cycle does *not* hang any merge rule — and with
+  that rule now removed, the only things that walk parent links at all are `HasParentCycle`
+  (`sync/lodging_unit_tree.go`) and `descendantIds` (`unitTree.ts`), which both carry visited
+  guards. That inaccuracy had propagated into four comments across three files before it was
+  traced to its origin in `hooks_test.go`; if you meet another copy of it, it is wrong.
 - **#1894** — `dark:*-forest-950` classes generate nothing: the forest scale stops at 900, so 14
   occurrences across 8 files are dead dark-mode states. `SessionTabs` is one of them, which is
   how it propagates — other surfaces are told to copy its pill grammar.
