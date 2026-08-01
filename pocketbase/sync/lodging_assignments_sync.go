@@ -480,6 +480,13 @@ func (s *LodgingAssignmentsSync) recordWriteFailure(in *ingestContext) {
 // error: the caller queues it as work. Returning an error would route it to
 // recordWriteFailure, which means "resolved and attributed but could not
 // persist" -- a different diagnosis pointing staff at the wrong repair.
+//
+// The gate is PlacementIsLegal, not a bare verdict.Legal check: recheckIllegalMerges
+// asks the same "may this be placed" question, and it must be answered by one
+// function, not two inline copies of the same short-circuit that could drift.
+// verdict is still computed via JudgeMerge directly, because the illegal-path
+// caller reads verdict.MissingUnits for the repair hint, which a bool cannot
+// carry.
 func (s *LodgingAssignmentsSync) placementFor(
 	res AliasResolution, sessionID string, sessionCMID, year int, raw string,
 ) (unitID, mergeID string, verdict MergeVerdict, err error) {
@@ -488,7 +495,7 @@ func (s *LodgingAssignmentsSync) placementFor(
 	}
 
 	verdict = JudgeMerge(s.unitTree, res.UnitIDs)
-	if !verdict.Legal {
+	if !PlacementIsLegal(s.unitTree, res) {
 		return "", "", verdict, nil
 	}
 

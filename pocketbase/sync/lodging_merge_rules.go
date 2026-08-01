@@ -87,6 +87,24 @@ func JudgeMerge(tree map[string]UnitNode, memberIDs []string) MergeVerdict {
 	return MergeVerdict{Legal: true, ContainerID: parentID}
 }
 
+// PlacementIsLegal reports whether a resolution may be materialized as a
+// placement -- the same question placementFor answers when it decides between
+// writing straight to a unit and routing through JudgeMerge.
+//
+// A resolution naming exactly one unit is a direct placement, not a merge, so
+// there is nothing for JudgeMerge to judge and it is always legal. A
+// resolution naming two or more is legal exactly when JudgeMerge finds them
+// the complete child set of one container.
+//
+// placementFor and recheckIllegalMerges both have to ask this; before this
+// function existed they asked it separately, and recheckIllegalMerges's
+// direct JudgeMerge(...).Legal call omitted the single-unit case, so a repair
+// that narrowed an alias down to one surviving unit would sync clean while
+// its queue row stayed open forever. This is the one predicate both call.
+func PlacementIsLegal(tree map[string]UnitNode, res AliasResolution) bool {
+	return !res.IsMerge() || JudgeMerge(tree, res.UnitIDs).Legal
+}
+
 // HasParentCycle reports whether pointing unitID's parent at proposedParentID
 // would create a loop -- either self-parenting or adopting a descendant.
 //

@@ -241,7 +241,7 @@ func newIssue(
 // synchronously (on the calling goroutine, via fmt.Print) before it ever
 // reaches that queue -- see core/log_printer.go -- so redirecting the
 // process's stdout for the duration of fn captures it.
-func captureStdout(t *testing.T, fn func()) string {
+func captureStdout(t *testing.T, fn func()) (out string) {
 	t.Helper()
 	r, w, err := os.Pipe()
 	if err != nil {
@@ -256,13 +256,24 @@ func captureStdout(t *testing.T, fn func()) string {
 		captured <- buf.String()
 	}()
 
-	fn()
+	// Deferred, not inline after fn(): a t.Fatalf inside fn runs via
+	// runtime.Goexit, which skips everything after the call that is not
+	// deferred. Without this, that path never restores os.Stdout -- every
+	// later test in the process keeps writing into a closed pipe, which
+	// swallows the very failure message a Fatalf inside fn was trying to
+	// report. out is a named return so this can set it after fn returns
+	// (normally or via Goexit) but before the reader goroutine can be
+	// unblocked, which only happens once w is closed.
+	defer func() {
+		os.Stdout = original
+		if closeErr := w.Close(); closeErr != nil {
+			t.Errorf("close pipe writer: %v", closeErr)
+		}
+		out = <-captured
+	}()
 
-	os.Stdout = original
-	if err := w.Close(); err != nil {
-		t.Fatalf("close pipe writer: %v", err)
-	}
-	return <-captured
+	fn()
+	return ""
 }
 
 func newMerge(t *testing.T, app core.App, displayName string) *core.Record {
@@ -680,5 +691,166 @@ func TestReplayRefusalDoesNotBlockTheTick(t *testing.T) {
 
 	if !strings.Contains(output, "Replaying a resolved lodging issue") {
 		t.Fatalf("expected the hook to log the replay refusal, got: %q", output)
+	}
+}
+
+// #1899 CRITICAL: replayOnResolve gated on is_resolved being true, not on the
+// TRANSITION to true. Flush (sync/lodging_issues.go:196-198) re-saves an
+// already-resolved row every time a replay re-hits the SAME blocker --
+// occurrences and last_seen move, is_resolved does not, by design ("once
+// staff tick an item, a later sync must not un-tick it"). That re-save is
+// itself an update on lodging_ingest_issues, so a hook gated on the current
+// value alone fires on its own re-save, replays again, re-saves again,
+// forever -- reopenRecorded would break the cycle, but it runs after Flush
+// returns, and Flush never returns because it is blocked inside the nested
+// Save.
+//
+// This reproduces the exact write shape of that second half directly, rather
+// than waiting for a real fan-out to arrive at it: this schema has none of
+// ReplayIssue's supporting collections (persons, attendees, ...), so every
+// real invocation of the replay attempt fails at newReplayScope and logs the
+// same line deterministically -- which is what makes counting that line a
+// reliable stand-in for counting invocations without needing the full sync
+// schema or risking an actually-unbounded loop inside a test process.
+func TestReplayOnResolveFiresOnceNotOnItsOwnResave(t *testing.T) {
+	app, err := tests.NewTestAppWithConfig(core.BaseAppConfig{
+		EncryptionEnv: "pb_test_env",
+		IsDev:         true, // so app.Logger() prints synchronously; see captureStdout.
+	})
+	if err != nil {
+		t.Fatalf("NewTestAppWithConfig: %v", err)
+	}
+	defer app.Cleanup()
+
+	setupCollections(t, app)
+	// Party-scoped, so replayOnResolve routes to sync.ReplayIssue.
+	issue := newIssue(t, app, "no_session", "Tuolumne 7", 2026, 2000001, 0)
+
+	wireHooks(app)
+
+	const marker = "Replaying a resolved lodging issue"
+
+	output := captureStdout(t, func() {
+		// The staff tick: a real false -> true transition. Every version of
+		// the hook, buggy or fixed, must replay-attempt exactly once for this.
+		issue.Set("is_resolved", true)
+		if err := app.Save(issue); err != nil {
+			t.Fatalf("resolving the issue: %v", err)
+		}
+
+		// What Flush does to a row a replay re-hits: reload it and save it
+		// again with is_resolved UNCHANGED. A gate on the current value alone
+		// cannot tell this apart from the first save and replay-attempts again.
+		reloaded, err := app.FindRecordById("lodging_ingest_issues", issue.Id)
+		if err != nil {
+			t.Fatalf("reloading the issue: %v", err)
+		}
+		reloaded.Set("is_resolved", true) // no-op write: already true
+		if err := app.Save(reloaded); err != nil {
+			t.Fatalf("re-saving the already-resolved issue: %v", err)
+		}
+	})
+
+	if got := strings.Count(output, marker); got != 1 {
+		t.Fatalf(
+			"replayOnResolve replay-attempted %d time(s) across one resolve "+
+				"and one same-value resave, want 1 (log: %q)", got, output)
+	}
+}
+
+// #1899 Important: recheckIllegalMerges pays a filtered issues query plus
+// BuildUnitTree plus NewAliasResolver -- three scans -- on every unit write.
+// Confirming, renaming, and activating/deactivating a unit cannot change any
+// merge's legality: BuildUnitTree reads only parent_unit and is_container.
+// confirmLodgingUnits bulk-confirms via Promise.allSettled, so a 93-unit
+// confirm is 93 CONCURRENT PATCHes; without this early-out every one of them
+// pays the full cost, and if a row has become legal, all 93 race to resolve
+// it.
+//
+// This only binds to the UPDATE path. A create's Original() is blank on every
+// field, so the same diff would wrongly skip a create that really does add a
+// child to a container -- recheckIllegalMerges stays the unconditional create
+// binding.
+func TestRecheckIllegalMergesOnUpdateSkipsIrrelevantFields(t *testing.T) {
+	app, err := tests.NewTestAppWithConfig(core.BaseAppConfig{
+		EncryptionEnv: "pb_test_env",
+		IsDev:         true,
+	})
+	if err != nil {
+		t.Fatalf("NewTestAppWithConfig: %v", err)
+	}
+	defer app.Cleanup()
+
+	setupCollections(t, app)
+	unit := newUnit(t, app, "ridge-a", "Ridge A")
+
+	wireHooks(app)
+
+	const marker = "Unit tree changed; re-checking illegal merges"
+
+	output := captureStdout(t, func() {
+		unit.Set("name", "Ridge A (confirmed)")
+		if err := app.Save(unit); err != nil {
+			t.Fatalf("renaming the unit: %v", err)
+		}
+	})
+	if strings.Contains(output, marker) {
+		t.Fatalf("renaming a unit triggered the expensive recheck: %q", output)
+	}
+
+	output = captureStdout(t, func() {
+		unit.Set("is_container", true)
+		if err := app.Save(unit); err != nil {
+			t.Fatalf("marking the unit a container: %v", err)
+		}
+	})
+	if !strings.Contains(output, marker) {
+		t.Fatalf("expected changing is_container to trigger the recheck, got: %q", output)
+	}
+}
+
+// #1899 Important: JudgeMerge alone calls a single-unit set illegal ("a merge
+// needs at least two member units") -- correct for JudgeMerge's own job, but
+// recheckIllegalMerges called it directly as the FULL legality test, which is
+// a second, narrower predicate than the one the sync actually places by.
+// placementFor treats a single-unit resolution as automatically legal
+// (!res.IsMerge() short-circuits before JudgeMerge is ever called), because a
+// resolution to one unit is not a merge at all -- it is a direct placement.
+//
+// So a legitimate repair -- narrowing an illegal_merge alias down to the one
+// unit that actually belongs to it, by editing the alias's member_units
+// rather than any unit's parent_unit -- would sync clean but leave the queue
+// row open forever, because the old check asked JudgeMerge a question it was
+// never designed to answer for this case. sync.PlacementIsLegal is the one
+// predicate both callers now share.
+func TestRecheckIllegalMergesAcceptsANarrowedSingleUnitRepair(t *testing.T) {
+	app, err := tests.NewTestApp()
+	if err != nil {
+		t.Fatalf("NewTestApp: %v", err)
+	}
+	defer app.Cleanup()
+
+	setupCollections(t, app)
+	building := newContainerUnit(t, app, "wing", "Wing")
+	roomA := newUnitWithParent(t, app, "wing-a", "Wing A", building.Id)
+	// The repair: the alias used to name a second unit that turned out not to
+	// belong to this string at all, so staff narrowed member_units down to
+	// roomA alone -- not a merge, a plain single-room resolution.
+	newAliasForUnits(t, app, "wing-suite", []string{roomA.Id})
+	issue := newIssue(t, app, "illegal_merge", "wing-suite", 2026, 2000003, 0)
+
+	wireHooks(app)
+
+	// The alias edit itself has no unit write to hang the recheck hook off,
+	// so trigger it the way any other unrelated unit create would (the create
+	// binding always runs the full recheck; see the doc comment above).
+	newUnit(t, app, "trigger", "Trigger")
+
+	got, err := app.FindRecordById("lodging_ingest_issues", issue.Id)
+	if err != nil {
+		t.Fatalf("reloading the issue: %v", err)
+	}
+	if !got.GetBool("is_resolved") {
+		t.Fatal("expected a repair narrowed to a single legal unit to resolve the row")
 	}
 }

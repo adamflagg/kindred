@@ -60,7 +60,7 @@ func wireHooks(app core.App) {
 	app.OnRecordUpdate(collectionAssignments).BindFunc(guardAssignmentGrain)
 	app.OnRecordUpdate(collectionUnits).BindFunc(guardUnitParentCycle)
 	app.OnRecordAfterUpdateSuccess(collectionIngestIssues).BindFunc(replayOnResolve)
-	app.OnRecordAfterUpdateSuccess(collectionUnits).BindFunc(recheckIllegalMerges)
+	app.OnRecordAfterUpdateSuccess(collectionUnits).BindFunc(recheckIllegalMergesOnUpdate)
 	app.OnRecordAfterCreateSuccess(collectionUnits).BindFunc(recheckIllegalMerges)
 }
 
@@ -257,8 +257,22 @@ func guardUnitParentCycle(e *core.RecordEvent) error {
 // A replay failure must NOT fail the resolve. Staff corrected the registry and
 // that correction is valid regardless; the placement can be picked up by the
 // next sync. Log and continue.
+//
+// Gated on the TRANSITION to resolved, not merely on being resolved: Flush
+// (sync/lodging_issues.go) re-saves an already-resolved row every time a
+// replay re-hits the same blocker -- occurrences and last_seen move,
+// is_resolved does not, by design, since a later sync must not un-tick what
+// staff ticked. That re-save is itself an update on this collection. Gating on
+// the current value alone means this hook fires on its own re-save, replays
+// again, re-saves again -- unbounded, and each level pays a full replay scope
+// (~1-2s). reopenRecorded would break the cycle by clearing is_resolved, but
+// it runs only after Flush returns, and Flush never returns from inside this
+// call chain. Original() holds the record's state as loaded, before this
+// write -- so this only proceeds on a genuine false -> true transition.
 func replayOnResolve(e *core.RecordEvent) error {
-	if !e.Record.GetBool("is_resolved") {
+	wasResolved := e.Record.Original().GetBool("is_resolved")
+	isResolved := e.Record.GetBool("is_resolved")
+	if wasResolved || !isResolved {
 		return e.Next()
 	}
 	partyScoped := e.Record.GetInt("household_cm_id") > 0 ||
@@ -287,6 +301,32 @@ func replayOnResolve(e *core.RecordEvent) error {
 	return e.Next()
 }
 
+// recheckIllegalMergesOnUpdate is the OnRecordAfterUpdateSuccess binding for
+// lodging_units. It skips the expensive recheck below unless parent_unit or
+// is_container actually changed -- the only two fields BuildUnitTree reads, so
+// confirming, renaming, or activating/deactivating a unit cannot possibly
+// change any merge's legality.
+//
+// This matters under load: confirmLodgingUnits (frontend/src/services/
+// lodgingCrud.ts) bulk-confirms via Promise.allSettled, so a 93-unit confirm
+// is 93 CONCURRENT PATCHes. Without this early-out every one of them pays a
+// filtered issues query plus BuildUnitTree plus NewAliasResolver, and if a row
+// has become legal, all 93 race to resolve it.
+//
+// Split from the create binding rather than shared: a new record's Original()
+// is blank on every field, so this same diff would compare "" to "" and false
+// to false and wrongly skip a create that genuinely adds a child to a
+// container. recheckIllegalMerges stays the unconditional create binding.
+func recheckIllegalMergesOnUpdate(e *core.RecordEvent) error {
+	original := e.Record.Original()
+	if original.GetString("parent_unit") == e.Record.GetString("parent_unit") &&
+		original.GetBool("is_container") == e.Record.GetBool("is_container") {
+		return e.Next()
+	}
+	e.App.Logger().Info("Unit tree changed; re-checking illegal merges", "unit", e.Record.Id)
+	return recheckIllegalMerges(e)
+}
+
 // recheckIllegalMerges re-judges every open illegal_merge row after the unit
 // tree changes, and replays the ones that just became legal.
 //
@@ -297,7 +337,8 @@ func replayOnResolve(e *core.RecordEvent) error {
 //
 // Cost is bounded by the OPEN illegal_merge count (single digits to dozens),
 // not by the units table, and only fires on a unit create/update -- a rare,
-// human-initiated event.
+// human-initiated event (recheckIllegalMergesOnUpdate further narrows the
+// update case to writes that could actually change a verdict).
 func recheckIllegalMerges(e *core.RecordEvent) error {
 	rows, err := e.App.FindRecordsByFilter(
 		collectionIngestIssues,
@@ -325,8 +366,17 @@ func recheckIllegalMerges(e *core.RecordEvent) error {
 		// replay re-queue the still-broken ones would write
 		// "registry corrected" onto rows that were not, and reset their
 		// first_seen/occurrences by replacing them with fresh rows.
+		//
+		// PlacementIsLegal, not a bare JudgeMerge call: JudgeMerge alone calls a
+		// single-unit resolution illegal ("needs at least two"), which is right
+		// for JudgeMerge's own job but wrong here. placementFor treats a
+		// single-unit resolution as automatically legal -- it is not a merge at
+		// all -- so a repair that narrows an alias down to the one unit that
+		// actually belongs to it would sync clean while this check, asked
+		// directly, left the row open forever. placementFor and this call share
+		// the one predicate so they cannot drift apart on that question again.
 		res := resolver.Resolve(row.GetString("raw_value"), row.GetInt("year"))
-		if !res.Resolved || !sync.JudgeMerge(tree, res.UnitIDs).Legal {
+		if !res.Resolved || !sync.PlacementIsLegal(tree, res) {
 			continue // still broken; leave the row and its history alone
 		}
 
