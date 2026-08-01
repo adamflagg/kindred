@@ -200,7 +200,6 @@ export type IngestIssueKind =
   | 'field_zero_values'
   | 'unknown_party'
   | 'write_failed'
-  | 'illegal_merge'
 
 /**
  * One row of the ingest work queue.

@@ -311,9 +311,6 @@ func newReplayScope(app core.App, year int) (*LodgingAssignmentsSync, error) {
 	if s.resolver, err = NewAliasResolver(app); err != nil {
 		return nil, fmt.Errorf("building the alias resolver: %w", err)
 	}
-	if s.unitTree, err = BuildUnitTree(app); err != nil {
-		return nil, fmt.Errorf("building the unit tree: %w", err)
-	}
 	if err = s.buildPartySizeIndexes(year); err != nil {
 		return nil, fmt.Errorf("building party-size indexes: %w", err)
 	}

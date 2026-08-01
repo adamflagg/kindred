@@ -35,10 +35,6 @@ type LodgingAssignmentsSync struct {
 	resolver *AliasResolver
 	issues   *IssueRecorder
 
-	// unitTree backs the merge-legality rule. Built once per run alongside the
-	// resolver; ~93 rows.
-	unitTree map[string]UnitNode
-
 	// Party-size indexes, built once per run. partySize used to query per
 	// household: a filtered scan of persons (28k rows) plus a full paged scan of
 	// family_camp_adults (10k rows) for EVERY observed cabin value. At ~700
@@ -96,11 +92,6 @@ func (s *LodgingAssignmentsSync) Sync(ctx context.Context) error {
 	if s.resolver, err = NewAliasResolver(s.App); err != nil {
 		return fmt.Errorf("building alias resolver: %w", err)
 	}
-	tree, err := BuildUnitTree(s.App)
-	if err != nil {
-		return fmt.Errorf("building the unit tree: %w", err)
-	}
-	s.unitTree = tree
 	s.issues = NewIssueRecorder(s.App, year)
 
 	fieldTargets, err := LodgingFieldDefIDs(s.App)

@@ -106,10 +106,11 @@ export function UnitIdentityFields({
 
       <label className="text-sm">
         <span className={LABEL}>Parent unit</span>
-        {/* The subdivide/combine hierarchy (spec §3.2). A merge will later be
-            legal only when its members are the complete child set of one
-            container, so this is the structure that makes partial merges —
-            two bedrooms of a four-room building — expressible at all. */}
+        {/* The subdivide/combine hierarchy (spec §3.2). Nothing validates a
+            merge against this tree — see docs/architecture/lodging-occupancy.md
+            for why that was tried and removed. It models physical structure,
+            and drives the bathroom_group upgrade when a merge covers a whole
+            group. */}
         <select
           className={FIELD}
           value={value.parent_unit}

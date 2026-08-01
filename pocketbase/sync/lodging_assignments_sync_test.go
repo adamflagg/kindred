@@ -502,7 +502,7 @@ func TestLodgingAssignmentsRegisteredEverywhere(t *testing.T) {
 }
 
 func TestPlacementForPassesASingleRoomStraightThrough(t *testing.T) {
-	s := &LodgingAssignmentsSync{unitTree: map[string]UnitNode{"r1": {ID: "r1"}}}
+	s := &LodgingAssignmentsSync{}
 	res := AliasResolution{Raw: "Room 1", UnitIDs: []string{"r1"}, Resolved: true}
 
 	unitID, mergeID, err := s.placementFor(res, "sess", 1, 2026, res.Raw)

@@ -6,9 +6,9 @@
  * cycle `descendantIds`' own walk below and the Go-side `HasParentCycle`
  * would otherwise have to guard against every time they run — and a
  * non-container parent, which `scripts/dev/verify-lodging-seed.sh` treats as
- * a seed failure. JudgeMerge, the merge-legality rule, does not walk parent
- * links at all (one hop per member, then a flat scan), so a cycle cannot hang
- * it regardless. The cycle case now has a server-side backstop too
+ * a seed failure. Nothing else walks parent links: `descendantIds` below and
+ * the Go-side `HasParentCycle` are the only two, and both carry visited
+ * guards. The cycle case now has a server-side backstop too
  * (`guardUnitParentCycle`, #1899), for the direct write this picker can't
  * filter; the non-container case still has no PocketBase rule or Go hook at
  * all. This filters both before either ever reaches a write.

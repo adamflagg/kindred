@@ -250,7 +250,7 @@ func guardUnitParentCycle(e *core.RecordEvent) error {
 // created, so it must run after the transaction commits.
 //
 // Two entry points, because the queue has two row shapes. A party-scoped row
-// (illegal_merge, no_session, ambiguous_session, write_failed) replays one
+// (no_session, ambiguous_session, write_failed) replays one
 // placement. A party-LESS row (unresolved_alias, ambiguous_alias) stands for a
 // cabin string rather than a party -- the dedup key collapses it that way on
 // purpose -- so it fans out over every party that wrote the string. Routing

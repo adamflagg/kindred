@@ -47,7 +47,3 @@ func TestHasParentCycleIgnoresAnUnrelatedPreExistingCycle(t *testing.T) {
 		t.Error("reparenting r1 under 'a' does not create a cycle involving r1")
 	}
 }
-
-// The rule is "the complete child set of some CONTAINER," not merely "share
-// a parent." A set of rooms hanging off a non-container parent is exactly
-// the ingest-shaped irregularity this phase exists to catch.

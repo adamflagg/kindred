@@ -374,18 +374,11 @@ func TestReplayIssuePreservesTheSuggestionWhenTheObservationIsGone(t *testing.T)
 // DIFFERENT dedup key from the row that was clicked. The clicked row stays
 // ticked and the new blocker gets its own open row.
 //
-// Why that is the honest outcome: the row names illegal_merge, and this pass
-// did not record one, so re-opening it would send staff to inspect a merge and
-// find nothing wrong while the real blocker sits beside it. Nothing is lost --
-// the new row carries the remaining work, and Placed still tells the caller the
-// click did not finish the job.
-//
-// Note what this does NOT test, despite the fixture's shape: the container and
-// parent links make the alias a legal merge, but ingestValue returns at the
-// attribution check BEFORE merge judgement, so that repair is never exercised
-// and the test passes identically with a still-illegal alias. The fixture is
-// built that way to model a plausible history, not to cover JudgeMerge --
-// TestReplayIssueMaterializesARepairedMerge does that.
+// Why that is the honest outcome: the row names write_failed, and this pass
+// did not record one, so re-opening it would send staff to inspect a write that
+// now succeeds while the real blocker sits beside it. Nothing is lost -- the new
+// row carries the remaining work, and Placed still tells the caller the click
+// did not finish the job.
 func TestReplayIssueTicksARowWhoseBlockerIsGoneAndOpensTheNewOne(t *testing.T) {
 	app := newLodgingTestApp(t)
 	fc1 := addSession(t, app, cmIDFamilyCamp1, "Family Camp 1", "family",
@@ -438,7 +431,7 @@ func TestReplayIssueTicksARowWhoseBlockerIsGoneAndOpensTheNewOne(t *testing.T) {
 		t.Fatalf("reloading the original row: %v", err)
 	}
 	if !original.GetBool("is_resolved") {
-		t.Error("the illegal_merge row was re-opened, but that blocker is gone; " +
+		t.Error("the write_failed row was re-opened, but that blocker is gone; " +
 			"staff would inspect the merge and find nothing wrong")
 	}
 
@@ -532,13 +525,12 @@ func TestFindExistingMatchesOnTheWholeDedupTuple(t *testing.T) {
 
 // The hole a re-open scoped to the replayed row leaves behind.
 //
-// Two ticked rows can exist for one party: a run with a single candidate
-// weekend judges the merge and queues illegal_merge, then a later run with a
-// second weekend enrolled returns at attribution and queues ambiguous_session.
-// ingestValue cannot produce both in one pass -- it returns before merge
-// judgement -- but they accumulate across runs, and staff tick both.
+// Two ticked rows can exist for one party: a run where the write itself lost
+// queues write_failed, then a later run with a second weekend enrolled returns
+// at attribution and queues ambiguous_session. ingestValue cannot produce both
+// in one pass, but they accumulate across runs, and staff tick both.
 //
-// Replaying the merge row then re-hits the ambiguous one. Flush matches it via
+// Replaying the write_failed row then re-hits the ambiguous one. Flush matches it via
 // findExisting and cannot un-tick it, because Flush writes is_resolved only on
 // create. If the re-open only ever considers the replayed row, the outcome is
 // no placement, no open row anywhere, and a nil error: the work item vanishes,
@@ -603,7 +595,7 @@ func TestReplayIssueReopensAnotherTickedRowItRehit(t *testing.T) {
 		t.Fatalf("reloading the clicked row: %v", err)
 	}
 	if !clicked.GetBool("is_resolved") {
-		t.Error("the illegal_merge row was re-opened, but its own blocker never recurred")
+		t.Error("the write_failed row was re-opened, but its own blocker never recurred")
 	}
 }
 

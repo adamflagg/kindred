@@ -279,9 +279,9 @@ func addUnit(t *testing.T, app core.App, code string) string {
 	})
 }
 
-// addContainerUnit adds a building/grouping row. JudgeMerge only accepts a
-// merge whose members are the COMPLETE child set of a container, so any
-// fixture with 2+ merged rooms needs one of these as their shared parent.
+// addContainerUnit adds a building/grouping row -- the parent a room hangs
+// off. Nothing validates a merge against this shape (see
+// docs/architecture/lodging-occupancy.md); it models physical structure.
 func addContainerUnit(t *testing.T, app core.App, code string) string {
 	t.Helper()
 	return saveRecord(t, app, "lodging_units", map[string]any{
