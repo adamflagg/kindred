@@ -33,12 +33,13 @@ describe('lodging tab registration', () => {
     expect(tab?.access).toEqual({ kind: 'permission', codename: Permission.BUNKING_MANAGE })
   })
 
-  it('is never admin-gated', () => {
-    // /admin was folded into /manage as a mixed-access tab set (nav
-    // consolidation). The invariant that matters for lodging is that it
-    // stays a permission tab, not an admin one — an admin-gated lodging tab
-    // would hand sync and config to anyone with bunking.manage, or vice versa.
-    expect(MANAGE_TABS.find((t) => t.id === 'lodging')?.access.kind).toBe('permission')
+  it('no longer appears under Admin', () => {
+    // #1893: lodging deliberately left /admin entirely, with no redirect —
+    // it was never linked, so there were no bookmarks to preserve. Nav
+    // consolidation folded /admin into /manage as a mixed-access tab set, so
+    // this now checks the invariant across all six tabs, not just lodging's:
+    // nothing in MANAGE_TABS should ever point back under /admin.
+    expect(MANAGE_TABS.some((t) => t.path.startsWith('/admin'))).toBe(false)
   })
 })
 
