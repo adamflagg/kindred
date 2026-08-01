@@ -136,6 +136,22 @@ func (r *IssueRecorder) Recorded() []Issue {
 	return out
 }
 
+// Observations returns the total number of Record calls this recorder has
+// taken, counting repeats of an item it already held.
+//
+// The party-less fan-out needs "did THIS party's value come through clean",
+// asked once per party, and the ITEM count cannot answer it: two parties
+// blocked by the same unmapped string collapse onto one dedup key, so the
+// second blocked party would look like a placement. Every Record moves this by
+// one, deduplicated or not.
+func (r *IssueRecorder) Observations() int {
+	total := 0
+	for _, p := range r.pending {
+		total += p.occurrences
+	}
+	return total
+}
+
 // CountOf returns the total observations recorded for a kind, across items.
 func (r *IssueRecorder) CountOf(kind string) int {
 	total := 0

@@ -1,6 +1,7 @@
 package sync
 
 import (
+	"fmt"
 	"testing"
 
 	"github.com/pocketbase/pocketbase/core"
@@ -666,5 +667,412 @@ func TestReplayIssueReopensAnotherTickedRowItRehit(t *testing.T) {
 	}
 	if !clicked.GetBool("is_resolved") {
 		t.Error("the illegal_merge row was re-opened, but its own blocker never recurred")
+	}
+}
+
+// seededParty is one household the party-less fixtures built, with the ids the
+// tests need to add a second weekend for it or assert on its placement.
+type seededParty struct {
+	HouseholdCMID int
+	HouseholdPBID string
+	PersonCMID    int
+	PersonPBID    string
+}
+
+// seedTwoHouseholdsSharingACabinString builds the shape unresolved_alias exists
+// for: two households that wrote the SAME cabin string, each enrolled in one
+// family weekend, standing behind ONE queue row because the dedup key zeroes
+// the party.
+//
+// It deliberately creates no alias. Creating one IS the staff repair a replay
+// follows, so each test states that precondition itself in the line that models
+// the repair -- and the tests where the string still does not resolve need it
+// absent.
+func seedTwoHouseholdsSharingACabinString(
+	t *testing.T, app core.App, value string, year int,
+) (sessionID string, parties []seededParty) {
+	t.Helper()
+	sessionID = addSession(t, app, cmIDFamilyCamp1, "Family Camp 1", "family",
+		fmt.Sprintf("%d-05-23 07:00:00.000Z", year),
+		fmt.Sprintf("%d-05-26 07:00:00.000Z", year), year)
+	cabinDef := addFieldDef(t, app, cmIDFamilyCampCabin, fieldNameFamilyCampCabin)
+
+	// Edited between the May weekend and any later one a caller adds, so a
+	// replay reading the real timestamp suggests the NEXT weekend while one
+	// attributing with now falls through to the last.
+	lastUpdated := fmt.Sprintf("%d-06-10T09:00:00.0000000+00:00", year)
+
+	for i, hhCMID := range []int{9001, 9002} {
+		personCMID := 5001 + i
+		hh := addHousehold(t, app, hhCMID, year)
+		person := addPerson(t, app, personCMID, hhCMID, year, hh)
+		addAttendee(t, app, person, sessionID, personCMID, 2, year)
+		addHouseholdValue(t, app, hh, cabinDef, value, lastUpdated, year)
+		parties = append(parties, seededParty{
+			HouseholdCMID: hhCMID, HouseholdPBID: hh,
+			PersonCMID: personCMID, PersonPBID: person,
+		})
+	}
+	return sessionID, parties
+}
+
+// seedFanOutWithOneAmbiguousHousehold is the mixed outcome: of the two
+// households that wrote the string, the second attends three weekends, so
+// CampMinder's single value for the year cannot say which one it describes.
+// One party places, one does not.
+func seedFanOutWithOneAmbiguousHousehold(
+	t *testing.T, app core.App, value string,
+) (first, second, third string, parties []seededParty) {
+	t.Helper()
+	// 2025, not a future year: every weekend is in the past, so attributing with
+	// now falls through to the LAST candidate -- the failure mode that moved a
+	// real household's one-click confirmation forward by four months.
+	first, parties = seedTwoHouseholdsSharingACabinString(t, app, value, 2025)
+	second = addSession(t, app, cmIDFamilyCamp6, "Family Camp 6", "family",
+		"2025-09-18 07:00:00.000Z", "2025-09-21 07:00:00.000Z", 2025)
+	third = addSession(t, app, cmIDWinterFamily, "Winter Family Camp", "family",
+		"2025-12-26 07:00:00.000Z", "2025-12-29 07:00:00.000Z", 2025)
+
+	blocked := parties[1]
+	addAttendee(t, app, blocked.PersonPBID, second, blocked.PersonCMID, 2, 2025)
+	addAttendee(t, app, blocked.PersonPBID, third, blocked.PersonCMID, 2, 2025)
+	return first, second, third, parties
+}
+
+// The rows the fan-out must refuse rather than quietly do nothing with.
+//
+// Silence is the failure mode worth guarding: every one of these returns zero
+// placements, so without an error a caller cannot tell "there was nothing to
+// place" from "this row was never replayable in the first place".
+func TestReplayPartylessIssueRefusesRowsItCannotFanOut(t *testing.T) {
+	app := newLodgingTestApp(t)
+
+	cases := []struct {
+		name   string
+		values map[string]any
+	}{
+		// A party-scoped row belongs to ReplayIssue: it names one party, and
+		// fanning out over everyone who wrote the string would replay strangers.
+		{"party-scoped, household", map[string]any{
+			"kind": issueIllegalMerge, "raw_value": "Ridge 1and2", "year": 2026,
+			"is_resolved": true, "household_cm_id": 9001,
+		}},
+		{"party-scoped, person", map[string]any{
+			"kind": issueIllegalMerge, "raw_value": "River C", "year": 2026,
+			"is_resolved": true, "person_cm_id": 5001,
+		}},
+		// Replaying an open item re-runs the same failing resolution and bumps
+		// occurrences: the queue looks busier and nothing was repaired.
+		{"not resolved", map[string]any{
+			"kind": issueUnresolvedAlias, "raw_value": "Nowhere Cabin", "year": 2026,
+			"is_resolved": false,
+		}},
+		// Year 0 would build empty indexes and then queue the emptiness as a
+		// fresh problem.
+		{"no year", map[string]any{
+			"kind": issueUnresolvedAlias, "raw_value": "Nowhere Cabin", "year": 0,
+			"is_resolved": true,
+		}},
+		// field_zero_values is party-less too, but its raw_value names the FIELD,
+		// not a cabin string. Fanning out on it searches for households whose
+		// cabin answer is the literal text "Family Camp Cabin".
+		{"field-level warning", map[string]any{
+			"kind": issueFieldZeroValues, "raw_value": fieldNameFamilyCampCabin,
+			"source_field": fieldNameFamilyCampCabin, "year": 2026, "is_resolved": true,
+		}},
+		// An empty raw value cannot be matched: a bound empty parameter matches
+		// nothing, and the bare literal `value = ''` would match every party who
+		// answered nothing at all.
+		{"no raw value", map[string]any{
+			"kind": issueUnresolvedAlias, "raw_value": "",
+			"source_field": fieldNameFamilyCampCabin, "year": 2026, "is_resolved": true,
+		}},
+		// Without a known source field there is no grain, so no table to read.
+		{"unknown source field", map[string]any{
+			"kind": issueUnresolvedAlias, "raw_value": "Nowhere Cabin",
+			"source_field": "Some Retired Field", "year": 2026, "is_resolved": true,
+		}},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			id := seedIssue(t, app, tc.values)
+			placed, err := ReplayPartylessIssue(app, id)
+			if err == nil {
+				t.Fatalf("expected a refusal; got placed = %d and no error", placed)
+			}
+			if placed != 0 {
+				t.Errorf("placed = %d on a refused row, want 0", placed)
+			}
+		})
+	}
+}
+
+// The success shape, and the point of the whole task: one resolved row fans out
+// to one placement per household that wrote the string. This is the assertion
+// that fails if the function silently does nothing.
+func TestReplayPartylessIssueFansOutToEveryPartyThatWroteTheString(t *testing.T) {
+	app := newLodgingTestApp(t)
+	sessionID, parties := seedTwoHouseholdsSharingACabinString(t, app, "Ridge Cabin 9", 2026)
+	// The staff repair this replay follows: the string now has an alias.
+	unitID := addUnit(t, app, "ridge-9")
+	addAlias(t, app, "Ridge Cabin 9", []string{unitID}, 0, 0)
+
+	id := seedIssue(t, app, map[string]any{
+		"kind":         issueUnresolvedAlias,
+		"raw_value":    "Ridge Cabin 9",
+		"source_field": fieldNameFamilyCampCabin,
+		"year":         2026,
+		"is_resolved":  true,
+		"occurrences":  2,
+	})
+
+	placed, err := ReplayPartylessIssue(app, id)
+	if err != nil {
+		t.Fatalf("ReplayPartylessIssue: %v", err)
+	}
+	if placed != 2 {
+		t.Errorf("placed = %d, want 2 -- one per household that wrote the string", placed)
+	}
+
+	rows, err := app.FindRecordsByFilter("lodging_assignments", "", "household_cm_id", 0, 0)
+	if err != nil {
+		t.Fatalf("find assignments: %v", err)
+	}
+	if len(rows) != 2 {
+		t.Fatalf("assignments = %d, want one per household", len(rows))
+	}
+	for i, row := range rows {
+		if row.GetInt("household_cm_id") != parties[i].HouseholdCMID {
+			t.Errorf("assignment %d household_cm_id = %d, want %d",
+				i, row.GetInt("household_cm_id"), parties[i].HouseholdCMID)
+		}
+		if row.GetString("unit") != unitID {
+			t.Errorf("assignment %d unit = %q, want %q", i, row.GetString("unit"), unitID)
+		}
+		if row.GetString("session") != sessionID {
+			t.Errorf("assignment %d session = %q, want %q", i, row.GetString("session"), sessionID)
+		}
+	}
+
+	// Every party placed, so the row staff ticked stays ticked.
+	queued, err := app.FindRecordById("lodging_ingest_issues", id)
+	if err != nil {
+		t.Fatalf("reloading the row: %v", err)
+	}
+	if !queued.GetBool("is_resolved") {
+		t.Error("a fan-out that placed every party un-ticked the row it just repaired")
+	}
+}
+
+// The invariant Task 4 established, on the fan-out: a string that still does not
+// resolve leaves its row OPEN. Flush writes is_resolved only on create, so
+// nothing but the explicit re-open can put it back.
+//
+// The occurrence count is the second assertion here, and it is not incidental:
+// Flush SETS occurrences to what the pass observed, so a fan-out that visited
+// only the first party would silently rewrite a 2-household string as a
+// 1-household one.
+func TestReplayPartylessIssueReopensARowWhoseStringStillDoesNotResolve(t *testing.T) {
+	app := newLodgingTestApp(t)
+	seedTwoHouseholdsSharingACabinString(t, app, "Nowhere Cabin", 2026)
+	// No alias: staff ticked the row without actually mapping the string.
+
+	id := seedIssue(t, app, map[string]any{
+		"kind":         issueUnresolvedAlias,
+		"raw_value":    "Nowhere Cabin",
+		"source_field": fieldNameFamilyCampCabin,
+		"year":         2026,
+		"is_resolved":  true,
+		"occurrences":  2,
+	})
+
+	placed, err := ReplayPartylessIssue(app, id)
+	if err != nil {
+		t.Fatalf("ReplayPartylessIssue: %v", err)
+	}
+	if placed != 0 {
+		t.Errorf("placed = %d, want 0 -- the string resolves to nothing", placed)
+	}
+
+	rows, _ := app.FindRecordsByFilter("lodging_assignments", "", "", 0, 0)
+	if len(rows) != 0 {
+		t.Errorf("assignments = %d, want 0", len(rows))
+	}
+
+	issues, _ := app.FindRecordsByFilter("lodging_ingest_issues", "", "", 0, 0)
+	if len(issues) != 1 {
+		t.Fatalf("queue rows = %d, want 1 (the same row, re-observed)", len(issues))
+	}
+	if issues[0].Id != id {
+		t.Errorf("the fan-out queued a NEW row %q instead of updating %q", issues[0].Id, id)
+	}
+	if issues[0].GetBool("is_resolved") {
+		t.Error("the row is still ticked after a fan-out that placed nothing; " +
+			"it is invisible in the open queue and nothing will ever revisit it")
+	}
+	if got := issues[0].GetInt("occurrences"); got != 2 {
+		t.Errorf("occurrences = %d, want 2 -- one per household that still writes the string", got)
+	}
+}
+
+// placed counts PLACEMENTS, not parties. Returning the party count instead
+// would report "placed 2" for a click that wrote one assignment and left a
+// household in the queue.
+func TestReplayPartylessIssueCountsOnlyThePartiesItPlaced(t *testing.T) {
+	app := newLodgingTestApp(t)
+	_, _, _, parties := seedFanOutWithOneAmbiguousHousehold(t, app, "Ridge Cabin 9")
+	addAlias(t, app, "Ridge Cabin 9", []string{addUnit(t, app, "ridge-9")}, 0, 0)
+
+	id := seedIssue(t, app, map[string]any{
+		"kind":         issueUnresolvedAlias,
+		"raw_value":    "Ridge Cabin 9",
+		"source_field": fieldNameFamilyCampCabin,
+		"year":         2025,
+		"is_resolved":  true,
+	})
+
+	placed, err := ReplayPartylessIssue(app, id)
+	if err != nil {
+		t.Fatalf("ReplayPartylessIssue: %v", err)
+	}
+	if placed != 1 {
+		t.Errorf("placed = %d, want 1 -- the second household is still ambiguous", placed)
+	}
+
+	rows, _ := app.FindRecordsByFilter("lodging_assignments", "", "", 0, 0)
+	if len(rows) != 1 {
+		t.Fatalf("assignments = %d, want 1", len(rows))
+	}
+	if rows[0].GetInt("household_cm_id") != parties[0].HouseholdCMID {
+		t.Errorf("the placed household is %d, want the unambiguous one %d",
+			rows[0].GetInt("household_cm_id"), parties[0].HouseholdCMID)
+	}
+
+	// The blocked party gets its own row, carrying its own party -- unlike the
+	// alias row it came from, an attribution failure IS specific to one household.
+	blocked, err := app.FindRecordsByFilter("lodging_ingest_issues",
+		"kind = {:kind}", "", 0, 0, map[string]any{"kind": issueAmbiguousSession})
+	if err != nil {
+		t.Fatalf("looking up the new row: %v", err)
+	}
+	if len(blocked) != 1 {
+		t.Fatalf("ambiguous_session rows = %d, want 1 carrying the remaining work", len(blocked))
+	}
+	if blocked[0].GetInt("household_cm_id") != parties[1].HouseholdCMID {
+		t.Errorf("the blocked row names household %d, want %d",
+			blocked[0].GetInt("household_cm_id"), parties[1].HouseholdCMID)
+	}
+	if blocked[0].GetBool("is_resolved") {
+		t.Error("the new blocker was created already ticked; nothing would surface it")
+	}
+
+	// The alias really was created, so the clicked row's own blocker is gone.
+	clicked, _ := app.FindRecordById("lodging_ingest_issues", id)
+	if !clicked.GetBool("is_resolved") {
+		t.Error("the unresolved_alias row was re-opened, but the string resolves now; " +
+			"staff would go looking for a mapping that already exists")
+	}
+}
+
+// Each party is attributed with the timestamp on ITS OWN value row, never with
+// now.
+//
+// AttributeSession walks the candidates for the first weekend starting on or
+// after the observation and otherwise falls through to the LAST one. For a past
+// season now is after every window, so attributing with it rewrites
+// suggested_session -- the one-click confirmation the queue offers staff -- to
+// the final weekend of the year. Flush overwrites a non-empty suggestion, so
+// the damage lands in the database.
+func TestReplayPartylessIssueAttributesWithTheObservationTimestamp(t *testing.T) {
+	app := newLodgingTestApp(t)
+	_, second, third, _ := seedFanOutWithOneAmbiguousHousehold(t, app, "Ridge Cabin 9")
+	addAlias(t, app, "Ridge Cabin 9", []string{addUnit(t, app, "ridge-9")}, 0, 0)
+
+	id := seedIssue(t, app, map[string]any{
+		"kind":         issueUnresolvedAlias,
+		"raw_value":    "Ridge Cabin 9",
+		"source_field": fieldNameFamilyCampCabin,
+		"year":         2025,
+		"is_resolved":  true,
+	})
+
+	if _, err := ReplayPartylessIssue(app, id); err != nil {
+		t.Fatalf("ReplayPartylessIssue: %v", err)
+	}
+
+	rows, err := app.FindRecordsByFilter("lodging_ingest_issues",
+		"kind = {:kind}", "", 0, 0, map[string]any{"kind": issueAmbiguousSession})
+	if err != nil {
+		t.Fatalf("looking up the ambiguous row: %v", err)
+	}
+	if len(rows) != 1 {
+		t.Fatalf("ambiguous_session rows = %d, want 1", len(rows))
+	}
+	switch rows[0].GetString("suggested_session") {
+	case second: // the sync's answer: the first weekend starting after the edit
+	case third:
+		t.Error("suggested_session is the LAST weekend of the year: the fan-out " +
+			"attributed with now instead of the party's own observation timestamp")
+	default:
+		t.Errorf("suggested_session = %q, want the second weekend %q",
+			rows[0].GetString("suggested_session"), second)
+	}
+}
+
+// The person grain reads a different table through a different field, so the
+// source field on the row -- not a guess -- has to pick it. A fan-out that
+// always read household_custom_values would find nobody here and report a
+// successful replay of nothing.
+func TestReplayPartylessIssueFansOutAcrossThePersonGrain(t *testing.T) {
+	app := newLodgingTestApp(t)
+	womens := addSession(t, app, cmIDWomensWeekend, "Women's Weekend", "adult",
+		testAdultSessionStart, testAdultSessionEnd, 2025)
+	unitID := addUnit(t, app, "river-c")
+	addAlias(t, app, "River C", []string{unitID}, 0, 0)
+	def := addFieldDef(t, app, cmIDReportableFamilyCampCabin, fieldNameReportableFamilyCampCabin)
+
+	hh := addHousehold(t, app, 9001, 2025)
+	for _, personCMID := range []int{5001, 5002} {
+		person := addPerson(t, app, personCMID, 9001, 2025, hh)
+		addAttendee(t, app, person, womens, personCMID, 2, 2025)
+		addPersonValue(t, app, person, def, "River C", testLastUpdated, 2025)
+	}
+
+	id := seedIssue(t, app, map[string]any{
+		"kind":         issueUnresolvedAlias,
+		"raw_value":    "River C",
+		"source_field": fieldNameReportableFamilyCampCabin,
+		"year":         2025,
+		"is_resolved":  true,
+	})
+
+	placed, err := ReplayPartylessIssue(app, id)
+	if err != nil {
+		t.Fatalf("ReplayPartylessIssue: %v", err)
+	}
+	if placed != 2 {
+		t.Errorf("placed = %d, want 2 -- one per person who wrote the string", placed)
+	}
+
+	rows, err := app.FindRecordsByFilter("lodging_assignments", "", "person_cm_id", 0, 0)
+	if err != nil {
+		t.Fatalf("find assignments: %v", err)
+	}
+	if len(rows) != 2 {
+		t.Fatalf("assignments = %d, want 2", len(rows))
+	}
+	for i, want := range []int{5001, 5002} {
+		if rows[i].GetInt("person_cm_id") != want {
+			t.Errorf("assignment %d person_cm_id = %d, want %d", i, rows[i].GetInt("person_cm_id"), want)
+		}
+		if rows[i].GetInt("household_cm_id") != 0 {
+			t.Errorf("assignment %d household_cm_id = %d, want 0 on the person grain",
+				i, rows[i].GetInt("household_cm_id"))
+		}
+		if rows[i].GetString("session") != womens {
+			t.Errorf("assignment %d session = %q, want the adult weekend %q",
+				i, rows[i].GetString("session"), womens)
+		}
 	}
 }

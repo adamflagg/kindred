@@ -107,6 +107,25 @@ var lodgingSourceFields = []lodgingSourceField{
 		Target: targetCabinAssignmentPerson, Grain: grainPerson},
 }
 
+// lodgingSourceFieldByName looks an assignment source field up by the display
+// name a work-queue row carries in source_field.
+//
+// Matching on the name is safe HERE and nowhere else. Spec 4.4's rule -- match
+// on cm_id, never the user-editable name -- governs reading CampMinder's
+// definitions, and this reads none: the two grain passes stamp source_field
+// with these very constants, so the stored value is the constant rather than
+// whatever CampMinder currently calls the field. A rename therefore cannot
+// break this lookup; it can only leave rows queued under the old constant,
+// which is what they were queued under.
+func lodgingSourceFieldByName(name string) (lodgingSourceField, bool) {
+	for _, f := range lodgingSourceFields {
+		if f.Name == name {
+			return f, true
+		}
+	}
+	return lodgingSourceField{}, false
+}
+
 // lodgingRequestFields is the request-layer registry (spec 4): every CampMinder
 // field family_camp_derived.go's switch routes into a family_camp_registrations
 // column.

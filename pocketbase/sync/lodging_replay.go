@@ -68,19 +68,10 @@ func ReplayIssue(app core.App, issueID string) (ReplayResult, error) {
 	}
 	raw := row.GetString("raw_value")
 
-	s := NewLodgingAssignmentsSync(app)
-	s.Year = year
-
-	if s.resolver, err = NewAliasResolver(app); err != nil {
-		return result, fmt.Errorf("building the alias resolver: %w", err)
+	s, err := newReplayScope(app, year)
+	if err != nil {
+		return result, err
 	}
-	if s.unitTree, err = BuildUnitTree(app); err != nil {
-		return result, fmt.Errorf("building the unit tree: %w", err)
-	}
-	if err = s.buildPartySizeIndexes(year); err != nil {
-		return result, fmt.Errorf("building party-size indexes: %w", err)
-	}
-	s.issues = NewIssueRecorder(app, year)
 
 	candidates, err := s.sessionWindowsFor(householdCMID, personCMID, year)
 	if err != nil {
@@ -125,6 +116,265 @@ func ReplayIssue(app core.App, issueID string) (ReplayResult, error) {
 		return result, err
 	}
 	return result, nil
+}
+
+// ReplayPartylessIssue re-runs the placement for a resolved work-queue row that
+// stands for a cabin STRING rather than for one party.
+//
+// unresolved_alias and ambiguous_alias are recorded with no party columns on
+// purpose: the dedup key includes the party, so zeroing it collapses one
+// unmapped string into ONE row however many households wrote it. That collapse
+// is what keeps the queue reviewable, and it is why ReplayIssue -- which needs a
+// party to attribute a placement -- refuses these rows. Stamping parties onto
+// them to make ReplayIssue work would turn one queue item into hundreds.
+//
+// So the fan-out lives here instead: find every party that wrote this string in
+// this year through this source field, and run the sync's own ingestValue once
+// per party. It is the sync's grain loop restricted to one value, and it shares
+// every index that loop builds -- one whole-year session index for the grain,
+// not one scan per party.
+//
+// The count is PLACEMENTS, not parties: a caller has to be able to tell
+// "resolved and placed 12" from "resolved, and 12 households are still stuck".
+// A party whose value could not be placed leaves an open queue row behind, as it
+// does for a party-scoped replay. The count stays meaningful alongside an error
+// -- the assignments it counts are already committed -- and is 0 wherever
+// nothing was written.
+func ReplayPartylessIssue(app core.App, issueID string) (int, error) {
+	row, err := app.FindRecordById("lodging_ingest_issues", issueID)
+	if err != nil {
+		return 0, fmt.Errorf("loading issue %s: %w", issueID, err)
+	}
+	if !row.GetBool("is_resolved") {
+		return 0, fmt.Errorf("issue %s is not resolved; nothing to replay", issueID)
+	}
+	if row.GetInt("household_cm_id") > 0 || row.GetInt("person_cm_id") > 0 {
+		return 0, fmt.Errorf("issue %s is party-scoped; use ReplayIssue", issueID)
+	}
+	// The fourth party-less kind. Its raw_value names the FIELD that saw no
+	// values, not a cabin string, so a fan-out on it would search for parties
+	// whose cabin answer is the field's own name and place nothing. Refusing says
+	// so; returning 0 would look like a string nobody writes any more.
+	if row.GetString("kind") == issueFieldZeroValues {
+		return 0, fmt.Errorf(
+			"issue %s is a field-level warning, not a cabin value; nothing to replay", issueID)
+	}
+
+	year := row.GetInt("year")
+	if year == 0 {
+		return 0, fmt.Errorf("issue %s has no year", issueID)
+	}
+	raw := row.GetString("raw_value")
+	if raw == "" {
+		// Nothing can match it: a bound empty parameter matches no row, and the
+		// bare literal that would work instead (`value = ''`) matches every party
+		// who answered nothing at all -- see eqOrEmpty.
+		return 0, fmt.Errorf("issue %s has no raw value to replay", issueID)
+	}
+	sourceField := row.GetString("source_field")
+	// The source field is the grain, and the grain is the table to read. Without
+	// a registered one there is nowhere to look for the parties.
+	field, ok := lodgingSourceFieldByName(sourceField)
+	if !ok {
+		return 0, fmt.Errorf(
+			"issue %s names source field %q, which is not a lodging assignment source",
+			issueID, sourceField)
+	}
+	byHousehold := field.Grain == grainHousehold
+
+	s, err := newReplayScope(app, year)
+	if err != nil {
+		return 0, err
+	}
+
+	parties, err := s.partiesWritingValue(year, field, raw)
+	if err != nil {
+		return 0, fmt.Errorf("finding the parties that wrote %q: %w", raw, err)
+	}
+	if len(parties) == 0 {
+		// Nobody writes this string this year any more -- staff edited the
+		// CampMinder values after the row was queued, or the field was disabled.
+		// There is no placement to make and no party to keep an item open for, so
+		// the row stays ticked.
+		return 0, nil
+	}
+
+	// One index for the whole grain, indexed into per party -- the same call and
+	// the same result the sync's grain pass uses. sessionWindowsFor's per-party
+	// filter is the wrong tool at this scale: it prunes in Go AFTER a whole-year
+	// attendee scan, so calling it inside this loop would run one such scan per
+	// household, and a string 300 households wrote is a common shape.
+	sessionIndex, err := buildSessionIndex(
+		app, year, sessionTypesForGrain(byHousehold), byHousehold, allParties)
+	if err != nil {
+		return 0, fmt.Errorf("building the session index: %w", err)
+	}
+
+	now := time.Now().UTC()
+	placed := 0
+	for _, p := range parties {
+		before := s.issues.Observations()
+		s.ingestValue(&ingestContext{
+			Year:          year,
+			Raw:           raw,
+			SourceField:   sourceField,
+			HouseholdCMID: p.HouseholdCMID,
+			PersonCMID:    p.PersonCMID,
+			Candidates:    sessionIndex[p.cmID()],
+			LastUpdated:   p.LastUpdated,
+			Now:           now,
+		})
+		// ingestValue queues an item on every path that fails to place and on no
+		// path that succeeds, so "recorded nothing" is the same evidence
+		// ReplayIssue's Placed rests on. Counted per party rather than per item:
+		// two parties blocked by this one string share a dedup key.
+		if s.issues.Observations() == before {
+			placed++
+		}
+	}
+
+	recorded := s.issues.Recorded()
+	// Flush SETS occurrences rather than adding, which for a fan-out is exactly
+	// right and is why the whole party list has to be walked even once it is
+	// clear the string still fails: the count this pass observes IS the number of
+	// parties still affected.
+	if _, _, flushErr := s.issues.Flush(now); flushErr != nil {
+		return placed, fmt.Errorf("flushing replay issues: %w", flushErr)
+	}
+	if err := reopenRecorded(s.issues, recorded); err != nil {
+		return placed, err
+	}
+	return placed, nil
+}
+
+// newReplayScope wires a LodgingAssignmentsSync for one year with the four
+// things ingestValue needs and nothing a whole-year run needs.
+//
+// Both replay entry points build these, and they have to build them the same
+// way: replay's premise is that a click produces the placement the next sync
+// would have written, and that only holds while there is one setup rather than
+// two that can drift. ~1-2s, dominated by buildPartySizeIndexes' three scans --
+// paid once per click, whether one party or three hundred follow.
+func newReplayScope(app core.App, year int) (*LodgingAssignmentsSync, error) {
+	s := NewLodgingAssignmentsSync(app)
+	s.Year = year
+
+	var err error
+	if s.resolver, err = NewAliasResolver(app); err != nil {
+		return nil, fmt.Errorf("building the alias resolver: %w", err)
+	}
+	if s.unitTree, err = BuildUnitTree(app); err != nil {
+		return nil, fmt.Errorf("building the unit tree: %w", err)
+	}
+	if err = s.buildPartySizeIndexes(year); err != nil {
+		return nil, fmt.Errorf("building party-size indexes: %w", err)
+	}
+	s.issues = NewIssueRecorder(app, year)
+	return s, nil
+}
+
+// replayParty is one party that wrote the replayed string, and when they last
+// touched the value. Exactly one of the two ids is set, as everywhere else in
+// this ingest.
+type replayParty struct {
+	HouseholdCMID int
+	PersonCMID    int
+	LastUpdated   time.Time
+}
+
+// cmID returns whichever id this grain keys on.
+func (p replayParty) cmID() int {
+	if p.HouseholdCMID > 0 {
+		return p.HouseholdCMID
+	}
+	return p.PersonCMID
+}
+
+// partiesWritingValue returns every party that wrote one cabin string, in one
+// year, through one source field: the grain pass's scan narrowed to a single
+// value.
+//
+// The source field picks the grain and with it the table, the party column and
+// the mapped definitions. Narrowing to it is not an optimisation: source_field
+// is part of the dedup key, so a string written through BOTH fields is two
+// queue rows, and searching both tables would place the other row's parties on
+// a click that never mentioned them.
+//
+// LastUpdated is read off the value row this loop already holds. That is the
+// cheap way and the faithful one -- it is the same column observationTimestampFor
+// re-reads for a party-scoped replay, and reading it inline is exactly what the
+// grain passes do. time.Now() is not a substitute: for a past season it is after
+// every weekend, so AttributeSession falls through to the last candidate and
+// Flush overwrites the stored suggestion with it.
+//
+//nolint:gocritic // hugeParam: one registry row, passed by value like the registry itself
+func (s *LodgingAssignmentsSync) partiesWritingValue(
+	year int, field lodgingSourceField, raw string,
+) ([]replayParty, error) {
+	fieldTargets, err := LodgingFieldDefIDs(s.App)
+	if err != nil {
+		return nil, fmt.Errorf("loading source field mappings: %w", err)
+	}
+	defIDs := defIDsForTarget(fieldTargets, field.Target)
+	if len(defIDs) == 0 {
+		// Unmapped or disabled by hand -- the same early out the grain passes take.
+		return nil, nil
+	}
+
+	// Both value tables name their party relation after the grain.
+	byHousehold := field.Grain == grainHousehold
+	valueCollection, partyCollection := serviceNamePersonCustomValues, personsCollection
+	if byHousehold {
+		valueCollection, partyCollection = serviceNameHouseholdCustomValues, serviceNameHouseholds
+	}
+
+	params := dbx.Params{"raw": raw}
+	filter := fmt.Sprintf("year = %d && value = {:raw} && %s",
+		year, fieldDefClause(defIDs, params))
+	rows, err := findAllRecords(s.App, valueCollection, filter, params)
+	if err != nil {
+		return nil, err
+	}
+
+	// The value rows address their party by PB relation; every key in this ingest
+	// is a CampMinder id.
+	cmIDs, err := s.cmIDsByPBID(partyCollection, year)
+	if err != nil {
+		return nil, err
+	}
+
+	out := make([]replayParty, 0, len(rows))
+	at := make(map[int]int, len(rows)) // party CM id -> its index in out
+	for _, v := range rows {
+		cmID := cmIDs[v.GetString(field.Grain)]
+		if cmID == 0 {
+			// No CampMinder id to key a placement on. The grain pass queues this as
+			// unknown_party and that row is untouched by this click, so nothing is
+			// dropped by skipping it -- and its repair is upstream, in whichever
+			// sync should have produced the party, not in this string's alias.
+			continue
+		}
+
+		p := replayParty{HouseholdCMID: cmID}
+		if !byHousehold {
+			p = replayParty{PersonCMID: cmID}
+		}
+		p.LastUpdated, _ = ParseCampMinderTimestamp(v.GetString("last_updated"))
+
+		if i, seen := at[cmID]; seen {
+			// CampMinder holds one cabin answer per party per year, so a second row
+			// for the same party is a duplicate rather than a second occupant. The
+			// freshest one is the observation, the same rule observationTimestampFor
+			// applies with its "-last_updated" ordering.
+			if p.LastUpdated.After(out[i].LastUpdated) {
+				out[i] = p
+			}
+			continue
+		}
+		at[cmID] = len(out)
+		out = append(out, p)
+	}
+	return out, nil
 }
 
 // reopenRecorded clears is_resolved on the row backing every item this pass
@@ -271,14 +521,28 @@ func (s *LodgingAssignmentsSync) sessionWindowsFor(
 	householdCMID, personCMID, year int,
 ) ([]SessionWindow, error) {
 	byHousehold := householdCMID > 0
-	cmID, sessionTypes := personCMID, []string{sessionTypeAdult}
+	cmID := personCMID
 	if byHousehold {
-		cmID, sessionTypes = householdCMID, []string{sessionTypeFamily}
+		cmID = householdCMID
 	}
 
-	index, err := buildSessionIndex(s.App, year, sessionTypes, byHousehold, cmID)
+	index, err := buildSessionIndex(s.App, year, sessionTypesForGrain(byHousehold), byHousehold, cmID)
 	if err != nil {
 		return nil, err
 	}
 	return index[cmID], nil
+}
+
+// sessionTypesForGrain names the weekends a grain's cabin value can possibly
+// describe: family weekends for a household's answer, adult ones for a person's.
+//
+// It is one function rather than a line in each replay path because the two
+// have to agree with the sync's two grain passes and with each other. A replay
+// that asked for the wrong type would find no candidate and queue a no_session
+// item -- the repair reporting itself as a fresh problem.
+func sessionTypesForGrain(byHousehold bool) []string {
+	if byHousehold {
+		return []string{sessionTypeFamily}
+	}
+	return []string{sessionTypeAdult}
 }
