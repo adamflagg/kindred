@@ -1,10 +1,12 @@
 # HANDOFF — Family Camp Lodging
 
-**State as of `1bcd90f1` on `main`.** All three plans are merged. The data layer, the ingest,
-the read API, the weekend surfaces and the writable editor are done.
-`/weekend/sessions` lists the year's weekends; `/weekend/session/:id` shows one weekend's
-roster and inventory; `/manage/lodging/:section` edits the registry. **The next body of work
-is the board and the map (spec §7.2) — see §4.**
+**State as of Phase A of the ingest-repair work (#1903).** All three plans are merged, plus
+the queue drain. The data layer, the ingest, the read API, the weekend surfaces and the
+writable editor are done. `/weekend/sessions` lists the year's weekends;
+`/weekend/session/:id` shows one weekend's roster and inventory; `/manage/lodging/:section`
+edits the registry, and resolving a work-queue row now writes the placement on the click
+instead of on the next sync. **The next body of work is the board and the map (spec §7.2) —
+see §4.**
 
 This is a working document. Edit it in place: tick what ships, rewrite "Next", delete what stops
 being true. It is not a changelog — `git log` is the changelog.
@@ -13,7 +15,7 @@ being true. It is not a changelog — `git log` is the changelog.
 
 ## 1. Programme status
 
-Three plans, all merged. What remains is the board and the map — see §4.
+Three plans merged, plus one follow-on phase. What remains is the board and the map — see §4.
 
 | Plan | Scope | Status |
 |---|---|---|
@@ -32,6 +34,16 @@ Plan 2 shipped in four PRs:
 
 Task 15 was **rejected**, not deferred — see §3.
 
+After Plan 2, one follow-on phase:
+
+| Phase | Commit | What |
+|---|---|---|
+| A — ingest repair | #1903 | replay: drain the work queue without a re-sync; server-side `parent_unit` cycle guard (#1899) |
+
+**#1903 also removed a merge-legality rule it had itself just built.** That is the single most
+important thing to read before touching lodging constraints — §4 and
+`docs/architecture/lodging-occupancy.md`.
+
 ---
 
 ## 2. What is live on `main`
@@ -49,6 +61,20 @@ Facts, not a work log. Do not re-verify or re-implement these.
   `ambiguous_session`, `no_session`, `field_zero_values`, `unknown_party`, `write_failed`.
   The Go constants are *not* the constraint — the migration's select list is, and
   `verify-lodging-schema.sh` pins it exactly.
+- **The work queue drains without a re-sync** (#1903). Resolving a row fires `replayOnResolve`
+  (`pocketbase/lodging/hooks.go`), which routes by row shape: `ReplayIssue` for a party-scoped
+  row, `ReplayPartylessIssue` for a row standing for a cabin STRING, which fans out over every
+  party that wrote it. Measured on real data: one row 13 households shared produced **11
+  placements across 8 weekends in 0.92s**. The alternative was an 8–10 minute sync per year.
+  - **Routing is not total, deliberately.** `field_zero_values` and `unknown_party` rows are
+    refused by both entry points; a UI must surface the refusal rather than report a repair.
+  - The hook gates on the `false→true` **transition** of `is_resolved`, not on the value.
+    Gating on the value alone recurses: `Flush` re-saves an already-resolved row, which
+    re-fires the hook. `Original()` is what makes the gate work, and PocketBase never
+    refreshes it after a save.
+- **`lodging_units.parent_unit` has a server-side cycle guard** (#1899, `guardUnitParentCycle`).
+  It fires only when the write actually changes `parent_unit`, so a unit already sitting on a
+  legacy cycle can still be confirmed or deactivated.
 - **Backfill is validated end to end against real data.** 2024+2025 in ~7s, 1336 assignments, zero
   errors, idempotent on a second pass. `scripts/dev/verify-lodging-backfill.sh` is the gate.
 - **The request layer is household-grain.** Request fields are person-partition, so a household with
@@ -273,8 +299,15 @@ inline per row and in bulk. Until staff use it, the fit check stays dark.
 ### Open decisions the board will force
 
 - **`lodging_merges` CRUD** — merges are a board action (spec §3.4), created mid-assignment
-  rather than configured up front. Nothing writes them yet. `guardMergeDelete` already protects
-  them.
+  rather than configured up front. Nothing but the ingest writes them yet, and **nothing
+  validates the member set** — see the removed rule above before adding a check. Note merges
+  carry `session` AND `scenario`; the alias table carries neither, which is why a rule keyed on
+  aliases could never express a building that is whole one weekend and split the next.
+  `guardMergeDelete` already protects them.
+- **Occupancy (#1907)** — how many parties may share one unit, which varies by unit class and
+  session type. This is the constraint the board actually needs and the one nothing models.
+  `docs/architecture/lodging-occupancy.md` has the staff-confirmed rules. Enforcement belongs
+  at the point a human is choosing — the board, or the picker — not in the ingest.
 - **`lodging_availability`** — the per-session reserved/released overrides (spec §3.7). The
   schema exists; no surface reads or writes it.
 - **`lodging.phi` is held by admins and the Bunking Staff role** (`1500000130`, closing #1887).
@@ -442,6 +475,18 @@ git fetch -q && git rev-list --count origin/<branch>..HEAD   # must be 0
   but nobody has *looked* at the lander, the Listbox switcher or the stats bar — they are covered by
   tests and by direct API measurement only. Worth ten minutes with `./scripts/start_dev.sh` before
   building Phase C on top of them.
+- **Nothing in #1903 was verified in a browser either.** The one visual check that phase got
+  covered a merge-repair panel that no longer exists. The replay path is proven by direct
+  measurement on real data, not by looking at it.
+- **#1907 — lodging occupancy is unmodelled**, and it is the constraint that matters. Nothing
+  stops two families being placed in the same bedroom; the unique indexes only stop one party
+  holding two placements. Staff-confirmed rules are in
+  `docs/architecture/lodging-occupancy.md`. **The board is the surface that will force this** —
+  read the doc before designing placement validation.
+- **#1908 — no test drives `replayOnResolve` through a replay that succeeds.** Every hook test
+  exercises refusal or failure. The success path is proven manually, so this is a missing
+  regression guard rather than missing evidence: the lodging test harness builds 5 collections
+  and a real replay needs ~13, and Go cannot share `_test.go` helpers across packages.
 - **The summer campers tab was never mined.** `/summer/session/:id/campers` (`CampersView`) is the
   closest analogue to the roster table and likely has filter/sort affordances worth copying. Traced
   as far as the component and stopped.
