@@ -432,16 +432,22 @@ func TestReplayIssuePreservesTheSuggestionWhenTheObservationIsGone(t *testing.T)
 	}
 }
 
-// The discriminating case for the re-open rule: the blocker the row NAMES is
-// gone, and a different one is hit instead.
+// The discriminating case for the re-open rule: the pass records a blocker on a
+// DIFFERENT dedup key from the row that was clicked. The clicked row stays
+// ticked and the new blocker gets its own open row.
 //
-// Repairing the registry so the alias is a container's complete child set means
-// the illegal_merge genuinely WAS fixed. Re-opening that row would state
-// something false -- staff would go look at the merge and find nothing wrong --
-// while the real blocker sits in its own accurate row beside it. So the ticked
-// row stays ticked, and the new problem stands on its own. Nothing is lost:
-// the new row carries the remaining work, and the caller still learns from
-// Placed that the click did not finish the job.
+// Why that is the honest outcome: the row names illegal_merge, and this pass
+// did not record one, so re-opening it would send staff to inspect a merge and
+// find nothing wrong while the real blocker sits beside it. Nothing is lost --
+// the new row carries the remaining work, and Placed still tells the caller the
+// click did not finish the job.
+//
+// Note what this does NOT test, despite the fixture's shape: the container and
+// parent links make the alias a legal merge, but ingestValue returns at the
+// attribution check BEFORE merge judgement, so that repair is never exercised
+// and the test passes identically with a still-illegal alias. The fixture is
+// built that way to model a plausible history, not to cover JudgeMerge --
+// TestReplayIssueMaterializesARepairedMerge does that.
 func TestReplayIssueTicksARowWhoseBlockerIsGoneAndOpensTheNewOne(t *testing.T) {
 	app := newLodgingTestApp(t)
 	fc1 := addSession(t, app, cmIDFamilyCamp1, "Family Camp 1", "family",
@@ -519,31 +525,41 @@ func TestReplayIssueTicksARowWhoseBlockerIsGoneAndOpensTheNewOne(t *testing.T) {
 	}
 }
 
-// recordedAgain decides whether the row goes back into the open queue, so what
-// counts as "the same item" is load-bearing. It is the full dedup tuple, not
-// the kind: the same kind for a different party is a different queue item.
+// reopenRecorded finds the row to un-tick with findExisting, so what that
+// lookup counts as "the same item" decides which row goes back into the open
+// queue. It is the full dedup tuple, not the kind: the same kind for a
+// different party is a different queue item, and matching one row against
+// another party's would un-tick a stranger's work.
 //
 // ReplayIssue cannot currently produce a party mismatch -- it records against
 // the party it read off the row -- but the alias kinds record with no party at
 // all, so the party-less fan-out that will replay those can. This pins the rule
 // directly rather than waiting for that caller to discover it.
-func TestRecordedAgainComparesTheWholeDedupTuple(t *testing.T) {
-	replayed := Issue{
+func TestFindExistingMatchesOnTheWholeDedupTuple(t *testing.T) {
+	app := newLodgingTestApp(t)
+	stored := Issue{
 		Kind: issueIllegalMerge, RawValue: "Ridge 1and2",
 		SourceField: fieldNameFamilyCampCabin, Year: 2025, HouseholdCMID: 9001,
 	}
+	rowID := seedIssue(t, app, map[string]any{
+		"kind": stored.Kind, "raw_value": stored.RawValue,
+		"source_field": stored.SourceField, "year": stored.Year,
+		"household_cm_id": stored.HouseholdCMID, "is_resolved": true,
+	})
+	recorder := NewIssueRecorder(app, 2025)
+
 	vary := func(mutate func(*Issue)) Issue {
-		other := replayed
+		other := stored
 		mutate(&other)
 		return other
 	}
 
 	cases := []struct {
-		name     string
-		recorded Issue
-		want     bool
+		name    string
+		lookup  Issue
+		wantHit bool
 	}{
-		{"identical", replayed, true},
+		{"identical", stored, true},
 		{"same kind, different household", vary(func(i *Issue) { i.HouseholdCMID = 9002 }), false},
 		{"same kind, party dropped", vary(func(i *Issue) { i.HouseholdCMID = 0 }), false},
 		{"same kind, person grain instead", vary(func(i *Issue) {
@@ -562,16 +578,93 @@ func TestRecordedAgainComparesTheWholeDedupTuple(t *testing.T) {
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			if got := recordedAgain([]Issue{tc.recorded}, &replayed); got != tc.want {
-				t.Errorf("recordedAgain = %v, want %v", got, tc.want)
+			got, err := recorder.findExisting(&tc.lookup)
+			if err != nil {
+				t.Fatalf("findExisting: %v", err)
+			}
+			if tc.wantHit && (got == nil || got.Id != rowID) {
+				t.Errorf("findExisting = %v, want the seeded row %s", got, rowID)
+			}
+			if !tc.wantHit && got != nil {
+				t.Errorf("findExisting matched row %s on a different dedup tuple", got.Id)
 			}
 		})
 	}
+}
 
-	// The pass can record two items for one value; matching any one of them is
-	// enough to say the replayed item recurred.
-	mixed := []Issue{vary(func(i *Issue) { i.Kind = issueAmbiguousSession }), replayed}
-	if !recordedAgain(mixed, &replayed) {
-		t.Error("a match anywhere in the recorded set must count")
+// The hole a re-open scoped to the replayed row leaves behind.
+//
+// Two ticked rows can exist for one party: a run with a single candidate
+// weekend judges the merge and queues illegal_merge, then a later run with a
+// second weekend enrolled returns at attribution and queues ambiguous_session.
+// ingestValue cannot produce both in one pass -- it returns before merge
+// judgement -- but they accumulate across runs, and staff tick both.
+//
+// Replaying the merge row then re-hits the ambiguous one. Flush matches it via
+// findExisting and cannot un-tick it, because Flush writes is_resolved only on
+// create. If the re-open only ever considers the replayed row, the outcome is
+// no placement, no open row anywhere, and a nil error: the work item vanishes,
+// which is the invariant this whole wave exists to establish.
+func TestReplayIssueReopensAnotherTickedRowItRehit(t *testing.T) {
+	app := newLodgingTestApp(t)
+	fc1 := addSession(t, app, cmIDFamilyCamp1, "Family Camp 1", "family",
+		"2025-05-23 07:00:00.000Z", "2025-05-26 07:00:00.000Z", 2025)
+	fc6 := addSession(t, app, cmIDFamilyCamp6, "Family Camp 6", "family",
+		"2025-09-18 07:00:00.000Z", "2025-09-21 07:00:00.000Z", 2025)
+
+	building := addContainerUnit(t, app, "ridge")
+	r1 := addUnitWithParent(t, app, "ridge-1", building)
+	r2 := addUnitWithParent(t, app, "ridge-2", building)
+	addAlias(t, app, "Ridge 1and2", []string{r1, r2}, 0, 0)
+
+	cabinDef := addFieldDef(t, app, cmIDFamilyCampCabin, fieldNameFamilyCampCabin)
+	hh := addHousehold(t, app, 9001, 2025)
+	emma := addPerson(t, app, 5001, 9001, 2025, hh)
+	addAttendee(t, app, emma, fc1, 5001, 2, 2025)
+	addAttendee(t, app, emma, fc6, 5001, 2, 2025)
+	addHouseholdValue(t, app, hh, cabinDef, "Ridge 1and2", testLastUpdated, 2025)
+
+	// Both rows already ticked, same party and same value, differing only in kind.
+	base := map[string]any{
+		"raw_value":       "Ridge 1and2",
+		"source_field":    fieldNameFamilyCampCabin,
+		"year":            2025,
+		"is_resolved":     true,
+		"household_cm_id": 9001,
+	}
+	mergeRow := map[string]any{"kind": issueIllegalMerge}
+	ambiguousRow := map[string]any{"kind": issueAmbiguousSession}
+	for k, v := range base {
+		mergeRow[k], ambiguousRow[k] = v, v
+	}
+	replayed := seedIssue(t, app, mergeRow)
+	other := seedIssue(t, app, ambiguousRow)
+
+	res, err := ReplayIssue(app, replayed)
+	if err != nil {
+		t.Fatalf("ReplayIssue: %v", err)
+	}
+	if res.Placed {
+		t.Error("result reports Placed, but an ambiguous session places nothing")
+	}
+
+	// The row this pass actually re-hit must come back into the queue, whether or
+	// not it is the row that was clicked.
+	rehit, err := app.FindRecordById("lodging_ingest_issues", other)
+	if err != nil {
+		t.Fatalf("reloading the re-hit row: %v", err)
+	}
+	if rehit.GetBool("is_resolved") {
+		t.Error("the ambiguous_session row this pass re-hit is still ticked: " +
+			"nothing was placed and no open row survives, so the item has vanished")
+	}
+
+	// ...and the clicked row, whose own blocker did not recur, stays ticked.
+	clicked, err := app.FindRecordById("lodging_ingest_issues", replayed)
+	if err != nil {
+		t.Fatalf("reloading the clicked row: %v", err)
+	}
+	if !clicked.GetBool("is_resolved") {
+		t.Error("the illegal_merge row was re-opened, but its own blocker never recurred")
 	}
 }

@@ -121,75 +121,65 @@ func ReplayIssue(app core.App, issueID string) (ReplayResult, error) {
 		return result, fmt.Errorf("flushing replay issues: %w", flushErr)
 	}
 
-	// The row is only re-opened when this pass re-recorded the very item being
-	// replayed. If the named blocker is gone and a different one took its place,
-	// that repair really did land, and re-opening would send staff back to
-	// inspect something no longer wrong -- while the actual blocker sits in its
-	// own accurate row beside it, carrying the remaining work.
-	replayed := Issue{
-		Kind:          row.GetString("kind"),
-		RawValue:      raw,
-		SourceField:   row.GetString("source_field"),
-		Year:          year,
-		HouseholdCMID: householdCMID,
-		PersonCMID:    personCMID,
-	}
-	if recordedAgain(recorded, &replayed) {
-		if err := reopenIssue(app, issueID); err != nil {
-			return result, err
-		}
+	if err := reopenRecorded(s.issues, recorded); err != nil {
+		return result, err
 	}
 	return result, nil
 }
 
-// recordedAgain reports whether this pass re-recorded the item being replayed.
+// reopenRecorded clears is_resolved on the row backing every item this pass
+// recorded.
 //
-// The comparison goes through Issue.dedupKey rather than matching fields by
-// hand, so it is the same tuple the unique index and Flush's findExisting use
-// -- (year, kind, raw_value, source_field, household_cm_id, person_cm_id). Kind
-// alone would be wrong: the same kind for a different party is a different
-// queue item, and a hand-rolled tuple here would be a fourth place that has to
-// be kept in step with idx_lodging_issues_dedup.
-func recordedAgain(recorded []Issue, replayed *Issue) bool {
-	key := replayed.dedupKey()
-	for i := range recorded {
-		if recorded[i].dedupKey() == key {
-			return true
-		}
-	}
-	return false
-}
-
-// reopenIssue puts a row back in the open queue after a replay that placed
-// nothing.
-//
-// Flush cannot do this: it writes is_resolved only on CREATE, deliberately, so
+// Flush cannot do it: it writes is_resolved only on CREATE, deliberately, so
 // that a nightly sync meeting the same bad value again cannot un-tick what
 // staff ticked. A replay is the other actor. It IS the click, and a click that
-// wrote no placement has not finished the job -- leaving the row ticked would
-// hide it from the open queue with nothing scheduled to ever revisit it, which
-// is the log-not-a-work-queue failure this file exists to remove.
+// wrote no placement has not finished the job -- a value with no placement and
+// no open row anywhere has silently vanished, which is the log-not-a-work-queue
+// failure this file exists to remove.
 //
-// The row's `kind` may now be a stale diagnosis: repairing an illegal merge can
-// leave a value that is merely ambiguous, and that newer kind is a separate
-// queue row on its own dedup key. The re-opened row still tells the truth about
-// the thing staff care about -- this value has no placement -- and the caller
-// has Blockers for the current reason.
+// Scoping this to the RECORDED items rather than to the replayed row is what
+// makes the invariant hold. It re-opens the replayed row exactly when that
+// row's own blocker recurred, so a row whose named blocker is gone is still
+// never touched: repairing an illegal merge and then hitting an ambiguous
+// session means the merge really was fixed, and re-opening it would send staff
+// to inspect something no longer wrong while the real blocker sits in its own
+// accurate row. But it ALSO covers the row that is not the replayed one --
+// blockers accumulate across runs, staff tick them all, and a pass that re-hits
+// an already-ticked sibling would otherwise leave nothing open at all.
 //
-// Re-read before writing: Flush may have just saved its own instance of this
-// same record with a fresh last_seen, and saving the copy loaded at the top of
-// ReplayIssue would roll that back.
-func reopenIssue(app core.App, issueID string) error {
-	row, err := app.FindRecordById("lodging_ingest_issues", issueID)
-	if err != nil {
-		return fmt.Errorf("reloading issue %s to reopen it: %w", issueID, err)
-	}
-	if !row.GetBool("is_resolved") {
-		return nil
-	}
-	row.Set("is_resolved", false)
-	if err := app.Save(row); err != nil {
-		return fmt.Errorf("reopening issue %s: %w", issueID, err)
+// findExisting is reused rather than matching fields here, so the lookup is the
+// same dedup tuple as idx_lodging_issues_dedup and Flush -- (year, kind,
+// raw_value, source_field, household_cm_id, person_cm_id). Kind alone would be
+// wrong: the same kind for a different party is a different queue item.
+//
+// It re-reads rather than reusing an in-memory copy, because Flush has just
+// saved its own instance of these records with a fresh last_seen and writing a
+// stale copy would roll that back. Call it AFTER Flush: the rows have to exist
+// before they can be re-opened.
+//
+// One window this does not close: if Flush itself errors, ReplayIssue returns
+// before reaching here, so a row can stay ticked with no placement behind it.
+// That is left alone deliberately -- the error is surfaced to the caller rather
+// than swallowed, and a re-click replays cleanly.
+func reopenRecorded(issues *IssueRecorder, recorded []Issue) error {
+	for i := range recorded {
+		row, err := issues.findExisting(&recorded[i])
+		if err != nil {
+			return fmt.Errorf("locating the %s row to reopen it: %w", recorded[i].Kind, err)
+		}
+		if row == nil {
+			// Flush wrote this row moments ago, so a miss means the lookup and the
+			// write disagree about identity. Failing loudly beats returning nil to a
+			// caller that would read it as "repaired".
+			return fmt.Errorf("no queue row found for the %s item just flushed", recorded[i].Kind)
+		}
+		if !row.GetBool("is_resolved") {
+			continue
+		}
+		row.Set("is_resolved", false)
+		if err := issues.app.Save(row); err != nil {
+			return fmt.Errorf("reopening issue %s: %w", row.Id, err)
+		}
 	}
 	return nil
 }
