@@ -9,8 +9,9 @@
  *
  * Read-only in this slice: assignments come from CampMinder and are shown,
  * not edited. The registry behind it IS editable, though — Phase C added the
- * Admin -> Family Camp Lodging editor (spec §3.8), and this page links admins
- * straight to it for corrections to units, areas and cabin-name aliases.
+ * Manage -> Family Camp Lodging editor (spec §3.8), and this page links
+ * bunking staff straight to it for corrections to units, areas and cabin-name
+ * aliases.
  *
  * Everything rendered here is READ from ingest-derived columns. If a share
  * preference, proximity mode or request text looks wrong, the fix belongs in
@@ -22,6 +23,7 @@ import { useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router'
 
 import { QueryGuard } from '../components/QueryGuard'
+import { Permission } from '../constants/permissions'
 import {
   countUnmeasuredSpaces,
   formatSessionDates,
@@ -42,7 +44,8 @@ export default function WeekendRosterPage() {
   const { sessionCmId } = useParams<{ sessionCmId: string }>()
   const navigate = useNavigate()
   const { currentYear } = useCurrentYear()
-  const { isAdmin } = usePermissions()
+  const { hasPermission } = usePermissions()
+  const canManageLodging = hasPermission(Permission.BUNKING_MANAGE)
   const [view, setView] = useState<View>('roster')
 
   const selectedCmId = sessionCmId === undefined ? null : Number(sessionCmId)
@@ -125,12 +128,12 @@ export default function WeekendRosterPage() {
             </span>
           )}
 
-          {/* Restored now that Phase C registers /admin/lodging. It was pulled
-              in 03754754 because App.tsx's path="*" silently bounced the user
-              home when the route did not exist. */}
-          {isAdmin && (
+          {/* Gated on bunking.manage, which is what the lodging_* write rules
+              gate on — an admin flag would let the wrong people in and keep
+              bunking staff out. */}
+          {canManageLodging && (
             <Link
-              to="/admin/lodging/units"
+              to="/manage/lodging/units"
               className="text-muted-foreground hover:text-foreground ml-auto inline-flex items-center gap-1.5 text-sm transition-colors"
             >
               <Settings2 className="h-4 w-4" />

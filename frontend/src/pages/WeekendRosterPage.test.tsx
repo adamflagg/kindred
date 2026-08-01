@@ -26,14 +26,17 @@ vi.mock('../hooks/useCurrentYear', () => ({
   useCurrentYear: () => ({ currentYear: 2026, setCurrentYear: vi.fn() }),
 }))
 
+// Admin and bunking.manage are tracked separately: the point of the lodging
+// link's gate is that a non-admin holding bunking.manage still gets it.
 let isAdmin = true
+let permissions = new Set<string>()
 
 vi.mock('../hooks/usePermissions', () => ({
   usePermissions: () => ({
     isAdmin,
-    permissions: [],
-    hasPermission: () => isAdmin,
-    hasAnyPermission: () => isAdmin,
+    permissions: [...permissions],
+    hasPermission: (p: string) => isAdmin || permissions.has(p),
+    hasAnyPermission: (...ps: string[]) => isAdmin || ps.some((p) => permissions.has(p)),
   }),
 }))
 
@@ -73,6 +76,7 @@ function renderPage(cmId = '1000001') {
 beforeEach(() => {
   navigate.mockReset()
   isAdmin = true
+  permissions = new Set()
   sessionsQuery.data = { year: 2026, sessions: [FAMILY_CAMP_1, WOMENS] }
   sessionsQuery.isLoading = false
   sessionsQuery.error = null
@@ -128,20 +132,34 @@ describe('header', () => {
     )
   })
 
-  it('links an admin to the lodging editor', () => {
-    // Phase C registers /admin/lodging/:section, so the link resolves instead
-    // of being swallowed by App.tsx's catch-all. It points straight at the
-    // units section rather than the bare path, skipping one redirect hop.
+  it('links to the lodging editor under /manage', () => {
+    // The editor moved off /admin so bunking staff can reach it. It points
+    // straight at the units section rather than the bare path, skipping one
+    // redirect hop.
     renderPage()
     expect(screen.getByRole('link', { name: /Lodging settings/i })).toHaveAttribute(
       'href',
-      '/admin/lodging/units'
+      '/manage/lodging/units'
     )
   })
 
-  it('hides the lodging-settings link from a non-admin', () => {
-    // Every lodging collection gates writes on `@request.auth.is_admin`, so a
-    // non-admin following the link would reach a surface that 403s on save.
+  it('offers the lodging-settings link to a non-admin holding bunking.manage', () => {
+    // The whole point of the move: cabin confirmations are bunking staff's
+    // job. The link must follow the permission that now gates the writes, not
+    // the admin flag that used to.
+    isAdmin = false
+    permissions = new Set(['bunking.manage'])
+    renderPage()
+    expect(screen.getByRole('link', { name: /Lodging settings/i })).toHaveAttribute(
+      'href',
+      '/manage/lodging/units'
+    )
+  })
+
+  it('hides the lodging-settings link from a user without bunking.manage', () => {
+    // Every lodging collection now gates writes on bunking.manage, and the
+    // route itself is behind RequirePermission — following the link would land
+    // on the permission-denied page.
     isAdmin = false
     renderPage()
     expect(screen.queryByRole('link', { name: /Lodging settings/i })).not.toBeInTheDocument()

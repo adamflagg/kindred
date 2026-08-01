@@ -256,20 +256,6 @@ function App() {
                                   </ErrorBoundary>
                                 }
                               />
-                              <Route
-                                path="lodging"
-                                element={<Navigate to="/admin/lodging/units" replace />}
-                              />
-                              <Route
-                                path="lodging/:section"
-                                element={
-                                  <ErrorBoundary>
-                                    <Suspense fallback={<PageSkeleton />}>
-                                      <LodgingSettingsTab />
-                                    </Suspense>
-                                  </ErrorBoundary>
-                                }
-                              />
                             </Route>
                           </Route>
 
@@ -316,6 +302,22 @@ function App() {
                                     <ErrorBoundary>
                                       <Suspense fallback={<PageSkeleton />}>
                                         <SheetsTab />
+                                      </Suspense>
+                                    </ErrorBoundary>
+                                  </RequirePermission>
+                                }
+                              />
+                              <Route
+                                path="lodging"
+                                element={<Navigate to="/manage/lodging/units" replace />}
+                              />
+                              <Route
+                                path="lodging/:section"
+                                element={
+                                  <RequirePermission permission={Permission.BUNKING_MANAGE}>
+                                    <ErrorBoundary>
+                                      <Suspense fallback={<PageSkeleton />}>
+                                        <LodgingSettingsTab />
                                       </Suspense>
                                     </ErrorBoundary>
                                   </RequirePermission>

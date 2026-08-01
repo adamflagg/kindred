@@ -1,9 +1,9 @@
 import type { LucideIcon } from 'lucide-react'
-import { MapPin, CalendarDays, FileSpreadsheet } from 'lucide-react'
+import { MapPin, CalendarDays, FileSpreadsheet, Home } from 'lucide-react'
 import { Permission } from '../constants/permissions'
 
 export interface ManageTabConfig {
-  id: 'geo' | 'registration' | 'sheets'
+  id: 'geo' | 'registration' | 'sheets' | 'lodging'
   label: string
   path: string
   icon: LucideIcon
@@ -32,5 +32,16 @@ export const MANAGE_TABS: ManageTabConfig[] = [
     path: '/manage/sheets',
     icon: FileSpreadsheet,
     requiredPermission: Permission.SHEETS_EXPORT,
+  },
+  {
+    // Confirming cabins, correcting the unit registry and resolving ingest
+    // names are bunking staff's work, so this sits behind bunking.manage
+    // rather than admin — matching the write rules on every lodging_*
+    // collection (pb_migrations/1500000130).
+    id: 'lodging',
+    label: 'Family Camp Lodging',
+    path: '/manage/lodging',
+    icon: Home,
+    requiredPermission: Permission.BUNKING_MANAGE,
   },
 ]

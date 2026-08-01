@@ -10,9 +10,9 @@
  * The API is the real boundary — /api/lodging/households/{id}/medical
  * requires `lodging.phi` and 403s otherwise. This UI gate exists so a user
  * who cannot see the narrative is not shown a button that always fails.
- * `lodging.phi` is currently granted to NO role, so admin bypass is the only
- * route that reaches the narrative in practice; a failed reveal therefore
- * renders inline and never escalates into a page error.
+ * `lodging.phi` is held by admins and the Bunking Staff role; everyone else
+ * who can read the roster gets a 403 here, so a failed reveal renders inline
+ * and never escalates into a page error.
  */
 import { Accessibility, Baby, Bath, Eye, Loader2, Plug, ShieldAlert } from 'lucide-react'
 import { useState } from 'react'

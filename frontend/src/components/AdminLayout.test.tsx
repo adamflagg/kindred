@@ -105,4 +105,17 @@ describe('AdminLayout', () => {
       '/admin/config'
     )
   })
+
+  describe('non-admin access', () => {
+    // Filtering the tab list is not a guard: typing /admin/sync rendered the
+    // page for anyone logged in (#1895). Every remaining admin tab is
+    // admin-only, so the layout itself is the right place to stop.
+    it('refuses the page rather than rendering it tabless', () => {
+      renderWithRouter('/admin/sync', { isAdmin: false })
+
+      expect(screen.getByText('Access Restricted')).toBeInTheDocument()
+      expect(screen.queryByTestId('child')).not.toBeInTheDocument()
+      expect(screen.queryByText('Admin Control Center')).not.toBeInTheDocument()
+    })
+  })
 })

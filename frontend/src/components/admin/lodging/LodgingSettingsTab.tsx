@@ -44,7 +44,7 @@ export function LodgingSettingsTab() {
             return (
               <Link
                 key={entry.id}
-                to={`/admin/lodging/${entry.id}`}
+                to={`/manage/lodging/${entry.id}`}
                 aria-current={isActive ? 'page' : undefined}
                 className={`flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold transition-all duration-200 ${
                   isActive
