@@ -28,7 +28,7 @@ func TestReplayIssueRefusesAnUnresolvedRow(t *testing.T) {
 		"household_cm_id": 9001,
 	})
 
-	err := ReplayIssue(app, id)
+	_, err := ReplayIssue(app, id)
 	if err == nil {
 		t.Fatal("expected replay to refuse an unresolved row")
 	}
@@ -47,7 +47,7 @@ func TestReplayIssueRefusesARowWithNoParty(t *testing.T) {
 		"person_cm_id":    0,
 	})
 
-	if err := ReplayIssue(app, id); err == nil {
+	if _, err := ReplayIssue(app, id); err == nil {
 		t.Fatal("expected replay to refuse a row with no household and no person")
 	}
 }
@@ -65,7 +65,7 @@ func TestReplayIssueRefusesARowWithNoYear(t *testing.T) {
 		"household_cm_id": 9001,
 	})
 
-	if err := ReplayIssue(app, id); err == nil {
+	if _, err := ReplayIssue(app, id); err == nil {
 		t.Fatal("expected replay to refuse a row with no year")
 	}
 }
@@ -87,8 +87,12 @@ func TestReplayIssuePlacesAHouseholdWithoutASync(t *testing.T) {
 		"household_cm_id": 9001,
 	})
 
-	if err := ReplayIssue(app, id); err != nil {
+	res, err := ReplayIssue(app, id)
+	if err != nil {
 		t.Fatalf("ReplayIssue: %v", err)
+	}
+	if !res.Placed || len(res.Blockers) != 0 {
+		t.Errorf("result = %+v, want Placed with no blockers", res)
 	}
 
 	rows, err := app.FindRecordsByFilter("lodging_assignments", "", "", 0, 0)
@@ -146,8 +150,12 @@ func TestReplayIssuePlacesAPersonOnAnAdultWeekend(t *testing.T) {
 		"person_cm_id": 5001,
 	})
 
-	if err := ReplayIssue(app, id); err != nil {
+	res, err := ReplayIssue(app, id)
+	if err != nil {
 		t.Fatalf("ReplayIssue: %v", err)
+	}
+	if !res.Placed {
+		t.Errorf("result = %+v, want Placed", res)
 	}
 
 	rows, _ := app.FindRecordsByFilter("lodging_assignments", "", "", 0, 0)
@@ -191,8 +199,12 @@ func TestReplayIssueMaterializesARepairedMerge(t *testing.T) {
 		"household_cm_id": 9001,
 	})
 
-	if err := ReplayIssue(app, id); err != nil {
+	res, err := ReplayIssue(app, id)
+	if err != nil {
 		t.Fatalf("ReplayIssue: %v", err)
+	}
+	if !res.Placed {
+		t.Errorf("result = %+v, want Placed", res)
 	}
 
 	rows, _ := app.FindRecordsByFilter("lodging_assignments", "", "", 0, 0)
@@ -217,9 +229,16 @@ func TestReplayIssueMaterializesARepairedMerge(t *testing.T) {
 	}
 }
 
-// A repair that did not in fact repair anything must leave the queue honest:
-// the row is still illegal, so it is re-queued rather than silently dropped.
-func TestReplayIssueRequeuesAStillIllegalMerge(t *testing.T) {
+// A repair that did not in fact repair anything must leave the queue honest.
+//
+// IssueRecorder.Flush writes is_resolved only on CREATE -- deliberately, so a
+// nightly sync cannot un-tick what staff ticked. A replay is a different actor:
+// it IS the click, and if the click placed nothing then the item is not done.
+// Without the re-open below, a half-finished repair writes no placement,
+// reports success, and leaves the row ticked and invisible in the open queue --
+// the "queue is a log, not a work queue" failure this whole task removes,
+// reintroduced on the failure path.
+func TestReplayIssueReopensARowItCouldNotPlace(t *testing.T) {
 	app := newLodgingTestApp(t)
 	sess := addSession(t, app, cmIDFamilyCamp1, "Family Camp 1", "family",
 		testSessionStart, testSessionEnd, 2025)
@@ -243,8 +262,16 @@ func TestReplayIssueRequeuesAStillIllegalMerge(t *testing.T) {
 		"household_cm_id": 9001,
 	})
 
-	if err := ReplayIssue(app, id); err != nil {
+	res, err := ReplayIssue(app, id)
+	if err != nil {
 		t.Fatalf("ReplayIssue: %v", err)
+	}
+
+	if res.Placed {
+		t.Error("result reports Placed, but an illegal merge places nothing")
+	}
+	if len(res.Blockers) != 1 || res.Blockers[0] != issueIllegalMerge {
+		t.Errorf("Blockers = %v, want [%s]", res.Blockers, issueIllegalMerge)
 	}
 
 	rows, _ := app.FindRecordsByFilter("lodging_assignments", "", "", 0, 0)
@@ -252,12 +279,155 @@ func TestReplayIssueRequeuesAStillIllegalMerge(t *testing.T) {
 		t.Errorf("assignments = %d, want 0; an illegal merge places nothing", len(rows))
 	}
 	// Flush upserts onto the same dedup key, so the row staff already ticked is
-	// the row that gets its last_seen refreshed -- no second copy appears.
+	// the row that gets refreshed -- no second copy appears.
 	issues, _ := app.FindRecordsByFilter("lodging_ingest_issues", "", "", 0, 0)
 	if len(issues) != 1 {
 		t.Fatalf("queue rows = %d, want 1 (the same row, re-observed)", len(issues))
 	}
 	if issues[0].Id != id {
 		t.Errorf("replay queued a NEW row %q instead of updating %q", issues[0].Id, id)
+	}
+	if issues[0].GetBool("is_resolved") {
+		t.Error("the row is still ticked after a replay that placed nothing; " +
+			"it is invisible in the open queue and nothing will ever revisit it")
+	}
+}
+
+// A replay that DOES place must leave the row ticked. The re-open above is
+// conditional on failure; a blanket un-tick would bounce every repaired item
+// straight back into the queue.
+func TestReplayIssueLeavesAPlacedRowResolved(t *testing.T) {
+	app := newLodgingTestApp(t)
+	seedOneWeekendHousehold(t, app)
+
+	id := seedIssue(t, app, map[string]any{
+		"kind":            issueIllegalMerge,
+		"raw_value":       "Ridge A",
+		"source_field":    fieldNameFamilyCampCabin,
+		"year":            2025,
+		"is_resolved":     true,
+		"household_cm_id": 9001,
+	})
+
+	if _, err := ReplayIssue(app, id); err != nil {
+		t.Fatalf("ReplayIssue: %v", err)
+	}
+
+	row, err := app.FindRecordById("lodging_ingest_issues", id)
+	if err != nil {
+		t.Fatalf("reloading the row: %v", err)
+	}
+	if !row.GetBool("is_resolved") {
+		t.Error("a successful replay un-ticked the row it just repaired")
+	}
+}
+
+// seedThreeWeekendHousehold builds an ambiguous household: enrolled in three
+// family weekends with CampMinder's single cabin value for the year, which is
+// the shape spec 3.6 refuses to guess at. Returns the three sessions in date
+// order.
+func seedThreeWeekendHousehold(
+	t *testing.T, app core.App, cabinValue, lastUpdated string,
+) (first, second, third string) {
+	t.Helper()
+	first = addSession(t, app, cmIDFamilyCamp1, "Family Camp 1", "family",
+		"2025-05-23 07:00:00.000Z", "2025-05-26 07:00:00.000Z", 2025)
+	second = addSession(t, app, cmIDFamilyCamp6, "Family Camp 6", "family",
+		"2025-09-18 07:00:00.000Z", "2025-09-21 07:00:00.000Z", 2025)
+	third = addSession(t, app, cmIDWinterFamily, "Winter Family Camp", "family",
+		"2025-12-26 07:00:00.000Z", "2025-12-29 07:00:00.000Z", 2025)
+
+	unit := addUnit(t, app, "ridge-a")
+	addAlias(t, app, "Ridge A", []string{unit}, 0, 0)
+	unitB := addUnit(t, app, "ridge-b")
+	addAlias(t, app, "Ridge B", []string{unitB}, 0, 0)
+
+	cabinDef := addFieldDef(t, app, cmIDFamilyCampCabin, fieldNameFamilyCampCabin)
+	hh := addHousehold(t, app, 9001, 2025)
+	emma := addPerson(t, app, 5001, 9001, 2025, hh)
+	for _, s := range []string{first, second, third} {
+		addAttendee(t, app, emma, s, 5001, 2, 2025)
+	}
+	addHouseholdValue(t, app, hh, cabinDef, cabinValue, lastUpdated, 2025)
+	return first, second, third
+}
+
+// suggested_session is the one-click confirmation the queue offers staff on an
+// ambiguous row, and AttributeSession derives it by walking the candidates for
+// the first weekend starting on or after the observation's timestamp.
+//
+// Replaying with time.Now() therefore does NOT merely "break ties": for any
+// past season now is after every window, so the walk falls through to the LAST
+// candidate and Flush -- which overwrites a non-empty suggestion -- replaces a
+// correct guess with the final weekend of the year. This asserts replay
+// reproduces the sync's answer: the weekend the real last_updated points at.
+func TestReplayIssueKeepsTheSuggestionTheSyncWouldHaveMade(t *testing.T) {
+	app := newLodgingTestApp(t)
+	// Edited between the first and second weekends, so the sync suggests the
+	// second. Now would suggest the third; a zero timestamp would suggest none.
+	first, second, third := seedThreeWeekendHousehold(t, app,
+		"Ridge A", "2025-06-10T09:00:00.0000000+00:00")
+
+	id := seedIssue(t, app, map[string]any{
+		"kind":              issueAmbiguousSession,
+		"raw_value":         "Ridge A",
+		"source_field":      fieldNameFamilyCampCabin,
+		"year":              2025,
+		"is_resolved":       true,
+		"household_cm_id":   9001,
+		"suggested_session": first,
+	})
+
+	if _, err := ReplayIssue(app, id); err != nil {
+		t.Fatalf("ReplayIssue: %v", err)
+	}
+
+	row, err := app.FindRecordById("lodging_ingest_issues", id)
+	if err != nil {
+		t.Fatalf("reloading the row: %v", err)
+	}
+	switch row.GetString("suggested_session") {
+	case second: // the sync's answer
+	case third:
+		t.Error("suggested_session was rewritten to the LAST weekend of the year: " +
+			"replay attributed with now instead of the observation's timestamp")
+	default:
+		t.Errorf("suggested_session = %q, want the second weekend %q",
+			row.GetString("suggested_session"), second)
+	}
+}
+
+// When the observation cannot be found -- staff edited the CampMinder value
+// after the row was queued, so nothing matches the raw string -- replay has no
+// timestamp and must manufacture no guess. Flush then preserves the stored one
+// rather than blanking it, which is the same contract a re-run of the sync has
+// when last_updated stops parsing.
+func TestReplayIssuePreservesTheSuggestionWhenTheObservationIsGone(t *testing.T) {
+	app := newLodgingTestApp(t)
+	first, _, _ := seedThreeWeekendHousehold(t, app,
+		"Ridge A", "2025-06-10T09:00:00.0000000+00:00")
+
+	// The queue row names a value the household no longer holds.
+	id := seedIssue(t, app, map[string]any{
+		"kind":              issueAmbiguousSession,
+		"raw_value":         "Ridge B",
+		"source_field":      fieldNameFamilyCampCabin,
+		"year":              2025,
+		"is_resolved":       true,
+		"household_cm_id":   9001,
+		"suggested_session": first,
+	})
+
+	if _, err := ReplayIssue(app, id); err != nil {
+		t.Fatalf("ReplayIssue: %v", err)
+	}
+
+	row, err := app.FindRecordById("lodging_ingest_issues", id)
+	if err != nil {
+		t.Fatalf("reloading the row: %v", err)
+	}
+	if row.GetString("suggested_session") != first {
+		t.Errorf("suggested_session = %q, want the stored %q left alone",
+			row.GetString("suggested_session"), first)
 	}
 }
