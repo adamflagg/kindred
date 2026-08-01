@@ -975,6 +975,73 @@ func TestReplayPartylessIssueCountsOnlyThePartiesItPlaced(t *testing.T) {
 	}
 }
 
+// One pass, two grains of item: this is the only caller that records a
+// party-LESS item and a party-SCOPED one together, because the alias kinds
+// carry no party while the attribution failure a fanned-out household hits
+// carries that household. Both have to land on their own row, and a household
+// the fan-out never reached has to keep its tick.
+//
+// Scope, stated honestly: this does NOT discriminate a party-blind re-open
+// lookup, though the shape invites the reading. Probed -- with the party
+// columns dropped from reopenRecorded's filter both rows here still match, and
+// which one comes back is SQLite's ordering rather than the rule, so the probe
+// passes. The deterministic guard on the tuple is
+// TestFindExistingMatchesOnTheWholeDedupTuple, which seeds one row and asserts
+// hit or miss per varied field. What this test does hold is the observable
+// invariant those two grains have to satisfy at once.
+func TestReplayPartylessIssueLeavesAnotherHouseholdsTickedRowAlone(t *testing.T) {
+	app := newLodgingTestApp(t)
+	_, _, _, parties := seedFanOutWithOneAmbiguousHousehold(t, app, "Ridge Cabin 9")
+	addAlias(t, app, "Ridge Cabin 9", []string{addUnit(t, app, "ridge-9")}, 0, 0)
+
+	// A third household worked and ticked its own ambiguous_session row for this
+	// same string in an earlier season's shape. It no longer writes the value, so
+	// the fan-out never reaches it -- and it is seeded first, so a lookup that
+	// ignored the party would find IT rather than the row this pass records.
+	stranger := seedIssue(t, app, map[string]any{
+		"kind":            issueAmbiguousSession,
+		"raw_value":       "Ridge Cabin 9",
+		"source_field":    fieldNameFamilyCampCabin,
+		"year":            2025,
+		"is_resolved":     true,
+		"household_cm_id": 9003,
+	})
+
+	id := seedIssue(t, app, map[string]any{
+		"kind":         issueUnresolvedAlias,
+		"raw_value":    "Ridge Cabin 9",
+		"source_field": fieldNameFamilyCampCabin,
+		"year":         2025,
+		"is_resolved":  true,
+	})
+
+	if _, err := ReplayPartylessIssue(app, id); err != nil {
+		t.Fatalf("ReplayPartylessIssue: %v", err)
+	}
+
+	untouched, err := app.FindRecordById("lodging_ingest_issues", stranger)
+	if err != nil {
+		t.Fatalf("reloading the other household's row: %v", err)
+	}
+	if !untouched.GetBool("is_resolved") {
+		t.Error("household 9003's ticked row was re-opened, but 9003 does not write " +
+			"this string and was never replayed; the re-open matched on kind alone")
+	}
+
+	blocked, err := app.FindRecordsByFilter("lodging_ingest_issues",
+		"kind = {:kind} && household_cm_id = {:hh}", "", 0, 0,
+		map[string]any{"kind": issueAmbiguousSession, "hh": parties[1].HouseholdCMID})
+	if err != nil {
+		t.Fatalf("looking up the blocked household's row: %v", err)
+	}
+	if len(blocked) != 1 {
+		t.Fatalf("rows for the blocked household = %d, want 1", len(blocked))
+	}
+	if blocked[0].GetBool("is_resolved") {
+		t.Error("the blocked household's row is ticked; its work would surface nowhere")
+	}
+}
+
 // Each party is attributed with the timestamp on ITS OWN value row, never with
 // now.
 //
