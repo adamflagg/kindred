@@ -111,6 +111,55 @@ func TestBuildHouseholdSessionIndexDedupesSiblings(t *testing.T) {
 	}
 }
 
+// The filter exists so a one-party replay can reuse the sync's builder instead
+// of copying its query. What makes that reuse worth anything is that the two
+// agree, so this asserts the filtered result is exactly the slice the full
+// index holds for that party -- not merely non-empty.
+func TestBuildSessionIndexFilteredToOnePartyMatchesTheFullIndex(t *testing.T) {
+	app := newLodgingTestApp(t)
+	fc1 := addSession(t, app, cmIDFamilyCamp1, "Family Camp 1", "family",
+		"2025-05-23 07:00:00.000Z", "2025-05-26 07:00:00.000Z", 2025)
+	fc6 := addSession(t, app, cmIDFamilyCamp6, "Family Camp 6", "family",
+		"2025-09-18 07:00:00.000Z", "2025-09-21 07:00:00.000Z", 2025)
+
+	hh1 := addHousehold(t, app, 9001, 2025)
+	emma := addPerson(t, app, 5001, 9001, 2025, hh1)
+	addAttendee(t, app, emma, fc1, 5001, 2, 2025)
+	addAttendee(t, app, emma, fc6, 5001, 2, 2025)
+
+	hh2 := addHousehold(t, app, 9002, 2025)
+	liam := addPerson(t, app, 5002, 9002, 2025, hh2)
+	addAttendee(t, app, liam, fc1, 5002, 2, 2025)
+
+	full, err := buildSessionIndex(app, 2025, []string{"family"}, true, allParties)
+	if err != nil {
+		t.Fatalf("full index: %v", err)
+	}
+	scoped, err := buildSessionIndex(app, 2025, []string{"family"}, true, 9001)
+	if err != nil {
+		t.Fatalf("scoped index: %v", err)
+	}
+
+	if len(scoped) != 1 {
+		t.Fatalf("scoped index holds %d parties, want only 9001", len(scoped))
+	}
+	if len(scoped[9002]) != 0 {
+		t.Error("the filter leaked another household into the scoped index")
+	}
+	if len(scoped[9001]) != len(full[9001]) {
+		t.Fatalf("scoped 9001 has %d windows, full index has %d",
+			len(scoped[9001]), len(full[9001]))
+	}
+	// Order matters as much as membership: AttributeSession documents that its
+	// candidates arrive sorted by Start, and picks BestGuess by walking them.
+	for i := range full[9001] {
+		if scoped[9001][i] != full[9001][i] {
+			t.Errorf("window %d differs: scoped %+v, full %+v",
+				i, scoped[9001][i], full[9001][i])
+		}
+	}
+}
+
 // TestAttributeSessionSingle: the 98% case.
 func TestAttributeSessionSingle(t *testing.T) {
 	only := SessionWindow{ID: "s1", CMID: 1309514, Name: "Family Camp 1",
