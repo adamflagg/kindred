@@ -76,3 +76,36 @@ func TestHasParentCycleDetectsSelfAndDescendants(t *testing.T) {
 		t.Error("moving r1 under 'down' is not a cycle")
 	}
 }
+
+// A pre-existing cycle elsewhere in the tree (a<->b) must not taint the
+// answer for an unrelated unit. Reparenting r1 under 'a' never reaches r1,
+// so it closes no loop for r1 -- the tree may already be corrupt, but that
+// is a separate problem from the one this function answers.
+func TestHasParentCycleIgnoresAnUnrelatedPreExistingCycle(t *testing.T) {
+	tree := map[string]UnitNode{
+		"a": {ID: "a", ParentID: "b"}, "b": {ID: "b", ParentID: "a"}, // loop, unrelated to r1
+		"bldg": {ID: "bldg", IsContainer: true},
+		"up":   {ID: "up", ParentID: "bldg"},
+		"r1":   {ID: "r1", ParentID: "up"},
+	}
+	if HasParentCycle(tree, "r1", "a") {
+		t.Error("reparenting r1 under 'a' does not create a cycle involving r1")
+	}
+}
+
+// The rule is "the complete child set of some CONTAINER," not merely "share
+// a parent." A set of rooms hanging off a non-container parent is exactly
+// the ingest-shaped irregularity this phase exists to catch.
+func TestJudgeMergeRejectsANonContainerParent(t *testing.T) {
+	tree := map[string]UnitNode{
+		"leaf": {ID: "leaf", ParentID: "root", IsContainer: false},
+		"c1":   {ID: "c1", ParentID: "leaf"}, "c2": {ID: "c2", ParentID: "leaf"},
+	}
+	v := JudgeMerge(tree, []string{"c1", "c2"})
+	if v.Legal {
+		t.Fatalf("expected {c1,c2} illegal under non-container 'leaf', got %+v", v)
+	}
+	if v.Reason == "" {
+		t.Error("an illegal verdict must carry a Reason for the work queue")
+	}
+}

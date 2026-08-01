@@ -63,6 +63,9 @@ func JudgeMerge(tree map[string]UnitNode, memberIDs []string) MergeVerdict {
 	if parentID == "" {
 		return MergeVerdict{Reason: "members have no parent container"}
 	}
+	if !tree[parentID].IsContainer {
+		return MergeVerdict{Reason: fmt.Sprintf("parent %q is not a registered container", parentID)}
+	}
 
 	var missing []string
 	for id, node := range tree {
@@ -98,15 +101,18 @@ func HasParentCycle(tree map[string]UnitNode, unitID, proposedParentID string) b
 		return true
 	}
 	// Walk up from the proposed parent. Meeting unitID means unitID is an
-	// ancestor of it, so the link would close a loop. The visited set bounds
-	// the walk against a cycle that ALREADY exists in the data.
+	// ancestor of it, so the link would close a loop. The visited set only
+	// bounds the walk's length against a cycle that ALREADY exists elsewhere
+	// in the data -- revisiting a node this walk has already seen answers
+	// "this walk is looping", not "unitID is on the loop", so it must stop
+	// the walk without reporting a cycle.
 	visited := make(map[string]bool, len(tree))
 	for cur := proposedParentID; cur != ""; cur = tree[cur].ParentID {
 		if cur == unitID {
 			return true
 		}
 		if visited[cur] {
-			return true
+			return false
 		}
 		visited[cur] = true
 	}
