@@ -17,8 +17,8 @@ func testTree() map[string]UnitNode {
 	}
 }
 
-// The Health Center case: a set that is one member short of a container.
-// The missing member must be named, because that is the whole repair hint.
+// The two shapes a cycle takes: a unit pointing at itself, and a unit adopting
+// something already beneath it.
 func TestHasParentCycleDetectsSelfAndDescendants(t *testing.T) {
 	tree := testTree()
 	if !HasParentCycle(tree, "up", "up") {

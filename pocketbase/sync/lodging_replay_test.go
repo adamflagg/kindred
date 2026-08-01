@@ -179,7 +179,7 @@ func TestReplayIssuePlacesAPersonOnAnAdultWeekend(t *testing.T) {
 // minutes later. Nothing judges the member set -- see
 // docs/architecture/lodging-occupancy.md -- so this covers the mechanics:
 // resolver, unit tree and EnsureMerge all reached from a replay.
-func TestReplayIssueMaterializesARepairedMerge(t *testing.T) {
+func TestReplayIssueMaterializesAMerge(t *testing.T) {
 	app := newLodgingTestApp(t)
 	sess := addSession(t, app, cmIDFamilyCamp1, "Family Camp 1", "family",
 		testSessionStart, testSessionEnd, 2025)

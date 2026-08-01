@@ -108,10 +108,9 @@ done
 # constants in lodging_issues.go -- is what PocketBase validates writes against.
 # A constant added on the Go side without the matching migration fails at save
 # time in production and nowhere else, because the test fixture models kind as a
-# plain text field. unknown_party and write_failed arrived in 1500000125;
-# illegal_merge arrived in 1500000131.
+# plain text field. unknown_party and write_failed arrived in 1500000125.
 ik=$(field_prop lodging_ingest_issues kind values || true)
-want_ik='["unresolved_alias","ambiguous_alias","ambiguous_session","no_session","field_zero_values","unknown_party","write_failed","illegal_merge"]'
+want_ik='["unresolved_alias","ambiguous_alias","ambiguous_session","no_session","field_zero_values","unknown_party","write_failed"]'
 [[ "$ik" == "$want_ik" ]] \
   || note "lodging_ingest_issues.kind values are $ik, want $want_ik"
 

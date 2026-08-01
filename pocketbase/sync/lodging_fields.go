@@ -87,7 +87,7 @@ const (
 // lodgingSourceField is one CampMinder custom field the lodging ingest reads.
 type lodgingSourceField struct {
 	CMID   int
-	Name   string // display name at time of writing; documentation only
+	Name   string // also the lookup key -- see lodgingSourceFieldByName
 	Target string
 	Grain  string
 }

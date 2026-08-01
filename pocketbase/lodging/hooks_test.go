@@ -214,6 +214,11 @@ func captureStdout(t *testing.T, fn func()) (out string) {
 			t.Errorf("close pipe writer: %v", closeErr)
 		}
 		out = <-captured
+		// Reader goroutine has drained and exited by now, so closing r here
+		// cannot truncate the capture. One fd per call otherwise.
+		if closeErr := r.Close(); closeErr != nil {
+			t.Errorf("close pipe reader: %v", closeErr)
+		}
 	}()
 
 	fn()

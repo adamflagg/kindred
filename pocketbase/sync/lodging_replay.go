@@ -11,7 +11,7 @@ import (
 // ReplayResult reports what one replay actually did.
 //
 // A bare error cannot say this. ingestValue never errors -- a placement, a
-// still-illegal merge and a string no alias covers all come back the same way
+// blocked attribution and a string no alias covers all come back the same way
 // -- so a caller handed only `error` can report "done" and nothing else, which
 // is how a half-finished repair came to look like a success.
 type ReplayResult struct {
@@ -66,6 +66,12 @@ func ReplayIssue(app core.App, issueID string) (ReplayResult, error) {
 	if year == 0 {
 		return result, fmt.Errorf("issue %s has no year", issueID)
 	}
+	// No blank-raw guard here, unlike ReplayPartylessIssue. Reviewers ask for
+	// one; it would be dead code. All three grain queries filter `value != ''`
+	// (lodging_assignments_sync.go), so no observation with an empty value ever
+	// reaches ingestValue, and no party-scoped row can carry a blank raw_value.
+	// The party-less guard exists for a different reason: an empty bound param
+	// matches NO row in that function's fan-out query.
 	raw := row.GetString("raw_value")
 
 	s, err := newReplayScope(app, year)

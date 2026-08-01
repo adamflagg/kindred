@@ -241,8 +241,9 @@ The short version. Every `member_units` set is hand-authored in the admin UI, so
 merge is a human decision the ingest has less context to overrule. A deliberate partial booking
 and a mis-clicked one produce **byte-identical rows**, so the rule cannot discriminate between
 the case it is for and the case it is against. Nothing downstream consumes completeness —
-bathroom privacy comes off `bathroom_group`, and `parent_unit` / `is_container` appear nowhere
-in `api/` or `bunking/`. And the real configuration space (a house split between a family and a
+bathroom privacy comes off `bathroom_group`, and `parent_unit` — the tree the rule walked —
+appears nowhere in `api/` or `bunking/`. (`is_container` is read there, but only to keep
+buildings out of bookable lists.) And the real configuration space (a house split between a family and a
 staff member, an extended family across two registrations, different rules for adult weekends)
 is not expressible as tree shape at all.
 

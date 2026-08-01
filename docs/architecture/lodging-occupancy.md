@@ -79,8 +79,11 @@ any future attempt to encode occupancy as tree shape:
 4. **Nothing downstream consumes it.** Bathroom privacy is computed from
    `bathroom_group` (`api/services/lodging_rules.py`), a different grouping that
    handles partial merges correctly on its own. Capacity sums actual member
-   units. `parent_unit` and `is_container` appear nowhere in `api/` or
-   `bunking/`.
+   units. `parent_unit` — the tree the completeness rule walked — appears
+   nowhere in `api/` or `bunking/` at all. `is_container` is read there, but
+   only to keep buildings out of bookable lists
+   (`api/services/lodging_roster_service.py:561`); nothing reads the
+   parent/child relationship that made a merge "complete".
 
 Container units remain useful for what they genuinely model — physical
 structure, and the `bathroom_group` upgrade where merging a whole group turns a
