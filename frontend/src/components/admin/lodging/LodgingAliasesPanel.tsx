@@ -72,9 +72,10 @@ export function LodgingAliasesPanel() {
     // An alias's member_units is the other half of "fix the alias, come back
     // to Merge repairs and see the row gone" — narrowing or widening it can
     // drain an open illegal-merge row. recheckIllegalMerges does react to an
-    // alias write now (#1899), but that Go-side resolve races this request:
-    // the merge-repair panel's cache still needs its own invalidation so the
-    // row disappears on THIS save's round trip rather than the next refetch.
+    // alias write now (#1899), and it runs server-side inside the same save
+    // this request already awaited — but the merge-repair panel's OWN cache
+    // has no way to know that happened, and still holds the row the server
+    // already closed. Only an invalidation here surfaces that.
     void queryClient.invalidateQueries({ queryKey: queryKeys.lodgingIllegalMergeIssues() })
   }
 

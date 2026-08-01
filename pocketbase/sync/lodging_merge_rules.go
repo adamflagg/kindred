@@ -108,9 +108,12 @@ func PlacementIsLegal(tree map[string]UnitNode, res AliasResolution) bool {
 // HasParentCycle reports whether pointing unitID's parent at proposedParentID
 // would create a loop -- either self-parenting or adopting a descendant.
 //
-// The frontend picker already filters these out (unitTree.ts). This is the
-// server-side backstop (#1899): the descendant walk and JudgeMerge both
-// traverse parent links, so a cycle introduced by a direct write hangs them.
+// The frontend picker already filters these out (unitTree.ts, descendantIds).
+// This is the server-side backstop (#1899) for the direct write that picker
+// cannot filter. JudgeMerge does not walk parent links at all -- one hop per
+// member, then a flat scan -- so it cannot hang on a cycle regardless; this
+// function's own walk below is the one that would, without the visited guard
+// it carries.
 func HasParentCycle(tree map[string]UnitNode, unitID, proposedParentID string) bool {
 	if proposedParentID == "" {
 		return false

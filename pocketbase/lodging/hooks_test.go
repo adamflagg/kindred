@@ -1005,3 +1005,46 @@ func TestIgnoringAPartylessRowDoesNotAttemptAReplay(t *testing.T) {
 		t.Fatalf("ignoring a party-less row attempted %d replay(s), want 0 (log: %q)", got, output)
 	}
 }
+
+// #1899: the positive control for the two tests above, which the review
+// caught was missing. Neither TestIgnoringAPartylessRowDoesNotAttemptAReplay
+// nor TestReplayOnResolveFiresOnceNotOnItsOwnResave pins the case where a
+// party-less row genuinely IS mapped: the former's issue never gets
+// resolved_alias set at all, and the latter is party-scoped. Mutating the
+// guard to `if !partyScoped && isPartylessAliasKind` -- skipping replay for
+// EVERY party-less alias row, mapped or not -- left both Go suites green,
+// silently reverting this PR's headline feature (replay on resolve) to "wait
+// for the next sync" for the commonest row shape. This pins the guard's
+// negative: it must NOT fire when resolved_alias is set.
+func TestMappingAPartylessRowStillAttemptsAReplay(t *testing.T) {
+	app, err := tests.NewTestAppWithConfig(core.BaseAppConfig{
+		EncryptionEnv: "pb_test_env",
+		IsDev:         true, // so app.Logger() prints synchronously; see captureStdout.
+	})
+	if err != nil {
+		t.Fatalf("NewTestAppWithConfig: %v", err)
+	}
+	defer app.Cleanup()
+
+	setupCollections(t, app)
+	alias := newAlias(t, app, "Mapped Cabin")
+	issue := newIssue(t, app, "unresolved_alias", "Mapped Cabin", 2026, 0, 0)
+
+	wireHooks(app)
+
+	const marker = "Replaying a resolved lodging issue"
+
+	output := captureStdout(t, func() {
+		// The map: is_resolved goes true AND resolved_alias is set, same as
+		// mapUnresolvedAlias's PATCH body -- unlike the ignore tests above.
+		issue.Set("is_resolved", true)
+		issue.Set("resolved_alias", alias.Id)
+		if err := app.Save(issue); err != nil {
+			t.Fatalf("mapping the issue: %v", err)
+		}
+	})
+
+	if got := strings.Count(output, marker); got != 1 {
+		t.Fatalf("mapping a party-less row attempted %d replay(s), want 1 (log: %q)", got, output)
+	}
+}
