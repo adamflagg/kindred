@@ -27,9 +27,12 @@ import (
 	"fmt"
 	"log/slog"
 
+	"github.com/pocketbase/dbx"
 	"github.com/pocketbase/pocketbase"
 	"github.com/pocketbase/pocketbase/apis"
 	"github.com/pocketbase/pocketbase/core"
+
+	"github.com/camp/kindred/pocketbase/sync"
 )
 
 const (
@@ -55,6 +58,10 @@ func wireHooks(app core.App) {
 	app.OnRecordDelete(collectionAliases).BindFunc(guardAliasDelete)
 	app.OnRecordCreate(collectionAssignments).BindFunc(guardAssignmentGrain)
 	app.OnRecordUpdate(collectionAssignments).BindFunc(guardAssignmentGrain)
+	app.OnRecordUpdate(collectionUnits).BindFunc(guardUnitParentCycle)
+	app.OnRecordAfterUpdateSuccess(collectionIngestIssues).BindFunc(replayOnResolve)
+	app.OnRecordAfterUpdateSuccess(collectionUnits).BindFunc(recheckIllegalMerges)
+	app.OnRecordAfterCreateSuccess(collectionUnits).BindFunc(recheckIllegalMerges)
 }
 
 // countAssignments counts lodging_assignments rows whose `field` points at id.
@@ -204,5 +211,135 @@ func guardAssignmentGrain(e *core.RecordEvent) error {
 		)
 	}
 
+	return e.Next()
+}
+
+// guardUnitParentCycle rejects a parent_unit write that would close a loop
+// (#1899). The frontend picker already filters these (unitTree.ts); this is
+// the backstop for a direct write, which 1500000130 widened who can make.
+func guardUnitParentCycle(e *core.RecordEvent) error {
+	parentID := e.Record.GetString("parent_unit")
+	if parentID == "" {
+		return e.Next()
+	}
+	tree, err := sync.BuildUnitTree(e.App)
+	if err != nil {
+		return fmt.Errorf("checking for a parent cycle: %w", err)
+	}
+	if sync.HasParentCycle(tree, e.Record.Id, parentID) {
+		return apis.NewBadRequestError(
+			"That parent would create a loop in the unit tree.", nil)
+	}
+	return e.Next()
+}
+
+// replayOnResolve materializes the placement behind a queue row the moment
+// staff resolve it, instead of leaving it for the next 8-10 minute sync.
+//
+// AfterUpdateSuccess, not Update: replay reads the alias the resolve just
+// created, so it must run after the transaction commits.
+//
+// Two entry points, because the queue has two row shapes. A party-scoped row
+// (illegal_merge, no_session, ambiguous_session, write_failed) replays one
+// placement. A party-LESS row (unresolved_alias, ambiguous_alias) stands for a
+// cabin string rather than a party -- the dedup key collapses it that way on
+// purpose -- so it fans out over every party that wrote the string. Routing
+// both through ReplayIssue would silently no-op on the commonest case.
+//
+// ROUTING IS NOT TOTAL. The party guards are complements, so no row is accepted
+// by both -- but some rows are accepted by NEITHER. ReplayPartylessIssue
+// refuses field_zero_values, an empty raw_value, and an unregistered
+// source_field, and ReplayIssue has no counterpart for any of them. There is a
+// real open field_zero_values row in the production database today. So this
+// hook must SURFACE the refusal rather than assume every resolved row replays,
+// and Task 7 must not offer a replay control on a row nothing will accept.
+//
+// A replay failure must NOT fail the resolve. Staff corrected the registry and
+// that correction is valid regardless; the placement can be picked up by the
+// next sync. Log and continue.
+func replayOnResolve(e *core.RecordEvent) error {
+	if !e.Record.GetBool("is_resolved") {
+		return e.Next()
+	}
+	partyScoped := e.Record.GetInt("household_cm_id") > 0 ||
+		e.Record.GetInt("person_cm_id") > 0
+
+	var err error
+	if partyScoped {
+		var res sync.ReplayResult
+		res, err = sync.ReplayIssue(e.App, e.Record.Id)
+		if err == nil && !res.Placed {
+			e.App.Logger().Info("Replay placed nothing; row re-opened",
+				"issue", e.Record.Id, "blockers", res.Blockers)
+		}
+	} else {
+		var placed int
+		placed, err = sync.ReplayPartylessIssue(e.App, e.Record.Id)
+		if err == nil {
+			e.App.Logger().Info("Party-less replay finished",
+				"issue", e.Record.Id, "placed", placed)
+		}
+	}
+	if err != nil {
+		e.App.Logger().Warn("Replaying a resolved lodging issue",
+			"issue", e.Record.Id, "party_scoped", partyScoped, "error", err)
+	}
+	return e.Next()
+}
+
+// recheckIllegalMerges re-judges every open illegal_merge row after the unit
+// tree changes, and replays the ones that just became legal.
+//
+// This is what makes "fix the registry once, drain twelve rows" true. The
+// override path drains a group because it writes is_resolved; adding a missing
+// child to a container writes nothing to the queue, so without this the rows
+// stay open and the placements never appear.
+//
+// Cost is bounded by the OPEN illegal_merge count (single digits to dozens),
+// not by the units table, and only fires on a unit create/update -- a rare,
+// human-initiated event.
+func recheckIllegalMerges(e *core.RecordEvent) error {
+	rows, err := e.App.FindRecordsByFilter(
+		collectionIngestIssues,
+		"kind = {:kind} && is_resolved = false",
+		"", 0, 0,
+		dbx.Params{"kind": "illegal_merge"},
+	)
+	if err != nil {
+		e.App.Logger().Warn("Re-checking illegal merges", "error", err)
+		return e.Next()
+	}
+	tree, err := sync.BuildUnitTree(e.App)
+	if err != nil {
+		e.App.Logger().Warn("Re-checking illegal merges", "error", err)
+		return e.Next()
+	}
+	resolver, err := sync.NewAliasResolver(e.App)
+	if err != nil {
+		e.App.Logger().Warn("Re-checking illegal merges", "error", err)
+		return e.Next()
+	}
+
+	for _, row := range rows {
+		// Re-judge BEFORE resolving. Resolving unconditionally and letting
+		// replay re-queue the still-broken ones would write
+		// "registry corrected" onto rows that were not, and reset their
+		// first_seen/occurrences by replacing them with fresh rows.
+		res := resolver.Resolve(row.GetString("raw_value"), row.GetInt("year"))
+		if !res.Resolved || !sync.JudgeMerge(tree, res.UnitIDs).Legal {
+			continue // still broken; leave the row and its history alone
+		}
+
+		row.Set("is_resolved", true)
+		row.Set("resolution_note", "Registry corrected; merge is now legal.")
+		if err := e.App.Save(row); err != nil {
+			// One row failing must not abandon the rest, and must never fail
+			// the unit edit that triggered this.
+			e.App.Logger().Warn("Auto-resolving a repaired merge",
+				"issue", row.Id, "error", err)
+			continue
+		}
+		// The save fires replayOnResolve, which materializes the placement.
+	}
 	return e.Next()
 }
