@@ -41,7 +41,6 @@ import {
   listUnresolvedAliasIssues,
   mapUnresolvedAlias,
   reorderLodgingAreas,
-  resolveMergeGroup,
 } from './lodgingCrud'
 
 beforeEach(() => {
@@ -230,51 +229,6 @@ describe('listIllegalMergeIssues', () => {
     const [options] = getFullList.mock.calls[0] as [{ filter?: string; sort?: string }]
     expect(options.filter).toContain('kind = "illegal_merge"')
     expect(options.filter).toContain('is_resolved = false')
-  })
-})
-
-describe('resolveMergeGroup', () => {
-  it('resolves every queue row named, recording the same note on each', async () => {
-    await resolveMergeGroup(['q1', 'q2', 'q3'], 'Added the missing room to the alias.')
-
-    expect(update).toHaveBeenNthCalledWith(1, 'q1', {
-      is_resolved: true,
-      resolution_note: 'Added the missing room to the alias.',
-    })
-    expect(update).toHaveBeenNthCalledWith(2, 'q2', {
-      is_resolved: true,
-      resolution_note: 'Added the missing room to the alias.',
-    })
-    expect(update).toHaveBeenNthCalledWith(3, 'q3', {
-      is_resolved: true,
-      resolution_note: 'Added the missing room to the alias.',
-    })
-  })
-
-  // Sequential, not Promise.all: each update fires replayOnResolve, which
-  // rebuilds the party-size indexes. Confirming order (rather than merely
-  // count) is what pins that down instead of a batching regression.
-  it('writes sequentially rather than concurrently', async () => {
-    const order: string[] = []
-    update.mockImplementation((id: string) => {
-      order.push(id)
-      return Promise.resolve({ id })
-    })
-
-    await resolveMergeGroup(['q1', 'q2'], 'fixed')
-
-    expect(order).toEqual(['q1', 'q2'])
-  })
-
-  it('refuses to resolve with no queue rows named', async () => {
-    await expect(resolveMergeGroup([], 'fixed')).rejects.toThrow(/no queue rows/i)
-    expect(update).not.toHaveBeenCalled()
-  })
-
-  it('refuses to resolve without recording what was fixed', async () => {
-    await expect(resolveMergeGroup(['q1'], '')).rejects.toThrow(/record what was fixed/i)
-    await expect(resolveMergeGroup(['q1'], '   ')).rejects.toThrow(/record what was fixed/i)
-    expect(update).not.toHaveBeenCalled()
   })
 })
 

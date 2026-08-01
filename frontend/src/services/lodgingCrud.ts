@@ -312,21 +312,3 @@ export async function listIllegalMergeIssues(): Promise<LodgingIngestIssueRecord
     sort: 'raw_value,household_cm_id',
   })
 }
-
-/**
- * Resolve every queue row blocked on one member set.
- *
- * Sequential, not Promise.all: each update fires the replay hook, and replay
- * rebuilds the party-size indexes. Firing twelve concurrently would run twelve
- * scans against the same tables.
- */
-export async function resolveMergeGroup(issueIds: string[], note: string): Promise<void> {
-  if (issueIds.length === 0) throw new Error('No queue rows to resolve.')
-  if (note.trim() === '') throw new Error('Record what was fixed.')
-  for (const id of issueIds) {
-    await pb.collection(INGEST_ISSUES).update(id, {
-      is_resolved: true,
-      resolution_note: note,
-    })
-  }
-}
