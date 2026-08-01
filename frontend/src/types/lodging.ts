@@ -191,7 +191,7 @@ export interface LodgingAliasRecord extends PocketBaseRecordBase {
   expand?: { member_units?: LodgingUnitRecord[] }
 }
 
-/** The seven things the ingest can fail to do with a row. */
+/** The eight things the ingest can fail to do with a row. */
 export type IngestIssueKind =
   | 'unresolved_alias'
   | 'ambiguous_alias'
@@ -200,6 +200,7 @@ export type IngestIssueKind =
   | 'field_zero_values'
   | 'unknown_party'
   | 'write_failed'
+  | 'illegal_merge'
 
 /**
  * One row of the ingest work queue.
