@@ -16,10 +16,12 @@
  * the roster is deliberately readable by everyone who can log in, and a later
  * edit that loosens writes must not silently take reads with it.
  *
- * WHAT IS NOT WIDENED. `lodging_field_mappings` keeps admin-only writes. It
- * maps CampMinder custom fields onto derived columns — ingest plumbing written
- * by the Go sync as superuser, with no staff-facing surface. Repointing it
- * would change what every lodging read means, which is not a cabin decision.
+ * WHAT IS NOT WIDENED. Three collections keep admin-only writes:
+ * `lodging_field_mappings`, because it maps CampMinder custom fields onto
+ * derived columns — ingest plumbing written by the Go sync as superuser, with
+ * no staff-facing surface, and repointing it would change what every lodging
+ * read means; and `lodging_assignments` / `lodging_assignment_history`, for the
+ * draft-versus-final reason spelled out at LODGING_STAFF_WRITABLE below.
  *
  * PHI. `lodging.phi` gates the medical narrative behind the roster's
  * accessibility flags. It was granted to NO role (#1887), so the reveal was
@@ -30,6 +32,13 @@
  * staff — or granted to someone who places nobody — without touching write
  * access, and so the endpoint's access log keeps meaning what it says.
  *
+ * #1887 offered a second route: leave the grant out and let an admin add it
+ * through the roles editor, which already enumerates ALL_PERMISSIONS and so has
+ * been able to do this since #1884. Granting here anyway, deliberately — a
+ * default nobody has to discover beats a self-serve knob nobody knows to turn,
+ * and this repo prefers a code change over a config one. The knob still works
+ * for anyone who wants PHI without write access.
+ *
  * Idempotent: rules are set to a fixed target, and the permission grant checks
  * for the value first.
  */
@@ -39,17 +48,25 @@ const LODGING_BUNKING_MANAGE =
   '@request.auth.is_admin = true || @request.auth.cached_permissions ~ "bunking.manage"'
 const LODGING_ADMIN_ONLY = "@request.auth.is_admin = true"
 
-// Every lodging collection a staff surface writes: the admin editor (areas,
-// units, aliases, the ingest work queue) and the board and map that follow it
-// (merges, availability, assignments and their history).
+// The PLAN side of the split, and only that: the registry the editor writes
+// (areas, units, aliases, the ingest work queue) plus the two planning tables
+// the board will write (merges, availability).
+//
+// `lodging_assignments` and `lodging_assignment_history` are deliberately NOT
+// here. Summer draws the same line and has never crossed it: `bunk_assignments`
+// (the synced record of truth) and `attendee_status_history` (append-only audit)
+// are admin-only through every RBAC revision in this repo, while the table staff
+// actually write is the DRAFT — `bunk_assignments_draft`. Lodging has no draft
+// table yet, and nothing writes assignments today; granting delete on an
+// append-only audit trail ahead of any UI that needs it buys nothing and risks
+// the one record that cannot be reconstructed. Widen them in the PR that adds
+// the writer.
 const LODGING_STAFF_WRITABLE = [
   "lodging_areas",
   "lodging_units",
   "lodging_unit_aliases",
   "lodging_merges",
   "lodging_availability",
-  "lodging_assignments",
-  "lodging_assignment_history",
   "lodging_ingest_issues",
 ]
 

@@ -2,25 +2,24 @@ import { Link, Outlet, useLocation } from 'react-router'
 import { Settings, AlertCircle } from 'lucide-react'
 import { ErrorBoundary } from './ErrorBoundary'
 import { useIsAdmin } from '../hooks/useIsAdmin'
-import { usePermissions } from '../hooks/usePermissions'
 import { ADMIN_TABS, type AdminTabConfig } from '../config/adminTabs'
 import PermissionDeniedPage from '../pages/PermissionDeniedPage'
 
 function AdminLayoutInner() {
   const location = useLocation()
   const isAdmin = useIsAdmin()
-  const { hasPermission } = usePermissions()
-
-  const visibleTabs = ADMIN_TABS.filter(
-    (tab) =>
-      tab.requiredPermission === 'authenticated' || isAdmin || hasPermission(tab.requiredPermission)
-  )
 
   // Filtering the tab list never stopped anyone typing the URL (#1895). The
   // /manage routes each carry a RequirePermission; /admin has no equivalent,
-  // so the layout every admin route shares is where the guard belongs. A user
-  // with no visible tab has no business on the page at all.
-  if (visibleTabs.length === 0) {
+  // so the layout every admin route shares is where the guard belongs.
+  //
+  // Gating on isAdmin rather than "has at least one visible tab": those are the
+  // same test only because `AdminTabConfig.requiredPermission` is the literal
+  // 'admin'. Writing it as the tab count would read as a per-route check while
+  // actually being an any-route one — a user who could see tab A would reach
+  // tab B's URL. See the type's own comment for why that case is a compile
+  // error now rather than a comment nobody reads.
+  if (!isAdmin) {
     return <PermissionDeniedPage />
   }
 
@@ -47,7 +46,7 @@ function AdminLayoutInner() {
 
       {/* Tabs */}
       <div className="bg-muted/50 dark:bg-muted flex w-full gap-1.5 rounded-lg p-1.5 sm:w-fit">
-        {visibleTabs.map((tab) => {
+        {ADMIN_TABS.map((tab) => {
           const Icon = tab.icon
           return (
             <Link

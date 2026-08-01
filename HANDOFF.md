@@ -90,12 +90,18 @@ Facts, not a work log. Do not re-verify or re-implement these.
   aliases, and the unresolved-name work queue. Areas are a slide-in drawer over units, not a
   section. Writes go straight to PocketBase through `lodgingCrud.ts`; the Go hooks in
   `pocketbase/lodging` are the integrity boundary. It shipped at `/admin/lodging`; see the access
-  model below for why it moved and what still redirects.
+  model below for why it moved.
 - **The access model is the summer board's, not admin-only.** Reads on every `lodging_*`
-  collection and every `/api/lodging/*` endpoint are open to any authenticated user; writes are
+  collection, and on every `/api/lodging/*` endpoint EXCEPT
+  `GET /households/{cm_id}/medical`, are open to any authenticated user; writes are
   `admin || bunking.manage` (`1500000130`). Consequences worth holding:
-  - `lodging_field_mappings` is the ONE exception — still admin-only, because it is ingest
-    plumbing that decides what every lodging read *means*, not a cabin decision.
+  - **Three collections are NOT widened.** `lodging_field_mappings`, because it is ingest
+    plumbing that decides what every lodging read *means*, not a cabin decision. And
+    `lodging_assignments` + `lodging_assignment_history`, because they are the synced record of
+    truth and its append-only audit — summer draws the identical line, keeping `bunk_assignments`
+    and `attendee_status_history` admin-only while staff write the DRAFT
+    (`bunk_assignments_draft`). Lodging has no draft table yet. **Widen them in the PR that adds
+    the board that writes them**, not before.
   - **`lodging.phi` is now held by the Bunking Staff role** (closing #1887), so the roster's
     medical reveal works for the staff doing placement. It stayed a separate permission from
     `bunking.manage` deliberately: it can be revoked, or granted to someone who places nobody,
@@ -256,8 +262,9 @@ inline per row and in bulk. Until staff use it, the fit check stays dark.
   them.
 - **`lodging_availability`** — the per-session reserved/released overrides (spec §3.7). The
   schema exists; no surface reads or writes it.
-- **`lodging.phi` is granted to no role (#1887).** Admin bypass is still the only route to the
-  narrative. The 403 degradation path in `AccessibilityFlagList` has never been exercised.
+- **`lodging.phi` is held by admins and the Bunking Staff role** (`1500000130`, closing #1887).
+  Everyone else who can read the roster gets a 403 from the medical endpoint, so the degradation
+  path in `AccessibilityFlagList` is now a live path rather than a theoretical one.
 - **Health Center room 5** — `hc-upstairs-hall` groups rooms 1, 2, 3, 4 and 6 but not 5. If 5
   shares that hall's bathroom the group is incomplete, and a merge covering the hall would
   never upgrade to `private` — the same bug that was fixed for Tioga/Tenaya 3+4 in
@@ -280,7 +287,7 @@ boolean and SQLite evaluates `0 != ''` as TRUE, so that column reports the full 
 completely empty database. If `gate`/`req` are `0`:
 
 ```bash
-./scripts/start_dev.sh   # boots PocketBase, which applies 1500000127
+./scripts/start_dev.sh   # boots PocketBase, which applies 1500000130
 # then, with a users-collection admin token (see §9 — a _superusers token is REJECTED):
 curl -X POST "http://localhost:8090/api/custom/sync/run?year=2026&service=family_camp_derived"
 ```
@@ -318,7 +325,7 @@ the whole time. That is progress, not a hang — confirm with CPU, not the count
 - **Do not sum capacity over units where `is_container` is true.** They are building rows carrying
   whole-building aggregates; including them gives 408 beds against a true 389.
 - **Do not create `lodging_unresolved_aliases`.** See §3. The plan tells you to; the ruling overrides it.
-- **Do not number a migration from a branch.** Highest on `main` is `1500000127`. Compute it:
+- **Do not number a migration from a branch.** Highest on `main` is `1500000130`. Compute it:
   `git ls-tree -r origin/main pocketbase/pb_migrations/ | grep -oE '15000[0-9]{5}' | sort -u | tail -1`
 - **Do not add a `kind` value as a Go constant without the migration.** The select list is the
   constraint; a bare constant passes tests and fails in production.
@@ -428,9 +435,16 @@ git fetch -q && git rev-list --count origin/<branch>..HEAD   # must be 0
   longer existed. Do not read a CodeRabbit pass as covering a branch that moved under it — check
   which commit it reviewed.
 
-- **#1895 is fixed** — `AdminLayout` returns `PermissionDeniedPage` when the user has no visible
-  tab, which is the route-group fix the issue asked for. Lodging left `/admin` entirely in the
-  same change. Kept here only so a reader of the issue knows where it went.
+- **#1895 is fixed** — `AdminLayout` returns `PermissionDeniedPage` for a non-admin, which is the
+  route-group fix the issue asked for. Lodging left `/admin` entirely in the same change.
+  `AdminTabConfig.requiredPermission` is now the literal `'admin'`, not `string`: the guard is an
+  is-admin test, so a tab carrying an ordinary permission codename would slip past it. #387 put a
+  `metrics.geo` tab under `/admin` and #450 had to move it out — the narrowed type makes a repeat
+  a compile error. **Merging `/admin` into `/manage` must revisit that guard.**
+- **#1899 — `lodging_units.parent_unit` has no server-side cycle guard.** `unitTree.ts` filters
+  the picker; `pocketbase/lodging/hooks.go` has no `OnRecordUpdate` on units, so a direct write
+  can build a cycle that the descendant walk and the merge-legality rule both traverse.
+  Pre-existing, but `1500000130` widened who can reach it.
 - **#1894** — `dark:*-forest-950` classes generate nothing: the forest scale stops at 900, so 14
   occurrences across 8 files are dead dark-mode states. `SessionTabs` is one of them, which is
   how it propagates — other surfaces are told to copy its pill grammar.

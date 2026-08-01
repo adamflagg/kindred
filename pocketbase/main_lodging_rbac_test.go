@@ -14,19 +14,28 @@ const bunkingManageRule = `'@request.auth.is_admin = true || @request.auth.cache
 
 const lodgingRBACMigration = "pb_migrations/1500000130_lodging_bunking_manage_rbac.js"
 
-// lodgingStaffWritable is every lodging collection a staff surface writes:
-// the admin editor (areas, units, aliases, the ingest work queue) and the
-// board and map that follow it (merges, availability, assignments and their
-// history).
+// lodgingStaffWritable is the PLAN side of the split: the registry the editor
+// writes (areas, units, aliases, the ingest work queue) plus the two planning
+// tables the board will write (merges, availability).
 var lodgingStaffWritable = []string{
 	"lodging_areas",
 	"lodging_units",
 	"lodging_unit_aliases",
 	"lodging_merges",
 	"lodging_availability",
+	"lodging_ingest_issues",
+}
+
+// lodgingAdminOnly is every lodging collection that must NOT be widened.
+var lodgingAdminOnly = []string{
+	// Ingest plumbing: which CampMinder field feeds which derived column.
+	"lodging_field_mappings",
+	// The synced record of truth and its append-only audit trail. Summer's
+	// equivalents (bunk_assignments, attendee_status_history) have stayed
+	// admin-only through every RBAC revision here; the table summer staff
+	// actually write is the DRAFT, bunk_assignments_draft.
 	"lodging_assignments",
 	"lodging_assignment_history",
-	"lodging_ingest_issues",
 }
 
 func readLodgingRBACMigration(t *testing.T) string {
@@ -80,17 +89,41 @@ func TestLodgingRBACMigrationGrantsBunkingManageWrites(t *testing.T) {
 	}
 }
 
-// TestLodgingRBACMigrationLeavesFieldMappingsAdminOnly guards the one lodging
-// collection that is NOT staff-writable. lodging_field_mappings is ingest
-// plumbing — which CampMinder custom fields feed which derived column —
-// written by the Go sync as superuser and surfaced in no UI. Widening it
-// would let bunking staff silently repoint the ingest.
-func TestLodgingRBACMigrationLeavesFieldMappingsAdminOnly(t *testing.T) {
+// TestLodgingRBACMigrationLeavesTheRecordOfTruthAdminOnly guards the three
+// lodging collections that must NOT become staff-writable.
+//
+// The draft-versus-final split is the load-bearing one. Summer has never
+// granted bunking.manage on `bunk_assignments` (the synced record of truth) or
+// `attendee_status_history` (append-only audit); what staff write there is the
+// DRAFT table. Lodging has no draft table yet and nothing writes assignments,
+// so widening them would hand out delete on an append-only audit trail with no
+// caller to justify it. `lodging_field_mappings` is a separate case: ingest
+// plumbing whose contents change what every lodging read means.
+func TestLodgingRBACMigrationLeavesTheRecordOfTruthAdminOnly(t *testing.T) {
 	body := readLodgingRBACMigration(t)
 
-	if strings.Contains(body, `"lodging_field_mappings"`) {
-		t.Errorf("migration %s must not widen lodging_field_mappings — it is ingest plumbing, admin-only",
-			lodgingRBACMigration)
+	// Look only at the executable list, not the prose: the migration's comments
+	// name these collections precisely to explain why they are excluded, and a
+	// whole-file substring check would trip over its own rationale.
+	start := strings.Index(body, "const LODGING_STAFF_WRITABLE = [")
+	if start == -1 {
+		t.Fatalf("migration %s must declare LODGING_STAFF_WRITABLE", lodgingRBACMigration)
+	}
+	end := strings.Index(body[start:], "]")
+	if end == -1 {
+		t.Fatalf("migration %s: LODGING_STAFF_WRITABLE is not terminated", lodgingRBACMigration)
+	}
+	writable := body[start : start+end]
+
+	for _, col := range lodgingAdminOnly {
+		if strings.Contains(writable, `"`+col+`"`) {
+			t.Errorf("migration %s must not widen %q — see lodgingAdminOnly for why", lodgingRBACMigration, col)
+		}
+	}
+	for _, col := range lodgingStaffWritable {
+		if !strings.Contains(writable, `"`+col+`"`) {
+			t.Errorf("migration %s must widen %q", lodgingRBACMigration, col)
+		}
 	}
 }
 
