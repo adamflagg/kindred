@@ -80,8 +80,20 @@ class LodgingWriteService:
         """Upsert one party's placement inside a scenario.
 
         Upsert rather than insert because the draft's partial unique indexes
-        allow exactly one row per (session, year, party, scenario). Creating a
-        second would be rejected by the database; this never asks it to.
+        allow exactly one row per (session, year, party, scenario).
+
+        The find and the create are two round trips, so they RACE. Two staff
+        dragging the same family at the same moment -- the same case
+        delete_merge is idempotent for -- both read no row, both create, and
+        the index rejects the loser. Left alone that is a 500 for a placement
+        the board is entitled to make, so the loser re-reads and updates
+        instead. The winner's row is by construction the row this call wanted:
+        same session, same year, same party, same scenario.
+
+        Only a create that turns out to have raced is retried. If the re-read
+        still finds nothing, the create failed for some other reason and the
+        error keeps its upstream status rather than becoming a 200 reporting a
+        placement that does not exist.
 
         All three targets empty is the TOMBSTONE -- "staff took this party off
         the board in this scenario" -- and is a legitimate row, not a no-op.
@@ -115,7 +127,19 @@ class LodgingWriteService:
         if existing is not None:
             record = await self.repository.update_draft_assignment(str(existing.id), data)
         else:
-            record = await self.repository.create_draft_assignment(data)
+            try:
+                record = await self.repository.create_draft_assignment(data)
+            except ClientResponseError as exc:
+                raced = await self.repository.find_draft_assignment(
+                    request.year,
+                    session_pb_id,
+                    request.scenario,
+                    request.household_cm_id,
+                    request.person_cm_id,
+                )
+                if raced is None:
+                    raise pb_error_to_http(exc) from exc
+                record = await self.repository.update_draft_assignment(str(raced.id), data)
         return LodgingWriteResponse(record_id=str(getattr(record, "id", "")))
 
     async def clear_placement(self, request: PlacementDeleteRequest) -> LodgingWriteResponse:

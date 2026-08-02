@@ -218,6 +218,12 @@ class LodgingRosterService:
         numbers then come from the SAME `_build_units` / `_build_parties` /
         `_build_counts` helpers the roster uses, so the lander cannot drift
         from the page it links to.
+
+        Scenario mode therefore costs five session-scoped reads per weekend
+        rather than three, and nothing caps the resulting fan-out. That is
+        deliberate for now -- there is no lander calling this with a scenario
+        yet, so there is nothing to measure against -- and kindred#1920 records
+        the two ways to bound it when there is.
         """
         sessions = await self.repository.fetch_weekend_sessions(year)
         if not sessions:

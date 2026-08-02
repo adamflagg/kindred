@@ -372,6 +372,25 @@ class MergeWriteRequest(ScenarioWriteRequest):
     display_name: str = ""
     capacity_override: int | None = None
 
+    @model_validator(mode="after")
+    def _members_are_distinct(self) -> Self:
+        """The one member-set rule that IS decidable.
+
+        min_length and max_length bound the list's size, not its contents, so
+        ["u1", "u1"] is a two-member merge to Pydantic and a one-member merge
+        to a PocketBase relation field, which may collapse the duplicate on
+        save. The caller gets a 200 for a row that does not say what they sent.
+
+        Naming the same unit twice is never intentional, which is exactly what
+        separates this from the completeness rule removed in #1903: that one
+        had to guess whether a partial member set was deliberate, and could
+        not, because a considered partial booking and a mis-click are
+        byte-identical. This one needs no such judgement.
+        """
+        if len(set(self.member_unit_ids)) != len(self.member_unit_ids):
+            raise ValueError("member_unit_ids must not name the same unit twice")
+        return self
+
 
 class AvailabilityWriteRequest(ScenarioWriteRequest):
     """Reserve or release one unit for one weekend, inside a scenario.

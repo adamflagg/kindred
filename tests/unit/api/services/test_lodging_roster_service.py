@@ -693,8 +693,8 @@ class TestScenarioResolution:
         """Adult weekends place PERSONS, and the overlay keys on that grain."""
         person = _rec(
             cm_id=1000001,
-            first_name="Ava",
-            last_name="Martinez",
+            first_name="Riley",
+            last_name="Sam",
             preferred_name="",
             age=42,
             grade=0,

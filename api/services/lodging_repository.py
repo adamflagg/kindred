@@ -136,7 +136,7 @@ class LodgingRepository:
         return await asyncio.to_thread(
             self.pb.collection(LODGING_AVAILABILITY).get_full_list,
             query_params={
-                "filter": f'session = "{session_pb_id}" && year = {year} && {LIVE_PLAN_FILTER}',
+                "filter": f'session = "{pb_escape(session_pb_id)}" && year = {year} && {LIVE_PLAN_FILTER}',
                 "sort": STABLE_SORT,
             },
         )
@@ -169,7 +169,7 @@ class LodgingRepository:
         return await asyncio.to_thread(
             self.pb.collection(LODGING_ASSIGNMENTS).get_full_list,
             query_params={
-                "filter": f'session = "{session_pb_id}" && year = {year}',
+                "filter": f'session = "{pb_escape(session_pb_id)}" && year = {year}',
                 "expand": "unit,merge",
                 "sort": STABLE_SORT,
             },

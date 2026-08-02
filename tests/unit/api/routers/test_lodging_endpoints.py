@@ -691,6 +691,70 @@ class TestPlacementWrites:
 
         assert response.status_code == 422
 
+    def test_losing_the_upsert_race_updates_instead_of_500ing(self, mock_pb: MagicMock) -> None:
+        """Two staff dragging the same family at the same moment.
+
+        Both find no draft row, both create, and the partial unique index
+        rejects the loser. Left alone that is a bare ClientResponseError into
+        the catch-all handler in api/main.py -- a 500 for a placement the board
+        is entitled to make. The row the winner just wrote is exactly what this
+        call wanted to write, so the loser adopts it and updates.
+        """
+        reads: list[list[Any]] = [[], [_rec(id="draft_raced")]]
+
+        def staged(**kwargs: Any) -> list[Any]:
+            query_filter = kwargs.get("query_params", {}).get("filter", "")
+            if "cm_id = 1000001" in query_filter:
+                return _session_lookup(**kwargs)
+            return reads.pop(0) if reads else []
+
+        with patch("api.routers.lodging.pb", mock_pb):
+            client = _write_client(_manage_user(), mock_pb)
+            mock_pb.collection.return_value.get_full_list.side_effect = staged
+            mock_pb.collection.return_value.create.side_effect = ClientResponseError(
+                "unique constraint", status=400, data={}, url="", is_abort=False, original_error=None
+            )
+            response = client.post(
+                "/api/lodging/placements",
+                json={
+                    "year": 2026,
+                    "session_cm_id": 1000001,
+                    "scenario": "scn_1",
+                    "household_cm_id": 2000001,
+                    "unit_id": "u1",
+                },
+            )
+
+        assert response.status_code == 200, response.text
+        mock_pb.collection.return_value.update.assert_called_once()
+        assert mock_pb.collection.return_value.update.call_args[0][0] == "draft_raced"
+
+    def test_a_create_failure_that_is_not_a_race_still_errors(self, mock_pb: MagicMock) -> None:
+        """The retry is for a lost race, not a blanket swallow.
+
+        If the re-read still finds no row, the create failed for some other
+        reason and the caller must hear about it with the upstream status
+        rather than a 200 reporting a placement that does not exist.
+        """
+        with patch("api.routers.lodging.pb", mock_pb):
+            client = _write_client(_manage_user(), mock_pb)
+            mock_pb.collection.return_value.create.side_effect = ClientResponseError(
+                "boom", status=400, data={}, url="", is_abort=False, original_error=None
+            )
+            response = client.post(
+                "/api/lodging/placements",
+                json={
+                    "year": 2026,
+                    "session_cm_id": 1000001,
+                    "scenario": "scn_1",
+                    "household_cm_id": 2000001,
+                    "unit_id": "u1",
+                },
+            )
+
+        assert response.status_code == 400
+        mock_pb.collection.return_value.update.assert_not_called()
+
     def test_an_unknown_weekend_is_404_not_500(self, mock_pb: MagicMock) -> None:
         with patch("api.routers.lodging.pb", mock_pb):
             client = _write_client(_manage_user(), mock_pb)
@@ -748,6 +812,30 @@ class TestMergeWrites:
                     "session_cm_id": 1000001,
                     "scenario": "scn_1",
                     "member_unit_ids": ["u1"],
+                },
+            )
+
+        assert response.status_code == 422
+
+    def test_a_merge_naming_the_same_unit_twice_is_refused(self, mock_pb: MagicMock) -> None:
+        """Distinct from the completeness rule removed in #1903.
+
+        That rule judged WHICH units belong together, and could not be made to
+        work because every member set is hand-authored. This one only rejects
+        the same unit named twice, which is never intentional and which a
+        PocketBase relation field may silently collapse on save -- leaving a
+        stored row with one member for a request that declared two, and a 200
+        either way.
+        """
+        with patch("api.routers.lodging.pb", mock_pb):
+            client = _write_client(_manage_user(), mock_pb)
+            response = client.post(
+                "/api/lodging/merges",
+                json={
+                    "year": 2026,
+                    "session_cm_id": 1000001,
+                    "scenario": "scn_1",
+                    "member_unit_ids": ["u1", "u1"],
                 },
             )
 
@@ -814,7 +902,9 @@ class TestMergeWrites:
             )
             response = client.delete("/api/lodging/merges/mrgd_1")
 
-        assert response.status_code >= 400
+        # Pinned, not `>= 400`: a 500 would also satisfy that, and a 500 is the
+        # precise outcome the idempotency change is supposed to rule out.
+        assert response.status_code == 403
 
 
 class TestAvailabilityWrites:

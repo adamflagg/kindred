@@ -261,6 +261,33 @@ class TestClientSuppliedValuesAreEscaped:
         assert 'unit = "u1\\" || id != \\""' in filter_str
         assert '" || id != "' not in filter_str
 
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "call",
+        [
+            pytest.param(lambda r, s: r.fetch_availability(2026, s), id="fetch_availability"),
+            pytest.param(lambda r, s: r.fetch_assignments(2026, s), id="fetch_assignments"),
+            pytest.param(lambda r, s: r.fetch_draft_assignments(2026, s, "scn_1"), id="fetch_draft_assignments"),
+            pytest.param(lambda r, s: r.fetch_scenario_availability(2026, s, "scn_1"), id="fetch_scenario_avail"),
+        ],
+    )
+    async def test_every_session_filter_escapes_the_session_id(
+        self, repo: LodgingRepository, pb: MagicMock, call: Any
+    ) -> None:
+        """One convention across the whole file, not a per-call-site argument.
+
+        `session_pb_id` is server-resolved today, so none of these is
+        exploitable. The hazard is the split: escaping it in some session
+        filters and not others leaves a reader to work out which is which, and
+        the next caller to pass a client value inherits whichever form they
+        copied.
+        """
+        await call(repo, 'sess" || id != "')
+
+        filter_str = _last_query(pb)["filter"]
+        assert 'session = "sess\\" || id != \\""' in filter_str
+        assert '" || id != "' not in filter_str
+
 
 class TestFetchAvailability:
     @pytest.mark.asyncio
