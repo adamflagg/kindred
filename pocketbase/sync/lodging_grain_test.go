@@ -6,10 +6,10 @@ import (
 )
 
 // TestValidateAssignmentGrain covers every state the database accepts but the
-// design forbids. PocketBase enforces none of these: lodging_assignments.unit
-// and .merge are both optional relations and household_cm_id / person_cm_id are
-// both optional numbers, so all four illegal shapes save with a 200. This
-// function is the only place the invariant exists.
+// design forbids. PocketBase enforces none of these: lodging_assignments.units
+// is an optional relation and household_cm_id / person_cm_id are both optional
+// numbers, so all three illegal shapes save with a 200. This function is the
+// only place the invariant exists.
 func TestValidateAssignmentGrain(t *testing.T) {
 	cases := []struct {
 		name string
@@ -18,31 +18,26 @@ func TestValidateAssignmentGrain(t *testing.T) {
 	}{
 		{
 			name: "household into an atomic room (family camp, ~94% of rows)",
-			in:   AssignmentGrain{HouseholdCMID: 9001, UnitID: "u_ridge_a"},
+			in:   AssignmentGrain{HouseholdCMID: 9001, UnitIDs: []string{"u_ridge_a"}},
 		},
 		{
-			name: "person into a merged slot (an adult weekend placement)",
-			in:   AssignmentGrain{PersonCMID: 5001, MergeID: "m_tioga_12"},
+			name: "person into a multi-room placement (an adult weekend placement)",
+			in:   AssignmentGrain{PersonCMID: 5001, UnitIDs: []string{"u_tioga_1", "u_tioga_2"}},
 		},
 		{
 			name: "neither party",
-			in:   AssignmentGrain{UnitID: "u_ridge_a"},
+			in:   AssignmentGrain{UnitIDs: []string{"u_ridge_a"}},
 			want: ErrGrainNoParty,
 		},
 		{
 			name: "both parties",
-			in:   AssignmentGrain{HouseholdCMID: 9001, PersonCMID: 5001, UnitID: "u_ridge_a"},
+			in:   AssignmentGrain{HouseholdCMID: 9001, PersonCMID: 5001, UnitIDs: []string{"u_ridge_a"}},
 			want: ErrGrainBothParties,
 		},
 		{
 			name: "no placement",
 			in:   AssignmentGrain{HouseholdCMID: 9001},
 			want: ErrGrainNoPlacement,
-		},
-		{
-			name: "both placements",
-			in:   AssignmentGrain{HouseholdCMID: 9001, UnitID: "u_ridge_a", MergeID: "m_tioga_12"},
-			want: ErrGrainBothPlacements,
 		},
 	}
 
@@ -59,6 +54,22 @@ func TestValidateAssignmentGrain(t *testing.T) {
 				t.Fatalf("ValidateAssignmentGrain(%+v) = %v, want %v", tc.in, err, tc.want)
 			}
 		})
+	}
+}
+
+func TestValidateAssignmentGrainAcceptsMultipleUnits(t *testing.T) {
+	err := ValidateAssignmentGrain(AssignmentGrain{
+		HouseholdCMID: 1001, UnitIDs: []string{"u1", "u2"},
+	})
+	if err != nil {
+		t.Fatalf("a two-room placement is legal, got %v", err)
+	}
+}
+
+func TestValidateAssignmentGrainRejectsEmptyUnits(t *testing.T) {
+	err := ValidateAssignmentGrain(AssignmentGrain{HouseholdCMID: 1001, UnitIDs: nil})
+	if !errors.Is(err, ErrGrainNoPlacement) {
+		t.Fatalf("want ErrGrainNoPlacement, got %v", err)
 	}
 }
 

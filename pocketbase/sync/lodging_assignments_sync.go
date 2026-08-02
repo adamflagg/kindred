@@ -479,9 +479,20 @@ func (s *LodgingAssignmentsSync) placementFor(
 // A staff_touched row is left untouched: a human moved that party on the board
 // and CampMinder must not undo it. staff_touched is one-way and GUI-written.
 func (s *LodgingAssignmentsSync) upsertAssignment(in *assignmentInput, now time.Time) error {
+	// Task 3 changed AssignmentGrain.UnitIDs to a set; assignmentInput still
+	// carries the pre-collapse UnitID/MergeID pair it always has (rewriting that
+	// is the next task's job -- see lodging_grain.go). Collect whichever of the
+	// two is populated so this call keeps compiling and keeps validating.
+	units := make([]string, 0, 2)
+	if in.UnitID != "" {
+		units = append(units, in.UnitID)
+	}
+	if in.MergeID != "" {
+		units = append(units, in.MergeID)
+	}
 	if err := ValidateAssignmentGrain(AssignmentGrain{
 		HouseholdCMID: in.HouseholdCMID, PersonCMID: in.PersonCMID,
-		UnitID: in.UnitID, MergeID: in.MergeID,
+		UnitIDs: units,
 	}); err != nil {
 		return fmt.Errorf("refusing to write an illegal assignment: %w", err)
 	}
