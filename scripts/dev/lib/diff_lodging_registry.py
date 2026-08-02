@@ -61,7 +61,11 @@ def _diff_units(doc: dict[str, Any], db: sqlite3.Connection) -> list[str]:
             """
             SELECT u.code, u.name, a.code AS area_code, u.map_x, u.map_y, u.sleeps,
                    u.bathroom, u.bathroom_group, u.near_bathhouse, u.allocation_default,
-                   u.is_container, u.notes, p.code AS parent_code
+                   u.is_container, u.notes, p.code AS parent_code,
+                   u.has_power, u.has_ac, u.has_fridge, u.is_accessible, u.has_heat,
+                   u.is_weatherized, u.has_plumbing, u.has_space_heater,
+                   u.has_pack_play_space, u.has_living_room, u.has_kitchen, u.has_lights,
+                   u.has_ramp, u.max_beds
               FROM lodging_units u
               JOIN lodging_areas a ON a.id = u.area
               LEFT JOIN lodging_units p ON p.id = u.parent_unit
@@ -90,7 +94,26 @@ def _diff_units(doc: dict[str, Any], db: sqlite3.Connection) -> list[str]:
             ("is_container", int(bool(w.get("is_container"))), int(g["is_container"] or 0)),
             ("notes", w.get("notes") or "", g["notes"] or ""),
             ("parent_unit", w.get("parent_unit") or "", g["parent_code"] or ""),
+            # has_ramp is a select whose EMPTY value means "not assessed", so it
+            # is compared as a string. Everything else here is a plain bool.
+            ("has_ramp", w.get("has_ramp") or "", g["has_ramp"] or ""),
+            ("max_beds", _norm_num(w.get("max_beds")), _norm_num(g["max_beds"])),
         ]
+        for field in (
+            "has_power",
+            "has_ac",
+            "has_fridge",
+            "is_accessible",
+            "has_heat",
+            "is_weatherized",
+            "has_plumbing",
+            "has_space_heater",
+            "has_pack_play_space",
+            "has_living_room",
+            "has_kitchen",
+            "has_lights",
+        ):
+            checks.append((field, int(bool(w.get(field))), int(g[field] or 0)))
         for field, file_value, db_value in checks:
             if file_value != db_value:
                 diffs.append(f"unit {code}.{field}: file={file_value!r} db={db_value!r}")
