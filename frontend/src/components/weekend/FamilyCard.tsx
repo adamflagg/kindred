@@ -141,9 +141,18 @@ export function FamilyCard({
           <Chip label={ATTENTION_LABEL.unverified} tone="quiet" />
         )}
 
-        {sharedSlot && party.share?.preference === 'no_share' && (
-          <Chip label="Declined sharing" tone="warn" />
+        {/* Keyed off the RESOLVED verdict, not the registration gate. The gate
+            is superseded wherever the Family Camp form answered, so a household
+            that said no at registration and then named a partner is legitimately
+            placed — chipping it "declined" repeats at card level exactly the
+            false positive the slot flag was moved off the gate to avoid.
+            Wording matches the slot: the form has no refusal option. */}
+        {sharedSlot && party.share?.eligibility === 'declined' && (
+          <Chip label="Did not request sharing" tone="warn" />
         )}
+        {/* 16 households for 2026 carry disagreeing answers. Shown on the card
+            as well as the slot, so a party sitting alone still surfaces one. */}
+        {party.share?.answers_conflict === true && <Chip label="Answers disagree" tone="warn" />}
         {wantsToShare && <Chip label="Wants to share" tone="share" />}
         {/* NEAR and WITH are different requests: NEAR is satisfied by map
             distance between units, WITH by putting both in one room. */}

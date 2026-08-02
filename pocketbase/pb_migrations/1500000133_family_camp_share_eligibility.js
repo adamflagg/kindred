@@ -22,7 +22,7 @@
  *     Legitimately placed; the board flagged them.
  *   - 12 said yes at registration then declined on the form, plus 39 more from
  *     maybe_mutual. The board was SILENT and handed staff a clean card. This is
- *     the dangerous direction and it is ~10x the first.
+ *     the dangerous direction and it is ~17x the first (51 against 3).
  *
  * WHY THREE COLUMNS RATHER THAN ONE
  *

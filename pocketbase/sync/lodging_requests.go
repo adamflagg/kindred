@@ -163,8 +163,11 @@ func ParseSharedCabinModes(raw string) (near, with, similarAges bool) {
 // maybe_mutual resolving into anything is the answer arriving, not a conflict --
 // counting refinements would put a third of respondents in the review queue
 // instead of the measured 7.5%.
+// anySiblingDeclined reports whether ANY of the household's person-partition
+// gate answers normalised to no_share, regardless of which one winsGate picked.
+// It is consulted only on the fallback path -- see below.
 func DeriveShareEligibility(
-	gate string, formAnswered, wantsWith, wantsSimilarAges bool,
+	gate string, formAnswered, wantsWith, wantsSimilarAges, anySiblingDeclined bool,
 ) (eligibility, source string, conflict bool) {
 	if formAnswered {
 		switch {
@@ -177,11 +180,33 @@ func DeriveShareEligibility(
 		default:
 			eligibility = shareEligibilityDeclined
 		}
-		conflict = (gate == gateNoShare && wantsWith) || (gate == gateYesShare && !wantsWith)
+		// Keyed off the VERDICT, not off wantsWith. The two agree today only
+		// because ParseSharedCabinModes guarantees similarAges implies with,
+		// and that invariant lives in another function whose own comment says
+		// it exists because staff reword these sentences. If it ever broke,
+		// keying off wantsWith would fail PERMISSIVELY -- reporting no conflict
+		// for a no_share gate sitting against an open verdict.
+		conflict = (gate == gateNoShare && eligibility != shareEligibilityDeclined) ||
+			(gate == gateYesShare && eligibility == shareEligibilityDeclined)
 		return eligibility, shareSourceForm, conflict
 	}
 
-	// Fallback. One answer cannot contradict anything, so conflict stays false.
+	// FALLBACK. One answer cannot contradict anything, so conflict stays false.
+	//
+	// A recorded decline anywhere in the household outranks a later permissive
+	// sibling answer. winsGate resolves the gate by newest-wins with no
+	// fail-safe direction, which is right for a display column and wrong for a
+	// consent verdict: measured on 2026, 4 households would otherwise fall back
+	// to `open` off a sibling's recorded no_share. Same shape as the household
+	// blocker that clears opt_out_vip in family_camp_derived.
+	//
+	// Deliberately NOT applied when the form answered -- the form is
+	// authoritative, and letting an old sibling gate override it would invert
+	// the whole precedence rule.
+	if anySiblingDeclined {
+		return shareEligibilityDeclined, shareSourceRegistration, false
+	}
+
 	switch gate {
 	case gateYesShare:
 		return shareEligibilityOpen, shareSourceRegistration, false
@@ -275,6 +300,9 @@ func CollapseToHouseholdGrain(values []PersonRequestValue) map[string]*Household
 		// silence is not. This is the only thing separating declined from
 		// unknown, so it tracks value PRESENCE, not parsed modes.
 		formAnswered bool
+		// Whether ANY sibling's gate answer normalised to no_share, regardless
+		// of which one winsGate picked. The fallback fails safe on this.
+		sawDeclineGate bool
 	}
 
 	byHousehold := make(map[string]*accumulator)
@@ -313,7 +341,13 @@ func CollapseToHouseholdGrain(values []PersonRequestValue) map[string]*Household
 
 		switch v.FieldName {
 		case fieldShareCabinsRegistration, fieldSharedCabinForm:
-			if gate := NormalizeShareGate(value); gate != "" && winsGate(a.gateAt, a.gateField, v) {
+			gate := NormalizeShareGate(value)
+			// Recorded BEFORE winsGate picks a winner: a decline that loses on
+			// recency is still a decline the household stated.
+			if gate == gateNoShare {
+				a.sawDeclineGate = true
+			}
+			if gate != "" && winsGate(a.gateAt, a.gateField, v) {
 				a.req.Gate = gate
 				a.gateAt = v.LastUpdated
 				a.gateField = v.FieldName
@@ -348,7 +382,8 @@ func CollapseToHouseholdGrain(values []PersonRequestValue) map[string]*Household
 		// real request survives another's "No requests" -- which is the
 		// correct reading and the reason most such combinations exist.
 		a.req.ShareEligibility, a.req.ShareEligibilitySource, a.req.ShareAnswersConflict =
-			DeriveShareEligibility(a.req.Gate, a.formAnswered, a.req.WantsWith, a.req.WantsSimilarAges)
+			DeriveShareEligibility(
+				a.req.Gate, a.formAnswered, a.req.WantsWith, a.req.WantsSimilarAges, a.sawDeclineGate)
 		out[hh] = a.req
 	}
 	return out

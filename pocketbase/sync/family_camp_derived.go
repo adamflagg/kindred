@@ -1225,7 +1225,7 @@ func (s *FamilyCampDerivedSync) adultNeedsUpdate(existing *core.Record, adult *a
 
 // registrationNeedsUpdate checks if a registration record needs updating
 func (s *FamilyCampDerivedSync) registrationNeedsUpdate(existing *core.Record, reg *registrationData) bool {
-	// Compared in the same normalised form applyRegistrationFields WRITES, or
+	// Compared in the same normalised form setRegistrationRequestFields WRITES, or
 	// every household with no request values would look changed on every pass:
 	// the struct holds "" while the row holds "unknown".
 	normalizedEligibility, normalizedSource := NormalizeShareEligibility(

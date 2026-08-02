@@ -216,7 +216,7 @@ describe('LodgingBoard — the consent flag', () => {
     // Exact text, not a regex: FamilyCard also renders a "Declined sharing"
     // chip for the party itself, and a loose match cannot tell the slot's
     // flag from the card's chip.
-    expect(screen.getByText('1 family declined sharing')).toBeInTheDocument()
+    expect(screen.getByText('1 family did not request sharing')).toBeInTheDocument()
   })
 
   it('summarises the flag count at the top of the board', () => {

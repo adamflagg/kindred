@@ -410,7 +410,7 @@ func TestDeriveShareEligibility(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			gotEligibility, gotSource, gotConflict := DeriveShareEligibility(
-				tc.gate, tc.formAnswered, tc.wantsWith, tc.similarAges)
+				tc.gate, tc.formAnswered, tc.wantsWith, tc.similarAges, false)
 			if gotEligibility != tc.eligibility {
 				t.Errorf("eligibility = %q, want %q", gotEligibility, tc.eligibility)
 			}
@@ -434,7 +434,7 @@ func TestDeriveShareEligibility(t *testing.T) {
 // and must not suppress one either -- 29 households selected both.
 func TestDeriveShareEligibilityIgnoresNearOnly(t *testing.T) {
 	// NEAR alone reaches this function as "form answered, wants_with false".
-	got, source, conflict := DeriveShareEligibility(gateMaybeMutual, true, false, false)
+	got, source, conflict := DeriveShareEligibility(gateMaybeMutual, true, false, false, false)
 	if got != shareEligibilityDeclined {
 		t.Errorf("NEAR-only eligibility = %q, want %q", got, shareEligibilityDeclined)
 	}
@@ -446,7 +446,7 @@ func TestDeriveShareEligibilityIgnoresNearOnly(t *testing.T) {
 	}
 
 	// WITH + NEAR together: the share request survives the proximity request.
-	got, _, _ = DeriveShareEligibility("", true, true, false)
+	got, _, _ = DeriveShareEligibility("", true, true, false, false)
 	if got != shareEligibilityNamed {
 		t.Errorf("WITH+NEAR eligibility = %q, want %q", got, shareEligibilityNamed)
 	}
@@ -527,5 +527,100 @@ func TestNormalizeShareEligibilityGivesUnknownOneSpelling(t *testing.T) {
 			t.Errorf("NormalizeShareEligibility(%q, %q) = (%q, %q), want unchanged",
 				tc.eligibility, tc.source, gotEligibility, gotSource)
 		}
+	}
+}
+
+// TestDeriveShareEligibilityConflictTracksTheVerdict keys the conflict flag off
+// the VERDICT rather than off wantsWith directly.
+//
+// Both spellings agree today, because ParseSharedCabinModes guarantees
+// similarAges implies with. But DeriveShareEligibility is exported and takes
+// the two booleans independently, so nothing here enforces that invariant --
+// and the invariant lives in a different function whose own comment says it
+// exists precisely because staff reword these option sentences.
+//
+// The failure mode if it ever broke is the PERMISSIVE one: a gate of no_share
+// against a form answer of open would report conflict=false, hiding exactly
+// the disagreement staff need to see.
+func TestDeriveShareEligibilityConflictTracksTheVerdict(t *testing.T) {
+	// similarAges WITHOUT with -- the state ParseSharedCabinModes prevents.
+	// Reached directly, the verdict is open, so a no_share gate conflicts.
+	_, _, conflict := DeriveShareEligibility(gateNoShare, true, false, true, false)
+	if !conflict {
+		t.Error("no_share gate against an open verdict is a conflict, whatever wantsWith says")
+	}
+
+	// And the mirror: a yes_share gate against an open verdict is agreement.
+	_, _, conflict = DeriveShareEligibility(gateYesShare, true, false, true, false)
+	if conflict {
+		t.Error("yes_share gate against an open verdict agrees")
+	}
+}
+
+// TestDeriveShareEligibilityFallbackFailsSafeOnASiblingDecline stops the
+// registration fallback resolving to a MORE permissive verdict than one of the
+// household's own answers.
+//
+// The request fields are person-partition, so siblings can disagree, and
+// winsGate resolves the gate by newest-wins with no fail-safe direction.
+// Measured on 2026: 30 households have disagreeing sibling gates, 6 have a
+// newest yes_share over a sibling no_share, and 4 of those have no form answer
+// -- so they would fall back to `open`, off a recorded no_share.
+//
+// Same fail-safe shape the household blocker uses for opt_out_vip: a decline
+// anywhere in the household outranks a later permissive answer. Deliberately
+// scoped to the FALLBACK only -- when the authoritative form answered, it wins,
+// which is the whole precedence rule.
+func TestDeriveShareEligibilityFallbackFailsSafeOnASiblingDecline(t *testing.T) {
+	for _, gate := range []string{gateYesShare, gateMaybeMutual} {
+		eligibility, source, conflict := DeriveShareEligibility(gate, false, false, false, true)
+		if eligibility != shareEligibilityDeclined {
+			t.Errorf("gate %q with a declining sibling = %q, want %q",
+				gate, eligibility, shareEligibilityDeclined)
+		}
+		if source != shareSourceRegistration {
+			t.Errorf("gate %q: source = %q, want %q", gate, source, shareSourceRegistration)
+		}
+		if conflict {
+			t.Errorf("gate %q: a fallback reads one form, so it cannot conflict", gate)
+		}
+	}
+
+	// The form still wins. A declining sibling does NOT override an answered
+	// form -- that would invert the precedence rule.
+	eligibility, source, _ := DeriveShareEligibility(gateNoShare, true, true, false, true)
+	if eligibility != shareEligibilityNamed || source != shareSourceForm {
+		t.Errorf("form answer = (%q, %q), want (%q, %q) -- the form outranks a sibling gate",
+			eligibility, source, shareEligibilityNamed, shareSourceForm)
+	}
+}
+
+// TestCollapseCarriesASiblingDeclineIntoTheFallback proves the signal above is
+// actually computed from the household's values rather than being a parameter
+// nothing supplies.
+func TestCollapseCarriesASiblingDeclineIntoTheFallback(t *testing.T) {
+	const noShare = "No, we would prefer not to share a camper cabin."
+	const yesShare = "Yes, I would like to share a large camper cabin with a family that I " +
+		"request or with a family with similarly aged kid(s) that I can meet at Camp."
+	older := time.Now().Add(-time.Hour)
+	newer := time.Now()
+
+	// One child declined; a later sibling answer says yes. Newest wins the
+	// GATE, but the verdict must not become shareable off that.
+	out := CollapseToHouseholdGrain([]PersonRequestValue{
+		{HouseholdKey: hhA, FieldName: fieldShareCabinsRegistration, Value: noShare, LastUpdated: older},
+		{HouseholdKey: hhA, FieldName: fieldShareCabinsRegistration, Value: yesShare, LastUpdated: newer},
+	})
+
+	a := out[hhA]
+	if a == nil {
+		t.Fatal("household A missing from collapse")
+	}
+	if a.Gate != gateYesShare {
+		t.Errorf("gate = %q, want %q -- winsGate is unchanged by this", a.Gate, gateYesShare)
+	}
+	if a.ShareEligibility != shareEligibilityDeclined {
+		t.Errorf("eligibility = %q, want %q -- a recorded decline outranks a later yes in the fallback",
+			a.ShareEligibility, shareEligibilityDeclined)
 	}
 }

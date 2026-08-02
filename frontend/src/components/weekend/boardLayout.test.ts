@@ -224,7 +224,11 @@ describe('buildBoard — the unplaced rail ranks on the one signal it has', () =
 
 describe('buildBoard — consent flagging on ELIGIBILITY, not the gate', () => {
   /** A shared unit whose parties carry the given resolved eligibilities. */
-  function shared(values: ShareEligibilityValue[], gate: SharePreferenceValue = 'unknown') {
+  function shared(
+    values: ShareEligibilityValue[],
+    gate: SharePreferenceValue = 'unknown',
+    conflicts: boolean[] = []
+  ) {
     return buildBoard(
       values.map((eligibility, index) =>
         party({
@@ -239,7 +243,7 @@ describe('buildBoard — consent flagging on ELIGIBILITY, not the gate', () => {
             needs_resolution: false,
             eligibility,
             eligibility_source: 'form',
-            answers_conflict: false,
+            answers_conflict: conflicts[index] ?? false,
           },
         })
       ),
@@ -266,13 +270,66 @@ describe('buildBoard — consent flagging on ELIGIBILITY, not the gate', () => {
 
   it('flags an UNANSWERED party separately from one that declined', () => {
     // Same placement default, different fact and different staff action:
-    // chase the form vs respect the answer. Reporting "said no" about a family
+    // chase the form vs respect the answer. Reporting a refusal about a family
     // that answered nothing is a claim staff cannot defend to that family.
     const slot = shared(['unknown', 'open']).areas[0]?.slots[0]
     expect(slot?.consent).not.toBeNull()
     expect(slot?.consent?.unansweredCount).toBe(1)
     expect(slot?.consent?.declinedCount).toBe(0)
-    expect(slot?.consent?.reason).not.toContain('declined')
+    expect(slot?.consent?.reason).toMatch(/(hasn't|haven't) answered/)
+    expect(slot?.consent?.reason).not.toContain('request sharing')
+  })
+
+  it('never claims a family REFUSED, because the form has no refusal option', () => {
+    // The four live options are NEAR / "No requests" / WITH-named /
+    // WITH-similar. There is no "we do not want to share", so `declined` is
+    // always the ABSENCE of a WITH token -- and 106 of 165 form-declined
+    // households for 2026 had actually asked to be housed NEAR someone.
+    // Telling staff they "declined" is a claim those families did not make.
+    const reason = shared(['declined', 'open']).areas[0]?.slots[0]?.consent?.reason ?? ''
+    expect(reason).toContain('did not request sharing')
+    expect(reason).not.toMatch(/declined|said no|refused/i)
+  })
+
+  it('flags a recorded ANSWER CONFLICT, so the 16 households carrying one are visible', () => {
+    // The two forms point opposite ways. Not a placement rule -- a
+    // staff-review signal -- so it flags even when everyone is shareable.
+    const slot = shared(['named', 'named'], 'no_share', [true, false]).areas[0]?.slots[0]
+    expect(slot?.consent).not.toBeNull()
+    expect(slot?.consent?.conflictCount).toBe(1)
+    expect(slot?.consent?.declinedCount).toBe(0)
+    expect(slot?.consent?.reason).toContain('disagree')
+  })
+
+  it('does not flag a shared unit whose parties are all consenting and consistent', () => {
+    expect(shared(['open', 'named'], 'yes_share').areas[0]?.slots[0]?.consent).toBeNull()
+  })
+
+  it('does NOT judge an adult-weekend unit — there is no share question to judge', () => {
+    // Adult weekends have no share fields at all (partition ["Camper"], no
+    // Adult-Share field), and _build_person_parties attaches no share data. A
+    // null here means NOT CHECKED, not "nothing found".
+    const board = buildBoard(
+      [
+        party({
+          grain: 'person',
+          person_cm_id: 501,
+          household_cm_id: 0,
+          unit_code: 'cedar-1',
+          unit_name: 'Cedar 1',
+        }),
+        party({
+          grain: 'person',
+          person_cm_id: 502,
+          household_cm_id: 0,
+          unit_code: 'cedar-1',
+          unit_name: 'Cedar 1',
+        }),
+      ],
+      [unit()]
+    )
+    expect(board.areas[0]?.slots[0]?.consent).toBeNull()
+    expect(board.flaggedCount).toBe(0)
   })
 
   it('does not flag a party who declined and got a room to itself', () => {

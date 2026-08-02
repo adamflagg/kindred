@@ -122,14 +122,15 @@ describe('LodgingUnitCard', () => {
           consent: {
             declinedCount: 1,
             unansweredCount: 0,
-            reason: '1 family declined sharing',
+            conflictCount: 0,
+            reason: '1 family did not request sharing',
           },
         })}
         hue="hsl(160 45% 42%)"
         onOpenParty={vi.fn()}
       />
     )
-    expect(screen.getByText('1 family declined sharing')).toBeInTheDocument()
+    expect(screen.getByText('1 family did not request sharing')).toBeInTheDocument()
   })
 
   it('badges a staff hold rather than hiding the room', () => {

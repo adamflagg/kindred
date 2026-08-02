@@ -2033,3 +2033,41 @@ func TestProcessMedicalRoutesNarrativeToTheAdminGatedTable(t *testing.T) {
 		}
 	}
 }
+
+// TestRegistrationNeedsUpdateIgnoresTheUnknownSpelling pins the normalisation
+// on the COMPARE path, which is what stops an endless rewrite.
+//
+// A household with no request values at all keeps Go's zero value "" on the
+// struct, while setRegistrationRequestFields writes "unknown" to the row. If
+// only the write normalised, every such household would compare unequal on
+// every pass and be re-saved forever -- 35 rows on 2026 alone. Verified by hand
+// against a real sync (a third pass touched 0 rows); this pins it.
+func TestRegistrationNeedsUpdateIgnoresTheUnknownSpelling(t *testing.T) {
+	col := core.NewBaseCollection("family_camp_registrations")
+	col.Fields.Add(&core.TextField{Name: "share_eligibility"})
+	col.Fields.Add(&core.TextField{Name: "share_eligibility_source"})
+	col.Fields.Add(&core.BoolField{Name: "share_answers_conflict"})
+
+	existing := core.NewRecord(col)
+	existing.Set("share_eligibility", "unknown")
+	existing.Set("share_eligibility_source", "none")
+
+	s := &FamilyCampDerivedSync{}
+
+	// The struct never reached the collapse, so it holds "". The row holds the
+	// normalised spelling. Those are the SAME state and must not read as a
+	// change.
+	unwritten := &registrationData{}
+	if s.registrationNeedsUpdate(existing, unwritten) {
+		t.Error("an unwritten verdict must compare equal to the stored \"unknown\", or the sync rewrites it forever")
+	}
+
+	// A genuine change still registers.
+	changed := &registrationData{
+		shareEligibility:       "open",
+		shareEligibilitySource: "form",
+	}
+	if !s.registrationNeedsUpdate(existing, changed) {
+		t.Error("a real verdict change must still be detected")
+	}
+}
