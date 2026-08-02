@@ -138,7 +138,7 @@ Facts, not a work log. Do not re-verify or re-implement these.
     remaining admin routes are guarded rather than merely tab-filtered (#1895).
 - **Units is sortable, area-grouped, and confirmable in one click or in bulk.** That last part
   is the point: nothing on the roster judges a housing need against an unconfirmed cabin, and
-  all 93 ship unconfirmed.
+  every unit the loader writes ships unconfirmed (114 of them after the 2026 inventory).
 - **Beds are inventory behind `sleeps`, not a replacement for it.** `frontend/src/types/beds.ts`
   turns "2 twins and a queen" into a *suggested* occupancy staff adopt with one click. `sleeps`
   remains the single number every consumer reads, so no Pydantic model changed.
@@ -212,7 +212,7 @@ Each of these was decided deliberately. Reopening one needs a reason, not a fres
   decision. It ranks only on signals that discriminate: measured on real 2026 data
   `needs_resolution` is true for 44 of 62 parties and `has_medical_narrative` for 62 of 62, so
   **neither escalates a row**. A flag that is always on is not a flag.
-- **The met/unmet fit check judges only CONFIRMED cabins.** All 82 cabins are `is_confirmed: false`
+- **The met/unmet fit check judges only CONFIRMED cabins.** Every cabin is `is_confirmed: false`
   today, so an unset `has_power` means "nobody has said", not "there is no power". Judging against
   unset defaults would flag every constrained family on absent evidence, so the check reports
   `unverified` instead and begins working the moment Phase C seeds amenities.
@@ -290,7 +290,8 @@ having: the guard blocks *new* cycles but cannot retroactively clean data that a
 ### Before either surface: confirm some cabins
 
 `partyAttention` only judges a housing need against a cabin whose `is_confirmed` is true, and
-**0 of 93 units are confirmed**, so the roster reports *"Fit not verified"* for every
+**no unit is confirmed** — the loader writes `false` on every row it creates — so the roster
+reports *"Fit not verified"* for every
 constrained party. This was verified working end to end on real data (#1893): confirming one
 cabin dropped `units_unconfirmed` 82→81 and turned a real party from unverified into a genuine
 unmet (needs power, confirmed cabin has none). `/manage/lodging/units` now offers confirmation
@@ -354,7 +355,7 @@ the whole time. That is progress, not a hang — confirm with CPU, not the count
   of 62 and 62 of 62 parties respectively. Ranking on either turns the whole roster amber and the
   triage sections stop meaning anything.
 - **Do not judge a housing need against an UNCONFIRMED cabin.** `has_power: false` on an unconfirmed
-  row means "nobody has said". All 82 cabins are unconfirmed today, so treating that as evidence
+  row means "nobody has said". Every cabin is unconfirmed today, so treating that as evidence
   flags every constrained family. `partyAttention` reports `unverified` for a reason.
 - **Do not measure weekend capacity in beds.** Spaces. A family holds a whole cabin whether or not
   it fills it; beds reported 43% headroom on a weekend with 17 spare rooms out of 79.
