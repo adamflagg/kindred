@@ -62,7 +62,7 @@ export function UnitInventoryPanel({ units }: UnitInventoryPanelProps) {
     return (
       <div className="card-lodge p-4">
         <p className="text-muted-foreground text-sm">
-          No lodging units in the registry yet. Add them in Admin → Family Camp Lodging.
+          No lodging units in the registry yet. Add them in Manage → Family Camp Lodging.
         </p>
       </div>
     )

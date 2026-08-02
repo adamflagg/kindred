@@ -7,7 +7,7 @@
  */
 import { describe, expect, it } from 'vitest'
 
-import type { LodgingUnitRow, RosterPartyRow } from '../../types/lodging'
+import type { LodgingUnitRow, RosterPartyRow, SharePreferenceValue } from '../../types/lodging'
 import { AREA_HUES, buildBoard, countBoardSlots } from './boardLayout'
 
 function unit(overrides: Partial<LodgingUnitRow> = {}): LodgingUnitRow {
@@ -218,7 +218,7 @@ describe('buildBoard — the unplaced rail ranks on the one signal it has', () =
 })
 
 describe('buildBoard — consent flagging (spec §11)', () => {
-  function shared(gates: Array<'no_share' | 'maybe_mutual' | 'yes_share' | 'unknown'>) {
+  function shared(gates: SharePreferenceValue[]) {
     return buildBoard(
       gates.map((preference, index) =>
         party({

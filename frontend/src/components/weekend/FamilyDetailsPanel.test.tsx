@@ -31,8 +31,17 @@ vi.mock('../../hooks/useWeekendRoster', () => ({
   useHouseholdMedical: () => ({ data: undefined, isLoading: false, error: null }),
 }))
 
+// One client per TEST, built outside the render path. Constructing it inside
+// the wrapper body rebuilds it on every render, discarding the cache and
+// starting a fresh loading pass underneath assertions that already resolved.
+// Same fix as `admin/lodging/LodgingUnitsPanel.test.tsx`.
+let client: QueryClient
+
+beforeEach(() => {
+  client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+})
+
 function wrapper({ children }: { children: ReactNode }) {
-  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   return <QueryClientProvider client={client}>{children}</QueryClientProvider>
 }
 
