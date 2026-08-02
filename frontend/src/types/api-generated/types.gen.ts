@@ -5545,6 +5545,18 @@ export type ShareRequestSummary = {
    * Needs Resolution
    */
   needs_resolution?: boolean
+  /**
+   * Eligibility
+   */
+  eligibility?: 'open' | 'named' | 'declined' | 'unknown'
+  /**
+   * Eligibility Source
+   */
+  eligibility_source?: 'form' | 'registration' | 'none'
+  /**
+   * Answers Conflict
+   */
+  answers_conflict?: boolean
 }
 
 /**

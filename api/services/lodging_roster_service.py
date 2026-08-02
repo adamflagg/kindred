@@ -25,6 +25,8 @@ from api.schemas.lodging import (
     ProximityKind,
     RosterCounts,
     RosterParty,
+    ShareEligibility,
+    ShareEligibilitySource,
     SharePreference,
     ShareRequestSummary,
     WeekendRosterResponse,
@@ -49,6 +51,11 @@ logger = get_logger(__name__)
 # An empty column means nobody answered; it renders as "unknown" and is never
 # coerced into permission to pair.
 _GATE_VALUES: frozenset[str] = frozenset({"no_share", "maybe_mutual", "yes_share"})
+# "unknown" / "none" are deliberately absent: they are what an unrecognised or
+# empty column FALLS BACK to, so accepting them here would be redundant and
+# would hide a value drifting out of the migration's select list.
+_ELIGIBILITY_VALUES: frozenset[str] = frozenset({"open", "named", "declined"})
+_ELIGIBILITY_SOURCE_VALUES: frozenset[str] = frozenset({"form", "registration"})
 
 
 class SessionNotFoundError(LookupError):
@@ -632,6 +639,24 @@ class LodgingRosterService:
             proximity.append("similar_ages")
 
         request_text = _s(registration, "request_text")
+
+        # Read, never re-derived. The two share questions are resolved once, in
+        # the Go ingest, for the same reason `preference` is: doing it here
+        # would fork a rule that has already been wrong twice. An unpopulated
+        # column falls to "unknown"/"none", which places as no-share -- the
+        # safe direction, and the honest one on a database whose
+        # family_camp_derived has not re-run.
+        raw_eligibility = _s(registration, "share_eligibility")
+        eligibility = cast(
+            ShareEligibility,
+            raw_eligibility if raw_eligibility in _ELIGIBILITY_VALUES else "unknown",
+        )
+        raw_source = _s(registration, "share_eligibility_source")
+        eligibility_source = cast(
+            ShareEligibilitySource,
+            raw_source if raw_source in _ELIGIBILITY_SOURCE_VALUES else "none",
+        )
+
         return ShareRequestSummary(
             preference=preference,
             preference_raw=_s(registration, "share_cabin_preference"),
@@ -639,6 +664,9 @@ class LodgingRosterService:
             request_text=request_text,
             # Slice 1 resolves no names, so any free text is outstanding work.
             needs_resolution=bool(request_text),
+            eligibility=eligibility,
+            eligibility_source=eligibility_source,
+            answers_conflict=_b(registration, "share_answers_conflict"),
         )
 
     def _build_flags(self, registration: Any, medical_record: Any) -> AccessibilityFlagSummary:

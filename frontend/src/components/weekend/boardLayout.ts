@@ -19,7 +19,7 @@
  *    to nowhere. `buildBoard` is total: every input party comes out in exactly
  *    one of slots / unplaced / offBoard.
  */
-import type { LodgingUnitRow, RosterPartyRow } from '../../types/lodging'
+import type { LodgingUnitRow, RosterPartyRow, ShareEligibilityValue } from '../../types/lodging'
 
 /**
  * Area colour, §3.10 — a SECONDARY channel.
@@ -40,10 +40,48 @@ export const AREA_HUES = [
   'hsl(24 42% 46%)',
 ] as const
 
-/** A shared unit where somebody's recorded answer contradicts the placement. */
+/**
+ * Staff-facing wording for the share verdict, defined ONCE.
+ *
+ * These phrasings are load-bearing, not cosmetic. The Family Camp form has no
+ * refusal option, so `declined` is the absence of a share request rather than a
+ * recorded "no" — 106 of 165 form-declined households for 2026 had asked to be
+ * housed NEAR someone. Saying they "declined" puts a claim in a staff member's
+ * mouth that the family never made.
+ *
+ * The slot flag and the card chip render the same concepts, so they read from
+ * here rather than each holding their own literal: a correction applied to one
+ * copy and not the other is exactly how the wrong wording comes back.
+ */
+export const SHARE_WORDING = {
+  /** Sentence fragment: "N families <…>". */
+  declined: 'did not request sharing',
+  /** Sentence fragment: "N families' two <…>". */
+  conflict: 'answers disagree',
+} as const
+
+/** The same phrase as a standalone chip label. One source, two positions. */
+export function shareWordingChip(phrase: string): string {
+  return phrase.charAt(0).toUpperCase() + phrase.slice(1)
+}
+
+/** A shared unit holding somebody who did not consent to sharing it. */
 export interface ConsentFlag {
-  /** How many of the unit's parties answered an explicit `no_share`. */
+  /** Parties whose resolved answer declines sharing. */
   declinedCount: number
+  /**
+   * Parties silent on BOTH forms. Counted separately from `declinedCount`
+   * because the remedy differs — chase the form rather than move the family —
+   * and because reporting "declined" about a household that answered nothing
+   * is a claim staff cannot defend to that household.
+   */
+  unansweredCount: number
+  /**
+   * Parties whose two forms point opposite ways. A staff-review signal, not a
+   * placement rule — it fires even when everyone in the slot is shareable,
+   * because the disagreement is the thing worth a human look.
+   */
+  conflictCount: number
   /** Ready to render beside the slot. Never PHI. */
   reason: string
 }
@@ -91,41 +129,123 @@ function areaName(unit: LodgingUnitRow): string {
 }
 
 /**
- * Consent flagging, spec §11.
+ * Consent flagging, on the resolved ELIGIBILITY rather than the registration
+ * gate.
  *
- * Fires on an EXPLICIT `no_share` only. Whether `maybe_mutual` + `maybe_mutual`
- * counts as mutual, and whether a blank gate (45 of 452 for 2026) counts as
- * consent, are deferred to C2 — neither occurs in placed data, so they change
- * nothing until staff drag a card.
+ * Share intent lives in two CampMinder fields asked at different times. Staff
+ * treat the later Family Camp information form as authoritative, and the Go
+ * ingest resolves the two into one verdict — see DeriveShareEligibility. This
+ * function reads that verdict and never re-derives it.
  *
- * Declining is the ordinary answer and contradicts nothing on its own; it only
- * becomes a defect when somebody else is in the room.
+ * WHY NOT THE GATE. `share_cabin_gate` is the registration answer alone, and
+ * flagging on it was wrong in both directions on 2026 data: 1 household said no
+ * at registration and then named a partner on the form (flagged, though
+ * legitimately placed), while 51 said yes-or-maybe and then declined on the
+ * form (silent, and read as permissive). The silent direction is ~17x the noisy
+ * one, which is why it moved.
  *
- * WHAT THE FLAG ACTUALLY MEANS, measured on 2026 rather than assumed. It fires
- * exactly once, on the unit spec §11 predicted. But §11 calls that case "a
- * family that said no is sharing with strangers", and that is FALSE: §11
- * checked surnames, billing addresses and phone numbers, and never read the two
- * request texts. Each household names the other by name, one of them marking it
- * "(priority)". The placement is mutual, reciprocated and deliberate.
+ * WORDING IS LOAD-BEARING. The form has no "we do not want to share" option —
+ * the four live choices are NEAR / "No requests" / WITH-named /
+ * WITH-similarly-aged — so `declined` is always the ABSENCE of a WITH token,
+ * never a recorded refusal. 106 of 165 form-declined households for 2026 had
+ * asked to be housed NEAR someone. Saying they "declined" would put a claim in
+ * a staff member's mouth that the family never made; "did not request sharing"
+ * is true of all of them.
  *
- * So this flags a household whose recorded GATE contradicts that household's
- * OWN request text — not a placement error. That is still worth surfacing, and
- * the flag's wording reports only the recorded answer for exactly that reason.
- * Resolving request names to households would let C2 suppress it, and that is
- * spec §7.3, unbuilt. Meanwhile the design already resolves it the honest way:
- * the card flags, and one click shows the request text that explains it.
+ * `named` does not flag. Mutuality needs request names resolved to households
+ * (spec §7.3, unbuilt), and `named` is most of the eligible pool, so flagging
+ * it would fire mostly on the legitimate case. The panel shows the names and
+ * staff judge — which is the resolution C1 already settled on after §11's
+ * own claim about the one flagged unit turned out to be false.
  */
 export function consentFlag(parties: RosterPartyRow[]): ConsentFlag | null {
   if (parties.length < 2) return null
-  const declinedCount = parties.filter((party) => party.share?.preference === 'no_share').length
-  if (declinedCount === 0) return null
+
+  // Adult weekends have NO share question at all -- the fields are partition
+  // ["Camper"] and no Adult-Share field exists -- so a person-grain party
+  // carries no answer to judge. Returning null here is not "no problem found";
+  // it is "not checked", and the board says so rather than rendering a clean
+  // slot that was never examined.
+  if (parties.some((party) => party.grain === 'person')) return null
+
+  let declinedCount = 0
+  let unansweredCount = 0
+  let conflictCount = 0
+  for (const party of parties) {
+    if (party.share?.answers_conflict === true) conflictCount += 1
+    // Absent eligibility is UNKNOWN, never open. These columns are written by
+    // family_camp_derived, so they are empty until it re-runs, and empty must
+    // fall to the side that does not consent.
+    const eligibility: ShareEligibilityValue = party.share?.eligibility ?? 'unknown'
+    switch (eligibility) {
+      case 'declined':
+        declinedCount += 1
+        break
+      case 'unknown':
+        unansweredCount += 1
+        break
+      case 'open':
+      case 'named':
+        // Both consent to sharing. `named` is not verified mutual — that needs
+        // request names resolved to households (spec §7.3, unbuilt) — so the
+        // panel shows the names and staff judge. Flagging it would fire on the
+        // majority of eligible households.
+        break
+      default: {
+        // Exhaustiveness guard. An implicit default would route a NEW
+        // eligibility value into the consenting arm above — failing permissive,
+        // which is the exact direction this whole surface exists to close.
+        // A fifth value must break the build, not silently consent.
+        const unhandled: never = eligibility
+        throw new Error(`Unhandled share eligibility: ${String(unhandled)}`)
+      }
+    }
+  }
+
+  if (declinedCount === 0 && unansweredCount === 0 && conflictCount === 0) return null
   return {
     declinedCount,
-    reason:
-      declinedCount === 1
-        ? '1 family said no to sharing'
-        : `${String(declinedCount)} families said no to sharing`,
+    unansweredCount,
+    conflictCount,
+    reason: consentReason(declinedCount, unansweredCount, conflictCount),
   }
+}
+
+/**
+ * Wording for a consent flag. Reports only what was RECORDED.
+ *
+ * "did not request sharing" rather than "declined": the form has no refusal
+ * option, so this state is the absence of a share request, and most of the
+ * households in it asked to be housed near someone instead.
+ */
+function consentReason(
+  declinedCount: number,
+  unansweredCount: number,
+  conflictCount: number
+): string {
+  const parts: string[] = []
+  if (declinedCount > 0) {
+    parts.push(
+      declinedCount === 1
+        ? `1 family ${SHARE_WORDING.declined}`
+        : `${String(declinedCount)} families ${SHARE_WORDING.declined}`
+    )
+  }
+  if (unansweredCount > 0) {
+    parts.push(
+      unansweredCount === 1
+        ? "1 family hasn't answered the cabin form"
+        : `${String(unansweredCount)} families haven't answered the cabin form`
+    )
+  }
+  if (conflictCount > 0) {
+    parts.push(
+      conflictCount === 1
+        ? `1 family's two ${SHARE_WORDING.conflict}`
+        : `${String(conflictCount)} families' two ${SHARE_WORDING.conflict}`
+    )
+  }
+  return parts.join(', ')
 }
 
 /**

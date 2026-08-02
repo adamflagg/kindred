@@ -17,6 +17,24 @@ const (
 	gateYesShare    = "yes_share"
 )
 
+// Share ELIGIBILITY is the question the board actually asks -- "may these two
+// parties be in one cabin" -- and it is NOT the gate above.
+//
+// The gate is the REGISTRATION answer. Staff treat the later Family Camp
+// information form as authoritative (stated 2026-08-02), so the gate is a
+// fallback consulted only when that form's share question has no answer. See
+// DeriveShareEligibility.
+const (
+	shareEligibilityOpen     = "open"     // staff may match with any other open party
+	shareEligibilityNamed    = "named"    // only with the named partner, if mutual
+	shareEligibilityDeclined = "declined" // answered; do not share
+	shareEligibilityUnknown  = "unknown"  // silent on BOTH forms; never consent
+
+	shareSourceForm         = "form"         // the Family Camp information form answered
+	shareSourceRegistration = "registration" // provisional: fell back to the gate
+	shareSourceNone         = "none"         // nothing to read
+)
+
 // Source field display names, used for precedence and provenance. Matching is on
 // cm_id upstream (spec 4.4); these labels only travel with the values.
 const (
@@ -119,6 +137,110 @@ func ParseSharedCabinModes(raw string) (near, with, similarAges bool) {
 	return near, with, similarAges
 }
 
+// DeriveShareEligibility resolves the two share questions into the one verdict
+// the board places on, plus where it came from and whether the two answers
+// disagree.
+//
+// PRECEDENCE, staff-stated 2026-08-02: the Family Camp information form wins.
+// The registration gate is a coarse early filter -- it even told families so in
+// 2024, in an option sentence reading "you will have an opportunity to request
+// specific families closer to the start of the program" -- and it is consulted
+// ONLY when the form's share question has no answer.
+//
+// formAnswered is the PRESENCE of a "FAM CAMP-Shared Cabin" value, not whether
+// that value asked for anything. It is what separates "declined" from "never
+// answered", and it matters: the form is returned by 88% of households but its
+// share question is skipped by roughly half of them, so an absent answer is
+// usually a skipped question rather than a missing form.
+//
+// Only WITH options make a party shareable. NEAR is a SEPARATE AXIS -- its
+// option text is "House my family NEAR a specific family", explicitly not in my
+// cabin -- and it reaches this function as wantsWith=false. 298 households
+// across 2025-2026 selected NEAR alone, so reading it as consent would make the
+// largest cohort on the board look shareable.
+//
+// A conflict is a HARD contradiction only: the two forms point opposite ways.
+// maybe_mutual resolving into anything is the answer arriving, not a conflict --
+// counting refinements would put a third of respondents in the review queue
+// instead of the measured 7.5%.
+// anySiblingDeclined reports whether ANY of the household's person-partition
+// gate answers normalised to no_share, regardless of which one winsGate picked.
+// It is consulted only on the fallback path -- see below.
+func DeriveShareEligibility(
+	gate string, formAnswered, wantsWith, wantsSimilarAges, anySiblingDeclined bool,
+) (eligibility, source string, conflict bool) {
+	if formAnswered {
+		switch {
+		case wantsSimilarAges:
+			// Open SUPERSETS named: a household that will take a staff match
+			// is not narrowed by also having named someone.
+			eligibility = shareEligibilityOpen
+		case wantsWith:
+			eligibility = shareEligibilityNamed
+		default:
+			eligibility = shareEligibilityDeclined
+		}
+		// Keyed off the VERDICT, not off wantsWith. The two agree today only
+		// because ParseSharedCabinModes guarantees similarAges implies with,
+		// and that invariant lives in another function whose own comment says
+		// it exists because staff reword these sentences. If it ever broke,
+		// keying off wantsWith would fail PERMISSIVELY -- reporting no conflict
+		// for a no_share gate sitting against an open verdict.
+		conflict = (gate == gateNoShare && eligibility != shareEligibilityDeclined) ||
+			(gate == gateYesShare && eligibility == shareEligibilityDeclined)
+		return eligibility, shareSourceForm, conflict
+	}
+
+	// FALLBACK. One answer cannot contradict anything, so conflict stays false.
+	//
+	// A recorded decline anywhere in the household outranks a later permissive
+	// sibling answer. winsGate resolves the gate by newest-wins with no
+	// fail-safe direction, which is right for a display column and wrong for a
+	// consent verdict: measured on 2026, 4 households would otherwise fall back
+	// to `open` off a sibling's recorded no_share. Same shape as the household
+	// blocker that clears opt_out_vip in family_camp_derived.
+	//
+	// Deliberately NOT applied when the form answered -- the form is
+	// authoritative, and letting an old sibling gate override it would invert
+	// the whole precedence rule.
+	if anySiblingDeclined {
+		return shareEligibilityDeclined, shareSourceRegistration, false
+	}
+
+	switch gate {
+	case gateYesShare:
+		return shareEligibilityOpen, shareSourceRegistration, false
+	case gateMaybeMutual:
+		// "Maybe, I am open to sharing ... if a specific family that I know
+		// wants to" is consent to a NAMED partner, never to a staff match. It
+		// arrives with no names attached, so these are eligible in principle
+		// and unmatchable in practice until somebody else names them.
+		return shareEligibilityNamed, shareSourceRegistration, false
+	case gateNoShare:
+		return shareEligibilityDeclined, shareSourceRegistration, false
+	}
+	return shareEligibilityUnknown, shareSourceNone, false
+}
+
+// NormalizeShareEligibility gives an unwritten verdict its explicit spelling.
+//
+// A household with NO request-field values at all never gets a bucket in
+// CollapseToHouseholdGrain, so its derived fields keep Go's zero value and the
+// column would store "" rather than "unknown" -- two spellings of one state.
+// Measured on 2026 after a real family_camp_derived run: 35 rows "" against 2
+// rows "unknown", so `WHERE share_eligibility = 'unknown'` would silently miss
+// 35 households.
+//
+// Every consumer already reads "" as unknown, which is precisely what makes
+// this latent rather than visible: the column looks fine until somebody
+// filters on it. Same shape as kindred#1921.
+func NormalizeShareEligibility(eligibility, source string) (normalizedEligibility, normalizedSource string) {
+	if eligibility == "" {
+		return shareEligibilityUnknown, shareSourceNone
+	}
+	return eligibility, source
+}
+
 // PersonRequestValue is one person-partition request value, already carrying the
 // household it belongs to.
 type PersonRequestValue struct {
@@ -143,6 +265,14 @@ type HouseholdRequest struct {
 	RequestText      string
 	SourceField      string
 	LastUpdated      time.Time
+
+	// The board's verdict and its provenance -- see DeriveShareEligibility.
+	// ShareEligibility is what placement reads; Gate above stays the raw
+	// registration answer, kept because it is what a staff member sees when
+	// asked why a household is flagged.
+	ShareEligibility       string
+	ShareEligibilitySource string
+	ShareAnswersConflict   bool
 }
 
 // CollapseToHouseholdGrain implements spec 4.2, which is mandatory: the request
@@ -165,6 +295,14 @@ func CollapseToHouseholdGrain(values []PersonRequestValue) map[string]*Household
 		textParts []string
 		gateAt    time.Time
 		gateField string
+		// Whether the Family Camp form's share question was answered AT ALL,
+		// independent of what it asked for. "No requests" is an answer;
+		// silence is not. This is the only thing separating declined from
+		// unknown, so it tracks value PRESENCE, not parsed modes.
+		formAnswered bool
+		// Whether ANY sibling's gate answer normalised to no_share, regardless
+		// of which one winsGate picked. The fallback fails safe on this.
+		sawDeclineGate bool
 	}
 
 	byHousehold := make(map[string]*accumulator)
@@ -203,13 +341,20 @@ func CollapseToHouseholdGrain(values []PersonRequestValue) map[string]*Household
 
 		switch v.FieldName {
 		case fieldShareCabinsRegistration, fieldSharedCabinForm:
-			if gate := NormalizeShareGate(value); gate != "" && winsGate(a.gateAt, a.gateField, v) {
+			gate := NormalizeShareGate(value)
+			// Recorded BEFORE winsGate picks a winner: a decline that loses on
+			// recency is still a decline the household stated.
+			if gate == gateNoShare {
+				a.sawDeclineGate = true
+			}
+			if gate != "" && winsGate(a.gateAt, a.gateField, v) {
 				a.req.Gate = gate
 				a.gateAt = v.LastUpdated
 				a.gateField = v.FieldName
 				a.req.SourceField = v.FieldName
 			}
 			if v.FieldName == fieldSharedCabinForm {
+				a.formAnswered = true
 				near, with, similarAges := ParseSharedCabinModes(value)
 				a.req.WantsNear = a.req.WantsNear || near
 				a.req.WantsWith = a.req.WantsWith || with
@@ -231,6 +376,14 @@ func CollapseToHouseholdGrain(values []PersonRequestValue) map[string]*Household
 	out := make(map[string]*HouseholdRequest, len(byHousehold))
 	for hh, a := range byHousehold {
 		a.req.RequestText = strings.Join(a.textParts, "; ")
+		// Derived last, because it reads the collapsed modes: the form fields
+		// are person-partition, and siblings DO disagree (11 households in
+		// 2025, 5 in 2026). ParseSharedCabinModes ORs them, so one child's
+		// real request survives another's "No requests" -- which is the
+		// correct reading and the reason most such combinations exist.
+		a.req.ShareEligibility, a.req.ShareEligibilitySource, a.req.ShareAnswersConflict =
+			DeriveShareEligibility(
+				a.req.Gate, a.formAnswered, a.req.WantsWith, a.req.WantsSimilarAges, a.sawDeclineGate)
 		out[hh] = a.req
 	}
 	return out

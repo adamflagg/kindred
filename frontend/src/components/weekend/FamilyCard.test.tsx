@@ -150,7 +150,9 @@ describe('FamilyCard — what it shows', () => {
     expect(screen.getByText('No power')).toBeInTheDocument()
   })
 
-  it('marks the party that declined sharing when it is in a flagged slot', () => {
+  it('marks the party that did not request sharing when it is in a flagged slot', () => {
+    // Keyed off the RESOLVED verdict, not the registration gate: the gate is
+    // superseded wherever the Family Camp form answered.
     render(
       <FamilyCard
         party={party({
@@ -159,13 +161,16 @@ describe('FamilyCard — what it shows', () => {
             proximity: [],
             request_text: '',
             needs_resolution: false,
+            eligibility: 'declined',
+            eligibility_source: 'form',
+            answers_conflict: false,
           },
         })}
         sharedSlot={true}
         onOpen={vi.fn()}
       />
     )
-    expect(screen.getByText('Declined sharing')).toBeInTheDocument()
+    expect(screen.getByText('Did not request sharing')).toBeInTheDocument()
   })
 
   it('does not call a party out for declining when it has the room to itself', () => {

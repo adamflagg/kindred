@@ -119,6 +119,16 @@ type registrationData struct {
 	requestSourceField string
 	requestLastUpdated time.Time
 
+	// The RESOLVED share verdict the board places on, and its provenance.
+	// shareCabinGate above is the registration answer only; the Family Camp
+	// information form outranks it wherever both were answered, which is why
+	// these are separate columns rather than a reinterpretation of the gate.
+	// shareAnswersConflict marks the two forms pointing opposite ways -- a
+	// staff-review signal, not a placement rule. See DeriveShareEligibility.
+	shareEligibility       string
+	shareEligibilitySource string
+	shareAnswersConflict   bool
+
 	// Derived accessibility flags. Spec 5.3: the board shows a flag, never the
 	// narrative -- that lives in family_camp_medical.
 	needsPrivateBathroom     bool
@@ -876,6 +886,9 @@ func (s *FamilyCampDerivedSync) applyHouseholdRequests(
 		reg.requestText = req.RequestText
 		reg.requestSourceField = req.SourceField
 		reg.requestLastUpdated = req.LastUpdated
+		reg.shareEligibility = req.ShareEligibility
+		reg.shareEligibilitySource = req.ShareEligibilitySource
+		reg.shareAnswersConflict = req.ShareAnswersConflict
 	}
 }
 
@@ -1212,6 +1225,11 @@ func (s *FamilyCampDerivedSync) adultNeedsUpdate(existing *core.Record, adult *a
 
 // registrationNeedsUpdate checks if a registration record needs updating
 func (s *FamilyCampDerivedSync) registrationNeedsUpdate(existing *core.Record, reg *registrationData) bool {
+	// Compared in the same normalised form setRegistrationRequestFields WRITES, or
+	// every household with no request values would look changed on every pass:
+	// the struct holds "" while the row holds "unknown".
+	normalizedEligibility, normalizedSource := NormalizeShareEligibility(
+		reg.shareEligibility, reg.shareEligibilitySource)
 	return existing.GetString("cabin_assignment") != reg.cabinAssignment ||
 		existing.GetString("share_cabin_preference") != reg.shareCabinPreference ||
 		existing.GetString("shared_cabin_modes_raw") != reg.sharedCabinModesRaw ||
@@ -1231,7 +1249,10 @@ func (s *FamilyCampDerivedSync) registrationNeedsUpdate(existing *core.Record, r
 		existing.GetBool("needs_private_bathroom") != reg.needsPrivateBathroom ||
 		existing.GetBool("needs_power") != reg.needsPower ||
 		existing.GetBool("accommodation_is_mandatory") != reg.accommodationIsMandatory ||
-		existing.GetBool("has_infant") != reg.hasInfant
+		existing.GetBool("has_infant") != reg.hasInfant ||
+		existing.GetString("share_eligibility") != normalizedEligibility ||
+		existing.GetString("share_eligibility_source") != normalizedSource ||
+		existing.GetBool("share_answers_conflict") != reg.shareAnswersConflict
 }
 
 // setRegistrationRequestFields writes the household-grain request layer and the
@@ -1250,6 +1271,18 @@ func setRegistrationRequestFields(record *core.Record, reg *registrationData) {
 	record.Set("needs_power", reg.needsPower)
 	record.Set("accommodation_is_mandatory", reg.accommodationIsMandatory)
 	record.Set("has_infant", reg.hasInfant)
+	// The board's placement verdict. share_cabin_gate above stays the raw
+	// REGISTRATION answer; this is the resolved one, and the Family Camp
+	// information form outranks the gate wherever both were answered.
+	//
+	// Normalised so the column has exactly ONE spelling per state: a household
+	// with no request values at all never reaches the collapse, and writing its
+	// zero value would store "" beside "unknown" for the same meaning.
+	eligibility, eligibilitySource := NormalizeShareEligibility(
+		reg.shareEligibility, reg.shareEligibilitySource)
+	record.Set("share_eligibility", eligibility)
+	record.Set("share_eligibility_source", eligibilitySource)
+	record.Set("share_answers_conflict", reg.shareAnswersConflict)
 }
 
 // formatRequestStamp renders requestLastUpdated for the PocketBase date column.

@@ -53,6 +53,25 @@ SharePreference = Literal["no_share", "maybe_mutual", "yes_share", "unknown"]
 # with each other.
 ProximityKind = Literal["near", "with", "similar_ages"]
 
+# The RESOLVED verdict the board places on, from
+# family_camp_registrations.share_eligibility. Not the same question as
+# SharePreference above: that is the registration answer alone, while this
+# resolves it against the later Family Camp information form, which staff treat
+# as authoritative.
+#
+#   open     -- staff may match with any other open party
+#   named    -- only with the partner the household named, if mutual
+#   declined -- answered, and the answer was no
+#   unknown  -- silent on BOTH forms; places as no-share, but is a different
+#               fact from declining and must never be rendered as one
+ShareEligibility = Literal["open", "named", "declined", "unknown"]
+
+# Which form produced the eligibility above. "registration" means the
+# authoritative form's share question was unanswered and the verdict fell back
+# to the registration gate, so it is PROVISIONAL -- the surface should be able
+# to say so rather than presenting a fallback as settled.
+ShareEligibilitySource = Literal["form", "registration", "none"]
+
 PartyGrain = Literal["household", "person"]
 EffectiveBathroom = Literal["unknown", "none", "private", "shared"]
 
@@ -144,6 +163,16 @@ class ShareRequestSummary(BaseModel):
     # True when there is request text but no resolution of the named families to
     # households. Always true in slice 1 when text is present.
     needs_resolution: bool = False
+
+    # What the board actually places on. `preference` above stays the raw
+    # registration answer because it is what a staff member sees when asked why
+    # a household is flagged; this is the resolved verdict, and where the two
+    # forms disagree the later one wins.
+    eligibility: ShareEligibility = "unknown"
+    eligibility_source: ShareEligibilitySource = "none"
+    # The two forms point opposite ways -- a staff-review signal, not a
+    # placement rule. Measured at 7.5% of form answerers for 2026.
+    answers_conflict: bool = False
 
 
 class AccessibilityFlagSummary(BaseModel):
