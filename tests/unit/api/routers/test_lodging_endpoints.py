@@ -521,8 +521,11 @@ class TestWriteEndpointsRequireBunkingManage:
             from api.routers.lodging import router
 
         declared = {(verb, template) for verb, template, _, _ in WRITE_ENDPOINTS}
+        # getattr for both: `routes` is typed as list[BaseRoute], which declares
+        # neither `path` nor `methods` -- those live on the APIRoute subclass,
+        # and a Mount or WebSocketRoute would have one without the other.
         actual = {
-            (method, route.path)
+            (method, str(getattr(route, "path", "")))
             for route in router.routes
             for method in getattr(route, "methods", set())
             if method in {"POST", "PUT", "PATCH", "DELETE"}
