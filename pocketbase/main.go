@@ -139,6 +139,25 @@ func main() {
 		return e.Next()
 	})
 
+	// Lodging registry loader. The unit registry is camp-identifying private
+	// data carried in kindred-local, not source, so it cannot be seeded by a
+	// migration: `_migrations` keys on filename and applies once, so a
+	// migration that read an absent private file in CI would be recorded as
+	// applied and never re-run when the file later appeared — a silently empty
+	// registry. Running on every boot means a file that shows up later still
+	// takes effect. Absent file is a logged no-op, the same graceful
+	// degradation branding has. See docs/reference/lodging-registry.md.
+	//
+	// Warn rather than fail: a clone without the private config must still
+	// boot, and an unreadable registry should not take the whole service down.
+	// The log line is the signal that the registry is empty on purpose.
+	app.OnServe().BindFunc(func(e *core.ServeEvent) error {
+		if err := lodging.SeedRegistry(e.App); err != nil {
+			slog.Warn("lodging registry load failed", "err", err)
+		}
+		return e.Next()
+	})
+
 	// Config initialization now handled by migrations
 
 	// ---------------------------------------------------------------

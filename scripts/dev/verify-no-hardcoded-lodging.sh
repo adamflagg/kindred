@@ -1,6 +1,13 @@
 #!/usr/bin/env bash
-# Spec 3.8: the lodging registry is DATA, not code. Unit and alias lists may
-# exist only in seed migrations.
+# Spec 3.8: the lodging registry is DATA, not code. It now lives in exactly one
+# place — the private config/lodging_registry.json, carried in kindred-local
+# and loaded on boot (docs/reference/lodging-registry.md).
+#
+# It used to live in pb_migrations/, which is why this guard used to skip that
+# directory. It no longer does: with the data gone from the seed migrations,
+# that exclusion was a hole in precisely the place a future seed would land.
+# Prose in a migration is still fine — comments are dropped below — but a unit
+# list in a migration is now a failure, same as in any other source file.
 #
 # SCOPE, honestly stated: this is a tripwire, not a proof. It greps for a
 # REPRESENTATIVE SAMPLE of distinctive unit strings (NEEDLES below) — not the
@@ -27,15 +34,15 @@ cd "$REPO_ROOT"
 NEEDLES="Ridge Yurt|Tawonga Village|Manzanita|Tuolumne|Cloud'?s Rest|Wawona|Half Dome|El Cap|Bayit|Tenaya|Tioga|Le Shack|Lofty|Kitty|Doctor's House"
 
 # --include='*.js' matters: pocketbase/pb_hooks/ is application JavaScript and
-# would otherwise go unscanned entirely. But scanning .js drags in two kinds of
-# legitimate non-source noise, both excluded by directory rather than by file:
-#   pb_migrations/ — where the registry data is SUPPOSED to live (spec 3.8)
-#   pb_public/     — gitignored build output; the minified frontend bundle
-#                    embeds the same city/school geo tables and matches
-#                    "Kitty"/"Tioga" as ordinary US place names
+# pocketbase/pb_migrations/ is where the registry used to live, so both have to
+# be scanned. One directory is still excluded, and by directory rather than by
+# file:
+#   pb_public/ — gitignored build output; the minified frontend bundle embeds
+#                the same city/school geo tables and matches "Kitty"/"Tioga" as
+#                ordinary US place names
 HITS=$(grep -rInE "$NEEDLES" \
   --include='*.go' --include='*.py' --include='*.ts' --include='*.tsx' --include='*.js' \
-  --exclude-dir=pb_migrations --exclude-dir=pb_public --exclude-dir=node_modules \
+  --exclude-dir=pb_public --exclude-dir=node_modules \
   pocketbase/ api/ bunking/ frontend/src/ 2>/dev/null \
   | grep -v '_test\.\|\.test\.\|/tests\?/' \
   | grep -v 'frontend/src/data/cityGeo\.ts\|frontend/src/data/schoolGeo\.ts' || true)

@@ -2,8 +2,10 @@
 /**
  * Migration: lodging_areas + lodging_units
  *
- * Canonical registry of weekend-program housing. Seeded by 1500000120 but fully
- * editable in the Family Camp admin UI — no unit list lives in source code.
+ * Canonical registry of weekend-program housing. Populated on boot from the
+ * private config/lodging_registry.json (docs/reference/lodging-registry.md),
+ * and fully editable in the Family Camp admin UI — no unit list lives in
+ * source code. 1500000120 seeded it until the data moved out of this repo.
  *
  * lodging_units holds ATOMIC rooms. Merges (e.g. "Tenaya 1and2") are separate
  * rows in lodging_merges, not parent activations, because merges are frequently

@@ -322,6 +322,7 @@ config/branding.local.json
 config/staff_list.json
 config/nicknames_override.json
 config/sheets_sharing.local.json
+config/lodging_registry.json
 local
 CLAUDE.local.md
 scripts/vault.config

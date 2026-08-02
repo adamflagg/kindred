@@ -144,4 +144,32 @@ else
 fi
 
 echo
+echo "=== TEST 5: a unit list in a MIGRATION should exit 1 ==="
+# The registry used to live in pb_migrations/, so the guard used to skip that
+# directory entirely. Now that the data lives in the private
+# config/lodging_registry.json, the exclusion would be a hole in exactly the
+# place a future seed would land -- this asserts it is gone. Prose in a
+# migration is still fine; TEST 4 covers that, and this probe is a literal.
+MIG_PROBE="$REPO_ROOT/pocketbase/pb_migrations/9999999999_leak_probe_kindred1909.js"
+cleanup3() { rm -f "$MIG_PROBE"; }
+trap 'cleanup3; cleanup' EXIT INT TERM
+echo 'const UNITS = ["Tuolumne 1", "Manzanita 3"]' > "$MIG_PROBE"
+set +e
+OUT=$("$GUARD_SCRIPT" 2>&1)
+rc=$?
+set -e
+rm -f "$MIG_PROBE"
+if [[ $rc -ne 1 ]]; then
+  echo "FAIL: expected exit 1 for a unit list in pb_migrations/, got $rc" >&2
+  echo "$OUT" >&2
+  exit 1
+fi
+if ! grep -q "9999999999_leak_probe_kindred1909.js:1:" <<<"$OUT"; then
+  echo "FAIL: output missing migration probe file:line" >&2
+  echo "$OUT" >&2
+  exit 1
+fi
+echo "PASS: a unit list in pb_migrations/ is caught"
+
+echo
 echo "All tests passed."

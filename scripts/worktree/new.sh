@@ -272,6 +272,10 @@ if [ -d "$LOCAL_REPO" ]; then
     # Symlinked: dev-only files (not in Docker build context)
     ln -sfr "$LOCAL_REPO/CLAUDE.local.md" "$WORKTREE_DIR/CLAUDE.local.md"
     ln -sfr "$LOCAL_REPO/config/sheets_sharing.local.json" "$WORKTREE_DIR/config/sheets_sharing.local.json"
+    # The weekend-lodging unit registry, read at boot by PocketBase. Symlinked
+    # rather than copied so a worktree tracks kindred-local as the registry
+    # grows. See docs/reference/lodging-registry.md.
+    ln -sfr "$LOCAL_REPO/config/lodging_registry.json" "$WORKTREE_DIR/config/lodging_registry.json"
     ln -sfr "$LOCAL_REPO/frontend/vite.config.local.ts" "$WORKTREE_DIR/frontend/vite.config.local.ts"
     ln -sfr "$LOCAL_REPO/scripts/vault.config" "$WORKTREE_DIR/scripts/vault.config"
     rm -rf "$WORKTREE_DIR/docs/camp"
