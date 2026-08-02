@@ -73,6 +73,30 @@ type registryUnit struct {
 	AllocationDefault string `json:"allocation_default"`
 	IsContainer       bool   `json:"is_container"`
 	Notes             string `json:"notes"`
+
+	// Amenities. Absent in JSON means false, which for these is the same claim
+	// the column made before the 2026 inventory: unknown, recorded as false.
+	HasPower         bool `json:"has_power"`
+	HasAC            bool `json:"has_ac"`
+	HasFridge        bool `json:"has_fridge"`
+	IsAccessible     bool `json:"is_accessible"`
+	HasHeat          bool `json:"has_heat"`
+	IsWeatherized    bool `json:"is_weatherized"`
+	HasPlumbing      bool `json:"has_plumbing"`
+	HasSpaceHeater   bool `json:"has_space_heater"`
+	HasPackPlaySpace bool `json:"has_pack_play_space"`
+	HasLivingRoom    bool `json:"has_living_room"`
+	HasKitchen       bool `json:"has_kitchen"`
+	HasLights        bool `json:"has_lights"`
+
+	// HasRamp is "yes" | "no" | "partial", or "" for NOT ASSESSED. Deliberately
+	// not a bool: most cabins were never checked, and a bool would record them
+	// all as step-free-inaccessible.
+	HasRamp string `json:"has_ramp"`
+
+	// MaxBeds is total sleeping spots, NOT Sleeps. Sleeps is the staff
+	// judgement for the session type and the two disagree on most units.
+	MaxBeds *int `json:"max_beds"`
 }
 
 type registryAlias struct {
@@ -349,6 +373,24 @@ func seedUnits(
 		rec.Set("allocation_default", u.AllocationDefault)
 		rec.Set("is_container", u.IsContainer)
 		rec.Set("notes", u.Notes)
+		rec.Set("has_power", u.HasPower)
+		rec.Set("has_ac", u.HasAC)
+		rec.Set("has_fridge", u.HasFridge)
+		rec.Set("is_accessible", u.IsAccessible)
+		rec.Set("has_heat", u.HasHeat)
+		rec.Set("is_weatherized", u.IsWeatherized)
+		rec.Set("has_plumbing", u.HasPlumbing)
+		rec.Set("has_space_heater", u.HasSpaceHeater)
+		rec.Set("has_pack_play_space", u.HasPackPlaySpace)
+		rec.Set("has_living_room", u.HasLivingRoom)
+		rec.Set("has_kitchen", u.HasKitchen)
+		rec.Set("has_lights", u.HasLights)
+		// Left unset when blank, so "not assessed" reaches the database as an
+		// empty select rather than a decision.
+		if u.HasRamp != "" {
+			rec.Set("has_ramp", u.HasRamp)
+		}
+		setIfPresentInt(rec, "max_beds", u.MaxBeds)
 		rec.Set("is_active", true)
 		// Every seeded value is a guess until staff confirm it against the
 		// actual cabin, so nothing this loader writes may claim otherwise.

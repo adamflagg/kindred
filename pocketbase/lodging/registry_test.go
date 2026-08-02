@@ -51,6 +51,23 @@ func setupRegistryCollections(t *testing.T, app core.App) {
 	units.Fields.Add(&core.BoolField{Name: "is_active"})
 	units.Fields.Add(&core.BoolField{Name: "is_container"})
 	units.Fields.Add(&core.TextField{Name: "notes"})
+	// Amenity columns from 1500000131. has_ramp is a select, not a bool, so an
+	// unassessed cabin stays blank instead of claiming "no ramp".
+	// has_fridge and is_accessible predate 1500000131 (they come from
+	// 1500000116) but the loader writes them too, so the fixture has to declare
+	// them or those two writes go unasserted.
+	for _, name := range []string{
+		"has_power", "has_ac", "has_fridge", "is_accessible",
+		"has_heat", "is_weatherized", "has_plumbing",
+		"has_space_heater", "has_pack_play_space", "has_living_room",
+		"has_kitchen", "has_lights",
+	} {
+		units.Fields.Add(&core.BoolField{Name: name})
+	}
+	units.Fields.Add(&core.SelectField{
+		Name: "has_ramp", Values: []string{"yes", "no", "partial"}, MaxSelect: 1,
+	})
+	units.Fields.Add(&core.NumberField{Name: "max_beds", OnlyInt: true})
 	units.AddIndex("idx_lodging_units_code", true, "code", "")
 	saveRegistryCollection(t, app, units)
 
@@ -299,6 +316,72 @@ func TestSeedRegistryCreatesAreasUnitsAndAliases(t *testing.T) {
 	}
 	if !findByCode(t, app, "lodging_units", "building-1").GetBool("is_container") {
 		t.Error("building-1 is_container = false, want true")
+	}
+}
+
+// The 2026 inventory's whole point. Before it, has_power/has_ac/has_fridge/
+// is_accessible were false on all 93 units — not because the cabins lacked
+// them but because nobody filled the columns in, which is why the fit check
+// has never been meaningful. A loader that ignored these fields would carry
+// the sheet's answers into the file and drop them on the way to the database.
+func TestSeedRegistryWritesAmenities(t *testing.T) {
+	app := newRegistryTestApp(t)
+
+	body := `{"areas": [{"code": "AREA1", "name": "First Area"}], "units": [
+	  {"area": "AREA1", "code": "warm", "name": "Warm", "bathroom": "none",
+	   "allocation_default": "family_pool",
+	   "has_power": true, "has_ac": true, "has_fridge": true, "is_accessible": true,
+	   "has_heat": true, "is_weatherized": true,
+	   "has_plumbing": true, "has_space_heater": true, "has_pack_play_space": true,
+	   "has_living_room": true, "has_kitchen": true, "has_lights": true,
+	   "has_ramp": "partial", "max_beds": 14}
+	], "aliases": []}`
+
+	if err := seedRegistryFromFile(app, writeRegistry(t, body)); err != nil {
+		t.Fatalf("seedRegistryFromFile: %v", err)
+	}
+
+	unit := findByCode(t, app, "lodging_units", "warm")
+	for _, field := range []string{
+		"has_power", "has_ac", "has_fridge", "is_accessible",
+		"has_heat", "is_weatherized", "has_plumbing",
+		"has_space_heater", "has_pack_play_space", "has_living_room",
+		"has_kitchen", "has_lights",
+	} {
+		if !unit.GetBool(field) {
+			t.Errorf("%s = false, want true", field)
+		}
+	}
+	if got := unit.GetString("has_ramp"); got != "partial" {
+		t.Errorf("has_ramp = %q, want %q", got, "partial")
+	}
+	// max_beds is total sleeping spots and must never be confused with sleeps,
+	// the staff judgement for the session type. A 14-bunk camper cabin holds
+	// one family.
+	if got := unit.GetInt("max_beds"); got != 14 {
+		t.Errorf("max_beds = %d, want 14", got)
+	}
+	if got := unit.GetInt("sleeps"); got != 0 {
+		t.Errorf("sleeps = %d, want 0 — max_beds must not leak into sleeps", got)
+	}
+}
+
+// A blank has_ramp is "not assessed", and it must reach the database blank
+// rather than as a confident "no".
+func TestSeedRegistryUnassessedRampStaysBlank(t *testing.T) {
+	app := newRegistryTestApp(t)
+
+	body := `{"areas": [{"code": "AREA1", "name": "First Area"}], "units": [
+	  {"area": "AREA1", "code": "unknown-ramp", "name": "Unknown", "bathroom": "none",
+	   "allocation_default": "family_pool"}
+	], "aliases": []}`
+
+	if err := seedRegistryFromFile(app, writeRegistry(t, body)); err != nil {
+		t.Fatalf("seedRegistryFromFile: %v", err)
+	}
+
+	if got := findByCode(t, app, "lodging_units", "unknown-ramp").GetString("has_ramp"); got != "" {
+		t.Errorf("has_ramp = %q for an unassessed unit, want empty (not assessed)", got)
 	}
 }
 

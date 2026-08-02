@@ -67,6 +67,37 @@ bt=$(field_prop lodging_units bathroom values || true)
 ad=$(field_prop lodging_units allocation_default values || true)
 [[ "$ad" == '["family_pool","staff_default"]' ]] || note "lodging_units.allocation_default values are $ad"
 
+# Amenity columns added by 1500000131 for the inventory seed. Asserted by TYPE,
+# because a bool written where a select belongs is the difference between
+# "not assessed" and a confident "no" (see has_ramp below).
+for f in has_heat is_weatherized has_plumbing has_space_heater \
+         has_pack_play_space has_living_room has_kitchen has_lights; do
+  t=$(field_prop lodging_units "$f" type || true)
+  [[ "$t" == "bool" ]] || note "lodging_units.$f type is '$t' (expected bool)"
+done
+
+# has_ramp is deliberately NOT a bool. The source column is mostly blank, and a
+# bool maps every unassessed cabin to "no ramp" — asserting a fact about
+# step-free access that nobody checked. Empty select = not assessed, the same
+# discipline as `sleeps: null` never rendering 0.
+rt=$(field_prop lodging_units has_ramp type || true)
+[[ "$rt" == "select" ]] || note "lodging_units.has_ramp type is '$rt' (expected select, so blank can mean 'not assessed')"
+rv=$(field_prop lodging_units has_ramp values || true)
+[[ "$rv" == '["yes","no","partial"]' ]] || note "lodging_units.has_ramp values are $rv (expected [\"yes\",\"no\",\"partial\"])"
+rr=$(field_prop lodging_units has_ramp required || true)
+[[ "$rr" != "1" && "$rr" != "true" ]] || note "lodging_units.has_ramp is required (must be optional: blank means not assessed)"
+
+# max_beds is the sheet's total sleeping spots. It is NOT sleeps, which is a
+# staff judgement for the session type and disagrees with it on most units —
+# HANDOFF §6, spaces not beds. Both columns exist precisely so neither
+# overwrites the other.
+mb=$(field_prop lodging_units max_beds type || true)
+[[ "$mb" == "number" ]] || note "lodging_units.max_beds type is '$mb' (expected number)"
+mbi=$(field_prop lodging_units max_beds onlyInt || true)
+[[ "$mbi" == "1" || "$mbi" == "true" ]] || note "lodging_units.max_beds onlyInt is '$mbi' (expected true)"
+mbx=$(field_prop lodging_units max_beds max || true)
+[[ -z "$mbx" || "$mbx" == "null" ]] || note "lodging_units.max_beds max is '$mbx' (expected null for unbounded)"
+
 st=$(field_prop lodging_availability state values || true)
 [[ "$st" == '["reserved_staff","reserved_other","released_to_family"]' ]] || note "lodging_availability.state values are $st"
 

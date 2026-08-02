@@ -133,7 +133,25 @@ an empty registry rather than an error anyone will see.
       "near_bathhouse": true,
       "allocation_default": "family_pool",  // family_pool | staff_default
       "is_container": false,    // true = a building row: never bookable, never counted
-      "notes": ""
+      "notes": "",
+
+      // Amenities. Absent means false, which is the same claim the column made
+      // before the inventory existed: unknown, recorded as false.
+      "has_power": true,
+      "has_ac": false,
+      "has_fridge": false,
+      "is_accessible": false,
+      "has_heat": true,
+      "is_weatherized": true,
+      "has_plumbing": true,
+      "has_space_heater": false,
+      "has_pack_play_space": false,   // unit-side counterpart to the family infant flag
+      "has_living_room": false,
+      "has_kitchen": false,
+      "has_lights": true,
+
+      "has_ramp": "partial",    // yes | no | partial; "" or absent = NOT ASSESSED
+      "max_beds": 14            // total sleeping spots. NOT sleeps — see below
     }
   ],
   "aliases": [
@@ -158,6 +176,47 @@ CampMinder-id discipline used across the rest of the schema.
   staff verify it against the actual cabin, so nothing the loader writes may
   claim otherwise. Staff confirm through `/manage/lodging`.
 
+### `max_beds` is not `sleeps`, and neither may overwrite the other
+
+`max_beds` is the total number of sleeping spots in the room. `sleeps` is the
+staff judgement about how many people should actually be placed there for a
+given session type. A camper cabin with 14 bunks holds one family, and the two
+columns disagree on most units — HANDOFF §6, spaces not beds. Both exist so
+neither has to be inferred from the other.
+
+### Getting the inventory onto rows that already exist
+
+The loader is create-if-absent, so **a new column lands empty on every row that
+already exists**. Adding amenity columns to the schema therefore gives the
+existing units a set of false-everywhere flags, which is the very condition the
+inventory exists to fix.
+
+`scripts/dev/apply_lodging_inventory.py` closes that gap. It is dry-run by
+default and splits fields by how much damage writing them could do:
+
+| Class | Fields | Behaviour |
+|---|---|---|
+| Inventory | the amenities and `max_beds` | filled freely — they were empty |
+| Structural | `bathroom`, `bathroom_group`, `is_container`, `parent_unit` | reported; written only under `--structural`, since each overwrites a value that may be deliberate |
+| Staff-owned | `sleeps`, `map_x`, `map_y`, `is_confirmed`, `is_active`, `allocation_default` | **never written**, under any flag |
+
+Two further rules: an empty `has_ramp` never overwrites a real assessment, and
+`notes` are filled only when the database has none — replacing free text a staff
+member wrote would destroy it.
+
+`parent_unit` is compared as a **code**. The database stores it as a relation —
+a record id — so comparing raw values reports every parented unit as needing a
+change, and applying that would write a code into a relation field.
+
+### Lighting up the fit check locally
+
+`partyAttention` refuses to judge a housing need against an unconfirmed cabin,
+and the loader writes `is_confirmed: false` on everything, so the fit check is
+dark until staff confirm cabins. `scripts/dev/confirm_lodging_units.py` flips
+the flag on a **local** database so the surface can be developed against. It
+refuses a non-loopback URL unless explicitly overridden: bulk confirmation on
+real data asserts to staff that every cabin was checked when none was.
+
 ### Two traps encoded in the format
 
 **`null` numbers become `0`, and `0` means UNKNOWN.** PocketBase number columns
@@ -180,6 +239,8 @@ block still resolves — the paths below are relative to the root, not to
 
 ```bash
 (cd pocketbase && go test ./lodging/ -count=1)   # loader unit tests
+uv run pytest tests/setup/                       # the two dev scripts below
+./scripts/dev/verify-lodging-schema.sh           # the columns exist, with the right types
 ./scripts/dev/verify-lodging-seed.sh             # boots a throwaway DB and loads the file
 ./scripts/dev/verify-no-hardcoded-lodging.sh     # no unit names in source
 ./scripts/dev/test-verify-no-hardcoded-lodging.sh
