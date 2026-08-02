@@ -18,16 +18,18 @@
  * the Go ingest so every surface sees the correction at once.
  */
 import { Listbox, ListboxButton, ListboxOption, ListboxOptions } from '@headlessui/react'
-import { ArrowLeft, ChevronDown, Home, Settings2, Users } from 'lucide-react'
+import { ArrowLeft, ChevronDown, Home, LayoutGrid, Settings2, Users } from 'lucide-react'
 import { useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router'
 
 import { QueryGuard } from '../components/QueryGuard'
 import { Permission } from '../constants/permissions'
 import {
+  countBoardSlots,
   countUnmeasuredSpaces,
   formatSessionDates,
   HouseholdRosterTable,
+  LodgingBoard,
   partyBeds,
   shortWeekendName,
   sortWeekendsByDate,
@@ -38,7 +40,7 @@ import { useCurrentYear } from '../hooks/useCurrentYear'
 import { usePermissions } from '../hooks/usePermissions'
 import { useWeekendRoster, useWeekendSessions } from '../hooks/useWeekendRoster'
 
-type View = 'roster' | 'inventory'
+type View = 'roster' | 'inventory' | 'board'
 
 export default function WeekendRosterPage() {
   const { sessionCmId } = useParams<{ sessionCmId: string }>()
@@ -66,6 +68,10 @@ export default function WeekendRosterPage() {
   const TABS: Array<{ id: View; label: string; icon: typeof Users; count: number }> = [
     { id: 'roster', label: 'Roster', icon: Users, count: parties.length },
     { id: 'inventory', label: 'Inventory', icon: Home, count: units.length },
+    // The board counts the SLOT CARDS it draws, which is not the inventory
+    // count: a container carries the beds its halves already report, so it
+    // never gets a card and never counts.
+    { id: 'board', label: 'Board', icon: LayoutGrid, count: countBoardSlots(parties, units) },
   ]
 
   return (
@@ -198,10 +204,12 @@ export default function WeekendRosterPage() {
               id={`weekend-panel-${view}`}
               aria-labelledby={`weekend-tab-${view}`}
             >
-              {view === 'roster' ? (
+              {view === 'roster' && (
                 <HouseholdRosterTable parties={parties} year={currentYear} units={units} />
-              ) : (
-                <UnitInventoryPanel units={units} />
+              )}
+              {view === 'inventory' && <UnitInventoryPanel units={units} />}
+              {view === 'board' && (
+                <LodgingBoard parties={parties} units={units} year={currentYear} />
               )}
             </div>
           </>

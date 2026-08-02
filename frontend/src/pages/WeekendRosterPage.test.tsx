@@ -229,5 +229,68 @@ describe('tabs', () => {
     renderPage()
     expect(screen.getByRole('tab', { name: 'Roster (0)' })).toBeInTheDocument()
     expect(screen.getByRole('tab', { name: 'Inventory (0)' })).toBeInTheDocument()
+    expect(screen.getByRole('tab', { name: 'Board (0)' })).toBeInTheDocument()
+  })
+
+  it('opens the board on its own tab', async () => {
+    rosterQuery.data = {
+      year: 2026,
+      session_cm_id: 1000001,
+      parties: [],
+      counts: {},
+      units: [
+        {
+          unit_id: 'u1',
+          code: 'ridge-a',
+          name: 'Ridge A',
+          area_code: 'RIDGE',
+          area_name: 'Ridge Side',
+          sleeps: 5,
+          is_confirmed: true,
+          is_container: false,
+          is_active: true,
+          is_family_available: true,
+        },
+      ],
+    }
+    renderPage()
+
+    await userEvent.click(screen.getByRole('tab', { name: /Board/ }))
+    expect(screen.getByText(/CampMinder mirror/i)).toBeInTheDocument()
+    expect(screen.getByText('Ridge A')).toBeInTheDocument()
+  })
+
+  it('counts the slot cards the board draws, not the building rows', () => {
+    // A container carries the beds its halves already report; giving it a
+    // card would double-count them, so it never gets one and never counts.
+    rosterQuery.data = {
+      year: 2026,
+      session_cm_id: 1000001,
+      parties: [],
+      counts: {},
+      units: [
+        {
+          unit_id: 'u1',
+          code: 'ridge-a',
+          name: 'Ridge A',
+          area_code: 'RIDGE',
+          area_name: 'Ridge Side',
+          is_container: false,
+          is_active: true,
+        },
+        {
+          unit_id: 'u2',
+          code: 'ridge-block',
+          name: 'Ridge Block',
+          area_code: 'RIDGE',
+          area_name: 'Ridge Side',
+          is_container: true,
+          is_active: true,
+        },
+      ],
+    }
+    renderPage()
+    expect(screen.getByRole('tab', { name: 'Board (1)' })).toBeInTheDocument()
+    expect(screen.getByRole('tab', { name: 'Inventory (2)' })).toBeInTheDocument()
   })
 })

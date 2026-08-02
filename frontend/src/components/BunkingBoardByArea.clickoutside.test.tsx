@@ -13,6 +13,31 @@
 import { describe, it, expect } from 'vitest'
 import { shouldKeepPanelsOpen } from '../utils/clickoutsidePredicate'
 
+describe('weekend lodging board click-outside predicate', () => {
+  it('keeps the family details panel open on a click inside it', () => {
+    // Not every click inside the panel lands on a button — the request-text
+    // blockquote and the children list are plain text, and dismissing on
+    // those would make the panel feel broken.
+    const panel = document.createElement('div')
+    panel.setAttribute('data-panel', 'family-details')
+    const text = document.createElement('blockquote')
+    panel.appendChild(text)
+    document.body.appendChild(panel)
+    expect(shouldKeepPanelsOpen({ ctrlKey: false, metaKey: false, target: text })).toBe(true)
+    panel.remove()
+  })
+
+  it('keeps panels open when the click lands on a family card', () => {
+    const card = document.createElement('div')
+    card.setAttribute('data-family-card', '')
+    const name = document.createElement('span')
+    card.appendChild(name)
+    document.body.appendChild(card)
+    expect(shouldKeepPanelsOpen({ ctrlKey: false, metaKey: false, target: name })).toBe(true)
+    card.remove()
+  })
+})
+
 describe('BunkingBoardByArea click-outside predicate', () => {
   it('keeps panels open on Ctrl+click', () => {
     const target = document.createElement('div')
