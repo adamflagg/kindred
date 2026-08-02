@@ -239,6 +239,8 @@ block still resolves — the paths below are relative to the root, not to
 
 ```bash
 (cd pocketbase && go test ./lodging/ -count=1)   # loader unit tests
+uv run pytest tests/setup/                       # the two dev scripts below
+./scripts/dev/verify-lodging-schema.sh           # the columns exist, with the right types
 ./scripts/dev/verify-lodging-seed.sh             # boots a throwaway DB and loads the file
 ./scripts/dev/verify-no-hardcoded-lodging.sh     # no unit names in source
 ./scripts/dev/test-verify-no-hardcoded-lodging.sh

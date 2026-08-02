@@ -5,17 +5,17 @@
 loader writes is a guess from a spreadsheet, so it writes `false` on every row,
 and `partyAttention` refuses to judge a housing need against an unconfirmed
 cabin — `has_power: false` there means "nobody has said", not "no power". With
-0 of 93 units confirmed, every constrained party reports `unverified` and the
-whole fit check reads as dark.
+none of the registry's 114 units confirmed, every constrained party reports
+`unverified` and the whole fit check reads as dark.
 
 That is correct behaviour, and it makes the board hard to develop against. This
 script flips the flag on a LOCAL database so the surface can be built and seen
 working. It is not a substitute for staff confirming cabins.
 
 RUNNING THIS AGAINST PRODUCTION IS A SEPARATE AND DELIBERATE DECISION, and it
-would be the wrong one: it would assert to staff that 93 cabins had been
-checked when none had. The script refuses non-local URLs unless you pass
---i-know-this-is-not-local.
+would be the wrong one: it would assert to staff that every cabin in the
+registry had been checked when none had. The script refuses non-local URLs
+unless you pass --i-know-this-is-not-local.
 
     scripts/dev/confirm_lodging_units.py                  # show what would change
     scripts/dev/confirm_lodging_units.py --apply          # confirm all units
@@ -87,7 +87,7 @@ def main(argv: list[str] | None = None) -> int:
         print(
             f"refusing: {args.url} is not local.\n"
             "is_confirmed asserts a human checked the cabin. Setting it in bulk on a real\n"
-            "database tells staff 93 cabins were verified when none were.\n"
+            "database tells staff every cabin was verified when none were.\n"
             "Pass --i-know-this-is-not-local if you genuinely mean to.",
             file=sys.stderr,
         )

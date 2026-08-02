@@ -160,7 +160,7 @@ Facts, not a work log. Do not re-verify or re-implement these.
   running the migration against a real database. Use `record.getString(field)` and `JSON.parse`.
   The Go side has the same trap in a different shape — see `extractBusinessCategory` in
   `pocketbase/rbac/hooks.go`, which handles `types.JSONRaw` separately from `map[string]any`.
-- **Highest migration is `1500000130`.** Compute the next number from `main`, never from a branch.
+- **Highest migration is `1500000131`.** Compute the next number from `main`, never from a branch.
 
 ---
 
@@ -374,7 +374,7 @@ the whole time. That is progress, not a hang — confirm with CPU, not the count
 - **Do not sum capacity over units where `is_container` is true.** They are building rows carrying
   whole-building aggregates; including them gives 408 beds against a true 389.
 - **Do not create `lodging_unresolved_aliases`.** See §3. The plan tells you to; the ruling overrides it.
-- **Do not number a migration from a branch.** Highest on `main` is `1500000130`. Compute it:
+- **Do not number a migration from a branch.** Highest on `main` is `1500000131`. Compute it:
   `git ls-tree -r origin/main pocketbase/pb_migrations/ | grep -oE '15000[0-9]{5}' | sort -u | tail -1`
 - **Do not add a `kind` value as a Go constant without the migration.** The select list is the
   constraint; a bare constant passes tests and fails in production.

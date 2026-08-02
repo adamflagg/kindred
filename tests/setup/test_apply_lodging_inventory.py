@@ -79,21 +79,50 @@ def test_a_unit_missing_from_the_database_is_left_to_the_boot_loader() -> None:
     assert plan.absent == ["brand-new"]
 
 
+# A differing (database, file) pair for every staff-owned field, so the test
+# below can prove the whole class is unwritable rather than a sample of it.
+_STAFF_OWNED_VALUES: dict[str, tuple[object, object]] = {
+    "sleeps": (9, 4),
+    "map_x": (0.9, 0.5),
+    "map_y": (0.9, 0.5),
+    "is_confirmed": (True, False),
+    "is_active": (False, True),
+    "allocation_default": ("staff_default", "family_pool"),
+}
+
+
+def test_every_staff_owned_field_has_a_case_below() -> None:
+    """Guards the guard. Adding a field to STAFF_OWNED without a value pair here
+    would silently shrink the parametrised test into covering less than it
+    claims, which is how a subset starts reading as an exhaustive check."""
+    assert set(apply_inv.STAFF_OWNED) == set(_STAFF_OWNED_VALUES)
+
+
 # The whole point of create-if-absent. If this script overwrote these it would
 # reintroduce, on demand, exactly the clobbering the loader refuses to do.
-@pytest.mark.parametrize(
-    ("field", "db_value", "file_value"),
-    [
-        ("sleeps", 9, 4),
-        ("map_x", 0.9, 0.5),
-        ("is_confirmed", True, False),
-    ],
-)
-def test_staff_owned_fields_are_never_updated(field: str, db_value: object, file_value: object) -> None:
+# Parametrised off STAFF_OWNED itself, not a hand-copied subset: a field added
+# to the constant is covered here the moment it is added.
+@pytest.mark.parametrize("field", apply_inv.STAFF_OWNED)
+@pytest.mark.parametrize("structural", [False, True])
+def test_staff_owned_fields_are_never_updated(field: str, structural: bool) -> None:
+    db_value, file_value = _STAFF_OWNED_VALUES[field]
     want = [_unit("a", **{field: file_value})]
     have = {"a": _unit("a", **{field: db_value})}
 
-    assert apply_inv.plan_updates(want, have).updates == []
+    plan = apply_inv.plan_updates(want, have, include_structural=structural)
+
+    assert plan.updates == []
+    assert plan.structural == []
+
+
+def test_the_writable_classes_never_overlap_the_staff_owned_ones() -> None:
+    """STAFF_OWNED is only a comment unless something enforces it. The allow
+    lists are enumerated by hand, so the failure mode is a future column being
+    added to the wrong tuple — which no behavioural test would catch, because
+    the field would simply start being written and nothing would object."""
+    writable = set(apply_inv.INVENTORY_FIELDS) | set(apply_inv.STRUCTURAL_FIELDS)
+
+    assert writable.isdisjoint(apply_inv.STAFF_OWNED)
 
 
 def test_structural_differences_are_reported_but_not_applied() -> None:

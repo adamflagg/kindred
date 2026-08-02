@@ -9,9 +9,9 @@ restart.
 
 The consequence is that a new column lands EMPTY on every row that already
 exists. The 2026 amenity columns are exactly that case: adding them to the
-schema gives 93 units ten new false-everywhere flags. This script fills them in,
-deliberately and once, rather than making the loader a second writer with
-different rules.
+schema leaves the 93 pre-existing units with eight false-everywhere booleans, an
+unset has_ramp and an unset max_beds. This script fills them in, deliberately
+and once, rather than making the loader a second writer with different rules.
 
 It is dry-run by default and prints what it would change. Nothing is written
 without --apply.
