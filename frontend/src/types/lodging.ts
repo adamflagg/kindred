@@ -84,6 +84,31 @@ export type SharePreferenceValue = NonNullable<ShareRequestSummary['preference']
  */
 export type ProximityKindValue = NonNullable<ShareRequestSummary['proximity']>[number]
 
+/**
+ * The RESOLVED verdict the board places on — not the same question as
+ * `SharePreferenceValue`, which is the registration answer alone.
+ *
+ * Share intent lives in two CampMinder fields asked at different times, and
+ * staff treat the later Family Camp information form as authoritative. The Go
+ * ingest resolves them; this is the result.
+ *
+ * `unknown` means silent on BOTH forms. It places as no-share, but it is a
+ * different fact from `declined` and must never be rendered as one — saying
+ * "this family said no" about a family that answered nothing is a statement
+ * staff cannot defend to that family.
+ */
+export type ShareEligibilityValue = NonNullable<ShareRequestSummary['eligibility']>
+
+/**
+ * Which form produced the eligibility.
+ *
+ * `registration` means the authoritative form's share question was unanswered
+ * and the verdict fell back to the registration gate, so it is PROVISIONAL.
+ * Roughly half of returned forms skip that question, so this is the common
+ * case, not an edge one.
+ */
+export type ShareEligibilitySourceValue = NonNullable<ShareRequestSummary['eligibility_source']>
+
 /** `unknown` means the amenity was never recorded, NOT "no bathroom". */
 export type BathroomValue = NonNullable<LodgingUnitSummary['bathroom']>
 

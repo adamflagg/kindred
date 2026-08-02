@@ -40,10 +40,17 @@ export const AREA_HUES = [
   'hsl(24 42% 46%)',
 ] as const
 
-/** A shared unit where somebody's recorded answer contradicts the placement. */
+/** A shared unit holding somebody who did not consent to sharing it. */
 export interface ConsentFlag {
-  /** How many of the unit's parties answered an explicit `no_share`. */
+  /** Parties whose resolved answer declines sharing. */
   declinedCount: number
+  /**
+   * Parties silent on BOTH forms. Counted separately from `declinedCount`
+   * because the remedy differs — chase the form rather than move the family —
+   * and because reporting "declined" about a household that answered nothing
+   * is a claim staff cannot defend to that household.
+   */
+  unansweredCount: number
   /** Ready to render beside the slot. Never PHI. */
   reason: string
 }
@@ -117,15 +124,58 @@ function areaName(unit: LodgingUnitRow): string {
  */
 export function consentFlag(parties: RosterPartyRow[]): ConsentFlag | null {
   if (parties.length < 2) return null
-  const declinedCount = parties.filter((party) => party.share?.preference === 'no_share').length
-  if (declinedCount === 0) return null
-  return {
-    declinedCount,
-    reason:
-      declinedCount === 1
-        ? '1 family said no to sharing'
-        : `${String(declinedCount)} families said no to sharing`,
+
+  // Adult weekends have NO share question at all -- the fields are partition
+  // ["Camper"] and no Adult-Share field exists -- so a person-grain party
+  // carries no answer to judge. Returning null here is not "no problem found";
+  // it is "not checked", and the board says so rather than rendering a clean
+  // slot that was never examined.
+  if (parties.some((party) => party.grain === 'person')) return null
+
+  let declinedCount = 0
+  let unansweredCount = 0
+  for (const party of parties) {
+    // Absent eligibility is UNKNOWN, never open. These columns are written by
+    // family_camp_derived, so they are empty until it re-runs, and empty must
+    // fall to the side that does not consent.
+    switch (party.share?.eligibility ?? 'unknown') {
+      case 'declined':
+        declinedCount += 1
+        break
+      case 'unknown':
+        unansweredCount += 1
+        break
+      default:
+        // `open` and `named` both consent to sharing. `named` is not verified
+        // mutual -- that needs request names resolved to households (spec
+        // §7.3, unbuilt) -- so the panel shows the names and staff judge.
+        // Flagging it would fire on the majority of eligible households.
+        break
+    }
   }
+
+  if (declinedCount === 0 && unansweredCount === 0) return null
+  return { declinedCount, unansweredCount, reason: consentReason(declinedCount, unansweredCount) }
+}
+
+/** Wording for a consent flag. Reports only what was recorded. */
+function consentReason(declinedCount: number, unansweredCount: number): string {
+  const parts: string[] = []
+  if (declinedCount > 0) {
+    parts.push(
+      declinedCount === 1
+        ? '1 family declined sharing'
+        : `${String(declinedCount)} families declined sharing`
+    )
+  }
+  if (unansweredCount > 0) {
+    parts.push(
+      unansweredCount === 1
+        ? "1 family hasn't answered the cabin form"
+        : `${String(unansweredCount)} families haven't answered the cabin form`
+    )
+  }
+  return parts.join(', ')
 }
 
 /**

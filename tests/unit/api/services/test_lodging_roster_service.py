@@ -987,3 +987,119 @@ class TestBuildSummary:
 
         assert summary.weekends == []
         assert repo.fetch_units.await_count == 0
+
+
+class TestShareEligibility:
+    """The board places on ELIGIBILITY, not on the registration gate.
+
+    Share intent lives in two CampMinder fields asked at different times, and
+    staff treat the later Family Camp information form as authoritative. The
+    resolution is done once, in the Go ingest, so this layer only READS it --
+    the same one-writer rule that keeps `preference` from being recomputed.
+
+    Measured on 2026 family-camp attendees, reading the gate instead of the
+    eligibility is wrong both ways: 3 households said no at registration then
+    named a partner (flagged though legitimate), and 51 said yes-or-maybe then
+    declined on the form (silent, and read as permissive).
+    """
+
+    @pytest.mark.asyncio
+    async def test_eligibility_is_read_not_derived_from_the_gate(self) -> None:
+        """A no_share gate with a form WITH answer is SHAREABLE.
+
+        The gate stays visible as `preference` because it is what a staff
+        member sees when asked why a household is flagged, but it must not
+        drive placement.
+        """
+        repo = _repo(
+            fetch_session=FAMILY_SESSION,
+            fetch_attendees_for_session=[_child()],
+            fetch_households={"hh_1": _household()},
+            fetch_family_camp_registrations={
+                "hh_1": _rec(
+                    share_cabin_gate="no_share",
+                    wants_with=True,
+                    share_eligibility="named",
+                    share_eligibility_source="form",
+                    share_answers_conflict=True,
+                )
+            },
+        )
+        roster = await LodgingRosterService(repo).build_roster(2026, 1000001)
+
+        share = roster.parties[0].share
+        assert share.preference == "no_share", "the raw gate stays visible"
+        assert share.eligibility == "named", "the form outranks the gate"
+        assert share.eligibility_source == "form"
+        assert share.answers_conflict is True
+
+    @pytest.mark.asyncio
+    async def test_registration_fallback_is_marked_provisional(self) -> None:
+        """No form answer falls back to the gate, and says that it did.
+
+        The fallback verdict is provisional -- the household has not answered
+        the authoritative question -- so the surface must be able to tell the
+        two apart rather than presenting both as settled.
+        """
+        repo = _repo(
+            fetch_session=FAMILY_SESSION,
+            fetch_attendees_for_session=[_child()],
+            fetch_households={"hh_1": _household()},
+            fetch_family_camp_registrations={
+                "hh_1": _rec(
+                    share_cabin_gate="maybe_mutual",
+                    share_eligibility="named",
+                    share_eligibility_source="registration",
+                    share_answers_conflict=False,
+                )
+            },
+        )
+        roster = await LodgingRosterService(repo).build_roster(2026, 1000001)
+
+        share = roster.parties[0].share
+        assert share.eligibility == "named"
+        assert share.eligibility_source == "registration"
+        assert share.answers_conflict is False
+
+    @pytest.mark.asyncio
+    async def test_absent_columns_read_as_unknown_never_as_open(self) -> None:
+        """An unpopulated column is UNKNOWN, which never consents.
+
+        These columns are written by family_camp_derived, so on any database
+        that has not re-run it they are empty. Empty must fall to the safe
+        side: `unknown` places as no-share. Defaulting to `open` would let the
+        board green-light every household on a stale database.
+        """
+        repo = _repo(
+            fetch_session=FAMILY_SESSION,
+            fetch_attendees_for_session=[_child()],
+            fetch_households={"hh_1": _household()},
+            fetch_family_camp_registrations={"hh_1": _rec(share_cabin_gate="")},
+        )
+        roster = await LodgingRosterService(repo).build_roster(2026, 1000001)
+
+        share = roster.parties[0].share
+        assert share.eligibility == "unknown"
+        assert share.eligibility_source == "none"
+        assert share.answers_conflict is False
+
+    @pytest.mark.asyncio
+    async def test_adult_weekend_parties_carry_no_eligibility(self) -> None:
+        """Adult weekends have no share question AT ALL, so nothing is claimed.
+
+        The fields are partition ["Camper"] and no Adult-Share field exists;
+        28 of 29 adult-only households are blank on registration and none
+        answered the form. A person-grain party therefore gets the default
+        summary, and `unknown` is the honest value -- the board must not read
+        a household's family-camp answers onto an adult attendee, since those
+        may belong to a different weekend and different people.
+        """
+        repo = _repo(
+            fetch_session=ADULT_SESSION,
+            fetch_attendees_for_session=[_child()],
+        )
+        roster = await LodgingRosterService(repo).build_roster(2026, 1000002)
+
+        share = roster.parties[0].share
+        assert share.eligibility == "unknown"
+        assert share.eligibility_source == "none"

@@ -183,6 +183,9 @@ describe('LodgingBoard — the consent flag', () => {
               proximity: [],
               request_text: '',
               needs_resolution: false,
+              eligibility: 'declined',
+              eligibility_source: 'form',
+              answers_conflict: false,
             },
           }),
           party({
@@ -195,6 +198,9 @@ describe('LodgingBoard — the consent flag', () => {
               proximity: ['with'],
               request_text: '',
               needs_resolution: false,
+              eligibility: 'open',
+              eligibility_source: 'form',
+              answers_conflict: false,
             },
           }),
         ]}
@@ -207,7 +213,10 @@ describe('LodgingBoard — the consent flag', () => {
 
   it('surfaces the one real sharing conflict on the slot', () => {
     sharedBoard()
-    expect(screen.getByText(/said no to sharing/i)).toBeInTheDocument()
+    // Exact text, not a regex: FamilyCard also renders a "Declined sharing"
+    // chip for the party itself, and a loose match cannot tell the slot's
+    // flag from the card's chip.
+    expect(screen.getByText('1 family declined sharing')).toBeInTheDocument()
   })
 
   it('summarises the flag count at the top of the board', () => {

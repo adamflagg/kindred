@@ -114,18 +114,22 @@ describe('LodgingUnitCard', () => {
     expect(screen.getByText('2 families')).toBeInTheDocument()
   })
 
-  it('flags a shared unit where a family said no', () => {
+  it('flags a shared unit where a family declined', () => {
     render(
       <LodgingUnitCard
         slot={slot({
           parties: [party(), party({ household_cm_id: 102, display_name: 'Garcia' })],
-          consent: { declinedCount: 1, reason: '1 family said no to sharing' },
+          consent: {
+            declinedCount: 1,
+            unansweredCount: 0,
+            reason: '1 family declined sharing',
+          },
         })}
         hue="hsl(160 45% 42%)"
         onOpenParty={vi.fn()}
       />
     )
-    expect(screen.getByText('1 family said no to sharing')).toBeInTheDocument()
+    expect(screen.getByText('1 family declined sharing')).toBeInTheDocument()
   })
 
   it('badges a staff hold rather than hiding the room', () => {

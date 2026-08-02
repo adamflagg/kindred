@@ -7,7 +7,12 @@
  */
 import { describe, expect, it } from 'vitest'
 
-import type { LodgingUnitRow, RosterPartyRow, SharePreferenceValue } from '../../types/lodging'
+import type {
+  LodgingUnitRow,
+  RosterPartyRow,
+  ShareEligibilityValue,
+  SharePreferenceValue,
+} from '../../types/lodging'
 import { AREA_HUES, buildBoard, countBoardSlots } from './boardLayout'
 
 function unit(overrides: Partial<LodgingUnitRow> = {}): LodgingUnitRow {
@@ -217,53 +222,87 @@ describe('buildBoard — the unplaced rail ranks on the one signal it has', () =
   })
 })
 
-describe('buildBoard — consent flagging (spec §11)', () => {
-  function shared(gates: SharePreferenceValue[]) {
+describe('buildBoard — consent flagging on ELIGIBILITY, not the gate', () => {
+  /** A shared unit whose parties carry the given resolved eligibilities. */
+  function shared(values: ShareEligibilityValue[], gate: SharePreferenceValue = 'unknown') {
     return buildBoard(
-      gates.map((preference, index) =>
+      values.map((eligibility, index) =>
         party({
           household_cm_id: 200 + index,
           display_name: `H${String(index)}`,
           unit_code: 'cedar-1',
           unit_name: 'Cedar 1',
-          share: { preference, proximity: [], request_text: '', needs_resolution: false },
+          share: {
+            preference: gate,
+            proximity: [],
+            request_text: '',
+            needs_resolution: false,
+            eligibility,
+            eligibility_source: 'form',
+            answers_conflict: false,
+          },
         })
       ),
       [unit()]
     )
   }
 
-  it('flags a shared unit where one party said no', () => {
-    const slot = shared(['no_share', 'yes_share']).areas[0]?.slots[0]
+  it('flags a shared unit where one party declined', () => {
+    const slot = shared(['declined', 'open']).areas[0]?.slots[0]
     expect(slot?.consent).not.toBeNull()
     expect(slot?.consent?.declinedCount).toBe(1)
   })
 
-  it('does not flag two parties who both agreed', () => {
-    expect(shared(['maybe_mutual', 'yes_share']).areas[0]?.slots[0]?.consent).toBeNull()
+  it('does not flag two parties who are both open to a staff match', () => {
+    expect(shared(['open', 'open']).areas[0]?.slots[0]?.consent).toBeNull()
   })
 
-  it('does not flag a blank gate — that is deferred to C2, and C1 flags only on an explicit no', () => {
-    expect(shared(['unknown', 'yes_share']).areas[0]?.slots[0]?.consent).toBeNull()
+  it('does not flag two NAMED parties — mutuality is unverifiable, so the panel shows the names', () => {
+    // Resolving request names to households is spec §7.3 and unbuilt. Flagging
+    // every named pair would fire on the legitimate case, which is the majority
+    // of eligible households (35 of 41 for 2026).
+    expect(shared(['named', 'named']).areas[0]?.slots[0]?.consent).toBeNull()
   })
 
-  it('does not flag maybe + maybe — also deferred to C2', () => {
-    expect(shared(['maybe_mutual', 'maybe_mutual']).areas[0]?.slots[0]?.consent).toBeNull()
+  it('flags an UNANSWERED party separately from one that declined', () => {
+    // Same placement default, different fact and different staff action:
+    // chase the form vs respect the answer. Reporting "said no" about a family
+    // that answered nothing is a claim staff cannot defend to that family.
+    const slot = shared(['unknown', 'open']).areas[0]?.slots[0]
+    expect(slot?.consent).not.toBeNull()
+    expect(slot?.consent?.unansweredCount).toBe(1)
+    expect(slot?.consent?.declinedCount).toBe(0)
+    expect(slot?.consent?.reason).not.toContain('declined')
   })
 
-  it('does not flag a party who declined sharing and got a room to itself', () => {
-    // Declining is the normal answer. It only contradicts anything when
-    // somebody else is in the room.
-    expect(shared(['no_share']).areas[0]?.slots[0]?.consent).toBeNull()
+  it('does not flag a party who declined and got a room to itself', () => {
+    // Declining is the ordinary answer. It contradicts nothing until somebody
+    // else is in the room.
+    expect(shared(['declined']).areas[0]?.slots[0]?.consent).toBeNull()
   })
 
-  it('counts both when two parties in one room each said no', () => {
-    expect(shared(['no_share', 'no_share']).areas[0]?.slots[0]?.consent?.declinedCount).toBe(2)
+  it('counts both when two parties in one room each declined', () => {
+    expect(shared(['declined', 'declined']).areas[0]?.slots[0]?.consent?.declinedCount).toBe(2)
+  })
+
+  it('IGNORES the registration gate: a no_share gate resolved to named is legitimate', () => {
+    // 3 households for 2026 said no at registration and then named a partner
+    // on the authoritative form. The old gate-based rule flagged every one of
+    // them.
+    expect(shared(['named', 'named'], 'no_share').areas[0]?.slots[0]?.consent).toBeNull()
+  })
+
+  it('IGNORES the registration gate: a yes_share gate resolved to declined still flags', () => {
+    // The direction the old rule was blind to, and the larger one — 12
+    // households said yes at registration then declined on the form, plus 39
+    // more from maybe_mutual. The board read them as permissive.
+    const slot = shared(['declined', 'open'], 'yes_share').areas[0]?.slots[0]
+    expect(slot?.consent?.declinedCount).toBe(1)
   })
 
   it('reports how many slots are flagged across the whole board', () => {
-    expect(shared(['no_share', 'yes_share']).flaggedCount).toBe(1)
-    expect(shared(['yes_share', 'yes_share']).flaggedCount).toBe(0)
+    expect(shared(['declined', 'open']).flaggedCount).toBe(1)
+    expect(shared(['open', 'open']).flaggedCount).toBe(0)
   })
 })
 
