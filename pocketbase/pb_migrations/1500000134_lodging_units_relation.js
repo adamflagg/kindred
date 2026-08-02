@@ -192,12 +192,24 @@ migrate(
         // every id in `units` and fails the save if any one does not resolve --
         // and since all pending migrations share a transaction, that failure
         // rolls back the whole boot, with no skip flag, against exactly the
-        // production merge state nobody here can see (kindred#1917). A backfill
-        // COPYING ids that are already stored in this same database must not be
-        // gated on re-validating them: validation cannot improve the data, it
-        // can only turn a pre-existing blemish into a crash-loop. It also
-        // validates the WHOLE record, so an unrelated stale field would take
-        // the boot down too.
+        // production merge state nobody here can see (kindred#1917).
+        //
+        // A DANGLING RELATION ID IS A STATE POCKETBASE TOLERATES BY DESIGN.
+        // Its own cascade cleanup skips validation for that exact reason --
+        // core/record_model.go:1612-1615, deleteRefRecords:
+        //
+        //   // save the reference changes
+        //   // (without validation because it is possible that another
+        //   //  relation field to have a reference to a previous deleted record)
+        //   refRecord.Set(relField.Name, ids)
+        //   if err := app.SaveNoValidate(refRecord); err != nil {
+        //
+        // So validating on save here would throw on data PocketBase itself
+        // considers acceptable. A backfill COPYING ids already stored in this
+        // same database must not be gated on re-validating them: validation
+        // cannot improve the data, it can only turn a state the database is
+        // entitled to hold into a failed boot. It also validates the WHOLE
+        // record, so an unrelated stale field would take the boot down too.
         //
         // Filtering the ids against lodging_units instead was the alternative,
         // and is worse: it would silently change what a placement points at,
