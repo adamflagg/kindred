@@ -35,11 +35,12 @@ import (
 )
 
 const (
-	collectionUnits        = "lodging_units"
-	collectionMerges       = "lodging_merges"
-	collectionAssignments  = "lodging_assignments"
-	collectionAliases      = "lodging_unit_aliases"
-	collectionIngestIssues = "lodging_ingest_issues"
+	collectionUnits            = "lodging_units"
+	collectionMerges           = "lodging_merges"
+	collectionAssignments      = "lodging_assignments"
+	collectionAssignmentsDraft = "lodging_assignments_draft"
+	collectionAliases          = "lodging_unit_aliases"
+	collectionIngestIssues     = "lodging_ingest_issues"
 )
 
 // RegisterHooks wires the lodging integrity guards onto the app.
@@ -57,6 +58,8 @@ func wireHooks(app core.App) {
 	app.OnRecordDelete(collectionAliases).BindFunc(guardAliasDelete)
 	app.OnRecordCreate(collectionAssignments).BindFunc(guardAssignmentGrain)
 	app.OnRecordUpdate(collectionAssignments).BindFunc(guardAssignmentGrain)
+	app.OnRecordCreate(collectionAssignmentsDraft).BindFunc(guardDraftAssignmentGrain)
+	app.OnRecordUpdate(collectionAssignmentsDraft).BindFunc(guardDraftAssignmentGrain)
 	app.OnRecordUpdate(collectionUnits).BindFunc(guardUnitParentCycle)
 	app.OnRecordAfterUpdateSuccess(collectionIngestIssues).BindFunc(replayOnResolve)
 }
@@ -204,6 +207,41 @@ func guardAssignmentGrain(e *core.RecordEvent) error {
 	if hasHousehold == hasPerson {
 		return apis.NewBadRequestError(
 			"A lodging assignment must set exactly one of household_cm_id or person_cm_id.",
+			nil,
+		)
+	}
+
+	return e.Next()
+}
+
+// guardDraftAssignmentGrain enforces the PARTY GRAIN on lodging_assignments_draft:
+//
+//	household_cm_id XOR person_cm_id
+//
+// and deliberately nothing else. 1500000132 grants bunking.manage create and
+// update on this table, so a write can arrive straight at the PocketBase REST
+// API without passing through PartyGrainRequest._exactly_one_grain in the
+// FastAPI schemas — the same reason guardUnitParentCycle exists for the write
+// access 1500000130 widened.
+//
+// It is a SEPARATE function from guardAssignmentGrain rather than the same one
+// re-bound, because the target rule differs and must. The truth table requires
+// exactly one of unit/merge; the draft accepts a row naming NO target at all,
+// which is the tombstone — "staff took this party off the board in this
+// scenario" — and is not the same state as the party having no draft row. It
+// also accepts more than one target, exactly as the truth table's schema does,
+// because the partial unique indexes dedupe within a grain only.
+//
+// A row naming neither grain is what makes this worth guarding: it keys on
+// nothing, so both partial unique indexes (gated on `> 0`) skip it and it
+// dedupes against nothing, while _grain_key in the roster service silently
+// drops it from the overlay. The row accumulates and does nothing, invisibly.
+func guardDraftAssignmentGrain(e *core.RecordEvent) error {
+	hasHousehold := e.Record.GetInt("household_cm_id") > 0
+	hasPerson := e.Record.GetInt("person_cm_id") > 0
+	if hasHousehold == hasPerson {
+		return apis.NewBadRequestError(
+			"A draft lodging assignment must set exactly one of household_cm_id or person_cm_id.",
 			nil,
 		)
 	}

@@ -131,3 +131,38 @@ def test_roster_exposes_presence_flags_not_narrative() -> None:
     assert "needs_power" in names
     assert "has_infant" in names
     assert not names & PHI_FIELD_NAMES
+
+
+def test_every_model_in_the_module_is_walked_not_just_the_named_roots() -> None:
+    """The walk is TOTAL, so a new model cannot be added outside it.
+
+    The per-root tests above each name one payload, which means a model added
+    to the module and returned by a new endpoint is checked by nothing until
+    somebody remembers to add a fourth test. This closes that: every BaseModel
+    declared in api.schemas.lodging is walked, and the only one permitted to
+    carry narrative is the response of the endpoint gated on `lodging.phi`.
+
+    The write layer (1500000132) is the first thing this catches that the named
+    roots do not -- its request models are reachable from no response payload
+    at all, so nothing else here would ever look at them.
+    """
+    import inspect
+
+    from api.schemas import lodging as lodging_schemas
+
+    declared = [
+        obj
+        for _, obj in inspect.getmembers(lodging_schemas, inspect.isclass)
+        if issubclass(obj, BaseModel) and obj.__module__ == lodging_schemas.__name__
+    ]
+    assert declared, "found no models to walk; the discovery above is broken"
+
+    offenders: dict[str, list[str]] = {}
+    for model in declared:
+        if model is HouseholdMedicalResponse:
+            continue
+        leaked = _all_field_names(model) & PHI_FIELD_NAMES
+        if leaked:
+            offenders[model.__name__] = sorted(leaked)
+
+    assert not offenders, f"PHI fields reachable from non-gated models: {offenders}"

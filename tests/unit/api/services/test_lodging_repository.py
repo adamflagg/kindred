@@ -162,26 +162,153 @@ class TestNarrowPhiReads:
 
 class TestFetchAssignments:
     @pytest.mark.asyncio
-    async def test_reads_only_the_live_plan_and_expands_unit_and_merge(
+    async def test_reads_the_synced_rows_and_expands_unit_and_merge(
         self, repo: LodgingRepository, pb: MagicMock
     ) -> None:
+        """No scenario predicate, because there is no scenario column.
+
+        This assertion used to require `scenario = ""` here. 1500000132 dropped
+        that column from lodging_assignments -- it was never written, and
+        keeping it invited the `scenario != ""` write rule the draft table
+        exists to avoid -- so filtering on it now asks PocketBase for an
+        unknown field. The synced rows ARE the base; a scenario overlays them.
+        """
         await repo.fetch_assignments(2026, "sess_pb_1")
 
         pb.collection.assert_called_with("lodging_assignments")
         params = _last_query(pb)
         assert 'session = "sess_pb_1"' in params["filter"]
         assert "year = 2026" in params["filter"]
-        assert 'scenario = ""' in params["filter"]
+        assert "scenario" not in params["filter"]
         assert params["expand"] == "unit,merge"
+
+
+class TestFetchDraftAssignments:
+    @pytest.mark.asyncio
+    async def test_scopes_to_one_scenario_and_expands_all_three_targets(
+        self, repo: LodgingRepository, pb: MagicMock
+    ) -> None:
+        """Three targets expand, not two.
+
+        `merge` is a slot the ingest built from a historical cabin string;
+        `merge_draft` is one the board built inside this scenario. A PocketBase
+        relation names a single collection, so a draft row that could point at
+        either needs both fields -- and a read that expands only one of them
+        renders a placed party as unplaced.
+        """
+        await repo.fetch_draft_assignments(2026, "sess_pb_1", "scn_1")
+
+        pb.collection.assert_called_with("lodging_assignments_draft")
+        params = _last_query(pb)
+        assert 'session = "sess_pb_1"' in params["filter"]
+        assert "year = 2026" in params["filter"]
+        assert 'scenario = "scn_1"' in params["filter"]
+        assert params["expand"] == "unit,merge,merge_draft"
+
+
+class TestClientSuppliedValuesAreEscaped:
+    """`scenario` and `unit_id` arrive from the client and reach a filter.
+
+    `scenario` is a bare query parameter on /roster and /summary, which gate on
+    authentication only, and a body field on every write. `unit_id` is a body
+    field. A value carrying a double quote closes the string literal early, and
+    because PocketBase binds `&&` tighter than `||`, an injected `||` clause
+    widens the predicate past its own session/year/scenario scoping -- which on
+    the write paths means the lookup returns a row from another scenario and
+    the caller then updates or deletes it.
+
+    api/utils/pb_filters.pb_escape exists for exactly this and is used by
+    geo_service and routers/debug; these call sites must use it too.
+    """
+
+    INJECTION = 'scn_1" || id != "'
+    ESCAPED = 'scn_1\\" || id != \\"'
+
+    @pytest.mark.asyncio
+    async def test_fetch_draft_assignments_escapes_the_scenario(self, repo: LodgingRepository, pb: MagicMock) -> None:
+        await repo.fetch_draft_assignments(2026, "sess_pb_1", self.INJECTION)
+
+        filter_str = _last_query(pb)["filter"]
+        assert f'scenario = "{self.ESCAPED}"' in filter_str
+        assert '" || id != "' not in filter_str
+
+    @pytest.mark.asyncio
+    async def test_fetch_scenario_availability_escapes_the_scenario(
+        self, repo: LodgingRepository, pb: MagicMock
+    ) -> None:
+        await repo.fetch_scenario_availability(2026, "sess_pb_1", self.INJECTION)
+
+        filter_str = _last_query(pb)["filter"]
+        assert f'scenario = "{self.ESCAPED}"' in filter_str
+        assert '" || id != "' not in filter_str
+
+    @pytest.mark.asyncio
+    async def test_find_draft_assignment_escapes_the_scenario(self, repo: LodgingRepository, pb: MagicMock) -> None:
+        await repo.find_draft_assignment(2026, "sess_pb_1", self.INJECTION, 1000001, 0)
+
+        filter_str = _last_query(pb)["filter"]
+        assert f'scenario = "{self.ESCAPED}"' in filter_str
+        assert '" || id != "' not in filter_str
+
+    @pytest.mark.asyncio
+    async def test_find_availability_override_escapes_both_client_values(
+        self, repo: LodgingRepository, pb: MagicMock
+    ) -> None:
+        await repo.find_availability_override(2026, "sess_pb_1", self.INJECTION, 'u1" || id != "')
+
+        filter_str = _last_query(pb)["filter"]
+        assert f'scenario = "{self.ESCAPED}"' in filter_str
+        assert 'unit = "u1\\" || id != \\""' in filter_str
+        assert '" || id != "' not in filter_str
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "call",
+        [
+            pytest.param(lambda r, s: r.fetch_availability(2026, s), id="fetch_availability"),
+            pytest.param(lambda r, s: r.fetch_assignments(2026, s), id="fetch_assignments"),
+            pytest.param(lambda r, s: r.fetch_draft_assignments(2026, s, "scn_1"), id="fetch_draft_assignments"),
+            pytest.param(lambda r, s: r.fetch_scenario_availability(2026, s, "scn_1"), id="fetch_scenario_avail"),
+        ],
+    )
+    async def test_every_session_filter_escapes_the_session_id(
+        self, repo: LodgingRepository, pb: MagicMock, call: Any
+    ) -> None:
+        """One convention across the whole file, not a per-call-site argument.
+
+        `session_pb_id` is server-resolved today, so none of these is
+        exploitable. The hazard is the split: escaping it in some session
+        filters and not others leaves a reader to work out which is which, and
+        the next caller to pass a client value inherits whichever form they
+        copied.
+        """
+        await call(repo, 'sess" || id != "')
+
+        filter_str = _last_query(pb)["filter"]
+        assert 'session = "sess\\" || id != \\""' in filter_str
+        assert '" || id != "' not in filter_str
 
 
 class TestFetchAvailability:
     @pytest.mark.asyncio
     async def test_reads_only_the_live_plan(self, repo: LodgingRepository, pb: MagicMock) -> None:
+        """lodging_availability KEPT its scenario column, unlike the two tables
+        that gained draft twins: nothing syncs into it, so there is no record
+        of truth there to protect. Empty scenario is still the live plan."""
         await repo.fetch_availability(2026, "sess_pb_1")
 
         pb.collection.assert_called_with("lodging_availability")
         assert 'scenario = ""' in _last_query(pb)["filter"]
+
+    @pytest.mark.asyncio
+    async def test_scenario_overrides_read_that_scenario_only(self, repo: LodgingRepository, pb: MagicMock) -> None:
+        await repo.fetch_scenario_availability(2026, "sess_pb_1", "scn_1")
+
+        pb.collection.assert_called_with("lodging_availability")
+        params = _last_query(pb)
+        assert 'session = "sess_pb_1"' in params["filter"]
+        assert "year = 2026" in params["filter"]
+        assert 'scenario = "scn_1"' in params["filter"]
 
 
 class TestFetchAttendees:

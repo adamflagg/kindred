@@ -27,15 +27,20 @@ func unitSetKey(unitIDs []string) string {
 }
 
 // EnsureMerge returns the id of the lodging_merges row binding exactly unitIDs
-// for (session, year, scenario), creating it if absent.
+// for (session, year), creating it if absent.
 //
 // Deduplication lives here rather than in an index because a merge's identity is
 // a SET of member units, which SQLite cannot express as a unique index. Without
 // it, each backfill run would create a fresh merge row for the same two rooms
 // and the board would show duplicate slots.
 //
-// An empty scenario means the session's live plan, matching how PocketBase
-// stores an unset relation: TEXT, NOT NULL, defaulting to the empty string.
+// NOT SCENARIO-SCOPED, since migration 1500000132. This function is the ingest's
+// and the ingest has only ever passed an empty scenario; every row it writes is
+// the live plan. A board that merges rooms inside a scenario writes
+// lodging_merges_draft instead, which keeps the synced rows out of reach of a
+// staff write -- the same split bunk_assignments and bunk_assignments_draft
+// have always had. Filtering on the dropped column now fails the whole ingest
+// with "unknown field \"scenario\"", so do not reinstate it.
 //
 // sessionCMID is the session's CampMinder id and is REQUIRED by
 // lodging_merges.session_cm_id (migration 1500000124). It is passed in rather
@@ -43,7 +48,7 @@ func unitSetKey(unitIDs []string) string {
 // deriving it here would let the relation and the durable key disagree.
 func EnsureMerge(
 	app core.App, sessionID string, sessionCMID, year int,
-	scenario string, unitIDs []string, displayName string,
+	unitIDs []string, displayName string,
 ) (string, error) {
 	// member_units is minSelect 2, maxSelect 20 (migration 1500000118). Checking
 	// both here gives a call-site error naming the member count, instead of a
@@ -52,12 +57,8 @@ func EnsureMerge(
 		return "", fmt.Errorf("merge needs between 2 and %d member units, got %d", maxMergeMembers, len(unitIDs))
 	}
 
-	// eqOrEmpty, not a bound parameter: a bound "" matches NOTHING in PocketBase,
-	// so the live plan (an empty scenario) would never find its own merge row and
-	// every run would create another one. Verified against a live PocketBase.
 	params := dbx.Params{"session": sessionID, "year": year}
-	filter := "session = {:session} && year = {:year} && " +
-		eqOrEmpty("scenario", "scenario", scenario, params)
+	const filter = "session = {:session} && year = {:year}"
 
 	existing, err := app.FindRecordsByFilter("lodging_merges", filter, "", 0, 0, params)
 	if err != nil {
@@ -79,7 +80,6 @@ func EnsureMerge(
 	rec.Set("session", sessionID)
 	rec.Set("session_cm_id", sessionCMID)
 	rec.Set("year", year)
-	rec.Set("scenario", scenario)
 	rec.Set("member_units", unitIDs)
 	rec.Set("display_name", displayName)
 	rec.Set("created_by", mergeCreatedBySync)

@@ -1,7 +1,11 @@
-"""Weekend lodging router — read-only roster for family and adult programs.
+"""Weekend lodging router — roster reads and draft writes.
 
 Thin by design: parse input, call the service, return the model. Business
 logic lives in api/services/lodging_*.py (see api/CLAUDE.md).
+
+Reads are open to any authenticated user; the five writes at the bottom gate
+on `bunking.manage` and reach only the DRAFT grain. `lodging_assignments` and
+its history stay admin-only in PocketBase and no endpoint here writes them.
 
 Caddy needs no configuration change: its inverse routing sends everything
 under /api/* that is not an explicit PocketBase path to FastAPI.
@@ -10,13 +14,19 @@ under /api/* that is not an explicit PocketBase path to FastAPI.
 from fastapi import APIRouter, Depends, HTTPException, Query
 
 from api.schemas.lodging import (
+    AvailabilityWriteRequest,
     HouseholdMedicalResponse,
+    LodgingWriteResponse,
+    MergeWriteRequest,
+    PlacementDeleteRequest,
+    PlacementWriteRequest,
     WeekendRosterResponse,
     WeekendSessionListResponse,
     WeekendSummaryResponse,
 )
 from api.services.lodging_repository import LodgingRepository
 from api.services.lodging_roster_service import LodgingRosterService, SessionNotFoundError
+from api.services.lodging_write_service import LodgingWriteService
 from bunking.auth_middleware import AuthUser, get_current_user
 from bunking.logging_config import get_logger
 from bunking.rbac.dependencies import require_permission
@@ -31,6 +41,23 @@ router = APIRouter(prefix="/api/lodging", tags=["lodging"])
 
 def _service() -> LodgingRosterService:
     return LodgingRosterService(LodgingRepository(pb))
+
+
+def _writes() -> LodgingWriteService:
+    return LodgingWriteService(LodgingRepository(pb))
+
+
+def _weekend_404(year: int, session_cm_id: int) -> HTTPException:
+    """The one 404 this surface raises, worded once.
+
+    A write naming a weekend that does not exist is a client error, not a
+    silent no-op: the board would otherwise report a successful placement into
+    nothing.
+    """
+    return HTTPException(
+        status_code=404,
+        detail=f"No family or adult session with CampMinder id {session_cm_id} in {year}",
+    )
 
 
 @router.get("/sessions", response_model=WeekendSessionListResponse)
@@ -49,6 +76,7 @@ async def list_weekend_sessions(
 @router.get("/summary", response_model=WeekendSummaryResponse)
 async def get_weekend_summary(
     year: int = Query(..., description="Year of the weekends", ge=2000, le=2100),
+    scenario: str = Query("", description="Saved scenario id; empty resolves the CampMinder mirror"),
     user: AuthUser = Depends(get_current_user),
 ) -> WeekendSummaryResponse:
     """Every weekend in a year with its counts, for the lander, in one request.
@@ -58,29 +86,37 @@ async def get_weekend_summary(
     year-scoped work identical across every weekend -- so twelve weekends
     repeat it twelve times. This does it once. The counts come from the same
     helpers `/roster` uses, so the two can never disagree.
+
+    `scenario` is here for exactly that reason. A lander that could not take it
+    would report a family unplaced while the page it links to shows them in a
+    cabin -- the two disagreeing by resolving the draft overlay differently
+    rather than by drifting apart in code.
     """
-    return await _service().build_summary(year)
+    return await _service().build_summary(year, scenario)
 
 
 @router.get("/roster", response_model=WeekendRosterResponse)
 async def get_weekend_roster(
     year: int = Query(..., description="Year of the weekend", ge=2000, le=2100),
     session_cm_id: int = Query(..., description="CampMinder id of the weekend session"),
+    scenario: str = Query("", description="Saved scenario id; empty resolves the CampMinder mirror"),
     user: AuthUser = Depends(get_current_user),
 ) -> WeekendRosterResponse:
     """Per-weekend roster: parties, the unit inventory, and honest counts.
 
-    Assignments are read-only in this slice. Capacity figures exclude
-    building/container rows and units whose `sleeps` is unknown, so they
-    never overstate what is placeable.
+    Capacity figures exclude building/container rows and units whose `sleeps`
+    is unknown, so they never overstate what is placeable.
+
+    With no `scenario` this is the CampMinder mirror -- the synced rows, which
+    no UI may write. With one, the scenario's draft placements and reservation
+    overrides are resolved OVER that mirror, per party and per unit, so a
+    scenario that has moved one family still shows every other family where
+    CampMinder put them.
     """
     try:
-        return await _service().build_roster(year, session_cm_id)
+        return await _service().build_roster(year, session_cm_id, scenario)
     except SessionNotFoundError as exc:
-        raise HTTPException(
-            status_code=404,
-            detail=f"No family or adult session with CampMinder id {session_cm_id} in {year}",
-        ) from exc
+        raise _weekend_404(year, session_cm_id) from exc
 
 
 @router.get("/households/{household_cm_id}/medical", response_model=HouseholdMedicalResponse)
@@ -106,3 +142,98 @@ async def get_household_medical(
         extra={"household_cm_id": household_cm_id, "year": year, "user": user.username},
     )
     return await _service().get_household_medical(year, household_cm_id)
+
+
+# --------------------------------------------------------------------- writes
+#
+# All five gate on `bunking.manage`, which is the point of the draft split: the
+# people who do this job are bunking staff, not admins, and the admin-only
+# record of truth is never written from a UI. The frontend must reach these
+# through `fetchWithAuth` from `useApiWithAuth()` -- the PocketBase JWT lives in
+# localStorage, not cookies, so a raw `fetch` silently 401s.
+#
+# The permission check here is not redundant with the collection rules. This
+# service writes to PocketBase with its own credentials, so the collection rule
+# never sees the caller; without these dependencies the API would be an open
+# door standing beside a locked one.
+
+
+@router.post("/placements", response_model=LodgingWriteResponse)
+async def upsert_placement(
+    request: PlacementWriteRequest,
+    user: AuthUser = Depends(require_permission(Permission.BUNKING_MANAGE)),
+) -> LodgingWriteResponse:
+    """Place a party in a scenario, or record that staff unplaced it.
+
+    A body naming no unit and no merge is the TOMBSTONE -- valid, and not the
+    same as having no draft row. See `LodgingWriteService.place_party`.
+    """
+    try:
+        return await _writes().place_party(request)
+    except SessionNotFoundError as exc:
+        raise _weekend_404(request.year, request.session_cm_id) from exc
+
+
+@router.delete("/placements", response_model=LodgingWriteResponse)
+async def delete_placement(
+    request: PlacementDeleteRequest,
+    user: AuthUser = Depends(require_permission(Permission.BUNKING_MANAGE)),
+) -> LodgingWriteResponse:
+    """Drop a party's draft row, restoring the CampMinder mirror for it.
+
+    Takes a body rather than path parameters because the row is identified by
+    four values (weekend, year, scenario, party) in one of two grains, and no
+    part of that is a resource id a client already holds.
+    """
+    try:
+        return await _writes().clear_placement(request)
+    except SessionNotFoundError as exc:
+        raise _weekend_404(request.year, request.session_cm_id) from exc
+
+
+@router.post("/merges", response_model=LodgingWriteResponse)
+async def create_merge(
+    request: MergeWriteRequest,
+    user: AuthUser = Depends(require_permission(Permission.BUNKING_MANAGE)),
+) -> LodgingWriteResponse:
+    """Bind units into one bookable slot, for this weekend and scenario.
+
+    Writes `lodging_merges_draft`. The member set is NOT validated for
+    completeness against the unit tree -- that rule was built and removed in
+    #1903; see the service docstring and docs/architecture/lodging-occupancy.md.
+    """
+    try:
+        return await _writes().create_merge(request)
+    except SessionNotFoundError as exc:
+        raise _weekend_404(request.year, request.session_cm_id) from exc
+
+
+@router.delete("/merges/{merge_draft_id}", response_model=LodgingWriteResponse)
+async def delete_merge(
+    merge_draft_id: str,
+    user: AuthUser = Depends(require_permission(Permission.BUNKING_MANAGE)),
+) -> LodgingWriteResponse:
+    """Remove a board-built slot.
+
+    This is a plain delete, unlike `deleteLodgingAlias`, which must reopen the
+    queue rows an alias resolved before removing it. Nothing keys work off a
+    draft merge, so there is no equivalent trail to reopen here.
+    """
+    return await _writes().delete_merge(merge_draft_id)
+
+
+@router.put("/availability", response_model=LodgingWriteResponse)
+async def set_availability(
+    request: AvailabilityWriteRequest,
+    user: AuthUser = Depends(require_permission(Permission.BUNKING_MANAGE)),
+) -> LodgingWriteResponse:
+    """Reserve or release one unit for this weekend, inside a scenario.
+
+    `state: null` clears the override, which is spelled as the ABSENCE of a
+    row: there is no state meaning "normal", and writing one would pin the unit
+    against a later change to the live plan.
+    """
+    try:
+        return await _writes().set_availability(request)
+    except SessionNotFoundError as exc:
+        raise _weekend_404(request.year, request.session_cm_id) from exc

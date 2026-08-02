@@ -71,6 +71,36 @@ func setupCollections(t *testing.T, app core.App) {
 		t.Fatalf("save lodging_assignments: %v", err)
 	}
 
+	// The draft grain (1500000132). Staff hold bunking.manage on these, so a
+	// write can arrive straight at the PocketBase REST API without passing
+	// through the FastAPI schemas that enforce the grain rule.
+	mergesDraft := core.NewBaseCollection("lodging_merges_draft")
+	mergesDraft.Fields.Add(&core.TextField{Name: "display_name"})
+	if err := app.Save(mergesDraft); err != nil {
+		t.Fatalf("save lodging_merges_draft: %v", err)
+	}
+	mergesDraftCol, draftErr := app.FindCollectionByNameOrId("lodging_merges_draft")
+	if draftErr != nil {
+		t.Fatalf("find lodging_merges_draft: %v", draftErr)
+	}
+
+	assignmentsDraft := core.NewBaseCollection("lodging_assignments_draft")
+	assignmentsDraft.Fields.Add(&core.RelationField{
+		Name: "unit", CollectionId: unitsCol.Id, MaxSelect: 1,
+	})
+	assignmentsDraft.Fields.Add(&core.RelationField{
+		Name: "merge", CollectionId: mergesCol.Id, MaxSelect: 1,
+	})
+	assignmentsDraft.Fields.Add(&core.RelationField{
+		Name: "merge_draft", CollectionId: mergesDraftCol.Id, MaxSelect: 1,
+	})
+	assignmentsDraft.Fields.Add(&core.NumberField{Name: "household_cm_id"})
+	assignmentsDraft.Fields.Add(&core.NumberField{Name: "person_cm_id"})
+	assignmentsDraft.Fields.Add(&core.NumberField{Name: "year"})
+	if err := app.Save(assignmentsDraft); err != nil {
+		t.Fatalf("save lodging_assignments_draft: %v", err)
+	}
+
 	aliases := core.NewBaseCollection("lodging_unit_aliases")
 	aliases.Fields.Add(&core.TextField{Name: "alias_string", Required: true})
 	// member_units, valid_from_year and valid_to_year back sync.AliasResolver.
@@ -239,6 +269,22 @@ func newMerge(t *testing.T, app core.App, displayName string) *core.Record {
 	return r
 }
 
+// newDraftMerge saves a board-built slot and returns its id. Distinct from
+// newMerge: that one writes the ingest's table, this one the draft twin.
+func newDraftMerge(t *testing.T, app core.App, displayName string) string {
+	t.Helper()
+	col, err := app.FindCollectionByNameOrId("lodging_merges_draft")
+	if err != nil {
+		t.Fatalf("find lodging_merges_draft: %v", err)
+	}
+	r := core.NewRecord(col)
+	r.Set("display_name", displayName)
+	if err := app.Save(r); err != nil {
+		t.Fatalf("save draft merge %q: %v", displayName, err)
+	}
+	return r.Id
+}
+
 // newAssignment saves an assignment WITHOUT the guards attached, so tests can
 // stage the state a guard is supposed to protect.
 func newAssignment(t *testing.T, app core.App, unitID, mergeID string, householdCmID, personCmID int) *core.Record {
@@ -387,6 +433,79 @@ func TestAssignmentGrainXor(t *testing.T) {
 			}
 			if !tc.wantErr && saveErr != nil {
 				t.Fatalf("expected a legal grain combination to save, got: %v", saveErr)
+			}
+		})
+	}
+}
+
+// TestDraftAssignmentGrainXor is the backstop for a DIRECT write to the draft
+// table, which 1500000132 widened who can make: staff hold bunking.manage on
+// lodging_assignments_draft, so a POST straight to the PocketBase REST API
+// never passes through PartyGrainRequest._exactly_one_grain in the FastAPI
+// schemas. Same reasoning as guardUnitParentCycle, which exists because
+// 1500000130 widened who can write lodging_units.
+//
+// The TARGET rule is deliberately NOT the truth table's. A draft row naming no
+// unit and no merge is the TOMBSTONE -- "staff took this party off the board in
+// this scenario" -- and is a legitimate row, which is why guardAssignmentGrain
+// cannot simply be re-bound here. Only the party grain is enforced.
+func TestDraftAssignmentGrainXor(t *testing.T) {
+	cases := []struct {
+		name          string
+		unitSet       bool
+		mergeDraftSet bool
+		householdCmID int
+		personCmID    int
+		wantErr       bool
+	}{
+		{"household on a unit", true, false, 2000001, 0, false},
+		{"person on a unit", true, false, 0, 1000001, false},
+		{"household on a board-built merge", false, true, 2000001, 0, false},
+		// The tombstone. Illegal on the truth table, meaningful here.
+		{"no target at all is the tombstone", false, false, 2000001, 0, false},
+		// No XOR across targets on the draft, exactly as the migration says.
+		{"both a unit and a board-built merge", true, true, 2000001, 0, false},
+		{"both household and person", true, false, 2000001, 1000001, true},
+		{"neither household nor person", true, false, 0, 0, true},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			app, err := tests.NewTestApp()
+			if err != nil {
+				t.Fatalf("NewTestApp: %v", err)
+			}
+			defer app.Cleanup()
+
+			setupCollections(t, app)
+			unitID := ""
+			if tc.unitSet {
+				unitID = newUnit(t, app, "ridge-a", "Ridge A").Id
+			}
+			mergeDraftID := ""
+			if tc.mergeDraftSet {
+				mergeDraftID = newDraftMerge(t, app, "Wawona")
+			}
+
+			wireHooks(app)
+
+			col, err := app.FindCollectionByNameOrId("lodging_assignments_draft")
+			if err != nil {
+				t.Fatalf("find lodging_assignments_draft: %v", err)
+			}
+			r := core.NewRecord(col)
+			r.Set("unit", unitID)
+			r.Set("merge_draft", mergeDraftID)
+			r.Set("household_cm_id", tc.householdCmID)
+			r.Set("person_cm_id", tc.personCmID)
+			r.Set("year", 2026)
+
+			saveErr := app.Save(r)
+			if tc.wantErr && saveErr == nil {
+				t.Fatal("expected the illegal grain combination to be rejected")
+			}
+			if !tc.wantErr && saveErr != nil {
+				t.Fatalf("expected a legal draft row to save, got: %v", saveErr)
 			}
 		})
 	}

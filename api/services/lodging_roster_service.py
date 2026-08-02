@@ -122,7 +122,15 @@ class LodgingRosterService:
             sort_order=_i(row, "sort_order"),
         )
 
-    async def build_roster(self, year: int, session_cm_id: int) -> WeekendRosterResponse:
+    async def build_roster(self, year: int, session_cm_id: int, scenario: str = "") -> WeekendRosterResponse:
+        """One weekend's roster, optionally resolved through a scenario.
+
+        No scenario is the CampMinder mirror -- the synced rows, exactly as
+        before this layer existed, and read-only for everyone. A scenario
+        OVERLAYS its draft rows on top of that base, per party and per unit,
+        which is what lets a freshly-created scenario render the synced
+        placements instead of an empty board.
+        """
         session = await self.repository.fetch_session(year, session_cm_id)
         if session is None:
             raise SessionNotFoundError(f"No weekend session {session_cm_id} in {year}")
@@ -151,8 +159,25 @@ class LodgingRosterService:
             medical_task = tg.create_task(self.repository.fetch_family_camp_medical(year))
             aliases_task = tg.create_task(self.repository.count_open_unresolved_aliases())
             unconfirmed_task = tg.create_task(self.repository.count_unconfirmed_units())
+            # The scenario layer joins the SAME group rather than running after
+            # it: production mode must cost exactly what it did before, and
+            # scenario mode must not cost a second round trip.
+            draft_task = (
+                tg.create_task(self.repository.fetch_draft_assignments(year, session_pb_id, scenario))
+                if scenario
+                else None
+            )
+            scenario_availability_task = (
+                tg.create_task(self.repository.fetch_scenario_availability(year, session_pb_id, scenario))
+                if scenario
+                else None
+            )
 
-        unit_summaries = self._build_units(units_task.result(), availability_task.result())
+        unit_summaries = self._build_units(
+            units_task.result(),
+            availability_task.result(),
+            scenario_availability_task.result() if scenario_availability_task is not None else [],
+        )
         parties = self._build_parties(
             session_type=session_type,
             attendees=attendees_task.result(),
@@ -162,6 +187,7 @@ class LodgingRosterService:
             registrations=registrations_task.result(),
             medical=medical_task.result(),
             assignments=assignments_task.result(),
+            draft_assignments=draft_task.result() if draft_task is not None else [],
         )
         counts = self._build_counts(unit_summaries, parties, aliases_task.result(), unconfirmed_task.result())
 
@@ -175,7 +201,7 @@ class LodgingRosterService:
             counts=counts,
         )
 
-    async def build_summary(self, year: int) -> WeekendSummaryResponse:
+    async def build_summary(self, year: int, scenario: str = "") -> WeekendSummaryResponse:
         """Every weekend in the year with its counts, in one pass.
 
         `build_roster` makes eleven fetches, of which EIGHT are year-scoped --
@@ -185,11 +211,19 @@ class LodgingRosterService:
         lander repeats all eight N times, which is why a weekend with zero
         parties still costs about three seconds.
 
-        So the year-scoped work happens once here, and only the three genuinely
-        session-scoped reads (availability, assignments, attendees) run per
-        weekend. The per-weekend numbers then come from the SAME
-        `_build_units` / `_build_parties` / `_build_counts` helpers the roster
-        uses, so the lander cannot drift from the page it links to.
+        So the year-scoped work happens once here, and only the genuinely
+        session-scoped reads run per weekend: availability, assignments and
+        attendees always, plus the scenario's draft placements and its
+        availability overrides when a scenario is named. The per-weekend
+        numbers then come from the SAME `_build_units` / `_build_parties` /
+        `_build_counts` helpers the roster uses, so the lander cannot drift
+        from the page it links to.
+
+        Scenario mode therefore costs five session-scoped reads per weekend
+        rather than three, and nothing caps the resulting fan-out. That is
+        deliberate for now -- there is no lander calling this with a scenario
+        yet, so there is nothing to measure against -- and kindred#1920 records
+        the two ways to bound it when there is.
         """
         sessions = await self.repository.fetch_weekend_sessions(year)
         if not sessions:
@@ -220,8 +254,22 @@ class LodgingRosterService:
                 availability_task = inner.create_task(self.repository.fetch_availability(year, session_pb_id))
                 assignments_task = inner.create_task(self.repository.fetch_assignments(year, session_pb_id))
                 attendees_task = inner.create_task(self.repository.fetch_attendees_for_session(year, session_pb_id))
+                draft_task = (
+                    inner.create_task(self.repository.fetch_draft_assignments(year, session_pb_id, scenario))
+                    if scenario
+                    else None
+                )
+                scenario_availability_task = (
+                    inner.create_task(self.repository.fetch_scenario_availability(year, session_pb_id, scenario))
+                    if scenario
+                    else None
+                )
 
-            unit_summaries = self._build_units(units, availability_task.result())
+            unit_summaries = self._build_units(
+                units,
+                availability_task.result(),
+                scenario_availability_task.result() if scenario_availability_task is not None else [],
+            )
             parties = self._build_parties(
                 session_type=_s(session, "session_type"),
                 attendees=attendees_task.result(),
@@ -231,6 +279,7 @@ class LodgingRosterService:
                 registrations=registrations,
                 medical=medical,
                 assignments=assignments_task.result(),
+                draft_assignments=draft_task.result() if draft_task is not None else [],
             )
             return WeekendSummaryEntry(
                 session=self._session_summary(session),
@@ -263,8 +312,18 @@ class LodgingRosterService:
 
     # ---------------------------------------------------------------- units
 
-    def _build_units(self, units: list[Any], availability: list[Any]) -> list[LodgingUnitSummary]:
+    def _build_units(
+        self,
+        units: list[Any],
+        availability: list[Any],
+        scenario_availability: list[Any] | None = None,
+    ) -> list[LodgingUnitSummary]:
+        # Live rows first, then the scenario's on top: reserving one cabin
+        # inside a scenario must not discard every live reservation, and a
+        # scenario row for the same unit must win.
         override_by_unit = {_s(row, "unit"): _s(row, "state") for row in availability}
+        for row in scenario_availability or []:
+            override_by_unit[_s(row, "unit")] = _s(row, "state")
 
         # Bathroom groups are computed across ALL units, because a group's
         # membership does not depend on the session.
@@ -335,8 +394,10 @@ class LodgingRosterService:
         registrations: dict[str, Any],
         medical: dict[str, Any],
         assignments: list[Any],
+        draft_assignments: list[Any] | None = None,
     ) -> list[RosterParty]:
         placement_by_household, placement_by_person = self._index_assignments(assignments)
+        self._overlay_draft_assignments(placement_by_household, placement_by_person, draft_assignments or [])
 
         if session_type == "adult":
             return self._build_person_parties(attendees, placement_by_person)
@@ -351,6 +412,49 @@ class LodgingRosterService:
             placement_by_household=placement_by_household,
         )
 
+    @staticmethod
+    def _placement_of(row: Any) -> tuple[str, str, bool] | None:
+        """(unit_code, display_name, is_merged_slot) for a row, or None.
+
+        None means the row names NO target. On a synced row that is an orphan
+        -- the unit was deleted out from under it, which the DB allows -- and
+        on a DRAFT row it is the deliberate "staff took this party off the
+        board" tombstone. Both read the same here; what differs is how the
+        caller treats it, which is why this returns None rather than skipping.
+
+        `merge_draft` is checked before `merge`: a board-built slot is the more
+        specific answer when a row somehow carries both. The schema enforces no
+        XOR between the three, exactly as it does not on the truth table.
+        """
+        expand = getattr(row, "expand", None) or {}
+        merge_draft = expand.get("merge_draft")
+        if merge_draft is not None and _s(row, "merge_draft"):
+            return "", _s(merge_draft, "display_name"), True
+        merge = expand.get("merge")
+        if merge is not None and _s(row, "merge"):
+            return "", _s(merge, "display_name"), True
+        unit = expand.get("unit")
+        if unit is not None and _s(row, "unit"):
+            return _s(unit, "code"), _s(unit, "name"), False
+        return None
+
+    @staticmethod
+    def _grain_key(row: Any) -> tuple[str, int] | None:
+        """("person" | "household", cm_id), or None for a row with neither.
+
+        A person row OVERRIDES its household's, which is the dual grain the
+        assignment tables were built around: family camp places households,
+        adult weekends place people, and a grandparent housed apart from their
+        family is a household row plus one person override.
+        """
+        person_cm_id = _i(row, "person_cm_id")
+        if person_cm_id > 0:
+            return "person", person_cm_id
+        household_cm_id = _i(row, "household_cm_id")
+        if household_cm_id > 0:
+            return "household", household_cm_id
+        return None
+
     def _index_assignments(
         self, assignments: list[Any]
     ) -> tuple[dict[int, tuple[str, str, bool]], dict[int, tuple[str, str, bool]]]:
@@ -358,24 +462,46 @@ class LodgingRosterService:
         by_household: dict[int, tuple[str, str, bool]] = {}
         by_person: dict[int, tuple[str, str, bool]] = {}
         for row in assignments:
-            expand = getattr(row, "expand", None) or {}
-            merge = expand.get("merge")
-            unit = expand.get("unit")
-            if merge is not None and _s(row, "merge"):
-                placement = ("", _s(merge, "display_name"), True)
-            elif unit is not None and _s(row, "unit"):
-                placement = (_s(unit, "code"), _s(unit, "name"), False)
-            else:
-                # Orphaned placement: the target was deleted out from under
-                # it (the DB allows this — see the Go guards in Phase C).
+            placement = self._placement_of(row)
+            if placement is None:
                 continue
-            household_cm_id = _i(row, "household_cm_id")
-            person_cm_id = _i(row, "person_cm_id")
-            if person_cm_id > 0:
-                by_person[person_cm_id] = placement
-            elif household_cm_id > 0:
-                by_household[household_cm_id] = placement
+            grain = self._grain_key(row)
+            if grain is None:
+                continue
+            if grain[0] == "person":
+                by_person[grain[1]] = placement
+            else:
+                by_household[grain[1]] = placement
         return by_household, by_person
+
+    def _overlay_draft_assignments(
+        self,
+        by_household: dict[int, tuple[str, str, bool]],
+        by_person: dict[int, tuple[str, str, bool]],
+        drafts: list[Any],
+    ) -> None:
+        """Apply one scenario's draft rows over the synced placements, in place.
+
+        PER PARTY, not all-or-nothing. A scenario that has moved one family
+        must leave the other sixty-one showing what CampMinder says, or
+        selecting a scenario would read as "everyone is suddenly unplaced".
+
+        A draft row with no target REMOVES the synced placement rather than
+        being ignored. That distinction is the whole reason the overlay cannot
+        be a dict update: "staff dragged this family off the board" and "this
+        family has no draft row" are different states, and only the second one
+        should fall through to the CampMinder mirror.
+        """
+        for row in drafts:
+            grain = self._grain_key(row)
+            if grain is None:
+                continue
+            target = by_person if grain[0] == "person" else by_household
+            placement = self._placement_of(row)
+            if placement is None:
+                target.pop(grain[1], None)
+            else:
+                target[grain[1]] = placement
 
     def _build_person_parties(
         self, attendees: list[Any], placement_by_person: dict[int, tuple[str, str, bool]]

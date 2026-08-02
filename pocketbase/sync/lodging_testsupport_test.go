@@ -130,7 +130,6 @@ func newLodgingTestApp(t *testing.T) core.App {
 	// fails loudly here instead of only in production.
 	merges.Fields.Add(&core.NumberField{Name: "session_cm_id", Required: true, OnlyInt: true})
 	merges.Fields.Add(&core.NumberField{Name: "year"})
-	merges.Fields.Add(&core.TextField{Name: "scenario"})
 	merges.Fields.Add(&core.RelationField{Name: "member_units", CollectionId: units.Id, MaxSelect: 20})
 	merges.Fields.Add(&core.TextField{Name: "display_name"})
 	merges.Fields.Add(&core.TextField{Name: "created_by"})
@@ -146,7 +145,6 @@ func newLodgingTestApp(t *testing.T) core.App {
 	assignments.Fields.Add(&core.NumberField{Name: "year"})
 	assignments.Fields.Add(&core.RelationField{Name: "unit", CollectionId: units.Id, MaxSelect: 1})
 	assignments.Fields.Add(&core.RelationField{Name: "merge", CollectionId: merges.Id, MaxSelect: 1})
-	assignments.Fields.Add(&core.TextField{Name: "scenario"})
 	assignments.Fields.Add(&core.NumberField{Name: "household_cm_id"})
 	assignments.Fields.Add(&core.NumberField{Name: "person_cm_id"})
 	assignments.Fields.Add(&core.NumberField{Name: "party_size"})

@@ -182,7 +182,8 @@ ra=$(field_prop lodging_ingest_issues resolved_alias cascadeDelete || true)
 # is the CURRENT sync year only -- but within that year the loss is total and
 # silent. session is required on all three, so cascadeDelete = false makes
 # PocketBase refuse the parent delete with a 400 instead of cascading.
-for c in lodging_merges lodging_availability lodging_assignments; do
+for c in lodging_merges lodging_availability lodging_assignments \
+         lodging_assignments_draft lodging_merges_draft; do
   casc=$(field_prop "$c" session cascadeDelete || true)
   [[ "$casc" == "0" || "$casc" == "false" ]] \
     || note "$c.session cascadeDelete is '$casc' (expected false; see kindred#1879)"
@@ -202,7 +203,8 @@ done
 # while lodging_assignment_history leaves it optional because an audit row is
 # meant to outlive its session. A migration flipping either way would otherwise
 # pass this verifier in silence.
-for c in lodging_merges lodging_availability lodging_assignments lodging_assignment_history; do
+for c in lodging_merges lodging_availability lodging_assignments lodging_assignment_history \
+         lodging_assignments_draft lodging_merges_draft; do
   [[ "$(field_prop "$c" session_cm_id onlyInt || true)" == "1" ]] \
     || note "$c.session_cm_id missing or not onlyInt (see kindred#1879)"
 
@@ -217,6 +219,117 @@ for c in lodging_merges lodging_availability lodging_assignments lodging_assignm
     [[ "$req_cm" == "1" || "$req_cm" == "true" ]] \
       || note "$c.session_cm_id required is '$req_cm', want required (see kindred#1879)"
   fi
+done
+
+# ------------------------------------------------------------- the draft grain
+#
+# 1500000132. The board writes a DRAFT; the ingest keeps sole ownership of the
+# synced record of truth. Summer settled this shape long ago -- staff write
+# bunk_assignments_draft and have never held a write on bunk_assignments -- and
+# these assertions are what stop lodging drifting off it.
+#
+# scenario is a property of PLANNING, not of record, so it lives only on the
+# draft. Both truth grains carried a dead scenario column (all 67 assignment
+# rows had scenario = ''); 1500000132 drops it. The alternative -- widening the
+# truth table and scoping staff to non-empty scenarios via a `scenario != ""`
+# write rule -- is a guard by convention, one string edit from opening the
+# synced rows, and it makes every reader responsible for a filter.
+
+for c in lodging_assignments_draft lodging_merges_draft; do
+  n=$(sqlite3 "$DB" "SELECT COUNT(*) FROM _collections WHERE name = '$c'")
+  [[ "$n" -eq 1 ]] || note "collection $c missing"
+done
+
+# Gone from both truth grains.
+for c in lodging_assignments lodging_merges; do
+  sc=$(field_prop "$c" scenario name || true)
+  [[ -z "$sc" ]] \
+    || note "$c still carries a scenario field; 1500000132 drops it -- scenario belongs to the draft"
+done
+
+# Present on the drafts, and on lodging_availability -- which is scenario-aware
+# IN PLACE rather than through a twin, because nothing syncs into it. There is
+# no record of truth there to protect, so the argument above does not apply.
+for c in lodging_assignments_draft lodging_merges_draft lodging_availability; do
+  sc=$(field_prop "$c" scenario name || true)
+  [[ "$sc" == "scenario" ]] || note "$c must carry a scenario field"
+done
+
+# Deleting a saved scenario sweeps its drafts server-side. bunk_assignments_draft
+# was created with cascadeDelete false and flipped precisely because the client
+# was carrying an N+1 pre-delete loop to compensate; do not repeat that.
+for c in lodging_assignments_draft lodging_merges_draft; do
+  casc=$(field_prop "$c" scenario cascadeDelete || true)
+  [[ "$casc" == "1" || "$casc" == "true" ]] \
+    || note "$c.scenario cascadeDelete is '$casc' (expected true so deleting a scenario sweeps its drafts)"
+done
+
+# The live indexes lose `scenario` and keep `> 0`. Both halves matter: an index
+# naming a dropped column cannot be created at all, and the predicate is the
+# 0 != '' trap documented at idx_lodging_assign_hh_live above.
+for idx in idx_lodging_assign_hh_live idx_lodging_assign_person_live; do
+  sql=$(sqlite3 "$DB" "SELECT COALESCE(sql,'') FROM sqlite_master WHERE type='index' AND name='$idx'" || true)
+  [[ "$sql" != *scenario* ]] || note "index $idx still keys on scenario: $sql"
+done
+
+# The draft's uniqueness is the summer shape carried onto the dual grain: one
+# row per party per session PER SCENARIO. The `> 0` predicate is required for
+# the same reason as on the truth table -- a person-grain draft row still
+# stores household_cm_id = 0, and `!= ''` would collide every one of them.
+for idx in idx_lodging_draft_hh idx_lodging_draft_person; do
+  sql=$(sqlite3 "$DB" "SELECT COALESCE(sql,'') FROM sqlite_master WHERE type='index' AND name='$idx'" || true)
+  if [[ -z "$sql" ]]; then
+    note "index $idx missing"
+  else
+    [[ "$sql" == *UNIQUE* ]] || note "index $idx is not UNIQUE: $sql"
+    [[ "$sql" != *"!= ''"* ]] || note "index $idx uses \"!= ''\" -- must be \"> 0\" (0 != '' is TRUE in SQLite)"
+    [[ "$sql" == *"> 0"* ]] || note "index $idx predicate lacks \"> 0\": $sql"
+    [[ "$sql" == *'`scenario`'* ]] || note "index $idx must key on scenario: $sql"
+  fi
+done
+
+ms=$(field_prop lodging_merges_draft member_units maxSelect || true)
+[[ -n "$ms" && "$ms" != "1" ]] || note "lodging_merges_draft.member_units maxSelect is '$ms' (expected >1 or null)"
+
+# Write access, read from the APPLIED schema rather than from the migration
+# text. The drafts and the planning tables are what staff write; the synced
+# record of truth, its append-only audit trail and the ingest's field map stay
+# admin-only. A single loop over both lists is what makes an accidental
+# widening fail here instead of in production.
+rule_of() { sqlite3 "$DB" "SELECT COALESCE($2,'') FROM _collections WHERE name = '$1'"; }
+
+BUNKING_MANAGE_RULE='@request.auth.is_admin = true || @request.auth.cached_permissions ~ "bunking.manage"'
+ADMIN_ONLY_RULE='@request.auth.is_admin = true'
+AUTHED_READ_RULE='@request.auth.id != ""'
+
+for c in lodging_assignments_draft lodging_merges_draft lodging_availability lodging_merges \
+         lodging_areas lodging_units lodging_unit_aliases lodging_ingest_issues; do
+  for r in createRule updateRule deleteRule; do
+    got=$(rule_of "$c" "$r" || true)
+    [[ "$got" == "$BUNKING_MANAGE_RULE" ]] \
+      || note "$c.$r is '$got', want the canonical bunking.manage rule"
+  done
+done
+
+for c in lodging_assignments lodging_assignment_history lodging_field_mappings; do
+  for r in createRule updateRule deleteRule; do
+    got=$(rule_of "$c" "$r" || true)
+    [[ "$got" == "$ADMIN_ONLY_RULE" ]] \
+      || note "$c.$r is '$got', want admin-only -- the ingest keeps sole ownership of the record of truth"
+  done
+done
+
+# Reads stay open on every lodging collection, drafts included. A staff member
+# without bunking.manage must still SEE a scenario board (read-only), the same
+# way summer renders production mode for everyone; gating the drafts' reads
+# would blank the board rather than freeze it.
+for c in lodging_assignments_draft lodging_merges_draft lodging_assignments lodging_merges \
+         lodging_availability lodging_areas lodging_units lodging_unit_aliases \
+         lodging_ingest_issues lodging_assignment_history; do
+  for r in listRule viewRule; do
+    got=$(rule_of "$c" "$r" || true)
+    [[ "$got" == "$AUTHED_READ_RULE" ]] || note "$c.$r is '$got', want $AUTHED_READ_RULE"
+  done
 done
 
 if [[ "$fail" -ne 0 ]]; then echo "verify-lodging-schema: FAILED" >&2; exit 1; fi

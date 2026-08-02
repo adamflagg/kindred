@@ -108,7 +108,10 @@ rule: it blocks legitimate work and teaches staff to ignore warnings.
   how many parties may occupy it.
 - `lodging_availability` carries per-unit state per session, not capacity.
 - The unique indexes on `lodging_assignments` are
-  `(session, year, household_cm_id, scenario)` and the person-grain equivalent.
+  `(session, year, household_cm_id)` and the person-grain equivalent, each
+  partial on `> 0` so the two grains do not collide. (Migration `1500000132`
+  dropped the dead `scenario` column from this table; scenario planning lives
+  in `lodging_assignments_draft`, whose equivalent indexes add `scenario`.)
   They prevent one **party** holding two placements; nothing prevents one
   **unit** holding two parties.
 

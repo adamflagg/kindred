@@ -3,10 +3,17 @@
 Every PocketBase read behind /api/lodging lives here so the service layer is
 testable against mocks. Mirrors api/services/metrics_repository.py.
 
-Slice 1 reads the LIVE PLAN only: lodging_availability, lodging_merges and
-lodging_assignments each carry a nullable `scenario` relation, and an empty
-scenario means the session's live plan. Every filter here pins
-`scenario = ""`. Scenario-scoped reads are a later phase.
+Two layers, since 1500000132. The SYNCED rows are the base and are read with
+no scenario predicate -- lodging_assignments and lodging_merges no longer have
+that column, because it was dead weight that invited a `scenario != ""` write
+rule instead of a draft table. A scenario's own rows come from
+lodging_assignments_draft, and from lodging_availability filtered to the
+scenario, and OVERLAY the base per party and per unit.
+
+Overlay rather than replace is what makes a freshly-created scenario render
+the CampMinder mirror rather than an empty board, with no seed step to go
+wrong. `scenario = ""` still means the live plan for availability, which kept
+its column.
 
 Request answers are NOT re-parsed here. The Go ingest derives the share gate,
 the NEAR/WITH/similar-ages modes, the household-grain request text and the four
@@ -29,11 +36,14 @@ from api.constants.collections import (
     FAMILY_CAMP_REGISTRATIONS,
     HOUSEHOLDS,
     LODGING_ASSIGNMENTS,
+    LODGING_ASSIGNMENTS_DRAFT,
     LODGING_AVAILABILITY,
     LODGING_INGEST_ISSUES,
+    LODGING_MERGES_DRAFT,
     LODGING_UNITS,
 )
 from api.constants.filters import ACTIVE_ENROLLED_FILTER
+from api.utils.pb_filters import pb_escape
 from bunking.logging_config import get_logger
 
 if TYPE_CHECKING:
@@ -115,22 +125,79 @@ class LodgingRepository:
         )
 
     async def fetch_availability(self, year: int, session_pb_id: str) -> list[Any]:
-        """Live-plan staff reservations / releases for one session."""
+        """Live-plan staff reservations / releases for one session.
+
+        lodging_availability is the one placement table that stayed
+        scenario-aware IN PLACE rather than gaining a draft twin: nothing syncs
+        into it, so there is no record of truth to protect. This reads the LIVE
+        rows only; a scenario's own overrides come from
+        fetch_scenario_availability and overlay these.
+        """
         return await asyncio.to_thread(
             self.pb.collection(LODGING_AVAILABILITY).get_full_list,
             query_params={
-                "filter": f'session = "{session_pb_id}" && year = {year} && {LIVE_PLAN_FILTER}',
+                "filter": f'session = "{pb_escape(session_pb_id)}" && year = {year} && {LIVE_PLAN_FILTER}',
+                "sort": STABLE_SORT,
+            },
+        )
+
+    async def fetch_scenario_availability(self, year: int, session_pb_id: str, scenario_id: str) -> list[Any]:
+        """One scenario's reservation overrides for one session.
+
+        `scenario_id` is CLIENT-SUPPLIED -- a bare query parameter on /roster
+        and /summary, which gate on authentication only -- so it goes through
+        pb_escape. See the note on fetch_draft_assignments.
+        """
+        return await asyncio.to_thread(
+            self.pb.collection(LODGING_AVAILABILITY).get_full_list,
+            query_params={
+                "filter": (
+                    f'session = "{pb_escape(session_pb_id)}" && year = {year} && scenario = "{pb_escape(scenario_id)}"'
+                ),
                 "sort": STABLE_SORT,
             },
         )
 
     async def fetch_assignments(self, year: int, session_pb_id: str) -> list[Any]:
-        """Live-plan lodging assignments for one session."""
+        """Synced lodging assignments for one session.
+
+        No scenario predicate: 1500000132 dropped that column. It was never
+        written -- all 67 rows carried '' -- and keeping it would have invited
+        exactly the `scenario != ""` write rule the draft table exists to avoid.
+        These rows ARE the live plan, and a scenario overlays them.
+        """
         return await asyncio.to_thread(
             self.pb.collection(LODGING_ASSIGNMENTS).get_full_list,
             query_params={
-                "filter": f'session = "{session_pb_id}" && year = {year} && {LIVE_PLAN_FILTER}',
+                "filter": f'session = "{pb_escape(session_pb_id)}" && year = {year}',
                 "expand": "unit,merge",
+                "sort": STABLE_SORT,
+            },
+        )
+
+    async def fetch_draft_assignments(self, year: int, session_pb_id: str, scenario_id: str) -> list[Any]:
+        """One scenario's draft placements for one session.
+
+        Three targets expand, not two: `unit` is an atomic room, `merge` is a
+        slot the ingest built from a historical cabin string, and `merge_draft`
+        is one the board built inside this scenario. A PocketBase relation
+        names a single collection, so the two kinds of merge need two fields.
+
+        EVERY interpolated string here goes through pb_escape. `scenario_id`
+        reaches this method straight off the `?scenario=` query parameter, and
+        a value carrying a double quote closes the literal early: PocketBase
+        binds `&&` tighter than `||`, so an injected `||` clause widens the
+        predicate past its own session/year/scenario scoping. `session_pb_id`
+        is server-resolved and cannot carry one today, but it is escaped too so
+        that reading this line requires no argument about provenance.
+        """
+        return await asyncio.to_thread(
+            self.pb.collection(LODGING_ASSIGNMENTS_DRAFT).get_full_list,
+            query_params={
+                "filter": (
+                    f'session = "{pb_escape(session_pb_id)}" && year = {year} && scenario = "{pb_escape(scenario_id)}"'
+                ),
+                "expand": "unit,merge,merge_draft",
                 "sort": STABLE_SORT,
             },
         )
@@ -285,3 +352,90 @@ class LodgingRepository:
             LODGING_UNITS,
             "is_confirmed = false && is_container = false && is_active = true",
         )
+
+    # ---------------------------------------------------------------- writes
+    #
+    # Every write below targets the DRAFT grain or lodging_availability. None
+    # of them can reach lodging_assignments, lodging_assignment_history or
+    # lodging_field_mappings, which the ingest owns and which stay admin-only
+    # in PocketBase regardless of what this layer asks for.
+
+    async def find_draft_assignment(
+        self, year: int, session_pb_id: str, scenario_id: str, household_cm_id: int, person_cm_id: int
+    ) -> Any | None:
+        """The one draft row for a party in a scenario, or None.
+
+        Keyed exactly as the draft's two partial unique indexes are, so the
+        lookup either finds the row the next write would collide with, or
+        there is none. Both grain columns are compared to a known value; never
+        write `!= ''` against them, because PocketBase numbers are
+        NUMERIC DEFAULT 0 NOT NULL and SQLite reads `0 != ''` as TRUE, which
+        matches every row of the other grain.
+
+        `scenario_id` is client-supplied and escaped. Unescaped, an injected
+        `||` would make this return a row from ANOTHER scenario, which the
+        caller then updates or deletes. The two cm_ids are ints and need no
+        escaping.
+        """
+        rows = await asyncio.to_thread(
+            self.pb.collection(LODGING_ASSIGNMENTS_DRAFT).get_full_list,
+            query_params={
+                "filter": (
+                    f'session = "{pb_escape(session_pb_id)}" && year = {year} '
+                    f'&& scenario = "{pb_escape(scenario_id)}" '
+                    f"&& household_cm_id = {household_cm_id} && person_cm_id = {person_cm_id}"
+                ),
+                "sort": STABLE_SORT,
+            },
+        )
+        return rows[0] if rows else None
+
+    async def create_draft_assignment(self, data: dict[str, Any]) -> Any:
+        return await asyncio.to_thread(self.pb.collection(LODGING_ASSIGNMENTS_DRAFT).create, data)
+
+    async def update_draft_assignment(self, record_id: str, data: dict[str, Any]) -> Any:
+        return await asyncio.to_thread(self.pb.collection(LODGING_ASSIGNMENTS_DRAFT).update, record_id, data)
+
+    async def delete_draft_assignment(self, record_id: str) -> None:
+        await asyncio.to_thread(self.pb.collection(LODGING_ASSIGNMENTS_DRAFT).delete, record_id)
+
+    async def create_draft_merge(self, data: dict[str, Any]) -> Any:
+        return await asyncio.to_thread(self.pb.collection(LODGING_MERGES_DRAFT).create, data)
+
+    async def delete_draft_merge(self, record_id: str) -> None:
+        await asyncio.to_thread(self.pb.collection(LODGING_MERGES_DRAFT).delete, record_id)
+
+    async def find_availability_override(
+        self, year: int, session_pb_id: str, scenario_id: str, unit_pb_id: str
+    ) -> Any | None:
+        """The one availability row for a unit in a scenario, or None.
+
+        Matches idx_lodging_avail_unique, which is (session, year, scenario,
+        unit): without that index a unit could carry both a reserved_staff and
+        a released_to_family row for the same key and "is this available?"
+        would stop being a question with an answer.
+
+        `scenario_id` and `unit_pb_id` both arrive in the request body and are
+        escaped. Unescaped, an injected `||` would make this return some other
+        weekend's row, which set_availability then updates or deletes.
+        """
+        rows = await asyncio.to_thread(
+            self.pb.collection(LODGING_AVAILABILITY).get_full_list,
+            query_params={
+                "filter": (
+                    f'session = "{pb_escape(session_pb_id)}" && year = {year} '
+                    f'&& scenario = "{pb_escape(scenario_id)}" && unit = "{pb_escape(unit_pb_id)}"'
+                ),
+                "sort": STABLE_SORT,
+            },
+        )
+        return rows[0] if rows else None
+
+    async def create_availability(self, data: dict[str, Any]) -> Any:
+        return await asyncio.to_thread(self.pb.collection(LODGING_AVAILABILITY).create, data)
+
+    async def update_availability(self, record_id: str, data: dict[str, Any]) -> Any:
+        return await asyncio.to_thread(self.pb.collection(LODGING_AVAILABILITY).update, record_id, data)
+
+    async def delete_availability(self, record_id: str) -> None:
+        await asyncio.to_thread(self.pb.collection(LODGING_AVAILABILITY).delete, record_id)
