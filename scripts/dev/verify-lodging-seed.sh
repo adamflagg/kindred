@@ -67,6 +67,12 @@ q() { sqlite3 "$DB" "$1"; }
 n=$(q "SELECT COUNT(*) FROM lodging_units")
 if [[ "$n" -eq 0 ]]; then
   note "no lodging_units rows — the boot loader did not run (see $LOG)"
+  # Stop here rather than aggregating. Every check below compares against the
+  # file, so an empty database fails all of them: the one line that explains
+  # WHY would arrive buried under a per-row diff for every area, unit and
+  # alias in the registry.
+  echo "verify-lodging-seed: FAILED" >&2
+  exit 1
 fi
 
 # --- the database matches the private registry file, field by field ---

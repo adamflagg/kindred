@@ -21,6 +21,17 @@ const registryFileName = "lodging_registry.json"
 // Overridden in tests.
 var registryBasePath = "."
 
+// registryAbsoluteRoots are the absolute directories searched before the
+// working-directory-relative candidates. Overridden in tests.
+//
+// `/config` is where docker-compose.yml mounts the private config directory.
+// The relative `./config` candidate below happens to resolve to the same place
+// today, because the runtime image sets no WORKDIR and so runs from `/` — but
+// relying on that coincidence means any future WORKDIR silently breaks the only
+// candidate that fires, and main.go only warns. Naming it absolutely removes
+// the dependency on the working directory entirely.
+var registryAbsoluteRoots = []string{"/config", "/app/config"}
+
 // registryDoc is the on-disk shape of config/lodging_registry.json.
 //
 // Areas, units and aliases reference each other by CODE, never by PocketBase
@@ -84,11 +95,14 @@ type registryAlias struct {
 // Absent file is not an error: a clone without kindred-local boots with an
 // empty registry and a log line, the same graceful degradation branding has.
 func SeedRegistry(app core.App) error {
-	candidates := []string{
-		"/app/config/" + registryFileName,                                 // Docker production
+	candidates := make([]string, 0, len(registryAbsoluteRoots)+2)
+	for _, root := range registryAbsoluteRoots {
+		candidates = append(candidates, filepath.Join(root, registryFileName)) // Docker
+	}
+	candidates = append(candidates,
 		filepath.Join(registryBasePath, "config", registryFileName),       // from the repo root
 		filepath.Join(registryBasePath, "..", "config", registryFileName), // from pocketbase/
-	}
+	)
 
 	for _, path := range candidates {
 		if _, err := os.Stat(path); err != nil {
@@ -124,6 +138,13 @@ func seedRegistryFromFile(app core.App, path string) error {
 		return fmt.Errorf("parsing lodging registry %s: %w", path, parseErr)
 	}
 
+	// Whole-file checks first, so a bad file is rejected having written
+	// nothing. Doing this per-row mid-load would leave the registry half
+	// applied, and the codes are also what the passes below assume are unique.
+	if validErr := validateRegistry(&doc); validErr != nil {
+		return fmt.Errorf("invalid lodging registry %s: %w", path, validErr)
+	}
+
 	areaIDs, areasAdded, err := seedAreas(app, doc.Areas)
 	if err != nil {
 		return err
@@ -148,6 +169,113 @@ func seedRegistryFromFile(app core.App, path string) error {
 
 	slog.Info("lodging registry loaded", "path", path,
 		"areas_added", areasAdded, "units_added", unitsAdded, "aliases_added", aliasesAdded)
+	return nil
+}
+
+// validateRegistry checks the file against itself: no duplicate keys, and every
+// cross-reference resolvable within the file.
+//
+// The reference checks live here rather than mid-load because the loader's
+// "row already exists -> skip" is how idempotency works, which leaves it unable
+// to tell a re-run from a code duplicated inside one file. A duplicate would
+// otherwise be dropped in silence — the one malformed input that did not fail
+// loudly — while its parent_unit could still be applied to the row the first
+// entry created, merging two entries into one row.
+func validateRegistry(doc *registryDoc) error {
+	areaCodes, err := validateAreaCodes(doc.Areas)
+	if err != nil {
+		return err
+	}
+	unitCodes, err := validateUnitCodes(doc.Units)
+	if err != nil {
+		return err
+	}
+	if err := validateUnitReferences(doc.Units, areaCodes, unitCodes); err != nil {
+		return err
+	}
+	return validateAliases(doc.Aliases, unitCodes)
+}
+
+func validateAreaCodes(areas []registryArea) (map[string]bool, error) {
+	codes := make(map[string]bool, len(areas))
+	for _, a := range areas {
+		if a.Code == "" {
+			return nil, errors.New("an area has an empty code")
+		}
+		if codes[a.Code] {
+			return nil, fmt.Errorf("area code %q appears more than once", a.Code)
+		}
+		codes[a.Code] = true
+	}
+	return codes, nil
+}
+
+func validateUnitCodes(units []registryUnit) (map[string]bool, error) {
+	codes := make(map[string]bool, len(units))
+	for i := range units {
+		u := &units[i]
+		if u.Code == "" {
+			return nil, errors.New("a unit has an empty code")
+		}
+		if codes[u.Code] {
+			return nil, fmt.Errorf("unit code %q appears more than once", u.Code)
+		}
+		codes[u.Code] = true
+	}
+	return codes, nil
+}
+
+// validateUnitReferences runs after the full code set is known, so a unit may
+// name a parent declared later in the file.
+func validateUnitReferences(units []registryUnit, areaCodes, unitCodes map[string]bool) error {
+	for i := range units {
+		u := &units[i]
+		if !areaCodes[u.Area] {
+			return fmt.Errorf("unit %q names area %q, which the registry file does not define", u.Code, u.Area)
+		}
+		if u.ParentUnit == u.Code {
+			return fmt.Errorf("unit %q names itself as its parent", u.Code)
+		}
+		if u.ParentUnit != "" && !unitCodes[u.ParentUnit] {
+			return fmt.Errorf("unit %q names parent %q, which the registry file does not define", u.Code, u.ParentUnit)
+		}
+	}
+	return nil
+}
+
+// validateAliases keys duplicates on (alias_string, valid_from_year) — the pair
+// the unique index keys on, with an unbounded window stored as 0. Two rows
+// sharing a string with different windows is how a rename is recorded, and
+// stays legal.
+func validateAliases(aliases []registryAlias, unitCodes map[string]bool) error {
+	type aliasKey struct {
+		s string
+		y int
+	}
+	seen := make(map[aliasKey]bool, len(aliases))
+	for _, a := range aliases {
+		if a.AliasString == "" {
+			return errors.New("an alias has an empty alias_string")
+		}
+		fromYear := 0
+		if a.ValidFromYear != nil {
+			fromYear = *a.ValidFromYear
+		}
+		key := aliasKey{a.AliasString, fromYear}
+		if seen[key] {
+			return fmt.Errorf("alias %q with valid_from_year %d appears more than once", a.AliasString, fromYear)
+		}
+		seen[key] = true
+
+		if len(a.MemberUnits) == 0 {
+			return fmt.Errorf("alias %q has no member units", a.AliasString)
+		}
+		for _, code := range a.MemberUnits {
+			if !unitCodes[code] {
+				return fmt.Errorf("alias %q names unit %q, which the registry file does not define", a.AliasString, code)
+			}
+		}
+	}
 	return nil
 }
 
@@ -234,11 +362,36 @@ func seedUnits(
 	return added, createdCodes, nil
 }
 
+// wireUnitParents runs after every unit exists, so a unit may name a parent
+// declared later in the file.
+//
+// It wires a row when THIS run created either end of the link, and only over an
+// empty parent_unit. Both halves matter:
+//
+//   - Gating on the child alone left a deleted-and-recreated container with
+//     nothing in it. Deleting a container in /manage/lodging nulls its
+//     children's parent_unit; the next boot recreates the container, having
+//     thereby decided the row should exist, but the children were untouched
+//     this run and stayed orphaned with no error to say so.
+//   - Never overwriting a parent that is already set is what keeps this
+//     create-if-absent rather than an upsert. A parent staff cleared while the
+//     container still exists is a decision, not damage: neither end was created
+//     this run, so nothing here touches it.
 func wireUnitParents(app core.App, units []registryUnit, createdCodes map[string]bool) error {
 	// Indexed for the same reason as seedUnits above.
 	for i := range units {
 		u := &units[i]
-		if u.ParentUnit == "" {
+		if u.ParentUnit == "" || (!createdCodes[u.Code] && !createdCodes[u.ParentUnit]) {
+			continue
+		}
+
+		rec, err := findByUniqueCode(app, "lodging_units", u.Code)
+		if err != nil {
+			return err
+		}
+		// validateRegistry proved both codes are in the file and seedUnits
+		// created everything missing, so a nil here is not a bad file.
+		if rec == nil || rec.GetString("parent_unit") != "" {
 			continue
 		}
 
@@ -247,19 +400,10 @@ func wireUnitParents(app core.App, units []registryUnit, createdCodes map[string
 			return err
 		}
 		if parent == nil {
-			return fmt.Errorf("unit %q names parent %q, which the registry file does not define", u.Code, u.ParentUnit)
-		}
-		if !createdCodes[u.Code] {
-			continue
+			return fmt.Errorf("unit %q names parent %q, which is in the file but missing from the database",
+				u.Code, u.ParentUnit)
 		}
 
-		rec, err := findByUniqueCode(app, "lodging_units", u.Code)
-		if err != nil {
-			return err
-		}
-		if rec == nil || rec.GetString("parent_unit") == parent.Id {
-			continue
-		}
 		rec.Set("parent_unit", parent.Id)
 		if err := app.Save(rec); err != nil {
 			return fmt.Errorf("wiring parent of lodging unit %q: %w", u.Code, err)
@@ -301,9 +445,12 @@ func seedAliases(app core.App, aliases []registryAlias) (added int, err error) {
 				return 0, err
 			}
 			// Saving a short member list would quietly turn a merge into a
-			// smaller one, so an unknown code stops the load.
+			// smaller one, so a missing member stops the load. validateRegistry
+			// already proved the code is in the file, so this is a database
+			// that lost a row seedUnits created moments ago.
 			if unit == nil {
-				return 0, fmt.Errorf("alias %q names unit %q, which the registry file does not define", a.AliasString, code)
+				return 0, fmt.Errorf("alias %q names unit %q, which is in the file but missing from the database",
+					a.AliasString, code)
 			}
 			memberIDs = append(memberIDs, unit.Id)
 		}

@@ -75,20 +75,33 @@ First match wins:
 
 | Path | Context |
 |---|---|
-| `/app/config/lodging_registry.json` | Docker |
+| `/config/lodging_registry.json` | Docker — where `docker-compose.yml` mounts the private config directory |
+| `/app/config/lodging_registry.json` | Docker, alternate layout; matches `pocketbase/google/branding.go` |
 | `./config/lodging_registry.json` | run from the repo root |
 | `../config/lodging_registry.json` | run from `pocketbase/` |
 
 `scripts/setup/setup-local-config.sh` symlinks the file in from `kindred-local`,
 and `scripts/worktree/new.sh` does the same for a new worktree.
 
-> **Note:** `docker/Dockerfile.pocketbase` does not currently copy `config/` into
-> the image, so a **from-scratch production database** would boot with an empty
-> registry. Existing production rows are unaffected — they were created by the
-> seed migrations and nothing removes them. Worth fixing before anyone rebuilds
-> production from migrations alone.
+> **Note:** `docker/Dockerfile.pocketbase` does not copy `config/` into the
+> image — in production the file arrives through the compose mount
+> (`${APPDATA_DIR}/kindred/config` → `/config`), not through the build. Drop
+> `lodging_registry.json` into that host directory and a from-scratch
+> production database picks it up on boot; leave it out and production boots
+> with an empty registry.
+>
+> The absolute candidates are listed first deliberately. The runtime image sets
+> no `WORKDIR`, so the container runs from `/` and the *relative* `./config`
+> candidate resolves to `/config` as well — which means the loader would appear
+> to work in production while depending on a coincidence that any future
+> `WORKDIR` would silently break.
 
 ## File format
+
+The block below is annotated for documentation. **The loader uses Go's
+`encoding/json`, which rejects `//` comments** — strip them from the real file.
+A file that fails to parse is a logged warning, not a crash, so the symptom is
+an empty registry rather than an error anyone will see.
 
 ```jsonc
 {
@@ -161,8 +174,12 @@ recorded.
 
 ## Verifying
 
+Run from the repository root. The `cd` is in a subshell so the rest of the
+block still resolves — the paths below are relative to the root, not to
+`pocketbase/`.
+
 ```bash
-cd pocketbase && go test ./lodging/ -count=1     # loader unit tests
+(cd pocketbase && go test ./lodging/ -count=1)   # loader unit tests
 ./scripts/dev/verify-lodging-seed.sh             # boots a throwaway DB and loads the file
 ./scripts/dev/verify-no-hardcoded-lodging.sh     # no unit names in source
 ./scripts/dev/test-verify-no-hardcoded-lodging.sh

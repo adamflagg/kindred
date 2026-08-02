@@ -172,4 +172,32 @@ fi
 echo "PASS: a unit list in pb_migrations/ is caught"
 
 echo
+echo "=== TEST 6: a failed scan must exit 2, not report a clean tree ==="
+# kindred#1867 flagged this on this script and it shipped unfixed: grep exits 2
+# on an unreadable or missing search root, but stderr went to /dev/null and the
+# pipeline ended in `|| true`, so the guard printed OK on a scan that never
+# ran. A privacy tripwire that false-greens is worse than no tripwire, because
+# the green is what gets trusted.
+set +e
+OUT=$(LODGING_SCAN_ROOTS="definitely_not_a_real_directory_kindred1909/" "$GUARD_SCRIPT" 2>&1)
+rc=$?
+set -e
+if [[ $rc -ne 2 ]]; then
+  echo "FAIL: expected exit 2 when the scan root is missing, got $rc" >&2
+  echo "$OUT" >&2
+  exit 1
+fi
+if ! grep -q 'the scan did not run' <<<"$OUT"; then
+  echo "FAIL: exit 2 but no explanation that the scan did not run" >&2
+  echo "$OUT" >&2
+  exit 1
+fi
+if grep -q 'verify-no-hardcoded-lodging: OK' <<<"$OUT"; then
+  echo "FAIL: a failed scan still printed OK" >&2
+  echo "$OUT" >&2
+  exit 1
+fi
+echo "PASS: a failed scan exits 2 and says so"
+
+echo
 echo "All tests passed."

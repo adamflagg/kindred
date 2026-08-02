@@ -40,12 +40,34 @@ NEEDLES="Ridge Yurt|Tawonga Village|Manzanita|Tuolumne|Cloud'?s Rest|Wawona|Half
 #   pb_public/ — gitignored build output; the minified frontend bundle embeds
 #                the same city/school geo tables and matches "Kitty"/"Tioga" as
 #                ordinary US place names
-HITS=$(grep -rInE "$NEEDLES" \
+# Scan roots, overridable ONLY so the test suite can point the guard at a
+# missing directory and assert it fails rather than reporting a clean scan.
+read -r -a SCAN_ROOTS <<<"${LODGING_SCAN_ROOTS:-pocketbase/ api/ bunking/ frontend/src/}"
+
+# Capture grep's OWN status before the filter pipeline swallows it. grep exits
+# 0 for matches, 1 for none, and >=2 when the scan itself failed — an
+# unreadable or missing search root. The old form sent stderr to /dev/null and
+# ended in `|| true`, so a status-2 run produced no hits and printed OK: a
+# guard reporting clean on a scan that never happened. Flagged on this script
+# in kindred#1867 and asserted by TEST 6 in test-verify-no-hardcoded-lodging.sh.
+grep_status=0
+RAW=$(grep -rInE "$NEEDLES" \
   --include='*.go' --include='*.py' --include='*.ts' --include='*.tsx' --include='*.js' \
   --exclude-dir=pb_public --exclude-dir=node_modules \
-  pocketbase/ api/ bunking/ frontend/src/ 2>/dev/null \
-  | grep -v '_test\.\|\.test\.\|/tests\?/' \
-  | grep -v 'frontend/src/data/cityGeo\.ts\|frontend/src/data/schoolGeo\.ts' || true)
+  "${SCAN_ROOTS[@]}" 2>&1) || grep_status=$?
+
+if [[ "$grep_status" -ge 2 ]]; then
+  echo "error: grep exited $grep_status — the scan did not run, so this is NOT a clean result:" >&2
+  printf '%s\n' "$RAW" >&2
+  exit 2
+fi
+
+HITS=""
+if [[ -n "$RAW" ]]; then
+  HITS=$(printf '%s\n' "$RAW" \
+    | grep -v '_test\.\|\.test\.\|/tests\?/' \
+    | grep -v 'frontend/src/data/cityGeo\.ts\|frontend/src/data/schoolGeo\.ts' || true)
+fi
 
 # Prose that names a unit to explain a rule is documentation, not the registry
 # living in code. Dropping comment and docstring hits is what makes this guard

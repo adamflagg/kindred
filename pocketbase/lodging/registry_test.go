@@ -161,6 +161,15 @@ func withRegistryBasePath(t *testing.T, base string) {
 	t.Cleanup(func() { registryBasePath = prev })
 }
 
+// withRegistryAbsoluteRoots swaps the absolute candidate directories, which are
+// otherwise unreachable from a test that cannot write to / or /app.
+func withRegistryAbsoluteRoots(t *testing.T, roots []string) {
+	t.Helper()
+	prev := registryAbsoluteRoots
+	registryAbsoluteRoots = roots
+	t.Cleanup(func() { registryAbsoluteRoots = prev })
+}
+
 // SeedRegistry is what main.go actually calls, so its path resolution needs
 // covering too: the loader finding nothing because it looked in the wrong place
 // is indistinguishable, from the outside, from a clone with no private config.
@@ -573,5 +582,139 @@ func TestSeedRegistrySameAliasStringDifferentWindowsBothLand(t *testing.T) {
 	}
 	if n := countRecords(t, app, "lodging_unit_aliases"); n != 2 {
 		t.Errorf("after two runs: %d aliases, want 2", n)
+	}
+}
+
+// --- file-level validation -------------------------------------------------
+//
+// The loader's "row already exists -> skip" is how idempotency works across
+// runs. That makes it structurally unable to tell a re-run from a code
+// duplicated INSIDE one file, so a duplicate is dropped with no error and no
+// log line -- while an unknown area, parent or alias member all hard-fail.
+// The file is hand-maintained, so the slip is realistic and the silence is the
+// bug. Validation runs before any write, so a bad file changes nothing.
+
+func TestSeedRegistryDuplicateUnitCodeIsAnError(t *testing.T) {
+	app := newRegistryTestApp(t)
+
+	body := `{"areas": [{"code": "AREA1", "name": "First Area"}], "units": [
+	  {"area": "AREA1", "code": "twin", "name": "First", "bathroom": "none",
+	   "allocation_default": "family_pool"},
+	  {"area": "AREA1", "code": "twin", "name": "Second", "bathroom": "none",
+	   "allocation_default": "family_pool"}
+	], "aliases": []}`
+
+	err := seedRegistryFromFile(app, writeRegistry(t, body))
+	if err == nil {
+		t.Fatal("duplicate unit code returned nil, want an error")
+	}
+	if n := countRecords(t, app, "lodging_units"); n != 0 {
+		t.Errorf("duplicate unit code created %d units, want 0 (validation precedes writes)", n)
+	}
+}
+
+func TestSeedRegistryDuplicateAreaCodeIsAnError(t *testing.T) {
+	app := newRegistryTestApp(t)
+
+	body := `{"areas": [
+	  {"code": "AREA1", "name": "First"},
+	  {"code": "AREA1", "name": "Second"}
+	], "units": [], "aliases": []}`
+
+	err := seedRegistryFromFile(app, writeRegistry(t, body))
+	if err == nil {
+		t.Fatal("duplicate area code returned nil, want an error")
+	}
+	if n := countRecords(t, app, "lodging_areas"); n != 0 {
+		t.Errorf("duplicate area code created %d areas, want 0", n)
+	}
+}
+
+// Two alias rows may legitimately share a string when their windows differ,
+// so the duplicate check has to key on the pair the unique index keys on --
+// the same pair TestSeedRegistrySameAliasStringDifferentWindowsBothLand
+// requires to stay legal.
+func TestSeedRegistryDuplicateAliasWindowIsAnError(t *testing.T) {
+	app := newRegistryTestApp(t)
+
+	body := `{"areas": [{"code": "AREA1", "name": "First Area"}], "units": [
+	  {"area": "AREA1", "code": "real", "name": "Real", "bathroom": "none",
+	   "allocation_default": "family_pool"}
+	], "aliases": [
+	  {"alias_string": "Same", "member_units": ["real"], "valid_from_year": 2025},
+	  {"alias_string": "Same", "member_units": ["real"], "valid_from_year": 2025}
+	]}`
+
+	err := seedRegistryFromFile(app, writeRegistry(t, body))
+	if err == nil {
+		t.Fatal("duplicate (alias_string, valid_from_year) returned nil, want an error")
+	}
+	if n := countRecords(t, app, "lodging_unit_aliases"); n != 0 {
+		t.Errorf("duplicate alias created %d aliases, want 0", n)
+	}
+}
+
+// --- parent wiring ---------------------------------------------------------
+
+// Deleting a container in /manage/lodging nulls its children's parent_unit as
+// a side effect. The loader then recreates the container -- so it has already
+// decided the row should exist -- but wiring gated only on "the CHILD was
+// created this run" left those children permanently orphaned: a restored
+// building with nothing in it, and no error to say so.
+//
+// This is distinct from TestSeedRegistryDoesNotRewireAnExistingParent, where
+// the container was never deleted and the cleared parent is a staff decision
+// the loader must respect.
+func TestSeedRegistryRewiresChildrenOfARecreatedContainer(t *testing.T) {
+	app := newRegistryTestApp(t)
+	path := writeRegistry(t, fixtureRegistry)
+
+	if err := seedRegistryFromFile(app, path); err != nil {
+		t.Fatalf("first run: %v", err)
+	}
+
+	container := findByCode(t, app, "lodging_units", "building-1")
+	if err := app.Delete(container); err != nil {
+		t.Fatalf("delete container: %v", err)
+	}
+
+	if err := seedRegistryFromFile(app, path); err != nil {
+		t.Fatalf("second run: %v", err)
+	}
+
+	recreated := findByCode(t, app, "lodging_units", "building-1")
+	for _, code := range []string{"child-a", "child-b"} {
+		if got := findByCode(t, app, "lodging_units", code).GetString("parent_unit"); got != recreated.Id {
+			t.Errorf("%s.parent_unit = %q after the container was recreated, want %q",
+				code, got, recreated.Id)
+		}
+	}
+}
+
+// --- path resolution -------------------------------------------------------
+
+// The absolute candidates must be found on their own merit. In the production
+// image the container's working directory is "/", which makes the RELATIVE
+// "./config" candidate coincidentally equal the real "/config" mount -- so a
+// future WORKDIR would silently break the only candidate that actually fires.
+func TestSeedRegistryResolvesAbsoluteConfigRoot(t *testing.T) {
+	app := newRegistryTestApp(t)
+
+	absRoot := t.TempDir()
+	if err := os.WriteFile(
+		filepath.Join(absRoot, registryFileName), []byte(fixtureRegistry), 0o600,
+	); err != nil {
+		t.Fatalf("write registry: %v", err)
+	}
+	withRegistryAbsoluteRoots(t, []string{absRoot})
+	// Point the relative candidates at an empty tree, so only the absolute
+	// root can satisfy this.
+	withRegistryBasePath(t, t.TempDir())
+
+	if err := SeedRegistry(app); err != nil {
+		t.Fatalf("SeedRegistry: %v", err)
+	}
+	if n := countRecords(t, app, "lodging_units"); n != 3 {
+		t.Errorf("got %d units, want 3 — the absolute config root was not searched", n)
 	}
 }
