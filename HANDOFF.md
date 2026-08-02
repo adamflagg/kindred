@@ -379,8 +379,7 @@ the thing this PR is most likely to get wrong.
 - Scenario gating: no scenario → the board stays exactly as read-only as it is today, with the
   amber CM badge. Mirror `ScenarioContext`'s `isProductionMode`.
 - Merge-as-board-action and reserve/release if they fit; otherwise say so and leave them.
-- **The three unguarded write paths in §8.** Small, mechanical, and their own precedent is five
-  lines away in the same file.
+- ~~The three unguarded write paths in §8.~~ Done separately in **#1927** — do not re-do them.
 
 **Out of scope:** the map (next), `unit_class`/#1907 unless flagging needs it, and any new read
 endpoint — the roster already returns what the board renders.
@@ -652,29 +651,30 @@ git fetch -q && git rev-list --count origin/<branch>..HEAD   # must be 0
 
 ## 8. Open issues
 
-### Live on `main`: three write paths 500 on writes staff are entitled to make
+### CLOSED: the five write paths are all race-guarded
 
-**Unfiled, deliberately** — they are mechanical and belong folded into the drag PR (§4). Written
-down here so they do not rot silently if that PR slips; if it slips more than a week or two,
-file them.
+Left here as the record of a gap that is now shut, because the shape recurs: any find-then-write
+pair in this file races, and the answer is always one of the two existing shapes.
 
-`4b8b541c` fixed a race and a delete hole, each at ONE call site, leaving the identical siblings
-untouched. **CodeRabbit never reviewed that commit** — its incremental pass was still running
-when auto-merge fired. Of the five write paths in `api/services/lodging_write_service.py`:
+This section previously listed three unguarded paths and told you to fold them into the drag PR
+(§4). They were fixed on their own instead, in **#1927**. All five write paths in
+`api/services/lodging_write_service.py` now hold:
 
 | Path | Shape | Handled? |
 |---|---|---|
 | `place_party` create | find→create vs unique index | ✅ race-guarded |
 | `delete_merge` | delete a missing row | ✅ 404-idempotent |
-| `clear_placement` delete | delete between find and delete | ❌ 500 |
-| `set_availability` delete | delete between find and delete | ❌ 500 |
-| `set_availability` create | find→create vs `idx_lodging_avail_unique` | ❌ 500 |
+| `clear_placement` delete | delete between find and delete | ✅ 404-idempotent |
+| `set_availability` delete | delete between find and delete | ✅ 404-idempotent |
+| `set_availability` create | find→create vs `idx_lodging_avail_unique` | ✅ race-guarded |
 
-`idx_lodging_avail_unique` is UNIQUE on `(session, year, scenario, unit)` (`1500000118:100`), so
-**`set_availability` create has exactly the race `place_party` just fixed**: two staff reserving
-the same unit in one scenario, and the loser gets a 500 for a legitimate write. That is the one
-that matters most — the deletes are already narrowed by a preceding find, so their exposure is
-the narrower find-then-delete race. Copy the two existing shapes; do not invent a third.
+Both create-retries also guard their OWN recovery — the re-read and the update inside the except
+block go through `pb_error_to_http` too, because an unwrapped failure there is the same bare 500
+the retry exists to prevent.
+
+**Do not read that as "concurrency is handled."** These guard the write paths, not occupancy:
+two staff can still place different parties into one unit without either write failing. That is
+kindred#1907, and it is a modelling question for the board, not an exception handler.
 
 ### #1923 — the delete guards are blind to draft rows
 

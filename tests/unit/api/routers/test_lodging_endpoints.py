@@ -640,6 +640,80 @@ class TestPlacementWrites:
         assert response.status_code == 200
         mock_pb.collection.return_value.delete.assert_called_once_with("draft_1")
 
+    def test_a_placement_delete_race_is_not_an_error(self, mock_pb: MagicMock) -> None:
+        """The row is found, then vanishes before the delete lands.
+
+        Two staff clearing the same placement, or a double-click: the find
+        above sees the row, but by the time the delete reaches PocketBase
+        another caller has already removed it and PB answers 404. Left alone
+        that is a bare ClientResponseError into the catch-all handler in
+        api/main.py -- a 500 for a clear the board is entitled to make. This
+        is idempotent for the same reason the no-row case already is: a 404
+        here means the same thing "the row was never there" does.
+        """
+
+        def reads(**kwargs: Any) -> list[Any]:
+            query_filter = kwargs.get("query_params", {}).get("filter", "")
+            if 'scenario = "scn_1"' in query_filter:
+                return [_rec(id="draft_1")]
+            return _session_lookup(**kwargs)
+
+        with patch("api.routers.lodging.pb", mock_pb):
+            client = _write_client(_manage_user(), mock_pb)
+            mock_pb.collection.return_value.get_full_list.side_effect = reads
+            mock_pb.collection.return_value.delete.side_effect = ClientResponseError(
+                "not found", status=404, data={}, url="", is_abort=False, original_error=None
+            )
+            response = client.request(
+                "DELETE",
+                "/api/lodging/placements",
+                json={
+                    "year": 2026,
+                    "session_cm_id": 1000001,
+                    "scenario": "scn_1",
+                    "household_cm_id": 2000001,
+                },
+            )
+
+        assert response.status_code == 200, response.text
+        assert response.json()["deleted"] is False
+        # The id IS known here -- the find above returned it -- so it is
+        # reported, exactly as delete_merge's own 404 branch reports the id it
+        # was handed. Only the row-never-existed case has no id to give, and
+        # that case must stay distinguishable from this one.
+        assert response.json()["record_id"] == "draft_1"
+
+    def test_a_placement_delete_failure_that_is_not_a_race_still_errors(self, mock_pb: MagicMock) -> None:
+        """Only "already gone" is swallowed. A 403 or a 500 from PocketBase is
+        a real failure and must not be reported to the board as a clean no-op."""
+
+        def reads(**kwargs: Any) -> list[Any]:
+            query_filter = kwargs.get("query_params", {}).get("filter", "")
+            if 'scenario = "scn_1"' in query_filter:
+                return [_rec(id="draft_1")]
+            return _session_lookup(**kwargs)
+
+        with patch("api.routers.lodging.pb", mock_pb):
+            client = _write_client(_manage_user(), mock_pb)
+            mock_pb.collection.return_value.get_full_list.side_effect = reads
+            mock_pb.collection.return_value.delete.side_effect = ClientResponseError(
+                "forbidden", status=403, data={}, url="", is_abort=False, original_error=None
+            )
+            response = client.request(
+                "DELETE",
+                "/api/lodging/placements",
+                json={
+                    "year": 2026,
+                    "session_cm_id": 1000001,
+                    "scenario": "scn_1",
+                    "household_cm_id": 2000001,
+                },
+            )
+
+        # Pinned, not `>= 400`: a 500 would also satisfy that, and a 500 is the
+        # precise outcome the idempotency change is supposed to rule out.
+        assert response.status_code == 403
+
     def test_a_write_without_a_scenario_is_refused(self, mock_pb: MagicMock) -> None:
         """No scenario is the read-only CampMinder mirror, for everyone.
 
@@ -754,6 +828,85 @@ class TestPlacementWrites:
 
         assert response.status_code == 400
         mock_pb.collection.return_value.update.assert_not_called()
+
+    def test_a_failed_re_read_after_a_lost_placement_race_keeps_its_status(self, mock_pb: MagicMock) -> None:
+        """The recovery races too.
+
+        The create loses the race, and then the re-read that decides whether it
+        raced fails on its own -- PocketBase refuses it, or goes down between
+        the two calls. That call is inside the except block, so leaving it
+        unwrapped puts a bare ClientResponseError into the catch-all handler in
+        api/main.py: a 500, which is the precise outcome this whole guard
+        exists to remove. The retry's own failures go through pb_error_to_http
+        exactly as the create's do.
+        """
+        reads: list[list[Any]] = [[]]
+
+        def staged(**kwargs: Any) -> list[Any]:
+            query_filter = kwargs.get("query_params", {}).get("filter", "")
+            if "cm_id = 1000001" in query_filter:
+                return _session_lookup(**kwargs)
+            if reads:
+                return reads.pop(0)
+            raise ClientResponseError("forbidden", status=403, data={}, url="", is_abort=False, original_error=None)
+
+        with patch("api.routers.lodging.pb", mock_pb):
+            client = _write_client(_manage_user(), mock_pb)
+            mock_pb.collection.return_value.get_full_list.side_effect = staged
+            mock_pb.collection.return_value.create.side_effect = ClientResponseError(
+                "unique constraint", status=400, data={}, url="", is_abort=False, original_error=None
+            )
+            response = client.post(
+                "/api/lodging/placements",
+                json={
+                    "year": 2026,
+                    "session_cm_id": 1000001,
+                    "scenario": "scn_1",
+                    "household_cm_id": 2000001,
+                    "unit_id": "u1",
+                },
+            )
+
+        # Pinned, not `>= 400`: a 500 would also satisfy that, and a 500 is the
+        # exact thing this guard rules out.
+        assert response.status_code == 403
+
+    def test_a_failed_update_after_a_lost_placement_race_keeps_its_status(self, mock_pb: MagicMock) -> None:
+        """The winner's row is found, then the update onto it fails.
+
+        The narrowest window of the three: the create lost, the re-read found
+        the winner's row, and the update failed anyway -- the winner deleted it
+        again, or PocketBase refused. Unwrapped that is the same bare 500.
+        """
+        reads: list[list[Any]] = [[], [_rec(id="draft_raced")]]
+
+        def staged(**kwargs: Any) -> list[Any]:
+            query_filter = kwargs.get("query_params", {}).get("filter", "")
+            if "cm_id = 1000001" in query_filter:
+                return _session_lookup(**kwargs)
+            return reads.pop(0) if reads else []
+
+        with patch("api.routers.lodging.pb", mock_pb):
+            client = _write_client(_manage_user(), mock_pb)
+            mock_pb.collection.return_value.get_full_list.side_effect = staged
+            mock_pb.collection.return_value.create.side_effect = ClientResponseError(
+                "unique constraint", status=400, data={}, url="", is_abort=False, original_error=None
+            )
+            mock_pb.collection.return_value.update.side_effect = ClientResponseError(
+                "forbidden", status=403, data={}, url="", is_abort=False, original_error=None
+            )
+            response = client.post(
+                "/api/lodging/placements",
+                json={
+                    "year": 2026,
+                    "session_cm_id": 1000001,
+                    "scenario": "scn_1",
+                    "household_cm_id": 2000001,
+                    "unit_id": "u1",
+                },
+            )
+
+        assert response.status_code == 403
 
     def test_an_unknown_weekend_is_404_not_500(self, mock_pb: MagicMock) -> None:
         with patch("api.routers.lodging.pb", mock_pb):
@@ -973,3 +1126,214 @@ class TestAvailabilityWrites:
 
         assert response.status_code == 200
         mock_pb.collection.return_value.delete.assert_called_once_with("avail_1")
+
+    def test_an_availability_delete_race_is_not_an_error(self, mock_pb: MagicMock) -> None:
+        """The override is found, then vanishes before the delete lands.
+
+        Same race as the placement clear above, on `idx_lodging_avail_unique`
+        instead of the draft's index: the find sees the row, but another
+        caller removes it before this delete reaches PocketBase, which answers
+        404. Left alone that is a bare ClientResponseError into the catch-all
+        handler in api/main.py -- a 500 for a release the board is entitled to
+        make. A 404 here means the same thing the no-row case already does.
+        """
+
+        def reads(**kwargs: Any) -> list[Any]:
+            query_filter = kwargs.get("query_params", {}).get("filter", "")
+            if 'scenario = "scn_1"' in query_filter:
+                return [_rec(id="avail_1")]
+            return _session_lookup(**kwargs)
+
+        with patch("api.routers.lodging.pb", mock_pb):
+            client = _write_client(_manage_user(), mock_pb)
+            mock_pb.collection.return_value.get_full_list.side_effect = reads
+            mock_pb.collection.return_value.delete.side_effect = ClientResponseError(
+                "not found", status=404, data={}, url="", is_abort=False, original_error=None
+            )
+            response = client.put(
+                "/api/lodging/availability",
+                json={
+                    "year": 2026,
+                    "session_cm_id": 1000001,
+                    "scenario": "scn_1",
+                    "unit_id": "u1",
+                    "state": None,
+                },
+            )
+
+        assert response.status_code == 200, response.text
+        assert response.json()["deleted"] is False
+        # Same as the placement clear above: the find returned the id, so the
+        # response carries it rather than reading like the no-row case.
+        assert response.json()["record_id"] == "avail_1"
+
+    def test_an_availability_delete_failure_that_is_not_a_race_still_errors(self, mock_pb: MagicMock) -> None:
+        """Only "already gone" is swallowed. A 403 or a 500 from PocketBase is
+        a real failure and must not be reported to the board as a clean no-op."""
+
+        def reads(**kwargs: Any) -> list[Any]:
+            query_filter = kwargs.get("query_params", {}).get("filter", "")
+            if 'scenario = "scn_1"' in query_filter:
+                return [_rec(id="avail_1")]
+            return _session_lookup(**kwargs)
+
+        with patch("api.routers.lodging.pb", mock_pb):
+            client = _write_client(_manage_user(), mock_pb)
+            mock_pb.collection.return_value.get_full_list.side_effect = reads
+            mock_pb.collection.return_value.delete.side_effect = ClientResponseError(
+                "forbidden", status=403, data={}, url="", is_abort=False, original_error=None
+            )
+            response = client.put(
+                "/api/lodging/availability",
+                json={
+                    "year": 2026,
+                    "session_cm_id": 1000001,
+                    "scenario": "scn_1",
+                    "unit_id": "u1",
+                    "state": None,
+                },
+            )
+
+        # Pinned, not `>= 400`: a 500 would also satisfy that, and a 500 is the
+        # precise outcome the idempotency change is supposed to rule out.
+        assert response.status_code == 403
+
+    def test_losing_the_availability_upsert_race_updates_instead_of_500ing(self, mock_pb: MagicMock) -> None:
+        """Two staff reserving the same unit in one scenario at the same
+        moment.
+
+        `idx_lodging_avail_unique` is UNIQUE on (session, year, scenario,
+        unit) -- exactly the race `place_party` already guards on the draft's
+        own partial unique index. Both staff find no override, both create,
+        and the index rejects the loser. Left alone that is a bare
+        ClientResponseError into the catch-all handler in api/main.py -- a 500
+        for a reservation the board is entitled to make. The row the winner
+        just wrote is exactly what this call wanted to write, so the loser
+        adopts it and updates.
+        """
+        reads: list[list[Any]] = [[], [_rec(id="avail_raced")]]
+
+        def staged(**kwargs: Any) -> list[Any]:
+            query_filter = kwargs.get("query_params", {}).get("filter", "")
+            if "cm_id = 1000001" in query_filter:
+                return _session_lookup(**kwargs)
+            return reads.pop(0) if reads else []
+
+        with patch("api.routers.lodging.pb", mock_pb):
+            client = _write_client(_manage_user(), mock_pb)
+            mock_pb.collection.return_value.get_full_list.side_effect = staged
+            mock_pb.collection.return_value.create.side_effect = ClientResponseError(
+                "unique constraint", status=400, data={}, url="", is_abort=False, original_error=None
+            )
+            response = client.put(
+                "/api/lodging/availability",
+                json={
+                    "year": 2026,
+                    "session_cm_id": 1000001,
+                    "scenario": "scn_1",
+                    "unit_id": "u1",
+                    "state": "reserved_staff",
+                },
+            )
+
+        assert response.status_code == 200, response.text
+        mock_pb.collection.return_value.update.assert_called_once()
+        assert mock_pb.collection.return_value.update.call_args[0][0] == "avail_raced"
+
+    def test_an_availability_create_failure_that_is_not_a_race_still_errors(self, mock_pb: MagicMock) -> None:
+        """The retry is for a lost race, not a blanket swallow.
+
+        If the re-read still finds no row, the create failed for some other
+        reason and the caller must hear about it with the upstream status
+        rather than a 200 reporting a reservation that does not exist.
+        """
+        with patch("api.routers.lodging.pb", mock_pb):
+            client = _write_client(_manage_user(), mock_pb)
+            mock_pb.collection.return_value.create.side_effect = ClientResponseError(
+                "boom", status=400, data={}, url="", is_abort=False, original_error=None
+            )
+            response = client.put(
+                "/api/lodging/availability",
+                json={
+                    "year": 2026,
+                    "session_cm_id": 1000001,
+                    "scenario": "scn_1",
+                    "unit_id": "u1",
+                    "state": "reserved_staff",
+                },
+            )
+
+        assert response.status_code == 400
+        mock_pb.collection.return_value.update.assert_not_called()
+
+    def test_a_failed_re_read_after_a_lost_availability_race_keeps_its_status(self, mock_pb: MagicMock) -> None:
+        """The recovery races too, exactly as the placement upsert's does.
+
+        The create loses to `idx_lodging_avail_unique`, then the re-read that
+        decides whether it raced fails on its own. That call lives inside the
+        except block, so unwrapped it is a bare ClientResponseError into the
+        catch-all handler in api/main.py -- a 500, the outcome this guard is
+        for.
+        """
+        reads: list[list[Any]] = [[]]
+
+        def staged(**kwargs: Any) -> list[Any]:
+            query_filter = kwargs.get("query_params", {}).get("filter", "")
+            if "cm_id = 1000001" in query_filter:
+                return _session_lookup(**kwargs)
+            if reads:
+                return reads.pop(0)
+            raise ClientResponseError("forbidden", status=403, data={}, url="", is_abort=False, original_error=None)
+
+        with patch("api.routers.lodging.pb", mock_pb):
+            client = _write_client(_manage_user(), mock_pb)
+            mock_pb.collection.return_value.get_full_list.side_effect = staged
+            mock_pb.collection.return_value.create.side_effect = ClientResponseError(
+                "unique constraint", status=400, data={}, url="", is_abort=False, original_error=None
+            )
+            response = client.put(
+                "/api/lodging/availability",
+                json={
+                    "year": 2026,
+                    "session_cm_id": 1000001,
+                    "scenario": "scn_1",
+                    "unit_id": "u1",
+                    "state": "reserved_staff",
+                },
+            )
+
+        # Pinned, not `>= 400`: a 500 would also satisfy that, and a 500 is the
+        # exact thing this guard rules out.
+        assert response.status_code == 403
+
+    def test_a_failed_update_after_a_lost_availability_race_keeps_its_status(self, mock_pb: MagicMock) -> None:
+        """The winner's override is found, then the update onto it fails."""
+        reads: list[list[Any]] = [[], [_rec(id="avail_raced")]]
+
+        def staged(**kwargs: Any) -> list[Any]:
+            query_filter = kwargs.get("query_params", {}).get("filter", "")
+            if "cm_id = 1000001" in query_filter:
+                return _session_lookup(**kwargs)
+            return reads.pop(0) if reads else []
+
+        with patch("api.routers.lodging.pb", mock_pb):
+            client = _write_client(_manage_user(), mock_pb)
+            mock_pb.collection.return_value.get_full_list.side_effect = staged
+            mock_pb.collection.return_value.create.side_effect = ClientResponseError(
+                "unique constraint", status=400, data={}, url="", is_abort=False, original_error=None
+            )
+            mock_pb.collection.return_value.update.side_effect = ClientResponseError(
+                "forbidden", status=403, data={}, url="", is_abort=False, original_error=None
+            )
+            response = client.put(
+                "/api/lodging/availability",
+                json={
+                    "year": 2026,
+                    "session_cm_id": 1000001,
+                    "scenario": "scn_1",
+                    "unit_id": "u1",
+                    "state": "reserved_staff",
+                },
+            )
+
+        assert response.status_code == 403
