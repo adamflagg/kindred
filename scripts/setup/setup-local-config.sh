@@ -19,6 +19,10 @@ ln -sfr "$LOCAL_REPO/CLAUDE.local.md" "$REPO_ROOT/CLAUDE.local.md"
 ln -sfr "$LOCAL_REPO/config/branding.local.json" "$REPO_ROOT/config/branding.local.json"
 ln -sfr "$LOCAL_REPO/config/staff_list.json" "$REPO_ROOT/config/staff_list.json"
 ln -sfr "$LOCAL_REPO/config/nicknames_override.json" "$REPO_ROOT/config/nicknames_override.json"
+# The weekend-lodging unit registry. Camp-identifying data, so it lives here
+# rather than in pb_migrations/; PocketBase loads it on boot and degrades to an
+# empty registry when it is absent. See docs/reference/lodging-registry.md.
+ln -sfr "$LOCAL_REPO/config/lodging_registry.json" "$REPO_ROOT/config/lodging_registry.json"
 ln -sfr "$LOCAL_REPO/config/sheets_sharing.local.json" "$REPO_ROOT/config/sheets_sharing.local.json"
 ln -sfr "$LOCAL_REPO/frontend/vite.config.local.ts" "$REPO_ROOT/frontend/vite.config.local.ts"
 ln -sfr "$LOCAL_REPO/scripts/vault.config" "$REPO_ROOT/scripts/vault.config"

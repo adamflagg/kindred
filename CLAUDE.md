@@ -46,7 +46,7 @@ See `/docs`:
 - `architecture/` — sync-layer, bunk-request-pipeline, session-types, metrics-module, data-model, solver-internals
 - `guides/` — solver-configuration, csv-preparation, request-management, troubleshooting, docker-deployment
 - `api/` — solver-api, response-examples
-- `reference/` — cli-commands, issue-triage, pocketbase-migrations, tables, commit-conventions, git-workflow, oauth2-setup
+- `reference/` — cli-commands, issue-triage, pocketbase-migrations, tables, commit-conventions, git-workflow, oauth2-setup, lodging-registry
 
 Harness improvements roadmap: `docs/reference/claude-harness-improvements.md`.
 
@@ -145,7 +145,7 @@ Worktree mechanics (ports, isolation, cleanup): `docs/reference/git-workflow.md`
 
 **Environment secrets** load from `.env` via `start_dev.sh`.
 
-**Private files** (branding, staff lists, assets) live in the private `kindred-local` repo: `config/branding.local.json`, `config/staff_list.json`, `local/assets/`, `CLAUDE.local.md`, `frontend/vite.config.local.ts`, `scripts/vault.config`, `docs/camp/`. Local dev symlinks them via `scripts/setup/setup-local-config.sh`; CI/CD clones via deploy key. Without them the system falls back to generic "Kindred" branding.
+**Private files** (branding, staff lists, assets) live in the private `kindred-local` repo: `config/branding.local.json`, `config/staff_list.json`, `config/lodging_registry.json`, `local/assets/`, `CLAUDE.local.md`, `frontend/vite.config.local.ts`, `scripts/vault.config`, `docs/camp/`. Local dev symlinks them via `scripts/setup/setup-local-config.sh`; CI/CD clones via deploy key. Without them the system falls back to generic "Kindred" branding.
 
 **Never use real personal information** in code, tests, comments, docs, commits, issues, or PRs — real camper/family/staff names, schools, or CampMinder IDs. Use the fictional set (list and examples in `tests/CLAUDE.md`), `{camp_name}` placeholders instead of hardcoded camp names, and generic session IDs. This applies to public artifacts most of all: a name that reaches a GitHub issue or PR body is a real privacy leak.
 

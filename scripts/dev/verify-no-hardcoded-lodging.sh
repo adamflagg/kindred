@@ -1,6 +1,13 @@
 #!/usr/bin/env bash
-# Spec 3.8: the lodging registry is DATA, not code. Unit and alias lists may
-# exist only in seed migrations.
+# Spec 3.8: the lodging registry is DATA, not code. It now lives in exactly one
+# place — the private config/lodging_registry.json, carried in kindred-local
+# and loaded on boot (docs/reference/lodging-registry.md).
+#
+# It used to live in pb_migrations/, which is why this guard used to skip that
+# directory. It no longer does: with the data gone from the seed migrations,
+# that exclusion was a hole in precisely the place a future seed would land.
+# Prose in a migration is still fine — comments are dropped below — but a unit
+# list in a migration is now a failure, same as in any other source file.
 #
 # SCOPE, honestly stated: this is a tripwire, not a proof. It greps for a
 # REPRESENTATIVE SAMPLE of distinctive unit strings (NEEDLES below) — not the
@@ -27,18 +34,40 @@ cd "$REPO_ROOT"
 NEEDLES="Ridge Yurt|Tawonga Village|Manzanita|Tuolumne|Cloud'?s Rest|Wawona|Half Dome|El Cap|Bayit|Tenaya|Tioga|Le Shack|Lofty|Kitty|Doctor's House"
 
 # --include='*.js' matters: pocketbase/pb_hooks/ is application JavaScript and
-# would otherwise go unscanned entirely. But scanning .js drags in two kinds of
-# legitimate non-source noise, both excluded by directory rather than by file:
-#   pb_migrations/ — where the registry data is SUPPOSED to live (spec 3.8)
-#   pb_public/     — gitignored build output; the minified frontend bundle
-#                    embeds the same city/school geo tables and matches
-#                    "Kitty"/"Tioga" as ordinary US place names
-HITS=$(grep -rInE "$NEEDLES" \
+# pocketbase/pb_migrations/ is where the registry used to live, so both have to
+# be scanned. One directory is still excluded, and by directory rather than by
+# file:
+#   pb_public/ — gitignored build output; the minified frontend bundle embeds
+#                the same city/school geo tables and matches "Kitty"/"Tioga" as
+#                ordinary US place names
+# Scan roots, overridable ONLY so the test suite can point the guard at a
+# missing directory and assert it fails rather than reporting a clean scan.
+read -r -a SCAN_ROOTS <<<"${LODGING_SCAN_ROOTS:-pocketbase/ api/ bunking/ frontend/src/}"
+
+# Capture grep's OWN status before the filter pipeline swallows it. grep exits
+# 0 for matches, 1 for none, and >=2 when the scan itself failed — an
+# unreadable or missing search root. The old form sent stderr to /dev/null and
+# ended in `|| true`, so a status-2 run produced no hits and printed OK: a
+# guard reporting clean on a scan that never happened. Flagged on this script
+# in kindred#1867 and asserted by TEST 6 in test-verify-no-hardcoded-lodging.sh.
+grep_status=0
+RAW=$(grep -rInE "$NEEDLES" \
   --include='*.go' --include='*.py' --include='*.ts' --include='*.tsx' --include='*.js' \
-  --exclude-dir=pb_migrations --exclude-dir=pb_public --exclude-dir=node_modules \
-  pocketbase/ api/ bunking/ frontend/src/ 2>/dev/null \
-  | grep -v '_test\.\|\.test\.\|/tests\?/' \
-  | grep -v 'frontend/src/data/cityGeo\.ts\|frontend/src/data/schoolGeo\.ts' || true)
+  --exclude-dir=pb_public --exclude-dir=node_modules \
+  "${SCAN_ROOTS[@]}" 2>&1) || grep_status=$?
+
+if [[ "$grep_status" -ge 2 ]]; then
+  echo "error: grep exited $grep_status — the scan did not run, so this is NOT a clean result:" >&2
+  printf '%s\n' "$RAW" >&2
+  exit 2
+fi
+
+HITS=""
+if [[ -n "$RAW" ]]; then
+  HITS=$(printf '%s\n' "$RAW" \
+    | grep -v '_test\.\|\.test\.\|/tests\?/' \
+    | grep -v 'frontend/src/data/cityGeo\.ts\|frontend/src/data/schoolGeo\.ts' || true)
+fi
 
 # Prose that names a unit to explain a rule is documentation, not the registry
 # living in code. Dropping comment and docstring hits is what makes this guard

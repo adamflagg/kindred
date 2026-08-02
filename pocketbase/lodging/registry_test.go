@@ -1,0 +1,720 @@
+package lodging
+
+import (
+	"bytes"
+	"log/slog"
+	"os"
+	"path/filepath"
+	"testing"
+
+	"github.com/pocketbase/pocketbase/core"
+	"github.com/pocketbase/pocketbase/tests"
+)
+
+// setupRegistryCollections builds lodging_areas, lodging_units and
+// lodging_unit_aliases with the fields the loader writes, shaped like
+// production's (1500000116, 1500000117).
+//
+// The select fields carry their real value lists and the unique indexes are
+// real: a loader that wrote an invalid `bathroom`, or that re-inserted an alias
+// on a second run, must fail here rather than only in production.
+func setupRegistryCollections(t *testing.T, app core.App) {
+	t.Helper()
+
+	areas := core.NewBaseCollection("lodging_areas")
+	areas.Fields.Add(&core.TextField{Name: "name", Required: true})
+	areas.Fields.Add(&core.TextField{Name: "code", Required: true})
+	areas.Fields.Add(&core.NumberField{Name: "map_x"})
+	areas.Fields.Add(&core.NumberField{Name: "map_y"})
+	areas.Fields.Add(&core.NumberField{Name: "sort_order", OnlyInt: true})
+	areas.AddIndex("idx_lodging_areas_code", true, "code", "")
+	saveRegistryCollection(t, app, areas)
+
+	units := core.NewBaseCollection("lodging_units")
+	units.Fields.Add(&core.RelationField{
+		Name: "area", CollectionId: areas.Id, MaxSelect: 1, Required: true,
+	})
+	units.Fields.Add(&core.TextField{Name: "name", Required: true})
+	units.Fields.Add(&core.TextField{Name: "code", Required: true})
+	units.Fields.Add(&core.NumberField{Name: "map_x"})
+	units.Fields.Add(&core.NumberField{Name: "map_y"})
+	units.Fields.Add(&core.NumberField{Name: "sleeps", OnlyInt: true})
+	units.Fields.Add(&core.SelectField{
+		Name: "bathroom", Values: []string{"none", "private", "shared"}, MaxSelect: 1,
+	})
+	units.Fields.Add(&core.TextField{Name: "bathroom_group"})
+	units.Fields.Add(&core.BoolField{Name: "near_bathhouse"})
+	units.Fields.Add(&core.SelectField{
+		Name: "allocation_default", Values: []string{"family_pool", "staff_default"}, MaxSelect: 1,
+	})
+	units.Fields.Add(&core.BoolField{Name: "is_confirmed"})
+	units.Fields.Add(&core.BoolField{Name: "is_active"})
+	units.Fields.Add(&core.BoolField{Name: "is_container"})
+	units.Fields.Add(&core.TextField{Name: "notes"})
+	units.AddIndex("idx_lodging_units_code", true, "code", "")
+	saveRegistryCollection(t, app, units)
+
+	// Self-relation: needs the collection's own id, so it lands after the
+	// first save — same as production (1500000116).
+	units.Fields.Add(&core.RelationField{Name: "parent_unit", CollectionId: units.Id, MaxSelect: 1})
+	saveRegistryCollection(t, app, units)
+
+	aliases := core.NewBaseCollection("lodging_unit_aliases")
+	aliases.Fields.Add(&core.TextField{Name: "alias_string", Required: true})
+	aliases.Fields.Add(&core.RelationField{Name: "member_units", CollectionId: units.Id, MaxSelect: 20})
+	aliases.Fields.Add(&core.NumberField{Name: "valid_from_year", OnlyInt: true})
+	aliases.Fields.Add(&core.NumberField{Name: "valid_to_year", OnlyInt: true})
+	aliases.AddIndex("idx_lodging_alias_string_from", true, "alias_string, valid_from_year", "")
+	saveRegistryCollection(t, app, aliases)
+}
+
+func saveRegistryCollection(t *testing.T, app core.App, col *core.Collection) {
+	t.Helper()
+	if err := app.Save(col); err != nil {
+		t.Fatalf("save collection %s: %v", col.Name, err)
+	}
+}
+
+func newRegistryTestApp(t *testing.T) core.App {
+	t.Helper()
+	app, err := tests.NewTestApp()
+	if err != nil {
+		t.Fatalf("NewTestApp: %v", err)
+	}
+	t.Cleanup(app.Cleanup)
+	setupRegistryCollections(t, app)
+	return app
+}
+
+// writeRegistry drops a registry file into a temp dir and returns its path.
+func writeRegistry(t *testing.T, body string) string {
+	t.Helper()
+	path := filepath.Join(t.TempDir(), "lodging_registry.json")
+	if err := os.WriteFile(path, []byte(body), 0o600); err != nil {
+		t.Fatalf("write registry: %v", err)
+	}
+	return path
+}
+
+func countRecords(t *testing.T, app core.App, collection string) int {
+	t.Helper()
+	recs, err := app.FindAllRecords(collection)
+	if err != nil {
+		t.Fatalf("FindAllRecords(%s): %v", collection, err)
+	}
+	return len(recs)
+}
+
+func findByCode(t *testing.T, app core.App, collection, code string) *core.Record {
+	t.Helper()
+	rec, err := app.FindFirstRecordByFilter(collection, "code = {:c}", map[string]any{"c": code})
+	if err != nil {
+		t.Fatalf("find %s code=%s: %v", collection, code, err)
+	}
+	return rec
+}
+
+// captureLogs redirects slog to a buffer for the duration of the test.
+func captureLogs(t *testing.T) *bytes.Buffer {
+	t.Helper()
+	buf := &bytes.Buffer{}
+	prev := slog.Default()
+	slog.SetDefault(slog.New(slog.NewTextHandler(buf, &slog.HandlerOptions{Level: slog.LevelDebug})))
+	t.Cleanup(func() { slog.SetDefault(prev) })
+	return buf
+}
+
+// A minimal but structurally complete registry: one area, a container with two
+// children (the second declared BEFORE its parent, so two-pass wiring is
+// exercised), and one single-member plus one multi-member alias.
+const fixtureRegistry = `{
+  "areas": [
+    {"code": "AREA1", "name": "First Area", "map_x": 0.5, "map_y": 0.25, "sort_order": 1}
+  ],
+  "units": [
+    {"area": "AREA1", "code": "child-a", "name": "Child A", "map_x": 0.51, "map_y": 0.26,
+     "sleeps": 4, "bathroom": "shared", "bathroom_group": "grp-1", "parent_unit": "building-1",
+     "near_bathhouse": true, "allocation_default": "family_pool", "is_container": false,
+     "notes": "a note"},
+    {"area": "AREA1", "code": "building-1", "name": "Building One", "map_x": 0.5, "map_y": 0.25,
+     "sleeps": null, "bathroom": "none", "bathroom_group": "", "parent_unit": "",
+     "near_bathhouse": false, "allocation_default": "family_pool", "is_container": true,
+     "notes": ""},
+    {"area": "AREA1", "code": "child-b", "name": "Child B", "map_x": 0.52, "map_y": 0.27,
+     "sleeps": 2, "bathroom": "shared", "bathroom_group": "grp-1", "parent_unit": "building-1",
+     "near_bathhouse": false, "allocation_default": "staff_default", "is_container": false,
+     "notes": ""}
+  ],
+  "aliases": [
+    {"alias_string": "Child A", "member_units": ["child-a"],
+     "valid_from_year": null, "valid_to_year": null},
+    {"alias_string": "Building One", "member_units": ["child-a", "child-b"],
+     "valid_from_year": 2025, "valid_to_year": null}
+  ]
+}`
+
+// withRegistryBasePath points the path resolution at a temp tree for one test.
+func withRegistryBasePath(t *testing.T, base string) {
+	t.Helper()
+	prev := registryBasePath
+	registryBasePath = base
+	t.Cleanup(func() { registryBasePath = prev })
+}
+
+// withRegistryAbsoluteRoots swaps the absolute candidate directories, which are
+// otherwise unreachable from a test that cannot write to / or /app.
+func withRegistryAbsoluteRoots(t *testing.T, roots []string) {
+	t.Helper()
+	prev := registryAbsoluteRoots
+	registryAbsoluteRoots = roots
+	t.Cleanup(func() { registryAbsoluteRoots = prev })
+}
+
+// SeedRegistry is what main.go actually calls, so its path resolution needs
+// covering too: the loader finding nothing because it looked in the wrong place
+// is indistinguishable, from the outside, from a clone with no private config.
+func TestSeedRegistryResolvesConfigUnderTheWorkingDirectory(t *testing.T) {
+	app := newRegistryTestApp(t)
+
+	base := t.TempDir()
+	if err := os.Mkdir(filepath.Join(base, "config"), 0o750); err != nil {
+		t.Fatalf("mkdir config: %v", err)
+	}
+	if err := os.WriteFile(
+		filepath.Join(base, "config", "lodging_registry.json"), []byte(fixtureRegistry), 0o600,
+	); err != nil {
+		t.Fatalf("write registry: %v", err)
+	}
+	withRegistryBasePath(t, base)
+
+	if err := SeedRegistry(app); err != nil {
+		t.Fatalf("SeedRegistry: %v", err)
+	}
+	if n := countRecords(t, app, "lodging_units"); n != 3 {
+		t.Errorf("got %d units, want 3 — the file under ./config was not found", n)
+	}
+}
+
+// A clone without kindred-local: nothing on any candidate path.
+func TestSeedRegistryWithNoConfigAnywhereIsANoOp(t *testing.T) {
+	app := newRegistryTestApp(t)
+	logs := captureLogs(t)
+	withRegistryBasePath(t, t.TempDir())
+
+	if err := SeedRegistry(app); err != nil {
+		t.Fatalf("no config anywhere should not be an error, got: %v", err)
+	}
+	if n := countRecords(t, app, "lodging_units"); n != 0 {
+		t.Errorf("created %d units with no registry file, want 0", n)
+	}
+	if !bytes.Contains(logs.Bytes(), []byte("lodging registry")) {
+		t.Errorf("no registry file logged nothing; got:\n%s", logs.String())
+	}
+}
+
+func TestSeedRegistryAbsentFileIsANoOp(t *testing.T) {
+	app := newRegistryTestApp(t)
+	logs := captureLogs(t)
+
+	missing := filepath.Join(t.TempDir(), "does_not_exist.json")
+	if err := seedRegistryFromFile(app, missing); err != nil {
+		t.Fatalf("absent file should not be an error, got: %v", err)
+	}
+
+	if n := countRecords(t, app, "lodging_units"); n != 0 {
+		t.Errorf("absent file created %d units, want 0", n)
+	}
+	if n := countRecords(t, app, "lodging_areas"); n != 0 {
+		t.Errorf("absent file created %d areas, want 0", n)
+	}
+	// Graceful degradation has to be visible, or an empty registry looks like
+	// a working one. Same contract branding already has.
+	if !bytes.Contains(logs.Bytes(), []byte("lodging registry")) {
+		t.Errorf("absent file logged nothing about the registry; got:\n%s", logs.String())
+	}
+}
+
+func TestSeedRegistryCreatesAreasUnitsAndAliases(t *testing.T) {
+	app := newRegistryTestApp(t)
+
+	if err := seedRegistryFromFile(app, writeRegistry(t, fixtureRegistry)); err != nil {
+		t.Fatalf("seedRegistryFromFile: %v", err)
+	}
+
+	if n := countRecords(t, app, "lodging_areas"); n != 1 {
+		t.Errorf("got %d areas, want 1", n)
+	}
+	if n := countRecords(t, app, "lodging_units"); n != 3 {
+		t.Errorf("got %d units, want 3", n)
+	}
+	if n := countRecords(t, app, "lodging_unit_aliases"); n != 2 {
+		t.Errorf("got %d aliases, want 2", n)
+	}
+
+	area := findByCode(t, app, "lodging_areas", "AREA1")
+	if got := area.GetString("name"); got != "First Area" {
+		t.Errorf("area name = %q, want %q", got, "First Area")
+	}
+	if got := area.GetFloat("map_x"); got != 0.5 {
+		t.Errorf("area map_x = %v, want 0.5", got)
+	}
+	if got := area.GetInt("sort_order"); got != 1 {
+		t.Errorf("area sort_order = %d, want 1", got)
+	}
+
+	child := findByCode(t, app, "lodging_units", "child-a")
+	if got := child.GetString("name"); got != "Child A" {
+		t.Errorf("unit name = %q, want %q", got, "Child A")
+	}
+	if got := child.GetString("area"); got != area.Id {
+		t.Errorf("unit area = %q, want the area record id %q", got, area.Id)
+	}
+	if got := child.GetInt("sleeps"); got != 4 {
+		t.Errorf("unit sleeps = %d, want 4", got)
+	}
+	if got := child.GetString("bathroom"); got != "shared" {
+		t.Errorf("unit bathroom = %q, want shared", got)
+	}
+	if got := child.GetString("bathroom_group"); got != "grp-1" {
+		t.Errorf("unit bathroom_group = %q, want grp-1", got)
+	}
+	if !child.GetBool("near_bathhouse") {
+		t.Error("unit near_bathhouse = false, want true")
+	}
+	if got := child.GetString("allocation_default"); got != "family_pool" {
+		t.Errorf("unit allocation_default = %q, want family_pool", got)
+	}
+	if got := child.GetString("notes"); got != "a note" {
+		t.Errorf("unit notes = %q, want %q", got, "a note")
+	}
+	if !child.GetBool("is_active") {
+		t.Error("seeded unit is_active = false, want true")
+	}
+	// Every seeded value is a guess until staff say otherwise (1500000120).
+	if child.GetBool("is_confirmed") {
+		t.Error("seeded unit is_confirmed = true, want false")
+	}
+	if child.GetBool("is_container") {
+		t.Error("child-a is_container = true, want false")
+	}
+	if !findByCode(t, app, "lodging_units", "building-1").GetBool("is_container") {
+		t.Error("building-1 is_container = false, want true")
+	}
+}
+
+func TestSeedRegistryWiresParentDeclaredAfterChild(t *testing.T) {
+	app := newRegistryTestApp(t)
+
+	if err := seedRegistryFromFile(app, writeRegistry(t, fixtureRegistry)); err != nil {
+		t.Fatalf("seedRegistryFromFile: %v", err)
+	}
+
+	building := findByCode(t, app, "lodging_units", "building-1")
+	// child-a is listed BEFORE building-1 in the file: a single-pass loader
+	// would have no id to point at and would leave the relation empty.
+	for _, code := range []string{"child-a", "child-b"} {
+		if got := findByCode(t, app, "lodging_units", code).GetString("parent_unit"); got != building.Id {
+			t.Errorf("%s parent_unit = %q, want %q", code, got, building.Id)
+		}
+	}
+	if got := building.GetString("parent_unit"); got != "" {
+		t.Errorf("building-1 parent_unit = %q, want empty", got)
+	}
+}
+
+// An unset `sleeps` must land as PocketBase's 0, which consumers read as
+// UNKNOWN. The JSON carries null; a loader that coerced null to a real 0
+// through some other path would be indistinguishable here, but a loader that
+// rejected null or wrote garbage would not.
+func TestSeedRegistryNullSleepsStoresZero(t *testing.T) {
+	app := newRegistryTestApp(t)
+
+	if err := seedRegistryFromFile(app, writeRegistry(t, fixtureRegistry)); err != nil {
+		t.Fatalf("seedRegistryFromFile: %v", err)
+	}
+
+	if got := findByCode(t, app, "lodging_units", "building-1").GetInt("sleeps"); got != 0 {
+		t.Errorf("null sleeps stored as %d, want 0 (unknown)", got)
+	}
+}
+
+// PocketBase stores an unset number as 0, never NULL. An alias whose window is
+// unbounded must therefore be written and re-found as 0 — the trap 1500000121
+// documents, and the reason a re-run would otherwise die on the unique index.
+func TestSeedRegistryUnboundedAliasYearsStoreZero(t *testing.T) {
+	app := newRegistryTestApp(t)
+
+	if err := seedRegistryFromFile(app, writeRegistry(t, fixtureRegistry)); err != nil {
+		t.Fatalf("seedRegistryFromFile: %v", err)
+	}
+
+	unbounded, err := app.FindFirstRecordByFilter(
+		"lodging_unit_aliases", "alias_string = {:s}", map[string]any{"s": "Child A"},
+	)
+	if err != nil {
+		t.Fatalf("find alias: %v", err)
+	}
+	if got := unbounded.GetInt("valid_from_year"); got != 0 {
+		t.Errorf("unbounded valid_from_year = %d, want 0", got)
+	}
+	if got := unbounded.GetInt("valid_to_year"); got != 0 {
+		t.Errorf("unbounded valid_to_year = %d, want 0", got)
+	}
+
+	bounded, err := app.FindFirstRecordByFilter(
+		"lodging_unit_aliases", "alias_string = {:s}", map[string]any{"s": "Building One"},
+	)
+	if err != nil {
+		t.Fatalf("find bounded alias: %v", err)
+	}
+	if got := bounded.GetInt("valid_from_year"); got != 2025 {
+		t.Errorf("bounded valid_from_year = %d, want 2025", got)
+	}
+}
+
+func TestSeedRegistryAliasMembersResolveToUnitIDs(t *testing.T) {
+	app := newRegistryTestApp(t)
+
+	if err := seedRegistryFromFile(app, writeRegistry(t, fixtureRegistry)); err != nil {
+		t.Fatalf("seedRegistryFromFile: %v", err)
+	}
+
+	merge, err := app.FindFirstRecordByFilter(
+		"lodging_unit_aliases", "alias_string = {:s}", map[string]any{"s": "Building One"},
+	)
+	if err != nil {
+		t.Fatalf("find alias: %v", err)
+	}
+
+	want := []string{
+		findByCode(t, app, "lodging_units", "child-a").Id,
+		findByCode(t, app, "lodging_units", "child-b").Id,
+	}
+	got := merge.GetStringSlice("member_units")
+	if len(got) != len(want) {
+		t.Fatalf("member_units = %v, want %v", got, want)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Errorf("member_units[%d] = %q, want %q", i, got[i], want[i])
+		}
+	}
+}
+
+func TestSeedRegistryIsIdempotent(t *testing.T) {
+	app := newRegistryTestApp(t)
+	path := writeRegistry(t, fixtureRegistry)
+
+	if err := seedRegistryFromFile(app, path); err != nil {
+		t.Fatalf("first run: %v", err)
+	}
+	if err := seedRegistryFromFile(app, path); err != nil {
+		t.Fatalf("second run: %v", err)
+	}
+
+	if n := countRecords(t, app, "lodging_areas"); n != 1 {
+		t.Errorf("after two runs: %d areas, want 1", n)
+	}
+	if n := countRecords(t, app, "lodging_units"); n != 3 {
+		t.Errorf("after two runs: %d units, want 3", n)
+	}
+	if n := countRecords(t, app, "lodging_unit_aliases"); n != 2 {
+		t.Errorf("after two runs: %d aliases, want 2", n)
+	}
+}
+
+// The registry is staff-editable in /manage/lodging. A loader that rewrote
+// every field on boot would silently undo a confirmation or a corrected
+// coordinate on the next restart, which is why this is create-if-absent and
+// not a full upsert.
+func TestSeedRegistryPreservesStaffEdits(t *testing.T) {
+	app := newRegistryTestApp(t)
+	path := writeRegistry(t, fixtureRegistry)
+
+	if err := seedRegistryFromFile(app, path); err != nil {
+		t.Fatalf("first run: %v", err)
+	}
+
+	edited := findByCode(t, app, "lodging_units", "child-a")
+	edited.Set("sleeps", 9)
+	edited.Set("is_confirmed", true)
+	edited.Set("map_x", 0.9)
+	edited.Set("notes", "staff corrected this")
+	if err := app.Save(edited); err != nil {
+		t.Fatalf("save staff edit: %v", err)
+	}
+
+	if err := seedRegistryFromFile(app, path); err != nil {
+		t.Fatalf("second run: %v", err)
+	}
+
+	after := findByCode(t, app, "lodging_units", "child-a")
+	if got := after.GetInt("sleeps"); got != 9 {
+		t.Errorf("sleeps = %d after re-seed, want the staff value 9", got)
+	}
+	if !after.GetBool("is_confirmed") {
+		t.Error("is_confirmed reverted to false, want the staff value true")
+	}
+	if got := after.GetFloat("map_x"); got != 0.9 {
+		t.Errorf("map_x = %v after re-seed, want the staff value 0.9", got)
+	}
+	if got := after.GetString("notes"); got != "staff corrected this" {
+		t.Errorf("notes = %q after re-seed, want the staff value", got)
+	}
+}
+
+// A parent_unit staff cleared deliberately must not be silently re-wired on the
+// next boot, for the same reason as the field edits above.
+func TestSeedRegistryDoesNotRewireAnExistingParent(t *testing.T) {
+	app := newRegistryTestApp(t)
+	path := writeRegistry(t, fixtureRegistry)
+
+	if err := seedRegistryFromFile(app, path); err != nil {
+		t.Fatalf("first run: %v", err)
+	}
+
+	detached := findByCode(t, app, "lodging_units", "child-b")
+	detached.Set("parent_unit", "")
+	if err := app.Save(detached); err != nil {
+		t.Fatalf("clear parent: %v", err)
+	}
+
+	if err := seedRegistryFromFile(app, path); err != nil {
+		t.Fatalf("second run: %v", err)
+	}
+
+	if got := findByCode(t, app, "lodging_units", "child-b").GetString("parent_unit"); got != "" {
+		t.Errorf("parent_unit = %q after re-seed, want it left cleared", got)
+	}
+}
+
+func TestSeedRegistryMalformedJSONErrorsWithoutWriting(t *testing.T) {
+	app := newRegistryTestApp(t)
+
+	err := seedRegistryFromFile(app, writeRegistry(t, `{"areas": [ NOT JSON`))
+	if err == nil {
+		t.Fatal("malformed JSON returned nil, want an error")
+	}
+	if n := countRecords(t, app, "lodging_areas"); n != 0 {
+		t.Errorf("malformed JSON created %d areas, want 0", n)
+	}
+}
+
+// A unit naming an area that is not in the file is a broken registry, not a
+// unit to create area-less: `area` is a REQUIRED relation, so the alternative
+// is a save that fails deep in the loop with no useful message.
+func TestSeedRegistryUnknownAreaCodeIsAnError(t *testing.T) {
+	app := newRegistryTestApp(t)
+
+	body := `{"areas": [], "units": [
+	  {"area": "NOPE", "code": "orphan", "name": "Orphan", "bathroom": "none",
+	   "allocation_default": "family_pool"}
+	], "aliases": []}`
+
+	err := seedRegistryFromFile(app, writeRegistry(t, body))
+	if err == nil {
+		t.Fatal("unknown area code returned nil, want an error")
+	}
+	if n := countRecords(t, app, "lodging_units"); n != 0 {
+		t.Errorf("unknown area code created %d units, want 0", n)
+	}
+}
+
+func TestSeedRegistryUnknownParentCodeIsAnError(t *testing.T) {
+	app := newRegistryTestApp(t)
+
+	body := `{"areas": [{"code": "AREA1", "name": "First Area"}], "units": [
+	  {"area": "AREA1", "code": "orphan", "name": "Orphan", "parent_unit": "nope",
+	   "bathroom": "none", "allocation_default": "family_pool"}
+	], "aliases": []}`
+
+	if err := seedRegistryFromFile(app, writeRegistry(t, body)); err == nil {
+		t.Fatal("unknown parent code returned nil, want an error")
+	}
+}
+
+// An alias pointing at a unit code the file does not define would otherwise
+// save with a short member list — a merge quietly missing a room.
+func TestSeedRegistryUnknownAliasMemberIsAnError(t *testing.T) {
+	app := newRegistryTestApp(t)
+
+	body := `{"areas": [{"code": "AREA1", "name": "First Area"}], "units": [
+	  {"area": "AREA1", "code": "real", "name": "Real", "bathroom": "none",
+	   "allocation_default": "family_pool"}
+	], "aliases": [
+	  {"alias_string": "Broken", "member_units": ["real", "ghost"]}
+	]}`
+
+	if err := seedRegistryFromFile(app, writeRegistry(t, body)); err == nil {
+		t.Fatal("unknown alias member returned nil, want an error")
+	}
+	if n := countRecords(t, app, "lodging_unit_aliases"); n != 0 {
+		t.Errorf("unknown alias member created %d aliases, want 0", n)
+	}
+}
+
+// Two alias rows may share a string when their windows differ (a rename), so
+// idempotency has to key on the pair the unique index keys on.
+func TestSeedRegistrySameAliasStringDifferentWindowsBothLand(t *testing.T) {
+	app := newRegistryTestApp(t)
+
+	body := `{"areas": [{"code": "AREA1", "name": "First Area"}], "units": [
+	  {"area": "AREA1", "code": "old", "name": "Old", "bathroom": "none",
+	   "allocation_default": "family_pool"},
+	  {"area": "AREA1", "code": "new", "name": "New", "bathroom": "none",
+	   "allocation_default": "family_pool"}
+	], "aliases": [
+	  {"alias_string": "Renamed", "member_units": ["old"],
+	   "valid_from_year": null, "valid_to_year": 2024},
+	  {"alias_string": "Renamed", "member_units": ["new"],
+	   "valid_from_year": 2025, "valid_to_year": null}
+	]}`
+	path := writeRegistry(t, body)
+
+	if err := seedRegistryFromFile(app, path); err != nil {
+		t.Fatalf("first run: %v", err)
+	}
+	if n := countRecords(t, app, "lodging_unit_aliases"); n != 2 {
+		t.Fatalf("got %d aliases, want 2 (one per window)", n)
+	}
+	if err := seedRegistryFromFile(app, path); err != nil {
+		t.Fatalf("second run: %v", err)
+	}
+	if n := countRecords(t, app, "lodging_unit_aliases"); n != 2 {
+		t.Errorf("after two runs: %d aliases, want 2", n)
+	}
+}
+
+// --- file-level validation -------------------------------------------------
+//
+// The loader's "row already exists -> skip" is how idempotency works across
+// runs. That makes it structurally unable to tell a re-run from a code
+// duplicated INSIDE one file, so a duplicate is dropped with no error and no
+// log line -- while an unknown area, parent or alias member all hard-fail.
+// The file is hand-maintained, so the slip is realistic and the silence is the
+// bug. Validation runs before any write, so a bad file changes nothing.
+
+func TestSeedRegistryDuplicateUnitCodeIsAnError(t *testing.T) {
+	app := newRegistryTestApp(t)
+
+	body := `{"areas": [{"code": "AREA1", "name": "First Area"}], "units": [
+	  {"area": "AREA1", "code": "twin", "name": "First", "bathroom": "none",
+	   "allocation_default": "family_pool"},
+	  {"area": "AREA1", "code": "twin", "name": "Second", "bathroom": "none",
+	   "allocation_default": "family_pool"}
+	], "aliases": []}`
+
+	err := seedRegistryFromFile(app, writeRegistry(t, body))
+	if err == nil {
+		t.Fatal("duplicate unit code returned nil, want an error")
+	}
+	if n := countRecords(t, app, "lodging_units"); n != 0 {
+		t.Errorf("duplicate unit code created %d units, want 0 (validation precedes writes)", n)
+	}
+}
+
+func TestSeedRegistryDuplicateAreaCodeIsAnError(t *testing.T) {
+	app := newRegistryTestApp(t)
+
+	body := `{"areas": [
+	  {"code": "AREA1", "name": "First"},
+	  {"code": "AREA1", "name": "Second"}
+	], "units": [], "aliases": []}`
+
+	err := seedRegistryFromFile(app, writeRegistry(t, body))
+	if err == nil {
+		t.Fatal("duplicate area code returned nil, want an error")
+	}
+	if n := countRecords(t, app, "lodging_areas"); n != 0 {
+		t.Errorf("duplicate area code created %d areas, want 0", n)
+	}
+}
+
+// Two alias rows may legitimately share a string when their windows differ,
+// so the duplicate check has to key on the pair the unique index keys on --
+// the same pair TestSeedRegistrySameAliasStringDifferentWindowsBothLand
+// requires to stay legal.
+func TestSeedRegistryDuplicateAliasWindowIsAnError(t *testing.T) {
+	app := newRegistryTestApp(t)
+
+	body := `{"areas": [{"code": "AREA1", "name": "First Area"}], "units": [
+	  {"area": "AREA1", "code": "real", "name": "Real", "bathroom": "none",
+	   "allocation_default": "family_pool"}
+	], "aliases": [
+	  {"alias_string": "Same", "member_units": ["real"], "valid_from_year": 2025},
+	  {"alias_string": "Same", "member_units": ["real"], "valid_from_year": 2025}
+	]}`
+
+	err := seedRegistryFromFile(app, writeRegistry(t, body))
+	if err == nil {
+		t.Fatal("duplicate (alias_string, valid_from_year) returned nil, want an error")
+	}
+	if n := countRecords(t, app, "lodging_unit_aliases"); n != 0 {
+		t.Errorf("duplicate alias created %d aliases, want 0", n)
+	}
+}
+
+// --- parent wiring ---------------------------------------------------------
+
+// Deleting a container in /manage/lodging nulls its children's parent_unit as
+// a side effect. The loader then recreates the container -- so it has already
+// decided the row should exist -- but wiring gated only on "the CHILD was
+// created this run" left those children permanently orphaned: a restored
+// building with nothing in it, and no error to say so.
+//
+// This is distinct from TestSeedRegistryDoesNotRewireAnExistingParent, where
+// the container was never deleted and the cleared parent is a staff decision
+// the loader must respect.
+func TestSeedRegistryRewiresChildrenOfARecreatedContainer(t *testing.T) {
+	app := newRegistryTestApp(t)
+	path := writeRegistry(t, fixtureRegistry)
+
+	if err := seedRegistryFromFile(app, path); err != nil {
+		t.Fatalf("first run: %v", err)
+	}
+
+	container := findByCode(t, app, "lodging_units", "building-1")
+	if err := app.Delete(container); err != nil {
+		t.Fatalf("delete container: %v", err)
+	}
+
+	if err := seedRegistryFromFile(app, path); err != nil {
+		t.Fatalf("second run: %v", err)
+	}
+
+	recreated := findByCode(t, app, "lodging_units", "building-1")
+	for _, code := range []string{"child-a", "child-b"} {
+		if got := findByCode(t, app, "lodging_units", code).GetString("parent_unit"); got != recreated.Id {
+			t.Errorf("%s.parent_unit = %q after the container was recreated, want %q",
+				code, got, recreated.Id)
+		}
+	}
+}
+
+// --- path resolution -------------------------------------------------------
+
+// The absolute candidates must be found on their own merit. In the production
+// image the container's working directory is "/", which makes the RELATIVE
+// "./config" candidate coincidentally equal the real "/config" mount -- so a
+// future WORKDIR would silently break the only candidate that actually fires.
+func TestSeedRegistryResolvesAbsoluteConfigRoot(t *testing.T) {
+	app := newRegistryTestApp(t)
+
+	absRoot := t.TempDir()
+	if err := os.WriteFile(
+		filepath.Join(absRoot, registryFileName), []byte(fixtureRegistry), 0o600,
+	); err != nil {
+		t.Fatalf("write registry: %v", err)
+	}
+	withRegistryAbsoluteRoots(t, []string{absRoot})
+	// Point the relative candidates at an empty tree, so only the absolute
+	// root can satisfy this.
+	withRegistryBasePath(t, t.TempDir())
+
+	if err := SeedRegistry(app); err != nil {
+		t.Fatalf("SeedRegistry: %v", err)
+	}
+	if n := countRecords(t, app, "lodging_units"); n != 3 {
+		t.Errorf("got %d units, want 3 — the absolute config root was not searched", n)
+	}
+}

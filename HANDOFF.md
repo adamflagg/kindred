@@ -387,6 +387,16 @@ the whole time. That is progress, not a hang — confirm with CPU, not the count
 - **Do not commit `docs/superpowers/**` or `docs/plans/**`.** Gitignored, local-only, public repo.
 - **Do not re-add unit names to application source to make a rule readable.** The guard now ignores
   comments and docstrings, so prose is fine; a string literal, list or map is not (spec §3.8).
+- **Do not seed registry data in a migration — including a migration that READS the private file.**
+  The registry lives in `config/lodging_registry.json` (kindred-local) and loads on boot;
+  `docs/reference/lodging-registry.md` is the contract. `_migrations` keys on filename and applies
+  once, so a migration reading an absent private file in CI would be recorded as applied and never
+  re-run when the file appeared — a silently empty registry. `verify-no-hardcoded-lodging.sh` now
+  scans `pb_migrations/` for exactly this.
+- **Do not make the boot loader overwrite existing rows.** It is create-if-absent on purpose: the
+  registry is staff-editable, so a full upsert would undo confirmations and corrected coordinates on
+  the next restart. The flip side is that it will NOT backfill a new field onto rows that already
+  exist — that needs its own one-off, and assuming otherwise is how an inventory update lands empty.
 - **Do not judge a housing need against an unconfirmed cabin.** `has_power: false` on an unconfirmed
   row means "nobody has said". Phase C makes confirmation possible — that is the moment this starts
   mattering, not a reason to relax it.
