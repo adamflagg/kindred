@@ -127,6 +127,41 @@ export type ApproveRequest = {
 }
 
 /**
+ * AvailabilityWriteRequest
+ *
+ * Reserve or release one unit for one weekend, inside a scenario.
+ *
+ * `state: null` CLEARS the scenario's override, which returns the unit to
+ * whatever the live plan says. That is not the same as writing an override
+ * that happens to agree with the live plan, and the difference shows the
+ * moment the live plan changes.
+ */
+export type AvailabilityWriteRequest = {
+  /**
+   * Year
+   */
+  year: number
+  /**
+   * Session Cm Id
+   */
+  session_cm_id: number
+  /**
+   * Scenario
+   *
+   * saved_scenarios record id
+   */
+  scenario: string
+  /**
+   * Unit Id
+   */
+  unit_id: string
+  /**
+   * State
+   */
+  state?: 'reserved_staff' | 'reserved_other' | 'released_to_family' | null
+}
+
+/**
  * BatchResolveResponse
  *
  * Response for batch coordinate resolution.
@@ -1890,6 +1925,22 @@ export type LodgingUnitSummary = {
 }
 
 /**
+ * LodgingWriteResponse
+ *
+ * What a write did, in the terms the board needs to reconcile its state.
+ */
+export type LodgingWriteResponse = {
+  /**
+   * Record Id
+   */
+  record_id?: string
+  /**
+   * Deleted
+   */
+  deleted?: boolean
+}
+
+/**
  * MergeRequest
  *
  * Request body for merging one canonical into another.
@@ -1969,6 +2020,48 @@ export type MergeResponse = {
    * Number of mappings reassigned
    */
   merged_count: number
+}
+
+/**
+ * MergeWriteRequest
+ *
+ * Bind a set of units into one bookable slot, for one weekend.
+ *
+ * THE MEMBER SET IS NOT VALIDATED FOR COMPLETENESS, deliberately. The rule
+ * "a merge is legal iff its members are the complete child set of some
+ * container" was built through nine tasks and removed in #1903: every member
+ * set is hand-authored, so a deliberate partial booking and a mis-click
+ * produce byte-identical rows and no rule can tell them apart. Read
+ * docs/architecture/lodging-occupancy.md before adding anything like it --
+ * the idea is genuinely appealing and wrong for reasons that are not obvious.
+ */
+export type MergeWriteRequest = {
+  /**
+   * Year
+   */
+  year: number
+  /**
+   * Session Cm Id
+   */
+  session_cm_id: number
+  /**
+   * Scenario
+   *
+   * saved_scenarios record id
+   */
+  scenario: string
+  /**
+   * Member Unit Ids
+   */
+  member_unit_ids: Array<string>
+  /**
+   * Display Name
+   */
+  display_name?: string
+  /**
+   * Capacity Override
+   */
+  capacity_override?: number | null
 }
 
 /**
@@ -3378,6 +3471,83 @@ export type PipelineTracesByCamperResponse = {
    * Total traces found
    */
   total: number
+}
+
+/**
+ * PlacementDeleteRequest
+ *
+ * Drop a party's draft row, restoring whatever the synced rows say.
+ */
+export type PlacementDeleteRequest = {
+  /**
+   * Year
+   */
+  year: number
+  /**
+   * Session Cm Id
+   */
+  session_cm_id: number
+  /**
+   * Scenario
+   *
+   * saved_scenarios record id
+   */
+  scenario: string
+  /**
+   * Household Cm Id
+   */
+  household_cm_id?: number
+  /**
+   * Person Cm Id
+   */
+  person_cm_id?: number
+}
+
+/**
+ * PlacementWriteRequest
+ *
+ * Place a party, or record that staff took it off the board.
+ *
+ * All three targets empty is the TOMBSTONE and is deliberately valid: it
+ * means "unplaced in this scenario", which is not the same as having no draft
+ * row. Deleting the row instead would fall through to the CampMinder mirror
+ * and put the family straight back where staff just dragged them from.
+ */
+export type PlacementWriteRequest = {
+  /**
+   * Year
+   */
+  year: number
+  /**
+   * Session Cm Id
+   */
+  session_cm_id: number
+  /**
+   * Scenario
+   *
+   * saved_scenarios record id
+   */
+  scenario: string
+  /**
+   * Household Cm Id
+   */
+  household_cm_id?: number
+  /**
+   * Person Cm Id
+   */
+  person_cm_id?: number
+  /**
+   * Unit Id
+   */
+  unit_id?: string
+  /**
+   * Merge Id
+   */
+  merge_id?: string
+  /**
+   * Merge Draft Id
+   */
+  merge_draft_id?: string
 }
 
 /**
@@ -9618,6 +9788,12 @@ export type GetWeekendSummaryApiLodgingSummaryGetData = {
      * Year of the weekends
      */
     year: number
+    /**
+     * Scenario
+     *
+     * Saved scenario id; empty resolves the CampMinder mirror
+     */
+    scenario?: string
   }
   url: '/api/lodging/summary'
 }
@@ -9658,6 +9834,12 @@ export type GetWeekendRosterApiLodgingRosterGetData = {
      * CampMinder id of the weekend session
      */
     session_cm_id: number
+    /**
+     * Scenario
+     *
+     * Saved scenario id; empty resolves the CampMinder mirror
+     */
+    scenario?: string
   }
   url: '/api/lodging/roster'
 }
@@ -9720,6 +9902,146 @@ export type GetHouseholdMedicalApiLodgingHouseholdsHouseholdCmIdMedicalGetRespon
 
 export type GetHouseholdMedicalApiLodgingHouseholdsHouseholdCmIdMedicalGetResponse =
   GetHouseholdMedicalApiLodgingHouseholdsHouseholdCmIdMedicalGetResponses[keyof GetHouseholdMedicalApiLodgingHouseholdsHouseholdCmIdMedicalGetResponses]
+
+export type DeletePlacementApiLodgingPlacementsDeleteData = {
+  body: PlacementDeleteRequest
+  path?: never
+  query?: never
+  url: '/api/lodging/placements'
+}
+
+export type DeletePlacementApiLodgingPlacementsDeleteErrors = {
+  /**
+   * Validation Error
+   */
+  422: HttpValidationError
+}
+
+export type DeletePlacementApiLodgingPlacementsDeleteError =
+  DeletePlacementApiLodgingPlacementsDeleteErrors[keyof DeletePlacementApiLodgingPlacementsDeleteErrors]
+
+export type DeletePlacementApiLodgingPlacementsDeleteResponses = {
+  /**
+   * Successful Response
+   */
+  200: LodgingWriteResponse
+}
+
+export type DeletePlacementApiLodgingPlacementsDeleteResponse =
+  DeletePlacementApiLodgingPlacementsDeleteResponses[keyof DeletePlacementApiLodgingPlacementsDeleteResponses]
+
+export type UpsertPlacementApiLodgingPlacementsPostData = {
+  body: PlacementWriteRequest
+  path?: never
+  query?: never
+  url: '/api/lodging/placements'
+}
+
+export type UpsertPlacementApiLodgingPlacementsPostErrors = {
+  /**
+   * Validation Error
+   */
+  422: HttpValidationError
+}
+
+export type UpsertPlacementApiLodgingPlacementsPostError =
+  UpsertPlacementApiLodgingPlacementsPostErrors[keyof UpsertPlacementApiLodgingPlacementsPostErrors]
+
+export type UpsertPlacementApiLodgingPlacementsPostResponses = {
+  /**
+   * Successful Response
+   */
+  200: LodgingWriteResponse
+}
+
+export type UpsertPlacementApiLodgingPlacementsPostResponse =
+  UpsertPlacementApiLodgingPlacementsPostResponses[keyof UpsertPlacementApiLodgingPlacementsPostResponses]
+
+export type CreateMergeApiLodgingMergesPostData = {
+  body: MergeWriteRequest
+  path?: never
+  query?: never
+  url: '/api/lodging/merges'
+}
+
+export type CreateMergeApiLodgingMergesPostErrors = {
+  /**
+   * Validation Error
+   */
+  422: HttpValidationError
+}
+
+export type CreateMergeApiLodgingMergesPostError =
+  CreateMergeApiLodgingMergesPostErrors[keyof CreateMergeApiLodgingMergesPostErrors]
+
+export type CreateMergeApiLodgingMergesPostResponses = {
+  /**
+   * Successful Response
+   */
+  200: LodgingWriteResponse
+}
+
+export type CreateMergeApiLodgingMergesPostResponse =
+  CreateMergeApiLodgingMergesPostResponses[keyof CreateMergeApiLodgingMergesPostResponses]
+
+export type DeleteMergeApiLodgingMergesMergeDraftIdDeleteData = {
+  body?: never
+  path: {
+    /**
+     * Merge Draft Id
+     */
+    merge_draft_id: string
+  }
+  query?: never
+  url: '/api/lodging/merges/{merge_draft_id}'
+}
+
+export type DeleteMergeApiLodgingMergesMergeDraftIdDeleteErrors = {
+  /**
+   * Validation Error
+   */
+  422: HttpValidationError
+}
+
+export type DeleteMergeApiLodgingMergesMergeDraftIdDeleteError =
+  DeleteMergeApiLodgingMergesMergeDraftIdDeleteErrors[keyof DeleteMergeApiLodgingMergesMergeDraftIdDeleteErrors]
+
+export type DeleteMergeApiLodgingMergesMergeDraftIdDeleteResponses = {
+  /**
+   * Successful Response
+   */
+  200: LodgingWriteResponse
+}
+
+export type DeleteMergeApiLodgingMergesMergeDraftIdDeleteResponse =
+  DeleteMergeApiLodgingMergesMergeDraftIdDeleteResponses[keyof DeleteMergeApiLodgingMergesMergeDraftIdDeleteResponses]
+
+export type SetAvailabilityApiLodgingAvailabilityPutData = {
+  body: AvailabilityWriteRequest
+  path?: never
+  query?: never
+  url: '/api/lodging/availability'
+}
+
+export type SetAvailabilityApiLodgingAvailabilityPutErrors = {
+  /**
+   * Validation Error
+   */
+  422: HttpValidationError
+}
+
+export type SetAvailabilityApiLodgingAvailabilityPutError =
+  SetAvailabilityApiLodgingAvailabilityPutErrors[keyof SetAvailabilityApiLodgingAvailabilityPutErrors]
+
+export type SetAvailabilityApiLodgingAvailabilityPutResponses = {
+  /**
+   * Successful Response
+   */
+  200: LodgingWriteResponse
+}
+
+export type SetAvailabilityApiLodgingAvailabilityPutResponse =
+  SetAvailabilityApiLodgingAvailabilityPutResponses[keyof SetAvailabilityApiLodgingAvailabilityPutResponses]
 
 export type GetGapsApiGeoGapsGetData = {
   body?: never
