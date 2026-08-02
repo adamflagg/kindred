@@ -1225,6 +1225,11 @@ func (s *FamilyCampDerivedSync) adultNeedsUpdate(existing *core.Record, adult *a
 
 // registrationNeedsUpdate checks if a registration record needs updating
 func (s *FamilyCampDerivedSync) registrationNeedsUpdate(existing *core.Record, reg *registrationData) bool {
+	// Compared in the same normalised form applyRegistrationFields WRITES, or
+	// every household with no request values would look changed on every pass:
+	// the struct holds "" while the row holds "unknown".
+	normalizedEligibility, normalizedSource := NormalizeShareEligibility(
+		reg.shareEligibility, reg.shareEligibilitySource)
 	return existing.GetString("cabin_assignment") != reg.cabinAssignment ||
 		existing.GetString("share_cabin_preference") != reg.shareCabinPreference ||
 		existing.GetString("shared_cabin_modes_raw") != reg.sharedCabinModesRaw ||
@@ -1245,8 +1250,8 @@ func (s *FamilyCampDerivedSync) registrationNeedsUpdate(existing *core.Record, r
 		existing.GetBool("needs_power") != reg.needsPower ||
 		existing.GetBool("accommodation_is_mandatory") != reg.accommodationIsMandatory ||
 		existing.GetBool("has_infant") != reg.hasInfant ||
-		existing.GetString("share_eligibility") != reg.shareEligibility ||
-		existing.GetString("share_eligibility_source") != reg.shareEligibilitySource ||
+		existing.GetString("share_eligibility") != normalizedEligibility ||
+		existing.GetString("share_eligibility_source") != normalizedSource ||
 		existing.GetBool("share_answers_conflict") != reg.shareAnswersConflict
 }
 
@@ -1269,8 +1274,14 @@ func setRegistrationRequestFields(record *core.Record, reg *registrationData) {
 	// The board's placement verdict. share_cabin_gate above stays the raw
 	// REGISTRATION answer; this is the resolved one, and the Family Camp
 	// information form outranks the gate wherever both were answered.
-	record.Set("share_eligibility", reg.shareEligibility)
-	record.Set("share_eligibility_source", reg.shareEligibilitySource)
+	//
+	// Normalised so the column has exactly ONE spelling per state: a household
+	// with no request values at all never reaches the collapse, and writing its
+	// zero value would store "" beside "unknown" for the same meaning.
+	eligibility, eligibilitySource := NormalizeShareEligibility(
+		reg.shareEligibility, reg.shareEligibilitySource)
+	record.Set("share_eligibility", eligibility)
+	record.Set("share_eligibility_source", eligibilitySource)
 	record.Set("share_answers_conflict", reg.shareAnswersConflict)
 }
 

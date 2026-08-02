@@ -197,6 +197,25 @@ func DeriveShareEligibility(
 	return shareEligibilityUnknown, shareSourceNone, false
 }
 
+// NormalizeShareEligibility gives an unwritten verdict its explicit spelling.
+//
+// A household with NO request-field values at all never gets a bucket in
+// CollapseToHouseholdGrain, so its derived fields keep Go's zero value and the
+// column would store "" rather than "unknown" -- two spellings of one state.
+// Measured on 2026 after a real family_camp_derived run: 35 rows "" against 2
+// rows "unknown", so `WHERE share_eligibility = 'unknown'` would silently miss
+// 35 households.
+//
+// Every consumer already reads "" as unknown, which is precisely what makes
+// this latent rather than visible: the column looks fine until somebody
+// filters on it. Same shape as kindred#1921.
+func NormalizeShareEligibility(eligibility, source string) (string, string) {
+	if eligibility == "" {
+		return shareEligibilityUnknown, shareSourceNone
+	}
+	return eligibility, source
+}
+
 // PersonRequestValue is one person-partition request value, already carrying the
 // household it belongs to.
 type PersonRequestValue struct {

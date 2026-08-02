@@ -497,3 +497,35 @@ func TestCollapseCarriesShareEligibility(t *testing.T) {
 		t.Error("B has only one answer, so it cannot conflict with anything")
 	}
 }
+
+// TestNormalizeShareEligibilityGivesUnknownOneSpelling closes a latent filter
+// bug found by running the real sync rather than by reading the code.
+//
+// A household with NO request-field values at all never gets a bucket in
+// CollapseToHouseholdGrain, so its derived fields stay at Go's zero value and
+// the column stores "" instead of "unknown" -- two spellings of one state.
+// Measured on 2026 after a real family_camp_derived run: 35 rows "" against 2
+// rows "unknown", so `WHERE share_eligibility = 'unknown'` would silently miss
+// 35 households. Every consumer already reads "" as unknown, which is exactly
+// what makes this latent rather than visible -- the same shape as kindred#1921.
+func TestNormalizeShareEligibilityGivesUnknownOneSpelling(t *testing.T) {
+	eligibility, source := NormalizeShareEligibility("", "")
+	if eligibility != shareEligibilityUnknown || source != shareSourceNone {
+		t.Errorf("unwritten verdict = (%q, %q), want (%q, %q)",
+			eligibility, source, shareEligibilityUnknown, shareSourceNone)
+	}
+
+	// A real verdict passes through untouched, source included.
+	for _, tc := range []struct{ eligibility, source string }{
+		{shareEligibilityOpen, shareSourceForm},
+		{shareEligibilityNamed, shareSourceRegistration},
+		{shareEligibilityDeclined, shareSourceForm},
+		{shareEligibilityUnknown, shareSourceNone},
+	} {
+		gotEligibility, gotSource := NormalizeShareEligibility(tc.eligibility, tc.source)
+		if gotEligibility != tc.eligibility || gotSource != tc.source {
+			t.Errorf("NormalizeShareEligibility(%q, %q) = (%q, %q), want unchanged",
+				tc.eligibility, tc.source, gotEligibility, gotSource)
+		}
+	}
+}
