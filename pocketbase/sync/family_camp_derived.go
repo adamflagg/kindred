@@ -119,6 +119,16 @@ type registrationData struct {
 	requestSourceField string
 	requestLastUpdated time.Time
 
+	// The RESOLVED share verdict the board places on, and its provenance.
+	// shareCabinGate above is the registration answer only; the Family Camp
+	// information form outranks it wherever both were answered, which is why
+	// these are separate columns rather than a reinterpretation of the gate.
+	// shareAnswersConflict marks the two forms pointing opposite ways -- a
+	// staff-review signal, not a placement rule. See DeriveShareEligibility.
+	shareEligibility       string
+	shareEligibilitySource string
+	shareAnswersConflict   bool
+
 	// Derived accessibility flags. Spec 5.3: the board shows a flag, never the
 	// narrative -- that lives in family_camp_medical.
 	needsPrivateBathroom     bool
@@ -876,6 +886,9 @@ func (s *FamilyCampDerivedSync) applyHouseholdRequests(
 		reg.requestText = req.RequestText
 		reg.requestSourceField = req.SourceField
 		reg.requestLastUpdated = req.LastUpdated
+		reg.shareEligibility = req.ShareEligibility
+		reg.shareEligibilitySource = req.ShareEligibilitySource
+		reg.shareAnswersConflict = req.ShareAnswersConflict
 	}
 }
 
@@ -1231,7 +1244,10 @@ func (s *FamilyCampDerivedSync) registrationNeedsUpdate(existing *core.Record, r
 		existing.GetBool("needs_private_bathroom") != reg.needsPrivateBathroom ||
 		existing.GetBool("needs_power") != reg.needsPower ||
 		existing.GetBool("accommodation_is_mandatory") != reg.accommodationIsMandatory ||
-		existing.GetBool("has_infant") != reg.hasInfant
+		existing.GetBool("has_infant") != reg.hasInfant ||
+		existing.GetString("share_eligibility") != reg.shareEligibility ||
+		existing.GetString("share_eligibility_source") != reg.shareEligibilitySource ||
+		existing.GetBool("share_answers_conflict") != reg.shareAnswersConflict
 }
 
 // setRegistrationRequestFields writes the household-grain request layer and the
@@ -1250,6 +1266,12 @@ func setRegistrationRequestFields(record *core.Record, reg *registrationData) {
 	record.Set("needs_power", reg.needsPower)
 	record.Set("accommodation_is_mandatory", reg.accommodationIsMandatory)
 	record.Set("has_infant", reg.hasInfant)
+	// The board's placement verdict. share_cabin_gate above stays the raw
+	// REGISTRATION answer; this is the resolved one, and the Family Camp
+	// information form outranks the gate wherever both were answered.
+	record.Set("share_eligibility", reg.shareEligibility)
+	record.Set("share_eligibility_source", reg.shareEligibilitySource)
+	record.Set("share_answers_conflict", reg.shareAnswersConflict)
 }
 
 // formatRequestStamp renders requestLastUpdated for the PocketBase date column.
