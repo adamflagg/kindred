@@ -13,6 +13,7 @@ from __future__ import annotations
 import importlib.util
 import sys
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -28,8 +29,8 @@ sys.modules[_spec.name] = apply_inv
 _spec.loader.exec_module(apply_inv)
 
 
-def _unit(code: str, **over: object) -> dict:
-    base = {
+def _unit(code: str, **over: object) -> dict[str, Any]:
+    base: dict[str, Any] = {
         "code": code,
         "name": code,
         "has_power": False,
