@@ -58,6 +58,11 @@ INVENTORY_FIELDS = (
 # purpose, so they are reported for a human and applied only on --structural.
 STRUCTURAL_FIELDS = ("bathroom", "bathroom_group", "is_container", "parent_unit")
 
+# Fields where the file's null means UNKNOWN rather than a value to write. The
+# booleans alongside them have no such state — absent means false, which is a
+# real claim — so this applies only to the numbers.
+NULLABLE_FIELDS = ("max_beds",)
+
 # Never written by this script under any flag. These are the fields staff
 # maintain, and overwriting them is precisely what create-if-absent exists to
 # prevent.
@@ -107,6 +112,28 @@ def normalise_parents(records: dict[str, dict[str, Any]]) -> dict[str, dict[str,
     return out
 
 
+def resolve_parent_id(fields: dict[str, Any], ids: dict[str, str]) -> dict[str, Any]:
+    """Translate a parent_unit CODE back into the record id a relation needs.
+
+    Raises rather than falling back to "": an unresolvable code would otherwise
+    detach the child from its container with no error, which is the opposite of
+    what every other guard here does. An EMPTY code is legitimate — it means the
+    unit has no parent.
+    """
+    out = dict(fields)
+    code = out.get("parent_unit") or ""
+    if not code:
+        out["parent_unit"] = ""
+        return out
+    if code not in ids:
+        raise KeyError(
+            f"parent_unit {code!r} names no unit in the database; "
+            "restart PocketBase so the boot loader creates it, or fix the registry"
+        )
+    out["parent_unit"] = ids[code]
+    return out
+
+
 def plan_updates(
     want: list[dict[str, Any]], have: dict[str, dict[str, Any]], *, include_structural: bool = False
 ) -> Plan:
@@ -128,6 +155,12 @@ def plan_updates(
         changes: dict[str, Any] = {}
         for name in INVENTORY_FIELDS:
             if name not in unit:
+                continue
+            # max_beds carries the same null-means-unknown contract as sleeps
+            # and has_ramp: PocketBase stores an unset number as 0, which every
+            # consumer reads as "unknown". Writing null over a real number
+            # replaces knowledge with a placeholder, silently.
+            if name in NULLABLE_FIELDS and unit.get(name) is None:
                 continue
             new, old = _norm(unit.get(name)), _norm(current.get(name))
             if new != old:
@@ -262,7 +295,7 @@ def main(argv: list[str] | None = None) -> int:
         fields = dict(u.fields)
         # Back the other way: a relation field takes a record id, not a code.
         if "parent_unit" in fields:
-            fields["parent_unit"] = ids.get(fields["parent_unit"], "")
+            fields = resolve_parent_id(fields, ids)
         _patch(args.url, token, ids[u.code], fields)
     print(f"\napplied {len(plan.updates)} update(s).")
     return 0

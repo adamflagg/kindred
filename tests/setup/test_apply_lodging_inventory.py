@@ -175,3 +175,41 @@ def test_an_unassessed_ramp_never_overwrites_an_assessed_one() -> None:
     have = {"a": _unit("a", has_ramp="yes")}
 
     assert apply_inv.plan_updates(want, have).updates == []
+
+
+def test_a_null_max_beds_never_downgrades_a_known_value() -> None:
+    """max_beds carries the same null-means-unknown contract as sleeps and
+    has_ramp. Writing null over a real number replaces knowledge with a
+    placeholder, and PocketBase stores it as 0 — which every consumer reads as
+    "unknown", so the loss is silent."""
+    want = [_unit("a", max_beds=None)]
+    have = {"a": _unit("a", max_beds=14)}
+
+    assert apply_inv.plan_updates(want, have).updates == []
+
+
+def test_a_known_max_beds_still_updates() -> None:
+    want = [_unit("a", max_beds=14)]
+    have = {"a": _unit("a", max_beds=None)}
+
+    assert apply_inv.plan_updates(want, have).updates[0].fields == {"max_beds": 14}
+
+
+def test_an_unresolvable_parent_code_is_an_error_not_a_silent_detach() -> None:
+    """Under --structural a parent code that names nothing would otherwise fall
+    back to "", detaching the child from its container with no error — the
+    opposite of what every other guard in this script does."""
+    with pytest.raises(KeyError, match="ghost"):
+        apply_inv.resolve_parent_id({"parent_unit": "ghost"}, {"real": "rec_real"})
+
+
+def test_a_resolvable_parent_code_becomes_a_record_id() -> None:
+    out = apply_inv.resolve_parent_id({"parent_unit": "real"}, {"real": "rec_real"})
+    assert out["parent_unit"] == "rec_real"
+
+
+def test_clearing_a_parent_deliberately_is_still_allowed() -> None:
+    """An empty code means "no parent", which is a legitimate value — only an
+    unresolvable non-empty code is an error."""
+    out = apply_inv.resolve_parent_id({"parent_unit": ""}, {"real": "rec_real"})
+    assert out["parent_unit"] == ""

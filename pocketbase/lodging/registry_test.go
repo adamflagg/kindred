@@ -53,8 +53,12 @@ func setupRegistryCollections(t *testing.T, app core.App) {
 	units.Fields.Add(&core.TextField{Name: "notes"})
 	// Amenity columns from 1500000131. has_ramp is a select, not a bool, so an
 	// unassessed cabin stays blank instead of claiming "no ramp".
+	// has_fridge and is_accessible predate 1500000131 (they come from
+	// 1500000116) but the loader writes them too, so the fixture has to declare
+	// them or those two writes go unasserted.
 	for _, name := range []string{
-		"has_power", "has_ac", "has_heat", "is_weatherized", "has_plumbing",
+		"has_power", "has_ac", "has_fridge", "is_accessible",
+		"has_heat", "is_weatherized", "has_plumbing",
 		"has_space_heater", "has_pack_play_space", "has_living_room",
 		"has_kitchen", "has_lights",
 	} {
@@ -326,7 +330,8 @@ func TestSeedRegistryWritesAmenities(t *testing.T) {
 	body := `{"areas": [{"code": "AREA1", "name": "First Area"}], "units": [
 	  {"area": "AREA1", "code": "warm", "name": "Warm", "bathroom": "none",
 	   "allocation_default": "family_pool",
-	   "has_power": true, "has_ac": true, "has_heat": true, "is_weatherized": true,
+	   "has_power": true, "has_ac": true, "has_fridge": true, "is_accessible": true,
+	   "has_heat": true, "is_weatherized": true,
 	   "has_plumbing": true, "has_space_heater": true, "has_pack_play_space": true,
 	   "has_living_room": true, "has_kitchen": true, "has_lights": true,
 	   "has_ramp": "partial", "max_beds": 14}
@@ -338,7 +343,8 @@ func TestSeedRegistryWritesAmenities(t *testing.T) {
 
 	unit := findByCode(t, app, "lodging_units", "warm")
 	for _, field := range []string{
-		"has_power", "has_ac", "has_heat", "is_weatherized", "has_plumbing",
+		"has_power", "has_ac", "has_fridge", "is_accessible",
+		"has_heat", "is_weatherized", "has_plumbing",
 		"has_space_heater", "has_pack_play_space", "has_living_room",
 		"has_kitchen", "has_lights",
 	} {
