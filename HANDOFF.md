@@ -4,9 +4,10 @@
 weekend surfaces, the writable editor, the 2026 inventory, the read-only board and the draft
 write layer are all merged. `/weekend/sessions` lists the year's weekends;
 `/weekend/session/:id` shows one weekend's roster and inventory; `/manage/lodging/:section`
-edits the registry; the board renders placements read-only; and five write endpoints exist to
-place parties inside a scenario. **What does not exist is the interaction: nothing on the board
-calls those endpoints yet. That is the next body of work — see §4.**
+edits the registry; the board renders placements read-only; and five write endpoints exist for
+scenario-scoped placement, board-built merges and availability overrides. **What does not exist
+is the interaction: nothing on the board calls those endpoints yet. That is the next body of
+work — see §4.**
 
 This is a working document. Edit it in place: tick what ships, rewrite "Next", delete what stops
 being true. It is not a changelog — `git log` is the changelog.
@@ -476,9 +477,11 @@ inline per row and in bulk. Until staff use it, the fit check stays dark.
 
 ## 5. CRITICAL: first action before anything else
 
-**The columns and rows every lodging surface reads are EMPTY until a sync runs.** On any database that has not run
-`family_camp_derived` since #1878, the request columns are schema-only and the roster renders every
-party unknown/unflagged — the API looks broken while working exactly as designed.
+**The ingest-derived REQUEST columns are EMPTY until a sync runs.** On any database that has not
+run `family_camp_derived` since #1878, they are schema-only and the roster renders every party
+unknown/unflagged — the API looks broken while working exactly as designed. The unit registry is
+NOT affected: the boot loader creates those rows, so the inventory and the read-only board render
+regardless. It is the share gate, the request text and the housing flags that go dark.
 
 ```bash
 sqlite3 pocketbase/pb_data/data.db \
