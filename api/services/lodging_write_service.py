@@ -151,6 +151,14 @@ class LodgingWriteService:
         Idempotent: no row is a 200 with `deleted: false`, not a 404. The board
         may fire this for a card that was never moved, and a 404 there would be
         an error message about nothing having gone wrong.
+
+        That covers the row never having existed. It does not, by itself,
+        cover the row existing at the find above and vanishing before the
+        delete lands -- two staff clearing the same placement, or a
+        double-click, race the same way the merge delete below does. Exactly
+        as there, ONLY 404 is swallowed: any other PocketBase failure keeps
+        its status through pb_error_to_http, because "the delete was refused"
+        must not read as "there was nothing to delete".
         """
         session_pb_id = await self._resolve_session_pb_id(request.year, request.session_cm_id)
 
@@ -164,7 +172,12 @@ class LodgingWriteService:
         if existing is None:
             return LodgingWriteResponse(deleted=False)
 
-        await self.repository.delete_draft_assignment(str(existing.id))
+        try:
+            await self.repository.delete_draft_assignment(str(existing.id))
+        except ClientResponseError as exc:
+            if exc.status == 404:
+                return LodgingWriteResponse(deleted=False)
+            raise pb_error_to_http(exc) from exc
         return LodgingWriteResponse(record_id=str(existing.id), deleted=True)
 
     async def create_merge(self, request: MergeWriteRequest) -> LodgingWriteResponse:
@@ -241,6 +254,23 @@ class LodgingWriteService:
         of a row is what "whatever the live plan says" is spelled as. Writing
         an override that happens to agree with the live plan would pin the unit
         against a later change to it.
+
+        Both the delete and the create below race the same way the placement
+        writes do, and are guarded the same two ways.
+
+        The delete: the find above sees the row, but it can vanish before the
+        delete reaches PocketBase -- two staff releasing the same unit, or a
+        double-click. ONLY 404 is swallowed, exactly as clear_placement's
+        delete is; any other failure keeps its status through pb_error_to_http.
+
+        The create: `idx_lodging_avail_unique` is UNIQUE on (session, year,
+        scenario, unit), so two staff reserving the same unit in the same
+        scenario both find no override, both create, and the index rejects
+        the loser. That is exactly the race place_party guards on the draft's
+        own partial unique index, guarded the identical way -- the loser
+        re-reads and updates the winner's row, which is by construction the
+        row this call wanted: same session, same year, same scenario, same
+        unit.
         """
         session_pb_id = await self._resolve_session_pb_id(request.year, request.session_cm_id)
 
@@ -251,7 +281,12 @@ class LodgingWriteService:
         if request.state is None:
             if existing is None:
                 return LodgingWriteResponse(deleted=False)
-            await self.repository.delete_availability(str(existing.id))
+            try:
+                await self.repository.delete_availability(str(existing.id))
+            except ClientResponseError as exc:
+                if exc.status == 404:
+                    return LodgingWriteResponse(deleted=False)
+                raise pb_error_to_http(exc) from exc
             return LodgingWriteResponse(record_id=str(existing.id), deleted=True)
 
         data: dict[str, Any] = {
@@ -266,5 +301,13 @@ class LodgingWriteService:
         if existing is not None:
             record = await self.repository.update_availability(str(existing.id), data)
         else:
-            record = await self.repository.create_availability(data)
+            try:
+                record = await self.repository.create_availability(data)
+            except ClientResponseError as exc:
+                raced = await self.repository.find_availability_override(
+                    request.year, session_pb_id, request.scenario, request.unit_id
+                )
+                if raced is None:
+                    raise pb_error_to_http(exc) from exc
+                record = await self.repository.update_availability(str(raced.id), data)
         return LodgingWriteResponse(record_id=str(getattr(record, "id", "")))
