@@ -95,6 +95,12 @@ class LodgingWriteService:
         error keeps its upstream status rather than becoming a 200 reporting a
         placement that does not exist.
 
+        The recovery races too: the re-read can fail on its own, and the
+        winner's row can vanish again before the update lands. Both calls live
+        inside the except block, so their failures go through pb_error_to_http
+        as well -- an unwrapped one is a bare ClientResponseError into the
+        catch-all handler, which is the same 500 this guard exists to prevent.
+
         All three targets empty is the TOMBSTONE -- "staff took this party off
         the board in this scenario" -- and is a legitimate row, not a no-op.
         Deleting the row instead would fall through to the CampMinder mirror
@@ -130,16 +136,19 @@ class LodgingWriteService:
             try:
                 record = await self.repository.create_draft_assignment(data)
             except ClientResponseError as exc:
-                raced = await self.repository.find_draft_assignment(
-                    request.year,
-                    session_pb_id,
-                    request.scenario,
-                    request.household_cm_id,
-                    request.person_cm_id,
-                )
-                if raced is None:
-                    raise pb_error_to_http(exc) from exc
-                record = await self.repository.update_draft_assignment(str(raced.id), data)
+                try:
+                    raced = await self.repository.find_draft_assignment(
+                        request.year,
+                        session_pb_id,
+                        request.scenario,
+                        request.household_cm_id,
+                        request.person_cm_id,
+                    )
+                    if raced is None:
+                        raise pb_error_to_http(exc) from exc
+                    record = await self.repository.update_draft_assignment(str(raced.id), data)
+                except ClientResponseError as retry_exc:
+                    raise pb_error_to_http(retry_exc) from retry_exc
         return LodgingWriteResponse(record_id=str(getattr(record, "id", "")))
 
     async def clear_placement(self, request: PlacementDeleteRequest) -> LodgingWriteResponse:
@@ -176,7 +185,7 @@ class LodgingWriteService:
             await self.repository.delete_draft_assignment(str(existing.id))
         except ClientResponseError as exc:
             if exc.status == 404:
-                return LodgingWriteResponse(deleted=False)
+                return LodgingWriteResponse(record_id=str(existing.id), deleted=False)
             raise pb_error_to_http(exc) from exc
         return LodgingWriteResponse(record_id=str(existing.id), deleted=True)
 
@@ -270,7 +279,9 @@ class LodgingWriteService:
         own partial unique index, guarded the identical way -- the loser
         re-reads and updates the winner's row, which is by construction the
         row this call wanted: same session, same year, same scenario, same
-        unit.
+        unit. The recovery's own two calls are guarded the same way
+        place_party's are, for the same reason: a failure inside the except
+        block is the very 500 the block exists to prevent.
         """
         session_pb_id = await self._resolve_session_pb_id(request.year, request.session_cm_id)
 
@@ -285,7 +296,7 @@ class LodgingWriteService:
                 await self.repository.delete_availability(str(existing.id))
             except ClientResponseError as exc:
                 if exc.status == 404:
-                    return LodgingWriteResponse(deleted=False)
+                    return LodgingWriteResponse(record_id=str(existing.id), deleted=False)
                 raise pb_error_to_http(exc) from exc
             return LodgingWriteResponse(record_id=str(existing.id), deleted=True)
 
@@ -304,10 +315,13 @@ class LodgingWriteService:
             try:
                 record = await self.repository.create_availability(data)
             except ClientResponseError as exc:
-                raced = await self.repository.find_availability_override(
-                    request.year, session_pb_id, request.scenario, request.unit_id
-                )
-                if raced is None:
-                    raise pb_error_to_http(exc) from exc
-                record = await self.repository.update_availability(str(raced.id), data)
+                try:
+                    raced = await self.repository.find_availability_override(
+                        request.year, session_pb_id, request.scenario, request.unit_id
+                    )
+                    if raced is None:
+                        raise pb_error_to_http(exc) from exc
+                    record = await self.repository.update_availability(str(raced.id), data)
+                except ClientResponseError as retry_exc:
+                    raise pb_error_to_http(retry_exc) from retry_exc
         return LodgingWriteResponse(record_id=str(getattr(record, "id", "")))
