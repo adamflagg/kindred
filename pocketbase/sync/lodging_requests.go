@@ -234,7 +234,7 @@ func DeriveShareEligibility(
 // Every consumer already reads "" as unknown, which is precisely what makes
 // this latent rather than visible: the column looks fine until somebody
 // filters on it. Same shape as kindred#1921.
-func NormalizeShareEligibility(eligibility, source string) (string, string) {
+func NormalizeShareEligibility(eligibility, source string) (normalizedEligibility, normalizedSource string) {
 	if eligibility == "" {
 		return shareEligibilityUnknown, shareSourceNone
 	}
