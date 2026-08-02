@@ -27,6 +27,8 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
+from pocketbase.client import ClientResponseError  # type: ignore[attr-defined]
+
 from api.schemas.lodging import (
     AvailabilityWriteRequest,
     LodgingWriteResponse,
@@ -35,6 +37,7 @@ from api.schemas.lodging import (
     PlacementWriteRequest,
 )
 from api.services.lodging_roster_service import SessionNotFoundError
+from api.utils.pb_error import pb_error_to_http
 from bunking.logging_config import get_logger
 
 if TYPE_CHECKING:
@@ -143,10 +146,21 @@ class LodgingWriteService:
     async def create_merge(self, request: MergeWriteRequest) -> LodgingWriteResponse:
         """Bind units into one bookable slot for this scenario.
 
-        Writes lodging_merges_draft, never lodging_merges. The truth table is
-        materialised by the ingest from CampMinder cabin strings and staff hold
-        no write on it -- a board merge is a planning act, and planning lives
-        in the draft.
+        Writes lodging_merges_draft, never lodging_merges, because a board
+        merge is a planning act and planning lives in the draft.
+
+        NOT because staff cannot reach lodging_merges. They can: 1500000130 put
+        it in LODGING_STAFF_WRITABLE, so bunking.manage holds create, update and
+        delete on it, and that is the intended uniform rule for lodging -- reads
+        open to any authenticated user, writes admin || bunking.manage, no new
+        roles. What the draft twin buys is SCENARIO ISOLATION, not write
+        protection: a merge made while planning must not alter the row the
+        ingest dedupes against on its next pass over the same cabin strings.
+
+        The three tables that genuinely are out of reach are lodging_assignments,
+        lodging_assignment_history and lodging_field_mappings, which stay
+        is_admin. Whether lodging_merges should join them now that it has a
+        draft twin is kindred#1916, not this function's call.
 
         No dedup by member set, unlike the ingest's EnsureMerge. That function
         dedupes because a backfill re-runs over the same cabin strings and
@@ -177,8 +191,21 @@ class LodgingWriteService:
         `merge_draft` is `cascadeDelete: false`, so a placement whose slot is
         deleted keeps its row and reads as unplaced rather than vanishing. The
         roster already treats a placement with no resolvable target that way.
+
+        Idempotent, exactly as clear_placement is: a slot that is already gone
+        is a 200 with `deleted: false`. Two staff on one board, or a single
+        double-click, delete the same slot twice, and the second call has
+        nothing to do rather than something to report. ONLY 404 is swallowed --
+        any other PocketBase failure keeps its status through pb_error_to_http,
+        because "the delete was refused" must not read as "there was nothing to
+        delete".
         """
-        await self.repository.delete_draft_merge(merge_draft_id)
+        try:
+            await self.repository.delete_draft_merge(merge_draft_id)
+        except ClientResponseError as exc:
+            if exc.status == 404:
+                return LodgingWriteResponse(record_id=merge_draft_id, deleted=False)
+            raise pb_error_to_http(exc) from exc
         return LodgingWriteResponse(record_id=merge_draft_id, deleted=True)
 
     async def set_availability(self, request: AvailabilityWriteRequest) -> LodgingWriteResponse:

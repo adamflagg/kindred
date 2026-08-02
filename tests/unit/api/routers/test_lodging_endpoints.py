@@ -12,6 +12,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
+from pocketbase.client import ClientResponseError  # type: ignore[attr-defined]
 
 from bunking.auth_middleware import AuthUser, get_current_user
 from bunking.rbac.permissions import Permission
@@ -784,6 +785,36 @@ class TestMergeWrites:
         assert response.status_code == 200
         mock_pb.collection.assert_any_call("lodging_merges_draft")
         mock_pb.collection.return_value.delete.assert_called_once_with("mrgd_1")
+
+    def test_deleting_a_merge_that_is_already_gone_is_not_an_error(self, mock_pb: MagicMock) -> None:
+        """Idempotent, exactly as DELETE /placements is.
+
+        Two staff on the same board, or one double-click, delete the same slot
+        twice. The second call has nothing to do, and that is not something
+        going wrong -- without this it raises into the catch-all handler in
+        api/main.py and the board reports a 500 for a no-op.
+        """
+        with patch("api.routers.lodging.pb", mock_pb):
+            client = _write_client(_manage_user(), mock_pb)
+            mock_pb.collection.return_value.delete.side_effect = ClientResponseError(
+                "not found", status=404, data={}, url="", is_abort=False, original_error=None
+            )
+            response = client.delete("/api/lodging/merges/mrgd_gone")
+
+        assert response.status_code == 200
+        assert response.json()["deleted"] is False
+
+    def test_a_failing_merge_delete_is_still_an_error(self, mock_pb: MagicMock) -> None:
+        """Only "already gone" is swallowed. A 403 or a 500 from PocketBase is
+        a real failure and must not be reported to the board as a clean no-op."""
+        with patch("api.routers.lodging.pb", mock_pb):
+            client = _write_client(_manage_user(), mock_pb)
+            mock_pb.collection.return_value.delete.side_effect = ClientResponseError(
+                "forbidden", status=403, data={}, url="", is_abort=False, original_error=None
+            )
+            response = client.delete("/api/lodging/merges/mrgd_1")
+
+        assert response.status_code >= 400
 
 
 class TestAvailabilityWrites:

@@ -45,6 +45,16 @@
  * is that the writer never touches them. Summer has never granted
  * bunking.manage on `bunk_assignments` or `attendee_status_history` either.
  *
+ * `lodging_merges` is NOT in that list and is left as 1500000130 set it:
+ * staff-writable under bunking.manage, alongside areas, units, aliases and
+ * availability. That is the uniform lodging rule -- reads open, writes
+ * admin || bunking.manage -- and this migration does not change it. So the
+ * draft twin here buys SCENARIO ISOLATION, not write protection: it keeps a
+ * planning merge out of the row the ingest dedupes against. Whether the twin
+ * now makes the truth grain admin-only the more consistent choice is
+ * kindred#1916, deliberately left to its own PR rather than smuggled into a
+ * migration whose subject is the draft tables.
+ *
  * READS STAY OPEN, DRAFTS INCLUDED. summer gates list/view on
  * `bunk_assignments_draft`; lodging deliberately does not, because every other
  * `lodging_*` collection is readable by any authenticated user (1500000130) and

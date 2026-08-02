@@ -206,6 +206,62 @@ class TestFetchDraftAssignments:
         assert params["expand"] == "unit,merge,merge_draft"
 
 
+class TestClientSuppliedValuesAreEscaped:
+    """`scenario` and `unit_id` arrive from the client and reach a filter.
+
+    `scenario` is a bare query parameter on /roster and /summary, which gate on
+    authentication only, and a body field on every write. `unit_id` is a body
+    field. A value carrying a double quote closes the string literal early, and
+    because PocketBase binds `&&` tighter than `||`, an injected `||` clause
+    widens the predicate past its own session/year/scenario scoping -- which on
+    the write paths means the lookup returns a row from another scenario and
+    the caller then updates or deletes it.
+
+    api/utils/pb_filters.pb_escape exists for exactly this and is used by
+    geo_service and routers/debug; these call sites must use it too.
+    """
+
+    INJECTION = 'scn_1" || id != "'
+    ESCAPED = 'scn_1\\" || id != \\"'
+
+    @pytest.mark.asyncio
+    async def test_fetch_draft_assignments_escapes_the_scenario(self, repo: LodgingRepository, pb: MagicMock) -> None:
+        await repo.fetch_draft_assignments(2026, "sess_pb_1", self.INJECTION)
+
+        filter_str = _last_query(pb)["filter"]
+        assert f'scenario = "{self.ESCAPED}"' in filter_str
+        assert '" || id != "' not in filter_str
+
+    @pytest.mark.asyncio
+    async def test_fetch_scenario_availability_escapes_the_scenario(
+        self, repo: LodgingRepository, pb: MagicMock
+    ) -> None:
+        await repo.fetch_scenario_availability(2026, "sess_pb_1", self.INJECTION)
+
+        filter_str = _last_query(pb)["filter"]
+        assert f'scenario = "{self.ESCAPED}"' in filter_str
+        assert '" || id != "' not in filter_str
+
+    @pytest.mark.asyncio
+    async def test_find_draft_assignment_escapes_the_scenario(self, repo: LodgingRepository, pb: MagicMock) -> None:
+        await repo.find_draft_assignment(2026, "sess_pb_1", self.INJECTION, 1000001, 0)
+
+        filter_str = _last_query(pb)["filter"]
+        assert f'scenario = "{self.ESCAPED}"' in filter_str
+        assert '" || id != "' not in filter_str
+
+    @pytest.mark.asyncio
+    async def test_find_availability_override_escapes_both_client_values(
+        self, repo: LodgingRepository, pb: MagicMock
+    ) -> None:
+        await repo.find_availability_override(2026, "sess_pb_1", self.INJECTION, 'u1" || id != "')
+
+        filter_str = _last_query(pb)["filter"]
+        assert f'scenario = "{self.ESCAPED}"' in filter_str
+        assert 'unit = "u1\\" || id != \\""' in filter_str
+        assert '" || id != "' not in filter_str
+
+
 class TestFetchAvailability:
     @pytest.mark.asyncio
     async def test_reads_only_the_live_plan(self, repo: LodgingRepository, pb: MagicMock) -> None:

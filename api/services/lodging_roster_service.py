@@ -211,11 +211,13 @@ class LodgingRosterService:
         lander repeats all eight N times, which is why a weekend with zero
         parties still costs about three seconds.
 
-        So the year-scoped work happens once here, and only the three genuinely
-        session-scoped reads (availability, assignments, attendees) run per
-        weekend. The per-weekend numbers then come from the SAME
-        `_build_units` / `_build_parties` / `_build_counts` helpers the roster
-        uses, so the lander cannot drift from the page it links to.
+        So the year-scoped work happens once here, and only the genuinely
+        session-scoped reads run per weekend: availability, assignments and
+        attendees always, plus the scenario's draft placements and its
+        availability overrides when a scenario is named. The per-weekend
+        numbers then come from the SAME `_build_units` / `_build_parties` /
+        `_build_counts` helpers the roster uses, so the lander cannot drift
+        from the page it links to.
         """
         sessions = await self.repository.fetch_weekend_sessions(year)
         if not sessions:

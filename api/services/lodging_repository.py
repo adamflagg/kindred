@@ -43,6 +43,7 @@ from api.constants.collections import (
     LODGING_UNITS,
 )
 from api.constants.filters import ACTIVE_ENROLLED_FILTER
+from api.utils.pb_filters import pb_escape
 from bunking.logging_config import get_logger
 
 if TYPE_CHECKING:
@@ -141,11 +142,18 @@ class LodgingRepository:
         )
 
     async def fetch_scenario_availability(self, year: int, session_pb_id: str, scenario_id: str) -> list[Any]:
-        """One scenario's reservation overrides for one session."""
+        """One scenario's reservation overrides for one session.
+
+        `scenario_id` is CLIENT-SUPPLIED -- a bare query parameter on /roster
+        and /summary, which gate on authentication only -- so it goes through
+        pb_escape. See the note on fetch_draft_assignments.
+        """
         return await asyncio.to_thread(
             self.pb.collection(LODGING_AVAILABILITY).get_full_list,
             query_params={
-                "filter": f'session = "{session_pb_id}" && year = {year} && scenario = "{scenario_id}"',
+                "filter": (
+                    f'session = "{pb_escape(session_pb_id)}" && year = {year} && scenario = "{pb_escape(scenario_id)}"'
+                ),
                 "sort": STABLE_SORT,
             },
         )
@@ -174,11 +182,21 @@ class LodgingRepository:
         slot the ingest built from a historical cabin string, and `merge_draft`
         is one the board built inside this scenario. A PocketBase relation
         names a single collection, so the two kinds of merge need two fields.
+
+        EVERY interpolated string here goes through pb_escape. `scenario_id`
+        reaches this method straight off the `?scenario=` query parameter, and
+        a value carrying a double quote closes the literal early: PocketBase
+        binds `&&` tighter than `||`, so an injected `||` clause widens the
+        predicate past its own session/year/scenario scoping. `session_pb_id`
+        is server-resolved and cannot carry one today, but it is escaped too so
+        that reading this line requires no argument about provenance.
         """
         return await asyncio.to_thread(
             self.pb.collection(LODGING_ASSIGNMENTS_DRAFT).get_full_list,
             query_params={
-                "filter": f'session = "{session_pb_id}" && year = {year} && scenario = "{scenario_id}"',
+                "filter": (
+                    f'session = "{pb_escape(session_pb_id)}" && year = {year} && scenario = "{pb_escape(scenario_id)}"'
+                ),
                 "expand": "unit,merge,merge_draft",
                 "sort": STABLE_SORT,
             },
@@ -353,12 +371,18 @@ class LodgingRepository:
         write `!= ''` against them, because PocketBase numbers are
         NUMERIC DEFAULT 0 NOT NULL and SQLite reads `0 != ''` as TRUE, which
         matches every row of the other grain.
+
+        `scenario_id` is client-supplied and escaped. Unescaped, an injected
+        `||` would make this return a row from ANOTHER scenario, which the
+        caller then updates or deletes. The two cm_ids are ints and need no
+        escaping.
         """
         rows = await asyncio.to_thread(
             self.pb.collection(LODGING_ASSIGNMENTS_DRAFT).get_full_list,
             query_params={
                 "filter": (
-                    f'session = "{session_pb_id}" && year = {year} && scenario = "{scenario_id}" '
+                    f'session = "{pb_escape(session_pb_id)}" && year = {year} '
+                    f'&& scenario = "{pb_escape(scenario_id)}" '
                     f"&& household_cm_id = {household_cm_id} && person_cm_id = {person_cm_id}"
                 ),
                 "sort": STABLE_SORT,
@@ -390,13 +414,17 @@ class LodgingRepository:
         unit): without that index a unit could carry both a reserved_staff and
         a released_to_family row for the same key and "is this available?"
         would stop being a question with an answer.
+
+        `scenario_id` and `unit_pb_id` both arrive in the request body and are
+        escaped. Unescaped, an injected `||` would make this return some other
+        weekend's row, which set_availability then updates or deletes.
         """
         rows = await asyncio.to_thread(
             self.pb.collection(LODGING_AVAILABILITY).get_full_list,
             query_params={
                 "filter": (
-                    f'session = "{session_pb_id}" && year = {year} '
-                    f'&& scenario = "{scenario_id}" && unit = "{unit_pb_id}"'
+                    f'session = "{pb_escape(session_pb_id)}" && year = {year} '
+                    f'&& scenario = "{pb_escape(scenario_id)}" && unit = "{pb_escape(unit_pb_id)}"'
                 ),
                 "sort": STABLE_SORT,
             },
