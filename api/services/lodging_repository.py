@@ -39,6 +39,7 @@ from api.constants.collections import (
     LODGING_ASSIGNMENTS_DRAFT,
     LODGING_AVAILABILITY,
     LODGING_INGEST_ISSUES,
+    LODGING_MERGES_DRAFT,
     LODGING_UNITS,
 )
 from api.constants.filters import ACTIVE_ENROLLED_FILTER
@@ -333,3 +334,80 @@ class LodgingRepository:
             LODGING_UNITS,
             "is_confirmed = false && is_container = false && is_active = true",
         )
+
+    # ---------------------------------------------------------------- writes
+    #
+    # Every write below targets the DRAFT grain or lodging_availability. None
+    # of them can reach lodging_assignments, lodging_assignment_history or
+    # lodging_field_mappings, which the ingest owns and which stay admin-only
+    # in PocketBase regardless of what this layer asks for.
+
+    async def find_draft_assignment(
+        self, year: int, session_pb_id: str, scenario_id: str, household_cm_id: int, person_cm_id: int
+    ) -> Any | None:
+        """The one draft row for a party in a scenario, or None.
+
+        Keyed exactly as the draft's two partial unique indexes are, so the
+        lookup either finds the row the next write would collide with, or
+        there is none. Both grain columns are compared to a known value; never
+        write `!= ''` against them, because PocketBase numbers are
+        NUMERIC DEFAULT 0 NOT NULL and SQLite reads `0 != ''` as TRUE, which
+        matches every row of the other grain.
+        """
+        rows = await asyncio.to_thread(
+            self.pb.collection(LODGING_ASSIGNMENTS_DRAFT).get_full_list,
+            query_params={
+                "filter": (
+                    f'session = "{session_pb_id}" && year = {year} && scenario = "{scenario_id}" '
+                    f"&& household_cm_id = {household_cm_id} && person_cm_id = {person_cm_id}"
+                ),
+                "sort": STABLE_SORT,
+            },
+        )
+        return rows[0] if rows else None
+
+    async def create_draft_assignment(self, data: dict[str, Any]) -> Any:
+        return await asyncio.to_thread(self.pb.collection(LODGING_ASSIGNMENTS_DRAFT).create, data)
+
+    async def update_draft_assignment(self, record_id: str, data: dict[str, Any]) -> Any:
+        return await asyncio.to_thread(self.pb.collection(LODGING_ASSIGNMENTS_DRAFT).update, record_id, data)
+
+    async def delete_draft_assignment(self, record_id: str) -> None:
+        await asyncio.to_thread(self.pb.collection(LODGING_ASSIGNMENTS_DRAFT).delete, record_id)
+
+    async def create_draft_merge(self, data: dict[str, Any]) -> Any:
+        return await asyncio.to_thread(self.pb.collection(LODGING_MERGES_DRAFT).create, data)
+
+    async def delete_draft_merge(self, record_id: str) -> None:
+        await asyncio.to_thread(self.pb.collection(LODGING_MERGES_DRAFT).delete, record_id)
+
+    async def find_availability_override(
+        self, year: int, session_pb_id: str, scenario_id: str, unit_pb_id: str
+    ) -> Any | None:
+        """The one availability row for a unit in a scenario, or None.
+
+        Matches idx_lodging_avail_unique, which is (session, year, scenario,
+        unit): without that index a unit could carry both a reserved_staff and
+        a released_to_family row for the same key and "is this available?"
+        would stop being a question with an answer.
+        """
+        rows = await asyncio.to_thread(
+            self.pb.collection(LODGING_AVAILABILITY).get_full_list,
+            query_params={
+                "filter": (
+                    f'session = "{session_pb_id}" && year = {year} '
+                    f'&& scenario = "{scenario_id}" && unit = "{unit_pb_id}"'
+                ),
+                "sort": STABLE_SORT,
+            },
+        )
+        return rows[0] if rows else None
+
+    async def create_availability(self, data: dict[str, Any]) -> Any:
+        return await asyncio.to_thread(self.pb.collection(LODGING_AVAILABILITY).create, data)
+
+    async def update_availability(self, record_id: str, data: dict[str, Any]) -> Any:
+        return await asyncio.to_thread(self.pb.collection(LODGING_AVAILABILITY).update, record_id, data)
+
+    async def delete_availability(self, record_id: str) -> None:
+        await asyncio.to_thread(self.pb.collection(LODGING_AVAILABILITY).delete, record_id)

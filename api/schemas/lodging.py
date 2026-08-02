@@ -1,4 +1,8 @@
-"""Pydantic response models for the weekend lodging surface.
+"""Pydantic models for the weekend lodging surface.
+
+Responses first, then the write layer at the bottom. Every write model targets
+the DRAFT grain -- lodging_assignments and lodging_merges belong to the ingest
+and stay admin-only, so nothing declared here can reach them.
 
 PHI boundary: HouseholdMedicalResponse is the ONLY model here that carries
 medical narrative text, and it is reachable from exactly one endpoint, which
@@ -12,9 +16,9 @@ nothing on the way through, so a value means the same thing on both sides of
 the wire.
 """
 
-from typing import Literal
+from typing import Literal, Self
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 # The narrative columns on family_camp_medical. Named here so the boundary test
 # can assert on them rather than on a hand-maintained list.
@@ -275,3 +279,118 @@ class WeekendSummaryResponse(BaseModel):
 
     year: int
     weekends: list[WeekendSummaryEntry] = Field(default_factory=list)
+
+
+# --------------------------------------------------------------- write layer
+#
+# Everything below writes the DRAFT grain. lodging_assignments and
+# lodging_merges are the ingest's and stay admin-only; nothing here can reach
+# them. See migration 1500000132.
+
+# lodging_availability.state, pinned to the migration's select list. That list
+# is the constraint PocketBase validates against -- a value not in it fails at
+# save time in production and nowhere else -- so it is restated here to fail at
+# the edge instead, with a 422 naming the field.
+ReservationState = Literal["reserved_staff", "reserved_other", "released_to_family"]
+
+# lodging_merges_draft.member_units is minSelect 2, maxSelect 20 (mirroring
+# lodging_merges). Refusing at the edge names the member count, rather than
+# surfacing a PocketBase validation error from inside the write.
+MERGE_MIN_MEMBERS = 2
+MERGE_MAX_MEMBERS = 20
+
+
+class ScenarioWriteRequest(BaseModel):
+    """Common shape of every lodging write: one weekend, one scenario.
+
+    `scenario` is REQUIRED and non-empty on all of them. With no scenario the
+    board is the CampMinder mirror and is read-only for everyone -- summer
+    encodes the identical rule in `ScenarioContext`'s `isProductionMode`, which
+    disables every drop target. An endpoint accepting a scenario-less write
+    would be the one path around that, and it would write rows that shadow the
+    mirror for every user at once.
+    """
+
+    year: int = Field(..., ge=2000, le=2100)
+    session_cm_id: int = Field(..., gt=0)
+    scenario: str = Field(..., min_length=1, description="saved_scenarios record id")
+
+
+class PartyGrainRequest(ScenarioWriteRequest):
+    """A write naming exactly one party, in exactly one grain.
+
+    Family camp places HOUSEHOLDS; adult weekends place PERSONS. The draft's
+    two partial unique indexes key on one column each, gated on `> 0`, so a row
+    naming neither grain keys on nothing and dedupes against nothing, and a row
+    naming both would occupy a slot in both indexes.
+    """
+
+    household_cm_id: int = 0
+    person_cm_id: int = 0
+
+    @model_validator(mode="after")
+    def _exactly_one_grain(self) -> Self:
+        named = (self.household_cm_id > 0) + (self.person_cm_id > 0)
+        if named != 1:
+            raise ValueError("name exactly one of household_cm_id or person_cm_id")
+        return self
+
+
+class PlacementWriteRequest(PartyGrainRequest):
+    """Place a party, or record that staff took it off the board.
+
+    All three targets empty is the TOMBSTONE and is deliberately valid: it
+    means "unplaced in this scenario", which is not the same as having no draft
+    row. Deleting the row instead would fall through to the CampMinder mirror
+    and put the family straight back where staff just dragged them from.
+    """
+
+    unit_id: str = ""
+    # A slot the INGEST built from a historical cabin string.
+    merge_id: str = ""
+    # A slot the BOARD built inside this scenario.
+    merge_draft_id: str = ""
+
+
+class PlacementDeleteRequest(PartyGrainRequest):
+    """Drop a party's draft row, restoring whatever the synced rows say."""
+
+
+class MergeWriteRequest(ScenarioWriteRequest):
+    """Bind a set of units into one bookable slot, for one weekend.
+
+    THE MEMBER SET IS NOT VALIDATED FOR COMPLETENESS, deliberately. The rule
+    "a merge is legal iff its members are the complete child set of some
+    container" was built through nine tasks and removed in #1903: every member
+    set is hand-authored, so a deliberate partial booking and a mis-click
+    produce byte-identical rows and no rule can tell them apart. Read
+    docs/architecture/lodging-occupancy.md before adding anything like it --
+    the idea is genuinely appealing and wrong for reasons that are not obvious.
+    """
+
+    member_unit_ids: list[str] = Field(..., min_length=MERGE_MIN_MEMBERS, max_length=MERGE_MAX_MEMBERS)
+    display_name: str = ""
+    capacity_override: int | None = None
+
+
+class AvailabilityWriteRequest(ScenarioWriteRequest):
+    """Reserve or release one unit for one weekend, inside a scenario.
+
+    `state: null` CLEARS the scenario's override, which returns the unit to
+    whatever the live plan says. That is not the same as writing an override
+    that happens to agree with the live plan, and the difference shows the
+    moment the live plan changes.
+    """
+
+    unit_id: str = Field(..., min_length=1)
+    state: ReservationState | None = None
+
+
+class LodgingWriteResponse(BaseModel):
+    """What a write did, in the terms the board needs to reconcile its state."""
+
+    record_id: str = ""
+    # True when the write removed a row rather than creating or updating one --
+    # a cleared availability override, or a placement dropped back to the
+    # CampMinder mirror.
+    deleted: bool = False
