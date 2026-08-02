@@ -51,6 +51,14 @@ LODGING_AVAILABILITY = "lodging_availability"
 LODGING_ASSIGNMENTS = "lodging_assignments"
 LODGING_ASSIGNMENT_HISTORY = "lodging_assignment_history"
 
+# The draft grain (1500000132). Staff write THESE; the ingest keeps sole
+# ownership of the two above, which stay admin-only. Same split summer draws
+# between bunk_assignments and bunk_assignments_draft, and the reason scenario
+# is a column here and on neither of the tables they mirror: scenario is a
+# property of planning, not of record.
+LODGING_ASSIGNMENTS_DRAFT = "lodging_assignments_draft"
+LODGING_MERGES_DRAFT = "lodging_merges_draft"
+
 # The single work queue for cabin strings ingest could not resolve. Owned and
 # solely written by the ingest layer; the admin UI reads it filtered to
 # kind = "unresolved_alias". Deliberately NOT a second surfaces-only collection.

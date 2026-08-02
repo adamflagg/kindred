@@ -3,10 +3,17 @@
 Every PocketBase read behind /api/lodging lives here so the service layer is
 testable against mocks. Mirrors api/services/metrics_repository.py.
 
-Slice 1 reads the LIVE PLAN only: lodging_availability, lodging_merges and
-lodging_assignments each carry a nullable `scenario` relation, and an empty
-scenario means the session's live plan. Every filter here pins
-`scenario = ""`. Scenario-scoped reads are a later phase.
+Two layers, since 1500000132. The SYNCED rows are the base and are read with
+no scenario predicate -- lodging_assignments and lodging_merges no longer have
+that column, because it was dead weight that invited a `scenario != ""` write
+rule instead of a draft table. A scenario's own rows come from
+lodging_assignments_draft, and from lodging_availability filtered to the
+scenario, and OVERLAY the base per party and per unit.
+
+Overlay rather than replace is what makes a freshly-created scenario render
+the CampMinder mirror rather than an empty board, with no seed step to go
+wrong. `scenario = ""` still means the live plan for availability, which kept
+its column.
 
 Request answers are NOT re-parsed here. The Go ingest derives the share gate,
 the NEAR/WITH/similar-ages modes, the household-grain request text and the four
@@ -29,6 +36,7 @@ from api.constants.collections import (
     FAMILY_CAMP_REGISTRATIONS,
     HOUSEHOLDS,
     LODGING_ASSIGNMENTS,
+    LODGING_ASSIGNMENTS_DRAFT,
     LODGING_AVAILABILITY,
     LODGING_INGEST_ISSUES,
     LODGING_UNITS,
@@ -115,7 +123,14 @@ class LodgingRepository:
         )
 
     async def fetch_availability(self, year: int, session_pb_id: str) -> list[Any]:
-        """Live-plan staff reservations / releases for one session."""
+        """Live-plan staff reservations / releases for one session.
+
+        lodging_availability is the one placement table that stayed
+        scenario-aware IN PLACE rather than gaining a draft twin: nothing syncs
+        into it, so there is no record of truth to protect. This reads the LIVE
+        rows only; a scenario's own overrides come from
+        fetch_scenario_availability and overlay these.
+        """
         return await asyncio.to_thread(
             self.pb.collection(LODGING_AVAILABILITY).get_full_list,
             query_params={
@@ -124,13 +139,46 @@ class LodgingRepository:
             },
         )
 
+    async def fetch_scenario_availability(self, year: int, session_pb_id: str, scenario_id: str) -> list[Any]:
+        """One scenario's reservation overrides for one session."""
+        return await asyncio.to_thread(
+            self.pb.collection(LODGING_AVAILABILITY).get_full_list,
+            query_params={
+                "filter": f'session = "{session_pb_id}" && year = {year} && scenario = "{scenario_id}"',
+                "sort": STABLE_SORT,
+            },
+        )
+
     async def fetch_assignments(self, year: int, session_pb_id: str) -> list[Any]:
-        """Live-plan lodging assignments for one session."""
+        """Synced lodging assignments for one session.
+
+        No scenario predicate: 1500000132 dropped that column. It was never
+        written -- all 67 rows carried '' -- and keeping it would have invited
+        exactly the `scenario != ""` write rule the draft table exists to avoid.
+        These rows ARE the live plan, and a scenario overlays them.
+        """
         return await asyncio.to_thread(
             self.pb.collection(LODGING_ASSIGNMENTS).get_full_list,
             query_params={
-                "filter": f'session = "{session_pb_id}" && year = {year} && {LIVE_PLAN_FILTER}',
+                "filter": f'session = "{session_pb_id}" && year = {year}',
                 "expand": "unit,merge",
+                "sort": STABLE_SORT,
+            },
+        )
+
+    async def fetch_draft_assignments(self, year: int, session_pb_id: str, scenario_id: str) -> list[Any]:
+        """One scenario's draft placements for one session.
+
+        Three targets expand, not two: `unit` is an atomic room, `merge` is a
+        slot the ingest built from a historical cabin string, and `merge_draft`
+        is one the board built inside this scenario. A PocketBase relation
+        names a single collection, so the two kinds of merge need two fields.
+        """
+        return await asyncio.to_thread(
+            self.pb.collection(LODGING_ASSIGNMENTS_DRAFT).get_full_list,
+            query_params={
+                "filter": f'session = "{session_pb_id}" && year = {year} && scenario = "{scenario_id}"',
+                "expand": "unit,merge,merge_draft",
                 "sort": STABLE_SORT,
             },
         )

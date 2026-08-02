@@ -162,26 +162,70 @@ class TestNarrowPhiReads:
 
 class TestFetchAssignments:
     @pytest.mark.asyncio
-    async def test_reads_only_the_live_plan_and_expands_unit_and_merge(
+    async def test_reads_the_synced_rows_and_expands_unit_and_merge(
         self, repo: LodgingRepository, pb: MagicMock
     ) -> None:
+        """No scenario predicate, because there is no scenario column.
+
+        This assertion used to require `scenario = ""` here. 1500000132 dropped
+        that column from lodging_assignments -- it was never written, and
+        keeping it invited the `scenario != ""` write rule the draft table
+        exists to avoid -- so filtering on it now asks PocketBase for an
+        unknown field. The synced rows ARE the base; a scenario overlays them.
+        """
         await repo.fetch_assignments(2026, "sess_pb_1")
 
         pb.collection.assert_called_with("lodging_assignments")
         params = _last_query(pb)
         assert 'session = "sess_pb_1"' in params["filter"]
         assert "year = 2026" in params["filter"]
-        assert 'scenario = ""' in params["filter"]
+        assert "scenario" not in params["filter"]
         assert params["expand"] == "unit,merge"
+
+
+class TestFetchDraftAssignments:
+    @pytest.mark.asyncio
+    async def test_scopes_to_one_scenario_and_expands_all_three_targets(
+        self, repo: LodgingRepository, pb: MagicMock
+    ) -> None:
+        """Three targets expand, not two.
+
+        `merge` is a slot the ingest built from a historical cabin string;
+        `merge_draft` is one the board built inside this scenario. A PocketBase
+        relation names a single collection, so a draft row that could point at
+        either needs both fields -- and a read that expands only one of them
+        renders a placed party as unplaced.
+        """
+        await repo.fetch_draft_assignments(2026, "sess_pb_1", "scn_1")
+
+        pb.collection.assert_called_with("lodging_assignments_draft")
+        params = _last_query(pb)
+        assert 'session = "sess_pb_1"' in params["filter"]
+        assert "year = 2026" in params["filter"]
+        assert 'scenario = "scn_1"' in params["filter"]
+        assert params["expand"] == "unit,merge,merge_draft"
 
 
 class TestFetchAvailability:
     @pytest.mark.asyncio
     async def test_reads_only_the_live_plan(self, repo: LodgingRepository, pb: MagicMock) -> None:
+        """lodging_availability KEPT its scenario column, unlike the two tables
+        that gained draft twins: nothing syncs into it, so there is no record
+        of truth there to protect. Empty scenario is still the live plan."""
         await repo.fetch_availability(2026, "sess_pb_1")
 
         pb.collection.assert_called_with("lodging_availability")
         assert 'scenario = ""' in _last_query(pb)["filter"]
+
+    @pytest.mark.asyncio
+    async def test_scenario_overrides_read_that_scenario_only(self, repo: LodgingRepository, pb: MagicMock) -> None:
+        await repo.fetch_scenario_availability(2026, "sess_pb_1", "scn_1")
+
+        pb.collection.assert_called_with("lodging_availability")
+        params = _last_query(pb)
+        assert 'session = "sess_pb_1"' in params["filter"]
+        assert "year = 2026" in params["filter"]
+        assert 'scenario = "scn_1"' in params["filter"]
 
 
 class TestFetchAttendees:

@@ -466,7 +466,7 @@ func (s *LodgingAssignmentsSync) placementFor(
 		return res.UnitIDs[0], "", nil
 	}
 
-	mergeID, err = EnsureMerge(s.App, sessionID, sessionCMID, year, "", res.UnitIDs, raw)
+	mergeID, err = EnsureMerge(s.App, sessionID, sessionCMID, year, res.UnitIDs, raw)
 	if err != nil {
 		return "", "", err
 	}
@@ -588,14 +588,18 @@ type assignmentInput struct {
 }
 
 func (s *LodgingAssignmentsSync) findAssignment(in *assignmentInput) (*core.Record, error) {
-	// scenario = the empty string is the live plan, written as a literal: a BOUND
-	// empty parameter matches nothing in PocketBase, so binding it here would miss
-	// the row every run and insert a duplicate. Note `> 0` is not used on the party
-	// ids because both are compared to a known value, but never write `!= ''`
-	// against these columns: PocketBase numbers are NUMERIC DEFAULT 0 NOT NULL and
-	// SQLite treats 0-vs-empty-string inequality as TRUE, which would match every
-	// row of the other grain.
-	const filter = "session = {:session} && year = {:year} && scenario = '' && " +
+	// No scenario clause: migration 1500000132 dropped that column. The ingest
+	// owns this table outright and every row in it IS the live plan -- staff
+	// planning happens in lodging_assignments_draft, which this sync never
+	// touches. Filtering on the column now fails the whole upsert with
+	// "unknown field \"scenario\"", so do not reinstate it.
+	//
+	// Note `> 0` is not used on the party ids because both are compared to a
+	// known value, but never write `!= ''` against these columns: PocketBase
+	// numbers are NUMERIC DEFAULT 0 NOT NULL and SQLite treats
+	// 0-vs-empty-string inequality as TRUE, which would match every row of the
+	// other grain.
+	const filter = "session = {:session} && year = {:year} && " +
 		"household_cm_id = {:hh} && person_cm_id = {:person}"
 	rows, err := s.App.FindRecordsByFilter("lodging_assignments", filter, "", 1, 0, dbx.Params{
 		"session": in.SessionID, "year": in.Year,

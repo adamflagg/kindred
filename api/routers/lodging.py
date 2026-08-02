@@ -49,6 +49,7 @@ async def list_weekend_sessions(
 @router.get("/summary", response_model=WeekendSummaryResponse)
 async def get_weekend_summary(
     year: int = Query(..., description="Year of the weekends", ge=2000, le=2100),
+    scenario: str = Query("", description="Saved scenario id; empty resolves the CampMinder mirror"),
     user: AuthUser = Depends(get_current_user),
 ) -> WeekendSummaryResponse:
     """Every weekend in a year with its counts, for the lander, in one request.
@@ -58,24 +59,35 @@ async def get_weekend_summary(
     year-scoped work identical across every weekend -- so twelve weekends
     repeat it twelve times. This does it once. The counts come from the same
     helpers `/roster` uses, so the two can never disagree.
+
+    `scenario` is here for exactly that reason. A lander that could not take it
+    would report a family unplaced while the page it links to shows them in a
+    cabin -- the two disagreeing by resolving the draft overlay differently
+    rather than by drifting apart in code.
     """
-    return await _service().build_summary(year)
+    return await _service().build_summary(year, scenario)
 
 
 @router.get("/roster", response_model=WeekendRosterResponse)
 async def get_weekend_roster(
     year: int = Query(..., description="Year of the weekend", ge=2000, le=2100),
     session_cm_id: int = Query(..., description="CampMinder id of the weekend session"),
+    scenario: str = Query("", description="Saved scenario id; empty resolves the CampMinder mirror"),
     user: AuthUser = Depends(get_current_user),
 ) -> WeekendRosterResponse:
     """Per-weekend roster: parties, the unit inventory, and honest counts.
 
-    Assignments are read-only in this slice. Capacity figures exclude
-    building/container rows and units whose `sleeps` is unknown, so they
-    never overstate what is placeable.
+    Capacity figures exclude building/container rows and units whose `sleeps`
+    is unknown, so they never overstate what is placeable.
+
+    With no `scenario` this is the CampMinder mirror -- the synced rows, which
+    no UI may write. With one, the scenario's draft placements and reservation
+    overrides are resolved OVER that mirror, per party and per unit, so a
+    scenario that has moved one family still shows every other family where
+    CampMinder put them.
     """
     try:
-        return await _service().build_roster(year, session_cm_id)
+        return await _service().build_roster(year, session_cm_id, scenario)
     except SessionNotFoundError as exc:
         raise HTTPException(
             status_code=404,

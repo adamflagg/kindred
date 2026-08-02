@@ -173,6 +173,72 @@ class TestRosterEndpoint:
         assert body["counts"]["parties_total"] == 0
 
 
+class TestScenarioParameter:
+    """The optional scenario, end to end through the router.
+
+    Asserts on the FILTERS the endpoint issues rather than on its payload: the
+    thing that can silently break is the parameter not reaching the reads at
+    all, which an empty-fixture payload assertion would happily pass.
+    """
+
+    @staticmethod
+    def _capture(mock_pb: MagicMock) -> list[str]:
+        seen: list[str] = []
+
+        def record(**kwargs: Any) -> list[Any]:
+            seen.append(kwargs.get("query_params", {}).get("filter", ""))
+            query_filter = kwargs.get("query_params", {}).get("filter", "")
+            if "cm_id = 1000001" in query_filter:
+                return [
+                    _rec(
+                        id="sess_1",
+                        cm_id=1000001,
+                        name="Family Camp 1",
+                        session_type="family",
+                        start_date="",
+                        end_date="",
+                        sort_order=1,
+                    )
+                ]
+            return []
+
+        mock_pb.collection.return_value.get_full_list.side_effect = record
+        return seen
+
+    def test_roster_without_a_scenario_reads_no_scenario_rows(self, admin_client: tuple[TestClient, MagicMock]) -> None:
+        client, mock_pb = admin_client
+        seen = self._capture(mock_pb)
+
+        response = client.get("/api/lodging/roster", params={"year": 2026, "session_cm_id": 1000001})
+
+        assert response.status_code == 200
+        assert not [f for f in seen if "scenario = " in f and 'scenario = ""' not in f], (
+            f"production mode read a scenario: {seen}"
+        )
+
+    def test_roster_with_a_scenario_filters_the_draft_by_it(self, admin_client: tuple[TestClient, MagicMock]) -> None:
+        client, mock_pb = admin_client
+        seen = self._capture(mock_pb)
+
+        response = client.get(
+            "/api/lodging/roster",
+            params={"year": 2026, "session_cm_id": 1000001, "scenario": "scn_1"},
+        )
+
+        assert response.status_code == 200
+        assert [f for f in seen if 'scenario = "scn_1"' in f], f"the scenario never reached a read: {seen}"
+
+    def test_summary_accepts_a_scenario(self, admin_client: tuple[TestClient, MagicMock]) -> None:
+        """The lander and the roster must be able to agree under a scenario,
+        which they cannot do if only one of them takes the parameter."""
+        client, mock_pb = admin_client
+        mock_pb.collection.return_value.get_full_list.return_value = []
+
+        response = client.get("/api/lodging/summary", params={"year": 2026, "scenario": "scn_1"})
+
+        assert response.status_code == 200
+
+
 class TestMedicalEndpointIsPermissionGated:
     def test_user_without_the_permission_gets_403(self, mock_pb: MagicMock) -> None:
         with patch("api.routers.lodging.pb", mock_pb):

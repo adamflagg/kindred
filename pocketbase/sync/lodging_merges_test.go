@@ -18,11 +18,11 @@ func TestEnsureMergeIsIdempotent(t *testing.T) {
 	tioga1 := addUnit(t, app, "gt-tioga-1")
 	tioga2 := addUnit(t, app, "gt-tioga-2")
 
-	first, err := EnsureMerge(app, sess, cmIDFamilyCamp1, 2025, "", []string{tioga1, tioga2}, "Tioga")
+	first, err := EnsureMerge(app, sess, cmIDFamilyCamp1, 2025, []string{tioga1, tioga2}, "Tioga")
 	if err != nil {
 		t.Fatalf("EnsureMerge first: %v", err)
 	}
-	second, err := EnsureMerge(app, sess, cmIDFamilyCamp1, 2025, "", []string{tioga1, tioga2}, "Tioga")
+	second, err := EnsureMerge(app, sess, cmIDFamilyCamp1, 2025, []string{tioga1, tioga2}, "Tioga")
 	if err != nil {
 		t.Fatalf("EnsureMerge second: %v", err)
 	}
@@ -48,11 +48,11 @@ func TestEnsureMergeIgnoresMemberOrder(t *testing.T) {
 	a := addUnit(t, app, "gt-tenaya-1")
 	b := addUnit(t, app, "gt-tenaya-2")
 
-	first, err := EnsureMerge(app, sess, cmIDFamilyCamp1, 2025, "", []string{a, b}, "Tenaya")
+	first, err := EnsureMerge(app, sess, cmIDFamilyCamp1, 2025, []string{a, b}, "Tenaya")
 	if err != nil {
 		t.Fatalf("EnsureMerge: %v", err)
 	}
-	second, err := EnsureMerge(app, sess, cmIDFamilyCamp1, 2025, "", []string{b, a}, "Tenaya")
+	second, err := EnsureMerge(app, sess, cmIDFamilyCamp1, 2025, []string{b, a}, "Tenaya")
 	if err != nil {
 		t.Fatalf("EnsureMerge reversed: %v", err)
 	}
@@ -61,10 +61,17 @@ func TestEnsureMergeIgnoresMemberOrder(t *testing.T) {
 	}
 }
 
-// TestEnsureMergeIsPerSessionAndScenario: spec 3.4 makes merges scenario-scoped
-// so two plans for the same weekend can merge differently, and per-session
-// because a merge is one weekend's arrangement, not a permanent building change.
-func TestEnsureMergeIsPerSessionAndScenario(t *testing.T) {
+// TestEnsureMergeIsPerSession: a merge is one weekend's arrangement, not a
+// permanent building change, so the same pair of rooms merged for two weekends
+// is two rows.
+//
+// This used to also assert that a scenario got its own row. Migration
+// 1500000132 dropped lodging_merges.scenario, which the ingest never wrote --
+// EnsureMerge is the ingest's function and its only caller passed "". A board
+// that merges rooms inside a scenario writes lodging_merges_draft, so the
+// scenario half of the old assertion now belongs to a different table rather
+// than having been abandoned.
+func TestEnsureMergeIsPerSession(t *testing.T) {
 	app := newLodgingTestApp(t)
 	sessA := addSession(t, app, cmIDFamilyCamp1, "Family Camp 1", "family", testSessionStart, testSessionEnd, 2025)
 	sessB := addSession(t, app, cmIDFamilyCamp6, "Family Camp 6", "family",
@@ -72,24 +79,17 @@ func TestEnsureMergeIsPerSessionAndScenario(t *testing.T) {
 	u1 := addUnit(t, app, "gt-tioga-1")
 	u2 := addUnit(t, app, "gt-tioga-2")
 
-	live, err := EnsureMerge(app, sessA, cmIDFamilyCamp1, 2025, "", []string{u1, u2}, "Tioga")
+	live, err := EnsureMerge(app, sessA, cmIDFamilyCamp1, 2025, []string{u1, u2}, "Tioga")
 	if err != nil {
 		t.Fatalf("live merge: %v", err)
 	}
-	otherSession, err := EnsureMerge(app, sessB, cmIDFamilyCamp6, 2025, "", []string{u1, u2}, "Tioga")
+	otherSession, err := EnsureMerge(app, sessB, cmIDFamilyCamp6, 2025, []string{u1, u2}, "Tioga")
 	if err != nil {
 		t.Fatalf("other-session merge: %v", err)
-	}
-	scenario, err := EnsureMerge(app, sessA, cmIDFamilyCamp1, 2025, "scn_abc", []string{u1, u2}, "Tioga")
-	if err != nil {
-		t.Fatalf("scenario merge: %v", err)
 	}
 
 	if live == otherSession {
 		t.Error("one merge row was shared across two sessions")
-	}
-	if live == scenario {
-		t.Error("the live plan and a scenario shared one merge row")
 	}
 }
 
@@ -101,10 +101,10 @@ func TestEnsureMergeRejectsFewerThanTwoMembers(t *testing.T) {
 	sess := addSession(t, app, cmIDFamilyCamp1, "Family Camp 1", "family", testSessionStart, testSessionEnd, 2025)
 	only := addUnit(t, app, "ridge-a")
 
-	if _, err := EnsureMerge(app, sess, cmIDFamilyCamp1, 2025, "", []string{only}, "Ridge A"); err == nil {
+	if _, err := EnsureMerge(app, sess, cmIDFamilyCamp1, 2025, []string{only}, "Ridge A"); err == nil {
 		t.Error("EnsureMerge accepted a single-member merge; member_units has minSelect 2")
 	}
-	if _, err := EnsureMerge(app, sess, cmIDFamilyCamp1, 2025, "", nil, ""); err == nil {
+	if _, err := EnsureMerge(app, sess, cmIDFamilyCamp1, 2025, nil, ""); err == nil {
 		t.Error("EnsureMerge accepted an empty member set")
 	}
 }
@@ -122,7 +122,7 @@ func TestEnsureMergeRejectsMoreThanMaxMembers(t *testing.T) {
 		tooMany = append(tooMany, addUnit(t, app, fmt.Sprintf("unit-%02d", i)))
 	}
 
-	_, err := EnsureMerge(app, sess, cmIDFamilyCamp1, 2025, "", tooMany, "Oversized")
+	_, err := EnsureMerge(app, sess, cmIDFamilyCamp1, 2025, tooMany, "Oversized")
 	if err == nil {
 		t.Fatalf("EnsureMerge accepted %d members; member_units has maxSelect %d",
 			len(tooMany), maxMergeMembers)

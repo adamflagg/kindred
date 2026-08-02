@@ -73,6 +73,10 @@ def _repo(**overrides: Any) -> MagicMock:
         "fetch_units": [],
         "fetch_availability": [],
         "fetch_assignments": [],
+        # The scenario layer. Only read when a scenario is asked for, which is
+        # itself asserted below -- no scenario must cost no extra fetches.
+        "fetch_draft_assignments": [],
+        "fetch_scenario_availability": [],
         "fetch_attendees_for_session": [],
         "fetch_households": {},
         "fetch_prior_household_cm_ids": set(),
@@ -526,6 +530,238 @@ class TestAssignments:
         assert roster.counts.parties_unassigned == 1
 
 
+class TestScenarioResolution:
+    """Draft-over-truth.
+
+    The board has two modes, taken verbatim from summer: NO scenario is the
+    CampMinder mirror and is read-only for everyone, and a SELECTED scenario is
+    the draft and is editable. So the truth table is always the base and a
+    scenario's draft rows are an overlay on top of it -- which is what makes a
+    freshly-created scenario show the synced placements rather than an empty
+    board, with no seed-the-scenario step to go wrong.
+    """
+
+    @pytest.mark.asyncio
+    async def test_no_scenario_never_reads_the_draft(self) -> None:
+        """Production mode costs exactly what it did before this layer existed."""
+        repo = _repo(
+            fetch_session=FAMILY_SESSION,
+            fetch_households={"hh_1": _household()},
+            fetch_attendees_for_session=[_child()],
+        )
+
+        await LodgingRosterService(repo).build_roster(2026, 1000001)
+
+        assert repo.fetch_draft_assignments.await_count == 0
+        assert repo.fetch_scenario_availability.await_count == 0
+
+    @pytest.mark.asyncio
+    async def test_a_draft_placement_overrides_the_synced_one(self) -> None:
+        repo = _repo(
+            fetch_session=FAMILY_SESSION,
+            fetch_households={"hh_1": _household()},
+            fetch_attendees_for_session=[_child()],
+            fetch_units=[
+                _unit("u1", "ridge-a", "Ridge A", sleeps=5),
+                _unit("u2", "ridge-b", "Ridge B", sleeps=5),
+            ],
+            fetch_assignments=[
+                _rec(
+                    household_cm_id=2000001,
+                    person_cm_id=0,
+                    unit="u1",
+                    merge="",
+                    expand={"unit": _rec(code="ridge-a", name="Ridge A")},
+                ),
+            ],
+            fetch_draft_assignments=[
+                _rec(
+                    household_cm_id=2000001,
+                    person_cm_id=0,
+                    unit="u2",
+                    merge="",
+                    merge_draft="",
+                    expand={"unit": _rec(code="ridge-b", name="Ridge B")},
+                ),
+            ],
+        )
+
+        roster = await LodgingRosterService(repo).build_roster(2026, 1000001, scenario="scn_1")
+
+        assert roster.parties[0].unit_code == "ridge-b"
+        assert roster.counts.parties_assigned == 1
+
+    @pytest.mark.asyncio
+    async def test_a_party_with_no_draft_row_keeps_its_synced_placement(self) -> None:
+        """The overlay is per party, not all-or-nothing.
+
+        A scenario that has moved one family must not blank the other 61.
+        """
+        repo = _repo(
+            fetch_session=FAMILY_SESSION,
+            fetch_households={"hh_1": _household(), "hh_2": _household("hh_2", 2000002, "The Garcia Family")},
+            fetch_attendees_for_session=[
+                _child(),
+                _child(cm_id=1000002, first="Liam", last="Garcia", household_pb_id="hh_2"),
+            ],
+            fetch_units=[_unit("u1", "ridge-a", "Ridge A", sleeps=5)],
+            fetch_assignments=[
+                _rec(
+                    household_cm_id=2000002,
+                    person_cm_id=0,
+                    unit="u1",
+                    merge="",
+                    expand={"unit": _rec(code="ridge-a", name="Ridge A")},
+                ),
+            ],
+            fetch_draft_assignments=[],
+        )
+
+        roster = await LodgingRosterService(repo).build_roster(2026, 1000001, scenario="scn_1")
+
+        placed = {p.display_name: p.unit_code for p in roster.parties}
+        assert placed["The Garcia Family"] == "ridge-a"
+        assert roster.counts.parties_assigned == 1
+
+    @pytest.mark.asyncio
+    async def test_a_draft_row_with_no_target_unplaces_the_party(self) -> None:
+        """The tombstone.
+
+        "Staff dragged this family off the board in this scenario" is not the
+        same state as "this family has no draft row", and only the second one
+        should fall through to the synced placement. A draft row naming no unit
+        and no merge is how the first is recorded -- there is no extra column,
+        because the absence IS the statement.
+        """
+        repo = _repo(
+            fetch_session=FAMILY_SESSION,
+            fetch_households={"hh_1": _household()},
+            fetch_attendees_for_session=[_child()],
+            fetch_units=[_unit("u1", "ridge-a", "Ridge A", sleeps=5)],
+            fetch_assignments=[
+                _rec(
+                    household_cm_id=2000001,
+                    person_cm_id=0,
+                    unit="u1",
+                    merge="",
+                    expand={"unit": _rec(code="ridge-a", name="Ridge A")},
+                ),
+            ],
+            fetch_draft_assignments=[
+                _rec(household_cm_id=2000001, person_cm_id=0, unit="", merge="", merge_draft="", expand={}),
+            ],
+        )
+
+        roster = await LodgingRosterService(repo).build_roster(2026, 1000001, scenario="scn_1")
+
+        assert roster.parties[0].unit_code == ""
+        assert roster.counts.parties_assigned == 0
+        assert roster.counts.parties_unassigned == 1
+
+    @pytest.mark.asyncio
+    async def test_a_draft_placement_onto_a_board_built_merge(self) -> None:
+        """A draft row has THREE possible targets, not two.
+
+        `merge` is a slot the ingest built -- six are seeded from historical
+        cabin strings, and a scenario must be able to place a party onto one.
+        `merge_draft` is a slot the board built in this scenario. A PocketBase
+        relation names one collection, so the two need separate fields.
+        """
+        repo = _repo(
+            fetch_session=FAMILY_SESSION,
+            fetch_households={"hh_1": _household()},
+            fetch_attendees_for_session=[_child()],
+            fetch_draft_assignments=[
+                _rec(
+                    household_cm_id=2000001,
+                    person_cm_id=0,
+                    unit="",
+                    merge="",
+                    merge_draft="mrgd_1",
+                    expand={"merge_draft": _rec(display_name="Tenaya 1 and 2")},
+                ),
+            ],
+        )
+
+        roster = await LodgingRosterService(repo).build_roster(2026, 1000001, scenario="scn_1")
+
+        assert roster.parties[0].unit_name == "Tenaya 1 and 2"
+        assert roster.parties[0].is_merged_slot is True
+
+    @pytest.mark.asyncio
+    async def test_the_person_grain_overlays_independently(self) -> None:
+        """Adult weekends place PERSONS, and the overlay keys on that grain."""
+        person = _rec(
+            cm_id=1000001,
+            first_name="Ava",
+            last_name="Martinez",
+            preferred_name="",
+            age=42,
+            grade=0,
+            household="hh_1",
+        )
+        repo = _repo(
+            fetch_session=ADULT_SESSION,
+            fetch_attendees_for_session=[_rec(person_id=1000001, expand={"person": person})],
+            fetch_units=[_unit("u2", "ridge-b", "Ridge B", sleeps=5)],
+            fetch_draft_assignments=[
+                _rec(
+                    household_cm_id=0,
+                    person_cm_id=1000001,
+                    unit="u2",
+                    merge="",
+                    merge_draft="",
+                    expand={"unit": _rec(code="ridge-b", name="Ridge B")},
+                ),
+            ],
+        )
+
+        roster = await LodgingRosterService(repo).build_roster(2026, 1000002, scenario="scn_1")
+
+        assert roster.parties[0].unit_code == "ridge-b"
+
+    @pytest.mark.asyncio
+    async def test_a_scenario_availability_override_wins_over_the_live_row(self) -> None:
+        """Availability overlays the same way, and for the same reason.
+
+        It is scenario-aware IN PLACE rather than through a twin -- nothing
+        syncs into lodging_availability, so there is no record of truth to
+        protect there -- but a scenario still reads the live rows as its base,
+        so reserving one cabin in a scenario does not discard the rest.
+        """
+        repo = _repo(
+            fetch_session=FAMILY_SESSION,
+            fetch_units=[
+                _unit("u1", "ridge-a", "Ridge A", sleeps=5),
+                _unit("u2", "ridge-b", "Ridge B", sleeps=4),
+            ],
+            fetch_availability=[_rec(unit="u1", state="reserved_staff")],
+            fetch_scenario_availability=[_rec(unit="u2", state="reserved_other")],
+        )
+
+        roster = await LodgingRosterService(repo).build_roster(2026, 1000001, scenario="scn_1")
+
+        by_code = {u.code: u for u in roster.units}
+        assert by_code["ridge-a"].reservation_state == "reserved_staff"
+        assert by_code["ridge-b"].reservation_state == "reserved_other"
+        assert roster.counts.units_family_available == 0
+
+    @pytest.mark.asyncio
+    async def test_a_scenario_release_overrides_the_live_reservation(self) -> None:
+        """Same unit, both layers: the scenario wins."""
+        repo = _repo(
+            fetch_session=FAMILY_SESSION,
+            fetch_units=[_unit("u1", "ridge-a", "Ridge A", sleeps=5)],
+            fetch_availability=[_rec(unit="u1", state="reserved_staff")],
+            fetch_scenario_availability=[_rec(unit="u1", state="released_to_family")],
+        )
+
+        roster = await LodgingRosterService(repo).build_roster(2026, 1000001, scenario="scn_1")
+
+        assert roster.units[0].reservation_state == "released_to_family"
+        assert roster.counts.units_family_available == 1
+
+
 class TestMedicalFlagsAndNarrative:
     @pytest.mark.asyncio
     async def test_medical_narrative_presence_becomes_a_flag_only(self) -> None:
@@ -697,6 +933,50 @@ class TestBuildSummary:
         roster = await service.build_roster(2026, 1000001)
 
         assert summary.weekends[0].counts == roster.counts
+
+    @pytest.mark.asyncio
+    async def test_counts_match_the_roster_under_a_scenario_too(self) -> None:
+        """The same guarantee, once a scenario can move the numbers.
+
+        Before the draft layer the two endpoints could only disagree by
+        drifting apart in code. Now they can disagree by resolving the overlay
+        differently, which is a live hazard rather than a hypothetical one: a
+        lander that skipped the draft would report a family unplaced while the
+        page it links to shows them in a cabin.
+        """
+        units = [
+            _unit("u1", "ridge-a", "Ridge A", sleeps=5),
+            _unit("u2", "ridge-b", "Ridge B", sleeps=4),
+        ]
+        draft = [
+            _rec(
+                household_cm_id=2000001,
+                person_cm_id=0,
+                unit="u2",
+                merge="",
+                merge_draft="",
+                expand={"unit": _rec(code="ridge-b", name="Ridge B")},
+            ),
+        ]
+        repo = _repo(
+            fetch_weekend_sessions=[FAMILY_SESSION],
+            fetch_session=FAMILY_SESSION,
+            fetch_units=units,
+            fetch_households={"hh_1": _household()},
+            fetch_attendees_for_session=[_child()],
+            fetch_draft_assignments=draft,
+            fetch_scenario_availability=[_rec(unit="u1", state="reserved_staff")],
+        )
+        service = LodgingRosterService(repo)
+
+        summary = await service.build_summary(2026, scenario="scn_1")
+        roster = await service.build_roster(2026, 1000001, scenario="scn_1")
+
+        assert summary.weekends[0].counts == roster.counts
+        # The scenario actually moved something, so the equality above is not
+        # two identical empty results agreeing with each other.
+        assert roster.counts.parties_assigned == 1
+        assert roster.counts.units_family_available == 1
 
     @pytest.mark.asyncio
     async def test_a_year_with_no_weekends_does_no_year_scoped_work(self) -> None:
