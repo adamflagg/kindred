@@ -1,6 +1,8 @@
 # HANDOFF — Family Camp Lodging
 
-**State as of the draft write layer (#1915).** The data layer, the ingest, the read API, the
+**State as of the write-race guards (#1927).** One PR is in flight and unmerged: **#1926**, which
+moves the board's consent flag off the registration gate onto the authoritative form — **§3a is
+the model behind it, and is worth reading even if that PR changes.** The data layer, the ingest, the read API, the
 weekend surfaces, the writable editor, the 2026 inventory, the read-only board and the draft
 write layer are all merged. `/weekend/sessions` lists the year's weekends;
 `/weekend/session/:id` shows one weekend's roster and inventory; `/manage/lodging/:section`
@@ -31,7 +33,9 @@ below identifies work by **PR and commit**, which are the only labels that canno
 | 2026 inventory — real amenities and the alias set (114 units / 141 aliases at merge) | ✅ `8b83f388` (#1914) |
 | Read-only board — area sections, unit cards, unplaced rail, detail panel | ✅ `3c2e3b55` (#1911) |
 | Draft write layer — draft tables, RBAC, scenario-aware reads, five endpoints | ✅ `7065b4c9` (#1915) |
-| **Drag placement — the board calls the write endpoints** | ⬅ **next, see §4** |
+| Write-race guards — all five write paths hardened | ✅ `7b25d25e` (#1927) |
+| **Share eligibility — flag on the authoritative form, not the registration gate** | ⏳ **IN FLIGHT, #1926** — see §3a |
+| **Drag placement — the board calls the write endpoints** | ⬅ **next, after #1923(a), see §4** |
 | Map + pin editor — `map_x`/`map_y` view, a projection of the board | needs drag placement |
 | Geo layer | needs the map |
 
@@ -359,12 +363,101 @@ Each of these was decided deliberately. Reopening one needs a reason, not a fres
 
 ---
 
+## 3a. SHARE ELIGIBILITY — the model staff confirmed, 2026-08-02
+
+**Read this before touching anything that decides who may share a cabin.** It is the largest
+correction the programme has made to its own understanding, and the implementation is in flight
+on **#1926** (not yet merged) — but the *model* is staff-stated and holds regardless of that PR.
+
+### Share intent lives in TWO CampMinder fields, and the later one wins
+
+| Field | cm_id | When | Shape |
+|---|---|---|---|
+| `FAM CAMP-Share Cabins` | 240877 | registration, early | single-select 3-state gate |
+| `FAM CAMP-Shared Cabin` | 263379 | Family Camp info form, later | **multi-select** modes |
+
+**Staff rule: the Family Camp information form is authoritative. Registration is consulted only
+when the form's share question is unanswered. Not answering is never consent.**
+
+**The four live form options are NEAR / "No requests" / WITH-a-named-family / WITH-similarly-aged.
+There is NO "we do not want to share" option** — so "did not request sharing" is the absence of a
+WITH token, never a recorded refusal. Say it that way on any surface: most of that group asked to
+be housed NEAR someone.
+
+### Two INDEPENDENT axes, not one
+
+- **Cabin sharing** — no / named (mutual) / open (similar ages) / both
+- **Proximity** — NEAR, plus names. **Orthogonal.** NEAR means *not in my cabin, but close by*.
+
+Collapsing NEAR into the sharing axis is the single easiest mistake here: households select a WITH
+option *and* NEAR, and that combination becomes inexpressible.
+
+### What the ingest could NOT see before
+
+`NormalizeShareGate` needs a leading no/maybe/yes token, and no form option has one — so
+`share_cabin_gate` is **100% registration** and the `winsGate` tie-break naming the form as winner
+has never fired. The board flagged on that column and was wrong in both directions: a few
+households were flagged though legitimately placed, and roughly ten times as many declined on the
+authoritative form while the board stayed silent and read as permissive.
+
+### Facts worth not re-deriving
+
+- **The form is returned (~88%); its share question is skipped by about half.** So an absent share
+  answer is usually a *skipped question*, not a missing form. Proven by overlap with
+  `FAM CAMP-bathroom` (274056) on the same form.
+- **`family_camp_registrations` is NOT the attendee population.** For 2026 it holds ~459 rows of
+  which only ~381 attend a `session_type='family'` session — the rest are adult-only, other
+  programmes, or not enrolled. **Filter through `attendees` (`status_id = 2`) before quoting any
+  number**, or every figure is diluted ~17%.
+- **Siblings disagree.** The request fields are person-partition. The form modes are OR'd (a real
+  request beats a sibling's "No requests", which is correct); the gate is resolved newest-wins
+  with no fail-safe direction, which is **#1928**.
+- **Free text is where the "who" lives**, and it is one lossy join across three source fields
+  shared by BOTH axes — you cannot attribute a name to an axis. Resolving names to households is
+  spec §7.3 and **unbuilt**; it gates mutuality verification, the unplaced rail's second ranking
+  leg, and suppressing the flag on reciprocated pairs.
+
+### ADULT PROGRAMS ARE A STRUCTURAL SPLIT, NOT A SPECIAL CASE
+
+| | Family Camp | Adult Weekends |
+|---|---|---|
+| Party grain | household | person |
+| Roster builder | `_build_household_parties` | `_build_person_parties` |
+| Share / proximity questions | both forms | **none exist** |
+| `share` / `flags` on the party | populated | **not attached at all** |
+
+There is **no `Adult-Share` field** in `custom_field_defs` — the absence is specific to sharing
+(`Adult-Bathroom`, `Adult-CPAP`, `Adult-Infant` all exist). So:
+
+1. **A consent check structurally cannot fire on an adult weekend.** The surface must say it is
+   *not checking*, rather than render a clean board that was never examined.
+2. **Never fall back to household registration data for a person-grain party** — those answers may
+   belong to a different weekend and different people.
+3. **Housing rules differ** (the occupancy doc records the couple-booked-as-two-attendees case).
+   Do not apply the family-camp sharing rule to adult weekends at all.
+
+### Where the full design lives
+
+`docs/superpowers/specs/2026-08-02-family-camp-share-eligibility-design.md` — **LOCAL ONLY and
+gitignored**, so it does not exist on a fresh clone. It carries every measurement, the form-redesign
+recommendation, and the plan for a family-camp request pipeline (summer's shape minus the CSV step,
+since CampMinder's API makes ingestion automatable, with intent parsing upstream of the request).
+If that file is missing, this section is the surviving summary.
+
+---
+
 ## 4. Next: drag placement on the board (spec "C2")
+
+**Settle #1923(a) first — see §8.** Drag is what makes draft rows exist, and the unit/merge delete
+guards cannot see them.
 
 **Both halves of placement now exist separately and are not connected.** The board renders
 (#1911); the write endpoints accept (#1915). Nothing on the board calls them. The next PR is
 the interaction that joins them, and it is a frontend PR — **there is no schema work in front
 of it** unless it takes on `unit_class` (#1907).
+
+**Check whether #1926 has merged before starting** — it rewrites `consentFlag` and touches
+`boardLayout.ts` and `FamilyCard.tsx`, so starting drag alongside it collides.
 
 Read the §2 subsection on the draft write layer before starting. The three-states table there is
 the thing this PR is most likely to get wrong.
@@ -685,8 +778,41 @@ do not see draft placements, and `lodging_merges_draft` has **no delete guard at
 different person than the one who placed them.
 
 **Today it is theoretical because no draft rows exist. The drag PR is what makes them exist**, so
-settle it there or defer it explicitly with the reason written down. And do not read
-`guardDraftAssignmentGrain` as already fixing it — see §2.
+settle it BEFORE drag ships. And do not read `guardDraftAssignmentGrain` as already fixing it —
+see §2.
+
+**It is TWO decisions, not one, and they have different risk:**
+
+- **(a) Teach `countAssignments` the draft grain**, so `guardUnitDelete` and `guardMergeDelete`
+  stop allowing a delete that silently empties a scenario. This follows the existing precedent
+  exactly — `guardUnitDelete` and `guardAliasDelete` both already return 400 on this shape.
+  **Safe, and the one that actually gates drag.** Note it is a user-facing change: staff can no
+  longer delete a unit holding draft placements.
+- **(b) A delete guard on `lodging_merges_draft`** — **do not do this without deciding it
+  deliberately.** It would contradict behaviour already documented in `delete_merge`:
+  `merge_draft` is `cascadeDelete: false` on purpose, so a placement whose slot is deleted keeps
+  its row and reads as unplaced rather than vanishing. A Go guard blocking that delete fights the
+  API's stated design. The codebase currently argues both ways; pick one and write down why.
+
+### #1925 — `party_size` counts adults who are not attending
+
+`family_camp_adults` is keyed `(household, year)` with **no session and no attendance dimension**,
+while children come from session-scoped `attendees`. `_build_household_parties` computes
+`party_size = len(adults) + len(children)`, so every weekend gets ALL of the household's listed
+adults — and most households list two.
+
+Not cosmetic: **`party_size` is what the fit check judges cabin capacity against**, so this
+silently over-sizes parties and can reject a cabin that suits them. **Not fixable from current
+data** — only 2 adult attendee rows exist across all 2026 family sessions, so there is no
+attendance signal to recover. Needs either a CampMinder field or a staff-editable override.
+Degrades what drag is FOR, but does not block it.
+
+### #1928 — the share gate resolves sibling disagreement newest-wins
+
+Pre-existing, low urgency. `winsGate` has no fail-safe direction, so a household whose siblings
+disagree can report the most permissive answer. #1926's eligibility fallback guards the NEW column
+against this; the gate column itself is unchanged. Nothing that makes placement decisions reads
+the gate any more, so this matters for the displayed value and for whatever consumes it next.
 
 ### #1917 — the 2026 inventory is not in production
 
