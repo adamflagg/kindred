@@ -1,12 +1,13 @@
 # HANDOFF — Family Camp Lodging
 
-**State as of Phase A of the ingest-repair work (#1903).** All three plans are merged, plus
-the queue drain. The data layer, the ingest, the read API, the weekend surfaces and the
-writable editor are done. `/weekend/sessions` lists the year's weekends;
+**State as of the draft write layer (#1915).** The data layer, the ingest, the read API, the
+weekend surfaces, the writable editor, the 2026 inventory, the read-only board and the draft
+write layer are all merged. `/weekend/sessions` lists the year's weekends;
 `/weekend/session/:id` shows one weekend's roster and inventory; `/manage/lodging/:section`
-edits the registry, and resolving a work-queue row now writes the placement on the click
-instead of on the next sync. **The next body of work is the board and the map (spec §7.2) —
-see §4.**
+edits the registry; the board renders placements read-only; and five write endpoints exist for
+scenario-scoped placement, board-built merges and availability overrides. **What does not exist
+is the interaction: nothing on the board calls those endpoints yet. That is the next body of
+work — see §4.**
 
 This is a working document. Edit it in place: tick what ships, rewrite "Next", delete what stops
 being true. It is not a changelog — `git log` is the changelog.
@@ -15,30 +16,35 @@ being true. It is not a changelog — `git log` is the changelog.
 
 ## 1. Programme status
 
-Three plans merged, plus one follow-on phase. What remains is the board and the map — see §4.
+**This programme has accumulated three overlapping label schemes** — Plans 1–3, Phases A–F, and
+a step number — and one of them names a phase that no longer exists. Do not add a fourth, and
+treat a bare letter in any older document as ambiguous rather than authoritative. The table
+below identifies work by **PR and commit**, which are the only labels that cannot drift.
 
-| Plan | Scope | Status |
-|---|---|---|
-| **1 — Data layer** | `lodging_*` collections, seed, alias registry | ✅ merged (`49d38ff8`, #1867) |
-| **2 — Ingest** | CampMinder cabin fields → assignments, requests, PHI split | ✅ merged — see below |
-| **3 — Surfaces** | Read API, `/weekend` roster, `/manage/lodging` editor | ✅ A (`f99a8ef7`, #1884), B (`37cf8d24`, #1890), C + units redesign (`1bcd90f1`, #1893) |
+| Scope | Status |
+|---|---|
+| Data layer — `lodging_*` collections, seed, alias registry | ✅ `49d38ff8` (#1867) |
+| Ingest — CampMinder cabin fields → assignments, requests, PHI split | ✅ four PRs, see below |
+| Surfaces — read API, `/weekend` roster, `/manage/lodging` editor | ✅ `f99a8ef7` (#1884), `37cf8d24` (#1890), `1bcd90f1` (#1893) |
+| Ingest repair — replay the queue without a re-sync; `parent_unit` cycle guard | ✅ `58bc5c77` (#1903) |
+| Private registry — registry out of tracked source into `kindred-local` | ✅ `397379a3` (#1910) |
+| 2026 inventory — real amenities and the alias set (114 units / 141 aliases at merge) | ✅ `8b83f388` (#1914) |
+| Read-only board — area sections, unit cards, unplaced rail, detail panel | ✅ `3c2e3b55` (#1911) |
+| Draft write layer — draft tables, RBAC, scenario-aware reads, five endpoints | ✅ `7065b4c9` (#1915) |
+| **Drag placement — the board calls the write endpoints** | ⬅ **next, see §4** |
+| Map + pin editor — `map_x`/`map_y` view, a projection of the board | needs drag placement |
+| Geo layer | needs the map |
 
-Plan 2 shipped in four PRs:
+The ingest row above shipped in four PRs:
 
-| Phase | Tasks | Commit | What |
-|---|---|---|---|
-| A — source-field correctness | 1–3 | `78ef6d8d` (#1872) | four silently-broken columns in `family_camp_derived.go` |
-| B1 — ingest primitives | 4–10 | `2b28e0fa` (#1877) | work queue, alias resolver, merges, session attribution, grain guard |
-| B2 — ingest on | 11–14 | `0cf6420b` (#1880) | both grains, history, job registration, backfill gate |
-| C — request layer + PHI | 16–19 | `b3fa243d` (#1878) | household-grain collapse, housing flags, PHI containment |
+| Commit | What |
+|---|---|
+| `78ef6d8d` (#1872) | four silently-broken columns in `family_camp_derived.go` |
+| `2b28e0fa` (#1877) | work queue, alias resolver, merges, session attribution, grain guard |
+| `0cf6420b` (#1880) | both grains, history, job registration, backfill gate |
+| `b3fa243d` (#1878) | household-grain collapse, housing flags, PHI containment |
 
-Task 15 was **rejected**, not deferred — see §3.
-
-After Plan 2, one follow-on phase:
-
-| Phase | Commit | What |
-|---|---|---|
-| A — ingest repair | #1903 | replay: drain the work queue without a re-sync; server-side `parent_unit` cycle guard (#1899) |
+The Wawona / Doctor's House alias reconcile was **rejected**, not deferred — see §3.
 
 **#1903 also removed a merge-legality rule it had itself just built.** That is the single most
 important thing to read before touching lodging constraints — §4 and
@@ -109,7 +115,7 @@ Facts, not a work log. Do not re-verify or re-implement these.
 - **Shared weekend helpers live in `frontend/src/components/weekend/`**: `rosterAttention.ts`
   (triage + `countUnmeasuredSpaces`), `weekendStatus.ts` (lifecycle + chronological sort),
   `weekendNames.ts` (colon split), `sessionDates.ts` (PocketBase datetime → "May 22–25, 2026").
-  Phase C reuses these rather than re-deriving.
+  The board reuses these rather than re-deriving.
 - **`verify-no-hardcoded-lodging.sh` ignores comments and docstrings** (`scripts/dev/lib/
   drop_comment_hits.py`). It used to fail on prose, which is why it was red on `main` (#1891).
 - **`/manage/lodging/:section` is live** (`1bcd90f1`, #1893) — three sections: units, cabin-name
@@ -121,13 +127,18 @@ Facts, not a work log. Do not re-verify or re-implement these.
   collection, and on every `/api/lodging/*` endpoint EXCEPT
   `GET /households/{cm_id}/medical`, are open to any authenticated user; writes are
   `admin || bunking.manage` (`1500000130`). Consequences worth holding:
-  - **Three collections are NOT widened.** `lodging_field_mappings`, because it is ingest
-    plumbing that decides what every lodging read *means*, not a cabin decision. And
-    `lodging_assignments` + `lodging_assignment_history`, because they are the synced record of
-    truth and its append-only audit — summer draws the identical line, keeping `bunk_assignments`
-    and `attendee_status_history` admin-only while staff write the DRAFT
-    (`bunk_assignments_draft`). Lodging has no draft table yet. **Widen them in the PR that adds
-    the board that writes them**, not before.
+  - **Three collections are NOT widened, and #1915 ANSWERED that question rather than
+    completing it.** `lodging_field_mappings`, because it is ingest plumbing that decides what
+    every lodging read *means*, not a cabin decision. And `lodging_assignments` +
+    `lodging_assignment_history`, because they are the synced record of truth and its
+    append-only audit — summer draws the identical line, keeping `bunk_assignments` and
+    `attendee_status_history` admin-only while staff write the DRAFT (`bunk_assignments_draft`).
+    This section used to say *"widen them in the PR that adds the board that writes them"*.
+    **Do not.** `1500000132` gave the opposite answer: the writer never touches them. Staff
+    write `lodging_assignments_draft`, and all three stay `is_admin` permanently. The rejected
+    alternative — widen `lodging_assignments` and scope staff to non-empty scenarios via a
+    `scenario != ""` rule — is a guard by convention, one string edit from opening the synced
+    rows, and it makes every reader responsible for a filter.
   - **`lodging.phi` is now held by the Bunking Staff role** (closing #1887), so the roster's
     medical reveal works for the staff doing placement. It stayed a separate permission from
     `bunking.manage` deliberately: it can be revoked, or granted to someone who places nobody,
@@ -138,7 +149,8 @@ Facts, not a work log. Do not re-verify or re-implement these.
     remaining admin routes are guarded rather than merely tab-filtered (#1895).
 - **Units is sortable, area-grouped, and confirmable in one click or in bulk.** That last part
   is the point: nothing on the roster judges a housing need against an unconfirmed cabin, and
-  every unit the loader writes ships unconfirmed (114 of them after the 2026 inventory).
+  **every unit the loader writes ships unconfirmed** — state that invariant rather than a count,
+  which goes stale on every inventory change.
 - **Beds are inventory behind `sleeps`, not a replacement for it.** `frontend/src/types/beds.ts`
   turns "2 twins and a queen" into a *suggested* occupancy staff adopt with one click. `sleeps`
   remains the single number every consumer reads, so no Pydantic model changed.
@@ -160,7 +172,116 @@ Facts, not a work log. Do not re-verify or re-implement these.
   running the migration against a real database. Use `record.getString(field)` and `JSON.parse`.
   The Go side has the same trap in a different shape — see `extractBusinessCategory` in
   `pocketbase/rbac/hooks.go`, which handles `types.JSONRaw` separately from `map[string]any`.
-- **Highest migration is `1500000131`.** Compute the next number from `main`, never from a branch.
+- **Highest migration is `1500000132`; the next free number is `1500000133`.** Recompute from
+  `main`, never from a branch — and never trust the number written here, which is the first
+  thing to go stale in this file.
+
+### The 2026 inventory (`8b83f388`, #1914) and the private registry (`397379a3`, #1910)
+
+- The registry lives in `config/lodging_registry.json` in **kindred-local**, not in tracked
+  source, and loads on boot. `docs/reference/lodging-registry.md` is the contract.
+- **The loader is create-if-absent and will NOT backfill a new field onto rows that already
+  exist.** `scripts/dev/apply_lodging_inventory.py` is what does that, in two passes: amenities
+  first, then `--structural` for container promotion and parent corrections. **#1917 tracks
+  running it against production, which merging did not do and nothing in CI/CD does.**
+- `scripts/dev/confirm_lodging_units.py` refuses non-loopback URLs. It exists to light up the
+  fit check locally; run against production it would assert that every cabin had been checked
+  when none had.
+- **A count reconciliation is not a placement check.** #1914's amenity-count reconciliation
+  balanced exactly and was structurally incapable of catching a sheet row landing on the wrong
+  unit — it counts each row once, wherever it sits. It caught the two mismappings that were
+  *collisions* and was blind to the one where a row sat on a container and its four bookable
+  rooms got nothing. Whenever data is mapped onto rows, the question is "is every row on the
+  right target", which counts cannot answer. #1918 tracks a guard for that shape.
+
+### The read-only board (`3c2e3b55`, #1911)
+
+Area sections, leaf-unit cards, the unplaced rail, the detail panel and consent flagging all
+render. It is a display surface — **nothing on it calls a write endpoint.** It flags on explicit
+`no_share` only, which is the unambiguous case; see §4 for the two rules deferred to the drag PR.
+
+### The draft write layer (`7065b4c9`, #1915)
+
+**Two new collections** (`1500000132`): `lodging_assignments_draft` and `lodging_merges_draft`.
+`scenario` is required on both, with `cascadeDelete: true`, so deleting a saved scenario sweeps
+its drafts server-side.
+
+**The dead `scenario` column was DROPPED** from `lodging_assignments` and `lodging_merges`. It
+was an artifact — absent from the original field list, and empty on all 67 assignment rows. The
+live unique indexes were rebuilt without it and **kept their `> 0` partials**. Consequences:
+
+- **`EnsureMerge` lost its `scenario` parameter.** Filtering on the dropped column now fails the
+  whole ingest with `unknown field "scenario"`. Do not reinstate it.
+- **A `Set` on a dropped column silently no-ops; a filter naming it errors.** So a write-only
+  reference to a dropped column looks fine forever. This is #1921, and it is why dropping
+  `scenario` broke the Go ingest while the Go suite stayed green — the fixtures build their own
+  schema and never read `pb_migrations/`.
+
+**`lodging_availability` keeps its `scenario` column and gets NO draft twin.** Nothing syncs into
+it, so there is no record of truth to protect. Live rows are the base; scenario rows overlay per
+unit. `state: null` DELETES the scenario row — there is no state meaning "normal", and writing an
+override that agrees with the live plan would pin the unit against a later change to it.
+
+**Reads.** `GET /roster` and `GET /summary` both take an optional `scenario`:
+
+- **No `scenario` → the CampMinder mirror**, read-only for everyone, byte-identical to
+  pre-#1915 behaviour. The draft reads are not issued at all.
+- **With `scenario` → draft rows OVERLAY the mirror**, per party and per unit — not replace. A
+  freshly created scenario therefore renders the synced placements with **no seed step**. There
+  is deliberately no "copy production into this scenario" operation; do not add one.
+- The scenario layer joins the same `TaskGroup` as the base reads, so scenario mode costs no
+  extra round trip. A test asserts `/summary` and `/roster` cannot disagree under one scenario.
+
+**Writes — five endpoints, all gating on `bunking.manage`:**
+
+```text
+POST   /api/lodging/placements      upsert one party's placement
+DELETE /api/lodging/placements      drop the override, restoring the mirror
+POST   /api/lodging/merges          bind units into a board-built slot
+DELETE /api/lodging/merges/{id}     remove one
+PUT    /api/lodging/availability    reserve/release a unit; state:null clears
+```
+
+`scenario` is **required and non-empty on every write.** With no scenario the board is read-only
+for everyone, which is what summer's `isProductionMode` does; an endpoint accepting a
+scenario-less write would be the one path around it. A blank scenario is a 422, not a silent
+write to the live plan.
+
+#### THREE STATES THAT LOOK IDENTICAL FROM OUTSIDE AND ARE NOT
+
+The single easiest thing for the board to get wrong.
+
+| State | Row | Renders as | Meaning |
+|---|---|---|---|
+| Placed in scenario | draft row with a target | in that unit | staff moved them |
+| **Tombstone** | draft row with **no** target | unplaced | staff took them off the board |
+| No override | **no draft row** | wherever CampMinder put them | untouched in this scenario |
+
+So `DELETE /placements` and "drag to the unplaced rail" are **different operations**. Dragging a
+family off the board must POST a **tombstone**. Deleting the row falls through to the mirror and
+puts them straight back in the synced cabin — the opposite of what the staff member just asked
+for. `DELETE` is a separate affordance ("reset to CampMinder"), not the unplaced rail.
+
+#### A draft placement has THREE possible targets, not two
+
+`unit` (an atomic room), `merge` (a slot the INGEST built from a historical cabin string via
+`EnsureMerge` — no migration seeds these, and a scenario must be able to place onto one), and
+`merge_draft` (a slot the BOARD built in this scenario). A PocketBase relation names one
+collection, which is why two merge fields exist. **A read that expands only one renders a placed party as unplaced.** `merge_draft`
+is checked before `merge`: a board-built slot is the more specific answer.
+
+#### `guardDraftAssignmentGrain` is NOT the delete guard
+
+New `OnRecordCreate`/`OnRecordUpdate` hook on `lodging_assignments_draft` enforcing
+`household_cm_id` XOR `person_cm_id` — **party grain only, and deliberately nothing else.** It is
+a separate function from `guardAssignmentGrain` because the target rule differs and must: the
+draft accepts a row naming **no** target (the tombstone) and more than one, exactly as the
+schema does. A row naming neither *grain* is what makes it worth guarding — it keys on nothing,
+both partial unique indexes skip it, and the roster's overlay silently drops it, so the row
+accumulates and does nothing, invisibly.
+
+**Do not read this as fixing #1923.** That is about DELETE guards on units and merges not seeing
+the draft grain at all. Adjacent, not the same — see §8.
 
 ---
 
@@ -200,7 +321,7 @@ Each of these was decided deliberately. Reopening one needs a reason, not a fres
   accompanies `with` rather than replacing it. `request_text` is ONE pre-joined string — the ingest
   joins three source fields with `"; "` and that join is lossy to reverse, so do not split it.
 
-### Locked by Phase B (PR #1890 — binding whether or not it has merged yet)
+### Locked by the weekend surfaces (`37cf8d24`, #1890)
 
 - **Capacity is measured in SPACES, not beds.** A family holds a whole cabin whether or not it
   fills it, so a cabin sleeping 8 housing a family of 3 strands five beds nobody else can use.
@@ -215,7 +336,9 @@ Each of these was decided deliberately. Reopening one needs a reason, not a fres
 - **The met/unmet fit check judges only CONFIRMED cabins.** Every cabin is `is_confirmed: false`
   today, so an unset `has_power` means "nobody has said", not "there is no power". Judging against
   unset defaults would flag every constrained family on absent evidence, so the check reports
-  `unverified` instead and begins working the moment Phase C seeds amenities.
+  `unverified` instead. **#1914 seeded the real amenities, so the remaining gate is
+  confirmation, not data** — the check begins working the moment staff start confirming cabins
+  in `/manage/lodging/units`, and stays dark until they do.
 - **The weekend surfaces extend the summer session area's visual language, they do not invent one.**
   `SessionTabs` pill grammar, `SessionStatsCompact` stats bar, `CamperAlertSection` alert rows, the
   camper panel's amber blockquote for request text, Headless UI `Listbox` title-switcher, and
@@ -236,25 +359,52 @@ Each of these was decided deliberately. Reopening one needs a reason, not a fres
 
 ---
 
-## 4. Next: the board and the map (spec §7.2)
+## 4. Next: drag placement on the board (spec "C2")
 
-All three plans are merged. What the programme was building toward — placing parties — does
-not exist yet. Assignments are still read-only; the registry is now editable.
+**Both halves of placement now exist separately and are not connected.** The board renders
+(#1911); the write endpoints accept (#1915). Nothing on the board calls them. The next PR is
+the interaction that joins them, and it is a frontend PR — **there is no schema work in front
+of it** unless it takes on `unit_class` (#1907).
 
-**The two surfaces the spec wants, as complements not alternatives:**
+Read the §2 subsection on the draft write layer before starting. The three-states table there is
+the thing this PR is most likely to get wrong.
 
-- **(a) The bunking board** — the primary surface, laid out like the summer board (unit
-  columns grouped by area, party cards as atoms, @dnd-kit drag). New `FamilyCard` and
-  `LodgingUnitCard` components, NOT conditionals inside the 849-line camper-coupled
-  `BunkingBoardByArea.tsx`: the atom here is a household party of mixed ages, not a camper.
-- **(b) The map view** — a secondary tab rendering the camp map from `map_x`/`map_y`, for
-  judging *near* requests and seeing whether a family sits beside a bathhouse or a staff
-  cabin. The coordinates have been in the schema since slice 1 for this, and `/manage/lodging`
-  now lets staff correct both unit positions and area centroids.
+**In scope:**
 
-Both operate on the same `lodging_assignments` + `lodging_merges` + `lodging_availability`
-state, so a change in one shows in the other. The map is a projection of the board, not a
-separate system of record.
+- @dnd-kit dragging on the existing board, as summer uses it. Party → unit, party → unplaced
+  rail, and unit → unit.
+- **Party → unplaced rail POSTs a TOMBSTONE, not a DELETE.** See §2.
+- Optimistic placement with rollback. **A rejected write must roll the card back** with a toast,
+  as summer's `useCamperMovement` does. A silent revert is not acceptable.
+- Scenario gating: no scenario → the board stays exactly as read-only as it is today, with the
+  amber CM badge. Mirror `ScenarioContext`'s `isProductionMode`.
+- Merge-as-board-action and reserve/release if they fit; otherwise say so and leave them.
+- **The three unguarded write paths in §8.** Small, mechanical, and their own precedent is five
+  lines away in the same file.
+
+**Out of scope:** the map (next), `unit_class`/#1907 unless flagging needs it, and any new read
+endpoint — the roster already returns what the board renders.
+
+**After it: the map view** — a secondary tab rendering the camp map from `map_x`/`map_y`, for
+judging *near* requests and seeing whether a family sits beside a bathhouse or a staff cabin.
+The coordinates have been in the schema since slice 1 for this, and `/manage/lodging` now lets
+staff correct both unit positions and area centroids. Both surfaces operate on the same state,
+so a change in one shows in the other. **The map is a projection of the board, not a separate
+system of record.**
+
+### Two occupancy questions deferred to exactly this PR
+
+Spec §11 flags on two independent rules. The board today flags only explicit `no_share`, which
+is unambiguous. Two questions were deferred to the drag PR because they only bite when staff
+drag:
+
+- Does `maybe_mutual` + `maybe_mutual` satisfy "mutual"?
+- Does a blank share gate (45 of 452 for 2026) count as consent?
+
+**Neither occurs in placed data, so nothing is broken today.** Decide them, or decide explicitly
+to keep flagging on `no_share` alone and say so on the surface. `unit_class` (#1907) is the other
+half and is not built; §11 measured it as flagging **zero** of the three shared units on real
+data, so it is not what makes the board truthful — the consent rule is.
 
 ### The merge-legality rule was BUILT and then REMOVED — do not rebuild it
 
@@ -300,17 +450,23 @@ inline per row and in bulk. Until staff use it, the fit check stays dark.
 ### Open decisions the board will force
 
 - **`lodging_merges` CRUD** — merges are a board action (spec §3.4), created mid-assignment
-  rather than configured up front. Nothing but the ingest writes them yet, and **nothing
-  validates the member set** — see the removed rule above before adding a check. Note merges
-  carry `session` AND `scenario`; the alias table carries neither, which is why a rule keyed on
-  aliases could never express a building that is whole one weekend and split the next.
-  `guardMergeDelete` already protects them.
+  rather than configured up front. `POST /api/lodging/merges` now writes them, but into
+  `lodging_merges_draft`, never `lodging_merges` — a board merge is a planning act and planning
+  lives in the draft. **Nothing validates the member set** — see the removed rule above before
+  adding a check — and the board write deliberately does **not** dedup by member set the way the
+  ingest's `EnsureMerge` does: a backfill re-runs over the same cabin strings, but a human
+  clicking "merge" twice means it twice. Note that only the DRAFT carries `scenario` now; the
+  live table's column was dropped (§2). `guardMergeDelete` protects the live rows;
+  `lodging_merges_draft` has **no delete guard at all** — that is #1923, see §8.
+  Whether `lodging_merges` should become admin-only now it has a draft twin is **#1916**.
 - **Occupancy (#1907)** — how many parties may share one unit, which varies by unit class and
   session type. This is the constraint the board actually needs and the one nothing models.
   `docs/architecture/lodging-occupancy.md` has the staff-confirmed rules. Enforcement belongs
   at the point a human is choosing — the board, or the picker — not in the ingest.
-- **`lodging_availability`** — the per-session reserved/released overrides (spec §3.7). The
-  schema exists; no surface reads or writes it.
+- **`lodging_availability`** — the per-session reserved/released overrides (spec §3.7). No
+  longer unread: the roster and summary overlay scenario rows on live ones, and
+  `PUT /api/lodging/availability` writes them (§2). What is still missing is the **surface** —
+  no UI reserves or releases a unit yet.
 - **`lodging.phi` is held by admins and the Bunking Staff role** (`1500000130`, closing #1887).
   Everyone else who can read the roster gets a 403 from the medical endpoint, so the degradation
   path in `AccessibilityFlagList` is now a live path rather than a theoretical one.
@@ -321,9 +477,11 @@ inline per row and in bulk. Until staff use it, the fit check stays dark.
 
 ## 5. CRITICAL: first action before anything else
 
-**The columns and rows Phase C edits are EMPTY until a sync runs.** On any database that has not run
-`family_camp_derived` since #1878, the request columns are schema-only and the roster renders every
-party unknown/unflagged — the API looks broken while working exactly as designed.
+**The ingest-derived REQUEST columns are EMPTY until a sync runs.** On any database that has not
+run `family_camp_derived` since #1878, they are schema-only and the roster renders every party
+unknown/unflagged — the API looks broken while working exactly as designed. The unit registry is
+NOT affected: the boot loader creates those rows, so the inventory and the read-only board render
+regardless. It is the share gate, the request text and the housing flags that go dark.
 
 ```bash
 sqlite3 pocketbase/pb_data/data.db \
@@ -374,7 +532,8 @@ the whole time. That is progress, not a hang — confirm with CPU, not the count
 - **Do not sum capacity over units where `is_container` is true.** They are building rows carrying
   whole-building aggregates; including them gives 408 beds against a true 389.
 - **Do not create `lodging_unresolved_aliases`.** See §3. The plan tells you to; the ruling overrides it.
-- **Do not number a migration from a branch.** Highest on `main` is `1500000131`. Compute it:
+- **Do not number a migration from a branch.** Highest on `main` is `1500000132`, so the next
+  free number is `1500000133`. Recompute rather than trusting that:
   `git ls-tree -r origin/main pocketbase/pb_migrations/ | grep -oE '15000[0-9]{5}' | sort -u | tail -1`
 - **Do not add a `kind` value as a Go constant without the migration.** The select list is the
   constraint; a bare constant passes tests and fails in production.
@@ -399,8 +558,8 @@ the whole time. That is progress, not a hang — confirm with CPU, not the count
   the next restart. The flip side is that it will NOT backfill a new field onto rows that already
   exist — that needs its own one-off, and assuming otherwise is how an inventory update lands empty.
 - **Do not judge a housing need against an unconfirmed cabin.** `has_power: false` on an unconfirmed
-  row means "nobody has said". Phase C makes confirmation possible — that is the moment this starts
-  mattering, not a reason to relax it.
+  row means "nobody has said". Confirmation is now possible and the amenities are seeded, so this
+  starts mattering the moment staff confirm anything — not a reason to relax it.
 - **Do not delete a `lodging_units` row that has assignments.** Deactivate.
   `guardUnitDelete` enforces it and no `deleteLodgingUnit` should exist.
 - **Do not "simplify" `deleteLodgingAlias` back into a plain `delete`.** It reopens the queue
@@ -425,24 +584,45 @@ the whole time. That is progress, not a hang — confirm with CPU, not the count
   is correct and is the shape to standardise on (#1897). Also pinned by test.
 - **Do not use `?? []` to paper over a failed secondary query.** Each fallback hides an error
   as an empty list. The alias editor's member checkboxes ARE the payload, so opening it against
-  a failed unit query and saving would strip every member.
+  a failed unit query and saving would strip every member. On the board an empty unit list
+  renders an empty board, which reads as "nothing to place" rather than "the fetch failed".
+- **Do not `DELETE /placements` when a card is dragged to the unplaced rail.** POST a tombstone.
+  Deleting falls through to the CampMinder mirror and puts the family back in the cabin they
+  were just dragged out of. §2 has the three-state table; this is the trap it exists for.
+- **Do not add a "copy production into this scenario" operation.** Draft rows OVERLAY the
+  mirror, so a fresh scenario already renders the synced placements. A seed step would convert
+  every synced placement into a staff override and break the fall-through.
+- **Do not accept a scenario-less write.** A blank `scenario` is a 422. With no scenario the
+  board is read-only for everyone; an endpoint taking a scenario-less write is the one path
+  around that.
+- **Do not expand only one merge relation on a placement read.** There are three targets —
+  `unit`, `merge`, `merge_draft` — and expanding a subset renders a placed party as unplaced.
+- **Do not reinstate `scenario` on `lodging_assignments` or `lodging_merges`, or on
+  `EnsureMerge`.** The column is dropped; a filter naming it fails the whole ingest.
+- **Do not trust the Go suite to catch a dropped column.** The fixtures declare their own schema
+  and never read `pb_migrations/` (#1921). A `Set` on a dropped column silently no-ops.
 
 ---
 
 ## 7. Useful one-liners
 
 ```bash
-# Frontend gates — Phase B's daily loop. NOT `npm run lint`: the rtk proxy
-# mangles the npm wrapper's output into a false failure.
+# Frontend gates. NOT `npm run lint`: the rtk proxy mangles the npm wrapper's
+# output into a false failure.
 cd frontend && node_modules/.bin/eslint src --ext ts,tsx   # 0 errors; ~348 pre-existing warnings
 cd frontend && npm run type-check
+# The board and the weekend surfaces share this directory: LodgingBoard.tsx,
+# LodgingUnitCard.tsx, FamilyCard.tsx and the rosterAttention/weekendStatus helpers.
 cd frontend && npx vitest run src/components/weekend/
 
 # Python gates — the API now has a lodging service worth running on its own
 uv run pytest tests/unit/api/services/test_lodging_roster_service.py tests/unit/api/test_lodging_phi_boundary.py -q
 uv run ruff format api bunking tests && uv run ruff check api bunking tests
-uv run mypy api bunking
+# NOT `mypy api bunking` -- pre-push runs the FULL tree including tests (~790 files).
+# A test-only typing error passes the narrow form and fails at push. This cost a cycle already.
+uv run mypy . --explicit-package-bases
 uv run pytest tests/unit/api/ -q
+uv run pytest tests/unit/api/ -k lodging -q
 
 # Go gates — per task, not per phase
 cd pocketbase && go test ./sync/ -count=1 && gofmt -l sync/ && go build ./...
@@ -453,7 +633,8 @@ cd pocketbase && ./node_modules/.bin/eslint pb_migrations pb_hooks
 
 # Lodging harnesses (all three now share scripts/dev/lib/pb-harness.sh, #1885)
 ./scripts/dev/verify-lodging-schema.sh && ./scripts/dev/verify-lodging-seed.sh
-./scripts/dev/verify-no-hardcoded-lodging.sh
+# THREE outcomes, not two: 0 pass, 1 leak, 2 = THE SCAN DID NOT RUN. It scans pb_migrations/ too.
+./scripts/dev/verify-no-hardcoded-lodging.sh; echo "exit=$?"
 ./scripts/dev/test-pb-harness.sh && ./scripts/dev/test-verify-no-hardcoded-lodging.sh
 ./scripts/dev/verify-lodging-backfill.sh pocketbase/pb_data/data.db 2024 2025
 
@@ -471,6 +652,51 @@ git fetch -q && git rev-list --count origin/<branch>..HEAD   # must be 0
 
 ## 8. Open issues
 
+### Live on `main`: three write paths 500 on writes staff are entitled to make
+
+**Unfiled, deliberately** — they are mechanical and belong folded into the drag PR (§4). Written
+down here so they do not rot silently if that PR slips; if it slips more than a week or two,
+file them.
+
+`4b8b541c` fixed a race and a delete hole, each at ONE call site, leaving the identical siblings
+untouched. **CodeRabbit never reviewed that commit** — its incremental pass was still running
+when auto-merge fired. Of the five write paths in `api/services/lodging_write_service.py`:
+
+| Path | Shape | Handled? |
+|---|---|---|
+| `place_party` create | find→create vs unique index | ✅ race-guarded |
+| `delete_merge` | delete a missing row | ✅ 404-idempotent |
+| `clear_placement` delete | delete between find and delete | ❌ 500 |
+| `set_availability` delete | delete between find and delete | ❌ 500 |
+| `set_availability` create | find→create vs `idx_lodging_avail_unique` | ❌ 500 |
+
+`idx_lodging_avail_unique` is UNIQUE on `(session, year, scenario, unit)` (`1500000118:100`), so
+**`set_availability` create has exactly the race `place_party` just fixed**: two staff reserving
+the same unit in one scenario, and the loser gets a 500 for a legitimate write. That is the one
+that matters most — the deletes are already narrowed by a preceding find, so their exposure is
+the narrower find-then-delete race. Copy the two existing shapes; do not invent a third.
+
+### #1923 — the delete guards are blind to draft rows
+
+`countAssignments` reads only `lodging_assignments`, so `guardUnitDelete` and `guardMergeDelete`
+do not see draft placements, and `lodging_merges_draft` has **no delete guard at all**.
+`1500000130` opened `lodging_units` to `bunking.manage`, so the delete is reachable from
+`/manage/lodging` by exactly the staff whose scenarios would be silently emptied — and by a
+different person than the one who placed them.
+
+**Today it is theoretical because no draft rows exist. The drag PR is what makes them exist**, so
+settle it there or defer it explicitly with the reason written down. And do not read
+`guardDraftAssignmentGrain` as already fixing it — see §2.
+
+### #1917 — the 2026 inventory is not in production
+
+Nothing in CI/CD does this and merging did not do it. Ordered: restart PocketBase (the loader
+creates the new units) → dry-run `apply_lodging_inventory.py` → `--apply` for amenities on the
+pre-existing rows → review → `--apply --structural` for the container promotion and the two
+parent corrections. **Explicitly do not run `confirm_lodging_units.py` against production.**
+
+### The rest
+
 - **#1891 is fixed** — `verify-no-hardcoded-lodging.sh` now ignores comments and docstrings and is
   green on a clean `main`. Kept here only so a reader of the issue knows where it went.
 - **Free text carries PHI the boundary does not cover.** Families type medical detail into the
@@ -482,18 +708,22 @@ git fetch -q && git rev-list --count origin/<branch>..HEAD   # must be 0
 - **`has_medical_narrative` is true for every household** (62 of 62 in 2026; 870 medical rows, 648
   with dietary/allergy text). Accurate, but it means the medical affordance appears on every row and
   therefore signals nothing. Worth deciding whether the flag should mean something narrower.
-- **Phase B was never verified in a browser after its last three commits.** It is merged and green,
-  but nobody has *looked* at the lander, the Listbox switcher or the stats bar — they are covered by
-  tests and by direct API measurement only. Worth ten minutes with `./scripts/start_dev.sh` before
-  building Phase C on top of them.
+- **The weekend surfaces were never verified in a browser after #1890's last three commits.**
+  Merged and green, but nobody has *looked* at the lander, the Listbox switcher or the stats bar
+  — they are covered by tests and by direct API measurement only. Worth ten minutes with
+  `./scripts/start_dev.sh`. **The board is an interaction surface and a green suite proves
+  nothing about whether it feels right**, so the drag PR must end with a card dragged in a real
+  browser on the worktree's Vite port.
 - **Nothing in #1903 was verified in a browser either.** The one visual check that phase got
   covered a merge-repair panel that no longer exists. The replay path is proven by direct
   measurement on real data, not by looking at it.
 - **#1907 — lodging occupancy is unmodelled**, and it is the constraint that matters. Nothing
   stops two families being placed in the same bedroom; the unique indexes only stop one party
   holding two placements. Staff-confirmed rules are in
-  `docs/architecture/lodging-occupancy.md`. **The board is the surface that will force this** —
-  read the doc before designing placement validation.
+  `docs/architecture/lodging-occupancy.md`. **The drag PR is the surface that forces this** —
+  read the doc before designing placement validation, and see §4 for the two consent questions
+  deferred to it. §11 measured `unit_class` as flagging zero of the three shared units on real
+  data, so it is not what makes the board truthful.
 - **#1908 — no test drives `replayOnResolve` through a replay that succeeds.** Every hook test
   exercises refusal or failure. The success path is proven manually, so this is a missing
   regression guard rather than missing evidence: the lodging test harness builds 5 collections
@@ -501,10 +731,14 @@ git fetch -q && git rev-list --count origin/<branch>..HEAD   # must be 0
 - **The summer campers tab was never mined.** `/summer/session/:id/campers` (`CampersView`) is the
   closest analogue to the roster table and likely has filter/sort affordances worth copying. Traced
   as far as the component and stopped.
-- **CodeRabbit reviewed #1890 only up to `2451582e`, three commits behind HEAD.** It never saw the
-  stats bar, the summer-language rewrite or the batched endpoint, and two files it did review no
-  longer existed. Do not read a CodeRabbit pass as covering a branch that moved under it — check
-  which commit it reviewed.
+- **A green CodeRabbit check is weak evidence, twice over in this programme.** It reviewed #1890
+  only up to `2451582e`, three commits behind HEAD — it never saw the stats bar, the
+  summer-language rewrite or the batched endpoint, and two files it did review no longer existed.
+  On #1915 it was rate-limited for most of the PR's life and **never reviewed `4b8b541c` at all**,
+  because auto-merge fired while its incremental pass was still running — which is how the three
+  unguarded write paths above reached `main`. **The tell is a review comment saying "Actionable
+  comments posted: N".** A green check with no such comment means it never ran. Check which
+  commit it reviewed, and whether it reviewed anything.
 
 - **#1895 is fixed** — `AdminLayout` returns `PermissionDeniedPage` for a non-admin, which is the
   route-group fix the issue asked for. Lodging left `/admin` entirely in the same change.
@@ -552,6 +786,22 @@ git fetch -q && git rev-list --count origin/<branch>..HEAD   # must be 0
 - **Untested error branches on `main`** — `write_failed` queueing and the unconditional WAL
   checkpoint landed without direct tests. A stub `core.App` whose `Save` errors on the assignments
   collection would cover the first, which is the one with real behaviour behind it.
+- **#1916** — should `lodging_merges` go admin-only now that it has a draft twin. Left to its own
+  PR rather than smuggled into a migration whose subject was the draft tables.
+- **#1918** — guard against a whole-building sheet row stranding its rooms on the container. See
+  the count-reconciliation lesson in §2.
+- **#1920** — bound the scenario-mode `/summary` fan-out. It runs a nested `TaskGroup` per
+  weekend; there was no caller passing a scenario when it shipped, and **the drag PR becomes
+  one**.
+- **#1921** — Go fixtures declare their own schema, so a dropped column stays green in the suite
+  and breaks in production. This is how dropping `scenario` broke the ingest. See §2 and §6.
+- **#1922** — the lodging verify harnesses trust a prebuilt binary with no staleness check, so a
+  green harness can be describing a binary that predates the migration under test.
+- **#1919** — `.coderabbit.yaml:55` reads as a ban on `from __future__ import annotations`.
+- **#1912** — filter the roster and board by needs and requests. Unscheduled.
+- **#1909** — 2 of 4 boxes left: a recorded decision on the CampMinder-vocabulary cluster (29
+  hits, reducible to one literal per field by aliasing at the sync boundary) and documenting the
+  audit command. The hardcoded-string count is holding at 46.
 
 ---
 
@@ -563,7 +813,11 @@ git fetch -q && git rev-list --count origin/<branch>..HEAD   # must be 0
   `POST /api/collections/users/impersonate/<id>`, send it raw to PocketBase custom routes and with a
   `Bearer` prefix to FastAPI. Also covers seeding `localStorage["pocketbase_auth"]` so a browser
   session works, and why `family_camp_derived` looks hung when it is not.
-- **The plan** — `docs/superpowers/plans/2026-07-30-family-camp-lodging-surfaces.md`, Phase B header
-  carries the SHIPPED divergence block. Local-only, gitignored, never commit it.
-- **Phase B's inventory** — `git log --oneline f99a8ef7..` on `feature/lodging-roster`; the PR body
-  on #1890 carries the measurements and the deviation list.
+- **The spec for the board and the map** —
+  `docs/superpowers/specs/2026-07-31-family-camp-lodging-board-map-design.md`. **Start with its
+  status block**; parts of the document are dead and marked so. For the drag PR the live
+  sections are §3.1, §3.2, §3.7, §3.9 and §11. The earlier
+  `2026-07-30-family-camp-lodging-design.md` covers the data layer and the ingest.
+  Both local-only and gitignored — never commit them.
+- **Per-PR measurements and deviation lists live in the PR bodies**, not here: #1890 for the
+  weekend surfaces, #1914 for the inventory reconciliation, #1915 for the write layer.
