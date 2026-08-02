@@ -90,11 +90,17 @@ function memberUnitsOf(app, collection, id) {
 
   const members = merge.getStringSlice("member_units")
   if (members.length === 0) {
-    // Not a data case: member_units has been `required` with minSelect 2 since
-    // 1500000118, so no legitimate merge row can land here. What CAN land here
-    // is the accessor silently returning nothing -- see above; getString()
-    // does exactly that on a relation -- and that failure would empty EVERY
-    // merged placement at once. Throwing rolls the whole migration back.
+    // Not a data case. The guarantee is `required`, NOT minSelect: deleting a
+    // member unit runs deleteRefRecords (core/record_model.go), which shrinks
+    // the set and re-saves it with SaveNoValidate -- so a merge CAN legitimately
+    // end up with one member, below its minSelect of 2 (verified against the
+    // VM). It cannot reach zero, because that same function refuses the delete
+    // when a `required` relation would be emptied.
+    //
+    // What CAN land here is the accessor silently returning nothing -- see
+    // above; getString() does exactly that on a relation -- and that failure
+    // would empty EVERY merged placement at once. Throwing rolls the whole
+    // migration back.
     throw new Error(
       "1500000134: " + collection + " row " + id + " resolved to no member units; " +
         "suspect the accessor, not the data"
@@ -107,11 +113,15 @@ function memberUnitsOf(app, collection, id) {
  * The unit ids a row's placement resolves to, in the READER's own precedence.
  *
  * merge_draft before merge before unit, matching
- * api/services/lodging_roster_service.py::_placement_of. Nothing -- schema, DB,
- * or hook -- enforces an XOR across the draft table's three targets, so a row
- * carrying two of them is accepted today and renders as the more specific one.
- * Matching that order is what makes this migration invisible to the board.
- * Taking the union instead would invent occupancy the board never showed.
+ * api/services/lodging_roster_service.py::_placement_of. On the DRAFT table
+ * nothing -- schema, DB, or hook -- enforces an XOR across the three targets
+ * (guardDraftAssignmentGrain checks the party grain and deliberately nothing
+ * else), so a row carrying two of them is accepted today and renders as the
+ * more specific one. On the TRUTH table guardAssignmentGrain does enforce
+ * unit XOR merge, so a two-target row there can only predate that hook. This
+ * function serves both, and the precedence is what makes it invisible to the
+ * board either way. Taking the union instead would invent occupancy the board
+ * never showed.
  *
  * An empty result is a real answer, not a failure: on the truth table it is an
  * orphan (the unit was deleted out from under the row, which the optional
@@ -177,7 +187,30 @@ migrate(
           continue
         }
         row.set("units", placement.units)
-        app.save(row)
+        // saveNoValidate, NOT save. app.save() runs RelationField.ValidateValue
+        // (core/field_relation.go), which issues an existence count(*) over
+        // every id in `units` and fails the save if any one does not resolve --
+        // and since all pending migrations share a transaction, that failure
+        // rolls back the whole boot, with no skip flag, against exactly the
+        // production merge state nobody here can see (kindred#1917). A backfill
+        // COPYING ids that are already stored in this same database must not be
+        // gated on re-validating them: validation cannot improve the data, it
+        // can only turn a pre-existing blemish into a crash-loop. It also
+        // validates the WHOLE record, so an unrelated stale field would take
+        // the boot down too.
+        //
+        // Filtering the ids against lodging_units instead was the alternative,
+        // and is worse: it would silently change what a placement points at,
+        // which is the failure this migration exists to avoid. An id that was
+        // dangling in member_units stays dangling in units -- no better, no
+        // worse, and now visible in one place.
+        //
+        // The integrity hooks are NOT lost. Verified against the running VM:
+        // saveNoValidate still fires guardAssignmentGrain (both go through
+        // BaseApp.save, which triggers OnModelUpdate -> OnRecordUpdate and runs
+        // validation INSIDE that callback), so a row violating the grain XOR is
+        // still rejected here.
+        app.saveNoValidate(row)
         filled++
         if (placement.fromMerge) {
           // Counted off the BRANCH TAKEN, not off units.length > 1: a merge is
