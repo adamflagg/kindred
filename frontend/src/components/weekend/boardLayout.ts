@@ -19,7 +19,7 @@
  *    to nowhere. `buildBoard` is total: every input party comes out in exactly
  *    one of slots / unplaced / offBoard.
  */
-import type { LodgingUnitRow, RosterPartyRow } from '../../types/lodging'
+import type { LodgingUnitRow, RosterPartyRow, ShareEligibilityValue } from '../../types/lodging'
 
 /**
  * Area colour, §3.10 — a SECONDARY channel.
@@ -39,6 +39,31 @@ export const AREA_HUES = [
   'hsl(348 52% 55%)',
   'hsl(24 42% 46%)',
 ] as const
+
+/**
+ * Staff-facing wording for the share verdict, defined ONCE.
+ *
+ * These phrasings are load-bearing, not cosmetic. The Family Camp form has no
+ * refusal option, so `declined` is the absence of a share request rather than a
+ * recorded "no" — 106 of 165 form-declined households for 2026 had asked to be
+ * housed NEAR someone. Saying they "declined" puts a claim in a staff member's
+ * mouth that the family never made.
+ *
+ * The slot flag and the card chip render the same concepts, so they read from
+ * here rather than each holding their own literal: a correction applied to one
+ * copy and not the other is exactly how the wrong wording comes back.
+ */
+export const SHARE_WORDING = {
+  /** Sentence fragment: "N families <…>". */
+  declined: 'did not request sharing',
+  /** Sentence fragment: "N families' two <…>". */
+  conflict: 'answers disagree',
+} as const
+
+/** The same phrase as a standalone chip label. One source, two positions. */
+export function shareWordingChip(phrase: string): string {
+  return phrase.charAt(0).toUpperCase() + phrase.slice(1)
+}
 
 /** A shared unit holding somebody who did not consent to sharing it. */
 export interface ConsentFlag {
@@ -151,19 +176,29 @@ export function consentFlag(parties: RosterPartyRow[]): ConsentFlag | null {
     // Absent eligibility is UNKNOWN, never open. These columns are written by
     // family_camp_derived, so they are empty until it re-runs, and empty must
     // fall to the side that does not consent.
-    switch (party.share?.eligibility ?? 'unknown') {
+    const eligibility: ShareEligibilityValue = party.share?.eligibility ?? 'unknown'
+    switch (eligibility) {
       case 'declined':
         declinedCount += 1
         break
       case 'unknown':
         unansweredCount += 1
         break
-      default:
-        // `open` and `named` both consent to sharing. `named` is not verified
-        // mutual -- that needs request names resolved to households (spec
-        // §7.3, unbuilt) -- so the panel shows the names and staff judge.
-        // Flagging it would fire on the majority of eligible households.
+      case 'open':
+      case 'named':
+        // Both consent to sharing. `named` is not verified mutual — that needs
+        // request names resolved to households (spec §7.3, unbuilt) — so the
+        // panel shows the names and staff judge. Flagging it would fire on the
+        // majority of eligible households.
         break
+      default: {
+        // Exhaustiveness guard. An implicit default would route a NEW
+        // eligibility value into the consenting arm above — failing permissive,
+        // which is the exact direction this whole surface exists to close.
+        // A fifth value must break the build, not silently consent.
+        const unhandled: never = eligibility
+        throw new Error(`Unhandled share eligibility: ${String(unhandled)}`)
+      }
     }
   }
 
@@ -192,8 +227,8 @@ function consentReason(
   if (declinedCount > 0) {
     parts.push(
       declinedCount === 1
-        ? '1 family did not request sharing'
-        : `${String(declinedCount)} families did not request sharing`
+        ? `1 family ${SHARE_WORDING.declined}`
+        : `${String(declinedCount)} families ${SHARE_WORDING.declined}`
     )
   }
   if (unansweredCount > 0) {
@@ -206,8 +241,8 @@ function consentReason(
   if (conflictCount > 0) {
     parts.push(
       conflictCount === 1
-        ? "1 family's two answers disagree"
-        : `${String(conflictCount)} families' two answers disagree`
+        ? `1 family's two ${SHARE_WORDING.conflict}`
+        : `${String(conflictCount)} families' two ${SHARE_WORDING.conflict}`
     )
   }
   return parts.join(', ')

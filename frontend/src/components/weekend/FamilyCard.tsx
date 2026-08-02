@@ -30,6 +30,7 @@ import { Repeat, Users } from 'lucide-react'
 import { Fragment } from 'react'
 
 import type { LodgingUnitRow, RosterPartyRow } from '../../types/lodging'
+import { SHARE_WORDING, shareWordingChip } from './boardLayout'
 import { ATTENTION_LABEL, partyAttention } from './rosterAttention'
 
 export interface FamilyCardProps {
@@ -148,11 +149,13 @@ export function FamilyCard({
             false positive the slot flag was moved off the gate to avoid.
             Wording matches the slot: the form has no refusal option. */}
         {sharedSlot && party.share?.eligibility === 'declined' && (
-          <Chip label="Did not request sharing" tone="warn" />
+          <Chip label={shareWordingChip(SHARE_WORDING.declined)} tone="warn" />
         )}
         {/* 16 households for 2026 carry disagreeing answers. Shown on the card
             as well as the slot, so a party sitting alone still surfaces one. */}
-        {party.share?.answers_conflict === true && <Chip label="Answers disagree" tone="warn" />}
+        {party.share?.answers_conflict === true && (
+          <Chip label={shareWordingChip(SHARE_WORDING.conflict)} tone="warn" />
+        )}
         {wantsToShare && <Chip label="Wants to share" tone="share" />}
         {/* NEAR and WITH are different requests: NEAR is satisfied by map
             distance between units, WITH by putting both in one room. */}
