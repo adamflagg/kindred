@@ -18,7 +18,15 @@
  * the Go ingest so every surface sees the correction at once.
  */
 import { Listbox, ListboxButton, ListboxOption, ListboxOptions } from '@headlessui/react'
-import { ArrowLeft, ChevronDown, Home, LayoutGrid, Settings2, Users } from 'lucide-react'
+import {
+  ArrowLeft,
+  ChevronDown,
+  Home,
+  LayoutGrid,
+  Map as MapIcon,
+  Settings2,
+  Users,
+} from 'lucide-react'
 import { useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router'
 
@@ -26,10 +34,12 @@ import { QueryGuard } from '../components/QueryGuard'
 import { Permission } from '../constants/permissions'
 import {
   countBoardSlots,
+  countMapUnits,
   countUnmeasuredSpaces,
   formatSessionDates,
   HouseholdRosterTable,
   LodgingBoard,
+  LodgingMap,
   partyBeds,
   shortWeekendName,
   sortWeekendsByDate,
@@ -40,7 +50,7 @@ import { useCurrentYear } from '../hooks/useCurrentYear'
 import { usePermissions } from '../hooks/usePermissions'
 import { useWeekendRoster, useWeekendSessions } from '../hooks/useWeekendRoster'
 
-type View = 'roster' | 'inventory' | 'board'
+type View = 'roster' | 'inventory' | 'board' | 'map'
 
 export default function WeekendRosterPage() {
   const { sessionCmId } = useParams<{ sessionCmId: string }>()
@@ -72,6 +82,7 @@ export default function WeekendRosterPage() {
     // count: a container carries the beds its halves already report, so it
     // never gets a card and never counts.
     { id: 'board', label: 'Board', icon: LayoutGrid, count: countBoardSlots(parties, units) },
+    { id: 'map', label: 'Map', icon: MapIcon, count: countMapUnits(parties, units) },
   ]
 
   return (
@@ -211,6 +222,7 @@ export default function WeekendRosterPage() {
               {view === 'board' && (
                 <LodgingBoard parties={parties} units={units} year={currentYear} />
               )}
+              {view === 'map' && <LodgingMap parties={parties} units={units} year={currentYear} />}
             </div>
           </>
         )}

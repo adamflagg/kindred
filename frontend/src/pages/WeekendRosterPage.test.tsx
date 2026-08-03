@@ -230,6 +230,7 @@ describe('tabs', () => {
     expect(screen.getByRole('tab', { name: 'Roster (0)' })).toBeInTheDocument()
     expect(screen.getByRole('tab', { name: 'Inventory (0)' })).toBeInTheDocument()
     expect(screen.getByRole('tab', { name: 'Board (0)' })).toBeInTheDocument()
+    expect(screen.getByRole('tab', { name: 'Map (0)' })).toBeInTheDocument()
   })
 
   it('opens the board on its own tab', async () => {
@@ -292,5 +293,58 @@ describe('tabs', () => {
     renderPage()
     expect(screen.getByRole('tab', { name: 'Board (1)' })).toBeInTheDocument()
     expect(screen.getByRole('tab', { name: 'Inventory (2)' })).toBeInTheDocument()
+  })
+
+  it('shows the map when the Map tab is selected', async () => {
+    renderPage()
+    await userEvent.click(screen.getByRole('tab', { name: 'Map (0)' }))
+    expect(screen.getByTestId('map-canvas')).toBeInTheDocument()
+  })
+
+  it('counts the marks the map draws, not the inventory', async () => {
+    // A container and an unpositioned room both appear in Inventory and neither
+    // gets a mark, so the two counts must differ.
+    rosterQuery.data = {
+      parties: [],
+      units: [
+        {
+          unit_id: 'u1',
+          code: 'cedar-1',
+          name: 'Cedar 1',
+          area_code: 'CG',
+          area_name: 'Cedar Grove',
+          is_container: false,
+          is_active: true,
+          map_x: 0.4,
+          map_y: 0.5,
+        },
+        {
+          unit_id: 'u2',
+          code: 'lodge',
+          name: 'Lodge',
+          area_code: 'CG',
+          area_name: 'Cedar Grove',
+          is_container: true,
+          is_active: true,
+          map_x: 0.4,
+          map_y: 0.5,
+        },
+        {
+          unit_id: 'u3',
+          code: 'cedar-3',
+          name: 'Cedar 3',
+          area_code: 'CG',
+          area_name: 'Cedar Grove',
+          is_container: false,
+          is_active: true,
+          map_x: 0,
+          map_y: 0,
+        },
+      ],
+      counts: {},
+    }
+    renderPage()
+    expect(screen.getByRole('tab', { name: 'Inventory (3)' })).toBeInTheDocument()
+    expect(screen.getByRole('tab', { name: 'Map (1)' })).toBeInTheDocument()
   })
 })
