@@ -35,10 +35,18 @@ below identifies work by **PR and commit**, which are the only labels that canno
 | Read-only board — area sections, unit cards, unplaced rail, detail panel | ✅ `3c2e3b55` (#1911) |
 | Draft write layer — draft tables, RBAC, scenario-aware reads, write endpoints | ✅ `7065b4c9` (#1915) |
 | Write-race guards — every write path hardened | ✅ `7b25d25e` (#1927) |
-| **Share eligibility — flag on the authoritative form, not the registration gate** | ⏳ **IN FLIGHT, #1926** — see §3a |
-| **Drag placement — the board calls the write endpoints** | ⬅ **next, see §4** |
-| Map + pin editor — `map_x`/`map_y` view, a projection of the board | needs drag placement |
+| Share eligibility — flag on the authoritative form, not the registration gate | ✅ `d5951b69` (#1926) — see §3a |
+| Merge collapse — one `units` relation replaces `unit`/`merge`/`merge_draft` | ✅ `ee881bdf` (#1931) — see §2 |
+| **Map — read-only `map_x`/`map_y` surface, a projection of the board** | ⏳ **IN FLIGHT, `feature/lodging-map`** |
+| **Drag placement — the board calls the write endpoints** | ⬅ **next, see §4. Land the map first.** |
+| Pin editor — drag a unit to correct its coordinates | needs the map |
 | Geo layer | needs the map |
+
+**The map did NOT need drag placement**, contrary to what this table said for several rounds:
+it is a read-only projection of the roster response, so it shipped ahead of the interaction.
+Its one seam is documented at `mapModel.ts:75` — when `RosterParty.unit_codes` (added by
+#1931) is wired in, a multi-room party gets positioned across its rooms instead of joining the
+off-map rail, "and nothing else changes."
 
 The ingest row above shipped in four PRs:
 
@@ -177,9 +185,15 @@ Facts, not a work log. Do not re-verify or re-implement these.
   running the migration against a real database. Use `record.getString(field)` and `JSON.parse`.
   The Go side has the same trap in a different shape — see `extractBusinessCategory` in
   `pocketbase/rbac/hooks.go`, which handles `types.JSONRaw` separately from `map[string]any`.
-- **Highest migration is `1500000132`; the next free number is `1500000133`.** Recompute from
-  `main`, never from a branch — and never trust the number written here, which is the first
-  thing to go stale in this file.
+- **Never write the next migration number down in this file.** This bullet used to name a
+  specific pair and went stale twice in three PRs — which is precisely the failure the numbering
+  rule exists to prevent, committed by the document that states the rule. Recompute, always:
+  `git ls-tree -r origin/main pocketbase/pb_migrations/ | grep -oE '15000[0-9]{5}' | sort -u | tail -1`
+
+  A relation field's value has the OPPOSITE hazard to the json field above, and neither fails
+  loudly on the wrong accessor: on a **multi-valued relation** `getStringSlice()` returns the
+  ids and `getString()` returns `""`. Using the json idiom on a relation empties the field
+  while reporting success (`1500000134` documents this at its `memberUnitsOf` helper).
 
 ### The 2026 inventory (`8b83f388`, #1914) and the private registry (`397379a3`, #1910)
 
@@ -297,8 +311,21 @@ started) — roughly 12–16 placements a year, about 3% of the total.
 **Write surface.** `POST /api/lodging/placements` takes `unit_ids: list[str]` and writes it
 straight to `units` on create and update; `create_merge` / `delete_merge` and the
 `/api/lodging/merges*` endpoints are gone. `countAssignments` (`pocketbase/lodging/hooks.go`)
-now spans both placement tables filtering `units.id ?= {:id}` — see §8 for #1923 and #1916,
-both now closed. See §4 for what "merging" means to the drag PR.
+now spans both placement tables filtering `units.id ?= {:id}`, which closes **#1923(a)**.
+
+**#1923(b) and #1916 are MOOT, not fixed** — a distinction worth keeping, because both were
+questions *about* `lodging_merges` / `lodging_merges_draft` and those collections no longer
+exist. #1923(b) asked whether to guard deleting a draft merge; #1916 asked whether
+`lodging_merges` should become admin-only now it had a draft twin. `countAssignments` closed
+neither of them; the collapse dissolved the subject. See §4 for what "merging" means to the
+drag PR.
+
+**The filter is `units.id ?= {:id}`, never `units ?= {:id}`.** The bare form matches **zero
+rows** — the `.id` sub-field reference is what triggers PocketBase's relation-join multi-match.
+Using it would make `guardUnitDelete` count zero for every unit and permit exactly the deletes
+it exists to refuse, silently. Pinned with a negative control in
+`pocketbase/lodging/hooks_multirelation_test.go`, so a future PocketBase change flips an
+assertion instead of rotting.
 
 #### `guardDraftAssignmentGrain` is NOT the delete guard
 
@@ -485,8 +512,18 @@ once drag makes draft rows exist for real.
 the interaction that joins them, and it is a frontend PR — **there is no schema work in front
 of it** unless it takes on `unit_class` (#1907).
 
-**Check whether #1926 has merged before starting** — it rewrites `consentFlag` and touches
-`boardLayout.ts` and `FamilyCard.tsx`, so starting drag alongside it collides.
+**Check whether the MAP PR has merged before starting.** #1926 is long merged; the live
+collision risk is now `feature/lodging-map`, which adds `LodgingMap.tsx`, `MapUnitPopover.tsx`,
+`mapModel.ts`, `mapClustering.ts` and `mapViewport.ts` under `components/weekend/` and adds one
+tab entry to `pages/WeekendRosterPage.tsx`. Its own files are new and will not collide, but
+`WeekendRosterPage.tsx` will, and drag may want the same board components the map imports
+(`buildBoard`, `AREA_HUES` from `boardLayout.ts`). Land the map first.
+
+**The collapse (#1931, `ee881bdf`) made this PR materially smaller than it was planned as.**
+A placement now has ONE target — `units`, a set — instead of three (`unit`, `merge`,
+`merge_draft`). So the drop handler resolves one kind, not three, and "merge" is no longer a
+separate create-a-slot interaction: it is *extending a placement to another room*. Any plan
+text describing three targets or a merge endpoint predates the collapse and is wrong.
 
 Read the §2 subsection on the draft write layer before starting. The three-states table there is
 the thing this PR is most likely to get wrong.
@@ -656,8 +693,8 @@ the whole time. That is progress, not a hang — confirm with CPU, not the count
 - **Do not sum capacity over units where `is_container` is true.** They are building rows carrying
   whole-building aggregates; including them gives 408 beds against a true 389.
 - **Do not create `lodging_unresolved_aliases`.** See §3. The plan tells you to; the ruling overrides it.
-- **Do not number a migration from a branch.** Highest on `main` is `1500000132`, so the next
-  free number is `1500000133`. Recompute rather than trusting that:
+- **Do not number a migration from a branch, and do not trust a number written in this file.**
+  Both places that hardcoded one went stale within three PRs. Recompute every time:
   `git ls-tree -r origin/main pocketbase/pb_migrations/ | grep -oE '15000[0-9]{5}' | sort -u | tail -1`
 - **Do not add a `kind` value as a Go constant without the migration.** The select list is the
   constraint; a bare constant passes tests and fails in production.
@@ -863,10 +900,30 @@ creates the new units) → dry-run `apply_lodging_inventory.py` → `--apply` fo
 pre-existing rows → review → `--apply --structural` for the container promotion and the two
 parent corrections. **Explicitly do not run `confirm_lodging_units.py` against production.**
 
+### Filed out of the collapse (#1931), none blocking
+
+- **#1935 — a placement silently degrades when one of its units is deleted.** `_placement_of`
+  drops an unresolvable id, so a two-room placement whose second unit was deleted renders as an
+  ordinary one-room one. Deliberately left; it needs a product answer, not a fix. Note the
+  tempting justification is wrong: this does NOT preserve precedent, because pre-collapse a
+  merged slot was one atomic record that either resolved or did not. *Partial* degradation
+  inside a slot is a state the collapse itself created.
+- **#1936 — `place_party` retries on ANY `ClientResponseError`,** not just the unique-index
+  race its docstring reasons about. A 400 or 403 currently goes down a re-read-and-update path
+  never meant for it. Pre-existing; CodeRabbit flagged it on #1927 and it was dropped.
+  `set_availability` has the same shape.
+- **#1937 — `golangci-lint` is not in the pre-push hook.** Go lint failures pass every local
+  gate and surface only in CI. Cost two round-trips on #1933. Run it by hand until this lands:
+  `cd pocketbase && golangci-lint run --config ../.golangci.yml > /tmp/lint.out 2>&1; echo $?`
+- **#1934 — two stale statements in this file**, both fixed in the PR carrying this text.
+
 ### The rest
 
 - **#1891 is fixed** — `verify-no-hardcoded-lodging.sh` now ignores comments and docstrings and is
-  green on a clean `main`. Kept here only so a reader of the issue knows where it went.
+  green on a clean `main`. **But it never scans test files** (`:68` filters `_test.`, `.test.`,
+  `/tests/`), which is where every lodging fixture lives. A green run is not evidence that no
+  real unit names are present in tracked source. Adam's ruling when this was raised: names in
+  tests are fine for now — so do not scrub them unprompted, and do not read the green as proof.
 - **Free text carries PHI the boundary does not cover.** Families type medical detail into the
   *cabin-request* box: across 2026 family weekends, **12 of 232 request texts (5%)** contain health
   vocabulary, including at least one named diagnosis with the accommodation it requires. That text
