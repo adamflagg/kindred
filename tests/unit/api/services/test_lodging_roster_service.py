@@ -535,15 +535,15 @@ class TestPlacementOf:
 
         assert LodgingRosterService._placement_of(row) == ("ridge-a", "Ridge A", False, ("ridge-a",))
 
-    def test_a_row_naming_a_container_or_inactive_unit_is_not_a_tombstone(self) -> None:
+    def test_a_row_naming_a_container_or_inactive_unit_still_places(self) -> None:
         """`_placement_of` has no opinion about bookability, only about
-        whether the relation resolves. If it ever grew one, a draft row
-        naming a container (or an inactive unit) would read as unresolvable
-        -- and with zero units left, as the TOMBSTONE, which on a draft row
-        means "staff removed this party from the board." That is a severe
-        silent failure: the party would vanish from the roster instead of
-        showing where it was actually placed. Filtering what staff can PLACE
-        a party onto belongs to the write path, not here.
+        whether the relation resolves. If it ever grew one, a row naming a
+        container (or an inactive unit) would read as unresolvable -- and
+        with zero units left, as no placement at all. That is a severe silent
+        failure: the party would read as unplaced instead of showing where it
+        was actually placed, and on a scenario there is no longer a mirror
+        underneath to disguise it. Filtering what staff can PLACE a party onto
+        belongs to the write path, not here.
         """
         row = _rec(
             units=["u1"],
@@ -649,14 +649,24 @@ class TestAssignments:
 
 
 class TestScenarioResolution:
-    """Draft-over-truth.
+    """Draft REPLACES truth, as summer's scenarios do (kindred#1974).
 
     The board has two modes, taken verbatim from summer: NO scenario is the
     CampMinder mirror and is read-only for everyone, and a SELECTED scenario is
-    the draft and is editable. So the truth table is always the base and a
-    scenario's draft rows are an overlay on top of it -- which is what makes a
-    freshly-created scenario show the synced placements rather than an empty
-    board, with no seed-the-scenario step to go wrong.
+    the draft and is editable. Selecting a scenario swaps the source of
+    placements outright -- `useCohortBunkAssignments.ts:47` swaps the
+    collection, and this does the same thing one layer down.
+
+    A scenario therefore starts EMPTY and is seeded by an explicit copy
+    (`LodgingWriteService.copy_from_mirror`). The overlay this replaced made a
+    fresh scenario render the synced placements with no seed step, at the cost
+    of a three-state table -- placed / tombstoned / untouched -- that summer
+    does not have and that the board had to get right on every read and every
+    write.
+
+    Availability is NOT part of this change and stays an overlay: nothing syncs
+    into `lodging_availability`, so a scenario has no record of truth to
+    replace there and reads the live rows as its base.
     """
 
     @pytest.mark.asyncio
@@ -674,7 +684,28 @@ class TestScenarioResolution:
         assert repo.fetch_scenario_availability.await_count == 0
 
     @pytest.mark.asyncio
-    async def test_a_draft_placement_overrides_the_synced_one(self) -> None:
+    async def test_a_scenario_never_reads_the_campminder_mirror(self) -> None:
+        """The structural half of "no fall-through".
+
+        Every behavioural test below could be satisfied by reading the mirror
+        and then discarding it. This asserts the read is not issued at all,
+        which is what makes "the scenario replaces the mirror" a property of
+        the request rather than of the merge that follows it -- and is a
+        session-scoped round trip saved per weekend on `/summary`.
+        """
+        repo = _repo(
+            fetch_session=FAMILY_SESSION,
+            fetch_households={"hh_1": _household()},
+            fetch_attendees_for_session=[_child()],
+        )
+
+        await LodgingRosterService(repo).build_roster(2026, 1000001, scenario="scn_1")
+
+        assert repo.fetch_assignments.await_count == 0
+        assert repo.fetch_draft_assignments.await_count == 1
+
+    @pytest.mark.asyncio
+    async def test_a_draft_placement_is_what_the_scenario_shows(self) -> None:
         repo = _repo(
             fetch_session=FAMILY_SESSION,
             fetch_households={"hh_1": _household()},
@@ -707,10 +738,13 @@ class TestScenarioResolution:
         assert roster.counts.parties_assigned == 1
 
     @pytest.mark.asyncio
-    async def test_a_party_with_no_draft_row_keeps_its_synced_placement(self) -> None:
-        """The overlay is per party, not all-or-nothing.
+    async def test_a_party_with_no_draft_row_is_unplaced_in_the_scenario(self) -> None:
+        """No draft row means UNPLACED, not "wherever CampMinder put them".
 
-        A scenario that has moved one family must not blank the other 61.
+        This is the whole of kindred#1974 in one assertion, and the exact
+        behaviour that inverted: under the overlay this party kept its synced
+        cabin. A scenario is now a plan of its own, seeded by an explicit copy
+        or by hand, and a party nobody placed in it is a party nobody placed.
         """
         repo = _repo(
             fetch_session=FAMILY_SESSION,
@@ -734,32 +768,28 @@ class TestScenarioResolution:
         roster = await LodgingRosterService(repo).build_roster(2026, 1000001, scenario="scn_1")
 
         placed = {p.display_name: p.unit_code for p in roster.parties}
-        assert placed["The Garcia Family"] == "ridge-a"
-        assert roster.counts.parties_assigned == 1
+        assert placed["The Garcia Family"] == "", "the mirror leaked into a scenario"
+        assert roster.counts.parties_assigned == 0
+        assert roster.counts.parties_unassigned == 2
 
     @pytest.mark.asyncio
-    async def test_a_draft_row_with_no_target_unplaces_the_party(self) -> None:
-        """The tombstone.
+    async def test_a_draft_row_naming_no_unit_reads_as_unplaced(self) -> None:
+        """The retired tombstone degrades to what it always meant.
 
-        "Staff dragged this family off the board in this scenario" is not the
-        same state as "this family has no draft row", and only the second one
-        should fall through to the synced placement. A draft row naming no unit
-        and no merge is how the first is recorded -- there is no extra column,
-        because the absence IS the statement.
+        Rows shaped like this exist on any database written before
+        kindred#1974 -- an empty `units` set was how the overlay spelled
+        "staff took this party off the board" -- and `deleteRefRecords` can
+        still produce one by removing a placement's last unit id. Under
+        replace semantics there is nothing left to suppress, so such a row is
+        simply a row that places nobody. The write path no longer creates one:
+        `PlacementWriteRequest.unit_ids` refuses an empty list, and DELETE is
+        how a party is unplaced.
         """
         repo = _repo(
             fetch_session=FAMILY_SESSION,
             fetch_households={"hh_1": _household()},
             fetch_attendees_for_session=[_child()],
             fetch_units=[_unit("u1", "ridge-a", "Ridge A", sleeps=5)],
-            fetch_assignments=[
-                _rec(
-                    household_cm_id=2000001,
-                    person_cm_id=0,
-                    units=["u1"],
-                    expand={"units": [_rec(id="u1", code="ridge-a", name="Ridge A")]},
-                ),
-            ],
             fetch_draft_assignments=[
                 _rec(household_cm_id=2000001, person_cm_id=0, units=[], expand={}),
             ],
@@ -806,8 +836,8 @@ class TestScenarioResolution:
         assert party.unit_codes == ["gt-tenaya-1", "gt-tenaya-2"]
 
     @pytest.mark.asyncio
-    async def test_the_person_grain_overlays_independently(self) -> None:
-        """Adult weekends place PERSONS, and the overlay keys on that grain."""
+    async def test_the_person_grain_resolves_independently(self) -> None:
+        """Adult weekends place PERSONS, and the draft keys on that grain."""
         person = _rec(
             cm_id=1000001,
             first_name="Riley",
@@ -837,12 +867,15 @@ class TestScenarioResolution:
 
     @pytest.mark.asyncio
     async def test_a_scenario_availability_override_wins_over_the_live_row(self) -> None:
-        """Availability overlays the same way, and for the same reason.
+        """Availability is still an OVERLAY, and deliberately so.
 
         It is scenario-aware IN PLACE rather than through a twin -- nothing
         syncs into lodging_availability, so there is no record of truth to
-        protect there -- but a scenario still reads the live rows as its base,
-        so reserving one cabin in a scenario does not discard the rest.
+        replace there -- and a scenario reads the live rows as its base, so
+        reserving one cabin in a scenario does not discard the rest.
+        kindred#1974 changed placements only: the reason placements stopped
+        falling through (a synced record of truth shadowing staff's plan) has
+        no counterpart on a table nothing syncs into.
         """
         repo = _repo(
             fetch_session=FAMILY_SESSION,
@@ -1024,6 +1057,23 @@ class TestBuildSummary:
             assert getattr(repo, method).await_count == 2, f"{method} should be per-weekend"
 
     @pytest.mark.asyncio
+    async def test_a_scenario_reads_the_draft_per_weekend_and_the_mirror_never(self) -> None:
+        """The lander resolves a scenario exactly as the roster does.
+
+        A `/summary` that still read `lodging_assignments` under a scenario
+        would report a family placed while the page it links to shows them
+        unplaced -- the two disagreeing by resolving the scenario differently
+        rather than by drifting apart in code.
+        """
+        repo = _repo(fetch_weekend_sessions=[FAMILY_SESSION, ADULT_SESSION])
+
+        await LodgingRosterService(repo).build_summary(2026, scenario="scn_1")
+
+        assert repo.fetch_assignments.await_count == 0
+        assert repo.fetch_draft_assignments.await_count == 2
+        assert repo.fetch_scenario_availability.await_count == 2
+
+    @pytest.mark.asyncio
     async def test_returns_one_entry_per_weekend_carrying_its_identity(self) -> None:
         repo = _repo(fetch_weekend_sessions=[FAMILY_SESSION, ADULT_SESSION])
         service = LodgingRosterService(repo)
@@ -1051,21 +1101,32 @@ class TestBuildSummary:
 
     @pytest.mark.asyncio
     async def test_counts_match_the_roster_under_a_scenario_too(self) -> None:
-        """The same guarantee, once a scenario can move the numbers.
+        """The same guarantee, under replace semantics.
 
         Before the draft layer the two endpoints could only disagree by
-        drifting apart in code. Now they can disagree by resolving the overlay
-        differently, which is a live hazard rather than a hypothetical one: a
-        lander that skipped the draft would report a family unplaced while the
-        page it links to shows them in a cabin.
+        drifting apart in code. They can now disagree by resolving the
+        scenario differently, which is a live hazard rather than a
+        hypothetical one, so the fixture is built so that ONE of them falling
+        back to the mirror changes the number: the Johnson household is placed
+        in the mirror and absent from the draft, the Garcia household is the
+        other way round. Under replace, both endpoints must count exactly one
+        assigned party -- an overlay would count two.
         """
         units = [
             _unit("u1", "ridge-a", "Ridge A", sleeps=5),
             _unit("u2", "ridge-b", "Ridge B", sleeps=4),
         ]
-        draft = [
+        mirror = [
             _rec(
                 household_cm_id=2000001,
+                person_cm_id=0,
+                units=["u1"],
+                expand={"units": [_rec(id="u1", code="ridge-a", name="Ridge A")]},
+            ),
+        ]
+        draft = [
+            _rec(
+                household_cm_id=2000002,
                 person_cm_id=0,
                 units=["u2"],
                 expand={"units": [_rec(id="u2", code="ridge-b", name="Ridge B")]},
@@ -1075,8 +1136,12 @@ class TestBuildSummary:
             fetch_weekend_sessions=[FAMILY_SESSION],
             fetch_session=FAMILY_SESSION,
             fetch_units=units,
-            fetch_households={"hh_1": _household()},
-            fetch_attendees_for_session=[_child()],
+            fetch_households={"hh_1": _household(), "hh_2": _household("hh_2", 2000002, "The Garcia Family")},
+            fetch_attendees_for_session=[
+                _child(),
+                _child(cm_id=1000002, first="Liam", last="Garcia", household_pb_id="hh_2"),
+            ],
+            fetch_assignments=mirror,
             fetch_draft_assignments=draft,
             fetch_scenario_availability=[_rec(unit="u1", state="reserved_staff")],
         )
@@ -1087,9 +1152,15 @@ class TestBuildSummary:
 
         assert summary.weekends[0].counts == roster.counts
         # The scenario actually moved something, so the equality above is not
-        # two identical empty results agreeing with each other.
+        # two identical empty results agreeing with each other -- and 1 rather
+        # than 2 is what pins out the mirror.
+        assert roster.counts.parties_total == 2
         assert roster.counts.parties_assigned == 1
         assert roster.counts.units_family_available == 1
+        assert {p.display_name: p.unit_code for p in roster.parties} == {
+            "The Johnson Family": "",
+            "The Garcia Family": "ridge-b",
+        }
 
     @pytest.mark.asyncio
     async def test_a_year_with_no_weekends_does_no_year_scoped_work(self) -> None:

@@ -3,9 +3,11 @@
 Thin by design: parse input, call the service, return the model. Business
 logic lives in api/services/lodging_*.py (see api/CLAUDE.md).
 
-Reads are open to any authenticated user; the three writes at the bottom gate
+Reads are open to any authenticated user; the four writes at the bottom gate
 on `bunking.manage` and reach only the DRAFT grain. `lodging_assignments` and
-its history stay admin-only in PocketBase and no endpoint here writes them.
+its history stay admin-only in PocketBase and no endpoint here writes them --
+the copy endpoint reads the mirror to seed a scenario, which is the one
+direction that line permits.
 
 Caddy needs no configuration change: its inverse routing sends everything
 under /api/* that is not an explicit PocketBase path to FastAPI.
@@ -16,7 +18,9 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from api.schemas.lodging import (
     AvailabilityWriteRequest,
     HouseholdMedicalResponse,
+    LodgingCopyResponse,
     LodgingWriteResponse,
+    PlacementCopyRequest,
     PlacementDeleteRequest,
     PlacementWriteRequest,
     WeekendRosterResponse,
@@ -25,7 +29,7 @@ from api.schemas.lodging import (
 )
 from api.services.lodging_repository import LodgingRepository
 from api.services.lodging_roster_service import LodgingRosterService, SessionNotFoundError
-from api.services.lodging_write_service import LodgingWriteService
+from api.services.lodging_write_service import LodgingWriteService, ScenarioNotEmptyError
 from bunking.auth_middleware import AuthUser, get_current_user
 from bunking.logging_config import get_logger
 from bunking.rbac.dependencies import require_permission
@@ -87,8 +91,8 @@ async def get_weekend_summary(
     helpers `/roster` uses, so the two can never disagree.
 
     `scenario` is here for exactly that reason. A lander that could not take it
-    would report a family unplaced while the page it links to shows them in a
-    cabin -- the two disagreeing by resolving the draft overlay differently
+    would report a family placed while the page it links to shows them
+    unplaced -- the two disagreeing by resolving the scenario differently
     rather than by drifting apart in code.
     """
     return await _service().build_summary(year, scenario)
@@ -107,10 +111,11 @@ async def get_weekend_roster(
     is unknown, so they never overstate what is placeable.
 
     With no `scenario` this is the CampMinder mirror -- the synced rows, which
-    no UI may write. With one, the scenario's draft placements and reservation
-    overrides are resolved OVER that mirror, per party and per unit, so a
-    scenario that has moved one family still shows every other family where
-    CampMinder put them.
+    no UI may write. With one, the scenario's own draft placements REPLACE
+    them: a party with no draft row is unplaced in that scenario, and the
+    mirror is not read at all. Reservation overrides still overlay the live
+    ones per unit, which is deliberate -- nothing syncs into
+    `lodging_availability`, so there is no record of truth to replace there.
     """
     try:
         return await _service().build_roster(year, session_cm_id, scenario)
@@ -145,7 +150,7 @@ async def get_household_medical(
 
 # --------------------------------------------------------------------- writes
 #
-# All three gate on `bunking.manage`, which is the point of the draft split: the
+# All four gate on `bunking.manage`, which is the point of the draft split: the
 # people who do this job are bunking staff, not admins, and the admin-only
 # record of truth is never written from a UI. The frontend must reach these
 # through `fetchWithAuth` from `useApiWithAuth()` -- the PocketBase JWT lives in
@@ -162,10 +167,11 @@ async def upsert_placement(
     request: PlacementWriteRequest,
     user: AuthUser = Depends(require_permission(Permission.BUNKING_MANAGE)),
 ) -> LodgingWriteResponse:
-    """Place a party in a scenario, or record that staff unplaced it.
+    """Place a party in a scenario, into one or more units.
 
-    A body with an empty `unit_ids` is the TOMBSTONE -- valid, and not the
-    same as having no draft row. See `LodgingWriteService.place_party`.
+    `unit_ids` must name at least one unit; an empty list is a 422. It used to
+    be the tombstone, which kindred#1974 retired along with the fall-through
+    it existed to suppress. To take a party off the board, DELETE the row.
     """
     try:
         return await _writes().place_party(request)
@@ -178,16 +184,46 @@ async def delete_placement(
     request: PlacementDeleteRequest,
     user: AuthUser = Depends(require_permission(Permission.BUNKING_MANAGE)),
 ) -> LodgingWriteResponse:
-    """Drop a party's draft row, restoring the CampMinder mirror for it.
+    """UNPLACE a party: drop its draft row.
+
+    Under replace semantics the absence of a row IS the unplaced state, so
+    this is the whole of "staff took this party off the board" -- what
+    dragging a card to the unplaced rail calls.
 
     Takes a body rather than path parameters because the row is identified by
     four values (weekend, year, scenario, party) in one of two grains, and no
     part of that is a resource id a client already holds.
     """
     try:
-        return await _writes().clear_placement(request)
+        return await _writes().unplace_party(request)
     except SessionNotFoundError as exc:
         raise _weekend_404(request.year, request.session_cm_id) from exc
+
+
+@router.post("/placements/copy", response_model=LodgingCopyResponse)
+async def copy_placements_from_mirror(
+    request: PlacementCopyRequest,
+    user: AuthUser = Depends(require_permission(Permission.BUNKING_MANAGE)),
+) -> LodgingCopyResponse:
+    """Seed a scenario from the CampMinder mirror, for one weekend.
+
+    A scenario replaces the mirror rather than overlaying it (kindred#1974),
+    so a new one is empty; this is the step that fills it. Summer's equivalent
+    rides inside `POST /api/scenarios`, which copies `bunk_assignments` and
+    returns zero rows for a weekend session -- create the scenario there, fill
+    it here.
+
+    409 when the scenario already holds placements for this weekend. A second
+    copy would overwrite what staff placed and re-place everything they
+    unplaced, so the refusal is the feature: re-baselining a worked plan
+    against upstream drift is a different operation and does not exist yet.
+    """
+    try:
+        return await _writes().copy_from_mirror(request)
+    except SessionNotFoundError as exc:
+        raise _weekend_404(request.year, request.session_cm_id) from exc
+    except ScenarioNotEmptyError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
 
 
 @router.put("/availability", response_model=LodgingWriteResponse)

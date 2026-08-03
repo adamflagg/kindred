@@ -439,6 +439,12 @@ WRITE_ENDPOINTS: list[tuple[str, str, str, dict[str, Any]]] = [
             "state": "reserved_staff",
         },
     ),
+    (
+        "POST",
+        "/api/lodging/placements/copy",
+        "/api/lodging/placements/copy",
+        {"year": 2026, "session_cm_id": 1000001, "scenario": "scn_1"},
+    ),
 ]
 
 
@@ -464,6 +470,10 @@ def _write_client(user: AuthUser, mock_pb: MagicMock) -> TestClient:
     mock_pb.collection.return_value.get_full_list.side_effect = _session_lookup
     mock_pb.collection.return_value.create.return_value = _rec(id="new_1")
     mock_pb.collection.return_value.update.return_value = _rec(id="existing_1")
+    # An EMPTY scenario, which is what the copy endpoint requires. Left as a
+    # bare MagicMock this reads as 1 -- MagicMock implements __int__ -- and
+    # every copy would refuse with a 409 for a scenario holding nothing.
+    mock_pb.collection.return_value.get_list.return_value = _rec(total_items=0)
     return TestClient(_build_app(user, mock_pb))
 
 
@@ -576,11 +586,13 @@ class TestPlacementWrites:
         assert mock_pb.collection.return_value.create.call_count == 0
         assert mock_pb.collection.return_value.update.call_args[0][0] == "draft_1"
 
-    def test_a_placement_with_no_target_writes_the_tombstone(self, mock_pb: MagicMock) -> None:
-        """Unplacing is a ROW, not a deletion.
+    def test_a_placement_with_no_target_is_refused(self, mock_pb: MagicMock) -> None:
+        """kindred#1974 retired the tombstone: unplacing is the DELETE.
 
-        Deleting the draft row would fall back to the CampMinder mirror and put
-        the family straight back in the cabin staff just dragged them out of.
+        With no fall-through to the mirror, a row naming no unit renders
+        exactly as no row at all does, so accepting one would be a second
+        spelling of a state that already has one. 422 at the edge keeps the
+        write layer total -- a row exists iff the party is placed.
         """
         with patch("api.routers.lodging.pb", mock_pb):
             client = _write_client(_manage_user(), mock_pb)
@@ -591,16 +603,16 @@ class TestPlacementWrites:
                     "session_cm_id": 1000001,
                     "scenario": "scn_1",
                     "household_cm_id": 2000001,
+                    "unit_ids": [],
                 },
             )
 
-        assert response.status_code == 200
-        payload = mock_pb.collection.return_value.create.call_args[0][0]
-        assert payload["units"] == []
+        assert response.status_code == 422
+        mock_pb.collection.return_value.create.assert_not_called()
 
-    def test_deleting_a_placement_restores_the_campminder_mirror(self, mock_pb: MagicMock) -> None:
-        """DELETE removes the override entirely, which is a different thing
-        from the tombstone above and the only way back to the synced value."""
+    def test_deleting_a_placement_unplaces_the_party(self, mock_pb: MagicMock) -> None:
+        """DELETE removes the row, and under replace semantics that IS the
+        unplaced state -- there is nothing underneath for it to fall back to."""
 
         def reads(**kwargs: Any) -> list[Any]:
             query_filter = kwargs.get("query_params", {}).get("filter", "")
@@ -952,6 +964,87 @@ class TestPlacementWrites:
                     "household_cm_id": 2000001,
                     "unit_ids": ["u1"],
                 },
+            )
+
+        assert response.status_code == 404
+
+
+class TestCopyFromMirror:
+    """POST /placements/copy — the seed step replace semantics create.
+
+    A scenario now starts EMPTY (kindred#1974), so this is what makes a new
+    one usable. Summer seeds the same way, inside `POST /api/scenarios`; that
+    endpoint copies `bunk_assignments` and returns zero rows for a weekend
+    session, which is why this exists separately rather than being reused.
+    """
+
+    @staticmethod
+    def _mirror_reads(**kwargs: Any) -> list[Any]:
+        query_filter = kwargs.get("query_params", {}).get("filter", "")
+        if 'session = "sess_1"' in query_filter:
+            return [
+                _rec(
+                    id="assign_1",
+                    household_cm_id=2000001,
+                    person_cm_id=0,
+                    units=["u1"],
+                    source="campminder_sync",
+                    expand={"units": [_rec(id="u1", code="ridge-a", name="Ridge A")]},
+                )
+            ]
+        return _session_lookup(**kwargs)
+
+    def test_copying_seeds_the_scenario_from_the_synced_placements(self, mock_pb: MagicMock) -> None:
+        with patch("api.routers.lodging.pb", mock_pb):
+            client = _write_client(_manage_user(), mock_pb)
+            mock_pb.collection.return_value.get_full_list.side_effect = self._mirror_reads
+            response = client.post(
+                "/api/lodging/placements/copy",
+                json={"year": 2026, "session_cm_id": 1000001, "scenario": "scn_1"},
+            )
+
+        assert response.status_code == 200, response.text
+        assert response.json() == {"copied": 1, "skipped": 0}
+        mock_pb.collection.assert_any_call("lodging_assignments_draft")
+        payload = mock_pb.collection.return_value.create.call_args[0][0]
+        assert payload["scenario"] == "scn_1"
+        assert payload["units"] == ["u1"]
+        assert payload["household_cm_id"] == 2000001
+
+    def test_copying_into_a_worked_scenario_is_a_409(self, mock_pb: MagicMock) -> None:
+        """Refused, not merged: a second copy would overwrite the placements
+        staff made and re-place every party they unplaced, since unplacing is
+        now the absence of a row."""
+        with patch("api.routers.lodging.pb", mock_pb):
+            client = _write_client(_manage_user(), mock_pb)
+            mock_pb.collection.return_value.get_full_list.side_effect = self._mirror_reads
+            mock_pb.collection.return_value.get_list.return_value = _rec(total_items=4)
+            response = client.post(
+                "/api/lodging/placements/copy",
+                json={"year": 2026, "session_cm_id": 1000001, "scenario": "scn_1"},
+            )
+
+        assert response.status_code == 409
+        mock_pb.collection.return_value.create.assert_not_called()
+
+    def test_copying_without_a_scenario_is_refused(self, mock_pb: MagicMock) -> None:
+        """The same rule every other write obeys: no scenario, no write."""
+        with patch("api.routers.lodging.pb", mock_pb):
+            client = _write_client(_manage_user(), mock_pb)
+            response = client.post(
+                "/api/lodging/placements/copy",
+                json={"year": 2026, "session_cm_id": 1000001, "scenario": ""},
+            )
+
+        assert response.status_code == 422
+
+    def test_copying_into_an_unknown_weekend_is_404_not_500(self, mock_pb: MagicMock) -> None:
+        with patch("api.routers.lodging.pb", mock_pb):
+            client = _write_client(_manage_user(), mock_pb)
+            mock_pb.collection.return_value.get_full_list.side_effect = lambda **_: []
+            response = client.post(
+                "/api/lodging/placements/copy",
+                json={"year": 2026, "session_cm_id": 9999999, "scenario": "scn_1"},
             )
 
         assert response.status_code == 404

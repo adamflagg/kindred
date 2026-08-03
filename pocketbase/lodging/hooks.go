@@ -244,13 +244,25 @@ func guardAssignmentGrain(e *core.RecordEvent) error {
 // access 1500000130 widened.
 //
 // It is a SEPARATE function from guardAssignmentGrain rather than the same one
-// re-bound, because the target rule differs and must. 1500000134 did not soften
-// that, it sharpened it: guardAssignmentGrain now rejects an EMPTY units set,
-// and an empty units set is exactly the draft's tombstone — "staff took this
-// party off the board in this scenario" — which is not the same state as the
-// party having no draft row at all. The two functions are now direct opposites
-// on the one field they would otherwise share, so binding either onto the
-// other's table would delete a feature.
+// re-bound, because the target rule differs and must: guardAssignmentGrain
+// rejects an EMPTY units set (1500000134) and this one tolerates it. That
+// tolerance used to be a feature — the empty set was the draft's tombstone,
+// "staff took this party off the board" — and kindred#1974 retired the
+// tombstone by making a scenario REPLACE the mirror instead of overlaying it,
+// so an empty set now means only that the row places nobody. The API refuses
+// to create one: PlacementWriteRequest.unit_ids requires at least one member,
+// and unplacing a party DELETES its row.
+//
+// The tolerance stays anyway, and rejecting the empty set here would break two
+// live paths rather than tighten one:
+//
+//   - 1500000134's backfill saves the party grain first and the units second
+//     (TestABackfillShapedDraftRowPassesTheGrainGuard), so a guard on units
+//     would fail the first save, roll back every pending migration, and
+//     crash-loop the boot.
+//   - deleteRefRecords empties `units` on every placement holding a deleted
+//     unit and re-saves the row. A guard here would turn that into an error on
+//     a path PocketBase owns.
 //
 // That the collapse touched only the target half is also why this function's
 // BODY needed no edit for 1500000134: it reads the party columns and nothing
@@ -258,8 +270,8 @@ func guardAssignmentGrain(e *core.RecordEvent) error {
 //
 // A row naming neither grain is what makes this worth guarding: it keys on
 // nothing, so both partial unique indexes (gated on `> 0`) skip it and it
-// dedupes against nothing, while _grain_key in the roster service silently
-// drops it from the overlay. The row accumulates and does nothing, invisibly.
+// dedupes against nothing, while placement_grain in the roster service
+// silently drops it. The row accumulates and does nothing, invisibly.
 func guardDraftAssignmentGrain(e *core.RecordEvent) error {
 	hasHousehold := e.Record.GetInt("household_cm_id") > 0
 	hasPerson := e.Record.GetInt("person_cm_id") > 0

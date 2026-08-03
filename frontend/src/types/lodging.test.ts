@@ -92,8 +92,27 @@ describe('PlacementWriteRequest (generated)', () => {
     expect(Array.isArray(_exhaustivePlacementWriteRequest.unit_ids)).toBe(true)
   })
 
-  it('an empty unit_ids is the valid tombstone shape', () => {
-    const tombstone: PlacementWriteRequest = { ..._exhaustivePlacementWriteRequest, unit_ids: [] }
-    expect(tombstone.unit_ids).toEqual([])
+  it('requires unit_ids — the tombstone shape is gone', () => {
+    // kindred#1974: an empty `unit_ids` used to be the TOMBSTONE, a row
+    // meaning "unplaced in this scenario" that suppressed the CampMinder
+    // mirror underneath. A scenario now REPLACES the mirror, so there is
+    // nothing to suppress and the API answers 422; unplacing a party is
+    // `DELETE /api/lodging/placements`.
+    //
+    // TypeScript cannot express a non-empty array, so the runtime rule is the
+    // API's. What this pins is the half TypeScript CAN carry: `unit_ids` is a
+    // required property, so a caller that forgets it does not compile. The
+    // `Required<>` fixture above would stop compiling if it went optional
+    // again -- excess-property in one direction, missing in the other.
+    const placement: PlacementWriteRequest = { ..._exhaustivePlacementWriteRequest }
+    expect(placement.unit_ids).toEqual(['ridge-1'])
+    // @ts-expect-error unit_ids is required: a placement names at least one unit.
+    const withoutUnits: PlacementWriteRequest = {
+      year: 2026,
+      session_cm_id: 3000001,
+      scenario: 'scenario123456789012',
+      household_cm_id: 2000001,
+    }
+    expect(withoutUnits.scenario).toBe('scenario123456789012')
   })
 })

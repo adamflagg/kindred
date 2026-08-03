@@ -1,10 +1,16 @@
 """Writes for the weekend lodging board.
 
-EVERY write here targets the DRAFT grain, or `lodging_availability`. Nothing in
-this module can reach `lodging_assignments`, `lodging_assignment_history` or
+EVERY write here targets the DRAFT grain, or `lodging_availability`. No write
+in this module can reach `lodging_assignments`, `lodging_assignment_history` or
 `lodging_field_mappings`: those belong to the CampMinder ingest, stay
 `is_admin` in PocketBase (1500000132), and are the reason the draft tables
 exist at all. Summer draws the identical line and has never crossed it.
+
+`copy_from_mirror` READS `lodging_assignments` and is the one place that does.
+That is the direction the line permits -- mirror into draft, never back -- and
+it is the seed step kindred#1974 created by making a scenario replace the
+mirror rather than overlay it. There is still no promote/publish path, and
+adding one is a decision, not a follow-up.
 
 There is no UI on top of this yet, deliberately. The schema risk lands in one
 reviewable change with no interaction design competing for review attention.
@@ -36,11 +42,13 @@ from pocketbase.client import ClientResponseError  # type: ignore[attr-defined]
 
 from api.schemas.lodging import (
     AvailabilityWriteRequest,
+    LodgingCopyResponse,
     LodgingWriteResponse,
+    PlacementCopyRequest,
     PlacementDeleteRequest,
     PlacementWriteRequest,
 )
-from api.services.lodging_roster_service import SessionNotFoundError
+from api.services.lodging_roster_service import SessionNotFoundError, placement_grain, resolved_units
 from api.utils.pb_error import pb_error_to_http
 from bunking.logging_config import get_logger
 
@@ -51,8 +59,14 @@ logger = get_logger(__name__)
 
 # lodging_assignments.source, whose select list this shares. A row written from
 # the board is staff_manual by construction -- the other two values name sync
-# jobs, and no sync writes the draft.
+# jobs, and no sync writes the draft. A COPIED row is the exception and keeps
+# the mirror row's own value: the placement came from CampMinder even though a
+# staff member asked for the copy.
 STAFF_SOURCE = "staff_manual"
+
+
+class ScenarioNotEmptyError(RuntimeError):
+    """A copy was asked for into a scenario that already holds placements."""
 
 
 class LodgingWriteService:
@@ -99,10 +113,9 @@ class LodgingWriteService:
         as well -- an unwrapped one is a bare ClientResponseError into the
         catch-all handler, which is the same 500 this guard exists to prevent.
 
-        An EMPTY `unit_ids` is the TOMBSTONE -- "staff took this party off the
-        board in this scenario" -- and is a legitimate row, not a no-op.
-        Deleting the row instead would fall through to the CampMinder mirror
-        and put the family back in the cabin they were just dragged out of.
+        `unit_ids` cannot be empty -- the schema refuses it. Every row this
+        writes places the party somewhere; taking a party off the board is
+        `unplace_party` below.
         """
         session_pb_id = await self._resolve_session_pb_id(request.year, request.session_cm_id)
 
@@ -147,11 +160,14 @@ class LodgingWriteService:
                     raise pb_error_to_http(retry_exc) from retry_exc
         return LodgingWriteResponse(record_id=str(getattr(record, "id", "")))
 
-    async def clear_placement(self, request: PlacementDeleteRequest) -> LodgingWriteResponse:
-        """Drop a party's draft row, restoring what the synced rows say.
+    async def unplace_party(self, request: PlacementDeleteRequest) -> LodgingWriteResponse:
+        """Take a party off the board in this scenario, by dropping its row.
 
-        Distinct from the tombstone above, and the only way back to the
-        CampMinder mirror for one party without discarding the whole scenario.
+        The whole of "unplaced" since kindred#1974: with no fall-through to
+        the mirror, the absence of a draft row IS the unplaced state, exactly
+        as it is for a missing `bunk_assignments_draft` row on the summer
+        board. This used to sit beside a tombstone POST that meant something
+        different; there is now one operation, and it is this one.
 
         Idempotent: no row is a 200 with `deleted: false`, not a 404. The board
         may fire this for a card that was never moved, and a 404 there would be
@@ -184,6 +200,109 @@ class LodgingWriteService:
                 return LodgingWriteResponse(record_id=str(existing.id), deleted=False)
             raise pb_error_to_http(exc) from exc
         return LodgingWriteResponse(record_id=str(existing.id), deleted=True)
+
+    async def copy_from_mirror(self, request: PlacementCopyRequest) -> LodgingCopyResponse:
+        """Seed one weekend's scenario from the CampMinder mirror.
+
+        The other half of kindred#1974. A scenario no longer renders the
+        synced placements through its own gaps, so it starts empty and this is
+        what makes it usable -- the same seed step summer performs inside
+        `POST /api/scenarios` with `should_copy_from_production`. That endpoint
+        copies `bunk_assignments` and returns zero rows for a weekend session,
+        so it cannot be reused: the frontend calls it to CREATE the scenario
+        and this to FILL it.
+
+        SEED-ONLY, and it refuses rather than merging. A second copy over a
+        worked scenario would overwrite the placements staff made, and -- the
+        worse half -- re-place every party they deliberately unplaced, because
+        unplacing is now the absence of a row and a gap-filling copy cannot
+        tell that from a party nobody has reached yet. Re-baselining a worked
+        plan against upstream drift is a different feature and is not this
+        one. The check is scoped to the weekend as well as the scenario: a
+        scenario spans weekends, and placements in one must not refuse a seed
+        of another.
+
+        Availability is NOT copied. It stayed an overlay, so the scenario
+        already sees the live reservations as its base; writing copies of them
+        would pin the scenario against a later change to the live plan --
+        the same argument that makes `state: null` a delete.
+
+        A mirror row is SKIPPED, not failed on, when it names no party grain
+        (it would key on nothing, dedupe against nothing, and be exactly the
+        row `guardDraftAssignmentGrain` refuses) or when every unit it names
+        has been deleted (it places nobody, and a relation id with no record
+        behind it can fail the create outright). Both are counted so the
+        caller can say so; silently copying 60 of 62 rows would show up only
+        as a board with two families missing.
+
+        The creates are SEQUENTIAL and there is no transaction -- PocketBase's
+        REST layer offers none across records. A create that fails part-way
+        leaves the rows already written in place, and the retry then 409s on
+        its own partial output. That is recoverable and deliberately visible:
+        delete the scenario, which cascades its drafts away (1500000132), and
+        seed a fresh one. The alternative -- unwinding what was written -- is a
+        second failure path over the same unreliable connection.
+        """
+        session_pb_id = await self._resolve_session_pb_id(request.year, request.session_cm_id)
+
+        held = await self.repository.count_draft_assignments(request.year, session_pb_id, request.scenario)
+        if held:
+            raise ScenarioNotEmptyError(
+                f"Scenario {request.scenario} already holds {held} placement(s) for weekend "
+                f"{request.session_cm_id} in {request.year}"
+            )
+
+        rows = await self.repository.fetch_assignments(request.year, session_pb_id)
+
+        copied = 0
+        skipped = 0
+        seeded: set[tuple[str, int]] = set()
+        for row in rows:
+            grain = placement_grain(row)
+            unit_ids = [str(getattr(unit, "id", "")) for unit in resolved_units(row)]
+            # `seeded` guards a duplicate the draft's partial unique indexes
+            # would reject on the second create, turning a whole seed into an
+            # error over one malformed pair of mirror rows.
+            if grain is None or not unit_ids or grain in seeded:
+                skipped += 1
+                continue
+            seeded.add(grain)
+
+            data: dict[str, Any] = {
+                "session": session_pb_id,
+                "session_cm_id": request.session_cm_id,
+                "year": request.year,
+                "scenario": request.scenario,
+                "household_cm_id": grain[1] if grain[0] == "household" else 0,
+                "person_cm_id": grain[1] if grain[0] == "person" else 0,
+                "units": unit_ids,
+                # The mirror row's own provenance, not STAFF_SOURCE: the
+                # placement came from CampMinder even though a staff member
+                # asked for the copy.
+                "source": str(getattr(row, "source", "") or ""),
+                # A seed is not a staff decision. staff_touched answers "has a
+                # human moved this party?" and is one-way, so marking all 62
+                # rows touched would answer it wrong for the whole weekend at
+                # once. place_party sets it when someone actually drags.
+                "staff_touched": False,
+            }
+            try:
+                await self.repository.create_draft_assignment(data)
+            except ClientResponseError as exc:
+                raise pb_error_to_http(exc) from exc
+            copied += 1
+
+        logger.info(
+            "Seeded lodging scenario from the CampMinder mirror",
+            extra={
+                "year": request.year,
+                "session_cm_id": request.session_cm_id,
+                "scenario": request.scenario,
+                "copied": copied,
+                "skipped": skipped,
+            },
+        )
+        return LodgingCopyResponse(copied=copied, skipped=skipped)
 
     async def set_availability(self, request: AvailabilityWriteRequest) -> LodgingWriteResponse:
         """Reserve or release one unit for this weekend, inside a scenario.

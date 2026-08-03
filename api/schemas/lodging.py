@@ -371,12 +371,15 @@ class PartyGrainRequest(ScenarioWriteRequest):
 
 
 class PlacementWriteRequest(PartyGrainRequest):
-    """Place a party, or record that staff took it off the board.
+    """Place a party in a scenario, into one or more units.
 
-    An EMPTY `unit_ids` is the TOMBSTONE and is deliberately valid: it means
-    "unplaced in this scenario", which is not the same as having no draft row.
-    Deleting the row instead would fall through to the CampMinder mirror and
-    put the family straight back where staff just dragged them from.
+    `unit_ids` is REQUIRED and non-empty. An empty list used to be the
+    TOMBSTONE -- "unplaced in this scenario", a state distinct from having no
+    draft row, which fell through to the CampMinder mirror. kindred#1974
+    removed the fall-through, so there is nothing left for a targetless row to
+    suppress: it would render exactly as no row does. Two spellings of one
+    state is what that change deletes, so this refuses the second one and
+    `DELETE /placements` is how a party comes off the board.
     """
 
     # 1500000134 collapsed `unit` (an atomic room), `merge` (a slot the ingest
@@ -387,8 +390,9 @@ class PlacementWriteRequest(PartyGrainRequest):
     #
     # max_length=20 matches the field's own maxSelect
     # (1500000134_lodging_units_relation.js), carried over from the deleted
-    # merge tables' member cap.
-    unit_ids: list[str] = Field(default_factory=list, max_length=20)
+    # merge tables' member cap. min_length=1 is the retired tombstone: a
+    # placement names at least one unit, or it is not a placement.
+    unit_ids: list[str] = Field(..., min_length=1, max_length=20)
 
     @model_validator(mode="after")
     def _units_are_distinct(self) -> Self:
@@ -409,7 +413,27 @@ class PlacementWriteRequest(PartyGrainRequest):
 
 
 class PlacementDeleteRequest(PartyGrainRequest):
-    """Drop a party's draft row, restoring whatever the synced rows say."""
+    """UNPLACE a party: drop its draft row.
+
+    Under replace semantics the absence of a row IS the unplaced state, so
+    this is the whole of "staff took this party off the board" -- the same
+    thing deleting a `bunk_assignments_draft` row means on the summer board.
+    """
+
+
+class PlacementCopyRequest(ScenarioWriteRequest):
+    """Seed one weekend's scenario from the CampMinder mirror.
+
+    A scenario replaces the mirror rather than overlaying it (kindred#1974),
+    so a new one is empty and this is what makes it usable. Weekend-scoped
+    rather than year-scoped because a scenario is worked one weekend at a
+    time and copying twelve weekends to plan one is work nobody asked for.
+
+    Summer's equivalent rides inside `POST /api/scenarios`
+    (`should_copy_from_production`). It copies `bunk_assignments` and returns
+    zero rows for a weekend session, so it cannot be reused here; the frontend
+    calls that endpoint to create the scenario and this one to seed it.
+    """
 
 
 class AvailabilityWriteRequest(ScenarioWriteRequest):
@@ -430,6 +454,20 @@ class LodgingWriteResponse(BaseModel):
 
     record_id: str = ""
     # True when the write removed a row rather than creating or updating one --
-    # a cleared availability override, or a placement dropped back to the
-    # CampMinder mirror.
+    # a cleared availability override, or an unplaced party.
     deleted: bool = False
+
+
+class LodgingCopyResponse(BaseModel):
+    """What the seed actually wrote.
+
+    Two numbers rather than one because they answer different questions. A
+    staff member reading "seeded 47 placements" wants to know the board is
+    populated; `skipped` is how they find out that two more mirror rows named
+    a party or a unit that no longer resolves, instead of that discrepancy
+    only being visible as a board with fewer families on it than CampMinder
+    shows.
+    """
+
+    copied: int = 0
+    skipped: int = 0
