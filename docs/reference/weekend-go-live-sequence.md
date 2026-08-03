@@ -28,9 +28,10 @@ That is why this programme is plan-driven rather than triage-driven. Triage is t
 | 3 | Roster/API correctness as one Python PR | [#1889](https://github.com/adamflagg/kindred/issues/1889), [#1936](https://github.com/adamflagg/kindred/issues/1936) | ≤1 day | Correctness |
 | 4 | 2026 inventory rollout + container guard | [#1917](https://github.com/adamflagg/kindred/issues/1917), [#1918](https://github.com/adamflagg/kindred/issues/1918) | ½ day + staff walk | Parallel, blocks nothing |
 | 5 | Parity polish — filters, tab state, sync invalidation | [#1912](https://github.com/adamflagg/kindred/issues/1912), [#1944](https://github.com/adamflagg/kindred/issues/1944), [#1894](https://github.com/adamflagg/kindred/issues/1894) | 1–2 days | **No — after the capability** |
-| 6 | Decide what comes *out* of a finished plan | [#1968](https://github.com/adamflagg/kindred/issues/1968) | no code | Ask before step 2 opens |
 
-**Total: 9–13 engineering days**, plus a cabin-confirmation property walk that sits on staff's calendar, not engineering's.
+**Step 1b — decide what comes *out* of a finished plan** ([#1968](https://github.com/adamflagg/kindred/issues/1968), no code) is an explicit **prerequisite of step 2**, not a later row. It sat at the bottom of this table saying "ask before step 2 opens", which let a reader follow the table straight into drag work with the question unanswered. If the answer turns out to be a printed cabin list, the board needs print-shaped data — stable ordering, legible labels, occupancy per room — that nothing else would prompt anyone to add.
+
+**Total: 9–15 engineering days**, summing every row including the parallel step 4 — it is half a day of engineering even though it blocks nothing. This is effort, not calendar duration, and it excludes the cabin-confirmation property walk, which sits on staff's calendar rather than engineering's. The earlier "8–12" did not reconcile with its own table.
 
 **Two owner decisions, 2026-08-03, changed steps 0a–2a from what this table first said.**
 
@@ -60,7 +61,7 @@ So the board can only ever write **drafts**, and go-live today means *staff arra
 **This section originally added "Summer avoids this by writing `bunk_assignments` directly in production mode (`useCamperMovement.ts:353`); lodging is structurally denied that path." That is wrong on both halves** (corrected 2026-08-03, and on [#1968](https://github.com/adamflagg/kindred/issues/1968) itself):
 
 - `useCamperMovement` does contain a production write path, but **the board never reaches it** — `BunkingBoardByArea.tsx:380` returns early from `handleDragEnd` when `isProductionMode`, and `bunk_assignments` is admin-only besides.
-- **Nothing writes back to CampMinder for any programme.** The only outbound POSTs in the Go tree go to the internal solver API (`sync/process_requests.go:169`) and a geocoder (`sync/normalize_geographic.go:575`).
+- **Nothing writes back to CampMinder for any programme.** The only outbound POSTs in `pocketbase/sync` go to the internal solver API (`sync/process_requests.go:169`) and a geocoder (`sync/normalize_geographic.go:575`). The Go tree does make other outbound writes — `feedback/github.go:102` POSTs a GitHub issue — but none of them reach CampMinder.
 
 A finished summer plan reaches CampMinder the same way a weekend plan would: a human re-keys it. So this is a product question for both programmes, not a lodging deficiency to close — which makes "manual re-key, and that's fine" a considerably stronger year-one answer than the original framing implied.
 
@@ -191,8 +192,10 @@ Answer them; do not re-litigate them.
 ## Do NOT gate on the fit check
 
 `partyAttention` is advisory. `place_party`
-(`api/services/lodging_write_service.py:78-147`) performs no validation of any
-kind, by design. Every cabin currently has `is_confirmed = 0`, so
+(`api/services/lodging_write_service.py:78-147`) does not enforce the
+fit/capacity check, by design — it DOES validate scenario, grain, permission
+and unique-index races, so do not read this as "the write path checks
+nothing". Every cabin currently has `is_confirmed = 0`, so
 `rosterAttention.ts:102` refuses to judge any housing need — the fit check is
 dark and will stay dark until staff physically walk the property. Ship drag
 with it dark. Do not bulk-confirm units to work around this; `is_confirmed`

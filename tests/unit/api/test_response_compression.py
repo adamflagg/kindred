@@ -12,6 +12,7 @@ presence of a middleware class, because a middleware installed with a
 
 import json
 
+import pytest
 from fastapi.responses import JSONResponse
 from fastapi.testclient import TestClient
 
@@ -32,7 +33,10 @@ def _app_with_probe_route():
         parties = [
             {
                 "display_name": f"Household {index}",
-                "household_cm_id": 100000 + index,
+                # Fictional ids, per tests/CLAUDE.md. Offset from the sanctioned
+                # 1000001 so 400 households stay distinct -- collapsing them onto
+                # two ids would shrink the payload this fixture exists to size.
+                "household_cm_id": 1_000_001 + index,
                 "unit_code": f"unit-{index % 40}",
                 "request_text": "Would like to be near friends; ground floor if possible.",
             }
@@ -52,15 +56,26 @@ def test_large_json_response_is_gzipped() -> None:
     assert response.headers.get("content-encoding") == "gzip", "roster-sized JSON crossed the wire uncompressed"
 
 
-def test_compression_is_negotiated_not_forced() -> None:
-    """A client that cannot decompress must still get a readable body.
+@pytest.mark.parametrize(
+    "accept_encoding",
+    [
+        pytest.param("identity", id="explicit-identity"),
+        # Plain `curl` sends NO Accept-Encoding header rather than `identity`.
+        # An empty value exercises the same branch: the middleware asks whether
+        # "gzip" appears in the header, defaulting to "" when it is absent, so
+        # absent and empty are indistinguishable to it.
+        pytest.param("", id="header-absent-or-empty"),
+    ],
+)
+def test_compression_is_negotiated_not_forced(accept_encoding: str) -> None:
+    """A client that did not ask for gzip must still get a readable body.
 
-    `identity` is not a hypothetical: it is what `curl` sends without
-    `--compressed`, and it is how the measurements in #1966 were taken.
+    This is how the measurements in #1966 were taken, so a forced encoding
+    would have made those numbers unreproducible as well as breaking clients.
     """
     client = TestClient(_app_with_probe_route())
 
-    response = client.get("/__compression_probe", headers={"Accept-Encoding": "identity"})
+    response = client.get("/__compression_probe", headers={"Accept-Encoding": accept_encoding})
 
     assert response.status_code == 200
     assert "content-encoding" not in response.headers

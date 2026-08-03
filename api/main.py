@@ -129,8 +129,9 @@ def create_app() -> FastAPI:
     # affected by the body encoding. `minimum_size` keeps small bodies alone,
     # where the gzip header and the CPU cost outweigh the saving.
     #
-    # This is negotiated, not forced: a client sending `Accept-Encoding:
-    # identity` -- which is what plain `curl` sends -- still gets a raw body.
+    # This is negotiated, not forced: a client that does not offer gzip -- an
+    # explicit `Accept-Encoding: identity`, or no such header at all, which is
+    # what plain `curl` sends -- still gets a raw body.
     app.add_middleware(GZipMiddleware, minimum_size=1000)
 
     # CORS configuration
