@@ -74,6 +74,12 @@
 	# Compression and rate-limiting are handled by Traefik upstream of this
 	# Caddy. Adding them here would double-count rate-limit buckets and
 	# duplicate Traefik's compression for no gain.
+	#
+	# #1966 read the absence of `encode` here as an oversight. It is not — but
+	# note the dev path has no Traefik in front of it, which is why the API
+	# compresses its own large JSON (`GZipMiddleware`, api/main.py) and why
+	# frontend/Caddyfile DOES carry `encode`. Traefik passes an
+	# already-encoded response through rather than recompressing it.
 
 	# PocketBase-specific patterns (explicit)
 	# These /api/* routes go to PocketBase (port 8090)

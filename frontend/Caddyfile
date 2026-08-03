@@ -3,6 +3,12 @@
 }
 
 :{$CADDY_PORT:8080} {
+	# Compress everything served from here (#1966): the built JS/CSS bundles and
+	# any upstream response that arrives raw. FastAPI now gzips its own large
+	# JSON, and Caddy leaves an already-encoded response alone rather than
+	# double-compressing it, so the two do not fight.
+	encode zstd gzip
+
 	# PocketBase-specific patterns (explicit)
 	# These are the only /api/* routes that go to PocketBase
 	# Note: Must include both root paths and wildcards (e.g., /api/collections AND /api/collections/*)
