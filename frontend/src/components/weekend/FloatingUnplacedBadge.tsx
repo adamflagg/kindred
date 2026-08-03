@@ -8,21 +8,18 @@
  * `isExpanded` is local. Summer's board owns its badge's open state because
  * other board affordances read it; nothing on the weekend surfaces does.
  */
+import { useState } from 'react'
+
 import type { RosterPartyRow } from '../../types/lodging'
 import { FloatingQueueBadge } from '../ui'
 import { FamilyCard } from './FamilyCard'
-import { useState } from 'react'
+import { partyKey } from './partyKey'
 
 export interface FloatingUnplacedBadgeProps {
   parties: RosterPartyRow[]
   onOpenParty: (party: RosterPartyRow) => void
   /** A FamilyDetailsPanel is open, so shift out from under it and stay up. */
   isPanelOpen?: boolean
-}
-
-/** Stable identity for a party across renders. Matches LodgingBoard's. */
-function partyKey(party: RosterPartyRow): string {
-  return `${party.grain}-${String(party.household_cm_id ?? party.person_cm_id ?? party.display_name)}`
 }
 
 // Module-level so their identity is stable across renders: the shell memoises
@@ -62,7 +59,7 @@ export function FloatingUnplacedBadge({
       renderList={(visible) => (
         <div className="flex flex-col gap-1.5">
           {visible.map((party) => (
-            <FamilyCard key={partyKey(party)} party={party} onRail={true} onOpen={onOpenParty} />
+            <FamilyCard key={partyKey(party)} party={party} inQueue={true} onOpen={onOpenParty} />
           ))}
         </div>
       )}

@@ -25,16 +25,12 @@ import { FamilyCard } from './FamilyCard'
 import { FamilyDetailsPanel } from './FamilyDetailsPanel'
 import { FloatingUnplacedBadge } from './FloatingUnplacedBadge'
 import { LodgingUnitCard } from './LodgingUnitCard'
+import { partyKey } from './partyKey'
 
 export interface LodgingBoardProps {
   parties: RosterPartyRow[]
   units: LodgingUnitRow[]
   year: number
-}
-
-/** Stable identity for a party across renders. */
-function partyKey(party: RosterPartyRow): string {
-  return `${party.grain}-${String(party.household_cm_id ?? party.person_cm_id ?? party.display_name)}`
 }
 
 export function LodgingBoard({ parties, units, year }: LodgingBoardProps) {

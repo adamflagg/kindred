@@ -24,7 +24,15 @@ const ROWS: Row[] = [
 const sortKey = (row: Row) => [row.last, row.first]
 const getSearchText = (row: Row) => `${row.first} ${row.last}`
 
-function Harness({ items = ROWS, isPanelOpen = false }: { items?: Row[]; isPanelOpen?: boolean }) {
+function Harness({
+  items = ROWS,
+  isPanelOpen = false,
+  isDropTarget = false,
+}: {
+  items?: Row[]
+  isPanelOpen?: boolean
+  isDropTarget?: boolean
+}) {
   const [isExpanded, setIsExpanded] = useState(false)
   return (
     <FloatingQueueBadge
@@ -52,6 +60,7 @@ function Harness({ items = ROWS, isPanelOpen = false }: { items?: Row[]; isPanel
         setIsExpanded(false)
       }}
       isPanelOpen={isPanelOpen}
+      isDropTarget={isDropTarget}
     />
   )
 }
@@ -162,6 +171,45 @@ describe('FloatingQueueBadge — expanded', () => {
     await userEvent.click(screen.getByRole('button', { name: /unplaced families/i }))
     await userEvent.click(screen.getByRole('button', { name: 'elsewhere' }))
     expect(screen.getAllByTestId('row')).toHaveLength(3)
+  })
+
+  it('stays open when a card OUTSIDE the popover is clicked', async () => {
+    // `cardSelector` is what this branch is for, and the "click a row" path
+    // cannot reach it: a row sits inside `popoverRef`, so the containment
+    // check returns first and the selector is never consulted. The case that
+    // needs it is a card on the surface BEHIND the queue — clicked to open
+    // something, which is not a reason to dismiss the list.
+    render(
+      <>
+        <button type="button" data-family-card>
+          a card on the board
+        </button>
+        <Harness />
+      </>
+    )
+    await userEvent.click(screen.getByRole('button', { name: /unplaced families/i }))
+    await userEvent.click(screen.getByRole('button', { name: 'a card on the board' }))
+    expect(screen.getAllByTestId('row')).toHaveLength(3)
+  })
+})
+
+describe('FloatingQueueBadge — drop target', () => {
+  // Two separate class decisions off one prop: the popover's border and the
+  // list's tint. C2's drag phase builds on both.
+  it('outlines the popover and tints the list', async () => {
+    const { container } = render(<Harness isDropTarget={true} />)
+    await userEvent.click(screen.getByRole('button', { name: /unplaced families/i }))
+    expect(container.querySelector('.card-lodge')).toHaveClass('border-primary')
+    expect(container.querySelector('.overflow-y-auto')).toHaveClass('bg-primary/5')
+  })
+
+  it('leaves both plain when nothing is being dragged', async () => {
+    const { container } = render(<Harness />)
+    await userEvent.click(screen.getByRole('button', { name: /unplaced families/i }))
+    const popover = container.querySelector('.card-lodge')
+    expect(popover).toHaveClass('border-border')
+    expect(popover).not.toHaveClass('border-primary')
+    expect(container.querySelector('.overflow-y-auto')).not.toHaveClass('bg-primary/5')
   })
 })
 

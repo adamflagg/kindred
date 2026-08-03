@@ -35,7 +35,7 @@ import { ATTENTION_LABEL, partyAttention } from './rosterAttention'
 
 export interface FamilyCardProps {
   party: RosterPartyRow
-  /** The cabin it sits in, when one resolves. Undefined on the rail. */
+  /** The cabin it sits in, when one resolves. Undefined while unplaced. */
   unit?: LodgingUnitRow | undefined
   /**
    * Whether another party is in the same room. Declining to share is the
@@ -43,8 +43,14 @@ export interface FamilyCardProps {
    * worth saying when somebody else is in the room (spec §11).
    */
   sharedSlot?: boolean
-  /** Rail cards sit on the page background rather than inside a slot. */
-  onRail?: boolean
+  /**
+   * The card is in the unplaced queue rather than in a slot on the board.
+   * Purely a surface choice: the popover's own background is already the
+   * page's, so a card inside it needs `bg-card` to read as a card at all,
+   * where one sitting in a slot needs `bg-background` to read as distinct
+   * from the slot around it.
+   */
+  inQueue?: boolean
   onOpen: (party: RosterPartyRow) => void
 }
 
@@ -79,7 +85,7 @@ export function FamilyCard({
   party,
   unit,
   sharedSlot = false,
-  onRail = false,
+  inQueue = false,
   onOpen,
 }: FamilyCardProps) {
   const flags = party.flags ?? {}
@@ -100,7 +106,7 @@ export function FamilyCard({
         onOpen(party)
       }}
       className={`group border-border hover:border-primary/50 focus-visible:ring-ring flex w-full flex-col gap-1 rounded-lg border px-2 py-1.5 text-left transition-colors focus-visible:ring-2 focus-visible:outline-none ${
-        onRail ? 'bg-card' : 'bg-background'
+        inQueue ? 'bg-card' : 'bg-background'
       }`}
     >
       <span className="flex items-baseline gap-1.5">

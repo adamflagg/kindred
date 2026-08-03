@@ -96,6 +96,54 @@ describe('FloatingUnplacedBadge', () => {
     expect(screen.getByText(/Everyone has a cabin/i)).toBeInTheDocument()
   })
 
+  it('keeps two adult-weekend individuals apart', async () => {
+    // Adult weekends enrol PEOPLE, so every party's `household_cm_id` is the
+    // wire's 0 — Pydantic serialises the default, it is never absent. A key
+    // built with `??` reads that 0 as a present value and files the whole
+    // queue under "person-0", so N individuals become one React key.
+    render(
+      <FloatingUnplacedBadge
+        parties={[
+          party({
+            grain: 'person',
+            household_cm_id: 0,
+            person_cm_id: 9101,
+            display_name: 'Riley Sam',
+            sort_name: 'Sam',
+            adults: [],
+            children: [],
+            party_size: 1,
+          }),
+          party({
+            grain: 'person',
+            household_cm_id: 0,
+            person_cm_id: 9102,
+            display_name: 'Samuel Johnson',
+            sort_name: 'Johnson',
+            adults: [],
+            children: [],
+            party_size: 1,
+          }),
+        ]}
+        onOpenParty={vi.fn()}
+      />,
+      { wrapper }
+    )
+    await userEvent.click(screen.getByRole('button', { name: /unplaced families/i }))
+
+    // Both are here, and filed under their real surnames.
+    expect(screen.getAllByTestId('family-card-name').map((el) => el.textContent)).toEqual([
+      'Samuel Johnson',
+      'Riley Sam',
+    ])
+    // ...and React considers them two rows, not one rendered twice. This is
+    // the half of the assertion that a colliding key actually trips.
+    const duplicateKeyWarning = vi
+      .mocked(console.error)
+      .mock.calls.filter((args) => args.some((arg) => /same key/i.test(String(arg))))
+    expect(duplicateKeyWarning).toEqual([])
+  })
+
   it('opens a party when its card is clicked', async () => {
     const onOpenParty = vi.fn()
     render(<FloatingUnplacedBadge parties={[party()]} onOpenParty={onOpenParty} />, { wrapper })

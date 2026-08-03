@@ -1,5 +1,6 @@
 /**
- * The board tab: an unplaced rail beside area-grouped sections of slot cards.
+ * The board tab: area-grouped sections of slot cards, with the unplaced
+ * families in the floating corner queue rather than a rail.
  *
  * With no scenario this is a CampMinder MIRROR and read-only, and the surface
  * has to say so — otherwise a staff member reasonably reads a board as

@@ -43,6 +43,7 @@ import { indexUnitsByCode } from './rosterAttention'
 import { clusterByProximity, type Cluster, type Placed } from './mapClustering'
 import { buildMapModel, type MapUnit } from './mapModel'
 import { CONSENT_AMBER, CONSENT_PHRASE, MapUnitPopover } from './MapUnitPopover'
+import { partyKey } from './partyKey'
 import {
   basePosition,
   clampView,
@@ -168,10 +169,6 @@ export interface LodgingMapProps {
   parties: RosterPartyRow[]
   units: LodgingUnitRow[]
   year: number
-}
-
-function partyKey(party: RosterPartyRow): string {
-  return `${party.grain}-${String(party.household_cm_id || party.person_cm_id || party.display_name)}`
 }
 
 export function LodgingMap({ parties, units, year }: LodgingMapProps) {

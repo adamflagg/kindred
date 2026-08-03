@@ -13,6 +13,7 @@ export { LodgingUnitCard } from './LodgingUnitCard'
 export { MapUnitPopover } from './MapUnitPopover'
 export { buildMapModel, countMapUnits, hasCoordinates, resolvePartyUnits } from './mapModel'
 export type { MapModel, MapUnit, OffMapEntry, OffMapReason } from './mapModel'
+export { partyKey } from './partyKey'
 export {
   ATTENTION_LABEL,
   ATTENTION_ORDER,
