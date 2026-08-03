@@ -289,7 +289,7 @@ func newDraftAssignment(t *testing.T, app core.App, unitIDs []string, householdC
 // into a two-digit number would still pass a wantCount of 1 or 2. This helper
 // is the only correctness check on a destructive-delete guard, which makes a
 // false pass here worse than no assertion at all: it reads as proof.
-var placementCountRe = regexp.MustCompile(`(?:^|[^0-9])([0-9]+) lodging placement`)
+var placementCountRe = regexp.MustCompile(`(?:^|\D)(\d+) lodging placement`)
 
 func assertUnitDeleteRefused(t *testing.T, err error, wantCount int) {
 	t.Helper()
