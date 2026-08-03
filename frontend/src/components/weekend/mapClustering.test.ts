@@ -49,6 +49,29 @@ describe('clusterByProximity', () => {
     expect(multi(clusterByProximity(spread))).toBe(0)
   })
 
+  it('is independent of input order, because a bridge can arrive last', () => {
+    // A---C---B, with A-C and C-B inside the radius but A-B outside. C bridges
+    // them, so all three are one cluster whatever order they arrive in.
+    // A greedy pass that joins only the FIRST matching group gets two of these
+    // three orderings wrong — same points, different answer — which in
+    // production means a building regrouping itself between payloads.
+    const A = at('a', 0, 0)
+    const C = at('c', 15, 0)
+    const B = at('b', 30, 0)
+    const partition = (items: Array<Placed<string>>) =>
+      clusterByProximity(items)
+        .map((cluster) =>
+          cluster.members
+            .map((m) => m.item)
+            .sort()
+            .join('')
+        )
+        .sort()
+    expect(partition([A, C, B])).toEqual(['abc'])
+    expect(partition([A, B, C])).toEqual(['abc'])
+    expect(partition([B, A, C])).toEqual(['abc'])
+  })
+
   it('is deterministic, so a hue and a popup do not jump between renders', () => {
     const input = [at('a', 0, 0), at('b', 10, 0), at('c', 500, 500)]
     const once = clusterByProximity(input).map((c) => c.members.map((m) => m.item))

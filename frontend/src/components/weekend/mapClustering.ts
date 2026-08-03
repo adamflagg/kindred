@@ -15,6 +15,8 @@
  *
  * Single link rather than centroid link because a terrace of rooms is one
  * building: each room is close to its neighbour and the ends may be far apart.
+ * The partition is therefore the connected components of the radius graph,
+ * which is order-invariant — see the merge in the loop, and the ordering test.
  */
 
 /** An item with a screen position. */
@@ -41,11 +43,27 @@ export function clusterByProximity<T>(
   const groups: Array<Array<Placed<T>>> = []
 
   for (const candidate of items) {
-    const hit = groups.find((group) =>
-      group.some((member) => Math.hypot(member.x - candidate.x, member.y - candidate.y) <= radiusPx)
-    )
-    if (hit) hit.push(candidate)
-    else groups.push([candidate])
+    const near = (member: Placed<T>) =>
+      Math.hypot(member.x - candidate.x, member.y - candidate.y) <= radiusPx
+    const touched = groups.filter((group) => group.some(near))
+
+    const target = touched[0]
+    if (target === undefined) {
+      groups.push([candidate])
+      continue
+    }
+
+    // Merge EVERY group the candidate touches, not just the first. A candidate
+    // can BRIDGE two existing groups, and joining only the first match makes
+    // the result depend on the order items arrive in: the same three points
+    // partition three different ways. The payload's unit order is a database
+    // query result and is not guaranteed stable, so that would show up as a
+    // building silently regrouping between loads.
+    target.push(candidate)
+    for (const other of touched.slice(1)) {
+      target.push(...other)
+      groups.splice(groups.indexOf(other), 1)
+    }
   }
 
   return groups.map((members) => ({
