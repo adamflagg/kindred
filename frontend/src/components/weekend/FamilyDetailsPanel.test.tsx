@@ -46,22 +46,26 @@ function wrapper({ children }: { children: ReactNode }) {
 }
 
 /**
- * Drives the SAME `animationend` React actually listens for here — which is
- * NOT what `fireEvent.animationEnd` fires.
+ * Drives whichever `animationend` React actually listens for here — which is
+ * NOT necessarily what `fireEvent.animationEnd` fires.
  *
  * jsdom has no global `AnimationEvent`, so React's own feature detection
  * (`"AnimationEvent" in window`, react-dom's event-plugin setup) reads this as
  * a browser with no unprefixed support and registers its listener for the
  * vendor-prefixed `webkitAnimationEnd` instead — jsdom's own `<div>.style`
  * exposes `WebkitAnimation`, which is what sends it down that branch.
- * `@testing-library/dom`'s `fireEvent.animationEnd` dispatches the unprefixed
- * name, which is real DOM traffic (a plain listener sees it) but never
- * reaches `onAnimationEnd` — confirmed by hand before writing this. Verified
- * against this repo's jsdom; if a future jsdom adds `AnimationEvent`, React's
- * own detection flips too and this would need to follow it back to the
- * unprefixed name.
+ * `@testing-library/dom`'s `fireEvent.animationEnd` dispatches only the
+ * unprefixed name, which is real DOM traffic (a plain listener sees it) but
+ * never reaches `onAnimationEnd` — confirmed by hand before writing this.
+ *
+ * Firing BOTH names rather than hardcoding the prefixed one: React registers
+ * exactly one of the two, so `onAnimationEnd` still fires exactly once
+ * either way, and this survives a jsdom upgrade that starts defining
+ * `AnimationEvent` (at which point React would listen for the unprefixed
+ * name instead) with no maintenance.
  */
 function fireAnimationEnd(el: HTMLElement) {
+  fireEvent(el, new Event('animationend', { bubbles: true, cancelable: true }))
   fireEvent(el, new Event('webkitAnimationEnd', { bubbles: true, cancelable: true }))
 }
 

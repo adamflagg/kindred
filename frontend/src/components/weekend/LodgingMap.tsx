@@ -189,6 +189,11 @@ export function LodgingMap({ parties, units, year }: LodgingMapProps) {
     id: number
     active: boolean
   } | null>(null)
+  // Set from `drag.active` at pointerup, so the click that ends a pan can be
+  // told apart from a genuine dead-space click on the same canvas div — see
+  // the dismissal callback below. Consumed (reset) the moment it is read, so
+  // it never outlives the one click it describes.
+  const wasDraggingRef = useRef(false)
   const [view, setView] = useState<Viewport>(IDENTITY_VIEW)
   const [size, setSize] = useState({ width: 0, height: 0 })
   const [imageFailed, setImageFailed] = useState(false)
@@ -263,8 +268,25 @@ export function LodgingMap({ parties, units, year }: LodgingMapProps) {
     setSelected(party)
   }, [])
 
-  // Same dead-space dismissal the summer board and the weekend board use.
+  const closePanel = useCallback(() => {
+    setSelected(null)
+    setRequestClose(false)
+  }, [])
+
+  // Same dead-space dismissal the summer board and the weekend board use —
+  // with one addition neither of them needs. The canvas is a bare div that a
+  // pan gesture ends with a click on, and that click matches none of
+  // `shouldKeepPanelsOpen`'s exemptions (not a panel, badge, button or
+  // card), so without this every pan would close the panel out from under
+  // whoever is dragging it. `wasDraggingRef` is set from the SAME
+  // `drag.active` the pan logic already computes — no separate threshold —
+  // and reading it here consumes it, so a later genuine dead-space click is
+  // never mistaken for the tail of an old drag.
   useDismissOnDeadSpace(selected !== null, () => {
+    if (wasDraggingRef.current) {
+      wasDraggingRef.current = false
+      return
+    }
     setRequestClose(true)
   })
 
@@ -602,6 +624,10 @@ export function LodgingMap({ parties, units, year }: LodgingMapProps) {
               if (drag.active && event.currentTarget.hasPointerCapture(drag.id)) {
                 event.currentTarget.releasePointerCapture(drag.id)
               }
+              // The click that follows this pointerup must not read as dead
+              // space if this gesture actually panned — see the dismissal
+              // callback above.
+              wasDraggingRef.current = drag.active
               dragRef.current = null
             }}
           >
@@ -926,29 +952,33 @@ export function LodgingMap({ parties, units, year }: LodgingMapProps) {
               </dd>
             </div>
           </dl>
+
+          {/* A merge carries no unit code, and an assignment can name a
+              container or a unit the map has no coordinate for. Those
+              parties ARE placed, so the unplaced queue would be a lie if it
+              counted them — and dropping them would make the map quietly
+              disagree with the roster. Mirrors `LodgingBoard`'s "Placed
+              outside the board". Inside the card, not a sibling of it, so it
+              inherits the same `p-3` padding the rest of the card body
+              does. */}
+          {model.offMap.length > 0 && (
+            <section data-testid="map-offmap-section">
+              <h3 className="text-muted-foreground mb-2 flex items-center gap-1.5 text-[11px] font-bold tracking-wider uppercase">
+                <Info className="h-3.5 w-3.5 flex-shrink-0" aria-hidden="true" />
+                Placed, off the map
+              </h3>
+              <p className="text-muted-foreground mb-2 text-xs">
+                Assigned to a merged slot or to a room with no position on the map yet.
+              </p>
+              <div className="grid grid-cols-[repeat(auto-fill,minmax(200px,1fr))] items-start gap-2.5">
+                {model.offMap.map((entry) => (
+                  <FamilyCard key={partyKey(entry.party)} party={entry.party} onOpen={openParty} />
+                ))}
+              </div>
+            </section>
+          )}
         </div>
       </div>
-
-      {/* A merge carries no unit code, and an assignment can name a container or
-          a unit the map has no coordinate for. Those parties ARE placed, so the
-          off-map section would be a lie if it dropped them — mirrors
-          `LodgingBoard`'s "Placed outside the board". */}
-      {model.offMap.length > 0 && (
-        <section data-testid="map-offmap-section">
-          <h3 className="text-muted-foreground mb-2 flex items-center gap-1.5 text-[11px] font-bold tracking-wider uppercase">
-            <Info className="h-3.5 w-3.5 flex-shrink-0" aria-hidden="true" />
-            Placed, off the map
-          </h3>
-          <p className="text-muted-foreground mb-2 text-xs">
-            Assigned to a merged slot or to a room with no position on the map yet.
-          </p>
-          <div className="grid grid-cols-[repeat(auto-fill,minmax(200px,1fr))] items-start gap-2.5">
-            {model.offMap.map((entry) => (
-              <FamilyCard key={partyKey(entry.party)} party={entry.party} onOpen={openParty} />
-            ))}
-          </div>
-        </section>
-      )}
 
       <FloatingUnplacedBadge
         parties={model.unplaced}
@@ -962,10 +992,7 @@ export function LodgingMap({ parties, units, year }: LodgingMapProps) {
           unit={unitsByCode.get(selected.unit_code ?? '')}
           year={year}
           requestClose={requestClose}
-          onClose={() => {
-            setSelected(null)
-            setRequestClose(false)
-          }}
+          onClose={closePanel}
         />
       )}
     </div>

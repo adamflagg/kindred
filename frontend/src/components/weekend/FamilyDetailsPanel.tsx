@@ -223,12 +223,9 @@ export function FamilyDetailsPanel({
           // click the user made against the previous one. Vestigial once the
           // click-to-reveal is removed; free until then.
           //
-          // `key` keeps the raw id where `householdCmId` below turns a
-          // non-positive one into `null`. The two diverge only when the raw id
-          // is <= 0, and that is exactly the case where `canReveal` is already
-          // false — so no narrative can render either way. Harmless, but worth
-          // spelling out: a reader who spots the mismatch will otherwise spend
-          // real time re-deriving that it's inert.
+          // `key` uses the raw id; `householdCmId` below nulls non-positive
+          // ones. They diverge only when raw <= 0 — exactly when `canReveal`
+          // is already false, so the mismatch is inert.
           key={householdCmId}
           flags={party.flags ?? NO_FLAGS}
           householdCmId={householdCmId > 0 ? householdCmId : null}

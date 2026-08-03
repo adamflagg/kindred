@@ -206,14 +206,57 @@ describe('LodgingMap', () => {
   })
 
   it('opens the family panel as the board does — a slide-in overlay, not a sidebar', async () => {
-    // FamilyDetailsPanel exists in one copy for both surfaces. The map used its
-    // `embedded` mode because it had a sidebar to embed into; with the sidebar
-    // gone, both weekend surfaces open the same panel summer opens.
+    // FamilyDetailsPanel exists in one copy for both surfaces — the board and
+    // the map both open the same slide-in overlay summer opens.
     render(<LodgingMap parties={[PLACED]} units={UNITS} year={2026} />, { wrapper })
     await userEvent.click(screen.getAllByTestId('map-mark')[0] as HTMLElement)
     await userEvent.click(screen.getByRole('button', { name: /Johnson/ }))
     expect(screen.getByTestId('family-details-panel')).toBeInTheDocument()
     expect(screen.getByTestId('family-panel-backdrop')).toBeInTheDocument()
+  })
+
+  describe('panning does not fight the panel dismissal', () => {
+    // `useDismissOnDeadSpace` listens for `click` on the document, and the
+    // canvas is a bare div that matches none of `shouldKeepPanelsOpen`'s
+    // exemptions (panel, badge, button, card). A pan gesture ends in a click
+    // on that same div — without the guard below, every pan closes an open
+    // panel out from under the user, which is the opposite of what the
+    // canvas's own `onClick` already protects the peek from for the same
+    // reason.
+    async function openPanel() {
+      render(<LodgingMap parties={[PLACED]} units={UNITS} year={2026} />, { wrapper })
+      await userEvent.click(screen.getAllByTestId('map-mark')[0] as HTMLElement)
+      await userEvent.click(screen.getByRole('button', { name: /Johnson/ }))
+      // The dismissal listener attaches a macrotask after `isOpen` flips
+      // true (see useDismissOnDeadSpace's own docstring); let it, or the
+      // assertions below would pass for the wrong reason — nothing
+      // listening yet, rather than the guard actually working.
+      await new Promise((resolve) => setTimeout(resolve, 0))
+      return screen.getByTestId('map-canvas')
+    }
+
+    it('does not dismiss the panel when a click concludes a pan', async () => {
+      const canvas = await openPanel()
+      // The same pan the drag tests below drive: past DRAG_THRESHOLD_PX so
+      // `drag.active` flips true, exactly like a real pan. A real browser
+      // follows a drag like this with a click on the same element.
+      fireEvent.pointerDown(canvas, { pointerId: 1, clientX: 300, clientY: 300 })
+      fireEvent.pointerMove(canvas, { pointerId: 1, clientX: 240, clientY: 300 })
+      fireEvent.pointerUp(canvas, { pointerId: 1, clientX: 240, clientY: 300 })
+      fireEvent.click(canvas)
+      expect(screen.getByTestId('family-details-panel')).toHaveClass('animate-slide-in-right')
+    })
+
+    it('still dismisses the panel on a click that never moved', async () => {
+      // A click that never crossed the threshold is genuine dead space, and
+      // must still close the panel — the fix above must not swallow every
+      // canvas click, only the ones that concluded a real pan.
+      const canvas = await openPanel()
+      fireEvent.pointerDown(canvas, { pointerId: 1, clientX: 300, clientY: 300 })
+      fireEvent.pointerUp(canvas, { pointerId: 1, clientX: 300, clientY: 300 })
+      fireEvent.click(canvas)
+      expect(screen.getByTestId('family-details-panel')).toHaveClass('animate-slide-out-right')
+    })
   })
 
   it('ignores a second pointer so a two-finger gesture cannot steer the pan', () => {
