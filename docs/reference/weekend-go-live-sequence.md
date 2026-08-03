@@ -20,16 +20,28 @@ That is why this programme is plan-driven rather than triage-driven. Triage is t
 
 | Step | Work | Issue | Size | Critical path? |
 |---|---|---|---|---|
-| 0 | Roster / summary latency | [#1966](https://github.com/adamflagg/kindred/issues/1966) | ½–1 day | Yes |
+| 0 | Roster / summary latency — **DONE** | [#1966](https://github.com/adamflagg/kindred/issues/1966) | ½–1 day (spent) | Was yes; closed 2026-08-03 by PR #1976 |
+| 0a | **Scenarios replace the mirror, as summer's do** | [#1974](https://github.com/adamflagg/kindred/issues/1974) | ~1 day | **Yes — changes what a scenario means** |
 | 1 | Scenario plumbing, picker, read-only gating | [#1967](https://github.com/adamflagg/kindred/issues/1967) | 1–2 days | **Yes — gates all writes** |
-| 1a | Multi-room positioning + coordinate pair rule | [#1940](https://github.com/adamflagg/kindred/issues/1940), [#1941](https://github.com/adamflagg/kindred/issues/1941) | ½ day | Yes |
-| 2 | **Drag placement** | unfiled — `HANDOFF.md` §4 | 4–6 days | **Yes — this is the goal** |
+| 2 | **Drag placement** — placement only, no merge | unfiled — `HANDOFF.md` §4 | 4–6 days | **Yes — this is the goal** |
+| 2a | Multi-room placements on board and map | [#1940](https://github.com/adamflagg/kindred/issues/1940), [#1941](https://github.com/adamflagg/kindred/issues/1941), [#1982](https://github.com/adamflagg/kindred/issues/1982) | ½–1 day | Follow-up — unlocks merge-by-drag |
 | 3 | Roster/API correctness as one Python PR | [#1889](https://github.com/adamflagg/kindred/issues/1889), [#1936](https://github.com/adamflagg/kindred/issues/1936) | ≤1 day | Correctness |
 | 4 | 2026 inventory rollout + container guard | [#1917](https://github.com/adamflagg/kindred/issues/1917), [#1918](https://github.com/adamflagg/kindred/issues/1918) | ½ day + staff walk | Parallel, blocks nothing |
 | 5 | Parity polish — filters, tab state, sync invalidation | [#1912](https://github.com/adamflagg/kindred/issues/1912), [#1944](https://github.com/adamflagg/kindred/issues/1944), [#1894](https://github.com/adamflagg/kindred/issues/1894) | 1–2 days | **No — after the capability** |
-| 6 | Decide what comes *out* of a finished plan | [#1968](https://github.com/adamflagg/kindred/issues/1968) | no code | Ask before step 2 opens |
 
-**Total: 8–12 engineering days**, plus a cabin-confirmation property walk that sits on staff's calendar, not engineering's.
+**Step 2a gained a third issue, and it is the only newly-filed work that is order-specific.** [#1982](https://github.com/adamflagg/kindred/issues/1982) — the fit check settles `needs_private_bathroom` by reading the assigned unit's own `bathroom` field (`rosterAttention.ts:51-55`), and a merged placement resolves to no single unit, so `partyAttention` reports `unverified`. The result is that the one placement which physically delivers a private bathroom — a household holding every room in a building — is the one the board can never credit. The rule the registry already supports is exclusivity: a party satisfies the need when its units cover every member of that `bathroom_group`. It is gated on #1940 for the same reason as the rest of 2a (a merged party carries no unit codes until that lands), but it is a **separate decision** — it changes what `settled` means for a merge, so it should be taken deliberately rather than folded in.
+
+**Nothing else filed since this doc was written belongs in the sequence.** #1922 (verify-harness staleness, merged) was never on the path. #1963 / #1964 remain deliberately off it. The post-rollout guard now recorded on #1917 — stop `apply_lodging_inventory.py` overwriting units staff have confirmed — is a **follow-up to step 4, not a prerequisite**: the hazard does not exist until confirmations do, and it is tracked in that issue's own acceptance list rather than here.
+
+**Step 1b — decide what comes *out* of a finished plan** ([#1968](https://github.com/adamflagg/kindred/issues/1968), no code) is an explicit **prerequisite of step 2**, not a later row. It sat at the bottom of this table saying "ask before step 2 opens", which let a reader follow the table straight into drag work with the question unanswered. If the answer turns out to be a printed cabin list, the board needs print-shaped data — stable ordering, legible labels, occupancy per room — that nothing else would prompt anyone to add.
+
+**Total: 9–15 engineering days**, summing every row including the parallel step 4 — it is half a day of engineering even though it blocks nothing. This is effort, not calendar duration, and it excludes the cabin-confirmation property walk, which sits on staff's calendar rather than engineering's. The earlier "8–12" did not reconcile with its own table.
+
+**Two owner decisions, 2026-08-03, changed steps 0a–2a from what this table first said.**
+
+- **Lodging scenarios adopt summer's semantics** ([#1974](https://github.com/adamflagg/kindred/issues/1974), **done**). A lodging scenario used to OVERLAY the CampMinder mirror per party, so a fresh scenario rendered the synced placements and "unplaced" needed a tombstone row. Summer's draft table *replaces* production and is seeded by an explicit copy. There was no principled asymmetry — `sync/bunk_assignments.go` and `sync/lodging_assignments_sync.go` are both registered sync services — so the divergence was removed. **Consequences: dragging a party out of a cabin is a `DELETE`, not a tombstone `POST`; and a new scenario is EMPTY, so the picker (step 1) must offer `POST /api/lodging/placements/copy`.**
+- **The unplaced rail is being replaced by a floating queue, in parallel.** The weekend unplaced-popout work removes the board's fixed 240px rail (`LodgingBoard.tsx:101`) and the map's 280px one, in favour of summer's `FloatingUnassignedBadge` pattern extracted into a shared `FloatingQueueBadge` shell. **So "drag to the unplaced rail" is a drop target that will not exist by the time drag is built** — the target becomes a floating badge/popover. Summer's badge is already a dnd-kit droppable, so the pattern is in the tree, but do not plan against the rail. That work also adds `sort_name` to `RosterParty` and orders the queue by last name, which retires `rankUnplaced`'s mandatory-accommodation ranking — and with it the caveat the board currently prints about that ranking being half-uncomputable.
+- **Drag ships placement only.** Party → unit and party → rail. Unit → unit merge is **out**, because `buildBoard` indexes parties by `party.unit_code` and `_placement_of` sends `unit_code: ""` for any placement spanning 2+ rooms — so the board cannot draw a multi-room placement at all today, and drag-to-merge would make the card vanish into the off-board section. That is why #1940 moved from in front of drag to behind it: it is the render fix that *unlocks* merge, not a prerequisite for placement. Roughly 12–16 multi-room placements a year, ~3% of the total.
 
 Also open and deliberately *not* on this path: [#1963](https://github.com/adamflagg/kindred/issues/1963) and [#1964](https://github.com/adamflagg/kindred/issues/1964) (further perf), [#1907](https://github.com/adamflagg/kindred/issues/1907) / [#1932](https://github.com/adamflagg/kindred/issues/1932) / [#1930](https://github.com/adamflagg/kindred/issues/1930) (occupancy and placement-assist design), the pin editor and Phase F geo.
 
@@ -49,7 +61,14 @@ It is not. `party_size` has **four display consumers and zero decision consumers
 
 Every write requires a scenario; `lodging_assignments` is permanently admin-only by locked decision; there is no promote/publish endpoint in `api/routers/`; `lodging_assignments_sync.go` never writes back; no weekend surface imports `csvExport` or the PDF button.
 
-So the board can only ever write **drafts**, and go-live today means *staff arrange in Kindred, then re-key into CampMinder by hand.* Summer avoids this by writing `bunk_assignments` directly in production mode (`useCamperMovement.ts:353`); lodging is structurally denied that path by its own one-way ingest design.
+So the board can only ever write **drafts**, and go-live today means *staff arrange in Kindred, then re-key into CampMinder by hand.*
+
+**This section originally added "Summer avoids this by writing `bunk_assignments` directly in production mode (`useCamperMovement.ts:353`); lodging is structurally denied that path." That is wrong on both halves** (corrected 2026-08-03, and on [#1968](https://github.com/adamflagg/kindred/issues/1968) itself):
+
+- `useCamperMovement` does contain a production write path, but **the board never reaches it** — `BunkingBoardByArea.tsx:380` returns early from `handleDragEnd` when `isProductionMode`, and `bunk_assignments` is admin-only besides.
+- **Nothing writes back to CampMinder for any programme.** The only outbound POSTs in `pocketbase/sync` go to the internal solver API (`sync/process_requests.go:169`) and a geocoder (`sync/normalize_geographic.go:575`). The Go tree does make other outbound writes — `feedback/github.go:102` POSTs a GitHub issue — but none of them reach CampMinder.
+
+A finished summer plan reaches CampMinder the same way a weekend plan would: a human re-keys it. So this is a product question for both programmes, not a lodging deficiency to close — which makes "manual re-key, and that's fine" a considerably stronger year-one answer than the original framing implied.
 
 That may be the correct year-one answer. But it changes what the board must render, so it is [#1968](https://github.com/adamflagg/kindred/issues/1968) and it wants an answer in week one, not week two of drag.
 
@@ -112,20 +131,35 @@ whether #1967 has merged. If it has not, either take it as step one of your own
 work or coordinate — but do not start the drag interaction on top of a surface
 that cannot name a scenario.
 
-Also check #1966 (roster latency) and #1940 (multi-room positioning). #1940 is
-half a day and becomes live the moment drag can create a merge, so it belongs
-immediately in front of you, not after.
+Also check #1966 (roster latency). **#1974 (scenarios replace the mirror) has
+landed**, so a scenario is a plan of its own, seeded by `POST
+/api/lodging/placements/copy`, and a party with no draft row is unplaced.
 
 ## Scope
 
 - Party → unit
-- Party → unplaced rail. This is a **tombstone POST, not a DELETE**.
-- Unit → unit merge: an extension of the SAME `POST /placements` body to
-  `unit_ids: [a, b]`. #1931 collapsed three placement targets into one `units`
-  set, so there is no separate merge interaction to build.
-- Availability reserve/release rides along: `PUT /api/lodging/availability`
-  takes the `unit_id` the card already holds and the badge already renders
-  (`unitBadges.ts` → `LodgingUnitCard.tsx:30,68-72`).
+- Party → the unplaced queue. **Check what that queue IS before you build the
+  drop target.** The weekend unplaced-popout work replaces the board's fixed
+  left rail with a floating badge/popover built on a shared
+  `FloatingQueueBadge`; if it has landed, the rail is gone and you are making
+  the badge droppable, as summer already does with `FloatingUnassignedBadge`.
+  **The write is `DELETE /placements`** (#1974, landed). Older text —
+  including HANDOFF §2's three-state table and §6 — says it must be a
+  tombstone `POST` with an empty `unit_ids`. That was true under the OVERLAY
+  read, where deleting the row fell through to the CampMinder mirror and put
+  the family back in the cabin they were just dragged out of. The fall-through
+  is gone, an empty `unit_ids` is a 422, and HANDOFF §2 and §6 have been
+  rewritten to match.
+- **Unit → unit merge is OUT OF SCOPE.** `buildBoard` indexes parties by
+  `party.unit_code`, and `_placement_of` sends `unit_code: ""` for a placement
+  spanning 2+ rooms — so the board cannot draw a multi-room placement at all,
+  and a merge created by drag would make the card vanish into "Placed outside
+  the board". #1940 (step 2a) is the render fix that unlocks this; it is a
+  follow-up, not a prerequisite. Do not build merge-by-drag before it.
+- Availability reserve/release rides along IF it fits: `PUT
+  /api/lodging/availability` takes the `unit_id` the card already holds and the
+  badge already renders (`unitBadges.ts` → `LodgingUnitCard.tsx:30,68-72`).
+  Drop it and say so rather than half-building it.
 
 The write endpoints ALREADY EXIST (#1915) and are race-hardened (#1927). You
 are wiring a UI to them, not designing an API.
@@ -168,8 +202,10 @@ Answer them; do not re-litigate them.
 ## Do NOT gate on the fit check
 
 `partyAttention` is advisory. `place_party`
-(`api/services/lodging_write_service.py:78-147`) performs no validation of any
-kind, by design. Every cabin currently has `is_confirmed = 0`, so
+(`api/services/lodging_write_service.py:78-147`) does not enforce the
+fit/capacity check, by design — it DOES validate scenario, grain, permission,
+a non-empty unit set (#1974) and unique-index races, so do not read this as
+"the write path checks nothing". Every cabin currently has `is_confirmed = 0`, so
 `rosterAttention.ts:102` refuses to judge any housing need — the fit check is
 dark and will stay dark until staff physically walk the property. Ship drag
 with it dark. Do not bulk-confirm units to work around this; `is_confirmed`

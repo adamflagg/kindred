@@ -27,7 +27,11 @@ REPO_ROOT=$(git rev-parse --show-toplevel)
 PB_BIN="$REPO_ROOT/pocketbase/pocketbase"
 MIG_DIR="$REPO_ROOT/pocketbase/pb_migrations"
 
-[[ -x "$PB_BIN" ]] || { echo "error: $PB_BIN missing; run: cd pocketbase && go build -o pocketbase ." >&2; exit 2; }
+# Rebuild rather than assert existence: a stale binary would let this report
+# PASS against a Go model-level guard that no longer exists in the source.
+# Incremental, so it is near-free on an unchanged tree. See kindred#1922.
+echo ">> building pocketbase binary..."
+pb_harness_build_binary "$REPO_ROOT/pocketbase" "$PB_BIN"
 
 SCRATCH=$(mktemp -d)
 # shellcheck disable=SC2016  # deliberate: $SCRATCH expands when the trap fires, not here

@@ -552,9 +552,11 @@ func TestABackfillShapedRowPassesTheGrainGuard(t *testing.T) {
 // here to catch it first.
 //
 // guardDraftAssignmentGrain does not gate on `units` at all -- an empty set is
-// the draft's tombstone, not an error -- so this is really pinning that the
+// a row that places nobody, not an error -- so this is really pinning that the
 // party grain staged before wireHooks survives the units-only second save
-// unharmed. The genuinely dangerous backfill shape is a row whose party grain
+// unharmed. This two-step save is now the main reason the guard must keep
+// tolerating an empty set: kindred#1974 retired the tombstone that used to be
+// the other one. The genuinely dangerous backfill shape is a row whose party grain
 // is NEITHER household nor person: guardDraftAssignmentGrain rejects that
 // regardless of units (TestDraftAssignmentGrainXor's "neither household nor
 // person" case), so if the migration ever saveNoValidate'd such a row it would
@@ -594,11 +596,14 @@ func TestABackfillShapedDraftRowPassesTheGrainGuard(t *testing.T) {
 // schemas. Same reasoning as guardUnitParentCycle, which exists because
 // 1500000130 widened who can write lodging_units.
 //
-// The TARGET rule is deliberately NOT the truth table's, and 1500000134 did not
-// change that. An EMPTY `units` set on a draft row is the TOMBSTONE -- "staff
-// took this party off the board in this scenario" -- and is a legitimate row,
-// which is why guardAssignmentGrain, which now rejects exactly that, cannot
-// simply be re-bound here. Only the party grain is enforced.
+// The TARGET rule is deliberately NOT the truth table's, and neither
+// 1500000134 nor kindred#1974 changed that. An EMPTY `units` set on a draft row
+// is tolerated, which is why guardAssignmentGrain -- which rejects exactly that
+// -- cannot simply be re-bound here. It no longer MEANS anything (it was the
+// tombstone until #1974 removed the mirror from under a scenario; the API now
+// refuses to create one), but 1500000134's two-step backfill and
+// deleteRefRecords both produce the shape, so rejecting it would break paths
+// this guard does not own. Only the party grain is enforced.
 func TestDraftAssignmentGrainXor(t *testing.T) {
 	cases := []struct {
 		name          string
@@ -610,8 +615,8 @@ func TestDraftAssignmentGrainXor(t *testing.T) {
 		{"household in one room", 1, 2000001, 0, false},
 		{"person in one room", 1, 0, 1000001, false},
 		{"household across two rooms", 2, 2000001, 0, false},
-		// The tombstone. Illegal on the truth table, meaningful here.
-		{"no units at all is the tombstone", 0, 2000001, 0, false},
+		// Illegal on the truth table, tolerated here -- see the comment above.
+		{"no units at all is tolerated", 0, 2000001, 0, false},
 		{"both household and person", 1, 2000001, 1000001, true},
 		{"neither household nor person", 1, 0, 0, true},
 	}

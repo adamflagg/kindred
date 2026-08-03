@@ -24,6 +24,7 @@
 #
 # Public API:
 #   pb_harness_require_tools [extra tools...]
+#   pb_harness_build_binary <go_pkg_dir> <out_path>
 #   pb_harness_pick_port
 #   pb_harness_install_trap [extra cleanup command]
 #   pb_harness_boot <pb_bin> <db_dir> <migrations_dir> <log_path>
@@ -50,6 +51,52 @@ pb_harness_require_tools() {
     command -v "$cmd" >/dev/null 2>&1 \
       || { echo "error: required command '$cmd' not found" >&2; exit 2; }
   done
+}
+
+# pb_harness_build_binary <go_pkg_dir> <out_path>
+#
+# Builds <go_pkg_dir> to <out_path>, so a verify run always exercises the tree
+# it is checking rather than whatever was compiled last.
+#
+# Existence is not freshness, and that gap is not obvious: `go build ./...` --
+# the documented Go gate, and what the pre-push hook runs -- compiles into the
+# build cache and rewrites no `-o` target, so nothing in the normal loop
+# refreshes a checked-in `pocketbase/pocketbase`. The callers used to assert
+# only that the file was present, which makes a forgotten rebuild produce a
+# PASS about a binary that predates the change under test. A false FAIL is
+# self-limiting because someone investigates; the false PASS is why this
+# exists (kindred#1922).
+#
+# go build is incremental, so on an unchanged tree this costs approximately
+# nothing.
+#
+# Exits 2 -- harness error, not assertion failure -- if go is missing or the
+# build fails, echoing the compiler's own output so the exit code is
+# actionable. Same contract as pb_harness_require_tools.
+pb_harness_build_binary() {
+  local pkg_dir="$1" out="$2"
+
+  # Checked here rather than in pb_harness_require_tools' default list so the
+  # dependency travels with the function that actually needs it.
+  command -v go >/dev/null 2>&1 \
+    || { echo "error: required command 'go' not found" >&2; exit 2; }
+
+  # The build runs from inside $pkg_dir, so a relative -o would land there
+  # instead of where the caller meant -- and the caller would then boot
+  # whatever was already at its intended path, which is the stale-artifact bug
+  # this function exists to close, arriving by a different route.
+  [[ "$out" == /* ]] \
+    || { echo "error: pb_harness_build_binary: output path '$out' must be absolute" >&2; exit 2; }
+
+  local build_log
+  build_log=$(mktemp -t pb-harness-build-XXXX)
+  if ! ( cd "$pkg_dir" && go build -o "$out" . ) > "$build_log" 2>&1; then
+    echo "error: could not build $pkg_dir -> $out" >&2
+    cat "$build_log" >&2
+    rm -f "$build_log"
+    exit 2
+  fi
+  rm -f "$build_log"
 }
 
 # pb_harness_pick_port

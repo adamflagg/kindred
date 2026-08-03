@@ -3,19 +3,21 @@
 Every PocketBase read behind /api/lodging lives here so the service layer is
 testable against mocks. Mirrors api/services/metrics_repository.py.
 
-Two layers, since 1500000132. The SYNCED rows are the base and are read with
-no scenario predicate -- lodging_assignments no longer has that column, because
-it was dead weight that invited a `scenario != ""` write rule instead of a
-draft table. (1500000132 dropped the same column from lodging_merges; 1500000134
-then deleted that collection outright, folding its member set into the
-placement's own `units` relation.) A scenario's own rows come from
-lodging_assignments_draft, and from lodging_availability filtered to the
-scenario, and OVERLAY the base per party and per unit.
+Two sources of placements, since 1500000132, and a request reads exactly ONE
+of them. The SYNCED rows are read with no scenario predicate --
+lodging_assignments no longer has that column, because it was dead weight that
+invited a `scenario != ""` write rule instead of a draft table. (1500000132
+dropped the same column from lodging_merges; 1500000134 then deleted that
+collection outright, folding its member set into the placement's own `units`
+relation.) A scenario's placements come from lodging_assignments_draft and
+REPLACE them: kindred#1974 removed the fall-through, so a scenario is a plan
+of its own, seeded by an explicit copy rather than by rendering the mirror
+through the gaps.
 
-Overlay rather than replace is what makes a freshly-created scenario render
-the CampMinder mirror rather than an empty board, with no seed step to go
-wrong. `scenario = ""` still means the live plan for availability, which kept
-its column.
+AVAILABILITY is the exception and stays an overlay: a scenario's rows come
+from lodging_availability filtered to it and layer over the live rows per
+unit. Nothing syncs into that table, so a scenario has no record of truth to
+replace there. `scenario = ""` is the live plan.
 
 Request answers are NOT re-parsed here. The Go ingest derives the share gate,
 the NEAR/WITH/similar-ages modes, the household-grain request text and the four
@@ -74,6 +76,26 @@ UNRESOLVED_ALIAS_KIND = "unresolved_alias"
 # Same defect, same fix as the Go attribution reader in #1877.
 STABLE_SORT = "id"
 
+# Rows per HTTP request for every paged read below.
+#
+# The SDK's `get_full_list(batch: int = 100, ...)` defaults to 100 and recurses
+# once per page, so a read is round-trip-bound rather than row-bound.
+# `fetch_prior_household_cm_ids` pages every household from every prior year --
+# 20,256 rows on 2026 data -- which at the default is 203 requests and ~2.3s of
+# the roster's ~3.1s, to produce one boolean per party. At 1000 it is 21
+# requests and ~1.0s (#1966).
+#
+# Applied in ONE place, `_page`, rather than at each call site: `batch` is a
+# parameter of `get_full_list` itself and NOT a member of `query_params`, so
+# putting it in the dict is accepted silently and leaves the default in place.
+# A read that never passes the parameter cannot pass it wrongly.
+#
+# 1000 is the CEILING, not a guess: PocketBase declares `MaxPerPage int = 1000`
+# and `tools/search/provider.go:289` CLAMPS a larger request rather than
+# rejecting it. So a bigger number here would page identically while reading as
+# though it did something.
+PAGE_SIZE = 1000
+
 
 def _weekend_type_filter() -> str:
     return " || ".join(f'session_type = "{t}"' for t in WEEKEND_SESSION_TYPES)
@@ -85,10 +107,29 @@ class LodgingRepository:
     def __init__(self, pb: PocketBase) -> None:
         self.pb = pb
 
+    async def _page(self, collection: str, query_params: dict[str, Any]) -> list[Any]:
+        """Read a whole collection, paging at PAGE_SIZE.
+
+        THE ONLY PLACE `get_full_list` IS NAMED. Every paged read goes through
+        here so that a read added later cannot forget `batch` -- it never
+        passes one. The earlier shape spelled `batch=PAGE_SIZE` at each of the
+        seventeen call sites and relied on a test to catch the eighteenth,
+        which is a weaker guarantee than not having the parameter to forget.
+
+        `batch` is a parameter of `get_full_list` itself, NOT a member of
+        `query_params`: putting it in the dict is accepted silently and leaves
+        the SDK default of 100 in place.
+        """
+        return await asyncio.to_thread(
+            self.pb.collection(collection).get_full_list,
+            batch=PAGE_SIZE,
+            query_params=query_params,
+        )
+
     async def fetch_weekend_sessions(self, year: int) -> list[Any]:
         """All family + adult sessions for a year, in display order."""
-        return await asyncio.to_thread(
-            self.pb.collection(CAMP_SESSIONS).get_full_list,
+        return await self._page(
+            CAMP_SESSIONS,
             query_params={
                 "filter": f"year = {year} && ({_weekend_type_filter()})",
                 "sort": "sort_order,start_date",
@@ -104,8 +145,8 @@ class LodgingRepository:
         filter a summer cm_id resolves here and is handed a family-grain
         roster, instead of the 404 the router promises.
         """
-        rows = await asyncio.to_thread(
-            self.pb.collection(CAMP_SESSIONS).get_full_list,
+        rows = await self._page(
+            CAMP_SESSIONS,
             query_params={
                 "filter": f"year = {year} && cm_id = {session_cm_id} && ({_weekend_type_filter()})",
                 "sort": STABLE_SORT,
@@ -120,8 +161,8 @@ class LodgingRepository:
         the payload so the roster can badge them. Only the CAPACITY COUNTS
         exclude containers (spec §9a: naive SUM(sleeps) is 408 vs a true 389).
         """
-        return await asyncio.to_thread(
-            self.pb.collection(LODGING_UNITS).get_full_list,
+        return await self._page(
+            LODGING_UNITS,
             query_params={"expand": "area", "sort": "area.sort_order,name"},
         )
 
@@ -134,8 +175,8 @@ class LodgingRepository:
         rows only; a scenario's own overrides come from
         fetch_scenario_availability and overlay these.
         """
-        return await asyncio.to_thread(
-            self.pb.collection(LODGING_AVAILABILITY).get_full_list,
+        return await self._page(
+            LODGING_AVAILABILITY,
             query_params={
                 "filter": f'session = "{pb_escape(session_pb_id)}" && year = {year} && {LIVE_PLAN_FILTER}',
                 "sort": STABLE_SORT,
@@ -149,8 +190,8 @@ class LodgingRepository:
         and /summary, which gate on authentication only -- so it goes through
         pb_escape. See the note on fetch_draft_assignments.
         """
-        return await asyncio.to_thread(
-            self.pb.collection(LODGING_AVAILABILITY).get_full_list,
+        return await self._page(
+            LODGING_AVAILABILITY,
             query_params={
                 "filter": (
                     f'session = "{pb_escape(session_pb_id)}" && year = {year} && scenario = "{pb_escape(scenario_id)}"'
@@ -165,15 +206,17 @@ class LodgingRepository:
         No scenario predicate: 1500000132 dropped that column. It was never
         written -- all 67 rows carried '' -- and keeping it would have invited
         exactly the `scenario != ""` write rule the draft table exists to avoid.
-        These rows ARE the live plan, and a scenario overlays them.
+        These rows ARE the live plan. A request naming a scenario does not read
+        them at all; it reads fetch_draft_assignments instead, and the copy
+        operation is the one path between the two.
 
         `units` is the one relation a placement carries since 1500000134
         collapsed `unit`/`merge`/`merge_draft` into it -- a multi-select field,
         so expanding it hands back a LIST of unit records rather than one.
         _placement_of reads that list, not a lookup keyed by id.
         """
-        return await asyncio.to_thread(
-            self.pb.collection(LODGING_ASSIGNMENTS).get_full_list,
+        return await self._page(
+            LODGING_ASSIGNMENTS,
             query_params={
                 "filter": f'session = "{pb_escape(session_pb_id)}" && year = {year}',
                 "expand": "units",
@@ -182,7 +225,11 @@ class LodgingRepository:
         )
 
     async def fetch_draft_assignments(self, year: int, session_pb_id: str, scenario_id: str) -> list[Any]:
-        """One scenario's draft placements for one session.
+        """One scenario's placements for one session -- ALL of them.
+
+        Not a delta over fetch_assignments. Under kindred#1974 these rows are
+        the scenario's whole plan, so a party with no row here is unplaced in
+        this scenario, whatever the mirror says.
 
         One target expands, not three: 1500000134 collapsed `unit` (an atomic
         room), `merge` (a slot the ingest built from a historical cabin
@@ -199,8 +246,8 @@ class LodgingRepository:
         is server-resolved and cannot carry one today, but it is escaped too so
         that reading this line requires no argument about provenance.
         """
-        return await asyncio.to_thread(
-            self.pb.collection(LODGING_ASSIGNMENTS_DRAFT).get_full_list,
+        return await self._page(
+            LODGING_ASSIGNMENTS_DRAFT,
             query_params={
                 "filter": (
                     f'session = "{pb_escape(session_pb_id)}" && year = {year} && scenario = "{pb_escape(scenario_id)}"'
@@ -216,10 +263,10 @@ class LodgingRepository:
         status_id = 2 is the single source of truth for enrolment; filtering
         any other way is silently wrong.
         """
-        return await asyncio.to_thread(
-            self.pb.collection(ATTENDEES).get_full_list,
+        return await self._page(
+            ATTENDEES,
             query_params={
-                "filter": f'session = "{session_pb_id}" && year = {year} && {ACTIVE_ENROLLED_FILTER}',
+                "filter": f'session = "{pb_escape(session_pb_id)}" && year = {year} && {ACTIVE_ENROLLED_FILTER}',
                 "expand": "person",
                 "sort": STABLE_SORT,
             },
@@ -227,8 +274,8 @@ class LodgingRepository:
 
     async def fetch_households(self, year: int) -> dict[str, Any]:
         """Households for a year, keyed by PocketBase record id."""
-        rows = await asyncio.to_thread(
-            self.pb.collection(HOUSEHOLDS).get_full_list,
+        rows = await self._page(
+            HOUSEHOLDS,
             query_params={"filter": f"year = {year}", "sort": STABLE_SORT},
         )
         return {row.id: row for row in rows}
@@ -239,8 +286,8 @@ class LodgingRepository:
         The PHI path uses this instead of fetch_households: answering one
         household must not materialise every family in the year.
         """
-        rows = await asyncio.to_thread(
-            self.pb.collection(HOUSEHOLDS).get_full_list,
+        rows = await self._page(
+            HOUSEHOLDS,
             query_params={
                 "filter": f"year = {year} && cm_id = {household_cm_id}",
                 "sort": STABLE_SORT,
@@ -254,8 +301,8 @@ class LodgingRepository:
         This is the returning-family signal: households rows are per-year, so
         a cm_id present before `year` means the family has been here before.
         """
-        rows = await asyncio.to_thread(
-            self.pb.collection(HOUSEHOLDS).get_full_list,
+        rows = await self._page(
+            HOUSEHOLDS,
             query_params={"filter": f"year < {year}", "fields": "cm_id", "sort": STABLE_SORT},
         )
         return {int(getattr(row, "cm_id", 0)) for row in rows if getattr(row, "cm_id", 0)}
@@ -266,8 +313,8 @@ class LodgingRepository:
         CampMinder enrols only the children for family camp; the adults exist
         only as custom-field values scraped into this table.
         """
-        rows = await asyncio.to_thread(
-            self.pb.collection(FAMILY_CAMP_ADULTS).get_full_list,
+        rows = await self._page(
+            FAMILY_CAMP_ADULTS,
             query_params={"filter": f"year = {year}", "sort": "adult_number"},
         )
         grouped: dict[str, list[Any]] = defaultdict(list)
@@ -286,8 +333,8 @@ class LodgingRepository:
         from share_cabin_preference / shared_cabin_modes_raw, which are the raw
         profile values kept for provenance.
         """
-        rows = await asyncio.to_thread(
-            self.pb.collection(FAMILY_CAMP_REGISTRATIONS).get_full_list,
+        rows = await self._page(
+            FAMILY_CAMP_REGISTRATIONS,
             query_params={"filter": f"year = {year}", "sort": STABLE_SORT},
         )
         return {str(getattr(row, "household", "")): row for row in rows}
@@ -300,8 +347,8 @@ class LodgingRepository:
         the permission-gated medical endpoint, which reads ONE household
         through fetch_medical_for_household rather than this whole-year map.
         """
-        rows = await asyncio.to_thread(
-            self.pb.collection(FAMILY_CAMP_MEDICAL).get_full_list,
+        rows = await self._page(
+            FAMILY_CAMP_MEDICAL,
             query_params={"filter": f"year = {year}", "sort": STABLE_SORT},
         )
         return {str(getattr(row, "household", "")): row for row in rows}
@@ -315,8 +362,8 @@ class LodgingRepository:
         """
         if not household_pb_id:
             return None
-        rows = await asyncio.to_thread(
-            self.pb.collection(FAMILY_CAMP_MEDICAL).get_full_list,
+        rows = await self._page(
+            FAMILY_CAMP_MEDICAL,
             query_params={
                 "filter": f'year = {year} && household = "{household_pb_id}"',
                 "sort": STABLE_SORT,
@@ -385,8 +432,8 @@ class LodgingRepository:
         caller then updates or deletes. The two cm_ids are ints and need no
         escaping.
         """
-        rows = await asyncio.to_thread(
-            self.pb.collection(LODGING_ASSIGNMENTS_DRAFT).get_full_list,
+        rows = await self._page(
+            LODGING_ASSIGNMENTS_DRAFT,
             query_params={
                 "filter": (
                     f'session = "{pb_escape(session_pb_id)}" && year = {year} '
@@ -397,6 +444,23 @@ class LodgingRepository:
             },
         )
         return rows[0] if rows else None
+
+    async def count_draft_assignments(self, year: int, session_pb_id: str, scenario_id: str) -> int:
+        """How many placements a scenario holds for one weekend.
+
+        The copy operation's precheck. Scoped to the weekend as well as the
+        scenario because a scenario spans weekends: placements made for one
+        must not refuse a seed of another.
+
+        A count, not a fetch: the answer is "any?", and paging in sixty-two
+        rows with their unit expands to learn it is the read `/summary` was
+        built to stop repeating. `scenario_id` is escaped for the reason
+        fetch_draft_assignments spells out.
+        """
+        return await self._count(
+            LODGING_ASSIGNMENTS_DRAFT,
+            (f'session = "{pb_escape(session_pb_id)}" && year = {year} && scenario = "{pb_escape(scenario_id)}"'),
+        )
 
     async def create_draft_assignment(self, data: dict[str, Any]) -> Any:
         return await asyncio.to_thread(self.pb.collection(LODGING_ASSIGNMENTS_DRAFT).create, data)
@@ -421,8 +485,8 @@ class LodgingRepository:
         escaped. Unescaped, an injected `||` would make this return some other
         weekend's row, which set_availability then updates or deletes.
         """
-        rows = await asyncio.to_thread(
-            self.pb.collection(LODGING_AVAILABILITY).get_full_list,
+        rows = await self._page(
+            LODGING_AVAILABILITY,
             query_params={
                 "filter": (
                     f'session = "{pb_escape(session_pb_id)}" && year = {year} '

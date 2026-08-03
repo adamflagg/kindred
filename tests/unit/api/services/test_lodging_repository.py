@@ -10,6 +10,7 @@ from unittest.mock import MagicMock
 import pytest
 
 from api.services.lodging_repository import (
+    PAGE_SIZE,
     WEEKEND_SESSION_TYPES,
     LodgingRepository,
 )
@@ -169,7 +170,9 @@ class TestFetchAssignments:
         that column from lodging_assignments -- it was never written, and
         keeping it invited the `scenario != ""` write rule the draft table
         exists to avoid -- so filtering on it now asks PocketBase for an
-        unknown field. The synced rows ARE the base; a scenario overlays them.
+        unknown field. These rows are the live plan, and since kindred#1974 a
+        request naming a scenario does not read them at all -- it reads
+        fetch_draft_assignments instead.
         """
         await repo.fetch_assignments(2026, "sess_pb_1")
 
@@ -434,3 +437,119 @@ class TestCounts:
         args = pb.collection.return_value.get_list.call_args[0]
         assert args[0] == 1, "page 1"
         assert args[1] == 1, "one row is enough to carry total_items"
+
+
+class TestPageSize:
+    """Every paged read must name its batch size (#1966).
+
+    The SDK's `get_full_list(batch: int = 100, ...)` defaults to 100 rows per
+    HTTP request and recurses once per page. `fetch_prior_household_cm_ids`
+    pages every household from every prior year -- 20,256 rows on 2026 data --
+    which is 203 round trips and ~2.3s of the roster's ~3.1s, to produce one
+    boolean per party. At 1000 it is 21.
+
+    Measured loopback against the dev DB; a round-trip-bound cost scales with
+    per-hop RTT, so the production figure is likely worse rather than better.
+    """
+
+    @pytest.mark.asyncio
+    async def test_prior_households_page_at_exactly_page_size(self, repo: LodgingRepository, pb: MagicMock) -> None:
+        """The batch must reach the SDK, and must be PAGE_SIZE.
+
+        `batch` is a positional-or-keyword parameter on `get_full_list`, NOT a
+        member of `query_params` -- putting it in the dict is silently ignored
+        and leaves the default in place.
+
+        Asserted as EQUAL to the constant rather than as a lower bound. A
+        `>= 500` assertion passes while somebody "tunes" PAGE_SIZE to 500 and
+        doubles the round trips -- the exact regression this pins. 1000 is also
+        PocketBase's `MaxPerPage`, above which it clamps, so there is one
+        correct value here and the test should say which.
+        """
+        await repo.fetch_prior_household_cm_ids(2026)
+
+        call = pb.collection.return_value.get_full_list.call_args
+        batch = call[1].get("batch", call[0][0] if call[0] else None)
+        assert batch == PAGE_SIZE, f"paged at {batch}, not PAGE_SIZE ({PAGE_SIZE})"
+
+    def test_no_read_calls_get_full_list_directly(self) -> None:
+        """`_page` is the ONLY place `get_full_list` may be named.
+
+        This replaces an earlier test that walked for `get_full_list` calls
+        missing a `batch=` keyword. That test was defeated by an intermediate
+        variable -- `getter = self.pb.collection(X).get_full_list` followed by
+        `to_thread(getter, ...)` puts no `get_full_list` attribute inside the
+        call's own subtree, so the walk saw nothing and reported success.
+
+        Funnelling every paged read through one helper makes the defect
+        UNREPRESENTABLE rather than merely detected: a read added later cannot
+        forget `batch`, because it never passes one. So this asserts the funnel
+        holds, which is a claim about one line of code rather than a claim
+        about every call site's shape.
+        """
+        import ast
+        import inspect
+
+        from api.services import lodging_repository
+
+        tree = ast.parse(inspect.getsource(lodging_repository))
+        page_helper = next(
+            node
+            for node in ast.walk(tree)
+            if isinstance(node, ast.AsyncFunctionDef | ast.FunctionDef) and node.name == "_page"
+        )
+        inside_helper = {id(node) for node in ast.walk(page_helper)}
+
+        stray = [
+            node.lineno
+            for node in ast.walk(tree)
+            if isinstance(node, ast.Attribute) and node.attr == "get_full_list" and id(node) not in inside_helper
+        ]
+
+        assert not stray, f"get_full_list named outside _page at lines {stray} -- route it through the helper"
+
+
+class TestFilterEscaping:
+    """Every id interpolated into a filter goes through `pb_escape`.
+
+    `session_pb_id` is server-derived today -- it comes from `fetch_session`
+    or `_resolve_session_pb_id`, never straight off the wire -- so this is
+    defence in depth rather than a live hole. It is worth pinning anyway:
+    six of the seven reads taking a `session_pb_id` escaped it and one did
+    not, and that asymmetry is how the next one gets written wrong. A reader
+    comparing two adjacent methods cannot tell which convention is the
+    deliberate one.
+    """
+
+    @pytest.mark.asyncio
+    async def test_attendees_escapes_the_session_id(self, repo: LodgingRepository, pb: MagicMock) -> None:
+        await repo.fetch_attendees_for_session(2026, 'pb"; //')
+
+        filter_str = _last_query(pb)["filter"]
+        # Assert the RAW value is absent and the ESCAPED form is present.
+        # Asserting only that `"; //` is missing would fail against correctly
+        # escaped output too, because `pb\"; //` still contains that substring
+        # -- a test that cannot pass is as useless as one that cannot fail.
+        assert 'pb"; //' not in filter_str, "raw quote reached the filter unescaped"
+        assert 'pb\\"; //' in filter_str, "quote was not backslash-escaped"
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "call",
+        [
+            pytest.param(lambda r, s: r.fetch_availability(2026, s), id="fetch_availability"),
+            pytest.param(lambda r, s: r.fetch_assignments(2026, s), id="fetch_assignments"),
+            pytest.param(lambda r, s: r.fetch_attendees_for_session(2026, s), id="fetch_attendees"),
+            pytest.param(lambda r, s: r.fetch_scenario_availability(2026, s, "sc"), id="fetch_scenario_avail"),
+            pytest.param(lambda r, s: r.fetch_draft_assignments(2026, s, "sc"), id="fetch_draft_assignments"),
+        ],
+    )
+    async def test_every_session_scoped_read_escapes_alike(
+        self, repo: LodgingRepository, pb: MagicMock, call: Any
+    ) -> None:
+        """The convention, asserted across all of them rather than one by one."""
+        await call(repo, 'pb"evil')
+
+        filter_str = _last_query(pb)["filter"]
+        assert 'pb"evil' not in filter_str, "raw quote reached the filter unescaped"
+        assert 'pb\\"evil' in filter_str, "quote was not backslash-escaped"
