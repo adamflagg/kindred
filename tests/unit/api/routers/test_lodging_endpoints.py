@@ -749,6 +749,53 @@ class TestPlacementWrites:
 
         assert response.status_code == 422
 
+    def test_a_placement_naming_the_same_unit_twice_is_refused(self, mock_pb: MagicMock) -> None:
+        """Distinct from the completeness rule removed in #1903 (see the
+        deleted MergeWriteRequest._members_are_distinct, kindred history).
+
+        `["u1", "u1"]` is a two-member placement to Pydantic and a one-member
+        placement to a PocketBase relation field, which may collapse the
+        duplicate on save. Post-collapse, `unit_ids` is the only way to build
+        a multi-room slot, so a silently-collapsed duplicate does not just
+        shrink the set -- it turns a merged-slot request into a plain one and
+        still returns 200.
+        """
+        with patch("api.routers.lodging.pb", mock_pb):
+            client = _write_client(_manage_user(), mock_pb)
+            response = client.post(
+                "/api/lodging/placements",
+                json={
+                    "year": 2026,
+                    "session_cm_id": 1000001,
+                    "scenario": "scn_1",
+                    "household_cm_id": 2000001,
+                    "unit_ids": ["u1", "u1"],
+                },
+            )
+
+        assert response.status_code == 422
+
+    def test_a_placement_over_the_unit_cap_is_refused(self, mock_pb: MagicMock) -> None:
+        """21 units exceeds the field's own maxSelect of 20
+        (1500000134_lodging_units_relation.js). Refusing here names the cap
+        instead of surfacing a PocketBase validation error -- and on the
+        update path that PocketBase error is unguarded and would otherwise
+        escape as a 500 (lodging_write_service.py)."""
+        with patch("api.routers.lodging.pb", mock_pb):
+            client = _write_client(_manage_user(), mock_pb)
+            response = client.post(
+                "/api/lodging/placements",
+                json={
+                    "year": 2026,
+                    "session_cm_id": 1000001,
+                    "scenario": "scn_1",
+                    "household_cm_id": 2000001,
+                    "unit_ids": [f"u{i}" for i in range(21)],
+                },
+            )
+
+        assert response.status_code == 422
+
     def test_losing_the_upsert_race_updates_instead_of_500ing(self, mock_pb: MagicMock) -> None:
         """Two staff dragging the same family at the same moment.
 

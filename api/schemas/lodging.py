@@ -384,7 +384,28 @@ class PlacementWriteRequest(PartyGrainRequest):
     # built inside this scenario) into this single multi-valued relation. A
     # party placed across several rooms is just a longer list, whether the
     # ingest or the board put it there.
-    unit_ids: list[str] = Field(default_factory=list)
+    #
+    # max_length=20 matches the field's own maxSelect
+    # (1500000134_lodging_units_relation.js), carried over from the deleted
+    # merge tables' member cap.
+    unit_ids: list[str] = Field(default_factory=list, max_length=20)
+
+    @model_validator(mode="after")
+    def _units_are_distinct(self) -> Self:
+        """Lifted from the deleted MergeWriteRequest._members_are_distinct.
+
+        `["u1", "u1"]` is a two-member placement to Pydantic and a one-member
+        placement to a PocketBase relation field, which may collapse the
+        duplicate on save. The caller gets a 200 for a row that does not say
+        what they sent -- and post-collapse, `unit_ids` is the ONLY way to
+        build a multi-room slot, so a collapsed duplicate does not just shrink
+        the set, it changes the placement's kind: two ids become one, and
+        `lodging_roster_service.py`'s `_placement_of` then reports a plain
+        slot for what the caller asked to be a merged one.
+        """
+        if len(set(self.unit_ids)) != len(self.unit_ids):
+            raise ValueError("unit_ids must not name the same unit twice")
+        return self
 
 
 class PlacementDeleteRequest(PartyGrainRequest):
