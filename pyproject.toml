@@ -23,7 +23,7 @@ classifiers = [
 ]
 dependencies = [
     # Web framework
-    "fastapi>=0.139.2",
+    "fastapi>=0.141.1",
     "python-multipart>=0.0.32",
     "uvicorn[standard]>=0.52.0",
     # Database
@@ -36,7 +36,7 @@ dependencies = [
     "openai>=2.51.0",
     "ortools>=9.15.6755",
     # Data processing
-    "pandas>=3.0.3",
+    "pandas>=3.0.5",
     "tzdata>=2026.3",
     "networkx>=3.6.1",
     # Configuration & validation
@@ -48,7 +48,7 @@ dependencies = [
     "PyJWT[crypto]>=2.13.0",
     # CLI & utilities
     "rich>=15.0.0",
-    "tqdm>=4.69.0",
+    "tqdm>=4.70.0",
     # Scheduling
     "APScheduler>=3.11.3",
     "croniter>=6.2.4",
