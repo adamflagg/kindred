@@ -15,10 +15,10 @@
  * Nothing here writes.
  */
 import { ChevronDown, ChevronRight, Info, TriangleAlert } from 'lucide-react'
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useState } from 'react'
 
+import { useDismissOnDeadSpace } from '../../hooks'
 import type { LodgingUnitRow, RosterPartyRow } from '../../types/lodging'
-import { shouldKeepPanelsOpen } from '../../utils/clickoutsidePredicate'
 import { buildBoard } from './boardLayout'
 import { FamilyCard } from './FamilyCard'
 import { FamilyDetailsPanel } from './FamilyDetailsPanel'
@@ -53,24 +53,10 @@ export function LodgingBoard({ parties, units, year }: LodgingBoardProps) {
     setRequestClose(false)
   }, [])
 
-  // Clicking dead space dismisses the panel, using the same shared predicate
-  // the summer board uses so the two behaviours cannot drift.
-  useEffect(() => {
-    if (selected === null) return
-    const handler = (event: MouseEvent) => {
-      if (shouldKeepPanelsOpen(event)) return
-      setRequestClose(true)
-    }
-    // A microtask's delay, so the click that opened the panel is not the click
-    // that closes it.
-    const timeoutId = setTimeout(() => {
-      document.addEventListener('click', handler)
-    }, 0)
-    return () => {
-      clearTimeout(timeoutId)
-      document.removeEventListener('click', handler)
-    }
-  }, [selected])
+  // Same dead-space dismissal the summer board uses, through the same hook.
+  useDismissOnDeadSpace(selected === null ? null : partyKey(selected), () => {
+    setRequestClose(true)
+  })
 
   const toggleArea = (key: string) => {
     setCollapsed((current) => {
