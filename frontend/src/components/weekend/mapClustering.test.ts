@@ -38,8 +38,9 @@ describe('clusterByProximity', () => {
     expect(clusters[0]?.members).toHaveLength(3)
   })
 
-  // NOT a monotonicity claim: on real data the multi-cluster count rises from
-  // 8 to 9 between 1x and 2x before falling. This pins one concrete spread.
+  // NOT a monotonicity claim. A fragmenting component can yield several
+  // still-multi-member components, so the count is not guaranteed to fall at
+  // every step. This pins one concrete spread instead.
   it('dissolves clusters as positions spread, which is what zoom does', () => {
     const tight = [at('a', 100, 100), at('b', 108, 100), at('c', 400, 400)]
     const spread = tight.map((p) => at(p.item, p.x * 8, p.y * 8))

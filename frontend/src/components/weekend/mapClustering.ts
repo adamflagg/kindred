@@ -9,9 +9,10 @@
  * Because the radius is in SCREEN pixels, zooming in dissolves clusters: no
  * separate expand state, and the same code answers "what overlaps" at every
  * zoom. Measured on the real registry at a 1000px canvas: 8 multi-room
- * clusters at 1x, 9 at 2x, 5 at 3x, 3 at 4x, 2 at 6x, 1 at 8x, none at 12x.
- * It RISES before it falls — single-link chaining splits one blob into several
- * still-multi-member clusters — so this is not a monotonic property.
+ * clusters at 1x, 8 at 2x, 4 at 3x, 3 at 4x, 2 at 6x, 1 at 8x, none at 12x.
+ * Do not turn that into a monotonicity test: a component that fragments can
+ * yield SEVERAL still-multi-member components, so the count is not guaranteed
+ * to fall at every step even though it does on this registry.
  *
  * Single link rather than centroid link because a terrace of rooms is one
  * building: each room is close to its neighbour and the ends may be far apart.
