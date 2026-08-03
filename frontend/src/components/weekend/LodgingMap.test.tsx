@@ -214,4 +214,78 @@ describe('LodgingMap', () => {
     )
     expect(screen.getByText(/1 room has no position/i)).toBeInTheDocument()
   })
+
+  it('prevents the page from scrolling under a wheel-zoom', () => {
+    // React 19 registers wheel listeners as PASSIVE at the root, so
+    // `event.preventDefault()` inside a JSX `onWheel` handler is silently
+    // ignored — wheeling the map zooms it AND scrolls the page beneath it.
+    // A `{ passive: false }` native listener is the only way to prove this.
+    render(<LodgingMap parties={[]} units={UNITS} year={2026} />)
+    const canvas = screen.getByTestId('map-canvas')
+    const wheelEvent = new WheelEvent('wheel', { deltaY: -100, cancelable: true, bubbles: true })
+    canvas.dispatchEvent(wheelEvent)
+    expect(wheelEvent.defaultPrevented).toBe(true)
+  })
+
+  it('renders a mixed staff/family cluster the same shape regardless of member order', () => {
+    // Close enough (2px apart on the 1000px jsdom fallback canvas) to cluster
+    // into one mark. Mixing allocation_default is the case that flips with
+    // whichever row the database happens to return first if the mark reads
+    // its shape off `members[0]` instead of the whole cluster.
+    const staffMix = [
+      unit({ unit_id: 'sm1', code: 'family-a', map_x: 0.5, map_y: 0.5 }),
+      unit({
+        unit_id: 'sm2',
+        code: 'staff-a',
+        map_x: 0.502,
+        map_y: 0.5,
+        allocation_default: 'staff_default',
+      }),
+    ]
+    const shapeOf = (units: LodgingUnitRow[]) => {
+      const { unmount } = render(<LodgingMap parties={[]} units={units} year={2026} />)
+      const mark = screen.getByTestId('map-mark').querySelector('span')
+      const shape = { borderRadius: mark?.style.borderRadius, borderStyle: mark?.style.borderStyle }
+      unmount()
+      return shape
+    }
+    const forward = shapeOf(staffMix)
+    const reversed = shapeOf([...staffMix].reverse())
+    expect(forward).toEqual(reversed)
+    // Mixed, not ALL staff: SHAPE (radius) must read as an ordinary round
+    // mark — a cluster is only "a staff building" if every member is one —
+    // but the mix still HIGHLIGHTS (dashed border) rather than reading as an
+    // ordinary building with nothing staff-related about it.
+    expect(forward).toEqual({ borderRadius: '50%', borderStyle: 'dashed' })
+  })
+
+  it('closes the popover when the canvas background is clicked', async () => {
+    render(<LodgingMap parties={[]} units={UNITS} year={2026} />)
+    await userEvent.click(screen.getAllByTestId('map-mark')[0] as HTMLElement)
+    expect(screen.getByText('Cedar 1')).toBeInTheDocument()
+    await userEvent.click(screen.getByTestId('map-canvas'))
+    expect(screen.queryByText('Cedar 1')).not.toBeInTheDocument()
+  })
+
+  it('closes the popover on Escape', async () => {
+    render(<LodgingMap parties={[]} units={UNITS} year={2026} />)
+    await userEvent.click(screen.getAllByTestId('map-mark')[0] as HTMLElement)
+    expect(screen.getByText('Cedar 1')).toBeInTheDocument()
+    await userEvent.keyboard('{Escape}')
+    expect(screen.queryByText('Cedar 1')).not.toBeInTheDocument()
+  })
+
+  it('keeps the popover inside the canvas when the mark sits near an edge', async () => {
+    // Fallback canvas in jsdom is 1000 x (1000 / MAP_ASPECT). A mark at
+    // (0.98, 0.98) sits at roughly (980, 980) unclamped — hard against the
+    // corner, with most of a ~260px-wide popover run off both edges.
+    render(<LodgingMap parties={[]} units={[unit({ map_x: 0.98, map_y: 0.98 })]} year={2026} />)
+    await userEvent.click(screen.getByTestId('map-mark'))
+    const popoverBox = screen.getByText('Cedar 1').closest('[data-map-popover]')
+    const container = popoverBox?.parentElement as HTMLElement
+    const left = Number.parseFloat(container.style.left)
+    const top = Number.parseFloat(container.style.top)
+    expect(left).toBeLessThan(980)
+    expect(top).toBeLessThan(980)
+  })
 })

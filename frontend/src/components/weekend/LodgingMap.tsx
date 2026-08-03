@@ -51,6 +51,14 @@ const DRAG_THRESHOLD_PX = 4
 /** Default scrim over the map so the marks read against a busy illustration. */
 const DEFAULT_FADE = 25
 
+/** Half of the popover's `max-w-[15rem]` (240px), padded a bit. Clamping the
+ *  anchor at least this far from each edge keeps the box on-screen. Height
+ *  is content-dependent (a detail card is shorter than a multi-room
+ *  footprint grid), so this is deliberately generous rather than exact —
+ *  better a small unnecessary gap than a clipped popover. */
+const POPOVER_HALF_WIDTH = 130
+const POPOVER_HALF_HEIGHT = 110
+
 export interface LodgingMapProps {
   parties: RosterPartyRow[]
   units: LodgingUnitRow[]
@@ -116,6 +124,52 @@ export function LodgingMap({ parties, units, year }: LodgingMapProps) {
   // load-bearing in tests, and harmless in a browser where the observer fires.
   const width = size.width > 0 ? size.width : 1000
   const height = size.height > 0 ? size.height : 1000 / MAP_ASPECT
+
+  // Mirrored into a ref so the native wheel listener below can read the
+  // CURRENT size without needing `[width, height]` as an effect dependency —
+  // which would tear the listener down and reattach it on every resize. The
+  // write happens in its own effect, not inline during render: mutating a
+  // ref while rendering is exactly what `react-hooks/refs` exists to catch.
+  const sizeRef = useRef({ width, height })
+  useEffect(() => {
+    sizeRef.current = { width, height }
+  }, [width, height])
+
+  // React 19 registers wheel listeners as PASSIVE at the root, so
+  // `event.preventDefault()` inside a JSX `onWheel` handler is silently
+  // ignored — wheeling the map zooms it AND scrolls the page beneath it. A
+  // native `{ passive: false }` listener is the only way to actually block
+  // the scroll. Escape-to-dismiss rides along here too: both are ad hoc
+  // canvas-level interactions with nothing else to share an effect with.
+  useEffect(() => {
+    const node = canvasRef.current
+    if (!node) return
+    const handleWheel = (event: WheelEvent) => {
+      event.preventDefault()
+      setOpenKey(null)
+      const rect = node.getBoundingClientRect()
+      const { width: currentWidth, height: currentHeight } = sizeRef.current
+      setView((current) =>
+        zoomAt(
+          current,
+          event.clientX - rect.left,
+          event.clientY - rect.top,
+          Math.exp(-event.deltaY * 0.0016),
+          currentWidth,
+          currentHeight
+        )
+      )
+    }
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setOpenKey(null)
+    }
+    node.addEventListener('wheel', handleWheel, { passive: false })
+    window.addEventListener('keydown', handleKeyDown)
+    return () => {
+      node.removeEventListener('wheel', handleWheel)
+      window.removeEventListener('keydown', handleKeyDown)
+    }
+  }, [])
 
   const placed = model.units.map((mapUnit) => {
     const base = basePosition(mapUnit.x, mapUnit.y, width, height)
@@ -219,20 +273,19 @@ export function LodgingMap({ parties, units, year }: LodgingMapProps) {
             data-testid="map-canvas"
             style={{ aspectRatio: `${String(MAP_ASPECT)}` }}
             className="bg-muted/40 relative w-full touch-none overflow-hidden rounded-xl select-none"
-            onWheel={(event) => {
-              event.preventDefault()
+            onClick={(event) => {
+              // Background dismiss. Marks already stopPropagation() on their
+              // own click, so this never actually sees one — but a popover
+              // occupant button does NOT, and clicking it must not close the
+              // popover it lives inside.
+              const target = event.target as HTMLElement
+              if (
+                target.closest('[data-testid="map-mark"]') ||
+                target.closest('[data-map-popover]')
+              ) {
+                return
+              }
               setOpenKey(null)
-              const rect = event.currentTarget.getBoundingClientRect()
-              setView((current) =>
-                zoomAt(
-                  current,
-                  event.clientX - rect.left,
-                  event.clientY - rect.top,
-                  Math.exp(-event.deltaY * 0.0016),
-                  width,
-                  height
-                )
-              )
             }}
             // Deliberately UNCONDITIONAL, even mid-gesture. Refusing a new
             // pointerdown while a drag is live would strand the map forever if
@@ -273,7 +326,6 @@ export function LodgingMap({ parties, units, year }: LodgingMapProps) {
               // No capture to release — it is released for us — but the record
               // must go or a stale baseline outlives the gesture.
               dragRef.current = null
-              canvasRef.current?.classList.remove('panning')
             }}
             onPointerUp={(event) => {
               const drag = dragRef.current
@@ -328,6 +380,27 @@ export function LodgingMap({ parties, units, year }: LodgingMapProps) {
               const many = cluster.members.length > 1
               const occupied = cluster.members.filter((m) => m.item.parties.length > 0).length
               const shared = !many && first.parties.length > 1
+              // ORDER-INVARIANT, mirroring MapUnitPopover's own semantics. A
+              // cluster is only "a staff building" — SHAPE: a dashed square —
+              // if EVERY member is one, but ANY staff member still HIGHLIGHTS
+              // the mark with a dashed border, so a mixed cluster does not
+              // silently read as an ordinary building with nothing
+              // staff-related about it. Reading straight off `members[0]` —
+              // the old code — meant the shape flipped with whichever row the
+              // database happened to return first.
+              const allStaff = cluster.members.every(
+                (member) => member.item.unit.allocation_default === 'staff_default'
+              )
+              const anyStaff = cluster.members.some(
+                (member) => member.item.unit.allocation_default === 'staff_default'
+              )
+              // Hue has the same order-dependence risk. Cross-area clusters
+              // are 0 on the current registry — clustering is proximity-based
+              // and rooms rarely straddle an area boundary — but this must
+              // not assume that stays true. `first.hue` is kept as the
+              // fallback deliberately: there is no principled "average" of
+              // two areas' colours.
+              const hue = first.hue
               return (
                 <div
                   key={key}
@@ -346,16 +419,15 @@ export function LodgingMap({ parties, units, year }: LodgingMapProps) {
                 >
                   <span
                     style={{
-                      backgroundColor: many || first.parties.length > 0 ? first.hue : 'white',
-                      borderColor: first.hue,
+                      backgroundColor: many || first.parties.length > 0 ? hue : 'white',
+                      borderColor: hue,
                       boxShadow: shared
-                        ? `0 0 0 2px #fff, 0 0 0 4.5px ${first.hue}`
+                        ? `0 0 0 2px #fff, 0 0 0 4.5px ${hue}`
                         : '0 0 0 2px rgba(255,255,255,.95)',
                       width: many ? Math.min(17 + cluster.members.length * 2.6, 38) : 16,
                       height: many ? Math.min(17 + cluster.members.length * 2.6, 38) : 16,
-                      borderRadius: first.unit.allocation_default === 'staff_default' ? 4 : '50%',
-                      borderStyle:
-                        first.unit.allocation_default === 'staff_default' ? 'dashed' : 'solid',
+                      borderRadius: allStaff ? 4 : '50%',
+                      borderStyle: anyStaff ? 'dashed' : 'solid',
                     }}
                     className="grid place-items-center border-2 text-xs font-bold text-white"
                   >
@@ -370,10 +442,23 @@ export function LodgingMap({ parties, units, year }: LodgingMapProps) {
                 which is interactive content inside interactive content: invalid
                 ARIA, two click handlers on one gesture, and an accessible name
                 computed from all the descendant text. It is absolutely
-                positioned either way, so nesting bought nothing. */}
+                positioned either way, so nesting bought nothing.
+                CLAMPED rather than centred blindly: 11 of 102 marks sit within
+                120px of a canvas edge at rest, and most pass near one when
+                zoomed, so an unclamped popover runs off-canvas and half of it
+                becomes unreachable. */}
             {openCluster && (
               <div
-                style={{ left: openCluster.x, top: openCluster.y }}
+                style={{
+                  left: Math.min(
+                    Math.max(openCluster.x, POPOVER_HALF_WIDTH),
+                    width - POPOVER_HALF_WIDTH
+                  ),
+                  top: Math.min(
+                    Math.max(openCluster.y, POPOVER_HALF_HEIGHT),
+                    height - POPOVER_HALF_HEIGHT
+                  ),
+                }}
                 className="absolute z-30 -translate-x-1/2 -translate-y-1/2"
               >
                 <MapUnitPopover

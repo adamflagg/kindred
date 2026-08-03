@@ -45,7 +45,14 @@ export interface MapModel {
   unplaced: RosterPartyRow[]
   /** Placed, but not drawable on a map. */
   offMap: OffMapEntry[]
-  /** Bookable rooms nobody has positioned. Reported, never silently dropped. */
+  /**
+   * Bookable rooms nobody has positioned, reported HERE — but this is not a
+   * totality guarantee for the payload as a whole. `buildBoard` already drops
+   * an inactive, empty unit before `buildMapModel` ever sees it (see the
+   * `drawn` filter in `boardLayout.ts`), so an unpositioned INACTIVE room
+   * with nobody in it is silently dropped upstream and never reaches this
+   * list.
+   */
   unpositionedUnits: LodgingUnitRow[]
 }
 
@@ -131,12 +138,19 @@ export function buildMapModel(parties: RosterPartyRow[], units: LodgingUnitRow[]
 }
 
 /**
- * How many marks the map will draw — what the Map tab counts.
+ * How many BOOKABLE ROOMS ARE POSITIONED — what the Map tab's badge counts.
+ *
+ * This is NOT how many marks the map draws. Clustering runs AFTER this
+ * count, so overlapping rooms collapse into fewer marks — measured live, 103
+ * positioned rooms render as 75 marks at rest — and the mark count keeps
+ * falling as you zoom out further. A badge that changed as you zoomed would
+ * be absurd, so it reports the room count, which is stable, rather than the
+ * mark count, which is not.
  *
  * Shares `buildMapModel` with the surface on purpose: two copies of the
- * predicate is how a tab starts promising a number of marks the map does not
- * render. This is NOT the Inventory count, which includes containers and
- * unpositioned rooms.
+ * predicate is how a tab starts promising a number of rooms this count does
+ * not match. This is NOT the Inventory count either, which includes
+ * containers and unpositioned rooms.
  */
 export function countMapUnits(parties: RosterPartyRow[], units: LodgingUnitRow[]): number {
   return buildMapModel(parties, units).units.length
