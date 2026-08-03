@@ -8,7 +8,7 @@
  * Fictional data throughout.
  */
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { render, screen } from '@testing-library/react'
+import { fireEvent, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import type { ReactNode } from 'react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
@@ -43,6 +43,26 @@ beforeEach(() => {
 
 function wrapper({ children }: { children: ReactNode }) {
   return <QueryClientProvider client={client}>{children}</QueryClientProvider>
+}
+
+/**
+ * Drives the SAME `animationend` React actually listens for here — which is
+ * NOT what `fireEvent.animationEnd` fires.
+ *
+ * jsdom has no global `AnimationEvent`, so React's own feature detection
+ * (`"AnimationEvent" in window`, react-dom's event-plugin setup) reads this as
+ * a browser with no unprefixed support and registers its listener for the
+ * vendor-prefixed `webkitAnimationEnd` instead — jsdom's own `<div>.style`
+ * exposes `WebkitAnimation`, which is what sends it down that branch.
+ * `@testing-library/dom`'s `fireEvent.animationEnd` dispatches the unprefixed
+ * name, which is real DOM traffic (a plain listener sees it) but never
+ * reaches `onAnimationEnd` — confirmed by hand before writing this. Verified
+ * against this repo's jsdom; if a future jsdom adds `AnimationEvent`, React's
+ * own detection flips too and this would need to follow it back to the
+ * unprefixed name.
+ */
+function fireAnimationEnd(el: HTMLElement) {
+  fireEvent(el, new Event('webkitAnimationEnd', { bubbles: true, cancelable: true }))
 }
 
 const REQUEST_TEXT = 'We would like to be near the Garcia family if there is room.'
@@ -243,5 +263,31 @@ describe('FamilyDetailsPanel — interaction contract', () => {
       { wrapper }
     )
     expect(screen.getByTestId('family-details-panel')).toHaveClass('animate-slide-out-right')
+  })
+
+  it('calls onClose when the exit animation ends, but not the entrance animation', () => {
+    // Break `handleAnimationEnd` and the panel goes on `animate-slide-out-right`
+    // forever — the class-flip alone (the two tests above) does not catch that,
+    // since `onClose` is never asserted. This is the one test in the file that
+    // actually pins the close all the way through.
+    const onClose = vi.fn()
+    const { rerender } = render(
+      <FamilyDetailsPanel party={party()} year={2026} onClose={onClose} />,
+      { wrapper }
+    )
+
+    // Entering: the same handler is attached, but `exiting` is false and the
+    // guard must swallow it.
+    fireAnimationEnd(screen.getByTestId('family-details-panel'))
+    expect(onClose).not.toHaveBeenCalled()
+
+    // Same route as 'runs the exit animation when the parent requests a
+    // close': `requestClose` flips `exiting` true and the class to
+    // `animate-slide-out-right`.
+    rerender(
+      <FamilyDetailsPanel party={party()} year={2026} requestClose={true} onClose={onClose} />
+    )
+    fireAnimationEnd(screen.getByTestId('family-details-panel'))
+    expect(onClose).toHaveBeenCalledTimes(1)
   })
 })
