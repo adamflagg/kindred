@@ -10,14 +10,13 @@
  * **Mirror the contract, not the code.** `CamperDetailsPanel` is 1442 lines and
  * deeply camper-coupled — bunk requests, satisfaction buckets, AG collapse,
  * camper journeys. None of it is reused. What is copied is the interaction
- * shape the board already implements: `{ onClose, requestClose, embedded }`,
+ * shape the board already implements: `{ onClose, requestClose }`,
  * `requestClose` driving an animated close, the `pointer-events-none fixed
  * inset-0 z-[59]` click-outside layer, and `shouldKeepPanelsOpen` for
  * dismissal.
  *
- * **One component, both surfaces.** The map (Step 6) opens this same panel
- * embedded; a second implementation is exactly what `embedded` exists to
- * prevent.
+ * **One component, both surfaces.** The board and the map both open this same
+ * slide-in overlay — there is no second implementation to keep in sync.
  */
 import { Clock, Home, Repeat, Users, X } from 'lucide-react'
 import { useCallback, useEffect, useState } from 'react'
@@ -37,8 +36,6 @@ export interface FamilyDetailsPanelProps {
   /** The cabin it sits in, when one resolves. Undefined for a merge. */
   unit?: LodgingUnitRow | undefined
   year: number
-  /** Rendered inline (the map's sidebar) rather than as a slide-in overlay. */
-  embedded?: boolean
   /** Parent-driven animated close, as the summer board does. */
   requestClose?: boolean
   onClose: () => void
@@ -77,7 +74,6 @@ export function FamilyDetailsPanel({
   party,
   unit,
   year,
-  embedded = false,
   requestClose = false,
   onClose,
 }: FamilyDetailsPanelProps) {
@@ -85,11 +81,8 @@ export function FamilyDetailsPanel({
   const exiting = requestClose || isClosing
 
   const handleClose = useCallback(() => {
-    // Embedded has no slide-out to run, so waiting for an animation that never
-    // fires would leave the panel stuck open.
-    if (embedded) onClose()
-    else setIsClosing(true)
-  }, [embedded, onClose])
+    setIsClosing(true)
+  }, [])
 
   const handleAnimationEnd = useCallback(
     (event: React.AnimationEvent) => {
@@ -103,7 +96,7 @@ export function FamilyDetailsPanel({
   )
 
   useEffect(() => {
-    if (embedded || isClosing) return
+    if (isClosing) return
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === 'Escape') handleClose()
     }
@@ -111,7 +104,7 @@ export function FamilyDetailsPanel({
     return () => {
       document.removeEventListener('keydown', onKeyDown)
     }
-  }, [embedded, isClosing, handleClose])
+  }, [isClosing, handleClose])
 
   const adults = party.adults ?? []
   const children = party.children ?? []
@@ -263,19 +256,6 @@ export function FamilyDetailsPanel({
       </button>
     </div>
   )
-
-  if (embedded) {
-    return (
-      <div
-        data-panel="family-details"
-        data-testid="family-details-panel"
-        className="bg-card shadow-lodge-lg flex h-full flex-col overflow-hidden rounded-2xl"
-      >
-        {header}
-        <div className="flex-1 overflow-y-auto">{body}</div>
-      </div>
-    )
-  }
 
   return (
     <>

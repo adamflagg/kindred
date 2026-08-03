@@ -237,26 +237,6 @@ describe('FamilyDetailsPanel — interaction contract', () => {
     expect(screen.getByTestId('family-details-panel')).toHaveClass('animate-slide-out-right')
   })
 
-  it('drops the overlay chrome in embedded mode, so the map can reuse it', () => {
-    // One component, both surfaces — a second implementation is exactly what
-    // this prop exists to prevent.
-    const { container } = render(
-      <FamilyDetailsPanel party={party()} year={2026} embedded={true} onClose={vi.fn()} />,
-      { wrapper }
-    )
-    expect(container.querySelector('.pointer-events-none.fixed.inset-0')).not.toBeInTheDocument()
-    expect(screen.getByRole('heading', { name: 'Johnson' })).toBeInTheDocument()
-  })
-
-  it('closes immediately in embedded mode, where there is no slide-out', async () => {
-    const onClose = vi.fn()
-    render(<FamilyDetailsPanel party={party()} year={2026} embedded={true} onClose={onClose} />, {
-      wrapper,
-    })
-    await userEvent.click(screen.getByRole('button', { name: /close panel/i }))
-    expect(onClose).toHaveBeenCalledTimes(1)
-  })
-
   it('runs the exit animation when the parent requests a close', () => {
     render(
       <FamilyDetailsPanel party={party()} year={2026} requestClose={true} onClose={vi.fn()} />,
