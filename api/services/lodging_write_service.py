@@ -9,6 +9,20 @@ exist at all. Summer draws the identical line and has never crossed it.
 There is no UI on top of this yet, deliberately. The schema risk lands in one
 reviewable change with no interaction design competing for review attention.
 
+WHAT IS NOT VALIDATED, and why. A placement's `unit_ids` is not checked for
+completeness against the unit tree. That rule -- "a placement's unit set is
+legal iff its members are the complete child set of some container" -- was
+built through nine tasks, fully reviewed, and REMOVED in #1903, because every
+set is hand-authored: a deliberate partial booking and a mis-click produce
+byte-identical rows, so no rule can discriminate between the case it is for
+and the case it is against. It was written when the set lived on a separate
+`lodging_merges` row; #1931 folded that row into `unit_ids`, which changed
+where the set is stored and nothing about the argument. If anything it matters
+more now -- `unit_ids` is the ONLY way to build a multi-room placement, so a
+rule here rejects the whole feature rather than one table. Read
+docs/architecture/lodging-occupancy.md before adding anything of that shape.
+The ingest carries the same warning at `sync.placementFor`.
+
 Occupancy -- how many parties may share one unit -- is the constraint that
 genuinely needs modelling (kindred#1907), and it belongs at the point a human
 is choosing, which is the board. Not here, and not in the ingest.

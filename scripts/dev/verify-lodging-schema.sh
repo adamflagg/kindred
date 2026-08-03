@@ -111,11 +111,13 @@ ms=$(field_prop lodging_unit_aliases member_units maxSelect || true)
 
 # 1500000134 collapsed unit/merge/merge_draft into this one multi-valued
 # relation: a placement can name a SET of rooms instead of joining a merge
-# table. maxSelect 20 carries over the merge tables' own member cap
-# (hooks.go:109-123); cascadeDelete is false so deleting a unit does not
-# silently shrink a placement out from under staff; required is false
-# because an empty set is a real state -- an orphan on the truth table, the
-# "took this party off the board" tombstone on the draft.
+# table. maxSelect 20 carries over the merge tables' own member cap (see the
+# field definition in pb_migrations/1500000134_lodging_units_relation.js);
+# cascadeDelete is false so deleting a unit does not silently shrink a
+# placement out from under staff -- guardUnitDelete's doc comment in
+# pocketbase/lodging/hooks.go spells out what that would cost; required is
+# false because an empty set is a real state -- an orphan on the truth table,
+# the "took this party off the board" tombstone on the draft.
 for c in lodging_assignments lodging_assignments_draft; do
   ms=$(field_prop "$c" units maxSelect || true)
   [[ "$ms" == "20" ]] || note "$c.units maxSelect is '$ms' (expected 20)"

@@ -34,7 +34,7 @@ below identifies work by **PR and commit**, which are the only labels that canno
 | 2026 inventory — real amenities and the alias set (114 units / 141 aliases at merge) | ✅ `8b83f388` (#1914) |
 | Read-only board — area sections, unit cards, unplaced rail, detail panel | ✅ `3c2e3b55` (#1911) |
 | Draft write layer — draft tables, RBAC, scenario-aware reads, write endpoints | ✅ `7065b4c9` (#1915) |
-| Write-race guards — all five write paths hardened | ✅ `7b25d25e` (#1927) |
+| Write-race guards — every write path hardened | ✅ `7b25d25e` (#1927) |
 | **Share eligibility — flag on the authoritative form, not the registration gate** | ⏳ **IN FLIGHT, #1926** — see §3a |
 | **Drag placement — the board calls the write endpoints** | ⬅ **next, see §4** |
 | Map + pin editor — `map_x`/`map_y` view, a projection of the board | needs drag placement |
@@ -775,22 +775,25 @@ git fetch -q && git rev-list --count origin/<branch>..HEAD   # must be 0
 
 ## 8. Open issues
 
-### CLOSED: the five write paths are all race-guarded
+### CLOSED: every write path is race-guarded
 
 Left here as the record of a gap that is now shut, because the shape recurs: any find-then-write
 pair in this file races, and the answer is always one of the two existing shapes.
 
 This section previously listed three unguarded paths and told you to fold them into the drag PR
-(§4). They were fixed on their own instead, in **#1927**. All five write paths in
-`api/services/lodging_write_service.py` now hold:
+(§4). They were fixed on their own instead, in **#1927**. Every write path in
+`api/services/lodging_write_service.py` now holds:
 
 | Path | Shape | Handled? |
 |---|---|---|
 | `place_party` create | find→create vs unique index | ✅ race-guarded |
-| `delete_merge` | delete a missing row | ✅ 404-idempotent |
 | `clear_placement` delete | delete between find and delete | ✅ 404-idempotent |
 | `set_availability` delete | delete between find and delete | ✅ 404-idempotent |
 | `set_availability` create | find→create vs `idx_lodging_avail_unique` | ✅ race-guarded |
+
+A fifth row sat here — `delete_merge`, 404-idempotent — until **#1931** deleted that method
+along with `lodging_merges_draft`. Its shape is the same as the two deletes above, so nothing
+about the lesson changed; there is just one fewer place to apply it.
 
 Both create-retries also guard their OWN recovery — the re-read and the update inside the except
 block go through `pb_error_to_http` too, because an unwrapped failure there is the same bare 500

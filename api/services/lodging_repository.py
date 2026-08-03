@@ -4,9 +4,11 @@ Every PocketBase read behind /api/lodging lives here so the service layer is
 testable against mocks. Mirrors api/services/metrics_repository.py.
 
 Two layers, since 1500000132. The SYNCED rows are the base and are read with
-no scenario predicate -- lodging_assignments and lodging_merges no longer have
-that column, because it was dead weight that invited a `scenario != ""` write
-rule instead of a draft table. A scenario's own rows come from
+no scenario predicate -- lodging_assignments no longer has that column, because
+it was dead weight that invited a `scenario != ""` write rule instead of a
+draft table. (1500000132 dropped the same column from lodging_merges; 1500000134
+then deleted that collection outright, folding its member set into the
+placement's own `units` relation.) A scenario's own rows come from
 lodging_assignments_draft, and from lodging_availability filtered to the
 scenario, and OVERLAY the base per party and per unit.
 

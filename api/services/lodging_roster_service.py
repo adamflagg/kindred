@@ -383,12 +383,16 @@ class LodgingRosterService:
                     area_code=_s(area, "code") if area is not None else "",
                     area_name=_s(area, "name") if area is not None else "",
                     sleeps=unit_capacity(_i(unit, "sleeps")),
-                    # The units INVENTORY is not merge-aware in slice 1, so a
-                    # unit is evaluated as its own one-element slot. (Merges do
-                    # reach the roster elsewhere -- an assignment to a merge
-                    # sets RosterParty.is_merged_slot -- so the gap is here,
-                    # not on the surface as a whole.) When the board ships,
-                    # pass the merge's member codes here instead.
+                    # The units INVENTORY evaluates each unit as its own
+                    # one-element slot, so a room that only clears the
+                    # bathroom bar as half of a two-room placement is scored
+                    # here as if it stood alone. (Multi-room placements do
+                    # reach the roster: a placement whose `units` set has 2+
+                    # members sets RosterParty.is_merged_slot and lists every
+                    # leaf code on RosterParty.unit_codes -- so the gap is
+                    # here, on the inventory, not on the surface as a whole.)
+                    # When the board ships, pass the occupying placement's
+                    # unit_codes here instead of the single unit's own code.
                     bathroom=cast(
                         Any,
                         effective_bathroom(
