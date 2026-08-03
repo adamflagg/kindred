@@ -38,7 +38,7 @@ import type { LodgingUnitRow, RosterPartyRow } from '../../types/lodging'
 import { FamilyCard } from './FamilyCard'
 import { FamilyDetailsPanel } from './FamilyDetailsPanel'
 import { indexUnitsByCode } from './rosterAttention'
-import { clusterByProximity, type Cluster } from './mapClustering'
+import { clusterByProximity, type Cluster, type Placed } from './mapClustering'
 import { buildMapModel, type MapUnit } from './mapModel'
 import { CONSENT_AMBER, CONSENT_PHRASE, MapUnitPopover } from './MapUnitPopover'
 import {
@@ -76,6 +76,34 @@ const DWELL_MS = 400
 /** The bathhouse dot. Blue, and not one of the eight area hues. */
 const BATHHOUSE_BLUE = '#2563eb'
 
+/**
+ * A highlight DIMS what does not match rather than hiding it.
+ *
+ * "Which cabins are near a bathhouse" is only half the question — the other
+ * half is where they sit relative to everything else, and removing the rest
+ * throws that away. Low enough to recede, high enough that the dimmed marks
+ * still read as a site plan.
+ */
+const DIMMED_OPACITY = 0.22
+
+/** Breathing room around an area's tint box, in screen pixels. */
+const TINT_PADDING_PX = 20
+
+/**
+ * Which question the marks are answering. At most one at a time.
+ *
+ * Area tint and Empty rooms are NOT in here and stay checkboxes: a tint is a
+ * backdrop and the empty toggle changes which rooms are on the map at all, so
+ * neither competes with a highlight or with the other.
+ */
+type Highlight = 'none' | 'bathhouse' | 'staff'
+
+const HIGHLIGHTS: Array<{ id: Highlight; label: string }> = [
+  { id: 'none', label: 'No highlight' },
+  { id: 'bathhouse', label: 'Near bathhouse' },
+  { id: 'staff', label: 'Staff cabins' },
+]
+
 /** Half of the popover's `max-w-[15rem]` (240px), padded a bit. Clamping the
  *  anchor at least this far from each edge keeps the box on-screen. Height
  *  is content-dependent (a detail card is shorter than a multi-room
@@ -83,6 +111,56 @@ const BATHHOUSE_BLUE = '#2563eb'
  *  better a small unnecessary gap than a clipped popover. */
 const POPOVER_HALF_WIDTH = 130
 const POPOVER_HALF_HEIGHT = 110
+
+interface TintBox {
+  areaName: string
+  hue: string
+  left: number
+  top: number
+  width: number
+  height: number
+}
+
+/**
+ * A translucent box around each area's rooms, in SCREEN space so it pans and
+ * zooms with them.
+ *
+ * A bounding box, not a hull: areas genuinely overlap where they abut, and a
+ * box that says "roughly here" is honest about that in a way a tight polygon
+ * would not be. Areas with a single room on screen are skipped — one pin has
+ * no extent to describe.
+ */
+function areaTintBoxes(placed: Array<Placed<MapUnit>>): TintBox[] {
+  const byArea = new Map<string, Array<Placed<MapUnit>>>()
+  for (const entry of placed) {
+    // `area_name` is optional on the generated row type. Rooms without one are
+    // left untinted rather than pooled under a shared blank key, which would
+    // draw one box spanning two rooms that have nothing to do with each other.
+    const areaName = entry.item.unit.area_name
+    if (areaName === undefined || areaName.length === 0) continue
+    const existing = byArea.get(areaName)
+    if (existing) existing.push(entry)
+    else byArea.set(areaName, [entry])
+  }
+
+  const boxes: TintBox[] = []
+  for (const [areaName, members] of byArea) {
+    if (members.length < 2) continue
+    const xs = members.map((member) => member.x)
+    const ys = members.map((member) => member.y)
+    const left = Math.min(...xs)
+    const top = Math.min(...ys)
+    boxes.push({
+      areaName,
+      hue: members[0]?.item.hue ?? '',
+      left: left - TINT_PADDING_PX,
+      top: top - TINT_PADDING_PX,
+      width: Math.max(...xs) - left + TINT_PADDING_PX * 2,
+      height: Math.max(...ys) - top + TINT_PADDING_PX * 2,
+    })
+  }
+  return boxes
+}
 
 export interface LodgingMapProps {
   parties: RosterPartyRow[]
@@ -113,6 +191,17 @@ export function LodgingMap({ parties, units, year }: LodgingMapProps) {
   const [size, setSize] = useState({ width: 0, height: 0 })
   const [imageFailed, setImageFailed] = useState(false)
   const [fade, setFade] = useState(DEFAULT_FADE)
+  // Empty rooms are DRAWN by default and nothing is highlighted at rest: the
+  // map's job when you arrive is the whole site, and each control below is a
+  // question you bring to it rather than one the surface should ask for you.
+  const [showEmpty, setShowEmpty] = useState(true)
+  const [areaTint, setAreaTint] = useState(false)
+  // ONE CHOICE, not two booleans. As independent checkboxes these ANDed, so
+  // ticking both dimmed everything that was not near a bathhouse AND beside
+  // staff — an intersection nobody asked for, which read as a filter that had
+  // eaten the map. They are two questions about the same marks, and the
+  // control now says so.
+  const [highlight, setHighlight] = useState<Highlight>('none')
   // TWO keys, not one. A click PINS the peek and a dwell only borrows it, so
   // the pointer leaving a mark must close a dwell-opened peek without
   // touching one the user deliberately pinned. Collapsing them into a single
@@ -226,12 +315,38 @@ export function LodgingMap({ parties, units, year }: LodgingMapProps) {
     // reference rather than reattaching on every render.
   }, [closePeek])
 
-  const placed = model.units.map((mapUnit) => {
+  // FILTERED BEFORE CLUSTERING, and that ordering is the point: hiding empty
+  // rooms also dissolves the clusters they were padding, so what is left is a
+  // map of the occupied site rather than the same blobs with holes in them.
+  const drawn = showEmpty
+    ? model.units
+    : model.units.filter((mapUnit) => mapUnit.parties.length > 0)
+  const placed = drawn.map((mapUnit) => {
     const base = basePosition(mapUnit.x, mapUnit.y, width, height)
     const screen = screenPosition(base, view)
     return { item: mapUnit, x: screen.x, y: screen.y }
   })
   const clusters = clusterByProximity(placed)
+  const tintBoxes = areaTint ? areaTintBoxes(placed) : []
+
+  // Counted off what was actually drawn, never off a second predicate — a
+  // legend that disagrees with the map is worse than no legend.
+  const clusterCount = clusters.filter((cluster) => cluster.members.length > 1).length
+  // Rooms the payload HAS, not rooms currently shown: a count that moved when
+  // you hid the empties would stop accounting for the units at all.
+  //
+  // NOT the Inventory tab's number, and deliberately so — `countMapUnits`'
+  // docstring says why: Inventory counts every unit, this counts the POSITIONED
+  // bookable ones. The remainder is not silently dropped; containers are the
+  // next figure along, and unpositioned rooms have their own line above the
+  // map. Three numbers, because they answer three questions.
+  const roomCount = model.units.length
+  const containerCount = units.filter((unit) => unit.is_container).length
+  // The hues actually on this map, never a fixed palette: a swatch that did
+  // not match what the marks are wearing would be a second source of truth for
+  // the registry's colours. Capped so a lineup with many areas does not turn
+  // the key into a colour chart.
+  const legendHues = [...new Set(model.units.map((mapUnit) => mapUnit.hue))].slice(0, 4)
 
   // SORTED: cluster membership is order-invariant but the member ARRAY order is
   // not, and an unsorted key would change identity across renders, remounting
@@ -275,7 +390,69 @@ export function LodgingMap({ parties, units, year }: LodgingMapProps) {
         )}
       </div>
 
-      <div className="card-lodge grid grid-cols-1 overflow-hidden lg:grid-cols-[minmax(0,1fr)_280px]">
+      <div className="card-lodge grid grid-cols-1 overflow-hidden lg:grid-cols-[280px_minmax(0,1fr)]">
+        <aside className="bg-muted/30 border-border/60 flex flex-col gap-3 border-b p-3 lg:border-r lg:border-b-0">
+          {selected ? (
+            <FamilyDetailsPanel
+              key={partyKey(selected)}
+              party={selected}
+              unit={unitsByCode.get(selected.unit_code ?? '')}
+              year={year}
+              embedded={true}
+              onClose={() => {
+                setSelected(null)
+              }}
+            />
+          ) : (
+            <>
+              <div data-testid="map-unplaced-rail" className="flex flex-col gap-2">
+                <div className="flex items-baseline justify-between gap-2">
+                  <h3 className="font-display text-foreground text-sm font-bold">Unplaced</h3>
+                  <span className="text-muted-foreground text-xs tabular-nums">
+                    {model.unplaced.length}
+                  </span>
+                </div>
+                {model.unplaced.length === 0 ? (
+                  <p className="text-muted-foreground text-xs italic">Everyone has a cabin.</p>
+                ) : (
+                  model.unplaced.map((party) => (
+                    <FamilyCard
+                      key={partyKey(party)}
+                      party={party}
+                      onRail={true}
+                      onOpen={openParty}
+                    />
+                  ))
+                )}
+              </div>
+
+              <div data-testid="map-offmap-rail" className="flex flex-col gap-2">
+                <div className="flex items-baseline justify-between gap-2">
+                  <h3 className="font-display text-foreground text-sm font-bold">
+                    Placed, off the map
+                  </h3>
+                  <span className="text-muted-foreground text-xs tabular-nums">
+                    {model.offMap.length}
+                  </span>
+                </div>
+                {model.offMap.length === 0 ? (
+                  <p className="text-muted-foreground text-xs italic">
+                    Everyone placed is on the map.
+                  </p>
+                ) : (
+                  model.offMap.map((entry) => (
+                    <FamilyCard
+                      key={partyKey(entry.party)}
+                      party={entry.party}
+                      onRail={true}
+                      onOpen={openParty}
+                    />
+                  ))
+                )}
+              </div>
+            </>
+          )}
+        </aside>
         <div className="flex flex-col gap-2 p-3">
           <div className="flex flex-wrap items-center gap-2 text-xs">
             <button
@@ -301,10 +478,10 @@ export function LodgingMap({ parties, units, year }: LodgingMapProps) {
             <button
               type="button"
               onClick={resetView}
-              className="border-border text-muted-foreground hover:text-foreground hover:border-primary/50 rounded-lg border p-1.5 transition-colors"
-              aria-label="Fit the whole map"
+              className="border-border text-muted-foreground hover:text-foreground hover:border-primary/50 inline-flex items-center gap-1.5 rounded-lg border px-2 py-1.5 transition-colors"
             >
               <Maximize2 className="h-4 w-4" />
+              Fit all
             </button>
             <label className="text-muted-foreground ml-2 inline-flex items-center gap-1.5">
               Fade map
@@ -319,7 +496,71 @@ export function LodgingMap({ parties, units, year }: LodgingMapProps) {
                 }}
                 className="w-20"
               />
+              <span
+                data-testid="map-fade-value"
+                className="text-foreground font-semibold tabular-nums"
+              >
+                {fade}%
+              </span>
             </label>
+
+            <span aria-hidden="true" className="bg-border mx-1 h-5 w-px" />
+
+            {/* Real checkboxes. These and the radios below are the whole of
+                what a keyboard can reach here — the marks cannot be, see the
+                note at the top of the file — so neither may be re-invented as
+                divs. */}
+            <label className="text-muted-foreground inline-flex cursor-pointer items-center gap-1.5">
+              <input
+                type="checkbox"
+                checked={areaTint}
+                onChange={(event) => {
+                  setAreaTint(event.target.checked)
+                }}
+              />
+              Area tint
+            </label>
+            <label className="text-muted-foreground inline-flex cursor-pointer items-center gap-1.5">
+              <input
+                type="checkbox"
+                checked={showEmpty}
+                onChange={(event) => {
+                  setShowEmpty(event.target.checked)
+                  // The hidden rooms take their peek with them; leaving it open
+                  // would strand a popover over a mark that no longer exists.
+                  closePeek()
+                }}
+              />
+              Empty rooms
+            </label>
+
+            {/* RADIOS, not checkboxes. The control's shape is the explanation:
+                a checkbox promises the options combine, and these cannot —
+                answering both at once leaves an intersection that reads as a
+                filter with a bug in it. */}
+            <fieldset className="contents">
+              <legend className="sr-only">Highlight</legend>
+              <span aria-hidden="true" className="bg-border mx-1 h-5 w-px" />
+              <span className="text-muted-foreground">Highlight</span>
+              {HIGHLIGHTS.map((option) => (
+                <label
+                  key={option.id}
+                  className="text-muted-foreground inline-flex cursor-pointer items-center gap-1.5"
+                >
+                  <input
+                    type="radio"
+                    name="map-highlight"
+                    value={option.id}
+                    checked={highlight === option.id}
+                    onChange={() => {
+                      setHighlight(option.id)
+                    }}
+                  />
+                  {option.label}
+                </label>
+              ))}
+            </fieldset>
+
             <span className="text-muted-foreground ml-auto tabular-nums">{view.k.toFixed(1)}×</span>
           </div>
 
@@ -454,6 +695,24 @@ export function LodgingMap({ parties, units, year }: LodgingMapProps) {
               </p>
             )}
 
+            {/* UNDER the marks and inert: a tint that could swallow a click
+                would cost the surface its only interaction. */}
+            {tintBoxes.map((box) => (
+              <div
+                key={box.areaName}
+                data-testid="map-area-tint"
+                aria-hidden="true"
+                style={{
+                  left: box.left,
+                  top: box.top,
+                  width: box.width,
+                  height: box.height,
+                  backgroundColor: box.hue,
+                }}
+                className="pointer-events-none absolute rounded-2xl opacity-15"
+              />
+            ))}
+
             {clusters.map((cluster) => {
               const key = clusterKey(cluster)
               const first = cluster.members[0]?.item
@@ -499,6 +758,11 @@ export function LodgingMap({ parties, units, year }: LodgingMapProps) {
               const bathhouse = cluster.members.some(
                 (member) => member.item.unit.near_bathhouse === true
               )
+              // `some`, matching the mark's own semantics: a cluster holding
+              // one bathhouse-adjacent room IS part of the answer to where the
+              // bathhouses are.
+              const dimmed =
+                (highlight === 'bathhouse' && !bathhouse) || (highlight === 'staff' && !anyStaff)
               // A room nobody has measured, findable at a glance. `sleeps: 0`
               // is treated as unknown alongside null — the API maps 0 to None
               // today, but a 0 arriving here must never render as a capacity.
@@ -551,7 +815,14 @@ export function LodgingMap({ parties, units, year }: LodgingMapProps) {
                     // a pinned one belongs to the user, not to the cursor.
                     setDwellKey((current) => (current === key ? null : current))
                   }}
-                  style={{ left: cluster.x, top: cluster.y }}
+                  style={{
+                    left: cluster.x,
+                    top: cluster.y,
+                    // Set EXPLICITLY at full strength rather than left unstyled,
+                    // so "nothing is dimmed" is an assertable state rather than
+                    // the absence of one.
+                    opacity: dimmed ? DIMMED_OPACITY : 1,
+                  }}
                   className="absolute -translate-x-1/2 -translate-y-1/2 cursor-pointer"
                 >
                   <span
@@ -614,7 +885,100 @@ export function LodgingMap({ parties, units, year }: LodgingMapProps) {
                 />
               </div>
             )}
+
+            {/* Wheel-zoom and drag-pan have no affordance of their own, and a
+                full-bleed illustration reads as a static picture until someone
+                says otherwise. Inert, so it can never eat a drag that starts
+                on top of it. */}
+            <p className="text-muted-foreground bg-card/90 border-border pointer-events-none absolute bottom-2 left-2 rounded-md border px-2 py-1 text-[11px]">
+              scroll to zoom · drag to pan · click a pin for detail
+            </p>
           </div>
+
+          {/* The mark has seven encoding channels and no text of its own. Its
+              `title` says the same things in words, but only one mark at a time
+              and only on hover — which is no help at all to someone scanning
+              for the blue dots. */}
+          <dl
+            data-testid="map-legend"
+            className="text-muted-foreground flex flex-wrap items-center gap-x-4 gap-y-1.5 text-[11px]"
+          >
+            <div className="flex items-center gap-1.5">
+              <span className="border-muted-foreground/70 h-3 w-3 rounded-full border-2 bg-transparent" />
+              <dt className="sr-only">Hollow mark</dt>
+              <dd>empty</dd>
+            </div>
+            <div className="flex items-center gap-1.5">
+              <span className="bg-muted-foreground/70 border-muted-foreground/70 h-3 w-3 rounded-full border-2" />
+              <dt className="sr-only">Solid mark</dt>
+              <dd>one party</dd>
+            </div>
+            <div className="flex items-center gap-1.5">
+              <span className="bg-muted-foreground/70 border-muted-foreground/70 h-3 w-3 rounded-full border-2 ring-2 ring-current ring-offset-1" />
+              <dt className="sr-only">Ringed mark</dt>
+              <dd>shared</dd>
+            </div>
+            <div className="flex items-center gap-1.5">
+              <span className="border-muted-foreground/70 h-3 w-3 rounded-[3px] border-2 border-dashed" />
+              <dt className="sr-only">Dashed square</dt>
+              <dd>staff-default</dd>
+            </div>
+            <div className="flex items-center gap-1.5">
+              <span
+                style={{ backgroundColor: BATHHOUSE_BLUE }}
+                className="h-2 w-2 rounded-full ring-1 ring-white"
+              />
+              <dt className="sr-only">Blue dot</dt>
+              <dd>near bathhouse</dd>
+            </div>
+            <div className="flex items-center gap-1.5">
+              <span className="text-foreground font-bold">?</span>
+              <dt className="sr-only">Question mark</dt>
+              <dd>capacity unknown (never 0)</dd>
+            </div>
+            {/* Hue is the channel with the widest reach — fill, border, shared
+                ring and the area tint all take it — and it was the one thing
+                on the mark with no key at all. The swatches are the registry's
+                own colours, so this stays generic however the areas are named
+                and never spells one out. */}
+            <div className="flex items-center gap-1.5">
+              <span aria-hidden="true" className="flex items-center gap-0.5">
+                {legendHues.map((legendHue) => (
+                  <span
+                    key={legendHue}
+                    style={{ backgroundColor: legendHue }}
+                    className="h-3 w-3 rounded-full"
+                  />
+                ))}
+              </span>
+              <dt className="sr-only">Mark colour</dt>
+              <dd>area colour</dd>
+            </div>
+            {/* A cluster's mark GROWS with what is under it and wears the
+                count on its face. Without this, a big numbered mark reads as
+                importance rather than as "there are more of them here". */}
+            <div className="flex items-center gap-1.5">
+              <span
+                aria-hidden="true"
+                className="bg-muted-foreground/70 border-muted-foreground/70 grid h-4 w-4 place-items-center rounded-full border-2 text-[8px] font-bold text-white"
+              >
+                3
+              </span>
+              <dt className="sr-only">Bigger numbered mark</dt>
+              <dd>bigger mark, more rooms under it</dd>
+            </div>
+            <div className="ml-auto flex items-center gap-1.5">
+              <dt className="sr-only">Counts</dt>
+              <dd className="tabular-nums">
+                <b className="text-foreground font-semibold">{roomCount}</b>{' '}
+                {roomCount === 1 ? 'room' : 'rooms'} ·{' '}
+                <b className="text-foreground font-semibold">{containerCount}</b>{' '}
+                {containerCount === 1 ? 'container' : 'containers'} not drawn ·{' '}
+                <b className="text-foreground font-semibold">{clusterCount}</b>{' '}
+                {clusterCount === 1 ? 'cluster' : 'clusters'} at this zoom
+              </dd>
+            </div>
+          </dl>
         </div>
 
         {/* EMBEDDED, not an overlay. FamilyDetailsPanel's own docstring: "The map
@@ -625,68 +989,6 @@ export function LodgingMap({ parties, units, year }: LodgingMapProps) {
             you want while comparing two families across the site.
             `key` is load-bearing: without it React reuses the instance across
             selections and `useState` initialisers never re-run. */}
-        <aside className="bg-muted/30 border-border/60 flex flex-col gap-3 border-t p-3 lg:border-t-0 lg:border-l">
-          {selected ? (
-            <FamilyDetailsPanel
-              key={partyKey(selected)}
-              party={selected}
-              unit={unitsByCode.get(selected.unit_code ?? '')}
-              year={year}
-              embedded={true}
-              onClose={() => {
-                setSelected(null)
-              }}
-            />
-          ) : (
-            <>
-              <div data-testid="map-unplaced-rail" className="flex flex-col gap-2">
-                <div className="flex items-baseline justify-between gap-2">
-                  <h3 className="font-display text-foreground text-sm font-bold">Unplaced</h3>
-                  <span className="text-muted-foreground text-xs tabular-nums">
-                    {model.unplaced.length}
-                  </span>
-                </div>
-                {model.unplaced.length === 0 ? (
-                  <p className="text-muted-foreground text-xs italic">Everyone has a cabin.</p>
-                ) : (
-                  model.unplaced.map((party) => (
-                    <FamilyCard
-                      key={partyKey(party)}
-                      party={party}
-                      onRail={true}
-                      onOpen={openParty}
-                    />
-                  ))
-                )}
-              </div>
-
-              <div data-testid="map-offmap-rail" className="flex flex-col gap-2">
-                <div className="flex items-baseline justify-between gap-2">
-                  <h3 className="font-display text-foreground text-sm font-bold">
-                    Placed, off the map
-                  </h3>
-                  <span className="text-muted-foreground text-xs tabular-nums">
-                    {model.offMap.length}
-                  </span>
-                </div>
-                {model.offMap.length === 0 ? (
-                  <p className="text-muted-foreground text-xs italic">
-                    Everyone placed is on the map.
-                  </p>
-                ) : (
-                  model.offMap.map((entry) => (
-                    <FamilyCard
-                      key={partyKey(entry.party)}
-                      party={entry.party}
-                      onRail={true}
-                      onOpen={openParty}
-                    />
-                  ))
-                )}
-              </div>
-            </>
-          )}
-        </aside>
       </div>
     </div>
   )

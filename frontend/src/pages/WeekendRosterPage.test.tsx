@@ -1,5 +1,5 @@
 /**
- * /weekend/session/:sessionCmId — one weekend's roster.
+ * /weekend/:sessionRef/:view? — one weekend's roster.
  *
  * The weekend comes from the URL now, as a summer session does. Choosing
  * between weekends belongs to the lander; this page's title doubles as the
@@ -7,14 +7,13 @@
  */
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { MemoryRouter, Route, Routes } from 'react-router'
+import { MemoryRouter, Route, Routes, useLocation, useNavigate } from 'react-router'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import WeekendRosterPage from './WeekendRosterPage'
 
 const sessionsQuery = { data: undefined as unknown, isLoading: false, error: null as Error | null }
 const rosterQuery = { data: undefined as unknown, isLoading: false, error: null as Error | null }
-const navigate = vi.fn()
 
 vi.mock('../hooks/useWeekendRoster', () => ({
   useWeekendSessions: () => sessionsQuery,
@@ -40,10 +39,11 @@ vi.mock('../hooks/usePermissions', () => ({
   }),
 }))
 
-vi.mock('react-router', async () => {
-  const actual = await vi.importActual<typeof import('react-router')>('react-router')
-  return { ...actual, useNavigate: () => navigate }
-})
+// The `useNavigate` spy this file used to install has been removed on purpose.
+// The view now lives in the URL, so a spy would have asserted that the page
+// ASKED to navigate while the page it rendered stayed on the old tab — the
+// exact disagreement these tests exist to catch. A real MemoryRouter plus a
+// location probe asserts where the app actually ended up.
 
 const FAMILY_CAMP_1 = {
   session_id: 'sess_1',
@@ -63,18 +63,37 @@ const WOMENS = {
   end_date: '2026-10-18 07:00:00.000Z',
 }
 
-function renderPage(cmId = '1000001') {
+function LocationProbe() {
+  const location = useLocation()
+  const navigate = useNavigate()
+  return (
+    <>
+      <div data-testid="location">{location.pathname}</div>
+      <button
+        type="button"
+        onClick={() => {
+          void navigate(-1)
+        }}
+      >
+        probe-back
+      </button>
+    </>
+  )
+}
+
+function renderPage(ref = '1000001', view = '') {
+  const path = `/weekend/${ref}${view === '' ? '' : `/${view}`}`
   return render(
-    <MemoryRouter initialEntries={[`/weekend/session/${cmId}`]}>
+    <MemoryRouter initialEntries={[path]}>
       <Routes>
-        <Route path="/weekend/session/:sessionCmId" element={<WeekendRosterPage />} />
+        <Route path="/weekend/:sessionRef/:view?" element={<WeekendRosterPage />} />
       </Routes>
+      <LocationProbe />
     </MemoryRouter>
   )
 }
 
 beforeEach(() => {
-  navigate.mockReset()
   isAdmin = true
   permissions = new Set()
   sessionsQuery.data = { year: 2026, sessions: [FAMILY_CAMP_1, WOMENS] }
@@ -114,7 +133,20 @@ describe('header', () => {
     renderPage()
     await userEvent.click(screen.getByRole('button', { name: /Family Camp 1/ }))
     await userEvent.click(await screen.findByRole('option', { name: "Women's Weekend" }))
-    expect(navigate).toHaveBeenCalledWith('/weekend/session/1000002')
+    // ANCHORED: `/weekend/ww` is a prefix of every tab under that weekend, so
+    // an unanchored match cannot tell the roster from the map and would pass
+    // whatever the tab-carrying test below asserts.
+    expect(screen.getByTestId('location')).toHaveTextContent(/^\/weekend\/ww\/roster$/)
+  })
+
+  it('stays on the tab you are looking at when you switch weekends', async () => {
+    // Comparing one view across two weekends is the reason to switch from
+    // inside a weekend rather than from the lander. Dropping back to the
+    // roster every time makes the switcher useless for exactly that.
+    renderPage('fc1', 'map')
+    await userEvent.click(screen.getByRole('button', { name: /Family Camp 1/ }))
+    await userEvent.click(await screen.findByRole('option', { name: "Women's Weekend" }))
+    expect(screen.getByTestId('location')).toHaveTextContent(/^\/weekend\/ww\/map$/)
   })
 
   it('orders the picker by date, not by CampMinder sort_order', async () => {
@@ -184,6 +216,108 @@ describe('query states', () => {
     rosterQuery.error = new Error('boom')
     renderPage()
     expect(screen.getByText(/Failed to load weekend roster data: boom/i)).toBeInTheDocument()
+  })
+})
+
+describe('addressing a weekend by slug', () => {
+  it('opens the weekend a slug names', () => {
+    renderPage('fc1')
+    expect(screen.getByRole('button', { name: /Family Camp 1/ })).toBeInTheDocument()
+  })
+
+  it('keeps the slug when moving between tabs', async () => {
+    renderPage('fc1')
+    await userEvent.click(screen.getByRole('tab', { name: /Map/ }))
+    expect(screen.getByTestId('location')).toHaveTextContent('/weekend/fc1/map')
+  })
+
+  it('waits for the weekend list before calling a slug unknown', () => {
+    // A slug cannot be resolved without the list, so deciding early would flash
+    // "Weekend not found" on every load of a perfectly good link.
+    sessionsQuery.data = undefined
+    sessionsQuery.isLoading = true
+    rosterQuery.data = undefined
+    renderPage('fc1')
+    expect(screen.queryByRole('button', { name: /Weekend not found/ })).not.toBeInTheDocument()
+  })
+
+  it('says so once the list has loaded and the slug still names nothing', () => {
+    renderPage('zz')
+    expect(screen.getByRole('button', { name: /Weekend not found/ })).toBeInTheDocument()
+  })
+})
+
+describe('the view in the URL', () => {
+  const ONE_UNIT = {
+    year: 2026,
+    session_cm_id: 1000001,
+    parties: [],
+    counts: {},
+    units: [
+      {
+        unit_id: 'u1',
+        code: 'ridge-a',
+        name: 'Ridge A',
+        area_code: 'RIDGE',
+        area_name: 'Ridge Side',
+        sleeps: 5,
+        is_confirmed: true,
+        is_container: false,
+        is_family_available: true,
+      },
+    ],
+  }
+
+  it('opens the view the URL names, so a tab can be linked and reloaded', () => {
+    rosterQuery.data = ONE_UNIT
+    renderPage('1000001', 'inventory')
+    expect(screen.getByRole('tab', { name: /Inventory/ })).toHaveAttribute('aria-selected', 'true')
+    expect(screen.getByText('Ridge A')).toBeInTheDocument()
+  })
+
+  it('opens the roster when the URL names no view', () => {
+    rosterQuery.data = ONE_UNIT
+    renderPage()
+    expect(screen.getByRole('tab', { name: /Roster/ })).toHaveAttribute('aria-selected', 'true')
+  })
+
+  it('puts the chosen view in the URL', async () => {
+    rosterQuery.data = ONE_UNIT
+    renderPage()
+    await userEvent.click(screen.getByRole('tab', { name: /Inventory/ }))
+    expect(screen.getByTestId('location')).toHaveTextContent('/weekend/1000001/inventory')
+  })
+
+  it('replaces rather than stacks, so Back leaves the weekend', async () => {
+    // Four tabs and a habit of clicking through them turns Back into a tour of
+    // the tabs you already saw. The weekend is the destination; the tab is not.
+    //
+    // ASSERTING THE FINAL URL WOULD NOT TEST THIS — it is identical whether the
+    // tab pushed or replaced. Only going Back tells them apart, which needs a
+    // real entry BEHIND the weekend to come back to.
+    rosterQuery.data = ONE_UNIT
+    render(
+      <MemoryRouter initialEntries={['/weekend/sessions', '/weekend/fc1']} initialIndex={1}>
+        <Routes>
+          <Route path="/weekend/:sessionRef/:view?" element={<WeekendRosterPage />} />
+        </Routes>
+        <LocationProbe />
+      </MemoryRouter>
+    )
+
+    await userEvent.click(screen.getByRole('tab', { name: /Board/ }))
+    await userEvent.click(screen.getByRole('tab', { name: /Map/ }))
+    await userEvent.click(screen.getByRole('button', { name: 'probe-back' }))
+
+    expect(screen.getByTestId('location')).toHaveTextContent('/weekend/sessions')
+  })
+
+  it('falls back to the roster when the URL names a view that does not exist', () => {
+    // A stale bookmark, or a typo. Rendering nothing would read as a broken
+    // page; the roster is the honest default.
+    rosterQuery.data = ONE_UNIT
+    renderPage('1000001', 'gantt')
+    expect(screen.getByRole('tab', { name: /Roster/ })).toHaveAttribute('aria-selected', 'true')
   })
 })
 

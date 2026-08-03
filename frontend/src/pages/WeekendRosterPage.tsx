@@ -1,5 +1,9 @@
 /**
- * /weekend/session/:sessionCmId — one weekend's lodging roster.
+ * /weekend/:sessionRef/:view? — one weekend's lodging roster.
+ *
+ * The reference is a readable slug (`fc1`, `ww`, `mw`) falling back to the
+ * CampMinder id when two weekends would slug alike; the view is a path
+ * segment so a tab can be linked and reloaded. See `weekendNames.ts`.
  *
  * Laid out as the summer session view is, one program over: a title that is
  * itself the session switcher, a sticky pill-tab nav, a contextual stats bar,
@@ -27,7 +31,6 @@ import {
   Settings2,
   Users,
 } from 'lucide-react'
-import { useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router'
 
 import { QueryGuard } from '../components/QueryGuard'
@@ -41,9 +44,11 @@ import {
   LodgingBoard,
   LodgingMap,
   partyBeds,
+  resolveWeekendRef,
   shortWeekendName,
   sortWeekendsByDate,
   UnitInventoryPanel,
+  weekendRef,
   WeekendStatsBar,
 } from '../components/weekend'
 import { useCurrentYear } from '../hooks/useCurrentYear'
@@ -52,21 +57,47 @@ import { useWeekendRoster, useWeekendSessions } from '../hooks/useWeekendRoster'
 
 type View = 'roster' | 'inventory' | 'board' | 'map'
 
+const VIEWS: View[] = ['roster', 'inventory', 'board', 'map']
+
+const DEFAULT_VIEW: View = 'roster'
+
+/**
+ * The view is a URL segment, as the analytics sub-navs are — `/analytics/
+ * retention/flow`, not a query string. A tab held only in `useState` cannot be
+ * linked, survive a reload, or be reopened where you left it.
+ *
+ * An unrecognised segment falls back rather than rendering nothing: it arrives
+ * from a stale bookmark or a typo, and a blank panel reads as a broken page.
+ */
+function parseView(segment: string | undefined): View {
+  return VIEWS.find((candidate) => candidate === segment) ?? DEFAULT_VIEW
+}
+
 export default function WeekendRosterPage() {
-  const { sessionCmId } = useParams<{ sessionCmId: string }>()
+  const { sessionRef, view: viewParam } = useParams<{ sessionRef: string; view: string }>()
   const navigate = useNavigate()
   const { currentYear } = useCurrentYear()
   const { hasPermission } = usePermissions()
   const canManageLodging = hasPermission(Permission.BUNKING_MANAGE)
-  const [view, setView] = useState<View>('roster')
+  const view = parseView(viewParam)
 
-  const selectedCmId = sessionCmId === undefined ? null : Number(sessionCmId)
   const sessionsQuery = useWeekendSessions(currentYear)
-  const rosterQuery = useWeekendRoster(currentYear, selectedCmId)
-
   // Chronological, as the summer session picker is — CampMinder's sort_order
   // is manual and does not track the calendar.
   const sessions = sortWeekendsByDate(sessionsQuery.data?.sessions ?? [])
+
+  // A NUMERIC reference resolves without the list; a slug cannot. Reading the
+  // number directly keeps the roster fetch off the back of the sessions fetch,
+  // which would otherwise be a waterfall on every load.
+  const numericRef = /^\d+$/.test(sessionRef ?? '') ? Number(sessionRef) : null
+  const resolved = resolveWeekendRef(sessions, sessionRef)
+  const selectedCmId = resolved?.session_cm_id ?? numericRef
+  const rosterQuery = useWeekendRoster(currentYear, selectedCmId)
+
+  // A slug with no list yet is UNRESOLVED, not unknown — but the title's
+  // existing `sessionsQuery.isLoading` branch already says "Loading weekends…"
+  // in exactly that gap, so there is nothing more to add here.
+
   const selectedSession = sessions.find((session) => session.session_cm_id === selectedCmId)
   const dates = selectedSession
     ? formatSessionDates(selectedSession.start_date, selectedSession.end_date)
@@ -103,9 +134,14 @@ export default function WeekendRosterPage() {
           <div className="flex flex-shrink-0 items-center gap-2">
             <Home className="text-primary h-5 w-5 flex-shrink-0 sm:h-6 sm:w-6" />
             <Listbox
-              value={selectedCmId === null ? '' : String(selectedCmId)}
+              value={selectedSession ? weekendRef(selectedSession, sessions) : ''}
               onChange={(value: string) => {
-                void navigate(`/weekend/session/${value}`)
+                // CARRIES THE TAB. Switching weekends from inside one is how
+                // you compare the same view across two of them; landing back
+                // on the roster every time is what makes you use the lander
+                // instead. PUSH, unlike the tabs: the weekend is the
+                // destination, so Back belongs to it.
+                void navigate(`/weekend/${value}/${view}`)
               }}
             >
               <div className="relative">
@@ -121,7 +157,7 @@ export default function WeekendRosterPage() {
                   {sessions.map((session) => (
                     <ListboxOption
                       key={session.session_cm_id}
-                      value={String(session.session_cm_id)}
+                      value={weekendRef(session, sessions)}
                       className="listbox-option py-1.5"
                     >
                       {shortWeekendName(session.name)}
@@ -184,7 +220,14 @@ export default function WeekendRosterPage() {
                         aria-selected={view === tab.id}
                         aria-controls={`weekend-panel-${tab.id}`}
                         onClick={() => {
-                          setView(tab.id)
+                          // REPLACE, not push. Four tabs and a habit of
+                          // clicking through them would turn Back into a tour
+                          // of the tabs you just left; the weekend is the
+                          // destination, the tab is where you are standing in
+                          // it.
+                          void navigate(`/weekend/${sessionRef ?? ''}/${tab.id}`, {
+                            replace: true,
+                          })
                         }}
                         className={`flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold transition-all duration-200 ${
                           view === tab.id
