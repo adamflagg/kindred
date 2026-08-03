@@ -599,6 +599,21 @@ func (s *LodgingAssignmentsSync) findAssignment(in *assignmentInput) (*core.Reco
 
 // labelOf renders an existing assignment's placement the same way ingestValue
 // renders an observed one, so the two are comparable.
+//
+// AN ID THAT RESOLVES TO NOTHING CONTRIBUTES NOTHING. UnitCode returns the
+// empty string for an id it cannot map, and 1500000134's backfill can leave
+// exactly that behind -- it copies member_units across verbatim, because
+// filtering against lodging_units would silently change what a placement
+// points at. Appending the empty code anyway made unitLabel sort it FIRST and
+// join it, so a set holding one dangling id and one real room rendered as
+// "+ridge-a". The observed label is only ever built from resolved ids, so the
+// two could never match, and upsertAssignment's `oldLabel == in.NewUnitLabel`
+// short-circuit failed to fire: writeHistory appended a row claiming the
+// household moved out of a cabin whose name began with a "+".
+//
+// The re-save still happens -- unitsChanged sees the dangling id leave the set
+// -- which is right. What must not happen is the history row, because the
+// audit trail records MOVES and this party never left its cabin.
 func (s *LodgingAssignmentsSync) labelOf(rec *core.Record) string {
 	unitIDs := rec.GetStringSlice("units")
 	if len(unitIDs) == 0 {
@@ -606,7 +621,12 @@ func (s *LodgingAssignmentsSync) labelOf(rec *core.Record) string {
 	}
 	codes := make([]string, 0, len(unitIDs))
 	for _, id := range unitIDs {
-		codes = append(codes, s.resolver.UnitCode(id))
+		if code := s.resolver.UnitCode(id); code != "" {
+			codes = append(codes, code)
+		}
+	}
+	if len(codes) == 0 {
+		return ""
 	}
 	return unitLabel(codes)
 }

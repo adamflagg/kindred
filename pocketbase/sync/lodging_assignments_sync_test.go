@@ -737,3 +737,77 @@ func TestLodgingAssignmentsSyncMergeLabelIgnoresMemberOrder(t *testing.T) {
 		t.Errorf("history rows = %d, want 1; reordering the members is not a move", len(hist))
 	}
 }
+
+// TestLodgingAssignmentsSyncLabelDropsUnresolvableUnits: a placement may hold
+// a unit id that resolves to nothing, and rendering it must not invent a move.
+//
+// 1500000134's backfill copies member_units across VERBATIM -- "an id that was
+// dangling in member_units stays dangling in units" -- because filtering
+// against lodging_units would silently change what a placement points at.
+// AliasResolver.UnitCode returns the EMPTY STRING for an id it cannot map, so
+// a set holding one dangling id and one real one rendered as "+ridge-a":
+// unitLabel sorts the empty code first and joins it. The freshly resolved
+// label is "ridge-a", the two differ, and upsertAssignment's
+// `oldLabel == in.NewUnitLabel` short-circuit therefore fails to fire -- so
+// writeHistory appends a row claiming the household moved out of a cabin whose
+// name is a leading "+".
+//
+// The re-save itself is correct and must still happen: unitsChanged sees the
+// dangling id leave the set. What must NOT happen is the history row. The
+// audit trail is a record of MOVES, and dropping an id the database was
+// already entitled to hold is not one.
+func TestLodgingAssignmentsSyncLabelDropsUnresolvableUnits(t *testing.T) {
+	app := newLodgingTestApp(t)
+	sess := addSession(t, app, cmIDFamilyCamp1, "Family Camp 1", "family",
+		testSessionStart, testSessionEnd, 2025)
+	ridge := addUnit(t, app, "ridge-a")
+	addAlias(t, app, "Ridge A", []string{ridge}, 0, 0)
+	cabinDef := addFieldDef(t, app, cmIDFamilyCampCabin, fieldNameFamilyCampCabin)
+
+	hh := addHousehold(t, app, 9001, 2025)
+	emma := addPerson(t, app, 5001, 9001, 2025, hh)
+	addAttendee(t, app, emma, sess, 5001, 2, 2025)
+	addHouseholdValue(t, app, hh, cabinDef, "Ridge A", testLastUpdated, 2025)
+
+	s := NewLodgingAssignmentsSync(app)
+	s.Year = 2025
+	if err := s.Sync(context.Background()); err != nil {
+		t.Fatalf("first sync: %v", err)
+	}
+
+	rows, _ := app.FindRecordsByFilter("lodging_assignments", "", "", 0, 0)
+	if len(rows) != 1 {
+		t.Fatalf("assignments = %d, want 1 after the first sync", len(rows))
+	}
+	before, _ := app.FindRecordsByFilter("lodging_assignment_history", "", "", 0, 0)
+
+	// The post-backfill shape: a real room plus an id naming a unit that is
+	// gone. SaveNoValidate for the same reason 1500000134 uses it -- app.Save
+	// runs RelationField.ValidateValue, which refuses to store an id that does
+	// not resolve, so a validating write could not stage the state this test
+	// is about.
+	rows[0].Set("units", []string{"danglingunit001", ridge})
+	if err := app.SaveNoValidate(rows[0]); err != nil {
+		t.Fatalf("staging the dangling id: %v", err)
+	}
+
+	s2 := NewLodgingAssignmentsSync(app)
+	s2.Year = 2025
+	if err := s2.Sync(context.Background()); err != nil {
+		t.Fatalf("second sync: %v", err)
+	}
+
+	after, _ := app.FindRecordsByFilter("lodging_assignment_history", "", "", 0, 0)
+	if len(after) != len(before) {
+		extra := after[len(after)-1]
+		t.Errorf(
+			"history grew from %d to %d rows; dropping an unresolvable id is not a move (old_unit=%q new_unit=%q)",
+			len(before), len(after), extra.GetString("old_unit"), extra.GetString("new_unit"),
+		)
+	}
+
+	fresh, _ := app.FindRecordsByFilter("lodging_assignments", "", "", 0, 0)
+	if got := fresh[0].GetStringSlice("units"); len(got) != 1 || got[0] != ridge {
+		t.Errorf("units = %v, want just %q; the re-save should still drop the dangling id", got, ridge)
+	}
+}
