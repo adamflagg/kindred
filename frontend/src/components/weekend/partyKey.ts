@@ -1,8 +1,8 @@
 /**
  * Stable React identity for a roster party, shared by every weekend surface
- * that lists parties — the board, the map, the map's unit popover and the
- * unplaced queue. One definition, because four drifted into two variants and
- * one of them was wrong.
+ * that lists parties — the board, its slot cards, the map, the map's unit
+ * popover and the unplaced queue. One definition, because four drifted into
+ * two variants and one of them was wrong.
  *
  * ## `||`, never `??`
  *
