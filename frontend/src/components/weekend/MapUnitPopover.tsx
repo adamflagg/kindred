@@ -88,38 +88,57 @@ function DetailCard({ units, hue, onOpenParty }: MapUnitPopoverProps) {
   )
 }
 
+interface ClusterNames {
+  /** Per-room labels, with any building name the whole cluster shares stripped. */
+  names: string[]
+  /** The stripped building name, or '' when the cluster shared no prefix. */
+  prefix: string
+}
+
 /**
- * Drop the building name every cell in a cluster shares.
+ * Drop the building name every cell in a cluster shares — but don't delete
+ * it outright. Stripping it from every cell with nowhere else to put it trades
+ * one lie for another: a staff member would see "Back / Loft" with nothing
+ * saying which building those rooms are in. Callers put a non-empty `prefix`
+ * in the header instead.
  *
  * Found in a browser, not by a test: a four-room house rendered every cell as
  * "Clouds Rest Ba…", "Clouds Rest La…", "Clouds Rest Loft", "Clouds Rest Si…" —
  * the shared prefix consumed the width and truncated away the only part that
  * told them apart. Stripping the common leading WORDS leaves "Back", "Landing",
- * "Loft", "Side".
+ * "Loft", "Side", with "Clouds Rest" moved to the header.
  *
  * Never strips a name to nothing: the walk stops while every name still has a
- * word left. Returns the names untouched when they share no prefix, which is
- * the normal case for a cluster of unrelated cabins.
+ * word left. Returns the names untouched, and an empty prefix, when they
+ * share no prefix, which is the normal case for a cluster of unrelated
+ * cabins. Computed over UNIT NAMES only, never party names — a cell's label
+ * is the occupant's name once a room is taken, and a prefix walk across mixed
+ * unit/party strings would find something meaningless.
  */
-function distinguishingNames(units: MapUnit[]): string[] {
+function distinguishingNames(units: MapUnit[]): ClusterNames {
   const names = units.map((entry) => entry.unit.name)
-  if (names.length < 2) return names
+  if (names.length < 2) return { names, prefix: '' }
   const words = names.map((name) => name.split(' '))
   let shared = 0
   while (words.every((word) => word.length > shared + 1 && word[shared] === words[0]?.[shared])) {
     shared += 1
   }
-  return shared === 0 ? names : words.map((word) => word.slice(shared).join(' '))
+  if (shared === 0) return { names, prefix: '' }
+  return {
+    names: words.map((word) => word.slice(shared).join(' ')),
+    prefix: words[0]?.slice(0, shared).join(' ') ?? '',
+  }
 }
 
 function FootprintGrid({ units, hue, onOpenParty }: MapUnitPopoverProps) {
   const taken = units.filter((entry) => entry.parties.length > 0).length
   const columns = Math.ceil(Math.sqrt(units.length))
-  const shortNames = distinguishingNames(units)
+  const { names: shortNames, prefix } = distinguishingNames(units)
 
   return (
     <div className="flex flex-col gap-1.5">
       <h4 className="text-xs font-bold" style={{ color: hue }}>
+        {prefix && `${prefix} · `}
         {units.length} rooms · {taken} taken
       </h4>
       <div
@@ -144,9 +163,12 @@ function FootprintGrid({ units, hue, onOpenParty }: MapUnitPopoverProps) {
           // Prefixed by the visible label so the accessible name contains it
           // (WCAG 2.5.3), and duplicated into `title` because a tooltip alone is
           // invisible to touch and unreliable for screen readers.
-          // For an empty cell `label` IS the unit name, so the occupied form
-          // would read "Cedar 2 — Cedar 2, empty".
-          const described = first ? `${label} — ${entry.unit.name}, ${who}` : `${label} — empty`
+          // Always built from the FULL unit name, never the shortened cluster
+          // label — a tooltip has room, and the short form is ambiguous once
+          // it is out of the header's context.
+          const described = first
+            ? `${label} — ${entry.unit.name}, ${who}`
+            : `${entry.unit.name} — empty`
           const style = first
             ? { backgroundColor: hue, borderColor: hue }
             : {

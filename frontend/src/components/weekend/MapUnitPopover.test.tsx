@@ -153,6 +153,9 @@ describe('MapUnitPopover — a cluster of rooms', () => {
     expect(screen.getByText('Back')).toBeInTheDocument()
     expect(screen.getByText('Loft')).toBeInTheDocument()
     expect(screen.queryByText(/Cedar Lodge Back/)).not.toBeInTheDocument()
+    // Stripping the building name from every cell must not delete it
+    // entirely — it belongs in the header instead.
+    expect(screen.getByText('Cedar Lodge · 2 rooms · 0 taken')).toBeInTheDocument()
   })
 
   it('leaves unrelated cabin names alone', () => {
@@ -163,6 +166,8 @@ describe('MapUnitPopover — a cluster of rooms', () => {
     render(<MapUnitPopover units={scattered} hue={HUE} onOpenParty={vi.fn()} />)
     expect(screen.getByText('Cedar 1')).toBeInTheDocument()
     expect(screen.getByText('Birch 2')).toBeInTheDocument()
+    // No shared prefix means no stray building name in the header either.
+    expect(screen.getByText('2 rooms · 0 taken')).toBeInTheDocument()
   })
 
   it('says a room is shared rather than showing only the first family', () => {
