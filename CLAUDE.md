@@ -151,6 +151,26 @@ Worktree mechanics (ports, isolation, cleanup): `docs/reference/git-workflow.md`
 
 OAuth2 / OIDC setup: `docs/reference/oauth2-setup.md`
 
+### Family Camp Models Summer
+
+**Weekend / Family Camp surfaces model the summer equivalent wherever possible. A program-specific divergence must be deliberate, justified in a comment, and defensible against what summer does — not an accident of being written later by someone who did not look.**
+
+This is not a style preference. Summer is the mature surface; every place weekend departs from it is a place staff have to learn the product twice, and a place a fix has to be made twice. The rule covers, and is not limited to:
+
+| Dimension | Model summer's |
+|-----------|----------------|
+| **UI primitives** | Same components — tabs, tables, panels, modals, popouts, chips, badges |
+| **Styling** | Same Tailwind grammar and tokens. A class that does nothing (`forest-950`, #1894) propagates by imitation — check it renders |
+| **URL style** | Route shape and param naming. Tab state lives in the URL, not `useState`, so a tab is linkable and survives reload |
+| **Cache performance** | Inherit the `utils/queryClient.ts` defaults, as `hooks/session/useSessionData.ts` does. Do not opt down to shorter caching |
+| **RBAC** | Same permission constants and gate placement; protected endpoints go through `fetchWithAuth` |
+| **Data fetching** | Extract into custom hooks (`frontend/CLAUDE.md`), keys from `utils/queryKeys.ts` |
+| **Error handling** | Page-level `ErrorBoundary` + `QueryGuard`, all four states |
+
+**The caching row has already been got wrong once and is worth stating plainly.** The weekend hooks opted down to `userDataOptions` (30 s stale, 5 min gc, refetch on focus) to guard against staff editing in CampMinder mid-session. Summer has exactly that property and does not opt down, and **a weekend is worked by one person at a time** — they are modelling scenarios for themselves, and a second staff member looking on is rare and read-shaped. There was no concurrent-edit hazard to buy, and the cost was real: `build_roster` issues eleven PocketBase fetches and puts an empty weekend at ~3 seconds, re-paid every 30 seconds. **Long staleTime plus explicit invalidation on mutation — never short staleTime plus hope.**
+
+When weekend genuinely must differ, say why at the divergence. `useHouseholdMedical`'s `staleTime: 0, gcTime: 0` is the model: PHI must not sit in the cache after the panel closes, and the comment says so.
+
 ### Test-Driven Development
 
 Write failing tests first, verify they fail, then implement. **Tests are the specification — never edit a test to match what the implementation happens to do.** Tests and implementation may land in the same commit (PRs are squash-merged); what matters is the order you write them in. Marker semantics and which tests are skipped in CI: `tests/CLAUDE.md`.

@@ -39,6 +39,16 @@ React + TypeScript + Vite. Dev server on `:3000` (HMR); prod served via Caddy at
 
 Use the centralized keys from `src/utils/queryKeys.ts`. Inlining string keys causes cache collisions and silent bugs when invalidation misses the right query.
 
+## Caching — inherit the defaults
+
+**Set no cache options unless you can say why.** `utils/queryClient.ts` holds the app defaults (30 min stale, 60 min gc, no refetch on focus) and the summer bunking board runs on them — `hooks/session/useSessionData.ts` overrides nothing. `syncDataOptions` / `userDataOptions` in `queryKeys.ts` are opt-ins, not a menu you must choose from.
+
+Opting *down* to short caching to catch external edits is the trap: it re-pays the whole fetch on every window focus and evicts the cache minutes after you navigate away. Freshness after a write is bought with **explicit invalidation in the mutation**, not with a short `staleTime`. The weekend roster made this mistake and it is documented in `CLAUDE.md` §4 "Family Camp Models Summer".
+
+## Derived values in page components
+
+Anything that builds a model to read a number belongs in `useMemo`. `WeekendRosterPage` built the full board index *and* the full map model on every render — for two tab-badge counts, on every tab, whether or not the board or map was mounted. Memoize on the payload, and put `?? []` fallbacks **inside** the memo: a bare `?? []` mints a new array each render and defeats every dependency list below it.
+
 ## Tour maintenance
 
 When modifying page layout, features, or `data-tour` attributes on a toured page, review the corresponding tour in `src/tours/definitions/`:
