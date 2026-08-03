@@ -359,6 +359,9 @@ class TestAdultWeekendParties:
         assert party.household_cm_id == 0
         assert party.display_name == "Olivia Chen"
         assert party.party_size == 1
+        # The person-grain fallback path: no assignment row at all, so
+        # placement_by_person is empty and the lookup default fires.
+        assert party.unit_codes == []
 
 
 class TestUnitsAndCounts:
@@ -475,7 +478,7 @@ class TestPlacementOf:
     def test_single_unit_returns_its_code(self) -> None:
         row = _rec(units=["u1"], expand={"units": [_rec(id="u1", code="ridge-a", name="Ridge A")]})
 
-        assert LodgingRosterService._placement_of(row) == ("ridge-a", "Ridge A", False)
+        assert LodgingRosterService._placement_of(row) == ("ridge-a", "Ridge A", False, ("ridge-a",))
 
     def test_two_units_read_as_a_merged_slot(self) -> None:
         row = _rec(
@@ -491,19 +494,20 @@ class TestPlacementOf:
         placement = LodgingRosterService._placement_of(row)
 
         assert placement is not None
-        code, name, merged = placement
+        code, name, merged, unit_codes = placement
         assert code == ""
         assert merged is True
         assert "Tioga 1" in name and "Tioga 2" in name
+        assert unit_codes == ("gt-tioga-1", "gt-tioga-2")
 
     def test_no_units_is_none(self) -> None:
         assert LodgingRosterService._placement_of(_rec(units=[], expand={})) is None
 
-    def test_label_order_follows_the_stored_relation_not_the_expand_order(self) -> None:
+    def test_label_and_codes_order_follows_the_stored_relation_not_the_expand_order(self) -> None:
         """`expand` comes back from an IN-clause query, which PocketBase does
         not promise matches the relation field's own stored order. Building
-        the label from `units` (the id list) rather than from
-        `expand["units"]` directly keeps the label stable across requests
+        the label -- and unit_codes -- from `units` (the id list) rather than
+        from `expand["units"]` directly keeps both stable across requests
         even if the query's row order is not."""
         row = _rec(
             units=["u2", "u1"],
@@ -518,7 +522,8 @@ class TestPlacementOf:
         placement = LodgingRosterService._placement_of(row)
 
         assert placement is not None
-        assert placement[1] == "Tioga 2 + Tioga 1"
+        assert placement.unit_name == "Tioga 2 + Tioga 1"
+        assert placement.unit_codes == ("gt-tioga-2", "gt-tioga-1")
 
     def test_an_unresolvable_id_is_dropped_not_treated_as_a_full_orphan(self) -> None:
         """PocketBase tolerates a relation id whose target record is gone --
@@ -527,7 +532,24 @@ class TestPlacementOf:
         row reading as unplaced."""
         row = _rec(units=["u1", "u_deleted"], expand={"units": [_rec(id="u1", code="ridge-a", name="Ridge A")]})
 
-        assert LodgingRosterService._placement_of(row) == ("ridge-a", "Ridge A", False)
+        assert LodgingRosterService._placement_of(row) == ("ridge-a", "Ridge A", False, ("ridge-a",))
+
+    def test_a_row_naming_a_container_or_inactive_unit_is_not_a_tombstone(self) -> None:
+        """`_placement_of` has no opinion about bookability, only about
+        whether the relation resolves. If it ever grew one, a draft row
+        naming a container (or an inactive unit) would read as unresolvable
+        -- and with zero units left, as the TOMBSTONE, which on a draft row
+        means "staff removed this party from the board." That is a severe
+        silent failure: the party would vanish from the roster instead of
+        showing where it was actually placed. Filtering what staff can PLACE
+        a party onto belongs to the write path, not here.
+        """
+        row = _rec(
+            units=["u1"],
+            expand={"units": [_rec(id="u1", code="gt-wawona", name="Wawona", is_container=True, is_active=False)]},
+        )
+
+        assert LodgingRosterService._placement_of(row) is not None
 
 
 class TestAssignments:
@@ -553,8 +575,28 @@ class TestAssignments:
         assert party.unit_code == "ridge-a"
         assert party.unit_name == "Ridge A"
         assert party.is_merged_slot is False
+        assert party.unit_codes == ["ridge-a"]
         assert roster.counts.parties_assigned == 1
         assert roster.counts.parties_unassigned == 0
+
+    @pytest.mark.asyncio
+    async def test_unplaced_party_has_empty_unit_codes(self) -> None:
+        """The fallback path for a party with no assignment row at all: the
+        lookup dict is empty, so `.get(key, default)` returns the DEFAULT
+        rather than anything `_placement_of` built. A bare 3-tuple default
+        would still satisfy that lookup and still unpack into
+        unit_code/unit_name/is_merged_slot -- a plain tuple unpacks into
+        however many names ask for it -- and only fail later, on
+        `.unit_codes` attribute access, which a plain tuple does not have.
+        """
+        repo = _repo(
+            fetch_session=FAMILY_SESSION,
+            fetch_households={"hh_1": _household()},
+            fetch_attendees_for_session=[_child()],
+        )
+        roster = await LodgingRosterService(repo).build_roster(2026, 1000001)
+
+        assert roster.parties[0].unit_codes == []
 
     @pytest.mark.asyncio
     async def test_two_unit_assignment_reads_as_a_merged_slot(self) -> None:
@@ -582,6 +624,7 @@ class TestAssignments:
         assert party.unit_code == ""
         assert party.is_merged_slot is True
         assert "Wawona Front" in party.unit_name and "Wawona Back" in party.unit_name
+        assert party.unit_codes == ["gt-wawona-front", "gt-wawona-back"]
 
     @pytest.mark.asyncio
     async def test_orphaned_assignment_leaves_the_party_unassigned(self) -> None:
@@ -600,6 +643,7 @@ class TestAssignments:
         assert roster.parties[0].unit_code == ""
         assert roster.counts.parties_assigned == 0
         assert roster.counts.parties_unassigned == 1
+        assert roster.parties[0].unit_codes == []
 
 
 class TestScenarioResolution:
@@ -756,6 +800,7 @@ class TestScenarioResolution:
         party = roster.parties[0]
         assert "Tenaya 1" in party.unit_name and "Tenaya 2" in party.unit_name
         assert party.is_merged_slot is True
+        assert party.unit_codes == ["gt-tenaya-1", "gt-tenaya-2"]
 
     @pytest.mark.asyncio
     async def test_the_person_grain_overlays_independently(self) -> None:

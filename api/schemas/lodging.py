@@ -228,6 +228,13 @@ class RosterParty(BaseModel):
     unit_code: str = ""
     unit_name: str = ""
     is_merged_slot: bool = False
+    # Every leaf unit the party occupies, in the order `unit_name`'s label was
+    # built from -- one entry for an ordinary placement, 2+ for a merged slot,
+    # empty for unplaced. `unit_code` and `unit_name` keep their exact
+    # existing meaning (unit_code is "" on a merged slot); this is additive,
+    # for a caller -- the map view -- that needs to know WHICH units a merged
+    # party spans, not just how many.
+    unit_codes: list[str] = Field(default_factory=list)
     arrival_eta: str = ""
     # The household's cm_id was seen in an earlier year.
     is_returning: bool = False
