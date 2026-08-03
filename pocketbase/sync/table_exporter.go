@@ -60,8 +60,7 @@ var SyncJobToCollections = map[string][]string{
 	// collections this job writes -- NOT an export. None of these collections
 	// appears in GetReadableYearExports(), and lodging_phi_test.go asserts that.
 	"lodging_assignments": {
-		"lodging_assignments", "lodging_assignment_history",
-		"lodging_merges", "lodging_ingest_issues",
+		"lodging_assignments", "lodging_assignment_history", "lodging_ingest_issues",
 	},
 	"staff_skills":               {"staff_skills"},
 	"financial_aid_applications": {"financial_aid_applications"},

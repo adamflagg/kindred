@@ -2,6 +2,7 @@ package sync
 
 import (
 	"context"
+	"slices"
 	"testing"
 
 	"github.com/pocketbase/pocketbase/core"
@@ -62,11 +63,8 @@ func TestLodgingAssignmentsSyncHouseholdGrain(t *testing.T) {
 	if got.GetInt("person_cm_id") != 0 {
 		t.Errorf("person_cm_id = %d; the dual-grain XOR requires 0 here", got.GetInt("person_cm_id"))
 	}
-	if got.GetString("unit") != unitID {
-		t.Errorf("unit = %q, want %q", got.GetString("unit"), unitID)
-	}
-	if got.GetString("merge") != "" {
-		t.Error("merge is set on a single-room placement")
+	if units := got.GetStringSlice("units"); len(units) != 1 || units[0] != unitID {
+		t.Errorf("units = %v, want [%q]", units, unitID)
 	}
 	if got.GetString("session") != sessionID {
 		t.Errorf("session = %q, want %q", got.GetString("session"), sessionID)
@@ -162,8 +160,8 @@ func TestLodgingAssignmentsSyncAppendsHistoryOnChange(t *testing.T) {
 	if len(rows) != 1 {
 		t.Fatalf("assignments = %d, want 1 (moved, not duplicated)", len(rows))
 	}
-	if rows[0].GetString("unit") != ridgeB {
-		t.Error("assignment did not move to ridge-b")
+	if units := rows[0].GetStringSlice("units"); len(units) != 1 || units[0] != ridgeB {
+		t.Errorf("units = %v, want [%q]; assignment did not move to ridge-b", units, ridgeB)
 	}
 
 	hist, _ := app.FindRecordsByFilter("lodging_assignment_history", "", "-created", 0, 0)
@@ -197,7 +195,7 @@ func TestLodgingAssignmentsSyncRespectsStaffTouched(t *testing.T) {
 
 	rows, _ := app.FindRecordsByFilter("lodging_assignments", "", "", 0, 0)
 	rows[0].Set("staff_touched", true)
-	rows[0].Set("unit", ridgeB)
+	rows[0].Set("units", []string{ridgeB})
 	if err := app.Save(rows[0]); err != nil {
 		t.Fatalf("simulate staff move: %v", err)
 	}
@@ -209,8 +207,8 @@ func TestLodgingAssignmentsSyncRespectsStaffTouched(t *testing.T) {
 	}
 
 	after, _ := app.FindRecordsByFilter("lodging_assignments", "", "", 0, 0)
-	if after[0].GetString("unit") != ridgeB {
-		t.Error("the sync reverted a staff-touched placement")
+	if units := after[0].GetStringSlice("units"); len(units) != 1 || units[0] != ridgeB {
+		t.Errorf("units = %v, want [%q]; the sync reverted a staff-touched placement", units, ridgeB)
 	}
 	if s2.GetStats().Skipped < 1 {
 		t.Errorf("Skipped = %d, want at least 1 for the staff-touched row", s2.GetStats().Skipped)
@@ -300,9 +298,11 @@ func TestLodgingAssignmentsSyncQueuesAmbiguousSession(t *testing.T) {
 	}
 }
 
-// TestLodgingAssignmentsSyncMaterialisesMerges: "Golden Triangle - Tioga 1and2"
-// resolves to two units, so the placement points at a merge, never at one room.
-func TestLodgingAssignmentsSyncMaterialisesMerges(t *testing.T) {
+// TestIngestWritesAMultiRoomPlacementAsOneRow closes the case that used to
+// create a merge row: "Golden Triangle - Tioga 1and2" resolves to two units,
+// so a two-room alias lands as one assignment naming both -- see placementFor.
+// A merged slot is the alias's own member set, not a row pointing at it.
+func TestIngestWritesAMultiRoomPlacementAsOneRow(t *testing.T) {
 	app := newLodgingTestApp(t)
 	sess := addSession(t, app, cmIDFamilyCamp1, "Family Camp 1", "family",
 		"2025-05-23 07:00:00.000Z", "2025-05-26 07:00:00.000Z", 2025)
@@ -327,24 +327,17 @@ func TestLodgingAssignmentsSyncMaterialisesMerges(t *testing.T) {
 	if len(rows) != 1 {
 		t.Fatalf("assignments = %d, want 1", len(rows))
 	}
-	if rows[0].GetString("merge") == "" {
-		t.Error("merge is empty on a two-room placement")
+	got := rows[0].GetStringSlice("units")
+	if len(got) != 2 {
+		t.Fatalf("want both rooms on the row, got %v", got)
 	}
-	if rows[0].GetString("unit") != "" {
-		t.Error("unit is set alongside merge; the XOR forbids that")
+	if !slices.Contains(got, t1) || !slices.Contains(got, t2) {
+		t.Errorf("units = %v, want both %q and %q", got, t1, t2)
 	}
-
-	merges, _ := app.FindRecordsByFilter("lodging_merges", "", "", 0, 0)
-	if len(merges) != 1 {
-		t.Fatalf("merges = %d, want 1", len(merges))
-	}
-	if len(merges[0].GetStringSlice("member_units")) != 2 {
-		t.Errorf("merge has %d members, want 2", len(merges[0].GetStringSlice("member_units")))
-	}
-	// lodging_merges.session_cm_id is required too, so a merge materialized
-	// without it never saves at all -- this asserts the value, not just the save.
-	if merges[0].GetInt("session_cm_id") != cmIDFamilyCamp1 {
-		t.Errorf("merge session_cm_id = %d, want %d", merges[0].GetInt("session_cm_id"), cmIDFamilyCamp1)
+	// session_cm_id is required, so a row materialized without it never saves at
+	// all -- this asserts the value, not just the save.
+	if rows[0].GetInt("session_cm_id") != cmIDFamilyCamp1 {
+		t.Errorf("session_cm_id = %d, want %d", rows[0].GetInt("session_cm_id"), cmIDFamilyCamp1)
 	}
 }
 
@@ -501,26 +494,34 @@ func TestLodgingAssignmentsRegisteredEverywhere(t *testing.T) {
 	}
 }
 
+// TestPlacementForPassesASingleRoomStraightThrough is the one-member case of
+// the pass-through: still just the alias's own set, which is why it needs no
+// App on the struct above.
 func TestPlacementForPassesASingleRoomStraightThrough(t *testing.T) {
 	s := &LodgingAssignmentsSync{}
 	res := AliasResolution{Raw: "Room 1", UnitIDs: []string{"r1"}, Resolved: true}
 
-	unitID, mergeID, err := s.placementFor(res, "sess", 1, 2026, res.Raw)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
+	got := s.placementFor(res)
+	if len(got) != 1 || got[0] != "r1" {
+		t.Errorf("got %v, want [r1]", got)
 	}
-	// A single room takes the unit column and never reaches EnsureMerge, which
-	// is why this case needs no App on the struct above.
-	if unitID != "r1" || mergeID != "" {
-		t.Errorf("unitID=%q mergeID=%q, want r1 and empty", unitID, mergeID)
+}
+
+// TestPlacementForPassesTheAliasSetThrough pins the collapse: a multi-room
+// alias no longer materializes a row, it simply IS the placement.
+func TestPlacementForPassesTheAliasSetThrough(t *testing.T) {
+	s := &LodgingAssignmentsSync{}
+	got := s.placementFor(AliasResolution{UnitIDs: []string{"u1", "u2"}, Resolved: true})
+	if len(got) != 2 || got[0] != "u1" || got[1] != "u2" {
+		t.Fatalf("want the alias set unchanged, got %v", got)
 	}
 }
 
 // TestLodgingAssignmentsSyncDryRunWritesNothing: DryRun's contract is "compute
-// but do not write". Two of ingestValue's write paths sit UPSTREAM of the
-// placement write -- recordHistory for a string no alias covers, and
-// placementFor -> EnsureMerge for a multi-room alias -- so a guard placed just
-// before upsertAssignment leaves rows behind in two tables it never mentions.
+// but do not write". recordHistory -- one of ingestValue's write paths -- sits
+// UPSTREAM of the placement write, for a string no alias covers, so a guard
+// placed just before upsertAssignment would leave rows behind in that table
+// even though it never mentions it.
 func TestLodgingAssignmentsSyncDryRunWritesNothing(t *testing.T) {
 	app := newLodgingTestApp(t)
 	sess := addSession(t, app, cmIDFamilyCamp1, "Family Camp 1", "family",
@@ -530,7 +531,7 @@ func TestLodgingAssignmentsSyncDryRunWritesNothing(t *testing.T) {
 	addAlias(t, app, "Golden Triangle - Tioga 1and2", []string{t1, t2}, 0, 0)
 	cabinDef := addFieldDef(t, app, cmIDFamilyCampCabin, fieldNameFamilyCampCabin)
 
-	// Household on a two-room alias: reaches EnsureMerge.
+	// Household on a two-room alias: reaches the multi-room placement path.
 	hh := addHousehold(t, app, 9001, 2025)
 	emma := addPerson(t, app, 5001, 9001, 2025, hh)
 	addAttendee(t, app, emma, sess, 5001, 2, 2025)
@@ -550,8 +551,7 @@ func TestLodgingAssignmentsSyncDryRunWritesNothing(t *testing.T) {
 	}
 
 	for _, collection := range []string{
-		"lodging_assignments", "lodging_assignment_history",
-		"lodging_merges", "lodging_ingest_issues",
+		"lodging_assignments", "lodging_assignment_history", "lodging_ingest_issues",
 	} {
 		rows, err := app.FindRecordsByFilter(collection, "", "", 0, 0)
 		if err != nil {
@@ -676,12 +676,15 @@ func TestLodgingAssignmentsSyncQueuesUnknownPerson(t *testing.T) {
 	}
 }
 
-// TestLodgingAssignmentsSyncMergeLabelIgnoresMemberOrder: EnsureMerge keys a
-// merge on the member SET (unitSetKey sorts), so two aliases naming the same two
-// rooms in different orders share ONE merge row. The placement label has to be
-// canonical for the same reason -- an order-sensitive label would read as a move
-// on every run, re-saving the assignment and appending a history row for a
-// household that never left its cabin.
+// TestLodgingAssignmentsSyncMergeLabelIgnoresMemberOrder: a multi-room
+// placement's units come straight from the alias's own member_units, and
+// PocketBase returns relation ids in storage order, which is not guaranteed
+// stable. Two aliases naming the same two rooms in different orders must
+// therefore resolve to the SAME placement, not a second row -- both the
+// changed-check in upsertAssignment (unitsChanged) and the placement label
+// (unitLabel) have to be order-independent, or reordering the members would
+// read as a move on every run: a re-save and a history row for a household
+// that never left its cabin.
 func TestLodgingAssignmentsSyncMergeLabelIgnoresMemberOrder(t *testing.T) {
 	app := newLodgingTestApp(t)
 	sess := addSession(t, app, cmIDFamilyCamp1, "Family Camp 1", "family",
@@ -722,12 +725,89 @@ func TestLodgingAssignmentsSyncMergeLabelIgnoresMemberOrder(t *testing.T) {
 		t.Fatalf("second sync: %v", err)
 	}
 
-	merges, _ := app.FindRecordsByFilter("lodging_merges", "", "", 0, 0)
-	if len(merges) != 1 {
-		t.Errorf("merges = %d, want 1; the same room set must not fork a second merge", len(merges))
+	rows, _ := app.FindRecordsByFilter("lodging_assignments", "", "", 0, 0)
+	if len(rows) != 1 {
+		t.Fatalf("assignments = %d, want 1; the same room set must not fork a second row", len(rows))
+	}
+	if got := rows[0].GetStringSlice("units"); len(got) != 2 {
+		t.Errorf("units = %v, want both rooms still on the row", got)
 	}
 	hist, _ := app.FindRecordsByFilter("lodging_assignment_history", "", "", 0, 0)
 	if len(hist) != 1 {
 		t.Errorf("history rows = %d, want 1; reordering the members is not a move", len(hist))
+	}
+}
+
+// TestLodgingAssignmentsSyncLabelDropsUnresolvableUnits: a placement may hold
+// a unit id that resolves to nothing, and rendering it must not invent a move.
+//
+// 1500000134's backfill copies member_units across VERBATIM -- "an id that was
+// dangling in member_units stays dangling in units" -- because filtering
+// against lodging_units would silently change what a placement points at.
+// AliasResolver.UnitCode returns the EMPTY STRING for an id it cannot map, so
+// a set holding one dangling id and one real one rendered as "+ridge-a":
+// unitLabel sorts the empty code first and joins it. The freshly resolved
+// label is "ridge-a", the two differ, and upsertAssignment's
+// `oldLabel == in.NewUnitLabel` short-circuit therefore fails to fire -- so
+// writeHistory appends a row claiming the household moved out of a cabin whose
+// name is a leading "+".
+//
+// The re-save itself is correct and must still happen: unitsChanged sees the
+// dangling id leave the set. What must NOT happen is the history row. The
+// audit trail is a record of MOVES, and dropping an id the database was
+// already entitled to hold is not one.
+func TestLodgingAssignmentsSyncLabelDropsUnresolvableUnits(t *testing.T) {
+	app := newLodgingTestApp(t)
+	sess := addSession(t, app, cmIDFamilyCamp1, "Family Camp 1", "family",
+		testSessionStart, testSessionEnd, 2025)
+	ridge := addUnit(t, app, "ridge-a")
+	addAlias(t, app, "Ridge A", []string{ridge}, 0, 0)
+	cabinDef := addFieldDef(t, app, cmIDFamilyCampCabin, fieldNameFamilyCampCabin)
+
+	hh := addHousehold(t, app, 9001, 2025)
+	emma := addPerson(t, app, 5001, 9001, 2025, hh)
+	addAttendee(t, app, emma, sess, 5001, 2, 2025)
+	addHouseholdValue(t, app, hh, cabinDef, "Ridge A", testLastUpdated, 2025)
+
+	s := NewLodgingAssignmentsSync(app)
+	s.Year = 2025
+	if err := s.Sync(context.Background()); err != nil {
+		t.Fatalf("first sync: %v", err)
+	}
+
+	rows, _ := app.FindRecordsByFilter("lodging_assignments", "", "", 0, 0)
+	if len(rows) != 1 {
+		t.Fatalf("assignments = %d, want 1 after the first sync", len(rows))
+	}
+	before, _ := app.FindRecordsByFilter("lodging_assignment_history", "", "", 0, 0)
+
+	// The post-backfill shape: a real room plus an id naming a unit that is
+	// gone. SaveNoValidate for the same reason 1500000134 uses it -- app.Save
+	// runs RelationField.ValidateValue, which refuses to store an id that does
+	// not resolve, so a validating write could not stage the state this test
+	// is about.
+	rows[0].Set("units", []string{"danglingunit001", ridge})
+	if err := app.SaveNoValidate(rows[0]); err != nil {
+		t.Fatalf("staging the dangling id: %v", err)
+	}
+
+	s2 := NewLodgingAssignmentsSync(app)
+	s2.Year = 2025
+	if err := s2.Sync(context.Background()); err != nil {
+		t.Fatalf("second sync: %v", err)
+	}
+
+	after, _ := app.FindRecordsByFilter("lodging_assignment_history", "", "", 0, 0)
+	if len(after) != len(before) {
+		extra := after[len(after)-1]
+		t.Errorf(
+			"history grew from %d to %d rows; dropping an unresolvable id is not a move (old_unit=%q new_unit=%q)",
+			len(before), len(after), extra.GetString("old_unit"), extra.GetString("new_unit"),
+		)
+	}
+
+	fresh, _ := app.FindRecordsByFilter("lodging_assignments", "", "", 0, 0)
+	if got := fresh[0].GetStringSlice("units"); len(got) != 1 || got[0] != ridge {
+		t.Errorf("units = %v, want just %q; the re-save should still drop the dangling id", got, ridge)
 	}
 }

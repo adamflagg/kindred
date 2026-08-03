@@ -58,8 +58,14 @@ check must respect the same split rather than counting rows.
 ## Why not container topology
 
 A previous design expressed merge validity as "the member set must be the
-complete child set of some container". It was removed. The reasons generalise to
-any future attempt to encode occupancy as tree shape:
+complete child set of some container". It was removed. That was written when
+the set lived on a separate `lodging_merges` row; kindred#1931 later folded
+`unit` / `merge` / `merge_draft` into one multi-valued `units` relation on the
+placement itself (`HANDOFF.md` §2), so restated in today's vocabulary the
+removed rule would read "a placement's `units` set must be the complete child
+set of some container". The reasoning did not depend on where the set lived,
+and neither does the case against it. The reasons generalise to any future
+attempt to encode occupancy as tree shape:
 
 1. **The valid configurations are not enumerable.** A four-room house may be let
    whole, split by room, split between a family and a staff member, or split
@@ -69,8 +75,9 @@ any future attempt to encode occupancy as tree shape:
    of every building.
 
 2. **Legitimate and mistaken configurations are byte-identical.** A deliberate
-   partial booking and a mis-clicked unit selection produce the same rows. A
-   rule that cannot distinguish them flags both and advises both identically.
+   partial booking and a mis-clicked unit selection produce the same `units`
+   set. A rule that cannot distinguish them flags both and advises both
+   identically.
 
 3. **The topology gets fitted to the data.** Intermediate containers were seeded
    specifically so existing real merges would satisfy the rule — the check then
@@ -78,10 +85,14 @@ any future attempt to encode occupancy as tree shape:
 
 4. **Nothing downstream consumes it.** Bathroom privacy is computed from
    `bathroom_group` (`api/services/lodging_rules.py`), a different grouping that
-   handles partial merges correctly on its own. Capacity sums actual member
-   units. `parent_unit` — the tree the completeness rule walked — appears
-   nowhere in `api/` or `bunking/` at all. `is_container` is read there, but
-   only to keep buildings out of bookable lists
+   handles partial merges correctly on its own. `effective_bathroom`
+   (`api/services/lodging_rules.py:75`) takes the merged set as
+   `merged_codes: frozenset[str]` — set-based from the start, so the bathroom
+   upgrade is unchanged by kindred#1931's collapse; it was never reading a
+   `lodging_merges` row to begin with. Capacity sums actual member units.
+   `parent_unit` — the tree the completeness rule walked — appears nowhere in
+   `api/` or `bunking/` at all. `is_container` is read there, but only to keep
+   buildings out of bookable lists
    (`api/services/lodging_roster_service.py:561`); nothing reads the
    parent/child relationship that made a merge "complete".
 

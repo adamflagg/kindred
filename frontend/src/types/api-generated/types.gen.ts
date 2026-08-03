@@ -2023,48 +2023,6 @@ export type MergeResponse = {
 }
 
 /**
- * MergeWriteRequest
- *
- * Bind a set of units into one bookable slot, for one weekend.
- *
- * THE MEMBER SET IS NOT VALIDATED FOR COMPLETENESS, deliberately. The rule
- * "a merge is legal iff its members are the complete child set of some
- * container" was built through nine tasks and removed in #1903: every member
- * set is hand-authored, so a deliberate partial booking and a mis-click
- * produce byte-identical rows and no rule can tell them apart. Read
- * docs/architecture/lodging-occupancy.md before adding anything like it --
- * the idea is genuinely appealing and wrong for reasons that are not obvious.
- */
-export type MergeWriteRequest = {
-  /**
-   * Year
-   */
-  year: number
-  /**
-   * Session Cm Id
-   */
-  session_cm_id: number
-  /**
-   * Scenario
-   *
-   * saved_scenarios record id
-   */
-  scenario: string
-  /**
-   * Member Unit Ids
-   */
-  member_unit_ids: Array<string>
-  /**
-   * Display Name
-   */
-  display_name?: string
-  /**
-   * Capacity Override
-   */
-  capacity_override?: number | null
-}
-
-/**
  * MultiSessionSolverRequest
  *
  * Request to run the solver for multiple sessions.
@@ -3508,10 +3466,10 @@ export type PlacementDeleteRequest = {
  *
  * Place a party, or record that staff took it off the board.
  *
- * All three targets empty is the TOMBSTONE and is deliberately valid: it
- * means "unplaced in this scenario", which is not the same as having no draft
- * row. Deleting the row instead would fall through to the CampMinder mirror
- * and put the family straight back where staff just dragged them from.
+ * An EMPTY `unit_ids` is the TOMBSTONE and is deliberately valid: it means
+ * "unplaced in this scenario", which is not the same as having no draft row.
+ * Deleting the row instead would fall through to the CampMinder mirror and
+ * put the family straight back where staff just dragged them from.
  */
 export type PlacementWriteRequest = {
   /**
@@ -3537,17 +3495,9 @@ export type PlacementWriteRequest = {
    */
   person_cm_id?: number
   /**
-   * Unit Id
+   * Unit Ids
    */
-  unit_id?: string
-  /**
-   * Merge Id
-   */
-  merge_id?: string
-  /**
-   * Merge Draft Id
-   */
-  merge_draft_id?: string
+  unit_ids?: Array<string>
 }
 
 /**
@@ -4861,6 +4811,10 @@ export type RosterParty = {
    * Is Merged Slot
    */
   is_merged_slot?: boolean
+  /**
+   * Unit Codes
+   */
+  unit_codes?: Array<string>
   /**
    * Arrival Eta
    */
@@ -9968,65 +9922,6 @@ export type UpsertPlacementApiLodgingPlacementsPostResponses = {
 
 export type UpsertPlacementApiLodgingPlacementsPostResponse =
   UpsertPlacementApiLodgingPlacementsPostResponses[keyof UpsertPlacementApiLodgingPlacementsPostResponses]
-
-export type CreateMergeApiLodgingMergesPostData = {
-  body: MergeWriteRequest
-  path?: never
-  query?: never
-  url: '/api/lodging/merges'
-}
-
-export type CreateMergeApiLodgingMergesPostErrors = {
-  /**
-   * Validation Error
-   */
-  422: HttpValidationError
-}
-
-export type CreateMergeApiLodgingMergesPostError =
-  CreateMergeApiLodgingMergesPostErrors[keyof CreateMergeApiLodgingMergesPostErrors]
-
-export type CreateMergeApiLodgingMergesPostResponses = {
-  /**
-   * Successful Response
-   */
-  200: LodgingWriteResponse
-}
-
-export type CreateMergeApiLodgingMergesPostResponse =
-  CreateMergeApiLodgingMergesPostResponses[keyof CreateMergeApiLodgingMergesPostResponses]
-
-export type DeleteMergeApiLodgingMergesMergeDraftIdDeleteData = {
-  body?: never
-  path: {
-    /**
-     * Merge Draft Id
-     */
-    merge_draft_id: string
-  }
-  query?: never
-  url: '/api/lodging/merges/{merge_draft_id}'
-}
-
-export type DeleteMergeApiLodgingMergesMergeDraftIdDeleteErrors = {
-  /**
-   * Validation Error
-   */
-  422: HttpValidationError
-}
-
-export type DeleteMergeApiLodgingMergesMergeDraftIdDeleteError =
-  DeleteMergeApiLodgingMergesMergeDraftIdDeleteErrors[keyof DeleteMergeApiLodgingMergesMergeDraftIdDeleteErrors]
-
-export type DeleteMergeApiLodgingMergesMergeDraftIdDeleteResponses = {
-  /**
-   * Successful Response
-   */
-  200: LodgingWriteResponse
-}
-
-export type DeleteMergeApiLodgingMergesMergeDraftIdDeleteResponse =
-  DeleteMergeApiLodgingMergesMergeDraftIdDeleteResponses[keyof DeleteMergeApiLodgingMergesMergeDraftIdDeleteResponses]
 
 export type SetAvailabilityApiLodgingAvailabilityPutData = {
   body: AvailabilityWriteRequest

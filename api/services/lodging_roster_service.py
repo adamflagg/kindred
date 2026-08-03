@@ -13,7 +13,7 @@ get_household_medical, behind Permission.LODGING_PHI at the router.
 from __future__ import annotations
 
 import asyncio
-from typing import TYPE_CHECKING, Any, cast
+from typing import TYPE_CHECKING, Any, NamedTuple, cast
 
 from api.schemas.lodging import (
     PHI_FIELD_NAMES,
@@ -60,6 +60,34 @@ _ELIGIBILITY_SOURCE_VALUES: frozenset[str] = frozenset({"form", "registration"})
 
 class SessionNotFoundError(LookupError):
     """No family/adult session matches the requested (year, cm_id)."""
+
+
+class _Placement(NamedTuple):
+    """A row's resolved target(s) -- the RosterParty placement fields.
+
+    unit_code/unit_name/is_merged_slot are the exact triple `_placement_of`
+    returned before kindred#1931's map-view follow-up added unit_codes: the
+    response shape a `lodging_merges` row used to produce, preserved so the
+    board needs no changes. unit_codes adds every leaf code the party
+    occupies, in the same order unit_name's label was built from, for a
+    caller (the map view) that needs to know WHICH units a merged party
+    spans, not just how many.
+
+    A plain 3-tuple was the return type before this, and still type-checks
+    and still unpacks as a 3-tuple -- the trap is a fallback default left at
+    the old shape, which only breaks on `.unit_codes` attribute access, on
+    the one path that never hits `_placement_of` at all. `_NO_PLACEMENT`
+    below is the fix: every fallback site uses this NamedTuple's own zero
+    value, not a bare tuple literal.
+    """
+
+    unit_code: str
+    unit_name: str
+    is_merged_slot: bool
+    unit_codes: tuple[str, ...]
+
+
+_NO_PLACEMENT = _Placement("", "", False, ())
 
 
 def _s(record: Any, field: str, default: str = "") -> str:
@@ -355,12 +383,16 @@ class LodgingRosterService:
                     area_code=_s(area, "code") if area is not None else "",
                     area_name=_s(area, "name") if area is not None else "",
                     sleeps=unit_capacity(_i(unit, "sleeps")),
-                    # The units INVENTORY is not merge-aware in slice 1, so a
-                    # unit is evaluated as its own one-element slot. (Merges do
-                    # reach the roster elsewhere -- an assignment to a merge
-                    # sets RosterParty.is_merged_slot -- so the gap is here,
-                    # not on the surface as a whole.) When the board ships,
-                    # pass the merge's member codes here instead.
+                    # The units INVENTORY evaluates each unit as its own
+                    # one-element slot, so a room that only clears the
+                    # bathroom bar as half of a two-room placement is scored
+                    # here as if it stood alone. (Multi-room placements do
+                    # reach the roster: a placement whose `units` set has 2+
+                    # members sets RosterParty.is_merged_slot and lists every
+                    # leaf code on RosterParty.unit_codes -- so the gap is
+                    # here, on the inventory, not on the surface as a whole.)
+                    # When the board ships, pass the occupying placement's
+                    # unit_codes here instead of the single unit's own code.
                     bathroom=cast(
                         Any,
                         effective_bathroom(
@@ -420,30 +452,46 @@ class LodgingRosterService:
         )
 
     @staticmethod
-    def _placement_of(row: Any) -> tuple[str, str, bool] | None:
-        """(unit_code, display_name, is_merged_slot) for a row, or None.
+    def _placement_of(row: Any) -> _Placement | None:
+        """A row's resolved placement, or None.
 
-        None means the row names NO target. On a synced row that is an orphan
-        -- the unit was deleted out from under it, which the DB allows -- and
-        on a DRAFT row it is the deliberate "staff took this party off the
-        board" tombstone. Both read the same here; what differs is how the
-        caller treats it, which is why this returns None rather than skipping.
+        None means the row names NO target. On a synced row that is an
+        orphan -- every unit it named was deleted out from under it, which
+        the DB allows -- and on a DRAFT row it is the deliberate "staff took
+        this party off the board" tombstone. Both read the same here; what
+        differs is how the caller treats it, which is why this returns None
+        rather than skipping.
 
-        `merge_draft` is checked before `merge`: a board-built slot is the more
-        specific answer when a row somehow carries both. The schema enforces no
-        XOR between the three, exactly as it does not on the truth table.
+        Bookability is not this function's concern. A unit that resolves --
+        even a container, even an inactive one -- still places the party; it
+        does not read as an unresolvable id and therefore never turns a
+        placement into a tombstone by way of filtering. Whether staff CAN
+        place a party onto such a unit is a write-path question.
+
+        One unit is a normal placement; 2+ read as a merged slot with no unit
+        code -- byte for byte the shape the old `lodging_merges` row produced,
+        so callers and the board are unaffected by the collapse to one
+        relation.
+
+        The label and unit_codes are built from `row.units` (the relation's
+        own stored id order), not from iterating `row.expand["units"]`
+        directly: expand comes back from an IN-clause query, and PocketBase
+        does not promise that order matches the field's stored order, so
+        reading expand's own order would let a merged slot's label -- and its
+        unit_codes -- reorder between requests. An id in `units` with no
+        matching record in `expand["units"]` names a unit that no longer
+        exists -- the DB permits a relation to outlive its target -- and is
+        dropped rather than surfacing as a placeholder, which mirrors how a
+        fully orphaned row already reads as unplaced.
         """
-        expand = getattr(row, "expand", None) or {}
-        merge_draft = expand.get("merge_draft")
-        if merge_draft is not None and _s(row, "merge_draft"):
-            return "", _s(merge_draft, "display_name"), True
-        merge = expand.get("merge")
-        if merge is not None and _s(row, "merge"):
-            return "", _s(merge, "display_name"), True
-        unit = expand.get("unit")
-        if unit is not None and _s(row, "unit"):
-            return _s(unit, "code"), _s(unit, "name"), False
-        return None
+        by_id = {_s(u, "id"): u for u in (getattr(row, "expand", None) or {}).get("units") or []}
+        units = [by_id[uid] for uid in (getattr(row, "units", None) or []) if uid in by_id]
+        if not units:
+            return None
+        codes = tuple(_s(u, "code") for u in units)
+        if len(units) == 1:
+            return _Placement(codes[0], _s(units[0], "name"), False, codes)
+        return _Placement("", " + ".join(_s(u, "name") for u in units), True, codes)
 
     @staticmethod
     def _grain_key(row: Any) -> tuple[str, int] | None:
@@ -462,12 +510,10 @@ class LodgingRosterService:
             return "household", household_cm_id
         return None
 
-    def _index_assignments(
-        self, assignments: list[Any]
-    ) -> tuple[dict[int, tuple[str, str, bool]], dict[int, tuple[str, str, bool]]]:
-        """Map cm_id -> (unit_code, display_name, is_merged_slot)."""
-        by_household: dict[int, tuple[str, str, bool]] = {}
-        by_person: dict[int, tuple[str, str, bool]] = {}
+    def _index_assignments(self, assignments: list[Any]) -> tuple[dict[int, _Placement], dict[int, _Placement]]:
+        """Map cm_id -> its resolved placement."""
+        by_household: dict[int, _Placement] = {}
+        by_person: dict[int, _Placement] = {}
         for row in assignments:
             placement = self._placement_of(row)
             if placement is None:
@@ -483,8 +529,8 @@ class LodgingRosterService:
 
     def _overlay_draft_assignments(
         self,
-        by_household: dict[int, tuple[str, str, bool]],
-        by_person: dict[int, tuple[str, str, bool]],
+        by_household: dict[int, _Placement],
+        by_person: dict[int, _Placement],
         drafts: list[Any],
     ) -> None:
         """Apply one scenario's draft rows over the synced placements, in place.
@@ -511,7 +557,7 @@ class LodgingRosterService:
                 target[grain[1]] = placement
 
     def _build_person_parties(
-        self, attendees: list[Any], placement_by_person: dict[int, tuple[str, str, bool]]
+        self, attendees: list[Any], placement_by_person: dict[int, _Placement]
     ) -> list[RosterParty]:
         parties: list[RosterParty] = []
         for attendee in attendees:
@@ -519,7 +565,7 @@ class LodgingRosterService:
             if person is None:
                 continue
             person_cm_id = _i(person, "cm_id") or _i(attendee, "person_id")
-            unit_code, unit_name, is_merged = placement_by_person.get(person_cm_id, ("", "", False))
+            placement = placement_by_person.get(person_cm_id, _NO_PLACEMENT)
             parties.append(
                 RosterParty(
                     grain="person",
@@ -527,9 +573,10 @@ class LodgingRosterService:
                     display_name=_person_display_name(person),
                     adults=[PartyAdult(adult_number=1, display_name=_person_display_name(person))],
                     party_size=1,
-                    unit_code=unit_code,
-                    unit_name=unit_name,
-                    is_merged_slot=is_merged,
+                    unit_code=placement.unit_code,
+                    unit_name=placement.unit_name,
+                    is_merged_slot=placement.is_merged_slot,
+                    unit_codes=list(placement.unit_codes),
                 )
             )
         parties.sort(key=lambda p: p.display_name)
@@ -544,7 +591,7 @@ class LodgingRosterService:
         adults_by_household: dict[str, list[Any]],
         registrations: dict[str, Any],
         medical: dict[str, Any],
-        placement_by_household: dict[int, tuple[str, str, bool]],
+        placement_by_household: dict[int, _Placement],
     ) -> list[RosterParty]:
         children_by_household: dict[str, list[Any]] = {}
         for attendee in attendees:
@@ -563,7 +610,7 @@ class LodgingRosterService:
             registration = registrations.get(household_pb_id)
             medical_record = medical.get(household_pb_id)
             adults = adults_by_household.get(household_pb_id, [])
-            unit_code, unit_name, is_merged = placement_by_household.get(household_cm_id, ("", "", False))
+            placement = placement_by_household.get(household_cm_id, _NO_PLACEMENT)
 
             parties.append(
                 RosterParty(
@@ -589,9 +636,10 @@ class LodgingRosterService:
                         for child in sorted(children, key=lambda c: -_i(c, "age"))
                     ],
                     party_size=len(adults) + len(children),
-                    unit_code=unit_code,
-                    unit_name=unit_name,
-                    is_merged_slot=is_merged,
+                    unit_code=placement.unit_code,
+                    unit_name=placement.unit_name,
+                    is_merged_slot=placement.is_merged_slot,
+                    unit_codes=list(placement.unit_codes),
                     arrival_eta=_s(registration, "arrival_eta") if registration is not None else "",
                     is_returning=household_cm_id in prior_cm_ids,
                     share=self._build_share(registration),

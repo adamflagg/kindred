@@ -2,35 +2,33 @@ package sync
 
 import "errors"
 
-// The dual-grain invariant (spec 3.5): exactly one party identifier and exactly
-// one placement per assignment row.
+// The dual-grain invariant (spec 3.5): exactly one party identifier and at
+// least one placement per assignment row.
 //
-// PocketBase enforces none of it. lodging_assignments.unit and .merge are both
-// optional relations, and household_cm_id / person_cm_id are both optional
-// numbers, so every illegal shape below saves with a 200. Plan 1 kept the
-// invariant above the database deliberately -- a partial unique index cannot
-// express "exactly one of these two" -- which makes this function the only place
-// it exists at all.
+// PocketBase enforces none of it. lodging_assignments.units is an optional
+// relation, and household_cm_id / person_cm_id are both optional numbers, so
+// every illegal shape below saves with a 200. Plan 1 kept the invariant above
+// the database deliberately -- a partial unique index cannot express "exactly
+// one of these two" -- which makes this function the only place it exists at
+// all.
 var (
-	ErrGrainNoParty        = errors.New("assignment has neither household_cm_id nor person_cm_id")
-	ErrGrainBothParties    = errors.New("assignment has both household_cm_id and person_cm_id")
-	ErrGrainNoPlacement    = errors.New("assignment has neither unit nor merge")
-	ErrGrainBothPlacements = errors.New("assignment has both unit and merge")
+	ErrGrainNoParty     = errors.New("assignment has neither household_cm_id nor person_cm_id")
+	ErrGrainBothParties = errors.New("assignment has both household_cm_id and person_cm_id")
+	ErrGrainNoPlacement = errors.New("assignment has no units")
 )
 
 // AssignmentGrain is the identity half of a lodging_assignments row.
 type AssignmentGrain struct {
 	HouseholdCMID int
 	PersonCMID    int
-	UnitID        string
-	MergeID       string
+	UnitIDs       []string
 }
 
 // ValidateAssignmentGrain returns nil only for the two legal shapes:
 //
-//	household + unit | household + merge   -> family camp
-//	person    + unit | person    + merge   -> adult weekends, or one person
-//	                                          pulled out of their household's row
+//	household + units   -> family camp
+//	person    + units   -> adult weekends, or one person pulled out of their
+//	                        household's row
 //
 // Note the party test compares against 0, never against the empty string.
 // PocketBase number columns are NUMERIC DEFAULT 0 NOT NULL so an unset id is 0,
@@ -47,13 +45,8 @@ func ValidateAssignmentGrain(g AssignmentGrain) error {
 		return ErrGrainBothParties
 	}
 
-	hasUnit := g.UnitID != ""
-	hasMerge := g.MergeID != ""
-	switch {
-	case !hasUnit && !hasMerge:
+	if len(g.UnitIDs) == 0 {
 		return ErrGrainNoPlacement
-	case hasUnit && hasMerge:
-		return ErrGrainBothPlacements
 	}
 	return nil
 }

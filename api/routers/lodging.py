@@ -3,7 +3,7 @@
 Thin by design: parse input, call the service, return the model. Business
 logic lives in api/services/lodging_*.py (see api/CLAUDE.md).
 
-Reads are open to any authenticated user; the five writes at the bottom gate
+Reads are open to any authenticated user; the three writes at the bottom gate
 on `bunking.manage` and reach only the DRAFT grain. `lodging_assignments` and
 its history stay admin-only in PocketBase and no endpoint here writes them.
 
@@ -17,7 +17,6 @@ from api.schemas.lodging import (
     AvailabilityWriteRequest,
     HouseholdMedicalResponse,
     LodgingWriteResponse,
-    MergeWriteRequest,
     PlacementDeleteRequest,
     PlacementWriteRequest,
     WeekendRosterResponse,
@@ -146,7 +145,7 @@ async def get_household_medical(
 
 # --------------------------------------------------------------------- writes
 #
-# All five gate on `bunking.manage`, which is the point of the draft split: the
+# All three gate on `bunking.manage`, which is the point of the draft split: the
 # people who do this job are bunking staff, not admins, and the admin-only
 # record of truth is never written from a UI. The frontend must reach these
 # through `fetchWithAuth` from `useApiWithAuth()` -- the PocketBase JWT lives in
@@ -165,7 +164,7 @@ async def upsert_placement(
 ) -> LodgingWriteResponse:
     """Place a party in a scenario, or record that staff unplaced it.
 
-    A body naming no unit and no merge is the TOMBSTONE -- valid, and not the
+    A body with an empty `unit_ids` is the TOMBSTONE -- valid, and not the
     same as having no draft row. See `LodgingWriteService.place_party`.
     """
     try:
@@ -189,37 +188,6 @@ async def delete_placement(
         return await _writes().clear_placement(request)
     except SessionNotFoundError as exc:
         raise _weekend_404(request.year, request.session_cm_id) from exc
-
-
-@router.post("/merges", response_model=LodgingWriteResponse)
-async def create_merge(
-    request: MergeWriteRequest,
-    user: AuthUser = Depends(require_permission(Permission.BUNKING_MANAGE)),
-) -> LodgingWriteResponse:
-    """Bind units into one bookable slot, for this weekend and scenario.
-
-    Writes `lodging_merges_draft`. The member set is NOT validated for
-    completeness against the unit tree -- that rule was built and removed in
-    #1903; see the service docstring and docs/architecture/lodging-occupancy.md.
-    """
-    try:
-        return await _writes().create_merge(request)
-    except SessionNotFoundError as exc:
-        raise _weekend_404(request.year, request.session_cm_id) from exc
-
-
-@router.delete("/merges/{merge_draft_id}", response_model=LodgingWriteResponse)
-async def delete_merge(
-    merge_draft_id: str,
-    user: AuthUser = Depends(require_permission(Permission.BUNKING_MANAGE)),
-) -> LodgingWriteResponse:
-    """Remove a board-built slot.
-
-    This is a plain delete, unlike `deleteLodgingAlias`, which must reopen the
-    queue rows an alias resolved before removing it. Nothing keys work off a
-    draft merge, so there is no equivalent trail to reopen here.
-    """
-    return await _writes().delete_merge(merge_draft_id)
 
 
 @router.put("/availability", response_model=LodgingWriteResponse)

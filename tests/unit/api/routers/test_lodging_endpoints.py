@@ -418,7 +418,7 @@ WRITE_ENDPOINTS: list[tuple[str, str, str, dict[str, Any]]] = [
             "session_cm_id": 1000001,
             "scenario": "scn_1",
             "household_cm_id": 2000001,
-            "unit_id": "u1",
+            "unit_ids": ["u1"],
         },
     ),
     (
@@ -427,19 +427,6 @@ WRITE_ENDPOINTS: list[tuple[str, str, str, dict[str, Any]]] = [
         "/api/lodging/placements",
         {"year": 2026, "session_cm_id": 1000001, "scenario": "scn_1", "household_cm_id": 2000001},
     ),
-    (
-        "POST",
-        "/api/lodging/merges",
-        "/api/lodging/merges",
-        {
-            "year": 2026,
-            "session_cm_id": 1000001,
-            "scenario": "scn_1",
-            "member_unit_ids": ["u1", "u2"],
-            "display_name": "Tenaya 1 and 2",
-        },
-    ),
-    ("DELETE", "/api/lodging/merges/{merge_draft_id}", "/api/lodging/merges/mrgd_1", {}),
     (
         "PUT",
         "/api/lodging/availability",
@@ -545,7 +532,7 @@ class TestPlacementWrites:
                     "session_cm_id": 1000001,
                     "scenario": "scn_1",
                     "household_cm_id": 2000001,
-                    "unit_id": "u1",
+                    "unit_ids": ["u1"],
                 },
             )
 
@@ -554,7 +541,7 @@ class TestPlacementWrites:
         payload = mock_pb.collection.return_value.create.call_args[0][0]
         assert payload["scenario"] == "scn_1"
         assert payload["household_cm_id"] == 2000001
-        assert payload["unit"] == "u1"
+        assert payload["units"] == ["u1"]
         # session_cm_id is REQUIRED on the draft (1500000124's rule, carried
         # onto the twin): a row without it cannot survive its session being
         # recreated in a later year.
@@ -581,7 +568,7 @@ class TestPlacementWrites:
                     "session_cm_id": 1000001,
                     "scenario": "scn_1",
                     "household_cm_id": 2000001,
-                    "unit_id": "u2",
+                    "unit_ids": ["u2"],
                 },
             )
 
@@ -609,9 +596,7 @@ class TestPlacementWrites:
 
         assert response.status_code == 200
         payload = mock_pb.collection.return_value.create.call_args[0][0]
-        assert payload["unit"] == ""
-        assert payload["merge"] == ""
-        assert payload["merge_draft"] == ""
+        assert payload["units"] == []
 
     def test_deleting_a_placement_restores_the_campminder_mirror(self, mock_pb: MagicMock) -> None:
         """DELETE removes the override entirely, which is a different thing
@@ -678,9 +663,8 @@ class TestPlacementWrites:
         assert response.status_code == 200, response.text
         assert response.json()["deleted"] is False
         # The id IS known here -- the find above returned it -- so it is
-        # reported, exactly as delete_merge's own 404 branch reports the id it
-        # was handed. Only the row-never-existed case has no id to give, and
-        # that case must stay distinguishable from this one.
+        # reported. Only the row-never-existed case has no id to give, and that
+        # case must stay distinguishable from this one.
         assert response.json()["record_id"] == "draft_1"
 
     def test_a_placement_delete_failure_that_is_not_a_race_still_errors(self, mock_pb: MagicMock) -> None:
@@ -730,7 +714,7 @@ class TestPlacementWrites:
                     "session_cm_id": 1000001,
                     "scenario": "",
                     "household_cm_id": 2000001,
-                    "unit_id": "u1",
+                    "unit_ids": ["u1"],
                 },
             )
 
@@ -743,7 +727,7 @@ class TestPlacementWrites:
             client = _write_client(_manage_user(), mock_pb)
             response = client.post(
                 "/api/lodging/placements",
-                json={"year": 2026, "session_cm_id": 1000001, "scenario": "scn_1", "unit_id": "u1"},
+                json={"year": 2026, "session_cm_id": 1000001, "scenario": "scn_1", "unit_ids": ["u1"]},
             )
 
         assert response.status_code == 422
@@ -759,7 +743,54 @@ class TestPlacementWrites:
                     "scenario": "scn_1",
                     "household_cm_id": 2000001,
                     "person_cm_id": 1000001,
-                    "unit_id": "u1",
+                    "unit_ids": ["u1"],
+                },
+            )
+
+        assert response.status_code == 422
+
+    def test_a_placement_naming_the_same_unit_twice_is_refused(self, mock_pb: MagicMock) -> None:
+        """Distinct from the completeness rule removed in #1903 (see the
+        deleted MergeWriteRequest._members_are_distinct, kindred history).
+
+        `["u1", "u1"]` is a two-member placement to Pydantic and a one-member
+        placement to a PocketBase relation field, which may collapse the
+        duplicate on save. Post-collapse, `unit_ids` is the only way to build
+        a multi-room slot, so a silently-collapsed duplicate does not just
+        shrink the set -- it turns a merged-slot request into a plain one and
+        still returns 200.
+        """
+        with patch("api.routers.lodging.pb", mock_pb):
+            client = _write_client(_manage_user(), mock_pb)
+            response = client.post(
+                "/api/lodging/placements",
+                json={
+                    "year": 2026,
+                    "session_cm_id": 1000001,
+                    "scenario": "scn_1",
+                    "household_cm_id": 2000001,
+                    "unit_ids": ["u1", "u1"],
+                },
+            )
+
+        assert response.status_code == 422
+
+    def test_a_placement_over_the_unit_cap_is_refused(self, mock_pb: MagicMock) -> None:
+        """21 units exceeds the field's own maxSelect of 20
+        (1500000134_lodging_units_relation.js). Refusing here names the cap
+        instead of surfacing a PocketBase validation error -- and on the
+        update path that PocketBase error is unguarded and would otherwise
+        escape as a 500 (lodging_write_service.py)."""
+        with patch("api.routers.lodging.pb", mock_pb):
+            client = _write_client(_manage_user(), mock_pb)
+            response = client.post(
+                "/api/lodging/placements",
+                json={
+                    "year": 2026,
+                    "session_cm_id": 1000001,
+                    "scenario": "scn_1",
+                    "household_cm_id": 2000001,
+                    "unit_ids": [f"u{i}" for i in range(21)],
                 },
             )
 
@@ -795,7 +826,7 @@ class TestPlacementWrites:
                     "session_cm_id": 1000001,
                     "scenario": "scn_1",
                     "household_cm_id": 2000001,
-                    "unit_id": "u1",
+                    "unit_ids": ["u1"],
                 },
             )
 
@@ -822,7 +853,7 @@ class TestPlacementWrites:
                     "session_cm_id": 1000001,
                     "scenario": "scn_1",
                     "household_cm_id": 2000001,
-                    "unit_id": "u1",
+                    "unit_ids": ["u1"],
                 },
             )
 
@@ -863,7 +894,7 @@ class TestPlacementWrites:
                     "session_cm_id": 1000001,
                     "scenario": "scn_1",
                     "household_cm_id": 2000001,
-                    "unit_id": "u1",
+                    "unit_ids": ["u1"],
                 },
             )
 
@@ -902,7 +933,7 @@ class TestPlacementWrites:
                     "session_cm_id": 1000001,
                     "scenario": "scn_1",
                     "household_cm_id": 2000001,
-                    "unit_id": "u1",
+                    "unit_ids": ["u1"],
                 },
             )
 
@@ -919,145 +950,11 @@ class TestPlacementWrites:
                     "session_cm_id": 9999999,
                     "scenario": "scn_1",
                     "household_cm_id": 2000001,
-                    "unit_id": "u1",
+                    "unit_ids": ["u1"],
                 },
             )
 
         assert response.status_code == 404
-
-
-class TestMergeWrites:
-    def test_creating_a_merge_writes_the_draft_table(self, mock_pb: MagicMock) -> None:
-        """The board's merges never touch lodging_merges.
-
-        That table is the ingest's, materialised from CampMinder cabin strings,
-        and staff hold no write on it.
-        """
-        with patch("api.routers.lodging.pb", mock_pb):
-            client = _write_client(_manage_user(), mock_pb)
-            response = client.post(
-                "/api/lodging/merges",
-                json={
-                    "year": 2026,
-                    "session_cm_id": 1000001,
-                    "scenario": "scn_1",
-                    "member_unit_ids": ["u1", "u2"],
-                    "display_name": "Tenaya 1 and 2",
-                },
-            )
-
-        assert response.status_code == 200
-        mock_pb.collection.assert_any_call("lodging_merges_draft")
-        payload = mock_pb.collection.return_value.create.call_args[0][0]
-        assert payload["member_units"] == ["u1", "u2"]
-        assert payload["scenario"] == "scn_1"
-        assert payload["session_cm_id"] == 1000001
-
-    def test_a_merge_of_fewer_than_two_units_is_refused(self, mock_pb: MagicMock) -> None:
-        """member_units is minSelect 2. Refusing here names the member count
-        instead of surfacing a PocketBase validation error."""
-        with patch("api.routers.lodging.pb", mock_pb):
-            client = _write_client(_manage_user(), mock_pb)
-            response = client.post(
-                "/api/lodging/merges",
-                json={
-                    "year": 2026,
-                    "session_cm_id": 1000001,
-                    "scenario": "scn_1",
-                    "member_unit_ids": ["u1"],
-                },
-            )
-
-        assert response.status_code == 422
-
-    def test_a_merge_naming_the_same_unit_twice_is_refused(self, mock_pb: MagicMock) -> None:
-        """Distinct from the completeness rule removed in #1903.
-
-        That rule judged WHICH units belong together, and could not be made to
-        work because every member set is hand-authored. This one only rejects
-        the same unit named twice, which is never intentional and which a
-        PocketBase relation field may silently collapse on save -- leaving a
-        stored row with one member for a request that declared two, and a 200
-        either way.
-        """
-        with patch("api.routers.lodging.pb", mock_pb):
-            client = _write_client(_manage_user(), mock_pb)
-            response = client.post(
-                "/api/lodging/merges",
-                json={
-                    "year": 2026,
-                    "session_cm_id": 1000001,
-                    "scenario": "scn_1",
-                    "member_unit_ids": ["u1", "u1"],
-                },
-            )
-
-        assert response.status_code == 422
-
-    def test_the_member_set_is_not_validated_for_completeness(self, mock_pb: MagicMock) -> None:
-        """A partial building is a legitimate merge.
-
-        The rule "a merge is legal iff its members are the complete child set
-        of some container" was built through nine tasks and REMOVED in #1903:
-        every member set is hand-authored, so a deliberate partial booking and
-        a mis-click produce byte-identical rows. This pins the absence, because
-        the idea is appealing enough to be re-added by someone who has not read
-        docs/architecture/lodging-occupancy.md.
-        """
-        with patch("api.routers.lodging.pb", mock_pb):
-            client = _write_client(_manage_user(), mock_pb)
-            response = client.post(
-                "/api/lodging/merges",
-                json={
-                    "year": 2026,
-                    "session_cm_id": 1000001,
-                    "scenario": "scn_1",
-                    "member_unit_ids": ["u1", "u2"],
-                },
-            )
-
-        assert response.status_code == 200
-
-    def test_deleting_a_merge_removes_the_draft_row(self, mock_pb: MagicMock) -> None:
-        with patch("api.routers.lodging.pb", mock_pb):
-            client = _write_client(_manage_user(), mock_pb)
-            response = client.delete("/api/lodging/merges/mrgd_1")
-
-        assert response.status_code == 200
-        mock_pb.collection.assert_any_call("lodging_merges_draft")
-        mock_pb.collection.return_value.delete.assert_called_once_with("mrgd_1")
-
-    def test_deleting_a_merge_that_is_already_gone_is_not_an_error(self, mock_pb: MagicMock) -> None:
-        """Idempotent, exactly as DELETE /placements is.
-
-        Two staff on the same board, or one double-click, delete the same slot
-        twice. The second call has nothing to do, and that is not something
-        going wrong -- without this it raises into the catch-all handler in
-        api/main.py and the board reports a 500 for a no-op.
-        """
-        with patch("api.routers.lodging.pb", mock_pb):
-            client = _write_client(_manage_user(), mock_pb)
-            mock_pb.collection.return_value.delete.side_effect = ClientResponseError(
-                "not found", status=404, data={}, url="", is_abort=False, original_error=None
-            )
-            response = client.delete("/api/lodging/merges/mrgd_gone")
-
-        assert response.status_code == 200
-        assert response.json()["deleted"] is False
-
-    def test_a_failing_merge_delete_is_still_an_error(self, mock_pb: MagicMock) -> None:
-        """Only "already gone" is swallowed. A 403 or a 500 from PocketBase is
-        a real failure and must not be reported to the board as a clean no-op."""
-        with patch("api.routers.lodging.pb", mock_pb):
-            client = _write_client(_manage_user(), mock_pb)
-            mock_pb.collection.return_value.delete.side_effect = ClientResponseError(
-                "forbidden", status=403, data={}, url="", is_abort=False, original_error=None
-            )
-            response = client.delete("/api/lodging/merges/mrgd_1")
-
-        # Pinned, not `>= 400`: a 500 would also satisfy that, and a 500 is the
-        # precise outcome the idempotency change is supposed to rule out.
-        assert response.status_code == 403
 
 
 class TestAvailabilityWrites:
