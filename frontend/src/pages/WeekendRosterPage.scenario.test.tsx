@@ -66,9 +66,11 @@ vi.mock('../hooks/usePermissions', () => ({
 // is a single slot but selection persists per session id, so weekend and
 // summer do not contaminate each other's choice.
 const OPTION_A = { id: 'scn7x2k9qw3mnbv', name: 'Option A', session_cm_id: 1000001 }
+const NEW_PLAN = { id: 'scnNEW00000000', name: 'Option B', session_cm_id: 1000001, is_active: true }
 let currentScenario: typeof OPTION_A | null = null
 const loadScenarios = vi.fn()
 const selectScenario = vi.fn()
+const createScenario = vi.fn()
 
 vi.mock('../hooks/useScenario', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../hooks/useScenario')>()
@@ -82,7 +84,7 @@ vi.mock('../hooks/useScenario', async (importOriginal) => {
       isMutating: false,
       error: null,
       loadScenarios,
-      createScenario: vi.fn(),
+      createScenario: (...args: unknown[]) => createScenario(...args),
       selectScenario,
       updateScenario: vi.fn(),
       deleteScenario: vi.fn(),
@@ -161,6 +163,7 @@ beforeEach(() => {
   useWeekendRosterSpy.mockReset()
   loadScenarios.mockReset()
   selectScenario.mockReset()
+  createScenario.mockReset().mockResolvedValue(NEW_PLAN)
   copyPlacementsFromMirror.mockReset().mockResolvedValue({ copied: 47, skipped: 0 })
   invalidateQueries.mockReset()
   toastSuccess.mockReset()
@@ -358,5 +361,99 @@ describe('seeding an empty scenario', () => {
     await waitFor(() =>
       expect(toastError).toHaveBeenCalledWith(expect.stringMatching(/bunking\.manage/))
     )
+  })
+})
+
+describe('creating a weekend plan', () => {
+  async function openCreateModal() {
+    await userEvent.click(screen.getByRole('button', { name: /scenario/i }))
+    await userEvent.click(screen.getByRole('option', { name: /New Scenario/i }))
+  }
+
+  it('names what it starts empty in the WEEKEND’s vocabulary', async () => {
+    // A weekend has no bunks. It places parties into cabins and rooms, and
+    // "parties" is already its own word — the lander and the stats bar both
+    // count them. CLAUDE.md §4 asks for summer's PATTERN, and lifting its
+    // literal noun is the failure that rule exists to catch.
+    renderPage()
+    await openCreateModal()
+
+    expect(screen.getByLabelText(/Start with an empty plan/i)).toBeInTheDocument()
+    expect(screen.queryByLabelText(/empty bunks/i)).not.toBeInTheDocument()
+  })
+
+  it('offers the mirror seed AT CREATION, where summer puts it', async () => {
+    renderPage()
+    await openCreateModal()
+
+    expect(screen.getByLabelText(/Copy placements from CampMinder/i)).toBeInTheDocument()
+  })
+
+  it('does NOT offer the inert copy-from-another-scenario radios', async () => {
+    // `Option A` is in the picker's list, so before this these rendered —
+    // mapping to `{ fromScenario }`, the same `POST /api/scenarios` path that
+    // copies `bunk_assignments` and returns zero rows for a weekend. Exactly
+    // the defect already fixed for the production radio, arriving by the same
+    // route. Copying a weekend plan needs a source field the API lacks (#1988).
+    renderPage()
+    await openCreateModal()
+
+    expect(screen.queryByText(/Copy from scenario/i)).not.toBeInTheDocument()
+    expect(screen.queryByLabelText(/^Option A$/)).not.toBeInTheDocument()
+  })
+
+  it('creates the plan, then seeds THE NEW ONE from the mirror', async () => {
+    // Two calls, and the second must name the scenario the first returned.
+    // Seeding the previously-selected scenario instead would fill a plan the
+    // staff member is not looking at — and 409 doing it.
+    renderPage()
+    await openCreateModal()
+    await userEvent.click(screen.getByLabelText(/Copy placements from CampMinder/i))
+    await userEvent.type(screen.getByLabelText(/Scenario Name/i), 'Option B')
+    await userEvent.click(screen.getByRole('button', { name: /Create Scenario/i }))
+
+    await waitFor(() => {
+      expect(copyPlacementsFromMirror).toHaveBeenCalledWith(expect.anything(), {
+        year: 2026,
+        sessionCmId: 1000001,
+        scenario: 'scnNEW00000000',
+      })
+    })
+  })
+
+  it('does NOT seed when the empty plan was chosen', async () => {
+    renderPage()
+    await openCreateModal()
+    await userEvent.click(screen.getByLabelText(/Start with an empty plan/i))
+    await userEvent.type(screen.getByLabelText(/Scenario Name/i), 'Option B')
+    await userEvent.click(screen.getByRole('button', { name: /Create Scenario/i }))
+
+    await waitFor(() => expect(createScenario).toHaveBeenCalled())
+    expect(copyPlacementsFromMirror).not.toHaveBeenCalled()
+  })
+
+  it('tells staff when the plan was created but the seed failed', async () => {
+    // The scenario EXISTS at this point. Closing quietly would leave them on
+    // an empty board believing the copy ran. The way back is
+    // `SeedScenarioNotice`, which still renders for exactly this state — see
+    // "offers a way out of an empty board" above.
+    copyPlacementsFromMirror.mockRejectedValue(new LodgingApiError('PocketBase unreachable', 502))
+    renderPage()
+    await openCreateModal()
+    await userEvent.click(screen.getByLabelText(/Copy placements from CampMinder/i))
+    await userEvent.type(screen.getByLabelText(/Scenario Name/i), 'Option B')
+    await userEvent.click(screen.getByRole('button', { name: /Create Scenario/i }))
+
+    await waitFor(() => expect(screen.getByText(/PocketBase unreachable/i)).toBeInTheDocument())
+  })
+
+  it('reports the seeded count on the happy path', async () => {
+    renderPage()
+    await openCreateModal()
+    await userEvent.click(screen.getByLabelText(/Copy placements from CampMinder/i))
+    await userEvent.type(screen.getByLabelText(/Scenario Name/i), 'Option B')
+    await userEvent.click(screen.getByRole('button', { name: /Create Scenario/i }))
+
+    await waitFor(() => expect(toastSuccess).toHaveBeenCalledWith(expect.stringMatching(/47/)))
   })
 })

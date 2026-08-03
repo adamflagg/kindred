@@ -20,10 +20,23 @@ import { useState } from 'react'
 import ModeBadge from '../ModeBadge'
 import NewScenarioModal from '../NewScenarioModal'
 import { useScenario } from '../../hooks/useScenario'
+import { useSeedScenario } from '../../hooks/useSeedScenario'
+
+/**
+ * The create modal's weekend-only copy source.
+ *
+ * Not a `{ fromProduction }` or `{ fromScenario }` value — those ride inside
+ * `POST /api/scenarios`. This one is reported back to us after creation and
+ * we run `POST /api/lodging/placements/copy` ourselves, because that endpoint
+ * needs the scenario id the create has not returned yet.
+ */
+const MIRROR_SOURCE = 'lodging-mirror'
 
 export interface WeekendScenarioPickerProps {
   /** The weekend on screen. Scenarios are per-session. */
   sessionCmId: number
+  /** The configured year, for the seed call. */
+  year: number
   /** `bunking.manage` — what the lodging_* write rules gate on. */
   canManage: boolean
   /** The selection scoped to THIS weekend; `''` is the mirror. */
@@ -32,10 +45,12 @@ export interface WeekendScenarioPickerProps {
 
 export function WeekendScenarioPicker({
   sessionCmId,
+  year,
   canManage,
   scenario,
 }: WeekendScenarioPickerProps) {
   const { currentScenario, scenarios, selectScenario, isLoading } = useScenario()
+  const { seed } = useSeedScenario(year, sessionCmId)
   const [showNewModal, setShowNewModal] = useState(false)
 
   // Read from the SCOPED value, not from `currentScenario` directly: a
@@ -89,13 +104,23 @@ export function WeekendScenarioPicker({
         <NewScenarioModal
           sessionId={sessionCmId}
           canCopyFromProduction={false}
+          canCopyFromScenario={false}
+          emptyLabel="Start with an empty plan"
+          extraSources={[{ value: MIRROR_SOURCE, label: 'Copy placements from CampMinder' }]}
           onClose={() => {
             setShowNewModal(false)
           }}
-          onScenarioCreated={() => {
-            // `createScenario` already selects it. The new plan is EMPTY —
-            // a scenario replaces the mirror (#1974) — and
-            // `SeedScenarioNotice` is what offers the way out of that.
+          onScenarioCreated={async (created, copyFrom) => {
+            // CREATE-THEN-SEED, and the seed must name the scenario the
+            // create just returned — not the one currently selected, which is
+            // whatever staff were looking at a moment ago.
+            //
+            // Deliberately NOT caught. The hook re-throws a real failure and
+            // the modal shows it, staying open over a scenario that now
+            // exists and is empty. Swallowing it would close on a lie. The
+            // way back is `SeedScenarioNotice`, which renders for exactly
+            // that state — so a failed seed is recoverable, not a dead end.
+            if (copyFrom === MIRROR_SOURCE) await seed(created.id)
             setShowNewModal(false)
           }}
         />

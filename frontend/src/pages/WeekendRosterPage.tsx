@@ -223,6 +223,7 @@ export default function WeekendRosterPage() {
           {selectedCmId !== null && (
             <WeekendScenarioPicker
               sessionCmId={selectedCmId}
+              year={currentYear}
               canManage={canManageLodging}
               scenario={scenario}
             />

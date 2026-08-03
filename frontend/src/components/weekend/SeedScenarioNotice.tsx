@@ -8,13 +8,9 @@
  * than as a blank plan. This says what happened and offers the seed.
  */
 import { Copy, Loader2 } from 'lucide-react'
-import { useState } from 'react'
 import toast from 'react-hot-toast'
-import { useQueryClient } from '@tanstack/react-query'
 
-import { useApiWithAuth } from '../../hooks/useApiWithAuth'
-import { copyPlacementsFromMirror } from '../../services/lodgingApi'
-import { queryKeys } from '../../utils/queryKeys'
+import { useSeedScenario } from '../../hooks/useSeedScenario'
 
 export interface SeedScenarioNoticeProps {
   year: number
@@ -31,51 +27,16 @@ export function SeedScenarioNotice({
   scenario,
   partiesTotal,
 }: SeedScenarioNoticeProps) {
-  const { fetchWithAuth } = useApiWithAuth()
-  const queryClient = useQueryClient()
-  const [isSeeding, setIsSeeding] = useState(false)
+  const { seed, isSeeding } = useSeedScenario(year, sessionCmId)
 
+  // The hook re-throws a real failure so the create modal can show it in its
+  // own error box. Here there is no such box: this is a button on a page, so
+  // the toast IS the report.
   const handleSeed = async () => {
-    setIsSeeding(true)
     try {
-      const { copied, skipped } = await copyPlacementsFromMirror(fetchWithAuth, {
-        year,
-        sessionCmId,
-        scenario,
-      })
-      // `skipped` is mirror rows naming a party or a unit that no longer
-      // resolves. Unreported, the only evidence would be a board showing
-      // fewer families than CampMinder does.
-      toast.success(
-        skipped > 0
-          ? `Copied ${String(copied)} placements. Skipped ${String(skipped)} — the family or cabin no longer resolves.`
-          : `Copied ${String(copied)} placements from CampMinder.`
-      )
+      await seed(scenario)
     } catch (error) {
-      // 409 is the server REFUSING a second copy, because it would overwrite
-      // what staff placed and re-place everything they unplaced. That is the
-      // guard working. Reporting it in red teaches staff to distrust it.
-      //
-      // Narrowed on the STATUS rather than on `instanceof LodgingApiError`:
-      // the status is the contract, an identity check would import a class
-      // this component otherwise has no use for, and `instanceof` is the one
-      // form of narrowing that can go false across duplicate module
-      // instances. The tests reject with the real class, so the two agree.
-      if (error instanceof Error && (error as { status?: number }).status === 409) {
-        toast.success('This scenario was already seeded from CampMinder.')
-      } else {
-        toast.error(error instanceof Error ? error.message : 'Failed to seed the scenario')
-      }
-    } finally {
-      // Invalidate on EVERY outcome, not just success. A 409 means the rows
-      // are already there, so the empty board on screen is the stale thing.
-      // Nothing refreshes on its own — these queries carry the app default
-      // 30 minute staleTime.
-      void queryClient.invalidateQueries({
-        queryKey: queryKeys.weekendRoster(year, sessionCmId, scenario),
-      })
-      void queryClient.invalidateQueries({ queryKey: queryKeys.weekendSummary(year) })
-      setIsSeeding(false)
+      toast.error(error instanceof Error ? error.message : 'Failed to seed the scenario')
     }
   }
 
