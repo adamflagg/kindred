@@ -3,6 +3,7 @@ export { AREA_HUES, buildBoard, consentFlag, countBoardSlots } from './boardLayo
 export type { BoardArea, BoardModel, BoardSlot, ConsentFlag } from './boardLayout'
 export { FamilyCard } from './FamilyCard'
 export { FamilyDetailsPanel } from './FamilyDetailsPanel'
+export { FloatingUnplacedBadge } from './FloatingUnplacedBadge'
 export { HouseholdRosterRow } from './HouseholdRosterRow'
 export { HouseholdRosterTable } from './HouseholdRosterTable'
 export { LodgingBoard } from './LodgingBoard'

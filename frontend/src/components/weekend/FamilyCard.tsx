@@ -104,7 +104,10 @@ export function FamilyCard({
       }`}
     >
       <span className="flex items-baseline gap-1.5">
-        <span className="text-foreground text-[13px] leading-tight font-semibold">
+        <span
+          data-testid="family-card-name"
+          className="text-foreground text-[13px] leading-tight font-semibold"
+        >
           {party.display_name}
         </span>
         <span className="text-muted-foreground ml-auto inline-flex items-center gap-0.5 text-[11px] tabular-nums">
