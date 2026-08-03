@@ -6,7 +6,12 @@ export { FamilyDetailsPanel } from './FamilyDetailsPanel'
 export { HouseholdRosterRow } from './HouseholdRosterRow'
 export { HouseholdRosterTable } from './HouseholdRosterTable'
 export { LodgingBoard } from './LodgingBoard'
+export { LodgingMap } from './LodgingMap'
+export type { LodgingMapProps } from './LodgingMap'
 export { LodgingUnitCard } from './LodgingUnitCard'
+export { MapUnitPopover } from './MapUnitPopover'
+export { buildMapModel, countMapUnits, hasCoordinates, resolvePartyUnits } from './mapModel'
+export type { MapModel, MapUnit, OffMapEntry, OffMapReason } from './mapModel'
 export {
   ATTENTION_LABEL,
   ATTENTION_ORDER,
