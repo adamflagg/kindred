@@ -33,6 +33,7 @@ const _exhaustiveRosterParty: Required<RosterPartyRow> = {
   household_cm_id: 2000001,
   person_cm_id: 0,
   display_name: 'Emma Johnson Household',
+  sort_name: 'Johnson',
   adults: [],
   children: [],
   party_size: 3,

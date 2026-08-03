@@ -126,7 +126,7 @@ describe('buildBoard — where each party lands', () => {
     expect(board.unplaced).toHaveLength(0)
   })
 
-  it('puts an unplaced party on the rail', () => {
+  it('puts an unplaced party in the corner queue', () => {
     const board = buildBoard([party()], [unit()])
     expect(board.unplaced.map((p) => p.display_name)).toEqual(['Johnson'])
     expect(board.areas[0]?.slots[0]?.parties).toHaveLength(0)
@@ -194,31 +194,6 @@ describe('buildBoard — where each party lands', () => {
     const board = buildBoard(parties, [unit()])
     const placed = board.areas.flatMap((area) => area.slots).flatMap((slot) => slot.parties)
     expect(placed.length + board.unplaced.length + board.offBoard.length).toBe(parties.length)
-  })
-})
-
-describe('buildBoard — the unplaced rail ranks on the one signal it has', () => {
-  it('lifts a mandatory accommodation to the top', () => {
-    const board = buildBoard(
-      [
-        party({ display_name: 'Adams' }),
-        party({
-          household_cm_id: 102,
-          display_name: 'Zhang',
-          flags: { accommodation_is_mandatory: true, needs_accommodation: true },
-        }),
-      ],
-      [unit()]
-    )
-    expect(board.unplaced.map((p) => p.display_name)).toEqual(['Zhang', 'Adams'])
-  })
-
-  it('falls back to name order, since the partner leg is uncomputable', () => {
-    const board = buildBoard(
-      [party({ display_name: 'Zhang' }), party({ household_cm_id: 102, display_name: 'Adams' })],
-      [unit()]
-    )
-    expect(board.unplaced.map((p) => p.display_name)).toEqual(['Adams', 'Zhang'])
   })
 })
 

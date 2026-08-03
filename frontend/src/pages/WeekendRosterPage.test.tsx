@@ -26,6 +26,19 @@ vi.mock('../hooks/useCurrentYear', () => ({
   useYear: () => 2026,
 }))
 
+// The picker seeds through `useSeedScenario`, which reaches `useApiWithAuth`
+// and `useQueryClient` on RENDER, not just on click — so this file needs both
+// even though nothing here ever seeds. Without them every test in the file
+// dies on "useAuth must be used within an AuthProvider".
+vi.mock('../hooks/useApiWithAuth', () => ({
+  useApiWithAuth: () => ({ fetchWithAuth: vi.fn(), isAuthenticated: true, isAuthLoading: false }),
+}))
+
+vi.mock('@tanstack/react-query', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@tanstack/react-query')>()
+  return { ...actual, useQueryClient: () => ({ invalidateQueries: vi.fn() }) }
+})
+
 // The page reads the global ScenarioContext to resolve which plan the roster
 // is being read in (#1967). These tests are about layout and navigation, so
 // the mock stays in production mode throughout — the picker's own behaviour

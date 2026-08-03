@@ -16,6 +16,7 @@ import { Bath, Plug, Snowflake, TriangleAlert, Users } from 'lucide-react'
 import type { RosterPartyRow } from '../../types/lodging'
 import type { BoardSlot } from './boardLayout'
 import { FamilyCard } from './FamilyCard'
+import { partyKey } from './partyKey'
 import { reservationBadge } from './unitBadges'
 
 export interface LodgingUnitCardProps {
@@ -110,7 +111,7 @@ export function LodgingUnitCard({ slot, hue, onOpenParty }: LodgingUnitCardProps
         <div className="flex flex-col gap-1.5">
           {parties.map((party) => (
             <FamilyCard
-              key={`${party.grain}-${String(party.household_cm_id ?? party.person_cm_id ?? party.display_name)}`}
+              key={partyKey(party)}
               party={party}
               unit={unit}
               sharedSlot={isShared}

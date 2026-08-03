@@ -8,8 +8,8 @@
  *
  * The board's totality is three-way (slots / unplaced / offBoard). The map adds
  * a fourth failure mode of its own: a party the board can draw but the map
- * cannot PLACE. Those join the off-map rail rather than the unplaced rail,
- * because they ARE placed and saying otherwise is a lie about the data.
+ * cannot PLACE. Those join the off-map section rather than the unplaced corner
+ * queue, because they ARE placed and saying otherwise is a lie about the data.
  */
 import type { LodgingUnitRow, RosterPartyRow } from '../../types/lodging'
 import { buildBoard, type ConsentFlag } from './boardLayout'
