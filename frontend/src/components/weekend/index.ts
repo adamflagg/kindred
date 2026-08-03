@@ -29,8 +29,14 @@ export { reservationBadge } from './unitBadges'
 export type { UnitBadge } from './unitBadges'
 export { UnitInventoryPanel } from './UnitInventoryPanel'
 export { WeekendStatsBar } from './WeekendStatsBar'
-export { shortWeekendName, splitWeekendName } from './weekendNames'
-export type { WeekendName } from './weekendNames'
+export {
+  resolveWeekendRef,
+  shortWeekendName,
+  splitWeekendName,
+  weekendRef,
+  weekendSlug,
+} from './weekendNames'
+export type { AddressableWeekend, WeekendName } from './weekendNames'
 export {
   calendarKey,
   groupWeekends,

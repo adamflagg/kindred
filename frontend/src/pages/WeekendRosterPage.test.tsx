@@ -81,12 +81,12 @@ function LocationProbe() {
   )
 }
 
-function renderPage(cmId = '1000001', view = '') {
-  const path = `/weekend/session/${cmId}${view === '' ? '' : `/${view}`}`
+function renderPage(ref = '1000001', view = '') {
+  const path = `/weekend/${ref}${view === '' ? '' : `/${view}`}`
   return render(
     <MemoryRouter initialEntries={[path]}>
       <Routes>
-        <Route path="/weekend/session/:sessionCmId/:view?" element={<WeekendRosterPage />} />
+        <Route path="/weekend/:sessionRef/:view?" element={<WeekendRosterPage />} />
       </Routes>
       <LocationProbe />
     </MemoryRouter>
@@ -133,7 +133,7 @@ describe('header', () => {
     renderPage()
     await userEvent.click(screen.getByRole('button', { name: /Family Camp 1/ }))
     await userEvent.click(await screen.findByRole('option', { name: "Women's Weekend" }))
-    expect(screen.getByTestId('location')).toHaveTextContent('/weekend/session/1000002')
+    expect(screen.getByTestId('location')).toHaveTextContent('/weekend/ww')
   })
 
   it('orders the picker by date, not by CampMinder sort_order', async () => {
@@ -206,6 +206,34 @@ describe('query states', () => {
   })
 })
 
+describe('addressing a weekend by slug', () => {
+  it('opens the weekend a slug names', () => {
+    renderPage('fc1')
+    expect(screen.getByRole('button', { name: /Family Camp 1/ })).toBeInTheDocument()
+  })
+
+  it('keeps the slug when moving between tabs', async () => {
+    renderPage('fc1')
+    await userEvent.click(screen.getByRole('tab', { name: /Map/ }))
+    expect(screen.getByTestId('location')).toHaveTextContent('/weekend/fc1/map')
+  })
+
+  it('waits for the weekend list before calling a slug unknown', () => {
+    // A slug cannot be resolved without the list, so deciding early would flash
+    // "Weekend not found" on every load of a perfectly good link.
+    sessionsQuery.data = undefined
+    sessionsQuery.isLoading = true
+    rosterQuery.data = undefined
+    renderPage('fc1')
+    expect(screen.queryByRole('button', { name: /Weekend not found/ })).not.toBeInTheDocument()
+  })
+
+  it('says so once the list has loaded and the slug still names nothing', () => {
+    renderPage('zz')
+    expect(screen.getByRole('button', { name: /Weekend not found/ })).toBeInTheDocument()
+  })
+})
+
 describe('the view in the URL', () => {
   const ONE_UNIT = {
     year: 2026,
@@ -244,7 +272,7 @@ describe('the view in the URL', () => {
     rosterQuery.data = ONE_UNIT
     renderPage()
     await userEvent.click(screen.getByRole('tab', { name: /Inventory/ }))
-    expect(screen.getByTestId('location')).toHaveTextContent('/weekend/session/1000001/inventory')
+    expect(screen.getByTestId('location')).toHaveTextContent('/weekend/1000001/inventory')
   })
 
   it('replaces rather than stacks, so Back leaves the weekend', async () => {
@@ -256,12 +284,9 @@ describe('the view in the URL', () => {
     // real entry BEHIND the weekend to come back to.
     rosterQuery.data = ONE_UNIT
     render(
-      <MemoryRouter
-        initialEntries={['/weekend/sessions', '/weekend/session/1000001']}
-        initialIndex={1}
-      >
+      <MemoryRouter initialEntries={['/weekend/sessions', '/weekend/fc1']} initialIndex={1}>
         <Routes>
-          <Route path="/weekend/session/:sessionCmId/:view?" element={<WeekendRosterPage />} />
+          <Route path="/weekend/:sessionRef/:view?" element={<WeekendRosterPage />} />
         </Routes>
         <LocationProbe />
       </MemoryRouter>

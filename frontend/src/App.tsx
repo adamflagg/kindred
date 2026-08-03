@@ -622,10 +622,13 @@ function App() {
                                 </ErrorBoundary>
                               }
                             />
-                            {/* `:view?` is optional so existing links to a bare
-                                /weekend/session/:id still open, on the roster. */}
+                            {/* `:sessionRef` is a readable slug (fc1, ww, mw) or
+                                a CampMinder id; `:view?` is optional so a bare
+                                weekend link opens on the roster. Declared AFTER
+                                the static children above, which therefore keep
+                                winning the match. */}
                             <Route
-                              path="session/:sessionCmId/:view?"
+                              path=":sessionRef/:view?"
                               element={
                                 <ErrorBoundary>
                                   <Suspense fallback={<PageSkeleton />}>

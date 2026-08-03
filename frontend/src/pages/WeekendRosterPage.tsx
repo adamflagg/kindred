@@ -1,5 +1,9 @@
 /**
- * /weekend/session/:sessionCmId — one weekend's lodging roster.
+ * /weekend/:sessionRef/:view? — one weekend's lodging roster.
+ *
+ * The reference is a readable slug (`fc1`, `ww`, `mw`) falling back to the
+ * CampMinder id when two weekends would slug alike; the view is a path
+ * segment so a tab can be linked and reloaded. See `weekendNames.ts`.
  *
  * Laid out as the summer session view is, one program over: a title that is
  * itself the session switcher, a sticky pill-tab nav, a contextual stats bar,
@@ -40,9 +44,11 @@ import {
   LodgingBoard,
   LodgingMap,
   partyBeds,
+  resolveWeekendRef,
   shortWeekendName,
   sortWeekendsByDate,
   UnitInventoryPanel,
+  weekendRef,
   WeekendStatsBar,
 } from '../components/weekend'
 import { useCurrentYear } from '../hooks/useCurrentYear'
@@ -68,20 +74,30 @@ function parseView(segment: string | undefined): View {
 }
 
 export default function WeekendRosterPage() {
-  const { sessionCmId, view: viewParam } = useParams<{ sessionCmId: string; view: string }>()
+  const { sessionRef, view: viewParam } = useParams<{ sessionRef: string; view: string }>()
   const navigate = useNavigate()
   const { currentYear } = useCurrentYear()
   const { hasPermission } = usePermissions()
   const canManageLodging = hasPermission(Permission.BUNKING_MANAGE)
   const view = parseView(viewParam)
 
-  const selectedCmId = sessionCmId === undefined ? null : Number(sessionCmId)
   const sessionsQuery = useWeekendSessions(currentYear)
-  const rosterQuery = useWeekendRoster(currentYear, selectedCmId)
-
   // Chronological, as the summer session picker is — CampMinder's sort_order
   // is manual and does not track the calendar.
   const sessions = sortWeekendsByDate(sessionsQuery.data?.sessions ?? [])
+
+  // A NUMERIC reference resolves without the list; a slug cannot. Reading the
+  // number directly keeps the roster fetch off the back of the sessions fetch,
+  // which would otherwise be a waterfall on every load.
+  const numericRef = /^\d+$/.test(sessionRef ?? '') ? Number(sessionRef) : null
+  const resolved = resolveWeekendRef(sessions, sessionRef)
+  const selectedCmId = resolved?.session_cm_id ?? numericRef
+  const rosterQuery = useWeekendRoster(currentYear, selectedCmId)
+
+  // A slug with no list yet is UNRESOLVED, not unknown — but the title's
+  // existing `sessionsQuery.isLoading` branch already says "Loading weekends…"
+  // in exactly that gap, so there is nothing more to add here.
+
   const selectedSession = sessions.find((session) => session.session_cm_id === selectedCmId)
   const dates = selectedSession
     ? formatSessionDates(selectedSession.start_date, selectedSession.end_date)
@@ -118,9 +134,9 @@ export default function WeekendRosterPage() {
           <div className="flex flex-shrink-0 items-center gap-2">
             <Home className="text-primary h-5 w-5 flex-shrink-0 sm:h-6 sm:w-6" />
             <Listbox
-              value={selectedCmId === null ? '' : String(selectedCmId)}
+              value={selectedSession ? weekendRef(selectedSession, sessions) : ''}
               onChange={(value: string) => {
-                void navigate(`/weekend/session/${value}`)
+                void navigate(`/weekend/${value}`)
               }}
             >
               <div className="relative">
@@ -136,7 +152,7 @@ export default function WeekendRosterPage() {
                   {sessions.map((session) => (
                     <ListboxOption
                       key={session.session_cm_id}
-                      value={String(session.session_cm_id)}
+                      value={weekendRef(session, sessions)}
                       className="listbox-option py-1.5"
                     >
                       {shortWeekendName(session.name)}
@@ -204,7 +220,7 @@ export default function WeekendRosterPage() {
                           // of the tabs you just left; the weekend is the
                           // destination, the tab is where you are standing in
                           // it.
-                          void navigate(`/weekend/session/${sessionCmId ?? ''}/${tab.id}`, {
+                          void navigate(`/weekend/${sessionRef ?? ''}/${tab.id}`, {
                             replace: true,
                           })
                         }}

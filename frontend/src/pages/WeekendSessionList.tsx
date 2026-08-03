@@ -30,6 +30,7 @@ import {
   formatSessionDates,
   groupWeekends,
   splitWeekendName,
+  weekendRef,
   todayKey,
 } from '../components/weekend'
 import type { WeekendStatus } from '../components/weekend'
@@ -105,10 +106,17 @@ function StatusSectionHeader({ status, count }: { status: WeekendStatus; count: 
 
 function WeekendRow({
   session,
+  siblings,
   status,
   stats,
 }: {
   session: WeekendSession
+  /**
+   * Every weekend in the year, not just this row's group — `weekendRef` can
+   * only tell a slug is unique by seeing all of them, and a collision that
+   * spans two groups is exactly the one a per-group check would miss.
+   */
+  siblings: WeekendSession[]
   status: WeekendStatus
   /**
    * Always present in practice — the counts arrive with the sessions in one
@@ -124,7 +132,7 @@ function WeekendRow({
 
   return (
     <Link
-      to={`/weekend/session/${String(session.session_cm_id)}`}
+      to={`/weekend/${weekendRef(session, siblings)}`}
       className={`group hover:bg-forest-50/50 dark:hover:bg-forest-800/40 block transition-all duration-200 ${
         isCompleted ? 'opacity-70 hover:opacity-100' : ''
       }`}
@@ -322,6 +330,7 @@ export default function WeekendSessionList() {
                       >
                         <WeekendRow
                           session={session}
+                          siblings={sessions}
                           status={status}
                           stats={statsByCmId.get(session.session_cm_id)}
                         />

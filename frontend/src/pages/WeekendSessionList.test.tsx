@@ -89,11 +89,15 @@ describe('header', () => {
 })
 
 describe('rows', () => {
-  it('links each weekend to its roster', () => {
+  it('links each weekend to its roster by readable slug, not CampMinder id', () => {
     render(<WeekendSessionList />, { wrapper })
     expect(screen.getByRole('link', { name: /Family Camp 1/ })).toHaveAttribute(
       'href',
-      '/weekend/session/1000001'
+      '/weekend/fc1'
+    )
+    expect(screen.getByRole('link', { name: /Women's Weekend/ })).toHaveAttribute(
+      'href',
+      '/weekend/ww'
     )
   })
 
