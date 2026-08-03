@@ -90,7 +90,13 @@ export function LodgingMap({ parties, units, year }: LodgingMapProps) {
     const node = canvasRef.current
     if (!node) return
     const measure = () => {
-      setSize({ width: node.clientWidth, height: node.clientHeight })
+      const width = node.clientWidth
+      const height = node.clientHeight
+      setSize({ width, height })
+      // Re-clamp: tx/ty are absolute pixels against the OLD size, so a resize
+      // or a sidebar collapse can open the gutter that clampView exists to
+      // prevent. It would otherwise persist until the next pan.
+      if (width > 0 && height > 0) setView((current) => clampView(current, width, height))
     }
     measure()
     const observer = new ResizeObserver(measure)
@@ -228,6 +234,10 @@ export function LodgingMap({ parties, units, year }: LodgingMapProps) {
                 )
               )
             }}
+            // Deliberately UNCONDITIONAL, even mid-gesture. Refusing a new
+            // pointerdown while a drag is live would strand the map forever if
+            // an up event were ever lost; replacing the record every time is
+            // what makes a dropped gesture self-heal on the next press.
             onPointerDown={(event) => {
               dragRef.current = {
                 x: event.clientX,
@@ -240,7 +250,11 @@ export function LodgingMap({ parties, units, year }: LodgingMapProps) {
             }}
             onPointerMove={(event) => {
               const drag = dragRef.current
-              if (!drag) return
+              // Only the pointer that STARTED the gesture may drive it. Without
+              // this, a second touch point (the only touch path, since the
+              // canvas sets `touch-none`) moves the map against the other
+              // finger's baseline and the pan jitters.
+              if (!drag || event.pointerId !== drag.id) return
               const dx = event.clientX - drag.x
               const dy = event.clientY - drag.y
               if (!drag.active) {
@@ -254,9 +268,17 @@ export function LodgingMap({ parties, units, year }: LodgingMapProps) {
               }
               setView(clampView({ k: view.k, tx: drag.tx + dx, ty: drag.ty + dy }, width, height))
             }}
+            onPointerCancel={() => {
+              // The browser took the gesture away (system gesture, tab switch).
+              // No capture to release — it is released for us — but the record
+              // must go or a stale baseline outlives the gesture.
+              dragRef.current = null
+              canvasRef.current?.classList.remove('panning')
+            }}
             onPointerUp={(event) => {
               const drag = dragRef.current
-              if (drag?.active && event.currentTarget.hasPointerCapture(drag.id)) {
+              if (!drag || event.pointerId !== drag.id) return
+              if (drag.active && event.currentTarget.hasPointerCapture(drag.id)) {
                 event.currentTarget.releasePointerCapture(drag.id)
               }
               dragRef.current = null
@@ -275,6 +297,14 @@ export function LodgingMap({ parties, units, year }: LodgingMapProps) {
                   width,
                   height,
                   transform: `translate(${String(view.tx)}px, ${String(view.ty)}px) scale(${String(view.k)})`,
+                  // LOAD-BEARING, not incidental. The marks are placed at
+                  // `u * size * k + t`, which matches this image only while it
+                  // scales about its top-left. With the CSS default of 50% 50%
+                  // an image point lands at `k*a + (1-k)*w/2 + t` — an offset
+                  // that is ZERO ONLY AT k=1, so the map would look
+                  // pixel-perfect at rest and drift further out of register the
+                  // more you zoom. jsdom performs no layout, so no test here can
+                  // catch it; the algebra is the only guard.
                   transformOrigin: '0 0',
                 }}
                 className="pointer-events-none absolute top-0 left-0 max-w-none"
@@ -378,7 +408,7 @@ export function LodgingMap({ parties, units, year }: LodgingMapProps) {
             />
           ) : (
             <>
-              <div className="flex flex-col gap-2">
+              <div data-testid="map-unplaced-rail" className="flex flex-col gap-2">
                 <div className="flex items-baseline justify-between gap-2">
                   <h3 className="font-display text-foreground text-sm font-bold">Unplaced</h3>
                   <span className="text-muted-foreground text-xs tabular-nums">

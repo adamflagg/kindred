@@ -5,7 +5,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { fireEvent, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import type { ReactNode } from 'react'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import type { LodgingUnitRow, RosterPartyRow } from '../../types/lodging'
 import { LodgingMap } from './LodgingMap'
@@ -34,6 +34,18 @@ let client: QueryClient
 
 beforeEach(() => {
   client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+})
+
+// jsdom implements no Pointer Capture API. Without these the drag path throws an
+// uncaught TypeError at `setPointerCapture`, which vitest reports as an
+// unhandled error and — worse — aborts the handler BEFORE it pans, so a test
+// meaning to exercise a drag silently exercises nothing and still goes green.
+// Plain functions, not vi.fn(), so the global `clearAllMocks` in
+// `src/test/setup.ts` cannot interact with them.
+beforeAll(() => {
+  Element.prototype.setPointerCapture = () => {}
+  Element.prototype.releasePointerCapture = () => {}
+  Element.prototype.hasPointerCapture = () => false
 })
 
 function wrapper({ children }: { children: ReactNode }) {
@@ -136,7 +148,10 @@ describe('LodgingMap', () => {
 
   it('lists an unplaced party on the unplaced rail', () => {
     render(<LodgingMap parties={[party({ display_name: 'Silva' })]} units={UNITS} year={2026} />)
-    expect(screen.getByText('Silva')).toBeInTheDocument()
+    // Scoped to the rail, matching the off-map assertion below. An unscoped
+    // getByText would pass if the party were rendered anywhere at all —
+    // including the rail it must NOT be on.
+    expect(screen.getByTestId('map-unplaced-rail')).toHaveTextContent('Silva')
   })
 
   it('lists a merged party as placed but off the map, never as unplaced', () => {
@@ -159,6 +174,34 @@ describe('LodgingMap', () => {
     await userEvent.click(screen.getAllByTestId('map-mark')[0] as HTMLElement)
     await userEvent.click(screen.getByRole('button', { name: /Johnson/ }))
     expect(screen.getByTestId('family-details-panel')).toBeInTheDocument()
+  })
+
+  it('ignores a second pointer so a two-finger gesture cannot steer the pan', () => {
+    // touch-none disables native panning, so a second touch point is a real
+    // input path. Before the pointerId guard, the second pointer's moves were
+    // applied against the first pointer's baseline and the map jittered.
+    render(<LodgingMap parties={[]} units={UNITS} year={2026} />)
+    const canvas = screen.getByTestId('map-canvas')
+    const transform = () => screen.getByTestId('map-backdrop').style.transform
+
+    // ZOOM IN FIRST, and this is load-bearing rather than incidental setup.
+    // At k=1 clampView's pan bounds are [width - width*1, 0] = [0, 0], so EVERY
+    // drag clamps straight back to identity — correct no-gutter behaviour, and
+    // it makes a pan assertion at rest vacuous whether or not the guard works.
+    fireEvent.wheel(canvas, { deltaY: -600 })
+    const zoomed = transform()
+
+    // Drag LEFT. A rightward drag wants a positive tx, which clamps to 0 at any
+    // zoom, so it would be equally vacuous.
+    fireEvent.pointerDown(canvas, { pointerId: 1, clientX: 300, clientY: 300 })
+    fireEvent.pointerMove(canvas, { pointerId: 1, clientX: 240, clientY: 300 })
+    const afterFirst = transform()
+    // Both halves matter. Asserting only that the second pointer changes nothing
+    // would also pass if the FIRST pointer had done nothing either.
+    expect(afterFirst).not.toBe(zoomed)
+
+    fireEvent.pointerMove(canvas, { pointerId: 2, clientX: 900, clientY: 900 })
+    expect(transform()).toBe(afterFirst)
   })
 
   it('reports rooms nobody has positioned rather than dropping them silently', () => {
