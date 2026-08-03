@@ -17,7 +17,7 @@
 import { ChevronDown, ChevronRight, Info, TriangleAlert } from 'lucide-react'
 import { useCallback, useState } from 'react'
 
-import { useDismissOnDeadSpace } from '../../hooks'
+import { useDismissOnDeadSpace } from '../../hooks/useDismissOnDeadSpace'
 import type { LodgingUnitRow, RosterPartyRow } from '../../types/lodging'
 import { buildBoard } from './boardLayout'
 import { FamilyCard } from './FamilyCard'

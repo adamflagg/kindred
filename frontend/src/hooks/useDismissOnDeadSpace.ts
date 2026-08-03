@@ -11,11 +11,11 @@ import { shouldKeepPanelsOpen } from '../utils/clickoutsidePredicate'
  * deferral. This one is predicate-based (`shouldKeepPanelsOpen`, itself shared
  * with its own unit test), listens on `click`, and attaches the listener a
  * macrotask after `isOpen` becomes true — matching the original summer
- * behaviour byte-for-byte. (React's own passive-effect scheduling already
- * defers this past the click that flips `isOpen`, so the extra macrotask
- * cannot be shown to change outcomes for that specific click via a unit test;
- * it is kept for behaviour parity with summer, not because a test proves it
- * necessary.)
+ * behaviour byte-for-byte. React's own update batching already defers this
+ * effect past the click that flips `isOpen`, for any click originating in
+ * this component tree, regardless of effect type — there is no click left
+ * for the macrotask to protect. It is parity-only and should not be removed
+ * casually.
  *
  * `onDismiss` is read through a ref so an inline arrow at the call site
  * doesn't churn the effect on every render — only `isOpen` flipping attaches

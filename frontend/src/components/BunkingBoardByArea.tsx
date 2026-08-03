@@ -36,7 +36,7 @@ import { Home } from 'lucide-react'
 import { isAgSession } from '../utils/sessionTypePredicates'
 import { getEffectivelyUnassignedCampers } from './bunkingBoardHelpers'
 import { getBoardBottomPaddingClass } from '../utils/bunkBoardLayout'
-import { useDismissOnDeadSpace } from '../hooks'
+import { useDismissOnDeadSpace } from '../hooks/useDismissOnDeadSpace'
 
 interface BunkingBoardByAreaProps {
   sessionId: string

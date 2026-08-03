@@ -1,16 +1,12 @@
 /**
  * The dead-space dismissal shared by the summer board and both weekend
- * surfaces.
- *
- * The behaviour that is easy to lose: the listener attaches one macrotask
- * LATE, so the click that opens a panel — going from nothing open to
- * something open — is not the click that closes it. Without that deferral, a
- * listener attached during the same click's bubble would see it and dismiss
- * what the user just opened.
+ * surfaces. Dismisses via `shouldKeepPanelsOpen` on a `click` listener that
+ * attaches a macrotask after `isOpen` becomes true, matching summer's
+ * original effect byte-for-byte — see the hook's own docstring for why that
+ * macrotask is parity-only rather than a mechanism this suite can pin down.
  */
-import { render, screen } from '@testing-library/react'
+import { fireEvent, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { useState } from 'react'
 import { describe, expect, it, vi } from 'vitest'
 
 import { useDismissOnDeadSpace } from './useDismissOnDeadSpace'
@@ -38,29 +34,6 @@ describe('useDismissOnDeadSpace', () => {
     expect(onDismiss).not.toHaveBeenCalled()
   })
 
-  it('spares the click that opened the panel', async () => {
-    // The whole point of the deferral. Opening and clicking within the same
-    // tick must not dismiss.
-    const onDismiss = vi.fn()
-    function Opener() {
-      const [isOpen, setIsOpen] = useState(false)
-      useDismissOnDeadSpace(isOpen, onDismiss)
-      return (
-        <button
-          type="button"
-          onClick={() => {
-            setIsOpen(true)
-          }}
-        >
-          open
-        </button>
-      )
-    }
-    render(<Opener />)
-    await userEvent.click(screen.getByRole('button', { name: 'open' }))
-    expect(onDismiss).not.toHaveBeenCalled()
-  })
-
   it('honours shouldKeepPanelsOpen', async () => {
     // A click on the panel itself is not dead space.
     const onDismiss = vi.fn()
@@ -81,5 +54,48 @@ describe('useDismissOnDeadSpace', () => {
     rerender(<Harness isOpen={false} onDismiss={onDismiss} />)
     await userEvent.click(screen.getByTestId('dead-space'))
     expect(onDismiss).not.toHaveBeenCalled()
+  })
+
+  it('always dismisses through the latest onDismiss, not the one captured at attach time', async () => {
+    // Pins the ref indirection: onDismiss is read through a ref that's
+    // updated every render, precisely so a later callback swap while a panel
+    // stays open doesn't call a stale closure.
+    const fnA = vi.fn()
+    const fnB = vi.fn()
+    const { rerender } = render(<Harness isOpen onDismiss={fnA} />)
+    await new Promise((resolve) => setTimeout(resolve, 0))
+    rerender(<Harness isOpen onDismiss={fnB} />)
+    await userEvent.click(screen.getByTestId('dead-space'))
+    expect(fnB).toHaveBeenCalledTimes(1)
+    expect(fnA).not.toHaveBeenCalled()
+  })
+
+  it('does not tear down and re-arm the listener when onDismiss identity changes while open', async () => {
+    // The other half of the ref indirection: onDismiss is intentionally NOT
+    // in the main effect's dependency array, so a fresh inline arrow at the
+    // call site (BunkingBoardByArea and LodgingBoard both pass one) does not
+    // retrigger the deferral. Proven by clicking immediately after a
+    // callback-identity-only rerender, with no macrotask wait in between — if
+    // the effect had torn down and re-armed, the freshly (re)attached
+    // listener would not be live yet and this click would be missed.
+    //
+    // Uses fireEvent, not userEvent, for that final click: userEvent's click
+    // is a multi-step async sequence (mousedown/mouseup/click) that yields
+    // the event loop between steps, which is enough real time for even a
+    // buggy re-armed listener's setTimeout(0) to fire before the simulated
+    // click lands — masking exactly the regression this test exists to
+    // catch. fireEvent.click is a single synchronous call with no such gap.
+    const onDismiss = vi.fn()
+    function ChangingCallback({ isOpen }: { isOpen: boolean }) {
+      useDismissOnDeadSpace(isOpen, () => onDismiss())
+      return <div data-testid="dead-space">dead space</div>
+    }
+    const { rerender } = render(<ChangingCallback isOpen />)
+    // Let the FIRST render's deferred listener actually attach — this wait is
+    // before the part under test, so it cannot mask the mutation.
+    await new Promise((resolve) => setTimeout(resolve, 0))
+    rerender(<ChangingCallback isOpen />)
+    fireEvent.click(screen.getByTestId('dead-space'))
+    expect(onDismiss).toHaveBeenCalledTimes(1)
   })
 })
