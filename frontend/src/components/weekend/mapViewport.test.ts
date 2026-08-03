@@ -71,14 +71,27 @@ describe('zoomAt', () => {
     expect(zoomAt({ k: K_MAX, tx: 0, ty: 0 }, W / 2, H / 2, 4, W, H).k).toBe(K_MAX)
   })
 
-  it('lets the no-gutter clamp override cursor invariance at an edge', () => {
-    // The documented precedence, pinned so nobody "fixes" the clamp to
-    // preserve invariance: at the left edge the tx invariance wants is
-    // positive, which would open a gutter, so the clamp takes it to 0.
-    const view = zoomAt(IDENTITY_VIEW, 0, 0, 4, W, H)
-    expect(view.k).toBe(4)
+  // The documented precedence, pinned so nobody "fixes" the clamp to preserve
+  // invariance. Both cases below were checked by hand to CONFIRM the clamp
+  // actually engages: zooming about the origin from tx=0 does NOT engage it —
+  // the invariant tx is already 0 — so that shape asserts nothing and is why
+  // these start from a panned view and zoom OUT.
+  it('lets the no-gutter clamp override cursor invariance at the zoom floor', () => {
+    // Invariance wants tx = -625; at k=1 the valid pan range collapses to the
+    // single point [0, 0], so the clamp forces 0 and the cursor drifts 625px.
+    const view = zoomAt({ k: 8, tx: -5000, ty: -4000 }, 0, 0, 0.01, W, H)
+    expect(view.k).toBe(K_MIN)
     expect(view.tx).toBe(0)
     expect(view.ty).toBe(0)
+  })
+
+  it('clamps to the real pan bound, not merely to zero', () => {
+    // Invariance wants tx = -1500, but at k=1.5 the bound is W - 1.5*W. A test
+    // that only covered the floor above would miss a sign error here.
+    const view = zoomAt({ k: 10, tx: -10000, ty: -8000 }, 0, 0, 0.15, W, H)
+    expect(view.k).toBeCloseTo(1.5, 10)
+    expect(view.tx).toBeCloseTo(W - 1.5 * W, 6)
+    expect(view.ty).toBeCloseTo(H - 1.5 * H, 6)
   })
 })
 
