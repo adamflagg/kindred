@@ -45,7 +45,7 @@ function party(overrides: Partial<RosterPartyRow> = {}): RosterPartyRow {
 describe('FloatingUnplacedBadge', () => {
   it('counts the unplaced parties on the collapsed button', () => {
     render(<FloatingUnplacedBadge parties={[party()]} onOpenParty={vi.fn()} />, { wrapper })
-    expect(screen.getByRole('button', { name: /1 unplaced families/i })).toHaveTextContent('1')
+    expect(screen.getByRole('button', { name: /1 unplaced parties/i })).toHaveTextContent('1')
   })
 
   it('files a household under its surname, not its mailing title', async () => {
@@ -62,7 +62,7 @@ describe('FloatingUnplacedBadge', () => {
       />,
       { wrapper }
     )
-    await userEvent.click(screen.getByRole('button', { name: /unplaced families/i }))
+    await userEvent.click(screen.getByRole('button', { name: /unplaced parties/i }))
     const names = screen.getAllByTestId('family-card-name').map((el) => el.textContent)
     expect(names).toEqual(['The Chen Family', 'Johnson Household'])
   })
@@ -83,7 +83,7 @@ describe('FloatingUnplacedBadge', () => {
       />,
       { wrapper }
     )
-    await userEvent.click(screen.getByRole('button', { name: /unplaced families/i }))
+    await userEvent.click(screen.getByRole('button', { name: /unplaced parties/i }))
     await userEvent.type(screen.getByPlaceholderText(/filter by name/i), 'Olivia')
     expect(screen.getAllByTestId('family-card-name').map((el) => el.textContent)).toEqual([
       'Garcia Household',
@@ -92,7 +92,7 @@ describe('FloatingUnplacedBadge', () => {
 
   it('says everyone has a cabin when nothing is queued', async () => {
     render(<FloatingUnplacedBadge parties={[]} onOpenParty={vi.fn()} />, { wrapper })
-    await userEvent.click(screen.getByRole('button', { name: /0 unplaced families/i }))
+    await userEvent.click(screen.getByRole('button', { name: /0 unplaced parties/i }))
     expect(screen.getByText(/Everyone has a cabin/i)).toBeInTheDocument()
   })
 
@@ -129,7 +129,7 @@ describe('FloatingUnplacedBadge', () => {
       />,
       { wrapper }
     )
-    await userEvent.click(screen.getByRole('button', { name: /unplaced families/i }))
+    await userEvent.click(screen.getByRole('button', { name: /unplaced parties/i }))
 
     // Both are here, and filed under their real surnames.
     expect(screen.getAllByTestId('family-card-name').map((el) => el.textContent)).toEqual([
@@ -147,7 +147,7 @@ describe('FloatingUnplacedBadge', () => {
   it('opens a party when its card is clicked', async () => {
     const onOpenParty = vi.fn()
     render(<FloatingUnplacedBadge parties={[party()]} onOpenParty={onOpenParty} />, { wrapper })
-    await userEvent.click(screen.getByRole('button', { name: /unplaced families/i }))
+    await userEvent.click(screen.getByRole('button', { name: /unplaced parties/i }))
     await userEvent.click(screen.getByRole('button', { name: /The Johnson Family/ }))
     expect(onOpenParty).toHaveBeenCalledWith(expect.objectContaining({ household_cm_id: 101 }))
   })

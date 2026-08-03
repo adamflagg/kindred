@@ -126,9 +126,9 @@ describe('LodgingBoard — layout', () => {
     expect(screen.queryByRole('complementary', { name: /unplaced/i })).not.toBeInTheDocument()
   })
 
-  it('puts unplaced families in the corner queue', async () => {
+  it('puts unplaced parties in the corner queue', async () => {
     render(<LodgingBoard parties={[party()]} units={[unit()]} year={2026} />, { wrapper })
-    await userEvent.click(screen.getByRole('button', { name: /1 unplaced families/i }))
+    await userEvent.click(screen.getByRole('button', { name: /1 unplaced parties/i }))
     expect(screen.getByTestId('family-card-name')).toHaveTextContent('Johnson')
   })
 
@@ -141,7 +141,7 @@ describe('LodgingBoard — layout', () => {
       />,
       { wrapper }
     )
-    await userEvent.click(screen.getByRole('button', { name: /0 unplaced families/i }))
+    await userEvent.click(screen.getByRole('button', { name: /0 unplaced parties/i }))
     expect(screen.getByText(/Everyone has a cabin/i)).toBeInTheDocument()
   })
 })
@@ -305,7 +305,7 @@ describe('LodgingBoard — the details panel updates in place', () => {
     // Both parties are left unplaced (no unit_code/unit_name override) so
     // both cards are reachable from the corner queue and the panel can be
     // switched between them without touching the board itself.
-    await userEvent.click(screen.getByRole('button', { name: /2 unplaced families/i }))
+    await userEvent.click(screen.getByRole('button', { name: /2 unplaced parties/i }))
     await userEvent.click(screen.getByRole('button', { name: /Johnson Household/ }))
     const first = screen.getByTestId('family-details-panel')
 

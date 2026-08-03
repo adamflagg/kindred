@@ -64,7 +64,11 @@ export function FloatingUnplacedBadge({
         </div>
       )}
       label="Unplaced"
-      noun="families"
+      // "parties", not "families": an adult weekend enrols individuals, so the
+      // person-grain rows in this queue are not families and the accessible
+      // name would be wrong for a whole session type. "Parties" is already the
+      // weekend's own word — the lander and the stats bar both count parties.
+      noun="parties"
       cardSelector="[data-family-card]"
       emptyState={EMPTY_STATE}
       isExpanded={isExpanded}

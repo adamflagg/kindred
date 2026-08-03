@@ -180,7 +180,7 @@ describe('LodgingMap', () => {
         year={2026}
       />
     )
-    await userEvent.click(screen.getByRole('button', { name: /1 unplaced families/i }))
+    await userEvent.click(screen.getByRole('button', { name: /1 unplaced parties/i }))
     expect(screen.getByTestId('family-card-name')).toHaveTextContent('Silva')
   })
 
@@ -202,7 +202,7 @@ describe('LodgingMap', () => {
     expect(canvas.compareDocumentPosition(section) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
 
     // And it is placed, so it is not in the queue.
-    expect(screen.getByRole('button', { name: /0 unplaced families/i })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /0 unplaced parties/i })).toBeInTheDocument()
   })
 
   it('opens the family panel as the board does — a slide-in overlay, not a sidebar', async () => {
@@ -286,7 +286,7 @@ describe('LodgingMap', () => {
       fireEvent.pointerUp(canvas, { pointerId: 1, clientX: 240, clientY: 300 })
       fireEvent.click(canvas)
 
-      await userEvent.click(screen.getByRole('button', { name: /1 unplaced families/i }))
+      await userEvent.click(screen.getByRole('button', { name: /1 unplaced parties/i }))
       await userEvent.click(screen.getByRole('button', { name: /Garcia/ }))
       expect(screen.getByTestId('family-details-panel')).toHaveClass('animate-slide-in-right')
       await new Promise((resolve) => setTimeout(resolve, 0))
