@@ -165,12 +165,17 @@ class LodgingRepository:
         written -- all 67 rows carried '' -- and keeping it would have invited
         exactly the `scenario != ""` write rule the draft table exists to avoid.
         These rows ARE the live plan, and a scenario overlays them.
+
+        `units` is the one relation a placement carries since 1500000134
+        collapsed `unit`/`merge`/`merge_draft` into it -- a multi-select field,
+        so expanding it hands back a LIST of unit records rather than one.
+        _placement_of reads that list, not a lookup keyed by id.
         """
         return await asyncio.to_thread(
             self.pb.collection(LODGING_ASSIGNMENTS).get_full_list,
             query_params={
                 "filter": f'session = "{pb_escape(session_pb_id)}" && year = {year}',
-                "expand": "unit,merge",
+                "expand": "units",
                 "sort": STABLE_SORT,
             },
         )
@@ -178,10 +183,12 @@ class LodgingRepository:
     async def fetch_draft_assignments(self, year: int, session_pb_id: str, scenario_id: str) -> list[Any]:
         """One scenario's draft placements for one session.
 
-        Three targets expand, not two: `unit` is an atomic room, `merge` is a
-        slot the ingest built from a historical cabin string, and `merge_draft`
-        is one the board built inside this scenario. A PocketBase relation
-        names a single collection, so the two kinds of merge need two fields.
+        One target expands, not three: 1500000134 collapsed `unit` (an atomic
+        room), `merge` (a slot the ingest built from a historical cabin
+        string) and `merge_draft` (one the board built inside a scenario) into
+        the single `units` relation. A draft row placing a party across
+        multiple rooms is just a `units` list with 2+ ids now, whether the
+        ingest or the board put it there.
 
         EVERY interpolated string here goes through pb_escape. `scenario_id`
         reaches this method straight off the `?scenario=` query parameter, and
@@ -197,7 +204,7 @@ class LodgingRepository:
                 "filter": (
                     f'session = "{pb_escape(session_pb_id)}" && year = {year} && scenario = "{pb_escape(scenario_id)}"'
                 ),
-                "expand": "unit,merge,merge_draft",
+                "expand": "units",
                 "sort": STABLE_SORT,
             },
         )

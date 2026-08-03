@@ -162,9 +162,7 @@ class TestNarrowPhiReads:
 
 class TestFetchAssignments:
     @pytest.mark.asyncio
-    async def test_reads_the_synced_rows_and_expands_unit_and_merge(
-        self, repo: LodgingRepository, pb: MagicMock
-    ) -> None:
+    async def test_reads_the_synced_rows_and_expands_units(self, repo: LodgingRepository, pb: MagicMock) -> None:
         """No scenario predicate, because there is no scenario column.
 
         This assertion used to require `scenario = ""` here. 1500000132 dropped
@@ -180,21 +178,19 @@ class TestFetchAssignments:
         assert 'session = "sess_pb_1"' in params["filter"]
         assert "year = 2026" in params["filter"]
         assert "scenario" not in params["filter"]
-        assert params["expand"] == "unit,merge"
+        assert params["expand"] == "units"
 
 
 class TestFetchDraftAssignments:
     @pytest.mark.asyncio
-    async def test_scopes_to_one_scenario_and_expands_all_three_targets(
-        self, repo: LodgingRepository, pb: MagicMock
-    ) -> None:
-        """Three targets expand, not two.
+    async def test_scopes_to_one_scenario_and_expands_units(self, repo: LodgingRepository, pb: MagicMock) -> None:
+        """One target expands, not three.
 
-        `merge` is a slot the ingest built from a historical cabin string;
-        `merge_draft` is one the board built inside this scenario. A PocketBase
-        relation names a single collection, so a draft row that could point at
-        either needs both fields -- and a read that expands only one of them
-        renders a placed party as unplaced.
+        1500000134 collapsed `unit` (an atomic room), `merge` (a slot the
+        ingest built from a historical cabin string) and `merge_draft` (one
+        the board built inside this scenario) into the single `units`
+        relation -- a read that does not expand it renders a placed party as
+        unplaced, whether that placement is one room or several.
         """
         await repo.fetch_draft_assignments(2026, "sess_pb_1", "scn_1")
 
@@ -203,7 +199,7 @@ class TestFetchDraftAssignments:
         assert 'session = "sess_pb_1"' in params["filter"]
         assert "year = 2026" in params["filter"]
         assert 'scenario = "scn_1"' in params["filter"]
-        assert params["expand"] == "unit,merge,merge_draft"
+        assert params["expand"] == "units"
 
 
 class TestClientSuppliedValuesAreEscaped:

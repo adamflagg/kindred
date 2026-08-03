@@ -423,27 +423,35 @@ class LodgingRosterService:
     def _placement_of(row: Any) -> tuple[str, str, bool] | None:
         """(unit_code, display_name, is_merged_slot) for a row, or None.
 
-        None means the row names NO target. On a synced row that is an orphan
-        -- the unit was deleted out from under it, which the DB allows -- and
-        on a DRAFT row it is the deliberate "staff took this party off the
-        board" tombstone. Both read the same here; what differs is how the
-        caller treats it, which is why this returns None rather than skipping.
+        None means the row names NO target. On a synced row that is an
+        orphan -- every unit it named was deleted out from under it, which
+        the DB allows -- and on a DRAFT row it is the deliberate "staff took
+        this party off the board" tombstone. Both read the same here; what
+        differs is how the caller treats it, which is why this returns None
+        rather than skipping.
 
-        `merge_draft` is checked before `merge`: a board-built slot is the more
-        specific answer when a row somehow carries both. The schema enforces no
-        XOR between the three, exactly as it does not on the truth table.
+        One unit is a normal placement; 2+ read as a merged slot with no unit
+        code -- byte for byte the shape the old `lodging_merges` row produced,
+        so callers and the board are unaffected by the collapse to one
+        relation.
+
+        The label is built from `row.units` (the relation's own stored id
+        order), not from iterating `row.expand["units"]` directly: expand
+        comes back from an IN-clause query, and PocketBase does not promise
+        that order matches the field's stored order, so reading expand's own
+        order would let a merged slot's label reorder between requests. An id
+        in `units` with no matching record in `expand["units"]` names a unit
+        that no longer exists -- the DB permits a relation to outlive its
+        target -- and is dropped rather than surfacing as a placeholder,
+        which mirrors how a fully orphaned row already reads as unplaced.
         """
-        expand = getattr(row, "expand", None) or {}
-        merge_draft = expand.get("merge_draft")
-        if merge_draft is not None and _s(row, "merge_draft"):
-            return "", _s(merge_draft, "display_name"), True
-        merge = expand.get("merge")
-        if merge is not None and _s(row, "merge"):
-            return "", _s(merge, "display_name"), True
-        unit = expand.get("unit")
-        if unit is not None and _s(row, "unit"):
-            return _s(unit, "code"), _s(unit, "name"), False
-        return None
+        by_id = {_s(u, "id"): u for u in (getattr(row, "expand", None) or {}).get("units") or []}
+        units = [by_id[uid] for uid in (getattr(row, "units", None) or []) if uid in by_id]
+        if not units:
+            return None
+        if len(units) == 1:
+            return _s(units[0], "code"), _s(units[0], "name"), False
+        return "", " + ".join(_s(u, "name") for u in units), True
 
     @staticmethod
     def _grain_key(row: Any) -> tuple[str, int] | None:

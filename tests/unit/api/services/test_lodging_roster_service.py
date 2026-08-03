@@ -462,6 +462,74 @@ class TestUnitsAndCounts:
         assert {u.bathroom for u in roster.units} == {"shared"}
 
 
+class TestPlacementOf:
+    """`_placement_of` in isolation.
+
+    The roster-level tests below thread it through households, attendees and
+    counts, which is right for pinning the API response shape but too noisy
+    for pinning the primitive's own rules -- ordering and unresolvable ids
+    would be buried in party-assembly detail that has nothing to do with
+    them.
+    """
+
+    def test_single_unit_returns_its_code(self) -> None:
+        row = _rec(units=["u1"], expand={"units": [_rec(id="u1", code="ridge-a", name="Ridge A")]})
+
+        assert LodgingRosterService._placement_of(row) == ("ridge-a", "Ridge A", False)
+
+    def test_two_units_read_as_a_merged_slot(self) -> None:
+        row = _rec(
+            units=["u1", "u2"],
+            expand={
+                "units": [
+                    _rec(id="u1", code="gt-tioga-1", name="Tioga 1"),
+                    _rec(id="u2", code="gt-tioga-2", name="Tioga 2"),
+                ]
+            },
+        )
+
+        placement = LodgingRosterService._placement_of(row)
+
+        assert placement is not None
+        code, name, merged = placement
+        assert code == ""
+        assert merged is True
+        assert "Tioga 1" in name and "Tioga 2" in name
+
+    def test_no_units_is_none(self) -> None:
+        assert LodgingRosterService._placement_of(_rec(units=[], expand={})) is None
+
+    def test_label_order_follows_the_stored_relation_not_the_expand_order(self) -> None:
+        """`expand` comes back from an IN-clause query, which PocketBase does
+        not promise matches the relation field's own stored order. Building
+        the label from `units` (the id list) rather than from
+        `expand["units"]` directly keeps the label stable across requests
+        even if the query's row order is not."""
+        row = _rec(
+            units=["u2", "u1"],
+            expand={
+                "units": [
+                    _rec(id="u1", code="gt-tioga-1", name="Tioga 1"),
+                    _rec(id="u2", code="gt-tioga-2", name="Tioga 2"),
+                ]
+            },
+        )
+
+        placement = LodgingRosterService._placement_of(row)
+
+        assert placement is not None
+        assert placement[1] == "Tioga 2 + Tioga 1"
+
+    def test_an_unresolvable_id_is_dropped_not_treated_as_a_full_orphan(self) -> None:
+        """PocketBase tolerates a relation id whose target record is gone --
+        its own cascade cleanup relies on that. The surviving id still places
+        the party, as a single unit rather than a merge, instead of the whole
+        row reading as unplaced."""
+        row = _rec(units=["u1", "u_deleted"], expand={"units": [_rec(id="u1", code="ridge-a", name="Ridge A")]})
+
+        assert LodgingRosterService._placement_of(row) == ("ridge-a", "Ridge A", False)
+
+
 class TestAssignments:
     @pytest.mark.asyncio
     async def test_household_assignment_resolves_to_a_unit(self) -> None:
@@ -474,9 +542,8 @@ class TestAssignments:
                 _rec(
                     household_cm_id=2000001,
                     person_cm_id=0,
-                    unit="u1",
-                    merge="",
-                    expand={"unit": _rec(code="ridge-a", name="Ridge A")},
+                    units=["u1"],
+                    expand={"units": [_rec(id="u1", code="ridge-a", name="Ridge A")]},
                 ),
             ],
         )
@@ -490,7 +557,7 @@ class TestAssignments:
         assert roster.counts.parties_unassigned == 0
 
     @pytest.mark.asyncio
-    async def test_merge_assignment_uses_the_merge_display_name(self) -> None:
+    async def test_two_unit_assignment_reads_as_a_merged_slot(self) -> None:
         repo = _repo(
             fetch_session=FAMILY_SESSION,
             fetch_households={"hh_1": _household(title="The Garcia Family")},
@@ -499,28 +566,33 @@ class TestAssignments:
                 _rec(
                     household_cm_id=2000001,
                     person_cm_id=0,
-                    unit="",
-                    merge="mrg_1",
-                    expand={"merge": _rec(display_name="Wawona")},
+                    units=["u1", "u2"],
+                    expand={
+                        "units": [
+                            _rec(id="u1", code="gt-wawona-front", name="Wawona Front"),
+                            _rec(id="u2", code="gt-wawona-back", name="Wawona Back"),
+                        ]
+                    },
                 ),
             ],
         )
         roster = await LodgingRosterService(repo).build_roster(2026, 1000001)
 
         party = roster.parties[0]
-        assert party.unit_name == "Wawona"
+        assert party.unit_code == ""
         assert party.is_merged_slot is True
+        assert "Wawona Front" in party.unit_name and "Wawona Back" in party.unit_name
 
     @pytest.mark.asyncio
     async def test_orphaned_assignment_leaves_the_party_unassigned(self) -> None:
-        """lodging_assignments.unit is optional, so deleting the unit returns
-        204 and leaves the row pointing at nothing. That is not a placement."""
+        """lodging_assignments.units is optional, so deleting every unit it
+        named leaves the row pointing at nothing. That is not a placement."""
         repo = _repo(
             fetch_session=FAMILY_SESSION,
             fetch_households={"hh_1": _household()},
             fetch_attendees_for_session=[_child()],
             fetch_assignments=[
-                _rec(household_cm_id=2000001, person_cm_id=0, unit="", merge="", expand={}),
+                _rec(household_cm_id=2000001, person_cm_id=0, units=[], expand={}),
             ],
         )
         roster = await LodgingRosterService(repo).build_roster(2026, 1000001)
@@ -569,19 +641,16 @@ class TestScenarioResolution:
                 _rec(
                     household_cm_id=2000001,
                     person_cm_id=0,
-                    unit="u1",
-                    merge="",
-                    expand={"unit": _rec(code="ridge-a", name="Ridge A")},
+                    units=["u1"],
+                    expand={"units": [_rec(id="u1", code="ridge-a", name="Ridge A")]},
                 ),
             ],
             fetch_draft_assignments=[
                 _rec(
                     household_cm_id=2000001,
                     person_cm_id=0,
-                    unit="u2",
-                    merge="",
-                    merge_draft="",
-                    expand={"unit": _rec(code="ridge-b", name="Ridge B")},
+                    units=["u2"],
+                    expand={"units": [_rec(id="u2", code="ridge-b", name="Ridge B")]},
                 ),
             ],
         )
@@ -609,9 +678,8 @@ class TestScenarioResolution:
                 _rec(
                     household_cm_id=2000002,
                     person_cm_id=0,
-                    unit="u1",
-                    merge="",
-                    expand={"unit": _rec(code="ridge-a", name="Ridge A")},
+                    units=["u1"],
+                    expand={"units": [_rec(id="u1", code="ridge-a", name="Ridge A")]},
                 ),
             ],
             fetch_draft_assignments=[],
@@ -642,13 +710,12 @@ class TestScenarioResolution:
                 _rec(
                     household_cm_id=2000001,
                     person_cm_id=0,
-                    unit="u1",
-                    merge="",
-                    expand={"unit": _rec(code="ridge-a", name="Ridge A")},
+                    units=["u1"],
+                    expand={"units": [_rec(id="u1", code="ridge-a", name="Ridge A")]},
                 ),
             ],
             fetch_draft_assignments=[
-                _rec(household_cm_id=2000001, person_cm_id=0, unit="", merge="", merge_draft="", expand={}),
+                _rec(household_cm_id=2000001, person_cm_id=0, units=[], expand={}),
             ],
         )
 
@@ -659,13 +726,11 @@ class TestScenarioResolution:
         assert roster.counts.parties_unassigned == 1
 
     @pytest.mark.asyncio
-    async def test_a_draft_placement_onto_a_board_built_merge(self) -> None:
-        """A draft row has THREE possible targets, not two.
+    async def test_a_draft_placement_onto_two_units_reads_as_a_merged_slot(self) -> None:
+        """The board can place a party across multiple rooms directly.
 
-        `merge` is a slot the ingest built -- six are seeded from historical
-        cabin strings, and a scenario must be able to place a party onto one.
-        `merge_draft` is a slot the board built in this scenario. A PocketBase
-        relation names one collection, so the two need separate fields.
+        There is no separate merge concept any more: any row -- synced or a
+        scenario's own draft -- that names 2+ ids in `units` reads as merged.
         """
         repo = _repo(
             fetch_session=FAMILY_SESSION,
@@ -675,18 +740,22 @@ class TestScenarioResolution:
                 _rec(
                     household_cm_id=2000001,
                     person_cm_id=0,
-                    unit="",
-                    merge="",
-                    merge_draft="mrgd_1",
-                    expand={"merge_draft": _rec(display_name="Tenaya 1 and 2")},
+                    units=["u1", "u2"],
+                    expand={
+                        "units": [
+                            _rec(id="u1", code="gt-tenaya-1", name="Tenaya 1"),
+                            _rec(id="u2", code="gt-tenaya-2", name="Tenaya 2"),
+                        ]
+                    },
                 ),
             ],
         )
 
         roster = await LodgingRosterService(repo).build_roster(2026, 1000001, scenario="scn_1")
 
-        assert roster.parties[0].unit_name == "Tenaya 1 and 2"
-        assert roster.parties[0].is_merged_slot is True
+        party = roster.parties[0]
+        assert "Tenaya 1" in party.unit_name and "Tenaya 2" in party.unit_name
+        assert party.is_merged_slot is True
 
     @pytest.mark.asyncio
     async def test_the_person_grain_overlays_independently(self) -> None:
@@ -708,10 +777,8 @@ class TestScenarioResolution:
                 _rec(
                     household_cm_id=0,
                     person_cm_id=1000001,
-                    unit="u2",
-                    merge="",
-                    merge_draft="",
-                    expand={"unit": _rec(code="ridge-b", name="Ridge B")},
+                    units=["u2"],
+                    expand={"units": [_rec(id="u2", code="ridge-b", name="Ridge B")]},
                 ),
             ],
         )
@@ -952,10 +1019,8 @@ class TestBuildSummary:
             _rec(
                 household_cm_id=2000001,
                 person_cm_id=0,
-                unit="u2",
-                merge="",
-                merge_draft="",
-                expand={"unit": _rec(code="ridge-b", name="Ridge B")},
+                units=["u2"],
+                expand={"units": [_rec(id="u2", code="ridge-b", name="Ridge B")]},
             ),
         ]
         repo = _repo(
