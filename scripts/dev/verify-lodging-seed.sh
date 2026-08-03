@@ -37,7 +37,13 @@ PB_BIN="$REPO_ROOT/pocketbase/pocketbase"
 MIG_DIR="$REPO_ROOT/pocketbase/pb_migrations"
 REGISTRY="$REPO_ROOT/config/lodging_registry.json"
 
-[[ -x "$PB_BIN" ]] || { echo "error: $PB_BIN missing; run: cd pocketbase && go build -o pocketbase ." >&2; exit 2; }
+# Rebuild rather than assert existence. This is the script the staleness bug
+# was found through: the boot loader was present in the source and absent from
+# the binary, and the run reported "no lodging_units rows — the boot loader did
+# not run". The same hole produces a false PASS, which nobody investigates.
+# See kindred#1922.
+echo ">> building pocketbase binary..."
+pb_harness_build_binary "$REPO_ROOT/pocketbase" "$PB_BIN"
 
 if [[ ! -f "$REGISTRY" ]]; then
   echo "error: $REGISTRY missing — the private registry lives in kindred-local." >&2

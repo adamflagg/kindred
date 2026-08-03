@@ -78,8 +78,7 @@ pb_apply() {
 }
 
 echo ">> building pocketbase binary..."
-( cd "$REPO_ROOT/pocketbase" && go build -o "$SCRATCH/pocketbase" . ) > "$SCRATCH/build.log" 2>&1 \
-  || { echo "pocketbase build failed; log:"; cat "$SCRATCH/build.log"; exit 2; }
+pb_harness_build_binary "$REPO_ROOT/pocketbase" "$SCRATCH/pocketbase"
 
 # Each DB lives under its own slot directory so pb_harness_boot's symlink
 # target ($parent_dir/pb_migrations) is unique per call. Without this, both
