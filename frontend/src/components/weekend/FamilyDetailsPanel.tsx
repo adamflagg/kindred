@@ -28,6 +28,7 @@ import type {
   ShareRequest,
 } from '../../types/lodging'
 import { AccessibilityFlagList } from './AccessibilityFlagList'
+import { partyKey } from './partyKey'
 import { ATTENTION_LABEL, partyAttention } from './rosterAttention'
 import { ShareRequestPanel } from './ShareRequestPanel'
 
@@ -78,6 +79,23 @@ export function FamilyDetailsPanel({
   onClose,
 }: FamilyDetailsPanelProps) {
   const [isClosing, setIsClosing] = useState(false)
+
+  // The board and map stopped keying this panel per party, so a family switch
+  // updates it in place instead of remounting. Remounting used to reset
+  // `isClosing` for free; nothing else does. Without this, closing one family
+  // and picking another inside the 300ms slide-out hands the new family the
+  // old one's exit, and `handleAnimationEnd` closes the panel on them.
+  //
+  // Adjusted during render, not in an effect: an effect commits one frame with
+  // the exit class still on, which is the flicker this exists to prevent.
+  // `requestClose` needs no equivalent — the parent's `openParty` sets it false.
+  const identity = partyKey(party)
+  const [shownIdentity, setShownIdentity] = useState(identity)
+  if (identity !== shownIdentity) {
+    setShownIdentity(identity)
+    setIsClosing(false)
+  }
+
   const exiting = requestClose || isClosing
 
   const handleClose = useCallback(() => {

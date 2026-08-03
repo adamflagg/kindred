@@ -294,4 +294,38 @@ describe('FamilyDetailsPanel — interaction contract', () => {
     fireAnimationEnd(screen.getByTestId('family-details-panel'))
     expect(onClose).toHaveBeenCalledTimes(1)
   })
+
+  it('lets a family selected mid-close arrive open, not mid-exit', async () => {
+    // The board and map stopped keying this panel per party, so it updates in
+    // place instead of remounting (`LodgingBoard.test.tsx`, "does not remount
+    // the panel when a second family is opened"). `isClosing` is the one thing
+    // that remount used to reset for free: close the Johnsons, click the
+    // Garcias inside the 300ms slide-out, and without a reset the Garcias
+    // inherit the Johnsons' exit and the panel closes on them.
+    //
+    // `requestClose` needs no equivalent — the parent's `openParty` already
+    // sets it false. This is only about the panel's own state.
+    const onClose = vi.fn()
+    const { rerender } = render(
+      <FamilyDetailsPanel party={party()} year={2026} onClose={onClose} />,
+      { wrapper }
+    )
+
+    await userEvent.click(screen.getByRole('button', { name: /close panel/i }))
+    expect(screen.getByTestId('family-details-panel')).toHaveClass('animate-slide-out-right')
+
+    rerender(
+      <FamilyDetailsPanel
+        party={party({ household_cm_id: 102, display_name: 'Garcia' })}
+        year={2026}
+        onClose={onClose}
+      />
+    )
+
+    expect(screen.getByTestId('family-details-panel')).toHaveClass('animate-slide-in-right')
+    // The animation started before the switch still ends; it must not be read
+    // as this family's exit.
+    fireAnimationEnd(screen.getByTestId('family-details-panel'))
+    expect(onClose).not.toHaveBeenCalled()
+  })
 })
