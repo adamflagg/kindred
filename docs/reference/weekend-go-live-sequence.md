@@ -36,6 +36,7 @@ That is why this programme is plan-driven rather than triage-driven. Triage is t
 **Two owner decisions, 2026-08-03, changed steps 0a–2a from what this table first said.**
 
 - **Lodging scenarios adopt summer's semantics** ([#1974](https://github.com/adamflagg/kindred/issues/1974)). Today a lodging scenario OVERLAYS the CampMinder mirror per party, so a fresh scenario renders the synced placements and "unplaced" needs a tombstone row. Summer's draft table *replaces* production and is seeded by an explicit copy. There is no principled asymmetry — `sync/bunk_assignments.go` and `sync/lodging_assignments_sync.go` are both registered sync services — so the divergence is being removed. **Consequence for step 2: dragging to the unplaced rail becomes a `DELETE`, not a tombstone `POST`.** The appendix below still says tombstone; it is correct only until #1974 lands.
+- **The unplaced rail is being replaced by a floating queue, in parallel.** The weekend unplaced-popout work removes the board's fixed 240px rail (`LodgingBoard.tsx:101`) and the map's 280px one, in favour of summer's `FloatingUnassignedBadge` pattern extracted into a shared `FloatingQueueBadge` shell. **So "drag to the unplaced rail" is a drop target that will not exist by the time drag is built** — the target becomes a floating badge/popover. Summer's badge is already a dnd-kit droppable, so the pattern is in the tree, but do not plan against the rail. That work also adds `sort_name` to `RosterParty` and orders the queue by last name, which retires `rankUnplaced`'s mandatory-accommodation ranking — and with it the caveat the board currently prints about that ranking being half-uncomputable.
 - **Drag ships placement only.** Party → unit and party → rail. Unit → unit merge is **out**, because `buildBoard` indexes parties by `party.unit_code` and `_placement_of` sends `unit_code: ""` for any placement spanning 2+ rooms — so the board cannot draw a multi-room placement at all today, and drag-to-merge would make the card vanish into the off-board section. That is why #1940 moved from in front of drag to behind it: it is the render fix that *unlocks* merge, not a prerequisite for placement. Roughly 12–16 multi-room placements a year, ~3% of the total.
 
 Also open and deliberately *not* on this path: [#1963](https://github.com/adamflagg/kindred/issues/1963) and [#1964](https://github.com/adamflagg/kindred/issues/1964) (further perf), [#1907](https://github.com/adamflagg/kindred/issues/1907) / [#1932](https://github.com/adamflagg/kindred/issues/1932) / [#1930](https://github.com/adamflagg/kindred/issues/1930) (occupancy and placement-assist design), the pin editor and Phase F geo.
@@ -133,7 +134,13 @@ landed before you build that drop target.
 ## Scope
 
 - Party → unit
-- Party → unplaced rail. **After #1974 this is a `DELETE /placements`.** Older
+- Party → the unplaced queue. **Check what that queue IS before you build the
+  drop target.** The weekend unplaced-popout work replaces the board's fixed
+  left rail with a floating badge/popover built on a shared
+  `FloatingQueueBadge`; if it has landed, the rail is gone and you are making
+  the badge droppable, as summer already does with
+  `FloatingUnassignedBadge`. **After #1974 the write is a
+  `DELETE /placements`.** Older
   text — including HANDOFF §2's three-state table and §6 — says it must be a
   tombstone `POST` with empty `unit_ids`. That was true under the OVERLAY read,
   where deleting the row fell through to the CampMinder mirror and put the

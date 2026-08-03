@@ -6,8 +6,19 @@
 
 version: 2
 updates:
-  # Python dependencies (reads from pyproject.toml)
-  - package-ecosystem: "pip"
+  # Python dependencies.
+  #
+  # `uv`, NOT `pip`. The pip ecosystem edits pyproject.toml and does not know
+  # `uv.lock` exists, so every bump raised the declared floor and left the lock
+  # pinned to the old version. CI and CD install with `uv sync --frozen`, which
+  # applies the lock WITHOUT validating it against pyproject.toml -- so those
+  # bumps changed the manifest and not one byte of what actually runs, silently.
+  # Five packages had drifted this way by 1e56a3ae, including an aiohttp bump
+  # merged as `fix(deps)`. See #1864.
+  #
+  # The uv ecosystem updates pyproject.toml and uv.lock together, which removes
+  # the cause rather than the symptom.
+  - package-ecosystem: "uv"
     directory: "/"
     schedule:
       interval: "weekly"
