@@ -29,9 +29,14 @@ export const IDENTITY_VIEW: Viewport = { k: 1, tx: 0, ty: 0 }
 export const K_MIN = 1
 
 /**
- * The source is 3300px wide. Past roughly 8x a ~1200px canvas is upscaling,
- * and 8x is also where the last proximity cluster dissolves, so there is
- * little reason to go further.
+ * Separating the tightest pair of rooms is what sets this ceiling, and it is
+ * CANVAS-DEPENDENT in the unhelpful direction: measured on the real registry,
+ * full separation needs ~8.4x on a 1400px canvas and ~13.1x on a 900px one, so
+ * a narrower canvas needs MORE zoom. 14 covers every realistic width.
+ *
+ * The background is upscaled long before that — a 3300px source reaches 1:1 at
+ * ~2.75x on a 1200px canvas — but the marks are drawn at CONSTANT size and do
+ * not blur with it, and separating them is the whole point of zooming here.
  */
 export const K_MAX = 14
 
@@ -68,7 +73,15 @@ export function clampView(view: Viewport, width: number, height: number): Viewpo
   }
 }
 
-/** Zoom about a point, leaving whatever is under it exactly where it is. */
+/**
+ * Zoom about a point.
+ *
+ * Whatever sits under (px, py) stays under it EXACTLY — but only while the pan
+ * clamp does not engage. Near a map edge the tx the invariance wants falls
+ * outside `[width - width*k, 0]` and the clamp wins, sliding the content. That
+ * is the intended precedence: a gutter is a worse lie than a few pixels of
+ * drift, because it reads as the map having been lost.
+ */
 export function zoomAt(
   view: Viewport,
   px: number,
@@ -81,39 +94,6 @@ export function zoomAt(
   const ratio = k / view.k
   return clampView(
     { k, tx: px - (px - view.tx) * ratio, ty: py - (py - view.ty) * ratio },
-    width,
-    height
-  )
-}
-
-/**
- * Frame a set of base-space points.
- *
- * An empty set returns the resting view rather than NaN — callers pass a
- * filtered list, and an empty one means "nothing to frame", not "an error".
- */
-export function fitTo(
-  points: Array<{ x: number; y: number }>,
-  width: number,
-  height: number,
-  pad = 80
-): Viewport {
-  if (points.length === 0) return IDENTITY_VIEW
-  const xs = points.map((point) => point.x)
-  const ys = points.map((point) => point.y)
-  const x0 = Math.min(...xs)
-  const x1 = Math.max(...xs)
-  const y0 = Math.min(...ys)
-  const y1 = Math.max(...ys)
-  const k = Math.min(
-    K_MAX,
-    Math.max(
-      K_MIN,
-      Math.min((width - pad * 2) / Math.max(x1 - x0, 1), (height - pad * 2) / Math.max(y1 - y0, 1))
-    )
-  )
-  return clampView(
-    { k, tx: width / 2 - ((x0 + x1) / 2) * k, ty: height / 2 - ((y0 + y1) / 2) * k },
     width,
     height
   )

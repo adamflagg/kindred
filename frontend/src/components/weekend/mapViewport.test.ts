@@ -7,7 +7,6 @@ import { describe, expect, it } from 'vitest'
 import {
   basePosition,
   clampView,
-  fitTo,
   IDENTITY_VIEW,
   K_MAX,
   K_MIN,
@@ -71,6 +70,16 @@ describe('zoomAt', () => {
   it('never zooms in past the ceiling', () => {
     expect(zoomAt({ k: K_MAX, tx: 0, ty: 0 }, W / 2, H / 2, 4, W, H).k).toBe(K_MAX)
   })
+
+  it('lets the no-gutter clamp override cursor invariance at an edge', () => {
+    // The documented precedence, pinned so nobody "fixes" the clamp to
+    // preserve invariance: at the left edge the tx invariance wants is
+    // positive, which would open a gutter, so the clamp takes it to 0.
+    const view = zoomAt(IDENTITY_VIEW, 0, 0, 4, W, H)
+    expect(view.k).toBe(4)
+    expect(view.tx).toBe(0)
+    expect(view.ty).toBe(0)
+  })
 })
 
 describe('clampView', () => {
@@ -88,26 +97,5 @@ describe('clampView', () => {
     const far = clampView({ k: 3, tx: -99999, ty: -99999 }, W, H)
     expect(far.tx).toBe(W - W * 3)
     expect(far.ty).toBe(H - H * 3)
-  })
-})
-
-describe('fitTo', () => {
-  it('returns the resting view for an empty set rather than NaN', () => {
-    expect(fitTo([], W, H)).toEqual(IDENTITY_VIEW)
-  })
-
-  it('centres the points it is given', () => {
-    const view = fitTo(
-      [
-        { x: 400, y: 300 },
-        { x: 600, y: 500 },
-      ],
-      W,
-      H
-    )
-    const a = screenPosition({ x: 400, y: 300 }, view)
-    const b = screenPosition({ x: 600, y: 500 }, view)
-    expect((a.x + b.x) / 2).toBeCloseTo(W / 2, 4)
-    expect((a.y + b.y) / 2).toBeCloseTo(H / 2, 4)
   })
 })
