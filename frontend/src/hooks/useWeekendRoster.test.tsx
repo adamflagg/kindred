@@ -102,14 +102,58 @@ describe('year gating', () => {
     // on a direct load of /weekend/1000001 the id is parsed synchronously off
     // the URL, deliberately, so it is non-null on the very first render while
     // the year is still 0. The guard was on the wrong axis.
-    renderHook(() => useWeekendRoster(0, 1000001), { wrapper })
+    renderHook(() => useWeekendRoster(0, 1000001, ''), { wrapper })
     expect(fetchWeekendRoster).not.toHaveBeenCalled()
   })
 
   it('fetches once the year is real', async () => {
-    const { result } = renderHook(() => useWeekendRoster(2026, 1000001), { wrapper })
+    const { result } = renderHook(() => useWeekendRoster(2026, 1000001, ''), { wrapper })
     await waitFor(() => expect(result.current.isSuccess).toBe(true))
     expect(fetchWeekendRoster).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe('the scenario dimension', () => {
+  it('passes the scenario down to the fetcher', async () => {
+    const { result } = renderHook(() => useWeekendRoster(2026, 1000001, 'scn7x2k9qw3mnbv'), {
+      wrapper,
+    })
+    await waitFor(() => expect(result.current.isSuccess).toBe(true))
+
+    expect(fetchWeekendRoster).toHaveBeenCalledWith(
+      expect.anything(),
+      2026,
+      1000001,
+      'scn7x2k9qw3mnbv'
+    )
+  })
+
+  it('REFETCHES when the scenario changes rather than serving the mirror', async () => {
+    // This is the whole point of the key change, and it fails silently
+    // without it. Sharing one cache slot, selecting a scenario would resolve
+    // instantly out of the mirror's cached entry — and with the app default
+    // 30 minute staleTime, React Query would not refetch behind it. Staff
+    // would select their draft and be shown the synced rows, indefinitely.
+    const { result, rerender } = renderHook(
+      ({ scenario }: { scenario: string }) => useWeekendRoster(2026, 1000001, scenario),
+      { wrapper, initialProps: { scenario: '' } }
+    )
+    await waitFor(() => expect(result.current.isSuccess).toBe(true))
+    expect(fetchWeekendRoster).toHaveBeenCalledTimes(1)
+
+    rerender({ scenario: 'scn7x2k9qw3mnbv' })
+    await waitFor(() => expect(fetchWeekendRoster).toHaveBeenCalledTimes(2))
+  })
+
+  it('keeps two drafts of one weekend in separate slots', async () => {
+    const { result, rerender } = renderHook(
+      ({ scenario }: { scenario: string }) => useWeekendRoster(2026, 1000001, scenario),
+      { wrapper, initialProps: { scenario: 'scn7x2k9qw3mnbv' } }
+    )
+    await waitFor(() => expect(result.current.isSuccess).toBe(true))
+
+    rerender({ scenario: 'scnp4d8sh1zjrtc' })
+    await waitFor(() => expect(fetchWeekendRoster).toHaveBeenCalledTimes(2))
   })
 })
 
@@ -129,10 +173,10 @@ describe('cache parity with summer', () => {
   // `weekendSummary` explicitly, the way summer's mutations do. Long
   // staleTime plus deliberate invalidation, not short staleTime plus hope.
   it('lets the roster inherit the app cache defaults, as the summer board does', async () => {
-    const { result } = renderHook(() => useWeekendRoster(2026, 1000001), { wrapper })
+    const { result } = renderHook(() => useWeekendRoster(2026, 1000001, ''), { wrapper })
     await waitFor(() => expect(result.current.isSuccess).toBe(true))
 
-    const options = resolvedOptions(queryKeys.weekendRoster(2026, 1000001))
+    const options = resolvedOptions(queryKeys.weekendRoster(2026, 1000001, ''))
     expect(options.staleTime).toBe(APP_CACHE_DEFAULTS.staleTime)
     expect(options.gcTime).toBe(APP_CACHE_DEFAULTS.gcTime)
     expect(options.refetchOnWindowFocus).toBe(false)
@@ -173,7 +217,12 @@ describe('cache parity with summer', () => {
 describe('queryKeys', () => {
   it('exposes stable lodging keys', () => {
     expect(queryKeys.weekendSessions(2026)).toEqual(['weekend-sessions', 2026])
-    expect(queryKeys.weekendRoster(2026, 1000001)).toEqual(['weekend-roster', 2026, 1000001])
+    expect(queryKeys.weekendRoster(2026, 1000001, '')).toEqual([
+      'weekend-roster',
+      2026,
+      1000001,
+      '',
+    ])
     expect(queryKeys.householdMedical(2026, 2000001)).toEqual(['household-medical', 2026, 2000001])
     expect(queryKeys.lodgingUnits()).toEqual(['lodging-units'])
     expect(queryKeys.lodgingAreas()).toEqual(['lodging-areas'])
@@ -207,12 +256,12 @@ describe('useWeekendSummary', () => {
 
 describe('useWeekendRoster', () => {
   it('does not fetch until a session is chosen', () => {
-    renderHook(() => useWeekendRoster(2026, null), { wrapper })
+    renderHook(() => useWeekendRoster(2026, null, ''), { wrapper })
     expect(fetchWeekendRoster).not.toHaveBeenCalled()
   })
 
   it('fetches once a session is chosen', async () => {
-    const { result } = renderHook(() => useWeekendRoster(2026, 1000001), { wrapper })
+    const { result } = renderHook(() => useWeekendRoster(2026, 1000001, ''), { wrapper })
 
     await waitFor(() => expect(result.current.isSuccess).toBe(true))
     const [, year, sessionCmId] = fetchWeekendRoster.mock.calls[0] as [unknown, number, number]

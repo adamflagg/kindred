@@ -76,13 +76,22 @@ export function useWeekendSummary(year: number) {
   })
 }
 
-/** The roster for one weekend. Idle until a session is chosen. */
-export function useWeekendRoster(year: number, sessionCmId: number | null) {
+/**
+ * The roster for one weekend, in one scenario. Idle until a session is chosen.
+ *
+ * `scenario` is the empty string for the CampMinder mirror and a
+ * `saved_scenarios` id for a draft, and it is part of the QUERY KEY, not just
+ * the request. A scenario replaces the mirror rather than overlaying it
+ * (kindred#1974), so the two are different documents; keyed alike, selecting a
+ * draft would resolve out of the mirror's cached entry and — at the app
+ * default 30 minute staleTime — never refetch behind it.
+ */
+export function useWeekendRoster(year: number, sessionCmId: number | null, scenario: string) {
   const { fetchWithAuth } = useApiWithAuth()
   return useQuery<WeekendRoster>({
-    queryKey: queryKeys.weekendRoster(year, sessionCmId ?? 0),
+    queryKey: queryKeys.weekendRoster(year, sessionCmId ?? 0, scenario),
     enabled: year > 0 && sessionCmId !== null,
-    queryFn: () => fetchRoster(fetchWithAuth, year, sessionCmId as number),
+    queryFn: () => fetchRoster(fetchWithAuth, year, sessionCmId as number, scenario),
   })
 }
 

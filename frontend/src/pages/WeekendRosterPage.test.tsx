@@ -23,7 +23,33 @@ vi.mock('../hooks/useWeekendRoster', () => ({
 
 vi.mock('../hooks/useCurrentYear', () => ({
   useCurrentYear: () => ({ currentYear: 2026, setCurrentYear: vi.fn() }),
+  useYear: () => 2026,
 }))
+
+// The page reads the global ScenarioContext to resolve which plan the roster
+// is being read in (#1967). These tests are about layout and navigation, so
+// the mock stays in production mode throughout — the picker's own behaviour
+// lives in `WeekendRosterPage.scenario.test.tsx`.
+vi.mock('../hooks/useScenario', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../hooks/useScenario')>()
+  return {
+    ...actual,
+    useScenario: () => ({
+      currentScenario: null,
+      isProductionMode: true,
+      scenarios: [],
+      isLoading: false,
+      isMutating: false,
+      error: null,
+      loadScenarios: vi.fn(),
+      createScenario: vi.fn(),
+      selectScenario: vi.fn(),
+      updateScenario: vi.fn(),
+      deleteScenario: vi.fn(),
+      clearScenario: vi.fn(),
+    }),
+  }
+})
 
 // Admin and bunking.manage are tracked separately: the point of the lodging
 // link's gate is that a non-admin holding bunking.manage still gets it.

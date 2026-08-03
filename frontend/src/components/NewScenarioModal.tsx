@@ -17,18 +17,35 @@ interface NewScenarioModalProps {
   sessionId: number
   onClose: () => void
   onScenarioCreated: (scenario: Scenario) => void
+  /**
+   * Whether "Copy from CampMinder" is on offer. Summer keeps it (and keeps it
+   * as the DEFAULT — do not flip that, `SessionView` and
+   * `ScenarioManagementModal` both depend on it).
+   *
+   * Weekend passes false. That copy is `api/routers/scenarios.py:96-103`,
+   * which copies `bunk_assignments` filtered by session and returns zero rows
+   * for a weekend — inert rather than harmful, but an option that silently
+   * does nothing is worse than no option. The lodging seed is a separate
+   * endpoint on a separate affordance (kindred#1967, #1974).
+   */
+  canCopyFromProduction?: boolean
 }
 
 export default function NewScenarioModal({
   sessionId,
   onClose,
   onScenarioCreated,
+  canCopyFromProduction = true,
 }: NewScenarioModalProps) {
   const { createScenario, scenarios } = useScenario()
   const currentYear = useYear()
   const [name, setName] = useState('')
   const [description, setDescription] = useState('')
-  const [copyFrom, setCopyFrom] = useState<'none' | 'production' | string>('production')
+  // Defaulting to 'production' with the option hidden would leave no radio
+  // checked and quietly run a copy nobody chose.
+  const [copyFrom, setCopyFrom] = useState<'none' | 'production' | string>(
+    canCopyFromProduction ? 'production' : 'none'
+  )
   const [isCreating, setIsCreating] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -110,20 +127,22 @@ export default function NewScenarioModal({
               <span className="text-sm">Start with empty bunks</span>
             </label>
 
-            <label className="flex cursor-pointer items-center space-x-2">
-              <input
-                type="radio"
-                name="copy-from"
-                value="production"
-                checked={copyFrom === 'production'}
-                onChange={(e) => setCopyFrom(e.target.value)}
-                className="text-primary focus:ring-primary h-4 w-4 focus:ring-2"
-              />
-              <span className="flex items-center gap-2 text-sm">
-                <Package className="text-primary h-4 w-4" />
-                Copy from CampMinder
-              </span>
-            </label>
+            {canCopyFromProduction && (
+              <label className="flex cursor-pointer items-center space-x-2">
+                <input
+                  type="radio"
+                  name="copy-from"
+                  value="production"
+                  checked={copyFrom === 'production'}
+                  onChange={(e) => setCopyFrom(e.target.value)}
+                  className="text-primary focus:ring-primary h-4 w-4 focus:ring-2"
+                />
+                <span className="flex items-center gap-2 text-sm">
+                  <Package className="text-primary h-4 w-4" />
+                  Copy from CampMinder
+                </span>
+              </label>
+            )}
 
             {scenarios.filter((s) => s.session_cm_id === sessionId).length > 0 && (
               <>

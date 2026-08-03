@@ -1,5 +1,6 @@
 export { AccessibilityFlagList } from './AccessibilityFlagList'
 export { AREA_HUES, buildBoard, consentFlag, countBoardSlots } from './boardLayout'
+export { BoardModeChip } from './BoardModeChip'
 export type { BoardArea, BoardModel, BoardSlot, ConsentFlag } from './boardLayout'
 export { FamilyCard } from './FamilyCard'
 export { FamilyDetailsPanel } from './FamilyDetailsPanel'
@@ -22,12 +23,16 @@ export {
   partyBeds,
 } from './rosterAttention'
 export type { AttentionLevel, AttentionSection, PartyAttention } from './rosterAttention'
+export { SeedScenarioNotice } from './SeedScenarioNotice'
 export { formatSessionDates } from './sessionDates'
 export { SharePreferenceChip } from './SharePreferenceChip'
 export { ShareRequestPanel } from './ShareRequestPanel'
 export { reservationBadge } from './unitBadges'
 export type { UnitBadge } from './unitBadges'
 export { UnitInventoryPanel } from './UnitInventoryPanel'
+export { scenarioForWeekend, shouldOfferSeed } from './weekendScenario'
+export type { ScenarioRef } from './weekendScenario'
+export { WeekendScenarioPicker } from './WeekendScenarioPicker'
 export { WeekendStatsBar } from './WeekendStatsBar'
 export {
   resolveWeekendRef,

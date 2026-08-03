@@ -31,7 +31,7 @@ import {
   Settings2,
   Users,
 } from 'lucide-react'
-import { useMemo } from 'react'
+import { useEffect, useMemo } from 'react'
 import { Link, useNavigate, useParams } from 'react-router'
 
 import { QueryGuard } from '../components/QueryGuard'
@@ -46,14 +46,19 @@ import {
   LodgingMap,
   partyBeds,
   resolveWeekendRef,
+  scenarioForWeekend,
+  SeedScenarioNotice,
+  shouldOfferSeed,
   shortWeekendName,
   sortWeekendsByDate,
   UnitInventoryPanel,
   weekendRef,
+  WeekendScenarioPicker,
   WeekendStatsBar,
 } from '../components/weekend'
 import { useCurrentYear } from '../hooks/useCurrentYear'
 import { usePermissions } from '../hooks/usePermissions'
+import { useScenario } from '../hooks/useScenario'
 import { useWeekendRoster, useWeekendSessions } from '../hooks/useWeekendRoster'
 
 type View = 'roster' | 'inventory' | 'board' | 'map'
@@ -93,7 +98,19 @@ export default function WeekendRosterPage() {
   const numericRef = /^\d+$/.test(sessionRef ?? '') ? Number(sessionRef) : null
   const resolved = resolveWeekendRef(sessions, sessionRef)
   const selectedCmId = resolved?.session_cm_id ?? numericRef
-  const rosterQuery = useWeekendRoster(currentYear, selectedCmId)
+
+  // `useSavedScenarios` filters on `currentSessionId`. Left unset, the picker
+  // would offer whatever session summer last looked at — the slot is global.
+  const { currentScenario, loadScenarios } = useScenario()
+  useEffect(() => {
+    if (selectedCmId !== null) void loadScenarios(selectedCmId)
+  }, [selectedCmId, loadScenarios])
+
+  // SCOPED to this weekend: the context holds one selection for the whole app,
+  // and a scenario belonging to another session must read as the mirror rather
+  // than be passed through. See `weekendScenario.ts`.
+  const scenario = scenarioForWeekend(currentScenario, selectedCmId)
+  const rosterQuery = useWeekendRoster(currentYear, selectedCmId, scenario)
 
   // A slug with no list yet is UNRESOLVED, not unknown — but the title's
   // existing `sessionsQuery.isLoading` branch already says "Loading weekends…"
@@ -198,6 +215,17 @@ export default function WeekendRosterPage() {
             </span>
           )}
 
+          {/* Mode + scenario, as summer's SessionHeader stacks them. The badge
+              renders for everyone — a viewer needs to know they are looking at
+              the CampMinder mirror — while the picker itself is gated. */}
+          {selectedCmId !== null && (
+            <WeekendScenarioPicker
+              sessionCmId={selectedCmId}
+              canManage={canManageLodging}
+              scenario={scenario}
+            />
+          )}
+
           {/* Gated on bunking.manage, which is what the lodging_* write rules
               gate on — an admin flag would let the wrong people in and keep
               bunking staff out. */}
@@ -267,6 +295,19 @@ export default function WeekendRosterPage() {
                 bedsNeeded={bedsNeeded}
                 spacesUnmeasured={spacesUnmeasured}
               />
+
+              {/* A scenario REPLACES the mirror (#1974), so a fresh one draws
+                  an empty board. Without this the page just looks broken. */}
+              {canManageLodging &&
+                selectedCmId !== null &&
+                shouldOfferSeed(scenario, roster.counts) && (
+                  <SeedScenarioNotice
+                    year={currentYear}
+                    sessionCmId={selectedCmId}
+                    scenario={scenario}
+                    partiesTotal={roster.counts?.parties_total ?? 0}
+                  />
+                )}
             </div>
 
             <div
@@ -280,9 +321,21 @@ export default function WeekendRosterPage() {
               )}
               {view === 'inventory' && <UnitInventoryPanel units={units} />}
               {view === 'board' && (
-                <LodgingBoard parties={parties} units={units} year={currentYear} />
+                <LodgingBoard
+                  parties={parties}
+                  units={units}
+                  year={currentYear}
+                  scenario={scenario}
+                />
               )}
-              {view === 'map' && <LodgingMap parties={parties} units={units} year={currentYear} />}
+              {view === 'map' && (
+                <LodgingMap
+                  parties={parties}
+                  units={units}
+                  year={currentYear}
+                  scenario={scenario}
+                />
+              )}
             </div>
           </>
         )}

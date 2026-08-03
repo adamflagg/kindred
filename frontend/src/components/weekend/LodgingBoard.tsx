@@ -19,6 +19,7 @@ import { useCallback, useEffect, useState } from 'react'
 
 import type { LodgingUnitRow, RosterPartyRow } from '../../types/lodging'
 import { shouldKeepPanelsOpen } from '../../utils/clickoutsidePredicate'
+import { BoardModeChip } from './BoardModeChip'
 import { buildBoard } from './boardLayout'
 import { FamilyCard } from './FamilyCard'
 import { FamilyDetailsPanel } from './FamilyDetailsPanel'
@@ -27,7 +28,16 @@ import { LodgingUnitCard } from './LodgingUnitCard'
 export interface LodgingBoardProps {
   parties: RosterPartyRow[]
   units: LodgingUnitRow[]
-  year: number
+  year: number /**
+   * `''` is the CampMinder mirror; a scenario id is a draft.
+   *
+   * OPTIONAL, defaulting to the mirror, which is the safe reading: a
+   * caller that forgets it gets the amber read-only chip rather than a
+   * claim of a draft. Required would put tsc behind it, but the only two
+   * real callers are on `WeekendRosterPage` — the rest are tests, and
+   * making thirty of them pass a prop they do not exercise is churn.
+   */
+  scenario?: string
 }
 
 /** Stable identity for a party across renders. */
@@ -35,7 +45,7 @@ function partyKey(party: RosterPartyRow): string {
   return `${party.grain}-${String(party.household_cm_id ?? party.person_cm_id ?? party.display_name)}`
 }
 
-export function LodgingBoard({ parties, units, year }: LodgingBoardProps) {
+export function LodgingBoard({ parties, units, year, scenario = '' }: LodgingBoardProps) {
   const board = buildBoard(parties, units)
   const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(new Set())
   const [selected, setSelected] = useState<RosterPartyRow | null>(null)
@@ -84,10 +94,7 @@ export function LodgingBoard({ parties, units, year }: LodgingBoardProps) {
   return (
     <div className="flex flex-col gap-3">
       <div className="flex flex-wrap items-center gap-2">
-        <span className="inline-flex items-center gap-1.5 rounded-full border border-amber-400/50 bg-amber-100 px-2.5 py-1 text-xs font-semibold text-amber-800 dark:bg-amber-950/50 dark:text-amber-300">
-          <span className="h-1.5 w-1.5 rounded-full bg-current" aria-hidden="true" />
-          CM — CampMinder mirror, read-only
-        </span>
+        <BoardModeChip scenario={scenario} />
         {board.flaggedCount > 0 && (
           <span className="inline-flex items-center gap-1.5 rounded-full bg-amber-100 px-2.5 py-1 text-xs font-semibold text-amber-800 dark:bg-amber-950/50 dark:text-amber-300">
             <TriangleAlert className="h-3.5 w-3.5 flex-shrink-0" aria-hidden="true" />

@@ -1,0 +1,347 @@
+/**
+ * The weekend scenario picker (#1967).
+ *
+ * Every lodging write requires a scenario — `scenario: str = Field(...,
+ * min_length=1)` — and no weekend surface selected one, so the board could
+ * not call a write endpoint even once drag existed.
+ *
+ * Kept separate from `WeekendRosterPage.test.tsx` because that file's mocks
+ * deliberately hold the roster hook still to test layout, while these tests
+ * need to watch what the page ASKS it for. Same precedent as
+ * `BunkingBoardByArea.prod.test.tsx`.
+ */
+import { render, screen, waitFor } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
+import { MemoryRouter, Route, Routes } from 'react-router'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
+
+import WeekendRosterPage from './WeekendRosterPage'
+
+const rosterQuery = { data: undefined as unknown, isLoading: false, error: null as Error | null }
+const useWeekendRosterSpy = vi.fn()
+
+vi.mock('../hooks/useWeekendRoster', () => ({
+  useWeekendSessions: () => ({
+    data: {
+      year: 2026,
+      sessions: [
+        {
+          session_id: 'sess_1',
+          session_cm_id: 1000001,
+          name: 'Family Camp 1: Memorial Day Weekend',
+          session_type: 'family',
+          start_date: '2026-05-22 07:00:00.000Z',
+          end_date: '2026-05-25 07:00:00.000Z',
+        },
+      ],
+    },
+    isLoading: false,
+    error: null,
+  }),
+  useWeekendRoster: (...args: unknown[]) => {
+    useWeekendRosterSpy(...args)
+    return rosterQuery
+  },
+  useHouseholdMedical: () => ({ data: undefined, isLoading: false, error: null }),
+}))
+
+vi.mock('../hooks/useCurrentYear', () => ({
+  useCurrentYear: () => ({ currentYear: 2026, setCurrentYear: vi.fn() }),
+  useYear: () => 2026,
+}))
+
+let permissions = new Set<string>()
+
+vi.mock('../hooks/usePermissions', () => ({
+  usePermissions: () => ({
+    isAdmin: false,
+    permissions: [...permissions],
+    hasPermission: (p: string) => permissions.has(p),
+    hasAnyPermission: (...ps: string[]) => ps.some((p) => permissions.has(p)),
+  }),
+}))
+
+// The global ScenarioContext, stubbed. Reusing it is safe — `currentSessionId`
+// is a single slot but selection persists per session id, so weekend and
+// summer do not contaminate each other's choice.
+const OPTION_A = { id: 'scn7x2k9qw3mnbv', name: 'Option A', session_cm_id: 1000001 }
+let currentScenario: typeof OPTION_A | null = null
+const loadScenarios = vi.fn()
+const selectScenario = vi.fn()
+
+vi.mock('../hooks/useScenario', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../hooks/useScenario')>()
+  return {
+    ...actual,
+    useScenario: () => ({
+      currentScenario,
+      isProductionMode: currentScenario === null,
+      scenarios: [OPTION_A],
+      isLoading: false,
+      isMutating: false,
+      error: null,
+      loadScenarios,
+      createScenario: vi.fn(),
+      selectScenario,
+      updateScenario: vi.fn(),
+      deleteScenario: vi.fn(),
+      clearScenario: vi.fn(),
+    }),
+  }
+})
+
+const fetchWithAuth = vi.fn()
+
+vi.mock('../hooks/useApiWithAuth', () => ({
+  useApiWithAuth: () => ({
+    fetchWithAuth: (...args: unknown[]) => fetchWithAuth(...args),
+    isAuthenticated: true,
+    isAuthLoading: false,
+  }),
+}))
+
+const copyPlacementsFromMirror = vi.fn()
+
+vi.mock('../services/lodgingApi', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../services/lodgingApi')>()
+  return {
+    ...actual,
+    copyPlacementsFromMirror: (...args: unknown[]) => copyPlacementsFromMirror(...args),
+  }
+})
+
+const invalidateQueries = vi.fn()
+
+vi.mock('@tanstack/react-query', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@tanstack/react-query')>()
+  return { ...actual, useQueryClient: () => ({ invalidateQueries }) }
+})
+
+const toastSuccess = vi.fn()
+const toastError = vi.fn()
+
+// Indirected through arrows: `vi.mock` is hoisted above the consts above, so
+// a factory that reads them eagerly throws on initialisation.
+vi.mock('react-hot-toast', () => {
+  const stub = {
+    success: (...args: unknown[]) => toastSuccess(...args),
+    error: (...args: unknown[]) => toastError(...args),
+  }
+  return { default: stub, toast: stub }
+})
+
+/** A roster with parties present and none of them placed. */
+function emptyPlan() {
+  return {
+    year: 2026,
+    session_cm_id: 1000001,
+    parties: [],
+    units: [],
+    counts: { parties_total: 62, parties_assigned: 0, parties_unassigned: 62 },
+  }
+}
+
+function renderPage() {
+  return render(
+    <MemoryRouter initialEntries={['/weekend/1000001/board']}>
+      <Routes>
+        <Route path="/weekend/:sessionRef/:view?" element={<WeekendRosterPage />} />
+      </Routes>
+    </MemoryRouter>
+  )
+}
+
+beforeEach(() => {
+  permissions = new Set(['bunking.manage'])
+  currentScenario = null
+  rosterQuery.data = emptyPlan()
+  rosterQuery.isLoading = false
+  rosterQuery.error = null
+  useWeekendRosterSpy.mockReset()
+  loadScenarios.mockReset()
+  selectScenario.mockReset()
+  copyPlacementsFromMirror.mockReset().mockResolvedValue({ copied: 47, skipped: 0 })
+  invalidateQueries.mockReset()
+  toastSuccess.mockReset()
+  toastError.mockReset()
+})
+
+describe('the picker', () => {
+  it('registers THIS weekend with the scenario context', () => {
+    // `useSavedScenarios` filters by `currentSessionId`. Left unset, the
+    // picker would offer whatever session summer last looked at.
+    renderPage()
+    expect(loadScenarios).toHaveBeenCalledWith(1000001)
+  })
+
+  it('is hidden from a user without bunking.manage', () => {
+    permissions = new Set()
+    renderPage()
+    expect(screen.queryByRole('button', { name: /scenario/i })).not.toBeInTheDocument()
+  })
+
+  it('is offered to a NON-ADMIN holding bunking.manage', () => {
+    // The lodging write rules gate on bunking.manage, not on the admin flag.
+    renderPage()
+    expect(screen.getByRole('button', { name: /scenario/i })).toBeInTheDocument()
+  })
+})
+
+describe('what the roster is asked for', () => {
+  it('asks for the mirror when no scenario is selected', () => {
+    renderPage()
+    expect(useWeekendRosterSpy).toHaveBeenCalledWith(2026, 1000001, '')
+  })
+
+  it('asks for the DRAFT once a scenario is selected', () => {
+    // The load-bearing wire. Without it the page renders the mirror while the
+    // badge says Draft, and every write would target a plan nobody is looking
+    // at.
+    currentScenario = OPTION_A
+    renderPage()
+    expect(useWeekendRosterSpy).toHaveBeenCalledWith(2026, 1000001, 'scn7x2k9qw3mnbv')
+  })
+
+  it('does not pass a scenario belonging to a DIFFERENT weekend', () => {
+    // ScenarioContext holds one selection globally. On a direct load of a
+    // second weekend the previous weekend's scenario survives for a render,
+    // and reading the roster with it would 404 or, worse, resolve.
+    currentScenario = { ...OPTION_A, session_cm_id: 1000002 }
+    renderPage()
+    expect(useWeekendRosterSpy).toHaveBeenCalledWith(2026, 1000001, '')
+  })
+})
+
+describe('the mode badge', () => {
+  it('says CampMinder mirror when no scenario is selected', () => {
+    renderPage()
+    expect(screen.getByLabelText(/Viewing CampMinder data/i)).toBeInTheDocument()
+  })
+
+  it('says Draft, naming the scenario, once one is selected', () => {
+    // The board and map hardcode an amber "CM — CampMinder mirror, read-only"
+    // chip. Left hardcoded it would claim the mirror while showing a draft.
+    currentScenario = OPTION_A
+    renderPage()
+    expect(screen.getByLabelText(/Draft mode: Option A/i)).toBeInTheDocument()
+    expect(screen.queryByText(/CampMinder mirror, read-only/i)).not.toBeInTheDocument()
+  })
+})
+
+describe('seeding an empty scenario', () => {
+  it('offers a way out of an empty board', () => {
+    // #1974 made a scenario REPLACE the mirror, so a fresh one renders
+    // nothing — all 62 families gone. That reads as a bug, not as a blank
+    // plan, and staff need an obvious way to fill it.
+    currentScenario = OPTION_A
+    renderPage()
+    expect(screen.getByRole('button', { name: /start from campminder/i })).toBeInTheDocument()
+  })
+
+  it('does NOT offer it in mirror mode, where there is nothing to seed into', () => {
+    renderPage()
+    expect(screen.queryByRole('button', { name: /start from campminder/i })).not.toBeInTheDocument()
+  })
+
+  it('does NOT offer it once the scenario holds placements', () => {
+    currentScenario = OPTION_A
+    rosterQuery.data = { ...emptyPlan(), counts: { parties_total: 62, parties_assigned: 47 } }
+    renderPage()
+    expect(screen.queryByRole('button', { name: /start from campminder/i })).not.toBeInTheDocument()
+  })
+
+  it('does NOT offer it on a weekend with no families at all', () => {
+    // An empty board is CORRECT here, and seeding would copy nothing.
+    currentScenario = OPTION_A
+    rosterQuery.data = { ...emptyPlan(), counts: { parties_total: 0, parties_assigned: 0 } }
+    renderPage()
+    expect(screen.queryByRole('button', { name: /start from campminder/i })).not.toBeInTheDocument()
+  })
+
+  it('is hidden from a user without bunking.manage', () => {
+    permissions = new Set()
+    currentScenario = OPTION_A
+    renderPage()
+    expect(screen.queryByRole('button', { name: /start from campminder/i })).not.toBeInTheDocument()
+  })
+
+  it('sends the weekend and the scenario', async () => {
+    currentScenario = OPTION_A
+    renderPage()
+    await userEvent.click(screen.getByRole('button', { name: /start from campminder/i }))
+
+    await waitFor(() => {
+      expect(copyPlacementsFromMirror).toHaveBeenCalledWith(expect.anything(), {
+        year: 2026,
+        sessionCmId: 1000001,
+        scenario: 'scn7x2k9qw3mnbv',
+      })
+    })
+  })
+
+  it('INVALIDATES the roster afterwards, because nothing refreshes on its own', async () => {
+    // These queries carry the app default 30 minute staleTime. Without an
+    // explicit invalidation the seed writes 47 rows and the board keeps
+    // showing the empty plan for half an hour.
+    currentScenario = OPTION_A
+    renderPage()
+    await userEvent.click(screen.getByRole('button', { name: /start from campminder/i }))
+
+    await waitFor(() => {
+      const keys = invalidateQueries.mock.calls.map(
+        ([arg]) => (arg as { queryKey: readonly unknown[] }).queryKey
+      )
+      expect(keys).toContainEqual(['weekend-roster', 2026, 1000001, 'scn7x2k9qw3mnbv'])
+      expect(keys).toContainEqual(['weekend-summary', 2026])
+    })
+  })
+
+  it('reports what it wrote', async () => {
+    currentScenario = OPTION_A
+    renderPage()
+    await userEvent.click(screen.getByRole('button', { name: /start from campminder/i }))
+
+    await waitFor(() => expect(toastSuccess).toHaveBeenCalledWith(expect.stringMatching(/47/)))
+  })
+
+  it('surfaces skipped rows rather than silently showing fewer families', async () => {
+    // `skipped` means mirror rows naming a party or a unit that no longer
+    // resolves. Unreported, the only evidence is a board with fewer families
+    // on it than CampMinder shows.
+    copyPlacementsFromMirror.mockResolvedValue({ copied: 45, skipped: 2 })
+    currentScenario = OPTION_A
+    renderPage()
+    await userEvent.click(screen.getByRole('button', { name: /start from campminder/i }))
+
+    await waitFor(() => expect(toastSuccess).toHaveBeenCalledWith(expect.stringMatching(/2/)))
+  })
+
+  it('treats a 409 as ALREADY SEEDED, not as a failure', async () => {
+    // The server refuses a second copy because it would overwrite what staff
+    // placed and re-place everything they unplaced. That refusal protects
+    // them; reporting it as an error teaches them to distrust the button.
+    const conflict = Object.assign(new Error('Scenario already holds placements'), { status: 409 })
+    copyPlacementsFromMirror.mockRejectedValue(conflict)
+    currentScenario = OPTION_A
+    renderPage()
+    await userEvent.click(screen.getByRole('button', { name: /start from campminder/i }))
+
+    await waitFor(() =>
+      expect(toastSuccess).toHaveBeenCalledWith(expect.stringMatching(/already/i))
+    )
+    expect(toastError).not.toHaveBeenCalled()
+  })
+
+  it('still reports a real failure as a failure', async () => {
+    copyPlacementsFromMirror.mockRejectedValue(
+      Object.assign(new Error('Permission required: bunking.manage'), { status: 403 })
+    )
+    currentScenario = OPTION_A
+    renderPage()
+    await userEvent.click(screen.getByRole('button', { name: /start from campminder/i }))
+
+    await waitFor(() =>
+      expect(toastError).toHaveBeenCalledWith(expect.stringMatching(/bunking\.manage/))
+    )
+  })
+})
