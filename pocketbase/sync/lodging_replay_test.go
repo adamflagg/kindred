@@ -2,6 +2,7 @@ package sync
 
 import (
 	"fmt"
+	"slices"
 	"testing"
 
 	"github.com/pocketbase/pocketbase/core"
@@ -104,8 +105,8 @@ func TestReplayIssuePlacesAHouseholdWithoutASync(t *testing.T) {
 		t.Fatalf("assignments = %d, want 1 written by the replay alone", len(rows))
 	}
 	got := rows[0]
-	if got.GetString("unit") != unitID {
-		t.Errorf("unit = %q, want %q", got.GetString("unit"), unitID)
+	if units := got.GetStringSlice("units"); len(units) != 1 || units[0] != unitID {
+		t.Errorf("units = %v, want [%q]", units, unitID)
 	}
 	if got.GetString("session") != sessionID {
 		t.Errorf("session = %q, want %q", got.GetString("session"), sessionID)
@@ -175,11 +176,11 @@ func TestReplayIssuePlacesAPersonOnAnAdultWeekend(t *testing.T) {
 	}
 }
 
-// A multi-room alias materializes its merge on the click rather than 8-10
-// minutes later. Nothing judges the member set -- see
+// A multi-room alias materializes its placement on the click rather than
+// 8-10 minutes later. Nothing judges the member set -- see
 // docs/architecture/lodging-occupancy.md -- so this covers the mechanics:
-// resolver, unit tree and EnsureMerge all reached from a replay.
-func TestReplayIssueMaterializesAMerge(t *testing.T) {
+// resolver, unit tree and placementFor all reached from a replay.
+func TestReplayIssuePlacesAMultiRoomAliasAsOneRow(t *testing.T) {
 	app := newLodgingTestApp(t)
 	sess := addSession(t, app, cmIDFamilyCamp1, "Family Camp 1", "family",
 		testSessionStart, testSessionEnd, 2025)
@@ -213,21 +214,15 @@ func TestReplayIssueMaterializesAMerge(t *testing.T) {
 	if len(rows) != 1 {
 		t.Fatalf("assignments = %d, want 1", len(rows))
 	}
-	if rows[0].GetString("merge") == "" {
-		t.Error("a two-room placement must point at a merge, not a unit")
+	got := rows[0].GetStringSlice("units")
+	if len(got) != 2 {
+		t.Fatalf("units = %v, want both rooms on the row", got)
 	}
-	if rows[0].GetString("unit") != "" {
-		t.Errorf("unit = %q on a merged placement; the grain XOR requires it empty",
-			rows[0].GetString("unit"))
+	if !slices.Contains(got, r1) || !slices.Contains(got, r2) {
+		t.Errorf("units = %v, want both %q and %q", got, r1, r2)
 	}
-
-	merges, _ := app.FindRecordsByFilter("lodging_merges", "", "", 0, 0)
-	if len(merges) != 1 {
-		t.Fatalf("lodging_merges rows = %d, want 1", len(merges))
-	}
-	if merges[0].GetInt("session_cm_id") != cmIDFamilyCamp1 {
-		t.Errorf("merge session_cm_id = %d, want %d",
-			merges[0].GetInt("session_cm_id"), cmIDFamilyCamp1)
+	if rows[0].GetInt("session_cm_id") != cmIDFamilyCamp1 {
+		t.Errorf("session_cm_id = %d, want %d", rows[0].GetInt("session_cm_id"), cmIDFamilyCamp1)
 	}
 }
 
@@ -830,8 +825,8 @@ func TestReplayPartylessIssueFansOutToEveryPartyThatWroteTheString(t *testing.T)
 			t.Errorf("assignment %d household_cm_id = %d, want %d",
 				i, row.GetInt("household_cm_id"), parties[i].HouseholdCMID)
 		}
-		if row.GetString("unit") != unitID {
-			t.Errorf("assignment %d unit = %q, want %q", i, row.GetString("unit"), unitID)
+		if units := row.GetStringSlice("units"); len(units) != 1 || units[0] != unitID {
+			t.Errorf("assignment %d units = %v, want [%q]", i, units, unitID)
 		}
 		if row.GetString("session") != sessionID {
 			t.Errorf("assignment %d session = %q, want %q", i, row.GetString("session"), sessionID)

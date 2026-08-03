@@ -17,6 +17,11 @@ const (
 	cmIDWinterFamily = 1354939
 )
 
+// testSessionStart / testSessionEnd are a generic weekend window, shared by
+// every test that needs a session but does not care about its dates.
+const testSessionStart = "2025-05-23 07:00:00.000Z"
+const testSessionEnd = "2025-05-26 07:00:00.000Z"
+
 // newLodgingTestApp returns a throwaway PocketBase app carrying every collection
 // the lodging ingest reads or writes, shaped like production's.
 //
@@ -117,34 +122,23 @@ func newLodgingTestApp(t *testing.T) core.App {
 	aliases.Fields.Add(&core.TextField{Name: "source_field"})
 	saveCollection(t, app, aliases)
 
-	merges := core.NewBaseCollection("lodging_merges")
+	assignments := core.NewBaseCollection("lodging_assignments")
 	// Required, mirroring production. cascadeDelete=false only blocks deleting
 	// the parent session while the relation is REQUIRED (migration 1500000124),
 	// so a fixture that leaves it optional can save detached placement rows that
 	// production rejects -- and would pass a test for the very bug #1879 was.
-	merges.Fields.Add(&core.RelationField{
+	assignments.Fields.Add(&core.RelationField{
 		Name: "session", CollectionId: sessions.Id, MaxSelect: 1, Required: true,
 	})
 	// Required, mirroring migration 1500000124. PocketBase treats an unset number
 	// as 0 and a required number rejects 0, so a writer that forgets this column
 	// fails loudly here instead of only in production.
-	merges.Fields.Add(&core.NumberField{Name: "session_cm_id", Required: true, OnlyInt: true})
-	merges.Fields.Add(&core.NumberField{Name: "year"})
-	merges.Fields.Add(&core.RelationField{Name: "member_units", CollectionId: units.Id, MaxSelect: 20})
-	merges.Fields.Add(&core.TextField{Name: "display_name"})
-	merges.Fields.Add(&core.TextField{Name: "created_by"})
-	saveCollection(t, app, merges)
-
-	assignments := core.NewBaseCollection("lodging_assignments")
-	// Required, mirroring production. See the merges note above.
-	assignments.Fields.Add(&core.RelationField{
-		Name: "session", CollectionId: sessions.Id, MaxSelect: 1, Required: true,
-	})
-	// Required, mirroring migration 1500000124. See the merges note above.
 	assignments.Fields.Add(&core.NumberField{Name: "session_cm_id", Required: true, OnlyInt: true})
 	assignments.Fields.Add(&core.NumberField{Name: "year"})
-	assignments.Fields.Add(&core.RelationField{Name: "unit", CollectionId: units.Id, MaxSelect: 1})
-	assignments.Fields.Add(&core.RelationField{Name: "merge", CollectionId: merges.Id, MaxSelect: 1})
+	// Migration 1500000134 collapsed the single-select unit/merge pair into one
+	// multi-valued relation -- a merged placement is its own member set now,
+	// not a row naming it.
+	assignments.Fields.Add(&core.RelationField{Name: "units", CollectionId: units.Id, MaxSelect: 20})
 	assignments.Fields.Add(&core.NumberField{Name: "household_cm_id"})
 	assignments.Fields.Add(&core.NumberField{Name: "person_cm_id"})
 	assignments.Fields.Add(&core.NumberField{Name: "party_size"})

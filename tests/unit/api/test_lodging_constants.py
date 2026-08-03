@@ -25,10 +25,18 @@ def test_lodging_collection_constants_exist() -> None:
     assert collections.LODGING_AREAS == "lodging_areas"
     assert collections.LODGING_UNITS == "lodging_units"
     assert collections.LODGING_UNIT_ALIASES == "lodging_unit_aliases"
-    assert collections.LODGING_MERGES == "lodging_merges"
     assert collections.LODGING_AVAILABILITY == "lodging_availability"
     assert collections.LODGING_ASSIGNMENTS == "lodging_assignments"
     assert collections.LODGING_ASSIGNMENT_HISTORY == "lodging_assignment_history"
+
+
+def test_lodging_merge_constants_are_gone() -> None:
+    """1500000134 deleted both `lodging_merges` and `lodging_merges_draft`
+    outright, collapsing the three placement targets into one `units`
+    relation. A constant naming either collection would name a table that no
+    longer exists."""
+    assert not hasattr(collections, "LODGING_MERGES")
+    assert not hasattr(collections, "LODGING_MERGES_DRAFT")
 
 
 def test_ingest_issue_queue_constant_is_the_single_work_queue() -> None:

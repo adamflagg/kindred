@@ -43,7 +43,7 @@ js_migs="$PB_HARNESS_JS_MIGRATION_COUNT"
 fail=0
 note() { echo "FAIL: $*" >&2; fail=1; }
 
-for c in lodging_areas lodging_units lodging_unit_aliases lodging_merges \
+for c in lodging_areas lodging_units lodging_unit_aliases \
          lodging_availability lodging_assignments lodging_assignment_history; do
   n=$(sqlite3 "$DB" "SELECT COUNT(*) FROM _collections WHERE name = '$c'")
   [[ "$n" -eq 1 ]] || note "collection $c missing"
@@ -102,17 +102,32 @@ st=$(field_prop lodging_availability state values || true)
 [[ "$st" == '["reserved_staff","reserved_other","released_to_family"]' ]] || note "lodging_availability.state values are $st"
 
 # Unbounded numbers must be null, not 0 (0 would reject positive values).
-for spec in "lodging_units:sleeps" "lodging_merges:capacity_override"; do
-  col=${spec%%:*}; fld=${spec##*:}
-  mx=$(field_prop "$col" "$fld" max || true)
-  [[ -z "$mx" || "$mx" == "null" ]] || note "$col.$fld max is '$mx' (expected null for unbounded)"
-done
+mx=$(field_prop lodging_units sleeps max || true)
+[[ -z "$mx" || "$mx" == "null" ]] || note "lodging_units.sleeps max is '$mx' (expected null for unbounded)"
 
-# Merges bind 2+ units, so member_units must be multi-select.
-ms=$(field_prop lodging_merges member_units maxSelect || true)
-[[ -n "$ms" && "$ms" != "1" ]] || note "lodging_merges.member_units maxSelect is '$ms' (expected >1 or null)"
+# Aliases bind 2+ units, so member_units must be multi-select.
 ms=$(field_prop lodging_unit_aliases member_units maxSelect || true)
 [[ -n "$ms" && "$ms" != "1" ]] || note "lodging_unit_aliases.member_units maxSelect is '$ms' (expected >1 or null)"
+
+# 1500000134 collapsed unit/merge/merge_draft into this one multi-valued
+# relation: a placement can name a SET of rooms instead of joining a merge
+# table. maxSelect 20 carries over the merge tables' own member cap (see the
+# field definition in pb_migrations/1500000134_lodging_units_relation.js);
+# cascadeDelete is false so deleting a unit does not silently shrink a
+# placement out from under staff -- guardUnitDelete's doc comment in
+# pocketbase/lodging/hooks.go spells out what that would cost; required is
+# false because an empty set is a real state -- an orphan on the truth table,
+# the "took this party off the board" tombstone on the draft.
+for c in lodging_assignments lodging_assignments_draft; do
+  ms=$(field_prop "$c" units maxSelect || true)
+  [[ "$ms" == "20" ]] || note "$c.units maxSelect is '$ms' (expected 20)"
+  casc=$(field_prop "$c" units cascadeDelete || true)
+  [[ "$casc" == "0" || "$casc" == "false" ]] \
+    || note "$c.units cascadeDelete is '$casc' (expected false)"
+  req=$(field_prop "$c" units required || true)
+  [[ "$req" == "0" || "$req" == "false" || -z "$req" ]] \
+    || note "$c.units required is '$req' (expected false)"
+done
 
 # Dual-grain uniqueness: the live-row partial indexes must gate on `> 0`, never
 # on `!= ''`. PocketBase numbers are `NUMERIC DEFAULT 0 NOT NULL` and SQLite
@@ -182,8 +197,7 @@ ra=$(field_prop lodging_ingest_issues resolved_alias cascadeDelete || true)
 # is the CURRENT sync year only -- but within that year the loss is total and
 # silent. session is required on all three, so cascadeDelete = false makes
 # PocketBase refuse the parent delete with a 400 instead of cascading.
-for c in lodging_merges lodging_availability lodging_assignments \
-         lodging_assignments_draft lodging_merges_draft; do
+for c in lodging_availability lodging_assignments lodging_assignments_draft; do
   casc=$(field_prop "$c" session cascadeDelete || true)
   [[ "$casc" == "0" || "$casc" == "false" ]] \
     || note "$c.session cascadeDelete is '$casc' (expected false; see kindred#1879)"
@@ -203,8 +217,8 @@ done
 # while lodging_assignment_history leaves it optional because an audit row is
 # meant to outlive its session. A migration flipping either way would otherwise
 # pass this verifier in silence.
-for c in lodging_merges lodging_availability lodging_assignments lodging_assignment_history \
-         lodging_assignments_draft lodging_merges_draft; do
+for c in lodging_availability lodging_assignments lodging_assignment_history \
+         lodging_assignments_draft; do
   [[ "$(field_prop "$c" session_cm_id onlyInt || true)" == "1" ]] \
     || note "$c.session_cm_id missing or not onlyInt (see kindred#1879)"
 
@@ -235,22 +249,18 @@ done
 # write rule -- is a guard by convention, one string edit from opening the
 # synced rows, and it makes every reader responsible for a filter.
 
-for c in lodging_assignments_draft lodging_merges_draft; do
-  n=$(sqlite3 "$DB" "SELECT COUNT(*) FROM _collections WHERE name = '$c'")
-  [[ "$n" -eq 1 ]] || note "collection $c missing"
-done
+n=$(sqlite3 "$DB" "SELECT COUNT(*) FROM _collections WHERE name = 'lodging_assignments_draft'")
+[[ "$n" -eq 1 ]] || note "collection lodging_assignments_draft missing"
 
-# Gone from both truth grains.
-for c in lodging_assignments lodging_merges; do
-  sc=$(field_prop "$c" scenario name || true)
-  [[ -z "$sc" ]] \
-    || note "$c still carries a scenario field; 1500000132 drops it -- scenario belongs to the draft"
-done
+# Gone from the truth grain.
+sc=$(field_prop lodging_assignments scenario name || true)
+[[ -z "$sc" ]] \
+  || note "lodging_assignments still carries a scenario field; 1500000132 drops it -- scenario belongs to the draft"
 
 # Present on the drafts, and on lodging_availability -- which is scenario-aware
 # IN PLACE rather than through a twin, because nothing syncs into it. There is
 # no record of truth there to protect, so the argument above does not apply.
-for c in lodging_assignments_draft lodging_merges_draft lodging_availability; do
+for c in lodging_assignments_draft lodging_availability; do
   sc=$(field_prop "$c" scenario name || true)
   [[ "$sc" == "scenario" ]] || note "$c must carry a scenario field"
 done
@@ -258,11 +268,9 @@ done
 # Deleting a saved scenario sweeps its drafts server-side. bunk_assignments_draft
 # was created with cascadeDelete false and flipped precisely because the client
 # was carrying an N+1 pre-delete loop to compensate; do not repeat that.
-for c in lodging_assignments_draft lodging_merges_draft; do
-  casc=$(field_prop "$c" scenario cascadeDelete || true)
-  [[ "$casc" == "1" || "$casc" == "true" ]] \
-    || note "$c.scenario cascadeDelete is '$casc' (expected true so deleting a scenario sweeps its drafts)"
-done
+casc=$(field_prop lodging_assignments_draft scenario cascadeDelete || true)
+[[ "$casc" == "1" || "$casc" == "true" ]] \
+  || note "lodging_assignments_draft.scenario cascadeDelete is '$casc' (expected true so deleting a scenario sweeps its drafts)"
 
 # The live indexes lose `scenario` and keep `> 0`. Both halves matter: an index
 # naming a dropped column cannot be created at all, and the predicate is the
@@ -288,9 +296,6 @@ for idx in idx_lodging_draft_hh idx_lodging_draft_person; do
   fi
 done
 
-ms=$(field_prop lodging_merges_draft member_units maxSelect || true)
-[[ -n "$ms" && "$ms" != "1" ]] || note "lodging_merges_draft.member_units maxSelect is '$ms' (expected >1 or null)"
-
 # Write access, read from the APPLIED schema rather than from the migration
 # text. The drafts and the planning tables are what staff write; the synced
 # record of truth, its append-only audit trail and the ingest's field map stay
@@ -302,7 +307,7 @@ BUNKING_MANAGE_RULE='@request.auth.is_admin = true || @request.auth.cached_permi
 ADMIN_ONLY_RULE='@request.auth.is_admin = true'
 AUTHED_READ_RULE='@request.auth.id != ""'
 
-for c in lodging_assignments_draft lodging_merges_draft lodging_availability lodging_merges \
+for c in lodging_assignments_draft lodging_availability \
          lodging_areas lodging_units lodging_unit_aliases lodging_ingest_issues; do
   for r in createRule updateRule deleteRule; do
     got=$(rule_of "$c" "$r" || true)
@@ -323,7 +328,7 @@ done
 # without bunking.manage must still SEE a scenario board (read-only), the same
 # way summer renders production mode for everyone; gating the drafts' reads
 # would blank the board rather than freeze it.
-for c in lodging_assignments_draft lodging_merges_draft lodging_assignments lodging_merges \
+for c in lodging_assignments_draft lodging_assignments \
          lodging_availability lodging_areas lodging_units lodging_unit_aliases \
          lodging_ingest_issues lodging_assignment_history; do
   for r in listRule viewRule; do

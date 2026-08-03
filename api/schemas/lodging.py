@@ -1,8 +1,11 @@
 """Pydantic models for the weekend lodging surface.
 
 Responses first, then the write layer at the bottom. Every write model targets
-the DRAFT grain -- lodging_assignments and lodging_merges belong to the ingest
-and stay admin-only, so nothing declared here can reach them.
+the DRAFT grain -- lodging_assignments belongs to the ingest and stays
+admin-only, so nothing declared here can reach it. `lodging_merges` and its
+draft twin no longer exist: 1500000134 collapsed the `unit` / `merge` /
+`merge_draft` placement targets into one multi-valued `units` relation and
+deleted both collections outright.
 
 PHI boundary: HouseholdMedicalResponse is the ONLY model here that carries
 medical narrative text, and it is reachable from exactly one endpoint, which
@@ -225,6 +228,13 @@ class RosterParty(BaseModel):
     unit_code: str = ""
     unit_name: str = ""
     is_merged_slot: bool = False
+    # Every leaf unit the party occupies, in the order `unit_name`'s label was
+    # built from -- one entry for an ordinary placement, 2+ for a merged slot,
+    # empty for unplaced. `unit_code` and `unit_name` keep their exact
+    # existing meaning (unit_code is "" on a merged slot); this is additive,
+    # for a caller -- the map view -- that needs to know WHICH units a merged
+    # party spans, not just how many.
+    unit_codes: list[str] = Field(default_factory=list)
     arrival_eta: str = ""
     # The household's cm_id was seen in an earlier year.
     is_returning: bool = False
@@ -312,21 +322,16 @@ class WeekendSummaryResponse(BaseModel):
 
 # --------------------------------------------------------------- write layer
 #
-# Everything below writes the DRAFT grain. lodging_assignments and
-# lodging_merges are the ingest's and stay admin-only; nothing here can reach
-# them. See migration 1500000132.
+# Everything below writes the DRAFT grain. lodging_assignments is the
+# ingest's and stays admin-only; nothing here can reach it. See migration
+# 1500000132. `lodging_merges` and its draft twin were deleted outright by
+# 1500000134 -- see the module docstring above.
 
 # lodging_availability.state, pinned to the migration's select list. That list
 # is the constraint PocketBase validates against -- a value not in it fails at
 # save time in production and nowhere else -- so it is restated here to fail at
 # the edge instead, with a 422 naming the field.
 ReservationState = Literal["reserved_staff", "reserved_other", "released_to_family"]
-
-# lodging_merges_draft.member_units is minSelect 2, maxSelect 20 (mirroring
-# lodging_merges). Refusing at the edge names the member count, rather than
-# surfacing a PocketBase validation error from inside the write.
-MERGE_MIN_MEMBERS = 2
-MERGE_MAX_MEMBERS = 20
 
 
 class ScenarioWriteRequest(BaseModel):
@@ -368,57 +373,43 @@ class PartyGrainRequest(ScenarioWriteRequest):
 class PlacementWriteRequest(PartyGrainRequest):
     """Place a party, or record that staff took it off the board.
 
-    All three targets empty is the TOMBSTONE and is deliberately valid: it
-    means "unplaced in this scenario", which is not the same as having no draft
-    row. Deleting the row instead would fall through to the CampMinder mirror
-    and put the family straight back where staff just dragged them from.
+    An EMPTY `unit_ids` is the TOMBSTONE and is deliberately valid: it means
+    "unplaced in this scenario", which is not the same as having no draft row.
+    Deleting the row instead would fall through to the CampMinder mirror and
+    put the family straight back where staff just dragged them from.
     """
 
-    unit_id: str = ""
-    # A slot the INGEST built from a historical cabin string.
-    merge_id: str = ""
-    # A slot the BOARD built inside this scenario.
-    merge_draft_id: str = ""
+    # 1500000134 collapsed `unit` (an atomic room), `merge` (a slot the ingest
+    # built from a historical cabin string) and `merge_draft` (one the board
+    # built inside this scenario) into this single multi-valued relation. A
+    # party placed across several rooms is just a longer list, whether the
+    # ingest or the board put it there.
+    #
+    # max_length=20 matches the field's own maxSelect
+    # (1500000134_lodging_units_relation.js), carried over from the deleted
+    # merge tables' member cap.
+    unit_ids: list[str] = Field(default_factory=list, max_length=20)
+
+    @model_validator(mode="after")
+    def _units_are_distinct(self) -> Self:
+        """Lifted from the deleted MergeWriteRequest._members_are_distinct.
+
+        `["u1", "u1"]` is a two-member placement to Pydantic and a one-member
+        placement to a PocketBase relation field, which may collapse the
+        duplicate on save. The caller gets a 200 for a row that does not say
+        what they sent -- and post-collapse, `unit_ids` is the ONLY way to
+        build a multi-room slot, so a collapsed duplicate does not just shrink
+        the set, it changes the placement's kind: two ids become one, and
+        `lodging_roster_service.py`'s `_placement_of` then reports a plain
+        slot for what the caller asked to be a merged one.
+        """
+        if len(set(self.unit_ids)) != len(self.unit_ids):
+            raise ValueError("unit_ids must not name the same unit twice")
+        return self
 
 
 class PlacementDeleteRequest(PartyGrainRequest):
     """Drop a party's draft row, restoring whatever the synced rows say."""
-
-
-class MergeWriteRequest(ScenarioWriteRequest):
-    """Bind a set of units into one bookable slot, for one weekend.
-
-    THE MEMBER SET IS NOT VALIDATED FOR COMPLETENESS, deliberately. The rule
-    "a merge is legal iff its members are the complete child set of some
-    container" was built through nine tasks and removed in #1903: every member
-    set is hand-authored, so a deliberate partial booking and a mis-click
-    produce byte-identical rows and no rule can tell them apart. Read
-    docs/architecture/lodging-occupancy.md before adding anything like it --
-    the idea is genuinely appealing and wrong for reasons that are not obvious.
-    """
-
-    member_unit_ids: list[str] = Field(..., min_length=MERGE_MIN_MEMBERS, max_length=MERGE_MAX_MEMBERS)
-    display_name: str = ""
-    capacity_override: int | None = None
-
-    @model_validator(mode="after")
-    def _members_are_distinct(self) -> Self:
-        """The one member-set rule that IS decidable.
-
-        min_length and max_length bound the list's size, not its contents, so
-        ["u1", "u1"] is a two-member merge to Pydantic and a one-member merge
-        to a PocketBase relation field, which may collapse the duplicate on
-        save. The caller gets a 200 for a row that does not say what they sent.
-
-        Naming the same unit twice is never intentional, which is exactly what
-        separates this from the completeness rule removed in #1903: that one
-        had to guess whether a partial member set was deliberate, and could
-        not, because a considered partial booking and a mis-click are
-        byte-identical. This one needs no such judgement.
-        """
-        if len(set(self.member_unit_ids)) != len(self.member_unit_ids):
-            raise ValueError("member_unit_ids must not name the same unit twice")
-        return self
 
 
 class AvailabilityWriteRequest(ScenarioWriteRequest):
