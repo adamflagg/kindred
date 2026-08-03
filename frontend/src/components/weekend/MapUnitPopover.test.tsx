@@ -129,6 +129,19 @@ describe('MapUnitPopover — a cluster of rooms', () => {
     expect(screen.queryAllByRole('button')).toHaveLength(0)
   })
 
+  it('announces an empty room as empty without relying on aria-label', () => {
+    const empty = [
+      mapUnit(row({ unit_id: 'u1', code: 'cedar-1', name: 'Cedar 1' })),
+      mapUnit(row({ unit_id: 'u2', code: 'cedar-2', name: 'Cedar 2' })),
+    ]
+    render(<MapUnitPopover units={empty} hue={HUE} onOpenParty={vi.fn()} />)
+    // Asserted as TEXT CONTENT, deliberately. An accessible-name assertion
+    // would pass here even if the name were unreachable to real AT.
+    for (const cell of screen.getAllByTestId('map-popover-cell')) {
+      expect(cell).toHaveTextContent(/empty/i)
+    }
+  })
+
   it('says a room is shared rather than showing only the first family', () => {
     const shared = [
       mapUnit(row({ unit_id: 'u1', code: 'cedar-1', name: 'Cedar 1' }), [

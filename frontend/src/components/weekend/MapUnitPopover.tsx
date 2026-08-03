@@ -118,7 +118,9 @@ function FootprintGrid({ units, hue, onOpenParty }: MapUnitPopoverProps) {
           // Prefixed by the visible label so the accessible name contains it
           // (WCAG 2.5.3), and duplicated into `title` because a tooltip alone is
           // invisible to touch and unreliable for screen readers.
-          const described = `${label} — ${entry.unit.name}, ${who}`
+          // For an empty cell `label` IS the unit name, so the occupied form
+          // would read "Cedar 2 — Cedar 2, empty".
+          const described = first ? `${label} — ${entry.unit.name}, ${who}` : `${label} — empty`
           const style = first
             ? { backgroundColor: hue, borderColor: hue }
             : {
@@ -138,11 +140,19 @@ function FootprintGrid({ units, hue, onOpenParty }: MapUnitPopoverProps) {
                 key={entry.unit.unit_id}
                 data-testid="map-popover-cell"
                 title={described}
-                aria-label={described}
                 style={style}
                 className={className}
               >
                 {label}
+                {/* REAL TEXT, not an aria-label. This div's implicit role is
+                    `generic`, which ARIA 1.2 marks name-prohibited, so an
+                    aria-label here is silently ignored by screen readers.
+                    Worse, testing-library's accessible-name helper DOES return
+                    it, so a test asserting the name would pass while real AT
+                    announced nothing. `sr-only` puts the status in the DOM
+                    where it is exposed regardless of role — the same pattern
+                    SessionAvailability.tsx already uses. */}
+                <span className="sr-only"> — empty</span>
               </div>
             )
           }
