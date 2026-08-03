@@ -9,29 +9,26 @@ import { shouldKeepPanelsOpen } from '../utils/clickoutsidePredicate'
  *
  * NOT `useClickOutside`, which is ref-containment on `mousedown` with no
  * deferral. This one is predicate-based (`shouldKeepPanelsOpen`, itself shared
- * with its own unit test), listens on `click`, and attaches ONE MACROTASK LATE.
+ * with its own unit test), listens on `click`, and attaches the listener a
+ * macrotask after `isOpen` becomes true — matching the original summer
+ * behaviour byte-for-byte. (React's own passive-effect scheduling already
+ * defers this past the click that flips `isOpen`, so the extra macrotask
+ * cannot be shown to change outcomes for that specific click via a unit test;
+ * it is kept for behaviour parity with summer, not because a test proves it
+ * necessary.)
  *
- * That deferral is the load-bearing part: the click that opens a panel is
- * itself a click, so a listener that were already live would hear it and close
- * what the user just opened.
- *
- * `openKey` identifies WHICH panels are open, not merely whether any is — pass
- * null when nothing is. A second panel opening changes the key, which re-runs
- * the effect and re-arms the deferral, sparing the click that opened it. A
- * boolean would attach once on the first open and let the second panel dismiss
- * itself.
+ * `onDismiss` is read through a ref so an inline arrow at the call site
+ * doesn't churn the effect on every render — only `isOpen` flipping attaches
+ * or tears down the listener.
  */
-export function useDismissOnDeadSpace(openKey: string | null, onDismiss: () => void): void {
-  // The callback is read through a ref so an inline arrow at the call site
-  // cannot re-arm the deferral on every render. Only openKey re-arms, and it
-  // does so deliberately.
+export function useDismissOnDeadSpace(isOpen: boolean, onDismiss: () => void): void {
   const onDismissRef = useRef(onDismiss)
   useEffect(() => {
     onDismissRef.current = onDismiss
   })
 
   useEffect(() => {
-    if (openKey === null || openKey.length === 0) return
+    if (!isOpen) return
 
     const handler = (event: MouseEvent) => {
       if (shouldKeepPanelsOpen(event)) return
@@ -46,5 +43,5 @@ export function useDismissOnDeadSpace(openKey: string | null, onDismiss: () => v
       clearTimeout(timeoutId)
       document.removeEventListener('click', handler)
     }
-  }, [openKey])
+  }, [isOpen])
 }

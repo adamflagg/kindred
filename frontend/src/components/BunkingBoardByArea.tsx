@@ -558,15 +558,10 @@ export default function BunkingBoardByArea(props: BunkingBoardByAreaProps) {
   const isLockGroupUiActive = !!(canManage && isDraftMode && scenarioId && lockGroupSessionPbId)
 
   // Close panels when clicking dead space (nav, page sides, board gaps).
-  // The key names WHICH panels are open, so opening the lock panel over the
-  // details panel re-arms the deferral and does not dismiss on its own click.
-  useDismissOnDeadSpace(
-    isAnyPanelOpen ? `${selectedCamperId ?? ''}|${isLockPanelOpen ? 'lock' : ''}` : null,
-    () => {
-      requestAnimatedCloseDetails()
-      requestAnimatedCloseLockPanel()
-    }
-  )
+  useDismissOnDeadSpace(isAnyPanelOpen, () => {
+    requestAnimatedCloseDetails()
+    requestAnimatedCloseLockPanel()
+  })
 
   return (
     <>

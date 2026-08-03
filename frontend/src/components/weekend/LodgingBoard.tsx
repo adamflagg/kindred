@@ -54,7 +54,7 @@ export function LodgingBoard({ parties, units, year }: LodgingBoardProps) {
   }, [])
 
   // Same dead-space dismissal the summer board uses, through the same hook.
-  useDismissOnDeadSpace(selected === null ? null : partyKey(selected), () => {
+  useDismissOnDeadSpace(selected !== null, () => {
     setRequestClose(true)
   })
 
