@@ -93,12 +93,31 @@ describe('weekendSlug', () => {
   it('gives back nothing for a name with no letters or digits to abbreviate', () => {
     expect(weekendSlug('   ')).toBe('')
   })
+
+  it('keeps a shared token rather than slugging to bare digits', () => {
+    // Dropping the token from "JFAM 10" leaves `10`, and `resolveWeekendRef`
+    // reads a run of digits as a CampMinder id — so that URL would not resolve
+    // back to the weekend that produced it. The token earns its place here for
+    // the same reason it is dropped everywhere else: it is what makes the
+    // address an address.
+    expect(weekendSlug('JFAM 10')).toBe('j10')
+  })
+
+  it('gives back nothing for a name that abbreviates to digits alone', () => {
+    // The numeric space belongs to CampMinder ids. A slug that cannot be told
+    // apart from one is not an address, and '' is how a caller is told so.
+    expect(weekendSlug('2026')).toBe('')
+  })
 })
 
-const FC1 = { session_cm_id: 1309514, name: 'Family Camp 1: Memorial Day Weekend' }
-const WOMENS = { session_cm_id: 1335115, name: "Women's Weekend" }
+const FC1 = { session_cm_id: 1000001, name: 'Family Camp 1: Memorial Day Weekend' }
+const WOMENS = { session_cm_id: 1000002, name: "Women's Weekend" }
 /** Same slug as WOMENS ('ww'). Hypothetical, and the point of the guard. */
-const WINTER = { session_cm_id: 1379004, name: 'Winter Weekend' }
+const WINTER = { session_cm_id: 1000003, name: 'Winter Weekend' }
+/** Slugs to bare digits once the shared token is dropped — see `weekendSlug`. */
+const JFAM_10 = { session_cm_id: 1000004, name: 'JFAM 10' }
+/** Nothing to abbreviate but digits, so it has no slug at all. */
+const YEAR_ONLY = { session_cm_id: 1000005, name: '2026' }
 
 describe('weekendRef', () => {
   it('addresses a weekend by its slug when that slug is unique', () => {
@@ -108,8 +127,22 @@ describe('weekendRef', () => {
   it('falls back to the CampMinder id when two weekends share a slug', () => {
     // An ambiguous slug that resolved to whichever row sorted first would open
     // the wrong weekend, which is worse than an ugly URL.
-    expect(weekendRef(WOMENS, [FC1, WOMENS, WINTER])).toBe('1335115')
-    expect(weekendRef(WINTER, [FC1, WOMENS, WINTER])).toBe('1379004')
+    expect(weekendRef(WOMENS, [FC1, WOMENS, WINTER])).toBe('1000002')
+    expect(weekendRef(WINTER, [FC1, WOMENS, WINTER])).toBe('1000003')
+  })
+
+  it('falls back to the CampMinder id when a name has no slug to give', () => {
+    expect(weekendRef(YEAR_ONLY, [FC1, YEAR_ONLY])).toBe('1000005')
+  })
+
+  it('emits nothing a run of digits could be mistaken for', () => {
+    // THE ROUND TRIP IS THE TEST: whatever `weekendRef` emits, the URL hands
+    // straight back to `resolveWeekendRef`, and a slug of `10` came back as a
+    // CampMinder-id lookup that matched nothing.
+    for (const session of [JFAM_10, YEAR_ONLY]) {
+      const ref = weekendRef(session, [FC1, JFAM_10, YEAR_ONLY])
+      expect(resolveWeekendRef([FC1, JFAM_10, YEAR_ONLY], ref)).toEqual(session)
+    }
   })
 })
 
@@ -121,7 +154,7 @@ describe('resolveWeekendRef', () => {
   it('finds one by CampMinder id, which is what an ambiguous slug falls back to', () => {
     // Not for old links — there is no back-compat obligation here. This is the
     // other half of `weekendRef`'s collision guard: what it emits, this reads.
-    expect(resolveWeekendRef([FC1, WOMENS], '1335115')).toEqual(WOMENS)
+    expect(resolveWeekendRef([FC1, WOMENS], '1000002')).toEqual(WOMENS)
   })
 
   it('refuses to guess when a slug is ambiguous', () => {

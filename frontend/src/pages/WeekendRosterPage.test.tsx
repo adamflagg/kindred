@@ -1,5 +1,5 @@
 /**
- * /weekend/session/:sessionCmId — one weekend's roster.
+ * /weekend/:sessionRef/:view? — one weekend's roster.
  *
  * The weekend comes from the URL now, as a summer session does. Choosing
  * between weekends belongs to the lander; this page's title doubles as the
@@ -133,7 +133,20 @@ describe('header', () => {
     renderPage()
     await userEvent.click(screen.getByRole('button', { name: /Family Camp 1/ }))
     await userEvent.click(await screen.findByRole('option', { name: "Women's Weekend" }))
-    expect(screen.getByTestId('location')).toHaveTextContent('/weekend/ww')
+    // ANCHORED: `/weekend/ww` is a prefix of every tab under that weekend, so
+    // an unanchored match cannot tell the roster from the map and would pass
+    // whatever the tab-carrying test below asserts.
+    expect(screen.getByTestId('location')).toHaveTextContent(/^\/weekend\/ww\/roster$/)
+  })
+
+  it('stays on the tab you are looking at when you switch weekends', async () => {
+    // Comparing one view across two weekends is the reason to switch from
+    // inside a weekend rather than from the lander. Dropping back to the
+    // roster every time makes the switcher useless for exactly that.
+    renderPage('fc1', 'map')
+    await userEvent.click(screen.getByRole('button', { name: /Family Camp 1/ }))
+    await userEvent.click(await screen.findByRole('option', { name: "Women's Weekend" }))
+    expect(screen.getByTestId('location')).toHaveTextContent(/^\/weekend\/ww\/map$/)
   })
 
   it('orders the picker by date, not by CampMinder sort_order', async () => {

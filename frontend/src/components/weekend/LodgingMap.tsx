@@ -332,11 +332,21 @@ export function LodgingMap({ parties, units, year }: LodgingMapProps) {
   // Counted off what was actually drawn, never off a second predicate — a
   // legend that disagrees with the map is worse than no legend.
   const clusterCount = clusters.filter((cluster) => cluster.members.length > 1).length
-  // Rooms the payload HAS, not rooms currently shown: this number's job is to
-  // account for the units, and a count that moved when you hid the empties
-  // would stop reconciling against the Inventory tab.
+  // Rooms the payload HAS, not rooms currently shown: a count that moved when
+  // you hid the empties would stop accounting for the units at all.
+  //
+  // NOT the Inventory tab's number, and deliberately so — `countMapUnits`'
+  // docstring says why: Inventory counts every unit, this counts the POSITIONED
+  // bookable ones. The remainder is not silently dropped; containers are the
+  // next figure along, and unpositioned rooms have their own line above the
+  // map. Three numbers, because they answer three questions.
   const roomCount = model.units.length
   const containerCount = units.filter((unit) => unit.is_container).length
+  // The hues actually on this map, never a fixed palette: a swatch that did
+  // not match what the marks are wearing would be a second source of truth for
+  // the registry's colours. Capped so a lineup with many areas does not turn
+  // the key into a colour chart.
+  const legendHues = [...new Set(model.units.map((mapUnit) => mapUnit.hue))].slice(0, 4)
 
   // SORTED: cluster membership is order-invariant but the member ARRAY order is
   // not, and an unsorted key would change identity across renders, remounting
@@ -496,9 +506,10 @@ export function LodgingMap({ parties, units, year }: LodgingMapProps) {
 
             <span aria-hidden="true" className="bg-border mx-1 h-5 w-px" />
 
-            {/* Real checkboxes, and the only keyboard-reachable controls on this
-                surface. The marks cannot be — see the note at the top of the
-                file — so these must not be re-invented as divs. */}
+            {/* Real checkboxes. These and the radios below are the whole of
+                what a keyboard can reach here — the marks cannot be, see the
+                note at the top of the file — so neither may be re-invented as
+                divs. */}
             <label className="text-muted-foreground inline-flex cursor-pointer items-center gap-1.5">
               <input
                 type="checkbox"
@@ -924,6 +935,37 @@ export function LodgingMap({ parties, units, year }: LodgingMapProps) {
               <span className="text-foreground font-bold">?</span>
               <dt className="sr-only">Question mark</dt>
               <dd>capacity unknown (never 0)</dd>
+            </div>
+            {/* Hue is the channel with the widest reach — fill, border, shared
+                ring and the area tint all take it — and it was the one thing
+                on the mark with no key at all. The swatches are the registry's
+                own colours, so this stays generic however the areas are named
+                and never spells one out. */}
+            <div className="flex items-center gap-1.5">
+              <span aria-hidden="true" className="flex items-center gap-0.5">
+                {legendHues.map((legendHue) => (
+                  <span
+                    key={legendHue}
+                    style={{ backgroundColor: legendHue }}
+                    className="h-3 w-3 rounded-full"
+                  />
+                ))}
+              </span>
+              <dt className="sr-only">Mark colour</dt>
+              <dd>area colour</dd>
+            </div>
+            {/* A cluster's mark GROWS with what is under it and wears the
+                count on its face. Without this, a big numbered mark reads as
+                importance rather than as "there are more of them here". */}
+            <div className="flex items-center gap-1.5">
+              <span
+                aria-hidden="true"
+                className="bg-muted-foreground/70 border-muted-foreground/70 grid h-4 w-4 place-items-center rounded-full border-2 text-[8px] font-bold text-white"
+              >
+                3
+              </span>
+              <dt className="sr-only">Bigger numbered mark</dt>
+              <dd>bigger mark, more rooms under it</dd>
             </div>
             <div className="ml-auto flex items-center gap-1.5">
               <dt className="sr-only">Counts</dt>

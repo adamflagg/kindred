@@ -553,6 +553,17 @@ describe('LodgingMap legend', () => {
     expect(legend).toHaveTextContent(/capacity unknown/i)
   })
 
+  it('says what colour and mark size encode, not only shape', () => {
+    // Shape and the blue dot were keyed; hue and size were not. Hue drives the
+    // fill, the border, the shared ring AND the area tint, and a cluster's mark
+    // grows with what is under it — five of the seven channels are colour or
+    // size, so keying only the shapes explains the smaller half of the mark.
+    render(<LodgingMap parties={[]} units={UNITS} year={2026} />)
+    const legend = screen.getByTestId('map-legend')
+    expect(legend).toHaveTextContent(/area colour/i)
+    expect(legend).toHaveTextContent(/bigger mark, more rooms/i)
+  })
+
   it('counts the containers it deliberately did not draw', () => {
     // The 408-vs-389 double count lives in the PR body and nowhere the user can
     // see it. A room count alone reads as "19 rooms are missing".

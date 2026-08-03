@@ -624,9 +624,11 @@ function App() {
                             />
                             {/* `:sessionRef` is a readable slug (fc1, ww, mw) or
                                 a CampMinder id; `:view?` is optional so a bare
-                                weekend link opens on the roster. Declared AFTER
-                                the static children above, which therefore keep
-                                winning the match. */}
+                                weekend link opens on the roster. The static
+                                children keep winning the match by RANKING, not
+                                by order — React Router scores a literal segment
+                                above a `:param` one, so moving this route makes
+                                no difference either way. */}
                             <Route
                               path=":sessionRef/:view?"
                               element={

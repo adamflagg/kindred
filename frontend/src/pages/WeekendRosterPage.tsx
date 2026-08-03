@@ -136,7 +136,12 @@ export default function WeekendRosterPage() {
             <Listbox
               value={selectedSession ? weekendRef(selectedSession, sessions) : ''}
               onChange={(value: string) => {
-                void navigate(`/weekend/${value}`)
+                // CARRIES THE TAB. Switching weekends from inside one is how
+                // you compare the same view across two of them; landing back
+                // on the roster every time is what makes you use the lander
+                // instead. PUSH, unlike the tabs: the weekend is the
+                // destination, so Back belongs to it.
+                void navigate(`/weekend/${value}/${view}`)
               }}
             >
               <div className="relative">
