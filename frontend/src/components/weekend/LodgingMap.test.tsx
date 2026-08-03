@@ -9,6 +9,9 @@ import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import type { LodgingUnitRow, RosterPartyRow } from '../../types/lodging'
 import { LodgingMap } from './LodgingMap'
+// The token lives with the popover, which `LodgingMap` imports — the reverse
+// would close an import cycle.
+import { CONSENT_AMBER } from './MapUnitPopover'
 
 // Opening a family opens FamilyDetailsPanel, which reaches AccessibilityFlagList
 // -> usePermissions -> useAuth and throws without a provider. Mocked exactly as
@@ -42,10 +45,27 @@ beforeEach(() => {
 // meaning to exercise a drag silently exercises nothing and still goes green.
 // Plain functions, not vi.fn(), so the global `clearAllMocks` in
 // `src/test/setup.ts` cannot interact with them.
+//
+// STATEFUL, because a constant `hasPointerCapture: () => false` is not merely a
+// simplification — it models the opposite of the browser. A real capture
+// survives until the capturing pointer lifts, and the stray-second-touch test
+// below turns entirely on whether the first finger still holds it.
+let captured: number | null = null
+
 beforeAll(() => {
-  Element.prototype.setPointerCapture = () => {}
-  Element.prototype.releasePointerCapture = () => {}
-  Element.prototype.hasPointerCapture = () => false
+  Element.prototype.setPointerCapture = function (pointerId: number) {
+    captured = pointerId
+  }
+  Element.prototype.releasePointerCapture = function () {
+    captured = null
+  }
+  Element.prototype.hasPointerCapture = function (pointerId: number) {
+    return captured === pointerId
+  }
+})
+
+beforeEach(() => {
+  captured = null
 })
 
 function wrapper({ children }: { children: ReactNode }) {
@@ -202,6 +222,103 @@ describe('LodgingMap', () => {
 
     fireEvent.pointerMove(canvas, { pointerId: 2, clientX: 900, clientY: 900 })
     expect(transform()).toBe(afterFirst)
+  })
+
+  it('keeps panning with the first finger after a stray second touch taps and lifts', () => {
+    // The case the pointerId guard above does NOT cover: the second pointer
+    // gets its own pointerdown. A thumb brushing the screen mid-pan is enough.
+    // If that stray press is allowed to take the drag record, its pointerup
+    // then clears the record belonging to the finger actually panning — which
+    // is still down and still holds capture, so every subsequent move of it
+    // falls through the `!drag` guard and the map freezes solid until the
+    // finger lifts. Reproduced in a browser as a map that simply stops.
+    render(<LodgingMap parties={[]} units={UNITS} year={2026} />)
+    const canvas = screen.getByTestId('map-canvas')
+    const transform = () => screen.getByTestId('map-backdrop').style.transform
+
+    // Zoom first, and drag LEFT, for the same reason the test above does: at
+    // k=1 the pan bounds collapse to [0,0] and any assertion here is vacuous.
+    fireEvent.wheel(canvas, { deltaY: -600 })
+    fireEvent.pointerDown(canvas, { pointerId: 1, clientX: 300, clientY: 300 })
+    fireEvent.pointerMove(canvas, { pointerId: 1, clientX: 240, clientY: 300 })
+    const afterFirstMove = transform()
+
+    // The stray thumb: down and up, never moving past the drag threshold.
+    fireEvent.pointerDown(canvas, { pointerId: 2, clientX: 800, clientY: 800 })
+    fireEvent.pointerUp(canvas, { pointerId: 2, clientX: 800, clientY: 800 })
+
+    // Finger 1 is still down and still panning.
+    fireEvent.pointerMove(canvas, { pointerId: 1, clientX: 180, clientY: 300 })
+    expect(transform()).not.toBe(afterFirstMove)
+  })
+
+  it('still adopts a fresh pointer when the previous gesture lost its pointerup', () => {
+    // The other half of the guard, and the reason it cannot simply refuse
+    // every pointerdown while `active`. If an up event is ever lost the map
+    // must not be stranded forever — a gesture with no live capture is stale
+    // and the next press has to be allowed to replace it.
+    render(<LodgingMap parties={[]} units={UNITS} year={2026} />)
+    const canvas = screen.getByTestId('map-canvas')
+    const transform = () => screen.getByTestId('map-backdrop').style.transform
+
+    fireEvent.wheel(canvas, { deltaY: -600 })
+    fireEvent.pointerDown(canvas, { pointerId: 1, clientX: 300, clientY: 300 })
+    fireEvent.pointerMove(canvas, { pointerId: 1, clientX: 240, clientY: 300 })
+    const afterLostGesture = transform()
+
+    // The browser hands the gesture back without an up event.
+    captured = null
+
+    fireEvent.pointerDown(canvas, { pointerId: 3, clientX: 300, clientY: 300 })
+    fireEvent.pointerMove(canvas, { pointerId: 3, clientX: 200, clientY: 300 })
+    expect(transform()).not.toBe(afterLostGesture)
+  })
+
+  it('marks a room whose sharing was never consented to, as the board does', () => {
+    // #1926 exists to stop a non-consenting shared placement passing
+    // unnoticed; the board gives it an amber ring, a warning icon and the
+    // reason in text. The map reads the same `consent` flag off the same
+    // `buildBoard` slot, so a flagged room must not look like every other
+    // shared room here either.
+    const declined = party({
+      display_name: 'Silva',
+      unit_code: 'cedar-1',
+      unit_name: 'Cedar 1',
+      share: {
+        preference: 'no_share',
+        preference_raw: '',
+        proximity: [],
+        request_text: '',
+        needs_resolution: false,
+        eligibility: 'declined',
+        eligibility_source: 'form',
+        answers_conflict: false,
+      },
+    })
+    const sharing = party({
+      household_cm_id: 9002,
+      display_name: 'Garcia',
+      unit_code: 'cedar-1',
+      unit_name: 'Cedar 1',
+      share: {
+        preference: 'yes_share',
+        preference_raw: '',
+        proximity: ['with'],
+        request_text: '',
+        needs_resolution: false,
+        eligibility: 'open',
+        eligibility_source: 'form',
+        answers_conflict: false,
+      },
+    })
+    render(<LodgingMap parties={[declined, sharing]} units={[unit()]} year={2026} />)
+    const mark = screen.getByTestId('map-mark')
+    // The tooltip says so in words — colour alone is not a signal (WCAG 1.4.1),
+    // and the mark has no other text.
+    expect(mark.title).toMatch(/sharing not consented/i)
+    // And the ring is amber rather than the area hue, so it is findable
+    // without hovering every pin.
+    expect(mark.querySelector('span')?.style.boxShadow).toContain(CONSENT_AMBER)
   })
 
   it('reports rooms nobody has positioned rather than dropping them silently', () => {

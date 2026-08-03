@@ -72,6 +72,19 @@ function mapUnit(unit: LodgingUnitRow, parties: RosterPartyRow[] = []): MapUnit 
   return { unit, parties, consent: null, hue: 'hsl(160 45% 42%)', x: 0.4, y: 0.5 }
 }
 
+/** A room whose sharing nobody consented to — what #1926 exists to surface. */
+function flagged(unit: LodgingUnitRow, parties: RosterPartyRow[]): MapUnit {
+  return {
+    ...mapUnit(unit, parties),
+    consent: {
+      declinedCount: 1,
+      unansweredCount: 0,
+      conflictCount: 0,
+      reason: '1 family did not request sharing',
+    },
+  }
+}
+
 const HUE = 'hsl(160 45% 42%)'
 
 describe('MapUnitPopover — one room', () => {
@@ -115,6 +128,49 @@ describe('MapUnitPopover — one room', () => {
     )
     await userEvent.click(screen.getByRole('button', { name: /Johnson/ }))
     expect(onOpenParty).toHaveBeenCalledWith(johnson)
+  })
+
+  it('prints the consent reason, as the board card does', () => {
+    // The board renders `consent.reason` verbatim beside the slot. The map
+    // carries the identical flag off the same slot, so the peek must say the
+    // same thing rather than showing an ordinary shared room.
+    render(
+      <MapUnitPopover
+        units={[flagged(row(), [party('Johnson'), party('Garcia')])]}
+        hue={HUE}
+        onOpenParty={vi.fn()}
+      />
+    )
+    expect(screen.getByText('1 family did not request sharing')).toBeInTheDocument()
+  })
+
+  it('gives two occupants distinct keys even when the payload omits both ids', () => {
+    // `household_cm_id` / `person_cm_id` are optional on the generated type, so
+    // an omission is reachable through the schema even though the API's own
+    // contract says exactly one is non-zero. Keyed on the ids alone both
+    // occupants collapse to `household-undefined` and React reconciles two
+    // different families as one row. `LodgingMap.partyKey` already falls back
+    // to the display name; this must not diverge from it.
+    const anonymous = (name: string): RosterPartyRow => {
+      const base = party(name)
+      // `delete` rather than a rest-destructure: both fields are optional, and
+      // this says "the payload omitted them" without binding two throwaway
+      // names the linter then flags as unused.
+      delete base.household_cm_id
+      delete base.person_cm_id
+      return base
+    }
+    const warn = vi.spyOn(console, 'error').mockImplementation(() => undefined)
+    render(
+      <MapUnitPopover
+        units={[mapUnit(row(), [anonymous('Johnson'), anonymous('Garcia')])]}
+        hue={HUE}
+        onOpenParty={vi.fn()}
+      />
+    )
+    const messages = warn.mock.calls.map((call) => String(call[0])).join('\n')
+    warn.mockRestore()
+    expect(messages).not.toMatch(/same key/i)
   })
 })
 
@@ -205,5 +261,23 @@ describe('MapUnitPopover — a cluster of rooms', () => {
   it('draws one cell per room', () => {
     render(<MapUnitPopover units={units} hue={HUE} onOpenParty={vi.fn()} />)
     expect(screen.getAllByTestId('map-popover-cell')).toHaveLength(3)
+  })
+
+  it('says WHICH room in a cluster carries the consent flag', () => {
+    // A cluster mark rings amber if ANY member is flagged, which on a
+    // four-room house narrows it to four. The grid is where that resolves to
+    // one room, so the flag has to survive into the cell — in the tooltip as
+    // well as the border, since colour alone is not a signal.
+    const house = [
+      mapUnit(row({ unit_id: 'u1', code: 'cedar-1', name: 'Cedar 1' }), [party('Nguyen')]),
+      flagged(row({ unit_id: 'u2', code: 'cedar-2', name: 'Cedar 2' }), [
+        party('Johnson'),
+        party('Garcia'),
+      ]),
+    ]
+    render(<MapUnitPopover units={house} hue={HUE} onOpenParty={vi.fn()} />)
+    const flaggedCell = screen.getByTitle(/Cedar 2.*sharing not consented/i)
+    expect(flaggedCell).toBeInTheDocument()
+    expect(screen.queryByTitle(/Cedar 1.*sharing not consented/i)).not.toBeInTheDocument()
   })
 })

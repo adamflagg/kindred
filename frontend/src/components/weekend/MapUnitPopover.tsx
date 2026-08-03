@@ -14,6 +14,17 @@ import type { ReactNode } from 'react'
 import type { RosterPartyRow } from '../../types/lodging'
 import type { MapUnit } from './mapModel'
 
+/**
+ * The board's `border-amber-400`, reused rather than re-picked. A consent flag
+ * that were amber on one surface and orange on the other would read as two
+ * different warnings. Lives here because `LodgingMap` imports this module and
+ * not the reverse — putting it there would close an import cycle.
+ */
+export const CONSENT_AMBER = '#fbbf24'
+
+/** Said in words, because colour alone is not a signal (WCAG 1.4.1). */
+export const CONSENT_PHRASE = 'sharing not consented'
+
 export interface MapUnitPopoverProps {
   /** One entry for a lone room, several for a cluster. */
   units: MapUnit[]
@@ -26,8 +37,14 @@ function occupantButtons(
   onOpenParty: (party: RosterPartyRow) => void
 ): ReactNode {
   return parties.map((party) => (
+    // Falls back to `display_name` for the same reason `LodgingMap.partyKey`
+    // does: both ids are OPTIONAL on the generated type, so a payload that
+    // omits them keys every occupant of a shared room to
+    // `household-undefined` and React reconciles two families as one.
     <button
-      key={`${party.grain}-${String(party.household_cm_id || party.person_cm_id)}`}
+      key={`${party.grain}-${String(
+        party.household_cm_id || party.person_cm_id || party.display_name
+      )}`}
       type="button"
       onClick={() => {
         onOpenParty(party)
@@ -42,7 +59,7 @@ function occupantButtons(
 function DetailCard({ units, hue, onOpenParty }: MapUnitPopoverProps) {
   const entry = units[0]
   if (!entry) return null
-  const { unit, parties } = entry
+  const { unit, parties, consent } = entry
   const capacityKnown = unit.sleeps !== null && unit.sleeps !== undefined
 
   const tags: string[] = []
@@ -83,6 +100,16 @@ function DetailCard({ units, hue, onOpenParty }: MapUnitPopoverProps) {
             </li>
           ))}
         </ul>
+      )}
+      {/* The board prints `consent.reason` verbatim beside the slot and this
+          says the same thing, because the flag is the same flag off the same
+          `buildBoard` slot. Rendering it is the whole reason `MapUnit` carries
+          `consent` — a room #1926 flagged must not peek as an ordinary shared
+          room. The string is built by `consentReason` and is never PHI. */}
+      {consent && (
+        <p className="text-[11px] font-medium text-amber-700 dark:text-amber-400">
+          {consent.reason}
+        </p>
       )}
     </div>
   )
@@ -166,11 +193,19 @@ function FootprintGrid({ units, hue, onOpenParty }: MapUnitPopoverProps) {
           // Always built from the FULL unit name, never the shortened cluster
           // label — a tooltip has room, and the short form is ambiguous once
           // it is out of the header's context.
-          const described = first
+          // A cluster mark rings amber if ANY member is flagged, which on a
+          // four-room house narrows it to four. This is where that resolves to
+          // the one room — in the tooltip as well as the border, because the
+          // border alone would be colour as the sole signal.
+          const base = first
             ? `${label} — ${entry.unit.name}, ${who}`
             : `${entry.unit.name} — empty`
+          const described = entry.consent ? `${base} — ${CONSENT_PHRASE}` : base
           const style = first
-            ? { backgroundColor: hue, borderColor: hue }
+            ? {
+                backgroundColor: hue,
+                borderColor: entry.consent ? CONSENT_AMBER : hue,
+              }
             : {
                 borderColor: hue,
                 borderStyle: entry.unit.allocation_default === 'staff_default' ? 'dashed' : 'solid',

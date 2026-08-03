@@ -30,7 +30,7 @@ import { FamilyDetailsPanel } from './FamilyDetailsPanel'
 import { indexUnitsByCode } from './rosterAttention'
 import { clusterByProximity, type Cluster } from './mapClustering'
 import { buildMapModel, type MapUnit } from './mapModel'
-import { MapUnitPopover } from './MapUnitPopover'
+import { CONSENT_AMBER, CONSENT_PHRASE, MapUnitPopover } from './MapUnitPopover'
 import {
   basePosition,
   clampView,
@@ -287,11 +287,23 @@ export function LodgingMap({ parties, units, year }: LodgingMapProps) {
               }
               setOpenKey(null)
             }}
-            // Deliberately UNCONDITIONAL, even mid-gesture. Refusing a new
-            // pointerdown while a drag is live would strand the map forever if
-            // an up event were ever lost; replacing the record every time is
-            // what makes a dropped gesture self-heal on the next press.
+            // Replacing the record on a new press is what makes a DROPPED
+            // gesture self-heal: if an up event is ever lost, the next press
+            // must be able to take over rather than strand the map forever.
+            //
+            // But a press while a gesture is genuinely LIVE is the opposite
+            // case, and treating them alike was a real bug. A stray thumb
+            // landing mid-pan took the record, and its own pointerup then
+            // cleared the record belonging to the finger still panning — which
+            // still held capture and kept firing moves that now fell through
+            // the `!drag` guard below, freezing the map until it lifted.
+            //
+            // CAPTURE is the discriminator, not `active` alone: held means the
+            // gesture is live and the new pointer is a bystander; absent means
+            // the record is stale and replacing it is the self-heal.
             onPointerDown={(event) => {
+              const live = dragRef.current
+              if (live?.active && event.currentTarget.hasPointerCapture(live.id)) return
               dragRef.current = {
                 x: event.clientX,
                 y: event.clientY,
@@ -401,15 +413,29 @@ export function LodgingMap({ parties, units, year }: LodgingMapProps) {
               // fallback deliberately: there is no principled "average" of
               // two areas' colours.
               const hue = first.hue
+              // #1926 added `slot.consent` so a non-consenting shared
+              // placement could not pass unnoticed, and the board spends an
+              // amber ring, a warning icon and a line of text on it. The map
+              // reads the SAME flag off the SAME slot, so it gets an amber
+              // ring here — a flagged room that looked like every other shared
+              // room would make this surface the one place the signal is lost.
+              // ANY flagged member rings the cluster; the popover's grid is
+              // where it narrows to which room.
+              const flagged = cluster.members.filter((m) => m.item.consent !== null).length
+              const summary = many
+                ? `${String(cluster.members.length)} rooms · ${String(occupied)} occupied`
+                : first.unit.name
+              // Amber SUPERSEDES the shared ring rather than competing with it:
+              // a consent flag only ever exists on a shared room, so the two
+              // can never both need the same ring.
+              let halo = '0 0 0 2px rgba(255,255,255,.95)'
+              if (flagged > 0) halo = `0 0 0 2px #fff, 0 0 0 4.5px ${CONSENT_AMBER}`
+              else if (shared) halo = `0 0 0 2px #fff, 0 0 0 4.5px ${hue}`
               return (
                 <div
                   key={key}
                   data-testid="map-mark"
-                  title={
-                    many
-                      ? `${String(cluster.members.length)} rooms · ${String(occupied)} occupied`
-                      : first.unit.name
-                  }
+                  title={flagged > 0 ? `${summary} — ${CONSENT_PHRASE}` : summary}
                   onClick={(event) => {
                     event.stopPropagation()
                     setOpenKey((current) => (current === key ? null : key))
@@ -421,9 +447,7 @@ export function LodgingMap({ parties, units, year }: LodgingMapProps) {
                     style={{
                       backgroundColor: many || first.parties.length > 0 ? hue : 'white',
                       borderColor: hue,
-                      boxShadow: shared
-                        ? `0 0 0 2px #fff, 0 0 0 4.5px ${hue}`
-                        : '0 0 0 2px rgba(255,255,255,.95)',
+                      boxShadow: halo,
                       width: many ? Math.min(17 + cluster.members.length * 2.6, 38) : 16,
                       height: many ? Math.min(17 + cluster.members.length * 2.6, 38) : 16,
                       borderRadius: allStaff ? 4 : '50%',
