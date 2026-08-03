@@ -174,7 +174,7 @@ PATH="$SANDBOX_NO_GO" bash -c "source '$LIB'; pb_harness_build_binary '$FIXTURE_
   >/dev/null 2>"$SCRATCH/t6.err"
 rc=$?
 set -e
-if [[ $rc -eq 2 ]] && grep -q "go" "$SCRATCH/t6.err"; then
+if [[ $rc -eq 2 ]] && grep -q "required command 'go' not found" "$SCRATCH/t6.err"; then
   echo "PASS: missing go -> exit 2, names go"
 else
   echo "FAIL: missing go expected exit 2 naming go, got rc=$rc; stderr:" >&2
@@ -223,6 +223,39 @@ if [[ $rc -eq 2 ]] && [[ ! -e "$FIXTURE_SRC/relative-bin" ]]; then
 else
   echo "FAIL: expected exit 2 and no binary, got rc=$rc; stderr:" >&2
   cat "$SCRATCH/t8.err" >&2
+  exit 1
+fi
+
+echo
+echo "=== TEST 9: verify-lodging-schema.sh propagates the build contract (exit 2) when go is missing ==="
+# The mirror of TESTS 3/4 for the build dependency. Those pin that a missing
+# TOOL reaches the caller as exit 2; kindred#1922 gave the two lodging scripts
+# a second way to be unrunnable -- no Go toolchain -- and a contract nothing
+# asserts is a contract that drifts. Exits before any build or boot, so this
+# costs the same as tests 3/4.
+set +e
+PATH="$SANDBOX_NO_GO" "$SCHEMA_SCRIPT" >/dev/null 2>"$SCRATCH/t9.err"
+rc=$?
+set -e
+if [[ $rc -eq 2 ]] && grep -q "required command 'go' not found" "$SCRATCH/t9.err"; then
+  echo "PASS: verify-lodging-schema.sh with go missing -> exit 2"
+else
+  echo "FAIL: expected exit 2 naming go, got $rc; stderr:" >&2
+  cat "$SCRATCH/t9.err" >&2
+  exit 1
+fi
+
+echo
+echo "=== TEST 10: verify-lodging-seed.sh propagates the build contract (exit 2) when go is missing ==="
+set +e
+PATH="$SANDBOX_NO_GO" "$SEED_SCRIPT" >/dev/null 2>"$SCRATCH/t10.err"
+rc=$?
+set -e
+if [[ $rc -eq 2 ]] && grep -q "required command 'go' not found" "$SCRATCH/t10.err"; then
+  echo "PASS: verify-lodging-seed.sh with go missing -> exit 2"
+else
+  echo "FAIL: expected exit 2 naming go, got $rc; stderr:" >&2
+  cat "$SCRATCH/t10.err" >&2
   exit 1
 fi
 
