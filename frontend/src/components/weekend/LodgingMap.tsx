@@ -89,6 +89,21 @@ const DIMMED_OPACITY = 0.22
 /** Breathing room around an area's tint box, in screen pixels. */
 const TINT_PADDING_PX = 20
 
+/**
+ * Which question the marks are answering. At most one at a time.
+ *
+ * Area tint and Empty rooms are NOT in here and stay checkboxes: a tint is a
+ * backdrop and the empty toggle changes which rooms are on the map at all, so
+ * neither competes with a highlight or with the other.
+ */
+type Highlight = 'none' | 'bathhouse' | 'staff'
+
+const HIGHLIGHTS: Array<{ id: Highlight; label: string }> = [
+  { id: 'none', label: 'No highlight' },
+  { id: 'bathhouse', label: 'Near bathhouse' },
+  { id: 'staff', label: 'Staff cabins' },
+]
+
 /** Half of the popover's `max-w-[15rem]` (240px), padded a bit. Clamping the
  *  anchor at least this far from each edge keeps the box on-screen. Height
  *  is content-dependent (a detail card is shorter than a multi-room
@@ -176,13 +191,17 @@ export function LodgingMap({ parties, units, year }: LodgingMapProps) {
   const [size, setSize] = useState({ width: 0, height: 0 })
   const [imageFailed, setImageFailed] = useState(false)
   const [fade, setFade] = useState(DEFAULT_FADE)
-  // Empty rooms are DRAWN by default and the other three are OFF by default:
-  // the map's job at rest is the whole site, and every one of these is a
-  // question you arrive with rather than one the surface should ask for you.
+  // Empty rooms are DRAWN by default and nothing is highlighted at rest: the
+  // map's job when you arrive is the whole site, and each control below is a
+  // question you bring to it rather than one the surface should ask for you.
   const [showEmpty, setShowEmpty] = useState(true)
-  const [highlightBathhouse, setHighlightBathhouse] = useState(false)
-  const [highlightStaff, setHighlightStaff] = useState(false)
   const [areaTint, setAreaTint] = useState(false)
+  // ONE CHOICE, not two booleans. As independent checkboxes these ANDed, so
+  // ticking both dimmed everything that was not near a bathhouse AND beside
+  // staff — an intersection nobody asked for, which read as a filter that had
+  // eaten the map. They are two questions about the same marks, and the
+  // control now says so.
+  const [highlight, setHighlight] = useState<Highlight>('none')
   // TWO keys, not one. A click PINS the peek and a dwell only borrows it, so
   // the pointer leaving a mark must close a dwell-opened peek without
   // touching one the user deliberately pinned. Collapsing them into a single
@@ -361,7 +380,69 @@ export function LodgingMap({ parties, units, year }: LodgingMapProps) {
         )}
       </div>
 
-      <div className="card-lodge grid grid-cols-1 overflow-hidden lg:grid-cols-[minmax(0,1fr)_280px]">
+      <div className="card-lodge grid grid-cols-1 overflow-hidden lg:grid-cols-[280px_minmax(0,1fr)]">
+        <aside className="bg-muted/30 border-border/60 flex flex-col gap-3 border-b p-3 lg:border-r lg:border-b-0">
+          {selected ? (
+            <FamilyDetailsPanel
+              key={partyKey(selected)}
+              party={selected}
+              unit={unitsByCode.get(selected.unit_code ?? '')}
+              year={year}
+              embedded={true}
+              onClose={() => {
+                setSelected(null)
+              }}
+            />
+          ) : (
+            <>
+              <div data-testid="map-unplaced-rail" className="flex flex-col gap-2">
+                <div className="flex items-baseline justify-between gap-2">
+                  <h3 className="font-display text-foreground text-sm font-bold">Unplaced</h3>
+                  <span className="text-muted-foreground text-xs tabular-nums">
+                    {model.unplaced.length}
+                  </span>
+                </div>
+                {model.unplaced.length === 0 ? (
+                  <p className="text-muted-foreground text-xs italic">Everyone has a cabin.</p>
+                ) : (
+                  model.unplaced.map((party) => (
+                    <FamilyCard
+                      key={partyKey(party)}
+                      party={party}
+                      onRail={true}
+                      onOpen={openParty}
+                    />
+                  ))
+                )}
+              </div>
+
+              <div data-testid="map-offmap-rail" className="flex flex-col gap-2">
+                <div className="flex items-baseline justify-between gap-2">
+                  <h3 className="font-display text-foreground text-sm font-bold">
+                    Placed, off the map
+                  </h3>
+                  <span className="text-muted-foreground text-xs tabular-nums">
+                    {model.offMap.length}
+                  </span>
+                </div>
+                {model.offMap.length === 0 ? (
+                  <p className="text-muted-foreground text-xs italic">
+                    Everyone placed is on the map.
+                  </p>
+                ) : (
+                  model.offMap.map((entry) => (
+                    <FamilyCard
+                      key={partyKey(entry.party)}
+                      party={entry.party}
+                      onRail={true}
+                      onOpen={openParty}
+                    />
+                  ))
+                )}
+              </div>
+            </>
+          )}
+        </aside>
         <div className="flex flex-col gap-2 p-3">
           <div className="flex flex-wrap items-center gap-2 text-xs">
             <button
@@ -431,26 +512,6 @@ export function LodgingMap({ parties, units, year }: LodgingMapProps) {
             <label className="text-muted-foreground inline-flex cursor-pointer items-center gap-1.5">
               <input
                 type="checkbox"
-                checked={highlightBathhouse}
-                onChange={(event) => {
-                  setHighlightBathhouse(event.target.checked)
-                }}
-              />
-              Near-bathhouse
-            </label>
-            <label className="text-muted-foreground inline-flex cursor-pointer items-center gap-1.5">
-              <input
-                type="checkbox"
-                checked={highlightStaff}
-                onChange={(event) => {
-                  setHighlightStaff(event.target.checked)
-                }}
-              />
-              Staff cabins
-            </label>
-            <label className="text-muted-foreground inline-flex cursor-pointer items-center gap-1.5">
-              <input
-                type="checkbox"
                 checked={showEmpty}
                 onChange={(event) => {
                   setShowEmpty(event.target.checked)
@@ -461,6 +522,33 @@ export function LodgingMap({ parties, units, year }: LodgingMapProps) {
               />
               Empty rooms
             </label>
+
+            {/* RADIOS, not checkboxes. The control's shape is the explanation:
+                a checkbox promises the options combine, and these cannot —
+                answering both at once leaves an intersection that reads as a
+                filter with a bug in it. */}
+            <fieldset className="contents">
+              <legend className="sr-only">Highlight</legend>
+              <span aria-hidden="true" className="bg-border mx-1 h-5 w-px" />
+              <span className="text-muted-foreground">Highlight</span>
+              {HIGHLIGHTS.map((option) => (
+                <label
+                  key={option.id}
+                  className="text-muted-foreground inline-flex cursor-pointer items-center gap-1.5"
+                >
+                  <input
+                    type="radio"
+                    name="map-highlight"
+                    value={option.id}
+                    checked={highlight === option.id}
+                    onChange={() => {
+                      setHighlight(option.id)
+                    }}
+                  />
+                  {option.label}
+                </label>
+              ))}
+            </fieldset>
 
             <span className="text-muted-foreground ml-auto tabular-nums">{view.k.toFixed(1)}×</span>
           </div>
@@ -659,12 +747,11 @@ export function LodgingMap({ parties, units, year }: LodgingMapProps) {
               const bathhouse = cluster.members.some(
                 (member) => member.item.unit.near_bathhouse === true
               )
-              // Both highlights are ANDed, so turning on two asks "which cabins
-              // are near a bathhouse AND beside staff" rather than lighting up
-              // the union and answering neither. `some`, matching the mark's own
-              // semantics: a cluster containing one bathhouse-adjacent room IS
-              // an answer to where the bathhouses are.
-              const dimmed = (highlightBathhouse && !bathhouse) || (highlightStaff && !anyStaff)
+              // `some`, matching the mark's own semantics: a cluster holding
+              // one bathhouse-adjacent room IS part of the answer to where the
+              // bathhouses are.
+              const dimmed =
+                (highlight === 'bathhouse' && !bathhouse) || (highlight === 'staff' && !anyStaff)
               // A room nobody has measured, findable at a glance. `sleeps: 0`
               // is treated as unknown alongside null — the API maps 0 to None
               // today, but a 0 arriving here must never render as a capacity.
@@ -860,68 +947,6 @@ export function LodgingMap({ parties, units, year }: LodgingMapProps) {
             you want while comparing two families across the site.
             `key` is load-bearing: without it React reuses the instance across
             selections and `useState` initialisers never re-run. */}
-        <aside className="bg-muted/30 border-border/60 flex flex-col gap-3 border-t p-3 lg:border-t-0 lg:border-l">
-          {selected ? (
-            <FamilyDetailsPanel
-              key={partyKey(selected)}
-              party={selected}
-              unit={unitsByCode.get(selected.unit_code ?? '')}
-              year={year}
-              embedded={true}
-              onClose={() => {
-                setSelected(null)
-              }}
-            />
-          ) : (
-            <>
-              <div data-testid="map-unplaced-rail" className="flex flex-col gap-2">
-                <div className="flex items-baseline justify-between gap-2">
-                  <h3 className="font-display text-foreground text-sm font-bold">Unplaced</h3>
-                  <span className="text-muted-foreground text-xs tabular-nums">
-                    {model.unplaced.length}
-                  </span>
-                </div>
-                {model.unplaced.length === 0 ? (
-                  <p className="text-muted-foreground text-xs italic">Everyone has a cabin.</p>
-                ) : (
-                  model.unplaced.map((party) => (
-                    <FamilyCard
-                      key={partyKey(party)}
-                      party={party}
-                      onRail={true}
-                      onOpen={openParty}
-                    />
-                  ))
-                )}
-              </div>
-
-              <div data-testid="map-offmap-rail" className="flex flex-col gap-2">
-                <div className="flex items-baseline justify-between gap-2">
-                  <h3 className="font-display text-foreground text-sm font-bold">
-                    Placed, off the map
-                  </h3>
-                  <span className="text-muted-foreground text-xs tabular-nums">
-                    {model.offMap.length}
-                  </span>
-                </div>
-                {model.offMap.length === 0 ? (
-                  <p className="text-muted-foreground text-xs italic">
-                    Everyone placed is on the map.
-                  </p>
-                ) : (
-                  model.offMap.map((entry) => (
-                    <FamilyCard
-                      key={partyKey(entry.party)}
-                      party={entry.party}
-                      onRail={true}
-                      onOpen={openParty}
-                    />
-                  ))
-                )}
-              </div>
-            </>
-          )}
-        </aside>
       </div>
     </div>
   )

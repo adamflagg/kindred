@@ -166,6 +166,17 @@ describe('LodgingMap', () => {
     expect(screen.getByText('Cedar 1')).toBeInTheDocument()
   })
 
+  it('puts the unplaced rail on the same side as the board puts it', () => {
+    // LodgingBoard renders `lg:grid-cols-[240px_minmax(0,1fr)]` with the rail
+    // first. The map had it last, so switching tabs threw the rail across the
+    // screen and the unplaced list moved out from under the cursor.
+    render(<LodgingMap parties={[]} units={UNITS} year={2026} />)
+    const rail = screen.getByTestId('map-unplaced-rail')
+    const canvas = screen.getByTestId('map-canvas')
+    // DOCUMENT_POSITION_FOLLOWING: the canvas comes after the rail.
+    expect(rail.compareDocumentPosition(canvas) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+  })
+
   it('lists an unplaced party on the unplaced rail', () => {
     render(<LodgingMap parties={[party({ display_name: 'Silva' })]} units={UNITS} year={2026} />)
     // Scoped to the rail, matching the off-map assertion below. An unscoped
@@ -597,14 +608,14 @@ describe('LodgingMap highlight controls', () => {
 
   it('dims the rooms with no bathhouse when near-bathhouse highlighting is on', async () => {
     render(<LodgingMap parties={[]} units={[BATH, STAFF]} year={2026} />)
-    await userEvent.click(screen.getByLabelText('Near-bathhouse'))
+    await userEvent.click(screen.getByRole('radio', { name: 'Near bathhouse' }))
     expect(screen.getByTitle(/Cedar 1/)).toHaveStyle({ opacity: '1' })
     expect(screen.getByTitle(/Cedar 2/)).toHaveStyle({ opacity: '0.22' })
   })
 
   it('dims the rooms with no staff cabin when staff highlighting is on', async () => {
     render(<LodgingMap parties={[]} units={[BATH, STAFF]} year={2026} />)
-    await userEvent.click(screen.getByLabelText('Staff cabins'))
+    await userEvent.click(screen.getByRole('radio', { name: 'Staff cabins' }))
     expect(screen.getByTitle(/Cedar 2/)).toHaveStyle({ opacity: '1' })
     expect(screen.getByTitle(/Cedar 1/)).toHaveStyle({ opacity: '0.22' })
   })
@@ -613,6 +624,40 @@ describe('LodgingMap highlight controls', () => {
     render(<LodgingMap parties={[]} units={[BATH, STAFF]} year={2026} />)
     expect(screen.getByTitle(/Cedar 1/)).toHaveStyle({ opacity: '1' })
     expect(screen.getByTitle(/Cedar 2/)).toHaveStyle({ opacity: '1' })
+  })
+
+  it('lets one highlight replace the other rather than competing with it', async () => {
+    // As two checkboxes these ANDed, so ticking both dimmed nearly everything
+    // and read as a filter that had eaten the map. They answer two different
+    // questions about the same marks; only one can be asked at a time.
+    render(<LodgingMap parties={[]} units={[BATH, STAFF]} year={2026} />)
+    await userEvent.click(screen.getByRole('radio', { name: 'Near bathhouse' }))
+    await userEvent.click(screen.getByRole('radio', { name: 'Staff cabins' }))
+
+    expect(screen.getByRole('radio', { name: 'Near bathhouse' })).not.toBeChecked()
+    // The staff answer, whole — not the empty intersection of both questions.
+    expect(screen.getByTitle(/Cedar 2/)).toHaveStyle({ opacity: '1' })
+  })
+
+  it('turns every highlight off again', async () => {
+    render(<LodgingMap parties={[]} units={[BATH, STAFF]} year={2026} />)
+    await userEvent.click(screen.getByRole('radio', { name: 'Staff cabins' }))
+    await userEvent.click(screen.getByRole('radio', { name: 'No highlight' }))
+    expect(screen.getByTitle(/Cedar 1/)).toHaveStyle({ opacity: '1' })
+    expect(screen.getByTitle(/Cedar 2/)).toHaveStyle({ opacity: '1' })
+  })
+
+  it('keeps area tint and empty rooms independent of the highlight', async () => {
+    // These two do not compete with anything: one is a backdrop, the other
+    // changes which rooms exist on the map at all.
+    render(<LodgingMap parties={[PLACED]} units={UNITS} year={2026} />)
+    await userEvent.click(screen.getByRole('radio', { name: 'Near bathhouse' }))
+    await userEvent.click(screen.getByLabelText('Area tint'))
+    await userEvent.click(screen.getByLabelText('Empty rooms'))
+
+    expect(screen.getByRole('radio', { name: 'Near bathhouse' })).toBeChecked()
+    expect(screen.getByLabelText('Area tint')).toBeChecked()
+    expect(screen.getAllByTestId('map-mark')).toHaveLength(1)
   })
 
   it('tints areas only once the area tint is switched on', async () => {

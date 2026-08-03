@@ -27,7 +27,6 @@ import {
   Settings2,
   Users,
 } from 'lucide-react'
-import { useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router'
 
 import { QueryGuard } from '../components/QueryGuard'
@@ -52,13 +51,29 @@ import { useWeekendRoster, useWeekendSessions } from '../hooks/useWeekendRoster'
 
 type View = 'roster' | 'inventory' | 'board' | 'map'
 
+const VIEWS: View[] = ['roster', 'inventory', 'board', 'map']
+
+const DEFAULT_VIEW: View = 'roster'
+
+/**
+ * The view is a URL segment, as the analytics sub-navs are — `/analytics/
+ * retention/flow`, not a query string. A tab held only in `useState` cannot be
+ * linked, survive a reload, or be reopened where you left it.
+ *
+ * An unrecognised segment falls back rather than rendering nothing: it arrives
+ * from a stale bookmark or a typo, and a blank panel reads as a broken page.
+ */
+function parseView(segment: string | undefined): View {
+  return VIEWS.find((candidate) => candidate === segment) ?? DEFAULT_VIEW
+}
+
 export default function WeekendRosterPage() {
-  const { sessionCmId } = useParams<{ sessionCmId: string }>()
+  const { sessionCmId, view: viewParam } = useParams<{ sessionCmId: string; view: string }>()
   const navigate = useNavigate()
   const { currentYear } = useCurrentYear()
   const { hasPermission } = usePermissions()
   const canManageLodging = hasPermission(Permission.BUNKING_MANAGE)
-  const [view, setView] = useState<View>('roster')
+  const view = parseView(viewParam)
 
   const selectedCmId = sessionCmId === undefined ? null : Number(sessionCmId)
   const sessionsQuery = useWeekendSessions(currentYear)
@@ -184,7 +199,14 @@ export default function WeekendRosterPage() {
                         aria-selected={view === tab.id}
                         aria-controls={`weekend-panel-${tab.id}`}
                         onClick={() => {
-                          setView(tab.id)
+                          // REPLACE, not push. Four tabs and a habit of
+                          // clicking through them would turn Back into a tour
+                          // of the tabs you just left; the weekend is the
+                          // destination, the tab is where you are standing in
+                          // it.
+                          void navigate(`/weekend/session/${sessionCmId ?? ''}/${tab.id}`, {
+                            replace: true,
+                          })
                         }}
                         className={`flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold transition-all duration-200 ${
                           view === tab.id

@@ -622,8 +622,10 @@ function App() {
                                 </ErrorBoundary>
                               }
                             />
+                            {/* `:view?` is optional so existing links to a bare
+                                /weekend/session/:id still open, on the roster. */}
                             <Route
-                              path="session/:sessionCmId"
+                              path="session/:sessionCmId/:view?"
                               element={
                                 <ErrorBoundary>
                                   <Suspense fallback={<PageSkeleton />}>
