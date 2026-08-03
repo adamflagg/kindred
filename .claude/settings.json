@@ -10,8 +10,7 @@
       "Read(local/assets/*.jpg)",
       "Read(local/assets/*.jpeg)",
       "Read(local/assets/*.ico)",
-      "Edit(pb_data/**)",
-      "Write(pb_data/**)"
+      "Edit(pb_data/**)"
     ]
   },
   "hooks": {
