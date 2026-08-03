@@ -434,3 +434,61 @@ class TestCounts:
         args = pb.collection.return_value.get_list.call_args[0]
         assert args[0] == 1, "page 1"
         assert args[1] == 1, "one row is enough to carry total_items"
+
+
+class TestPageSize:
+    """Every paged read must name its batch size (#1966).
+
+    The SDK's `get_full_list(batch: int = 100, ...)` defaults to 100 rows per
+    HTTP request and recurses once per page. `fetch_prior_household_cm_ids`
+    pages every household from every prior year -- 20,256 rows on 2026 data --
+    which is 203 round trips and ~2.3s of the roster's ~3.1s, to produce one
+    boolean per party. At 1000 it is 21.
+
+    Measured loopback against the dev DB; a round-trip-bound cost scales with
+    per-hop RTT, so the production figure is likely worse rather than better.
+    """
+
+    @pytest.mark.asyncio
+    async def test_prior_households_pages_in_large_batches(self, repo: LodgingRepository, pb: MagicMock) -> None:
+        """The batch must reach the SDK, not merely be spelled in the source.
+
+        `batch` is a positional-or-keyword parameter on `get_full_list`, NOT a
+        member of `query_params` -- putting it in the dict is silently ignored
+        and leaves the default in place.
+        """
+        await repo.fetch_prior_household_cm_ids(2026)
+
+        call = pb.collection.return_value.get_full_list.call_args
+        batch = call[1].get("batch", call[0][0] if call[0] else None)
+        assert batch is not None, "get_full_list called without an explicit batch"
+        assert batch >= 500, f"batch {batch} still pages in small chunks"
+
+    def test_every_paged_read_names_a_batch(self) -> None:
+        """Structural, because the defect recurs on every read ADDED later.
+
+        A behavioural test per method would pass for the nineteen call sites
+        that exist today and say nothing about the twentieth. This walks the
+        module's AST instead, so a new `get_full_list` with no batch fails
+        here rather than quietly costing another 200 round trips.
+        """
+        import ast
+        import inspect
+
+        from api.services import lodging_repository
+
+        tree = ast.parse(inspect.getsource(lodging_repository))
+        missing: list[int] = []
+        for node in ast.walk(tree):
+            # The call sites pass the bound method to asyncio.to_thread rather
+            # than calling it, so the batch arrives as a to_thread kwarg. Match
+            # on any call whose args mention get_full_list.
+            if not isinstance(node, ast.Call):
+                continue
+            names = {child.attr for child in ast.walk(node) if isinstance(child, ast.Attribute)}
+            if "get_full_list" not in names:
+                continue
+            if not any(kw.arg == "batch" for kw in node.keywords):
+                missing.append(node.lineno)
+
+        assert not missing, f"get_full_list without an explicit batch at lines {missing}"

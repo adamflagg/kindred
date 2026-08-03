@@ -74,6 +74,25 @@ UNRESOLVED_ALIAS_KIND = "unresolved_alias"
 # Same defect, same fix as the Go attribution reader in #1877.
 STABLE_SORT = "id"
 
+# Rows per HTTP request for every paged read below.
+#
+# The SDK's `get_full_list(batch: int = 100, ...)` defaults to 100 and recurses
+# once per page, so a read is round-trip-bound rather than row-bound.
+# `fetch_prior_household_cm_ids` pages every household from every prior year --
+# 20,256 rows on 2026 data -- which at the default is 203 requests and ~2.3s of
+# the roster's ~3.1s, to produce one boolean per party. At 1000 it is 21
+# requests and ~1.0s (#1966).
+#
+# `batch` is a parameter of `get_full_list` itself, NOT a member of
+# `query_params`. Putting it in the dict is accepted silently and leaves the
+# default in place, which is why a test asserts it reaches the SDK.
+#
+# 1000 is the CEILING, not a guess: PocketBase declares `MaxPerPage int = 1000`
+# and `tools/search/provider.go:289` CLAMPS a larger request rather than
+# rejecting it. So a bigger number here would page identically while reading as
+# though it did something.
+PAGE_SIZE = 1000
+
 
 def _weekend_type_filter() -> str:
     return " || ".join(f'session_type = "{t}"' for t in WEEKEND_SESSION_TYPES)
@@ -89,6 +108,7 @@ class LodgingRepository:
         """All family + adult sessions for a year, in display order."""
         return await asyncio.to_thread(
             self.pb.collection(CAMP_SESSIONS).get_full_list,
+            batch=PAGE_SIZE,
             query_params={
                 "filter": f"year = {year} && ({_weekend_type_filter()})",
                 "sort": "sort_order,start_date",
@@ -106,6 +126,7 @@ class LodgingRepository:
         """
         rows = await asyncio.to_thread(
             self.pb.collection(CAMP_SESSIONS).get_full_list,
+            batch=PAGE_SIZE,
             query_params={
                 "filter": f"year = {year} && cm_id = {session_cm_id} && ({_weekend_type_filter()})",
                 "sort": STABLE_SORT,
@@ -122,6 +143,7 @@ class LodgingRepository:
         """
         return await asyncio.to_thread(
             self.pb.collection(LODGING_UNITS).get_full_list,
+            batch=PAGE_SIZE,
             query_params={"expand": "area", "sort": "area.sort_order,name"},
         )
 
@@ -136,6 +158,7 @@ class LodgingRepository:
         """
         return await asyncio.to_thread(
             self.pb.collection(LODGING_AVAILABILITY).get_full_list,
+            batch=PAGE_SIZE,
             query_params={
                 "filter": f'session = "{pb_escape(session_pb_id)}" && year = {year} && {LIVE_PLAN_FILTER}',
                 "sort": STABLE_SORT,
@@ -151,6 +174,7 @@ class LodgingRepository:
         """
         return await asyncio.to_thread(
             self.pb.collection(LODGING_AVAILABILITY).get_full_list,
+            batch=PAGE_SIZE,
             query_params={
                 "filter": (
                     f'session = "{pb_escape(session_pb_id)}" && year = {year} && scenario = "{pb_escape(scenario_id)}"'
@@ -174,6 +198,7 @@ class LodgingRepository:
         """
         return await asyncio.to_thread(
             self.pb.collection(LODGING_ASSIGNMENTS).get_full_list,
+            batch=PAGE_SIZE,
             query_params={
                 "filter": f'session = "{pb_escape(session_pb_id)}" && year = {year}',
                 "expand": "units",
@@ -201,6 +226,7 @@ class LodgingRepository:
         """
         return await asyncio.to_thread(
             self.pb.collection(LODGING_ASSIGNMENTS_DRAFT).get_full_list,
+            batch=PAGE_SIZE,
             query_params={
                 "filter": (
                     f'session = "{pb_escape(session_pb_id)}" && year = {year} && scenario = "{pb_escape(scenario_id)}"'
@@ -218,6 +244,7 @@ class LodgingRepository:
         """
         return await asyncio.to_thread(
             self.pb.collection(ATTENDEES).get_full_list,
+            batch=PAGE_SIZE,
             query_params={
                 "filter": f'session = "{session_pb_id}" && year = {year} && {ACTIVE_ENROLLED_FILTER}',
                 "expand": "person",
@@ -229,6 +256,7 @@ class LodgingRepository:
         """Households for a year, keyed by PocketBase record id."""
         rows = await asyncio.to_thread(
             self.pb.collection(HOUSEHOLDS).get_full_list,
+            batch=PAGE_SIZE,
             query_params={"filter": f"year = {year}", "sort": STABLE_SORT},
         )
         return {row.id: row for row in rows}
@@ -241,6 +269,7 @@ class LodgingRepository:
         """
         rows = await asyncio.to_thread(
             self.pb.collection(HOUSEHOLDS).get_full_list,
+            batch=PAGE_SIZE,
             query_params={
                 "filter": f"year = {year} && cm_id = {household_cm_id}",
                 "sort": STABLE_SORT,
@@ -256,6 +285,7 @@ class LodgingRepository:
         """
         rows = await asyncio.to_thread(
             self.pb.collection(HOUSEHOLDS).get_full_list,
+            batch=PAGE_SIZE,
             query_params={"filter": f"year < {year}", "fields": "cm_id", "sort": STABLE_SORT},
         )
         return {int(getattr(row, "cm_id", 0)) for row in rows if getattr(row, "cm_id", 0)}
@@ -268,6 +298,7 @@ class LodgingRepository:
         """
         rows = await asyncio.to_thread(
             self.pb.collection(FAMILY_CAMP_ADULTS).get_full_list,
+            batch=PAGE_SIZE,
             query_params={"filter": f"year = {year}", "sort": "adult_number"},
         )
         grouped: dict[str, list[Any]] = defaultdict(list)
@@ -288,6 +319,7 @@ class LodgingRepository:
         """
         rows = await asyncio.to_thread(
             self.pb.collection(FAMILY_CAMP_REGISTRATIONS).get_full_list,
+            batch=PAGE_SIZE,
             query_params={"filter": f"year = {year}", "sort": STABLE_SORT},
         )
         return {str(getattr(row, "household", "")): row for row in rows}
@@ -302,6 +334,7 @@ class LodgingRepository:
         """
         rows = await asyncio.to_thread(
             self.pb.collection(FAMILY_CAMP_MEDICAL).get_full_list,
+            batch=PAGE_SIZE,
             query_params={"filter": f"year = {year}", "sort": STABLE_SORT},
         )
         return {str(getattr(row, "household", "")): row for row in rows}
@@ -317,6 +350,7 @@ class LodgingRepository:
             return None
         rows = await asyncio.to_thread(
             self.pb.collection(FAMILY_CAMP_MEDICAL).get_full_list,
+            batch=PAGE_SIZE,
             query_params={
                 "filter": f'year = {year} && household = "{household_pb_id}"',
                 "sort": STABLE_SORT,
@@ -387,6 +421,7 @@ class LodgingRepository:
         """
         rows = await asyncio.to_thread(
             self.pb.collection(LODGING_ASSIGNMENTS_DRAFT).get_full_list,
+            batch=PAGE_SIZE,
             query_params={
                 "filter": (
                     f'session = "{pb_escape(session_pb_id)}" && year = {year} '
@@ -423,6 +458,7 @@ class LodgingRepository:
         """
         rows = await asyncio.to_thread(
             self.pb.collection(LODGING_AVAILABILITY).get_full_list,
+            batch=PAGE_SIZE,
             query_params={
                 "filter": (
                     f'session = "{pb_escape(session_pb_id)}" && year = {year} '

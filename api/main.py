@@ -16,6 +16,7 @@ from typing import Any
 
 from fastapi import Depends, FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
@@ -116,6 +117,21 @@ def create_app() -> FastAPI:
 
     # Load settings
     settings = get_settings()
+
+    # Response compression (#1966).
+    #
+    # The weekend roster is ~107 KB of JSON and was crossing the wire raw --
+    # neither Caddyfile carries `encode`, so nothing downstream was doing this
+    # either. JSON of that shape compresses roughly 9:1.
+    #
+    # Added FIRST so it sits innermost and compresses the handler's response
+    # before CORS and auth add their headers; those are header-only and are not
+    # affected by the body encoding. `minimum_size` keeps small bodies alone,
+    # where the gzip header and the CPU cost outweigh the saving.
+    #
+    # This is negotiated, not forced: a client sending `Accept-Encoding:
+    # identity` -- which is what plain `curl` sends -- still gets a raw body.
+    app.add_middleware(GZipMiddleware, minimum_size=1000)
 
     # CORS configuration
     app.add_middleware(
