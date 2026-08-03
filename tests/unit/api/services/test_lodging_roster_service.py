@@ -1391,6 +1391,31 @@ class TestPartySortName:
         assert roster.parties[0].sort_name == "Chen"
 
     @pytest.mark.asyncio
+    async def test_last_resort_yields_family_for_a_real_mailing_title(self) -> None:
+        # The rung above uses a title that happens to END in a surname. The
+        # shape RosterParty.sort_name's own comment names as production's does
+        # not: CampMinder's mailing_title is "The Chen Family", whose last
+        # token is "Family". So the last resort files every household that
+        # reaches it under F, not under its surname.
+        #
+        # Pinned rather than fixed. This rung is reached only when NO adult and
+        # NO child on the party carries a last_name, and family_camp_adults
+        # populates those columns for adults 1-2 — so it is the rare tail, and
+        # the pair still tie-break on display_name. Recorded here so the rung's
+        # real output is on the page instead of implied by a kinder fixture.
+        repo = _repo(
+            fetch_session=FAMILY_SESSION,
+            fetch_households={"hh_1": _household(title="The Chen Family")},
+            fetch_attendees_for_session=[_child(first="Olivia", last="")],
+            fetch_family_camp_adults={},
+        )
+        service = LodgingRosterService(repo)
+
+        roster = await service.build_roster(2026, 1000001)
+
+        assert roster.parties[0].sort_name == "Family"
+
+    @pytest.mark.asyncio
     async def test_adult_weekend_person_sorts_under_their_own_surname(self) -> None:
         person = _rec(
             cm_id=1000002,
