@@ -38,9 +38,12 @@ below identifies work by **PR and commit**, which are the only labels that canno
 | Share eligibility — flag on the authoritative form, not the registration gate | ✅ `d5951b69` (#1926) — see §3a |
 | Merge collapse — one `units` relation replaces `unit`/`merge`/`merge_draft` | ✅ `ee881bdf` (#1931) — see §2 |
 | Map — read-only `map_x`/`map_y` surface, a projection of the board | ✅ `e3f0cca2` (#1939) + `c6903f59` (#1942, legend + highlight controls) — see §2 |
-| **Drag placement — the board calls the write endpoints** | ⬅ **next, see §4. Land the map first.** |
+| Scenario plumbing — the picker, and read-only when no scenario is chosen | ⬅ **#1967 — gates every write. Do this first.** |
+| **Drag placement — the board calls the write endpoints** | ⬅ **then this, see §4. The map has landed.** |
 | Pin editor — drag a unit to correct its coordinates | needs the map |
 | Geo layer | needs the map |
+
+**Ordering, sizes and the work that is NOT on the critical path live in `docs/reference/weekend-go-live-sequence.md`.** It also records two corrections worth reading before planning: the Family Camp adult-field discovery is **not** a gate (`party_size` has zero decision consumers), and "go live" is undefined on the current architecture — the board can only ever write drafts, so #1968 asks what staff actually take away from a finished plan.
 
 **The map did NOT need drag placement**, contrary to what this table said for several rounds:
 it is a read-only projection of the roster response, so it shipped ahead of the interaction.
