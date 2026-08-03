@@ -222,6 +222,11 @@ class RosterParty(BaseModel):
     household_cm_id: int = 0
     person_cm_id: int = 0
     display_name: str = ""
+    # The surname to FILE this party under, which display_name cannot supply: a
+    # household's display_name is CampMinder's mailing_title ("The Johnson
+    # Family"), so sorting on it files half the roster under "The". Read from
+    # real last_name columns; never re-derive it from display_name downstream.
+    sort_name: str = ""
     adults: list[PartyAdult] = Field(default_factory=list)
     children: list[PartyChild] = Field(default_factory=list)
     party_size: int = 0

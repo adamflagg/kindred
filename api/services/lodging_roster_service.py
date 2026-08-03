@@ -130,6 +130,46 @@ def _household_display_name(household: Any, fallback_cm_id: int) -> str:
     return f"Household {fallback_cm_id}"
 
 
+def _last_token(value: str) -> str:
+    """Last whitespace-delimited token. The one heuristic in the chain, reached
+    only when no last_name column is populated anywhere on the party."""
+    parts = value.split()
+    return parts[-1] if parts else ""
+
+
+def _adult_last_name(adults: list[Any]) -> str:
+    """Adult 1's surname, else the lowest-numbered adult that has one.
+
+    Reads the `last_name` COLUMN, never the combined `name` column:
+    family_camp_adults populates first_name/last_name only for adults 1-2, and
+    that is exactly the range this walk reaches before giving up.
+    """
+    # A missing adult_number reads as 0 through _i, which would sort AHEAD of
+    # adult 1. Push it to the back instead -- an unnumbered row is the least
+    # trustworthy source of the household's surname, not the most.
+    for adult in sorted(adults, key=lambda a: _i(a, "adult_number") or 999):
+        last = _s(adult, "last_name")
+        if last:
+            return last
+    return ""
+
+
+def _household_sort_name(adults: list[Any], children: list[Any], display_name: str) -> str:
+    """Surname for a household party. First non-empty rung wins.
+
+    `children` arrives oldest-first, so the child rung prefers the eldest
+    enrolled camper.
+    """
+    adult_last = _adult_last_name(adults)
+    if adult_last:
+        return adult_last
+    for child in children:
+        child_last = _s(child, "last_name")
+        if child_last:
+            return child_last
+    return _last_token(display_name)
+
+
 class LodgingRosterService:
     """Builds the read-only weekend roster from repository output."""
 
@@ -571,6 +611,7 @@ class LodgingRosterService:
                     grain="person",
                     person_cm_id=person_cm_id,
                     display_name=_person_display_name(person),
+                    sort_name=_s(person, "last_name") or _last_token(_person_display_name(person)),
                     adults=[PartyAdult(adult_number=1, display_name=_person_display_name(person))],
                     party_size=1,
                     unit_code=placement.unit_code,
@@ -579,7 +620,7 @@ class LodgingRosterService:
                     unit_codes=list(placement.unit_codes),
                 )
             )
-        parties.sort(key=lambda p: p.display_name)
+        parties.sort(key=lambda p: (p.sort_name.casefold(), p.display_name.casefold()))
         return parties
 
     def _build_household_parties(
@@ -611,12 +652,16 @@ class LodgingRosterService:
             medical_record = medical.get(household_pb_id)
             adults = adults_by_household.get(household_pb_id, [])
             placement = placement_by_household.get(household_cm_id, _NO_PLACEMENT)
+            children_oldest_first = sorted(children, key=lambda c: -_i(c, "age"))
 
             parties.append(
                 RosterParty(
                     grain="household",
                     household_cm_id=household_cm_id,
                     display_name=_household_display_name(household, household_cm_id),
+                    sort_name=_household_sort_name(
+                        adults, children_oldest_first, _household_display_name(household, household_cm_id)
+                    ),
                     adults=[
                         PartyAdult(
                             adult_number=_i(adult, "adult_number"),
@@ -633,7 +678,7 @@ class LodgingRosterService:
                             age=_i(child, "age") or None,
                             grade=_i(child, "grade") or None,
                         )
-                        for child in sorted(children, key=lambda c: -_i(c, "age"))
+                        for child in children_oldest_first
                     ],
                     party_size=len(adults) + len(children),
                     unit_code=placement.unit_code,
@@ -646,7 +691,7 @@ class LodgingRosterService:
                     flags=self._build_flags(registration, medical_record),
                 )
             )
-        parties.sort(key=lambda p: p.display_name)
+        parties.sort(key=lambda p: (p.sort_name.casefold(), p.display_name.casefold()))
         return parties
 
     def _build_share(self, registration: Any) -> ShareRequestSummary:
