@@ -20,14 +20,18 @@ That is why this programme is plan-driven rather than triage-driven. Triage is t
 
 | Step | Work | Issue | Size | Critical path? |
 |---|---|---|---|---|
-| 0 | Roster / summary latency | [#1966](https://github.com/adamflagg/kindred/issues/1966) | ½–1 day | Yes |
+| 0 | Roster / summary latency — **DONE** | [#1966](https://github.com/adamflagg/kindred/issues/1966) | ½–1 day (spent) | Was yes; closed 2026-08-03 by PR #1976 |
 | 0a | **Scenarios replace the mirror, as summer's do** | [#1974](https://github.com/adamflagg/kindred/issues/1974) | ~1 day | **Yes — changes what a scenario means** |
 | 1 | Scenario plumbing, picker, read-only gating | [#1967](https://github.com/adamflagg/kindred/issues/1967) | 1–2 days | **Yes — gates all writes** |
 | 2 | **Drag placement** — placement only, no merge | unfiled — `HANDOFF.md` §4 | 4–6 days | **Yes — this is the goal** |
-| 2a | Multi-room placements on board and map | [#1940](https://github.com/adamflagg/kindred/issues/1940), [#1941](https://github.com/adamflagg/kindred/issues/1941) | ½–1 day | Follow-up — unlocks merge-by-drag |
+| 2a | Multi-room placements on board and map | [#1940](https://github.com/adamflagg/kindred/issues/1940), [#1941](https://github.com/adamflagg/kindred/issues/1941), [#1982](https://github.com/adamflagg/kindred/issues/1982) | ½–1 day | Follow-up — unlocks merge-by-drag |
 | 3 | Roster/API correctness as one Python PR | [#1889](https://github.com/adamflagg/kindred/issues/1889), [#1936](https://github.com/adamflagg/kindred/issues/1936) | ≤1 day | Correctness |
 | 4 | 2026 inventory rollout + container guard | [#1917](https://github.com/adamflagg/kindred/issues/1917), [#1918](https://github.com/adamflagg/kindred/issues/1918) | ½ day + staff walk | Parallel, blocks nothing |
 | 5 | Parity polish — filters, tab state, sync invalidation | [#1912](https://github.com/adamflagg/kindred/issues/1912), [#1944](https://github.com/adamflagg/kindred/issues/1944), [#1894](https://github.com/adamflagg/kindred/issues/1894) | 1–2 days | **No — after the capability** |
+
+**Step 2a gained a third issue, and it is the only newly-filed work that is order-specific.** [#1982](https://github.com/adamflagg/kindred/issues/1982) — the fit check settles `needs_private_bathroom` by reading the assigned unit's own `bathroom` field (`rosterAttention.ts:51-55`), and a merged placement resolves to no single unit, so `partyAttention` reports `unverified`. The result is that the one placement which physically delivers a private bathroom — a household holding every room in a building — is the one the board can never credit. The rule the registry already supports is exclusivity: a party satisfies the need when its units cover every member of that `bathroom_group`. It is gated on #1940 for the same reason as the rest of 2a (a merged party carries no unit codes until that lands), but it is a **separate decision** — it changes what `settled` means for a merge, so it should be taken deliberately rather than folded in.
+
+**Nothing else filed since this doc was written belongs in the sequence.** #1922 (verify-harness staleness, merged) was never on the path. #1963 / #1964 remain deliberately off it. The post-rollout guard now recorded on #1917 — stop `apply_lodging_inventory.py` overwriting units staff have confirmed — is a **follow-up to step 4, not a prerequisite**: the hazard does not exist until confirmations do, and it is tracked in that issue's own acceptance list rather than here.
 
 **Step 1b — decide what comes *out* of a finished plan** ([#1968](https://github.com/adamflagg/kindred/issues/1968), no code) is an explicit **prerequisite of step 2**, not a later row. It sat at the bottom of this table saying "ask before step 2 opens", which let a reader follow the table straight into drag work with the question unanswered. If the answer turns out to be a printed cabin list, the board needs print-shaped data — stable ordering, legible labels, occupancy per room — that nothing else would prompt anyone to add.
 
