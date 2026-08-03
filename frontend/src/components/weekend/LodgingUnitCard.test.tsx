@@ -159,6 +159,42 @@ describe('LodgingUnitCard', () => {
     expect(card).toHaveStyle({ borderTopColor: 'hsl(160 45% 42%)' })
   })
 
+  it('keys two adult-weekend individuals in one room apart', () => {
+    // An adult weekend enrols PEOPLE, and the API sends `household_cm_id = 0`
+    // for them rather than omitting it — Pydantic `int = 0`. A `??` chain
+    // stops at that 0, so both occupants of a shared room key to `person-0`
+    // and React reconciles them as one child. This card is the fifth party
+    // lister and the one `partyKey.ts` did not reach.
+    const errors = vi.spyOn(console, 'error').mockImplementation(() => undefined)
+    render(
+      <LodgingUnitCard
+        slot={slot({
+          parties: [
+            party({
+              grain: 'person',
+              household_cm_id: 0,
+              person_cm_id: 1000001,
+              display_name: 'Riley Sam',
+            }),
+            party({
+              grain: 'person',
+              household_cm_id: 0,
+              person_cm_id: 1000002,
+              display_name: 'Samuel Johnson',
+            }),
+          ],
+        })}
+        hue="hsl(160 45% 42%)"
+        onOpenParty={vi.fn()}
+      />
+    )
+
+    expect(screen.getByText('Riley Sam')).toBeInTheDocument()
+    expect(screen.getByText('Samuel Johnson')).toBeInTheDocument()
+    expect(errors.mock.calls.flat().join(' ')).not.toMatch(/same key/i)
+    errors.mockRestore()
+  })
+
   it('marks an inactive unit that still holds someone', () => {
     render(
       <LodgingUnitCard
