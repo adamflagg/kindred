@@ -118,7 +118,7 @@ ms=$(field_prop lodging_unit_aliases member_units maxSelect || true)
 # "took this party off the board" tombstone on the draft.
 for c in lodging_assignments lodging_assignments_draft; do
   ms=$(field_prop "$c" units maxSelect || true)
-  [[ "$ms" == "999" ]] || note "$c.units maxSelect is '$ms' (expected 20)"
+  [[ "$ms" == "20" ]] || note "$c.units maxSelect is '$ms' (expected 20)"
   casc=$(field_prop "$c" units cascadeDelete || true)
   [[ "$casc" == "0" || "$casc" == "false" ]] \
     || note "$c.units cascadeDelete is '$casc' (expected false)"
