@@ -213,8 +213,10 @@ async def copy_placements_from_mirror(
     returns zero rows for a weekend session -- create the scenario there, fill
     it here.
 
-    409 when the scenario already holds placements for this weekend. A second
-    copy would overwrite what staff placed and re-place everything they
+    409 when the scenario already holds placements for this weekend — whether
+    it did before the call or another caller seeded it mid-copy, which the
+    draft's unique index catches and which would otherwise surface as a 400. A
+    second copy would overwrite what staff placed and re-place everything they
     unplaced, so the refusal is the feature: re-baselining a worked plan
     against upstream drift is a different operation and does not exist yet.
     """

@@ -235,6 +235,19 @@ class LodgingWriteService:
         caller can say so; silently copying 60 of 62 rows would show up only
         as a board with two families missing.
 
+        The count and the creates are separate round trips, so they RACE, the
+        same way `place_party`'s find-then-create does. Two staff seeding the
+        same weekend -- or one double-click -- both read an empty scenario and
+        both start writing, and the draft's partial unique indexes reject the
+        loser. Unguarded that is a 400 out of `pb_error_to_http`: a different
+        answer to the question the up-front check answers with a 409. So a
+        failed create re-counts, and rows appearing where there were none is
+        the race, reported as the refusal it already has a word for. If the
+        scenario is still empty the create failed for another reason and keeps
+        its upstream status. The re-count is inside the except block and
+        wrapped for the same reason `place_party`'s recovery is: an unwrapped
+        failure there is the bare 500 the guard exists to prevent.
+
         The creates are SEQUENTIAL and there is no transaction -- PocketBase's
         REST layer offers none across records. A create that fails part-way
         leaves the rows already written in place, and the retry then 409s on
@@ -289,7 +302,7 @@ class LodgingWriteService:
             try:
                 await self.repository.create_draft_assignment(data)
             except ClientResponseError as exc:
-                raise pb_error_to_http(exc) from exc
+                raise await self._seed_failure(exc, request, session_pb_id) from exc
             copied += 1
 
         logger.info(
@@ -303,6 +316,31 @@ class LodgingWriteService:
             },
         )
         return LodgingCopyResponse(copied=copied, skipped=skipped)
+
+    async def _seed_failure(
+        self, exc: ClientResponseError, request: PlacementCopyRequest, session_pb_id: str
+    ) -> Exception:
+        """Decide what a failed seed create means: a lost race, or a failure.
+
+        Rows where the up-front count found none means another caller seeded
+        this scenario between the two round trips, which is the state that
+        check refuses -- so it gets the same answer, not the index's 400.
+
+        The re-count can itself fail, and its failure is wrapped rather than
+        raised bare: this runs inside an except block, so a ClientResponseError
+        escaping here reaches the catch-all handler in api/main.py as the 500
+        this whole guard exists to prevent.
+        """
+        try:
+            held = await self.repository.count_draft_assignments(request.year, session_pb_id, request.scenario)
+        except ClientResponseError as recheck_exc:
+            return pb_error_to_http(recheck_exc)
+        if held:
+            return ScenarioNotEmptyError(
+                f"Scenario {request.scenario} was seeded by another caller while this copy was running "
+                f"({held} placement(s) for weekend {request.session_cm_id} in {request.year})"
+            )
+        return pb_error_to_http(exc)
 
     async def set_availability(self, request: AvailabilityWriteRequest) -> LodgingWriteResponse:
         """Reserve or release one unit for this weekend, inside a scenario.

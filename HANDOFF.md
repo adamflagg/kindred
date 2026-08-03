@@ -340,6 +340,10 @@ already holds placements for that weekend: a second copy would overwrite what st
 re-place everything they unplaced, since unplacing is now the absence of a row. Re-baselining a
 worked plan against upstream drift is a DIFFERENT feature and does not exist.
 
+The count and the creates are separate round trips, so they race exactly as `place_party`'s
+find-then-create does, and are guarded the same way: a failed create re-counts, and rows where
+there were none is the race — reported as the same 409, not as the index's 400.
+
 #### The `unit` / `merge` / `merge_draft` collapse into one `units` set (`2ae8a4ec`, #1931)
 
 The three targets above did not last. Migration `1500000134` replaces `unit`, `merge` and

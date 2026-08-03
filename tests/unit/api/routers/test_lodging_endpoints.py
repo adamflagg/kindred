@@ -1027,6 +1027,30 @@ class TestCopyFromMirror:
         assert response.status_code == 409
         mock_pb.collection.return_value.create.assert_not_called()
 
+    def test_losing_the_seeding_race_is_a_409_not_a_400(self, mock_pb: MagicMock) -> None:
+        """Two staff seeding at once, or one double-click.
+
+        Both read an empty scenario, both start creating, and the draft's
+        unique index rejects the loser. Left alone `pb_error_to_http` answers
+        400 — a different status for the same "somebody already seeded this"
+        the up-front check answers with a 409.
+        """
+        counts: list[Any] = [_rec(total_items=0), _rec(total_items=5)]
+
+        with patch("api.routers.lodging.pb", mock_pb):
+            client = _write_client(_manage_user(), mock_pb)
+            mock_pb.collection.return_value.get_full_list.side_effect = self._mirror_reads
+            mock_pb.collection.return_value.get_list.side_effect = lambda *a, **k: counts.pop(0) if counts else counts
+            mock_pb.collection.return_value.create.side_effect = ClientResponseError(
+                "unique constraint", status=400, data={}, url="", is_abort=False, original_error=None
+            )
+            response = client.post(
+                "/api/lodging/placements/copy",
+                json={"year": 2026, "session_cm_id": 1000001, "scenario": "scn_1"},
+            )
+
+        assert response.status_code == 409, response.text
+
     def test_copying_without_a_scenario_is_refused(self, mock_pb: MagicMock) -> None:
         """The same rule every other write obeys: no scenario, no write."""
         with patch("api.routers.lodging.pb", mock_pb):

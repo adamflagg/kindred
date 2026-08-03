@@ -22,6 +22,8 @@ from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
+from fastapi import HTTPException
+from pocketbase.client import ClientResponseError  # type: ignore[attr-defined]
 from pydantic import ValidationError
 
 from api.schemas.lodging import PlacementCopyRequest, PlacementDeleteRequest, PlacementWriteRequest
@@ -326,6 +328,87 @@ class TestCopyFromMirror:
 
         repo.create_draft_assignment.assert_not_called()
         repo.fetch_assignments.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_losing_the_seeding_race_is_refused_the_same_way(
+        self, write_service: LodgingWriteService, repo: MagicMock
+    ) -> None:
+        """Two staff seeding the same weekend at the same moment.
+
+        The count and the creates are separate round trips, so both callers
+        can read an empty scenario and both start writing. The draft's partial
+        unique indexes reject the loser's create, and left alone
+        `pb_error_to_http` turns that into a 400 -- a different answer to the
+        same question the up-front check answers with a 409. Same shape, and
+        the same treatment, as `place_party`'s lost-create race.
+        """
+        repo.count_draft_assignments = AsyncMock(side_effect=[0, 5])
+        repo.fetch_assignments = AsyncMock(return_value=[_mirror_row()])
+        repo.create_draft_assignment = AsyncMock(
+            side_effect=ClientResponseError(
+                "unique constraint", status=400, data={}, url="", is_abort=False, original_error=None
+            )
+        )
+
+        with pytest.raises(ScenarioNotEmptyError):
+            await write_service.copy_from_mirror(
+                PlacementCopyRequest(year=2026, session_cm_id=1000001, scenario="scn_1")
+            )
+
+    @pytest.mark.asyncio
+    async def test_a_create_failure_that_is_not_a_race_keeps_its_status(
+        self, write_service: LodgingWriteService, repo: MagicMock
+    ) -> None:
+        """The recheck is for a lost race, not a blanket swallow.
+
+        If the scenario is still empty, the create failed for some other
+        reason and the caller must hear about it with the upstream status
+        rather than a 409 claiming somebody else got there first.
+        """
+        repo.count_draft_assignments = AsyncMock(side_effect=[0, 0])
+        repo.fetch_assignments = AsyncMock(return_value=[_mirror_row()])
+        repo.create_draft_assignment = AsyncMock(
+            side_effect=ClientResponseError("boom", status=400, data={}, url="", is_abort=False, original_error=None)
+        )
+
+        with pytest.raises(HTTPException) as exc_info:
+            await write_service.copy_from_mirror(
+                PlacementCopyRequest(year=2026, session_cm_id=1000001, scenario="scn_1")
+            )
+
+        assert exc_info.value.status_code == 400
+
+    @pytest.mark.asyncio
+    async def test_a_failed_recheck_after_a_lost_seeding_race_keeps_its_status(
+        self, write_service: LodgingWriteService, repo: MagicMock
+    ) -> None:
+        """The recovery races too, exactly as `place_party`'s does.
+
+        The re-count that decides whether the create raced can fail on its
+        own. It lives inside the except block, so unwrapped it is a bare
+        ClientResponseError into the catch-all handler in api/main.py -- a
+        500, which is the outcome this guard exists to remove.
+        """
+        repo.count_draft_assignments = AsyncMock(
+            side_effect=[
+                0,
+                ClientResponseError("forbidden", status=403, data={}, url="", is_abort=False, original_error=None),
+            ]
+        )
+        repo.fetch_assignments = AsyncMock(return_value=[_mirror_row()])
+        repo.create_draft_assignment = AsyncMock(
+            side_effect=ClientResponseError(
+                "unique constraint", status=400, data={}, url="", is_abort=False, original_error=None
+            )
+        )
+
+        with pytest.raises(HTTPException) as exc_info:
+            await write_service.copy_from_mirror(
+                PlacementCopyRequest(year=2026, session_cm_id=1000001, scenario="scn_1")
+            )
+
+        # Pinned, not `>= 400`: a 500 is the precise outcome this rules out.
+        assert exc_info.value.status_code == 403
 
     @pytest.mark.asyncio
     async def test_the_emptiness_check_is_scoped_to_this_weekend_and_scenario(
