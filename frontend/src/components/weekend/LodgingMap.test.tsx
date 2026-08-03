@@ -522,3 +522,125 @@ describe('LodgingMap', () => {
     expect(top).toBeLessThan(980)
   })
 })
+
+/**
+ * The legend and the highlight controls, as approved in the mockup.
+ *
+ * The mark carries seven encoding channels and no text. Without a key, the blue
+ * dot answering "is this family beside a bathhouse" — one of the two questions
+ * the surface exists for — is an unexplained dot.
+ */
+describe('LodgingMap legend', () => {
+  it('says what each mark channel means', () => {
+    render(<LodgingMap parties={[]} units={UNITS} year={2026} />)
+    const legend = screen.getByTestId('map-legend')
+    expect(legend).toHaveTextContent(/empty/i)
+    expect(legend).toHaveTextContent(/one party/i)
+    expect(legend).toHaveTextContent(/shared/i)
+    expect(legend).toHaveTextContent(/staff-default/i)
+    expect(legend).toHaveTextContent(/near bathhouse/i)
+    expect(legend).toHaveTextContent(/capacity unknown/i)
+  })
+
+  it('counts the containers it deliberately did not draw', () => {
+    // The 408-vs-389 double count lives in the PR body and nowhere the user can
+    // see it. A room count alone reads as "19 rooms are missing".
+    const withContainer = [
+      ...UNITS,
+      unit({ unit_id: 'u3', code: 'cedar-house', name: 'Cedar House', is_container: true }),
+    ]
+    render(<LodgingMap parties={[]} units={withContainer} year={2026} />)
+    const legend = screen.getByTestId('map-legend')
+    expect(legend).toHaveTextContent(/2 rooms/)
+    expect(legend).toHaveTextContent(/1 container not drawn/)
+  })
+
+  it('counts only the multi-room blobs as clusters, not every lone mark', () => {
+    // Two rooms on the same coordinate are one blob until you zoom in, and the
+    // count is the only thing that says the other room is under there.
+    // THE THIRD ROOM IS THE TEST: with only the stacked pair, "clusters" and
+    // "clusters with more than one member" are both 1 and the assertion cannot
+    // tell a correct count from a count of every mark on the map.
+    const stacked = [
+      unit({ unit_id: 'u1', code: 'a', name: 'A', map_x: 0.5, map_y: 0.5 }),
+      unit({ unit_id: 'u2', code: 'b', name: 'B', map_x: 0.5, map_y: 0.5 }),
+      unit({ unit_id: 'u3', code: 'c', name: 'C', map_x: 0.1, map_y: 0.9 }),
+    ]
+    render(<LodgingMap parties={[]} units={stacked} year={2026} />)
+    expect(screen.getByTestId('map-legend')).toHaveTextContent(/1 cluster at this zoom/)
+  })
+})
+
+describe('LodgingMap highlight controls', () => {
+  const BATH = unit({ unit_id: 'u1', code: 'cedar-1', name: 'Cedar 1', near_bathhouse: true })
+  const STAFF = unit({
+    unit_id: 'u2',
+    code: 'cedar-2',
+    name: 'Cedar 2',
+    map_x: 0.7,
+    map_y: 0.2,
+    allocation_default: 'staff_default',
+  })
+
+  it('draws empty rooms by default', () => {
+    render(<LodgingMap parties={[PLACED]} units={UNITS} year={2026} />)
+    expect(screen.getAllByTestId('map-mark')).toHaveLength(2)
+  })
+
+  it('hides empty rooms when the empty-rooms toggle is cleared', async () => {
+    render(<LodgingMap parties={[PLACED]} units={UNITS} year={2026} />)
+    await userEvent.click(screen.getByLabelText('Empty rooms'))
+    const marks = screen.getAllByTestId('map-mark')
+    expect(marks).toHaveLength(1)
+    expect(marks[0]).toHaveAttribute('title', expect.stringContaining('Cedar 1'))
+  })
+
+  it('dims the rooms with no bathhouse when near-bathhouse highlighting is on', async () => {
+    render(<LodgingMap parties={[]} units={[BATH, STAFF]} year={2026} />)
+    await userEvent.click(screen.getByLabelText('Near-bathhouse'))
+    expect(screen.getByTitle(/Cedar 1/)).toHaveStyle({ opacity: '1' })
+    expect(screen.getByTitle(/Cedar 2/)).toHaveStyle({ opacity: '0.22' })
+  })
+
+  it('dims the rooms with no staff cabin when staff highlighting is on', async () => {
+    render(<LodgingMap parties={[]} units={[BATH, STAFF]} year={2026} />)
+    await userEvent.click(screen.getByLabelText('Staff cabins'))
+    expect(screen.getByTitle(/Cedar 2/)).toHaveStyle({ opacity: '1' })
+    expect(screen.getByTitle(/Cedar 1/)).toHaveStyle({ opacity: '0.22' })
+  })
+
+  it('leaves every mark at full strength when no highlight is on', () => {
+    render(<LodgingMap parties={[]} units={[BATH, STAFF]} year={2026} />)
+    expect(screen.getByTitle(/Cedar 1/)).toHaveStyle({ opacity: '1' })
+    expect(screen.getByTitle(/Cedar 2/)).toHaveStyle({ opacity: '1' })
+  })
+
+  it('tints areas only once the area tint is switched on', async () => {
+    // Off by default: the background labels its own areas, and a tint over an
+    // illustration fights it. On demand it answers "where does this area end".
+    render(<LodgingMap parties={[]} units={UNITS} year={2026} />)
+    expect(screen.queryAllByTestId('map-area-tint')).toHaveLength(0)
+    await userEvent.click(screen.getByLabelText('Area tint'))
+    expect(screen.getAllByTestId('map-area-tint')).toHaveLength(1)
+  })
+
+  it('shows the fade percentage and follows the slider', () => {
+    // Asserting only the initial 25% would pass against a hardcoded string.
+    render(<LodgingMap parties={[]} units={UNITS} year={2026} />)
+    expect(screen.getByTestId('map-fade-value')).toHaveTextContent('25%')
+    fireEvent.change(screen.getByLabelText(/fade map/i), { target: { value: '60' } })
+    expect(screen.getByTestId('map-fade-value')).toHaveTextContent('60%')
+  })
+
+  it('says how to zoom, pan and open a pin', () => {
+    // Wheel-zoom and drag-pan have no affordance of their own. Without this
+    // line the map reads as a static picture.
+    render(<LodgingMap parties={[]} units={UNITS} year={2026} />)
+    expect(screen.getByText(/scroll to zoom/i)).toBeInTheDocument()
+  })
+
+  it('labels the fit control in words, not only for screen readers', () => {
+    render(<LodgingMap parties={[]} units={UNITS} year={2026} />)
+    expect(screen.getByRole('button', { name: /fit all/i })).toBeInTheDocument()
+  })
+})
