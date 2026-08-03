@@ -142,6 +142,29 @@ describe('MapUnitPopover — a cluster of rooms', () => {
     }
   })
 
+  it('drops the building name the cluster shares, so cells differ visibly', () => {
+    // A browser found this: every cell read "Clouds Rest Ba…" / "Clouds Rest
+    // La…" and truncated away the distinguishing word.
+    const house = [
+      mapUnit(row({ unit_id: 'u1', code: 'cedar-back', name: 'Cedar Lodge Back' })),
+      mapUnit(row({ unit_id: 'u2', code: 'cedar-loft', name: 'Cedar Lodge Loft' })),
+    ]
+    render(<MapUnitPopover units={house} hue={HUE} onOpenParty={vi.fn()} />)
+    expect(screen.getByText('Back')).toBeInTheDocument()
+    expect(screen.getByText('Loft')).toBeInTheDocument()
+    expect(screen.queryByText(/Cedar Lodge Back/)).not.toBeInTheDocument()
+  })
+
+  it('leaves unrelated cabin names alone', () => {
+    const scattered = [
+      mapUnit(row({ unit_id: 'u1', code: 'cedar-1', name: 'Cedar 1' })),
+      mapUnit(row({ unit_id: 'u2', code: 'birch-2', name: 'Birch 2' })),
+    ]
+    render(<MapUnitPopover units={scattered} hue={HUE} onOpenParty={vi.fn()} />)
+    expect(screen.getByText('Cedar 1')).toBeInTheDocument()
+    expect(screen.getByText('Birch 2')).toBeInTheDocument()
+  })
+
   it('says a room is shared rather than showing only the first family', () => {
     const shared = [
       mapUnit(row({ unit_id: 'u1', code: 'cedar-1', name: 'Cedar 1' }), [

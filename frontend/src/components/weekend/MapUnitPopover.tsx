@@ -88,9 +88,34 @@ function DetailCard({ units, hue, onOpenParty }: MapUnitPopoverProps) {
   )
 }
 
+/**
+ * Drop the building name every cell in a cluster shares.
+ *
+ * Found in a browser, not by a test: a four-room house rendered every cell as
+ * "Clouds Rest Ba…", "Clouds Rest La…", "Clouds Rest Loft", "Clouds Rest Si…" —
+ * the shared prefix consumed the width and truncated away the only part that
+ * told them apart. Stripping the common leading WORDS leaves "Back", "Landing",
+ * "Loft", "Side".
+ *
+ * Never strips a name to nothing: the walk stops while every name still has a
+ * word left. Returns the names untouched when they share no prefix, which is
+ * the normal case for a cluster of unrelated cabins.
+ */
+function distinguishingNames(units: MapUnit[]): string[] {
+  const names = units.map((entry) => entry.unit.name)
+  if (names.length < 2) return names
+  const words = names.map((name) => name.split(' '))
+  let shared = 0
+  while (words.every((word) => word.length > shared + 1 && word[shared] === words[0]?.[shared])) {
+    shared += 1
+  }
+  return shared === 0 ? names : words.map((word) => word.slice(shared).join(' '))
+}
+
 function FootprintGrid({ units, hue, onOpenParty }: MapUnitPopoverProps) {
   const taken = units.filter((entry) => entry.parties.length > 0).length
   const columns = Math.ceil(Math.sqrt(units.length))
+  const shortNames = distinguishingNames(units)
 
   return (
     <div className="flex flex-col gap-1.5">
@@ -101,9 +126,10 @@ function FootprintGrid({ units, hue, onOpenParty }: MapUnitPopoverProps) {
         className="grid gap-1"
         style={{ gridTemplateColumns: `repeat(${String(columns)}, auto)` }}
       >
-        {units.map((entry) => {
+        {units.map((entry, index) => {
           const first = entry.parties[0]
           const extra = entry.parties.length - 1
+          const shortName = shortNames[index] ?? entry.unit.name
           // A shared room must SAY it is shared. Showing only the first name
           // makes a two-family room read as single-occupancy, and three rooms
           // are genuinely shared in the current year's data.
@@ -111,7 +137,7 @@ function FootprintGrid({ units, hue, onOpenParty }: MapUnitPopoverProps) {
             ? extra > 0
               ? `${first.display_name ?? ''} +${String(extra)}`
               : (first.display_name ?? '')
-            : entry.unit.name
+            : shortName
           const who = first
             ? entry.parties.map((party) => party.display_name ?? '').join(', ')
             : 'empty'
