@@ -379,6 +379,78 @@ class TestCopyFromMirror:
         assert exc_info.value.status_code == 400
 
     @pytest.mark.asyncio
+    async def test_a_failure_partway_through_is_not_mistaken_for_a_race(
+        self, write_service: LodgingWriteService, repo: MagicMock
+    ) -> None:
+        """The rows this call already wrote are not evidence of another caller.
+
+        The seed writes sequentially, so by row three it has put two rows in
+        the scenario itself. A bare "are there rows?" recheck then answers YES
+        to its own output and reports every later failure as a 409 race --
+        discarding the upstream status of a genuinely broken create, which is
+        the exact swallow `test_a_create_failure_that_is_not_a_race_keeps_its
+        _status` forbids for the first row. Most of a 62-row weekend's failure
+        surface is past the first row.
+
+        `held` must therefore exceed what this call wrote, not merely be
+        non-zero.
+        """
+        repo.count_draft_assignments = AsyncMock(side_effect=[0, 2])
+        repo.fetch_assignments = AsyncMock(
+            return_value=[
+                _mirror_row(),
+                _mirror_row(id="assign_2", household_cm_id=2000002),
+                _mirror_row(id="assign_3", household_cm_id=2000003),
+            ]
+        )
+        # Two rows land, the third fails for a reason that is not a race --
+        # a transient PocketBase error, or a unit deleted since the mirror was
+        # read.
+        repo.create_draft_assignment = AsyncMock(
+            side_effect=[
+                SimpleNamespace(id="draft_1"),
+                SimpleNamespace(id="draft_2"),
+                ClientResponseError("boom", status=400, data={}, url="", is_abort=False, original_error=None),
+            ]
+        )
+
+        with pytest.raises(HTTPException) as exc_info:
+            await write_service.copy_from_mirror(
+                PlacementCopyRequest(year=2026, session_cm_id=1000001, scenario="scn_1")
+            )
+
+        assert exc_info.value.status_code == 400, "this call's own two rows were read as another caller's seed"
+
+    @pytest.mark.asyncio
+    async def test_a_race_detected_partway_through_is_still_a_refusal(
+        self, write_service: LodgingWriteService, repo: MagicMock
+    ) -> None:
+        """The other half: rows BEYOND this call's own are a real race.
+
+        Interleaved seeds do not have to collide on the first row -- two
+        callers walking the same mirror list can each win a different party
+        before either collides. So the test is `held > copied`, not
+        `held == 0`, and it still catches the race it was added for.
+        """
+        repo.count_draft_assignments = AsyncMock(side_effect=[0, 4])
+        repo.fetch_assignments = AsyncMock(
+            return_value=[_mirror_row(), _mirror_row(id="assign_2", household_cm_id=2000002)]
+        )
+        repo.create_draft_assignment = AsyncMock(
+            side_effect=[
+                SimpleNamespace(id="draft_1"),
+                ClientResponseError(
+                    "unique constraint", status=400, data={}, url="", is_abort=False, original_error=None
+                ),
+            ]
+        )
+
+        with pytest.raises(ScenarioNotEmptyError):
+            await write_service.copy_from_mirror(
+                PlacementCopyRequest(year=2026, session_cm_id=1000001, scenario="scn_1")
+            )
+
+    @pytest.mark.asyncio
     async def test_a_failed_recheck_after_a_lost_seeding_race_keeps_its_status(
         self, write_service: LodgingWriteService, repo: MagicMock
     ) -> None:

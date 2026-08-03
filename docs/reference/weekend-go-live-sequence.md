@@ -199,9 +199,9 @@ Answer them; do not re-litigate them.
 
 `partyAttention` is advisory. `place_party`
 (`api/services/lodging_write_service.py:78-147`) does not enforce the
-fit/capacity check, by design — it DOES validate scenario, grain, permission
-and unique-index races, so do not read this as "the write path checks
-nothing". Every cabin currently has `is_confirmed = 0`, so
+fit/capacity check, by design — it DOES validate scenario, grain, permission,
+a non-empty unit set (#1974) and unique-index races, so do not read this as
+"the write path checks nothing". Every cabin currently has `is_confirmed = 0`, so
 `rosterAttention.ts:102` refuses to judge any housing need — the fit check is
 dark and will stay dark until staff physically walk the property. Ship drag
 with it dark. Do not bulk-confirm units to work around this; `is_confirmed`

@@ -341,8 +341,14 @@ re-place everything they unplaced, since unplacing is now the absence of a row. 
 worked plan against upstream drift is a DIFFERENT feature and does not exist.
 
 The count and the creates are separate round trips, so they race exactly as `place_party`'s
-find-then-create does, and are guarded the same way: a failed create re-counts, and rows where
-there were none is the race — reported as the same 409, not as the index's 400.
+find-then-create does, and are guarded the same way: a failed create re-counts, and rows **beyond
+the ones this copy wrote** are the race — reported as the same 409, not as the index's 400.
+
+**The test is `held > copied`, not `held > 0`, and the difference is not cosmetic.** The seed
+writes sequentially, so from its second row onwards it is looking at its own output; a bare
+"are there rows?" answers yes to itself and reports every later failure — a transient PocketBase
+error, a unit deleted since the mirror was read — as a 409 race, swallowing the real status. On a
+62-row weekend that is most of the failure surface.
 
 #### The `unit` / `merge` / `merge_draft` collapse into one `units` set (`2ae8a4ec`, #1931)
 
@@ -919,9 +925,10 @@ This section previously listed three unguarded paths and told you to fold them i
 | Path | Shape | Handled? |
 |---|---|---|
 | `place_party` create | find→create vs unique index | ✅ race-guarded |
-| `clear_placement` delete | delete between find and delete | ✅ 404-idempotent |
+| `unplace_party` delete | delete between find and delete | ✅ 404-idempotent |
 | `set_availability` delete | delete between find and delete | ✅ 404-idempotent |
 | `set_availability` create | find→create vs `idx_lodging_avail_unique` | ✅ race-guarded |
+| `copy_from_mirror` seed | count→create vs the draft's unique indexes | ✅ race-guarded (#1974) |
 
 A fifth row sat here — `delete_merge`, 404-idempotent — until **#1931** deleted that method
 along with `lodging_merges_draft`. Its shape is the same as the two deletes above, so nothing

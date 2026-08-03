@@ -241,12 +241,11 @@ class LodgingWriteService:
         both start writing, and the draft's partial unique indexes reject the
         loser. Unguarded that is a 400 out of `pb_error_to_http`: a different
         answer to the question the up-front check answers with a 409. So a
-        failed create re-counts, and rows appearing where there were none is
-        the race, reported as the refusal it already has a word for. If the
-        scenario is still empty the create failed for another reason and keeps
-        its upstream status. The re-count is inside the except block and
-        wrapped for the same reason `place_party`'s recovery is: an unwrapped
-        failure there is the bare 500 the guard exists to prevent.
+        failed create re-counts, and rows beyond the ones this call wrote are
+        the race, reported as the refusal it already has a word for. Anything
+        else keeps its upstream status. See `_seed_failure` for why the test
+        is `held > copied` rather than `held > 0` -- by the second row this
+        call is looking at its own writes.
 
         The creates are SEQUENTIAL and there is no transaction -- PocketBase's
         REST layer offers none across records. A create that fails part-way
@@ -302,7 +301,7 @@ class LodgingWriteService:
             try:
                 await self.repository.create_draft_assignment(data)
             except ClientResponseError as exc:
-                raise await self._seed_failure(exc, request, session_pb_id) from exc
+                raise await self._seed_failure(exc, request, session_pb_id, copied) from exc
             copied += 1
 
         logger.info(
@@ -318,13 +317,25 @@ class LodgingWriteService:
         return LodgingCopyResponse(copied=copied, skipped=skipped)
 
     async def _seed_failure(
-        self, exc: ClientResponseError, request: PlacementCopyRequest, session_pb_id: str
+        self, exc: ClientResponseError, request: PlacementCopyRequest, session_pb_id: str, copied: int
     ) -> Exception:
         """Decide what a failed seed create means: a lost race, or a failure.
 
-        Rows where the up-front count found none means another caller seeded
-        this scenario between the two round trips, which is the state that
+        Rows BEYOND the ones this call wrote mean another caller seeded the
+        scenario between the up-front count and now, which is the state that
         check refuses -- so it gets the same answer, not the index's 400.
+
+        The test is `held > copied`, not `held > 0`, and the difference is the
+        whole method. The seed writes sequentially, so from the second row on
+        it has put rows in the scenario ITSELF; a bare "are there rows?" would
+        answer yes to its own output and report every later failure as a race,
+        swallowing the upstream status of a genuinely broken create. Past the
+        first row is most of a 62-row weekend.
+
+        `held > copied` still catches a real race detected part-way, which
+        interleaving makes possible: two callers walking the same mirror list
+        can each win a different party before either collides, so the loser is
+        not obliged to fail on its first create.
 
         The re-count can itself fail, and its failure is wrapped rather than
         raised bare: this runs inside an except block, so a ClientResponseError
@@ -335,10 +346,11 @@ class LodgingWriteService:
             held = await self.repository.count_draft_assignments(request.year, session_pb_id, request.scenario)
         except ClientResponseError as recheck_exc:
             return pb_error_to_http(recheck_exc)
-        if held:
+        if held > copied:
             return ScenarioNotEmptyError(
                 f"Scenario {request.scenario} was seeded by another caller while this copy was running "
-                f"({held} placement(s) for weekend {request.session_cm_id} in {request.year})"
+                f"({held} placement(s) for weekend {request.session_cm_id} in {request.year}, "
+                f"{copied} written by this copy)"
             )
         return pb_error_to_http(exc)
 
@@ -357,7 +369,7 @@ class LodgingWriteService:
 
         The delete: the find above sees the row, but it can vanish before the
         delete reaches PocketBase -- two staff releasing the same unit, or a
-        double-click. ONLY 404 is swallowed, exactly as clear_placement's
+        double-click. ONLY 404 is swallowed, exactly as unplace_party's
         delete is; any other failure keeps its status through pb_error_to_http.
 
         The create: `idx_lodging_avail_unique` is UNIQUE on (session, year,
