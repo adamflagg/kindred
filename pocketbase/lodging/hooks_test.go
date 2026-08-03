@@ -2,6 +2,7 @@ package lodging
 
 import (
 	"bytes"
+	"fmt"
 	"io"
 	"os"
 	"strings"
@@ -11,9 +12,23 @@ import (
 	"github.com/pocketbase/pocketbase/tests"
 )
 
-// setupCollections creates minimal lodging_units, lodging_merges and
-// lodging_assignments collections in the test app — only the fields the
+// setupCollections creates minimal lodging_units and lodging_assignments
+// collections (plus the draft twin) in the test app — only the fields the
 // guards read. The production schema has many more.
+//
+// `units` is declared exactly as 1500000134 declares it on BOTH placement
+// tables: multi-valued (MaxSelect 20), OPTIONAL, and cascadeDelete false.
+// All three matter to what the guards have to do. Optional is why a placement
+// can end up naming no cabin at all; cascadeDelete false is why deleting a
+// unit shrinks a placement's set rather than removing the row.
+//
+// Keeping this fixture level with the migration is not housekeeping, it is the
+// difference between a suite that tests something and one that does not
+// (kindred#1921). While it still declared the single-valued `unit`/`merge`
+// columns 1500000134 had already dropped, every test below passed green
+// against a guardAssignmentGrain that rejected 100% of writes to a real
+// database, and against a guardUnitDelete that could not see a placement at
+// all.
 func setupCollections(t *testing.T, app core.App) {
 	t.Helper()
 
@@ -29,8 +44,8 @@ func setupCollections(t *testing.T, app core.App) {
 	}
 
 	// Distinct name rather than reusing `err`: it would otherwise stay live
-	// (via this `:=`) all the way to the `merges` block's own `if err :=`
-	// below and turn that pre-existing line into a govet shadow report.
+	// (via this `:=`) all the way to the placement blocks' own `if err :=`
+	// below and turn those pre-existing lines into govet shadow reports.
 	unitsSelf, selfErr := app.FindCollectionByNameOrId("lodging_units")
 	if selfErr != nil {
 		t.Fatalf("find lodging_units: %v", selfErr)
@@ -42,63 +57,26 @@ func setupCollections(t *testing.T, app core.App) {
 		t.Fatalf("add parent_unit: %v", err)
 	}
 
-	merges := core.NewBaseCollection("lodging_merges")
-	merges.Fields.Add(&core.TextField{Name: "display_name"})
-	if err := app.Save(merges); err != nil {
-		t.Fatalf("save lodging_merges: %v", err)
-	}
-
 	unitsCol, err := app.FindCollectionByNameOrId("lodging_units")
 	if err != nil {
 		t.Fatalf("find lodging_units: %v", err)
 	}
-	mergesCol, err := app.FindCollectionByNameOrId("lodging_merges")
-	if err != nil {
-		t.Fatalf("find lodging_merges: %v", err)
-	}
 
-	assignments := core.NewBaseCollection("lodging_assignments")
-	assignments.Fields.Add(&core.RelationField{
-		Name: "unit", CollectionId: unitsCol.Id, MaxSelect: 1,
-	})
-	assignments.Fields.Add(&core.RelationField{
-		Name: "merge", CollectionId: mergesCol.Id, MaxSelect: 1,
-	})
-	assignments.Fields.Add(&core.NumberField{Name: "household_cm_id"})
-	assignments.Fields.Add(&core.NumberField{Name: "person_cm_id"})
-	assignments.Fields.Add(&core.NumberField{Name: "year"})
-	if err := app.Save(assignments); err != nil {
-		t.Fatalf("save lodging_assignments: %v", err)
-	}
-
-	// The draft grain (1500000132). Staff hold bunking.manage on these, so a
-	// write can arrive straight at the PocketBase REST API without passing
+	// The confirmed board and the draft grain (1500000132) carry the SAME
+	// placement shape after 1500000134. Staff hold bunking.manage on the draft,
+	// so a write can arrive straight at the PocketBase REST API without passing
 	// through the FastAPI schemas that enforce the grain rule.
-	mergesDraft := core.NewBaseCollection("lodging_merges_draft")
-	mergesDraft.Fields.Add(&core.TextField{Name: "display_name"})
-	if err := app.Save(mergesDraft); err != nil {
-		t.Fatalf("save lodging_merges_draft: %v", err)
-	}
-	mergesDraftCol, draftErr := app.FindCollectionByNameOrId("lodging_merges_draft")
-	if draftErr != nil {
-		t.Fatalf("find lodging_merges_draft: %v", draftErr)
-	}
-
-	assignmentsDraft := core.NewBaseCollection("lodging_assignments_draft")
-	assignmentsDraft.Fields.Add(&core.RelationField{
-		Name: "unit", CollectionId: unitsCol.Id, MaxSelect: 1,
-	})
-	assignmentsDraft.Fields.Add(&core.RelationField{
-		Name: "merge", CollectionId: mergesCol.Id, MaxSelect: 1,
-	})
-	assignmentsDraft.Fields.Add(&core.RelationField{
-		Name: "merge_draft", CollectionId: mergesDraftCol.Id, MaxSelect: 1,
-	})
-	assignmentsDraft.Fields.Add(&core.NumberField{Name: "household_cm_id"})
-	assignmentsDraft.Fields.Add(&core.NumberField{Name: "person_cm_id"})
-	assignmentsDraft.Fields.Add(&core.NumberField{Name: "year"})
-	if err := app.Save(assignmentsDraft); err != nil {
-		t.Fatalf("save lodging_assignments_draft: %v", err)
+	for _, name := range []string{"lodging_assignments", "lodging_assignments_draft"} {
+		placements := core.NewBaseCollection(name)
+		placements.Fields.Add(&core.RelationField{
+			Name: "units", CollectionId: unitsCol.Id, MaxSelect: 20,
+		})
+		placements.Fields.Add(&core.NumberField{Name: "household_cm_id"})
+		placements.Fields.Add(&core.NumberField{Name: "person_cm_id"})
+		placements.Fields.Add(&core.NumberField{Name: "year"})
+		if err := app.Save(placements); err != nil {
+			t.Fatalf("save %s: %v", name, err)
+		}
 	}
 
 	aliases := core.NewBaseCollection("lodging_unit_aliases")
@@ -255,54 +233,65 @@ func captureStdout(t *testing.T, fn func()) (out string) {
 	return ""
 }
 
-func newMerge(t *testing.T, app core.App, displayName string) *core.Record {
+// newPlacement saves a row on one of the two placement tables WITHOUT the
+// guards attached, so tests can stage the state a guard is supposed to protect.
+func newPlacement(
+	t *testing.T, app core.App, collection string, unitIDs []string, householdCmID, personCmID int,
+) *core.Record {
 	t.Helper()
-	col, err := app.FindCollectionByNameOrId("lodging_merges")
+	col, err := app.FindCollectionByNameOrId(collection)
 	if err != nil {
-		t.Fatalf("find lodging_merges: %v", err)
+		t.Fatalf("find %s: %v", collection, err)
 	}
 	r := core.NewRecord(col)
-	r.Set("display_name", displayName)
-	if err := app.Save(r); err != nil {
-		t.Fatalf("save merge %q: %v", displayName, err)
-	}
-	return r
-}
-
-// newDraftMerge saves a board-built slot and returns its id. Distinct from
-// newMerge: that one writes the ingest's table, this one the draft twin.
-func newDraftMerge(t *testing.T, app core.App, displayName string) string {
-	t.Helper()
-	col, err := app.FindCollectionByNameOrId("lodging_merges_draft")
-	if err != nil {
-		t.Fatalf("find lodging_merges_draft: %v", err)
-	}
-	r := core.NewRecord(col)
-	r.Set("display_name", displayName)
-	if err := app.Save(r); err != nil {
-		t.Fatalf("save draft merge %q: %v", displayName, err)
-	}
-	return r.Id
-}
-
-// newAssignment saves an assignment WITHOUT the guards attached, so tests can
-// stage the state a guard is supposed to protect.
-func newAssignment(t *testing.T, app core.App, unitID, mergeID string, householdCmID, personCmID int) *core.Record {
-	t.Helper()
-	col, err := app.FindCollectionByNameOrId("lodging_assignments")
-	if err != nil {
-		t.Fatalf("find lodging_assignments: %v", err)
-	}
-	r := core.NewRecord(col)
-	r.Set("unit", unitID)
-	r.Set("merge", mergeID)
+	r.Set("units", unitIDs)
 	r.Set("household_cm_id", householdCmID)
 	r.Set("person_cm_id", personCmID)
 	r.Set("year", 2026)
 	if err := app.Save(r); err != nil {
-		t.Fatalf("save assignment: %v", err)
+		t.Fatalf("save %s: %v", collection, err)
 	}
 	return r
+}
+
+// newAssignment stages a placement on the CONFIRMED board.
+func newAssignment(t *testing.T, app core.App, unitIDs []string, householdCmID, personCmID int) *core.Record {
+	t.Helper()
+	return newPlacement(t, app, "lodging_assignments", unitIDs, householdCmID, personCmID)
+}
+
+// newDraftAssignment stages a placement inside a saved SCENARIO. It is a
+// separate helper from newAssignment because the difference between the two
+// tables is the entire subject of kindred#1923(a).
+func newDraftAssignment(t *testing.T, app core.App, unitIDs []string, householdCmID, personCmID int) *core.Record {
+	t.Helper()
+	return newPlacement(t, app, "lodging_assignments_draft", unitIDs, householdCmID, personCmID)
+}
+
+// assertUnitDeleteRefused fails unless the delete was refused BY guardUnitDelete
+// having COUNTED wantCount placements.
+//
+// A bare `err != nil` would not have caught the bug this task exists to fix, and
+// worse, would have looked like proof it was absent. While countAssignments
+// still filtered on the `unit` column 1500000134 dropped, FindRecordsByFilter
+// errored on the unknown field and guardUnitDelete returned THAT error — so
+// against a real database the delete was refused for a reason with nothing to
+// do with whether anything is placed, including for units nothing references.
+// Matching the staff-facing sentence tells a refusal from the guard apart from
+// a refusal from a broken query, and matching the count tells a guard that
+// found the placement apart from one that found some other row.
+func assertUnitDeleteRefused(t *testing.T, err error, wantCount int) {
+	t.Helper()
+	if err == nil {
+		t.Fatal("expected the delete to be refused, got nil error")
+	}
+	msg := err.Error()
+	if !strings.Contains(msg, "Set it inactive instead") {
+		t.Fatalf("the delete was refused, but not by guardUnitDelete: %v", err)
+	}
+	if want := fmt.Sprintf("%d lodging placement", wantCount); !strings.Contains(msg, want) {
+		t.Fatalf("guardUnitDelete counted wrong: want %q in %q", want, msg)
+	}
 }
 
 func TestDeletingAUnitWithAnAssignmentIsBlocked(t *testing.T) {
@@ -314,18 +303,98 @@ func TestDeletingAUnitWithAnAssignmentIsBlocked(t *testing.T) {
 
 	setupCollections(t, app)
 	unit := newUnit(t, app, "ridge-a", "Ridge A")
-	newAssignment(t, app, unit.Id, "", 2000001, 0)
+	newAssignment(t, app, []string{unit.Id}, 2000001, 0)
 
 	wireHooks(app)
 
-	if err := app.Delete(unit); err == nil {
-		t.Fatal("expected the delete to be blocked, got nil error")
-	}
+	assertUnitDeleteRefused(t, app.Delete(unit), 1)
 	if _, err := app.FindRecordById("lodging_units", unit.Id); err != nil {
 		t.Fatalf("unit should still exist after a blocked delete: %v", err)
 	}
 }
 
+// TestGuardUnitDeleteSeesDraftPlacements closes kindred#1923(a). Until this,
+// countAssignments looked at the confirmed board only, so a unit that nothing
+// had been confirmed into deleted cleanly however many scenarios had parties
+// in it.
+//
+// It is a user-facing tightening, and deliberate: lodging_units is deletable
+// from /manage/lodging by anyone holding bunking.manage, typically a different
+// person from whoever built the scenario the delete would empty. `units` is
+// cascadeDelete:false, so the draft rows are not removed — PocketBase's own
+// cleanup strips this id out of each one and re-saves it unvalidated, leaving
+// parties sitting in a scenario with no cabin and nothing to say why.
+func TestGuardUnitDeleteSeesDraftPlacements(t *testing.T) {
+	app, err := tests.NewTestApp()
+	if err != nil {
+		t.Fatalf("NewTestApp: %v", err)
+	}
+	defer app.Cleanup()
+
+	setupCollections(t, app)
+	// Nothing on the confirmed board at all — the whole point.
+	unit := newUnit(t, app, "ridge-a", "Ridge A")
+	newDraftAssignment(t, app, []string{unit.Id}, 2000001, 0)
+
+	wireHooks(app)
+
+	assertUnitDeleteRefused(t, app.Delete(unit), 1)
+	if _, err := app.FindRecordById("lodging_units", unit.Id); err != nil {
+		t.Fatalf("unit should still exist after a blocked delete: %v", err)
+	}
+}
+
+// The two grains are SUMMED, not short-circuited. A guard that returned on the
+// first non-empty table would still refuse this delete, so only the count in
+// the message distinguishes it — and staff acting on "1 placement" when there
+// are two would go looking in the wrong place.
+func TestDeletingAUnitCountsBothGrainsTogether(t *testing.T) {
+	app, err := tests.NewTestApp()
+	if err != nil {
+		t.Fatalf("NewTestApp: %v", err)
+	}
+	defer app.Cleanup()
+
+	setupCollections(t, app)
+	unit := newUnit(t, app, "ridge-a", "Ridge A")
+	newAssignment(t, app, []string{unit.Id}, 2000001, 0)
+	newDraftAssignment(t, app, []string{unit.Id}, 2000002, 0)
+
+	wireHooks(app)
+
+	assertUnitDeleteRefused(t, app.Delete(unit), 2)
+}
+
+// A unit sitting SECOND in a placement's set — what a merged slot became when
+// 1500000134 collapsed lodging_merges into `units`. This is the case the old
+// guardMergeDelete covered and the one a filter that only inspects the first
+// member of the set would silently drop, releasing a room out from under an
+// occupied two-room slot (spec §3.4).
+func TestDeletingAUnitHeldAsALaterMemberIsBlocked(t *testing.T) {
+	app, err := tests.NewTestApp()
+	if err != nil {
+		t.Fatalf("NewTestApp: %v", err)
+	}
+	defer app.Cleanup()
+
+	setupCollections(t, app)
+	first := newUnit(t, app, "ridge-a", "Ridge A")
+	second := newUnit(t, app, "ridge-b", "Ridge B")
+	newAssignment(t, app, []string{first.Id, second.Id}, 2000001, 0)
+
+	wireHooks(app)
+
+	assertUnitDeleteRefused(t, app.Delete(second), 1)
+}
+
+// The guard has to RELEASE units too, or nothing is ever deletable and §3.8's
+// "deactivate, don't delete" becomes "you cannot delete."
+//
+// The staged siblings are what give this test teeth. Both placement tables hold
+// rows here, just not rows naming this unit, so it fails against a filter that
+// matches every row once any set is non-empty, and it fails against a filter
+// that errors — the exact state guardUnitDelete was in against a real database
+// before this change, where every unit was undeletable for the wrong reason.
 func TestDeletingAnUnusedUnitIsAllowed(t *testing.T) {
 	app, err := tests.NewTestApp()
 	if err != nil {
@@ -334,66 +403,56 @@ func TestDeletingAnUnusedUnitIsAllowed(t *testing.T) {
 	defer app.Cleanup()
 
 	setupCollections(t, app)
-	unit := newUnit(t, app, "ridge-b", "Ridge B")
+	occupied := newUnit(t, app, "ridge-a", "Ridge A")
+	newAssignment(t, app, []string{occupied.Id}, 2000001, 0)
+	newDraftAssignment(t, app, []string{occupied.Id}, 2000002, 0)
+
+	free := newUnit(t, app, "ridge-b", "Ridge B")
 
 	wireHooks(app)
 
-	if err := app.Delete(unit); err != nil {
+	if err := app.Delete(free); err != nil {
 		t.Fatalf("expected an unreferenced unit to delete cleanly, got: %v", err)
 	}
 }
 
-func TestDeletingAnOccupiedMergeIsBlocked(t *testing.T) {
-	app, err := tests.NewTestApp()
-	if err != nil {
-		t.Fatalf("NewTestApp: %v", err)
+// newUnits stages n units and returns their ids, so a grain case can ask for a
+// set of a given SIZE without caring which rooms are in it.
+func newUnits(t *testing.T, app core.App, n int) []string {
+	t.Helper()
+	ids := make([]string, 0, n)
+	for i := range n {
+		code := fmt.Sprintf("ridge-%d", i)
+		ids = append(ids, newUnit(t, app, code, "Ridge "+code).Id)
 	}
-	defer app.Cleanup()
-
-	setupCollections(t, app)
-	merge := newMerge(t, app, "Wawona")
-	newAssignment(t, app, "", merge.Id, 2000001, 0)
-
-	wireHooks(app)
-
-	if err := app.Delete(merge); err == nil {
-		t.Fatal("expected unmerge to be blocked while a party occupies the slot")
-	}
+	return ids
 }
 
-func TestDeletingAnEmptyMergeIsAllowed(t *testing.T) {
-	app, err := tests.NewTestApp()
-	if err != nil {
-		t.Fatalf("NewTestApp: %v", err)
-	}
-	defer app.Cleanup()
-
-	setupCollections(t, app)
-	merge := newMerge(t, app, "Tenaya 1and2")
-
-	wireHooks(app)
-
-	if err := app.Delete(merge); err != nil {
-		t.Fatalf("expected an unoccupied merge to unmerge cleanly, got: %v", err)
-	}
-}
-
+// TestAssignmentGrainXor pins the CONFIRMED board's truth table after
+// 1500000134 collapsed unit/merge into `units`.
+//
+// The target half of the rule changed shape, not intent. "Exactly one of unit
+// or merge" is now "at least one unit": a merged slot is a set of two or more,
+// which used to be the `merge` branch and is now indistinguishable from any
+// other placement, so the only target state left to reject is a set holding
+// NOTHING. That mirrors sync.ValidateAssignmentGrain's ErrGrainNoPlacement for
+// the writes that never pass through the sync package — a POST straight at the
+// PocketBase REST API, and 1500000134's own backfill.
 func TestAssignmentGrainXor(t *testing.T) {
 	cases := []struct {
 		name          string
-		unitSet       bool
-		mergeSet      bool
+		unitCount     int
 		householdCmID int
 		personCmID    int
 		wantErr       bool
 	}{
-		{"household on a unit", true, false, 2000001, 0, false},
-		{"person on a unit", true, false, 0, 1000001, false},
-		{"household on a merge", false, true, 2000001, 0, false},
-		{"neither unit nor merge", false, false, 2000001, 0, true},
-		{"both unit and merge", true, true, 2000001, 0, true},
-		{"both household and person", true, false, 2000001, 1000001, true},
-		{"neither household nor person", true, false, 0, 0, true},
+		{"household in one room", 1, 2000001, 0, false},
+		{"person in one room", 1, 0, 1000001, false},
+		// What used to be the `merge` branch. Legal, and no longer special.
+		{"household across two rooms", 2, 2000001, 0, false},
+		{"no units at all", 0, 2000001, 0, true},
+		{"both household and person", 1, 2000001, 1000001, true},
+		{"neither household nor person", 1, 0, 0, true},
 	}
 
 	for _, tc := range cases {
@@ -405,14 +464,7 @@ func TestAssignmentGrainXor(t *testing.T) {
 			defer app.Cleanup()
 
 			setupCollections(t, app)
-			unitID := ""
-			if tc.unitSet {
-				unitID = newUnit(t, app, "ridge-a", "Ridge A").Id
-			}
-			mergeID := ""
-			if tc.mergeSet {
-				mergeID = newMerge(t, app, "Wawona").Id
-			}
+			unitIDs := newUnits(t, app, tc.unitCount)
 
 			wireHooks(app)
 
@@ -421,8 +473,7 @@ func TestAssignmentGrainXor(t *testing.T) {
 				t.Fatalf("find lodging_assignments: %v", err)
 			}
 			r := core.NewRecord(col)
-			r.Set("unit", unitID)
-			r.Set("merge", mergeID)
+			r.Set("units", unitIDs)
 			r.Set("household_cm_id", tc.householdCmID)
 			r.Set("person_cm_id", tc.personCmID)
 			r.Set("year", 2026)
@@ -438,6 +489,43 @@ func TestAssignmentGrainXor(t *testing.T) {
 	}
 }
 
+// A PRODUCTION-BOOT constraint, not a redundant restatement of the case above.
+//
+// On the deploy that ships this branch, migration 1500000134 runs against an
+// image already carrying the guard below it. Its backfill writes exactly one
+// shape — a non-empty `units` on a row whose party grain the database already
+// held — and it writes it with app.saveNoValidate(). That does NOT bypass this
+// hook: withValidations skips FIELD validation only, and Save and
+// SaveNoValidate both reach BaseApp.save, which fires OnRecordUpdate either
+// way. So if guardAssignmentGrain ever stops accepting this shape, the
+// migration throws, every pending migration rolls back with it (they share one
+// transaction), and the container crash-loops.
+//
+// It reproduces the backfill's own write ORDER: the row exists first with the
+// party grain and no units, exactly as the pre-134 rows did, and `units` is
+// added by a second save. The table-driven case above only ever creates.
+func TestABackfillShapedRowPassesTheGrainGuard(t *testing.T) {
+	app, err := tests.NewTestApp()
+	if err != nil {
+		t.Fatalf("NewTestApp: %v", err)
+	}
+	defer app.Cleanup()
+
+	setupCollections(t, app)
+	unit := newUnit(t, app, "ridge-a", "Ridge A")
+	// Staged before wiring, standing in for a row written under the old schema.
+	row := newAssignment(t, app, nil, 2000001, 0)
+
+	wireHooks(app)
+
+	row.Set("units", []string{unit.Id})
+	if err := app.SaveNoValidate(row); err != nil {
+		t.Fatalf(
+			"1500000134's backfill write must pass guardAssignmentGrain or the "+
+				"deploy crash-loops on boot, got: %v", err)
+	}
+}
+
 // TestDraftAssignmentGrainXor is the backstop for a DIRECT write to the draft
 // table, which 1500000132 widened who can make: staff hold bunking.manage on
 // lodging_assignments_draft, so a POST straight to the PocketBase REST API
@@ -445,28 +533,26 @@ func TestAssignmentGrainXor(t *testing.T) {
 // schemas. Same reasoning as guardUnitParentCycle, which exists because
 // 1500000130 widened who can write lodging_units.
 //
-// The TARGET rule is deliberately NOT the truth table's. A draft row naming no
-// unit and no merge is the TOMBSTONE -- "staff took this party off the board in
-// this scenario" -- and is a legitimate row, which is why guardAssignmentGrain
-// cannot simply be re-bound here. Only the party grain is enforced.
+// The TARGET rule is deliberately NOT the truth table's, and 1500000134 did not
+// change that. An EMPTY `units` set on a draft row is the TOMBSTONE -- "staff
+// took this party off the board in this scenario" -- and is a legitimate row,
+// which is why guardAssignmentGrain, which now rejects exactly that, cannot
+// simply be re-bound here. Only the party grain is enforced.
 func TestDraftAssignmentGrainXor(t *testing.T) {
 	cases := []struct {
 		name          string
-		unitSet       bool
-		mergeDraftSet bool
+		unitCount     int
 		householdCmID int
 		personCmID    int
 		wantErr       bool
 	}{
-		{"household on a unit", true, false, 2000001, 0, false},
-		{"person on a unit", true, false, 0, 1000001, false},
-		{"household on a board-built merge", false, true, 2000001, 0, false},
+		{"household in one room", 1, 2000001, 0, false},
+		{"person in one room", 1, 0, 1000001, false},
+		{"household across two rooms", 2, 2000001, 0, false},
 		// The tombstone. Illegal on the truth table, meaningful here.
-		{"no target at all is the tombstone", false, false, 2000001, 0, false},
-		// No XOR across targets on the draft, exactly as the migration says.
-		{"both a unit and a board-built merge", true, true, 2000001, 0, false},
-		{"both household and person", true, false, 2000001, 1000001, true},
-		{"neither household nor person", true, false, 0, 0, true},
+		{"no units at all is the tombstone", 0, 2000001, 0, false},
+		{"both household and person", 1, 2000001, 1000001, true},
+		{"neither household nor person", 1, 0, 0, true},
 	}
 
 	for _, tc := range cases {
@@ -478,14 +564,7 @@ func TestDraftAssignmentGrainXor(t *testing.T) {
 			defer app.Cleanup()
 
 			setupCollections(t, app)
-			unitID := ""
-			if tc.unitSet {
-				unitID = newUnit(t, app, "ridge-a", "Ridge A").Id
-			}
-			mergeDraftID := ""
-			if tc.mergeDraftSet {
-				mergeDraftID = newDraftMerge(t, app, "Wawona")
-			}
+			unitIDs := newUnits(t, app, tc.unitCount)
 
 			wireHooks(app)
 
@@ -494,8 +573,7 @@ func TestDraftAssignmentGrainXor(t *testing.T) {
 				t.Fatalf("find lodging_assignments_draft: %v", err)
 			}
 			r := core.NewRecord(col)
-			r.Set("unit", unitID)
-			r.Set("merge_draft", mergeDraftID)
+			r.Set("units", unitIDs)
 			r.Set("household_cm_id", tc.householdCmID)
 			r.Set("person_cm_id", tc.personCmID)
 			r.Set("year", 2026)
@@ -774,7 +852,7 @@ func TestReplayOnResolveFiresOnceNotOnItsOwnResave(t *testing.T) {
 
 	setupCollections(t, app)
 	// Party-scoped, so replayOnResolve routes to sync.ReplayIssue.
-	issue := newIssue(t, app, "no_session", "Tuolumne 7", 2026, 2000001, 0)
+	issue := newIssue(t, app, "no_session", "Ridge A 7", 2026, 2000001, 0)
 
 	wireHooks(app)
 
@@ -788,7 +866,7 @@ func TestReplayOnResolveFiresOnceNotOnItsOwnResave(t *testing.T) {
 		// lets this one through, since wasResolved is false here too, and every
 		// re-hit open row would then pay a full ~1-2s newReplayScope on every
 		// sync.
-		issue.Set("raw_value", "Tuolumne 7") // no-op write: same value, still false
+		issue.Set("raw_value", "Ridge A 7") // no-op write: same value, still false
 		if err := app.Save(issue); err != nil {
 			t.Fatalf("touching the still-open issue: %v", err)
 		}

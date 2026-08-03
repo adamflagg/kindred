@@ -7,75 +7,16 @@ import (
 	"github.com/pocketbase/pocketbase/tests"
 )
 
-// setupMultiRelationCollections creates a minimal lodging_units and
-// lodging_assignments pair for the units-relation filter spike.
+// TestMultiRelationAnyMatchFilter is the evidence behind the one filter string
+// countAssignments (hooks.go) depends on. A filter that silently matches
+// nothing would make guardUnitDelete permissive rather than erroring, so this
+// is a characterisation test of PocketBase's filter DSL, not a unit test of our
+// own code. It runs against the package fixture, which declares `units`
+// exactly as 1500000134 does — the spike's own private fixture existed only
+// while setupCollections still carried the dropped unit/merge columns.
 //
-// Deliberately separate from setupCollections (hooks_test.go): that fixture
-// still carries the single-valued unit/merge fields every other test in this
-// package exercises today, and keeps them until the guards that read them are
-// rewritten onto `units` (kindred#1931 task 6). This schema declares `units`
-// WITHOUT unit/merge so it pins the shape those guards will actually query
-// once that lands, rather than a hybrid state production will never have --
-// the mirror image of the #1921 failure, where a fixture kept a column
-// production had already dropped.
-func setupMultiRelationCollections(t *testing.T, app core.App) {
-	t.Helper()
-
-	units := core.NewBaseCollection("lodging_units")
-	units.Fields.Add(&core.TextField{Name: "code", Required: true})
-	units.Fields.Add(&core.TextField{Name: "name", Required: true})
-	units.Fields.Add(&core.BoolField{Name: "is_active"})
-	if err := app.Save(units); err != nil {
-		t.Fatalf("save lodging_units: %v", err)
-	}
-
-	unitsCol, err := app.FindCollectionByNameOrId("lodging_units")
-	if err != nil {
-		t.Fatalf("find lodging_units: %v", err)
-	}
-
-	assignments := core.NewBaseCollection("lodging_assignments")
-	assignments.Fields.Add(&core.RelationField{
-		Name: "units", CollectionId: unitsCol.Id, MaxSelect: 20,
-	})
-	assignments.Fields.Add(&core.NumberField{Name: "household_cm_id"})
-	assignments.Fields.Add(&core.NumberField{Name: "person_cm_id"})
-	assignments.Fields.Add(&core.NumberField{Name: "year"})
-	if err := app.Save(assignments); err != nil {
-		t.Fatalf("save lodging_assignments: %v", err)
-	}
-}
-
-// newAssignmentWithUnits saves an assignment against the units-relation
-// schema -- the multi-valued twin of newAssignment (hooks_test.go), which
-// still targets the single-valued unit/merge fields.
-func newAssignmentWithUnits(
-	t *testing.T, app core.App, unitIDs []string, householdCmID, personCmID int,
-) *core.Record {
-	t.Helper()
-	col, err := app.FindCollectionByNameOrId("lodging_assignments")
-	if err != nil {
-		t.Fatalf("find lodging_assignments: %v", err)
-	}
-	r := core.NewRecord(col)
-	r.Set("units", unitIDs)
-	r.Set("household_cm_id", householdCmID)
-	r.Set("person_cm_id", personCmID)
-	r.Set("year", 2026)
-	if err := app.Save(r); err != nil {
-		t.Fatalf("save assignment: %v", err)
-	}
-	return r
-}
-
-// TestMultiRelationAnyMatchFilter proves how a multi-valued relation is
-// filtered before countAssignments depends on one (kindred#1931 task 6). A
-// filter that silently matches nothing would make guardUnitDelete
-// permissive rather than erroring, so this is a characterisation test of
-// PocketBase's filter DSL, not a unit test of our own code.
-//
-// RESULT: the filter is "units.id ?= {:id}" -- both parts matter, and Task 6
-// must use this string verbatim:
+// RESULT: the filter is "units.id ?= {:id}" -- both parts matter, and
+// countAssignments uses this string verbatim:
 //
 //   - The `.id` sub-field reference is required. A bare "units" compares
 //     against the field's raw stored representation without ever joining
@@ -103,27 +44,29 @@ func TestMultiRelationAnyMatchFilter(t *testing.T) {
 	}
 	defer app.Cleanup()
 
-	setupMultiRelationCollections(t, app)
+	setupCollections(t, app)
 
 	alpha := newUnit(t, app, "ALPHA", "Alpha")
 	bravo := newUnit(t, app, "BRAVO", "Bravo")
 	charlie := newUnit(t, app, "CHARLIE", "Charlie")
-	holdsAlpha := newAssignmentWithUnits(t, app, []string{alpha.Id, bravo.Id}, 2000001, 0)
+	holdsAlpha := newAssignment(t, app, []string{alpha.Id, bravo.Id}, 2000001, 0)
 	// A sibling row that does NOT hold alpha. Without it, a filter that
 	// matched every row regardless of id (or errored into an empty result on
 	// the other end) would look identical to a correct one at len(got) == 1.
-	newAssignmentWithUnits(t, app, []string{charlie.Id}, 2000002, 0)
+	newAssignment(t, app, []string{charlie.Id}, 2000002, 0)
 
+	// Distinct names rather than reusing `got`/`err`: either would shadow the
+	// outer binding and draw a govet shadow report.
 	byID := func(id string) []*core.Record {
 		t.Helper()
-		got, err := app.FindRecordsByFilter(
+		matched, filterErr := app.FindRecordsByFilter(
 			"lodging_assignments", "units.id ?= {:id}", "", 0, 0,
 			map[string]any{"id": id},
 		)
-		if err != nil {
-			t.Fatalf("filter errored for id %q: %v", id, err)
+		if filterErr != nil {
+			t.Fatalf("filter errored for id %q: %v", id, filterErr)
 		}
-		return got
+		return matched
 	}
 
 	// alpha sits FIRST in the set -- the case Step 1's original assertion
@@ -145,7 +88,8 @@ func TestMultiRelationAnyMatchFilter(t *testing.T) {
 	// production failure mode: guardUnitDelete calling this on a genuinely
 	// unreferenced unit must see 0, or the delete guard can never release one.
 	unreferenced := newUnit(t, app, "DELTA", "Delta")
-	if got := byID(unreferenced.Id); len(got) != 0 {
+	got = byID(unreferenced.Id)
+	if len(got) != 0 {
 		t.Fatalf("units.id ?= an unreferenced unit matched %d row(s), want 0", len(got))
 	}
 
@@ -171,7 +115,8 @@ func TestMultiRelationAnyMatchFilter(t *testing.T) {
 		t.Fatalf(
 			"bare \"units ?= {:id}\" unexpectedly matched %d row(s); "+
 				"if PocketBase now supports this form, update the RESULT doc "+
-				"comment and Task 6 to use it instead of \"units.id ?= {:id}\"",
+				"comment and countAssignments to use it instead of "+
+				"\"units.id ?= {:id}\"",
 			len(bare),
 		)
 	}

@@ -1,13 +1,15 @@
 // Package lodging enforces the weekend-lodging invariants that the database
 // does not.
 //
-// PocketBase blocks deleting a record behind a REQUIRED relation, but
-// lodging_assignments.unit and .merge are both optional. Deleting their
-// target therefore returns HTTP 204 and leaves the assignment pointing at
-// nothing — a placement with no cabin, invisible to every read. Two spec
-// rules depend on stopping that:
+// PocketBase blocks deleting a record behind a REQUIRED relation, but a
+// placement's `units` is optional and cascadeDelete:false (1500000134).
+// Deleting a unit therefore returns HTTP 204 and PocketBase's own cleanup
+// quietly strips that id out of every placement holding it, re-saving each row
+// unvalidated — deleteRefRecords, core/record_model.go. A party in a two-room
+// slot silently loses a room; a party in one room is left with no cabin at all,
+// invisible to every read. Two spec rules depend on stopping that:
 //
-//	§3.4 unmerging is blocked while the slot is occupied
+//	§3.4 an occupied slot cannot have a room taken out from under it
 //	§3.8 deactivate, don't delete, for units with historical assignments
 //
 // lodging_ingest_issues.resolved_alias is the same shape and the worst case:
@@ -15,8 +17,8 @@
 // because ingest only ever writes is_resolved on create. See guardAliasDelete.
 //
 // None of these has any database backing, so they all live here. So does the
-// dual-grain XOR: the DB currently accepts an assignment with neither unit nor
-// merge, with both, and with both household_cm_id and person_cm_id set.
+// dual grain: the DB accepts a confirmed assignment naming no unit at all, and
+// one with both household_cm_id and person_cm_id set.
 //
 // These are MODEL-level hooks (OnRecordDelete / OnRecordCreate /
 // OnRecordUpdate), not the *Request variants, so they cover programmatic Go
@@ -36,7 +38,6 @@ import (
 
 const (
 	collectionUnits            = "lodging_units"
-	collectionMerges           = "lodging_merges"
 	collectionAssignments      = "lodging_assignments"
 	collectionAssignmentsDraft = "lodging_assignments_draft"
 	collectionAliases          = "lodging_unit_aliases"
@@ -54,7 +55,6 @@ func RegisterHooks(app *pocketbase.PocketBase) {
 // binding implementation with production.
 func wireHooks(app core.App) {
 	app.OnRecordDelete(collectionUnits).BindFunc(guardUnitDelete)
-	app.OnRecordDelete(collectionMerges).BindFunc(guardMergeDelete)
 	app.OnRecordDelete(collectionAliases).BindFunc(guardAliasDelete)
 	app.OnRecordCreate(collectionAssignments).BindFunc(guardAssignmentGrain)
 	app.OnRecordUpdate(collectionAssignments).BindFunc(guardAssignmentGrain)
@@ -64,72 +64,76 @@ func wireHooks(app core.App) {
 	app.OnRecordAfterUpdateSuccess(collectionIngestIssues).BindFunc(replayOnResolve)
 }
 
-// countAssignments counts lodging_assignments rows whose `field` points at id.
-func countAssignments(app core.App, field, id string) (int, error) {
-	records, err := app.FindRecordsByFilter(
-		collectionAssignments,
-		fmt.Sprintf("%s = {:id}", field),
-		"",
-		0, // 0 = unlimited
-		0,
-		map[string]any{"id": id},
-	)
-	if err != nil {
-		return 0, fmt.Errorf("count %s assignments: %w", field, err)
+// countAssignments counts the placements holding this unit, across BOTH grains.
+//
+// The draft table is not optional here (kindred#1923(a)). A scenario's
+// placements are exactly the rows a unit delete would empty, and the person
+// deleting the unit from /manage/lodging is typically not the person who made
+// them, so counting the confirmed board alone leaves the case with the LEAST
+// oversight unguarded.
+//
+// THE FILTER STRING IS LOAD-BEARING IN BOTH HALVES, and neither half is
+// guessable. TestMultiRelationAnyMatchFilter pins both against the running
+// engine, having measured them rather than assumed:
+//
+//   - `.id` is what makes PocketBase join into lodging_units at all. A bare
+//     "units ?= {:id}" compares against the field's raw stored value and
+//     matches ZERO rows against a real id.
+//   - `?=` is required once `.id` is in play, because under that join plain
+//     `=` demands EVERY joined row equal the operand — meaningless for a slot
+//     of two rooms, and again zero rows.
+//
+// Either mistake returns 0 for a unit that is in fact occupied, and a delete
+// guard that counts 0 refuses nothing. That failure is silent in exactly the
+// direction that matters, which is why it is pinned by a test rather than left
+// to this comment.
+func countAssignments(app core.App, unitID string) (int, error) {
+	total := 0
+	for _, collection := range []string{collectionAssignments, collectionAssignmentsDraft} {
+		records, err := app.FindRecordsByFilter(
+			collection,
+			"units.id ?= {:id}",
+			"",
+			0, // 0 = unlimited
+			0,
+			map[string]any{"id": unitID},
+		)
+		if err != nil {
+			return 0, fmt.Errorf("count %s holding unit %s: %w", collection, unitID, err)
+		}
+		total += len(records)
 	}
-	return len(records), nil
+	return total, nil
 }
 
-// guardUnitDelete refuses to delete a unit that still has placements.
+// guardUnitDelete refuses to delete a unit that still holds placements.
 //
-// Deactivating instead (is_active = false) keeps 2022-2025 history
-// resolvable, which is exactly why the field exists.
+// Nothing below this stops the damage. `units` is cascadeDelete:false by
+// design — deleting a unit must not take a placement row with it — so
+// PocketBase's cleanup removes this id FROM each holding set and re-saves the
+// row with SaveNoValidate. A two-room slot silently becomes a one-room slot; a
+// one-room placement silently becomes a placement with no cabin. Neither
+// surfaces anywhere, which is why the refusal has to happen here.
+//
+// This subsumes the old guardMergeDelete and spec §3.4 with it: a merged slot
+// is now a placement whose set has two or more members, so "don't break up an
+// occupied merge" and "don't delete an occupied unit" are the same sentence.
+//
+// Deactivating instead (is_active = false) keeps 2022-2025 history resolvable,
+// which is exactly why that field exists.
 func guardUnitDelete(e *core.RecordEvent) error {
-	count, err := countAssignments(e.App, "unit", e.Record.Id)
+	count, err := countAssignments(e.App, e.Record.Id)
 	if err != nil {
 		return err
 	}
 	if count > 0 {
 		return apis.NewBadRequestError(
 			fmt.Sprintf(
-				"Cannot delete %q: %d lodging assignment(s) reference it. "+
-					"Set it inactive instead so historical placements stay resolvable.",
+				"Cannot delete %q: %d lodging placement(s) reference it, on the "+
+					"confirmed board or in a saved scenario. Set it inactive instead "+
+					"so historical placements stay resolvable.",
 				e.Record.GetString("name"),
 				count,
-			),
-			nil,
-		)
-	}
-	return e.Next()
-}
-
-// guardMergeDelete refuses to unmerge an occupied slot.
-//
-// Deliberately STRICTER than spec §3.4's "more than one party": deleting a
-// merge with exactly one occupant orphans that placement through the same
-// optional-relation hole, so one occupant blocks too. The message
-// distinguishes the cases so staff know what to do next.
-func guardMergeDelete(e *core.RecordEvent) error {
-	count, err := countAssignments(e.App, "merge", e.Record.Id)
-	if err != nil {
-		return err
-	}
-	if count > 1 {
-		return apis.NewBadRequestError(
-			fmt.Sprintf(
-				"Cannot unmerge %q: %d parties occupy this slot. Move them to separate units first.",
-				e.Record.GetString("display_name"),
-				count,
-			),
-			nil,
-		)
-	}
-	if count == 1 {
-		return apis.NewBadRequestError(
-			fmt.Sprintf(
-				"Cannot unmerge %q: one party is assigned to this slot. "+
-					"Reassign or clear that placement first, or it would be left with no cabin.",
-				e.Record.GetString("display_name"),
 			),
 			nil,
 		)
@@ -183,21 +187,36 @@ func guardAliasDelete(e *core.RecordEvent) error {
 	return e.Next()
 }
 
-// guardAssignmentGrain enforces the two XOR invariants on an assignment.
+// guardAssignmentGrain enforces the two invariants on a CONFIRMED assignment.
 //
-//	unit XOR merge                    -- a placement is in a room or a merged slot
+//	units non-empty                   -- a placement names at least one room
 //	household_cm_id XOR person_cm_id  -- family camp is household-grain,
 //	                                     adult weekends are person-grain, and a
 //	                                     person row OVERRIDES its household's row
 //
+// The target half was "unit XOR merge" until 1500000134 collapsed both columns
+// into `units`. Its intent survives; its shape could not. A merged slot is now
+// a set of two or more and is indistinguishable from any other placement, so
+// the only illegal target state left is a set holding NOTHING. This mirrors
+// sync.ValidateAssignmentGrain's ErrGrainNoPlacement for the writes that never
+// reach the sync package: a POST straight at the PocketBase REST API, and
+// 1500000134's own backfill.
+//
+// THAT BACKFILL RUNS UNDER THIS FUNCTION on the deploy that ships it, and must
+// pass. app.saveNoValidate() does not exempt it: withValidations skips FIELD
+// validation only, and Save and SaveNoValidate both reach BaseApp.save, which
+// fires OnRecordUpdate either way. The backfill writes exactly one shape — a
+// non-empty units set on a row whose party grain the database already held —
+// and it is legal here. If that ever stops being true the migration throws,
+// every pending migration rolls back with it, and the container crash-loops on
+// boot with no override. TestABackfillShapedRowPassesTheGrainGuard pins it.
+//
 // The cm_id checks use "> 0" rather than a non-empty test: PocketBase
 // declares number columns NUMERIC DEFAULT 0 NOT NULL, so an unset id is 0.
 func guardAssignmentGrain(e *core.RecordEvent) error {
-	hasUnit := e.Record.GetString("unit") != ""
-	hasMerge := e.Record.GetString("merge") != ""
-	if hasUnit == hasMerge {
+	if len(e.Record.GetStringSlice("units")) == 0 {
 		return apis.NewBadRequestError(
-			"A lodging assignment must reference exactly one of unit or merge.",
+			"A lodging assignment must reference at least one lodging unit.",
 			nil,
 		)
 	}
@@ -225,12 +244,17 @@ func guardAssignmentGrain(e *core.RecordEvent) error {
 // access 1500000130 widened.
 //
 // It is a SEPARATE function from guardAssignmentGrain rather than the same one
-// re-bound, because the target rule differs and must. The truth table requires
-// exactly one of unit/merge; the draft accepts a row naming NO target at all,
-// which is the tombstone — "staff took this party off the board in this
-// scenario" — and is not the same state as the party having no draft row. It
-// also accepts more than one target, exactly as the truth table's schema does,
-// because the partial unique indexes dedupe within a grain only.
+// re-bound, because the target rule differs and must. 1500000134 did not soften
+// that, it sharpened it: guardAssignmentGrain now rejects an EMPTY units set,
+// and an empty units set is exactly the draft's tombstone — "staff took this
+// party off the board in this scenario" — which is not the same state as the
+// party having no draft row at all. The two functions are now direct opposites
+// on the one field they would otherwise share, so binding either onto the
+// other's table would delete a feature.
+//
+// That the collapse touched only the target half is also why this function's
+// BODY needed no edit for 1500000134: it reads the party columns and nothing
+// else, and those are untouched.
 //
 // A row naming neither grain is what makes this worth guarding: it keys on
 // nothing, so both partial unique indexes (gated on `> 0`) skip it and it
