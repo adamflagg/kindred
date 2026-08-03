@@ -14,14 +14,26 @@
  * worked by ONE person at a time, modelling scenarios for themselves — a
  * second staff member is rare and read-shaped — so there is no concurrent-edit
  * hazard being bought. What it cost was real: `build_roster` issues eleven
- * PocketBase fetches and its own docstring puts an empty weekend at about
+ * PocketBase fetches, and `build_summary`'s docstring (which exists because
+ * calling the roster per weekend repeated them) puts an empty weekend at about
  * three seconds, and that was being re-paid every 30 seconds of window focus,
  * with the cache dropped entirely after five minutes away.
  *
- * The freshness this gives up has to be bought back deliberately: when drag
- * placement writes, its mutations MUST invalidate `weekendRoster` and
- * `weekendSummary`, the way summer's mutations invalidate theirs. Long
- * staleTime plus explicit invalidation — not short staleTime plus hope.
+ * The freshness this gives up has to be bought back deliberately, and that debt
+ * is ALREADY outstanding — it is not a future obligation of the drag PR. The
+ * lodging admin panels edit registry rows that `_build_units` projects into
+ * this very payload, so they invalidate through
+ * `invalidateLodgingRegistryQueries`. Drag placement's mutations must do the
+ * same. Long staleTime plus explicit invalidation — not short staleTime plus
+ * hope.
+ *
+ * EVERY hook here is gated on `year > 0`. `CurrentYearContext` returns the
+ * literal 0 until the backend supplies the configured year, and neither
+ * weekend page reads the `isYearReady` flag it exposes — so without the guard
+ * these fire `?year=0` against routers declaring `ge=2000` and eat a 422 on
+ * every cold load. The roster's `sessionCmId !== null` guard did not cover it:
+ * on a direct deep link the id is parsed synchronously off the URL, on purpose,
+ * so it is non-null on the first render while the year is still 0.
  */
 
 import { useQuery } from '@tanstack/react-query'
@@ -46,6 +58,7 @@ export function useWeekendSessions(year: number) {
   const { fetchWithAuth } = useApiWithAuth()
   return useQuery<WeekendSessionList>({
     queryKey: queryKeys.weekendSessions(year),
+    enabled: year > 0,
     queryFn: () => fetchSessions(fetchWithAuth, year),
   })
 }
@@ -58,6 +71,7 @@ export function useWeekendSummary(year: number) {
   const { fetchWithAuth } = useApiWithAuth()
   return useQuery<WeekendSummary>({
     queryKey: queryKeys.weekendSummary(year),
+    enabled: year > 0,
     queryFn: () => fetchSummary(fetchWithAuth, year),
   })
 }
@@ -67,7 +81,7 @@ export function useWeekendRoster(year: number, sessionCmId: number | null) {
   const { fetchWithAuth } = useApiWithAuth()
   return useQuery<WeekendRoster>({
     queryKey: queryKeys.weekendRoster(year, sessionCmId ?? 0),
-    enabled: sessionCmId !== null,
+    enabled: year > 0 && sessionCmId !== null,
     queryFn: () => fetchRoster(fetchWithAuth, year, sessionCmId as number),
   })
 }

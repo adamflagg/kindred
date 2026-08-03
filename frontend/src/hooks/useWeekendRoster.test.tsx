@@ -55,8 +55,10 @@ function wrapper({ children }: { children: ReactNode }) {
 /**
  * The options React Query actually resolved for a mounted query, client
  * defaults merged in. Read from the OBSERVER, not the query: `staleTime` and
- * `refetchOnWindowFocus` are observer-level options and are absent from
- * `Query.options`, so asserting there would silently check nothing.
+ * `refetchOnWindowFocus` are observer-level options, absent from the
+ * `QueryOptions` type that `Query.options` carries. Asserting there does not
+ * silently pass — it fails typecheck — but the observer is where these
+ * options actually resolve, so it is the honest place to read them.
  */
 function resolvedOptions(queryKey: readonly unknown[]) {
   const query = client.getQueryCache().find({ queryKey })
@@ -74,6 +76,41 @@ beforeEach(() => {
   fetchWeekendSummary.mockReset().mockResolvedValue({ year: 2026, weekends: [] })
   fetchWeekendRoster.mockReset().mockResolvedValue({ year: 2026, session_cm_id: 1000001 })
   fetchHouseholdMedical.mockReset().mockResolvedValue({ household_cm_id: 2000001, year: 2026 })
+})
+
+describe('year gating', () => {
+  // `CurrentYearContext` resolves the year from the backend and returns the
+  // literal number 0 until it does (`CurrentYearContext.tsx:67-69`), exposing
+  // an `isYearReady` flag for consumers to gate on. Neither weekend page
+  // reads that flag, so without an `enabled` guard every one of these hooks
+  // fires `?year=0` on cold load. The routers declare `ge=2000`
+  // (`api/routers/lodging.py:64,77,99`), so that is a guaranteed 422 — and
+  // `queryClient.ts` only skips retry on 401, so it is retried with backoff.
+  // `enabled: year > 0` is the established convention at 14+ other hooks.
+  it('does not fetch the session list before the year resolves', () => {
+    renderHook(() => useWeekendSessions(0), { wrapper })
+    expect(fetchWeekendSessions).not.toHaveBeenCalled()
+  })
+
+  it('does not fetch the summary before the year resolves', () => {
+    renderHook(() => useWeekendSummary(0), { wrapper })
+    expect(fetchWeekendSummary).not.toHaveBeenCalled()
+  })
+
+  it('does not fetch the roster before the year resolves, even with a session', () => {
+    // The existing `enabled: sessionCmId !== null` guard does NOT cover this:
+    // on a direct load of /weekend/1000001 the id is parsed synchronously off
+    // the URL, deliberately, so it is non-null on the very first render while
+    // the year is still 0. The guard was on the wrong axis.
+    renderHook(() => useWeekendRoster(0, 1000001), { wrapper })
+    expect(fetchWeekendRoster).not.toHaveBeenCalled()
+  })
+
+  it('fetches once the year is real', async () => {
+    const { result } = renderHook(() => useWeekendRoster(2026, 1000001), { wrapper })
+    await waitFor(() => expect(result.current.isSuccess).toBe(true))
+    expect(fetchWeekendRoster).toHaveBeenCalledTimes(1)
+  })
 })
 
 describe('cache parity with summer', () => {
@@ -107,6 +144,7 @@ describe('cache parity with summer', () => {
 
     const options = resolvedOptions(queryKeys.weekendSessions(2026))
     expect(options.staleTime).toBe(APP_CACHE_DEFAULTS.staleTime)
+    expect(options.gcTime).toBe(APP_CACHE_DEFAULTS.gcTime)
     expect(options.refetchOnWindowFocus).toBe(false)
   })
 
@@ -116,6 +154,7 @@ describe('cache parity with summer', () => {
 
     const options = resolvedOptions(queryKeys.weekendSummary(2026))
     expect(options.staleTime).toBe(APP_CACHE_DEFAULTS.staleTime)
+    expect(options.gcTime).toBe(APP_CACHE_DEFAULTS.gcTime)
     expect(options.refetchOnWindowFocus).toBe(false)
   })
 

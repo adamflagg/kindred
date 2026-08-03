@@ -162,12 +162,16 @@ This is not a style preference. Summer is the mature surface; every place weeken
 | **UI primitives** | Same components — tabs, tables, panels, modals, popouts, chips, badges |
 | **Styling** | Same Tailwind grammar and tokens. A class that does nothing (`forest-950`, #1894) propagates by imitation — check it renders |
 | **URL style** | Route shape and param naming. Tab state lives in the URL, not `useState`, so a tab is linkable and survives reload |
-| **Cache performance** | Inherit the `utils/queryClient.ts` defaults, as `hooks/session/useSessionData.ts` does. Do not opt down to shorter caching |
+| **Cache performance** | Default to inheriting the `utils/queryClient.ts` defaults, as the board's own `hooks/session/useSessionData.ts` does. Opting down needs a stated reason |
 | **RBAC** | Same permission constants and gate placement; protected endpoints go through `fetchWithAuth` |
 | **Data fetching** | Extract into custom hooks (`frontend/CLAUDE.md`), keys from `utils/queryKeys.ts` |
 | **Error handling** | Page-level `ErrorBoundary` + `QueryGuard`, all four states |
 
-**The caching row has already been got wrong once and is worth stating plainly.** The weekend hooks opted down to `userDataOptions` (30 s stale, 5 min gc, refetch on focus) to guard against staff editing in CampMinder mid-session. Summer has exactly that property and does not opt down, and **a weekend is worked by one person at a time** — they are modelling scenarios for themselves, and a second staff member looking on is rare and read-shaped. There was no concurrent-edit hazard to buy, and the cost was real: `build_roster` issues eleven PocketBase fetches and puts an empty weekend at ~3 seconds, re-paid every 30 seconds. **Long staleTime plus explicit invalidation on mutation — never short staleTime plus hope.**
+**The caching row has already been got wrong once and is worth stating precisely.** The weekend hooks opted down to `userDataOptions` (30 s stale, 5 min gc, refetch on focus) to guard against staff editing in CampMinder mid-session.
+
+Be careful with the comparison, because summer is not uniform: the bunking board's own data hooks (`hooks/session/useSessionData.ts`) override nothing, while `hooks/useCohortBunkAssignments.ts` does use `userDataOptions`. The right comparator for a weekend surface is the board's primary read path, and that one inherits. What actually settled it was the workflow: **a weekend is worked by one person at a time**, modelling scenarios for themselves, with a second staff member looking on rare and read-shaped. There was no concurrent-edit hazard to buy, and the cost was real — `build_roster` issues eleven PocketBase fetches, and an empty weekend runs about 3 seconds, re-paid every 30 seconds.
+
+**Long staleTime plus explicit invalidation on mutation — never short staleTime plus hope.** The second half is not optional and is the part that got missed: when the weekend queries moved to a 30-minute staleTime, the lodging admin panels still invalidated only their own registry keys, leaving the roster stale for half an hour after a cabin confirmation. That is what `invalidateLodgingRegistryQueries` exists for. **If you lengthen a staleTime, find every writer first.**
 
 When weekend genuinely must differ, say why at the divergence. `useHouseholdMedical`'s `staleTime: 0, gcTime: 0` is the model: PHI must not sit in the cache after the panel closes, and the comment says so.
 

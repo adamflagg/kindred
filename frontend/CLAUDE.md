@@ -39,11 +39,16 @@ React + TypeScript + Vite. Dev server on `:3000` (HMR); prod served via Caddy at
 
 Use the centralized keys from `src/utils/queryKeys.ts`. Inlining string keys causes cache collisions and silent bugs when invalidation misses the right query.
 
-## Caching — inherit the defaults
+## Caching — the tiers are opt-ins, and the default is a real choice
 
-**Set no cache options unless you can say why.** `utils/queryClient.ts` holds the app defaults (30 min stale, 60 min gc, no refetch on focus) and the summer bunking board runs on them — `hooks/session/useSessionData.ts` overrides nothing. `syncDataOptions` / `userDataOptions` in `queryKeys.ts` are opt-ins, not a menu you must choose from.
+`utils/queryClient.ts` holds the app defaults (30 min stale, 60 min gc, no refetch on focus). `syncDataOptions` and `userDataOptions` in `queryKeys.ts` are the two named tiers; **inheriting the defaults is a third, legitimate option and is what the bunking board's primary read path does** (`hooks/session/useSessionData.ts` overrides nothing). Roughly 20 call sites use `userDataOptions` and are not thereby wrong — pick deliberately rather than reaching for a tier because one exists.
 
-Opting *down* to short caching to catch external edits is the trap: it re-pays the whole fetch on every window focus and evicts the cache minutes after you navigate away. Freshness after a write is bought with **explicit invalidation in the mutation**, not with a short `staleTime`. The weekend roster made this mistake and it is documented in `CLAUDE.md` §4 "Family Camp Models Summer".
+Two rules that are not negotiable:
+
+- **Opting *down* to a short `staleTime` to catch external edits is the trap.** It re-pays the whole fetch on every window focus and evicts the cache minutes after you navigate away. Freshness after a write is bought with **explicit invalidation in the mutation**.
+- **If you lengthen a `staleTime`, find every writer first.** The weekend roster's move to the app defaults left the lodging admin panels invalidating only their own registry keys, so a cabin confirmation stayed invisible on the roster for 30 minutes. `invalidateLodgingRegistryQueries` (`utils/queryKeys.ts`) is the fix and the pattern: one shared helper, invalidating by **prefix** where the writer cannot know the full key.
+
+Background: `CLAUDE.md` §4 "Family Camp Models Summer".
 
 ## Derived values in page components
 
