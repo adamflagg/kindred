@@ -170,7 +170,9 @@ class TestFetchAssignments:
         that column from lodging_assignments -- it was never written, and
         keeping it invited the `scenario != ""` write rule the draft table
         exists to avoid -- so filtering on it now asks PocketBase for an
-        unknown field. The synced rows ARE the base; a scenario overlays them.
+        unknown field. These rows are the live plan, and since kindred#1974 a
+        request naming a scenario does not read them at all -- it reads
+        fetch_draft_assignments instead.
         """
         await repo.fetch_assignments(2026, "sess_pb_1")
 

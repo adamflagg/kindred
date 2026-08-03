@@ -115,6 +115,47 @@ def _f(record: Any, field: str) -> float | None:
         return None
 
 
+def resolved_units(row: Any) -> list[Any]:
+    """The unit RECORDS a placement row resolves to, in stored relation order.
+
+    Shared with the write layer's copy operation, which needs the same answer
+    in ids: a scenario seeded by resolving a row differently from how the
+    roster reads it would disagree with the mirror it was copied from.
+
+    Order comes from `row.units` (the relation's own stored id order), not
+    from iterating `row.expand["units"]`. Expand comes back from an IN-clause
+    query and PocketBase does not promise that order matches the field's
+    stored order, so reading expand's own order would let a merged slot's
+    label -- and its unit_codes -- reorder between requests.
+
+    An id in `units` with no matching record in `expand["units"]` names a unit
+    that no longer exists -- the DB permits a relation to outlive its target --
+    and is dropped rather than surfacing as a placeholder.
+    """
+    by_id = {_s(u, "id"): u for u in (getattr(row, "expand", None) or {}).get("units") or []}
+    return [by_id[uid] for uid in (getattr(row, "units", None) or []) if uid in by_id]
+
+
+def placement_grain(row: Any) -> tuple[str, int] | None:
+    """("person" | "household", cm_id), or None for a row with neither.
+
+    A person row OVERRIDES its household's, which is the dual grain the
+    assignment tables were built around: family camp places households, adult
+    weekends place people, and a grandparent housed apart from their family is
+    a household row plus one person override.
+
+    Shared with the write layer for the same reason `resolved_units` is: the
+    copy must key a seeded row exactly as the roster will read it back.
+    """
+    person_cm_id = _i(row, "person_cm_id")
+    if person_cm_id > 0:
+        return "person", person_cm_id
+    household_cm_id = _i(row, "household_cm_id")
+    if household_cm_id > 0:
+        return "household", household_cm_id
+    return None
+
+
 def _person_display_name(person: Any) -> str:
     preferred = _s(person, "preferred_name")
     first = preferred or _s(person, "first_name")
@@ -158,13 +199,18 @@ class LodgingRosterService:
         )
 
     async def build_roster(self, year: int, session_cm_id: int, scenario: str = "") -> WeekendRosterResponse:
-        """One weekend's roster, optionally resolved through a scenario.
+        """One weekend's roster, resolved through a scenario or not.
 
         No scenario is the CampMinder mirror -- the synced rows, exactly as
         before this layer existed, and read-only for everyone. A scenario
-        OVERLAYS its draft rows on top of that base, per party and per unit,
-        which is what lets a freshly-created scenario render the synced
-        placements instead of an empty board.
+        REPLACES them with its own draft rows (kindred#1974), exactly as
+        summer's `useCohortBunkAssignments` swaps `bunk_assignments` for
+        `bunk_assignments_draft`. A party with no draft row is UNPLACED in
+        that scenario; the mirror is not consulted, and is not even read.
+
+        AVAILABILITY is the deliberate exception and still overlays: nothing
+        syncs into `lodging_availability`, so a scenario has no record of
+        truth to replace there and reads the live reservations as its base.
         """
         session = await self.repository.fetch_session(year, session_cm_id)
         if session is None:
@@ -185,7 +231,6 @@ class LodgingRosterService:
         async with asyncio.TaskGroup() as tg:
             units_task = tg.create_task(self.repository.fetch_units())
             availability_task = tg.create_task(self.repository.fetch_availability(year, session_pb_id))
-            assignments_task = tg.create_task(self.repository.fetch_assignments(year, session_pb_id))
             attendees_task = tg.create_task(self.repository.fetch_attendees_for_session(year, session_pb_id))
             households_task = tg.create_task(self.repository.fetch_households(year))
             prior_task = tg.create_task(self.repository.fetch_prior_household_cm_ids(year))
@@ -194,14 +239,19 @@ class LodgingRosterService:
             medical_task = tg.create_task(self.repository.fetch_family_camp_medical(year))
             aliases_task = tg.create_task(self.repository.count_open_unresolved_aliases())
             unconfirmed_task = tg.create_task(self.repository.count_unconfirmed_units())
-            # The scenario layer joins the SAME group rather than running after
-            # it: production mode must cost exactly what it did before, and
-            # scenario mode must not cost a second round trip.
-            draft_task = (
-                tg.create_task(self.repository.fetch_draft_assignments(year, session_pb_id, scenario))
+            # ONE placement source, chosen here rather than merged later. A
+            # scenario does not read the mirror at all -- which is what makes
+            # "no fall-through" a property of the request rather than of the
+            # merge that used to follow it, and saves a session-scoped round
+            # trip while it is at it.
+            placements_task = tg.create_task(
+                self.repository.fetch_draft_assignments(year, session_pb_id, scenario)
                 if scenario
-                else None
+                else self.repository.fetch_assignments(year, session_pb_id)
             )
+            # Availability still overlays, so BOTH reads are issued under a
+            # scenario. They join the same group: scenario mode must not cost
+            # a second round trip.
             scenario_availability_task = (
                 tg.create_task(self.repository.fetch_scenario_availability(year, session_pb_id, scenario))
                 if scenario
@@ -221,8 +271,7 @@ class LodgingRosterService:
             adults_by_household=adults_task.result(),
             registrations=registrations_task.result(),
             medical=medical_task.result(),
-            assignments=assignments_task.result(),
-            draft_assignments=draft_task.result() if draft_task is not None else [],
+            assignments=placements_task.result(),
         )
         counts = self._build_counts(unit_summaries, parties, aliases_task.result(), unconfirmed_task.result())
 
@@ -247,14 +296,15 @@ class LodgingRosterService:
         parties still costs about three seconds.
 
         So the year-scoped work happens once here, and only the genuinely
-        session-scoped reads run per weekend: availability, assignments and
-        attendees always, plus the scenario's draft placements and its
-        availability overrides when a scenario is named. The per-weekend
+        session-scoped reads run per weekend: availability, attendees and one
+        placement read -- the synced rows, or the scenario's own -- plus the
+        scenario's availability overrides when one is named. The per-weekend
         numbers then come from the SAME `_build_units` / `_build_parties` /
         `_build_counts` helpers the roster uses, so the lander cannot drift
-        from the page it links to.
+        from the page it links to, and it resolves a scenario the same way:
+        replace, never fall through.
 
-        Scenario mode therefore costs five session-scoped reads per weekend
+        Scenario mode therefore costs four session-scoped reads per weekend
         rather than three, and nothing caps the resulting fan-out. That is
         deliberate for now -- there is no lander calling this with a scenario
         yet, so there is nothing to measure against -- and kindred#1920 records
@@ -287,12 +337,12 @@ class LodgingRosterService:
             session_pb_id = _s(session, "id")
             async with asyncio.TaskGroup() as inner:
                 availability_task = inner.create_task(self.repository.fetch_availability(year, session_pb_id))
-                assignments_task = inner.create_task(self.repository.fetch_assignments(year, session_pb_id))
                 attendees_task = inner.create_task(self.repository.fetch_attendees_for_session(year, session_pb_id))
-                draft_task = (
-                    inner.create_task(self.repository.fetch_draft_assignments(year, session_pb_id, scenario))
+                # One placement source, exactly as build_roster chooses it.
+                placements_task = inner.create_task(
+                    self.repository.fetch_draft_assignments(year, session_pb_id, scenario)
                     if scenario
-                    else None
+                    else self.repository.fetch_assignments(year, session_pb_id)
                 )
                 scenario_availability_task = (
                     inner.create_task(self.repository.fetch_scenario_availability(year, session_pb_id, scenario))
@@ -313,8 +363,7 @@ class LodgingRosterService:
                 adults_by_household=adults_by_household,
                 registrations=registrations,
                 medical=medical,
-                assignments=assignments_task.result(),
-                draft_assignments=draft_task.result() if draft_task is not None else [],
+                assignments=placements_task.result(),
             )
             return WeekendSummaryEntry(
                 session=self._session_summary(session),
@@ -433,10 +482,8 @@ class LodgingRosterService:
         registrations: dict[str, Any],
         medical: dict[str, Any],
         assignments: list[Any],
-        draft_assignments: list[Any] | None = None,
     ) -> list[RosterParty]:
         placement_by_household, placement_by_person = self._index_assignments(assignments)
-        self._overlay_draft_assignments(placement_by_household, placement_by_person, draft_assignments or [])
 
         if session_type == "adult":
             return self._build_person_parties(attendees, placement_by_person)
@@ -455,37 +502,24 @@ class LodgingRosterService:
     def _placement_of(row: Any) -> _Placement | None:
         """A row's resolved placement, or None.
 
-        None means the row names NO target. On a synced row that is an
-        orphan -- every unit it named was deleted out from under it, which
-        the DB allows -- and on a DRAFT row it is the deliberate "staff took
-        this party off the board" tombstone. Both read the same here; what
-        differs is how the caller treats it, which is why this returns None
-        rather than skipping.
+        None means the row places nobody. On a synced row that is an orphan --
+        every unit it named was deleted out from under it, which the DB allows
+        -- and on a draft row it is the same thing: a row that says nothing.
+        It used to mean more on a draft row (the tombstone, which suppressed
+        the CampMinder mirror underneath); kindred#1974 removed the mirror
+        from under a scenario, so there is nothing left to suppress.
 
         Bookability is not this function's concern. A unit that resolves --
-        even a container, even an inactive one -- still places the party; it
-        does not read as an unresolvable id and therefore never turns a
-        placement into a tombstone by way of filtering. Whether staff CAN
-        place a party onto such a unit is a write-path question.
+        even a container, even an inactive one -- still places the party, and
+        never reads as an unresolvable id. Whether staff CAN place a party
+        onto such a unit is a write-path question.
 
         One unit is a normal placement; 2+ read as a merged slot with no unit
         code -- byte for byte the shape the old `lodging_merges` row produced,
         so callers and the board are unaffected by the collapse to one
         relation.
-
-        The label and unit_codes are built from `row.units` (the relation's
-        own stored id order), not from iterating `row.expand["units"]`
-        directly: expand comes back from an IN-clause query, and PocketBase
-        does not promise that order matches the field's stored order, so
-        reading expand's own order would let a merged slot's label -- and its
-        unit_codes -- reorder between requests. An id in `units` with no
-        matching record in `expand["units"]` names a unit that no longer
-        exists -- the DB permits a relation to outlive its target -- and is
-        dropped rather than surfacing as a placeholder, which mirrors how a
-        fully orphaned row already reads as unplaced.
         """
-        by_id = {_s(u, "id"): u for u in (getattr(row, "expand", None) or {}).get("units") or []}
-        units = [by_id[uid] for uid in (getattr(row, "units", None) or []) if uid in by_id]
+        units = resolved_units(row)
         if not units:
             return None
         codes = tuple(_s(u, "code") for u in units)
@@ -493,32 +527,20 @@ class LodgingRosterService:
             return _Placement(codes[0], _s(units[0], "name"), False, codes)
         return _Placement("", " + ".join(_s(u, "name") for u in units), True, codes)
 
-    @staticmethod
-    def _grain_key(row: Any) -> tuple[str, int] | None:
-        """("person" | "household", cm_id), or None for a row with neither.
-
-        A person row OVERRIDES its household's, which is the dual grain the
-        assignment tables were built around: family camp places households,
-        adult weekends place people, and a grandparent housed apart from their
-        family is a household row plus one person override.
-        """
-        person_cm_id = _i(row, "person_cm_id")
-        if person_cm_id > 0:
-            return "person", person_cm_id
-        household_cm_id = _i(row, "household_cm_id")
-        if household_cm_id > 0:
-            return "household", household_cm_id
-        return None
-
     def _index_assignments(self, assignments: list[Any]) -> tuple[dict[int, _Placement], dict[int, _Placement]]:
-        """Map cm_id -> its resolved placement."""
+        """Map cm_id -> its resolved placement.
+
+        One source, whichever the caller chose: the synced rows in production
+        mode, a scenario's own rows under a scenario. There is no merge step
+        -- that was the overlay, and kindred#1974 removed it.
+        """
         by_household: dict[int, _Placement] = {}
         by_person: dict[int, _Placement] = {}
         for row in assignments:
             placement = self._placement_of(row)
             if placement is None:
                 continue
-            grain = self._grain_key(row)
+            grain = placement_grain(row)
             if grain is None:
                 continue
             if grain[0] == "person":
@@ -526,35 +548,6 @@ class LodgingRosterService:
             else:
                 by_household[grain[1]] = placement
         return by_household, by_person
-
-    def _overlay_draft_assignments(
-        self,
-        by_household: dict[int, _Placement],
-        by_person: dict[int, _Placement],
-        drafts: list[Any],
-    ) -> None:
-        """Apply one scenario's draft rows over the synced placements, in place.
-
-        PER PARTY, not all-or-nothing. A scenario that has moved one family
-        must leave the other sixty-one showing what CampMinder says, or
-        selecting a scenario would read as "everyone is suddenly unplaced".
-
-        A draft row with no target REMOVES the synced placement rather than
-        being ignored. That distinction is the whole reason the overlay cannot
-        be a dict update: "staff dragged this family off the board" and "this
-        family has no draft row" are different states, and only the second one
-        should fall through to the CampMinder mirror.
-        """
-        for row in drafts:
-            grain = self._grain_key(row)
-            if grain is None:
-                continue
-            target = by_person if grain[0] == "person" else by_household
-            placement = self._placement_of(row)
-            if placement is None:
-                target.pop(grain[1], None)
-            else:
-                target[grain[1]] = placement
 
     def _build_person_parties(
         self, attendees: list[Any], placement_by_person: dict[int, _Placement]

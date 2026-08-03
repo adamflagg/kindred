@@ -3,19 +3,21 @@
 Every PocketBase read behind /api/lodging lives here so the service layer is
 testable against mocks. Mirrors api/services/metrics_repository.py.
 
-Two layers, since 1500000132. The SYNCED rows are the base and are read with
-no scenario predicate -- lodging_assignments no longer has that column, because
-it was dead weight that invited a `scenario != ""` write rule instead of a
-draft table. (1500000132 dropped the same column from lodging_merges; 1500000134
-then deleted that collection outright, folding its member set into the
-placement's own `units` relation.) A scenario's own rows come from
-lodging_assignments_draft, and from lodging_availability filtered to the
-scenario, and OVERLAY the base per party and per unit.
+Two sources of placements, since 1500000132, and a request reads exactly ONE
+of them. The SYNCED rows are read with no scenario predicate --
+lodging_assignments no longer has that column, because it was dead weight that
+invited a `scenario != ""` write rule instead of a draft table. (1500000132
+dropped the same column from lodging_merges; 1500000134 then deleted that
+collection outright, folding its member set into the placement's own `units`
+relation.) A scenario's placements come from lodging_assignments_draft and
+REPLACE them: kindred#1974 removed the fall-through, so a scenario is a plan
+of its own, seeded by an explicit copy rather than by rendering the mirror
+through the gaps.
 
-Overlay rather than replace is what makes a freshly-created scenario render
-the CampMinder mirror rather than an empty board, with no seed step to go
-wrong. `scenario = ""` still means the live plan for availability, which kept
-its column.
+AVAILABILITY is the exception and stays an overlay: a scenario's rows come
+from lodging_availability filtered to it and layer over the live rows per
+unit. Nothing syncs into that table, so a scenario has no record of truth to
+replace there. `scenario = ""` is the live plan.
 
 Request answers are NOT re-parsed here. The Go ingest derives the share gate,
 the NEAR/WITH/similar-ages modes, the household-grain request text and the four
@@ -204,7 +206,9 @@ class LodgingRepository:
         No scenario predicate: 1500000132 dropped that column. It was never
         written -- all 67 rows carried '' -- and keeping it would have invited
         exactly the `scenario != ""` write rule the draft table exists to avoid.
-        These rows ARE the live plan, and a scenario overlays them.
+        These rows ARE the live plan. A request naming a scenario does not read
+        them at all; it reads fetch_draft_assignments instead, and the copy
+        operation is the one path between the two.
 
         `units` is the one relation a placement carries since 1500000134
         collapsed `unit`/`merge`/`merge_draft` into it -- a multi-select field,
@@ -221,7 +225,11 @@ class LodgingRepository:
         )
 
     async def fetch_draft_assignments(self, year: int, session_pb_id: str, scenario_id: str) -> list[Any]:
-        """One scenario's draft placements for one session.
+        """One scenario's placements for one session -- ALL of them.
+
+        Not a delta over fetch_assignments. Under kindred#1974 these rows are
+        the scenario's whole plan, so a party with no row here is unplaced in
+        this scenario, whatever the mirror says.
 
         One target expands, not three: 1500000134 collapsed `unit` (an atomic
         room), `merge` (a slot the ingest built from a historical cabin
@@ -436,6 +444,23 @@ class LodgingRepository:
             },
         )
         return rows[0] if rows else None
+
+    async def count_draft_assignments(self, year: int, session_pb_id: str, scenario_id: str) -> int:
+        """How many placements a scenario holds for one weekend.
+
+        The copy operation's precheck. Scoped to the weekend as well as the
+        scenario because a scenario spans weekends: placements made for one
+        must not refuse a seed of another.
+
+        A count, not a fetch: the answer is "any?", and paging in sixty-two
+        rows with their unit expands to learn it is the read `/summary` was
+        built to stop repeating. `scenario_id` is escaped for the reason
+        fetch_draft_assignments spells out.
+        """
+        return await self._count(
+            LODGING_ASSIGNMENTS_DRAFT,
+            (f'session = "{pb_escape(session_pb_id)}" && year = {year} && scenario = "{pb_escape(scenario_id)}"'),
+        )
 
     async def create_draft_assignment(self, data: dict[str, Any]) -> Any:
         return await asyncio.to_thread(self.pb.collection(LODGING_ASSIGNMENTS_DRAFT).create, data)

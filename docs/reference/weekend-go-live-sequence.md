@@ -39,7 +39,7 @@ That is why this programme is plan-driven rather than triage-driven. Triage is t
 
 **Two owner decisions, 2026-08-03, changed steps 0a–2a from what this table first said.**
 
-- **Lodging scenarios adopt summer's semantics** ([#1974](https://github.com/adamflagg/kindred/issues/1974)). Today a lodging scenario OVERLAYS the CampMinder mirror per party, so a fresh scenario renders the synced placements and "unplaced" needs a tombstone row. Summer's draft table *replaces* production and is seeded by an explicit copy. There is no principled asymmetry — `sync/bunk_assignments.go` and `sync/lodging_assignments_sync.go` are both registered sync services — so the divergence is being removed. **Consequence for step 2: dragging to the unplaced rail becomes a `DELETE`, not a tombstone `POST`.** The appendix below still says tombstone; it is correct only until #1974 lands.
+- **Lodging scenarios adopt summer's semantics** ([#1974](https://github.com/adamflagg/kindred/issues/1974), **done**). A lodging scenario used to OVERLAY the CampMinder mirror per party, so a fresh scenario rendered the synced placements and "unplaced" needed a tombstone row. Summer's draft table *replaces* production and is seeded by an explicit copy. There was no principled asymmetry — `sync/bunk_assignments.go` and `sync/lodging_assignments_sync.go` are both registered sync services — so the divergence was removed. **Consequences: dragging a party out of a cabin is a `DELETE`, not a tombstone `POST`; and a new scenario is EMPTY, so the picker (step 1) must offer `POST /api/lodging/placements/copy`.**
 - **The unplaced rail is being replaced by a floating queue, in parallel.** The weekend unplaced-popout work removes the board's fixed 240px rail (`LodgingBoard.tsx:101`) and the map's 280px one, in favour of summer's `FloatingUnassignedBadge` pattern extracted into a shared `FloatingQueueBadge` shell. **So "drag to the unplaced rail" is a drop target that will not exist by the time drag is built** — the target becomes a floating badge/popover. Summer's badge is already a dnd-kit droppable, so the pattern is in the tree, but do not plan against the rail. That work also adds `sort_name` to `RosterParty` and orders the queue by last name, which retires `rankUnplaced`'s mandatory-accommodation ranking — and with it the caveat the board currently prints about that ranking being half-uncomputable.
 - **Drag ships placement only.** Party → unit and party → rail. Unit → unit merge is **out**, because `buildBoard` indexes parties by `party.unit_code` and `_placement_of` sends `unit_code: ""` for any placement spanning 2+ rooms — so the board cannot draw a multi-room placement at all today, and drag-to-merge would make the card vanish into the off-board section. That is why #1940 moved from in front of drag to behind it: it is the render fix that *unlocks* merge, not a prerequisite for placement. Roughly 12–16 multi-room placements a year, ~3% of the total.
 
@@ -131,9 +131,9 @@ whether #1967 has merged. If it has not, either take it as step one of your own
 work or coordinate — but do not start the drag interaction on top of a surface
 that cannot name a scenario.
 
-Also check #1966 (roster latency) and **#1974 (scenarios replace the mirror)**.
-#1974 decides what dragging to the unplaced rail writes, so confirm it has
-landed before you build that drop target.
+Also check #1966 (roster latency). **#1974 (scenarios replace the mirror) has
+landed**, so a scenario is a plan of its own, seeded by `POST
+/api/lodging/placements/copy`, and a party with no draft row is unplaced.
 
 ## Scope
 
@@ -142,15 +142,14 @@ landed before you build that drop target.
   drop target.** The weekend unplaced-popout work replaces the board's fixed
   left rail with a floating badge/popover built on a shared
   `FloatingQueueBadge`; if it has landed, the rail is gone and you are making
-  the badge droppable, as summer already does with
-  `FloatingUnassignedBadge`. **After #1974 the write is a
-  `DELETE /placements`.** Older
-  text — including HANDOFF §2's three-state table and §6 — says it must be a
-  tombstone `POST` with empty `unit_ids`. That was true under the OVERLAY read,
-  where deleting the row fell through to the CampMinder mirror and put the
-  family back in the cabin they were just dragged out of. #1974 removes the
-  fall-through, which removes the tombstone. If #1974 has NOT landed, the old
-  rule still holds — check, do not assume.
+  the badge droppable, as summer already does with `FloatingUnassignedBadge`.
+  **The write is `DELETE /placements`** (#1974, landed). Older text —
+  including HANDOFF §2's three-state table and §6 — says it must be a
+  tombstone `POST` with an empty `unit_ids`. That was true under the OVERLAY
+  read, where deleting the row fell through to the CampMinder mirror and put
+  the family back in the cabin they were just dragged out of. The fall-through
+  is gone, an empty `unit_ids` is a 422, and HANDOFF §2 and §6 have been
+  rewritten to match.
 - **Unit → unit merge is OUT OF SCOPE.** `buildBoard` indexes parties by
   `party.unit_code`, and `_placement_of` sends `unit_code: ""` for a placement
   spanning 2+ rooms — so the board cannot draw a multi-room placement at all,
@@ -204,9 +203,9 @@ Answer them; do not re-litigate them.
 
 `partyAttention` is advisory. `place_party`
 (`api/services/lodging_write_service.py:78-147`) does not enforce the
-fit/capacity check, by design — it DOES validate scenario, grain, permission
-and unique-index races, so do not read this as "the write path checks
-nothing". Every cabin currently has `is_confirmed = 0`, so
+fit/capacity check, by design — it DOES validate scenario, grain, permission,
+a non-empty unit set (#1974) and unique-index races, so do not read this as
+"the write path checks nothing". Every cabin currently has `is_confirmed = 0`, so
 `rosterAttention.ts:102` refuses to judge any housing need — the fit check is
 dark and will stay dark until staff physically walk the property. Ship drag
 with it dark. Do not bulk-confirm units to work around this; `is_confirmed`

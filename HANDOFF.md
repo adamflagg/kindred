@@ -38,7 +38,8 @@ below identifies work by **PR and commit**, which are the only labels that canno
 | Share eligibility — flag on the authoritative form, not the registration gate | ✅ `d5951b69` (#1926) — see §3a |
 | Merge collapse — one `units` relation replaces `unit`/`merge`/`merge_draft` | ✅ `ee881bdf` (#1931) — see §2 |
 | Map — read-only `map_x`/`map_y` surface, a projection of the board | ✅ `e3f0cca2` (#1939) + `c6903f59` (#1942, legend + highlight controls) — see §2 |
-| Scenario plumbing — the picker, and read-only when no scenario is chosen | ⬅ **#1967 — gates every write. Do this first.** |
+| Scenario semantics — a scenario REPLACES the mirror, and a copy seeds it | ✅ #1974 — see §2 |
+| Scenario plumbing — the picker, and read-only when no scenario is chosen | ⬅ **#1967 — gates every write. Do this first.** It must offer the copy: a new scenario is now empty. |
 | **Drag placement — the board calls the write endpoints** | ⬅ **then this, see §4. The map has landed.** |
 | Pin editor — drag a unit to correct its coordinates | needs the map |
 | Geo layer | needs the map |
@@ -289,18 +290,22 @@ override that agrees with the live plan would pin the unit against a later chang
 
 - **No `scenario` → the CampMinder mirror**, read-only for everyone, byte-identical to
   pre-#1915 behaviour. The draft reads are not issued at all.
-- **With `scenario` → draft rows OVERLAY the mirror**, per party and per unit — not replace. A
-  freshly created scenario therefore renders the synced placements with **no seed step**. There
-  is deliberately no "copy production into this scenario" operation; do not add one.
-- The scenario layer joins the same `TaskGroup` as the base reads, so scenario mode costs no
-  extra round trip. A test asserts `/summary` and `/roster` cannot disagree under one scenario.
+- **With `scenario` → the scenario's draft rows REPLACE the mirror** (#1974). A party with no
+  draft row is **unplaced**, and `lodging_assignments` is not read at all — asserted, not just
+  implied. A new scenario is therefore EMPTY and is filled by an explicit copy.
+- **Availability still overlays**, per unit, and that asymmetry is deliberate: nothing syncs into
+  `lodging_availability`, so a scenario has no record of truth to replace there.
+- Both reads join the same `TaskGroup`, so scenario mode costs no extra round trip. A test asserts
+  `/summary` and `/roster` cannot disagree under one scenario, on a fixture where falling back to
+  the mirror would change the count.
 
-**Writes — three endpoints, all gating on `bunking.manage`:**
+**Writes — four endpoints, all gating on `bunking.manage`:**
 
 ```text
-POST   /api/lodging/placements      upsert one party's placement; body carries `unit_ids`
-DELETE /api/lodging/placements      drop the override, restoring the mirror
-PUT    /api/lodging/availability    reserve/release a unit; state:null clears
+POST   /api/lodging/placements       place one party; `unit_ids` must name ≥ 1 unit
+DELETE /api/lodging/placements       UNPLACE the party — drop its row
+POST   /api/lodging/placements/copy  seed this scenario from the mirror, one weekend
+PUT    /api/lodging/availability     reserve/release a unit; state:null clears
 ```
 
 Two more endpoints existed here — `POST`/`DELETE /api/lodging/merges` — until kindred#1931 deleted
@@ -311,20 +316,39 @@ for everyone, which is what summer's `isProductionMode` does; an endpoint accept
 scenario-less write would be the one path around it. A blank scenario is a 422, not a silent
 write to the live plan.
 
-#### THREE STATES THAT LOOK IDENTICAL FROM OUTSIDE AND ARE NOT
+#### TWO STATES, WHICH IS THE POINT (#1974)
 
-The single easiest thing for the board to get wrong.
+There were three, and the third — the **tombstone**, a draft row naming no unit, meaning "staff
+took them off the board" as distinct from "untouched, so show CampMinder" — was called here the
+single easiest thing for the board to get wrong. It only existed because reads fell through to
+the mirror. Replace semantics removed the fall-through, so it had nothing left to express.
 
-| State | Row | Renders as | Meaning |
-|---|---|---|---|
-| Placed in scenario | draft row with a target | in that unit | staff moved them |
-| **Tombstone** | draft row with **no** target | unplaced | staff took them off the board |
-| No override | **no draft row** | wherever CampMinder put them | untouched in this scenario |
+| State | Row | Renders as |
+|---|---|---|
+| Placed in this scenario | draft row naming ≥ 1 unit | in those units |
+| Unplaced in this scenario | **no draft row** | on the unplaced rail |
 
-So `DELETE /placements` and "drag to the unplaced rail" are **different operations**. Dragging a
-family off the board must POST a **tombstone**. Deleting the row falls through to the mirror and
-puts them straight back in the synced cabin — the opposite of what the staff member just asked
-for. `DELETE` is a separate affordance ("reset to CampMinder"), not the unplaced rail.
+So **`DELETE /placements` IS the unplaced rail** — the same operation deleting a
+`bunk_assignments_draft` row is on the summer board. `POST` with an empty `unit_ids` is a **422**,
+not a second spelling of unplaced. Rows of the old tombstone shape still exist on databases
+written before #1974 and simply read as unplaced, which is what they always meant.
+
+**The copy is what makes a new scenario usable.** `POST /placements/copy` writes one draft row per
+synced placement for one weekend, carrying the mirror row's own `source` and `staff_touched:
+false` (a seed is not a staff decision, and the flag is one-way). It **409s** if the scenario
+already holds placements for that weekend: a second copy would overwrite what staff placed and
+re-place everything they unplaced, since unplacing is now the absence of a row. Re-baselining a
+worked plan against upstream drift is a DIFFERENT feature and does not exist.
+
+The count and the creates are separate round trips, so they race exactly as `place_party`'s
+find-then-create does, and are guarded the same way: a failed create re-counts, and rows **beyond
+the ones this copy wrote** are the race — reported as the same 409, not as the index's 400.
+
+**The test is `held > copied`, not `held > 0`, and the difference is not cosmetic.** The seed
+writes sequentially, so from its second row onwards it is looking at its own output; a bare
+"are there rows?" answers yes to itself and reports every later failure — a transient PocketBase
+error, a unit deleted since the mirror was read — as a 409 race, swallowing the real status. On a
+62-row weekend that is most of the failure surface.
 
 #### The `unit` / `merge` / `merge_draft` collapse into one `units` set (`2ae8a4ec`, #1931)
 
@@ -374,10 +398,13 @@ assertion instead of rotting.
 New `OnRecordCreate`/`OnRecordUpdate` hook on `lodging_assignments_draft` enforcing
 `household_cm_id` XOR `person_cm_id` — **party grain only, and deliberately nothing else.** It is
 a separate function from `guardAssignmentGrain` because the target rule differs and must: the
-draft accepts a row naming **no** target (the tombstone) and more than one, exactly as the
-schema does. A row naming neither *grain* is what makes it worth guarding — it keys on nothing,
-both partial unique indexes skip it, and the roster's overlay silently drops it, so the row
-accumulates and does nothing, invisibly.
+draft tolerates a row naming **no** target, which `guardAssignmentGrain` rejects. That
+tolerance was the tombstone until #1974 retired it; it stays because 1500000134's backfill saves
+the party grain and the units in two steps, and because `deleteRefRecords` empties `units` on a
+placement whose last unit is deleted — a guard there would crash-loop the boot and break a path
+PocketBase owns. A row naming neither *grain* is what makes it worth guarding — it keys on
+nothing, both partial unique indexes skip it, and `placement_grain` in the roster service
+silently drops it, so the row accumulates and does nothing, invisibly.
 
 **This is not what fixed #1923.** `guardDraftAssignmentGrain` is a create/update guard on party
 grain; #1923 was about DELETE guards on units and merges not seeing draft placements at all,
@@ -567,8 +594,10 @@ A placement now has ONE target — `units`, a set — instead of three (`unit`, 
 separate create-a-slot interaction: it is *extending a placement to another room*. Any plan
 text describing three targets or a merge endpoint predates the collapse and is wrong.
 
-Read the §2 subsection on the draft write layer before starting. The three-states table there is
-the thing this PR is most likely to get wrong.
+Read the §2 subsection on the draft write layer before starting. #1974 made a scenario REPLACE
+the mirror, which deleted the three-state table that used to be the thing this PR was most
+likely to get wrong — but it also means a scenario starts empty, so the picker (#1967) must
+offer the copy.
 
 **In scope:**
 
@@ -578,7 +607,8 @@ the thing this PR is most likely to get wrong.
   dropping a second room onto a placed party extends the same `POST /placements` body to
   `unit_ids: [a, b]` rather than calling a separate merge endpoint. There is no create-a-slot
   interaction left to build.
-- **Party → unplaced rail POSTs a TOMBSTONE, not a DELETE.** See §2.
+- **Party → unplaced rail is `DELETE /placements`.** #1974 retired the tombstone POST; an empty
+  `unit_ids` is now a 422. See §2.
 - Optimistic placement with rollback. **A rejected write must roll the card back** with a toast,
   as summer's `useCamperMovement` does. A silent revert is not acceptable.
 - Scenario gating: no scenario → the board stays exactly as read-only as it is today, with the
@@ -666,7 +696,8 @@ inline per row and in bulk. Until staff use it, the fit check stays dark.
   `docs/architecture/lodging-occupancy.md` has the staff-confirmed rules. Enforcement belongs
   at the point a human is choosing — the board, or the picker — not in the ingest.
 - **`lodging_availability`** — the per-session reserved/released overrides (spec §3.7). No
-  longer unread: the roster and summary overlay scenario rows on live ones, and
+  longer unread: the roster and summary overlay scenario rows on live ones — still an overlay
+  after #1974, which changed placements only — and
   `PUT /api/lodging/availability` writes them (§2). What is still missing is the **surface** —
   no UI reserves or releases a unit yet.
 - **`lodging.phi` is held by admins and the Bunking Staff role** (`1500000130`, closing #1887).
@@ -788,13 +819,19 @@ the whole time. That is progress, not a hang — confirm with CPU, not the count
   as an empty list. The alias editor's member checkboxes ARE the payload, so opening it against
   a failed unit query and saving would strip every member. On the board an empty unit list
   renders an empty board, which reads as "nothing to place" rather than "the fetch failed".
-- **Do not `DELETE /placements` when a card is dragged to the unplaced rail.** POST an empty
-  `unit_ids` — that is the tombstone, never a DELETE. Deleting falls through to the CampMinder
-  mirror and puts the family back in the cabin they were just dragged out of. §2 has the
-  three-state table; this is the trap it exists for.
-- **Do not add a "copy production into this scenario" operation.** Draft rows OVERLAY the
-  mirror, so a fresh scenario already renders the synced placements. A seed step would convert
-  every synced placement into a staff override and break the fall-through.
+- **Do not POST an empty `unit_ids` when a card is dragged to the unplaced rail.** Call
+  `DELETE /placements`. This bullet said the exact opposite until #1974: the tombstone existed
+  only because reads fell through to the mirror, and with the fall-through gone an empty
+  `unit_ids` is a 422. Any plan text describing a tombstone POST predates that change.
+- **Do not restore the overlay to make untouched parties track CampMinder again.** That
+  property was given up knowingly (#1974). If staff hit it, the fix is a visible "differs from
+  CampMinder" indicator on the roster, not an invisible auto-update — a scenario that silently
+  changes under a staff member is the same complaint in the other direction.
+- **Do not make the copy merge into a worked scenario.** `POST /placements/copy` 409s when the
+  scenario already holds placements for that weekend, deliberately: a gap-filling copy cannot
+  tell a party nobody has reached yet from one staff deliberately unplaced, because both are
+  now spelled as no row. "Re-baseline my plan against CampMinder drift" is a real and DIFFERENT
+  feature; do not conflate it with seeding.
 - **Do not accept a scenario-less write.** A blank `scenario` is a 422. With no scenario the
   board is read-only for everyone; an endpoint taking a scenario-less write is the one path
   around that.
@@ -888,9 +925,10 @@ This section previously listed three unguarded paths and told you to fold them i
 | Path | Shape | Handled? |
 |---|---|---|
 | `place_party` create | find→create vs unique index | ✅ race-guarded |
-| `clear_placement` delete | delete between find and delete | ✅ 404-idempotent |
+| `unplace_party` delete | delete between find and delete | ✅ 404-idempotent |
 | `set_availability` delete | delete between find and delete | ✅ 404-idempotent |
 | `set_availability` create | find→create vs `idx_lodging_avail_unique` | ✅ race-guarded |
+| `copy_from_mirror` seed | count→create vs the draft's unique indexes | ✅ race-guarded (#1974) |
 
 A fifth row sat here — `delete_merge`, 404-idempotent — until **#1931** deleted that method
 along with `lodging_merges_draft`. Its shape is the same as the two deletes above, so nothing
@@ -930,12 +968,16 @@ reads as unplaced rather than vanishing." **That was wrong about PocketBase.** `
 (`core/record_model.go:1576`) does not leave a clean, harmless "unplaced" row behind: it removes
 the deleted id from the `units` list of every placement holding it and re-saves the row with
 `SaveNoValidate`, skipping validation specifically so a dangling reference is tolerated. For a
-placement sitting in exactly that one room, removing its only id EMPTIES `units` — which is the
-TOMBSTONE (§2), not a neutral unplaced state: an empty `units` set suppresses the CampMinder
-mirror fallback, so the family silently reads as "staff took them off the board" instead of
-falling through to wherever CampMinder still has them. That is materially worse than "reads as
-unplaced," and it is exactly what `guardUnitDelete`'s refusal in (a) exists to prevent — it was
-never true that deleting the slot degraded gracefully.
+placement sitting in exactly that one room, removing its only id EMPTIES `units`, and the row
+survives saying nothing at all.
+
+**#1974 changed how bad that is, not whether the guard is needed.** Under the overlay an emptied
+`units` set was the TOMBSTONE — it suppressed the CampMinder mirror, so the family silently read
+as "staff took them off the board" rather than falling through to wherever CampMinder still had
+them. With the fall-through gone the row now reads as plain unplaced, which is honest: the room
+is gone. What survives unchanged is that the placement is **destroyed by a delete elsewhere in
+the UI**, silently and with no undo, which is exactly what `guardUnitDelete`'s refusal in (a)
+exists to prevent. It was never true that deleting the slot degraded gracefully.
 
 ### #1925 — `party_size` counts adults who are not attending
 
