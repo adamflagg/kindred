@@ -5,7 +5,7 @@
  */
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { useState } from 'react'
+import { useState, type ReactNode } from 'react'
 import { describe, expect, it } from 'vitest'
 
 import { FloatingQueueBadge } from './FloatingQueueBadge'
@@ -28,10 +28,12 @@ function Harness({
   items = ROWS,
   isPanelOpen = false,
   isDropTarget = false,
+  footer,
 }: {
   items?: Row[]
   isPanelOpen?: boolean
   isDropTarget?: boolean
+  footer?: ReactNode
 }) {
   const [isExpanded, setIsExpanded] = useState(false)
   return (
@@ -52,6 +54,7 @@ function Harness({
       noun="families"
       cardSelector="[data-family-card]"
       emptyState={<p>Everyone has a cabin.</p>}
+      footer={footer}
       isExpanded={isExpanded}
       onToggle={() => {
         setIsExpanded((open) => !open)
@@ -210,6 +213,36 @@ describe('FloatingQueueBadge — drop target', () => {
     expect(popover).toHaveClass('border-border')
     expect(popover).not.toHaveClass('border-primary')
     expect(container.querySelector('.overflow-y-auto')).not.toHaveClass('bg-primary/5')
+  })
+})
+
+describe('FloatingQueueBadge — footer', () => {
+  // `items.length > 0 && footer !== undefined` is two gates, and the count one
+  // is the non-obvious half: the footer disappears when the queue drains, so
+  // "Drag campers to bunks to assign" is not offered under "All campers
+  // assigned!". Summer passes a footer in production (`FOOTER`,
+  // `FloatingUnassignedBadge.tsx`), so this branch is live, not decorative.
+  const TIP = <p>Drag campers to bunks to assign</p>
+
+  it('renders the footer while the queue has anyone in it', async () => {
+    render(<Harness footer={TIP} />)
+    await userEvent.click(screen.getByRole('button', { name: /unplaced families/i }))
+    expect(screen.getByText('Drag campers to bunks to assign')).toBeInTheDocument()
+  })
+
+  it('drops the footer once the queue is empty', async () => {
+    render(<Harness items={[]} footer={TIP} />)
+    await userEvent.click(screen.getByRole('button', { name: /unplaced families/i }))
+    expect(screen.getByText('Everyone has a cabin.')).toBeInTheDocument()
+    expect(screen.queryByText('Drag campers to bunks to assign')).not.toBeInTheDocument()
+  })
+
+  it('omits the footer region entirely when no footer is supplied', async () => {
+    // The weekend's adapter passes none. Without the `!== undefined` half,
+    // an empty bordered strip would sit under every weekend queue.
+    const { container } = render(<Harness />)
+    await userEvent.click(screen.getByRole('button', { name: /unplaced families/i }))
+    expect(container.querySelector('.bg-accent\\/10')).not.toBeInTheDocument()
   })
 })
 
