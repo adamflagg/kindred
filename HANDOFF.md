@@ -37,7 +37,7 @@ below identifies work by **PR and commit**, which are the only labels that canno
 | Write-race guards — every write path hardened | ✅ `7b25d25e` (#1927) |
 | Share eligibility — flag on the authoritative form, not the registration gate | ✅ `d5951b69` (#1926) — see §3a |
 | Merge collapse — one `units` relation replaces `unit`/`merge`/`merge_draft` | ✅ `ee881bdf` (#1931) — see §2 |
-| **Map — read-only `map_x`/`map_y` surface, a projection of the board** | ⏳ **IN FLIGHT, `feature/lodging-map`** |
+| Map — read-only `map_x`/`map_y` surface, a projection of the board | ✅ `e3f0cca2` (#1939) + `c6903f59` (#1942, legend + highlight controls) — see §2 |
 | **Drag placement — the board calls the write endpoints** | ⬅ **next, see §4. Land the map first.** |
 | Pin editor — drag a unit to correct its coordinates | needs the map |
 | Geo layer | needs the map |
@@ -212,6 +212,45 @@ Facts, not a work log. Do not re-verify or re-implement these.
   *collisions* and was blind to the one where a row sat on a container and its four bookable
   rooms got nothing. Whenever data is mapped onto rows, the question is "is every row on the
   right target", which counts cannot answer. #1918 tracks a guard for that shape.
+
+### The map (`e3f0cca2`, #1939; legend + highlight controls `c6903f59`, #1942)
+
+A fourth tab on `/weekend/session/:id`, beside Roster / Inventory / Board. Read-only, and a
+**projection of the board** — it calls the same `buildBoard` over the same roster payload and
+adds position, so the two cannot disagree about who is where.
+
+- **The coordinate space IS page 1 of the camp map PDF.** `map_x`/`map_y` were digitised
+  against it, so placement is a plain `x*W, y*H`, top-left origin, no flip. Two things follow
+  and both are load-bearing: the canvas is locked to the page's 3300:2550 aspect, and the
+  backdrop carries `transform-origin: 0 0`. With the CSS default the marks drift out of
+  register as you zoom — zero error at 1×, worsening with `k` — and **no test can see it**,
+  because jsdom performs no layout. The comment in the file says so; do not tidy it away.
+- **The background is `/local/assets/camp-map.webp`** (3300×2550, 440 KB) from **kindred-local**,
+  shipped exactly as `camp-logo.png` is: Vite's `serve-local-assets` in dev,
+  `Dockerfile.caddy`'s `COPY local/` in prod. **A worktree gets a real COPY of `local/assets/`,
+  not a symlink**, so a new private asset must be copied into each worktree by hand. Without the
+  file the map degrades to positions-only with a note — it must never render an empty box.
+- **Marks cluster by GEOMETRY, not by `parent_unit`** — which is absent from the roster payload
+  and read nowhere in `api/`. The radius is SCREEN-space, so zooming dissolves clusters.
+  `clusterByProximity` merges every group a candidate touches, which makes the partition the
+  connected components of the radius graph and therefore **order-invariant**; a first-match
+  greedy is not, and the unit list is a DB query result whose order is not guaranteed.
+- **Containers are never drawn**, the same invariant the board holds. The Map tab counts
+  POSITIONED ROOMS, which is neither the Inventory count (includes containers) nor the number
+  of marks (clusters, and changes with zoom).
+- **`(0,0)` means UNPOSITIONED.** PocketBase stores an unset number as 0 and — unlike `sleeps` —
+  the API does not map it to null (#1941). Rendered naively it lands in the map's top-left
+  corner looking like a real placement. `hasCoordinates` treats BOTH axes zero as unset and
+  keeps a single-axis zero, which is a legitimate edge coordinate.
+- **A merged placement cannot be positioned yet.** The roster sends `unit_code: ""` for a merge,
+  so those parties land on the "Placed, off the map" rail. `resolvePartyUnits` (`mapModel.ts`)
+  is the pre-built seam and is the ONLY place a party becomes units. #1933 landed
+  `RosterParty.unit_codes`, so **#1940 is unblocked** and should be a small change.
+- **Wheel listeners must be NATIVE and non-passive.** React 19 registers `wheel` as passive at
+  the root, so `preventDefault()` inside an `onWheel` prop is silently ignored and the page
+  scrolls while the map zooms. Assert `defaultPrevented` if you touch this.
+- **Not keyboard-navigable, and it does not pretend to be** — marks carry no `role="button"`.
+  The Inventory tab is the accessible equivalent; nothing is reachable only here.
 
 ### The read-only board (`3c2e3b55`, #1911)
 
@@ -512,12 +551,12 @@ once drag makes draft rows exist for real.
 the interaction that joins them, and it is a frontend PR — **there is no schema work in front
 of it** unless it takes on `unit_class` (#1907).
 
-**Check whether the MAP PR has merged before starting.** #1926 is long merged; the live
-collision risk is now `feature/lodging-map`, which adds `LodgingMap.tsx`, `MapUnitPopover.tsx`,
-`mapModel.ts`, `mapClustering.ts` and `mapViewport.ts` under `components/weekend/` and adds one
-tab entry to `pages/WeekendRosterPage.tsx`. Its own files are new and will not collide, but
-`WeekendRosterPage.tsx` will, and drag may want the same board components the map imports
-(`buildBoard`, `AREA_HUES` from `boardLayout.ts`). Land the map first.
+**The map has landed (#1939), so its collision risk is spent.** What it leaves behind for drag:
+`WeekendRosterPage.tsx` now has a FOUR-entry `View` union and `TABS` array — add the drag work
+around it rather than reformatting. The map IMPORTS `buildBoard` and `AREA_HUES` from
+`boardLayout.ts` and never edits them, so changing `buildBoard`'s output changes the map too:
+it is a projection, and that is the point. `MapUnitPopover.tsx` now also imports
+`rosterAttention`, so `partyAttention` has two consumers.
 
 **The collapse (#1931, `ee881bdf`) made this PR materially smaller than it was planned as.**
 A placement now has ONE target — `units`, a set — instead of three (`unit`, `merge`,
@@ -544,15 +583,14 @@ the thing this PR is most likely to get wrong.
 - Reserve/release if it fits; otherwise say so and leave it.
 - ~~The three unguarded write paths in §8.~~ Done separately in **#1927** — do not re-do them.
 
-**Out of scope:** the map (next), `unit_class`/#1907 unless flagging needs it, and any new read
-endpoint — the roster already returns what the board renders.
+**Out of scope:** `unit_class`/#1907 unless flagging needs it, and any new read endpoint — the
+roster already returns what the board renders.
 
-**After it: the map view** — a secondary tab rendering the camp map from `map_x`/`map_y`, for
-judging *near* requests and seeing whether a family sits beside a bathhouse or a staff cabin.
-The coordinates have been in the schema since slice 1 for this, and `/manage/lodging` now lets
-staff correct both unit positions and area centroids. Both surfaces operate on the same state,
-so a change in one shows in the other. **The map is a projection of the board, not a separate
-system of record.**
+**The map already shipped (#1939), before drag rather than after.** Two consequences for this
+PR. First, `WeekendRosterPage.tsx` is shared — keep the diff there small. Second, the map is a
+PROJECTION: it calls the same `buildBoard`, so any change to the board's model appears on the
+map for free, and any change that breaks the board breaks both. Run
+`npx vitest run src/components/weekend/` and not just the board's own file.
 
 ### Two occupancy questions deferred to exactly this PR
 
@@ -759,6 +797,17 @@ the whole time. That is progress, not a hang — confirm with CPU, not the count
   around that.
 - **Do not reinstate `scenario` on `lodging_assignments`.** The column is dropped; a filter
   naming it fails the whole ingest.
+- **Do not render a value the model carries but nothing reads.** The map shipped with
+  `MapUnit.consent` threaded through and never rendered, so a non-consenting shared room looked
+  identical to any other — on the surface whose job is judging placements. Restored post-merge.
+  Two smells worth grepping for after any plan: an import that is never called, and a field
+  carried through a model that nothing reads.
+- **Do not assume a green suite means a green run.** `Tests 5323 passed` alongside
+  `Errors 1 error` and exit 1 is a CI failure. Always read the exit code, not the pass count.
+- **Do not trust `computeAccessibleName()` as proof a name is exposed.** testing-library
+  implements the accname COMPUTATION and does not enforce ARIA's name-prohibition, so it
+  returns a name for `aria-label` on a role-less `<div>` that real screen readers ignore.
+  Assert real DOM text (`sr-only`) instead.
 - **Do not trust the Go suite to catch a dropped column.** The fixtures declare their own schema
   and never read `pb_migrations/` (#1921). A `Set` on a dropped column silently no-ops.
 
@@ -811,6 +860,18 @@ git fetch -q && git rev-list --count origin/<branch>..HEAD   # must be 0
 ---
 
 ## 8. Open issues
+
+### Filed by the map (#1939)
+
+- **#1940 — wire `RosterParty.unit_codes` into the map.** UNBLOCKED: #1933 landed the field.
+  A multi-room party currently sits on the "Placed, off the map" rail because a merge sends
+  `unit_code: ""`. `resolvePartyUnits` in `mapModel.ts` is the only place a party becomes units
+  and was written for exactly this, so nothing else should need to change. Real multi-room
+  placements run 12–16 a year, so this is not hypothetical.
+- **#1941 — map `map_x`/`map_y` `0 → None` in the API**, as `sleeps` already is. The frontend
+  guard in `hasCoordinates` stays as defence in depth. Note the asymmetry deliberately: only a
+  BOTH-axes zero is the unset signal; a single-axis zero is a real edge position.
+
 
 ### CLOSED: every write path is race-guarded
 
