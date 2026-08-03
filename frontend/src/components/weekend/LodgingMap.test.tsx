@@ -2,10 +2,10 @@
  * The map surface. Fictional data throughout.
  */
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { fireEvent, render, screen } from '@testing-library/react'
+import { act, fireEvent, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import type { ReactNode } from 'react'
-import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import type { LodgingUnitRow, RosterPartyRow } from '../../types/lodging'
 import { LodgingMap } from './LodgingMap'
@@ -384,12 +384,128 @@ describe('LodgingMap', () => {
     expect(screen.queryByText('Cedar 1')).not.toBeInTheDocument()
   })
 
+  it('dots a room beside a bathhouse, rather than hiding it in the peek', () => {
+    // Spec §1 names two questions this surface exists to answer, and this is
+    // one of them verbatim. Answering it from the peek alone means clicking
+    // all 82 pins one at a time, which is what a map is meant to replace.
+    render(<LodgingMap parties={[]} units={[unit({ near_bathhouse: true })]} year={2026} />)
+    expect(screen.getByTestId('map-mark-bathhouse')).toBeInTheDocument()
+  })
+
+  it('leaves a room with no bathhouse undotted', () => {
+    render(<LodgingMap parties={[]} units={[unit({ near_bathhouse: false })]} year={2026} />)
+    expect(screen.queryByTestId('map-mark-bathhouse')).not.toBeInTheDocument()
+  })
+
+  it('marks an unmeasured room with a ?, so it is findable without clicking', () => {
+    render(<LodgingMap parties={[]} units={[unit({ sleeps: null })]} year={2026} />)
+    expect(screen.getByTestId('map-mark')).toHaveTextContent('?')
+  })
+
+  it('does not put a ? on a room whose capacity is known', () => {
+    render(<LodgingMap parties={[]} units={[unit({ sleeps: 4 })]} year={2026} />)
+    expect(screen.getByTestId('map-mark')).not.toHaveTextContent('?')
+  })
+
+  it('fits the map when the bare canvas is double-clicked', () => {
+    render(<LodgingMap parties={[]} units={UNITS} year={2026} />)
+    const canvas = screen.getByTestId('map-canvas')
+    const transform = () => screen.getByTestId('map-backdrop').style.transform
+    const atRest = transform()
+
+    fireEvent.wheel(canvas, { deltaY: -600 })
+    expect(transform()).not.toBe(atRest)
+
+    fireEvent.doubleClick(canvas)
+    expect(transform()).toBe(atRest)
+  })
+
+  it('does not fit when a MARK is double-clicked — a pin says what is in it', () => {
+    // Spec §7: "No double-click-to-zoom on a node." The same guard keeps a
+    // double-click on a pin from resetting the view out from under the user.
+    render(<LodgingMap parties={[]} units={UNITS} year={2026} />)
+    const canvas = screen.getByTestId('map-canvas')
+    const transform = () => screen.getByTestId('map-backdrop').style.transform
+
+    fireEvent.wheel(canvas, { deltaY: -600 })
+    const zoomed = transform()
+    fireEvent.doubleClick(screen.getAllByTestId('map-mark')[0] as HTMLElement)
+    expect(transform()).toBe(zoomed)
+  })
+
   it('closes the popover on Escape', async () => {
     render(<LodgingMap parties={[]} units={UNITS} year={2026} />)
     await userEvent.click(screen.getAllByTestId('map-mark')[0] as HTMLElement)
     expect(screen.getByText('Cedar 1')).toBeInTheDocument()
     await userEvent.keyboard('{Escape}')
     expect(screen.queryByText('Cedar 1')).not.toBeInTheDocument()
+  })
+
+  describe('hover-dwell', () => {
+    // Spec §7: the peek opens transiently on a 400ms dwell, tuned in the
+    // mockup. §6.2 is why it earns its place — clusters have a long tail, and
+    // clicking every pin to read it is the interaction the map replaces.
+    // Fake timers are scoped to this block so the click-driven tests above
+    // keep running on real ones.
+    beforeEach(() => {
+      vi.useFakeTimers()
+    })
+    afterEach(() => {
+      vi.useRealTimers()
+    })
+
+    function dwellOver(mark: HTMLElement, ms: number) {
+      fireEvent.pointerEnter(mark, { pointerType: 'mouse' })
+      act(() => {
+        vi.advanceTimersByTime(ms)
+      })
+    }
+
+    it('opens the peek once the pointer has dwelt', () => {
+      render(<LodgingMap parties={[]} units={UNITS} year={2026} />)
+      dwellOver(screen.getAllByTestId('map-mark')[0] as HTMLElement, 400)
+      expect(screen.getByText('Cedar 1')).toBeInTheDocument()
+    })
+
+    it('stays shut while the pointer is merely passing over', () => {
+      // Without this the peek fires on every pin the cursor crosses on its
+      // way somewhere else, which is the behaviour the dwell exists to avoid.
+      render(<LodgingMap parties={[]} units={UNITS} year={2026} />)
+      dwellOver(screen.getAllByTestId('map-mark')[0] as HTMLElement, 200)
+      expect(screen.queryByText('Cedar 1')).not.toBeInTheDocument()
+    })
+
+    it('closes again when the pointer leaves', () => {
+      render(<LodgingMap parties={[]} units={UNITS} year={2026} />)
+      const mark = screen.getAllByTestId('map-mark')[0] as HTMLElement
+      dwellOver(mark, 400)
+      expect(screen.getByText('Cedar 1')).toBeInTheDocument()
+      fireEvent.pointerLeave(mark, { pointerType: 'mouse' })
+      expect(screen.queryByText('Cedar 1')).not.toBeInTheDocument()
+    })
+
+    it('leaves a CLICK-pinned peek open after the pointer leaves', () => {
+      // Dwell is transient, click PINS. A pinned peek that evaporated when the
+      // cursor moved to read it would be unusable.
+      render(<LodgingMap parties={[]} units={UNITS} year={2026} />)
+      const mark = screen.getAllByTestId('map-mark')[0] as HTMLElement
+      fireEvent.click(mark)
+      fireEvent.pointerLeave(mark, { pointerType: 'mouse' })
+      expect(screen.getByText('Cedar 1')).toBeInTheDocument()
+    })
+
+    it('ignores a touch "hover", which fires alongside the tap', () => {
+      // A touch pointerenter arrives with the tap itself, so honouring it
+      // would open on dwell and immediately toggle shut on the click.
+      render(<LodgingMap parties={[]} units={UNITS} year={2026} />)
+      fireEvent.pointerEnter(screen.getAllByTestId('map-mark')[0] as HTMLElement, {
+        pointerType: 'touch',
+      })
+      act(() => {
+        vi.advanceTimersByTime(400)
+      })
+      expect(screen.queryByText('Cedar 1')).not.toBeInTheDocument()
+    })
   })
 
   it('keeps the popover inside the canvas when the mark sits near an edge', async () => {

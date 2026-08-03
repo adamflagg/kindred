@@ -9,10 +9,13 @@
  * `sleeps: null` is UNKNOWN and says so. "Sleeps 0" would be a lie about a
  * cabin nobody has measured.
  */
+import { Accessibility, Bath, Plug, Refrigerator, Snowflake } from 'lucide-react'
 import type { ReactNode } from 'react'
 
 import type { RosterPartyRow } from '../../types/lodging'
 import type { MapUnit } from './mapModel'
+import { partyAttention, partyBeds } from './rosterAttention'
+import { reservationBadge } from './unitBadges'
 
 /**
  * The board's `border-amber-400`, reused rather than re-picked. A consent flag
@@ -32,19 +35,56 @@ export interface MapUnitPopoverProps {
   onOpenParty: (party: RosterPartyRow) => void
 }
 
+/**
+ * Stable identity for an occupant row.
+ *
+ * Falls back to `display_name` for the same reason `LodgingMap.partyKey` does:
+ * both ids are OPTIONAL on the generated type, so a payload that omits them
+ * keys every occupant of a shared room to `household-undefined` and React
+ * reconciles two families as one.
+ */
+function partyKey(party: RosterPartyRow): string {
+  return `${party.grain}-${String(
+    party.household_cm_id || party.person_cm_id || party.display_name
+  )}`
+}
+
+/**
+ * What the registry records about the room.
+ *
+ * Icons carry `role="img"` and a label rather than bare `aria-hidden` glyphs:
+ * an amenity that exists only as a shape is invisible to AT, and this is the
+ * only place on the map that reports them. Same icon grammar as
+ * `UnitInventoryPanel`, so an amenity reads the same on both surfaces.
+ */
+function Amenities({ unit }: { unit: MapUnit['unit'] }): ReactNode {
+  const items: Array<{ label: string; icon: typeof Bath }> = []
+  if (unit.bathroom === 'private') items.push({ label: 'Private bathroom', icon: Bath })
+  if (unit.bathroom === 'shared') items.push({ label: 'Shared bathroom', icon: Bath })
+  if (unit.has_power === true) items.push({ label: 'Power', icon: Plug })
+  if (unit.has_ac === true) items.push({ label: 'Air conditioning', icon: Snowflake })
+  if (unit.has_fridge === true) items.push({ label: 'Fridge', icon: Refrigerator })
+  if (unit.is_accessible === true) items.push({ label: 'Accessible', icon: Accessibility })
+  if (items.length === 0) return null
+
+  return (
+    <ul className="text-muted-foreground flex flex-wrap items-center gap-1.5">
+      {items.map(({ label, icon: Icon }) => (
+        <li key={label}>
+          <Icon role="img" aria-label={label} className="h-3 w-3" />
+        </li>
+      ))}
+    </ul>
+  )
+}
+
 function occupantButtons(
   parties: RosterPartyRow[],
   onOpenParty: (party: RosterPartyRow) => void
 ): ReactNode {
   return parties.map((party) => (
-    // Falls back to `display_name` for the same reason `LodgingMap.partyKey`
-    // does: both ids are OPTIONAL on the generated type, so a payload that
-    // omits them keys every occupant of a shared room to
-    // `household-undefined` and React reconciles two families as one.
     <button
-      key={`${party.grain}-${String(
-        party.household_cm_id || party.person_cm_id || party.display_name
-      )}`}
+      key={partyKey(party)}
       type="button"
       onClick={() => {
         onOpenParty(party)
@@ -61,6 +101,16 @@ function DetailCard({ units, hue, onOpenParty }: MapUnitPopoverProps) {
   if (!entry) return null
   const { unit, parties, consent } = entry
   const capacityKnown = unit.sleeps !== null && unit.sleeps !== undefined
+  const badge = reservationBadge(unit)
+  const bedsNeeded = parties.reduce((sum, party) => sum + partyBeds(party), 0)
+
+  // Only the ACTIONABLE levels. `unverified` is the normal state of every
+  // cabin in the registry today — nothing is `is_confirmed` yet — so rendering
+  // it would put a caveat on every occupied room and stop being read.
+  // `partyAttention` owns the rule that only a confirmed cabin is evidence.
+  const unmet = parties
+    .map((party) => ({ party, attention: partyAttention(party, unit) }))
+    .filter(({ attention }) => attention.level === 'required' || attention.level === 'unmet')
 
   const tags: string[] = []
   if (unit.near_bathhouse) tags.push('near bathhouse')
@@ -81,6 +131,17 @@ function DetailCard({ units, hue, onOpenParty }: MapUnitPopoverProps) {
           <dt className="text-muted-foreground">Sleeps</dt>
           <dd>{capacityKnown ? unit.sleeps : <em>unknown</em>}</dd>
         </div>
+        {/* A SIZING HINT, not a verdict — `party_size` counts every adult in
+            the household whether or not they attend, so it runs high. Shown
+            only against a capacity that exists; "3 of unknown" says nothing. */}
+        {parties.length > 0 && capacityKnown && (
+          <div className="flex justify-between gap-3">
+            <dt className="text-muted-foreground">Beds</dt>
+            <dd className={bedsNeeded > (unit.sleeps ?? 0) ? 'font-semibold text-amber-700' : ''}>
+              {`${String(bedsNeeded)} of ${String(unit.sleeps)}`}
+            </dd>
+          </div>
+        )}
         <div className="flex justify-between gap-3">
           <dt className="text-muted-foreground">Occupied by</dt>
           <dd className="flex flex-col items-end gap-0.5">
@@ -88,6 +149,46 @@ function DetailCard({ units, hue, onOpenParty }: MapUnitPopoverProps) {
           </dd>
         </div>
       </dl>
+
+      <Amenities unit={unit} />
+
+      {(badge !== null || unit.is_active === false || unit.is_confirmed === false) && (
+        <ul className="flex flex-wrap gap-1">
+          {badge && (
+            <li className={`rounded-full px-1.5 py-0.5 text-[10px] font-medium ${badge.className}`}>
+              {badge.label}
+            </li>
+          )}
+          {/* A deactivated room reaches the board only because somebody is
+              still in it — `boardLayout`'s own note: "hiding it would drop
+              them." So it must say so rather than read as bookable. */}
+          {unit.is_active === false && (
+            <li className="rounded-full bg-slate-200 px-1.5 py-0.5 text-[10px] font-medium text-slate-800 dark:bg-slate-800 dark:text-slate-200">
+              Inactive
+            </li>
+          )}
+          {unit.is_confirmed === false && (
+            <li className="rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-medium text-amber-800 dark:bg-amber-950/40 dark:text-amber-300">
+              Unconfirmed
+            </li>
+          )}
+        </ul>
+      )}
+
+      {/* The cabin does not answer what this family asked for. Reason strings
+          come from `partyAttention` and are documented as never PHI. */}
+      {unmet.length > 0 && (
+        <ul className="flex flex-col gap-0.5">
+          {unmet.map(({ party, attention }) => (
+            <li
+              key={partyKey(party)}
+              className="text-[11px] font-medium text-red-700 dark:text-red-400"
+            >
+              {`${party.display_name ?? ''} — ${attention.reason}`}
+            </li>
+          ))}
+        </ul>
+      )}
       {tags.length > 0 && (
         <ul className="flex flex-wrap gap-1">
           {tags.map((tag) => (
@@ -200,7 +301,15 @@ function FootprintGrid({ units, hue, onOpenParty }: MapUnitPopoverProps) {
           const base = first
             ? `${label} — ${entry.unit.name}, ${who}`
             : `${entry.unit.name} — empty`
-          const described = entry.consent ? `${base} — ${CONSENT_PHRASE}` : base
+          // The grid has no room for badges, so status rides in the tooltip.
+          // A held or deactivated room that said nothing here would be
+          // indistinguishable from a bookable one.
+          const notes: string[] = []
+          const cellBadge = reservationBadge(entry.unit)
+          if (cellBadge) notes.push(cellBadge.label)
+          if (entry.unit.is_active === false) notes.push('Inactive')
+          if (entry.consent) notes.push(CONSENT_PHRASE)
+          const described = notes.length > 0 ? `${base} — ${notes.join(' — ')}` : base
           const style = first
             ? {
                 backgroundColor: hue,

@@ -18,8 +18,18 @@
  * The marks are therefore plain clickable divs and deliberately do NOT carry
  * `role="button"`. A role they cannot honour — 82 unreachable tab stops, or a
  * control with `tabIndex={-1}` that no keyboard can focus — is a worse lie than
- * an honest non-control, and it is what forced the popover to be a child of the
- * mark rather than a sibling.
+ * an honest non-control. The popover is a SIBLING of the marks for a related
+ * reason; see the comment at its render site.
+ *
+ * THE MARK CARRIES SPEC §6.3's ENCODING IN FULL, and the list is closed on
+ * purpose — position, fill, area hue, dashed square for staff-default, a blue
+ * dot for `near_bathhouse`, `?` for unmeasured capacity, and a ring that is
+ * the area hue when a room is shared and amber when that sharing was never
+ * consented to. Everything else the payload carries — reservation state,
+ * inactive, unconfirmed, amenities, beds, and a cabin that does not answer
+ * what a family asked for — lives in the peek. A 16px pin has room for about
+ * seven channels before it stops being readable, which is the failure §6.2
+ * spends its whole length avoiding.
  */
 import { Minus, Plus, Maximize2 } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
@@ -50,6 +60,21 @@ const DRAG_THRESHOLD_PX = 4
 
 /** Default scrim over the map so the marks read against a busy illustration. */
 const DEFAULT_FADE = 25
+
+/**
+ * Dwell before the peek opens, per spec §7 and tuned in the mockup.
+ *
+ * Long enough that crossing a pin on the way somewhere else does not fire it,
+ * short enough to feel like hover. The dwell peek is TRANSIENT — it closes
+ * when the pointer leaves, and clicking is what pins it open. That is why
+ * moving onto the popover to click an occupant needs a click first: a peek
+ * that followed the cursor would need a hit-corridor between mark and popover,
+ * which is a lot of machinery for something a click already solves.
+ */
+const DWELL_MS = 400
+
+/** The bathhouse dot. Blue, and not one of the eight area hues. */
+const BATHHOUSE_BLUE = '#2563eb'
 
 /** Half of the popover's `max-w-[15rem]` (240px), padded a bit. Clamping the
  *  anchor at least this far from each edge keeps the box on-screen. Height
@@ -88,9 +113,36 @@ export function LodgingMap({ parties, units, year }: LodgingMapProps) {
   const [size, setSize] = useState({ width: 0, height: 0 })
   const [imageFailed, setImageFailed] = useState(false)
   const [fade, setFade] = useState(DEFAULT_FADE)
-  const [openKey, setOpenKey] = useState<string | null>(null)
+  // TWO keys, not one. A click PINS the peek and a dwell only borrows it, so
+  // the pointer leaving a mark must close a dwell-opened peek without
+  // touching one the user deliberately pinned. Collapsing them into a single
+  // `openKey` made a pinned peek evaporate the moment the cursor moved to
+  // read it.
+  const [pinnedKey, setPinnedKey] = useState<string | null>(null)
+  const [dwellKey, setDwellKey] = useState<string | null>(null)
+  const dwellTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const [selected, setSelected] = useState<RosterPartyRow | null>(null)
   const unitsByCode = useMemo(() => indexUnitsByCode(units), [units])
+
+  const openKey = pinnedKey ?? dwellKey
+
+  const cancelDwell = useCallback(() => {
+    if (dwellTimer.current !== null) {
+      clearTimeout(dwellTimer.current)
+      dwellTimer.current = null
+    }
+  }, [])
+
+  /** Everything that moves the map underneath a peek dismisses it. */
+  const closePeek = useCallback(() => {
+    cancelDwell()
+    setPinnedKey(null)
+    setDwellKey(null)
+  }, [cancelDwell])
+
+  // A dwell timer outliving the component would call setState on an unmounted
+  // tree the moment the user switches tabs mid-hover.
+  useEffect(() => cancelDwell, [cancelDwell])
 
   // Measure the canvas so projection happens in real pixels. ResizeObserver
   // rather than a window listener: the tab can be revealed at any size.
@@ -146,7 +198,7 @@ export function LodgingMap({ parties, units, year }: LodgingMapProps) {
     if (!node) return
     const handleWheel = (event: WheelEvent) => {
       event.preventDefault()
-      setOpenKey(null)
+      closePeek()
       const rect = node.getBoundingClientRect()
       const { width: currentWidth, height: currentHeight } = sizeRef.current
       setView((current) =>
@@ -161,7 +213,7 @@ export function LodgingMap({ parties, units, year }: LodgingMapProps) {
       )
     }
     const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') setOpenKey(null)
+      if (event.key === 'Escape') closePeek()
     }
     node.addEventListener('wheel', handleWheel, { passive: false })
     window.addEventListener('keydown', handleKeyDown)
@@ -169,7 +221,10 @@ export function LodgingMap({ parties, units, year }: LodgingMapProps) {
       node.removeEventListener('wheel', handleWheel)
       window.removeEventListener('keydown', handleKeyDown)
     }
-  }, [])
+    // `closePeek` is a stable useCallback over a stable `cancelDwell`, so this
+    // listener is still attached exactly once — the dependency documents the
+    // reference rather than reattaching on every render.
+  }, [closePeek])
 
   const placed = model.units.map((mapUnit) => {
     const base = basePosition(mapUnit.x, mapUnit.y, width, height)
@@ -195,12 +250,12 @@ export function LodgingMap({ parties, units, year }: LodgingMapProps) {
     openKey === null ? undefined : clusters.find((cluster) => clusterKey(cluster) === openKey)
 
   const resetView = () => {
-    setOpenKey(null)
+    closePeek()
     setView(IDENTITY_VIEW)
   }
 
   const zoomBy = (factor: number) => {
-    setOpenKey(null)
+    closePeek()
     setView((current) => zoomAt(current, width / 2, height / 2, factor, width, height))
   }
 
@@ -285,7 +340,21 @@ export function LodgingMap({ parties, units, year }: LodgingMapProps) {
               ) {
                 return
               }
-              setOpenKey(null)
+              closePeek()
+            }}
+            // Spec §7: double-click on BARE canvas fits the whole map, and
+            // there is deliberately no double-click-to-zoom on a node — a
+            // pin's one job is to say what is in it. The same `closest` guard
+            // as the background dismiss is what keeps the two apart.
+            onDoubleClick={(event) => {
+              const target = event.target as HTMLElement
+              if (
+                target.closest('[data-testid="map-mark"]') ||
+                target.closest('[data-map-popover]')
+              ) {
+                return
+              }
+              resetView()
             }}
             // Replacing the record on a new press is what makes a DROPPED
             // gesture self-heal: if an up event is ever lost, the next press
@@ -329,7 +398,7 @@ export function LodgingMap({ parties, units, year }: LodgingMapProps) {
                 if (Math.abs(dx) + Math.abs(dy) <= DRAG_THRESHOLD_PX) return
                 drag.active = true
                 event.currentTarget.setPointerCapture(drag.id)
-                setOpenKey(null)
+                closePeek()
               }
               setView(clampView({ k: view.k, tx: drag.tx + dx, ty: drag.ty + dy }, width, height))
             }}
@@ -422,9 +491,29 @@ export function LodgingMap({ parties, units, year }: LodgingMapProps) {
               // ANY flagged member rings the cluster; the popover's grid is
               // where it narrows to which room.
               const flagged = cluster.members.filter((m) => m.item.consent !== null).length
-              const summary = many
+              // Spec §1 names TWO questions this surface exists to answer, and
+              // "does this family sit beside a bathhouse" is one of them
+              // verbatim. It has to be on the MARK: 31 rooms carry it, and
+              // reading it out of the peek means opening all 82 one at a time,
+              // which is the interaction a map exists to replace.
+              const bathhouse = cluster.members.some(
+                (member) => member.item.unit.near_bathhouse === true
+              )
+              // A room nobody has measured, findable at a glance. `sleeps: 0`
+              // is treated as unknown alongside null — the API maps 0 to None
+              // today, but a 0 arriving here must never render as a capacity.
+              const unmeasured =
+                first.unit.sleeps === null ||
+                first.unit.sleeps === undefined ||
+                first.unit.sleeps === 0
+              let summary = many
                 ? `${String(cluster.members.length)} rooms · ${String(occupied)} occupied`
                 : first.unit.name
+              // Every glyph on the pin is also said in words here — colour and
+              // shape alone are not signals (WCAG 1.4.1), and the mark carries
+              // no other text.
+              if (bathhouse) summary += ' · near bathhouse'
+              if (!many && unmeasured) summary += ' · capacity unknown'
               // Amber SUPERSEDES the shared ring rather than competing with it:
               // a consent flag only ever exists on a shared room, so the two
               // can never both need the same ring.
@@ -438,7 +527,29 @@ export function LodgingMap({ parties, units, year }: LodgingMapProps) {
                   title={flagged > 0 ? `${summary} — ${CONSENT_PHRASE}` : summary}
                   onClick={(event) => {
                     event.stopPropagation()
-                    setOpenKey((current) => (current === key ? null : key))
+                    // A click PINS, and supersedes any dwell in flight —
+                    // otherwise the timer fires later and reopens what the
+                    // click just toggled shut.
+                    cancelDwell()
+                    setDwellKey(null)
+                    setPinnedKey((current) => (current === key ? null : key))
+                  }}
+                  // MOUSE ONLY. A touch pointerenter arrives with the tap
+                  // itself, so honouring it would open on dwell and then
+                  // immediately toggle shut on the click that follows.
+                  onPointerEnter={(event) => {
+                    if (event.pointerType !== 'mouse') return
+                    cancelDwell()
+                    dwellTimer.current = setTimeout(() => {
+                      setDwellKey(key)
+                    }, DWELL_MS)
+                  }}
+                  onPointerLeave={(event) => {
+                    if (event.pointerType !== 'mouse') return
+                    cancelDwell()
+                    // Only ever retracts the peek this mark itself borrowed —
+                    // a pinned one belongs to the user, not to the cursor.
+                    setDwellKey((current) => (current === key ? null : current))
                   }}
                   style={{ left: cluster.x, top: cluster.y }}
                   className="absolute -translate-x-1/2 -translate-y-1/2 cursor-pointer"
@@ -455,8 +566,19 @@ export function LodgingMap({ parties, units, year }: LodgingMapProps) {
                     }}
                     className="grid place-items-center border-2 text-xs font-bold text-white"
                   >
-                    {many ? cluster.members.length : ''}
+                    {/* A cluster spends its face on the member count, so the
+                        `?` is a lone room's glyph. An unmeasured room inside a
+                        cluster surfaces in the peek's grid instead. */}
+                    {many ? cluster.members.length : unmeasured ? '?' : ''}
                   </span>
+                  {bathhouse && (
+                    <span
+                      data-testid="map-mark-bathhouse"
+                      aria-hidden="true"
+                      style={{ backgroundColor: BATHHOUSE_BLUE }}
+                      className="absolute -top-0.5 -right-0.5 h-2 w-2 rounded-full ring-1 ring-white"
+                    />
+                  )}
                 </div>
               )
             })}

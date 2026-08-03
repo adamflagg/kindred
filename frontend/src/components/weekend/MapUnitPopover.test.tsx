@@ -130,6 +130,115 @@ describe('MapUnitPopover — one room', () => {
     expect(onOpenParty).toHaveBeenCalledWith(johnson)
   })
 
+  it('badges a held room, reusing the inventory and board wording', () => {
+    // `reservationBadge` is the shared source for this; a second copy is how
+    // the three surfaces start disagreeing about what "Held" means.
+    render(
+      <MapUnitPopover
+        units={[mapUnit(row({ reservation_state: 'reserved_other' }))]}
+        hue={HUE}
+        onOpenParty={vi.fn()}
+      />
+    )
+    expect(screen.getByText('Held')).toBeInTheDocument()
+  })
+
+  it('says a deactivated room is inactive', () => {
+    // It only reaches the board at all because somebody is still in it —
+    // `boardLayout`'s own comment: "hiding it would drop them."
+    render(
+      <MapUnitPopover
+        units={[mapUnit(row({ is_active: false }), [party('Johnson')])]}
+        hue={HUE}
+        onOpenParty={vi.fn()}
+      />
+    )
+    expect(screen.getByText('Inactive')).toBeInTheDocument()
+  })
+
+  it('says when nobody has confirmed the room amenities', () => {
+    render(
+      <MapUnitPopover
+        units={[mapUnit(row({ is_confirmed: false }))]}
+        hue={HUE}
+        onOpenParty={vi.fn()}
+      />
+    )
+    expect(screen.getByText('Unconfirmed')).toBeInTheDocument()
+  })
+
+  it('lists the amenities the registry records', () => {
+    render(
+      <MapUnitPopover
+        units={[
+          mapUnit(row({ bathroom: 'private', has_power: true, has_ac: true, is_accessible: true })),
+        ]}
+        hue={HUE}
+        onOpenParty={vi.fn()}
+      />
+    )
+    expect(screen.getByLabelText('Private bathroom')).toBeInTheDocument()
+    expect(screen.getByLabelText('Power')).toBeInTheDocument()
+    expect(screen.getByLabelText('Air conditioning')).toBeInTheDocument()
+    expect(screen.getByLabelText('Accessible')).toBeInTheDocument()
+  })
+
+  it('reports beds needed against the capacity', () => {
+    // `party_size` over-counts adults (all household adults are added whether
+    // or not they attend), so this is a sizing hint, not a verdict.
+    render(
+      <MapUnitPopover
+        units={[mapUnit(row({ sleeps: 4 }), [party('Johnson')])]}
+        hue={HUE}
+        onOpenParty={vi.fn()}
+      />
+    )
+    expect(screen.getByText('3 of 4')).toBeInTheDocument()
+  })
+
+  it('flags an occupant whose confirmed cabin does not answer their request', () => {
+    // Reuses `partyAttention`, which already encodes the rule that only a
+    // CONFIRMED cabin is evidence — an unset `has_power` means "nobody has
+    // said", not "there is no power".
+    const needsPower = party('Johnson')
+    needsPower.flags = {
+      needs_private_bathroom: false,
+      needs_power: true,
+      needs_accommodation: false,
+      accommodation_is_mandatory: false,
+      has_infant: false,
+      has_medical_narrative: false,
+    }
+    render(
+      <MapUnitPopover
+        units={[mapUnit(row({ is_confirmed: true, has_power: false }), [needsPower])]}
+        hue={HUE}
+        onOpenParty={vi.fn()}
+      />
+    )
+    expect(screen.getByText(/No power/)).toBeInTheDocument()
+  })
+
+  it('does not accuse an UNCONFIRMED cabin of failing a request', () => {
+    const needsPower = party('Johnson')
+    needsPower.flags = {
+      needs_private_bathroom: false,
+      needs_power: true,
+      needs_accommodation: false,
+      accommodation_is_mandatory: false,
+      has_infant: false,
+      has_medical_narrative: false,
+    }
+    render(
+      <MapUnitPopover
+        units={[mapUnit(row({ is_confirmed: false, has_power: false }), [needsPower])]}
+        hue={HUE}
+        onOpenParty={vi.fn()}
+      />
+    )
+    expect(screen.queryByText(/No power/)).not.toBeInTheDocument()
+  })
+
   it('prints the consent reason, as the board card does', () => {
     // The board renders `consent.reason` verbatim beside the slot. The map
     // carries the identical flag off the same slot, so the peek must say the
@@ -261,6 +370,27 @@ describe('MapUnitPopover — a cluster of rooms', () => {
   it('draws one cell per room', () => {
     render(<MapUnitPopover units={units} hue={HUE} onOpenParty={vi.fn()} />)
     expect(screen.getAllByTestId('map-popover-cell')).toHaveLength(3)
+  })
+
+  it('carries a held or deactivated room’s status into the cluster cell', () => {
+    // The grid has no room for badges, but a cell that says nothing makes a
+    // held room in a house indistinguishable from a bookable one. The tooltip
+    // is free space.
+    const house = [
+      mapUnit(row({ unit_id: 'u1', code: 'cedar-1', name: 'Cedar 1' })),
+      mapUnit(
+        row({
+          unit_id: 'u2',
+          code: 'cedar-2',
+          name: 'Cedar 2',
+          reservation_state: 'reserved_other',
+          is_active: false,
+        })
+      ),
+    ]
+    render(<MapUnitPopover units={house} hue={HUE} onOpenParty={vi.fn()} />)
+    expect(screen.getByTitle(/Cedar 2.*Held.*Inactive/i)).toBeInTheDocument()
+    expect(screen.queryByTitle(/Cedar 1.*Held/i)).not.toBeInTheDocument()
   })
 
   it('says WHICH room in a cluster carries the consent flag', () => {
