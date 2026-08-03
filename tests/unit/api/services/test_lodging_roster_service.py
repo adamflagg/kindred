@@ -1287,3 +1287,175 @@ class TestShareEligibility:
         share = roster.parties[0].share
         assert share.eligibility == "unknown"
         assert share.eligibility_source == "none"
+
+
+class TestPartySortName:
+    """A household's display_name is a mailing title, so it cannot be the sort key.
+
+    "The Johnson Family" would file under T. sort_name carries the surname the
+    list actually needs, read from last_name COLUMNS -- family_camp_adults
+    populates first/last only for adults 1-2, which is exactly the range the
+    adult rungs look at.
+    """
+
+    @pytest.mark.asyncio
+    async def test_household_sorts_under_adult_ones_surname(self) -> None:
+        repo = _repo(
+            fetch_session=FAMILY_SESSION,
+            fetch_households={"hh_1": _household(title="The Johnson Family")},
+            fetch_attendees_for_session=[_child()],
+            fetch_family_camp_adults={
+                "hh_1": [
+                    _rec(
+                        adult_number=2,
+                        name="Noah Garcia",
+                        first_name="Noah",
+                        last_name="Garcia",
+                        relationship_to_camper="Parent",
+                    ),
+                    _rec(
+                        adult_number=1,
+                        name="Emma Johnson",
+                        first_name="Emma",
+                        last_name="Johnson",
+                        relationship_to_camper="Parent",
+                    ),
+                ]
+            },
+        )
+        service = LodgingRosterService(repo)
+
+        roster = await service.build_roster(2026, 1000001)
+
+        # Adult 1 wins even though adult 2 is listed first in the payload.
+        assert roster.parties[0].sort_name == "Johnson"
+
+    @pytest.mark.asyncio
+    async def test_falls_back_to_a_later_adult_when_adult_one_has_no_surname(self) -> None:
+        repo = _repo(
+            fetch_session=FAMILY_SESSION,
+            fetch_households={"hh_1": _household(title="The Chen Family")},
+            fetch_attendees_for_session=[_child()],
+            fetch_family_camp_adults={
+                "hh_1": [
+                    _rec(
+                        adult_number=1,
+                        name="Olivia",
+                        first_name="Olivia",
+                        last_name="",
+                        relationship_to_camper="Parent",
+                    ),
+                    _rec(
+                        adult_number=2,
+                        name="Liam Chen",
+                        first_name="Liam",
+                        last_name="Chen",
+                        relationship_to_camper="Parent",
+                    ),
+                ]
+            },
+        )
+        service = LodgingRosterService(repo)
+
+        roster = await service.build_roster(2026, 1000001)
+
+        assert roster.parties[0].sort_name == "Chen"
+
+    @pytest.mark.asyncio
+    async def test_falls_back_to_the_enrolled_child_when_no_adult_has_a_surname(self) -> None:
+        repo = _repo(
+            fetch_session=FAMILY_SESSION,
+            fetch_households={"hh_1": _household(title="The Sam Family")},
+            fetch_attendees_for_session=[_child(first="Riley", last="Sam")],
+            fetch_family_camp_adults={},
+        )
+        service = LodgingRosterService(repo)
+
+        roster = await service.build_roster(2026, 1000001)
+
+        assert roster.parties[0].sort_name == "Sam"
+
+    @pytest.mark.asyncio
+    async def test_last_resort_is_the_display_names_last_token(self) -> None:
+        # No adults, and a child whose person row carries no last_name at all.
+        repo = _repo(
+            fetch_session=FAMILY_SESSION,
+            fetch_households={"hh_1": _household(title="Household of Olivia Chen")},
+            fetch_attendees_for_session=[_child(first="Olivia", last="")],
+            fetch_family_camp_adults={},
+        )
+        service = LodgingRosterService(repo)
+
+        roster = await service.build_roster(2026, 1000001)
+
+        assert roster.parties[0].sort_name == "Chen"
+
+    @pytest.mark.asyncio
+    async def test_last_resort_yields_family_for_a_real_mailing_title(self) -> None:
+        # The rung above uses a title that happens to END in a surname. The
+        # shape RosterParty.sort_name's own comment names as production's does
+        # not: CampMinder's mailing_title is "The Chen Family", whose last
+        # token is "Family". So the last resort files every household that
+        # reaches it under F, not under its surname.
+        #
+        # Pinned rather than fixed. This rung is reached only when NO adult and
+        # NO child on the party carries a last_name, and family_camp_adults
+        # populates those columns for adults 1-2 — so it is the rare tail, and
+        # the pair still tie-break on display_name. Recorded here so the rung's
+        # real output is on the page instead of implied by a kinder fixture.
+        repo = _repo(
+            fetch_session=FAMILY_SESSION,
+            fetch_households={"hh_1": _household(title="The Chen Family")},
+            fetch_attendees_for_session=[_child(first="Olivia", last="")],
+            fetch_family_camp_adults={},
+        )
+        service = LodgingRosterService(repo)
+
+        roster = await service.build_roster(2026, 1000001)
+
+        assert roster.parties[0].sort_name == "Family"
+
+    @pytest.mark.asyncio
+    async def test_adult_weekend_person_sorts_under_their_own_surname(self) -> None:
+        person = _rec(
+            cm_id=1000002,
+            first_name="Liam",
+            last_name="Garcia",
+            preferred_name="",
+            age=41,
+            grade=0,
+            household="",
+        )
+        repo = _repo(
+            fetch_session=ADULT_SESSION,
+            fetch_attendees_for_session=[_rec(person_id=1000002, expand={"person": person})],
+        )
+        service = LodgingRosterService(repo)
+
+        roster = await service.build_roster(2026, 1000002)
+
+        assert roster.parties[0].sort_name == "Garcia"
+
+    @pytest.mark.asyncio
+    async def test_roster_is_ordered_by_surname_not_by_mailing_title(self) -> None:
+        # THE defect. The two titles are chosen so the orderings DISAGREE:
+        # by surname it is Chen then Johnson, by mailing title it is "Johnson
+        # Household" then "The Chen Family". A pair that sorted the same either
+        # way would pass against the bug and pin nothing.
+        repo = _repo(
+            fetch_session=FAMILY_SESSION,
+            fetch_households={
+                "hh_1": _household(pb_id="hh_1", cm_id=2000001, title="Johnson Household"),
+                "hh_2": _household(pb_id="hh_2", cm_id=2000002, title="The Chen Family"),
+            },
+            fetch_attendees_for_session=[
+                _child(cm_id=1000001, first="Emma", last="Johnson", household_pb_id="hh_1"),
+                _child(cm_id=1000002, first="Olivia", last="Chen", household_pb_id="hh_2"),
+            ],
+            fetch_family_camp_adults={},
+        )
+        service = LodgingRosterService(repo)
+
+        roster = await service.build_roster(2026, 1000001)
+
+        assert [p.sort_name for p in roster.parties] == ["Chen", "Johnson"]

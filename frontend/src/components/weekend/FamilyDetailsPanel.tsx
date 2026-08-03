@@ -10,14 +10,13 @@
  * **Mirror the contract, not the code.** `CamperDetailsPanel` is 1442 lines and
  * deeply camper-coupled — bunk requests, satisfaction buckets, AG collapse,
  * camper journeys. None of it is reused. What is copied is the interaction
- * shape the board already implements: `{ onClose, requestClose, embedded }`,
+ * shape the board already implements: `{ onClose, requestClose }`,
  * `requestClose` driving an animated close, the `pointer-events-none fixed
  * inset-0 z-[59]` click-outside layer, and `shouldKeepPanelsOpen` for
  * dismissal.
  *
- * **One component, both surfaces.** The map (Step 6) opens this same panel
- * embedded; a second implementation is exactly what `embedded` exists to
- * prevent.
+ * **One component, both surfaces.** The board and the map both open this same
+ * slide-in overlay — there is no second implementation to keep in sync.
  */
 import { Clock, Home, Repeat, Users, X } from 'lucide-react'
 import { useCallback, useEffect, useState } from 'react'
@@ -29,6 +28,7 @@ import type {
   ShareRequest,
 } from '../../types/lodging'
 import { AccessibilityFlagList } from './AccessibilityFlagList'
+import { partyKey } from './partyKey'
 import { ATTENTION_LABEL, partyAttention } from './rosterAttention'
 import { ShareRequestPanel } from './ShareRequestPanel'
 
@@ -37,8 +37,6 @@ export interface FamilyDetailsPanelProps {
   /** The cabin it sits in, when one resolves. Undefined for a merge. */
   unit?: LodgingUnitRow | undefined
   year: number
-  /** Rendered inline (the map's sidebar) rather than as a slide-in overlay. */
-  embedded?: boolean
   /** Parent-driven animated close, as the summer board does. */
   requestClose?: boolean
   onClose: () => void
@@ -77,19 +75,32 @@ export function FamilyDetailsPanel({
   party,
   unit,
   year,
-  embedded = false,
   requestClose = false,
   onClose,
 }: FamilyDetailsPanelProps) {
   const [isClosing, setIsClosing] = useState(false)
+
+  // The board and map stopped keying this panel per party, so a family switch
+  // updates it in place instead of remounting. Remounting used to reset
+  // `isClosing` for free; nothing else does. Without this, closing one family
+  // and picking another inside the 300ms slide-out hands the new family the
+  // old one's exit, and `handleAnimationEnd` closes the panel on them.
+  //
+  // Adjusted during render, not in an effect: an effect commits one frame with
+  // the exit class still on, which is the flicker this exists to prevent.
+  // `requestClose` needs no equivalent — the parent's `openParty` sets it false.
+  const identity = partyKey(party)
+  const [shownIdentity, setShownIdentity] = useState(identity)
+  if (identity !== shownIdentity) {
+    setShownIdentity(identity)
+    setIsClosing(false)
+  }
+
   const exiting = requestClose || isClosing
 
   const handleClose = useCallback(() => {
-    // Embedded has no slide-out to run, so waiting for an animation that never
-    // fires would leave the panel stuck open.
-    if (embedded) onClose()
-    else setIsClosing(true)
-  }, [embedded, onClose])
+    setIsClosing(true)
+  }, [])
 
   const handleAnimationEnd = useCallback(
     (event: React.AnimationEvent) => {
@@ -103,7 +114,7 @@ export function FamilyDetailsPanel({
   )
 
   useEffect(() => {
-    if (embedded || isClosing) return
+    if (isClosing) return
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === 'Escape') handleClose()
     }
@@ -111,7 +122,7 @@ export function FamilyDetailsPanel({
     return () => {
       document.removeEventListener('keydown', onKeyDown)
     }
-  }, [embedded, isClosing, handleClose])
+  }, [isClosing, handleClose])
 
   const adults = party.adults ?? []
   const children = party.children ?? []
@@ -223,6 +234,17 @@ export function FamilyDetailsPanel({
 
       <Section title="Housing needs">
         <AccessibilityFlagList
+          // The panel no longer remounts on a family switch — it updates in
+          // place, as summer's CamperDetailsPanel does. This key keeps the one
+          // thing that remount was protecting: the medical reveal resets per
+          // household, so the next family's narrative is never disclosed by a
+          // click the user made against the previous one. Vestigial once the
+          // click-to-reveal is removed; free until then.
+          //
+          // `key` uses the raw id; `householdCmId` below nulls non-positive
+          // ones. They diverge only when raw <= 0 — exactly when `canReveal`
+          // is already false, so the mismatch is inert.
+          key={householdCmId}
           flags={party.flags ?? NO_FLAGS}
           householdCmId={householdCmId > 0 ? householdCmId : null}
           year={year}
@@ -249,19 +271,6 @@ export function FamilyDetailsPanel({
       </button>
     </div>
   )
-
-  if (embedded) {
-    return (
-      <div
-        data-panel="family-details"
-        data-testid="family-details-panel"
-        className="bg-card shadow-lodge-lg flex h-full flex-col overflow-hidden rounded-2xl"
-      >
-        {header}
-        <div className="flex-1 overflow-y-auto">{body}</div>
-      </div>
-    )
-  }
 
   return (
     <>

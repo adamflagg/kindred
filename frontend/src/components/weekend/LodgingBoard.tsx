@@ -6,33 +6,31 @@
  * `isProductionMode`). The amber CM badge says so on the surface, because a
  * board that looks draggable and is not is worse than a list.
  *
- * Layout is §3.7: an unplaced rail on the left, then one collapsible section
- * per area, each a WRAPPING GRID of slot cards. Not summer's columns — a
- * summer bunk column is tall because it holds 10–14 campers, and 82 rooms
- * cannot be 82 columns.
+ * Layout is §3.7: one collapsible section per area, each a WRAPPING GRID of
+ * slot cards. Not summer's columns — a summer bunk column is tall because it
+ * holds 10–14 campers, and 82 rooms cannot be 82 columns. Unplaced families
+ * sit in the same floating corner queue summer uses for unassigned campers
+ * (`FloatingUnplacedBadge`), not a permanent rail.
  *
  * Dragging is C2 and needs Phase B's draft tables, which do not exist yet.
  * Nothing here writes.
  */
 import { ChevronDown, ChevronRight, Info, TriangleAlert } from 'lucide-react'
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useState } from 'react'
 
+import { useDismissOnDeadSpace } from '../../hooks/useDismissOnDeadSpace'
 import type { LodgingUnitRow, RosterPartyRow } from '../../types/lodging'
-import { shouldKeepPanelsOpen } from '../../utils/clickoutsidePredicate'
 import { buildBoard } from './boardLayout'
 import { FamilyCard } from './FamilyCard'
 import { FamilyDetailsPanel } from './FamilyDetailsPanel'
+import { FloatingUnplacedBadge } from './FloatingUnplacedBadge'
 import { LodgingUnitCard } from './LodgingUnitCard'
+import { partyKey } from './partyKey'
 
 export interface LodgingBoardProps {
   parties: RosterPartyRow[]
   units: LodgingUnitRow[]
   year: number
-}
-
-/** Stable identity for a party across renders. */
-function partyKey(party: RosterPartyRow): string {
-  return `${party.grain}-${String(party.household_cm_id ?? party.person_cm_id ?? party.display_name)}`
 }
 
 export function LodgingBoard({ parties, units, year }: LodgingBoardProps) {
@@ -53,24 +51,10 @@ export function LodgingBoard({ parties, units, year }: LodgingBoardProps) {
     setRequestClose(false)
   }, [])
 
-  // Clicking dead space dismisses the panel, using the same shared predicate
-  // the summer board uses so the two behaviours cannot drift.
-  useEffect(() => {
-    if (selected === null) return
-    const handler = (event: MouseEvent) => {
-      if (shouldKeepPanelsOpen(event)) return
-      setRequestClose(true)
-    }
-    // A microtask's delay, so the click that opened the panel is not the click
-    // that closes it.
-    const timeoutId = setTimeout(() => {
-      document.addEventListener('click', handler)
-    }, 0)
-    return () => {
-      clearTimeout(timeoutId)
-      document.removeEventListener('click', handler)
-    }
-  }, [selected])
+  // Same dead-space dismissal the summer board uses, through the same hook.
+  useDismissOnDeadSpace(selected !== null, () => {
+    setRequestClose(true)
+  })
 
   const toggleArea = (key: string) => {
     setCollapsed((current) => {
@@ -98,38 +82,7 @@ export function LodgingBoard({ parties, units, year }: LodgingBoardProps) {
         )}
       </div>
 
-      <div className="card-lodge grid grid-cols-1 overflow-hidden lg:grid-cols-[240px_minmax(0,1fr)]">
-        <aside
-          aria-label="Unplaced parties"
-          className="bg-muted/30 border-border/60 flex flex-col gap-2 border-b p-3 lg:border-r lg:border-b-0"
-        >
-          <div className="flex items-baseline justify-between gap-2">
-            <h3 className="font-display text-foreground text-sm font-bold">Unplaced</h3>
-            <span className="text-muted-foreground text-xs tabular-nums">
-              {board.unplaced.length}
-            </span>
-          </div>
-
-          {board.unplaced.length === 0 ? (
-            <p className="text-muted-foreground text-xs italic">Everyone has a cabin.</p>
-          ) : (
-            <div className="flex flex-col gap-1.5">
-              {board.unplaced.map((party) => (
-                <FamilyCard key={partyKey(party)} party={party} onRail={true} onOpen={openParty} />
-              ))}
-            </div>
-          )}
-
-          {/* §3.7 also wanted "a share request whose partner is not yet
-              placed". That leg DOES NOT EXIST — no request names are resolved
-              to households (spec §7.3, unbuilt) — so the surface admits it
-              rather than implying a completeness it does not have. */}
-          <p className="text-muted-foreground/80 mt-1 text-[11px] leading-snug">
-            Ranked on a mandatory accommodation only. Ranking by an unplaced share partner needs
-            request names resolved to households, which is not built yet.
-          </p>
-        </aside>
-
+      <div className="card-lodge overflow-hidden">
         <div className="flex flex-col gap-5 p-3">
           {board.areas.length === 0 ? (
             <p className="text-muted-foreground text-sm">
@@ -213,9 +166,14 @@ export function LodgingBoard({ parties, units, year }: LodgingBoardProps) {
         </div>
       </div>
 
+      <FloatingUnplacedBadge
+        parties={board.unplaced}
+        onOpenParty={openParty}
+        isPanelOpen={selected !== null}
+      />
+
       {selected !== null && (
         <FamilyDetailsPanel
-          key={partyKey(selected)}
           party={selected}
           unit={unitsByCode.get(selected.unit_code ?? '')}
           year={year}

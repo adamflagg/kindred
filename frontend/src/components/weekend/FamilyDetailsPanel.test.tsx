@@ -8,7 +8,7 @@
  * Fictional data throughout.
  */
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { render, screen } from '@testing-library/react'
+import { fireEvent, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import type { ReactNode } from 'react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
@@ -43,6 +43,30 @@ beforeEach(() => {
 
 function wrapper({ children }: { children: ReactNode }) {
   return <QueryClientProvider client={client}>{children}</QueryClientProvider>
+}
+
+/**
+ * Drives whichever `animationend` React actually listens for here — which is
+ * NOT necessarily what `fireEvent.animationEnd` fires.
+ *
+ * jsdom has no global `AnimationEvent`, so React's own feature detection
+ * (`"AnimationEvent" in window`, react-dom's event-plugin setup) reads this as
+ * a browser with no unprefixed support and registers its listener for the
+ * vendor-prefixed `webkitAnimationEnd` instead — jsdom's own `<div>.style`
+ * exposes `WebkitAnimation`, which is what sends it down that branch.
+ * `@testing-library/dom`'s `fireEvent.animationEnd` dispatches only the
+ * unprefixed name, which is real DOM traffic (a plain listener sees it) but
+ * never reaches `onAnimationEnd` — confirmed by hand before writing this.
+ *
+ * Firing BOTH names rather than hardcoding the prefixed one: React registers
+ * exactly one of the two, so `onAnimationEnd` still fires exactly once
+ * either way, and this survives a jsdom upgrade that starts defining
+ * `AnimationEvent` (at which point React would listen for the unprefixed
+ * name instead) with no maintenance.
+ */
+function fireAnimationEnd(el: HTMLElement) {
+  fireEvent(el, new Event('animationend', { bubbles: true, cancelable: true }))
+  fireEvent(el, new Event('webkitAnimationEnd', { bubbles: true, cancelable: true }))
 }
 
 const REQUEST_TEXT = 'We would like to be near the Garcia family if there is room.'
@@ -237,31 +261,71 @@ describe('FamilyDetailsPanel — interaction contract', () => {
     expect(screen.getByTestId('family-details-panel')).toHaveClass('animate-slide-out-right')
   })
 
-  it('drops the overlay chrome in embedded mode, so the map can reuse it', () => {
-    // One component, both surfaces — a second implementation is exactly what
-    // this prop exists to prevent.
-    const { container } = render(
-      <FamilyDetailsPanel party={party()} year={2026} embedded={true} onClose={vi.fn()} />,
-      { wrapper }
-    )
-    expect(container.querySelector('.pointer-events-none.fixed.inset-0')).not.toBeInTheDocument()
-    expect(screen.getByRole('heading', { name: 'Johnson' })).toBeInTheDocument()
-  })
-
-  it('closes immediately in embedded mode, where there is no slide-out', async () => {
-    const onClose = vi.fn()
-    render(<FamilyDetailsPanel party={party()} year={2026} embedded={true} onClose={onClose} />, {
-      wrapper,
-    })
-    await userEvent.click(screen.getByRole('button', { name: /close panel/i }))
-    expect(onClose).toHaveBeenCalledTimes(1)
-  })
-
   it('runs the exit animation when the parent requests a close', () => {
     render(
       <FamilyDetailsPanel party={party()} year={2026} requestClose={true} onClose={vi.fn()} />,
       { wrapper }
     )
     expect(screen.getByTestId('family-details-panel')).toHaveClass('animate-slide-out-right')
+  })
+
+  it('calls onClose when the exit animation ends, but not the entrance animation', () => {
+    // Break `handleAnimationEnd` and the panel goes on `animate-slide-out-right`
+    // forever — the class-flip alone (the two tests above) does not catch that,
+    // since `onClose` is never asserted. This is the one test in the file that
+    // actually pins the close all the way through.
+    const onClose = vi.fn()
+    const { rerender } = render(
+      <FamilyDetailsPanel party={party()} year={2026} onClose={onClose} />,
+      { wrapper }
+    )
+
+    // Entering: the same handler is attached, but `exiting` is false and the
+    // guard must swallow it.
+    fireAnimationEnd(screen.getByTestId('family-details-panel'))
+    expect(onClose).not.toHaveBeenCalled()
+
+    // Same route as 'runs the exit animation when the parent requests a
+    // close': `requestClose` flips `exiting` true and the class to
+    // `animate-slide-out-right`.
+    rerender(
+      <FamilyDetailsPanel party={party()} year={2026} requestClose={true} onClose={onClose} />
+    )
+    fireAnimationEnd(screen.getByTestId('family-details-panel'))
+    expect(onClose).toHaveBeenCalledTimes(1)
+  })
+
+  it('lets a family selected mid-close arrive open, not mid-exit', async () => {
+    // The board and map stopped keying this panel per party, so it updates in
+    // place instead of remounting (`LodgingBoard.test.tsx`, "does not remount
+    // the panel when a second family is opened"). `isClosing` is the one thing
+    // that remount used to reset for free: close the Johnsons, click the
+    // Garcias inside the 300ms slide-out, and without a reset the Garcias
+    // inherit the Johnsons' exit and the panel closes on them.
+    //
+    // `requestClose` needs no equivalent — the parent's `openParty` already
+    // sets it false. This is only about the panel's own state.
+    const onClose = vi.fn()
+    const { rerender } = render(
+      <FamilyDetailsPanel party={party()} year={2026} onClose={onClose} />,
+      { wrapper }
+    )
+
+    await userEvent.click(screen.getByRole('button', { name: /close panel/i }))
+    expect(screen.getByTestId('family-details-panel')).toHaveClass('animate-slide-out-right')
+
+    rerender(
+      <FamilyDetailsPanel
+        party={party({ household_cm_id: 102, display_name: 'Garcia' })}
+        year={2026}
+        onClose={onClose}
+      />
+    )
+
+    expect(screen.getByTestId('family-details-panel')).toHaveClass('animate-slide-in-right')
+    // The animation started before the switch still ends; it must not be read
+    // as this family's exit.
+    fireAnimationEnd(screen.getByTestId('family-details-panel'))
+    expect(onClose).not.toHaveBeenCalled()
   })
 })

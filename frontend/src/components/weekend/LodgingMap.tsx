@@ -31,16 +31,19 @@
  * seven channels before it stops being readable, which is the failure §6.2
  * spends its whole length avoiding.
  */
-import { Minus, Plus, Maximize2 } from 'lucide-react'
+import { Info, Minus, Plus, Maximize2 } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
+import { useDismissOnDeadSpace } from '../../hooks/useDismissOnDeadSpace'
 import type { LodgingUnitRow, RosterPartyRow } from '../../types/lodging'
 import { FamilyCard } from './FamilyCard'
 import { FamilyDetailsPanel } from './FamilyDetailsPanel'
+import { FloatingUnplacedBadge } from './FloatingUnplacedBadge'
 import { indexUnitsByCode } from './rosterAttention'
 import { clusterByProximity, type Cluster, type Placed } from './mapClustering'
 import { buildMapModel, type MapUnit } from './mapModel'
 import { CONSENT_AMBER, CONSENT_PHRASE, MapUnitPopover } from './MapUnitPopover'
+import { partyKey } from './partyKey'
 import {
   basePosition,
   clampView,
@@ -168,10 +171,6 @@ export interface LodgingMapProps {
   year: number
 }
 
-function partyKey(party: RosterPartyRow): string {
-  return `${party.grain}-${String(party.household_cm_id || party.person_cm_id || party.display_name)}`
-}
-
 export function LodgingMap({ parties, units, year }: LodgingMapProps) {
   // MEMOISED, and not as a micro-optimisation: panning updates `view` on every
   // pointermove, and an unmemoised call would re-run buildBoard — area bucketing,
@@ -187,6 +186,17 @@ export function LodgingMap({ parties, units, year }: LodgingMapProps) {
     id: number
     active: boolean
   } | null>(null)
+  // Set from `drag.active` at pointerup, so the click that ends a pan can be
+  // told apart from a genuine dead-space click on the same canvas div.
+  //
+  // WRITTEN in the canvas's `onPointerUp`; READ in the canvas's `onClick`, and
+  // nowhere else. That pairing is what makes it unable to go stale: a `click`
+  // on the canvas is always preceded by that same gesture's `pointerup` on the
+  // canvas, so the value the click reads is always the one its own gesture
+  // just wrote. A `true` left behind by a pan that no click followed has no
+  // reader at all — the next canvas gesture overwrites it before the next
+  // canvas click can see it.
+  const wasDraggingRef = useRef(false)
   const [view, setView] = useState<Viewport>(IDENTITY_VIEW)
   const [size, setSize] = useState({ width: 0, height: 0 })
   const [imageFailed, setImageFailed] = useState(false)
@@ -211,6 +221,7 @@ export function LodgingMap({ parties, units, year }: LodgingMapProps) {
   const [dwellKey, setDwellKey] = useState<string | null>(null)
   const dwellTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const [selected, setSelected] = useState<RosterPartyRow | null>(null)
+  const [requestClose, setRequestClose] = useState(false)
   const unitsByCode = useMemo(() => indexUnitsByCode(units), [units])
 
   const openKey = pinnedKey ?? dwellKey
@@ -256,8 +267,28 @@ export function LodgingMap({ parties, units, year }: LodgingMapProps) {
   }, [])
 
   const openParty = useCallback((party: RosterPartyRow) => {
+    setRequestClose(false)
     setSelected(party)
   }, [])
+
+  const closePanel = useCallback(() => {
+    setSelected(null)
+    setRequestClose(false)
+  }, [])
+
+  // Same dead-space dismissal the summer board and the weekend board use, and
+  // deliberately the same one line they use. The canvas is a bare div that a
+  // pan gesture ends with a click on, and that click matches none of
+  // `shouldKeepPanelsOpen`'s exemptions (not a panel, badge, button or card),
+  // so a pan would otherwise close the panel out from under whoever is
+  // dragging it. That is fixed where it happens — the canvas's own `onClick`
+  // stops the pan-concluding click from ever reaching this document listener —
+  // rather than by teaching this callback to second-guess the clicks it does
+  // get. A callback that remembers things about earlier gestures is a callback
+  // that can be wrong about the current one.
+  useDismissOnDeadSpace(selected !== null, () => {
+    setRequestClose(true)
+  })
 
   // jsdom performs no layout, so clientWidth/clientHeight are 0 there (verified).
   // Without this fallback every mark computes position (0,0), the clusterer
@@ -390,69 +421,7 @@ export function LodgingMap({ parties, units, year }: LodgingMapProps) {
         )}
       </div>
 
-      <div className="card-lodge grid grid-cols-1 overflow-hidden lg:grid-cols-[280px_minmax(0,1fr)]">
-        <aside className="bg-muted/30 border-border/60 flex flex-col gap-3 border-b p-3 lg:border-r lg:border-b-0">
-          {selected ? (
-            <FamilyDetailsPanel
-              key={partyKey(selected)}
-              party={selected}
-              unit={unitsByCode.get(selected.unit_code ?? '')}
-              year={year}
-              embedded={true}
-              onClose={() => {
-                setSelected(null)
-              }}
-            />
-          ) : (
-            <>
-              <div data-testid="map-unplaced-rail" className="flex flex-col gap-2">
-                <div className="flex items-baseline justify-between gap-2">
-                  <h3 className="font-display text-foreground text-sm font-bold">Unplaced</h3>
-                  <span className="text-muted-foreground text-xs tabular-nums">
-                    {model.unplaced.length}
-                  </span>
-                </div>
-                {model.unplaced.length === 0 ? (
-                  <p className="text-muted-foreground text-xs italic">Everyone has a cabin.</p>
-                ) : (
-                  model.unplaced.map((party) => (
-                    <FamilyCard
-                      key={partyKey(party)}
-                      party={party}
-                      onRail={true}
-                      onOpen={openParty}
-                    />
-                  ))
-                )}
-              </div>
-
-              <div data-testid="map-offmap-rail" className="flex flex-col gap-2">
-                <div className="flex items-baseline justify-between gap-2">
-                  <h3 className="font-display text-foreground text-sm font-bold">
-                    Placed, off the map
-                  </h3>
-                  <span className="text-muted-foreground text-xs tabular-nums">
-                    {model.offMap.length}
-                  </span>
-                </div>
-                {model.offMap.length === 0 ? (
-                  <p className="text-muted-foreground text-xs italic">
-                    Everyone placed is on the map.
-                  </p>
-                ) : (
-                  model.offMap.map((entry) => (
-                    <FamilyCard
-                      key={partyKey(entry.party)}
-                      party={entry.party}
-                      onRail={true}
-                      onOpen={openParty}
-                    />
-                  ))
-                )}
-              </div>
-            </>
-          )}
-        </aside>
+      <div className="card-lodge overflow-hidden">
         <div className="flex flex-col gap-2 p-3">
           <div className="flex flex-wrap items-center gap-2 text-xs">
             <button
@@ -570,6 +539,24 @@ export function LodgingMap({ parties, units, year }: LodgingMapProps) {
             style={{ aspectRatio: `${String(MAP_ASPECT)}` }}
             className="bg-muted/40 relative w-full touch-none overflow-hidden rounded-xl select-none"
             onClick={(event) => {
+              // FIRST, before any early return: consume the pan flag. Every
+              // canvas click clears it, which is the whole reason it cannot go
+              // stale — see `wasDraggingRef`'s own note. Putting this below the
+              // guards would give the flag a way to survive a click.
+              const concludedPan = wasDraggingRef.current
+              wasDraggingRef.current = false
+              if (concludedPan) {
+                // A pan is not a click on anything, and the browser's
+                // synthesised trailing click says otherwise. Stopped HERE, in
+                // the same dispatch, so it never reaches the document listener
+                // `useDismissOnDeadSpace` attaches — the panel is not dismissed
+                // because the event never arrives, not because something later
+                // remembered a drag. Same technique the marks use below.
+                event.stopPropagation()
+                // No closePeek(): the pan already closed the peek the moment it
+                // crossed the threshold.
+                return
+              }
               // Background dismiss. Marks already stopPropagation() on their
               // own click, so this never actually sees one — but a popover
               // occupant button does NOT, and clicking it must not close the
@@ -655,6 +642,10 @@ export function LodgingMap({ parties, units, year }: LodgingMapProps) {
               if (drag.active && event.currentTarget.hasPointerCapture(drag.id)) {
                 event.currentTarget.releasePointerCapture(drag.id)
               }
+              // The click that follows this pointerup must not read as dead
+              // space if this gesture actually panned — the canvas's `onClick`
+              // above reads this and stops that click there.
+              wasDraggingRef.current = drag.active
               dragRef.current = null
             }}
           >
@@ -979,17 +970,49 @@ export function LodgingMap({ parties, units, year }: LodgingMapProps) {
               </dd>
             </div>
           </dl>
-        </div>
 
-        {/* EMBEDDED, not an overlay. FamilyDetailsPanel's own docstring: "The map
-            opens this same panel embedded; a second implementation is exactly what
-            `embedded` exists to prevent." In embedded mode it installs no Escape
-            handler and has no slide-out, so there is no `requestClose` and no
-            click-outside predicate here — it stays until dismissed, which is what
-            you want while comparing two families across the site.
-            `key` is load-bearing: without it React reuses the instance across
-            selections and `useState` initialisers never re-run. */}
+          {/* A merge carries no unit code, and an assignment can name a
+              container or a unit the map has no coordinate for. Those
+              parties ARE placed, so the unplaced queue would be a lie if it
+              counted them — and dropping them would make the map quietly
+              disagree with the roster. Mirrors `LodgingBoard`'s "Placed
+              outside the board". Inside the card, not a sibling of it, so it
+              inherits the same `p-3` padding the rest of the card body
+              does. */}
+          {model.offMap.length > 0 && (
+            <section data-testid="map-offmap-section">
+              <h3 className="text-muted-foreground mb-2 flex items-center gap-1.5 text-[11px] font-bold tracking-wider uppercase">
+                <Info className="h-3.5 w-3.5 flex-shrink-0" aria-hidden="true" />
+                Placed, off the map
+              </h3>
+              <p className="text-muted-foreground mb-2 text-xs">
+                Assigned to a merged slot or to a room with no position on the map yet.
+              </p>
+              <div className="grid grid-cols-[repeat(auto-fill,minmax(200px,1fr))] items-start gap-2.5">
+                {model.offMap.map((entry) => (
+                  <FamilyCard key={partyKey(entry.party)} party={entry.party} onOpen={openParty} />
+                ))}
+              </div>
+            </section>
+          )}
+        </div>
       </div>
+
+      <FloatingUnplacedBadge
+        parties={model.unplaced}
+        onOpenParty={openParty}
+        isPanelOpen={selected !== null}
+      />
+
+      {selected !== null && (
+        <FamilyDetailsPanel
+          party={selected}
+          unit={unitsByCode.get(selected.unit_code ?? '')}
+          year={year}
+          requestClose={requestClose}
+          onClose={closePanel}
+        />
+      )}
     </div>
   )
 }

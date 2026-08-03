@@ -1,4 +1,4 @@
-import { useState, useTransition, useEffect, useCallback, lazy, Suspense } from 'react'
+import { useState, useTransition, useCallback, lazy, Suspense } from 'react'
 import type { DragEndEvent, DragStartEvent } from '@dnd-kit/core'
 import {
   DndContext,
@@ -35,8 +35,8 @@ import { Permission } from '../constants/permissions'
 import { Home } from 'lucide-react'
 import { isAgSession } from '../utils/sessionTypePredicates'
 import { getEffectivelyUnassignedCampers } from './bunkingBoardHelpers'
-import { shouldKeepPanelsOpen } from '../utils/clickoutsidePredicate'
 import { getBoardBottomPaddingClass } from '../utils/bunkBoardLayout'
+import { useDismissOnDeadSpace } from '../hooks/useDismissOnDeadSpace'
 
 interface BunkingBoardByAreaProps {
   sessionId: string
@@ -557,33 +557,11 @@ export default function BunkingBoardByArea(props: BunkingBoardByAreaProps) {
   // gates instead of drifting from them.
   const isLockGroupUiActive = !!(canManage && isDraftMode && scenarioId && lockGroupSessionPbId)
 
-  // Close panels when clicking on dead space (nav, page sides, board gaps).
-  // Predicate is shared with the unit test in clickoutsidePredicate.ts so the
-  // two cannot drift.
-  const handleGlobalClick = useCallback(
-    (e: MouseEvent) => {
-      if (shouldKeepPanelsOpen(e)) return
-      requestAnimatedCloseDetails()
-      requestAnimatedCloseLockPanel()
-    },
-    [requestAnimatedCloseDetails, requestAnimatedCloseLockPanel]
-  )
-
-  // Set up global click listener when panels are open
-  // Small delay prevents catching the click that opened the panel
-  useEffect(() => {
-    if (!isAnyPanelOpen) return
-
-    // Add listener after a microtask to avoid catching the opening click
-    const timeoutId = setTimeout(() => {
-      document.addEventListener('click', handleGlobalClick)
-    }, 0)
-
-    return () => {
-      clearTimeout(timeoutId)
-      document.removeEventListener('click', handleGlobalClick)
-    }
-  }, [isAnyPanelOpen, handleGlobalClick])
+  // Close panels when clicking dead space (nav, page sides, board gaps).
+  useDismissOnDeadSpace(isAnyPanelOpen, () => {
+    requestAnimatedCloseDetails()
+    requestAnimatedCloseLockPanel()
+  })
 
   return (
     <>

@@ -14,6 +14,7 @@ import type { ReactNode } from 'react'
 
 import type { RosterPartyRow } from '../../types/lodging'
 import type { MapUnit } from './mapModel'
+import { partyKey } from './partyKey'
 import { partyAttention, partyBeds } from './rosterAttention'
 import { reservationBadge } from './unitBadges'
 
@@ -33,20 +34,6 @@ export interface MapUnitPopoverProps {
   units: MapUnit[]
   hue: string
   onOpenParty: (party: RosterPartyRow) => void
-}
-
-/**
- * Stable identity for an occupant row.
- *
- * Falls back to `display_name` for the same reason `LodgingMap.partyKey` does:
- * both ids are OPTIONAL on the generated type, so a payload that omits them
- * keys every occupant of a shared room to `household-undefined` and React
- * reconciles two families as one.
- */
-function partyKey(party: RosterPartyRow): string {
-  return `${party.grain}-${String(
-    party.household_cm_id || party.person_cm_id || party.display_name
-  )}`
 }
 
 /**

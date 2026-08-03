@@ -4850,6 +4850,10 @@ export type RosterParty = {
    */
   display_name?: string
   /**
+   * Sort Name
+   */
+  sort_name?: string
+  /**
    * Adults
    */
   adults?: Array<PartyAdult>

@@ -258,8 +258,8 @@ describe('MapUnitPopover — one room', () => {
     // an omission is reachable through the schema even though the API's own
     // contract says exactly one is non-zero. Keyed on the ids alone both
     // occupants collapse to `household-undefined` and React reconciles two
-    // different families as one row. `LodgingMap.partyKey` already falls back
-    // to the display name; this must not diverge from it.
+    // different families as one row. The shared `partyKey` falls back to the
+    // display name; every surface that lists parties inherits that.
     const anonymous = (name: string): RosterPartyRow => {
       const base = party(name)
       // `delete` rather than a rest-destructure: both fields are optional, and
