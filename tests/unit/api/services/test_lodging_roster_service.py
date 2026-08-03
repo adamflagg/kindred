@@ -497,7 +497,8 @@ class TestPlacementOf:
         code, name, merged, unit_codes = placement
         assert code == ""
         assert merged is True
-        assert "Tioga 1" in name and "Tioga 2" in name
+        assert "Tioga 1" in name
+        assert "Tioga 2" in name
         assert unit_codes == ("gt-tioga-1", "gt-tioga-2")
 
     def test_no_units_is_none(self) -> None:
@@ -623,7 +624,8 @@ class TestAssignments:
         party = roster.parties[0]
         assert party.unit_code == ""
         assert party.is_merged_slot is True
-        assert "Wawona Front" in party.unit_name and "Wawona Back" in party.unit_name
+        assert "Wawona Front" in party.unit_name
+        assert "Wawona Back" in party.unit_name
         assert party.unit_codes == ["gt-wawona-front", "gt-wawona-back"]
 
     @pytest.mark.asyncio
@@ -798,7 +800,8 @@ class TestScenarioResolution:
         roster = await LodgingRosterService(repo).build_roster(2026, 1000001, scenario="scn_1")
 
         party = roster.parties[0]
-        assert "Tenaya 1" in party.unit_name and "Tenaya 2" in party.unit_name
+        assert "Tenaya 1" in party.unit_name
+        assert "Tenaya 2" in party.unit_name
         assert party.is_merged_slot is True
         assert party.unit_codes == ["gt-tenaya-1", "gt-tenaya-2"]
 
