@@ -31,6 +31,7 @@ import {
   Settings2,
   Users,
 } from 'lucide-react'
+import { useMemo } from 'react'
 import { Link, useNavigate, useParams } from 'react-router'
 
 import { QueryGuard } from '../components/QueryGuard'
@@ -103,8 +104,24 @@ export default function WeekendRosterPage() {
     ? formatSessionDates(selectedSession.start_date, selectedSession.end_date)
     : ''
 
-  const parties = rosterQuery.data?.parties ?? []
-  const units = rosterQuery.data?.units ?? []
+  // Memoised on the payload, not left to run per render. The `?? []` fallbacks
+  // are inside the memo on purpose: a bare `?? []` mints a new array every
+  // render while the roster is loading, which would defeat every dependency
+  // list below it.
+  const parties = useMemo(() => rosterQuery.data?.parties ?? [], [rosterQuery.data])
+  const units = useMemo(() => rosterQuery.data?.units ?? [], [rosterQuery.data])
+
+  // These two build a whole model to read a length — `countBoardSlots` indexes
+  // the entire board, and `countMapUnits` builds the board AND the map model on
+  // top of it. The header needs both counts on every tab, so unmemoised they
+  // ran twice per render of this page no matter which view was showing.
+  const boardSlotCount = useMemo(() => countBoardSlots(parties, units), [parties, units])
+  const mapUnitCount = useMemo(() => countMapUnits(parties, units), [parties, units])
+  const bedsNeeded = useMemo(
+    () => parties.reduce((sum, party) => sum + partyBeds(party), 0),
+    [parties]
+  )
+  const spacesUnmeasured = useMemo(() => countUnmeasuredSpaces(units), [units])
 
   const TABS: Array<{ id: View; label: string; icon: typeof Users; count: number }> = [
     { id: 'roster', label: 'Roster', icon: Users, count: parties.length },
@@ -112,8 +129,8 @@ export default function WeekendRosterPage() {
     // The board counts the SLOT CARDS it draws, which is not the inventory
     // count: a container carries the beds its halves already report, so it
     // never gets a card and never counts.
-    { id: 'board', label: 'Board', icon: LayoutGrid, count: countBoardSlots(parties, units) },
-    { id: 'map', label: 'Map', icon: MapIcon, count: countMapUnits(parties, units) },
+    { id: 'board', label: 'Board', icon: LayoutGrid, count: boardSlotCount },
+    { id: 'map', label: 'Map', icon: MapIcon, count: mapUnitCount },
   ]
 
   return (
@@ -247,8 +264,8 @@ export default function WeekendRosterPage() {
 
               <WeekendStatsBar
                 counts={roster.counts ?? {}}
-                bedsNeeded={parties.reduce((sum, party) => sum + partyBeds(party), 0)}
-                spacesUnmeasured={countUnmeasuredSpaces(units)}
+                bedsNeeded={bedsNeeded}
+                spacesUnmeasured={spacesUnmeasured}
               />
             </div>
 

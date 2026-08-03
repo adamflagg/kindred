@@ -24,7 +24,11 @@ import {
   updateLodgingArea,
 } from '../../../services/lodgingCrud'
 import type { LodgingAreaRecord } from '../../../types/lodging'
-import { queryKeys, userDataOptions } from '../../../utils/queryKeys'
+import {
+  invalidateLodgingRegistryQueries,
+  queryKeys,
+  userDataOptions,
+} from '../../../utils/queryKeys'
 import { ACTION_LINK, BUTTON_PRIMARY, FIELD_INLINE as FIELD, LABEL } from './lodgingStyles'
 
 function slugify(name: string): string {
@@ -51,8 +55,7 @@ export function LodgingAreasDrawer({ open, onClose }: LodgingAreasDrawerProps) {
   })
 
   const refresh = () => {
-    void queryClient.invalidateQueries({ queryKey: queryKeys.lodgingAreas() })
-    void queryClient.invalidateQueries({ queryKey: queryKeys.lodgingUnits() })
+    invalidateLodgingRegistryQueries(queryClient)
   }
 
   const areas = areasQuery.data ?? []

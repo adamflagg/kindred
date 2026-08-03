@@ -39,6 +39,21 @@ React + TypeScript + Vite. Dev server on `:3000` (HMR); prod served via Caddy at
 
 Use the centralized keys from `src/utils/queryKeys.ts`. Inlining string keys causes cache collisions and silent bugs when invalidation misses the right query.
 
+## Caching — the tiers are opt-ins, and the default is a real choice
+
+`utils/queryClient.ts` holds the app defaults (30 min stale, 60 min gc, no refetch on focus). `syncDataOptions` and `userDataOptions` in `queryKeys.ts` are the two named tiers; **inheriting the defaults is a third, legitimate option and is what the bunking board's primary read path does** (`hooks/session/useSessionData.ts` overrides nothing). Roughly 20 call sites use `userDataOptions` and are not thereby wrong — pick deliberately rather than reaching for a tier because one exists.
+
+Two rules that are not negotiable:
+
+- **Opting *down* to a short `staleTime` to catch external edits is the trap.** It re-pays the whole fetch on every window focus and evicts the cache minutes after you navigate away. Freshness after a write is bought with **explicit invalidation in the mutation**.
+- **If you lengthen a `staleTime`, find every writer first.** The weekend roster's move to the app defaults left the lodging admin panels invalidating only their own registry keys, so a cabin confirmation stayed invisible on the roster for 30 minutes. `invalidateLodgingRegistryQueries` (`utils/queryKeys.ts`) is the fix and the pattern: one shared helper, invalidating by **prefix** where the writer cannot know the full key.
+
+Background: `CLAUDE.md` §4 "Family Camp Models Summer".
+
+## Derived values in page components
+
+Anything that builds a model to read a number belongs in `useMemo`. `WeekendRosterPage` built the full board index *and* the full map model on every render — for two tab-badge counts, on every tab, whether or not the board or map was mounted. Memoize on the payload, and put `?? []` fallbacks **inside** the memo: a bare `?? []` mints a new array each render and defeats every dependency list below it.
+
 ## Tour maintenance
 
 When modifying page layout, features, or `data-tour` attributes on a toured page, review the corresponding tour in `src/tours/definitions/`:

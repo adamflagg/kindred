@@ -342,7 +342,9 @@ describe('VerticalXAxis', () => {
   it('should accept custom marginLeft', () => {
     const { container } = render(<VerticalXAxis labels={['A']} marginLeft="3rem" />)
     const wrapper = container.firstChild as HTMLElement
-    expect(wrapper).toHaveStyle({ marginLeft: '3rem' })
+    // Inline style, not computed: jsdom >=30 resolves computed lengths to
+    // pixels, so `toHaveStyle` would compare against `48px`.
+    expect(wrapper.style.marginLeft).toBe('3rem')
   })
 
   it('should accept custom height for rotated', () => {
