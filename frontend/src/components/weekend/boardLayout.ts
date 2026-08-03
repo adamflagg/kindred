@@ -104,7 +104,7 @@ export interface BoardArea {
 
 export interface BoardModel {
   areas: BoardArea[]
-  /** Not placed anywhere. Ranked; see `rankUnplaced`. */
+  /** Not placed anywhere. Unordered — the corner queue sorts by surname. */
   unplaced: RosterPartyRow[]
   /** Placed, but on something the board cannot draw a card for. */
   offBoard: RosterPartyRow[]
@@ -249,24 +249,6 @@ function consentReason(
 }
 
 /**
- * Rank the unplaced rail.
- *
- * §3.7 wanted a mandatory accommodation OR "a share request whose partner is
- * not yet placed". The partner leg DOES NOT EXIST: no request names are
- * resolved to households (spec §7.3, unbuilt). So this ranks on the
- * accommodation alone, and the rail says so on the surface rather than
- * implying a completeness it does not have.
- */
-function rankUnplaced(parties: RosterPartyRow[]): RosterPartyRow[] {
-  return [...parties].sort((a, b) => {
-    const aMandatory = a.flags?.accommodation_is_mandatory === true
-    const bMandatory = b.flags?.accommodation_is_mandatory === true
-    if (aMandatory !== bMandatory) return aMandatory ? -1 : 1
-    return (a.display_name ?? '').localeCompare(b.display_name ?? '')
-  })
-}
-
-/**
  * Index a payload into the pieces both the board and its tab count need.
  *
  * `drawn` is the ONE definition of which units get a card. The tab count and
@@ -353,7 +335,7 @@ export function buildBoard(parties: RosterPartyRow[], units: LodgingUnitRow[]): 
     }
   })
 
-  return { areas, unplaced: rankUnplaced(unplaced), offBoard, flaggedCount }
+  return { areas, unplaced, offBoard, flaggedCount }
 }
 
 /**

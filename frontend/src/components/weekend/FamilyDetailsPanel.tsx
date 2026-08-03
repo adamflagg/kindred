@@ -223,6 +223,13 @@ export function FamilyDetailsPanel({
 
       <Section title="Housing needs">
         <AccessibilityFlagList
+          // The panel no longer remounts on a family switch — it updates in
+          // place, as summer's CamperDetailsPanel does. This key keeps the one
+          // thing that remount was protecting: the medical reveal resets per
+          // household, so the next family's narrative is never disclosed by a
+          // click the user made against the previous one. Vestigial once the
+          // click-to-reveal is removed; free until then.
+          key={householdCmId}
           flags={party.flags ?? NO_FLAGS}
           householdCmId={householdCmId > 0 ? householdCmId : null}
           year={year}

@@ -8,7 +8,7 @@
  * Fictional data throughout.
  */
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { render, screen, within } from '@testing-library/react'
+import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import type { ReactNode } from 'react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
@@ -75,6 +75,7 @@ function party(overrides: Partial<RosterPartyRow> = {}): RosterPartyRow {
     grain: 'household',
     household_cm_id: 101,
     display_name: 'Johnson',
+    sort_name: 'Johnson',
     adults: [{ adult_number: 1, display_name: 'Emma Johnson', relationship: 'Mother' }],
     children: [{ person_cm_id: 9001, display_name: 'Noah Johnson', age: 8, grade: 3 }],
     party_size: 3,
@@ -117,22 +118,20 @@ describe('LodgingBoard — layout', () => {
     expect(screen.queryByText('Cedar 1')).not.toBeInTheDocument()
   })
 
-  it('puts unplaced families in the rail', () => {
+  it('has no unplaced rail eating the width', () => {
+    // The rail cost 240px of every board, permanently, for a list that is
+    // usually short. Summer has never had one.
     render(<LodgingBoard parties={[party()]} units={[unit()]} year={2026} />, { wrapper })
-    const rail = screen.getByRole('complementary', { name: /unplaced/i })
-    expect(within(rail).getByText('Johnson')).toBeInTheDocument()
+    expect(screen.queryByRole('complementary', { name: /unplaced/i })).not.toBeInTheDocument()
   })
 
-  it('admits on the surface that the rail ranking is half-uncomputable', () => {
-    // §3.7 wanted "a share request whose partner is not yet placed" too. No
-    // request names are resolved to households (spec §7.3, unbuilt), so the
-    // partner leg does not exist and the surface must not imply it does.
+  it('puts unplaced families in the corner queue', async () => {
     render(<LodgingBoard parties={[party()]} units={[unit()]} year={2026} />, { wrapper })
-    const rail = screen.getByRole('complementary', { name: /unplaced/i })
-    expect(within(rail).getByText(/mandatory accommodation only/i)).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: /1 unplaced families/i }))
+    expect(screen.getByTestId('family-card-name')).toHaveTextContent('Johnson')
   })
 
-  it('says so when nobody is waiting', () => {
+  it('says so when nobody is waiting', async () => {
     render(
       <LodgingBoard
         parties={[party({ unit_code: 'cedar-1', unit_name: 'Cedar 1' })]}
@@ -141,8 +140,8 @@ describe('LodgingBoard — layout', () => {
       />,
       { wrapper }
     )
-    const rail = screen.getByRole('complementary', { name: /unplaced/i })
-    expect(within(rail).getByText(/Everyone has a cabin/i)).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: /0 unplaced families/i }))
+    expect(screen.getByText(/Everyone has a cabin/i)).toBeInTheDocument()
   })
 })
 
@@ -283,5 +282,34 @@ describe('LodgingBoard — an empty registry', () => {
   it('explains an empty board instead of rendering nothing', () => {
     render(<LodgingBoard parties={[]} units={[]} year={2026} />, { wrapper })
     expect(screen.getByText(/No lodging units in the registry yet/i)).toBeInTheDocument()
+  })
+})
+
+describe('LodgingBoard — the details panel updates in place', () => {
+  it('does not remount the panel when a second family is opened', async () => {
+    // Summer's panel is unkeyed, so switching campers updates it rather than
+    // sliding it out and back in. A remount would replay the entrance
+    // animation for a panel that never left the screen.
+    render(
+      <LodgingBoard
+        parties={[
+          party({ display_name: 'Johnson Household', sort_name: 'Johnson', household_cm_id: 101 }),
+          party({ display_name: 'Chen Household', sort_name: 'Chen', household_cm_id: 102 }),
+        ]}
+        units={[unit()]}
+        year={2026}
+      />,
+      { wrapper }
+    )
+    // Both fixture parties are unplaced by default, so the queue holds two.
+    await userEvent.click(screen.getByRole('button', { name: /2 unplaced families/i }))
+    await userEvent.click(screen.getByRole('button', { name: /Johnson Household/ }))
+    const first = screen.getByTestId('family-details-panel')
+
+    await userEvent.click(screen.getByRole('button', { name: /Chen Household/ }))
+    const second = screen.getByTestId('family-details-panel')
+
+    expect(second).toBe(first)
+    expect(second).toHaveTextContent('Chen Household')
   })
 })
