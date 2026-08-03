@@ -31,12 +31,14 @@
  * seven channels before it stops being readable, which is the failure §6.2
  * spends its whole length avoiding.
  */
-import { Minus, Plus, Maximize2 } from 'lucide-react'
+import { Info, Minus, Plus, Maximize2 } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
+import { useDismissOnDeadSpace } from '../../hooks/useDismissOnDeadSpace'
 import type { LodgingUnitRow, RosterPartyRow } from '../../types/lodging'
 import { FamilyCard } from './FamilyCard'
 import { FamilyDetailsPanel } from './FamilyDetailsPanel'
+import { FloatingUnplacedBadge } from './FloatingUnplacedBadge'
 import { indexUnitsByCode } from './rosterAttention'
 import { clusterByProximity, type Cluster, type Placed } from './mapClustering'
 import { buildMapModel, type MapUnit } from './mapModel'
@@ -211,6 +213,7 @@ export function LodgingMap({ parties, units, year }: LodgingMapProps) {
   const [dwellKey, setDwellKey] = useState<string | null>(null)
   const dwellTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const [selected, setSelected] = useState<RosterPartyRow | null>(null)
+  const [requestClose, setRequestClose] = useState(false)
   const unitsByCode = useMemo(() => indexUnitsByCode(units), [units])
 
   const openKey = pinnedKey ?? dwellKey
@@ -256,8 +259,14 @@ export function LodgingMap({ parties, units, year }: LodgingMapProps) {
   }, [])
 
   const openParty = useCallback((party: RosterPartyRow) => {
+    setRequestClose(false)
     setSelected(party)
   }, [])
+
+  // Same dead-space dismissal the summer board and the weekend board use.
+  useDismissOnDeadSpace(selected !== null, () => {
+    setRequestClose(true)
+  })
 
   // jsdom performs no layout, so clientWidth/clientHeight are 0 there (verified).
   // Without this fallback every mark computes position (0,0), the clusterer
@@ -390,69 +399,7 @@ export function LodgingMap({ parties, units, year }: LodgingMapProps) {
         )}
       </div>
 
-      <div className="card-lodge grid grid-cols-1 overflow-hidden lg:grid-cols-[280px_minmax(0,1fr)]">
-        <aside className="bg-muted/30 border-border/60 flex flex-col gap-3 border-b p-3 lg:border-r lg:border-b-0">
-          {selected ? (
-            <FamilyDetailsPanel
-              key={partyKey(selected)}
-              party={selected}
-              unit={unitsByCode.get(selected.unit_code ?? '')}
-              year={year}
-              embedded={true}
-              onClose={() => {
-                setSelected(null)
-              }}
-            />
-          ) : (
-            <>
-              <div data-testid="map-unplaced-rail" className="flex flex-col gap-2">
-                <div className="flex items-baseline justify-between gap-2">
-                  <h3 className="font-display text-foreground text-sm font-bold">Unplaced</h3>
-                  <span className="text-muted-foreground text-xs tabular-nums">
-                    {model.unplaced.length}
-                  </span>
-                </div>
-                {model.unplaced.length === 0 ? (
-                  <p className="text-muted-foreground text-xs italic">Everyone has a cabin.</p>
-                ) : (
-                  model.unplaced.map((party) => (
-                    <FamilyCard
-                      key={partyKey(party)}
-                      party={party}
-                      onRail={true}
-                      onOpen={openParty}
-                    />
-                  ))
-                )}
-              </div>
-
-              <div data-testid="map-offmap-rail" className="flex flex-col gap-2">
-                <div className="flex items-baseline justify-between gap-2">
-                  <h3 className="font-display text-foreground text-sm font-bold">
-                    Placed, off the map
-                  </h3>
-                  <span className="text-muted-foreground text-xs tabular-nums">
-                    {model.offMap.length}
-                  </span>
-                </div>
-                {model.offMap.length === 0 ? (
-                  <p className="text-muted-foreground text-xs italic">
-                    Everyone placed is on the map.
-                  </p>
-                ) : (
-                  model.offMap.map((entry) => (
-                    <FamilyCard
-                      key={partyKey(entry.party)}
-                      party={entry.party}
-                      onRail={true}
-                      onOpen={openParty}
-                    />
-                  ))
-                )}
-              </div>
-            </>
-          )}
-        </aside>
+      <div className="card-lodge overflow-hidden">
         <div className="flex flex-col gap-2 p-3">
           <div className="flex flex-wrap items-center gap-2 text-xs">
             <button
@@ -980,16 +927,47 @@ export function LodgingMap({ parties, units, year }: LodgingMapProps) {
             </div>
           </dl>
         </div>
-
-        {/* EMBEDDED, not an overlay. FamilyDetailsPanel's own docstring: "The map
-            opens this same panel embedded; a second implementation is exactly what
-            `embedded` exists to prevent." In embedded mode it installs no Escape
-            handler and has no slide-out, so there is no `requestClose` and no
-            click-outside predicate here — it stays until dismissed, which is what
-            you want while comparing two families across the site.
-            `key` is load-bearing: without it React reuses the instance across
-            selections and `useState` initialisers never re-run. */}
       </div>
+
+      {/* A merge carries no unit code, and an assignment can name a container or
+          a unit the map has no coordinate for. Those parties ARE placed, so the
+          off-map section would be a lie if it dropped them — mirrors
+          `LodgingBoard`'s "Placed outside the board". */}
+      {model.offMap.length > 0 && (
+        <section data-testid="map-offmap-section">
+          <h3 className="text-muted-foreground mb-2 flex items-center gap-1.5 text-[11px] font-bold tracking-wider uppercase">
+            <Info className="h-3.5 w-3.5 flex-shrink-0" aria-hidden="true" />
+            Placed, off the map
+          </h3>
+          <p className="text-muted-foreground mb-2 text-xs">
+            Assigned to a merged slot or to a room with no position on the map yet.
+          </p>
+          <div className="grid grid-cols-[repeat(auto-fill,minmax(200px,1fr))] items-start gap-2.5">
+            {model.offMap.map((entry) => (
+              <FamilyCard key={partyKey(entry.party)} party={entry.party} onOpen={openParty} />
+            ))}
+          </div>
+        </section>
+      )}
+
+      <FloatingUnplacedBadge
+        parties={model.unplaced}
+        onOpenParty={openParty}
+        isPanelOpen={selected !== null}
+      />
+
+      {selected !== null && (
+        <FamilyDetailsPanel
+          party={selected}
+          unit={unitsByCode.get(selected.unit_code ?? '')}
+          year={year}
+          requestClose={requestClose}
+          onClose={() => {
+            setSelected(null)
+            setRequestClose(false)
+          }}
+        />
+      )}
     </div>
   )
 }

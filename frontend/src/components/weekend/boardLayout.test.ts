@@ -126,7 +126,7 @@ describe('buildBoard — where each party lands', () => {
     expect(board.unplaced).toHaveLength(0)
   })
 
-  it('puts an unplaced party on the rail', () => {
+  it('puts an unplaced party in the corner queue', () => {
     const board = buildBoard([party()], [unit()])
     expect(board.unplaced.map((p) => p.display_name)).toEqual(['Johnson'])
     expect(board.areas[0]?.slots[0]?.parties).toHaveLength(0)

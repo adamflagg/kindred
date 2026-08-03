@@ -15,9 +15,9 @@
  * 2. **No party is ever dropped.** A party can be placed somewhere the board
  *    structurally cannot draw — a merge carries no `unit_code` at all, and an
  *    assignment can name a container or a unit absent from the payload. Those
- *    go to `offBoard`, never to the unplaced rail (they ARE placed) and never
- *    to nowhere. `buildBoard` is total: every input party comes out in exactly
- *    one of slots / unplaced / offBoard.
+ *    go to `offBoard`, never to the unplaced corner queue (they ARE placed) and
+ *    never to nowhere. `buildBoard` is total: every input party comes out in
+ *    exactly one of slots / unplaced / offBoard.
  */
 import type { LodgingUnitRow, RosterPartyRow, ShareEligibilityValue } from '../../types/lodging'
 

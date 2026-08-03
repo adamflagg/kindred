@@ -105,6 +105,7 @@ function party(overrides: Partial<RosterPartyRow> = {}): RosterPartyRow {
     household_cm_id: 9001,
     person_cm_id: 0,
     display_name: 'Johnson',
+    sort_name: 'Johnson',
     adults: [],
     children: [],
     party_size: 3,
@@ -166,45 +167,53 @@ describe('LodgingMap', () => {
     expect(screen.getByText('Cedar 1')).toBeInTheDocument()
   })
 
-  it('puts the unplaced rail on the same side as the board puts it', () => {
-    // LodgingBoard renders `lg:grid-cols-[240px_minmax(0,1fr)]` with the rail
-    // first. The map had it last, so switching tabs threw the rail across the
-    // screen and the unplaced list moved out from under the cursor.
+  it('has no unplaced rail beside the canvas', () => {
     render(<LodgingMap parties={[]} units={UNITS} year={2026} />)
-    const rail = screen.getByTestId('map-unplaced-rail')
-    const canvas = screen.getByTestId('map-canvas')
-    // DOCUMENT_POSITION_FOLLOWING: the canvas comes after the rail.
-    expect(rail.compareDocumentPosition(canvas) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    expect(screen.queryByTestId('map-unplaced-rail')).not.toBeInTheDocument()
   })
 
-  it('lists an unplaced party on the unplaced rail', () => {
-    render(<LodgingMap parties={[party({ display_name: 'Silva' })]} units={UNITS} year={2026} />)
-    // Scoped to the rail, matching the off-map assertion below. An unscoped
-    // getByText would pass if the party were rendered anywhere at all —
-    // including the rail it must NOT be on.
-    expect(screen.getByTestId('map-unplaced-rail')).toHaveTextContent('Silva')
+  it('puts an unplaced party in the corner queue', async () => {
+    render(
+      <LodgingMap
+        parties={[party({ display_name: 'Silva', sort_name: 'Silva' })]}
+        units={UNITS}
+        year={2026}
+      />
+    )
+    await userEvent.click(screen.getByRole('button', { name: /1 unplaced families/i }))
+    expect(screen.getByTestId('family-card-name')).toHaveTextContent('Silva')
   })
 
-  it('lists a merged party as placed but off the map, never as unplaced', () => {
+  it('lists a merged party below the map, never as unplaced', async () => {
     const merged = party({
       display_name: 'Nguyen',
+      sort_name: 'Nguyen',
       unit_code: '',
       unit_name: 'Cedar 1 + Cedar 2',
       is_merged_slot: true,
     })
     render(<LodgingMap parties={[merged]} units={UNITS} year={2026} />)
-    const rail = screen.getByTestId('map-offmap-rail')
-    expect(rail).toHaveTextContent('Nguyen')
+
+    const section = screen.getByTestId('map-offmap-section')
+    expect(section).toHaveTextContent('Nguyen')
+
+    // DOCUMENT_POSITION_FOLLOWING: the section comes after the canvas.
+    const canvas = screen.getByTestId('map-canvas')
+    expect(canvas.compareDocumentPosition(section) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+
+    // And it is placed, so it is not in the queue.
+    expect(screen.getByRole('button', { name: /0 unplaced families/i })).toBeInTheDocument()
   })
 
-  it('opens the family panel embedded in the sidebar, not as an overlay', async () => {
-    // FamilyDetailsPanel exists in one copy for both surfaces; `embedded` is the
-    // mode it provides for this one. Its embedded branch renders the
-    // family-details-panel testid without the overlay's click-outside layer.
+  it('opens the family panel as the board does — a slide-in overlay, not a sidebar', async () => {
+    // FamilyDetailsPanel exists in one copy for both surfaces. The map used its
+    // `embedded` mode because it had a sidebar to embed into; with the sidebar
+    // gone, both weekend surfaces open the same panel summer opens.
     render(<LodgingMap parties={[PLACED]} units={UNITS} year={2026} />, { wrapper })
     await userEvent.click(screen.getAllByTestId('map-mark')[0] as HTMLElement)
     await userEvent.click(screen.getByRole('button', { name: /Johnson/ }))
     expect(screen.getByTestId('family-details-panel')).toBeInTheDocument()
+    expect(screen.getByTestId('family-panel-backdrop')).toBeInTheDocument()
   })
 
   it('ignores a second pointer so a two-finger gesture cannot steer the pan', () => {

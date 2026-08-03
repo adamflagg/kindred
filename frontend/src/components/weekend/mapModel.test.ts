@@ -135,7 +135,7 @@ describe('buildMapModel', () => {
     expect(model.unpositionedUnits.map((u) => u.code)).toEqual(['cedar-2'])
   })
 
-  it('sends a party in an unpositioned unit off-map, not to the unplaced rail', () => {
+  it('sends a party in an unpositioned unit off-map, not to the unplaced queue', () => {
     const stranded = party({ display_name: 'Garcia', unit_code: 'cedar-2', unit_name: 'Cedar 2' })
     const model = buildMapModel(
       [stranded],
@@ -165,7 +165,7 @@ describe('buildMapModel', () => {
     expect(model.offMap).toEqual([{ party: stranded, reason: 'not-on-board' }])
   })
 
-  it('keeps a genuinely unplaced party on the unplaced rail', () => {
+  it('keeps a genuinely unplaced party in the unplaced queue', () => {
     const model = buildMapModel([party({ display_name: 'Silva' })], [unit()])
     expect(model.unplaced.map((p) => p.display_name)).toEqual(['Silva'])
     expect(model.offMap).toEqual([])
