@@ -1,9 +1,15 @@
 /**
  * The shared party key. Fictional data throughout.
  *
- * These pin the `||`-not-`??` choice directly, because it is invisible on a
- * family weekend — a household party has a real `household_cm_id` and both
- * operators agree. Everything below is a case where they DISAGREE.
+ * These pin the whole key chain, and three of them pin the `||`-not-`??`
+ * choice — a choice that is invisible on a family weekend, where a household
+ * party has a real `household_cm_id` and both operators agree.
+ *
+ * The three where they DIVERGE are the ones to keep if this file is ever
+ * trimmed: `household_cm_id = 0` with a real `person_cm_id`, two persons keyed
+ * apart, and both ids 0 falling through to `display_name`. The other two agree
+ * under either operator — a real id is neither falsy nor nullish, and an
+ * omitted id is BOTH — so they cover the chain, not the operator.
  */
 import { describe, expect, it } from 'vitest'
 
