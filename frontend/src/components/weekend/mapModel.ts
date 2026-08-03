@@ -66,12 +66,17 @@ export function hasCoordinates(unit: LodgingUnitRow): boolean {
 }
 
 /**
- * The units a party occupies. THE ONLY PLACE a party becomes units.
+ * The units a party occupies.
  *
- * Today the roster gives one `unit_code`, and a merged slot gives none at all —
- * the API sends the merge's display name instead. When `RosterParty.unit_codes`
- * lands (accepted by the merge-collapse branch), this function maps over that
- * and nothing else in the map changes.
+ * NOT YET WIRED IN, deliberately. `buildMapModel` gets its party-to-unit
+ * grouping from `buildBoard`, which groups on `unit_code` inside
+ * `boardLayout.ts` — a file this PR must not edit. So today this function has
+ * no caller but its own tests, and it is exported as the seam for one specific
+ * change: when `RosterParty.unit_codes` lands (accepted by the merge-collapse
+ * branch), a party can occupy SEVERAL rooms, `buildBoard`'s single-code
+ * grouping stops being sufficient for positioning, and the map resolves units
+ * here instead. Kept rather than deleted because that consumer is accepted and
+ * in flight — unlike a seam whose consumer was cancelled, which should go.
  *
  * Do NOT hand-write `unit_codes` onto the row type ahead of the generated
  * types: a hand-written shape is how a surface starts silently disagreeing with

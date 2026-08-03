@@ -156,6 +156,15 @@ describe('buildMapModel', () => {
     expect(model.offMap).toEqual([{ party: merged, reason: 'merged-slot' }])
   })
 
+  it('distinguishes a not-on-board placement from a merged one', () => {
+    // Without this, collapsing offMapReason's ternary to a constant
+    // 'merged-slot' passes every other test in this file: the totality test
+    // exercises this path but only checks names, never `.reason`.
+    const stranded = party({ display_name: 'Petrov', unit_code: 'cedar-9', unit_name: 'Cedar 9' })
+    const model = buildMapModel([stranded], [unit()])
+    expect(model.offMap).toEqual([{ party: stranded, reason: 'not-on-board' }])
+  })
+
   it('keeps a genuinely unplaced party on the unplaced rail', () => {
     const model = buildMapModel([party({ display_name: 'Silva' })], [unit()])
     expect(model.unplaced.map((p) => p.display_name)).toEqual(['Silva'])
