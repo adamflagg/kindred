@@ -193,6 +193,10 @@ jobs:
       uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
       with:
         enable-cache: true
+        # v9 flipped this default to false. Unpruned, the uv cache grows from
+        # ~11 MB to hundreds of MB per entry, and this repo already sits at the
+        # 10 GB Actions cache ceiling (CodeQL takes ~9.5 GB of it).
+        prune-cache: true
 
     - name: Install Python dependencies
       run: uv sync --frozen
@@ -430,6 +434,10 @@ jobs:
       uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
       with:
         enable-cache: true
+        # v9 flipped this default to false. Unpruned, the uv cache grows from
+        # ~11 MB to hundreds of MB per entry, and this repo already sits at the
+        # 10 GB Actions cache ceiling (CodeQL takes ~9.5 GB of it).
+        prune-cache: true
 
     - name: Install Python dependencies
       run: uv sync --frozen
