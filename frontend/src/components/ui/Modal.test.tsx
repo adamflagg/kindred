@@ -295,8 +295,11 @@ describe('Modal', () => {
         </Modal>
       )
 
+      // Read the inline style, not the computed one: jsdom >=30 resolves
+      // computed lengths to pixels, so `toHaveStyle` would compare against
+      // `448px`. The two tests below already assert through `.style.right`.
       const dialog = screen.getByRole('dialog')
-      expect(dialog).toHaveStyle({ right: '28rem' })
+      expect(dialog.style.right).toBe('28rem')
     })
 
     it('leaves the backdrop without its own right offset', () => {
