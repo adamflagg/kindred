@@ -190,9 +190,15 @@ export function LodgingMap({ parties, units, year }: LodgingMapProps) {
     active: boolean
   } | null>(null)
   // Set from `drag.active` at pointerup, so the click that ends a pan can be
-  // told apart from a genuine dead-space click on the same canvas div — see
-  // the dismissal callback below. Consumed (reset) the moment it is read, so
-  // it never outlives the one click it describes.
+  // told apart from a genuine dead-space click on the same canvas div.
+  //
+  // WRITTEN in the canvas's `onPointerUp`; READ in the canvas's `onClick`, and
+  // nowhere else. That pairing is what makes it unable to go stale: a `click`
+  // on the canvas is always preceded by that same gesture's `pointerup` on the
+  // canvas, so the value the click reads is always the one its own gesture
+  // just wrote. A `true` left behind by a pan that no click followed has no
+  // reader at all — the next canvas gesture overwrites it before the next
+  // canvas click can see it.
   const wasDraggingRef = useRef(false)
   const [view, setView] = useState<Viewport>(IDENTITY_VIEW)
   const [size, setSize] = useState({ width: 0, height: 0 })
@@ -273,20 +279,17 @@ export function LodgingMap({ parties, units, year }: LodgingMapProps) {
     setRequestClose(false)
   }, [])
 
-  // Same dead-space dismissal the summer board and the weekend board use —
-  // with one addition neither of them needs. The canvas is a bare div that a
+  // Same dead-space dismissal the summer board and the weekend board use, and
+  // deliberately the same one line they use. The canvas is a bare div that a
   // pan gesture ends with a click on, and that click matches none of
-  // `shouldKeepPanelsOpen`'s exemptions (not a panel, badge, button or
-  // card), so without this every pan would close the panel out from under
-  // whoever is dragging it. `wasDraggingRef` is set from the SAME
-  // `drag.active` the pan logic already computes — no separate threshold —
-  // and reading it here consumes it, so a later genuine dead-space click is
-  // never mistaken for the tail of an old drag.
+  // `shouldKeepPanelsOpen`'s exemptions (not a panel, badge, button or card),
+  // so a pan would otherwise close the panel out from under whoever is
+  // dragging it. That is fixed where it happens — the canvas's own `onClick`
+  // stops the pan-concluding click from ever reaching this document listener —
+  // rather than by teaching this callback to second-guess the clicks it does
+  // get. A callback that remembers things about earlier gestures is a callback
+  // that can be wrong about the current one.
   useDismissOnDeadSpace(selected !== null, () => {
-    if (wasDraggingRef.current) {
-      wasDraggingRef.current = false
-      return
-    }
     setRequestClose(true)
   })
 
@@ -539,6 +542,24 @@ export function LodgingMap({ parties, units, year }: LodgingMapProps) {
             style={{ aspectRatio: `${String(MAP_ASPECT)}` }}
             className="bg-muted/40 relative w-full touch-none overflow-hidden rounded-xl select-none"
             onClick={(event) => {
+              // FIRST, before any early return: consume the pan flag. Every
+              // canvas click clears it, which is the whole reason it cannot go
+              // stale — see `wasDraggingRef`'s own note. Putting this below the
+              // guards would give the flag a way to survive a click.
+              const concludedPan = wasDraggingRef.current
+              wasDraggingRef.current = false
+              if (concludedPan) {
+                // A pan is not a click on anything, and the browser's
+                // synthesised trailing click says otherwise. Stopped HERE, in
+                // the same dispatch, so it never reaches the document listener
+                // `useDismissOnDeadSpace` attaches — the panel is not dismissed
+                // because the event never arrives, not because something later
+                // remembered a drag. Same technique the marks use below.
+                event.stopPropagation()
+                // No closePeek(): the pan already closed the peek the moment it
+                // crossed the threshold.
+                return
+              }
               // Background dismiss. Marks already stopPropagation() on their
               // own click, so this never actually sees one — but a popover
               // occupant button does NOT, and clicking it must not close the
@@ -625,8 +646,8 @@ export function LodgingMap({ parties, units, year }: LodgingMapProps) {
                 event.currentTarget.releasePointerCapture(drag.id)
               }
               // The click that follows this pointerup must not read as dead
-              // space if this gesture actually panned — see the dismissal
-              // callback above.
+              // space if this gesture actually panned — the canvas's `onClick`
+              // above reads this and stops that click there.
               wasDraggingRef.current = drag.active
               dragRef.current = null
             }}

@@ -257,6 +257,46 @@ describe('LodgingMap', () => {
       fireEvent.click(canvas)
       expect(screen.getByTestId('family-details-panel')).toHaveClass('animate-slide-out-right')
     })
+
+    it('does not let a pan taken with no panel open swallow a later dead-space click', async () => {
+      // The ordering the two tests above cannot reach: the pan happens while
+      // NOTHING is open, so whatever the pan records has no consumer at the
+      // time it is recorded. The panel is then opened from the floating
+      // badge, which is a DOM sibling of the canvas — that path runs none of
+      // the canvas's pointer handlers, so it cannot overwrite the record on
+      // its way past. (Opening from a mark would: the mark lives inside the
+      // canvas, so its own click's pointerup goes through the canvas.)
+      //
+      // If anything survives that far, the first genuine dead-space click is
+      // spent clearing it instead of closing the panel, and the user has to
+      // click twice.
+      render(
+        <LodgingMap
+          parties={[party({ display_name: 'Garcia', sort_name: 'Garcia' })]}
+          units={UNITS}
+          year={2026}
+        />,
+        { wrapper }
+      )
+      const canvas = screen.getByTestId('map-canvas')
+
+      // A complete pan gesture, trailing click included, with no panel open.
+      fireEvent.pointerDown(canvas, { pointerId: 1, clientX: 300, clientY: 300 })
+      fireEvent.pointerMove(canvas, { pointerId: 1, clientX: 240, clientY: 300 })
+      fireEvent.pointerUp(canvas, { pointerId: 1, clientX: 240, clientY: 300 })
+      fireEvent.click(canvas)
+
+      await userEvent.click(screen.getByRole('button', { name: /1 unplaced families/i }))
+      await userEvent.click(screen.getByRole('button', { name: /Garcia/ }))
+      expect(screen.getByTestId('family-details-panel')).toHaveClass('animate-slide-in-right')
+      await new Promise((resolve) => setTimeout(resolve, 0))
+
+      // The page background is dead space by every measure — it matches none
+      // of `shouldKeepPanelsOpen`'s exemptions and it is nowhere near the
+      // canvas. The FIRST such click must close the panel.
+      fireEvent.click(document.body)
+      expect(screen.getByTestId('family-details-panel')).toHaveClass('animate-slide-out-right')
+    })
   })
 
   it('ignores a second pointer so a two-finger gesture cannot steer the pan', () => {
