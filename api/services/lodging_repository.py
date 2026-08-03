@@ -39,7 +39,6 @@ from api.constants.collections import (
     LODGING_ASSIGNMENTS_DRAFT,
     LODGING_AVAILABILITY,
     LODGING_INGEST_ISSUES,
-    LODGING_MERGES_DRAFT,
     LODGING_UNITS,
 )
 from api.constants.filters import ACTIVE_ENROLLED_FILTER
@@ -405,12 +404,6 @@ class LodgingRepository:
 
     async def delete_draft_assignment(self, record_id: str) -> None:
         await asyncio.to_thread(self.pb.collection(LODGING_ASSIGNMENTS_DRAFT).delete, record_id)
-
-    async def create_draft_merge(self, data: dict[str, Any]) -> Any:
-        return await asyncio.to_thread(self.pb.collection(LODGING_MERGES_DRAFT).create, data)
-
-    async def delete_draft_merge(self, record_id: str) -> None:
-        await asyncio.to_thread(self.pb.collection(LODGING_MERGES_DRAFT).delete, record_id)
 
     async def find_availability_override(
         self, year: int, session_pb_id: str, scenario_id: str, unit_pb_id: str

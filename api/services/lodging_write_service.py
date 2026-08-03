@@ -9,15 +9,6 @@ exist at all. Summer draws the identical line and has never crossed it.
 There is no UI on top of this yet, deliberately. The schema risk lands in one
 reviewable change with no interaction design competing for review attention.
 
-WHAT IS NOT VALIDATED, and why. A merge's member set is not checked for
-completeness against the unit tree. That rule -- "a merge is legal iff its
-members are the complete child set of some container" -- was built through nine
-tasks, fully reviewed, and REMOVED in #1903, because every member set is
-hand-authored: a deliberate partial booking and a mis-click produce
-byte-identical rows, so no rule can discriminate between the case it is for and
-the case it is against. Read docs/architecture/lodging-occupancy.md before
-adding anything of that shape.
-
 Occupancy -- how many parties may share one unit -- is the constraint that
 genuinely needs modelling (kindred#1907), and it belongs at the point a human
 is choosing, which is the board. Not here, and not in the ingest.
@@ -32,7 +23,6 @@ from pocketbase.client import ClientResponseError  # type: ignore[attr-defined]
 from api.schemas.lodging import (
     AvailabilityWriteRequest,
     LodgingWriteResponse,
-    MergeWriteRequest,
     PlacementDeleteRequest,
     PlacementWriteRequest,
 )
@@ -50,14 +40,9 @@ logger = get_logger(__name__)
 # jobs, and no sync writes the draft.
 STAFF_SOURCE = "staff_manual"
 
-# lodging_merges_draft.created_by. The truth table's ingest writes
-# "campminder_sync" into the same column, so the two are distinguishable on
-# sight when a board renders slots from both.
-STAFF_CREATED_BY = "staff_manual"
-
 
 class LodgingWriteService:
-    """Draft placements, draft merges, and per-scenario availability."""
+    """Draft placements and per-scenario availability."""
 
     def __init__(self, repository: LodgingRepository) -> None:
         self.repository = repository
@@ -83,12 +68,11 @@ class LodgingWriteService:
         allow exactly one row per (session, year, party, scenario).
 
         The find and the create are two round trips, so they RACE. Two staff
-        dragging the same family at the same moment -- the same case
-        delete_merge is idempotent for -- both read no row, both create, and
-        the index rejects the loser. Left alone that is a 500 for a placement
-        the board is entitled to make, so the loser re-reads and updates
-        instead. The winner's row is by construction the row this call wanted:
-        same session, same year, same party, same scenario.
+        dragging the same family at the same moment both read no row, both
+        create, and the index rejects the loser. Left alone that is a 500 for a
+        placement the board is entitled to make, so the loser re-reads and
+        updates instead. The winner's row is by construction the row this call
+        wanted: same session, same year, same party, same scenario.
 
         Only a create that turns out to have raced is retried. If the re-read
         still finds nothing, the create failed for some other reason and the
@@ -101,8 +85,8 @@ class LodgingWriteService:
         as well -- an unwrapped one is a bare ClientResponseError into the
         catch-all handler, which is the same 500 this guard exists to prevent.
 
-        All three targets empty is the TOMBSTONE -- "staff took this party off
-        the board in this scenario" -- and is a legitimate row, not a no-op.
+        An EMPTY `unit_ids` is the TOMBSTONE -- "staff took this party off the
+        board in this scenario" -- and is a legitimate row, not a no-op.
         Deleting the row instead would fall through to the CampMinder mirror
         and put the family back in the cabin they were just dragged out of.
         """
@@ -123,9 +107,7 @@ class LodgingWriteService:
             "scenario": request.scenario,
             "household_cm_id": request.household_cm_id,
             "person_cm_id": request.person_cm_id,
-            "unit": request.unit_id,
-            "merge": request.merge_id,
-            "merge_draft": request.merge_draft_id,
+            "units": request.unit_ids,
             "source": STAFF_SOURCE,
             "staff_touched": True,
         }
@@ -164,10 +146,10 @@ class LodgingWriteService:
         That covers the row never having existed. It does not, by itself,
         cover the row existing at the find above and vanishing before the
         delete lands -- two staff clearing the same placement, or a
-        double-click, race the same way the merge delete below does. Exactly
-        as there, ONLY 404 is swallowed: any other PocketBase failure keeps
-        its status through pb_error_to_http, because "the delete was refused"
-        must not read as "there was nothing to delete".
+        double-click, race the same way `set_availability`'s delete below
+        does. Exactly as there, ONLY 404 is swallowed: any other PocketBase
+        failure keeps its status through pb_error_to_http, because "the delete
+        was refused" must not read as "there was nothing to delete".
         """
         session_pb_id = await self._resolve_session_pb_id(request.year, request.session_cm_id)
 
@@ -188,71 +170,6 @@ class LodgingWriteService:
                 return LodgingWriteResponse(record_id=str(existing.id), deleted=False)
             raise pb_error_to_http(exc) from exc
         return LodgingWriteResponse(record_id=str(existing.id), deleted=True)
-
-    async def create_merge(self, request: MergeWriteRequest) -> LodgingWriteResponse:
-        """Bind units into one bookable slot for this scenario.
-
-        Writes lodging_merges_draft, never lodging_merges, because a board
-        merge is a planning act and planning lives in the draft.
-
-        NOT because staff cannot reach lodging_merges. They can: 1500000130 put
-        it in LODGING_STAFF_WRITABLE, so bunking.manage holds create, update and
-        delete on it, and that is the intended uniform rule for lodging -- reads
-        open to any authenticated user, writes admin || bunking.manage, no new
-        roles. What the draft twin buys is SCENARIO ISOLATION, not write
-        protection: a merge made while planning must not alter the row the
-        ingest dedupes against on its next pass over the same cabin strings.
-
-        The three tables that genuinely are out of reach are lodging_assignments,
-        lodging_assignment_history and lodging_field_mappings, which stay
-        is_admin. Whether lodging_merges should join them now that it has a
-        draft twin is kindred#1916, not this function's call.
-
-        No dedup by member set, unlike the ingest's EnsureMerge. That function
-        dedupes because a backfill re-runs over the same cabin strings and
-        would otherwise write a fresh row each pass. A human clicking "merge"
-        twice means it twice, and the board can delete what it did not want.
-        """
-        session_pb_id = await self._resolve_session_pb_id(request.year, request.session_cm_id)
-
-        data: dict[str, Any] = {
-            "session": session_pb_id,
-            "session_cm_id": request.session_cm_id,
-            "year": request.year,
-            "scenario": request.scenario,
-            "member_units": request.member_unit_ids,
-            "display_name": request.display_name,
-            "created_by": STAFF_CREATED_BY,
-        }
-        if request.capacity_override is not None:
-            data["capacity_override"] = request.capacity_override
-
-        record = await self.repository.create_draft_merge(data)
-        return LodgingWriteResponse(record_id=str(getattr(record, "id", "")))
-
-    async def delete_merge(self, merge_draft_id: str) -> LodgingWriteResponse:
-        """Remove a board-built slot.
-
-        Draft placements pointing at it are left alone on purpose:
-        `merge_draft` is `cascadeDelete: false`, so a placement whose slot is
-        deleted keeps its row and reads as unplaced rather than vanishing. The
-        roster already treats a placement with no resolvable target that way.
-
-        Idempotent, exactly as clear_placement is: a slot that is already gone
-        is a 200 with `deleted: false`. Two staff on one board, or a single
-        double-click, delete the same slot twice, and the second call has
-        nothing to do rather than something to report. ONLY 404 is swallowed --
-        any other PocketBase failure keeps its status through pb_error_to_http,
-        because "the delete was refused" must not read as "there was nothing to
-        delete".
-        """
-        try:
-            await self.repository.delete_draft_merge(merge_draft_id)
-        except ClientResponseError as exc:
-            if exc.status == 404:
-                return LodgingWriteResponse(record_id=merge_draft_id, deleted=False)
-            raise pb_error_to_http(exc) from exc
-        return LodgingWriteResponse(record_id=merge_draft_id, deleted=True)
 
     async def set_availability(self, request: AvailabilityWriteRequest) -> LodgingWriteResponse:
         """Reserve or release one unit for this weekend, inside a scenario.
