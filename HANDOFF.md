@@ -35,7 +35,7 @@ below identifies work by **PR and commit**, which are the only labels that canno
 | Draft write layer — draft tables, RBAC, scenario-aware reads, five endpoints | ✅ `7065b4c9` (#1915) |
 | Write-race guards — all five write paths hardened | ✅ `7b25d25e` (#1927) |
 | **Share eligibility — flag on the authoritative form, not the registration gate** | ⏳ **IN FLIGHT, #1926** — see §3a |
-| **Drag placement — the board calls the write endpoints** | ⬅ **next, after #1923(a), see §4** |
+| **Drag placement — the board calls the write endpoints** | ⬅ **next, see §4** |
 | Map + pin editor — `map_x`/`map_y` view, a projection of the board | needs drag placement |
 | Geo layer | needs the map |
 
@@ -208,14 +208,16 @@ render. It is a display surface — **nothing on it calls a write endpoint.** It
 
 **Two new collections** (`1500000132`): `lodging_assignments_draft` and `lodging_merges_draft`.
 `scenario` is required on both, with `cascadeDelete: true`, so deleting a saved scenario sweeps
-its drafts server-side.
+its drafts server-side. (`lodging_merges_draft` did not survive **#1931** — see the units-set
+collapse below.)
 
 **The dead `scenario` column was DROPPED** from `lodging_assignments` and `lodging_merges`. It
 was an artifact — absent from the original field list, and empty on all 67 assignment rows. The
 live unique indexes were rebuilt without it and **kept their `> 0` partials**. Consequences:
 
 - **`EnsureMerge` lost its `scenario` parameter.** Filtering on the dropped column now fails the
-  whole ingest with `unknown field "scenario"`. Do not reinstate it.
+  whole ingest with `unknown field "scenario"`. Do not reinstate it. (`EnsureMerge` itself was
+  later deleted outright by **#1931**.)
 - **A `Set` on a dropped column silently no-ops; a filter naming it errors.** So a write-only
   reference to a dropped column looks fine forever. This is #1921, and it is why dropping
   `scenario` broke the Go ingest while the Go suite stayed green — the fixtures build their own
@@ -266,13 +268,35 @@ family off the board must POST a **tombstone**. Deleting the row falls through t
 puts them straight back in the synced cabin — the opposite of what the staff member just asked
 for. `DELETE` is a separate affordance ("reset to CampMinder"), not the unplaced rail.
 
-#### A draft placement has THREE possible targets, not two
+#### The `unit` / `merge` / `merge_draft` collapse into one `units` set (`2ae8a4ec`, #1931)
 
-`unit` (an atomic room), `merge` (a slot the INGEST built from a historical cabin string via
-`EnsureMerge` — no migration seeds these, and a scenario must be able to place onto one), and
-`merge_draft` (a slot the BOARD built in this scenario). A PocketBase relation names one
-collection, which is why two merge fields exist. **A read that expands only one renders a placed party as unplaced.** `merge_draft`
-is checked before `merge`: a board-built slot is the more specific answer.
+The three targets above did not last. Migration `1500000134` replaces `unit`, `merge` and
+`merge_draft` with one multi-valued `units` relation on both `lodging_assignments` and
+`lodging_assignments_draft`, and deletes `lodging_merges` and `lodging_merges_draft` outright,
+along with `EnsureMerge`. A placement now points at a SET of rooms; "merging" is extending that
+set past one member, not creating a separate row.
+
+**Why the row had nothing left to protect.** Alias resolution already produced a set —
+`AliasResolution.UnitIDs` — and `EnsureMerge` existed only because a placement could hold a
+single id. Remove that constraint and the merge apparatus has nothing left to do: the three-way
+target XOR nothing enforced, the two delete guards, the three-relation expand whose partial use
+rendered a placed party as unplaced, and kindred#1923(b) all go with it. A merged slot was never
+inventory in the first place — `lodging_availability.unit` is a required relation to
+`lodging_units`, so a merge could never be reserved or released; `effective_bathroom` already
+took `merged_codes: frozenset[str]`, set-based all along and unchanged by this migration;
+`capacity_override` on a merge was write-only with zero readers; and staff confirmed they do not
+pre-configure merges — a merge is the outcome of placing a family across rooms, not a slot
+created in advance.
+
+**The concept is real; the row was not.** Multi-room placements measured on real data:
+**2022=16, 2023=12, 2024=13, 2025=16, 2026=1** (2026 is low only because the season has barely
+started) — roughly 12–16 placements a year, about 3% of the total.
+
+**Write surface.** `POST /api/lodging/placements` takes `unit_ids: list[str]` and writes it
+straight to `units` on create and update; `create_merge` / `delete_merge` and the
+`/api/lodging/merges*` endpoints are gone. `countAssignments` (`pocketbase/lodging/hooks.go`)
+now spans both placement tables filtering `units.id ?= {:id}` — see §8 for #1923 and #1916,
+both now closed. See §4 for what "merging" means to the drag PR.
 
 #### `guardDraftAssignmentGrain` is NOT the delete guard
 
@@ -284,8 +308,10 @@ schema does. A row naming neither *grain* is what makes it worth guarding — it
 both partial unique indexes skip it, and the roster's overlay silently drops it, so the row
 accumulates and does nothing, invisibly.
 
-**Do not read this as fixing #1923.** That is about DELETE guards on units and merges not seeing
-the draft grain at all. Adjacent, not the same — see §8.
+**This is not what fixed #1923.** `guardDraftAssignmentGrain` is a create/update guard on party
+grain; #1923 was about DELETE guards on units and merges not seeing draft placements at all,
+closed separately when `countAssignments` learned to span both placement tables (see the
+units-set collapse above, and §8).
 
 ---
 
@@ -301,7 +327,7 @@ Each of these was decided deliberately. Reopening one needs a reason, not a fres
 - **The Wawona / Doctor's House alias reconcile is rejected** (Plan 2 Task 15, spec §9a note 8). The
   building is let whole *or* split depending on the session's housing needs — staff-confirmed. An
   alias has a *year* window and no session dimension, so it structurally cannot express that.
-  Per-session arrangement is what `lodging_merges` is for. Do not re-derive this from occupancy
+  Per-session arrangement is what a placement's `units` set is for (§2). Do not re-derive this from occupancy
   numbers; the 2024 peak of 7 in one household is one session's arrangement, not a rule.
 - **`opt_out_vip` and `accommodation_is_mandatory` are one three-state answer** (`dc9437e9`, #1874):
   mandatory → some member cannot attend without it; opt-out → answered and the family will come
@@ -448,8 +474,9 @@ If that file is missing, this section is the surviving summary.
 
 ## 4. Next: drag placement on the board (spec "C2")
 
-**Settle #1923(a) first — see §8.** Drag is what makes draft rows exist, and the unit/merge delete
-guards cannot see them.
+**#1923(a) is already settled — see §8.** `guardUnitDelete` sees draft placements now, so a unit
+holding scenario placements refuses to delete rather than silently emptying someone's scenario
+once drag makes draft rows exist for real.
 
 **Both halves of placement now exist separately and are not connected.** The board renders
 (#1911); the write endpoints accept (#1915). Nothing on the board calls them. The next PR is
@@ -465,13 +492,17 @@ the thing this PR is most likely to get wrong.
 **In scope:**
 
 - @dnd-kit dragging on the existing board, as summer uses it. Party → unit, party → unplaced
-  rail, and unit → unit.
+  rail, and unit → unit — that last one now IS "merging". Since **#1931** collapsed the three
+  targets into one `units` set (§2), the drop handler resolves a single target kind, not three:
+  dropping a second room onto a placed party extends the same `POST /placements` body to
+  `unit_ids: [a, b]` rather than calling a separate merge endpoint. There is no create-a-slot
+  interaction left to build.
 - **Party → unplaced rail POSTs a TOMBSTONE, not a DELETE.** See §2.
 - Optimistic placement with rollback. **A rejected write must roll the card back** with a toast,
   as summer's `useCamperMovement` does. A silent revert is not acceptable.
 - Scenario gating: no scenario → the board stays exactly as read-only as it is today, with the
   amber CM badge. Mirror `ScenarioContext`'s `isProductionMode`.
-- Merge-as-board-action and reserve/release if they fit; otherwise say so and leave them.
+- Reserve/release if it fits; otherwise say so and leave it.
 - ~~The three unguarded write paths in §8.~~ Done separately in **#1927** — do not re-do them.
 
 **Out of scope:** the map (next), `unit_class`/#1907 unless flagging needs it, and any new read
@@ -505,10 +536,11 @@ container* — and taken back out before it ever shipped. Read
 `docs/architecture/lodging-occupancy.md` before proposing anything like it again, because the
 idea is genuinely appealing and wrong for reasons that are not obvious.
 
-The short version. Every `member_units` set is hand-authored in the admin UI, so an "illegal"
-merge is a human decision the ingest has less context to overrule. A deliberate partial booking
-and a mis-clicked one produce **byte-identical rows**, so the rule cannot discriminate between
-the case it is for and the case it is against. Nothing downstream consumes completeness —
+The short version. Every unit set a placement holds is hand-authored — in the admin UI today,
+via the board once §4 ships — so an "illegal" merge is a human decision the ingest has less
+context to overrule. A deliberate partial booking and a mis-clicked one produce a
+**byte-identical `units` value**, so the rule cannot discriminate between the case it is for and
+the case it is against. Nothing downstream consumes completeness —
 bathroom privacy comes off `bathroom_group`, and `parent_unit` — the tree the rule walked —
 appears nowhere in `api/` or `bunking/`. (`is_container` is read there, but only to keep
 buildings out of bookable lists.) And the real configuration space (a house split between a family and a
@@ -541,16 +573,14 @@ inline per row and in bulk. Until staff use it, the fit check stays dark.
 
 ### Open decisions the board will force
 
-- **`lodging_merges` CRUD** — merges are a board action (spec §3.4), created mid-assignment
-  rather than configured up front. `POST /api/lodging/merges` now writes them, but into
-  `lodging_merges_draft`, never `lodging_merges` — a board merge is a planning act and planning
-  lives in the draft. **Nothing validates the member set** — see the removed rule above before
-  adding a check — and the board write deliberately does **not** dedup by member set the way the
-  ingest's `EnsureMerge` does: a backfill re-runs over the same cabin strings, but a human
-  clicking "merge" twice means it twice. Note that only the DRAFT carries `scenario` now; the
-  live table's column was dropped (§2). `guardMergeDelete` protects the live rows;
-  `lodging_merges_draft` has **no delete guard at all** — that is #1923, see §8.
-  Whether `lodging_merges` should become admin-only now it has a draft twin is **#1916**.
+- **`lodging_merges` CRUD is now moot.** #1931 collapsed the separate merge collections into one
+  `units` set on the placement itself (§2), so there is no merge row left to CRUD, no admin-only
+  question (**#1916, closed**), and no delete-guard gap on a draft merge table that no longer
+  exists (**#1923(b), moot** — see §8). **Nothing validates the unit set** still stands, though:
+  see the removed legality rule below and `docs/architecture/lodging-occupancy.md` before adding
+  a check. **#1932** proposes something adjacent and weaker — offering known-good combinations
+  derived from `bathroom_group` + `parent_unit` at the moment of picking, not rejecting a
+  hand-authored set after the fact — which is explicitly not the removed rule.
 - **Occupancy (#1907)** — how many parties may share one unit, which varies by unit class and
   session type. This is the constraint the board actually needs and the one nothing models.
   `docs/architecture/lodging-occupancy.md` has the staff-confirmed rules. Enforcement belongs
@@ -678,19 +708,18 @@ the whole time. That is progress, not a hang — confirm with CPU, not the count
   as an empty list. The alias editor's member checkboxes ARE the payload, so opening it against
   a failed unit query and saving would strip every member. On the board an empty unit list
   renders an empty board, which reads as "nothing to place" rather than "the fetch failed".
-- **Do not `DELETE /placements` when a card is dragged to the unplaced rail.** POST a tombstone.
-  Deleting falls through to the CampMinder mirror and puts the family back in the cabin they
-  were just dragged out of. §2 has the three-state table; this is the trap it exists for.
+- **Do not `DELETE /placements` when a card is dragged to the unplaced rail.** POST an empty
+  `unit_ids` — that is the tombstone, never a DELETE. Deleting falls through to the CampMinder
+  mirror and puts the family back in the cabin they were just dragged out of. §2 has the
+  three-state table; this is the trap it exists for.
 - **Do not add a "copy production into this scenario" operation.** Draft rows OVERLAY the
   mirror, so a fresh scenario already renders the synced placements. A seed step would convert
   every synced placement into a staff override and break the fall-through.
 - **Do not accept a scenario-less write.** A blank `scenario` is a 422. With no scenario the
   board is read-only for everyone; an endpoint taking a scenario-less write is the one path
   around that.
-- **Do not expand only one merge relation on a placement read.** There are three targets —
-  `unit`, `merge`, `merge_draft` — and expanding a subset renders a placed party as unplaced.
-- **Do not reinstate `scenario` on `lodging_assignments` or `lodging_merges`, or on
-  `EnsureMerge`.** The column is dropped; a filter naming it fails the whole ingest.
+- **Do not reinstate `scenario` on `lodging_assignments`.** The column is dropped; a filter
+  naming it fails the whole ingest.
 - **Do not trust the Go suite to catch a dropped column.** The fixtures declare their own schema
   and never read `pb_migrations/` (#1921). A `Set` on a dropped column silently no-ops.
 
@@ -769,30 +798,38 @@ the retry exists to prevent.
 two staff can still place different parties into one unit without either write failing. That is
 kindred#1907, and it is a modelling question for the board, not an exception handler.
 
-### #1923 — the delete guards are blind to draft rows
+### CLOSED: #1923 — the delete guards were blind to draft rows
 
-`countAssignments` reads only `lodging_assignments`, so `guardUnitDelete` and `guardMergeDelete`
-do not see draft placements, and `lodging_merges_draft` has **no delete guard at all**.
-`1500000130` opened `lodging_units` to `bunking.manage`, so the delete is reachable from
-`/manage/lodging` by exactly the staff whose scenarios would be silently emptied — and by a
-different person than the one who placed them.
+Left here as the record of a gap that is now shut, and of a wrong belief about PocketBase that
+made half of it look safe to skip.
 
-**Today it is theoretical because no draft rows exist. The drag PR is what makes them exist**, so
-settle it BEFORE drag ships. And do not read `guardDraftAssignmentGrain` as already fixing it —
-see §2.
+**(a) is done.** `countAssignments` (`pocketbase/lodging/hooks.go`) now spans both
+`lodging_assignments` and `lodging_assignments_draft`, filtering `units.id ?= {:id}` against
+each, so `guardUnitDelete` refuses to delete a unit that still holds a draft placement, not only
+a confirmed one. `1500000130` opened `lodging_units` to `bunking.manage`, so this closes exactly
+the gap that mattered: the delete was reachable from `/manage/lodging` by staff other than the
+one who placed the scenario row. **This is user-facing**: staff can no longer delete a unit
+holding draft placements — deactivate instead, same as they already had to for a confirmed one.
 
-**It is TWO decisions, not one, and they have different risk:**
+**(b) is moot.** There is no `lodging_merges_draft` left to guard — **#1931** (§2) deleted it
+outright and folded merging into a placement's own `units` set. `guardUnitDelete` now covers what
+a separate merge delete guard would have: a merged slot is a placement whose `units` has two or
+more members, so "don't break up an occupied merge" and "don't delete an occupied unit" are the
+same rule, enforced by the same guard.
 
-- **(a) Teach `countAssignments` the draft grain**, so `guardUnitDelete` and `guardMergeDelete`
-  stop allowing a delete that silently empties a scenario. This follows the existing precedent
-  exactly — `guardUnitDelete` and `guardAliasDelete` both already return 400 on this shape.
-  **Safe, and the one that actually gates drag.** Note it is a user-facing change: staff can no
-  longer delete a unit holding draft placements.
-- **(b) A delete guard on `lodging_merges_draft`** — **do not do this without deciding it
-  deliberately.** It would contradict behaviour already documented in `delete_merge`:
-  `merge_draft` is `cascadeDelete: false` on purpose, so a placement whose slot is deleted keeps
-  its row and reads as unplaced rather than vanishing. A Go guard blocking that delete fights the
-  API's stated design. The codebase currently argues both ways; pick one and write down why.
+**A correction, since it is what made (b) look harmless in the first place.** This section used
+to argue that a delete guard on `lodging_merges_draft` would "contradict behaviour already
+documented in `delete_merge`" — namely that a placement whose slot was deleted "keeps its row and
+reads as unplaced rather than vanishing." **That was wrong about PocketBase.** `deleteRefRecords`
+(`core/record_model.go:1576`) does not leave a clean, harmless "unplaced" row behind: it removes
+the deleted id from the `units` list of every placement holding it and re-saves the row with
+`SaveNoValidate`, skipping validation specifically so a dangling reference is tolerated. For a
+placement sitting in exactly that one room, removing its only id EMPTIES `units` — which is the
+TOMBSTONE (§2), not a neutral unplaced state: an empty `units` set suppresses the CampMinder
+mirror fallback, so the family silently reads as "staff took them off the board" instead of
+falling through to wherever CampMinder still has them. That is materially worse than "reads as
+unplaced," and it is exactly what `guardUnitDelete`'s refusal in (a) exists to prevent — it was
+never true that deleting the slot degraded gracefully.
 
 ### #1925 — `party_size` counts adults who are not attending
 
@@ -912,8 +949,8 @@ parent corrections. **Explicitly do not run `confirm_lodging_units.py` against p
 - **Untested error branches on `main`** — `write_failed` queueing and the unconditional WAL
   checkpoint landed without direct tests. A stub `core.App` whose `Save` errors on the assignments
   collection would cover the first, which is the one with real behaviour behind it.
-- **#1916** — should `lodging_merges` go admin-only now that it has a draft twin. Left to its own
-  PR rather than smuggled into a migration whose subject was the draft tables.
+- **#1916 is moot** — `lodging_merges` no longer exists (**#1931**, §2), so there is nothing left
+  to make admin-only.
 - **#1918** — guard against a whole-building sheet row stranding its rooms on the container. See
   the count-reconciliation lesson in §2.
 - **#1920** — bound the scenario-mode `/summary` fan-out. It runs a nested `TaskGroup` per
