@@ -508,7 +508,7 @@ func TestPlacementForPassesASingleRoomStraightThrough(t *testing.T) {
 }
 
 // TestPlacementForPassesTheAliasSetThrough pins the collapse: a multi-room
-// alias no longer materialises a row, it simply IS the placement.
+// alias no longer materializes a row, it simply IS the placement.
 func TestPlacementForPassesTheAliasSetThrough(t *testing.T) {
 	s := &LodgingAssignmentsSync{}
 	got := s.placementFor(AliasResolution{UnitIDs: []string{"u1", "u2"}, Resolved: true})

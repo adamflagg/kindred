@@ -526,6 +526,52 @@ func TestABackfillShapedRowPassesTheGrainGuard(t *testing.T) {
 	}
 }
 
+// The DRAFT mirror of TestABackfillShapedRowPassesTheGrainGuard, above.
+//
+// 1500000134 backfills BOTH placement tables through the same
+// app.saveNoValidate() loop (PLACEMENT_TABLES in the migration), and that
+// save fires guardDraftAssignmentGrain on lodging_assignments_draft exactly as
+// it fires guardAssignmentGrain on lodging_assignments. Only the confirmed
+// side had a pin; a change to guardDraftAssignmentGrain that started
+// rejecting the backfill's own shape would crash-loop the boot with nothing
+// here to catch it first.
+//
+// guardDraftAssignmentGrain does not gate on `units` at all -- an empty set is
+// the draft's tombstone, not an error -- so this is really pinning that the
+// party grain staged before wireHooks survives the units-only second save
+// unharmed. The genuinely dangerous backfill shape is a row whose party grain
+// is NEITHER household nor person: guardDraftAssignmentGrain rejects that
+// regardless of units (TestDraftAssignmentGrainXor's "neither household nor
+// person" case), so if the migration ever saveNoValidate'd such a row it would
+// throw, roll back every pending migration, and crash-loop the boot. Nothing
+// here manufactures that row: placementUnits in 1500000134 only calls
+// app.saveNoValidate() for a row whose unit/merge/merge_draft target resolved
+// to something, and the dev DB holds zero rows with a resolvable target and no
+// party grain. Production state is not known (kindred#1917), which is the
+// premise the migration's backfill is written around, not something this test
+// can close.
+func TestABackfillShapedDraftRowPassesTheGrainGuard(t *testing.T) {
+	app, err := tests.NewTestApp()
+	if err != nil {
+		t.Fatalf("NewTestApp: %v", err)
+	}
+	defer app.Cleanup()
+
+	setupCollections(t, app)
+	unit := newUnit(t, app, "ridge-a", "Ridge A")
+	// Staged before wiring, standing in for a row written under the old schema.
+	row := newDraftAssignment(t, app, nil, 2000001, 0)
+
+	wireHooks(app)
+
+	row.Set("units", []string{unit.Id})
+	if err := app.SaveNoValidate(row); err != nil {
+		t.Fatalf(
+			"1500000134's backfill write must pass guardDraftAssignmentGrain or "+
+				"the deploy crash-loops on boot, got: %v", err)
+	}
+}
+
 // TestDraftAssignmentGrainXor is the backstop for a DIRECT write to the draft
 // table, which 1500000132 widened who can make: staff hold bunking.manage on
 // lodging_assignments_draft, so a POST straight to the PocketBase REST API
