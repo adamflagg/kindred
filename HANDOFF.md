@@ -6,8 +6,9 @@ the model behind it, and is worth reading even if that PR changes.** The data la
 weekend surfaces, the writable editor, the 2026 inventory, the read-only board and the draft
 write layer are all merged. `/weekend/sessions` lists the year's weekends;
 `/weekend/session/:id` shows one weekend's roster and inventory; `/manage/lodging/:section`
-edits the registry; the board renders placements read-only; and five write endpoints exist for
-scenario-scoped placement, board-built merges and availability overrides. **What does not exist
+edits the registry; the board renders placements read-only; and three write endpoints exist for
+scenario-scoped placement — merging is folded into it now, a placement's `units` set rather than
+a separate action, since kindred#1931 — and availability overrides. **What does not exist
 is the interaction: nothing on the board calls those endpoints yet. That is the next body of
 work — see §4.**
 
@@ -32,7 +33,7 @@ below identifies work by **PR and commit**, which are the only labels that canno
 | Private registry — registry out of tracked source into `kindred-local` | ✅ `397379a3` (#1910) |
 | 2026 inventory — real amenities and the alias set (114 units / 141 aliases at merge) | ✅ `8b83f388` (#1914) |
 | Read-only board — area sections, unit cards, unplaced rail, detail panel | ✅ `3c2e3b55` (#1911) |
-| Draft write layer — draft tables, RBAC, scenario-aware reads, five endpoints | ✅ `7065b4c9` (#1915) |
+| Draft write layer — draft tables, RBAC, scenario-aware reads, write endpoints | ✅ `7065b4c9` (#1915) |
 | Write-race guards — all five write paths hardened | ✅ `7b25d25e` (#1927) |
 | **Share eligibility — flag on the authoritative form, not the registration gate** | ⏳ **IN FLIGHT, #1926** — see §3a |
 | **Drag placement — the board calls the write endpoints** | ⬅ **next, see §4** |
@@ -238,15 +239,16 @@ override that agrees with the live plan would pin the unit against a later chang
 - The scenario layer joins the same `TaskGroup` as the base reads, so scenario mode costs no
   extra round trip. A test asserts `/summary` and `/roster` cannot disagree under one scenario.
 
-**Writes — five endpoints, all gating on `bunking.manage`:**
+**Writes — three endpoints, all gating on `bunking.manage`:**
 
 ```text
-POST   /api/lodging/placements      upsert one party's placement
+POST   /api/lodging/placements      upsert one party's placement; body carries `unit_ids`
 DELETE /api/lodging/placements      drop the override, restoring the mirror
-POST   /api/lodging/merges          bind units into a board-built slot
-DELETE /api/lodging/merges/{id}     remove one
 PUT    /api/lodging/availability    reserve/release a unit; state:null clears
 ```
+
+Two more endpoints existed here — `POST`/`DELETE /api/lodging/merges` — until kindred#1931 deleted
+them along with `lodging_merges_draft`. See the units-set collapse subsection below.
 
 `scenario` is **required and non-empty on every write.** With no scenario the board is read-only
 for everyone, which is what summer's `isProductionMode` does; an endpoint accepting a
