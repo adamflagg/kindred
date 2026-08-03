@@ -301,7 +301,9 @@ describe('LodgingBoard — the details panel updates in place', () => {
       />,
       { wrapper }
     )
-    // Both fixture parties are unplaced by default, so the queue holds two.
+    // Both parties are left unplaced (no unit_code/unit_name override) so
+    // both cards are reachable from the corner queue and the panel can be
+    // switched between them without touching the board itself.
     await userEvent.click(screen.getByRole('button', { name: /2 unplaced families/i }))
     await userEvent.click(screen.getByRole('button', { name: /Johnson Household/ }))
     const first = screen.getByTestId('family-details-panel')
