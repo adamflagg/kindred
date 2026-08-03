@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"regexp"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -280,6 +282,15 @@ func newDraftAssignment(t *testing.T, app core.App, unitIDs []string, householdC
 // Matching the staff-facing sentence tells a refusal from the guard apart from
 // a refusal from a broken query, and matching the count tells a guard that
 // found the placement apart from one that found some other row.
+//
+// The count is matched on a DIGIT BOUNDARY, not as a bare substring.
+// `strings.Contains(msg, "1 lodging placement")` is also satisfied by "11
+// lodging placement(s)", so a guard that double-counted a unit's references
+// into a two-digit number would still pass a wantCount of 1 or 2. This helper
+// is the only correctness check on a destructive-delete guard, which makes a
+// false pass here worse than no assertion at all: it reads as proof.
+var placementCountRe = regexp.MustCompile(`(?:^|[^0-9])([0-9]+) lodging placement`)
+
 func assertUnitDeleteRefused(t *testing.T, err error, wantCount int) {
 	t.Helper()
 	if err == nil {
@@ -289,8 +300,12 @@ func assertUnitDeleteRefused(t *testing.T, err error, wantCount int) {
 	if !strings.Contains(msg, "Set it inactive instead") {
 		t.Fatalf("the delete was refused, but not by guardUnitDelete: %v", err)
 	}
-	if want := fmt.Sprintf("%d lodging placement", wantCount); !strings.Contains(msg, want) {
-		t.Fatalf("guardUnitDelete counted wrong: want %q in %q", want, msg)
+	m := placementCountRe.FindStringSubmatch(msg)
+	if m == nil {
+		t.Fatalf("guardUnitDelete reported no placement count at all: %q", msg)
+	}
+	if m[1] != strconv.Itoa(wantCount) {
+		t.Fatalf("guardUnitDelete counted %s placement(s), want %d: %q", m[1], wantCount, msg)
 	}
 }
 
