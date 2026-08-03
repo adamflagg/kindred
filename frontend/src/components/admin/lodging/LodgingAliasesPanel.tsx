@@ -21,7 +21,11 @@ import {
   listLodgingUnits,
 } from '../../../services/lodgingCrud'
 import type { LodgingAliasRecord } from '../../../types/lodging'
-import { queryKeys, userDataOptions } from '../../../utils/queryKeys'
+import {
+  invalidateLodgingRegistryQueries,
+  queryKeys,
+  userDataOptions,
+} from '../../../utils/queryKeys'
 import { QueryGuard } from '../../QueryGuard'
 import { ACTION_LINK, BUTTON_PRIMARY, HEADER_ROW } from './lodgingStyles'
 import { LodgingAliasForm } from './LodgingAliasForm'
@@ -68,7 +72,7 @@ export function LodgingAliasesPanel() {
 
   const refresh = () => {
     setEditing(null)
-    void queryClient.invalidateQueries({ queryKey: queryKeys.lodgingAliases() })
+    invalidateLodgingRegistryQueries(queryClient)
   }
 
   /**
@@ -90,8 +94,7 @@ export function LodgingAliasesPanel() {
     try {
       await deleteLodgingAlias(alias.id)
       toast.success('Alias deleted')
-      void queryClient.invalidateQueries({ queryKey: queryKeys.lodgingAliases() })
-      void queryClient.invalidateQueries({ queryKey: queryKeys.lodgingIngestIssues() })
+      invalidateLodgingRegistryQueries(queryClient)
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Failed to delete the alias')
     }

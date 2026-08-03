@@ -1,10 +1,39 @@
 /**
  * React Query hooks for the weekend lodging roster.
  *
- * The roster and session list use `userDataOptions` (30s stale, refetch on
- * focus) rather than `syncDataOptions`: staff edit cabin assignments in
- * CampMinder while the page is open, and the 2025 values show edits across
- * many distinct days.
+ * CACHING MODELS SUMMER, DELIBERATELY. These queries set no cache options, so
+ * they inherit the app defaults in `utils/queryClient.ts` — exactly as the
+ * summer bunking board's hooks do (`hooks/session/useSessionData.ts` sets
+ * none either). Do not reintroduce a weekend-specific policy; see the
+ * "model summer" rule in CLAUDE.md.
+ *
+ * These hooks previously used `userDataOptions` (30s stale, 5min gc, refetch
+ * on focus), justified by staff editing cabin assignments in CampMinder while
+ * the page is open. That justification did not survive contact with two facts.
+ * Summer's board has the same property and does not opt down. And a weekend is
+ * worked by ONE person at a time, modelling scenarios for themselves — a
+ * second staff member is rare and read-shaped — so there is no concurrent-edit
+ * hazard being bought. What it cost was real: `build_roster` issues eleven
+ * PocketBase fetches, and `build_summary`'s docstring (which exists because
+ * calling the roster per weekend repeated them) puts an empty weekend at about
+ * three seconds, and that was being re-paid every 30 seconds of window focus,
+ * with the cache dropped entirely after five minutes away.
+ *
+ * The freshness this gives up has to be bought back deliberately, and that debt
+ * is ALREADY outstanding — it is not a future obligation of the drag PR. The
+ * lodging admin panels edit registry rows that `_build_units` projects into
+ * this very payload, so they invalidate through
+ * `invalidateLodgingRegistryQueries`. Drag placement's mutations must do the
+ * same. Long staleTime plus explicit invalidation — not short staleTime plus
+ * hope.
+ *
+ * EVERY hook here is gated on `year > 0`. `CurrentYearContext` returns the
+ * literal 0 until the backend supplies the configured year, and neither
+ * weekend page reads the `isYearReady` flag it exposes — so without the guard
+ * these fire `?year=0` against routers declaring `ge=2000` and eat a 422 on
+ * every cold load. The roster's `sessionCmId !== null` guard did not cover it:
+ * on a direct deep link the id is parsed synchronously off the URL, on purpose,
+ * so it is non-null on the first render while the year is still 0.
  */
 
 import { useQuery } from '@tanstack/react-query'
@@ -21,7 +50,7 @@ import type {
   WeekendSessionList,
   WeekendSummary,
 } from '../types/lodging'
-import { queryKeys, userDataOptions } from '../utils/queryKeys'
+import { queryKeys } from '../utils/queryKeys'
 import { useApiWithAuth } from './useApiWithAuth'
 
 /** Every family-camp and adult weekend for the year. */
@@ -29,7 +58,7 @@ export function useWeekendSessions(year: number) {
   const { fetchWithAuth } = useApiWithAuth()
   return useQuery<WeekendSessionList>({
     queryKey: queryKeys.weekendSessions(year),
-    ...userDataOptions,
+    enabled: year > 0,
     queryFn: () => fetchSessions(fetchWithAuth, year),
   })
 }
@@ -42,7 +71,7 @@ export function useWeekendSummary(year: number) {
   const { fetchWithAuth } = useApiWithAuth()
   return useQuery<WeekendSummary>({
     queryKey: queryKeys.weekendSummary(year),
-    ...userDataOptions,
+    enabled: year > 0,
     queryFn: () => fetchSummary(fetchWithAuth, year),
   })
 }
@@ -52,8 +81,7 @@ export function useWeekendRoster(year: number, sessionCmId: number | null) {
   const { fetchWithAuth } = useApiWithAuth()
   return useQuery<WeekendRoster>({
     queryKey: queryKeys.weekendRoster(year, sessionCmId ?? 0),
-    ...userDataOptions,
-    enabled: sessionCmId !== null,
+    enabled: year > 0 && sessionCmId !== null,
     queryFn: () => fetchRoster(fetchWithAuth, year, sessionCmId as number),
   })
 }

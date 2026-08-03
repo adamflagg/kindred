@@ -11,7 +11,7 @@
  */
 
 import { describe, it, expect } from 'vitest'
-import { queryKeys } from './queryKeys'
+import { invalidateLodgingRegistryQueries, queryKeys } from './queryKeys'
 
 describe('queryKeys.originalBunkRequestsByRequesterCmId', () => {
   it('key includes a requester-cm-id discriminator', () => {
@@ -137,5 +137,60 @@ describe('queryKeys.sessionUploadChanges', () => {
       'r1',
       [1000001, 1000099],
     ])
+  })
+})
+
+describe('invalidateLodgingRegistryQueries', () => {
+  // The lodging registry IS roster input: `_build_units`
+  // (api/services/lodging_roster_service.py:350-419) projects name, area_name,
+  // sleeps, is_confirmed, is_active, allocation_default and map_x/map_y into
+  // the roster payload. WeekendRosterPage links straight to
+  // /manage/lodging/units, so admin-edit-then-back is the designed round trip
+  // — and the weekend queries now carry a 30 minute staleTime, so nothing
+  // refreshes on its own.
+  function recordingClient() {
+    const keys: readonly unknown[][] = []
+    return {
+      keys,
+      invalidateQueries: ({ queryKey }: { queryKey: readonly unknown[] }) => {
+        ;(keys as unknown[][]).push([...queryKey])
+        return undefined
+      },
+    }
+  }
+
+  it('invalidates the weekend roster, summary and session list', () => {
+    const client = recordingClient()
+    invalidateLodgingRegistryQueries(client)
+
+    expect(client.keys).toContainEqual(['weekend-roster'])
+    expect(client.keys).toContainEqual(['weekend-summary'])
+    expect(client.keys).toContainEqual(['weekend-sessions'])
+  })
+
+  it('still invalidates the registry keys the admin panels own', () => {
+    const client = recordingClient()
+    invalidateLodgingRegistryQueries(client)
+
+    expect(client.keys).toContainEqual([...queryKeys.lodgingUnits()])
+    expect(client.keys).toContainEqual([...queryKeys.lodgingAreas()])
+    expect(client.keys).toContainEqual([...queryKeys.lodgingAliases()])
+    expect(client.keys).toContainEqual([...queryKeys.lodgingIngestIssues()])
+  })
+
+  it('invalidates the weekend keys by PREFIX, not by exact key', () => {
+    // The admin panel knows neither the year nor the weekend, and the real
+    // keys are [key, year] / [key, year, sessionCmId]. An exact-key
+    // invalidation would match nothing that is actually cached.
+    const client = recordingClient()
+    invalidateLodgingRegistryQueries(client)
+
+    const roster = client.keys.find((k) => k[0] === 'weekend-roster')
+    const summary = client.keys.find((k) => k[0] === 'weekend-summary')
+    expect(roster).toHaveLength(1)
+    expect(summary).toHaveLength(1)
+    // And the prefix must genuinely head the real key.
+    const full = queryKeys.weekendRoster(2026, 1000001)
+    expect(full.slice(0, 1)).toEqual(roster)
   })
 })

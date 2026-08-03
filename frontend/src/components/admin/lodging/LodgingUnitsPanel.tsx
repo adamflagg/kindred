@@ -26,7 +26,11 @@ import {
   listLodgingUnits,
 } from '../../../services/lodgingCrud'
 import type { LodgingUnitRecord } from '../../../types/lodging'
-import { queryKeys, userDataOptions } from '../../../utils/queryKeys'
+import {
+  invalidateLodgingRegistryQueries,
+  queryKeys,
+  userDataOptions,
+} from '../../../utils/queryKeys'
 import { QueryGuard } from '../../QueryGuard'
 import { BUTTON_PRIMARY, BUTTON_SECONDARY } from './lodgingStyles'
 import { LodgingAreasDrawer } from './LodgingAreasDrawer'
@@ -73,7 +77,7 @@ export function LodgingUnitsPanel() {
   const refresh = () => {
     setEditing(null)
     setSelected(new Set())
-    void queryClient.invalidateQueries({ queryKey: queryKeys.lodgingUnits() })
+    invalidateLodgingRegistryQueries(queryClient)
   }
 
   const toggleSort = (field: UnitSort['field']) => {

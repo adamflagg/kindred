@@ -39,6 +39,29 @@ vi.mock('../hooks/usePermissions', () => ({
   }),
 }))
 
+// Pass-through spies on the two expensive derivations the header needs for
+// its tab counts. Both build a whole model to read a length — `countBoardSlots`
+// indexes the entire board, `countMapUnits` builds the board AND the map model
+// — so calling them on every render is real work, on every tab, whether or not
+// the board or map is mounted.
+const countBoardSlotsSpy = vi.fn()
+const countMapUnitsSpy = vi.fn()
+
+vi.mock('../components/weekend', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../components/weekend')>()
+  return {
+    ...actual,
+    countBoardSlots: (...args: Parameters<typeof actual.countBoardSlots>) => {
+      countBoardSlotsSpy()
+      return actual.countBoardSlots(...args)
+    },
+    countMapUnits: (...args: Parameters<typeof actual.countMapUnits>) => {
+      countMapUnitsSpy()
+      return actual.countMapUnits(...args)
+    },
+  }
+})
+
 // The `useNavigate` spy this file used to install has been removed on purpose.
 // The view now lives in the URL, so a spy would have asserted that the page
 // ASKED to navigate while the page it rendered stayed on the old tab — the
@@ -480,5 +503,62 @@ describe('tabs', () => {
     renderPage()
     expect(screen.getByRole('tab', { name: 'Inventory (3)' })).toBeInTheDocument()
     expect(screen.getByRole('tab', { name: 'Map (1)' })).toBeInTheDocument()
+  })
+})
+
+describe('recomputation', () => {
+  // Switching tabs re-renders this page with the SAME roster payload. Nothing
+  // about the board index or the map model can have changed, so neither should
+  // be rebuilt — and the summer board it is modelled on does not rebuild its
+  // derivations per render either. The tab-count assertions above are the
+  // correctness half of this pair: they fail if memoising returns stale counts.
+  it('does not rebuild the board index or the map model when only the tab changes', async () => {
+    renderPage()
+    countBoardSlotsSpy.mockClear()
+    countMapUnitsSpy.mockClear()
+
+    await userEvent.click(screen.getByRole('tab', { name: /Board/ }))
+    await userEvent.click(screen.getByRole('tab', { name: /Map/ }))
+    await userEvent.click(screen.getByRole('tab', { name: /Roster/ }))
+
+    expect(countBoardSlotsSpy).not.toHaveBeenCalled()
+    expect(countMapUnitsSpy).not.toHaveBeenCalled()
+  })
+
+  it('does rebuild them when the roster payload actually changes', async () => {
+    // The guard above must not be satisfiable by never computing at all.
+    const { rerender } = renderPage()
+    countBoardSlotsSpy.mockClear()
+    countMapUnitsSpy.mockClear()
+
+    rosterQuery.data = {
+      year: 2026,
+      session_cm_id: 1000001,
+      parties: [],
+      units: [
+        {
+          unit_id: 'u1',
+          code: 'cedar-1',
+          name: 'Cedar 1',
+          area_code: 'CG',
+          area_name: 'Cedar Grove',
+          is_container: false,
+          is_active: true,
+          map_x: 0.2,
+          map_y: 0.3,
+        },
+      ],
+      counts: {},
+    }
+    rerender(
+      <MemoryRouter initialEntries={['/weekend/1000001']}>
+        <Routes>
+          <Route path="/weekend/:sessionRef/:view?" element={<WeekendRosterPage />} />
+        </Routes>
+      </MemoryRouter>
+    )
+
+    expect(countBoardSlotsSpy).toHaveBeenCalled()
+    expect(countMapUnitsSpy).toHaveBeenCalled()
   })
 })

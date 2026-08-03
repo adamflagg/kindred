@@ -25,7 +25,11 @@ import {
   mapUnresolvedAlias,
 } from '../../../services/lodgingCrud'
 import type { LodgingIngestIssueRecord } from '../../../types/lodging'
-import { queryKeys, userDataOptions } from '../../../utils/queryKeys'
+import {
+  invalidateLodgingRegistryQueries,
+  queryKeys,
+  userDataOptions,
+} from '../../../utils/queryKeys'
 import { QueryGuard } from '../../QueryGuard'
 import { eligibleAliasMembers } from './aliasMembers'
 import { BUTTON_PRIMARY, BUTTON_SECONDARY, LABEL } from './lodgingStyles'
@@ -49,8 +53,7 @@ export function UnresolvedAliasQueue() {
   })
 
   const refresh = () => {
-    void queryClient.invalidateQueries({ queryKey: queryKeys.lodgingIngestIssues() })
-    void queryClient.invalidateQueries({ queryKey: queryKeys.lodgingAliases() })
+    invalidateLodgingRegistryQueries(queryClient)
   }
 
   const toggleUnit = (queueId: string, unitId: string) => {

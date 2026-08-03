@@ -4,8 +4,11 @@ import { pb } from '../lib/pocketbase'
 // Clean up legacy localStorage persistence (removed in this version)
 localStorage.removeItem('bunking-query-cache')
 
-// Create query client with simplified caching strategy
-// Most data uses 30/60 min defaults; user-editable data overrides at query level
+// Create query client with simplified caching strategy.
+// Most data uses these 30/60 min defaults. Some user-editable data overrides at
+// query level via `userDataOptions` — but that is a deliberate choice, not the
+// expected one: a surface whose writes all go through this app should inherit
+// these defaults and invalidate on mutation instead. See `frontend/CLAUDE.md`.
 export const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
@@ -91,6 +94,12 @@ const SYNC_DEPENDENT_PREFIXES = [
   'metrics',
   // Sync status
   'sync-status',
+  // Weekend lodging (Tier 1) — the lodging ingest writes assignments, requests
+  // and registry rows that all three of these read. Omitted until #1965, so a
+  // completed sync refreshed nothing it had just written.
+  'weekend-sessions',
+  'weekend-summary',
+  'weekend-roster',
 ] as const
 
 /**

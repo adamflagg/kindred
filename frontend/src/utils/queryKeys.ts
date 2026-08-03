@@ -476,6 +476,12 @@ export const queryKeys = {
   weekendSummary: (year: number) => ['weekend-summary', year] as const,
   weekendRoster: (year: number, sessionCmId: number) =>
     ['weekend-roster', year, sessionCmId] as const,
+  // Prefixes for invalidation. The lodging admin panels edit registry rows
+  // that feed the roster, but know neither the year nor the weekend, so they
+  // cannot build a full key — see `invalidateLodgingRegistryQueries`.
+  weekendSessionsPrefix: () => ['weekend-sessions'] as const,
+  weekendSummaryPrefix: () => ['weekend-summary'] as const,
+  weekendRosterPrefix: () => ['weekend-roster'] as const,
   /** PHI. Only ever fetched behind an explicit, permission-checked reveal. */
   householdMedical: (year: number, householdCmId: number) =>
     ['household-medical', year, householdCmId] as const,
@@ -538,7 +544,48 @@ export function invalidateRequestQueries(
 }
 
 /**
+ * Invalidate everything a lodging-registry edit can change — including the
+ * weekend surfaces, which are NOT obvious.
+ *
+ * The registry is roster input. `_build_units`
+ * (`api/services/lodging_roster_service.py:350-419`) projects `name`,
+ * `area_name`, `sleeps`, `is_confirmed`, `is_active`, `allocation_default` and
+ * `map_x`/`map_y` into the roster payload — every field these admin forms
+ * edit. `WeekendRosterPage` links straight to `/manage/lodging/units`, so
+ * edit-then-go-back is the designed round trip, not an edge case.
+ *
+ * This became load-bearing when the weekend queries moved from a 30 second
+ * staleTime to the app default of 30 minutes. Previously the round trip
+ * self-healed on remount; now nothing refreshes it, so confirming cabins and
+ * returning would leave the "N of M cabins have unconfirmed amenities" banner
+ * unchanged for half an hour on the screen whose whole purpose is confirmation.
+ *
+ * The weekend keys MUST be invalidated by prefix: the real keys are
+ * `[key, year]` and `[key, year, sessionCmId]`, and an admin panel knows
+ * neither, so an exact-key call would match nothing that is cached.
+ */
+export function invalidateLodgingRegistryQueries(queryClient: {
+  invalidateQueries: (args: { queryKey: readonly unknown[] }) => unknown
+}): void {
+  void queryClient.invalidateQueries({ queryKey: queryKeys.lodgingUnits() })
+  void queryClient.invalidateQueries({ queryKey: queryKeys.lodgingAreas() })
+  void queryClient.invalidateQueries({ queryKey: queryKeys.lodgingAliases() })
+  void queryClient.invalidateQueries({ queryKey: queryKeys.lodgingIngestIssues() })
+  void queryClient.invalidateQueries({ queryKey: queryKeys.weekendRosterPrefix() })
+  void queryClient.invalidateQueries({ queryKey: queryKeys.weekendSummaryPrefix() })
+  void queryClient.invalidateQueries({ queryKey: queryKeys.weekendSessionsPrefix() })
+}
+
+/**
  * 2-Tier Caching Model
+ *
+ * These two tiers are OPT-INS, not an exhaustive menu. Inheriting the client
+ * defaults in `utils/queryClient.ts` is a third, legitimate choice and is what
+ * the bunking board's primary read path (`hooks/session/useSessionData.ts`)
+ * and the weekend lodging hooks do. Reach for a tier when its semantics fit,
+ * not because the constant exists — and note that opting *down* to Tier 2 to
+ * catch external edits is usually the wrong trade: invalidate on write instead.
+ * See `frontend/CLAUDE.md` and `CLAUDE.md` §4.
  *
  * Tier 1: Sync data (read-only, long cache)
  * - Data synced from CampMinder that rarely changes during a session
