@@ -101,8 +101,10 @@ describe('MapUnitPopover — one room', () => {
     render(
       <MapUnitPopover units={[mapUnit(row({ sleeps: null }))]} hue={HUE} onOpenParty={vi.fn()} />
     )
+    // Only the positive assertion here. A `queryByText(/sleeps 0/i)` companion
+    // was removed: `dt` and `dd` are separate elements, so that string can never
+    // form one text node and the assertion could not fail whatever the code did.
     expect(screen.getByText(/unknown/i)).toBeInTheDocument()
-    expect(screen.queryByText(/sleeps 0/i)).not.toBeInTheDocument()
   })
 
   it('opens the party when its name is clicked', async () => {
@@ -117,6 +119,28 @@ describe('MapUnitPopover — one room', () => {
 })
 
 describe('MapUnitPopover — a cluster of rooms', () => {
+  it('does not put empty rooms in the tab order', () => {
+    const empty = [
+      mapUnit(row({ unit_id: 'u1', code: 'cedar-1', name: 'Cedar 1' })),
+      mapUnit(row({ unit_id: 'u2', code: 'cedar-2', name: 'Cedar 2' })),
+    ]
+    render(<MapUnitPopover units={empty} hue={HUE} onOpenParty={vi.fn()} />)
+    expect(screen.getAllByTestId('map-popover-cell')).toHaveLength(2)
+    expect(screen.queryAllByRole('button')).toHaveLength(0)
+  })
+
+  it('says a room is shared rather than showing only the first family', () => {
+    const shared = [
+      mapUnit(row({ unit_id: 'u1', code: 'cedar-1', name: 'Cedar 1' }), [
+        party('Johnson'),
+        party('Garcia'),
+      ]),
+      mapUnit(row({ unit_id: 'u2', code: 'cedar-2', name: 'Cedar 2' })),
+    ]
+    render(<MapUnitPopover units={shared} hue={HUE} onOpenParty={vi.fn()} />)
+    expect(screen.getByText('Johnson +1')).toBeInTheDocument()
+  })
+
   const units = [
     mapUnit(row({ unit_id: 'u1', code: 'cedar-1', name: 'Cedar 1' }), [party('Johnson')]),
     mapUnit(row({ unit_id: 'u2', code: 'cedar-2', name: 'Cedar 2' })),

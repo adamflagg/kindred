@@ -102,30 +102,63 @@ function FootprintGrid({ units, hue, onOpenParty }: MapUnitPopoverProps) {
         style={{ gridTemplateColumns: `repeat(${String(columns)}, auto)` }}
       >
         {units.map((entry) => {
-          const occupied = entry.parties.length > 0
-          const label = entry.parties[0]?.display_name ?? entry.unit.name
+          const first = entry.parties[0]
+          const extra = entry.parties.length - 1
+          // A shared room must SAY it is shared. Showing only the first name
+          // makes a two-family room read as single-occupancy, and three rooms
+          // are genuinely shared in the current year's data.
+          const label = first
+            ? extra > 0
+              ? `${first.display_name ?? ''} +${String(extra)}`
+              : (first.display_name ?? '')
+            : entry.unit.name
+          const who = first
+            ? entry.parties.map((party) => party.display_name ?? '').join(', ')
+            : 'empty'
+          // Prefixed by the visible label so the accessible name contains it
+          // (WCAG 2.5.3), and duplicated into `title` because a tooltip alone is
+          // invisible to touch and unreliable for screen readers.
+          const described = `${label} — ${entry.unit.name}, ${who}`
+          const style = first
+            ? { backgroundColor: hue, borderColor: hue }
+            : {
+                borderColor: hue,
+                borderStyle: entry.unit.allocation_default === 'staff_default' ? 'dashed' : 'solid',
+              }
+          const className = `min-w-[2.5rem] truncate rounded border px-1.5 py-1 text-xs font-semibold ${
+            first ? 'text-white' : 'bg-card text-muted-foreground'
+          }`
+
+          // An EMPTY cell is not a control. Rendering it as a button puts a
+          // dead end in the tab order for every unoccupied room in a building,
+          // which on this data is most of them.
+          if (!first) {
+            return (
+              <div
+                key={entry.unit.unit_id}
+                data-testid="map-popover-cell"
+                title={described}
+                aria-label={described}
+                style={style}
+                className={className}
+              >
+                {label}
+              </div>
+            )
+          }
+
           return (
             <button
               key={entry.unit.unit_id}
               data-testid="map-popover-cell"
               type="button"
-              title={`${entry.unit.name} — ${occupied ? entry.parties.map((p) => p.display_name).join(', ') : 'empty'}`}
+              title={described}
+              aria-label={described}
               onClick={() => {
-                const first = entry.parties[0]
-                if (first) onOpenParty(first)
+                onOpenParty(first)
               }}
-              style={
-                occupied
-                  ? { backgroundColor: hue, borderColor: hue }
-                  : {
-                      borderColor: hue,
-                      borderStyle:
-                        entry.unit.allocation_default === 'staff_default' ? 'dashed' : 'solid',
-                    }
-              }
-              className={`min-w-[2.5rem] truncate rounded border px-1.5 py-1 text-xs font-semibold ${
-                occupied ? 'text-white' : 'bg-card text-muted-foreground'
-              }`}
+              style={style}
+              className={className}
             >
               {label}
             </button>
