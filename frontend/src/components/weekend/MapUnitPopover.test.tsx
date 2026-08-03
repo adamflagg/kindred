@@ -140,14 +140,15 @@ describe('MapUnitPopover — a cluster of rooms', () => {
     for (const cell of screen.getAllByTestId('map-popover-cell')) {
       expect(cell).toHaveTextContent(/empty/i)
     }
-    // The tooltip has no surrounding context, so it must carry the FULL room
-    // name even though these two share "Cedar" and the visible label ("1",
-    // "2") drops it. Regression: a shortened label leaking into `title`
-    // reads as "1 — empty", ambiguous with no building name in view.
-    const first = screen.getByTitle('Cedar 1 — empty')
-    expect(first).not.toHaveTextContent('Cedar 1')
-    const second = screen.getByTitle('Cedar 2 — empty')
-    expect(second).not.toHaveTextContent('Cedar 2')
+    // The tooltip carries the FULL name — it appears with no surrounding
+    // context, so the shortened form would be ambiguous. Regression: a
+    // shortened label leaking into `title` reads as "1 — empty", not
+    // "Cedar 1 — empty".
+    const cell = screen.getAllByTestId('map-popover-cell')[0] as HTMLElement
+    expect(cell).toHaveAttribute('title', expect.stringContaining('Cedar 1'))
+    // The VISIBLE label stays short, which is the whole point of the strip.
+    expect(cell).toHaveTextContent('1')
+    expect(cell).not.toHaveTextContent('Cedar 1')
   })
 
   it('drops the building name the cluster shares, so cells differ visibly', () => {
