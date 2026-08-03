@@ -109,5 +109,155 @@ else
   exit 1
 fi
 
+# --- pb_harness_build_binary (kindred#1922) ---------------------------------
+#
+# The harness used to assert only that the binary EXISTED. `go build ./...`
+# (what pre-push runs) populates the build cache without rewriting
+# pocketbase/pocketbase, so a verify run could boot an arbitrarily old binary
+# and report PASS about a tree it never compiled. These three tests pin the
+# rebuild, and pin that a build problem is a harness error (2), not an
+# assertion failure (1).
+#
+# A throwaway one-file Go module stands in for pocketbase itself: it makes the
+# staleness assertion OBSERVABLE (the binary's own output changes when the
+# source does) and keeps the test at build-a-hello-world cost rather than
+# build-all-of-PocketBase cost.
+FIXTURE_SRC="$SCRATCH/gomod"
+FIXTURE_BIN="$SCRATCH/fixture-bin"
+mkdir -p "$FIXTURE_SRC"
+cat > "$FIXTURE_SRC/go.mod" <<'EOF'
+module pbharnessfixture
+
+go 1.21
+EOF
+
+# write_fixture <printed string> -- rewrite the fixture's only source file.
+write_fixture() {
+  cat > "$FIXTURE_SRC/main.go" <<EOF
+package main
+
+import "fmt"
+
+func main() { fmt.Println("$1") }
+EOF
+}
+
+echo
+echo "=== TEST 5: pb_harness_build_binary rebuilds a stale binary ==="
+write_fixture v1
+( cd "$FIXTURE_SRC" && go build -o "$FIXTURE_BIN" . )
+[[ "$("$FIXTURE_BIN")" == "v1" ]] || { echo "FAIL: fixture setup did not produce v1" >&2; exit 1; }
+
+# The binary on disk is now older than its source -- exactly the state a
+# rebased-onto-new-Go-source tree is in.
+write_fixture v2
+set +e
+bash -c "source '$LIB'; pb_harness_build_binary '$FIXTURE_SRC' '$FIXTURE_BIN'" \
+  >"$SCRATCH/t5.out" 2>"$SCRATCH/t5.err"
+rc=$?
+set -e
+actual=$("$FIXTURE_BIN" 2>/dev/null || true)
+if [[ $rc -eq 0 && "$actual" == "v2" ]]; then
+  echo "PASS: stale binary rebuilt from current source"
+else
+  echo "FAIL: expected rc=0 and rebuilt binary printing v2, got rc=$rc printing '$actual'; stderr:" >&2
+  cat "$SCRATCH/t5.err" >&2
+  exit 1
+fi
+
+echo
+echo "=== TEST 6: pb_harness_build_binary exits 2 (not 127) when go is missing ==="
+SANDBOX_NO_GO="$SCRATCH/no-go"
+build_sandbox "$SANDBOX_NO_GO" go
+set +e
+PATH="$SANDBOX_NO_GO" bash -c "source '$LIB'; pb_harness_build_binary '$FIXTURE_SRC' '$FIXTURE_BIN'" \
+  >/dev/null 2>"$SCRATCH/t6.err"
+rc=$?
+set -e
+if [[ $rc -eq 2 ]] && grep -q "required command 'go' not found" "$SCRATCH/t6.err"; then
+  echo "PASS: missing go -> exit 2, names go"
+else
+  echo "FAIL: missing go expected exit 2 naming go, got rc=$rc; stderr:" >&2
+  cat "$SCRATCH/t6.err" >&2
+  exit 1
+fi
+
+echo
+echo "=== TEST 7: pb_harness_build_binary exits 2 and surfaces the compiler error on a broken tree ==="
+# A build failure means "cannot run the check", not "the check failed" -- so it
+# must not be mistakable for an assertion failure, and the compiler's own
+# message has to reach the operator or the exit code says nothing actionable.
+cat > "$FIXTURE_SRC/main.go" <<'EOF'
+package main
+
+func main() { this is not go }
+EOF
+set +e
+bash -c "source '$LIB'; pb_harness_build_binary '$FIXTURE_SRC' '$FIXTURE_BIN'" \
+  >/dev/null 2>"$SCRATCH/t7.err"
+rc=$?
+set -e
+if [[ $rc -eq 2 ]] && grep -q "main.go" "$SCRATCH/t7.err"; then
+  echo "PASS: build failure -> exit 2, compiler output surfaced"
+else
+  echo "FAIL: broken source expected exit 2 quoting main.go, got rc=$rc; stderr:" >&2
+  cat "$SCRATCH/t7.err" >&2
+  exit 1
+fi
+
+echo
+echo "=== TEST 8: pb_harness_build_binary refuses a relative output path ==="
+# The build runs from inside <go_pkg_dir>, so a relative -o lands next to the
+# source instead of where the caller meant -- and the caller then boots
+# whatever WAS at its intended path. That is this issue's own failure mode
+# (a green run about the wrong artifact) reintroduced by a different route,
+# so it fails loudly rather than building somewhere surprising.
+write_fixture v3
+set +e
+bash -c "source '$LIB'; pb_harness_build_binary '$FIXTURE_SRC' 'relative-bin'" \
+  >/dev/null 2>"$SCRATCH/t8.err"
+rc=$?
+set -e
+if [[ $rc -eq 2 ]] && [[ ! -e "$FIXTURE_SRC/relative-bin" ]]; then
+  echo "PASS: relative output path -> exit 2, nothing built"
+else
+  echo "FAIL: expected exit 2 and no binary, got rc=$rc; stderr:" >&2
+  cat "$SCRATCH/t8.err" >&2
+  exit 1
+fi
+
+echo
+echo "=== TEST 9: verify-lodging-schema.sh propagates the build contract (exit 2) when go is missing ==="
+# The mirror of TESTS 3/4 for the build dependency. Those pin that a missing
+# TOOL reaches the caller as exit 2; kindred#1922 gave the two lodging scripts
+# a second way to be unrunnable -- no Go toolchain -- and a contract nothing
+# asserts is a contract that drifts. Exits before any build or boot, so this
+# costs the same as tests 3/4.
+set +e
+PATH="$SANDBOX_NO_GO" "$SCHEMA_SCRIPT" >/dev/null 2>"$SCRATCH/t9.err"
+rc=$?
+set -e
+if [[ $rc -eq 2 ]] && grep -q "required command 'go' not found" "$SCRATCH/t9.err"; then
+  echo "PASS: verify-lodging-schema.sh with go missing -> exit 2"
+else
+  echo "FAIL: expected exit 2 naming go, got $rc; stderr:" >&2
+  cat "$SCRATCH/t9.err" >&2
+  exit 1
+fi
+
+echo
+echo "=== TEST 10: verify-lodging-seed.sh propagates the build contract (exit 2) when go is missing ==="
+set +e
+PATH="$SANDBOX_NO_GO" "$SEED_SCRIPT" >/dev/null 2>"$SCRATCH/t10.err"
+rc=$?
+set -e
+if [[ $rc -eq 2 ]] && grep -q "required command 'go' not found" "$SCRATCH/t10.err"; then
+  echo "PASS: verify-lodging-seed.sh with go missing -> exit 2"
+else
+  echo "FAIL: expected exit 2 naming go, got $rc; stderr:" >&2
+  cat "$SCRATCH/t10.err" >&2
+  exit 1
+fi
+
 echo
 echo "All tests passed."
