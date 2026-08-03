@@ -74,7 +74,7 @@
     "flatted": ">=3.4.3",
     "js-yaml": "^4.3.0",
     "postcss": ">=8.5.23",
-    "undici": ">=7.29.0"
+    "undici": ">=8.10.0"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
