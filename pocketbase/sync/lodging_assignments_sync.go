@@ -384,13 +384,12 @@ func (s *LodgingAssignmentsSync) ingestValue(in *ingestContext) {
 	}
 
 	// Everything above this line computes; everything below it writes. The guard
-	// belongs here and not further down because two of the write paths are
-	// upstream of the placement itself: recordHistory inserts into
-	// lodging_assignment_history, and placementFor -> EnsureMerge inserts into
-	// lodging_merges. A guard placed just before upsertAssignment honors
-	// DryRun's "compute but do not write" for one table and breaks it for two.
-	// The work queue is unaffected either way -- Record is in-memory, and Sync
-	// returns before Flush on a dry run.
+	// belongs here and not further down because recordHistory -- one of the
+	// write paths -- sits upstream of the placement itself, inserting into
+	// lodging_assignment_history for a string no alias covers. A guard placed
+	// just before upsertAssignment would honor DryRun for the placement table
+	// and miss that one. The work queue is unaffected either way -- Record is
+	// in-memory, and Sync returns before Flush on a dry run.
 	if s.DryRun {
 		return
 	}
@@ -413,16 +412,8 @@ func (s *LodgingAssignmentsSync) ingestValue(in *ingestContext) {
 		PersonCMID:    in.PersonCMID,
 		SourceField:   in.SourceField,
 		NewUnitLabel:  label,
+		UnitIDs:       s.placementFor(res),
 	}
-	unitID, mergeID, err := s.placementFor(res, input.SessionID, input.SessionCMID, in.Year, in.Raw)
-	if err != nil {
-		slog.Error("Materializing merge", "raw", in.Raw, "error", err)
-		s.Stats.Errors++
-		s.recordWriteFailure(in)
-		return
-	}
-	input.UnitID, input.MergeID = unitID, mergeID
-
 	input.PartySize = s.partySize(in, attr.SessionID)
 
 	if err := s.upsertAssignment(&input, in.Now); err != nil {
@@ -450,27 +441,19 @@ func (s *LodgingAssignmentsSync) recordWriteFailure(in *ingestContext) {
 	})
 }
 
-// placementFor turns a resolution into the one placement column it belongs in.
-// A single room points straight at the unit; a multi-room alias materializes a
-// merge binding exactly those rooms.
+// placementFor turns a resolution into the units a placement occupies.
+//
+// One room or ten, the answer is the alias's own member set: a merged slot is
+// the set, not a row naming it. EnsureMerge existed only because a placement
+// could hold a single id.
 //
 // NOTHING JUDGES THE MEMBER SET HERE, deliberately. Every member_units set is
 // hand-authored in the admin UI, the valid configurations are not enumerable as
-// tree shape, and no consumer needs a merge to match a container -- see
+// tree shape, and no consumer needs the set to match a container -- see
 // docs/architecture/lodging-occupancy.md. The ingest records what CampMinder
 // holds; constraints belong where a human is choosing, not here.
-func (s *LodgingAssignmentsSync) placementFor(
-	res AliasResolution, sessionID string, sessionCMID, year int, raw string,
-) (unitID, mergeID string, err error) {
-	if !res.IsMerge() {
-		return res.UnitIDs[0], "", nil
-	}
-
-	mergeID, err = EnsureMerge(s.App, sessionID, sessionCMID, year, res.UnitIDs, raw)
-	if err != nil {
-		return "", "", err
-	}
-	return "", mergeID, nil
+func (s *LodgingAssignmentsSync) placementFor(res AliasResolution) []string {
+	return res.UnitIDs
 }
 
 // upsertAssignment writes the placement and appends a history row when the
@@ -479,20 +462,9 @@ func (s *LodgingAssignmentsSync) placementFor(
 // A staff_touched row is left untouched: a human moved that party on the board
 // and CampMinder must not undo it. staff_touched is one-way and GUI-written.
 func (s *LodgingAssignmentsSync) upsertAssignment(in *assignmentInput, now time.Time) error {
-	// Task 3 changed AssignmentGrain.UnitIDs to a set; assignmentInput still
-	// carries the pre-collapse UnitID/MergeID pair it always has (rewriting that
-	// is the next task's job -- see lodging_grain.go). Collect whichever of the
-	// two is populated so this call keeps compiling and keeps validating.
-	units := make([]string, 0, 2)
-	if in.UnitID != "" {
-		units = append(units, in.UnitID)
-	}
-	if in.MergeID != "" {
-		units = append(units, in.MergeID)
-	}
 	if err := ValidateAssignmentGrain(AssignmentGrain{
 		HouseholdCMID: in.HouseholdCMID, PersonCMID: in.PersonCMID,
-		UnitIDs: units,
+		UnitIDs: in.UnitIDs,
 	}); err != nil {
 		return fmt.Errorf("refusing to write an illegal assignment: %w", err)
 	}
@@ -511,12 +483,12 @@ func (s *LodgingAssignmentsSync) upsertAssignment(in *assignmentInput, now time.
 	// path, so every Set mutates the record the comparison would read -- a
 	// changed-check written against existing after the Sets compares the new
 	// payload with itself and concludes nothing changed, every time.
-	oldLabel, oldUnit, oldMerge, oldSource := "", "", "", ""
+	oldLabel, oldSource := "", ""
+	var oldUnits []string
 	oldPartySize := 0
 	if existing != nil {
 		oldLabel = s.labelOf(existing)
-		oldUnit = existing.GetString("unit")
-		oldMerge = existing.GetString("merge")
+		oldUnits = existing.GetStringSlice("units")
 		oldSource = existing.GetString("source")
 		oldPartySize = existing.GetInt("party_size")
 	}
@@ -539,8 +511,7 @@ func (s *LodgingAssignmentsSync) upsertAssignment(in *assignmentInput, now time.
 		rec.Set("person_cm_id", in.PersonCMID)
 		rec.Set("staff_touched", false)
 	}
-	rec.Set("unit", in.UnitID)
-	rec.Set("merge", in.MergeID)
+	rec.Set("units", in.UnitIDs)
 	rec.Set("party_size", in.PartySize)
 	rec.Set("source", sourceCampMinderSync)
 
@@ -550,10 +521,12 @@ func (s *LodgingAssignmentsSync) upsertAssignment(in *assignmentInput, now time.
 	// on the label alone discards a corrected occupancy count for as long as the
 	// household stays put -- and buildPartySizeIndexes exists precisely because
 	// a wrong party size is a wrong cabin capacity.
+	//
+	// unitsChanged compares the member SET, not the slice -- see its own comment
+	// for why a position-sensitive comparison is not safe here.
 	changed := isNew ||
 		oldLabel != in.NewUnitLabel ||
-		oldUnit != in.UnitID ||
-		oldMerge != in.MergeID ||
+		unitsChanged(oldUnits, in.UnitIDs) ||
 		oldPartySize != in.PartySize ||
 		oldSource != sourceCampMinderSync
 	if !changed {
@@ -591,8 +564,7 @@ type assignmentInput struct {
 	Year          int
 	HouseholdCMID int
 	PersonCMID    int
-	UnitID        string
-	MergeID       string
+	UnitIDs       []string
 	PartySize     int
 	SourceField   string
 	NewUnitLabel  string
@@ -628,19 +600,12 @@ func (s *LodgingAssignmentsSync) findAssignment(in *assignmentInput) (*core.Reco
 // labelOf renders an existing assignment's placement the same way ingestValue
 // renders an observed one, so the two are comparable.
 func (s *LodgingAssignmentsSync) labelOf(rec *core.Record) string {
-	if unitID := rec.GetString("unit"); unitID != "" {
-		return s.resolver.UnitCode(unitID)
-	}
-	mergeID := rec.GetString("merge")
-	if mergeID == "" {
+	unitIDs := rec.GetStringSlice("units")
+	if len(unitIDs) == 0 {
 		return ""
 	}
-	merge, err := s.App.FindRecordById("lodging_merges", mergeID)
-	if err != nil {
-		return ""
-	}
-	codes := make([]string, 0, 2)
-	for _, id := range merge.GetStringSlice("member_units") {
+	codes := make([]string, 0, len(unitIDs))
+	for _, id := range unitIDs {
 		codes = append(codes, s.resolver.UnitCode(id))
 	}
 	return unitLabel(codes)
@@ -648,17 +613,26 @@ func (s *LodgingAssignmentsSync) labelOf(rec *core.Record) string {
 
 // unitLabel renders member unit codes as a placement label.
 //
-// The sort is what makes the label comparable. A merge is keyed on the member
-// SET, not the slice -- unitSetKey sorts, so two aliases naming the same rooms
-// in different orders resolve to ONE merge row, which then keeps whichever
-// order created it. Joining in stored order would make the label of that shared
-// row depend on which alias was seen first, so the same placement would read as
-// a move on the next run: a re-save and a history row for a household that never
-// left its cabin.
+// The sort is what makes the label comparable. A placement is keyed on the
+// member SET, not the slice -- PocketBase returns relation ids in storage
+// order, which is not guaranteed stable, so joining in stored order would make
+// the label of a multi-room placement depend on which order the ids happened to
+// come back in. That would make the same placement read as a move on the next
+// run: a re-save and a history row for a household that never left its cabin.
 func unitLabel(codes []string) string {
 	sorted := slices.Clone(codes)
 	slices.Sort(sorted)
 	return strings.Join(sorted, "+")
+}
+
+// unitsChanged reports whether two unit id lists name a different SET, ignoring
+// storage order -- see unitLabel's comment on the same trap. Comparing the
+// slices positionally would read a stored reordering as a move.
+func unitsChanged(old, current []string) bool {
+	a, b := slices.Clone(old), slices.Clone(current)
+	slices.Sort(a)
+	slices.Sort(b)
+	return !slices.Equal(a, b)
 }
 
 type historyInput struct {
