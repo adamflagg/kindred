@@ -15,6 +15,7 @@ import userEvent from '@testing-library/user-event'
 import { MemoryRouter, Route, Routes } from 'react-router'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
+import { LodgingApiError } from '../services/lodgingApi'
 import WeekendRosterPage from './WeekendRosterPage'
 
 const rosterQuery = { data: undefined as unknown, isLoading: false, error: null as Error | null }
@@ -218,6 +219,17 @@ describe('the mode badge', () => {
     expect(screen.getByLabelText(/Viewing CampMinder data/i)).toBeInTheDocument()
   })
 
+  it('still tells a VIEWER which data they are looking at', () => {
+    // The badge renders for everyone; only the picker is gated. That split is
+    // asserted here because it is the kind of thing a later "gate the whole
+    // picker component" change would silently undo — leaving a viewer with no
+    // way to know whether the placements on screen are CampMinder's.
+    permissions = new Set()
+    renderPage()
+    expect(screen.getByLabelText(/Viewing CampMinder data/i)).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /scenario/i })).not.toBeInTheDocument()
+  })
+
   it('says Draft, naming the scenario, once one is selected', () => {
     // The board and map hardcode an amber "CM — CampMinder mirror, read-only"
     // chip. Left hardcoded it would claim the mirror while showing a draft.
@@ -320,8 +332,11 @@ describe('seeding an empty scenario', () => {
     // The server refuses a second copy because it would overwrite what staff
     // placed and re-place everything they unplaced. That refusal protects
     // them; reporting it as an error teaches them to distrust the button.
-    const conflict = Object.assign(new Error('Scenario already holds placements'), { status: 409 })
-    copyPlacementsFromMirror.mockRejectedValue(conflict)
+    // The REAL error class, not an Object.assign stand-in — a synthetic
+    // fixture would keep passing if `toError` stopped attaching the status.
+    copyPlacementsFromMirror.mockRejectedValue(
+      new LodgingApiError('Scenario already holds placements', 409)
+    )
     currentScenario = OPTION_A
     renderPage()
     await userEvent.click(screen.getByRole('button', { name: /start from campminder/i }))
@@ -334,7 +349,7 @@ describe('seeding an empty scenario', () => {
 
   it('still reports a real failure as a failure', async () => {
     copyPlacementsFromMirror.mockRejectedValue(
-      Object.assign(new Error('Permission required: bunking.manage'), { status: 403 })
+      new LodgingApiError('Permission required: bunking.manage', 403)
     )
     currentScenario = OPTION_A
     renderPage()

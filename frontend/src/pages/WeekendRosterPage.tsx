@@ -11,11 +11,13 @@
  * than campers into bunks, and share/housing requirements rather than bunk
  * requests.
  *
- * Read-only in this slice: assignments come from CampMinder and are shown,
- * not edited. The registry behind it IS editable, though — Phase C added the
- * Manage -> Family Camp Lodging editor (spec §3.8), and this page links
- * bunking staff straight to it for corrections to units, areas and cabin-name
- * aliases.
+ * Read-only in this slice: placements are shown, not edited. WHERE they come
+ * from now depends on the scenario picker — with none selected this is the
+ * CampMinder mirror, and inside a scenario it is that scenario's own draft
+ * rows, with the mirror not read at all (#1974). The registry behind it IS
+ * editable, though — Phase C added the Manage -> Family Camp Lodging editor
+ * (spec §3.8), and this page links bunking staff straight to it for
+ * corrections to units, areas and cabin-name aliases.
  *
  * Everything rendered here is READ from ingest-derived columns. If a share
  * preference, proximity mode or request text looks wrong, the fix belongs in

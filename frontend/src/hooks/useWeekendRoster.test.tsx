@@ -145,7 +145,12 @@ describe('the scenario dimension', () => {
     await waitFor(() => expect(fetchWeekendRoster).toHaveBeenCalledTimes(2))
   })
 
-  it('keeps two drafts of one weekend in separate slots', async () => {
+  it('keeps two drafts of one weekend in SEPARATE slots', async () => {
+    // Switching away and back is the part that proves "separate slots" rather
+    // than merely "a key change refetches" — the assertion the rest of this
+    // block already makes. Going back to A must serve A's own cached entry:
+    // one fetch each, not three, and critically not A re-fetched because B
+    // had overwritten it.
     const { result, rerender } = renderHook(
       ({ scenario }: { scenario: string }) => useWeekendRoster(2026, 1000001, scenario),
       { wrapper, initialProps: { scenario: 'scn7x2k9qw3mnbv' } }
@@ -154,6 +159,10 @@ describe('the scenario dimension', () => {
 
     rerender({ scenario: 'scnp4d8sh1zjrtc' })
     await waitFor(() => expect(fetchWeekendRoster).toHaveBeenCalledTimes(2))
+
+    rerender({ scenario: 'scn7x2k9qw3mnbv' })
+    await waitFor(() => expect(result.current.isSuccess).toBe(true))
+    expect(fetchWeekendRoster).toHaveBeenCalledTimes(2)
   })
 })
 

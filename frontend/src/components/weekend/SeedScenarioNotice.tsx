@@ -55,6 +55,12 @@ export function SeedScenarioNotice({
       // 409 is the server REFUSING a second copy, because it would overwrite
       // what staff placed and re-place everything they unplaced. That is the
       // guard working. Reporting it in red teaches staff to distrust it.
+      //
+      // Narrowed on the STATUS rather than on `instanceof LodgingApiError`:
+      // the status is the contract, an identity check would import a class
+      // this component otherwise has no use for, and `instanceof` is the one
+      // form of narrowing that can go false across duplicate module
+      // instances. The tests reject with the real class, so the two agree.
       if (error instanceof Error && (error as { status?: number }).status === 409) {
         toast.success('This scenario was already seeded from CampMinder.')
       } else {

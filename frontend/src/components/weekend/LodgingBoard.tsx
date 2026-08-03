@@ -28,7 +28,8 @@ import { LodgingUnitCard } from './LodgingUnitCard'
 export interface LodgingBoardProps {
   parties: RosterPartyRow[]
   units: LodgingUnitRow[]
-  year: number /**
+  year: number
+  /**
    * `''` is the CampMinder mirror; a scenario id is a draft.
    *
    * OPTIONAL, defaulting to the mirror, which is the safe reading: a
