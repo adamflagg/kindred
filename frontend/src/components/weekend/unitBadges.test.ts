@@ -119,6 +119,16 @@ describe('reservationBadge', () => {
     expect(badge?.label).toBe('Staff')
   })
 
+  it('does not badge an ordinary family cabin as Released', () => {
+    // `family_available_override: true` on a family_pool unit is redundant but
+    // perfectly storable -- it simply agrees with the role. "Released" means a
+    // STAFF cabin opened to families for this weekend, so applying it here
+    // would invent a distinction the property does not have and put a badge on
+    // most of the board. BOTH branches read the override against the role;
+    // this is the assertion that pins the Released half of that.
+    expect(reservationBadge(unit({ family_available_override: true }))).toBeNull()
+  })
+
   it('ignores the reason text entirely, because the rule never branches on it', () => {
     const held = reservationBadge(unit({ family_available_override: false, reason: 'Burst pipe' }))
     const alsoHeld = reservationBadge(unit({ family_available_override: false, reason: '' }))
