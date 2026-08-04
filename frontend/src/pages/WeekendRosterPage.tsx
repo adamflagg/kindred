@@ -16,33 +16,24 @@
  * CampMinder mirror, and inside a scenario it is that scenario's own draft
  * rows, with the mirror not read at all (#1974). The registry behind it IS
  * editable, though — Phase C added the Manage -> Family Camp Lodging editor
- * (spec §3.8), and this page links bunking staff straight to it for
- * corrections to units, areas and cabin-name aliases.
+ * (spec §3.8), which is where corrections to units, areas and cabin-name
+ * aliases belong. The header no longer shortcuts to it, as summer's does not.
  *
  * Everything rendered here is READ from ingest-derived columns. If a share
  * preference, proximity mode or request text looks wrong, the fix belongs in
  * the Go ingest so every surface sees the correction at once.
  */
-import { Listbox, ListboxButton, ListboxOption, ListboxOptions } from '@headlessui/react'
-import {
-  ArrowLeft,
-  ChevronDown,
-  Home,
-  LayoutGrid,
-  Map as MapIcon,
-  Settings2,
-  Users,
-} from 'lucide-react'
+import { Building2, Home, Map as MapIcon, Users } from 'lucide-react'
 import { useEffect, useMemo } from 'react'
-import { Link, useNavigate, useParams } from 'react-router'
+import { useNavigate, useParams } from 'react-router'
 
 import { QueryGuard } from '../components/QueryGuard'
+import { TitleSwitcher } from '../components/ui'
 import { Permission } from '../constants/permissions'
 import {
   countBoardSlots,
   countMapUnits,
   countUnmeasuredSpaces,
-  formatSessionDates,
   HouseholdRosterTable,
   LodgingBoard,
   LodgingMap,
@@ -63,10 +54,27 @@ import { usePermissions } from '../hooks/usePermissions'
 import { useScenario } from '../hooks/useScenario'
 import { useWeekendRoster, useWeekendSessions } from '../hooks/useWeekendRoster'
 
-type View = 'roster' | 'inventory' | 'board' | 'map'
+/**
+ * `housing`, not `board`. Summer names its board tab after what is being
+ * assigned — Bunks — rather than after the widget, and this follows it. The
+ * COMPONENT stays `LodgingBoard`, exactly as summer's Bunks tab renders
+ * `BunkingBoardByArea`: the board is still a board internally.
+ *
+ * The rename took the URL with it and left no alias, so a `/board` link now
+ * falls back to the roster. Deliberate — the surface is young, and a permanent
+ * redirect for a segment that lived a few weeks is a cost paid forever.
+ */
+type View = 'roster' | 'inventory' | 'housing' | 'map'
 
-const VIEWS: View[] = ['roster', 'inventory', 'board', 'map']
+/** Tab order. `DEFAULT_VIEW` is a separate choice — see below. */
+const VIEWS: View[] = ['housing', 'roster', 'map', 'inventory']
 
+/**
+ * NOT the first tab, deliberately. Summer opens on its board because the board
+ * is where its work happens; a weekend's placements are still read-only, so the
+ * roster is what you actually came to look at. Revisit when weekends become
+ * editable.
+ */
 const DEFAULT_VIEW: View = 'roster'
 
 /**
@@ -85,6 +93,8 @@ export default function WeekendRosterPage() {
   const { sessionRef, view: viewParam } = useParams<{ sessionRef: string; view: string }>()
   const navigate = useNavigate()
   const { currentYear } = useCurrentYear()
+  // Gated on bunking.manage, which is what the lodging_* write rules gate on —
+  // an admin flag would let the wrong people in and keep bunking staff out.
   const { hasPermission } = usePermissions()
   const canManageLodging = hasPermission(Permission.BUNKING_MANAGE)
   const view = parseView(viewParam)
@@ -119,9 +129,6 @@ export default function WeekendRosterPage() {
   // in exactly that gap, so there is nothing more to add here.
 
   const selectedSession = sessions.find((session) => session.session_cm_id === selectedCmId)
-  const dates = selectedSession
-    ? formatSessionDates(selectedSession.start_date, selectedSession.end_date)
-    : ''
 
   // Memoised on the payload, not left to run per render. The `?? []` fallbacks
   // are inside the memo on purpose: a bare `?? []` mints a new array every
@@ -142,35 +149,48 @@ export default function WeekendRosterPage() {
   )
   const spacesUnmeasured = useMemo(() => countUnmeasuredSpaces(units), [units])
 
+  // Housing first, as summer leads with Bunks. Inventory trails because it
+  // describes the buildings rather than this weekend.
   const TABS: Array<{ id: View; label: string; icon: typeof Users; count: number }> = [
+    // Counts the SLOT CARDS the board draws, which is not the inventory count:
+    // a container carries the beds its halves already report, so it never gets
+    // a card and never counts.
+    //
+    // The house is summer's icon for the same tab — its Bunks tab is `Home`.
+    // Inventory therefore takes `Building2`, which is the better fit anyway:
+    // it lists the buildings, not the families housed in them.
+    { id: 'housing', label: 'Housing', icon: Home, count: boardSlotCount },
     { id: 'roster', label: 'Roster', icon: Users, count: parties.length },
-    { id: 'inventory', label: 'Inventory', icon: Home, count: units.length },
-    // The board counts the SLOT CARDS it draws, which is not the inventory
-    // count: a container carries the beds its halves already report, so it
-    // never gets a card and never counts.
-    { id: 'board', label: 'Board', icon: LayoutGrid, count: boardSlotCount },
     { id: 'map', label: 'Map', icon: MapIcon, count: mapUnitCount },
+    { id: 'inventory', label: 'Inventory', icon: Building2, count: units.length },
   ]
 
   return (
     <div>
-      <header className="flex flex-col gap-2 pb-2">
-        <Link
-          to="/weekend/sessions"
-          className="text-muted-foreground hover:text-foreground inline-flex w-fit items-center gap-1.5 text-sm transition-colors"
-        >
-          <ArrowLeft className="h-4 w-4" />
-          All weekends
-        </Link>
-
-        <div className="flex flex-wrap items-center gap-3">
-          {/* The weekend IS the title, and the title IS the switcher — the
-              same move the summer session header makes with its session
-              dropdown. */}
-          <div className="flex flex-shrink-0 items-center gap-2">
-            <Home className="text-primary h-5 w-5 flex-shrink-0 sm:h-6 sm:w-6" />
-            <Listbox
+      {/* Seated in a lodge card and spaced like summer's SessionHeader, which
+          is the same two wrappers. Nothing here navigates AWAY from the
+          weekend: the lander is the brand link in AppLayout, and the lodging
+          editor is under Manage. */}
+      <header className="mb-4">
+        <div className="card-lodge p-3 sm:p-4">
+          <div className="flex flex-wrap items-center gap-3">
+            {/* The weekend IS the title, and the title IS the switcher — the
+                same move the summer session header makes, now literally the
+                same component. */}
+            <TitleSwitcher
+              icon={Home}
+              label={
+                selectedSession
+                  ? shortWeekendName(selectedSession.name)
+                  : sessionsQuery.isLoading
+                    ? 'Loading weekends…'
+                    : 'Weekend not found'
+              }
               value={selectedSession ? weekendRef(selectedSession, sessions) : ''}
+              options={sessions.map((session) => ({
+                value: weekendRef(session, sessions),
+                label: shortWeekendName(session.name),
+              }))}
               onChange={(value: string) => {
                 // CARRIES THE TAB. Switching weekends from inside one is how
                 // you compare the same view across two of them; landing back
@@ -179,68 +199,33 @@ export default function WeekendRosterPage() {
                 // destination, so Back belongs to it.
                 void navigate(`/weekend/${value}/${view}`)
               }}
-            >
-              <div className="relative">
-                <ListboxButton className="font-display hover:text-primary flex cursor-pointer items-center gap-1 bg-transparent text-xl font-bold transition-colors focus:outline-none sm:text-2xl">
-                  {selectedSession
-                    ? shortWeekendName(selectedSession.name)
-                    : sessionsQuery.isLoading
-                      ? 'Loading weekends…'
-                      : 'Weekend not found'}
-                  <ChevronDown className="text-muted-foreground h-4 w-4" />
-                </ListboxButton>
-                <ListboxOptions className="listbox-options w-auto min-w-[220px]">
-                  {sessions.map((session) => (
-                    <ListboxOption
-                      key={session.session_cm_id}
-                      value={weekendRef(session, sessions)}
-                      className="listbox-option py-1.5"
-                    >
-                      {shortWeekendName(session.name)}
-                    </ListboxOption>
-                  ))}
-                </ListboxOptions>
-              </div>
-            </Listbox>
-          </div>
-
-          {dates.length > 0 && <span className="text-muted-foreground text-sm">{dates}</span>}
-          {selectedSession && (
-            <span
-              className={`rounded-full px-2 py-0.5 text-xs font-semibold ${
-                selectedSession.session_type === 'adult'
-                  ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/50 dark:text-amber-300'
-                  : 'bg-forest-100 text-forest-700 dark:bg-forest-900/50 dark:text-forest-300'
-              }`}
-            >
-              {selectedSession.session_type === 'adult' ? 'Adult' : 'Family'}
-            </span>
-          )}
-
-          {/* Mode + scenario, as summer's SessionHeader stacks them. The badge
-              renders for everyone — a viewer needs to know they are looking at
-              the CampMinder mirror — while the picker itself is gated. */}
-          {selectedCmId !== null && (
-            <WeekendScenarioPicker
-              sessionCmId={selectedCmId}
-              year={currentYear}
-              canManage={canManageLodging}
-              scenario={scenario}
+              optionsClassName="min-w-[220px]"
             />
-          )}
 
-          {/* Gated on bunking.manage, which is what the lodging_* write rules
-              gate on — an admin flag would let the wrong people in and keep
-              bunking staff out. */}
-          {canManageLodging && (
-            <Link
-              to="/manage/lodging/units"
-              className="text-muted-foreground hover:text-foreground ml-auto inline-flex items-center gap-1.5 text-sm transition-colors"
-            >
-              <Settings2 className="h-4 w-4" />
-              Lodging settings
-            </Link>
-          )}
+            {selectedSession && (
+              <span
+                className={`rounded-full px-2 py-0.5 text-xs font-semibold ${
+                  selectedSession.session_type === 'adult'
+                    ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/50 dark:text-amber-300'
+                    : 'bg-forest-100 text-forest-700 dark:bg-forest-900/50 dark:text-forest-300'
+                }`}
+              >
+                {selectedSession.session_type === 'adult' ? 'Adult' : 'Family'}
+              </span>
+            )}
+
+            {/* Mode + scenario, as summer's SessionHeader stacks them. The badge
+                renders for everyone — a viewer needs to know they are looking at
+                the CampMinder mirror — while the picker itself is gated. */}
+            {selectedCmId !== null && (
+              <WeekendScenarioPicker
+                sessionCmId={selectedCmId}
+                year={currentYear}
+                canManage={canManageLodging}
+                scenario={scenario}
+              />
+            )}
+          </div>
         </div>
       </header>
 
@@ -323,22 +308,14 @@ export default function WeekendRosterPage() {
                 <HouseholdRosterTable parties={parties} year={currentYear} units={units} />
               )}
               {view === 'inventory' && <UnitInventoryPanel units={units} />}
-              {view === 'board' && (
-                <LodgingBoard
-                  parties={parties}
-                  units={units}
-                  year={currentYear}
-                  scenario={scenario}
-                />
+              {/* Neither takes the scenario id: they render what this page
+                  already fetched with it, and neither writes. The header badge
+                  is what says which plan that was. #1985's drag placement is
+                  what earns plumbing it back down. */}
+              {view === 'housing' && (
+                <LodgingBoard parties={parties} units={units} year={currentYear} />
               )}
-              {view === 'map' && (
-                <LodgingMap
-                  parties={parties}
-                  units={units}
-                  year={currentYear}
-                  scenario={scenario}
-                />
-              )}
+              {view === 'map' && <LodgingMap parties={parties} units={units} year={currentYear} />}
             </div>
           </>
         )}

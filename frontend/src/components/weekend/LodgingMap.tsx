@@ -5,11 +5,13 @@
  * questions a grid cannot: is this family near that one, and does this family
  * sit beside a bathhouse or a staff cabin.
  *
- * SCENARIO AWARENESS MIRRORS THE BOARD AND NOTHING MORE. With no scenario this
- * is a CampMinder mirror and says so on the surface. When the drag PR wires
- * `ScenarioContext`'s `isProductionMode` through, both surfaces adopt it
- * together — a map that knew about scenarios while the board did not would be
- * a second system of record, which is the one thing this must not be.
+ * SCENARIO AWARENESS MIRRORS THE BOARD AND NOTHING MORE — currently none. The
+ * header's `ModeBadge` says which plan is on screen, for this tab and every
+ * other; a chip here as well was a second claim to keep true, and it stopped
+ * being true the moment #1967 let staff select a draft. Drag placement (#1985)
+ * is what earns a scenario id back, and the board must gain it in the same
+ * change: a map that knew about scenarios while the board did not would be a
+ * second system of record, which is the one thing this must not be.
  *
  * ACCESSIBILITY, stated rather than implied: a pan/zoom map is not
  * keyboard-navigable. The Inventory tab is the accessible equivalent — the same
@@ -36,7 +38,6 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import { useDismissOnDeadSpace } from '../../hooks/useDismissOnDeadSpace'
 import type { LodgingUnitRow, RosterPartyRow } from '../../types/lodging'
-import { BoardModeChip } from './BoardModeChip'
 import { FamilyCard } from './FamilyCard'
 import { FamilyDetailsPanel } from './FamilyDetailsPanel'
 import { FloatingUnplacedBadge } from './FloatingUnplacedBadge'
@@ -170,19 +171,9 @@ export interface LodgingMapProps {
   parties: RosterPartyRow[]
   units: LodgingUnitRow[]
   year: number
-  /**
-   * `''` is the CampMinder mirror; a scenario id is a draft.
-   *
-   * OPTIONAL, defaulting to the mirror, which is the safe reading: a
-   * caller that forgets it gets the amber read-only chip rather than a
-   * claim of a draft. Required would put tsc behind it, but the only two
-   * real callers are on `WeekendRosterPage` — the rest are tests, and
-   * making thirty of them pass a prop they do not exercise is churn.
-   */
-  scenario?: string
 }
 
-export function LodgingMap({ parties, units, year, scenario = '' }: LodgingMapProps) {
+export function LodgingMap({ parties, units, year }: LodgingMapProps) {
   // MEMOISED, and not as a micro-optimisation: panning updates `view` on every
   // pointermove, and an unmemoised call would re-run buildBoard — area bucketing,
   // sorting, hue assignment, the lot — on every frame of a drag.
@@ -418,16 +409,18 @@ export function LodgingMap({ parties, units, year, scenario = '' }: LodgingMapPr
 
   return (
     <div className="flex flex-col gap-3">
-      <div className="flex flex-wrap items-center gap-2">
-        <BoardModeChip scenario={scenario} />
-        {model.unpositionedUnits.length > 0 && (
+      {/* The mode chip that used to lead this row moved to the header badge,
+          where summer keeps it. The row itself is now conditional: left
+          unconditional it renders empty and still spends the parent's gap. */}
+      {model.unpositionedUnits.length > 0 && (
+        <div className="flex flex-wrap items-center gap-2">
           <span className="text-muted-foreground text-xs">
             {model.unpositionedUnits.length === 1
               ? '1 room has no position yet'
               : `${String(model.unpositionedUnits.length)} rooms have no position yet`}
           </span>
-        )}
-      </div>
+        </div>
+      )}
 
       <div className="card-lodge overflow-hidden">
         <div className="flex flex-col gap-2 p-3">

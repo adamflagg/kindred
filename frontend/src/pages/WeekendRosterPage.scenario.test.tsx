@@ -93,6 +93,15 @@ vi.mock('../hooks/useScenario', async (importOriginal) => {
   }
 })
 
+// Summer's management modal, reused unchanged — it reaches the network on
+// mount. Stubbed to a marker because what these tests own is whether the gear
+// opens it and which session it names, not what it does once open.
+vi.mock('../components/ScenarioManagementModal', () => ({
+  default: ({ sessionId }: { sessionId: number }) => (
+    <div data-testid="scenario-management-modal">managing {sessionId}</div>
+  ),
+}))
+
 const fetchWithAuth = vi.fn()
 
 vi.mock('../hooks/useApiWithAuth', () => ({
@@ -146,7 +155,7 @@ function emptyPlan() {
 
 function renderPage() {
   return render(
-    <MemoryRouter initialEntries={['/weekend/1000001/board']}>
+    <MemoryRouter initialEntries={['/weekend/1000001/housing']}>
       <Routes>
         <Route path="/weekend/:sessionRef/:view?" element={<WeekendRosterPage />} />
       </Routes>
@@ -181,13 +190,39 @@ describe('the picker', () => {
   it('is hidden from a user without bunking.manage', () => {
     permissions = new Set()
     renderPage()
-    expect(screen.queryByRole('button', { name: /scenario/i })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /^scenario$/i })).not.toBeInTheDocument()
   })
 
   it('is offered to a NON-ADMIN holding bunking.manage', () => {
     // The lodging write rules gate on bunking.manage, not on the admin flag.
     renderPage()
-    expect(screen.getByRole('button', { name: /scenario/i })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /^scenario$/i })).toBeInTheDocument()
+  })
+
+  it('offers the manage-scenarios gear beside the picker, as summer does', () => {
+    // Summer's SessionHeader puts a gear next to the scenario dropdown that
+    // opens rename/delete. Without it a weekend can create plans and never
+    // tidy them up.
+    renderPage()
+    expect(screen.getByRole('button', { name: /manage scenarios/i })).toBeInTheDocument()
+  })
+
+  it('gates the gear on bunking.manage too', () => {
+    // It opens a RENAME/DELETE surface. Gating the picker but not the gear
+    // would hand a viewer the destructive half of the pair.
+    permissions = new Set()
+    renderPage()
+    expect(screen.queryByRole('button', { name: /manage scenarios/i })).not.toBeInTheDocument()
+  })
+
+  it('opens the management modal on THIS weekend from the gear', async () => {
+    // Naming the session matters: scenarios are per-session, and handing the
+    // modal the wrong id would list summer's plans under a weekend.
+    renderPage()
+    await userEvent.click(screen.getByRole('button', { name: /manage scenarios/i }))
+    expect(await screen.findByTestId('scenario-management-modal')).toHaveTextContent(
+      'managing 1000001'
+    )
   })
 })
 
@@ -230,7 +265,7 @@ describe('the mode badge', () => {
     permissions = new Set()
     renderPage()
     expect(screen.getByLabelText(/Viewing CampMinder data/i)).toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: /scenario/i })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /^scenario$/i })).not.toBeInTheDocument()
   })
 
   it('says Draft, naming the scenario, once one is selected', () => {
@@ -366,7 +401,7 @@ describe('seeding an empty scenario', () => {
 
 describe('creating a weekend plan', () => {
   async function openCreateModal() {
-    await userEvent.click(screen.getByRole('button', { name: /scenario/i }))
+    await userEvent.click(screen.getByRole('button', { name: /^scenario$/i }))
     await userEvent.click(screen.getByRole('option', { name: /New Scenario/i }))
   }
 

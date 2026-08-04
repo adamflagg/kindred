@@ -14,11 +14,12 @@
  * entirely and lives on `SeedScenarioNotice`.
  */
 import { Listbox, ListboxButton, ListboxOption, ListboxOptions } from '@headlessui/react'
-import { ChevronDown } from 'lucide-react'
+import { ChevronDown, Settings } from 'lucide-react'
 import { useState } from 'react'
 
 import ModeBadge from '../ModeBadge'
 import NewScenarioModal from '../NewScenarioModal'
+import ScenarioManagementModal from '../ScenarioManagementModal'
 import { useScenario } from '../../hooks/useScenario'
 import { useSeedScenario } from '../../hooks/useSeedScenario'
 
@@ -52,6 +53,7 @@ export function WeekendScenarioPicker({
   const { currentScenario, scenarios, selectScenario, isLoading } = useScenario()
   const { seed } = useSeedScenario(year, sessionCmId)
   const [showNewModal, setShowNewModal] = useState(false)
+  const [showManageModal, setShowManageModal] = useState(false)
 
   // Read from the SCOPED value, not from `currentScenario` directly: a
   // selection belonging to another weekend must not badge this one as a draft.
@@ -98,6 +100,33 @@ export function WeekendScenarioPicker({
             </ListboxOptions>
           </div>
         </Listbox>
+      )}
+
+      {/* Rename and delete, behind the same gear summer's SessionHeader uses.
+          Gated with the picker rather than beside it: it opens the
+          DESTRUCTIVE half of the pair, so a viewer who cannot create a plan
+          must not be able to delete one. */}
+      {canManage && (
+        <button
+          type="button"
+          onClick={() => {
+            setShowManageModal(true)
+          }}
+          className="btn-ghost text-muted-foreground hover:text-foreground p-1.5"
+          title="Manage Scenarios"
+          aria-label="Manage Scenarios"
+        >
+          <Settings className="h-4 w-4" />
+        </button>
+      )}
+
+      {canManage && showManageModal && (
+        <ScenarioManagementModal
+          sessionId={sessionCmId}
+          onClose={() => {
+            setShowManageModal(false)
+          }}
+        />
       )}
 
       {showNewModal && (

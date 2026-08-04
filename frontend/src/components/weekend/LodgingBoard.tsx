@@ -1,10 +1,15 @@
 /**
  * The weekend lodging board — read-only (spec §10, "C1").
  *
- * With no scenario this is a CampMinder MIRROR, exactly as the summer board is
- * read-only for everyone in production mode (`ScenarioContext`'s
- * `isProductionMode`). The amber CM badge says so on the surface, because a
- * board that looks draggable and is not is worse than a list.
+ * WHICH plan it is showing is the header's to say, not this component's — the
+ * page's `ModeBadge` carries CM-vs-Draft exactly as summer's `SessionHeader`
+ * does, and summer's board carries no chip of its own. This one used to, which
+ * is how it came to assert the mirror over a draft once #1967 shipped a picker:
+ * two indicators, only one of them wired up.
+ *
+ * The board takes no scenario id because it never reads or writes one — the
+ * page fetches, and nothing here mutates. Drag placement (#1985) is what earns
+ * plumbing it back, along with the writes that need it.
  *
  * Layout is §3.7: one collapsible section per area, each a WRAPPING GRID of
  * slot cards. Not summer's columns — a summer bunk column is tall because it
@@ -20,7 +25,6 @@ import { useCallback, useState } from 'react'
 
 import { useDismissOnDeadSpace } from '../../hooks/useDismissOnDeadSpace'
 import type { LodgingUnitRow, RosterPartyRow } from '../../types/lodging'
-import { BoardModeChip } from './BoardModeChip'
 import { buildBoard } from './boardLayout'
 import { FamilyCard } from './FamilyCard'
 import { FamilyDetailsPanel } from './FamilyDetailsPanel'
@@ -32,19 +36,9 @@ export interface LodgingBoardProps {
   parties: RosterPartyRow[]
   units: LodgingUnitRow[]
   year: number
-  /**
-   * `''` is the CampMinder mirror; a scenario id is a draft.
-   *
-   * OPTIONAL, defaulting to the mirror, which is the safe reading: a
-   * caller that forgets it gets the amber read-only chip rather than a
-   * claim of a draft. Required would put tsc behind it, but the only two
-   * real callers are on `WeekendRosterPage` — the rest are tests, and
-   * making thirty of them pass a prop they do not exercise is churn.
-   */
-  scenario?: string
 }
 
-export function LodgingBoard({ parties, units, year, scenario = '' }: LodgingBoardProps) {
+export function LodgingBoard({ parties, units, year }: LodgingBoardProps) {
   const board = buildBoard(parties, units)
   const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(new Set())
   const [selected, setSelected] = useState<RosterPartyRow | null>(null)
@@ -78,17 +72,19 @@ export function LodgingBoard({ parties, units, year, scenario = '' }: LodgingBoa
 
   return (
     <div className="flex flex-col gap-3">
-      <div className="flex flex-wrap items-center gap-2">
-        <BoardModeChip scenario={scenario} />
-        {board.flaggedCount > 0 && (
+      {/* The mode chip that used to lead this row moved to the header badge,
+          where summer keeps it. The row itself is now conditional: left
+          unconditional it renders empty and still spends the parent's gap. */}
+      {board.flaggedCount > 0 && (
+        <div className="flex flex-wrap items-center gap-2">
           <span className="inline-flex items-center gap-1.5 rounded-full bg-amber-100 px-2.5 py-1 text-xs font-semibold text-amber-800 dark:bg-amber-950/50 dark:text-amber-300">
             <TriangleAlert className="h-3.5 w-3.5 flex-shrink-0" aria-hidden="true" />
             {board.flaggedCount === 1
               ? '1 shared cabin needs a look'
               : `${String(board.flaggedCount)} shared cabins need a look`}
           </span>
-        )}
-      </div>
+        </div>
+      )}
 
       <div className="card-lodge overflow-hidden">
         <div className="flex flex-col gap-5 p-3">
