@@ -36,6 +36,33 @@ function unit(overrides: Partial<LodgingUnitRow> = {}): LodgingUnitRow {
 }
 
 describe('UnitInventoryPanel', () => {
+  it('lists permanent staff housing, because this is the REGISTRY and not the board', () => {
+    // The board excludes staff housing (`boardLayout.isPlanningInventory`) —
+    // its cards are drop targets, and an empty card for a cabin permanently
+    // occupied by year-round staff invites a family into it.
+    //
+    // This panel is the opposite job: it is the inventory view, and it is the
+    // only screen from which these 21 units can be seen or edited. Applying
+    // the board's filter here — the obvious next move for someone reading
+    // that change — would hide them from the only place they are reachable.
+    render(
+      <UnitInventoryPanel
+        units={[
+          unit(),
+          unit({
+            unit_id: 'u2',
+            code: 'aspen-lodge',
+            name: 'Aspen Lodge',
+            allocation_default: 'staff_default',
+            is_family_available: false,
+          }),
+        ]}
+      />
+    )
+    expect(screen.getByText('Aspen Lodge')).toBeInTheDocument()
+    expect(screen.getByText('Ridge A')).toBeInTheDocument()
+  })
+
   it('keeps staff-reserved units visible and badges them', () => {
     render(
       <UnitInventoryPanel
