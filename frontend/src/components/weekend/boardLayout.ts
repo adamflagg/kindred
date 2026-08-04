@@ -276,7 +276,7 @@ function consentReason(
  * reserved units are badged, not hidden.
  */
 function isPlanningInventory(unit: LodgingUnitRow): boolean {
-  return unit.allocation_default !== 'staff_default' || unit.is_family_available === true
+  return unit.inventory_class !== 'staff_default' || unit.is_family_available === true
 }
 
 function indexPayload(parties: RosterPartyRow[], units: LodgingUnitRow[]) {

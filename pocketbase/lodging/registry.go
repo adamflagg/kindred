@@ -65,14 +65,14 @@ type registryUnit struct {
 	// Sleeps is null when never observed. PocketBase number columns are
 	// `NUMERIC DEFAULT 0 NOT NULL`, so an unset value stores as 0 and
 	// consumers read 0 as UNKNOWN, not "zero capacity".
-	Sleeps            *int   `json:"sleeps"`
-	Bathroom          string `json:"bathroom"`
-	BathroomGroup     string `json:"bathroom_group"`
-	ParentUnit        string `json:"parent_unit"` // unit code, or "" for a top-level row
-	NearBathhouse     bool   `json:"near_bathhouse"`
-	AllocationDefault string `json:"allocation_default"`
-	IsContainer       bool   `json:"is_container"`
-	Notes             string `json:"notes"`
+	Sleeps         *int   `json:"sleeps"`
+	Bathroom       string `json:"bathroom"`
+	BathroomGroup  string `json:"bathroom_group"`
+	ParentUnit     string `json:"parent_unit"` // unit code, or "" for a top-level row
+	NearBathhouse  bool   `json:"near_bathhouse"`
+	InventoryClass string `json:"inventory_class"`
+	IsContainer    bool   `json:"is_container"`
+	Notes          string `json:"notes"`
 
 	// Amenities. Absent in JSON means false, which for these is the same claim
 	// the column made before the 2026 inventory: unknown, recorded as false.
@@ -370,7 +370,7 @@ func seedUnits(
 		rec.Set("bathroom", u.Bathroom)
 		rec.Set("bathroom_group", u.BathroomGroup)
 		rec.Set("near_bathhouse", u.NearBathhouse)
-		rec.Set("allocation_default", u.AllocationDefault)
+		rec.Set("inventory_class", u.InventoryClass)
 		rec.Set("is_container", u.IsContainer)
 		rec.Set("notes", u.Notes)
 		rec.Set("has_power", u.HasPower)

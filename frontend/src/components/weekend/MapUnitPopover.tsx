@@ -101,7 +101,7 @@ function DetailCard({ units, hue, onOpenParty }: MapUnitPopoverProps) {
 
   const tags: string[] = []
   if (unit.near_bathhouse) tags.push('near bathhouse')
-  if (unit.allocation_default === 'staff_default') tags.push('staff-default')
+  if (unit.inventory_class === 'staff_default') tags.push('staff-default')
   if (parties.length > 1) tags.push(`shared by ${String(parties.length)}`)
 
   return (
@@ -304,7 +304,7 @@ function FootprintGrid({ units, hue, onOpenParty }: MapUnitPopoverProps) {
               }
             : {
                 borderColor: hue,
-                borderStyle: entry.unit.allocation_default === 'staff_default' ? 'dashed' : 'solid',
+                borderStyle: entry.unit.inventory_class === 'staff_default' ? 'dashed' : 'solid',
               }
           const className = `min-w-[2.5rem] truncate rounded border px-1.5 py-1 text-xs font-semibold ${
             first ? 'text-white' : 'bg-card text-muted-foreground'

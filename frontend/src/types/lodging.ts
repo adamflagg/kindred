@@ -156,12 +156,17 @@ interface PocketBaseRecordBase {
 export type BathroomStoredValue = 'none' | 'private' | 'shared' | ''
 
 /**
- * Whether a unit defaults to the family pool or is held for staff.
+ * Whether a unit is family pool or permanent staff housing.
+ *
+ * A ROLE, not a default. Called `AllocationDefaultValue` until 1500000136:
+ * "default" implied an override, and the override is a rare per-weekend
+ * exception rather than the point — the value says whether a unit is planning
+ * inventory at all.
  *
  * `''` is storable but not meaningful — it matches neither branch of the
  * availability rules, which is why `LodgingUnitInput` excludes it.
  */
-export type AllocationDefaultValue = 'family_pool' | 'staff_default'
+export type InventoryClassValue = 'family_pool' | 'staff_default'
 
 /** A named zone of the site. */
 export interface LodgingAreaRecord extends PocketBaseRecordBase {
@@ -196,7 +201,7 @@ export interface LodgingUnitRecord extends PocketBaseRecordBase {
   has_ac: boolean
   has_fridge: boolean
   is_accessible: boolean
-  allocation_default: AllocationDefaultValue | ''
+  inventory_class: InventoryClassValue | ''
   /**
    * Whether staff have actually verified this row's amenities.
    *
@@ -273,11 +278,11 @@ export type LodgingAreaInput = Pick<
 /**
  * Unit create/update payload.
  *
- * `is_active` and `allocation_default` are REQUIRED here on purpose.
+ * `is_active` and `inventory_class` are REQUIRED here on purpose.
  * PocketBase has no per-field default for bool or select, and `required: true`
  * on a bool means "must be true", so neither can be marked required in the
  * schema. A create that omits them yields `is_active = false,
- * allocation_default = ''` — a unit invisible to every list query that also
+ * inventory_class = ''` — a unit invisible to every list query that also
  * matches neither branch of the availability rules. Making them non-optional
  * here means the compiler catches the omission instead of the database
  * swallowing it.
@@ -287,7 +292,7 @@ export interface LodgingUnitInput {
   name: string
   code: string
   is_active: boolean
-  allocation_default: AllocationDefaultValue
+  inventory_class: InventoryClassValue
   parent_unit?: string
   map_x?: number
   map_y?: number

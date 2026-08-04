@@ -557,7 +557,7 @@ export function invalidateRequestQueries(
  *
  * The registry is roster input. `_build_units`
  * (`api/services/lodging_roster_service.py:350-419`) projects `name`,
- * `area_name`, `sleeps`, `is_confirmed`, `is_active`, `allocation_default` and
+ * `area_name`, `sleeps`, `is_confirmed`, `is_active`, `inventory_class` and
  * `map_x`/`map_y` into the roster payload — every field these admin forms
  * edit. `WeekendRosterPage` links straight to `/manage/lodging/units`, so
  * edit-then-go-back is the designed round trip, not an edge case.

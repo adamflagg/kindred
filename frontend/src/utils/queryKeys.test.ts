@@ -143,7 +143,7 @@ describe('queryKeys.sessionUploadChanges', () => {
 describe('invalidateLodgingRegistryQueries', () => {
   // The lodging registry IS roster input: `_build_units`
   // (api/services/lodging_roster_service.py:350-419) projects name, area_name,
-  // sleeps, is_confirmed, is_active, allocation_default and map_x/map_y into
+  // sleeps, is_confirmed, is_active, inventory_class and map_x/map_y into
   // the roster payload. WeekendRosterPage links straight to
   // /manage/lodging/units, so admin-edit-then-back is the designed round trip
   // — and the weekend queries now carry a 30 minute staleTime, so nothing

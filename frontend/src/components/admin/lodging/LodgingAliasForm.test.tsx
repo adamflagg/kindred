@@ -43,7 +43,7 @@ function fixtureUnit(over: Partial<LodgingUnitRecord> & { id: string }): Lodging
     has_ac: false,
     has_fridge: false,
     is_accessible: false,
-    allocation_default: 'family_pool',
+    inventory_class: 'family_pool',
     is_confirmed: false,
     is_active: true,
     is_container: false,

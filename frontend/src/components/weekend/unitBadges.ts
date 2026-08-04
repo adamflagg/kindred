@@ -37,20 +37,20 @@ export function reservationBadge(unit: LodgingUnitRow): UnitBadge | null {
   // different answers, and `!override` collapses them into one.
   //
   // A staff cabin opened to families for this weekend.
-  if (unit.allocation_default === 'staff_default' && unit.family_available_override === true) {
+  if (unit.inventory_class === 'staff_default' && unit.family_available_override === true) {
     return {
       label: 'Released',
       className: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-300',
     }
   }
   // A family cabin closed for this weekend -- a burst pipe, a caretaker.
-  if (unit.allocation_default !== 'staff_default' && unit.family_available_override === false) {
+  if (unit.inventory_class !== 'staff_default' && unit.family_available_override === false) {
     return {
       label: 'Held',
       className: 'bg-slate-200 text-slate-800 dark:bg-slate-800 dark:text-slate-200',
     }
   }
-  if (unit.allocation_default === 'staff_default') return staff
+  if (unit.inventory_class === 'staff_default') return staff
   return null
 }
 
@@ -91,7 +91,7 @@ export function availabilityAction(unit: LodgingUnitRow): AvailabilityAction | n
   if (unit.family_available_override !== null && unit.family_available_override !== undefined) {
     return { kind: 'clear', label: 'Clear', familyAvailable: null, needsReason: false }
   }
-  if (unit.allocation_default === 'staff_default') {
+  if (unit.inventory_class === 'staff_default') {
     return { kind: 'release', label: 'Release', familyAvailable: true, needsReason: true }
   }
   return { kind: 'hold', label: 'Hold', familyAvailable: false, needsReason: true }

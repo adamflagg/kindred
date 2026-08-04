@@ -119,7 +119,10 @@ class LodgingUnitSummary(BaseModel):
     # A building/grouping row. Present in the payload so the map and board
     # can draw the building, but excluded from every capacity count.
     is_container: bool = False
-    allocation_default: str = ""
+    # The unit's ROLE: whether it is planning inventory at all. Carried a
+    # "default" name until 1500000136, which implied an override -- and the
+    # override is a rare per-weekend exception rather than the point.
+    inventory_class: str = ""
     # None when no lodging_availability row exists for this unit this weekend,
     # i.e. the unit's ROLE decides. None and False are different answers and
     # must not be flattened into one: False is "closed this weekend".
@@ -290,7 +293,7 @@ class RosterCounts(BaseModel):
     beds_family_available: int = 0
     units_capacity_unknown: int = 0
     units_unconfirmed: int = 0
-    # Units created without an explicit allocation_default. They match
+    # Units created without an explicit inventory_class. They match
     # neither row of the availability table; surfaced rather than hidden.
     units_missing_allocation: int = 0
     # Cabin strings the ingest could not map to a unit, still awaiting triage.

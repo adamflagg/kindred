@@ -60,7 +60,7 @@ def _diff_units(doc: dict[str, Any], db: sqlite3.Connection) -> list[str]:
         for r in db.execute(
             """
             SELECT u.code, u.name, a.code AS area_code, u.map_x, u.map_y, u.sleeps,
-                   u.bathroom, u.bathroom_group, u.near_bathhouse, u.allocation_default,
+                   u.bathroom, u.bathroom_group, u.near_bathhouse, u.inventory_class,
                    u.is_container, u.notes, p.code AS parent_code,
                    u.has_power, u.has_ac, u.has_fridge, u.is_accessible, u.has_heat,
                    u.is_weatherized, u.has_plumbing, u.has_space_heater,
@@ -90,7 +90,7 @@ def _diff_units(doc: dict[str, Any], db: sqlite3.Connection) -> list[str]:
             ("bathroom", w.get("bathroom") or "", g["bathroom"] or ""),
             ("bathroom_group", w.get("bathroom_group") or "", g["bathroom_group"] or ""),
             ("near_bathhouse", int(bool(w.get("near_bathhouse"))), int(g["near_bathhouse"] or 0)),
-            ("allocation_default", w.get("allocation_default") or "", g["allocation_default"] or ""),
+            ("inventory_class", w.get("inventory_class") or "", g["inventory_class"] or ""),
             ("is_container", int(bool(w.get("is_container"))), int(g["is_container"] or 0)),
             ("notes", w.get("notes") or "", g["notes"] or ""),
             ("parent_unit", w.get("parent_unit") or "", g["parent_code"] or ""),

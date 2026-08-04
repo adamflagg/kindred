@@ -104,7 +104,7 @@ n=$(q "SELECT COUNT(*) FROM lodging_units c JOIN lodging_units p ON c.parent_uni
 n=$(q "SELECT COUNT(*) FROM lodging_units WHERE is_container = 1")
 [[ "$n" -ge 1 ]] || note "expected at least one container unit, got $n"
 
-n=$(q "SELECT COUNT(*) FROM lodging_units WHERE allocation_default = 'staff_default'")
+n=$(q "SELECT COUNT(*) FROM lodging_units WHERE inventory_class = 'staff_default'")
 [[ "$n" -ge 1 ]] || note "expected at least one staff_default unit"
 
 # Every alias must resolve to at least one unit. A member set that came out

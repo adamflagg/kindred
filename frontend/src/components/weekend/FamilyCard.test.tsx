@@ -61,7 +61,7 @@ function confirmedUnit(overrides: Partial<LodgingUnitRow> = {}): LodgingUnitRow 
     is_confirmed: true,
     is_active: true,
     is_container: false,
-    allocation_default: 'family_pool',
+    inventory_class: 'family_pool',
     family_available_override: null,
     reason: '',
     is_family_available: true,

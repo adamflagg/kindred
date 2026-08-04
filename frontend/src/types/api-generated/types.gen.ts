@@ -1926,9 +1926,9 @@ export type LodgingUnitSummary = {
    */
   is_container?: boolean
   /**
-   * Allocation Default
+   * Inventory Class
    */
-  allocation_default?: string
+  inventory_class?: string
   /**
    * Family Available Override
    */

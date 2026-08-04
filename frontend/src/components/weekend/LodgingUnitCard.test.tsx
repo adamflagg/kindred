@@ -31,7 +31,7 @@ function unit(overrides: Partial<LodgingUnitRow> = {}): LodgingUnitRow {
     is_confirmed: false,
     is_active: true,
     is_container: false,
-    allocation_default: 'family_pool',
+    inventory_class: 'family_pool',
     family_available_override: null,
     reason: '',
     is_family_available: true,
@@ -141,7 +141,7 @@ describe('LodgingUnitCard', () => {
     render(
       <LodgingUnitCard
         slot={slot({
-          unit: unit({ allocation_default: 'staff_default', is_family_available: false }),
+          unit: unit({ inventory_class: 'staff_default', is_family_available: false }),
         })}
         hue="hsl(160 45% 42%)"
         onOpenParty={vi.fn()}

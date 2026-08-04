@@ -721,10 +721,10 @@ export function LodgingMap({ parties, units, year }: LodgingMapProps) {
               // the old code — meant the shape flipped with whichever row the
               // database happened to return first.
               const allStaff = cluster.members.every(
-                (member) => member.item.unit.allocation_default === 'staff_default'
+                (member) => member.item.unit.inventory_class === 'staff_default'
               )
               const anyStaff = cluster.members.some(
-                (member) => member.item.unit.allocation_default === 'staff_default'
+                (member) => member.item.unit.inventory_class === 'staff_default'
               )
               // Hue has the same order-dependence risk. Cross-area clusters
               // are 0 on the current registry — clustering is proximity-based

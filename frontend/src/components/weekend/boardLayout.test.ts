@@ -33,7 +33,7 @@ function unit(overrides: Partial<LodgingUnitRow> = {}): LodgingUnitRow {
     is_confirmed: false,
     is_active: true,
     is_container: false,
-    allocation_default: 'family_pool',
+    inventory_class: 'family_pool',
     family_available_override: null,
     reason: '',
     is_family_available: true,
@@ -48,7 +48,7 @@ function unit(overrides: Partial<LodgingUnitRow> = {}): LodgingUnitRow {
  * family-available. 21 of the property's 102 leaf units are these.
  */
 function staffUnit(overrides: Partial<LodgingUnitRow> = {}): LodgingUnitRow {
-  return unit({ allocation_default: 'staff_default', is_family_available: false, ...overrides })
+  return unit({ inventory_class: 'staff_default', is_family_available: false, ...overrides })
 }
 
 function party(overrides: Partial<RosterPartyRow> = {}): RosterPartyRow {

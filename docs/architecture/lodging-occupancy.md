@@ -114,7 +114,7 @@ rule: it blocks legitimate work and teaches staff to ignore warnings.
 
 ## What is not yet modelled
 
-- `lodging_units` has no shareability field. `allocation_default`
+- `lodging_units` has no shareability field. `inventory_class`
   (`family_pool` / `staff_default`) describes who a unit is *reserved for*, not
   how many parties may occupy it.
 - `lodging_availability` carries a per-unit `family_available` boolean per

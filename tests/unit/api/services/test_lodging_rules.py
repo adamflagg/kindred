@@ -47,7 +47,7 @@ class TestIsFamilyAvailable:
     """
 
     @pytest.mark.parametrize(
-        ("allocation_default", "override", "expected"),
+        ("inventory_class", "override", "expected"),
         [
             ("family_pool", None, True),
             ("family_pool", False, False),  # burst pipe
@@ -63,9 +63,9 @@ class TestIsFamilyAvailable:
         ],
     )
     def test_the_override_wins_and_the_role_decides_without_one(
-        self, allocation_default: str, override: bool | None, expected: bool
+        self, inventory_class: str, override: bool | None, expected: bool
     ) -> None:
-        assert is_family_available(allocation_default, override) is expected
+        assert is_family_available(inventory_class, override) is expected
 
     def test_false_is_a_decision_and_not_an_absent_override(self) -> None:
         """`False` and `None` are different answers on a family_pool unit.
