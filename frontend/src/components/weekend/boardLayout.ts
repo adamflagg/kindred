@@ -256,6 +256,29 @@ function consentReason(
  * predicate is how a tab starts promising a number of cards the board does not
  * draw.
  */
+/**
+ * Whether this unit is inventory the weekend is planned against.
+ *
+ * 21 of the property's 102 leaf units are permanent full-time staff housing
+ * (per the lodging registry), occupied by staff who are not enrolled per
+ * session and so never appear on a roster. None of the 21 has a measured
+ * `sleeps` — nobody has ever counted their beds, because they were never
+ * inventory. Their cards are always empty, and since drag placement every drawn
+ * card is an enabled drop target — an empty card reads as a room a family can
+ * be dropped into, which is how a family lands in an occupied staff cabin.
+ *
+ * Read off RESOLVED availability rather than the standing role, because a
+ * staff cabin can be released to families for one weekend and hiding the
+ * cabin staff just released would make that capability useless. The converse
+ * is deliberately NOT symmetric: a family cabin held back this weekend — a
+ * burst pipe, say — keeps its card and gets a "Held" badge, because it is
+ * still inventory and staff reason about adjacency. See `unitBadges.ts`:
+ * reserved units are badged, not hidden.
+ */
+function isPlanningInventory(unit: LodgingUnitRow): boolean {
+  return unit.allocation_default !== 'staff_default' || unit.is_family_available === true
+}
+
 function indexPayload(parties: RosterPartyRow[], units: LodgingUnitRow[]) {
   // Every leaf unit can hold a party, including a deactivated one — the
   // registry can be edited out from under a live assignment.
@@ -289,10 +312,13 @@ function indexPayload(parties: RosterPartyRow[], units: LodgingUnitRow[]) {
     else partiesByCode.set(code, [party])
   }
 
-  // A deactivated room is not bookable, so it clutters the board — unless
-  // somebody is still in it, in which case hiding it would drop them.
+  // A deactivated room is not bookable, and staff housing was never planning
+  // inventory at all, so both clutter the board — unless somebody is still in
+  // one, in which case hiding it would drop them.
   const drawn = [...leafByCode.values()].filter(
-    (unit) => unit.is_active !== false || (partiesByCode.get(unit.code)?.length ?? 0) > 0
+    (unit) =>
+      (unit.is_active !== false && isPlanningInventory(unit)) ||
+      (partiesByCode.get(unit.code)?.length ?? 0) > 0
   )
 
   return { drawn, partiesByCode, unplaced, offBoard }
