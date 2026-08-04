@@ -83,33 +83,6 @@ export function hasCoordinates(unit: LodgingUnitRow): boolean {
   return !(x === 0 && y === 0)
 }
 
-/**
- * The units a party occupies.
- *
- * NOT YET WIRED IN, deliberately. `buildMapModel` gets its party-to-unit
- * grouping from `buildBoard`, which groups on `unit_code` inside
- * `boardLayout.ts` — a file this PR must not edit. So today this function has
- * no caller but its own tests, and it is exported as the seam for one specific
- * change: when `RosterParty.unit_codes` lands (accepted by the merge-collapse
- * branch), a party can occupy SEVERAL rooms, `buildBoard`'s single-code
- * grouping stops being sufficient for positioning, and the map resolves units
- * here instead. Kept rather than deleted because that consumer is accepted and
- * in flight — unlike a seam whose consumer was cancelled, which should go.
- *
- * Do NOT hand-write `unit_codes` onto the row type ahead of the generated
- * types: a hand-written shape is how a surface starts silently disagreeing with
- * the API it reads.
- */
-export function resolvePartyUnits(
-  party: RosterPartyRow,
-  unitsByCode: Map<string, LodgingUnitRow>
-): LodgingUnitRow[] {
-  const code = party.unit_code ?? ''
-  if (code.length === 0) return []
-  const unit = unitsByCode.get(code)
-  return unit ? [unit] : []
-}
-
 function offMapReason(party: RosterPartyRow): OffMapReason {
   return party.is_merged_slot === true ? 'merged-slot' : 'not-on-board'
 }

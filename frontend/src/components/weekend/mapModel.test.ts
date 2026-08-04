@@ -5,7 +5,7 @@ import { describe, expect, it } from 'vitest'
 
 import type { LodgingUnitRow, RosterPartyRow } from '../../types/lodging'
 import { AREA_HUES } from './boardLayout'
-import { buildMapModel, countMapUnits, hasCoordinates, resolvePartyUnits } from './mapModel'
+import { buildMapModel, countMapUnits, hasCoordinates } from './mapModel'
 
 function unit(overrides: Partial<LodgingUnitRow> = {}): LodgingUnitRow {
   return {
@@ -94,26 +94,6 @@ describe('hasCoordinates', () => {
 
   it('accepts a genuine zero on one axis only', () => {
     expect(hasCoordinates(unit({ map_x: 0, map_y: 0.5 }))).toBe(true)
-  })
-})
-
-describe('resolvePartyUnits', () => {
-  const byCode = new Map([['cedar-1', unit()]])
-
-  it('returns nothing for an unplaced party', () => {
-    expect(resolvePartyUnits(party(), byCode)).toEqual([])
-  })
-
-  it('returns the one unit a placed party occupies', () => {
-    const got = resolvePartyUnits(party({ unit_code: 'cedar-1', unit_name: 'Cedar 1' }), byCode)
-    expect(got.map((u) => u.code)).toEqual(['cedar-1'])
-  })
-
-  it('returns nothing for a merged slot, which carries no unit code', () => {
-    // This is the ONLY place a party becomes units. When the API grows
-    // `unit_codes`, this function changes and nothing else does.
-    const merged = party({ unit_code: '', unit_name: 'Cedar 1 + Cedar 2', is_merged_slot: true })
-    expect(resolvePartyUnits(merged, byCode)).toEqual([])
   })
 })
 

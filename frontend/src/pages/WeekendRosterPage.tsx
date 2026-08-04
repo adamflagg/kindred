@@ -78,7 +78,16 @@ const VIEWS: View[] = ['housing', 'roster', 'map', 'inventory']
  * roster is what you actually came to look at. Revisit when weekends become
  * editable.
  */
-const DEFAULT_VIEW: View = 'roster'
+/**
+ * Housing, not the roster: the tab strip already leads with it, as summer's
+ * leads with Bunks, and placing families is what staff open a weekend to do.
+ * Landing on the second tab put the lead tab one click away from the work.
+ *
+ * `parseView` uses this for an unrecognised segment as well as a missing one,
+ * deliberately — a typo should land where a fresh visit lands, not somewhere
+ * else again.
+ */
+const DEFAULT_VIEW: View = 'housing'
 
 /**
  * The view is a URL segment, as the analytics sub-navs are — `/analytics/

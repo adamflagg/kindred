@@ -23,6 +23,7 @@
  * not carry, a container row, and a party carrying neither CampMinder id.
  */
 import type { LodgingUnitRow, RosterPartyRow, WeekendRoster } from '../../types/lodging'
+import { occupiedCodes } from './boardLayout'
 import { partyKey } from './partyKey'
 
 /**
@@ -90,20 +91,6 @@ export function partyGrainBody(party: RosterPartyRow): PartyGrainBody {
 /** Placed-ness, defined exactly as `buildBoard` defines it. Two answers here would split the board. */
 function isPlaced(party: RosterPartyRow): boolean {
   return (party.unit_name ?? '').length > 0
-}
-
-/**
- * The leaf codes a party currently occupies.
- *
- * `unit_codes` is the authority — it is the only field that survives a
- * multi-room placement, where `unit_code` is deliberately `''`. The fallback
- * exists for a payload predating that field rather than as a second opinion.
- */
-function occupiedCodes(party: RosterPartyRow): string[] {
-  const codes = party.unit_codes ?? []
-  if (codes.length > 0) return codes
-  const single = party.unit_code ?? ''
-  return single.length > 0 ? [single] : []
 }
 
 export interface ResolveDropArgs {
