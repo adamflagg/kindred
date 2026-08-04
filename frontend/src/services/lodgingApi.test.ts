@@ -14,6 +14,8 @@ import {
   fetchWeekendRoster,
   fetchWeekendSessions,
   fetchWeekendSummary,
+  placeParty,
+  unplaceParty,
 } from './lodgingApi'
 
 function okResponse(body: unknown): Response {
@@ -147,6 +149,102 @@ describe('copyPlacementsFromMirror', () => {
         scenario: 'scn7x2k9qw3mnbv',
       })
     ).rejects.toMatchObject({ status: 409 })
+  })
+})
+
+describe('placeParty', () => {
+  const WEEKEND = { year: 2026, sessionCmId: 1000001, scenario: 'scn7x2k9qw3mnbv' }
+
+  it('POSTs the party grain, the scenario and the unit set', async () => {
+    const mockFetch = vi.fn().mockResolvedValue(okResponse({ ok: true }))
+
+    await placeParty(mockFetch, {
+      ...WEEKEND,
+      grain: { household_cm_id: 2000001 },
+      unitIds: ['u1'],
+    })
+
+    const [url, options] = mockFetch.mock.calls[0] as [string, RequestInit]
+    expect(url).toBe('/api/lodging/placements')
+    expect(options.method).toBe('POST')
+    expect(JSON.parse(options.body as string)).toEqual({
+      year: 2026,
+      session_cm_id: 1000001,
+      scenario: 'scn7x2k9qw3mnbv',
+      household_cm_id: 2000001,
+      unit_ids: ['u1'],
+    })
+  })
+
+  it('sends person_cm_id alone for an adult weekend', async () => {
+    const mockFetch = vi.fn().mockResolvedValue(okResponse({ ok: true }))
+
+    await placeParty(mockFetch, { ...WEEKEND, grain: { person_cm_id: 5150 }, unitIds: ['u1'] })
+
+    const body = JSON.parse((mockFetch.mock.calls[0] as [string, RequestInit])[1].body as string)
+    expect(body).not.toHaveProperty('household_cm_id')
+    expect(body.person_cm_id).toBe(5150)
+  })
+
+  it('never sends an empty unit set, which the server rejects as a 422', async () => {
+    // An empty `unit_ids` used to be the TOMBSTONE — "unplaced in this
+    // scenario". kindred#1974 retired it: unplacing is now DELETE, and the
+    // schema pins `min_length=1`. Catching it here turns a confusing rollback
+    // into a caller bug, and this is the exact mistake older HANDOFF text
+    // instructs a reader to make.
+    const mockFetch = vi.fn()
+
+    await expect(
+      placeParty(mockFetch, { ...WEEKEND, grain: { household_cm_id: 2000001 }, unitIds: [] })
+    ).rejects.toThrow(/at least one unit/i)
+    expect(mockFetch).not.toHaveBeenCalled()
+  })
+
+  it('carries the status of a rejected write so the card can roll back with a reason', async () => {
+    const mockFetch = vi.fn().mockResolvedValue({
+      ok: false,
+      status: 403,
+      json: async () => ({ detail: 'Permission required: bunking.manage' }),
+    })
+
+    await expect(
+      placeParty(mockFetch, { ...WEEKEND, grain: { household_cm_id: 2000001 }, unitIds: ['u1'] })
+    ).rejects.toMatchObject({ status: 403, message: 'Permission required: bunking.manage' })
+  })
+})
+
+describe('unplaceParty', () => {
+  const WEEKEND = { year: 2026, sessionCmId: 1000001, scenario: 'scn7x2k9qw3mnbv' }
+
+  it('DELETEs with the party grain in the body', async () => {
+    // DELETE with a body, not a query string: the endpoint takes
+    // `PlacementDeleteRequest`. `fetch` sends a DELETE body fine; it is the
+    // shape the server declares that decides this, not convention.
+    const mockFetch = vi.fn().mockResolvedValue(okResponse({ ok: true }))
+
+    await unplaceParty(mockFetch, { ...WEEKEND, grain: { household_cm_id: 2000001 } })
+
+    const [url, options] = mockFetch.mock.calls[0] as [string, RequestInit]
+    expect(url).toBe('/api/lodging/placements')
+    expect(options.method).toBe('DELETE')
+    expect(JSON.parse(options.body as string)).toEqual({
+      year: 2026,
+      session_cm_id: 1000001,
+      scenario: 'scn7x2k9qw3mnbv',
+      household_cm_id: 2000001,
+    })
+  })
+
+  it('surfaces the failure detail', async () => {
+    const mockFetch = vi.fn().mockResolvedValue({
+      ok: false,
+      status: 404,
+      json: async () => ({ detail: 'No placement to remove' }),
+    })
+
+    await expect(
+      unplaceParty(mockFetch, { ...WEEKEND, grain: { household_cm_id: 2000001 } })
+    ).rejects.toThrow(/No placement to remove/)
   })
 })
 

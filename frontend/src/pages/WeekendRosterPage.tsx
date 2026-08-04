@@ -329,6 +329,8 @@ export default function WeekendRosterPage() {
                   units={units}
                   year={currentYear}
                   scenario={scenario}
+                  sessionCmId={selectedCmId ?? 0}
+                  canManage={canManageLodging}
                 />
               )}
               {view === 'map' && (

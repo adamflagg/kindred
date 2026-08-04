@@ -39,6 +39,15 @@ vi.mock('@tanstack/react-query', async (importOriginal) => {
   return { ...actual, useQueryClient: () => ({ invalidateQueries: vi.fn() }) }
 })
 
+// The board mounts `useLodgingPlacement`, which mounts a real `useMutation` —
+// and that reaches for a QueryClient through react-query's own internals,
+// which the `useQueryClient` stub above does not satisfy. These files are
+// about layout, navigation and the scenario picker; drag placement has its own
+// tests in `components/weekend/LodgingBoard.drag.test.tsx`.
+vi.mock('../hooks/useLodgingPlacement', () => ({
+  useLodgingPlacement: () => ({ move: vi.fn(() => Promise.resolve()), isMoving: false }),
+}))
+
 // The page reads the global ScenarioContext to resolve which plan the roster
 // is being read in (#1967). These tests are about layout and navigation, so
 // the mock stays in production mode throughout — the picker's own behaviour

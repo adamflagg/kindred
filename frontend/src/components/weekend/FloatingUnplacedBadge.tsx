@@ -8,10 +8,12 @@
  * `isExpanded` is local. Summer's board owns its badge's open state because
  * other board affordances read it; nothing on the weekend surfaces does.
  */
+import { useDroppable } from '@dnd-kit/core'
 import { useState } from 'react'
 
 import type { RosterPartyRow } from '../../types/lodging'
 import { FloatingQueueBadge } from '../ui'
+import { UNPLACED_DROPPABLE_ID } from './dragPlacement'
 import { FamilyCard } from './FamilyCard'
 import { partyKey } from './partyKey'
 
@@ -20,6 +22,8 @@ export interface FloatingUnplacedBadgeProps {
   onOpenParty: (party: RosterPartyRow) => void
   /** A FamilyDetailsPanel is open, so shift out from under it and stay up. */
   isPanelOpen?: boolean
+  /** Placement is live: dropping a family here UNPLACES it (a DELETE, not a tombstone). */
+  canPlace?: boolean
 }
 
 // Module-level so their identity is stable across renders: the shell memoises
@@ -48,8 +52,15 @@ export function FloatingUnplacedBadge({
   parties,
   onOpenParty,
   isPanelOpen = false,
+  canPlace = false,
 }: FloatingUnplacedBadgeProps) {
   const [isExpanded, setIsExpanded] = useState(false)
+  // The shell has carried `listRef`/`isDropTarget` since it was extracted,
+  // annotated "the weekend's at C2". This is C2.
+  const { setNodeRef, isOver } = useDroppable({
+    id: UNPLACED_DROPPABLE_ID,
+    disabled: !canPlace,
+  })
 
   return (
     <FloatingQueueBadge
@@ -59,7 +70,13 @@ export function FloatingUnplacedBadge({
       renderList={(visible) => (
         <div className="flex flex-col gap-1.5">
           {visible.map((party) => (
-            <FamilyCard key={partyKey(party)} party={party} inQueue={true} onOpen={onOpenParty} />
+            <FamilyCard
+              key={partyKey(party)}
+              party={party}
+              inQueue={true}
+              isDraggable={canPlace}
+              onOpen={onOpenParty}
+            />
           ))}
         </div>
       )}
@@ -79,6 +96,8 @@ export function FloatingUnplacedBadge({
         setIsExpanded(false)
       }}
       isPanelOpen={isPanelOpen}
+      listRef={setNodeRef}
+      isDropTarget={isOver}
     />
   )
 }

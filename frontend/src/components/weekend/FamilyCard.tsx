@@ -26,11 +26,13 @@
  * ages — ages are the entire point of a "similar ages" match — and the housing
  * chips the fit check actually judges.
  */
+import { useDraggable } from '@dnd-kit/core'
 import { Repeat, Users } from 'lucide-react'
 import { Fragment } from 'react'
 
 import type { LodgingUnitRow, RosterPartyRow } from '../../types/lodging'
 import { SHARE_WORDING, shareWordingChip } from './boardLayout'
+import { partyKey } from './partyKey'
 import { ATTENTION_LABEL, partyAttention } from './rosterAttention'
 
 export interface FamilyCardProps {
@@ -51,6 +53,14 @@ export interface FamilyCardProps {
    * from the slot around it.
    */
   inQueue?: boolean
+  /**
+   * Whether this card can be picked up — true only inside a scenario, for a
+   * user holding `bunking.manage`. See `LodgingBoard`.
+   *
+   * The drag id is derived here rather than passed in, so it cannot disagree
+   * with the id `resolveDrop` looks the party back up by.
+   */
+  isDraggable?: boolean
   onOpen: (party: RosterPartyRow) => void
 }
 
@@ -86,8 +96,17 @@ export function FamilyCard({
   unit,
   sharedSlot = false,
   inQueue = false,
+  isDraggable = false,
   onOpen,
 }: FamilyCardProps) {
+  // `disabled` does not gate the interaction — the conditional spread below
+  // does, and four tests pin that. It is here to keep dnd-kit from
+  // REGISTERING and measuring 62 nodes it can never drag on a read-only
+  // board.
+  const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
+    id: partyKey(party),
+    disabled: !isDraggable,
+  })
   const flags = party.flags ?? {}
   const children = party.children ?? []
   const attention = partyAttention(party, unit)
@@ -102,11 +121,23 @@ export function FamilyCard({
     <button
       type="button"
       data-family-card
+      ref={setNodeRef}
+      // Spread ONLY when draggable. dnd-kit sets `aria-roledescription` and
+      // the rest regardless of its own `disabled` flag, so a read-only board
+      // would announce every card as draggable to a screen reader and offer a
+      // keyboard drag that goes nowhere.
+      {...(isDraggable ? attributes : {})}
+      {...(isDraggable ? listeners : {})}
       onClick={() => {
         onOpen(party)
       }}
       className={`group border-border hover:border-primary/50 focus-visible:ring-ring flex w-full flex-col gap-1 rounded-lg border px-2 py-1.5 text-left transition-colors focus-visible:ring-2 focus-visible:outline-none ${
         inQueue ? 'bg-card' : 'bg-background'
+      } ${isDraggable ? 'cursor-grab active:cursor-grabbing' : ''} ${
+        // The card stays mounted and dimmed rather than being removed: the
+        // grid would reflow under the pointer mid-drag, moving every other
+        // drop target out from under it.
+        isDragging ? 'opacity-40' : ''
       }`}
     >
       <span className="flex items-baseline gap-1.5">
