@@ -54,7 +54,7 @@ function staffUnit(overrides: Partial<LodgingUnitRow> = {}): LodgingUnitRow {
 function party(overrides: Partial<RosterPartyRow> = {}): RosterPartyRow {
   return {
     grain: 'household',
-    household_cm_id: 101,
+    household_cm_id: 1000001,
     display_name: 'Johnson',
     adults: [{ adult_number: 1, display_name: 'Emma Johnson', relationship: 'Mother' }],
     children: [{ person_cm_id: 9001, display_name: 'Noah Johnson', age: 8, grade: 3 }],
@@ -230,7 +230,7 @@ describe('buildBoard — where each party lands', () => {
       [
         party({ unit_code: 'cedar-1', unit_name: 'Cedar 1' }),
         party({
-          household_cm_id: 102,
+          household_cm_id: 1000002,
           display_name: 'Garcia',
           unit_code: 'cedar-1',
           unit_name: 'Cedar 1',
@@ -276,9 +276,9 @@ describe('buildBoard — where each party lands', () => {
   it('loses nobody: every party is on a slot, the rail or the off-board list', () => {
     const parties = [
       party({ unit_code: 'cedar-1', unit_name: 'Cedar 1' }),
-      party({ household_cm_id: 102, display_name: 'Garcia' }),
+      party({ household_cm_id: 1000002, display_name: 'Garcia' }),
       party({
-        household_cm_id: 103,
+        household_cm_id: 1000003,
         display_name: 'Chen',
         unit_name: 'A merge',
         is_merged_slot: true,
@@ -370,9 +370,9 @@ describe('buildBoard — a party across several rooms', () => {
   it('loses nobody, and counts each party once however many rooms it holds', () => {
     const parties = [
       merged(),
-      party({ household_cm_id: 102, display_name: 'Garcia' }),
+      party({ household_cm_id: 1000002, display_name: 'Garcia' }),
       party({
-        household_cm_id: 103,
+        household_cm_id: 1000003,
         display_name: 'Chen',
         unit_code: 'cedar-2',
         unit_name: 'Cedar 2',
@@ -597,7 +597,7 @@ describe('buildBoard — area grouping and colour', () => {
       [
         party({ unit_code: 'cedar-1', unit_name: 'Cedar 1' }),
         party({
-          household_cm_id: 102,
+          household_cm_id: 1000002,
           display_name: 'Garcia',
           unit_code: 'cedar-1',
           unit_name: 'Cedar 1',
