@@ -152,7 +152,17 @@ class LodgingWriteService:
         }
 
         if existing is not None:
-            record = await self.repository.update_draft_assignment(str(existing.id), data)
+            # The COMMON path, and the one to reason about first. A scenario
+            # is normally seeded from the mirror before anyone drags, so from
+            # then on every drag finds a row and lands here; the create below
+            # only fires for a party with no placement in this scenario at
+            # all. There is no race to recover from -- the row is already
+            # ours -- but a refusal still has to answer as a refusal rather
+            # than escape bare to the catch-all handler as a 500.
+            try:
+                record = await self.repository.update_draft_assignment(str(existing.id), data)
+            except ClientResponseError as exc:
+                raise pb_error_to_http(exc) from exc
         else:
             try:
                 record = await self.repository.create_draft_assignment(data)
@@ -355,7 +365,17 @@ class LodgingWriteService:
         raised bare: this runs inside an except block, so a ClientResponseError
         escaping here reaches the catch-all handler in api/main.py as the 500
         this whole guard exists to prevent.
+
+        A REFUSAL never reaches the count. `held > copied` reads row counts and
+        nothing else, so a 401/403 part-way through a seed -- the service
+        token expiring mid-loop is the realistic way in -- would be reported
+        as a race that nobody ran. That is the third instance of the shape
+        kindred#1936 removed from the two create paths, and it is refused here
+        for the same reason: a refusal is not a race, whatever the row count
+        says afterwards.
         """
+        if exc.status in REFUSAL_STATUSES:
+            return pb_error_to_http(exc)
         try:
             held = await self.repository.count_draft_assignments(request.year, session_pb_id, request.scenario)
         except ClientResponseError as recheck_exc:
@@ -424,7 +444,12 @@ class LodgingWriteService:
         }
 
         if existing is not None:
-            record = await self.repository.update_availability(str(existing.id), data)
+            # Same shape as `place_party`'s update branch above, and refused
+            # the same way -- see the note there.
+            try:
+                record = await self.repository.update_availability(str(existing.id), data)
+            except ClientResponseError as exc:
+                raise pb_error_to_http(exc) from exc
         else:
             try:
                 record = await self.repository.create_availability(data)
