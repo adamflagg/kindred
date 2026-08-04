@@ -224,6 +224,39 @@ def test_a_known_max_beds_still_updates() -> None:
     assert apply_inv.plan_updates(want, have).updates[0].fields == {"max_beds": 14}
 
 
+def test_a_null_beds_never_downgrades_a_known_inventory() -> None:
+    """`beds` takes the same null-means-unknown contract as max_beds.
+
+    6 of the 94 Master Housing rows describe rooms without naming beds ("3 rm 2
+    bth"), or name a space whose beds are not listed ("guest room"). The parser
+    refuses those rather than guessing, so they arrive here as null — and a null
+    must never erase an inventory a human entered through the admin form.
+    """
+    want = [_unit("a", beds=None)]
+    have = {"a": _unit("a", beds=[{"type": "queen", "count": 1}])}
+
+    assert apply_inv.plan_updates(want, have).updates == []
+
+
+def test_a_parsed_beds_list_is_written() -> None:
+    want = [_unit("a", beds=[{"type": "twin_bunk", "count": 6}, {"type": "twin", "count": 3}])]
+    have = {"a": _unit("a", beds=None)}
+
+    assert apply_inv.plan_updates(want, have).updates[0].fields == {
+        "beds": [{"type": "twin_bunk", "count": 6}, {"type": "twin", "count": 3}]
+    }
+
+
+def test_an_unchanged_beds_list_plans_nothing() -> None:
+    """PocketBase hands a json column back as a parsed list; an identical list
+    must not read as a change or every run would rewrite every row."""
+    beds = [{"type": "queen", "count": 1}]
+    want = [_unit("a", beds=list(beds))]
+    have = {"a": _unit("a", beds=list(beds))}
+
+    assert apply_inv.plan_updates(want, have).updates == []
+
+
 def test_an_unresolvable_parent_code_is_an_error_not_a_silent_detach() -> None:
     """Under --structural a parent code that names nothing would otherwise fall
     back to "", detaching the child from its container with no error — the

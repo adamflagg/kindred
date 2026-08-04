@@ -52,6 +52,7 @@ INVENTORY_FIELDS = (
     "has_kitchen",
     "has_lights",
     "max_beds",
+    "beds",
 )
 
 # Real corrections, but each overwrites a value that may have been set on
@@ -60,8 +61,14 @@ STRUCTURAL_FIELDS = ("bathroom", "bathroom_group", "is_container", "parent_unit"
 
 # Fields where the file's null means UNKNOWN rather than a value to write. The
 # booleans alongside them have no such state — absent means false, which is a
-# real claim — so this applies only to the numbers.
-NULLABLE_FIELDS = ("max_beds",)
+# real claim — so this applies only to the numbers and to `beds`.
+#
+# `beds` earns it the same way max_beds does: the Master Housing parser refuses
+# rows that name rooms without naming beds ("3 rm 2 bth") or name a space whose
+# beds are not listed ("guest room"), so an unparsed row arrives as null. That
+# null is ignorance, not an empty room, and writing it would erase an inventory
+# entered by hand through the admin form.
+NULLABLE_FIELDS = ("max_beds", "beds")
 
 # Never written by this script under any flag. These are the fields staff
 # maintain, and overwriting them is precisely what create-if-absent exists to

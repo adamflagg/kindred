@@ -21,6 +21,7 @@ export interface BedTypeDef {
 export const BED_TYPES = [
   { id: 'twin', label: 'Twin', sleeps: 1 },
   { id: 'twin_bunk', label: 'Bunk (twin over twin)', sleeps: 2 },
+  { id: 'full_twin_bunk', label: 'Bunk (twin over full)', sleeps: 3 },
   { id: 'full', label: 'Full', sleeps: 2 },
   { id: 'queen', label: 'Queen', sleeps: 2 },
   { id: 'king', label: 'King', sleeps: 2 },

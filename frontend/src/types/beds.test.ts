@@ -38,6 +38,15 @@ describe('suggestedSleeps', () => {
     expect(suggestedSleeps([{ type: 'twin_bunk', count: 1 }])).toBe(2)
   })
 
+  // Twin on top, full underneath. Staff-confirmed as a real and distinct piece
+  // of furniture, found only in the family/guest housing (Tenaya, Tioga, Half
+  // Dome, El Cap, Doctor's House, Manzanita 2) and never in a camper cabin.
+  // Splitting it into a full plus a twin would total the same three people but
+  // describe two separate beds that could sit in different rooms.
+  it('counts a full-over-twin bunk as three people', () => {
+    expect(suggestedSleeps([{ type: 'full_twin_bunk', count: 1 }])).toBe(3)
+  })
+
   it('sums across mixed types', () => {
     expect(
       suggestedSleeps([
