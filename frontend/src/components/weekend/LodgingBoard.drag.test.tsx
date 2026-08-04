@@ -46,6 +46,14 @@ vi.mock('../../hooks/useLodgingPlacement', () => ({
 }))
 let placementOptions: unknown[] = []
 
+// The board also writes availability now. Mocked here only to keep the real
+// hook's `useApiWithAuth` out of a tree with no AuthProvider — this file is
+// about drag, and the availability gate is pinned in
+// `LodgingBoard.availability.test.tsx`.
+vi.mock('../../hooks/useUnitAvailability', () => ({
+  useUnitAvailability: () => ({ setAvailability: vi.fn(), pendingUnitId: '' }),
+}))
+
 /** The last `onDragEnd` the board handed to DndContext. */
 let onDragEnd: ((event: unknown) => void) | undefined
 

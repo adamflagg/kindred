@@ -7,9 +7,12 @@
  * is how it came to assert the mirror over a draft once #1967 shipped a picker:
  * two indicators, only one of them wired up.
  *
- * The board takes no scenario id because it never reads or writes one — the
- * page fetches, and nothing here mutates. Drag placement (#1985) is what earns
- * plumbing it back, along with the writes that need it.
+ * The board reads nothing and writes twice. The page fetches; this component
+ * owns two mutations, and they are gated differently on purpose — drag
+ * placement (#1985) needs a scenario because it writes a draft plan, and
+ * availability (#1999) needs none because a burst pipe closes a cabin in every
+ * plan for that weekend. `canPlace` and `canSetAvailability` below are that
+ * difference, and collapsing them is the mistake to avoid.
  *
  * Layout is §3.7: one collapsible section per area, each a WRAPPING GRID of
  * slot cards. Not summer's columns — a summer bunk column is tall because it
@@ -39,6 +42,7 @@ import { useCallback, useState } from 'react'
 
 import { useDismissOnDeadSpace } from '../../hooks/useDismissOnDeadSpace'
 import { useLodgingPlacement } from '../../hooks/useLodgingPlacement'
+import { useUnitAvailability } from '../../hooks/useUnitAvailability'
 import type { LodgingUnitRow, RosterPartyRow } from '../../types/lodging'
 import { buildBoard } from './boardLayout'
 import { resolveDrop } from './dragPlacement'
@@ -92,7 +96,15 @@ export function LodgingBoard({
   // send `session_cm_id: 0` against a schema declaring `gt=0`.
   const canPlace = canManage && scenario !== '' && sessionCmId > 0
 
+  // TWO conditions, not three, and the missing one is deliberate. Availability
+  // carries no scenario since 1500000135 — a burst pipe closes a cabin in every
+  // plan for that weekend — so reusing `canPlace` here would reintroduce the
+  // deleted dimension at the UI layer: staff looking at the CampMinder mirror,
+  // which is where most of them look, could not close a cabin at all.
+  const canSetAvailability = canManage && sessionCmId > 0
+
   const { move } = useLodgingPlacement({ year, sessionCmId, scenario })
+  const { setAvailability, pendingUnitId } = useUnitAvailability({ year, sessionCmId })
 
   const unitsByCode = new Map(units.map((unit) => [unit.code, unit]))
 
@@ -135,6 +147,21 @@ export function LodgingBoard({
     // surfacing as an unhandled rejection.
     void move(intent).catch(() => undefined)
   }
+
+  const writeAvailability = useCallback(
+    (unit: LodgingUnitRow, write: { familyAvailable: boolean | null; reason: string }) => {
+      // The rejection path is the hook's: it raises the toast. Catching here
+      // keeps the rejected promise from surfacing as an unhandled rejection,
+      // exactly as the drop handler does.
+      void setAvailability({
+        unitId: unit.unit_id,
+        unitName: unit.name,
+        familyAvailable: write.familyAvailable,
+        reason: write.reason,
+      }).catch(() => undefined)
+    },
+    [setAvailability]
+  )
 
   const openParty = useCallback((party: RosterPartyRow) => {
     setRequestClose(false)
@@ -256,6 +283,9 @@ export function LodgingBoard({
                             slot={slot}
                             hue={area.hue}
                             canPlace={canPlace}
+                            canSetAvailability={canSetAvailability}
+                            savingAvailability={pendingUnitId === slot.unit.unit_id}
+                            onSetAvailability={writeAvailability}
                             onOpenParty={openParty}
                           />
                         ))}

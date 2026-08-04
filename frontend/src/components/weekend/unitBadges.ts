@@ -53,3 +53,46 @@ export function reservationBadge(unit: LodgingUnitRow): UnitBadge | null {
   if (unit.allocation_default === 'staff_default') return staff
   return null
 }
+
+/** Which of the three reachable availability outcomes this unit can move to. */
+export interface AvailabilityAction {
+  kind: 'hold' | 'release' | 'clear'
+  /** The button's label, drawn from the same vocabulary as the badge above. */
+  label: string
+  /** What the write sends. `null` DELETES the row. */
+  familyAvailable: boolean | null
+  /**
+   * A cabin taken out of service with no stated reason is the row a staff
+   * member cannot act on next week. Clearing needs none: it restores the
+   * unit's standing role rather than asserting anything about this weekend.
+   */
+  needsReason: boolean
+}
+
+/**
+ * The one action a unit's card offers, or null if it offers none.
+ *
+ * ONE action, not a menu, because `family_available` has exactly three
+ * reachable outcomes and a unit is always in one of them: it either has an
+ * override to clear, or it has none and can take the one that disagrees with
+ * its role. Writing a value that AGREES with the role is deliberately not
+ * offered — it would pin the unit against a later registry edit while changing
+ * nothing staff can see.
+ *
+ * Lives beside `reservationBadge` so the two cannot drift. A card badged
+ * "Held" that offers to "Hold" it says two things about one cabin.
+ */
+export function availabilityAction(unit: LodgingUnitRow): AvailabilityAction | null {
+  // A container is a whole-building aggregate, never a bookable room.
+  if (unit.is_container === true) return null
+  // `!== null` and not truthiness: null (no row for this weekend) and false
+  // (closed this weekend) are different answers, and collapsing them makes
+  // either "Hold" or "Clear" unreachable across most of the board.
+  if (unit.family_available_override !== null && unit.family_available_override !== undefined) {
+    return { kind: 'clear', label: 'Clear', familyAvailable: null, needsReason: false }
+  }
+  if (unit.allocation_default === 'staff_default') {
+    return { kind: 'release', label: 'Release', familyAvailable: true, needsReason: true }
+  }
+  return { kind: 'hold', label: 'Hold', familyAvailable: false, needsReason: true }
+}

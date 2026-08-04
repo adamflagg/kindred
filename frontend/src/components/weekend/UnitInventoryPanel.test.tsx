@@ -3,7 +3,8 @@
  * adjacency and hiding them would make the map lie about the site.
  */
 import { render, screen } from '@testing-library/react'
-import { describe, expect, it } from 'vitest'
+import userEvent from '@testing-library/user-event'
+import { describe, expect, it, vi } from 'vitest'
 
 import type { LodgingUnitRow } from '../../types/lodging'
 import { UnitInventoryPanel } from './UnitInventoryPanel'
@@ -222,5 +223,85 @@ describe('UnitInventoryPanel', () => {
   it('explains an empty registry instead of rendering a bare panel', () => {
     render(<UnitInventoryPanel units={[]} />)
     expect(screen.getByText(/No lodging units in the registry yet/)).toBeInTheDocument()
+  })
+})
+
+describe('UnitInventoryPanel — releasing a staff cabin', () => {
+  // THE BACKDOOR, and it is deliberately not on the board.
+  //
+  // Releasing permanent staff housing to families is a once-in-several-years
+  // event (owner, 2026-08-04), so it does not earn a place in the weekend's
+  // main flow. But it cannot live on the board AT ALL, which is the part that
+  // is structural rather than a matter of taste: the board draws planning
+  // inventory, `isPlanningInventory` excludes a staff cabin with no override,
+  // and "release" is by definition the operation on a unit that is not yet
+  // inventory. The board card can offer Hold and Clear; Release has nowhere to
+  // stand there. This panel is the registry view and lists all 21 staff units,
+  // so it is the only surface where the action is reachable at all.
+
+  const STAFF = {
+    unit_id: 'u2',
+    code: 'aspen-lodge',
+    name: 'Aspen Lodge',
+    allocation_default: 'staff_default' as const,
+    is_family_available: false,
+  }
+
+  function renderPanel(props: Partial<React.ComponentProps<typeof UnitInventoryPanel>> = {}) {
+    const onSetAvailability = vi.fn()
+    render(
+      <UnitInventoryPanel
+        units={[unit(), unit(STAFF)]}
+        canSetAvailability
+        pendingUnitId=""
+        onSetAvailability={onSetAvailability}
+        {...props}
+      />
+    )
+    return { onSetAvailability }
+  }
+
+  it('offers Release on a staff cabin the board cannot draw a card for', async () => {
+    const user = userEvent.setup()
+    const { onSetAvailability } = renderPanel()
+
+    await user.click(screen.getByRole('button', { name: 'Release Aspen Lodge' }))
+    await user.type(screen.getByRole('textbox', { name: /reason/i }), 'Staff family away')
+    await user.click(screen.getByRole('button', { name: /^release$/i }))
+
+    expect(onSetAvailability).toHaveBeenCalledTimes(1)
+    expect(onSetAvailability.mock.calls[0]?.[0]).toMatchObject({ unit_id: 'u2' })
+    expect(onSetAvailability.mock.calls[0]?.[1]).toEqual({
+      familyAvailable: true,
+      reason: 'Staff family away',
+    })
+  })
+
+  it('offers Hold on a family cabin here too, so the panel is not a second vocabulary', () => {
+    renderPanel()
+
+    expect(screen.getByRole('button', { name: 'Hold Ridge A' })).toBeInTheDocument()
+  })
+
+  it('offers nothing without bunking.manage', () => {
+    // The same gate as the endpoint and as the board.
+    renderPanel({ canSetAvailability: false })
+
+    expect(screen.queryByRole('button', { name: /release|hold/i })).not.toBeInTheDocument()
+  })
+
+  it('stays read-only when the page passes no handler at all', () => {
+    // The panel renders on surfaces that do not write. A control wired to
+    // nothing is worse than no control.
+    render(<UnitInventoryPanel units={[unit(), unit(STAFF)]} canSetAvailability />)
+
+    expect(screen.queryByRole('button', { name: /release|hold/i })).not.toBeInTheDocument()
+  })
+
+  it('waits on the row being written, and only that one', () => {
+    renderPanel({ pendingUnitId: 'u2' })
+
+    expect(screen.getByRole('button', { name: 'Release Aspen Lodge' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Hold Ridge A' })).toBeEnabled()
   })
 })

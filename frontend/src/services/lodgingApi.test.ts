@@ -15,6 +15,7 @@ import {
   fetchWeekendSessions,
   fetchWeekendSummary,
   placeParty,
+  setUnitAvailability,
   unplaceParty,
 } from './lodgingApi'
 
@@ -245,6 +246,87 @@ describe('unplaceParty', () => {
     await expect(
       unplaceParty(mockFetch, { ...WEEKEND, grain: { household_cm_id: 2000001 } })
     ).rejects.toThrow(/No placement to remove/)
+  })
+})
+
+describe('setUnitAvailability', () => {
+  const WEEKEND = { year: 2026, sessionCmId: 1000001, unitId: 'u1' }
+
+  it('PUTs the weekend, the unit and the explicit boolean', async () => {
+    const mockFetch = vi.fn().mockResolvedValue(okResponse({ record_id: 'r1', deleted: false }))
+
+    const result = await setUnitAvailability(mockFetch, {
+      ...WEEKEND,
+      familyAvailable: false,
+      reason: 'Burst pipe',
+    })
+
+    const [url, options] = mockFetch.mock.calls[0] as [string, RequestInit]
+    expect(url).toBe('/api/lodging/availability')
+    expect(options.method).toBe('PUT')
+    // No scenario. The endpoint takes none since 1500000135, and sending one
+    // would be a 422 against a model that no longer extends ScenarioWriteRequest.
+    expect(JSON.parse(options.body as string)).toEqual({
+      year: 2026,
+      session_cm_id: 1000001,
+      unit_id: 'u1',
+      family_available: false,
+      reason: 'Burst pipe',
+    })
+    expect(result).toEqual({ record_id: 'r1', deleted: false })
+  })
+
+  it('sends a hold as an explicit false, never as a missing field', async () => {
+    // THE trap. `false` and `null` are different answers — false is "closed
+    // this weekend", null DELETES the row and hands the question back to the
+    // unit's role. Any falsy handling on the way out (`|| null`, a spread that
+    // drops it, `familyAvailable ? ... : undefined`) turns "hold this cabin"
+    // into "clear the override", and the write reads as a no-op that staff
+    // only notice when a family arrives at a cabin with no water.
+    const mockFetch = vi.fn().mockResolvedValue(okResponse({ record_id: 'r1', deleted: false }))
+
+    await setUnitAvailability(mockFetch, {
+      ...WEEKEND,
+      familyAvailable: false,
+      reason: 'Burst pipe',
+    })
+
+    const body = JSON.parse((mockFetch.mock.calls[0] as [string, RequestInit])[1].body as string)
+    expect(body).toHaveProperty('family_available')
+    expect(body.family_available).toBe(false)
+  })
+
+  it('clears with an explicit null and reports the row as deleted', async () => {
+    // `null` is how "whatever this unit's role says" is spelled. There is no
+    // value meaning "normal": writing one would pin the unit against a later
+    // change to its role. `deleted` is the caller's only way to tell a cleared
+    // override from a written one.
+    const mockFetch = vi.fn().mockResolvedValue(okResponse({ record_id: '', deleted: true }))
+
+    const result = await setUnitAvailability(mockFetch, {
+      ...WEEKEND,
+      familyAvailable: null,
+      reason: '',
+    })
+
+    const body = JSON.parse((mockFetch.mock.calls[0] as [string, RequestInit])[1].body as string)
+    expect(body.family_available).toBeNull()
+    expect(result.deleted).toBe(true)
+  })
+
+  it('carries the status of a refused write so the card can say why', async () => {
+    // The endpoint is gated on `bunking.manage`. The control is gated on the
+    // same permission, so a 403 here means the token expired mid-session
+    // rather than that the user never had it — which is a different sentence.
+    const mockFetch = vi.fn().mockResolvedValue({
+      ok: false,
+      status: 403,
+      json: async () => ({ detail: 'Permission required: bunking.manage' }),
+    })
+
+    await expect(
+      setUnitAvailability(mockFetch, { ...WEEKEND, familyAvailable: true, reason: 'Overflow' })
+    ).rejects.toMatchObject({ status: 403, message: 'Permission required: bunking.manage' })
   })
 })
 

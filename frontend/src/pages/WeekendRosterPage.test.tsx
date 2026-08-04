@@ -48,6 +48,16 @@ vi.mock('../hooks/useLodgingPlacement', () => ({
   useLodgingPlacement: () => ({ move: vi.fn(() => Promise.resolve()), isMoving: false }),
 }))
 
+// Same reason, same board: the reserve/release control mounts a real
+// `useMutation` too. Its gate is pinned in
+// `components/weekend/LodgingBoard.availability.test.tsx`.
+vi.mock('../hooks/useUnitAvailability', () => ({
+  useUnitAvailability: () => ({
+    setAvailability: vi.fn(() => Promise.resolve()),
+    pendingUnitId: '',
+  }),
+}))
+
 // The page reads the global ScenarioContext to resolve which plan the roster
 // is being read in (#1967). These tests are about layout and navigation, so
 // the mock stays in production mode throughout — the picker's own behaviour

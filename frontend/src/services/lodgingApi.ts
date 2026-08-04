@@ -10,6 +10,7 @@
 import type { PartyGrainBody } from '../components/weekend/dragPlacement'
 import type {
   HouseholdMedical,
+  LodgingWriteResult,
   WeekendRoster,
   WeekendSessionList,
   WeekendSummary,
@@ -200,6 +201,52 @@ export async function unplaceParty(
     body: JSON.stringify(placementBody(base)),
   })
   if (!response.ok) throw await toError(response, 'Failed to unplace the party')
+}
+
+/** Holding one unit back for a weekend, or releasing one to families. */
+export interface AvailabilityWrite {
+  year: number
+  sessionCmId: number
+  /** The unit's PocketBase id, which is what `lodging_availability.unit` relates to. */
+  unitId: string
+  /**
+   * THREE values, not two. `false` closes the unit for this weekend, `true`
+   * opens it, and `null` DELETES the row so the unit's own role decides again.
+   * Nothing here may be read for truthiness: `!familyAvailable` folds a hold
+   * into a clear.
+   */
+  familyAvailable: boolean | null
+  /** Display only — the rule never branches on it. `''` when clearing. */
+  reason: string
+}
+
+/**
+ * Reserve or release one unit for one weekend.
+ *
+ * Takes NO scenario, unlike every other write on this client. Availability is
+ * a fact about the WEEKEND rather than about the plan — a burst pipe closes a
+ * cabin in every scenario for that weekend — so 1500000135 deleted the
+ * dimension and `AvailabilityWriteRequest` stopped extending
+ * `ScenarioWriteRequest`. Requiring one is what left this endpoint with no
+ * caller and the table with no rows.
+ */
+export async function setUnitAvailability(
+  fetchWithAuth: FetchWithAuth,
+  { year, sessionCmId, unitId, familyAvailable, reason }: AvailabilityWrite
+): Promise<LodgingWriteResult> {
+  const response = await fetchWithAuth(`${API_BASE}/availability`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      year,
+      session_cm_id: sessionCmId,
+      unit_id: unitId,
+      family_available: familyAvailable,
+      reason,
+    }),
+  })
+  if (!response.ok) throw await toError(response, 'Failed to update availability')
+  return response.json() as Promise<LodgingWriteResult>
 }
 
 /**

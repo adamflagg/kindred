@@ -9,18 +9,37 @@
 import { Bath, Plug, Snowflake } from 'lucide-react'
 
 import type { LodgingUnitRow } from '../../types/lodging'
+import type { UnitAvailabilityWrite } from './LodgingUnitCard'
 import { reservationBadge } from './unitBadges'
+import { UnitAvailabilityControl } from './UnitAvailabilityControl'
 
 export interface UnitInventoryPanelProps {
   units: LodgingUnitRow[]
+  /**
+   * `bunking.manage`, with a weekend selected — the board's
+   * `canSetAvailability`, not its `canPlace`.
+   */
+  canSetAvailability?: boolean
+  /** The unit id currently being written, so one row waits and the rest do not. */
+  pendingUnitId?: string
+  onSetAvailability?: (unit: LodgingUnitRow, write: UnitAvailabilityWrite) => void
 }
 
 function UnitRow({
   unit,
   showUnconfirmedBadge,
+  canSetAvailability,
+  pendingUnitId,
+  onSetAvailability,
 }: {
   unit: LodgingUnitRow
   showUnconfirmedBadge: boolean
+  canSetAvailability: boolean
+  pendingUnitId: string
+  // `| undefined` spelled out: the panel passes this straight through, and
+  // `exactOptionalPropertyTypes` distinguishes "absent" from "present and
+  // undefined" at a forwarding boundary.
+  onSetAvailability?: ((unit: LodgingUnitRow, write: UnitAvailabilityWrite) => void) | undefined
 }) {
   const badge = reservationBadge(unit)
   return (
@@ -53,11 +72,29 @@ function UnitRow({
           Unconfirmed
         </span>
       )}
+      {/* The ONLY surface that can offer Release. The board draws planning
+          inventory, and a staff cabin with no override is not inventory yet --
+          which is precisely the set "release" operates on -- so its card can
+          carry Hold and Clear but never Release. Here the whole registry is
+          listed, so every action is reachable. */}
+      <UnitAvailabilityControl
+        unit={unit}
+        canManage={canSetAvailability && onSetAvailability !== undefined}
+        isSaving={pendingUnitId === unit.unit_id}
+        onSubmit={(write) => {
+          onSetAvailability?.(unit, write)
+        }}
+      />
     </li>
   )
 }
 
-export function UnitInventoryPanel({ units }: UnitInventoryPanelProps) {
+export function UnitInventoryPanel({
+  units,
+  canSetAvailability = false,
+  pendingUnitId = '',
+  onSetAvailability,
+}: UnitInventoryPanelProps) {
   if (units.length === 0) {
     return (
       <div className="card-lodge p-4">
@@ -100,7 +137,14 @@ export function UnitInventoryPanel({ units }: UnitInventoryPanelProps) {
           </h3>
           <ul>
             {bucket.units.map((unit) => (
-              <UnitRow key={unit.unit_id} unit={unit} showUnconfirmedBadge={!allUnconfirmed} />
+              <UnitRow
+                key={unit.unit_id}
+                unit={unit}
+                showUnconfirmedBadge={!allUnconfirmed}
+                canSetAvailability={canSetAvailability}
+                pendingUnitId={pendingUnitId}
+                onSetAvailability={onSetAvailability}
+              />
             ))}
           </ul>
         </section>
