@@ -59,7 +59,7 @@ function rosterKey(scenario: string) {
 }
 
 function seededRoster(): WeekendRoster {
-  return { year: YEAR, session_cm_id: SESSION, parties: [], units: [] } as unknown as WeekendRoster
+  return { year: YEAR, session_cm_id: SESSION, parties: [], units: [] }
 }
 
 beforeEach(() => {

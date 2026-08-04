@@ -17,7 +17,7 @@
 import { describe, expect, it } from 'vitest'
 
 import type { LodgingUnitRow } from '../../types/lodging'
-import { reservationBadge } from './unitBadges'
+import { availabilityAction, reservationBadge } from './unitBadges'
 
 function unit(overrides: Partial<LodgingUnitRow> = {}): LodgingUnitRow {
   return {
@@ -143,5 +143,87 @@ describe('reservationBadge', () => {
     )
 
     expect(held).toEqual(alsoHeld)
+  })
+})
+
+describe('availabilityAction', () => {
+  // The action lives beside the badge, in the same module, because the card
+  // must not say two things about one cabin: a card badged "Held" offering to
+  // "Hold" it is the drift this prevents.
+
+  it('offers to hold an ordinary family cabin', () => {
+    expect(availabilityAction(unit())).toEqual({
+      kind: 'hold',
+      label: 'Hold',
+      familyAvailable: false,
+      needsReason: true,
+    })
+  })
+
+  it('offers to release permanent staff housing', () => {
+    // Rare and explicit, not absent. One season of data corroborates that staff
+    // cabins are never released; it does not prove it, so the capability stays.
+    expect(
+      availabilityAction(unit({ allocation_default: 'staff_default', is_family_available: false }))
+    ).toEqual({ kind: 'release', label: 'Release', familyAvailable: true, needsReason: true })
+  })
+
+  it('offers to clear a held family cabin, and asks for no reason to do it', () => {
+    // `null` DELETES the row. There is no value meaning "normal": writing one
+    // would pin the unit against a later change to its role.
+    expect(
+      availabilityAction(
+        unit({ family_available_override: false, reason: 'Burst pipe', is_family_available: false })
+      )
+    ).toEqual({ kind: 'clear', label: 'Clear', familyAvailable: null, needsReason: false })
+  })
+
+  it('offers to clear a released staff cabin', () => {
+    expect(
+      availabilityAction(
+        unit({
+          allocation_default: 'staff_default',
+          family_available_override: true,
+          is_family_available: true,
+        })
+      )?.kind
+    ).toBe('clear')
+  })
+
+  it('offers to clear a row that merely agrees with the unit role', () => {
+    // Redundant but storable, and reachable by a hand-edited row rather than
+    // by this control. Clearing it is the only way to stop it pinning the unit
+    // against a later registry edit, so the action must not be withheld just
+    // because the resolved answer looks ordinary.
+    expect(availabilityAction(unit({ family_available_override: true }))?.kind).toBe('clear')
+    expect(
+      availabilityAction(
+        unit({
+          allocation_default: 'staff_default',
+          family_available_override: false,
+          is_family_available: false,
+        })
+      )?.kind
+    ).toBe('clear')
+  })
+
+  it('reads null and false as different answers, exactly as the badge does', () => {
+    // The trap. `unit.family_available_override !== null` is the test; a
+    // truthiness test (`if (unit.family_available_override)`) treats an
+    // ordinary cabin's null and a held cabin's false alike, and whichever way
+    // that branch falls, one of "Hold" or "Clear" becomes unreachable on most
+    // of the board.
+    expect(availabilityAction(unit({ family_available_override: null }))?.kind).toBe('hold')
+    expect(
+      availabilityAction(unit({ family_available_override: false, is_family_available: false }))
+        ?.kind
+    ).toBe('clear')
+  })
+
+  it('offers nothing on a building row', () => {
+    // A container is a whole-building aggregate, not a bookable room. Holding
+    // one would write an availability row against a unit no family can be
+    // placed into, and the board draws no card for it anyway.
+    expect(availabilityAction(unit({ is_container: true }))).toBeNull()
   })
 })

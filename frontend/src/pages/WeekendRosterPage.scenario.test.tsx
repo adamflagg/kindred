@@ -138,6 +138,16 @@ vi.mock('../hooks/useLodgingPlacement', () => ({
   useLodgingPlacement: () => ({ move: vi.fn(() => Promise.resolve()), isMoving: false }),
 }))
 
+// Same reason, same board: the reserve/release control mounts a real
+// `useMutation` too. Its gate is pinned in
+// `components/weekend/LodgingBoard.availability.test.tsx`.
+vi.mock('../hooks/useUnitAvailability', () => ({
+  useUnitAvailability: () => ({
+    setAvailability: vi.fn(() => Promise.resolve()),
+    pendingUnitId: '',
+  }),
+}))
+
 const toastSuccess = vi.fn()
 const toastError = vi.fn()
 

@@ -14,12 +14,19 @@
 import { useDroppable } from '@dnd-kit/core'
 import { Bath, Plug, Snowflake, TriangleAlert, Users } from 'lucide-react'
 
-import type { RosterPartyRow } from '../../types/lodging'
+import type { LodgingUnitRow, RosterPartyRow } from '../../types/lodging'
 import type { BoardSlot } from './boardLayout'
 import { unitDroppableId } from './dragPlacement'
 import { FamilyCard } from './FamilyCard'
 import { partyKey } from './partyKey'
 import { reservationBadge } from './unitBadges'
+import { UnitAvailabilityControl } from './UnitAvailabilityControl'
+
+/** What the reserve/release control asks the board to write. */
+export interface UnitAvailabilityWrite {
+  familyAvailable: boolean | null
+  reason: string
+}
 
 export interface LodgingUnitCardProps {
   slot: BoardSlot
@@ -27,6 +34,18 @@ export interface LodgingUnitCardProps {
   hue: string
   /** Placement is live: a scenario is selected and the user holds `bunking.manage`. */
   canPlace?: boolean
+  /**
+   * Availability is writable: the user holds `bunking.manage` and a weekend is
+   * selected.
+   *
+   * SEPARATE from `canPlace`, which also requires a scenario. Availability
+   * carries none since 1500000135, so gating it on one would make a burst pipe
+   * unrecordable unless a draft plan happened to be open.
+   */
+  canSetAvailability?: boolean
+  /** True while THIS unit's availability write is in flight. */
+  savingAvailability?: boolean
+  onSetAvailability?: (unit: LodgingUnitRow, write: UnitAvailabilityWrite) => void
   onOpenParty: (party: RosterPartyRow) => void
 }
 
@@ -34,6 +53,9 @@ export function LodgingUnitCard({
   slot,
   hue,
   canPlace = false,
+  canSetAvailability = false,
+  savingAvailability = false,
+  onSetAvailability,
   onOpenParty,
 }: LodgingUnitCardProps) {
   const { unit, parties, consent } = slot
@@ -99,6 +121,19 @@ export function LodgingUnitCard({
             Inactive
           </span>
         )}
+        {/* Beside the badge, because the two report the same fact and a card
+            that says "Held" in one place and offers to hold it in another says
+            two things about one cabin. The control's own children carry
+            `w-full`, so the reason line and the open form wrap onto their own
+            rows inside this wrapping flex. */}
+        <UnitAvailabilityControl
+          unit={unit}
+          canManage={canSetAvailability && onSetAvailability !== undefined}
+          isSaving={savingAvailability}
+          onSubmit={(write) => {
+            onSetAvailability?.(unit, write)
+          }}
+        />
       </div>
 
       {isShared && (

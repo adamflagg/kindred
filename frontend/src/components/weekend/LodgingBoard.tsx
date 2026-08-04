@@ -39,6 +39,7 @@ import { useCallback, useState } from 'react'
 
 import { useDismissOnDeadSpace } from '../../hooks/useDismissOnDeadSpace'
 import { useLodgingPlacement } from '../../hooks/useLodgingPlacement'
+import { useUnitAvailability } from '../../hooks/useUnitAvailability'
 import type { LodgingUnitRow, RosterPartyRow } from '../../types/lodging'
 import { buildBoard } from './boardLayout'
 import { resolveDrop } from './dragPlacement'
@@ -92,7 +93,15 @@ export function LodgingBoard({
   // send `session_cm_id: 0` against a schema declaring `gt=0`.
   const canPlace = canManage && scenario !== '' && sessionCmId > 0
 
+  // TWO conditions, not three, and the missing one is deliberate. Availability
+  // carries no scenario since 1500000135 — a burst pipe closes a cabin in every
+  // plan for that weekend — so reusing `canPlace` here would reintroduce the
+  // deleted dimension at the UI layer: staff looking at the CampMinder mirror,
+  // which is where most of them look, could not close a cabin at all.
+  const canSetAvailability = canManage && sessionCmId > 0
+
   const { move } = useLodgingPlacement({ year, sessionCmId, scenario })
+  const { setAvailability, pendingUnitId } = useUnitAvailability({ year, sessionCmId })
 
   const unitsByCode = new Map(units.map((unit) => [unit.code, unit]))
 
@@ -135,6 +144,21 @@ export function LodgingBoard({
     // surfacing as an unhandled rejection.
     void move(intent).catch(() => undefined)
   }
+
+  const writeAvailability = useCallback(
+    (unit: LodgingUnitRow, write: { familyAvailable: boolean | null; reason: string }) => {
+      // The rejection path is the hook's: it raises the toast. Catching here
+      // keeps the rejected promise from surfacing as an unhandled rejection,
+      // exactly as the drop handler does.
+      void setAvailability({
+        unitId: unit.unit_id,
+        unitName: unit.name,
+        familyAvailable: write.familyAvailable,
+        reason: write.reason,
+      }).catch(() => undefined)
+    },
+    [setAvailability]
+  )
 
   const openParty = useCallback((party: RosterPartyRow) => {
     setRequestClose(false)
@@ -256,6 +280,9 @@ export function LodgingBoard({
                             slot={slot}
                             hue={area.hue}
                             canPlace={canPlace}
+                            canSetAvailability={canSetAvailability}
+                            savingAvailability={pendingUnitId === slot.unit.unit_id}
+                            onSetAvailability={writeAvailability}
                             onOpenParty={openParty}
                           />
                         ))}
