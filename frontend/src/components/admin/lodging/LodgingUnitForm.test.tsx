@@ -38,7 +38,6 @@ const UNIT: LodgingUnitRecord = {
   map_y: 0.2,
   sleeps: 0,
   beds: null,
-  max_beds: null,
   bathroom: 'none',
   bathroom_group: '',
   near_bathhouse: false,
@@ -410,7 +409,7 @@ describe('LodgingUnitForm — beds', () => {
 /**
  * The flag has to be assembled from three pieces of state the capacity section
  * does not own — `beds` is its own, but `is_confirmed` lives in the amenity
- * object and `is_container` and `max_beds` on the unit. These render through
+ * object and `is_container` lives on the unit. These render through
  * the whole form on purpose: the rule is unit-tested in capacityFlag.test.ts,
  * and what is left to get wrong is the plumbing.
  */
@@ -480,38 +479,14 @@ describe('LodgingUnitForm — capacity flag', () => {
     expect(screen.getByRole('button', { name: 'Use suggested' })).toBeInTheDocument()
   })
 
-  it('shows the sheet capacity as its own labelled fact', () => {
-    // max_beds is the Master Housing `Capacity` column and is NOT a function
-    // of the bed list — identical bed text maps to 12, 14, 16 and 20. It is
-    // evidence for the person adjudicating, never an input to the rule, so it
-    // is rendered outside the flag rather than folded into it.
-    renderUnit({ ...CONFLICTED, max_beds: 4 })
-
-    expect(screen.getByText(/sheet capacity: 4/i)).toBeInTheDocument()
-  })
-
-  it('shows the sheet capacity on a unit carrying no flag at all', () => {
-    // Gating it on the flag would make it read as corroboration for the rule.
-    renderUnit({ ...BUNKED, sleeps: 4, max_beds: 6 })
-
-    expect(screen.queryByText(/beds account for/i)).not.toBeInTheDocument()
-    expect(screen.getByText(/sheet capacity: 6/i)).toBeInTheDocument()
-  })
-
-  it('shows no sheet capacity for a unit the sheet never gave one', () => {
-    renderUnit({ ...CONFLICTED, max_beds: null })
-
-    expect(screen.queryByText(/sheet capacity/i)).not.toBeInTheDocument()
-  })
-
-  it('shows no sheet capacity for a stored 0, which is how PocketBase spells unknown', () => {
-    // The registry FILE carries null for the 15 units the sheet gave no
-    // capacity, but PocketBase cannot store NULL in a number column, so they
-    // come back over the wire as 0 — see apply_lodging_inventory.py, which
-    // says so where it guards max_beds. A `!== null` check alone therefore
-    // renders "Sheet capacity: 0" on every one of them: a room for nobody,
-    // asserted by a screen that was only ever told nothing.
-    renderUnit({ ...CONFLICTED, max_beds: 0 })
+  it('never shows the sheet capacity, which is not a corroborating number', () => {
+    // The Master Housing `Capacity` column agrees with the bed count on only
+    // 42 of the 88 units carrying both, and sits BELOW the physical bed count
+    // on 33 — thirty at exactly -1, with no cause derivable from the beds.
+    // Half the conflicts this flag raises are themselves ±1, so showing a
+    // column with ±1 systematic noise beside them would lend a confidence it
+    // has not earned.
+    renderUnit(CONFLICTED)
 
     expect(screen.queryByText(/sheet capacity/i)).not.toBeInTheDocument()
   })

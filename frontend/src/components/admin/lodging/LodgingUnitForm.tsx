@@ -158,7 +158,6 @@ export function LodgingUnitForm({ areas, units, unit, onSaved, onCancel }: Lodgi
         onChange={setCapacity}
         isConfirmed={amenities.is_confirmed}
         isContainer={isContainer}
-        maxBeds={unit?.max_beds ?? null}
       />
 
       <UnitAmenityFieldset value={amenities} onChange={setAmenities} />

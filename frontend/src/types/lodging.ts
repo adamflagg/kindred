@@ -194,21 +194,6 @@ export interface LodgingUnitRecord extends PocketBaseRecordBase {
    * through `normaliseBeds`.
    */
   beds: BedInventory | null
-  /**
-   * The Master Housing sheet's `Capacity` column.
-   *
-   * UNKNOWN is spelled BOTH ways and a reader must handle both: the registry
-   * file carries null for the 15 units the sheet gave no capacity, but
-   * PocketBase cannot store NULL in a number column, so the same rows arrive
-   * over the wire as 0. Rendering a raw 0 claims a room that sleeps nobody.
-   *
-   * NOT a function of `beds`, and never a way to validate one against the
-   * other: identical bed text maps to different capacities across the sheet
-   * (`6 bunks` appears as 12, 14, 16 AND 20), so no multiplier reconciles
-   * them. On a single unit, with a human reading it, it is a useful third data
-   * point — which is the only way it is used.
-   */
-  max_beds: number | null
   bathroom: BathroomStoredValue
   bathroom_group: string
   near_bathhouse: boolean

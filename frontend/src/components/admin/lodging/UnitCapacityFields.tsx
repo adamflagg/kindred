@@ -34,8 +34,6 @@ export interface UnitCapacityFieldsProps {
    */
   isConfirmed: boolean
   isContainer: boolean
-  /** The sheet's `Capacity`. Context for a human, never an input to the rule. */
-  maxBeds: number | null
 }
 
 export function UnitCapacityFields({
@@ -43,7 +41,6 @@ export function UnitCapacityFields({
   onChange,
   isConfirmed,
   isContainer,
-  maxBeds,
 }: UnitCapacityFieldsProps) {
   const flag = capacityFlag({ beds: value.beds, sleeps: value.sleeps, isConfirmed, isContainer })
 
@@ -99,16 +96,15 @@ export function UnitCapacityFields({
           </p>
         )}
 
-        {/* Outside the flag, and shown whether or not there is one. Folded in,
-            it would read as corroboration for the comparison; it is not. See
-            LodgingUnitRecord.max_beds for why it cannot be.
-
-            0 is excluded for the same reason `sleeps` and the derived total
-            are: PocketBase cannot store NULL in a number column, so 0 is how
-            the 15 units the sheet gave no capacity come back. */}
-        {maxBeds !== null && maxBeds > 0 && (
-          <p className="text-muted-foreground mt-1.5 text-xs">Sheet capacity: {maxBeds}</p>
-        )}
+        {/* The Master Housing sheet's `Capacity` column is deliberately NOT
+            shown beside these. It reads as a corroborating third number and is
+            not one: it agrees with the bed count on only 42 of the 88 units
+            carrying both, and sits BELOW the physical bed count on 33 — thirty
+            of those at exactly -1, with no cause derivable from the beds, since
+            identical bed compositions land on different capacities. Half the
+            conflicts this flag raises are themselves ±1, so a column with ±1
+            systematic noise cannot adjudicate them. It would lend confidence
+            it has not earned. */}
       </div>
     </>
   )
