@@ -332,6 +332,15 @@ docs/plans
 docs/reference/issue-triage.md
 docs/reference/solver-config-decisions.md
 
+# HANDOFF.md is a large, fast-drifting working document for the weekend housing
+# programme. Tracking it meant re-committing an 84 KB file on almost every change
+# for no review value, and its "Open issues" section drifted out of date faster
+# than anything read it. Untracked 2026-08-04; it may still exist locally, and
+# source comments that cite it by section are pointers to history, not to a
+# current spec. The issue tree and docs/reference/issue-triage.md are
+# authoritative. See docs/reference/weekend-go-live-sequence.md.
+HANDOFF.md
+
 # Synthetic no-PII seed fixture (issue #1623) — committed test data, not local config.
 # Override the repo-wide *.json ignore for the manifest; the .db.gz is not matched by *.db.
 !tests/fixtures/synthetic_pb/MANIFEST.json
