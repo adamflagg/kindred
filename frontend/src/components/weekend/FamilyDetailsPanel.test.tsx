@@ -27,8 +27,16 @@ vi.mock('../../hooks/usePermissions', () => ({
   }),
 }))
 
+const medicalResult = {
+  value: { data: undefined, isLoading: false, error: null } as {
+    data: unknown
+    isLoading: boolean
+    error: Error | null
+  },
+}
+
 vi.mock('../../hooks/useWeekendRoster', () => ({
-  useHouseholdMedical: () => ({ data: undefined, isLoading: false, error: null }),
+  useHouseholdMedical: () => medicalResult.value,
 }))
 
 // One client per TEST, built outside the render path. Constructing it inside
@@ -93,7 +101,7 @@ function party(overrides: Partial<RosterPartyRow> = {}): RosterPartyRow {
       request_text: REQUEST_TEXT,
       needs_resolution: false,
     },
-    flags: { has_medical_narrative: true },
+    flags: { needs_power: true },
     ...overrides,
   }
 }
@@ -127,6 +135,7 @@ function unit(overrides: Partial<LodgingUnitRow> = {}): LodgingUnitRow {
 
 beforeEach(() => {
   isAdmin.value = true
+  medicalResult.value = { data: undefined, isLoading: false, error: null }
 })
 
 describe('FamilyDetailsPanel — the content the card omits', () => {
@@ -135,9 +144,19 @@ describe('FamilyDetailsPanel — the content the card omits', () => {
     expect(screen.getByText(REQUEST_TEXT)).toBeInTheDocument()
   })
 
-  it('offers the medical reveal, which the card never does', () => {
+  it('renders the medical narrative without a reveal click', () => {
+    // kindred#1889 removed the click-to-reveal: it was gated on a flag true
+    // for every household, so it gated nothing. A `lodging.phi` holder now
+    // sees the text directly (`isAdmin` is true for this suite).
+    medicalResult.value = {
+      data: { allergy_info: 'Peanuts' },
+      isLoading: false,
+      error: null,
+    }
     render(<FamilyDetailsPanel party={party()} year={2026} onClose={vi.fn()} />, { wrapper })
-    expect(screen.getByRole('button', { name: /medical detail/i })).toBeInTheDocument()
+
+    expect(screen.queryByRole('button', { name: /medical detail/i })).not.toBeInTheDocument()
+    expect(screen.getByText('Peanuts')).toBeInTheDocument()
   })
 
   it('does not offer the medical reveal for an adult-weekend party', () => {

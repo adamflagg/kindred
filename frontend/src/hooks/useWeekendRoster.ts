@@ -96,9 +96,16 @@ export function useWeekendRoster(year: number, sessionCmId: number | null, scena
 }
 
 /**
- * PHI. Deliberately opt-in: `enabled` stays false until the user clicks the
- * reveal, so the narrative is never fetched speculatively and never sits in
- * the query cache for someone who only ever looked at the roster.
+ * PHI. Deliberately opt-in: `enabled` is false unless the caller both holds
+ * `lodging.phi` and has a household to look up, so the narrative is never
+ * fetched speculatively and never sits in the query cache for someone who
+ * only ever looked at the roster.
+ *
+ * The click-to-reveal that used to supply `enabled` is gone (kindred#1889).
+ * Its only caller is now `MedicalNarrative`, which `FamilyDetailsPanel`
+ * renders for ONE household at a time — the grain that makes fetching on
+ * mount acceptable. `staleTime: 0, gcTime: 0` is what keeps this honest: the
+ * narrative leaves the cache the moment the panel closes.
  *
  * `lodging.phi` is held by admins and the Bunking Staff role. The roster
  * itself is readable by any authenticated user, so this 403s for most of the

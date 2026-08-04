@@ -28,6 +28,7 @@ import type {
   ShareRequest,
 } from '../../types/lodging'
 import { AccessibilityFlagList } from './AccessibilityFlagList'
+import { MedicalNarrative } from './MedicalNarrative'
 import { partyKey } from './partyKey'
 import { ATTENTION_LABEL, partyAttention } from './rosterAttention'
 import { ShareRequestPanel } from './ShareRequestPanel'
@@ -57,7 +58,6 @@ const NO_FLAGS: AccessibilityFlags = {
   needs_accommodation: false,
   accommodation_is_mandatory: false,
   has_infant: false,
-  has_medical_narrative: false,
 }
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
@@ -129,7 +129,7 @@ export function FamilyDetailsPanel({
   const isHousehold = party.grain === 'household'
   // A person-grain party has no household, and the API sends 0 rather than
   // omitting the field. `null` says "nothing to look up", so the medical
-  // reveal is not offered where it could only ever 404.
+  // narrative is not fetched where it could only ever 404.
   const householdCmId = isHousehold ? (party.household_cm_id ?? 0) : 0
   const attention = partyAttention(party, unit)
   const isPlaced = (party.unit_name ?? '').length > 0
@@ -233,22 +233,15 @@ export function FamilyDetailsPanel({
       </Section>
 
       <Section title="Housing needs">
-        <AccessibilityFlagList
-          // The panel no longer remounts on a family switch — it updates in
-          // place, as summer's CamperDetailsPanel does. This key keeps the one
-          // thing that remount was protecting: the medical reveal resets per
-          // household, so the next family's narrative is never disclosed by a
-          // click the user made against the previous one. Vestigial once the
-          // click-to-reveal is removed; free until then.
-          //
-          // `key` uses the raw id; `householdCmId` below nulls non-positive
-          // ones. They diverge only when raw <= 0 — exactly when `canReveal`
-          // is already false, so the mismatch is inert.
-          key={householdCmId}
-          flags={party.flags ?? NO_FLAGS}
-          householdCmId={householdCmId > 0 ? householdCmId : null}
-          year={year}
-        />
+        <div className="flex flex-col gap-1.5">
+          <AccessibilityFlagList flags={party.flags ?? NO_FLAGS} />
+          {/* Kept in this section rather than given its own, because it is
+              where the narrative already appeared and staff know to look here.
+              It self-hides for a viewer without `lodging.phi` and for a
+              household with nothing on file, so no empty block is left
+              behind. */}
+          <MedicalNarrative householdCmId={householdCmId > 0 ? householdCmId : null} year={year} />
+        </div>
       </Section>
     </div>
   )

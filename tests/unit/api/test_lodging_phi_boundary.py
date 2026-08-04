@@ -126,7 +126,21 @@ def test_roster_exposes_presence_flags_not_narrative() -> None:
     from api.schemas.lodging import AccessibilityFlagSummary
 
     names = set(AccessibilityFlagSummary.model_fields.keys())
-    assert "has_medical_narrative" in names
+    # kindred#1889: `has_medical_narrative` is GONE, and its absence is the
+    # point. It was true for 745/745 households in 2026 and 100.0% in each of
+    # 2024-26 -- the negative answers to these questions are stored as the
+    # text "No", which is non-empty. A flag that is always on carries no
+    # information, and the boilerplate-negative filter the issue proposed
+    # still lands at 67.7% / 52.6% / 55.9% across those years, swinging 15
+    # points annually.
+    #
+    # Deleting it rather than fixing it is what removes the year's medical map
+    # from the roster read entirely -- see
+    # `test_the_roster_never_reads_the_years_medical_narratives`. Nothing is
+    # lost on the surface: a `lodging.phi` holder sees the narrative itself,
+    # and a non-holder was only ever being told that a disclosure they cannot
+    # read exists.
+    assert "has_medical_narrative" not in names
     assert "needs_private_bathroom" in names
     assert "needs_power" in names
     assert "has_infant" in names

@@ -6,8 +6,10 @@
  *
  * Ranking only works on signals that discriminate. Measured against real 2026
  * data, `needs_resolution` is true for 44 of 62 parties and
- * `has_medical_narrative` for 62 of 62 — both are the normal state, so neither
- * escalates a row.
+ * `has_medical_narrative` was true for 62 of 62 — both are the normal state,
+ * so neither escalates a row. The medical flag has since been deleted outright
+ * (kindred#1889) for exactly that reason; `needs_resolution` survives because
+ * it still discriminates elsewhere.
  *
  * The state worth surfacing is a party whose cabin does not provide what they
  * asked for. Answering that needs the registry to record what each cabin HAS,

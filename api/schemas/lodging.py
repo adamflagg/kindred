@@ -204,9 +204,11 @@ class AccessibilityFlagSummary(BaseModel):
     # signal, not an accessibility need: it argues for privacy and quiet, so
     # it informs unit choice rather than gating it.
     has_infant: bool = False
-    # True when ANY family_camp_medical narrative column is non-empty.
-    # Presence only — the text itself is never in this payload.
-    has_medical_narrative: bool = False
+    # There is deliberately NO `has_medical_narrative` here (kindred#1889). It
+    # was true for every household in every year measured, because these
+    # questions store "No" as text and a non-empty answer set the flag. See
+    # LodgingRosterService._build_flags for why it was deleted rather than
+    # filtered, and what deleting it removed from the read path.
 
 
 class RosterParty(BaseModel):

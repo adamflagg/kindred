@@ -328,10 +328,16 @@ class TestMedicalEndpointIsPermissionGated:
     def test_roster_payload_never_carries_medical_narrative(self, mock_pb: MagicMock) -> None:
         """Belt and braces over the schema-level boundary test.
 
-        The household is deliberately given an enrolled child and a medical
-        row, so a party is actually built with has_medical_narrative set. With
-        no attendee the roster would be empty and this assertion would hold
-        without proving anything.
+        The household is deliberately given an enrolled child AND a medical
+        row: with no attendee the roster would be empty and the assertion
+        would hold without proving anything.
+
+        Since kindred#1889 the roster path does not read the medical
+        collection at all, so this passes structurally rather than by the
+        service choosing not to serialise what it fetched. Kept anyway, and
+        deliberately: it is the end-to-end net that catches a future read
+        being reintroduced upstream of the schema, which the schema-level
+        boundary test cannot see.
         """
         narrative = "Uses a CPAP nightly and needs an outlet"
 
@@ -392,9 +398,9 @@ class TestMedicalEndpointIsPermissionGated:
 
         assert response.status_code == 200
         body = response.json()
-        # The party exists and is flagged, so the absence below is meaningful.
+        # The party exists, so the absence below is about a real roster.
         assert len(body["parties"]) == 1
-        assert body["parties"][0]["flags"]["has_medical_narrative"] is True
+        assert "has_medical_narrative" not in body["parties"][0]["flags"]
         assert narrative not in response.text
 
 

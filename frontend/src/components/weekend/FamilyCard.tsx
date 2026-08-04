@@ -15,8 +15,9 @@
  *   62 simultaneously-visible cards is a materially louder exposure than that
  *   decision covered. It lives on `FamilyDetailsPanel`, one click away —
  *   which is what makes this a deferral rather than a loss.
- * - **The medical affordance.** `has_medical_narrative` is true for 62 of 62
- *   parties. A flag that is always on is not a flag.
+ * - **The medical affordance.** `has_medical_narrative` was true for 62 of 62
+ *   parties. A flag that is always on is not a flag — kindred#1889 agreed and
+ *   deleted it; the narrative itself lives on `FamilyDetailsPanel`.
  * - **`needs_resolution`.** True for 44 of 62. Same reason.
  *
  * `FamilyCard.test.tsx` pins all three as ABSENCES, because each is exactly

@@ -459,7 +459,8 @@ Each of these was decided deliberately. Reopening one needs a reason, not a fres
   the figure is provisional and says so.
 - **The roster is a triage surface.** The board places parties; the roster says which need a
   decision. It ranks only on signals that discriminate: measured on real 2026 data
-  `needs_resolution` is true for 44 of 62 parties and `has_medical_narrative` for 62 of 62, so
+  `needs_resolution` is true for 44 of 62 parties and `has_medical_narrative` was true for 62 of 62
+  (deleted in kindred#1889), so
   **neither escalates a row**. A flag that is always on is not a flag.
 - **The met/unmet fit check judges only CONFIRMED cabins.** Every cabin is `is_confirmed: false`
   today, so an unset `has_power` means "nobody has said", not "there is no power". Judging against
@@ -742,7 +743,8 @@ the whole time. That is progress, not a hang — confirm with CPU, not the count
 - **Do not fill a lander or any multi-weekend view with per-weekend `/roster` calls.** Use
   `/api/lodging/summary`. `/roster`'s cost is year-scoped work repeated per call; N calls is N times
   the same eight fetches, and it looks fine on a year with two weekends.
-- **Do not let the roster escalate on `needs_resolution` or `has_medical_narrative`.** True for 44
+- **Do not let the roster escalate on `needs_resolution`.** (`has_medical_narrative` is gone —
+  kindred#1889 deleted it for this very reason.) True for 44
   of 62 and 62 of 62 parties respectively. Ranking on either turns the whole roster amber and the
   triage sections stop meaning anything.
 - **Do not judge a housing need against an UNCONFIRMED cabin.** `has_power: false` on an unconfirmed
@@ -1036,9 +1038,14 @@ parent corrections. **Explicitly do not run `confirm_lodging_units.py` against p
   is `request_text` — an ordinary roster field, ungated — while `family_camp_medical` is
   admin-gated. Predates this work; the owner's call, deliberately not acted on. Options are gate the
   text, flag it for review, or accept it.
-- **`has_medical_narrative` is true for every household** (62 of 62 in 2026; 870 medical rows, 648
-  with dietary/allergy text). Accurate, but it means the medical affordance appears on every row and
-  therefore signals nothing. Worth deciding whether the flag should mean something narrower.
+- ~~**`has_medical_narrative` is true for every household**~~ **RESOLVED — the flag is deleted**
+  (kindred#1889). It was true for 62 of 62 in 2026 and 100.0% in each of 2024-26, because these
+  questions store their negative answer as the text "No". Narrowing it was measured and rejected:
+  a boilerplate-negative filter still lands at 67.7% / 52.6% / 55.9% across those years. Deleting it
+  removed the whole-year `family_camp_medical` read from BOTH `build_roster` and `build_summary` —
+  the narrative now has one reader, `get_household_medical`, one household at a time behind
+  `Permission.LODGING_PHI`. The reveal button went with it: `MedicalNarrative` renders on
+  `FamilyDetailsPanel` for a PHI holder, and `HouseholdRosterRow` carries chips only.
 - **The weekend surfaces were never verified in a browser after #1890's last three commits.**
   Merged and green, but nobody has *looked* at the lander, the Listbox switcher or the stats bar
   — they are covered by tests and by direct API measurement only. Worth ten minutes with

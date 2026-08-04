@@ -41,6 +41,8 @@ def _unit(
     is_confirmed: bool = True,
     bathroom: str = "none",
     bathroom_group: str = "",
+    map_x: float | None = 0.5,
+    map_y: float | None = 0.5,
 ) -> SimpleNamespace:
     return _rec(
         id=pb_id,
@@ -58,8 +60,8 @@ def _unit(
         has_ac=False,
         has_fridge=False,
         is_accessible=False,
-        map_x=0.5,
-        map_y=0.5,
+        map_x=map_x,
+        map_y=map_y,
         expand={"area": _rec(code="RIDGE", name="Ridge Side", sort_order=1)},
     )
 
@@ -398,6 +400,66 @@ class TestUnitsAndCounts:
         assert by_code["ridge-b"].sleeps == 5
         assert roster.counts.units_capacity_unknown == 1
         assert roster.counts.beds_family_available == 5
+
+    @pytest.mark.asyncio
+    async def test_a_unit_with_no_coordinates_reports_none_on_both_axes(self) -> None:
+        """kindred#1941. `sleeps` already maps 0 -> None in this service; an
+        unset coordinate arrives as 0.0 and renders in the map's exact
+        top-left corner, reading as a real placement.
+
+        `LodgingUnitForm` omits the key when the field is blank, so a cabin
+        added through the admin UI without coordinates is how this arrives.
+        All 93 units today carry real coordinates, and all 21 that the 2026
+        rollout adds do too -- this is latent, not live.
+        """
+        repo = _repo(
+            fetch_session=FAMILY_SESSION,
+            fetch_units=[_unit("u1", "ridge-a", "Ridge A", sleeps=5, map_x=0, map_y=0)],
+        )
+        roster = await LodgingRosterService(repo).build_roster(2026, 1000001)
+
+        assert roster.units[0].map_x is None
+        assert roster.units[0].map_y is None
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        ("map_x", "map_y"),
+        [(0, 0.47), (0.31, 0)],
+    )
+    async def test_a_zero_on_one_axis_is_a_real_edge_coordinate(self, map_x: float, map_y: float) -> None:
+        """The rule is PAIR-level, and this is the whole reason.
+
+        `sleeps` is per-field because 0 beds is never meaningful. Coordinates
+        are not: they are normalised 0-1 fractions (observed x 0.074-0.888,
+        y 0.154-0.761), so a single-axis zero means "exactly on the map edge"
+        -- legitimate, and nothing sits there today only by accident.
+
+        Anyone who mirrors `sleeps` by writing an `_f_or_none()` and swapping
+        it in ships a bug for a unit at (0, 0.47). `_f` sees one field and
+        structurally cannot decide this; the fix belongs where both axes are
+        read together.
+        """
+        repo = _repo(
+            fetch_session=FAMILY_SESSION,
+            fetch_units=[_unit("u1", "ridge-a", "Ridge A", sleeps=5, map_x=map_x, map_y=map_y)],
+        )
+        roster = await LodgingRosterService(repo).build_roster(2026, 1000001)
+
+        assert roster.units[0].map_x == map_x
+        assert roster.units[0].map_y == map_y
+
+    @pytest.mark.asyncio
+    async def test_a_missing_coordinate_key_stays_none(self) -> None:
+        """The admin form omits the key rather than sending 0 -- the shape
+        that reaches the API first. It must not become 0.0 on the way out."""
+        repo = _repo(
+            fetch_session=FAMILY_SESSION,
+            fetch_units=[_unit("u1", "ridge-a", "Ridge A", sleeps=5, map_x=None, map_y=None)],
+        )
+        roster = await LodgingRosterService(repo).build_roster(2026, 1000001)
+
+        assert roster.units[0].map_x is None
+        assert roster.units[0].map_y is None
 
     @pytest.mark.asyncio
     async def test_reserved_units_stay_visible_but_leave_availability(self) -> None:
@@ -912,7 +974,7 @@ class TestScenarioResolution:
 
 class TestMedicalFlagsAndNarrative:
     @pytest.mark.asyncio
-    async def test_medical_narrative_presence_becomes_a_flag_only(self) -> None:
+    async def test_the_narrative_never_reaches_the_roster_payload(self) -> None:
         repo = _repo(
             fetch_session=FAMILY_SESSION,
             fetch_households={"hh_1": _household(title="The Smith Family")},
@@ -923,10 +985,51 @@ class TestMedicalFlagsAndNarrative:
         roster = await LodgingRosterService(repo).build_roster(2026, 1000001)
 
         party = roster.parties[0]
-        assert party.flags.has_medical_narrative is True
         assert party.flags.needs_power is True
         # The narrative itself must not appear anywhere in the payload.
         assert "CPAP nightly" not in roster.model_dump_json()
+
+    @pytest.mark.asyncio
+    async def test_the_roster_never_reads_the_years_medical_narratives(self) -> None:
+        """kindred#1889, and the reason the fix is a deletion.
+
+        `has_medical_narrative` was the ONLY consumer of the whole-year
+        `family_camp_medical` map in this read path. Deriving a boolean that
+        was true for every household cost a fetch of every household's
+        narrative into API memory on every roster build.
+
+        The gated endpoint is unaffected: `get_household_medical` reads ONE
+        household through `fetch_medical_for_household`, which is a different
+        repository call and is what `Permission.LODGING_PHI` actually guards.
+        """
+        repo = _repo(
+            fetch_session=FAMILY_SESSION,
+            fetch_households={"hh_1": _household()},
+            fetch_attendees_for_session=[_child()],
+            fetch_family_camp_medical={"hh_1": _rec(cpap_info="Uses a CPAP nightly")},
+        )
+
+        await LodgingRosterService(repo).build_roster(2026, 1000001)
+
+        repo.fetch_family_camp_medical.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_the_summary_never_reads_the_years_medical_narratives(self) -> None:
+        """The lander inherits the same read helpers, so it inherits the win.
+
+        `build_summary` hoists the year-scoped reads out of its per-weekend
+        loop, and the medical map was one of them.
+        """
+        repo = _repo(
+            fetch_weekend_sessions=[FAMILY_SESSION],
+            fetch_households={"hh_1": _household()},
+            fetch_attendees_for_session=[_child()],
+            fetch_family_camp_medical={"hh_1": _rec(cpap_info="Uses a CPAP nightly")},
+        )
+
+        await LodgingRosterService(repo).build_summary(2026)
+
+        repo.fetch_family_camp_medical.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_cpap_narrative_alone_does_not_imply_power(self) -> None:
@@ -952,7 +1055,6 @@ class TestMedicalFlagsAndNarrative:
         flags = roster.parties[0].flags
         assert flags.needs_power is False
         assert flags.needs_private_bathroom is True
-        assert flags.has_medical_narrative is True
 
     @pytest.mark.asyncio
     async def test_bathroom_need_comes_from_the_derived_column(self) -> None:
@@ -979,18 +1081,6 @@ class TestMedicalFlagsAndNarrative:
         roster = await LodgingRosterService(repo).build_roster(2026, 1000001)
 
         assert roster.parties[0].flags.has_infant is True
-
-    @pytest.mark.asyncio
-    async def test_blank_medical_row_is_not_a_narrative(self) -> None:
-        repo = _repo(
-            fetch_session=FAMILY_SESSION,
-            fetch_households={"hh_1": _household()},
-            fetch_attendees_for_session=[_child()],
-            fetch_family_camp_medical={"hh_1": _rec(cpap_info="", allergy_info="")},
-        )
-        roster = await LodgingRosterService(repo).build_roster(2026, 1000001)
-
-        assert roster.parties[0].flags.has_medical_narrative is False
 
     @pytest.mark.asyncio
     async def test_get_household_medical_returns_the_narrative(self) -> None:
@@ -1020,10 +1110,13 @@ class TestMedicalFlagsAndNarrative:
 class TestBuildSummary:
     """The lander's batched read.
 
-    It exists for one reason: `build_roster` makes eleven fetches of which
-    eight are year-scoped, so filling a lander weekend-by-weekend repeats that
+    It exists for one reason: `build_roster` makes ten fetches of which seven
+    are year-scoped, so filling a lander weekend-by-weekend repeats that
     year-wide work once per weekend. The point of these tests is that the
     batch does it ONCE and still agrees with the roster.
+
+    Both counts were one higher until kindred#1889 removed the whole-year
+    medical read from both paths.
     """
 
     @pytest.mark.asyncio
@@ -1033,18 +1126,22 @@ class TestBuildSummary:
 
         await service.build_summary(2026)
 
-        # Eight year-scoped fetches, two weekends: each must still be one call.
+        # Seven year-scoped fetches, two weekends: each must still be one call.
+        # `fetch_family_camp_medical` was the eighth until kindred#1889 deleted
+        # its only consumer -- see the assertion below, which pins that it is
+        # not read at all rather than merely read once.
         for method in (
             "fetch_units",
             "fetch_households",
             "fetch_prior_household_cm_ids",
             "fetch_family_camp_adults",
             "fetch_family_camp_registrations",
-            "fetch_family_camp_medical",
             "count_open_unresolved_aliases",
             "count_unconfirmed_units",
         ):
             assert getattr(repo, method).await_count == 1, f"{method} was not batched"
+
+        repo.fetch_family_camp_medical.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_session_scoped_reads_happen_once_per_weekend(self) -> None:

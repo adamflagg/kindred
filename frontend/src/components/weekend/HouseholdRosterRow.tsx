@@ -27,7 +27,8 @@ import { ShareRequestPanel } from './ShareRequestPanel'
 
 export interface HouseholdRosterRowProps {
   party: RosterPartyRow
-  year: number
+  // No `year`: this row renders chips only. `year` was here to fetch the
+  // medical narrative, which moved to FamilyDetailsPanel in kindred#1889.
   /** Adult weekends carry no share requests; the column is dropped entirely. */
   showRequests: boolean
   /** The assigned cabin, when it resolves. Undefined for a merged slot. */
@@ -49,7 +50,6 @@ const NO_FLAGS: AccessibilityFlags = {
   needs_accommodation: false,
   accommodation_is_mandatory: false,
   has_infant: false,
-  has_medical_narrative: false,
 }
 
 /** Settled parties get no rail — absence is the signal. */
@@ -79,16 +79,12 @@ function composition(party: RosterPartyRow): string {
   return parts.join(' · ')
 }
 
-export function HouseholdRosterRow({ party, year, showRequests, unit }: HouseholdRosterRowProps) {
+export function HouseholdRosterRow({ party, showRequests, unit }: HouseholdRosterRowProps) {
   const isAssigned = (party.unit_name ?? '').length > 0
   const attention = partyAttention(party, unit)
   const adults = party.adults ?? []
   const children = party.children ?? []
   const showAdults = party.grain === 'household'
-  // A person-grain party has no household, and the API sends 0 rather than
-  // omitting the field. `null` says "nothing to look up" so the flag list
-  // does not offer a reveal that could never resolve.
-  const householdCmId = showAdults ? (party.household_cm_id ?? 0) : 0
 
   return (
     <tr className="border-border/40 hover:bg-muted/30 border-b align-top transition-colors">
@@ -175,11 +171,9 @@ export function HouseholdRosterRow({ party, year, showRequests, unit }: Househol
       )}
 
       <td className="py-3 pr-3">
-        <AccessibilityFlagList
-          flags={party.flags ?? NO_FLAGS}
-          householdCmId={householdCmId > 0 ? householdCmId : null}
-          year={year}
-        />
+        {/* Chips only. The medical narrative is `FamilyDetailsPanel`'s, one
+            household at a time — see MedicalNarrative (kindred#1889). */}
+        <AccessibilityFlagList flags={party.flags ?? NO_FLAGS} />
       </td>
     </tr>
   )

@@ -304,9 +304,7 @@ export default function WeekendRosterPage() {
               id={`weekend-panel-${view}`}
               aria-labelledby={`weekend-tab-${view}`}
             >
-              {view === 'roster' && (
-                <HouseholdRosterTable parties={parties} year={currentYear} units={units} />
-              )}
+              {view === 'roster' && <HouseholdRosterTable parties={parties} units={units} />}
               {view === 'inventory' && <UnitInventoryPanel units={units} />}
               {/* Neither takes the scenario id: they render what this page
                   already fetched with it, and neither writes. The header badge

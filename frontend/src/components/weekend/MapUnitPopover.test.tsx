@@ -63,7 +63,6 @@ function party(name: string): RosterPartyRow {
       needs_accommodation: false,
       accommodation_is_mandatory: false,
       has_infant: false,
-      has_medical_narrative: false,
     },
   }
 }
@@ -207,7 +206,6 @@ describe('MapUnitPopover — one room', () => {
       needs_accommodation: false,
       accommodation_is_mandatory: false,
       has_infant: false,
-      has_medical_narrative: false,
     }
     render(
       <MapUnitPopover
@@ -227,7 +225,6 @@ describe('MapUnitPopover — one room', () => {
       needs_accommodation: false,
       accommodation_is_mandatory: false,
       has_infant: false,
-      has_medical_narrative: false,
     }
     render(
       <MapUnitPopover

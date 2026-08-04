@@ -5,9 +5,11 @@ adults come from family_camp_adults and a party is a HOUSEHOLD. Adult
 weekends enrol individuals directly, so a party is a PERSON. That mirrors
 lodging_assignments' dual grain exactly.
 
-PHI: this service reads family_camp_medical to derive BOOLEANS from the
-presence of a value. The narrative text is returned only by
-get_household_medical, behind Permission.LODGING_PHI at the router.
+PHI: the roster and summary reads do not touch family_camp_medical at all.
+They used to, to derive a boolean from the presence of a value -- see
+`_build_flags` for why that boolean is gone (kindred#1889). The narrative has
+one reader, get_household_medical, which fetches ONE household behind
+Permission.LODGING_PHI at the router.
 """
 
 from __future__ import annotations
@@ -113,6 +115,32 @@ def _f(record: Any, field: str) -> float | None:
         return None if value is None else float(value)
     except TypeError, ValueError:
         return None
+
+
+def _map_point(record: Any) -> tuple[float | None, float | None]:
+    """A unit's map coordinates, with the unset pair reported as unset.
+
+    PAIR-level, deliberately, and NOT the per-field treatment `sleeps` gets a
+    few lines above (kindred#1941). `sleeps` maps 0 -> None because zero beds
+    is never a meaningful answer. Coordinates are normalised 0-1 fractions --
+    observed x 0.074-0.888, y 0.154-0.761 -- so a zero on ONE axis is a unit
+    sitting exactly on the map edge, which is legitimate. Only both axes at
+    zero is the "never positioned" signal `LodgingUnitForm` leaves behind when
+    it omits the key.
+
+    `_f` sees a single field and structurally cannot make this call, which is
+    why this reads both. Do not replace it with an `_f_or_none()`: that ships
+    a bug for a unit at (0, 0.47).
+
+    The frontend keeps its own `hasCoordinates` guard (`mapModel.ts`) --
+    defense in depth, and it is the guard that has been holding this up so
+    far.
+    """
+    x = _f(record, "map_x")
+    y = _f(record, "map_y")
+    if x == 0 and y == 0:
+        return None, None
+    return x, y
 
 
 def resolved_units(row: Any) -> list[Any]:
@@ -276,7 +304,6 @@ class LodgingRosterService:
             prior_task = tg.create_task(self.repository.fetch_prior_household_cm_ids(year))
             adults_task = tg.create_task(self.repository.fetch_family_camp_adults(year))
             registrations_task = tg.create_task(self.repository.fetch_family_camp_registrations(year))
-            medical_task = tg.create_task(self.repository.fetch_family_camp_medical(year))
             aliases_task = tg.create_task(self.repository.count_open_unresolved_aliases())
             unconfirmed_task = tg.create_task(self.repository.count_unconfirmed_units())
             # ONE placement source, chosen here rather than merged later. A
@@ -310,7 +337,6 @@ class LodgingRosterService:
             prior_cm_ids=prior_task.result(),
             adults_by_household=adults_task.result(),
             registrations=registrations_task.result(),
-            medical=medical_task.result(),
             assignments=placements_task.result(),
         )
         counts = self._build_counts(unit_summaries, parties, aliases_task.result(), unconfirmed_task.result())
@@ -360,7 +386,6 @@ class LodgingRosterService:
             prior_task = tg.create_task(self.repository.fetch_prior_household_cm_ids(year))
             adults_task = tg.create_task(self.repository.fetch_family_camp_adults(year))
             registrations_task = tg.create_task(self.repository.fetch_family_camp_registrations(year))
-            medical_task = tg.create_task(self.repository.fetch_family_camp_medical(year))
             aliases_task = tg.create_task(self.repository.count_open_unresolved_aliases())
             unconfirmed_task = tg.create_task(self.repository.count_unconfirmed_units())
 
@@ -369,7 +394,6 @@ class LodgingRosterService:
         prior_cm_ids = prior_task.result()
         adults_by_household = adults_task.result()
         registrations = registrations_task.result()
-        medical = medical_task.result()
         unresolved_aliases = aliases_task.result()
         unconfirmed_units = unconfirmed_task.result()
 
@@ -402,7 +426,6 @@ class LodgingRosterService:
                 prior_cm_ids=prior_cm_ids,
                 adults_by_household=adults_by_household,
                 registrations=registrations,
-                medical=medical,
                 assignments=placements_task.result(),
             )
             return WeekendSummaryEntry(
@@ -459,6 +482,7 @@ class LodgingRosterService:
 
         summaries: list[LodgingUnitSummary] = []
         for unit in units:
+            map_x, map_y = _map_point(unit)
             code = _s(unit, "code")
             group = _s(unit, "bathroom_group")
             area = (getattr(unit, "expand", None) or {}).get("area")
@@ -503,8 +527,8 @@ class LodgingRosterService:
                     allocation_default=allocation_default,
                     reservation_state=override,
                     is_family_available=is_family_available(allocation_default, override),
-                    map_x=_f(unit, "map_x"),
-                    map_y=_f(unit, "map_y"),
+                    map_x=map_x,
+                    map_y=map_y,
                 )
             )
         return summaries
@@ -520,7 +544,6 @@ class LodgingRosterService:
         prior_cm_ids: set[int],
         adults_by_household: dict[str, list[Any]],
         registrations: dict[str, Any],
-        medical: dict[str, Any],
         assignments: list[Any],
     ) -> list[RosterParty]:
         placement_by_household, placement_by_person = self._index_assignments(assignments)
@@ -534,7 +557,6 @@ class LodgingRosterService:
             prior_cm_ids=prior_cm_ids,
             adults_by_household=adults_by_household,
             registrations=registrations,
-            medical=medical,
             placement_by_household=placement_by_household,
         )
 
@@ -624,7 +646,6 @@ class LodgingRosterService:
         prior_cm_ids: set[int],
         adults_by_household: dict[str, list[Any]],
         registrations: dict[str, Any],
-        medical: dict[str, Any],
         placement_by_household: dict[int, _Placement],
     ) -> list[RosterParty]:
         children_by_household: dict[str, list[Any]] = {}
@@ -642,7 +663,6 @@ class LodgingRosterService:
             household = households.get(household_pb_id)
             household_cm_id = _i(household, "cm_id") if household is not None else 0
             registration = registrations.get(household_pb_id)
-            medical_record = medical.get(household_pb_id)
             adults = adults_by_household.get(household_pb_id, [])
             placement = placement_by_household.get(household_cm_id, _NO_PLACEMENT)
             children_oldest_first = sorted(children, key=lambda c: -_i(c, "age"))
@@ -681,7 +701,7 @@ class LodgingRosterService:
                     arrival_eta=_s(registration, "arrival_eta") if registration is not None else "",
                     is_returning=household_cm_id in prior_cm_ids,
                     share=self._build_share(registration),
-                    flags=self._build_flags(registration, medical_record),
+                    flags=self._build_flags(registration),
                 )
             )
         parties.sort(key=lambda p: (p.sort_name.casefold(), p.display_name.casefold()))
@@ -755,8 +775,29 @@ class LodgingRosterService:
             answers_conflict=_b(registration, "share_answers_conflict"),
         )
 
-    def _build_flags(self, registration: Any, medical_record: Any) -> AccessibilityFlagSummary:
+    def _build_flags(self, registration: Any) -> AccessibilityFlagSummary:
         """Read the derived flags. Do NOT re-derive them here.
+
+        No medical record reaches this method, and that is deliberate
+        (kindred#1889). It used to take one to set `has_medical_narrative`
+        from the mere presence of text in any PHI column -- a flag that was
+        true for 745/745 households in 2026 and 100.0% in every year measured,
+        because these questions store their negative answer as the word "No".
+
+        The flag is gone rather than filtered. Normalising the boilerplate
+        negatives still lands at 67.7% / 52.6% / 55.9% across 2024-26, and a
+        flag that swings 15 points a year on answer phrasing is not a signal.
+        Deriving it from the housing-relevant columns instead was considered
+        and rejected: the five housing booleans above already answer that
+        question from the ingest's option-level classification, and inferring
+        a need from `cpap_info` presence is the exact class of bug kindred#1875
+        fixed -- worse here, because it would hide a severe-allergy disclosure
+        behind a housing question.
+
+        Deleting it took the whole-year `family_camp_medical` read out of both
+        `build_roster` and `build_summary`. The narrative now has exactly one
+        reader, `get_household_medical`, which fetches ONE household behind
+        `Permission.LODGING_PHI`.
 
         This method used to compute all three from raw sources, which was
         correct only while the columns did not exist. Phase C of the ingest
@@ -775,16 +816,14 @@ class LodgingRosterService:
         One writer, one reader. If a flag looks wrong, fix it in the ingest
         layer so every surface sees the correction.
         """
-        has_narrative = medical_record is not None and any(_s(medical_record, field) for field in PHI_FIELD_NAMES)
         if registration is None:
-            return AccessibilityFlagSummary(has_medical_narrative=has_narrative)
+            return AccessibilityFlagSummary()
         return AccessibilityFlagSummary(
             needs_private_bathroom=_b(registration, "needs_private_bathroom"),
             needs_power=_b(registration, "needs_power"),
             needs_accommodation=_b(registration, "needs_accommodation"),
             accommodation_is_mandatory=_b(registration, "accommodation_is_mandatory"),
             has_infant=_b(registration, "has_infant"),
-            has_medical_narrative=has_narrative,
         )
 
     # --------------------------------------------------------------- counts

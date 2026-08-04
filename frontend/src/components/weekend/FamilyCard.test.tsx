@@ -249,10 +249,12 @@ describe('FamilyCard — spec §3.8, what must stay off it', () => {
     expect(screen.queryByText(new RegExp('ground-floor'))).not.toBeInTheDocument()
   })
 
-  it('never offers the medical affordance, which is true for 62 of 62 parties', () => {
-    render(
-      <FamilyCard party={party({ flags: { has_medical_narrative: true } })} onOpen={vi.fn()} />
-    )
+  it('never offers a medical affordance', () => {
+    // This used to be driven by `has_medical_narrative`, deleted in
+    // kindred#1889 for being true for 62 of 62 parties. The card was already
+    // right to ignore it; the assertion outlives the flag because the
+    // narrative belongs on FamilyDetailsPanel, one household at a time.
+    render(<FamilyCard party={party()} onOpen={vi.fn()} />)
     expect(screen.queryByText(/Medical/i)).not.toBeInTheDocument()
   })
 
