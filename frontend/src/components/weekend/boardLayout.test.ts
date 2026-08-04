@@ -42,6 +42,14 @@ function unit(overrides: Partial<LodgingUnitRow> = {}): LodgingUnitRow {
   }
 }
 
+/**
+ * Permanent full-time staff housing — held for staff and therefore not
+ * family-available. 21 of the property's 102 leaf units are these.
+ */
+function staffUnit(overrides: Partial<LodgingUnitRow> = {}): LodgingUnitRow {
+  return unit({ allocation_default: 'staff_default', is_family_available: false, ...overrides })
+}
+
 function party(overrides: Partial<RosterPartyRow> = {}): RosterPartyRow {
   return {
     grain: 'household',
@@ -96,6 +104,72 @@ describe('buildBoard — which units get a card', () => {
     expect(slots.map((slot) => slot.unit.code)).toEqual(['cedar-1', 'cedar-2'])
     expect(board.offBoard).toHaveLength(0)
   })
+
+  it('drops staff housing nobody is in, because it was never planning inventory', () => {
+    // Staff housing is occupied by full-time staff who are not enrolled per
+    // session and never appear on a roster, so the card would always be
+    // empty. Since drag placement shipped every drawn card is an enabled
+    // drop target, so an empty card reads as a room to drop a family into.
+    const board = buildBoard([], [unit(), staffUnit({ unit_id: 'u2', code: 'aspen-lodge' })])
+    const slots = board.areas.flatMap((area) => area.slots)
+    expect(slots.map((slot) => slot.unit.code)).toEqual(['cedar-1'])
+  })
+
+  it('keeps staff housing that still holds a party, so nobody vanishes', () => {
+    // This file's second invariant. A mis-ingested alias or a hand-edited row
+    // can put a party somewhere a display rule would otherwise hide, and no
+    // party may disappear because of a display rule.
+    const board = buildBoard(
+      [party({ unit_code: 'aspen-lodge', unit_name: 'Aspen Lodge' })],
+      [unit(), staffUnit({ unit_id: 'u2', code: 'aspen-lodge', name: 'Aspen Lodge' })]
+    )
+    const slots = board.areas.flatMap((area) => area.slots)
+    expect(slots.map((slot) => slot.unit.code)).toEqual(['cedar-1', 'aspen-lodge'])
+    expect(board.offBoard).toHaveLength(0)
+    expect(board.unplaced).toHaveLength(0)
+  })
+
+  it('keeps a staff cabin released to families for this weekend', () => {
+    // Releasing a staff cabin exists so a family can be housed in it, and
+    // `unitBadges` gives it a "Released" badge to say so. Hiding the cabin
+    // staff just released would make the capability useless, so the
+    // exclusion reads resolved availability, not the standing role alone.
+    const board = buildBoard(
+      [],
+      [
+        unit(),
+        staffUnit({
+          unit_id: 'u2',
+          code: 'aspen-lodge',
+          is_family_available: true,
+          reservation_state: 'released_to_family',
+        }),
+      ]
+    )
+    const slots = board.areas.flatMap((area) => area.slots)
+    expect(slots.map((slot) => slot.unit.code)).toEqual(['cedar-1', 'aspen-lodge'])
+  })
+
+  it('keeps a family cabin held back this weekend, because held rooms are badged not hidden', () => {
+    // A burst pipe takes a room out of service for the weekend; it is still
+    // planning inventory, and `unitBadges` renders "Held" for exactly this
+    // row. Staff reason about adjacency, so hiding it makes the site look
+    // smaller than it is.
+    const board = buildBoard(
+      [],
+      [
+        unit(),
+        unit({
+          unit_id: 'u2',
+          code: 'cedar-2',
+          is_family_available: false,
+          reservation_state: 'reserved_other',
+        }),
+      ]
+    )
+    const slots = board.areas.flatMap((area) => area.slots)
+    expect(slots.map((slot) => slot.unit.code)).toEqual(['cedar-1', 'cedar-2'])
+  })
 })
 
 describe('countBoardSlots — the tab count is the card count', () => {
@@ -111,6 +185,23 @@ describe('countBoardSlots — the tab count is the card count', () => {
     // number of cards the board does not draw.
     const units = [unit(), unit({ unit_id: 'u2', code: 'cedar-2', is_active: false })]
     const parties = [party({ unit_code: 'cedar-2', unit_name: 'Cedar 2' })]
+    expect(countBoardSlots(parties, units)).toBe(
+      buildBoard(parties, units).areas.flatMap((a) => a.slots).length
+    )
+    expect(countBoardSlots(parties, units)).toBe(2)
+  })
+
+  it('agrees with the board about staff housing nobody is in', () => {
+    const units = [unit(), staffUnit({ unit_id: 'u2', code: 'aspen-lodge' })]
+    expect(countBoardSlots([], units)).toBe(
+      buildBoard([], units).areas.flatMap((a) => a.slots).length
+    )
+    expect(countBoardSlots([], units)).toBe(1)
+  })
+
+  it('agrees with the board about staff housing that still holds a party', () => {
+    const units = [unit(), staffUnit({ unit_id: 'u2', code: 'aspen-lodge' })]
+    const parties = [party({ unit_code: 'aspen-lodge', unit_name: 'Aspen Lodge' })]
     expect(countBoardSlots(parties, units)).toBe(
       buildBoard(parties, units).areas.flatMap((a) => a.slots).length
     )

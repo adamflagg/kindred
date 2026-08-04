@@ -686,6 +686,20 @@ describe('LodgingMap legend', () => {
 
 describe('LodgingMap highlight controls', () => {
   const BATH = unit({ unit_id: 'u1', code: 'cedar-1', name: 'Cedar 1', near_bathhouse: true })
+  /**
+   * A staff cabin RELEASED to families, which is why it is still on the map.
+   *
+   * `unit()` defaults `is_family_available: true`, and that is load-bearing
+   * here rather than incidental: the board — and therefore the map, which
+   * projects from it — now excludes staff housing that has NOT been released.
+   * Set `is_family_available: false` on this fixture and every test below
+   * stops finding its mark at all.
+   *
+   * That also means the "Staff cabins" highlight now matches almost nothing
+   * in practice, since released staff cabins are rare and unreleased ones no
+   * longer reach the map. Tracked as its own issue rather than fixed here —
+   * staff asked to review the map's toggles as a set.
+   */
   const STAFF = unit({
     unit_id: 'u2',
     code: 'cedar-2',
