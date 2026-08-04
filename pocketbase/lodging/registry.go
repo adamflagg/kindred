@@ -89,6 +89,18 @@ type registryUnit struct {
 	HasKitchen       bool `json:"has_kitchen"`
 	HasLights        bool `json:"has_lights"`
 
+	// These five refine an amenity above rather than restating it: HasTub
+	// narrows the Bathroom select, HasKitchenette narrows HasKitchen,
+	// HasSharedFridge narrows HasFridge. None can contradict its parent, so a
+	// consumer reading only the parent stays correct. HasCrib is distinct from
+	// HasPackPlaySpace — a camp-provided crib is not floor space for a family's
+	// own pack-and-play, and families with babies ask about both.
+	HasTub           bool `json:"has_tub"`
+	HasKitchenette   bool `json:"has_kitchenette"`
+	HasCrib          bool `json:"has_crib"`
+	HasChangingTable bool `json:"has_changing_table"`
+	HasSharedFridge  bool `json:"has_shared_fridge"`
+
 	// HasRamp is "yes" | "no" | "partial", or "" for NOT ASSESSED. Deliberately
 	// not a bool: most cabins were never checked, and a bool would record them
 	// all as step-free-inaccessible.
@@ -97,6 +109,19 @@ type registryUnit struct {
 	// MaxBeds is total sleeping spots, NOT Sleeps. Sleeps is the staff
 	// judgement for the session type and the two disagree on most units.
 	MaxBeds *int `json:"max_beds"`
+
+	// Beds is the bed inventory behind Sleeps, in the shape
+	// frontend/src/types/beds.ts ships: [{"type": "queen", "count": 1}]. Nil
+	// means UNKNOWN and is left unset rather than written as an empty list —
+	// 11 units have a Master Housing row that names rooms without naming beds,
+	// and [] would claim those rooms have none. Never a substitute for Sleeps:
+	// real capacity depends on who can share a bed, which staff judge.
+	Beds []registryBed `json:"beds"`
+}
+
+type registryBed struct {
+	Type  string `json:"type"`
+	Count int    `json:"count"`
 }
 
 type registryAlias struct {
@@ -385,6 +410,16 @@ func seedUnits(
 		rec.Set("has_living_room", u.HasLivingRoom)
 		rec.Set("has_kitchen", u.HasKitchen)
 		rec.Set("has_lights", u.HasLights)
+		rec.Set("has_tub", u.HasTub)
+		rec.Set("has_kitchenette", u.HasKitchenette)
+		rec.Set("has_crib", u.HasCrib)
+		rec.Set("has_changing_table", u.HasChangingTable)
+		rec.Set("has_shared_fridge", u.HasSharedFridge)
+		// Left unset when nil, so UNKNOWN reaches the database as null rather
+		// than as an empty inventory. Matches has_ramp's blank handling above.
+		if u.Beds != nil {
+			rec.Set("beds", u.Beds)
+		}
 		// Left unset when blank, so "not assessed" reaches the database as an
 		// empty select rather than a decision.
 		if u.HasRamp != "" {

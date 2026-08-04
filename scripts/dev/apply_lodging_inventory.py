@@ -52,6 +52,16 @@ INVENTORY_FIELDS = (
     "has_kitchen",
     "has_lights",
     "max_beds",
+    "beds",
+    # Each refines a field above rather than restating it: has_tub under the
+    # `bathroom` enum, has_kitchenette under has_kitchen, has_shared_fridge
+    # under has_fridge. None can contradict its parent, so a consumer that reads
+    # only the parent stays correct.
+    "has_tub",
+    "has_kitchenette",
+    "has_crib",
+    "has_changing_table",
+    "has_shared_fridge",
 )
 
 # Real corrections, but each overwrites a value that may have been set on
@@ -60,8 +70,14 @@ STRUCTURAL_FIELDS = ("bathroom", "bathroom_group", "is_container", "parent_unit"
 
 # Fields where the file's null means UNKNOWN rather than a value to write. The
 # booleans alongside them have no such state — absent means false, which is a
-# real claim — so this applies only to the numbers.
-NULLABLE_FIELDS = ("max_beds",)
+# real claim — so this applies only to the numbers and to `beds`.
+#
+# `beds` earns it the same way max_beds does: the Master Housing parser refuses
+# rows that name rooms without naming beds ("3 rm 2 bth") or name a space whose
+# beds are not listed ("guest room"), so an unparsed row arrives as null. That
+# null is ignorance, not an empty room, and writing it would erase an inventory
+# entered by hand through the admin form.
+NULLABLE_FIELDS = ("max_beds", "beds")
 
 # Never written by this script under any flag. These are the fields staff
 # maintain, and overwriting them is precisely what create-if-absent exists to
@@ -80,6 +96,10 @@ class Plan:
     updates: list[UnitUpdate] = field(default_factory=list)
     structural: list[UnitUpdate] = field(default_factory=list)
     absent: list[str] = field(default_factory=list)
+    # Rows where staff have confirmed the cabin and the file disagrees. Carried
+    # with their withheld fields so the operator sees what the sheet wanted to
+    # change, not merely that something was held back.
+    skipped_confirmed: list[UnitUpdate] = field(default_factory=list)
 
 
 def _norm(value: Any) -> Any:
@@ -189,6 +209,35 @@ def plan_updates(
             changes.update(structural)
             structural = {}
 
+        # STAFF_OWNED protects a fixed list of COLUMNS, and it cannot protect
+        # the amenity booleans — writing those is this script's whole job. The
+        # missing half is this per-ROW condition: staff own what they have
+        # VERIFIED. Once someone stands in the cabin, finds the sheet wrong
+        # ("no outlet in that room"), corrects it in /manage/lodging and
+        # confirms, the database is more authoritative than the file and this
+        # script has no way to know. A later --apply would revert it silently.
+        #
+        # Everything is computed first and withheld afterwards, so the report
+        # can say exactly WHAT was withheld rather than just that a row was
+        # skipped. A silent guard is the same bug wearing a different hat.
+        #
+        # `notes` is deliberately exempt: it is already fill-if-empty and never
+        # replaces written text, so it cannot overwrite a human's words.
+        #
+        # --structural is guarded too. bathroom and bathroom_group are exactly
+        # what a property walk corrects, and bathroom is the field families are
+        # matched on. Being opt-in stops an ACCIDENTAL run; it does not tell the
+        # operator which rows a human already ruled on. The skip is printed, so
+        # a real file/database disagreement stays visible and gets fixed through
+        # the admin UI — the right channel for a confirmed row.
+        if current.get("is_confirmed"):
+            withheld = {name: value for name, value in changes.items() if name != "notes"}
+            withheld.update(structural)
+            if withheld:
+                plan.skipped_confirmed.append(UnitUpdate(code, withheld))
+            changes = {name: value for name, value in changes.items() if name == "notes"}
+            structural = {}
+
         if changes:
             plan.updates.append(UnitUpdate(code, changes))
         if structural:
@@ -278,6 +327,13 @@ def main(argv: list[str] | None = None) -> int:
         print(f"\n{len(plan.structural)} STRUCTURAL difference(s) — NOT applied without --structural.")
         print("  These overwrite values that may have been set deliberately:")
         for u in plan.structural:
+            print(f"  {u.code:<28}{u.fields}")
+
+    if plan.skipped_confirmed:
+        print(f"\n{len(plan.skipped_confirmed)} CONFIRMED unit(s) left alone — staff have verified these.")
+        print("  The file disagrees, but a confirmed row is the staff answer. Fix it in")
+        print("  /manage/lodging if the database is the one that is wrong.")
+        for u in plan.skipped_confirmed:
             print(f"  {u.code:<28}{u.fields}")
 
     if plan.absent:
