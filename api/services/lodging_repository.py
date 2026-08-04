@@ -340,12 +340,19 @@ class LodgingRepository:
         return {str(getattr(row, "household", "")): row for row in rows}
 
     async def fetch_family_camp_medical(self, year: int) -> dict[str, Any]:
-        """PHI, keyed by household PB id.
+        """PHI, keyed by household PB id. NO PRODUCTION CALLER.
 
-        CALLERS MUST NOT put these records into a roster payload. The roster
-        derives booleans from PRESENCE only; the narrative is served solely by
-        the permission-gated medical endpoint, which reads ONE household
-        through fetch_medical_for_household rather than this whole-year map.
+        kindred#1889 deleted the last one. The roster used to read this whole
+        map to derive `has_medical_narrative` from PRESENCE -- a boolean true
+        for every household, because these questions store "No" as text -- and
+        deleting the flag took the read with it. The narrative is now served
+        solely by the permission-gated medical endpoint, which reads ONE
+        household through fetch_medical_for_household.
+
+        So there is nothing a caller here should be doing: pulling every
+        household's disclosure into API memory is the cost that deletion
+        bought back, and presence is not a signal. Two tests in
+        test_lodging_roster_service.py assert this is never called.
         """
         rows = await self._page(
             FAMILY_CAMP_MEDICAL,

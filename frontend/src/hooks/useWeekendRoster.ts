@@ -13,7 +13,7 @@
  * Summer's board has the same property and does not opt down. And a weekend is
  * worked by ONE person at a time, modelling scenarios for themselves — a
  * second staff member is rare and read-shaped — so there is no concurrent-edit
- * hazard being bought. What it cost was real: `build_roster` issues eleven
+ * hazard being bought. What it cost was real: `build_roster` issues ten
  * PocketBase fetches, and `build_summary`'s docstring (which exists because
  * calling the roster per weekend repeated them) puts an empty weekend at about
  * three seconds, and that was being re-paid every 30 seconds of window focus,

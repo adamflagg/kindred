@@ -123,9 +123,10 @@ Facts, not a work log. Do not re-verify or re-implement these.
 - **The weekend surfaces are live** (Phase B, `37cf8d24`): `/weekend/sessions` lander,
   `/weekend/session/:sessionCmId` roster with Roster/Inventory tabs, and
   `GET /api/lodging/summary?year=` — one batched read returning every weekend with its
-  `RosterCounts`. `/summary` exists because `/roster` makes eleven fetches of which **eight are
+  `RosterCounts`. `/summary` exists because `/roster` makes ten fetches of which **seven are
   year-scoped**, so filling a lander weekend-by-weekend repeated that work N times; a weekend with
-  zero parties still cost ~3s. Measured: twelve weekends in one 4.0s / 5.9 KB call.
+  zero parties still cost ~3s. Measured: twelve weekends in one 4.0s / 5.9 KB call. (Eleven and
+  eight until #1889 deleted the whole-year medical read; #1963 measures from the older numbers.)
 - **`/summary` and `/roster` cannot disagree.** The batch runs the same
   `_build_units` / `_build_parties` / `_build_counts` helpers, and
   `TestBuildSummary::test_counts_match_what_the_roster_reports_for_the_same_weekend` asserts it.
@@ -242,10 +243,11 @@ adds position, so the two cannot disagree about who is where.
 - **Containers are never drawn**, the same invariant the board holds. The Map tab counts
   POSITIONED ROOMS, which is neither the Inventory count (includes containers) nor the number
   of marks (clusters, and changes with zoom).
-- **`(0,0)` means UNPOSITIONED.** PocketBase stores an unset number as 0 and — unlike `sleeps` —
-  the API does not map it to null (#1941). Rendered naively it lands in the map's top-left
-  corner looking like a real placement. `hasCoordinates` treats BOTH axes zero as unset and
-  keeps a single-axis zero, which is a legitimate edge coordinate.
+- **`(0,0)` means UNPOSITIONED.** PocketBase stores an unset number as 0, which rendered naively
+  lands in the map's top-left corner looking like a real placement. Settled at BOTH ends as of
+  #1941: `_map_point` sends the unset pair as null, and `hasCoordinates` stays as defence in
+  depth. Note the asymmetry deliberately — only a BOTH-axes zero is the unset signal; a
+  single-axis zero is a real edge position and is kept.
 - **A merged placement cannot be positioned yet.** The roster sends `unit_code: ""` for a merge,
   so those parties land on the "Placed, off the map" rail. `resolvePartyUnits` (`mapModel.ts`)
   is the pre-built seam and is the ONLY place a party becomes units. #1933 landed
@@ -479,8 +481,10 @@ Each of these was decided deliberately. Reopening one needs a reason, not a fres
   is how a UI starts disagreeing with CampMinder about what a session is called.
 - **Lander counts come from `/api/lodging/summary`, never from N roster calls.** See §4.
 - **Contracts corrected in review (`03754754`), easy to mis-remember:**
-  `AccessibilityFlagListProps.householdCmId` is `number | null` — `null` means "no household to
-  look up" and suppresses the PHI reveal entirely, rather than requesting `/households/0/medical`.
+  `MedicalNarrativeProps.householdCmId` is `number | null` — `null` means "no household to
+  look up" and suppresses the PHI fetch entirely, rather than requesting `/households/0/medical`.
+  (It lived on `AccessibilityFlagListProps` until #1889 made that component purely
+  presentational and moved the narrative to `MedicalNarrative`.)
   `partyAttention`'s `unverified` reason lists only needs a confirmed cabin has *not* answered.
   `UnitInventoryPanel` buckets areas on `` `${area_code}::${area_name}` `` because the API sends
   `area_code: ""` for anything it cannot resolve. Neither weekend page passes `emptyMessage` to
@@ -910,9 +914,7 @@ git fetch -q && git rev-list --count origin/<branch>..HEAD   # must be 0
   `unit_code: ""`. `resolvePartyUnits` in `mapModel.ts` is the only place a party becomes units
   and was written for exactly this, so nothing else should need to change. Real multi-room
   placements run 12–16 a year, so this is not hypothetical.
-- **#1941 — map `map_x`/`map_y` `0 → None` in the API**, as `sleeps` already is. The frontend
-  guard in `hasCoordinates` stays as defence in depth. Note the asymmetry deliberately: only a
-  BOTH-axes zero is the unset signal; a single-axis zero is a real edge position.
+  (#1941 was here and is CLOSED — `_map_point` landed the API half; see §2.)
 
 
 ### CLOSED: every write path is race-guarded
@@ -1016,10 +1018,9 @@ parent corrections. **Explicitly do not run `confirm_lodging_units.py` against p
   tempting justification is wrong: this does NOT preserve precedent, because pre-collapse a
   merged slot was one atomic record that either resolved or did not. *Partial* degradation
   inside a slot is a state the collapse itself created.
-- **#1936 — `place_party` retries on ANY `ClientResponseError`,** not just the unique-index
-  race its docstring reasons about. A 400 or 403 currently goes down a re-read-and-update path
-  never meant for it. Pre-existing; CodeRabbit flagged it on #1927 and it was dropped.
-  `set_availability` has the same shape.
+  (#1936 was here and is CLOSED — `REFUSAL_STATUSES` re-raises 401/403 before any recovery, in
+  all four write paths: both creates, both updates, and the seed's `_seed_failure`. The 400
+  recovery is untouched. Note the update branches were the COMMON path once drag shipped.)
 - **#1937 — `golangci-lint` is not in the pre-push hook.** Go lint failures pass every local
   gate and surface only in CI. Cost two round-trips on #1933. Run it by hand until this lands:
   `cd pocketbase && golangci-lint run --config ../.golangci.yml > /tmp/lint.out 2>&1; echo $?`

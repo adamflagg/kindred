@@ -282,27 +282,35 @@ class TestMedicalEndpointIsPermissionGated:
         assert body["household_cm_id"] == 2000001
         assert body["cpap_info"] == "Uses a CPAP nightly"
 
-    def test_phi_reveal_is_logged_by_username_not_email(self, mock_pb: MagicMock) -> None:
-        """The audit trail identifies the caller without storing their email.
+    def test_the_medical_read_is_not_logged(self, mock_pb: MagicMock) -> None:
+        """RBAC is the control, and there is no access log behind it.
 
-        A PHI access log inherits the retention and access rules of the log
-        store, not of the PHI surface. `username` identifies the caller just
-        as well without putting an address into that store.
+        One existed, recording the caller by `username` so the log store
+        would not inherit an email address. The ruling is that it should not
+        exist at all: `lodging.phi` decides who may read this, and a log line
+        is not a second gate.
+
+        kindred#1889 is what made it actively wrong rather than merely
+        unused. With the reveal button gone the panel fetches on mount, so
+        "PHI reveal" fired on every panel open -- including households with
+        nothing on file -- and could no longer tell a deliberate read from a
+        click.
+
+        This asserts the router has no logging surface AT ALL rather than
+        that one call did not happen, which is what makes it hold against a
+        re-add under a different event name. Patching `get_logger` would not:
+        the binding it replaced was module-level, so by the time a test can
+        patch anything the module is already imported and the patch is inert.
         """
         mock_pb.collection.return_value.get_full_list.side_effect = _medical_reads
 
-        with (
-            patch("api.routers.lodging.pb", mock_pb),
-            patch("api.routers.lodging.logger") as mock_logger,
-        ):
+        with patch("api.routers.lodging.pb", mock_pb):
             app = _build_app(_phi_user(), mock_pb)
-            TestClient(app).get("/api/lodging/households/2000001/medical", params={"year": 2026})
+            response = TestClient(app).get("/api/lodging/households/2000001/medical", params={"year": 2026})
+            import api.routers.lodging as lodging_module
 
-        extra = mock_logger.info.call_args[1]["extra"]
-        assert extra["user"] == "TestNurse"
-        assert "nurse@example.com" not in str(extra.values())
-        assert extra["household_cm_id"] == 2000001
-        assert extra["year"] == 2026
+        assert response.status_code == 200
+        assert not hasattr(lodging_module, "logger")
 
     def test_medical_read_does_not_load_the_whole_year(self, mock_pb: MagicMock) -> None:
         """One household in, one household's PHI out.
