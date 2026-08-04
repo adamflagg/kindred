@@ -93,6 +93,34 @@ describe('WeekendStatsBar', () => {
     expect(screen.getByText('· 3 held')).toBeInTheDocument()
   })
 
+  it('does not describe held cabins as staff housing', () => {
+    // "Held" and "staff housing" were one number until units_staff_housing
+    // split them, and the tooltip still said "Held for staff". They are
+    // different facts with different remedies: a held cabin comes back next
+    // weekend, a staff cabin never does.
+    render(<WeekendStatsBar counts={counts()} bedsNeeded={223} spacesUnmeasured={0} />)
+    expect(screen.getByTitle(/excluded from spaces/i).textContent).toContain('held')
+    expect(screen.queryByTitle(/held for staff/i)).not.toBeInTheDocument()
+  })
+
+  it('reports staff housing separately, because it was never inventory', () => {
+    // 21 cabins reading as "held" would say staff took them out of service
+    // this weekend. They were never in service.
+    render(
+      <WeekendStatsBar
+        counts={counts({ units_staff_housing: 21 })}
+        bedsNeeded={223}
+        spacesUnmeasured={0}
+      />
+    )
+    expect(screen.getByText('· 21 staff')).toBeInTheDocument()
+  })
+
+  it('says nothing about staff housing when there is none', () => {
+    render(<WeekendStatsBar counts={counts()} bedsNeeded={223} spacesUnmeasured={0} />)
+    expect(screen.queryByText(/staff/)).not.toBeInTheDocument()
+  })
+
   it('highlights parties still needing a cabin', () => {
     render(<WeekendStatsBar counts={counts()} bedsNeeded={223} spacesUnmeasured={0} />)
     expect(screen.getByText('need a cabin')).toBeInTheDocument()

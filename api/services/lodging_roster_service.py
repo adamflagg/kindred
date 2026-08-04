@@ -239,6 +239,25 @@ def _household_sort_name(adults: list[Any], children: list[Any], display_name: s
     return _last_token(display_name)
 
 
+def _is_planning_inventory(unit: LodgingUnitSummary) -> bool:
+    """Whether this unit is inventory the weekend is planned against.
+
+    THE SAME PREDICATE the board applies in `boardLayout.isPlanningInventory`
+    (frontend). If the two drift, the Housing tab and the stats bar describe
+    different weekends -- the board drawing 81 cards beside a bar reporting
+    102 units is exactly the disagreement this shape exists to prevent.
+
+    Reads RESOLVED availability rather than the standing role, so a staff
+    cabin released to families for one weekend rejoins the inventory; hiding
+    the cabin staff just released would make the release capability useless.
+
+    The converse is deliberately NOT symmetric: a family cabin held back this
+    weekend is still inventory and is reported by `units_reserved`. Permanent
+    staff housing was never inventory, so it cannot be "held back".
+    """
+    return unit.allocation_default != "staff_default" or unit.is_family_available
+
+
 class LodgingRosterService:
     """Builds the read-only weekend roster from repository output."""
 
@@ -305,7 +324,6 @@ class LodgingRosterService:
             adults_task = tg.create_task(self.repository.fetch_family_camp_adults(year))
             registrations_task = tg.create_task(self.repository.fetch_family_camp_registrations(year))
             aliases_task = tg.create_task(self.repository.count_open_unresolved_aliases())
-            unconfirmed_task = tg.create_task(self.repository.count_unconfirmed_units())
             # ONE placement source, chosen here rather than merged later. A
             # scenario does not read the mirror at all -- which is what makes
             # "no fall-through" a property of the request rather than of the
@@ -339,7 +357,7 @@ class LodgingRosterService:
             registrations=registrations_task.result(),
             assignments=placements_task.result(),
         )
-        counts = self._build_counts(unit_summaries, parties, aliases_task.result(), unconfirmed_task.result())
+        counts = self._build_counts(unit_summaries, parties, aliases_task.result())
 
         return WeekendRosterResponse(
             year=year,
@@ -392,7 +410,6 @@ class LodgingRosterService:
             adults_task = tg.create_task(self.repository.fetch_family_camp_adults(year))
             registrations_task = tg.create_task(self.repository.fetch_family_camp_registrations(year))
             aliases_task = tg.create_task(self.repository.count_open_unresolved_aliases())
-            unconfirmed_task = tg.create_task(self.repository.count_unconfirmed_units())
 
         units = units_task.result()
         households = households_task.result()
@@ -400,7 +417,6 @@ class LodgingRosterService:
         adults_by_household = adults_task.result()
         registrations = registrations_task.result()
         unresolved_aliases = aliases_task.result()
-        unconfirmed_units = unconfirmed_task.result()
 
         async def _entry(session: Any) -> WeekendSummaryEntry:
             session_pb_id = _s(session, "id")
@@ -435,7 +451,7 @@ class LodgingRosterService:
             )
             return WeekendSummaryEntry(
                 session=self._session_summary(session),
-                counts=self._build_counts(unit_summaries, parties, unresolved_aliases, unconfirmed_units),
+                counts=self._build_counts(unit_summaries, parties, unresolved_aliases),
             )
 
         async with asyncio.TaskGroup() as tg:
@@ -838,11 +854,12 @@ class LodgingRosterService:
         units: list[LodgingUnitSummary],
         parties: list[RosterParty],
         unresolved_aliases: int,
-        unconfirmed_units: int,
     ) -> RosterCounts:
         # Containers are building/grouping rows carrying whole-building
         # aggregates. Including them double-counts beds (408 vs a true 389).
-        bookable = [u for u in units if not u.is_container and u.is_active]
+        leaf = [u for u in units if not u.is_container and u.is_active]
+        bookable = [u for u in leaf if _is_planning_inventory(u)]
+        staff_housing = [u for u in leaf if not _is_planning_inventory(u)]
         available = [u for u in bookable if u.is_family_available]
         assigned = sum(1 for p in parties if p.unit_code or p.unit_name)
         return RosterCounts(
@@ -852,9 +869,17 @@ class LodgingRosterService:
             units_total=len(bookable),
             units_family_available=len(available),
             units_reserved=len(bookable) - len(available),
+            units_staff_housing=len(staff_housing),
             beds_family_available=sum(u.sleeps for u in available if u.sleeps is not None),
             units_capacity_unknown=sum(1 for u in bookable if u.sleeps is None),
-            units_unconfirmed=unconfirmed_units,
+            # Over `bookable`, NOT a separate PocketBase count. The old query
+            # filtered is_confirmed/is_container/is_active with no inventory
+            # predicate, so once units_total dropped staff housing the two
+            # described different populations -- and the stats bar divides one
+            # by the other ("N of M cabins have unconfirmed amenities"). Every
+            # unit is already here with its is_confirmed, so the second answer
+            # bought nothing but a chance to disagree, and one fetch.
+            units_unconfirmed=sum(1 for u in bookable if not u.is_confirmed),
             units_missing_allocation=sum(1 for u in bookable if not u.allocation_default),
             unresolved_aliases=unresolved_aliases,
         )

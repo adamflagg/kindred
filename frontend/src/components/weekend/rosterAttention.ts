@@ -161,9 +161,23 @@ export function indexUnitsByCode(units: LodgingUnitRow[]): Map<string, LodgingUn
 /**
  * Family spaces whose capacity nobody has recorded.
  *
- * Deliberately not `counts.units_capacity_unknown`, which spans every
- * unmeasured cabin including staff holds and building rows — on real 2026 data
- * that reports 5 where only 2 of the 79 placeable spaces are unmeasured.
+ * Deliberately not `counts.units_capacity_unknown`. That count used to span
+ * staff holds too — reporting 5 on real 2026 data where only 2 of the 79
+ * placeable spaces were unmeasured — but no longer does: `_build_counts` now
+ * excludes staff housing from the planning inventory, so on that same data the
+ * two agree.
+ *
+ * They are still not the same question, which is why this survives. This one
+ * asks about spaces a family could be put in RIGHT NOW, so it filters on
+ * `is_family_available` and drops a cabin held back this weekend.
+ * `units_capacity_unknown` asks about the planning inventory, which includes
+ * that held cabin because it returns next weekend. They diverge the moment
+ * anything is held — today nothing is, because `lodging_availability` has
+ * never held a row.
+ *
+ * It sits beside the BED count on the stats bar, and beds there are
+ * `beds_family_available`, so the available-only reading is the one that
+ * matches its neighbour.
  */
 export function countUnmeasuredSpaces(units: LodgingUnitRow[]): number {
   return units.filter(

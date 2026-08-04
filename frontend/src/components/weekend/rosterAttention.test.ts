@@ -212,9 +212,12 @@ describe('partyBeds', () => {
 
 describe('countUnmeasuredSpaces', () => {
   it('counts only the spaces a family could actually be placed into', () => {
-    // Deliberately not `counts.units_capacity_unknown`, which spans staff
-    // holds and building rows too — on real 2026 data it says 5 where only 2
-    // of the 79 placeable spaces are unmeasured.
+    // Deliberately not `counts.units_capacity_unknown`. It used to span staff
+    // holds — 5 on real 2026 data where only 2 of the 79 placeable spaces were
+    // unmeasured — but `_build_counts` now excludes staff housing, so on that
+    // data the two agree. What still separates them is a cabin HELD BACK this
+    // weekend: still planning inventory, so `units_capacity_unknown` keeps it,
+    // while nobody can be placed in it today, so this drops it.
     expect(
       countUnmeasuredSpaces([
         unit({ code: 'a', sleeps: null }),

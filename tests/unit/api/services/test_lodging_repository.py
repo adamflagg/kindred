@@ -413,26 +413,10 @@ class TestCounts:
         pb.collection.return_value.get_full_list.assert_not_called()
 
     @pytest.mark.asyncio
-    async def test_unconfirmed_units_excludes_containers_and_inactive(
-        self, repo: LodgingRepository, pb: MagicMock
-    ) -> None:
-        pb.collection.return_value.get_list.return_value = _record(total_items=1)
-
-        count = await repo.count_unconfirmed_units()
-
-        pb.collection.assert_called_with("lodging_units")
-        filter_str = _last_list_query(pb)["filter"]
-        assert "is_confirmed = false" in filter_str
-        assert "is_container = false" in filter_str
-        assert "is_active = true" in filter_str
-        assert count == 1
-        pb.collection.return_value.get_full_list.assert_not_called()
-
-    @pytest.mark.asyncio
     async def test_counts_request_a_single_row(self, repo: LodgingRepository, pb: MagicMock) -> None:
         pb.collection.return_value.get_list.return_value = _record(total_items=42)
 
-        await repo.count_unconfirmed_units()
+        await repo.count_open_unresolved_aliases()
 
         args = pb.collection.return_value.get_list.call_args[0]
         assert args[0] == 1, "page 1"

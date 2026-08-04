@@ -22,9 +22,11 @@ export interface WeekendStatsBarProps {
   bedsNeeded: number
   /**
    * Family spaces whose capacity nobody has recorded. NOT
-   * `counts.units_capacity_unknown`, which spans staff holds and building
-   * rows — on real 2026 data that says 5 where only 2 of the 79 placeable
-   * spaces are unmeasured.
+   * `counts.units_capacity_unknown`: that asks about the planning inventory,
+   * which keeps a cabin held back this weekend because it returns next
+   * weekend. This one asks what a family could be put in RIGHT NOW, which is
+   * the reading that matches the bed count beside it. See
+   * `countUnmeasuredSpaces`.
    */
   spacesUnmeasured: number
 }
@@ -38,6 +40,7 @@ export function WeekendStatsBar({ counts, bedsNeeded, spacesUnmeasured }: Weeken
   const spaces = counts.units_family_available ?? 0
   const unitsTotal = counts.units_total ?? 0
   const unitsReserved = counts.units_reserved ?? 0
+  const unitsStaffHousing = counts.units_staff_housing ?? 0
   const beds = counts.beds_family_available ?? 0
   const spare = spaces - partiesTotal
 
@@ -85,9 +88,26 @@ export function WeekendStatsBar({ counts, bedsNeeded, spacesUnmeasured }: Weeken
           <span className="text-muted-foreground tabular-nums">
             ({spare < 0 ? `${String(Math.abs(spare))} short` : `${String(spare)} spare`})
           </span>
+          {/* Held and staff housing are DIFFERENT facts with different
+              remedies, and were one number until `units_staff_housing` split
+              them. A held cabin is inventory that comes back next weekend — a
+              burst pipe, a caretaker in residence. A staff cabin never does:
+              it houses full-time staff who are not enrolled per session, and
+              was never part of the weekend's inventory to begin with. */}
           {unitsReserved > 0 && (
-            <span className="text-muted-foreground" title="Held for staff, excluded from spaces">
+            <span
+              className="text-muted-foreground"
+              title="Out of service this weekend, excluded from spaces"
+            >
               · {unitsReserved} held
+            </span>
+          )}
+          {unitsStaffHousing > 0 && (
+            <span
+              className="text-muted-foreground"
+              title="Permanent staff housing, never part of the weekend's inventory"
+            >
+              · {unitsStaffHousing} staff
             </span>
           )}
         </div>
