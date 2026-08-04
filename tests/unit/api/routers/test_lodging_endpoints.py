@@ -13,7 +13,14 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from pocketbase.client import ClientResponseError  # type: ignore[attr-defined]
+from pydantic import BaseModel
 
+from api.schemas.lodging import (
+    AvailabilityWriteRequest,
+    PlacementCopyRequest,
+    PlacementDeleteRequest,
+    PlacementWriteRequest,
+)
 from bunking.auth_middleware import AuthUser, get_current_user
 from bunking.rbac.permissions import Permission
 
@@ -448,9 +455,9 @@ WRITE_ENDPOINTS: list[tuple[str, str, str, dict[str, Any]]] = [
         {
             "year": 2026,
             "session_cm_id": 1000001,
-            "scenario": "scn_1",
             "unit_id": "u1",
-            "state": "reserved_staff",
+            "family_available": False,
+            "reason": "Burst pipe",
         },
     ),
     (
@@ -460,6 +467,15 @@ WRITE_ENDPOINTS: list[tuple[str, str, str, dict[str, Any]]] = [
         {"year": 2026, "session_cm_id": 1000001, "scenario": "scn_1"},
     ),
 ]
+
+# The request model each row above posts against. Only used by the shape guard
+# below, which is the half of this table nothing else asserts.
+WRITE_MODELS: dict[tuple[str, str], type[BaseModel]] = {
+    ("POST", "/api/lodging/placements"): PlacementWriteRequest,
+    ("DELETE", "/api/lodging/placements"): PlacementDeleteRequest,
+    ("PUT", "/api/lodging/availability"): AvailabilityWriteRequest,
+    ("POST", "/api/lodging/placements/copy"): PlacementCopyRequest,
+}
 
 
 def _session_lookup(**kwargs: Any) -> list[Any]:
@@ -543,6 +559,26 @@ class TestWriteEndpointsRequireBunkingManage:
             if method in {"POST", "PUT", "PATCH", "DELETE"}
         }
         assert actual == declared, f"write routes not covered by the auth-contract table: {actual ^ declared}"
+
+    @pytest.mark.parametrize(("verb", "template", "body"), [(v, t, b) for v, t, _, b in WRITE_ENDPOINTS])
+    def test_every_table_body_names_only_fields_its_model_declares(
+        self, verb: str, template: str, body: dict[str, Any]
+    ) -> None:
+        """A stale key here degrades the request instead of failing it.
+
+        Pydantic IGNORES unknown keys, so a field deleted from a model lingers
+        in this table silently. That is not theoretical: the availability row
+        carried `scenario` and `state` after 1500000135 removed both, and
+        because the leftovers dropped rather than 422'd, `family_available`
+        stayed at its `None` default -- turning the row into a CLEAR-the-
+        override no-op. `test_bunking_staff_are_allowed` still passed, because
+        a no-op answers 200, so the permission gate looked covered for a write
+        that never happened.
+        """
+        declared = set(WRITE_MODELS[(verb, template)].model_fields)
+        assert set(body) <= declared, (
+            f"{verb} {template} sends fields its model does not declare: {set(body) - declared}"
+        )
 
 
 class TestPlacementWrites:

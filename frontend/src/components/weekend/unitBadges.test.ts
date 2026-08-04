@@ -63,7 +63,9 @@ describe('reservationBadge', () => {
     // A burst pipe, a caretaker in residence. The unit is still planning
     // inventory -- it is inventory that is unavailable, not inventory that is
     // missing -- which is why this is "Held" and not "Staff".
-    const badge = reservationBadge(unit({ family_available_override: false, reason: 'Burst pipe' }))
+    const badge = reservationBadge(
+      unit({ family_available_override: false, reason: 'Burst pipe', is_family_available: false })
+    )
 
     expect(badge?.label).toBe('Held')
     expect(badge?.className).toBe(
@@ -102,7 +104,10 @@ describe('reservationBadge', () => {
     // so a falsy test would badge every unbadged family cabin as "Held". None
     // means "no row, ask the role"; false means "closed this weekend".
     expect(reservationBadge(unit({ family_available_override: null }))).toBeNull()
-    expect(reservationBadge(unit({ family_available_override: false }))?.label).toBe('Held')
+    expect(
+      reservationBadge(unit({ family_available_override: false, is_family_available: false }))
+        ?.label
+    ).toBe('Held')
   })
 
   it('does not badge a staff cabin as Released merely for lacking an override', () => {
@@ -130,8 +135,12 @@ describe('reservationBadge', () => {
   })
 
   it('ignores the reason text entirely, because the rule never branches on it', () => {
-    const held = reservationBadge(unit({ family_available_override: false, reason: 'Burst pipe' }))
-    const alsoHeld = reservationBadge(unit({ family_available_override: false, reason: '' }))
+    const held = reservationBadge(
+      unit({ family_available_override: false, reason: 'Burst pipe', is_family_available: false })
+    )
+    const alsoHeld = reservationBadge(
+      unit({ family_available_override: false, reason: '', is_family_available: false })
+    )
 
     expect(held).toEqual(alsoHeld)
   })

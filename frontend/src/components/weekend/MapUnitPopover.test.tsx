@@ -135,7 +135,15 @@ describe('MapUnitPopover — one room', () => {
     // the three surfaces start disagreeing about what "Held" means.
     render(
       <MapUnitPopover
-        units={[mapUnit(row({ family_available_override: false, reason: 'Burst pipe' }))]}
+        units={[
+          mapUnit(
+            row({
+              family_available_override: false,
+              reason: 'Burst pipe',
+              is_family_available: false,
+            })
+          ),
+        ]}
         hue={HUE}
         onOpenParty={vi.fn()}
       />
@@ -382,6 +390,7 @@ describe('MapUnitPopover — a cluster of rooms', () => {
           code: 'cedar-2',
           name: 'Cedar 2',
           family_available_override: false,
+          is_family_available: false,
           is_active: false,
         })
       ),
