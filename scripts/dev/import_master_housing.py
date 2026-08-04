@@ -49,7 +49,7 @@ SHEET_ID = "1GtNje2ETlcr3JQYMF3ChXndsH9ddySujc1Yv9YCq0Gs"
 SHEET_TAB = "Master Housing Tab"
 REGISTRY = _ROOT / "config" / "lodging_registry.json"
 
-NAME_COL, CAPACITY_COL, BED_BATH_COL, BATHROOM_COL = 4, 5, 6, 9
+NAME_COL, CAPACITY_COL, BED_BATH_COL, BATHROOM_COL, KITCHEN_COL = 4, 5, 6, 9, 11
 
 # Mirrors apply_lodging_inventory.STAFF_OWNED. Duplicated rather than imported
 # because the two scripts must be able to disagree loudly in review if either
@@ -57,7 +57,24 @@ NAME_COL, CAPACITY_COL, BED_BATH_COL, BATHROOM_COL = 4, 5, 6, 9
 STAFF_OWNED = ("sleeps", "map_x", "map_y", "is_confirmed", "is_active", "inventory_class")
 
 # The only keys this script may set.
-WRITABLE = ("beds", "has_fridge", "is_accessible")
+#
+# The five booleans after the first three each REFINE a field that already
+# exists rather than restating it: has_tub sits under the `bathroom` enum,
+# has_kitchenette under has_kitchen, has_shared_fridge under has_fridge. None of
+# them can contradict its parent, so a consumer that knows only the parent stays
+# correct. A parallel field that could disagree is what this registry keeps
+# getting bitten by, and it is why the `bathroom` enum was not widened instead —
+# that three-way is load-bearing in the fit check and in matching.
+WRITABLE = (
+    "beds",
+    "has_fridge",
+    "is_accessible",
+    "has_tub",
+    "has_kitchenette",
+    "has_crib",
+    "has_changing_table",
+    "has_shared_fridge",
+)
 
 # Sheet name -> unit code. HAND-CHECKED, one row at a time, and reviewed before
 # first use. This is deliberately a table and not a fuzzy matcher: a matcher
@@ -262,9 +279,20 @@ def plan_import(sheet: list[list[Any]], registry: dict[str, Any]) -> ImportPlan:
         # `beds` is nullable and null means UNKNOWN, so a refusal writes null
         # rather than [] — an empty list claims the room has no beds and would
         # overwrite an inventory entered by hand.
+        bathroom = _cell(row, BATHROOM_COL).casefold()
+        kitchen = _cell(row, KITCHEN_COL).casefold()
+
         entry.fields["beds"] = parsed.beds
         entry.fields["has_fridge"] = bool(parsed.fridge)
-        entry.fields["is_accessible"] = "accessible" in _cell(row, BATHROOM_COL).casefold()
+        entry.fields["is_accessible"] = "accessible" in bathroom
+        entry.fields["has_tub"] = "tub" in bathroom
+        # "X (ette)" is a kitchenette; a bare "X" is a full kitchen. Anything
+        # else in that column is prose about where the kitchen is, not a claim
+        # about its size.
+        entry.fields["has_kitchenette"] = "ette" in kitchen
+        entry.fields["has_crib"] = parsed.crib
+        entry.fields["has_changing_table"] = parsed.changing_table
+        entry.fields["has_shared_fridge"] = parsed.fridge == "shared"
 
         plan.rows.append(entry)
 

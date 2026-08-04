@@ -39,9 +39,16 @@ HEADER[4], HEADER[5], HEADER[6], HEADER[9], HEADER[15] = (
 )
 
 
-def _row(name: str, *, capacity: object = "", bed_bath: str = "", bathroom: str = "") -> list[object]:
+def _row(
+    name: str,
+    *,
+    capacity: object = "",
+    bed_bath: str = "",
+    bathroom: str = "",
+    kitchen: str = "",
+) -> list[object]:
     row: list[object] = [""] * 17
-    row[4], row[5], row[6], row[9] = name, capacity, bed_bath, bathroom
+    row[4], row[5], row[6], row[9], row[11] = name, capacity, bed_bath, bathroom, kitchen
     return row
 
 
@@ -89,7 +96,7 @@ def test_never_writes_a_staff_owned_field() -> None:
         assert after[guarded] == before[guarded], f"{guarded} was modified"
 
 
-def test_writes_only_the_three_inventory_keys() -> None:
+def test_writes_only_the_declared_inventory_keys() -> None:
     registry = _registry("gt-lofty")
     sheet = [HEADER, _row("Gt Lofty", bed_bath="1 queen, mini fridge", bathroom="shared, accessible shower")]
 
@@ -98,7 +105,95 @@ def test_writes_only_the_three_inventory_keys() -> None:
     changed = {
         key for key, value in _by_code(updated)["gt-lofty"].items() if _by_code(registry)["gt-lofty"].get(key) != value
     }
-    assert changed <= {"beds", "has_fridge", "is_accessible"}
+    assert changed <= set(imh.WRITABLE)
+
+
+# --- the refining booleans ------------------------------------------------
+#
+# Each one REFINES a field that already exists rather than restating it, so
+# there is never a second answer to the same question: has_tub sits under the
+# `bathroom` enum, has_kitchenette under has_kitchen, has_shared_fridge under
+# has_fridge. A parallel field that could disagree with its parent is the thing
+# this registry keeps getting bitten by.
+
+
+def test_has_tub_comes_from_the_bathroom_column() -> None:
+    registry = _registry("a", "b", "c")
+    sheet = [
+        HEADER,
+        _row("A", bathroom="private (+tub)"),
+        _row("B", bathroom="shared (+tub)"),
+        _row("C", bathroom="private, shower"),
+    ]
+
+    updated = _by_code(imh.apply_plan(imh.plan_import(sheet, registry), registry))
+    assert updated["a"]["has_tub"] is True
+    assert updated["b"]["has_tub"] is True
+    assert updated["c"]["has_tub"] is False
+
+
+def test_has_kitchenette_distinguishes_the_ette_marker() -> None:
+    """`X (ette)` survived only as prose in `notes` before this."""
+    registry = _registry("a", "b", "c")
+    sheet = [
+        HEADER,
+        _row("A", kitchen="X (ette)"),
+        _row("B", kitchen="X"),
+        _row("C", kitchen="Part of the back room"),
+    ]
+
+    updated = _by_code(imh.apply_plan(imh.plan_import(sheet, registry), registry))
+    assert updated["a"]["has_kitchenette"] is True
+    assert updated["b"]["has_kitchenette"] is False
+    assert updated["c"]["has_kitchenette"] is False
+
+
+def test_crib_and_changing_table_reach_the_registry() -> None:
+    registry = _registry("a", "b")
+    sheet = [
+        HEADER,
+        _row("A", bed_bath="1 queen, 1 full/twin bunk + crib"),
+        _row("B", bed_bath="1 queen, 1 twin bunk, changing table"),
+    ]
+
+    updated = _by_code(imh.apply_plan(imh.plan_import(sheet, registry), registry))
+    assert updated["a"]["has_crib"] is True
+    assert updated["a"]["has_changing_table"] is False
+    assert updated["b"]["has_changing_table"] is True
+    assert updated["b"]["has_crib"] is False
+
+
+def test_a_shared_fridge_sets_both_has_fridge_and_has_shared_fridge() -> None:
+    """has_shared_fridge refines has_fridge; it never contradicts it. A shared
+    fridge is still a fridge, so a consumer that only knows has_fridge stays
+    correct."""
+    registry = _registry("a", "b")
+    sheet = [
+        HEADER,
+        _row("A", bed_bath="1 queen, shared mini fridge"),
+        _row("B", bed_bath="1 queen, mini fridge"),
+    ]
+
+    updated = _by_code(imh.apply_plan(imh.plan_import(sheet, registry), registry))
+    assert (updated["a"]["has_fridge"], updated["a"]["has_shared_fridge"]) == (True, True)
+    assert (updated["b"]["has_fridge"], updated["b"]["has_shared_fridge"]) == (True, False)
+
+
+def test_every_writable_key_is_in_the_apply_scripts_inventory_fields() -> None:
+    """A key this importer writes to the file but apply_lodging_inventory does
+    not carry onto the row lands nowhere: the loader is create-if-absent, so an
+    existing unit never picks it up. It would look imported and be invisible."""
+    import importlib.util as _util
+
+    path = Path(__file__).resolve().parents[2] / "scripts" / "dev" / "apply_lodging_inventory.py"
+    spec = _util.spec_from_file_location("apply_lodging_inventory_check", path)
+    assert spec is not None
+    assert spec.loader is not None
+    module = _util.module_from_spec(spec)
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
+
+    assert set(imh.WRITABLE) <= set(module.INVENTORY_FIELDS)
 
 
 # --- the inventory it does write -----------------------------------------
