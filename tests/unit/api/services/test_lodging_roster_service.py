@@ -89,6 +89,11 @@ def _repo(**overrides: Any) -> MagicMock:
         "fetch_household_by_cm_id": None,
         "fetch_medical_for_household": None,
         "count_open_unresolved_aliases": 0,
+        # DELIBERATELY still here, though the repository method is gone: the
+        # tests that pin the roster no longer asking for this count need an
+        # attribute to run `assert_not_called()` against. A bare MagicMock
+        # would invent one on access and pass no matter what, which is the
+        # failure mode those tests exist to rule out.
         "count_unconfirmed_units": 0,
     }
     defaults.update(overrides)
@@ -583,13 +588,59 @@ class TestUnitsAndCounts:
     async def test_unresolved_alias_and_unconfirmed_counts_are_surfaced(self) -> None:
         repo = _repo(
             fetch_session=FAMILY_SESSION,
+            fetch_units=[
+                _unit("u1", "ridge-a", "Ridge A", sleeps=5, is_confirmed=False),
+                _unit("u2", "ridge-b", "Ridge B", sleeps=4, is_confirmed=False),
+            ],
             count_open_unresolved_aliases=3,
-            count_unconfirmed_units=6,
         )
         roster = await LodgingRosterService(repo).build_roster(2026, 1000001)
 
         assert roster.counts.unresolved_aliases == 3
-        assert roster.counts.units_unconfirmed == 6
+        assert roster.counts.units_unconfirmed == 2
+
+    @pytest.mark.asyncio
+    async def test_unconfirmed_counts_the_same_population_as_units_total(self) -> None:
+        """The stats bar divides one by the other, so they must agree.
+
+        `count_unconfirmed_units` asked PocketBase for is_confirmed = false
+        && is_container = false && is_active = true -- no inventory predicate.
+        Once `units_total` stopped counting staff housing the two described
+        different populations, and the bar's note reads "N of M cabins have
+        unconfirmed amenities" off both. With every staff cabin unconfirmed it
+        could claim more unconfirmed cabins than cabins, or trip its
+        `unconfirmed >= unitsTotal` branch and report "No cabin amenities
+        confirmed yet" while planning-inventory cabins were confirmed.
+
+        The repository value is deliberately non-zero here: the count now comes
+        from the units the roster already holds, so this pins that the stale
+        fetch is not consulted.
+        """
+        repo = _repo(
+            fetch_session=FAMILY_SESSION,
+            fetch_units=[
+                _unit("u1", "ridge-a", "Ridge A", sleeps=5, is_confirmed=True),
+                _unit("u2", "aspen-lodge", "Aspen Lodge", allocation_default="staff_default"),
+            ],
+            count_unconfirmed_units=1,
+        )
+        roster = await LodgingRosterService(repo).build_roster(2026, 1000001)
+
+        assert roster.counts.units_total == 1
+        assert roster.counts.units_staff_housing == 1
+        assert roster.counts.units_unconfirmed == 0
+
+    @pytest.mark.asyncio
+    async def test_the_roster_no_longer_asks_pocketbase_for_the_unconfirmed_count(self) -> None:
+        """One fewer fetch on both paths, because the units already say.
+
+        Every unit is already in the payload with its `is_confirmed`, so the
+        separate count query was a second answer to a question the roster could
+        answer itself -- and the two could disagree.
+        """
+        repo = _repo(fetch_session=FAMILY_SESSION)
+        await LodgingRosterService(repo).build_roster(2026, 1000001)
+        repo.count_unconfirmed_units.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_full_bathroom_group_merge_is_not_assumed_for_a_lone_unit(self) -> None:
@@ -1209,10 +1260,12 @@ class TestBuildSummary:
 
         await service.build_summary(2026)
 
-        # Seven year-scoped fetches, two weekends: each must still be one call.
+        # Six year-scoped fetches, two weekends: each must still be one call.
         # `fetch_family_camp_medical` was the eighth until kindred#1889 deleted
-        # its only consumer -- see the assertion below, which pins that it is
-        # not read at all rather than merely read once.
+        # its only consumer, and `count_unconfirmed_units` the seventh until
+        # `_build_counts` started counting `is_confirmed` off the units it
+        # already holds -- see the assertions below, which pin that neither is
+        # read at all rather than merely read once.
         for method in (
             "fetch_units",
             "fetch_households",
@@ -1220,11 +1273,11 @@ class TestBuildSummary:
             "fetch_family_camp_adults",
             "fetch_family_camp_registrations",
             "count_open_unresolved_aliases",
-            "count_unconfirmed_units",
         ):
             assert getattr(repo, method).await_count == 1, f"{method} was not batched"
 
         repo.fetch_family_camp_medical.assert_not_called()
+        repo.count_unconfirmed_units.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_session_scoped_reads_happen_once_per_weekend(self) -> None:

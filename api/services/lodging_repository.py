@@ -404,17 +404,6 @@ class LodgingRepository:
             f'kind = "{UNRESOLVED_ALIAS_KIND}" && is_resolved = false',
         )
 
-    async def count_unconfirmed_units(self) -> int:
-        """Bookable units whose amenity data is still a seed guess.
-
-        is_container = false because the seven building rows are not bookable
-        and their amenity values are meaningless.
-        """
-        return await self._count(
-            LODGING_UNITS,
-            "is_confirmed = false && is_container = false && is_active = true",
-        )
-
     # ---------------------------------------------------------------- writes
     #
     # Every write below targets the DRAFT grain or lodging_availability. None
