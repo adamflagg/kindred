@@ -640,13 +640,26 @@ describe('LodgingUnitForm — map coordinates', () => {
     expect(y.validity.stepMismatch).toBe(false)
   })
 
-  it('still refuses a coordinate outside the 0–1 fraction of the image', () => {
-    // Loosening `step` must not loosen the range: these are a fraction of the
+  it('still refuses a coordinate outside the 0–1 fraction of the image', async () => {
+    // Loosening `step` must not loosen the RANGE: these are a fraction of the
     // map image, and the column itself is min 0 / max 1.
+    //
+    // Asserted through the validity state rather than the attributes, because
+    // `min="0"` being spelled correctly is not the property that matters — the
+    // browser acting on it is, and that is the same mechanism `step` broke.
+    // Both axes, since they are separate inputs that have already drifted once.
+    const user = userEvent.setup()
     renderUnit({ ...UNIT, map_x: 0.4389, map_y: 0.3311 })
 
     const x = screen.getByLabelText<HTMLInputElement>('Map X')
-    expect(x).toHaveAttribute('min', '0')
-    expect(x).toHaveAttribute('max', '1')
+    const y = screen.getByLabelText<HTMLInputElement>('Map Y')
+
+    await user.clear(x)
+    await user.type(x, '2')
+    expect(x.validity.rangeOverflow).toBe(true)
+
+    await user.clear(y)
+    await user.type(y, '-1')
+    expect(y.validity.rangeUnderflow).toBe(true)
   })
 })
