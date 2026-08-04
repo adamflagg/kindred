@@ -82,7 +82,12 @@ class ScenarioNotEmptyError(RuntimeError):
 
 
 class LodgingWriteService:
-    """Draft placements and per-scenario availability."""
+    """Draft placements, and availability for a weekend.
+
+    The asymmetry in that sentence is the point. Placements are scenario-scoped
+    because a plan is what a scenario IS; availability is not, because a burst
+    pipe is true of the weekend in every plan for it (1500000135).
+    """
 
     def __init__(self, repository: LodgingRepository) -> None:
         self.repository = repository
@@ -246,10 +251,13 @@ class LodgingWriteService:
         scenario spans weekends, and placements in one must not refuse a seed
         of another.
 
-        Availability is NOT copied. It stayed an overlay, so the scenario
-        already sees the live reservations as its base; writing copies of them
-        would pin the scenario against a later change to the live plan --
-        the same argument that makes `state: null` a delete.
+        Availability is NOT copied, and since 1500000135 there is nothing it
+        could mean to copy it: the table has no scenario column, so every
+        scenario reads the same rows and a copy would be a row duplicating
+        itself. The earlier reason -- that availability overlaid the live rows,
+        so copying them would pin the scenario against a later change -- has
+        become the stronger one that a scenario cannot disagree about
+        availability at all.
 
         A mirror row is SKIPPED, not failed on, when it names no party grain
         (it would key on nothing, dedupe against nothing, and be exactly the

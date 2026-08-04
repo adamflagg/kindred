@@ -14,10 +14,13 @@ REPLACE them: kindred#1974 removed the fall-through, so a scenario is a plan
 of its own, seeded by an explicit copy rather than by rendering the mirror
 through the gaps.
 
-AVAILABILITY is the exception and stays an overlay: a scenario's rows come
-from lodging_availability filtered to it and layer over the live rows per
-unit. Nothing syncs into that table, so a scenario has no record of truth to
-replace there. `scenario = ""` is the live plan.
+AVAILABILITY used to be the exception, and is not any more. 1500000132 left
+lodging_availability scenario-aware in place, reasoning that nothing syncs into
+it so there was no record of truth to protect. That argued against a draft
+TWIN; it never established that availability varies by scenario, and it does
+not -- a burst pipe closes a cabin in every plan for that weekend. 1500000135
+deleted the column, so there is ONE availability read, issued identically with
+or without a scenario, and no lodging read is an overlay any more.
 
 Request answers are NOT re-parsed here. The Go ingest derives the share gate,
 the NEAR/WITH/similar-ages modes, the household-grain request text and the four
