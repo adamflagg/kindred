@@ -35,8 +35,9 @@
  * only two places that translate, and a third would mean renaming the column.
  *
  * Safe to drop columns: the table has never held a row (verified 0 before
- * writing this). The up path REFUSES to run against a non-empty table rather
- * than silently discarding data.
+ * writing this). The up path REFUSES to run against a non-empty table -- or
+ * against one it cannot read, since an unanswered question is not a "no" --
+ * rather than silently discarding data.
  *
  * PocketBase v0.23 syntax: field properties are DIRECT, never inside
  * `options: {}`, which is silently ignored.
@@ -82,8 +83,22 @@ function refuseIfPopulated(app) {
   let rows = [];
   try {
     rows = app.findRecordsByFilter("lodging_availability", "id != ''", "", 1, 0);
-  } catch {
-    // No rows -- the empty path can throw rather than return [].
+  } catch (err) {
+    // FAIL CLOSED. `findRecordsByFilter` returns [] for an empty match -- it is
+    // `findFirstRecordByFilter` that throws "no rows", and only that sentinel
+    // is swallowed here. Anything else reaching this block is a query,
+    // collection or database failure, and a guard that could not READ the
+    // table must not go on to clear the way to DROP its columns: the bare
+    // `catch {}` this replaces turned every such failure into "looks empty".
+    const message = String((err && err.message) || err);
+    if (message.indexOf("no rows in result set") === -1) {
+      throw new Error(
+        "lodging_availability could not be read, so its emptiness is unverified; " +
+          "refusing to drop columns. Underlying error: " +
+          message,
+        { cause: err }
+      );
+    }
   }
   if (rows.length > 0) {
     throw new Error(
@@ -148,12 +163,19 @@ migrate(
         })
       );
     }
+    // `required: true` restores 1500000118's shape exactly, which is the whole
+    // job of a down path -- `scenario` above is `required: false` there and
+    // stays that way for the same reason. Unlike a bool, `required` on a select
+    // does mean "must be present", so this is the constraint the column
+    // actually had. It applies on record save rather than on schema save, so
+    // adding it back cannot fail here; any rows written since the up path
+    // carry `family_available`, which this same block deletes.
     if (!col.fields.getByName("state")) {
       col.fields.add(
         new Field({
           type: "select",
           name: "state",
-          required: false,
+          required: true,
           presentable: false,
           values: ["reserved_staff", "reserved_other", "released_to_family"],
           maxSelect: 1,
