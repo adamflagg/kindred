@@ -21,6 +21,7 @@ import type {
   AccessibilityFlagSummary,
   HouseholdMedicalResponse,
   LodgingUnitSummary,
+  LodgingWriteResponse,
   PartyAdult,
   PartyChild,
   RosterCounts,
@@ -62,6 +63,14 @@ export type HouseholdMedical = HouseholdMedicalResponse
 export type PartyAdultRow = PartyAdult
 /** An enrolled child on a household party. */
 export type PartyChildRow = PartyChild
+/**
+ * What a lodging write did.
+ *
+ * `deleted` is not decoration: clearing an availability override is spelled as
+ * the ABSENCE of a row, so a cleared override and a written one are the same
+ * 200 and differ only here.
+ */
+export type LodgingWriteResult = LodgingWriteResponse
 
 // ── Derived unions ────────────────────────────────────────────────────────────
 
