@@ -185,10 +185,14 @@ describe('header', () => {
     expect(screen.queryByText(/Memorial Day Weekend/)).not.toBeInTheDocument()
   })
 
-  it('shows the weekend dates and its program type', () => {
+  it('shows the program type but not the dates', () => {
+    // Summer's session header carries no date range either. Inside a weekend
+    // you already know which one you are in — the dates earn their place on
+    // the lander, where they are what tells one weekend from the next, and
+    // `WeekendSessionList` still shows them there.
     renderPage()
-    expect(screen.getByText('May 22–25, 2026')).toBeInTheDocument()
     expect(screen.getByText('Family')).toBeInTheDocument()
+    expect(screen.queryByText('May 22–25, 2026')).not.toBeInTheDocument()
   })
 
   it('labels an adult weekend distinctly', () => {

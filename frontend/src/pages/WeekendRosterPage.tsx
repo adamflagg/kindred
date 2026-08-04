@@ -23,7 +23,7 @@
  * preference, proximity mode or request text looks wrong, the fix belongs in
  * the Go ingest so every surface sees the correction at once.
  */
-import { Home, LayoutGrid, Map as MapIcon, Users } from 'lucide-react'
+import { Building2, Home, Map as MapIcon, Users } from 'lucide-react'
 import { useEffect, useMemo } from 'react'
 import { useNavigate, useParams } from 'react-router'
 
@@ -34,7 +34,6 @@ import {
   countBoardSlots,
   countMapUnits,
   countUnmeasuredSpaces,
-  formatSessionDates,
   HouseholdRosterTable,
   LodgingBoard,
   LodgingMap,
@@ -130,9 +129,6 @@ export default function WeekendRosterPage() {
   // in exactly that gap, so there is nothing more to add here.
 
   const selectedSession = sessions.find((session) => session.session_cm_id === selectedCmId)
-  const dates = selectedSession
-    ? formatSessionDates(selectedSession.start_date, selectedSession.end_date)
-    : ''
 
   // Memoised on the payload, not left to run per render. The `?? []` fallbacks
   // are inside the memo on purpose: a bare `?? []` mints a new array every
@@ -159,10 +155,14 @@ export default function WeekendRosterPage() {
     // Counts the SLOT CARDS the board draws, which is not the inventory count:
     // a container carries the beds its halves already report, so it never gets
     // a card and never counts.
-    { id: 'housing', label: 'Housing', icon: LayoutGrid, count: boardSlotCount },
+    //
+    // The house is summer's icon for the same tab — its Bunks tab is `Home`.
+    // Inventory therefore takes `Building2`, which is the better fit anyway:
+    // it lists the buildings, not the families housed in them.
+    { id: 'housing', label: 'Housing', icon: Home, count: boardSlotCount },
     { id: 'roster', label: 'Roster', icon: Users, count: parties.length },
     { id: 'map', label: 'Map', icon: MapIcon, count: mapUnitCount },
-    { id: 'inventory', label: 'Inventory', icon: Home, count: units.length },
+    { id: 'inventory', label: 'Inventory', icon: Building2, count: units.length },
   ]
 
   return (
@@ -202,7 +202,6 @@ export default function WeekendRosterPage() {
               optionsClassName="min-w-[220px]"
             />
 
-            {dates.length > 0 && <span className="text-muted-foreground text-sm">{dates}</span>}
             {selectedSession && (
               <span
                 className={`rounded-full px-2 py-0.5 text-xs font-semibold ${
