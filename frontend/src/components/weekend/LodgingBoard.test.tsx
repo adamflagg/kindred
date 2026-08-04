@@ -153,15 +153,15 @@ describe('LodgingBoard — layout', () => {
   })
 })
 
-describe('LodgingBoard — it is a mirror, and says so', () => {
-  it('carries the amber CM badge', () => {
+describe('LodgingBoard — the mode belongs to the header', () => {
+  it('does not repeat the mode over the content', () => {
+    // The header's ModeBadge is the one indicator, as it is on summer's
+    // bunking board — which carries no chip of its own. Two indicators is one
+    // more than can be kept honest: the chip here was hardcoded amber and went
+    // on claiming the mirror after #1967 let staff select a draft.
     render(<LodgingBoard parties={[]} units={[unit()]} year={2026} />, { wrapper })
-    expect(screen.getByText(/CampMinder mirror/i)).toBeInTheDocument()
-  })
-
-  it('says it is read-only', () => {
-    render(<LodgingBoard parties={[]} units={[unit()]} year={2026} />, { wrapper })
-    expect(screen.getByText(/read-only/i)).toBeInTheDocument()
+    expect(screen.queryByText(/CampMinder mirror/i)).not.toBeInTheDocument()
+    expect(screen.queryByText(/read-only/i)).not.toBeInTheDocument()
   })
 
   it('offers nothing draggable', () => {

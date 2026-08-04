@@ -58,7 +58,10 @@ export function WeekendStatsBar({ counts, bedsNeeded, spacesUnmeasured }: Weeken
 
   return (
     <div className="border-border/50 border-b py-2.5">
-      <div className="flex flex-wrap items-center gap-x-6 gap-y-2 text-sm">
+      {/* `min-h-10` matches summer's bar, which is the same `py-2.5` around a
+          segmented area control 40px tall. This one holds a single line of
+          `text-sm` — 20px — so identical padding still reads 20px tighter. */}
+      <div className="flex min-h-10 flex-wrap items-center gap-x-6 gap-y-2 text-sm">
         <div className="flex items-center gap-2">
           <Users className="text-primary h-4 w-4 flex-shrink-0" />
           <span className="tabular-nums">

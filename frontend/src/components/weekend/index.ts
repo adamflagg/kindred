@@ -1,6 +1,5 @@
 export { AccessibilityFlagList } from './AccessibilityFlagList'
 export { AREA_HUES, buildBoard, consentFlag, countBoardSlots } from './boardLayout'
-export { BoardModeChip } from './BoardModeChip'
 export type { BoardArea, BoardModel, BoardSlot, ConsentFlag } from './boardLayout'
 export { FamilyCard } from './FamilyCard'
 export { FamilyDetailsPanel } from './FamilyDetailsPanel'

@@ -18,6 +18,7 @@ import ValidateBunkingButton from '../ValidateBunkingButton'
 import { BunkingLegendButton } from '../BunkingLegend'
 import ModeBadge from '../ModeBadge'
 import OptimizeBunksButton from '../OptimizeBunksButton'
+import { TitleSwitcher } from '../ui'
 
 export interface SessionHeaderProps {
   /** Current session data */
@@ -104,29 +105,18 @@ export default function SessionHeader({
       <div className="card-lodge p-3 sm:p-4">
         {/* Single row: session + mode/scenario on left, action buttons pushed right */}
         <div className="flex items-center gap-3">
-          {/* Session selector */}
-          <div className="flex flex-shrink-0 items-center gap-2">
-            <Tent className="text-primary h-5 w-5 flex-shrink-0 sm:h-6 sm:w-6" />
-            <Listbox value={session.cm_id.toString()} onChange={(value) => onSessionChange(value)}>
-              <div className="relative">
-                <ListboxButton className="font-display hover:text-primary flex cursor-pointer items-center gap-1 bg-transparent text-xl font-bold transition-colors focus:outline-none sm:text-2xl">
-                  {getFormattedSessionName(session, allSessions)}
-                  <ChevronDown className="text-muted-foreground h-4 w-4" />
-                </ListboxButton>
-                <ListboxOptions className="listbox-options w-auto min-w-[160px]">
-                  {selectableSessions.map((s) => (
-                    <ListboxOption
-                      key={s.id}
-                      value={s.cm_id.toString()}
-                      className="listbox-option py-1.5"
-                    >
-                      {getFormattedSessionName(s, allSessions)}
-                    </ListboxOption>
-                  ))}
-                </ListboxOptions>
-              </div>
-            </Listbox>
-          </div>
+          {/* Session selector — shared with the weekend roster header. */}
+          <TitleSwitcher
+            icon={Tent}
+            label={getFormattedSessionName(session, allSessions)}
+            value={session.cm_id.toString()}
+            options={selectableSessions.map((s) => ({
+              value: s.cm_id.toString(),
+              label: getFormattedSessionName(s, allSessions),
+            }))}
+            onChange={onSessionChange}
+            optionsClassName="min-w-[160px]"
+          />
 
           {/* Mode + Scenario controls (manage permission required) */}
           <ModeBadge isProductionMode={isProductionMode} scenarioName={currentScenario?.name} />

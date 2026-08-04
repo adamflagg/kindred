@@ -29,6 +29,23 @@ function counts(overrides: Partial<RosterCountSummary> = {}): RosterCountSummary
 }
 
 describe('WeekendStatsBar', () => {
+  it('stands as tall as summer’s contextual bar', () => {
+    // Both bars are `py-2.5` inside the same bottom border, but summer's holds
+    // a segmented area control — a `p-1` box around `py-1.5` buttons, so 40px
+    // — while this one holds a single line of `text-sm`, which is 20px. Same
+    // padding, 20px shorter bar: that is the tightness, and it is why matching
+    // the padding alone does not fix it.
+    //
+    // `min-h-10` buys back exactly the control's height without inventing a
+    // control to fill it. Pinned because it reads as a stray utility otherwise
+    // and is the first thing a tidy-up would drop.
+    const { container } = render(
+      <WeekendStatsBar counts={counts()} bedsNeeded={223} spacesUnmeasured={2} />
+    )
+    expect(container.firstElementChild).toHaveClass('border-border/50', 'border-b', 'py-2.5')
+    expect(container.firstElementChild?.firstElementChild).toHaveClass('min-h-10', 'text-sm')
+  })
+
   it('reports placement as assigned over total', () => {
     render(<WeekendStatsBar counts={counts()} bedsNeeded={223} spacesUnmeasured={2} />)
     expect(screen.getByText('56')).toBeInTheDocument()

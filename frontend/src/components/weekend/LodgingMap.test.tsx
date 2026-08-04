@@ -156,9 +156,9 @@ describe('LodgingMap', () => {
     expect(screen.getByText(/map image unavailable/i)).toBeInTheDocument()
   })
 
-  it('says it is a read-only CampMinder mirror, as the board does', () => {
+  it('leaves the mode to the header badge, as the board does', () => {
     render(<LodgingMap parties={[]} units={UNITS} year={2026} />)
-    expect(screen.getByText(/CampMinder mirror, read-only/i)).toBeInTheDocument()
+    expect(screen.queryByText(/CampMinder mirror/i)).not.toBeInTheDocument()
   })
 
   it('opens a popover when a mark is clicked', async () => {

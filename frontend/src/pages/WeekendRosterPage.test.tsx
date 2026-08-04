@@ -164,6 +164,12 @@ function renderPage(ref = '1000001', view = '') {
   )
 }
 
+/** The `<header>` landmark, for assertions about the header's own container. */
+function renderHeader(ref = '1000001') {
+  renderPage(ref)
+  return screen.getByRole('banner')
+}
+
 beforeEach(() => {
   isAdmin = true
   permissions = new Set()
@@ -188,10 +194,14 @@ describe('header', () => {
     expect(screen.queryByText(/Memorial Day Weekend/)).not.toBeInTheDocument()
   })
 
-  it('shows the weekend dates and its program type', () => {
+  it('shows the program type but not the dates', () => {
+    // Summer's session header carries no date range either. Inside a weekend
+    // you already know which one you are in — the dates earn their place on
+    // the lander, where they are what tells one weekend from the next, and
+    // `WeekendSessionList` still shows them there.
     renderPage()
-    expect(screen.getByText('May 22–25, 2026')).toBeInTheDocument()
     expect(screen.getByText('Family')).toBeInTheDocument()
+    expect(screen.queryByText('May 22–25, 2026')).not.toBeInTheDocument()
   })
 
   it('labels an adult weekend distinctly', () => {
@@ -227,44 +237,23 @@ describe('header', () => {
     expect(options).toEqual(['Family Camp 1', "Women's Weekend"])
   })
 
-  it('offers a way back to the lander', () => {
-    renderPage()
-    expect(screen.getByRole('link', { name: /All weekends/i })).toHaveAttribute(
-      'href',
-      '/weekend/sessions'
-    )
+  it('seats the header in a lodge card, as the summer session header is', () => {
+    // `card-lodge` is the container primitive summer's SessionHeader sits in.
+    // Asserting the class rather than "some box is drawn" is the point: a
+    // header boxed by hand-rolled classes is exactly the drift this catches.
+    expect(renderHeader().querySelector('.card-lodge')).not.toBeNull()
   })
 
-  it('links to the lodging editor under /manage', () => {
-    // The editor moved off /admin so bunking staff can reach it. It points
-    // straight at the units section rather than the bare path, skipping one
-    // redirect hop.
+  it('carries no navigation away from the weekend', () => {
+    // Both links went. Summer's session header carries neither, and neither
+    // destination is stranded: AppLayout's brand link reaches `/weekend/`,
+    // which redirects to the lander, and Manage reaches the lodging editor.
+    //
+    // Rendered as an ADMIN — the default here, and someone the old gate let
+    // through. Asserting absence for a user who could never see the settings
+    // link would pass whether or not the link was actually removed.
     renderPage()
-    expect(screen.getByRole('link', { name: /Lodging settings/i })).toHaveAttribute(
-      'href',
-      '/manage/lodging/units'
-    )
-  })
-
-  it('offers the lodging-settings link to a non-admin holding bunking.manage', () => {
-    // The whole point of the move: cabin confirmations are bunking staff's
-    // job. The link must follow the permission that now gates the writes, not
-    // the admin flag that used to.
-    isAdmin = false
-    permissions = new Set(['bunking.manage'])
-    renderPage()
-    expect(screen.getByRole('link', { name: /Lodging settings/i })).toHaveAttribute(
-      'href',
-      '/manage/lodging/units'
-    )
-  })
-
-  it('hides the lodging-settings link from a user without bunking.manage', () => {
-    // Every lodging collection now gates writes on bunking.manage, and the
-    // route itself is behind RequirePermission — following the link would land
-    // on the permission-denied page.
-    isAdmin = false
-    renderPage()
+    expect(screen.queryByRole('link', { name: /All weekends/i })).not.toBeInTheDocument()
     expect(screen.queryByRole('link', { name: /Lodging settings/i })).not.toBeInTheDocument()
   })
 
@@ -376,7 +365,7 @@ describe('the view in the URL', () => {
       </MemoryRouter>
     )
 
-    await userEvent.click(screen.getByRole('tab', { name: /Board/ }))
+    await userEvent.click(screen.getByRole('tab', { name: /Housing/ }))
     await userEvent.click(screen.getByRole('tab', { name: /Map/ }))
     await userEvent.click(screen.getByRole('button', { name: 'probe-back' }))
 
@@ -388,6 +377,16 @@ describe('the view in the URL', () => {
     // page; the roster is the honest default.
     rosterQuery.data = ONE_UNIT
     renderPage('1000001', 'gantt')
+    expect(screen.getByRole('tab', { name: /Roster/ })).toHaveAttribute('aria-selected', 'true')
+  })
+
+  it('no longer answers to `board`, the segment Housing replaced', () => {
+    // The rename took the URL with it, deliberately and without a redirect —
+    // this surface is young enough that a stale link is cheaper than a
+    // permanent alias. Pinned so the fallback is a DECISION rather than
+    // something discovered later by a staff member with a bookmark.
+    rosterQuery.data = ONE_UNIT
+    renderPage('1000001', 'board')
     expect(screen.getByRole('tab', { name: /Roster/ })).toHaveAttribute('aria-selected', 'true')
   })
 })
@@ -423,22 +422,22 @@ describe('tabs', () => {
     expect(screen.getByText('Ridge A')).toBeInTheDocument()
   })
 
-  it('counts what each tab holds, as the summer session tabs do', () => {
-    rosterQuery.data = {
-      year: 2026,
-      session_cm_id: 1000001,
-      parties: [],
-      units: [],
-      counts: {},
-    }
+  it('leads with Housing and counts what each tab holds, as summer does', () => {
+    // ORDER IS THE ASSERTION, not just presence. Summer leads with Bunks and
+    // puts Campers after it; a weekend reads the same way round, and for the
+    // same reason — both name the tab after the thing being assigned rather
+    // than after the widget. Inventory trails: it describes the buildings, not
+    // this weekend.
     renderPage()
-    expect(screen.getByRole('tab', { name: 'Roster (0)' })).toBeInTheDocument()
-    expect(screen.getByRole('tab', { name: 'Inventory (0)' })).toBeInTheDocument()
-    expect(screen.getByRole('tab', { name: 'Board (0)' })).toBeInTheDocument()
-    expect(screen.getByRole('tab', { name: 'Map (0)' })).toBeInTheDocument()
+    expect(screen.getAllByRole('tab').map((tab) => tab.textContent)).toEqual([
+      'Housing (0)',
+      'Roster (0)',
+      'Map (0)',
+      'Inventory (0)',
+    ])
   })
 
-  it('opens the board on its own tab', async () => {
+  it('opens Housing on its own tab, at its own URL', async () => {
     rosterQuery.data = {
       year: 2026,
       session_cm_id: 1000001,
@@ -461,9 +460,13 @@ describe('tabs', () => {
     }
     renderPage()
 
-    await userEvent.click(screen.getByRole('tab', { name: /Board/ }))
-    expect(screen.getByText(/CampMinder mirror/i)).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('tab', { name: /Housing/ }))
+    // The URL follows the label. No `board` segment survives the rename.
+    expect(screen.getByTestId('location')).toHaveTextContent('/weekend/1000001/housing')
     expect(screen.getByText('Ridge A')).toBeInTheDocument()
+    // The mode lives in the header badge alone now, as it does on summer's
+    // board — not repeated as a chip over the content.
+    expect(screen.queryByText(/CampMinder mirror/i)).not.toBeInTheDocument()
   })
 
   it('counts the slot cards the board draws, not the building rows', () => {
@@ -496,7 +499,7 @@ describe('tabs', () => {
       ],
     }
     renderPage()
-    expect(screen.getByRole('tab', { name: 'Board (1)' })).toBeInTheDocument()
+    expect(screen.getByRole('tab', { name: 'Housing (1)' })).toBeInTheDocument()
     expect(screen.getByRole('tab', { name: 'Inventory (2)' })).toBeInTheDocument()
   })
 
@@ -565,7 +568,7 @@ describe('recomputation', () => {
     countBoardSlotsSpy.mockClear()
     countMapUnitsSpy.mockClear()
 
-    await userEvent.click(screen.getByRole('tab', { name: /Board/ }))
+    await userEvent.click(screen.getByRole('tab', { name: /Housing/ }))
     await userEvent.click(screen.getByRole('tab', { name: /Map/ }))
     await userEvent.click(screen.getByRole('tab', { name: /Roster/ }))
 
