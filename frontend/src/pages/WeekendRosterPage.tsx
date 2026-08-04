@@ -25,7 +25,7 @@
  * the Go ingest so every surface sees the correction at once.
  */
 import { Building2, Home, Map as MapIcon, Users } from 'lucide-react'
-import { useEffect, useMemo } from 'react'
+import { useCallback, useEffect, useMemo } from 'react'
 import { useNavigate, useParams } from 'react-router'
 
 import { QueryGuard } from '../components/QueryGuard'
@@ -53,7 +53,9 @@ import {
 import { useCurrentYear } from '../hooks/useCurrentYear'
 import { usePermissions } from '../hooks/usePermissions'
 import { useScenario } from '../hooks/useScenario'
+import { useUnitAvailability } from '../hooks/useUnitAvailability'
 import { useWeekendRoster, useWeekendSessions } from '../hooks/useWeekendRoster'
+import type { LodgingUnitRow } from '../types/lodging'
 
 /**
  * `housing`, not `board`. Summer names its board tab after what is being
@@ -111,6 +113,29 @@ export default function WeekendRosterPage() {
   const numericRef = /^\d+$/.test(sessionRef ?? '') ? Number(sessionRef) : null
   const resolved = resolveWeekendRef(sessions, sessionRef)
   const selectedCmId = resolved?.session_cm_id ?? numericRef
+
+  // Availability, for the Housing tab's back door. Takes no scenario, unlike
+  // every other lodging write on this page: a burst pipe closes a cabin in
+  // every plan for that weekend (1500000135). The board mounts its own
+  // instance for the same reason it owns its drag mutation — only one view
+  // renders at a time, so the two never compete.
+  const { setAvailability, pendingUnitId } = useUnitAvailability({
+    year: currentYear,
+    sessionCmId: selectedCmId ?? 0,
+  })
+  const writeAvailability = useCallback(
+    (unit: LodgingUnitRow, write: { familyAvailable: boolean | null; reason: string }) => {
+      // The hook raises the toast on rejection; catching keeps a refused write
+      // from surfacing as an unhandled rejection.
+      void setAvailability({
+        unitId: unit.unit_id,
+        unitName: unit.name,
+        familyAvailable: write.familyAvailable,
+        reason: write.reason,
+      }).catch(() => undefined)
+    },
+    [setAvailability]
+  )
 
   // `useSavedScenarios` filters on `currentSessionId`. Left unset, the picker
   // would offer whatever session summer last looked at — the slot is global.
@@ -306,7 +331,20 @@ export default function WeekendRosterPage() {
               aria-labelledby={`weekend-tab-${view}`}
             >
               {view === 'roster' && <HouseholdRosterTable parties={parties} units={units} />}
-              {view === 'inventory' && <UnitInventoryPanel units={units} />}
+              {/* The Housing tab is where releasing permanent staff housing
+                  lives, and the only place it CAN live: the board draws
+                  planning inventory, and a staff cabin with no override is not
+                  inventory yet. Rare by design -- staff release one perhaps
+                  once in several years -- so it is a back door off the main
+                  flow rather than a control on the board. */}
+              {view === 'inventory' && (
+                <UnitInventoryPanel
+                  units={units}
+                  canSetAvailability={canManageLodging && (selectedCmId ?? 0) > 0}
+                  pendingUnitId={pendingUnitId}
+                  onSetAvailability={writeAvailability}
+                />
+              )}
               {/* The board takes the scenario, the weekend and the manage
                   permission because it WRITES now (#1989) — main's note that
                   drag placement "is what earns plumbing it back down" is this.

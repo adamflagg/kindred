@@ -7,9 +7,12 @@
  * is how it came to assert the mirror over a draft once #1967 shipped a picker:
  * two indicators, only one of them wired up.
  *
- * The board takes no scenario id because it never reads or writes one — the
- * page fetches, and nothing here mutates. Drag placement (#1985) is what earns
- * plumbing it back, along with the writes that need it.
+ * The board reads nothing and writes twice. The page fetches; this component
+ * owns two mutations, and they are gated differently on purpose — drag
+ * placement (#1985) needs a scenario because it writes a draft plan, and
+ * availability (#1999) needs none because a burst pipe closes a cabin in every
+ * plan for that weekend. `canPlace` and `canSetAvailability` below are that
+ * difference, and collapsing them is the mistake to avoid.
  *
  * Layout is §3.7: one collapsible section per area, each a WRAPPING GRID of
  * slot cards. Not summer's columns — a summer bunk column is tall because it

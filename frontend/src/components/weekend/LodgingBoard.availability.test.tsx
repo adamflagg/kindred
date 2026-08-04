@@ -89,7 +89,7 @@ function unit(overrides: Partial<LodgingUnitRow> = {}): LodgingUnitRow {
 function party(overrides: Partial<RosterPartyRow> = {}): RosterPartyRow {
   return {
     grain: 'household',
-    household_cm_id: 101,
+    household_cm_id: 1000001,
     person_cm_id: 0,
     display_name: 'Johnson',
     sort_name: 'Johnson',
