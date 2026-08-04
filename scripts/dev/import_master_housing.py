@@ -400,7 +400,10 @@ def report(plan: ImportPlan, registry: dict[str, Any]) -> None:
 
     extras = [r for r in plan.rows if r.crib or r.changing_table or r.fridge == "shared"]
     if extras:
-        print("\n--- FACTS WITH NO SCHEMA HOME YET ---")
+        # These had no column until 1500000137 and survived only as prose in
+        # `notes`. Still listed because they are low-count and easy to eyeball
+        # against the sheet, which is how the counts get sanity-checked.
+        print("\n--- CRIB / CHANGING TABLE / SHARED FRIDGE (now stored) ---")
         for entry in extras:
             flags = [
                 name
