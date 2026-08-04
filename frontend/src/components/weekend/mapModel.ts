@@ -47,11 +47,17 @@ export interface MapModel {
   offMap: OffMapEntry[]
   /**
    * Bookable rooms nobody has positioned, reported HERE — but this is not a
-   * totality guarantee for the payload as a whole. `buildBoard` already drops
-   * an inactive, empty unit before `buildMapModel` ever sees it (see the
-   * `drawn` filter in `boardLayout.ts`), so an unpositioned INACTIVE room
-   * with nobody in it is silently dropped upstream and never reaches this
-   * list.
+   * totality guarantee for the payload as a whole. `buildBoard` drops two
+   * kinds of unit before `buildMapModel` ever sees them (see the `drawn`
+   * filter in `boardLayout.ts`), and an unpositioned one of either kind is
+   * dropped upstream and never reaches this list:
+   *
+   * - an INACTIVE room with nobody in it;
+   * - permanent STAFF HOUSING with nobody in it — staff know where those are
+   *   and asked not to have them on the map.
+   *
+   * Both are deliberate. If you are hunting a cabin that is missing from the
+   * map and not reported here, check those two before suspecting coordinates.
    */
   unpositionedUnits: LodgingUnitRow[]
 }

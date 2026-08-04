@@ -117,6 +117,69 @@ describe('resolvePartyUnits', () => {
 })
 
 describe('buildMapModel', () => {
+  /**
+   * Permanent staff housing: held for staff AND not released this weekend.
+   *
+   * Setting only `allocation_default` is not enough — `unit()` defaults
+   * `is_family_available: true`, which satisfies `isPlanningInventory`'s OR
+   * clause and leaves the unit drawn. Every earlier staff fixture in the map
+   * suite made exactly that mistake, which is why none of them could see the
+   * board exclusion reaching the map.
+   */
+  function staffUnit(overrides: Partial<LodgingUnitRow> = {}): LodgingUnitRow {
+    return unit({ allocation_default: 'staff_default', is_family_available: false, ...overrides })
+  }
+
+  it('drops staff housing, because the map is a projection of the board', () => {
+    // The map inherits the board's exclusion rather than overriding it.
+    //
+    // The design doc (§5.3) originally said the opposite — keep them, marked —
+    // on the reasoning that a map missing part of the property is worse for
+    // orientation. Staff overruled that on 2026-08-04: they know where the
+    // staff cabins are, and they asked for FEWER map toggles, not more marks.
+    // Recorded here rather than only in the spec, because "the map is a pure
+    // projection of the board" is the property that makes the two surfaces
+    // agree, and a future reader is more likely to reach for an override than
+    // to find the ruling.
+    const model = buildMapModel(
+      [],
+      [unit(), staffUnit({ unit_id: 'u2', code: 'aspen-lodge', map_x: 0.7, map_y: 0.2 })]
+    )
+    expect(model.units.map((u) => u.unit.code)).toEqual(['cedar-1'])
+  })
+
+  it('still draws staff housing that holds a party, so nobody vanishes', () => {
+    // The escape hatch reaches the map too. This is the one case where a staff
+    // cabin appears on the map, and it must: hiding it would put a family
+    // nowhere on the surface that answers "where is this family sleeping".
+    const model = buildMapModel(
+      [party({ unit_code: 'aspen-lodge', unit_name: 'Aspen Lodge' })],
+      [unit(), staffUnit({ unit_id: 'u2', code: 'aspen-lodge', map_x: 0.7, map_y: 0.2 })]
+    )
+    expect(model.units.map((u) => u.unit.code)).toEqual(['cedar-1', 'aspen-lodge'])
+    expect(model.offMap).toHaveLength(0)
+    expect(model.unplaced).toHaveLength(0)
+  })
+
+  it('counts what the map draws, staff housing excluded', () => {
+    const units = [
+      unit(),
+      staffUnit({ unit_id: 'u2', code: 'aspen-lodge', map_x: 0.7, map_y: 0.2 }),
+    ]
+    expect(countMapUnits([], units)).toBe(buildMapModel([], units).units.length)
+    expect(countMapUnits([], units)).toBe(1)
+  })
+
+  it('still never draws a container, staff-held or not', () => {
+    // The container rule is not weakened by the staff rule: a building row
+    // carries the beds its halves already report.
+    const model = buildMapModel(
+      [],
+      [unit(), staffUnit({ unit_id: 'u2', code: 'staff-block', is_container: true })]
+    )
+    expect(model.units.map((u) => u.unit.code)).toEqual(['cedar-1'])
+  })
+
   it('never draws a container', () => {
     const model = buildMapModel(
       [],
