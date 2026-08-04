@@ -11,8 +11,9 @@
  * than campers into bunks, and share/housing requirements rather than bunk
  * requests.
  *
- * Read-only in this slice: placements are shown, not edited. WHERE they come
- * from now depends on the scenario picker — with none selected this is the
+ * Placements are editable by drag inside a scenario, for a user holding
+ * `bunking.manage` (#1989); with none selected the board is read-only for
+ * everyone. WHERE they come from depends on the scenario picker — with none selected this is the
  * CampMinder mirror, and inside a scenario it is that scenario's own draft
  * rows, with the mirror not read at all (#1974). The registry behind it IS
  * editable, though — Phase C added the Manage -> Family Camp Lodging editor

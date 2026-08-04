@@ -304,10 +304,11 @@ describe('partyGrainBody', () => {
   })
 
   it('names person_cm_id alone for a person party', () => {
-    // An adult weekend enrols individuals. Sending both keys — even with the
-    // unused one as the wire's own 0 — is what `PartyGrainRequest` rejects:
-    // it counts fields that are PRESENT, so `person_cm_id: 0` alongside a real
-    // household id is fine, but the reverse pairing must not appear.
+    // An adult weekend enrols individuals. `PartyGrainRequest` counts fields
+    // that are NON-ZERO, so a stray `person_cm_id: 0` beside a real household
+    // id happens to pass — but the schema's rule is "name exactly one", and
+    // sending the other id is a claim about the party that is not true. This
+    // honours the rule rather than the leniency.
     const adult = party({ grain: 'person', household_cm_id: 0, person_cm_id: 5150 })
     expect(partyGrainBody(adult)).toEqual({ person_cm_id: 5150 })
   })
@@ -430,6 +431,24 @@ describe('applyPlacement', () => {
       unitName: 'Cedar 2',
     })
     expect(next.counts).toMatchObject({ parties_assigned: 1, parties_unassigned: 0 })
+  })
+
+  it('leaves the counts alone when the moved party is not in the snapshot', () => {
+    // The row update is guarded on a `partyKey` match but the count delta was
+    // not, so a party absent from the snapshot moved the counters without
+    // moving a row — `parties_assigned` could exceed the number of placed
+    // parties. Reachable when a refetch lands between drag start and
+    // `onMutate` and drops the party.
+    const moving = party()
+    const other = party({ household_cm_id: 202, display_name: 'Garcia' })
+    const next = applyPlacement(roster([other]), {
+      kind: 'place',
+      party: moving,
+      unitId: 'u1',
+      unitCode: 'cedar-1',
+      unitName: 'Cedar 1',
+    })
+    expect(next.counts).toMatchObject({ parties_assigned: 0, parties_unassigned: 1 })
   })
 
   it('touches only the moved party', () => {

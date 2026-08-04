@@ -230,6 +230,60 @@ describe('useLodgingPlacement', () => {
     expect(keys).toContain(JSON.stringify(rosterKey()))
   })
 
+  it('does not let a failed move undo a newer one that succeeded', async () => {
+    // The interleave that matters, and the reason a blanket rollback is wrong.
+    // Drag A places into cedar-1 and is still in flight when drag B moves the
+    // same family to cedar-2. B succeeds; A then fails and restores ITS
+    // snapshot — which predates both. Left unguarded, the family drops back
+    // into the UNPLACED queue while the server holds it in cedar-2: a card
+    // visibly vanishing from a cabin, for the ~3s a roster refetch takes.
+    let failA!: (error: Error) => void
+    let okB!: () => void
+    placeParty
+      .mockReturnValueOnce(
+        new Promise<void>((_resolve, reject) => {
+          failA = reject
+        })
+      )
+      .mockReturnValueOnce(
+        new Promise<void>((resolve) => {
+          okB = resolve
+        })
+      )
+
+    const { result } = renderPlacement()
+    const moving = party()
+
+    await act(async () => {
+      void result.current.move({ ...PLACE, party: moving }).catch(() => undefined)
+      await Promise.resolve()
+    })
+    await act(async () => {
+      void result.current
+        .move({
+          kind: 'place',
+          party: moving,
+          unitId: 'u2',
+          unitCode: 'cedar-2',
+          unitName: 'Cedar 2',
+        })
+        .catch(() => undefined)
+      await Promise.resolve()
+    })
+
+    await act(async () => {
+      okB()
+      await new Promise((resolve) => setTimeout(resolve, 0))
+    })
+    await act(async () => {
+      failA(new Error('boom'))
+      await new Promise((resolve) => setTimeout(resolve, 0))
+    })
+
+    // B's placement survives. A's rollback is stale and must not fire.
+    expect(cachedParty()).toMatchObject({ unit_code: 'cedar-2' })
+  })
+
   it('refuses to write with no scenario selected', async () => {
     // With no scenario the board is read-only for everyone, which is what
     // summer's `isProductionMode` does. The UI disables its drop targets, but

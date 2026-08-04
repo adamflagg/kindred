@@ -190,8 +190,8 @@ describe('placeParty', () => {
     // An empty `unit_ids` used to be the TOMBSTONE — "unplaced in this
     // scenario". kindred#1974 retired it: unplacing is now DELETE, and the
     // schema pins `min_length=1`. Catching it here turns a confusing rollback
-    // into a caller bug, and this is the exact mistake older HANDOFF text
-    // instructs a reader to make.
+    // into a caller bug. HANDOFF instructed exactly this mistake until #1974
+    // and has since been corrected; the guard outlives the bad instruction.
     const mockFetch = vi.fn()
 
     await expect(

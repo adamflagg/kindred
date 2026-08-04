@@ -6,7 +6,7 @@
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { useState, type ReactNode } from 'react'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 
 import { FloatingQueueBadge } from './FloatingQueueBadge'
 
@@ -29,11 +29,13 @@ function Harness({
   isPanelOpen = false,
   isDropTarget = false,
   footer,
+  dropRef,
 }: {
   items?: Row[]
   isPanelOpen?: boolean
   isDropTarget?: boolean
   footer?: ReactNode
+  dropRef?: ((node: HTMLElement | null) => void) | undefined
 }) {
   const [isExpanded, setIsExpanded] = useState(false)
   return (
@@ -64,6 +66,7 @@ function Harness({
       }}
       isPanelOpen={isPanelOpen}
       isDropTarget={isDropTarget}
+      {...(dropRef ? { dropRef } : {})}
     />
   )
 }
@@ -257,5 +260,28 @@ describe('FloatingQueueBadge — placement', () => {
     const { container } = render(<Harness />)
     const badge = container.querySelector('[data-floating-badge]')
     expect(badge).toHaveStyle({ transform: 'none' })
+  })
+})
+
+describe('FloatingQueueBadge — the drop target', () => {
+  // THE BUG THIS PINS. The droppable ref used to be attached to the LIST,
+  // which only renders inside `{isExpanded && …}`. A collapsed badge therefore
+  // had no droppable node at all, so dragging a camper or a family onto it did
+  // nothing — and collapsed is the default state. The queue is where you drag
+  // someone to unassign or unplace them, so that is the whole interaction
+  // silently missing until you happen to open the popover first.
+  it('is a drop target while collapsed', () => {
+    const dropRef = vi.fn()
+    render(<Harness dropRef={dropRef} />)
+    const attached = dropRef.mock.calls.map((call) => call[0] as HTMLElement | null).filter(Boolean)
+    expect(attached.length).toBeGreaterThan(0)
+  })
+
+  it('is still a drop target once expanded', async () => {
+    const dropRef = vi.fn()
+    render(<Harness dropRef={dropRef} />)
+    await userEvent.click(screen.getByRole('button', { name: /unplaced families/i }))
+    const attached = dropRef.mock.calls.map((call) => call[0] as HTMLElement | null).filter(Boolean)
+    expect(attached.length).toBeGreaterThan(0)
   })
 })

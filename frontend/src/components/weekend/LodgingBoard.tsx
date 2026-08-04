@@ -1,5 +1,5 @@
 /**
- * The weekend lodging board — read-only (spec §10, "C1").
+ * The weekend lodging board (spec §10, "C1"; drag placement is "C2").
  *
  * With no scenario this is a CampMinder MIRROR, exactly as the summer board is
  * read-only for everyone in production mode (`ScenarioContext`'s
@@ -38,7 +38,7 @@ import type { LodgingUnitRow, RosterPartyRow } from '../../types/lodging'
 import { BoardModeChip } from './BoardModeChip'
 import { buildBoard } from './boardLayout'
 import { resolveDrop } from './dragPlacement'
-import { FamilyCard } from './FamilyCard'
+import { FamilyCard, FamilyCardPreview } from './FamilyCard'
 import { FamilyDetailsPanel } from './FamilyDetailsPanel'
 import { FloatingUnplacedBadge } from './FloatingUnplacedBadge'
 import { LodgingUnitCard } from './LodgingUnitCard'
@@ -311,8 +311,8 @@ export function LodgingBoard({
           scrolling grid, which clips it at the section boundary. */}
         <DragOverlay dropAnimation={null}>
           {dragging === null ? null : (
-            <div className="w-[200px] rotate-2 opacity-95 shadow-lg">
-              <FamilyCard party={dragging} inQueue={true} onOpen={() => undefined} />
+            <div className="w-[200px] opacity-95">
+              <FamilyCardPreview party={dragging} />
             </div>
           )}
         </DragOverlay>

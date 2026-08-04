@@ -187,8 +187,10 @@ export function applyPlacement(roster: WeekendRoster, intent: PlacementIntent): 
   // `parties` is optional on the generated type — every Pydantic field with a
   // default renders optional in TypeScript, even though the server always
   // sends it (see types/lodging.ts).
+  let moved = false
   const parties = (roster.parties ?? []).map((party) => {
     if (partyKey(party) !== movedKey) return party
+    moved = true
     return intent.kind === 'place'
       ? {
           ...party,
@@ -203,8 +205,12 @@ export function applyPlacement(roster: WeekendRoster, intent: PlacementIntent): 
       : { ...party, unit_code: '', unit_name: '', unit_codes: [], is_merged_slot: false }
   })
 
-  // A move between two units changes neither count.
-  const delta = wasPlaced === willBePlaced ? 0 : willBePlaced ? 1 : -1
+  // A move between two units changes neither count — and NEITHER does a party
+  // that is not in this snapshot. The row update is guarded on a `partyKey`
+  // match, so counting a party no row matched would let `parties_assigned`
+  // drift past the number of placed rows. Reachable when a refetch lands
+  // between drag start and `onMutate` and drops the party.
+  const delta = !moved || wasPlaced === willBePlaced ? 0 : willBePlaced ? 1 : -1
   const assigned = (roster.counts?.parties_assigned ?? 0) + delta
   const unassigned = (roster.counts?.parties_unassigned ?? 0) - delta
 

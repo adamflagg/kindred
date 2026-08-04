@@ -32,10 +32,11 @@ import { useCallback } from 'react'
 import toast from 'react-hot-toast'
 
 import {
-  partyGrainBody,
   applyPlacement,
+  partyGrainBody,
   type PlacementIntent,
 } from '../components/weekend/dragPlacement'
+import { partyKey } from '../components/weekend/partyKey'
 import { placeParty, unplaceParty } from '../services/lodgingApi'
 import type { WeekendRoster } from '../types/lodging'
 import { queryKeys } from '../utils/queryKeys'
@@ -53,9 +54,20 @@ export interface UseLodgingPlacementReturn {
   isMoving: boolean
 }
 
-/** What `onMutate` hands `onError` to undo an optimistic apply. */
+/**
+ * What `onMutate` hands `onError` to undo an optimistic apply.
+ *
+ * `partyKey` and `wroteUnitCode` are what make the undo SAFE rather than
+ * merely possible. Nothing serializes mutations, so a second drag can apply on
+ * top of this one; restoring `previous` wholesale would then erase the newer
+ * move as well. Recording what this mutation actually wrote lets `onError`
+ * check it is still the current value before undoing it.
+ */
 interface PlacementContext {
   previous: WeekendRoster | undefined
+  partyKey: string
+  /** The unit code this mutation optimistically wrote; `''` for an unplace. */
+  wroteUnitCode: string
 }
 
 export function useLodgingPlacement({
@@ -95,23 +107,49 @@ export function useLodgingPlacement({
       queryClient.setQueryData<WeekendRoster>(rosterKey, (current) =>
         current === undefined ? current : applyPlacement(current, intent)
       )
-      return { previous }
+      return {
+        previous,
+        partyKey: partyKey(intent.party),
+        wroteUnitCode: intent.kind === 'place' ? intent.unitCode : '',
+      }
     },
 
     onError: (error, _intent, context) => {
-      // Restore the exact object captured before the apply. `applyPlacement`
-      // is purely functional precisely so this snapshot is still the
-      // pre-mutation state rather than an alias of the optimistic one.
-      if (context?.previous !== undefined) {
-        queryClient.setQueryData(rosterKey, context.previous)
+      // Undo ONLY if this mutation's own optimistic value is still the one on
+      // screen. Nothing serializes mutations, so a second drag of the same
+      // family can land while this one is in flight; restoring `previous`
+      // wholesale would then erase the newer move too — and because the
+      // snapshot predates BOTH, the family would drop back into the unplaced
+      // queue while the server holds it in a cabin. A card vanishing from a
+      // room is a worse lie than a slow one.
+      //
+      // Superseded means the newer write owns the card now; `onSettled` still
+      // refetches, so nothing is left to guess. The toast fires either way —
+      // this write failed, and staff have to be told regardless of who owns
+      // the card.
+      if (context !== undefined && context.previous !== undefined) {
+        const current = queryClient.getQueryData<WeekendRoster>(rosterKey)
+        const party = current?.parties?.find(
+          (candidate) => partyKey(candidate) === context.partyKey
+        )
+        // An absent party means the roster moved under us; trust the refetch
+        // rather than resurrecting a snapshot that no longer describes it.
+        const stillOurs = party !== undefined && (party.unit_code ?? '') === context.wroteUnitCode
+        if (stillOurs) {
+          // `applyPlacement` is purely functional precisely so this snapshot is
+          // the pre-mutation state rather than an alias of the optimistic one.
+          queryClient.setQueryData(rosterKey, context.previous)
+        }
       }
       toast.error(error.message)
     },
 
-    // On BOTH outcomes. A rejected write can still have changed the server —
-    // `place_party`'s unique-index race surfaces as a failure over a row that
-    // now exists — so rolling back without refetching would leave the board
-    // confidently wrong.
+    // On BOTH outcomes. `place_party` recovers from its own unique-index race
+    // internally — the loser re-reads and updates, returning 200 — so a
+    // failure here is NOT that race. It is a permission, validation or
+    // transport failure, any of which can still leave the server changed (the
+    // recovery path itself can fail after the create landed). Refetching is
+    // what makes the board agree with the server either way.
     onSettled: () => {
       void queryClient.invalidateQueries({ queryKey: rosterKey })
       void queryClient.invalidateQueries({ queryKey: queryKeys.weekendSummary(year) })

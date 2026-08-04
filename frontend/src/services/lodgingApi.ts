@@ -7,6 +7,7 @@
  * `credentials: 'include'` silently 401s (frontend/CLAUDE.md).
  */
 
+import type { PartyGrainBody } from '../components/weekend/dragPlacement'
 import type {
   HouseholdMedical,
   WeekendRoster,
@@ -138,9 +139,6 @@ export async function copyPlacementsFromMirror(
   return response.json() as Promise<LodgingCopyResult>
 }
 
-/** The grain half of a placement write: exactly one CampMinder id. */
-export type PartyGrainBody = { household_cm_id: number } | { person_cm_id: number }
-
 /** One weekend, in one scenario — the shape every placement write shares. */
 export interface PlacementWriteBase {
   year: number
@@ -160,7 +158,9 @@ function placementBody({ year, sessionCmId, scenario, grain }: PlacementWriteBas
  * `unitIds` must name at least one unit. An empty list is NOT a second
  * spelling of "unplaced" — it was the tombstone until kindred#1974 retired it,
  * and the schema now pins `min_length=1`, so an empty set is a 422. Unplacing
- * is `unplaceParty` below. Older HANDOFF text says otherwise and is wrong.
+ * is `unplaceParty` below. HANDOFF said otherwise until #1974 and has since
+ * been corrected (§2, §6) — the note survives because the old shape is the
+ * intuitive one to reach for.
  *
  * Idempotent from the caller's side: the server upserts, so re-placing a party
  * into the room it already occupies succeeds. The board still refuses to send

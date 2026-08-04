@@ -96,7 +96,7 @@ export function FloatingUnplacedBadge({
         setIsExpanded(false)
       }}
       isPanelOpen={isPanelOpen}
-      listRef={setNodeRef}
+      dropRef={setNodeRef}
       isDropTarget={isOver}
     />
   )

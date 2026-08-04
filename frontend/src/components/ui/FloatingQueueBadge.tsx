@@ -14,6 +14,20 @@ import clsx from 'clsx'
 import { CircleCheck, Search, UserRoundSearch, Users, X } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode, type Ref } from 'react'
 
+/**
+ * One node, two owners: the shell's own click-outside ref and the caller's
+ * droppable ref. React 19 can accept an array of refs, but this tree targets
+ * the callback form both `useRef` objects and dnd-kit's `setNodeRef` accept.
+ */
+function mergeRefs<T>(...refs: (Ref<T> | undefined)[]) {
+  return (node: T | null) => {
+    for (const ref of refs) {
+      if (typeof ref === 'function') ref(node)
+      else if (ref) (ref as { current: T | null }).current = node
+    }
+  }
+}
+
 export interface FloatingQueueBadgeProps<T> {
   items: T[]
   /** Comparison tokens, most significant first. Compared with localeCompare in order. */
@@ -34,8 +48,16 @@ export interface FloatingQueueBadgeProps<T> {
   onToggle: () => void
   onClose: () => void
   isPanelOpen?: boolean
-  /** The drop target. Summer's droppable today; the weekend's at C2. */
-  listRef?: Ref<HTMLDivElement>
+  /**
+   * The droppable node, attached to the OUTER container.
+   *
+   * Deliberately not the list. The list only renders while expanded, and
+   * collapsed is the default — so attaching it there left the badge with no
+   * droppable node most of the time, and dragging someone onto it silently did
+   * nothing. The queue is where you drag a camper to unassign or a family to
+   * unplace, so that was the interaction missing, not a decoration.
+   */
+  dropRef?: Ref<HTMLDivElement>
   isDropTarget?: boolean
 }
 
@@ -53,7 +75,7 @@ export function FloatingQueueBadge<T>({
   onToggle,
   onClose,
   isPanelOpen = false,
-  listRef,
+  dropRef,
   isDropTarget = false,
 }: FloatingQueueBadgeProps<T>) {
   const popoverRef = useRef<HTMLDivElement>(null)
@@ -125,7 +147,7 @@ export function FloatingQueueBadge<T>({
       data-floating-badge
       className="fixed right-6 bottom-14 z-[70] transition-transform duration-300"
       style={{ transform: isPanelOpen ? 'translateX(-28.5rem)' : 'none' }}
-      ref={popoverRef}
+      ref={mergeRefs(popoverRef, dropRef)}
     >
       {!isExpanded && (
         <button
@@ -218,7 +240,6 @@ export function FloatingQueueBadge<T>({
           )}
 
           <div
-            ref={listRef}
             className={clsx(
               'min-h-[200px] flex-1 overflow-y-auto p-3',
               isDropTarget && 'bg-primary/5'

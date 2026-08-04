@@ -105,7 +105,7 @@ export default function FloatingUnassignedBadge({
       onToggle={onToggle}
       onClose={onClose}
       isPanelOpen={isPanelOpen}
-      listRef={setNodeRef}
+      dropRef={setNodeRef}
       isDropTarget={isOver}
     />
   )
