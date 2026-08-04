@@ -155,13 +155,27 @@ describe('FamilyDetailsPanel — the content the card omits', () => {
     }
     render(<FamilyDetailsPanel party={party()} year={2026} onClose={vi.fn()} />, { wrapper })
 
-    expect(screen.queryByRole('button', { name: /medical detail/i })).not.toBeInTheDocument()
     expect(screen.getByText('Peanuts')).toBeInTheDocument()
   })
 
-  it('does not offer the medical reveal for an adult-weekend party', () => {
+  it('does not render the narrative for an adult-weekend party', () => {
     // A person-grain party has no household, so there is nothing to look a
-    // narrative up by and the reveal could only ever fail.
+    // narrative up by. This pins the PANEL's grain gate -- `isHousehold`
+    // deciding `householdCmId`, and the `> 0 ? : null` below it -- which is
+    // the half that decides whether a person-grain party ever asks for
+    // `/households/0/medical`. `MedicalNarrative`'s own null gate is pinned
+    // separately in its suite.
+    //
+    // The hook mock is grain-blind on purpose: it returns a narrative for
+    // ANY arguments. So the only thing that can keep this text off the panel
+    // is the gate, and mutating either half turns this red -- which the
+    // assertion it replaced could not do, having outlived the button it
+    // looked for.
+    medicalResult.value = {
+      data: { allergy_info: 'Peanuts' },
+      isLoading: false,
+      error: null,
+    }
     render(
       <FamilyDetailsPanel
         party={party({
@@ -176,7 +190,7 @@ describe('FamilyDetailsPanel — the content the card omits', () => {
       />,
       { wrapper }
     )
-    expect(screen.queryByRole('button', { name: /medical detail/i })).not.toBeInTheDocument()
+    expect(screen.queryByText('Peanuts')).not.toBeInTheDocument()
   })
 })
 

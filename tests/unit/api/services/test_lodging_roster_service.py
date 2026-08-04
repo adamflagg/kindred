@@ -451,10 +451,21 @@ class TestUnitsAndCounts:
     @pytest.mark.asyncio
     async def test_a_missing_coordinate_key_stays_none(self) -> None:
         """The admin form omits the key rather than sending 0 -- the shape
-        that reaches the API first. It must not become 0.0 on the way out."""
+        that reaches the API first. It must not become 0.0 on the way out.
+
+        The attributes are DELETED rather than set to `None`, because those
+        are not the same input and only one of them is what this test is
+        named for. They travel the same path today solely because `_f` reads
+        `getattr(record, field, None)`; swap that for `record.map_x` and the
+        omitted key raises AttributeError while a `None` fixture sails
+        through, which is exactly the regression this test should catch.
+        """
+        unit = _unit("u1", "ridge-a", "Ridge A", sleeps=5)
+        del unit.map_x
+        del unit.map_y
         repo = _repo(
             fetch_session=FAMILY_SESSION,
-            fetch_units=[_unit("u1", "ridge-a", "Ridge A", sleeps=5, map_x=None, map_y=None)],
+            fetch_units=[unit],
         )
         roster = await LodgingRosterService(repo).build_roster(2026, 1000001)
 
