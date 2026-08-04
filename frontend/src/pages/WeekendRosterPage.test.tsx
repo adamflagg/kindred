@@ -155,6 +155,12 @@ function renderPage(ref = '1000001', view = '') {
   )
 }
 
+/** The `<header>` landmark, for assertions about the header's own container. */
+function renderHeader(ref = '1000001') {
+  renderPage(ref)
+  return screen.getByRole('banner')
+}
+
 beforeEach(() => {
   isAdmin = true
   permissions = new Set()
@@ -218,44 +224,23 @@ describe('header', () => {
     expect(options).toEqual(['Family Camp 1', "Women's Weekend"])
   })
 
-  it('offers a way back to the lander', () => {
-    renderPage()
-    expect(screen.getByRole('link', { name: /All weekends/i })).toHaveAttribute(
-      'href',
-      '/weekend/sessions'
-    )
+  it('seats the header in a lodge card, as the summer session header is', () => {
+    // `card-lodge` is the container primitive summer's SessionHeader sits in.
+    // Asserting the class rather than "some box is drawn" is the point: a
+    // header boxed by hand-rolled classes is exactly the drift this catches.
+    expect(renderHeader().querySelector('.card-lodge')).not.toBeNull()
   })
 
-  it('links to the lodging editor under /manage', () => {
-    // The editor moved off /admin so bunking staff can reach it. It points
-    // straight at the units section rather than the bare path, skipping one
-    // redirect hop.
+  it('carries no navigation away from the weekend', () => {
+    // Both links went. Summer's session header carries neither, and neither
+    // destination is stranded: AppLayout's brand link reaches `/weekend/`,
+    // which redirects to the lander, and Manage reaches the lodging editor.
+    //
+    // Rendered as an ADMIN — the default here, and someone the old gate let
+    // through. Asserting absence for a user who could never see the settings
+    // link would pass whether or not the link was actually removed.
     renderPage()
-    expect(screen.getByRole('link', { name: /Lodging settings/i })).toHaveAttribute(
-      'href',
-      '/manage/lodging/units'
-    )
-  })
-
-  it('offers the lodging-settings link to a non-admin holding bunking.manage', () => {
-    // The whole point of the move: cabin confirmations are bunking staff's
-    // job. The link must follow the permission that now gates the writes, not
-    // the admin flag that used to.
-    isAdmin = false
-    permissions = new Set(['bunking.manage'])
-    renderPage()
-    expect(screen.getByRole('link', { name: /Lodging settings/i })).toHaveAttribute(
-      'href',
-      '/manage/lodging/units'
-    )
-  })
-
-  it('hides the lodging-settings link from a user without bunking.manage', () => {
-    // Every lodging collection now gates writes on bunking.manage, and the
-    // route itself is behind RequirePermission — following the link would land
-    // on the permission-denied page.
-    isAdmin = false
-    renderPage()
+    expect(screen.queryByRole('link', { name: /All weekends/i })).not.toBeInTheDocument()
     expect(screen.queryByRole('link', { name: /Lodging settings/i })).not.toBeInTheDocument()
   })
 
@@ -414,19 +399,17 @@ describe('tabs', () => {
     expect(screen.getByText('Ridge A')).toBeInTheDocument()
   })
 
-  it('counts what each tab holds, as the summer session tabs do', () => {
-    rosterQuery.data = {
-      year: 2026,
-      session_cm_id: 1000001,
-      parties: [],
-      units: [],
-      counts: {},
-    }
+  it('leads with the board and counts what each tab holds, as summer does', () => {
+    // ORDER IS THE ASSERTION, not just presence. Summer opens on its board and
+    // puts the roster-shaped tabs after it; a weekend reads the same way round.
+    // Inventory trails because it describes the buildings, not the weekend.
     renderPage()
-    expect(screen.getByRole('tab', { name: 'Roster (0)' })).toBeInTheDocument()
-    expect(screen.getByRole('tab', { name: 'Inventory (0)' })).toBeInTheDocument()
-    expect(screen.getByRole('tab', { name: 'Board (0)' })).toBeInTheDocument()
-    expect(screen.getByRole('tab', { name: 'Map (0)' })).toBeInTheDocument()
+    expect(screen.getAllByRole('tab').map((tab) => tab.textContent)).toEqual([
+      'Board (0)',
+      'Roster (0)',
+      'Map (0)',
+      'Inventory (0)',
+    ])
   })
 
   it('opens the board on its own tab', async () => {
