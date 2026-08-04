@@ -662,3 +662,55 @@ describe('LodgingUnitForm — an undeliverable code', () => {
     expect(payload.code).toBe('north-wing')
   })
 })
+
+describe('LodgingUnitForm — map coordinates', () => {
+  const renderUnit = (unit: LodgingUnitRecord) =>
+    render(
+      <LodgingUnitForm
+        areas={AREAS}
+        units={[unit]}
+        unit={unit}
+        onSaved={vi.fn()}
+        onCancel={vi.fn()}
+      />
+    )
+
+  it('accepts the four-decimal coordinates the placement tool actually stores', () => {
+    // 62 of the 114 units carry map coordinates to FOUR places. A `step` of
+    // 0.001 makes every one of them a stepMismatch, and the browser then
+    // refuses to submit the WHOLE form — so a staffer cannot confirm amenities
+    // on one of those cabins without first hand-truncating a coordinate they
+    // never meant to touch, silently moving the unit on the map.
+    renderUnit({ ...UNIT, map_x: 0.4389, map_y: 0.3311 })
+
+    const x = screen.getByLabelText<HTMLInputElement>('Map X')
+    const y = screen.getByLabelText<HTMLInputElement>('Map Y')
+
+    expect(x).toHaveValue(0.4389)
+    expect(x.validity.stepMismatch).toBe(false)
+    expect(y.validity.stepMismatch).toBe(false)
+  })
+
+  it('still refuses a coordinate outside the 0–1 fraction of the image', async () => {
+    // Loosening `step` must not loosen the RANGE: these are a fraction of the
+    // map image, and the column itself is min 0 / max 1.
+    //
+    // Asserted through the validity state rather than the attributes, because
+    // `min="0"` being spelled correctly is not the property that matters — the
+    // browser acting on it is, and that is the same mechanism `step` broke.
+    // Both axes, since they are separate inputs that have already drifted once.
+    const user = userEvent.setup()
+    renderUnit({ ...UNIT, map_x: 0.4389, map_y: 0.3311 })
+
+    const x = screen.getByLabelText<HTMLInputElement>('Map X')
+    const y = screen.getByLabelText<HTMLInputElement>('Map Y')
+
+    await user.clear(x)
+    await user.type(x, '2')
+    expect(x.validity.rangeOverflow).toBe(true)
+
+    await user.clear(y)
+    await user.type(y, '-1')
+    expect(y.validity.rangeUnderflow).toBe(true)
+  })
+})
