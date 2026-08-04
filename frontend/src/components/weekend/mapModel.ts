@@ -16,7 +16,12 @@ import { buildBoard, type ConsentFlag } from './boardLayout'
 
 /** Why the map cannot draw a party the board can. */
 export type OffMapReason =
-  /** On a merged slot, which carries no unit code and so no coordinate. */
+  /**
+   * On a merged slot the board could not resolve — every room it names is
+   * missing from the payload, so there is no coordinate to pin it to. A merge
+   * whose rooms DO resolve never reaches here: since #1940 it is drawn across
+   * each of them, and only off-board parties are given a reason at all.
+   */
   | 'merged-slot'
   /** The board could not draw it either — a container, or a unit not in the payload. */
   | 'not-on-board'

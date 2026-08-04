@@ -13,11 +13,15 @@
  *    halves already report; drawing it double-counts them (408 against a true
  *    389). Owner-confirmed.
  * 2. **No party is ever dropped.** A party can be placed somewhere the board
- *    structurally cannot draw — a merge carries no `unit_code` at all, and an
- *    assignment can name a container or a unit absent from the payload. Those
- *    go to `offBoard`, never to the unplaced corner queue (they ARE placed) and
- *    never to nowhere. `buildBoard` is total: every input party comes out in
- *    exactly one of slots / unplaced / offBoard.
+ *    structurally cannot draw — an assignment naming a container, a unit absent
+ *    from the payload, or a merge whose every room is missing. Those go to
+ *    `offBoard`, never to the unplaced corner queue (they ARE placed) and never
+ *    to nowhere. `buildBoard` is total: every input party comes out in exactly
+ *    one of slots / unplaced / offBoard.
+ *
+ *    "Exactly one" is about the CATEGORY, not the slot. A party holding several
+ *    rooms is drawn on each of them, which is why an area's family count reads
+ *    distinct `partyKey`s rather than slot entries.
  */
 import type { LodgingUnitRow, RosterPartyRow, ShareEligibilityValue } from '../../types/lodging'
 import { partyKey } from './partyKey'
