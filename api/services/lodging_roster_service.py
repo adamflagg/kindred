@@ -354,12 +354,17 @@ class LodgingRosterService:
     async def build_summary(self, year: int, scenario: str = "") -> WeekendSummaryResponse:
         """Every weekend in the year with its counts, in one pass.
 
-        `build_roster` makes eleven fetches, of which EIGHT are year-scoped --
-        the unit registry, households, the prior-household set, family-camp
-        adults, registrations, medical, and two registry counts are identical
-        for every weekend in the year. Calling it once per weekend to fill the
-        lander repeats all eight N times, which is why a weekend with zero
-        parties still costs about three seconds.
+        `build_roster` makes ten fetches, of which SEVEN are year-scoped -- the
+        unit registry, households, the prior-household set, family-camp adults,
+        registrations, and two registry counts are identical for every weekend
+        in the year. Calling it once per weekend to fill the lander repeats all
+        seven N times, which is why a weekend with zero parties still costs
+        about three seconds.
+
+        Both counts were one higher until kindred#1889 deleted
+        `has_medical_narrative`, which was the only consumer of the whole-year
+        `family_camp_medical` map. kindred#1963 measures this from eleven and
+        eight; it is now ten and seven, so that issue is partly pre-paid.
 
         So the year-scoped work happens once here, and only the genuinely
         session-scoped reads run per weekend: availability, attendees and one
