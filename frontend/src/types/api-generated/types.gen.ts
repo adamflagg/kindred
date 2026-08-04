@@ -84,10 +84,6 @@ export type AccessibilityFlagSummary = {
    * Has Infant
    */
   has_infant?: boolean
-  /**
-   * Has Medical Narrative
-   */
-  has_medical_narrative?: boolean
 }
 
 /**
@@ -6695,8 +6691,8 @@ export type WeekendSummaryEntry = {
  * Every weekend in a year, with counts, in ONE request.
  *
  * Exists because `/roster` is a composed read whose cost is dominated by
- * year-scoped work -- the unit registry, households, registrations, medical
- * and the prior-household set are identical for every weekend in the year.
+ * year-scoped work -- the unit registry, households, registrations and the
+ * prior-household set are identical for every weekend in the year.
  * Calling it once per weekend to fill a lander repeats that work N times: a
  * weekend with zero parties still costs ~3s, which is the whole tell. This
  * endpoint does the year-scoped fetches once and only the session-scoped

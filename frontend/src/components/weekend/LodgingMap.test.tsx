@@ -127,7 +127,6 @@ function party(overrides: Partial<RosterPartyRow> = {}): RosterPartyRow {
       needs_accommodation: false,
       accommodation_is_mandatory: false,
       has_infant: false,
-      has_medical_narrative: false,
     },
     ...overrides,
   }

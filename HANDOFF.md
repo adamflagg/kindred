@@ -123,9 +123,10 @@ Facts, not a work log. Do not re-verify or re-implement these.
 - **The weekend surfaces are live** (Phase B, `37cf8d24`): `/weekend/sessions` lander,
   `/weekend/session/:sessionCmId` roster with Roster/Inventory tabs, and
   `GET /api/lodging/summary?year=` — one batched read returning every weekend with its
-  `RosterCounts`. `/summary` exists because `/roster` makes eleven fetches of which **eight are
+  `RosterCounts`. `/summary` exists because `/roster` makes ten fetches of which **seven are
   year-scoped**, so filling a lander weekend-by-weekend repeated that work N times; a weekend with
-  zero parties still cost ~3s. Measured: twelve weekends in one 4.0s / 5.9 KB call.
+  zero parties still cost ~3s. Measured: twelve weekends in one 4.0s / 5.9 KB call. (Eleven and
+  eight until #1889 deleted the whole-year medical read; #1963 measures from the older numbers.)
 - **`/summary` and `/roster` cannot disagree.** The batch runs the same
   `_build_units` / `_build_parties` / `_build_counts` helpers, and
   `TestBuildSummary::test_counts_match_what_the_roster_reports_for_the_same_weekend` asserts it.
@@ -242,10 +243,11 @@ adds position, so the two cannot disagree about who is where.
 - **Containers are never drawn**, the same invariant the board holds. The Map tab counts
   POSITIONED ROOMS, which is neither the Inventory count (includes containers) nor the number
   of marks (clusters, and changes with zoom).
-- **`(0,0)` means UNPOSITIONED.** PocketBase stores an unset number as 0 and — unlike `sleeps` —
-  the API does not map it to null (#1941). Rendered naively it lands in the map's top-left
-  corner looking like a real placement. `hasCoordinates` treats BOTH axes zero as unset and
-  keeps a single-axis zero, which is a legitimate edge coordinate.
+- **`(0,0)` means UNPOSITIONED.** PocketBase stores an unset number as 0, which rendered naively
+  lands in the map's top-left corner looking like a real placement. Settled at BOTH ends as of
+  #1941: `_map_point` sends the unset pair as null, and `hasCoordinates` stays as defence in
+  depth. Note the asymmetry deliberately — only a BOTH-axes zero is the unset signal; a
+  single-axis zero is a real edge position and is kept.
 - **A merged placement cannot be positioned yet.** The roster sends `unit_code: ""` for a merge,
   so those parties land on the "Placed, off the map" rail. `resolvePartyUnits` (`mapModel.ts`)
   is the pre-built seam and is the ONLY place a party becomes units. #1933 landed
@@ -459,7 +461,8 @@ Each of these was decided deliberately. Reopening one needs a reason, not a fres
   the figure is provisional and says so.
 - **The roster is a triage surface.** The board places parties; the roster says which need a
   decision. It ranks only on signals that discriminate: measured on real 2026 data
-  `needs_resolution` is true for 44 of 62 parties and `has_medical_narrative` for 62 of 62, so
+  `needs_resolution` is true for 44 of 62 parties and `has_medical_narrative` was true for 62 of 62
+  (deleted in kindred#1889), so
   **neither escalates a row**. A flag that is always on is not a flag.
 - **The met/unmet fit check judges only CONFIRMED cabins.** Every cabin is `is_confirmed: false`
   today, so an unset `has_power` means "nobody has said", not "there is no power". Judging against
@@ -478,8 +481,10 @@ Each of these was decided deliberately. Reopening one needs a reason, not a fres
   is how a UI starts disagreeing with CampMinder about what a session is called.
 - **Lander counts come from `/api/lodging/summary`, never from N roster calls.** See §4.
 - **Contracts corrected in review (`03754754`), easy to mis-remember:**
-  `AccessibilityFlagListProps.householdCmId` is `number | null` — `null` means "no household to
-  look up" and suppresses the PHI reveal entirely, rather than requesting `/households/0/medical`.
+  `MedicalNarrativeProps.householdCmId` is `number | null` — `null` means "no household to
+  look up" and suppresses the PHI fetch entirely, rather than requesting `/households/0/medical`.
+  (It lived on `AccessibilityFlagListProps` until #1889 made that component purely
+  presentational and moved the narrative to `MedicalNarrative`.)
   `partyAttention`'s `unverified` reason lists only needs a confirmed cabin has *not* answered.
   `UnitInventoryPanel` buckets areas on `` `${area_code}::${area_name}` `` because the API sends
   `area_code: ""` for anything it cannot resolve. Neither weekend page passes `emptyMessage` to
@@ -742,7 +747,8 @@ the whole time. That is progress, not a hang — confirm with CPU, not the count
 - **Do not fill a lander or any multi-weekend view with per-weekend `/roster` calls.** Use
   `/api/lodging/summary`. `/roster`'s cost is year-scoped work repeated per call; N calls is N times
   the same eight fetches, and it looks fine on a year with two weekends.
-- **Do not let the roster escalate on `needs_resolution` or `has_medical_narrative`.** True for 44
+- **Do not let the roster escalate on `needs_resolution`.** (`has_medical_narrative` is gone —
+  kindred#1889 deleted it for this very reason.) True for 44
   of 62 and 62 of 62 parties respectively. Ranking on either turns the whole roster amber and the
   triage sections stop meaning anything.
 - **Do not judge a housing need against an UNCONFIRMED cabin.** `has_power: false` on an unconfirmed
@@ -908,9 +914,7 @@ git fetch -q && git rev-list --count origin/<branch>..HEAD   # must be 0
   `unit_code: ""`. `resolvePartyUnits` in `mapModel.ts` is the only place a party becomes units
   and was written for exactly this, so nothing else should need to change. Real multi-room
   placements run 12–16 a year, so this is not hypothetical.
-- **#1941 — map `map_x`/`map_y` `0 → None` in the API**, as `sleeps` already is. The frontend
-  guard in `hasCoordinates` stays as defence in depth. Note the asymmetry deliberately: only a
-  BOTH-axes zero is the unset signal; a single-axis zero is a real edge position.
+  (#1941 was here and is CLOSED — `_map_point` landed the API half; see §2.)
 
 
 ### CLOSED: every write path is race-guarded
@@ -1014,10 +1018,9 @@ parent corrections. **Explicitly do not run `confirm_lodging_units.py` against p
   tempting justification is wrong: this does NOT preserve precedent, because pre-collapse a
   merged slot was one atomic record that either resolved or did not. *Partial* degradation
   inside a slot is a state the collapse itself created.
-- **#1936 — `place_party` retries on ANY `ClientResponseError`,** not just the unique-index
-  race its docstring reasons about. A 400 or 403 currently goes down a re-read-and-update path
-  never meant for it. Pre-existing; CodeRabbit flagged it on #1927 and it was dropped.
-  `set_availability` has the same shape.
+  (#1936 was here and is CLOSED — `REFUSAL_STATUSES` re-raises 401/403 before any recovery, in
+  all four write paths: both creates, both updates, and the seed's `_seed_failure`. The 400
+  recovery is untouched. Note the update branches were the COMMON path once drag shipped.)
 - **#1937 — `golangci-lint` is not in the pre-push hook.** Go lint failures pass every local
   gate and surface only in CI. Cost two round-trips on #1933. Run it by hand until this lands:
   `cd pocketbase && golangci-lint run --config ../.golangci.yml > /tmp/lint.out 2>&1; echo $?`
@@ -1036,9 +1039,14 @@ parent corrections. **Explicitly do not run `confirm_lodging_units.py` against p
   is `request_text` — an ordinary roster field, ungated — while `family_camp_medical` is
   admin-gated. Predates this work; the owner's call, deliberately not acted on. Options are gate the
   text, flag it for review, or accept it.
-- **`has_medical_narrative` is true for every household** (62 of 62 in 2026; 870 medical rows, 648
-  with dietary/allergy text). Accurate, but it means the medical affordance appears on every row and
-  therefore signals nothing. Worth deciding whether the flag should mean something narrower.
+- ~~**`has_medical_narrative` is true for every household**~~ **RESOLVED — the flag is deleted**
+  (kindred#1889). It was true for 62 of 62 in 2026 and 100.0% in each of 2024-26, because these
+  questions store their negative answer as the text "No". Narrowing it was measured and rejected:
+  a boilerplate-negative filter still lands at 67.7% / 52.6% / 55.9% across those years. Deleting it
+  removed the whole-year `family_camp_medical` read from BOTH `build_roster` and `build_summary` —
+  the narrative now has one reader, `get_household_medical`, one household at a time behind
+  `Permission.LODGING_PHI`. The reveal button went with it: `MedicalNarrative` renders on
+  `FamilyDetailsPanel` for a PHI holder, and `HouseholdRosterRow` carries chips only.
 - **The weekend surfaces were never verified in a browser after #1890's last three commits.**
   Merged and green, but nobody has *looked* at the lander, the Listbox switcher or the stats bar
   — they are covered by tests and by direct API measurement only. Worth ten minutes with

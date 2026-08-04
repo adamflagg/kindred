@@ -14,7 +14,6 @@ import { attentionSections, indexUnitsByCode } from './rosterAttention'
 
 export interface HouseholdRosterTableProps {
   parties: RosterPartyRow[]
-  year: number
   /**
    * The weekend's cabins, so a row can ask whether its own cabin provides
    * what the family requested. Optional: without it every constrained party
@@ -37,7 +36,7 @@ function hasAnyRequest(parties: RosterPartyRow[]): boolean {
   })
 }
 
-export function HouseholdRosterTable({ parties, year, units = [] }: HouseholdRosterTableProps) {
+export function HouseholdRosterTable({ parties, units = [] }: HouseholdRosterTableProps) {
   if (parties.length === 0) {
     return (
       <div className="dark:bg-card rounded-xl border border-dashed border-stone-300 bg-white p-8 text-center dark:border-stone-600">
@@ -91,7 +90,6 @@ export function HouseholdRosterTable({ parties, year, units = [] }: HouseholdRos
               <HouseholdRosterRow
                 key={`${party.grain}-${String(party.household_cm_id ?? 0)}-${String(party.person_cm_id ?? 0)}`}
                 party={party}
-                year={year}
                 showRequests={showRequests}
                 unit={unitsByCode.get(party.unit_code ?? '')}
               />

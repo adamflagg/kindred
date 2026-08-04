@@ -305,9 +305,7 @@ export default function WeekendRosterPage() {
               id={`weekend-panel-${view}`}
               aria-labelledby={`weekend-tab-${view}`}
             >
-              {view === 'roster' && (
-                <HouseholdRosterTable parties={parties} year={currentYear} units={units} />
-              )}
+              {view === 'roster' && <HouseholdRosterTable parties={parties} units={units} />}
               {view === 'inventory' && <UnitInventoryPanel units={units} />}
               {/* The board takes the scenario, the weekend and the manage
                   permission because it WRITES now (#1989) — main's note that

@@ -27,8 +27,16 @@ vi.mock('../../hooks/usePermissions', () => ({
   }),
 }))
 
+const medicalResult = {
+  value: { data: undefined, isLoading: false, error: null } as {
+    data: unknown
+    isLoading: boolean
+    error: Error | null
+  },
+}
+
 vi.mock('../../hooks/useWeekendRoster', () => ({
-  useHouseholdMedical: () => ({ data: undefined, isLoading: false, error: null }),
+  useHouseholdMedical: () => medicalResult.value,
 }))
 
 // One client per TEST, built outside the render path. Constructing it inside
@@ -93,7 +101,7 @@ function party(overrides: Partial<RosterPartyRow> = {}): RosterPartyRow {
       request_text: REQUEST_TEXT,
       needs_resolution: false,
     },
-    flags: { has_medical_narrative: true },
+    flags: { needs_power: true },
     ...overrides,
   }
 }
@@ -127,6 +135,7 @@ function unit(overrides: Partial<LodgingUnitRow> = {}): LodgingUnitRow {
 
 beforeEach(() => {
   isAdmin.value = true
+  medicalResult.value = { data: undefined, isLoading: false, error: null }
 })
 
 describe('FamilyDetailsPanel — the content the card omits', () => {
@@ -135,14 +144,38 @@ describe('FamilyDetailsPanel — the content the card omits', () => {
     expect(screen.getByText(REQUEST_TEXT)).toBeInTheDocument()
   })
 
-  it('offers the medical reveal, which the card never does', () => {
+  it('renders the medical narrative without a reveal click', () => {
+    // kindred#1889 removed the click-to-reveal: it was gated on a flag true
+    // for every household, so it gated nothing. A `lodging.phi` holder now
+    // sees the text directly (`isAdmin` is true for this suite).
+    medicalResult.value = {
+      data: { allergy_info: 'Peanuts' },
+      isLoading: false,
+      error: null,
+    }
     render(<FamilyDetailsPanel party={party()} year={2026} onClose={vi.fn()} />, { wrapper })
-    expect(screen.getByRole('button', { name: /medical detail/i })).toBeInTheDocument()
+
+    expect(screen.getByText('Peanuts')).toBeInTheDocument()
   })
 
-  it('does not offer the medical reveal for an adult-weekend party', () => {
+  it('does not render the narrative for an adult-weekend party', () => {
     // A person-grain party has no household, so there is nothing to look a
-    // narrative up by and the reveal could only ever fail.
+    // narrative up by. This pins the PANEL's grain gate -- `isHousehold`
+    // deciding `householdCmId`, and the `> 0 ? : null` below it -- which is
+    // the half that decides whether a person-grain party ever asks for
+    // `/households/0/medical`. `MedicalNarrative`'s own null gate is pinned
+    // separately in its suite.
+    //
+    // The hook mock is grain-blind on purpose: it returns a narrative for
+    // ANY arguments. So the only thing that can keep this text off the panel
+    // is the gate, and mutating either half turns this red -- which the
+    // assertion it replaced could not do, having outlived the button it
+    // looked for.
+    medicalResult.value = {
+      data: { allergy_info: 'Peanuts' },
+      isLoading: false,
+      error: null,
+    }
     render(
       <FamilyDetailsPanel
         party={party({
@@ -157,7 +190,7 @@ describe('FamilyDetailsPanel — the content the card omits', () => {
       />,
       { wrapper }
     )
-    expect(screen.queryByRole('button', { name: /medical detail/i })).not.toBeInTheDocument()
+    expect(screen.queryByText('Peanuts')).not.toBeInTheDocument()
   })
 })
 

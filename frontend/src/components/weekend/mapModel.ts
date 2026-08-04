@@ -59,11 +59,16 @@ export interface MapModel {
 /**
  * Has this unit actually been positioned?
  *
- * PocketBase stores an unset number as 0, and — unlike `sleeps`, which the
- * roster service explicitly maps 0 -> None — `map_x`/`map_y` come through as
- * `0.0`. Rendered naively that lands in the exact top-left corner of the map
- * and reads as a real placement. Both axes zero is the tell; a genuine zero on
- * ONE axis is a legitimate edge coordinate and is kept.
+ * PocketBase stores an unset number as 0, which rendered naively lands in the
+ * exact top-left corner of the map and reads as a real placement. Both axes
+ * zero is the tell; a genuine zero on ONE axis is a legitimate edge coordinate
+ * and is kept.
+ *
+ * The API settles this too as of kindred#1941 — `_map_point` in
+ * `lodging_roster_service.py` sends the unset PAIR as null, and names this
+ * function as its defence-in-depth partner. This is the second line, not the
+ * only one; it stays because it is the guard that has been holding this up so
+ * far, and because the same payload shape is reachable from a cached client.
  */
 export function hasCoordinates(unit: LodgingUnitRow): boolean {
   const x = unit.map_x

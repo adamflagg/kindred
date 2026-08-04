@@ -204,9 +204,11 @@ class AccessibilityFlagSummary(BaseModel):
     # signal, not an accessibility need: it argues for privacy and quiet, so
     # it informs unit choice rather than gating it.
     has_infant: bool = False
-    # True when ANY family_camp_medical narrative column is non-empty.
-    # Presence only — the text itself is never in this payload.
-    has_medical_narrative: bool = False
+    # There is deliberately NO `has_medical_narrative` here (kindred#1889). It
+    # was true for every household in every year measured, because these
+    # questions store "No" as text and a non-empty answer set the flag. See
+    # LodgingRosterService._build_flags for why it was deleted rather than
+    # filtered, and what deleting it removed from the read path.
 
 
 class RosterParty(BaseModel):
@@ -313,8 +315,8 @@ class WeekendSummaryResponse(BaseModel):
     """Every weekend in a year, with counts, in ONE request.
 
     Exists because `/roster` is a composed read whose cost is dominated by
-    year-scoped work -- the unit registry, households, registrations, medical
-    and the prior-household set are identical for every weekend in the year.
+    year-scoped work -- the unit registry, households, registrations and the
+    prior-household set are identical for every weekend in the year.
     Calling it once per weekend to fill a lander repeats that work N times: a
     weekend with zero parties still costs ~3s, which is the whole tell. This
     endpoint does the year-scoped fetches once and only the session-scoped

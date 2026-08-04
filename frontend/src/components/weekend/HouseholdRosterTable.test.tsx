@@ -56,7 +56,6 @@ function party(overrides: Partial<RosterPartyRow> = {}): RosterPartyRow {
       needs_accommodation: false,
       accommodation_is_mandatory: false,
       has_infant: false,
-      has_medical_narrative: false,
     },
     ...overrides,
   }
@@ -65,7 +64,7 @@ function party(overrides: Partial<RosterPartyRow> = {}): RosterPartyRow {
 describe('HouseholdRosterTable', () => {
   it('shows an empty state rather than an empty table', () => {
     // "Households" would be wrong for an adult weekend, which enrols people.
-    render(<HouseholdRosterTable parties={[]} year={2026} />, { wrapper })
+    render(<HouseholdRosterTable parties={[]} />, { wrapper })
     expect(screen.getByText('No one is enrolled for this weekend.')).toBeInTheDocument()
     expect(screen.getByText(/once registrations sync from CampMinder/)).toBeInTheDocument()
   })
@@ -77,7 +76,6 @@ describe('HouseholdRosterTable', () => {
           party({ display_name: 'Settled Family', unit_name: 'Ridge A' }),
           party({ display_name: 'Waiting Family', unit_name: '', household_cm_id: 2000002 }),
         ]}
-        year={2026}
       />,
       { wrapper }
     )
@@ -97,7 +95,6 @@ describe('HouseholdRosterTable', () => {
           party({ display_name: 'One', unit_name: '' }),
           party({ display_name: 'Two', unit_name: '', household_cm_id: 2000002 }),
         ]}
-        year={2026}
       />,
       { wrapper }
     )
@@ -123,7 +120,6 @@ describe('HouseholdRosterTable', () => {
             },
           }),
         ]}
-        year={2026}
       />,
       { wrapper }
     )
@@ -134,7 +130,6 @@ describe('HouseholdRosterTable', () => {
     render(
       <HouseholdRosterTable
         parties={[party({ share: { preference: 'yes_share', proximity: ['with'] } })]}
-        year={2026}
       />,
       { wrapper }
     )
@@ -142,7 +137,7 @@ describe('HouseholdRosterTable', () => {
   })
 
   it('renders adults and children counts for a household party', () => {
-    render(<HouseholdRosterTable parties={[party()]} year={2026} />, { wrapper })
+    render(<HouseholdRosterTable parties={[party()]} />, { wrapper })
     expect(screen.getByText('The Johnson Family')).toBeInTheDocument()
     expect(screen.getByText('1 adult · 1 child')).toBeInTheDocument()
     expect(screen.getByText('Samuel Johnson')).toBeInTheDocument()
@@ -165,7 +160,6 @@ describe('HouseholdRosterTable', () => {
             party_size: 4,
           }),
         ]}
-        year={2026}
       />,
       { wrapper }
     )
@@ -182,7 +176,6 @@ describe('HouseholdRosterTable', () => {
             ],
           }),
         ]}
-        year={2026}
       />,
       { wrapper }
     )
@@ -190,43 +183,36 @@ describe('HouseholdRosterTable', () => {
   })
 
   it('shows the assigned unit, or "Unassigned" when there is none', () => {
-    const { rerender } = render(<HouseholdRosterTable parties={[party()]} year={2026} />, {
+    const { rerender } = render(<HouseholdRosterTable parties={[party()]} />, {
       wrapper,
     })
     expect(screen.getByText('Unassigned')).toBeInTheDocument()
 
     rerender(
-      <HouseholdRosterTable
-        parties={[party({ unit_code: 'ridge-a', unit_name: 'Ridge A' })]}
-        year={2026}
-      />
+      <HouseholdRosterTable parties={[party({ unit_code: 'ridge-a', unit_name: 'Ridge A' })]} />
     )
     expect(screen.getByText('Ridge A')).toBeInTheDocument()
   })
 
   it('marks a merged slot so staff know two rooms were combined', () => {
     render(
-      <HouseholdRosterTable
-        parties={[party({ unit_name: 'Wawona', is_merged_slot: true })]}
-        year={2026}
-      />,
+      <HouseholdRosterTable parties={[party({ unit_name: 'Wawona', is_merged_slot: true })]} />,
       { wrapper }
     )
     expect(screen.getByText('Merged')).toBeInTheDocument()
   })
 
   it('flags a returning family', () => {
-    render(<HouseholdRosterTable parties={[party({ is_returning: true })]} year={2026} />, {
+    render(<HouseholdRosterTable parties={[party({ is_returning: true })]} />, {
       wrapper,
     })
     expect(screen.getByText('Returning')).toBeInTheDocument()
   })
 
   it('shows the arrival ETA when the family gave one', () => {
-    render(
-      <HouseholdRosterTable parties={[party({ arrival_eta: 'Friday around 4pm' })]} year={2026} />,
-      { wrapper }
-    )
+    render(<HouseholdRosterTable parties={[party({ arrival_eta: 'Friday around 4pm' })]} />, {
+      wrapper,
+    })
     expect(screen.getByText('Friday around 4pm')).toBeInTheDocument()
   })
 
@@ -244,7 +230,6 @@ describe('HouseholdRosterTable', () => {
             party_size: 1,
           }),
         ]}
-        year={2026}
       />,
       { wrapper }
     )
@@ -270,16 +255,17 @@ describe('HouseholdRosterTable', () => {
               needs_accommodation: false,
               accommodation_is_mandatory: false,
               has_infant: false,
-              has_medical_narrative: true,
             },
           }),
         ]}
-        year={2026}
       />,
       { wrapper }
     )
+    // kindred#1889: a roster row carries chips only. The narrative — and any
+    // trace that one exists — belongs to FamilyDetailsPanel, which shows one
+    // household at a time. This row is one of 62 on the page.
     expect(screen.queryByRole('button', { name: /medical detail/i })).not.toBeInTheDocument()
-    expect(screen.getByText('Medical detail on file')).toBeInTheDocument()
+    expect(screen.queryByText(/medical/i)).not.toBeInTheDocument()
   })
 
   it('keeps household and person parties with colliding ids as distinct rows', () => {
@@ -297,7 +283,6 @@ describe('HouseholdRosterTable', () => {
             children: [],
           }),
         ]}
-        year={2026}
       />,
       { wrapper }
     )

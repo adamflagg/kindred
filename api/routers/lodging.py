@@ -31,13 +31,10 @@ from api.services.lodging_repository import LodgingRepository
 from api.services.lodging_roster_service import LodgingRosterService, SessionNotFoundError
 from api.services.lodging_write_service import LodgingWriteService, ScenarioNotEmptyError
 from bunking.auth_middleware import AuthUser, get_current_user
-from bunking.logging_config import get_logger
 from bunking.rbac.dependencies import require_permission
 from bunking.rbac.permissions import Permission
 
 from ..dependencies import pb
-
-logger = get_logger(__name__)
 
 router = APIRouter(prefix="/api/lodging", tags=["lodging"])
 
@@ -135,16 +132,16 @@ async def get_household_medical(
     individuals. It is served only here, only to a caller holding
     `lodging.phi`, and never appears in the roster payload or any export.
 
-    The access is logged, but only its subject and the caller -- never a
-    narrative field, which would put the disclosure into the log it is being
-    gated out of. The caller is recorded by `username`, not `email`: the log
-    store has its own retention and access rules, and the audit trail needs
-    to identify the caller, not carry an address into that store.
+    RBAC is the control, and there is deliberately NO access log. One existed
+    and was deleted: `lodging.phi` is what decides who may read this, and a
+    log line is not a second gate. It also stopped meaning what it said once
+    kindred#1889 removed the reveal button -- the panel fetches on mount, so
+    the event fired on every panel open, including households with nothing on
+    file, and could no longer distinguish a deliberate read from a click.
+
+    The other half of that ruling stands and is not about auditing: PHI must
+    not enter the roster payload, pinned by tests/unit/api/test_lodging_phi_boundary.py.
     """
-    logger.info(
-        "PHI reveal: lodging medical narrative accessed",
-        extra={"household_cm_id": household_cm_id, "year": year, "user": user.username},
-    )
     return await _service().get_household_medical(year, household_cm_id)
 
 

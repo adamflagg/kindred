@@ -4,7 +4,8 @@
  * The roster's job is not to list parties — the board places them. Its job is
  * to say which ones need a decision and why. That only works if the signals it
  * ranks on are actually discriminating: measured against real 2026 data,
- * `needs_resolution` is true for 44 of 62 parties and `has_medical_narrative`
+ * `needs_resolution` is true for 44 of 62 parties, and `has_medical_narrative`
+ * (deleted in kindred#1889) was true for 62 of 62
  * for 62 of 62, so neither can drive triage.
  *
  * The state that matters most is a party whose cabin does not provide what
@@ -50,7 +51,6 @@ function party(overrides: Partial<RosterPartyRow> = {}): RosterPartyRow {
       needs_accommodation: false,
       accommodation_is_mandatory: false,
       has_infant: false,
-      has_medical_narrative: false,
     },
     ...overrides,
   }
@@ -189,12 +189,6 @@ describe('partyAttention — does the cabin provide what was asked for', () => {
       unit()
     )
     expect(a.level).toBe('settled')
-  })
-
-  it('does NOT escalate on a medical narrative alone', () => {
-    expect(partyAttention(party({ flags: { has_medical_narrative: true } }), unit()).level).toBe(
-      'settled'
-    )
   })
 })
 

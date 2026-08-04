@@ -26,7 +26,12 @@ from fastapi import HTTPException
 from pocketbase.client import ClientResponseError  # type: ignore[attr-defined]
 from pydantic import ValidationError
 
-from api.schemas.lodging import PlacementCopyRequest, PlacementDeleteRequest, PlacementWriteRequest
+from api.schemas.lodging import (
+    AvailabilityWriteRequest,
+    PlacementCopyRequest,
+    PlacementDeleteRequest,
+    PlacementWriteRequest,
+)
 from api.services.lodging_write_service import LodgingWriteService, ScenarioNotEmptyError
 
 
@@ -41,6 +46,10 @@ def _repo(**overrides: Any) -> MagicMock:
         "delete_draft_assignment": None,
         "count_draft_assignments": 0,
         "fetch_assignments": [],
+        "find_availability_override": None,
+        "create_availability": SimpleNamespace(id="avail_new"),
+        "update_availability": SimpleNamespace(id="avail_existing"),
+        "delete_availability": None,
     }
     defaults.update(overrides)
     for method, value in defaults.items():
@@ -58,6 +67,18 @@ def _request(unit_ids: list[str] | None = None, **overrides: Any) -> PlacementWr
     }
     fields.update(overrides)
     return PlacementWriteRequest(**fields)
+
+
+def _availability_request(**overrides: Any) -> AvailabilityWriteRequest:
+    fields: dict[str, Any] = {
+        "year": 2026,
+        "session_cm_id": 1000001,
+        "scenario": "scn_1",
+        "unit_id": "u1",
+        "state": "reserved_staff",
+    }
+    fields.update(overrides)
+    return AvailabilityWriteRequest(**fields)
 
 
 def _mirror_row(**overrides: Any) -> SimpleNamespace:
@@ -505,6 +526,241 @@ class TestCopyFromMirror:
         await write_service.copy_from_mirror(PlacementCopyRequest(year=2026, session_cm_id=1000001, scenario="scn_1"))
 
         repo.create_availability.assert_not_called()
+
+
+class TestARefusedWriteIsNeverReportedAsSuccess:
+    """kindred#1936: the race recovery must not absorb a refusal.
+
+    Both `place_party` and `set_availability` guard the same race -- two
+    callers read no row, both create, the partial unique index rejects the
+    loser -- by re-reading and updating the winner's row. That recovery is
+    correct for a unique-index violation and only for one, because the
+    winner's row is by construction the row the loser wanted.
+
+    A 401 or 403 is a different animal. PocketBase refused the write, and the
+    re-read then finds the row that was already there -- so the loser updates
+    a row it was just told it may not touch and the caller gets a 200 for a
+    write that was denied. One staff member double-clicking a drag is enough
+    to reach the recovery path (kindred#1881), so this is not hypothetical.
+
+    Only the auth flavours are re-raised. Whether PocketBase answers a partial
+    unique violation with 400 or 409 is not settled here, and narrowing to a
+    guessed status would break the guard that works today -- so 400 keeps its
+    recovery, pinned below.
+
+    Both refusals surface as **403**, not as the upstream status. That is
+    `pb_error_to_http`'s deliberate mapping and its docstring argues it at
+    length: a PocketBase 401 reaching this layer is the API's own service
+    token, never the end user's session -- theirs was validated by
+    `bunking.auth_middleware.get_current_user` before any router code ran --
+    so answering 401 would send the frontend into a login redirect that cannot
+    fix an expired superuser token. Do not "correct" this to 401.
+    """
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("status", [401, 403])
+    async def test_a_refused_placement_keeps_its_status(
+        self, write_service: LodgingWriteService, repo: MagicMock, status: int
+    ) -> None:
+        repo.create_draft_assignment = AsyncMock(
+            side_effect=ClientResponseError(
+                "refused", status=status, data={}, url="", is_abort=False, original_error=None
+            )
+        )
+        # The re-read finds a row, which today is enough to turn the refusal
+        # into an update and a 200.
+        repo.find_draft_assignment = AsyncMock(side_effect=[None, SimpleNamespace(id="draft_other")])
+
+        with pytest.raises(HTTPException) as exc_info:
+            await write_service.place_party(_request(unit_ids=["u1"]))
+
+        assert exc_info.value.status_code == 403
+        repo.update_draft_assignment.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_a_lost_placement_race_is_still_recovered(
+        self, write_service: LodgingWriteService, repo: MagicMock
+    ) -> None:
+        """The guard that works today survives the narrowing."""
+        repo.create_draft_assignment = AsyncMock(
+            side_effect=ClientResponseError(
+                "unique constraint", status=400, data={}, url="", is_abort=False, original_error=None
+            )
+        )
+        repo.find_draft_assignment = AsyncMock(side_effect=[None, SimpleNamespace(id="draft_winner")])
+
+        response = await write_service.place_party(_request(unit_ids=["u1"]))
+
+        record_id, data = repo.update_draft_assignment.call_args[0]
+        assert record_id == "draft_winner"
+        assert data["units"] == ["u1"]
+        assert response.record_id == "draft_existing"
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("status", [401, 403])
+    async def test_a_refused_availability_override_keeps_its_status(
+        self, write_service: LodgingWriteService, repo: MagicMock, status: int
+    ) -> None:
+        repo.create_availability = AsyncMock(
+            side_effect=ClientResponseError(
+                "refused", status=status, data={}, url="", is_abort=False, original_error=None
+            )
+        )
+        repo.find_availability_override = AsyncMock(side_effect=[None, SimpleNamespace(id="avail_other")])
+
+        with pytest.raises(HTTPException) as exc_info:
+            await write_service.set_availability(_availability_request())
+
+        assert exc_info.value.status_code == 403
+        repo.update_availability.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_a_lost_availability_race_is_still_recovered(
+        self, write_service: LodgingWriteService, repo: MagicMock
+    ) -> None:
+        repo.create_availability = AsyncMock(
+            side_effect=ClientResponseError(
+                "unique constraint", status=400, data={}, url="", is_abort=False, original_error=None
+            )
+        )
+        repo.find_availability_override = AsyncMock(side_effect=[None, SimpleNamespace(id="avail_winner")])
+
+        response = await write_service.set_availability(_availability_request())
+
+        record_id, data = repo.update_availability.call_args[0]
+        assert record_id == "avail_winner"
+        assert data["state"] == "reserved_staff"
+        assert response.record_id == "avail_existing"
+
+
+class TestARefusedUpdateAnswersTheSameWayARefusedCreateDoes:
+    """The create path is the RARE one, and it was the one guarded first.
+
+    `place_party` resolves `existing` before it branches, and a scenario is
+    normally seeded from the mirror by `copy_from_mirror` before anyone drags
+    anything -- so from that point on every drag finds a row and takes the
+    update branch. The create branch only fires for a party that has no
+    placement in the scenario at all. Drag placement (kindred#1990) made this
+    the common path, not a corner.
+
+    Neither update was inside a `try`, so a refusal escaped as a bare
+    `ClientResponseError` into the catch-all handler in `api/main.py` and
+    answered **500**. That is the same lie kindred#1936 set out to remove --
+    a write the user was told they may not make, reported as something other
+    than a refusal -- and 403 is the answer for the same reason it is on the
+    create side: `pb_error_to_http` maps a PocketBase 401 here to 403 because
+    it is the API's own service token, never the caller's session.
+    """
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("status", [401, 403])
+    async def test_a_refused_placement_update_keeps_its_status(
+        self, write_service: LodgingWriteService, repo: MagicMock, status: int
+    ) -> None:
+        repo.find_draft_assignment = AsyncMock(return_value=SimpleNamespace(id="draft_existing"))
+        repo.update_draft_assignment = AsyncMock(
+            side_effect=ClientResponseError(
+                "refused", status=status, data={}, url="", is_abort=False, original_error=None
+            )
+        )
+
+        with pytest.raises(HTTPException) as exc_info:
+            await write_service.place_party(_request(unit_ids=["u1"]))
+
+        assert exc_info.value.status_code == 403
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("status", [401, 403])
+    async def test_a_refused_availability_update_keeps_its_status(
+        self, write_service: LodgingWriteService, repo: MagicMock, status: int
+    ) -> None:
+        repo.find_availability_override = AsyncMock(return_value=SimpleNamespace(id="avail_existing"))
+        repo.update_availability = AsyncMock(
+            side_effect=ClientResponseError(
+                "refused", status=status, data={}, url="", is_abort=False, original_error=None
+            )
+        )
+
+        with pytest.raises(HTTPException) as exc_info:
+            await write_service.set_availability(_availability_request())
+
+        assert exc_info.value.status_code == 403
+
+    @pytest.mark.asyncio
+    async def test_a_failed_placement_update_still_reaches_pb_error_to_http(
+        self, write_service: LodgingWriteService, repo: MagicMock
+    ) -> None:
+        """Not only the refusals. Every status this branch can raise now goes
+        through the same mapping the create branch uses, so none of them
+        arrives at the catch-all as a 500."""
+        repo.find_draft_assignment = AsyncMock(return_value=SimpleNamespace(id="draft_existing"))
+        repo.update_draft_assignment = AsyncMock(
+            side_effect=ClientResponseError("gone", status=404, data={}, url="", is_abort=False, original_error=None)
+        )
+
+        with pytest.raises(HTTPException) as exc_info:
+            await write_service.place_party(_request(unit_ids=["u1"]))
+
+        assert exc_info.value.status_code == 404
+
+
+class TestARefusedSeedIsNotReportedAsARace:
+    """`_seed_failure` decides race-vs-failure on row COUNT alone.
+
+    The third instance of kindred#1936's shape, and the one the fix missed.
+    `copy_from_mirror` writes sequentially, so from the second row on it has
+    put rows in the scenario itself; `held > copied` is what stops it reading
+    its own output as a race. But nothing in that test looks at the STATUS.
+    A 401 or 403 part-way through a seed -- the API's service token expiring
+    mid-loop is the realistic way in -- lands with rows already held, so the
+    refusal is reported to the caller as `ScenarioNotEmptyError`: "another
+    caller seeded this scenario while this copy was running." Nobody did.
+
+    The status check belongs before the count, for the same reason it does in
+    the two create paths: a refusal is not a race, whatever the row count
+    says afterwards.
+    """
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("status", [401, 403])
+    async def test_a_refused_seed_create_keeps_its_status(
+        self, write_service: LodgingWriteService, repo: MagicMock, status: int
+    ) -> None:
+        repo.fetch_assignments = AsyncMock(return_value=[_mirror_row()])
+        repo.create_draft_assignment = AsyncMock(
+            side_effect=ClientResponseError(
+                "refused", status=status, data={}, url="", is_abort=False, original_error=None
+            )
+        )
+        # Empty up front, then rows beyond this copy's own output on the
+        # re-count -- which today is the whole test, and turns the refusal
+        # into "someone else seeded it".
+        repo.count_draft_assignments = AsyncMock(side_effect=[0, 7])
+
+        with pytest.raises(HTTPException) as exc_info:
+            await write_service.copy_from_mirror(
+                PlacementCopyRequest(year=2026, session_cm_id=1000001, scenario="scn_1")
+            )
+
+        assert exc_info.value.status_code == 403
+
+    @pytest.mark.asyncio
+    async def test_a_genuinely_raced_seed_is_still_reported_as_one(
+        self, write_service: LodgingWriteService, repo: MagicMock
+    ) -> None:
+        """The guard that works today survives the narrowing."""
+        repo.fetch_assignments = AsyncMock(return_value=[_mirror_row()])
+        repo.create_draft_assignment = AsyncMock(
+            side_effect=ClientResponseError(
+                "unique constraint", status=400, data={}, url="", is_abort=False, original_error=None
+            )
+        )
+        repo.count_draft_assignments = AsyncMock(side_effect=[0, 7])
+
+        with pytest.raises(ScenarioNotEmptyError):
+            await write_service.copy_from_mirror(
+                PlacementCopyRequest(year=2026, session_cm_id=1000001, scenario="scn_1")
+            )
 
 
 class TestMergeWritesAreGone:
