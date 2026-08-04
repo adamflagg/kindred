@@ -19,6 +19,7 @@ function unit(over: Partial<LodgingUnitRecord> & { id: string }): LodgingUnitRec
     map_y: 0,
     sleeps: 0,
     beds: null,
+    max_beds: null,
     bathroom: '',
     bathroom_group: '',
     near_bathhouse: false,

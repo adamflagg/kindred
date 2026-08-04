@@ -147,7 +147,16 @@ export function LodgingUnitForm({ areas, units, unit, onSaved, onCancel }: Lodgi
         unitId={unit?.id}
       />
 
-      <UnitCapacityFields value={capacity} onChange={setCapacity} />
+      {/* is_confirmed and is_container are read LIVE rather than off `unit`:
+          both silence the capacity flag, and a staffer who has just ticked
+          either has already made the ruling the flag would be asking for. */}
+      <UnitCapacityFields
+        value={capacity}
+        onChange={setCapacity}
+        isConfirmed={amenities.is_confirmed}
+        isContainer={isContainer}
+        maxBeds={unit?.max_beds ?? null}
+      />
 
       <UnitAmenityFieldset value={amenities} onChange={setAmenities} />
 
