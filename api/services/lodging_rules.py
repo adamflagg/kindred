@@ -29,10 +29,6 @@ from __future__ import annotations
 # which means "nobody has told us yet", not "no bathroom".
 BATHROOM_VALUES = ("none", "private", "shared")
 
-# Values of lodging_availability.state.
-RESERVED_STATES = ("reserved_staff", "reserved_other")
-RELEASED_STATE = "released_to_family"
-
 
 def unit_capacity(sleeps: int | None) -> int | None:
     """Return the bed count, or None when capacity is unknown.
@@ -49,26 +45,39 @@ def unit_capacity(sleeps: int | None) -> int | None:
     return int(sleeps)
 
 
-def is_family_available(allocation_default: str, override_state: str | None) -> bool:
-    """Spec §3.7's effective-availability table, in exactly one place.
+def is_family_available(allocation_default: str, override: bool | None) -> bool:
+    """Whether this unit can take a family this weekend, in exactly one place.
 
-    | base          | override                        | family-available |
-    |---------------|---------------------------------|------------------|
-    | family_pool   | none                            | yes              |
-    | family_pool   | reserved_staff / reserved_other | no               |
-    | staff_default | none                            | no               |
-    | staff_default | released_to_family              | yes              |
+    | base          | override | family-available |
+    |---------------|----------|------------------|
+    | family_pool   | None     | yes              |
+    | family_pool   | False    | no  (burst pipe) |
+    | staff_default | None     | no               |
+    | staff_default | True     | yes (released)   |
+
+    TWO layers, not three. `lodging_availability` lost its scenario dimension
+    in 1500000135 because availability is a fact about the WEEKEND rather than
+    about the plan -- a burst pipe closes a cabin in every scenario for that
+    weekend, so there was never anything for a scenario to disagree about.
+
+    The row STATES the outcome rather than implying it. An earlier design had
+    the row mean "the opposite of this unit's current default", which an
+    ordinary registry edit -- flipping a unit from family_pool to
+    staff_default -- would silently invert, turning a cabin closed for a burst
+    pipe into the one cabin RELEASED to families.
+
+    `None` and `False` are DIFFERENT answers: None means "no row, so ask the
+    role", False means "closed this weekend". Never collapse the two with a
+    falsy test.
 
     A unit created through the admin UI without an explicit
-    `allocation_default` stores "" and matches neither row. We treat "" as
+    `allocation_default` stores "" and matches neither base row. We treat "" as
     family_pool so the unit is at least visible, and the roster reports it
     separately via RosterCounts.units_missing_allocation rather than hiding
     the gap.
     """
-    if override_state in RESERVED_STATES:
-        return False
-    if override_state == RELEASED_STATE:
-        return True
+    if override is not None:
+        return override
     return allocation_default != "staff_default"
 
 
