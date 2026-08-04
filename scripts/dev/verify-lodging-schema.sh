@@ -102,8 +102,33 @@ mbi=$(field_prop lodging_units max_beds onlyInt || true)
 mbx=$(field_prop lodging_units max_beds max || true)
 [[ -z "$mbx" || "$mbx" == "null" ]] || note "lodging_units.max_beds max is '$mbx' (expected null for unbounded)"
 
-st=$(field_prop lodging_availability state values || true)
-[[ "$st" == '["reserved_staff","reserved_other","released_to_family"]' ]] || note "lodging_availability.state values are $st"
+# 1500000135 collapsed the three-value `state` enum to one explicit boolean.
+# reserved_staff / reserved_other / released_to_family were REASONS, not
+# states: the resolved question is binary, and each value only meant anything
+# read against the unit's role, so `released_to_family` on a family_pool unit
+# was storable and meaningless. The reason survives as display-only `note`.
+st=$(field_prop lodging_availability state name || true)
+[[ -z "$st" ]] \
+  || note "lodging_availability still carries a state field; 1500000135 collapses it to family_available"
+
+fa=$(field_prop lodging_availability family_available type || true)
+[[ "$fa" == "bool" ]] || note "lodging_availability.family_available type is '$fa' (expected bool)"
+
+# REQUIRED:FALSE IS LOAD-BEARING, and this is the assertion that pins it.
+# PocketBase reads `required: true` on a bool as "must be TRUE", not "must be
+# present", so a required family_available would reject every reservation --
+# which is most of the writes this column exists for.
+far=$(field_prop lodging_availability family_available required || true)
+[[ "$far" != "1" && "$far" != "true" ]] \
+  || note "lodging_availability.family_available is required -- on a PB bool that means 'must be TRUE', which rejects every reservation"
+
+# The display text the badge reads. Kept as `note` rather than renamed to
+# `reason`: identical semantics, one less schema change on an empty table, and
+# set_availability already wrote it. The API field IS called `reason`; the
+# translation lives in exactly two places (set_availability on write,
+# _build_units on read).
+nt=$(field_prop lodging_availability note type || true)
+[[ "$nt" == "text" ]] || note "lodging_availability.note type is '$nt' (expected text)"
 
 # Unbounded numbers must be null, not 0 (0 would reject positive values).
 mx=$(field_prop lodging_units sleeps max || true)
@@ -261,13 +286,20 @@ sc=$(field_prop lodging_assignments scenario name || true)
 [[ -z "$sc" ]] \
   || note "lodging_assignments still carries a scenario field; 1500000132 drops it -- scenario belongs to the draft"
 
-# Present on the drafts, and on lodging_availability -- which is scenario-aware
-# IN PLACE rather than through a twin, because nothing syncs into it. There is
-# no record of truth there to protect, so the argument above does not apply.
-for c in lodging_assignments_draft lodging_availability; do
-  sc=$(field_prop "$c" scenario name || true)
-  [[ "$sc" == "scenario" ]] || note "$c must carry a scenario field"
-done
+# Present on the draft, which is what scenario-scoped PLANNING is written to.
+sc=$(field_prop lodging_assignments_draft scenario name || true)
+[[ "$sc" == "scenario" ]] || note "lodging_assignments_draft must carry a scenario field"
+
+# GONE from lodging_availability. 1500000132 kept it there, reasoning that
+# nothing syncs into availability so there was no record of truth to protect.
+# That argued only that a draft TWIN was unnecessary -- it did not establish
+# that availability varies by scenario, and it does not: a burst pipe closes a
+# cabin in every plan for that weekend. 1500000135 deletes the dimension rather
+# than mirroring it, which is what removes the last overlay in the lodging
+# model. This assertion is what stops it being reintroduced.
+sc=$(field_prop lodging_availability scenario name || true)
+[[ -z "$sc" ]] \
+  || note "lodging_availability still carries a scenario field; 1500000135 deletes the dimension -- availability is a fact about the weekend, not the plan"
 
 # Deleting a saved scenario sweeps its drafts server-side. bunk_assignments_draft
 # was created with cascadeDelete false and flipped precisely because the client
@@ -299,6 +331,22 @@ for idx in idx_lodging_draft_hh idx_lodging_draft_person; do
     [[ "$sql" == *'`scenario`'* ]] || note "index $idx must key on scenario: $sql"
   fi
 done
+
+# Availability's uniqueness, rebuilt by 1500000135 without scenario. This is
+# the half of the collapse a dropped COLUMN alone would not give: with the old
+# four-column index still in place a unit could carry one row per scenario, and
+# "is this cabin available this weekend?" would stop being a question with an
+# answer.
+sql=$(sqlite3 "$DB" "SELECT COALESCE(sql,'') FROM sqlite_master WHERE type='index' AND name='idx_lodging_avail_unique'" || true)
+if [[ -z "$sql" ]]; then
+  note "index idx_lodging_avail_unique missing"
+else
+  [[ "$sql" == *UNIQUE* ]] || note "index idx_lodging_avail_unique is not UNIQUE: $sql"
+  [[ "$sql" != *scenario* ]] || note "index idx_lodging_avail_unique still keys on scenario: $sql"
+  for col in session year unit; do
+    [[ "$sql" == *"\`$col\`"* ]] || note "index idx_lodging_avail_unique must key on $col: $sql"
+  done
+fi
 
 # Write access, read from the APPLIED schema rather than from the migration
 # text. The drafts and the planning tables are what staff write; the synced
