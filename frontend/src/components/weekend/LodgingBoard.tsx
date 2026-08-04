@@ -296,15 +296,18 @@ export function LodgingBoard({
               })
             )}
 
-            {/* A merge carries no unit code, and an assignment can name a
-              container or a unit absent from the payload. Those parties ARE
+            {/* An assignment can name a container, a unit absent from the
+              payload, or a merge whose every room is missing. Those parties ARE
               placed, so the queue would be a lie — and dropping them would make
               the board quietly disagree with the roster.
 
-              They are still draggable, and that is the point: dragging one
-              onto a room COLLAPSES the placement to that room, which is how a
-              multi-room party gets a card again. That is not merge-by-drag —
-              creating a merge needs #1940 first. */}
+              A merge whose rooms resolve is NOT here: since #1940 it is drawn
+              across each of them. What is left is the genuinely undrawable.
+
+              They are still draggable, and that is the point: dragging one onto
+              a room COLLAPSES the placement to that room. That is still not
+              merge-by-drag — creating a merge from the board is its own
+              decision. */}
             {board.offBoard.length > 0 && (
               <section>
                 <h3 className="text-muted-foreground mb-2 flex items-center gap-1.5 text-[11px] font-bold tracking-wider uppercase">

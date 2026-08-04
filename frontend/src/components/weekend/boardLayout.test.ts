@@ -290,6 +290,107 @@ describe('buildBoard — where each party lands', () => {
   })
 })
 
+describe('buildBoard — a party across several rooms', () => {
+  /** Two rooms of one building, same area, both drawable. */
+  const twoRooms = [unit(), unit({ unit_id: 'u2', code: 'cedar-2', name: 'Cedar 2' })]
+
+  /**
+   * `unit_codes` is the authority on a multi-room placement — `unit_code` is
+   * deliberately `''` there, so it is the only field that survives the merge.
+   * Same definition `occupiedCodes` uses in `dragPlacement.ts`.
+   */
+  function merged(overrides: Partial<RosterPartyRow> = {}): RosterPartyRow {
+    return party({
+      unit_code: '',
+      unit_name: 'Cedar 1 + Cedar 2',
+      unit_codes: ['cedar-1', 'cedar-2'],
+      is_merged_slot: true,
+      ...overrides,
+    })
+  }
+
+  it('draws the party on every room it holds, not on the off-board rail', () => {
+    const board = buildBoard([merged()], twoRooms)
+
+    expect(board.offBoard).toHaveLength(0)
+    expect(board.areas[0]?.slots.map((slot) => slot.parties.map((p) => p.display_name))).toEqual([
+      ['Johnson'],
+      ['Johnson'],
+    ])
+  })
+
+  it('counts a family holding four rooms as one family, not four', () => {
+    const fourRooms = [
+      unit(),
+      unit({ unit_id: 'u2', code: 'cedar-2', name: 'Cedar 2' }),
+      unit({ unit_id: 'u3', code: 'cedar-3', name: 'Cedar 3' }),
+      unit({ unit_id: 'u4', code: 'cedar-4', name: 'Cedar 4' }),
+    ]
+    const board = buildBoard(
+      [merged({ unit_codes: ['cedar-1', 'cedar-2', 'cedar-3', 'cedar-4'] })],
+      fourRooms
+    )
+
+    // The header reads "N rooms · M families". Four rooms, one family.
+    expect(board.areas[0]?.slots).toHaveLength(4)
+    expect(board.areas[0]?.partyCount).toBe(1)
+  })
+
+  it('prefers unit_codes over a stale unit_code', () => {
+    const board = buildBoard([merged({ unit_code: 'cedar-1' })], twoRooms)
+
+    const drawnOn = board.areas[0]?.slots
+      .filter((slot) => slot.parties.length > 0)
+      .map((slot) => slot.unit.code)
+    expect(drawnOn).toEqual(['cedar-1', 'cedar-2'])
+  })
+
+  it('keeps a party on the rooms that resolve when one code is missing', () => {
+    // Hiding a placed family because one room fell out of the payload is
+    // strictly worse than drawing it in the rooms we do know about.
+    const board = buildBoard([merged({ unit_codes: ['cedar-1', 'gone'] })], twoRooms)
+
+    expect(board.offBoard).toHaveLength(0)
+    expect(board.areas[0]?.slots.filter((slot) => slot.parties.length > 0)).toHaveLength(1)
+  })
+
+  it('still rails a merge that resolves to no room at all', () => {
+    const board = buildBoard([merged({ unit_codes: [] })], twoRooms)
+
+    expect(board.unplaced).toHaveLength(0)
+    expect(board.offBoard.map((p) => p.display_name)).toEqual(['Johnson'])
+  })
+
+  it('does not flag a family alone in its own rooms as a shared cabin', () => {
+    // `consentFlag` needs two parties in one slot. One family across two rooms
+    // is one party in each, and nothing to ask staff about.
+    expect(buildBoard([merged()], twoRooms).flaggedCount).toBe(0)
+  })
+
+  it('loses nobody, and counts each party once however many rooms it holds', () => {
+    const parties = [
+      merged(),
+      party({ household_cm_id: 102, display_name: 'Garcia' }),
+      party({
+        household_cm_id: 103,
+        display_name: 'Chen',
+        unit_code: 'cedar-2',
+        unit_name: 'Cedar 2',
+      }),
+    ]
+    const board = buildBoard(parties, twoRooms)
+
+    const placed = new Set(
+      board.areas
+        .flatMap((area) => area.slots)
+        .flatMap((slot) => slot.parties)
+        .map((p) => p.display_name)
+    )
+    const railed = [...board.unplaced, ...board.offBoard].map((p) => p.display_name)
+    expect(placed.size + railed.length).toBe(parties.length)
+  })
+})
+
 describe('buildBoard — consent flagging on ELIGIBILITY, not the gate', () => {
   /** A shared unit whose parties carry the given resolved eligibilities. */
   function shared(

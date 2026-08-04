@@ -12,7 +12,7 @@ export type { LodgingMapProps } from './LodgingMap'
 export { LodgingUnitCard } from './LodgingUnitCard'
 export { MapUnitPopover } from './MapUnitPopover'
 export { MedicalNarrative } from './MedicalNarrative'
-export { buildMapModel, countMapUnits, hasCoordinates, resolvePartyUnits } from './mapModel'
+export { buildMapModel, countMapUnits, hasCoordinates } from './mapModel'
 export type { MapModel, MapUnit, OffMapEntry, OffMapReason } from './mapModel'
 export { partyKey } from './partyKey'
 export {

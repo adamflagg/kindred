@@ -13,13 +13,36 @@
  *    halves already report; drawing it double-counts them (408 against a true
  *    389). Owner-confirmed.
  * 2. **No party is ever dropped.** A party can be placed somewhere the board
- *    structurally cannot draw — a merge carries no `unit_code` at all, and an
- *    assignment can name a container or a unit absent from the payload. Those
- *    go to `offBoard`, never to the unplaced corner queue (they ARE placed) and
- *    never to nowhere. `buildBoard` is total: every input party comes out in
- *    exactly one of slots / unplaced / offBoard.
+ *    structurally cannot draw — an assignment naming a container, a unit absent
+ *    from the payload, or a merge whose every room is missing. Those go to
+ *    `offBoard`, never to the unplaced corner queue (they ARE placed) and never
+ *    to nowhere. `buildBoard` is total: every input party comes out in exactly
+ *    one of slots / unplaced / offBoard.
+ *
+ *    "Exactly one" is about the CATEGORY, not the slot. A party holding several
+ *    rooms is drawn on each of them, which is why an area's family count reads
+ *    distinct `partyKey`s rather than slot entries.
  */
 import type { LodgingUnitRow, RosterPartyRow, ShareEligibilityValue } from '../../types/lodging'
+import { partyKey } from './partyKey'
+
+/**
+ * The leaf codes a party currently occupies.
+ *
+ * `unit_codes` is the authority — it is the only field that survives a
+ * multi-room placement, where `unit_code` is deliberately `''`. The fallback
+ * exists for a payload predating that field rather than as a second opinion.
+ *
+ * Lives here, beside the grouping that consumes it, because `dragPlacement`
+ * reads it too and two answers would let the board draw one thing while a drop
+ * resolved against another.
+ */
+export function occupiedCodes(party: RosterPartyRow): string[] {
+  const codes = party.unit_codes ?? []
+  if (codes.length > 0) return codes
+  const single = party.unit_code ?? ''
+  return single.length > 0 ? [single] : []
+}
 
 /**
  * Area colour, §3.10 — a SECONDARY channel.
@@ -298,18 +321,24 @@ function indexPayload(parties: RosterPartyRow[], units: LodgingUnitRow[]) {
       unplaced.push(party)
       continue
     }
-    // A merge carries no unit code — the API sends the merge's display name
-    // instead — so there is no card to put it on, but it is placed all the
-    // same and the rail would be a lie.
-    const code = party.unit_code ?? ''
-    const unit = code.length > 0 ? leafByCode.get(code) : undefined
-    if (unit === undefined) {
+    // An unresolvable code is dropped rather than disqualifying the whole
+    // placement. A room missing from the payload should cost the family that
+    // room, not hide the family.
+    const codes = occupiedCodes(party).filter((code) => leafByCode.has(code))
+    // Placed, but on nothing this board can draw — a container, or a name the
+    // payload has no unit for. There is no card to put it on, but it IS placed
+    // and the unplaced rail would be a lie.
+    if (codes.length === 0) {
       offBoard.push(party)
       continue
     }
-    const bucket = partiesByCode.get(code)
-    if (bucket) bucket.push(party)
-    else partiesByCode.set(code, [party])
+    // A party holding several rooms appears on each of them. That is the point:
+    // rooms it occupies rendered empty is what sent staff to the wrong cabin.
+    for (const code of codes) {
+      const bucket = partiesByCode.get(code)
+      if (bucket) bucket.push(party)
+      else partiesByCode.set(code, [party])
+    }
   }
 
   // A deactivated room is not bookable, and staff housing was never planning
@@ -327,7 +356,10 @@ function indexPayload(parties: RosterPartyRow[], units: LodgingUnitRow[]) {
 export function buildBoard(parties: RosterPartyRow[], units: LodgingUnitRow[]): BoardModel {
   const { drawn, partiesByCode, unplaced, offBoard } = indexPayload(parties, units)
 
-  const buckets = new Map<string, { name: string; slots: BoardSlot[]; partyCount: number }>()
+  // `partyKeys` rather than a running total: a family holding four rooms sits
+  // on four slots, and the header says "families", not cards. Counting the
+  // slot entries would report four families standing where one is.
+  const buckets = new Map<string, { name: string; slots: BoardSlot[]; partyKeys: Set<string> }>()
   let flaggedCount = 0
   for (const unit of drawn) {
     const slotParties = partiesByCode.get(unit.code) ?? []
@@ -335,9 +367,13 @@ export function buildBoard(parties: RosterPartyRow[], units: LodgingUnitRow[]): 
     if (consent) flaggedCount += 1
 
     const key = areaKey(unit)
-    const bucket = buckets.get(key) ?? { name: areaName(unit), slots: [], partyCount: 0 }
+    const bucket = buckets.get(key) ?? {
+      name: areaName(unit),
+      slots: [],
+      partyKeys: new Set<string>(),
+    }
     bucket.slots.push({ unit, parties: slotParties, consent })
-    bucket.partyCount += slotParties.length
+    for (const slotParty of slotParties) bucket.partyKeys.add(partyKey(slotParty))
     buckets.set(key, bucket)
   }
 
@@ -357,7 +393,7 @@ export function buildBoard(parties: RosterPartyRow[], units: LodgingUnitRow[]): 
       name: bucket?.name ?? '',
       hue: AREA_HUES[index % AREA_HUES.length] ?? AREA_HUES[0],
       slots: bucket?.slots ?? [],
-      partyCount: bucket?.partyCount ?? 0,
+      partyCount: bucket?.partyKeys.size ?? 0,
     }
   })
 

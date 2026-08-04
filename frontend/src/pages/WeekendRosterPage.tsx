@@ -63,9 +63,12 @@ import type { LodgingUnitRow } from '../types/lodging'
  * COMPONENT stays `LodgingBoard`, exactly as summer's Bunks tab renders
  * `BunkingBoardByArea`: the board is still a board internally.
  *
- * The rename took the URL with it and left no alias, so a `/board` link now
- * falls back to the roster. Deliberate — the surface is young, and a permanent
- * redirect for a segment that lived a few weeks is a cost paid forever.
+ * The rename took the URL with it and left no alias, so a `/board` link just
+ * falls through to `DEFAULT_VIEW`. Deliberate — the surface is young, and a
+ * permanent redirect for a segment that lived a few weeks is a cost paid
+ * forever. That the default is now Housing, the very tab `board` used to name,
+ * is a happy accident rather than a route: the URL is left exactly as the
+ * bookmark wrote it.
  */
 type View = 'roster' | 'inventory' | 'housing' | 'map'
 
@@ -73,12 +76,15 @@ type View = 'roster' | 'inventory' | 'housing' | 'map'
 const VIEWS: View[] = ['housing', 'roster', 'map', 'inventory']
 
 /**
- * NOT the first tab, deliberately. Summer opens on its board because the board
- * is where its work happens; a weekend's placements are still read-only, so the
- * roster is what you actually came to look at. Revisit when weekends become
- * editable.
+ * Housing, not the roster: the tab strip already leads with it, as summer's
+ * leads with Bunks, and placing families is what staff open a weekend to do.
+ * Landing on the second tab put the lead tab one click away from the work.
+ *
+ * `parseView` uses this for an unrecognised segment as well as a missing one,
+ * deliberately — a typo should land where a fresh visit lands, not somewhere
+ * else again.
  */
-const DEFAULT_VIEW: View = 'roster'
+const DEFAULT_VIEW: View = 'housing'
 
 /**
  * The view is a URL segment, as the analytics sub-navs are — `/analytics/

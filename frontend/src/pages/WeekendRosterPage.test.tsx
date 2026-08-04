@@ -225,9 +225,12 @@ describe('header', () => {
     await userEvent.click(screen.getByRole('button', { name: /Family Camp 1/ }))
     await userEvent.click(await screen.findByRole('option', { name: "Women's Weekend" }))
     // ANCHORED: `/weekend/ww` is a prefix of every tab under that weekend, so
-    // an unanchored match cannot tell the roster from the map and would pass
+    // an unanchored match cannot tell one tab from another and would pass
     // whatever the tab-carrying test below asserts.
-    expect(screen.getByTestId('location')).toHaveTextContent(/^\/weekend\/ww\/roster$/)
+    //
+    // `housing` because the switch carries the tab you are on, and this page
+    // opened on the default.
+    expect(screen.getByTestId('location')).toHaveTextContent(/^\/weekend\/ww\/housing$/)
   })
 
   it('stays on the tab you are looking at when you switch weekends', async () => {
@@ -345,10 +348,13 @@ describe('the view in the URL', () => {
     expect(screen.getByText('Ridge A')).toBeInTheDocument()
   })
 
-  it('opens the roster when the URL names no view', () => {
+  it('opens Housing when the URL names no view', () => {
+    // The tab strip already leads with Housing, as summer leads with Bunks.
+    // Landing on the second tab made the lead tab a click away from the thing
+    // staff came to do.
     rosterQuery.data = ONE_UNIT
     renderPage()
-    expect(screen.getByRole('tab', { name: /Roster/ })).toHaveAttribute('aria-selected', 'true')
+    expect(screen.getByRole('tab', { name: /Housing/ })).toHaveAttribute('aria-selected', 'true')
   })
 
   it('puts the chosen view in the URL', async () => {
@@ -382,27 +388,36 @@ describe('the view in the URL', () => {
     expect(screen.getByTestId('location')).toHaveTextContent('/weekend/sessions')
   })
 
-  it('falls back to the roster when the URL names a view that does not exist', () => {
+  it('falls back to Housing when the URL names a view that does not exist', () => {
     // A stale bookmark, or a typo. Rendering nothing would read as a broken
-    // page; the roster is the honest default.
+    // page; the landing view is the honest default. Same constant as the
+    // no-segment case — deliberately, so a typo cannot land somewhere a fresh
+    // visit never would.
     rosterQuery.data = ONE_UNIT
     renderPage('1000001', 'gantt')
-    expect(screen.getByRole('tab', { name: /Roster/ })).toHaveAttribute('aria-selected', 'true')
+    expect(screen.getByRole('tab', { name: /Housing/ })).toHaveAttribute('aria-selected', 'true')
   })
 
-  it('no longer answers to `board`, the segment Housing replaced', () => {
-    // The rename took the URL with it, deliberately and without a redirect —
-    // this surface is young enough that a stale link is cheaper than a
-    // permanent alias. Pinned so the fallback is a DECISION rather than
-    // something discovered later by a staff member with a bookmark.
+  it('still does not answer to `board`, though the default now lands where it pointed', () => {
+    // The rename took the URL with it, deliberately and without a redirect.
+    //
+    // ASSERTING THE RENDERED TAB WOULD NO LONGER TEST THIS. `board` is an
+    // unrecognised segment, so it falls to the default — and the default is now
+    // Housing, the very tab `board` used to name. A tab assertion would pass
+    // whether or not an alias existed, which is a test that pins nothing.
+    //
+    // What still tells them apart is the URL: an alias would rewrite it to
+    // `/housing`, and a fallback leaves the stale segment exactly where the
+    // bookmark put it. That a stale link now lands on the right content is a
+    // happy side effect of the default, not a route.
     rosterQuery.data = ONE_UNIT
     renderPage('1000001', 'board')
-    expect(screen.getByRole('tab', { name: /Roster/ })).toHaveAttribute('aria-selected', 'true')
+    expect(screen.getByTestId('location')).toHaveTextContent('/weekend/1000001/board')
   })
 })
 
 describe('tabs', () => {
-  it('opens on the roster and offers the inventory beside it', async () => {
+  it('opens on Housing and offers the inventory beside it', async () => {
     rosterQuery.data = {
       year: 2026,
       session_cm_id: 1000001,
@@ -424,12 +439,14 @@ describe('tabs', () => {
     }
     renderPage()
 
-    expect(screen.getByRole('tab', { name: /Roster/ })).toHaveAttribute('aria-selected', 'true')
-    // The inventory is a tab away, not further down the same scroll.
-    expect(screen.queryByText('Ridge A')).not.toBeInTheDocument()
+    expect(screen.getByRole('tab', { name: /Housing/ })).toHaveAttribute('aria-selected', 'true')
+    // The inventory is a tab away, not further down the same scroll. Housing
+    // names the same unit, so the unit name no longer tells the two apart —
+    // the panel's own heading does.
+    expect(screen.queryByText('Lodging inventory')).not.toBeInTheDocument()
 
     await userEvent.click(screen.getByRole('tab', { name: /Inventory/ }))
-    expect(screen.getByText('Ridge A')).toBeInTheDocument()
+    expect(screen.getByText('Lodging inventory')).toBeInTheDocument()
   })
 
   it('leads with Housing and counts what each tab holds, as summer does', () => {
