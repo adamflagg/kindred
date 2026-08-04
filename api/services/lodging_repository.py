@@ -58,9 +58,6 @@ logger = get_logger(__name__)
 # (main/embedded/ag/quest/...) belong to the bunking board, not here.
 WEEKEND_SESSION_TYPES = ("family", "adult")
 
-# Empty scenario = the live plan.
-LIVE_PLAN_FILTER = 'scenario = ""'
-
 # lodging_ingest_issues.kind for a cabin string that resolved to no unit. The
 # collection carries seven kinds and this surface reports only this one, so the
 # roster's "unmapped cabins" figure cannot silently absorb ambiguous-session or
@@ -167,35 +164,20 @@ class LodgingRepository:
         )
 
     async def fetch_availability(self, year: int, session_pb_id: str) -> list[Any]:
-        """Live-plan staff reservations / releases for one session.
+        """Staff reservations and releases for one session.
 
-        lodging_availability is the one placement table that stayed
-        scenario-aware IN PLACE rather than gaining a draft twin: nothing syncs
-        into it, so there is no record of truth to protect. This reads the LIVE
-        rows only; a scenario's own overrides come from
-        fetch_scenario_availability and overlay these.
+        ONE layer, read identically with or without a scenario. 1500000135
+        dropped this table's `scenario` column: availability is a fact about
+        the WEEKEND rather than about the plan, so a burst pipe closes a cabin
+        in every scenario for that weekend and there is nothing for a scenario
+        to disagree about. There is no companion `fetch_scenario_availability`
+        to overlay on top of this, and adding one back would reintroduce the
+        last overlay in the lodging model.
         """
         return await self._page(
             LODGING_AVAILABILITY,
             query_params={
-                "filter": f'session = "{pb_escape(session_pb_id)}" && year = {year} && {LIVE_PLAN_FILTER}',
-                "sort": STABLE_SORT,
-            },
-        )
-
-    async def fetch_scenario_availability(self, year: int, session_pb_id: str, scenario_id: str) -> list[Any]:
-        """One scenario's reservation overrides for one session.
-
-        `scenario_id` is CLIENT-SUPPLIED -- a bare query parameter on /roster
-        and /summary, which gate on authentication only -- so it goes through
-        pb_escape. See the note on fetch_draft_assignments.
-        """
-        return await self._page(
-            LODGING_AVAILABILITY,
-            query_params={
-                "filter": (
-                    f'session = "{pb_escape(session_pb_id)}" && year = {year} && scenario = "{pb_escape(scenario_id)}"'
-                ),
+                "filter": f'session = "{pb_escape(session_pb_id)}" && year = {year}',
                 "sort": STABLE_SORT,
             },
         )
@@ -205,7 +187,10 @@ class LodgingRepository:
 
         No scenario predicate: 1500000132 dropped that column. It was never
         written -- all 67 rows carried '' -- and keeping it would have invited
-        exactly the `scenario != ""` write rule the draft table exists to avoid.
+        exactly the `scenario != ""` write rule the draft table exists to
+        avoid. `lodging_availability` was the one table 1500000132 left
+        scenario-aware in place; 1500000135 removed that too, so no lodging
+        read is an overlay any more.
         These rows ARE the live plan. A request naming a scenario does not read
         them at all; it reads fetch_draft_assignments instead, and the copy
         operation is the one path between the two.

@@ -78,7 +78,6 @@ def _repo(**overrides: Any) -> MagicMock:
         # The scenario layer. Only read when a scenario is asked for, which is
         # itself asserted below -- no scenario must cost no extra fetches.
         "fetch_draft_assignments": [],
-        "fetch_scenario_availability": [],
         "fetch_attendees_for_session": [],
         "fetch_households": {},
         "fetch_prior_household_cm_ids": set(),
@@ -95,6 +94,14 @@ def _repo(**overrides: Any) -> MagicMock:
         # would invent one on access and pass no matter what, which is the
         # failure mode those tests exist to rule out.
         "count_unconfirmed_units": 0,
+        # Same reason, same shape. 1500000135 deleted availability's scenario
+        # dimension and this repository method with it, but the guard tests
+        # that stop the overlay being REINTRODUCED assert `await_count == 0`
+        # against it -- and on a bare MagicMock that assertion is vacuous,
+        # because the attribute springs into existence on access with a fresh
+        # count of 0. Deleting this line would leave those tests passing
+        # against an implementation that reads the overlay twice.
+        "fetch_scenario_availability": [],
     }
     defaults.update(overrides)
     for method, value in defaults.items():
@@ -485,12 +492,12 @@ class TestUnitsAndCounts:
                 _unit("u1", "ridge-a", "Ridge A", sleeps=5),
                 _unit("u2", "le-shack", "Le Shack", sleeps=4, allocation_default="staff_default"),
             ],
-            fetch_availability=[_rec(unit="u1", state="reserved_staff", note="Program director")],
+            fetch_availability=[_rec(unit="u1", family_available=False, note="Program director")],
         )
         roster = await LodgingRosterService(repo).build_roster(2026, 1000001)
 
         by_code = {u.code: u for u in roster.units}
-        assert by_code["ridge-a"].reservation_state == "reserved_staff"
+        assert by_code["ridge-a"].family_available_override is False
         assert by_code["ridge-a"].is_family_available is False
         assert by_code["le-shack"].is_family_available is False
         # Both units stay VISIBLE in `roster.units` -- that is what this test
@@ -540,7 +547,7 @@ class TestUnitsAndCounts:
                 _unit("u1", "ridge-a", "Ridge A", sleeps=5),
                 _unit("u2", "aspen-lodge", "Aspen Lodge", sleeps=4, allocation_default="staff_default"),
             ],
-            fetch_availability=[_rec(unit="u2", state="released_to_family", note="")],
+            fetch_availability=[_rec(unit="u2", family_available=True, note="")],
         )
         roster = await LodgingRosterService(repo).build_roster(2026, 1000001)
 
@@ -562,7 +569,7 @@ class TestUnitsAndCounts:
                 _unit("u1", "ridge-a", "Ridge A", sleeps=5),
                 _unit("u2", "ridge-b", "Ridge B", sleeps=4),
             ],
-            fetch_availability=[_rec(unit="u2", state="reserved_other", note="Burst pipe")],
+            fetch_availability=[_rec(unit="u2", family_available=False, note="Burst pipe")],
         )
         roster = await LodgingRosterService(repo).build_roster(2026, 1000001)
 
@@ -577,7 +584,7 @@ class TestUnitsAndCounts:
             fetch_units=[
                 _unit("u1", "manzanita-7", "New Trailer (Manzanitas)", sleeps=4, allocation_default="staff_default")
             ],
-            fetch_availability=[_rec(unit="u1", state="released_to_family", note="")],
+            fetch_availability=[_rec(unit="u1", family_available=True, note="")],
         )
         roster = await LodgingRosterService(repo).build_roster(2026, 1000001)
 
@@ -860,9 +867,14 @@ class TestScenarioResolution:
     does not have and that the board had to get right on every read and every
     write.
 
-    Availability is NOT part of this change and stays an overlay: nothing syncs
-    into `lodging_availability`, so a scenario has no record of truth to
-    replace there and reads the live rows as its base.
+    Availability arrived at the same place by a different route. It was the one
+    lodging read left as an overlay after kindred#1974, on the argument that
+    nothing syncs into `lodging_availability` so there was no record of truth
+    to replace. That argued only against a draft TWIN; it never established
+    that availability varies by scenario, and it does not -- a burst pipe
+    closes a cabin in every plan for that weekend. 1500000135 deleted the
+    dimension outright, so there is now exactly one availability layer and a
+    scenario reads it unchanged.
     """
 
     @pytest.mark.asyncio
@@ -1062,48 +1074,60 @@ class TestScenarioResolution:
         assert roster.parties[0].unit_code == "ridge-b"
 
     @pytest.mark.asyncio
-    async def test_a_scenario_availability_override_wins_over_the_live_row(self) -> None:
-        """Availability is still an OVERLAY, and deliberately so.
+    async def test_a_scenario_reads_no_second_availability_layer(self) -> None:
+        """The overlay is GONE: a scenario and the live plan see one table.
 
-        It is scenario-aware IN PLACE rather than through a twin -- nothing
-        syncs into lodging_availability, so there is no record of truth to
-        replace there -- and a scenario reads the live rows as its base, so
-        reserving one cabin in a scenario does not discard the rest.
-        kindred#1974 changed placements only: the reason placements stopped
-        falling through (a synced record of truth shadowing staff's plan) has
-        no counterpart on a table nothing syncs into.
+        This is the assertion that stops it being reintroduced. 1500000135
+        deleted availability's scenario dimension rather than mirroring it with
+        a draft twin, because availability is a fact about the WEEKEND and not
+        about the plan -- a burst pipe closes a cabin in every scenario for
+        that weekend, so there was never anything for a scenario to disagree
+        about.
+
+        Two assertions, because either alone is satisfiable by a half-fix: one
+        read issued, and the scenario read not issued at all.
         """
         repo = _repo(
             fetch_session=FAMILY_SESSION,
-            fetch_units=[
-                _unit("u1", "ridge-a", "Ridge A", sleeps=5),
-                _unit("u2", "ridge-b", "Ridge B", sleeps=4),
-            ],
-            fetch_availability=[_rec(unit="u1", state="reserved_staff")],
-            fetch_scenario_availability=[_rec(unit="u2", state="reserved_other")],
+            fetch_units=[_unit("u1", "ridge-a", "Ridge A", sleeps=5)],
         )
 
-        roster = await LodgingRosterService(repo).build_roster(2026, 1000001, scenario="scn_1")
+        await LodgingRosterService(repo).build_roster(2026, 1000001, scenario="scn123")
 
-        by_code = {u.code: u for u in roster.units}
-        assert by_code["ridge-a"].reservation_state == "reserved_staff"
-        assert by_code["ridge-b"].reservation_state == "reserved_other"
-        assert roster.counts.units_family_available == 0
+        repo.fetch_availability.assert_awaited_once()
+        assert repo.fetch_scenario_availability.await_count == 0
 
     @pytest.mark.asyncio
-    async def test_a_scenario_release_overrides_the_live_reservation(self) -> None:
-        """Same unit, both layers: the scenario wins."""
-        repo = _repo(
-            fetch_session=FAMILY_SESSION,
-            fetch_units=[_unit("u1", "ridge-a", "Ridge A", sleeps=5)],
-            fetch_availability=[_rec(unit="u1", state="reserved_staff")],
-            fetch_scenario_availability=[_rec(unit="u1", state="released_to_family")],
+    async def test_a_scenario_resolves_availability_identically_to_the_live_plan(self) -> None:
+        """The behavioural half of the same fact.
+
+        The previous specification had a scenario's own rows overlay the live
+        ones. There is now one layer, so naming a scenario changes nothing
+        about which cabins are open -- only which PLACEMENTS are read.
+        """
+        units = [
+            _unit("u1", "ridge-a", "Ridge A", sleeps=5),
+            _unit("u2", "ridge-b", "Ridge B", sleeps=4),
+        ]
+        availability = [_rec(unit="u1", family_available=False, note="Burst pipe")]
+        service = LodgingRosterService(
+            _repo(fetch_session=FAMILY_SESSION, fetch_units=units, fetch_availability=availability)
+        )
+        scenario_service = LodgingRosterService(
+            _repo(fetch_session=FAMILY_SESSION, fetch_units=units, fetch_availability=availability)
         )
 
-        roster = await LodgingRosterService(repo).build_roster(2026, 1000001, scenario="scn_1")
+        live = await service.build_roster(2026, 1000001)
+        scoped = await scenario_service.build_roster(2026, 1000001, scenario="scn_1")
 
-        assert roster.units[0].reservation_state == "released_to_family"
-        assert roster.counts.units_family_available == 1
+        assert [u.is_family_available for u in live.units] == [u.is_family_available for u in scoped.units]
+        assert live.counts.units_family_available == scoped.counts.units_family_available == 1
+        by_code = {u.code: u for u in scoped.units}
+        assert by_code["ridge-a"].family_available_override is False
+        assert by_code["ridge-a"].reason == "Burst pipe"
+        # No row for ridge-b: absence means "ask the unit's role", which is not
+        # the same answer as a stored False and must not be flattened into one.
+        assert by_code["ridge-b"].family_available_override is None
 
 
 class TestMedicalFlagsAndNarrative:
@@ -1304,7 +1328,22 @@ class TestBuildSummary:
 
         assert repo.fetch_assignments.await_count == 0
         assert repo.fetch_draft_assignments.await_count == 2
-        assert repo.fetch_scenario_availability.await_count == 2
+
+    @pytest.mark.asyncio
+    async def test_the_summary_reads_no_second_availability_layer(self) -> None:
+        """`build_summary` has its OWN TaskGroup, and that is the whole point.
+
+        Fixing `build_roster` and leaving this one is the obvious half-fix --
+        the two methods carry parallel blocks that must be edited separately --
+        and this is the test that catches it. One availability read per
+        weekend, with or without a scenario.
+        """
+        repo = _repo(fetch_weekend_sessions=[FAMILY_SESSION, ADULT_SESSION])
+
+        await LodgingRosterService(repo).build_summary(2026, scenario="scn123")
+
+        assert repo.fetch_availability.await_count == 2
+        assert repo.fetch_scenario_availability.await_count == 0
 
     @pytest.mark.asyncio
     async def test_returns_one_entry_per_weekend_carrying_its_identity(self) -> None:
@@ -1376,7 +1415,7 @@ class TestBuildSummary:
             ],
             fetch_assignments=mirror,
             fetch_draft_assignments=draft,
-            fetch_scenario_availability=[_rec(unit="u1", state="reserved_staff")],
+            fetch_availability=[_rec(unit="u1", family_available=False)],
         )
         service = LodgingRosterService(repo)
 

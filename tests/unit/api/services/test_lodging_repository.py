@@ -232,16 +232,6 @@ class TestClientSuppliedValuesAreEscaped:
         assert '" || id != "' not in filter_str
 
     @pytest.mark.asyncio
-    async def test_fetch_scenario_availability_escapes_the_scenario(
-        self, repo: LodgingRepository, pb: MagicMock
-    ) -> None:
-        await repo.fetch_scenario_availability(2026, "sess_pb_1", self.INJECTION)
-
-        filter_str = _last_query(pb)["filter"]
-        assert f'scenario = "{self.ESCAPED}"' in filter_str
-        assert '" || id != "' not in filter_str
-
-    @pytest.mark.asyncio
     async def test_find_draft_assignment_escapes_the_scenario(self, repo: LodgingRepository, pb: MagicMock) -> None:
         await repo.find_draft_assignment(2026, "sess_pb_1", self.INJECTION, 1000001, 0)
 
@@ -267,7 +257,6 @@ class TestClientSuppliedValuesAreEscaped:
             pytest.param(lambda r, s: r.fetch_availability(2026, s), id="fetch_availability"),
             pytest.param(lambda r, s: r.fetch_assignments(2026, s), id="fetch_assignments"),
             pytest.param(lambda r, s: r.fetch_draft_assignments(2026, s, "scn_1"), id="fetch_draft_assignments"),
-            pytest.param(lambda r, s: r.fetch_scenario_availability(2026, s, "scn_1"), id="fetch_scenario_avail"),
         ],
     )
     async def test_every_session_filter_escapes_the_session_id(
@@ -290,24 +279,34 @@ class TestClientSuppliedValuesAreEscaped:
 
 class TestFetchAvailability:
     @pytest.mark.asyncio
-    async def test_reads_only_the_live_plan(self, repo: LodgingRepository, pb: MagicMock) -> None:
-        """lodging_availability KEPT its scenario column, unlike the two tables
-        that gained draft twins: nothing syncs into it, so there is no record
-        of truth there to protect. Empty scenario is still the live plan."""
+    async def test_reads_the_whole_weekend_with_no_scenario_predicate(
+        self, repo: LodgingRepository, pb: MagicMock
+    ) -> None:
+        """ONE layer, and the filter is where that is enforced.
+
+        1500000135 dropped this table's `scenario` column: availability is a
+        fact about the weekend, not about the plan. The old filter carried
+        `scenario = ""` to select the live plan out of a scenario-partitioned
+        table; against the collapsed table that predicate would name a column
+        that no longer exists, which PocketBase rejects at query time rather
+        than ignoring.
+        """
         await repo.fetch_availability(2026, "sess_pb_1")
-
-        pb.collection.assert_called_with("lodging_availability")
-        assert 'scenario = ""' in _last_query(pb)["filter"]
-
-    @pytest.mark.asyncio
-    async def test_scenario_overrides_read_that_scenario_only(self, repo: LodgingRepository, pb: MagicMock) -> None:
-        await repo.fetch_scenario_availability(2026, "sess_pb_1", "scn_1")
 
         pb.collection.assert_called_with("lodging_availability")
         params = _last_query(pb)
         assert 'session = "sess_pb_1"' in params["filter"]
         assert "year = 2026" in params["filter"]
-        assert 'scenario = "scn_1"' in params["filter"]
+        assert "scenario" not in params["filter"]
+
+    def test_there_is_no_scenario_availability_read(self, repo: LodgingRepository) -> None:
+        """The overlay's other half, asserted as absent.
+
+        A guard against the shape coming back by a different name: with the
+        scenario dimension deleted there is nothing for a second read to
+        return that the first one does not.
+        """
+        assert not hasattr(repo, "fetch_scenario_availability")
 
 
 class TestFetchAttendees:
@@ -524,7 +523,6 @@ class TestFilterEscaping:
             pytest.param(lambda r, s: r.fetch_availability(2026, s), id="fetch_availability"),
             pytest.param(lambda r, s: r.fetch_assignments(2026, s), id="fetch_assignments"),
             pytest.param(lambda r, s: r.fetch_attendees_for_session(2026, s), id="fetch_attendees"),
-            pytest.param(lambda r, s: r.fetch_scenario_availability(2026, s, "sc"), id="fetch_scenario_avail"),
             pytest.param(lambda r, s: r.fetch_draft_assignments(2026, s, "sc"), id="fetch_draft_assignments"),
         ],
     )

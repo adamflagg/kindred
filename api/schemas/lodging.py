@@ -120,8 +120,18 @@ class LodgingUnitSummary(BaseModel):
     # can draw the building, but excluded from every capacity count.
     is_container: bool = False
     allocation_default: str = ""
-    # None when there is no lodging_availability override for this session.
-    reservation_state: str | None = None
+    # None when no lodging_availability row exists for this unit this weekend,
+    # i.e. the unit's ROLE decides. None and False are different answers and
+    # must not be flattened into one: False is "closed this weekend".
+    #
+    # Stated explicitly rather than implied. The rejected encoding was a row
+    # meaning "the opposite of this unit's current default", which an ordinary
+    # registry edit would silently invert (1500000135).
+    family_available_override: bool | None = None
+    # Display only. The rule never branches on it. Read from the availability
+    # row's `note` column -- see the migration header on why `note` was kept
+    # rather than renamed.
+    reason: str = ""
     is_family_available: bool = False
     map_x: float | None = None
     map_y: float | None = None
