@@ -352,7 +352,7 @@ describe('the view in the URL', () => {
       </MemoryRouter>
     )
 
-    await userEvent.click(screen.getByRole('tab', { name: /Board/ }))
+    await userEvent.click(screen.getByRole('tab', { name: /Housing/ }))
     await userEvent.click(screen.getByRole('tab', { name: /Map/ }))
     await userEvent.click(screen.getByRole('button', { name: 'probe-back' }))
 
@@ -364,6 +364,16 @@ describe('the view in the URL', () => {
     // page; the roster is the honest default.
     rosterQuery.data = ONE_UNIT
     renderPage('1000001', 'gantt')
+    expect(screen.getByRole('tab', { name: /Roster/ })).toHaveAttribute('aria-selected', 'true')
+  })
+
+  it('no longer answers to `board`, the segment Housing replaced', () => {
+    // The rename took the URL with it, deliberately and without a redirect —
+    // this surface is young enough that a stale link is cheaper than a
+    // permanent alias. Pinned so the fallback is a DECISION rather than
+    // something discovered later by a staff member with a bookmark.
+    rosterQuery.data = ONE_UNIT
+    renderPage('1000001', 'board')
     expect(screen.getByRole('tab', { name: /Roster/ })).toHaveAttribute('aria-selected', 'true')
   })
 })
@@ -399,20 +409,22 @@ describe('tabs', () => {
     expect(screen.getByText('Ridge A')).toBeInTheDocument()
   })
 
-  it('leads with the board and counts what each tab holds, as summer does', () => {
-    // ORDER IS THE ASSERTION, not just presence. Summer opens on its board and
-    // puts the roster-shaped tabs after it; a weekend reads the same way round.
-    // Inventory trails because it describes the buildings, not the weekend.
+  it('leads with Housing and counts what each tab holds, as summer does', () => {
+    // ORDER IS THE ASSERTION, not just presence. Summer leads with Bunks and
+    // puts Campers after it; a weekend reads the same way round, and for the
+    // same reason — both name the tab after the thing being assigned rather
+    // than after the widget. Inventory trails: it describes the buildings, not
+    // this weekend.
     renderPage()
     expect(screen.getAllByRole('tab').map((tab) => tab.textContent)).toEqual([
-      'Board (0)',
+      'Housing (0)',
       'Roster (0)',
       'Map (0)',
       'Inventory (0)',
     ])
   })
 
-  it('opens the board on its own tab', async () => {
+  it('opens Housing on its own tab, at its own URL', async () => {
     rosterQuery.data = {
       year: 2026,
       session_cm_id: 1000001,
@@ -435,9 +447,13 @@ describe('tabs', () => {
     }
     renderPage()
 
-    await userEvent.click(screen.getByRole('tab', { name: /Board/ }))
-    expect(screen.getByText(/CampMinder mirror/i)).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('tab', { name: /Housing/ }))
+    // The URL follows the label. No `board` segment survives the rename.
+    expect(screen.getByTestId('location')).toHaveTextContent('/weekend/1000001/housing')
     expect(screen.getByText('Ridge A')).toBeInTheDocument()
+    // The mode lives in the header badge alone now, as it does on summer's
+    // board — not repeated as a chip over the content.
+    expect(screen.queryByText(/CampMinder mirror/i)).not.toBeInTheDocument()
   })
 
   it('counts the slot cards the board draws, not the building rows', () => {
@@ -470,7 +486,7 @@ describe('tabs', () => {
       ],
     }
     renderPage()
-    expect(screen.getByRole('tab', { name: 'Board (1)' })).toBeInTheDocument()
+    expect(screen.getByRole('tab', { name: 'Housing (1)' })).toBeInTheDocument()
     expect(screen.getByRole('tab', { name: 'Inventory (2)' })).toBeInTheDocument()
   })
 
@@ -539,7 +555,7 @@ describe('recomputation', () => {
     countBoardSlotsSpy.mockClear()
     countMapUnitsSpy.mockClear()
 
-    await userEvent.click(screen.getByRole('tab', { name: /Board/ }))
+    await userEvent.click(screen.getByRole('tab', { name: /Housing/ }))
     await userEvent.click(screen.getByRole('tab', { name: /Map/ }))
     await userEvent.click(screen.getByRole('tab', { name: /Roster/ }))
 

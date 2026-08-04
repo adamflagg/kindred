@@ -55,10 +55,20 @@ import { usePermissions } from '../hooks/usePermissions'
 import { useScenario } from '../hooks/useScenario'
 import { useWeekendRoster, useWeekendSessions } from '../hooks/useWeekendRoster'
 
-type View = 'roster' | 'inventory' | 'board' | 'map'
+/**
+ * `housing`, not `board`. Summer names its board tab after what is being
+ * assigned — Bunks — rather than after the widget, and this follows it. The
+ * COMPONENT stays `LodgingBoard`, exactly as summer's Bunks tab renders
+ * `BunkingBoardByArea`: the board is still a board internally.
+ *
+ * The rename took the URL with it and left no alias, so a `/board` link now
+ * falls back to the roster. Deliberate — the surface is young, and a permanent
+ * redirect for a segment that lived a few weeks is a cost paid forever.
+ */
+type View = 'roster' | 'inventory' | 'housing' | 'map'
 
 /** Tab order. `DEFAULT_VIEW` is a separate choice — see below. */
-const VIEWS: View[] = ['board', 'roster', 'map', 'inventory']
+const VIEWS: View[] = ['housing', 'roster', 'map', 'inventory']
 
 /**
  * NOT the first tab, deliberately. Summer opens on its board because the board
@@ -143,13 +153,13 @@ export default function WeekendRosterPage() {
   )
   const spacesUnmeasured = useMemo(() => countUnmeasuredSpaces(units), [units])
 
-  // Board first, as summer opens on its bunking board. Inventory trails
-  // because it describes the buildings rather than this weekend.
+  // Housing first, as summer leads with Bunks. Inventory trails because it
+  // describes the buildings rather than this weekend.
   const TABS: Array<{ id: View; label: string; icon: typeof Users; count: number }> = [
-    // The board counts the SLOT CARDS it draws, which is not the inventory
-    // count: a container carries the beds its halves already report, so it
-    // never gets a card and never counts.
-    { id: 'board', label: 'Board', icon: LayoutGrid, count: boardSlotCount },
+    // Counts the SLOT CARDS the board draws, which is not the inventory count:
+    // a container carries the beds its halves already report, so it never gets
+    // a card and never counts.
+    { id: 'housing', label: 'Housing', icon: LayoutGrid, count: boardSlotCount },
     { id: 'roster', label: 'Roster', icon: Users, count: parties.length },
     { id: 'map', label: 'Map', icon: MapIcon, count: mapUnitCount },
     { id: 'inventory', label: 'Inventory', icon: Home, count: units.length },
@@ -299,22 +309,14 @@ export default function WeekendRosterPage() {
                 <HouseholdRosterTable parties={parties} year={currentYear} units={units} />
               )}
               {view === 'inventory' && <UnitInventoryPanel units={units} />}
-              {view === 'board' && (
-                <LodgingBoard
-                  parties={parties}
-                  units={units}
-                  year={currentYear}
-                  scenario={scenario}
-                />
+              {/* Neither takes the scenario id: they render what this page
+                  already fetched with it, and neither writes. The header badge
+                  is what says which plan that was. #1985's drag placement is
+                  what earns plumbing it back down. */}
+              {view === 'housing' && (
+                <LodgingBoard parties={parties} units={units} year={currentYear} />
               )}
-              {view === 'map' && (
-                <LodgingMap
-                  parties={parties}
-                  units={units}
-                  year={currentYear}
-                  scenario={scenario}
-                />
-              )}
+              {view === 'map' && <LodgingMap parties={parties} units={units} year={currentYear} />}
             </div>
           </>
         )}
