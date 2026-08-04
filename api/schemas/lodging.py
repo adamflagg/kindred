@@ -360,9 +360,15 @@ class WeekendSummaryResponse(BaseModel):
 
 
 class ScenarioWriteRequest(BaseModel):
-    """Common shape of every lodging write: one weekend, one scenario.
+    """Common shape of every lodging write that names a PLAN: one weekend, one scenario.
 
-    `scenario` is REQUIRED and non-empty on all of them. With no scenario the
+    Not every lodging write. `AvailabilityWriteRequest` deliberately does not
+    extend this, because availability is a fact about the weekend rather than
+    about the plan -- a burst pipe closes a cabin in every scenario for that
+    weekend -- and inheriting from here is exactly what left that endpoint
+    uncallable and its table empty (1500000135).
+
+    `scenario` is REQUIRED and non-empty on the writes that do extend it. With no scenario the
     board is the CampMinder mirror and is read-only for everyone -- summer
     encodes the identical rule in `ScenarioContext`'s `isProductionMode`, which
     disables every drop target. An endpoint accepting a scenario-less write

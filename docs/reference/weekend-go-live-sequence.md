@@ -62,9 +62,11 @@ It is not. `party_size` has **four display consumers and zero decision consumers
 
 ### "Live" is undefined, and the architecture cannot currently deliver its usual meaning
 
-Every write requires a scenario; `lodging_assignments` is permanently admin-only by locked decision; there is no promote/publish endpoint in `api/routers/`; `lodging_assignments_sync.go` never writes back; no weekend surface imports `csvExport` or the PDF button.
+Every **placement** write requires a scenario; `lodging_assignments` is permanently admin-only by locked decision; there is no promote/publish endpoint in `api/routers/`; `lodging_assignments_sync.go` never writes back; no weekend surface imports `csvExport` or the PDF button.
 
-So the board can only ever write **drafts**, and go-live today means *staff arrange in Kindred, then re-key into CampMinder by hand.*
+(This said "every write" until [#1998](https://github.com/adamflagg/kindred/issues/1998). Availability writes now require none — `1500000135` deleted the scenario dimension from `lodging_availability`, because a burst pipe closes a cabin in every plan for that weekend. The argument below is unaffected: it is about *placements*, which are still draft-only.)
+
+So the board can only ever write **draft placements**, and go-live today means *staff arrange in Kindred, then re-key into CampMinder by hand.*
 
 **This section originally added "Summer avoids this by writing `bunk_assignments` directly in production mode (`useCamperMovement.ts:353`); lodging is structurally denied that path." That is wrong on both halves** (corrected 2026-08-03, and on [#1968](https://github.com/adamflagg/kindred/issues/1968) itself):
 
@@ -127,12 +129,19 @@ are closed. Trust `docs/reference/issue-triage.md`'s Status cells and the tree.
 
 ## Your blocking prerequisite
 
-**#1967 — weekend scenario plumbing — MUST land before you can write anything.**
-Every lodging write requires `scenario: str = Field(..., min_length=1)`
-(`api/schemas/lodging.py:350`) and no weekend surface selects one yet. Check
-whether #1967 has merged. If it has not, either take it as step one of your own
-work or coordinate — but do not start the drag interaction on top of a surface
-that cannot name a scenario.
+**#1967 — weekend scenario plumbing — MUST land before you can write a placement.**
+Every write that names a *plan* extends `ScenarioWriteRequest`, where `scenario`
+is `Field(..., min_length=1)` (`api/schemas/lodging.py`, and re-grep rather than
+trusting a line number), and no weekend surface selected one yet. Check whether
+#1967 has merged. If it has not, either take it as step one of your own work or
+coordinate — but do not start the drag interaction on top of a surface that
+cannot name a scenario.
+
+**This said "every lodging write" and named a line that has since moved. Both
+were fixed after [#1998](https://github.com/adamflagg/kindred/issues/1998).**
+`AvailabilityWriteRequest` no longer extends `ScenarioWriteRequest`: availability
+is a fact about the weekend rather than about the plan, so holding a cabin back
+needs no scenario and works on the CampMinder mirror.
 
 Also check #1966 (roster latency). **#1974 (scenarios replace the mirror) has
 landed**, so a scenario is a plan of its own, seeded by `POST
