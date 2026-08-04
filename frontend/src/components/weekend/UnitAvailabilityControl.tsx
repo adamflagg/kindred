@@ -54,10 +54,12 @@ export function UnitAvailabilityControl({
 }: UnitAvailabilityControlProps) {
   const [reason, setReason] = useState('')
   const [isOpen, setIsOpen] = useState(false)
+  const [wantsReason, setWantsReason] = useState(false)
   const action = availabilityAction(unit)
 
   const close = () => {
     setIsOpen(false)
+    setWantsReason(false)
     // Cleared on the way out, not on the way in: a reason left over from an
     // abandoned edit is how a burst-pipe note ends up on the wrong cabin.
     setReason('')
@@ -85,7 +87,17 @@ export function UnitAvailabilityControl({
           onSubmit={(event) => {
             event.preventDefault()
             const trimmed = reason.trim()
-            if (trimmed === '') return
+            // The ONLY place an empty reason is refused. The submit button is
+            // deliberately NOT disabled while the box is empty: a disabled
+            // button plus a guard here mask each other — deleting either leaves
+            // the other quietly holding the rule, so a test can pin neither,
+            // which is exactly what a surviving mutation caught. An inert
+            // button also explains nothing to the staff member wondering why
+            // their click did nothing.
+            if (trimmed === '') {
+              setWantsReason(true)
+              return
+            }
             onSubmit({ familyAvailable: action.familyAvailable, reason: trimmed })
             close()
           }}
@@ -97,15 +109,22 @@ export function UnitAvailabilityControl({
             value={reason}
             maxLength={500}
             autoFocus
+            aria-invalid={wantsReason && reason.trim() === ''}
             onChange={(event) => {
               setReason(event.target.value)
+              setWantsReason(false)
             }}
-            className="border-border bg-background text-foreground placeholder:text-muted-foreground/60 focus:border-primary/50 focus:ring-primary/10 w-full rounded-md border px-1.5 py-1 text-[11px] focus:ring-2 focus:outline-none"
+            className="border-border bg-background text-foreground placeholder:text-muted-foreground/60 focus:border-primary/50 focus:ring-primary/10 w-full rounded-md border px-1.5 py-1 text-[11px] focus:ring-2 focus:outline-none aria-[invalid=true]:border-amber-500"
           />
+          {wantsReason && reason.trim() === '' && (
+            <span className="text-[10px] font-medium text-amber-700 dark:text-amber-400">
+              Say why, so next week&rsquo;s staff can act on it.
+            </span>
+          )}
           <div className="flex items-center gap-1.5">
             <button
               type="submit"
-              disabled={reason.trim() === '' || isSaving}
+              disabled={isSaving}
               className="bg-primary text-primary-foreground rounded-md px-2 py-0.5 text-[11px] font-medium disabled:opacity-40"
             >
               {action.label}

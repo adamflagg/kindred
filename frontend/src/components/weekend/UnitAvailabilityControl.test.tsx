@@ -103,10 +103,16 @@ describe('UnitAvailabilityControl', () => {
     expect(onSubmit).toHaveBeenCalledWith({ familyAvailable: true, reason: 'Overflow weekend' })
   })
 
-  it('will not take a cabin out of service without saying why', async () => {
+  it('will not take a cabin out of service without saying why, and says so', async () => {
     // A row with no reason is the one a staff member cannot act on next week:
     // they can see the cabin is closed and have no way to learn whether the
     // pipe has been fixed.
+    //
+    // The visible refusal is asserted, not just the absent call. An earlier
+    // version disabled the submit button AND guarded in the handler; deleting
+    // the guard broke no test, because a click on a disabled button never
+    // reaches a handler at all. Two guards masking each other means neither is
+    // pinned — so the button stays live and the refusal is a thing you can see.
     const user = userEvent.setup()
     const { onSubmit } = renderControl()
 
@@ -114,6 +120,20 @@ describe('UnitAvailabilityControl', () => {
     await user.click(screen.getByRole('button', { name: /^hold$/i }))
 
     expect(onSubmit).not.toHaveBeenCalled()
+    expect(screen.getByText(/say why/i)).toBeInTheDocument()
+  })
+
+  it('refuses an empty reason submitted from the keyboard too', async () => {
+    // Enter in the text field is a second way into the same handler, and the
+    // one a staff member typing quickly will actually use.
+    const user = userEvent.setup()
+    const { onSubmit } = renderControl()
+
+    await user.click(screen.getByRole('button', { name: /hold/i }))
+    await user.type(screen.getByRole('textbox', { name: /reason/i }), '{Enter}')
+
+    expect(onSubmit).not.toHaveBeenCalled()
+    expect(screen.getByText(/say why/i)).toBeInTheDocument()
   })
 
   it('treats blank space as no reason at all', async () => {
@@ -125,6 +145,18 @@ describe('UnitAvailabilityControl', () => {
     await user.click(screen.getByRole('button', { name: /^hold$/i }))
 
     expect(onSubmit).not.toHaveBeenCalled()
+    expect(screen.getByText(/say why/i)).toBeInTheDocument()
+  })
+
+  it('takes the refusal back as soon as staff start typing', async () => {
+    const user = userEvent.setup()
+    renderControl()
+
+    await user.click(screen.getByRole('button', { name: /hold/i }))
+    await user.click(screen.getByRole('button', { name: /^hold$/i }))
+    await user.type(screen.getByRole('textbox', { name: /reason/i }), 'B')
+
+    expect(screen.queryByText(/say why/i)).not.toBeInTheDocument()
   })
 
   it('clears an override in one click, writing null rather than a value that agrees', async () => {
