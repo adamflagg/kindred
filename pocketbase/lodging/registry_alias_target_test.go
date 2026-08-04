@@ -59,17 +59,17 @@ func aliasNameKey(s string) string { return strings.ToLower(strings.TrimSpace(s)
 
 func findMisdirectedAliases(units []registryUnit, aliases []registryAlias) []misdirectedAlias {
 	byName := make(map[string]string, len(units))
-	for _, u := range units {
+	parent := make(map[string]string, len(units))
+	// Indexed rather than ranged by value: registryUnit is 240 bytes and
+	// gocritic's rangeValCopy rejects the copy. Matches registry.go's idiom.
+	for i := range units {
+		u := &units[i]
 		// First writer wins: if two units somehow share a name the check has no
 		// unambiguous expectation, and inventing one would produce a false
 		// positive on every alias spelling it.
 		if _, seen := byName[aliasNameKey(u.Name)]; !seen {
 			byName[aliasNameKey(u.Name)] = u.Code
 		}
-	}
-
-	parent := make(map[string]string, len(units))
-	for _, u := range units {
 		parent[u.Code] = u.ParentUnit
 	}
 	// descendantOf walks up from child. Bounded by the unit count so a parent
