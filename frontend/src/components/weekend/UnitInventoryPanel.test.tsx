@@ -27,7 +27,8 @@ function unit(overrides: Partial<LodgingUnitRow> = {}): LodgingUnitRow {
     is_active: true,
     is_container: false,
     allocation_default: 'family_pool',
-    reservation_state: null,
+    family_available_override: null,
+    reason: '',
     is_family_available: true,
     map_x: 0.5,
     map_y: 0.5,
@@ -72,7 +73,7 @@ describe('UnitInventoryPanel', () => {
             unit_id: 'u2',
             code: 'le-shack',
             name: 'Le Shack',
-            reservation_state: 'reserved_staff',
+            allocation_default: 'staff_default',
             is_family_available: false,
           }),
         ]}
@@ -82,13 +83,23 @@ describe('UnitInventoryPanel', () => {
     expect(screen.getByText('Staff')).toBeInTheDocument()
   })
 
-  it('badges a maintenance hold differently from a staff hold', () => {
+  it('badges a maintenance hold differently from staff housing', () => {
+    // A family cabin closed for this weekend. "Held" is inventory that is
+    // unavailable; "Staff" is inventory that was never bookable, and the two
+    // must not blur -- one is temporary and one is not.
     render(
       <UnitInventoryPanel
-        units={[unit({ reservation_state: 'reserved_other', is_family_available: false })]}
+        units={[
+          unit({
+            family_available_override: false,
+            reason: 'Burst pipe',
+            is_family_available: false,
+          }),
+        ]}
       />
     )
     expect(screen.getByText('Held')).toBeInTheDocument()
+    expect(screen.queryByText('Staff')).not.toBeInTheDocument()
   })
 
   it('badges a released staff cabin as released', () => {
@@ -97,7 +108,7 @@ describe('UnitInventoryPanel', () => {
         units={[
           unit({
             allocation_default: 'staff_default',
-            reservation_state: 'released_to_family',
+            family_available_override: true,
             is_family_available: true,
           }),
         ]}

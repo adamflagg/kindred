@@ -240,14 +240,18 @@ class TestClientSuppliedValuesAreEscaped:
         assert '" || id != "' not in filter_str
 
     @pytest.mark.asyncio
-    async def test_find_availability_override_escapes_both_client_values(
-        self, repo: LodgingRepository, pb: MagicMock
-    ) -> None:
-        await repo.find_availability_override(2026, "sess_pb_1", self.INJECTION, 'u1" || id != "')
+    async def test_find_availability_override_escapes_the_unit_id(self, repo: LodgingRepository, pb: MagicMock) -> None:
+        """One client value left, not two: 1500000135 took the scenario.
+
+        `unit_pb_id` still arrives in the request body, and unescaped an
+        injected `||` would make this return some OTHER weekend's row -- which
+        `set_availability` then updates or deletes.
+        """
+        await repo.find_availability_override(2026, "sess_pb_1", 'u1" || id != "')
 
         filter_str = _last_query(pb)["filter"]
-        assert f'scenario = "{self.ESCAPED}"' in filter_str
         assert 'unit = "u1\\" || id != \\""' in filter_str
+        assert "scenario" not in filter_str
         assert '" || id != "' not in filter_str
 
     @pytest.mark.asyncio

@@ -34,7 +34,8 @@ function unit(overrides: Partial<LodgingUnitRow> = {}): LodgingUnitRow {
     is_active: true,
     is_container: false,
     allocation_default: 'family_pool',
-    reservation_state: null,
+    family_available_override: null,
+    reason: '',
     is_family_available: true,
     map_x: 0.5,
     map_y: 0.5,
@@ -142,7 +143,7 @@ describe('buildBoard — which units get a card', () => {
           unit_id: 'u2',
           code: 'aspen-lodge',
           is_family_available: true,
-          reservation_state: 'released_to_family',
+          family_available_override: true,
         }),
       ]
     )
@@ -163,7 +164,8 @@ describe('buildBoard — which units get a card', () => {
           unit_id: 'u2',
           code: 'cedar-2',
           is_family_available: false,
-          reservation_state: 'reserved_other',
+          family_available_override: false,
+          reason: 'Burst pipe',
         }),
       ]
     )

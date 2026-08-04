@@ -230,11 +230,16 @@ async def set_availability(
     request: AvailabilityWriteRequest,
     user: AuthUser = Depends(require_permission(Permission.BUNKING_MANAGE)),
 ) -> LodgingWriteResponse:
-    """Reserve or release one unit for this weekend, inside a scenario.
+    """Reserve or release one unit for this weekend.
 
-    `state: null` clears the override, which is spelled as the ABSENCE of a
-    row: there is no state meaning "normal", and writing one would pin the unit
-    against a later change to the live plan.
+    Takes NO scenario, unlike every other write on this router. Availability is
+    a fact about the weekend rather than about the plan -- a burst pipe closes
+    a cabin in every scenario for that weekend -- so 1500000135 deleted the
+    dimension. Requiring one is what made this endpoint uncallable.
+
+    `family_available: null` clears the override, which is spelled as the
+    ABSENCE of a row: there is no value meaning "normal", and writing one would
+    pin the unit against a later change to its role.
     """
     try:
         return await _writes().set_availability(request)

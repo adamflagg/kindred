@@ -452,26 +452,24 @@ class LodgingRepository:
     async def delete_draft_assignment(self, record_id: str) -> None:
         await asyncio.to_thread(self.pb.collection(LODGING_ASSIGNMENTS_DRAFT).delete, record_id)
 
-    async def find_availability_override(
-        self, year: int, session_pb_id: str, scenario_id: str, unit_pb_id: str
-    ) -> Any | None:
-        """The one availability row for a unit in a scenario, or None.
+    async def find_availability_override(self, year: int, session_pb_id: str, unit_pb_id: str) -> Any | None:
+        """The one availability row for a unit this weekend, or None.
 
-        Matches idx_lodging_avail_unique, which is (session, year, scenario,
-        unit): without that index a unit could carry both a reserved_staff and
-        a released_to_family row for the same key and "is this available?"
-        would stop being a question with an answer.
+        Matches idx_lodging_avail_unique, which 1500000135 rebuilt as
+        (session, year, unit). Without an index of exactly this shape a unit
+        could carry two contradicting rows for one weekend and "is this cabin
+        available?" would stop being a question with an answer -- which is why
+        the migration rebuilds the index rather than only dropping the column.
 
-        `scenario_id` and `unit_pb_id` both arrive in the request body and are
-        escaped. Unescaped, an injected `||` would make this return some other
-        weekend's row, which set_availability then updates or deletes.
+        `unit_pb_id` arrives in the request body and is escaped. Unescaped, an
+        injected `||` would make this return some other weekend's row, which
+        set_availability then updates or deletes.
         """
         rows = await self._page(
             LODGING_AVAILABILITY,
             query_params={
                 "filter": (
-                    f'session = "{pb_escape(session_pb_id)}" && year = {year} '
-                    f'&& scenario = "{pb_escape(scenario_id)}" && unit = "{pb_escape(unit_pb_id)}"'
+                    f'session = "{pb_escape(session_pb_id)}" && year = {year} && unit = "{pb_escape(unit_pb_id)}"'
                 ),
                 "sort": STABLE_SORT,
             },

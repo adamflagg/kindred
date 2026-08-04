@@ -28,7 +28,8 @@ function row(overrides: Partial<LodgingUnitRow> = {}): LodgingUnitRow {
     is_active: true,
     is_container: false,
     allocation_default: 'family_pool',
-    reservation_state: null,
+    family_available_override: null,
+    reason: '',
     is_family_available: true,
     map_x: 0.4,
     map_y: 0.5,
@@ -134,7 +135,7 @@ describe('MapUnitPopover — one room', () => {
     // the three surfaces start disagreeing about what "Held" means.
     render(
       <MapUnitPopover
-        units={[mapUnit(row({ reservation_state: 'reserved_other' }))]}
+        units={[mapUnit(row({ family_available_override: false, reason: 'Burst pipe' }))]}
         hue={HUE}
         onOpenParty={vi.fn()}
       />
@@ -380,7 +381,7 @@ describe('MapUnitPopover — a cluster of rooms', () => {
           unit_id: 'u2',
           code: 'cedar-2',
           name: 'Cedar 2',
-          reservation_state: 'reserved_other',
+          family_available_override: false,
           is_active: false,
         })
       ),

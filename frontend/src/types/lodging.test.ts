@@ -25,8 +25,8 @@
  * alias that would exist for no reason but this test.
  */
 import { describe, expect, it } from 'vitest'
-import type { PlacementWriteRequest } from './api-generated'
-import type { RosterPartyRow } from './lodging'
+import type { AvailabilityWriteRequest, PlacementWriteRequest } from './api-generated'
+import type { LodgingUnitRow, RosterPartyRow } from './lodging'
 
 const _exhaustiveRosterParty: Required<RosterPartyRow> = {
   grain: 'household',
@@ -73,6 +73,55 @@ const _exhaustivePlacementWriteRequest: Required<PlacementWriteRequest> = {
 }
 void _exhaustivePlacementWriteRequest
 
+/**
+ * kindred#1998. This write shape had NO exhaustive fixture, which is how it
+ * drifted into requiring a `scenario` nobody could supply: it extended
+ * `ScenarioWriteRequest`, where `scenario` is `min_length=1`, so
+ * `PUT /api/lodging/availability` was uncallable and the table still holds
+ * zero rows. A fixture here would have made that a compile error the moment
+ * the base class was picked.
+ */
+const _exhaustiveAvailabilityWriteRequest: Required<AvailabilityWriteRequest> = {
+  year: 2026,
+  session_cm_id: 3000001,
+  unit_id: 'unit123456789012345',
+  family_available: false,
+  reason: 'Burst pipe',
+}
+void _exhaustiveAvailabilityWriteRequest
+
+/**
+ * The read shape the board, the map and the inventory panel all share.
+ * `family_available_override` replaced `reservation_state` in the same change;
+ * a fixture that enumerates both would have failed to compile in exactly one
+ * direction for each half of that swap.
+ */
+const _exhaustiveLodgingUnit: Required<LodgingUnitRow> = {
+  unit_id: 'unit123456789012345',
+  code: 'ridge-1',
+  name: 'Ridge 1',
+  area_code: 'RIDGE',
+  area_name: 'Ridge Side',
+  sleeps: 5,
+  bathroom: 'shared',
+  bathroom_group: '',
+  near_bathhouse: false,
+  has_power: false,
+  has_ac: false,
+  has_fridge: false,
+  is_accessible: false,
+  is_confirmed: true,
+  is_active: true,
+  is_container: false,
+  allocation_default: 'family_pool',
+  family_available_override: null,
+  reason: '',
+  is_family_available: true,
+  map_x: 0.5,
+  map_y: 0.5,
+}
+void _exhaustiveLodgingUnit
+
 describe('RosterParty (generated)', () => {
   it('names every leaf unit code on unit_codes, additive to unit_code/unit_name', () => {
     const merged: RosterPartyRow = {
@@ -84,6 +133,44 @@ describe('RosterParty (generated)', () => {
     }
     expect(merged.unit_codes).toHaveLength(2)
     expect(merged.unit_code).toBe('')
+  })
+})
+
+describe('AvailabilityWriteRequest (generated)', () => {
+  it('carries no scenario, because availability does not vary by plan', () => {
+    // 1500000135. A burst pipe closes a cabin in every scenario for that
+    // weekend, so there was never anything for a scenario to disagree about.
+    // The excess-property check is the assertion: this fails to compile if the
+    // field comes back.
+    const withScenario: AvailabilityWriteRequest = {
+      ..._exhaustiveAvailabilityWriteRequest,
+      // @ts-expect-error availability is weekend-scoped; a scenario is not part of it.
+      scenario: 'scenario123456789012',
+    }
+    void withScenario
+    expect('scenario' in _exhaustiveAvailabilityWriteRequest).toBe(false)
+  })
+
+  it('spells "clear the override" as null rather than a third value', () => {
+    // Absence of a row is how "whatever this unit's role says" is written.
+    // There is no value meaning "normal", and writing one would pin the unit
+    // against a later change to its role.
+    const cleared: AvailabilityWriteRequest = {
+      year: 2026,
+      session_cm_id: 3000001,
+      unit_id: 'unit123456789012345',
+      family_available: null,
+    }
+    expect(cleared.family_available).toBeNull()
+  })
+})
+
+describe('LodgingUnitSummary (generated)', () => {
+  it('reports the override as a tri-state, so null and false stay distinct', () => {
+    const held: LodgingUnitRow = { ..._exhaustiveLodgingUnit, family_available_override: false }
+
+    expect(_exhaustiveLodgingUnit.family_available_override).toBeNull()
+    expect(held.family_available_override).toBe(false)
   })
 })
 

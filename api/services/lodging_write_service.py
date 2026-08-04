@@ -389,14 +389,21 @@ class LodgingWriteService:
         return pb_error_to_http(exc)
 
     async def set_availability(self, request: AvailabilityWriteRequest) -> LodgingWriteResponse:
-        """Reserve or release one unit for this weekend, inside a scenario.
+        """Reserve or release one unit for this weekend.
 
-        `state: null` DELETES the scenario's row rather than writing a state
-        meaning "normal". There is no such state -- the select list is
-        reserved_staff / reserved_other / released_to_family -- and the absence
-        of a row is what "whatever the live plan says" is spelled as. Writing
-        an override that happens to agree with the live plan would pin the unit
-        against a later change to it.
+        NO SCENARIO. 1500000135 deleted this table's scenario dimension --
+        availability is a fact about the weekend, not about the plan, since a
+        burst pipe closes a cabin in every scenario for that weekend.
+
+        `family_available: null` DELETES the row rather than writing a value
+        meaning "normal". There is no such value: the absence of a row is what
+        "whatever this unit's role says" is spelled as, and writing a value
+        that happens to agree with the role would pin the unit against a later
+        change to it.
+
+        `reason` is written to the `note` COLUMN. This and `_build_units` are
+        the only two places that translate between the two names -- see
+        AvailabilityWriteRequest.
 
         Both the delete and the create below race the same way the placement
         writes do, and are guarded the same two ways.
@@ -407,23 +414,20 @@ class LodgingWriteService:
         delete is; any other failure keeps its status through pb_error_to_http.
 
         The create: `idx_lodging_avail_unique` is UNIQUE on (session, year,
-        scenario, unit), so two staff reserving the same unit in the same
-        scenario both find no override, both create, and the index rejects
-        the loser. That is exactly the race place_party guards on the draft's
-        own partial unique index, guarded the identical way -- the loser
-        re-reads and updates the winner's row, which is by construction the
-        row this call wanted: same session, same year, same scenario, same
-        unit. The recovery's own two calls are guarded the same way
-        place_party's are, for the same reason: a failure inside the except
-        block is the very 500 the block exists to prevent.
+        unit), so two staff reserving the same unit for the same weekend both
+        find no override, both create, and the index rejects the loser. That is
+        exactly the race place_party guards on the draft's own partial unique
+        index, guarded the identical way -- the loser re-reads and updates the
+        winner's row, which is by construction the row this call wanted: same
+        session, same year, same unit. The recovery's own two calls are guarded
+        the same way place_party's are, for the same reason: a failure inside
+        the except block is the very 500 the block exists to prevent.
         """
         session_pb_id = await self._resolve_session_pb_id(request.year, request.session_cm_id)
 
-        existing = await self.repository.find_availability_override(
-            request.year, session_pb_id, request.scenario, request.unit_id
-        )
+        existing = await self.repository.find_availability_override(request.year, session_pb_id, request.unit_id)
 
-        if request.state is None:
+        if request.family_available is None:
             if existing is None:
                 return LodgingWriteResponse(deleted=False)
             try:
@@ -438,9 +442,11 @@ class LodgingWriteService:
             "session": session_pb_id,
             "session_cm_id": request.session_cm_id,
             "year": request.year,
-            "scenario": request.scenario,
             "unit": request.unit_id,
-            "state": request.state,
+            "family_available": request.family_available,
+            # The API's `reason` meets the column's `note` HERE, and in
+            # `_build_units` on the way back out. Nowhere else.
+            "note": request.reason,
         }
 
         if existing is not None:
@@ -458,7 +464,7 @@ class LodgingWriteService:
                     raise pb_error_to_http(exc) from exc
                 try:
                     raced = await self.repository.find_availability_override(
-                        request.year, session_pb_id, request.scenario, request.unit_id
+                        request.year, session_pb_id, request.unit_id
                     )
                     if raced is None:
                         raise pb_error_to_http(exc) from exc
