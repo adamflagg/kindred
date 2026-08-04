@@ -36,6 +36,7 @@ import type {
 } from '../../../types/lodging'
 import { amenitiesOf } from './unitAmenities'
 import { BUTTON_PRIMARY, BUTTON_SECONDARY, FIELD, LABEL, SECTION } from './lodgingStyles'
+import { parseSleeps } from './sleepsValue'
 import { slugify } from './unitCode'
 import { directChildren } from './unitTree'
 import { UnitAmenityFieldset } from './UnitAmenityFieldset'
@@ -88,7 +89,9 @@ export function LodgingUnitForm({ areas, units, unit, onSaved, onCancel }: Lodgi
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault()
     setIsSaving(true)
-    const parsedSleeps = Number.parseInt(capacity.sleeps, 10)
+    // Shared with the capacity flag — see ./sleepsValue. Both must read the
+    // field the same way or the flag comments on a number this never saves.
+    const parsedSleeps = parseSleeps(capacity.sleeps)
     const parsedMapX = Number.parseFloat(map.x)
     const parsedMapY = Number.parseFloat(map.y)
     // `code` is the join key both `bathroom_group` membership and the roster's
@@ -118,7 +121,7 @@ export function LodgingUnitForm({ areas, units, unit, onSaved, onCancel }: Lodgi
       // 0, because 0 IS the stored representation of UNKNOWN — omitting the
       // key would leave the previous number in place and make clearing the
       // field a silent no-op the staffer believes worked.
-      ...(Number.isNaN(parsedSleeps) ? (unit ? { sleeps: 0 } : {}) : { sleeps: parsedSleeps }),
+      ...(parsedSleeps === null ? (unit ? { sleeps: 0 } : {}) : { sleeps: parsedSleeps }),
       ...(Number.isNaN(parsedMapX) ? {} : { map_x: parsedMapX }),
       ...(Number.isNaN(parsedMapY) ? {} : { map_y: parsedMapY }),
     }

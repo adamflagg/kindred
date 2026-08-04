@@ -20,6 +20,7 @@
  * nobody can set correctly, and the two real states are categorical.
  */
 import { suggestedSleeps, type BedInventory } from '../../../types/beds'
+import { parseSleeps } from './sleepsValue'
 
 export type CapacityFlag =
   /** Render nothing at all. Not a quiet badge — nothing. */
@@ -64,8 +65,10 @@ export function capacityFlag({
   // of them would assert a fact the data does not carry.
   if (derived === 0) return { kind: 'silent' }
 
-  const staff = Number.parseInt(sleeps, 10)
-  if (!Number.isFinite(staff) || staff <= 0) return { kind: 'suggestion', derived }
+  // The SAME reading the payload will use, so the flag can never report on a
+  // number the save would not store.
+  const staff = parseSleeps(sleeps)
+  if (staff === null) return { kind: 'suggestion', derived }
 
   if (staff > derived) return { kind: 'conflict', derived, sleeps: staff }
 
