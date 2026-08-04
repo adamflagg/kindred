@@ -36,6 +36,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import { useDismissOnDeadSpace } from '../../hooks/useDismissOnDeadSpace'
 import type { LodgingUnitRow, RosterPartyRow } from '../../types/lodging'
+import { BoardModeChip } from './BoardModeChip'
 import { FamilyCard } from './FamilyCard'
 import { FamilyDetailsPanel } from './FamilyDetailsPanel'
 import { FloatingUnplacedBadge } from './FloatingUnplacedBadge'
@@ -169,9 +170,19 @@ export interface LodgingMapProps {
   parties: RosterPartyRow[]
   units: LodgingUnitRow[]
   year: number
+  /**
+   * `''` is the CampMinder mirror; a scenario id is a draft.
+   *
+   * OPTIONAL, defaulting to the mirror, which is the safe reading: a
+   * caller that forgets it gets the amber read-only chip rather than a
+   * claim of a draft. Required would put tsc behind it, but the only two
+   * real callers are on `WeekendRosterPage` — the rest are tests, and
+   * making thirty of them pass a prop they do not exercise is churn.
+   */
+  scenario?: string
 }
 
-export function LodgingMap({ parties, units, year }: LodgingMapProps) {
+export function LodgingMap({ parties, units, year, scenario = '' }: LodgingMapProps) {
   // MEMOISED, and not as a micro-optimisation: panning updates `view` on every
   // pointermove, and an unmemoised call would re-run buildBoard — area bucketing,
   // sorting, hue assignment, the lot — on every frame of a drag.
@@ -408,10 +419,7 @@ export function LodgingMap({ parties, units, year }: LodgingMapProps) {
   return (
     <div className="flex flex-col gap-3">
       <div className="flex flex-wrap items-center gap-2">
-        <span className="inline-flex items-center gap-1.5 rounded-full border border-amber-400/50 bg-amber-100 px-2.5 py-1 text-xs font-semibold text-amber-800 dark:bg-amber-950/50 dark:text-amber-300">
-          <span className="h-1.5 w-1.5 rounded-full bg-current" aria-hidden="true" />
-          CM — CampMinder mirror, read-only
-        </span>
+        <BoardModeChip scenario={scenario} />
         {model.unpositionedUnits.length > 0 && (
           <span className="text-muted-foreground text-xs">
             {model.unpositionedUnits.length === 1

@@ -190,7 +190,39 @@ describe('invalidateLodgingRegistryQueries', () => {
     expect(roster).toHaveLength(1)
     expect(summary).toHaveLength(1)
     // And the prefix must genuinely head the real key.
-    const full = queryKeys.weekendRoster(2026, 1000001)
+    const full = queryKeys.weekendRoster(2026, 1000001, '')
     expect(full.slice(0, 1)).toEqual(roster)
+  })
+})
+
+describe('queryKeys.weekendRoster scenario dimension', () => {
+  // Without a scenario in the key, the CampMinder mirror and every draft of
+  // the same weekend share ONE cache slot. Selecting a scenario would serve
+  // the mirror from cache and never refetch — and these queries carry the app
+  // default 30 minute staleTime, so "never" is the accurate word.
+  it('separates the mirror from a draft', () => {
+    const mirror = queryKeys.weekendRoster(2026, 1000001, '')
+    const draft = queryKeys.weekendRoster(2026, 1000001, 'scn7x2k9qw3mnbv')
+
+    expect(draft).not.toEqual(mirror)
+  })
+
+  it('separates two drafts of the same weekend', () => {
+    // Staff compare plans by switching between them. Two scenarios sharing a
+    // slot would show the second the first one's placements.
+    const optionA = queryKeys.weekendRoster(2026, 1000001, 'scn7x2k9qw3mnbv')
+    const optionB = queryKeys.weekendRoster(2026, 1000001, 'scnp4d8sh1zjrtc')
+
+    expect(optionA).not.toEqual(optionB)
+  })
+
+  it('keeps the scenario BEHIND year and session so the prefix still matches', () => {
+    // `invalidateLodgingRegistryQueries` invalidates on ['weekend-roster'],
+    // and React Query prefix-matches from the head. A scenario spliced in
+    // ahead of the year would still match that one-element prefix, but the
+    // ordering is what the rest of the key's readers assume.
+    const key = queryKeys.weekendRoster(2026, 1000001, 'scn7x2k9qw3mnbv')
+
+    expect(key).toEqual(['weekend-roster', 2026, 1000001, 'scn7x2k9qw3mnbv'])
   })
 })

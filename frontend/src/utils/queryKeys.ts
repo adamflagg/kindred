@@ -474,8 +474,16 @@ export const queryKeys = {
   weekendSessions: (year: number) => ['weekend-sessions', year] as const,
   /** The lander's single batched read: every weekend in a year, with counts. */
   weekendSummary: (year: number) => ['weekend-summary', year] as const,
-  weekendRoster: (year: number, sessionCmId: number) =>
-    ['weekend-roster', year, sessionCmId] as const,
+  /**
+   * `scenario` is the empty string for the CampMinder mirror and a
+   * `saved_scenarios` id for a draft. It is REQUIRED rather than defaulted:
+   * a scenario replaces the mirror (kindred#1974), so a call site that
+   * forgot it would read a populated board out of the mirror's cache slot
+   * and never refetch — these queries inherit the app default 30 minute
+   * staleTime. Making it required puts that mistake in front of tsc.
+   */
+  weekendRoster: (year: number, sessionCmId: number, scenario: string) =>
+    ['weekend-roster', year, sessionCmId, scenario] as const,
   // Prefixes for invalidation. The lodging admin panels edit registry rows
   // that feed the roster, but know neither the year nor the weekend, so they
   // cannot build a full key — see `invalidateLodgingRegistryQueries`.
