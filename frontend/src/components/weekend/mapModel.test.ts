@@ -25,7 +25,7 @@ function unit(overrides: Partial<LodgingUnitRow> = {}): LodgingUnitRow {
     is_confirmed: false,
     is_active: true,
     is_container: false,
-    allocation_default: 'family_pool',
+    inventory_class: 'family_pool',
     family_available_override: null,
     reason: '',
     is_family_available: true,
@@ -121,14 +121,14 @@ describe('buildMapModel', () => {
   /**
    * Permanent staff housing: held for staff AND not released this weekend.
    *
-   * Setting only `allocation_default` is not enough — `unit()` defaults
+   * Setting only `inventory_class` is not enough — `unit()` defaults
    * `is_family_available: true`, which satisfies `isPlanningInventory`'s OR
    * clause and leaves the unit drawn. Every earlier staff fixture in the map
    * suite made exactly that mistake, which is why none of them could see the
    * board exclusion reaching the map.
    */
   function staffUnit(overrides: Partial<LodgingUnitRow> = {}): LodgingUnitRow {
-    return unit({ allocation_default: 'staff_default', is_family_available: false, ...overrides })
+    return unit({ inventory_class: 'staff_default', is_family_available: false, ...overrides })
   }
 
   it('drops staff housing, because the map is a projection of the board', () => {

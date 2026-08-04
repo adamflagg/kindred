@@ -27,7 +27,7 @@ function unit(overrides: Partial<LodgingUnitRow> = {}): LodgingUnitRow {
     is_confirmed: true,
     is_active: true,
     is_container: false,
-    allocation_default: 'family_pool',
+    inventory_class: 'family_pool',
     family_available_override: null,
     reason: '',
     is_family_available: true,
@@ -55,7 +55,7 @@ describe('UnitInventoryPanel', () => {
             unit_id: 'u2',
             code: 'aspen-lodge',
             name: 'Aspen Lodge',
-            allocation_default: 'staff_default',
+            inventory_class: 'staff_default',
             is_family_available: false,
           }),
         ]}
@@ -74,7 +74,7 @@ describe('UnitInventoryPanel', () => {
             unit_id: 'u2',
             code: 'le-shack',
             name: 'Le Shack',
-            allocation_default: 'staff_default',
+            inventory_class: 'staff_default',
             is_family_available: false,
           }),
         ]}
@@ -108,7 +108,7 @@ describe('UnitInventoryPanel', () => {
       <UnitInventoryPanel
         units={[
           unit({
-            allocation_default: 'staff_default',
+            inventory_class: 'staff_default',
             family_available_override: true,
             is_family_available: true,
           }),
@@ -243,7 +243,7 @@ describe('UnitInventoryPanel — releasing a staff cabin', () => {
     unit_id: 'u2',
     code: 'aspen-lodge',
     name: 'Aspen Lodge',
-    allocation_default: 'staff_default' as const,
+    inventory_class: 'staff_default' as const,
     is_family_available: false,
   }
 

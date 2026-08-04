@@ -8,10 +8,10 @@
  * TWO THINGS THIS FORM EXISTS TO GET RIGHT (the third, `sleeps`, is in
  * `UnitCapacityFields`; the bathroom vocabulary is in `unitAmenities`):
  *
- * 1. is_active and allocation_default are ALWAYS submitted. PocketBase has
+ * 1. is_active and inventory_class are ALWAYS submitted. PocketBase has
  *    no per-field default for bool or select, and `required: true` on a bool
  *    means "must be true", so neither can be required in the schema. A create
- *    that omits them yields `is_active = false, allocation_default = ''`:
+ *    that omits them yields `is_active = false, inventory_class = ''`:
  *    a unit no list query returns, which also matches neither branch of the
  *    family-availability rules.
  *
@@ -29,7 +29,7 @@ import toast from 'react-hot-toast'
 import { createLodgingUnit, updateLodgingUnit } from '../../../services/lodgingCrud'
 import { normaliseBeds } from '../../../types/beds'
 import type {
-  AllocationDefaultValue,
+  InventoryClassValue,
   LodgingAreaRecord,
   LodgingUnitInput,
   LodgingUnitRecord,
@@ -74,8 +74,8 @@ export function LodgingUnitForm({ areas, units, unit, onSaved, onCancel }: Lodgi
     x: unit ? String(unit.map_x) : '',
     y: unit ? String(unit.map_y) : '',
   })
-  const [allocation, setAllocation] = useState<AllocationDefaultValue>(
-    unit?.allocation_default === 'staff_default' ? 'staff_default' : 'family_pool'
+  const [inventoryClass, setInventoryClass] = useState<InventoryClassValue>(
+    unit?.inventory_class === 'staff_default' ? 'staff_default' : 'family_pool'
   )
   const [isActive, setIsActive] = useState(unit ? unit.is_active : true)
   const [isContainer, setIsContainer] = useState(unit?.is_container ?? false)
@@ -109,7 +109,7 @@ export function LodgingUnitForm({ areas, units, unit, onSaved, onCancel }: Lodgi
       parent_unit: identity.parent_unit,
       // Never omitted — see the header comment.
       is_active: isActive,
-      allocation_default: allocation,
+      inventory_class: inventoryClass,
       is_container: isContainer,
       notes,
       beds: capacity.beds,
@@ -155,13 +155,13 @@ export function LodgingUnitForm({ areas, units, unit, onSaved, onCancel }: Lodgi
 
       <label className="text-sm">
         <span className={LABEL}>Allocation</span>
-        {/* No blank option: an empty allocation_default matches neither
+        {/* No blank option: an empty inventory_class matches neither
             branch of the family-availability rules. */}
         <select
           className={FIELD}
-          value={allocation}
+          value={inventoryClass}
           onChange={(e) => {
-            setAllocation(e.target.value as AllocationDefaultValue)
+            setInventoryClass(e.target.value as InventoryClassValue)
           }}
         >
           <option value="family_pool">Available to guests</option>

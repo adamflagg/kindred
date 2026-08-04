@@ -1,5 +1,5 @@
 /**
- * A unit created without an explicit is_active / allocation_default is
+ * A unit created without an explicit is_active / inventory_class is
  * invisible AND unclassifiable — PocketBase has no per-field default for
  * bool or select. The form must never let that happen.
  */
@@ -45,7 +45,7 @@ const UNIT: LodgingUnitRecord = {
   has_ac: false,
   has_fridge: false,
   is_accessible: false,
-  allocation_default: 'family_pool',
+  inventory_class: 'family_pool',
   is_confirmed: false,
   is_active: true,
   is_container: false,
@@ -53,7 +53,7 @@ const UNIT: LodgingUnitRecord = {
 }
 
 describe('LodgingUnitForm — create', () => {
-  it('submits is_active true and an explicit allocation_default', async () => {
+  it('submits is_active true and an explicit inventory_class', async () => {
     createLodgingUnit.mockResolvedValue({ id: 'u1' })
     const onSaved = vi.fn()
     const user = userEvent.setup()
@@ -68,7 +68,7 @@ describe('LodgingUnitForm — create', () => {
     })
     const [payload] = createLodgingUnit.mock.calls[0] as [LodgingUnitInput]
     expect(payload.is_active).toBe(true)
-    expect(payload.allocation_default).toBe('family_pool')
+    expect(payload.inventory_class).toBe('family_pool')
     expect(onSaved).toHaveBeenCalled()
   })
 

@@ -36,7 +36,7 @@ def _unit(
     *,
     sleeps: int = 0,
     is_container: bool = False,
-    allocation_default: str = "family_pool",
+    inventory_class: str = "family_pool",
     is_active: bool = True,
     is_confirmed: bool = True,
     bathroom: str = "none",
@@ -50,7 +50,7 @@ def _unit(
         name=name,
         sleeps=sleeps,
         is_container=is_container,
-        allocation_default=allocation_default,
+        inventory_class=inventory_class,
         is_active=is_active,
         is_confirmed=is_confirmed,
         bathroom=bathroom,
@@ -490,7 +490,7 @@ class TestUnitsAndCounts:
             fetch_session=FAMILY_SESSION,
             fetch_units=[
                 _unit("u1", "ridge-a", "Ridge A", sleeps=5),
-                _unit("u2", "le-shack", "Le Shack", sleeps=4, allocation_default="staff_default"),
+                _unit("u2", "le-shack", "Le Shack", sleeps=4, inventory_class="staff_default"),
             ],
             fetch_availability=[_rec(unit="u1", family_available=False, note="Program director")],
         )
@@ -527,7 +527,7 @@ class TestUnitsAndCounts:
             fetch_session=FAMILY_SESSION,
             fetch_units=[
                 _unit("u1", "ridge-a", "Ridge A", sleeps=5),
-                _unit("u2", "aspen-lodge", "Aspen Lodge", allocation_default="staff_default"),
+                _unit("u2", "aspen-lodge", "Aspen Lodge", inventory_class="staff_default"),
             ],
         )
         roster = await LodgingRosterService(repo).build_roster(2026, 1000001)
@@ -545,7 +545,7 @@ class TestUnitsAndCounts:
             fetch_session=FAMILY_SESSION,
             fetch_units=[
                 _unit("u1", "ridge-a", "Ridge A", sleeps=5),
-                _unit("u2", "aspen-lodge", "Aspen Lodge", sleeps=4, allocation_default="staff_default"),
+                _unit("u2", "aspen-lodge", "Aspen Lodge", sleeps=4, inventory_class="staff_default"),
             ],
             fetch_availability=[_rec(unit="u2", family_available=True, note="")],
         )
@@ -582,7 +582,7 @@ class TestUnitsAndCounts:
         repo = _repo(
             fetch_session=FAMILY_SESSION,
             fetch_units=[
-                _unit("u1", "manzanita-7", "New Trailer (Manzanitas)", sleeps=4, allocation_default="staff_default")
+                _unit("u1", "manzanita-7", "New Trailer (Manzanitas)", sleeps=4, inventory_class="staff_default")
             ],
             fetch_availability=[_rec(unit="u1", family_available=True, note="")],
         )
@@ -627,7 +627,7 @@ class TestUnitsAndCounts:
             fetch_session=FAMILY_SESSION,
             fetch_units=[
                 _unit("u1", "ridge-a", "Ridge A", sleeps=5, is_confirmed=True),
-                _unit("u2", "aspen-lodge", "Aspen Lodge", allocation_default="staff_default"),
+                _unit("u2", "aspen-lodge", "Aspen Lodge", inventory_class="staff_default"),
             ],
             count_unconfirmed_units=1,
         )

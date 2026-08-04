@@ -45,7 +45,7 @@ def unit_capacity(sleeps: int | None) -> int | None:
     return int(sleeps)
 
 
-def is_family_available(allocation_default: str, override: bool | None) -> bool:
+def is_family_available(inventory_class: str, override: bool | None) -> bool:
     """Whether this unit can take a family this weekend, in exactly one place.
 
     | base          | override | family-available |
@@ -71,14 +71,14 @@ def is_family_available(allocation_default: str, override: bool | None) -> bool:
     falsy test.
 
     A unit created through the admin UI without an explicit
-    `allocation_default` stores "" and matches neither base row. We treat "" as
+    `inventory_class` stores "" and matches neither base row. We treat "" as
     family_pool so the unit is at least visible, and the roster reports it
     separately via RosterCounts.units_missing_allocation rather than hiding
     the gap.
     """
     if override is not None:
         return override
-    return allocation_default != "staff_default"
+    return inventory_class != "staff_default"
 
 
 def effective_bathroom(

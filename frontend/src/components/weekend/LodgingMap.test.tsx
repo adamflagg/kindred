@@ -90,7 +90,7 @@ function unit(overrides: Partial<LodgingUnitRow> = {}): LodgingUnitRow {
     is_confirmed: false,
     is_active: true,
     is_container: false,
-    allocation_default: 'family_pool',
+    inventory_class: 'family_pool',
     family_available_override: null,
     reason: '',
     is_family_available: true,
@@ -449,7 +449,7 @@ describe('LodgingMap', () => {
 
   it('renders a mixed staff/family cluster the same shape regardless of member order', () => {
     // Close enough (2px apart on the 1000px jsdom fallback canvas) to cluster
-    // into one mark. Mixing allocation_default is the case that flips with
+    // into one mark. Mixing inventory_class is the case that flips with
     // whichever row the database happens to return first if the mark reads
     // its shape off `members[0]` instead of the whole cluster.
     const staffMix = [
@@ -459,7 +459,7 @@ describe('LodgingMap', () => {
         code: 'staff-a',
         map_x: 0.502,
         map_y: 0.5,
-        allocation_default: 'staff_default',
+        inventory_class: 'staff_default',
       }),
     ]
     const shapeOf = (units: LodgingUnitRow[]) => {
@@ -707,7 +707,7 @@ describe('LodgingMap highlight controls', () => {
     name: 'Cedar 2',
     map_x: 0.7,
     map_y: 0.2,
-    allocation_default: 'staff_default',
+    inventory_class: 'staff_default',
   })
 
   it('draws empty rooms by default', () => {

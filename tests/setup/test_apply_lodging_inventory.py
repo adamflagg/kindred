@@ -87,7 +87,7 @@ _STAFF_OWNED_VALUES: dict[str, tuple[object, object]] = {
     "map_y": (0.9, 0.5),
     "is_confirmed": (True, False),
     "is_active": (False, True),
-    "allocation_default": ("staff_default", "family_pool"),
+    "inventory_class": ("staff_default", "family_pool"),
 }
 
 

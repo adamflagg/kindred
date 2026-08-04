@@ -68,8 +68,17 @@ done
 bt=$(field_prop lodging_units bathroom values || true)
 [[ "$bt" == '["none","private","shared"]' ]] || note "lodging_units.bathroom values are $bt (expected [\"none\",\"private\",\"shared\"])"
 
-ad=$(field_prop lodging_units allocation_default values || true)
-[[ "$ad" == '["family_pool","staff_default"]' ]] || note "lodging_units.allocation_default values are $ad"
+# 1500000136 renamed allocation_default. After 1500000135 the column is a ROLE,
+# not a default: "default" implied an override, and the override became a rare
+# per-weekend exception rather than the point. Asserted BOTH ways, because a
+# remove-and-add satisfies the first half while silently dropping all 114 values
+# — the new name is present either way, so only the old name's absence
+# distinguishes a rename from a drop-and-recreate.
+ic=$(field_prop lodging_units inventory_class values || true)
+[[ "$ic" == '["family_pool","staff_default"]' ]] || note "lodging_units.inventory_class values are $ic"
+old_ad=$(field_prop lodging_units allocation_default name || true)
+[[ -z "$old_ad" ]] \
+  || note "lodging_units still carries allocation_default; 1500000136 renames it to inventory_class"
 
 # Amenity columns added by 1500000131 for the inventory seed. Asserted by TYPE,
 # because a bool written where a select belongs is the difference between

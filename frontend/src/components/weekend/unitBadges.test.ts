@@ -37,7 +37,7 @@ function unit(overrides: Partial<LodgingUnitRow> = {}): LodgingUnitRow {
     is_confirmed: false,
     is_active: true,
     is_container: false,
-    allocation_default: 'family_pool',
+    inventory_class: 'family_pool',
     family_available_override: null,
     reason: '',
     is_family_available: true,
@@ -75,7 +75,7 @@ describe('reservationBadge', () => {
 
   it('badges permanent staff housing as staff', () => {
     const badge = reservationBadge(
-      unit({ allocation_default: 'staff_default', is_family_available: false })
+      unit({ inventory_class: 'staff_default', is_family_available: false })
     )
 
     expect(badge?.label).toBe('Staff')
@@ -87,7 +87,7 @@ describe('reservationBadge', () => {
   it('badges a staff cabin opened to families for this weekend', () => {
     const badge = reservationBadge(
       unit({
-        allocation_default: 'staff_default',
+        inventory_class: 'staff_default',
         family_available_override: true,
         is_family_available: true,
       })
@@ -115,7 +115,7 @@ describe('reservationBadge', () => {
     // no row is ordinary staff housing, not a release.
     const badge = reservationBadge(
       unit({
-        allocation_default: 'staff_default',
+        inventory_class: 'staff_default',
         family_available_override: null,
         is_family_available: false,
       })
@@ -164,7 +164,7 @@ describe('availabilityAction', () => {
     // Rare and explicit, not absent. One season of data corroborates that staff
     // cabins are never released; it does not prove it, so the capability stays.
     expect(
-      availabilityAction(unit({ allocation_default: 'staff_default', is_family_available: false }))
+      availabilityAction(unit({ inventory_class: 'staff_default', is_family_available: false }))
     ).toEqual({ kind: 'release', label: 'Release', familyAvailable: true, needsReason: true })
   })
 
@@ -182,7 +182,7 @@ describe('availabilityAction', () => {
     expect(
       availabilityAction(
         unit({
-          allocation_default: 'staff_default',
+          inventory_class: 'staff_default',
           family_available_override: true,
           is_family_available: true,
         })
@@ -199,7 +199,7 @@ describe('availabilityAction', () => {
     expect(
       availabilityAction(
         unit({
-          allocation_default: 'staff_default',
+          inventory_class: 'staff_default',
           family_available_override: false,
           is_family_available: false,
         })

@@ -66,7 +66,7 @@ NULLABLE_FIELDS = ("max_beds",)
 # Never written by this script under any flag. These are the fields staff
 # maintain, and overwriting them is precisely what create-if-absent exists to
 # prevent.
-STAFF_OWNED = ("sleeps", "map_x", "map_y", "is_confirmed", "is_active", "allocation_default")
+STAFF_OWNED = ("sleeps", "map_x", "map_y", "is_confirmed", "is_active", "inventory_class")
 
 
 @dataclass

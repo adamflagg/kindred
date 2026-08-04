@@ -12,14 +12,14 @@
 import type { LodgingAreaRecord, LodgingUnitRecord } from '../../../types/lodging'
 
 export interface UnitSortColumn {
-  field: 'name' | 'code' | 'sleeps' | 'allocation_default' | 'is_confirmed'
+  field: 'name' | 'code' | 'sleeps' | 'inventory_class' | 'is_confirmed'
   label: string
 }
 
 export const UNIT_SORT_COLUMNS: readonly UnitSortColumn[] = [
   { field: 'name', label: 'Unit' },
   { field: 'sleeps', label: 'Sleeps' },
-  { field: 'allocation_default', label: 'Allocation' },
+  { field: 'inventory_class', label: 'Allocation' },
   { field: 'is_confirmed', label: 'Status' },
 ] as const
 
@@ -47,8 +47,8 @@ function sortKey(unit: LodgingUnitRecord, field: UnitSortField): string | number
     case 'sleeps':
       // 0 is UNKNOWN, never zero capacity.
       return unit.sleeps > 0 ? unit.sleeps : null
-    case 'allocation_default':
-      return unit.allocation_default
+    case 'inventory_class':
+      return unit.inventory_class
     case 'is_confirmed':
       // Unconfirmed first ascending: that is the outstanding work, and the
       // roster cannot judge a housing need against an unconfirmed cabin.

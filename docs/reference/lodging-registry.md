@@ -131,7 +131,7 @@ an empty registry rather than an error anyone will see.
       "bathroom_group": "grp-1",// units sharing one bathroom; "" for none
       "parent_unit": "bldg-1",  // unit CODE of the containing building, or ""
       "near_bathhouse": true,
-      "allocation_default": "family_pool",  // family_pool | staff_default
+      "inventory_class": "family_pool",  // family_pool | staff_default
       "is_container": false,    // true = a building row: never bookable, never counted
       "notes": "",
 
@@ -198,7 +198,7 @@ default and splits fields by how much damage writing them could do:
 |---|---|---|
 | Inventory | the amenities and `max_beds` | filled freely — they were empty |
 | Structural | `bathroom`, `bathroom_group`, `is_container`, `parent_unit` | reported; written only under `--structural`, since each overwrites a value that may be deliberate |
-| Staff-owned | `sleeps`, `map_x`, `map_y`, `is_confirmed`, `is_active`, `allocation_default` | **never written**, under any flag |
+| Staff-owned | `sleeps`, `map_x`, `map_y`, `is_confirmed`, `is_active`, `inventory_class` | **never written**, under any flag |
 
 Two further rules: an empty `has_ramp` never overwrites a real assessment, and
 `notes` are filled only when the database has none — replacing free text a staff

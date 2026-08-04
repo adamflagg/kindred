@@ -45,7 +45,7 @@ func setupRegistryCollections(t *testing.T, app core.App) {
 	units.Fields.Add(&core.TextField{Name: "bathroom_group"})
 	units.Fields.Add(&core.BoolField{Name: "near_bathhouse"})
 	units.Fields.Add(&core.SelectField{
-		Name: "allocation_default", Values: []string{"family_pool", "staff_default"}, MaxSelect: 1,
+		Name: "inventory_class", Values: []string{"family_pool", "staff_default"}, MaxSelect: 1,
 	})
 	units.Fields.Add(&core.BoolField{Name: "is_confirmed"})
 	units.Fields.Add(&core.BoolField{Name: "is_active"})
@@ -151,15 +151,15 @@ const fixtureRegistry = `{
   "units": [
     {"area": "AREA1", "code": "child-a", "name": "Child A", "map_x": 0.51, "map_y": 0.26,
      "sleeps": 4, "bathroom": "shared", "bathroom_group": "grp-1", "parent_unit": "building-1",
-     "near_bathhouse": true, "allocation_default": "family_pool", "is_container": false,
+     "near_bathhouse": true, "inventory_class": "family_pool", "is_container": false,
      "notes": "a note"},
     {"area": "AREA1", "code": "building-1", "name": "Building One", "map_x": 0.5, "map_y": 0.25,
      "sleeps": null, "bathroom": "none", "bathroom_group": "", "parent_unit": "",
-     "near_bathhouse": false, "allocation_default": "family_pool", "is_container": true,
+     "near_bathhouse": false, "inventory_class": "family_pool", "is_container": true,
      "notes": ""},
     {"area": "AREA1", "code": "child-b", "name": "Child B", "map_x": 0.52, "map_y": 0.27,
      "sleeps": 2, "bathroom": "shared", "bathroom_group": "grp-1", "parent_unit": "building-1",
-     "near_bathhouse": false, "allocation_default": "staff_default", "is_container": false,
+     "near_bathhouse": false, "inventory_class": "staff_default", "is_container": false,
      "notes": ""}
   ],
   "aliases": [
@@ -298,8 +298,8 @@ func TestSeedRegistryCreatesAreasUnitsAndAliases(t *testing.T) {
 	if !child.GetBool("near_bathhouse") {
 		t.Error("unit near_bathhouse = false, want true")
 	}
-	if got := child.GetString("allocation_default"); got != "family_pool" {
-		t.Errorf("unit allocation_default = %q, want family_pool", got)
+	if got := child.GetString("inventory_class"); got != "family_pool" {
+		t.Errorf("unit inventory_class = %q, want family_pool", got)
 	}
 	if got := child.GetString("notes"); got != "a note" {
 		t.Errorf("unit notes = %q, want %q", got, "a note")
@@ -329,7 +329,7 @@ func TestSeedRegistryWritesAmenities(t *testing.T) {
 
 	body := `{"areas": [{"code": "AREA1", "name": "First Area"}], "units": [
 	  {"area": "AREA1", "code": "warm", "name": "Warm", "bathroom": "none",
-	   "allocation_default": "family_pool",
+	   "inventory_class": "family_pool",
 	   "has_power": true, "has_ac": true, "has_fridge": true, "is_accessible": true,
 	   "has_heat": true, "is_weatherized": true,
 	   "has_plumbing": true, "has_space_heater": true, "has_pack_play_space": true,
@@ -373,7 +373,7 @@ func TestSeedRegistryUnassessedRampStaysBlank(t *testing.T) {
 
 	body := `{"areas": [{"code": "AREA1", "name": "First Area"}], "units": [
 	  {"area": "AREA1", "code": "unknown-ramp", "name": "Unknown", "bathroom": "none",
-	   "allocation_default": "family_pool"}
+	   "inventory_class": "family_pool"}
 	], "aliases": []}`
 
 	if err := seedRegistryFromFile(app, writeRegistry(t, body)); err != nil {
@@ -591,7 +591,7 @@ func TestSeedRegistryUnknownAreaCodeIsAnError(t *testing.T) {
 
 	body := `{"areas": [], "units": [
 	  {"area": "NOPE", "code": "orphan", "name": "Orphan", "bathroom": "none",
-	   "allocation_default": "family_pool"}
+	   "inventory_class": "family_pool"}
 	], "aliases": []}`
 
 	err := seedRegistryFromFile(app, writeRegistry(t, body))
@@ -608,7 +608,7 @@ func TestSeedRegistryUnknownParentCodeIsAnError(t *testing.T) {
 
 	body := `{"areas": [{"code": "AREA1", "name": "First Area"}], "units": [
 	  {"area": "AREA1", "code": "orphan", "name": "Orphan", "parent_unit": "nope",
-	   "bathroom": "none", "allocation_default": "family_pool"}
+	   "bathroom": "none", "inventory_class": "family_pool"}
 	], "aliases": []}`
 
 	if err := seedRegistryFromFile(app, writeRegistry(t, body)); err == nil {
@@ -623,7 +623,7 @@ func TestSeedRegistryUnknownAliasMemberIsAnError(t *testing.T) {
 
 	body := `{"areas": [{"code": "AREA1", "name": "First Area"}], "units": [
 	  {"area": "AREA1", "code": "real", "name": "Real", "bathroom": "none",
-	   "allocation_default": "family_pool"}
+	   "inventory_class": "family_pool"}
 	], "aliases": [
 	  {"alias_string": "Broken", "member_units": ["real", "ghost"]}
 	]}`
@@ -643,9 +643,9 @@ func TestSeedRegistrySameAliasStringDifferentWindowsBothLand(t *testing.T) {
 
 	body := `{"areas": [{"code": "AREA1", "name": "First Area"}], "units": [
 	  {"area": "AREA1", "code": "old", "name": "Old", "bathroom": "none",
-	   "allocation_default": "family_pool"},
+	   "inventory_class": "family_pool"},
 	  {"area": "AREA1", "code": "new", "name": "New", "bathroom": "none",
-	   "allocation_default": "family_pool"}
+	   "inventory_class": "family_pool"}
 	], "aliases": [
 	  {"alias_string": "Renamed", "member_units": ["old"],
 	   "valid_from_year": null, "valid_to_year": 2024},
@@ -682,9 +682,9 @@ func TestSeedRegistryDuplicateUnitCodeIsAnError(t *testing.T) {
 
 	body := `{"areas": [{"code": "AREA1", "name": "First Area"}], "units": [
 	  {"area": "AREA1", "code": "twin", "name": "First", "bathroom": "none",
-	   "allocation_default": "family_pool"},
+	   "inventory_class": "family_pool"},
 	  {"area": "AREA1", "code": "twin", "name": "Second", "bathroom": "none",
-	   "allocation_default": "family_pool"}
+	   "inventory_class": "family_pool"}
 	], "aliases": []}`
 
 	err := seedRegistryFromFile(app, writeRegistry(t, body))
@@ -722,7 +722,7 @@ func TestSeedRegistryDuplicateAliasWindowIsAnError(t *testing.T) {
 
 	body := `{"areas": [{"code": "AREA1", "name": "First Area"}], "units": [
 	  {"area": "AREA1", "code": "real", "name": "Real", "bathroom": "none",
-	   "allocation_default": "family_pool"}
+	   "inventory_class": "family_pool"}
 	], "aliases": [
 	  {"alias_string": "Same", "member_units": ["real"], "valid_from_year": 2025},
 	  {"alias_string": "Same", "member_units": ["real"], "valid_from_year": 2025}

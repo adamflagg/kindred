@@ -70,7 +70,7 @@ export function LodgingUnitRow({
         )}
       </td>
       <td className="py-1.5">
-        {unit.allocation_default === 'staff_default' ? 'Held for staff' : 'Available to guests'}
+        {unit.inventory_class === 'staff_default' ? 'Held for staff' : 'Available to guests'}
       </td>
       <td className="py-1.5">
         <div className="flex flex-wrap items-center gap-1.5">

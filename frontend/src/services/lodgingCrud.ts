@@ -99,7 +99,7 @@ export async function listLodgingUnits(): Promise<LodgingUnitRecord[]> {
 /**
  * Create a unit.
  *
- * `is_active` and `allocation_default` are ALWAYS written, and `is_container`
+ * `is_active` and `inventory_class` are ALWAYS written, and `is_container`
  * and `is_confirmed` default to false explicitly. PocketBase has no per-field
  * default for bool or select, so anything omitted here lands as `false` / `''`:
  * a unit that no list query returns and that matches neither branch of the
@@ -110,7 +110,7 @@ export async function createLodgingUnit(input: LodgingUnitInput): Promise<Lodgin
   return pb.collection(UNITS).create<LodgingUnitRecord>({
     ...input,
     is_active: input.is_active,
-    allocation_default: input.allocation_default,
+    inventory_class: input.inventory_class,
     is_container: input.is_container ?? false,
     is_confirmed: input.is_confirmed ?? false,
   })

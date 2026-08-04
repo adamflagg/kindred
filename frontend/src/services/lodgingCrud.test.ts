@@ -3,9 +3,9 @@
  *
  * The load-bearing assertion here is the unit-create payload. PocketBase has
  * no per-field default for bool or select, and `required: true` on a bool
- * means "must be true", so neither is_active nor allocation_default can be
+ * means "must be true", so neither is_active nor inventory_class can be
  * marked required in the schema. A create that omits them yields
- * `is_active = false, allocation_default = ''` — a unit invisible to every
+ * `is_active = false, inventory_class = ''` — a unit invisible to every
  * list query that also matches neither branch of the availability rules.
  *
  * The work queue is `lodging_ingest_issues`, NOT the `lodging_unresolved_aliases`
@@ -61,18 +61,18 @@ describe('listLodgingUnits', () => {
 })
 
 describe('createLodgingUnit', () => {
-  it('always sends is_active and an explicit allocation_default', async () => {
+  it('always sends is_active and an explicit inventory_class', async () => {
     await createLodgingUnit({
       area: 'area_1',
       name: 'Ridge N',
       code: 'ridge-n',
       is_active: true,
-      allocation_default: 'family_pool',
+      inventory_class: 'family_pool',
     })
 
     const [payload] = create.mock.calls[0] as [Partial<LodgingUnitRecord>]
     expect(payload.is_active).toBe(true)
-    expect(payload.allocation_default).toBe('family_pool')
+    expect(payload.inventory_class).toBe('family_pool')
   })
 
   it('defaults a missing is_container to false rather than omitting it', async () => {
@@ -81,13 +81,13 @@ describe('createLodgingUnit', () => {
       name: 'Ridge N',
       code: 'ridge-n',
       is_active: true,
-      allocation_default: 'staff_default',
+      inventory_class: 'staff_default',
     })
 
     const [payload] = create.mock.calls[0] as [Partial<LodgingUnitRecord>]
     expect(payload.is_container).toBe(false)
     expect(payload.is_confirmed).toBe(false)
-    expect(payload.allocation_default).toBe('staff_default')
+    expect(payload.inventory_class).toBe('staff_default')
   })
 })
 

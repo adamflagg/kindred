@@ -255,7 +255,7 @@ def _is_planning_inventory(unit: LodgingUnitSummary) -> bool:
     weekend is still inventory and is reported by `units_reserved`. Permanent
     staff housing was never inventory, so it cannot be "held back".
     """
-    return unit.allocation_default != "staff_default" or unit.is_family_available
+    return unit.inventory_class != "staff_default" or unit.is_family_available
 
 
 class LodgingRosterService:
@@ -496,7 +496,7 @@ class LodgingRosterService:
             code = _s(unit, "code")
             group = _s(unit, "bathroom_group")
             area = (getattr(unit, "expand", None) or {}).get("area")
-            allocation_default = _s(unit, "allocation_default")
+            inventory_class = _s(unit, "inventory_class")
             override = override_by_unit.get(_s(unit, "id"))
             summaries.append(
                 LodgingUnitSummary(
@@ -534,10 +534,10 @@ class LodgingRosterService:
                     is_confirmed=_b(unit, "is_confirmed"),
                     is_active=_b(unit, "is_active"),
                     is_container=_b(unit, "is_container"),
-                    allocation_default=allocation_default,
+                    inventory_class=inventory_class,
                     family_available_override=override,
                     reason=reason_by_unit.get(_s(unit, "id"), ""),
-                    is_family_available=is_family_available(allocation_default, override),
+                    is_family_available=is_family_available(inventory_class, override),
                     map_x=map_x,
                     map_y=map_y,
                 )
@@ -870,6 +870,6 @@ class LodgingRosterService:
             # unit is already here with its is_confirmed, so the second answer
             # bought nothing but a chance to disagree, and one fetch.
             units_unconfirmed=sum(1 for u in bookable if not u.is_confirmed),
-            units_missing_allocation=sum(1 for u in bookable if not u.allocation_default),
+            units_missing_allocation=sum(1 for u in bookable if not u.inventory_class),
             unresolved_aliases=unresolved_aliases,
         )
