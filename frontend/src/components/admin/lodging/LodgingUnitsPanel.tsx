@@ -32,6 +32,7 @@ import {
   userDataOptions,
 } from '../../../utils/queryKeys'
 import { QueryGuard } from '../../QueryGuard'
+import { Modal } from '../../ui/Modal'
 import { BUTTON_PRIMARY, BUTTON_SECONDARY } from './lodgingStyles'
 import { LodgingAreasDrawer } from './LodgingAreasDrawer'
 import { LodgingUnitForm } from './LodgingUnitForm'
@@ -50,16 +51,20 @@ export function LodgingUnitsPanel() {
   const formRef = useRef<HTMLDivElement>(null)
 
   /**
-   * Move attention to the editor whenever it opens — including switching
-   * straight from editing one unit to another, since the form never
-   * unmounts in between (see the `key` below). Without this, opening the
-   * form on a 93-row table produces no visible change below the fold, and
-   * the natural response — clicking Edit again, or on a different row — is
-   * exactly how a stale-record write would go unnoticed.
+   * Move FOCUS to the editor whenever it opens — including switching straight
+   * from editing one unit to another, since the form never unmounts in between
+   * (see the `key` below).
+   *
+   * This used to scroll as well, because the editor mounted above a 93-row
+   * table and opening it otherwise produced no visible change below the fold —
+   * and the natural response, clicking Edit again or on a different row, is
+   * exactly how a stale-record write went unnoticed. The dialog solves that
+   * outright: it is unmissable without moving anything, so the staffer keeps
+   * their place in the list. Only the focus half is still needed, and the
+   * shared Modal does not set initial focus itself.
    */
   useEffect(() => {
     if (editing === null) return
-    formRef.current?.scrollIntoView({ block: 'nearest' })
     formRef.current?.querySelector<HTMLElement>('input, select, textarea')?.focus()
   }, [editing])
 
@@ -196,34 +201,57 @@ export function LodgingUnitsPanel() {
         </p>
       )}
 
+      {/* A DIALOG, not a panel above the table. The editor used to mount at the
+          top of a 93-row list and scroll the staffer to it, which lost their
+          place in the list every time they corrected one row. Header, borders
+          and shell follow ScenarioManagementModal so the admin surface reads as
+          one product; `xl` rather than its `lg` only because this form is a
+          two-column grid that `lg` would collapse. */}
       {editing !== null && (
-        <div ref={formRef} className="card-lodge p-4">
-          {/* Area is a required relation with no blank option, so a form
-              opened against an empty area list can only end in a server
-              rejection the staffer reads as their own mistake. */}
-          {areasQuery.isSuccess ? (
-            /* Keyed on the record so React remounts rather than reusing the
-               same instance — otherwise the form's useState initialisers
-               never re-run when `unit` changes, and a submit after switching
-               records writes the PREVIOUS unit's fields to the new one. */
-            <LodgingUnitForm
-              key={editing === 'new' ? 'new' : editing.id}
-              areas={areasQuery.data}
-              units={unitsQuery.data ?? []}
-              unit={editing === 'new' ? undefined : editing}
-              onSaved={refresh}
-              onCancel={() => {
-                setEditing(null)
-              }}
-            />
-          ) : (
-            <p className="text-muted-foreground text-sm">
-              {areasQuery.isError
-                ? 'The areas could not be loaded, so a unit cannot be edited right now.'
-                : 'Loading areas…'}
-            </p>
-          )}
-        </div>
+        <Modal
+          isOpen
+          onClose={() => {
+            setEditing(null)
+          }}
+          header={
+            <div className="border-border border-b p-6 pr-14">
+              <h2 className="font-display text-2xl font-bold">
+                {editing === 'new' ? 'Add a unit' : `Edit ${editing.name}`}
+              </h2>
+            </div>
+          }
+          size="xl"
+          noPadding
+          scrollable
+        >
+          <div ref={formRef} className="p-6">
+            {/* Area is a required relation with no blank option, so a form
+                opened against an empty area list can only end in a server
+                rejection the staffer reads as their own mistake. */}
+            {areasQuery.isSuccess ? (
+              /* Keyed on the record so React remounts rather than reusing the
+                 same instance — otherwise the form's useState initialisers
+                 never re-run when `unit` changes, and a submit after switching
+                 records writes the PREVIOUS unit's fields to the new one. */
+              <LodgingUnitForm
+                key={editing === 'new' ? 'new' : editing.id}
+                areas={areasQuery.data}
+                units={unitsQuery.data ?? []}
+                unit={editing === 'new' ? undefined : editing}
+                onSaved={refresh}
+                onCancel={() => {
+                  setEditing(null)
+                }}
+              />
+            ) : (
+              <p className="text-muted-foreground text-sm">
+                {areasQuery.isError
+                  ? 'The areas could not be loaded, so a unit cannot be edited right now.'
+                  : 'Loading areas…'}
+              </p>
+            )}
+          </div>
+        </Modal>
       )}
 
       <LodgingAreasDrawer
