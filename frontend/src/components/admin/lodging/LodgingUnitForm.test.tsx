@@ -406,6 +406,92 @@ describe('LodgingUnitForm — beds', () => {
   })
 })
 
+/**
+ * The flag has to be assembled from three pieces of state the capacity section
+ * does not own — `beds` is its own, but `is_confirmed` lives in the amenity
+ * object and `is_container` lives on the unit. These render through
+ * the whole form on purpose: the rule is unit-tested in capacityFlag.test.ts,
+ * and what is left to get wrong is the plumbing.
+ */
+describe('LodgingUnitForm — capacity flag', () => {
+  /** derived 4. */
+  const BUNKED: LodgingUnitRecord = { ...UNIT, beds: [{ type: 'twin_bunk', count: 2 }] }
+  const CONFLICTED: LodgingUnitRecord = { ...BUNKED, sleeps: 8 }
+
+  const renderUnit = (unit: LodgingUnitRecord) =>
+    render(
+      <LodgingUnitForm
+        areas={AREAS}
+        units={[unit]}
+        unit={unit}
+        onSaved={vi.fn()}
+        onCancel={vi.fn()}
+      />
+    )
+
+  it('states both numbers when staff claim more than the beds account for', () => {
+    renderUnit(CONFLICTED)
+
+    // Worded as a question, not an accusation: half the real conflicts are +1,
+    // which usually means a family doubled up rather than a data error.
+    expect(screen.getByText(/beds account for 4/i)).toBeInTheDocument()
+    expect(screen.getByText(/sleeps says 8/i)).toBeInTheDocument()
+  })
+
+  it('offers no one-click fix for a conflict', () => {
+    // Adjudicating one means knowing whether there is a mattress on the floor.
+    // That is not a click, and a button would invite resolving it as if it were.
+    renderUnit(CONFLICTED)
+
+    expect(screen.queryByRole('button', { name: 'Use suggested' })).not.toBeInTheDocument()
+  })
+
+  it('never writes sleeps for a conflict, leaving the staff number in the field', () => {
+    renderUnit(CONFLICTED)
+
+    expect(screen.getByLabelText('Sleeps')).toHaveValue(8)
+  })
+
+  it('says nothing about a unit staff have already confirmed', () => {
+    renderUnit({ ...CONFLICTED, is_confirmed: true })
+
+    expect(screen.queryByText(/beds account for/i)).not.toBeInTheDocument()
+    expect(screen.queryByText(/Suggested: sleeps/i)).not.toBeInTheDocument()
+  })
+
+  it('says nothing about a container, whose beds are not the building’s', () => {
+    renderUnit({ ...CONFLICTED, is_container: true })
+
+    expect(screen.queryByText(/beds account for/i)).not.toBeInTheDocument()
+  })
+
+  it('says nothing when staff sleep fewer people than the beds allow', () => {
+    renderUnit({ ...BUNKED, sleeps: 3 })
+
+    expect(screen.queryByText(/beds account for/i)).not.toBeInTheDocument()
+    expect(screen.queryByText(/Suggested: sleeps/i)).not.toBeInTheDocument()
+  })
+
+  it('offers the suggestion when no staff number exists yet', () => {
+    renderUnit({ ...BUNKED, sleeps: 0 })
+
+    expect(screen.getByText(/Suggested: sleeps 4/i)).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Use suggested' })).toBeInTheDocument()
+  })
+
+  it('never shows the sheet capacity, which is not a corroborating number', () => {
+    // The Master Housing `Capacity` column agrees with the bed count on only
+    // 42 of the 88 units carrying both, and sits BELOW the physical bed count
+    // on 33 — thirty at exactly -1, with no cause derivable from the beds.
+    // Half the conflicts this flag raises are themselves ±1, so showing a
+    // column with ±1 systematic noise beside them would lend a confidence it
+    // has not earned.
+    renderUnit(CONFLICTED)
+
+    expect(screen.queryByText(/sheet capacity/i)).not.toBeInTheDocument()
+  })
+})
+
 describe('LodgingUnitForm — clearing capacity on an existing unit', () => {
   // On CREATE a blank field must omit `sleeps`, so PocketBase writes its own 0.
   // On EDIT omitting it leaves the previous number in place, so clearing the
