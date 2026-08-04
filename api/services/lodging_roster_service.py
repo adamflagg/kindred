@@ -295,9 +295,10 @@ class LodgingRosterService:
         `bunk_assignments_draft`. A party with no draft row is UNPLACED in
         that scenario; the mirror is not consulted, and is not even read.
 
-        AVAILABILITY is the deliberate exception and still overlays: nothing
-        syncs into `lodging_availability`, so a scenario has no record of
-        truth to replace there and reads the live reservations as its base.
+        AVAILABILITY used to be the exception and is not any more. 1500000135
+        deleted this table's scenario dimension, so there is ONE availability
+        read, issued identically with or without a scenario -- a burst pipe
+        closes a cabin in every plan for that weekend. See the TaskGroup below.
         """
         session = await self.repository.fetch_session(year, session_cm_id)
         if session is None:

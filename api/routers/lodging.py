@@ -110,9 +110,9 @@ async def get_weekend_roster(
     With no `scenario` this is the CampMinder mirror -- the synced rows, which
     no UI may write. With one, the scenario's own draft placements REPLACE
     them: a party with no draft row is unplaced in that scenario, and the
-    mirror is not read at all. Reservation overrides still overlay the live
-    ones per unit, which is deliberate -- nothing syncs into
-    `lodging_availability`, so there is no record of truth to replace there.
+    mirror is not read at all. Availability does NOT vary this way: 1500000135
+    deleted its scenario dimension, so the same rows resolve for every plan --
+    a burst pipe closes a cabin in all of them. See `set_availability` below.
     """
     try:
         return await _service().build_roster(year, session_cm_id, scenario)
