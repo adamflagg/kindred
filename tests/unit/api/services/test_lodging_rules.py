@@ -13,6 +13,8 @@ module docstring of api/services/lodging_rules.py for why re-parsing them in
 Python would regress two fixes that live only on the Go side.
 """
 
+import pytest
+
 from api.services.lodging_rules import (
     effective_bathroom,
     is_family_available,
@@ -35,28 +37,46 @@ class TestUnitCapacity:
 
 
 class TestIsFamilyAvailable:
-    def test_family_pool_with_no_override_is_available(self) -> None:
-        assert is_family_available("family_pool", None) is True
+    """Two layers, not three, and the override STATES the outcome.
 
-    def test_family_pool_reserved_for_staff_is_not_available(self) -> None:
-        assert is_family_available("family_pool", "reserved_staff") is False
+    1500000135 deleted availability's scenario dimension -- a burst pipe closes
+    a cabin in every plan for that weekend -- and collapsed the three-value
+    `state` enum to one boolean. The three values were REASONS, not states:
+    each only meant anything read against the unit's role, so
+    `released_to_family` on a family_pool unit was storable and meaningless.
+    """
 
-    def test_family_pool_reserved_other_is_not_available(self) -> None:
-        assert is_family_available("family_pool", "reserved_other") is False
+    @pytest.mark.parametrize(
+        ("allocation_default", "override", "expected"),
+        [
+            ("family_pool", None, True),
+            ("family_pool", False, False),  # burst pipe
+            ("family_pool", True, True),  # redundant but harmless
+            ("staff_default", None, False),
+            ("staff_default", True, True),  # released for this weekend
+            ("staff_default", False, False),
+            # An admin-created unit with no explicit role stores "". Treated as
+            # family_pool so it is at least visible; the roster reports the gap
+            # separately via RosterCounts.units_missing_allocation.
+            ("", None, True),
+            ("", False, False),
+        ],
+    )
+    def test_the_override_wins_and_the_role_decides_without_one(
+        self, allocation_default: str, override: bool | None, expected: bool
+    ) -> None:
+        assert is_family_available(allocation_default, override) is expected
 
-    def test_staff_default_with_no_override_is_not_available(self) -> None:
-        assert is_family_available("staff_default", None) is False
+    def test_false_is_a_decision_and_not_an_absent_override(self) -> None:
+        """`False` and `None` are different answers on a family_pool unit.
 
-    def test_staff_default_released_is_available(self) -> None:
-        assert is_family_available("staff_default", "released_to_family") is True
-
-    def test_empty_allocation_default_falls_back_to_family_pool(self) -> None:
-        """A unit created without an explicit allocation_default stores "".
-
-        It matches neither row of the spec table. We surface it as available
-        so it is at least visible, and report it separately in the counts.
+        This is the assertion that stops the override being read with a falsy
+        test (`if override:`), which would silently discard every reservation --
+        the write this column mainly exists for. Absence means "ask the role";
+        False means "closed this weekend".
         """
-        assert is_family_available("", None) is True
+        assert is_family_available("family_pool", False) is False
+        assert is_family_available("family_pool", None) is True
 
 
 class TestEffectiveBathroom:

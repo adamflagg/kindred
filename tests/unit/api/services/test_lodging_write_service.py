@@ -73,9 +73,9 @@ def _availability_request(**overrides: Any) -> AvailabilityWriteRequest:
     fields: dict[str, Any] = {
         "year": 2026,
         "session_cm_id": 1000001,
-        "scenario": "scn_1",
         "unit_id": "u1",
-        "state": "reserved_staff",
+        "family_available": False,
+        "reason": "Burst pipe",
     }
     fields.update(overrides)
     return AvailabilityWriteRequest(**fields)
@@ -629,8 +629,78 @@ class TestARefusedWriteIsNeverReportedAsSuccess:
 
         record_id, data = repo.update_availability.call_args[0]
         assert record_id == "avail_winner"
-        assert data["state"] == "reserved_staff"
+        assert data["family_available"] is False
         assert response.record_id == "avail_existing"
+
+
+class TestTheAvailabilityWriteShape:
+    """`PUT /api/lodging/availability` was UNCALLABLE, and this is why.
+
+    `AvailabilityWriteRequest` extended `ScenarioWriteRequest`, where `scenario`
+    is `min_length=1`. Availability carries no scenario since 1500000135 -- a
+    burst pipe closes a cabin in every plan for that weekend -- so the endpoint
+    demanded a dimension the data does not have, and no caller could satisfy it
+    with anything meaningful. The table has zero rows partly because of this.
+    """
+
+    def test_a_write_needs_no_scenario(self) -> None:
+        request = AvailabilityWriteRequest(
+            year=2026, session_cm_id=1000001, unit_id="u1", family_available=False, reason="Burst pipe"
+        )
+
+        assert request.family_available is False
+        assert request.reason == "Burst pipe"
+        assert not hasattr(request, "scenario")
+
+    def test_null_clears_the_override_rather_than_writing_a_normal_value(self) -> None:
+        """`None` DELETES the row.
+
+        There is no value meaning "normal": absence of a row is how "whatever
+        this unit's role says" is spelled. Writing a value that happens to
+        agree with the role would pin the unit against a later change to it.
+        """
+        request = AvailabilityWriteRequest(year=2026, session_cm_id=1000001, unit_id="u1")
+
+        assert request.family_available is None
+
+    def test_a_reason_is_optional_but_bounded(self) -> None:
+        assert AvailabilityWriteRequest(year=2026, session_cm_id=1000001, unit_id="u1").reason == ""
+        with pytest.raises(ValidationError):
+            AvailabilityWriteRequest(year=2026, session_cm_id=1000001, unit_id="u1", reason="x" * 501)
+
+    @pytest.mark.asyncio
+    async def test_the_reason_is_stored_in_the_note_column(
+        self, write_service: LodgingWriteService, repo: MagicMock
+    ) -> None:
+        """The API says `reason`; the COLUMN is `note`.
+
+        1500000135 kept the existing `note` column rather than adding `reason`
+        and dropping it -- identical semantics, one less schema change on an
+        empty table. The translation lives in exactly two places, here on write
+        and in `_build_units` on read. A third would mean renaming the column
+        instead.
+        """
+        await write_service.set_availability(_availability_request())
+
+        data = repo.create_availability.call_args[0][0]
+        assert data["note"] == "Burst pipe"
+        assert data["family_available"] is False
+        assert "scenario" not in data
+        assert "state" not in data
+
+    @pytest.mark.asyncio
+    async def test_a_release_writes_true_rather_than_a_state_name(
+        self, write_service: LodgingWriteService, repo: MagicMock
+    ) -> None:
+        """A staff cabin opened to families for one weekend.
+
+        The old encoding needed `released_to_family` to be read against the
+        unit's role to mean anything; the boolean states the outcome directly.
+        """
+        await write_service.set_availability(_availability_request(family_available=True, reason="Director away"))
+
+        data = repo.create_availability.call_args[0][0]
+        assert data["family_available"] is True
 
 
 class TestARefusedUpdateAnswersTheSameWayARefusedCreateDoes:

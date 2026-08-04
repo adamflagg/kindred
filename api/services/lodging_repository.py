@@ -14,10 +14,13 @@ REPLACE them: kindred#1974 removed the fall-through, so a scenario is a plan
 of its own, seeded by an explicit copy rather than by rendering the mirror
 through the gaps.
 
-AVAILABILITY is the exception and stays an overlay: a scenario's rows come
-from lodging_availability filtered to it and layer over the live rows per
-unit. Nothing syncs into that table, so a scenario has no record of truth to
-replace there. `scenario = ""` is the live plan.
+AVAILABILITY used to be the exception, and is not any more. 1500000132 left
+lodging_availability scenario-aware in place, reasoning that nothing syncs into
+it so there was no record of truth to protect. That argued against a draft
+TWIN; it never established that availability varies by scenario, and it does
+not -- a burst pipe closes a cabin in every plan for that weekend. 1500000135
+deleted the column, so there is ONE availability read, issued identically with
+or without a scenario, and no lodging read is an overlay any more.
 
 Request answers are NOT re-parsed here. The Go ingest derives the share gate,
 the NEAR/WITH/similar-ages modes, the household-grain request text and the four
@@ -57,9 +60,6 @@ logger = get_logger(__name__)
 # camp_sessions.session_type values that this surface owns. Summer types
 # (main/embedded/ag/quest/...) belong to the bunking board, not here.
 WEEKEND_SESSION_TYPES = ("family", "adult")
-
-# Empty scenario = the live plan.
-LIVE_PLAN_FILTER = 'scenario = ""'
 
 # lodging_ingest_issues.kind for a cabin string that resolved to no unit. The
 # collection carries seven kinds and this surface reports only this one, so the
@@ -167,35 +167,20 @@ class LodgingRepository:
         )
 
     async def fetch_availability(self, year: int, session_pb_id: str) -> list[Any]:
-        """Live-plan staff reservations / releases for one session.
+        """Staff reservations and releases for one session.
 
-        lodging_availability is the one placement table that stayed
-        scenario-aware IN PLACE rather than gaining a draft twin: nothing syncs
-        into it, so there is no record of truth to protect. This reads the LIVE
-        rows only; a scenario's own overrides come from
-        fetch_scenario_availability and overlay these.
+        ONE layer, read identically with or without a scenario. 1500000135
+        dropped this table's `scenario` column: availability is a fact about
+        the WEEKEND rather than about the plan, so a burst pipe closes a cabin
+        in every scenario for that weekend and there is nothing for a scenario
+        to disagree about. There is no companion `fetch_scenario_availability`
+        to overlay on top of this, and adding one back would reintroduce the
+        last overlay in the lodging model.
         """
         return await self._page(
             LODGING_AVAILABILITY,
             query_params={
-                "filter": f'session = "{pb_escape(session_pb_id)}" && year = {year} && {LIVE_PLAN_FILTER}',
-                "sort": STABLE_SORT,
-            },
-        )
-
-    async def fetch_scenario_availability(self, year: int, session_pb_id: str, scenario_id: str) -> list[Any]:
-        """One scenario's reservation overrides for one session.
-
-        `scenario_id` is CLIENT-SUPPLIED -- a bare query parameter on /roster
-        and /summary, which gate on authentication only -- so it goes through
-        pb_escape. See the note on fetch_draft_assignments.
-        """
-        return await self._page(
-            LODGING_AVAILABILITY,
-            query_params={
-                "filter": (
-                    f'session = "{pb_escape(session_pb_id)}" && year = {year} && scenario = "{pb_escape(scenario_id)}"'
-                ),
+                "filter": f'session = "{pb_escape(session_pb_id)}" && year = {year}',
                 "sort": STABLE_SORT,
             },
         )
@@ -205,7 +190,10 @@ class LodgingRepository:
 
         No scenario predicate: 1500000132 dropped that column. It was never
         written -- all 67 rows carried '' -- and keeping it would have invited
-        exactly the `scenario != ""` write rule the draft table exists to avoid.
+        exactly the `scenario != ""` write rule the draft table exists to
+        avoid. `lodging_availability` was the one table 1500000132 left
+        scenario-aware in place; 1500000135 removed that too, so no lodging
+        read is an overlay any more.
         These rows ARE the live plan. A request naming a scenario does not read
         them at all; it reads fetch_draft_assignments instead, and the copy
         operation is the one path between the two.
@@ -467,26 +455,24 @@ class LodgingRepository:
     async def delete_draft_assignment(self, record_id: str) -> None:
         await asyncio.to_thread(self.pb.collection(LODGING_ASSIGNMENTS_DRAFT).delete, record_id)
 
-    async def find_availability_override(
-        self, year: int, session_pb_id: str, scenario_id: str, unit_pb_id: str
-    ) -> Any | None:
-        """The one availability row for a unit in a scenario, or None.
+    async def find_availability_override(self, year: int, session_pb_id: str, unit_pb_id: str) -> Any | None:
+        """The one availability row for a unit this weekend, or None.
 
-        Matches idx_lodging_avail_unique, which is (session, year, scenario,
-        unit): without that index a unit could carry both a reserved_staff and
-        a released_to_family row for the same key and "is this available?"
-        would stop being a question with an answer.
+        Matches idx_lodging_avail_unique, which 1500000135 rebuilt as
+        (session, year, unit). Without an index of exactly this shape a unit
+        could carry two contradicting rows for one weekend and "is this cabin
+        available?" would stop being a question with an answer -- which is why
+        the migration rebuilds the index rather than only dropping the column.
 
-        `scenario_id` and `unit_pb_id` both arrive in the request body and are
-        escaped. Unescaped, an injected `||` would make this return some other
-        weekend's row, which set_availability then updates or deletes.
+        `unit_pb_id` arrives in the request body and is escaped. Unescaped, an
+        injected `||` would make this return some other weekend's row, which
+        set_availability then updates or deletes.
         """
         rows = await self._page(
             LODGING_AVAILABILITY,
             query_params={
                 "filter": (
-                    f'session = "{pb_escape(session_pb_id)}" && year = {year} '
-                    f'&& scenario = "{pb_escape(scenario_id)}" && unit = "{pb_escape(unit_pb_id)}"'
+                    f'session = "{pb_escape(session_pb_id)}" && year = {year} && unit = "{pb_escape(unit_pb_id)}"'
                 ),
                 "sort": STABLE_SORT,
             },

@@ -120,8 +120,18 @@ class LodgingUnitSummary(BaseModel):
     # can draw the building, but excluded from every capacity count.
     is_container: bool = False
     allocation_default: str = ""
-    # None when there is no lodging_availability override for this session.
-    reservation_state: str | None = None
+    # None when no lodging_availability row exists for this unit this weekend,
+    # i.e. the unit's ROLE decides. None and False are different answers and
+    # must not be flattened into one: False is "closed this weekend".
+    #
+    # Stated explicitly rather than implied. The rejected encoding was a row
+    # meaning "the opposite of this unit's current default", which an ordinary
+    # registry edit would silently invert (1500000135).
+    family_available_override: bool | None = None
+    # Display only. The rule never branches on it. Read from the availability
+    # row's `note` column -- see the migration header on why `note` was kept
+    # rather than renamed.
+    reason: str = ""
     is_family_available: bool = False
     map_x: float | None = None
     map_y: float | None = None
@@ -328,8 +338,9 @@ class WeekendSummaryResponse(BaseModel):
     """Every weekend in a year, with counts, in ONE request.
 
     Exists because `/roster` is a composed read whose cost is dominated by
-    year-scoped work -- the unit registry, households, registrations and the
-    prior-household set are identical for every weekend in the year.
+    year-scoped work -- the unit registry, households, the prior-household
+    set, family-camp adults, registrations and the unresolved-alias count are
+    identical for every weekend in the year.
     Calling it once per weekend to fill a lander repeats that work N times: a
     weekend with zero parties still costs ~3s, which is the whole tell. This
     endpoint does the year-scoped fetches once and only the session-scoped
@@ -346,12 +357,6 @@ class WeekendSummaryResponse(BaseModel):
 # ingest's and stays admin-only; nothing here can reach it. See migration
 # 1500000132. `lodging_merges` and its draft twin were deleted outright by
 # 1500000134 -- see the module docstring above.
-
-# lodging_availability.state, pinned to the migration's select list. That list
-# is the constraint PocketBase validates against -- a value not in it fails at
-# save time in production and nowhere else -- so it is restated here to fail at
-# the edge instead, with a 422 naming the field.
-ReservationState = Literal["reserved_staff", "reserved_other", "released_to_family"]
 
 
 class ScenarioWriteRequest(BaseModel):
@@ -456,17 +461,32 @@ class PlacementCopyRequest(ScenarioWriteRequest):
     """
 
 
-class AvailabilityWriteRequest(ScenarioWriteRequest):
-    """Reserve or release one unit for one weekend, inside a scenario.
+class AvailabilityWriteRequest(BaseModel):
+    """Reserve or release one unit for one weekend.
 
-    `state: null` CLEARS the scenario's override, which returns the unit to
-    whatever the live plan says. That is not the same as writing an override
-    that happens to agree with the live plan, and the difference shows the
-    moment the live plan changes.
+    Deliberately NOT a `ScenarioWriteRequest`, and that is the change that
+    makes this endpoint callable at all: `scenario` there is required with
+    `min_length=1`, so the request asked for a dimension the data does not
+    have. Availability carries no scenario since 1500000135 -- a burst pipe
+    closes a cabin in every plan for that weekend.
+
+    `family_available: null` CLEARS the override by deleting the row, which is
+    how "whatever this unit's role says" is spelled. Writing a value that
+    happens to agree with the role would pin the unit against a later change
+    to that role.
     """
 
+    year: int = Field(..., ge=2000, le=2100)
+    session_cm_id: int = Field(..., gt=0)
     unit_id: str = Field(..., min_length=1)
-    state: ReservationState | None = None
+    family_available: bool | None = None
+    # Stored in the `note` COLUMN. 1500000135 kept `note` rather than adding
+    # `reason` and dropping it -- identical semantics, one less schema change
+    # on an empty table. The API name is the design doc's; the column name is
+    # the one that already existed. `set_availability` (write) and
+    # `_build_units` (read) are the only two places they meet, and a third
+    # would mean renaming the column instead.
+    reason: str = Field("", max_length=500)
 
 
 class LodgingWriteResponse(BaseModel):

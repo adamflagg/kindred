@@ -32,7 +32,8 @@ function unit(overrides: Partial<LodgingUnitRow> = {}): LodgingUnitRow {
     is_active: true,
     is_container: false,
     allocation_default: 'family_pool',
-    reservation_state: null,
+    family_available_override: null,
+    reason: '',
     is_family_available: true,
     map_x: 0.5,
     map_y: 0.5,
@@ -135,11 +136,12 @@ describe('LodgingUnitCard', () => {
 
   it('badges a staff hold rather than hiding the room', () => {
     // Staff reason about adjacency; hiding a held room makes the site look
-    // smaller than it is.
+    // smaller than it is. The Staff badge is ROLE-driven since 1500000135 --
+    // `reserved_staff` was a reason, and reasons are now free text.
     render(
       <LodgingUnitCard
         slot={slot({
-          unit: unit({ reservation_state: 'reserved_staff', is_family_available: false }),
+          unit: unit({ allocation_default: 'staff_default', is_family_available: false }),
         })}
         hue="hsl(160 45% 42%)"
         onOpenParty={vi.fn()}

@@ -117,7 +117,11 @@ rule: it blocks legitimate work and teaches staff to ignore warnings.
 - `lodging_units` has no shareability field. `allocation_default`
   (`family_pool` / `staff_default`) describes who a unit is *reserved for*, not
   how many parties may occupy it.
-- `lodging_availability` carries per-unit state per session, not capacity.
+- `lodging_availability` carries a per-unit `family_available` boolean per
+  session, not capacity. It has no scenario dimension: migration `1500000135`
+  deleted it, because availability is a fact about the weekend rather than
+  about the plan — a burst pipe closes a cabin in every scenario for that
+  weekend.
 - The unique indexes on `lodging_assignments` are
   `(session, year, household_cm_id)` and the person-grain equivalent, each
   partial on `> 0` so the two grains do not collide. (Migration `1500000132`

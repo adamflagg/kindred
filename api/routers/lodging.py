@@ -110,9 +110,9 @@ async def get_weekend_roster(
     With no `scenario` this is the CampMinder mirror -- the synced rows, which
     no UI may write. With one, the scenario's own draft placements REPLACE
     them: a party with no draft row is unplaced in that scenario, and the
-    mirror is not read at all. Reservation overrides still overlay the live
-    ones per unit, which is deliberate -- nothing syncs into
-    `lodging_availability`, so there is no record of truth to replace there.
+    mirror is not read at all. Availability does NOT vary this way: 1500000135
+    deleted its scenario dimension, so the same rows resolve for every plan --
+    a burst pipe closes a cabin in all of them. See `set_availability` below.
     """
     try:
         return await _service().build_roster(year, session_cm_id, scenario)
@@ -230,11 +230,16 @@ async def set_availability(
     request: AvailabilityWriteRequest,
     user: AuthUser = Depends(require_permission(Permission.BUNKING_MANAGE)),
 ) -> LodgingWriteResponse:
-    """Reserve or release one unit for this weekend, inside a scenario.
+    """Reserve or release one unit for this weekend.
 
-    `state: null` clears the override, which is spelled as the ABSENCE of a
-    row: there is no state meaning "normal", and writing one would pin the unit
-    against a later change to the live plan.
+    Takes NO scenario, unlike every other write on this router. Availability is
+    a fact about the weekend rather than about the plan -- a burst pipe closes
+    a cabin in every scenario for that weekend -- so 1500000135 deleted the
+    dimension. Requiring one is what made this endpoint uncallable.
+
+    `family_available: null` clears the override, which is spelled as the
+    ABSENCE of a row: there is no value meaning "normal", and writing one would
+    pin the unit against a later change to its role.
     """
     try:
         return await _writes().set_availability(request)

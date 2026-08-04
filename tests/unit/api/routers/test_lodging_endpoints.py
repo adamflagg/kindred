@@ -13,7 +13,14 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from pocketbase.client import ClientResponseError  # type: ignore[attr-defined]
+from pydantic import BaseModel
 
+from api.schemas.lodging import (
+    AvailabilityWriteRequest,
+    PlacementCopyRequest,
+    PlacementDeleteRequest,
+    PlacementWriteRequest,
+)
 from bunking.auth_middleware import AuthUser, get_current_user
 from bunking.rbac.permissions import Permission
 
@@ -448,9 +455,9 @@ WRITE_ENDPOINTS: list[tuple[str, str, str, dict[str, Any]]] = [
         {
             "year": 2026,
             "session_cm_id": 1000001,
-            "scenario": "scn_1",
             "unit_id": "u1",
-            "state": "reserved_staff",
+            "family_available": False,
+            "reason": "Burst pipe",
         },
     ),
     (
@@ -460,6 +467,15 @@ WRITE_ENDPOINTS: list[tuple[str, str, str, dict[str, Any]]] = [
         {"year": 2026, "session_cm_id": 1000001, "scenario": "scn_1"},
     ),
 ]
+
+# The request model each row above posts against. Only used by the shape guard
+# below, which is the half of this table nothing else asserts.
+WRITE_MODELS: dict[tuple[str, str], type[BaseModel]] = {
+    ("POST", "/api/lodging/placements"): PlacementWriteRequest,
+    ("DELETE", "/api/lodging/placements"): PlacementDeleteRequest,
+    ("PUT", "/api/lodging/availability"): AvailabilityWriteRequest,
+    ("POST", "/api/lodging/placements/copy"): PlacementCopyRequest,
+}
 
 
 def _session_lookup(**kwargs: Any) -> list[Any]:
@@ -543,6 +559,26 @@ class TestWriteEndpointsRequireBunkingManage:
             if method in {"POST", "PUT", "PATCH", "DELETE"}
         }
         assert actual == declared, f"write routes not covered by the auth-contract table: {actual ^ declared}"
+
+    @pytest.mark.parametrize(("verb", "template", "body"), [(v, t, b) for v, t, _, b in WRITE_ENDPOINTS])
+    def test_every_table_body_names_only_fields_its_model_declares(
+        self, verb: str, template: str, body: dict[str, Any]
+    ) -> None:
+        """A stale key here degrades the request instead of failing it.
+
+        Pydantic IGNORES unknown keys, so a field deleted from a model lingers
+        in this table silently. That is not theoretical: the availability row
+        carried `scenario` and `state` after 1500000135 removed both, and
+        because the leftovers dropped rather than 422'd, `family_available`
+        stayed at its `None` default -- turning the row into a CLEAR-the-
+        override no-op. `test_bunking_staff_are_allowed` still passed, because
+        a no-op answers 200, so the permission gate looked covered for a write
+        that never happened.
+        """
+        declared = set(WRITE_MODELS[(verb, template)].model_fields)
+        assert set(body) <= declared, (
+            f"{verb} {template} sends fields its model does not declare: {set(body) - declared}"
+        )
 
 
 class TestPlacementWrites:
@@ -1089,7 +1125,7 @@ class TestCopyFromMirror:
 
 
 class TestAvailabilityWrites:
-    def test_setting_a_state_creates_a_scenario_scoped_row(self, mock_pb: MagicMock) -> None:
+    def test_holding_a_cabin_creates_a_weekend_scoped_row(self, mock_pb: MagicMock) -> None:
         with patch("api.routers.lodging.pb", mock_pb):
             client = _write_client(_manage_user(), mock_pb)
             response = client.put(
@@ -1097,9 +1133,9 @@ class TestAvailabilityWrites:
                 json={
                     "year": 2026,
                     "session_cm_id": 1000001,
-                    "scenario": "scn_1",
                     "unit_id": "u1",
-                    "state": "reserved_staff",
+                    "family_available": False,
+                    "reason": "Burst pipe",
                 },
             )
 
@@ -1107,12 +1143,24 @@ class TestAvailabilityWrites:
         mock_pb.collection.assert_any_call("lodging_availability")
         payload = mock_pb.collection.return_value.create.call_args[0][0]
         assert payload["unit"] == "u1"
-        assert payload["state"] == "reserved_staff"
-        assert payload["scenario"] == "scn_1"
+        assert payload["family_available"] is False
+        # The reason is display text and lives in the `note` COLUMN; the API
+        # field is `reason`. See AvailabilityWriteRequest.
+        assert payload["note"] == "Burst pipe"
+        # WEEKEND-scoped, not scenario-scoped. 1500000135 deleted the dimension
+        # -- a burst pipe closes a cabin in every plan for that weekend -- and
+        # writing one anyway would recreate the overlay from the write side.
+        assert "scenario" not in payload
+        assert "state" not in payload
 
-    def test_an_unknown_state_is_refused(self, mock_pb: MagicMock) -> None:
-        """The select list in the migration is the constraint. A value that is
-        not in it fails at save time in production and nowhere else."""
+    def test_a_non_boolean_availability_is_refused(self, mock_pb: MagicMock) -> None:
+        """The three-value enum is gone, so the edge validation is the bool.
+
+        This replaces the old unknown-state check. `state` used to be pinned to
+        the migration's select list here so a bad value failed at the edge with
+        a 422 rather than at save time in production; the column is a bool now
+        and the same argument applies to it.
+        """
         with patch("api.routers.lodging.pb", mock_pb):
             client = _write_client(_manage_user(), mock_pb)
             response = client.put(
@@ -1120,21 +1168,37 @@ class TestAvailabilityWrites:
                 json={
                     "year": 2026,
                     "session_cm_id": 1000001,
-                    "scenario": "scn_1",
                     "unit_id": "u1",
-                    "state": "reserved_for_the_dog",
+                    "family_available": "reserved_for_the_dog",
                 },
             )
 
         assert response.status_code == 422
 
-    def test_clearing_a_state_deletes_the_scenario_row(self, mock_pb: MagicMock) -> None:
-        """Back to whatever the live plan says, which is not the same as
+    def test_a_write_is_accepted_with_no_scenario_at_all(self, mock_pb: MagicMock) -> None:
+        """The endpoint was UNCALLABLE, and this is the test that says so.
+
+        `AvailabilityWriteRequest` extended `ScenarioWriteRequest`, where
+        `scenario` is `min_length=1`, so a body without one was a 422 -- and
+        there was no scenario worth supplying, which is a large part of why the
+        table still holds zero rows.
+        """
+        with patch("api.routers.lodging.pb", mock_pb):
+            client = _write_client(_manage_user(), mock_pb)
+            response = client.put(
+                "/api/lodging/availability",
+                json={"year": 2026, "session_cm_id": 1000001, "unit_id": "u1", "family_available": True},
+            )
+
+        assert response.status_code == 200, response.text
+
+    def test_clearing_the_override_deletes_the_row(self, mock_pb: MagicMock) -> None:
+        """Back to whatever the unit's ROLE says, which is not the same as
         writing an override that happens to agree with it."""
 
         def reads(**kwargs: Any) -> list[Any]:
             query_filter = kwargs.get("query_params", {}).get("filter", "")
-            if 'scenario = "scn_1"' in query_filter:
+            if 'unit = "u1"' in query_filter:
                 return [_rec(id="avail_1")]
             return _session_lookup(**kwargs)
 
@@ -1146,9 +1210,8 @@ class TestAvailabilityWrites:
                 json={
                     "year": 2026,
                     "session_cm_id": 1000001,
-                    "scenario": "scn_1",
                     "unit_id": "u1",
-                    "state": None,
+                    "family_available": None,
                 },
             )
 
@@ -1168,7 +1231,7 @@ class TestAvailabilityWrites:
 
         def reads(**kwargs: Any) -> list[Any]:
             query_filter = kwargs.get("query_params", {}).get("filter", "")
-            if 'scenario = "scn_1"' in query_filter:
+            if 'unit = "u1"' in query_filter:
                 return [_rec(id="avail_1")]
             return _session_lookup(**kwargs)
 
@@ -1183,9 +1246,8 @@ class TestAvailabilityWrites:
                 json={
                     "year": 2026,
                     "session_cm_id": 1000001,
-                    "scenario": "scn_1",
                     "unit_id": "u1",
-                    "state": None,
+                    "family_available": None,
                 },
             )
 
@@ -1201,7 +1263,7 @@ class TestAvailabilityWrites:
 
         def reads(**kwargs: Any) -> list[Any]:
             query_filter = kwargs.get("query_params", {}).get("filter", "")
-            if 'scenario = "scn_1"' in query_filter:
+            if 'unit = "u1"' in query_filter:
                 return [_rec(id="avail_1")]
             return _session_lookup(**kwargs)
 
@@ -1216,9 +1278,8 @@ class TestAvailabilityWrites:
                 json={
                     "year": 2026,
                     "session_cm_id": 1000001,
-                    "scenario": "scn_1",
                     "unit_id": "u1",
-                    "state": None,
+                    "family_available": None,
                 },
             )
 
@@ -1227,11 +1288,12 @@ class TestAvailabilityWrites:
         assert response.status_code == 403
 
     def test_losing_the_availability_upsert_race_updates_instead_of_500ing(self, mock_pb: MagicMock) -> None:
-        """Two staff reserving the same unit in one scenario at the same
+        """Two staff reserving the same unit for one weekend at the same
         moment.
 
-        `idx_lodging_avail_unique` is UNIQUE on (session, year, scenario,
-        unit) -- exactly the race `place_party` already guards on the draft's
+        `idx_lodging_avail_unique` is UNIQUE on (session, year, unit), as
+        1500000135 rebuilt it -- exactly the race `place_party` guards on the
+        draft's
         own partial unique index. Both staff find no override, both create,
         and the index rejects the loser. Left alone that is a bare
         ClientResponseError into the catch-all handler in api/main.py -- a 500
@@ -1258,9 +1320,9 @@ class TestAvailabilityWrites:
                 json={
                     "year": 2026,
                     "session_cm_id": 1000001,
-                    "scenario": "scn_1",
                     "unit_id": "u1",
-                    "state": "reserved_staff",
+                    "family_available": False,
+                    "reason": "Burst pipe",
                 },
             )
 
@@ -1285,9 +1347,9 @@ class TestAvailabilityWrites:
                 json={
                     "year": 2026,
                     "session_cm_id": 1000001,
-                    "scenario": "scn_1",
                     "unit_id": "u1",
-                    "state": "reserved_staff",
+                    "family_available": False,
+                    "reason": "Burst pipe",
                 },
             )
 
@@ -1324,9 +1386,9 @@ class TestAvailabilityWrites:
                 json={
                     "year": 2026,
                     "session_cm_id": 1000001,
-                    "scenario": "scn_1",
                     "unit_id": "u1",
-                    "state": "reserved_staff",
+                    "family_available": False,
+                    "reason": "Burst pipe",
                 },
             )
 
@@ -1358,9 +1420,9 @@ class TestAvailabilityWrites:
                 json={
                     "year": 2026,
                     "session_cm_id": 1000001,
-                    "scenario": "scn_1",
                     "unit_id": "u1",
-                    "state": "reserved_staff",
+                    "family_available": False,
+                    "reason": "Burst pipe",
                 },
             )
 

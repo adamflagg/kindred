@@ -295,9 +295,10 @@ class LodgingRosterService:
         `bunk_assignments_draft`. A party with no draft row is UNPLACED in
         that scenario; the mirror is not consulted, and is not even read.
 
-        AVAILABILITY is the deliberate exception and still overlays: nothing
-        syncs into `lodging_availability`, so a scenario has no record of
-        truth to replace there and reads the live reservations as its base.
+        AVAILABILITY used to be the exception and is not any more. 1500000135
+        deleted this table's scenario dimension, so there is ONE availability
+        read, issued identically with or without a scenario -- a burst pipe
+        closes a cabin in every plan for that weekend. See the TaskGroup below.
         """
         session = await self.repository.fetch_session(year, session_cm_id)
         if session is None:
@@ -334,20 +335,11 @@ class LodgingRosterService:
                 if scenario
                 else self.repository.fetch_assignments(year, session_pb_id)
             )
-            # Availability still overlays, so BOTH reads are issued under a
-            # scenario. They join the same group: scenario mode must not cost
-            # a second round trip.
-            scenario_availability_task = (
-                tg.create_task(self.repository.fetch_scenario_availability(year, session_pb_id, scenario))
-                if scenario
-                else None
-            )
+            # There is deliberately NO second availability read here. 1500000135
+            # deleted this table's scenario dimension, so a scenario has nothing
+            # to overlay -- see fetch_availability.
 
-        unit_summaries = self._build_units(
-            units_task.result(),
-            availability_task.result(),
-            scenario_availability_task.result() if scenario_availability_task is not None else [],
-        )
+        unit_summaries = self._build_units(units_task.result(), availability_task.result())
         parties = self._build_parties(
             session_type=session_type,
             attendees=attendees_task.result(),
@@ -372,32 +364,33 @@ class LodgingRosterService:
     async def build_summary(self, year: int, scenario: str = "") -> WeekendSummaryResponse:
         """Every weekend in the year with its counts, in one pass.
 
-        `build_roster` makes ten fetches, of which SEVEN are year-scoped -- the
+        `build_roster` makes ten fetches, of which SIX are year-scoped -- the
         unit registry, households, the prior-household set, family-camp adults,
-        registrations, and two registry counts are identical for every weekend
-        in the year. Calling it once per weekend to fill the lander repeats all
-        seven N times, which is why a weekend with zero parties still costs
-        about three seconds.
+        registrations and the unresolved-alias count are identical for every
+        weekend in the year. Calling it once per weekend to fill the lander
+        repeats all six N times, which is why a weekend with zero parties still
+        costs about three seconds.
 
-        Both counts were one higher until kindred#1889 deleted
-        `has_medical_narrative`, which was the only consumer of the whole-year
-        `family_camp_medical` map. kindred#1963 measures this from eleven and
-        eight; it is now ten and seven, so that issue is partly pre-paid.
+        kindred#1963 measures this from eleven and eight, so that issue is
+        partly pre-paid: kindred#1889 deleted `has_medical_narrative`, the only
+        consumer of the whole-year `family_camp_medical` map, and kindred#1995
+        deleted `count_unconfirmed_units` -- `units_unconfirmed` is now derived
+        in `_build_counts` from units already in hand rather than fetched.
 
         So the year-scoped work happens once here, and only the genuinely
         session-scoped reads run per weekend: availability, attendees and one
-        placement read -- the synced rows, or the scenario's own -- plus the
-        scenario's availability overrides when one is named. The per-weekend
-        numbers then come from the SAME `_build_units` / `_build_parties` /
-        `_build_counts` helpers the roster uses, so the lander cannot drift
-        from the page it links to, and it resolves a scenario the same way:
-        replace, never fall through.
+        placement read -- the synced rows, or the scenario's own. The
+        per-weekend numbers then come from the SAME `_build_units` /
+        `_build_parties` / `_build_counts` helpers the roster uses, so the
+        lander cannot drift from the page it links to, and it resolves a
+        scenario the same way: replace, never fall through.
 
-        Scenario mode therefore costs four session-scoped reads per weekend
-        rather than three, and nothing caps the resulting fan-out. That is
-        deliberate for now -- there is no lander calling this with a scenario
-        yet, so there is nothing to measure against -- and kindred#1920 records
-        the two ways to bound it when there is.
+        THREE session-scoped reads per weekend, with or without a scenario.
+        Naming one used to cost a fourth -- the scenario's own availability
+        overrides -- and 1500000135 deleted that dimension outright rather than
+        making the extra read cheaper. Nothing caps the resulting fan-out;
+        that is deliberate for now, since no lander calls this with a scenario
+        yet, and kindred#1920 records the two ways to bound it when one does.
         """
         sessions = await self.repository.fetch_weekend_sessions(year)
         if not sessions:
@@ -429,17 +422,11 @@ class LodgingRosterService:
                     if scenario
                     else self.repository.fetch_assignments(year, session_pb_id)
                 )
-                scenario_availability_task = (
-                    inner.create_task(self.repository.fetch_scenario_availability(year, session_pb_id, scenario))
-                    if scenario
-                    else None
-                )
+                # No second availability read, exactly as build_roster issues
+                # none. These are separate TaskGroups and fixing only one of
+                # them is the half-fix the guard tests exist to catch.
 
-            unit_summaries = self._build_units(
-                units,
-                availability_task.result(),
-                scenario_availability_task.result() if scenario_availability_task is not None else [],
-            )
+            unit_summaries = self._build_units(units, availability_task.result())
             parties = self._build_parties(
                 session_type=_s(session, "session_type"),
                 attendees=attendees_task.result(),
@@ -480,18 +467,20 @@ class LodgingRosterService:
 
     # ---------------------------------------------------------------- units
 
-    def _build_units(
-        self,
-        units: list[Any],
-        availability: list[Any],
-        scenario_availability: list[Any] | None = None,
-    ) -> list[LodgingUnitSummary]:
-        # Live rows first, then the scenario's on top: reserving one cabin
-        # inside a scenario must not discard every live reservation, and a
-        # scenario row for the same unit must win.
-        override_by_unit = {_s(row, "unit"): _s(row, "state") for row in availability}
-        for row in scenario_availability or []:
-            override_by_unit[_s(row, "unit")] = _s(row, "state")
+    def _build_units(self, units: list[Any], availability: list[Any]) -> list[LodgingUnitSummary]:
+        # ONE layer. The scenario overlay is gone (1500000135) -- availability
+        # is a fact about the weekend, so a scenario has nothing to overlay.
+        # `family_available` is stored EXPLICITLY, so the row IS the answer and
+        # the absence of a row falls through to the unit's role. A unit with no
+        # row must therefore map to None and not to False: those are different
+        # answers, and `bool(...)` on a missing row would silently close every
+        # cabin nobody has said anything about.
+        override_by_unit = {_s(row, "unit"): _b(row, "family_available") for row in availability}
+        # Display text travels BESIDE the decision, never into it. Stored in the
+        # `note` column (the migration header says why `note` was kept rather
+        # than renamed to `reason`); surfaced to the API as `reason`. This and
+        # `set_availability` are the only two places that translate.
+        reason_by_unit = {_s(row, "unit"): _s(row, "note") for row in availability}
 
         # Bathroom groups are computed across ALL units, because a group's
         # membership does not depend on the session.
@@ -546,7 +535,8 @@ class LodgingRosterService:
                     is_active=_b(unit, "is_active"),
                     is_container=_b(unit, "is_container"),
                     allocation_default=allocation_default,
-                    reservation_state=override,
+                    family_available_override=override,
+                    reason=reason_by_unit.get(_s(unit, "id"), ""),
                     is_family_available=is_family_available(allocation_default, override),
                     map_x=map_x,
                     map_y=map_y,
