@@ -70,10 +70,21 @@ bt=$(field_prop lodging_units bathroom values || true)
 
 # 1500000136 renamed allocation_default. After 1500000135 the column is a ROLE,
 # not a default: "default" implied an override, and the override became a rare
-# per-weekend exception rather than the point. Asserted BOTH ways, because a
-# remove-and-add satisfies the first half while silently dropping all 114 values
-# — the new name is present either way, so only the old name's absence
-# distinguishes a rename from a drop-and-recreate.
+# per-weekend exception rather than the point.
+#
+# Both halves are asserted — new name present, old name gone — but be clear
+# about what that does NOT establish. This script runs against a FRESH, EMPTY
+# database, so a remove-and-add would satisfy both assertions exactly as an
+# in-place rename does, while discarding every stored value. Nothing here can
+# tell the two apart, and no assertion added to this script could: with no rows,
+# there is nothing to preserve.
+#
+# Value preservation is verified where rows actually exist, and that check
+# belongs to the migration's author rather than to this file: apply 1500000136
+# to a populated database and re-count by class before and after. Independently,
+# verify-lodging-seed.sh loads the private registry into a throwaway DB and
+# diffs it against the file field by field, which is what pins the JSON key, the
+# Go struct tag and the column name to each other.
 ic=$(field_prop lodging_units inventory_class values || true)
 [[ "$ic" == '["family_pool","staff_default"]' ]] || note "lodging_units.inventory_class values are $ic"
 old_ad=$(field_prop lodging_units allocation_default name || true)
