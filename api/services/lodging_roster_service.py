@@ -239,6 +239,25 @@ def _household_sort_name(adults: list[Any], children: list[Any], display_name: s
     return _last_token(display_name)
 
 
+def _is_planning_inventory(unit: LodgingUnitSummary) -> bool:
+    """Whether this unit is inventory the weekend is planned against.
+
+    THE SAME PREDICATE the board applies in `boardLayout.isPlanningInventory`
+    (frontend). If the two drift, the Housing tab and the stats bar describe
+    different weekends -- the board drawing 81 cards beside a bar reporting
+    102 units is exactly the disagreement this shape exists to prevent.
+
+    Reads RESOLVED availability rather than the standing role, so a staff
+    cabin released to families for one weekend rejoins the inventory; hiding
+    the cabin staff just released would make the release capability useless.
+
+    The converse is deliberately NOT symmetric: a family cabin held back this
+    weekend is still inventory and is reported by `units_reserved`. Permanent
+    staff housing was never inventory, so it cannot be "held back".
+    """
+    return unit.allocation_default != "staff_default" or unit.is_family_available
+
+
 class LodgingRosterService:
     """Builds the read-only weekend roster from repository output."""
 
@@ -842,7 +861,9 @@ class LodgingRosterService:
     ) -> RosterCounts:
         # Containers are building/grouping rows carrying whole-building
         # aggregates. Including them double-counts beds (408 vs a true 389).
-        bookable = [u for u in units if not u.is_container and u.is_active]
+        leaf = [u for u in units if not u.is_container and u.is_active]
+        bookable = [u for u in leaf if _is_planning_inventory(u)]
+        staff_housing = [u for u in leaf if not _is_planning_inventory(u)]
         available = [u for u in bookable if u.is_family_available]
         assigned = sum(1 for p in parties if p.unit_code or p.unit_name)
         return RosterCounts(
@@ -852,6 +873,7 @@ class LodgingRosterService:
             units_total=len(bookable),
             units_family_available=len(available),
             units_reserved=len(bookable) - len(available),
+            units_staff_housing=len(staff_housing),
             beds_family_available=sum(u.sleeps for u in available if u.sleeps is not None),
             units_capacity_unknown=sum(1 for u in bookable if u.sleeps is None),
             units_unconfirmed=unconfirmed_units,

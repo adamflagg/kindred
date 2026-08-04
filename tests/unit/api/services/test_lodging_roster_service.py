@@ -488,10 +488,82 @@ class TestUnitsAndCounts:
         assert by_code["ridge-a"].reservation_state == "reserved_staff"
         assert by_code["ridge-a"].is_family_available is False
         assert by_code["le-shack"].is_family_available is False
-        assert roster.counts.units_total == 2
+        # Both units stay VISIBLE in `roster.units` -- that is what this test
+        # is named for, and it is unchanged. What changed is the counts: the
+        # staff cabin is no longer reported as "reserved", because it was
+        # never bookable and so cannot be held back. It is planning inventory
+        # that is missing, not planning inventory that is unavailable.
+        assert len(roster.units) == 2
+        assert roster.counts.units_total == 1
         assert roster.counts.units_family_available == 0
-        assert roster.counts.units_reserved == 2
+        assert roster.counts.units_reserved == 1
+        assert roster.counts.units_staff_housing == 1
         assert roster.counts.beds_family_available == 0
+
+    @pytest.mark.asyncio
+    async def test_staff_housing_leaves_the_planning_inventory_counts(self) -> None:
+        """Staff housing was never inventory, so it is not "held back" either.
+
+        `units_reserved` reading 21 says staff took 21 cabins out of service
+        this weekend. They were never in service -- they hold full-time staff
+        who are not enrolled per session and never appear on a roster. Same
+        for `units_capacity_unknown`: not one of the 21 has a measured
+        `sleeps` and none ever will, so counting them reads as a data-quality
+        backlog somebody still owes.
+        """
+        repo = _repo(
+            fetch_session=FAMILY_SESSION,
+            fetch_units=[
+                _unit("u1", "ridge-a", "Ridge A", sleeps=5),
+                _unit("u2", "aspen-lodge", "Aspen Lodge", allocation_default="staff_default"),
+            ],
+        )
+        roster = await LodgingRosterService(repo).build_roster(2026, 1000001)
+
+        assert roster.counts.units_total == 1
+        assert roster.counts.units_family_available == 1
+        assert roster.counts.units_reserved == 0
+        assert roster.counts.units_staff_housing == 1
+        assert roster.counts.units_capacity_unknown == 0
+
+    @pytest.mark.asyncio
+    async def test_a_released_staff_cabin_rejoins_the_planning_inventory(self) -> None:
+        """Releasing is the whole reason the capability is kept."""
+        repo = _repo(
+            fetch_session=FAMILY_SESSION,
+            fetch_units=[
+                _unit("u1", "ridge-a", "Ridge A", sleeps=5),
+                _unit("u2", "aspen-lodge", "Aspen Lodge", sleeps=4, allocation_default="staff_default"),
+            ],
+            fetch_availability=[_rec(unit="u2", state="released_to_family", note="")],
+        )
+        roster = await LodgingRosterService(repo).build_roster(2026, 1000001)
+
+        assert roster.counts.units_total == 2
+        assert roster.counts.units_staff_housing == 0
+        assert roster.counts.units_family_available == 2
+
+    @pytest.mark.asyncio
+    async def test_a_held_family_cabin_is_reserved_not_staff_housing(self) -> None:
+        """The two must not blur: one is temporary, the other never was ours.
+
+        A burst pipe closes a cabin for the weekend and it is still inventory.
+        Staff housing is not inventory at all. Reporting both as "reserved" is
+        what made the old number unreadable.
+        """
+        repo = _repo(
+            fetch_session=FAMILY_SESSION,
+            fetch_units=[
+                _unit("u1", "ridge-a", "Ridge A", sleeps=5),
+                _unit("u2", "ridge-b", "Ridge B", sleeps=4),
+            ],
+            fetch_availability=[_rec(unit="u2", state="reserved_other", note="Burst pipe")],
+        )
+        roster = await LodgingRosterService(repo).build_roster(2026, 1000001)
+
+        assert roster.counts.units_total == 2
+        assert roster.counts.units_reserved == 1
+        assert roster.counts.units_staff_housing == 0
 
     @pytest.mark.asyncio
     async def test_staff_default_released_to_family_counts_as_available(self) -> None:

@@ -255,12 +255,25 @@ class RosterCounts(BaseModel):
     parties_total: int = 0
     parties_assigned: int = 0
     parties_unassigned: int = 0
-    # Active, non-container units.
+    # Active, non-container units that are PLANNING INVENTORY -- permanent
+    # staff housing is excluded and reported by units_staff_housing.
     units_total: int = 0
     units_family_available: int = 0
-    # Bookable units held back from families this session (staff-default with
-    # no release, or an explicit reserved_* override).
+    # Planning inventory held back from families this session -- a burst pipe,
+    # a caretaker in residence. Does NOT include permanent staff housing,
+    # which was never bookable and so cannot be "held back"; that is
+    # units_staff_housing.
     units_reserved: int = 0
+    # Permanent full-time staff housing: 21 of the registry's 102 leaf units,
+    # occupied by staff who are not enrolled per session and never appear on a
+    # roster. Outside the planning inventory entirely, so NOT a subset of
+    # units_total -- that distinction is what units_reserved used to get
+    # wrong, reporting 21 cabins as "held back" that were never inventory.
+    #
+    # Counted rather than dropped silently: units_total shrinking by 21 with
+    # nothing on the surface explaining it reads as data loss to a staff
+    # member who knows how many cabins the property has.
+    units_staff_housing: int = 0
     # Sum of `sleeps` over family-available bookable units with a KNOWN
     # sleeps value. Units with unknown capacity are excluded and reported
     # separately, so the number never overstates what is placeable.
