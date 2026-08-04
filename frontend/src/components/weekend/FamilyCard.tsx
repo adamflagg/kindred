@@ -26,11 +26,13 @@
  * ages — ages are the entire point of a "similar ages" match — and the housing
  * chips the fit check actually judges.
  */
+import { useDraggable } from '@dnd-kit/core'
 import { Repeat, Users } from 'lucide-react'
 import { Fragment } from 'react'
 
 import type { LodgingUnitRow, RosterPartyRow } from '../../types/lodging'
 import { SHARE_WORDING, shareWordingChip } from './boardLayout'
+import { partyKey } from './partyKey'
 import { ATTENTION_LABEL, partyAttention } from './rosterAttention'
 
 export interface FamilyCardProps {
@@ -51,6 +53,14 @@ export interface FamilyCardProps {
    * from the slot around it.
    */
   inQueue?: boolean
+  /**
+   * Whether this card can be picked up — true only inside a scenario, for a
+   * user holding `bunking.manage`. See `LodgingBoard`.
+   *
+   * The drag id is derived here rather than passed in, so it cannot disagree
+   * with the id `resolveDrop` looks the party back up by.
+   */
+  isDraggable?: boolean
   onOpen: (party: RosterPartyRow) => void
 }
 
@@ -81,13 +91,22 @@ function partySize(party: RosterPartyRow): number {
   return (party.adults?.length ?? 0) + (party.children?.length ?? 0)
 }
 
-export function FamilyCard({
+/**
+ * Everything the card SHOWS, with nothing about how it is picked up.
+ *
+ * Split out so the drag overlay can render the card without dnd-kit — see
+ * `FamilyCardPreview`. Sharing the body rather than hand-rolling a second one
+ * is the only reason the overlay cannot drift away from the real card.
+ */
+function FamilyCardBody({
   party,
   unit,
-  sharedSlot = false,
-  inQueue = false,
-  onOpen,
-}: FamilyCardProps) {
+  sharedSlot,
+}: {
+  party: RosterPartyRow
+  unit?: LodgingUnitRow | undefined
+  sharedSlot: boolean
+}) {
   const flags = party.flags ?? {}
   const children = party.children ?? []
   const attention = partyAttention(party, unit)
@@ -99,16 +118,7 @@ export function FamilyCard({
   const wantsNear = proximity.includes('near')
 
   return (
-    <button
-      type="button"
-      data-family-card
-      onClick={() => {
-        onOpen(party)
-      }}
-      className={`group border-border hover:border-primary/50 focus-visible:ring-ring flex w-full flex-col gap-1 rounded-lg border px-2 py-1.5 text-left transition-colors focus-visible:ring-2 focus-visible:outline-none ${
-        inQueue ? 'bg-card' : 'bg-background'
-      }`}
-    >
+    <>
       <span className="flex items-baseline gap-1.5">
         <span
           data-testid="family-card-name"
@@ -177,6 +187,89 @@ export function FamilyCard({
           </span>
         )}
       </span>
+    </>
+  )
+}
+
+/** The card's own frame, shared by the real card and the drag overlay. */
+const CARD_FRAME =
+  'group border-border flex w-full flex-col gap-1 rounded-lg border px-2 py-1.5 text-left'
+
+export function FamilyCard({
+  party,
+  unit,
+  sharedSlot = false,
+  inQueue = false,
+  isDraggable = false,
+  onOpen,
+}: FamilyCardProps) {
+  // `disabled` does NOT prevent registration — dnd-kit registers the node in
+  // `draggableNodes` unconditionally and `disabled` only nulls the listeners
+  // (verified in @dnd-kit/core 6.3.1). What gates the interaction is the
+  // conditional spread below, which four tests pin. `disabled` is kept for
+  // the `aria-disabled` it sets and as a second refusal to hand back
+  // listeners.
+  const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
+    id: partyKey(party),
+    disabled: !isDraggable,
+  })
+
+  return (
+    <button
+      type="button"
+      data-family-card
+      ref={setNodeRef}
+      // Spread ONLY when draggable. dnd-kit sets `aria-roledescription` and
+      // the rest regardless of its own `disabled` flag, so a read-only board
+      // would announce every card as draggable to a screen reader and offer a
+      // keyboard drag that goes nowhere.
+      {...(isDraggable ? attributes : {})}
+      {...(isDraggable ? listeners : {})}
+      onClick={() => {
+        onOpen(party)
+      }}
+      className={`${CARD_FRAME} hover:border-primary/50 focus-visible:ring-ring transition-colors focus-visible:ring-2 focus-visible:outline-none ${
+        inQueue ? 'bg-card' : 'bg-background'
+      } ${isDraggable ? 'cursor-grab active:cursor-grabbing' : ''} ${
+        // The card stays mounted and dimmed rather than being removed: the
+        // grid would reflow under the pointer mid-drag, moving every other
+        // drop target out from under it.
+        isDragging ? 'opacity-40' : ''
+      }`}
+    >
+      <FamilyCardBody party={party} unit={unit} sharedSlot={sharedSlot} />
     </button>
+  )
+}
+
+/**
+ * The card as it appears under the pointer, inside `<DragOverlay>`.
+ *
+ * IT MUST NOT CALL `useDraggable`, and that is the whole reason it exists.
+ * dnd-kit registers a draggable node unconditionally — `disabled` does not
+ * stop it — so rendering a real `FamilyCard` here would register a SECOND
+ * draggable under the same `partyKey`, overwrite the source card's entry in
+ * `draggableNodes`, and then delete that entry outright when the overlay
+ * unmounts. The card the staff member just dropped would be gone from the
+ * registry, and its own effect never re-fires.
+ *
+ * Summer reached the same conclusion first and hand-rolls plain markup in its
+ * DragOverlay (`BunkingBoardByArea.tsx:662-702`) rather than reusing its
+ * draggable `CamperCard`. This shares the body instead of copying it, so the
+ * overlay cannot drift away from the card it represents.
+ */
+export function FamilyCardPreview({
+  party,
+  unit,
+  sharedSlot = false,
+}: {
+  party: RosterPartyRow
+  unit?: LodgingUnitRow | undefined
+  sharedSlot?: boolean
+}) {
+  return (
+    <div className={`${CARD_FRAME} bg-card shadow-lodge-lg border-primary/50 rotate-2`}>
+      <FamilyCardBody party={party} unit={unit} sharedSlot={sharedSlot} />
+    </div>
   )
 }

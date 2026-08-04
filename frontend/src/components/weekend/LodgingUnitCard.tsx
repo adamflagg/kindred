@@ -11,10 +11,12 @@
  * renders as an em dash: the API already maps PocketBase's stored 0 to null,
  * and "sleeps 0" would be a lie about a cabin nobody has measured.
  */
+import { useDroppable } from '@dnd-kit/core'
 import { Bath, Plug, Snowflake, TriangleAlert, Users } from 'lucide-react'
 
 import type { RosterPartyRow } from '../../types/lodging'
 import type { BoardSlot } from './boardLayout'
+import { unitDroppableId } from './dragPlacement'
 import { FamilyCard } from './FamilyCard'
 import { partyKey } from './partyKey'
 import { reservationBadge } from './unitBadges'
@@ -23,25 +25,44 @@ export interface LodgingUnitCardProps {
   slot: BoardSlot
   /** The area's colour — a SECONDARY channel (§3.10), never the only one. */
   hue: string
+  /** Placement is live: a scenario is selected and the user holds `bunking.manage`. */
+  canPlace?: boolean
   onOpenParty: (party: RosterPartyRow) => void
 }
 
-export function LodgingUnitCard({ slot, hue, onOpenParty }: LodgingUnitCardProps) {
+export function LodgingUnitCard({
+  slot,
+  hue,
+  canPlace = false,
+  onOpenParty,
+}: LodgingUnitCardProps) {
   const { unit, parties, consent } = slot
   const badge = reservationBadge(unit)
   const capacityKnown = unit.sleeps !== null && unit.sleeps !== undefined
   const isShared = parties.length > 1
 
+  // Every room accepts a drop while placement is live, including a full or
+  // unsuitable one. The fit check is advisory and every cabin is unconfirmed
+  // until staff walk the property, so refusing here would block nearly every
+  // placement for a reason that is really "nobody has checked yet".
+  const { setNodeRef, isOver } = useDroppable({
+    id: unitDroppableId(unit.code),
+    disabled: !canPlace,
+  })
+
   return (
     <div
       data-unit-card
       data-unit-code={unit.code}
+      ref={setNodeRef}
       style={{ borderTopColor: hue }}
-      className={`bg-card flex flex-col gap-2 rounded-xl border border-t-[3px] p-2.5 ${
+      className={`bg-card flex flex-col gap-2 rounded-xl border border-t-[3px] p-2.5 transition-colors ${
         consent
           ? 'border-amber-400 ring-1 ring-amber-400/40 dark:border-amber-500'
           : 'border-border'
-      } ${parties.length === 0 ? 'bg-muted/25 border-dashed' : ''}`}
+      } ${parties.length === 0 ? 'bg-muted/25 border-dashed' : ''} ${
+        isOver ? 'border-primary ring-primary/50 bg-primary/5 ring-2' : ''
+      }`}
     >
       <div className="flex items-baseline gap-1.5">
         <span className="text-foreground truncate text-[13px] font-semibold">{unit.name}</span>
@@ -115,6 +136,7 @@ export function LodgingUnitCard({ slot, hue, onOpenParty }: LodgingUnitCardProps
               party={party}
               unit={unit}
               sharedSlot={isShared}
+              isDraggable={canPlace}
               onOpen={onOpenParty}
             />
           ))}

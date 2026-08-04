@@ -11,8 +11,9 @@
  * than campers into bunks, and share/housing requirements rather than bunk
  * requests.
  *
- * Read-only in this slice: placements are shown, not edited. WHERE they come
- * from now depends on the scenario picker — with none selected this is the
+ * Placements are editable by drag inside a scenario, for a user holding
+ * `bunking.manage` (#1989); with none selected the board is read-only for
+ * everyone. WHERE they come from depends on the scenario picker — with none selected this is the
  * CampMinder mirror, and inside a scenario it is that scenario's own draft
  * rows, with the mirror not read at all (#1974). The registry behind it IS
  * editable, though — Phase C added the Manage -> Family Camp Lodging editor
@@ -308,12 +309,19 @@ export default function WeekendRosterPage() {
                 <HouseholdRosterTable parties={parties} year={currentYear} units={units} />
               )}
               {view === 'inventory' && <UnitInventoryPanel units={units} />}
-              {/* Neither takes the scenario id: they render what this page
-                  already fetched with it, and neither writes. The header badge
-                  is what says which plan that was. #1985's drag placement is
-                  what earns plumbing it back down. */}
+              {/* The board takes the scenario, the weekend and the manage
+                  permission because it WRITES now (#1989) — main's note that
+                  drag placement "is what earns plumbing it back down" is this.
+                  The map still takes only what it renders. */}
               {view === 'housing' && (
-                <LodgingBoard parties={parties} units={units} year={currentYear} />
+                <LodgingBoard
+                  parties={parties}
+                  units={units}
+                  year={currentYear}
+                  scenario={scenario}
+                  sessionCmId={selectedCmId ?? 0}
+                  canManage={canManageLodging}
+                />
               )}
               {view === 'map' && <LodgingMap parties={parties} units={units} year={currentYear} />}
             </div>

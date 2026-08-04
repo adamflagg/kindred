@@ -30,6 +30,13 @@ vi.mock('../../hooks/useWeekendRoster', () => ({
   useHouseholdMedical: () => ({ data: undefined, isLoading: false, error: null }),
 }))
 
+// The board reaches auth through `useLodgingPlacement` now. It renders inside
+// AuthProvider in the app; here the provider would be pure ceremony, and these
+// tests never write.
+vi.mock('../../hooks/useApiWithAuth', () => ({
+  useApiWithAuth: () => ({ fetchWithAuth: vi.fn(), isAuthenticated: true, isAuthLoading: false }),
+}))
+
 // One client per TEST, built outside the render path. Constructing it inside
 // the wrapper body rebuilds it on every render, discarding the cache and
 // starting a fresh loading pass underneath assertions that already resolved.
@@ -158,6 +165,10 @@ describe('LodgingBoard — the mode belongs to the header', () => {
   })
 
   it('offers nothing draggable', () => {
+    // Asserts on `aria-roledescription`, which is what dnd-kit actually sets.
+    // This previously looked for `[draggable="true"]` — the HTML5 attribute
+    // dnd-kit never uses — so it would have kept passing after drag shipped,
+    // which is the one thing it exists to catch.
     const { container } = render(
       <LodgingBoard
         parties={[party({ unit_code: 'cedar-1', unit_name: 'Cedar 1' })]}
@@ -166,7 +177,7 @@ describe('LodgingBoard — the mode belongs to the header', () => {
       />,
       { wrapper }
     )
-    expect(container.querySelector('[draggable="true"]')).toBeNull()
+    expect(container.querySelector('[aria-roledescription="draggable"]')).toBeNull()
   })
 })
 
@@ -227,6 +238,32 @@ describe('LodgingBoard — the consent flag', () => {
   it('says nothing when there is nothing to flag', () => {
     render(<LodgingBoard parties={[]} units={[unit()]} year={2026} />, { wrapper })
     expect(screen.queryByText(/needs a look/i)).not.toBeInTheDocument()
+  })
+
+  // HANDOFF §4 defers two consent questions to the drag PR — does a named
+  // partner count as mutual, and does silence count as consent — with the
+  // instruction to SAY ON THE SURFACE what the board flags on. The code had
+  // already answered both (`named` does not flag, `unknown` does); what was
+  // missing was staff being able to read the rule anywhere. Once staff can
+  // create a shared cabin by dragging, an unexplained amber flag is a rule
+  // they have to reverse-engineer from behaviour.
+  it('states the rule it flags on, so an amber cabin is not a mystery', () => {
+    sharedBoard()
+    const rule = screen.getByTestId('consent-rule')
+    // Silence is NOT consent — the household is chased for the form, not
+    // moved. Matched without the apostrophe on purpose: the copy uses a
+    // typographic ’, and pinning punctuation makes the test fail on a
+    // rewording that changes nothing about the rule.
+    expect(rule).toHaveTextContent(/answered the cabin form/i)
+    // A named partner is not verified mutual: that needs request names
+    // resolved to households (spec §7.3, unbuilt), so staff judge from the
+    // panel rather than the board refusing.
+    expect(rule).toHaveTextContent(/not checked for mutual/i)
+  })
+
+  it('does not lecture when no cabin is flagged', () => {
+    render(<LodgingBoard parties={[]} units={[unit()]} year={2026} />, { wrapper })
+    expect(screen.queryByTestId('consent-rule')).not.toBeInTheDocument()
   })
 })
 

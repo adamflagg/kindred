@@ -7,6 +7,7 @@
  * `credentials: 'include'` silently 401s (frontend/CLAUDE.md).
  */
 
+import type { PartyGrainBody } from '../components/weekend/dragPlacement'
 import type {
   HouseholdMedical,
   WeekendRoster,
@@ -136,6 +137,69 @@ export async function copyPlacementsFromMirror(
   })
   if (!response.ok) throw await toError(response, 'Failed to seed the scenario')
   return response.json() as Promise<LodgingCopyResult>
+}
+
+/** One weekend, in one scenario — the shape every placement write shares. */
+export interface PlacementWriteBase {
+  year: number
+  sessionCmId: number
+  /** REQUIRED and non-empty. A blank scenario is a 422, never a write to the live plan. */
+  scenario: string
+  grain: PartyGrainBody
+}
+
+function placementBody({ year, sessionCmId, scenario, grain }: PlacementWriteBase) {
+  return { year, session_cm_id: sessionCmId, scenario, ...grain }
+}
+
+/**
+ * Place a party into one or more units, inside a scenario.
+ *
+ * `unitIds` must name at least one unit. An empty list is NOT a second
+ * spelling of "unplaced" — it was the tombstone until kindred#1974 retired it,
+ * and the schema now pins `min_length=1`, so an empty set is a 422. Unplacing
+ * is `unplaceParty` below. HANDOFF said otherwise until #1974 and has since
+ * been corrected (§2, §6) — the note survives because the old shape is the
+ * intuitive one to reach for.
+ *
+ * Idempotent from the caller's side: the server upserts, so re-placing a party
+ * into the room it already occupies succeeds. The board still refuses to send
+ * that write — see `dragPlacement.resolveDrop` — because every write flips the
+ * one-way `staff_touched` flag.
+ */
+export async function placeParty(
+  fetchWithAuth: FetchWithAuth,
+  { unitIds, ...base }: PlacementWriteBase & { unitIds: string[] }
+): Promise<void> {
+  if (unitIds.length === 0) {
+    throw new LodgingApiError('A placement must name at least one unit', 0)
+  }
+  const response = await fetchWithAuth(`${API_BASE}/placements`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ ...placementBody(base), unit_ids: unitIds }),
+  })
+  if (!response.ok) throw await toError(response, 'Failed to place the party')
+}
+
+/**
+ * Remove a party's placement in this scenario — the unplaced queue.
+ *
+ * Deleting the row IS unplacing (kindred#1974): a scenario replaces the mirror
+ * rather than overlaying it, so there is no synced row left underneath for the
+ * delete to fall through to. This is the same operation summer performs on a
+ * `bunk_assignments_draft` row.
+ */
+export async function unplaceParty(
+  fetchWithAuth: FetchWithAuth,
+  base: PlacementWriteBase
+): Promise<void> {
+  const response = await fetchWithAuth(`${API_BASE}/placements`, {
+    method: 'DELETE',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(placementBody(base)),
+  })
+  if (!response.ok) throw await toError(response, 'Failed to unplace the party')
 }
 
 /**

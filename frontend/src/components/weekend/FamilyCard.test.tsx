@@ -21,7 +21,7 @@ import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 
 import type { LodgingUnitRow, RosterPartyRow } from '../../types/lodging'
-import { FamilyCard } from './FamilyCard'
+import { FamilyCard, FamilyCardPreview } from './FamilyCard'
 
 function party(overrides: Partial<RosterPartyRow> = {}): RosterPartyRow {
   return {
@@ -285,5 +285,36 @@ describe('FamilyCard — opening the detail panel', () => {
   it('is a real button, so it is reachable by keyboard', () => {
     render(<FamilyCard party={party()} onOpen={vi.fn()} />)
     expect(screen.getByRole('button', { name: /Johnson/ })).toBeInTheDocument()
+  })
+})
+
+describe('FamilyCardPreview — the drag overlay', () => {
+  // WHY A SEPARATE COMPONENT EXISTS AT ALL. dnd-kit's `useDraggable`
+  // registers its node UNCONDITIONALLY — `disabled` only nulls the listeners
+  // (verified in @dnd-kit/core 6.3.1). So rendering a real `FamilyCard` inside
+  // `<DragOverlay>` registers a SECOND draggable under the same `partyKey`,
+  // overwrites the source card's registry entry, and then deletes it outright
+  // when the overlay unmounts — leaving the card the staff member just dropped
+  // absent from `draggableNodes`, with its own effect never re-firing.
+  //
+  // Summer hit this first and hand-rolls plain markup in its own DragOverlay
+  // (`BunkingBoardByArea.tsx:662-702`) for exactly this reason. This is that
+  // precedent, shared rather than duplicated so the two cannot drift.
+  it('renders the family without registering a draggable', () => {
+    const { container } = render(<FamilyCardPreview party={party()} />)
+    expect(screen.getByTestId('family-card-name')).toHaveTextContent('Johnson')
+    expect(container.querySelector('[aria-roledescription="draggable"]')).toBeNull()
+  })
+
+  it('is not a button, so it cannot steal the click target', () => {
+    render(<FamilyCardPreview party={party()} />)
+    expect(screen.queryByRole('button')).not.toBeInTheDocument()
+  })
+
+  it('shows the same children and ages the real card does', () => {
+    // It is the card being dragged, so it has to LOOK like the card. Sharing
+    // the body is what keeps that true without a second copy to maintain.
+    render(<FamilyCardPreview party={party()} />)
+    expect(screen.getByText(/Noah Johnson \(8\)/)).toBeInTheDocument()
   })
 })
