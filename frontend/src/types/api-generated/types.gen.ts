@@ -6703,8 +6703,9 @@ export type WeekendSummaryEntry = {
  * Every weekend in a year, with counts, in ONE request.
  *
  * Exists because `/roster` is a composed read whose cost is dominated by
- * year-scoped work -- the unit registry, households, registrations and the
- * prior-household set are identical for every weekend in the year.
+ * year-scoped work -- the unit registry, households, the prior-household
+ * set, family-camp adults, registrations and the unresolved-alias count are
+ * identical for every weekend in the year.
  * Calling it once per weekend to fill a lander repeats that work N times: a
  * weekend with zero parties still costs ~3s, which is the whole tell. This
  * endpoint does the year-scoped fetches once and only the session-scoped
