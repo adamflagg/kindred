@@ -317,6 +317,50 @@ describe('LodgingBoard — the detail panel', () => {
   })
 })
 
+describe('LodgingBoard — the card gets the registry its sharing chip needs', () => {
+  it('chips a container-named household against one named a room beneath it', () => {
+    // WIRING, not logic. `overlappingPartyKeys` is the one definition of
+    // overlap and it expands a container code to its rooms — but only if it is
+    // handed the registry. `buildBoard` always has it; `LodgingUnitCard` takes
+    // it as an OPTIONAL prop defaulting to `[]` (so the many leaf-card tests
+    // need not pass one), which means the board silently dropping `units` here
+    // restores the exact bug the expansion exists to fix, one level up, with
+    // the card's own unit tests still green because they pass `units`
+    // directly. This is the assertion that fails if that prop goes missing.
+    render(
+      <LodgingBoard
+        parties={[
+          party({
+            household_cm_id: 101,
+            display_name: 'Alpha',
+            unit_code: 'house',
+            unit_name: 'The House',
+            share: { eligibility: 'declined' },
+          }),
+          party({
+            household_cm_id: 102,
+            display_name: 'Beta',
+            unit_code: 'r1',
+            unit_name: 'Room 1',
+            share: { eligibility: 'declined' },
+          }),
+        ]}
+        units={[
+          unit({ unit_id: 'uh', code: 'house', name: 'The House', is_container: true }),
+          unit({ unit_id: 'u_r1', code: 'r1', name: 'Room 1', parent_code: 'house' }),
+          unit({ unit_id: 'u_r2', code: 'r2', name: 'Room 2', parent_code: 'house' }),
+        ]}
+        year={2026}
+      />,
+      { wrapper }
+    )
+    // Alpha fans down onto both rooms; Beta holds `r1`. They overlap in `r1`,
+    // so both carry the per-party chip there. Alpha's copy on `r2` is nobody's
+    // share, which is why this is 2 and not 3.
+    expect(screen.getAllByText('Did not request sharing')).toHaveLength(2)
+  })
+})
+
 describe('LodgingBoard — an empty registry', () => {
   it('explains an empty board instead of rendering nothing', () => {
     render(<LodgingBoard parties={[]} units={[]} year={2026} />, { wrapper })

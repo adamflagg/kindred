@@ -30,6 +30,17 @@ export interface UnitAvailabilityWrite {
 
 export interface LodgingUnitCardProps {
   slot: BoardSlot
+  /**
+   * The whole registry the board was built from — needed ONLY to expand a
+   * container code to the rooms beneath it when deciding which parties overlap
+   * (`overlappingPartyKeys`). A card cannot answer that from its own slot: the
+   * party naming the building and the party naming one of its rooms both land
+   * here, and the codes alone do not intersect.
+   *
+   * Defaults to `[]`, which degrades to raw-code comparison — correct whenever
+   * no container is named, which is every leaf card.
+   */
+  units?: LodgingUnitRow[]
   /** The area's colour — a SECONDARY channel (§3.10), never the only one. */
   hue: string
   /** Placement is live: a scenario is selected and the user holds `bunking.manage`. */
@@ -78,6 +89,7 @@ export interface LodgingUnitCardProps {
 
 export function LodgingUnitCard({
   slot,
+  units = [],
   hue,
   canPlace = false,
   canSetAvailability = false,
@@ -99,9 +111,10 @@ export function LodgingUnitCard({
   // Each FamilyCard's own "did not request sharing" chip, in contrast, must
   // be a true statement about that ONE party — whether it shares a ROOM with
   // somebody, not merely a merged card. Same overlap definition `consentFlag`
-  // uses (`overlappingPartyKeys`), so the slot flag and the per-card chip can
-  // never answer "do these two overlap" two different ways.
-  const overlappingKeys = overlappingPartyKeys(parties)
+  // uses (`overlappingPartyKeys`), passed the same `units` so the container
+  // expansion is identical too: the slot flag and the per-card chip can never
+  // answer "do these two overlap" two different ways.
+  const overlappingKeys = overlappingPartyKeys(parties, units)
 
   // Merging is promotion to the parent, so a parentless room offers nothing
   // to promote it to — the handle is ABSENT, not merely disabled.
@@ -236,21 +249,32 @@ export function LodgingUnitCard({
             Merge
           </button>
         )}
-        {/* The inverse control, on the combined card itself. */}
-        {canMerge && unit.is_combined === true && onSplit !== undefined && (
-          <button
-            type="button"
-            disabled={savingMerge}
-            aria-label={`Split ${unit.name} into its rooms`}
-            onClick={() => {
-              onSplit(unit)
-            }}
-            className="border-border text-muted-foreground hover:text-foreground hover:border-foreground/30 inline-flex items-center gap-0.5 rounded-full border px-1.5 py-0.5 text-[10px] font-medium disabled:opacity-40"
-          >
-            <Split className="h-3 w-3" aria-hidden="true" />
-            Split
-          </button>
-        )}
+        {/* The inverse control, on the combined card itself.
+            `is_container` is part of the gate, not decoration: the API
+            resolves `is_combined` for EVERY row, leaves included, and a leaf
+            can carry a stale `default_combined: true` because the admin form
+            leaves it set when "is a building" is unticked. Splitting a room
+            into rooms it does not have is not an operation, so the control is
+            absent rather than offered and then failing. Clearing the stored
+            flag is deliberately NOT the fix — an unticked building may be
+            re-ticked, and its draw level is still its own. */}
+        {canMerge &&
+          unit.is_container === true &&
+          unit.is_combined === true &&
+          onSplit !== undefined && (
+            <button
+              type="button"
+              disabled={savingMerge}
+              aria-label={`Split ${unit.name} into its rooms`}
+              onClick={() => {
+                onSplit(unit)
+              }}
+              className="border-border text-muted-foreground hover:text-foreground hover:border-foreground/30 inline-flex items-center gap-0.5 rounded-full border px-1.5 py-0.5 text-[10px] font-medium disabled:opacity-40"
+            >
+              <Split className="h-3 w-3" aria-hidden="true" />
+              Split
+            </button>
+          )}
       </div>
 
       {isShared && (

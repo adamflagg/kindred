@@ -677,6 +677,40 @@ describe('buildBoard — drawing at the resolved container level', () => {
     // be counted twice on the card that replaced them.
     expect(board.areas[0]?.slots[0]?.parties).toHaveLength(1)
   })
+
+  it('draws a party named at an INTERMEDIATE container on the combined card below it', () => {
+    // Three levels: `block` groups `house`, and `house` is the whole-house
+    // let. The fan-down descends to the DRAWN descendants, not to the raw
+    // leaves — `coveredCodes` walks straight past `house` to `r1`/`r2`, and
+    // neither of those is drawn, so a leaf-based fan-down yields [] and sends
+    // a placed party to the off-board rail.
+    //
+    // Today's registry is two-level, but `parentCandidates` permits any depth
+    // and task 8 already tests a three-level ancestor walk, so the roll-up
+    // half of this is reachable and the fan-down half must match it.
+    const units = [
+      unit({ code: 'block', is_container: true }),
+      unit({ code: 'house', parent_code: 'block', is_container: true, is_combined: true }),
+      unit({ code: 'r1', parent_code: 'house' }),
+      unit({ code: 'r2', parent_code: 'house' }),
+    ]
+    const board = buildBoard(
+      [
+        party({
+          display_name: 'Alpha',
+          unit_code: 'block',
+          unit_name: 'Block',
+          unit_codes: ['block'],
+        }),
+      ],
+      units
+    )
+
+    expect(board.offBoard).toEqual([])
+    const drawn = board.areas.flatMap((a) => a.slots)
+    expect(drawn.map((s) => s.unit.code)).toEqual(['house'])
+    expect(drawn[0]?.parties.map((p) => p.display_name)).toEqual(['Alpha'])
+  })
 })
 
 describe('buildBoard — consent flag follows leaf overlap, not the card (task-11)', () => {
@@ -736,6 +770,51 @@ describe('buildBoard — consent flag follows leaf overlap, not the card (task-1
       ],
       combinedHouse
     )
+    expect(board.areas[0]?.slots[0]?.consent).not.toBeNull()
+    expect(board.flaggedCount).toBe(1)
+  })
+
+  it('flags a CONTAINER-named household against one named a room beneath it, split', () => {
+    // A party on the building occupies every room in it, so it overlaps a
+    // party in any one of them. Nothing here is merged at all — the container
+    // fans down onto both rooms and `r1` holds two parties — so this is a
+    // straight comparison of `'house'` against `'r1'`, which finds no
+    // intersection unless the container is expanded to its leaves first.
+    const splitHouse = [
+      unit({ code: 'house', is_container: true }),
+      unit({ code: 'r1', parent_code: 'house' }),
+      unit({ code: 'r2', parent_code: 'house' }),
+    ]
+    const board = buildBoard(
+      [
+        inRoom('house', { household_cm_id: 500001, display_name: 'Alpha' }),
+        inRoom('r1', { household_cm_id: 500002, display_name: 'Beta' }),
+      ],
+      splitHouse
+    )
+
+    const shared = board.areas[0]?.slots.find((slot) => slot.unit.code === 'r1')
+    expect(shared?.parties).toHaveLength(2)
+    expect(shared?.consent).not.toBeNull()
+    // `r2` holds only the fanned-down container party, so it is nobody's
+    // share: one slot flagged, not two.
+    expect(board.flaggedCount).toBe(1)
+  })
+
+  it('flags a CONTAINER-named household against one named a room beneath it, combined', () => {
+    // The same two households once the building is drawn as one card. The
+    // verdict must not depend on the draw level — that is what task-11
+    // settled — so this is the merged mirror of the split case above.
+    const board = buildBoard(
+      [
+        inRoom('house', { household_cm_id: 500001, display_name: 'Alpha' }),
+        inRoom('r1', { household_cm_id: 500002, display_name: 'Beta' }),
+      ],
+      combinedHouse
+    )
+
+    expect(board.areas[0]?.slots[0]?.unit.code).toBe('house')
+    expect(board.areas[0]?.slots[0]?.parties).toHaveLength(2)
     expect(board.areas[0]?.slots[0]?.consent).not.toBeNull()
     expect(board.flaggedCount).toBe(1)
   })

@@ -17,14 +17,27 @@
  *    at the WRONG level — a room whose building is combined, or a container
  *    whose board is split — is mapped onto whatever card currently represents
  *    it (`cardCodesFor`): rolled up to the drawn ancestor, or fanned down to
- *    the drawn leaves. Nobody falls off the board because of which level they
- *    were named at.
+ *    the drawn DESCENDANTS (`representingCodes`, which stops at the first drawn
+ *    node rather than running on to the raw leaves — otherwise a combined
+ *    intermediate leaves the fan-down with nothing drawable to land on).
+ *
+ *    So: nobody falls off the board because of which level they were named at,
+ *    with ONE honest exception — a container that has nothing drawable beneath
+ *    it at all. There is no card to name, and inventing one would be worse; see
+ *    invariant 2.
  * 2. **No party is ever dropped.** A party can be placed somewhere the board
- *    structurally cannot draw — a unit absent from the payload, or a merge
- *    whose every room is missing. Those go to `offBoard`, never to the
- *    unplaced corner queue (they ARE placed) and never to nowhere. `buildBoard`
- *    is total: every input party comes out in exactly one of slots / unplaced
- *    / offBoard.
+ *    structurally cannot draw. Three ways that happens, not two:
+ *
+ *    - a unit absent from the payload;
+ *    - a merge whose every room is missing;
+ *    - a CONTAINER with no drawable rooms — childless (expected workflow: a
+ *      building created before its rooms are reparented under it,
+ *      owner-confirmed in `unitLevel.ts`), or one whose every room fell out of
+ *      the payload.
+ *
+ *    Those go to `offBoard`, never to the unplaced corner queue (they ARE
+ *    placed) and never to nowhere. `buildBoard` is total: every input party
+ *    comes out in exactly one of slots / unplaced / offBoard.
  *
  *    "Exactly one" is about the CATEGORY, not the slot. A party holding several
  *    rooms is drawn on each of them, which is why an area's family count reads
@@ -32,7 +45,7 @@
  */
 import type { LodgingUnitRow, RosterPartyRow, ShareEligibilityValue } from '../../types/lodging'
 import { partyKey } from './partyKey'
-import { coveredCodes, drawnUnits } from './unitLevel'
+import { coveredCodes, drawnUnits, representingCodes } from './unitLevel'
 
 /**
  * The leaf codes a party currently occupies.
@@ -50,6 +63,42 @@ export function occupiedCodes(party: RosterPartyRow): string[] {
   if (codes.length > 0) return codes
   const single = party.unit_code ?? ''
   return single.length > 0 ? [single] : []
+}
+
+/**
+ * The LEAF codes a party occupies — `occupiedCodes` with every container
+ * expanded to the rooms beneath it.
+ *
+ * `occupiedCodes` returns the codes a placement NAMED, and a placement may name
+ * a building. A party on a building occupies every room in it, so it genuinely
+ * shares a room with a party named at any one of them — but comparing the raw
+ * strings puts `'house'` beside `'r1'` and finds no intersection. That is not a
+ * merge-only case: with the building SPLIT, the container party fans down onto
+ * `r1` and the two are drawn in the same slot, unflagged.
+ *
+ * A code the payload has no unit for stays as ITSELF rather than being dropped.
+ * It is not knowably a container, and dropping it would stop two parties naming
+ * one unknown code from overlapping — failing permissive, the direction this
+ * whole surface exists to close.
+ */
+function occupiedLeafCodes(
+  party: RosterPartyRow,
+  units: LodgingUnitRow[],
+  unitsByCode: Map<string, LodgingUnitRow>
+): Set<string> {
+  // A Set, not an array: a party naming BOTH a container and one of its rooms
+  // expands to that room twice, and a duplicate would make the party its own
+  // second occupant and flag it against itself.
+  const leaves = new Set<string>()
+  for (const code of occupiedCodes(party)) {
+    const unit = unitsByCode.get(code)
+    if (unit === undefined) {
+      leaves.add(code)
+      continue
+    }
+    for (const leaf of coveredCodes(unit, units)) leaves.add(leaf)
+  }
+  return leaves
 }
 
 /**
@@ -185,15 +234,22 @@ function areaName(unit: LodgingUnitRow): string {
  * households still chipped "did not request sharing", the identical bug
  * restated per-party instead of per-slot.
  *
- * Reads `occupiedCodes`, the same leaf-code authority the board and
- * `dragPlacement` already use, so a leaf slot is unaffected by this: its
- * parties all name that one leaf code, which trivially overlaps every other
- * party there, exactly as before this existed.
+ * Reads `occupiedLeafCodes` — `occupiedCodes`, the same authority the board and
+ * `dragPlacement` use, with every named CONTAINER expanded to the rooms beneath
+ * it. The expansion is why `units` is a parameter: without it the comparison is
+ * of names rather than of rooms, and a party on a building does not overlap a
+ * party in that building's room. A plain leaf slot is unaffected either way —
+ * its parties all name that one leaf code, which expands to itself and
+ * trivially overlaps every other party there, exactly as before this existed.
  */
-export function overlappingPartyKeys(parties: RosterPartyRow[]): Set<string> {
+export function overlappingPartyKeys(
+  parties: RosterPartyRow[],
+  units: LodgingUnitRow[]
+): Set<string> {
+  const unitsByCode = new Map(units.map((unit) => [unit.code, unit]))
   const ownersByCode = new Map<string, RosterPartyRow[]>()
   for (const party of parties) {
-    for (const code of occupiedCodes(party)) {
+    for (const code of occupiedLeafCodes(party, units, unitsByCode)) {
       const owners = ownersByCode.get(code)
       if (owners) owners.push(party)
       else ownersByCode.set(code, [party])
@@ -238,13 +294,18 @@ export function overlappingPartyKeys(parties: RosterPartyRow[]): Set<string> {
  * staff judge — which is the resolution C1 already settled on after §11's
  * own claim about the one flagged unit turned out to be false.
  */
-export function consentFlag(parties: RosterPartyRow[]): ConsentFlag | null {
+export function consentFlag(
+  parties: RosterPartyRow[],
+  units: LodgingUnitRow[]
+): ConsentFlag | null {
   if (parties.length < 2) return null
 
   // The rule is OVERLAP, not co-location on one card — see
   // `overlappingPartyKeys`. This is the ONLY thing a draw level changes: WHEN
-  // the check below runs, never WHAT it decides once it does.
-  if (overlappingPartyKeys(parties).size === 0) return null
+  // the check below runs, never WHAT it decides once it does. `units` is
+  // passed through for the container expansion that makes the overlap a
+  // comparison of ROOMS rather than of the names a placement happened to use.
+  if (overlappingPartyKeys(parties, units).size === 0) return null
 
   // Adult weekends have NO share question at all -- the fields are partition
   // ["Camper"] and no Adult-Share field exists -- so a person-grain party
@@ -391,8 +452,11 @@ function indexPayload(parties: RosterPartyRow[], units: LodgingUnitRow[]) {
       if (drawnByCode.has(parent.code)) return [parent.code]
       cursor = parent
     }
-    // Fan down: a container drawn below itself.
-    return coveredCodes(unit, units).filter((code) => drawnByCode.has(code))
+    // Fan down: a container drawn below itself. The DRAWN DESCENDANTS, not the
+    // drawn leaves — `coveredCodes` would walk past a combined intermediate to
+    // rooms that are not drawn, filter to nothing, and rail a party off a board
+    // that is showing the very card representing it.
+    return representingCodes(unit, units, new Set(drawnByCode.keys()))
   }
 
   const partiesByCode = new Map<string, RosterPartyRow[]>()
@@ -408,9 +472,10 @@ function indexPayload(parties: RosterPartyRow[], units: LodgingUnitRow[]) {
     // De-duplicated: a party naming two rooms of one combined house must land
     // on that house ONCE, not twice.
     const codes = [...new Set(occupiedCodes(party).flatMap(cardCodesFor))]
-    // Placed, but on nothing this board can draw — a code the payload has no
-    // unit for. There is no card to put it on, but it IS placed and the
-    // unplaced rail would be a lie.
+    // Placed, but on nothing this board can draw. Either a code the payload has
+    // no unit for, or a container with nothing drawable beneath it — childless,
+    // or every room missing. There is no card to put it on, but it IS placed
+    // and the unplaced rail would be a lie.
     if (codes.length === 0) {
       offBoard.push(party)
       continue
@@ -446,7 +511,7 @@ export function buildBoard(parties: RosterPartyRow[], units: LodgingUnitRow[]): 
   let flaggedCount = 0
   for (const unit of drawn) {
     const slotParties = partiesByCode.get(unit.code) ?? []
-    const consent = consentFlag(slotParties)
+    const consent = consentFlag(slotParties, units)
     if (consent) flaggedCount += 1
 
     const key = areaKey(unit)

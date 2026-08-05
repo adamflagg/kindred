@@ -361,6 +361,11 @@ export function LodgingBoard({
                           <LodgingUnitCard
                             key={slot.unit.unit_id}
                             slot={slot}
+                            // The registry, so the card's per-party sharing
+                            // chip expands a container code to its rooms —
+                            // the same `overlappingPartyKeys` the slot flag
+                            // already ran with these units in `buildBoard`.
+                            units={units}
                             hue={area.hue}
                             canPlace={canPlace}
                             canSetAvailability={canSetAvailability}

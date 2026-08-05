@@ -53,6 +53,47 @@ export function coveredCodes(unit: LodgingUnitRow, units: LodgingUnitRow[]): str
   return out
 }
 
+/**
+ * The DRAWN codes that currently represent `unit` — its own, if it is drawn,
+ * else the drawn nodes beneath it, descending no further than the first one on
+ * each path.
+ *
+ * NOT `coveredCodes`. That one walks to the raw LEAVES, past any combined node
+ * in between, which is wrong for a fan-down: with `block` → `house`(combined)
+ * → `r1`,`r2`, the leaves are `r1`/`r2` and NEITHER is drawn, so filtering them
+ * against the drawn set yields `[]` and a party named at `block` falls off the
+ * board — onto the card that exists to represent it. Stopping at the first
+ * drawn node returns `['house']` instead.
+ *
+ * Stopping is also cheaper than filtering, and equivalent by construction:
+ * `drawnUnits` descends top-down and stops at the first combined node, so no
+ * descendant of a drawn node is ever itself drawn.
+ *
+ * Yields `[]` for a container with nothing drawable beneath it — a childless
+ * one, or one whose every room is missing from the payload. That is deliberate:
+ * `[]` routes the party to `offBoard` rather than inventing a card.
+ */
+export function representingCodes(
+  unit: LodgingUnitRow,
+  units: LodgingUnitRow[],
+  drawn: ReadonlySet<string>
+): string[] {
+  const children = childrenByParent(units)
+  const out: string[] = []
+  // Same cycle backstop as `coveredCodes`: bad parent data must not hang the
+  // board even though the server guards against writing it (#1899).
+  const seen = new Set<string>()
+  const queue = [unit]
+  while (queue.length > 0) {
+    const next = queue.shift()
+    if (next === undefined || seen.has(next.code)) continue
+    seen.add(next.code)
+    if (drawn.has(next.code)) out.push(next.code)
+    else queue.push(...(children.get(next.code) ?? []))
+  }
+  return out
+}
+
 /** The units that get a card, at the level each tree resolves to. */
 export function drawnUnits(units: LodgingUnitRow[]): LodgingUnitRow[] {
   const children = childrenByParent(units)
