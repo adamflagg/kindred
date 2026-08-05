@@ -180,6 +180,21 @@ export function LodgingBoard({
     void move(intent).catch(() => undefined)
   }
 
+  // dnd-kit fires `onDragCancel`, NEVER `onDragEnd`, on Escape, a window
+  // resize, or a tab visibility change mid-drag. `handleDragEnd` is the only
+  // place that resets `dragging`/`draggingMergeUnit` above, so without this
+  // handler a cancelled CARD drag leaves `draggingMergeUnit` latched: every
+  // party droppable stays disabled board-wide (`LodgingUnitCard`'s
+  // `mergeDragActive` gate) and every non-sibling card sits dimmed and
+  // unclickable (`pointer-events-none`) until staff happen to start another
+  // drag. Same two resets as `handleDragEnd`'s first two lines — see
+  // `useLockGroupDragDrop.tsx`'s `handleDragCancel` for the same shape on
+  // summer's own drag gesture.
+  const handleDragCancel = () => {
+    setDragging(null)
+    setDraggingMergeUnit(null)
+  }
+
   const splitUnit = useCallback(
     (unit: LodgingUnitRow) => {
       void setCombined(unit.unit_id, unit.name, false).catch(() => undefined)
@@ -232,6 +247,7 @@ export function LodgingBoard({
       collisionDetection={collisionDetection}
       onDragStart={handleDragStart}
       onDragEnd={handleDragEnd}
+      onDragCancel={handleDragCancel}
     >
       <div className="flex flex-col gap-3">
         {/* The mode chip that used to lead this row moved to the header badge,
