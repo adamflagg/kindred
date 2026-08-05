@@ -119,6 +119,14 @@ class LodgingUnitSummary(BaseModel):
     # A building/grouping row. Present in the payload so the map and board
     # can draw the building, but excluded from every capacity count.
     is_container: bool = False
+    # The parent container's CODE, not its record id — the board keys on code,
+    # and code is the cross-year identity thread. "" means no parent.
+    parent_code: str = ""
+    # The RESOLVED draw level for the requested scenario: a scenario override
+    # row if one exists, else the unit's default_combined, else False. False is
+    # "draw the children", which is the pre-feature behaviour, so an unruled
+    # unit can never hide its rooms.
+    is_combined: bool = False
     # The unit's ROLE: whether it is planning inventory at all. Carried a
     # "default" name until 1500000136, which implied an override -- and the
     # override is a rare per-weekend exception rather than the point.

@@ -91,6 +91,7 @@ class TestStableSort:
             pytest.param(lambda r: r.fetch_session(2026, 1), id="fetch_session"),
             pytest.param(lambda r: r.fetch_availability(2026, "s1"), id="fetch_availability"),
             pytest.param(lambda r: r.fetch_assignments(2026, "s1"), id="fetch_assignments"),
+            pytest.param(lambda r: r.fetch_slot_merges(2026, "s1", "scn_1"), id="fetch_slot_merges"),
             pytest.param(lambda r: r.fetch_attendees_for_session(2026, "s1"), id="fetch_attendees"),
             pytest.param(lambda r: r.fetch_households(2026), id="fetch_households"),
             pytest.param(lambda r: r.fetch_prior_household_cm_ids(2026), id="fetch_prior_cm_ids"),
@@ -205,6 +206,27 @@ class TestFetchDraftAssignments:
         assert params["expand"] == "units"
 
 
+class TestFetchSlotMerges:
+    @pytest.mark.asyncio
+    async def test_scopes_to_one_session_year_and_scenario(self, repo: LodgingRepository, pb: MagicMock) -> None:
+        """The same three-part scope as fetch_draft_assignments.
+
+        The caller (LodgingRosterService) never invokes this with an empty
+        scenario -- see the "no query on the mirror" tests in
+        test_lodging_roster_service.py -- but the filter itself does not
+        depend on that discipline: `scenario` on lodging_slot_merges is a
+        REQUIRED relation, so a `scenario = ""` predicate would return nothing
+        regardless.
+        """
+        await repo.fetch_slot_merges(2026, "sess_pb_1", "scn_1")
+
+        pb.collection.assert_called_with("lodging_slot_merges")
+        params = _last_query(pb)
+        assert 'session = "sess_pb_1"' in params["filter"]
+        assert "year = 2026" in params["filter"]
+        assert 'scenario = "scn_1"' in params["filter"]
+
+
 class TestClientSuppliedValuesAreEscaped:
     """`scenario` and `unit_id` arrive from the client and reach a filter.
 
@@ -240,6 +262,14 @@ class TestClientSuppliedValuesAreEscaped:
         assert '" || id != "' not in filter_str
 
     @pytest.mark.asyncio
+    async def test_fetch_slot_merges_escapes_the_scenario(self, repo: LodgingRepository, pb: MagicMock) -> None:
+        await repo.fetch_slot_merges(2026, "sess_pb_1", self.INJECTION)
+
+        filter_str = _last_query(pb)["filter"]
+        assert f'scenario = "{self.ESCAPED}"' in filter_str
+        assert '" || id != "' not in filter_str
+
+    @pytest.mark.asyncio
     async def test_find_availability_override_escapes_the_unit_id(self, repo: LodgingRepository, pb: MagicMock) -> None:
         """One client value left, not two: 1500000135 took the scenario.
 
@@ -261,6 +291,7 @@ class TestClientSuppliedValuesAreEscaped:
             pytest.param(lambda r, s: r.fetch_availability(2026, s), id="fetch_availability"),
             pytest.param(lambda r, s: r.fetch_assignments(2026, s), id="fetch_assignments"),
             pytest.param(lambda r, s: r.fetch_draft_assignments(2026, s, "scn_1"), id="fetch_draft_assignments"),
+            pytest.param(lambda r, s: r.fetch_slot_merges(2026, s, "scn_1"), id="fetch_slot_merges"),
         ],
     )
     async def test_every_session_filter_escapes_the_session_id(

@@ -113,6 +113,8 @@ const _exhaustiveLodgingUnit: Required<LodgingUnitRow> = {
   is_confirmed: true,
   is_active: true,
   is_container: false,
+  parent_code: '',
+  is_combined: false,
   inventory_class: 'family_pool',
   family_available_override: null,
   reason: '',

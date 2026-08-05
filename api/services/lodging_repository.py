@@ -46,6 +46,7 @@ from api.constants.collections import (
     LODGING_ASSIGNMENTS_DRAFT,
     LODGING_AVAILABILITY,
     LODGING_INGEST_ISSUES,
+    LODGING_SLOT_MERGES,
     LODGING_UNITS,
 )
 from api.constants.filters import ACTIVE_ENROLLED_FILTER
@@ -241,6 +242,30 @@ class LodgingRepository:
                     f'session = "{pb_escape(session_pb_id)}" && year = {year} && scenario = "{pb_escape(scenario_id)}"'
                 ),
                 "expand": "units",
+                "sort": STABLE_SORT,
+            },
+        )
+
+    async def fetch_slot_merges(self, year: int, session_pb_id: str, scenario_id: str) -> list[Any]:
+        """One scenario's draw-level overrides for one session -- explicit rows only.
+
+        The caller never invokes this with an empty scenario. `scenario` on
+        lodging_slot_merges is a REQUIRED relation (1500000139), so a
+        `scenario = ""` filter would return nothing anyway; the roster service
+        skips the round trip entirely rather than relying on that, because the
+        CampMinder mirror is never overridable by design, not by an empty
+        result set.
+
+        EVERY interpolated string here goes through pb_escape, matching
+        fetch_draft_assignments: `scenario_id` reaches this straight off the
+        `?scenario=` query parameter.
+        """
+        return await self._page(
+            LODGING_SLOT_MERGES,
+            query_params={
+                "filter": (
+                    f'session = "{pb_escape(session_pb_id)}" && year = {year} && scenario = "{pb_escape(scenario_id)}"'
+                ),
                 "sort": STABLE_SORT,
             },
         )

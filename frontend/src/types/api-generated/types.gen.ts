@@ -1926,6 +1926,14 @@ export type LodgingUnitSummary = {
    */
   is_container?: boolean
   /**
+   * Parent Code
+   */
+  parent_code?: string
+  /**
+   * Is Combined
+   */
+  is_combined?: boolean
+  /**
    * Inventory Class
    */
   inventory_class?: string

@@ -78,6 +78,9 @@ def _repo(**overrides: Any) -> MagicMock:
         # The scenario layer. Only read when a scenario is asked for, which is
         # itself asserted below -- no scenario must cost no extra fetches.
         "fetch_draft_assignments": [],
+        # A container's per-scenario draw-level override. Same rule as the
+        # draft placements above: only read when a scenario is asked for.
+        "fetch_slot_merges": [],
         "fetch_attendees_for_session": [],
         "fetch_households": {},
         "fetch_prior_household_cm_ids": set(),
@@ -890,6 +893,11 @@ class TestScenarioResolution:
 
         assert repo.fetch_draft_assignments.await_count == 0
         assert repo.fetch_scenario_availability.await_count == 0
+        # The CampMinder mirror is never overridable -- querying
+        # `scenario = ""` against a REQUIRED relation would return nothing
+        # anyway, so the round trip is skipped entirely rather than relying on
+        # an empty result.
+        assert repo.fetch_slot_merges.await_count == 0
 
     @pytest.mark.asyncio
     async def test_a_scenario_never_reads_the_campminder_mirror(self) -> None:
@@ -911,6 +919,9 @@ class TestScenarioResolution:
 
         assert repo.fetch_assignments.await_count == 0
         assert repo.fetch_draft_assignments.await_count == 1
+        # A named scenario CAN carry container overrides -- the same "one
+        # source, chosen once" rule as the placements above.
+        assert repo.fetch_slot_merges.await_count == 1
 
     @pytest.mark.asyncio
     async def test_a_draft_placement_is_what_the_scenario_shows(self) -> None:

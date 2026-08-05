@@ -258,6 +258,16 @@ def _is_planning_inventory(unit: LodgingUnitSummary) -> bool:
     return unit.inventory_class != "staff_default" or unit.is_family_available
 
 
+def resolve_combined(*, default: bool, override: bool | None) -> bool:
+    """The draw level for one container, in one scenario.
+
+    `override is None` means NO ROW, which inherits — it is not False. The two
+    are different facts, and flattening them would make it impossible to split
+    a container whose registry default is combined.
+    """
+    return default if override is None else override
+
+
 class LodgingRosterService:
     """Builds the read-only weekend roster from repository output."""
 
@@ -338,8 +348,22 @@ class LodgingRosterService:
             # There is deliberately NO second availability read here. 1500000135
             # deleted this table's scenario dimension, so a scenario has nothing
             # to overlay -- see fetch_availability.
+            #
+            # No scenario means the CampMinder mirror, which is never
+            # overridable -- `scenario` on lodging_slot_merges is a REQUIRED
+            # relation (1500000139). Skipping the fetch entirely, rather than
+            # querying `scenario = ""`, says that as code instead of relying on
+            # an empty result set; resolve_combined then has no override to see
+            # and every container inherits its registry default.
+            merges_task = (
+                tg.create_task(self.repository.fetch_slot_merges(year, session_pb_id, scenario)) if scenario else None
+            )
 
-        unit_summaries = self._build_units(units_task.result(), availability_task.result())
+        unit_summaries = self._build_units(
+            units_task.result(),
+            availability_task.result(),
+            merges_task.result() if merges_task is not None else [],
+        )
         parties = self._build_parties(
             session_type=session_type,
             attendees=attendees_task.result(),
@@ -425,8 +449,20 @@ class LodgingRosterService:
                 # No second availability read, exactly as build_roster issues
                 # none. These are separate TaskGroups and fixing only one of
                 # them is the half-fix the guard tests exist to catch.
+                #
+                # Merge overrides only when a scenario is named -- exactly as
+                # build_roster skips the round trip for the CampMinder mirror.
+                merges_task = (
+                    inner.create_task(self.repository.fetch_slot_merges(year, session_pb_id, scenario))
+                    if scenario
+                    else None
+                )
 
-            unit_summaries = self._build_units(units, availability_task.result())
+            unit_summaries = self._build_units(
+                units,
+                availability_task.result(),
+                merges_task.result() if merges_task is not None else [],
+            )
             parties = self._build_parties(
                 session_type=_s(session, "session_type"),
                 attendees=attendees_task.result(),
@@ -467,7 +503,7 @@ class LodgingRosterService:
 
     # ---------------------------------------------------------------- units
 
-    def _build_units(self, units: list[Any], availability: list[Any]) -> list[LodgingUnitSummary]:
+    def _build_units(self, units: list[Any], availability: list[Any], merges: list[Any]) -> list[LodgingUnitSummary]:
         # ONE layer. The scenario overlay is gone (1500000135) -- availability
         # is a fact about the weekend, so a scenario has nothing to overlay.
         # `family_available` is stored EXPLICITLY, so the row IS the answer and
@@ -481,6 +517,13 @@ class LodgingRosterService:
         # than renamed to `reason`); surfaced to the API as `reason`. This and
         # `set_availability` are the only two places that translate.
         reason_by_unit = {_s(row, "unit"): _s(row, "note") for row in availability}
+
+        # id -> code, so the parent relation can be published as a code.
+        code_by_id = {_s(unit, "id"): _s(unit, "code") for unit in units}
+
+        # Absent row means inherit -- see resolve_combined. Keyed by unit id
+        # because that is what the relation stores.
+        merge_by_unit: dict[str, bool] = {_s(row, "unit"): _b(row, "combined") for row in merges}
 
         # Bathroom groups are computed across ALL units, because a group's
         # membership does not depend on the session.
@@ -534,6 +577,11 @@ class LodgingRosterService:
                     is_confirmed=_b(unit, "is_confirmed"),
                     is_active=_b(unit, "is_active"),
                     is_container=_b(unit, "is_container"),
+                    parent_code=code_by_id.get(_s(unit, "parent_unit"), ""),
+                    is_combined=resolve_combined(
+                        default=_b(unit, "default_combined"),
+                        override=merge_by_unit.get(_s(unit, "id")),
+                    ),
                     inventory_class=inventory_class,
                     family_available_override=override,
                     reason=reason_by_unit.get(_s(unit, "id"), ""),
