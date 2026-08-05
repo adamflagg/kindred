@@ -103,6 +103,54 @@ func TestLodgingAssignmentsSyncHouseholdGrain(t *testing.T) {
 	}
 }
 
+// TestLodgingAssignmentsSyncWritesTheSyncedYearsUnitIDs is the actual failure
+// Task 5 exists to close, exercised at the write, not just at Resolve:
+// upsertAssignment does `rec.Set("units", in.UnitIDs)` verbatim, so a resolver
+// that translated the alias through the wrong year would write a stale
+// season's unit ids straight into the placement, and every test that only
+// asserts on UnitCodes/labels would stay green while it happened.
+//
+// "test-unit-a" gets a row in both 2026 and 2027; the alias is seeded against
+// the EARLIER (2026) id, as it would be if authored once and never re-pointed
+// (AliasResolver's own doc comment). The sync runs for 2027, and the written
+// "units" relation must hold the 2027 row, never the 2026 one the alias
+// happens to store.
+func TestLodgingAssignmentsSyncWritesTheSyncedYearsUnitIDs(t *testing.T) {
+	app := newLodgingTestApp(t)
+	id2026 := addUnit(t, app, "test-unit-a", 2026)
+	id2027 := addUnit(t, app, "test-unit-a", 2027)
+	addAlias(t, app, "Test Building A", []string{id2026}, 0, 0)
+
+	sess := addSession(t, app, cmIDFamilyCamp1, "Family Camp 1", "family",
+		"2027-05-23 07:00:00.000Z", "2027-05-26 07:00:00.000Z", 2027)
+	cabinDef := addFieldDef(t, app, cmIDFamilyCampCabin, fieldNameFamilyCampCabin)
+	hh := addHousehold(t, app, 9001, 2027)
+	emma := addPerson(t, app, 5001, 9001, 2027, hh)
+	addAttendee(t, app, emma, sess, 5001, 2, 2027)
+	addHouseholdValue(t, app, hh, cabinDef, "Test Building A", testLastUpdated, 2027)
+
+	s := NewLodgingAssignmentsSync(app)
+	s.Year = 2027
+	if err := s.Sync(context.Background()); err != nil {
+		t.Fatalf("Sync: %v", err)
+	}
+
+	rows, err := app.FindRecordsByFilter("lodging_assignments", "", "", 0, 0)
+	if err != nil {
+		t.Fatalf("find assignments: %v", err)
+	}
+	if len(rows) != 1 {
+		t.Fatalf("assignments = %d, want 1", len(rows))
+	}
+	units := rows[0].GetStringSlice("units")
+	if len(units) != 1 || units[0] != id2027 {
+		t.Errorf("units = %v, want [%q] (the 2027 row)", units, id2027)
+	}
+	if len(units) == 1 && units[0] == id2026 {
+		t.Error("the assignment's units relation holds the 2026 id in a 2027 sync")
+	}
+}
+
 // TestLodgingAssignmentsSyncIsIdempotent: a second run must not duplicate the
 // assignment or append a spurious history row.
 func TestLodgingAssignmentsSyncIsIdempotent(t *testing.T) {

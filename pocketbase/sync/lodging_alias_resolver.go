@@ -131,16 +131,18 @@ func (r *AliasResolver) Resolve(raw string, year int) AliasResolution {
 		ids := make([]string, 0, len(stored))
 		codes := make([]string, 0, len(stored))
 		for _, id := range stored {
+			// ALL OR NOTHING, on both doors. A stored id with no code at all
+			// (the unit row is gone) and a code with no row THIS season are the
+			// same failure: a member that cannot be carried into the requested
+			// year. Skipping either one and returning the members that do exist
+			// would silently shrink a family's rooms, which is worse than
+			// saying the name does not resolve.
 			code := r.unitCode[id]
 			if code == "" {
-				continue
+				return out
 			}
 			target, ok := r.idByCodeYear[codeYear{code: code, year: year}]
 			if !ok {
-				// ALL OR NOTHING. A building with no row this season was not
-				// carried forward. Returning the members that do exist would
-				// silently shrink a family's rooms, which is worse than saying
-				// the name does not resolve.
 				return out
 			}
 			ids = append(ids, target)

@@ -305,6 +305,32 @@ func addAlias(t *testing.T, app core.App, aliasString string, unitIDs []string, 
 	})
 }
 
+// addAliasWithDanglingMember is addAlias but bypasses relation validation, for
+// tests modeling a member_units id that names no lodging_units row at all --
+// the unit was deleted after the alias was authored. app.Save refuses that
+// shape outright (RelationField.ValidateValue), so a legitimate write can
+// never produce it; SaveNoValidate stages the state a real deletion would
+// leave behind, the same reason 1500000134's backfill and
+// TestLodgingAssignmentsSyncLabelDropsUnresolvableUnits use it.
+func addAliasWithDanglingMember(
+	t *testing.T, app core.App, aliasString string, unitIDs []string, from, to int,
+) string {
+	t.Helper()
+	col, err := app.FindCollectionByNameOrId("lodging_unit_aliases")
+	if err != nil {
+		t.Fatalf("find collection lodging_unit_aliases: %v", err)
+	}
+	r := core.NewRecord(col)
+	r.Set("alias_string", aliasString)
+	r.Set("member_units", unitIDs)
+	r.Set("valid_from_year", from)
+	r.Set("valid_to_year", to)
+	if err := app.SaveNoValidate(r); err != nil {
+		t.Fatalf("save lodging_unit_aliases (no validate): %v", err)
+	}
+	return r.Id
+}
+
 // addFamilyCampAdult records one accompanying adult. These people are never
 // enrolled in CampMinder -- they exist only as custom-field values -- so they are
 // invisible to attendees and have to be counted separately for party_size.

@@ -233,7 +233,10 @@ func TestResolveIsUnresolvedWhenAMemberIsMissingThatYear(t *testing.T) {
 	app := newLodgingTestApp(t)
 	a2026 := addUnit(t, app, "test-unit-a", 2026)
 	b2026 := addUnit(t, app, "test-unit-b", 2026)
-	addUnit(t, app, "test-unit-a", 2027) // b was demolished; not carried forward
+	// "test-unit-a" has a 2027 row; "test-unit-b" does not -- a member code with
+	// no row in the requested year, not a claim about why (the registry's own
+	// demolition path is `is_active: false` on a row that IS carried forward).
+	addUnit(t, app, "test-unit-a", 2027)
 	addAlias(t, app, "Test Pair", []string{a2026, b2026}, 0, 0)
 
 	r, err := NewAliasResolver(app)
@@ -247,5 +250,32 @@ func TestResolveIsUnresolvedWhenAMemberIsMissingThatYear(t *testing.T) {
 	}
 	if len(got.UnitIDs) != 0 {
 		t.Errorf("UnitIDs = %v, want empty -- a partial member set silently shrinks a family's rooms", got.UnitIDs)
+	}
+}
+
+// TestResolveIsUnresolvedWhenAMemberIsDangling closes the second door to a
+// partial member set: a stored member_units id that names no unit row at all
+// must fail the whole resolution exactly like a member missing from the
+// requested year does. Dropping it and returning the survivor would shrink
+// the room count exactly as silently -- and it used to fail loudly instead of
+// silently, because the eventual lodging_assignments write refuses an id
+// RelationField.ValidateValue cannot resolve; skipping the dangling member
+// here means only real ids ever reach that write, and the failure vanishes.
+func TestResolveIsUnresolvedWhenAMemberIsDangling(t *testing.T) {
+	app := newLodgingTestApp(t)
+	a2027 := addUnit(t, app, "test-unit-a", 2027)
+	addAliasWithDanglingMember(t, app, "Test Pair", []string{a2027, "missingunit0001"}, 0, 0)
+
+	r, err := NewAliasResolver(app)
+	if err != nil {
+		t.Fatalf("NewAliasResolver: %v", err)
+	}
+
+	got := r.Resolve("Test Pair", 2027)
+	if got.Resolved {
+		t.Errorf("resolved with a dangling member; want unresolved")
+	}
+	if len(got.UnitIDs) != 0 {
+		t.Errorf("UnitIDs = %v, want empty -- a dangling member silently shrinks a family's rooms", got.UnitIDs)
 	}
 }
