@@ -11,12 +11,12 @@
  * renders as an em dash: the API already maps PocketBase's stored 0 to null,
  * and "sleeps 0" would be a lie about a cabin nobody has measured.
  */
-import { useDroppable } from '@dnd-kit/core'
-import { Bath, Plug, Snowflake, TriangleAlert, Users } from 'lucide-react'
+import { useDraggable, useDroppable } from '@dnd-kit/core'
+import { Bath, Merge, Plug, Snowflake, Split, TriangleAlert, Users } from 'lucide-react'
 
 import type { LodgingUnitRow, RosterPartyRow } from '../../types/lodging'
 import type { BoardSlot } from './boardLayout'
-import { unitDroppableId } from './dragPlacement'
+import { isValidMergeTarget, mergeDragId, unitDroppableId } from './dragPlacement'
 import { FamilyCard } from './FamilyCard'
 import { partyKey } from './partyKey'
 import { reservationBadge } from './unitBadges'
@@ -46,6 +46,22 @@ export interface LodgingUnitCardProps {
   /** True while THIS unit's availability write is in flight. */
   savingAvailability?: boolean
   onSetAvailability?: (unit: LodgingUnitRow, write: UnitAvailabilityWrite) => void
+  /**
+   * The card currently being dragged BY ITS MERGE HANDLE, or `null`/`undefined`
+   * when no card drag is in flight. Every card receives the same value and
+   * decides its own validity from it — the gender-rule analogue for this
+   * gesture (`isValidDropTarget` on summer's `BunkCard`).
+   */
+  mergeSourceUnit?: LodgingUnitRow | null
+  /**
+   * Split a combined card back into its rooms. Rendered only on one, and
+   * only when `canPlace` — `undefined` is how the board spells "not writable
+   * right now" under `exactOptionalPropertyTypes`, matching `onSetAvailability`
+   * above.
+   */
+  onSplit?: (unit: LodgingUnitRow) => void
+  /** True while THIS unit's merge/split write is in flight. */
+  savingMerge?: boolean
   onOpenParty: (party: RosterPartyRow) => void
 }
 
@@ -56,6 +72,9 @@ export function LodgingUnitCard({
   canSetAvailability = false,
   savingAvailability = false,
   onSetAvailability,
+  mergeSourceUnit = null,
+  onSplit,
+  savingMerge = false,
   onOpenParty,
 }: LodgingUnitCardProps) {
   const { unit, parties, consent } = slot
@@ -63,27 +82,71 @@ export function LodgingUnitCard({
   const capacityKnown = unit.sleeps !== null && unit.sleeps !== undefined
   const isShared = parties.length > 1
 
+  // Merging is promotion to the parent, so a parentless room offers nothing
+  // to promote it to — the handle is ABSENT, not merely disabled.
+  const hasParent = (unit.parent_code ?? '').length > 0
+  const showMergeHandle = canPlace && hasParent
+  const mergeDragActive = mergeSourceUnit !== null
+  const isValidTarget = isValidMergeTarget(mergeSourceUnit, unit)
+
+  const {
+    attributes: mergeAttributes,
+    listeners: mergeListeners,
+    setNodeRef: setMergeDragRef,
+  } = useDraggable({
+    id: mergeDragId(unit.code),
+    disabled: !canPlace,
+  })
+
+  // A SEPARATE droppable from the party target below, registered on the same
+  // card: `resolveMergeDrop` requires BOTH ids to carry the `merge:` prefix,
+  // so a party dropped here must land on `unitDroppableId`, never this one.
+  // Disabled whenever this card is not a legal target for whatever is
+  // currently being dragged — which is also "always" when no card drag is in
+  // flight, since `isValidMergeTarget` refuses a `null` source.
+  const { setNodeRef: setMergeDropRef, isOver: isMergeOver } = useDroppable({
+    id: mergeDragId(unit.code),
+    disabled: !isValidTarget,
+  })
+
   // Every room accepts a drop while placement is live, including a full or
   // unsuitable one. The fit check is advisory and every cabin is unconfirmed
   // until staff walk the property, so refusing here would block nearly every
   // placement for a reason that is really "nobody has checked yet".
-  const { setNodeRef, isOver } = useDroppable({
+  //
+  // Disabled for every card while a MERGE drag is in flight: without this, a
+  // card being dragged onto a sibling would sit over two overlapping,
+  // simultaneously-enabled droppables — this one and the merge droppable
+  // above — and which one dnd-kit resolves `over` to would be a tie decided
+  // by hook registration order, not by which gesture is actually in flight.
+  const { setNodeRef: setUnitDropRef, isOver: isUnitOver } = useDroppable({
     id: unitDroppableId(unit.code),
-    disabled: !canPlace,
+    disabled: !canPlace || mergeDragActive,
   })
+
+  const setCardRef = (node: HTMLDivElement | null) => {
+    setUnitDropRef(node)
+    setMergeDropRef(node)
+  }
 
   return (
     <div
       data-unit-card
       data-unit-code={unit.code}
-      ref={setNodeRef}
+      ref={setCardRef}
       style={{ borderTopColor: hue }}
       className={`bg-card flex flex-col gap-2 rounded-xl border border-t-[3px] p-2.5 transition-colors ${
         consent
           ? 'border-amber-400 ring-1 ring-amber-400/40 dark:border-amber-500'
           : 'border-border'
       } ${parties.length === 0 ? 'bg-muted/25 border-dashed' : ''} ${
-        isOver ? 'border-primary ring-primary/50 bg-primary/5 ring-2' : ''
+        isUnitOver || isMergeOver ? 'border-primary ring-primary/50 bg-primary/5 ring-2' : ''
+      } ${
+        // Invalid targets grey out mid-drag, as summer's `isValidDropTarget()`
+        // does for gender. Gated on `mergeDragActive` too: with no card drag
+        // in flight `isValidTarget` is trivially false for every card, and
+        // without this guard the whole board would sit permanently dimmed.
+        mergeDragActive && !isValidTarget ? 'pointer-events-none opacity-40' : ''
       }`}
     >
       <div className="flex items-baseline gap-1.5">
@@ -134,6 +197,39 @@ export function LodgingUnitCard({
             onSetAvailability?.(unit, write)
           }}
         />
+        {/* Merging is promotion to the parent: dragging this handle onto a
+            sibling's card writes `combined: true` on the shared parent. Absent
+            entirely on a parentless room — there is nothing to promote it to —
+            rather than merely disabled. */}
+        {showMergeHandle && (
+          <button
+            type="button"
+            ref={setMergeDragRef}
+            data-testid={`merge-handle-${unit.code}`}
+            aria-label={`Merge ${unit.name} into its building`}
+            {...mergeAttributes}
+            {...mergeListeners}
+            className="border-border text-muted-foreground hover:text-foreground hover:border-foreground/30 inline-flex cursor-grab items-center gap-0.5 rounded-full border px-1.5 py-0.5 text-[10px] font-medium active:cursor-grabbing"
+          >
+            <Merge className="h-3 w-3" aria-hidden="true" />
+            Merge
+          </button>
+        )}
+        {/* The inverse control, on the combined card itself. */}
+        {canPlace && unit.is_combined === true && onSplit !== undefined && (
+          <button
+            type="button"
+            disabled={savingMerge}
+            aria-label={`Split ${unit.name} into its rooms`}
+            onClick={() => {
+              onSplit(unit)
+            }}
+            className="border-border text-muted-foreground hover:text-foreground hover:border-foreground/30 inline-flex items-center gap-0.5 rounded-full border px-1.5 py-0.5 text-[10px] font-medium disabled:opacity-40"
+          >
+            <Split className="h-3 w-3" aria-hidden="true" />
+            Split
+          </button>
+        )}
       </div>
 
       {isShared && (

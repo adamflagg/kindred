@@ -58,6 +58,16 @@ vi.mock('../hooks/useUnitAvailability', () => ({
   }),
 }))
 
+// Same reason, same board: the merge handle and split control mount a real
+// `useMutation` too. Their gate is pinned in
+// `components/weekend/LodgingBoard.merge.test.tsx`.
+vi.mock('../hooks/useUnitMerge', () => ({
+  useUnitMerge: () => ({
+    setCombined: vi.fn(() => Promise.resolve()),
+    pendingUnitId: null,
+  }),
+}))
+
 // The page reads the global ScenarioContext to resolve which plan the roster
 // is being read in (#1967). These tests are about layout and navigation, so
 // the mock stays in production mode throughout — the picker's own behaviour

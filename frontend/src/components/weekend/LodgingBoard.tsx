@@ -43,9 +43,10 @@ import { useCallback, useState } from 'react'
 import { useDismissOnDeadSpace } from '../../hooks/useDismissOnDeadSpace'
 import { useLodgingPlacement } from '../../hooks/useLodgingPlacement'
 import { useUnitAvailability } from '../../hooks/useUnitAvailability'
+import { useUnitMerge } from '../../hooks/useUnitMerge'
 import type { LodgingUnitRow, RosterPartyRow } from '../../types/lodging'
 import { buildBoard } from './boardLayout'
-import { resolveDrop } from './dragPlacement'
+import { mergeDragUnit, resolveDrop, resolveMergeDrop } from './dragPlacement'
 import { FamilyCard, FamilyCardPreview } from './FamilyCard'
 import { FamilyDetailsPanel } from './FamilyDetailsPanel'
 import { FloatingUnplacedBadge } from './FloatingUnplacedBadge'
@@ -89,6 +90,8 @@ export function LodgingBoard({
   const [selected, setSelected] = useState<RosterPartyRow | null>(null)
   const [requestClose, setRequestClose] = useState(false)
   const [dragging, setDragging] = useState<RosterPartyRow | null>(null)
+  /** The card currently being dragged BY ITS MERGE HANDLE, for grey-out. */
+  const [draggingMergeUnit, setDraggingMergeUnit] = useState<LodgingUnitRow | null>(null)
 
   // THREE conditions, not two. `sessionCmId` is in there because every write
   // names a weekend, and the prop defaults to 0 for the thirty tests that do
@@ -105,6 +108,11 @@ export function LodgingBoard({
 
   const { move } = useLodgingPlacement({ year, sessionCmId, scenario })
   const { setAvailability, pendingUnitId } = useUnitAvailability({ year, sessionCmId })
+  const { setCombined, pendingUnitId: pendingMergeUnitId } = useUnitMerge({
+    year,
+    sessionCmId,
+    scenario,
+  })
 
   const unitsByCode = new Map(units.map((unit) => [unit.code, unit]))
 
@@ -126,20 +134,44 @@ export function LodgingBoard({
   }
 
   const handleDragStart = (event: DragStartEvent) => {
-    const active = parties.find((party) => partyKey(party) === event.active.id)
+    const activeId = String(event.active.id)
+    const mergeUnit = mergeDragUnit(activeId, units)
+    if (mergeUnit !== null) {
+      setDraggingMergeUnit(mergeUnit)
+      setDragging(null)
+      return
+    }
+    setDraggingMergeUnit(null)
+    const active = parties.find((party) => partyKey(party) === activeId)
     setDragging(active ?? null)
   }
 
   const handleDragEnd = (event: DragEndEvent) => {
     setDragging(null)
+    setDraggingMergeUnit(null)
     if (!canPlace) return
 
-    const intent = resolveDrop({
-      activeId: String(event.active.id),
-      overId: event.over === null ? null : String(event.over.id),
-      parties,
-      units,
-    })
+    const activeId = String(event.active.id)
+    const overId = event.over === null ? null : String(event.over.id)
+
+    // Tried FIRST and unconditionally. A card's drag id can never match a
+    // party's `partyKey`, so `resolveDrop` below is naturally silent about a
+    // card drag whether or not this branch fires — the two resolvers can
+    // never disagree about which gesture just ended.
+    const merge = resolveMergeDrop({ activeId, overId, units })
+    if (merge !== null) {
+      const parentUnit = unitsByCode.get(merge.parentCode)
+      // Never invent a unit. Unreachable in practice — `resolveMergeDrop`
+      // only names a `parentCode` it read off a unit IN this same payload —
+      // but a lookup that fails silently is safer than one that writes an
+      // empty id.
+      if (parentUnit !== undefined) {
+        void setCombined(parentUnit.unit_id, parentUnit.name, merge.combined).catch(() => undefined)
+      }
+      return
+    }
+
+    const intent = resolveDrop({ activeId, overId, parties, units })
     if (intent === null) return
 
     // The rejection path is the hook's: it rolls the optimistic move back and
@@ -147,6 +179,13 @@ export function LodgingBoard({
     // surfacing as an unhandled rejection.
     void move(intent).catch(() => undefined)
   }
+
+  const splitUnit = useCallback(
+    (unit: LodgingUnitRow) => {
+      void setCombined(unit.unit_id, unit.name, false).catch(() => undefined)
+    },
+    [setCombined]
+  )
 
   const writeAvailability = useCallback(
     (unit: LodgingUnitRow, write: { familyAvailable: boolean | null; reason: string }) => {
@@ -286,6 +325,9 @@ export function LodgingBoard({
                             canSetAvailability={canSetAvailability}
                             savingAvailability={pendingUnitId === slot.unit.unit_id}
                             onSetAvailability={writeAvailability}
+                            mergeSourceUnit={draggingMergeUnit}
+                            onSplit={splitUnit}
+                            savingMerge={pendingMergeUnitId === slot.unit.unit_id}
                             onOpenParty={openParty}
                           />
                         ))}
