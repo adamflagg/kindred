@@ -224,26 +224,47 @@ func seedRegistryFromFile(app core.App, path string, year int) error {
 		return fmt.Errorf("invalid lodging registry %s: %w", path, validErr)
 	}
 
-	areaIDs, areasAdded, err := seedAreas(app, doc.Areas, year)
-	if err != nil {
-		return err
-	}
+	// ALL FOUR PASSES IN ONE TRANSACTION, because the bootstrap gate above
+	// makes a partial seed permanent rather than merely untidy.
+	//
+	// Create-if-absent used to make this self-healing: a seed that died halfway
+	// was finished by the next boot, which created whatever was still missing.
+	// SeedRegistry's any-season check ended that. The areas a failed run
+	// committed are enough to make registryHasAnyRows report true forever, so
+	// every later boot logs "skipping" and the registry stays half-built with
+	// nothing anywhere reporting it.
+	//
+	// The gate is right and is not what to loosen (design doc §4.2). Landing
+	// all-or-nothing is what restores the retry: a failed bootstrap leaves an
+	// empty registry, which is exactly the state the next boot will seed.
+	var areasAdded, unitsAdded, aliasesAdded int
+	if txErr := app.RunInTransaction(func(txApp core.App) error {
+		areaIDs, areas, err := seedAreas(txApp, doc.Areas, year)
+		if err != nil {
+			return err
+		}
 
-	unitsAdded, createdCodes, err := seedUnits(app, doc.Units, areaIDs, year)
-	if err != nil {
-		return err
-	}
+		units, createdCodes, err := seedUnits(txApp, doc.Units, areaIDs, year)
+		if err != nil {
+			return err
+		}
 
-	// Second pass: wire parents now that every code has an id. Only rows this
-	// run created are wired — a parent staff cleared deliberately must stay
-	// cleared, same reason the field values above are left alone.
-	if wireErr := wireUnitParents(app, doc.Units, createdCodes, year); wireErr != nil {
-		return wireErr
-	}
+		// Second pass: wire parents now that every code has an id. Only rows
+		// this run created are wired — a parent staff cleared deliberately must
+		// stay cleared, same reason the field values above are left alone.
+		if wireErr := wireUnitParents(txApp, doc.Units, createdCodes, year); wireErr != nil {
+			return wireErr
+		}
 
-	aliasesAdded, err := seedAliases(app, doc.Aliases, year)
-	if err != nil {
-		return err
+		aliases, err := seedAliases(txApp, doc.Aliases, year)
+		if err != nil {
+			return err
+		}
+
+		areasAdded, unitsAdded, aliasesAdded = areas, units, aliases
+		return nil
+	}); txErr != nil {
+		return txErr
 	}
 
 	slog.Info("lodging registry loaded", "path", path,

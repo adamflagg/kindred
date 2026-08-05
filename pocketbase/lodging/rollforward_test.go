@@ -1,6 +1,7 @@
 package lodging
 
 import (
+	"fmt"
 	"testing"
 
 	"github.com/pocketbase/pocketbase/core"
@@ -283,5 +284,103 @@ func TestApplyRollForwardDoesNotRelinkAHandAddedStandaloneUnit(t *testing.T) {
 	}
 	if got := rec.GetString("parent_unit"); got != "" {
 		t.Errorf("parent_unit = %q, want empty -- the hand-added row was reported as skipped and must be left untouched", got)
+	}
+}
+
+// failUnitCreate makes saving the named unit code fail, so a test can stop a
+// roll-forward partway through copyUnits. Returns a func that lifts the
+// failure, for the retry half of the contract.
+//
+// A hook is the only honest injection point: every other way to fail a save
+// mid-run (a duplicate code, a bad relation) is a state the passes themselves
+// treat as meaningful, so it would exercise a different branch than the one
+// under test — an unexpected save failure.
+func failUnitCreate(app core.App, code string) (lift func()) {
+	armed := true
+	app.OnRecordCreate("lodging_units").BindFunc(func(e *core.RecordEvent) error {
+		if armed && e.Record.GetString("code") == code {
+			return fmt.Errorf("injected failure saving %q", code)
+		}
+		return e.Next()
+	})
+	return func() { armed = false }
+}
+
+// TestApplyRollForwardLeavesNothingBehindWhenAPassFails pins ATOMICITY.
+//
+// The three passes were shipped non-transactional on the stated ground that
+// idempotency is a sufficient mitigation — "a mid-run failure needs only a
+// second ApplyRollForward; nothing lands unrepairable". The companion test
+// below shows why that is not true. This one pins the simpler half: a failed
+// apply must leave the target season exactly as it found it, so the retry
+// starts from a clean slate rather than from a half-built registry.
+func TestApplyRollForwardLeavesNothingBehindWhenAPassFails(t *testing.T) {
+	app := newRollForwardTestApp(t)
+	seedYear(t, app, 2026)
+	failUnitCreate(app, "test-unit-b") // the third unit; two are created first
+
+	if _, err := ApplyRollForward(app, 2026, 2027); err == nil {
+		t.Fatal("ApplyRollForward succeeded; want the injected failure to surface")
+	}
+
+	units, err := app.FindRecordsByFilter("lodging_units", "year = 2027", "", 0, 0)
+	if err != nil {
+		t.Fatalf("counting 2027 units: %v", err)
+	}
+	if len(units) != 0 {
+		t.Errorf("%d units survived a failed roll-forward; want 0 -- a partial "+
+			"apply leaves a half-built season the retry cannot finish", len(units))
+	}
+
+	areas, err := app.FindRecordsByFilter("lodging_areas", "year = 2027", "", 0, 0)
+	if err != nil {
+		t.Fatalf("counting 2027 areas: %v", err)
+	}
+	if len(areas) != 0 {
+		t.Errorf("%d areas survived a failed roll-forward; want 0", len(areas))
+	}
+}
+
+// TestApplyRollForwardRetryAfterAFailureLinksParents is the test that refutes
+// "nothing lands unrepairable", and it is the reason atomicity is not optional.
+//
+// relinkParents deliberately relinks ONLY the codes copyUnits created THIS run
+// (plan.UnitCodes) — a row someone hand-added to the target year is the
+// authority and must keep its cleared parent. That filter is correct, and it is
+// exactly what makes a partial apply permanent: on the retry, units the FAILED
+// run committed are found by findByCodeAndYear, counted into UnitsPresent,
+// reported in SkippedCodes, and therefore never enter plan.UnitCodes. They are
+// indistinguishable from a hand-added row. Their parents are never wired, by
+// this run or any future one.
+//
+// Without the transaction this fails with parent_unit empty. It cannot be
+// fixed by loosening the relink filter without reintroducing the hand-added-row
+// bug that filter exists to prevent (see the test above this one).
+func TestApplyRollForwardRetryAfterAFailureLinksParents(t *testing.T) {
+	app := newRollForwardTestApp(t)
+	seedYear(t, app, 2026)
+	lift := failUnitCreate(app, "test-unit-b")
+
+	if _, err := ApplyRollForward(app, 2026, 2027); err == nil {
+		t.Fatal("first apply succeeded; want the injected failure to surface")
+	}
+
+	lift() // whatever broke is fixed; staff click the button again
+	if _, err := ApplyRollForward(app, 2026, 2027); err != nil {
+		t.Fatalf("retry after a failed apply: %v", err)
+	}
+
+	child, err := findByCodeAndYear(app, "lodging_units", "test-unit-a-room-1", 2027)
+	if err != nil || child == nil {
+		t.Fatalf("child unit missing after the retry: %v", err)
+	}
+	parent, err := findByCodeAndYear(app, "lodging_units", "test-unit-a", 2027)
+	if err != nil || parent == nil {
+		t.Fatalf("parent unit missing after the retry: %v", err)
+	}
+	if got := child.GetString("parent_unit"); got != parent.Id {
+		t.Errorf("parent_unit = %q, want the 2027 parent %q -- a retry after a "+
+			"partial apply must produce a fully-linked season, not an orphan",
+			got, parent.Id)
 	}
 }

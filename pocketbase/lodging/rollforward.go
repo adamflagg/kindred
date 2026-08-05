@@ -78,25 +78,67 @@ func ApplyRollForward(app core.App, from, to int) (RollForwardPlan, error) {
 // IDEMPOTENT on (code, year). A code already present in the target year is left
 // exactly as it is and reported in SkippedCodes — somebody added that building
 // by hand before rolling forward, and their row is the authority.
+//
+// ATOMIC, and idempotency is NOT a substitute for it. The tempting reading is
+// that a mid-run failure needs only a second click, since the second run
+// creates whatever is missing — but the two properties interact badly, in the
+// one direction that matters:
+//
+//	relinkParents wires only the codes copyUnits created THIS run
+//	(plan.UnitCodes), because a row already in the target year is a hand-added
+//	one whose cleared parent must be respected. A unit committed by a FAILED
+//	run is indistinguishable from that: the retry finds it, counts it into
+//	UnitsPresent, reports it in SkippedCodes, and therefore never puts it in
+//	plan.UnitCodes. Its parent is never wired, by that run or any later one.
+//
+// So a partial apply is permanent, silent, and unfixable by the control that
+// exists to fix it — the containers simply have nothing in them. Loosening the
+// relink filter would trade this for the hand-added-row bug the filter exists
+// to prevent (TestApplyRollForwardDoesNotRelinkAHandAddedStandaloneUnit); the
+// transaction is what lets both hold at once.
+//
+// The plan is accumulated inside the closure and published only on commit, so
+// a rolled-back attempt cannot return counts for rows that no longer exist.
 func rollForward(app core.App, from, to int, write bool) (RollForwardPlan, error) {
-	plan := RollForwardPlan{FromYear: from, ToYear: to}
 	if from == to {
-		return plan, fmt.Errorf("cannot roll year %d onto itself", from)
+		return RollForwardPlan{FromYear: from, ToYear: to},
+			fmt.Errorf("cannot roll year %d onto itself", from)
 	}
 
-	areaIDs, err := copyAreas(app, from, to, write, &plan)
-	if err != nil {
-		return plan, err
+	// A preview writes nothing, so it has nothing to roll back.
+	if !write {
+		plan := RollForwardPlan{FromYear: from, ToYear: to}
+		return plan, rollForwardPasses(app, from, to, false, &plan)
 	}
-	if err := copyUnits(app, from, to, write, areaIDs, &plan); err != nil {
-		return plan, err
+
+	var committed RollForwardPlan
+	if err := app.RunInTransaction(func(txApp core.App) error {
+		plan := RollForwardPlan{FromYear: from, ToYear: to}
+		if err := rollForwardPasses(txApp, from, to, true, &plan); err != nil {
+			return err
+		}
+		committed = plan
+		return nil
+	}); err != nil {
+		return RollForwardPlan{FromYear: from, ToYear: to}, err
+	}
+	return committed, nil
+}
+
+// rollForwardPasses runs the three passes against whichever app it is handed —
+// the transaction's inside ApplyRollForward, the plain one for a preview.
+func rollForwardPasses(app core.App, from, to int, write bool, plan *RollForwardPlan) error {
+	areaIDs, err := copyAreas(app, from, to, write, plan)
+	if err != nil {
+		return err
+	}
+	if err := copyUnits(app, from, to, write, areaIDs, plan); err != nil {
+		return err
 	}
 	if write {
-		if err := relinkParents(app, from, to, plan.UnitCodes); err != nil {
-			return plan, err
-		}
+		return relinkParents(app, from, to, plan.UnitCodes)
 	}
-	return plan, nil
+	return nil
 }
 
 // copyAreas returns the target year's area ids keyed by code, which copyUnits

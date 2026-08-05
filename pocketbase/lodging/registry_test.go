@@ -932,3 +932,45 @@ func TestSeedRegistrySecondSeasonIsANoOpOnceOneSeasonHasRows(t *testing.T) {
 		t.Errorf("skipping the second season logged nothing; got:\n%s", logs.String())
 	}
 }
+
+// TestSeedRegistryLeavesNothingBehindWhenAPassFails pins that the bootstrap is
+// ATOMIC, which the bootstrap-only gate makes load-bearing rather than tidy.
+//
+// SeedRegistry now refuses to run once ANY season has rows (design doc §4.2,
+// and the right rule — roll-forward owns every subsequent season). The
+// consequence is that the create-if-absent behaviour no longer finishes a job
+// a previous run started: before the gate, a seed that died halfway was
+// completed by the next boot; now the areas it committed make
+// registryHasAnyRows report true forever, so the loader logs "skipping" and
+// the registry stays permanently half-built, with no error anywhere to say so.
+//
+// The gate is not the bug and must not be loosened to fix this. The seed has
+// to land all-or-nothing instead, so a failed bootstrap leaves an empty
+// registry the next boot will retry from scratch.
+func TestSeedRegistryLeavesNothingBehindWhenAPassFails(t *testing.T) {
+	app := newRegistryTestApp(t)
+	withYearFixtureRegistry(t)
+	lift := failUnitCreate(app, "test-unit-a-room-1") // the second of two units
+
+	if err := SeedRegistry(app, 2026); err == nil {
+		t.Fatal("SeedRegistry succeeded; want the injected failure to surface")
+	}
+
+	if n := countRecords(t, app, "lodging_units"); n != 0 {
+		t.Errorf("%d units survived a failed bootstrap; want 0", n)
+	}
+	if n := countRecords(t, app, "lodging_areas"); n != 0 {
+		t.Errorf("%d areas survived a failed bootstrap; want 0 -- a committed area "+
+			"makes registryHasAnyRows true, so the bootstrap never runs again", n)
+	}
+
+	// The point of atomicity here: the next boot must still be able to seed.
+	lift()
+	if err := SeedRegistry(app, 2026); err != nil {
+		t.Fatalf("second SeedRegistry after a failed one: %v", err)
+	}
+	if n := countRecords(t, app, "lodging_units"); n != 2 {
+		t.Errorf("%d units after the retry; want 2 -- a transient failure must not "+
+			"permanently disable the bootstrap", n)
+	}
+}
