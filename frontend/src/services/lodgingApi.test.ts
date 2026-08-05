@@ -363,17 +363,21 @@ describe('setSlotMerge', () => {
   })
 
   it('carries the status of a refused write so the card can say why', async () => {
+    // A blank `scenario` is NOT what gets refused — it is the legal
+    // weekend-level row (1500000140), and the case above pins that it is sent
+    // rather than withheld. This is about surfacing whatever the server does
+    // refuse, so the body names a refusal the API can still make.
     const mockFetch = vi.fn().mockResolvedValue({
       ok: false,
       status: 422,
-      json: async () => ({ detail: 'Scenario is required' }),
+      json: async () => ({ detail: 'Unit is required' }),
     })
 
     await expect(
-      setSlotMerge(mockFetch, { ...WEEKEND, scenario: '', combined: true })
+      setSlotMerge(mockFetch, { ...WEEKEND, unit_id: '', combined: true })
     ).rejects.toMatchObject({
       status: 422,
-      message: 'Scenario is required',
+      message: 'Unit is required',
     })
   })
 })

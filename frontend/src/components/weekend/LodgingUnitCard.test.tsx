@@ -7,6 +7,7 @@
  * Fictional data throughout.
  */
 import { render, screen } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 
 import type { LodgingUnitRow, RosterPartyRow } from '../../types/lodging'
@@ -240,6 +241,48 @@ describe('LodgingUnitCard — the split control belongs to containers only', () 
       />
     )
     expect(screen.queryByRole('button', { name: /^Split Cedar 1/ })).not.toBeInTheDocument()
+  })
+})
+
+describe('LodgingUnitCard — the merge handle is reachable without a pointer', () => {
+  // Merging is a DRAG, and the board registers only Mouse and Touch sensors,
+  // so the handle is a focusable button carrying dnd-kit's
+  // `aria-roledescription="draggable"` that does nothing when a keyboard
+  // activates it — while its inverse, Split, is an ordinary button that
+  // works. Activating the handle is unambiguous without a drop target:
+  // merging is promotion to the parent, and every sibling drop resolves to
+  // that same parent, so the click path and the drag path ask for the
+  // identical write.
+  const room = unit({ code: 'r1', parent_code: 'wing' })
+
+  it('merges into the parent when the handle is activated rather than dragged', async () => {
+    const onMerge = vi.fn()
+    render(
+      <LodgingUnitCard
+        slot={slot({ unit: room })}
+        hue="hsl(160 45% 42%)"
+        canMerge
+        onMerge={onMerge}
+        onOpenParty={vi.fn()}
+      />
+    )
+
+    await userEvent.click(screen.getByTestId('merge-handle-r1'))
+    expect(onMerge).toHaveBeenCalledWith(room)
+  })
+
+  it('refuses the activation while a merge write is already in flight', () => {
+    render(
+      <LodgingUnitCard
+        slot={slot({ unit: room })}
+        hue="hsl(160 45% 42%)"
+        canMerge
+        savingMerge
+        onMerge={vi.fn()}
+        onOpenParty={vi.fn()}
+      />
+    )
+    expect(screen.getByTestId('merge-handle-r1')).toBeDisabled()
   })
 })
 

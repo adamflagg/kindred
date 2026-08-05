@@ -46,10 +46,12 @@ vi.mock('../../hooks/useUnitAvailability', () => ({
 // on it to keep a rejected write from surfacing as an unhandled rejection.
 const setCombined = vi.fn((..._args: unknown[]) => Promise.resolve())
 let mergeOptions: unknown[] = []
+/** Which unit's merge write the hook reports in flight, per test. */
+let pendingMergeUnitId: string | null = null
 vi.mock('../../hooks/useUnitMerge', () => ({
   useUnitMerge: (...args: unknown[]) => {
     mergeOptions.push(args[0])
-    return { setCombined, pendingUnitId: null }
+    return { setCombined, pendingUnitId: pendingMergeUnitId }
   },
 }))
 
@@ -89,6 +91,7 @@ beforeEach(() => {
   onDragStart = undefined
   onDragCancel = undefined
   mergeOptions = []
+  pendingMergeUnitId = null
   client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
 })
 
@@ -362,5 +365,58 @@ describe('LodgingBoard — a cancelled card drag does not stay latched', () => {
       drop(mergeDragId('r1'), mergeDragId('r2'))
     })
     expect(solo()).not.toHaveClass('opacity-40')
+  })
+})
+
+describe('LodgingBoard — merging without a pointer, and while a write is in flight', () => {
+  it('writes the shared parent when the handle is activated rather than dragged', async () => {
+    // The board registers only Mouse and Touch sensors, so a keyboard user
+    // can focus the handle and get nothing — while Split, an ordinary
+    // button, works for them. The activation path is unambiguous: merging is
+    // promotion to the parent, and dropping on EITHER sibling resolves to
+    // that same parent, so this asks for the identical write the drag does.
+    renderBoard({ units: wingUnits() })
+
+    await userEvent.click(screen.getByTestId('merge-handle-r1'))
+
+    expect(setCombined).toHaveBeenCalledWith('u_wing', 'The Wing', true)
+  })
+
+  it('asks for the same write from either room of the pair', async () => {
+    renderBoard({ units: wingUnits() })
+
+    await userEvent.click(screen.getByTestId('merge-handle-r2'))
+
+    expect(setCombined).toHaveBeenCalledWith('u_wing', 'The Wing', true)
+  })
+
+  it('disables both rooms handles while THEIR PARENTS merge is in flight', () => {
+    // The write names the PARENT, and the parent has no card while the tree
+    // is split — so keying the saving state on the card's own `unit_id`
+    // leaves both room handles live throughout, and the affordance that
+    // exists to say "already working" never appears on the merge path at
+    // all. It works for Split only because a combined card IS the unit
+    // written.
+    pendingMergeUnitId = 'u_wing'
+    renderBoard({ units: wingUnits() })
+
+    expect(screen.getByTestId('merge-handle-r1')).toBeDisabled()
+    expect(screen.getByTestId('merge-handle-r2')).toBeDisabled()
+  })
+
+  it('leaves an unrelated rooms handle alone while a merge is in flight', () => {
+    // The guard is "this card, or its parent" — not "any write is running".
+    // A board-wide disable would stop staff merging a second house while the
+    // first is saving.
+    pendingMergeUnitId = 'u_wing'
+    renderBoard({
+      units: [
+        ...wingUnits(),
+        unit({ unit_id: 'u_other', code: 'other', name: 'Other Wing', is_container: true }),
+        unit({ unit_id: 'u_o1', code: 'o1', name: 'Other Room 1', parent_code: 'other' }),
+      ],
+    })
+
+    expect(screen.getByTestId('merge-handle-o1')).not.toBeDisabled()
   })
 })

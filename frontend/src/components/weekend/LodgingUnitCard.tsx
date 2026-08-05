@@ -82,6 +82,22 @@ export interface LodgingUnitCardProps {
    * above.
    */
   onSplit?: (unit: LodgingUnitRow) => void
+  /**
+   * Merge this room into its parent — the ACTIVATION path for the same write
+   * the drag gesture makes.
+   *
+   * The board registers only Mouse and Touch sensors, so the handle is a
+   * focusable button announcing itself as draggable that a keyboard cannot
+   * work, while its inverse (`Split`) is an ordinary button that a keyboard
+   * can. This closes that asymmetry without touching the sensor set, which
+   * would change party placement too.
+   *
+   * No drop target is needed to make the intent unambiguous: merging is
+   * PROMOTION TO THE PARENT, and dropping on either sibling resolves to that
+   * same parent (`resolveMergeDrop` returns `source.parent_code` whichever
+   * sibling was hit), so this asks for the identical write.
+   */
+  onMerge?: (unit: LodgingUnitRow) => void
   /** True while THIS unit's merge/split write is in flight. */
   savingMerge?: boolean
   onOpenParty: (party: RosterPartyRow) => void
@@ -98,6 +114,7 @@ export function LodgingUnitCard({
   canMerge = false,
   mergeSourceUnit = null,
   onSplit,
+  onMerge,
   savingMerge = false,
   onOpenParty,
 }: LodgingUnitCardProps) {
@@ -241,9 +258,17 @@ export function LodgingUnitCard({
             ref={setMergeDragRef}
             data-testid={`merge-handle-${unit.code}`}
             aria-label={`Merge ${unit.name} into its building`}
+            disabled={savingMerge}
             {...mergeAttributes}
             {...mergeListeners}
-            className="border-border text-muted-foreground hover:text-foreground hover:border-foreground/30 inline-flex cursor-grab items-center gap-0.5 rounded-full border px-1.5 py-0.5 text-[10px] font-medium active:cursor-grabbing"
+            // AFTER the listener spread, so dnd-kit cannot overwrite it. The
+            // two do not race: MouseSensor activates at 10px, and a plain
+            // click never travels that far — the same reason the card itself
+            // stays clickable while being draggable.
+            onClick={() => {
+              onMerge?.(unit)
+            }}
+            className="border-border text-muted-foreground hover:text-foreground hover:border-foreground/30 inline-flex cursor-grab items-center gap-0.5 rounded-full border px-1.5 py-0.5 text-[10px] font-medium active:cursor-grabbing disabled:opacity-40"
           >
             <Merge className="h-3 w-3" aria-hidden="true" />
             Merge

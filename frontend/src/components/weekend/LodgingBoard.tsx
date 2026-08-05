@@ -41,7 +41,7 @@ import {
   type DragStartEvent,
 } from '@dnd-kit/core'
 import { ChevronDown, ChevronRight, Info, TriangleAlert } from 'lucide-react'
-import { useCallback, useState } from 'react'
+import { useCallback, useMemo, useState } from 'react'
 
 import { useDismissOnDeadSpace } from '../../hooks/useDismissOnDeadSpace'
 import { useLodgingPlacement } from '../../hooks/useLodgingPlacement'
@@ -132,7 +132,10 @@ export function LodgingBoard({
     scenario,
   })
 
-  const unitsByCode = new Map(units.map((unit) => [unit.code, unit]))
+  // Memoised because `mergeUnit` closes over it: rebuilt each render, it would
+  // give that callback a new identity every time and defeat the point of the
+  // `useCallback`. Cheap either way at ~120 units, but the lint rule is right.
+  const unitsByCode = useMemo(() => new Map(units.map((unit) => [unit.code, unit])), [units])
 
   const sensors = useSensors(
     // The same activation constraints summer uses. The distance threshold is
@@ -225,6 +228,23 @@ export function LodgingBoard({
       void setCombined(unit.unit_id, unit.name, false).catch(() => undefined)
     },
     [setCombined]
+  )
+
+  // The ACTIVATION path for the merge the drag gesture makes, so the handle
+  // works for a keyboard — the board's sensors are Mouse and Touch only, and
+  // widening them would change party placement too. Resolves to the same
+  // parent `resolveMergeDrop` would have named: merging is promotion to the
+  // parent, and either sibling as a drop target yields `source.parent_code`.
+  //
+  // Same never-invent-a-unit guard as the drop path: a parent code the
+  // payload has no row for writes nothing rather than an empty id.
+  const mergeUnit = useCallback(
+    (unit: LodgingUnitRow) => {
+      const parentUnit = unitsByCode.get(unit.parent_code ?? '')
+      if (parentUnit === undefined) return
+      void setCombined(parentUnit.unit_id, parentUnit.name, true).catch(() => undefined)
+    },
+    [setCombined, unitsByCode]
   )
 
   const writeAvailability = useCallback(
@@ -374,7 +394,23 @@ export function LodgingBoard({
                             canMerge={canMergeUnits}
                             mergeSourceUnit={draggingMergeUnit}
                             onSplit={splitUnit}
-                            savingMerge={pendingMergeUnitId === slot.unit.unit_id}
+                            onMerge={mergeUnit}
+                            // THIS card, or its PARENT. A merge names the
+                            // parent container, which has no card while the
+                            // tree is split — so keying this on the card's
+                            // own id alone leaves both room handles live for
+                            // the whole write and the affordance never fires
+                            // on the merge path at all. It works for Split
+                            // unaided only because a combined card IS the
+                            // unit written. Deliberately not board-wide:
+                            // merging a second house while the first saves
+                            // must stay possible.
+                            savingMerge={
+                              pendingMergeUnitId !== null &&
+                              (pendingMergeUnitId === slot.unit.unit_id ||
+                                pendingMergeUnitId ===
+                                  unitsByCode.get(slot.unit.parent_code ?? '')?.unit_id)
+                            }
                             onOpenParty={openParty}
                           />
                         ))}
