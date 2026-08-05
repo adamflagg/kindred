@@ -84,6 +84,19 @@ migrate(
     setCodeIndex(app, "lodging_areas", "idx_lodging_areas_code", "`code`, `year`");
   },
   (app) => {
+    // ONE-WAY ONCE A SECOND SEASON EXISTS, and deliberately not papered over.
+    //
+    // Restoring the single-column unique index requires `code` to be unique
+    // across the whole table, which stops being true the moment a roll-forward
+    // creates 2027's rows beside 2026's. SQLite refuses the index and the whole
+    // down migration rolls back with the year column still in place.
+    //
+    // Nothing here de-duplicates, because there is no correct answer to pick:
+    // dropping a season's rows would destroy the registry that season's roster
+    // was judged against, which is the entire thing year-scoping exists to
+    // preserve. Reversing this migration on a multi-season database is a
+    // decision with a data-loss policy attached, and it belongs to whoever is
+    // making it — not to a silent DELETE in here.
     setCodeIndex(app, "lodging_units", "idx_lodging_units_code", "`code`");
     setCodeIndex(app, "lodging_areas", "idx_lodging_areas_code", "`code`");
 

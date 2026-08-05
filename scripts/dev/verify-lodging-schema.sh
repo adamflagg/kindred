@@ -387,7 +387,9 @@ for table in lodging_units lodging_areas; do
     || note "$table.year required is '$req' (expected true)"
 done
 
-for idx in idx_lodging_units_code idx_lodging_areas_code; do
+for table in lodging_units lodging_areas; do
+  idx="idx_${table}_code"
+
   # Ask SQLite what columns the index actually covers (pragma_index_info),
   # rather than substring-matching the stored CREATE INDEX text. Two traps
   # rule that out: the index's own NAME already contains "code"
@@ -399,6 +401,15 @@ for idx in idx_lodging_units_code idx_lodging_areas_code; do
   cols=$(sqlite3 "$DB" "SELECT group_concat(name) FROM pragma_index_info('$idx');")
   [[ "$cols" == "code,year" ]] \
     || note "$idx is not composite on (code, year): columns are '$cols'"
+
+  # ...and separately, that it is UNIQUE. pragma_index_info answers only which
+  # columns an index spans, so a plain (code, year) index satisfies the check
+  # above while permitting exactly what 1500000140 exists to forbid: two rows
+  # for one building in one season. The whole (code, year) identity model
+  # rests on this constraint, and nothing else here would notice its absence.
+  uniq=$(sqlite3 "$DB" "SELECT \"unique\" FROM pragma_index_list('$table') WHERE name = '$idx';")
+  [[ "$uniq" == "1" ]] \
+    || note "$idx is not UNIQUE (unique flag '$uniq') -- duplicate (code, year) rows would be accepted"
 done
 
 # Write access, read from the APPLIED schema rather than from the migration
