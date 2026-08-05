@@ -1,9 +1,9 @@
 /**
  * Create/edit one lodging unit.
  *
- * The fields live in sections — identity, capacity, amenities, availability,
- * map position — each its own component. This file owns only the state those
- * sections edit and the one payload they add up to.
+ * The fields live in sections — identity, capacity, amenities, availability —
+ * each its own component. This file owns only the state those sections edit
+ * and the one payload they add up to.
  *
  * TWO THINGS THIS FORM EXISTS TO GET RIGHT (the third, `sleeps`, is in
  * `UnitCapacityFields`; the bathroom vocabulary is in `unitAmenities`):
@@ -20,8 +20,14 @@
  *    "unset" it has. ON EDIT the rule inverts for `sleeps`: omitting the key
  *    leaves the previous number in place, which makes clearing the field a
  *    silent no-op, so the edit path sends an explicit 0 — the stored spelling
- *    of UNKNOWN. `map_x` / `map_y` stay omit-on-blank in both directions;
- *    they carry no UNKNOWN semantics a consumer reads.
+ *    of UNKNOWN.
+ *
+ *    `sleeps` is the ONLY field with an omission rule, because it is the only
+ *    one here whose blank means something. `map_x` / `map_y` used to be the
+ *    other half of this paragraph; they are no longer edited on this form at
+ *    all, and a stored coordinate now survives a save because the key is
+ *    UNCONDITIONALLY ABSENT — not because a guard omits it when blank. Anyone
+ *    wiring the map editor back in has to add that guard, not assume it.
  */
 import { useState } from 'react'
 import toast from 'react-hot-toast'
