@@ -200,8 +200,22 @@ export function LodgingUnitCard({
        * land. The hue top edge is an inline style and outranks both, which is
        * what keeps §3.10's secondary channel through `card-lodge`'s own
        * `border-border` and its `border-primary/50` hover.
+       *
+       * NO `hover:shadow-lodge-lg` HERE, though `BunkCard` carries one. That
+       * class is inert: `.shadow-lodge-*` are hand-written rules in `@layer
+       * utilities`, not Tailwind `@utility` declarations, so v4 emits no
+       * `hover:` variant of them — verified in the browser, where no selector
+       * matching `hover.*shadow-lodge` exists in any of the 3,373 loaded
+       * rules. Summer's hover lift comes entirely from `.card-lodge:hover`,
+       * which this card already has. Copying the class would have propagated
+       * a no-op by imitation, which is the `forest-950` failure (#1894) that
+       * CLAUDE.md §4 names by name.
+       *
+       * `gap-3` is summer's 12px row rhythm (`BunkCard` separates header, bar
+       * and roster with `mb-3`). This ran at a flat 8px, which left the title
+       * sitting on top of the amenity row.
        */
-      className={`card-lodge flex flex-col gap-2 border-t-[3px] p-4 ${
+      className={`card-lodge flex flex-col gap-3 border-t-[3px] p-4 ${
         consent ? 'border-amber-400 ring-1 ring-amber-400/40 dark:border-amber-500' : ''
       } ${parties.length === 0 ? 'bg-muted/25 border-dashed' : ''} ${
         isUnitOver || isMergeOver ? 'border-primary ring-primary/50 bg-primary/5 ring-2' : ''
@@ -214,16 +228,29 @@ export function LodgingUnitCard({
       }`}
     >
       <div className="flex items-baseline gap-1.5">
-        <span className="text-foreground truncate text-[13px] font-semibold">{unit.name}</span>
+        {/* Summer's scale, not a parallel one (CLAUDE.md §4): `text-lg` title
+            over `text-sm` body over `text-xs` meta, the same three steps
+            `BunkCard` uses. This card was built on `text-[13px]` /
+            `text-[11px]` / `text-[10px]`, whose LARGEST size was smaller than
+            summer's body.
+
+            An `<h3>`, as `BunkCard` titles its bunk, and the tag is doing
+            typographic work rather than only semantic: `index.css` gives
+            `h1, h2, h3` the display face (Fraunces, `-0.02em`, `ss01`/`ss02`).
+            As a `<span>` this title rendered the same 18px in the body sans,
+            which is why the boards still read differently once the sizes
+            matched. `text-lg` is a utility and outranks the base rule's
+            `text-2xl md:text-3xl`, so only the face and tracking carry over. */}
+        <h3 className="text-foreground truncate text-lg font-semibold">{unit.name}</h3>
         <span
           title={capacityKnown ? `Sleeps ${String(unit.sleeps)}` : 'Capacity not recorded'}
-          className="text-muted-foreground ml-auto text-[11px] tabular-nums"
+          className="text-muted-foreground ml-auto text-sm tabular-nums"
         >
           {capacityKnown ? String(unit.sleeps) : '—'}
         </span>
       </div>
 
-      <div className="text-muted-foreground flex flex-wrap items-center gap-1.5 text-[11px]">
+      <div className="text-muted-foreground flex flex-wrap items-center gap-1.5 text-sm">
         {unit.bathroom === 'private' && (
           <span className="inline-flex items-center gap-0.5">
             <Bath className="h-3 w-3" aria-hidden="true" /> Private
@@ -237,14 +264,14 @@ export function LodgingUnitCard({
         {unit.has_power === true && <Plug className="h-3 w-3" aria-label="Power" />}
         {unit.has_ac === true && <Snowflake className="h-3 w-3" aria-label="Air conditioning" />}
         {badge && (
-          <span className={`rounded-full px-1.5 py-0.5 text-[10px] font-medium ${badge.className}`}>
+          <span className={`rounded-full px-1.5 py-0.5 text-xs font-medium ${badge.className}`}>
             {badge.label}
           </span>
         )}
         {/* A deactivated room only reaches the board when somebody is still in
             it — hiding it would drop them. */}
         {unit.is_active === false && (
-          <span className="rounded-full bg-slate-200 px-1.5 py-0.5 text-[10px] font-medium text-slate-800 dark:bg-slate-800 dark:text-slate-200">
+          <span className="rounded-full bg-slate-200 px-1.5 py-0.5 text-xs font-medium text-slate-800 dark:bg-slate-800 dark:text-slate-200">
             Inactive
           </span>
         )}
@@ -317,7 +344,7 @@ export function LodgingUnitCard({
 
       {isShared && (
         <span
-          className={`inline-flex w-fit items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-semibold ${
+          className={`inline-flex w-fit items-center gap-1 rounded-full px-2 py-0.5 text-xs font-semibold ${
             consent
               ? 'bg-amber-100 text-amber-800 dark:bg-amber-950/50 dark:text-amber-300'
               : 'bg-muted text-muted-foreground'
@@ -335,15 +362,13 @@ export function LodgingUnitCard({
       {/* Spec §11: a household answered `no_share` and is sharing anyway. On
           2026 data this fires exactly once, and that one case is real. */}
       {consent && (
-        <p className="text-[11px] font-medium text-amber-700 dark:text-amber-400">
-          {consent.reason}
-        </p>
+        <p className="text-sm font-medium text-amber-700 dark:text-amber-400">{consent.reason}</p>
       )}
 
       {parties.length === 0 ? (
-        <p className="text-muted-foreground py-1 text-center text-[11px] italic">Empty</p>
+        <p className="text-muted-foreground py-1 text-center text-sm italic">Empty</p>
       ) : (
-        <div className="flex flex-col gap-1.5">
+        <div className="flex flex-col gap-2">
           {parties.map((party) => (
             <FamilyCard
               key={partyKey(party)}

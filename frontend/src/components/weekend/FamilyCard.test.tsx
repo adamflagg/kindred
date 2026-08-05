@@ -321,3 +321,73 @@ describe('FamilyCardPreview — the drag overlay', () => {
     expect(screen.getByText(/Noah Johnson \(8\)/)).toBeInTheDocument()
   })
 })
+
+/*
+ * The occupant card's own scale, which is NOT the unit card's.
+ *
+ * Summer's `CamperCard` sits inside a `BunkCard` and steps down from it:
+ * `text-sm` name over `text-xs` secondary, where the bunk title above is
+ * `text-lg`. So a `FamilyCard` inside a `LodgingUnitCard` steps down the same
+ * way — it does not inherit the unit card's body size, or the household name
+ * would print as large as the room name holding it.
+ *
+ * Classes, not computed style: jsdom parses no Tailwind.
+ */
+describe('FamilyCard — summer’s type scale', () => {
+  function arbitraryTextSizes(container: HTMLElement): string[] {
+    const card = container.querySelector('[data-family-card]')
+    if (!card) throw new Error('no card rendered')
+    return [card, ...card.querySelectorAll('*')]
+      .flatMap((el) => Array.from(el.classList))
+      .filter((cls) => /^text-\[\d+px\]$/.test(cls))
+  }
+
+  it('uses the stock scale everywhere, with no arbitrary pixel sizes left', () => {
+    const { container } = render(
+      <FamilyCard
+        party={party({
+          is_returning: true,
+          flags: { needs_private_bathroom: true, needs_power: true },
+          share: { proximity: ['with', 'near'], eligibility: 'named', answers_conflict: true },
+        })}
+        unit={confirmedUnit()}
+        sharedSlot
+        onOpen={vi.fn()}
+      />
+    )
+    expect(arbitraryTextSizes(container)).toEqual([])
+  })
+
+  it('names the household at summer’s CamperCard name size', () => {
+    render(<FamilyCard party={party()} onOpen={vi.fn()} />)
+    expect(screen.getByTestId('family-card-name')).toHaveClass('text-sm')
+  })
+
+  it('sets the children line one step below the name, as summer does', () => {
+    render(<FamilyCard party={party()} onOpen={vi.fn()} />)
+    // Each child gets its own `<span>`, so walk up one to the line that holds
+    // them all — asserting on the inner span would pin nothing, since the size
+    // is set on the line.
+    const line = screen.getByText(/Noah Johnson \(8\)/).parentElement
+    expect(line).toHaveTextContent('Ava Johnson (5)')
+    expect(line).toHaveClass('text-xs')
+  })
+
+  it('sets chips at summer’s meta size', () => {
+    render(
+      <FamilyCard
+        party={party({ flags: { needs_power: true } })}
+        unit={confirmedUnit()}
+        onOpen={vi.fn()}
+      />
+    )
+    expect(screen.getByText('Power')).toHaveClass('text-xs')
+  })
+
+  it('carries the same scale into the drag overlay', () => {
+    // The overlay shares `FamilyCardBody`, so this passes for free — which is
+    // the point. It fails the moment somebody hand-rolls a second body.
+    render(<FamilyCardPreview party={party()} />)
+    expect(screen.getByTestId('family-card-name')).toHaveClass('text-sm')
+  })
+})

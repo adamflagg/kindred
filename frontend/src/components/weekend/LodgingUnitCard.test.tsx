@@ -162,53 +162,6 @@ describe('LodgingUnitCard', () => {
     expect(card).toHaveStyle({ borderTopColor: 'hsl(160 45% 42%)' })
   })
 
-  /*
-   * CLAUDE.md §4, "Family Camp Models Summer": same UI primitives, same
-   * Tailwind grammar. Summer's `BunkCard` is a `.card-lodge` at `p-4`; this
-   * card hand-rolled `bg-card rounded-xl border p-2.5` instead, which is why
-   * it read as a table row rather than a card — no shadow, no hover lift, and
-   * a padding less than two thirds of summer's.
-   *
-   * Pinned as classes rather than computed style on purpose: jsdom parses no
-   * Tailwind, so a computed-style assertion here would pass against an empty
-   * string and prove nothing (see `reference_frontend_source_grep_tests`).
-   */
-  it('wears the shared lodge card chrome, as summer’s BunkCard does', () => {
-    const { container } = render(
-      <LodgingUnitCard slot={slot()} hue="hsl(160 45% 42%)" onOpenParty={vi.fn()} />
-    )
-    const card = container.querySelector('[data-unit-card]')
-    // The shared component class — shadow, 2px border, rounded-2xl, hover
-    // lift — rather than a second hand-rolled copy of roughly the same thing.
-    expect(card).toHaveClass('card-lodge')
-    // And NOT the hand-rolled chrome it replaces. Left in place alongside
-    // `card-lodge` these fight it: `rounded-xl` loses the corner radius and
-    // `border` resets the 2px edge back to 1px.
-    expect(card).not.toHaveClass('rounded-xl')
-  })
-
-  it('pads to summer’s p-4 rather than its own p-2.5', () => {
-    const { container } = render(
-      <LodgingUnitCard slot={slot()} hue="hsl(160 45% 42%)" onOpenParty={vi.fn()} />
-    )
-    const card = container.querySelector('[data-unit-card]')
-    expect(card).toHaveClass('p-4')
-    expect(card).not.toHaveClass('p-2.5')
-  })
-
-  it('keeps the area hue winning over the card-lodge border colour', () => {
-    // `.card-lodge` sets `border-border` on all four sides and repaints them
-    // `border-primary/50` on hover. The hue is an inline style, which beats
-    // both — this pins that the chrome swap did not silently cost §3.10 its
-    // secondary channel, on hover or otherwise.
-    const { container } = render(
-      <LodgingUnitCard slot={slot()} hue="hsl(38 75% 50%)" onOpenParty={vi.fn()} />
-    )
-    const card = container.querySelector('[data-unit-card]')
-    expect(card).toHaveStyle({ borderTopColor: 'hsl(38 75% 50%)' })
-    expect(card).toHaveClass('border-t-[3px]')
-  })
-
   it('keys two adult-weekend individuals in one room apart', () => {
     // An adult weekend enrols PEOPLE, and the API sends `household_cm_id = 0`
     // for them rather than omitting it — Pydantic `int = 0`. A `??` chain
@@ -476,5 +429,184 @@ describe('LodgingUnitCard — the per-party sharing chip follows ROOM overlap, n
       />
     )
     expect(screen.getAllByText('Did not request sharing')).toHaveLength(2)
+  })
+})
+
+/*
+ * CLAUDE.md §4, "Family Camp Models Summer": *same Tailwind grammar and
+ * tokens*, not a parallel one. Summer's `BunkCard` is `text-lg` title,
+ * `text-sm` body, `text-xs` meta — three steps of the stock scale. This card
+ * was built on `text-[13px]` / `text-[11px]` / `text-[10px]`, an arbitrary
+ * scale whose LARGEST size is smaller than summer's BODY.
+ *
+ * Pinned as classes rather than computed style throughout: jsdom parses no
+ * Tailwind, so `toHaveStyle({ fontSize: … })` on a Tailwind class passes
+ * against an empty string and proves nothing.
+ */
+describe('LodgingUnitCard — summer’s type scale', () => {
+  /**
+   * Every arbitrary-pixel font size anywhere inside the card.
+   *
+   * The sweep is the load-bearing test and the per-element ones below are its
+   * documentation: a single `text-[11px]` left on a nested row is invisible in
+   * a spot check and is exactly how the two scales diverged in the first
+   * place. `UnitAvailabilityControl` renders INSIDE this card and is swept
+   * with it — a 10px pill sitting in a 12px meta row is the same bug.
+   */
+  function arbitraryTextSizes(container: HTMLElement): string[] {
+    const card = container.querySelector('[data-unit-card]')
+    if (!card) throw new Error('no card rendered')
+    return [card, ...card.querySelectorAll('*')]
+      .flatMap((el) => Array.from(el.classList))
+      .filter((cls) => /^text-\[\d+px\]$/.test(cls))
+  }
+
+  it('uses the stock scale everywhere, with no arbitrary pixel sizes left', () => {
+    const { container } = render(
+      <LodgingUnitCard
+        slot={slot({
+          unit: unit({ is_active: false, bathroom: 'private', has_power: true, has_ac: true }),
+          parties: [party(), party({ household_cm_id: 102, display_name: 'Garcia' })],
+          consent: {
+            declinedCount: 1,
+            unansweredCount: 0,
+            conflictCount: 0,
+            reason: 'One household declined sharing',
+          },
+        })}
+        hue="hsl(160 45% 42%)"
+        canSetAvailability
+        onSetAvailability={vi.fn()}
+        onOpenParty={vi.fn()}
+      />
+    )
+    expect(arbitraryTextSizes(container)).toEqual([])
+  })
+
+  it('leaves no arbitrary pixel sizes on an empty slot either', () => {
+    // The empty state is its own branch and carried its own `text-[11px]`.
+    const { container } = render(
+      <LodgingUnitCard slot={slot()} hue="hsl(160 45% 42%)" onOpenParty={vi.fn()} />
+    )
+    expect(arbitraryTextSizes(container)).toEqual([])
+  })
+
+  it('titles the unit at summer’s text-lg', () => {
+    render(<LodgingUnitCard slot={slot()} hue="hsl(160 45% 42%)" onOpenParty={vi.fn()} />)
+    expect(screen.getByText('Cedar 1')).toHaveClass('text-lg')
+  })
+
+  it('titles the unit in a heading, which is what carries the display face', () => {
+    /*
+     * Not cosmetic and not merely semantic. `index.css` sets
+     * `h1, h2, h3 { font-family: var(--font-display) }` — Fraunces, with
+     * `-0.02em` tracking and `ss01`/`ss02` on. Summer's `BunkCard` titles its
+     * bunk in an `<h3>` and gets that face; this card used a `<span>` and got
+     * the body sans instead. Same 18px, different typeface, which is why the
+     * two boards still did not look alike after the sizes matched.
+     *
+     * Pinned as a ROLE rather than a tag name: the font comes from the element
+     * being a heading, so that is the thing that must not regress.
+     */
+    render(<LodgingUnitCard slot={slot()} hue="hsl(160 45% 42%)" onOpenParty={vi.fn()} />)
+    expect(screen.getByRole('heading', { name: 'Cedar 1', level: 3 })).toBeInTheDocument()
+  })
+
+  it('sets the capacity figure at summer’s body size', () => {
+    // Summer prints `{occupancy}/{capacity}` at `text-sm`. The figure is the
+    // second thing read on the card; at 11px it read as a footnote.
+    render(<LodgingUnitCard slot={slot()} hue="hsl(160 45% 42%)" onOpenParty={vi.fn()} />)
+    expect(screen.getByTitle('Sleeps 5')).toHaveClass('text-sm')
+  })
+
+  it('sets the consent line at body size, not meta size', () => {
+    render(
+      <LodgingUnitCard
+        slot={slot({
+          parties: [party(), party({ household_cm_id: 102, display_name: 'Garcia' })],
+          consent: {
+            declinedCount: 1,
+            unansweredCount: 0,
+            conflictCount: 0,
+            reason: 'One household declined sharing',
+          },
+        })}
+        hue="hsl(160 45% 42%)"
+        onOpenParty={vi.fn()}
+      />
+    )
+    expect(screen.getByText('One household declined sharing')).toHaveClass('text-sm')
+  })
+
+  it('sets the empty state at body size', () => {
+    render(<LodgingUnitCard slot={slot()} hue="hsl(160 45% 42%)" onOpenParty={vi.fn()} />)
+    expect(screen.getByText('Empty')).toHaveClass('text-sm')
+  })
+
+  it('sets badges and the shared-slot chip at summer’s meta size', () => {
+    render(
+      <LodgingUnitCard
+        slot={slot({
+          unit: unit({ is_active: false }),
+          parties: [party(), party({ household_cm_id: 102, display_name: 'Garcia' })],
+        })}
+        hue="hsl(160 45% 42%)"
+        onOpenParty={vi.fn()}
+      />
+    )
+    expect(screen.getByText('Inactive')).toHaveClass('text-xs')
+    expect(screen.getByText('2 families')).toHaveClass('text-xs')
+  })
+})
+
+describe('LodgingUnitCard — summer’s chrome, the rest of it', () => {
+  it('does not copy BunkCard’s inert hover class', () => {
+    /*
+     * `BunkCard` carries `hover:shadow-lodge-lg`, and trueing this card up
+     * against it means copying that — except the class does nothing.
+     * `.shadow-lodge-*` are hand-written rules inside `@layer utilities`, not
+     * Tailwind `@utility` declarations, so v4 generates no `hover:` variant
+     * for them; a browser sweep of all 3,373 loaded rules found no selector
+     * matching `hover.*shadow-lodge`. The hover lift both cards actually get
+     * comes from `.card-lodge:hover`, whose shadow (`0 12px 32px`) is the
+     * deeper of the two anyway.
+     *
+     * Pinned as an ABSENCE because the next person to read the two class
+     * strings side by side will see the gap and close it, exactly as this
+     * session nearly did. A dead class spreading by imitation is the
+     * `forest-950` failure CLAUDE.md §4 cites (#1894).
+     */
+    const { container } = render(
+      <LodgingUnitCard slot={slot()} hue="hsl(160 45% 42%)" onOpenParty={vi.fn()} />
+    )
+    expect(container.querySelector('[data-unit-card]')).not.toHaveClass('hover:shadow-lodge-lg')
+    // The chrome that DOES carry the hover, so this test fails loudly if the
+    // card ever stops being a `.card-lodge` rather than silently passing.
+    expect(container.querySelector('[data-unit-card]')).toHaveClass('card-lodge')
+  })
+
+  it('spaces its rows on summer’s 12px rhythm', () => {
+    // Summer separates header / bar / roster with `mb-3` (12px) and the
+    // campers inside with `space-y-2` (8px). This card ran everything at a
+    // flat 8px, so the title did not separate from the amenity row.
+    const { container } = render(
+      <LodgingUnitCard slot={slot()} hue="hsl(160 45% 42%)" onOpenParty={vi.fn()} />
+    )
+    const card = container.querySelector('[data-unit-card]')
+    expect(card).toHaveClass('gap-3')
+    expect(card).not.toHaveClass('gap-2')
+  })
+
+  it('spaces two parties on summer’s 8px roster rhythm', () => {
+    const { container } = render(
+      <LodgingUnitCard
+        slot={slot({ parties: [party(), party({ household_cm_id: 102, display_name: 'Garcia' })] })}
+        hue="hsl(160 45% 42%)"
+        onOpenParty={vi.fn()}
+      />
+    )
+    const roster = container.querySelector('[data-family-card]')?.parentElement
+    expect(roster).toHaveClass('gap-2')
+    expect(roster).not.toHaveClass('gap-1.5')
   })
 })

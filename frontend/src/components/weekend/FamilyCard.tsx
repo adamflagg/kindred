@@ -78,7 +78,7 @@ const CHIP_TONE: Record<ChipTone, string> = {
 function Chip({ label, tone }: { label: string; tone: ChipTone }) {
   return (
     <span
-      className={`inline-flex items-center rounded-full px-1.5 py-0.5 text-[10px] font-semibold whitespace-nowrap ${CHIP_TONE[tone]}`}
+      className={`inline-flex items-center rounded-full px-1.5 py-0.5 text-xs font-semibold whitespace-nowrap ${CHIP_TONE[tone]}`}
     >
       {label}
     </span>
@@ -123,18 +123,18 @@ function FamilyCardBody({
       <span className="flex items-baseline gap-1.5">
         <span
           data-testid="family-card-name"
-          className="text-foreground text-[13px] leading-tight font-semibold"
+          className="text-foreground text-sm leading-tight font-semibold"
         >
           {party.display_name}
         </span>
-        <span className="text-muted-foreground ml-auto inline-flex items-center gap-0.5 text-[11px] tabular-nums">
+        <span className="text-muted-foreground ml-auto inline-flex items-center gap-0.5 text-xs tabular-nums">
           <Users className="h-3 w-3 flex-shrink-0" aria-hidden="true" />
           {partySize(party)}
         </span>
       </span>
 
       {children.length > 0 && (
-        <span className="text-muted-foreground text-[11px] leading-snug">
+        <span className="text-muted-foreground text-xs leading-snug">
           {children.map((child, index) => (
             <Fragment key={String(child.person_cm_id ?? index)}>
               {index > 0 && ' · '}
@@ -182,7 +182,7 @@ function FamilyCardBody({
         {wantsNear && <Chip label="Near another family" tone="muted" />}
 
         {party.is_returning === true && (
-          <span className="text-forest-700 dark:text-forest-300 inline-flex items-center gap-0.5 text-[10px] font-semibold">
+          <span className="text-forest-700 dark:text-forest-300 inline-flex items-center gap-0.5 text-xs font-semibold">
             <Repeat className="h-2.5 w-2.5 flex-shrink-0" aria-hidden="true" />
             Returning
           </span>
