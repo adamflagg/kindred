@@ -45,13 +45,30 @@ export function directChildren(unitId: string, units: LodgingUnitRecord[]): Lodg
  * Valid parent candidates for `unitId`: containers only, excluding the unit
  * itself and anything descending from it. On create (`unitId` undefined)
  * there is no self or descendant yet, so every container is offered.
+ *
+ * `areaId` narrows the list to one area. A room's building stands on the same
+ * patch of ground as the room, and every parent/child pair on site is
+ * same-area, so an out-of-area container is never the answer — it is only a
+ * chance to parent a cabin to a building across camp by mis-clicking. Omit it
+ * and nothing is narrowed.
+ *
+ * The unit's CURRENT parent survives the narrowing whatever area it is in.
+ * Filtering a stored parent out of its own picker would leave the select with
+ * no matching option, so it would fall to the first entry and the next save
+ * would silently reparent a unit the staffer only meant to rename.
  */
 export function parentCandidates(
   unitId: string | undefined,
-  units: LodgingUnitRecord[]
+  units: LodgingUnitRecord[],
+  areaId?: string
 ): LodgingUnitRecord[] {
   const excluded = unitId === undefined ? new Set<string>() : descendantIds(unitId, units)
+  const currentParent = units.find((u) => u.id === unitId)?.parent_unit ?? ''
   return units.filter(
-    (candidate) => candidate.is_container && candidate.id !== unitId && !excluded.has(candidate.id)
+    (candidate) =>
+      candidate.is_container &&
+      candidate.id !== unitId &&
+      !excluded.has(candidate.id) &&
+      (areaId === undefined || candidate.area === areaId || candidate.id === currentParent)
   )
 }

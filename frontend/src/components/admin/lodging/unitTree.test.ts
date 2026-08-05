@@ -130,3 +130,47 @@ describe('parentCandidates', () => {
     expect(parentCandidates(undefined, units).map((u) => u.id)).toEqual(['a', 'b'])
   })
 })
+
+describe('parentCandidates — scoped to the area', () => {
+  const NORTH = 'area_north'
+  const SOUTH = 'area_south'
+
+  it('offers only containers in the same area', () => {
+    // A room's building is on the same patch of ground as the room. Every one
+    // of the 28 parent/child pairs on site is same-area, so an out-of-area
+    // container in the picker is never the answer — it is only a chance to
+    // parent a cabin to a building across camp by mis-clicking.
+    const units = [
+      unit({ id: 'child', area: NORTH }),
+      unit({ id: 'near', area: NORTH, is_container: true }),
+      unit({ id: 'far', area: SOUTH, is_container: true }),
+    ]
+
+    const ids = parentCandidates('child', units, NORTH).map((u) => u.id)
+    expect(ids).toEqual(['near'])
+  })
+
+  it('keeps the parent a unit already has, even from another area', () => {
+    // Filtering a stored parent out of its own picker would leave the select
+    // with no matching option: it would fall to the first entry, and the next
+    // save would silently REPARENT the unit the staffer only meant to rename.
+    const units = [
+      unit({ id: 'child', area: NORTH, parent_unit: 'far' }),
+      unit({ id: 'near', area: NORTH, is_container: true }),
+      unit({ id: 'far', area: SOUTH, is_container: true }),
+    ]
+
+    const ids = parentCandidates('child', units, NORTH).map((u) => u.id)
+    expect(ids).toContain('far')
+    expect(ids).toContain('near')
+  })
+
+  it('offers every container when no area is given', () => {
+    const units = [
+      unit({ id: 'near', area: NORTH, is_container: true }),
+      unit({ id: 'far', area: SOUTH, is_container: true }),
+    ]
+
+    expect(parentCandidates(undefined, units).map((u) => u.id)).toEqual(['near', 'far'])
+  })
+})

@@ -123,7 +123,11 @@ export function UnitIdentityFields({
             merge against this tree — see docs/architecture/lodging-occupancy.md
             for why that was tried and removed. It models physical structure,
             and drives the bathroom_group upgrade when a merge covers a whole
-            group. */}
+            group.
+
+            Scoped to the Area chosen above, so switching area re-scopes the
+            buildings on offer. See ./unitTree for why the unit's existing
+            parent survives that narrowing regardless. */}
         <select
           className={FIELD}
           value={value.parent_unit}
@@ -132,7 +136,7 @@ export function UnitIdentityFields({
           }}
         >
           <option value="">No parent</option>
-          {parentCandidates(unitId, units).map((candidate) => (
+          {parentCandidates(unitId, units, value.area).map((candidate) => (
             <option key={candidate.id} value={candidate.id}>
               {candidate.name}
             </option>

@@ -19,9 +19,11 @@ import { FIELD, LABEL } from './lodgingStyles'
 export interface UnitAmenityFieldsetProps {
   value: UnitAmenities
   onChange: (next: UnitAmenities) => void
+  /** Every group id already in use, deduplicated and sorted. */
+  bathroomGroups: string[]
 }
 
-export function UnitAmenityFieldset({ value, onChange }: UnitAmenityFieldsetProps) {
+export function UnitAmenityFieldset({ value, onChange, bathroomGroups }: UnitAmenityFieldsetProps) {
   return (
     <>
       <label className="text-sm">
@@ -44,14 +46,25 @@ export function UnitAmenityFieldset({ value, onChange }: UnitAmenityFieldsetProp
 
       <label className="text-sm">
         <span className={LABEL}>Shares a bathroom with</span>
+        {/* Units share a bathroom by carrying the SAME string, and nothing
+            validates it — one typo makes a group of one and the roster stops
+            matching that family on a shared bathroom, with no error anywhere.
+            A datalist makes the common case a choice rather than a spelling
+            test, and still lets a new group be typed. */}
         <input
           className={FIELD}
+          list="bathroom-group-options"
           value={value.bathroom_group}
           placeholder="Same id on every unit sharing it"
           onChange={(e) => {
             onChange({ ...value, bathroom_group: e.target.value })
           }}
         />
+        <datalist id="bathroom-group-options">
+          {bathroomGroups.map((group) => (
+            <option key={group} value={group} />
+          ))}
+        </datalist>
       </label>
 
       <fieldset className="sm:col-span-2">

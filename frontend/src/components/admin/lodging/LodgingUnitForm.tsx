@@ -102,6 +102,11 @@ export function LodgingUnitForm({ areas, units, unit, onSaved, onCancel }: Lodgi
   // Untying this unit's children from it would leave them parented by a
   // non-container — the exact state verify-lodging-seed.sh calls a failure.
   const children = unit ? directChildren(unit.id, units) : []
+  // Derived from the units already in hand, so no extra fetch and no second
+  // source of truth about which groups exist.
+  const bathroomGroups = [
+    ...new Set(units.map((u) => u.bathroom_group).filter((g) => g !== '')),
+  ].sort((a, b) => a.localeCompare(b))
 
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault()
@@ -173,7 +178,11 @@ export function LodgingUnitForm({ areas, units, unit, onSaved, onCancel }: Lodgi
         isContainer={isContainer}
       />
 
-      <UnitAmenityFieldset value={amenities} onChange={setAmenities} />
+      <UnitAmenityFieldset
+        value={amenities}
+        onChange={setAmenities}
+        bathroomGroups={bathroomGroups}
+      />
 
       <label className="text-sm">
         <span className={LABEL}>Allocation</span>
