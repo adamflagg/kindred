@@ -223,6 +223,12 @@ export interface LodgingUnitRecord extends PocketBaseRecordBase {
   is_active: boolean
   /** A building/grouping row. Never bookable, never counted. */
   is_container: boolean
+  /**
+   * Draw this container as ONE card and stop descending. Meaningful on
+   * containers only. False — PocketBase's value for an unset bool — means
+   * "draw the children", which is the pre-feature behaviour.
+   */
+  default_combined: boolean
   notes: string
   expand?: { area?: LodgingAreaRecord; parent_unit?: LodgingUnitRecord }
 }
@@ -321,6 +327,7 @@ export interface LodgingUnitInput {
   has_shared_fridge?: boolean
   is_confirmed?: boolean
   is_container?: boolean
+  default_combined?: boolean
   notes?: string
 }
 

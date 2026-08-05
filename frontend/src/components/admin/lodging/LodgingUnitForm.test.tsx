@@ -54,6 +54,7 @@ const UNIT: LodgingUnitRecord = {
   is_confirmed: false,
   is_active: true,
   is_container: false,
+  default_combined: false,
   notes: '',
 }
 
@@ -847,5 +848,110 @@ describe('LodgingUnitForm — only the X removes a bed', () => {
 
     fireEvent.change(count, { target: { value: '3.5' } })
     expect(count).toHaveValue(3)
+  })
+})
+
+/**
+ * The registry-default combined control (spec task 8). Combined means "draw
+ * the card HERE and stop descending", so it is offered only on containers —
+ * a leaf has nothing to stop descending past — and disabled once an ancestor
+ * already carries it, since at most one node per root-to-leaf path may hold
+ * the flag meaningfully. Same shape as "is a building" disabling once a unit
+ * has children, tested above at 'disables "is a building" once a unit has
+ * children'.
+ */
+describe('LodgingUnitForm — the default-combined control', () => {
+  // A full LodgingUnitRecord built off the module's own UNIT fixture, keyed
+  // by hand-picked ids ('house', 'wing', 'room') so ancestor chains read
+  // naturally, rather than UNIT's 'u1'/'u2'.
+  const unitRecord = (over: Partial<LodgingUnitRecord> & { id: string }): LodgingUnitRecord => ({
+    ...UNIT,
+    name: over.id,
+    code: over.id,
+    default_combined: false,
+    ...over,
+  })
+
+  const renderForm = ({ unit, units }: { unit: LodgingUnitRecord; units?: LodgingUnitRecord[] }) =>
+    render(
+      <LodgingUnitForm
+        areas={AREAS}
+        units={units ?? [unit]}
+        unit={unit}
+        onSaved={vi.fn()}
+        onCancel={vi.fn()}
+      />
+    )
+
+  it('offers the combined control only on a container', () => {
+    // The flag means "draw the card here and stop descending". A leaf has
+    // nothing to stop descending past.
+    renderForm({ unit: unitRecord({ id: 'room', is_container: false }) })
+    expect(screen.queryByLabelText(/let as one/i)).not.toBeInTheDocument()
+  })
+
+  it('offers the combined control on a container with no combined ancestor', () => {
+    renderForm({ unit: unitRecord({ id: 'house', is_container: true }) })
+    expect(screen.getByLabelText(/let as one/i)).not.toBeDisabled()
+  })
+
+  it('disables the combined control when an ancestor is already combined', () => {
+    // At most one node per root-to-leaf path may hold it: an ancestor already
+    // owns the card. Same shape as disabling "is a building" once a unit has
+    // children, which this form already does.
+    renderForm({
+      unit: unitRecord({ id: 'wing', is_container: true, parent_unit: 'house' }),
+      units: [unitRecord({ id: 'house', is_container: true, default_combined: true })],
+    })
+    expect(screen.getByLabelText(/let as one/i)).toBeDisabled()
+  })
+
+  it('disables the control through a multi-level ancestor, not only a direct parent', () => {
+    // Grandparent combined, direct parent not. A check that only looks one
+    // hop up is the obvious wrong implementation, so this pins it: 'house' is
+    // combined, 'wing' is not, and 'room' hangs off 'wing'.
+    renderForm({
+      unit: unitRecord({ id: 'room', is_container: true, parent_unit: 'wing' }),
+      units: [
+        unitRecord({ id: 'wing', is_container: true, parent_unit: 'house' }),
+        unitRecord({ id: 'house', is_container: true, default_combined: true }),
+      ],
+    })
+    expect(screen.getByLabelText(/let as one/i)).toBeDisabled()
+  })
+
+  it('names the combined ancestor beside the disabled control', () => {
+    // Scoped to "already combined" so this cannot pass merely because
+    // 'North Lodge' also appears as an option text in the parent-unit
+    // <select> above — a real risk here, since 'house' is a valid parent
+    // candidate for 'wing' and would render there regardless of this
+    // control's own reason text.
+    renderForm({
+      unit: unitRecord({ id: 'wing', is_container: true, parent_unit: 'house' }),
+      units: [
+        unitRecord({
+          id: 'house',
+          is_container: true,
+          name: 'North Lodge',
+          default_combined: true,
+        }),
+      ],
+    })
+    expect(screen.getByText(/already combined.*north lodge/i)).toBeInTheDocument()
+  })
+
+  it('submits default_combined on the write payload', async () => {
+    updateLodgingUnit.mockResolvedValue({})
+    const user = userEvent.setup()
+
+    renderForm({ unit: unitRecord({ id: 'house', is_container: true }) })
+    await user.click(screen.getByLabelText(/let as one/i))
+    await user.click(screen.getByRole('button', { name: 'Save unit' }))
+
+    await waitFor(() => {
+      expect(updateLodgingUnit).toHaveBeenCalled()
+    })
+    const [, payload] = updateLodgingUnit.mock.calls[0] as [string, LodgingUnitInput]
+    expect(payload.default_combined).toBe(true)
   })
 })

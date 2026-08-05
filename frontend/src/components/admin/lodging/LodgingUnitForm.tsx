@@ -103,6 +103,7 @@ export function LodgingUnitForm({ areas, units, unit, onSaved, onCancel }: Lodgi
   )
   const [isActive, setIsActive] = useState(unit ? unit.is_active : true)
   const [isContainer, setIsContainer] = useState(unit?.is_container ?? false)
+  const [combined, setCombined] = useState(unit?.default_combined ?? false)
   const [notes, setNotes] = useState(unit?.notes ?? '')
   const [isSaving, setIsSaving] = useState(false)
   // Untying this unit's children from it would leave them parented by a
@@ -140,6 +141,7 @@ export function LodgingUnitForm({ areas, units, unit, onSaved, onCancel }: Lodgi
       is_active: isActive,
       inventory_class: inventoryClass,
       is_container: isContainer,
+      default_combined: combined,
       notes,
       beds: capacity.beds,
       ...amenities,
@@ -173,6 +175,9 @@ export function LodgingUnitForm({ areas, units, unit, onSaved, onCancel }: Lodgi
         units={units}
         unitId={unit?.id}
         inventoryClass={inventoryClass}
+        isContainer={isContainer}
+        combined={combined}
+        onCombinedChange={setCombined}
       />
 
       {/* is_confirmed and is_container are read LIVE rather than off `unit`:

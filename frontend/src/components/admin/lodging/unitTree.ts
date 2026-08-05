@@ -42,6 +42,45 @@ export function directChildren(unitId: string, units: LodgingUnitRecord[]): Lodg
 }
 
 /**
+ * Walking up from `parentId` via `parent_unit`, the nearest unit that already
+ * has `default_combined` set — or `undefined` if none does.
+ *
+ * `default_combined` means "draw the card HERE and stop descending", so at
+ * most one node per root-to-leaf path may hold it meaningfully: a combined
+ * ancestor already owns the card, and a descendant setting it too changes
+ * nothing. This is what the admin control (`UnitIdentityFields`) disables
+ * against.
+ *
+ * THIS IS A UX GUARD, NOT WHAT MAKES THE BOARD CORRECT. `drawnUnits`
+ * (frontend/src/components/weekend/unitLevel.ts) resolves top-down and takes
+ * the highest combined node on a path regardless of what a lower node
+ * claims, so a direct database write that skipped this picker could not make
+ * the board draw a room twice — it would just leave a redundant, inert flag
+ * on a descendant.
+ *
+ * Visited guard to match this file's other walk (`descendantIds`): a cycle
+ * already in the data must not hang the admin form. There is a server-side
+ * backstop against writing a NEW cycle (`guardUnitParentCycle`, #1899), but
+ * this does not rely on it.
+ */
+export function combinedAncestor(
+  parentId: string,
+  units: LodgingUnitRecord[]
+): LodgingUnitRecord | undefined {
+  const byId = new Map(units.map((unit) => [unit.id, unit]))
+  const seen = new Set<string>()
+  let currentId = parentId
+  while (currentId !== '' && !seen.has(currentId)) {
+    seen.add(currentId)
+    const current = byId.get(currentId)
+    if (!current) return undefined
+    if (current.default_combined) return current
+    currentId = current.parent_unit
+  }
+  return undefined
+}
+
+/**
  * Valid parent candidates for `unitId`: containers only, excluding the unit
  * itself and anything descending from it. On create (`unitId` undefined)
  * there is no self or descendant yet, so every container is offered.
