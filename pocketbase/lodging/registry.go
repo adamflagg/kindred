@@ -133,7 +133,12 @@ type registryAlias struct {
 	ValidToYear   *int `json:"valid_to_year"`
 }
 
-// SeedRegistry loads the private lodging registry into the database.
+// SeedRegistry loads the private lodging registry into the database for one
+// season.
+//
+// The year is a PARAMETER, not an environment read: registry.go stays free of
+// ambient config, a test seeds any year directly, and the boot path has exactly
+// one place where a bad season is handled.
 //
 // It is deliberately NOT a migration. `_migrations` keys on filename and
 // applies once, so a migration that read an absent kindred-local file in CI
@@ -143,7 +148,7 @@ type registryAlias struct {
 //
 // Absent file is not an error: a clone without kindred-local boots with an
 // empty registry and a log line, the same graceful degradation branding has.
-func SeedRegistry(app core.App) error {
+func SeedRegistry(app core.App, year int) error {
 	candidates := make([]string, 0, len(registryAbsoluteRoots)+2)
 	for _, root := range registryAbsoluteRoots {
 		candidates = append(candidates, filepath.Join(root, registryFileName)) // Docker
@@ -157,7 +162,7 @@ func SeedRegistry(app core.App) error {
 		if _, err := os.Stat(path); err != nil {
 			continue
 		}
-		return seedRegistryFromFile(app, path)
+		return seedRegistryFromFile(app, path, year)
 	}
 
 	slog.Info("lodging registry file not found; registry left as-is",
@@ -172,7 +177,7 @@ func SeedRegistry(app core.App) error {
 // would silently undo that on the next restart. Skipping rows that already
 // exist also makes this an exact no-op on every database the seed migrations
 // already populated, which is every database that exists today.
-func seedRegistryFromFile(app core.App, path string) error {
+func seedRegistryFromFile(app core.App, path string, year int) error {
 	data, err := os.ReadFile(path) //nolint:gosec // G304: path is from trusted local config
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
@@ -194,12 +199,12 @@ func seedRegistryFromFile(app core.App, path string) error {
 		return fmt.Errorf("invalid lodging registry %s: %w", path, validErr)
 	}
 
-	areaIDs, areasAdded, err := seedAreas(app, doc.Areas)
+	areaIDs, areasAdded, err := seedAreas(app, doc.Areas, year)
 	if err != nil {
 		return err
 	}
 
-	unitsAdded, createdCodes, err := seedUnits(app, doc.Units, areaIDs)
+	unitsAdded, createdCodes, err := seedUnits(app, doc.Units, areaIDs, year)
 	if err != nil {
 		return err
 	}
@@ -207,11 +212,11 @@ func seedRegistryFromFile(app core.App, path string) error {
 	// Second pass: wire parents now that every code has an id. Only rows this
 	// run created are wired — a parent staff cleared deliberately must stay
 	// cleared, same reason the field values above are left alone.
-	if wireErr := wireUnitParents(app, doc.Units, createdCodes); wireErr != nil {
+	if wireErr := wireUnitParents(app, doc.Units, createdCodes, year); wireErr != nil {
 		return wireErr
 	}
 
-	aliasesAdded, err := seedAliases(app, doc.Aliases)
+	aliasesAdded, err := seedAliases(app, doc.Aliases, year)
 	if err != nil {
 		return err
 	}
@@ -328,7 +333,7 @@ func validateAliases(aliases []registryAlias, unitCodes map[string]bool) error {
 	return nil
 }
 
-func seedAreas(app core.App, areas []registryArea) (ids map[string]string, added int, err error) {
+func seedAreas(app core.App, areas []registryArea, year int) (ids map[string]string, added int, err error) {
 	col, err := app.FindCollectionByNameOrId("lodging_areas")
 	if err != nil {
 		return nil, 0, fmt.Errorf("lodging_areas collection: %w", err)
@@ -336,7 +341,7 @@ func seedAreas(app core.App, areas []registryArea) (ids map[string]string, added
 
 	ids = make(map[string]string, len(areas))
 	for _, a := range areas {
-		rec, err := findByUniqueCode(app, "lodging_areas", a.Code)
+		rec, err := findByCodeAndYear(app, "lodging_areas", a.Code, year)
 		if err != nil {
 			return nil, 0, err
 		}
@@ -347,6 +352,7 @@ func seedAreas(app core.App, areas []registryArea) (ids map[string]string, added
 			setIfPresentFloat(rec, "map_x", a.MapX)
 			setIfPresentFloat(rec, "map_y", a.MapY)
 			setIfPresentInt(rec, "sort_order", a.SortOrder)
+			rec.Set("year", year)
 			if err := app.Save(rec); err != nil {
 				return nil, 0, fmt.Errorf("saving lodging area %q: %w", a.Code, err)
 			}
@@ -358,7 +364,7 @@ func seedAreas(app core.App, areas []registryArea) (ids map[string]string, added
 }
 
 func seedUnits(
-	app core.App, units []registryUnit, areaIDs map[string]string,
+	app core.App, units []registryUnit, areaIDs map[string]string, year int,
 ) (added int, createdCodes map[string]bool, err error) {
 	col, err := app.FindCollectionByNameOrId("lodging_units")
 	if err != nil {
@@ -370,7 +376,7 @@ func seedUnits(
 	// copying one per iteration is a gocritic rangeValCopy finding.
 	for i := range units {
 		u := &units[i]
-		rec, err := findByUniqueCode(app, "lodging_units", u.Code)
+		rec, err := findByCodeAndYear(app, "lodging_units", u.Code, year)
 		if err != nil {
 			return 0, nil, err
 		}
@@ -430,6 +436,7 @@ func seedUnits(
 		// Every seeded value is a guess until staff confirm it against the
 		// actual cabin, so nothing this loader writes may claim otherwise.
 		rec.Set("is_confirmed", false)
+		rec.Set("year", year)
 		if err := app.Save(rec); err != nil {
 			return 0, nil, fmt.Errorf("saving lodging unit %q: %w", u.Code, err)
 		}
@@ -454,7 +461,7 @@ func seedUnits(
 //     create-if-absent rather than an upsert. A parent staff cleared while the
 //     container still exists is a decision, not damage: neither end was created
 //     this run, so nothing here touches it.
-func wireUnitParents(app core.App, units []registryUnit, createdCodes map[string]bool) error {
+func wireUnitParents(app core.App, units []registryUnit, createdCodes map[string]bool, year int) error {
 	// Indexed for the same reason as seedUnits above.
 	for i := range units {
 		u := &units[i]
@@ -462,7 +469,7 @@ func wireUnitParents(app core.App, units []registryUnit, createdCodes map[string
 			continue
 		}
 
-		rec, err := findByUniqueCode(app, "lodging_units", u.Code)
+		rec, err := findByCodeAndYear(app, "lodging_units", u.Code, year)
 		if err != nil {
 			return err
 		}
@@ -472,7 +479,7 @@ func wireUnitParents(app core.App, units []registryUnit, createdCodes map[string
 			continue
 		}
 
-		parent, err := findByUniqueCode(app, "lodging_units", u.ParentUnit)
+		parent, err := findByCodeAndYear(app, "lodging_units", u.ParentUnit, year)
 		if err != nil {
 			return err
 		}
@@ -489,7 +496,7 @@ func wireUnitParents(app core.App, units []registryUnit, createdCodes map[string
 	return nil
 }
 
-func seedAliases(app core.App, aliases []registryAlias) (added int, err error) {
+func seedAliases(app core.App, aliases []registryAlias, year int) (added int, err error) {
 	col, err := app.FindCollectionByNameOrId("lodging_unit_aliases")
 	if err != nil {
 		return 0, fmt.Errorf("lodging_unit_aliases collection: %w", err)
@@ -517,7 +524,7 @@ func seedAliases(app core.App, aliases []registryAlias) (added int, err error) {
 
 		memberIDs := make([]string, 0, len(a.MemberUnits))
 		for _, code := range a.MemberUnits {
-			unit, err := findByUniqueCode(app, "lodging_units", code)
+			unit, err := findByCodeAndYear(app, "lodging_units", code, year)
 			if err != nil {
 				return 0, err
 			}
@@ -545,8 +552,13 @@ func seedAliases(app core.App, aliases []registryAlias) (added int, err error) {
 	return added, nil
 }
 
-func findByUniqueCode(app core.App, collection, code string) (*core.Record, error) {
-	return findFirst(app, collection, "code = {:c}", map[string]any{"c": code})
+// findByCodeAndYear looks up a row by its cross-year identity (code) scoped to
+// one season. lodging_units and lodging_areas both carry (code, year) unique
+// indexes (1500000140), so a code-only lookup could return another season's
+// row.
+func findByCodeAndYear(app core.App, collection, code string, year int) (*core.Record, error) {
+	return findFirst(app, collection, "code = {:c} && year = {:y}",
+		map[string]any{"c": code, "y": year})
 }
 
 // findFirst returns (nil, nil) when nothing matches, and a real error

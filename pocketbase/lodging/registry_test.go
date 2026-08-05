@@ -27,7 +27,10 @@ func setupRegistryCollections(t *testing.T, app core.App) {
 	areas.Fields.Add(&core.NumberField{Name: "map_x"})
 	areas.Fields.Add(&core.NumberField{Name: "map_y"})
 	areas.Fields.Add(&core.NumberField{Name: "sort_order", OnlyInt: true})
-	areas.AddIndex("idx_lodging_areas_code", true, "code", "")
+	areas.Fields.Add(&core.NumberField{Name: "year", OnlyInt: true})
+	// Composite (code, year), matching production's 1500000140: code alone is
+	// no longer unique once a row exists per season.
+	areas.AddIndex("idx_lodging_areas_code", true, "code, year", "")
 	saveRegistryCollection(t, app, areas)
 
 	units := core.NewBaseCollection("lodging_units")
@@ -68,7 +71,9 @@ func setupRegistryCollections(t *testing.T, app core.App) {
 		Name: "has_ramp", Values: []string{"yes", "no", "partial"}, MaxSelect: 1,
 	})
 	units.Fields.Add(&core.NumberField{Name: "max_beds", OnlyInt: true})
-	units.AddIndex("idx_lodging_units_code", true, "code", "")
+	units.Fields.Add(&core.NumberField{Name: "year", OnlyInt: true})
+	// Composite (code, year), matching production's 1500000140.
+	units.AddIndex("idx_lodging_units_code", true, "code, year", "")
 	saveRegistryCollection(t, app, units)
 
 	// Self-relation: needs the collection's own id, so it lands after the
@@ -102,6 +107,11 @@ func newRegistryTestApp(t *testing.T) core.App {
 	setupRegistryCollections(t, app)
 	return app
 }
+
+// testYear is the season used by every test below that is not itself
+// exercising year-scoping (see the season-scoped seeding tests further down,
+// which vary the year deliberately).
+const testYear = 2026
 
 // writeRegistry drops a registry file into a temp dir and returns its path.
 func writeRegistry(t *testing.T, body string) string {
@@ -204,7 +214,7 @@ func TestSeedRegistryResolvesConfigUnderTheWorkingDirectory(t *testing.T) {
 	}
 	withRegistryBasePath(t, base)
 
-	if err := SeedRegistry(app); err != nil {
+	if err := SeedRegistry(app, testYear); err != nil {
 		t.Fatalf("SeedRegistry: %v", err)
 	}
 	if n := countRecords(t, app, "lodging_units"); n != 3 {
@@ -218,7 +228,7 @@ func TestSeedRegistryWithNoConfigAnywhereIsANoOp(t *testing.T) {
 	logs := captureLogs(t)
 	withRegistryBasePath(t, t.TempDir())
 
-	if err := SeedRegistry(app); err != nil {
+	if err := SeedRegistry(app, testYear); err != nil {
 		t.Fatalf("no config anywhere should not be an error, got: %v", err)
 	}
 	if n := countRecords(t, app, "lodging_units"); n != 0 {
@@ -234,7 +244,7 @@ func TestSeedRegistryAbsentFileIsANoOp(t *testing.T) {
 	logs := captureLogs(t)
 
 	missing := filepath.Join(t.TempDir(), "does_not_exist.json")
-	if err := seedRegistryFromFile(app, missing); err != nil {
+	if err := seedRegistryFromFile(app, missing, testYear); err != nil {
 		t.Fatalf("absent file should not be an error, got: %v", err)
 	}
 
@@ -254,7 +264,7 @@ func TestSeedRegistryAbsentFileIsANoOp(t *testing.T) {
 func TestSeedRegistryCreatesAreasUnitsAndAliases(t *testing.T) {
 	app := newRegistryTestApp(t)
 
-	if err := seedRegistryFromFile(app, writeRegistry(t, fixtureRegistry)); err != nil {
+	if err := seedRegistryFromFile(app, writeRegistry(t, fixtureRegistry), testYear); err != nil {
 		t.Fatalf("seedRegistryFromFile: %v", err)
 	}
 
@@ -337,7 +347,7 @@ func TestSeedRegistryWritesAmenities(t *testing.T) {
 	   "has_ramp": "partial", "max_beds": 14}
 	], "aliases": []}`
 
-	if err := seedRegistryFromFile(app, writeRegistry(t, body)); err != nil {
+	if err := seedRegistryFromFile(app, writeRegistry(t, body), testYear); err != nil {
 		t.Fatalf("seedRegistryFromFile: %v", err)
 	}
 
@@ -376,7 +386,7 @@ func TestSeedRegistryUnassessedRampStaysBlank(t *testing.T) {
 	   "inventory_class": "family_pool"}
 	], "aliases": []}`
 
-	if err := seedRegistryFromFile(app, writeRegistry(t, body)); err != nil {
+	if err := seedRegistryFromFile(app, writeRegistry(t, body), testYear); err != nil {
 		t.Fatalf("seedRegistryFromFile: %v", err)
 	}
 
@@ -388,7 +398,7 @@ func TestSeedRegistryUnassessedRampStaysBlank(t *testing.T) {
 func TestSeedRegistryWiresParentDeclaredAfterChild(t *testing.T) {
 	app := newRegistryTestApp(t)
 
-	if err := seedRegistryFromFile(app, writeRegistry(t, fixtureRegistry)); err != nil {
+	if err := seedRegistryFromFile(app, writeRegistry(t, fixtureRegistry), testYear); err != nil {
 		t.Fatalf("seedRegistryFromFile: %v", err)
 	}
 
@@ -412,7 +422,7 @@ func TestSeedRegistryWiresParentDeclaredAfterChild(t *testing.T) {
 func TestSeedRegistryNullSleepsStoresZero(t *testing.T) {
 	app := newRegistryTestApp(t)
 
-	if err := seedRegistryFromFile(app, writeRegistry(t, fixtureRegistry)); err != nil {
+	if err := seedRegistryFromFile(app, writeRegistry(t, fixtureRegistry), testYear); err != nil {
 		t.Fatalf("seedRegistryFromFile: %v", err)
 	}
 
@@ -427,7 +437,7 @@ func TestSeedRegistryNullSleepsStoresZero(t *testing.T) {
 func TestSeedRegistryUnboundedAliasYearsStoreZero(t *testing.T) {
 	app := newRegistryTestApp(t)
 
-	if err := seedRegistryFromFile(app, writeRegistry(t, fixtureRegistry)); err != nil {
+	if err := seedRegistryFromFile(app, writeRegistry(t, fixtureRegistry), testYear); err != nil {
 		t.Fatalf("seedRegistryFromFile: %v", err)
 	}
 
@@ -458,7 +468,7 @@ func TestSeedRegistryUnboundedAliasYearsStoreZero(t *testing.T) {
 func TestSeedRegistryAliasMembersResolveToUnitIDs(t *testing.T) {
 	app := newRegistryTestApp(t)
 
-	if err := seedRegistryFromFile(app, writeRegistry(t, fixtureRegistry)); err != nil {
+	if err := seedRegistryFromFile(app, writeRegistry(t, fixtureRegistry), testYear); err != nil {
 		t.Fatalf("seedRegistryFromFile: %v", err)
 	}
 
@@ -488,10 +498,10 @@ func TestSeedRegistryIsIdempotent(t *testing.T) {
 	app := newRegistryTestApp(t)
 	path := writeRegistry(t, fixtureRegistry)
 
-	if err := seedRegistryFromFile(app, path); err != nil {
+	if err := seedRegistryFromFile(app, path, testYear); err != nil {
 		t.Fatalf("first run: %v", err)
 	}
-	if err := seedRegistryFromFile(app, path); err != nil {
+	if err := seedRegistryFromFile(app, path, testYear); err != nil {
 		t.Fatalf("second run: %v", err)
 	}
 
@@ -514,7 +524,7 @@ func TestSeedRegistryPreservesStaffEdits(t *testing.T) {
 	app := newRegistryTestApp(t)
 	path := writeRegistry(t, fixtureRegistry)
 
-	if err := seedRegistryFromFile(app, path); err != nil {
+	if err := seedRegistryFromFile(app, path, testYear); err != nil {
 		t.Fatalf("first run: %v", err)
 	}
 
@@ -527,7 +537,7 @@ func TestSeedRegistryPreservesStaffEdits(t *testing.T) {
 		t.Fatalf("save staff edit: %v", err)
 	}
 
-	if err := seedRegistryFromFile(app, path); err != nil {
+	if err := seedRegistryFromFile(app, path, testYear); err != nil {
 		t.Fatalf("second run: %v", err)
 	}
 
@@ -552,7 +562,7 @@ func TestSeedRegistryDoesNotRewireAnExistingParent(t *testing.T) {
 	app := newRegistryTestApp(t)
 	path := writeRegistry(t, fixtureRegistry)
 
-	if err := seedRegistryFromFile(app, path); err != nil {
+	if err := seedRegistryFromFile(app, path, testYear); err != nil {
 		t.Fatalf("first run: %v", err)
 	}
 
@@ -562,7 +572,7 @@ func TestSeedRegistryDoesNotRewireAnExistingParent(t *testing.T) {
 		t.Fatalf("clear parent: %v", err)
 	}
 
-	if err := seedRegistryFromFile(app, path); err != nil {
+	if err := seedRegistryFromFile(app, path, testYear); err != nil {
 		t.Fatalf("second run: %v", err)
 	}
 
@@ -574,7 +584,7 @@ func TestSeedRegistryDoesNotRewireAnExistingParent(t *testing.T) {
 func TestSeedRegistryMalformedJSONErrorsWithoutWriting(t *testing.T) {
 	app := newRegistryTestApp(t)
 
-	err := seedRegistryFromFile(app, writeRegistry(t, `{"areas": [ NOT JSON`))
+	err := seedRegistryFromFile(app, writeRegistry(t, `{"areas": [ NOT JSON`), testYear)
 	if err == nil {
 		t.Fatal("malformed JSON returned nil, want an error")
 	}
@@ -594,7 +604,7 @@ func TestSeedRegistryUnknownAreaCodeIsAnError(t *testing.T) {
 	   "inventory_class": "family_pool"}
 	], "aliases": []}`
 
-	err := seedRegistryFromFile(app, writeRegistry(t, body))
+	err := seedRegistryFromFile(app, writeRegistry(t, body), testYear)
 	if err == nil {
 		t.Fatal("unknown area code returned nil, want an error")
 	}
@@ -611,7 +621,7 @@ func TestSeedRegistryUnknownParentCodeIsAnError(t *testing.T) {
 	   "bathroom": "none", "inventory_class": "family_pool"}
 	], "aliases": []}`
 
-	if err := seedRegistryFromFile(app, writeRegistry(t, body)); err == nil {
+	if err := seedRegistryFromFile(app, writeRegistry(t, body), testYear); err == nil {
 		t.Fatal("unknown parent code returned nil, want an error")
 	}
 }
@@ -628,7 +638,7 @@ func TestSeedRegistryUnknownAliasMemberIsAnError(t *testing.T) {
 	  {"alias_string": "Broken", "member_units": ["real", "ghost"]}
 	]}`
 
-	if err := seedRegistryFromFile(app, writeRegistry(t, body)); err == nil {
+	if err := seedRegistryFromFile(app, writeRegistry(t, body), testYear); err == nil {
 		t.Fatal("unknown alias member returned nil, want an error")
 	}
 	if n := countRecords(t, app, "lodging_unit_aliases"); n != 0 {
@@ -654,13 +664,13 @@ func TestSeedRegistrySameAliasStringDifferentWindowsBothLand(t *testing.T) {
 	]}`
 	path := writeRegistry(t, body)
 
-	if err := seedRegistryFromFile(app, path); err != nil {
+	if err := seedRegistryFromFile(app, path, testYear); err != nil {
 		t.Fatalf("first run: %v", err)
 	}
 	if n := countRecords(t, app, "lodging_unit_aliases"); n != 2 {
 		t.Fatalf("got %d aliases, want 2 (one per window)", n)
 	}
-	if err := seedRegistryFromFile(app, path); err != nil {
+	if err := seedRegistryFromFile(app, path, testYear); err != nil {
 		t.Fatalf("second run: %v", err)
 	}
 	if n := countRecords(t, app, "lodging_unit_aliases"); n != 2 {
@@ -687,7 +697,7 @@ func TestSeedRegistryDuplicateUnitCodeIsAnError(t *testing.T) {
 	   "inventory_class": "family_pool"}
 	], "aliases": []}`
 
-	err := seedRegistryFromFile(app, writeRegistry(t, body))
+	err := seedRegistryFromFile(app, writeRegistry(t, body), testYear)
 	if err == nil {
 		t.Fatal("duplicate unit code returned nil, want an error")
 	}
@@ -704,7 +714,7 @@ func TestSeedRegistryDuplicateAreaCodeIsAnError(t *testing.T) {
 	  {"code": "AREA1", "name": "Second"}
 	], "units": [], "aliases": []}`
 
-	err := seedRegistryFromFile(app, writeRegistry(t, body))
+	err := seedRegistryFromFile(app, writeRegistry(t, body), testYear)
 	if err == nil {
 		t.Fatal("duplicate area code returned nil, want an error")
 	}
@@ -728,7 +738,7 @@ func TestSeedRegistryDuplicateAliasWindowIsAnError(t *testing.T) {
 	  {"alias_string": "Same", "member_units": ["real"], "valid_from_year": 2025}
 	]}`
 
-	err := seedRegistryFromFile(app, writeRegistry(t, body))
+	err := seedRegistryFromFile(app, writeRegistry(t, body), testYear)
 	if err == nil {
 		t.Fatal("duplicate (alias_string, valid_from_year) returned nil, want an error")
 	}
@@ -752,7 +762,7 @@ func TestSeedRegistryRewiresChildrenOfARecreatedContainer(t *testing.T) {
 	app := newRegistryTestApp(t)
 	path := writeRegistry(t, fixtureRegistry)
 
-	if err := seedRegistryFromFile(app, path); err != nil {
+	if err := seedRegistryFromFile(app, path, testYear); err != nil {
 		t.Fatalf("first run: %v", err)
 	}
 
@@ -761,7 +771,7 @@ func TestSeedRegistryRewiresChildrenOfARecreatedContainer(t *testing.T) {
 		t.Fatalf("delete container: %v", err)
 	}
 
-	if err := seedRegistryFromFile(app, path); err != nil {
+	if err := seedRegistryFromFile(app, path, testYear); err != nil {
 		t.Fatalf("second run: %v", err)
 	}
 
@@ -794,10 +804,103 @@ func TestSeedRegistryResolvesAbsoluteConfigRoot(t *testing.T) {
 	// root can satisfy this.
 	withRegistryBasePath(t, t.TempDir())
 
-	if err := SeedRegistry(app); err != nil {
+	if err := SeedRegistry(app, testYear); err != nil {
 		t.Fatalf("SeedRegistry: %v", err)
 	}
 	if n := countRecords(t, app, "lodging_units"); n != 3 {
 		t.Errorf("got %d units, want 3 — the absolute config root was not searched", n)
+	}
+}
+
+// --- season-scoped seeding --------------------------------------------------
+//
+// yearFixtureRegistry is a container with one child, keyed off the codes
+// task 2's tests assert on. SeedRegistry only takes a filesystem path to a
+// registry file — pointing it at a temp config dir via withYearFixtureRegistry
+// is how these tests hand it fixture content while still exercising the real
+// SeedRegistry entrypoint (not seedRegistryFromFile) the way main.go calls it.
+const yearFixtureRegistry = `{
+  "areas": [
+    {"code": "AREA1", "name": "First Area"}
+  ],
+  "units": [
+    {"area": "AREA1", "code": "test-unit-a", "name": "Test Building A",
+     "bathroom": "none", "inventory_class": "family_pool", "is_container": true},
+    {"area": "AREA1", "code": "test-unit-a-room-1", "name": "Test Building A Room 1",
+     "bathroom": "none", "inventory_class": "family_pool", "parent_unit": "test-unit-a"}
+  ],
+  "aliases": []
+}`
+
+// withYearFixtureRegistry points SeedRegistry's default config-file lookup at
+// a temp tree containing yearFixtureRegistry, the same way
+// TestSeedRegistryResolvesConfigUnderTheWorkingDirectory does for the other
+// fixture.
+func withYearFixtureRegistry(t *testing.T) {
+	t.Helper()
+	base := t.TempDir()
+	if err := os.Mkdir(filepath.Join(base, "config"), 0o750); err != nil {
+		t.Fatalf("mkdir config: %v", err)
+	}
+	if err := os.WriteFile(
+		filepath.Join(base, "config", registryFileName), []byte(yearFixtureRegistry), 0o600,
+	); err != nil {
+		t.Fatalf("write registry: %v", err)
+	}
+	withRegistryBasePath(t, base)
+}
+
+func TestSeedRegistryStampsTheSeason(t *testing.T) {
+	app := newRegistryTestApp(t)
+	withYearFixtureRegistry(t)
+
+	if err := SeedRegistry(app, 2027); err != nil {
+		t.Fatalf("SeedRegistry: %v", err)
+	}
+	rec, err := findByCodeAndYear(app, "lodging_units", "test-unit-a", 2027)
+	if err != nil || rec == nil {
+		t.Fatalf("unit not seeded for 2027: rec=%v err=%v", rec, err)
+	}
+	if got := rec.GetInt("year"); got != 2027 {
+		t.Errorf("year = %d, want 2027", got)
+	}
+}
+
+func TestFindByCodeAndYearIgnoresOtherYears(t *testing.T) {
+	app := newRegistryTestApp(t)
+	withYearFixtureRegistry(t)
+
+	if err := SeedRegistry(app, 2026); err != nil {
+		t.Fatalf("SeedRegistry: %v", err)
+	}
+	rec, err := findByCodeAndYear(app, "lodging_units", "test-unit-a", 2027)
+	if err != nil {
+		t.Fatalf("findByCodeAndYear: %v", err)
+	}
+	if rec != nil {
+		t.Errorf("found a 2026 row when asking for 2027: %s", rec.Id)
+	}
+}
+
+func TestWireUnitParentsStaysWithinItsYear(t *testing.T) {
+	app := newRegistryTestApp(t)
+	withYearFixtureRegistry(t)
+
+	if err := SeedRegistry(app, 2026); err != nil {
+		t.Fatalf("seed 2026: %v", err)
+	}
+	if err := SeedRegistry(app, 2027); err != nil {
+		t.Fatalf("seed 2027: %v", err)
+	}
+	child, err := findByCodeAndYear(app, "lodging_units", "test-unit-a-room-1", 2027)
+	if err != nil || child == nil {
+		t.Fatalf("child missing: %v", err)
+	}
+	parent, err := findByCodeAndYear(app, "lodging_units", "test-unit-a", 2027)
+	if err != nil || parent == nil {
+		t.Fatalf("parent missing: %v", err)
+	}
+	if got := child.GetString("parent_unit"); got != parent.Id {
+		t.Errorf("parent_unit = %q, want the 2027 parent %q", got, parent.Id)
 	}
 }

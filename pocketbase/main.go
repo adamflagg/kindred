@@ -151,8 +151,17 @@ func main() {
 	// Warn rather than fail: a clone without the private config must still
 	// boot, and an unreadable registry should not take the whole service down.
 	// The log line is the signal that the registry is empty on purpose.
+	//
+	// Skip rather than guess. Seeding ~118 units into a guessed season is
+	// strictly worse than seeding none: the first roll-forward would carry
+	// the phantom season forward as though it were real.
 	app.OnServe().BindFunc(func(e *core.ServeEvent) error {
-		if err := lodging.SeedRegistry(e.App); err != nil {
+		year, err := sync.ParseSeasonYear()
+		if err != nil {
+			slog.Warn("lodging registry load skipped: season unavailable", "err", err)
+			return e.Next()
+		}
+		if err := lodging.SeedRegistry(e.App, year); err != nil {
 			slog.Warn("lodging registry load failed", "err", err)
 		}
 		return e.Next()
