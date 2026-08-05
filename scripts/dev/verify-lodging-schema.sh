@@ -368,6 +368,33 @@ else
   done
 fi
 
+# -------------------------------------------------------------- season scoping
+#
+# 1500000140. year on lodging_units and lodging_areas turns the registry from
+# a timeless table into a per-season one; `code` becomes the cross-year
+# identity thread.
+#
+# The year column and the composite code index. A fresh DB can prove SHAPE
+# only: with no rows, a remove-and-add is indistinguishable from a rename, so
+# nothing asserted here can speak to value preservation. That check runs
+# against a prod-seeded copy — see the plan's Task 1.
+for table in lodging_units lodging_areas; do
+  if ! sqlite3 "$DB" "PRAGMA table_info($table);" | grep -q '|year|'; then
+    note "$table has no year column"
+  fi
+  req=$(field_prop "$table" year required || true)
+  [[ "$req" == "1" || "$req" == "true" ]] \
+    || note "$table.year required is '$req' (expected true)"
+done
+
+for idx in idx_lodging_units_code idx_lodging_areas_code; do
+  sql=$(sqlite3 "$DB" "SELECT sql FROM sqlite_master WHERE name = '$idx';")
+  case "$sql" in
+    *code*year*) ;;
+    *) note "$idx is not composite on (code, year): $sql" ;;
+  esac
+done
+
 # Write access, read from the APPLIED schema rather than from the migration
 # text. The drafts and the planning tables are what staff write; the synced
 # record of truth, its append-only audit trail and the ingest's field map stay
