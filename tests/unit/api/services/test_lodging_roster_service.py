@@ -43,6 +43,8 @@ def _unit(
     bathroom_group: str = "",
     map_x: float | None = 0.5,
     map_y: float | None = 0.5,
+    default_combined: bool = False,
+    parent_unit: str = "",
 ) -> SimpleNamespace:
     return _rec(
         id=pb_id,
@@ -62,6 +64,8 @@ def _unit(
         is_accessible=False,
         map_x=map_x,
         map_y=map_y,
+        default_combined=default_combined,
+        parent_unit=parent_unit,
         expand={"area": _rec(code="RIDGE", name="Ridge Side", sort_order=1)},
     )
 
@@ -514,6 +518,87 @@ class TestUnitsAndCounts:
         assert roster.counts.units_reserved == 1
         assert roster.counts.units_staff_housing == 1
         assert roster.counts.beds_family_available == 0
+
+    @pytest.mark.asyncio
+    async def test_a_true_override_beats_a_false_default(self) -> None:
+        """The scenario says "combined", overriding a registry default of split."""
+        repo = _repo(
+            fetch_session=FAMILY_SESSION,
+            fetch_units=[_unit("u1", "gt-wawona", "Wawona", sleeps=7, default_combined=False)],
+            fetch_slot_merges=[_rec(unit="u1", combined=True)],
+        )
+        roster = await LodgingRosterService(repo).build_roster(2026, 1000001, scenario="scn_1")
+
+        assert roster.units[0].is_combined is True
+
+    @pytest.mark.asyncio
+    async def test_a_false_override_beats_a_true_default(self) -> None:
+        """The direction that dies if `.get(id)` grows a `, False` default.
+
+        The registry says this container draws combined; THIS scenario has
+        split it. An absent-row-means-False bug would make this container
+        look combined no matter what the scenario says, which is exactly
+        backwards -- it would make split unreachable whenever the default is
+        combined.
+        """
+        repo = _repo(
+            fetch_session=FAMILY_SESSION,
+            fetch_units=[_unit("u1", "gt-wawona", "Wawona", sleeps=7, default_combined=True)],
+            fetch_slot_merges=[_rec(unit="u1", combined=False)],
+        )
+        roster = await LodgingRosterService(repo).build_roster(2026, 1000001, scenario="scn_1")
+
+        assert roster.units[0].is_combined is False
+
+    @pytest.mark.asyncio
+    async def test_no_override_row_inherits_a_true_default(self) -> None:
+        """No row is INHERIT, not False -- the whole reason `override` is a
+        tri-state. `merge_by_unit.get(_s(unit, "id"), False)` would flatten
+        the absent row to False here and this would fail: the registry
+        default is True and nothing in this scenario has touched it.
+        """
+        repo = _repo(
+            fetch_session=FAMILY_SESSION,
+            fetch_units=[_unit("u1", "gt-wawona", "Wawona", sleeps=7, default_combined=True)],
+            fetch_slot_merges=[],
+        )
+        roster = await LodgingRosterService(repo).build_roster(2026, 1000001, scenario="scn_1")
+
+        assert roster.units[0].is_combined is True
+
+    @pytest.mark.asyncio
+    async def test_parent_code_resolves_through_the_id_to_code_map(self) -> None:
+        """`parent_unit` stores an id; the payload publishes the sibling's code."""
+        repo = _repo(
+            fetch_session=FAMILY_SESSION,
+            fetch_units=[
+                _unit("u1", "gt-wawona", "Wawona", sleeps=7, is_container=True),
+                _unit("u2", "gt-wawona-front", "Wawona Front", sleeps=4, parent_unit="u1"),
+            ],
+        )
+        roster = await LodgingRosterService(repo).build_roster(2026, 1000001)
+
+        by_code = {u.code: u for u in roster.units}
+        assert by_code["gt-wawona-front"].parent_code == "gt-wawona"
+
+    @pytest.mark.asyncio
+    async def test_a_dangling_parent_id_yields_an_empty_parent_code(self) -> None:
+        """`parent_unit` names an id absent from this batch of units.
+
+        Distinct from "no parent set at all": that path never reaches
+        `code_by_id` with a truthy key. This one does, misses, and must fall
+        back to "" rather than leaking the raw id onto the wire -- exactly
+        the failure mode `parent_code` exists to rule out. 1500000139's
+        header flags this as live once `lodging_units` is year-scoped, which
+        lands right after this branch.
+        """
+        repo = _repo(
+            fetch_session=FAMILY_SESSION,
+            fetch_units=[_unit("u1", "gt-wawona-front", "Wawona Front", sleeps=4, parent_unit="ghost-id")],
+        )
+        roster = await LodgingRosterService(repo).build_roster(2026, 1000001)
+
+        assert roster.units[0].parent_code == ""
 
     @pytest.mark.asyncio
     async def test_staff_housing_leaves_the_planning_inventory_counts(self) -> None:
