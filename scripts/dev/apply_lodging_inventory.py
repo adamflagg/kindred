@@ -30,6 +30,7 @@ import json
 import os
 import sys
 from dataclasses import dataclass, field
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
@@ -139,6 +140,10 @@ def resolve_parent_id(fields: dict[str, Any], ids: dict[str, str]) -> dict[str, 
     detach the child from its container with no error, which is the opposite of
     what every other guard here does. An EMPTY code is legitimate — it means the
     unit has no parent.
+
+    `ids` comes from a year-filtered fetch, so a code resolves within one
+    season. Without that filter this map holds N seasons and silently keeps
+    whichever was fetched last.
     """
     out = dict(fields)
     code = out.get("parent_unit") or ""
@@ -259,13 +264,21 @@ def _auth(base: str, identity: str, password: str) -> str:
     return str(resp.json()["token"])
 
 
-def _fetch_units(base: str, token: str) -> dict[str, dict[str, Any]]:
+def _fetch_units(base: str, token: str, year: int) -> dict[str, dict[str, Any]]:
+    """Fetch one YEAR's units, keyed by code.
+
+    The year filter is load-bearing, not a convenience. Keying on code alone
+    across a multi-year table collapses every season into one entry with the
+    last page fetched winning — which is how one year's parent id lands on
+    another year's row.
+    """
     out: dict[str, dict[str, Any]] = {}
     page = 1
     while True:
+        params: dict[str, Any] = {"filter": f"year = {year}", "perPage": 200, "page": page}
         resp = requests.get(
             f"{base}/api/collections/lodging_units/records",
-            params={"perPage": 200, "page": page},
+            params=params,
             headers={"Authorization": token},
             timeout=60,
         )
@@ -301,6 +314,12 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="also apply bathroom/container/parent corrections, which OVERWRITE existing values",
     )
+    parser.add_argument(
+        "--year",
+        type=int,
+        default=int(os.getenv("CAMPMINDER_SEASON_ID", datetime.now().year)),
+        help="Season to apply against. Defaults to CAMPMINDER_SEASON_ID.",
+    )
     args = parser.parse_args(argv)
 
     registry = Path(args.registry)
@@ -314,7 +333,7 @@ def main(argv: list[str] | None = None) -> int:
         return 2
 
     token = _auth(args.url, args.identity, args.password)
-    raw = _fetch_units(args.url, token)
+    raw = _fetch_units(args.url, token, args.year)
     have = normalise_parents(raw)
     plan = plan_updates(units, have, include_structural=args.structural)
 
