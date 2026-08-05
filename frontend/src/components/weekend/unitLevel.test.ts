@@ -98,16 +98,18 @@ describe('drawnUnits', () => {
     expect(drawnUnits(filtered).map((x) => x.code)).toEqual(['room'])
   })
 
-  it('draws a container whose children are all absent from the array, rather than dropping it', () => {
-    // A container filtered to a subset where none of its registered children
-    // survived the filter has kids.length === 0 here, so it falls into the
-    // same branch as a genuine leaf and gets drawn — even though it is a
-    // container and is not combined. This is deliberate: never-vanish beats
-    // correctness-of-card-type. If a future change makes this branch trust
-    // is_container over child presence instead, this unit's card silently
-    // disappears from the board.
+  it('never draws a container even when its children are all absent from the array', () => {
+    // Leaf-ness reads the `is_container` FLAG, not child count. A container
+    // never gets a card unless combined — its halves already carry the beds,
+    // and drawing the building on top double-counts them (408 against a true
+    // 389, owner-confirmed in boardLayout.ts). A childless container is a
+    // momentary state, not license to treat it as bookable: inferring
+    // "this is a leaf" from an empty child list infers from missing data,
+    // which is exactly what the flag exists to prevent. (This inverts what
+    // this test asserted before fix round 1 — pinning kids.length === 0 as
+    // leaf-like was the wrong call.)
     const lonelyContainer = u({ code: 'lone-container', is_container: true })
-    expect(drawnUnits([lonelyContainer]).map((x) => x.code)).toEqual(['lone-container'])
+    expect(drawnUnits([lonelyContainer])).toEqual([])
   })
 })
 
@@ -126,5 +128,14 @@ describe('coveredCodes', () => {
     // and the same visited-guard shape, starting the walk from the root.
     const r = CYCLIC[0]!
     expect(() => coveredCodes(r, CYCLIC)).not.toThrow()
+  })
+
+  it('returns nothing beneath a childless container, rather than treating it as its own leaf', () => {
+    // Mirrors the drawnUnits inversion above (fix round 1): a container with
+    // no children in the array is not a bookable leaf, so fan-down onto it
+    // must yield `[]` — which boardLayout.ts routes a naming party to
+    // `offBoard` — never `[unit.code]`, which would fabricate a card.
+    const lonelyContainer = u({ code: 'lone-container', is_container: true })
+    expect(coveredCodes(lonelyContainer, [lonelyContainer])).toEqual([])
   })
 })

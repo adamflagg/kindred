@@ -40,7 +40,14 @@ export function coveredCodes(unit: LodgingUnitRow, units: LodgingUnitRow[]): str
     if (next === undefined || seen.has(next.code)) continue
     seen.add(next.code)
     const kids = children.get(next.code) ?? []
-    if (kids.length === 0) out.push(next.code)
+    // Leaf-ness reads the `is_container` FLAG, never child count. It is an
+    // explicit "never bookable" marker the manage panel maintains — inferring
+    // "this is bookable" from an empty child list infers from missing data,
+    // which is exactly what the flag exists to prevent. A childless container
+    // contributes no covered code: fan-down onto it yields `[]`, which routes
+    // a party naming it to `offBoard` rather than a fabricated card.
+    const isLeaf = next.is_container !== true
+    if (isLeaf) out.push(next.code)
     else queue.push(...kids)
   }
   return out
@@ -63,9 +70,15 @@ export function drawnUnits(units: LodgingUnitRow[]): LodgingUnitRow[] {
     if (next === undefined || seen.has(next.code)) continue
     seen.add(next.code)
     const kids = children.get(next.code) ?? []
-    // A leaf always draws. A container draws only when combined; otherwise it
-    // is pure grouping and we descend past it.
-    if (kids.length === 0 || next.is_combined === true) drawn.push(next)
+    // Leaf-ness reads the `is_container` FLAG, never child count — see the
+    // matching comment in `coveredCodes`. A leaf always draws. A container
+    // draws only when combined; otherwise it is pure grouping and we descend
+    // past it, even if it currently has no children in the array. A
+    // momentarily childless container (created before its rooms are
+    // reparented under it) is expected workflow, not a data error to route
+    // around — owner-confirmed: it stays cardless until it is parented.
+    const isLeaf = next.is_container !== true
+    if (isLeaf || next.is_combined === true) drawn.push(next)
     else queue.push(...kids)
   }
   return drawn
