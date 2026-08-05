@@ -9,15 +9,22 @@
  *
  * Two invariants this file exists to hold:
  *
- * 1. **Containers never get a card.** A building row carries the beds its
- *    halves already report; drawing it double-counts them (408 against a true
- *    389). Owner-confirmed.
+ * 1. **A tree draws at its resolved level, never both.** `unitLevel.ts`
+ *    (`drawnUnits`) decides that level: a non-combined container never gets a
+ *    card, because its halves already report the beds; a combined one draws
+ *    ITS OWN row instead of its rooms, so the card carries the measured
+ *    whole-house `sleeps` rather than a summed one. A placement naming a code
+ *    at the WRONG level — a room whose building is combined, or a container
+ *    whose board is split — is mapped onto whatever card currently represents
+ *    it (`cardCodesFor`): rolled up to the drawn ancestor, or fanned down to
+ *    the drawn leaves. Nobody falls off the board because of which level they
+ *    were named at.
  * 2. **No party is ever dropped.** A party can be placed somewhere the board
- *    structurally cannot draw — an assignment naming a container, a unit absent
- *    from the payload, or a merge whose every room is missing. Those go to
- *    `offBoard`, never to the unplaced corner queue (they ARE placed) and never
- *    to nowhere. `buildBoard` is total: every input party comes out in exactly
- *    one of slots / unplaced / offBoard.
+ *    structurally cannot draw — a unit absent from the payload, or a merge
+ *    whose every room is missing. Those go to `offBoard`, never to the
+ *    unplaced corner queue (they ARE placed) and never to nowhere. `buildBoard`
+ *    is total: every input party comes out in exactly one of slots / unplaced
+ *    / offBoard.
  *
  *    "Exactly one" is about the CATEGORY, not the slot. A party holding several
  *    rooms is drawn on each of them, which is why an area's family count reads
@@ -25,6 +32,7 @@
  */
 import type { LodgingUnitRow, RosterPartyRow, ShareEligibilityValue } from '../../types/lodging'
 import { partyKey } from './partyKey'
+import { coveredCodes, drawnUnits } from './unitLevel'
 
 /**
  * The leaf codes a party currently occupies.
@@ -303,12 +311,34 @@ function isPlanningInventory(unit: LodgingUnitRow): boolean {
 }
 
 function indexPayload(parties: RosterPartyRow[], units: LodgingUnitRow[]) {
-  // Every leaf unit can hold a party, including a deactivated one — the
-  // registry can be edited out from under a live assignment.
-  const leafByCode = new Map<string, LodgingUnitRow>()
-  for (const unit of units) {
-    if (unit.is_container === true) continue
-    leafByCode.set(unit.code, unit)
+  const unitsByCode = new Map(units.map((unit) => [unit.code, unit]))
+
+  // Which units get a card, at each tree's resolved level. Replaces the old
+  // "every non-container leaf" rule: a combined container IS a card now, and
+  // the rooms it replaces are not.
+  const candidates = drawnUnits(units)
+  const drawnByCode = new Map(candidates.map((unit) => [unit.code, unit]))
+
+  // A placement names leaves, or a container, or a mix. Map each named code
+  // onto the card that currently REPRESENTS it — itself if it is drawn, else
+  // the nearest drawn ancestor (rolled up), else every drawn leaf it covers
+  // (fanned down). Nobody falls off the board at any draw level.
+  const cardCodesFor = (named: string): string[] => {
+    if (drawnByCode.has(named)) return [named]
+    const unit = unitsByCode.get(named)
+    if (unit === undefined) return []
+    // Roll up: walk to the drawn ancestor.
+    let cursor = unit
+    const seen = new Set<string>()
+    while ((cursor.parent_code ?? '') !== '' && !seen.has(cursor.code)) {
+      seen.add(cursor.code)
+      const parent = unitsByCode.get(cursor.parent_code ?? '')
+      if (parent === undefined) break
+      if (drawnByCode.has(parent.code)) return [parent.code]
+      cursor = parent
+    }
+    // Fan down: a container drawn below itself.
+    return coveredCodes(unit, units).filter((code) => drawnByCode.has(code))
   }
 
   const partiesByCode = new Map<string, RosterPartyRow[]>()
@@ -321,13 +351,12 @@ function indexPayload(parties: RosterPartyRow[], units: LodgingUnitRow[]) {
       unplaced.push(party)
       continue
     }
-    // An unresolvable code is dropped rather than disqualifying the whole
-    // placement. A room missing from the payload should cost the family that
-    // room, not hide the family.
-    const codes = occupiedCodes(party).filter((code) => leafByCode.has(code))
-    // Placed, but on nothing this board can draw — a container, or a name the
-    // payload has no unit for. There is no card to put it on, but it IS placed
-    // and the unplaced rail would be a lie.
+    // De-duplicated: a party naming two rooms of one combined house must land
+    // on that house ONCE, not twice.
+    const codes = [...new Set(occupiedCodes(party).flatMap(cardCodesFor))]
+    // Placed, but on nothing this board can draw — a code the payload has no
+    // unit for. There is no card to put it on, but it IS placed and the
+    // unplaced rail would be a lie.
     if (codes.length === 0) {
       offBoard.push(party)
       continue
@@ -344,7 +373,7 @@ function indexPayload(parties: RosterPartyRow[], units: LodgingUnitRow[]) {
   // A deactivated room is not bookable, and staff housing was never planning
   // inventory at all, so both clutter the board — unless somebody is still in
   // one, in which case hiding it would drop them.
-  const drawn = [...leafByCode.values()].filter(
+  const drawn = candidates.filter(
     (unit) =>
       (unit.is_active !== false && isPlanningInventory(unit)) ||
       (partiesByCode.get(unit.code)?.length ?? 0) > 0

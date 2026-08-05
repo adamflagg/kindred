@@ -33,6 +33,8 @@ function unit(overrides: Partial<LodgingUnitRow> = {}): LodgingUnitRow {
     is_confirmed: false,
     is_active: true,
     is_container: false,
+    parent_code: '',
+    is_combined: false,
     inventory_class: 'family_pool',
     family_available_override: null,
     reason: '',
@@ -606,5 +608,73 @@ describe('buildBoard — area grouping and colour', () => {
       [unit(), unit({ unit_id: 'u2', code: 'ridge-1', area_code: 'NR', area_name: 'North Ridge' })]
     )
     expect(board.areas.map((area) => area.partyCount)).toEqual([2, 0])
+  })
+})
+
+describe('buildBoard — drawing at the resolved container level', () => {
+  it('draws a combined container as ONE slot instead of its rooms', () => {
+    const units = [
+      unit({ code: 'house', is_container: true, is_combined: true, sleeps: 7 }),
+      unit({ code: 'r1', parent_code: 'house', sleeps: 2 }),
+      unit({ code: 'r2', parent_code: 'house', sleeps: 2 }),
+    ]
+    const board = buildBoard([], units)
+    const codes = board.areas.flatMap((a) => a.slots.map((s) => s.unit.code))
+    expect(codes).toEqual(['house'])
+    // The container's OWN measured capacity, never the sum of its rooms.
+    expect(board.areas[0]?.slots[0]?.unit.sleeps).toBe(7)
+  })
+
+  it('places a container-coded party on the combined card', () => {
+    const units = [
+      unit({ code: 'house', is_container: true, is_combined: true }),
+      unit({ code: 'r1', parent_code: 'house' }),
+    ]
+    const board = buildBoard(
+      [party({ unit_code: 'house', unit_name: 'House', unit_codes: ['house'] })],
+      units
+    )
+    expect(board.offBoard).toEqual([])
+    expect(board.areas[0]?.slots[0]?.parties).toHaveLength(1)
+  })
+
+  it('fans a container-coded party down when the board is split below it', () => {
+    // The container is NOT combined, so the rooms are drawn. The party is
+    // placed, so the unplaced rail would be a lie and offBoard would hide it.
+    const units = [
+      unit({ code: 'house', is_container: true }),
+      unit({ code: 'r1', parent_code: 'house' }),
+      unit({ code: 'r2', parent_code: 'house' }),
+    ]
+    const board = buildBoard(
+      [party({ unit_code: 'house', unit_name: 'House', unit_codes: ['house'] })],
+      units
+    )
+    expect(board.offBoard).toEqual([])
+    const drawn = board.areas.flatMap((a) => a.slots)
+    expect(drawn.map((s) => s.unit.code).toSorted()).toEqual(['r1', 'r2'])
+    expect(drawn.every((s) => s.parties.length === 1)).toBe(true)
+  })
+
+  it('rolls a room-coded party up onto the combined card', () => {
+    const units = [
+      unit({ code: 'house', is_container: true, is_combined: true }),
+      unit({ code: 'r1', parent_code: 'house' }),
+      unit({ code: 'r2', parent_code: 'house' }),
+    ]
+    const board = buildBoard(
+      [
+        party({
+          unit_code: '',
+          unit_name: 'House',
+          unit_codes: ['r1', 'r2'],
+          is_merged_slot: true,
+        }),
+      ],
+      units
+    )
+    // ONE slot entry, not two: the rooms are not drawn, and a party must not
+    // be counted twice on the card that replaced them.
+    expect(board.areas[0]?.slots[0]?.parties).toHaveLength(1)
   })
 })
