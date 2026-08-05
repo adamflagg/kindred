@@ -933,4 +933,45 @@ describe('LodgingUnitForm — only the X removes a bed', () => {
     fireEvent.change(count, { target: { value: '3.5' } })
     expect(count).toHaveValue(3)
   })
+  // The `year` prop's own JSDoc says this form "never changes which season a
+  // unit belongs to", justified on the grounds that resending the current year
+  // is a no-op because `unit` is already one of this year's rows. That holds
+  // only while currentYear is stable. If the configured season flips while the
+  // editor is open — another tab, a CurrentYearContext refetch — the next save
+  // writes the NEW year onto a row belonging to the old one, silently moving a
+  // cabin between seasons. Capturing the year at open makes the sentence true
+  // instead of merely asserted.
+  it('saves the season the editor opened against, not one that changed under it', async () => {
+    updateLodgingUnit.mockResolvedValue({ ...UNIT })
+    const user = userEvent.setup()
+
+    const { rerender } = render(
+      <LodgingUnitForm
+        areas={AREAS}
+        units={[UNIT]}
+        year={2026}
+        unit={UNIT}
+        onSaved={vi.fn()}
+        onCancel={vi.fn()}
+      />
+    )
+    // The season flips while the editor sits open.
+    rerender(
+      <LodgingUnitForm
+        areas={AREAS}
+        units={[UNIT]}
+        year={2027}
+        unit={UNIT}
+        onSaved={vi.fn()}
+        onCancel={vi.fn()}
+      />
+    )
+    await user.click(screen.getByRole('button', { name: 'Save unit' }))
+
+    await waitFor(() => {
+      expect(updateLodgingUnit).toHaveBeenCalled()
+    })
+    const [, payload] = updateLodgingUnit.mock.calls[0] as [string, LodgingUnitInput]
+    expect(payload.year).toBe(2026)
+  })
 })

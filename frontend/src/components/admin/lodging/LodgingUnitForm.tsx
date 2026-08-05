@@ -5,7 +5,7 @@
  * each its own component. This file owns only the state those sections edit
  * and the one payload they add up to.
  *
- * TWO THINGS THIS FORM EXISTS TO GET RIGHT (the third, `sleeps`, is in
+ * THREE THINGS THIS FORM EXISTS TO GET RIGHT (`sleeps` itself lives in
  * `UnitCapacityFields`; the bathroom vocabulary is in `unitAmenities`):
  *
  * 1. is_active and inventory_class are ALWAYS submitted. PocketBase has
@@ -28,6 +28,13 @@
  *    all, and a stored coordinate now survives a save because the key is
  *    UNCONDITIONALLY ABSENT — not because a guard omits it when blank. Anyone
  *    wiring the map editor back in has to add that guard, not assume it.
+ *
+ * 3. The season is captured WHEN THE EDITOR OPENS, not read live. Units are
+ *    year-scoped since 1500000140 and this form always submits `year`, so a
+ *    live read would let a season flip mid-edit — another tab, a
+ *    CurrentYearContext refetch — move the cabin into the new season on the
+ *    next save. Roll-forward moves a unit between seasons; a routine edit
+ *    never does.
  */
 import { useState } from 'react'
 import toast from 'react-hot-toast'
@@ -60,13 +67,14 @@ export interface LodgingUnitFormProps {
   /** Absent = create. `| undefined` is explicit for `exactOptionalPropertyTypes`. */
   unit?: LodgingUnitRecord | undefined
   /**
-   * The panel's current season. Units are year-scoped since 1500000140, and
-   * this form always writes it — on create because the schema requires it
-   * (an omitted number field lands as 0, which fails `min: 2010`), and on
-   * edit too, because `unit` is one of this year's rows already (the panel's
-   * own query is year-scoped) so resending the same value is a no-op. This
-   * form never changes which season a unit belongs to; that is a
-   * roll-forward operation, not a routine edit.
+   * The season the editor opened against. Units are year-scoped since
+   * 1500000140, and this form always writes it — on create because the schema
+   * requires it (an omitted number field lands as 0, which fails `min: 2010`),
+   * and on edit because `unit` is one of that season's rows already.
+   *
+   * CAPTURED AT MOUNT, not read live (see the header). This form never changes
+   * which season a unit belongs to — that is a roll-forward operation, not a
+   * routine edit — and capturing is what makes that true rather than intended.
    */
   year: number
   onSaved: () => void
@@ -122,6 +130,8 @@ export function LodgingUnitForm({
   const [isContainer, setIsContainer] = useState(unit?.is_container ?? false)
   const [notes, setNotes] = useState(unit?.notes ?? '')
   const [isSaving, setIsSaving] = useState(false)
+  // Captured, not read live — see the `year` prop's doc comment above.
+  const [openedYear] = useState(year)
   // Untying this unit's children from it would leave them parented by a
   // non-container — the exact state verify-lodging-seed.sh calls a failure.
   const children = unit ? directChildren(unit.id, units) : []
@@ -152,7 +162,7 @@ export function LodgingUnitForm({
       area: identity.area,
       name: identity.name,
       code,
-      year,
+      year: openedYear,
       parent_unit: identity.parent_unit,
       // Never omitted — see the header comment.
       is_active: isActive,
