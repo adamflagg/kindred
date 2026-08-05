@@ -1,0 +1,213 @@
+/**
+ * Carry the lodging registry into a new season.
+ *
+ * Modelled on PopulateFromPreviousYear (ManageRegistrationPage), which does the
+ * same job for registration dates and session availability: preview, then
+ * apply, idempotent by existence check rather than a flag.
+ *
+ * THE WRITE IS SERVER-SIDE, which is where this diverges from that component.
+ * It applies a few dozen flat config rows through the JS SDK; this is ~10 areas
+ * plus ~118 units plus parent relinking, in an order that matters, and a
+ * half-applied roll-forward is a broken registry.
+ *
+ * Values, `is_confirmed` and `code` all carry forward. A demolished building is
+ * carried and then edited to `is_active: false` — there is no exclusion step,
+ * because inventing one here would be a second way to express a state the
+ * registry already has.
+ */
+import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query'
+import { Check, ChevronDown, ChevronUp, Loader2 } from 'lucide-react'
+import { useState } from 'react'
+import toast from 'react-hot-toast'
+
+import { useApiWithAuth } from '../../../hooks/useApiWithAuth'
+import { useCurrentYear } from '../../../hooks/useCurrentYear'
+import { invalidateLodgingRegistryQueries } from '../../../utils/queryKeys'
+import { BUTTON_PRIMARY, BUTTON_SECONDARY } from './lodgingStyles'
+
+type FetchWithAuth = (url: string, options?: RequestInit) => Promise<Response>
+
+const BASE = '/api/custom/lodging/roll-forward'
+
+/** What both the preview and apply endpoints return — a dry run and a real one render identically. */
+export interface RollForwardPlan {
+  from_year: number
+  to_year: number
+  areas_to_create: number
+  units_to_create: number
+  areas_present: number
+  units_present: number
+  unit_codes: string[]
+  skipped_codes: string[]
+}
+
+/** This is a PocketBase custom route, not FastAPI — errors carry `error`, not `detail`. */
+async function toError(response: Response, fallback: string): Promise<Error> {
+  let message: unknown
+  try {
+    const body: unknown = await response.json()
+    if (body && typeof body === 'object' && 'error' in body) {
+      message = (body as { error?: unknown }).error
+    }
+  } catch {
+    message = undefined
+  }
+  if (typeof message === 'string' && message.length > 0) return new Error(message)
+  return new Error(`${fallback} (HTTP ${String(response.status)})`)
+}
+
+function previewKey(from: number, to: number) {
+  return ['lodging-roll-forward-preview', from, to] as const
+}
+
+async function fetchRollForwardPreview(
+  fetchWithAuth: FetchWithAuth,
+  from: number,
+  to: number
+): Promise<RollForwardPlan> {
+  const response = await fetchWithAuth(`${BASE}/preview?from=${String(from)}&to=${String(to)}`)
+  if (!response.ok) throw await toError(response, 'Failed to preview the roll-forward')
+  return response.json() as Promise<RollForwardPlan>
+}
+
+async function applyRollForward(
+  fetchWithAuth: FetchWithAuth,
+  from: number,
+  to: number
+): Promise<RollForwardPlan> {
+  const response = await fetchWithAuth(`${BASE}?from=${String(from)}&to=${String(to)}`, {
+    method: 'POST',
+  })
+  if (!response.ok) throw await toError(response, 'Failed to carry the registry forward')
+  return response.json() as Promise<RollForwardPlan>
+}
+
+export function SeasonRollForwardPanel() {
+  const { currentYear } = useCurrentYear()
+  const fromYear = currentYear - 1
+  const toYear = currentYear
+  const { fetchWithAuth } = useApiWithAuth()
+  const queryClient = useQueryClient()
+  const [expanded, setExpanded] = useState(false)
+
+  const previewQuery = useQuery({
+    queryKey: previewKey(fromYear, toYear),
+    queryFn: () => fetchRollForwardPreview(fetchWithAuth, fromYear, toYear),
+    // CurrentYearContext returns the literal 0 until the backend supplies the
+    // configured year. PocketBase-backed routes like this one do not 422 on a
+    // bad year the way the FastAPI routers do, so without this gate a cold
+    // load would fire `from=-1&to=0` and render a confident "nothing to carry
+    // forward". Convention: useWeekendRoster.ts:30-37.
+    enabled: toYear > 0,
+  })
+
+  const applyMutation = useMutation({
+    mutationFn: () => applyRollForward(fetchWithAuth, fromYear, toYear),
+    onSuccess: (plan) => {
+      // Registry-key-only invalidation leaves the weekend roster stale for the
+      // length of its staleTime — this reaches weekend-roster/-summary/
+      // -sessions too, not just lodging-units/-areas.
+      invalidateLodgingRegistryQueries(queryClient)
+      void queryClient.invalidateQueries({ queryKey: previewKey(fromYear, toYear) })
+      toast.success(
+        `Carried forward ${String(plan.units_to_create)} units and ${String(plan.areas_to_create)} areas from ${String(fromYear)}`
+      )
+    },
+    onError: (error) => {
+      toast.error(error instanceof Error ? error.message : 'Failed to carry the registry forward')
+    },
+  })
+
+  const preview = previewQuery.data
+  const toCreate = (preview?.units_to_create ?? 0) + (preview?.areas_to_create ?? 0)
+  const alreadyPresent = (preview?.units_present ?? 0) + (preview?.areas_present ?? 0)
+  const nothingToCarry = preview !== undefined && toCreate === 0
+
+  return (
+    <div className="flex flex-col gap-4">
+      <p className="text-muted-foreground max-w-2xl text-sm">
+        Copy {fromYear}&apos;s areas and units forward as a starting point for {toYear}. Values,
+        confirmation and codes all carry forward — a demolished building carries too, and gets
+        marked inactive by hand afterward.
+      </p>
+
+      {previewQuery.isLoading && (
+        <p className="text-muted-foreground text-sm">Checking {fromYear}…</p>
+      )}
+
+      {previewQuery.isError && (
+        <p className="text-sm text-red-600 dark:text-red-400">
+          {previewQuery.error instanceof Error
+            ? previewQuery.error.message
+            : `Could not check what would carry forward from ${String(fromYear)}.`}
+        </p>
+      )}
+
+      {preview && (
+        <div className="card-lodge flex flex-col gap-3 p-4">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <p className="text-sm">
+              {preview.areas_to_create} areas and {preview.units_to_create} units will be created in{' '}
+              {toYear}.
+              {alreadyPresent > 0 && (
+                <span className="text-muted-foreground"> {alreadyPresent} already present.</span>
+              )}
+            </p>
+            <button
+              type="button"
+              onClick={() => {
+                setExpanded((e) => !e)
+              }}
+              className={BUTTON_SECONDARY}
+            >
+              Details
+              {expanded ? (
+                <ChevronUp className="h-4 w-4" aria-hidden="true" />
+              ) : (
+                <ChevronDown className="h-4 w-4" aria-hidden="true" />
+              )}
+            </button>
+          </div>
+
+          {preview.skipped_codes.length > 0 && (
+            <p className="text-muted-foreground text-xs">
+              Left as-is, already present in {toYear}: {preview.skipped_codes.join(', ')}
+            </p>
+          )}
+
+          {expanded && preview.unit_codes.length > 0 && (
+            <ul className="text-muted-foreground grid grid-cols-2 gap-x-4 gap-y-1 text-xs sm:grid-cols-3">
+              {preview.unit_codes.map((code) => (
+                <li key={code} className="font-mono">
+                  {code}
+                </li>
+              ))}
+            </ul>
+          )}
+
+          <div className="flex justify-end">
+            <button
+              type="button"
+              onClick={() => applyMutation.mutate()}
+              disabled={nothingToCarry || applyMutation.isPending}
+              className={BUTTON_PRIMARY}
+              aria-label={nothingToCarry ? 'Nothing to carry forward' : `Carry ${toCreate} forward`}
+            >
+              {applyMutation.isPending ? (
+                <>
+                  <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> Carrying forward…
+                </>
+              ) : nothingToCarry ? (
+                'Nothing to carry forward'
+              ) : (
+                <>
+                  <Check className="h-4 w-4" aria-hidden="true" /> Carry {toCreate} forward
+                </>
+              )}
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}

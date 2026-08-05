@@ -5,11 +5,14 @@
  * about the site by zone and a flat 93-row table loses that. The chosen column
  * sorts within a zone (see ./unitSort).
  *
- * CONFIRMATION IS THE POINT OF THIS SCREEN. Every unit is seeded unconfirmed,
- * and the roster refuses to judge a family's housing need against an
- * unconfirmed cabin — on such a row `has_power: false` means "nobody has
- * said", not "there is no power". So confirming is available inline per row
- * and in bulk over a selection; it is never buried behind opening the form.
+ * CONFIRMATION IS THE POINT OF THIS SCREEN. Every unit is seeded unconfirmed
+ * the first time it is created, and `is_confirmed` now carries forward on a
+ * season roll (see SeasonRollForwardPanel) — so "unconfirmed" holds until
+ * someone unconfirms it, not forever. The roster still refuses to judge a
+ * family's housing need against an unconfirmed cabin — on such a row
+ * `has_power: false` means "nobody has said", not "there is no power". So
+ * confirming is available inline per row and in bulk over a selection; it is
+ * never buried behind opening the form.
  *
  * Deactivate, never delete (spec §3.8). The Go guard in pocketbase/lodging
  * blocks deleting a referenced unit anyway, but the UI should not offer it.
@@ -18,6 +21,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Home, Map, Plus } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import toast from 'react-hot-toast'
+import { Link } from 'react-router'
 
 import { useCurrentYear } from '../../../hooks/useCurrentYear'
 import {
@@ -309,8 +313,16 @@ export function LodgingUnitsPanel() {
         {(units) =>
           units.length === 0 ? (
             // QueryGuard's emptyMessage only fires on `!data`; an empty array is
-            // truthy and would otherwise render a headers-only table.
-            <p className="text-muted-foreground py-12 text-center text-sm">No lodging units yet.</p>
+            // truthy and would otherwise render a headers-only table. An
+            // un-rolled year seeds no rows at all, so the fix belongs one
+            // click away rather than left for staff to discover.
+            <p className="text-muted-foreground py-12 text-center text-sm">
+              No lodging units for this season yet. Carry them forward from last year under{' '}
+              <Link to="/manage/lodging/season" className="text-primary hover:underline">
+                Season
+              </Link>
+              .
+            </p>
           ) : (
             <div className="card-lodge overflow-x-auto p-4">
               <table className="w-full text-left text-sm">

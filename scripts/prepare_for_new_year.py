@@ -91,6 +91,8 @@ def prepare_for_year(new_year: int) -> bool:
         print("   uv run python scripts/sync/sync_all_layers.py")
         print("3. Validate data integrity:")
         print("   uv run python scripts/check/validate_year_integrity.py")
+        print("4. Carry the lodging registry forward:")
+        print("   Manage → Family Camp Lodging → Season → Carry forward")
         return True
     else:
         print("Cancelled - no changes made")
