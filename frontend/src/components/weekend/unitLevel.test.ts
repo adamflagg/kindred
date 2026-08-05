@@ -40,6 +40,21 @@ const TREE = [
   u({ code: 'r2', parent_code: 'wing' }),
 ]
 
+// r -> a -> b -> a: a back-edge reachable from a real root (simulating
+// corrupted parent links the server-side guardUnitParentCycle should
+// prevent, but the frontend must not trust blindly). The duplicate `code:
+// 'a'` entry is the only way to construct a graph cycle reachable from a
+// genuine root — a mutual pair with no path from a root is excluded from
+// the walk before the guard is ever exercised. Shared by the drawnUnits and
+// coveredCodes cycle tests below: both functions carry the same
+// Set<string>-keyed visited guard over the same children-by-parent map.
+const CYCLIC = [
+  u({ code: 'r' }),
+  u({ code: 'a', parent_code: 'r' }),
+  u({ code: 'b', parent_code: 'a' }),
+  u({ code: 'a', parent_code: 'b' }),
+]
+
 describe('drawnUnits', () => {
   it('draws leaves when nothing is combined', () => {
     expect(drawnUnits(TREE).map((x) => x.code)).toEqual(['r1', 'r2'])
@@ -69,17 +84,30 @@ describe('drawnUnits', () => {
   })
 
   it('terminates on a cycle already in the data, instead of hanging the board', () => {
-    // r -> a -> b -> a: a back-edge reachable from a real root (simulating
-    // corrupted parent links the server-side guardUnitParentCycle should
-    // prevent, but the frontend must not trust blindly). The visited guard
-    // must stop the walk rather than loop forever.
-    const cyclic = [
-      u({ code: 'r' }),
-      u({ code: 'a', parent_code: 'r' }),
-      u({ code: 'b', parent_code: 'a' }),
-      u({ code: 'a', parent_code: 'b' }),
-    ]
-    expect(() => drawnUnits(cyclic)).not.toThrow()
+    // The visited guard must stop the walk rather than loop forever.
+    expect(() => drawnUnits(CYCLIC)).not.toThrow()
+  })
+
+  it('treats a unit whose parent_code names an absent unit as a root, not a dropped orphan', () => {
+    // A caller can pass a subset of units — e.g. a session-filtered array —
+    // where a room's parent_code points at a container excluded from that
+    // subset. The room must still be treated as a root and drawn: a dropped
+    // unit here is a room that vanishes from the board, which the brief
+    // names as the one failure mode this function must never produce.
+    const filtered = [u({ code: 'room', parent_code: 'missing-container' })]
+    expect(drawnUnits(filtered).map((x) => x.code)).toEqual(['room'])
+  })
+
+  it('draws a container whose children are all absent from the array, rather than dropping it', () => {
+    // A container filtered to a subset where none of its registered children
+    // survived the filter has kids.length === 0 here, so it falls into the
+    // same branch as a genuine leaf and gets drawn — even though it is a
+    // container and is not combined. This is deliberate: never-vanish beats
+    // correctness-of-card-type. If a future change makes this branch trust
+    // is_container over child presence instead, this unit's card silently
+    // disappears from the board.
+    const lonelyContainer = u({ code: 'lone-container', is_container: true })
+    expect(drawnUnits([lonelyContainer]).map((x) => x.code)).toEqual(['lone-container'])
   })
 })
 
@@ -91,5 +119,12 @@ describe('coveredCodes', () => {
 
   it('returns a leaf itself', () => {
     expect(coveredCodes(TREE[2]!, TREE)).toEqual(['r1'])
+  })
+
+  it('terminates on a cycle already in the data, instead of hanging the board', () => {
+    // Mirrors the drawnUnits cycle test above with the same CYCLIC fixture
+    // and the same visited-guard shape, starting the walk from the root.
+    const r = CYCLIC[0]!
+    expect(() => coveredCodes(r, CYCLIC)).not.toThrow()
   })
 })
