@@ -7,12 +7,15 @@
  * is how it came to assert the mirror over a draft once #1967 shipped a picker:
  * two indicators, only one of them wired up.
  *
- * The board reads nothing and writes twice. The page fetches; this component
- * owns two mutations, and they are gated differently on purpose — drag
- * placement (#1985) needs a scenario because it writes a draft plan, and
- * availability (#1999) needs none because a burst pipe closes a cabin in every
- * plan for that weekend. `canPlace` and `canSetAvailability` below are that
- * difference, and collapsing them is the mistake to avoid.
+ * The board reads nothing and writes three times. The page fetches; this
+ * component owns three mutations, and they are gated differently on purpose —
+ * drag placement (#1985) needs a scenario because it writes a draft plan;
+ * availability (#1999) needs none because a burst pipe closes a cabin in
+ * every plan for that weekend; and a merge/split (#8a26376f) needs none for a
+ * different reason than availability does — a draw level is simply never
+ * CampMinder-sourced, so there is no mirror truth for the write to clobber.
+ * `canPlace`, `canSetAvailability` and `canMergeUnits` below are that
+ * difference, and collapsing any pair of them is the mistake to avoid.
  *
  * Layout is §3.7: one collapsible section per area, each a WRAPPING GRID of
  * slot cards. Not summer's columns — a summer bunk column is tall because it
@@ -106,8 +109,23 @@ export function LodgingBoard({
   // which is where most of them look, could not close a cabin at all.
   const canSetAvailability = canManage && sessionCmId > 0
 
+  // Same two conditions as `canSetAvailability` above, not `canPlace` — and
+  // for a related but distinct reason. Placement is read-only on the mirror
+  // because the mirror IS CampMinder's truth and a sync would overwrite a
+  // draft write. A draw level has no such truth to protect: no sync ever
+  // writes `lodging_slot_merges`, so there is nothing on the mirror for a
+  // merge to clobber (#8a26376f made this a weekend-level fact for exactly
+  // that reason — `scenario: ''` is now a legitimate write, not a refusal).
+  // Gating this on `canPlace` would reintroduce the scenario dimension this
+  // hook does not need, the same mistake `canSetAvailability` already exists
+  // to avoid. Do not "fix" this back to `canPlace`.
+  const canMergeUnits = canManage && sessionCmId > 0
+
   const { move } = useLodgingPlacement({ year, sessionCmId, scenario })
   const { setAvailability, pendingUnitId } = useUnitAvailability({ year, sessionCmId })
+  // `scenario` here is the same prop `useLodgingPlacement` gets — on the
+  // mirror that is `''`, and the hook now sends it rather than refusing, per
+  // `canMergeUnits` above.
   const { setCombined, pendingUnitId: pendingMergeUnitId } = useUnitMerge({
     year,
     sessionCmId,
@@ -149,17 +167,22 @@ export function LodgingBoard({
   const handleDragEnd = (event: DragEndEvent) => {
     setDragging(null)
     setDraggingMergeUnit(null)
-    if (!canPlace) return
 
     const activeId = String(event.active.id)
     const overId = event.over === null ? null : String(event.over.id)
 
-    // Tried FIRST and unconditionally. A card's drag id can never match a
-    // party's `partyKey`, so `resolveDrop` below is naturally silent about a
-    // card drag whether or not this branch fires — the two resolvers can
-    // never disagree about which gesture just ended.
+    // Tried FIRST and unconditionally, regardless of either gate below. A
+    // card's drag id can never match a party's `partyKey`, so `resolveDrop`
+    // below is naturally silent about a card drag whether or not this branch
+    // fires — the two resolvers can never disagree about which gesture just
+    // ended.
     const merge = resolveMergeDrop({ activeId, overId, units })
     if (merge !== null) {
+      // Gated on `canMergeUnits`, NOT `canPlace` — see that constant's
+      // comment. This mirrors the mirror-write disabled-affordance belt to
+      // the handle's own `useDraggable({ disabled: !canMerge })` braces,
+      // exactly as `canPlace` is re-checked below for a party card.
+      if (!canMergeUnits) return
       const parentUnit = unitsByCode.get(merge.parentCode)
       // Never invent a unit. Unreachable in practice — `resolveMergeDrop`
       // only names a `parentCode` it read off a unit IN this same payload —
@@ -170,6 +193,8 @@ export function LodgingBoard({
       }
       return
     }
+
+    if (!canPlace) return
 
     const intent = resolveDrop({ activeId, overId, parties, units })
     if (intent === null) return
@@ -341,6 +366,7 @@ export function LodgingBoard({
                             canSetAvailability={canSetAvailability}
                             savingAvailability={pendingUnitId === slot.unit.unit_id}
                             onSetAvailability={writeAvailability}
+                            canMerge={canMergeUnits}
                             mergeSourceUnit={draggingMergeUnit}
                             onSplit={splitUnit}
                             savingMerge={pendingMergeUnitId === slot.unit.unit_id}

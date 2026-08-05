@@ -1,12 +1,13 @@
 /**
  * Merging a house into one card, or splitting it back into rooms.
  *
- * The behaviour worth pinning here is the GATING and the invalidation, and
- * neither is `useUnitAvailability`'s. A merge is a planning choice — it lives
- * only in a draft — so, unlike availability, the write is refused with no
- * scenario selected. And unlike placement, there is no optimistic layer:
- * nothing moves under the pointer, so the card is simply redrawn when the
- * roster returns.
+ * The behaviour worth pinning here is the GATING and the invalidation.
+ * Gating is now the SAME shape as `useUnitAvailability`'s: a draw level is
+ * never CampMinder-sourced, so the write is refused only for a missing
+ * weekend, never for a missing scenario — `''` reaches the server as the
+ * weekend-level row (#8a26376f). And unlike placement, there is no
+ * optimistic layer: nothing moves under the pointer, so the card is simply
+ * redrawn when the roster returns.
  *
  * Fictional data throughout.
  */
@@ -88,18 +89,25 @@ describe('useUnitMerge', () => {
     })
   })
 
-  it('refuses to write on the CampMinder mirror rather than sending scenario ""', async () => {
-    // The mirror inherits the registry default and is never overridable — the
-    // same rule that makes placement read-only there. Refused BEFORE the
-    // write, silently, matching the board's own `canPlace` gate: this is the
-    // hook's belt to that braces, not a second UI-facing error path.
+  it('sends scenario "" on the CampMinder mirror, rather than refusing to write', async () => {
+    // Owner reversal (task-11): a draw level is never CampMinder-sourced, so
+    // unlike placement the mirror is a legitimate write target — `''` becomes
+    // the weekend-level row (#8a26376f), inherited by every scenario that has
+    // not overridden it locally.
     const { result } = renderMerge(SESSION, '')
 
     await act(async () => {
       await result.current.setCombined('u_wing', 'The Wing', true)
     })
 
-    expect(setSlotMerge).not.toHaveBeenCalled()
+    expect(setSlotMerge).toHaveBeenCalledTimes(1)
+    expect(setSlotMerge.mock.calls[0]?.[1]).toEqual({
+      year: YEAR,
+      session_cm_id: SESSION,
+      scenario: '',
+      unit_id: 'u_wing',
+      combined: true,
+    })
   })
 
   it('refuses to write without a weekend rather than sending session_cm_id 0', async () => {

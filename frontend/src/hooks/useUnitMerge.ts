@@ -1,13 +1,21 @@
 /**
  * Merging a house into one card, or splitting it back into rooms.
  *
- * ## Why this is not `useUnitAvailability` with a different body
+ * ## Why this is not `useLodgingPlacement` with a different body
  *
- * Availability carries NO scenario — 1500000135, a burst pipe closes a cabin in
- * every plan for that weekend. A draw level is the opposite: it is a planning
- * choice, so it lives only in a draft and the write is gated on having a
- * scenario selected. Copying the availability hook's gating would let the
- * CampMinder mirror write an override it must never have.
+ * A placement is read-only on the mirror because the mirror IS CampMinder's
+ * truth and a sync would overwrite a draft write. A draw level has no such
+ * truth to protect: no sync ever writes `lodging_slot_merges`, so `scenario:
+ * ''` is a legitimate write here — the weekend-level row, seen on the mirror
+ * and inherited by every scenario that has not overridden it locally (see the
+ * `SlotMergeRequest` doc in `types.gen.ts`). Gating this write on having a
+ * scenario selected, the way placement does, would reintroduce a dimension
+ * this hook does not need — the same mistake `useUnitAvailability` already
+ * exists to avoid, and for the same underlying reason: 1500000135 established
+ * that nothing here is CampMinder-sourced.
+ *
+ * `sessionCmId > 0` is the only refusal left, because the schema declares
+ * `session_cm_id` `gt=0` regardless of which scenario (if any) is selected.
  *
  * ## What it shares
  *
@@ -35,7 +43,11 @@ export interface UseUnitMergeOptions {
   year: number
   /** The weekend. `0` is "no weekend selected" and refuses to write. */
   sessionCmId: number
-  /** `''` is the CampMinder mirror, which refuses to write. */
+  /**
+   * `''` is the CampMinder mirror — sent through, not refused. A draw level
+   * is never CampMinder-sourced, so unlike a placement the mirror is a
+   * legitimate write target; `''` becomes the weekend-level row.
+   */
   scenario: string
 }
 
@@ -66,13 +78,14 @@ export function useUnitMerge({ year, sessionCmId, scenario }: UseUnitMergeOption
 
   const setCombined = useCallback(
     async (unitId: string, unitName: string, combined: boolean) => {
-      // THREE conditions, matching `canPlace` on the board. `sessionCmId > 0`
-      // is in there because the schema declares `gt=0`, and the board defaults
-      // it to 0 for the tests that do not exercise writes.
-      if (scenario === '' || sessionCmId <= 0) return
+      // ONE condition, not three, and not `scenario === ''` — see the file
+      // doc. `sessionCmId > 0` stays because the schema declares
+      // `session_cm_id` `gt=0`, and the board defaults it to 0 for the tests
+      // that do not exercise writes.
+      if (sessionCmId <= 0) return
       await mutation.mutateAsync({ unitId, unitName, combined })
     },
-    [mutation, scenario, sessionCmId]
+    [mutation, sessionCmId]
   )
 
   return {

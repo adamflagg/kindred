@@ -47,6 +47,17 @@ export interface LodgingUnitCardProps {
   savingAvailability?: boolean
   onSetAvailability?: (unit: LodgingUnitRow, write: UnitAvailabilityWrite) => void
   /**
+   * Merge/split is writable: the user holds `bunking.manage` and a weekend is
+   * selected.
+   *
+   * SEPARATE from `canPlace`, which also requires a scenario. A draw level is
+   * never CampMinder-sourced — no sync writes it — so, unlike a placement,
+   * there is no mirror truth for a merge to overwrite. This is the same two
+   * conditions as `canSetAvailability`, for the analogous reason, not a third
+   * gate of its own.
+   */
+  canMerge?: boolean
+  /**
    * The card currently being dragged BY ITS MERGE HANDLE, or `null`/`undefined`
    * when no card drag is in flight. Every card receives the same value and
    * decides its own validity from it — the gender-rule analogue for this
@@ -55,7 +66,7 @@ export interface LodgingUnitCardProps {
   mergeSourceUnit?: LodgingUnitRow | null
   /**
    * Split a combined card back into its rooms. Rendered only on one, and
-   * only when `canPlace` — `undefined` is how the board spells "not writable
+   * only when `canMerge` — `undefined` is how the board spells "not writable
    * right now" under `exactOptionalPropertyTypes`, matching `onSetAvailability`
    * above.
    */
@@ -72,6 +83,7 @@ export function LodgingUnitCard({
   canSetAvailability = false,
   savingAvailability = false,
   onSetAvailability,
+  canMerge = false,
   mergeSourceUnit = null,
   onSplit,
   savingMerge = false,
@@ -85,7 +97,7 @@ export function LodgingUnitCard({
   // Merging is promotion to the parent, so a parentless room offers nothing
   // to promote it to — the handle is ABSENT, not merely disabled.
   const hasParent = (unit.parent_code ?? '').length > 0
-  const showMergeHandle = canPlace && hasParent
+  const showMergeHandle = canMerge && hasParent
   const mergeDragActive = mergeSourceUnit !== null
   const isValidTarget = isValidMergeTarget(mergeSourceUnit, unit)
 
@@ -95,7 +107,7 @@ export function LodgingUnitCard({
     setNodeRef: setMergeDragRef,
   } = useDraggable({
     id: mergeDragId(unit.code),
-    disabled: !canPlace,
+    disabled: !canMerge,
   })
 
   // A SEPARATE droppable from the party target below, registered on the same
@@ -216,7 +228,7 @@ export function LodgingUnitCard({
           </button>
         )}
         {/* The inverse control, on the combined card itself. */}
-        {canPlace && unit.is_combined === true && onSplit !== undefined && (
+        {canMerge && unit.is_combined === true && onSplit !== undefined && (
           <button
             type="button"
             disabled={savingMerge}

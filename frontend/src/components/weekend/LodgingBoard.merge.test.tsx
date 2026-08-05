@@ -177,11 +177,13 @@ describe('LodgingBoard — the merge handle', () => {
     expect(screen.getByTestId('merge-handle-r1')).toBeInTheDocument()
   })
 
-  it('offers no merge handle on the CampMinder mirror', () => {
-    // The mirror inherits the registry default and is never overridable — the
-    // same rule that makes placement read-only there.
+  it('offers a merge handle on the CampMinder mirror', () => {
+    // Owner reversal (task-11): a draw level is never CampMinder-sourced, so
+    // unlike placement the mirror is a legitimate write target — gated on
+    // `canManage && sessionCmId > 0` only, the same two conditions as
+    // `canSetAvailability`.
     renderBoard({ units: wingUnits(), scenario: '' })
-    expect(screen.queryByTestId('merge-handle-r1')).not.toBeInTheDocument()
+    expect(screen.getByTestId('merge-handle-r1')).toBeInTheDocument()
   })
 
   it('offers no merge handle without bunking.manage', () => {
@@ -203,6 +205,23 @@ describe('LodgingBoard — the split control', () => {
 
   it('offers no split control on a card that is not combined', () => {
     renderBoard({ units: wingUnits() })
+    expect(screen.queryByRole('button', { name: /split the wing/i })).not.toBeInTheDocument()
+  })
+
+  it('offers a split control on the CampMinder mirror', () => {
+    // Same reversal as the merge handle: `canMergeUnits` does not carry the
+    // scenario dimension `canPlace` does.
+    renderBoard({ units: wingUnits({ is_combined: true }), scenario: '' })
+    expect(screen.getByRole('button', { name: /split the wing/i })).toBeInTheDocument()
+  })
+
+  it('offers no split control without bunking.manage', () => {
+    renderBoard({ units: wingUnits({ is_combined: true }), canManage: false })
+    expect(screen.queryByRole('button', { name: /split the wing/i })).not.toBeInTheDocument()
+  })
+
+  it('offers no split control without a weekend to write into', () => {
+    renderBoard({ units: wingUnits({ is_combined: true }), sessionCmId: 0 })
     expect(screen.queryByRole('button', { name: /split the wing/i })).not.toBeInTheDocument()
   })
 
@@ -245,13 +264,13 @@ describe('LodgingBoard — a merge drop becomes a write', () => {
     expect(setCombined).not.toHaveBeenCalled()
   })
 
-  it('writes nothing on the CampMinder mirror even if a drop event arrives', () => {
-    // Belt to the disabled-affordance braces, exactly as `LodgingBoard.drag`
-    // pins for placement. `canPlace` gates `handleDragEnd` before either
-    // resolver runs.
+  it('writes a merge on the CampMinder mirror', () => {
+    // Owner reversal (task-11): `handleDragEnd` gates the merge branch on
+    // `canMergeUnits`, not `canPlace` — a scenario-less drop still writes.
     renderBoard({ units: wingUnits(), scenario: '' })
     drop(mergeDragId('r1'), mergeDragId('r2'))
-    expect(setCombined).not.toHaveBeenCalled()
+    expect(setCombined).toHaveBeenCalledTimes(1)
+    expect(setCombined).toHaveBeenCalledWith('u_wing', 'The Wing', true)
   })
 
   it('writes nothing without a weekend to write into', () => {

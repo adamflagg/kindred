@@ -678,3 +678,132 @@ describe('buildBoard — drawing at the resolved container level', () => {
     expect(board.areas[0]?.slots[0]?.parties).toHaveLength(1)
   })
 })
+
+describe('buildBoard — consent flag follows leaf overlap, not the card (task-11)', () => {
+  /**
+   * A combined container: `house` draws ONE card, and both `r1` and `r2` roll
+   * up onto it (the roll-up `indexPayload` already does for a merged
+   * building). Modelled on the real report: two households in Wawona Front
+   * and Wawona Back went unflagged split, then flagged the moment the card
+   * was merged, though nothing about either household changed.
+   */
+  const combinedHouse = [
+    unit({ code: 'house', is_container: true, is_combined: true, sleeps: 8 }),
+    unit({ code: 'r1', parent_code: 'house' }),
+    unit({ code: 'r2', parent_code: 'house' }),
+  ]
+
+  /** A household placed in one room, with a resolved eligibility that alone would flag. */
+  function inRoom(unitCode: string, overrides: Partial<RosterPartyRow> = {}): RosterPartyRow {
+    return party({
+      unit_code: unitCode,
+      unit_name: unitCode,
+      share: {
+        preference: 'unknown',
+        proximity: [],
+        request_text: '',
+        needs_resolution: false,
+        eligibility: 'declined',
+        eligibility_source: 'form',
+        answers_conflict: false,
+      },
+      ...overrides,
+    })
+  }
+
+  it('does not flag two households the merge rolled onto one card from DISJOINT rooms', () => {
+    // docs/architecture/lodging-occupancy.md: "An extended family spanning
+    // two or more registrations may occupy one house together, each
+    // registration in its own room. This is not sharing a unit."
+    const board = buildBoard(
+      [
+        inRoom('r1', { household_cm_id: 500001, display_name: 'Alpha' }),
+        inRoom('r2', { household_cm_id: 500002, display_name: 'Beta' }),
+      ],
+      combinedHouse
+    )
+    expect(board.areas[0]?.slots[0]?.unit.code).toBe('house')
+    expect(board.areas[0]?.slots[0]?.parties).toHaveLength(2)
+    expect(board.areas[0]?.slots[0]?.consent).toBeNull()
+    expect(board.flaggedCount).toBe(0)
+  })
+
+  it('flags two households the merge rolled onto one card from the SAME room', () => {
+    const board = buildBoard(
+      [
+        inRoom('r1', { household_cm_id: 500001, display_name: 'Alpha' }),
+        inRoom('r1', { household_cm_id: 500002, display_name: 'Beta' }),
+      ],
+      combinedHouse
+    )
+    expect(board.areas[0]?.slots[0]?.consent).not.toBeNull()
+    expect(board.flaggedCount).toBe(1)
+  })
+
+  it('flags a multi-room party whose rooms overlap a single-room party', () => {
+    const multiRoom = party({
+      household_cm_id: 500001,
+      display_name: 'Alpha',
+      unit_code: '',
+      unit_name: 'House',
+      unit_codes: ['r1', 'r2'],
+      is_merged_slot: true,
+      share: {
+        preference: 'unknown',
+        proximity: [],
+        request_text: '',
+        needs_resolution: false,
+        eligibility: 'declined',
+        eligibility_source: 'form',
+        answers_conflict: false,
+      },
+    })
+    const singleRoom = inRoom('r1', { household_cm_id: 500002, display_name: 'Beta' })
+
+    const board = buildBoard([multiRoom, singleRoom], combinedHouse)
+    expect(board.areas[0]?.slots[0]?.parties).toHaveLength(2)
+    expect(board.areas[0]?.slots[0]?.consent).not.toBeNull()
+  })
+
+  it('still flags a plain leaf slot holding two parties in the same room', () => {
+    // Not a merged card at all -- proves the ordinary, pre-existing case is
+    // unbroken by gating on overlap.
+    const board = buildBoard(
+      [
+        party({
+          household_cm_id: 500001,
+          display_name: 'Alpha',
+          unit_code: 'cedar-1',
+          unit_name: 'Cedar 1',
+          share: {
+            preference: 'unknown',
+            proximity: [],
+            request_text: '',
+            needs_resolution: false,
+            eligibility: 'declined',
+            eligibility_source: 'form',
+            answers_conflict: false,
+          },
+        }),
+        party({
+          household_cm_id: 500002,
+          display_name: 'Beta',
+          unit_code: 'cedar-1',
+          unit_name: 'Cedar 1',
+          share: {
+            preference: 'unknown',
+            proximity: [],
+            request_text: '',
+            needs_resolution: false,
+            eligibility: 'declined',
+            eligibility_source: 'form',
+            answers_conflict: false,
+          },
+        }),
+      ],
+      [unit()]
+    )
+    expect(board.areas[0]?.slots[0]?.consent).not.toBeNull()
+    expect(board.flaggedCount).toBe(1)
+  })
+})

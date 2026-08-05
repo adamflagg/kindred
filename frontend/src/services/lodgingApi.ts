@@ -260,12 +260,15 @@ export interface SlotMergeWrite {
 }
 
 /**
- * Set or clear one container's draw level for a scenario — merge a house's
- * rooms into one card, or split it back into its rooms.
+ * Set or clear one container's draw level — merge a house's rooms into one
+ * card, or split it back into its rooms.
  *
- * `scenario` is REQUIRED and non-empty, unlike `setUnitAvailability`: a draw
- * level is a planning choice rather than a fact about the weekend, so the
- * CampMinder mirror inherits the registry default and is never overridable.
+ * `scenario: ''` is a legitimate write, not a refusal: a draw level is never
+ * CampMinder-sourced, so unlike a placement, the mirror has no truth for this
+ * write to overwrite. A blank `scenario` becomes the WEEKEND-LEVEL row —
+ * seen on the mirror, and inherited by every scenario that has not
+ * overridden it locally. See the `SlotMergeRequest` doc in `types.gen.ts`
+ * for the full resolution order.
  */
 export async function setSlotMerge(
   fetchWithAuth: FetchWithAuth,

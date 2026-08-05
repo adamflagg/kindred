@@ -160,6 +160,35 @@ function areaName(unit: LodgingUnitRow): string {
 }
 
 /**
+ * Whether two or more of these parties actually occupy overlapping space.
+ *
+ * A combined container rolls every one of its rooms' parties onto one slot
+ * (`indexPayload`'s roll-up), so two households in DISJOINT rooms of one
+ * building land in the same `consentFlag` call that a plain leaf slot would
+ * only ever see for parties genuinely sharing a room. `docs/architecture/
+ * lodging-occupancy.md` is explicit that this is legitimate: "An extended
+ * family spanning two or more registrations may occupy one house together,
+ * each registration in its own room. This is not sharing a unit." Consent is
+ * a concern only when occupied LEAF codes intersect — not merely when two
+ * parties land in the same slot.
+ *
+ * Reads `occupiedCodes`, the same leaf-code authority the board and
+ * `dragPlacement` already use, so a leaf slot is unaffected by this: its
+ * parties all name that one leaf code, which trivially overlaps, exactly as
+ * before this existed.
+ */
+function hasOverlappingOccupancy(parties: RosterPartyRow[]): boolean {
+  const seen = new Set<string>()
+  for (const party of parties) {
+    for (const code of occupiedCodes(party)) {
+      if (seen.has(code)) return true
+      seen.add(code)
+    }
+  }
+  return false
+}
+
+/**
  * Consent flagging, on the resolved ELIGIBILITY rather than the registration
  * gate.
  *
@@ -191,6 +220,11 @@ function areaName(unit: LodgingUnitRow): string {
  */
 export function consentFlag(parties: RosterPartyRow[]): ConsentFlag | null {
   if (parties.length < 2) return null
+
+  // The rule is OVERLAP, not co-location on one card — see
+  // `hasOverlappingOccupancy`. This is the ONLY thing a draw level changes:
+  // WHEN the check below runs, never WHAT it decides once it does.
+  if (!hasOverlappingOccupancy(parties)) return null
 
   // Adult weekends have NO share question at all -- the fields are partition
   // ["Camper"] and no Adult-Share field exists -- so a person-grain party
