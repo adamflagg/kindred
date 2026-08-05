@@ -15,7 +15,7 @@ import { useDraggable, useDroppable } from '@dnd-kit/core'
 import { Bath, Merge, Plug, Snowflake, Split, TriangleAlert, Users } from 'lucide-react'
 
 import type { LodgingUnitRow, RosterPartyRow } from '../../types/lodging'
-import type { BoardSlot } from './boardLayout'
+import { overlappingPartyKeys, type BoardSlot } from './boardLayout'
 import { isValidMergeTarget, mergeDragId, unitDroppableId } from './dragPlacement'
 import { FamilyCard } from './FamilyCard'
 import { partyKey } from './partyKey'
@@ -92,7 +92,16 @@ export function LodgingUnitCard({
   const { unit, parties, consent } = slot
   const badge = reservationBadge(unit)
   const capacityKnown = unit.sleeps !== null && unit.sleeps !== undefined
+  // The "N families" count chip below: a true statement about the CARD
+  // regardless of which rooms anyone actually holds, so it stays keyed on
+  // the card's whole party count.
   const isShared = parties.length > 1
+  // Each FamilyCard's own "did not request sharing" chip, in contrast, must
+  // be a true statement about that ONE party — whether it shares a ROOM with
+  // somebody, not merely a merged card. Same overlap definition `consentFlag`
+  // uses (`overlappingPartyKeys`), so the slot flag and the per-card chip can
+  // never answer "do these two overlap" two different ways.
+  const overlappingKeys = overlappingPartyKeys(parties)
 
   // Merging is promotion to the parent, so a parentless room offers nothing
   // to promote it to — the handle is ABSENT, not merely disabled.
@@ -278,7 +287,7 @@ export function LodgingUnitCard({
               key={partyKey(party)}
               party={party}
               unit={unit}
-              sharedSlot={isShared}
+              sharedSlot={overlappingKeys.has(partyKey(party))}
               isDraggable={canPlace}
               onOpen={onOpenParty}
             />

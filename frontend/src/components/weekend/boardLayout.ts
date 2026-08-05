@@ -160,32 +160,52 @@ function areaName(unit: LodgingUnitRow): string {
 }
 
 /**
- * Whether two or more of these parties actually occupy overlapping space.
+ * Which of these parties share an occupied LEAF code with at least one
+ * OTHER party in the list — keyed by `partyKey`, the project's one stable
+ * identity for a roster party.
  *
- * A combined container rolls every one of its rooms' parties onto one slot
- * (`indexPayload`'s roll-up), so two households in DISJOINT rooms of one
- * building land in the same `consentFlag` call that a plain leaf slot would
- * only ever see for parties genuinely sharing a room. `docs/architecture/
- * lodging-occupancy.md` is explicit that this is legitimate: "An extended
- * family spanning two or more registrations may occupy one house together,
- * each registration in its own room. This is not sharing a unit." Consent is
- * a concern only when occupied LEAF codes intersect — not merely when two
- * parties land in the same slot.
+ * THE ONE DEFINITION OF OVERLAP. A combined container rolls every one of its
+ * rooms' parties onto one slot (`indexPayload`'s roll-up), so two households
+ * in DISJOINT rooms of one building land in the same slot that a plain leaf
+ * would only ever hold for parties genuinely sharing a room.
+ * `docs/architecture/lodging-occupancy.md` is explicit that this is
+ * legitimate: "An extended family spanning two or more registrations may
+ * occupy one house together, each registration in its own room. This is not
+ * sharing a unit." Sharing is a concern only when occupied LEAF codes
+ * intersect — not merely when two parties land in the same slot, and not
+ * merely when two parties land on the same CARD.
+ *
+ * `consentFlag` below (the slot-level amber flag) and `LodgingUnitCard`'s
+ * per-party `sharedSlot` (the card-level "did not request sharing" chip on
+ * `FamilyCard`) both read this ONE routine rather than each re-deriving "do
+ * these parties overlap" in their own words. That duplication is exactly how
+ * the bug this function fixes came back one level down in task-11's first
+ * round: the slot flag was gated on overlap, but `FamilyCard`'s `sharedSlot`
+ * was still `parties.length > 1` — a merged card's two disjoint-room
+ * households still chipped "did not request sharing", the identical bug
+ * restated per-party instead of per-slot.
  *
  * Reads `occupiedCodes`, the same leaf-code authority the board and
  * `dragPlacement` already use, so a leaf slot is unaffected by this: its
- * parties all name that one leaf code, which trivially overlaps, exactly as
- * before this existed.
+ * parties all name that one leaf code, which trivially overlaps every other
+ * party there, exactly as before this existed.
  */
-function hasOverlappingOccupancy(parties: RosterPartyRow[]): boolean {
-  const seen = new Set<string>()
+export function overlappingPartyKeys(parties: RosterPartyRow[]): Set<string> {
+  const ownersByCode = new Map<string, RosterPartyRow[]>()
   for (const party of parties) {
     for (const code of occupiedCodes(party)) {
-      if (seen.has(code)) return true
-      seen.add(code)
+      const owners = ownersByCode.get(code)
+      if (owners) owners.push(party)
+      else ownersByCode.set(code, [party])
     }
   }
-  return false
+
+  const overlapping = new Set<string>()
+  for (const owners of ownersByCode.values()) {
+    if (owners.length < 2) continue
+    for (const owner of owners) overlapping.add(partyKey(owner))
+  }
+  return overlapping
 }
 
 /**
@@ -222,9 +242,9 @@ export function consentFlag(parties: RosterPartyRow[]): ConsentFlag | null {
   if (parties.length < 2) return null
 
   // The rule is OVERLAP, not co-location on one card — see
-  // `hasOverlappingOccupancy`. This is the ONLY thing a draw level changes:
-  // WHEN the check below runs, never WHAT it decides once it does.
-  if (!hasOverlappingOccupancy(parties)) return null
+  // `overlappingPartyKeys`. This is the ONLY thing a draw level changes: WHEN
+  // the check below runs, never WHAT it decides once it does.
+  if (overlappingPartyKeys(parties).size === 0) return null
 
   // Adult weekends have NO share question at all -- the fields are partition
   // ["Camper"] and no Adult-Share field exists -- so a person-grain party
