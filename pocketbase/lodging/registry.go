@@ -148,7 +148,32 @@ type registryAlias struct {
 //
 // Absent file is not an error: a clone without kindred-local boots with an
 // empty registry and a log line, the same graceful degradation branding has.
+//
+// This is a BOOTSTRAP, not a per-season populator (design doc §4.2). It seeds
+// only when the registry is empty across EVERY year; once any season has
+// rows, it is a no-op regardless of the year it is called with. The
+// create-if-absent key downstream is (code, year), so a loader that seeded
+// "whatever season is current" would, on the first restart after a season
+// flip, silently recreate the whole registry for the new year out of the
+// stale bootstrap file: unconfirmed, with is_active forced true, and with
+// every amenity correction, coordinate, rename and deactivation gone. It
+// would also make the roll-forward (rollforward.go) permanently unreachable,
+// since its preview would find every code already present and report
+// nothing to carry forward. The deliberate file-to-database path for a
+// season that already exists is apply_lodging_inventory.py --apply --year N,
+// run by hand.
 func SeedRegistry(app core.App, year int) error {
+	hasRows, err := registryHasAnyRows(app)
+	if err != nil {
+		return err
+	}
+	if hasRows {
+		slog.Info("lodging registry already has rows for another season; "+
+			"boot loader is a bootstrap and only seeds an empty registry, skipping",
+			"year", year)
+		return nil
+	}
+
 	candidates := make([]string, 0, len(registryAbsoluteRoots)+2)
 	for _, root := range registryAbsoluteRoots {
 		candidates = append(candidates, filepath.Join(root, registryFileName)) // Docker
@@ -550,6 +575,24 @@ func seedAliases(app core.App, aliases []registryAlias, year int) (added int, er
 		added++
 	}
 	return added, nil
+}
+
+// registryHasAnyRows reports whether lodging_areas or lodging_units holds a
+// row for ANY season. SeedRegistry uses this to decide whether it is a
+// bootstrap or a no-op — a year-scoped check would miss the case this exists
+// to catch, which is a season flip landing on a registry another season
+// already populated.
+func registryHasAnyRows(app core.App) (bool, error) {
+	for _, collection := range []string{"lodging_areas", "lodging_units"} {
+		recs, err := app.FindRecordsByFilter(collection, "", "", 1, 0)
+		if err != nil {
+			return false, fmt.Errorf("checking %s for existing rows: %w", collection, err)
+		}
+		if len(recs) > 0 {
+			return true, nil
+		}
+	}
+	return false, nil
 }
 
 // findByCodeAndYear looks up a row by its cross-year identity (code) scoped to

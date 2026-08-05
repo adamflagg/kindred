@@ -882,25 +882,47 @@ func TestFindByCodeAndYearIgnoresOtherYears(t *testing.T) {
 	}
 }
 
-func TestWireUnitParentsStaysWithinItsYear(t *testing.T) {
+// TestSeedRegistrySecondSeasonIsANoOpOnceOneSeasonHasRows pins the bootstrap
+// contract design doc §4.2 requires: SeedRegistry seeds only when the
+// registry is empty across EVERY year. Once 2026 has rows, calling it again
+// for 2027 must be a no-op, not a second creation pass.
+//
+// Before this was the rule, SeedRegistry created (code, year) rows for
+// whatever season it was called with, so a season flip's first boot silently
+// recreated the entire registry for the new year out of the stale bootstrap
+// file — unconfirmed, is_active forced true, every staff correction gone —
+// and then PreviewRollForward found every code already present and reported
+// nothing to carry forward, permanently disabling the one control meant to
+// carry a season forward. This test used to seed 2026 then 2027 from one
+// file and assert both landed; that pinned the bug as correct. It now asserts
+// the opposite: the second call must change nothing.
+func TestSeedRegistrySecondSeasonIsANoOpOnceOneSeasonHasRows(t *testing.T) {
 	app := newRegistryTestApp(t)
 	withYearFixtureRegistry(t)
+	logs := captureLogs(t)
 
 	if err := SeedRegistry(app, 2026); err != nil {
 		t.Fatalf("seed 2026: %v", err)
 	}
+	if n := countRecords(t, app, "lodging_units"); n != 2 {
+		t.Fatalf("after seeding 2026: %d units, want 2", n)
+	}
+
 	if err := SeedRegistry(app, 2027); err != nil {
 		t.Fatalf("seed 2027: %v", err)
 	}
-	child, err := findByCodeAndYear(app, "lodging_units", "test-unit-a-room-1", 2027)
-	if err != nil || child == nil {
-		t.Fatalf("child missing: %v", err)
+
+	if rec, err := findByCodeAndYear(app, "lodging_units", "test-unit-a", 2027); err != nil || rec != nil {
+		t.Errorf("2027 unit test-unit-a exists after a bootstrap-only seed: rec=%v err=%v", rec, err)
 	}
-	parent, err := findByCodeAndYear(app, "lodging_units", "test-unit-a", 2027)
-	if err != nil || parent == nil {
-		t.Fatalf("parent missing: %v", err)
+	if rec, err := findByCodeAndYear(app, "lodging_areas", "AREA1", 2027); err != nil || rec != nil {
+		t.Errorf("2027 area AREA1 exists after a bootstrap-only seed: rec=%v err=%v", rec, err)
 	}
-	if got := child.GetString("parent_unit"); got != parent.Id {
-		t.Errorf("parent_unit = %q, want the 2027 parent %q", got, parent.Id)
+	// 2026's rows must be untouched, not just 2027's absence.
+	if n := countRecords(t, app, "lodging_units"); n != 2 {
+		t.Errorf("after the skipped second seed: %d units, want the original 2", n)
+	}
+	if !bytes.Contains(logs.Bytes(), []byte("skip")) {
+		t.Errorf("skipping the second season logged nothing; got:\n%s", logs.String())
 	}
 }
