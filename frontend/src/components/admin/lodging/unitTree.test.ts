@@ -174,3 +174,53 @@ describe('parentCandidates — scoped to the area', () => {
     expect(parentCandidates(undefined, units).map((u) => u.id)).toEqual(['near', 'far'])
   })
 })
+
+describe('parentCandidates — scoped to how the unit is used', () => {
+  const A = 'area_1'
+
+  it('hides staff housing from a guest room', () => {
+    // A guest room is never a room inside staff housing — no unit on site is.
+    // Both buildings stand in the same area, so the area filter alone still
+    // offers the wrong one.
+    const units = [
+      unit({ id: 'guest-room', area: A, inventory_class: 'family_pool' }),
+      unit({ id: 'guest-bldg', area: A, is_container: true, inventory_class: 'family_pool' }),
+      unit({ id: 'staff-bldg', area: A, is_container: true, inventory_class: 'staff_default' }),
+    ]
+
+    const ids = parentCandidates('guest-room', units, A, 'family_pool').map((u) => u.id)
+    expect(ids).toEqual(['guest-bldg'])
+  })
+
+  it('offers a staff room BOTH, because staff rooms do sit in guest buildings', () => {
+    // The rule is deliberately asymmetric. One building on site is a guest
+    // building holding two guest rooms and one staff room, so a symmetric
+    // "classes must match" would deny a new staff room there its real parent.
+    const units = [
+      unit({ id: 'staff-room', area: A, inventory_class: 'staff_default' }),
+      unit({ id: 'guest-bldg', area: A, is_container: true, inventory_class: 'family_pool' }),
+      unit({ id: 'staff-bldg', area: A, is_container: true, inventory_class: 'staff_default' }),
+    ]
+
+    const ids = parentCandidates('staff-room', units, A, 'staff_default').map((u) => u.id)
+    expect(ids).toEqual(['guest-bldg', 'staff-bldg'])
+  })
+
+  it('keeps a parent a guest unit already has inside staff housing', () => {
+    // No such pair exists today, and the escape is why one appearing later
+    // does not get silently reparented on the next unrelated save.
+    const units = [
+      unit({
+        id: 'guest-room',
+        area: A,
+        inventory_class: 'family_pool',
+        parent_unit: 'staff-bldg',
+      }),
+      unit({ id: 'staff-bldg', area: A, is_container: true, inventory_class: 'staff_default' }),
+    ]
+
+    expect(parentCandidates('guest-room', units, A, 'family_pool').map((u) => u.id)).toContain(
+      'staff-bldg'
+    )
+  })
+})

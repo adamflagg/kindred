@@ -33,6 +33,12 @@ export interface UnitIdentityFieldsProps {
   units: LodgingUnitRecord[]
   /** Absent on create, where the code stays hidden until staff ask for it. */
   unitId?: string | undefined
+  /**
+   * Live from the Allocation select, not off the record: a staffer who has
+   * just switched a room to staff housing should see staff buildings offered
+   * straight away, not after a save and a reopen.
+   */
+  inventoryClass: string
 }
 
 export function UnitIdentityFields({
@@ -41,6 +47,7 @@ export function UnitIdentityFields({
   areas,
   units,
   unitId,
+  inventoryClass,
 }: UnitIdentityFieldsProps) {
   const [showCode, setShowCode] = useState(false)
   const derived = slugify(value.name)
@@ -136,7 +143,7 @@ export function UnitIdentityFields({
           }}
         >
           <option value="">No parent</option>
-          {parentCandidates(unitId, units, value.area).map((candidate) => (
+          {parentCandidates(unitId, units, value.area, inventoryClass).map((candidate) => (
             <option key={candidate.id} value={candidate.id}>
               {candidate.name}
             </option>

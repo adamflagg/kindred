@@ -166,6 +166,7 @@ export function LodgingUnitForm({ areas, units, unit, onSaved, onCancel }: Lodgi
         areas={areas}
         units={units}
         unitId={unit?.id}
+        inventoryClass={inventoryClass}
       />
 
       {/* is_confirmed and is_container are read LIVE rather than off `unit`:
