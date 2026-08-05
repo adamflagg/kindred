@@ -4,9 +4,10 @@
  * This is the summer session area's language, extended — not a second one.
  * Buttons take the pill radius and semibold weight `SessionTabs` uses, table
  * headers and group headings take the uppercase-xs treatment the roster's
- * `UnitInventoryPanel` uses, and pills match its badge shape. Six files render
- * this surface; without one definition they drift into six dialects, which is
- * how an admin screen stops looking like the product it edits.
+ * `HouseholdRosterTable` uses, and pills match `LodgingUnitCard`'s badge
+ * shape. Six files render this surface; without one definition they drift
+ * into six dialects, which is how an admin screen stops looking like the
+ * product it edits.
  *
  * Every colour here is either a semantic token (`bg-muted`, `text-primary`)
  * that already resolves per theme, or is paired with a `dark:` counterpart.

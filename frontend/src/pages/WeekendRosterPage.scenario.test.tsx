@@ -198,6 +198,16 @@ beforeEach(() => {
   toastError.mockReset()
 })
 
+describe('tabs', () => {
+  it('offers Housing, Roster and Map, and no Inventory tab', () => {
+    renderPage()
+    expect(screen.getByRole('tab', { name: /Housing/ })).toBeInTheDocument()
+    expect(screen.getByRole('tab', { name: /Roster/ })).toBeInTheDocument()
+    expect(screen.getByRole('tab', { name: /Map/ })).toBeInTheDocument()
+    expect(screen.queryByRole('tab', { name: /Inventory/ })).not.toBeInTheDocument()
+  })
+})
+
 describe('the picker', () => {
   it('registers THIS weekend with the scenario context', () => {
     // `useSavedScenarios` filters by `currentSessionId`. Left unset, the

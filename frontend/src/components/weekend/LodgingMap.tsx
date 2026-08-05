@@ -14,8 +14,10 @@
  * second system of record, which is the one thing this must not be.
  *
  * ACCESSIBILITY, stated rather than implied: a pan/zoom map is not
- * keyboard-navigable. The Inventory tab is the accessible equivalent — the same
- * units, grouped by area, in a list. Nothing may be reachable ONLY here.
+ * keyboard-navigable. The accessible equivalent is Manage → Family Camp
+ * Lodging, which lists every unit for this season in a table. It can only
+ * discharge that promise since the registry became year-scoped: before, it
+ * described no particular season. Nothing may be reachable ONLY here.
  *
  * The marks are therefore plain clickable divs and deliberately do NOT carry
  * `role="button"`. A role they cannot honour — 82 unreachable tab stops, or a
@@ -368,11 +370,11 @@ export function LodgingMap({ parties, units, year }: LodgingMapProps) {
   // Rooms the payload HAS, not rooms currently shown: a count that moved when
   // you hid the empties would stop accounting for the units at all.
   //
-  // NOT the Inventory tab's number, and deliberately so — `countMapUnits`'
-  // docstring says why: Inventory counts every unit, this counts the POSITIONED
-  // bookable ones. The remainder is not silently dropped; containers are the
-  // next figure along, and unpositioned rooms have their own line above the
-  // map. Three numbers, because they answer three questions.
+  // NOT the full registry's unit count, and deliberately so — `countMapUnits`'
+  // docstring says why: the registry counts every unit, this counts the
+  // POSITIONED bookable ones. The remainder is not silently dropped; containers
+  // are the next figure along, and unpositioned rooms have their own line
+  // above the map. Three numbers, because they answer three questions.
   const roomCount = model.units.length
   const containerCount = units.filter((unit) => unit.is_container).length
   // The hues actually on this map, never a fixed palette: a swatch that did
