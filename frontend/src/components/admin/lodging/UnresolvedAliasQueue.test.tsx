@@ -151,6 +151,17 @@ describe('UnresolvedAliasQueue', () => {
     expect(listLodgingUnits).not.toHaveBeenCalled()
   })
 
+  // See LodgingUnitsPanel's twin: the `enabled` gate stops the request but not
+  // the render. A disabled query is `isLoading === false` with `data ===
+  // undefined`, so QueryGuard shows the empty state and a cold load claims a
+  // clean queue -- the most misleading thing this panel can say, because
+  // "nothing to resolve" is exactly what staff are checking for.
+  it('says it is still loading, not that the queue is clean, before the year resolves', () => {
+    render(<UnresolvedAliasQueue />, { wrapper: zeroYearWrapper })
+    expect(screen.queryByText(/No unresolved cabin names/i)).not.toBeInTheDocument()
+    expect(screen.getByText(/Loading unresolved cabin names/i)).toBeInTheDocument()
+  })
+
   it('shows the verbatim string, its source field and how often it was seen', async () => {
     render(<UnresolvedAliasQueue />, { wrapper })
     await waitFor(() => {

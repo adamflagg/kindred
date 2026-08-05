@@ -74,6 +74,13 @@ export function LodgingUnitsPanel() {
     formRef.current?.querySelector<HTMLElement>('input, select, textarea')?.focus()
   }, [editing])
 
+  // ONE constant for the fetch gate and the render guard, because gating only
+  // the fetch does not fix what the gate is for. A disabled TanStack query is
+  // `isLoading === false` (pending but idle -- nothing is fetching) with `data
+  // === undefined`, which is indistinguishable from a settled empty result to
+  // every consumer below. Derive both from this and they cannot drift apart.
+  const yearReady = currentYear > 0
+
   const unitsQuery = useQuery({
     queryKey: queryKeys.lodgingUnits(currentYear),
     ...userDataOptions,
@@ -83,13 +90,13 @@ export function LodgingUnitsPanel() {
     // PocketBase answers `year = 0` with a successful `200 []`, so without
     // this gate a cold load would render "no lodging units" as if it were
     // true. Convention: `useWeekendRoster.ts:30-37`.
-    enabled: currentYear > 0,
+    enabled: yearReady,
   })
   const areasQuery = useQuery({
     queryKey: queryKeys.lodgingAreas(currentYear),
     ...userDataOptions,
     queryFn: () => listLodgingAreas(currentYear),
-    enabled: currentYear > 0,
+    enabled: yearReady,
   })
 
   const refresh = () => {
@@ -304,7 +311,7 @@ export function LodgingUnitsPanel() {
       />
 
       <QueryGuard
-        isLoading={unitsQuery.isLoading}
+        isLoading={unitsQuery.isLoading || !yearReady}
         error={unitsQuery.error}
         data={unitsQuery.data}
         label="lodging units"

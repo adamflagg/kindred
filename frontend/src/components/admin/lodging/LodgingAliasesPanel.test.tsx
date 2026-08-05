@@ -140,6 +140,20 @@ describe('LodgingAliasesPanel', () => {
     expect(listLodgingUnits).not.toHaveBeenCalled()
   })
 
+  // The units query is gated on the year, and the editor's own guard reads
+  // `unitsQuery.isLoading` -- which a DISABLED query reports as false. So the
+  // guard whose comment calls an unloaded picker "not a degraded editor but a
+  // destructive one" does not fire on a cold load. The stored members survive
+  // (LodgingAliasForm seeds them off the alias record, not off `units`), so
+  // this is not the destructive case any more -- but a NEW alias opens with an
+  // empty fieldset and a permanently disabled Save, which reads as broken.
+  it('shows the picker loading, not an empty fieldset, before the year resolves', async () => {
+    const user = userEvent.setup()
+    render(<LodgingAliasesPanel />, { wrapper: zeroYearWrapper })
+    await user.click(await screen.findByRole('button', { name: /new alias/i }))
+    expect(screen.getByText(/Loading units/i)).toBeInTheDocument()
+  })
+
   it('labels a multi-member alias as a merge', async () => {
     render(<LodgingAliasesPanel />, { wrapper })
     await waitFor(() => {

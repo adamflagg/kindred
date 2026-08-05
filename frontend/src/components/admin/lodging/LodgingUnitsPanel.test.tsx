@@ -168,6 +168,18 @@ describe('LodgingUnitsPanel', () => {
     expect(listLodgingAreas).not.toHaveBeenCalled()
   })
 
+  // Gating the FETCH is only half of it, and the half that does not fix the
+  // symptom the gate exists for. A disabled TanStack query reports
+  // `isLoading === false` (it is pending but idle, so nothing is fetching) with
+  // `data === undefined`, which lands in QueryGuard's `!data` branch -- the
+  // empty state. So the cold load still says "no lodging units", exactly as it
+  // did ungated, just without the request.
+  it('says it is still loading, not that the season is empty, before the year resolves', () => {
+    render(<LodgingUnitsPanel />, { wrapper: zeroYearWrapper })
+    expect(screen.queryByText(/No lodging units/i)).not.toBeInTheDocument()
+    expect(screen.getByText(/Loading lodging units/i)).toBeInTheDocument()
+  })
+
   it('groups units under their area, ordered by the area sort_order', async () => {
     await renderPanel()
     const headings = screen.getAllByRole('button', { name: /Zone/ }).map((el) => el.textContent)
