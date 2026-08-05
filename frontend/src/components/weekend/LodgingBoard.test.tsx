@@ -144,6 +144,40 @@ describe('LodgingBoard — layout', () => {
     }
   })
 
+  it('sizes columns so summer’s four fit, not five', () => {
+    /*
+     * `minmax(280px)` rather than `minmax(200px)`. Measured on the real board
+     * at a 1600px viewport, where the grid gets 1188px: 200px auto-fills to
+     * FIVE columns at 228px, 280px to FOUR at 288px — which is summer's
+     * `xl:grid-cols-4` arrived at from the other direction.
+     *
+     * Two things bought, both measured:
+     *   - truncated unit titles fall from 12 of 82 to 2, since an 18px title
+     *     has only ~180px to work with at 228px once padding and the capacity
+     *     figure are out;
+     *   - the amenity row gains ~60px of free space on its last line (median
+     *     153px → 213px, 25th percentile 115px → 175px), which is roughly one
+     *     more indicator chip on every card.
+     *
+     * It does NOT reduce how often that row wraps — 28/29/25 cards at one,
+     * two and three lines at BOTH widths. The wrapping is structural, not a
+     * width problem: `UnitAvailabilityControl` gives its reason line and its
+     * open form `w-full`, so they take their own line whatever the card is.
+     *
+     * Cost is 11% more scroll (board 5172px → 5754px), which is what fewer
+     * columns means.
+     */
+    const { container } = render(<LodgingBoard parties={[]} units={[unit()]} year={2026} />, {
+      wrapper,
+    })
+    const grids = [...container.querySelectorAll('[data-unit-card]')].map((c) => c.parentElement)
+    expect(grids.length).toBeGreaterThan(0)
+    for (const grid of grids) {
+      expect(grid).toHaveClass('grid-cols-[repeat(auto-fill,minmax(280px,1fr))]')
+      expect(grid).not.toHaveClass('grid-cols-[repeat(auto-fill,minmax(200px,1fr))]')
+    }
+  })
+
   it('collapses an area section', async () => {
     render(<LodgingBoard parties={[]} units={[unit()]} year={2026} />, { wrapper })
     expect(screen.getByText('Cedar 1')).toBeInTheDocument()
