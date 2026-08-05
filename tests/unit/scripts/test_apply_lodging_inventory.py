@@ -1,18 +1,22 @@
 """The apply script must never mix two seasons' unit rows."""
 
+from typing import Any
+
+import pytest
+
 from scripts.dev.apply_lodging_inventory import plan_updates
 
 
 def test_plan_updates_matches_within_one_year() -> None:
     """`have` holds one year's rows; a unit absent from it is absent, not stale."""
     want = [{"code": "test-unit-a", "has_fridge": True}]
-    have = {}  # the 2027 fetch found nothing
+    have: dict[str, dict[str, Any]] = {}  # the 2027 fetch found nothing
     plan = plan_updates(want, have)
     assert plan.absent == ["test-unit-a"]
     assert plan.updates == []
 
 
-def test_fetch_units_filters_by_year(monkeypatch) -> None:
+def test_fetch_units_filters_by_year(monkeypatch: pytest.MonkeyPatch) -> None:
     captured: dict[str, object] = {}
 
     class FakeResponse:
