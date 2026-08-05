@@ -575,6 +575,151 @@ class TestUnitsAndCounts:
         assert roster.units[0].is_combined is True
 
 
+class TestCountsFollowTheDrawLevel:
+    """The counts describe the population the BOARD DRAWS, at its resolved level.
+
+    `_is_planning_inventory` already states the invariant these pin: "If the
+    two drift, the Housing tab and the stats bar describe different weekends
+    -- the board drawing 81 cards beside a bar reporting 102 units is exactly
+    the disagreement this shape exists to prevent." A combined container is
+    ONE space a family can hold, at the whole-house `sleeps` somebody
+    measured; its rooms are not separately lettable and must not be counted
+    as though they were.
+
+    The bed figure moves in the OPPOSITE direction from the space figure on
+    real data, which looks wrong until you see why: a container's `sleeps` is
+    an independently measured whole-house number and NOT the sum of its rooms
+    (one house records 7 against rooms summing to 6, and one records 6
+    against two rooms nobody has measured at all). Fewer, larger spaces.
+    """
+
+    @pytest.mark.asyncio
+    async def test_a_combined_container_counts_once_at_its_own_sleeps(self) -> None:
+        """The whole-house figure, never the sum of the rooms it replaces.
+
+        7 vs 3+3 is the real shape: the measured whole is one bed larger than
+        its parts, because a house let whole sleeps somebody on a landing
+        that belongs to no single room. Summing would report 6.
+        """
+        repo = _repo(
+            fetch_session=FAMILY_SESSION,
+            fetch_units=[
+                _unit("u1", "gt-wawona", "Wawona", sleeps=7, is_container=True, default_combined=True),
+                _unit("u2", "gt-wawona-front", "Wawona Front", sleeps=3, parent_unit="u1"),
+                _unit("u3", "gt-wawona-back", "Wawona Back", sleeps=3, parent_unit="u1"),
+            ],
+        )
+        roster = await LodgingRosterService(repo).build_roster(2026, 1000001)
+
+        assert roster.counts.units_total == 1
+        assert roster.counts.units_family_available == 1
+        assert roster.counts.beds_family_available == 7
+
+    @pytest.mark.asyncio
+    async def test_a_split_container_still_counts_its_rooms_and_not_itself(self) -> None:
+        """The pre-feature behaviour, unchanged. Regression guard: the fix for
+        the combined case must not start counting a grouping row that never
+        gets a card.
+        """
+        repo = _repo(
+            fetch_session=FAMILY_SESSION,
+            fetch_units=[
+                _unit("u1", "gt-wawona", "Wawona", sleeps=7, is_container=True),
+                _unit("u2", "gt-wawona-front", "Wawona Front", sleeps=3, parent_unit="u1"),
+                _unit("u3", "gt-wawona-back", "Wawona Back", sleeps=3, parent_unit="u1"),
+            ],
+        )
+        roster = await LodgingRosterService(repo).build_roster(2026, 1000001)
+
+        assert roster.counts.units_total == 2
+        assert roster.counts.beds_family_available == 6
+
+    @pytest.mark.asyncio
+    async def test_a_combined_ancestor_swallows_an_intermediate_container(self) -> None:
+        """Top-down, first-true -- the same rule `drawnUnits` applies. Two
+        nodes on one root-to-leaf path can both resolve combined; the higher
+        one draws and nothing beneath it counts, or the block's rooms would
+        be counted under a card that does not exist.
+        """
+        repo = _repo(
+            fetch_session=FAMILY_SESSION,
+            fetch_units=[
+                _unit("u0", "block", "The Block", sleeps=10, is_container=True, default_combined=True),
+                _unit("u1", "house", "The House", sleeps=7, is_container=True, default_combined=True, parent_unit="u0"),
+                _unit("u2", "r1", "Room 1", sleeps=3, parent_unit="u1"),
+                _unit("u3", "r2", "Room 2", sleeps=3, parent_unit="u1"),
+            ],
+        )
+        roster = await LodgingRosterService(repo).build_roster(2026, 1000001)
+
+        assert roster.counts.units_total == 1
+        assert roster.counts.beds_family_available == 10
+
+    @pytest.mark.asyncio
+    async def test_a_combined_container_reports_its_own_measured_beds_over_unmeasured_rooms(self) -> None:
+        """The real Doctor's House shape, and the sharpest case for this rule.
+
+        Its two rooms were split out of the container with `sleeps`
+        deliberately left unset -- the bed lists carry their capacity, the
+        number does not. Counting the rooms reports a house that sleeps
+        NOBODY and two spaces of unknown capacity; counting the drawn card
+        reports the 6 somebody measured.
+        """
+        repo = _repo(
+            fetch_session=FAMILY_SESSION,
+            fetch_units=[
+                _unit("u1", "hc-dh", "Doctor's House", sleeps=6, is_container=True, default_combined=True),
+                _unit("u2", "hc-dh-a", "Doctor's House A", sleeps=0, parent_unit="u1"),
+                _unit("u3", "hc-dh-b", "Doctor's House B", sleeps=0, parent_unit="u1"),
+            ],
+        )
+        roster = await LodgingRosterService(repo).build_roster(2026, 1000001)
+
+        assert roster.counts.units_total == 1
+        assert roster.counts.beds_family_available == 6
+        assert roster.counts.units_capacity_unknown == 0
+
+    @pytest.mark.asyncio
+    async def test_a_combined_container_nobody_has_measured_is_the_unknown_one(self) -> None:
+        """The inverse: the card drawn is the one whose capacity is unknown,
+        not the rooms it replaced. `sleeps` maps 0 -> None here, so an
+        unmeasured house is an unmeasured SPACE.
+        """
+        repo = _repo(
+            fetch_session=FAMILY_SESSION,
+            fetch_units=[
+                _unit("u1", "house", "The House", sleeps=0, is_container=True, default_combined=True),
+                _unit("u2", "r1", "Room 1", sleeps=2, parent_unit="u1"),
+                _unit("u3", "r2", "Room 2", sleeps=2, parent_unit="u1"),
+            ],
+        )
+        roster = await LodgingRosterService(repo).build_roster(2026, 1000001)
+
+        assert roster.counts.units_total == 1
+        assert roster.counts.units_capacity_unknown == 1
+        assert roster.counts.beds_family_available == 0
+
+    @pytest.mark.asyncio
+    async def test_a_scenario_merge_moves_the_counts_the_same_way_the_default_does(self) -> None:
+        """The counts read the RESOLVED level, not `default_combined`. A
+        scenario that merges a house the registry leaves split must move the
+        bar with the board, or the two disagree the moment anybody drags.
+        """
+        repo = _repo(
+            fetch_session=FAMILY_SESSION,
+            fetch_units=[
+                _unit("u1", "house", "The House", sleeps=7, is_container=True),
+                _unit("u2", "r1", "Room 1", sleeps=3, parent_unit="u1"),
+                _unit("u3", "r2", "Room 2", sleeps=3, parent_unit="u1"),
+            ],
+            fetch_slot_merges=[_rec(unit="u1", scenario="scn_1", combined=True)],
+        )
+        roster = await LodgingRosterService(repo).build_roster(2026, 1000001, scenario="scn_1")
+
+        assert roster.counts.units_total == 1
+        assert roster.counts.beds_family_available == 7
+
+
 class TestSlotMergeTiers:
     """resolve_combined's three tiers, exercised through the roster assembly.
 

@@ -290,6 +290,54 @@ def resolve_combined(*, default: bool, override: bool | None, session_override: 
     return default
 
 
+def drawn_units(units: list[LodgingUnitSummary]) -> list[LodgingUnitSummary]:
+    """The units that get a CARD, at the level each tree resolves to.
+
+    THE PYTHON MIRROR of `drawnUnits` in
+    `frontend/src/components/weekend/unitLevel.ts`, and the counts' half of
+    the invariant `_is_planning_inventory` states for its own predicate: if
+    the two drift, the Housing tab and the stats bar describe different
+    weekends. Reads the RESOLVED `is_combined` (see `resolve_combined`), never
+    `default_combined`, so a scenario merge moves the counts with the board.
+
+    A leaf always draws. A container draws only when combined -- otherwise it
+    is pure grouping and the walk descends past it. Nothing beneath a combined
+    node draws, because combined means "draw the card here and stop
+    descending": two nodes on one root-to-leaf path can both resolve combined
+    (a scenario override can set one where an ancestor default already holds)
+    and taking the higher is what keeps a room from being counted under a card
+    that does not exist.
+
+    Leaf-ness reads the `is_container` FLAG, never child count -- the same
+    rule the frontend walk applies, and for the same reason: inferring "this
+    is bookable" from an empty child list infers from missing data. Only a
+    CONTAINER can block a descendant, which also makes this immune to the
+    stale `is_combined` a leaf can carry (the admin form does not clear
+    `default_combined` when "is a building" is unticked).
+
+    Cycle guard for the same reason `coveredCodes` carries one: the server
+    guards against WRITING a cycle (`guardUnitParentCycle`, #1899), but a
+    cycle already in the data must not hang a request.
+    """
+    by_code = {unit.code: unit for unit in units}
+    drawn: list[LodgingUnitSummary] = []
+    for unit in units:
+        if unit.is_container and not unit.is_combined:
+            continue
+        seen = {unit.code}
+        cursor = by_code.get(unit.parent_code)
+        blocked = False
+        while cursor is not None and cursor.code not in seen:
+            seen.add(cursor.code)
+            if cursor.is_container and cursor.is_combined:
+                blocked = True
+                break
+            cursor = by_code.get(cursor.parent_code)
+        if not blocked:
+            drawn.append(unit)
+    return drawn
+
+
 class LodgingRosterService:
     """Builds the read-only weekend roster from repository output."""
 
@@ -924,11 +972,25 @@ class LodgingRosterService:
         parties: list[RosterParty],
         unresolved_aliases: int,
     ) -> RosterCounts:
-        # Containers are building/grouping rows carrying whole-building
-        # aggregates. Including them double-counts beds (408 vs a true 389).
-        leaf = [u for u in units if not u.is_container and u.is_active]
-        bookable = [u for u in leaf if _is_planning_inventory(u)]
-        staff_housing = [u for u in leaf if not _is_planning_inventory(u)]
+        # The population the BOARD DRAWS, at each tree's resolved level -- not
+        # "every non-container row". A combined container IS one space a
+        # family can hold, at the whole-house `sleeps` somebody measured, and
+        # its rooms are not separately lettable, so counting them instead
+        # reports more spaces than the board draws cards. That is the exact
+        # drift `_is_planning_inventory` exists to prevent, one field over.
+        #
+        # A NON-combined container is still excluded, for the original reason:
+        # it carries a whole-building aggregate its rooms already report, and
+        # counting both double-counts beds (408 vs a true 389). What changed is
+        # that "container" stopped being the same question as "not drawn".
+        #
+        # The bed figure can move OPPOSITE the space figure, which is correct:
+        # a container's `sleeps` is independently measured and NOT the sum of
+        # its rooms (one house records 7 against rooms summing to 6). Fewer,
+        # larger spaces.
+        drawn = [u for u in drawn_units(units) if u.is_active]
+        bookable = [u for u in drawn if _is_planning_inventory(u)]
+        staff_housing = [u for u in drawn if not _is_planning_inventory(u)]
         available = [u for u in bookable if u.is_family_available]
         assigned = sum(1 for p in parties if p.unit_code or p.unit_name)
         return RosterCounts(
