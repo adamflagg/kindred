@@ -186,10 +186,23 @@ export function LodgingUnitCard({
       data-unit-code={unit.code}
       ref={setCardRef}
       style={{ borderTopColor: hue }}
-      className={`bg-card flex flex-col gap-2 rounded-xl border border-t-[3px] p-2.5 transition-colors ${
-        consent
-          ? 'border-amber-400 ring-1 ring-amber-400/40 dark:border-amber-500'
-          : 'border-border'
+      /*
+       * `.card-lodge` is summer's card chrome, not a lookalike — the same
+       * class `BunkCard` wears (CLAUDE.md §4, "Family Camp Models Summer").
+       * It carries `bg-card`, `rounded-2xl`, a 2px border, the two-layer
+       * lodge shadow and the hover lift. This card used to hand-roll
+       * `bg-card rounded-xl border`, which is the same idea minus the shadow
+       * and the hover — so it read as a table row rather than a card.
+       *
+       * ORDER MATTERS BELOW. `.card-lodge` lives in `@layer components`, so
+       * every utility here outranks it whatever the string order: the amber
+       * consent edge, the empty-slot wash and the drop-target ring all still
+       * land. The hue top edge is an inline style and outranks both, which is
+       * what keeps §3.10's secondary channel through `card-lodge`'s own
+       * `border-border` and its `border-primary/50` hover.
+       */
+      className={`card-lodge flex flex-col gap-2 border-t-[3px] p-4 ${
+        consent ? 'border-amber-400 ring-1 ring-amber-400/40 dark:border-amber-500' : ''
       } ${parties.length === 0 ? 'bg-muted/25 border-dashed' : ''} ${
         isUnitOver || isMergeOver ? 'border-primary ring-primary/50 bg-primary/5 ring-2' : ''
       } ${

@@ -162,6 +162,53 @@ describe('LodgingUnitCard', () => {
     expect(card).toHaveStyle({ borderTopColor: 'hsl(160 45% 42%)' })
   })
 
+  /*
+   * CLAUDE.md §4, "Family Camp Models Summer": same UI primitives, same
+   * Tailwind grammar. Summer's `BunkCard` is a `.card-lodge` at `p-4`; this
+   * card hand-rolled `bg-card rounded-xl border p-2.5` instead, which is why
+   * it read as a table row rather than a card — no shadow, no hover lift, and
+   * a padding less than two thirds of summer's.
+   *
+   * Pinned as classes rather than computed style on purpose: jsdom parses no
+   * Tailwind, so a computed-style assertion here would pass against an empty
+   * string and prove nothing (see `reference_frontend_source_grep_tests`).
+   */
+  it('wears the shared lodge card chrome, as summer’s BunkCard does', () => {
+    const { container } = render(
+      <LodgingUnitCard slot={slot()} hue="hsl(160 45% 42%)" onOpenParty={vi.fn()} />
+    )
+    const card = container.querySelector('[data-unit-card]')
+    // The shared component class — shadow, 2px border, rounded-2xl, hover
+    // lift — rather than a second hand-rolled copy of roughly the same thing.
+    expect(card).toHaveClass('card-lodge')
+    // And NOT the hand-rolled chrome it replaces. Left in place alongside
+    // `card-lodge` these fight it: `rounded-xl` loses the corner radius and
+    // `border` resets the 2px edge back to 1px.
+    expect(card).not.toHaveClass('rounded-xl')
+  })
+
+  it('pads to summer’s p-4 rather than its own p-2.5', () => {
+    const { container } = render(
+      <LodgingUnitCard slot={slot()} hue="hsl(160 45% 42%)" onOpenParty={vi.fn()} />
+    )
+    const card = container.querySelector('[data-unit-card]')
+    expect(card).toHaveClass('p-4')
+    expect(card).not.toHaveClass('p-2.5')
+  })
+
+  it('keeps the area hue winning over the card-lodge border colour', () => {
+    // `.card-lodge` sets `border-border` on all four sides and repaints them
+    // `border-primary/50` on hover. The hue is an inline style, which beats
+    // both — this pins that the chrome swap did not silently cost §3.10 its
+    // secondary channel, on hover or otherwise.
+    const { container } = render(
+      <LodgingUnitCard slot={slot()} hue="hsl(38 75% 50%)" onOpenParty={vi.fn()} />
+    )
+    const card = container.querySelector('[data-unit-card]')
+    expect(card).toHaveStyle({ borderTopColor: 'hsl(38 75% 50%)' })
+    expect(card).toHaveClass('border-t-[3px]')
+  })
+
   it('keys two adult-weekend individuals in one room apart', () => {
     // An adult weekend enrols PEOPLE, and the API sends `household_cm_id = 0`
     // for them rather than omitting it — Pydantic `int = 0`. A `??` chain
