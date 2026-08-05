@@ -388,11 +388,17 @@ for table in lodging_units lodging_areas; do
 done
 
 for idx in idx_lodging_units_code idx_lodging_areas_code; do
-  sql=$(sqlite3 "$DB" "SELECT sql FROM sqlite_master WHERE name = '$idx';")
-  case "$sql" in
-    *code*year*) ;;
-    *) note "$idx is not composite on (code, year): $sql" ;;
-  esac
+  # Ask SQLite what columns the index actually covers (pragma_index_info),
+  # rather than substring-matching the stored CREATE INDEX text. Two traps
+  # rule that out: the index's own NAME already contains "code"
+  # (idx_lodging_units_code), so a *code*year* substring check on the whole
+  # statement is satisfied by a column list of (`year`) alone; and
+  # PocketBase pretty-prints a multi-column list across lines --
+  # `(\n  \`code\`,\n  \`year\`\n)` -- so even a literal '(`code`, `year`)'
+  # match on one line never fires. pragma_index_info sidesteps both.
+  cols=$(sqlite3 "$DB" "SELECT group_concat(name) FROM pragma_index_info('$idx');")
+  [[ "$cols" == "code,year" ]] \
+    || note "$idx is not composite on (code, year): columns are '$cols'"
 done
 
 # Write access, read from the APPLIED schema rather than from the migration
