@@ -225,7 +225,14 @@ export function LodgingUnitsPanel() {
                   <Home className="h-6 w-6 text-amber-400" aria-hidden="true" />
                 </div>
                 <div>
-                  <h2 className="font-display text-xl font-bold text-white">
+                  {/* Named, and the id is threaded to Modal's ariaLabelledBy:
+                      Modal only falls back to its own `modal-title` in SIMPLE
+                      TITLE mode, so a custom header without this leaves the
+                      dialog with no accessible name at all. */}
+                  <h2
+                    id="lodging-unit-dialog-title"
+                    className="font-display text-xl font-bold text-white"
+                  >
                     {editing === 'new' ? 'Add a unit' : editing.name}
                   </h2>
                   {/* The area, because the row it came from is now behind a
@@ -243,6 +250,7 @@ export function LodgingUnitsPanel() {
           noPadding
           scrollable
           headerOnDark
+          ariaLabelledBy="lodging-unit-dialog-title"
         >
           <div ref={formRef} className="p-6">
             {/* Area is a required relation with no blank option, so a form

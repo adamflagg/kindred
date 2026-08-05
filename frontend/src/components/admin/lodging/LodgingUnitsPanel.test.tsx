@@ -421,3 +421,28 @@ describe('LodgingUnitsPanel — the editor opens in a modal', () => {
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
   })
 })
+
+describe('LodgingUnitsPanel — the dialog is named for assistive tech', () => {
+  it('gives the dialog the unit name as its accessible name', async () => {
+    // Modal falls back to its own `modal-title` id only in SIMPLE TITLE mode.
+    // With a custom header and no ariaLabelledBy, aria-labelledby and
+    // aria-label both come out undefined, and the dialog is announced as an
+    // unnamed one — a screen-reader user is told a dialog opened but not which
+    // unit it is for.
+    const user = userEvent.setup()
+    await renderPanel()
+
+    await user.click(screen.getByRole('button', { name: 'Edit Cabin A' }))
+
+    expect(screen.getByRole('dialog', { name: 'Cabin A' })).toBeInTheDocument()
+  })
+
+  it('names the create dialog too', async () => {
+    const user = userEvent.setup()
+    await renderPanel()
+
+    await user.click(screen.getByRole('button', { name: 'New unit' }))
+
+    expect(screen.getByRole('dialog', { name: 'Add a unit' })).toBeInTheDocument()
+  })
+})

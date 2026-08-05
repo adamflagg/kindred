@@ -3,7 +3,7 @@
  * invisible AND unclassifiable — PocketBase has no per-field default for
  * bool or select. The form must never let that happen.
  */
-import { render, screen, waitFor } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 
@@ -807,5 +807,45 @@ describe('LodgingUnitForm — the bathroom group is an exact-match id', () => {
     )
     // Deduplicated — two units in one group is one suggestion, not two.
     expect(options).toEqual(['gt-clouds-rest', 'hc-upstairs-hall'])
+  })
+})
+
+describe('LodgingUnitForm — only the X removes a bed', () => {
+  it('keeps the chip when the count is typed down to 0', async () => {
+    // setCount treats <= 0 as a removal, which is what the X button uses. The
+    // count input reaching it means a staffer clearing the field to retype
+    // loses the chip and the focus inside it — the same mid-edit removal the
+    // blank guard was written to prevent, arriving through "0" instead.
+    const user = userEvent.setup()
+    render(<LodgingUnitForm areas={AREAS} units={[]} onSaved={vi.fn()} onCancel={vi.fn()} />)
+
+    await user.selectOptions(screen.getByLabelText('Add a bed type'), 'queen')
+    await user.click(screen.getByRole('button', { name: 'Add bed' }))
+
+    // fireEvent.change, not clear()+type(): the input is CONTROLLED, so
+    // clearing re-renders it back to the stored count and the typed 0 lands as
+    // "10". Selecting all and typing 0 replaces the value atomically, which is
+    // what this reproduces and what a staffer actually does.
+    fireEvent.change(screen.getByLabelText('Queen count'), { target: { value: '0' } })
+
+    expect(screen.getByLabelText('Queen count')).toBeInTheDocument()
+  })
+
+  it('ignores a fractional count rather than silently truncating it', async () => {
+    // parseInt read "2.5" as 2 and committed it, so a stray keystroke wrote a
+    // bed count nobody chose.
+    const user = userEvent.setup()
+    render(<LodgingUnitForm areas={AREAS} units={[]} onSaved={vi.fn()} onCancel={vi.fn()} />)
+
+    await user.selectOptions(screen.getByLabelText('Add a bed type'), 'queen')
+    await user.click(screen.getByRole('button', { name: 'Add bed' }))
+    // Atomic replacement for the same reason as the test above: typing into a
+    // controlled input appends to the stored value rather than replacing it.
+    const count = screen.getByLabelText('Queen count')
+    fireEvent.change(count, { target: { value: '3' } })
+    expect(count).toHaveValue(3)
+
+    fireEvent.change(count, { target: { value: '3.5' } })
+    expect(count).toHaveValue(3)
   })
 })

@@ -60,12 +60,18 @@ export function BedInventoryEditor({ beds, onChange }: BedInventoryEditorProps) 
             aria-label={`${bedTypeLabel(bed.type)} count`}
             value={bed.count}
             onChange={(e) => {
-              const next = Number.parseInt(e.target.value, 10)
-              // A blank field is mid-edit, not a removal. Coercing it to 0
-              // filters the chip out on the first keystroke of a retype,
-              // taking the focused input with it. The X is the removal
-              // affordance, and the only one.
-              if (Number.isNaN(next)) return
+              // NOTHING TYPED HERE MAY REMOVE THE CHIP. `setCount` reads <= 0
+              // as a removal because that is what the X passes it, so a typed
+              // 0 — select-all, type zero — used to delete the row mid-edit and
+              // take the focused input with it. A blank field is the same
+              // keystroke one step earlier.
+              //
+              // Number, not Number.parseInt: parseInt read "2.5" as 2 and
+              // committed it, so a stray keypress wrote a bed count nobody
+              // chose. Anything that is not a whole number of beds is treated
+              // as mid-edit and left alone.
+              const next = Number(e.target.value)
+              if (!Number.isInteger(next) || next < 1) return
               setCount(bed.type, next)
             }}
           />
