@@ -47,6 +47,7 @@ from api.schemas.lodging import (
     PlacementCopyRequest,
     PlacementDeleteRequest,
     PlacementWriteRequest,
+    SlotMergeRequest,
 )
 from api.services.lodging_roster_service import SessionNotFoundError, placement_grain, resolved_units
 from api.utils.pb_error import pb_error_to_http
@@ -477,6 +478,66 @@ class LodgingWriteService:
                     if raced is None:
                         raise pb_error_to_http(exc) from exc
                     record = await self.repository.update_availability(str(raced.id), data)
+                except ClientResponseError as retry_exc:
+                    raise pb_error_to_http(retry_exc) from retry_exc
+        return LodgingWriteResponse(record_id=str(getattr(record, "id", "")))
+
+    async def set_slot_merge(self, request: SlotMergeRequest) -> LodgingWriteResponse:
+        """Set one container's draw level for a scenario.
+
+        SCENARIO-SCOPED, unlike set_availability. Availability lost its scenario
+        dimension in 1500000135 because a burst pipe closes a cabin in every
+        plan; a draw level is a planning choice, so it lives only in a draft.
+        The schema refuses a blank scenario, so the mirror cannot reach here.
+
+        NO DELETE BRANCH, unlike set_availability. There, `None` means "clear
+        the override" and is spelled as the absence of a row. Here the board
+        only ever writes an explicit true or false -- the absent row means
+        "inherit the registry default", and nothing in the UI asks to return to
+        it. Adding a clear later means adding the branch, not repurposing this
+        one.
+
+        The create races exactly as set_availability's does:
+        idx_lodging_slot_merge_unique is UNIQUE on (unit, session, year,
+        scenario), so two staff merging the same house in the same scenario
+        both find no row, both create, and the index rejects the loser. Guarded
+        identically -- the loser re-reads and updates the winner's row, which by
+        construction is the row this call wanted.
+        """
+        session_pb_id = await self._resolve_session_pb_id(request.year, request.session_cm_id)
+
+        existing = await self.repository.find_slot_merge(request.year, session_pb_id, request.unit_id, request.scenario)
+
+        data: dict[str, Any] = {
+            "unit": request.unit_id,
+            "session": session_pb_id,
+            # Required column (kindred#1879's durable-key pattern, matching
+            # set_availability's own "session_cm_id": request.session_cm_id
+            # write): the relation is for joins, this is the year-stable key.
+            "session_cm_id": request.session_cm_id,
+            "year": request.year,
+            "scenario": request.scenario,
+            "combined": request.combined,
+        }
+
+        if existing is not None:
+            try:
+                record = await self.repository.update_slot_merge(str(existing.id), data)
+            except ClientResponseError as exc:
+                raise pb_error_to_http(exc) from exc
+        else:
+            try:
+                record = await self.repository.create_slot_merge(data)
+            except ClientResponseError as exc:
+                if exc.status in REFUSAL_STATUSES:
+                    raise pb_error_to_http(exc) from exc
+                try:
+                    raced = await self.repository.find_slot_merge(
+                        request.year, session_pb_id, request.unit_id, request.scenario
+                    )
+                    if raced is None:
+                        raise pb_error_to_http(exc) from exc
+                    record = await self.repository.update_slot_merge(str(raced.id), data)
                 except ClientResponseError as retry_exc:
                     raise pb_error_to_http(retry_exc) from retry_exc
         return LodgingWriteResponse(record_id=str(getattr(record, "id", "")))

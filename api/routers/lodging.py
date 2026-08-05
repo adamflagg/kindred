@@ -23,6 +23,7 @@ from api.schemas.lodging import (
     PlacementCopyRequest,
     PlacementDeleteRequest,
     PlacementWriteRequest,
+    SlotMergeRequest,
     WeekendRosterResponse,
     WeekendSessionListResponse,
     WeekendSummaryResponse,
@@ -243,5 +244,27 @@ async def set_availability(
     """
     try:
         return await _writes().set_availability(request)
+    except SessionNotFoundError as exc:
+        raise _weekend_404(request.year, request.session_cm_id) from exc
+
+
+@router.put("/merge", response_model=LodgingWriteResponse)
+async def set_slot_merge(
+    request: SlotMergeRequest,
+    user: AuthUser = Depends(require_permission(Permission.BUNKING_MANAGE)),
+) -> LodgingWriteResponse:
+    """Set one container's draw level for a scenario.
+
+    SCENARIO-GATED, unlike `/availability`. Availability is a fact about the
+    weekend (a burst pipe closes a cabin in every plan, 1500000135); a draw
+    level is a planning choice, so it lives only in a draft.
+
+    Catches SessionNotFoundError the same way every other write below does --
+    `set_slot_merge` resolves the weekend through the identical
+    `_resolve_session_pb_id` helper, so an unknown `session_cm_id` must answer
+    404 here too rather than falling through as an unhandled 500.
+    """
+    try:
+        return await _writes().set_slot_merge(request)
     except SessionNotFoundError as exc:
         raise _weekend_404(request.year, request.session_cm_id) from exc

@@ -31,6 +31,7 @@ from api.schemas.lodging import (
     PlacementCopyRequest,
     PlacementDeleteRequest,
     PlacementWriteRequest,
+    SlotMergeRequest,
 )
 from api.services.lodging_write_service import LodgingWriteService, ScenarioNotEmptyError
 
@@ -50,6 +51,9 @@ def _repo(**overrides: Any) -> MagicMock:
         "create_availability": SimpleNamespace(id="avail_new"),
         "update_availability": SimpleNamespace(id="avail_existing"),
         "delete_availability": None,
+        "find_slot_merge": None,
+        "create_slot_merge": SimpleNamespace(id="merge_new"),
+        "update_slot_merge": SimpleNamespace(id="merge_existing"),
     }
     defaults.update(overrides)
     for method, value in defaults.items():
@@ -79,6 +83,18 @@ def _availability_request(**overrides: Any) -> AvailabilityWriteRequest:
     }
     fields.update(overrides)
     return AvailabilityWriteRequest(**fields)
+
+
+def _slot_merge_request(**overrides: Any) -> SlotMergeRequest:
+    fields: dict[str, Any] = {
+        "year": 2026,
+        "session_cm_id": 1000001,
+        "scenario": "scn_1",
+        "unit_id": "u1",
+        "combined": True,
+    }
+    fields.update(overrides)
+    return SlotMergeRequest(**fields)
 
 
 def _mirror_row(**overrides: Any) -> SimpleNamespace:
@@ -842,3 +858,120 @@ class TestMergeWritesAreGone:
 
     def test_delete_merge_no_longer_exists(self, write_service: LodgingWriteService) -> None:
         assert not hasattr(write_service, "delete_merge")
+
+
+class TestSetSlotMerge:
+    """`set_slot_merge` -- one container's draw level, scoped to a scenario.
+
+    Unlike `set_availability`, there is no delete branch: the board only ever
+    writes an explicit `true` or `false`, and the absent row means "inherit
+    the registry default". Wiring tests below assert on the actual dict
+    handed to the repository, not just that a call happened -- a stale key
+    here degrades a write into a partial one silently, the same failure mode
+    `test_the_reason_is_stored_in_the_note_column` guards for availability.
+    """
+
+    @pytest.mark.asyncio
+    async def test_a_new_merge_creates_a_scenario_scoped_row(
+        self, write_service: LodgingWriteService, repo: MagicMock
+    ) -> None:
+        response = await write_service.set_slot_merge(_slot_merge_request(combined=True))
+
+        repo.create_slot_merge.assert_awaited_once()
+        data = repo.create_slot_merge.call_args[0][0]
+        assert data["unit"] == "u1"
+        assert data["session"] == "sess_1"
+        assert data["session_cm_id"] == 1000001
+        assert data["year"] == 2026
+        assert data["scenario"] == "scn_1"
+        assert data["combined"] is True
+        repo.update_slot_merge.assert_not_called()
+        assert response.record_id == "merge_new"
+
+    @pytest.mark.asyncio
+    async def test_an_existing_merge_is_updated_not_duplicated(
+        self, write_service: LodgingWriteService, repo: MagicMock
+    ) -> None:
+        repo.find_slot_merge = AsyncMock(return_value=SimpleNamespace(id="merge_existing"))
+
+        response = await write_service.set_slot_merge(_slot_merge_request(combined=False))
+
+        repo.update_slot_merge.assert_awaited_once()
+        record_id, data = repo.update_slot_merge.call_args[0]
+        assert record_id == "merge_existing"
+        assert data["combined"] is False
+        assert data["session_cm_id"] == 1000001
+        repo.create_slot_merge.assert_not_called()
+        assert response.record_id == "merge_existing"
+
+    @pytest.mark.asyncio
+    async def test_find_slot_merge_is_scoped_to_year_session_unit_and_scenario(
+        self, write_service: LodgingWriteService, repo: MagicMock
+    ) -> None:
+        """The lookup must key on all four columns of the unique index.
+
+        Without the scenario in the lookup, two drafts planning the same
+        weekend would read and overwrite each other's draw-level choice.
+        """
+        await write_service.set_slot_merge(_slot_merge_request())
+
+        repo.find_slot_merge.assert_awaited_once_with(2026, "sess_1", "u1", "scn_1")
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("status", [401, 403])
+    async def test_a_refused_merge_create_keeps_its_status(
+        self, write_service: LodgingWriteService, repo: MagicMock, status: int
+    ) -> None:
+        repo.create_slot_merge = AsyncMock(
+            side_effect=ClientResponseError(
+                "refused", status=status, data={}, url="", is_abort=False, original_error=None
+            )
+        )
+        repo.find_slot_merge = AsyncMock(side_effect=[None, SimpleNamespace(id="merge_other")])
+
+        with pytest.raises(HTTPException) as exc_info:
+            await write_service.set_slot_merge(_slot_merge_request())
+
+        assert exc_info.value.status_code == 403
+        repo.update_slot_merge.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_the_unique_index_race_is_recovered_by_updating_the_winner(
+        self, write_service: LodgingWriteService, repo: MagicMock
+    ) -> None:
+        """Two staff merge the same house in the same scenario.
+
+        Both find no row and both create; `idx_lodging_slot_merge_unique`
+        rejects the loser. The loser re-reads and updates the winner's row,
+        which by construction is the row this call wanted.
+        """
+        repo.create_slot_merge = AsyncMock(
+            side_effect=ClientResponseError(
+                "unique constraint", status=400, data={}, url="", is_abort=False, original_error=None
+            )
+        )
+        repo.find_slot_merge = AsyncMock(side_effect=[None, SimpleNamespace(id="merge_winner")])
+
+        response = await write_service.set_slot_merge(_slot_merge_request(combined=True))
+
+        record_id, data = repo.update_slot_merge.call_args[0]
+        assert record_id == "merge_winner"
+        assert data["combined"] is True
+        assert response.record_id == "merge_existing"
+
+    @pytest.mark.asyncio
+    async def test_a_failed_recheck_after_a_lost_merge_race_keeps_its_status(
+        self, write_service: LodgingWriteService, repo: MagicMock
+    ) -> None:
+        repo.create_slot_merge = AsyncMock(
+            side_effect=ClientResponseError(
+                "unique constraint", status=400, data={}, url="", is_abort=False, original_error=None
+            )
+        )
+        repo.find_slot_merge = AsyncMock(side_effect=[None, None])
+
+        with pytest.raises(HTTPException) as exc_info:
+            await write_service.set_slot_merge(_slot_merge_request())
+
+        assert exc_info.value.status_code == 400
+        repo.update_slot_merge.assert_not_called()

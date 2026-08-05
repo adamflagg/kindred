@@ -5596,6 +5596,39 @@ export type ShareRequestSummary = {
 }
 
 /**
+ * SlotMergeRequest
+ *
+ * Set or clear one container's draw level inside a scenario.
+ *
+ * `scenario` is min_length=1 rather than optional: the CampMinder mirror
+ * inherits the registry default and is never overridable, and the collection's
+ * `scenario` relation is required, so a blank one could not be stored anyway.
+ * Refusing here makes that a validation error rather than a 500.
+ */
+export type SlotMergeRequest = {
+  /**
+   * Year
+   */
+  year: number
+  /**
+   * Session Cm Id
+   */
+  session_cm_id: number
+  /**
+   * Scenario
+   */
+  scenario: string
+  /**
+   * Unit Id
+   */
+  unit_id: string
+  /**
+   * Combined
+   */
+  combined: boolean
+}
+
+/**
  * SocialGraphEdge
  *
  * Edge in the social graph
@@ -10059,6 +10092,33 @@ export type SetAvailabilityApiLodgingAvailabilityPutResponses = {
 
 export type SetAvailabilityApiLodgingAvailabilityPutResponse =
   SetAvailabilityApiLodgingAvailabilityPutResponses[keyof SetAvailabilityApiLodgingAvailabilityPutResponses]
+
+export type SetSlotMergeApiLodgingMergePutData = {
+  body: SlotMergeRequest
+  path?: never
+  query?: never
+  url: '/api/lodging/merge'
+}
+
+export type SetSlotMergeApiLodgingMergePutErrors = {
+  /**
+   * Validation Error
+   */
+  422: HttpValidationError
+}
+
+export type SetSlotMergeApiLodgingMergePutError =
+  SetSlotMergeApiLodgingMergePutErrors[keyof SetSlotMergeApiLodgingMergePutErrors]
+
+export type SetSlotMergeApiLodgingMergePutResponses = {
+  /**
+   * Successful Response
+   */
+  200: LodgingWriteResponse
+}
+
+export type SetSlotMergeApiLodgingMergePutResponse =
+  SetSlotMergeApiLodgingMergePutResponses[keyof SetSlotMergeApiLodgingMergePutResponses]
 
 export type GetGapsApiGeoGapsGetData = {
   body?: never

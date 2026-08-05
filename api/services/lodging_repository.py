@@ -512,3 +512,32 @@ class LodgingRepository:
 
     async def delete_availability(self, record_id: str) -> None:
         await asyncio.to_thread(self.pb.collection(LODGING_AVAILABILITY).delete, record_id)
+
+    async def find_slot_merge(self, year: int, session_pb_id: str, unit_pb_id: str, scenario: str) -> Any | None:
+        """The one merge row for a container in this scenario, or None.
+
+        Matches idx_lodging_slot_merge_unique (unit, session, year, scenario).
+        Without an index of exactly this shape a container could carry two
+        contradicting rows and "is this house one card?" would stop having an
+        answer -- the same argument as find_availability_override.
+
+        Every interpolated string is escaped, matching find_availability_override:
+        `unit_pb_id` and `scenario` arrive in the request body.
+        """
+        rows = await self._page(
+            LODGING_SLOT_MERGES,
+            query_params={
+                "filter": (
+                    f'session = "{pb_escape(session_pb_id)}" && year = {year} '
+                    f'&& unit = "{pb_escape(unit_pb_id)}" && scenario = "{pb_escape(scenario)}"'
+                ),
+                "sort": STABLE_SORT,
+            },
+        )
+        return rows[0] if rows else None
+
+    async def create_slot_merge(self, data: dict[str, Any]) -> Any:
+        return await asyncio.to_thread(self.pb.collection(LODGING_SLOT_MERGES).create, data)
+
+    async def update_slot_merge(self, record_id: str, data: dict[str, Any]) -> Any:
+        return await asyncio.to_thread(self.pb.collection(LODGING_SLOT_MERGES).update, record_id, data)

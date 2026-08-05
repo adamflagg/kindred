@@ -506,6 +506,22 @@ class AvailabilityWriteRequest(BaseModel):
     reason: str = Field("", max_length=500)
 
 
+class SlotMergeRequest(BaseModel):
+    """Set or clear one container's draw level inside a scenario.
+
+    `scenario` is min_length=1 rather than optional: the CampMinder mirror
+    inherits the registry default and is never overridable, and the collection's
+    `scenario` relation is required, so a blank one could not be stored anyway.
+    Refusing here makes that a validation error rather than a 500.
+    """
+
+    year: int = Field(ge=2010, le=2100)
+    session_cm_id: int = Field(gt=0)
+    scenario: str = Field(min_length=1)
+    unit_id: str = Field(min_length=1)
+    combined: bool
+
+
 class LodgingWriteResponse(BaseModel):
     """What a write did, in the terms the board needs to reconcile its state."""
 
