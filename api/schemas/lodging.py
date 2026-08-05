@@ -122,9 +122,15 @@ class LodgingUnitSummary(BaseModel):
     # The parent container's CODE, not its record id — the board keys on code,
     # and code is the cross-year identity thread. "" means no parent.
     parent_code: str = ""
-    # The RESOLVED draw level for the requested scenario: a scenario override
-    # row if one exists, else the unit's default_combined, else False. False is
-    # "draw the children", which is the pre-feature behaviour, so an unruled
+    # The RESOLVED draw level for the requested scenario, through THREE tiers,
+    # highest first: this scenario's own `lodging_slot_merges` row, else the
+    # WEEKEND-LEVEL row (`scenario == ""`, 1500000140) that the CampMinder
+    # mirror shows and every scenario inherits, else the unit's
+    # `default_combined`. `resolve_combined` is the one implementation of that
+    # order; this field is only ever its output.
+    #
+    # Absence at a tier means NO ROW there and falls through — never False.
+    # False is "draw the children", the pre-feature behaviour, so an unruled
     # unit can never hide its rooms.
     is_combined: bool = False
     # The unit's ROLE: whether it is planning inventory at all. Carried a
