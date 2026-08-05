@@ -107,6 +107,11 @@ func newLodgingTestApp(t *testing.T) core.App {
 	units.Fields.Add(&core.NumberField{Name: "sleeps"})
 	units.Fields.Add(&core.BoolField{Name: "is_active"})
 	units.Fields.Add(&core.BoolField{Name: "is_container"})
+	// Required, mirroring migration 1500000140. PocketBase's Set on a column
+	// that does not exist is a silent no-op, so a fixture that forgot this
+	// column would resolve every year against a unit stored at year 0 --
+	// exactly the failure this field exists to catch loudly, here.
+	units.Fields.Add(&core.NumberField{Name: "year", Required: true})
 	saveCollection(t, app, units)
 
 	// parent_unit is a self-relation, so it needs the collection's own id --
@@ -264,30 +269,30 @@ func addAttendee(t *testing.T, app core.App, personPBID, sessionPBID string, per
 	})
 }
 
-func addUnit(t *testing.T, app core.App, code string) string {
+func addUnit(t *testing.T, app core.App, code string, year int) string {
 	t.Helper()
 	return saveRecord(t, app, "lodging_units", map[string]any{
-		"code": code, "name": code, "is_active": true, "is_container": false,
+		"code": code, "name": code, "is_active": true, "is_container": false, "year": year,
 	})
 }
 
 // addContainerUnit adds a building/grouping row -- the parent a room hangs
 // off. Nothing validates a merge against this shape (see
 // docs/architecture/lodging-occupancy.md); it models physical structure.
-func addContainerUnit(t *testing.T, app core.App, code string) string {
+func addContainerUnit(t *testing.T, app core.App, code string, year int) string {
 	t.Helper()
 	return saveRecord(t, app, "lodging_units", map[string]any{
-		"code": code, "name": code, "is_active": true, "is_container": true,
+		"code": code, "name": code, "is_active": true, "is_container": true, "year": year,
 	})
 }
 
 // addUnitWithParent is addUnit plus the parent_unit link a legal merge fixture
 // needs.
-func addUnitWithParent(t *testing.T, app core.App, code, parentID string) string {
+func addUnitWithParent(t *testing.T, app core.App, code, parentID string, year int) string {
 	t.Helper()
 	return saveRecord(t, app, "lodging_units", map[string]any{
 		"code": code, "name": code, "is_active": true, "is_container": false,
-		"parent_unit": parentID,
+		"parent_unit": parentID, "year": year,
 	})
 }
 

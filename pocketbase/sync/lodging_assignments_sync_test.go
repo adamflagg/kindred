@@ -16,7 +16,7 @@ func seedOneWeekendHousehold(t *testing.T, app core.App) (sessionID, unitID stri
 	t.Helper()
 	sessionID = addSession(t, app, cmIDFamilyCamp1, "Family Camp 1", "family",
 		"2025-05-23 07:00:00.000Z", "2025-05-26 07:00:00.000Z", 2025)
-	unitID = addUnit(t, app, "ridge-a")
+	unitID = addUnit(t, app, "ridge-a", 2025)
 	addAlias(t, app, "Ridge A", []string{unitID}, 0, 0)
 
 	cabinDef := addFieldDef(t, app, cmIDFamilyCampCabin, fieldNameFamilyCampCabin)
@@ -133,7 +133,7 @@ func TestLodgingAssignmentsSyncIsIdempotent(t *testing.T) {
 func TestLodgingAssignmentsSyncAppendsHistoryOnChange(t *testing.T) {
 	app := newLodgingTestApp(t)
 	seedOneWeekendHousehold(t, app)
-	ridgeB := addUnit(t, app, "ridge-b")
+	ridgeB := addUnit(t, app, "ridge-b", 2025)
 	addAlias(t, app, "Ridge B", []string{ridgeB}, 0, 0)
 
 	s := NewLodgingAssignmentsSync(app)
@@ -184,7 +184,7 @@ func TestLodgingAssignmentsSyncAppendsHistoryOnChange(t *testing.T) {
 func TestLodgingAssignmentsSyncRespectsStaffTouched(t *testing.T) {
 	app := newLodgingTestApp(t)
 	seedOneWeekendHousehold(t, app)
-	ridgeB := addUnit(t, app, "ridge-b")
+	ridgeB := addUnit(t, app, "ridge-b", 2025)
 	addAlias(t, app, "Ridge B", []string{ridgeB}, 0, 0)
 
 	s := NewLodgingAssignmentsSync(app)
@@ -265,7 +265,7 @@ func TestLodgingAssignmentsSyncQueuesAmbiguousSession(t *testing.T) {
 		"2025-05-23 07:00:00.000Z", "2025-05-26 07:00:00.000Z", 2025)
 	winter := addSession(t, app, cmIDWinterFamily, "Winter Family Camp", "family",
 		"2025-12-21 08:00:00.000Z", "2025-12-23 08:00:00.000Z", 2025)
-	unit := addUnit(t, app, "ridge-a")
+	unit := addUnit(t, app, "ridge-a", 2025)
 	addAlias(t, app, "Ridge A", []string{unit}, 0, 0)
 	cabinDef := addFieldDef(t, app, cmIDFamilyCampCabin, fieldNameFamilyCampCabin)
 
@@ -306,9 +306,9 @@ func TestIngestWritesAMultiRoomPlacementAsOneRow(t *testing.T) {
 	app := newLodgingTestApp(t)
 	sess := addSession(t, app, cmIDFamilyCamp1, "Family Camp 1", "family",
 		"2025-05-23 07:00:00.000Z", "2025-05-26 07:00:00.000Z", 2025)
-	bldg := addContainerUnit(t, app, "gt-tioga")
-	t1 := addUnitWithParent(t, app, "gt-tioga-1", bldg)
-	t2 := addUnitWithParent(t, app, "gt-tioga-2", bldg)
+	bldg := addContainerUnit(t, app, "gt-tioga", 2025)
+	t1 := addUnitWithParent(t, app, "gt-tioga-1", bldg, 2025)
+	t2 := addUnitWithParent(t, app, "gt-tioga-2", bldg, 2025)
 	addAlias(t, app, "Golden Triangle - Tioga 1and2", []string{t1, t2}, 0, 0)
 	cabinDef := addFieldDef(t, app, cmIDFamilyCampCabin, fieldNameFamilyCampCabin)
 
@@ -353,7 +353,7 @@ func TestLodgingAssignmentsSyncPersonGrain(t *testing.T) {
 	app := newLodgingTestApp(t)
 	womens := addSession(t, app, cmIDWomensWeekend, "Women's Weekend", "adult",
 		testAdultSessionStart, testAdultSessionEnd, 2025)
-	unit := addUnit(t, app, "river-c")
+	unit := addUnit(t, app, "river-c", 2025)
 	addAlias(t, app, "River C", []string{unit}, 0, 0)
 	def := addFieldDef(t, app, cmIDReportableFamilyCampCabin, fieldNameReportableFamilyCampCabin)
 
@@ -396,7 +396,7 @@ func TestLodgingAssignmentsSyncPersonGrainManyPerSession(t *testing.T) {
 	app := newLodgingTestApp(t)
 	womens := addSession(t, app, cmIDWomensWeekend, "Women's Weekend", "adult",
 		testAdultSessionStart, testAdultSessionEnd, 2025)
-	unit := addUnit(t, app, "river-c")
+	unit := addUnit(t, app, "river-c", 2025)
 	addAlias(t, app, "River C", []string{unit}, 0, 0)
 	def := addFieldDef(t, app, cmIDReportableFamilyCampCabin, fieldNameReportableFamilyCampCabin)
 	hh := addHousehold(t, app, 9001, 2025)
@@ -426,7 +426,7 @@ func TestLodgingAssignmentsSyncPersonGrainNoEnrolment(t *testing.T) {
 	app := newLodgingTestApp(t)
 	addSession(t, app, cmIDWomensWeekend, "Women's Weekend", "adult",
 		testAdultSessionStart, testAdultSessionEnd, 2025)
-	unit := addUnit(t, app, "river-c")
+	unit := addUnit(t, app, "river-c", 2025)
 	addAlias(t, app, "River C", []string{unit}, 0, 0)
 	def := addFieldDef(t, app, cmIDReportableFamilyCampCabin, fieldNameReportableFamilyCampCabin)
 
@@ -526,8 +526,8 @@ func TestLodgingAssignmentsSyncDryRunWritesNothing(t *testing.T) {
 	app := newLodgingTestApp(t)
 	sess := addSession(t, app, cmIDFamilyCamp1, "Family Camp 1", "family",
 		testSessionStart, testSessionEnd, 2025)
-	t1 := addUnit(t, app, "gt-tioga-1")
-	t2 := addUnit(t, app, "gt-tioga-2")
+	t1 := addUnit(t, app, "gt-tioga-1", 2025)
+	t2 := addUnit(t, app, "gt-tioga-2", 2025)
 	addAlias(t, app, "Golden Triangle - Tioga 1and2", []string{t1, t2}, 0, 0)
 	cabinDef := addFieldDef(t, app, cmIDFamilyCampCabin, fieldNameFamilyCampCabin)
 
@@ -620,7 +620,7 @@ func TestLodgingAssignmentsSyncQueuesUnknownHousehold(t *testing.T) {
 	app := newLodgingTestApp(t)
 	addSession(t, app, cmIDFamilyCamp1, "Family Camp 1", "family",
 		testSessionStart, testSessionEnd, 2025)
-	unit := addUnit(t, app, "ridge-a")
+	unit := addUnit(t, app, "ridge-a", 2025)
 	addAlias(t, app, "Ridge A", []string{unit}, 0, 0)
 	cabinDef := addFieldDef(t, app, cmIDFamilyCampCabin, fieldNameFamilyCampCabin)
 
@@ -652,7 +652,7 @@ func TestLodgingAssignmentsSyncQueuesUnknownPerson(t *testing.T) {
 	app := newLodgingTestApp(t)
 	addSession(t, app, cmIDWomensWeekend, "Women's Weekend", "adult",
 		testAdultSessionStart, testAdultSessionEnd, 2025)
-	unit := addUnit(t, app, "ridge-a")
+	unit := addUnit(t, app, "ridge-a", 2025)
 	addAlias(t, app, "Ridge A", []string{unit}, 0, 0)
 	reportableDef := addFieldDef(t, app, cmIDReportableFamilyCampCabin, fieldNameReportableFamilyCampCabin)
 
@@ -689,9 +689,9 @@ func TestLodgingAssignmentsSyncMergeLabelIgnoresMemberOrder(t *testing.T) {
 	app := newLodgingTestApp(t)
 	sess := addSession(t, app, cmIDFamilyCamp1, "Family Camp 1", "family",
 		testSessionStart, testSessionEnd, 2025)
-	bldg := addContainerUnit(t, app, "gt-tioga")
-	t1 := addUnitWithParent(t, app, "gt-tioga-1", bldg)
-	t2 := addUnitWithParent(t, app, "gt-tioga-2", bldg)
+	bldg := addContainerUnit(t, app, "gt-tioga", 2025)
+	t1 := addUnitWithParent(t, app, "gt-tioga-1", bldg, 2025)
+	t2 := addUnitWithParent(t, app, "gt-tioga-2", bldg, 2025)
 	addAlias(t, app, "Golden Triangle - Tioga 1and2", []string{t1, t2}, 0, 0)
 	// The same two rooms, named the other way round. Staff type both.
 	addAlias(t, app, "Golden Triangle - Tioga 2and1", []string{t2, t1}, 0, 0)
@@ -760,7 +760,7 @@ func TestLodgingAssignmentsSyncLabelDropsUnresolvableUnits(t *testing.T) {
 	app := newLodgingTestApp(t)
 	sess := addSession(t, app, cmIDFamilyCamp1, "Family Camp 1", "family",
 		testSessionStart, testSessionEnd, 2025)
-	ridge := addUnit(t, app, "ridge-a")
+	ridge := addUnit(t, app, "ridge-a", 2025)
 	addAlias(t, app, "Ridge A", []string{ridge}, 0, 0)
 	cabinDef := addFieldDef(t, app, cmIDFamilyCampCabin, fieldNameFamilyCampCabin)
 

@@ -136,7 +136,7 @@ func TestReplayIssuePlacesAPersonOnAnAdultWeekend(t *testing.T) {
 	app := newLodgingTestApp(t)
 	womens := addSession(t, app, cmIDWomensWeekend, "Women's Weekend", "adult",
 		testAdultSessionStart, testAdultSessionEnd, 2025)
-	unit := addUnit(t, app, "river-c")
+	unit := addUnit(t, app, "river-c", 2025)
 	addAlias(t, app, "River C", []string{unit}, 0, 0)
 
 	hh := addHousehold(t, app, 9001, 2025)
@@ -184,9 +184,9 @@ func TestReplayIssuePlacesAMultiRoomAliasAsOneRow(t *testing.T) {
 	app := newLodgingTestApp(t)
 	sess := addSession(t, app, cmIDFamilyCamp1, "Family Camp 1", "family",
 		testSessionStart, testSessionEnd, 2025)
-	building := addContainerUnit(t, app, "ridge")
-	r1 := addUnitWithParent(t, app, "ridge-1", building)
-	r2 := addUnitWithParent(t, app, "ridge-2", building)
+	building := addContainerUnit(t, app, "ridge", 2025)
+	r1 := addUnitWithParent(t, app, "ridge-1", building, 2025)
+	r2 := addUnitWithParent(t, app, "ridge-2", building, 2025)
 	addAlias(t, app, "Ridge 1and2", []string{r1, r2}, 0, 0)
 
 	hh := addHousehold(t, app, 9001, 2025)
@@ -270,9 +270,9 @@ func seedThreeWeekendHousehold(
 	third = addSession(t, app, cmIDWinterFamily, "Winter Family Camp", "family",
 		"2025-12-26 07:00:00.000Z", "2025-12-29 07:00:00.000Z", 2025)
 
-	unit := addUnit(t, app, "ridge-a")
+	unit := addUnit(t, app, "ridge-a", 2025)
 	addAlias(t, app, "Ridge A", []string{unit}, 0, 0)
-	unitB := addUnit(t, app, "ridge-b")
+	unitB := addUnit(t, app, "ridge-b", 2025)
 	addAlias(t, app, "Ridge B", []string{unitB}, 0, 0)
 
 	cabinDef := addFieldDef(t, app, cmIDFamilyCampCabin, fieldNameFamilyCampCabin)
@@ -383,9 +383,9 @@ func TestReplayIssueTicksARowWhoseBlockerIsGoneAndOpensTheNewOne(t *testing.T) {
 
 	// The repair staff just made: both rooms now hang off a container, so the
 	// alias names a COMPLETE child set and the merge is legal.
-	building := addContainerUnit(t, app, "ridge")
-	r1 := addUnitWithParent(t, app, "ridge-1", building)
-	r2 := addUnitWithParent(t, app, "ridge-2", building)
+	building := addContainerUnit(t, app, "ridge", 2025)
+	r1 := addUnitWithParent(t, app, "ridge-1", building, 2025)
+	r2 := addUnitWithParent(t, app, "ridge-2", building, 2025)
 	addAlias(t, app, "Ridge 1and2", []string{r1, r2}, 0, 0)
 
 	// ...but the household attends two weekends, and CampMinder holds one value
@@ -537,9 +537,9 @@ func TestReplayIssueReopensAnotherTickedRowItRehit(t *testing.T) {
 	fc6 := addSession(t, app, cmIDFamilyCamp6, "Family Camp 6", "family",
 		"2025-09-18 07:00:00.000Z", "2025-09-21 07:00:00.000Z", 2025)
 
-	building := addContainerUnit(t, app, "ridge")
-	r1 := addUnitWithParent(t, app, "ridge-1", building)
-	r2 := addUnitWithParent(t, app, "ridge-2", building)
+	building := addContainerUnit(t, app, "ridge", 2025)
+	r1 := addUnitWithParent(t, app, "ridge-1", building, 2025)
+	r2 := addUnitWithParent(t, app, "ridge-2", building, 2025)
 	addAlias(t, app, "Ridge 1and2", []string{r1, r2}, 0, 0)
 
 	cabinDef := addFieldDef(t, app, cmIDFamilyCampCabin, fieldNameFamilyCampCabin)
@@ -759,7 +759,7 @@ func TestReplayPartylessIssueRefusesRowsItCannotFanOut(t *testing.T) {
 func TestReplayPartylessIssueRefusesARowWhoseSourceFieldIsDisabled(t *testing.T) {
 	app := newLodgingTestApp(t)
 	seedTwoHouseholdsSharingACabinString(t, app, "Ridge Cabin 9", 2026)
-	addAlias(t, app, "Ridge Cabin 9", []string{addUnit(t, app, "ridge-9")}, 0, 0)
+	addAlias(t, app, "Ridge Cabin 9", []string{addUnit(t, app, "ridge-9", 2026)}, 0, 0)
 	saveRecord(t, app, "lodging_field_mappings", map[string]any{
 		"field_cm_id": cmIDFamilyCampCabin, "field_name": fieldNameFamilyCampCabin,
 		"target": targetCabinAssignmentHousehold, "is_enabled": false,
@@ -793,7 +793,7 @@ func TestReplayPartylessIssueFansOutToEveryPartyThatWroteTheString(t *testing.T)
 	app := newLodgingTestApp(t)
 	sessionID, parties := seedTwoHouseholdsSharingACabinString(t, app, "Ridge Cabin 9", 2026)
 	// The staff repair this replay follows: the string now has an alias.
-	unitID := addUnit(t, app, "ridge-9")
+	unitID := addUnit(t, app, "ridge-9", 2026)
 	addAlias(t, app, "Ridge Cabin 9", []string{unitID}, 0, 0)
 
 	id := seedIssue(t, app, map[string]any{
@@ -861,7 +861,7 @@ func TestReplayPartylessIssueReopensARowWhoseStringStillDoesNotResolve(t *testin
 	// the alias covers 2027 onward, not 2026, so this year's occurrence of
 	// the string still does not resolve: reopening is the right outcome for
 	// a stale mapping, unlike for an ignore.
-	unit := addUnit(t, app, "gt-somewhere")
+	unit := addUnit(t, app, "gt-somewhere", 2027)
 	aliasID := addAlias(t, app, "Nowhere Cabin", []string{unit}, 2027, 0)
 
 	id := seedIssue(t, app, map[string]any{
@@ -993,7 +993,7 @@ func TestReopenRecordedDoesNotReopenAnUnrelatedIgnoredRowDuringAPartyScopedRepla
 func TestReplayPartylessIssueCountsOnlyThePartiesItPlaced(t *testing.T) {
 	app := newLodgingTestApp(t)
 	_, _, _, parties := seedFanOutWithOneAmbiguousHousehold(t, app, "Ridge Cabin 9")
-	addAlias(t, app, "Ridge Cabin 9", []string{addUnit(t, app, "ridge-9")}, 0, 0)
+	addAlias(t, app, "Ridge Cabin 9", []string{addUnit(t, app, "ridge-9", 2025)}, 0, 0)
 
 	id := seedIssue(t, app, map[string]any{
 		"kind":         issueUnresolvedAlias,
@@ -1061,7 +1061,7 @@ func TestReplayPartylessIssueCountsOnlyThePartiesItPlaced(t *testing.T) {
 func TestReplayPartylessIssueLeavesAnotherHouseholdsTickedRowAlone(t *testing.T) {
 	app := newLodgingTestApp(t)
 	_, _, _, parties := seedFanOutWithOneAmbiguousHousehold(t, app, "Ridge Cabin 9")
-	addAlias(t, app, "Ridge Cabin 9", []string{addUnit(t, app, "ridge-9")}, 0, 0)
+	addAlias(t, app, "Ridge Cabin 9", []string{addUnit(t, app, "ridge-9", 2025)}, 0, 0)
 
 	// A third household worked and ticked its own ambiguous_session row for this
 	// same string in an earlier season's shape. It no longer writes the value, so
@@ -1127,7 +1127,7 @@ func TestReplayPartylessIssueReopensEveryBlockedPartysRow(t *testing.T) {
 	_, parties := seedTwoHouseholdsSharingACabinString(t, app, "Ridge Cabin 9", 2025)
 	// The string resolves, so the alias row's own blocker is genuinely gone and
 	// the only thing this pass can record is the two attribution failures.
-	addAlias(t, app, "Ridge Cabin 9", []string{addUnit(t, app, "ridge-9")}, 0, 0)
+	addAlias(t, app, "Ridge Cabin 9", []string{addUnit(t, app, "ridge-9", 2025)}, 0, 0)
 
 	// Both households attend a second weekend, so CampMinder's single value for
 	// the year cannot say which one it describes -- for either of them.
@@ -1200,7 +1200,7 @@ func TestReplayPartylessIssueReopensEveryBlockedPartysRow(t *testing.T) {
 func TestReplayPartylessIssueAttributesWithTheObservationTimestamp(t *testing.T) {
 	app := newLodgingTestApp(t)
 	_, second, third, _ := seedFanOutWithOneAmbiguousHousehold(t, app, "Ridge Cabin 9")
-	addAlias(t, app, "Ridge Cabin 9", []string{addUnit(t, app, "ridge-9")}, 0, 0)
+	addAlias(t, app, "Ridge Cabin 9", []string{addUnit(t, app, "ridge-9", 2025)}, 0, 0)
 
 	id := seedIssue(t, app, map[string]any{
 		"kind":         issueUnresolvedAlias,
@@ -1241,7 +1241,7 @@ func TestReplayPartylessIssueFansOutAcrossThePersonGrain(t *testing.T) {
 	app := newLodgingTestApp(t)
 	womens := addSession(t, app, cmIDWomensWeekend, "Women's Weekend", "adult",
 		testAdultSessionStart, testAdultSessionEnd, 2025)
-	unitID := addUnit(t, app, "river-c")
+	unitID := addUnit(t, app, "river-c", 2025)
 	addAlias(t, app, "River C", []string{unitID}, 0, 0)
 	def := addFieldDef(t, app, cmIDReportableFamilyCampCabin, fieldNameReportableFamilyCampCabin)
 

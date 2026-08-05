@@ -8,23 +8,33 @@ import (
 // TestAliasResolverUnboundedWindows: PocketBase stores an unset year bound as 0,
 // not NULL. 94 of the 100 seeded alias rows are unbounded, so a resolver that
 // reads 0 as a real lower bound resolves almost nothing.
+//
+// "ridge-a" gets one lodging_units row per tested year -- the registry itself
+// is year-scoped now (migration 1500000140), so a cabin that was never renamed
+// still has a distinct record, and id, every season. The alias's own window
+// stays unbounded throughout: this test is about the ALIAS STRING resolving at
+// any year, not about one unit id surviving across years.
 func TestAliasResolverUnboundedWindows(t *testing.T) {
 	app := newLodgingTestApp(t)
-	ridgeA := addUnit(t, app, "ridge-a")
-	addAlias(t, app, "Ridge A", []string{ridgeA}, 0, 0)
+	years := []int{2017, 2022, 2025, 2026, 2030}
+	ridgeAByYear := make(map[int]string, len(years))
+	for _, year := range years {
+		ridgeAByYear[year] = addUnit(t, app, "ridge-a", year)
+	}
+	addAlias(t, app, "Ridge A", []string{ridgeAByYear[years[0]]}, 0, 0)
 
 	r, err := NewAliasResolver(app)
 	if err != nil {
 		t.Fatalf("NewAliasResolver: %v", err)
 	}
 
-	for _, year := range []int{2017, 2022, 2025, 2026, 2030} {
+	for _, year := range years {
 		got := r.Resolve("Ridge A", year)
 		if !got.Resolved {
 			t.Errorf("year %d: unbounded alias did not resolve", year)
 		}
-		if len(got.UnitIDs) != 1 || got.UnitIDs[0] != ridgeA {
-			t.Errorf("year %d: UnitIDs = %v, want [%s]", year, got.UnitIDs, ridgeA)
+		if want := ridgeAByYear[year]; len(got.UnitIDs) != 1 || got.UnitIDs[0] != want {
+			t.Errorf("year %d: UnitIDs = %v, want [%s]", year, got.UnitIDs, want)
 		}
 		if got.IsMerge() {
 			t.Errorf("year %d: single-member alias reported as a merge", year)
@@ -38,10 +48,15 @@ func TestAliasResolverUnboundedWindows(t *testing.T) {
 // across camp, and nothing downstream would notice.
 func TestAliasResolverRespectsRenameWindows(t *testing.T) {
 	app := newLodgingTestApp(t)
-	gtWawona := addUnit(t, app, "gt-wawona")
-	gtFront := addUnit(t, app, "gt-wawona-front")
-	gtBack := addUnit(t, app, "gt-wawona-back")
-	hcDoctors := addUnit(t, app, "hc-doctors-house")
+	// gtWawona is queried at 2023 (inside its window) and hcDoctors at 2025
+	// (inside its own), so each needs a row at exactly the year it is resolved
+	// against. gtFront/gtBack are never resolved directly in this test -- only
+	// named as members of an alias nothing here calls Resolve on -- so their
+	// year is unconstrained; 2025 matches the rename they stand in for.
+	gtWawona := addUnit(t, app, "gt-wawona", 2023)
+	gtFront := addUnit(t, app, "gt-wawona-front", 2025)
+	gtBack := addUnit(t, app, "gt-wawona-back", 2025)
+	hcDoctors := addUnit(t, app, "hc-doctors-house", 2025)
 
 	addAlias(t, app, "Golden Triangle - Doctor's House", []string{gtWawona}, 0, 2024)
 	addAlias(t, app, "Golden Triangle - Wawona", []string{gtFront, gtBack}, 2025, 0)
@@ -76,8 +91,8 @@ func TestAliasResolverRespectsRenameWindows(t *testing.T) {
 // merge of that many rooms (spec 3.4). Six seeded aliases are of this shape.
 func TestAliasResolverMergeDenotingAlias(t *testing.T) {
 	app := newLodgingTestApp(t)
-	tioga1 := addUnit(t, app, "gt-tioga-1")
-	tioga2 := addUnit(t, app, "gt-tioga-2")
+	tioga1 := addUnit(t, app, "gt-tioga-1", 2025)
+	tioga2 := addUnit(t, app, "gt-tioga-2", 2025)
 	addAlias(t, app, "Golden Triangle - Tioga 1and2", []string{tioga1, tioga2}, 0, 0)
 
 	r, err := NewAliasResolver(app)
@@ -106,7 +121,7 @@ func TestAliasResolverMergeDenotingAlias(t *testing.T) {
 // and must not panic or error.
 func TestAliasResolverUnresolvedIsNotAnError(t *testing.T) {
 	app := newLodgingTestApp(t)
-	addUnit(t, app, "ridge-a")
+	addUnit(t, app, "ridge-a", 2022)
 
 	r, err := NewAliasResolver(app)
 	if err != nil {
@@ -133,7 +148,7 @@ func TestAliasResolverUnresolvedIsNotAnError(t *testing.T) {
 // whitespace; inner spacing stays significant because the seed relies on it.
 func TestAliasResolverToleratesWhitespaceAndCase(t *testing.T) {
 	app := newLodgingTestApp(t)
-	dsA := addUnit(t, app, "hc-downstairs-a")
+	dsA := addUnit(t, app, "hc-downstairs-a", 2025)
 	addAlias(t, app, "Health Center Downstairs  - Room A", []string{dsA}, 0, 0)
 
 	r, err := NewAliasResolver(app)
@@ -163,8 +178,8 @@ func TestAliasResolverToleratesWhitespaceAndCase(t *testing.T) {
 // windows are a data problem for staff, not something to resolve arbitrarily.
 func TestAliasResolverFlagsOverlappingWindows(t *testing.T) {
 	app := newLodgingTestApp(t)
-	a := addUnit(t, app, "ridge-a")
-	b := addUnit(t, app, "ridge-b")
+	a := addUnit(t, app, "ridge-a", 2025)
+	b := addUnit(t, app, "ridge-b", 2025)
 	addAlias(t, app, "Ridge A", []string{a}, 0, 0)
 	addAlias(t, app, "Ridge A", []string{b}, 2024, 0)
 
@@ -179,5 +194,58 @@ func TestAliasResolverFlagsOverlappingWindows(t *testing.T) {
 	}
 	if !got.Ambiguous {
 		t.Error("Ambiguous flag not set; the caller cannot tell this apart from 'no alias'")
+	}
+}
+
+// TestResolveReturnsTheRequestedYearsUnitIDs is the silent-failure case Task 5
+// exists for. An alias stores whichever season's record ids existed when it
+// was written and is never re-pointed -- lodging_assignments_sync.go writes
+// UnitIDs straight into a placement's relation, so resolving 2027 must not
+// hand back 2026's ids.
+func TestResolveReturnsTheRequestedYearsUnitIDs(t *testing.T) {
+	app := newLodgingTestApp(t)
+	id2026 := addUnit(t, app, "test-unit-a", 2026)
+	id2027 := addUnit(t, app, "test-unit-a", 2027)
+	addAlias(t, app, "Test Building A", []string{id2026}, 0, 0)
+
+	r, err := NewAliasResolver(app)
+	if err != nil {
+		t.Fatalf("NewAliasResolver: %v", err)
+	}
+
+	got := r.Resolve("Test Building A", 2027)
+	if !got.Resolved {
+		t.Fatalf("not resolved for 2027")
+	}
+	if len(got.UnitIDs) != 1 || got.UnitIDs[0] != id2027 {
+		t.Errorf("UnitIDs = %v, want the 2027 row %q", got.UnitIDs, id2027)
+	}
+	if len(got.UnitCodes) != 1 || got.UnitCodes[0] != "test-unit-a" {
+		t.Errorf("UnitCodes = %v, want [test-unit-a]", got.UnitCodes)
+	}
+}
+
+// TestResolveIsUnresolvedWhenAMemberIsMissingThatYear pins all-or-nothing
+// resolution: if any member code has no row in the requested year, the whole
+// alias is unresolved. A partial member set would silently shrink a family's
+// rooms, which is worse than a name that does not resolve.
+func TestResolveIsUnresolvedWhenAMemberIsMissingThatYear(t *testing.T) {
+	app := newLodgingTestApp(t)
+	a2026 := addUnit(t, app, "test-unit-a", 2026)
+	b2026 := addUnit(t, app, "test-unit-b", 2026)
+	addUnit(t, app, "test-unit-a", 2027) // b was demolished; not carried forward
+	addAlias(t, app, "Test Pair", []string{a2026, b2026}, 0, 0)
+
+	r, err := NewAliasResolver(app)
+	if err != nil {
+		t.Fatalf("NewAliasResolver: %v", err)
+	}
+
+	got := r.Resolve("Test Pair", 2027)
+	if got.Resolved {
+		t.Errorf("resolved with a missing member; want unresolved")
+	}
+	if len(got.UnitIDs) != 0 {
+		t.Errorf("UnitIDs = %v, want empty -- a partial member set silently shrinks a family's rooms", got.UnitIDs)
 	}
 }

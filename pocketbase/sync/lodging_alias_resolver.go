@@ -2,7 +2,6 @@ package sync
 
 import (
 	"fmt"
-	"slices"
 	"strings"
 
 	"github.com/pocketbase/pocketbase/core"
@@ -45,11 +44,19 @@ type AliasResolution struct {
 // IsMerge reports whether the alias denotes a merge of two or more atomic rooms.
 func (r AliasResolution) IsMerge() bool { return len(r.UnitIDs) >= 2 }
 
+// codeYear keys a unit by its cross-year identity plus the season, which is
+// what the composite unique index (code, year) guarantees is unique.
+type codeYear struct {
+	code string
+	year int
+}
+
 // AliasResolver resolves raw cabin strings through lodging_unit_aliases,
 // honoring each row's year window. Built once per sync run and read many times.
 type AliasResolver struct {
-	byString map[string][]aliasRow
-	unitCode map[string]string
+	byString     map[string][]aliasRow
+	unitCode     map[string]string
+	idByCodeYear map[codeYear]string
 }
 
 // NewAliasResolver loads the unit and alias tables into memory. Build one per
@@ -65,8 +72,11 @@ func NewAliasResolver(app core.App) (*AliasResolver, error) {
 	if err != nil {
 		return nil, fmt.Errorf("loading lodging_units: %w", err)
 	}
+	r.idByCodeYear = make(map[codeYear]string)
 	for _, u := range units {
-		r.unitCode[u.Id] = u.GetString("code")
+		code := u.GetString("code")
+		r.unitCode[u.Id] = code
+		r.idByCodeYear[codeYear{code: code, year: u.GetInt("year")}] = u.Id
 	}
 
 	aliases, err := app.FindRecordsByFilter("lodging_unit_aliases", "", "", 0, 0)
@@ -112,15 +122,32 @@ func (r *AliasResolver) Resolve(raw string, year int) AliasResolution {
 	case 0:
 		return out
 	case 1:
-		// Cloned, not aliased: the slice header inside matches[0] shares its
-		// backing array with the resolver's own byString map, so handing it
-		// straight out lets any caller that sorts in place permute the stored
-		// member list for the rest of the run.
-		out.UnitIDs = slices.Clone(matches[0].MemberUnitIDs)
-		out.UnitCodes = make([]string, 0, len(out.UnitIDs))
-		for _, id := range out.UnitIDs {
-			out.UnitCodes = append(out.UnitCodes, r.unitCode[id])
+		// An alias stores whichever season's record ids existed when it was
+		// written, and it is never re-pointed: `valid_from_year` records what a
+		// building was CALLED from a given year, which is a rename history, not
+		// a per-year copy. So translate stored id -> code -> the requested
+		// year's id. `code` is the cross-year identity thread.
+		stored := matches[0].MemberUnitIDs
+		ids := make([]string, 0, len(stored))
+		codes := make([]string, 0, len(stored))
+		for _, id := range stored {
+			code := r.unitCode[id]
+			if code == "" {
+				continue
+			}
+			target, ok := r.idByCodeYear[codeYear{code: code, year: year}]
+			if !ok {
+				// ALL OR NOTHING. A building with no row this season was not
+				// carried forward. Returning the members that do exist would
+				// silently shrink a family's rooms, which is worse than saying
+				// the name does not resolve.
+				return out
+			}
+			ids = append(ids, target)
+			codes = append(codes, code)
 		}
+		out.UnitIDs = ids
+		out.UnitCodes = codes
 		out.Resolved = len(out.UnitIDs) > 0
 		return out
 	default:
