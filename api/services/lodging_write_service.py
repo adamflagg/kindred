@@ -483,26 +483,34 @@ class LodgingWriteService:
         return LodgingWriteResponse(record_id=str(getattr(record, "id", "")))
 
     async def set_slot_merge(self, request: SlotMergeRequest) -> LodgingWriteResponse:
-        """Set one container's draw level for a scenario.
+        """Set one container's draw level, at a scenario or at the weekend.
 
-        SCENARIO-SCOPED, unlike set_availability. Availability lost its scenario
-        dimension in 1500000135 because a burst pipe closes a cabin in every
-        plan; a draw level is a planning choice, so it lives only in a draft.
-        The schema refuses a blank scenario, so the mirror cannot reach here.
+        `request.scenario` MAY BE BLANK now (1500000140), and this method does
+        nothing special when it is: a blank scenario writes the WEEKEND-LEVEL
+        row (`scenario == ""`), which is a legal, distinct row from any
+        scenario's own -- not a refused write and not a stand-in for "the
+        mirror". That is the reversal from set_availability, which this
+        docstring used to contrast against: availability lost its scenario
+        dimension outright in 1500000135, one layer with no tiers, because a
+        burst pipe closes a cabin in every plan. A merge keeps its scenario
+        dimension AND gains a coarser weekend-level tier underneath it -- see
+        SlotMergeRequest and resolve_combined for the two-tier resolution this
+        row participates in.
 
         NO DELETE BRANCH, unlike set_availability. There, `None` means "clear
         the override" and is spelled as the absence of a row. Here the board
         only ever writes an explicit true or false -- the absent row means
-        "inherit the registry default", and nothing in the UI asks to return to
+        "inherit the next tier down", and nothing in the UI asks to return to
         it. Adding a clear later means adding the branch, not repurposing this
         one.
 
         The create races exactly as set_availability's does:
         idx_lodging_slot_merge_unique is UNIQUE on (unit, session, year,
-        scenario), so two staff merging the same house in the same scenario
-        both find no row, both create, and the index rejects the loser. Guarded
-        identically -- the loser re-reads and updates the winner's row, which by
-        construction is the row this call wanted.
+        scenario) -- '' is an ordinary value in that index, same as any
+        scenario id -- so two staff merging the same house at the same tier
+        both find no row, both create, and the index rejects the loser.
+        Guarded identically -- the loser re-reads and updates the winner's
+        row, which by construction is the row this call wanted.
         """
         session_pb_id = await self._resolve_session_pb_id(request.year, request.session_cm_id)
 

@@ -258,14 +258,36 @@ def _is_planning_inventory(unit: LodgingUnitSummary) -> bool:
     return unit.inventory_class != "staff_default" or unit.is_family_available
 
 
-def resolve_combined(*, default: bool, override: bool | None) -> bool:
-    """The draw level for one container, in one scenario.
+def resolve_combined(*, default: bool, override: bool | None, session_override: bool | None = None) -> bool:
+    """The draw level for one container, resolved through up to two override tiers.
 
-    `override is None` means NO ROW, which inherits — it is not False. The two
-    are different facts, and flattening them would make it impossible to split
-    a container whose registry default is combined.
+    Highest first: `override` (this scenario's own `lodging_slot_merges` row),
+    then `session_override` (the WEEKEND-LEVEL row -- `scenario == ""`,
+    1500000140), then `default` (`lodging_units.default_combined`).
+
+    The weekend-level tier exists because a merge is a fact about the
+    weekend, not only about a plan: unlike a placement, no sync ever writes a
+    draw level, so there is no CampMinder record of truth a writable mirror
+    would corrupt. It is seen on the CampMinder mirror itself (`override` is
+    always None there -- no scenario means no scenario row) AND inherited by
+    every scenario that has not overridden it locally. Same argument
+    1500000135 already made for lodging_availability.
+
+    `is None` at EITHER tier means NO ROW at that tier, which inherits down
+    to the next one -- it is not False. Flattening either absence to False
+    would make it impossible to split a container whose registry default is
+    combined with no scenario row present, or to have a scenario un-close a
+    weekend-level split with no scenario row of its own (a bare
+    `session_override` falling through to `default` while a real
+    `session_override = False` got treated the same as "absent" would make a
+    weekend-level split unreachable from a scenario that never touched the
+    unit).
     """
-    return default if override is None else override
+    if override is not None:
+        return override
+    if session_override is not None:
+        return session_override
+    return default
 
 
 class LodgingRosterService:
@@ -349,20 +371,21 @@ class LodgingRosterService:
             # deleted this table's scenario dimension, so a scenario has nothing
             # to overlay -- see fetch_availability.
             #
-            # No scenario means the CampMinder mirror, which is never
-            # overridable -- `scenario` on lodging_slot_merges is a REQUIRED
-            # relation (1500000139). Skipping the fetch entirely, rather than
-            # querying `scenario = ""`, says that as code instead of relying on
-            # an empty result set; resolve_combined then has no override to see
-            # and every container inherits its registry default.
-            merges_task = (
-                tg.create_task(self.repository.fetch_slot_merges(year, session_pb_id, scenario)) if scenario else None
-            )
+            # ALWAYS fetched now, mirror included (1500000140). A merge is a
+            # fact about the weekend, not only about a plan -- unlike a
+            # placement, no sync writes a draw level, so there is no record of
+            # truth a scenario-gated read was ever protecting here. The
+            # CampMinder mirror (`scenario == ""`) still gets no SCENARIO row
+            # -- there is none to have -- but it can and does have a
+            # WEEKEND-LEVEL row, and fetch_slot_merges returns exactly that
+            # tier for a blank scenario rather than an empty list.
+            # resolve_combined then sees both tiers.
+            merges_task = tg.create_task(self.repository.fetch_slot_merges(year, session_pb_id, scenario))
 
         unit_summaries = self._build_units(
             units_task.result(),
             availability_task.result(),
-            merges_task.result() if merges_task is not None else [],
+            merges_task.result(),
         )
         parties = self._build_parties(
             session_type=session_type,
@@ -450,18 +473,15 @@ class LodgingRosterService:
                 # none. These are separate TaskGroups and fixing only one of
                 # them is the half-fix the guard tests exist to catch.
                 #
-                # Merge overrides only when a scenario is named -- exactly as
-                # build_roster skips the round trip for the CampMinder mirror.
-                merges_task = (
-                    inner.create_task(self.repository.fetch_slot_merges(year, session_pb_id, scenario))
-                    if scenario
-                    else None
-                )
+                # Merges are ALWAYS fetched, exactly as build_roster now does
+                # (1500000140) -- the mirror gets the weekend-level tier
+                # rather than an empty list.
+                merges_task = inner.create_task(self.repository.fetch_slot_merges(year, session_pb_id, scenario))
 
             unit_summaries = self._build_units(
                 units,
                 availability_task.result(),
-                merges_task.result() if merges_task is not None else [],
+                merges_task.result(),
             )
             parties = self._build_parties(
                 session_type=_s(session, "session_type"),
@@ -521,9 +541,19 @@ class LodgingRosterService:
         # id -> code, so the parent relation can be published as a code.
         code_by_id = {_s(unit, "id"): _s(unit, "code") for unit in units}
 
-        # Absent row means inherit -- see resolve_combined. Keyed by unit id
-        # because that is what the relation stores.
-        merge_by_unit: dict[str, bool] = {_s(row, "unit"): _b(row, "combined") for row in merges}
+        # Two tiers in one list (1500000140), split on whether the row's own
+        # `scenario` is set. Absent row at EITHER tier means inherit -- see
+        # resolve_combined -- so this builds two dicts rather than merging
+        # session-level rows into `scenario_merge_by_unit` under a `, False`
+        # default, which would collapse "no scenario row" into "scenario row
+        # says split" and make a weekend-level combine unreachable from a
+        # scenario that never touched the unit. Both keyed by unit id, which
+        # is what the relation stores.
+        scenario_merge_by_unit: dict[str, bool] = {}
+        session_merge_by_unit: dict[str, bool] = {}
+        for row in merges:
+            target = scenario_merge_by_unit if _s(row, "scenario") else session_merge_by_unit
+            target[_s(row, "unit")] = _b(row, "combined")
 
         # Bathroom groups are computed across ALL units, because a group's
         # membership does not depend on the session.
@@ -580,7 +610,8 @@ class LodgingRosterService:
                     parent_code=code_by_id.get(_s(unit, "parent_unit"), ""),
                     is_combined=resolve_combined(
                         default=_b(unit, "default_combined"),
-                        override=merge_by_unit.get(_s(unit, "id")),
+                        override=scenario_merge_by_unit.get(_s(unit, "id")),
+                        session_override=session_merge_by_unit.get(_s(unit, "id")),
                     ),
                     inventory_class=inventory_class,
                     family_available_override=override,

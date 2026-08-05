@@ -82,8 +82,10 @@ def _repo(**overrides: Any) -> MagicMock:
         # The scenario layer. Only read when a scenario is asked for, which is
         # itself asserted below -- no scenario must cost no extra fetches.
         "fetch_draft_assignments": [],
-        # A container's per-scenario draw-level override. Same rule as the
-        # draft placements above: only read when a scenario is asked for.
+        # A container's draw-level override, at a scenario or at the
+        # weekend. UNLIKE the draft placements above, this is now read
+        # unconditionally (1500000140) -- the mirror gets the weekend-level
+        # tier instead of skipping the round trip. See TestSlotMergeTiers.
         "fetch_slot_merges": [],
         "fetch_attendees_for_session": [],
         "fetch_households": {},
@@ -521,11 +523,15 @@ class TestUnitsAndCounts:
 
     @pytest.mark.asyncio
     async def test_a_true_override_beats_a_false_default(self) -> None:
-        """The scenario says "combined", overriding a registry default of split."""
+        """THIS scenario says "combined", overriding a registry default of split."""
         repo = _repo(
             fetch_session=FAMILY_SESSION,
             fetch_units=[_unit("u1", "gt-wawona", "Wawona", sleeps=7, default_combined=False)],
-            fetch_slot_merges=[_rec(unit="u1", combined=True)],
+            # `scenario="scn_1"` set explicitly, matching the call below:
+            # this is what puts the row in the SCENARIO tier rather than the
+            # weekend-level one -- see TestSlotMergeTiers for a row that
+            # deliberately omits it.
+            fetch_slot_merges=[_rec(unit="u1", combined=True, scenario="scn_1")],
         )
         roster = await LodgingRosterService(repo).build_roster(2026, 1000001, scenario="scn_1")
 
@@ -544,7 +550,7 @@ class TestUnitsAndCounts:
         repo = _repo(
             fetch_session=FAMILY_SESSION,
             fetch_units=[_unit("u1", "gt-wawona", "Wawona", sleeps=7, default_combined=True)],
-            fetch_slot_merges=[_rec(unit="u1", combined=False)],
+            fetch_slot_merges=[_rec(unit="u1", combined=False, scenario="scn_1")],
         )
         roster = await LodgingRosterService(repo).build_roster(2026, 1000001, scenario="scn_1")
 
@@ -552,10 +558,12 @@ class TestUnitsAndCounts:
 
     @pytest.mark.asyncio
     async def test_no_override_row_inherits_a_true_default(self) -> None:
-        """No row is INHERIT, not False -- the whole reason `override` is a
-        tri-state. `merge_by_unit.get(_s(unit, "id"), False)` would flatten
-        the absent row to False here and this would fail: the registry
-        default is True and nothing in this scenario has touched it.
+        """No row at EITHER tier is INHERIT, not False -- the whole reason
+        `override` and `session_override` are each a tri-state.
+        `merge_by_unit.get(_s(unit, "id"), False)` would flatten the absent
+        row to False here and this would fail: the registry default is True
+        and nothing in this scenario, or at the weekend level, has touched
+        it.
         """
         repo = _repo(
             fetch_session=FAMILY_SESSION,
@@ -565,6 +573,120 @@ class TestUnitsAndCounts:
         roster = await LodgingRosterService(repo).build_roster(2026, 1000001, scenario="scn_1")
 
         assert roster.units[0].is_combined is True
+
+
+class TestSlotMergeTiers:
+    """resolve_combined's three tiers, exercised through the roster assembly.
+
+    Highest first: THIS scenario's own `lodging_slot_merges` row, the
+    WEEKEND-LEVEL row (`scenario == ""`, inherited by every scenario and seen
+    on the CampMinder mirror), then `lodging_units.default_combined`.
+    1500000140 added the middle tier -- these are the cases
+    `TestUnitsAndCounts` above could not previously express, because
+    `fetch_slot_merges` used to be skipped outright for the mirror and
+    `scenario` was a required relation. A merge is a fact about the weekend,
+    not only about a plan (LodgingBoard.tsx:100-104 makes the identical
+    argument for availability), which is why the mirror participates here at
+    all rather than only in TestScenarioResolution's call-count guards.
+    """
+
+    @pytest.mark.asyncio
+    async def test_a_scenario_row_beats_a_weekend_level_row(self) -> None:
+        """A scenario can un-combine a house the weekend has combined.
+
+        Two rows on the same unit, different tiers: the weekend-level row
+        says True, THIS scenario's own row says False. A resolver that only
+        looked as far as the first row it found -- or that let the
+        weekend-level tier shadow the scenario tier -- would report this
+        container as combined in a plan that has explicitly split it.
+        """
+        repo = _repo(
+            fetch_session=FAMILY_SESSION,
+            fetch_units=[_unit("u1", "gt-wawona", "Wawona", sleeps=7, default_combined=False)],
+            fetch_slot_merges=[
+                _rec(unit="u1", combined=False, scenario="scn_1"),
+                _rec(unit="u1", combined=True, scenario=""),
+            ],
+        )
+        roster = await LodgingRosterService(repo).build_roster(2026, 1000001, scenario="scn_1")
+
+        assert roster.units[0].is_combined is False
+
+    @pytest.mark.asyncio
+    async def test_a_weekend_level_false_beats_a_true_default(self) -> None:
+        """The weekend has split a house the registry defaults to combined.
+
+        No scenario row at all -- only the weekend-level one -- so this also
+        proves the middle tier is reachable with an EMPTY scenario tier, not
+        only when a scenario row happens to agree with it.
+        """
+        repo = _repo(
+            fetch_session=FAMILY_SESSION,
+            fetch_units=[_unit("u1", "gt-wawona", "Wawona", sleeps=7, default_combined=True)],
+            fetch_slot_merges=[_rec(unit="u1", combined=False, scenario="")],
+        )
+        roster = await LodgingRosterService(repo).build_roster(2026, 1000001, scenario="scn_1")
+
+        assert roster.units[0].is_combined is False
+
+    @pytest.mark.asyncio
+    async def test_a_weekend_level_true_beats_a_false_default(self) -> None:
+        """The weekend has combined a house the registry defaults to split.
+
+        The direction that dies if the weekend-level lookup grows a
+        `, False` default the way the scenario one already guards against
+        above: an absent-row-means-False bug at this tier would make a
+        weekend-level combine unreachable whenever the registry default is
+        split.
+        """
+        repo = _repo(
+            fetch_session=FAMILY_SESSION,
+            fetch_units=[_unit("u1", "gt-wawona", "Wawona", sleeps=7, default_combined=False)],
+            fetch_slot_merges=[_rec(unit="u1", combined=True, scenario="")],
+        )
+        roster = await LodgingRosterService(repo).build_roster(2026, 1000001, scenario="scn_1")
+
+        assert roster.units[0].is_combined is True
+
+    @pytest.mark.asyncio
+    async def test_no_rows_at_either_tier_inherits_the_registry_default(self) -> None:
+        """Nothing has touched this container, at any tier."""
+        repo = _repo(
+            fetch_session=FAMILY_SESSION,
+            fetch_units=[
+                _unit("u1", "gt-wawona", "Wawona", sleeps=7, default_combined=True),
+                _unit("u2", "le-shack", "Le Shack", sleeps=4, default_combined=False),
+            ],
+            fetch_slot_merges=[],
+        )
+        roster = await LodgingRosterService(repo).build_roster(2026, 1000001, scenario="scn_1")
+
+        by_code = {u.code: u for u in roster.units}
+        assert by_code["gt-wawona"].is_combined is True
+        assert by_code["le-shack"].is_combined is False
+
+    @pytest.mark.asyncio
+    async def test_the_mirror_sees_a_weekend_level_row(self) -> None:
+        """The whole point of 1500000140: the CampMinder mirror is no longer
+        blind to `lodging_slot_merges`.
+
+        No `scenario` argument at all -- this is the production/no-plan call,
+        which used to skip `fetch_slot_merges` entirely (see
+        TestScenarioResolution.test_no_scenario_never_reads_the_draft, which
+        pinned `await_count == 0` for exactly this call before the reversal).
+        The weekend-level row must still resolve, proving the mirror is not
+        merely CALLING fetch_slot_merges now but actually seeing what it
+        returns.
+        """
+        repo = _repo(
+            fetch_session=FAMILY_SESSION,
+            fetch_units=[_unit("u1", "gt-wawona", "Wawona", sleeps=7, default_combined=False)],
+            fetch_slot_merges=[_rec(unit="u1", combined=True, scenario="")],
+        )
+        roster = await LodgingRosterService(repo).build_roster(2026, 1000001)
+
+        assert roster.units[0].is_combined is True
+        repo.fetch_slot_merges.assert_awaited_once_with(2026, "sess_1", "")
 
     @pytest.mark.asyncio
     async def test_parent_code_resolves_through_the_id_to_code_map(self) -> None:
@@ -978,11 +1100,13 @@ class TestScenarioResolution:
 
         assert repo.fetch_draft_assignments.await_count == 0
         assert repo.fetch_scenario_availability.await_count == 0
-        # The CampMinder mirror is never overridable -- querying
-        # `scenario = ""` against a REQUIRED relation would return nothing
-        # anyway, so the round trip is skipped entirely rather than relying on
-        # an empty result.
-        assert repo.fetch_slot_merges.await_count == 0
+        # REVERSED by 1500000140 (was `== 0`): a merge is a fact about the
+        # weekend, not only about a plan, so the mirror is no longer skipped
+        # here -- it reads the WEEKEND-LEVEL tier (`scenario = ""`) exactly
+        # as a named scenario reads its own tier plus this one.
+        # TestSlotMergeTiers.test_the_mirror_sees_a_weekend_level_row covers
+        # the content this now returns, not just the call count.
+        assert repo.fetch_slot_merges.await_count == 1
 
     @pytest.mark.asyncio
     async def test_a_scenario_never_reads_the_campminder_mirror(self) -> None:

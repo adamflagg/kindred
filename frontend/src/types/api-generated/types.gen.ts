@@ -5598,12 +5598,21 @@ export type ShareRequestSummary = {
 /**
  * SlotMergeRequest
  *
- * Set or clear one container's draw level inside a scenario.
+ * Set one container's draw level, at a scenario or at the weekend.
  *
- * `scenario` is min_length=1 rather than optional: the CampMinder mirror
- * inherits the registry default and is never overridable, and the collection's
- * `scenario` relation is required, so a blank one could not be stored anyway.
- * Refusing here makes that a validation error rather than a 500.
+ * `scenario` is OPTIONAL (1500000140), the opposite of the call
+ * 1500000139 made: a blank value used to be refused here specifically
+ * because the CampMinder mirror was never supposed to be overridable and
+ * the collection's `scenario` relation was required, so a blank one could
+ * not be stored anyway. Both premises are gone. A merge is a fact about the
+ * WEEKEND, not only about a plan -- unlike a placement, no sync ever writes
+ * a draw level, so there is no CampMinder record of truth a writable mirror
+ * would corrupt, the same argument 1500000135 already made for
+ * lodging_availability. A blank `scenario` is now the WEEKEND-LEVEL row:
+ * seen on the mirror, and inherited by every scenario that has not
+ * overridden it locally. Resolution order, highest first: this scenario's
+ * own row, the weekend-level row, then the registry default -- see
+ * resolve_combined in lodging_roster_service.py.
  */
 export type SlotMergeRequest = {
   /**
@@ -5616,8 +5625,10 @@ export type SlotMergeRequest = {
   session_cm_id: number
   /**
    * Scenario
+   *
+   * saved_scenarios record id; blank is the weekend-level row
    */
-  scenario: string
+  scenario?: string
   /**
    * Unit Id
    */

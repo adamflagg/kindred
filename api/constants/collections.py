@@ -61,10 +61,12 @@ LODGING_ASSIGNMENT_HISTORY = "lodging_assignment_history"
 # multi-valued `units` relation on this table and deleted both collections.
 LODGING_ASSIGNMENTS_DRAFT = "lodging_assignments_draft"
 
-# A scenario's override of a container's draw level (1500000139). Absent row
-# means inherit lodging_units.default_combined -- see resolve_combined in
-# lodging_roster_service.py. `scenario` is a REQUIRED relation, so the
-# CampMinder mirror (no scenario) can never have a row here.
+# A container's override of its draw level (1500000139), at a scenario or at
+# the weekend. Absent row at either tier means inherit -- see resolve_combined
+# in lodging_roster_service.py. `scenario` is OPTIONAL (1500000140): `""` is
+# the WEEKEND-LEVEL row, seen on the CampMinder mirror and inherited by every
+# scenario, because a merge is a fact about the weekend and not only about a
+# plan.
 LODGING_SLOT_MERGES = "lodging_slot_merges"
 
 # The single work queue for cabin strings ingest could not resolve. Owned and

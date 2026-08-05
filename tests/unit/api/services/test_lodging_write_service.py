@@ -861,14 +861,19 @@ class TestMergeWritesAreGone:
 
 
 class TestSetSlotMerge:
-    """`set_slot_merge` -- one container's draw level, scoped to a scenario.
+    """`set_slot_merge` -- one container's draw level, at a scenario or the weekend.
 
     Unlike `set_availability`, there is no delete branch: the board only ever
     writes an explicit `true` or `false`, and the absent row means "inherit
-    the registry default". Wiring tests below assert on the actual dict
-    handed to the repository, not just that a call happened -- a stale key
-    here degrades a write into a partial one silently, the same failure mode
+    the next tier down". Wiring tests below assert on the actual dict handed
+    to the repository, not just that a call happened -- a stale key here
+    degrades a write into a partial one silently, the same failure mode
     `test_the_reason_is_stored_in_the_note_column` guards for availability.
+
+    `_slot_merge_request()` defaults to a named scenario;
+    `test_a_blank_scenario_creates_a_weekend_level_row` below is the one test
+    in this class that overrides it to "" (1500000140) -- everything else
+    here is unaffected by that change and stays as it was.
     """
 
     @pytest.mark.asyncio
@@ -903,6 +908,25 @@ class TestSetSlotMerge:
         assert data["session_cm_id"] == 1000001
         repo.create_slot_merge.assert_not_called()
         assert response.record_id == "merge_existing"
+
+    @pytest.mark.asyncio
+    async def test_a_blank_scenario_creates_a_weekend_level_row(
+        self, write_service: LodgingWriteService, repo: MagicMock
+    ) -> None:
+        """1500000140: a blank scenario is a legal, distinct write -- not refused.
+
+        The weekend-level row is stored with `scenario == ""`, an ordinary
+        value in idx_lodging_slot_merge_unique like any scenario id, not a
+        sentinel this method special-cases or short-circuits around.
+        """
+        response = await write_service.set_slot_merge(_slot_merge_request(scenario="", combined=True))
+
+        repo.create_slot_merge.assert_awaited_once()
+        data = repo.create_slot_merge.call_args[0][0]
+        assert data["scenario"] == ""
+        assert data["combined"] is True
+        repo.update_slot_merge.assert_not_called()
+        assert response.record_id == "merge_new"
 
     @pytest.mark.asyncio
     async def test_find_slot_merge_is_scoped_to_year_session_unit_and_scenario(

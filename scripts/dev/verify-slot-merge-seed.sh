@@ -43,6 +43,13 @@ scm_min=$(sqlite3 "$DB" "SELECT json_extract(f.value,'\$.min') FROM _collections
 [ "$scm_required" = "1" ] || { echo "FAIL: lodging_slot_merges.session_cm_id must be required (got $scm_required)" >&2; exit 1; }
 [ "$scm_min" = "1" ] || { echo "FAIL: lodging_slot_merges.session_cm_id min must be 1 (got $scm_min)" >&2; exit 1; }
 
+# scenario must be OPTIONAL (1500000140): '' is the weekend-level row, seen
+# on the CampMinder mirror and inherited by every scenario. required=1 here
+# would mean the migration never applied (or was reverted), and every
+# weekend-level write would fail its refusal to store a blank relation.
+scenario_required=$(sqlite3 "$DB" "SELECT json_extract(f.value,'\$.required') FROM _collections c, json_each(c.fields) f WHERE c.name='lodging_slot_merges' AND json_extract(f.value,'\$.name')='scenario';")
+[ "$scenario_required" = "0" ] || { echo "FAIL: lodging_slot_merges.scenario must be optional -- '' is the weekend-level row, 1500000140 (got $scenario_required)" >&2; exit 1; }
+
 # The unique index must cover exactly (unit, session, year, scenario), in
 # that order — "some unique index exists" doesn't rule out one over the wrong
 # columns.

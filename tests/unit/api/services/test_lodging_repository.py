@@ -208,15 +208,20 @@ class TestFetchDraftAssignments:
 
 class TestFetchSlotMerges:
     @pytest.mark.asyncio
-    async def test_scopes_to_one_session_year_and_scenario(self, repo: LodgingRepository, pb: MagicMock) -> None:
-        """The same three-part scope as fetch_draft_assignments.
+    async def test_a_named_scenario_gets_its_own_rows_and_the_weekend_level_ones(
+        self, repo: LodgingRepository, pb: MagicMock
+    ) -> None:
+        """Two tiers, one round trip (1500000140).
 
-        The caller (LodgingRosterService) never invokes this with an empty
-        scenario -- see the "no query on the mirror" tests in
-        test_lodging_roster_service.py -- but the filter itself does not
-        depend on that discipline: `scenario` on lodging_slot_merges is a
-        REQUIRED relation, so a `scenario = ""` predicate would return nothing
-        regardless.
+        `scenario` on lodging_slot_merges used to be a REQUIRED relation, so
+        a caller naming a scenario got only that scenario's rows and the
+        CampMinder mirror (scenario="") got skipped by LodgingRosterService
+        entirely rather than queried -- see 1500000139's history. `scenario`
+        is optional now, and both tiers can name the same unit, so a named
+        scenario's fetch must pull BOTH: its own rows, union'd with the
+        weekend-level (`scenario = ""`) rows every scenario inherits.
+        resolve_combined is what picks the winner; this call must not
+        pre-filter one tier away before that happens.
         """
         await repo.fetch_slot_merges(2026, "sess_pb_1", "scn_1")
 
@@ -225,6 +230,28 @@ class TestFetchSlotMerges:
         assert 'session = "sess_pb_1"' in params["filter"]
         assert "year = 2026" in params["filter"]
         assert 'scenario = "scn_1"' in params["filter"]
+        assert 'scenario = ""' in params["filter"]
+
+    @pytest.mark.asyncio
+    async def test_a_blank_scenario_gets_only_the_weekend_level_rows(
+        self, repo: LodgingRepository, pb: MagicMock
+    ) -> None:
+        """The CampMinder mirror's call -- the whole point of 1500000140.
+
+        A blank scenario is what LodgingRosterService now passes for the
+        mirror (it used to skip this fetch outright). It must not widen to
+        "every scenario's own rows"; it gets exactly the weekend-level tier,
+        because `scenario = ""` is already that filter with no OR needed.
+        """
+        await repo.fetch_slot_merges(2026, "sess_pb_1", "")
+
+        pb.collection.assert_called_with("lodging_slot_merges")
+        params = _last_query(pb)
+        assert 'session = "sess_pb_1"' in params["filter"]
+        assert "year = 2026" in params["filter"]
+        assert 'scenario = ""' in params["filter"]
+        # No OR clause: a blank scenario_id must not turn into "any scenario".
+        assert "||" not in params["filter"]
 
 
 class TestClientSuppliedValuesAreEscaped:
