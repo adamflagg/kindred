@@ -16,7 +16,7 @@
 import { type BedInventory } from '../../../types/beds'
 import { BedInventoryEditor } from './BedInventoryEditor'
 import { capacityFlag } from './capacityFlag'
-import { FIELD, LABEL, SECTION } from './lodgingStyles'
+import { FIELD, LABEL } from './lodgingStyles'
 
 export interface UnitCapacity {
   /** A string because blank is a real value: UNKNOWN. */
@@ -46,8 +46,6 @@ export function UnitCapacityFields({
 
   return (
     <>
-      <p className={SECTION}>Capacity</p>
-
       <label className="text-sm">
         <span className={LABEL}>Sleeps</span>
         <input

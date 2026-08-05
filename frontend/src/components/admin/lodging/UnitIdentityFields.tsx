@@ -9,7 +9,7 @@
 import { useState } from 'react'
 
 import type { LodgingAreaRecord, LodgingUnitRecord } from '../../../types/lodging'
-import { FIELD, LABEL, SECTION } from './lodgingStyles'
+import { FIELD, LABEL } from './lodgingStyles'
 import { slugify } from './unitCode'
 import { parentCandidates } from './unitTree'
 
@@ -33,6 +33,12 @@ export interface UnitIdentityFieldsProps {
   units: LodgingUnitRecord[]
   /** Absent on create, where the code stays hidden until staff ask for it. */
   unitId?: string | undefined
+  /**
+   * Live from the Allocation select, not off the record: a staffer who has
+   * just switched a room to staff housing should see staff buildings offered
+   * straight away, not after a save and a reopen.
+   */
+  inventoryClass: string
 }
 
 export function UnitIdentityFields({
@@ -41,14 +47,13 @@ export function UnitIdentityFields({
   areas,
   units,
   unitId,
+  inventoryClass,
 }: UnitIdentityFieldsProps) {
   const [showCode, setShowCode] = useState(false)
   const derived = slugify(value.name)
 
   return (
     <>
-      <p className={SECTION}>Identity</p>
-
       <label className="text-sm">
         <span className={LABEL}>Name</span>
         <input
@@ -61,31 +66,46 @@ export function UnitIdentityFields({
         />
       </label>
 
-      {showCode || unitId !== undefined ? (
-        <label className="text-sm">
-          <span className={LABEL}>Code</span>
-          <input
-            className={FIELD}
-            value={value.code}
-            placeholder={derived}
-            onChange={(e) => {
-              onChange({ ...value, code: e.target.value })
-            }}
-          />
-        </label>
-      ) : (
-        <div className="flex items-end pb-1.5 text-sm">
-          <button
-            type="button"
-            onClick={() => {
-              setShowCode(true)
-            }}
-            className="text-muted-foreground hover:text-foreground text-xs font-medium hover:underline"
-          >
-            Code will be “{derived || '…'}” — set it manually
-          </button>
-        </div>
-      )}
+      {/* CREATE ONLY, in both directions.
+
+          It is offered on create because slugify keeps only [a-z0-9]: a name
+          with no ASCII alphanumerics derives to '' and the form refuses that
+          save outright, so the manual escape is the only way past it.
+
+          It is absent on EDIT because the code is a join key, not a name.
+          apply_lodging_inventory.py matches units by it, so retyping one
+          orphans the unit from the registry and the next --apply creates a
+          second copy — silently. Nothing in the admin UI displays a code
+          either (it is not among UNIT_SORT_COLUMNS), so there is no context in
+          which a staffer needs to read one. Existing codes still ride through
+          a save untouched: the value stays in form state, it simply has no
+          input. */}
+      {unitId === undefined &&
+        (showCode ? (
+          <label className="text-sm">
+            <span className={LABEL}>Code</span>
+            <input
+              className={FIELD}
+              value={value.code}
+              placeholder={derived}
+              onChange={(e) => {
+                onChange({ ...value, code: e.target.value })
+              }}
+            />
+          </label>
+        ) : (
+          <div className="flex items-end pb-1.5 text-sm">
+            <button
+              type="button"
+              onClick={() => {
+                setShowCode(true)
+              }}
+              className="text-muted-foreground hover:text-foreground text-xs font-medium hover:underline"
+            >
+              Code will be “{derived || '…'}” — set it manually
+            </button>
+          </div>
+        ))}
 
       <label className="text-sm">
         <span className={LABEL}>Area</span>
@@ -110,7 +130,11 @@ export function UnitIdentityFields({
             merge against this tree — see docs/architecture/lodging-occupancy.md
             for why that was tried and removed. It models physical structure,
             and drives the bathroom_group upgrade when a merge covers a whole
-            group. */}
+            group.
+
+            Scoped to the Area chosen above, so switching area re-scopes the
+            buildings on offer. See ./unitTree for why the unit's existing
+            parent survives that narrowing regardless. */}
         <select
           className={FIELD}
           value={value.parent_unit}
@@ -119,7 +143,7 @@ export function UnitIdentityFields({
           }}
         >
           <option value="">No parent</option>
-          {parentCandidates(unitId, units).map((candidate) => (
+          {parentCandidates(unitId, units, value.area, inventoryClass).map((candidate) => (
             <option key={candidate.id} value={candidate.id}>
               {candidate.name}
             </option>

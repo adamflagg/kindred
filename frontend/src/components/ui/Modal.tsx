@@ -23,6 +23,12 @@ interface ModalProps {
   // modal opens on top of a right-side slide-out panel — the panel area
   // stays unblurred and the modal centers in the remaining space.
   backdropInsetRight?: string
+  // Set when the `header` slot paints a dark ground (the forest band the
+  // sessions landing header uses). The close button defaults to
+  // `text-muted-foreground`, which is a mid grey — legible on the card, poor
+  // on forest-700. This is the close button's contrast only; it changes
+  // nothing else, so existing callers keep exactly what they have.
+  headerOnDark?: boolean
 }
 
 const sizeClasses = {
@@ -70,6 +76,7 @@ export function Modal({
   ariaLabelledBy,
   ariaLabel,
   backdropInsetRight,
+  headerOnDark = false,
 }: ModalProps) {
   useEffect(() => {
     if (!isOpen) return
@@ -115,7 +122,12 @@ export function Modal({
       {/* Modal content */}
       <div
         data-testid="modal-content"
-        className={`bg-card border-border relative overflow-hidden rounded-2xl border ${noPadding ? '' : 'p-6'} ${sizeClasses[size]} mx-4 w-full`}
+        className={`bg-card relative overflow-hidden rounded-2xl ${
+          // A dark header slot paints its own chrome to the card's edge, and a
+          // light 1px ring around it reads as a white outline against the
+          // colour rather than as an edge. Bordered stays the default.
+          headerOnDark ? '' : 'border-border border'
+        } ${noPadding ? '' : 'p-6'} ${sizeClasses[size]} mx-4 w-full`}
         style={{
           boxShadow:
             '0 24px 60px -24px rgba(7, 20, 14, 0.35), 0 8px 24px -12px rgba(7, 20, 14, 0.18)',
@@ -128,7 +140,11 @@ export function Modal({
             {header}
             <button
               onClick={onClose}
-              className="text-muted-foreground hover:text-foreground absolute top-4 right-4 z-20 rounded-lg p-2 transition-colors hover:bg-black/10"
+              className={`absolute top-4 right-4 z-20 rounded-lg p-2 transition-colors ${
+                headerOnDark
+                  ? 'text-white/70 hover:bg-white/10 hover:text-white'
+                  : 'text-muted-foreground hover:text-foreground hover:bg-black/10'
+              }`}
               aria-label="Close modal"
             >
               <X className="h-5 w-5" />

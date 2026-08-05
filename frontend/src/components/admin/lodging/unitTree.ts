@@ -45,13 +45,47 @@ export function directChildren(unitId: string, units: LodgingUnitRecord[]): Lodg
  * Valid parent candidates for `unitId`: containers only, excluding the unit
  * itself and anything descending from it. On create (`unitId` undefined)
  * there is no self or descendant yet, so every container is offered.
+ *
+ * `areaId` narrows the list to one area. A room's building stands on the same
+ * patch of ground as the room, and every parent/child pair on site is
+ * same-area, so an out-of-area container is never the answer — it is only a
+ * chance to parent a cabin to a building across camp by mis-clicking. Omit it
+ * and nothing is narrowed.
+ *
+ * `inventoryClass` narrows it again, and DELIBERATELY IN ONE DIRECTION ONLY.
+ * A guest room is never a room inside staff housing — no unit on site is — and
+ * because both buildings stand in the same area, the area filter alone still
+ * offers the wrong one. The converse is not true and must not be enforced: one
+ * building on site is a guest building holding two guest rooms and one staff
+ * room, so hiding guest buildings from staff units would deny a new staff room
+ * there its real parent. Buildings are mixed; staff housing is not.
+ *
+ * Both narrowings spare the unit's CURRENT parent whatever it is. Filtering a
+ * stored parent out of its own picker would leave the select with no matching
+ * option, so it would fall to the first entry and the next save would silently
+ * reparent a unit the staffer only meant to rename — the exact accident these
+ * filters exist to prevent, arriving through them.
  */
 export function parentCandidates(
   unitId: string | undefined,
-  units: LodgingUnitRecord[]
+  units: LodgingUnitRecord[],
+  areaId?: string,
+  inventoryClass?: string
 ): LodgingUnitRecord[] {
   const excluded = unitId === undefined ? new Set<string>() : descendantIds(unitId, units)
-  return units.filter(
-    (candidate) => candidate.is_container && candidate.id !== unitId && !excluded.has(candidate.id)
-  )
+  const currentParent = units.find((u) => u.id === unitId)?.parent_unit ?? ''
+  return units.filter((candidate) => {
+    if (!candidate.is_container || candidate.id === unitId || excluded.has(candidate.id)) {
+      return false
+    }
+    if (candidate.id === currentParent) return true
+    if (areaId !== undefined && candidate.area !== areaId) return false
+    // One direction only — see the header. Guest rooms are kept out of staff
+    // housing; staff rooms are NOT kept out of guest buildings, because more
+    // than one building on site is a guest building with a staff room in it.
+    if (inventoryClass === 'family_pool' && candidate.inventory_class === 'staff_default') {
+      return false
+    }
+    return true
+  })
 }

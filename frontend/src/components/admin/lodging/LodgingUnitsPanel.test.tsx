@@ -347,3 +347,102 @@ describe('LodgingUnitsPanel — areas query state', () => {
     expect(screen.queryByRole('button', { name: 'Create unit' })).not.toBeInTheDocument()
   })
 })
+
+describe('LodgingUnitsPanel — the editor opens in a modal', () => {
+  it('opens the editor as a dialog rather than a panel above the table', async () => {
+    const user = userEvent.setup()
+    await renderPanel()
+
+    await user.click(screen.getByRole('button', { name: 'Edit Cabin A' }))
+
+    const dialog = screen.getByRole('dialog')
+    expect(within(dialog).getByLabelText('Name')).toHaveValue('Cabin A')
+  })
+
+  it('names the unit being edited in the dialog header', async () => {
+    // Opened from a 93-row table, "which unit is this?" is the first question
+    // the staffer has, and the row it came from is now behind a backdrop.
+    const user = userEvent.setup()
+    await renderPanel()
+
+    await user.click(screen.getByRole('button', { name: 'Edit Cabin A' }))
+
+    const dialog = screen.getByRole('dialog')
+    expect(within(dialog).getByRole('heading', { name: 'Cabin A' })).toBeInTheDocument()
+    // The area, since the row it came from is behind the backdrop now. Scoped
+    // to the heading's own block: the Area <select> lists every area as an
+    // option, so the name appears more than once inside the dialog.
+    expect(
+      within(dialog).getByRole('heading', { name: 'Cabin A' }).parentElement
+    ).toHaveTextContent('North Zone')
+  })
+
+  it('heads a create differently, since there is no unit to name yet', async () => {
+    const user = userEvent.setup()
+    await renderPanel()
+
+    await user.click(screen.getByRole('button', { name: 'New unit' }))
+
+    expect(screen.getByRole('heading', { name: 'Add a unit' })).toBeInTheDocument()
+  })
+
+  it('leaves the list where it was instead of scrolling the staffer to the editor', async () => {
+    // THE POINT OF THE CHANGE. The old editor mounted ABOVE a 93-row table, so
+    // it had to scroll there to be noticed at all — taking the staffer away
+    // from the row they were working and losing their place in the list. A
+    // dialog is unmissable without moving anything.
+    const user = userEvent.setup()
+    await renderPanel()
+    vi.mocked(Element.prototype.scrollIntoView).mockClear()
+
+    await user.click(screen.getByRole('button', { name: 'Edit Cabin A' }))
+
+    expect(Element.prototype.scrollIntoView).not.toHaveBeenCalled()
+  })
+
+  it('closes on Cancel, returning to the list', async () => {
+    const user = userEvent.setup()
+    await renderPanel()
+
+    await user.click(screen.getByRole('button', { name: 'Edit Cabin A' }))
+    await user.click(screen.getByRole('button', { name: 'Cancel' }))
+
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+    expect(screen.getByText('Cabin A')).toBeInTheDocument()
+  })
+
+  it('closes on Escape', async () => {
+    const user = userEvent.setup()
+    await renderPanel()
+
+    await user.click(screen.getByRole('button', { name: 'Edit Cabin A' }))
+    await user.keyboard('{Escape}')
+
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+  })
+})
+
+describe('LodgingUnitsPanel — the dialog is named for assistive tech', () => {
+  it('gives the dialog the unit name as its accessible name', async () => {
+    // Modal falls back to its own `modal-title` id only in SIMPLE TITLE mode.
+    // With a custom header and no ariaLabelledBy, aria-labelledby and
+    // aria-label both come out undefined, and the dialog is announced as an
+    // unnamed one — a screen-reader user is told a dialog opened but not which
+    // unit it is for.
+    const user = userEvent.setup()
+    await renderPanel()
+
+    await user.click(screen.getByRole('button', { name: 'Edit Cabin A' }))
+
+    expect(screen.getByRole('dialog', { name: 'Cabin A' })).toBeInTheDocument()
+  })
+
+  it('names the create dialog too', async () => {
+    const user = userEvent.setup()
+    await renderPanel()
+
+    await user.click(screen.getByRole('button', { name: 'New unit' }))
+
+    expect(screen.getByRole('dialog', { name: 'Add a unit' })).toBeInTheDocument()
+  })
+})
