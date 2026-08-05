@@ -120,6 +120,30 @@ describe('LodgingBoard — layout', () => {
     expect(screen.getByRole('heading', { name: /North Ridge/ })).toBeInTheDocument()
   })
 
+  it('spaces the card grid on summer’s gap-3', () => {
+    /*
+     * `BunkingBoardByArea` lays its bunks out at `gap-3` (12px); this board
+     * ran at `gap-2.5` (10px). Two pixels, but it is the same grammar
+     * mismatch as the type scale was — summer uses the stock scale and this
+     * board reached for a half-step beside it (CLAUDE.md §4).
+     *
+     * Both grids, not one: the off-board section is the same grid of the same
+     * cards, and a 2px disagreement between the two is the kind of thing that
+     * survives for a year because nobody sees them adjacent.
+     *
+     * Classes, not computed style — jsdom parses no Tailwind.
+     */
+    const { container } = render(<LodgingBoard parties={[]} units={[unit()]} year={2026} />, {
+      wrapper,
+    })
+    const grids = [...container.querySelectorAll('[data-unit-card]')].map((c) => c.parentElement)
+    expect(grids.length).toBeGreaterThan(0)
+    for (const grid of grids) {
+      expect(grid).toHaveClass('gap-3')
+      expect(grid).not.toHaveClass('gap-2.5')
+    }
+  })
+
   it('collapses an area section', async () => {
     render(<LodgingBoard parties={[]} units={[unit()]} year={2026} />, { wrapper })
     expect(screen.getByText('Cedar 1')).toBeInTheDocument()
