@@ -204,6 +204,13 @@ func main() {
 	// their target silently orphans the placement instead of blocking.
 	lodging.RegisterHooks(app)
 
+	// Register the lodging roll-forward endpoints (copies one season's
+	// registry onto the next).
+	app.OnServe().BindFunc(func(e *core.ServeEvent) error {
+		lodging.RegisterRoutes(e)
+		return e.Next()
+	})
+
 	// Start scheduler after the app is fully initialized
 	app.OnServe().BindFunc(func(e *core.ServeEvent) error {
 		// Start the sync scheduler in a goroutine to avoid blocking

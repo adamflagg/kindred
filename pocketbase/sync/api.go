@@ -50,9 +50,14 @@ func requireAuth(handler func(*core.RequestEvent) error) func(*core.RequestEvent
 	}
 }
 
-// requirePermission wraps a handler to require authentication and a specific RBAC permission.
+// RequirePermission wraps a handler to require authentication and a specific RBAC permission.
 // Admin users (is_admin=true) bypass the permission check.
-func requirePermission(permission string, handler func(*core.RequestEvent) error) func(*core.RequestEvent) error {
+//
+// Exported so other packages gating on the same RBAC permissions (e.g.
+// lodging's roll-forward routes, which gate on "bunking.manage" like every
+// lodging_* write rule) reuse this exact check instead of writing a second
+// one with different semantics.
+func RequirePermission(permission string, handler func(*core.RequestEvent) error) func(*core.RequestEvent) error {
 	return func(e *core.RequestEvent) error {
 		if e.Auth == nil {
 			return apis.NewUnauthorizedError("Authentication required", nil)
@@ -71,6 +76,12 @@ func requirePermission(permission string, handler func(*core.RequestEvent) error
 		}
 		return handler(e)
 	}
+}
+
+// requirePermission is the package-local name kept for this file's existing
+// call sites; it delegates to RequirePermission rather than duplicating it.
+func requirePermission(permission string, handler func(*core.RequestEvent) error) func(*core.RequestEvent) error {
+	return RequirePermission(permission, handler)
 }
 
 // parseSourceFieldParameter validates and parses the comma-separated `source_field`
