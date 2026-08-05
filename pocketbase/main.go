@@ -202,7 +202,21 @@ func main() {
 	// Register weekend-lodging integrity guards. The DB cannot enforce these:
 	// lodging_assignments.unit/.merge are optional relations, so deleting
 	// their target silently orphans the placement instead of blocking.
-	lodging.RegisterHooks(app)
+	//
+	// Wrapped in OnServe, unlike rbac's and bunk_requests' calls just above:
+	// wireHooks' year guard (1500000151) calls app.FindCollectionByNameOrId
+	// before binding, to skip lodging_slot_merges gracefully while that table
+	// belongs only to a parallel branch. That lookup needs an open database,
+	// and this line otherwise runs from main() before app.Start() bootstraps
+	// one -- the same reason the registry seed and RegisterRoutes below are
+	// deferred the same way. wireHooks itself is untouched, so
+	// TestGuardUnitYearSkipsAnAbsentCollection and every other test that
+	// calls it directly on an already-bootstrapped TestApp still see the same
+	// synchronous behavior.
+	app.OnServe().BindFunc(func(e *core.ServeEvent) error {
+		lodging.RegisterHooks(app)
+		return e.Next()
+	})
 
 	// Register the lodging roll-forward endpoints (copies one season's
 	// registry onto the next).
