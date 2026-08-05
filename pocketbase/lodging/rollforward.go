@@ -241,11 +241,18 @@ func relinkParents(app core.App, from, to int, createdCodes []string) error {
 			return fmt.Errorf("resolving parent %q of %q: %w", parentID, code, err)
 		}
 		child, err := findByCodeAndYear(app, "lodging_units", code, to)
-		if err != nil || child == nil || child.GetString("parent_unit") != "" {
+		if err != nil {
+			return fmt.Errorf("resolving %q in %d for relink: %w", code, to, err)
+		}
+		if child == nil || child.GetString("parent_unit") != "" {
 			continue
 		}
-		newParent, err := findByCodeAndYear(app, "lodging_units", srcParent.GetString("code"), to)
-		if err != nil || newParent == nil {
+		newParentCode := srcParent.GetString("code")
+		newParent, err := findByCodeAndYear(app, "lodging_units", newParentCode, to)
+		if err != nil {
+			return fmt.Errorf("resolving parent %q in %d for relink: %w", newParentCode, to, err)
+		}
+		if newParent == nil {
 			continue
 		}
 		child.Set("parent_unit", newParent.Id)
