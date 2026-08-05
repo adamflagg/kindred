@@ -56,37 +56,15 @@ const DEFAULT_PLAN: RollForwardPlanFixture = {
   skipped_codes: [],
 }
 
-/** What a `vi.fn().mockResolvedValue(...)` spy looks like from the caller's side. */
-type FetchWithAuthSpy = (url: string, init?: RequestInit) => Promise<unknown>
-
 interface RenderProvidersOptions {
-  /**
-   * Stands in for the underlying network layer. `renderWithProviders` wraps
-   * it the same way the real `useApiWithAuth` wraps `fetch` — attaching an
-   * Authorization header — so a caller that reaches this spy at all proves it
-   * went through `fetchWithAuth`, and the header on what it received proves
-   * that wrapping happened rather than a bare `fetch`.
-   */
-  fetchWithAuth?: FetchWithAuthSpy
   preview?: Partial<RollForwardPlanFixture>
 }
 
 function renderWithProviders(ui: ReactElement, options: RenderProvidersOptions = {}) {
-  if (options.fetchWithAuth) {
-    const spy = options.fetchWithAuth
-    mockFetchWithAuth.mockImplementation((url: string, init?: RequestInit) => {
-      const headers = {
-        ...(init?.headers as Record<string, string> | undefined),
-        Authorization: 'Bearer test-token',
-      }
-      return spy(url, { ...init, headers })
-    })
-  } else {
-    mockFetchWithAuth.mockResolvedValue({
-      ok: true,
-      json: () => Promise.resolve({ ...DEFAULT_PLAN, ...options.preview }),
-    })
-  }
+  mockFetchWithAuth.mockResolvedValue({
+    ok: true,
+    json: () => Promise.resolve({ ...DEFAULT_PLAN, ...options.preview }),
+  })
 
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   return render(
@@ -101,27 +79,33 @@ beforeEach(() => {
 })
 
 describe('SeasonRollForwardPanel', () => {
-  it('sends the auth header on the preview request', async () => {
-    const spy = vi.fn().mockResolvedValue({
-      ok: true,
-      json: () =>
-        Promise.resolve({
-          from_year: 2026,
-          to_year: 2027,
-          units_to_create: 118,
-          areas_to_create: 10,
-          units_present: 0,
-          areas_present: 0,
-          unit_codes: [],
-          skipped_codes: [],
-        }),
-    })
-    renderWithProviders(<SeasonRollForwardPanel />, { fetchWithAuth: spy })
+  it('routes both the preview and the apply call through fetchWithAuth, never a bare fetch', async () => {
+    // `useApiWithAuth` is mocked wholesale (module scope, above) so
+    // `mockFetchWithAuth` stands in for the real wrapper that attaches the
+    // PocketBase JWT — the JWT lives in localStorage, not a cookie, so a bare
+    // `fetch` would carry no Authorization header and 401 silently. Asserting
+    // only that a header exists on whatever reaches an already-cooperating
+    // mock proves nothing; the property worth pinning is that the raw network
+    // layer is never touched directly, for EITHER call this component makes.
+    const user = userEvent.setup()
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response('{}'))
 
-    await waitFor(() => expect(spy).toHaveBeenCalled())
-    const [, init] = spy.mock.calls[0] as [string, RequestInit]
-    const headers = init.headers as Record<string, string> | undefined
-    expect(headers?.['Authorization']).toBeTruthy()
+    renderWithProviders(<SeasonRollForwardPanel />, {
+      preview: { units_to_create: 1, unit_codes: ['test-unit-b'] },
+    })
+
+    const applyButton = await screen.findByRole('button', { name: /carry.*forward/i })
+    await user.click(applyButton)
+
+    // Preview GET on mount, apply POST on click, then a THIRD call: apply's
+    // onSuccess invalidates the preview key, and react-query refetches it
+    // immediately since this component is still mounted and observing it.
+    // All three into the injected fetchWithAuth, zero into the raw fetch a
+    // caller could reach for instead.
+    await waitFor(() => expect(mockFetchWithAuth).toHaveBeenCalledTimes(3))
+    expect(fetchSpy).not.toHaveBeenCalled()
+
+    fetchSpy.mockRestore()
   })
 
   it('reports what will be created before anything is written', async () => {
