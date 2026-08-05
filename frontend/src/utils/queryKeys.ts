@@ -516,9 +516,15 @@ export const queryKeys = {
   // edit does not know which season's cache slot a stale reader is on, so
   // `invalidateLodgingRegistryQueries` invalidates every cached year at once
   // rather than threading `year` through every write-mutation call site.
+  // The roll-forward preview is keyed on the PAIR of seasons it compares, not
+  // on one year, because it answers "what would move from A to B" — two
+  // different pairs are two different answers and must not share a slot.
+  lodgingRollForwardPreview: (fromYear: number, toYear: number) =>
+    ['lodging-roll-forward-preview', fromYear, toYear] as const,
   lodgingAreasPrefix: () => ['lodging-areas'] as const,
   lodgingUnitsPrefix: () => ['lodging-units'] as const,
   lodgingIngestIssuesPrefix: () => ['lodging-ingest-issues'] as const,
+  lodgingRollForwardPreviewPrefix: () => ['lodging-roll-forward-preview'] as const,
 }
 
 /**
@@ -592,6 +598,11 @@ export function invalidateLodgingRegistryQueries(queryClient: {
   void queryClient.invalidateQueries({ queryKey: queryKeys.lodgingAreasPrefix() })
   void queryClient.invalidateQueries({ queryKey: queryKeys.lodgingAliases() })
   void queryClient.invalidateQueries({ queryKey: queryKeys.lodgingIngestIssuesPrefix() })
+  // Every registry write changes what a roll-forward would carry: creating a
+  // unit in the target season is precisely what moves a code from
+  // units_to_create to skipped_codes. Invalidating here rather than at the
+  // one call site is what stops the next writer from missing it.
+  void queryClient.invalidateQueries({ queryKey: queryKeys.lodgingRollForwardPreviewPrefix() })
   void queryClient.invalidateQueries({ queryKey: queryKeys.weekendRosterPrefix() })
   void queryClient.invalidateQueries({ queryKey: queryKeys.weekendSummaryPrefix() })
   void queryClient.invalidateQueries({ queryKey: queryKeys.weekendSessionsPrefix() })

@@ -22,12 +22,15 @@ import toast from 'react-hot-toast'
 
 import { useApiWithAuth } from '../../../hooks/useApiWithAuth'
 import { useCurrentYear } from '../../../hooks/useCurrentYear'
-import { invalidateLodgingRegistryQueries } from '../../../utils/queryKeys'
+import { invalidateLodgingRegistryQueries, queryKeys } from '../../../utils/queryKeys'
 import { BUTTON_PRIMARY, BUTTON_SECONDARY } from './lodgingStyles'
 
 type FetchWithAuth = (url: string, options?: RequestInit) => Promise<Response>
 
 const BASE = '/api/custom/lodging/roll-forward'
+
+/** Ties the Details disclosure to the list it expands, for assistive tech. */
+const UNIT_CODES_ID = 'roll-forward-unit-codes'
 
 /** What both the preview and apply endpoints return — a dry run and a real one render identically. */
 export interface RollForwardPlan {
@@ -56,10 +59,6 @@ async function toError(response: Response, fallback: string): Promise<Error> {
   return new Error(`${fallback} (HTTP ${String(response.status)})`)
 }
 
-function previewKey(from: number, to: number) {
-  return ['lodging-roll-forward-preview', from, to] as const
-}
-
 async function fetchRollForwardPreview(
   fetchWithAuth: FetchWithAuth,
   from: number,
@@ -86,19 +85,28 @@ export function SeasonRollForwardPanel() {
   const { currentYear } = useCurrentYear()
   const fromYear = currentYear - 1
   const toYear = currentYear
-  const { fetchWithAuth } = useApiWithAuth()
+  const { fetchWithAuth, isAuthLoading } = useApiWithAuth()
   const queryClient = useQueryClient()
   const [expanded, setExpanded] = useState(false)
+  // Gates the fetch AND the render below. Gating only the fetch left the prose
+  // interpolating the unresolved years straight onto the screen — "Copy -1's
+  // areas and units forward as a starting point for 0."
+  const yearReady = toYear > 0
 
   const previewQuery = useQuery({
-    queryKey: previewKey(fromYear, toYear),
+    queryKey: queryKeys.lodgingRollForwardPreview(fromYear, toYear),
     queryFn: () => fetchRollForwardPreview(fetchWithAuth, fromYear, toYear),
     // CurrentYearContext returns the literal 0 until the backend supplies the
     // configured year. PocketBase-backed routes like this one do not 422 on a
     // bad year the way the FastAPI routers do, so without this gate a cold
     // load would fire `from=-1&to=0` and render a confident "nothing to carry
     // forward". Convention: useWeekendRoster.ts:30-37.
-    enabled: toYear > 0,
+    //
+    // isAuthLoading is the second half: this is the only lodging panel that
+    // reaches the network through fetchWithAuth rather than the PocketBase SDK,
+    // so it is the only one for which frontend/CLAUDE.md's "check
+    // useAuth().isLoading before authenticated calls" has anything to say.
+    enabled: yearReady && !isAuthLoading,
   })
 
   const applyMutation = useMutation({
@@ -106,9 +114,9 @@ export function SeasonRollForwardPanel() {
     onSuccess: (plan) => {
       // Registry-key-only invalidation leaves the weekend roster stale for the
       // length of its staleTime — this reaches weekend-roster/-summary/
-      // -sessions too, not just lodging-units/-areas.
+      // -sessions too, not just lodging-units/-areas. It also carries this
+      // panel's own preview key, so there is nothing extra to remember here.
       invalidateLodgingRegistryQueries(queryClient)
-      void queryClient.invalidateQueries({ queryKey: previewKey(fromYear, toYear) })
       toast.success(
         `Carried forward ${String(plan.units_to_create)} units and ${String(plan.areas_to_create)} areas from ${String(fromYear)}`
       )
@@ -122,6 +130,12 @@ export function SeasonRollForwardPanel() {
   const toCreate = (preview?.units_to_create ?? 0) + (preview?.areas_to_create ?? 0)
   const alreadyPresent = (preview?.units_present ?? 0) + (preview?.areas_present ?? 0)
   const nothingToCarry = preview !== undefined && toCreate === 0
+
+  // Before the season resolves there is no honest sentence to write: every
+  // line below names fromYear and toYear.
+  if (!yearReady) {
+    return <p className="text-muted-foreground text-sm">Loading the season…</p>
+  }
 
   return (
     <div className="flex flex-col gap-4">
@@ -158,6 +172,8 @@ export function SeasonRollForwardPanel() {
               onClick={() => {
                 setExpanded((e) => !e)
               }}
+              aria-expanded={expanded}
+              aria-controls={UNIT_CODES_ID}
               className={BUTTON_SECONDARY}
             >
               Details
@@ -176,7 +192,10 @@ export function SeasonRollForwardPanel() {
           )}
 
           {expanded && preview.unit_codes.length > 0 && (
-            <ul className="text-muted-foreground grid grid-cols-2 gap-x-4 gap-y-1 text-xs sm:grid-cols-3">
+            <ul
+              id={UNIT_CODES_ID}
+              className="text-muted-foreground grid grid-cols-2 gap-x-4 gap-y-1 text-xs sm:grid-cols-3"
+            >
               {preview.unit_codes.map((code) => (
                 <li key={code} className="font-mono">
                   {code}
@@ -190,8 +209,11 @@ export function SeasonRollForwardPanel() {
               type="button"
               onClick={() => applyMutation.mutate()}
               disabled={nothingToCarry || applyMutation.isPending}
+              // No aria-label: it would override the visible text, so the
+              // pending state would render "Carrying forward…" while still
+              // announcing "Carry N forward". The visible text already says
+              // everything the label did.
               className={BUTTON_PRIMARY}
-              aria-label={nothingToCarry ? 'Nothing to carry forward' : `Carry ${toCreate} forward`}
             >
               {applyMutation.isPending ? (
                 <>

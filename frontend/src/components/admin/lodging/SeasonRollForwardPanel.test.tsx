@@ -18,11 +18,14 @@ vi.mock('react-hot-toast', () => ({ default: { success: vi.fn(), error: vi.fn() 
 // Module-scoped so `vi.mock` can close over it; `renderWithProviders` rewires
 // its implementation per test.
 const mockFetchWithAuth = vi.fn()
+// Mutable so a test can put the hook in its still-resolving state; reset in
+// beforeEach below alongside the fetch mock.
+let mockIsAuthLoading = false
 vi.mock('../../../hooks/useApiWithAuth', () => ({
   useApiWithAuth: () => ({
     fetchWithAuth: mockFetchWithAuth,
     isAuthenticated: true,
-    isAuthLoading: false,
+    isAuthLoading: mockIsAuthLoading,
   }),
 }))
 
@@ -75,6 +78,7 @@ function renderWithProviders(ui: ReactElement, options: RenderProvidersOptions =
 }
 
 beforeEach(() => {
+  mockIsAuthLoading = false
   mockFetchWithAuth.mockReset()
 })
 
@@ -214,5 +218,71 @@ describe('SeasonRollForwardPanel', () => {
       ).toBe(true)
       expect(queryClient.getQueryState(queryKeys.lodgingUnits(2027))?.isInvalidated).toBe(true)
     })
+  })
+
+  // The `enabled` gate stops the REQUEST when the year is unresolved, and the
+  // panel's prose is not gated at all -- so a cold load rendered "Copy -1's
+  // areas and units forward as a starting point for 0." fromYear is
+  // `currentYear - 1`, and CurrentYearContext returns the literal 0 until the
+  // backend answers.
+  it('does not offer to copy year -1 into year 0 before the season resolves', () => {
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    const zeroYear: CurrentYearContextType = { ...YEAR_CONTEXT, currentYear: 0, isYearReady: false }
+    render(
+      <QueryClientProvider client={queryClient}>
+        <CurrentYearContext.Provider value={zeroYear}>
+          <SeasonRollForwardPanel />
+        </CurrentYearContext.Provider>
+      </QueryClientProvider>
+    )
+    expect(screen.queryByText(/-1/)).not.toBeInTheDocument()
+    expect(screen.queryByText(/starting point for 0/)).not.toBeInTheDocument()
+  })
+
+  // `useApiWithAuth` reports `isAuthLoading` and this is the only lodging panel
+  // that reaches the network through `fetchWithAuth` rather than the PocketBase
+  // SDK -- so it is the only one for which the convention applies at all. The
+  // sibling panels not doing it is not precedent; they never make a raw call.
+  // frontend/CLAUDE.md: "Always check isLoading before making authenticated API
+  // calls."
+  it('waits for auth to settle before asking what would carry forward', () => {
+    mockIsAuthLoading = true
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    render(
+      <QueryClientProvider client={queryClient}>
+        <CurrentYearContext.Provider value={YEAR_CONTEXT}>
+          <SeasonRollForwardPanel />
+        </CurrentYearContext.Provider>
+      </QueryClientProvider>
+    )
+    expect(mockFetchWithAuth).not.toHaveBeenCalled()
+  })
+
+  it('reports the Details disclosure state to assistive tech', async () => {
+    const user = userEvent.setup()
+    renderWithProviders(<SeasonRollForwardPanel />, {
+      preview: { units_to_create: 2, unit_codes: ['test-unit-a', 'test-unit-b'] },
+    })
+    const details = await screen.findByRole('button', { name: /details/i })
+    expect(details).toHaveAttribute('aria-expanded', 'false')
+    await user.click(details)
+    expect(details).toHaveAttribute('aria-expanded', 'true')
+    // The control has to say WHAT it expanded, not merely that it did.
+    expect(details).toHaveAttribute('aria-controls')
+    const listId = details.getAttribute('aria-controls')
+    expect(listId && document.getElementById(listId)).toBeTruthy()
+  })
+
+  // An aria-label overrides the visible text, so while the mutation is pending
+  // the button reads "Carrying forward..." on screen and still announces "Carry
+  // 2 forward". Repo precedent: 3c01c688, "announce the capacity advisory, not
+  // just draw it".
+  it('announces that it is working, not the action it already took', async () => {
+    const user = userEvent.setup()
+    renderWithProviders(<SeasonRollForwardPanel />, { preview: { units_to_create: 2 } })
+    const apply = await screen.findByRole('button', { name: /carry 2 forward/i })
+    mockFetchWithAuth.mockReturnValue(new Promise(() => {})) // never settles: stay pending
+    await user.click(apply)
+    expect(await screen.findByRole('button', { name: /carrying forward/i })).toBeInTheDocument()
   })
 })
