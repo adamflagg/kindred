@@ -115,22 +115,31 @@ export function LodgingAliasForm({ units, alias, onSaved, onCancel }: LodgingAli
 
       <fieldset className="flex flex-wrap gap-3">
         <legend className={LABEL}>Resolves to (pick two or more for a merge)</legend>
-        {eligibleAliasMembers(availableUnits, memberUnits).map((unit) => (
-          <label key={unit.id} className="inline-flex items-center gap-1.5 text-sm">
-            <input
-              type="checkbox"
-              aria-label={unit.name}
-              checked={memberUnits.includes(unit.id)}
-              onChange={() => {
-                toggleUnit(unit.id)
-              }}
-            />
-            {unit.name}
-            {outOfSeasonIds.has(unit.id) && (
-              <span className="text-muted-foreground text-xs">(different season)</span>
-            )}
-          </label>
-        ))}
+        {eligibleAliasMembers(availableUnits, memberUnits).map((unit) => {
+          const label = outOfSeasonIds.has(unit.id) ? `${unit.name} (different season)` : unit.name
+          return (
+            // No `aria-label` here, and the marker lives in ONE text node
+            // with the name rather than a sibling <span>: accessible-name
+            // computation does not reliably insert a space between sibling
+            // text contributions, so a separately-styled marker span read as
+            // "Cabin A(different season)" with nothing between the words.
+            // Roll-forward copies `name` verbatim, so two units sharing a
+            // name is the REALISTIC case, not an edge one -- without the
+            // marker in the accessible name, a screen-reader user hears two
+            // identical checkboxes and can recreate the exact merge this
+            // form exists to prevent.
+            <label key={unit.id} className="inline-flex items-center gap-1.5 text-sm">
+              <input
+                type="checkbox"
+                checked={memberUnits.includes(unit.id)}
+                onChange={() => {
+                  toggleUnit(unit.id)
+                }}
+              />
+              {label}
+            </label>
+          )
+        })}
       </fieldset>
 
       {showWindow ? (

@@ -191,11 +191,19 @@ describe('LodgingAliasForm — which units may be members', () => {
   // did not exist, so the "Resolves to" fieldset rendered as if nothing were
   // selected while memberUnits still held the stale id, and Save silently
   // wrote a merge nobody chose.
-  it('still shows an already-selected member whose unit is from a prior season', () => {
-    const priorSeasonUnit = fixtureUnit({ id: 'u_2026', name: 'Ridge Cabin (2026)' })
+  //
+  // The prior-season fixture deliberately reuses the CURRENT season unit's
+  // name ("Cabin A"), which is the realistic case, not an edge one --
+  // roll-forward copies `name` verbatim (`notCarried` in rollforward.go
+  // excludes only id/created/updated/year/area/parent_unit). Two checkboxes
+  // sharing a visible name is not enough on its own: the ACCESSIBLE name has
+  // to differ too, or a screen-reader user hears two identical options and
+  // can recreate the exact merge this fix exists to prevent.
+  it('gives a same-named prior-season member a distinguishable accessible name', () => {
+    const priorSeasonUnit = fixtureUnit({ id: 'u_2026', name: 'Cabin A' })
     const alias = {
       id: 'a1',
-      alias_string: 'Ridge Cabin',
+      alias_string: 'Cabin A - Whole',
       member_units: ['u_2026'],
       valid_from_year: 0,
       valid_to_year: 0,
@@ -203,10 +211,14 @@ describe('LodgingAliasForm — which units may be members', () => {
       notes: '',
       expand: { member_units: [priorSeasonUnit] },
     }
-    // `units` is this season's list ONLY -- it does not contain u_2026.
+    // `units` is this season's list ONLY -- it does not contain u_2026, but
+    // does contain u1, ALSO named "Cabin A".
     render(<LodgingAliasForm units={UNITS} alias={alias} onSaved={vi.fn()} onCancel={vi.fn()} />)
 
-    expect(screen.getByRole('checkbox', { name: 'Ridge Cabin (2026)' })).toBeChecked()
+    const priorSeasonBox = screen.getByRole('checkbox', { name: 'Cabin A (different season)' })
+    const currentSeasonBox = screen.getByRole('checkbox', { name: 'Cabin A' })
+    expect(priorSeasonBox).toBeChecked()
+    expect(currentSeasonBox).not.toBeChecked()
   })
 
   // Before this fix, the prior-season member had no checkbox at all, so a
@@ -216,10 +228,10 @@ describe('LodgingAliasForm — which units may be members', () => {
   // tick the current one, and the alias resolves to one room, as intended.
   it('lets staff replace a surfaced prior-season member instead of merging onto it', async () => {
     const user = userEvent.setup()
-    const priorSeasonUnit = fixtureUnit({ id: 'u_2026', name: 'Ridge Cabin (2026)' })
+    const priorSeasonUnit = fixtureUnit({ id: 'u_2026', name: 'Cabin A' })
     const alias = {
       id: 'a1',
-      alias_string: 'Ridge Cabin',
+      alias_string: 'Cabin A - Whole',
       member_units: ['u_2026'],
       valid_from_year: 0,
       valid_to_year: 0,
@@ -229,7 +241,7 @@ describe('LodgingAliasForm — which units may be members', () => {
     }
     render(<LodgingAliasForm units={UNITS} alias={alias} onSaved={vi.fn()} onCancel={vi.fn()} />)
 
-    await user.click(screen.getByRole('checkbox', { name: 'Ridge Cabin (2026)' }))
+    await user.click(screen.getByRole('checkbox', { name: 'Cabin A (different season)' }))
     await user.click(screen.getByRole('checkbox', { name: 'Cabin A' }))
     await user.click(screen.getByRole('button', { name: 'Save alias' }))
 
