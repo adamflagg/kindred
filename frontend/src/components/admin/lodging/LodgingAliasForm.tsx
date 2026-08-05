@@ -11,7 +11,7 @@
  * renames (two different buildings once shared a name in different eras), not
  * a field staff should meet on every edit.
  */
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import toast from 'react-hot-toast'
 
 import { createLodgingAlias, updateLodgingAlias } from '../../../services/lodgingCrud'
@@ -41,6 +41,23 @@ export function LodgingAliasForm({ units, alias, onSaved, onCancel }: LodgingAli
     Boolean(alias?.valid_from_year) || Boolean(alias?.valid_to_year)
   )
   const [isSaving, setIsSaving] = useState(false)
+
+  // `units` is THIS season's list only (LodgingAliasesPanel feeds it the
+  // year-scoped picker). An alias already naming a unit from another season
+  // has that id nowhere in `units` -- unlike a retired or containerized unit,
+  // which is still in the list and just gets filtered by eligibleAliasMembers,
+  // a rolled-forward member's record does not exist in `units` at all, so no
+  // amount of filtering can re-admit it. Without this, the checkbox for that
+  // member simply never renders: the fieldset looks blank, memberUnits still
+  // holds the stale id, and Save writes it back in a merge nobody chose.
+  // `alias.expand.member_units` (populated by listLodgingAliases's `expand`)
+  // is what lets an out-of-season member be shown and toggled at all.
+  const outOfSeasonMembers = useMemo(() => {
+    const known = new Set(units.map((unit) => unit.id))
+    return (alias?.expand?.member_units ?? []).filter((unit) => !known.has(unit.id))
+  }, [units, alias])
+  const availableUnits = outOfSeasonMembers.length === 0 ? units : [...units, ...outOfSeasonMembers]
+  const outOfSeasonIds = new Set(outOfSeasonMembers.map((unit) => unit.id))
 
   const toggleUnit = (id: string) => {
     setMemberUnits((current) =>
@@ -98,7 +115,7 @@ export function LodgingAliasForm({ units, alias, onSaved, onCancel }: LodgingAli
 
       <fieldset className="flex flex-wrap gap-3">
         <legend className={LABEL}>Resolves to (pick two or more for a merge)</legend>
-        {eligibleAliasMembers(units, memberUnits).map((unit) => (
+        {eligibleAliasMembers(availableUnits, memberUnits).map((unit) => (
           <label key={unit.id} className="inline-flex items-center gap-1.5 text-sm">
             <input
               type="checkbox"
@@ -109,6 +126,9 @@ export function LodgingAliasForm({ units, alias, onSaved, onCancel }: LodgingAli
               }}
             />
             {unit.name}
+            {outOfSeasonIds.has(unit.id) && (
+              <span className="text-muted-foreground text-xs">(different season)</span>
+            )}
           </label>
         ))}
       </fieldset>
