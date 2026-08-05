@@ -317,7 +317,7 @@ describe('LodgingUnitForm — parent picker safety', () => {
       />
     )
     expect(
-      screen.getByLabelText('This row is a building or floor, not a bookable room')
+      screen.getByLabelText('This is a building or building area with multiple bedrooms.')
     ).toBeDisabled()
     expect(screen.getByText(/list this as their parent/i)).toBeInTheDocument()
   })
@@ -333,7 +333,7 @@ describe('LodgingUnitForm — parent picker safety', () => {
       />
     )
     expect(
-      screen.getByLabelText('This row is a building or floor, not a bookable room')
+      screen.getByLabelText('This is a building or building area with multiple bedrooms.')
     ).not.toBeDisabled()
   })
 })
@@ -663,7 +663,7 @@ describe('LodgingUnitForm — an undeliverable code', () => {
   })
 })
 
-describe('LodgingUnitForm — map coordinates', () => {
+describe('LodgingUnitForm — fields staff have no use for', () => {
   const renderUnit = (unit: LodgingUnitRecord) =>
     render(
       <LodgingUnitForm
@@ -675,42 +675,111 @@ describe('LodgingUnitForm — map coordinates', () => {
       />
     )
 
-  it('accepts the four-decimal coordinates the placement tool actually stores', () => {
-    // 62 of the 114 units carry map coordinates to FOUR places. A `step` of
-    // 0.001 makes every one of them a stepMismatch, and the browser then
-    // refuses to submit the WHOLE form — so a staffer cannot confirm amenities
-    // on one of those cabins without first hand-truncating a coordinate they
-    // never meant to touch, silently moving the unit on the map.
-    renderUnit({ ...UNIT, map_x: 0.4389, map_y: 0.3311 })
+  it('never offers the code when editing an existing unit', () => {
+    // The code is a JOIN KEY, not a name. apply_lodging_inventory.py matches
+    // units by it, so changing one orphans the unit from the registry and the
+    // next --apply creates a second copy of it. Nothing in the admin UI
+    // displays a code either — it is not a column in UNIT_SORT_COLUMNS — so
+    // there is no context in which a staffer needs to read one, let alone
+    // retype it.
+    renderUnit(UNIT)
 
-    const x = screen.getByLabelText<HTMLInputElement>('Map X')
-    const y = screen.getByLabelText<HTMLInputElement>('Map Y')
-
-    expect(x).toHaveValue(0.4389)
-    expect(x.validity.stepMismatch).toBe(false)
-    expect(y.validity.stepMismatch).toBe(false)
+    expect(screen.queryByLabelText('Code')).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /set it manually/i })).not.toBeInTheDocument()
   })
 
-  it('still refuses a coordinate outside the 0–1 fraction of the image', async () => {
-    // Loosening `step` must not loosen the RANGE: these are a fraction of the
-    // map image, and the column itself is min 0 / max 1.
-    //
-    // Asserted through the validity state rather than the attributes, because
-    // `min="0"` being spelled correctly is not the property that matters — the
-    // browser acting on it is, and that is the same mechanism `step` broke.
-    // Both axes, since they are separate inputs that have already drifted once.
+  it('still offers the code on create, which is the one place it is needed', () => {
+    // slugify keeps only [a-z0-9], so a name with no ASCII alphanumerics
+    // derives to '' and the form refuses the save outright. The manual escape
+    // is the only way past that, and it exists solely for create.
+    render(<LodgingUnitForm areas={AREAS} units={[]} onSaved={vi.fn()} onCancel={vi.fn()} />)
+
+    expect(screen.getByRole('button', { name: /set it manually/i })).toBeInTheDocument()
+  })
+
+  it('asks for no map coordinates, which mean nothing without the map', () => {
+    // Typing 0.4389 into a number field is not how a pin gets placed; dragging
+    // it on the map view is. Omitting the keys leaves any stored coordinate
+    // untouched on update, exactly as a blank field did.
+    renderUnit(UNIT)
+
+    expect(screen.queryByLabelText('Map X')).not.toBeInTheDocument()
+    expect(screen.queryByLabelText('Map Y')).not.toBeInTheDocument()
+    expect(screen.queryByText(/map position/i)).not.toBeInTheDocument()
+  })
+
+  it('leaves a stored coordinate alone when saving a unit that has one', async () => {
+    updateLodgingUnit.mockResolvedValue({ ...UNIT })
     const user = userEvent.setup()
     renderUnit({ ...UNIT, map_x: 0.4389, map_y: 0.3311 })
 
-    const x = screen.getByLabelText<HTMLInputElement>('Map X')
-    const y = screen.getByLabelText<HTMLInputElement>('Map Y')
+    await user.click(screen.getByRole('button', { name: 'Save unit' }))
 
-    await user.clear(x)
-    await user.type(x, '2')
-    expect(x.validity.rangeOverflow).toBe(true)
+    await waitFor(() => {
+      expect(updateLodgingUnit).toHaveBeenCalled()
+    })
+    const [, payload] = updateLodgingUnit.mock.calls[0] as [string, LodgingUnitInput]
+    expect(payload).not.toHaveProperty('map_x')
+    expect(payload).not.toHaveProperty('map_y')
+  })
+})
 
-    await user.clear(y)
-    await user.type(y, '-1')
-    expect(y.validity.rangeUnderflow).toBe(true)
+describe('LodgingUnitForm — wording staff can act on', () => {
+  it('describes a container by what it is, not by what it is not', () => {
+    render(<LodgingUnitForm areas={AREAS} units={[]} onSaved={vi.fn()} onCancel={vi.fn()} />)
+
+    expect(
+      screen.getByLabelText('This is a building or building area with multiple bedrooms.')
+    ).toBeInTheDocument()
+  })
+
+  it('says what "in use" costs, since retiring is the alternative to deleting', () => {
+    // A unit with placements CANNOT be deleted — guardUnitDelete refuses it —
+    // and deactivating is the documented way out. "Active" never said that, so
+    // the only route a staffer had was the one the server rejects.
+    render(<LodgingUnitForm areas={AREAS} units={[]} onSaved={vi.fn()} onCancel={vi.fn()} />)
+
+    expect(screen.getByLabelText('In use')).toBeInTheDocument()
+    expect(screen.getByText(/past housing records are kept/i)).toBeInTheDocument()
+  })
+})
+
+describe('LodgingUnitForm — a rejected save says what to change', () => {
+  it('names the field PocketBase rejected, instead of "Failed to create record."', async () => {
+    // `code` carries a UNIQUE index, so a collision is refused — correctly.
+    // But the SDK's top-level message is generic and the useful part sits in
+    // `response.data.<field>.message`, so the staffer got a red toast with no
+    // reason and a form they could not submit. A correct rejection that does
+    // not say what to change is the same dead end as no validation at all.
+    const rejection = Object.assign(new Error('Failed to create record.'), {
+      response: {
+        data: { code: { code: 'validation_not_unique', message: 'Value must be unique.' } },
+      },
+    })
+    createLodgingUnit.mockRejectedValue(rejection)
+    const user = userEvent.setup()
+
+    render(<LodgingUnitForm areas={AREAS} units={[]} onSaved={vi.fn()} onCancel={vi.fn()} />)
+    await user.type(screen.getByLabelText('Name'), 'Cabin N')
+    await user.click(screen.getByRole('button', { name: 'Create unit' }))
+
+    await waitFor(() => {
+      expect(toastError).toHaveBeenCalled()
+    })
+    expect(String(toastError.mock.calls[0]?.[0])).toMatch(/code/i)
+    expect(String(toastError.mock.calls[0]?.[0])).toMatch(/unique/i)
+  })
+
+  it('falls back to the plain message when the error carries no field detail', async () => {
+    createLodgingUnit.mockRejectedValue(new Error('Network request failed'))
+    const user = userEvent.setup()
+
+    render(<LodgingUnitForm areas={AREAS} units={[]} onSaved={vi.fn()} onCancel={vi.fn()} />)
+    await user.type(screen.getByLabelText('Name'), 'Cabin N')
+    await user.click(screen.getByRole('button', { name: 'Create unit' }))
+
+    await waitFor(() => {
+      expect(toastError).toHaveBeenCalledWith('Network request failed')
+    })
   })
 })

@@ -367,7 +367,14 @@ describe('LodgingUnitsPanel — the editor opens in a modal', () => {
 
     await user.click(screen.getByRole('button', { name: 'Edit Cabin A' }))
 
-    expect(screen.getByRole('heading', { name: 'Edit Cabin A' })).toBeInTheDocument()
+    const dialog = screen.getByRole('dialog')
+    expect(within(dialog).getByRole('heading', { name: 'Cabin A' })).toBeInTheDocument()
+    // The area, since the row it came from is behind the backdrop now. Scoped
+    // to the heading's own block: the Area <select> lists every area as an
+    // option, so the name appears more than once inside the dialog.
+    expect(
+      within(dialog).getByRole('heading', { name: 'Cabin A' }).parentElement
+    ).toHaveTextContent('North Zone')
   })
 
   it('heads a create differently, since there is no unit to name yet', async () => {

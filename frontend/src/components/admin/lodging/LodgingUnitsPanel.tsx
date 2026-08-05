@@ -15,7 +15,7 @@
  * blocks deleting a referenced unit anyway, but the UI should not offer it.
  */
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { Map, Plus } from 'lucide-react'
+import { Home, Map, Plus } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import toast from 'react-hot-toast'
 
@@ -214,15 +214,35 @@ export function LodgingUnitsPanel() {
             setEditing(null)
           }}
           header={
-            <div className="border-border border-b p-6 pr-14">
-              <h2 className="font-display text-2xl font-bold">
-                {editing === 'new' ? 'Add a unit' : `Edit ${editing.name}`}
-              </h2>
+            /* The forest band from the sessions landing header, same tokens and
+               same shape: dark gradient, amber glyph in a translucent chip,
+               white display title over a forest-200 subtitle. A staffer opening
+               this from the units table should recognise it as the same product
+               they run a summer session from. */
+            <div className="from-forest-700 to-forest-800 bg-gradient-to-r px-6 py-5 pr-14">
+              <div className="flex items-center gap-3">
+                <div className="rounded-lg bg-white/10 p-2">
+                  <Home className="h-6 w-6 text-amber-400" aria-hidden="true" />
+                </div>
+                <div>
+                  <h2 className="font-display text-xl font-bold text-white">
+                    {editing === 'new' ? 'Add a unit' : editing.name}
+                  </h2>
+                  {/* The area, because the row it came from is now behind a
+                      backdrop and "which Tioga is this" is the first question. */}
+                  <p className="text-forest-200 text-sm">
+                    {editing === 'new'
+                      ? 'A cabin, tent, yurt or room'
+                      : (areasQuery.data?.find((a) => a.id === editing.area)?.name ?? 'No area')}
+                  </p>
+                </div>
+              </div>
             </div>
           }
           size="xl"
           noPadding
           scrollable
+          headerOnDark
         >
           <div ref={formRef} className="p-6">
             {/* Area is a required relation with no blank option, so a form

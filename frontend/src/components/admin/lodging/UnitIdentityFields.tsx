@@ -9,7 +9,7 @@
 import { useState } from 'react'
 
 import type { LodgingAreaRecord, LodgingUnitRecord } from '../../../types/lodging'
-import { FIELD, LABEL, SECTION } from './lodgingStyles'
+import { FIELD, LABEL } from './lodgingStyles'
 import { slugify } from './unitCode'
 import { parentCandidates } from './unitTree'
 
@@ -47,8 +47,6 @@ export function UnitIdentityFields({
 
   return (
     <>
-      <p className={SECTION}>Identity</p>
-
       <label className="text-sm">
         <span className={LABEL}>Name</span>
         <input
@@ -61,31 +59,46 @@ export function UnitIdentityFields({
         />
       </label>
 
-      {showCode || unitId !== undefined ? (
-        <label className="text-sm">
-          <span className={LABEL}>Code</span>
-          <input
-            className={FIELD}
-            value={value.code}
-            placeholder={derived}
-            onChange={(e) => {
-              onChange({ ...value, code: e.target.value })
-            }}
-          />
-        </label>
-      ) : (
-        <div className="flex items-end pb-1.5 text-sm">
-          <button
-            type="button"
-            onClick={() => {
-              setShowCode(true)
-            }}
-            className="text-muted-foreground hover:text-foreground text-xs font-medium hover:underline"
-          >
-            Code will be “{derived || '…'}” — set it manually
-          </button>
-        </div>
-      )}
+      {/* CREATE ONLY, in both directions.
+
+          It is offered on create because slugify keeps only [a-z0-9]: a name
+          with no ASCII alphanumerics derives to '' and the form refuses that
+          save outright, so the manual escape is the only way past it.
+
+          It is absent on EDIT because the code is a join key, not a name.
+          apply_lodging_inventory.py matches units by it, so retyping one
+          orphans the unit from the registry and the next --apply creates a
+          second copy — silently. Nothing in the admin UI displays a code
+          either (it is not among UNIT_SORT_COLUMNS), so there is no context in
+          which a staffer needs to read one. Existing codes still ride through
+          a save untouched: the value stays in form state, it simply has no
+          input. */}
+      {unitId === undefined &&
+        (showCode ? (
+          <label className="text-sm">
+            <span className={LABEL}>Code</span>
+            <input
+              className={FIELD}
+              value={value.code}
+              placeholder={derived}
+              onChange={(e) => {
+                onChange({ ...value, code: e.target.value })
+              }}
+            />
+          </label>
+        ) : (
+          <div className="flex items-end pb-1.5 text-sm">
+            <button
+              type="button"
+              onClick={() => {
+                setShowCode(true)
+              }}
+              className="text-muted-foreground hover:text-foreground text-xs font-medium hover:underline"
+            >
+              Code will be “{derived || '…'}” — set it manually
+            </button>
+          </div>
+        ))}
 
       <label className="text-sm">
         <span className={LABEL}>Area</span>

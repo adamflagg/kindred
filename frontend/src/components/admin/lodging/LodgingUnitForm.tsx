@@ -35,14 +35,13 @@ import type {
   LodgingUnitRecord,
 } from '../../../types/lodging'
 import { amenitiesOf } from './unitAmenities'
-import { BUTTON_PRIMARY, BUTTON_SECONDARY, FIELD, LABEL, SECTION } from './lodgingStyles'
+import { BUTTON_PRIMARY, BUTTON_SECONDARY, FIELD, LABEL } from './lodgingStyles'
 import { parseSleeps } from './sleepsValue'
 import { slugify } from './unitCode'
 import { directChildren } from './unitTree'
 import { UnitAmenityFieldset } from './UnitAmenityFieldset'
 import { UnitCapacityFields } from './UnitCapacityFields'
 import { UnitIdentityFields } from './UnitIdentityFields'
-import { UnitMapFields } from './UnitMapFields'
 
 export interface LodgingUnitFormProps {
   areas: LodgingAreaRecord[]
@@ -58,6 +57,28 @@ export interface LodgingUnitFormProps {
   onCancel: () => void
 }
 
+/**
+ * What PocketBase actually refused, rather than that it refused.
+ *
+ * The SDK's top-level `message` on a validation failure is "Failed to create
+ * record." — true and useless. The part a staffer can act on is per-FIELD,
+ * under `response.data`, and `code` is the one that bites: it carries a UNIQUE
+ * index, so a collision with an existing unit is rejected here and nowhere
+ * else. Without this, that rejection is a red toast with no reason and a form
+ * that will not submit however many times it is tried.
+ */
+function saveErrorMessage(error: unknown): string {
+  const data = (error as { response?: { data?: Record<string, { message?: string }> } })?.response
+    ?.data
+  if (data && typeof data === 'object') {
+    const named = Object.entries(data)
+      .filter(([, detail]) => typeof detail?.message === 'string')
+      .map(([field, detail]) => `${field}: ${detail.message ?? ''}`)
+    if (named.length > 0) return named.join(' · ')
+  }
+  return error instanceof Error ? error.message : 'Failed to save the unit'
+}
+
 export function LodgingUnitForm({ areas, units, unit, onSaved, onCancel }: LodgingUnitFormProps) {
   const [identity, setIdentity] = useState({
     name: unit?.name ?? '',
@@ -71,10 +92,6 @@ export function LodgingUnitForm({ areas, units, unit, onSaved, onCancel }: Lodgi
     beds: normaliseBeds(unit?.beds),
   })
   const [amenities, setAmenities] = useState(amenitiesOf(unit))
-  const [map, setMap] = useState({
-    x: unit ? String(unit.map_x) : '',
-    y: unit ? String(unit.map_y) : '',
-  })
   const [inventoryClass, setInventoryClass] = useState<InventoryClassValue>(
     unit?.inventory_class === 'staff_default' ? 'staff_default' : 'family_pool'
   )
@@ -92,8 +109,6 @@ export function LodgingUnitForm({ areas, units, unit, onSaved, onCancel }: Lodgi
     // Shared with the capacity flag — see ./sleepsValue. Both must read the
     // field the same way or the flag comments on a number this never saves.
     const parsedSleeps = parseSleeps(capacity.sleeps)
-    const parsedMapX = Number.parseFloat(map.x)
-    const parsedMapY = Number.parseFloat(map.y)
     // `code` is the join key both `bathroom_group` membership and the roster's
     // `unit_code` match on. slugify keeps only [a-z0-9], so a name with no
     // ASCII alphanumerics derives to '' — an empty join key matches nothing
@@ -122,8 +137,6 @@ export function LodgingUnitForm({ areas, units, unit, onSaved, onCancel }: Lodgi
       // key would leave the previous number in place and make clearing the
       // field a silent no-op the staffer believes worked.
       ...(parsedSleeps === null ? (unit ? { sleeps: 0 } : {}) : { sleeps: parsedSleeps }),
-      ...(Number.isNaN(parsedMapX) ? {} : { map_x: parsedMapX }),
-      ...(Number.isNaN(parsedMapY) ? {} : { map_y: parsedMapY }),
     }
     try {
       if (unit) {
@@ -134,7 +147,7 @@ export function LodgingUnitForm({ areas, units, unit, onSaved, onCancel }: Lodgi
       toast.success(unit ? 'Unit saved' : 'Unit created')
       onSaved()
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'Failed to save the unit')
+      toast.error(saveErrorMessage(error))
     } finally {
       setIsSaving(false)
     }
@@ -162,8 +175,6 @@ export function LodgingUnitForm({ areas, units, unit, onSaved, onCancel }: Lodgi
 
       <UnitAmenityFieldset value={amenities} onChange={setAmenities} />
 
-      <p className={SECTION}>Availability</p>
-
       <label className="text-sm">
         <span className={LABEL}>Allocation</span>
         {/* No blank option: an empty inventory_class matches neither
@@ -189,8 +200,16 @@ export function LodgingUnitForm({ areas, units, unit, onSaved, onCancel }: Lodgi
               setIsActive(e.target.checked)
             }}
           />
-          Active
+          In use
         </label>
+        {/* Retiring is the ONLY way to take a cabin out of circulation:
+            guardUnitDelete refuses to delete a unit any placement references,
+            and points here. "Active" never said that, so the only route a
+            staffer could see was the one the server rejects. */}
+        <p className="text-muted-foreground pl-6 text-xs">
+          Uncheck to retire a cabin. It stops appearing for housing, and past housing records are
+          kept.
+        </p>
         <label className="inline-flex items-center gap-2">
           <input
             type="checkbox"
@@ -200,7 +219,7 @@ export function LodgingUnitForm({ areas, units, unit, onSaved, onCancel }: Lodgi
               setIsContainer(e.target.checked)
             }}
           />
-          This row is a building or floor, not a bookable room
+          This is a building or building area with multiple bedrooms.
         </label>
         {children.length > 0 && (
           <p className="text-muted-foreground text-xs">
@@ -210,15 +229,8 @@ export function LodgingUnitForm({ areas, units, unit, onSaved, onCancel }: Lodgi
         )}
       </div>
 
-      <UnitMapFields value={map} onChange={setMap} />
-
-      {/* Its own section, or it reads as a note about the map coordinates
-          above it. The field's label is for assistive tech only — the heading
-          is already the visible one, and two would be the same word twice. */}
-      <p className={SECTION}>Notes</p>
-
       <label className="text-sm sm:col-span-2">
-        <span className="sr-only">Notes</span>
+        <span className={LABEL}>Notes</span>
         <textarea
           className={FIELD}
           rows={2}
@@ -230,13 +242,27 @@ export function LodgingUnitForm({ areas, units, unit, onSaved, onCancel }: Lodgi
         />
       </label>
 
-      <div className="border-border/60 mt-1 flex gap-2 border-t pt-3 sm:col-span-2">
+      <div className="border-border/60 mt-1 flex flex-wrap items-center gap-3 border-t pt-3 sm:col-span-2">
         <button type="submit" disabled={isSaving} className={BUTTON_PRIMARY}>
           {unit ? 'Save unit' : 'Create unit'}
         </button>
         <button type="button" onClick={onCancel} className={BUTTON_SECONDARY}>
           Cancel
         </button>
+        {/* Sits with the commitments, not among the ten flags it speaks for.
+            Until it is true the roster reports "fit not verified" rather than
+            reading an unset amenity as a "no", so ticking this is what makes
+            the roster judge a family's need against this cabin at all. */}
+        <label className="ml-auto inline-flex items-center gap-2 text-sm font-medium">
+          <input
+            type="checkbox"
+            checked={amenities.is_confirmed}
+            onChange={(e) => {
+              setAmenities({ ...amenities, is_confirmed: e.target.checked })
+            }}
+          />
+          Amenities confirmed by staff
+        </label>
       </div>
     </form>
   )
