@@ -1,6 +1,8 @@
 package lodging
 
 import (
+	"database/sql"
+	"errors"
 	"fmt"
 
 	"github.com/pocketbase/pocketbase/core"
@@ -90,7 +92,7 @@ func rollForward(app core.App, from, to int, write bool) (RollForwardPlan, error
 		return plan, err
 	}
 	if write {
-		if err := relinkParents(app, from, to); err != nil {
+		if err := relinkParents(app, from, to, plan.UnitCodes); err != nil {
 			return plan, err
 		}
 	}
@@ -179,11 +181,19 @@ func copyUnits(app core.App, from, to int, write bool, areaIDs map[string]string
 		rec.Set("year", to)
 
 		// Resolve the area into the TARGET year. A source unit whose area was
-		// somehow absent keeps no area rather than borrowing last year's row.
-		if srcArea, err := app.FindRecordById("lodging_areas", src.GetString("area")); err == nil {
+		// somehow absent keeps no area rather than borrowing last year's row —
+		// but a REAL lookup failure (a locked database, say) must not read the
+		// same way as "absent", or it silently ships a unit with no area.
+		srcArea, err := app.FindRecordById("lodging_areas", src.GetString("area"))
+		switch {
+		case err == nil:
 			if id, ok := areaIDs[srcArea.GetString("code")]; ok {
 				rec.Set("area", id)
 			}
+		case errors.Is(err, sql.ErrNoRows):
+			// no area to resolve; the new unit's area is left unset, same as before
+		default:
+			return fmt.Errorf("resolving area for unit %q: %w", code, err)
 		}
 		if err := app.Save(rec); err != nil {
 			return fmt.Errorf("creating unit %q for %d: %w", code, to, err)
@@ -194,22 +204,43 @@ func copyUnits(app core.App, from, to int, write bool, areaIDs map[string]string
 
 // relinkParents runs after every unit exists, because a parent may sort after
 // its child and cannot be resolved during the creation pass.
-func relinkParents(app core.App, from, to int) error {
+//
+// createdCodes is the set copyUnits actually created THIS run (plan.UnitCodes)
+// — not every code in the source year. A code copyUnits skipped is a row
+// someone hand-added to the target year already, reported in SkippedCodes and
+// left untouched as the authority; relinking it would silently attach last
+// year's parent to a row that may have been split out as standalone on
+// purpose. Without this filter, "left untouched" was true for every OTHER
+// field but not for parent_unit, which this pass would set regardless of who
+// created the row.
+func relinkParents(app core.App, from, to int, createdCodes []string) error {
+	created := make(map[string]bool, len(createdCodes))
+	for _, code := range createdCodes {
+		created[code] = true
+	}
+
 	source, err := app.FindRecordsByFilter("lodging_units", "year = {:y}", "", 0, 0,
 		map[string]any{"y": from})
 	if err != nil {
 		return fmt.Errorf("loading %d units to relink: %w", from, err)
 	}
 	for _, src := range source {
+		code := src.GetString("code")
+		if !created[code] {
+			continue
+		}
 		parentID := src.GetString("parent_unit")
 		if parentID == "" {
 			continue
 		}
 		srcParent, err := app.FindRecordById("lodging_units", parentID)
 		if err != nil {
-			continue
+			if errors.Is(err, sql.ErrNoRows) {
+				continue // stale parent reference on the source row; nothing to relink
+			}
+			return fmt.Errorf("resolving parent %q of %q: %w", parentID, code, err)
 		}
-		child, err := findByCodeAndYear(app, "lodging_units", src.GetString("code"), to)
+		child, err := findByCodeAndYear(app, "lodging_units", code, to)
 		if err != nil || child == nil || child.GetString("parent_unit") != "" {
 			continue
 		}
@@ -219,7 +250,7 @@ func relinkParents(app core.App, from, to int) error {
 		}
 		child.Set("parent_unit", newParent.Id)
 		if err := app.Save(child); err != nil {
-			return fmt.Errorf("linking parent of %q: %w", src.GetString("code"), err)
+			return fmt.Errorf("linking parent of %q: %w", code, err)
 		}
 	}
 	return nil

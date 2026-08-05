@@ -173,3 +173,64 @@ func TestPreviewRollForwardWritesNothing(t *testing.T) {
 		t.Error("preview created a row")
 	}
 }
+
+// TestApplyRollForwardDoesNotRelinkAHandAddedStandaloneUnit pins the
+// left-untouched contract across BOTH passes, not just copyUnits.
+//
+// Staff hand-add test-unit-a-room-1 into 2027 ahead of the roll-forward,
+// deliberately leaving parent_unit empty -- it used to be a room inside
+// test-unit-a, but is being split out as its own standalone cabin. copyUnits
+// correctly treats that row as authoritative and skips creating it. But
+// relinkParents iterates the SOURCE season's units and, before this fix, had
+// no way to tell "this target row already existed" from "this target row is
+// mine to wire" -- so it would attach 2026's parent to the hand-added row
+// anyway, even though the row was reported as skipped.
+func TestApplyRollForwardDoesNotRelinkAHandAddedStandaloneUnit(t *testing.T) {
+	app := newRollForwardTestApp(t)
+	seedYear(t, app, 2026)
+
+	unitsCol, err := app.FindCollectionByNameOrId("lodging_units")
+	if err != nil {
+		t.Fatalf("lodging_units collection: %v", err)
+	}
+
+	// Reuses the 2026 area rather than creating a fresh 2027 one, since only
+	// the units/parent-linking behavior is under test here.
+	area2026, err := findByCodeAndYear(app, "lodging_areas", "test-area-a", 2026)
+	if err != nil || area2026 == nil {
+		t.Fatalf("seeded 2026 area missing: %v", err)
+	}
+
+	handAdded := core.NewRecord(unitsCol)
+	handAdded.Set("area", area2026.Id)
+	handAdded.Set("code", "test-unit-a-room-1")
+	handAdded.Set("name", "Test Building A, Room 1 (now standalone)")
+	handAdded.Set("year", 2027)
+	// parent_unit deliberately left empty -- this is the point of the test.
+	if err = app.Save(handAdded); err != nil {
+		t.Fatalf("save hand-added 2027 unit: %v", err)
+	}
+
+	plan, err := ApplyRollForward(app, 2026, 2027)
+	if err != nil {
+		t.Fatalf("ApplyRollForward: %v", err)
+	}
+
+	skipped := false
+	for _, code := range plan.SkippedCodes {
+		if code == "test-unit-a-room-1" {
+			skipped = true
+		}
+	}
+	if !skipped {
+		t.Errorf("SkippedCodes = %v, want test-unit-a-room-1 reported as skipped", plan.SkippedCodes)
+	}
+
+	rec, err := findByCodeAndYear(app, "lodging_units", "test-unit-a-room-1", 2027)
+	if err != nil || rec == nil {
+		t.Fatalf("hand-added unit missing after roll-forward: %v", err)
+	}
+	if got := rec.GetString("parent_unit"); got != "" {
+		t.Errorf("parent_unit = %q, want empty -- the hand-added row was reported as skipped and must be left untouched", got)
+	}
+}
