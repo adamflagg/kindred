@@ -105,6 +105,57 @@ func TestApplyRollForwardCopiesEveryUnitAndArea(t *testing.T) {
 	}
 }
 
+// TestApplyRollForwardUnitAreaPointsAtItsOwnYear pins spec §3.1's invariant:
+// a rolled-forward unit's `area` relation points at its OWN year's area row,
+// never at the source year's. Areas are created first (copyAreas, before
+// copyUnits) for exactly this reason.
+//
+// Nothing observed this before. lodging_repository.fetch_units expands
+// `area`, so a regression to the naive `rec.Set("area", src.Get("area"))`
+// would ship every rolled-forward unit pointing at the PRIOR season's area --
+// wrong name, wrong sort_order on the board, the map and the roster -- and
+// every other roll-forward test would still pass, because none of them
+// resolve the relation, only compare ids against the row they expect.
+func TestApplyRollForwardUnitAreaPointsAtItsOwnYear(t *testing.T) {
+	app := newRollForwardTestApp(t)
+	seedYear(t, app, 2026)
+
+	if _, err := ApplyRollForward(app, 2026, 2027); err != nil {
+		t.Fatalf("ApplyRollForward: %v", err)
+	}
+
+	area2026, err := findByCodeAndYear(app, "lodging_areas", "test-area-a", 2026)
+	if err != nil || area2026 == nil {
+		t.Fatalf("2026 area missing: %v", err)
+	}
+	area2027, err := findByCodeAndYear(app, "lodging_areas", "test-area-a", 2027)
+	if err != nil || area2027 == nil {
+		t.Fatalf("2027 area missing: %v", err)
+	}
+	unit, err := findByCodeAndYear(app, "lodging_units", "test-unit-a", 2027)
+	if err != nil || unit == nil {
+		t.Fatalf("2027 unit missing: %v", err)
+	}
+
+	if got := unit.GetString("area"); got != area2027.Id {
+		t.Errorf("unit area = %q, want the 2027 area row %q", got, area2027.Id)
+	}
+	if got := unit.GetString("area"); got == area2026.Id {
+		t.Error("unit area points at the SOURCE year's area row, not its own season's")
+	}
+
+	// Resolve the relation, rather than only comparing ids -- the invariant is
+	// about what the relation POINTS AT, and a wrong-but-plausible id (a typo
+	// in this test, say) would pass an id-only check for the wrong reason.
+	areaRec, err := app.FindRecordById("lodging_areas", unit.GetString("area"))
+	if err != nil {
+		t.Fatalf("resolving unit's area: %v", err)
+	}
+	if got := areaRec.GetInt("year"); got != 2027 {
+		t.Errorf("unit's area.year = %d, want 2027", got)
+	}
+}
+
 func TestApplyRollForwardIsIdempotent(t *testing.T) {
 	app := newRollForwardTestApp(t)
 	seedYear(t, app, 2026)
