@@ -192,9 +192,20 @@ function FamilyCardBody({
   )
 }
 
-/** The card's own frame, shared by the real card and the drag overlay. */
+/**
+ * The card's own frame, shared by the real card and the drag overlay.
+ *
+ * `rounded-xl border-2 p-2.5` is `CamperCard`'s geometry exactly (CLAUDE.md
+ * §4). At `rounded-lg`, a 1px border and `px-2 py-1.5` this read as a table
+ * row sitting inside a card -- the same criticism that opened this whole
+ * exercise, one level down.
+ *
+ * `overflow-hidden` is deliberately NOT copied across. `CamperCard` needs it
+ * to clip an absolutely-positioned gradient at its foot; this card has no such
+ * element, so the class would be cargo.
+ */
 const CARD_FRAME =
-  'group border-border flex w-full flex-col gap-1 rounded-lg border px-2 py-1.5 text-left'
+  'group border-border flex w-full flex-col gap-1 rounded-xl border-2 p-2.5 text-left'
 
 export function FamilyCard({
   party,

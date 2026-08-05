@@ -365,23 +365,44 @@ export function LodgingUnitCard({
         <p className="text-sm font-medium text-amber-700 dark:text-amber-400">{consent.reason}</p>
       )}
 
-      {parties.length === 0 ? (
-        /* Summer's wording in family vocabulary — `BunkCard` says "Drop
-           campers here". An empty slot's job is to be a target, and "Empty"
-           described the state without offering the action.
+      {/*
+        The occupant well — summer's `min-h-[100px]`, and ONE element across
+        both branches. Two wells drift; this one cannot.
 
-           Only while placement is live, though. Without a scenario or without
-           `bunking.manage` there is nothing to drop, so the invitation would
-           name an action the reader cannot take. Summer renders NOTHING at all
-           in production mode; these cards are small enough that a blank body
-           reads as broken rather than read-only, so the state is stated
-           instead. */
-        <p className="text-muted-foreground py-1 text-center text-sm italic">
-          {canPlace ? 'Drop families here' : 'Empty'}
-        </p>
-      ) : (
-        <div className="flex flex-col gap-2">
-          {parties.map((party) => (
+        `flex-1` is what makes dropping the grid's `items-start` survivable.
+        A grid row is already as tall as its tallest card, so stretching the
+        cards reclaims no space at all — it moves the whitespace from outside
+        the card border to inside it. Without a well that absorbs the extra
+        height, stretch just yields 28 blown-up empty cards with the message
+        pinned to the top edge, which is worse than the raggedness it fixes.
+
+        `min-h-[100px]` earns its place separately: it lifts an empty card off
+        its 139px floor toward the 188px occupied median, so rows start closer
+        together before stretch has to do anything.
+      */}
+      <div className="flex min-h-[100px] flex-1 flex-col gap-2">
+        {parties.length === 0 ? (
+          /* Summer's wording in family vocabulary — `BunkCard` says "Drop
+             campers here". An empty slot's job is to be a target, and "Empty"
+             described the state without offering the action.
+
+             Only while placement is live, though. Without a scenario or
+             without `bunking.manage` there is nothing to drop, so the
+             invitation would name an action the reader cannot take. Summer
+             renders NOTHING at all in production mode; these cards are small
+             enough that a blank body reads as broken rather than read-only, so
+             the state is stated instead.
+
+             `m-auto` CENTRES it, where summer top-aligns under `py-8`. A
+             deliberate divergence (§4): summer's bunk cards are uniformly
+             tall, so a top-aligned message always sits near its own floor.
+             These stretch across a 139–357px range, where the same message
+             would hang 130px above the bottom of a tall empty card. */
+          <p className="text-muted-foreground m-auto text-center text-sm italic">
+            {canPlace ? 'Drop families here' : 'Empty'}
+          </p>
+        ) : (
+          parties.map((party) => (
             <FamilyCard
               key={partyKey(party)}
               party={party}
@@ -390,9 +411,9 @@ export function LodgingUnitCard({
               isDraggable={canPlace}
               onOpen={onOpenParty}
             />
-          ))}
-        </div>
-      )}
+          ))
+        )}
+      </div>
     </div>
   )
 }

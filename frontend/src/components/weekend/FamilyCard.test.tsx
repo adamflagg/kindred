@@ -333,6 +333,51 @@ describe('FamilyCardPreview — the drag overlay', () => {
  *
  * Classes, not computed style: jsdom parses no Tailwind.
  */
+describe('FamilyCard — summer’s occupant-card geometry', () => {
+  /*
+   * `CamperCard` is `rounded-xl border-2 p-2.5`. This card was `rounded-lg`,
+   * a 1px border and `px-2 py-1.5` -- which read as a table row sitting inside
+   * a card, the same criticism that started this exercise, one level down.
+   *
+   * `overflow-hidden` is deliberately NOT copied. `CamperCard` needs it to
+   * clip an absolutely-positioned gradient at its foot; this card has no such
+   * element, so the class would be cargo.
+   */
+  it('wears CamperCard’s radius, border and padding', () => {
+    const { container } = render(<FamilyCard party={party()} onOpen={vi.fn()} />)
+    const card = container.querySelector('[data-family-card]')
+    expect(card).toHaveClass('rounded-xl')
+    expect(card).toHaveClass('border-2')
+    expect(card).toHaveClass('p-2.5')
+  })
+
+  it('drops the row-shaped chrome it replaces', () => {
+    // Left alongside the new classes these fight them: `rounded-lg` loses the
+    // corner, and `px-2 py-1.5` beats `p-2.5` on the axes it sets.
+    const { container } = render(<FamilyCard party={party()} onOpen={vi.fn()} />)
+    const card = container.querySelector('[data-family-card]')
+    expect(card).not.toHaveClass('rounded-lg')
+    expect(card).not.toHaveClass('px-2')
+    expect(card).not.toHaveClass('py-1.5')
+  })
+
+  it('carries the same geometry into the drag overlay', () => {
+    /*
+     * Shared frame, so this passes for free -- and fails the moment somebody
+     * hand-rolls a second one.
+     *
+     * The overlay is a plain `div` and carries no `data-family-card`: it must
+     * not call `useDraggable`, and marking it as a card invites a future
+     * selector to treat it as one. Assert on the rendered root instead.
+     */
+    const { container } = render(<FamilyCardPreview party={party()} />)
+    const overlay = container.firstElementChild
+    expect(overlay).toHaveClass('rounded-xl')
+    expect(overlay).toHaveClass('border-2')
+    expect(overlay).toHaveClass('p-2.5')
+  })
+})
+
 describe('FamilyCard — summer’s type scale', () => {
   function arbitraryTextSizes(container: HTMLElement): string[] {
     const card = container.querySelector('[data-family-card]')

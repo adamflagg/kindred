@@ -178,6 +178,27 @@ describe('LodgingBoard — layout', () => {
     }
   })
 
+  it('lets the cards fill their row instead of hanging from the top', () => {
+    /*
+     * `items-start` left a short card at its natural height with page
+     * background showing below it, which is why the board read as broken
+     * rather than empty. Board-wide that was 3,034px of gap across 24 rows.
+     *
+     * Removing it reclaims nothing on its own -- the row is already as tall as
+     * its tallest card -- so this only works alongside the occupant well in
+     * `LodgingUnitCard`, which is what makes a stretched empty card look
+     * deliberate. The two are one change; see the well tests.
+     */
+    const { container } = render(<LodgingBoard parties={[]} units={[unit()]} year={2026} />, {
+      wrapper,
+    })
+    const grids = [...container.querySelectorAll('[data-unit-card]')].map((c) => c.parentElement)
+    expect(grids.length).toBeGreaterThan(0)
+    for (const grid of grids) {
+      expect(grid).not.toHaveClass('items-start')
+    }
+  })
+
   it('collapses an area section', async () => {
     render(<LodgingBoard parties={[]} units={[unit()]} year={2026} />, { wrapper })
     expect(screen.getByText('Cedar 1')).toBeInTheDocument()

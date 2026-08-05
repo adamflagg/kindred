@@ -576,6 +576,66 @@ describe('LodgingUnitCard — summer’s type scale', () => {
   })
 })
 
+describe('LodgingUnitCard — the occupant well', () => {
+  /*
+   * Summer's `BunkCard` holds its campers in a `min-h-[100px]` well. This card
+   * had no well at all: the empty state was a 4px-padded line, so an empty
+   * room was 139px against an occupied median of 188px and a two-party card of
+   * up to 357px.
+   *
+   * The well is what makes dropping `items-start` survivable. Grid row height
+   * already equals the tallest card in the row, so stretching does not reclaim
+   * a pixel — it moves the whitespace inside the card border. Without a well
+   * that grows and an invitation that centres in it, stretch just produces 28
+   * blown-up empty boxes with the message pinned to the top edge.
+   */
+  function well(container: HTMLElement): HTMLElement | null {
+    const card = container.querySelector('[data-unit-card]')
+    const occupant = card?.querySelector('[data-family-card]')
+    if (occupant) return occupant.parentElement
+    // Empty slot: the invitation is the well's only child.
+    return card?.querySelector('p.italic')?.parentElement ?? null
+  }
+
+  it('gives an empty slot a well that grows with the row', () => {
+    const { container } = render(
+      <LodgingUnitCard slot={slot()} hue="hsl(160 45% 42%)" onOpenParty={vi.fn()} />
+    )
+    expect(well(container)).toHaveClass('min-h-[100px]')
+    expect(well(container)).toHaveClass('flex-1')
+  })
+
+  it('gives an occupied slot the same well, so rows agree', () => {
+    // Same element in both branches on purpose. Two wells drift.
+    const { container } = render(
+      <LodgingUnitCard
+        slot={slot({ parties: [party()] })}
+        hue="hsl(160 45% 42%)"
+        onOpenParty={vi.fn()}
+      />
+    )
+    expect(well(container)).toHaveClass('min-h-[100px]')
+    expect(well(container)).toHaveClass('flex-1')
+  })
+
+  it('centres the invitation in the well rather than pinning it to the top', () => {
+    /*
+     * A deliberate divergence, stated because §4 requires it. Summer
+     * top-aligns its message under `py-8`, which reads fine because a bunk
+     * card is uniformly tall. These cards stretch across a 139–357px range, so
+     * a top-aligned message in a tall empty card sits 130px above its own
+     * floor. `m-auto` on the sole child of a flex column centres it both ways.
+     */
+    const { container } = render(
+      <LodgingUnitCard slot={slot()} hue="hsl(160 45% 42%)" canPlace onOpenParty={vi.fn()} />
+    )
+    const invitation = screen.getByText('Drop families here')
+    expect(invitation).toHaveClass('m-auto')
+    expect(invitation).not.toHaveClass('py-1')
+    expect(container.querySelector('[data-unit-card]')).toBeInTheDocument()
+  })
+})
+
 describe('LodgingUnitCard — summer’s chrome, the rest of it', () => {
   it('does not copy BunkCard’s inert hover class', () => {
     /*

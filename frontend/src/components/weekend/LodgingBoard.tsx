@@ -376,7 +376,7 @@ export function LodgingBoard({
                     </h3>
 
                     {!isCollapsed && (
-                      <div className="grid grid-cols-[repeat(auto-fill,minmax(280px,1fr))] items-start gap-3">
+                      <div className="grid grid-cols-[repeat(auto-fill,minmax(280px,1fr))] gap-3">
                         {area.slots.map((slot) => (
                           <LodgingUnitCard
                             key={slot.unit.unit_id}
@@ -442,7 +442,7 @@ export function LodgingBoard({
                 <p className="text-muted-foreground mb-2 text-xs">
                   Assigned to a merged slot or to a room the board does not draw a card for.
                 </p>
-                <div className="grid grid-cols-[repeat(auto-fill,minmax(280px,1fr))] items-start gap-3">
+                <div className="grid grid-cols-[repeat(auto-fill,minmax(280px,1fr))] gap-3">
                   {board.offBoard.map((party) => (
                     <FamilyCard
                       key={partyKey(party)}
