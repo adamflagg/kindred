@@ -88,9 +88,26 @@ describe('LodgingUnitCard', () => {
     expect(screen.getByTitle(/Sleeps 5/)).toBeInTheDocument()
   })
 
-  it('says an empty unit is empty', () => {
+  it('invites a drop into an empty unit while placement is live', () => {
+    // Summer's wording, in family vocabulary: `BunkCard` says "Drop campers
+    // here". The card's job in an empty slot is to be a target, and "Empty"
+    // described the state without offering the action.
+    render(<LodgingUnitCard slot={slot()} hue="hsl(160 45% 42%)" canPlace onOpenParty={vi.fn()} />)
+    expect(screen.getByText('Drop families here')).toBeInTheDocument()
+  })
+
+  it('says an empty unit is empty when nothing can be dropped', () => {
+    /*
+     * Without a scenario, or without `bunking.manage`, there is nothing to
+     * drop and no way to drop it — so the invitation would name an action the
+     * reader cannot take. Summer reaches the same conclusion and renders
+     * NOTHING in production mode (`BunkCard`: `!isProductionMode && …`); these
+     * cards are small enough that a blank body reads as a broken card rather
+     * than a read-only one, so the state gets stated instead.
+     */
     render(<LodgingUnitCard slot={slot()} hue="hsl(160 45% 42%)" onOpenParty={vi.fn()} />)
     expect(screen.getByText('Empty')).toBeInTheDocument()
+    expect(screen.queryByText('Drop families here')).not.toBeInTheDocument()
   })
 
   it('renders the families it holds', () => {

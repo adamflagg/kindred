@@ -366,7 +366,19 @@ export function LodgingUnitCard({
       )}
 
       {parties.length === 0 ? (
-        <p className="text-muted-foreground py-1 text-center text-sm italic">Empty</p>
+        /* Summer's wording in family vocabulary — `BunkCard` says "Drop
+           campers here". An empty slot's job is to be a target, and "Empty"
+           described the state without offering the action.
+
+           Only while placement is live, though. Without a scenario or without
+           `bunking.manage` there is nothing to drop, so the invitation would
+           name an action the reader cannot take. Summer renders NOTHING at all
+           in production mode; these cards are small enough that a blank body
+           reads as broken rather than read-only, so the state is stated
+           instead. */
+        <p className="text-muted-foreground py-1 text-center text-sm italic">
+          {canPlace ? 'Drop families here' : 'Empty'}
+        </p>
       ) : (
         <div className="flex flex-col gap-2">
           {parties.map((party) => (
