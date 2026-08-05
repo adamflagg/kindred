@@ -906,18 +906,39 @@ describe('LodgingUnitForm — the default-combined control', () => {
     expect(screen.getByLabelText(/let as one/i)).toBeDisabled()
   })
 
-  it('disables the control through a multi-level ancestor, not only a direct parent', () => {
+  it('disables the control through a multi-level ancestor, not only a direct parent, and names the grandparent that actually owns it', () => {
     // Grandparent combined, direct parent not. A check that only looks one
     // hop up is the obvious wrong implementation, so this pins it: 'house' is
     // combined, 'wing' is not, and 'room' hangs off 'wing'.
+    //
+    // Distinct names on purpose: `toBeDisabled()` alone would still pass if
+    // the reason named 'wing' (the immediate parent) instead of 'house' (the
+    // node that actually owns the card) — a check that named "the parent"
+    // rather than "the combined ancestor" would disable correctly here but
+    // mislead a staffer about which building to go edit instead. Scoped to
+    // "already combined" for the same reason as the single-level naming test
+    // above: both names are also valid options in the "Parent unit" <select>
+    // this same render produces.
     renderForm({
       unit: unitRecord({ id: 'room', is_container: true, parent_unit: 'wing' }),
       units: [
-        unitRecord({ id: 'wing', is_container: true, parent_unit: 'house' }),
-        unitRecord({ id: 'house', is_container: true, default_combined: true }),
+        unitRecord({
+          id: 'wing',
+          is_container: true,
+          parent_unit: 'house',
+          name: 'Uncombined Wing',
+        }),
+        unitRecord({
+          id: 'house',
+          is_container: true,
+          default_combined: true,
+          name: 'Combined House',
+        }),
       ],
     })
     expect(screen.getByLabelText(/let as one/i)).toBeDisabled()
+    expect(screen.getByText(/already combined.*combined house/i)).toBeInTheDocument()
+    expect(screen.queryByText(/already combined.*uncombined wing/i)).not.toBeInTheDocument()
   })
 
   it('names the combined ancestor beside the disabled control', () => {
