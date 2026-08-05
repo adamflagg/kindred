@@ -5,6 +5,8 @@ import userEvent from '@testing-library/user-event'
 import type { ReactNode } from 'react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
+import { CurrentYearContext, type CurrentYearContextType } from '../../../hooks/useCurrentYear'
+
 const mapUnresolvedAlias = vi.fn()
 const ignoreIngestIssue = vi.fn()
 const listUnresolvedAliasIssues = vi.fn()
@@ -51,8 +53,8 @@ const UNITS = [
 ]
 
 vi.mock('../../../services/lodgingCrud', () => ({
-  listUnresolvedAliasIssues: () => listUnresolvedAliasIssues(),
-  listLodgingUnits: () => listLodgingUnits(),
+  listUnresolvedAliasIssues: (...args: unknown[]) => listUnresolvedAliasIssues(...args),
+  listLodgingUnits: (...args: unknown[]) => listLodgingUnits(...args),
   mapUnresolvedAlias: (...args: unknown[]) => mapUnresolvedAlias(...args),
   ignoreIngestIssue: (...args: unknown[]) => ignoreIngestIssue(...args),
 }))
@@ -90,8 +92,20 @@ beforeEach(() => {
   client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
 })
 
+const YEAR_CONTEXT: CurrentYearContextType = {
+  currentYear: 2026,
+  setCurrentYear: vi.fn(),
+  availableYears: [2026],
+  isTransitioning: false,
+  isYearReady: true,
+}
+
 function wrapper({ children }: { children: ReactNode }) {
-  return <QueryClientProvider client={client}>{children}</QueryClientProvider>
+  return (
+    <QueryClientProvider client={client}>
+      <CurrentYearContext.Provider value={YEAR_CONTEXT}>{children}</CurrentYearContext.Provider>
+    </QueryClientProvider>
+  )
 }
 
 beforeEach(() => {
@@ -102,6 +116,15 @@ beforeEach(() => {
 })
 
 describe('UnresolvedAliasQueue', () => {
+  it('asks for the current season only', async () => {
+    render(<UnresolvedAliasQueue />, { wrapper })
+    await waitFor(() => {
+      expect(screen.getByText('North Lodge - 1and2')).toBeInTheDocument()
+    })
+    expect(listUnresolvedAliasIssues).toHaveBeenCalledWith(2026)
+    expect(listLodgingUnits).toHaveBeenCalledWith(2026)
+  })
+
   it('shows the verbatim string, its source field and how often it was seen', async () => {
     render(<UnresolvedAliasQueue />, { wrapper })
     await waitFor(() => {

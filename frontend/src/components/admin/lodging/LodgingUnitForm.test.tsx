@@ -63,7 +63,9 @@ describe('LodgingUnitForm — create', () => {
     const onSaved = vi.fn()
     const user = userEvent.setup()
 
-    render(<LodgingUnitForm areas={AREAS} units={[]} onSaved={onSaved} onCancel={vi.fn()} />)
+    render(
+      <LodgingUnitForm areas={AREAS} units={[]} year={2026} onSaved={onSaved} onCancel={vi.fn()} />
+    )
 
     await user.type(screen.getByLabelText('Name'), 'Cabin N')
     await user.click(screen.getByRole('button', { name: 'Create unit' }))
@@ -77,8 +79,30 @@ describe('LodgingUnitForm — create', () => {
     expect(onSaved).toHaveBeenCalled()
   })
 
+  it('stamps a new unit with the current season', async () => {
+    // Units are year-scoped since 1500000140; an omitted year fails the
+    // schema's min:2010 the moment the create reaches PocketBase.
+    createLodgingUnit.mockResolvedValue({ id: 'u1' })
+    const user = userEvent.setup()
+
+    render(
+      <LodgingUnitForm areas={AREAS} units={[]} year={2027} onSaved={vi.fn()} onCancel={vi.fn()} />
+    )
+
+    await user.type(screen.getByLabelText('Name'), 'Cabin N')
+    await user.click(screen.getByRole('button', { name: 'Create unit' }))
+
+    await waitFor(() => {
+      expect(createLodgingUnit).toHaveBeenCalledTimes(1)
+    })
+    const [payload] = createLodgingUnit.mock.calls[0] as [LodgingUnitInput]
+    expect(payload.year).toBe(2027)
+  })
+
   it('offers no blank option for the allocation default', () => {
-    render(<LodgingUnitForm areas={AREAS} units={[]} onSaved={vi.fn()} onCancel={vi.fn()} />)
+    render(
+      <LodgingUnitForm areas={AREAS} units={[]} year={2026} onSaved={vi.fn()} onCancel={vi.fn()} />
+    )
     const select = screen.getByLabelText<HTMLSelectElement>('Allocation')
     const values = [...select.options].map((option) => option.value)
     expect(values).toEqual(['family_pool', 'staff_default'])
@@ -88,7 +112,9 @@ describe('LodgingUnitForm — create', () => {
     createLodgingUnit.mockResolvedValue({ id: 'u1' })
     const user = userEvent.setup()
 
-    render(<LodgingUnitForm areas={AREAS} units={[]} onSaved={vi.fn()} onCancel={vi.fn()} />)
+    render(
+      <LodgingUnitForm areas={AREAS} units={[]} year={2026} onSaved={vi.fn()} onCancel={vi.fn()} />
+    )
     await user.type(screen.getByLabelText('Name'), 'Cabin N')
     await user.click(screen.getByRole('button', { name: 'Create unit' }))
 
@@ -103,7 +129,9 @@ describe('LodgingUnitForm — create', () => {
     createLodgingUnit.mockResolvedValue({ id: 'u1' })
     const user = userEvent.setup()
 
-    render(<LodgingUnitForm areas={AREAS} units={[]} onSaved={vi.fn()} onCancel={vi.fn()} />)
+    render(
+      <LodgingUnitForm areas={AREAS} units={[]} year={2026} onSaved={vi.fn()} onCancel={vi.fn()} />
+    )
     const bathroom = screen.getByLabelText<HTMLSelectElement>('Bathroom')
     expect([...bathroom.options].map((o) => o.value)).toEqual(['', 'none', 'private', 'shared'])
 
@@ -124,6 +152,7 @@ describe('LodgingUnitForm — edit', () => {
       <LodgingUnitForm
         areas={AREAS}
         units={[UNIT]}
+        year={2026}
         unit={UNIT}
         onSaved={vi.fn()}
         onCancel={vi.fn()}
@@ -140,6 +169,7 @@ describe('LodgingUnitForm — edit', () => {
       <LodgingUnitForm
         areas={AREAS}
         units={[UNIT]}
+        year={2026}
         unit={UNIT}
         onSaved={vi.fn()}
         onCancel={vi.fn()}
@@ -161,6 +191,7 @@ describe('LodgingUnitForm — edit', () => {
       <LodgingUnitForm
         areas={AREAS}
         units={[UNIT]}
+        year={2026}
         unit={UNIT}
         onSaved={vi.fn()}
         onCancel={vi.fn()}
@@ -182,7 +213,9 @@ describe('LodgingUnitForm — code autogeneration', () => {
     createLodgingUnit.mockResolvedValue({ id: 'u1' })
     const user = userEvent.setup()
 
-    render(<LodgingUnitForm areas={AREAS} units={[]} onSaved={vi.fn()} onCancel={vi.fn()} />)
+    render(
+      <LodgingUnitForm areas={AREAS} units={[]} year={2026} onSaved={vi.fn()} onCancel={vi.fn()} />
+    )
     await user.type(screen.getByLabelText('Name'), 'Cabin North 2')
     await user.click(screen.getByRole('button', { name: 'Create unit' }))
 
@@ -194,7 +227,9 @@ describe('LodgingUnitForm — code autogeneration', () => {
   })
 
   it('does not show the code field by default on create', () => {
-    render(<LodgingUnitForm areas={AREAS} units={[]} onSaved={vi.fn()} onCancel={vi.fn()} />)
+    render(
+      <LodgingUnitForm areas={AREAS} units={[]} year={2026} onSaved={vi.fn()} onCancel={vi.fn()} />
+    )
     expect(screen.queryByLabelText('Code')).not.toBeInTheDocument()
   })
 })
@@ -212,6 +247,7 @@ describe('LodgingUnitForm — spec fields Phase C omitted', () => {
       <LodgingUnitForm
         areas={AREAS}
         units={[UNIT, other]}
+        year={2026}
         unit={UNIT}
         onSaved={vi.fn()}
         onCancel={vi.fn()}
@@ -231,6 +267,7 @@ describe('LodgingUnitForm — spec fields Phase C omitted', () => {
       <LodgingUnitForm
         areas={AREAS}
         units={[UNIT]}
+        year={2026}
         unit={UNIT}
         onSaved={vi.fn()}
         onCancel={vi.fn()}
@@ -258,6 +295,7 @@ describe('LodgingUnitForm — parent picker safety', () => {
       <LodgingUnitForm
         areas={AREAS}
         units={[UNIT, room]}
+        year={2026}
         unit={UNIT}
         onSaved={vi.fn()}
         onCancel={vi.fn()}
@@ -295,6 +333,7 @@ describe('LodgingUnitForm — parent picker safety', () => {
       <LodgingUnitForm
         areas={AREAS}
         units={[UNIT, child, grandchild, unrelated]}
+        year={2026}
         unit={UNIT}
         onSaved={vi.fn()}
         onCancel={vi.fn()}
@@ -311,6 +350,7 @@ describe('LodgingUnitForm — parent picker safety', () => {
       <LodgingUnitForm
         areas={AREAS}
         units={[container, child]}
+        year={2026}
         unit={container}
         onSaved={vi.fn()}
         onCancel={vi.fn()}
@@ -327,6 +367,7 @@ describe('LodgingUnitForm — parent picker safety', () => {
       <LodgingUnitForm
         areas={AREAS}
         units={[UNIT]}
+        year={2026}
         unit={UNIT}
         onSaved={vi.fn()}
         onCancel={vi.fn()}
@@ -341,7 +382,9 @@ describe('LodgingUnitForm — parent picker safety', () => {
 describe('LodgingUnitForm — beds', () => {
   it('shows the suggested occupancy from the bed inventory', async () => {
     const user = userEvent.setup()
-    render(<LodgingUnitForm areas={AREAS} units={[]} onSaved={vi.fn()} onCancel={vi.fn()} />)
+    render(
+      <LodgingUnitForm areas={AREAS} units={[]} year={2026} onSaved={vi.fn()} onCancel={vi.fn()} />
+    )
 
     await user.selectOptions(screen.getByLabelText('Add a bed type'), 'queen')
     await user.click(screen.getByRole('button', { name: 'Add bed' }))
@@ -351,7 +394,9 @@ describe('LodgingUnitForm — beds', () => {
 
   it('adopts the suggestion into sleeps only when asked, never silently', async () => {
     const user = userEvent.setup()
-    render(<LodgingUnitForm areas={AREAS} units={[]} onSaved={vi.fn()} onCancel={vi.fn()} />)
+    render(
+      <LodgingUnitForm areas={AREAS} units={[]} year={2026} onSaved={vi.fn()} onCancel={vi.fn()} />
+    )
 
     await user.selectOptions(screen.getByLabelText('Add a bed type'), 'queen')
     await user.click(screen.getByRole('button', { name: 'Add bed' }))
@@ -365,7 +410,9 @@ describe('LodgingUnitForm — beds', () => {
     createLodgingUnit.mockResolvedValue({ id: 'u1' })
     const user = userEvent.setup()
 
-    render(<LodgingUnitForm areas={AREAS} units={[]} onSaved={vi.fn()} onCancel={vi.fn()} />)
+    render(
+      <LodgingUnitForm areas={AREAS} units={[]} year={2026} onSaved={vi.fn()} onCancel={vi.fn()} />
+    )
     await user.type(screen.getByLabelText('Name'), 'Cabin N')
     await user.selectOptions(screen.getByLabelText('Add a bed type'), 'twin')
     await user.click(screen.getByRole('button', { name: 'Add bed' }))
@@ -383,7 +430,9 @@ describe('LodgingUnitForm — beds', () => {
     // that empty value counts as 0 the row is filtered out mid-edit, taking
     // the focused input with it, and staff cannot correct a count at all.
     const user = userEvent.setup()
-    render(<LodgingUnitForm areas={AREAS} units={[]} onSaved={vi.fn()} onCancel={vi.fn()} />)
+    render(
+      <LodgingUnitForm areas={AREAS} units={[]} year={2026} onSaved={vi.fn()} onCancel={vi.fn()} />
+    )
 
     await user.selectOptions(screen.getByLabelText('Add a bed type'), 'queen')
     await user.click(screen.getByRole('button', { name: 'Add bed' }))
@@ -396,7 +445,9 @@ describe('LodgingUnitForm — beds', () => {
 
   it('still removes a bed through the X button', async () => {
     const user = userEvent.setup()
-    render(<LodgingUnitForm areas={AREAS} units={[]} onSaved={vi.fn()} onCancel={vi.fn()} />)
+    render(
+      <LodgingUnitForm areas={AREAS} units={[]} year={2026} onSaved={vi.fn()} onCancel={vi.fn()} />
+    )
 
     await user.selectOptions(screen.getByLabelText('Add a bed type'), 'queen')
     await user.click(screen.getByRole('button', { name: 'Add bed' }))
@@ -423,6 +474,7 @@ describe('LodgingUnitForm — capacity flag', () => {
       <LodgingUnitForm
         areas={AREAS}
         units={[unit]}
+        year={2026}
         unit={unit}
         onSaved={vi.fn()}
         onCancel={vi.fn()}
@@ -560,6 +612,7 @@ describe('LodgingUnitForm — clearing capacity on an existing unit', () => {
       <LodgingUnitForm
         areas={AREAS}
         units={[SIX]}
+        year={2026}
         unit={SIX}
         onSaved={vi.fn()}
         onCancel={vi.fn()}
@@ -580,7 +633,9 @@ describe('LodgingUnitForm — clearing capacity on an existing unit', () => {
     createLodgingUnit.mockResolvedValue({ id: 'u9' })
     const user = userEvent.setup()
 
-    render(<LodgingUnitForm areas={AREAS} units={[]} onSaved={vi.fn()} onCancel={vi.fn()} />)
+    render(
+      <LodgingUnitForm areas={AREAS} units={[]} year={2026} onSaved={vi.fn()} onCancel={vi.fn()} />
+    )
     await user.type(screen.getByLabelText('Name'), 'Cabin N')
     await user.click(screen.getByRole('button', { name: 'Create unit' }))
 
@@ -599,6 +654,7 @@ describe('LodgingUnitForm — clearing capacity on an existing unit', () => {
       <LodgingUnitForm
         areas={AREAS}
         units={[SIX]}
+        year={2026}
         unit={SIX}
         onSaved={vi.fn()}
         onCancel={vi.fn()}
@@ -621,7 +677,9 @@ describe('LodgingUnitForm — an undeliverable code', () => {
   // save, because an empty join key silently matches nothing.
   it('refuses to submit when the name yields no usable code', async () => {
     const user = userEvent.setup()
-    render(<LodgingUnitForm areas={AREAS} units={[]} onSaved={vi.fn()} onCancel={vi.fn()} />)
+    render(
+      <LodgingUnitForm areas={AREAS} units={[]} year={2026} onSaved={vi.fn()} onCancel={vi.fn()} />
+    )
 
     await user.type(screen.getByLabelText('Name'), '北棟')
     await user.click(screen.getByRole('button', { name: 'Create unit' }))
@@ -634,7 +692,9 @@ describe('LodgingUnitForm — an undeliverable code', () => {
 
   it('leaves the form usable after refusing', async () => {
     const user = userEvent.setup()
-    render(<LodgingUnitForm areas={AREAS} units={[]} onSaved={vi.fn()} onCancel={vi.fn()} />)
+    render(
+      <LodgingUnitForm areas={AREAS} units={[]} year={2026} onSaved={vi.fn()} onCancel={vi.fn()} />
+    )
 
     await user.type(screen.getByLabelText('Name'), '北棟')
     await user.click(screen.getByRole('button', { name: 'Create unit' }))
@@ -648,7 +708,9 @@ describe('LodgingUnitForm — an undeliverable code', () => {
   it('accepts an explicit code that rescues an otherwise unslugifiable name', async () => {
     createLodgingUnit.mockResolvedValue({ id: 'u9' })
     const user = userEvent.setup()
-    render(<LodgingUnitForm areas={AREAS} units={[]} onSaved={vi.fn()} onCancel={vi.fn()} />)
+    render(
+      <LodgingUnitForm areas={AREAS} units={[]} year={2026} onSaved={vi.fn()} onCancel={vi.fn()} />
+    )
 
     await user.type(screen.getByLabelText('Name'), '北棟')
     await user.click(screen.getByRole('button', { name: /set it manually/i }))
@@ -669,6 +731,7 @@ describe('LodgingUnitForm — fields staff have no use for', () => {
       <LodgingUnitForm
         areas={AREAS}
         units={[unit]}
+        year={2026}
         unit={unit}
         onSaved={vi.fn()}
         onCancel={vi.fn()}
@@ -692,7 +755,9 @@ describe('LodgingUnitForm — fields staff have no use for', () => {
     // slugify keeps only [a-z0-9], so a name with no ASCII alphanumerics
     // derives to '' and the form refuses the save outright. The manual escape
     // is the only way past that, and it exists solely for create.
-    render(<LodgingUnitForm areas={AREAS} units={[]} onSaved={vi.fn()} onCancel={vi.fn()} />)
+    render(
+      <LodgingUnitForm areas={AREAS} units={[]} year={2026} onSaved={vi.fn()} onCancel={vi.fn()} />
+    )
 
     expect(screen.getByRole('button', { name: /set it manually/i })).toBeInTheDocument()
   })
@@ -726,7 +791,9 @@ describe('LodgingUnitForm — fields staff have no use for', () => {
 
 describe('LodgingUnitForm — wording staff can act on', () => {
   it('describes a container by what it is, not by what it is not', () => {
-    render(<LodgingUnitForm areas={AREAS} units={[]} onSaved={vi.fn()} onCancel={vi.fn()} />)
+    render(
+      <LodgingUnitForm areas={AREAS} units={[]} year={2026} onSaved={vi.fn()} onCancel={vi.fn()} />
+    )
 
     expect(
       screen.getByLabelText('This is a building or building area with multiple bedrooms.')
@@ -737,7 +804,9 @@ describe('LodgingUnitForm — wording staff can act on', () => {
     // A unit with placements CANNOT be deleted — guardUnitDelete refuses it —
     // and deactivating is the documented way out. "Active" never said that, so
     // the only route a staffer had was the one the server rejects.
-    render(<LodgingUnitForm areas={AREAS} units={[]} onSaved={vi.fn()} onCancel={vi.fn()} />)
+    render(
+      <LodgingUnitForm areas={AREAS} units={[]} year={2026} onSaved={vi.fn()} onCancel={vi.fn()} />
+    )
 
     expect(screen.getByLabelText('In use')).toBeInTheDocument()
     expect(screen.getByText(/past housing records are kept/i)).toBeInTheDocument()
@@ -759,7 +828,9 @@ describe('LodgingUnitForm — a rejected save says what to change', () => {
     createLodgingUnit.mockRejectedValue(rejection)
     const user = userEvent.setup()
 
-    render(<LodgingUnitForm areas={AREAS} units={[]} onSaved={vi.fn()} onCancel={vi.fn()} />)
+    render(
+      <LodgingUnitForm areas={AREAS} units={[]} year={2026} onSaved={vi.fn()} onCancel={vi.fn()} />
+    )
     await user.type(screen.getByLabelText('Name'), 'Cabin N')
     await user.click(screen.getByRole('button', { name: 'Create unit' }))
 
@@ -774,7 +845,9 @@ describe('LodgingUnitForm — a rejected save says what to change', () => {
     createLodgingUnit.mockRejectedValue(new Error('Network request failed'))
     const user = userEvent.setup()
 
-    render(<LodgingUnitForm areas={AREAS} units={[]} onSaved={vi.fn()} onCancel={vi.fn()} />)
+    render(
+      <LodgingUnitForm areas={AREAS} units={[]} year={2026} onSaved={vi.fn()} onCancel={vi.fn()} />
+    )
     await user.type(screen.getByLabelText('Name'), 'Cabin N')
     await user.click(screen.getByRole('button', { name: 'Create unit' }))
 
@@ -796,7 +869,15 @@ describe('LodgingUnitForm — the bathroom group is an exact-match id', () => {
       { ...UNIT, id: 'u3', code: 'c', bathroom_group: 'hc-upstairs-hall' },
       { ...UNIT, id: 'u4', code: 'd', bathroom_group: 'gt-clouds-rest' },
     ]
-    render(<LodgingUnitForm areas={AREAS} units={peers} onSaved={vi.fn()} onCancel={vi.fn()} />)
+    render(
+      <LodgingUnitForm
+        areas={AREAS}
+        units={peers}
+        year={2026}
+        onSaved={vi.fn()}
+        onCancel={vi.fn()}
+      />
+    )
 
     const field = screen.getByLabelText('Shares a bathroom with')
     const listId = field.getAttribute('list')
@@ -817,7 +898,9 @@ describe('LodgingUnitForm — only the X removes a bed', () => {
     // loses the chip and the focus inside it — the same mid-edit removal the
     // blank guard was written to prevent, arriving through "0" instead.
     const user = userEvent.setup()
-    render(<LodgingUnitForm areas={AREAS} units={[]} onSaved={vi.fn()} onCancel={vi.fn()} />)
+    render(
+      <LodgingUnitForm areas={AREAS} units={[]} year={2026} onSaved={vi.fn()} onCancel={vi.fn()} />
+    )
 
     await user.selectOptions(screen.getByLabelText('Add a bed type'), 'queen')
     await user.click(screen.getByRole('button', { name: 'Add bed' }))
@@ -835,7 +918,9 @@ describe('LodgingUnitForm — only the X removes a bed', () => {
     // parseInt read "2.5" as 2 and committed it, so a stray keystroke wrote a
     // bed count nobody chose.
     const user = userEvent.setup()
-    render(<LodgingUnitForm areas={AREAS} units={[]} onSaved={vi.fn()} onCancel={vi.fn()} />)
+    render(
+      <LodgingUnitForm areas={AREAS} units={[]} year={2026} onSaved={vi.fn()} onCancel={vi.fn()} />
+    )
 
     await user.selectOptions(screen.getByLabelText('Add a bed type'), 'queen')
     await user.click(screen.getByRole('button', { name: 'Add bed' }))

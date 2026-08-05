@@ -97,7 +97,7 @@ class TestStableSort:
             pytest.param(lambda r: r.fetch_family_camp_registrations(2026), id="fetch_registrations"),
             pytest.param(lambda r: r.fetch_family_camp_medical(2026), id="fetch_medical"),
             pytest.param(lambda r: r.fetch_weekend_sessions(2026), id="fetch_weekend_sessions"),
-            pytest.param(lambda r: r.fetch_units(), id="fetch_units"),
+            pytest.param(lambda r: r.fetch_units(2026), id="fetch_units"),
             pytest.param(lambda r: r.fetch_family_camp_adults(2026), id="fetch_adults"),
         ],
     )
@@ -328,12 +328,25 @@ class TestFetchUnits:
     @pytest.mark.asyncio
     async def test_expands_area_and_does_not_prefilter_containers(self, repo: LodgingRepository, pb: MagicMock) -> None:
         """Containers stay in the payload (badged); only COUNTS exclude them."""
-        await repo.fetch_units()
+        await repo.fetch_units(2026)
 
         pb.collection.assert_called_with("lodging_units")
         params = _last_query(pb)
         assert params["expand"] == "area"
         assert "is_container" not in params.get("filter", "")
+
+    @pytest.mark.asyncio
+    async def test_filters_to_the_requested_year_only(self, repo: LodgingRepository, pb: MagicMock) -> None:
+        """Units became year-scoped in 1500000140.
+
+        `code` is unique only per (code, year), so an unfiltered read would
+        return every season at once and collide two rows onto one card in
+        `leafByCode`. The year argument is what keeps a payload to one season.
+        """
+        await repo.fetch_units(2027)
+
+        filter_str = _last_query(pb)["filter"]
+        assert "year = 2027" in filter_str
 
 
 class TestFetchPriorHouseholdCmIds:

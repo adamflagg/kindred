@@ -233,11 +233,11 @@ describe('queryKeys', () => {
       '',
     ])
     expect(queryKeys.householdMedical(2026, 2000001)).toEqual(['household-medical', 2026, 2000001])
-    expect(queryKeys.lodgingUnits()).toEqual(['lodging-units'])
-    expect(queryKeys.lodgingAreas()).toEqual(['lodging-areas'])
+    expect(queryKeys.lodgingUnits(2026)).toEqual(['lodging-units', 2026])
+    expect(queryKeys.lodgingAreas(2026)).toEqual(['lodging-areas', 2026])
     expect(queryKeys.lodgingAliases()).toEqual(['lodging-aliases'])
     expect(queryKeys.weekendSummary(2026)).toEqual(['weekend-summary', 2026])
-    expect(queryKeys.lodgingIngestIssues()).toEqual(['lodging-ingest-issues'])
+    expect(queryKeys.lodgingIngestIssues(2026)).toEqual(['lodging-ingest-issues', 2026])
   })
 })
 

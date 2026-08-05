@@ -51,12 +51,15 @@ beforeEach(() => {
 })
 
 describe('listLodgingUnits', () => {
-  it('reads lodging_units with the area expanded', async () => {
-    await listLodgingUnits()
+  it('reads lodging_units with the area expanded, filtered to one season', async () => {
+    await listLodgingUnits(2026)
 
     expect(collection).toHaveBeenCalledWith('lodging_units')
-    const [options] = getFullList.mock.calls[0] as [{ expand?: string; sort?: string }]
+    const [options] = getFullList.mock.calls[0] as [
+      { expand?: string; filter?: string; sort?: string },
+    ]
     expect(options.expand).toContain('area')
+    expect(options.filter).toContain('year = 2026')
   })
 })
 
@@ -68,6 +71,7 @@ describe('createLodgingUnit', () => {
       code: 'ridge-n',
       is_active: true,
       inventory_class: 'family_pool',
+      year: 2026,
     })
 
     const [payload] = create.mock.calls[0] as [Partial<LodgingUnitRecord>]
@@ -82,6 +86,7 @@ describe('createLodgingUnit', () => {
       code: 'ridge-n',
       is_active: true,
       inventory_class: 'staff_default',
+      year: 2026,
     })
 
     const [payload] = create.mock.calls[0] as [Partial<LodgingUnitRecord>]
@@ -110,11 +115,12 @@ describe('createLodgingAlias', () => {
 })
 
 describe('listUnresolvedAliasIssues', () => {
-  it('reads the ingest work queue, unresolved alias rows only', async () => {
-    await listUnresolvedAliasIssues()
+  it('reads the ingest work queue, unresolved alias rows only, for one season', async () => {
+    await listUnresolvedAliasIssues(2026)
 
     expect(collection).toHaveBeenCalledWith('lodging_ingest_issues')
     const [options] = getFullList.mock.calls[0] as [{ filter?: string; sort?: string }]
+    expect(options.filter).toContain('year = 2026')
     expect(options.filter).toContain('kind = "unresolved_alias"')
     expect(options.filter).toContain('is_resolved = false')
   })

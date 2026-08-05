@@ -5,11 +5,14 @@ import userEvent from '@testing-library/user-event'
 import type { ReactNode } from 'react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
+import { CurrentYearContext, type CurrentYearContextType } from '../../../hooks/useCurrentYear'
+
 const deactivateLodgingUnit = vi.fn()
 const confirmLodgingUnits = vi.fn()
 const createLodgingUnit = vi.fn()
 const updateLodgingUnit = vi.fn()
 const listLodgingAreas = vi.fn()
+const listLodgingUnits = vi.fn()
 
 const AREAS = [
   { id: 'area_2', name: 'South Zone', code: 'SOUTH', map_x: 0, map_y: 0, sort_order: 2 },
@@ -20,12 +23,27 @@ const AREAS = [
 // means call records and resolved values outlive the test that set them.
 // Without this reset a `toHaveBeenCalledWith` can match a call an earlier
 // test made.
+const UNITS = [
+  { id: 'u1', name: 'Cabin A', code: 'cabin-a', area: 'area_1', sleeps: 0 },
+  {
+    id: 'u2',
+    name: 'North Lodge',
+    code: 'north-lodge',
+    area: 'area_2',
+    sleeps: 7,
+    is_confirmed: true,
+    is_container: true,
+  },
+  { id: 'u3', name: 'Cabin B', code: 'cabin-b', area: 'area_1', sleeps: 4 },
+]
+
 beforeEach(() => {
   deactivateLodgingUnit.mockReset()
   confirmLodgingUnits.mockReset()
   createLodgingUnit.mockReset()
   updateLodgingUnit.mockReset()
   listLodgingAreas.mockReset().mockResolvedValue(AREAS)
+  listLodgingUnits.mockReset().mockResolvedValue(UNITS.map((u) => fixtureUnit(u)))
 })
 
 function fixtureUnit(over: Record<string, unknown>) {
@@ -60,21 +78,8 @@ function fixtureUnit(over: Record<string, unknown>) {
 }
 
 vi.mock('../../../services/lodgingCrud', () => ({
-  listLodgingUnits: () =>
-    Promise.resolve([
-      fixtureUnit({ id: 'u1', name: 'Cabin A', code: 'cabin-a', area: 'area_1', sleeps: 0 }),
-      fixtureUnit({
-        id: 'u2',
-        name: 'North Lodge',
-        code: 'north-lodge',
-        area: 'area_2',
-        sleeps: 7,
-        is_confirmed: true,
-        is_container: true,
-      }),
-      fixtureUnit({ id: 'u3', name: 'Cabin B', code: 'cabin-b', area: 'area_1', sleeps: 4 }),
-    ]),
-  listLodgingAreas: () => listLodgingAreas(),
+  listLodgingUnits: (...args: unknown[]) => listLodgingUnits(...args),
+  listLodgingAreas: (...args: unknown[]) => listLodgingAreas(...args),
   deactivateLodgingUnit: (...args: unknown[]) => deactivateLodgingUnit(...args),
   confirmLodgingUnits: (...args: unknown[]) => confirmLodgingUnits(...args),
   createLodgingUnit: (...args: unknown[]) => createLodgingUnit(...args),
@@ -102,8 +107,20 @@ beforeEach(() => {
   client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
 })
 
+const YEAR_CONTEXT: CurrentYearContextType = {
+  currentYear: 2026,
+  setCurrentYear: vi.fn(),
+  availableYears: [2026],
+  isTransitioning: false,
+  isYearReady: true,
+}
+
 function wrapper({ children }: { children: ReactNode }) {
-  return <QueryClientProvider client={client}>{children}</QueryClientProvider>
+  return (
+    <QueryClientProvider client={client}>
+      <CurrentYearContext.Provider value={YEAR_CONTEXT}>{children}</CurrentYearContext.Provider>
+    </QueryClientProvider>
+  )
 }
 
 async function renderPanel() {
@@ -114,6 +131,16 @@ async function renderPanel() {
 }
 
 describe('LodgingUnitsPanel', () => {
+  it('asks for the current season only', async () => {
+    // Units are year-scoped since 1500000140: an unfiltered read would show
+    // every season's rows stacked in one table, since `code` is unique only
+    // per (code, year).
+    await renderPanel()
+
+    expect(listLodgingUnits).toHaveBeenCalledWith(2026)
+    expect(listLodgingAreas).toHaveBeenCalledWith(2026)
+  })
+
   it('groups units under their area, ordered by the area sort_order', async () => {
     await renderPanel()
     const headings = screen.getAllByRole('button', { name: /Zone/ }).map((el) => el.textContent)

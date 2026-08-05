@@ -19,6 +19,7 @@ import { Home, Map, Plus } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import toast from 'react-hot-toast'
 
+import { useCurrentYear } from '../../../hooks/useCurrentYear'
 import {
   confirmLodgingUnits,
   deactivateLodgingUnit,
@@ -43,6 +44,7 @@ import { groupUnitsByArea, type UnitSort } from './unitSort'
 
 export function LodgingUnitsPanel() {
   const queryClient = useQueryClient()
+  const { currentYear } = useCurrentYear()
   const [editing, setEditing] = useState<LodgingUnitRecord | 'new' | null>(null)
   const [areasOpen, setAreasOpen] = useState(false)
   const [sort, setSort] = useState<UnitSort>({ field: 'name', desc: false })
@@ -69,14 +71,14 @@ export function LodgingUnitsPanel() {
   }, [editing])
 
   const unitsQuery = useQuery({
-    queryKey: queryKeys.lodgingUnits(),
+    queryKey: queryKeys.lodgingUnits(currentYear),
     ...userDataOptions,
-    queryFn: listLodgingUnits,
+    queryFn: () => listLodgingUnits(currentYear),
   })
   const areasQuery = useQuery({
-    queryKey: queryKeys.lodgingAreas(),
+    queryKey: queryKeys.lodgingAreas(currentYear),
     ...userDataOptions,
-    queryFn: listLodgingAreas,
+    queryFn: () => listLodgingAreas(currentYear),
   })
 
   const refresh = () => {
@@ -266,6 +268,7 @@ export function LodgingUnitsPanel() {
                 areas={areasQuery.data}
                 units={unitsQuery.data ?? []}
                 unit={editing === 'new' ? undefined : editing}
+                year={currentYear}
                 onSaved={refresh}
                 onCancel={() => {
                   setEditing(null)

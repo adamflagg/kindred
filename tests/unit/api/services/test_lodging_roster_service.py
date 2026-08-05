@@ -380,6 +380,20 @@ class TestAdultWeekendParties:
 
 class TestUnitsAndCounts:
     @pytest.mark.asyncio
+    async def test_build_roster_passes_its_year_to_the_unit_fetch(self) -> None:
+        """Units became year-scoped in 1500000140.
+
+        `fetch_units` filters to one season now, and `build_roster` already
+        receives the year for every other fetch on this TaskGroup -- the unit
+        read must not be the one left reading every season at once.
+        """
+        repo = _repo(fetch_session=FAMILY_SESSION)
+
+        await LodgingRosterService(repo).build_roster(2027, 1000001)
+
+        repo.fetch_units.assert_awaited_once_with(2027)
+
+    @pytest.mark.asyncio
     async def test_containers_are_in_the_payload_but_not_in_counts(self) -> None:
         repo = _repo(
             fetch_session=FAMILY_SESSION,
@@ -1312,6 +1326,20 @@ class TestBuildSummary:
 
         for method in ("fetch_availability", "fetch_assignments", "fetch_attendees_for_session"):
             assert getattr(repo, method).await_count == 2, f"{method} should be per-weekend"
+
+    @pytest.mark.asyncio
+    async def test_build_summary_passes_its_year_to_the_unit_fetch(self) -> None:
+        """The batched sibling of `build_roster`'s equivalent guard.
+
+        Both methods carry their own TaskGroup calling `fetch_units`, so
+        fixing one and leaving the other is the half-fix this file's own
+        `test_the_summary_reads_no_second_availability_layer` warns about.
+        """
+        repo = _repo(fetch_weekend_sessions=[FAMILY_SESSION, ADULT_SESSION])
+
+        await LodgingRosterService(repo).build_summary(2027)
+
+        repo.fetch_units.assert_awaited_once_with(2027)
 
     @pytest.mark.asyncio
     async def test_a_scenario_reads_the_draft_per_weekend_and_the_mirror_never(self) -> None:

@@ -15,6 +15,7 @@ import { Plus } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import toast from 'react-hot-toast'
 
+import { useCurrentYear } from '../../../hooks/useCurrentYear'
 import {
   deleteLodgingAlias,
   listLodgingAliases,
@@ -42,6 +43,7 @@ function yearWindow(alias: LodgingAliasRecord): string {
 
 export function LodgingAliasesPanel() {
   const queryClient = useQueryClient()
+  const { currentYear } = useCurrentYear()
   const [editing, setEditing] = useState<LodgingAliasRecord | 'new' | null>(null)
   const formRef = useRef<HTMLDivElement>(null)
 
@@ -64,10 +66,15 @@ export function LodgingAliasesPanel() {
     ...userDataOptions,
     queryFn: listLodgingAliases,
   })
+  // The member-unit picker offers THIS season's units — a staffer mapping a
+  // cabin string today is mapping it to a building that exists now, not to
+  // whichever season the alias was originally seeded against (see the
+  // `expand: member_units` display in the table below, which is a label from
+  // the seed year and deliberately left alone — Task 5 resolves through code).
   const unitsQuery = useQuery({
-    queryKey: queryKeys.lodgingUnits(),
+    queryKey: queryKeys.lodgingUnits(currentYear),
     ...userDataOptions,
-    queryFn: listLodgingUnits,
+    queryFn: () => listLodgingUnits(currentYear),
   })
 
   const refresh = () => {

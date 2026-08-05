@@ -59,6 +59,16 @@ export interface LodgingUnitFormProps {
   units: LodgingUnitRecord[]
   /** Absent = create. `| undefined` is explicit for `exactOptionalPropertyTypes`. */
   unit?: LodgingUnitRecord | undefined
+  /**
+   * The panel's current season. Units are year-scoped since 1500000140, and
+   * this form always writes it — on create because the schema requires it
+   * (an omitted number field lands as 0, which fails `min: 2010`), and on
+   * edit too, because `unit` is one of this year's rows already (the panel's
+   * own query is year-scoped) so resending the same value is a no-op. This
+   * form never changes which season a unit belongs to; that is a
+   * roll-forward operation, not a routine edit.
+   */
+  year: number
   onSaved: () => void
   onCancel: () => void
 }
@@ -85,7 +95,14 @@ function saveErrorMessage(error: unknown): string {
   return error instanceof Error ? error.message : 'Failed to save the unit'
 }
 
-export function LodgingUnitForm({ areas, units, unit, onSaved, onCancel }: LodgingUnitFormProps) {
+export function LodgingUnitForm({
+  areas,
+  units,
+  unit,
+  year,
+  onSaved,
+  onCancel,
+}: LodgingUnitFormProps) {
   const [identity, setIdentity] = useState({
     name: unit?.name ?? '',
     code: unit?.code ?? '',
@@ -135,6 +152,7 @@ export function LodgingUnitForm({ areas, units, unit, onSaved, onCancel }: Lodgi
       area: identity.area,
       name: identity.name,
       code,
+      year,
       parent_unit: identity.parent_unit,
       // Never omitted — see the header comment.
       is_active: isActive,

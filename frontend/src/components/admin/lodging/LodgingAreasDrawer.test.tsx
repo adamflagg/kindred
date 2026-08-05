@@ -5,6 +5,8 @@ import userEvent from '@testing-library/user-event'
 import type { ReactNode } from 'react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
+import { CurrentYearContext, type CurrentYearContextType } from '../../../hooks/useCurrentYear'
+
 const reorderLodgingAreas = vi.fn()
 const updateLodgingArea = vi.fn()
 const createLodgingArea = vi.fn()
@@ -33,7 +35,7 @@ beforeEach(() => {
 // deleted, and deriving the next value from the list LENGTH silently reissues
 // a value already in use.
 vi.mock('../../../services/lodgingCrud', () => ({
-  listLodgingAreas: () => listLodgingAreas(),
+  listLodgingAreas: (...args: unknown[]) => listLodgingAreas(...args),
   createLodgingArea: (...args: unknown[]) => createLodgingArea(...args),
   updateLodgingArea: (...args: unknown[]) => updateLodgingArea(...args),
   deleteLodgingArea: (...args: unknown[]) => deleteLodgingArea(...args),
@@ -55,11 +57,31 @@ beforeEach(() => {
   client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
 })
 
+const YEAR_CONTEXT: CurrentYearContextType = {
+  currentYear: 2026,
+  setCurrentYear: vi.fn(),
+  availableYears: [2026],
+  isTransitioning: false,
+  isYearReady: true,
+}
+
 function wrapper({ children }: { children: ReactNode }) {
-  return <QueryClientProvider client={client}>{children}</QueryClientProvider>
+  return (
+    <QueryClientProvider client={client}>
+      <CurrentYearContext.Provider value={YEAR_CONTEXT}>{children}</CurrentYearContext.Provider>
+    </QueryClientProvider>
+  )
 }
 
 describe('LodgingAreasDrawer', () => {
+  it('asks for the current season only', async () => {
+    render(<LodgingAreasDrawer open onClose={vi.fn()} />, { wrapper })
+    await waitFor(() => {
+      expect(screen.getByDisplayValue('North Zone')).toBeInTheDocument()
+    })
+    expect(listLodgingAreas).toHaveBeenCalledWith(2026)
+  })
+
   it('renders nothing when closed', () => {
     render(<LodgingAreasDrawer open={false} onClose={vi.fn()} />, { wrapper })
     expect(screen.queryByText('North Zone')).not.toBeInTheDocument()
@@ -161,6 +183,26 @@ describe('LodgingAreasDrawer', () => {
     })
     const [payload] = createLodgingArea.mock.calls[0] as [{ sort_order: number; code: string }]
     expect(payload.code).toBe('WEST-ZONE')
+  })
+
+  it('stamps a new area with the current season', async () => {
+    // Areas are year-scoped since 1500000140; an omitted year fails the
+    // schema's min:2010 the moment the create reaches PocketBase.
+    createLodgingArea.mockResolvedValue({ id: 'a3' })
+    const user = userEvent.setup()
+    render(<LodgingAreasDrawer open onClose={vi.fn()} />, { wrapper })
+    await waitFor(() => {
+      expect(screen.getByDisplayValue('North Zone')).toBeInTheDocument()
+    })
+
+    await user.type(screen.getByLabelText('New area'), 'West Zone')
+    await user.click(screen.getByRole('button', { name: 'Add' }))
+
+    await waitFor(() => {
+      expect(createLodgingArea).toHaveBeenCalled()
+    })
+    const [payload] = createLodgingArea.mock.calls[0] as [{ year: number }]
+    expect(payload.year).toBe(2026)
   })
 })
 

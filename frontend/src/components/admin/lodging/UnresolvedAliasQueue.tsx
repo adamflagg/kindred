@@ -18,6 +18,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
 import toast from 'react-hot-toast'
 
+import { useCurrentYear } from '../../../hooks/useCurrentYear'
 import {
   ignoreIngestIssue,
   listLodgingUnits,
@@ -39,17 +40,18 @@ const NOT_A_CABIN_NOTE = 'Marked by an admin as not a cabin name.'
 
 export function UnresolvedAliasQueue() {
   const queryClient = useQueryClient()
+  const { currentYear } = useCurrentYear()
   const [selection, setSelection] = useState<Record<string, string[]>>({})
 
   const queueQuery = useQuery({
-    queryKey: queryKeys.lodgingIngestIssues(),
+    queryKey: queryKeys.lodgingIngestIssues(currentYear),
     ...userDataOptions,
-    queryFn: listUnresolvedAliasIssues,
+    queryFn: () => listUnresolvedAliasIssues(currentYear),
   })
   const unitsQuery = useQuery({
-    queryKey: queryKeys.lodgingUnits(),
+    queryKey: queryKeys.lodgingUnits(currentYear),
     ...userDataOptions,
-    queryFn: listLodgingUnits,
+    queryFn: () => listLodgingUnits(currentYear),
   })
 
   const refresh = () => {

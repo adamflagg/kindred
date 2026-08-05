@@ -9,6 +9,8 @@ import userEvent from '@testing-library/user-event'
 import type { ReactNode } from 'react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
+import { CurrentYearContext, type CurrentYearContextType } from '../../../hooks/useCurrentYear'
+
 const deleteLodgingAlias = vi.fn()
 const listLodgingUnits = vi.fn()
 
@@ -53,7 +55,7 @@ vi.mock('../../../services/lodgingCrud', () => ({
         expand: { member_units: [{ id: 'u4', name: 'Old Hall', code: 'old-hall' }] },
       },
     ]),
-  listLodgingUnits: () => listLodgingUnits(),
+  listLodgingUnits: (...args: unknown[]) => listLodgingUnits(...args),
   createLodgingAlias: vi.fn(),
   updateLodgingAlias: vi.fn(),
   deleteLodgingAlias: (...args: unknown[]) => deleteLodgingAlias(...args),
@@ -83,11 +85,31 @@ beforeEach(() => {
   vi.spyOn(window, 'confirm').mockReturnValue(true)
 })
 
+const YEAR_CONTEXT: CurrentYearContextType = {
+  currentYear: 2026,
+  setCurrentYear: vi.fn(),
+  availableYears: [2026],
+  isTransitioning: false,
+  isYearReady: true,
+}
+
 function wrapper({ children }: { children: ReactNode }) {
-  return <QueryClientProvider client={client}>{children}</QueryClientProvider>
+  return (
+    <QueryClientProvider client={client}>
+      <CurrentYearContext.Provider value={YEAR_CONTEXT}>{children}</CurrentYearContext.Provider>
+    </QueryClientProvider>
+  )
 }
 
 describe('LodgingAliasesPanel', () => {
+  it('asks the units picker for the current season only', async () => {
+    render(<LodgingAliasesPanel />, { wrapper })
+    await waitFor(() => {
+      expect(screen.getByText('North Lodge - Whole')).toBeInTheDocument()
+    })
+    expect(listLodgingUnits).toHaveBeenCalledWith(2026)
+  })
+
   it('labels a multi-member alias as a merge', async () => {
     render(<LodgingAliasesPanel />, { wrapper })
     await waitFor(() => {
