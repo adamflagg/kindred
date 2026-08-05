@@ -938,7 +938,7 @@ func TestSeedRegistrySecondSeasonIsANoOpOnceOneSeasonHasRows(t *testing.T) {
 //
 // SeedRegistry now refuses to run once ANY season has rows (design doc §4.2,
 // and the right rule — roll-forward owns every subsequent season). The
-// consequence is that the create-if-absent behaviour no longer finishes a job
+// consequence is that the create-if-absent behavior no longer finishes a job
 // a previous run started: before the gate, a seed that died halfway was
 // completed by the next boot; now the areas it committed make
 // registryHasAnyRows report true forever, so the loader logs "skipping" and

@@ -41,14 +41,34 @@ func RegisterRoutes(e *core.ServeEvent) {
 		}))
 }
 
+// The bounds `year` actually carries (1500000140). Validating against them here
+// rather than letting app.Save discover them is what keeps a client error a 400:
+// the POST handler reports a failed apply as a 500, so an out-of-range `to`
+// would otherwise surface as a server fault naming a field the caller never
+// mentioned. The upper bound is the half that is easy to skip and worth keeping
+// — a typo like `to=2099` is inside the field range, so it would succeed and
+// create the phantom season registry.go warns about.
+const (
+	minSeasonYear = 2010
+	maxSeasonYear = 2100
+)
+
 func yearsFromQuery(re *core.RequestEvent) (from, to int, err error) {
-	from, err = strconv.Atoi(re.Request.URL.Query().Get("from"))
+	from, err = seasonYear(re, "from")
 	if err != nil {
-		return 0, 0, fmt.Errorf("from must be a year")
+		return 0, 0, err
 	}
-	to, err = strconv.Atoi(re.Request.URL.Query().Get("to"))
+	to, err = seasonYear(re, "to")
 	if err != nil {
-		return 0, 0, fmt.Errorf("to must be a year")
+		return 0, 0, err
 	}
 	return from, to, nil
+}
+
+func seasonYear(re *core.RequestEvent, name string) (int, error) {
+	year, err := strconv.Atoi(re.Request.URL.Query().Get(name))
+	if err != nil || year < minSeasonYear || year > maxSeasonYear {
+		return 0, fmt.Errorf("%s must be a year between %d and %d", name, minSeasonYear, maxSeasonYear)
+	}
+	return year, nil
 }

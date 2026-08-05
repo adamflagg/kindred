@@ -105,10 +105,13 @@ func rollForward(app core.App, from, to int, write bool) (RollForwardPlan, error
 			fmt.Errorf("cannot roll year %d onto itself", from)
 	}
 
-	// A preview writes nothing, so it has nothing to roll back.
+	// A preview writes nothing, so it has nothing to roll back. The passes fill
+	// `plan` through the pointer, so the call is sequenced before the return
+	// rather than sharing a return statement with the value it mutates.
 	if !write {
 		plan := RollForwardPlan{FromYear: from, ToYear: to}
-		return plan, rollForwardPasses(app, from, to, false, &plan)
+		err := rollForwardPasses(app, from, to, false, &plan)
+		return plan, err
 	}
 
 	var committed RollForwardPlan
@@ -120,7 +123,8 @@ func rollForward(app core.App, from, to int, write bool) (RollForwardPlan, error
 		committed = plan
 		return nil
 	}); err != nil {
-		return RollForwardPlan{FromYear: from, ToYear: to}, err
+		return RollForwardPlan{FromYear: from, ToYear: to},
+			fmt.Errorf("rolling %d forward to %d: %w", from, to, err)
 	}
 	return committed, nil
 }
@@ -222,10 +226,19 @@ func copyUnits(app core.App, from, to int, write bool, areaIDs map[string]string
 		}
 		rec.Set("year", to)
 
-		// Resolve the area into the TARGET year. A source unit whose area was
-		// somehow absent keeps no area rather than borrowing last year's row —
-		// but a REAL lookup failure (a locked database, say) must not read the
-		// same way as "absent", or it silently ships a unit with no area.
+		// Resolve the area into the TARGET year, never borrowing last year's row.
+		//
+		// An unresolvable area — the source row's area is gone, or its code has
+		// no row in the target year — leaves `area` unset, and `area` is a
+		// REQUIRED relation (1500000116). So this does not ship a unit without
+		// an area; the app.Save below fails validation and, now that the passes
+		// run in one transaction, aborts the roll-forward having written
+		// nothing. That save error is wrapped with the unit code, which is the
+		// only thing that makes the offending row findable.
+		//
+		// A REAL lookup failure (a locked database, say) must still not read the
+		// same way as "absent", or a transient fault becomes a silent data
+		// decision rather than a loud stop.
 		srcArea, err := app.FindRecordById("lodging_areas", src.GetString("area"))
 		switch {
 		case err == nil:
@@ -233,7 +246,7 @@ func copyUnits(app core.App, from, to int, write bool, areaIDs map[string]string
 				rec.Set("area", id)
 			}
 		case errors.Is(err, sql.ErrNoRows):
-			// no area to resolve; the new unit's area is left unset, same as before
+			// Absent source area; `area` stays unset and the save below refuses it.
 		default:
 			return fmt.Errorf("resolving area for unit %q: %w", code, err)
 		}

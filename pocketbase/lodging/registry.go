@@ -264,7 +264,7 @@ func seedRegistryFromFile(app core.App, path string, year int) error {
 		areasAdded, unitsAdded, aliasesAdded = areas, units, aliases
 		return nil
 	}); txErr != nil {
-		return txErr
+		return fmt.Errorf("seeding the lodging registry for %d: %w", year, txErr)
 	}
 
 	slog.Info("lodging registry loaded", "path", path,
