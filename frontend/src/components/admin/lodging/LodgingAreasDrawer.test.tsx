@@ -73,6 +73,26 @@ function wrapper({ children }: { children: ReactNode }) {
   )
 }
 
+// `CurrentYearContext` returns the literal 0 until the backend supplies the
+// configured year (`useCurrentYear.ts`). The areas query must not fire
+// against `year = 0` in that window — PocketBase answers with a successful
+// `200 []`, not an error, so an ungated query renders a false empty state.
+const ZERO_YEAR_CONTEXT: CurrentYearContextType = {
+  ...YEAR_CONTEXT,
+  currentYear: 0,
+  isYearReady: false,
+}
+
+function zeroYearWrapper({ children }: { children: ReactNode }) {
+  return (
+    <QueryClientProvider client={client}>
+      <CurrentYearContext.Provider value={ZERO_YEAR_CONTEXT}>
+        {children}
+      </CurrentYearContext.Provider>
+    </QueryClientProvider>
+  )
+}
+
 describe('LodgingAreasDrawer', () => {
   it('asks for the current season only', async () => {
     render(<LodgingAreasDrawer open onClose={vi.fn()} />, { wrapper })
@@ -80,6 +100,11 @@ describe('LodgingAreasDrawer', () => {
       expect(screen.getByDisplayValue('North Zone')).toBeInTheDocument()
     })
     expect(listLodgingAreas).toHaveBeenCalledWith(2026)
+  })
+
+  it('does not fetch until the year resolves, even while open', () => {
+    render(<LodgingAreasDrawer open onClose={vi.fn()} />, { wrapper: zeroYearWrapper })
+    expect(listLodgingAreas).not.toHaveBeenCalled()
   })
 
   it('renders nothing when closed', () => {

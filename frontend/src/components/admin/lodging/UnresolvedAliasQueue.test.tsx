@@ -108,6 +108,26 @@ function wrapper({ children }: { children: ReactNode }) {
   )
 }
 
+// `CurrentYearContext` returns the literal 0 until the backend supplies the
+// configured year (`useCurrentYear.ts`). Both queries here must not fire
+// against `year = 0` in that window — PocketBase answers with a successful
+// `200 []`, not an error, so an ungated query renders a false empty queue.
+const ZERO_YEAR_CONTEXT: CurrentYearContextType = {
+  ...YEAR_CONTEXT,
+  currentYear: 0,
+  isYearReady: false,
+}
+
+function zeroYearWrapper({ children }: { children: ReactNode }) {
+  return (
+    <QueryClientProvider client={client}>
+      <CurrentYearContext.Provider value={ZERO_YEAR_CONTEXT}>
+        {children}
+      </CurrentYearContext.Provider>
+    </QueryClientProvider>
+  )
+}
+
 beforeEach(() => {
   mapUnresolvedAlias.mockReset()
   ignoreIngestIssue.mockReset().mockResolvedValue({})
@@ -123,6 +143,12 @@ describe('UnresolvedAliasQueue', () => {
     })
     expect(listUnresolvedAliasIssues).toHaveBeenCalledWith(2026)
     expect(listLodgingUnits).toHaveBeenCalledWith(2026)
+  })
+
+  it('does not fetch until the year resolves', () => {
+    render(<UnresolvedAliasQueue />, { wrapper: zeroYearWrapper })
+    expect(listUnresolvedAliasIssues).not.toHaveBeenCalled()
+    expect(listLodgingUnits).not.toHaveBeenCalled()
   })
 
   it('shows the verbatim string, its source field and how often it was seen', async () => {

@@ -101,6 +101,28 @@ function wrapper({ children }: { children: ReactNode }) {
   )
 }
 
+// `CurrentYearContext` returns the literal 0 until the backend supplies the
+// configured year (`useCurrentYear.ts`). The units picker query must not
+// fire against `year = 0` in that window — PocketBase answers with a
+// successful `200 []`, not an error, so an ungated query silently offers no
+// units to map an alias to. `listLodgingAliases` itself is year-free by
+// design and unaffected.
+const ZERO_YEAR_CONTEXT: CurrentYearContextType = {
+  ...YEAR_CONTEXT,
+  currentYear: 0,
+  isYearReady: false,
+}
+
+function zeroYearWrapper({ children }: { children: ReactNode }) {
+  return (
+    <QueryClientProvider client={client}>
+      <CurrentYearContext.Provider value={ZERO_YEAR_CONTEXT}>
+        {children}
+      </CurrentYearContext.Provider>
+    </QueryClientProvider>
+  )
+}
+
 describe('LodgingAliasesPanel', () => {
   it('asks the units picker for the current season only', async () => {
     render(<LodgingAliasesPanel />, { wrapper })
@@ -108,6 +130,14 @@ describe('LodgingAliasesPanel', () => {
       expect(screen.getByText('North Lodge - Whole')).toBeInTheDocument()
     })
     expect(listLodgingUnits).toHaveBeenCalledWith(2026)
+  })
+
+  it('does not fetch the units picker until the year resolves', async () => {
+    render(<LodgingAliasesPanel />, { wrapper: zeroYearWrapper })
+    await waitFor(() => {
+      expect(screen.getByText('North Lodge - Whole')).toBeInTheDocument()
+    })
+    expect(listLodgingUnits).not.toHaveBeenCalled()
   })
 
   it('labels a multi-member alias as a merge', async () => {

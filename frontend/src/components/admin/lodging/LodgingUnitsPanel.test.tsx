@@ -123,6 +123,27 @@ function wrapper({ children }: { children: ReactNode }) {
   )
 }
 
+// `CurrentYearContext` returns the literal 0 until the backend supplies the
+// configured year (`useCurrentYear.ts`). The units/areas queries must not
+// fire against `year = 0` in that window — PocketBase answers with a
+// successful `200 []`, not an error, so an ungated query renders a false
+// "no lodging units" empty state on every cold load.
+const ZERO_YEAR_CONTEXT: CurrentYearContextType = {
+  ...YEAR_CONTEXT,
+  currentYear: 0,
+  isYearReady: false,
+}
+
+function zeroYearWrapper({ children }: { children: ReactNode }) {
+  return (
+    <QueryClientProvider client={client}>
+      <CurrentYearContext.Provider value={ZERO_YEAR_CONTEXT}>
+        {children}
+      </CurrentYearContext.Provider>
+    </QueryClientProvider>
+  )
+}
+
 async function renderPanel() {
   render(<LodgingUnitsPanel />, { wrapper })
   await waitFor(() => {
@@ -139,6 +160,12 @@ describe('LodgingUnitsPanel', () => {
 
     expect(listLodgingUnits).toHaveBeenCalledWith(2026)
     expect(listLodgingAreas).toHaveBeenCalledWith(2026)
+  })
+
+  it('does not fetch until the year resolves', () => {
+    render(<LodgingUnitsPanel />, { wrapper: zeroYearWrapper })
+    expect(listLodgingUnits).not.toHaveBeenCalled()
+    expect(listLodgingAreas).not.toHaveBeenCalled()
   })
 
   it('groups units under their area, ordered by the area sort_order', async () => {

@@ -53,7 +53,11 @@ export function LodgingAreasDrawer({ open, onClose }: LodgingAreasDrawerProps) {
     queryKey: queryKeys.lodgingAreas(currentYear),
     ...userDataOptions,
     queryFn: () => listLodgingAreas(currentYear),
-    enabled: open,
+    // Gated on the drawer being open AND the year having resolved.
+    // CurrentYearContext returns the literal 0 until the backend supplies
+    // the configured year, and PocketBase answers `year = 0` with a
+    // successful `200 []` rather than an error — see LodgingUnitsPanel.
+    enabled: open && currentYear > 0,
   })
 
   const refresh = () => {

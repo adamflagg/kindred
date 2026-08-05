@@ -74,11 +74,18 @@ export function LodgingUnitsPanel() {
     queryKey: queryKeys.lodgingUnits(currentYear),
     ...userDataOptions,
     queryFn: () => listLodgingUnits(currentYear),
+    // CurrentYearContext returns the literal 0 until the backend supplies the
+    // configured year. Unlike the FastAPI routers (`ge=2000` -> a loud 422),
+    // PocketBase answers `year = 0` with a successful `200 []`, so without
+    // this gate a cold load would render "no lodging units" as if it were
+    // true. Convention: `useWeekendRoster.ts:30-37`.
+    enabled: currentYear > 0,
   })
   const areasQuery = useQuery({
     queryKey: queryKeys.lodgingAreas(currentYear),
     ...userDataOptions,
     queryFn: () => listLodgingAreas(currentYear),
+    enabled: currentYear > 0,
   })
 
   const refresh = () => {

@@ -43,15 +43,21 @@ export function UnresolvedAliasQueue() {
   const { currentYear } = useCurrentYear()
   const [selection, setSelection] = useState<Record<string, string[]>>({})
 
+  // CurrentYearContext returns the literal 0 until the backend supplies the
+  // configured year. PocketBase answers `year = 0` with a successful `200
+  // []` rather than an error, so without this gate a cold load would render
+  // an empty queue as if there were genuinely nothing to resolve.
   const queueQuery = useQuery({
     queryKey: queryKeys.lodgingIngestIssues(currentYear),
     ...userDataOptions,
     queryFn: () => listUnresolvedAliasIssues(currentYear),
+    enabled: currentYear > 0,
   })
   const unitsQuery = useQuery({
     queryKey: queryKeys.lodgingUnits(currentYear),
     ...userDataOptions,
     queryFn: () => listLodgingUnits(currentYear),
+    enabled: currentYear > 0,
   })
 
   const refresh = () => {

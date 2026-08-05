@@ -71,10 +71,15 @@ export function LodgingAliasesPanel() {
   // whichever season the alias was originally seeded against (see the
   // `expand: member_units` display in the table below, which is a label from
   // the seed year and deliberately left alone — Task 5 resolves through code).
+  // CurrentYearContext returns the literal 0 until the backend supplies the
+  // configured year. PocketBase answers `year = 0` with a successful `200
+  // []` rather than an error, so without this gate the picker would render
+  // as if there were genuinely no units to map an alias to.
   const unitsQuery = useQuery({
     queryKey: queryKeys.lodgingUnits(currentYear),
     ...userDataOptions,
     queryFn: () => listLodgingUnits(currentYear),
+    enabled: currentYear > 0,
   })
 
   const refresh = () => {
