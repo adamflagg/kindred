@@ -419,20 +419,36 @@ class TestCounts:
         """
         pb.collection.return_value.get_list.return_value = _record(total_items=3)
 
-        count = await repo.count_open_unresolved_aliases()
+        count = await repo.count_open_unresolved_aliases(2027)
 
         pb.collection.assert_called_with("lodging_ingest_issues")
         filter_str = _last_list_query(pb)["filter"]
+        assert "year = 2027" in filter_str
         assert 'kind = "unresolved_alias"' in filter_str
         assert "is_resolved = false" in filter_str
         assert count == 3
         pb.collection.return_value.get_full_list.assert_not_called()
 
     @pytest.mark.asyncio
+    async def test_open_unresolved_aliases_is_year_scoped(self, repo: LodgingRepository, pb: MagicMock) -> None:
+        """`lodging_ingest_issues` has carried a required `year` since
+        1500000122. Without this filter, viewing 2027's weekend header counts
+        2026's unresolved cabin strings too, disagreeing with the now-year-
+        scoped Unresolved names queue underneath it -- the same defect fixed
+        one collection over in `lodgingCrud.ts`'s `listUnresolvedAliasIssues`.
+        """
+        pb.collection.return_value.get_list.return_value = _record(total_items=0)
+
+        await repo.count_open_unresolved_aliases(2026)
+
+        filter_str = _last_list_query(pb)["filter"]
+        assert "year = 2026" in filter_str
+
+    @pytest.mark.asyncio
     async def test_counts_request_a_single_row(self, repo: LodgingRepository, pb: MagicMock) -> None:
         pb.collection.return_value.get_list.return_value = _record(total_items=42)
 
-        await repo.count_open_unresolved_aliases()
+        await repo.count_open_unresolved_aliases(2026)
 
         args = pb.collection.return_value.get_list.call_args[0]
         assert args[0] == 1, "page 1"

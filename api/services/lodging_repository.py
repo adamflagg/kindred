@@ -390,16 +390,22 @@ class LodgingRepository:
         )
         return int(result.total_items)
 
-    async def count_open_unresolved_aliases(self) -> int:
+    async def count_open_unresolved_aliases(self, year: int) -> int:
         """Cabin strings ingest could not resolve, still awaiting triage.
 
         One work queue, owned and solely written by the ingest layer. Narrowed
         to the alias kind so the roster's unmapped-cabin figure does not absorb
         the queue's six other kinds.
+
+        The YEAR filter is not optional. `lodging_ingest_issues` has carried a
+        required `year` since 1500000122; without it this count absorbs every
+        season's unmapped cabin names, disagreeing with the year-scoped
+        Unresolved names queue underneath the same header. Same defect, same
+        fix, as `listUnresolvedAliasIssues` in `lodgingCrud.ts`.
         """
         return await self._count(
             LODGING_INGEST_ISSUES,
-            f'kind = "{UNRESOLVED_ALIAS_KIND}" && is_resolved = false',
+            f'year = {year} && kind = "{UNRESOLVED_ALIAS_KIND}" && is_resolved = false',
         )
 
     # ---------------------------------------------------------------- writes
