@@ -80,6 +80,28 @@ type yearScopedRef struct {
 // wireHooks binds only to the collections it can actually find, so a table
 // that is absent in an older environment -- or removed in a future one --
 // logs a warning instead of taking the boot down.
+//
+// SCOPE: this guard is one-directional. It checks the row being written
+// against the OUTGOING relations listed in its own entry above; it never
+// re-checks rows elsewhere that point back AT the thing just written. Two
+// gaps follow, both residual as of kindred#2039, not regressions:
+//
+//   - lodging_areas is a valid TARGET above (lodging_units.area resolves into
+//     it) but is not itself a key in this map, so it carries no binding at
+//     all. A superuser or bunking.manage PATCH that edits an existing area
+//     row's own `year` in place hits no check, and every lodging_units row
+//     already pointing at that area -- written for whatever year it was
+//     created -- is now silently cross-season.
+//   - Editing a lodging_units row's own `year` is checked against that row's
+//     OWN area/parent_unit, but nothing re-validates the rows that point AT
+//     it: lodging_availability, lodging_assignments,
+//     lodging_assignments_draft, lodging_slot_merges. Those keep whatever
+//     year they were written with, now possibly disagreeing with the unit's
+//     new one.
+//
+// Closing either gap means cascading to every DEPENDENT row on a parent's
+// write, not validating only the row under write -- a materially bigger
+// change than this guard makes anywhere else, so it is not done here.
 var yearScopedRefs = map[string][]yearScopedRef{
 	collectionAvailability:     {{field: "unit", target: collectionUnits}},
 	collectionAssignments:      {{field: "units", target: collectionUnits}},
