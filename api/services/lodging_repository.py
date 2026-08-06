@@ -164,7 +164,7 @@ class LodgingRepository:
         SUM(sleeps) is 408 vs a true 389).
 
         The YEAR filter is a different axis and is not optional. Units became
-        year-scoped in 1500000140, so an unfiltered read returns every season
+        year-scoped in 1500000141, so an unfiltered read returns every season
         at once — and since `code` is only unique per (code, year), the board's
         code-keyed index would collide two seasons onto one card.
         """
