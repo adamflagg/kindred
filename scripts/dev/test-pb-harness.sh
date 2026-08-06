@@ -260,4 +260,32 @@ else
 fi
 
 echo
+echo "=== TEST 11: pb_harness_index_columns reports a column SET, order-independently (kindred#2032) ==="
+# (code, year) and (year, code) enforce identical uniqueness, so the verifier
+# must not distinguish them -- the pre-#2032 query returned 'year,code' for the
+# reversed index and the caller false-FAILed. The single-column index is the
+# mutation guard: a "fix" that returned a constant, or that ignored the index's
+# actual columns, would pass the first two assertions and fail this one.
+IDXDB="$SCRATCH/index-order.db"
+sqlite3 "$IDXDB" "
+  CREATE TABLE fwd(code TEXT, year INT);
+  CREATE UNIQUE INDEX idx_fwd_code ON fwd(\`code\`, \`year\`);
+  CREATE TABLE rev(code TEXT, year INT);
+  CREATE UNIQUE INDEX idx_rev_code ON rev(\`year\`, \`code\`);
+  CREATE TABLE solo(code TEXT, year INT);
+  CREATE UNIQUE INDEX idx_solo_code ON solo(\`year\`);
+"
+set +e
+fwd=$(bash -c "source '$LIB'; pb_harness_index_columns '$IDXDB' idx_fwd_code" 2>/dev/null)
+rev=$(bash -c "source '$LIB'; pb_harness_index_columns '$IDXDB' idx_rev_code" 2>/dev/null)
+solo=$(bash -c "source '$LIB'; pb_harness_index_columns '$IDXDB' idx_solo_code" 2>/dev/null)
+set -e
+if [[ "$fwd" == "code,year" && "$rev" == "code,year" && "$solo" == "year" ]]; then
+  echo "PASS: both column orders report 'code,year'; a single-column index stays distinguishable"
+else
+  echo "FAIL: expected fwd='code,year' rev='code,year' solo='year'; got fwd='$fwd' rev='$rev' solo='$solo'" >&2
+  exit 1
+fi
+
+echo
 echo "All tests passed."
