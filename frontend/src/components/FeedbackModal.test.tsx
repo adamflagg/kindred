@@ -123,10 +123,6 @@ describe('FeedbackModal', () => {
   })
 
   it('resets form state when modal is closed and reopened', () => {
-    const queryClient = new QueryClient({
-      defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
-    })
-
     const { rerender } = render(
       <QueryClientProvider client={queryClient}>
         <FeedbackModal isOpen={true} onClose={mockOnClose} />
