@@ -211,7 +211,7 @@ describe('LodgingAreasDrawer', () => {
   })
 
   it('stamps a new area with the current season', async () => {
-    // Areas are year-scoped since 1500000140; an omitted year fails the
+    // Areas are year-scoped since 1500000141; an omitted year fails the
     // schema's min:2010 the moment the create reaches PocketBase.
     createLodgingArea.mockResolvedValue({ id: 'a3' })
     const user = userEvent.setup()

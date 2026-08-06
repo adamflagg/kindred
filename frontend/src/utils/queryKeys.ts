@@ -495,7 +495,7 @@ export const queryKeys = {
     ['household-medical', year, householdCmId] as const,
 
   // Lodging registry (Family Camp admin settings). Year-scoped since
-  // migration 1500000140: a unit outlives any one season, but its ROW does
+  // migration 1500000141: a unit outlives any one season, but its ROW does
   // not — code is unique only per (code, year), so the cache key must carry
   // the year or a season switch would serve the previous season's rows out
   // of the same slot.

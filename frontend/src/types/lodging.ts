@@ -294,7 +294,7 @@ export interface LodgingIngestIssueRecord extends PocketBaseRecordBase {
 
 /**
  * `year` is bolted on rather than added to `LodgingAreaRecord` and picked:
- * areas became year-scoped in 1500000140, but nothing in this surface reads
+ * areas became year-scoped in 1500000141, but nothing in this surface reads
  * an area's year back off a fetched record yet, so widening the read type
  * would force `year` onto every area fixture in the tree for no consumer.
  * The write side genuinely needs it — a create with no `year` fails the
@@ -317,7 +317,7 @@ export type LodgingAreaInput = Pick<
  * here means the compiler catches the omission instead of the database
  * swallowing it.
  *
- * `year` joins them for the same reason, since 1500000140: a create that
+ * `year` joins them for the same reason, since 1500000141: a create that
  * omits it fails the schema's `min: 2010` (PocketBase writes an omitted
  * number as 0), and unlike `is_active` / `inventory_class` that failure is
  * loud rather than silent -- but it is still a create nobody can complete

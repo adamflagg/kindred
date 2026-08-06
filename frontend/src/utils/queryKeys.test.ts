@@ -194,7 +194,7 @@ describe('invalidateLodgingRegistryQueries', () => {
     expect(full.slice(0, 1)).toEqual(roster)
   })
 
-  it('invalidates the lodging registry keys by PREFIX too, since 1500000140', () => {
+  it('invalidates the lodging registry keys by PREFIX too, since 1500000141', () => {
     // Units and areas became year-scoped: the real keys are [key, year], and
     // an admin panel editing one season's registry does not know every year a
     // reader might have cached — so this must match ALL of them, not just the

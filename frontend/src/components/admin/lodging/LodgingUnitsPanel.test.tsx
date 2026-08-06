@@ -153,7 +153,7 @@ async function renderPanel() {
 
 describe('LodgingUnitsPanel', () => {
   it('asks for the current season only', async () => {
-    // Units are year-scoped since 1500000140: an unfiltered read would show
+    // Units are year-scoped since 1500000141: an unfiltered read would show
     // every season's rows stacked in one table, since `code` is unique only
     // per (code, year).
     await renderPanel()

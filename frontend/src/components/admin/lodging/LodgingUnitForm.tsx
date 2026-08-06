@@ -30,7 +30,7 @@
  *    wiring the map editor back in has to add that guard, not assume it.
  *
  * 3. The season is captured WHEN THE EDITOR OPENS, not read live. Units are
- *    year-scoped since 1500000140 and this form always submits `year`, so a
+ *    year-scoped since 1500000141 and this form always submits `year`, so a
  *    live read would let a season flip mid-edit — another tab, a
  *    CurrentYearContext refetch — move the cabin into the new season on the
  *    next save. Roll-forward moves a unit between seasons; a routine edit
@@ -68,7 +68,7 @@ export interface LodgingUnitFormProps {
   unit?: LodgingUnitRecord | undefined
   /**
    * The season the editor opened against. Units are year-scoped since
-   * 1500000140, and this form always writes it — on create because the schema
+   * 1500000141, and this form always writes it — on create because the schema
    * requires it (an omitted number field lands as 0, which fails `min: 2010`),
    * and on edit because `unit` is one of that season's rows already.
    *

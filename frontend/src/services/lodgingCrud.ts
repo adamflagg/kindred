@@ -94,7 +94,7 @@ export async function reorderLodgingAreas(orderedIds: string[]): Promise<void> {
 
 /**
  * One season's units. The year filter is load-bearing: units are year-scoped
- * since 1500000140, and `code` is unique only per (code, year), so an
+ * since 1500000141, and `code` is unique only per (code, year), so an
  * unfiltered read shows every season's rows stacked in one table.
  */
 export async function listLodgingUnits(year: number): Promise<LodgingUnitRecord[]> {
