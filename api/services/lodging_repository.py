@@ -46,6 +46,7 @@ from api.constants.collections import (
     LODGING_ASSIGNMENTS_DRAFT,
     LODGING_AVAILABILITY,
     LODGING_INGEST_ISSUES,
+    LODGING_SLOT_MERGES,
     LODGING_UNITS,
 )
 from api.constants.filters import ACTIVE_ENROLLED_FILTER
@@ -251,6 +252,43 @@ class LodgingRepository:
                     f'session = "{pb_escape(session_pb_id)}" && year = {year} && scenario = "{pb_escape(scenario_id)}"'
                 ),
                 "expand": "units",
+                "sort": STABLE_SORT,
+            },
+        )
+
+    async def fetch_slot_merges(self, year: int, session_pb_id: str, scenario_id: str) -> list[Any]:
+        """One session's draw-level overrides: the weekend-level tier, plus a
+        named scenario's own rows when there is one.
+
+        TWO TIERS, one table, since `scenario` became optional (1500000140).
+        `scenario = ""` is the WEEKEND-LEVEL row -- seen on the CampMinder
+        mirror and inherited by every scenario -- because a merge is a fact
+        about the weekend, not only about a plan: unlike a placement, no sync
+        writes a draw level, so there is no record of truth a writable mirror
+        would corrupt. That is a reversal of 1500000139's original call
+        (`scenario` was a REQUIRED relation specifically so the mirror could
+        never have a row); see 1500000140's header.
+
+        A blank `scenario_id` (the mirror, and every unnamed-scenario caller)
+        gets ONLY the weekend-level rows -- `scenario = ""` is already exactly
+        that filter, no special-casing needed. A named scenario gets its own
+        rows UNIONED with the weekend-level ones, because both tiers can name
+        the same unit and the caller (resolve_combined, by way of
+        LodgingRosterService._build_units) needs to see both to pick the
+        higher one. The row's own `scenario` column is what tells the two
+        tiers apart on the way back out.
+
+        EVERY interpolated string here goes through pb_escape, matching
+        fetch_draft_assignments: `scenario_id` reaches this straight off the
+        `?scenario=` query parameter.
+        """
+        scenario_clause = (
+            'scenario = ""' if not scenario_id else f'(scenario = "{pb_escape(scenario_id)}" || scenario = "")'
+        )
+        return await self._page(
+            LODGING_SLOT_MERGES,
+            query_params={
+                "filter": (f'session = "{pb_escape(session_pb_id)}" && year = {year} && {scenario_clause}'),
                 "sort": STABLE_SORT,
             },
         )
@@ -503,3 +541,36 @@ class LodgingRepository:
 
     async def delete_availability(self, record_id: str) -> None:
         await asyncio.to_thread(self.pb.collection(LODGING_AVAILABILITY).delete, record_id)
+
+    async def find_slot_merge(self, year: int, session_pb_id: str, unit_pb_id: str, scenario: str) -> Any | None:
+        """The one merge row for a container at this tier, or None.
+
+        `scenario` is optional (1500000140): a blank value looks up the
+        WEEKEND-LEVEL row exactly as a named one looks up that scenario's own
+        row -- same filter shape, same tier the caller asked for.
+
+        Matches idx_lodging_slot_merge_unique (unit, session, year, scenario).
+        Without an index of exactly this shape a container could carry two
+        contradicting rows and "is this house one card?" would stop having an
+        answer -- the same argument as find_availability_override.
+
+        Every interpolated string is escaped, matching find_availability_override:
+        `unit_pb_id` and `scenario` arrive in the request body.
+        """
+        rows = await self._page(
+            LODGING_SLOT_MERGES,
+            query_params={
+                "filter": (
+                    f'session = "{pb_escape(session_pb_id)}" && year = {year} '
+                    f'&& unit = "{pb_escape(unit_pb_id)}" && scenario = "{pb_escape(scenario)}"'
+                ),
+                "sort": STABLE_SORT,
+            },
+        )
+        return rows[0] if rows else None
+
+    async def create_slot_merge(self, data: dict[str, Any]) -> Any:
+        return await asyncio.to_thread(self.pb.collection(LODGING_SLOT_MERGES).create, data)
+
+    async def update_slot_merge(self, record_id: str, data: dict[str, Any]) -> Any:
+        return await asyncio.to_thread(self.pb.collection(LODGING_SLOT_MERGES).update, record_id, data)

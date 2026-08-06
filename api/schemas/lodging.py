@@ -117,8 +117,26 @@ class LodgingUnitSummary(BaseModel):
     is_confirmed: bool = False
     is_active: bool = False
     # A building/grouping row. Present in the payload so the map and board
-    # can draw the building, but excluded from every capacity count.
+    # can draw the building. Whether it COUNTS is no longer this flag's
+    # answer: a container resolved combined (see `is_combined`) is the one
+    # space the board draws, at its own measured `sleeps`, and its rooms
+    # count for nothing. `drawn_units` is the one predicate for that, and
+    # `_build_counts` reads it -- never filter on `is_container` alone.
     is_container: bool = False
+    # The parent container's CODE, not its record id — the board keys on code,
+    # and code is the cross-year identity thread. "" means no parent.
+    parent_code: str = ""
+    # The RESOLVED draw level for the requested scenario, through THREE tiers,
+    # highest first: this scenario's own `lodging_slot_merges` row, else the
+    # WEEKEND-LEVEL row (`scenario == ""`, 1500000140) that the CampMinder
+    # mirror shows and every scenario inherits, else the unit's
+    # `default_combined`. `resolve_combined` is the one implementation of that
+    # order; this field is only ever its output.
+    #
+    # Absence at a tier means NO ROW there and falls through — never False.
+    # False is "draw the children", the pre-feature behaviour, so an unruled
+    # unit can never hide its rooms.
+    is_combined: bool = False
     # The unit's ROLE: whether it is planning inventory at all. Carried a
     # "default" name until 1500000136, which implied an override -- and the
     # override is a rare per-weekend exception rather than the point.
@@ -496,6 +514,31 @@ class AvailabilityWriteRequest(BaseModel):
     # `_build_units` (read) are the only two places they meet, and a third
     # would mean renaming the column instead.
     reason: str = Field("", max_length=500)
+
+
+class SlotMergeRequest(BaseModel):
+    """Set one container's draw level, at a scenario or at the weekend.
+
+    `scenario` is OPTIONAL (1500000140), the opposite of the call
+    1500000139 made: a blank value used to be refused here specifically
+    because the CampMinder mirror was never supposed to be overridable and
+    the collection's `scenario` relation was required, so a blank one could
+    not be stored anyway. Both premises are gone. A merge is a fact about the
+    WEEKEND, not only about a plan -- unlike a placement, no sync ever writes
+    a draw level, so there is no CampMinder record of truth a writable mirror
+    would corrupt, the same argument 1500000135 already made for
+    lodging_availability. A blank `scenario` is now the WEEKEND-LEVEL row:
+    seen on the mirror, and inherited by every scenario that has not
+    overridden it locally. Resolution order, highest first: this scenario's
+    own row, the weekend-level row, then the registry default -- see
+    resolve_combined in lodging_roster_service.py.
+    """
+
+    year: int = Field(ge=2010, le=2100)
+    session_cm_id: int = Field(gt=0)
+    scenario: str = Field(default="", description="saved_scenarios record id; blank is the weekend-level row")
+    unit_id: str = Field(min_length=1)
+    combined: bool
 
 
 class LodgingWriteResponse(BaseModel):

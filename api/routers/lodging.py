@@ -23,6 +23,7 @@ from api.schemas.lodging import (
     PlacementCopyRequest,
     PlacementDeleteRequest,
     PlacementWriteRequest,
+    SlotMergeRequest,
     WeekendRosterResponse,
     WeekendSessionListResponse,
     WeekendSummaryResponse,
@@ -243,5 +244,32 @@ async def set_availability(
     """
     try:
         return await _writes().set_availability(request)
+    except SessionNotFoundError as exc:
+        raise _weekend_404(request.year, request.session_cm_id) from exc
+
+
+@router.put("/merge", response_model=LodgingWriteResponse)
+async def set_slot_merge(
+    request: SlotMergeRequest,
+    user: AuthUser = Depends(require_permission(Permission.BUNKING_MANAGE)),
+) -> LodgingWriteResponse:
+    """Set one container's draw level, at a scenario or at the weekend.
+
+    UNLIKE every other scenario-scoped write here, `scenario` on the body is
+    OPTIONAL (1500000140): a blank value is a legal, distinct WEEKEND-LEVEL
+    write, not a refused one. Still `BUNKING_MANAGE`-gated -- a merge is a
+    fact about the weekend rather than about a plan (same argument
+    1500000135 made for `/availability`'s own weekend-level fact), but it is
+    still a planning decision a staff member makes, not something CampMinder
+    ever syncs, so the write permission does not relax the way the read side
+    does.
+
+    Catches SessionNotFoundError the same way every other write below does --
+    `set_slot_merge` resolves the weekend through the identical
+    `_resolve_session_pb_id` helper, so an unknown `session_cm_id` must answer
+    404 here too rather than falling through as an unhandled 500.
+    """
+    try:
+        return await _writes().set_slot_merge(request)
     except SessionNotFoundError as exc:
         raise _weekend_404(request.year, request.session_cm_id) from exc

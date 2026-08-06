@@ -237,6 +237,45 @@ describe('countUnmeasuredSpaces', () => {
   it('returns zero for an empty registry', () => {
     expect(countUnmeasuredSpaces([])).toBe(0)
   })
+
+  it('asks about the COMBINED house, not the rooms it draws in place of', () => {
+    // A combined container is the card, so an unmeasured house is an
+    // unmeasured space — and its rooms are not drawn at all, so their own
+    // missing capacity describes nothing a family could be put in. Counting
+    // the rooms reports 2 unmeasured spaces against a board showing one card.
+    expect(
+      countUnmeasuredSpaces([
+        unit({ code: 'house', is_container: true, is_combined: true, sleeps: null }),
+        unit({ code: 'r1', parent_code: 'house', sleeps: null }),
+        unit({ code: 'r2', parent_code: 'house', sleeps: null }),
+      ])
+    ).toBe(1)
+  })
+
+  it('drops the unmeasured rooms of a MEASURED combined house', () => {
+    // The real Doctor's House shape: the container carries the only recorded
+    // capacity and its two rooms carry none. Once it draws as one card there
+    // is nothing unmeasured on the board at all.
+    expect(
+      countUnmeasuredSpaces([
+        unit({ code: 'house', is_container: true, is_combined: true, sleeps: 6 }),
+        unit({ code: 'r1', parent_code: 'house', sleeps: null }),
+        unit({ code: 'r2', parent_code: 'house', sleeps: null }),
+      ])
+    ).toBe(0)
+  })
+
+  it('still counts the rooms of a SPLIT house, and never the house', () => {
+    // The pre-feature behaviour, unchanged — the regression guard for the two
+    // above. A grouping row that gets no card is not a space.
+    expect(
+      countUnmeasuredSpaces([
+        unit({ code: 'house', is_container: true, is_combined: false, sleeps: null }),
+        unit({ code: 'r1', parent_code: 'house', sleeps: null }),
+        unit({ code: 'r2', parent_code: 'house', sleeps: null }),
+      ])
+    ).toBe(2)
+  })
 })
 
 describe('attentionSections', () => {

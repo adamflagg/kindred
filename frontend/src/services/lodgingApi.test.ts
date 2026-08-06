@@ -15,6 +15,7 @@ import {
   fetchWeekendSessions,
   fetchWeekendSummary,
   placeParty,
+  setSlotMerge,
   setUnitAvailability,
   unplaceParty,
 } from './lodgingApi'
@@ -327,6 +328,57 @@ describe('setUnitAvailability', () => {
     await expect(
       setUnitAvailability(mockFetch, { ...WEEKEND, familyAvailable: true, reason: 'Overflow' })
     ).rejects.toMatchObject({ status: 403, message: 'Permission required: bunking.manage' })
+  })
+})
+
+describe('setSlotMerge', () => {
+  const WEEKEND = { year: 2026, session_cm_id: 1000001, scenario: 'scn7x2k9qw3mnbv', unit_id: 'u7' }
+
+  it('PUTs the weekend, the scenario, the container and the combined flag', async () => {
+    const mockFetch = vi.fn().mockResolvedValue(okResponse({ record_id: 'u7', deleted: false }))
+
+    const result = await setSlotMerge(mockFetch, { ...WEEKEND, combined: true })
+
+    const [url, options] = mockFetch.mock.calls[0] as [string, RequestInit]
+    expect(url).toBe('/api/lodging/merge')
+    expect(options.method).toBe('PUT')
+    expect(JSON.parse(options.body as string)).toEqual({
+      year: 2026,
+      session_cm_id: 1000001,
+      scenario: 'scn7x2k9qw3mnbv',
+      unit_id: 'u7',
+      combined: true,
+    })
+    expect(result).toEqual({ record_id: 'u7', deleted: false })
+  })
+
+  it('sends a split as an explicit false, never a missing field', async () => {
+    const mockFetch = vi.fn().mockResolvedValue(okResponse({ record_id: 'u7', deleted: false }))
+
+    await setSlotMerge(mockFetch, { ...WEEKEND, combined: false })
+
+    const body = JSON.parse((mockFetch.mock.calls[0] as [string, RequestInit])[1].body as string)
+    expect(body).toHaveProperty('combined')
+    expect(body.combined).toBe(false)
+  })
+
+  it('carries the status of a refused write so the card can say why', async () => {
+    // A blank `scenario` is NOT what gets refused — it is the legal
+    // weekend-level row (1500000140), and the case above pins that it is sent
+    // rather than withheld. This is about surfacing whatever the server does
+    // refuse, so the body names a refusal the API can still make.
+    const mockFetch = vi.fn().mockResolvedValue({
+      ok: false,
+      status: 422,
+      json: async () => ({ detail: 'Unit is required' }),
+    })
+
+    await expect(
+      setSlotMerge(mockFetch, { ...WEEKEND, unit_id: '', combined: true })
+    ).rejects.toMatchObject({
+      status: 422,
+      message: 'Unit is required',
+    })
   })
 })
 

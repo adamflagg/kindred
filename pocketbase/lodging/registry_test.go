@@ -58,6 +58,10 @@ func setupRegistryCollections(t *testing.T, app core.App) {
 	units.Fields.Add(&core.BoolField{Name: "is_confirmed"})
 	units.Fields.Add(&core.BoolField{Name: "is_active"})
 	units.Fields.Add(&core.BoolField{Name: "is_container"})
+	// 1500000138. Declared here or `rec.Set("default_combined", …)` is a silent
+	// no-op and the assertion below passes against a loader that never wrote it
+	// — the fixture trap this file has hit before.
+	units.Fields.Add(&core.BoolField{Name: "default_combined"})
 	units.Fields.Add(&core.TextField{Name: "notes"})
 	// Amenity columns from 1500000131. has_ramp is a select, not a bool, so an
 	// unassessed cabin stays blank instead of claiming "no ramp".
@@ -379,6 +383,43 @@ func TestSeedRegistryWritesAmenities(t *testing.T) {
 	}
 	if got := unit.GetInt("sleeps"); got != 0 {
 		t.Errorf("sleeps = %d, want 0 — max_beds must not leak into sleeps", got)
+	}
+}
+
+// The registry file is the ONLY way `default_combined` reaches a FRESH
+// database, so the loader has to carry it.
+//
+// 1500000138's backfill runs before SeedRegistry (main.go), which on a new
+// worktree, a new deployment or a rebuilt CD seed means it UPDATEs an empty
+// table. If the loader then drops the key, every whole-let building is created
+// with `default_combined = false` and the board silently draws each one as its
+// rooms — no error, just more cards than there are buildings.
+//
+// Go's json decoder ignores an unknown key in silence, so this failure mode is
+// invisible on both sides: the file says `true`, the column says false, and
+// nothing anywhere complains.
+func TestSeedRegistryWritesDefaultCombined(t *testing.T) {
+	app := newRegistryTestApp(t)
+
+	body := `{"areas": [{"code": "AREA1", "name": "First Area"}], "units": [
+	  {"area": "AREA1", "code": "whole-let", "name": "Whole Let", "bathroom": "none",
+	   "inventory_class": "family_pool", "is_container": true, "sleeps": 7,
+	   "default_combined": true},
+	  {"area": "AREA1", "code": "grouping", "name": "Grouping", "bathroom": "none",
+	   "inventory_class": "family_pool", "is_container": true}
+	], "aliases": []}`
+
+	if err := seedRegistryFromFile(app, writeRegistry(t, body)); err != nil {
+		t.Fatalf("seedRegistryFromFile: %v", err)
+	}
+
+	if got := findByCode(t, app, "lodging_units", "whole-let").GetBool("default_combined"); !got {
+		t.Errorf("default_combined = %v for a unit the file marks true, want true", got)
+	}
+	// Absent means false — "draw the children", the behavior before the
+	// column existed. A container used purely for grouping carries no let.
+	if got := findByCode(t, app, "lodging_units", "grouping").GetBool("default_combined"); got {
+		t.Errorf("default_combined = %v for a unit with no key, want false", got)
 	}
 }
 

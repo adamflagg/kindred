@@ -52,6 +52,7 @@ function fixtureUnit(over: Partial<LodgingUnitRecord> & { id: string }): Lodging
     is_confirmed: false,
     is_active: true,
     is_container: false,
+    default_combined: false,
     notes: '',
     ...over,
   }

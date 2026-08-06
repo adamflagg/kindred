@@ -54,6 +54,12 @@ vi.mock('../../hooks/useUnitAvailability', () => ({
   useUnitAvailability: () => ({ setAvailability: vi.fn(), pendingUnitId: '' }),
 }))
 
+// Same reason: the board now also writes merges. The merge gesture and its
+// own gate are pinned in `LodgingBoard.merge.test.tsx`.
+vi.mock('../../hooks/useUnitMerge', () => ({
+  useUnitMerge: () => ({ setCombined: vi.fn(), pendingUnitId: null }),
+}))
+
 /** The last `onDragEnd` the board handed to DndContext. */
 let onDragEnd: ((event: unknown) => void) | undefined
 

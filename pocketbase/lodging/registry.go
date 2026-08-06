@@ -72,7 +72,17 @@ type registryUnit struct {
 	NearBathhouse  bool   `json:"near_bathhouse"`
 	InventoryClass string `json:"inventory_class"`
 	IsContainer    bool   `json:"is_container"`
-	Notes          string `json:"notes"`
+	// DefaultCombined is the registry default draw level, meaningful on
+	// CONTAINER rows only: true means "draw the board's card at this node and
+	// stop descending" — the whole-house let.
+	//
+	// This is the ONLY route by which it reaches a fresh database. 1500000138's
+	// backfill runs before SeedRegistry (main.go), so on a new worktree, a new
+	// deployment or a rebuilt CD seed it UPDATEs an empty table and the loader
+	// supplies the value instead. Absent means false, the pre-feature "draw the
+	// children".
+	DefaultCombined bool   `json:"default_combined"`
+	Notes           string `json:"notes"`
 
 	// Amenities. Absent in JSON means false, which for these is the same claim
 	// the column made before the 2026 inventory: unknown, recorded as false.
@@ -449,6 +459,7 @@ func seedUnits(
 		rec.Set("near_bathhouse", u.NearBathhouse)
 		rec.Set("inventory_class", u.InventoryClass)
 		rec.Set("is_container", u.IsContainer)
+		rec.Set("default_combined", u.DefaultCombined)
 		rec.Set("notes", u.Notes)
 		rec.Set("has_power", u.HasPower)
 		rec.Set("has_ac", u.HasAC)

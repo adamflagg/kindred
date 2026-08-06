@@ -249,6 +249,40 @@ export async function setUnitAvailability(
   return response.json() as Promise<LodgingWriteResult>
 }
 
+/** What the board asks the server to write when a house is merged or split. */
+export interface SlotMergeWrite {
+  year: number
+  session_cm_id: number
+  scenario: string
+  /** The CONTAINER's PocketBase id — `lodging_slot_merges.unit` relates to it. */
+  unit_id: string
+  combined: boolean
+}
+
+/**
+ * Set or clear one container's draw level — merge a house's rooms into one
+ * card, or split it back into its rooms.
+ *
+ * `scenario: ''` is a legitimate write, not a refusal: a draw level is never
+ * CampMinder-sourced, so unlike a placement, the mirror has no truth for this
+ * write to overwrite. A blank `scenario` becomes the WEEKEND-LEVEL row —
+ * seen on the mirror, and inherited by every scenario that has not
+ * overridden it locally. See the `SlotMergeRequest` doc in `types.gen.ts`
+ * for the full resolution order.
+ */
+export async function setSlotMerge(
+  fetchWithAuth: FetchWithAuth,
+  write: SlotMergeWrite
+): Promise<LodgingWriteResult> {
+  const response = await fetchWithAuth(`${API_BASE}/merge`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(write),
+  })
+  if (!response.ok) throw await toError(response, 'Failed to update the merge')
+  return (await response.json()) as LodgingWriteResult
+}
+
 /**
  * PHI. Requires the `lodging.phi` permission server-side; a caller without
  * it gets a 403, which this surfaces verbatim so the UI can explain why.

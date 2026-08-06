@@ -20,6 +20,7 @@ from api.schemas.lodging import (
     PlacementCopyRequest,
     PlacementDeleteRequest,
     PlacementWriteRequest,
+    SlotMergeRequest,
 )
 from bunking.auth_middleware import AuthUser, get_current_user
 from bunking.rbac.permissions import Permission
@@ -466,6 +467,18 @@ WRITE_ENDPOINTS: list[tuple[str, str, str, dict[str, Any]]] = [
         "/api/lodging/placements/copy",
         {"year": 2026, "session_cm_id": 1000001, "scenario": "scn_1"},
     ),
+    (
+        "PUT",
+        "/api/lodging/merge",
+        "/api/lodging/merge",
+        {
+            "year": 2026,
+            "session_cm_id": 1000001,
+            "scenario": "scn_1",
+            "unit_id": "u1",
+            "combined": True,
+        },
+    ),
 ]
 
 # The request model each row above posts against. Only used by the shape guard
@@ -475,6 +488,7 @@ WRITE_MODELS: dict[tuple[str, str], type[BaseModel]] = {
     ("DELETE", "/api/lodging/placements"): PlacementDeleteRequest,
     ("PUT", "/api/lodging/availability"): AvailabilityWriteRequest,
     ("POST", "/api/lodging/placements/copy"): PlacementCopyRequest,
+    ("PUT", "/api/lodging/merge"): SlotMergeRequest,
 }
 
 
