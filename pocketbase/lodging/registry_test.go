@@ -400,7 +400,7 @@ func TestSeedRegistryWritesDefaultCombined(t *testing.T) {
 	if got := findByCode(t, app, "lodging_units", "whole-let").GetBool("default_combined"); !got {
 		t.Errorf("default_combined = %v for a unit the file marks true, want true", got)
 	}
-	// Absent means false — "draw the children", the behaviour before the
+	// Absent means false — "draw the children", the behavior before the
 	// column existed. A container used purely for grouping carries no let.
 	if got := findByCode(t, app, "lodging_units", "grouping").GetBool("default_combined"); got {
 		t.Errorf("default_combined = %v for a unit with no key, want false", got)
