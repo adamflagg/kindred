@@ -9,6 +9,8 @@ import userEvent from '@testing-library/user-event'
 import type { ReactNode } from 'react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
+import { CurrentYearContext, type CurrentYearContextType } from '../../../hooks/useCurrentYear'
+
 const deleteLodgingAlias = vi.fn()
 const listLodgingUnits = vi.fn()
 
@@ -53,7 +55,7 @@ vi.mock('../../../services/lodgingCrud', () => ({
         expand: { member_units: [{ id: 'u4', name: 'Old Hall', code: 'old-hall' }] },
       },
     ]),
-  listLodgingUnits: () => listLodgingUnits(),
+  listLodgingUnits: (...args: unknown[]) => listLodgingUnits(...args),
   createLodgingAlias: vi.fn(),
   updateLodgingAlias: vi.fn(),
   deleteLodgingAlias: (...args: unknown[]) => deleteLodgingAlias(...args),
@@ -83,11 +85,75 @@ beforeEach(() => {
   vi.spyOn(window, 'confirm').mockReturnValue(true)
 })
 
+const YEAR_CONTEXT: CurrentYearContextType = {
+  currentYear: 2026,
+  setCurrentYear: vi.fn(),
+  availableYears: [2026],
+  isTransitioning: false,
+  isYearReady: true,
+}
+
 function wrapper({ children }: { children: ReactNode }) {
-  return <QueryClientProvider client={client}>{children}</QueryClientProvider>
+  return (
+    <QueryClientProvider client={client}>
+      <CurrentYearContext.Provider value={YEAR_CONTEXT}>{children}</CurrentYearContext.Provider>
+    </QueryClientProvider>
+  )
+}
+
+// `CurrentYearContext` returns the literal 0 until the backend supplies the
+// configured year (`useCurrentYear.ts`). The units picker query must not
+// fire against `year = 0` in that window — PocketBase answers with a
+// successful `200 []`, not an error, so an ungated query silently offers no
+// units to map an alias to. `listLodgingAliases` itself is year-free by
+// design and unaffected.
+const ZERO_YEAR_CONTEXT: CurrentYearContextType = {
+  ...YEAR_CONTEXT,
+  currentYear: 0,
+  isYearReady: false,
+}
+
+function zeroYearWrapper({ children }: { children: ReactNode }) {
+  return (
+    <QueryClientProvider client={client}>
+      <CurrentYearContext.Provider value={ZERO_YEAR_CONTEXT}>
+        {children}
+      </CurrentYearContext.Provider>
+    </QueryClientProvider>
+  )
 }
 
 describe('LodgingAliasesPanel', () => {
+  it('asks the units picker for the current season only', async () => {
+    render(<LodgingAliasesPanel />, { wrapper })
+    await waitFor(() => {
+      expect(screen.getByText('North Lodge - Whole')).toBeInTheDocument()
+    })
+    expect(listLodgingUnits).toHaveBeenCalledWith(2026)
+  })
+
+  it('does not fetch the units picker until the year resolves', async () => {
+    render(<LodgingAliasesPanel />, { wrapper: zeroYearWrapper })
+    await waitFor(() => {
+      expect(screen.getByText('North Lodge - Whole')).toBeInTheDocument()
+    })
+    expect(listLodgingUnits).not.toHaveBeenCalled()
+  })
+
+  // The units query is gated on the year, and the editor's own guard reads
+  // `unitsQuery.isLoading` -- which a DISABLED query reports as false. So the
+  // guard whose comment calls an unloaded picker "not a degraded editor but a
+  // destructive one" does not fire on a cold load. The stored members survive
+  // (LodgingAliasForm seeds them off the alias record, not off `units`), so
+  // this is not the destructive case any more -- but a NEW alias opens with an
+  // empty fieldset and a permanently disabled Save, which reads as broken.
+  it('shows the picker loading, not an empty fieldset, before the year resolves', async () => {
+    const user = userEvent.setup()
+    render(<LodgingAliasesPanel />, { wrapper: zeroYearWrapper })
+    await user.click(await screen.findByRole('button', { name: /new alias/i }))
+    expect(screen.getByText(/Loading units/i)).toBeInTheDocument()
+  })
+
   it('labels a multi-member alias as a merge', async () => {
     render(<LodgingAliasesPanel />, { wrapper })
     await waitFor(() => {

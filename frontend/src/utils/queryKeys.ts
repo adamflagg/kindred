@@ -494,10 +494,16 @@ export const queryKeys = {
   householdMedical: (year: number, householdCmId: number) =>
     ['household-medical', year, householdCmId] as const,
 
-  // Lodging registry (Family Camp admin settings). Not year-scoped: the
-  // registry is physical site inventory, and a unit outlives any one season.
-  lodgingAreas: () => ['lodging-areas'] as const,
-  lodgingUnits: () => ['lodging-units'] as const,
+  // Lodging registry (Family Camp admin settings). Year-scoped since
+  // migration 1500000141: a unit outlives any one season, but its ROW does
+  // not — code is unique only per (code, year), so the cache key must carry
+  // the year or a season switch would serve the previous season's rows out
+  // of the same slot.
+  lodgingAreas: (year: number) => ['lodging-areas', year] as const,
+  lodgingUnits: (year: number) => ['lodging-units', year] as const,
+  // Aliases are deliberately NOT year-scoped: `valid_from_year` /
+  // `valid_to_year` express a rename history spanning seasons, not a
+  // per-year row. See lodgingCrud.listLodgingAliases.
   lodgingAliases: () => ['lodging-aliases'] as const,
   /**
    * The ingest work queue is `lodging_ingest_issues`, NOT a separate
@@ -505,7 +511,20 @@ export const queryKeys = {
    * and carries `kind`, candidate sessions and a suggested session that a
    * narrower collection could not express.
    */
-  lodgingIngestIssues: () => ['lodging-ingest-issues'] as const,
+  lodgingIngestIssues: (year: number) => ['lodging-ingest-issues', year] as const,
+  // Prefixes for invalidation, mirroring the weekend keys above: a registry
+  // edit does not know which season's cache slot a stale reader is on, so
+  // `invalidateLodgingRegistryQueries` invalidates every cached year at once
+  // rather than threading `year` through every write-mutation call site.
+  // The roll-forward preview is keyed on the PAIR of seasons it compares, not
+  // on one year, because it answers "what would move from A to B" — two
+  // different pairs are two different answers and must not share a slot.
+  lodgingRollForwardPreview: (fromYear: number, toYear: number) =>
+    ['lodging-roll-forward-preview', fromYear, toYear] as const,
+  lodgingAreasPrefix: () => ['lodging-areas'] as const,
+  lodgingUnitsPrefix: () => ['lodging-units'] as const,
+  lodgingIngestIssuesPrefix: () => ['lodging-ingest-issues'] as const,
+  lodgingRollForwardPreviewPrefix: () => ['lodging-roll-forward-preview'] as const,
 }
 
 /**
@@ -575,10 +594,15 @@ export function invalidateRequestQueries(
 export function invalidateLodgingRegistryQueries(queryClient: {
   invalidateQueries: (args: { queryKey: readonly unknown[] }) => unknown
 }): void {
-  void queryClient.invalidateQueries({ queryKey: queryKeys.lodgingUnits() })
-  void queryClient.invalidateQueries({ queryKey: queryKeys.lodgingAreas() })
+  void queryClient.invalidateQueries({ queryKey: queryKeys.lodgingUnitsPrefix() })
+  void queryClient.invalidateQueries({ queryKey: queryKeys.lodgingAreasPrefix() })
   void queryClient.invalidateQueries({ queryKey: queryKeys.lodgingAliases() })
-  void queryClient.invalidateQueries({ queryKey: queryKeys.lodgingIngestIssues() })
+  void queryClient.invalidateQueries({ queryKey: queryKeys.lodgingIngestIssuesPrefix() })
+  // Every registry write changes what a roll-forward would carry: creating a
+  // unit in the target season is precisely what moves a code from
+  // units_to_create to skipped_codes. Invalidating here rather than at the
+  // one call site is what stops the next writer from missing it.
+  void queryClient.invalidateQueries({ queryKey: queryKeys.lodgingRollForwardPreviewPrefix() })
   void queryClient.invalidateQueries({ queryKey: queryKeys.weekendRosterPrefix() })
   void queryClient.invalidateQueries({ queryKey: queryKeys.weekendSummaryPrefix() })
   void queryClient.invalidateQueries({ queryKey: queryKeys.weekendSessionsPrefix() })

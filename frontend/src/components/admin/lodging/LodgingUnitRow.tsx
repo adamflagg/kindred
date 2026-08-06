@@ -4,11 +4,12 @@
  * Extracted from the panel so neither file accumulates conditionals — the spec
  * names `BunkingBoardByArea.tsx` (849 lines) as the thing not to repeat.
  *
- * The row carries the SAME amenity vocabulary the roster's `UnitInventoryPanel`
- * shows: bathroom, then the `AMENITY_FLAGS` glyphs. Both are unit tables and
- * both are read the same way. It also makes "Confirm" mean something — the
- * button asserts that these amenity values are right, and until they were on
- * the row staff had to open the form to find out what they were confirming.
+ * The row carries the SAME amenity vocabulary the weekend board's
+ * `LodgingUnitCard` shows: bathroom, then the `AMENITY_FLAGS` glyphs. Read the
+ * same way on both surfaces, so an amenity means the same thing in Manage as
+ * it does on the board. It also makes "Confirm" mean something — the button
+ * asserts that these amenity values are right, and until they were on the row
+ * staff had to open the form to find out what they were confirming.
  *
  * Every action is labelled with the unit name (`Confirm Cabin A`, not
  * `Confirm`) so a screen reader — and a test — can tell 93 identical buttons

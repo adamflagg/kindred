@@ -42,7 +42,33 @@ const (
 	collectionAssignmentsDraft = "lodging_assignments_draft"
 	collectionAliases          = "lodging_unit_aliases"
 	collectionIngestIssues     = "lodging_ingest_issues"
+	collectionAvailability     = "lodging_availability"
+	collectionSlotMerges       = "lodging_slot_merges"
 )
+
+// yearScopedUnitRefs are the collections that carry BOTH a year of their own
+// and a relation into lodging_units. Once units are year-scoped (1500000141
+// gives lodging_units its own `year`, making (code, year) a distinct record)
+// those two years can disagree -- a 2027 row pointing at a 2026 building -- a
+// state that was unrepresentable before and that nothing in the database
+// prevents.
+//
+// lodging_assignment_history is deliberately absent: it stores old_unit /
+// new_unit as TEXT so an unresolvable historical string is still recorded
+// (1500000119). It cannot express this bug and must not be given a relation
+// to "fix" it.
+//
+// lodging_slot_merges does not exist in this worktree -- it belongs to a
+// parallel branch (migration 1500000139) that has not merged yet. It is
+// listed here anyway so the guard starts covering it automatically the moment
+// that migration lands; wireHooks skips whatever collection it cannot find
+// rather than failing the boot over it.
+var yearScopedUnitRefs = map[string][]string{
+	collectionAvailability:     {"unit"},
+	collectionAssignments:      {"units"},
+	collectionAssignmentsDraft: {"units"},
+	collectionSlotMerges:       {"unit"},
+}
 
 // RegisterHooks wires the lodging integrity guards onto the app.
 func RegisterHooks(app *pocketbase.PocketBase) {
@@ -62,6 +88,69 @@ func wireHooks(app core.App) {
 	app.OnRecordUpdate(collectionAssignmentsDraft).BindFunc(guardDraftAssignmentGrain)
 	app.OnRecordUpdate(collectionUnits).BindFunc(guardUnitParentCycle)
 	app.OnRecordAfterUpdateSuccess(collectionIngestIssues).BindFunc(replayOnResolve)
+
+	// Bind only to collections that actually exist. lodging_slot_merges
+	// belongs to a migration that has not landed in every environment yet
+	// (see yearScopedUnitRefs), and a future table removal must not take the
+	// boot down either -- so this checks, rather than assumes, before binding.
+	for name := range yearScopedUnitRefs {
+		if _, err := app.FindCollectionByNameOrId(name); err != nil {
+			// app.Logger(), not the package-level slog: the latter's default
+			// handler writes to stderr, invisible to captureStdout (the only
+			// way this test suite can observe a log line -- see its doc
+			// comment), and would leave this skip path untested rather than
+			// merely undocumented.
+			app.Logger().Warn("year guard skipped: collection absent", "collection", name)
+			continue
+		}
+		app.OnRecordCreate(name).BindFunc(func(e *core.RecordEvent) error {
+			if err := guardUnitYear(e.App, e.Record); err != nil {
+				return apis.NewBadRequestError(err.Error(), nil)
+			}
+			return e.Next()
+		})
+		app.OnRecordUpdate(name).BindFunc(func(e *core.RecordEvent) error {
+			if err := guardUnitYear(e.App, e.Record); err != nil {
+				return apis.NewBadRequestError(err.Error(), nil)
+			}
+			return e.Next()
+		})
+	}
+}
+
+// guardUnitYear refuses a row whose own year disagrees with any unit it
+// names, for every collection in yearScopedUnitRefs.
+//
+// A multi-valued relation (`units`, maxSelect 20, added to the placement
+// tables by 1500000134 when lodging_merges was folded in) has every element
+// checked, not just the first -- it is the column lodging_assignments_sync.go
+// writes, and therefore exactly the one a stale alias resolution would
+// corrupt. GetStringSlice reads a single relation (`unit`) as a one-element
+// slice, so one loop over yearScopedUnitRefs[collection] covers both shapes.
+func guardUnitYear(app core.App, rec *core.Record) error {
+	fields, watched := yearScopedUnitRefs[rec.Collection().Name]
+	if !watched {
+		return nil
+	}
+	rowYear := rec.GetInt("year")
+	if rowYear == 0 {
+		return nil // required elsewhere; not this guard's complaint to make
+	}
+
+	for _, field := range fields {
+		for _, id := range rec.GetStringSlice(field) {
+			unit, err := app.FindRecordById(collectionUnits, id)
+			if err != nil {
+				return fmt.Errorf("resolving %s %q: %w", field, id, err)
+			}
+			if unitYear := unit.GetInt("year"); unitYear != rowYear {
+				return fmt.Errorf(
+					"%s row is for year %d but names unit %q from year %d",
+					rec.Collection().Name, rowYear, unit.GetString("code"), unitYear)
+			}
+		}
+	}
+	return nil
 }
 
 // countAssignments counts the placements holding this unit, across BOTH grains.

@@ -141,7 +141,7 @@ export function buildMapModel(parties: RosterPartyRow[], units: LodgingUnitRow[]
  *
  * Shares `buildMapModel` with the surface on purpose: two copies of the
  * predicate is how a tab starts promising a number of rooms this count does
- * not match. This is NOT the Inventory count either, which includes
+ * not match. This is NOT the raw unit count either, which includes
  * containers and unpositioned rooms.
  */
 export function countMapUnits(parties: RosterPartyRow[], units: LodgingUnitRow[]): number {

@@ -5,6 +5,8 @@ import userEvent from '@testing-library/user-event'
 import type { ReactNode } from 'react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
+import { CurrentYearContext, type CurrentYearContextType } from '../../../hooks/useCurrentYear'
+
 const mapUnresolvedAlias = vi.fn()
 const ignoreIngestIssue = vi.fn()
 const listUnresolvedAliasIssues = vi.fn()
@@ -51,8 +53,8 @@ const UNITS = [
 ]
 
 vi.mock('../../../services/lodgingCrud', () => ({
-  listUnresolvedAliasIssues: () => listUnresolvedAliasIssues(),
-  listLodgingUnits: () => listLodgingUnits(),
+  listUnresolvedAliasIssues: (...args: unknown[]) => listUnresolvedAliasIssues(...args),
+  listLodgingUnits: (...args: unknown[]) => listLodgingUnits(...args),
   mapUnresolvedAlias: (...args: unknown[]) => mapUnresolvedAlias(...args),
   ignoreIngestIssue: (...args: unknown[]) => ignoreIngestIssue(...args),
 }))
@@ -90,8 +92,40 @@ beforeEach(() => {
   client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
 })
 
+const YEAR_CONTEXT: CurrentYearContextType = {
+  currentYear: 2026,
+  setCurrentYear: vi.fn(),
+  availableYears: [2026],
+  isTransitioning: false,
+  isYearReady: true,
+}
+
 function wrapper({ children }: { children: ReactNode }) {
-  return <QueryClientProvider client={client}>{children}</QueryClientProvider>
+  return (
+    <QueryClientProvider client={client}>
+      <CurrentYearContext.Provider value={YEAR_CONTEXT}>{children}</CurrentYearContext.Provider>
+    </QueryClientProvider>
+  )
+}
+
+// `CurrentYearContext` returns the literal 0 until the backend supplies the
+// configured year (`useCurrentYear.ts`). Both queries here must not fire
+// against `year = 0` in that window — PocketBase answers with a successful
+// `200 []`, not an error, so an ungated query renders a false empty queue.
+const ZERO_YEAR_CONTEXT: CurrentYearContextType = {
+  ...YEAR_CONTEXT,
+  currentYear: 0,
+  isYearReady: false,
+}
+
+function zeroYearWrapper({ children }: { children: ReactNode }) {
+  return (
+    <QueryClientProvider client={client}>
+      <CurrentYearContext.Provider value={ZERO_YEAR_CONTEXT}>
+        {children}
+      </CurrentYearContext.Provider>
+    </QueryClientProvider>
+  )
 }
 
 beforeEach(() => {
@@ -102,6 +136,32 @@ beforeEach(() => {
 })
 
 describe('UnresolvedAliasQueue', () => {
+  it('asks for the current season only', async () => {
+    render(<UnresolvedAliasQueue />, { wrapper })
+    await waitFor(() => {
+      expect(screen.getByText('North Lodge - 1and2')).toBeInTheDocument()
+    })
+    expect(listUnresolvedAliasIssues).toHaveBeenCalledWith(2026)
+    expect(listLodgingUnits).toHaveBeenCalledWith(2026)
+  })
+
+  it('does not fetch until the year resolves', () => {
+    render(<UnresolvedAliasQueue />, { wrapper: zeroYearWrapper })
+    expect(listUnresolvedAliasIssues).not.toHaveBeenCalled()
+    expect(listLodgingUnits).not.toHaveBeenCalled()
+  })
+
+  // See LodgingUnitsPanel's twin: the `enabled` gate stops the request but not
+  // the render. A disabled query is `isLoading === false` with `data ===
+  // undefined`, so QueryGuard shows the empty state and a cold load claims a
+  // clean queue -- the most misleading thing this panel can say, because
+  // "nothing to resolve" is exactly what staff are checking for.
+  it('says it is still loading, not that the queue is clean, before the year resolves', () => {
+    render(<UnresolvedAliasQueue />, { wrapper: zeroYearWrapper })
+    expect(screen.queryByText(/No unresolved cabin names/i)).not.toBeInTheDocument()
+    expect(screen.getByText(/Loading unresolved cabin names/i)).toBeInTheDocument()
+  })
+
   it('shows the verbatim string, its source field and how often it was seen', async () => {
     render(<UnresolvedAliasQueue />, { wrapper })
     await waitFor(() => {

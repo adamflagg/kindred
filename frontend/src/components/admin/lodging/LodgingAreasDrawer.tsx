@@ -16,6 +16,7 @@ import { ChevronDown, ChevronUp, Plus, X } from 'lucide-react'
 import { useState } from 'react'
 import toast from 'react-hot-toast'
 
+import { useCurrentYear } from '../../../hooks/useCurrentYear'
 import {
   createLodgingArea,
   deleteLodgingArea,
@@ -45,13 +46,18 @@ export interface LodgingAreasDrawerProps {
 
 export function LodgingAreasDrawer({ open, onClose }: LodgingAreasDrawerProps) {
   const queryClient = useQueryClient()
+  const { currentYear } = useCurrentYear()
   const [draftName, setDraftName] = useState('')
 
   const areasQuery = useQuery({
-    queryKey: queryKeys.lodgingAreas(),
+    queryKey: queryKeys.lodgingAreas(currentYear),
     ...userDataOptions,
-    queryFn: listLodgingAreas,
-    enabled: open,
+    queryFn: () => listLodgingAreas(currentYear),
+    // Gated on the drawer being open AND the year having resolved.
+    // CurrentYearContext returns the literal 0 until the backend supplies
+    // the configured year, and PocketBase answers `year = 0` with a
+    // successful `200 []` rather than an error — see LodgingUnitsPanel.
+    enabled: open && currentYear > 0,
   })
 
   const refresh = () => {
@@ -271,6 +277,7 @@ export function LodgingAreasDrawer({ open, onClose }: LodgingAreasDrawerProps) {
                     name: draftName.trim(),
                     // Codes are a back-end key; derive rather than ask.
                     code: slugify(draftName),
+                    year: currentYear,
                     map_x: 0,
                     map_y: 0,
                     // From the highest rank in use, not the count: sort_order

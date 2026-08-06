@@ -40,8 +40,10 @@ const ALIAS_NEEDS_A_UNIT = 'An alias must map to at least one unit.'
 
 // ── Areas ─────────────────────────────────────────────────────────────────────
 
-export async function listLodgingAreas(): Promise<LodgingAreaRecord[]> {
-  return pb.collection(AREAS).getFullList<LodgingAreaRecord>({ sort: 'sort_order,name' })
+export async function listLodgingAreas(year: number): Promise<LodgingAreaRecord[]> {
+  return pb
+    .collection(AREAS)
+    .getFullList<LodgingAreaRecord>({ filter: `year = ${year}`, sort: 'sort_order,name' })
 }
 
 export async function createLodgingArea(input: LodgingAreaInput): Promise<LodgingAreaRecord> {
@@ -90,10 +92,17 @@ export async function reorderLodgingAreas(orderedIds: string[]): Promise<void> {
 
 // ── Units ─────────────────────────────────────────────────────────────────────
 
-export async function listLodgingUnits(): Promise<LodgingUnitRecord[]> {
-  return pb
-    .collection(UNITS)
-    .getFullList<LodgingUnitRecord>({ expand: 'area,parent_unit', sort: 'area.sort_order,name' })
+/**
+ * One season's units. The year filter is load-bearing: units are year-scoped
+ * since 1500000141, and `code` is unique only per (code, year), so an
+ * unfiltered read shows every season's rows stacked in one table.
+ */
+export async function listLodgingUnits(year: number): Promise<LodgingUnitRecord[]> {
+  return pb.collection(UNITS).getFullList<LodgingUnitRecord>({
+    filter: `year = ${year}`,
+    expand: 'area,parent_unit',
+    sort: 'area.sort_order,name',
+  })
 }
 
 /**
@@ -228,9 +237,15 @@ export async function deleteLodgingAlias(id: string): Promise<void> {
  * mapping a name to a unit, and mixing them into this list would offer staff
  * an action that cannot resolve the row.
  */
-export async function listUnresolvedAliasIssues(): Promise<LodgingIngestIssueRecord[]> {
+/**
+ * Already wrong before this change: `lodging_ingest_issues` has carried a
+ * required `year` since 1500000122 and this read never used it. With one
+ * season loaded that was invisible; the moment lodging_units.year exists this
+ * queue would show every season's unresolved cabin names in one list.
+ */
+export async function listUnresolvedAliasIssues(year: number): Promise<LodgingIngestIssueRecord[]> {
   return pb.collection(INGEST_ISSUES).getFullList<LodgingIngestIssueRecord>({
-    filter: 'kind = "unresolved_alias" && is_resolved = false',
+    filter: `year = ${year} && kind = "unresolved_alias" && is_resolved = false`,
     sort: '-occurrences,raw_value',
   })
 }

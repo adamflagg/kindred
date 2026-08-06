@@ -39,6 +39,10 @@ func setupCollections(t *testing.T, app core.App) {
 	units.Fields.Add(&core.TextField{Name: "name", Required: true})
 	units.Fields.Add(&core.BoolField{Name: "is_active"})
 	units.Fields.Add(&core.BoolField{Name: "is_container"})
+	// year backs guardUnitYear (1500000141 makes it required in production;
+	// left optional here, as elsewhere in this fixture, so newUnit's callers
+	// that predate the year dimension are not forced to supply one).
+	units.Fields.Add(&core.NumberField{Name: "year"})
 	// Self-relation. CollectionId is set after the first Save, below, because
 	// the collection has no id until it exists.
 	if err := app.Save(units); err != nil {
@@ -64,6 +68,20 @@ func setupCollections(t *testing.T, app core.App) {
 		t.Fatalf("find lodging_units: %v", err)
 	}
 
+	// Minimal stand-in for camp_sessions, which the real lodging_availability
+	// and lodging_assignments* tables carry a required relation to
+	// (1500000118, 1500000119). No fields of its own are read by anything
+	// under test -- it exists only so those relations have a collection to
+	// point at.
+	sessions := core.NewBaseCollection("camp_sessions")
+	if err := app.Save(sessions); err != nil {
+		t.Fatalf("save camp_sessions: %v", err)
+	}
+	sessionsCol, sessionsErr := app.FindCollectionByNameOrId("camp_sessions")
+	if sessionsErr != nil {
+		t.Fatalf("find camp_sessions: %v", sessionsErr)
+	}
+
 	// The confirmed board and the draft grain (1500000132) carry the SAME
 	// placement shape after 1500000134. Staff hold bunking.manage on the draft,
 	// so a write can arrive straight at the PocketBase REST API without passing
@@ -73,12 +91,30 @@ func setupCollections(t *testing.T, app core.App) {
 		placements.Fields.Add(&core.RelationField{
 			Name: "units", CollectionId: unitsCol.Id, MaxSelect: 20,
 		})
+		placements.Fields.Add(&core.RelationField{
+			Name: "session", CollectionId: sessionsCol.Id, MaxSelect: 1,
+		})
 		placements.Fields.Add(&core.NumberField{Name: "household_cm_id"})
 		placements.Fields.Add(&core.NumberField{Name: "person_cm_id"})
 		placements.Fields.Add(&core.NumberField{Name: "year"})
 		if err := app.Save(placements); err != nil {
 			t.Fatalf("save %s: %v", name, err)
 		}
+	}
+
+	// lodging_availability (1500000118) is the fourth year-scoped-unit-ref
+	// table guardUnitYear watches, and the only one of the four that carries a
+	// SINGLE `unit` relation rather than the multi-valued `units`.
+	availability := core.NewBaseCollection("lodging_availability")
+	availability.Fields.Add(&core.RelationField{
+		Name: "unit", CollectionId: unitsCol.Id, MaxSelect: 1,
+	})
+	availability.Fields.Add(&core.RelationField{
+		Name: "session", CollectionId: sessionsCol.Id, MaxSelect: 1,
+	})
+	availability.Fields.Add(&core.NumberField{Name: "year"})
+	if err := app.Save(availability); err != nil {
+		t.Fatalf("save lodging_availability: %v", err)
 	}
 
 	aliases := core.NewBaseCollection("lodging_unit_aliases")
@@ -147,6 +183,19 @@ func newResolvedIssue(t *testing.T, app core.App, rawValue, aliasID string) *cor
 	return r
 }
 
+// defaultFixtureYear is the year every year-UNAWARE fixture helper in this
+// file stamps onto the rows it creates -- newPlacement's placements, and,
+// since guardUnitYear started reading it, newUnit's units too. Its value has
+// no significance beyond being the SAME constant on both sides: guardUnitYear
+// refuses a placement whose year disagrees with a unit it names, so a unit
+// fixture stamped with a different year than the placement fixture would fail
+// every pre-existing test in this file once the guard was wired, for a reason
+// having nothing to do with what each test actually exercises. The
+// TestGuardUnitYear* tests are exactly the ones that need years to DISAGREE,
+// which is why they seed their own units directly via seedUnit instead of
+// going through newUnit.
+const defaultFixtureYear = 2026
+
 func newUnit(t *testing.T, app core.App, code, name string) *core.Record {
 	t.Helper()
 	col, err := app.FindCollectionByNameOrId("lodging_units")
@@ -157,10 +206,71 @@ func newUnit(t *testing.T, app core.App, code, name string) *core.Record {
 	r.Set("code", code)
 	r.Set("name", name)
 	r.Set("is_active", true)
+	r.Set("year", defaultFixtureYear)
 	if err := app.Save(r); err != nil {
 		t.Fatalf("save unit %q: %v", code, err)
 	}
 	return r
+}
+
+// mustCollection looks up a collection by name, failing the test immediately
+// if it is not found. By the time guardUnitYear's tests call this,
+// setupCollections has already run, so a miss here is a fixture bug -- unlike
+// the ABSENT-collection case guardUnitYear itself has to tolerate at wiring
+// time (TestGuardUnitYearSkipsAnAbsentCollection), which is a real production
+// state (lodging_slot_merges, pre-migration) and not a test mistake.
+func mustCollection(t *testing.T, app core.App, name string) *core.Collection {
+	t.Helper()
+	col, err := app.FindCollectionByNameOrId(name)
+	if err != nil {
+		t.Fatalf("find %s: %v", name, err)
+	}
+	return col
+}
+
+// seedUnit creates a lodging_units row for the given year and returns its id.
+// The year-aware counterpart to newUnit, for the guardUnitYear tests that need
+// two units in different years rather than the one fixed year every other
+// test in this file shares (defaultFixtureYear).
+func seedUnit(t *testing.T, app core.App, code string, year int) string {
+	t.Helper()
+	r := core.NewRecord(mustCollection(t, app, "lodging_units"))
+	r.Set("code", code)
+	r.Set("name", "Test Building A")
+	r.Set("year", year)
+	if err := app.Save(r); err != nil {
+		t.Fatalf("seed unit %q year %d: %v", code, year, err)
+	}
+	return r.Id
+}
+
+// seedSession creates a minimal camp_sessions row and returns its id, so a
+// row under guardUnitYear's watch has something to point its `session`
+// relation at.
+func seedSession(t *testing.T, app core.App) string {
+	t.Helper()
+	r := core.NewRecord(mustCollection(t, app, "camp_sessions"))
+	if err := app.Save(r); err != nil {
+		t.Fatalf("seed session: %v", err)
+	}
+	return r.Id
+}
+
+// newHooksTestApp builds a fresh test app carrying the lodging fixture with
+// the integrity hooks already wired, for tests that don't need to stage state
+// before the guards go live (contrast the delete-guard tests above, which
+// stage placements BEFORE calling wireHooks to stand in for rows written
+// under an older schema).
+func newHooksTestApp(t *testing.T) core.App {
+	t.Helper()
+	app, err := tests.NewTestApp()
+	if err != nil {
+		t.Fatalf("NewTestApp: %v", err)
+	}
+	t.Cleanup(app.Cleanup)
+	setupCollections(t, app)
+	wireHooks(app)
+	return app
 }
 
 // newIssue seeds an OPEN work-queue row of the given kind -- unlike
@@ -249,7 +359,7 @@ func newPlacement(
 	r.Set("units", unitIDs)
 	r.Set("household_cm_id", householdCmID)
 	r.Set("person_cm_id", personCmID)
-	r.Set("year", 2026)
+	r.Set("year", defaultFixtureYear)
 	if err := app.Save(r); err != nil {
 		t.Fatalf("save %s: %v", collection, err)
 	}
@@ -491,7 +601,7 @@ func TestAssignmentGrainXor(t *testing.T) {
 			r.Set("units", unitIDs)
 			r.Set("household_cm_id", tc.householdCmID)
 			r.Set("person_cm_id", tc.personCmID)
-			r.Set("year", 2026)
+			r.Set("year", defaultFixtureYear)
 
 			saveErr := app.Save(r)
 			if tc.wantErr && saveErr == nil {
@@ -642,7 +752,7 @@ func TestDraftAssignmentGrainXor(t *testing.T) {
 			r.Set("units", unitIDs)
 			r.Set("household_cm_id", tc.householdCmID)
 			r.Set("person_cm_id", tc.personCmID)
-			r.Set("year", 2026)
+			r.Set("year", defaultFixtureYear)
 
 			saveErr := app.Save(r)
 			if tc.wantErr && saveErr == nil {
@@ -1058,5 +1168,113 @@ func TestMappingAPartylessRowStillAttemptsAReplay(t *testing.T) {
 
 	if got := strings.Count(output, marker); got != 1 {
 		t.Fatalf("mapping a party-less row attempted %d replay(s), want 1 (log: %q)", got, output)
+	}
+}
+
+// TestGuardUnitYearRejectsACrossYearRow is the single-relation case: a
+// lodging_availability row for 2027 naming a unit that only exists in 2026.
+// Before guardUnitYear, nothing in the schema stopped this -- lodging_units
+// carrying its own `year` (1500000141) made (code, year) distinct records for
+// the first time, and a row on any of the four tables that also carry `year`
+// could point its `unit`/`units` relation at a building from a different
+// season with no error anywhere.
+func TestGuardUnitYearRejectsACrossYearRow(t *testing.T) {
+	app := newHooksTestApp(t)
+	unit2026 := seedUnit(t, app, "test-unit-a", 2026)
+
+	rec := core.NewRecord(mustCollection(t, app, "lodging_availability"))
+	rec.Set("year", 2027)
+	rec.Set("unit", unit2026)
+	rec.Set("session", seedSession(t, app))
+
+	err := app.Save(rec)
+	if err == nil {
+		t.Fatal("saved a 2027 row pointing at a 2026 unit; want a refusal")
+	}
+	if !strings.Contains(err.Error(), "year") {
+		t.Errorf("error does not name the problem: %v", err)
+	}
+}
+
+// TestGuardUnitYearChecksEveryMemberOfTheMultiRelation is the multi-relation
+// case, and the one that matters more: `units` (maxSelect 20) is what
+// 1500000134 gave lodging_assignments and lodging_assignments_draft when it
+// folded lodging_merges into the placement, and it is the column
+// lodging_assignments_sync.go:514 writes -- exactly the one a stale alias
+// resolution (Task 5) would have corrupted. `good` sits first in the set and
+// `stale` second, so a guard that only inspected index 0 would pass this row
+// and miss the bug entirely.
+func TestGuardUnitYearChecksEveryMemberOfTheMultiRelation(t *testing.T) {
+	app := newHooksTestApp(t)
+	good := seedUnit(t, app, "test-unit-a", 2027)
+	stale := seedUnit(t, app, "test-unit-b", 2026)
+
+	rec := core.NewRecord(mustCollection(t, app, "lodging_assignments"))
+	rec.Set("year", 2027)
+	rec.Set("units", []string{good, stale})
+	rec.Set("session", seedSession(t, app))
+	// Satisfies guardAssignmentGrain's unrelated XOR (hooks.go) so the ONLY
+	// thing that can refuse this save is the guard under test. Without this,
+	// the save is refused anyway -- for "must set exactly one of
+	// household_cm_id or person_cm_id" -- and this test passes whether or not
+	// guardUnitYear exists at all. Caught by actually reading the failure
+	// reason while writing this test, not assumed.
+	rec.Set("household_cm_id", 2000001)
+
+	if err := app.Save(rec); err == nil {
+		t.Fatal("saved a placement holding a 2026 room in a 2027 plan; want a refusal")
+	}
+}
+
+// TestGuardUnitYearAllowsAMatchingRow is the guard's positive control: a
+// consistent row -- row year equal to the one unit it names -- must save.
+// Without this, a guard that rejected EVERY save regardless of years would
+// also pass the two refusal tests above.
+func TestGuardUnitYearAllowsAMatchingRow(t *testing.T) {
+	app := newHooksTestApp(t)
+	unit := seedUnit(t, app, "test-unit-a", 2027)
+
+	rec := core.NewRecord(mustCollection(t, app, "lodging_availability"))
+	rec.Set("year", 2027)
+	rec.Set("unit", unit)
+	rec.Set("session", seedSession(t, app))
+
+	if err := app.Save(rec); err != nil {
+		t.Fatalf("refused a consistent row: %v", err)
+	}
+}
+
+// TestGuardUnitYearSkipsAnAbsentCollection pins that wiring the guard cannot
+// take the boot down over lodging_slot_merges, which belongs to a parallel
+// branch (migration 1500000139) that has not merged into this worktree.
+// yearScopedUnitRefs names it as one of the four tables to guard, but
+// setupCollections -- deliberately, matching the real schema this worktree
+// carries -- never creates it. wireHooks has to look before it binds, skip
+// what it does not find, and say so, rather than letting
+// app.OnRecordCreate(name) panic or error deep inside PocketBase's own
+// binding machinery.
+//
+// This also doubles as the reason the guard automatically starts covering
+// lodging_slot_merges the moment that migration lands: nothing here special-
+// cases the collection by name, only by whether FindCollectionByNameOrId
+// succeeds.
+func TestGuardUnitYearSkipsAnAbsentCollection(t *testing.T) {
+	app, err := tests.NewTestAppWithConfig(core.BaseAppConfig{
+		EncryptionEnv: "pb_test_env",
+		IsDev:         true, // so app.Logger() prints synchronously; see captureStdout.
+	})
+	if err != nil {
+		t.Fatalf("NewTestAppWithConfig: %v", err)
+	}
+	defer app.Cleanup()
+
+	setupCollections(t, app)
+
+	output := captureStdout(t, func() {
+		wireHooks(app)
+	})
+
+	if !strings.Contains(output, "lodging_slot_merges") {
+		t.Fatalf("expected a warning naming the absent collection, got: %q", output)
 	}
 }

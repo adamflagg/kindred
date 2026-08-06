@@ -107,6 +107,11 @@ func newLodgingTestApp(t *testing.T) core.App {
 	units.Fields.Add(&core.NumberField{Name: "sleeps"})
 	units.Fields.Add(&core.BoolField{Name: "is_active"})
 	units.Fields.Add(&core.BoolField{Name: "is_container"})
+	// Required, mirroring migration 1500000141. PocketBase's Set on a column
+	// that does not exist is a silent no-op, so a fixture that forgot this
+	// column would resolve every year against a unit stored at year 0 --
+	// exactly the failure this field exists to catch loudly, here.
+	units.Fields.Add(&core.NumberField{Name: "year", Required: true})
 	saveCollection(t, app, units)
 
 	// parent_unit is a self-relation, so it needs the collection's own id --
@@ -264,30 +269,30 @@ func addAttendee(t *testing.T, app core.App, personPBID, sessionPBID string, per
 	})
 }
 
-func addUnit(t *testing.T, app core.App, code string) string {
+func addUnit(t *testing.T, app core.App, code string, year int) string {
 	t.Helper()
 	return saveRecord(t, app, "lodging_units", map[string]any{
-		"code": code, "name": code, "is_active": true, "is_container": false,
+		"code": code, "name": code, "is_active": true, "is_container": false, "year": year,
 	})
 }
 
 // addContainerUnit adds a building/grouping row -- the parent a room hangs
 // off. Nothing validates a merge against this shape (see
 // docs/architecture/lodging-occupancy.md); it models physical structure.
-func addContainerUnit(t *testing.T, app core.App, code string) string {
+func addContainerUnit(t *testing.T, app core.App, code string, year int) string {
 	t.Helper()
 	return saveRecord(t, app, "lodging_units", map[string]any{
-		"code": code, "name": code, "is_active": true, "is_container": true,
+		"code": code, "name": code, "is_active": true, "is_container": true, "year": year,
 	})
 }
 
 // addUnitWithParent is addUnit plus the parent_unit link a legal merge fixture
 // needs.
-func addUnitWithParent(t *testing.T, app core.App, code, parentID string) string {
+func addUnitWithParent(t *testing.T, app core.App, code, parentID string, year int) string {
 	t.Helper()
 	return saveRecord(t, app, "lodging_units", map[string]any{
 		"code": code, "name": code, "is_active": true, "is_container": false,
-		"parent_unit": parentID,
+		"parent_unit": parentID, "year": year,
 	})
 }
 
@@ -298,6 +303,32 @@ func addAlias(t *testing.T, app core.App, aliasString string, unitIDs []string, 
 		"alias_string": aliasString, "member_units": unitIDs,
 		"valid_from_year": from, "valid_to_year": to,
 	})
+}
+
+// addAliasWithDanglingMember is addAlias but bypasses relation validation, for
+// tests modeling a member_units id that names no lodging_units row at all --
+// the unit was deleted after the alias was authored. app.Save refuses that
+// shape outright (RelationField.ValidateValue), so a legitimate write can
+// never produce it; SaveNoValidate stages the state a real deletion would
+// leave behind, the same reason 1500000134's backfill and
+// TestLodgingAssignmentsSyncLabelDropsUnresolvableUnits use it.
+func addAliasWithDanglingMember(
+	t *testing.T, app core.App, aliasString string, unitIDs []string, from, to int,
+) string {
+	t.Helper()
+	col, err := app.FindCollectionByNameOrId("lodging_unit_aliases")
+	if err != nil {
+		t.Fatalf("find collection lodging_unit_aliases: %v", err)
+	}
+	r := core.NewRecord(col)
+	r.Set("alias_string", aliasString)
+	r.Set("member_units", unitIDs)
+	r.Set("valid_from_year", from)
+	r.Set("valid_to_year", to)
+	if err := app.SaveNoValidate(r); err != nil {
+		t.Fatalf("save lodging_unit_aliases (no validate): %v", err)
+	}
+	return r.Id
 }
 
 // addFamilyCampAdult records one accompanying adult. These people are never

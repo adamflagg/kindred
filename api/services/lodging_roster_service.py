@@ -423,14 +423,14 @@ class LodgingRosterService:
         # registration row -- already collapsed to household grain, already
         # carrying the normaliser fixes this layer cannot see.
         async with asyncio.TaskGroup() as tg:
-            units_task = tg.create_task(self.repository.fetch_units())
+            units_task = tg.create_task(self.repository.fetch_units(year))
             availability_task = tg.create_task(self.repository.fetch_availability(year, session_pb_id))
             attendees_task = tg.create_task(self.repository.fetch_attendees_for_session(year, session_pb_id))
             households_task = tg.create_task(self.repository.fetch_households(year))
             prior_task = tg.create_task(self.repository.fetch_prior_household_cm_ids(year))
             adults_task = tg.create_task(self.repository.fetch_family_camp_adults(year))
             registrations_task = tg.create_task(self.repository.fetch_family_camp_registrations(year))
-            aliases_task = tg.create_task(self.repository.count_open_unresolved_aliases())
+            aliases_task = tg.create_task(self.repository.count_open_unresolved_aliases(year))
             # ONE placement source, chosen here rather than merged later. A
             # scenario does not read the mirror at all -- which is what makes
             # "no fall-through" a property of the request rather than of the
@@ -518,12 +518,12 @@ class LodgingRosterService:
             return WeekendSummaryResponse(year=year, weekends=[])
 
         async with asyncio.TaskGroup() as tg:
-            units_task = tg.create_task(self.repository.fetch_units())
+            units_task = tg.create_task(self.repository.fetch_units(year))
             households_task = tg.create_task(self.repository.fetch_households(year))
             prior_task = tg.create_task(self.repository.fetch_prior_household_cm_ids(year))
             adults_task = tg.create_task(self.repository.fetch_family_camp_adults(year))
             registrations_task = tg.create_task(self.repository.fetch_family_camp_registrations(year))
-            aliases_task = tg.create_task(self.repository.count_open_unresolved_aliases())
+            aliases_task = tg.create_task(self.repository.count_open_unresolved_aliases(year))
 
         units = units_task.result()
         households = households_task.result()

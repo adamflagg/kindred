@@ -1,6 +1,6 @@
 /**
- * How a unit's availability is badged, shared by the inventory list and the
- * board's slot cards so the two cannot drift.
+ * How a unit's availability is badged, shared by the board's slot cards and the
+ * map's unit popover so the two cannot drift.
  *
  * Reserved units are BADGED, not hidden (spec §3.7): staff reason about
  * adjacency, and hiding a held room would make the site look smaller than it
@@ -91,6 +91,14 @@ export function availabilityAction(unit: LodgingUnitRow): AvailabilityAction | n
   if (unit.family_available_override !== null && unit.family_available_override !== undefined) {
     return { kind: 'clear', label: 'Clear', familyAvailable: null, needsReason: false }
   }
+  // NO SURFACE REACHES THIS BRANCH TODAY, and that is deliberate rather than
+  // an oversight. Releasing a staff cabin to families is a registry edit on the
+  // season's row now (Manage -> Lodging), not a per-weekend override: the
+  // weekend Inventory tab that used to host it was removed with year-scoping,
+  // and the board cannot host it because `isPlanningInventory` (boardLayout.ts)
+  // excludes a `staff_default` unit with no override — which is precisely the
+  // state this branch describes. Kept, unused, because the write path behind it
+  // still exists; see the design spec's §7.3 "stays, unused and noted".
   if (unit.inventory_class === 'staff_default') {
     return { kind: 'release', label: 'Release', familyAvailable: true, needsReason: true }
   }

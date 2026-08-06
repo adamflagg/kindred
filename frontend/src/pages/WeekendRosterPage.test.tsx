@@ -353,9 +353,9 @@ describe('the view in the URL', () => {
 
   it('opens the view the URL names, so a tab can be linked and reloaded', () => {
     rosterQuery.data = ONE_UNIT
-    renderPage('1000001', 'inventory')
-    expect(screen.getByRole('tab', { name: /Inventory/ })).toHaveAttribute('aria-selected', 'true')
-    expect(screen.getByText('Ridge A')).toBeInTheDocument()
+    renderPage('1000001', 'map')
+    expect(screen.getByRole('tab', { name: /Map/ })).toHaveAttribute('aria-selected', 'true')
+    expect(screen.getByTestId('map-canvas')).toBeInTheDocument()
   })
 
   it('opens Housing when the URL names no view', () => {
@@ -370,12 +370,12 @@ describe('the view in the URL', () => {
   it('puts the chosen view in the URL', async () => {
     rosterQuery.data = ONE_UNIT
     renderPage()
-    await userEvent.click(screen.getByRole('tab', { name: /Inventory/ }))
-    expect(screen.getByTestId('location')).toHaveTextContent('/weekend/1000001/inventory')
+    await userEvent.click(screen.getByRole('tab', { name: /Map/ }))
+    expect(screen.getByTestId('location')).toHaveTextContent('/weekend/1000001/map')
   })
 
   it('replaces rather than stacks, so Back leaves the weekend', async () => {
-    // Four tabs and a habit of clicking through them turns Back into a tour of
+    // Three tabs and a habit of clicking through them turns Back into a tour of
     // the tabs you already saw. The weekend is the destination; the tab is not.
     //
     // ASSERTING THE FINAL URL WOULD NOT TEST THIS — it is identical whether the
@@ -427,51 +427,25 @@ describe('the view in the URL', () => {
 })
 
 describe('tabs', () => {
-  it('opens on Housing and offers the inventory beside it', async () => {
-    rosterQuery.data = {
-      year: 2026,
-      session_cm_id: 1000001,
-      parties: [],
-      counts: {},
-      units: [
-        {
-          unit_id: 'u1',
-          code: 'ridge-a',
-          name: 'Ridge A',
-          area_code: 'RIDGE',
-          area_name: 'Ridge Side',
-          sleeps: 5,
-          is_confirmed: true,
-          is_container: false,
-          is_family_available: true,
-        },
-      ],
-    }
-    renderPage()
-
-    expect(screen.getByRole('tab', { name: /Housing/ })).toHaveAttribute('aria-selected', 'true')
-    // The inventory is a tab away, not further down the same scroll. Housing
-    // names the same unit, so the unit name no longer tells the two apart —
-    // the panel's own heading does.
-    expect(screen.queryByText('Lodging inventory')).not.toBeInTheDocument()
-
-    await userEvent.click(screen.getByRole('tab', { name: /Inventory/ }))
-    expect(screen.getByText('Lodging inventory')).toBeInTheDocument()
-  })
-
-  it('leads with Housing and counts what each tab holds, as summer does', () => {
+  it('leads with Housing, as summer leads with Bunks', () => {
     // ORDER IS THE ASSERTION, not just presence. Summer leads with Bunks and
     // puts Campers after it; a weekend reads the same way round, and for the
     // same reason — both name the tab after the thing being assigned rather
-    // than after the widget. Inventory trails: it describes the buildings, not
-    // this weekend.
+    // than after the widget.
     renderPage()
     expect(screen.getAllByRole('tab').map((tab) => tab.textContent)).toEqual([
       'Housing (0)',
       'Roster (0)',
       'Map (0)',
-      'Inventory (0)',
     ])
+  })
+
+  it('offers Housing, Roster and Map, and no Inventory tab', () => {
+    renderPage()
+    expect(screen.getByRole('tab', { name: /Housing/ })).toBeInTheDocument()
+    expect(screen.getByRole('tab', { name: /Roster/ })).toBeInTheDocument()
+    expect(screen.getByRole('tab', { name: /Map/ })).toBeInTheDocument()
+    expect(screen.queryByRole('tab', { name: /Inventory/ })).not.toBeInTheDocument()
   })
 
   it('opens Housing on its own tab, at its own URL', async () => {
@@ -537,7 +511,6 @@ describe('tabs', () => {
     }
     renderPage()
     expect(screen.getByRole('tab', { name: 'Housing (1)' })).toBeInTheDocument()
-    expect(screen.getByRole('tab', { name: 'Inventory (2)' })).toBeInTheDocument()
   })
 
   it('shows the map when the Map tab is selected', async () => {
@@ -546,9 +519,10 @@ describe('tabs', () => {
     expect(screen.getByTestId('map-canvas')).toBeInTheDocument()
   })
 
-  it('counts the marks the map draws, not the inventory', async () => {
-    // A container and an unpositioned room both appear in Inventory and neither
-    // gets a mark, so the two counts must differ.
+  it('counts the marks the map draws, not the units the board draws', async () => {
+    // A container gets neither a board slot nor a map mark. An unpositioned
+    // room gets a board slot — position is irrelevant to the board — but no
+    // mark, so the two counts must differ.
     rosterQuery.data = {
       parties: [],
       units: [
@@ -589,7 +563,7 @@ describe('tabs', () => {
       counts: {},
     }
     renderPage()
-    expect(screen.getByRole('tab', { name: 'Inventory (3)' })).toBeInTheDocument()
+    expect(screen.getByRole('tab', { name: 'Housing (2)' })).toBeInTheDocument()
     expect(screen.getByRole('tab', { name: 'Map (1)' })).toBeInTheDocument()
   })
 })

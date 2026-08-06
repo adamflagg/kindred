@@ -15,6 +15,7 @@ import { Plus } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import toast from 'react-hot-toast'
 
+import { useCurrentYear } from '../../../hooks/useCurrentYear'
 import {
   deleteLodgingAlias,
   listLodgingAliases,
@@ -42,6 +43,7 @@ function yearWindow(alias: LodgingAliasRecord): string {
 
 export function LodgingAliasesPanel() {
   const queryClient = useQueryClient()
+  const { currentYear } = useCurrentYear()
   const [editing, setEditing] = useState<LodgingAliasRecord | 'new' | null>(null)
   const formRef = useRef<HTMLDivElement>(null)
 
@@ -64,10 +66,27 @@ export function LodgingAliasesPanel() {
     ...userDataOptions,
     queryFn: listLodgingAliases,
   })
+  // The member-unit picker offers THIS season's units — a staffer mapping a
+  // cabin string today is mapping it to a building that exists now, not to
+  // whichever season the alias was originally seeded against (see the
+  // `expand: member_units` display in the table below, which is a label from
+  // the seed year and deliberately left alone — Task 5 resolves through code).
+  // CurrentYearContext returns the literal 0 until the backend supplies the
+  // configured year. PocketBase answers `year = 0` with a successful `200
+  // []` rather than an error, so without this gate the picker would render
+  // as if there were genuinely no units to map an alias to.
+  // ONE constant for the fetch gate and the render guard, because gating only
+  // the fetch does not fix what the gate is for. A disabled TanStack query is
+  // `isLoading === false` (pending but idle -- nothing is fetching) with `data
+  // === undefined`, which is indistinguishable from a settled empty result to
+  // every consumer below. Derive both from this and they cannot drift apart.
+  const yearReady = currentYear > 0
+
   const unitsQuery = useQuery({
-    queryKey: queryKeys.lodgingUnits(),
+    queryKey: queryKeys.lodgingUnits(currentYear),
     ...userDataOptions,
-    queryFn: listLodgingUnits,
+    queryFn: () => listLodgingUnits(currentYear),
+    enabled: yearReady,
   })
 
   const refresh = () => {
@@ -129,7 +148,7 @@ export function LodgingAliasesPanel() {
             <p className="text-sm text-red-600 dark:text-red-400">
               The units could not be loaded, so an alias cannot be edited right now.
             </p>
-          ) : unitsQuery.isLoading ? (
+          ) : unitsQuery.isLoading || !yearReady ? (
             <p className="text-muted-foreground text-sm">Loading units…</p>
           ) : (
             /* Keyed on the record so React remounts rather than reusing the

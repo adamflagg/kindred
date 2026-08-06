@@ -98,7 +98,7 @@ class TestStableSort:
             pytest.param(lambda r: r.fetch_family_camp_registrations(2026), id="fetch_registrations"),
             pytest.param(lambda r: r.fetch_family_camp_medical(2026), id="fetch_medical"),
             pytest.param(lambda r: r.fetch_weekend_sessions(2026), id="fetch_weekend_sessions"),
-            pytest.param(lambda r: r.fetch_units(), id="fetch_units"),
+            pytest.param(lambda r: r.fetch_units(2026), id="fetch_units"),
             pytest.param(lambda r: r.fetch_family_camp_adults(2026), id="fetch_adults"),
         ],
     )
@@ -386,12 +386,25 @@ class TestFetchUnits:
     @pytest.mark.asyncio
     async def test_expands_area_and_does_not_prefilter_containers(self, repo: LodgingRepository, pb: MagicMock) -> None:
         """Containers stay in the payload (badged); only COUNTS exclude them."""
-        await repo.fetch_units()
+        await repo.fetch_units(2026)
 
         pb.collection.assert_called_with("lodging_units")
         params = _last_query(pb)
         assert params["expand"] == "area"
         assert "is_container" not in params.get("filter", "")
+
+    @pytest.mark.asyncio
+    async def test_filters_to_the_requested_year_only(self, repo: LodgingRepository, pb: MagicMock) -> None:
+        """Units became year-scoped in 1500000141.
+
+        `code` is unique only per (code, year), so an unfiltered read would
+        return every season at once and collide two rows onto one card in
+        `leafByCode`. The year argument is what keeps a payload to one season.
+        """
+        await repo.fetch_units(2027)
+
+        filter_str = _last_query(pb)["filter"]
+        assert "year = 2027" in filter_str
 
 
 class TestFetchPriorHouseholdCmIds:
@@ -464,20 +477,36 @@ class TestCounts:
         """
         pb.collection.return_value.get_list.return_value = _record(total_items=3)
 
-        count = await repo.count_open_unresolved_aliases()
+        count = await repo.count_open_unresolved_aliases(2027)
 
         pb.collection.assert_called_with("lodging_ingest_issues")
         filter_str = _last_list_query(pb)["filter"]
+        assert "year = 2027" in filter_str
         assert 'kind = "unresolved_alias"' in filter_str
         assert "is_resolved = false" in filter_str
         assert count == 3
         pb.collection.return_value.get_full_list.assert_not_called()
 
     @pytest.mark.asyncio
+    async def test_open_unresolved_aliases_is_year_scoped(self, repo: LodgingRepository, pb: MagicMock) -> None:
+        """`lodging_ingest_issues` has carried a required `year` since
+        1500000122. Without this filter, viewing 2027's weekend header counts
+        2026's unresolved cabin strings too, disagreeing with the now-year-
+        scoped Unresolved names queue underneath it -- the same defect fixed
+        one collection over in `lodgingCrud.ts`'s `listUnresolvedAliasIssues`.
+        """
+        pb.collection.return_value.get_list.return_value = _record(total_items=0)
+
+        await repo.count_open_unresolved_aliases(2026)
+
+        filter_str = _last_list_query(pb)["filter"]
+        assert "year = 2026" in filter_str
+
+    @pytest.mark.asyncio
     async def test_counts_request_a_single_row(self, repo: LodgingRepository, pb: MagicMock) -> None:
         pb.collection.return_value.get_list.return_value = _record(total_items=42)
 
-        await repo.count_open_unresolved_aliases()
+        await repo.count_open_unresolved_aliases(2026)
 
         args = pb.collection.return_value.get_list.call_args[0]
         assert args[0] == 1, "page 1"

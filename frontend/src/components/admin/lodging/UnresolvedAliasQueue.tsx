@@ -18,6 +18,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
 import toast from 'react-hot-toast'
 
+import { useCurrentYear } from '../../../hooks/useCurrentYear'
 import {
   ignoreIngestIssue,
   listLodgingUnits,
@@ -39,17 +40,31 @@ const NOT_A_CABIN_NOTE = 'Marked by an admin as not a cabin name.'
 
 export function UnresolvedAliasQueue() {
   const queryClient = useQueryClient()
+  const { currentYear } = useCurrentYear()
   const [selection, setSelection] = useState<Record<string, string[]>>({})
 
+  // CurrentYearContext returns the literal 0 until the backend supplies the
+  // configured year. PocketBase answers `year = 0` with a successful `200
+  // []` rather than an error, so without this gate a cold load would render
+  // an empty queue as if there were genuinely nothing to resolve.
+  // ONE constant for the fetch gate and the render guard, because gating only
+  // the fetch does not fix what the gate is for. A disabled TanStack query is
+  // `isLoading === false` (pending but idle -- nothing is fetching) with `data
+  // === undefined`, which is indistinguishable from a settled empty result to
+  // every consumer below. Derive both from this and they cannot drift apart.
+  const yearReady = currentYear > 0
+
   const queueQuery = useQuery({
-    queryKey: queryKeys.lodgingIngestIssues(),
+    queryKey: queryKeys.lodgingIngestIssues(currentYear),
     ...userDataOptions,
-    queryFn: listUnresolvedAliasIssues,
+    queryFn: () => listUnresolvedAliasIssues(currentYear),
+    enabled: yearReady,
   })
   const unitsQuery = useQuery({
-    queryKey: queryKeys.lodgingUnits(),
+    queryKey: queryKeys.lodgingUnits(currentYear),
     ...userDataOptions,
-    queryFn: listLodgingUnits,
+    queryFn: () => listLodgingUnits(currentYear),
+    enabled: yearReady,
   })
 
   const refresh = () => {
@@ -97,7 +112,7 @@ export function UnresolvedAliasQueue() {
 
   return (
     <QueryGuard
-      isLoading={queueQuery.isLoading}
+      isLoading={queueQuery.isLoading || !yearReady}
       error={queueQuery.error}
       data={queueQuery.data}
       label="unresolved cabin names"
@@ -137,7 +152,7 @@ export function UnresolvedAliasQueue() {
                     <p className="text-sm text-red-600 dark:text-red-400">
                       The units could not be loaded, so this name cannot be mapped right now.
                     </p>
-                  ) : unitsQuery.isLoading ? (
+                  ) : unitsQuery.isLoading || !yearReady ? (
                     <p className="text-muted-foreground text-sm">Loading units…</p>
                   ) : (
                     <fieldset className="flex flex-wrap gap-3">

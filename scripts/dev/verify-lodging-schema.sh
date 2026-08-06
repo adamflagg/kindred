@@ -368,6 +368,50 @@ else
   done
 fi
 
+# -------------------------------------------------------------- season scoping
+#
+# 1500000141. year on lodging_units and lodging_areas turns the registry from
+# a timeless table into a per-season one; `code` becomes the cross-year
+# identity thread.
+#
+# The year column and the composite code index. A fresh DB can prove SHAPE
+# only: with no rows, a remove-and-add is indistinguishable from a rename, so
+# nothing asserted here can speak to value preservation. That check runs
+# against a prod-seeded copy — see the plan's Task 1.
+for table in lodging_units lodging_areas; do
+  if ! sqlite3 "$DB" "PRAGMA table_info($table);" | grep -q '|year|'; then
+    note "$table has no year column"
+  fi
+  req=$(field_prop "$table" year required || true)
+  [[ "$req" == "1" || "$req" == "true" ]] \
+    || note "$table.year required is '$req' (expected true)"
+done
+
+for table in lodging_units lodging_areas; do
+  idx="idx_${table}_code"
+
+  # Ask SQLite what columns the index actually covers (pragma_index_info),
+  # rather than substring-matching the stored CREATE INDEX text. Two traps
+  # rule that out: the index's own NAME already contains "code"
+  # (idx_lodging_units_code), so a *code*year* substring check on the whole
+  # statement is satisfied by a column list of (`year`) alone; and
+  # PocketBase pretty-prints a multi-column list across lines --
+  # `(\n  \`code\`,\n  \`year\`\n)` -- so even a literal '(`code`, `year`)'
+  # match on one line never fires. pragma_index_info sidesteps both.
+  cols=$(sqlite3 "$DB" "SELECT group_concat(name) FROM pragma_index_info('$idx');")
+  [[ "$cols" == "code,year" ]] \
+    || note "$idx is not composite on (code, year): columns are '$cols'"
+
+  # ...and separately, that it is UNIQUE. pragma_index_info answers only which
+  # columns an index spans, so a plain (code, year) index satisfies the check
+  # above while permitting exactly what 1500000141 exists to forbid: two rows
+  # for one building in one season. The whole (code, year) identity model
+  # rests on this constraint, and nothing else here would notice its absence.
+  uniq=$(sqlite3 "$DB" "SELECT \"unique\" FROM pragma_index_list('$table') WHERE name = '$idx';")
+  [[ "$uniq" == "1" ]] \
+    || note "$idx is not UNIQUE (unique flag '$uniq') -- duplicate (code, year) rows would be accepted"
+done
+
 # Write access, read from the APPLIED schema rather than from the migration
 # text. The drafts and the planning tables are what staff write; the synced
 # record of truth, its append-only audit trail and the ingest's field map stay

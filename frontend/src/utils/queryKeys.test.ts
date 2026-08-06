@@ -172,10 +172,10 @@ describe('invalidateLodgingRegistryQueries', () => {
     const client = recordingClient()
     invalidateLodgingRegistryQueries(client)
 
-    expect(client.keys).toContainEqual([...queryKeys.lodgingUnits()])
-    expect(client.keys).toContainEqual([...queryKeys.lodgingAreas()])
+    expect(client.keys).toContainEqual([...queryKeys.lodgingUnitsPrefix()])
+    expect(client.keys).toContainEqual([...queryKeys.lodgingAreasPrefix()])
     expect(client.keys).toContainEqual([...queryKeys.lodgingAliases()])
-    expect(client.keys).toContainEqual([...queryKeys.lodgingIngestIssues()])
+    expect(client.keys).toContainEqual([...queryKeys.lodgingIngestIssuesPrefix()])
   })
 
   it('invalidates the weekend keys by PREFIX, not by exact key', () => {
@@ -192,6 +192,26 @@ describe('invalidateLodgingRegistryQueries', () => {
     // And the prefix must genuinely head the real key.
     const full = queryKeys.weekendRoster(2026, 1000001, '')
     expect(full.slice(0, 1)).toEqual(roster)
+  })
+
+  it('invalidates the lodging registry keys by PREFIX too, since 1500000141', () => {
+    // Units and areas became year-scoped: the real keys are [key, year], and
+    // an admin panel editing one season's registry does not know every year a
+    // reader might have cached — so this must match ALL of them, not just the
+    // season currently open.
+    const client = recordingClient()
+    invalidateLodgingRegistryQueries(client)
+
+    const units = client.keys.find((k) => k[0] === 'lodging-units')
+    const areas = client.keys.find((k) => k[0] === 'lodging-areas')
+    const issues = client.keys.find((k) => k[0] === 'lodging-ingest-issues')
+    expect(units).toHaveLength(1)
+    expect(areas).toHaveLength(1)
+    expect(issues).toHaveLength(1)
+    // And the prefix must genuinely head the real, year-scoped key.
+    expect(queryKeys.lodgingUnits(2026).slice(0, 1)).toEqual(units)
+    expect(queryKeys.lodgingAreas(2026).slice(0, 1)).toEqual(areas)
+    expect(queryKeys.lodgingIngestIssues(2026).slice(0, 1)).toEqual(issues)
   })
 })
 

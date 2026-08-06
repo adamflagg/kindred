@@ -155,16 +155,26 @@ class LodgingRepository:
         )
         return rows[0] if rows else None
 
-    async def fetch_units(self) -> list[Any]:
-        """Every lodging unit with its area expanded.
+    async def fetch_units(self, year: int) -> list[Any]:
+        """Every lodging unit for ONE SEASON, with its area expanded.
 
-        Deliberately unfiltered: container rows and inactive units stay in
-        the payload so the roster can badge them. Only the CAPACITY COUNTS
-        exclude containers (spec §9a: naive SUM(sleeps) is 408 vs a true 389).
+        Deliberately unfiltered on is_container and is_active: container rows
+        and inactive units stay in the payload so the roster can badge them.
+        Only the CAPACITY COUNTS exclude containers (spec §9a: naive
+        SUM(sleeps) is 408 vs a true 389).
+
+        The YEAR filter is a different axis and is not optional. Units became
+        year-scoped in 1500000141, so an unfiltered read returns every season
+        at once — and since `code` is only unique per (code, year), the board's
+        code-keyed index would collide two seasons onto one card.
         """
         return await self._page(
             LODGING_UNITS,
-            query_params={"expand": "area", "sort": "area.sort_order,name"},
+            query_params={
+                "filter": f"year = {year}",
+                "expand": "area",
+                "sort": "area.sort_order,name",
+            },
         )
 
     async def fetch_availability(self, year: int, session_pb_id: str) -> list[Any]:
@@ -418,16 +428,22 @@ class LodgingRepository:
         )
         return int(result.total_items)
 
-    async def count_open_unresolved_aliases(self) -> int:
+    async def count_open_unresolved_aliases(self, year: int) -> int:
         """Cabin strings ingest could not resolve, still awaiting triage.
 
         One work queue, owned and solely written by the ingest layer. Narrowed
         to the alias kind so the roster's unmapped-cabin figure does not absorb
         the queue's six other kinds.
+
+        The YEAR filter is not optional. `lodging_ingest_issues` has carried a
+        required `year` since 1500000122; without it this count absorbs every
+        season's unmapped cabin names, disagreeing with the year-scoped
+        Unresolved names queue underneath the same header. Same defect, same
+        fix, as `listUnresolvedAliasIssues` in `lodgingCrud.ts`.
         """
         return await self._count(
             LODGING_INGEST_ISSUES,
-            f'kind = "{UNRESOLVED_ALIAS_KIND}" && is_resolved = false',
+            f'year = {year} && kind = "{UNRESOLVED_ALIAS_KIND}" && is_resolved = false',
         )
 
     # ---------------------------------------------------------------- writes

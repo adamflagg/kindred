@@ -24,8 +24,8 @@
  * preference, proximity mode or request text looks wrong, the fix belongs in
  * the Go ingest so every surface sees the correction at once.
  */
-import { Building2, Home, Map as MapIcon, Users } from 'lucide-react'
-import { useCallback, useEffect, useMemo } from 'react'
+import { Home, Map as MapIcon, Users } from 'lucide-react'
+import { useEffect, useMemo } from 'react'
 import { useNavigate, useParams } from 'react-router'
 
 import { QueryGuard } from '../components/QueryGuard'
@@ -45,7 +45,6 @@ import {
   shouldOfferSeed,
   shortWeekendName,
   sortWeekendsByDate,
-  UnitInventoryPanel,
   weekendRef,
   WeekendScenarioPicker,
   WeekendStatsBar,
@@ -53,9 +52,7 @@ import {
 import { useCurrentYear } from '../hooks/useCurrentYear'
 import { usePermissions } from '../hooks/usePermissions'
 import { useScenario } from '../hooks/useScenario'
-import { useUnitAvailability } from '../hooks/useUnitAvailability'
 import { useWeekendRoster, useWeekendSessions } from '../hooks/useWeekendRoster'
-import type { LodgingUnitRow } from '../types/lodging'
 
 /**
  * `housing`, not `board`. Summer names its board tab after what is being
@@ -70,10 +67,10 @@ import type { LodgingUnitRow } from '../types/lodging'
  * is a happy accident rather than a route: the URL is left exactly as the
  * bookmark wrote it.
  */
-type View = 'roster' | 'inventory' | 'housing' | 'map'
+type View = 'roster' | 'housing' | 'map'
 
 /** Tab order. `DEFAULT_VIEW` is a separate choice — see below. */
-const VIEWS: View[] = ['housing', 'roster', 'map', 'inventory']
+const VIEWS: View[] = ['housing', 'roster', 'map']
 
 /**
  * Housing, not the roster: the tab strip already leads with it, as summer's
@@ -120,29 +117,6 @@ export default function WeekendRosterPage() {
   const resolved = resolveWeekendRef(sessions, sessionRef)
   const selectedCmId = resolved?.session_cm_id ?? numericRef
 
-  // Availability, for the Housing tab's back door. Takes no scenario, unlike
-  // every other lodging write on this page: a burst pipe closes a cabin in
-  // every plan for that weekend (1500000135). The board mounts its own
-  // instance for the same reason it owns its drag mutation — only one view
-  // renders at a time, so the two never compete.
-  const { setAvailability, pendingUnitId } = useUnitAvailability({
-    year: currentYear,
-    sessionCmId: selectedCmId ?? 0,
-  })
-  const writeAvailability = useCallback(
-    (unit: LodgingUnitRow, write: { familyAvailable: boolean | null; reason: string }) => {
-      // The hook raises the toast on rejection; catching keeps a refused write
-      // from surfacing as an unhandled rejection.
-      void setAvailability({
-        unitId: unit.unit_id,
-        unitName: unit.name,
-        familyAvailable: write.familyAvailable,
-        reason: write.reason,
-      }).catch(() => undefined)
-    },
-    [setAvailability]
-  )
-
   // `useSavedScenarios` filters on `currentSessionId`. Left unset, the picker
   // would offer whatever session summer last looked at — the slot is global.
   const { currentScenario, loadScenarios } = useScenario()
@@ -181,20 +155,16 @@ export default function WeekendRosterPage() {
   )
   const spacesUnmeasured = useMemo(() => countUnmeasuredSpaces(units), [units])
 
-  // Housing first, as summer leads with Bunks. Inventory trails because it
-  // describes the buildings rather than this weekend.
+  // Housing first, as summer leads with Bunks.
   const TABS: Array<{ id: View; label: string; icon: typeof Users; count: number }> = [
-    // Counts the SLOT CARDS the board draws, which is not the inventory count:
-    // a container carries the beds its halves already report, so it never gets
+    // Counts the SLOT CARDS the board draws, not the raw unit count: a
+    // container carries the beds its halves already report, so it never gets
     // a card and never counts.
     //
     // The house is summer's icon for the same tab — its Bunks tab is `Home`.
-    // Inventory therefore takes `Building2`, which is the better fit anyway:
-    // it lists the buildings, not the families housed in them.
     { id: 'housing', label: 'Housing', icon: Home, count: boardSlotCount },
     { id: 'roster', label: 'Roster', icon: Users, count: parties.length },
     { id: 'map', label: 'Map', icon: MapIcon, count: mapUnitCount },
-    { id: 'inventory', label: 'Inventory', icon: Building2, count: units.length },
   ]
 
   return (
@@ -285,7 +255,7 @@ export default function WeekendRosterPage() {
                         aria-selected={view === tab.id}
                         aria-controls={`weekend-panel-${tab.id}`}
                         onClick={() => {
-                          // REPLACE, not push. Four tabs and a habit of
+                          // REPLACE, not push. Three tabs and a habit of
                           // clicking through them would turn Back into a tour
                           // of the tabs you just left; the weekend is the
                           // destination, the tab is where you are standing in
@@ -337,20 +307,6 @@ export default function WeekendRosterPage() {
               aria-labelledby={`weekend-tab-${view}`}
             >
               {view === 'roster' && <HouseholdRosterTable parties={parties} units={units} />}
-              {/* The Housing tab is where releasing permanent staff housing
-                  lives, and the only place it CAN live: the board draws
-                  planning inventory, and a staff cabin with no override is not
-                  inventory yet. Rare by design -- staff release one perhaps
-                  once in several years -- so it is a back door off the main
-                  flow rather than a control on the board. */}
-              {view === 'inventory' && (
-                <UnitInventoryPanel
-                  units={units}
-                  canSetAvailability={canManageLodging && (selectedCmId ?? 0) > 0}
-                  pendingUnitId={pendingUnitId}
-                  onSetAvailability={writeAvailability}
-                />
-              )}
               {/* The board takes the scenario, the weekend and the manage
                   permission because it WRITES now (#1989) — main's note that
                   drag placement "is what earns plumbing it back down" is this.

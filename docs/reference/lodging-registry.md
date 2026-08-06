@@ -37,7 +37,10 @@ silently empty. This repository has been bitten by filename-keying before.
 
 So the loader runs on the `OnServe` hook in `pocketbase/main.go`, beside
 `runHistorySync`. Every boot re-reads the file, which means a file that appears
-later still takes effect.
+later still takes effect — **while the registry has never been seeded at
+all.** See "One-time bootstrap, not a per-season populator" below: once any
+season has rows, the loader stops reading the file on every boot and starts
+skipping instead.
 
 **Absent file is not an error.** A clone without `kindred-local` boots normally
 with an empty registry and a log line — the same graceful degradation
@@ -47,7 +50,8 @@ leaves the registry alone rather than taking the service down.
 ## Loader semantics: create-if-absent, never update
 
 `pocketbase/lodging/registry.go` creates rows that do not exist and **leaves
-existing rows completely alone**.
+existing rows completely alone** — for whichever season it seeds. See the
+next section for when it seeds at all.
 
 This is not a full upsert, deliberately. The registry is staff-editable in
 `/manage/lodging`: coordinates get corrected, capacities get adjusted, cabins
@@ -68,6 +72,46 @@ Two consequences worth knowing:
 
 Parent wiring is two-pass, so a unit may name a parent that appears later in the
 file.
+
+## One-time bootstrap, not a per-season populator
+
+`lodging_units` and `lodging_areas` each carry a `year` column (migration
+`1500000140`): a row is identified by `(code, year)`, and `code` is the
+cross-year thread linking a building across seasons. `SeedRegistry` takes the
+season as a parameter — `pocketbase/main.go` resolves it from
+`CAMPMINDER_SEASON_ID` on every boot — but it does **not** seed whatever
+season is running. Before doing anything else it checks whether
+`lodging_areas` or `lodging_units` has a row for **any** year at all. If
+either does, it logs that it is skipping and returns untouched, regardless of
+which year it was called with.
+
+**The operator-visible consequence:** once the registry has been seeded once,
+adding a cabin to `config/lodging_registry.json` and restarting the service
+produces an INFO log line and **no row**. The file is a one-time bootstrap
+for a database that has never had any lodging registry rows — never a live
+source of truth for a season that already exists.
+
+This is deliberate, and load-bearing. Before this gate existed, the loader's
+`(code, year)` create-if-absent key meant the first restart after
+`scripts/prepare_for_new_year.py` flipped `CAMPMINDER_SEASON_ID` silently
+rebuilt the *entire* registry for the new season out of the stale bootstrap
+file — unconfirmed, every amenity correction, coordinate, rename and
+deactivation gone — and then the roll-forward panel (the first path below)
+found every code already present and reported nothing to carry forward,
+permanently disabling the one control meant to carry a season into the next.
+See `docs/superpowers/specs/2026-08-04-lodging-year-scoping-design.md` §4.2.
+
+Two paths exist for a season that already has rows:
+
+- **A new season with no registry of its own yet** — Manage → Lodging →
+  Season, or `POST /api/custom/lodging/roll-forward` directly. Roll-forward
+  copies the *prior* season's confirmed state forward instead of re-guessing
+  it from the file; see `pocketbase/lodging/rollforward.go`.
+- **A correction to the bootstrap data itself, reaching a season that
+  already exists** — run `scripts/dev/apply_lodging_inventory.py --apply
+  --year N` by hand. Its own create-if-absent and staff-owned-field rules
+  ("Getting the inventory onto rows that already exist", below) still apply;
+  it is the deliberate file-to-database path this loader is not.
 
 ## Path resolution
 

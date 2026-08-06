@@ -5,7 +5,7 @@
  * each its own component. This file owns only the state those sections edit
  * and the one payload they add up to.
  *
- * TWO THINGS THIS FORM EXISTS TO GET RIGHT (the third, `sleeps`, is in
+ * THREE THINGS THIS FORM EXISTS TO GET RIGHT (`sleeps` itself lives in
  * `UnitCapacityFields`; the bathroom vocabulary is in `unitAmenities`):
  *
  * 1. is_active and inventory_class are ALWAYS submitted. PocketBase has
@@ -28,6 +28,13 @@
  *    all, and a stored coordinate now survives a save because the key is
  *    UNCONDITIONALLY ABSENT — not because a guard omits it when blank. Anyone
  *    wiring the map editor back in has to add that guard, not assume it.
+ *
+ * 3. The season is captured WHEN THE EDITOR OPENS, not read live. Units are
+ *    year-scoped since 1500000141 and this form always submits `year`, so a
+ *    live read would let a season flip mid-edit — another tab, a
+ *    CurrentYearContext refetch — move the cabin into the new season on the
+ *    next save. Roll-forward moves a unit between seasons; a routine edit
+ *    never does.
  */
 import { useState } from 'react'
 import toast from 'react-hot-toast'
@@ -44,7 +51,7 @@ import { amenitiesOf } from './unitAmenities'
 import { BUTTON_PRIMARY, BUTTON_SECONDARY, FIELD, LABEL } from './lodgingStyles'
 import { parseSleeps } from './sleepsValue'
 import { slugify } from './unitCode'
-import { directChildren } from './unitTree'
+import { combinedAncestor, directChildren } from './unitTree'
 import { UnitAmenityFieldset } from './UnitAmenityFieldset'
 import { UnitCapacityFields } from './UnitCapacityFields'
 import { UnitIdentityFields } from './UnitIdentityFields'
@@ -59,6 +66,17 @@ export interface LodgingUnitFormProps {
   units: LodgingUnitRecord[]
   /** Absent = create. `| undefined` is explicit for `exactOptionalPropertyTypes`. */
   unit?: LodgingUnitRecord | undefined
+  /**
+   * The season the editor opened against. Units are year-scoped since
+   * 1500000141, and this form always writes it — on create because the schema
+   * requires it (an omitted number field lands as 0, which fails `min: 2010`),
+   * and on edit because `unit` is one of that season's rows already.
+   *
+   * CAPTURED AT MOUNT, not read live (see the header). This form never changes
+   * which season a unit belongs to — that is a roll-forward operation, not a
+   * routine edit — and capturing is what makes that true rather than intended.
+   */
+  year: number
   onSaved: () => void
   onCancel: () => void
 }
@@ -85,7 +103,14 @@ function saveErrorMessage(error: unknown): string {
   return error instanceof Error ? error.message : 'Failed to save the unit'
 }
 
-export function LodgingUnitForm({ areas, units, unit, onSaved, onCancel }: LodgingUnitFormProps) {
+export function LodgingUnitForm({
+  areas,
+  units,
+  unit,
+  year,
+  onSaved,
+  onCancel,
+}: LodgingUnitFormProps) {
   const [identity, setIdentity] = useState({
     name: unit?.name ?? '',
     code: unit?.code ?? '',
@@ -106,9 +131,16 @@ export function LodgingUnitForm({ areas, units, unit, onSaved, onCancel }: Lodgi
   const [combined, setCombined] = useState(unit?.default_combined ?? false)
   const [notes, setNotes] = useState(unit?.notes ?? '')
   const [isSaving, setIsSaving] = useState(false)
+  // Captured, not read live — see the `year` prop's doc comment above.
+  const [openedYear] = useState(year)
   // Untying this unit's children from it would leave them parented by a
   // non-container — the exact state verify-lodging-seed.sh calls a failure.
   const children = unit ? directChildren(unit.id, units) : []
+  // Live off the SELECTED parent, not the stored one, so re-parenting a unit
+  // in this same form updates the combined control's disable state
+  // immediately rather than waiting for a reload.
+  const blockingAncestor =
+    identity.parent_unit === '' ? undefined : combinedAncestor(identity.parent_unit, units)
   // Derived from the units already in hand, so no extra fetch and no second
   // source of truth about which groups exist.
   const bathroomGroups = [
@@ -136,6 +168,7 @@ export function LodgingUnitForm({ areas, units, unit, onSaved, onCancel }: Lodgi
       area: identity.area,
       name: identity.name,
       code,
+      year: openedYear,
       parent_unit: identity.parent_unit,
       // Never omitted — see the header comment.
       is_active: isActive,
@@ -175,9 +208,7 @@ export function LodgingUnitForm({ areas, units, unit, onSaved, onCancel }: Lodgi
         units={units}
         unitId={unit?.id}
         inventoryClass={inventoryClass}
-        isContainer={isContainer}
-        combined={combined}
-        onCombinedChange={setCombined}
+        onInventoryClassChange={setInventoryClass}
       />
 
       {/* is_confirmed and is_container are read LIVE rather than off `unit`:
@@ -195,22 +226,6 @@ export function LodgingUnitForm({ areas, units, unit, onSaved, onCancel }: Lodgi
         onChange={setAmenities}
         bathroomGroups={bathroomGroups}
       />
-
-      <label className="text-sm">
-        <span className={LABEL}>Allocation</span>
-        {/* No blank option: an empty inventory_class matches neither
-            branch of the family-availability rules. */}
-        <select
-          className={FIELD}
-          value={inventoryClass}
-          onChange={(e) => {
-            setInventoryClass(e.target.value as InventoryClassValue)
-          }}
-        >
-          <option value="family_pool">Available to guests</option>
-          <option value="staff_default">Held for staff</option>
-        </select>
-      </label>
 
       <div className="flex flex-col justify-end gap-2 pb-1 text-sm">
         <label className="inline-flex items-center gap-2">
@@ -239,10 +254,10 @@ export function LodgingUnitForm({ areas, units, unit, onSaved, onCancel }: Lodgi
             onChange={(e) => {
               const next = e.target.checked
               setIsContainer(next)
-              // UnitIdentityFields renders the "Let as one" control only
-              // while isContainer is true, so unticking this hides it — but
-              // hiding is not clearing. Without this, the payload can still
-              // save default_combined: true beside is_container: false, the
+              // The combined control below renders only while isContainer is
+              // true, so unticking this hides it — but hiding is not
+              // clearing. Without this, the payload can still save
+              // default_combined: true beside is_container: false, the
               // exact contradiction verify-slot-merge-seed.sh's `leaked`
               // check refuses to see in the registry.
               if (!next) setCombined(false)
@@ -255,6 +270,39 @@ export function LodgingUnitForm({ areas, units, unit, onSaved, onCancel }: Lodgi
             Can&apos;t be unticked — {children.length} unit{children.length === 1 ? '' : 's'} list
             this as their parent.
           </p>
+        )}
+        {/* Registry default for the whole-let container merge (spec task 8).
+            Rendered on containers only — a leaf has nothing to stop
+            descending past. Disabled once an ancestor already carries the
+            flag: at most one node per root-to-leaf path may hold it
+            meaningfully, since combined means "draw the card here and stop
+            descending" and an ancestor already owns the card.
+
+            This is a UX guard, not a correctness requirement — `drawnUnits`
+            (frontend/src/components/weekend/unitLevel.ts) resolves top-down
+            and takes the highest combined node on a path, so the board
+            cannot be made ambiguous even by a direct database write that
+            skipped this picker. See `combinedAncestor` in ./unitTree for the
+            ancestor walk. */}
+        {isContainer && (
+          <div className="pt-1">
+            <label className="inline-flex items-center gap-2">
+              <input
+                type="checkbox"
+                checked={combined}
+                disabled={blockingAncestor !== undefined}
+                onChange={(e) => {
+                  setCombined(e.target.checked)
+                }}
+              />
+              Assign it as a whole building — one slot, not one per bedroom.
+            </label>
+            {blockingAncestor && (
+              <p className="text-muted-foreground pl-6 text-xs">
+                Already combined by “{blockingAncestor.name}” — only one card per branch.
+              </p>
+            )}
+          </div>
         )}
       </div>
 

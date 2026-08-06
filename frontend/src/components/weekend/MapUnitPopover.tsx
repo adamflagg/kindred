@@ -42,7 +42,7 @@ export interface MapUnitPopoverProps {
  * Icons carry `role="img"` and a label rather than bare `aria-hidden` glyphs:
  * an amenity that exists only as a shape is invisible to AT, and this is the
  * only place on the map that reports them. Same icon grammar as
- * `UnitInventoryPanel`, so an amenity reads the same on both surfaces.
+ * `LodgingUnitCard`, so an amenity reads the same on both surfaces.
  */
 function Amenities({ unit }: { unit: MapUnit['unit'] }): ReactNode {
   const items: Array<{ label: string; icon: typeof Bath }> = []
