@@ -8,7 +8,11 @@
  *
  * Read-only in this slice.
  */
+import { useCallback, useState } from 'react'
+
+import { useDismissOnDeadSpace } from '../../hooks/useDismissOnDeadSpace'
 import type { LodgingUnitRow, RosterPartyRow } from '../../types/lodging'
+import { FamilyDetailsPanel } from './FamilyDetailsPanel'
 import { HouseholdRosterRow } from './HouseholdRosterRow'
 import { attentionSections, indexUnitsByCode } from './rosterAttention'
 
@@ -20,6 +24,8 @@ export interface HouseholdRosterTableProps {
    * reports as unverified, which is the honest answer.
    */
   units?: LodgingUnitRow[]
+  /** Threads through to `FamilyDetailsPanel`'s medical-narrative fetch (kindred#1996). */
+  year: number
 }
 
 const HEAD_CELL = 'text-muted-foreground pb-2 text-xs font-bold tracking-wider uppercase'
@@ -36,7 +42,29 @@ function hasAnyRequest(parties: RosterPartyRow[]): boolean {
   })
 }
 
-export function HouseholdRosterTable({ parties, units = [] }: HouseholdRosterTableProps) {
+export function HouseholdRosterTable({ parties, units = [], year }: HouseholdRosterTableProps) {
+  // A third `FamilyDetailsPanel` callsite (kindred#1996), wired exactly as
+  // `LodgingBoard` and `LodgingMap` wire the other two — same `selected` /
+  // `requestClose` pair, same `useDismissOnDeadSpace` hookup. The row itself
+  // stays chips-only per kindred#1889; this only gives it somewhere to send
+  // a click.
+  const [selected, setSelected] = useState<RosterPartyRow | null>(null)
+  const [requestClose, setRequestClose] = useState(false)
+
+  const openParty = useCallback((party: RosterPartyRow) => {
+    setRequestClose(false)
+    setSelected(party)
+  }, [])
+
+  const closePanel = useCallback(() => {
+    setSelected(null)
+    setRequestClose(false)
+  }, [])
+
+  useDismissOnDeadSpace(selected !== null, () => {
+    setRequestClose(true)
+  })
+
   if (parties.length === 0) {
     return (
       <div className="dark:bg-card rounded-xl border border-dashed border-stone-300 bg-white p-8 text-center dark:border-stone-600">
@@ -57,46 +85,59 @@ export function HouseholdRosterTable({ parties, units = [] }: HouseholdRosterTab
   const showRequests = hasAnyRequest(parties)
 
   return (
-    <div className="dark:bg-card overflow-x-auto rounded-xl border border-stone-200 bg-white shadow-sm dark:border-stone-700">
-      <table className="w-full min-w-3xl text-left">
-        <thead>
-          <tr className="border-border border-b">
-            <th className={`${HEAD_CELL} pt-4 pl-3`}>Party</th>
-            <th className={`${HEAD_CELL} pt-4`}>Cabin</th>
-            {showRequests && <th className={`${HEAD_CELL} pt-4`}>Requests</th>}
-            <th className={`${HEAD_CELL} pt-4 pr-3`}>Housing needs</th>
-          </tr>
-        </thead>
+    <>
+      <div className="dark:bg-card overflow-x-auto rounded-xl border border-stone-200 bg-white shadow-sm dark:border-stone-700">
+        <table className="w-full min-w-3xl text-left">
+          <thead>
+            <tr className="border-border border-b">
+              <th className={`${HEAD_CELL} pt-4 pl-3`}>Party</th>
+              <th className={`${HEAD_CELL} pt-4`}>Cabin</th>
+              {showRequests && <th className={`${HEAD_CELL} pt-4`}>Requests</th>}
+              <th className={`${HEAD_CELL} pt-4 pr-3`}>Housing needs</th>
+            </tr>
+          </thead>
 
-        {sections.map((section) => (
-          <tbody key={section.level}>
-            {showSectionHeads && (
-              <tr>
-                <th
-                  scope="colgroup"
-                  colSpan={showRequests ? 4 : 3}
-                  className="bg-forest-50/70 dark:bg-forest-900/40 text-forest-800 dark:text-forest-200 border-border/60 border-y px-3 py-2 text-left text-xs font-bold tracking-wider uppercase"
-                >
-                  {section.label}
-                  <span className="text-muted-foreground ml-2 font-semibold normal-case tabular-nums">
-                    {section.parties.length}
-                  </span>
-                </th>
-              </tr>
-            )}
-            {section.parties.map((party) => (
-              // Both grains number independently, so a household cm_id can
-              // equal a person cm_id — the key carries the grain and both ids.
-              <HouseholdRosterRow
-                key={`${party.grain}-${String(party.household_cm_id ?? 0)}-${String(party.person_cm_id ?? 0)}`}
-                party={party}
-                showRequests={showRequests}
-                unit={unitsByCode.get(party.unit_code ?? '')}
-              />
-            ))}
-          </tbody>
-        ))}
-      </table>
-    </div>
+          {sections.map((section) => (
+            <tbody key={section.level}>
+              {showSectionHeads && (
+                <tr>
+                  <th
+                    scope="colgroup"
+                    colSpan={showRequests ? 4 : 3}
+                    className="bg-forest-50/70 dark:bg-forest-900/40 text-forest-800 dark:text-forest-200 border-border/60 border-y px-3 py-2 text-left text-xs font-bold tracking-wider uppercase"
+                  >
+                    {section.label}
+                    <span className="text-muted-foreground ml-2 font-semibold normal-case tabular-nums">
+                      {section.parties.length}
+                    </span>
+                  </th>
+                </tr>
+              )}
+              {section.parties.map((party) => (
+                // Both grains number independently, so a household cm_id can
+                // equal a person cm_id — the key carries the grain and both ids.
+                <HouseholdRosterRow
+                  key={`${party.grain}-${String(party.household_cm_id ?? 0)}-${String(party.person_cm_id ?? 0)}`}
+                  party={party}
+                  showRequests={showRequests}
+                  unit={unitsByCode.get(party.unit_code ?? '')}
+                  onOpen={openParty}
+                />
+              ))}
+            </tbody>
+          ))}
+        </table>
+      </div>
+
+      {selected !== null && (
+        <FamilyDetailsPanel
+          party={selected}
+          unit={unitsByCode.get(selected.unit_code ?? '')}
+          year={year}
+          requestClose={requestClose}
+          onClose={closePanel}
+        />
+      )}
+    </>
   )
 }

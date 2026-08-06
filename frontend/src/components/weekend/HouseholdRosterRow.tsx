@@ -33,6 +33,13 @@ export interface HouseholdRosterRowProps {
   showRequests: boolean
   /** The assigned cabin, when it resolves. Undefined for a merged slot. */
   unit?: LodgingUnitRow | undefined
+  /**
+   * Opens `FamilyDetailsPanel` for this row's party (kindred#1996). The row
+   * itself stays chips-only per kindred#1889 — this only routes to where the
+   * narrative and request text already live, the same way `FamilyCard`
+   * routes to the identical panel on Housing and Map.
+   */
+  onOpen: (party: RosterPartyRow) => void
 }
 
 /** An unanswered request, used when the payload omits the block entirely. */
@@ -79,7 +86,7 @@ function composition(party: RosterPartyRow): string {
   return parts.join(' · ')
 }
 
-export function HouseholdRosterRow({ party, showRequests, unit }: HouseholdRosterRowProps) {
+export function HouseholdRosterRow({ party, showRequests, unit, onOpen }: HouseholdRosterRowProps) {
   const isAssigned = (party.unit_name ?? '').length > 0
   const attention = partyAttention(party, unit)
   const adults = party.adults ?? []
@@ -87,7 +94,20 @@ export function HouseholdRosterRow({ party, showRequests, unit }: HouseholdRoste
   const showAdults = party.grain === 'household'
 
   return (
-    <tr className="border-border/40 hover:bg-muted/30 border-b align-top transition-colors">
+    <tr
+      role="button"
+      tabIndex={0}
+      onClick={() => {
+        onOpen(party)
+      }}
+      onKeyDown={(event) => {
+        if (event.key === 'Enter' || event.key === ' ') {
+          event.preventDefault()
+          onOpen(party)
+        }
+      }}
+      className="border-border/40 hover:bg-muted/30 focus-visible:ring-ring cursor-pointer border-b align-top transition-colors focus-visible:ring-2 focus-visible:outline-none"
+    >
       <td className={`border-l-[3px] py-3 pr-4 pl-3 ${RAIL[attention.level]}`}>
         <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
           <span className="text-foreground text-sm font-semibold">{party.display_name}</span>
