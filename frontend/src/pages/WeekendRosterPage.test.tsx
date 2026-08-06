@@ -730,16 +730,18 @@ describe('tab component state survives switching (#2004)', () => {
     expect(screen.getByText('1.4×')).toBeInTheDocument()
   })
 
-  it('never mounts a tab that has not been opened, so its chunk is never requested', () => {
-    // The trap #2004 calls out by name: `Activity` still commits HIDDEN
-    // content (that's what lets a return to it skip the Suspense fallback),
-    // so wrapping every panel in it unconditionally would fetch the Map AND
-    // Housing chunks on first paint no matter which tab is showing —
-    // silently undoing #2057's code-split. Landing on Housing (the
-    // default) must leave Map unmounted.
-    renderPage()
-    expect(screen.queryByTestId('map-canvas')).not.toBeInTheDocument()
-  })
+  // The chunk-eagerness guard used to live here as "never mounts a tab that
+  // has not been opened" — but with ~15 earlier tests in this file already
+  // warming `React.lazy`'s cache, a `map-canvas`-absence check on a WARM
+  // render can't distinguish "correctly gated" from "ungated but still
+  // mid-flight," and in an ISOLATED `-t` run (cold, but nothing to compare
+  // against) it can't either: `map-canvas` is absent either way before the
+  // dynamic import settles (kindred#2059 review). Moved to
+  // `WeekendRosterPage.codeSplitting.test.tsx`, which already exists to hold
+  // exactly this kind of first-ever-render assertion, and strengthened there
+  // to count Suspense fallbacks (1 gated, 2 ungated) rather than checking
+  // content presence — a count catches the mutant in a fresh render even
+  // when neither chunk has resolved yet.
 
   it('wires each tab to its own always-present tabpanel id, with no collisions', async () => {
     // All three panels exist simultaneously once all three have been
@@ -762,5 +764,20 @@ describe('tab component state survives switching (#2004)', () => {
       expect(panel).not.toBeNull()
       expect(panel).toHaveAttribute('role', 'tabpanel')
     }
+  })
+
+  it('exposes exactly one tabpanel to the accessibility tree, even once all three have been opened', async () => {
+    // `Activity` sets `display:none` on the panel's CHILDREN when hidden —
+    // not on the `role="tabpanel"` container itself, which stays mounted and
+    // visible the moment a tab has ever been opened. Without `hidden` on the
+    // container, a screen reader user would find all three panels (two of
+    // them empty) instead of the one actually showing, and `aria-controls`
+    // from an unselected tab would point at a live, exposed region.
+    renderPage()
+    await userEvent.click(screen.getByRole('tab', { name: /Roster/ }))
+    await userEvent.click(screen.getByRole('tab', { name: /Map/ }))
+    await screen.findByTestId('map-canvas')
+
+    expect(screen.getAllByRole('tabpanel')).toHaveLength(1)
   })
 })

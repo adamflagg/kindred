@@ -200,12 +200,13 @@ export default function WeekendRosterPage() {
    * shape (https://react.dev/reference/react/useState#storing-information-from-previous-renders):
    * deriving state from a prop that just changed, without paying for an
    * extra commit-then-effect-then-rerender round trip that would flash the
-   * newly-opened tab's panel empty for a frame first. `renderedView` is
-   * ONLY here to notice that `view` changed since the last render — it is
-   * not read anywhere else. A `useRef` mutated during render was the first
-   * draft; `react-hooks/refs` correctly flags reading a ref's value during
-   * render as unsafe, so this uses the state-based version of the same
-   * pattern instead.
+   * newly-opened tab's panel empty for a frame first. `openedViews.has(view)`
+   * is already self-terminating — once `view` has been added, the condition
+   * is false on the very next render, so it doubles as its own "did this
+   * change since last render" check with nothing extra to track. (An earlier
+   * draft kept a separate `renderedView` state purely to notice the change;
+   * that state read nothing else and existed only to gate a call that already
+   * gates itself, so it's gone.)
    *
    * GATING ON THIS, rather than wrapping all three panels in `Activity`
    * unconditionally, is what keeps a never-opened tab from paying for its
@@ -216,12 +217,8 @@ export default function WeekendRosterPage() {
    * silently undoing the code-split #2057 built.
    */
   const [openedViews, setOpenedViews] = useState<Set<View>>(() => new Set([view]))
-  const [renderedView, setRenderedView] = useState(view)
-  if (view !== renderedView) {
-    setRenderedView(view)
-    if (!openedViews.has(view)) {
-      setOpenedViews(new Set(openedViews).add(view))
-    }
+  if (!openedViews.has(view)) {
+    setOpenedViews(new Set(openedViews).add(view))
   }
 
   // Housing first, as summer leads with Bunks.
@@ -378,6 +375,16 @@ export default function WeekendRosterPage() {
                 `aria-controls` (above) targets one of these three fixed ids,
                 which exist for the lifetime of the page.
 
+                Each container also carries `hidden={view !== id}`. `Activity`
+                sets `display:none` on the panel's CHILDREN when hidden, not
+                on this container — so without it, every panel that has ever
+                been opened stays exposed to the accessibility tree at once
+                (a screen reader would land in an empty region for a tab that
+                isn't selected). The native `hidden` attribute nests OVER
+                `Activity`'s own display toggle rather than replacing it, so
+                state preservation is untouched; it only controls what's
+                exposed, not what's mounted.
+
                 Each panel ALSO gets its own `ErrorBoundary`, inside the
                 `Activity` so it guards the panel's actual content rather than
                 the visibility mechanism around it. Reason it has to be
@@ -391,7 +398,12 @@ export default function WeekendRosterPage() {
                 retry — the ONLY way back for a panel that already crashed,
                 since `Activity` no longer remounts it on a tab switch. */}
             <div className="pt-4">
-              <div role="tabpanel" id="weekend-panel-housing" aria-labelledby="weekend-tab-housing">
+              <div
+                role="tabpanel"
+                id="weekend-panel-housing"
+                aria-labelledby="weekend-tab-housing"
+                hidden={view !== 'housing'}
+              >
                 {/* The board takes the scenario, the weekend and the manage
                     permission because it WRITES now (#1989) — main's note that
                     drag placement "is what earns plumbing it back down" is
@@ -421,7 +433,12 @@ export default function WeekendRosterPage() {
                 )}
               </div>
 
-              <div role="tabpanel" id="weekend-panel-roster" aria-labelledby="weekend-tab-roster">
+              <div
+                role="tabpanel"
+                id="weekend-panel-roster"
+                aria-labelledby="weekend-tab-roster"
+                hidden={view !== 'roster'}
+              >
                 {openedViews.has('roster') && (
                   <Activity mode={view === 'roster' ? 'visible' : 'hidden'}>
                     <ErrorBoundary>
@@ -431,7 +448,12 @@ export default function WeekendRosterPage() {
                 )}
               </div>
 
-              <div role="tabpanel" id="weekend-panel-map" aria-labelledby="weekend-tab-map">
+              <div
+                role="tabpanel"
+                id="weekend-panel-map"
+                aria-labelledby="weekend-tab-map"
+                hidden={view !== 'map'}
+              >
                 {openedViews.has('map') && (
                   <Activity mode={view === 'map' ? 'visible' : 'hidden'}>
                     <ErrorBoundary>
