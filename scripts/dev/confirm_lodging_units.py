@@ -17,9 +17,15 @@ would be the wrong one: it would assert to staff that every cabin in the
 registry had been checked when none had. The script refuses non-local URLs
 unless you pass --i-know-this-is-not-local.
 
+ONE SEASON AT A TIME. `lodging_units` carries a `year` since 1500000140, so
+--year (default CAMPMINDER_SEASON_ID) picks which season's registry is being
+vouched for. Confirming every season at once would restate, for a year whose
+roster is already settled, that a human checked those cabins.
+
     scripts/dev/confirm_lodging_units.py                  # show what would change
-    scripts/dev/confirm_lodging_units.py --apply          # confirm all units
+    scripts/dev/confirm_lodging_units.py --apply          # confirm this season's units
     scripts/dev/confirm_lodging_units.py --apply --undo   # put it back
+    scripts/dev/confirm_lodging_units.py --apply --year 2027
 """
 
 from __future__ import annotations
@@ -27,6 +33,7 @@ from __future__ import annotations
 import argparse
 import os
 import sys
+from datetime import datetime
 from typing import Any
 from urllib.parse import urlparse
 
@@ -50,13 +57,22 @@ def _auth(base: str, identity: str, password: str) -> str:
     return str(resp.json()["token"])
 
 
-def _units(base: str, token: str) -> list[dict[str, Any]]:
+def _units(base: str, token: str, year: int) -> list[dict[str, Any]]:
+    """Fetch ONE season's units.
+
+    `lodging_units` holds a row per unit per year since 1500000140. Confirming
+    every season at once would restate, for a prior year, that a human checked
+    cabins in the state that year's roster was already judged against — and
+    `--undo` would clear that same prior confirmation. Same reasoning, and the
+    same filter, as `apply_lodging_inventory._fetch_units`.
+    """
     out: list[dict[str, Any]] = []
     page = 1
     while True:
+        params: dict[str, Any] = {"filter": f"year = {year}", "perPage": 200, "page": page}
         resp = requests.get(
             f"{base}/api/collections/lodging_units/records",
-            params={"perPage": 200, "page": page},
+            params=params,
             headers={"Authorization": token},
             timeout=60,
         )
@@ -81,6 +97,12 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="required for a non-loopback URL; confirming cabins nobody checked is a lie to staff",
     )
+    parser.add_argument(
+        "--year",
+        type=int,
+        default=int(os.getenv("CAMPMINDER_SEASON_ID", str(datetime.now().year))),
+        help="Season to confirm. Defaults to CAMPMINDER_SEASON_ID.",
+    )
     args = parser.parse_args(argv)
 
     if not is_local(args.url) and not args.i_know_this_is_not_local:
@@ -99,10 +121,10 @@ def main(argv: list[str] | None = None) -> int:
 
     want = not args.undo
     token = _auth(args.url, args.identity, args.password)
-    units = _units(args.url, token)
+    units = _units(args.url, token, args.year)
     todo = [u for u in units if bool(u.get("is_confirmed")) != want]
 
-    print(f"{len(units)} units; {len(todo)} to set is_confirmed={want}")
+    print(f"{len(units)} units in {args.year}; {len(todo)} to set is_confirmed={want}")
     if not args.apply:
         print("DRY RUN — nothing written. Re-run with --apply.")
         return 0
