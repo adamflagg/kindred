@@ -1196,6 +1196,39 @@ func TestGuardUnitYearRejectsACrossYearRow(t *testing.T) {
 	}
 }
 
+// TestGuardUnitYearRejectsACrossYearRowOnUpdate is the SAME rejection as the
+// test above, driven through OnRecordUpdate instead of OnRecordCreate.
+//
+// wireHooks binds guardUnitYear to both (hooks.go), but until this test every
+// case exercised only create. The update path is the one that matters
+// operationally: a row is written in its own season and only later re-pointed
+// at a unit, which is the write a staff edit actually makes. The two bindings
+// share an identical closure body today, so this cannot catch a divergence in
+// behaviour -- it catches the binding going missing, which is a one-line edit
+// away and would otherwise be silent (kindred#2035).
+func TestGuardUnitYearRejectsACrossYearRowOnUpdate(t *testing.T) {
+	app := newHooksTestApp(t)
+	same := seedUnit(t, app, "test-unit-a", 2027)
+	stale := seedUnit(t, app, "test-unit-b", 2026)
+
+	rec := core.NewRecord(mustCollection(t, app, "lodging_availability"))
+	rec.Set("year", 2027)
+	rec.Set("unit", same)
+	rec.Set("session", seedSession(t, app))
+	if err := app.Save(rec); err != nil {
+		t.Fatalf("seeding a consistent 2027 row: %v", err)
+	}
+
+	rec.Set("unit", stale)
+	err := app.Save(rec)
+	if err == nil {
+		t.Fatal("re-pointed a 2027 row at a 2026 unit; want a refusal")
+	}
+	if !strings.Contains(err.Error(), "year") {
+		t.Errorf("error does not name the problem: %v", err)
+	}
+}
+
 // TestGuardUnitYearChecksEveryMemberOfTheMultiRelation is the multi-relation
 // case, and the one that matters more: `units` (maxSelect 20) is what
 // 1500000134 gave lodging_assignments and lodging_assignments_draft when it
