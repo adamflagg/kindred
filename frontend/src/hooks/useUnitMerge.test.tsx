@@ -92,7 +92,7 @@ describe('useUnitMerge', () => {
   it('sends scenario "" on the CampMinder mirror, rather than refusing to write', async () => {
     // Owner reversal (task-11): a draw level is never CampMinder-sourced, so
     // unlike placement the mirror is a legitimate write target — `''` becomes
-    // the weekend-level row (#8a26376f), inherited by every scenario that has
+    // the weekend-level row (migration 1500000140), inherited by every scenario that has
     // not overridden it locally.
     const { result } = renderMerge(SESSION, '')
 

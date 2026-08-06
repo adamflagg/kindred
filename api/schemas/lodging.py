@@ -117,7 +117,11 @@ class LodgingUnitSummary(BaseModel):
     is_confirmed: bool = False
     is_active: bool = False
     # A building/grouping row. Present in the payload so the map and board
-    # can draw the building, but excluded from every capacity count.
+    # can draw the building. Whether it COUNTS is no longer this flag's
+    # answer: a container resolved combined (see `is_combined`) is the one
+    # space the board draws, at its own measured `sleeps`, and its rooms
+    # count for nothing. `drawn_units` is the one predicate for that, and
+    # `_build_counts` reads it -- never filter on `is_container` alone.
     is_container: bool = False
     # The parent container's CODE, not its record id — the board keys on code,
     # and code is the cross-year identity thread. "" means no parent.

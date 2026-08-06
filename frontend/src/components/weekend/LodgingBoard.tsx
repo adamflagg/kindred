@@ -11,7 +11,7 @@
  * component owns three mutations, and they are gated differently on purpose —
  * drag placement (#1985) needs a scenario because it writes a draft plan;
  * availability (#1999) needs none because a burst pipe closes a cabin in
- * every plan for that weekend; and a merge/split (#8a26376f) needs none for a
+ * every plan for that weekend; and a merge/split (migration 1500000140) needs none for a
  * different reason than availability does — a draw level is simply never
  * CampMinder-sourced, so there is no mirror truth for the write to clobber.
  * `canPlace`, `canSetAvailability` and `canMergeUnits` below are that
@@ -114,7 +114,7 @@ export function LodgingBoard({
   // because the mirror IS CampMinder's truth and a sync would overwrite a
   // draft write. A draw level has no such truth to protect: no sync ever
   // writes `lodging_slot_merges`, so there is nothing on the mirror for a
-  // merge to clobber (#8a26376f made this a weekend-level fact for exactly
+  // merge to clobber (migration 1500000140 made this a weekend-level fact for exactly
   // that reason — `scenario: ''` is now a legitimate write, not a refusal).
   // Gating this on `canPlace` would reintroduce the scenario dimension this
   // hook does not need, the same mistake `canSetAvailability` already exists

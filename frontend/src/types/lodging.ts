@@ -221,7 +221,14 @@ export interface LodgingUnitRecord extends PocketBaseRecordBase {
    */
   is_confirmed: boolean
   is_active: boolean
-  /** A building/grouping row. Never bookable, never counted. */
+  /**
+   * A building/grouping row: never bookable in its own right. It is NOT
+   * "never counted" — a container drawn combined (`default_combined` below,
+   * resolved through the override tiers) is the one card the board draws for
+   * its branch and the one space the counts see, at its own measured
+   * `sleeps`. `drawnUnits` in `components/weekend/unitLevel.ts` is the single
+   * answer to which units that is; never filter on `is_container` alone.
+   */
   is_container: boolean
   /**
    * Draw this container as ONE card and stop descending. Meaningful on

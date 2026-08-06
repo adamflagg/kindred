@@ -276,13 +276,13 @@ export function LodgingUnitCard({
         )}
         {/* The inverse control, on the combined card itself.
             `is_container` is part of the gate, not decoration: the API
-            resolves `is_combined` for EVERY row, leaves included, and a leaf
-            can carry a stale `default_combined: true` because the admin form
-            leaves it set when "is a building" is unticked. Splitting a room
-            into rooms it does not have is not an operation, so the control is
-            absent rather than offered and then failing. Clearing the stored
-            flag is deliberately NOT the fix — an unticked building may be
-            re-ticked, and its draw level is still its own. */}
+            resolves `is_combined` for EVERY row, leaves included, so a leaf
+            can carry a stale `default_combined: true`. The admin form now
+            clears it when "is a building" is unticked, so nothing writes that
+            combination any more — but rows saved before it did still hold it
+            and no migration went back for them, which is why the gate stays.
+            Splitting a room into rooms it does not have is not an operation,
+            so the control is absent rather than offered and then failing. */}
         {canMerge &&
           unit.is_container === true &&
           unit.is_combined === true &&
