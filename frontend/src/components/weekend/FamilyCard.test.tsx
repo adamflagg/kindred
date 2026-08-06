@@ -226,6 +226,33 @@ describe('FamilyCard — what it shows', () => {
     )
     expect(screen.getByText('Wants to share')).toBeInTheDocument()
   })
+
+  it('marks a household that wrote a request, without saying what it says', () => {
+    // The marker only — kindred#2016. The panel carries the words; the card
+    // carries the fact that words exist. `muted`, not `need`/`warn`: this is
+    // not a problem, so it must not read as one.
+    render(
+      <FamilyCard
+        party={party({
+          share: {
+            preference: 'yes_share',
+            proximity: [],
+            request_text: 'Some fictional household request text.',
+            needs_resolution: false,
+          },
+        })}
+        onOpen={vi.fn()}
+      />
+    )
+    const chip = screen.getByText('Wrote a request')
+    expect(chip).toBeInTheDocument()
+    expect(screen.queryByText(/fictional household request text/)).not.toBeInTheDocument()
+  })
+
+  it('stays silent when the household left no request', () => {
+    render(<FamilyCard party={party()} onOpen={vi.fn()} />)
+    expect(screen.queryByText('Wrote a request')).not.toBeInTheDocument()
+  })
 })
 
 describe('FamilyCard — spec §3.8, what must stay off it', () => {

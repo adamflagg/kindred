@@ -23,9 +23,16 @@
  * `FamilyCard.test.tsx` pins all three as ABSENCES, because each is exactly
  * the kind of thing a later session adds back helpfully.
  *
+ * kindred#2016 adds one thing back, deliberately short of the words: a
+ * "Wrote a request" chip keyed on `request_text` being non-empty. It is a
+ * marker, not a preview — no clipped text, no character count — so it does
+ * not reopen the exposure the bullet above measured. The words themselves
+ * stay on `FamilyDetailsPanel`.
+ *
  * What IS here: the household name, the party size, the children with their
- * ages — ages are the entire point of a "similar ages" match — and the housing
- * chips the fit check actually judges.
+ * ages — ages are the entire point of a "similar ages" match — the housing
+ * chips the fit check actually judges, and the fact (not the content) that a
+ * request was written.
  */
 import { useDraggable } from '@dnd-kit/core'
 import { Repeat, Users } from 'lucide-react'
@@ -110,6 +117,11 @@ function FamilyCardBody({
   // view — a chip showing one *or* the other loses them.
   const wantsToShare = proximity.includes('with') || proximity.includes('similar_ages')
   const wantsNear = proximity.includes('near')
+  // The marker only (spec §3.8 keeps the words themselves off — see the file
+  // doc comment). `tone="muted"`, not `need`/`warn`: this says a household
+  // wrote something, not that anything is wrong or unresolved — that is
+  // `needs_resolution`'s own meaning, and it stays off the card too.
+  const hasRequestText = (party.share?.request_text ?? '').length > 0
 
   return (
     <>
@@ -173,6 +185,7 @@ function FamilyCardBody({
         {/* NEAR and WITH are different requests: NEAR is satisfied by map
             distance between units, WITH by putting both in one room. */}
         {wantsNear && <Chip label="Near another family" tone="muted" />}
+        {hasRequestText && <Chip label="Wrote a request" tone="muted" />}
 
         {party.is_returning === true && (
           <span className="text-forest-700 dark:text-forest-300 inline-flex items-center gap-0.5 text-xs font-semibold">
