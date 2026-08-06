@@ -232,9 +232,14 @@ pb_harness_boot() {
 #
 # Reads pragma_index_info rather than substring-matching the stored CREATE
 # INDEX text; the two traps that rules out are documented at the call site.
-# The aggregate ORDER BY needs SQLite 3.44+; on older sqlite3 it is a syntax
-# error, so the result is empty and the caller FAILs loudly rather than
-# silently comparing garbage.
+#
+# Deliberately NOT `group_concat(name ORDER BY name)`: that ordered-aggregate
+# form needs SQLite 3.44+ and is a parse error ("near ORDER: syntax error")
+# on Debian bookworm's stock sqlite3 (3.40) and Ubuntu 22.04's (3.37). There
+# is no fallback for that error -- under a caller's `set -euo pipefail`, the
+# failing command substitution aborts the whole script, skipping every
+# assertion after it, not just this one. Sorting the subquery instead of the
+# aggregate call gets the same column-SET result on every sqlite3 version.
 pb_harness_index_columns() {
-  sqlite3 "$1" "SELECT group_concat(name ORDER BY name) FROM pragma_index_info('$2');"
+  sqlite3 "$1" "SELECT group_concat(name) FROM (SELECT name FROM pragma_index_info('$2') ORDER BY name);"
 }

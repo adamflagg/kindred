@@ -288,4 +288,25 @@ else
 fi
 
 echo
+echo "=== TEST 12: pb_harness_index_columns avoids the version-gated ordered-aggregate form (kindred#2048) ==="
+# group_concat(name ORDER BY name) is an ORDERED AGGREGATE -- a SQLite 3.44+
+# feature. It is a parse error ("near ORDER: syntax error") on Debian
+# bookworm's stock sqlite3 (3.40.1) and Ubuntu 22.04's (3.37), confirmed
+# against a real bookworm sqlite3 binary. Under this repo's own
+# set -euo pipefail, `cols=$(pb_harness_index_columns ...)` failing aborts
+# verify-lodging-schema.sh mid-run -- every RBAC/rule/migration assertion
+# after it silently never runs, and the operator sees a bare SQLite error
+# instead of a `note`.
+#
+# This repo's dev sqlite3 is itself 3.44+, so the parse error can't be
+# reproduced by calling the function here -- this pins the SQL text instead,
+# against reintroducing the ordered-aggregate form.
+if grep -vE '^\s*#' "$LIB" | grep -qE 'group_concat\([^)]*ORDER BY'; then
+  echo "FAIL: pb_harness_index_columns uses an ordered aggregate; parse error on sqlite3 < 3.44 (Debian bookworm ships 3.40)" >&2
+  exit 1
+else
+  echo "PASS: pb_harness_index_columns avoids the version-gated ordered-aggregate form"
+fi
+
+echo
 echo "All tests passed."
