@@ -68,7 +68,7 @@ class _StubResponse:
 def test_the_unit_fetch_asks_for_one_season(monkeypatch: pytest.MonkeyPatch) -> None:
     """The year filter is the whole point, not a convenience.
 
-    `lodging_units` holds one row per unit per year since 1500000140, so after a
+    `lodging_units` holds one row per unit per year since 1500000141, so after a
     roll-forward an unfiltered page-through returns EVERY season. `--apply`
     would then flip `is_confirmed` on a prior season's registry — the one whose
     roster has already been judged against it — and `--undo` would clear it.

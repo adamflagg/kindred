@@ -395,7 +395,7 @@ class TestFetchUnits:
 
     @pytest.mark.asyncio
     async def test_filters_to_the_requested_year_only(self, repo: LodgingRepository, pb: MagicMock) -> None:
-        """Units became year-scoped in 1500000140.
+        """Units became year-scoped in 1500000141.
 
         `code` is unique only per (code, year), so an unfiltered read would
         return every season at once and collide two rows onto one card in
