@@ -258,6 +258,25 @@ describe('SeasonRollForwardPanel', () => {
     expect(mockFetchWithAuth).not.toHaveBeenCalled()
   })
 
+  // The same disabled-query trap the other three lodging panels were fixed for,
+  // arriving here through auth rather than the season: `enabled` gates on
+  // `!isAuthLoading`, and a disabled TanStack query reports `isLoading === false`
+  // with `data === undefined` -- indistinguishable from a settled empty answer.
+  // A guard keyed on `isLoading` alone therefore falls straight through to its
+  // no-data branch while auth is still in flight.
+  it('stays pending while auth resolves, rather than falling through to no data', () => {
+    mockIsAuthLoading = true
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    render(
+      <QueryClientProvider client={queryClient}>
+        <CurrentYearContext.Provider value={YEAR_CONTEXT}>
+          <SeasonRollForwardPanel />
+        </CurrentYearContext.Provider>
+      </QueryClientProvider>
+    )
+    expect(screen.getByText(/loading roll-forward preview/i)).toBeInTheDocument()
+  })
+
   it('reports the Details disclosure state to assistive tech', async () => {
     const user = userEvent.setup()
     renderWithProviders(<SeasonRollForwardPanel />, {

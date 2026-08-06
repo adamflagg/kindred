@@ -23,6 +23,7 @@ import toast from 'react-hot-toast'
 import { useApiWithAuth } from '../../../hooks/useApiWithAuth'
 import { useCurrentYear } from '../../../hooks/useCurrentYear'
 import { invalidateLodgingRegistryQueries, queryKeys } from '../../../utils/queryKeys'
+import { QueryGuard } from '../../QueryGuard'
 import { BUTTON_PRIMARY, BUTTON_SECONDARY } from './lodgingStyles'
 
 type FetchWithAuth = (url: string, options?: RequestInit) => Promise<Response>
@@ -145,91 +146,98 @@ export function SeasonRollForwardPanel() {
         marked inactive by hand afterward.
       </p>
 
-      {previewQuery.isLoading && (
-        <p className="text-muted-foreground text-sm">Checking {fromYear}…</p>
-      )}
+      {/* The same QueryGuard the other three lodging panels use, rather than a
+          fourth hand-rolled loading/error/empty triple (CLAUDE.md, "Family Camp
+          Models Summer").
 
-      {previewQuery.isError && (
-        <p className="text-sm text-red-600 dark:text-red-400">
-          {previewQuery.error instanceof Error
-            ? previewQuery.error.message
-            : `Could not check what would carry forward from ${String(fromYear)}.`}
-        </p>
-      )}
+          `isAuthLoading` is folded into isLoading rather than left to `enabled`
+          alone: a DISABLED TanStack query reports `isLoading === false` with
+          `data === undefined`, which is exactly the shape QueryGuard reads as
+          "settled, nothing here". Gating only the fetch would therefore trade a
+          spinner for a confident empty state — the identical trap the sibling
+          panels fixed with `yearReady`, arriving here through auth instead. */}
+      <QueryGuard
+        isLoading={previewQuery.isLoading || isAuthLoading}
+        error={previewQuery.error}
+        data={preview}
+        label="roll-forward preview"
+        emptyMessage={`Could not read what would carry forward from ${String(fromYear)}.`}
+      >
+        {(plan) => (
+          <div className="card-lodge flex flex-col gap-3 p-4">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <p className="text-sm">
+                {plan.areas_to_create} areas and {plan.units_to_create} units will be created in{' '}
+                {toYear}.
+                {alreadyPresent > 0 && (
+                  <span className="text-muted-foreground"> {alreadyPresent} already present.</span>
+                )}
+              </p>
+              <button
+                type="button"
+                onClick={() => {
+                  setExpanded((e) => !e)
+                }}
+                aria-expanded={expanded}
+                aria-controls={UNIT_CODES_ID}
+                className={BUTTON_SECONDARY}
+              >
+                Details
+                {expanded ? (
+                  <ChevronUp className="h-4 w-4" aria-hidden="true" />
+                ) : (
+                  <ChevronDown className="h-4 w-4" aria-hidden="true" />
+                )}
+              </button>
+            </div>
 
-      {preview && (
-        <div className="card-lodge flex flex-col gap-3 p-4">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <p className="text-sm">
-              {preview.areas_to_create} areas and {preview.units_to_create} units will be created in{' '}
-              {toYear}.
-              {alreadyPresent > 0 && (
-                <span className="text-muted-foreground"> {alreadyPresent} already present.</span>
-              )}
-            </p>
-            <button
-              type="button"
-              onClick={() => {
-                setExpanded((e) => !e)
-              }}
-              aria-expanded={expanded}
-              aria-controls={UNIT_CODES_ID}
-              className={BUTTON_SECONDARY}
-            >
-              Details
-              {expanded ? (
-                <ChevronUp className="h-4 w-4" aria-hidden="true" />
-              ) : (
-                <ChevronDown className="h-4 w-4" aria-hidden="true" />
-              )}
-            </button>
+            {plan.skipped_codes.length > 0 && (
+              <p className="text-muted-foreground text-xs">
+                Left as-is, already present in {toYear}: {plan.skipped_codes.join(', ')}
+              </p>
+            )}
+
+            {expanded && plan.unit_codes.length > 0 && (
+              <ul
+                id={UNIT_CODES_ID}
+                className="text-muted-foreground grid grid-cols-2 gap-x-4 gap-y-1 text-xs sm:grid-cols-3"
+              >
+                {plan.unit_codes.map((code) => (
+                  <li key={code} className="font-mono">
+                    {code}
+                  </li>
+                ))}
+              </ul>
+            )}
+
+            <div className="flex justify-end">
+              <button
+                type="button"
+                onClick={() => applyMutation.mutate()}
+                disabled={nothingToCarry || applyMutation.isPending}
+                // No aria-label: it would override the visible text, so the
+                // pending state would render "Carrying forward…" while still
+                // announcing "Carry N forward". The visible text already says
+                // everything the label did.
+                className={BUTTON_PRIMARY}
+              >
+                {applyMutation.isPending ? (
+                  <>
+                    <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> Carrying
+                    forward…
+                  </>
+                ) : nothingToCarry ? (
+                  'Nothing to carry forward'
+                ) : (
+                  <>
+                    <Check className="h-4 w-4" aria-hidden="true" /> Carry {toCreate} forward
+                  </>
+                )}
+              </button>
+            </div>
           </div>
-
-          {preview.skipped_codes.length > 0 && (
-            <p className="text-muted-foreground text-xs">
-              Left as-is, already present in {toYear}: {preview.skipped_codes.join(', ')}
-            </p>
-          )}
-
-          {expanded && preview.unit_codes.length > 0 && (
-            <ul
-              id={UNIT_CODES_ID}
-              className="text-muted-foreground grid grid-cols-2 gap-x-4 gap-y-1 text-xs sm:grid-cols-3"
-            >
-              {preview.unit_codes.map((code) => (
-                <li key={code} className="font-mono">
-                  {code}
-                </li>
-              ))}
-            </ul>
-          )}
-
-          <div className="flex justify-end">
-            <button
-              type="button"
-              onClick={() => applyMutation.mutate()}
-              disabled={nothingToCarry || applyMutation.isPending}
-              // No aria-label: it would override the visible text, so the
-              // pending state would render "Carrying forward…" while still
-              // announcing "Carry N forward". The visible text already says
-              // everything the label did.
-              className={BUTTON_PRIMARY}
-            >
-              {applyMutation.isPending ? (
-                <>
-                  <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> Carrying forward…
-                </>
-              ) : nothingToCarry ? (
-                'Nothing to carry forward'
-              ) : (
-                <>
-                  <Check className="h-4 w-4" aria-hidden="true" /> Carry {toCreate} forward
-                </>
-              )}
-            </button>
-          </div>
-        </div>
-      )}
+        )}
+      </QueryGuard>
     </div>
   )
 }
