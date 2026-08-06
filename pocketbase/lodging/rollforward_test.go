@@ -196,20 +196,41 @@ func TestApplyRollForwardLinksParentsWithinTheNewYear(t *testing.T) {
 func TestApplyRollForwardPreservesCodeAcrossARename(t *testing.T) {
 	app := newRollForwardTestApp(t)
 	seedYear(t, app, 2026)
+
+	// THE ORDER IS THE TEST. Renaming the 2027 row after the copy — which is
+	// what this test used to do — only proves that Set("name", ...) leaves
+	// `code` alone. That is true of any record and never observes the
+	// roll-forward at all. The season a building is renamed IN is the source
+	// season, and `code` is the thread that has to survive it: a roll-forward
+	// deriving the target code from the name would sever a renamed building
+	// from its own history, and only this order can see that happen.
+	src, err := findByCodeAndYear(app, "lodging_units", "test-unit-a", 2026)
+	if err != nil {
+		t.Fatalf("looking up test-unit-a in 2026: %v", err)
+	}
+	if src == nil {
+		t.Fatal("seeding did not produce test-unit-a in 2026")
+	}
+	src.Set("name", "Test Building A (renamed)")
+	if err := app.Save(src); err != nil {
+		t.Fatalf("rename in the source season: %v", err)
+	}
+
 	if _, err := ApplyRollForward(app, 2026, 2027); err != nil {
 		t.Fatalf("ApplyRollForward: %v", err)
 	}
 
-	rec, _ := findByCodeAndYear(app, "lodging_units", "test-unit-a", 2027)
-	rec.Set("name", "Test Building A (renamed)")
-	if err := app.Save(rec); err != nil {
-		t.Fatalf("rename: %v", err)
+	carried, err := findByCodeAndYear(app, "lodging_units", "test-unit-a", 2027)
+	if err != nil {
+		t.Fatalf("looking up test-unit-a in 2027: %v", err)
 	}
-
-	// The rename must not have moved the code, which is what links the years.
-	again, err := findByCodeAndYear(app, "lodging_units", "test-unit-a", 2027)
-	if err != nil || again == nil {
-		t.Fatal("renaming the building severed it from its code")
+	if carried == nil {
+		t.Fatal("the renamed building did not carry its code into 2027")
+	}
+	// The new name travelled too, so the row is the renamed building and not
+	// some earlier copy that happened to keep the code.
+	if got := carried.GetString("name"); got != "Test Building A (renamed)" {
+		t.Errorf("carried the code but not the rename: name = %q", got)
 	}
 }
 
