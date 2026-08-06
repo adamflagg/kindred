@@ -81,6 +81,18 @@ func TestAliasResolverRespectsRenameWindows(t *testing.T) {
 		t.Fatalf("NewAliasResolver: %v", err)
 	}
 
+	// In window at the start of the span too -- valid_from_year is unbounded
+	// (0), so 2022 (the year the buildings actually opened, per the doc comment
+	// above) must resolve exactly like 2023 does. Also what makes the 2022 rows
+	// created above load-bearing instead of dead fixture weight.
+	if got := r.Resolve("Golden Triangle - Doctor's House", 2022); !got.Resolved ||
+		got.UnitIDs[0] != gtWawonaByYear[2022] {
+		t.Errorf("2022 GT Doctor's House: %+v", got)
+	}
+	if got := r.Resolve("Health Center - Doctor's House", 2022); !got.Resolved ||
+		got.UnitIDs[0] != hcDoctorsByYear[2022] {
+		t.Errorf("2022 HC Doctor's House: %+v", got)
+	}
 	// In window, both retired strings.
 	if got := r.Resolve("Golden Triangle - Doctor's House", 2023); !got.Resolved ||
 		got.UnitIDs[0] != gtWawonaByYear[2023] {
@@ -89,6 +101,17 @@ func TestAliasResolverRespectsRenameWindows(t *testing.T) {
 	if got := r.Resolve("Health Center - Doctor's House", 2023); !got.Resolved ||
 		got.UnitIDs[0] != hcDoctorsByYear[2023] {
 		t.Errorf("2023 HC Doctor's House: %+v", got)
+	}
+	// The valid_to_year boundary itself is INCLUSIVE: the window "0..2024" still
+	// covers 2024, not just years strictly before it. This is the half-closed
+	// gap the lower bound already had coverage for and the upper bound did not.
+	if got := r.Resolve("Golden Triangle - Doctor's House", 2024); !got.Resolved ||
+		got.UnitIDs[0] != gtWawonaByYear[2024] {
+		t.Errorf("2024 GT Doctor's House (inclusive upper boundary): %+v", got)
+	}
+	if got := r.Resolve("Health Center - Doctor's House", 2024); !got.Resolved ||
+		got.UnitIDs[0] != hcDoctorsByYear[2024] {
+		t.Errorf("2024 HC Doctor's House (inclusive upper boundary): %+v", got)
 	}
 	// Out of window on the high side -- the string was retired, so it must NOT
 	// silently fall through to the Health Center row of the same shape. Both
