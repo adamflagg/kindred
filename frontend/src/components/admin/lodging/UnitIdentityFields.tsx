@@ -8,10 +8,14 @@
  */
 import { useState } from 'react'
 
-import type { LodgingAreaRecord, LodgingUnitRecord } from '../../../types/lodging'
+import type {
+  InventoryClassValue,
+  LodgingAreaRecord,
+  LodgingUnitRecord,
+} from '../../../types/lodging'
 import { FIELD, LABEL } from './lodgingStyles'
 import { slugify } from './unitCode'
-import { combinedAncestor, parentCandidates } from './unitTree'
+import { parentCandidates } from './unitTree'
 
 export interface UnitIdentity {
   name: string
@@ -34,20 +38,18 @@ export interface UnitIdentityFieldsProps {
   /** Absent on create, where the code stays hidden until staff ask for it. */
   unitId?: string | undefined
   /**
-   * Live from the Allocation select, not off the record: a staffer who has
-   * just switched a room to staff housing should see staff buildings offered
-   * straight away, not after a save and a reopen.
+   * Read by the parent picker below, which offers staff buildings to a
+   * family_pool unit but not the reverse — see `parentCandidates` in
+   * ./unitTree for why that narrowing runs one direction only.
    */
   inventoryClass: string
   /**
-   * Live from the "is a building" checkbox, not off the record: the combined
-   * control gates on this the moment a staffer ticks or unticks it, without
-   * waiting for a save and reopen.
+   * The Allocation select sits right after the Parent unit field — live so a
+   * staffer who has just switched a room to staff housing sees the parent
+   * picker narrow to staff buildings straight away, not after a save and a
+   * reopen.
    */
-  isContainer: boolean
-  /** The registry-default combined value — see `default_combined` on `LodgingUnitRecord`. */
-  combined: boolean
-  onCombinedChange: (next: boolean) => void
+  onInventoryClassChange: (next: InventoryClassValue) => void
 }
 
 export function UnitIdentityFields({
@@ -57,17 +59,10 @@ export function UnitIdentityFields({
   units,
   unitId,
   inventoryClass,
-  isContainer,
-  combined,
-  onCombinedChange,
+  onInventoryClassChange,
 }: UnitIdentityFieldsProps) {
   const [showCode, setShowCode] = useState(false)
   const derived = slugify(value.name)
-  // Live off the SELECTED parent, not the stored one, so re-parenting a unit
-  // in this same form updates the disable state immediately rather than
-  // waiting for a reload.
-  const blockingAncestor =
-    value.parent_unit === '' ? undefined : combinedAncestor(value.parent_unit, units)
 
   return (
     <>
@@ -168,38 +163,21 @@ export function UnitIdentityFields({
         </select>
       </label>
 
-      {/* Registry default for the whole-let container merge (spec task 8).
-          Rendered on containers only — a leaf has nothing to stop descending
-          past. Disabled once an ancestor already carries the flag: at most
-          one node per root-to-leaf path may hold it meaningfully, since
-          combined means "draw the card here and stop descending" and an
-          ancestor already owns the card.
-
-          This is a UX guard, not a correctness requirement — `drawnUnits`
-          (frontend/src/components/weekend/unitLevel.ts) resolves top-down and
-          takes the highest combined node on a path, so the board cannot be
-          made ambiguous even by a direct database write that skipped this
-          picker. See `combinedAncestor` in ./unitTree for the ancestor walk. */}
-      {isContainer && (
-        <div className="text-sm sm:col-span-2">
-          <label className="inline-flex items-center gap-2">
-            <input
-              type="checkbox"
-              checked={combined}
-              disabled={blockingAncestor !== undefined}
-              onChange={(e) => {
-                onCombinedChange(e.target.checked)
-              }}
-            />
-            Let as one — draw this building as a single card
-          </label>
-          {blockingAncestor && (
-            <p className="text-muted-foreground pl-6 text-xs">
-              Already combined by “{blockingAncestor.name}” — only one card per branch.
-            </p>
-          )}
-        </div>
-      )}
+      <label className="text-sm">
+        <span className={LABEL}>Allocation</span>
+        {/* No blank option: an empty inventory_class matches neither
+            branch of the family-availability rules. */}
+        <select
+          className={FIELD}
+          value={inventoryClass}
+          onChange={(e) => {
+            onInventoryClassChange(e.target.value as InventoryClassValue)
+          }}
+        >
+          <option value="family_pool">Available to guests</option>
+          <option value="staff_default">Held for staff</option>
+        </select>
+      </label>
     </>
   )
 }

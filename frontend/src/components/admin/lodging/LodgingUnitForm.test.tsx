@@ -1014,12 +1014,12 @@ describe('LodgingUnitForm — the default-combined control', () => {
     // The flag means "draw the card here and stop descending". A leaf has
     // nothing to stop descending past.
     renderForm({ unit: unitRecord({ id: 'room', is_container: false }) })
-    expect(screen.queryByLabelText(/let as one/i)).not.toBeInTheDocument()
+    expect(screen.queryByLabelText(/assign it as a whole building/i)).not.toBeInTheDocument()
   })
 
   it('offers the combined control on a container with no combined ancestor', () => {
     renderForm({ unit: unitRecord({ id: 'house', is_container: true }) })
-    expect(screen.getByLabelText(/let as one/i)).not.toBeDisabled()
+    expect(screen.getByLabelText(/assign it as a whole building/i)).not.toBeDisabled()
   })
 
   it('disables the combined control when an ancestor is already combined', () => {
@@ -1030,7 +1030,7 @@ describe('LodgingUnitForm — the default-combined control', () => {
       unit: unitRecord({ id: 'wing', is_container: true, parent_unit: 'house' }),
       units: [unitRecord({ id: 'house', is_container: true, default_combined: true })],
     })
-    expect(screen.getByLabelText(/let as one/i)).toBeDisabled()
+    expect(screen.getByLabelText(/assign it as a whole building/i)).toBeDisabled()
   })
 
   it('disables the control through a multi-level ancestor, not only a direct parent, and names the grandparent that actually owns it', () => {
@@ -1063,7 +1063,7 @@ describe('LodgingUnitForm — the default-combined control', () => {
         }),
       ],
     })
-    expect(screen.getByLabelText(/let as one/i)).toBeDisabled()
+    expect(screen.getByLabelText(/assign it as a whole building/i)).toBeDisabled()
     expect(screen.getByText(/already combined.*combined house/i)).toBeInTheDocument()
     expect(screen.queryByText(/already combined.*uncombined wing/i)).not.toBeInTheDocument()
   })
@@ -1093,7 +1093,7 @@ describe('LodgingUnitForm — the default-combined control', () => {
     const user = userEvent.setup()
 
     renderForm({ unit: unitRecord({ id: 'house', is_container: true }) })
-    await user.click(screen.getByLabelText(/let as one/i))
+    await user.click(screen.getByLabelText(/assign it as a whole building/i))
     await user.click(screen.getByRole('button', { name: 'Save unit' }))
 
     await waitFor(() => {
@@ -1101,6 +1101,21 @@ describe('LodgingUnitForm — the default-combined control', () => {
     })
     const [, payload] = updateLodgingUnit.mock.calls[0] as [string, LodgingUnitInput]
     expect(payload.default_combined).toBe(true)
+  })
+
+  it('renders the combined pair directly beneath "This is a building…", not off in the identity fields', () => {
+    // The two checkboxes are one thought — what this building is, and whether
+    // it draws as one card — so the combined control has to sit right after
+    // "is a building" rather than wherever UnitIdentityFields happens to put
+    // it. children.length is 0 here, so nothing else can land between them.
+    renderForm({ unit: unitRecord({ id: 'house', is_container: true }) })
+
+    const isContainerLabel = screen
+      .getByLabelText('This is a building or building area with multiple bedrooms.')
+      .closest('label')
+    const combinedCheckbox = screen.getByLabelText(/assign it as a whole building/i)
+
+    expect(isContainerLabel?.nextElementSibling).toContainElement(combinedCheckbox)
   })
 
   it('clears default_combined once "is a building" is unticked, so the two never contradict on save', async () => {
@@ -1114,7 +1129,7 @@ describe('LodgingUnitForm — the default-combined control', () => {
     const user = userEvent.setup()
 
     renderForm({ unit: unitRecord({ id: 'house', is_container: true }) })
-    await user.click(screen.getByLabelText(/let as one/i))
+    await user.click(screen.getByLabelText(/assign it as a whole building/i))
     await user.click(
       screen.getByLabelText('This is a building or building area with multiple bedrooms.')
     )
