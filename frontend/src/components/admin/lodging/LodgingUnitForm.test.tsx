@@ -975,4 +975,29 @@ describe('LodgingUnitForm — the default-combined control', () => {
     const [, payload] = updateLodgingUnit.mock.calls[0] as [string, LodgingUnitInput]
     expect(payload.default_combined).toBe(true)
   })
+
+  it('clears default_combined once "is a building" is unticked, so the two never contradict on save', async () => {
+    // The control disappears the moment isContainer goes false — it is
+    // rendered `isContainer && ...` in UnitIdentityFields — but state is not
+    // UI: unless the form clears `combined` itself, the payload still saves
+    // default_combined: true beside is_container: false. That contradiction
+    // is exactly what verify-slot-merge-seed.sh's `leaked` check asserts
+    // never exists in the registry.
+    updateLodgingUnit.mockResolvedValue({})
+    const user = userEvent.setup()
+
+    renderForm({ unit: unitRecord({ id: 'house', is_container: true }) })
+    await user.click(screen.getByLabelText(/let as one/i))
+    await user.click(
+      screen.getByLabelText('This is a building or building area with multiple bedrooms.')
+    )
+    await user.click(screen.getByRole('button', { name: 'Save unit' }))
+
+    await waitFor(() => {
+      expect(updateLodgingUnit).toHaveBeenCalled()
+    })
+    const [, payload] = updateLodgingUnit.mock.calls[0] as [string, LodgingUnitInput]
+    expect(payload.default_combined).toBe(false)
+    expect(payload.is_container).toBe(false)
+  })
 })

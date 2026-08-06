@@ -237,7 +237,15 @@ export function LodgingUnitForm({ areas, units, unit, onSaved, onCancel }: Lodgi
             checked={isContainer}
             disabled={children.length > 0}
             onChange={(e) => {
-              setIsContainer(e.target.checked)
+              const next = e.target.checked
+              setIsContainer(next)
+              // UnitIdentityFields renders the "Let as one" control only
+              // while isContainer is true, so unticking this hides it — but
+              // hiding is not clearing. Without this, the payload can still
+              // save default_combined: true beside is_container: false, the
+              // exact contradiction verify-slot-merge-seed.sh's `leaked`
+              // check refuses to see in the registry.
+              if (!next) setCombined(false)
             }}
           />
           This is a building or building area with multiple bedrooms.
