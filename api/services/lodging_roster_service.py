@@ -258,6 +258,112 @@ def _is_planning_inventory(unit: LodgingUnitSummary) -> bool:
     return unit.inventory_class != "staff_default" or unit.is_family_available
 
 
+def resolve_combined(*, default: bool, override: bool | None, session_override: bool | None = None) -> bool:
+    """The draw level for one container, resolved through up to two override tiers.
+
+    Highest first: `override` (this scenario's own `lodging_slot_merges` row),
+    then `session_override` (the WEEKEND-LEVEL row -- `scenario == ""`,
+    1500000140), then `default` (`lodging_units.default_combined`).
+
+    The weekend-level tier exists because a merge is a fact about the
+    weekend, not only about a plan: unlike a placement, no sync ever writes a
+    draw level, so there is no CampMinder record of truth a writable mirror
+    would corrupt. It is seen on the CampMinder mirror itself (`override` is
+    always None there -- no scenario means no scenario row) AND inherited by
+    every scenario that has not overridden it locally. Same argument
+    1500000135 already made for lodging_availability.
+
+    `is None` at EITHER tier means NO ROW at that tier, which inherits down
+    to the next one -- it is not False. Flattening either absence to False
+    would make it impossible to split a container whose registry default is
+    combined with no scenario row present, or to have a scenario un-close a
+    weekend-level split with no scenario row of its own (a bare
+    `session_override` falling through to `default` while a real
+    `session_override = False` got treated the same as "absent" would make a
+    weekend-level split unreachable from a scenario that never touched the
+    unit).
+    """
+    if override is not None:
+        return override
+    if session_override is not None:
+        return session_override
+    return default
+
+
+def drawn_units(units: list[LodgingUnitSummary]) -> list[LodgingUnitSummary]:
+    """The units that get a CARD, at the level each tree resolves to.
+
+    THE PYTHON MIRROR of `drawnUnits` in
+    `frontend/src/components/weekend/unitLevel.ts`, and the counts' half of
+    the invariant `_is_planning_inventory` states for its own predicate: if
+    the two drift, the Housing tab and the stats bar describe different
+    weekends. Reads the RESOLVED `is_combined` (see `resolve_combined`), never
+    `default_combined`, so a scenario merge moves the counts with the board.
+
+    A leaf always draws. A container draws only when combined -- otherwise it
+    is pure grouping and the walk descends past it. Nothing beneath a combined
+    node draws, because combined means "draw the card here and stop
+    descending": two nodes on one root-to-leaf path can both resolve combined
+    (a scenario override can set one where an ancestor default already holds)
+    and taking the higher is what keeps a room from being counted under a card
+    that does not exist.
+
+    Leaf-ness reads the `is_container` FLAG, never child count -- the same
+    rule the frontend walk applies, and for the same reason: inferring "this
+    is bookable" from an empty child list infers from missing data. Only a
+    CONTAINER can block a descendant, which also makes this immune to a stale
+    `is_combined` on a leaf. The admin form clears `default_combined` when "is
+    a building" is unticked, so nothing writes that combination any more -- but
+    rows saved before it did still carry it, and no migration went back for
+    them.
+
+    Cycle guard for the same reason `coveredCodes` carries one: the server
+    guards against WRITING a cycle (`guardUnitParentCycle`, #1899), but a
+    cycle already in the data must not hang a request. A cycle BLOCKS rather
+    than merely stopping the walk -- see the comment at the guard for why
+    that is what keeps this in step with the frontend.
+
+    A blank `code` is a valid, if unfortunate, registry value, and `by_code`
+    is keyed on it -- so a row with no code occupies the SAME `""` key that
+    `parent_code == ""` uses to mean "no parent". `_parent_of` is the guard:
+    an empty code is looked up as "no parent" and never handed to `by_code`,
+    so a root can never be misread as a child of whichever row happens to
+    have a blank code.
+    """
+    by_code = {unit.code: unit for unit in units}
+
+    def _parent_of(code: str) -> LodgingUnitSummary | None:
+        return by_code.get(code) if code else None
+
+    drawn: list[LodgingUnitSummary] = []
+    for unit in units:
+        if unit.is_container and not unit.is_combined:
+            continue
+        seen = {unit.code}
+        cursor = _parent_of(unit.parent_code)
+        blocked = False
+        while cursor is not None:
+            if cursor.code in seen:
+                # A CYCLE BLOCKS, rather than merely stopping the walk. The
+                # frontend mirror seeds from ROOTS, so a unit whose ancestry
+                # loops has no path from one and is never visited there --
+                # it draws no card. Falling through to "not blocked" here
+                # would count a unit the board will not draw, which is the
+                # precise drift this function exists to prevent. The party
+                # placed there rails to `offBoard`, which `buildBoard` is
+                # total over, so nobody is lost either way.
+                blocked = True
+                break
+            seen.add(cursor.code)
+            if cursor.is_container and cursor.is_combined:
+                blocked = True
+                break
+            cursor = _parent_of(cursor.parent_code)
+        if not blocked:
+            drawn.append(unit)
+    return drawn
+
+
 class LodgingRosterService:
     """Builds the read-only weekend roster from repository output."""
 
@@ -338,8 +444,23 @@ class LodgingRosterService:
             # There is deliberately NO second availability read here. 1500000135
             # deleted this table's scenario dimension, so a scenario has nothing
             # to overlay -- see fetch_availability.
+            #
+            # ALWAYS fetched now, mirror included (1500000140). A merge is a
+            # fact about the weekend, not only about a plan -- unlike a
+            # placement, no sync writes a draw level, so there is no record of
+            # truth a scenario-gated read was ever protecting here. The
+            # CampMinder mirror (`scenario == ""`) still gets no SCENARIO row
+            # -- there is none to have -- but it can and does have a
+            # WEEKEND-LEVEL row, and fetch_slot_merges returns exactly that
+            # tier for a blank scenario rather than an empty list.
+            # resolve_combined then sees both tiers.
+            merges_task = tg.create_task(self.repository.fetch_slot_merges(year, session_pb_id, scenario))
 
-        unit_summaries = self._build_units(units_task.result(), availability_task.result())
+        unit_summaries = self._build_units(
+            units_task.result(),
+            availability_task.result(),
+            merges_task.result(),
+        )
         parties = self._build_parties(
             session_type=session_type,
             attendees=attendees_task.result(),
@@ -425,8 +546,17 @@ class LodgingRosterService:
                 # No second availability read, exactly as build_roster issues
                 # none. These are separate TaskGroups and fixing only one of
                 # them is the half-fix the guard tests exist to catch.
+                #
+                # Merges are ALWAYS fetched, exactly as build_roster now does
+                # (1500000140) -- the mirror gets the weekend-level tier
+                # rather than an empty list.
+                merges_task = inner.create_task(self.repository.fetch_slot_merges(year, session_pb_id, scenario))
 
-            unit_summaries = self._build_units(units, availability_task.result())
+            unit_summaries = self._build_units(
+                units,
+                availability_task.result(),
+                merges_task.result(),
+            )
             parties = self._build_parties(
                 session_type=_s(session, "session_type"),
                 attendees=attendees_task.result(),
@@ -467,7 +597,7 @@ class LodgingRosterService:
 
     # ---------------------------------------------------------------- units
 
-    def _build_units(self, units: list[Any], availability: list[Any]) -> list[LodgingUnitSummary]:
+    def _build_units(self, units: list[Any], availability: list[Any], merges: list[Any]) -> list[LodgingUnitSummary]:
         # ONE layer. The scenario overlay is gone (1500000135) -- availability
         # is a fact about the weekend, so a scenario has nothing to overlay.
         # `family_available` is stored EXPLICITLY, so the row IS the answer and
@@ -481,6 +611,23 @@ class LodgingRosterService:
         # than renamed to `reason`); surfaced to the API as `reason`. This and
         # `set_availability` are the only two places that translate.
         reason_by_unit = {_s(row, "unit"): _s(row, "note") for row in availability}
+
+        # id -> code, so the parent relation can be published as a code.
+        code_by_id = {_s(unit, "id"): _s(unit, "code") for unit in units}
+
+        # Two tiers in one list (1500000140), split on whether the row's own
+        # `scenario` is set. Absent row at EITHER tier means inherit -- see
+        # resolve_combined -- so this builds two dicts rather than merging
+        # session-level rows into `scenario_merge_by_unit` under a `, False`
+        # default, which would collapse "no scenario row" into "scenario row
+        # says split" and make a weekend-level combine unreachable from a
+        # scenario that never touched the unit. Both keyed by unit id, which
+        # is what the relation stores.
+        scenario_merge_by_unit: dict[str, bool] = {}
+        session_merge_by_unit: dict[str, bool] = {}
+        for row in merges:
+            target = scenario_merge_by_unit if _s(row, "scenario") else session_merge_by_unit
+            target[_s(row, "unit")] = _b(row, "combined")
 
         # Bathroom groups are computed across ALL units, because a group's
         # membership does not depend on the session.
@@ -534,6 +681,12 @@ class LodgingRosterService:
                     is_confirmed=_b(unit, "is_confirmed"),
                     is_active=_b(unit, "is_active"),
                     is_container=_b(unit, "is_container"),
+                    parent_code=code_by_id.get(_s(unit, "parent_unit"), ""),
+                    is_combined=resolve_combined(
+                        default=_b(unit, "default_combined"),
+                        override=scenario_merge_by_unit.get(_s(unit, "id")),
+                        session_override=session_merge_by_unit.get(_s(unit, "id")),
+                    ),
                     inventory_class=inventory_class,
                     family_available_override=override,
                     reason=reason_by_unit.get(_s(unit, "id"), ""),
@@ -845,11 +998,25 @@ class LodgingRosterService:
         parties: list[RosterParty],
         unresolved_aliases: int,
     ) -> RosterCounts:
-        # Containers are building/grouping rows carrying whole-building
-        # aggregates. Including them double-counts beds (408 vs a true 389).
-        leaf = [u for u in units if not u.is_container and u.is_active]
-        bookable = [u for u in leaf if _is_planning_inventory(u)]
-        staff_housing = [u for u in leaf if not _is_planning_inventory(u)]
+        # The population the BOARD DRAWS, at each tree's resolved level -- not
+        # "every non-container row". A combined container IS one space a
+        # family can hold, at the whole-house `sleeps` somebody measured, and
+        # its rooms are not separately lettable, so counting them instead
+        # reports more spaces than the board draws cards. That is the exact
+        # drift `_is_planning_inventory` exists to prevent, one field over.
+        #
+        # A NON-combined container is still excluded, for the original reason:
+        # it carries a whole-building aggregate its rooms already report, and
+        # counting both double-counts beds (408 vs a true 389). What changed is
+        # that "container" stopped being the same question as "not drawn".
+        #
+        # The bed figure can move OPPOSITE the space figure, which is correct:
+        # a container's `sleeps` is independently measured and NOT the sum of
+        # its rooms (one house records 7 against rooms summing to 6). Fewer,
+        # larger spaces.
+        drawn = [u for u in drawn_units(units) if u.is_active]
+        bookable = [u for u in drawn if _is_planning_inventory(u)]
+        staff_housing = [u for u in drawn if not _is_planning_inventory(u)]
         available = [u for u in bookable if u.is_family_available]
         assigned = sum(1 for p in parties if p.unit_code or p.unit_name)
         return RosterCounts(

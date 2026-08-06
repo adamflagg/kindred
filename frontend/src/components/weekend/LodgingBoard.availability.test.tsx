@@ -35,6 +35,12 @@ vi.mock('../../hooks/useLodgingPlacement', () => ({
   useLodgingPlacement: () => ({ move: vi.fn(), isMoving: false }),
 }))
 
+// The board now also writes merges. The merge gesture and its own gate are
+// pinned in `LodgingBoard.merge.test.tsx`; this file is about availability.
+vi.mock('../../hooks/useUnitMerge', () => ({
+  useUnitMerge: () => ({ setCombined: vi.fn(), pendingUnitId: null }),
+}))
+
 const setAvailability = vi.fn((_intent: unknown) => Promise.resolve())
 let availabilityOptions: unknown[] = []
 let pendingUnitId = ''

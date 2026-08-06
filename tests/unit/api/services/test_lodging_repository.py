@@ -91,6 +91,7 @@ class TestStableSort:
             pytest.param(lambda r: r.fetch_session(2026, 1), id="fetch_session"),
             pytest.param(lambda r: r.fetch_availability(2026, "s1"), id="fetch_availability"),
             pytest.param(lambda r: r.fetch_assignments(2026, "s1"), id="fetch_assignments"),
+            pytest.param(lambda r: r.fetch_slot_merges(2026, "s1", "scn_1"), id="fetch_slot_merges"),
             pytest.param(lambda r: r.fetch_attendees_for_session(2026, "s1"), id="fetch_attendees"),
             pytest.param(lambda r: r.fetch_households(2026), id="fetch_households"),
             pytest.param(lambda r: r.fetch_prior_household_cm_ids(2026), id="fetch_prior_cm_ids"),
@@ -205,6 +206,54 @@ class TestFetchDraftAssignments:
         assert params["expand"] == "units"
 
 
+class TestFetchSlotMerges:
+    @pytest.mark.asyncio
+    async def test_a_named_scenario_gets_its_own_rows_and_the_weekend_level_ones(
+        self, repo: LodgingRepository, pb: MagicMock
+    ) -> None:
+        """Two tiers, one round trip (1500000140).
+
+        `scenario` on lodging_slot_merges used to be a REQUIRED relation, so
+        a caller naming a scenario got only that scenario's rows and the
+        CampMinder mirror (scenario="") got skipped by LodgingRosterService
+        entirely rather than queried -- see 1500000139's history. `scenario`
+        is optional now, and both tiers can name the same unit, so a named
+        scenario's fetch must pull BOTH: its own rows, union'd with the
+        weekend-level (`scenario = ""`) rows every scenario inherits.
+        resolve_combined is what picks the winner; this call must not
+        pre-filter one tier away before that happens.
+        """
+        await repo.fetch_slot_merges(2026, "sess_pb_1", "scn_1")
+
+        pb.collection.assert_called_with("lodging_slot_merges")
+        params = _last_query(pb)
+        assert 'session = "sess_pb_1"' in params["filter"]
+        assert "year = 2026" in params["filter"]
+        assert 'scenario = "scn_1"' in params["filter"]
+        assert 'scenario = ""' in params["filter"]
+
+    @pytest.mark.asyncio
+    async def test_a_blank_scenario_gets_only_the_weekend_level_rows(
+        self, repo: LodgingRepository, pb: MagicMock
+    ) -> None:
+        """The CampMinder mirror's call -- the whole point of 1500000140.
+
+        A blank scenario is what LodgingRosterService now passes for the
+        mirror (it used to skip this fetch outright). It must not widen to
+        "every scenario's own rows"; it gets exactly the weekend-level tier,
+        because `scenario = ""` is already that filter with no OR needed.
+        """
+        await repo.fetch_slot_merges(2026, "sess_pb_1", "")
+
+        pb.collection.assert_called_with("lodging_slot_merges")
+        params = _last_query(pb)
+        assert 'session = "sess_pb_1"' in params["filter"]
+        assert "year = 2026" in params["filter"]
+        assert 'scenario = ""' in params["filter"]
+        # No OR clause: a blank scenario_id must not turn into "any scenario".
+        assert "||" not in params["filter"]
+
+
 class TestClientSuppliedValuesAreEscaped:
     """`scenario` and `unit_id` arrive from the client and reach a filter.
 
@@ -240,6 +289,14 @@ class TestClientSuppliedValuesAreEscaped:
         assert '" || id != "' not in filter_str
 
     @pytest.mark.asyncio
+    async def test_fetch_slot_merges_escapes_the_scenario(self, repo: LodgingRepository, pb: MagicMock) -> None:
+        await repo.fetch_slot_merges(2026, "sess_pb_1", self.INJECTION)
+
+        filter_str = _last_query(pb)["filter"]
+        assert f'scenario = "{self.ESCAPED}"' in filter_str
+        assert '" || id != "' not in filter_str
+
+    @pytest.mark.asyncio
     async def test_find_availability_override_escapes_the_unit_id(self, repo: LodgingRepository, pb: MagicMock) -> None:
         """One client value left, not two: 1500000135 took the scenario.
 
@@ -261,6 +318,7 @@ class TestClientSuppliedValuesAreEscaped:
             pytest.param(lambda r, s: r.fetch_availability(2026, s), id="fetch_availability"),
             pytest.param(lambda r, s: r.fetch_assignments(2026, s), id="fetch_assignments"),
             pytest.param(lambda r, s: r.fetch_draft_assignments(2026, s, "scn_1"), id="fetch_draft_assignments"),
+            pytest.param(lambda r, s: r.fetch_slot_merges(2026, s, "scn_1"), id="fetch_slot_merges"),
         ],
     )
     async def test_every_session_filter_escapes_the_session_id(

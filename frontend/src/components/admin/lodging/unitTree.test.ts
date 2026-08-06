@@ -9,7 +9,7 @@
 import { describe, expect, it } from 'vitest'
 
 import type { LodgingUnitRecord } from '../../../types/lodging'
-import { descendantIds, directChildren, parentCandidates } from './unitTree'
+import { combinedAncestor, descendantIds, directChildren, parentCandidates } from './unitTree'
 
 function unit(over: Partial<LodgingUnitRecord> & { id: string }): LodgingUnitRecord {
   return {
@@ -37,6 +37,7 @@ function unit(over: Partial<LodgingUnitRecord> & { id: string }): LodgingUnitRec
     is_confirmed: false,
     is_active: true,
     is_container: false,
+    default_combined: false,
     notes: '',
     ...over,
   }
@@ -74,6 +75,49 @@ describe('descendantIds', () => {
       unit({ id: 'b', parent_unit: 'a', is_container: true }),
     ]
     expect(descendantIds('a', units)).toEqual(new Set(['b', 'a']))
+  })
+})
+
+describe('combinedAncestor', () => {
+  it('finds a combined direct parent', () => {
+    const units = [
+      unit({ id: 'a', is_container: true, default_combined: true }),
+      unit({ id: 'b', parent_unit: 'a', is_container: true }),
+    ]
+    expect(combinedAncestor('a', units)?.id).toBe('a')
+  })
+
+  it('finds a combined grandparent through an uncombined intermediate', () => {
+    const units = [
+      unit({ id: 'a', is_container: true, default_combined: true }),
+      unit({ id: 'b', parent_unit: 'a', is_container: true }),
+      unit({ id: 'c', parent_unit: 'b', is_container: true }),
+    ]
+    expect(combinedAncestor('b', units)?.id).toBe('a')
+  })
+
+  it('returns undefined when no ancestor is combined', () => {
+    const units = [
+      unit({ id: 'a', is_container: true }),
+      unit({ id: 'b', parent_unit: 'a', is_container: true }),
+    ]
+    expect(combinedAncestor('a', units)).toBeUndefined()
+  })
+
+  // Same shape as descendantIds' matching test above, and for the same
+  // reason: guardUnitParentCycle (#1899) blocks a NEW cycle from being
+  // written but cannot un-write one already sitting in the database from
+  // before that hook existed, and this walk has no way to know whether the
+  // hook ran on any given row. The `seen` guard is what stops a cycle
+  // already in the data from hanging the admin form — a refactor that
+  // dropped it would hang UnitIdentityFields on mount, not fail a test with
+  // a readable diff.
+  it('terminates on already-cyclic stored data', () => {
+    const units = [
+      unit({ id: 'a', parent_unit: 'b', is_container: true }),
+      unit({ id: 'b', parent_unit: 'a', is_container: true }),
+    ]
+    expect(combinedAncestor('a', units)).toBeUndefined()
   })
 })
 

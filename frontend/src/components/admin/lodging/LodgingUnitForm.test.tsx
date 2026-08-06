@@ -54,6 +54,7 @@ const UNIT: LodgingUnitRecord = {
   is_confirmed: false,
   is_active: true,
   is_container: false,
+  default_combined: false,
   notes: '',
 }
 
@@ -847,5 +848,156 @@ describe('LodgingUnitForm — only the X removes a bed', () => {
 
     fireEvent.change(count, { target: { value: '3.5' } })
     expect(count).toHaveValue(3)
+  })
+})
+
+/**
+ * The registry-default combined control (spec task 8). Combined means "draw
+ * the card HERE and stop descending", so it is offered only on containers —
+ * a leaf has nothing to stop descending past — and disabled once an ancestor
+ * already carries it, since at most one node per root-to-leaf path may hold
+ * the flag meaningfully. Same shape as "is a building" disabling once a unit
+ * has children, tested above at 'disables "is a building" once a unit has
+ * children'.
+ */
+describe('LodgingUnitForm — the default-combined control', () => {
+  // A full LodgingUnitRecord built off the module's own UNIT fixture, keyed
+  // by hand-picked ids ('house', 'wing', 'room') so ancestor chains read
+  // naturally, rather than UNIT's 'u1'/'u2'.
+  const unitRecord = (over: Partial<LodgingUnitRecord> & { id: string }): LodgingUnitRecord => ({
+    ...UNIT,
+    name: over.id,
+    code: over.id,
+    default_combined: false,
+    ...over,
+  })
+
+  const renderForm = ({ unit, units }: { unit: LodgingUnitRecord; units?: LodgingUnitRecord[] }) =>
+    render(
+      <LodgingUnitForm
+        areas={AREAS}
+        units={units ?? [unit]}
+        unit={unit}
+        onSaved={vi.fn()}
+        onCancel={vi.fn()}
+      />
+    )
+
+  it('offers the combined control only on a container', () => {
+    // The flag means "draw the card here and stop descending". A leaf has
+    // nothing to stop descending past.
+    renderForm({ unit: unitRecord({ id: 'room', is_container: false }) })
+    expect(screen.queryByLabelText(/let as one/i)).not.toBeInTheDocument()
+  })
+
+  it('offers the combined control on a container with no combined ancestor', () => {
+    renderForm({ unit: unitRecord({ id: 'house', is_container: true }) })
+    expect(screen.getByLabelText(/let as one/i)).not.toBeDisabled()
+  })
+
+  it('disables the combined control when an ancestor is already combined', () => {
+    // At most one node per root-to-leaf path may hold it: an ancestor already
+    // owns the card. Same shape as disabling "is a building" once a unit has
+    // children, which this form already does.
+    renderForm({
+      unit: unitRecord({ id: 'wing', is_container: true, parent_unit: 'house' }),
+      units: [unitRecord({ id: 'house', is_container: true, default_combined: true })],
+    })
+    expect(screen.getByLabelText(/let as one/i)).toBeDisabled()
+  })
+
+  it('disables the control through a multi-level ancestor, not only a direct parent, and names the grandparent that actually owns it', () => {
+    // Grandparent combined, direct parent not. A check that only looks one
+    // hop up is the obvious wrong implementation, so this pins it: 'house' is
+    // combined, 'wing' is not, and 'room' hangs off 'wing'.
+    //
+    // Distinct names on purpose: `toBeDisabled()` alone would still pass if
+    // the reason named 'wing' (the immediate parent) instead of 'house' (the
+    // node that actually owns the card) — a check that named "the parent"
+    // rather than "the combined ancestor" would disable correctly here but
+    // mislead a staffer about which building to go edit instead. Scoped to
+    // "already combined" for the same reason as the single-level naming test
+    // above: both names are also valid options in the "Parent unit" <select>
+    // this same render produces.
+    renderForm({
+      unit: unitRecord({ id: 'room', is_container: true, parent_unit: 'wing' }),
+      units: [
+        unitRecord({
+          id: 'wing',
+          is_container: true,
+          parent_unit: 'house',
+          name: 'Uncombined Wing',
+        }),
+        unitRecord({
+          id: 'house',
+          is_container: true,
+          default_combined: true,
+          name: 'Combined House',
+        }),
+      ],
+    })
+    expect(screen.getByLabelText(/let as one/i)).toBeDisabled()
+    expect(screen.getByText(/already combined.*combined house/i)).toBeInTheDocument()
+    expect(screen.queryByText(/already combined.*uncombined wing/i)).not.toBeInTheDocument()
+  })
+
+  it('names the combined ancestor beside the disabled control', () => {
+    // Scoped to "already combined" so this cannot pass merely because
+    // 'North Lodge' also appears as an option text in the parent-unit
+    // <select> above — a real risk here, since 'house' is a valid parent
+    // candidate for 'wing' and would render there regardless of this
+    // control's own reason text.
+    renderForm({
+      unit: unitRecord({ id: 'wing', is_container: true, parent_unit: 'house' }),
+      units: [
+        unitRecord({
+          id: 'house',
+          is_container: true,
+          name: 'North Lodge',
+          default_combined: true,
+        }),
+      ],
+    })
+    expect(screen.getByText(/already combined.*north lodge/i)).toBeInTheDocument()
+  })
+
+  it('submits default_combined on the write payload', async () => {
+    updateLodgingUnit.mockResolvedValue({})
+    const user = userEvent.setup()
+
+    renderForm({ unit: unitRecord({ id: 'house', is_container: true }) })
+    await user.click(screen.getByLabelText(/let as one/i))
+    await user.click(screen.getByRole('button', { name: 'Save unit' }))
+
+    await waitFor(() => {
+      expect(updateLodgingUnit).toHaveBeenCalled()
+    })
+    const [, payload] = updateLodgingUnit.mock.calls[0] as [string, LodgingUnitInput]
+    expect(payload.default_combined).toBe(true)
+  })
+
+  it('clears default_combined once "is a building" is unticked, so the two never contradict on save', async () => {
+    // The control disappears the moment isContainer goes false — it is
+    // rendered `isContainer && ...` in UnitIdentityFields — but state is not
+    // UI: unless the form clears `combined` itself, the payload still saves
+    // default_combined: true beside is_container: false. That contradiction
+    // is exactly what verify-slot-merge-seed.sh's `leaked` check asserts
+    // never exists in the registry.
+    updateLodgingUnit.mockResolvedValue({})
+    const user = userEvent.setup()
+
+    renderForm({ unit: unitRecord({ id: 'house', is_container: true }) })
+    await user.click(screen.getByLabelText(/let as one/i))
+    await user.click(
+      screen.getByLabelText('This is a building or building area with multiple bedrooms.')
+    )
+    await user.click(screen.getByRole('button', { name: 'Save unit' }))
+
+    await waitFor(() => {
+      expect(updateLodgingUnit).toHaveBeenCalled()
+    })
+    const [, payload] = updateLodgingUnit.mock.calls[0] as [string, LodgingUnitInput]
+    expect(payload.default_combined).toBe(false)
+    expect(payload.is_container).toBe(false)
   })
 })

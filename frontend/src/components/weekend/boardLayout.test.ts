@@ -33,6 +33,8 @@ function unit(overrides: Partial<LodgingUnitRow> = {}): LodgingUnitRow {
     is_confirmed: false,
     is_active: true,
     is_container: false,
+    parent_code: '',
+    is_combined: false,
     inventory_class: 'family_pool',
     family_available_override: null,
     reason: '',
@@ -511,6 +513,60 @@ describe('buildBoard — consent flagging on ELIGIBILITY, not the gate', () => {
     expect(shared(['declined', 'declined']).areas[0]?.slots[0]?.consent?.declinedCount).toBe(2)
   })
 
+  it('counts only the parties that actually share a room, not everyone on a merged card', () => {
+    // The third level of the bug `overlappingPartyKeys` was written to kill.
+    // A combined house rolls every room's party onto ONE slot, so a family
+    // alone in its own room lands beside a pair genuinely sharing another.
+    // Gating the flag on overlap fixed WHETHER it fires; the counts inside it
+    // were still per-slot, so the pair's flag named the soloist too.
+    //
+    // `docs/architecture/lodging-occupancy.md`: "An extended family spanning
+    // two or more registrations may occupy one house together, each
+    // registration in its own room. This is not sharing a unit." A family the
+    // flag must not describe must not be counted by it either.
+    const house = unit({
+      unit_id: 'uh',
+      code: 'house',
+      name: 'House',
+      is_container: true,
+      is_combined: true,
+    })
+    const r1 = unit({ unit_id: 'ur1', code: 'r1', name: 'Room 1', parent_code: 'house' })
+    const r2 = unit({ unit_id: 'ur2', code: 'r2', name: 'Room 2', parent_code: 'house' })
+
+    const inRoom = (id: number, name: string, code: string) =>
+      party({
+        household_cm_id: id,
+        display_name: name,
+        unit_code: code,
+        unit_name: code,
+        share: {
+          preference: 'unknown',
+          proximity: [],
+          request_text: '',
+          needs_resolution: false,
+          eligibility: 'unknown',
+          eligibility_source: 'form',
+          answers_conflict: false,
+        },
+      })
+
+    const board = buildBoard(
+      // Garcia and Chen share Room 1. Okonkwo is alone in Room 2.
+      [inRoom(301, 'Garcia', 'r1'), inRoom(302, 'Chen', 'r1'), inRoom(303, 'Okonkwo', 'r2')],
+      [house, r1, r2]
+    )
+    const slot = board.areas[0]?.slots[0]
+
+    // All three are drawn on the one combined card...
+    expect(slot?.unit.code).toBe('house')
+    expect(slot?.parties).toHaveLength(3)
+    // ...but only the two sharing Room 1 are the flag's subject.
+    expect(slot?.consent).not.toBeNull()
+    expect(slot?.consent?.unansweredCount).toBe(2)
+    expect(slot?.consent?.reason).toContain('2 families')
+  })
+
   it('IGNORES the registration gate: a no_share gate resolved to named is legitimate', () => {
     // 3 households for 2026 said no at registration and then named a partner
     // on the authoritative form. The old gate-based rule flagged every one of
@@ -606,5 +662,281 @@ describe('buildBoard — area grouping and colour', () => {
       [unit(), unit({ unit_id: 'u2', code: 'ridge-1', area_code: 'NR', area_name: 'North Ridge' })]
     )
     expect(board.areas.map((area) => area.partyCount)).toEqual([2, 0])
+  })
+})
+
+describe('buildBoard — drawing at the resolved container level', () => {
+  it('draws a combined container as ONE slot instead of its rooms', () => {
+    const units = [
+      unit({ code: 'house', is_container: true, is_combined: true, sleeps: 7 }),
+      unit({ code: 'r1', parent_code: 'house', sleeps: 2 }),
+      unit({ code: 'r2', parent_code: 'house', sleeps: 2 }),
+    ]
+    const board = buildBoard([], units)
+    const codes = board.areas.flatMap((a) => a.slots.map((s) => s.unit.code))
+    expect(codes).toEqual(['house'])
+    // The container's OWN measured capacity, never the sum of its rooms.
+    expect(board.areas[0]?.slots[0]?.unit.sleeps).toBe(7)
+  })
+
+  it('places a container-coded party on the combined card', () => {
+    const units = [
+      unit({ code: 'house', is_container: true, is_combined: true }),
+      unit({ code: 'r1', parent_code: 'house' }),
+    ]
+    const board = buildBoard(
+      [party({ unit_code: 'house', unit_name: 'House', unit_codes: ['house'] })],
+      units
+    )
+    expect(board.offBoard).toEqual([])
+    expect(board.areas[0]?.slots[0]?.parties).toHaveLength(1)
+  })
+
+  it('fans a container-coded party down when the board is split below it', () => {
+    // The container is NOT combined, so the rooms are drawn. The party is
+    // placed, so the unplaced rail would be a lie and offBoard would hide it.
+    const units = [
+      unit({ code: 'house', is_container: true }),
+      unit({ code: 'r1', parent_code: 'house' }),
+      unit({ code: 'r2', parent_code: 'house' }),
+    ]
+    const board = buildBoard(
+      [party({ unit_code: 'house', unit_name: 'House', unit_codes: ['house'] })],
+      units
+    )
+    expect(board.offBoard).toEqual([])
+    const drawn = board.areas.flatMap((a) => a.slots)
+    expect(drawn.map((s) => s.unit.code).toSorted()).toEqual(['r1', 'r2'])
+    expect(drawn.every((s) => s.parties.length === 1)).toBe(true)
+  })
+
+  it('rolls a room-coded party up onto the combined card', () => {
+    const units = [
+      unit({ code: 'house', is_container: true, is_combined: true }),
+      unit({ code: 'r1', parent_code: 'house' }),
+      unit({ code: 'r2', parent_code: 'house' }),
+    ]
+    const board = buildBoard(
+      [
+        party({
+          unit_code: '',
+          unit_name: 'House',
+          unit_codes: ['r1', 'r2'],
+          is_merged_slot: true,
+        }),
+      ],
+      units
+    )
+    // ONE slot entry, not two: the rooms are not drawn, and a party must not
+    // be counted twice on the card that replaced them.
+    expect(board.areas[0]?.slots[0]?.parties).toHaveLength(1)
+  })
+
+  it('draws a party named at an INTERMEDIATE container on the combined card below it', () => {
+    // Three levels: `block` groups `house`, and `house` is the whole-house
+    // let. The fan-down descends to the DRAWN descendants, not to the raw
+    // leaves — `coveredCodes` walks straight past `house` to `r1`/`r2`, and
+    // neither of those is drawn, so a leaf-based fan-down yields [] and sends
+    // a placed party to the off-board rail.
+    //
+    // Today's registry is two-level, but `parentCandidates` permits any depth
+    // and task 8 already tests a three-level ancestor walk, so the roll-up
+    // half of this is reachable and the fan-down half must match it.
+    const units = [
+      unit({ code: 'block', is_container: true }),
+      unit({ code: 'house', parent_code: 'block', is_container: true, is_combined: true }),
+      unit({ code: 'r1', parent_code: 'house' }),
+      unit({ code: 'r2', parent_code: 'house' }),
+    ]
+    const board = buildBoard(
+      [
+        party({
+          display_name: 'Alpha',
+          unit_code: 'block',
+          unit_name: 'Block',
+          unit_codes: ['block'],
+        }),
+      ],
+      units
+    )
+
+    expect(board.offBoard).toEqual([])
+    const drawn = board.areas.flatMap((a) => a.slots)
+    expect(drawn.map((s) => s.unit.code)).toEqual(['house'])
+    expect(drawn[0]?.parties.map((p) => p.display_name)).toEqual(['Alpha'])
+  })
+})
+
+describe('buildBoard — consent flag follows leaf overlap, not the card (task-11)', () => {
+  /**
+   * A combined container: `house` draws ONE card, and both `r1` and `r2` roll
+   * up onto it (the roll-up `indexPayload` already does for a merged
+   * building). Modelled on the real report: two households in Wawona Front
+   * and Wawona Back went unflagged split, then flagged the moment the card
+   * was merged, though nothing about either household changed.
+   */
+  const combinedHouse = [
+    unit({ code: 'house', is_container: true, is_combined: true, sleeps: 8 }),
+    unit({ code: 'r1', parent_code: 'house' }),
+    unit({ code: 'r2', parent_code: 'house' }),
+  ]
+
+  /** A household placed in one room, with a resolved eligibility that alone would flag. */
+  function inRoom(unitCode: string, overrides: Partial<RosterPartyRow> = {}): RosterPartyRow {
+    return party({
+      unit_code: unitCode,
+      unit_name: unitCode,
+      share: {
+        preference: 'unknown',
+        proximity: [],
+        request_text: '',
+        needs_resolution: false,
+        eligibility: 'declined',
+        eligibility_source: 'form',
+        answers_conflict: false,
+      },
+      ...overrides,
+    })
+  }
+
+  it('does not flag two households the merge rolled onto one card from DISJOINT rooms', () => {
+    // docs/architecture/lodging-occupancy.md: "An extended family spanning
+    // two or more registrations may occupy one house together, each
+    // registration in its own room. This is not sharing a unit."
+    const board = buildBoard(
+      [
+        inRoom('r1', { household_cm_id: 500001, display_name: 'Alpha' }),
+        inRoom('r2', { household_cm_id: 500002, display_name: 'Beta' }),
+      ],
+      combinedHouse
+    )
+    expect(board.areas[0]?.slots[0]?.unit.code).toBe('house')
+    expect(board.areas[0]?.slots[0]?.parties).toHaveLength(2)
+    expect(board.areas[0]?.slots[0]?.consent).toBeNull()
+    expect(board.flaggedCount).toBe(0)
+  })
+
+  it('flags two households the merge rolled onto one card from the SAME room', () => {
+    const board = buildBoard(
+      [
+        inRoom('r1', { household_cm_id: 500001, display_name: 'Alpha' }),
+        inRoom('r1', { household_cm_id: 500002, display_name: 'Beta' }),
+      ],
+      combinedHouse
+    )
+    expect(board.areas[0]?.slots[0]?.consent).not.toBeNull()
+    expect(board.flaggedCount).toBe(1)
+  })
+
+  it('flags a CONTAINER-named household against one named a room beneath it, split', () => {
+    // A party on the building occupies every room in it, so it overlaps a
+    // party in any one of them. Nothing here is merged at all — the container
+    // fans down onto both rooms and `r1` holds two parties — so this is a
+    // straight comparison of `'house'` against `'r1'`, which finds no
+    // intersection unless the container is expanded to its leaves first.
+    const splitHouse = [
+      unit({ code: 'house', is_container: true }),
+      unit({ code: 'r1', parent_code: 'house' }),
+      unit({ code: 'r2', parent_code: 'house' }),
+    ]
+    const board = buildBoard(
+      [
+        inRoom('house', { household_cm_id: 500001, display_name: 'Alpha' }),
+        inRoom('r1', { household_cm_id: 500002, display_name: 'Beta' }),
+      ],
+      splitHouse
+    )
+
+    const shared = board.areas[0]?.slots.find((slot) => slot.unit.code === 'r1')
+    expect(shared?.parties).toHaveLength(2)
+    expect(shared?.consent).not.toBeNull()
+    // `r2` holds only the fanned-down container party, so it is nobody's
+    // share: one slot flagged, not two.
+    expect(board.flaggedCount).toBe(1)
+  })
+
+  it('flags a CONTAINER-named household against one named a room beneath it, combined', () => {
+    // The same two households once the building is drawn as one card. The
+    // verdict must not depend on the draw level — that is what task-11
+    // settled — so this is the merged mirror of the split case above.
+    const board = buildBoard(
+      [
+        inRoom('house', { household_cm_id: 500001, display_name: 'Alpha' }),
+        inRoom('r1', { household_cm_id: 500002, display_name: 'Beta' }),
+      ],
+      combinedHouse
+    )
+
+    expect(board.areas[0]?.slots[0]?.unit.code).toBe('house')
+    expect(board.areas[0]?.slots[0]?.parties).toHaveLength(2)
+    expect(board.areas[0]?.slots[0]?.consent).not.toBeNull()
+    expect(board.flaggedCount).toBe(1)
+  })
+
+  it('flags a multi-room party whose rooms overlap a single-room party', () => {
+    const multiRoom = party({
+      household_cm_id: 500001,
+      display_name: 'Alpha',
+      unit_code: '',
+      unit_name: 'House',
+      unit_codes: ['r1', 'r2'],
+      is_merged_slot: true,
+      share: {
+        preference: 'unknown',
+        proximity: [],
+        request_text: '',
+        needs_resolution: false,
+        eligibility: 'declined',
+        eligibility_source: 'form',
+        answers_conflict: false,
+      },
+    })
+    const singleRoom = inRoom('r1', { household_cm_id: 500002, display_name: 'Beta' })
+
+    const board = buildBoard([multiRoom, singleRoom], combinedHouse)
+    expect(board.areas[0]?.slots[0]?.parties).toHaveLength(2)
+    expect(board.areas[0]?.slots[0]?.consent).not.toBeNull()
+  })
+
+  it('still flags a plain leaf slot holding two parties in the same room', () => {
+    // Not a merged card at all -- proves the ordinary, pre-existing case is
+    // unbroken by gating on overlap.
+    const board = buildBoard(
+      [
+        party({
+          household_cm_id: 500001,
+          display_name: 'Alpha',
+          unit_code: 'cedar-1',
+          unit_name: 'Cedar 1',
+          share: {
+            preference: 'unknown',
+            proximity: [],
+            request_text: '',
+            needs_resolution: false,
+            eligibility: 'declined',
+            eligibility_source: 'form',
+            answers_conflict: false,
+          },
+        }),
+        party({
+          household_cm_id: 500002,
+          display_name: 'Beta',
+          unit_code: 'cedar-1',
+          unit_name: 'Cedar 1',
+          share: {
+            preference: 'unknown',
+            proximity: [],
+            request_text: '',
+            needs_resolution: false,
+            eligibility: 'declined',
+            eligibility_source: 'form',
+            answers_conflict: false,
+          },
+        }),
+      ],
+      [unit()]
+    )
+    expect(board.areas[0]?.slots[0]?.consent).not.toBeNull()
+    expect(board.flaggedCount).toBe(1)
   })
 })

@@ -60,6 +60,85 @@ export function parseDropTarget(overId: string | null | undefined): DropTarget |
   return null
 }
 
+/**
+ * Draggable AND droppable id prefix for the CARD gesture — merging one room
+ * into a sibling, or the reverse resolution's refusal of anything that is not
+ * shaped like this gesture.
+ *
+ * A party's drag id is always its `partyKey`, which is never `merge:`-shaped,
+ * so `resolveDrop` (which looks the active id up as a party) and
+ * `resolveMergeDrop` (which requires BOTH ids to carry this prefix) can never
+ * both claim the same drop event. That is deliberate, not incidental: it is
+ * what lets `LodgingBoard` try the merge resolver first, unconditionally,
+ * without first having to decide which gesture is in flight.
+ */
+const MERGE_PREFIX = 'merge:'
+
+/** The draggable and droppable id for a room's merge handle. */
+export function mergeDragId(code: string): string {
+  return `${MERGE_PREFIX}${code}`
+}
+
+/** `null` unless `id` is a merge-gesture id naming a unit the payload carries. */
+export function mergeDragUnit(
+  id: string | null | undefined,
+  units: LodgingUnitRow[]
+): LodgingUnitRow | null {
+  if (typeof id !== 'string' || !id.startsWith(MERGE_PREFIX)) return null
+  const code = id.slice(MERGE_PREFIX.length)
+  if (code.length === 0) return null
+  return units.find((candidate) => candidate.code === code) ?? null
+}
+
+/**
+ * Whether `candidate` is a legal merge target for the card currently being
+ * dragged — the gender-rule analogue (`isValidDropTarget` on summer's
+ * `BunkCard`) for this gesture. `source === null` means no card drag is in
+ * flight, which is never valid for anybody; a unit dropped on itself, or two
+ * units under different (or absent) parents, are equally refused.
+ *
+ * A room with NO `parent_code` offers no valid target ever, in either
+ * direction: merging is promotion to the parent, and a parentless room has
+ * nothing to be promoted to.
+ */
+export function isValidMergeTarget(
+  source: LodgingUnitRow | null,
+  candidate: LodgingUnitRow
+): boolean {
+  if (source === null || source.code === candidate.code) return false
+  const parentCode = source.parent_code ?? ''
+  return parentCode !== '' && parentCode === (candidate.parent_code ?? '')
+}
+
+/** What a completed card-merge gesture asks the board to write. */
+export interface MergeIntent {
+  parentCode: string
+  combined: true
+}
+
+export interface ResolveMergeDropArgs {
+  activeId: string | null | undefined
+  overId: string | null | undefined
+  units: LodgingUnitRow[]
+}
+
+/**
+ * A room card dropped onto a sibling promotes their shared parent to
+ * combined. `null` for anything else: a target with no parent, two rooms
+ * under different parents, a room dropped on itself, or either id not shaped
+ * like this gesture — see the module doc above `MERGE_PREFIX`.
+ */
+export function resolveMergeDrop({
+  activeId,
+  overId,
+  units,
+}: ResolveMergeDropArgs): MergeIntent | null {
+  const source = mergeDragUnit(activeId, units)
+  const target = mergeDragUnit(overId, units)
+  if (source === null || target === null || !isValidMergeTarget(source, target)) return null
+  return { parentCode: source.parent_code ?? '', combined: true }
+}
+
 export type PlacementIntent =
   | {
       kind: 'place'
@@ -132,9 +211,12 @@ export function resolveDrop({
 
   const unit = units.find((candidate) => candidate.code === target.unitCode)
   if (unit === undefined) return null
-  // A building carries the beds its halves already report and never gets a
-  // card, so nothing may be placed on it.
-  if (unit.is_container === true) return null
+  // A COMBINED container IS a card now — Task 6 draws its own row in place of
+  // its rooms (unitLevel.ts, `drawnUnits`) — so it must accept a drop exactly
+  // like any other drawn unit. A NON-combined container still carries only
+  // the beds its halves already report and never gets a card, so nothing may
+  // be placed on it.
+  if (unit.is_container === true && unit.is_combined !== true) return null
 
   // Only a party occupying this one room and nothing else is already where it
   // was dropped. A multi-room party dropped onto ONE of its own rooms is a
