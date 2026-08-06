@@ -1,7 +1,7 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { renderHook, waitFor } from '@testing-library/react'
 import type { ReactNode } from 'react'
-import { describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { useSolverRuns } from './useSolverRuns'
 
@@ -39,10 +39,15 @@ vi.mock('../lib/pocketbase', () => ({
   },
 }))
 
+let qc: QueryClient
+
 const wrapper = ({ children }: { children: ReactNode }) => {
-  const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   return <QueryClientProvider client={qc}>{children}</QueryClientProvider>
 }
+
+beforeEach(() => {
+  qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+})
 
 describe('useSolverRuns', () => {
   it('passes through pre-parsed stats and details objects from PB', async () => {

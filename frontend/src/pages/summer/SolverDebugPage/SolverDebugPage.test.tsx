@@ -3,7 +3,7 @@ import { act, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import type { ReactNode } from 'react'
 import { MemoryRouter } from 'react-router'
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import toast from 'react-hot-toast'
 
@@ -101,14 +101,19 @@ vi.mock('../../../hooks/useApiWithAuth', () => ({
   useApiWithAuth: () => ({ fetchWithAuth: vi.fn() }),
 }))
 
+let client: QueryClient
+
 const wrapper = ({ children }: { children: ReactNode }) => {
-  const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   return (
-    <QueryClientProvider client={qc}>
+    <QueryClientProvider client={client}>
       <MemoryRouter initialEntries={['/summer/debug/solver']}>{children}</MemoryRouter>
     </QueryClientProvider>
   )
 }
+
+beforeEach(() => {
+  client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+})
 
 afterEach(() => {
   mode = 'empty'

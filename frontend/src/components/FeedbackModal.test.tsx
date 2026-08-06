@@ -28,10 +28,9 @@ vi.mock('../contexts/AuthContext', () => ({
   useAuth: () => mockAuthState,
 }))
 
+let queryClient: QueryClient
+
 function renderModal(props: { isOpen: boolean; onClose: () => void }) {
-  const queryClient = new QueryClient({
-    defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
-  })
   return render(
     <QueryClientProvider client={queryClient}>
       <FeedbackModal {...props} />
@@ -43,6 +42,9 @@ describe('FeedbackModal', () => {
   const mockOnClose = vi.fn()
 
   beforeEach(() => {
+    queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+    })
     vi.clearAllMocks()
     mockAuthState.isLoading = false
     mockAuthState.isAuthenticated = true

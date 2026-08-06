@@ -25,8 +25,9 @@ vi.mock('../hooks/useCurrentYear', () => ({
 
 vi.mock('../config/branding', () => ({ getCampNameShort: () => 'Camp' }))
 
+let client: QueryClient
+
 function wrapper({ children }: { children: ReactNode }) {
-  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   return (
     <QueryClientProvider client={client}>
       <MemoryRouter>{children}</MemoryRouter>
@@ -53,6 +54,7 @@ const WOMENS = {
 }
 
 beforeEach(() => {
+  client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   summaryQuery.data = {
     year: 2026,
     weekends: [
