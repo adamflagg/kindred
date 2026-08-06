@@ -33,6 +33,15 @@ already been asserted wrongly from a careful reading first:
 - Dropping `items-start` **reclaims no space at all** — the grid row is already
   as tall as its tallest card, so it relocates whitespace rather than removing
   it.
+- **A sweep test is only as good as what the render mounts.** The `text-[Npx]`
+  sweep in `LodgingUnitCard.test.tsx` calls itself load-bearing and covers
+  "anywhere inside the card", but its render did not pass `canMerge`, so the
+  merge and split controls never mounted and kept `text-[10px]` through the
+  whole migration. Nothing failed; §2 was marked CLOSED on a sweep that was
+  blind to two live controls in ordinary use. A coverage assertion that
+  enumerates elements is worth more than the sweep it guards — the sweep now
+  asserts the two buttons are present by role, so a prop rename fails loudly
+  instead of silently re-narrowing it.
 
 Assert nothing about rendered output without rendering it. jsdom parses no
 Tailwind, so a `toHaveStyle` assertion on a Tailwind class passes against an
@@ -82,24 +91,29 @@ Summer uses three steps of the stock scale. The family board was built on
 arbitrary bracket literals whose **largest** size was smaller than summer's
 **body**.
 
-| Slot               | Summer           | Family before | Family now |
-| ------------------ | ---------------- | ------------- | ---------- |
-| Unit title         | `text-lg` (18px) | `text-[13px]` | `text-lg`  |
-| Capacity figure    | `text-sm`        | `text-[11px]` | `text-sm`  |
-| Card body          | `text-sm`        | `text-[11px]` | `text-sm`  |
-| Badges, chips      | `text-xs`        | `text-[10px]` | `text-xs`  |
-| Occupant name      | `text-sm`        | `text-[13px]` | `text-sm`  |
-| Occupant secondary | `text-xs`        | `text-[11px]` | `text-xs`  |
+| Slot                | Summer           | Family before | Family now |
+| ------------------- | ---------------- | ------------- | ---------- |
+| Unit title          | `text-lg` (18px) | `text-[13px]` | `text-lg`  |
+| Capacity figure     | `text-sm`        | `text-[11px]` | `text-sm`  |
+| Card body           | `text-sm`        | `text-[11px]` | `text-sm`  |
+| Badges, chips       | `text-xs`        | `text-[10px]` | `text-xs`  |
+| Occupant name       | `text-sm`        | `text-[13px]` | `text-sm`  |
+| Occupant secondary  | `text-xs`        | `text-[11px]` | `text-xs`  |
+| Merge / split pills | —                | `text-[10px]` | `text-xs`  |
 
 The occupant card steps **down** from the unit card, as `CamperCard` does from
 `BunkCard`. It does not inherit the unit card's body size, or the household name
 would print as large as the room holding it.
 
-`UnitAvailabilityControl` renders inside the card and is part of its scale — a
-10px pill in a 14px meta row is the same bug. A sweep test fails on any
-`text-[Npx]` anywhere inside either card, because a single arbitrary size left on
-a nested row is invisible in a spot check and is how the two scales diverged in
-the first place.
+`UnitAvailabilityControl` and #2040's merge/split controls render inside the
+card and are part of its scale — a 10px pill in a 14px meta row is the same bug,
+and all three sat at 10px until the sweep was made to render them. Measured
+live with 25 controls mounted: every one is 12px, matching the chips beside
+them, and the card sweep returns empty. A sweep test fails on any arbitrary
+size anywhere inside either card — including variant-prefixed and rem/em forms
+(`sm:text-[11px]`, `text-[0.75rem]`), though arbitrary _colours_ stay out of
+scope — because a single arbitrary size left on a nested row is invisible in a
+spot check and is how the two scales diverged in the first place.
 
 **The typeface was the larger half of this row, and it is not a size at all.**
 `index.css` sets `h1, h2, h3 { font-family: var(--font-display) }` — Fraunces,
