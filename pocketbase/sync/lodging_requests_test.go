@@ -84,6 +84,36 @@ func TestCollapseNoRequestsDoesNotVetoTheGate(t *testing.T) {
 	}
 }
 
+// TestCollapseSiblingDisagreementSurvivesANoRequestsSibling pins spec 4.2's
+// household-grain collapse against silently losing a real request. The Family
+// Camp information form is answered per child, and siblings sometimes
+// disagree -- 11 households in 2025, 5 in 2026. One child's genuine "Share a
+// cabin WITH" request must survive a sibling's "No requests": ORing the modes
+// together, rather than last-wins or requiring agreement, is what makes most
+// observed "No requests + real request" combinations exist at all (design
+// doc §10).
+func TestCollapseSiblingDisagreementSurvivesANoRequestsSibling(t *testing.T) {
+	ts := time.Date(2025, 4, 21, 17, 51, 0, 0, time.UTC)
+	const withNamed = "Share a cabin WITH a specific family that I know (please include names " +
+		"below and ensure that the request is mutual)."
+
+	// Emma Garcia named a family on her own form answer; her sibling Liam's
+	// record carries the modes field's own no-preference option -- silence,
+	// not a decline.
+	got := CollapseToHouseholdGrain([]PersonRequestValue{
+		{HouseholdKey: hhA, FieldName: fieldSharedCabinForm, Value: withNamed, LastUpdated: ts},
+		{HouseholdKey: hhA, FieldName: fieldSharedCabinForm, Value: "No requests", LastUpdated: ts},
+	})
+
+	if !got[hhA].WantsWith {
+		t.Error("WantsWith = false; a sibling's real request must survive another sibling's \"No requests\"")
+	}
+	if got[hhA].ShareEligibility != shareEligibilityNamed {
+		t.Errorf("ShareEligibility = %q, want %q -- the real request must still resolve to a verdict",
+			got[hhA].ShareEligibility, shareEligibilityNamed)
+	}
+}
+
 // TestCollapseDoesNotStampUnrelatedFields: request_last_updated is the column
 // spec 4.1 designates for resolving a form-vs-registration conflict, so it has
 // to mean "when the request was last touched". applyHouseholdRequests feeds
