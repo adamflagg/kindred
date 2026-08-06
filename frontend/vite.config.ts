@@ -27,7 +27,7 @@ interface BrandingConfig {
 }
 
 // Load default branding
-const defaultBrandingPath = resolve(__dirname, '../config/branding.json')
+const defaultBrandingPath = resolve(import.meta.dirname, '../config/branding.json')
 let defaultBranding: BrandingConfig = {
   camp_name: 'Kindred',
   camp_name_short: 'Kindred',
@@ -50,7 +50,7 @@ if (existsSync(defaultBrandingPath)) {
 // Load local branding overrides
 let localBranding: Partial<BrandingConfig> = {}
 const useDefaultBranding = process.env.USE_DEFAULT_BRANDING === 'true'
-const brandingPath = resolve(__dirname, '../config/branding.local.json')
+const brandingPath = resolve(import.meta.dirname, '../config/branding.local.json')
 
 if (useDefaultBranding) {
   console.log('ℹ️  USE_DEFAULT_BRANDING=true - using default branding (no local overrides)')
@@ -88,7 +88,7 @@ function serveLocalAssets(): Plugin {
   return {
     name: 'serve-local-assets',
     configureServer(server) {
-      const localDir = resolve(__dirname, '../local')
+      const localDir = resolve(import.meta.dirname, '../local')
 
       // Serve files directly to avoid CORS middleware issues with re-routed requests
       server.middlewares.use('/local', (req, res, next) => {
@@ -289,7 +289,7 @@ const baseConfig: UserConfig = {
 // Contains private FQDNs, HMR settings, CORS origins
 // Falls back gracefully if not available (gitignored, doesn't exist in CI)
 
-const localConfigPath = resolve(__dirname, 'vite.config.local.ts')
+const localConfigPath = resolve(import.meta.dirname, 'vite.config.local.ts')
 let localConfig: UserConfig = {}
 
 if (existsSync(localConfigPath)) {
@@ -297,7 +297,7 @@ if (existsSync(localConfigPath)) {
     // Dynamic import is async, but Vite supports top-level await in config
     // eslint-disable-next-line @typescript-eslint/ban-ts-comment
     // @ts-ignore - File is gitignored; may not exist at compile time
-    const { localConfig: imported } = await import('./vite.config.local')
+    const { localConfig: imported } = await import('./vite.config.local.ts')
     localConfig = imported
     console.log('✓ Loaded local Vite configuration from vite.config.local.ts')
   } catch {
