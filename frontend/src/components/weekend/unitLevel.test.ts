@@ -48,11 +48,22 @@ const TREE = [
 // the walk before the guard is ever exercised. Shared by the drawnUnits and
 // coveredCodes cycle tests below: both functions carry the same
 // Set<string>-keyed visited guard over the same children-by-parent map.
+//
+// EVERY node here is `is_container: true`. Leaf-ness (Task 6) now gates
+// descent: a leaf draws immediately and its kids are never queued, so a
+// leaf anywhere on r -> a -> b would stop the walk before it ever reached
+// the back-edge and the guard would never be exercised. Only a container
+// gets its children queued at all, which is what lets the walk actually
+// reach the repeated `a` and put the visited guard to work. u()'s
+// `is_container: false` default made this fixture inert the moment
+// leaf-ness stopped being `kids.length === 0` — every node became a leaf
+// and `drawnUnits`/`coveredCodes` returned after `r` alone, never
+// descending far enough to revisit anything.
 const CYCLIC = [
-  u({ code: 'r' }),
-  u({ code: 'a', parent_code: 'r' }),
-  u({ code: 'b', parent_code: 'a' }),
-  u({ code: 'a', parent_code: 'b' }),
+  u({ code: 'r', is_container: true }),
+  u({ code: 'a', parent_code: 'r', is_container: true }),
+  u({ code: 'b', parent_code: 'a', is_container: true }),
+  u({ code: 'a', parent_code: 'b', is_container: true }),
 ]
 
 describe('drawnUnits', () => {
