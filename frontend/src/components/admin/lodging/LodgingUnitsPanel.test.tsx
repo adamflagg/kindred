@@ -206,7 +206,7 @@ describe('LodgingUnitsPanel', () => {
     const user = userEvent.setup()
     await renderPanel()
 
-    await user.click(screen.getByRole('columnheader', { name: /Sleeps/ }))
+    await user.click(screen.getByRole('button', { name: 'Sleeps' }))
 
     const north = screen.getByTestId('area-group-area_1')
     const names = within(north)
@@ -221,9 +221,10 @@ describe('LodgingUnitsPanel', () => {
     await renderPanel()
 
     const header = screen.getByRole('columnheader', { name: /Sleeps/ })
-    await user.click(header)
+    expect(header).not.toHaveAttribute('aria-sort')
+    await user.click(screen.getByRole('button', { name: 'Sleeps' }))
     expect(header).toHaveAttribute('aria-sort', 'ascending')
-    await user.click(header)
+    await user.click(screen.getByRole('button', { name: 'Sleeps' }))
     expect(header).toHaveAttribute('aria-sort', 'descending')
   })
 

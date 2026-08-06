@@ -381,24 +381,22 @@ describe('PipelineBatchList', () => {
 
     it('toggles sort indicator on Enter key on sortable header', async () => {
       render(<PipelineBatchList {...defaultProps} />)
-      const sortableHeader = document.querySelector(
-        '[role="columnheader"][tabindex]'
-      ) as HTMLElement
-      sortableHeader.focus()
+      const sortableButton = screen.getByRole('button', { name: 'Camper' })
+      sortableButton.focus()
       await userEvent.keyboard('{Enter}')
       // Sorting is now client-side; aria-sort on the header reflects the applied order
-      const ariaSort = sortableHeader.getAttribute('aria-sort') ?? ''
+      const header = sortableButton.closest('[role="columnheader"]') as HTMLElement
+      const ariaSort = header.getAttribute('aria-sort') ?? ''
       expect(['ascending', 'descending']).toContain(ariaSort)
     })
 
     it('toggles sort indicator on Space key on sortable header', async () => {
       render(<PipelineBatchList {...defaultProps} />)
-      const sortableHeader = document.querySelector(
-        '[role="columnheader"][tabindex]'
-      ) as HTMLElement
-      sortableHeader.focus()
+      const sortableButton = screen.getByRole('button', { name: 'Camper' })
+      sortableButton.focus()
       await userEvent.keyboard(' ')
-      const ariaSort = sortableHeader.getAttribute('aria-sort') ?? ''
+      const header = sortableButton.closest('[role="columnheader"]') as HTMLElement
+      const ariaSort = header.getAttribute('aria-sort') ?? ''
       expect(['ascending', 'descending']).toContain(ariaSort)
     })
   })
@@ -588,10 +586,7 @@ describe('PipelineBatchList', () => {
       const user = userEvent.setup()
       render(<PipelineBatchList {...defaultProps} />)
 
-      const camperHeader = screen
-        .getAllByRole('columnheader')
-        .find((h) => String(h.textContent).trim().startsWith('Camper'))!
-      await user.click(camperHeader)
+      await user.click(screen.getByRole('button', { name: 'Camper' }))
 
       // Sort is now applied client-side; first row should be Emma (alphabetical)
       const rows = document.querySelectorAll('[role="rowgroup"] [role="row"]')
