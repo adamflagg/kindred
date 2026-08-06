@@ -50,11 +50,15 @@ scm_min=$(sqlite3 "$DB" "SELECT json_extract(f.value,'\$.min') FROM _collections
 scenario_required=$(sqlite3 "$DB" "SELECT json_extract(f.value,'\$.required') FROM _collections c, json_each(c.fields) f WHERE c.name='lodging_slot_merges' AND json_extract(f.value,'\$.name')='scenario';")
 [ "$scenario_required" = "0" ] || { echo "FAIL: lodging_slot_merges.scenario must be optional -- '' is the weekend-level row, 1500000140 (got $scenario_required)" >&2; exit 1; }
 
-# The unique index must cover exactly (unit, session, year, scenario), in
-# that order — "some unique index exists" doesn't rule out one over the wrong
-# columns.
-idxname=$(sqlite3 "$DB" "SELECT name FROM sqlite_master WHERE type='index' AND tbl_name='lodging_slot_merges' AND sql LIKE '%UNIQUE%' LIMIT 1;")
-[ -n "$idxname" ] || { echo "FAIL: lodging_slot_merges has no unique index" >&2; exit 1; }
-idxcols=$(sqlite3 "$DB" "SELECT group_concat(name, ',') FROM (SELECT name FROM pragma_index_info('$idxname') ORDER BY seqno);")
-[ "$idxcols" = "unit,session,year,scenario" ] || { echo "FAIL: lodging_slot_merges unique index covers wrong columns (got $idxcols)" >&2; exit 1; }
+# The unique index must be the NAMED one 1500000139 creates
+# (idx_lodging_slot_merge_unique), covering exactly (unit, session, year,
+# scenario), in that order. An unordered `LIMIT 1` over "some unique index
+# exists" picks whichever row sqlite_master happens to return first, so a
+# second unique index added later could make this pass or fail without ever
+# looking at the index this script is actually about.
+idx_unique=$(sqlite3 "$DB" "SELECT \"unique\" FROM pragma_index_list('lodging_slot_merges') WHERE name='idx_lodging_slot_merge_unique';")
+[ -n "$idx_unique" ] || { echo "FAIL: lodging_slot_merges has no idx_lodging_slot_merge_unique index" >&2; exit 1; }
+[ "$idx_unique" = "1" ] || { echo "FAIL: idx_lodging_slot_merge_unique exists but is not UNIQUE" >&2; exit 1; }
+idxcols=$(sqlite3 "$DB" "SELECT group_concat(name, ',') FROM (SELECT name FROM pragma_index_info('idx_lodging_slot_merge_unique') ORDER BY seqno);")
+[ "$idxcols" = "unit,session,year,scenario" ] || { echo "FAIL: idx_lodging_slot_merge_unique covers wrong columns (got $idxcols)" >&2; exit 1; }
 echo "OK"
