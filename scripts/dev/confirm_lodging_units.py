@@ -17,7 +17,7 @@ would be the wrong one: it would assert to staff that every cabin in the
 registry had been checked when none had. The script refuses non-local URLs
 unless you pass --i-know-this-is-not-local.
 
-ONE SEASON AT A TIME. `lodging_units` carries a `year` since 1500000140, so
+ONE SEASON AT A TIME. `lodging_units` carries a `year` since 1500000141, so
 --year (default CAMPMINDER_SEASON_ID) picks which season's registry is being
 vouched for. Confirming every season at once would restate, for a year whose
 roster is already settled, that a human checked those cabins.
@@ -60,7 +60,7 @@ def _auth(base: str, identity: str, password: str) -> str:
 def _units(base: str, token: str, year: int) -> list[dict[str, Any]]:
     """Fetch ONE season's units.
 
-    `lodging_units` holds a row per unit per year since 1500000140. Confirming
+    `lodging_units` holds a row per unit per year since 1500000141. Confirming
     every season at once would restate, for a prior year, that a human checked
     cabins in the state that year's roster was already judged against — and
     `--undo` would clear that same prior confirmation. Same reasoning, and the

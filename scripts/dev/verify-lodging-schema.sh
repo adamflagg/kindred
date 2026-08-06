@@ -370,7 +370,7 @@ fi
 
 # -------------------------------------------------------------- season scoping
 #
-# 1500000140. year on lodging_units and lodging_areas turns the registry from
+# 1500000141. year on lodging_units and lodging_areas turns the registry from
 # a timeless table into a per-season one; `code` becomes the cross-year
 # identity thread.
 #
@@ -404,7 +404,7 @@ for table in lodging_units lodging_areas; do
 
   # ...and separately, that it is UNIQUE. pragma_index_info answers only which
   # columns an index spans, so a plain (code, year) index satisfies the check
-  # above while permitting exactly what 1500000140 exists to forbid: two rows
+  # above while permitting exactly what 1500000141 exists to forbid: two rows
   # for one building in one season. The whole (code, year) identity model
   # rests on this constraint, and nothing else here would notice its absence.
   uniq=$(sqlite3 "$DB" "SELECT \"unique\" FROM pragma_index_list('$table') WHERE name = '$idx';")
