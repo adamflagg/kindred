@@ -13,7 +13,7 @@ import type {
   ShareEligibilityValue,
   SharePreferenceValue,
 } from '../../types/lodging'
-import { AREA_HUES, buildBoard, countBoardSlots } from './boardLayout'
+import { AREA_HUES, areaTokens, buildBoard, countBoardSlots } from './boardLayout'
 
 function unit(overrides: Partial<LodgingUnitRow> = {}): LodgingUnitRow {
   return {
@@ -69,6 +69,81 @@ function party(overrides: Partial<RosterPartyRow> = {}): RosterPartyRow {
     ...overrides,
   }
 }
+
+describe('areaTokens — the URL shorthand for each area', () => {
+  /*
+   * Collapse state lives in the query string, so each area needs a short token
+   * for it. `BoardArea.key` cannot serve: it is `code::name`, which needs
+   * escaping and puts the camp's area names in a URL that gets pasted around.
+   *
+   * The registry's own `area_code` cannot serve either, and that was the first
+   * attempt. It is hand-entered and ragged -- two letters for some areas, four
+   * for others -- so the URL read as though the codes meant different things.
+   * Generating the shorthand makes every area two characters and removes a
+   * dependency on a field nothing else in the board reads.
+   *
+   * TWO CHARACTERS IS NOT ALWAYS ENOUGH, which is the whole reason this takes
+   * the full set rather than one area at a time. On the 2026 registry
+   * "Ridge Side" and "River Side" both reduce to RS. No pure function of a
+   * single name can separate them, so the colliding pair -- and only that pair
+   * -- deepens until it is distinct.
+   */
+  function areasNamed(...names: string[]) {
+    return names.map((name, index) => ({ key: `A${String(index)}::${name}`, name }))
+  }
+
+  it('takes the initials of a two-word area', () => {
+    const tokens = areaTokens(areasNamed('Cedar Grove'))
+    expect(tokens.get('A0::Cedar Grove')).toBe('CG')
+  })
+
+  it('takes the first two letters of a one-word area', () => {
+    const tokens = areaTokens(areasNamed('Manzanitas'))
+    expect(tokens.get('A0::Manzanitas')).toBe('MA')
+  })
+
+  it('deepens a colliding pair until the two are distinct', () => {
+    // Both are R + S, and both first words start "Ri", so it takes three
+    // letters of the first word to tell them apart.
+    const tokens = areaTokens(areasNamed('Ridge Side', 'River Side'))
+    expect(tokens.get('A0::Ridge Side')).toBe('RIDS')
+    expect(tokens.get('A1::River Side')).toBe('RIVS')
+  })
+
+  it('leaves every other area on two characters when one pair collides', () => {
+    // The deepening is scoped to the group that clashed. An area that was
+    // never ambiguous must not have its links broken by an unrelated one.
+    const tokens = areaTokens(
+      areasNamed('Ridge Side', 'River Side', 'Ridge Yurts', 'Health Center')
+    )
+    expect(tokens.get('A2::Ridge Yurts')).toBe('RY')
+    expect(tokens.get('A3::Health Center')).toBe('HC')
+  })
+
+  it('gives every area on the real registry shape a distinct token', () => {
+    const names = [
+      'Golden Triangle',
+      'Health Center',
+      'Manzanitas',
+      'Ridge Side',
+      'Ridge Yurts',
+      'River Side',
+      'Tawonga Village',
+      'Tuolumne Heights',
+    ]
+    const tokens = areaTokens(areasNamed(...names))
+    expect(tokens.size).toBe(names.length)
+    expect(new Set(tokens.values()).size).toBe(names.length)
+  })
+
+  it('still yields a token for an area with no usable name', () => {
+    // `areaName` labels this one "Unassigned area" before it gets here, but a
+    // token generator that can return an empty string would drop the area out
+    // of the URL entirely.
+    const tokens = areaTokens(areasNamed(''))
+    expect(tokens.get('A0::')).toBeTruthy()
+  })
+})
 
 describe('buildBoard — which units get a card', () => {
   it('gives every leaf unit a card', () => {

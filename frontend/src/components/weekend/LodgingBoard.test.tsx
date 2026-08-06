@@ -12,6 +12,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import type { ReactNode } from 'react'
+import { MemoryRouter, useLocation } from 'react-router'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import type { LodgingUnitRow, RosterPartyRow } from '../../types/lodging'
@@ -47,8 +48,34 @@ beforeEach(() => {
   client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
 })
 
+// The board reads its collapsed areas from the query string, so it needs a
+// router. `MemoryRouter` rather than a real one: these tests assert on the
+// location, and a shared history between tests would leak `?closed=` forward.
 function wrapper({ children }: { children: ReactNode }) {
-  return <QueryClientProvider client={client}>{children}</QueryClientProvider>
+  return (
+    <QueryClientProvider client={client}>
+      <MemoryRouter initialEntries={['/weekend/fc1/housing']}>{children}</MemoryRouter>
+    </QueryClientProvider>
+  )
+}
+
+/** Renders the live query string, so a test can read what a click wrote. */
+function LocationProbe() {
+  const location = useLocation()
+  return <output data-testid="search">{location.search}</output>
+}
+
+function routerWrapper(initialEntry: string) {
+  return function Wrapper({ children }: { children: ReactNode }) {
+    return (
+      <QueryClientProvider client={client}>
+        <MemoryRouter initialEntries={[initialEntry]}>
+          {children}
+          <LocationProbe />
+        </MemoryRouter>
+      </QueryClientProvider>
+    )
+  }
 }
 
 function unit(overrides: Partial<LodgingUnitRow> = {}): LodgingUnitRow {
@@ -230,6 +257,116 @@ describe('LodgingBoard — layout', () => {
     )
     await userEvent.click(screen.getByRole('button', { name: /0 unplaced parties/i }))
     expect(screen.getByText(/Everyone has a cabin/i)).toBeInTheDocument()
+  })
+})
+
+describe('LodgingBoard — collapsed areas live in the URL', () => {
+  /*
+   * CLAUDE.md §4: tab state lives in the URL so it is linkable and survives a
+   * reload. Collapse is not a tab, but it is the same claim -- collapsing
+   * seven of eight areas IS the filter this board was said to lack, and held
+   * in `useState` it evaporated on every reload. The board is 6,208px tall
+   * since the slot-shape change, so collapsing is now how you keep one area on
+   * screen.
+   *
+   * A query param, not a path segment: the view is already a segment
+   * (`/weekend/:ref/:view`) because it selects WHAT you are looking at. This
+   * modifies how that view is arranged, which is what a query string is for.
+   */
+  it('opens with an area already collapsed when the URL says so', () => {
+    render(<LodgingBoard parties={[]} units={[unit()]} year={2026} />, {
+      wrapper: routerWrapper('/weekend/fc1/housing?closed=CG'),
+    })
+    expect(screen.getByRole('heading', { name: /Cedar Grove/ })).toBeInTheDocument()
+    expect(screen.queryByText('Cedar 1')).not.toBeInTheDocument()
+  })
+
+  it('writes the area token when one is collapsed', async () => {
+    render(<LodgingBoard parties={[]} units={[unit()]} year={2026} />, {
+      wrapper: routerWrapper('/weekend/fc1/housing'),
+    })
+    await userEvent.click(screen.getByRole('button', { name: /Cedar Grove/ }))
+    expect(screen.getByTestId('search')).toHaveTextContent('closed=CG')
+  })
+
+  it('drops the parameter entirely when the last area is reopened', async () => {
+    // Rather than leaving `?closed=` hanging on the URL, which is noise in a
+    // link and reads as though something is still filtered.
+    render(<LodgingBoard parties={[]} units={[unit()]} year={2026} />, {
+      wrapper: routerWrapper('/weekend/fc1/housing?closed=CG'),
+    })
+    await userEvent.click(screen.getByRole('button', { name: /Cedar Grove/ }))
+    expect(screen.getByTestId('search')).not.toHaveTextContent('closed')
+  })
+
+  it('keeps every other query parameter it found', async () => {
+    // The board does not own the query string. Rebuilding it from scratch
+    // would silently drop whatever else a caller had put there.
+    render(<LodgingBoard parties={[]} units={[unit()]} year={2026} />, {
+      wrapper: routerWrapper('/weekend/fc1/housing?scenario=7'),
+    })
+    await userEvent.click(screen.getByRole('button', { name: /Cedar Grove/ }))
+    expect(screen.getByTestId('search')).toHaveTextContent('scenario=7')
+    expect(screen.getByTestId('search')).toHaveTextContent('closed=CG')
+  })
+
+  it('keeps both areas collapsed when two are closed in turn', async () => {
+    /*
+     * Nothing covered more than one collapsed area, and a browser check that
+     * LOOKED like it had found a bug here is what surfaced the gap. (It had
+     * not — the probe reused stale DOM handles across a re-render.) The risk
+     * is real regardless: the second write has to merge with the first rather
+     * than replace it.
+     */
+    render(
+      <LodgingBoard
+        parties={[]}
+        units={[
+          unit(),
+          unit({
+            unit_id: 'u2',
+            code: 'ridge-1',
+            name: 'Ridge 1',
+            area_code: 'NR',
+            area_name: 'North Ridge',
+          }),
+        ]}
+        year={2026}
+      />,
+      { wrapper: routerWrapper('/weekend/fc1/housing') }
+    )
+    await userEvent.click(screen.getByRole('button', { name: /Cedar Grove/ }))
+    await userEvent.click(screen.getByRole('button', { name: /North Ridge/ }))
+
+    expect(screen.queryByText('Cedar 1')).not.toBeInTheDocument()
+    expect(screen.queryByText('Ridge 1')).not.toBeInTheDocument()
+    // Repeated entries, not a comma list: `URLSearchParams` would encode the
+    // comma and the URL would stop being readable.
+    expect(screen.getByTestId('search')).toHaveTextContent('closed=CG&closed=NR')
+    expect(screen.getByTestId('search')).not.toHaveTextContent('%2C')
+  })
+
+  it('collapses only the area that was clicked', async () => {
+    render(
+      <LodgingBoard
+        parties={[]}
+        units={[
+          unit(),
+          unit({
+            unit_id: 'u2',
+            code: 'ridge-1',
+            name: 'Ridge 1',
+            area_code: 'NR',
+            area_name: 'North Ridge',
+          }),
+        ]}
+        year={2026}
+      />,
+      { wrapper: routerWrapper('/weekend/fc1/housing') }
+    )
+    await userEvent.click(screen.getByRole('button', { name: /Cedar Grove/ }))
+    expect(screen.queryByText('Cedar 1')).not.toBeInTheDocument()
+    expect(screen.getByText('Ridge 1')).toBeInTheDocument()
   })
 })
 

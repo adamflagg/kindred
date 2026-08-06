@@ -166,6 +166,85 @@ export interface ConsentFlag {
   reason: string
 }
 
+/**
+ * One area's shorthand at a given depth: initials for a multi-word name,
+ * leading letters for a single word. Depth 1 is the two-character form.
+ */
+function shorthand(name: string, depth: number): string {
+  const words = name.split(/[^A-Za-z0-9]+/).filter((word) => word.length > 0)
+  if (words.length === 0) return 'XX'
+  const first = words[0] ?? ''
+  const second = words[1]
+  if (second === undefined) return first.slice(0, Math.max(2, depth + 1)).toUpperCase()
+  return (first.slice(0, depth) + second.charAt(0)).toUpperCase()
+}
+
+/** How far `shorthand` will deepen before falling back to a numeric suffix. */
+const MAX_TOKEN_DEPTH = 6
+
+/**
+ * A short, URL-safe token per area, keyed by `BoardArea.key`.
+ *
+ * Collapse state lives in the query string (`?closed=GT&closed=HC`), so each
+ * area needs a name that survives a URL. `key` cannot do it — it is
+ * `code::name`, which needs escaping and puts the camp's own area names into a
+ * link that gets pasted into tickets and chat.
+ *
+ * The registry's `area_code` cannot do it either, and that was the first
+ * attempt. It is hand-entered and ragged — two letters for some areas, four
+ * for others — so the URL read as though the widths meant something. Deriving
+ * the token instead makes every area two characters and drops a dependency on
+ * a field nothing else on this board reads.
+ *
+ * WHY THIS TAKES THE WHOLE SET. Two characters is not always enough, and no
+ * pure function of one name can fix that: on the 2026 registry "Ridge Side"
+ * and "River Side" both reduce to RS, and both first words begin "Ri". So the
+ * colliding group — and only that group — deepens a letter at a time until its
+ * members are distinct, leaving every other area's token, and every link
+ * already holding it, untouched.
+ *
+ * Stability: a token depends on its own name and on the names it clashes with,
+ * never on position or on the number of areas. Adding an unrelated area cannot
+ * move it. Adding one that clashes can, which is the honest cost of a short
+ * token and is why the deepening is deterministic rather than first-come.
+ */
+export function areaTokens(
+  areas: ReadonlyArray<Pick<BoardArea, 'key' | 'name'>>
+): Map<string, string> {
+  // Sorted by key so the last-resort suffix below is stable across payload
+  // orders, exactly as the hue assignment is.
+  const ordered = [...areas].sort((left, right) => left.key.localeCompare(right.key))
+  const depths = new Map(ordered.map((area) => [area.key, 1]))
+
+  for (let round = 0; round < MAX_TOKEN_DEPTH; round++) {
+    const claimants = new Map<string, string[]>()
+    for (const area of ordered) {
+      const token = shorthand(area.name, depths.get(area.key) ?? 1)
+      claimants.set(token, [...(claimants.get(token) ?? []), area.key])
+    }
+    const clashing = [...claimants.values()].filter((keys) => keys.length > 1)
+    if (clashing.length === 0) break
+    for (const keys of clashing) {
+      for (const key of keys) depths.set(key, (depths.get(key) ?? 1) + 1)
+    }
+  }
+
+  // Two names that are identical after stripping punctuation would still tie
+  // at every depth. A numeric suffix is the floor, so a token is never blank
+  // and never duplicated.
+  const taken = new Set<string>()
+  const tokens = new Map<string, string>()
+  for (const area of ordered) {
+    const base = shorthand(area.name, depths.get(area.key) ?? 1)
+    let token = base
+    let suffix = 2
+    while (taken.has(token)) token = `${base}${String(suffix++)}`
+    taken.add(token)
+    tokens.set(area.key, token)
+  }
+  return tokens
+}
+
 /** One unit card: the room, whoever is in it, and whether that is a problem. */
 export interface BoardSlot {
   unit: LodgingUnitRow

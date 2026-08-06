@@ -42,13 +42,14 @@ import {
 } from '@dnd-kit/core'
 import { ChevronDown, ChevronRight, Info, TriangleAlert } from 'lucide-react'
 import { useCallback, useMemo, useState } from 'react'
+import { useSearchParams } from 'react-router'
 
 import { useDismissOnDeadSpace } from '../../hooks/useDismissOnDeadSpace'
 import { useLodgingPlacement } from '../../hooks/useLodgingPlacement'
 import { useUnitAvailability } from '../../hooks/useUnitAvailability'
 import { useUnitMerge } from '../../hooks/useUnitMerge'
 import type { LodgingUnitRow, RosterPartyRow } from '../../types/lodging'
-import { buildBoard } from './boardLayout'
+import { areaTokens, buildBoard } from './boardLayout'
 import { mergeDragUnit, resolveDrop, resolveMergeDrop } from './dragPlacement'
 import { FamilyCard, FamilyCardPreview } from './FamilyCard'
 import { FamilyDetailsPanel } from './FamilyDetailsPanel'
@@ -80,6 +81,17 @@ export interface LodgingBoardProps {
   canManage?: boolean
 }
 
+/**
+ * Where the collapsed areas live in the URL, one entry per area:
+ * `?closed=GT&closed=HC`.
+ *
+ * REPEATED rather than a comma list, which was the first shape tried.
+ * `URLSearchParams` percent-encodes a comma, so `?closed=GT,HC` reaches the
+ * address bar as `?closed=GT%2CHC` — and a link somebody can actually read is
+ * most of the point of moving this out of `useState`.
+ */
+const CLOSED_PARAM = 'closed'
+
 export function LodgingBoard({
   parties,
   units,
@@ -89,7 +101,25 @@ export function LodgingBoard({
   canManage = false,
 }: LodgingBoardProps) {
   const board = buildBoard(parties, units)
-  const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(new Set())
+  const [searchParams, setSearchParams] = useSearchParams()
+  /*
+   * Which areas are collapsed, read from the query string rather than held in
+   * `useState` (CLAUDE.md §4: state worth arranging is worth being able to
+   * return to). Collapsing seven of eight areas IS the filter this board was
+   * said to lack — and held in component state it evaporated on every reload,
+   * so it was never worth arranging in the first place.
+   *
+   * A query PARAM, not a path segment. The view is already a segment
+   * (`/weekend/:ref/:view`) because it selects what you are looking at; this
+   * modifies how that view is arranged, which is what a query string is for.
+   */
+  // Derived from the whole set, because a two-character token is not always
+  // unique — see `areaTokens`.
+  const tokens = useMemo(() => areaTokens(board.areas), [board.areas])
+  const collapsed = useMemo<ReadonlySet<string>>(
+    () => new Set(searchParams.getAll(CLOSED_PARAM)),
+    [searchParams]
+  )
   const [selected, setSelected] = useState<RosterPartyRow | null>(null)
   const [requestClose, setRequestClose] = useState(false)
   const [dragging, setDragging] = useState<RosterPartyRow | null>(null)
@@ -277,13 +307,30 @@ export function LodgingBoard({
     setRequestClose(true)
   })
 
-  const toggleArea = (key: string) => {
-    setCollapsed((current) => {
-      const next = new Set(current)
-      if (next.has(key)) next.delete(key)
-      else next.add(key)
-      return next
-    })
+  const toggleArea = (token: string) => {
+    setSearchParams(
+      (previous) => {
+        // Built FROM the existing params, never from scratch: the board does
+        // not own the query string, and rebuilding it would silently drop
+        // whatever else a caller had put there.
+        const next = new URLSearchParams(previous)
+        const closed = new Set(next.getAll(CLOSED_PARAM))
+        if (closed.has(token)) closed.delete(token)
+        else closed.add(token)
+        // Cleared and rewritten, because `set` would collapse the repeated
+        // entries down to one. Sorted, so the same set of collapsed areas
+        // always produces the same URL whatever order they were clicked in —
+        // two people comparing links should not see a difference that is not
+        // there. An empty set drops the parameter rather than leaving
+        // `?closed=` hanging, which reads as though something is still hidden.
+        next.delete(CLOSED_PARAM)
+        for (const area of [...closed].sort()) next.append(CLOSED_PARAM, area)
+        return next
+      },
+      // REPLACE, as the tab strip does. Pushing would turn Back into
+      // "un-collapse one area", seven times, before it leaves the page.
+      { replace: true }
+    )
   }
 
   return (
@@ -339,14 +386,15 @@ export function LodgingBoard({
               </p>
             ) : (
               board.areas.map((area) => {
-                const isCollapsed = collapsed.has(area.key)
+                const token = tokens.get(area.key) ?? area.key
+                const isCollapsed = collapsed.has(token)
                 return (
                   <section key={area.key}>
                     <h3 className="mb-2">
                       <button
                         type="button"
                         onClick={() => {
-                          toggleArea(area.key)
+                          toggleArea(token)
                         }}
                         aria-expanded={!isCollapsed}
                         className="group flex w-full items-center gap-2 text-left"
