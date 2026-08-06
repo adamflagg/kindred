@@ -348,7 +348,7 @@ export function LodgingUnitCard({
             onClick={() => {
               onMerge?.(unit)
             }}
-            className="border-border text-muted-foreground hover:text-foreground hover:border-foreground/30 inline-flex cursor-grab items-center gap-0.5 rounded-full border px-1.5 py-0.5 text-[10px] font-medium active:cursor-grabbing disabled:opacity-40"
+            className="border-border text-muted-foreground hover:text-foreground hover:border-foreground/30 inline-flex cursor-grab items-center gap-0.5 rounded-full border px-1.5 py-0.5 text-xs font-medium active:cursor-grabbing disabled:opacity-40"
           >
             <Merge className="h-3 w-3" aria-hidden="true" />
             Merge
@@ -374,7 +374,7 @@ export function LodgingUnitCard({
               onClick={() => {
                 onSplit(unit)
               }}
-              className="border-border text-muted-foreground hover:text-foreground hover:border-foreground/30 inline-flex items-center gap-0.5 rounded-full border px-1.5 py-0.5 text-[10px] font-medium disabled:opacity-40"
+              className="border-border text-muted-foreground hover:text-foreground hover:border-foreground/30 inline-flex items-center gap-0.5 rounded-full border px-1.5 py-0.5 text-xs font-medium disabled:opacity-40"
             >
               <Split className="h-3 w-3" aria-hidden="true" />
               Split

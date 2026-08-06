@@ -100,7 +100,11 @@ export function LodgingBoard({
   sessionCmId = 0,
   canManage = false,
 }: LodgingBoardProps) {
-  const board = buildBoard(parties, units)
+  // Memoised for the sake of `tokens` below, which depends on `board.areas`:
+  // rebuilt every render, that array is a fresh identity each time and the
+  // dependency never matches, so the memo reads as though it caches while
+  // re-running `areaTokens` on every keystroke elsewhere in the tree.
+  const board = useMemo(() => buildBoard(parties, units), [parties, units])
   const [searchParams, setSearchParams] = useSearchParams()
   /*
    * Which areas are collapsed, read from the query string rather than held in

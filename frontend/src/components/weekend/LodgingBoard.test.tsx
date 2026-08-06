@@ -125,6 +125,46 @@ function party(overrides: Partial<RosterPartyRow> = {}): RosterPartyRow {
 }
 
 describe('LodgingBoard — layout', () => {
+  /**
+   * A party placed on a unit the payload does not contain, which is one of the
+   * three routes into `board.offBoard` (see `boardLayout.ts`'s invariant 2).
+   * Without one the off-board section never renders at all, and the layout
+   * tests below silently checked a single grid while claiming to check both.
+   */
+  const strandedParty = party({
+    household_cm_id: 103,
+    display_name: 'Okafor',
+    sort_name: 'Okafor',
+    unit_code: 'ghost-1',
+    unit_name: 'Ghost 1',
+  })
+
+  /**
+   * EVERY grid that has to agree on the layout: the per-area card grids and
+   * the off-board family grid.
+   *
+   * The off-board one cannot be reached through `[data-unit-card]` — it holds
+   * `FamilyCard`s, which carry no such attribute — so selecting only through
+   * that attribute could never have covered it, however many parties a test
+   * passed. It is scoped through its own section heading rather than a bare
+   * `[data-family-card]` lookup, because occupant cards inside unit cards
+   * carry that attribute too and their well is not one of these grids.
+   */
+  function layoutGrids(container: HTMLElement): HTMLElement[] {
+    const unitGrids = [...container.querySelectorAll('[data-unit-card]')].map(
+      (card) => card.parentElement
+    )
+    const section = screen
+      .getByRole('heading', { name: /Placed outside the board/ })
+      .closest('section')
+    const offBoardCard = section?.querySelector('[data-family-card]')
+    const grids = [...unitGrids, offBoardCard?.parentElement]
+    // Both kinds present, or the assertions below are vacuous for one of them.
+    expect(unitGrids.length).toBeGreaterThan(0)
+    expect(offBoardCard).not.toBeNull()
+    return grids.filter((grid): grid is HTMLElement => grid !== null && grid !== undefined)
+  }
+
   it('draws one section per area', () => {
     render(
       <LodgingBoard
@@ -160,12 +200,11 @@ describe('LodgingBoard — layout', () => {
      *
      * Classes, not computed style — jsdom parses no Tailwind.
      */
-    const { container } = render(<LodgingBoard parties={[]} units={[unit()]} year={2026} />, {
-      wrapper,
-    })
-    const grids = [...container.querySelectorAll('[data-unit-card]')].map((c) => c.parentElement)
-    expect(grids.length).toBeGreaterThan(0)
-    for (const grid of grids) {
+    const { container } = render(
+      <LodgingBoard parties={[strandedParty]} units={[unit()]} year={2026} />,
+      { wrapper }
+    )
+    for (const grid of layoutGrids(container)) {
       expect(grid).toHaveClass('gap-3')
       expect(grid).not.toHaveClass('gap-2.5')
     }
@@ -194,12 +233,11 @@ describe('LodgingBoard — layout', () => {
      * Cost is 11% more scroll (board 5172px → 5754px), which is what fewer
      * columns means.
      */
-    const { container } = render(<LodgingBoard parties={[]} units={[unit()]} year={2026} />, {
-      wrapper,
-    })
-    const grids = [...container.querySelectorAll('[data-unit-card]')].map((c) => c.parentElement)
-    expect(grids.length).toBeGreaterThan(0)
-    for (const grid of grids) {
+    const { container } = render(
+      <LodgingBoard parties={[strandedParty]} units={[unit()]} year={2026} />,
+      { wrapper }
+    )
+    for (const grid of layoutGrids(container)) {
       expect(grid).toHaveClass('grid-cols-[repeat(auto-fill,minmax(280px,1fr))]')
       expect(grid).not.toHaveClass('grid-cols-[repeat(auto-fill,minmax(200px,1fr))]')
     }
@@ -216,12 +254,11 @@ describe('LodgingBoard — layout', () => {
      * `LodgingUnitCard`, which is what makes a stretched empty card look
      * deliberate. The two are one change; see the well tests.
      */
-    const { container } = render(<LodgingBoard parties={[]} units={[unit()]} year={2026} />, {
-      wrapper,
-    })
-    const grids = [...container.querySelectorAll('[data-unit-card]')].map((c) => c.parentElement)
-    expect(grids.length).toBeGreaterThan(0)
-    for (const grid of grids) {
+    const { container } = render(
+      <LodgingBoard parties={[strandedParty]} units={[unit()]} year={2026} />,
+      { wrapper }
+    )
+    for (const grid of layoutGrids(container)) {
       expect(grid).not.toHaveClass('items-start')
     }
   })

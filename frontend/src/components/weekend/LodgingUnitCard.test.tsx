@@ -480,16 +480,36 @@ describe('LodgingUnitCard — summer’s type scale', () => {
   function arbitraryTextSizes(container: HTMLElement): string[] {
     const card = container.querySelector('[data-unit-card]')
     if (!card) throw new Error('no card rendered')
-    return [card, ...card.querySelectorAll('*')]
-      .flatMap((el) => Array.from(el.classList))
-      .filter((cls) => /^text-\[\d+px\]$/.test(cls))
+    return (
+      [card, ...card.querySelectorAll('*')]
+        .flatMap((el) => Array.from(el.classList))
+        // Variant prefixes and rem/em too, not just a bare `text-[Npx]`: a
+        // `sm:text-[11px]` is the same divergence wearing a breakpoint, and the
+        // narrower pattern is what let the merge and split pills through once
+        // already. Arbitrary COLOURS stay out of scope — `[^\]]+` would sweep
+        // `text-[#fff]`, which is not a scale problem.
+        .filter((cls) => /^(?:[\w-]+:)*text-\[\d+(?:\.\d+)?(?:px|rem|em)\]$/.test(cls))
+    )
   }
 
   it('uses the stock scale everywhere, with no arbitrary pixel sizes left', () => {
     const { container } = render(
       <LodgingUnitCard
         slot={slot({
-          unit: unit({ is_active: false, bathroom: 'private', has_power: true, has_ac: true }),
+          // `parent_code` + container + combined are what MOUNT the merge and
+          // split pills; without them this sweep silently checked a card that
+          // had neither, and both kept a `text-[10px]` through the whole
+          // type-scale migration. The assertions below are the guard: a sweep
+          // that stops rendering an element must fail, not quietly narrow.
+          unit: unit({
+            is_active: false,
+            bathroom: 'private',
+            has_power: true,
+            has_ac: true,
+            parent_code: 'cedar-house',
+            is_container: true,
+            is_combined: true,
+          }),
           parties: [party(), party({ household_cm_id: 102, display_name: 'Garcia' })],
           consent: {
             declinedCount: 1,
@@ -501,9 +521,14 @@ describe('LodgingUnitCard — summer’s type scale', () => {
         hue="hsl(160 45% 42%)"
         canSetAvailability
         onSetAvailability={vi.fn()}
+        canMerge
+        onMerge={vi.fn()}
+        onSplit={vi.fn()}
         onOpenParty={vi.fn()}
       />
     )
+    expect(screen.getByRole('button', { name: /Merge Cedar 1/ })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /Split Cedar 1/ })).toBeInTheDocument()
     expect(arbitraryTextSizes(container)).toEqual([])
   })
 
