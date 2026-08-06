@@ -212,12 +212,12 @@ func TestApplyRollForwardPreservesCodeAcrossARename(t *testing.T) {
 		t.Fatal("seeding did not produce test-unit-a in 2026")
 	}
 	src.Set("name", "Test Building A (renamed)")
-	if err := app.Save(src); err != nil {
-		t.Fatalf("rename in the source season: %v", err)
+	if saveErr := app.Save(src); saveErr != nil {
+		t.Fatalf("rename in the source season: %v", saveErr)
 	}
 
-	if _, err := ApplyRollForward(app, 2026, 2027); err != nil {
-		t.Fatalf("ApplyRollForward: %v", err)
+	if _, rollErr := ApplyRollForward(app, 2026, 2027); rollErr != nil {
+		t.Fatalf("ApplyRollForward: %v", rollErr)
 	}
 
 	carried, err := findByCodeAndYear(app, "lodging_units", "test-unit-a", 2027)
@@ -227,7 +227,7 @@ func TestApplyRollForwardPreservesCodeAcrossARename(t *testing.T) {
 	if carried == nil {
 		t.Fatal("the renamed building did not carry its code into 2027")
 	}
-	// The new name travelled too, so the row is the renamed building and not
+	// The new name traveled too, so the row is the renamed building and not
 	// some earlier copy that happened to keep the code.
 	if got := carried.GetString("name"); got != "Test Building A (renamed)" {
 		t.Errorf("carried the code but not the rename: name = %q", got)
