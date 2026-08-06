@@ -242,6 +242,23 @@ const baseConfig: UserConfig = {
               test: /node_modules[\\/]lucide-react/,
               priority: 15,
             },
+            // `countMapUnits` is an eager barrel export (WeekendRosterPage's
+            // tab-count header needs it on every tab), but `buildMapModel` —
+            // which it calls, and which lives in the same file — is also the
+            // one thing `LodgingMap.tsx` imports for its own lazy chunk.
+            // Left to its own heuristic, rolldown co-located the whole
+            // module inside the LodgingMap chunk and made the EAGER chunk
+            // reach into it for `countMapUnits`, which pulls the map's
+            // lazy-loaded chunk in on every weekend visit regardless of tab
+            // (kindred#2057 review). Pinning `mapModel.ts` to its own chunk
+            // breaks that: it joins the eager graph on its own (small) terms,
+            // and `LodgingMap` imports `buildMapModel` from an already-loaded
+            // chunk instead of the reverse.
+            {
+              name: 'weekend-map-model',
+              test: /src[\\/]components[\\/]weekend[\\/]mapModel\.ts/,
+              priority: 10,
+            },
           ],
         },
       },

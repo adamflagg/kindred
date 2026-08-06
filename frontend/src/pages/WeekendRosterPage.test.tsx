@@ -8,7 +8,7 @@
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter, Route, Routes, useLocation, useNavigate } from 'react-router'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import WeekendRosterPage from './WeekendRosterPage'
 
@@ -126,6 +126,26 @@ vi.mock('../components/weekend', async (importOriginal) => {
     countMapUnits: (...args: Parameters<typeof actual.countMapUnits>) => {
       countMapUnitsSpy()
       return actual.countMapUnits(...args)
+    },
+  }
+})
+
+// A toggle, not a permanent throw — `describe('tab-level error isolation')`
+// below is the only place this flips true. `LodgingBoard` is imported by
+// DIRECT PATH in WeekendRosterPage.tsx (#1964), so mocking it here has to
+// mirror that path rather than going through the barrel above.
+let lodgingBoardShouldThrow = false
+
+vi.mock('../components/weekend/LodgingBoard', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../components/weekend/LodgingBoard')>()
+  return {
+    ...actual,
+    LodgingBoard: (props: Parameters<typeof actual.LodgingBoard>[0]) => {
+      // Deliberately NOT a chunk-load-error message (see `chunkLoadError.ts`)
+      // — that path auto-reloads the page in `ErrorBoundary`, which this test
+      // isn't about. Any panel crash should stay scoped to its own tab.
+      if (lodgingBoardShouldThrow) throw new Error('Board render failed')
+      return <actual.LodgingBoard {...props} />
     },
   }
 })
@@ -574,6 +594,41 @@ describe('tabs', () => {
     renderPage()
     expect(screen.getByRole('tab', { name: 'Housing (2)' })).toBeInTheDocument()
     expect(screen.getByRole('tab', { name: 'Map (1)' })).toBeInTheDocument()
+  })
+})
+
+describe('tab-level error isolation', () => {
+  // Without a boundary inside each tabpanel, a crash here climbs past both
+  // `<Suspense>`s to the route-level `<ErrorBoundary>` in `App.tsx` and
+  // blanks the header, scenario picker AND tab strip along with the panel
+  // that actually broke — the fix under test is that it does not.
+  const originalConsoleError = console.error
+  beforeEach(() => {
+    console.error = vi.fn() // React logs the caught error; expected here.
+    lodgingBoardShouldThrow = true
+  })
+  afterEach(() => {
+    console.error = originalConsoleError
+    lodgingBoardShouldThrow = false
+  })
+
+  it('keeps the header and tab strip alive, with a retry, when the Housing panel crashes', async () => {
+    renderPage() // Housing is DEFAULT_VIEW, so LodgingBoard mounts immediately.
+
+    expect(await screen.findByText('Something went wrong')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /Family Camp 1/ })).toBeInTheDocument()
+    expect(screen.getByRole('tablist')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /try again/i })).toBeInTheDocument()
+  })
+
+  it('leaves a tab that never broke usable after another tab panel crashes', async () => {
+    renderPage()
+    await screen.findByText('Something went wrong')
+
+    // Roster never touches LodgingBoard — the route-level boundary would
+    // have taken it down anyway; the per-tab one should not.
+    await userEvent.click(screen.getByRole('tab', { name: /Roster/ }))
+    expect(await screen.findByText('No one is enrolled for this weekend.')).toBeInTheDocument()
   })
 })
 

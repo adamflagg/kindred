@@ -28,6 +28,7 @@ import { Home, Map as MapIcon, Users } from 'lucide-react'
 import { lazy, Suspense, useEffect, useMemo } from 'react'
 import { useNavigate, useParams } from 'react-router'
 
+import { ErrorBoundary } from '../components/ErrorBoundary'
 import { QueryGuard } from '../components/QueryGuard'
 import { TitleSwitcher } from '../components/ui'
 import { Permission } from '../constants/permissions'
@@ -339,31 +340,48 @@ export default function WeekendRosterPage() {
               id={`weekend-panel-${view}`}
               aria-labelledby={`weekend-tab-${view}`}
             >
-              {view === 'roster' && <HouseholdRosterTable parties={parties} units={units} />}
+              {/* `view` gates all three, so at most one is ever mounted —
+                  "loading the board must not hold up the map" describes a
+                  race that cannot happen here. What each boundary IS for:
+                  scoping a crash to its own tab. A 404'd chunk (stale
+                  deployment) throws inside its Suspense, and without an
+                  ErrorBoundary here it keeps going past this whole panel to
+                  the route-level one in App.tsx, blanking the header,
+                  scenario picker and tab strip along with it — taking the
+                  OTHER two tabs down with the one that broke. Wrapping each
+                  view keeps the other two switchable, `ErrorBoundary`'s
+                  default fallback supplies the retry, and it doubles as the
+                  chunk-load-error / stale-deployment handling every other
+                  lazy boundary in this app gets (`ErrorBoundary.tsx`). */}
+              {view === 'roster' && (
+                <ErrorBoundary>
+                  <HouseholdRosterTable parties={parties} units={units} />
+                </ErrorBoundary>
+              )}
               {/* The board takes the scenario, the weekend and the manage
                   permission because it WRITES now (#1989) — main's note that
-                  drag placement "is what earns plumbing it back down" is this.
-                  The map still takes only what it renders.
-
-                  Each is its own Suspense boundary, not one wrapping the
-                  whole panel — the two chunks are independent, so loading the
-                  board must not hold up the map or vice versa. */}
+                  drag placement "is what earns plumbing it back down" is
+                  this. The map still takes only what it renders. */}
               {view === 'housing' && (
-                <Suspense fallback={<TabLoadingFallback />}>
-                  <LodgingBoard
-                    parties={parties}
-                    units={units}
-                    year={currentYear}
-                    scenario={scenario}
-                    sessionCmId={selectedCmId ?? 0}
-                    canManage={canManageLodging}
-                  />
-                </Suspense>
+                <ErrorBoundary>
+                  <Suspense fallback={<TabLoadingFallback />}>
+                    <LodgingBoard
+                      parties={parties}
+                      units={units}
+                      year={currentYear}
+                      scenario={scenario}
+                      sessionCmId={selectedCmId ?? 0}
+                      canManage={canManageLodging}
+                    />
+                  </Suspense>
+                </ErrorBoundary>
               )}
               {view === 'map' && (
-                <Suspense fallback={<TabLoadingFallback />}>
-                  <LodgingMap parties={parties} units={units} year={currentYear} />
-                </Suspense>
+                <ErrorBoundary>
+                  <Suspense fallback={<TabLoadingFallback />}>
+                    <LodgingMap parties={parties} units={units} year={currentYear} />
+                  </Suspense>
+                </ErrorBoundary>
               )}
             </div>
           </>
