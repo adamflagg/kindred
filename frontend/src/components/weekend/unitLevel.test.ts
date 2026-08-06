@@ -95,8 +95,18 @@ describe('drawnUnits', () => {
   })
 
   it('terminates on a cycle already in the data, instead of hanging the board', () => {
-    // The visited guard must stop the walk rather than loop forever.
-    expect(() => drawnUnits(CYCLIC)).not.toThrow()
+    // The visited guard must stop the walk rather than loop forever. Assert
+    // the RESULT, not just the absence of a throw: an unguarded walk hangs
+    // until the Vitest timeout, and `not.toThrow()` cannot tell that apart
+    // from a clean return. Every node here is a non-combined container, so
+    // nothing is drawable and the answer is empty either way — what this
+    // pins is that the walk gets to an answer at all.
+    //
+    // The Python mirror (`drawn_units`) agrees on this input, and agreeing on
+    // a cycle is not automatic: it walks UP from every unit rather than down
+    // from roots, so it has to BLOCK on a detected cycle to land here rather
+    // than fall through to "drawn". See its guard comment.
+    expect(drawnUnits(CYCLIC).map((x) => x.code)).toEqual([])
   })
 
   it('treats a unit whose parent_code names an absent unit as a root, not a dropped orphan', () => {

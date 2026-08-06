@@ -513,6 +513,60 @@ describe('buildBoard — consent flagging on ELIGIBILITY, not the gate', () => {
     expect(shared(['declined', 'declined']).areas[0]?.slots[0]?.consent?.declinedCount).toBe(2)
   })
 
+  it('counts only the parties that actually share a room, not everyone on a merged card', () => {
+    // The third level of the bug `overlappingPartyKeys` was written to kill.
+    // A combined house rolls every room's party onto ONE slot, so a family
+    // alone in its own room lands beside a pair genuinely sharing another.
+    // Gating the flag on overlap fixed WHETHER it fires; the counts inside it
+    // were still per-slot, so the pair's flag named the soloist too.
+    //
+    // `docs/architecture/lodging-occupancy.md`: "An extended family spanning
+    // two or more registrations may occupy one house together, each
+    // registration in its own room. This is not sharing a unit." A family the
+    // flag must not describe must not be counted by it either.
+    const house = unit({
+      unit_id: 'uh',
+      code: 'house',
+      name: 'House',
+      is_container: true,
+      is_combined: true,
+    })
+    const r1 = unit({ unit_id: 'ur1', code: 'r1', name: 'Room 1', parent_code: 'house' })
+    const r2 = unit({ unit_id: 'ur2', code: 'r2', name: 'Room 2', parent_code: 'house' })
+
+    const inRoom = (id: number, name: string, code: string) =>
+      party({
+        household_cm_id: id,
+        display_name: name,
+        unit_code: code,
+        unit_name: code,
+        share: {
+          preference: 'unknown',
+          proximity: [],
+          request_text: '',
+          needs_resolution: false,
+          eligibility: 'unknown',
+          eligibility_source: 'form',
+          answers_conflict: false,
+        },
+      })
+
+    const board = buildBoard(
+      // Garcia and Chen share Room 1. Okonkwo is alone in Room 2.
+      [inRoom(301, 'Garcia', 'r1'), inRoom(302, 'Chen', 'r1'), inRoom(303, 'Okonkwo', 'r2')],
+      [house, r1, r2]
+    )
+    const slot = board.areas[0]?.slots[0]
+
+    // All three are drawn on the one combined card...
+    expect(slot?.unit.code).toBe('house')
+    expect(slot?.parties).toHaveLength(3)
+    // ...but only the two sharing Room 1 are the flag's subject.
+    expect(slot?.consent).not.toBeNull()
+    expect(slot?.consent?.unansweredCount).toBe(2)
+    expect(slot?.consent?.reason).toContain('2 families')
+  })
+
   it('IGNORES the registration gate: a no_share gate resolved to named is legitimate', () => {
     // 3 households for 2026 said no at registration and then named a partner
     // on the authoritative form. The old gate-based rule flagged every one of

@@ -301,23 +301,37 @@ export function consentFlag(
   if (parties.length < 2) return null
 
   // The rule is OVERLAP, not co-location on one card — see
-  // `overlappingPartyKeys`. This is the ONLY thing a draw level changes: WHEN
-  // the check below runs, never WHAT it decides once it does. `units` is
-  // passed through for the container expansion that makes the overlap a
-  // comparison of ROOMS rather than of the names a placement happened to use.
-  if (overlappingPartyKeys(parties, units).size === 0) return null
+  // `overlappingPartyKeys`. `units` is passed through for the container
+  // expansion that makes the overlap a comparison of ROOMS rather than of the
+  // names a placement happened to use.
+  //
+  // The overlapping subset is then the SUBJECT of everything below, not just
+  // the trigger for it. A combined house rolls every room's party onto one
+  // slot, so a family alone in its own room sits beside a pair genuinely
+  // sharing another; counting it would put a family in the reason line that
+  // `docs/architecture/lodging-occupancy.md` says is not sharing at all
+  // ("each registration in its own room. This is not sharing a unit"). That
+  // is the same bug as gating on `parties.length > 1`, one level further in —
+  // it survived the slot-level and per-party fixes because a card mixing
+  // sharers with non-sharers is the only shape that exposes it, and 2026's
+  // combined houses hold two disjoint parties apiece.
+  const overlapping = overlappingPartyKeys(parties, units)
+  if (overlapping.size === 0) return null
+  const sharing = parties.filter((party) => overlapping.has(partyKey(party)))
 
   // Adult weekends have NO share question at all -- the fields are partition
   // ["Camper"] and no Adult-Share field exists -- so a person-grain party
   // carries no answer to judge. Returning null here is not "no problem found";
   // it is "not checked", and the board says so rather than rendering a clean
-  // slot that was never examined.
-  if (parties.some((party) => party.grain === 'person')) return null
+  // slot that was never examined. Read off `sharing` for the same reason the
+  // counts are: a person-grain party in its own room is not part of the
+  // question being asked about the ones that overlap.
+  if (sharing.some((party) => party.grain === 'person')) return null
 
   let declinedCount = 0
   let unansweredCount = 0
   let conflictCount = 0
-  for (const party of parties) {
+  for (const party of sharing) {
     if (party.share?.answers_conflict === true) conflictCount += 1
     // Absent eligibility is UNKNOWN, never open. These columns are written by
     // family_camp_derived, so they are empty until it re-runs, and empty must

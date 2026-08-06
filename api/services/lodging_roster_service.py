@@ -311,13 +311,17 @@ def drawn_units(units: list[LodgingUnitSummary]) -> list[LodgingUnitSummary]:
     Leaf-ness reads the `is_container` FLAG, never child count -- the same
     rule the frontend walk applies, and for the same reason: inferring "this
     is bookable" from an empty child list infers from missing data. Only a
-    CONTAINER can block a descendant, which also makes this immune to the
-    stale `is_combined` a leaf can carry (the admin form does not clear
-    `default_combined` when "is a building" is unticked).
+    CONTAINER can block a descendant, which also makes this immune to a stale
+    `is_combined` on a leaf. The admin form clears `default_combined` when "is
+    a building" is unticked, so nothing writes that combination any more -- but
+    rows saved before it did still carry it, and no migration went back for
+    them.
 
     Cycle guard for the same reason `coveredCodes` carries one: the server
     guards against WRITING a cycle (`guardUnitParentCycle`, #1899), but a
-    cycle already in the data must not hang a request.
+    cycle already in the data must not hang a request. A cycle BLOCKS rather
+    than merely stopping the walk -- see the comment at the guard for why
+    that is what keeps this in step with the frontend.
 
     A blank `code` is a valid, if unfortunate, registry value, and `by_code`
     is keyed on it -- so a row with no code occupies the SAME `""` key that
@@ -338,7 +342,18 @@ def drawn_units(units: list[LodgingUnitSummary]) -> list[LodgingUnitSummary]:
         seen = {unit.code}
         cursor = _parent_of(unit.parent_code)
         blocked = False
-        while cursor is not None and cursor.code not in seen:
+        while cursor is not None:
+            if cursor.code in seen:
+                # A CYCLE BLOCKS, rather than merely stopping the walk. The
+                # frontend mirror seeds from ROOTS, so a unit whose ancestry
+                # loops has no path from one and is never visited there --
+                # it draws no card. Falling through to "not blocked" here
+                # would count a unit the board will not draw, which is the
+                # precise drift this function exists to prevent. The party
+                # placed there rails to `offBoard`, which `buildBoard` is
+                # total over, so nobody is lost either way.
+                blocked = True
+                break
             seen.add(cursor.code)
             if cursor.is_container and cursor.is_combined:
                 blocked = True
