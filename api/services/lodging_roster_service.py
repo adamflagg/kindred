@@ -318,21 +318,32 @@ def drawn_units(units: list[LodgingUnitSummary]) -> list[LodgingUnitSummary]:
     Cycle guard for the same reason `coveredCodes` carries one: the server
     guards against WRITING a cycle (`guardUnitParentCycle`, #1899), but a
     cycle already in the data must not hang a request.
+
+    A blank `code` is a valid, if unfortunate, registry value, and `by_code`
+    is keyed on it -- so a row with no code occupies the SAME `""` key that
+    `parent_code == ""` uses to mean "no parent". `_parent_of` is the guard:
+    an empty code is looked up as "no parent" and never handed to `by_code`,
+    so a root can never be misread as a child of whichever row happens to
+    have a blank code.
     """
     by_code = {unit.code: unit for unit in units}
+
+    def _parent_of(code: str) -> LodgingUnitSummary | None:
+        return by_code.get(code) if code else None
+
     drawn: list[LodgingUnitSummary] = []
     for unit in units:
         if unit.is_container and not unit.is_combined:
             continue
         seen = {unit.code}
-        cursor = by_code.get(unit.parent_code)
+        cursor = _parent_of(unit.parent_code)
         blocked = False
         while cursor is not None and cursor.code not in seen:
             seen.add(cursor.code)
             if cursor.is_container and cursor.is_combined:
                 blocked = True
                 break
-            cursor = by_code.get(cursor.parent_code)
+            cursor = _parent_of(cursor.parent_code)
         if not blocked:
             drawn.append(unit)
     return drawn

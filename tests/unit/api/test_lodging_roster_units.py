@@ -63,3 +63,23 @@ def test_no_row_at_either_tier_inherits_the_registry_default() -> None:
 
     assert resolve_combined(default=True, override=None, session_override=None) is True
     assert resolve_combined(default=False, override=None, session_override=None) is False
+
+
+def test_a_blank_code_row_is_never_adopted_as_a_no_parents_ancestor() -> None:
+    """`by_code` is keyed on `code`, so a registry row with a blank `code`
+    occupies the `""` key -- the SAME key `parent_code == ""` uses to mean
+    "no parent". Without a guard, a leaf with no parent at all walks straight
+    into the blank-code row and inherits whatever that row resolves to.
+
+    Here the blank-code row is a combined container, which would BLOCK the
+    root from drawing if the walk ever resolved into it. It must not: an
+    empty `parent_code` is no parent, full stop, and the root must draw.
+    """
+    from api.services.lodging_roster_service import drawn_units
+
+    blank = LodgingUnitSummary(unit_id="rec_blank", code="", name="Blank Code Row", is_container=True, is_combined=True)
+    root = LodgingUnitSummary(unit_id="rec_root", code="room", name="Room", parent_code="")
+
+    drawn = drawn_units([blank, root])
+
+    assert "room" in {u.code for u in drawn}
