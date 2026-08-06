@@ -81,7 +81,7 @@ describe('LodgingUnitForm — create', () => {
   })
 
   it('stamps a new unit with the current season', async () => {
-    // Units are year-scoped since 1500000140; an omitted year fails the
+    // Units are year-scoped since 1500000141; an omitted year fails the
     // schema's min:2010 the moment the create reaches PocketBase.
     createLodgingUnit.mockResolvedValue({ id: 'u1' })
     const user = userEvent.setup()
@@ -1003,6 +1003,7 @@ describe('LodgingUnitForm — the default-combined control', () => {
       <LodgingUnitForm
         areas={AREAS}
         units={units ?? [unit]}
+        year={2026}
         unit={unit}
         onSaved={vi.fn()}
         onCancel={vi.fn()}
