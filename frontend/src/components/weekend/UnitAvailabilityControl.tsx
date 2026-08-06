@@ -73,7 +73,7 @@ export function UnitAvailabilityControl({
     unit.family_available_override !== null &&
     unit.family_available_override !== undefined &&
     storedReason !== '' ? (
-      <span className="text-muted-foreground w-full text-[11px] italic">{storedReason}</span>
+      <span className="text-muted-foreground w-full text-sm italic">{storedReason}</span>
     ) : null
 
   if (action === null || !canManage) return explanation
@@ -114,10 +114,10 @@ export function UnitAvailabilityControl({
               setReason(event.target.value)
               setWantsReason(false)
             }}
-            className="border-border bg-background text-foreground placeholder:text-muted-foreground/60 focus:border-primary/50 focus:ring-primary/10 w-full rounded-md border px-1.5 py-1 text-[11px] focus:ring-2 focus:outline-none aria-[invalid=true]:border-amber-500"
+            className="border-border bg-background text-foreground placeholder:text-muted-foreground/60 focus:border-primary/50 focus:ring-primary/10 w-full rounded-md border px-1.5 py-1 text-sm focus:ring-2 focus:outline-none aria-[invalid=true]:border-amber-500"
           />
           {wantsReason && reason.trim() === '' && (
-            <span className="text-[10px] font-medium text-amber-700 dark:text-amber-400">
+            <span className="text-xs font-medium text-amber-700 dark:text-amber-400">
               Say why, so next week&rsquo;s staff can act on it.
             </span>
           )}
@@ -125,14 +125,14 @@ export function UnitAvailabilityControl({
             <button
               type="submit"
               disabled={isSaving}
-              className="bg-primary text-primary-foreground rounded-md px-2 py-0.5 text-[11px] font-medium disabled:opacity-40"
+              className="bg-primary text-primary-foreground rounded-md px-2 py-0.5 text-xs font-medium disabled:opacity-40"
             >
               {action.label}
             </button>
             <button
               type="button"
               onClick={close}
-              className="text-muted-foreground hover:text-foreground rounded-md px-1.5 py-0.5 text-[11px]"
+              className="text-muted-foreground hover:text-foreground rounded-md px-1.5 py-0.5 text-xs"
             >
               Cancel
             </button>
@@ -158,7 +158,7 @@ export function UnitAvailabilityControl({
           }
           onSubmit({ familyAvailable: action.familyAvailable, reason: '' })
         }}
-        className="border-border text-muted-foreground hover:text-foreground hover:border-foreground/30 rounded-full border px-1.5 py-0.5 text-[10px] font-medium disabled:opacity-40"
+        className="border-border text-muted-foreground hover:text-foreground hover:border-foreground/30 rounded-full border px-1.5 py-0.5 text-xs font-medium disabled:opacity-40"
       >
         {action.label}
       </button>

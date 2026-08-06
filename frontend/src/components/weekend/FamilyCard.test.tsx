@@ -321,3 +321,118 @@ describe('FamilyCardPreview — the drag overlay', () => {
     expect(screen.getByText(/Noah Johnson \(8\)/)).toBeInTheDocument()
   })
 })
+
+/*
+ * The occupant card's own scale, which is NOT the unit card's.
+ *
+ * Summer's `CamperCard` sits inside a `BunkCard` and steps down from it:
+ * `text-sm` name over `text-xs` secondary, where the bunk title above is
+ * `text-lg`. So a `FamilyCard` inside a `LodgingUnitCard` steps down the same
+ * way — it does not inherit the unit card's body size, or the household name
+ * would print as large as the room name holding it.
+ *
+ * Classes, not computed style: jsdom parses no Tailwind.
+ */
+describe('FamilyCard — summer’s occupant-card geometry', () => {
+  /*
+   * `CamperCard` is `rounded-xl border-2 p-2.5`. This card was `rounded-lg`,
+   * a 1px border and `px-2 py-1.5` -- which read as a table row sitting inside
+   * a card, the same criticism that started this exercise, one level down.
+   *
+   * `overflow-hidden` is deliberately NOT copied. `CamperCard` needs it to
+   * clip an absolutely-positioned gradient at its foot; this card has no such
+   * element, so the class would be cargo.
+   */
+  it('wears CamperCard’s radius, border and padding', () => {
+    const { container } = render(<FamilyCard party={party()} onOpen={vi.fn()} />)
+    const card = container.querySelector('[data-family-card]')
+    expect(card).toHaveClass('rounded-xl')
+    expect(card).toHaveClass('border-2')
+    expect(card).toHaveClass('p-2.5')
+  })
+
+  it('drops the row-shaped chrome it replaces', () => {
+    // Left alongside the new classes these fight them: `rounded-lg` loses the
+    // corner, and `px-2 py-1.5` beats `p-2.5` on the axes it sets.
+    const { container } = render(<FamilyCard party={party()} onOpen={vi.fn()} />)
+    const card = container.querySelector('[data-family-card]')
+    expect(card).not.toHaveClass('rounded-lg')
+    expect(card).not.toHaveClass('px-2')
+    expect(card).not.toHaveClass('py-1.5')
+  })
+
+  it('carries the same geometry into the drag overlay', () => {
+    /*
+     * Shared frame, so this passes for free -- and fails the moment somebody
+     * hand-rolls a second one.
+     *
+     * The overlay is a plain `div` and carries no `data-family-card`: it must
+     * not call `useDraggable`, and marking it as a card invites a future
+     * selector to treat it as one. Assert on the rendered root instead.
+     */
+    const { container } = render(<FamilyCardPreview party={party()} />)
+    const overlay = container.firstElementChild
+    expect(overlay).toHaveClass('rounded-xl')
+    expect(overlay).toHaveClass('border-2')
+    expect(overlay).toHaveClass('p-2.5')
+  })
+})
+
+describe('FamilyCard — summer’s type scale', () => {
+  function arbitraryTextSizes(container: HTMLElement): string[] {
+    const card = container.querySelector('[data-family-card]')
+    if (!card) throw new Error('no card rendered')
+    return [card, ...card.querySelectorAll('*')]
+      .flatMap((el) => Array.from(el.classList))
+      .filter((cls) => /^text-\[\d+px\]$/.test(cls))
+  }
+
+  it('uses the stock scale everywhere, with no arbitrary pixel sizes left', () => {
+    const { container } = render(
+      <FamilyCard
+        party={party({
+          is_returning: true,
+          flags: { needs_private_bathroom: true, needs_power: true },
+          share: { proximity: ['with', 'near'], eligibility: 'named', answers_conflict: true },
+        })}
+        unit={confirmedUnit()}
+        sharedSlot
+        onOpen={vi.fn()}
+      />
+    )
+    expect(arbitraryTextSizes(container)).toEqual([])
+  })
+
+  it('names the household at summer’s CamperCard name size', () => {
+    render(<FamilyCard party={party()} onOpen={vi.fn()} />)
+    expect(screen.getByTestId('family-card-name')).toHaveClass('text-sm')
+  })
+
+  it('sets the children line one step below the name, as summer does', () => {
+    render(<FamilyCard party={party()} onOpen={vi.fn()} />)
+    // Each child gets its own `<span>`, so walk up one to the line that holds
+    // them all — asserting on the inner span would pin nothing, since the size
+    // is set on the line.
+    const line = screen.getByText(/Noah Johnson \(8\)/).parentElement
+    expect(line).toHaveTextContent('Ava Johnson (5)')
+    expect(line).toHaveClass('text-xs')
+  })
+
+  it('sets chips at summer’s meta size', () => {
+    render(
+      <FamilyCard
+        party={party({ flags: { needs_power: true } })}
+        unit={confirmedUnit()}
+        onOpen={vi.fn()}
+      />
+    )
+    expect(screen.getByText('Power')).toHaveClass('text-xs')
+  })
+
+  it('carries the same scale into the drag overlay', () => {
+    // The overlay shares `FamilyCardBody`, so this passes for free — which is
+    // the point. It fails the moment somebody hand-rolls a second body.
+    render(<FamilyCardPreview party={party()} />)
+    expect(screen.getByTestId('family-card-name')).toHaveClass('text-sm')
+  })
+})

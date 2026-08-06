@@ -15,7 +15,7 @@ import { useDraggable, useDroppable } from '@dnd-kit/core'
 import { Bath, Merge, Plug, Snowflake, Split, TriangleAlert, Users } from 'lucide-react'
 
 import type { LodgingUnitRow, RosterPartyRow } from '../../types/lodging'
-import { overlappingPartyKeys, type BoardSlot } from './boardLayout'
+import { overlappingPartyKeys, slotOccupancy, type BoardSlot } from './boardLayout'
 import { isValidMergeTarget, mergeDragId, unitDroppableId } from './dragPlacement'
 import { FamilyCard } from './FamilyCard'
 import { partyKey } from './partyKey'
@@ -121,6 +121,20 @@ export function LodgingUnitCard({
   const { unit, parties, consent } = slot
   const badge = reservationBadge(unit)
   const capacityKnown = unit.sleeps !== null && unit.sleeps !== undefined
+  /*
+   * How full the room is. The corner figure used to be CAPACITY alone, so the
+   * card read identically whether the room was empty or full.
+   *
+   * `spanWidth` is why this is not simply a sum. A party holding several rooms
+   * is drawn on each of them (#2010, which #2040 left alone), so the same
+   * people appear on more than one card and no per-room split exists to divide
+   * them by. The count still stands — over-stating reads as "look at this",
+   * where dropping the party would read as "room for more" — but the
+   * over-capacity CLAIM is withheld, because a household spread across two
+   * rooms it needs is not over anything.
+   */
+  const { occupants, spanWidth } = slotOccupancy(slot, units)
+  const overCapacity = capacityKnown && spanWidth === 0 && occupants > (unit.sleeps ?? 0)
   // The "N families" count chip below: a true statement about the CARD
   // regardless of which rooms anyone actually holds, so it stays keyed on
   // the card's whole party count.
@@ -186,10 +200,37 @@ export function LodgingUnitCard({
       data-unit-code={unit.code}
       ref={setCardRef}
       style={{ borderTopColor: hue }}
-      className={`bg-card flex flex-col gap-2 rounded-xl border border-t-[3px] p-2.5 transition-colors ${
-        consent
-          ? 'border-amber-400 ring-1 ring-amber-400/40 dark:border-amber-500'
-          : 'border-border'
+      /*
+       * `.card-lodge` is summer's card chrome, not a lookalike — the same
+       * class `BunkCard` wears (CLAUDE.md §4, "Family Camp Models Summer").
+       * It carries `bg-card`, `rounded-2xl`, a 2px border, the two-layer
+       * lodge shadow and the hover lift. This card used to hand-roll
+       * `bg-card rounded-xl border`, which is the same idea minus the shadow
+       * and the hover — so it read as a table row rather than a card.
+       *
+       * ORDER MATTERS BELOW. `.card-lodge` lives in `@layer components`, so
+       * every utility here outranks it whatever the string order: the amber
+       * consent edge, the empty-slot wash and the drop-target ring all still
+       * land. The hue top edge is an inline style and outranks both, which is
+       * what keeps §3.10's secondary channel through `card-lodge`'s own
+       * `border-border` and its `border-primary/50` hover.
+       *
+       * NO `hover:shadow-lodge-lg` HERE, though `BunkCard` carries one. That
+       * class is inert: `.shadow-lodge-*` are hand-written rules in `@layer
+       * utilities`, not Tailwind `@utility` declarations, so v4 emits no
+       * `hover:` variant of them — verified in the browser, where no selector
+       * matching `hover.*shadow-lodge` exists in any of the 3,373 loaded
+       * rules. Summer's hover lift comes entirely from `.card-lodge:hover`,
+       * which this card already has. Copying the class would have propagated
+       * a no-op by imitation, which is the `forest-950` failure (#1894) that
+       * CLAUDE.md §4 names by name.
+       *
+       * `gap-3` is summer's 12px row rhythm (`BunkCard` separates header, bar
+       * and roster with `mb-3`). This ran at a flat 8px, which left the title
+       * sitting on top of the amenity row.
+       */
+      className={`card-lodge flex flex-col gap-3 border-t-[3px] p-4 ${
+        consent ? 'border-amber-400 ring-1 ring-amber-400/40 dark:border-amber-500' : ''
       } ${parties.length === 0 ? 'bg-muted/25 border-dashed' : ''} ${
         isUnitOver || isMergeOver ? 'border-primary ring-primary/50 bg-primary/5 ring-2' : ''
       } ${
@@ -201,16 +242,37 @@ export function LodgingUnitCard({
       }`}
     >
       <div className="flex items-baseline gap-1.5">
-        <span className="text-foreground truncate text-[13px] font-semibold">{unit.name}</span>
+        {/* Summer's scale, not a parallel one (CLAUDE.md §4): `text-lg` title
+            over `text-sm` body over `text-xs` meta, the same three steps
+            `BunkCard` uses. This card was built on `text-[13px]` /
+            `text-[11px]` / `text-[10px]`, whose LARGEST size was smaller than
+            summer's body.
+
+            An `<h3>`, as `BunkCard` titles its bunk, and the tag is doing
+            typographic work rather than only semantic: `index.css` gives
+            `h1, h2, h3` the display face (Fraunces, `-0.02em`, `ss01`/`ss02`).
+            As a `<span>` this title rendered the same 18px in the body sans,
+            which is why the boards still read differently once the sizes
+            matched. `text-lg` is a utility and outranks the base rule's
+            `text-2xl md:text-3xl`, so only the face and tracking carry over. */}
+        <h3 className="text-foreground truncate text-lg font-semibold">{unit.name}</h3>
         <span
-          title={capacityKnown ? `Sleeps ${String(unit.sleeps)}` : 'Capacity not recorded'}
-          className="text-muted-foreground ml-auto text-[11px] tabular-nums"
+          title={
+            capacityKnown
+              ? `Sleeps ${String(unit.sleeps)} · ${String(occupants)} placed`
+              : `Capacity not recorded · ${String(occupants)} placed`
+          }
+          className={`ml-auto text-sm tabular-nums ${
+            overCapacity ? 'text-destructive font-semibold' : 'text-muted-foreground'
+          }`}
         >
-          {capacityKnown ? String(unit.sleeps) : '—'}
+          {/* An unmeasured room keeps the em dash as its DENOMINATOR. `0/0`
+              would be the same lie the em dash exists to refuse. */}
+          {`${String(occupants)}/${capacityKnown ? String(unit.sleeps) : '—'}`}
         </span>
       </div>
 
-      <div className="text-muted-foreground flex flex-wrap items-center gap-1.5 text-[11px]">
+      <div className="text-muted-foreground flex flex-wrap items-center gap-1.5 text-sm">
         {unit.bathroom === 'private' && (
           <span className="inline-flex items-center gap-0.5">
             <Bath className="h-3 w-3" aria-hidden="true" /> Private
@@ -224,14 +286,32 @@ export function LodgingUnitCard({
         {unit.has_power === true && <Plug className="h-3 w-3" aria-label="Power" />}
         {unit.has_ac === true && <Snowflake className="h-3 w-3" aria-label="Air conditioning" />}
         {badge && (
-          <span className={`rounded-full px-1.5 py-0.5 text-[10px] font-medium ${badge.className}`}>
+          <span className={`rounded-full px-1.5 py-0.5 text-xs font-medium ${badge.className}`}>
             {badge.label}
+          </span>
+        )}
+        {/* The only actionable capacity state, and the only one summer's
+            four-stop ramp carries that survives at these denominators — a
+            room that sleeps two goes green to orange on its second occupant,
+            which is a binary wearing four colours. */}
+        {overCapacity && (
+          <span className="rounded-full bg-red-100 px-1.5 py-0.5 text-xs font-medium text-red-800 dark:bg-red-950/50 dark:text-red-300">
+            Over capacity
+          </span>
+        )}
+        {/* Without this the bare figure reads as overfull whether or not it is
+            coloured, which is worse than showing nothing. It says the count
+            belongs to a placement wider than this card, not that the room is
+            in trouble. */}
+        {spanWidth > 0 && (
+          <span className="border-border text-muted-foreground rounded-full border px-1.5 py-0.5 text-xs font-medium">
+            {`Spans ${String(spanWidth)} rooms`}
           </span>
         )}
         {/* A deactivated room only reaches the board when somebody is still in
             it — hiding it would drop them. */}
         {unit.is_active === false && (
-          <span className="rounded-full bg-slate-200 px-1.5 py-0.5 text-[10px] font-medium text-slate-800 dark:bg-slate-800 dark:text-slate-200">
+          <span className="rounded-full bg-slate-200 px-1.5 py-0.5 text-xs font-medium text-slate-800 dark:bg-slate-800 dark:text-slate-200">
             Inactive
           </span>
         )}
@@ -268,7 +348,7 @@ export function LodgingUnitCard({
             onClick={() => {
               onMerge?.(unit)
             }}
-            className="border-border text-muted-foreground hover:text-foreground hover:border-foreground/30 inline-flex cursor-grab items-center gap-0.5 rounded-full border px-1.5 py-0.5 text-[10px] font-medium active:cursor-grabbing disabled:opacity-40"
+            className="border-border text-muted-foreground hover:text-foreground hover:border-foreground/30 inline-flex cursor-grab items-center gap-0.5 rounded-full border px-1.5 py-0.5 text-xs font-medium active:cursor-grabbing disabled:opacity-40"
           >
             <Merge className="h-3 w-3" aria-hidden="true" />
             Merge
@@ -294,7 +374,7 @@ export function LodgingUnitCard({
               onClick={() => {
                 onSplit(unit)
               }}
-              className="border-border text-muted-foreground hover:text-foreground hover:border-foreground/30 inline-flex items-center gap-0.5 rounded-full border px-1.5 py-0.5 text-[10px] font-medium disabled:opacity-40"
+              className="border-border text-muted-foreground hover:text-foreground hover:border-foreground/30 inline-flex items-center gap-0.5 rounded-full border px-1.5 py-0.5 text-xs font-medium disabled:opacity-40"
             >
               <Split className="h-3 w-3" aria-hidden="true" />
               Split
@@ -304,7 +384,7 @@ export function LodgingUnitCard({
 
       {isShared && (
         <span
-          className={`inline-flex w-fit items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-semibold ${
+          className={`inline-flex w-fit items-center gap-1 rounded-full px-2 py-0.5 text-xs font-semibold ${
             consent
               ? 'bg-amber-100 text-amber-800 dark:bg-amber-950/50 dark:text-amber-300'
               : 'bg-muted text-muted-foreground'
@@ -322,16 +402,47 @@ export function LodgingUnitCard({
       {/* Spec §11: a household answered `no_share` and is sharing anyway. On
           2026 data this fires exactly once, and that one case is real. */}
       {consent && (
-        <p className="text-[11px] font-medium text-amber-700 dark:text-amber-400">
-          {consent.reason}
-        </p>
+        <p className="text-sm font-medium text-amber-700 dark:text-amber-400">{consent.reason}</p>
       )}
 
-      {parties.length === 0 ? (
-        <p className="text-muted-foreground py-1 text-center text-[11px] italic">Empty</p>
-      ) : (
-        <div className="flex flex-col gap-1.5">
-          {parties.map((party) => (
+      {/*
+        The occupant well — summer's `min-h-[100px]`, and ONE element across
+        both branches. Two wells drift; this one cannot.
+
+        `flex-1` is what makes dropping the grid's `items-start` survivable.
+        A grid row is already as tall as its tallest card, so stretching the
+        cards reclaims no space at all — it moves the whitespace from outside
+        the card border to inside it. Without a well that absorbs the extra
+        height, stretch just yields 28 blown-up empty cards with the message
+        pinned to the top edge, which is worse than the raggedness it fixes.
+
+        `min-h-[100px]` earns its place separately: it lifts an empty card off
+        its 139px floor toward the 188px occupied median, so rows start closer
+        together before stretch has to do anything.
+      */}
+      <div className="flex min-h-[100px] flex-1 flex-col gap-2">
+        {parties.length === 0 ? (
+          /* Summer's wording in family vocabulary — `BunkCard` says "Drop
+             campers here". An empty slot's job is to be a target, and "Empty"
+             described the state without offering the action.
+
+             Only while placement is live, though. Without a scenario or
+             without `bunking.manage` there is nothing to drop, so the
+             invitation would name an action the reader cannot take. Summer
+             renders NOTHING at all in production mode; these cards are small
+             enough that a blank body reads as broken rather than read-only, so
+             the state is stated instead.
+
+             `m-auto` CENTRES it, where summer top-aligns under `py-8`. A
+             deliberate divergence (§4): summer's bunk cards are uniformly
+             tall, so a top-aligned message always sits near its own floor.
+             These stretch across a 139–357px range, where the same message
+             would hang 130px above the bottom of a tall empty card. */
+          <p className="text-muted-foreground m-auto text-center text-sm italic">
+            {canPlace ? 'Drop families here' : 'Empty'}
+          </p>
+        ) : (
+          parties.map((party) => (
             <FamilyCard
               key={partyKey(party)}
               party={party}
@@ -340,9 +451,9 @@ export function LodgingUnitCard({
               isDraggable={canPlace}
               onOpen={onOpenParty}
             />
-          ))}
-        </div>
-      )}
+          ))
+        )}
+      </div>
     </div>
   )
 }

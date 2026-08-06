@@ -102,6 +102,93 @@ function occupiedLeafCodes(
 }
 
 /**
+ * How many people a party brings.
+ *
+ * THE ONE DEFINITION. It used to live privately inside `FamilyCard`, which was
+ * fine while the card was the only thing that counted people; the moment a
+ * ROOM counts them too, two copies is how the household total and the room
+ * total start disagreeing.
+ *
+ * `party_size` is KNOWN WRONG and #1925 is the fix: it counts the household's
+ * LISTED adults rather than the attending ones, and that issue's data
+ * investigation found the errors run in BOTH directions, with the worst cases
+ * under-counts. This is deliberately the single place it is read, so that fix
+ * is one edit rather than a hunt.
+ *
+ * A reported 0 means NOT STATED, not "nobody" — hence the fall back to the
+ * people actually named.
+ */
+export function partySize(party: RosterPartyRow): number {
+  const reported = party.party_size ?? 0
+  if (reported > 0) return reported
+  return (party.adults?.length ?? 0) + (party.children?.length ?? 0)
+}
+
+/** What a card can say about how full it is. */
+export interface SlotOccupancy {
+  /**
+   * People this card accounts for. An UPPER BOUND when `spanWidth > 0` — see
+   * below.
+   */
+  occupants: number
+  /**
+   * 0 when every party here is wholly inside this card; otherwise how many
+   * rooms the widest straddling party holds.
+   *
+   * Non-zero withholds the over-capacity verdict. Since #2010 a party holding
+   * several rooms is drawn on EACH of them, and #2040 deliberately left that
+   * rule alone, so the same six people appear on two cards. There is no
+   * per-room breakdown to divide them by — `party_size` is one number for the
+   * household — and inventing a split is precisely what `sleeps: null`
+   * rendering an em dash exists to refuse.
+   *
+   * Counting the party in full rather than dropping it is the safer of the two
+   * errors: it over-states, which reads as "look at this", where counting only
+   * the wholly-contained parties would under-state and read as "room for more".
+   * `occupiedLeafCodes` names that direction — failing permissive is what this
+   * surface exists to close.
+   *
+   * Withholding only the VERDICT, rather than the figure, is the distinction:
+   * a number carrying a marker is context, while "over capacity" is a claim,
+   * and a household legitimately spread across two rooms it needs is not over
+   * anything.
+   *
+   * Measured on the 2026 registry after #2040: ZERO parties span cards, down
+   * from one, because combining a whole-let building rolls them onto a single
+   * card. Owner-confirmed that a straddling household is never joined in one
+   * of its rooms by a second family, so in practice such a card holds exactly
+   * one party. This is a guard on a reachable-but-currently-empty state.
+   */
+  spanWidth: number
+}
+
+/**
+ * Who this card holds, and whether it can speak for all of them.
+ *
+ * Reads `coveredCodes` and `occupiedLeafCodes` — the same two primitives
+ * `overlappingPartyKeys` uses — rather than re-deriving "is this party inside
+ * this card". #2040 records what re-deriving costs: the overlap rule was fixed
+ * at the slot level and immediately came back one level down in `FamilyCard`,
+ * because the second copy had not been told.
+ */
+export function slotOccupancy(slot: BoardSlot, units: LodgingUnitRow[]): SlotOccupancy {
+  const unitsByCode = new Map(units.map((unit) => [unit.code, unit]))
+  const covered = new Set(coveredCodes(slot.unit, units))
+  let occupants = 0
+  let spanWidth = 0
+  for (const party of slot.parties) {
+    occupants += partySize(party)
+    const leaves = occupiedLeafCodes(party, units, unitsByCode)
+    // `some`, not `every`: a party naming its own room AND the building above
+    // it expands to a superset, and any single uncovered leaf is enough to say
+    // this card cannot speak for the whole placement.
+    const straddles = [...leaves].some((leaf) => !covered.has(leaf))
+    if (straddles) spanWidth = Math.max(spanWidth, leaves.size)
+  }
+  return { occupants, spanWidth }
+}
+
+/**
  * Area colour, §3.10 — a SECONDARY channel.
  *
  * Eight hues is at the limit of distinguishability, so nothing may depend on
@@ -164,6 +251,85 @@ export interface ConsentFlag {
   conflictCount: number
   /** Ready to render beside the slot. Never PHI. */
   reason: string
+}
+
+/**
+ * One area's shorthand at a given depth: initials for a multi-word name,
+ * leading letters for a single word. Depth 1 is the two-character form.
+ */
+function shorthand(name: string, depth: number): string {
+  const words = name.split(/[^A-Za-z0-9]+/).filter((word) => word.length > 0)
+  if (words.length === 0) return 'XX'
+  const first = words[0] ?? ''
+  const second = words[1]
+  if (second === undefined) return first.slice(0, Math.max(2, depth + 1)).toUpperCase()
+  return (first.slice(0, depth) + second.charAt(0)).toUpperCase()
+}
+
+/** How far `shorthand` will deepen before falling back to a numeric suffix. */
+const MAX_TOKEN_DEPTH = 6
+
+/**
+ * A short, URL-safe token per area, keyed by `BoardArea.key`.
+ *
+ * Collapse state lives in the query string (`?closed=GT&closed=HC`), so each
+ * area needs a name that survives a URL. `key` cannot do it — it is
+ * `code::name`, which needs escaping and puts the camp's own area names into a
+ * link that gets pasted into tickets and chat.
+ *
+ * The registry's `area_code` cannot do it either, and that was the first
+ * attempt. It is hand-entered and ragged — two letters for some areas, four
+ * for others — so the URL read as though the widths meant something. Deriving
+ * the token instead makes every area two characters and drops a dependency on
+ * a field nothing else on this board reads.
+ *
+ * WHY THIS TAKES THE WHOLE SET. Two characters is not always enough, and no
+ * pure function of one name can fix that: on the 2026 registry "Ridge Side"
+ * and "River Side" both reduce to RS, and both first words begin "Ri". So the
+ * colliding group — and only that group — deepens a letter at a time until its
+ * members are distinct, leaving every other area's token, and every link
+ * already holding it, untouched.
+ *
+ * Stability: a token depends on its own name and on the names it clashes with,
+ * never on position or on the number of areas. Adding an unrelated area cannot
+ * move it. Adding one that clashes can, which is the honest cost of a short
+ * token and is why the deepening is deterministic rather than first-come.
+ */
+export function areaTokens(
+  areas: ReadonlyArray<Pick<BoardArea, 'key' | 'name'>>
+): Map<string, string> {
+  // Sorted by key so the last-resort suffix below is stable across payload
+  // orders, exactly as the hue assignment is.
+  const ordered = [...areas].sort((left, right) => left.key.localeCompare(right.key))
+  const depths = new Map(ordered.map((area) => [area.key, 1]))
+
+  for (let round = 0; round < MAX_TOKEN_DEPTH; round++) {
+    const claimants = new Map<string, string[]>()
+    for (const area of ordered) {
+      const token = shorthand(area.name, depths.get(area.key) ?? 1)
+      claimants.set(token, [...(claimants.get(token) ?? []), area.key])
+    }
+    const clashing = [...claimants.values()].filter((keys) => keys.length > 1)
+    if (clashing.length === 0) break
+    for (const keys of clashing) {
+      for (const key of keys) depths.set(key, (depths.get(key) ?? 1) + 1)
+    }
+  }
+
+  // Two names that are identical after stripping punctuation would still tie
+  // at every depth. A numeric suffix is the floor, so a token is never blank
+  // and never duplicated.
+  const taken = new Set<string>()
+  const tokens = new Map<string, string>()
+  for (const area of ordered) {
+    const base = shorthand(area.name, depths.get(area.key) ?? 1)
+    let token = base
+    let suffix = 2
+    while (taken.has(token)) token = `${base}${String(suffix++)}`
+    taken.add(token)
+    tokens.set(area.key, token)
+  }
+  return tokens
 }
 
 /** One unit card: the room, whoever is in it, and whether that is a problem. */

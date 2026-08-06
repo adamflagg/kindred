@@ -16,6 +16,7 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { render } from '@testing-library/react'
 import type { ReactNode } from 'react'
+import { MemoryRouter } from 'react-router'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import type { LodgingUnitRow, RosterPartyRow } from '../../types/lodging'
@@ -89,8 +90,15 @@ beforeEach(() => {
   client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
 })
 
+// The board reads its collapsed areas from the query string, so it needs a
+// router. `MemoryRouter` rather than a real one, so no `?closed=` written by
+// one test can leak into the next.
 function wrapper({ children }: { children: ReactNode }) {
-  return <QueryClientProvider client={client}>{children}</QueryClientProvider>
+  return (
+    <QueryClientProvider client={client}>
+      <MemoryRouter initialEntries={['/weekend/fc1/housing']}>{children}</MemoryRouter>
+    </QueryClientProvider>
+  )
 }
 
 function unit(overrides: Partial<LodgingUnitRow> = {}): LodgingUnitRow {

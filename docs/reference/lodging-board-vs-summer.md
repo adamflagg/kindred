@@ -1,0 +1,422 @@
+# The family lodging board, measured against summer
+
+A working comparison of the weekend/family lodging board
+(`frontend/src/components/weekend/`) against the summer bunking board
+(`frontend/src/components/`), row by row, under CLAUDE.md §4 **"Family Camp
+Models Summer"**.
+
+This is a **working document**, not a changelog. Rewrite the status column as
+rows close; do not append history. It exists so the next session does not
+re-measure what has already been measured, and does not re-open decisions that
+have already been settled with a reason.
+
+Every number here was measured in a browser at a **1600px viewport**, where the
+board area is **1188px**. Against the 2026 registry **after #2040**: **76
+cards** across 8 areas, 62 parties, 52 occupied cards, 24 empty, 4 rooms with no
+recorded capacity. Numbers are restated when the layout changes underneath them
+— several already have been, twice.
+
+**Read `frontend/CLAUDE.md` and CLAUDE.md §4 first.** This document assumes
+both.
+
+---
+
+## Why measure at all
+
+Three findings here could not have been reached by reading code, and each had
+already been asserted wrongly from a careful reading first:
+
+- `hover:shadow-lodge-lg` **does nothing**, on this board or summer's. See
+  kindred#2027.
+- Widening the grid does **not** unwrap the amenity row, though it looks like it
+  must.
+- Dropping `items-start` **reclaims no space at all** — the grid row is already
+  as tall as its tallest card, so it relocates whitespace rather than removing
+  it.
+- **A sweep test is only as good as what the render mounts.** The `text-[Npx]`
+  sweep in `LodgingUnitCard.test.tsx` calls itself load-bearing and covers
+  "anywhere inside the card", but its render did not pass `canMerge`, so the
+  merge and split controls never mounted and kept `text-[10px]` through the
+  whole migration. Nothing failed; §2 was marked CLOSED on a sweep that was
+  blind to two live controls in ordinary use. A coverage assertion that
+  enumerates elements is worth more than the sweep it guards — the sweep now
+  asserts the two buttons are present by role, so a prop rename fails loudly
+  instead of silently re-narrowing it.
+
+Assert nothing about rendered output without rendering it. jsdom parses no
+Tailwind, so a `toHaveStyle` assertion on a Tailwind class passes against an
+empty string and proves nothing — pin **classes** in vitest and measure
+**computed values** in a browser.
+
+> Two dev-browser traps, both of which produced a false result here. **Probe
+> handles go stale**: grabbing `page.$$(…)` once and clicking across a React
+> re-render reports nonsense, and twice looked like a bug in the code under
+> test. **Re-query before every click.** And when sweeping
+> `document.styleSheets`, test `selectorText` **before** recursing into
+> `cssRules` — under nested-CSS support `CSSStyleRule.cssRules` is a truthy
+> empty list, so the obvious walk silently visits zero style rules.
+
+---
+
+## 1. Card chrome and geometry — CLOSED
+
+| Dimension  | Summer                   | Family                       | Status           |
+| ---------- | ------------------------ | ---------------------------- | ---------------- |
+| Base class | `.card-lodge`            | `.card-lodge`                | done             |
+| Radius     | `rounded-2xl` (16px)     | same                         | done             |
+| Border     | `border-2 border-border` | same, + `border-t-[3px]` hue | done             |
+| Shadow     | two-layer lodge          | same                         | done             |
+| Padding    | `p-4` (16px)             | `p-4`                        | done             |
+| Row rhythm | `mb-3` (12px)            | `gap-3`                      | done             |
+| Hover      | `.card-lodge:hover`      | `.card-lodge:hover`          | done — see below |
+
+**Hover is deliberately NOT matched class-for-class.** `BunkCard` carries
+`hover:shadow-lodge-lg`; this card does not, and `LodgingUnitCard.test.tsx` pins
+that as an absence.
+
+`.shadow-lodge-sm` / `.shadow-lodge` / `.shadow-lodge-lg` / `.shadow-lodge-xl`
+are hand-written rules inside `@layer utilities` in `index.css`, not Tailwind v4
+`@utility` declarations. Tailwind cannot build a variant from a plain CSS class,
+so it emits nothing for `hover:shadow-lodge-*`. A sweep of all 3,373 loaded
+rules found **no selector matching `hover.*shadow-lodge`**. Nine usages across
+the codebase are inert, plus three of an undefined `shadow-lodge-md`. Filed as
+**kindred#2027**.
+
+Both cards' hover lift comes entirely from `.card-lodge:hover`, whose shadow
+(`0 12px 32px`) is the deeper of the two anyway.
+
+## 2. Type scale — CLOSED
+
+Summer uses three steps of the stock scale. The family board was built on
+arbitrary bracket literals whose **largest** size was smaller than summer's
+**body**.
+
+| Slot                | Summer           | Family before | Family now |
+| ------------------- | ---------------- | ------------- | ---------- |
+| Unit title          | `text-lg` (18px) | `text-[13px]` | `text-lg`  |
+| Capacity figure     | `text-sm`        | `text-[11px]` | `text-sm`  |
+| Card body           | `text-sm`        | `text-[11px]` | `text-sm`  |
+| Badges, chips       | `text-xs`        | `text-[10px]` | `text-xs`  |
+| Occupant name       | `text-sm`        | `text-[13px]` | `text-sm`  |
+| Occupant secondary  | `text-xs`        | `text-[11px]` | `text-xs`  |
+| Merge / split pills | —                | `text-[10px]` | `text-xs`  |
+
+The occupant card steps **down** from the unit card, as `CamperCard` does from
+`BunkCard`. It does not inherit the unit card's body size, or the household name
+would print as large as the room holding it.
+
+`UnitAvailabilityControl` and #2040's merge/split controls render inside the
+card and are part of its scale — a 10px pill in a 14px meta row is the same bug,
+and all three sat at 10px until the sweep was made to render them. Measured
+live with 25 controls mounted: every one is 12px, matching the chips beside
+them, and the card sweep returns empty. A sweep test fails on any arbitrary
+size anywhere inside either card — including variant-prefixed and rem/em forms
+(`sm:text-[11px]`, `text-[0.75rem]`), though arbitrary _colours_ stay out of
+scope — because a single arbitrary size left on a nested row is invisible in a
+spot check and is how the two scales diverged in the first place.
+
+**The typeface was the larger half of this row, and it is not a size at all.**
+`index.css` sets `h1, h2, h3 { font-family: var(--font-display) }` — Fraunces,
+`-0.02em`, `ss01`/`ss02`. Summer titles its bunk in an `<h3>` and gets it; this
+card used a `<span>` and rendered the same 18px in the body sans. The tag was
+doing typographic work, not only semantic work. Now `<h3>`, measured at
+18px/600/−0.27px with `ss01`+`ss02`. `text-lg` is a utility and outranks the base
+rule's `text-2xl md:text-3xl`, so only the face and tracking carry over.
+
+## 3. What the card reports — ONE ROW OPEN
+
+| Row                    | Summer                           | Family                         | Status                           |
+| ---------------------- | -------------------------------- | ------------------------------ | -------------------------------- |
+| Occupancy figure       | `{occupancy}/{capacity}`         | `{occupancy}/{capacity}`       | **done**                         |
+| Over-capacity emphasis | `border-destructive/50 border-2` | `text-destructive` + chip      | **done, differently**            |
+| Colour ramp            | 4 stops                          | none                           | **closed — will not build**      |
+| Utilization bar        | `BunkUtilizationBar`             | none                           | **closed — will not build**      |
+| Empty state wording    | "Drop campers here"              | "Drop families here" / "Empty" | done                             |
+| Empty state geometry   | `py-8 text-center`               | centred in the well            | done                             |
+| Occupant well          | `min-h-[100px]`                  | `min-h-[100px] flex-1`         | done                             |
+| Actions                | 2×2 `btn-ghost` grid             | one inline pill                | **open — decision, not a build** |
+| Warnings block         | `BunkWarnings`                   | consent line only              | keep divergent                   |
+
+**Empty state wording is conditional on `canPlace`.** Without a scenario or
+without `bunking.manage` there is nothing to drop, so the invitation would name
+an action the reader cannot take. Summer renders _nothing at all_ in production
+mode; these cards are small enough that a blank body reads as broken rather than
+read-only, so the state is stated instead.
+
+**The ramp and the bar are closed as WILL NOT BUILD, not as pending.** Summer's
+ramp is a percentage of a fixed capacity of 12 and has five distinguishable
+states. Family rooms average about five beds and plenty sleep two, where the same
+ramp is a binary wearing four colours — green on the first occupant, orange on
+the second. The card's border already carries the area hue (§3.10) and the amber
+consent edge, so a third channel would compete for one surface. What is kept is
+the figure and **one** emphasis state, for the only actionable case; two cards
+qualify on 2026 data.
+
+Consequently the over-capacity emphasis is `text-destructive` on the figure plus
+a chip, **not** summer's border treatment. See §6 on why the border is full.
+
+**Actions should probably not be ported.** Three of summer's four have no family
+analogue — there is no roster swap, no social graph and no lock concept for
+lodging. CSV export is the only survivor, and a room holds one party, so the
+useful export is an area or the whole board. If it is wanted, it belongs on the
+area header or a board toolbar, not the card. Treat this row as a decision to
+close, not a build.
+
+**`BunkWarnings` stays divergent.** Summer's four hazards — age gap, grade ratio,
+grade count, over capacity — have no family analogue. Over capacity is the
+exception and is handled by the emphasis state above.
+
+### The occupancy numerator is knowingly wrong
+
+`party_size` counts the household's **listed** adults rather than the attending
+ones. **kindred#1925** is the fix and carries the data investigation: the errors
+run in **both** directions and the worst cases are under-counts. Two structural
+causes have their own issues — #1946 (rows with no name in any column) and #1947
+(a second adults field that overlaps unpredictably).
+
+Building on it anyway was a deliberate call, on the grounds that the board
+**already** prints this number on every `FamilyCard`. Summing it onto the room
+creates no new class of error, but it does make an existing one more
+consequential, because a room reading full is trusted in a way a household
+reading 6 is not.
+
+`partySize` therefore lives in `boardLayout.ts` as the **one** definition — it
+was private to `FamilyCard`, which was fine while the card was the only thing
+counting people — so #1925 is one edit rather than a hunt. Both read sites say so
+in a comment.
+
+### Spanning withholds the verdict, not the figure
+
+Since #2010 a party holding several rooms is drawn on **each** of them, and #2040
+deliberately left that rule alone. So the same people can appear on more than one
+card, with no per-room breakdown to divide them by.
+
+`slotOccupancy` returns `spanWidth`, and a non-zero value withholds the
+over-capacity claim while keeping the figure. Counting the party in full rather
+than dropping it is the safer of the two errors: it over-states, which reads as
+"look at this", where counting only wholly-contained parties would under-state
+and read as "room for more" — the permissive direction `occupiedLeafCodes` exists
+to close. A `Spans N rooms` chip stops the bare figure reading as a fault.
+
+**Measured after #2040: ZERO parties span cards, down from one.** Combining a
+whole-let building rolls them onto a single card, and prod will combine more.
+Owner-confirmed that a straddling household is never joined in one of its rooms
+by a second family, so such a card holds exactly one party — the figure is that
+family's size, not an aggregate. This is a guard on a reachable-but-empty state,
+which is the kind that rots undetected, so it is tested.
+
+## 4. Occupant card — CLOSED
+
+| Dimension      | Summer `CamperCard`                 | Family `FamilyCard`       | Status                       |
+| -------------- | ----------------------------------- | ------------------------- | ---------------------------- |
+| Name size      | `text-sm`                           | `text-sm`                 | done                         |
+| Secondary size | `text-xs`                           | `text-xs`                 | done                         |
+| Radius         | `rounded-xl` (12px)                 | `rounded-xl`              | done                         |
+| Border         | `border-2`                          | `border-2`                | done                         |
+| Padding        | `p-2.5`                             | `p-2.5`                   | done                         |
+| Background     | gender-tinted                       | neutral                   | **closed — no analogue**     |
+| Hover          | `hover:shadow-lodge` (inert, #2027) | `hover:border-primary/50` | **closed — family is ahead** |
+| Overflow       | `overflow-hidden`                   | none                      | **closed — deliberate**      |
+
+**Gender tint has no family analogue** — a party is mixed by definition. Giving
+this card a colour channel would mean choosing a _different_ fact to encode
+(share eligibility, fit verdict). That is a design question and must not be
+smuggled in under §4.
+
+**The hover row resolves in the family board's favour.** Summer's is one of the
+nine inert classes in #2027 and renders nothing; `hover:border-primary/50` works.
+Copying summer here would be copying a no-op.
+
+**`overflow-hidden` is deliberately not copied.** `CamperCard` needs it to clip
+an absolutely-positioned gradient at its foot; this card has no such element, so
+the class would be cargo.
+
+## 5. Grid and row layout — CLOSED
+
+| Dimension     | Summer                       | Family                         | Status            |
+| ------------- | ---------------------------- | ------------------------------ | ----------------- |
+| Columns       | `grid-cols-1 sm:2 lg:3 xl:4` | `minmax(280px,1fr)` → 4 @288px | done              |
+| Gap           | `gap-3` (12px)               | `gap-3`                        | done              |
+| Row alignment | default `stretch`            | `stretch`                      | done              |
+| Grouping      | flat, area is a filter       | collapsible section per area   | **keep** — see §6 |
+
+Summer sets columns by breakpoint; this board sets a minimum width and lets
+`auto-fill` decide. Different mechanism, same result at the sizes that matter,
+and the width-driven form degrades better across the viewports staff use.
+
+**What `minmax(280px)` bought,** over `minmax(200px)` (5 columns at 228px):
+
+- truncated unit titles **12 of 82 → 2**. An 18px title had ~180px to work with
+  at 228px once padding and the capacity figure were out.
+- amenity-row free space on its last line: median **153px → 213px**, 25th
+  percentile **115px → 175px**. Roughly one more indicator chip per card, which
+  is why the change was wanted.
+- cost: **+11% scroll**.
+
+**Widening does NOT reduce how often the amenity row wraps.** 28 / 29 / 25 cards
+sat at one, two and three lines at _both_ widths. The wrapping is structural:
+`UnitAvailabilityControl` gives its stored-reason line and its open form
+`w-full`, so each takes its own line however wide the card is. Anyone wanting a
+denser amenity row must change that control, not the grid.
+
+**Row alignment could not be fixed alone.** Dropping `items-start` reclaims
+nothing — the row is already as tall as its tallest card, so stretch relocates
+whitespace from outside the card border to inside it. Landed together with the
+`min-h-[100px]` well and a centred invitation: dead space within rows **3,034px →
+0**, no ragged row, at a cost of **+7.9%** board height. The whitespace was never
+reclaimed; it was absorbed.
+
+## 6. Deliberate divergences — SETTLED, do not "fix"
+
+**Per-area collapsible sections.** Keep — but not for the reason originally
+recorded.
+
+`BunkingBoardByArea` groups by **gender** (boys / girls / all-gender) and
+`selectedArea === 'all'` concatenates all three into one flat grid. Summer's
+areas are _mutually exclusive by rule_ — a boy cannot go in a girls' bunk — so
+the other two are illegal destinations and a filter hides nothing usable.
+
+Family areas are **geography, and every area is a legal destination for every
+family**. Adopting summer's filter would hide 74 usable rooms to show 8. That
+copies the widget while discarding the reason it works. §4 asks for the reasoning
+to transfer, not the control.
+
+The earlier justification — "82 rooms across 8 areas need grouping where summer's
+~40 bunks don't" — argued from volume. Volume argues for chunking, not for _this_
+chunking. The semantic argument is the load-bearing one.
+
+Measured cost of sectioning, for the record: **24 card rows against a flat 21**
+at four columns, plus 8 headings and 7 inter-section gaps, plus **18 empty slots
+in partial last rows** — roughly 20% of board height. Area distribution is even
+(18 / 13 / 13 / 10 / 8 / 7 / 7 / 6, median 8.5, no degenerate single-room areas),
+so the sections carry real weight rather than fragmenting into noise.
+
+**Collapse state lives in the URL** (`?closed=GT&closed=HC`), not `useState`.
+Collapsing seven of eight areas _is_ the filter this board was said to lack, and
+in component state it evaporated on every reload. §4's URL-state rule applies for
+the same reason it applies to tabs. A query **param**, not a path segment: the
+view is already a segment because it selects _what_ you are looking at; this
+modifies how that view is arranged.
+
+The token is **generated** (`areaTokens`), not read from the registry's
+`area_code`, which is hand-entered and ragged — two letters for some areas, four
+for others. **Two characters is not always enough**, which is why `areaTokens`
+takes the whole set rather than one area at a time: on the 2026 registry two
+areas both reduce to the same pair of initials, and both first words share their
+first two letters. The colliding group — and only that group — deepens a letter
+at a time until distinct, leaving every other token, and every link already
+holding one, alone.
+
+Repeated entries rather than a comma list: `URLSearchParams` percent-encodes a
+comma, and a link somebody can read is most of the point. Sorted, so one set of
+collapsed areas always produces one URL; dropped entirely when empty.
+
+**The wrapping grid of small cards, not tall columns.** A summer bunk column is
+tall because it holds 10–14 campers; a lodging unit holds nothing, one party, or
+occasionally two. `boardLayout.ts`'s header explains this. Do not make family
+cards summer-height.
+
+**The area hue stripe** (`border-t-[3px]` plus the section dot) is §3.10 and must
+survive any chrome change. It is an inline `borderTopColor`, so it outranks
+`.card-lodge`'s `border-border` and its `border-primary/50` hover. There is a
+test pinning it.
+
+Note the coupling: `boardLayout.ts` justifies the eight-hue ramp as decorative
+_because_ "the section headers do the actual grouping". **Sections and hue stand
+or fall together.** Removing the sections obliges you to delete the hue or
+re-justify it against §3.10.
+
+**The card border is full.** Area hue on top, amber for consent all round. That is
+why over-capacity took a text colour and a chip rather than summer's
+`border-destructive/50`, and why any future state needs somewhere else to live.
+
+---
+
+## What #2040 and #2029 settled
+
+Both merged while this branch was in flight. Neither is optional reading before
+touching occupancy or the draw level.
+
+**#2040 — a whole-let building draws as one card.** A merge is a **promotion to
+the parent**: the card is the container's own registry row carrying its measured
+whole-house `sleeps`, which is **not** the sum of its rooms (one building records
+7 against rooms summing to 6). _Never re-derive it_ — an earlier draft of §3
+proposed exactly that and was wrong. It also gave this board `unitLevel.ts`
+(`coveredCodes`, `drawnUnits`, `representingCodes`) and `overlappingPartyKeys` /
+`occupiedLeafCodes`, which `slotOccupancy` reads rather than re-deriving
+containment. #2040 records what re-deriving costs: the overlap rule was fixed at
+the slot level and came straight back one level down in `FamilyCard`, because the
+second copy had not been told.
+
+**#2029 — the registry records its season.** Year scoping is server-side and
+admin-side. The board's read shape is **unchanged**: `LodgingUnitRow` is an alias
+for the generated `LodgingUnitSummary`, and `types/lodging.test.ts`'s
+`Required<LodgingUnitRow>` fixture compiles with no `year` field. It also removed
+the weekend Inventory tab, so the board now reads Housing / Roster / Map.
+
+---
+
+## Remaining work
+
+### Findability — the one substantive item left
+
+Summer does not solve "where can this camper go?" with layout. It solves it
+during the drag: `BunkCard` applies `pointer-events-none opacity-40` to every
+invalid bunk the moment a camper is picked up. `LodgingUnitCard` indicates
+nothing — it deliberately accepts every drop, for a good reason stated in its
+comment (fit is advisory; no cabin is confirmed until staff walk the property).
+
+**Declining to refuse a drop is not the same as declining to indicate fit.**
+Dimming poor fits without blocking them is summer's own pattern and squarely §4.
+It is also what keeps the per-area sections defensible: sections are bad at
+search, and this removes the need to search. The well built for §3 is where the
+reason goes ("Sleeps 2", "No power").
+
+The uniform slot shape made this _more_ urgent, not less: every empty card is now
+an identically well-formed target, so they are harder to tell apart at a glance
+than when they were ragged.
+
+### Closing §3's actions row
+
+A documentation decision, not a build. See §3.
+
+---
+
+## How to re-measure
+
+The dev server for this work runs on `:3135` with `AUTH_MODE=bypass`. Board with
+real placements: `/weekend/fc1/housing`.
+
+**Vite needs `.env` exported at launch**, not just `VITE_DISABLE_AUTH=true` — the
+bypass path reads `POCKETBASE_ADMIN_EMAIL`/`POCKETBASE_ADMIN_PASSWORD` through
+`vite.config.ts`, and a bare `npm run dev` lands on an authentication error.
+Source `.env` first, or use `scripts/start_dev.sh`.
+
+Drive it with `dev-browser` — Playwright pages, so `setViewportSize`, not
+`setViewport`, and pass `--timeout` above the 30s default. Re-query element
+handles before every click; see the warning at the top.
+
+```js
+const cards = [...document.querySelectorAll("[data-unit-card]")];
+// arbitrary font sizes anywhere inside a card — should be []
+[
+  ...new Set(
+    cards
+      .flatMap((c) => [c, ...c.querySelectorAll("*")])
+      .flatMap((e) => [...e.classList])
+      .filter((k) => /^text-\[\d+px\]$/.test(k)),
+  ),
+];
+// truncated unit titles
+cards
+  .map((c) => c.querySelector("h3"))
+  .filter((t) => t.scrollWidth > t.clientWidth).length;
+// occupancy figures, over-capacity cards, spanning cards
+cards.map((c) => c.querySelector('[title*="placed"]')?.textContent.trim());
+cards.filter((c) => c.innerText.includes("Over capacity")).length;
+cards.filter((c) => /Spans \d+ rooms/.test(c.innerText)).length;
+```
+
+`docs/architecture/lodging-occupancy.md` covers the occupancy data model.
+`docs/reference/lodging-registry.md` covers where the unit names come from and
+why they are not in this repository — **no unit names in this document either.**

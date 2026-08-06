@@ -32,7 +32,7 @@ import { Repeat, Users } from 'lucide-react'
 import { Fragment } from 'react'
 
 import type { LodgingUnitRow, RosterPartyRow } from '../../types/lodging'
-import { SHARE_WORDING, shareWordingChip } from './boardLayout'
+import { partySize, SHARE_WORDING, shareWordingChip } from './boardLayout'
 import { partyKey } from './partyKey'
 import { ATTENTION_LABEL, partyAttention } from './rosterAttention'
 
@@ -78,18 +78,11 @@ const CHIP_TONE: Record<ChipTone, string> = {
 function Chip({ label, tone }: { label: string; tone: ChipTone }) {
   return (
     <span
-      className={`inline-flex items-center rounded-full px-1.5 py-0.5 text-[10px] font-semibold whitespace-nowrap ${CHIP_TONE[tone]}`}
+      className={`inline-flex items-center rounded-full px-1.5 py-0.5 text-xs font-semibold whitespace-nowrap ${CHIP_TONE[tone]}`}
     >
       {label}
     </span>
   )
-}
-
-/** How many people the party brings. */
-function partySize(party: RosterPartyRow): number {
-  const reported = party.party_size ?? 0
-  if (reported > 0) return reported
-  return (party.adults?.length ?? 0) + (party.children?.length ?? 0)
 }
 
 /**
@@ -123,18 +116,18 @@ function FamilyCardBody({
       <span className="flex items-baseline gap-1.5">
         <span
           data-testid="family-card-name"
-          className="text-foreground text-[13px] leading-tight font-semibold"
+          className="text-foreground text-sm leading-tight font-semibold"
         >
           {party.display_name}
         </span>
-        <span className="text-muted-foreground ml-auto inline-flex items-center gap-0.5 text-[11px] tabular-nums">
+        <span className="text-muted-foreground ml-auto inline-flex items-center gap-0.5 text-xs tabular-nums">
           <Users className="h-3 w-3 flex-shrink-0" aria-hidden="true" />
           {partySize(party)}
         </span>
       </span>
 
       {children.length > 0 && (
-        <span className="text-muted-foreground text-[11px] leading-snug">
+        <span className="text-muted-foreground text-xs leading-snug">
           {children.map((child, index) => (
             <Fragment key={String(child.person_cm_id ?? index)}>
               {index > 0 && ' · '}
@@ -182,7 +175,7 @@ function FamilyCardBody({
         {wantsNear && <Chip label="Near another family" tone="muted" />}
 
         {party.is_returning === true && (
-          <span className="text-forest-700 dark:text-forest-300 inline-flex items-center gap-0.5 text-[10px] font-semibold">
+          <span className="text-forest-700 dark:text-forest-300 inline-flex items-center gap-0.5 text-xs font-semibold">
             <Repeat className="h-2.5 w-2.5 flex-shrink-0" aria-hidden="true" />
             Returning
           </span>
@@ -192,9 +185,20 @@ function FamilyCardBody({
   )
 }
 
-/** The card's own frame, shared by the real card and the drag overlay. */
+/**
+ * The card's own frame, shared by the real card and the drag overlay.
+ *
+ * `rounded-xl border-2 p-2.5` is `CamperCard`'s geometry exactly (CLAUDE.md
+ * §4). At `rounded-lg`, a 1px border and `px-2 py-1.5` this read as a table
+ * row sitting inside a card -- the same criticism that opened this whole
+ * exercise, one level down.
+ *
+ * `overflow-hidden` is deliberately NOT copied across. `CamperCard` needs it
+ * to clip an absolutely-positioned gradient at its foot; this card has no such
+ * element, so the class would be cargo.
+ */
 const CARD_FRAME =
-  'group border-border flex w-full flex-col gap-1 rounded-lg border px-2 py-1.5 text-left'
+  'group border-border flex w-full flex-col gap-1 rounded-xl border-2 p-2.5 text-left'
 
 export function FamilyCard({
   party,
