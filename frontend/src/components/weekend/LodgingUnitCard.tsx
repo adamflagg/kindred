@@ -15,7 +15,7 @@ import { useDraggable, useDroppable } from '@dnd-kit/core'
 import { Bath, Merge, Plug, Snowflake, Split, TriangleAlert, Users } from 'lucide-react'
 
 import type { LodgingUnitRow, RosterPartyRow } from '../../types/lodging'
-import { overlappingPartyKeys, type BoardSlot } from './boardLayout'
+import { overlappingPartyKeys, slotOccupancy, type BoardSlot } from './boardLayout'
 import { isValidMergeTarget, mergeDragId, unitDroppableId } from './dragPlacement'
 import { FamilyCard } from './FamilyCard'
 import { partyKey } from './partyKey'
@@ -121,6 +121,20 @@ export function LodgingUnitCard({
   const { unit, parties, consent } = slot
   const badge = reservationBadge(unit)
   const capacityKnown = unit.sleeps !== null && unit.sleeps !== undefined
+  /*
+   * How full the room is. The corner figure used to be CAPACITY alone, so the
+   * card read identically whether the room was empty or full.
+   *
+   * `spanWidth` is why this is not simply a sum. A party holding several rooms
+   * is drawn on each of them (#2010, which #2040 left alone), so the same
+   * people appear on more than one card and no per-room split exists to divide
+   * them by. The count still stands — over-stating reads as "look at this",
+   * where dropping the party would read as "room for more" — but the
+   * over-capacity CLAIM is withheld, because a household spread across two
+   * rooms it needs is not over anything.
+   */
+  const { occupants, spanWidth } = slotOccupancy(slot, units)
+  const overCapacity = capacityKnown && spanWidth === 0 && occupants > (unit.sleeps ?? 0)
   // The "N families" count chip below: a true statement about the CARD
   // regardless of which rooms anyone actually holds, so it stays keyed on
   // the card's whole party count.
@@ -243,10 +257,18 @@ export function LodgingUnitCard({
             `text-2xl md:text-3xl`, so only the face and tracking carry over. */}
         <h3 className="text-foreground truncate text-lg font-semibold">{unit.name}</h3>
         <span
-          title={capacityKnown ? `Sleeps ${String(unit.sleeps)}` : 'Capacity not recorded'}
-          className="text-muted-foreground ml-auto text-sm tabular-nums"
+          title={
+            capacityKnown
+              ? `Sleeps ${String(unit.sleeps)} · ${String(occupants)} placed`
+              : `Capacity not recorded · ${String(occupants)} placed`
+          }
+          className={`ml-auto text-sm tabular-nums ${
+            overCapacity ? 'text-destructive font-semibold' : 'text-muted-foreground'
+          }`}
         >
-          {capacityKnown ? String(unit.sleeps) : '—'}
+          {/* An unmeasured room keeps the em dash as its DENOMINATOR. `0/0`
+              would be the same lie the em dash exists to refuse. */}
+          {`${String(occupants)}/${capacityKnown ? String(unit.sleeps) : '—'}`}
         </span>
       </div>
 
@@ -266,6 +288,24 @@ export function LodgingUnitCard({
         {badge && (
           <span className={`rounded-full px-1.5 py-0.5 text-xs font-medium ${badge.className}`}>
             {badge.label}
+          </span>
+        )}
+        {/* The only actionable capacity state, and the only one summer's
+            four-stop ramp carries that survives at these denominators — a
+            room that sleeps two goes green to orange on its second occupant,
+            which is a binary wearing four colours. */}
+        {overCapacity && (
+          <span className="rounded-full bg-red-100 px-1.5 py-0.5 text-xs font-medium text-red-800 dark:bg-red-950/50 dark:text-red-300">
+            Over capacity
+          </span>
+        )}
+        {/* Without this the bare figure reads as overfull whether or not it is
+            coloured, which is worse than showing nothing. It says the count
+            belongs to a placement wider than this card, not that the room is
+            in trouble. */}
+        {spanWidth > 0 && (
+          <span className="border-border text-muted-foreground rounded-full border px-1.5 py-0.5 text-xs font-medium">
+            {`Spans ${String(spanWidth)} rooms`}
           </span>
         )}
         {/* A deactivated room only reaches the board when somebody is still in

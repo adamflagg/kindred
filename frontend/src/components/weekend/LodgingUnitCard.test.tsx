@@ -70,8 +70,15 @@ describe('LodgingUnitCard', () => {
   })
 
   it('renders unknown capacity as an em dash, never as zero', () => {
-    // `null` is UNKNOWN. The API already maps PocketBase's stored 0 to null,
-    // and "sleeps 0" is a lie about a cabin nobody has measured.
+    /*
+     * `null` is UNKNOWN. The API already maps PocketBase's stored 0 to null,
+     * and "sleeps 0" is a lie about a cabin nobody has measured.
+     *
+     * The figure became `occupancy/capacity`, so the em dash is now the
+     * DENOMINATOR rather than the whole string. The claim is unchanged and is
+     * the point of the second assertion: an empty unmeasured room reads
+     * `0/—`, never `0/0`.
+     */
     render(
       <LodgingUnitCard
         slot={slot({ unit: unit({ sleeps: null }) })}
@@ -79,8 +86,8 @@ describe('LodgingUnitCard', () => {
         onOpenParty={vi.fn()}
       />
     )
-    expect(screen.getByText('—')).toBeInTheDocument()
-    expect(screen.queryByText('0')).not.toBeInTheDocument()
+    expect(screen.getByText('0/—')).toBeInTheDocument()
+    expect(screen.queryByText('0/0')).not.toBeInTheDocument()
   })
 
   it('shows how many spaces the unit sleeps when it is known', () => {
@@ -533,7 +540,10 @@ describe('LodgingUnitCard — summer’s type scale', () => {
     // Summer prints `{occupancy}/{capacity}` at `text-sm`. The figure is the
     // second thing read on the card; at 11px it read as a footnote.
     render(<LodgingUnitCard slot={slot()} hue="hsl(160 45% 42%)" onOpenParty={vi.fn()} />)
-    expect(screen.getByTitle('Sleeps 5')).toHaveClass('text-sm')
+    // Matched loosely: the title gained the occupancy count alongside the
+    // capacity. What this test pins is the SIZE of that element, not its
+    // wording — the wording has its own tests.
+    expect(screen.getByTitle(/Sleeps 5/)).toHaveClass('text-sm')
   })
 
   it('sets the consent line at body size, not meta size', () => {
@@ -573,6 +583,134 @@ describe('LodgingUnitCard — summer’s type scale', () => {
     )
     expect(screen.getByText('Inactive')).toHaveClass('text-xs')
     expect(screen.getByText('2 families')).toHaveClass('text-xs')
+  })
+})
+
+describe('LodgingUnitCard — how full the room is', () => {
+  /*
+   * The corner figure was CAPACITY, so the card looked identical whether the
+   * room was empty or full — the one functional gap the styling work left.
+   *
+   * Summer prints `{occupancy}/{capacity}` and backs it with a four-stop
+   * colour ramp and a utilization bar. NEITHER is ported, deliberately.
+   * Summer's ramp is a percentage of a fixed capacity of 12 and has five
+   * distinguishable states; family rooms average about five beds and plenty
+   * sleep two, where the ramp is a binary wearing four colours. The card's
+   * border already carries the area hue (§3.10) and the amber consent edge,
+   * so a third channel would be competing for one surface. What is kept is
+   * the figure and ONE emphasis state, for the only actionable case.
+   */
+  it('says how many are in the room, not just what it sleeps', () => {
+    render(
+      <LodgingUnitCard
+        slot={slot({ parties: [party({ party_size: 3 })] })}
+        hue="hsl(160 45% 42%)"
+        onOpenParty={vi.fn()}
+      />
+    )
+    expect(screen.getByText('3/5')).toBeInTheDocument()
+  })
+
+  it('distinguishes an empty room from a full one', () => {
+    // The whole point: before this, both rendered "5".
+    render(<LodgingUnitCard slot={slot()} hue="hsl(160 45% 42%)" onOpenParty={vi.fn()} />)
+    expect(screen.getByText('0/5')).toBeInTheDocument()
+  })
+
+  it('marks a room holding more people than it sleeps', () => {
+    render(
+      <LodgingUnitCard
+        slot={slot({ unit: unit({ sleeps: 4 }), parties: [party({ party_size: 6 })] })}
+        hue="hsl(160 45% 42%)"
+        onOpenParty={vi.fn()}
+      />
+    )
+    expect(screen.getByText('6/4')).toHaveClass('text-destructive')
+    expect(screen.getByText('Over capacity')).toBeInTheDocument()
+  })
+
+  it('leaves a room within capacity unmarked', () => {
+    render(
+      <LodgingUnitCard
+        slot={slot({ parties: [party({ party_size: 5 })] })}
+        hue="hsl(160 45% 42%)"
+        onOpenParty={vi.fn()}
+      />
+    )
+    expect(screen.getByText('5/5')).not.toHaveClass('text-destructive')
+    expect(screen.queryByText('Over capacity')).not.toBeInTheDocument()
+  })
+
+  it('never calls an unmeasured room over capacity', () => {
+    // No denominator, so there is nothing to be over. Judging it would be the
+    // same lie as printing its capacity as 0.
+    render(
+      <LodgingUnitCard
+        slot={slot({ unit: unit({ sleeps: null }), parties: [party({ party_size: 9 })] })}
+        hue="hsl(160 45% 42%)"
+        onOpenParty={vi.fn()}
+      />
+    )
+    expect(screen.getByText('9/—')).toBeInTheDocument()
+    expect(screen.queryByText('Over capacity')).not.toBeInTheDocument()
+  })
+
+  it('withholds the verdict when a household also holds a room off this card', () => {
+    /*
+     * The building is drawn SPLIT and one household holds both rooms, so it is
+     * drawn on each (#2010, which #2040 left alone). Six people against this
+     * room's three beds is not something anyone can support: there is no
+     * per-room breakdown to divide by. The figure stands as an upper bound and
+     * the CLAIM is withheld — a family spread across two rooms it needs is not
+     * over anything.
+     */
+    const house = unit({ code: 'house', name: 'Aspen House', is_container: true, sleeps: 7 })
+    const r1 = unit({ code: 'r1', unit_id: 'u2', name: 'Aspen 1', parent_code: 'house', sleeps: 3 })
+    const r2 = unit({ code: 'r2', unit_id: 'u3', name: 'Aspen 2', parent_code: 'house', sleeps: 3 })
+    render(
+      <LodgingUnitCard
+        slot={slot({
+          unit: r1,
+          parties: [party({ party_size: 6, unit_code: '', unit_codes: ['r1', 'r2'] })],
+        })}
+        units={[house, r1, r2]}
+        hue="hsl(160 45% 42%)"
+        onOpenParty={vi.fn()}
+      />
+    )
+    expect(screen.getByText('6/3')).not.toHaveClass('text-destructive')
+    expect(screen.queryByText('Over capacity')).not.toBeInTheDocument()
+  })
+
+  it('says the household spans rooms, so the figure is not read as a fault', () => {
+    // Without this the bare `6/3` reads as overfull whether or not it is
+    // coloured, which is worse than showing nothing.
+    const house = unit({ code: 'house', name: 'Aspen House', is_container: true, sleeps: 7 })
+    const r1 = unit({ code: 'r1', unit_id: 'u2', name: 'Aspen 1', parent_code: 'house', sleeps: 3 })
+    const r2 = unit({ code: 'r2', unit_id: 'u3', name: 'Aspen 2', parent_code: 'house', sleeps: 3 })
+    render(
+      <LodgingUnitCard
+        slot={slot({
+          unit: r1,
+          parties: [party({ party_size: 6, unit_code: '', unit_codes: ['r1', 'r2'] })],
+        })}
+        units={[house, r1, r2]}
+        hue="hsl(160 45% 42%)"
+        onOpenParty={vi.fn()}
+      />
+    )
+    expect(screen.getByText('Spans 2 rooms')).toBeInTheDocument()
+  })
+
+  it('says nothing about spanning on an ordinary room', () => {
+    render(
+      <LodgingUnitCard
+        slot={slot({ parties: [party()] })}
+        hue="hsl(160 45% 42%)"
+        onOpenParty={vi.fn()}
+      />
+    )
+    expect(screen.queryByText(/Spans/)).not.toBeInTheDocument()
   })
 })
 

@@ -32,7 +32,7 @@ import { Repeat, Users } from 'lucide-react'
 import { Fragment } from 'react'
 
 import type { LodgingUnitRow, RosterPartyRow } from '../../types/lodging'
-import { SHARE_WORDING, shareWordingChip } from './boardLayout'
+import { partySize, SHARE_WORDING, shareWordingChip } from './boardLayout'
 import { partyKey } from './partyKey'
 import { ATTENTION_LABEL, partyAttention } from './rosterAttention'
 
@@ -83,13 +83,6 @@ function Chip({ label, tone }: { label: string; tone: ChipTone }) {
       {label}
     </span>
   )
-}
-
-/** How many people the party brings. */
-function partySize(party: RosterPartyRow): number {
-  const reported = party.party_size ?? 0
-  if (reported > 0) return reported
-  return (party.adults?.length ?? 0) + (party.children?.length ?? 0)
 }
 
 /**

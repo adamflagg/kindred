@@ -13,7 +13,7 @@ import type {
   ShareEligibilityValue,
   SharePreferenceValue,
 } from '../../types/lodging'
-import { AREA_HUES, areaTokens, buildBoard, countBoardSlots } from './boardLayout'
+import { AREA_HUES, areaTokens, buildBoard, countBoardSlots, slotOccupancy } from './boardLayout'
 
 function unit(overrides: Partial<LodgingUnitRow> = {}): LodgingUnitRow {
   return {
@@ -69,6 +69,114 @@ function party(overrides: Partial<RosterPartyRow> = {}): RosterPartyRow {
     ...overrides,
   }
 }
+
+describe('slotOccupancy — how many people the card can account for', () => {
+  /*
+   * The corner figure was CAPACITY, so a card looked identical whether the
+   * room was empty or full. This is the numerator that fixes that.
+   *
+   * THE NUMERATOR IS KNOWN TO BE WRONG, and #1925 is the fix. `party_size`
+   * counts the household's LISTED adults rather than the attending ones, and
+   * a data investigation there found the errors run in BOTH directions, with
+   * the worst cases under-counts. It is already displayed per household on
+   * every `FamilyCard`; summing it onto the room does not create a new class
+   * of error, but it does make an existing one more consequential, because a
+   * room reading full is trusted in a way a household reading 6 is not. This
+   * is deliberately the ONE place that computes it, so #1925 has one edit.
+   *
+   * SPANNING is the other half. Since #2010 a party holding several rooms is
+   * drawn on each of them, and #2040 deliberately left that rule alone. When
+   * a party occupies leaves this card does not draw, the room-level count is
+   * not knowable — there is no per-room breakdown to divide, and inventing
+   * one is what `sleeps: null` renders an em dash to avoid. So the count
+   * stands as an upper bound and the OVER-CAPACITY VERDICT is withheld:
+   * a number with a marker is context, "over capacity" is a claim.
+   *
+   * Measured on the 2026 registry after #2040: zero parties span cards, down
+   * from one. Combining is what removed it, and prod will combine more. This
+   * is a guard on a reachable-but-empty state, which is exactly the kind that
+   * rots undetected — hence tested.
+   */
+  it('sums the parties in the room', () => {
+    const slot = {
+      unit: unit(),
+      parties: [party({ party_size: 3 }), party({ party_size: 2 })],
+      consent: null,
+    }
+    expect(slotOccupancy(slot, [unit()])).toEqual({ occupants: 5, spanWidth: 0 })
+  })
+
+  it('counts an empty room as nobody, not as unknown', () => {
+    expect(slotOccupancy({ unit: unit(), parties: [], consent: null }, [unit()])).toEqual({
+      occupants: 0,
+      spanWidth: 0,
+    })
+  })
+
+  it('falls back to the named people when party_size is unset', () => {
+    // One adult and one child in the fixture. A `party_size` of 0 is "not
+    // stated", not "nobody" — the same reading `FamilyCard` has always used.
+    const slot = { unit: unit(), parties: [party({ party_size: 0 })], consent: null }
+    expect(slotOccupancy(slot, [unit()]).occupants).toBe(2)
+  })
+
+  it('counts a party that named a room beneath this combined card', () => {
+    // The card is the building; the placement named a room in it. Covered, so
+    // nothing spans — this is the case #2040 made the common one.
+    const house = unit({
+      code: 'house',
+      name: 'Aspen House',
+      is_container: true,
+      is_combined: true,
+      sleeps: 7,
+    })
+    const r1 = unit({ code: 'r1', unit_id: 'u2', name: 'Aspen 1', parent_code: 'house', sleeps: 3 })
+    const r2 = unit({ code: 'r2', unit_id: 'u3', name: 'Aspen 2', parent_code: 'house', sleeps: 3 })
+    const slot = {
+      unit: house,
+      parties: [party({ party_size: 6, unit_code: 'r1' })],
+      consent: null,
+    }
+    expect(slotOccupancy(slot, [house, r1, r2])).toEqual({ occupants: 6, spanWidth: 0 })
+  })
+
+  it('marks the card when a party also holds a room it does not draw', () => {
+    // The building is drawn SPLIT and one household holds both rooms, so it
+    // is drawn on each. Six people against this room's three beds is not a
+    // verdict anyone can support; `spanWidth` is what withholds it.
+    const house = unit({ code: 'house', name: 'Aspen House', is_container: true, sleeps: 7 })
+    const r1 = unit({ code: 'r1', unit_id: 'u2', name: 'Aspen 1', parent_code: 'house', sleeps: 3 })
+    const r2 = unit({ code: 'r2', unit_id: 'u3', name: 'Aspen 2', parent_code: 'house', sleeps: 3 })
+    const spanning = party({ party_size: 6, unit_code: '', unit_codes: ['r1', 'r2'] })
+    expect(
+      slotOccupancy({ unit: r1, parties: [spanning], consent: null }, [house, r1, r2])
+    ).toEqual({
+      occupants: 6,
+      spanWidth: 2,
+    })
+  })
+
+  it('marks the card when a container placement fans down onto it', () => {
+    // A placement naming the building, with the building drawn split. #2040
+    // fans it onto every drawn descendant, so the same six people appear on
+    // both rooms.
+    const house = unit({ code: 'house', name: 'Aspen House', is_container: true, sleeps: 7 })
+    const r1 = unit({ code: 'r1', unit_id: 'u2', name: 'Aspen 1', parent_code: 'house', sleeps: 3 })
+    const r2 = unit({ code: 'r2', unit_id: 'u3', name: 'Aspen 2', parent_code: 'house', sleeps: 3 })
+    const onBuilding = party({ party_size: 6, unit_code: 'house' })
+    expect(
+      slotOccupancy({ unit: r1, parties: [onBuilding], consent: null }, [house, r1, r2]).spanWidth
+    ).toBe(2)
+  })
+
+  it('degrades to raw codes when the registry is not supplied', () => {
+    // `LodgingUnitCard` defaults `units` to `[]`. A leaf card whose party
+    // names that leaf must still be covered, or every card would look as
+    // though it spanned.
+    const slot = { unit: unit(), parties: [party({ unit_code: 'cedar-1' })], consent: null }
+    expect(slotOccupancy(slot, []).spanWidth).toBe(0)
+  })
+})
 
 describe('areaTokens — the URL shorthand for each area', () => {
   /*
