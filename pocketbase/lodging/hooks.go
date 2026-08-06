@@ -47,7 +47,7 @@ const (
 )
 
 // yearScopedUnitRefs are the collections that carry BOTH a year of their own
-// and a relation into lodging_units. Once units are year-scoped (1500000140
+// and a relation into lodging_units. Once units are year-scoped (1500000141
 // gives lodging_units its own `year`, making (code, year) a distinct record)
 // those two years can disagree -- a 2027 row pointing at a 2026 building -- a
 // state that was unrepresentable before and that nothing in the database

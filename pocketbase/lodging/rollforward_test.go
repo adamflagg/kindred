@@ -11,7 +11,7 @@ import (
 // newRollForwardTestApp reuses setupRegistryCollections (registry_test.go) so
 // the roll-forward tests run against the same shape production has: (code,
 // year) composite unique indexes on both lodging_areas and lodging_units, per
-// 1500000140.
+// 1500000141.
 func newRollForwardTestApp(t *testing.T) core.App {
 	t.Helper()
 	app, err := tests.NewTestApp()

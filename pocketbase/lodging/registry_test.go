@@ -27,13 +27,13 @@ func setupRegistryCollections(t *testing.T, app core.App) {
 	areas.Fields.Add(&core.NumberField{Name: "map_x"})
 	areas.Fields.Add(&core.NumberField{Name: "map_y"})
 	areas.Fields.Add(&core.NumberField{Name: "sort_order", OnlyInt: true})
-	// Required, mirroring migration 1500000140 (and the sync package's own
+	// Required, mirroring migration 1500000141 (and the sync package's own
 	// tightened twin, lodging_testsupport_test.go:114): PocketBase's Set on a
 	// column that does not exist is a silent no-op, so a fixture that forgot
 	// this column would resolve every season against a row stored at year 0
 	// instead of failing loudly here.
 	areas.Fields.Add(&core.NumberField{Name: "year", Required: true, OnlyInt: true})
-	// Composite (code, year), matching production's 1500000140: code alone is
+	// Composite (code, year), matching production's 1500000141: code alone is
 	// no longer unique once a row exists per season.
 	areas.AddIndex("idx_lodging_areas_code", true, "code, year", "")
 	saveRegistryCollection(t, app, areas)
@@ -82,7 +82,7 @@ func setupRegistryCollections(t *testing.T, app core.App) {
 	units.Fields.Add(&core.NumberField{Name: "max_beds", OnlyInt: true})
 	// Required, same reason as lodging_areas' year field above.
 	units.Fields.Add(&core.NumberField{Name: "year", Required: true, OnlyInt: true})
-	// Composite (code, year), matching production's 1500000140.
+	// Composite (code, year), matching production's 1500000141.
 	units.AddIndex("idx_lodging_units_code", true, "code, year", "")
 	saveRegistryCollection(t, app, units)
 
@@ -409,7 +409,7 @@ func TestSeedRegistryWritesDefaultCombined(t *testing.T) {
 	   "inventory_class": "family_pool", "is_container": true}
 	], "aliases": []}`
 
-	if err := seedRegistryFromFile(app, writeRegistry(t, body)); err != nil {
+	if err := seedRegistryFromFile(app, writeRegistry(t, body), testYear); err != nil {
 		t.Fatalf("seedRegistryFromFile: %v", err)
 	}
 

@@ -21,7 +21,7 @@ func yearsFor(t *testing.T, query string) (from, to int, err error) {
 // TestYearsFromQueryRejectsYearsOutsideTheFieldRange pins that the endpoint
 // validates the RANGE, not merely that the value parses.
 //
-// `year` carries min:2010 / max:2100 from 1500000140. Without a range check
+// `year` carries min:2010 / max:2100 from 1500000141. Without a range check
 // here, a typed `to=0` parses fine, reaches app.Save, and fails the field
 // validation — which the POST handler reports as a 500. That is a client error
 // wearing a server error's clothes, and it tells the caller nothing.

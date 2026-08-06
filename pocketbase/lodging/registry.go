@@ -629,7 +629,7 @@ func registryHasAnyRows(app core.App) (bool, error) {
 
 // findByCodeAndYear looks up a row by its cross-year identity (code) scoped to
 // one season. lodging_units and lodging_areas both carry (code, year) unique
-// indexes (1500000140), so a code-only lookup could return another season's
+// indexes (1500000141), so a code-only lookup could return another season's
 // row.
 func findByCodeAndYear(app core.App, collection, code string, year int) (*core.Record, error) {
 	return findFirst(app, collection, "code = {:c} && year = {:y}",

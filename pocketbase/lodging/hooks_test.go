@@ -39,7 +39,7 @@ func setupCollections(t *testing.T, app core.App) {
 	units.Fields.Add(&core.TextField{Name: "name", Required: true})
 	units.Fields.Add(&core.BoolField{Name: "is_active"})
 	units.Fields.Add(&core.BoolField{Name: "is_container"})
-	// year backs guardUnitYear (1500000140 makes it required in production;
+	// year backs guardUnitYear (1500000141 makes it required in production;
 	// left optional here, as elsewhere in this fixture, so newUnit's callers
 	// that predate the year dimension are not forced to supply one).
 	units.Fields.Add(&core.NumberField{Name: "year"})
@@ -1174,7 +1174,7 @@ func TestMappingAPartylessRowStillAttemptsAReplay(t *testing.T) {
 // TestGuardUnitYearRejectsACrossYearRow is the single-relation case: a
 // lodging_availability row for 2027 naming a unit that only exists in 2026.
 // Before guardUnitYear, nothing in the schema stopped this -- lodging_units
-// carrying its own `year` (1500000140) made (code, year) distinct records for
+// carrying its own `year` (1500000141) made (code, year) distinct records for
 // the first time, and a row on any of the four tables that also carry `year`
 // could point its `unit`/`units` relation at a building from a different
 // season with no error anywhere.

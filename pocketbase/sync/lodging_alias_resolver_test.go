@@ -10,7 +10,7 @@ import (
 // reads 0 as a real lower bound resolves almost nothing.
 //
 // "ridge-a" gets one lodging_units row per tested year -- the registry itself
-// is year-scoped now (migration 1500000140), so a cabin that was never renamed
+// is year-scoped now (migration 1500000141), so a cabin that was never renamed
 // still has a distinct record, and id, every season. The alias's own window
 // stays unbounded throughout: this test is about the ALIAS STRING resolving at
 // any year, not about one unit id surviving across years.

@@ -107,7 +107,7 @@ func newLodgingTestApp(t *testing.T) core.App {
 	units.Fields.Add(&core.NumberField{Name: "sleeps"})
 	units.Fields.Add(&core.BoolField{Name: "is_active"})
 	units.Fields.Add(&core.BoolField{Name: "is_container"})
-	// Required, mirroring migration 1500000140. PocketBase's Set on a column
+	// Required, mirroring migration 1500000141. PocketBase's Set on a column
 	// that does not exist is a silent no-op, so a fixture that forgot this
 	// column would resolve every year against a unit stored at year 0 --
 	// exactly the failure this field exists to catch loudly, here.
