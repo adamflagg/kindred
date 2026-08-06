@@ -25,7 +25,7 @@
  * the Go ingest so every surface sees the correction at once.
  */
 import { Home, Map as MapIcon, Users } from 'lucide-react'
-import { useEffect, useMemo } from 'react'
+import { lazy, Suspense, useEffect, useMemo } from 'react'
 import { useNavigate, useParams } from 'react-router'
 
 import { QueryGuard } from '../components/QueryGuard'
@@ -36,8 +36,6 @@ import {
   countMapUnits,
   countUnmeasuredSpaces,
   HouseholdRosterTable,
-  LodgingBoard,
-  LodgingMap,
   partyBeds,
   resolveWeekendRef,
   scenarioForWeekend,
@@ -53,6 +51,41 @@ import { useCurrentYear } from '../hooks/useCurrentYear'
 import { usePermissions } from '../hooks/usePermissions'
 import { useScenario } from '../hooks/useScenario'
 import { useWeekendRoster, useWeekendSessions } from '../hooks/useWeekendRoster'
+
+/**
+ * Imported by DIRECT PATH, never through `../components/weekend` (#1964). A
+ * `lazy()` that resolves through the barrel pulls the barrel's whole export
+ * surface — and everything it re-exports — into the lazy chunk, which
+ * defeats the split entirely: `WeekendSessionList` also imports from the
+ * barrel, so anything reachable through it is hoisted into a chunk shared
+ * with the lander and shipped there too.
+ *
+ * `countBoardSlots` / `countMapUnits` stay eager imports above, straight from
+ * the barrel — pure functions the header needs on every tab, not components.
+ */
+const LodgingBoard = lazy(() =>
+  import('../components/weekend/LodgingBoard').then((m) => ({ default: m.LodgingBoard }))
+)
+const LodgingMap = lazy(() =>
+  import('../components/weekend/LodgingMap').then((m) => ({ default: m.LodgingMap }))
+)
+
+/**
+ * A bare `null` fallback (the modal precedent elsewhere in this codebase) is
+ * fine for something that pops over existing content; this is the whole tab
+ * panel, open long enough on a slow connection to read as a broken page
+ * without something in it. Same treatment as `FriendGroupsView`'s graph load.
+ */
+function TabLoadingFallback() {
+  return (
+    <div
+      className="flex min-h-[400px] items-center justify-center"
+      data-testid="lodging-view-loading"
+    >
+      <div className="spinner-lodge" />
+    </div>
+  )
+}
 
 /**
  * `housing`, not `board`. Summer names its board tab after what is being
@@ -310,18 +343,28 @@ export default function WeekendRosterPage() {
               {/* The board takes the scenario, the weekend and the manage
                   permission because it WRITES now (#1989) — main's note that
                   drag placement "is what earns plumbing it back down" is this.
-                  The map still takes only what it renders. */}
+                  The map still takes only what it renders.
+
+                  Each is its own Suspense boundary, not one wrapping the
+                  whole panel — the two chunks are independent, so loading the
+                  board must not hold up the map or vice versa. */}
               {view === 'housing' && (
-                <LodgingBoard
-                  parties={parties}
-                  units={units}
-                  year={currentYear}
-                  scenario={scenario}
-                  sessionCmId={selectedCmId ?? 0}
-                  canManage={canManageLodging}
-                />
+                <Suspense fallback={<TabLoadingFallback />}>
+                  <LodgingBoard
+                    parties={parties}
+                    units={units}
+                    year={currentYear}
+                    scenario={scenario}
+                    sessionCmId={selectedCmId ?? 0}
+                    canManage={canManageLodging}
+                  />
+                </Suspense>
               )}
-              {view === 'map' && <LodgingMap parties={parties} units={units} year={currentYear} />}
+              {view === 'map' && (
+                <Suspense fallback={<TabLoadingFallback />}>
+                  <LodgingMap parties={parties} units={units} year={currentYear} />
+                </Suspense>
+              )}
             </div>
           </>
         )}

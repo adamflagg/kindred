@@ -136,6 +136,29 @@ vi.mock('../components/weekend', async (importOriginal) => {
 // exact disagreement these tests exist to catch. A real MemoryRouter plus a
 // location probe asserts where the app actually ended up.
 
+// Hoisted to file scope (rather than local to `the view in the URL`) — the
+// code-splitting tests below need a unit to assert Housing renders, same as
+// the URL-view tests already do.
+const ONE_UNIT = {
+  year: 2026,
+  session_cm_id: 1000001,
+  parties: [],
+  counts: {},
+  units: [
+    {
+      unit_id: 'u1',
+      code: 'ridge-a',
+      name: 'Ridge A',
+      area_code: 'RIDGE',
+      area_name: 'Ridge Side',
+      sleeps: 5,
+      is_confirmed: true,
+      is_container: false,
+      is_family_available: true,
+    },
+  ],
+}
+
 const FAMILY_CAMP_1 = {
   session_id: 'sess_1',
   session_cm_id: 1000001,
@@ -331,31 +354,13 @@ describe('addressing a weekend by slug', () => {
 })
 
 describe('the view in the URL', () => {
-  const ONE_UNIT = {
-    year: 2026,
-    session_cm_id: 1000001,
-    parties: [],
-    counts: {},
-    units: [
-      {
-        unit_id: 'u1',
-        code: 'ridge-a',
-        name: 'Ridge A',
-        area_code: 'RIDGE',
-        area_name: 'Ridge Side',
-        sleeps: 5,
-        is_confirmed: true,
-        is_container: false,
-        is_family_available: true,
-      },
-    ],
-  }
-
-  it('opens the view the URL names, so a tab can be linked and reloaded', () => {
+  it('opens the view the URL names, so a tab can be linked and reloaded', async () => {
     rosterQuery.data = ONE_UNIT
     renderPage('1000001', 'map')
     expect(screen.getByRole('tab', { name: /Map/ })).toHaveAttribute('aria-selected', 'true')
-    expect(screen.getByTestId('map-canvas')).toBeInTheDocument()
+    // The map is lazy-loaded (#1964), so it clears the Suspense boundary one
+    // tick after the synchronous render rather than being present immediately.
+    expect(await screen.findByTestId('map-canvas')).toBeInTheDocument()
   })
 
   it('opens Housing when the URL names no view', () => {
@@ -474,7 +479,9 @@ describe('tabs', () => {
     await userEvent.click(screen.getByRole('tab', { name: /Housing/ }))
     // The URL follows the label. No `board` segment survives the rename.
     expect(screen.getByTestId('location')).toHaveTextContent('/weekend/1000001/housing')
-    expect(screen.getByText('Ridge A')).toBeInTheDocument()
+    // The board is lazy-loaded (#1964); it clears the Suspense boundary a
+    // tick after the click rather than being present synchronously.
+    expect(await screen.findByText('Ridge A')).toBeInTheDocument()
     // The mode lives in the header badge alone now, as it does on summer's
     // board — not repeated as a chip over the content.
     expect(screen.queryByText(/CampMinder mirror/i)).not.toBeInTheDocument()
@@ -516,7 +523,9 @@ describe('tabs', () => {
   it('shows the map when the Map tab is selected', async () => {
     renderPage()
     await userEvent.click(screen.getByRole('tab', { name: 'Map (0)' }))
-    expect(screen.getByTestId('map-canvas')).toBeInTheDocument()
+    // The map is lazy-loaded (#1964); it clears the Suspense boundary a tick
+    // after the click rather than being present synchronously.
+    expect(await screen.findByTestId('map-canvas')).toBeInTheDocument()
   })
 
   it('counts the marks the map draws, not the units the board draws', async () => {
