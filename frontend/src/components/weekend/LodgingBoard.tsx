@@ -7,12 +7,15 @@
  * is how it came to assert the mirror over a draft once #1967 shipped a picker:
  * two indicators, only one of them wired up.
  *
- * The board reads nothing and writes twice. The page fetches; this component
- * owns two mutations, and they are gated differently on purpose — drag
- * placement (#1985) needs a scenario because it writes a draft plan, and
- * availability (#1999) needs none because a burst pipe closes a cabin in every
- * plan for that weekend. `canPlace` and `canSetAvailability` below are that
- * difference, and collapsing them is the mistake to avoid.
+ * The board reads nothing and writes three times. The page fetches; this
+ * component owns three mutations, and they are gated differently on purpose —
+ * drag placement (#1985) needs a scenario because it writes a draft plan;
+ * availability (#1999) needs none because a burst pipe closes a cabin in
+ * every plan for that weekend; and a merge/split (migration 1500000140) needs none for a
+ * different reason than availability does — a draw level is simply never
+ * CampMinder-sourced, so there is no mirror truth for the write to clobber.
+ * `canPlace`, `canSetAvailability` and `canMergeUnits` below are that
+ * difference, and collapsing any pair of them is the mistake to avoid.
  *
  * Layout is §3.7: one collapsible section per area, each a WRAPPING GRID of
  * slot cards. Not summer's columns — a summer bunk column is tall because it
@@ -38,14 +41,15 @@ import {
   type DragStartEvent,
 } from '@dnd-kit/core'
 import { ChevronDown, ChevronRight, Info, TriangleAlert } from 'lucide-react'
-import { useCallback, useState } from 'react'
+import { useCallback, useMemo, useState } from 'react'
 
 import { useDismissOnDeadSpace } from '../../hooks/useDismissOnDeadSpace'
 import { useLodgingPlacement } from '../../hooks/useLodgingPlacement'
 import { useUnitAvailability } from '../../hooks/useUnitAvailability'
+import { useUnitMerge } from '../../hooks/useUnitMerge'
 import type { LodgingUnitRow, RosterPartyRow } from '../../types/lodging'
 import { buildBoard } from './boardLayout'
-import { resolveDrop } from './dragPlacement'
+import { mergeDragUnit, resolveDrop, resolveMergeDrop } from './dragPlacement'
 import { FamilyCard, FamilyCardPreview } from './FamilyCard'
 import { FamilyDetailsPanel } from './FamilyDetailsPanel'
 import { FloatingUnplacedBadge } from './FloatingUnplacedBadge'
@@ -89,6 +93,8 @@ export function LodgingBoard({
   const [selected, setSelected] = useState<RosterPartyRow | null>(null)
   const [requestClose, setRequestClose] = useState(false)
   const [dragging, setDragging] = useState<RosterPartyRow | null>(null)
+  /** The card currently being dragged BY ITS MERGE HANDLE, for grey-out. */
+  const [draggingMergeUnit, setDraggingMergeUnit] = useState<LodgingUnitRow | null>(null)
 
   // THREE conditions, not two. `sessionCmId` is in there because every write
   // names a weekend, and the prop defaults to 0 for the thirty tests that do
@@ -103,10 +109,33 @@ export function LodgingBoard({
   // which is where most of them look, could not close a cabin at all.
   const canSetAvailability = canManage && sessionCmId > 0
 
+  // Same two conditions as `canSetAvailability` above, not `canPlace` — and
+  // for a related but distinct reason. Placement is read-only on the mirror
+  // because the mirror IS CampMinder's truth and a sync would overwrite a
+  // draft write. A draw level has no such truth to protect: no sync ever
+  // writes `lodging_slot_merges`, so there is nothing on the mirror for a
+  // merge to clobber (migration 1500000140 made this a weekend-level fact for exactly
+  // that reason — `scenario: ''` is now a legitimate write, not a refusal).
+  // Gating this on `canPlace` would reintroduce the scenario dimension this
+  // hook does not need, the same mistake `canSetAvailability` already exists
+  // to avoid. Do not "fix" this back to `canPlace`.
+  const canMergeUnits = canManage && sessionCmId > 0
+
   const { move } = useLodgingPlacement({ year, sessionCmId, scenario })
   const { setAvailability, pendingUnitId } = useUnitAvailability({ year, sessionCmId })
+  // `scenario` here is the same prop `useLodgingPlacement` gets — on the
+  // mirror that is `''`, and the hook now sends it rather than refusing, per
+  // `canMergeUnits` above.
+  const { setCombined, pendingUnitId: pendingMergeUnitId } = useUnitMerge({
+    year,
+    sessionCmId,
+    scenario,
+  })
 
-  const unitsByCode = new Map(units.map((unit) => [unit.code, unit]))
+  // Memoised because `mergeUnit` closes over it: rebuilt each render, it would
+  // give that callback a new identity every time and defeat the point of the
+  // `useCallback`. Cheap either way at ~120 units, but the lint rule is right.
+  const unitsByCode = useMemo(() => new Map(units.map((unit) => [unit.code, unit])), [units])
 
   const sensors = useSensors(
     // The same activation constraints summer uses. The distance threshold is
@@ -126,20 +155,51 @@ export function LodgingBoard({
   }
 
   const handleDragStart = (event: DragStartEvent) => {
-    const active = parties.find((party) => partyKey(party) === event.active.id)
+    const activeId = String(event.active.id)
+    const mergeUnit = mergeDragUnit(activeId, units)
+    if (mergeUnit !== null) {
+      setDraggingMergeUnit(mergeUnit)
+      setDragging(null)
+      return
+    }
+    setDraggingMergeUnit(null)
+    const active = parties.find((party) => partyKey(party) === activeId)
     setDragging(active ?? null)
   }
 
   const handleDragEnd = (event: DragEndEvent) => {
     setDragging(null)
+    setDraggingMergeUnit(null)
+
+    const activeId = String(event.active.id)
+    const overId = event.over === null ? null : String(event.over.id)
+
+    // Tried FIRST and unconditionally, regardless of either gate below. A
+    // card's drag id can never match a party's `partyKey`, so `resolveDrop`
+    // below is naturally silent about a card drag whether or not this branch
+    // fires — the two resolvers can never disagree about which gesture just
+    // ended.
+    const merge = resolveMergeDrop({ activeId, overId, units })
+    if (merge !== null) {
+      // Gated on `canMergeUnits`, NOT `canPlace` — see that constant's
+      // comment. This mirrors the mirror-write disabled-affordance belt to
+      // the handle's own `useDraggable({ disabled: !canMerge })` braces,
+      // exactly as `canPlace` is re-checked below for a party card.
+      if (!canMergeUnits) return
+      const parentUnit = unitsByCode.get(merge.parentCode)
+      // Never invent a unit. Unreachable in practice — `resolveMergeDrop`
+      // only names a `parentCode` it read off a unit IN this same payload —
+      // but a lookup that fails silently is safer than one that writes an
+      // empty id.
+      if (parentUnit !== undefined) {
+        void setCombined(parentUnit.unit_id, parentUnit.name, merge.combined).catch(() => undefined)
+      }
+      return
+    }
+
     if (!canPlace) return
 
-    const intent = resolveDrop({
-      activeId: String(event.active.id),
-      overId: event.over === null ? null : String(event.over.id),
-      parties,
-      units,
-    })
+    const intent = resolveDrop({ activeId, overId, parties, units })
     if (intent === null) return
 
     // The rejection path is the hook's: it rolls the optimistic move back and
@@ -147,6 +207,45 @@ export function LodgingBoard({
     // surfacing as an unhandled rejection.
     void move(intent).catch(() => undefined)
   }
+
+  // dnd-kit fires `onDragCancel`, NEVER `onDragEnd`, on Escape, a window
+  // resize, or a tab visibility change mid-drag. `handleDragEnd` is the only
+  // place that resets `dragging`/`draggingMergeUnit` above, so without this
+  // handler a cancelled CARD drag leaves `draggingMergeUnit` latched: every
+  // party droppable stays disabled board-wide (`LodgingUnitCard`'s
+  // `mergeDragActive` gate) and every non-sibling card sits dimmed and
+  // unclickable (`pointer-events-none`) until staff happen to start another
+  // drag. Same two resets as `handleDragEnd`'s first two lines — see
+  // `useLockGroupDragDrop.tsx`'s `handleDragCancel` for the same shape on
+  // summer's own drag gesture.
+  const handleDragCancel = () => {
+    setDragging(null)
+    setDraggingMergeUnit(null)
+  }
+
+  const splitUnit = useCallback(
+    (unit: LodgingUnitRow) => {
+      void setCombined(unit.unit_id, unit.name, false).catch(() => undefined)
+    },
+    [setCombined]
+  )
+
+  // The ACTIVATION path for the merge the drag gesture makes, so the handle
+  // works for a keyboard — the board's sensors are Mouse and Touch only, and
+  // widening them would change party placement too. Resolves to the same
+  // parent `resolveMergeDrop` would have named: merging is promotion to the
+  // parent, and either sibling as a drop target yields `source.parent_code`.
+  //
+  // Same never-invent-a-unit guard as the drop path: a parent code the
+  // payload has no row for writes nothing rather than an empty id.
+  const mergeUnit = useCallback(
+    (unit: LodgingUnitRow) => {
+      const parentUnit = unitsByCode.get(unit.parent_code ?? '')
+      if (parentUnit === undefined) return
+      void setCombined(parentUnit.unit_id, parentUnit.name, true).catch(() => undefined)
+    },
+    [setCombined, unitsByCode]
+  )
 
   const writeAvailability = useCallback(
     (unit: LodgingUnitRow, write: { familyAvailable: boolean | null; reason: string }) => {
@@ -193,6 +292,7 @@ export function LodgingBoard({
       collisionDetection={collisionDetection}
       onDragStart={handleDragStart}
       onDragEnd={handleDragEnd}
+      onDragCancel={handleDragCancel}
     >
       <div className="flex flex-col gap-3">
         {/* The mode chip that used to lead this row moved to the header badge,
@@ -281,11 +381,36 @@ export function LodgingBoard({
                           <LodgingUnitCard
                             key={slot.unit.unit_id}
                             slot={slot}
+                            // The registry, so the card's per-party sharing
+                            // chip expands a container code to its rooms —
+                            // the same `overlappingPartyKeys` the slot flag
+                            // already ran with these units in `buildBoard`.
+                            units={units}
                             hue={area.hue}
                             canPlace={canPlace}
                             canSetAvailability={canSetAvailability}
                             savingAvailability={pendingUnitId === slot.unit.unit_id}
                             onSetAvailability={writeAvailability}
+                            canMerge={canMergeUnits}
+                            mergeSourceUnit={draggingMergeUnit}
+                            onSplit={splitUnit}
+                            onMerge={mergeUnit}
+                            // THIS card, or its PARENT. A merge names the
+                            // parent container, which has no card while the
+                            // tree is split — so keying this on the card's
+                            // own id alone leaves both room handles live for
+                            // the whole write and the affordance never fires
+                            // on the merge path at all. It works for Split
+                            // unaided only because a combined card IS the
+                            // unit written. Deliberately not board-wide:
+                            // merging a second house while the first saves
+                            // must stay possible.
+                            savingMerge={
+                              pendingMergeUnitId !== null &&
+                              (pendingMergeUnitId === slot.unit.unit_id ||
+                                pendingMergeUnitId ===
+                                  unitsByCode.get(slot.unit.parent_code ?? '')?.unit_id)
+                            }
                             onOpenParty={openParty}
                           />
                         ))}

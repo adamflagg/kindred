@@ -12,8 +12,11 @@ import type { LodgingUnitRow, RosterPartyRow, WeekendRoster } from '../../types/
 import {
   UNPLACED_DROPPABLE_ID,
   applyPlacement,
+  isValidMergeTarget,
+  mergeDragId,
   partyGrainBody,
   resolveDrop,
+  resolveMergeDrop,
   unitDroppableId,
 } from './dragPlacement'
 import { partyKey } from './partyKey'
@@ -173,10 +176,11 @@ describe('resolveDrop', () => {
     ).toBeNull()
   })
 
-  it('refuses a drop on a container row', () => {
-    // Containers never get a card (boardLayout's first invariant), so this is
-    // unreachable through the board today. It is pinned because the map draws
-    // buildings, and the map is a projection of the same model.
+  it('refuses a drop on a NON-combined container', () => {
+    // A non-combined building carries the beds its halves already report and
+    // never gets a card on the board (boardLayout's first invariant) — but the
+    // map draws buildings too and is a projection of the same model, so this
+    // stays reachable there even though the board itself never offers it.
     const building = unit({ unit_id: 'u7', code: 'lodge', name: 'The Lodge', is_container: true })
     const p = party()
     expect(
@@ -187,6 +191,30 @@ describe('resolveDrop', () => {
         units: [building],
       })
     ).toBeNull()
+  })
+
+  it('accepts a drop on a COMBINED container — it is the new card type', () => {
+    // Task 6 draws a combined container's OWN row in place of its rooms
+    // (unitLevel.ts, drawnUnits), and LodgingUnitCard registers a live,
+    // highlighting droppable for every drawn slot. Refusing here would make
+    // that card a drop target that silently eats the family: no error, no
+    // toast, no move. This is the mutation-checked fix for that bug.
+    const building = unit({
+      unit_id: 'u7',
+      code: 'lodge',
+      name: 'The Lodge',
+      is_container: true,
+      is_combined: true,
+    })
+    const p = party()
+    expect(
+      resolveDrop({
+        activeId: partyKey(p),
+        overId: unitDroppableId('lodge'),
+        parties: [p],
+        units: [building],
+      })
+    ).toMatchObject({ kind: 'place', unitId: 'u7', unitCode: 'lodge', unitName: 'The Lodge' })
   })
 
   it('returns null for an unknown drag id', () => {
@@ -294,6 +322,126 @@ describe('resolveDrop', () => {
         overId: unitDroppableId('cedar-1'),
         parties: [orphan],
         units: [CEDAR_1],
+      })
+    ).toBeNull()
+  })
+})
+
+const WING = unit({ unit_id: 'u10', code: 'wing', name: 'The Wing', is_container: true })
+const WING_R1 = unit({ unit_id: 'u11', code: 'wing-r1', name: 'Wing Room 1', parent_code: 'wing' })
+const WING_R2 = unit({ unit_id: 'u12', code: 'wing-r2', name: 'Wing Room 2', parent_code: 'wing' })
+const OTHER_HOUSE_R1 = unit({
+  unit_id: 'u13',
+  code: 'other-r1',
+  name: 'Other House Room 1',
+  parent_code: 'other-house',
+})
+
+describe('isValidMergeTarget', () => {
+  it('accepts a sibling sharing a non-empty parent_code', () => {
+    expect(isValidMergeTarget(WING_R1, WING_R2)).toBe(true)
+  })
+
+  it('refuses a room with no parent at all', () => {
+    expect(isValidMergeTarget(CEDAR_1, CEDAR_2)).toBe(false)
+  })
+
+  it('refuses two rooms under different parents', () => {
+    expect(isValidMergeTarget(WING_R1, OTHER_HOUSE_R1)).toBe(false)
+  })
+
+  it('refuses a room dropped on itself', () => {
+    expect(isValidMergeTarget(WING_R1, WING_R1)).toBe(false)
+  })
+
+  it('refuses when no card is being dragged', () => {
+    expect(isValidMergeTarget(null, WING_R2)).toBe(false)
+  })
+})
+
+describe('resolveMergeDrop', () => {
+  it('promotes the shared parent when a room is dropped on its sibling', () => {
+    expect(
+      resolveMergeDrop({
+        activeId: mergeDragId('wing-r1'),
+        overId: mergeDragId('wing-r2'),
+        units: [WING, WING_R1, WING_R2],
+      })
+    ).toEqual({ parentCode: 'wing', combined: true })
+  })
+
+  it('refuses a drop onto a NON-sibling — a room under a different parent', () => {
+    expect(
+      resolveMergeDrop({
+        activeId: mergeDragId('wing-r1'),
+        overId: mergeDragId('other-r1'),
+        units: [WING_R1, OTHER_HOUSE_R1],
+      })
+    ).toBeNull()
+  })
+
+  it('refuses a room with no parent_code — nothing to promote it to', () => {
+    expect(
+      resolveMergeDrop({
+        activeId: mergeDragId('cedar-1'),
+        overId: mergeDragId('cedar-2'),
+        units: [CEDAR_1, CEDAR_2],
+      })
+    ).toBeNull()
+  })
+
+  it('refuses a room dropped on itself', () => {
+    expect(
+      resolveMergeDrop({
+        activeId: mergeDragId('wing-r1'),
+        overId: mergeDragId('wing-r1'),
+        units: [WING_R1],
+      })
+    ).toBeNull()
+  })
+
+  it('refuses when the active id is not merge-shaped — a party drag, not a card drag', () => {
+    // The gender-rule analogue: anything that is not shaped like THIS gesture
+    // is null, not a guess. A party's drag id is its `partyKey`, which is
+    // never `merge:`-prefixed.
+    expect(
+      resolveMergeDrop({
+        activeId: partyKey(party()),
+        overId: mergeDragId('wing-r2'),
+        units: [WING_R1, WING_R2],
+      })
+    ).toBeNull()
+  })
+
+  it('refuses when the over id is not merge-shaped — the ordinary unit droppable', () => {
+    // Both ids must carry the `merge:` prefix, never just one — otherwise a
+    // card dragged over an ordinary party-drop target could be misread as a
+    // completed merge.
+    expect(
+      resolveMergeDrop({
+        activeId: mergeDragId('wing-r1'),
+        overId: unitDroppableId('wing-r2'),
+        units: [WING_R1, WING_R2],
+      })
+    ).toBeNull()
+  })
+
+  it('refuses when the over id names a unit the payload does not carry', () => {
+    expect(
+      resolveMergeDrop({
+        activeId: mergeDragId('wing-r1'),
+        overId: mergeDragId('does-not-exist'),
+        units: [WING_R1],
+      })
+    ).toBeNull()
+  })
+
+  it('returns null when the drag ended over nothing', () => {
+    expect(
+      resolveMergeDrop({
+        activeId: mergeDragId('wing-r1'),
+        overId: null,
+        units: [WING_R1, WING_R2],
       })
     ).toBeNull()
   })

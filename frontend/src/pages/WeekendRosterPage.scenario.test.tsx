@@ -148,6 +148,16 @@ vi.mock('../hooks/useUnitAvailability', () => ({
   }),
 }))
 
+// Same reason, same board: the merge handle and split control mount a real
+// `useMutation` too. Their gate is pinned in
+// `components/weekend/LodgingBoard.merge.test.tsx`.
+vi.mock('../hooks/useUnitMerge', () => ({
+  useUnitMerge: () => ({
+    setCombined: vi.fn(() => Promise.resolve()),
+    pendingUnitId: null,
+  }),
+}))
+
 const toastSuccess = vi.fn()
 const toastError = vi.fn()
 

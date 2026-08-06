@@ -35,6 +35,7 @@ function unit(over: Partial<LodgingUnitRecord> & { id: string }): LodgingUnitRec
     is_confirmed: false,
     is_active: true,
     is_container: false,
+    default_combined: false,
     notes: '',
     ...over,
   }

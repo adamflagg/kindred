@@ -25,7 +25,11 @@
  * alias that would exist for no reason but this test.
  */
 import { describe, expect, it } from 'vitest'
-import type { AvailabilityWriteRequest, PlacementWriteRequest } from './api-generated'
+import type {
+  AvailabilityWriteRequest,
+  PlacementWriteRequest,
+  SlotMergeRequest,
+} from './api-generated'
 import type { LodgingUnitRow, RosterPartyRow } from './lodging'
 
 const _exhaustiveRosterParty: Required<RosterPartyRow> = {
@@ -91,6 +95,23 @@ const _exhaustiveAvailabilityWriteRequest: Required<AvailabilityWriteRequest> = 
 void _exhaustiveAvailabilityWriteRequest
 
 /**
+ * The scenario-scoped twin of AvailabilityWriteRequest, and deliberately NOT
+ * an AvailabilityWriteRequest-shaped `null`-to-clear branch: the board only
+ * ever writes an explicit `true` or `false` here, and an absent row means
+ * "inherit the registry default". No frontend consumer yet -- the drag/drop
+ * write lands in a later task -- so this is imported straight from
+ * `api-generated`, same as `_exhaustivePlacementWriteRequest` above.
+ */
+const _exhaustiveSlotMergeRequest: Required<SlotMergeRequest> = {
+  year: 2026,
+  session_cm_id: 3000001,
+  scenario: 'scenario123456789012',
+  unit_id: 'unit123456789012345',
+  combined: true,
+}
+void _exhaustiveSlotMergeRequest
+
+/**
  * The read shape the board, the map and the inventory panel all share.
  * `family_available_override` replaced `reservation_state` in the same change;
  * a fixture that enumerates both would have failed to compile in exactly one
@@ -113,6 +134,8 @@ const _exhaustiveLodgingUnit: Required<LodgingUnitRow> = {
   is_confirmed: true,
   is_active: true,
   is_container: false,
+  parent_code: '',
+  is_combined: false,
   inventory_class: 'family_pool',
   family_available_override: null,
   reason: '',

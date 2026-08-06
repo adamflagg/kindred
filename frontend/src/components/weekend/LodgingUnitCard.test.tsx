@@ -7,6 +7,7 @@
  * Fictional data throughout.
  */
 import { render, screen } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 
 import type { LodgingUnitRow, RosterPartyRow } from '../../types/lodging'
@@ -206,5 +207,227 @@ describe('LodgingUnitCard', () => {
       />
     )
     expect(screen.getByText('Inactive')).toBeInTheDocument()
+  })
+})
+
+describe('LodgingUnitCard — the split control belongs to containers only', () => {
+  it('offers a split control on a combined CONTAINER', () => {
+    render(
+      <LodgingUnitCard
+        slot={slot({ unit: unit({ code: 'house', is_container: true, is_combined: true }) })}
+        hue="hsl(160 45% 42%)"
+        canMerge
+        onSplit={vi.fn()}
+        onOpenParty={vi.fn()}
+      />
+    )
+    expect(screen.getByRole('button', { name: /^Split Cedar 1/ })).toBeInTheDocument()
+  })
+
+  it('offers NO split control on a leaf carrying a stale is_combined', () => {
+    // The API resolves `is_combined` for every row, leaves included, and a
+    // leaf can carry a stale `default_combined: true` — the admin form does
+    // not clear it when "is a building" is unticked. Splitting a room into
+    // rooms it does not have is not a thing the board can do, so the control
+    // must not be there to click. The gate is the fix; clearing the stored
+    // flag deliberately is not (an unticked building may be re-ticked).
+    render(
+      <LodgingUnitCard
+        slot={slot({ unit: unit({ is_container: false, is_combined: true }) })}
+        hue="hsl(160 45% 42%)"
+        canMerge
+        onSplit={vi.fn()}
+        onOpenParty={vi.fn()}
+      />
+    )
+    expect(screen.queryByRole('button', { name: /^Split Cedar 1/ })).not.toBeInTheDocument()
+  })
+})
+
+describe('LodgingUnitCard — the merge handle is reachable without a pointer', () => {
+  // Merging is a DRAG, and the board registers only Mouse and Touch sensors,
+  // so the handle is a focusable button carrying dnd-kit's
+  // `aria-roledescription="draggable"` that does nothing when a keyboard
+  // activates it — while its inverse, Split, is an ordinary button that
+  // works. Activating the handle is unambiguous without a drop target:
+  // merging is promotion to the parent, and every sibling drop resolves to
+  // that same parent, so the click path and the drag path ask for the
+  // identical write.
+  const room = unit({ code: 'r1', parent_code: 'wing' })
+
+  it('merges into the parent when the handle is activated rather than dragged', async () => {
+    const onMerge = vi.fn()
+    render(
+      <LodgingUnitCard
+        slot={slot({ unit: room })}
+        hue="hsl(160 45% 42%)"
+        canMerge
+        onMerge={onMerge}
+        onOpenParty={vi.fn()}
+      />
+    )
+
+    await userEvent.click(screen.getByTestId('merge-handle-r1'))
+    expect(onMerge).toHaveBeenCalledWith(room)
+  })
+
+  it('refuses the activation while a merge write is already in flight', () => {
+    render(
+      <LodgingUnitCard
+        slot={slot({ unit: room })}
+        hue="hsl(160 45% 42%)"
+        canMerge
+        savingMerge
+        onMerge={vi.fn()}
+        onOpenParty={vi.fn()}
+      />
+    )
+    expect(screen.getByTestId('merge-handle-r1')).toBeDisabled()
+  })
+})
+
+describe('LodgingUnitCard — the per-party sharing chip follows ROOM overlap, not the card (task-11 round 1)', () => {
+  // A merged container's card holds every room's parties, so `slot.parties`
+  // here carries whichever leaf room each one actually occupies via
+  // `unit_code`/`unit_codes` — exactly what `buildBoard`'s roll-up produces
+  // for a combined building. `declinedParty` alone is not enough to chip:
+  // `FamilyCard` also requires `sharedSlot`, which is what this block pins.
+  function declinedParty(overrides: Partial<RosterPartyRow> = {}): RosterPartyRow {
+    return party({ share: { eligibility: 'declined' }, ...overrides })
+  }
+  const mergedHouse = unit({ code: 'house', is_container: true, is_combined: true })
+
+  it('chips neither party when a merged card holds two DISJOINT rooms', () => {
+    render(
+      <LodgingUnitCard
+        slot={slot({
+          unit: mergedHouse,
+          parties: [
+            declinedParty({ household_cm_id: 101, display_name: 'Alpha', unit_code: 'r1' }),
+            declinedParty({ household_cm_id: 102, display_name: 'Beta', unit_code: 'r2' }),
+          ],
+        })}
+        hue="hsl(160 45% 42%)"
+        onOpenParty={vi.fn()}
+      />
+    )
+    expect(screen.getByText('Alpha')).toBeInTheDocument()
+    expect(screen.getByText('Beta')).toBeInTheDocument()
+    expect(screen.queryByText('Did not request sharing')).not.toBeInTheDocument()
+  })
+
+  it('chips both parties when a merged card holds two households in the SAME room', () => {
+    render(
+      <LodgingUnitCard
+        slot={slot({
+          unit: mergedHouse,
+          parties: [
+            declinedParty({ household_cm_id: 101, display_name: 'Alpha', unit_code: 'r1' }),
+            declinedParty({ household_cm_id: 102, display_name: 'Beta', unit_code: 'r1' }),
+          ],
+        })}
+        hue="hsl(160 45% 42%)"
+        onOpenParty={vi.fn()}
+      />
+    )
+    expect(screen.getAllByText('Did not request sharing')).toHaveLength(2)
+  })
+
+  it('chips an overlapping pair but leaves a disjoint third party unchipped', () => {
+    render(
+      <LodgingUnitCard
+        slot={slot({
+          unit: mergedHouse,
+          parties: [
+            declinedParty({
+              household_cm_id: 101,
+              display_name: 'Alpha',
+              unit_code: '',
+              unit_codes: ['r1', 'r2'],
+              is_merged_slot: true,
+            }),
+            declinedParty({ household_cm_id: 102, display_name: 'Beta', unit_code: 'r1' }),
+            declinedParty({ household_cm_id: 103, display_name: 'Gamma', unit_code: 'r3' }),
+          ],
+        })}
+        hue="hsl(160 45% 42%)"
+        onOpenParty={vi.fn()}
+      />
+    )
+    expect(screen.getAllByText('Did not request sharing')).toHaveLength(2)
+    const gammaCard = screen.getByText('Gamma').closest('button')
+    expect(gammaCard?.textContent).not.toContain('Did not request sharing')
+  })
+
+  it('chips both when one party names the CONTAINER and the other a room beneath it', () => {
+    // A party on the building occupies every room in it, so it shares `r1`
+    // with the party named there. Comparing the raw codes puts `'house'`
+    // beside `'r1'` and finds nothing — the expansion is what makes this a
+    // comparison of rooms, and it needs the registry, hence `units`.
+    const rooms = [
+      mergedHouse,
+      unit({ unit_id: 'u2', code: 'r1', name: 'Room 1', parent_code: 'house' }),
+      unit({ unit_id: 'u3', code: 'r2', name: 'Room 2', parent_code: 'house' }),
+    ]
+    render(
+      <LodgingUnitCard
+        slot={slot({
+          unit: mergedHouse,
+          parties: [
+            declinedParty({ household_cm_id: 101, display_name: 'Alpha', unit_code: 'house' }),
+            declinedParty({ household_cm_id: 102, display_name: 'Beta', unit_code: 'r1' }),
+          ],
+        })}
+        units={rooms}
+        hue="hsl(160 45% 42%)"
+        onOpenParty={vi.fn()}
+      />
+    )
+    expect(screen.getAllByText('Did not request sharing')).toHaveLength(2)
+  })
+
+  it('leaves a container party unchipped against a room it does NOT cover', () => {
+    // The expansion must not turn every container placement into a share.
+    // `other` is a sibling building, so `house`'s rooms and `other`'s room
+    // are disjoint and neither party is chipped.
+    const rooms = [
+      mergedHouse,
+      unit({ unit_id: 'u2', code: 'r1', name: 'Room 1', parent_code: 'house' }),
+      unit({ unit_id: 'u3', code: 'other', name: 'Other', is_container: true }),
+      unit({ unit_id: 'u4', code: 'r9', name: 'Room 9', parent_code: 'other' }),
+    ]
+    render(
+      <LodgingUnitCard
+        slot={slot({
+          unit: mergedHouse,
+          parties: [
+            declinedParty({ household_cm_id: 101, display_name: 'Alpha', unit_code: 'house' }),
+            declinedParty({ household_cm_id: 102, display_name: 'Beta', unit_code: 'r9' }),
+          ],
+        })}
+        units={rooms}
+        hue="hsl(160 45% 42%)"
+        onOpenParty={vi.fn()}
+      />
+    )
+    expect(screen.queryByText('Did not request sharing')).not.toBeInTheDocument()
+  })
+
+  it('still chips both parties on a plain leaf slot in the same room', () => {
+    // Not a merged card at all -- proves the ordinary, pre-existing case is
+    // unbroken by moving `sharedSlot` from the card to the room.
+    render(
+      <LodgingUnitCard
+        slot={slot({
+          parties: [
+            declinedParty({ household_cm_id: 101, display_name: 'Alpha' }),
+            declinedParty({ household_cm_id: 102, display_name: 'Beta' }),
+          ],
+        })}
+        hue="hsl(160 45% 42%)"
+        onOpenParty={vi.fn()}
+      />
+    )
+    expect(screen.getAllByText('Did not request sharing')).toHaveLength(2)
   })
 })

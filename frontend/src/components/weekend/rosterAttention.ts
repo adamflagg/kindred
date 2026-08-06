@@ -20,6 +20,7 @@
  * every constrained family on the strength of unset defaults.
  */
 import type { LodgingUnitRow, RosterPartyRow } from '../../types/lodging'
+import { drawnUnits } from './unitLevel'
 
 /** Ordered most urgent first. The order of this array IS the section order. */
 export const ATTENTION_ORDER = ['required', 'unmet', 'unplaced', 'unverified', 'settled'] as const
@@ -180,10 +181,14 @@ export function indexUnitsByCode(units: LodgingUnitRow[]): Map<string, LodgingUn
  * matches its neighbour.
  */
 export function countUnmeasuredSpaces(units: LodgingUnitRow[]): number {
-  return units.filter(
+  // Over the DRAWN units, not "every non-container row". A combined house is
+  // the space, at the whole-house capacity somebody measured; its rooms draw
+  // no card and their own missing `sleeps` describes nothing a family could
+  // be put in. `drawnUnits` resolves that top-down and is the one definition
+  // of which units get a card — deriving it here a second way is how this
+  // starts disagreeing with the board it sits above.
+  return drawnUnits(units).filter(
     (unit) =>
-      unit.is_container !== true &&
-      unit.is_family_available === true &&
-      (unit.sleeps === null || unit.sleeps === undefined)
+      unit.is_family_available === true && (unit.sleeps === null || unit.sleeps === undefined)
   ).length
 }
