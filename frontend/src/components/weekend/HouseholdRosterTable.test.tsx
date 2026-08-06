@@ -334,6 +334,25 @@ describe('HouseholdRosterTable — the row opens FamilyDetailsPanel (kindred#199
     expect(screen.getByTestId('family-details-panel')).toBeInTheDocument()
   })
 
+  it('opens the panel on Space, and stops the row from scrolling the page', () => {
+    // Space's native behavior is "scroll the page a viewport" — the same key
+    // that opens the panel. Without preventDefault(), a staff member tabbing
+    // onto a row on the 62-row roster and pressing Space gets the panel AND
+    // a full-viewport scroll.
+    render(<HouseholdRosterTable year={2026} parties={[party()]} />, { wrapper })
+    const row = screen.getByRole('button', { name: /The Johnson Family/ })
+    row.focus()
+
+    let keydownEvent: KeyboardEvent | undefined
+    row.addEventListener('keydown', (event) => {
+      keydownEvent = event
+    })
+    fireEvent.keyDown(row, { key: ' ' })
+
+    expect(screen.getByTestId('family-details-panel')).toBeInTheDocument()
+    expect(keydownEvent?.defaultPrevented).toBe(true)
+  })
+
   it('does not remount the panel when switching from one row to another', async () => {
     // Mirrors LodgingBoard's own guard (LodgingBoard.test.tsx): the panel is
     // unkeyed, so switching families updates it in place rather than sliding
