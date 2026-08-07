@@ -5,6 +5,7 @@ import (
 
 	"github.com/pocketbase/pocketbase/core"
 	"github.com/pocketbase/pocketbase/tests"
+	"github.com/pocketbase/pocketbase/tools/types"
 )
 
 // CampMinder ids for the fixture sessions. Shared across the lodging tests
@@ -110,8 +111,18 @@ func newLodgingTestApp(t *testing.T) core.App {
 	// Required, mirroring migration 1500000141. PocketBase's Set on a column
 	// that does not exist is a silent no-op, so a fixture that forgot this
 	// column would resolve every year against a unit stored at year 0 --
-	// exactly the failure this field exists to catch loudly, here.
-	units.Fields.Add(&core.NumberField{Name: "year", Required: true})
+	// exactly the failure this field exists to catch loudly, here. Min/Max/
+	// OnlyInt mirror the same migration's `min: 2010, max: 2100, onlyInt:
+	// true` -- without them a test can store year: 1 or year: 2025.5 and pass
+	// on data the real database would reject.
+	units.Fields.Add(&core.NumberField{
+		Name: "year", Required: true, OnlyInt: true,
+		Min: types.Pointer(2010.0), Max: types.Pointer(2100.0),
+	})
+	// Composite (code, year), matching production's 1500000141: code alone is
+	// no longer unique once a row exists per season. Without this a test can
+	// seed two rows sharing (code, year), a shape production refuses.
+	units.AddIndex("idx_lodging_units_code", true, "code, year", "")
 	saveCollection(t, app, units)
 
 	// parent_unit is a self-relation, so it needs the collection's own id --

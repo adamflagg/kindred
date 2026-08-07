@@ -9,6 +9,7 @@ import (
 
 	"github.com/pocketbase/pocketbase/core"
 	"github.com/pocketbase/pocketbase/tests"
+	"github.com/pocketbase/pocketbase/tools/types"
 )
 
 // setupRegistryCollections builds lodging_areas, lodging_units and
@@ -31,8 +32,12 @@ func setupRegistryCollections(t *testing.T, app core.App) {
 	// tightened twin, lodging_testsupport_test.go:114): PocketBase's Set on a
 	// column that does not exist is a silent no-op, so a fixture that forgot
 	// this column would resolve every season against a row stored at year 0
-	// instead of failing loudly here.
-	areas.Fields.Add(&core.NumberField{Name: "year", Required: true, OnlyInt: true})
+	// instead of failing loudly here. Min/Max mirror the same migration's
+	// `min: 2010, max: 2100`.
+	areas.Fields.Add(&core.NumberField{
+		Name: "year", Required: true, OnlyInt: true,
+		Min: types.Pointer(2010.0), Max: types.Pointer(2100.0),
+	})
 	// Composite (code, year), matching production's 1500000141: code alone is
 	// no longer unique once a row exists per season.
 	areas.AddIndex("idx_lodging_areas_code", true, "code, year", "")
@@ -81,7 +86,10 @@ func setupRegistryCollections(t *testing.T, app core.App) {
 	})
 	units.Fields.Add(&core.NumberField{Name: "max_beds", OnlyInt: true})
 	// Required, same reason as lodging_areas' year field above.
-	units.Fields.Add(&core.NumberField{Name: "year", Required: true, OnlyInt: true})
+	units.Fields.Add(&core.NumberField{
+		Name: "year", Required: true, OnlyInt: true,
+		Min: types.Pointer(2010.0), Max: types.Pointer(2100.0),
+	})
 	// Composite (code, year), matching production's 1500000141.
 	units.AddIndex("idx_lodging_units_code", true, "code, year", "")
 	saveRegistryCollection(t, app, units)
@@ -142,11 +150,16 @@ func countRecords(t *testing.T, app core.App, collection string) int {
 	return len(recs)
 }
 
-func findByCode(t *testing.T, app core.App, collection, code string) *core.Record {
+// findByCode looks up a row by (code, year). Since migration 1500000141, code
+// is unique only per (code, year), so a code-only filter can silently return
+// another season's row -- the year parameter is required, not optional, so
+// there is exactly one lookup shape in this file and it is the correct one.
+func findByCode(t *testing.T, app core.App, collection, code string, year int) *core.Record {
 	t.Helper()
-	rec, err := app.FindFirstRecordByFilter(collection, "code = {:c}", map[string]any{"c": code})
+	rec, err := app.FindFirstRecordByFilter(collection,
+		"code = {:c} && year = {:y}", map[string]any{"c": code, "y": year})
 	if err != nil {
-		t.Fatalf("find %s code=%s: %v", collection, code, err)
+		t.Fatalf("find %s code=%s year=%d: %v", collection, code, year, err)
 	}
 	return rec
 }
@@ -288,7 +301,7 @@ func TestSeedRegistryCreatesAreasUnitsAndAliases(t *testing.T) {
 		t.Errorf("got %d aliases, want 2", n)
 	}
 
-	area := findByCode(t, app, "lodging_areas", "AREA1")
+	area := findByCode(t, app, "lodging_areas", "AREA1", testYear)
 	if got := area.GetString("name"); got != "First Area" {
 		t.Errorf("area name = %q, want %q", got, "First Area")
 	}
@@ -299,7 +312,7 @@ func TestSeedRegistryCreatesAreasUnitsAndAliases(t *testing.T) {
 		t.Errorf("area sort_order = %d, want 1", got)
 	}
 
-	child := findByCode(t, app, "lodging_units", "child-a")
+	child := findByCode(t, app, "lodging_units", "child-a", testYear)
 	if got := child.GetString("name"); got != "Child A" {
 		t.Errorf("unit name = %q, want %q", got, "Child A")
 	}
@@ -334,7 +347,7 @@ func TestSeedRegistryCreatesAreasUnitsAndAliases(t *testing.T) {
 	if child.GetBool("is_container") {
 		t.Error("child-a is_container = true, want false")
 	}
-	if !findByCode(t, app, "lodging_units", "building-1").GetBool("is_container") {
+	if !findByCode(t, app, "lodging_units", "building-1", testYear).GetBool("is_container") {
 		t.Error("building-1 is_container = false, want true")
 	}
 }
@@ -361,7 +374,7 @@ func TestSeedRegistryWritesAmenities(t *testing.T) {
 		t.Fatalf("seedRegistryFromFile: %v", err)
 	}
 
-	unit := findByCode(t, app, "lodging_units", "warm")
+	unit := findByCode(t, app, "lodging_units", "warm", testYear)
 	for _, field := range []string{
 		"has_power", "has_ac", "has_fridge", "is_accessible",
 		"has_heat", "is_weatherized", "has_plumbing",
@@ -413,12 +426,12 @@ func TestSeedRegistryWritesDefaultCombined(t *testing.T) {
 		t.Fatalf("seedRegistryFromFile: %v", err)
 	}
 
-	if got := findByCode(t, app, "lodging_units", "whole-let").GetBool("default_combined"); !got {
+	if got := findByCode(t, app, "lodging_units", "whole-let", testYear).GetBool("default_combined"); !got {
 		t.Errorf("default_combined = %v for a unit the file marks true, want true", got)
 	}
 	// Absent means false — "draw the children", the behavior before the
 	// column existed. A container used purely for grouping carries no let.
-	if got := findByCode(t, app, "lodging_units", "grouping").GetBool("default_combined"); got {
+	if got := findByCode(t, app, "lodging_units", "grouping", testYear).GetBool("default_combined"); got {
 		t.Errorf("default_combined = %v for a unit with no key, want false", got)
 	}
 }
@@ -437,7 +450,7 @@ func TestSeedRegistryUnassessedRampStaysBlank(t *testing.T) {
 		t.Fatalf("seedRegistryFromFile: %v", err)
 	}
 
-	if got := findByCode(t, app, "lodging_units", "unknown-ramp").GetString("has_ramp"); got != "" {
+	if got := findByCode(t, app, "lodging_units", "unknown-ramp", testYear).GetString("has_ramp"); got != "" {
 		t.Errorf("has_ramp = %q for an unassessed unit, want empty (not assessed)", got)
 	}
 }
@@ -449,11 +462,11 @@ func TestSeedRegistryWiresParentDeclaredAfterChild(t *testing.T) {
 		t.Fatalf("seedRegistryFromFile: %v", err)
 	}
 
-	building := findByCode(t, app, "lodging_units", "building-1")
+	building := findByCode(t, app, "lodging_units", "building-1", testYear)
 	// child-a is listed BEFORE building-1 in the file: a single-pass loader
 	// would have no id to point at and would leave the relation empty.
 	for _, code := range []string{"child-a", "child-b"} {
-		if got := findByCode(t, app, "lodging_units", code).GetString("parent_unit"); got != building.Id {
+		if got := findByCode(t, app, "lodging_units", code, testYear).GetString("parent_unit"); got != building.Id {
 			t.Errorf("%s parent_unit = %q, want %q", code, got, building.Id)
 		}
 	}
@@ -473,7 +486,7 @@ func TestSeedRegistryNullSleepsStoresZero(t *testing.T) {
 		t.Fatalf("seedRegistryFromFile: %v", err)
 	}
 
-	if got := findByCode(t, app, "lodging_units", "building-1").GetInt("sleeps"); got != 0 {
+	if got := findByCode(t, app, "lodging_units", "building-1", testYear).GetInt("sleeps"); got != 0 {
 		t.Errorf("null sleeps stored as %d, want 0 (unknown)", got)
 	}
 }
@@ -527,8 +540,8 @@ func TestSeedRegistryAliasMembersResolveToUnitIDs(t *testing.T) {
 	}
 
 	want := []string{
-		findByCode(t, app, "lodging_units", "child-a").Id,
-		findByCode(t, app, "lodging_units", "child-b").Id,
+		findByCode(t, app, "lodging_units", "child-a", testYear).Id,
+		findByCode(t, app, "lodging_units", "child-b", testYear).Id,
 	}
 	got := merge.GetStringSlice("member_units")
 	if len(got) != len(want) {
@@ -575,7 +588,7 @@ func TestSeedRegistryPreservesStaffEdits(t *testing.T) {
 		t.Fatalf("first run: %v", err)
 	}
 
-	edited := findByCode(t, app, "lodging_units", "child-a")
+	edited := findByCode(t, app, "lodging_units", "child-a", testYear)
 	edited.Set("sleeps", 9)
 	edited.Set("is_confirmed", true)
 	edited.Set("map_x", 0.9)
@@ -588,7 +601,7 @@ func TestSeedRegistryPreservesStaffEdits(t *testing.T) {
 		t.Fatalf("second run: %v", err)
 	}
 
-	after := findByCode(t, app, "lodging_units", "child-a")
+	after := findByCode(t, app, "lodging_units", "child-a", testYear)
 	if got := after.GetInt("sleeps"); got != 9 {
 		t.Errorf("sleeps = %d after re-seed, want the staff value 9", got)
 	}
@@ -613,7 +626,7 @@ func TestSeedRegistryDoesNotRewireAnExistingParent(t *testing.T) {
 		t.Fatalf("first run: %v", err)
 	}
 
-	detached := findByCode(t, app, "lodging_units", "child-b")
+	detached := findByCode(t, app, "lodging_units", "child-b", testYear)
 	detached.Set("parent_unit", "")
 	if err := app.Save(detached); err != nil {
 		t.Fatalf("clear parent: %v", err)
@@ -623,7 +636,7 @@ func TestSeedRegistryDoesNotRewireAnExistingParent(t *testing.T) {
 		t.Fatalf("second run: %v", err)
 	}
 
-	if got := findByCode(t, app, "lodging_units", "child-b").GetString("parent_unit"); got != "" {
+	if got := findByCode(t, app, "lodging_units", "child-b", testYear).GetString("parent_unit"); got != "" {
 		t.Errorf("parent_unit = %q after re-seed, want it left cleared", got)
 	}
 }
@@ -813,7 +826,7 @@ func TestSeedRegistryRewiresChildrenOfARecreatedContainer(t *testing.T) {
 		t.Fatalf("first run: %v", err)
 	}
 
-	container := findByCode(t, app, "lodging_units", "building-1")
+	container := findByCode(t, app, "lodging_units", "building-1", testYear)
 	if err := app.Delete(container); err != nil {
 		t.Fatalf("delete container: %v", err)
 	}
@@ -822,9 +835,9 @@ func TestSeedRegistryRewiresChildrenOfARecreatedContainer(t *testing.T) {
 		t.Fatalf("second run: %v", err)
 	}
 
-	recreated := findByCode(t, app, "lodging_units", "building-1")
+	recreated := findByCode(t, app, "lodging_units", "building-1", testYear)
 	for _, code := range []string{"child-a", "child-b"} {
-		if got := findByCode(t, app, "lodging_units", code).GetString("parent_unit"); got != recreated.Id {
+		if got := findByCode(t, app, "lodging_units", code, testYear).GetString("parent_unit"); got != recreated.Id {
 			t.Errorf("%s.parent_unit = %q after the container was recreated, want %q",
 				code, got, recreated.Id)
 		}
@@ -926,6 +939,86 @@ func TestFindByCodeAndYearIgnoresOtherYears(t *testing.T) {
 	}
 	if rec != nil {
 		t.Errorf("found a 2026 row when asking for 2027: %s", rec.Id)
+	}
+}
+
+// TestFindByCodeIsScopedToItsYear guards the findByCode test helper itself.
+// Since migration 1500000141, code is unique only per (code, year), so a
+// lookup that ignores year can return another season's row instead of the
+// caller's. Both seasons share the code here so a regression to a code-only
+// filter would not just occasionally pick the wrong row -- FindFirstRecordByFilter
+// has no defined tie-break order, so the two assertions below would either both
+// read the SAME row (failing the id-distinctness check) or read one correctly
+// and one wrong, unpredictably. Asserting each year's row by its own "year"
+// field, rather than by id equality with something seeded once, is what makes
+// a regression here fail loudly instead of flaking.
+func TestFindByCodeIsScopedToItsYear(t *testing.T) {
+	app := newRegistryTestApp(t)
+
+	if err := seedRegistryFromFile(app, writeRegistry(t, fixtureRegistry), 2026); err != nil {
+		t.Fatalf("seed 2026: %v", err)
+	}
+	if err := seedRegistryFromFile(app, writeRegistry(t, fixtureRegistry), 2027); err != nil {
+		t.Fatalf("seed 2027: %v", err)
+	}
+
+	rec2026 := findByCode(t, app, "lodging_units", "child-a", 2026)
+	rec2027 := findByCode(t, app, "lodging_units", "child-a", 2027)
+
+	if rec2026.Id == rec2027.Id {
+		t.Fatalf("the same row was returned for both years: %s", rec2026.Id)
+	}
+	if got := rec2026.GetInt("year"); got != 2026 {
+		t.Errorf("row fetched for 2026 has year = %d, want 2026", got)
+	}
+	if got := rec2027.GetInt("year"); got != 2027 {
+		t.Errorf("row fetched for 2027 has year = %d, want 2027", got)
+	}
+}
+
+// TestRegistryFixtureRejectsYearOutsideProductionRange guards the fixture's
+// own year fields against production (migration 1500000141: min 2010, max
+// 2100). Both lodging_units and lodging_areas already carry Required and
+// OnlyInt here; without Min/Max too, a test could store year: 1 and pass on
+// data the real database would reject.
+func TestRegistryFixtureRejectsYearOutsideProductionRange(t *testing.T) {
+	app := newRegistryTestApp(t)
+
+	area, err := app.FindCollectionByNameOrId("lodging_areas")
+	if err != nil {
+		t.Fatalf("find collection lodging_areas: %v", err)
+	}
+	unit, err := app.FindCollectionByNameOrId("lodging_units")
+	if err != nil {
+		t.Fatalf("find collection lodging_units: %v", err)
+	}
+
+	// The unit case needs an area to point at.
+	if err := seedRegistryFromFile(app, writeRegistry(t, fixtureRegistry), testYear); err != nil {
+		t.Fatalf("seedRegistryFromFile: %v", err)
+	}
+	areaID := findByCode(t, app, "lodging_areas", "AREA1", testYear).Id
+
+	cases := []struct {
+		label      string
+		collection *core.Collection
+		values     map[string]any
+	}{
+		{"area below min (2010)", area, map[string]any{"code": "range-check", "name": "range-check", "year": 2009}},
+		{"area above max (2100)", area, map[string]any{"code": "range-check", "name": "range-check", "year": 2101}},
+		{"unit below min (2010)", unit, map[string]any{
+			"code": "range-check", "name": "range-check", "area": areaID, "year": 2009,
+		}},
+	}
+
+	for _, c := range cases {
+		rec := core.NewRecord(c.collection)
+		for k, v := range c.values {
+			rec.Set(k, v)
+		}
+		if err := app.Save(rec); err == nil {
+			t.Errorf("%s: saved; want the fixture to refuse it like production does", c.label)
+		}
 	}
 }
 
