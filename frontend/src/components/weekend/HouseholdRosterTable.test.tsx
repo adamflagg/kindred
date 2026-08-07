@@ -313,6 +313,25 @@ describe('HouseholdRosterTable', () => {
     expect(screen.getByText('The Johnson Family')).toBeInTheDocument()
     expect(screen.getByText('Olivia Chen')).toBeInTheDocument()
   })
+
+  it('renders one table row per party, not collapsed into the header (kindred#2063)', () => {
+    // `role="button"` on the row's own `<tr>` overrides the native `row`
+    // role — `queryAllByRole('row')` had collapsed to 1 (the header alone),
+    // and the four `<td>` cells lost their owning row.
+    render(
+      <HouseholdRosterTable
+        year={2026}
+        parties={[
+          party({ display_name: 'Johnson Family', household_cm_id: 2000001 }),
+          party({ display_name: 'Chen Family', household_cm_id: 2000002 }),
+        ]}
+      />,
+      { wrapper }
+    )
+    // Header row + one row per party. Both parties share an attention
+    // section here, so there is no extra section-heading row to account for.
+    expect(screen.getAllByRole('row')).toHaveLength(3)
+  })
 })
 
 describe('HouseholdRosterTable — the row opens FamilyDetailsPanel (kindred#1996)', () => {

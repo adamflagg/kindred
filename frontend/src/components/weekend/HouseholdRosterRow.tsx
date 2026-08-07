@@ -94,70 +94,84 @@ export function HouseholdRosterRow({ party, showRequests, unit, onOpen }: Househ
   const showAdults = party.grain === 'household'
 
   return (
-    <tr
-      role="button"
-      tabIndex={0}
-      onClick={() => {
-        onOpen(party)
-      }}
-      onKeyDown={(event) => {
-        if (event.key === 'Enter' || event.key === ' ') {
-          event.preventDefault()
-          onOpen(party)
-        }
-      }}
-      className="border-border/40 hover:bg-muted/30 focus-visible:ring-ring cursor-pointer border-b align-top transition-colors focus-visible:ring-2 focus-visible:outline-none"
-    >
-      <td className={`border-l-[3px] py-3 pr-4 pl-3 ${RAIL[attention.level]}`}>
-        <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-          <span className="text-foreground text-sm font-semibold">{party.display_name}</span>
-          {party.is_returning === true && (
-            <span
-              title="Stayed with us before"
-              className="text-forest-700 dark:text-forest-300 bg-forest-100 dark:bg-forest-900/50 inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-semibold"
-            >
-              <Repeat className="h-3 w-3 flex-shrink-0" />
-              Returning
+    // `role="button"` used to live here, overriding the native `row` role —
+    // `queryAllByRole('row')` collapsed to 1 (the header alone) and the four
+    // `<td>` cells lost their owning row (kindred#2063). The affordance now
+    // lives in a real `<button>` inside the first cell instead, which keeps
+    // row/cell semantics intact and still satisfies `clickoutsidePredicate`'s
+    // `isInteractive` check (`button` is already in its selector list).
+    <tr className="border-border/40 border-b align-top">
+      <td className={`border-l-[3px] ${RAIL[attention.level]}`}>
+        {/* Content below stays `<span>`, never `<div>`/`<p>` — a `<button>`'s
+            content model is phrasing content only, the same reason
+            `FamilyCardBody` (this row's card-view counterpart) is spans
+            throughout. Tailwind's `block`/`flex` classes still give each span
+            the same layout its `<div>`/`<p>` had. */}
+        <button
+          type="button"
+          onClick={() => {
+            onOpen(party)
+          }}
+          onKeyDown={(event) => {
+            if (event.key === 'Enter' || event.key === ' ') {
+              event.preventDefault()
+              onOpen(party)
+            }
+          }}
+          className="hover:bg-muted/30 focus-visible:ring-ring block w-full cursor-pointer py-3 pr-4 pl-3 text-left transition-colors focus-visible:ring-2 focus-visible:outline-none"
+        >
+          <span className="flex flex-wrap items-center gap-x-2 gap-y-1">
+            <span className="text-foreground text-sm font-semibold">{party.display_name}</span>
+            {party.is_returning === true && (
+              <span
+                title="Stayed with us before"
+                className="text-forest-700 dark:text-forest-300 bg-forest-100 dark:bg-forest-900/50 inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-semibold"
+              >
+                <Repeat className="h-3 w-3 flex-shrink-0" />
+                Returning
+              </span>
+            )}
+          </span>
+          {/* Only the two states that name a real failure get words. "No cabin
+              yet" would repeat the Cabin column's "Unassigned", and an
+              unverified need would repeat the chips under Housing needs — the
+              rail and the section heading already carry the state. */}
+          {(attention.level === 'required' || attention.level === 'unmet') && (
+            <span className={`mt-0.5 block text-xs font-medium ${REASON_TONE[attention.level]}`}>
+              {attention.level === 'required' ? 'Accommodation required' : attention.reason}
             </span>
           )}
-        </div>
-        {/* Only the two states that name a real failure get words. "No cabin
-            yet" would repeat the Cabin column's "Unassigned", and an
-            unverified need would repeat the chips under Housing needs — the
-            rail and the section heading already carry the state. */}
-        {(attention.level === 'required' || attention.level === 'unmet') && (
-          <p className={`mt-0.5 text-xs font-medium ${REASON_TONE[attention.level]}`}>
-            {attention.level === 'required' ? 'Accommodation required' : attention.reason}
-          </p>
-        )}
-        <p className="text-muted-foreground mt-1 text-xs tabular-nums">{composition(party)}</p>
-        {/* Members are reference detail, not scanning material — one wrapped
-            line rather than two stacked ones, so 62 rows stay a page. An
-            adult weekend enrols the individual directly, so the party IS the
-            adult and `display_name` above already named them. */}
-        <p className="text-muted-foreground/75 mt-0.5 text-xs leading-snug">
-          {showAdults &&
-            adults.map((adult, index) => (
-              <Fragment
-                key={`${String(adult.adult_number ?? index)}-${String(adult.display_name)}`}
-              >
-                {index > 0 && ', '}
-                {/* Each name is its own element so it stays one text node —
-                    a separator inside the span would split it. */}
-                <span>{adult.display_name}</span>
+          <span className="text-muted-foreground mt-1 block text-xs tabular-nums">
+            {composition(party)}
+          </span>
+          {/* Members are reference detail, not scanning material — one wrapped
+              line rather than two stacked ones, so 62 rows stay a page. An
+              adult weekend enrols the individual directly, so the party IS the
+              adult and `display_name` above already named them. */}
+          <span className="text-muted-foreground/75 mt-0.5 block text-xs leading-snug">
+            {showAdults &&
+              adults.map((adult, index) => (
+                <Fragment
+                  key={`${String(adult.adult_number ?? index)}-${String(adult.display_name)}`}
+                >
+                  {index > 0 && ', '}
+                  {/* Each name is its own element so it stays one text node —
+                      a separator inside the span would split it. */}
+                  <span>{adult.display_name}</span>
+                </Fragment>
+              ))}
+            {children.map((child, index) => (
+              <Fragment key={String(child.person_cm_id ?? index)}>
+                {(index > 0 || (showAdults && adults.length > 0)) && ' · '}
+                <span>
+                  {child.age === null || child.age === undefined
+                    ? child.display_name
+                    : `${String(child.display_name)} (${String(child.age)})`}
+                </span>
               </Fragment>
             ))}
-          {children.map((child, index) => (
-            <Fragment key={String(child.person_cm_id ?? index)}>
-              {(index > 0 || (showAdults && adults.length > 0)) && ' · '}
-              <span>
-                {child.age === null || child.age === undefined
-                  ? child.display_name
-                  : `${String(child.display_name)} (${String(child.age)})`}
-              </span>
-            </Fragment>
-          ))}
-        </p>
+          </span>
+        </button>
       </td>
 
       <td className="py-3 pr-4">
