@@ -20,6 +20,7 @@ import type {
   RosterPartyRow,
   ShareRequest,
 } from '../../types/lodging'
+import { displayCampMinderAge } from '../../utils/age'
 import { AccessibilityFlagList } from './AccessibilityFlagList'
 import type { AttentionLevel } from './rosterAttention'
 import { partyAttention } from './rosterAttention'
@@ -166,7 +167,7 @@ export function HouseholdRosterRow({ party, showRequests, unit, onOpen }: Househ
                 <span>
                   {child.age === null || child.age === undefined
                     ? child.display_name
-                    : `${String(child.display_name)} (${String(child.age)})`}
+                    : `${String(child.display_name)} (${displayCampMinderAge(child.age)})`}
                 </span>
               </Fragment>
             ))}

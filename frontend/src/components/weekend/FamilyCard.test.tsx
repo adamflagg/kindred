@@ -88,6 +88,25 @@ describe('FamilyCard — what it shows', () => {
     expect(screen.getByText(/5/)).toBeInTheDocument()
   })
 
+  it('renders age in CampMinder yy.mm format through displayCampMinderAge', () => {
+    // kindred#2088: `String(child.age)` printed a raw float verbatim (or
+    // truncated one on the backend). Both sites must go through the shared
+    // helper summer already uses -- two-digit months, no leading-zero years.
+    render(
+      <FamilyCard
+        party={party({
+          children: [
+            { person_cm_id: 9001, display_name: 'Noah', age: 1.5, grade: 0 },
+            { person_cm_id: 9002, display_name: 'Ava', age: 0.06, grade: 0 },
+          ],
+        })}
+        onOpen={vi.fn()}
+      />
+    )
+    expect(screen.getByText('Noah (1.50)')).toBeInTheDocument()
+    expect(screen.getByText('Ava (0.06)')).toBeInTheDocument()
+  })
+
   it('omits an age it does not have rather than inventing one', () => {
     render(
       <FamilyCard
@@ -318,7 +337,7 @@ describe('FamilyCardPreview — the drag overlay', () => {
     // It is the card being dragged, so it has to LOOK like the card. Sharing
     // the body is what keeps that true without a second copy to maintain.
     render(<FamilyCardPreview party={party()} />)
-    expect(screen.getByText(/Noah Johnson \(8\)/)).toBeInTheDocument()
+    expect(screen.getByText(/Noah Johnson \(8\.00\)/)).toBeInTheDocument()
   })
 })
 
@@ -413,8 +432,8 @@ describe('FamilyCard — summer’s type scale', () => {
     // Each child gets its own `<span>`, so walk up one to the line that holds
     // them all — asserting on the inner span would pin nothing, since the size
     // is set on the line.
-    const line = screen.getByText(/Noah Johnson \(8\)/).parentElement
-    expect(line).toHaveTextContent('Ava Johnson (5)')
+    const line = screen.getByText(/Noah Johnson \(8\.00\)/).parentElement
+    expect(line).toHaveTextContent('Ava Johnson (5.00)')
     expect(line).toHaveClass('text-xs')
   })
 

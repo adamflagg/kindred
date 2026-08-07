@@ -214,6 +214,27 @@ describe('FamilyDetailsPanel — household identity', () => {
     expect(screen.getByText(/Age 8/)).toBeInTheDocument()
   })
 
+  it('renders age in CampMinder yy.mm format through displayCampMinderAge', () => {
+    // kindred#2088: the panel printed `String(child.age)` verbatim. Both
+    // fractional and whole ages must go through the shared helper summer
+    // already uses -- two-digit months, no leading-zero years.
+    render(
+      <FamilyDetailsPanel
+        party={party({
+          children: [
+            { person_cm_id: 9001, display_name: 'Noah Johnson', age: 1.5, grade: 0 },
+            { person_cm_id: 9002, display_name: 'Ava Johnson', age: 0.06, grade: 0 },
+          ],
+        })}
+        year={2026}
+        onClose={vi.fn()}
+      />,
+      { wrapper }
+    )
+    expect(screen.getByText('Age 1.50')).toBeInTheDocument()
+    expect(screen.getByText('Age 0.06')).toBeInTheDocument()
+  })
+
   it('reports party size, arrival and returning status', () => {
     render(<FamilyDetailsPanel party={party()} year={2026} onClose={vi.fn()} />, { wrapper })
     expect(screen.getByText(/Friday 6pm/)).toBeInTheDocument()
