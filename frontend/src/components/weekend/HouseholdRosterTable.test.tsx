@@ -227,6 +227,39 @@ describe('HouseholdRosterTable', () => {
     expect(screen.getByText('Returning')).toBeInTheDocument()
   })
 
+  it('marks a first-time family when is_returning is false', () => {
+    render(<HouseholdRosterTable year={2026} parties={[party({ is_returning: false })]} />, {
+      wrapper,
+    })
+    expect(screen.getByText('First-time')).toBeInTheDocument()
+    expect(screen.queryByText('Returning')).not.toBeInTheDocument()
+  })
+
+  it('marks a first-time family when is_returning is undefined', () => {
+    const p = party()
+    delete p.is_returning
+    render(<HouseholdRosterTable year={2026} parties={[p as RosterPartyRow]} />, {
+      wrapper,
+    })
+    expect(screen.getByText('First-time')).toBeInTheDocument()
+    expect(screen.queryByText('Returning')).not.toBeInTheDocument()
+  })
+
+  // Adult weekends never compute `is_returning` server-side (person grain
+  // takes the Pydantic `bool = False` default, unset rather than "no"), so
+  // neither badge should render a claim the API never made.
+  it('stays silent on returning status for an adult weekend guest (person grain)', () => {
+    render(
+      <HouseholdRosterTable
+        year={2026}
+        parties={[party({ grain: 'person', display_name: 'Olivia Chen', is_returning: false })]}
+      />,
+      { wrapper }
+    )
+    expect(screen.queryByText('First-time')).not.toBeInTheDocument()
+    expect(screen.queryByText('Returning')).not.toBeInTheDocument()
+  })
+
   it('shows the arrival ETA when the family gave one', () => {
     render(
       <HouseholdRosterTable year={2026} parties={[party({ arrival_eta: 'Friday around 4pm' })]} />,
