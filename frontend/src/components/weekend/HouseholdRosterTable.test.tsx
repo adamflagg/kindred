@@ -4,7 +4,8 @@
  * weekends, where individuals enrol directly).
  */
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { render, screen } from '@testing-library/react'
+import { fireEvent, render, screen } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import type { ReactNode } from 'react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -69,7 +70,7 @@ function party(overrides: Partial<RosterPartyRow> = {}): RosterPartyRow {
 describe('HouseholdRosterTable', () => {
   it('shows an empty state rather than an empty table', () => {
     // "Households" would be wrong for an adult weekend, which enrols people.
-    render(<HouseholdRosterTable parties={[]} />, { wrapper })
+    render(<HouseholdRosterTable year={2026} parties={[]} />, { wrapper })
     expect(screen.getByText('No one is enrolled for this weekend.')).toBeInTheDocument()
     expect(screen.getByText(/once registrations sync from CampMinder/)).toBeInTheDocument()
   })
@@ -77,6 +78,7 @@ describe('HouseholdRosterTable', () => {
   it('groups by attention, putting parties without a cabin above settled ones', () => {
     render(
       <HouseholdRosterTable
+        year={2026}
         parties={[
           party({ display_name: 'Settled Family', unit_name: 'Ridge A' }),
           party({ display_name: 'Waiting Family', unit_name: '', household_cm_id: 2000002 }),
@@ -96,6 +98,7 @@ describe('HouseholdRosterTable', () => {
     // repeats what the banner already said.
     render(
       <HouseholdRosterTable
+        year={2026}
         parties={[
           party({ display_name: 'One', unit_name: '' }),
           party({ display_name: 'Two', unit_name: '', household_cm_id: 2000002 }),
@@ -111,6 +114,7 @@ describe('HouseholdRosterTable', () => {
     // than no column.
     render(
       <HouseholdRosterTable
+        year={2026}
         parties={[
           party({
             grain: 'person',
@@ -134,6 +138,7 @@ describe('HouseholdRosterTable', () => {
   it('keeps the Requests column when any party answered', () => {
     render(
       <HouseholdRosterTable
+        year={2026}
         parties={[party({ share: { preference: 'yes_share', proximity: ['with'] } })]}
       />,
       { wrapper }
@@ -142,7 +147,7 @@ describe('HouseholdRosterTable', () => {
   })
 
   it('renders adults and children counts for a household party', () => {
-    render(<HouseholdRosterTable parties={[party()]} />, { wrapper })
+    render(<HouseholdRosterTable year={2026} parties={[party()]} />, { wrapper })
     expect(screen.getByText('The Johnson Family')).toBeInTheDocument()
     expect(screen.getByText('1 adult · 1 child')).toBeInTheDocument()
     expect(screen.getByText('Samuel Johnson')).toBeInTheDocument()
@@ -152,6 +157,7 @@ describe('HouseholdRosterTable', () => {
   it('pluralises adults and children correctly', () => {
     render(
       <HouseholdRosterTable
+        year={2026}
         parties={[
           party({
             adults: [
@@ -174,6 +180,7 @@ describe('HouseholdRosterTable', () => {
   it('renders a child of unknown age without a bare parenthesis', () => {
     render(
       <HouseholdRosterTable
+        year={2026}
         parties={[
           party({
             children: [
@@ -188,42 +195,52 @@ describe('HouseholdRosterTable', () => {
   })
 
   it('shows the assigned unit, or "Unassigned" when there is none', () => {
-    const { rerender } = render(<HouseholdRosterTable parties={[party()]} />, {
+    const { rerender } = render(<HouseholdRosterTable year={2026} parties={[party()]} />, {
       wrapper,
     })
     expect(screen.getByText('Unassigned')).toBeInTheDocument()
 
     rerender(
-      <HouseholdRosterTable parties={[party({ unit_code: 'ridge-a', unit_name: 'Ridge A' })]} />
+      <HouseholdRosterTable
+        year={2026}
+        parties={[party({ unit_code: 'ridge-a', unit_name: 'Ridge A' })]}
+      />
     )
     expect(screen.getByText('Ridge A')).toBeInTheDocument()
   })
 
   it('marks a merged slot so staff know two rooms were combined', () => {
     render(
-      <HouseholdRosterTable parties={[party({ unit_name: 'Wawona', is_merged_slot: true })]} />,
+      <HouseholdRosterTable
+        year={2026}
+        parties={[party({ unit_name: 'Wawona', is_merged_slot: true })]}
+      />,
       { wrapper }
     )
     expect(screen.getByText('Merged')).toBeInTheDocument()
   })
 
   it('flags a returning family', () => {
-    render(<HouseholdRosterTable parties={[party({ is_returning: true })]} />, {
+    render(<HouseholdRosterTable year={2026} parties={[party({ is_returning: true })]} />, {
       wrapper,
     })
     expect(screen.getByText('Returning')).toBeInTheDocument()
   })
 
   it('shows the arrival ETA when the family gave one', () => {
-    render(<HouseholdRosterTable parties={[party({ arrival_eta: 'Friday around 4pm' })]} />, {
-      wrapper,
-    })
+    render(
+      <HouseholdRosterTable year={2026} parties={[party({ arrival_eta: 'Friday around 4pm' })]} />,
+      {
+        wrapper,
+      }
+    )
     expect(screen.getByText('Friday around 4pm')).toBeInTheDocument()
   })
 
   it('renders a person-grain party for an adult weekend', () => {
     render(
       <HouseholdRosterTable
+        year={2026}
         parties={[
           party({
             grain: 'person',
@@ -248,6 +265,7 @@ describe('HouseholdRosterTable', () => {
     // request /households/0/medical, so the row says what it knows instead.
     render(
       <HouseholdRosterTable
+        year={2026}
         parties={[
           party({
             grain: 'person',
@@ -278,6 +296,7 @@ describe('HouseholdRosterTable', () => {
     // person cm_id. A key built from only one of them would collapse the rows.
     render(
       <HouseholdRosterTable
+        year={2026}
         parties={[
           party({ household_cm_id: 7, person_cm_id: 0, display_name: 'The Johnson Family' }),
           party({
@@ -293,5 +312,84 @@ describe('HouseholdRosterTable', () => {
     )
     expect(screen.getByText('The Johnson Family')).toBeInTheDocument()
     expect(screen.getByText('Olivia Chen')).toBeInTheDocument()
+  })
+})
+
+describe('HouseholdRosterTable — the row opens FamilyDetailsPanel (kindred#1996)', () => {
+  // kindred#1889 made the row chips-only and moved the medical narrative to
+  // FamilyDetailsPanel — but the row it did that to carried no way back to
+  // the panel at all. These pin the reachability fix, not the panel's own
+  // content, which FamilyDetailsPanel.test.tsx already covers.
+  it('opens the panel when a roster row is clicked', async () => {
+    render(<HouseholdRosterTable year={2026} parties={[party()]} />, { wrapper })
+    await userEvent.click(screen.getByRole('button', { name: /The Johnson Family/ }))
+    expect(screen.getByTestId('family-details-panel')).toBeInTheDocument()
+    expect(screen.getByTestId('family-panel-backdrop')).toBeInTheDocument()
+  })
+
+  it('opens the panel from the keyboard, not just a pointer click', async () => {
+    render(<HouseholdRosterTable year={2026} parties={[party()]} />, { wrapper })
+    screen.getByRole('button', { name: /The Johnson Family/ }).focus()
+    await userEvent.keyboard('{Enter}')
+    expect(screen.getByTestId('family-details-panel')).toBeInTheDocument()
+  })
+
+  it('opens the panel on Space, and stops the row from scrolling the page', () => {
+    // Space's native behavior is "scroll the page a viewport" — the same key
+    // that opens the panel. Without preventDefault(), a staff member tabbing
+    // onto a row on the 62-row roster and pressing Space gets the panel AND
+    // a full-viewport scroll.
+    render(<HouseholdRosterTable year={2026} parties={[party()]} />, { wrapper })
+    const row = screen.getByRole('button', { name: /The Johnson Family/ })
+    row.focus()
+
+    let keydownEvent: KeyboardEvent | undefined
+    row.addEventListener('keydown', (event) => {
+      keydownEvent = event
+    })
+    fireEvent.keyDown(row, { key: ' ' })
+
+    expect(screen.getByTestId('family-details-panel')).toBeInTheDocument()
+    expect(keydownEvent?.defaultPrevented).toBe(true)
+  })
+
+  it('does not remount the panel when switching from one row to another', async () => {
+    // Mirrors LodgingBoard's own guard (LodgingBoard.test.tsx): the panel is
+    // unkeyed, so switching families updates it in place rather than sliding
+    // it out and back in. This is also the row-specific trap the issue calls
+    // out — a naive `<tr>` click handler can read as dead space to
+    // `useDismissOnDeadSpace` and fight the reopen instead of switching.
+    render(
+      <HouseholdRosterTable
+        year={2026}
+        parties={[
+          party({ display_name: 'Johnson Family', household_cm_id: 2000001 }),
+          party({ display_name: 'Chen Family', household_cm_id: 2000002 }),
+        ]}
+      />,
+      { wrapper }
+    )
+    await userEvent.click(screen.getByRole('button', { name: /Johnson Family/ }))
+    const first = screen.getByTestId('family-details-panel')
+
+    await userEvent.click(screen.getByRole('button', { name: /Chen Family/ }))
+    const second = screen.getByTestId('family-details-panel')
+
+    expect(second).toBe(first)
+    expect(second).toHaveTextContent('Chen Family')
+    expect(second).toHaveClass('animate-slide-in-right')
+  })
+
+  it('closes the panel on a dead-space click once the dismissal listener attaches', async () => {
+    render(<HouseholdRosterTable year={2026} parties={[party()]} />, { wrapper })
+    await userEvent.click(screen.getByRole('button', { name: /The Johnson Family/ }))
+    expect(screen.getByTestId('family-details-panel')).toHaveClass('animate-slide-in-right')
+
+    // `useDismissOnDeadSpace` attaches its listener a macrotask after the
+    // panel opens (see its own docstring) — let it, or this would pass for
+    // the wrong reason: nothing listening yet, rather than the guard working.
+    await new Promise((resolve) => setTimeout(resolve, 0))
+    fireEvent.click(document.body)
+    expect(screen.getByTestId('family-details-panel')).toHaveClass('animate-slide-out-right')
   })
 })

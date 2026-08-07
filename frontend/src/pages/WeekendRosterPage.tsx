@@ -442,7 +442,7 @@ export default function WeekendRosterPage() {
                 {openedViews.has('roster') && (
                   <Activity mode={view === 'roster' ? 'visible' : 'hidden'}>
                     <ErrorBoundary>
-                      <HouseholdRosterTable parties={parties} units={units} />
+                      <HouseholdRosterTable parties={parties} units={units} year={currentYear} />
                     </ErrorBoundary>
                   </Activity>
                 )}
