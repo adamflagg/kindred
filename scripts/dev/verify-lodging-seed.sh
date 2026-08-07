@@ -55,6 +55,12 @@ fi
 # harness's `pocketbase serve` has to be started from the repo root.
 cd "$REPO_ROOT"
 
+# The loader (pocketbase/main.go) calls ParseSeasonYear() which reads
+# CAMPMINDER_SEASON_ID before seeding anything. If unset, the loader skips
+# loading the registry and the database ends up empty. We provide a fixed
+# year and assert the seeded rows carry it.
+export CAMPMINDER_SEASON_ID=2026
+
 SCRATCH=$(mktemp -d)
 # shellcheck disable=SC2016  # deliberate: $SCRATCH expands when the trap fires, not here
 pb_harness_install_trap 'rm -rf "$SCRATCH"'
@@ -80,6 +86,15 @@ if [[ "$n" -eq 0 ]]; then
   echo "verify-lodging-seed: FAILED" >&2
   exit 1
 fi
+
+# --- seeded rows carry the correct year ---
+# Since the registry became year-scoped, the boot loader must resolve a year
+# before seeding anything. We provide CAMPMINDER_SEASON_ID=2026 above and
+# assert that all seeded rows carry that year — if the loader set a different
+# year or skipped the field entirely, we catch it here rather than as a
+# per-row mismatch below.
+n=$(q "SELECT COUNT(*) FROM lodging_units WHERE year IS NULL OR year != 2026")
+[[ "$n" -eq 0 ]] || note "$n units have year != 2026 or NULL"
 
 # --- the database matches the private registry file, field by field ---
 if ! python3 "$HERE/lib/diff_lodging_registry.py" "$REGISTRY" "$DB"; then
