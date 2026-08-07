@@ -482,8 +482,14 @@ export default function VelocityPage() {
         {viewMode === 'delta'
           ? chartData.weeklyChartData.length > 0 && (
               <div className="mb-3 flex flex-wrap items-center gap-3 text-sm">
-                <label className="text-muted-foreground text-xs font-medium">Zoom:</label>
+                <label
+                  htmlFor="velocity-weekly-zoom-start"
+                  className="text-muted-foreground text-xs font-medium"
+                >
+                  Zoom:
+                </label>
                 <select
+                  id="velocity-weekly-zoom-start"
                   className="border-border bg-card text-foreground rounded border px-2 py-1 text-xs"
                   value={weeklyZoom.zoomRange?.[0] ?? 0}
                   onChange={(e) => {
@@ -526,8 +532,14 @@ export default function VelocityPage() {
             )
           : chartData.dailyZoomMilestones.length > 0 && (
               <div className="mb-3 flex flex-wrap items-center gap-3 text-sm">
-                <label className="text-muted-foreground text-xs font-medium">Zoom:</label>
+                <label
+                  htmlFor="velocity-daily-zoom-start"
+                  className="text-muted-foreground text-xs font-medium"
+                >
+                  Zoom:
+                </label>
                 <select
+                  id="velocity-daily-zoom-start"
                   className="border-border bg-card text-foreground rounded border px-2 py-1 text-xs"
                   value={dailyZoom.zoomRange?.[0] ?? 0}
                   onChange={(e) => {

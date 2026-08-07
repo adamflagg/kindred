@@ -1,4 +1,5 @@
 import { render, screen, waitFor, fireEvent } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { MemoryRouter } from 'react-router'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
@@ -588,7 +589,7 @@ describe('SessionAvailability', () => {
     })
 
     // Find the WL pill (shows "3" as the total count)
-    const pill = screen.getByText('3', { selector: 'span.inline-flex' })
+    const pill = screen.getByText('3', { selector: 'button.inline-flex' })
     fireEvent.mouseEnter(pill)
 
     await waitFor(() => {
@@ -599,6 +600,111 @@ describe('SessionAvailability', () => {
 
     await waitFor(() => {
       expect(screen.queryByText(/3 girls waitlisted/)).not.toBeInTheDocument()
+    })
+  })
+
+  // #2100-series a11y sweep: the WL pill was a <span onClick> with no keyboard
+  // path at all. It is now a real <button>, so Tab reaches it and Enter/Space
+  // fire the same drilldown as a mouse click — for free, from the browser.
+  it('opens the drilldown via keyboard (Enter) on the WL pill', async () => {
+    const interactionResponse = {
+      sessions: [
+        {
+          session_cm_id: 1001,
+          session_name: 'Session 1',
+          session_type: 'main',
+          sort_order: 0,
+          girls: {
+            min_grade: 2,
+            max_grade: 10,
+            enrolled: 50,
+            waitlisted: 5,
+            capacity: 50,
+            status: 'full',
+            waitlisted_by_grade: { 4: 3, 6: 2 },
+            waitlisted_persons: [],
+          },
+          boys: {
+            min_grade: 2,
+            max_grade: 10,
+            enrolled: 40,
+            waitlisted: 0,
+            capacity: 50,
+            status: 'open',
+            waitlisted_by_grade: {},
+            waitlisted_persons: [],
+          },
+        },
+      ],
+      ag_sessions: [],
+      teen_sessions: [],
+      limited_threshold: 80,
+    }
+
+    // The DrillDownModal that opens on click/keypress fetches its own attendee
+    // list — respond to that call distinctly so it doesn't choke on the
+    // session-availability shape (`res.json()` there must resolve to an array).
+    mockFetch.mockImplementation(async (url: string) => {
+      if (String(url).includes('/api/metrics/drilldown')) {
+        return { ok: true, json: async () => [] }
+      }
+      return { ok: true, json: async () => interactionResponse }
+    })
+    renderWithProviders(<SessionAvailability />)
+    await waitFor(() => expect(screen.getByText('Session 1')).toBeInTheDocument())
+
+    const pill = screen.getByRole('button', { name: '5' })
+    pill.focus()
+    await userEvent.keyboard('{Enter}')
+
+    await waitFor(() => {
+      const drilldownCall = mockFetch.mock.calls
+        .map((c) => String(c[0]))
+        .find((u) => u.includes('/api/metrics/drilldown'))
+      expect(drilldownCall).toBeDefined()
+    })
+  })
+
+  it('opens the drilldown via keyboard (Space) on the AG WL pill', async () => {
+    const interactionResponse = {
+      sessions: [],
+      ag_sessions: [
+        {
+          session_cm_id: 2001,
+          session_name: 'AG Session 2',
+          parent_session_name: 'Session 2',
+          min_grade: 4,
+          max_grade: 10,
+          enrolled: 10,
+          waitlisted: 6,
+          capacity: 24,
+          status: 'open',
+          waitlisted_by_grade: {},
+          waitlisted_persons: [],
+        },
+      ],
+      teen_sessions: [],
+      limited_threshold: 80,
+    }
+
+    mockFetch.mockImplementation(async (url: string) => {
+      if (String(url).includes('/api/metrics/drilldown')) {
+        return { ok: true, json: async () => [] }
+      }
+      return { ok: true, json: async () => interactionResponse }
+    })
+    renderWithProviders(<SessionAvailability />)
+    await waitFor(() => expect(screen.getByText('AG Session 2')).toBeInTheDocument())
+
+    const pill = screen.getByRole('button', { name: '6' })
+    pill.focus()
+    await userEvent.keyboard(' ')
+
+    await waitFor(() => {
+      const drilldownCall = mockFetch.mock.calls
+        .map((c) => String(c[0]))
+        .find((u) => u.includes('/api/metrics/drilldown'))
+      expect(drilldownCall).toBeDefined()
     })
   })
 
@@ -706,7 +812,7 @@ describe('SessionAvailability', () => {
     })
 
     // WL pill always has cursor-pointer (always opens drilldown)
-    const pill = screen.getByText('3', { selector: 'span.inline-flex' })
+    const pill = screen.getByText('3', { selector: 'button.inline-flex' })
     expect(pill).toHaveClass('cursor-pointer')
   })
 
@@ -798,7 +904,7 @@ describe('SessionAvailability', () => {
 
     await waitFor(() => expect(screen.getByText('SCIT')).toBeInTheDocument())
 
-    fireEvent.click(screen.getByText('4', { selector: 'span.inline-flex' }))
+    fireEvent.click(screen.getByText('4', { selector: 'button.inline-flex' }))
 
     await waitFor(() => {
       const drilldownCall = mockFetch.mock.calls
