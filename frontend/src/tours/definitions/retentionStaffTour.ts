@@ -16,7 +16,10 @@ const retentionStaffTour: TourDefinition = {
       },
     },
     {
-      element: '[data-tour="retention-staff-sort-name"]',
+      // Anchored to the header row, not a single header cell — the two
+      // sortable columns (Staff, Overall) now render via the shared
+      // SortableColumnHeader, which doesn't accept a data-tour prop (kindred#2068).
+      element: '[data-tour="retention-staff-header-row"]',
       popover: {
         title: 'Sortable Columns',
         description: "Click 'Staff' or 'Overall' headers to sort.",

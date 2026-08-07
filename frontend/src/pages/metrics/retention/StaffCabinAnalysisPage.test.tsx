@@ -392,9 +392,10 @@ describe('StaffCabinAnalysisPage', () => {
       renderPage()
       const user = userEvent.setup()
 
-      // Click "Staff" header to toggle sort
-      const staffHeader = screen.getByRole('columnheader', { name: /staff/i })
-      await user.click(staffHeader)
+      // Sorting is triggered from the header's nested button, not the <th>
+      // itself — the button is what makes the control keyboard-reachable.
+      const staffButton = screen.getByRole('button', { name: /staff/i })
+      await user.click(staffButton)
 
       const table = screen.getByRole('table')
       const rows = within(table).getAllByRole('row')
@@ -415,15 +416,78 @@ describe('StaffCabinAnalysisPage', () => {
       renderPage()
       const user = userEvent.setup()
 
-      // Click "Overall" header
-      const overallHeader = screen.getByRole('columnheader', { name: /overall/i })
-      await user.click(overallHeader)
+      // Click "Overall" header's button
+      const overallButton = screen.getByRole('button', { name: /overall/i })
+      await user.click(overallButton)
 
       const table = screen.getByRole('table')
       const rows = within(table).getAllByRole('row')
       const firstDataRow = rows[1]!
       // Descending by default for overall: highest first
       expect(within(firstDataRow).getByText('Anna Chen')).toBeInTheDocument()
+    })
+
+    it('#2068: Staff header is keyboard-reachable and sortable with Enter', async () => {
+      ;(useStaffRetentionData as Mock).mockReturnValue({
+        staffRows: sortableRows,
+        sessions: ['Session 1'],
+        bunkStaff: new Map(),
+        isLoading: false,
+        error: null,
+      })
+
+      renderPage()
+
+      const staffButton = screen.getByRole('button', { name: /staff/i })
+      staffButton.focus()
+      await userEvent.keyboard('{Enter}')
+
+      const table = screen.getByRole('table')
+      const rows = within(table).getAllByRole('row')
+      const firstDataRow = rows[1]!
+      // Same toggle as the click test: descending puts Zara first
+      expect(within(firstDataRow).getByText('Zara Williams')).toBeInTheDocument()
+    })
+
+    it('#2068: Overall header is keyboard-reachable and sortable with Space', async () => {
+      ;(useStaffRetentionData as Mock).mockReturnValue({
+        staffRows: sortableRows,
+        sessions: ['Session 1'],
+        bunkStaff: new Map(),
+        isLoading: false,
+        error: null,
+      })
+
+      renderPage()
+
+      const overallButton = screen.getByRole('button', { name: /overall/i })
+      overallButton.focus()
+      await userEvent.keyboard(' ')
+
+      const table = screen.getByRole('table')
+      const rows = within(table).getAllByRole('row')
+      const firstDataRow = rows[1]!
+      expect(within(firstDataRow).getByText('Anna Chen')).toBeInTheDocument()
+    })
+
+    it('#2068: aria-sort reflects the active column and is omitted on the inactive one', () => {
+      ;(useStaffRetentionData as Mock).mockReturnValue({
+        staffRows: sortableRows,
+        sessions: ['Session 1'],
+        bunkStaff: new Map(),
+        isLoading: false,
+        error: null,
+      })
+
+      renderPage()
+
+      expect(screen.getByRole('columnheader', { name: /staff/i })).toHaveAttribute(
+        'aria-sort',
+        'ascending'
+      )
+      expect(screen.getByRole('columnheader', { name: /overall/i })).not.toHaveAttribute(
+        'aria-sort'
+      )
     })
   })
 

@@ -66,6 +66,7 @@ interface FilterState {
 
 import { sortRequests, DEFAULT_SORT_BY, DEFAULT_SORT_ORDER } from './requestSort'
 import type { SortColumn } from './requestSort'
+import { SortableColumnHeader, type SortDirection } from './ui/SortableColumnHeader'
 
 export default function RequestReviewPanel({
   sessionId,
@@ -750,6 +751,9 @@ export default function RequestReviewPanel({
     }
   }
 
+  const sortDirectionFor = (column: SortColumn): SortDirection | null =>
+    sortBy === column ? (sortOrder === 'desc' ? 'descending' : 'ascending') : null
+
   const handleBulkApprove = () => {
     if (selectedRequests.size === 0) return
     setBulkConfirm({ action: 'approve', count: selectedRequests.size })
@@ -1038,77 +1042,73 @@ export default function RequestReviewPanel({
                   className="rounded"
                 />
               </div>
-              <div
-                className="text-muted-foreground hover:text-foreground cursor-pointer px-4 py-3 text-left text-sm font-medium"
-                onClick={() => handleSort('requester')}
-              >
-                <div className="flex items-center gap-1">
-                  Requester
-                  {sortBy === 'requester' && (
-                    <span className="text-primary">
-                      {sortOrder === 'asc' ? (
-                        <ChevronUp className="h-3 w-3" />
-                      ) : (
-                        <ChevronDown className="h-3 w-3" />
-                      )}
-                    </span>
-                  )}
-                </div>
-              </div>
-              <div
-                className="text-muted-foreground hover:text-foreground cursor-pointer px-4 py-3 text-left text-sm font-medium"
-                onClick={() => handleSort('request')}
-              >
-                <div className="flex items-center gap-1">
-                  Request
-                  {sortBy === 'request' && (
-                    <span className="text-primary">
-                      {sortOrder === 'asc' ? (
-                        <ChevronUp className="h-3 w-3" />
-                      ) : (
-                        <ChevronDown className="h-3 w-3" />
-                      )}
-                    </span>
-                  )}
-                </div>
-              </div>
+              <SortableColumnHeader
+                as="div"
+                label="Requester"
+                direction={sortDirectionFor('requester')}
+                onSort={() => handleSort('requester')}
+                buttonClassName="text-muted-foreground hover:text-foreground px-4 py-3 text-left text-sm font-medium"
+                indicator={
+                  sortBy === 'requester' ? (
+                    sortOrder === 'asc' ? (
+                      <ChevronUp className="text-primary h-3 w-3" />
+                    ) : (
+                      <ChevronDown className="text-primary h-3 w-3" />
+                    )
+                  ) : null
+                }
+              />
+              <SortableColumnHeader
+                as="div"
+                label="Request"
+                direction={sortDirectionFor('request')}
+                onSort={() => handleSort('request')}
+                buttonClassName="text-muted-foreground hover:text-foreground px-4 py-3 text-left text-sm font-medium"
+                indicator={
+                  sortBy === 'request' ? (
+                    sortOrder === 'asc' ? (
+                      <ChevronUp className="text-primary h-3 w-3" />
+                    ) : (
+                      <ChevronDown className="text-primary h-3 w-3" />
+                    )
+                  ) : null
+                }
+              />
               <div className="text-muted-foreground px-4 py-3 text-left text-sm font-medium">
                 Type
               </div>
-              <div
-                className="text-muted-foreground hover:text-foreground cursor-pointer px-4 py-3 text-center text-sm font-medium"
-                onClick={() => handleSort('confidence')}
-              >
-                <div className="flex items-center justify-center gap-1">
-                  Confidence
-                  {sortBy === 'confidence' && (
-                    <span className="text-primary">
-                      {sortOrder === 'asc' ? (
-                        <ChevronUp className="h-3 w-3" />
-                      ) : (
-                        <ChevronDown className="h-3 w-3" />
-                      )}
-                    </span>
-                  )}
-                </div>
-              </div>
-              <div
-                className="text-muted-foreground hover:text-foreground cursor-pointer px-4 py-3 text-center text-sm font-medium"
-                onClick={() => handleSort('status')}
-              >
-                <div className="flex items-center justify-center gap-1">
-                  Status
-                  {sortBy === 'status' && (
-                    <span className="text-primary">
-                      {sortOrder === 'asc' ? (
-                        <ChevronUp className="h-3 w-3" />
-                      ) : (
-                        <ChevronDown className="h-3 w-3" />
-                      )}
-                    </span>
-                  )}
-                </div>
-              </div>
+              <SortableColumnHeader
+                as="div"
+                label="Confidence"
+                direction={sortDirectionFor('confidence')}
+                onSort={() => handleSort('confidence')}
+                buttonClassName="text-muted-foreground hover:text-foreground justify-center px-4 py-3 text-center text-sm font-medium"
+                indicator={
+                  sortBy === 'confidence' ? (
+                    sortOrder === 'asc' ? (
+                      <ChevronUp className="text-primary h-3 w-3" />
+                    ) : (
+                      <ChevronDown className="text-primary h-3 w-3" />
+                    )
+                  ) : null
+                }
+              />
+              <SortableColumnHeader
+                as="div"
+                label="Status"
+                direction={sortDirectionFor('status')}
+                onSort={() => handleSort('status')}
+                buttonClassName="text-muted-foreground hover:text-foreground justify-center px-4 py-3 text-center text-sm font-medium"
+                indicator={
+                  sortBy === 'status' ? (
+                    sortOrder === 'asc' ? (
+                      <ChevronUp className="text-primary h-3 w-3" />
+                    ) : (
+                      <ChevronDown className="text-primary h-3 w-3" />
+                    )
+                  ) : null
+                }
+              />
               <div className="text-muted-foreground px-4 py-3 text-right text-sm font-medium">
                 Actions
               </div>

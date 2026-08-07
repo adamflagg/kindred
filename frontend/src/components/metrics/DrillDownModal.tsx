@@ -12,6 +12,10 @@ import { useState, useMemo, useEffect } from 'react'
 import { Link } from 'react-router'
 import { X, Download, Search, ArrowUpDown, Loader2 } from 'lucide-react'
 import { SortIcon } from './SortIcon'
+import {
+  SortableColumnHeader,
+  type SortDirection as HeaderSortDirection,
+} from '../ui/SortableColumnHeader'
 import { useDrilldownAttendees } from '../../hooks/useDrilldownAttendees'
 import { shortenSessionName } from '../../utils/sessionDisplay'
 import { buildCsvContent, downloadCsv as triggerCsvDownload } from '../../utils/csvExport'
@@ -222,6 +226,22 @@ export function DrillDownModal({
     }
   }
 
+  const headerDirection = (field: SortField): HeaderSortDirection | null =>
+    sortField === field ? (sortDirection === 'desc' ? 'descending' : 'ascending') : null
+
+  /** Same faint ArrowUpDown-when-inactive treatment for every column — unlike
+   *  the other two sites converted for #2068, this one shows a sort affordance
+   *  even before a column is ever clicked. */
+  const headerIndicator = (field: SortField) => (
+    <SortIcon
+      field={field}
+      activeField={sortField}
+      direction={sortDirection}
+      inactiveIcon={ArrowUpDown}
+      inactiveClassName="h-3 w-3 opacity-50"
+    />
+  )
+
   const downloadCsv = () => {
     const headers = isWaitlistDrilldown
       ? [
@@ -430,236 +450,126 @@ export function DrillDownModal({
           <table className="w-full text-sm">
             <thead className="bg-muted sticky top-0">
               <tr>
-                <th
-                  onClick={() => handleSort('name')}
-                  className="text-muted-foreground hover:text-foreground cursor-pointer px-4 py-3 text-left font-medium"
-                >
-                  <div className="flex items-center gap-1">
-                    Name{' '}
-                    <SortIcon
-                      field="name"
-                      activeField={sortField}
-                      direction={sortDirection}
-                      inactiveIcon={ArrowUpDown}
-                      inactiveClassName="h-3 w-3 opacity-50"
-                    />
-                  </div>
-                </th>
-                <th
-                  onClick={() => handleSort('grade')}
-                  className="text-muted-foreground hover:text-foreground cursor-pointer px-4 py-3 text-center font-medium"
-                >
-                  <div className="flex items-center justify-center gap-1">
-                    Grade{' '}
-                    <SortIcon
-                      field="grade"
-                      activeField={sortField}
-                      direction={sortDirection}
-                      inactiveIcon={ArrowUpDown}
-                      inactiveClassName="h-3 w-3 opacity-50"
-                    />
-                  </div>
-                </th>
-                <th
-                  onClick={() => handleSort('gender')}
-                  className="text-muted-foreground hover:text-foreground cursor-pointer px-4 py-3 text-center font-medium"
-                >
-                  <div className="flex items-center justify-center gap-1">
-                    Gender{' '}
-                    <SortIcon
-                      field="gender"
-                      activeField={sortField}
-                      direction={sortDirection}
-                      inactiveIcon={ArrowUpDown}
-                      inactiveClassName="h-3 w-3 opacity-50"
-                    />
-                  </div>
-                </th>
+                <SortableColumnHeader
+                  label="Name"
+                  direction={headerDirection('name')}
+                  onSort={() => handleSort('name')}
+                  indicator={headerIndicator('name')}
+                  buttonClassName="text-muted-foreground hover:text-foreground px-4 py-3 text-left font-medium"
+                />
+                <SortableColumnHeader
+                  label="Grade"
+                  direction={headerDirection('grade')}
+                  onSort={() => handleSort('grade')}
+                  indicator={headerIndicator('grade')}
+                  buttonClassName="text-muted-foreground hover:text-foreground justify-center px-4 py-3 text-center font-medium"
+                />
+                <SortableColumnHeader
+                  label="Gender"
+                  direction={headerDirection('gender')}
+                  onSort={() => handleSort('gender')}
+                  indicator={headerIndicator('gender')}
+                  buttonClassName="text-muted-foreground hover:text-foreground justify-center px-4 py-3 text-center font-medium"
+                />
                 {!isWaitlistDrilldown && !isRetentionDrilldown && !isCancellationSpecial && (
-                  <th
-                    onClick={() => handleSort('school')}
-                    className="text-muted-foreground hover:text-foreground cursor-pointer px-4 py-3 text-left font-medium"
-                  >
-                    <div className="flex items-center gap-1">
-                      School{' '}
-                      <SortIcon
-                        field="school"
-                        activeField={sortField}
-                        direction={sortDirection}
-                        inactiveIcon={ArrowUpDown}
-                        inactiveClassName="h-3 w-3 opacity-50"
-                      />
-                    </div>
-                  </th>
+                  <SortableColumnHeader
+                    label="School"
+                    direction={headerDirection('school')}
+                    onSort={() => handleSort('school')}
+                    indicator={headerIndicator('school')}
+                    buttonClassName="text-muted-foreground hover:text-foreground px-4 py-3 text-left font-medium"
+                  />
                 )}
-                <th
-                  onClick={() => handleSort('city')}
-                  className="text-muted-foreground hover:text-foreground cursor-pointer px-4 py-3 text-left font-medium"
-                >
-                  <div className="flex items-center gap-1">
-                    City{' '}
-                    <SortIcon
-                      field="city"
-                      activeField={sortField}
-                      direction={sortDirection}
-                      inactiveIcon={ArrowUpDown}
-                      inactiveClassName="h-3 w-3 opacity-50"
-                    />
-                  </div>
-                </th>
-                <th
-                  onClick={() => handleSort('session')}
-                  className="text-muted-foreground hover:text-foreground cursor-pointer px-4 py-3 text-left font-medium"
-                >
-                  <div className="flex items-center gap-1">
-                    {isWaitlistDrilldown
+                <SortableColumnHeader
+                  label="City"
+                  direction={headerDirection('city')}
+                  onSort={() => handleSort('city')}
+                  indicator={headerIndicator('city')}
+                  buttonClassName="text-muted-foreground hover:text-foreground px-4 py-3 text-left font-medium"
+                />
+                <SortableColumnHeader
+                  label={
+                    isWaitlistDrilldown
                       ? 'Waitlisted For'
                       : isRetentionDrilldown
                         ? 'Prior Session'
                         : isCancellationSpecial
                           ? 'Cancelled Session'
-                          : 'Session'}{' '}
-                    <SortIcon
-                      field="session"
-                      activeField={sortField}
-                      direction={sortDirection}
-                      inactiveIcon={ArrowUpDown}
-                      inactiveClassName="h-3 w-3 opacity-50"
-                    />
-                  </div>
-                </th>
+                          : 'Session'
+                  }
+                  direction={headerDirection('session')}
+                  onSort={() => handleSort('session')}
+                  indicator={headerIndicator('session')}
+                  buttonClassName="text-muted-foreground hover:text-foreground px-4 py-3 text-left font-medium"
+                />
                 {isWaitlistDrilldown && (
-                  <th
-                    onClick={() => handleSort('enrolled')}
-                    className="text-muted-foreground hover:text-foreground cursor-pointer px-4 py-3 text-left font-medium"
-                  >
-                    <div className="flex items-center gap-1">
-                      Enrolled In{' '}
-                      <SortIcon
-                        field="enrolled"
-                        activeField={sortField}
-                        direction={sortDirection}
-                        inactiveIcon={ArrowUpDown}
-                        inactiveClassName="h-3 w-3 opacity-50"
-                      />
-                    </div>
-                  </th>
+                  <SortableColumnHeader
+                    label="Enrolled In"
+                    direction={headerDirection('enrolled')}
+                    onSort={() => handleSort('enrolled')}
+                    indicator={headerIndicator('enrolled')}
+                    buttonClassName="text-muted-foreground hover:text-foreground px-4 py-3 text-left font-medium"
+                  />
                 )}
                 {isWaitlistDrilldown && (
-                  <th
-                    onClick={() => handleSort('registration')}
-                    className="text-muted-foreground hover:text-foreground cursor-pointer px-4 py-3 text-left font-medium"
-                  >
-                    <div className="flex items-center gap-1">
-                      Applied{' '}
-                      <SortIcon
-                        field="registration"
-                        activeField={sortField}
-                        direction={sortDirection}
-                        inactiveIcon={ArrowUpDown}
-                        inactiveClassName="h-3 w-3 opacity-50"
-                      />
-                    </div>
-                  </th>
+                  <SortableColumnHeader
+                    label="Applied"
+                    direction={headerDirection('registration')}
+                    onSort={() => handleSort('registration')}
+                    indicator={headerIndicator('registration')}
+                    buttonClassName="text-muted-foreground hover:text-foreground px-4 py-3 text-left font-medium"
+                  />
                 )}
                 {isRetentionDrilldown && (
-                  <th
-                    onClick={() => handleSort('enrolled_current')}
-                    className="text-muted-foreground hover:text-foreground cursor-pointer px-4 py-3 text-left font-medium"
-                  >
-                    <div className="flex items-center gap-1">
-                      Session{' '}
-                      <SortIcon
-                        field="enrolled_current"
-                        activeField={sortField}
-                        direction={sortDirection}
-                        inactiveIcon={ArrowUpDown}
-                        inactiveClassName="h-3 w-3 opacity-50"
-                      />
-                    </div>
-                  </th>
+                  <SortableColumnHeader
+                    label="Session"
+                    direction={headerDirection('enrolled_current')}
+                    onSort={() => handleSort('enrolled_current')}
+                    indicator={headerIndicator('enrolled_current')}
+                    buttonClassName="text-muted-foreground hover:text-foreground px-4 py-3 text-left font-medium"
+                  />
                 )}
                 {isCancellationSpecial && (
                   <>
-                    <th
-                      onClick={() => handleSort('enrolled')}
-                      className="text-muted-foreground hover:text-foreground cursor-pointer px-4 py-3 text-left font-medium"
-                    >
-                      <div className="flex items-center gap-1">
-                        Current Session{' '}
-                        <SortIcon
-                          field="enrolled"
-                          activeField={sortField}
-                          direction={sortDirection}
-                          inactiveIcon={ArrowUpDown}
-                          inactiveClassName="h-3 w-3 opacity-50"
-                        />
-                      </div>
-                    </th>
-                    <th
-                      onClick={() => handleSort('registration')}
-                      className="text-muted-foreground hover:text-foreground cursor-pointer px-4 py-3 text-left font-medium"
-                    >
-                      <div className="flex items-center gap-1">
-                        Registered{' '}
-                        <SortIcon
-                          field="registration"
-                          activeField={sortField}
-                          direction={sortDirection}
-                          inactiveIcon={ArrowUpDown}
-                          inactiveClassName="h-3 w-3 opacity-50"
-                        />
-                      </div>
-                    </th>
-                    <th
-                      onClick={() => handleSort('cancelled')}
-                      className="text-muted-foreground hover:text-foreground cursor-pointer px-4 py-3 text-left font-medium"
-                    >
-                      <div className="flex items-center gap-1">
-                        Cancelled{' '}
-                        <SortIcon
-                          field="cancelled"
-                          activeField={sortField}
-                          direction={sortDirection}
-                          inactiveIcon={ArrowUpDown}
-                          inactiveClassName="h-3 w-3 opacity-50"
-                        />
-                      </div>
-                    </th>
+                    <SortableColumnHeader
+                      label="Current Session"
+                      direction={headerDirection('enrolled')}
+                      onSort={() => handleSort('enrolled')}
+                      indicator={headerIndicator('enrolled')}
+                      buttonClassName="text-muted-foreground hover:text-foreground px-4 py-3 text-left font-medium"
+                    />
+                    <SortableColumnHeader
+                      label="Registered"
+                      direction={headerDirection('registration')}
+                      onSort={() => handleSort('registration')}
+                      indicator={headerIndicator('registration')}
+                      buttonClassName="text-muted-foreground hover:text-foreground px-4 py-3 text-left font-medium"
+                    />
+                    <SortableColumnHeader
+                      label="Cancelled"
+                      direction={headerDirection('cancelled')}
+                      onSort={() => handleSort('cancelled')}
+                      indicator={headerIndicator('cancelled')}
+                      buttonClassName="text-muted-foreground hover:text-foreground px-4 py-3 text-left font-medium"
+                    />
                   </>
                 )}
                 {!isWaitlistDrilldown && !isRetentionDrilldown && !isCancellationSpecial && (
-                  <th
-                    onClick={() => handleSort('registration')}
-                    className="text-muted-foreground hover:text-foreground cursor-pointer px-4 py-3 text-left font-medium"
-                  >
-                    <div className="flex items-center gap-1">
-                      Registered{' '}
-                      <SortIcon
-                        field="registration"
-                        activeField={sortField}
-                        direction={sortDirection}
-                        inactiveIcon={ArrowUpDown}
-                        inactiveClassName="h-3 w-3 opacity-50"
-                      />
-                    </div>
-                  </th>
+                  <SortableColumnHeader
+                    label="Registered"
+                    direction={headerDirection('registration')}
+                    onSort={() => handleSort('registration')}
+                    indicator={headerIndicator('registration')}
+                    buttonClassName="text-muted-foreground hover:text-foreground px-4 py-3 text-left font-medium"
+                  />
                 )}
-                <th
-                  onClick={() => handleSort('years')}
-                  className="text-muted-foreground hover:text-foreground cursor-pointer px-4 py-3 text-center font-medium"
-                >
-                  <div className="flex items-center justify-center gap-1">
-                    Years{' '}
-                    <SortIcon
-                      field="years"
-                      activeField={sortField}
-                      direction={sortDirection}
-                      inactiveIcon={ArrowUpDown}
-                      inactiveClassName="h-3 w-3 opacity-50"
-                    />
-                  </div>
-                </th>
+                <SortableColumnHeader
+                  label="Years"
+                  direction={headerDirection('years')}
+                  onSort={() => handleSort('years')}
+                  indicator={headerIndicator('years')}
+                  buttonClassName="text-muted-foreground hover:text-foreground justify-center px-4 py-3 text-center font-medium"
+                />
               </tr>
             </thead>
             <tbody>
