@@ -25,9 +25,10 @@
  * the Go ingest so every surface sees the correction at once.
  */
 import { Home, Map as MapIcon, Users } from 'lucide-react'
-import { useEffect, useMemo } from 'react'
+import { lazy, Suspense, useEffect, useMemo } from 'react'
 import { useNavigate, useParams } from 'react-router'
 
+import { ErrorBoundary } from '../components/ErrorBoundary'
 import { QueryGuard } from '../components/QueryGuard'
 import { TitleSwitcher } from '../components/ui'
 import { Permission } from '../constants/permissions'
@@ -36,8 +37,6 @@ import {
   countMapUnits,
   countUnmeasuredSpaces,
   HouseholdRosterTable,
-  LodgingBoard,
-  LodgingMap,
   partyBeds,
   resolveWeekendRef,
   scenarioForWeekend,
@@ -53,6 +52,41 @@ import { useCurrentYear } from '../hooks/useCurrentYear'
 import { usePermissions } from '../hooks/usePermissions'
 import { useScenario } from '../hooks/useScenario'
 import { useWeekendRoster, useWeekendSessions } from '../hooks/useWeekendRoster'
+
+/**
+ * Imported by DIRECT PATH, never through `../components/weekend` (#1964). A
+ * `lazy()` that resolves through the barrel pulls the barrel's whole export
+ * surface — and everything it re-exports — into the lazy chunk, which
+ * defeats the split entirely: `WeekendSessionList` also imports from the
+ * barrel, so anything reachable through it is hoisted into a chunk shared
+ * with the lander and shipped there too.
+ *
+ * `countBoardSlots` / `countMapUnits` stay eager imports above, straight from
+ * the barrel — pure functions the header needs on every tab, not components.
+ */
+const LodgingBoard = lazy(() =>
+  import('../components/weekend/LodgingBoard').then((m) => ({ default: m.LodgingBoard }))
+)
+const LodgingMap = lazy(() =>
+  import('../components/weekend/LodgingMap').then((m) => ({ default: m.LodgingMap }))
+)
+
+/**
+ * A bare `null` fallback (the modal precedent elsewhere in this codebase) is
+ * fine for something that pops over existing content; this is the whole tab
+ * panel, open long enough on a slow connection to read as a broken page
+ * without something in it. Same treatment as `FriendGroupsView`'s graph load.
+ */
+function TabLoadingFallback() {
+  return (
+    <div
+      className="flex min-h-[400px] items-center justify-center"
+      data-testid="lodging-view-loading"
+    >
+      <div className="spinner-lodge" />
+    </div>
+  )
+}
 
 /**
  * `housing`, not `board`. Summer names its board tab after what is being
@@ -306,22 +340,49 @@ export default function WeekendRosterPage() {
               id={`weekend-panel-${view}`}
               aria-labelledby={`weekend-tab-${view}`}
             >
-              {view === 'roster' && <HouseholdRosterTable parties={parties} units={units} />}
+              {/* `view` gates all three, so at most one is ever mounted —
+                  "loading the board must not hold up the map" describes a
+                  race that cannot happen here. What each boundary IS for:
+                  scoping a crash to its own tab. A 404'd chunk (stale
+                  deployment) throws inside its Suspense, and without an
+                  ErrorBoundary here it keeps going past this whole panel to
+                  the route-level one in App.tsx, blanking the header,
+                  scenario picker and tab strip along with it — taking the
+                  OTHER two tabs down with the one that broke. Wrapping each
+                  view keeps the other two switchable, `ErrorBoundary`'s
+                  default fallback supplies the retry, and it doubles as the
+                  chunk-load-error / stale-deployment handling every other
+                  lazy boundary in this app gets (`ErrorBoundary.tsx`). */}
+              {view === 'roster' && (
+                <ErrorBoundary>
+                  <HouseholdRosterTable parties={parties} units={units} />
+                </ErrorBoundary>
+              )}
               {/* The board takes the scenario, the weekend and the manage
                   permission because it WRITES now (#1989) — main's note that
-                  drag placement "is what earns plumbing it back down" is this.
-                  The map still takes only what it renders. */}
+                  drag placement "is what earns plumbing it back down" is
+                  this. The map still takes only what it renders. */}
               {view === 'housing' && (
-                <LodgingBoard
-                  parties={parties}
-                  units={units}
-                  year={currentYear}
-                  scenario={scenario}
-                  sessionCmId={selectedCmId ?? 0}
-                  canManage={canManageLodging}
-                />
+                <ErrorBoundary>
+                  <Suspense fallback={<TabLoadingFallback />}>
+                    <LodgingBoard
+                      parties={parties}
+                      units={units}
+                      year={currentYear}
+                      scenario={scenario}
+                      sessionCmId={selectedCmId ?? 0}
+                      canManage={canManageLodging}
+                    />
+                  </Suspense>
+                </ErrorBoundary>
               )}
-              {view === 'map' && <LodgingMap parties={parties} units={units} year={currentYear} />}
+              {view === 'map' && (
+                <ErrorBoundary>
+                  <Suspense fallback={<TabLoadingFallback />}>
+                    <LodgingMap parties={parties} units={units} year={currentYear} />
+                  </Suspense>
+                </ErrorBoundary>
+              )}
             </div>
           </>
         )}

@@ -8,7 +8,7 @@
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter, Route, Routes, useLocation, useNavigate } from 'react-router'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import WeekendRosterPage from './WeekendRosterPage'
 
@@ -130,11 +130,54 @@ vi.mock('../components/weekend', async (importOriginal) => {
   }
 })
 
+// A toggle, not a permanent throw — `describe('tab-level error isolation')`
+// below is the only place this flips true. `LodgingBoard` is imported by
+// DIRECT PATH in WeekendRosterPage.tsx (#1964), so mocking it here has to
+// mirror that path rather than going through the barrel above.
+let lodgingBoardShouldThrow = false
+
+vi.mock('../components/weekend/LodgingBoard', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../components/weekend/LodgingBoard')>()
+  return {
+    ...actual,
+    LodgingBoard: (props: Parameters<typeof actual.LodgingBoard>[0]) => {
+      // Deliberately NOT a chunk-load-error message (see `chunkLoadError.ts`)
+      // — that path auto-reloads the page in `ErrorBoundary`, which this test
+      // isn't about. Any panel crash should stay scoped to its own tab.
+      if (lodgingBoardShouldThrow) throw new Error('Board render failed')
+      return <actual.LodgingBoard {...props} />
+    },
+  }
+})
+
 // The `useNavigate` spy this file used to install has been removed on purpose.
 // The view now lives in the URL, so a spy would have asserted that the page
 // ASKED to navigate while the page it rendered stayed on the old tab — the
 // exact disagreement these tests exist to catch. A real MemoryRouter plus a
 // location probe asserts where the app actually ended up.
+
+// Hoisted to file scope (rather than local to `the view in the URL`) — the
+// code-splitting tests below need a unit to assert Housing renders, same as
+// the URL-view tests already do.
+const ONE_UNIT = {
+  year: 2026,
+  session_cm_id: 1000001,
+  parties: [],
+  counts: {},
+  units: [
+    {
+      unit_id: 'u1',
+      code: 'ridge-a',
+      name: 'Ridge A',
+      area_code: 'RIDGE',
+      area_name: 'Ridge Side',
+      sleeps: 5,
+      is_confirmed: true,
+      is_container: false,
+      is_family_available: true,
+    },
+  ],
+}
 
 const FAMILY_CAMP_1 = {
   session_id: 'sess_1',
@@ -331,31 +374,13 @@ describe('addressing a weekend by slug', () => {
 })
 
 describe('the view in the URL', () => {
-  const ONE_UNIT = {
-    year: 2026,
-    session_cm_id: 1000001,
-    parties: [],
-    counts: {},
-    units: [
-      {
-        unit_id: 'u1',
-        code: 'ridge-a',
-        name: 'Ridge A',
-        area_code: 'RIDGE',
-        area_name: 'Ridge Side',
-        sleeps: 5,
-        is_confirmed: true,
-        is_container: false,
-        is_family_available: true,
-      },
-    ],
-  }
-
-  it('opens the view the URL names, so a tab can be linked and reloaded', () => {
+  it('opens the view the URL names, so a tab can be linked and reloaded', async () => {
     rosterQuery.data = ONE_UNIT
     renderPage('1000001', 'map')
     expect(screen.getByRole('tab', { name: /Map/ })).toHaveAttribute('aria-selected', 'true')
-    expect(screen.getByTestId('map-canvas')).toBeInTheDocument()
+    // The map is lazy-loaded (#1964), so it clears the Suspense boundary one
+    // tick after the synchronous render rather than being present immediately.
+    expect(await screen.findByTestId('map-canvas')).toBeInTheDocument()
   })
 
   it('opens Housing when the URL names no view', () => {
@@ -474,7 +499,9 @@ describe('tabs', () => {
     await userEvent.click(screen.getByRole('tab', { name: /Housing/ }))
     // The URL follows the label. No `board` segment survives the rename.
     expect(screen.getByTestId('location')).toHaveTextContent('/weekend/1000001/housing')
-    expect(screen.getByText('Ridge A')).toBeInTheDocument()
+    // The board is lazy-loaded (#1964); it clears the Suspense boundary a
+    // tick after the click rather than being present synchronously.
+    expect(await screen.findByText('Ridge A')).toBeInTheDocument()
     // The mode lives in the header badge alone now, as it does on summer's
     // board — not repeated as a chip over the content.
     expect(screen.queryByText(/CampMinder mirror/i)).not.toBeInTheDocument()
@@ -516,7 +543,9 @@ describe('tabs', () => {
   it('shows the map when the Map tab is selected', async () => {
     renderPage()
     await userEvent.click(screen.getByRole('tab', { name: 'Map (0)' }))
-    expect(screen.getByTestId('map-canvas')).toBeInTheDocument()
+    // The map is lazy-loaded (#1964); it clears the Suspense boundary a tick
+    // after the click rather than being present synchronously.
+    expect(await screen.findByTestId('map-canvas')).toBeInTheDocument()
   })
 
   it('counts the marks the map draws, not the units the board draws', async () => {
@@ -565,6 +594,41 @@ describe('tabs', () => {
     renderPage()
     expect(screen.getByRole('tab', { name: 'Housing (2)' })).toBeInTheDocument()
     expect(screen.getByRole('tab', { name: 'Map (1)' })).toBeInTheDocument()
+  })
+})
+
+describe('tab-level error isolation', () => {
+  // Without a boundary inside each tabpanel, a crash here climbs past both
+  // `<Suspense>`s to the route-level `<ErrorBoundary>` in `App.tsx` and
+  // blanks the header, scenario picker AND tab strip along with the panel
+  // that actually broke — the fix under test is that it does not.
+  const originalConsoleError = console.error
+  beforeEach(() => {
+    console.error = vi.fn() // React logs the caught error; expected here.
+    lodgingBoardShouldThrow = true
+  })
+  afterEach(() => {
+    console.error = originalConsoleError
+    lodgingBoardShouldThrow = false
+  })
+
+  it('keeps the header and tab strip alive, with a retry, when the Housing panel crashes', async () => {
+    renderPage() // Housing is DEFAULT_VIEW, so LodgingBoard mounts immediately.
+
+    expect(await screen.findByText('Something went wrong')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /Family Camp 1/ })).toBeInTheDocument()
+    expect(screen.getByRole('tablist')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /try again/i })).toBeInTheDocument()
+  })
+
+  it('leaves a tab that never broke usable after another tab panel crashes', async () => {
+    renderPage()
+    await screen.findByText('Something went wrong')
+
+    // Roster never touches LodgingBoard — the route-level boundary would
+    // have taken it down anyway; the per-tab one should not.
+    await userEvent.click(screen.getByRole('tab', { name: /Roster/ }))
+    expect(await screen.findByText('No one is enrolled for this weekend.')).toBeInTheDocument()
   })
 })
 
