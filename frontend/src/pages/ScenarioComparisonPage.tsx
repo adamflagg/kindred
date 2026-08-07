@@ -24,7 +24,13 @@ import {
   type LucideIcon,
 } from 'lucide-react'
 import clsx from 'clsx'
-import { Listbox, ListboxButton, ListboxOptions, ListboxOption } from '@headlessui/react'
+import {
+  Listbox,
+  ListboxButton,
+  ListboxOptions,
+  ListboxOption,
+  ListboxLabel,
+} from '@headlessui/react'
 import { pb } from '../lib/pocketbase'
 import type {
   SavedScenariosResponse,
@@ -830,10 +836,10 @@ export default function ScenarioComparisonPage() {
           <div className="flex flex-col items-center gap-4 lg:flex-row lg:gap-8">
             {/* Left Scenario */}
             <div className="w-full flex-1">
-              <label className="text-muted-foreground mb-2 block text-xs font-semibold tracking-wider uppercase">
-                Compare From (Before)
-              </label>
               <Listbox value={leftScenarioId} onChange={setLeftScenarioId}>
+                <ListboxLabel className="text-muted-foreground mb-2 block text-xs font-semibold tracking-wider uppercase">
+                  Compare From (Before)
+                </ListboxLabel>
                 <div className="relative">
                   <ListboxButton className="listbox-button font-medium">
                     <span className="truncate">
@@ -879,10 +885,10 @@ export default function ScenarioComparisonPage() {
 
             {/* Right Scenario */}
             <div className="w-full flex-1">
-              <label className="text-muted-foreground mb-2 block text-xs font-semibold tracking-wider uppercase">
-                Compare To (After)
-              </label>
               <Listbox value={rightScenarioId} onChange={setRightScenarioId}>
+                <ListboxLabel className="text-muted-foreground mb-2 block text-xs font-semibold tracking-wider uppercase">
+                  Compare To (After)
+                </ListboxLabel>
                 <div className="relative">
                   <ListboxButton className="listbox-button font-medium">
                     <span className={clsx('truncate', !rightScenarioId && 'text-muted-foreground')}>

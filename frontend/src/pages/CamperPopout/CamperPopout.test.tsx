@@ -22,6 +22,11 @@ vi.mock('../../components/impossibility/LazyCamperDetailsPanel', () => ({
     embedded?: boolean
     onClose: () => void
   }) => (
+    // Test double standing in for LazyCamperDetailsPanel — never rendered to
+    // real users, so it doesn't need the interactive semantics the real
+    // (already-accessible) panel has. `onClick` just gives the test a
+    // synthetic hook to fire the `onClose` callback through.
+    // eslint-disable-next-line jsx-a11y/no-static-element-interactions, jsx-a11y/click-events-have-key-events -- mock-only test double, see comment above
     <div
       data-testid="camper-details-panel"
       data-camper-id={camperId}

@@ -284,10 +284,11 @@ export default function FriendGroups({ campers, constraints, bunks = [] }: Frien
       {/* Groups List */}
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
         {filteredGroups.map((group) => (
-          <div
+          <button
+            type="button"
             key={group.id}
             onClick={() => setSelectedGroup(selectedGroup === group.id ? null : group.id)}
-            className={`bg-card cursor-pointer rounded-lg border p-4 transition-all hover:shadow-md ${
+            className={`bg-card block w-full cursor-pointer rounded-lg border p-4 text-left transition-all hover:shadow-md ${
               selectedGroup === group.id ? 'ring-primary ring-2' : ''
             }`}
           >
@@ -346,7 +347,7 @@ export default function FriendGroups({ campers, constraints, bunks = [] }: Frien
             {group.hasError && group.errorMessage && (
               <div className="mt-3 border-t pt-3 text-xs text-red-600">⚠️ {group.errorMessage}</div>
             )}
-          </div>
+          </button>
         ))}
       </div>
 

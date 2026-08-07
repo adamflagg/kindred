@@ -215,108 +215,128 @@ export default function Users() {
                 const created = (user['created'] as string) || ''
                 const lastLogin = (user['last_login'] as string) || ''
 
-                return (
-                  <div key={user.id}>
+                const isManageable = canManageUser(user)
+                const rowClassName = `hover:bg-muted/50 dark:hover:bg-muted/30 flex w-full items-center gap-3 px-3 py-3 text-left transition-colors sm:gap-4 sm:px-5 sm:py-4 ${
+                  isManageable ? 'cursor-pointer' : ''
+                } ${selectedUser?.id === user.id ? 'bg-muted/50 dark:bg-muted/30' : ''}`
+                const rowStyle = { animationDelay: `${index * 30}ms` }
+
+                // A row is only ever interactive for a manageable user. Rather
+                // than bolt a keyboard listener onto a div that no-ops for
+                // everyone else, a manageable row is a real <button> (native
+                // Enter/Space) and a non-manageable row gets no button at all —
+                // same rule GeoDetailList's rows follow (kindred#2063).
+                const rowContent = (
+                  <>
+                    {/* Avatar */}
                     <div
-                      className={`hover:bg-muted/50 dark:hover:bg-muted/30 flex items-center gap-3 px-3 py-3 transition-colors sm:gap-4 sm:px-5 sm:py-4 ${
-                        canManageUser(user) ? 'cursor-pointer' : ''
-                      } ${selectedUser?.id === user.id ? 'bg-muted/50 dark:bg-muted/30' : ''}`}
-                      style={{ animationDelay: `${index * 30}ms` }}
-                      onClick={() => handleUserClick(user)}
+                      className={`flex h-10 w-10 flex-shrink-0 items-center justify-center overflow-hidden rounded-full sm:h-11 sm:w-11 ${
+                        avatar ? '' : getAvatarColor(email)
+                      }`}
                     >
-                      {/* Avatar */}
-                      <div
-                        className={`flex h-10 w-10 flex-shrink-0 items-center justify-center overflow-hidden rounded-full sm:h-11 sm:w-11 ${
-                          avatar ? '' : getAvatarColor(email)
-                        }`}
-                      >
-                        {avatar ? (
-                          <img
-                            src={pb.files.getURL(user, avatar, { thumb: '44x44' })}
-                            alt=""
-                            className="h-full w-full object-cover"
-                          />
-                        ) : (
-                          <span className="text-sm font-semibold sm:text-base">
-                            {(name || email).charAt(0).toUpperCase()}
+                      {avatar ? (
+                        <img
+                          src={pb.files.getURL(user, avatar, { thumb: '44x44' })}
+                          alt=""
+                          className="h-full w-full object-cover"
+                        />
+                      ) : (
+                        <span className="text-sm font-semibold sm:text-base">
+                          {(name || email).charAt(0).toUpperCase()}
+                        </span>
+                      )}
+                    </div>
+
+                    {/* User Info */}
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-2">
+                        <span className="text-foreground truncate text-sm font-medium sm:text-base">
+                          {name || email.split('@')[0]}
+                        </span>
+                        {userIsAdmin && (
+                          <span className="rounded-md bg-purple-100 px-1.5 py-0.5 text-xs font-medium text-purple-700 dark:bg-purple-900/30 dark:text-purple-400">
+                            Admin
                           </span>
                         )}
-                      </div>
-
-                      {/* User Info */}
-                      <div className="min-w-0 flex-1">
-                        <div className="flex items-center gap-2">
-                          <span className="text-foreground truncate text-sm font-medium sm:text-base">
-                            {name || email.split('@')[0]}
+                        {userRoleBadges.map((role) => (
+                          <span
+                            key={role.id}
+                            className="bg-primary/10 text-primary hidden rounded-md px-1.5 py-0.5 text-xs font-medium sm:inline-block"
+                          >
+                            {role.name}
                           </span>
-                          {userIsAdmin && (
-                            <span className="rounded-md bg-purple-100 px-1.5 py-0.5 text-xs font-medium text-purple-700 dark:bg-purple-900/30 dark:text-purple-400">
-                              Admin
-                            </span>
-                          )}
-                          {userRoleBadges.map((role) => (
-                            <span
-                              key={role.id}
-                              className="bg-primary/10 text-primary hidden rounded-md px-1.5 py-0.5 text-xs font-medium sm:inline-block"
-                            >
-                              {role.name}
-                            </span>
-                          ))}
-                        </div>
-                        <div className="text-muted-foreground flex items-center gap-1.5 text-xs sm:text-sm">
-                          <Mail className="h-3 w-3 flex-shrink-0 sm:h-3.5 sm:w-3.5" />
-                          <span className="truncate">{email}</span>
+                        ))}
+                      </div>
+                      <div className="text-muted-foreground flex items-center gap-1.5 text-xs sm:text-sm">
+                        <Mail className="h-3 w-3 flex-shrink-0 sm:h-3.5 sm:w-3.5" />
+                        <span className="truncate">{email}</span>
+                      </div>
+                    </div>
+
+                    {/* Join Date */}
+                    {created && (
+                      <div className="text-muted-foreground hidden w-36 flex-shrink-0 flex-col items-start text-sm sm:flex">
+                        <span className="text-[10px] tracking-wider uppercase opacity-60">
+                          Joined
+                        </span>
+                        <div className="flex items-center gap-1.5">
+                          <Calendar className="h-3.5 w-3.5" />
+                          <span>{formatDistanceToNow(new Date(created), { addSuffix: true })}</span>
                         </div>
                       </div>
+                    )}
 
-                      {/* Join Date */}
-                      {created && (
-                        <div className="text-muted-foreground hidden w-36 flex-shrink-0 flex-col items-start text-sm sm:flex">
+                    {/* Last Login — admin/user-manager only */}
+                    {canSeeLastLogin &&
+                      (lastLogin ? (
+                        <div
+                          data-testid={`last-login-${user.id}`}
+                          className="text-muted-foreground hidden w-36 flex-shrink-0 flex-col items-start text-sm sm:flex"
+                          title={new Date(lastLogin).toLocaleString()}
+                        >
                           <span className="text-[10px] tracking-wider uppercase opacity-60">
-                            Joined
+                            Last login
                           </span>
                           <div className="flex items-center gap-1.5">
-                            <Calendar className="h-3.5 w-3.5" />
+                            <LogIn className="h-3.5 w-3.5" />
                             <span>
-                              {formatDistanceToNow(new Date(created), { addSuffix: true })}
+                              {formatDistanceToNow(new Date(lastLogin), { addSuffix: true })}
                             </span>
                           </div>
                         </div>
-                      )}
+                      ) : (
+                        <div
+                          data-testid={`last-login-${user.id}`}
+                          className="text-muted-foreground/50 hidden w-36 flex-shrink-0 flex-col items-start text-sm sm:flex"
+                        >
+                          <span className="text-[10px] tracking-wider uppercase opacity-60">
+                            Last login
+                          </span>
+                          <div className="flex items-center gap-1.5">
+                            <LogIn className="h-3.5 w-3.5" />
+                            <span>Never</span>
+                          </div>
+                        </div>
+                      ))}
+                  </>
+                )
 
-                      {/* Last Login — admin/user-manager only */}
-                      {canSeeLastLogin &&
-                        (lastLogin ? (
-                          <div
-                            data-testid={`last-login-${user.id}`}
-                            className="text-muted-foreground hidden w-36 flex-shrink-0 flex-col items-start text-sm sm:flex"
-                            title={new Date(lastLogin).toLocaleString()}
-                          >
-                            <span className="text-[10px] tracking-wider uppercase opacity-60">
-                              Last login
-                            </span>
-                            <div className="flex items-center gap-1.5">
-                              <LogIn className="h-3.5 w-3.5" />
-                              <span>
-                                {formatDistanceToNow(new Date(lastLogin), { addSuffix: true })}
-                              </span>
-                            </div>
-                          </div>
-                        ) : (
-                          <div
-                            data-testid={`last-login-${user.id}`}
-                            className="text-muted-foreground/50 hidden w-36 flex-shrink-0 flex-col items-start text-sm sm:flex"
-                          >
-                            <span className="text-[10px] tracking-wider uppercase opacity-60">
-                              Last login
-                            </span>
-                            <div className="flex items-center gap-1.5">
-                              <LogIn className="h-3.5 w-3.5" />
-                              <span>Never</span>
-                            </div>
-                          </div>
-                        ))}
-                    </div>
+                return (
+                  <div key={user.id}>
+                    {isManageable ? (
+                      <button
+                        type="button"
+                        className={rowClassName}
+                        style={rowStyle}
+                        onClick={() => handleUserClick(user)}
+                      >
+                        {rowContent}
+                      </button>
+                    ) : (
+                      <div className={rowClassName} style={rowStyle}>
+                        {rowContent}
+                      </div>
+                    )}
 
                     {/* Inline UserRolesPanel */}
                     {selectedUser?.id === user.id && canManageUser(user) && (

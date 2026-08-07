@@ -102,6 +102,7 @@ export function CamperAlertSection({ alerts, onRequestAlertClick }: CamperAlertS
 
   return (
     <section aria-label="Alerts" className="space-y-1">
+      {/* eslint-disable-next-line jsx-a11y/no-redundant-roles -- Tailwind preflight sets `list-style: none` on every `ul`, which strips the implicit `list` role in Safari/VoiceOver; `role="list"` restores it and is not redundant there even though the rule can't see the CSS reset */}
       <ul className="space-y-1" role="list">
         {sorted.map((alert) => {
           const icon = alertIcon(alert)

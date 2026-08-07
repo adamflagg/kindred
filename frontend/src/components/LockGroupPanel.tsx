@@ -209,6 +209,7 @@ function AddMemberPicker({
             style={{ top: dropdownPos.top, left: dropdownPos.left }}
           >
             <input
+              // eslint-disable-next-line jsx-a11y/no-autofocus -- deliberate: this is a combobox-style picker opened by a button click, and the filter box is the only control in it; autofocus lets the user start typing immediately instead of tabbing into a freshly-opened popup
               autoFocus
               type="text"
               value={filter}
@@ -640,26 +641,33 @@ function LockGroupPanel({
                       hasIssues && 'border-destructive'
                     )}
                   >
-                    {/* Group Header */}
+                    {/* Group Header. The toggle affordance is a real <button>
+                        scoped to the chevron/name/count, not the whole
+                        header — the header also holds an independent Delete
+                        button, and buttons cannot nest. */}
                     <div
                       data-group-id={group.id}
-                      className="hover:bg-muted/50 cursor-pointer border-l-4 p-4 transition-colors"
+                      className="border-l-4 p-4 transition-colors"
                       style={{
                         borderLeftColor: group.color,
                         ...(selectedGroupId === group.id && {
                           backgroundColor: `${group.color}1a`,
                         }),
                       }}
-                      onClick={() => {
-                        setExpandedGroupId(isExpanded ? null : group.id)
-                        onGroupSelect?.(isExpanded ? null : group.id)
-                      }}
                     >
                       <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-3">
+                        <button
+                          type="button"
+                          className="hover:bg-muted/50 -m-1 flex flex-1 items-center gap-3 rounded p-1 text-left"
+                          aria-expanded={isExpanded}
+                          onClick={() => {
+                            setExpandedGroupId(isExpanded ? null : group.id)
+                            onGroupSelect?.(isExpanded ? null : group.id)
+                          }}
+                        >
                           <ChevronRight
                             className={clsx(
-                              'h-4 w-4 transition-transform',
+                              'h-4 w-4 flex-shrink-0 transition-transform',
                               isExpanded && 'rotate-90'
                             )}
                           />
@@ -669,7 +677,7 @@ function LockGroupPanel({
                             {members.length !== 1 ? 's' : ''}
                           </span>
                           {hasIssues && <AlertTriangle className="text-destructive h-4 w-4" />}
-                        </div>
+                        </button>
                         <div className="flex items-center gap-2">
                           <button
                             onClick={(e) => {
@@ -715,9 +723,15 @@ function LockGroupPanel({
 
                         {/* Group Name */}
                         <div className="mb-4">
-                          <label className="mb-2 block text-sm font-medium">Group Name</label>
+                          <label
+                            htmlFor={`group-name-${group.id}`}
+                            className="mb-2 block text-sm font-medium"
+                          >
+                            Group Name
+                          </label>
                           <div className="flex gap-2">
                             <input
+                              id={`group-name-${group.id}`}
                               type="text"
                               defaultValue={group.name || ''}
                               placeholder="Enter group name"
@@ -740,9 +754,11 @@ function LockGroupPanel({
                           </div>
                         </div>
 
-                        {/* Color Selection */}
+                        {/* Color Selection. `span`, not `label` — this heads a
+                            group of swatch buttons, not one associated
+                            control, so `label` would have no real target. */}
                         <div className="mb-4">
-                          <label className="mb-2 block text-sm font-medium">Group Color</label>
+                          <span className="mb-2 block text-sm font-medium">Group Color</span>
                           <div className="flex flex-wrap gap-2">
                             {GROUP_COLORS.map((color) => (
                               <button
@@ -760,9 +776,10 @@ function LockGroupPanel({
                           </div>
                         </div>
 
-                        {/* Members List */}
+                        {/* Members List. `span`, not `label` — this heads a
+                            list, not one associated control. */}
                         <div>
-                          <label className="mb-2 block text-sm font-medium">Members</label>
+                          <span className="mb-2 block text-sm font-medium">Members</span>
                           {members.length === 0 ? (
                             <p className="text-muted-foreground text-sm">
                               No members yet. Add campers using Ctrl+Click.

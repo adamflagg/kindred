@@ -730,7 +730,15 @@ export default function SocialNetworkGraph({ sessionCmId }: SocialNetworkGraphPr
         <>
           {/* Backdrop - only shown when expanded */}
           {isExpanded && (
-            <div className="fixed inset-0 z-40 bg-black/50" onClick={handleExpandToggle} />
+            // Decorative full-viewport dismiss backdrop for the expanded view;
+            // `aria-hidden` marks it non-perceivable rather than bolting on a
+            // fake interactive role. The keyboard equivalent is the Escape
+            // listener above (handleEscape), not an onKeyDown on this element.
+            <div
+              className="fixed inset-0 z-40 bg-black/50"
+              onClick={handleExpandToggle}
+              aria-hidden="true"
+            />
           )}
 
           {/* Main container - card style when normal, fixed fullscreen when expanded */}

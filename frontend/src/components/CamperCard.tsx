@@ -93,6 +93,19 @@ function CamperCard({
     return () => window.removeEventListener('closeAllContextMenus', handleCloseAll)
   }, [])
 
+  // Escape dismisses the context menu — the keyboard equivalent for the
+  // full-viewport backdrop's click-to-close (see the backdrop's own
+  // eslint-disable below). Matches the pattern already used for the social
+  // graph's expand overlay and several other dismissible surfaces.
+  useEffect(() => {
+    if (!showContextMenu) return
+    const handleEscape = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setShowContextMenu(false)
+    }
+    document.addEventListener('keydown', handleEscape)
+    return () => document.removeEventListener('keydown', handleEscape)
+  }, [showContextMenu])
+
   const {
     attributes,
     listeners,
@@ -195,7 +208,8 @@ function CamperCard({
 
   return (
     <>
-      <div
+      <button
+        type="button"
         data-camper-card
         ref={setNodeRef}
         title={isProductionMode ? 'Switch to a scenario to edit' : undefined}
@@ -208,7 +222,7 @@ function CamperCard({
           } satisfies CSSProperties
         }
         className={clsx(
-          'relative overflow-hidden rounded-xl border-2 p-2.5 transition-all select-none',
+          'relative block w-full overflow-hidden rounded-xl border-2 p-2.5 text-left transition-all select-none',
           genderColorClass,
           isDraggable && 'hover:shadow-lodge cursor-move',
           !isDraggable && 'cursor-default',
@@ -221,11 +235,11 @@ function CamperCard({
         onClick={handleClick}
         onContextMenu={handleContextMenu}
       >
-        <div className="flex flex-col gap-0.5">
+        <span className="flex flex-col gap-0.5">
           {/* Line 1: Name (left) and Status icons (right) */}
-          <div className="flex items-center justify-between gap-1.5">
-            <p
-              className="min-w-0 flex-1 truncate text-sm font-medium dark:text-gray-100"
+          <span className="flex items-center justify-between gap-1.5">
+            <span
+              className="block min-w-0 flex-1 truncate text-sm font-medium dark:text-gray-100"
               style={
                 isInLockedGroup && lockGroupColor
                   ? {
@@ -235,8 +249,8 @@ function CamperCard({
               }
             >
               {camper.name}
-            </p>
-            <div className="flex flex-shrink-0 items-center gap-1">
+            </span>
+            <span className="flex flex-shrink-0 items-center gap-1">
               {/* Parent-paramount: material parent request unsatisfied (>=1 request, 0 satisfied). */}
               {satisfiedInfo.flags.parent_min_one_violation && (
                 <span
@@ -278,20 +292,22 @@ function CamperCard({
                   <Lock className="h-4 w-4" />
                 </span>
               )}
-            </div>
-          </div>
+            </span>
+          </span>
 
           {/* Line 2: Age/Grade (left) and History (right) */}
-          <div className="flex items-center justify-between gap-2">
-            <p className="text-xs text-gray-600 dark:text-gray-400">
+          <span className="flex items-center justify-between gap-2">
+            <span className="block text-xs text-gray-600 dark:text-gray-400">
               Age {(getDisplayAgeForYear(camper, viewingYear) ?? 0).toFixed(2)} •{' '}
               {formatGradeOrdinal(camper.grade)}
-            </p>
+            </span>
             {historyDisplay && (
-              <p className="text-muted-foreground text-xs whitespace-nowrap">{historyDisplay}</p>
+              <span className="text-muted-foreground block text-xs whitespace-nowrap">
+                {historyDisplay}
+              </span>
             )}
-          </div>
-        </div>
+          </span>
+        </span>
 
         {/* Bottom gradient overlay for locked groups - temporarily disabled
         {isInLockedGroup && lockGroupColor && (
@@ -305,15 +321,22 @@ function CamperCard({
           />
         )}
         */}
-      </div>
+      </button>
 
       {/* Context Menu - rendered via Portal to escape stacking context issues */}
       {showContextMenu &&
         createPortal(
           <>
+            {/* Full-viewport dismiss layer for the context menu, not content —
+                a real button covering the whole screen would be a worse
+                interactive-content trap for both mouse and keyboard users.
+                `aria-hidden` marks it non-perceivable rather than bolting on a
+                fake interactive role. The keyboard equivalent is the document
+                Escape listener above, not an onKeyDown on this element. */}
             <div
               className="fixed inset-0 z-[9998]"
               data-backdrop="true"
+              aria-hidden="true"
               onClick={() => setShowContextMenu(false)}
               onContextMenu={(e) => {
                 e.preventDefault()
