@@ -118,9 +118,9 @@ export default function ProcessRequestOptions({
             <Brain className="h-5 w-5 text-teal-600 dark:text-teal-400" />
           </div>
           <div>
-            <h2 className="font-display text-lg font-semibold" role="heading" aria-level={2}>
-              Process Requests
-            </h2>
+            {/* <h2> already implies role="heading" aria-level="2" — the explicit
+                props were redundant. */}
+            <h2 className="font-display text-lg font-semibold">Process Requests</h2>
             <p className="text-muted-foreground text-sm">
               Process original bunk requests with AI parsing
             </p>
@@ -152,9 +152,11 @@ export default function ProcessRequestOptions({
             </div>
           </div>
 
-          {/* Source Fields */}
-          <div>
-            <label className="mb-1.5 block text-sm font-medium">Source Fields</label>
+          {/* Source Fields — fieldset/legend, not a <label>, because the
+              caption applies to a whole group of checkboxes rather than one
+              associable control. */}
+          <fieldset className="m-0 min-w-0 border-0 p-0">
+            <legend className="mb-1.5 block text-sm font-medium">Source Fields</legend>
             <p className="text-muted-foreground mb-2 text-xs">
               Filter by field type (empty = all fields)
             </p>
@@ -173,7 +175,7 @@ export default function ProcessRequestOptions({
                 </label>
               ))}
             </div>
-          </div>
+          </fieldset>
 
           {/* Limit Input */}
           <div>
@@ -226,7 +228,10 @@ export default function ProcessRequestOptions({
             )}
           </div>
 
-          {/* Collect Traces Checkbox */}
+          {/* Collect Traces Checkbox — the visible text sits two levels below
+              the label's wrapped <div>, past the a11y linter's nesting-depth
+              check, so the checkbox also carries an aria-label mirroring it
+              (matching the per-field checkboxes above). */}
           <label className="group flex cursor-pointer items-center gap-3">
             <input
               type="checkbox"
@@ -234,6 +239,7 @@ export default function ProcessRequestOptions({
               onChange={(e) => setCollectTraces(e.target.checked)}
               disabled={isProcessing}
               className="border-border text-primary focus:ring-primary/30 h-4 w-4 rounded focus:ring-offset-0 disabled:opacity-50"
+              aria-label="Collect pipeline traces"
             />
             <div>
               <span className="group-hover:text-foreground text-sm font-medium transition-colors">
@@ -245,9 +251,11 @@ export default function ProcessRequestOptions({
             </div>
           </label>
 
-          {/* Debug/Trace Checkboxes */}
-          <div className="space-y-3">
-            <label className="block text-sm font-medium">Logging Level</label>
+          {/* Debug/Trace Checkboxes — fieldset/legend, not a <label>, because
+              the caption applies to the pair of mutually exclusive
+              checkboxes below rather than one associable control. */}
+          <fieldset className="m-0 min-w-0 space-y-3 border-0 p-0">
+            <legend className="block text-sm font-medium">Logging Level</legend>
             <div className="flex gap-6">
               <label className="group flex cursor-pointer items-center gap-2">
                 <input
@@ -280,7 +288,7 @@ export default function ProcessRequestOptions({
               Debug: AI prompts & resolution details. Trace: Very verbose (API params, SDK
               internals)
             </p>
-          </div>
+          </fieldset>
         </div>
 
         {/* Actions */}

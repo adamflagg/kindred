@@ -261,7 +261,16 @@ export function PromptEditorTab() {
           {/* Dropdown menu */}
           {isDropdownOpen && promptsData?.prompts && (
             <>
-              <div className="fixed inset-0 z-10" onClick={() => setIsDropdownOpen(false)} />
+              {/* Decorative click-away overlay, aria-hidden because the
+                  dropdown trigger button above is already a real,
+                  keyboard-reachable way to close it (toggle), same as
+                  selecting any option; this div adds nothing for keyboard/AT
+                  users beyond that (matches ui/Modal.tsx's own backdrop). */}
+              <div
+                className="fixed inset-0 z-10"
+                onClick={() => setIsDropdownOpen(false)}
+                aria-hidden="true"
+              />
               <div className="dark:bg-bark-800 border-bark-200 dark:border-bark-600 shadow-lodge absolute top-full left-0 z-20 mt-2 w-full min-w-[280px] overflow-hidden rounded-xl border-2 bg-white">
                 {promptsData.prompts.map((prompt) => (
                   <button

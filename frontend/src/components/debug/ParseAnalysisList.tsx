@@ -69,61 +69,68 @@ export function ParseAnalysisList({
           return (
             <div
               key={item.id}
-              className={`group relative flex cursor-pointer items-center gap-3 rounded-xl border-2 p-3 transition-all duration-200 ${
+              className={`group relative flex items-center gap-3 rounded-xl border-2 p-3 transition-all duration-200 ${
                 isSelected
                   ? 'bg-forest-50 dark:bg-forest-900/30 border-forest-300 dark:border-forest-700 shadow-sm'
                   : 'dark:bg-bark-800 hover:bg-parchment-200/70 dark:hover:bg-bark-700/50 hover:border-bark-200 dark:hover:border-bark-600 border-transparent bg-white'
               } `}
-              onClick={() => onSelect(item)}
             >
-              {/* Selection indicator */}
-              <div
-                className={`flex h-4 w-4 flex-shrink-0 items-center justify-center rounded-full border-2 transition-all duration-200 ${isSelected ? 'border-forest-500 bg-forest-500' : 'border-bark-300 dark:border-bark-600'} `}
+              {/* Selection lives on a real <button> around the indicator +
+                  content (kindred#2063 pattern) rather than a click handler on
+                  the row `<div>` — the Reparse button is a sibling, not
+                  nested inside it, since a <button> can't contain another
+                  button. */}
+              <button
+                type="button"
+                onClick={() => onSelect(item)}
+                className="flex min-w-0 flex-1 cursor-pointer items-center gap-3 text-left"
               >
-                {isSelected && <div className="h-1.5 w-1.5 rounded-full bg-white" />}
-              </div>
+                {/* Selection indicator */}
+                <div
+                  className={`flex h-4 w-4 flex-shrink-0 items-center justify-center rounded-full border-2 transition-all duration-200 ${isSelected ? 'border-forest-500 bg-forest-500' : 'border-bark-300 dark:border-bark-600'} `}
+                >
+                  {isSelected && <div className="h-1.5 w-1.5 rounded-full bg-white" />}
+                </div>
 
-              {/* Content */}
-              <div className="min-w-0 flex-1">
-                <div className="flex items-center gap-2">
-                  <span className="text-foreground truncate font-medium">
-                    {item.requester_name ?? 'Unknown'}
-                  </span>
-                  {/* Parse status badge */}
-                  {item.has_debug_result ? (
-                    <span
-                      className="inline-flex items-center gap-1 rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-semibold text-amber-700 dark:bg-amber-900/40 dark:text-amber-400"
-                      title="Debug result available"
-                    >
-                      <FlaskConical className="h-2.5 w-2.5" />
+                {/* Content */}
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-2">
+                    <span className="text-foreground truncate font-medium">
+                      {item.requester_name ?? 'Unknown'}
                     </span>
-                  ) : item.has_production_result ? (
+                    {/* Parse status badge */}
+                    {item.has_debug_result ? (
+                      <span
+                        className="inline-flex items-center gap-1 rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-semibold text-amber-700 dark:bg-amber-900/40 dark:text-amber-400"
+                        title="Debug result available"
+                      >
+                        <FlaskConical className="h-2.5 w-2.5" />
+                      </span>
+                    ) : item.has_production_result ? (
+                      <span
+                        className="bg-forest-100 text-forest-700 dark:bg-forest-900/40 dark:text-forest-400 inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] font-semibold"
+                        title="Production result available"
+                      >
+                        <Database className="h-2.5 w-2.5" />
+                      </span>
+                    ) : null}
+                  </div>
+                  <div className="mt-1 flex items-center gap-2">
                     <span
-                      className="bg-forest-100 text-forest-700 dark:bg-forest-900/40 dark:text-forest-400 inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] font-semibold"
-                      title="Production result available"
+                      className={`inline-flex rounded-md px-2 py-0.5 text-[10px] font-semibold ${item.source_field === SourceField.BUNK_REQUEST_FORM ? 'bg-forest-100 text-forest-700 dark:bg-forest-900/40 dark:text-forest-400' : ''} ${item.source_field === SourceField.STAFF_NOT_BUNK_WITH ? 'bg-rose-100 text-rose-700 dark:bg-rose-900/40 dark:text-rose-400' : ''} ${item.source_field === SourceField.BUNKING_NOTES ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-400' : ''} ${item.source_field === SourceField.INTERNAL_NOTES ? 'bg-violet-100 text-violet-700 dark:bg-violet-900/40 dark:text-violet-400' : ''} `}
                     >
-                      <Database className="h-2.5 w-2.5" />
+                      {sourceLabel}
                     </span>
-                  ) : null}
+                    {!hasAnyResult && (
+                      <span className="text-muted-foreground text-xs italic">Not parsed</span>
+                    )}
+                  </div>
                 </div>
-                <div className="mt-1 flex items-center gap-2">
-                  <span
-                    className={`inline-flex rounded-md px-2 py-0.5 text-[10px] font-semibold ${item.source_field === SourceField.BUNK_REQUEST_FORM ? 'bg-forest-100 text-forest-700 dark:bg-forest-900/40 dark:text-forest-400' : ''} ${item.source_field === SourceField.STAFF_NOT_BUNK_WITH ? 'bg-rose-100 text-rose-700 dark:bg-rose-900/40 dark:text-rose-400' : ''} ${item.source_field === SourceField.BUNKING_NOTES ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-400' : ''} ${item.source_field === SourceField.INTERNAL_NOTES ? 'bg-violet-100 text-violet-700 dark:bg-violet-900/40 dark:text-violet-400' : ''} `}
-                  >
-                    {sourceLabel}
-                  </span>
-                  {!hasAnyResult && (
-                    <span className="text-muted-foreground text-xs italic">Not parsed</span>
-                  )}
-                </div>
-              </div>
+              </button>
 
               {/* Reparse button */}
               <button
-                onClick={(e) => {
-                  e.stopPropagation()
-                  onReparse(item)
-                }}
+                onClick={() => onReparse(item)}
                 disabled={isReparsing}
                 className={`flex-shrink-0 rounded-lg p-2 transition-all duration-200 ${
                   isReparsing

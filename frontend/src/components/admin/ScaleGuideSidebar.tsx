@@ -210,12 +210,16 @@ export function ScaleGuideSidebar({ activeCategory }: ScaleGuideSidebarProps) {
         </div>
       </div>
 
-      {/* Backdrop for mobile */}
+      {/* Backdrop for mobile — decorative click-to-dismiss surface, aria-hidden
+          because the header's X button (above) is already a real, keyboard-
+          reachable way to close the sidebar; this div adds nothing for
+          keyboard/AT users beyond that (matches ui/Modal.tsx's own backdrop). */}
       {isOpen && (
         <div
           className="fixed inset-0 z-20 bg-black/20 lg:hidden"
           style={{ top: '64px' }}
           onClick={() => setIsOpen(false)}
+          aria-hidden="true"
         />
       )}
     </>

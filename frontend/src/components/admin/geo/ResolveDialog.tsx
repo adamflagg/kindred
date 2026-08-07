@@ -207,6 +207,10 @@ export function ResolveDialog({
               }}
               placeholder="Search existing entries..."
               className="bg-muted/50 border-border focus:ring-forest-500 w-full rounded-lg border py-2 pr-4 pl-10 text-sm focus:ring-2 focus:outline-none"
+              // Deliberate: this dialog's entire purpose is searching for a canonical to
+              // resolve the gap into, so taking focus on open lets the user start typing
+              // immediately.
+              // eslint-disable-next-line jsx-a11y/no-autofocus
               autoFocus
             />
           </div>
@@ -319,6 +323,10 @@ export function ResolveDialog({
               value={newCanonicalName}
               onChange={(e) => setNewCanonicalName(e.target.value)}
               className="bg-muted/50 border-border focus:ring-forest-500 w-full rounded-lg border px-3 py-2 text-sm focus:ring-2 focus:outline-none"
+              // Deliberate: this form only appears once the user has chosen "Create new",
+              // so taking focus on the Name field lets them start typing immediately
+              // instead of re-clicking into it.
+              // eslint-disable-next-line jsx-a11y/no-autofocus
               autoFocus
             />
           </div>
