@@ -7,6 +7,7 @@
 
 import { describe, it, expect, vi } from 'vitest'
 import { render, screen, fireEvent } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { GeoDetailList } from './GeoDetailList'
 import type { GeoDataItem } from './GeoMap'
 
@@ -111,12 +112,17 @@ describe('GeoDetailList', () => {
     })
   })
 
-  it('triggers drilldown on Enter key press', () => {
+  it('triggers drilldown on Enter key press', async () => {
+    // The affordance is a real `<button>` (kindred#2063), so keyboard
+    // activation is native — a raw `fireEvent.keyDown` no longer does
+    // anything; `userEvent` is what actually simulates a browser's default
+    // key handling for a focused button.
     const onDrilldown = vi.fn()
     render(<GeoDetailList data={cityItems} category="city" onDrilldown={onDrilldown} />)
 
     fireEvent.click(screen.getByText('Cities'))
-    fireEvent.keyDown(screen.getByText(/San Francisco/).closest('tr')!, { key: 'Enter' })
+    screen.getByRole('button', { name: /San Francisco/ }).focus()
+    await userEvent.keyboard('{Enter}')
 
     expect(onDrilldown).toHaveBeenCalledWith({
       type: 'city',
@@ -125,12 +131,13 @@ describe('GeoDetailList', () => {
     })
   })
 
-  it('triggers drilldown on Space key press', () => {
+  it('triggers drilldown on Space key press', async () => {
     const onDrilldown = vi.fn()
     render(<GeoDetailList data={cityItems} category="city" onDrilldown={onDrilldown} />)
 
     fireEvent.click(screen.getByText('Cities'))
-    fireEvent.keyDown(screen.getByText(/San Francisco/).closest('tr')!, { key: ' ' })
+    screen.getByRole('button', { name: /San Francisco/ }).focus()
+    await userEvent.keyboard('[Space]')
 
     expect(onDrilldown).toHaveBeenCalledWith({
       type: 'city',
@@ -147,5 +154,17 @@ describe('GeoDetailList', () => {
     const row = screen.getByText('West').closest('tr')!
     expect(row).not.toHaveAttribute('tabindex')
     expect(row).not.toHaveAttribute('role')
+    // Non-clickable rows (region) get no button at all, not just an inert row.
+    expect(screen.queryByRole('button', { name: 'West' })).not.toBeInTheDocument()
+  })
+
+  it('keeps native row semantics — the table is not collapsed to one row (kindred#2063)', () => {
+    // `role="button"` on the `<tr>` used to override the native `row` role,
+    // so `queryAllByRole('row')` collapsed to 1 (the header alone) and the
+    // cells lost their owning row.
+    render(<GeoDetailList data={cityItems} category="city" />)
+    fireEvent.click(screen.getByText('Cities'))
+
+    expect(screen.getAllByRole('row')).toHaveLength(cityItems.length + 1)
   })
 })

@@ -111,33 +111,35 @@ export function GeoDetailList({
                   if (isSelected) highlightClass = 'bg-primary/10'
                   else if (isClickable) highlightClass = 'hover:bg-muted/30'
 
-                  const rowClass = [
-                    'border-border border-t transition-colors',
-                    isClickable && 'cursor-pointer',
-                    highlightClass,
-                  ]
+                  const rowClass = ['border-border border-t transition-colors', highlightClass]
                     .filter(Boolean)
                     .join(' ')
 
+                  // `role="button"` used to live on the `<tr>` itself,
+                  // overriding the native `row` role — `queryAllByRole('row')`
+                  // collapsed to 1 (the header alone). The affordance is now a
+                  // real `<button>` confined to the name cell instead, which
+                  // keeps row/cell semantics intact and satisfies
+                  // `clickoutsidePredicate`'s `isInteractive` check the same
+                  // way any other `button` does (kindred#2063). A real button
+                  // also gets Enter/Space activation for free — no manual
+                  // `onKeyDown` needed, matching this file's own header
+                  // button just above.
                   return (
-                    <tr
-                      key={item.name}
-                      onClick={handleActivate}
-                      onKeyDown={
-                        isClickable
-                          ? (e: React.KeyboardEvent) => {
-                              if (e.key === 'Enter' || e.key === ' ') {
-                                e.preventDefault()
-                                handleActivate?.()
-                              }
-                            }
-                          : undefined
-                      }
-                      tabIndex={isClickable ? 0 : undefined}
-                      role={isClickable ? 'button' : undefined}
-                      className={rowClass}
-                    >
-                      <td className="text-foreground px-4 py-2">{item.name}</td>
+                    <tr key={item.name} className={rowClass}>
+                      <td className="text-foreground px-4 py-2">
+                        {isClickable ? (
+                          <button
+                            type="button"
+                            onClick={handleActivate}
+                            className="block w-full cursor-pointer text-left"
+                          >
+                            {item.name}
+                          </button>
+                        ) : (
+                          item.name
+                        )}
+                      </td>
                       <td className="text-foreground px-4 py-2 text-right font-medium">
                         {item.count}
                       </td>
