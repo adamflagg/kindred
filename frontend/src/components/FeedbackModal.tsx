@@ -126,10 +126,21 @@ export function FeedbackModal({ isOpen, onClose }: FeedbackModalProps) {
 
   return (
     <Modal isOpen={isOpen} onClose={handleClose} title="Report a Problem" size="md">
-      {/* Category picker */}
+      {/* Category picker — a button group, not a single form control, so this
+          is a group label (span + aria-labelledby) rather than a <label>,
+          which would need a control to associate with. */}
       <div className="mb-4">
-        <label className="text-foreground mb-2 block text-sm font-medium">Category</label>
-        <div className="grid grid-cols-2 gap-2">
+        <span
+          id="feedback-category-label"
+          className="text-foreground mb-2 block text-sm font-medium"
+        >
+          Category
+        </span>
+        <div
+          role="group"
+          aria-labelledby="feedback-category-label"
+          className="grid grid-cols-2 gap-2"
+        >
           {CATEGORIES.map((cat) => (
             <button
               key={cat.value}

@@ -299,8 +299,11 @@ export default function SolverProgressModal({
 
   return createPortal(
     <div className="fixed inset-0 z-[9999] flex items-center justify-center">
-      {/* Backdrop with blur */}
+      {/* Backdrop with blur — decorative; click-to-close (when not
+          in-progress) is a mouse convenience on top of the real close
+          control, not the only path to close. */}
       <div
+        aria-hidden="true"
         className="animate-in fade-in absolute inset-0 bg-black/40 backdrop-blur-sm duration-200"
         onClick={isInProgress ? undefined : onClose}
       />

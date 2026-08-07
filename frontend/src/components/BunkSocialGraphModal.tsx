@@ -468,16 +468,24 @@ export default function BunkSocialGraphModal({
   // Use Activity to preserve state when hidden while unmounting effects
   // The backdrop transitions in/out based on isOpen
   return (
-    <div
-      className={clsx(
-        'fixed inset-0 z-50 flex items-center justify-start p-0 transition-all duration-300 sm:p-4',
-        isOpen ? 'pointer-events-auto bg-black/50' : 'pointer-events-none bg-transparent opacity-0'
-      )}
-      onClick={(e) => e.target === e.currentTarget && onClose()}
-    >
+    <div className="fixed inset-0 z-50 flex items-center justify-start p-0 sm:p-4">
+      {/* Decorative backdrop: click-to-close is a mouse convenience, not the
+          only path to close (see the header's real close button), so this
+          stays a plain non-interactive div rather than growing keyboard
+          handling that would duplicate the close button. */}
+      <div
+        aria-hidden="true"
+        className={clsx(
+          'absolute inset-0 transition-all duration-300',
+          isOpen
+            ? 'pointer-events-auto bg-black/50'
+            : 'pointer-events-none bg-transparent opacity-0'
+        )}
+        onClick={onClose}
+      />
       <Activity mode={isOpen ? 'visible' : 'hidden'}>
         <div
-          className={`bg-card shadow-lodge-xl overflow-hidden rounded-none transition-all duration-300 sm:ml-4 sm:rounded-2xl ${
+          className={`bg-card shadow-lodge-xl relative overflow-hidden rounded-none transition-all duration-300 sm:ml-4 sm:rounded-2xl ${
             selectedCamperId
               ? 'h-full w-full sm:max-h-[95vh] sm:w-[calc(95vw-20rem)] md:w-[calc(95vw-26rem)]'
               : 'h-full w-full sm:max-h-[95vh] sm:w-[95vw]'
