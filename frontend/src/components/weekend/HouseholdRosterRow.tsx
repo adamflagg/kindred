@@ -131,7 +131,14 @@ export function HouseholdRosterRow({ party, showRequests, unit, onOpen }: Househ
                 Returning
               </span>
             )}
-            {party.is_returning !== true && (
+            {/* `is_returning` is only ever computed for household-grain
+                parties (`_build_household_parties` sets it from
+                `prior_cm_ids`). An adult weekend guest is `grain: 'person'`
+                (`showAdults` false), for which the field is never set and
+                arrives as the Pydantic default `false` -- untracked, not
+                "no". Gating on grain keeps this badge from calling every
+                adult weekend regular a first-timer. */}
+            {showAdults && party.is_returning !== true && (
               <span
                 title="First time at camp"
                 className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-700 dark:bg-amber-900/50 dark:text-amber-300"

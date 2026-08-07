@@ -245,6 +245,21 @@ describe('HouseholdRosterTable', () => {
     expect(screen.queryByText('Returning')).not.toBeInTheDocument()
   })
 
+  // Adult weekends never compute `is_returning` server-side (person grain
+  // takes the Pydantic `bool = False` default, unset rather than "no"), so
+  // neither badge should render a claim the API never made.
+  it('stays silent on returning status for an adult weekend guest (person grain)', () => {
+    render(
+      <HouseholdRosterTable
+        year={2026}
+        parties={[party({ grain: 'person', display_name: 'Olivia Chen', is_returning: false })]}
+      />,
+      { wrapper }
+    )
+    expect(screen.queryByText('First-time')).not.toBeInTheDocument()
+    expect(screen.queryByText('Returning')).not.toBeInTheDocument()
+  })
+
   it('shows the arrival ETA when the family gave one', () => {
     render(
       <HouseholdRosterTable year={2026} parties={[party({ arrival_eta: 'Friday around 4pm' })]} />,

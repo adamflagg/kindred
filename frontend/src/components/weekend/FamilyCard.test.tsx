@@ -141,6 +141,17 @@ describe('FamilyCard — what it shows', () => {
     expect(screen.queryByText('Returning')).not.toBeInTheDocument()
   })
 
+  // Adult weekend guests are `grain: 'person'`. The API never computes
+  // `is_returning` for that grain (`_build_person_parties` omits the field
+  // entirely, so Pydantic's `bool = False` default fills the wire value) --
+  // it is not "false", it is "not tracked". Showing "First-time" here would
+  // brand every adult weekend regular a newcomer on every visit.
+  it('stays silent on returning status for an adult weekend guest (person grain)', () => {
+    render(<FamilyCard party={party({ grain: 'person', is_returning: false })} onOpen={vi.fn()} />)
+    expect(screen.queryByText('First-time')).not.toBeInTheDocument()
+    expect(screen.queryByText('Returning')).not.toBeInTheDocument()
+  })
+
   it('says the fit is unverified rather than judging against an unconfirmed cabin', () => {
     // `has_power: false` on an unconfirmed row means "nobody has said". 0 of
     // 93 units are confirmed today, so this is the normal verdict.
