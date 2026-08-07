@@ -25,7 +25,7 @@
  * the Go ingest so every surface sees the correction at once.
  */
 import { Home, Map as MapIcon, Users } from 'lucide-react'
-import { lazy, Suspense, useEffect, useMemo } from 'react'
+import { Activity, lazy, Suspense, useEffect, useMemo, useState } from 'react'
 import { useNavigate, useParams } from 'react-router'
 
 import { ErrorBoundary } from '../components/ErrorBoundary'
@@ -189,6 +189,38 @@ export default function WeekendRosterPage() {
   )
   const spacesUnmeasured = useMemo(() => countUnmeasuredSpaces(units), [units])
 
+  /**
+   * A view is added the first time it becomes active and never removed —
+   * mirroring what `<Activity mode="hidden">` itself does below: once a tab
+   * has been opened, it stays mounted rather than being torn down and
+   * rebuilt on every switch away (#2004).
+   *
+   * Adjusted DURING render, not in a `useEffect` — the "storing information
+   * from previous renders" pattern the React docs give for exactly this
+   * shape (https://react.dev/reference/react/useState#storing-information-from-previous-renders):
+   * deriving state from a prop that just changed, without paying for an
+   * extra commit-then-effect-then-rerender round trip that would flash the
+   * newly-opened tab's panel empty for a frame first. `openedViews.has(view)`
+   * is already self-terminating — once `view` has been added, the condition
+   * is false on the very next render, so it doubles as its own "did this
+   * change since last render" check with nothing extra to track. (An earlier
+   * draft kept a separate `renderedView` state purely to notice the change;
+   * that state read nothing else and existed only to gate a call that already
+   * gates itself, so it's gone.)
+   *
+   * GATING ON THIS, rather than wrapping all three panels in `Activity`
+   * unconditionally, is what keeps a never-opened tab from paying for its
+   * lazy chunk: `Activity`'s hidden mode still mounts and commits hidden
+   * content (that is the point — it is what lets a return to it skip the
+   * fallback), so an ungated `Activity` around `LodgingBoard`/`LodgingMap`
+   * would fetch BOTH chunks on first paint no matter which tab is showing,
+   * silently undoing the code-split #2057 built.
+   */
+  const [openedViews, setOpenedViews] = useState<Set<View>>(() => new Set([view]))
+  if (!openedViews.has(view)) {
+    setOpenedViews(new Set(openedViews).add(view))
+  }
+
   // Housing first, as summer leads with Bunks.
   const TABS: Array<{ id: View; label: string; icon: typeof Users; count: number }> = [
     // Counts the SLOT CARDS the board draws, not the raw unit count: a
@@ -334,55 +366,104 @@ export default function WeekendRosterPage() {
                 )}
             </div>
 
-            <div
-              className="pt-4"
-              role="tabpanel"
-              id={`weekend-panel-${view}`}
-              aria-labelledby={`weekend-tab-${view}`}
-            >
-              {/* `view` gates all three, so at most one is ever mounted —
-                  "loading the board must not hold up the map" describes a
-                  race that cannot happen here. What each boundary IS for:
-                  scoping a crash to its own tab. A 404'd chunk (stale
-                  deployment) throws inside its Suspense, and without an
-                  ErrorBoundary here it keeps going past this whole panel to
-                  the route-level one in App.tsx, blanking the header,
-                  scenario picker and tab strip along with it — taking the
-                  OTHER two tabs down with the one that broke. Wrapping each
-                  view keeps the other two switchable, `ErrorBoundary`'s
-                  default fallback supplies the retry, and it doubles as the
-                  chunk-load-error / stale-deployment handling every other
-                  lazy boundary in this app gets (`ErrorBoundary.tsx`). */}
-              {view === 'roster' && (
-                <ErrorBoundary>
-                  <HouseholdRosterTable parties={parties} units={units} />
-                </ErrorBoundary>
-              )}
-              {/* The board takes the scenario, the weekend and the manage
-                  permission because it WRITES now (#1989) — main's note that
-                  drag placement "is what earns plumbing it back down" is
-                  this. The map still takes only what it renders. */}
-              {view === 'housing' && (
-                <ErrorBoundary>
-                  <Suspense fallback={<TabLoadingFallback />}>
-                    <LodgingBoard
-                      parties={parties}
-                      units={units}
-                      year={currentYear}
-                      scenario={scenario}
-                      sessionCmId={selectedCmId ?? 0}
-                      canManage={canManageLodging}
-                    />
-                  </Suspense>
-                </ErrorBoundary>
-              )}
-              {view === 'map' && (
-                <ErrorBoundary>
-                  <Suspense fallback={<TabLoadingFallback />}>
-                    <LodgingMap parties={parties} units={units} year={currentYear} />
-                  </Suspense>
-                </ErrorBoundary>
-              )}
+            {/* THREE STATIC PANELS, not one panel whose id follows `view`.
+                Under `Activity` all three subtrees stay mounted at once, so a
+                single dynamic id would either collide across the three (all
+                three claiming `weekend-panel-${view}` — impossible, there is
+                only one `view`) or leave two tabs' `aria-controls` pointing at
+                an id that only the third panel currently wears. Each tab's
+                `aria-controls` (above) targets one of these three fixed ids,
+                which exist for the lifetime of the page.
+
+                Each container also carries `hidden={view !== id}`. `Activity`
+                sets `display:none` on the panel's CHILDREN when hidden, not
+                on this container — so without it, every panel that has ever
+                been opened stays exposed to the accessibility tree at once
+                (a screen reader would land in an empty region for a tab that
+                isn't selected). The native `hidden` attribute nests OVER
+                `Activity`'s own display toggle rather than replacing it, so
+                state preservation is untouched; it only controls what's
+                exposed, not what's mounted.
+
+                Each panel ALSO gets its own `ErrorBoundary`, inside the
+                `Activity` so it guards the panel's actual content rather than
+                the visibility mechanism around it. Reason it has to be
+                per-panel rather than one shared boundary: once a tab has been
+                opened, `Activity` keeps it mounted — hidden, not torn down —
+                so a crash in a BACKGROUND tab (its chunk still loading while
+                the user has already switched away) would otherwise climb to
+                the route-level boundary in App.tsx and blank the header,
+                scenario picker and tab strip along with the two tabs that
+                never broke. `ErrorBoundary`'s default fallback supplies the
+                retry — the ONLY way back for a panel that already crashed,
+                since `Activity` no longer remounts it on a tab switch. */}
+            <div className="pt-4">
+              <div
+                role="tabpanel"
+                id="weekend-panel-housing"
+                aria-labelledby="weekend-tab-housing"
+                hidden={view !== 'housing'}
+              >
+                {/* The board takes the scenario, the weekend and the manage
+                    permission because it WRITES now (#1989) — main's note that
+                    drag placement "is what earns plumbing it back down" is
+                    this. The map still takes only what it renders.
+
+                    Each is its own Suspense boundary, not one wrapping the
+                    whole panel: `Activity` keeps a previously-opened tab
+                    mounted (just hidden) rather than unmounting it on switch,
+                    so the board's chunk can genuinely still be loading in the
+                    background at the same moment the map's Suspense starts —
+                    one loading must not hold up the other. */}
+                {openedViews.has('housing') && (
+                  <Activity mode={view === 'housing' ? 'visible' : 'hidden'}>
+                    <ErrorBoundary>
+                      <Suspense fallback={<TabLoadingFallback />}>
+                        <LodgingBoard
+                          parties={parties}
+                          units={units}
+                          year={currentYear}
+                          scenario={scenario}
+                          sessionCmId={selectedCmId ?? 0}
+                          canManage={canManageLodging}
+                        />
+                      </Suspense>
+                    </ErrorBoundary>
+                  </Activity>
+                )}
+              </div>
+
+              <div
+                role="tabpanel"
+                id="weekend-panel-roster"
+                aria-labelledby="weekend-tab-roster"
+                hidden={view !== 'roster'}
+              >
+                {openedViews.has('roster') && (
+                  <Activity mode={view === 'roster' ? 'visible' : 'hidden'}>
+                    <ErrorBoundary>
+                      <HouseholdRosterTable parties={parties} units={units} />
+                    </ErrorBoundary>
+                  </Activity>
+                )}
+              </div>
+
+              <div
+                role="tabpanel"
+                id="weekend-panel-map"
+                aria-labelledby="weekend-tab-map"
+                hidden={view !== 'map'}
+              >
+                {openedViews.has('map') && (
+                  <Activity mode={view === 'map' ? 'visible' : 'hidden'}>
+                    <ErrorBoundary>
+                      <Suspense fallback={<TabLoadingFallback />}>
+                        <LodgingMap parties={parties} units={units} year={currentYear} />
+                      </Suspense>
+                    </ErrorBoundary>
+                  </Activity>
+                )}
+              </div>
             </div>
           </>
         )}

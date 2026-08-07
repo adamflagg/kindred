@@ -162,7 +162,23 @@ describe('code splitting (#1964)', () => {
     // a lazy one has only started the dynamic import and is still waiting
     // on its microtask to settle.
     expect(screen.queryByText('Ridge A')).not.toBeInTheDocument()
-    expect(screen.getByTestId('lodging-view-loading')).toBeInTheDocument()
+
+    // EXACTLY one fallback, not "at least one" (`getAllByTestId`, not
+    // `getByTestId` — #2059 review) — this is what pins #2059's `openedViews`
+    // gate on `Activity`. Map was never opened here, but `Activity`'s hidden
+    // mode still mounts hidden content — so an UNGATED `Activity` around all
+    // three panels would start Map's dynamic import on this SAME render too,
+    // and Map's chunk is just as fresh as the board's here, so it shows ITS
+    // OWN loading fallback rather than resolved content. A `map-canvas`-
+    // absence check alone can't tell that apart from the correctly-gated
+    // case (both are simply "not there yet"); the COUNT can, and it does so
+    // whether this test runs as part of the whole file or isolated via `-t`
+    // — either way this is Housing's (and, if ungated, Map's) first-ever
+    // render in this file.
+    expect(screen.getAllByTestId('lodging-view-loading')).toHaveLength(1)
+    // Map was never opened at all — kept alongside the count above as a
+    // second, independent signal for the same gate.
+    expect(screen.queryByTestId('map-canvas')).not.toBeInTheDocument()
 
     expect(await screen.findByText('Ridge A')).toBeInTheDocument()
   })

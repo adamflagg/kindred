@@ -688,3 +688,96 @@ describe('recomputation', () => {
     expect(countMapUnitsSpy).toHaveBeenCalled()
   })
 })
+
+// ---------------------------------------------------------------------------
+// Component state across a tab switch (#2004)
+// ---------------------------------------------------------------------------
+//
+// The three tabs used to render behind a bare `&&`, so switching away
+// UNMOUNTED whichever one you had just left — and with it, any state that
+// tab's own components held (the map's pan/zoom, the roster's scroll
+// position). `SessionView.tsx` solves the same problem with
+// `<Activity mode=…>`, which keeps a tab's subtree mounted — hidden, not
+// gone — once it has been opened.
+describe('tab component state survives switching (#2004)', () => {
+  it('keeps a tab mounted, not torn down, once it has been opened', async () => {
+    renderPage()
+    await userEvent.click(screen.getByRole('tab', { name: /Map/ }))
+    expect(await screen.findByTestId('map-canvas')).toBeInTheDocument()
+
+    await userEvent.click(screen.getByRole('tab', { name: /Roster/ }))
+    // A bare `&&` would have removed the map from the DOM here. Under
+    // `Activity` it stays — hidden, not gone.
+    expect(screen.getByTestId('map-canvas')).toBeInTheDocument()
+  })
+
+  it('survives a tab switch away and back with the map zoom intact', async () => {
+    renderPage()
+    await userEvent.click(screen.getByRole('tab', { name: /Map/ }))
+    await screen.findByTestId('map-canvas')
+    expect(screen.getByText('1.0×')).toBeInTheDocument()
+
+    await userEvent.click(screen.getByRole('button', { name: 'Zoom in' }))
+    expect(screen.getByText('1.4×')).toBeInTheDocument()
+
+    await userEvent.click(screen.getByRole('tab', { name: /Roster/ }))
+    await userEvent.click(screen.getByRole('tab', { name: /Map/ }))
+
+    // A remount would reset to the identity viewport (1.0×). Seeing 1.4×
+    // still on screen proves the SAME LodgingMap instance came back, not a
+    // fresh one — exactly the acceptance criterion #2004 states: "Map
+    // pan/zoom survives a tab switch away and back."
+    expect(screen.getByText('1.4×')).toBeInTheDocument()
+  })
+
+  // The chunk-eagerness guard used to live here as "never mounts a tab that
+  // has not been opened" — but with ~15 earlier tests in this file already
+  // warming `React.lazy`'s cache, a `map-canvas`-absence check on a WARM
+  // render can't distinguish "correctly gated" from "ungated but still
+  // mid-flight," and in an ISOLATED `-t` run (cold, but nothing to compare
+  // against) it can't either: `map-canvas` is absent either way before the
+  // dynamic import settles (kindred#2059 review). Moved to
+  // `WeekendRosterPage.codeSplitting.test.tsx`, which already exists to hold
+  // exactly this kind of first-ever-render assertion, and strengthened there
+  // to count Suspense fallbacks (1 gated, 2 ungated) rather than checking
+  // content presence — a count catches the mutant in a fresh render even
+  // when neither chunk has resolved yet.
+
+  it('wires each tab to its own always-present tabpanel id, with no collisions', async () => {
+    // All three panels exist simultaneously once all three have been
+    // opened — the exact shape `Activity` produces, and the one a single
+    // dynamic `weekend-panel-${view}` id could not have served without
+    // either three elements colliding on one id or two tabs'
+    // `aria-controls` dangling.
+    renderPage()
+    await userEvent.click(screen.getByRole('tab', { name: /Roster/ }))
+    await userEvent.click(screen.getByRole('tab', { name: /Map/ }))
+    await screen.findByTestId('map-canvas')
+
+    const tabs = screen.getAllByRole('tab')
+    const controlledIds = tabs.map((tab) => tab.getAttribute('aria-controls'))
+
+    expect(new Set(controlledIds).size).toBe(controlledIds.length)
+    for (const id of controlledIds) {
+      expect(id).toBeTruthy()
+      const panel = document.getElementById(id ?? '')
+      expect(panel).not.toBeNull()
+      expect(panel).toHaveAttribute('role', 'tabpanel')
+    }
+  })
+
+  it('exposes exactly one tabpanel to the accessibility tree, even once all three have been opened', async () => {
+    // `Activity` sets `display:none` on the panel's CHILDREN when hidden —
+    // not on the `role="tabpanel"` container itself, which stays mounted and
+    // visible the moment a tab has ever been opened. Without `hidden` on the
+    // container, a screen reader user would find all three panels (two of
+    // them empty) instead of the one actually showing, and `aria-controls`
+    // from an unselected tab would point at a live, exposed region.
+    renderPage()
+    await userEvent.click(screen.getByRole('tab', { name: /Roster/ }))
+    await userEvent.click(screen.getByRole('tab', { name: /Map/ }))
+    await screen.findByTestId('map-canvas')
+
+    expect(screen.getAllByRole('tabpanel')).toHaveLength(1)
+  })
+})
