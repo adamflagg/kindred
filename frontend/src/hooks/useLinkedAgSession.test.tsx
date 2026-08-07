@@ -11,12 +11,16 @@ vi.mock('./useCurrentYear', () => ({ useYear: () => 2026 }))
 
 import { useLinkedAgSession } from './useLinkedAgSession'
 
+let qc: QueryClient
+
 function wrapper({ children }: { children: ReactNode }) {
-  const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   return <QueryClientProvider client={qc}>{children}</QueryClientProvider>
 }
 
-beforeEach(() => getFullList.mockReset())
+beforeEach(() => {
+  qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+  getFullList.mockReset()
+})
 
 describe('useLinkedAgSession', () => {
   it('returns the AG child cm_id when one exists with bunk_plans', async () => {

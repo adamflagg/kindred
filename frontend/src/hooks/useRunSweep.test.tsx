@@ -1,7 +1,7 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { act, renderHook, waitFor } from '@testing-library/react'
 import type { ReactNode } from 'react'
-import { describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { AuthContext } from '../contexts/AuthContext'
 import { postRunSweep } from '../services/solver'
@@ -13,9 +13,10 @@ vi.mock('../services/solver', () => ({
   postCancelSweep: vi.fn(),
 }))
 
+let qc: QueryClient
+let authCtx: ReturnType<typeof createMockAuthContext>
+
 const wrapper = ({ children }: { children: ReactNode }) => {
-  const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
-  const authCtx = createMockAuthContext({ user: createMockUser() })
   return (
     <AuthContext value={authCtx}>
       <QueryClientProvider client={qc}>{children}</QueryClientProvider>
@@ -24,6 +25,11 @@ const wrapper = ({ children }: { children: ReactNode }) => {
 }
 
 const mockPostRunSweep = vi.mocked(postRunSweep)
+
+beforeEach(() => {
+  qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+  authCtx = createMockAuthContext({ user: createMockUser() })
+})
 
 describe('useRunSweep', () => {
   it('returns sweep_id and run_ids on success', async () => {

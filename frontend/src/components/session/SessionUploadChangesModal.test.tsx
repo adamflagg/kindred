@@ -11,13 +11,16 @@ vi.mock('../../services/sessionUploadChanges', () => ({ fetchSessionUploadChange
 import { fetchSessionUploadChanges } from '../../services/sessionUploadChanges'
 import SessionUploadChangesModal from './SessionUploadChangesModal'
 
+let client: QueryClient
+
 const wrapper = ({ children }: { children: ReactNode }) => (
-  <QueryClientProvider client={new QueryClient()}>{children}</QueryClientProvider>
+  <QueryClientProvider client={client}>{children}</QueryClientProvider>
 )
 const mock = (rows: unknown) =>
   (fetchSessionUploadChanges as ReturnType<typeof vi.fn>).mockResolvedValue(rows)
 
 beforeEach(() => {
+  client = new QueryClient()
   vi.clearAllMocks()
   auth.isAuthLoading = false
 })
