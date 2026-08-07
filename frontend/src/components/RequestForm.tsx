@@ -1,4 +1,4 @@
-import { type FormEvent, useState } from 'react'
+import { type FormEvent, useId, useState } from 'react'
 import { ChevronDown } from 'lucide-react'
 import { Listbox, ListboxButton, ListboxOptions, ListboxOption } from '@headlessui/react'
 import type { Constraint, Camper, ConstraintType } from '../types/app-types'
@@ -15,6 +15,13 @@ interface RequestFormProps {
 
 export default function RequestForm({ campers, constraint, onSubmit, onCancel }: RequestFormProps) {
   const viewingYear = useYear()
+  // RequestsPanel can mount a "create" RequestForm and an "edit" RequestForm
+  // simultaneously (isCreating and editingId are independent state) — unique,
+  // instance-scoped ids keep each form's label/control pairing correct rather
+  // than colliding on a fixed string.
+  const constraintTypeId = useId()
+  const agePreferenceId = useId()
+  const bunkNameId = useId()
   const [type, setType] = useState<ConstraintType>(constraint?.type ?? 'pair_together')
   // Local mutable working copy; the source `constraint.campers` is readonly.
   const [selectedCampers, setSelectedCampers] = useState<string[]>([...(constraint?.campers ?? [])])
@@ -68,7 +75,7 @@ export default function RequestForm({ campers, constraint, onSubmit, onCancel }:
       {/* Constraint Type */}
       <div>
         <label
-          htmlFor="constraint-type-button"
+          htmlFor={constraintTypeId}
           className="text-foreground mb-1 block text-sm font-medium"
         >
           Constraint Type
@@ -81,7 +88,7 @@ export default function RequestForm({ campers, constraint, onSubmit, onCancel }:
           }}
         >
           <div className="relative">
-            <ListboxButton id="constraint-type-button" className="listbox-button">
+            <ListboxButton id={constraintTypeId} className="listbox-button">
               <span>
                 {type === 'pair_together'
                   ? 'Pair Together'
@@ -149,7 +156,7 @@ export default function RequestForm({ campers, constraint, onSubmit, onCancel }:
       {type === 'age_preference' && (
         <div>
           <label
-            htmlFor="age-preference-button"
+            htmlFor={agePreferenceId}
             className="text-foreground mb-1 block text-sm font-medium"
           >
             Age Preference
@@ -159,7 +166,7 @@ export default function RequestForm({ campers, constraint, onSubmit, onCancel }:
             onChange={(v) => setMetadata({ ...metadata, preference: v })}
           >
             <div className="relative">
-              <ListboxButton id="age-preference-button" className="listbox-button">
+              <ListboxButton id={agePreferenceId} className="listbox-button">
                 <span>
                   {(metadata['preference'] as string) === 'older'
                     ? 'Older Campers'
@@ -187,14 +194,11 @@ export default function RequestForm({ campers, constraint, onSubmit, onCancel }:
 
       {type === 'bunk_preference' && (
         <div>
-          <label
-            htmlFor="bunk-preference-name"
-            className="text-foreground mb-1 block text-sm font-medium"
-          >
+          <label htmlFor={bunkNameId} className="text-foreground mb-1 block text-sm font-medium">
             Preferred Bunk Name (optional)
           </label>
           <input
-            id="bunk-preference-name"
+            id={bunkNameId}
             type="text"
             value={(metadata['bunkName'] as string) || ''}
             onChange={(e) => setMetadata({ ...metadata, bunkName: e.target.value })}
