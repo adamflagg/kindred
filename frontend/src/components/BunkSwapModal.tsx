@@ -35,16 +35,16 @@ export default function BunkSwapModal({
   const selected = candidates.find((b) => b.id === selectedId) ?? null
 
   return (
-    <div
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby="bunk-swap-title"
-      className="fixed inset-0 z-[70] flex items-center justify-center bg-black/40"
-      onClick={onCancel}
-    >
+    <div className="fixed inset-0 z-[70] flex items-center justify-center">
+      {/* Decorative backdrop: click-to-close is a mouse convenience, not the
+          only path to close (the header carries a real close button), so
+          this stays a plain non-interactive div. */}
+      <div aria-hidden="true" className="absolute inset-0 bg-black/40" onClick={onCancel} />
       <div
-        className="bg-card border-border shadow-lodge-xl w-full max-w-md rounded-2xl border p-5"
-        onClick={(e) => e.stopPropagation()}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="bunk-swap-title"
+        className="bg-card border-border shadow-lodge-xl relative w-full max-w-md rounded-2xl border p-5"
       >
         <div className="mb-3 flex items-center justify-between">
           <h2 id="bunk-swap-title" className="text-base font-semibold">

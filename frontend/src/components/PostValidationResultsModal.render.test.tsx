@@ -459,7 +459,12 @@ describe('PostValidationResultsModal — unmet parent requests drill-down remove
 
 vi.mock('./CamperDetailsPanel', () => ({
   default: ({ camperId, onClose }: { camperId: string; onClose: () => void }) => (
-    <div data-testid="camper-details-panel" data-camper-id={camperId} onClick={onClose} />
+    <button
+      type="button"
+      data-testid="camper-details-panel"
+      data-camper-id={camperId}
+      onClick={onClose}
+    />
   ),
 }))
 
@@ -635,8 +640,8 @@ describe('PostValidationResultsModal — impossibility section (#1442 part 2)', 
       />
     )
     const user = userEvent.setup()
-    // Camper name is now a clickable span inside the family-row expand toggle,
-    // not a standalone button — use getByText to target the span directly.
+    // Camper name in a "Families to contact" row is a real <button> (a11y
+    // fix); getByText still matches since it's the button's only text child.
     await user.click(screen.getByText('Olivia Chen'))
     expect(await screen.findByTestId('camper-details-panel')).toHaveAttribute(
       'data-camper-id',

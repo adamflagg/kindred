@@ -1055,12 +1055,13 @@ export function PostCheckContents({
                           <span
                             className={`inline-block h-2 w-2 rounded-full ${sev === 'red' ? 'bg-red-600' : 'bg-amber-500'}`}
                           />
-                          <span
+                          <button
+                            type="button"
                             className="cursor-pointer font-medium text-stone-900 hover:text-red-700"
                             onClick={() => handleCamperClick(row.cm_id)}
                           >
                             {row.name}
-                          </span>
+                          </button>
                           {row.grade > 0 && (
                             <span className="text-xs text-stone-500">
                               · {row.grade}

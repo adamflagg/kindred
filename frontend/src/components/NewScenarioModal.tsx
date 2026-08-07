@@ -157,6 +157,7 @@ export default function NewScenarioModal({
             onChange={(e) => setName(e.target.value)}
             placeholder="e.g., Option A - Mixed Age Groups"
             className="bg-background border-input focus:ring-primary w-full rounded-lg border px-4 py-2 focus:ring-2 focus:outline-none"
+            // eslint-disable-next-line jsx-a11y/no-autofocus -- deliberate: this is the first field of a create-scenario modal, so taking focus on open lets the user start typing the name immediately
             autoFocus
           />
         </div>
@@ -176,8 +177,12 @@ export default function NewScenarioModal({
         </div>
 
         <div>
-          <label className="mb-2 block text-sm font-medium">Copy Assignments From</label>
-          <div className="space-y-2">
+          {/* Group label for the radio set below — not a single-control
+              <label>, since there's no one input to associate it with. */}
+          <span id="copy-from-label" className="mb-2 block text-sm font-medium">
+            Copy Assignments From
+          </span>
+          <div role="radiogroup" aria-labelledby="copy-from-label" className="space-y-2">
             <label className="flex cursor-pointer items-center space-x-2">
               <input
                 type="radio"

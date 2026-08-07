@@ -6,7 +6,12 @@ import { makeImpossibilityReport } from '../test/impossibilityReport'
 
 vi.mock('./CamperDetailsPanel', () => ({
   default: ({ camperId, onClose }: { camperId: string; onClose: () => void }) => (
-    <div data-testid="camper-details-panel" data-camper-id={camperId} onClick={onClose} />
+    <button
+      type="button"
+      data-testid="camper-details-panel"
+      data-camper-id={camperId}
+      onClick={onClose}
+    />
   ),
 }))
 

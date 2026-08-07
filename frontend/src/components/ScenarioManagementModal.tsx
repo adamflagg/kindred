@@ -131,13 +131,22 @@ export default function ScenarioManagementModal({
           {/* Production Mode Card */}
           <div className="p-6 pb-0">
             <div
-              className={`rounded-xl border-2 p-4 ${
+              className={`relative rounded-xl border-2 p-4 ${
                 !currentScenario
                   ? 'border-primary bg-primary/5'
                   : 'border-border bg-muted/30 hover:bg-muted/50'
-              } cursor-pointer transition-all`}
-              onClick={() => selectScenario(null)}
+              } transition-all`}
             >
+              {/* Full-card hit target: keeps the card's own markup as plain
+                  divs (button content is phrasing-only, and this card nests
+                  a heading + paragraph + badge) while still giving the whole
+                  card a native, keyboard-operable control. */}
+              <button
+                type="button"
+                onClick={() => selectScenario(null)}
+                aria-label="Switch to CampMinder production mode"
+                className="absolute inset-0 h-full w-full cursor-pointer rounded-xl"
+              />
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-3">
                   <Package className="text-primary h-5 w-5" />
@@ -182,10 +191,18 @@ export default function ScenarioManagementModal({
                   } transition-all`}
                 >
                   <div className="flex items-start justify-between gap-4">
-                    <div
-                      className="flex-1 cursor-pointer"
-                      onClick={() => selectScenario(scenario.id)}
-                    >
+                    <div className="relative flex-1">
+                      {/* Full-row hit target, scoped to this flex-1 column so
+                          it doesn't cover the Edit/Clear/Delete buttons in
+                          the sibling column. See the CampMinder card above
+                          for why this is an overlay button rather than
+                          wrapping the (block-content) row in a <button>. */}
+                      <button
+                        type="button"
+                        onClick={() => selectScenario(scenario.id)}
+                        aria-label={`Switch to ${scenario.name}`}
+                        className="absolute inset-0 h-full w-full cursor-pointer rounded-xl"
+                      />
                       <div className="mb-1 flex items-center gap-3">
                         <FlaskConical className="text-accent h-5 w-5" />
                         <h3 className="font-semibold">{scenario.name}</h3>
