@@ -116,8 +116,7 @@ export function ParseAnalysisGroupedList({
           return (
             <div
               key={camper.requester_cm_id}
-              onClick={() => onCamperSelect(camper.requester_cm_id)}
-              className={`cursor-pointer rounded-xl border-2 transition-all duration-200 ${
+              className={`rounded-xl border-2 transition-all duration-200 ${
                 isSelected
                   ? 'dark:bg-bark-800 border-forest-300 dark:border-forest-600 ring-forest-500/20 bg-white shadow-sm ring-2'
                   : 'dark:bg-bark-800 hover:border-bark-200 dark:hover:border-bark-600 border-transparent bg-white'
@@ -125,17 +124,24 @@ export function ParseAnalysisGroupedList({
             >
               {/* Camper row: name + refresh button on top, badges below */}
               <div className="p-3">
-                {/* Top row: name and action buttons */}
+                {/* Top row: name and action buttons. Selection lives on a real
+                    <button> around the name (kindred#2063 pattern) rather than
+                    a click handler on the card `<div>` — the Clear/Reparse
+                    buttons are siblings, not nested inside it, since a
+                    <button> can't contain another button. */}
                 <div className="flex items-center justify-between gap-2">
-                  <span className="text-foreground font-semibold">{camper.requester_name}</span>
+                  <button
+                    type="button"
+                    onClick={() => onCamperSelect(camper.requester_cm_id)}
+                    className="text-foreground min-w-0 flex-1 cursor-pointer truncate text-left font-semibold"
+                  >
+                    {camper.requester_name}
+                  </button>
                   <div className="flex items-center gap-1">
                     {/* Clear debug results button - only show if has debug results */}
                     {hasDebugResults && (
                       <button
-                        onClick={(e) => {
-                          e.stopPropagation()
-                          onClearCamper(camper.requester_cm_id)
-                        }}
+                        onClick={() => onClearCamper(camper.requester_cm_id)}
                         disabled={isClearing || isReparsing}
                         className="text-bark-400 rounded-lg p-1.5 transition-all duration-200 hover:bg-rose-50 hover:text-rose-600 disabled:opacity-50 dark:hover:bg-rose-900/20"
                         title="Clear debug results"
@@ -149,10 +155,7 @@ export function ParseAnalysisGroupedList({
                     )}
                     {/* Reparse button */}
                     <button
-                      onClick={(e) => {
-                        e.stopPropagation()
-                        onReparseCamper(camper.requester_cm_id)
-                      }}
+                      onClick={() => onReparseCamper(camper.requester_cm_id)}
                       disabled={isReparsing || isClearing}
                       className="text-bark-400 hover:text-forest-600 hover:bg-forest-50 dark:hover:bg-forest-900/20 rounded-lg p-1.5 transition-all duration-200 disabled:opacity-50"
                       title="Reparse visible fields"

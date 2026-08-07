@@ -186,7 +186,10 @@ describe('CanonicalReferenceList', () => {
 
     // Click first row to expand
     const rows = screen.getAllByTestId('canonical-row')
-    await user.click(rows[0]!)
+    // The toggle affordance is a real <button> wrapping the row's name/badges
+    // (kindred#2063 pattern) rather than a click handler on the row `<div>`
+    // itself, so the click targets the name inside it.
+    await user.click(within(rows[0]!).getByTestId('canonical-name'))
 
     // Source variants shown
     expect(screen.getByText('Riverside Elem')).toBeInTheDocument()
@@ -195,6 +198,37 @@ describe('CanonicalReferenceList', () => {
     // Confidence %
     expect(screen.getByText('92%')).toBeInTheDocument()
     expect(screen.getByText('100%')).toBeInTheDocument()
+  })
+
+  // Row expansion used to be a click handler on a non-interactive `<div>`
+  // (kindred#2063-style gap: no keyboard listener at all). It is now a real
+  // <button>, so Tab + Enter reaches and activates it for free.
+  it('expands a row via keyboard (Tab + Enter reaches the row toggle button)', async () => {
+    mockUseCanonicalSources.mockReturnValue({
+      data: {
+        canonical_name: 'Riverside Elementary',
+        city: 'Oakland',
+        state: 'CA',
+        country: '',
+        sources: [
+          { original_value: 'Riverside Elem', count: 7, confidence: 0.92, state_distribution: {} },
+        ],
+      },
+      isLoading: false,
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    } as any)
+
+    const user = userEvent.setup()
+    render(<CanonicalReferenceList category="school" year={2025} onReassignSource={vi.fn()} />)
+
+    const rows = screen.getAllByTestId('canonical-row')
+    const toggleButton = within(rows[0]!).getByTestId('canonical-name').closest('button')
+    expect(toggleButton).not.toBeNull()
+
+    toggleButton!.focus()
+    await user.keyboard('{Enter}')
+
+    expect(screen.getByText('Source Variants')).toBeInTheDocument()
   })
 
   // ---------- [Fix] button ----------
@@ -225,7 +259,10 @@ describe('CanonicalReferenceList', () => {
 
     // Expand the first row
     const rows = screen.getAllByTestId('canonical-row')
-    await user.click(rows[0]!)
+    // The toggle affordance is a real <button> wrapping the row's name/badges
+    // (kindred#2063 pattern) rather than a click handler on the row `<div>`
+    // itself, so the click targets the name inside it.
+    await user.click(within(rows[0]!).getByTestId('canonical-name'))
 
     // Only one Fix button (for the 0.92 confidence match)
     const fixButtons = screen.getAllByRole('button', { name: /fix/i })
@@ -256,7 +293,10 @@ describe('CanonicalReferenceList', () => {
 
     // Expand the first row
     const rows = screen.getAllByTestId('canonical-row')
-    await user.click(rows[0]!)
+    // The toggle affordance is a real <button> wrapping the row's name/badges
+    // (kindred#2063 pattern) rather than a click handler on the row `<div>`
+    // itself, so the click targets the name inside it.
+    await user.click(within(rows[0]!).getByTestId('canonical-name'))
 
     // Click Fix button
     await user.click(screen.getByRole('button', { name: /fix/i }))
@@ -371,7 +411,10 @@ describe('CanonicalReferenceList', () => {
     render(<CanonicalReferenceList category="school" year={2025} onReassignSource={vi.fn()} />)
 
     const rows = screen.getAllByTestId('canonical-row')
-    await user.click(rows[0]!)
+    // The toggle affordance is a real <button> wrapping the row's name/badges
+    // (kindred#2063 pattern) rather than a click handler on the row `<div>`
+    // itself, so the click targets the name inside it.
+    await user.click(within(rows[0]!).getByTestId('canonical-name'))
 
     // Source variants should appear
     expect(screen.getByText('Source Variants')).toBeInTheDocument()
@@ -470,7 +513,10 @@ describe('CanonicalReferenceList', () => {
 
     // Expand the suggested row
     const rows = screen.getAllByTestId('canonical-row')
-    await user.click(rows[0]!)
+    // The toggle affordance is a real <button> wrapping the row's name/badges
+    // (kindred#2063 pattern) rather than a click handler on the row `<div>`
+    // itself, so the click targets the name inside it.
+    await user.click(within(rows[0]!).getByTestId('canonical-name'))
 
     expect(screen.getByRole('button', { name: /approve/i })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /reject/i })).toBeInTheDocument()
@@ -501,7 +547,10 @@ describe('CanonicalReferenceList', () => {
 
     // Expand an nces entry (first in popular sort)
     const rows = screen.getAllByTestId('canonical-row')
-    await user.click(rows[0]!)
+    // The toggle affordance is a real <button> wrapping the row's name/badges
+    // (kindred#2063 pattern) rather than a click handler on the row `<div>`
+    // itself, so the click targets the name inside it.
+    await user.click(within(rows[0]!).getByTestId('canonical-name'))
 
     expect(screen.queryByRole('button', { name: /approve/i })).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: /reject/i })).not.toBeInTheDocument()
@@ -550,7 +599,10 @@ describe('CanonicalReferenceList', () => {
     )
 
     const rows = screen.getAllByTestId('canonical-row')
-    await user.click(rows[0]!)
+    // The toggle affordance is a real <button> wrapping the row's name/badges
+    // (kindred#2063 pattern) rather than a click handler on the row `<div>`
+    // itself, so the click targets the name inside it.
+    await user.click(within(rows[0]!).getByTestId('canonical-name'))
     await user.click(screen.getByRole('button', { name: /approve/i }))
 
     expect(onApprove).toHaveBeenCalledWith(suggestedEntry)
@@ -599,7 +651,10 @@ describe('CanonicalReferenceList', () => {
     )
 
     const rows = screen.getAllByTestId('canonical-row')
-    await user.click(rows[0]!)
+    // The toggle affordance is a real <button> wrapping the row's name/badges
+    // (kindred#2063 pattern) rather than a click handler on the row `<div>`
+    // itself, so the click targets the name inside it.
+    await user.click(within(rows[0]!).getByTestId('canonical-name'))
     await user.click(screen.getByRole('button', { name: /reject/i }))
 
     expect(onReject).toHaveBeenCalledWith(suggestedEntry)
@@ -683,7 +738,10 @@ describe('CanonicalReferenceList', () => {
     render(<CanonicalReferenceList category="school" year={2025} onReassignSource={vi.fn()} />)
 
     const rows = screen.getAllByTestId('canonical-row')
-    await user.click(rows[0]!)
+    // The toggle affordance is a real <button> wrapping the row's name/badges
+    // (kindred#2063 pattern) rather than a click handler on the row `<div>`
+    // itself, so the click targets the name inside it.
+    await user.click(within(rows[0]!).getByTestId('canonical-name'))
 
     expect(screen.getByText('Inferred: Portland, OR')).toBeInTheDocument()
   })

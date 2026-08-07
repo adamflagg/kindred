@@ -227,45 +227,52 @@ function CanonicalRow({
   return (
     <div
       data-testid="canonical-row"
-      className={`border-border cursor-pointer rounded-md border ${dimmed ? 'opacity-50' : ''}`}
-      onClick={onToggle}
+      className={`border-border rounded-md border ${dimmed ? 'opacity-50' : ''}`}
     >
-      {/* Collapsed row */}
-      <div className="hover:bg-muted/50 flex w-full items-center gap-2 px-3 py-2 text-left transition-colors">
-        <span
-          data-testid="canonical-name"
-          className="text-foreground min-w-0 flex-1 truncate text-sm"
+      {/* Collapsed row — the toggle affordance is a real <button> wrapping the
+          name/badges (kindred#2063 pattern), not a click handler on this
+          `<div>`. The Merge button is a sibling rather than nested inside it,
+          since a <button> can't contain another button. */}
+      <div className="hover:bg-muted/50 flex w-full items-center gap-2 transition-colors">
+        <button
+          type="button"
+          onClick={onToggle}
+          className="flex min-w-0 flex-1 cursor-pointer items-center gap-2 px-3 py-2 text-left"
         >
-          {entry.canonical_name}
-        </span>
-
-        {/* Location badge */}
-        {(entry.city || entry.state || entry.country) && (
           <span
-            className={`shrink-0 rounded bg-stone-100 px-1.5 py-0.5 text-xs text-stone-600 dark:bg-stone-800 dark:text-stone-400 ${
-              entry.source === 'suggested' ? 'italic' : ''
-            }`}
+            data-testid="canonical-name"
+            className="text-foreground min-w-0 flex-1 truncate text-sm"
           >
-            {formatLocation(entry.city, entry.state, entry.country, entry.canonical_name) ||
-              entry.state}
+            {entry.canonical_name}
           </span>
-        )}
 
-        {/* Source badge */}
-        <span
-          data-testid="source-badge"
-          className={`shrink-0 rounded px-1.5 py-0.5 text-xs font-medium ${sourceBadgeClasses(entry.source)}`}
-        >
-          {sourceLabel(entry.source)}
-        </span>
+          {/* Location badge */}
+          {(entry.city || entry.state || entry.country) && (
+            <span
+              className={`shrink-0 rounded bg-stone-100 px-1.5 py-0.5 text-xs text-stone-600 dark:bg-stone-800 dark:text-stone-400 ${
+                entry.source === 'suggested' ? 'italic' : ''
+              }`}
+            >
+              {formatLocation(entry.city, entry.state, entry.country, entry.canonical_name) ||
+                entry.state}
+            </span>
+          )}
+
+          {/* Source badge */}
+          <span
+            data-testid="source-badge"
+            className={`shrink-0 rounded px-1.5 py-0.5 text-xs font-medium ${sourceBadgeClasses(entry.source)}`}
+          >
+            {sourceLabel(entry.source)}
+          </span>
+        </button>
 
         {/* Merge button */}
         {onMerge && (
           <button
             type="button"
             className="text-muted-foreground hover:text-forest-700 hover:bg-forest-100 dark:hover:text-forest-400 dark:hover:bg-forest-800 shrink-0 rounded p-1 transition-colors"
-            onClick={(e) => {
-              e.stopPropagation()
+            onClick={() => {
               onMerge(entry)
             }}
             aria-label="Merge canonical"
@@ -275,7 +282,7 @@ function CanonicalRow({
         )}
 
         {/* Camper count */}
-        <span className="text-muted-foreground shrink-0 text-xs tabular-nums">
+        <span className="text-muted-foreground shrink-0 pr-3 text-xs tabular-nums">
           {entry.camper_count}
         </span>
       </div>

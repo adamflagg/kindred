@@ -120,6 +120,14 @@ export function Modal({
       />
 
       {/* Modal content */}
+      {/* eslint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions --
+          onClick here only calls stopPropagation() to keep a backdrop click from
+          bubbling up and closing the modal — it is not a user-facing affordance a
+          keyboard user needs to reach or activate, so no role/keyboard handler
+          applies. The actual dismiss controls are the Escape-key listener above and
+          the close <button>s below; the backdrop itself is aria-hidden and
+          click-only by design, which is why it and this rule are exempted here but
+          not elsewhere in this wave. */}
       <div
         data-testid="modal-content"
         className={`bg-card relative overflow-hidden rounded-2xl ${

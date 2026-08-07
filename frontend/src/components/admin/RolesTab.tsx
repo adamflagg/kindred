@@ -170,8 +170,11 @@ export function RolesTab() {
           </h3>
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <div>
-              <label className="text-foreground mb-1 block text-sm font-medium">Name</label>
+              <label htmlFor="role-name" className="text-foreground mb-1 block text-sm font-medium">
+                Name
+              </label>
               <input
+                id="role-name"
                 type="text"
                 value={formData.name}
                 onChange={(e) => setFormData((p) => ({ ...p, name: e.target.value }))}
@@ -180,8 +183,11 @@ export function RolesTab() {
               />
             </div>
             <div>
-              <label className="text-foreground mb-1 block text-sm font-medium">Slug</label>
+              <label htmlFor="role-slug" className="text-foreground mb-1 block text-sm font-medium">
+                Slug
+              </label>
               <input
+                id="role-slug"
                 type="text"
                 value={formData.slug}
                 onChange={(e) => setFormData((p) => ({ ...p, slug: e.target.value }))}
@@ -192,8 +198,14 @@ export function RolesTab() {
             </div>
           </div>
           <div>
-            <label className="text-foreground mb-1 block text-sm font-medium">Description</label>
+            <label
+              htmlFor="role-description"
+              className="text-foreground mb-1 block text-sm font-medium"
+            >
+              Description
+            </label>
             <input
+              id="role-description"
               type="text"
               value={formData.description}
               onChange={(e) => setFormData((p) => ({ ...p, description: e.target.value }))}
@@ -201,12 +213,15 @@ export function RolesTab() {
               placeholder="What this role is for"
             />
           </div>
-          <div>
-            <label className="text-foreground mb-2 block text-sm font-medium">Permissions</label>
+          {/* A fieldset/legend, not a <label> — "Permissions" captions a group of
+              toggle buttons, not a single associable control. */}
+          <fieldset className="m-0 min-w-0 border-0 p-0">
+            <legend className="text-foreground mb-2 block text-sm font-medium">Permissions</legend>
             <div className="flex flex-wrap gap-2">
               {ALL_PERMISSIONS.map((perm) => (
                 <button
                   key={perm}
+                  type="button"
                   onClick={() => togglePermission(perm)}
                   className={`rounded-lg border px-3 py-1.5 text-xs font-medium transition-colors ${
                     formData.permissions.includes(perm)
@@ -218,7 +233,7 @@ export function RolesTab() {
                 </button>
               ))}
             </div>
-          </div>
+          </fieldset>
           <div className="flex items-center gap-2">
             <button
               onClick={handleSave}
