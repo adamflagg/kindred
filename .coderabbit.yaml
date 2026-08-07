@@ -70,7 +70,7 @@ reviews:
         Python 3.14+ codebase (see pyproject.toml `requires-python = ">=3.14"`).
         Treat the following as valid syntax — do NOT flag as errors or "compatibility issues":
         - PEP 758: `except A, B:` without parentheses
-        - PEP 649: bare runtime annotations (the codebase deliberately does NOT use `from __future__ import annotations`)
+        - PEP 649: bare runtime annotations. Do NOT suggest adding `from __future__ import annotations` to make them work; they already do. Do NOT suggest REMOVING that import either: 48 of the 60 files carrying it need it for an `if TYPE_CHECKING:` forward reference, where removing it raises a runtime NameError (kindred#1578). Both shapes are correct.
         - PEP 695: generic type-parameter syntax — `def foo[T](x: T) -> T`, `class Box[T]:`, `type Alias[T] = list[T]`
         - PEP 750: t-string literals
         - Built-in generics: `dict[str, X]`, `list[X]`, `tuple[X, ...]` (no `typing.Dict/List/Tuple`)
