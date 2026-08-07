@@ -20,6 +20,37 @@ type MockService struct {
 	callCount  atomic.Int32
 }
 
+// mockYearService is a Service that carries a Year field, mirroring the shape of the real
+// per-type sync structs (CamperHistorySync, StaffSkillsSync, ...) that #1881 found being
+// mutated in place on the orchestrator's registered singleton. Used to prove that
+// RunSingleSyncWithService runs the caller's own instance and never touches the registry.
+type mockYearService struct {
+	name      string
+	year      int
+	delay     time.Duration
+	shouldErr bool
+	stats     Stats
+	callCount atomic.Int32
+}
+
+func (m *mockYearService) Sync(ctx context.Context) error {
+	m.callCount.Add(1)
+	if m.delay > 0 {
+		select {
+		case <-time.After(m.delay):
+		case <-ctx.Done():
+			return ctx.Err()
+		}
+	}
+	if m.shouldErr {
+		return context.DeadlineExceeded
+	}
+	return nil
+}
+
+func (m *mockYearService) Name() string    { return m.name }
+func (m *mockYearService) GetStats() Stats { return m.stats }
+
 func (m *MockService) Sync(ctx context.Context) error {
 	m.callCount.Add(1)
 
@@ -3376,4 +3407,142 @@ func TestGenerateRunToken(t *testing.T) {
 			}
 		}
 	})
+}
+
+// TestRunSingleSyncWithServiceIgnoresRegisteredSingleton pins the fix for #1881: the eleven
+// individual-sync handlers (camper_history, family_camp_derived, lodging_assignments,
+// staff_skills, financial_aid_applications, household_demographics, camper_dietary,
+// camper_transportation, quest_registrations, staff_applications, staff_vehicle_info) used to
+// fetch the orchestrator's registered singleton and mutate its Year/DryRun fields in place —
+// which let DryRun stick across runs and let concurrent requests race on Year. The fix has
+// handlers build a private, request-scoped instance and hand it to
+// RunSingleSyncWithService, which must run *that* instance and never touch (or even require)
+// a registered singleton.
+func TestRunSingleSyncWithServiceIgnoresRegisteredSingleton(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		o := NewOrchestrator(nil)
+
+		// The registered singleton, as left over from server startup. Its Year must stay at
+		// its zero-value default — a request-scoped run must never write onto shared state.
+		registered := &mockYearService{name: "test", year: 0}
+		o.RegisterService("test", registered)
+
+		// A private instance built fresh per request, carrying only this request's Year —
+		// exactly what a fixed handler does with e.g. NewCamperHistorySync(e.App).
+		requestScoped := &mockYearService{name: "test", year: 2027, stats: Stats{Created: 5}}
+
+		if err := o.RunSingleSyncWithService(context.Background(), "test", requestScoped); err != nil {
+			t.Fatalf("RunSingleSyncWithService failed: %v", err)
+		}
+
+		time.Sleep(50 * time.Millisecond)
+
+		if requestScoped.callCount.Load() != 1 {
+			t.Errorf("expected the request-scoped instance's Sync to run once, got %d",
+				requestScoped.callCount.Load())
+		}
+		if registered.callCount.Load() != 0 {
+			t.Errorf("the registered singleton must never execute for a request-scoped run, got %d calls",
+				registered.callCount.Load())
+		}
+		if registered.year != 0 {
+			t.Errorf("the registered singleton's Year must stay at its default (0), got %d", registered.year)
+		}
+
+		// Status/stats visible to pollers (e.g. SyncTab) must come from the instance that
+		// actually ran, not from the untouched registered singleton.
+		o.mu.RLock()
+		completed := o.lastCompletedStatus["test"]
+		o.mu.RUnlock()
+		if completed == nil {
+			t.Fatal("expected a completed status to be recorded")
+		}
+		if completed.Summary.Created != 5 {
+			t.Errorf("expected completed status to reflect the request-scoped instance's stats, got %+v",
+				completed.Summary)
+		}
+		if completed.Status != statusSuccess {
+			t.Errorf("expected status %q, got %q", statusSuccess, completed.Status)
+		}
+	})
+}
+
+// TestRunSingleSyncWithServiceRejectsConcurrentRunForSameType checks the simple, sequential
+// case: once a run for syncType has been reserved, a later call for the same syncType is
+// rejected outright and its service instance is never executed.
+func TestRunSingleSyncWithServiceRejectsConcurrentRunForSameType(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		o := NewOrchestrator(nil)
+
+		first := &mockYearService{name: "test", year: 2026, delay: 100 * time.Millisecond}
+		if err := o.RunSingleSyncWithService(context.Background(), "test", first); err != nil {
+			t.Fatalf("first call should succeed, got: %v", err)
+		}
+
+		second := &mockYearService{name: "test", year: 2027}
+		err := o.RunSingleSyncWithService(context.Background(), "test", second)
+		if err == nil {
+			t.Fatal("expected the second concurrent call for the same syncType to be rejected")
+		}
+		if second.callCount.Load() != 0 {
+			t.Error("a rejected call must never execute Sync on its service instance")
+		}
+
+		// Let the first run finish so its status settles.
+		time.Sleep(200 * time.Millisecond)
+		if first.callCount.Load() != 1 {
+			t.Errorf("expected the first call to have run exactly once, got %d", first.callCount.Load())
+		}
+	})
+}
+
+// TestRunSingleSyncWithServiceConcurrentCallsExactlyOneWins pins the atomicity half of
+// #1881 under real concurrency: the old per-handler pattern checked
+// orchestrator.IsRunning(syncType) and only later, unguarded, wrote fields onto the shared
+// service — the check was not atomic with the write, so two concurrent requests could both
+// pass the check. RunSingleSyncWithService reserves the run under a single lock, so however
+// many goroutines race to start the same syncType at once, exactly one may win and execute —
+// everyone else must be rejected before their service instance ever runs.
+func TestRunSingleSyncWithServiceConcurrentCallsExactlyOneWins(t *testing.T) {
+	o := NewOrchestrator(nil)
+
+	const attempts = 50
+	services := make([]*mockYearService, attempts)
+	errs := make([]error, attempts)
+
+	var start sync.WaitGroup
+	start.Add(1)
+	var done sync.WaitGroup
+	done.Add(attempts)
+
+	for i := range attempts {
+		services[i] = &mockYearService{name: "test", year: i, delay: 20 * time.Millisecond}
+		go func(i int) {
+			defer done.Done()
+			start.Wait() // release all goroutines together to maximize interleaving
+			errs[i] = o.RunSingleSyncWithService(context.Background(), "test", services[i])
+		}(i)
+	}
+	start.Done()
+	done.Wait()
+
+	wins := 0
+	for i := range attempts {
+		if errs[i] == nil {
+			wins++
+		}
+	}
+	if wins != 1 {
+		t.Errorf("expected exactly 1 winning reservation among %d concurrent attempts, got %d", attempts, wins)
+	}
+
+	// Give the winner's background goroutine time to actually invoke Sync.
+	time.Sleep(200 * time.Millisecond)
+	ranCount := 0
+	for i := range attempts {
+		ranCount += int(services[i].callCount.Load())
+	}
+	if ranCount != 1 {
+		t.Errorf("expected exactly 1 service instance to have run, got %d", ranCount)
+	}
 }

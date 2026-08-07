@@ -96,6 +96,26 @@ export function SyncTab() {
   const cancelRunningSync = useCancelRunningSync()
   const runPhaseSync = useRunPhaseSync()
 
+  // One derived "is this card's own type-specific mutation pending" lookup, keyed by
+  // syncType.id, instead of a hand-maintained list of `.isPending` references in the disabled
+  // condition below. None of these eleven hooks had ever been wired into that condition
+  // (#1881), so a double-click on one of their cards could submit a second request before
+  // status polling flipped that card to "running". Keying by id means a newly-added per-type
+  // mutation hook just needs one entry here, not a new clause at every disabled= call site.
+  const typeSyncPendingById: Record<string, boolean> = {
+    camper_history: camperHistorySync.isPending,
+    family_camp_derived: familyCampDerivedSync.isPending,
+    lodging_assignments: lodgingAssignmentsSync.isPending,
+    staff_skills: staffSkillsSync.isPending,
+    financial_aid_applications: faApplicationsSync.isPending,
+    household_demographics: householdDemographicsSync.isPending,
+    camper_dietary: camperDietarySync.isPending,
+    camper_transportation: camperTransportationSync.isPending,
+    quest_registrations: questRegistrationsSync.isPending,
+    staff_applications: staffApplicationsSync.isPending,
+    staff_vehicle_info: staffVehicleInfoSync.isPending,
+  }
+
   // Get queue from status
   const queue: QueuedSyncItem[] = syncStatus?._queue ?? []
   const hasQueuedItems = queue.length > 0
@@ -172,6 +192,7 @@ export function SyncTab() {
     const Icon = syncType.icon
     const isRunning = status.status === 'running'
     const isPending = status.status === 'pending'
+    const isTypeSyncPending = typeSyncPendingById[syncType.id] ?? false
 
     // Determine which hook to use based on sync type
     const handleRun = () => {
@@ -317,7 +338,11 @@ export function SyncTab() {
           <button
             onClick={handleRun}
             disabled={
-              isRunning || isPending || runIndividualSync.isPending || runOnDemandSync.isPending
+              isRunning ||
+              isPending ||
+              runIndividualSync.isPending ||
+              runOnDemandSync.isPending ||
+              isTypeSyncPending
             }
             className="bg-muted/50 dark:bg-muted hover:bg-muted text-muted-foreground hover:text-foreground mt-3 flex w-full items-center justify-center gap-1.5 rounded-lg py-2 text-xs font-medium transition-colors disabled:opacity-50 sm:text-sm"
           >

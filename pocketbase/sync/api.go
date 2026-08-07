@@ -1863,15 +1863,6 @@ func handleCamperHistorySync(e *core.RequestEvent, scheduler *Scheduler) error {
 	orchestrator := scheduler.GetOrchestrator()
 	syncType := "camper_history"
 
-	// Check if already running
-	if orchestrator.IsRunning(syncType) {
-		return e.JSON(http.StatusConflict, map[string]any{
-			"error":    "Camper history computation already in progress",
-			"status":   "running",
-			"syncType": syncType,
-		})
-	}
-
 	// Parse required year parameter
 	yearParam := e.Request.URL.Query().Get("year")
 	if yearParam == "" {
@@ -1891,37 +1882,26 @@ func handleCamperHistorySync(e *core.RequestEvent, scheduler *Scheduler) error {
 	dryRunParam := e.Request.URL.Query().Get("dry_run")
 	dryRun := dryRunParam == boolTrueStr || dryRunParam == "1"
 
-	// Get the service and set options
-	service, ok := orchestrator.GetService(syncType).(*CamperHistorySync)
-	if !ok || service == nil {
-		return e.JSON(http.StatusInternalServerError, map[string]any{
-			"error": "Camper history sync service not found",
-		})
-	}
+	// Request-scoped instance — never the shared registered singleton. Mutating the
+	// singleton let DryRun stick past its own run and let concurrent requests race on Year
+	// (#1881); RunSingleSyncWithService also reserves the run atomically, closing the gap
+	// between the old up-front IsRunning check and the field writes that followed it.
+	service := NewCamperHistorySync(e.App)
 	service.Year = year
 	service.DryRun = dryRun
 
-	// Run in background
-	go func() {
-		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
-		defer cancel()
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
+	defer cancel()
 
-		slog.Info("Starting camper_history computation",
-			"year", year,
-			"dry_run", dryRun,
-		)
-		if err := orchestrator.RunSingleSync(ctx, syncType); err != nil {
-			slog.Error("Camper history computation failed", "year", year, "error", err)
-		} else {
-			stats := service.GetStats()
-			slog.Info("Camper history computation completed",
-				"year", year,
-				"created", stats.Created,
-				"deleted", stats.Deleted,
-				"errors", stats.Errors,
-			)
-		}
-	}()
+	if err := orchestrator.RunSingleSyncWithService(ctx, syncType, service); err != nil {
+		return e.JSON(http.StatusConflict, map[string]any{
+			"error":    "Camper history computation already in progress",
+			"status":   "running",
+			"syncType": syncType,
+		})
+	}
+
+	slog.Info("Starting camper_history computation", "year", year, "dry_run", dryRun)
 
 	return e.JSON(http.StatusOK, map[string]any{
 		"message":  "Camper history computation started",
@@ -1938,15 +1918,6 @@ func handleFamilyCampDerivedSync(e *core.RequestEvent, scheduler *Scheduler) err
 	orchestrator := scheduler.GetOrchestrator()
 	syncType := serviceNameFamilyCampDerived
 
-	// Check if already running
-	if orchestrator.IsRunning(syncType) {
-		return e.JSON(http.StatusConflict, map[string]any{
-			"error":    "Family camp derived computation already in progress",
-			"status":   "running",
-			"syncType": syncType,
-		})
-	}
-
 	// Parse required year parameter
 	yearParam := e.Request.URL.Query().Get("year")
 	if yearParam == "" {
@@ -1966,37 +1937,23 @@ func handleFamilyCampDerivedSync(e *core.RequestEvent, scheduler *Scheduler) err
 	dryRunParam := e.Request.URL.Query().Get("dry_run")
 	dryRun := dryRunParam == boolTrueStr || dryRunParam == "1"
 
-	// Get the service and set options
-	service, ok := orchestrator.GetService(syncType).(*FamilyCampDerivedSync)
-	if !ok || service == nil {
-		return e.JSON(http.StatusInternalServerError, map[string]any{
-			"error": "Family camp derived sync service not found",
-		})
-	}
+	// Request-scoped instance — never the shared registered singleton (#1881).
+	service := NewFamilyCampDerivedSync(e.App)
 	service.Year = year
 	service.DryRun = dryRun
 
-	// Run in background
-	go func() {
-		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
-		defer cancel()
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
+	defer cancel()
 
-		slog.Info("Starting family_camp_derived computation",
-			"year", year,
-			"dry_run", dryRun,
-		)
-		if err := orchestrator.RunSingleSync(ctx, syncType); err != nil {
-			slog.Error("Family camp derived computation failed", "year", year, "error", err)
-		} else {
-			stats := service.GetStats()
-			slog.Info("Family camp derived computation completed",
-				"year", year,
-				"created", stats.Created,
-				"deleted", stats.Deleted,
-				"errors", stats.Errors,
-			)
-		}
-	}()
+	if err := orchestrator.RunSingleSyncWithService(ctx, syncType, service); err != nil {
+		return e.JSON(http.StatusConflict, map[string]any{
+			"error":    "Family camp derived computation already in progress",
+			"status":   "running",
+			"syncType": syncType,
+		})
+	}
+
+	slog.Info("Starting family_camp_derived computation", "year", year, "dry_run", dryRun)
 
 	return e.JSON(http.StatusOK, map[string]any{
 		"message":  "Family camp derived computation started",
@@ -2013,14 +1970,6 @@ func handleLodgingAssignmentsSync(e *core.RequestEvent, scheduler *Scheduler) er
 	orchestrator := scheduler.GetOrchestrator()
 	syncType := serviceNameLodgingAssignments
 
-	if orchestrator.IsRunning(syncType) {
-		return e.JSON(http.StatusConflict, map[string]any{
-			"error":    "Lodging assignment ingest already in progress",
-			"status":   "running",
-			"syncType": syncType,
-		})
-	}
-
 	yearParam := e.Request.URL.Query().Get("year")
 	if yearParam == "" {
 		return e.JSON(http.StatusBadRequest, map[string]any{
@@ -2037,33 +1986,23 @@ func handleLodgingAssignmentsSync(e *core.RequestEvent, scheduler *Scheduler) er
 	dryRunParam := e.Request.URL.Query().Get("dry_run")
 	dryRun := dryRunParam == boolTrueStr || dryRunParam == "1"
 
-	service, ok := orchestrator.GetService(syncType).(*LodgingAssignmentsSync)
-	if !ok || service == nil {
-		return e.JSON(http.StatusInternalServerError, map[string]any{
-			"error": "Lodging assignments sync service not found",
-		})
-	}
+	// Request-scoped instance — never the shared registered singleton (#1881).
+	service := NewLodgingAssignmentsSync(e.App)
 	service.Year = year
 	service.DryRun = dryRun
 
-	go func() {
-		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
-		defer cancel()
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
+	defer cancel()
 
-		slog.Info("Starting lodging_assignments ingest", "year", year, "dry_run", dryRun)
-		if err := orchestrator.RunSingleSync(ctx, syncType); err != nil {
-			slog.Error("Lodging assignment ingest failed", "year", year, "error", err)
-			return
-		}
-		stats := service.GetStats()
-		slog.Info("Lodging assignment ingest completed",
-			"year", year,
-			"created", stats.Created,
-			"updated", stats.Updated,
-			"skipped", stats.Skipped,
-			"errors", stats.Errors,
-		)
-	}()
+	if err := orchestrator.RunSingleSyncWithService(ctx, syncType, service); err != nil {
+		return e.JSON(http.StatusConflict, map[string]any{
+			"error":    "Lodging assignment ingest already in progress",
+			"status":   "running",
+			"syncType": syncType,
+		})
+	}
+
+	slog.Info("Starting lodging_assignments ingest", "year", year, "dry_run", dryRun)
 
 	return e.JSON(http.StatusOK, map[string]any{
 		"message":  "Lodging assignment ingest started",
@@ -2080,15 +2019,6 @@ func handleStaffSkillsSync(e *core.RequestEvent, scheduler *Scheduler) error {
 	orchestrator := scheduler.GetOrchestrator()
 	syncType := "staff_skills"
 
-	// Check if already running
-	if orchestrator.IsRunning(syncType) {
-		return e.JSON(http.StatusConflict, map[string]any{
-			"error":    "Staff skills sync already in progress",
-			"status":   "running",
-			"syncType": syncType,
-		})
-	}
-
 	// Parse required year parameter
 	yearParam := e.Request.URL.Query().Get("year")
 	if yearParam == "" {
@@ -2108,38 +2038,23 @@ func handleStaffSkillsSync(e *core.RequestEvent, scheduler *Scheduler) error {
 	dryRunParam := e.Request.URL.Query().Get("dry_run")
 	dryRun := dryRunParam == boolTrueStr || dryRunParam == "1"
 
-	// Get the service and set options
-	service, ok := orchestrator.GetService(syncType).(*StaffSkillsSync)
-	if !ok || service == nil {
-		return e.JSON(http.StatusInternalServerError, map[string]any{
-			"error": "Staff skills sync service not found",
-		})
-	}
+	// Request-scoped instance — never the shared registered singleton (#1881).
+	service := NewStaffSkillsSync(e.App)
 	service.Year = year
 	service.DryRun = dryRun
 
-	// Run in background
-	go func() {
-		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
-		defer cancel()
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
+	defer cancel()
 
-		slog.Info("Starting staff_skills extraction",
-			"year", year,
-			"dry_run", dryRun,
-		)
-		if err := orchestrator.RunSingleSync(ctx, syncType); err != nil {
-			slog.Error("Staff skills extraction failed", "year", year, "error", err)
-		} else {
-			stats := service.GetStats()
-			slog.Info("Staff skills extraction completed",
-				"year", year,
-				"created", stats.Created,
-				"updated", stats.Updated,
-				"deleted", stats.Deleted,
-				"errors", stats.Errors,
-			)
-		}
-	}()
+	if err := orchestrator.RunSingleSyncWithService(ctx, syncType, service); err != nil {
+		return e.JSON(http.StatusConflict, map[string]any{
+			"error":    "Staff skills sync already in progress",
+			"status":   "running",
+			"syncType": syncType,
+		})
+	}
+
+	slog.Info("Starting staff_skills extraction", "year", year, "dry_run", dryRun)
 
 	return e.JSON(http.StatusOK, map[string]any{
 		"message":  "Staff skills extraction started",
@@ -2156,15 +2071,6 @@ func handleFinancialAidApplicationsSync(e *core.RequestEvent, scheduler *Schedul
 	orchestrator := scheduler.GetOrchestrator()
 	syncType := serviceNameFinancialAidApplications
 
-	// Check if already running
-	if orchestrator.IsRunning(syncType) {
-		return e.JSON(http.StatusConflict, map[string]any{
-			"error":    "Financial aid applications sync already in progress",
-			"status":   "running",
-			"syncType": syncType,
-		})
-	}
-
 	// Parse required year parameter
 	yearParam := e.Request.URL.Query().Get("year")
 	if yearParam == "" {
@@ -2184,37 +2090,23 @@ func handleFinancialAidApplicationsSync(e *core.RequestEvent, scheduler *Schedul
 	dryRunParam := e.Request.URL.Query().Get("dry_run")
 	dryRun := dryRunParam == boolTrueStr || dryRunParam == "1"
 
-	// Get the service and set options
-	service, ok := orchestrator.GetService(syncType).(*FinancialAidApplicationsSync)
-	if !ok || service == nil {
-		return e.JSON(http.StatusInternalServerError, map[string]any{
-			"error": "Financial aid applications sync service not found",
-		})
-	}
+	// Request-scoped instance — never the shared registered singleton (#1881).
+	service := NewFinancialAidApplicationsSync(e.App)
 	service.Year = year
 	service.DryRun = dryRun
 
-	// Run in background
-	go func() {
-		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
-		defer cancel()
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
+	defer cancel()
 
-		slog.Info("Starting financial_aid_applications extraction",
-			"year", year,
-			"dry_run", dryRun,
-		)
-		if err := orchestrator.RunSingleSync(ctx, syncType); err != nil {
-			slog.Error("Financial aid applications extraction failed", "year", year, "error", err)
-		} else {
-			stats := service.GetStats()
-			slog.Info("Financial aid applications extraction completed",
-				"year", year,
-				"created", stats.Created,
-				"updated", stats.Updated,
-				"errors", stats.Errors,
-			)
-		}
-	}()
+	if err := orchestrator.RunSingleSyncWithService(ctx, syncType, service); err != nil {
+		return e.JSON(http.StatusConflict, map[string]any{
+			"error":    "Financial aid applications sync already in progress",
+			"status":   "running",
+			"syncType": syncType,
+		})
+	}
+
+	slog.Info("Starting financial_aid_applications extraction", "year", year, "dry_run", dryRun)
 
 	return e.JSON(http.StatusOK, map[string]any{
 		"message":  "Financial aid applications extraction started",
@@ -2231,15 +2123,6 @@ func handleHouseholdDemographicsSync(e *core.RequestEvent, scheduler *Scheduler)
 	orchestrator := scheduler.GetOrchestrator()
 	syncType := serviceNameHouseholdDemographics
 
-	// Check if already running
-	if orchestrator.IsRunning(syncType) {
-		return e.JSON(http.StatusConflict, map[string]any{
-			"error":    "Household demographics computation already in progress",
-			"status":   "running",
-			"syncType": syncType,
-		})
-	}
-
 	// Parse required year parameter
 	yearParam := e.Request.URL.Query().Get("year")
 	if yearParam == "" {
@@ -2259,38 +2142,23 @@ func handleHouseholdDemographicsSync(e *core.RequestEvent, scheduler *Scheduler)
 	dryRunParam := e.Request.URL.Query().Get("dry_run")
 	dryRun := dryRunParam == boolTrueStr || dryRunParam == "1"
 
-	// Get the service and set options
-	service, ok := orchestrator.GetService(syncType).(*HouseholdDemographicsSync)
-	if !ok || service == nil {
-		return e.JSON(http.StatusInternalServerError, map[string]any{
-			"error": "Household demographics sync service not found",
-		})
-	}
+	// Request-scoped instance — never the shared registered singleton (#1881).
+	service := NewHouseholdDemographicsSync(e.App)
 	service.Year = year
 	service.DryRun = dryRun
 
-	// Run in background
-	go func() {
-		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
-		defer cancel()
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
+	defer cancel()
 
-		slog.Info("Starting household_demographics computation",
-			"year", year,
-			"dry_run", dryRun,
-		)
-		if err := orchestrator.RunSingleSync(ctx, syncType); err != nil {
-			slog.Error("Household demographics computation failed", "year", year, "error", err)
-		} else {
-			stats := service.GetStats()
-			slog.Info("Household demographics computation completed",
-				"year", year,
-				"created", stats.Created,
-				"updated", stats.Updated,
-				"deleted", stats.Deleted,
-				"errors", stats.Errors,
-			)
-		}
-	}()
+	if err := orchestrator.RunSingleSyncWithService(ctx, syncType, service); err != nil {
+		return e.JSON(http.StatusConflict, map[string]any{
+			"error":    "Household demographics computation already in progress",
+			"status":   "running",
+			"syncType": syncType,
+		})
+	}
+
+	slog.Info("Starting household_demographics computation", "year", year, "dry_run", dryRun)
 
 	return e.JSON(http.StatusOK, map[string]any{
 		"message":  "Household demographics computation started",
@@ -2518,15 +2386,6 @@ func handleCamperDietarySync(e *core.RequestEvent, scheduler *Scheduler) error {
 	orchestrator := scheduler.GetOrchestrator()
 	syncType := "camper_dietary"
 
-	// Check if already running
-	if orchestrator.IsRunning(syncType) {
-		return e.JSON(http.StatusConflict, map[string]any{
-			"error":    "Camper dietary sync already in progress",
-			"status":   "running",
-			"syncType": syncType,
-		})
-	}
-
 	// Parse required year parameter
 	yearParam := e.Request.URL.Query().Get("year")
 	if yearParam == "" {
@@ -2542,34 +2401,22 @@ func handleCamperDietarySync(e *core.RequestEvent, scheduler *Scheduler) error {
 		})
 	}
 
-	// Get the service and set options
-	service, ok := orchestrator.GetService(syncType).(*CamperDietarySync)
-	if !ok || service == nil {
-		return e.JSON(http.StatusInternalServerError, map[string]any{
-			"error": "Camper dietary sync service not found",
-		})
-	}
+	// Request-scoped instance — never the shared registered singleton (#1881).
+	service := NewCamperDietarySync(e.App)
 	service.Year = year
 
-	// Run in background
-	go func() {
-		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
-		defer cancel()
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
+	defer cancel()
 
-		slog.Info("Starting camper_dietary extraction", "year", year)
-		if err := orchestrator.RunSingleSync(ctx, syncType); err != nil {
-			slog.Error("Camper dietary extraction failed", "year", year, "error", err)
-		} else {
-			stats := service.GetStats()
-			slog.Info("Camper dietary extraction completed",
-				"year", year,
-				"created", stats.Created,
-				"updated", stats.Updated,
-				"deleted", stats.Deleted,
-				"errors", stats.Errors,
-			)
-		}
-	}()
+	if err := orchestrator.RunSingleSyncWithService(ctx, syncType, service); err != nil {
+		return e.JSON(http.StatusConflict, map[string]any{
+			"error":    "Camper dietary sync already in progress",
+			"status":   "running",
+			"syncType": syncType,
+		})
+	}
+
+	slog.Info("Starting camper_dietary extraction", "year", year)
 
 	return e.JSON(http.StatusOK, map[string]any{
 		"message":  "Camper dietary extraction started",
@@ -2585,15 +2432,6 @@ func handleCamperTransportationSync(e *core.RequestEvent, scheduler *Scheduler) 
 	orchestrator := scheduler.GetOrchestrator()
 	syncType := "camper_transportation"
 
-	// Check if already running
-	if orchestrator.IsRunning(syncType) {
-		return e.JSON(http.StatusConflict, map[string]any{
-			"error":    "Camper transportation sync already in progress",
-			"status":   "running",
-			"syncType": syncType,
-		})
-	}
-
 	// Parse required year parameter
 	yearParam := e.Request.URL.Query().Get("year")
 	if yearParam == "" {
@@ -2609,34 +2447,22 @@ func handleCamperTransportationSync(e *core.RequestEvent, scheduler *Scheduler) 
 		})
 	}
 
-	// Get the service and set options
-	service, ok := orchestrator.GetService(syncType).(*CamperTransportationSync)
-	if !ok || service == nil {
-		return e.JSON(http.StatusInternalServerError, map[string]any{
-			"error": "Camper transportation sync service not found",
-		})
-	}
+	// Request-scoped instance — never the shared registered singleton (#1881).
+	service := NewCamperTransportationSync(e.App)
 	service.Year = year
 
-	// Run in background
-	go func() {
-		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
-		defer cancel()
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
+	defer cancel()
 
-		slog.Info("Starting camper_transportation extraction", "year", year)
-		if err := orchestrator.RunSingleSync(ctx, syncType); err != nil {
-			slog.Error("Camper transportation extraction failed", "year", year, "error", err)
-		} else {
-			stats := service.GetStats()
-			slog.Info("Camper transportation extraction completed",
-				"year", year,
-				"created", stats.Created,
-				"updated", stats.Updated,
-				"deleted", stats.Deleted,
-				"errors", stats.Errors,
-			)
-		}
-	}()
+	if err := orchestrator.RunSingleSyncWithService(ctx, syncType, service); err != nil {
+		return e.JSON(http.StatusConflict, map[string]any{
+			"error":    "Camper transportation sync already in progress",
+			"status":   "running",
+			"syncType": syncType,
+		})
+	}
+
+	slog.Info("Starting camper_transportation extraction", "year", year)
 
 	return e.JSON(http.StatusOK, map[string]any{
 		"message":  "Camper transportation extraction started",
@@ -2652,15 +2478,6 @@ func handleQuestRegistrationsSync(e *core.RequestEvent, scheduler *Scheduler) er
 	orchestrator := scheduler.GetOrchestrator()
 	syncType := "quest_registrations"
 
-	// Check if already running
-	if orchestrator.IsRunning(syncType) {
-		return e.JSON(http.StatusConflict, map[string]any{
-			"error":    "Quest registrations sync already in progress",
-			"status":   "running",
-			"syncType": syncType,
-		})
-	}
-
 	// Parse required year parameter
 	yearParam := e.Request.URL.Query().Get("year")
 	if yearParam == "" {
@@ -2676,34 +2493,22 @@ func handleQuestRegistrationsSync(e *core.RequestEvent, scheduler *Scheduler) er
 		})
 	}
 
-	// Get the service and set options
-	service, ok := orchestrator.GetService(syncType).(*QuestRegistrationsSync)
-	if !ok || service == nil {
-		return e.JSON(http.StatusInternalServerError, map[string]any{
-			"error": "Quest registrations sync service not found",
-		})
-	}
+	// Request-scoped instance — never the shared registered singleton (#1881).
+	service := NewQuestRegistrationsSync(e.App)
 	service.Year = year
 
-	// Run in background
-	go func() {
-		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
-		defer cancel()
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
+	defer cancel()
 
-		slog.Info("Starting quest_registrations extraction", "year", year)
-		if err := orchestrator.RunSingleSync(ctx, syncType); err != nil {
-			slog.Error("Quest registrations extraction failed", "year", year, "error", err)
-		} else {
-			stats := service.GetStats()
-			slog.Info("Quest registrations extraction completed",
-				"year", year,
-				"created", stats.Created,
-				"updated", stats.Updated,
-				"deleted", stats.Deleted,
-				"errors", stats.Errors,
-			)
-		}
-	}()
+	if err := orchestrator.RunSingleSyncWithService(ctx, syncType, service); err != nil {
+		return e.JSON(http.StatusConflict, map[string]any{
+			"error":    "Quest registrations sync already in progress",
+			"status":   "running",
+			"syncType": syncType,
+		})
+	}
+
+	slog.Info("Starting quest_registrations extraction", "year", year)
 
 	return e.JSON(http.StatusOK, map[string]any{
 		"message":  "Quest registrations extraction started",
@@ -2719,15 +2524,6 @@ func handleStaffApplicationsSync(e *core.RequestEvent, scheduler *Scheduler) err
 	orchestrator := scheduler.GetOrchestrator()
 	syncType := "staff_applications"
 
-	// Check if already running
-	if orchestrator.IsRunning(syncType) {
-		return e.JSON(http.StatusConflict, map[string]any{
-			"error":    "Staff applications sync already in progress",
-			"status":   "running",
-			"syncType": syncType,
-		})
-	}
-
 	// Parse required year parameter
 	yearParam := e.Request.URL.Query().Get("year")
 	if yearParam == "" {
@@ -2743,34 +2539,22 @@ func handleStaffApplicationsSync(e *core.RequestEvent, scheduler *Scheduler) err
 		})
 	}
 
-	// Get the service and set options
-	service, ok := orchestrator.GetService(syncType).(*StaffApplicationsSync)
-	if !ok || service == nil {
-		return e.JSON(http.StatusInternalServerError, map[string]any{
-			"error": "Staff applications sync service not found",
-		})
-	}
+	// Request-scoped instance — never the shared registered singleton (#1881).
+	service := NewStaffApplicationsSync(e.App)
 	service.Year = year
 
-	// Run in background
-	go func() {
-		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
-		defer cancel()
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
+	defer cancel()
 
-		slog.Info("Starting staff_applications extraction", "year", year)
-		if err := orchestrator.RunSingleSync(ctx, syncType); err != nil {
-			slog.Error("Staff applications extraction failed", "year", year, "error", err)
-		} else {
-			stats := service.GetStats()
-			slog.Info("Staff applications extraction completed",
-				"year", year,
-				"created", stats.Created,
-				"updated", stats.Updated,
-				"deleted", stats.Deleted,
-				"errors", stats.Errors,
-			)
-		}
-	}()
+	if err := orchestrator.RunSingleSyncWithService(ctx, syncType, service); err != nil {
+		return e.JSON(http.StatusConflict, map[string]any{
+			"error":    "Staff applications sync already in progress",
+			"status":   "running",
+			"syncType": syncType,
+		})
+	}
+
+	slog.Info("Starting staff_applications extraction", "year", year)
 
 	return e.JSON(http.StatusOK, map[string]any{
 		"message":  "Staff applications extraction started",
@@ -2786,15 +2570,6 @@ func handleStaffVehicleInfoSync(e *core.RequestEvent, scheduler *Scheduler) erro
 	orchestrator := scheduler.GetOrchestrator()
 	syncType := "staff_vehicle_info"
 
-	// Check if already running
-	if orchestrator.IsRunning(syncType) {
-		return e.JSON(http.StatusConflict, map[string]any{
-			"error":    "Staff vehicle info sync already in progress",
-			"status":   "running",
-			"syncType": syncType,
-		})
-	}
-
 	// Parse required year parameter
 	yearParam := e.Request.URL.Query().Get("year")
 	if yearParam == "" {
@@ -2810,34 +2585,22 @@ func handleStaffVehicleInfoSync(e *core.RequestEvent, scheduler *Scheduler) erro
 		})
 	}
 
-	// Get the service and set options
-	service, ok := orchestrator.GetService(syncType).(*StaffVehicleInfoSync)
-	if !ok || service == nil {
-		return e.JSON(http.StatusInternalServerError, map[string]any{
-			"error": "Staff vehicle info sync service not found",
-		})
-	}
+	// Request-scoped instance — never the shared registered singleton (#1881).
+	service := NewStaffVehicleInfoSync(e.App)
 	service.Year = year
 
-	// Run in background
-	go func() {
-		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
-		defer cancel()
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
+	defer cancel()
 
-		slog.Info("Starting staff_vehicle_info extraction", "year", year)
-		if err := orchestrator.RunSingleSync(ctx, syncType); err != nil {
-			slog.Error("Staff vehicle info extraction failed", "year", year, "error", err)
-		} else {
-			stats := service.GetStats()
-			slog.Info("Staff vehicle info extraction completed",
-				"year", year,
-				"created", stats.Created,
-				"updated", stats.Updated,
-				"deleted", stats.Deleted,
-				"errors", stats.Errors,
-			)
-		}
-	}()
+	if err := orchestrator.RunSingleSyncWithService(ctx, syncType, service); err != nil {
+		return e.JSON(http.StatusConflict, map[string]any{
+			"error":    "Staff vehicle info sync already in progress",
+			"status":   "running",
+			"syncType": syncType,
+		})
+	}
+
+	slog.Info("Starting staff_vehicle_info extraction", "year", year)
 
 	return e.JSON(http.StatusOK, map[string]any{
 		"message":  "Staff vehicle info extraction started",
