@@ -199,6 +199,60 @@ describe('FloatingQueueBadge — expanded', () => {
   })
 })
 
+describe('FloatingQueueBadge — whitespace-only filter', () => {
+  // A whitespace-only term reads as "no filter" everywhere it is judged.
+  // Four sites in the shell branch on the search term, and they must agree:
+  // the filter predicate, the ESC handler, the header count, and the
+  // empty-state message. Fixing only one leaves the others disagreeing with
+  // what's on screen, which is worse than the original bug.
+
+  it('does not filter the list on a whitespace-only term', async () => {
+    render(<Harness />)
+    await userEvent.click(screen.getByRole('button', { name: /unplaced families/i }))
+    await userEvent.type(screen.getByPlaceholderText(/filter by name/i), '   ')
+    expect(screen.getAllByTestId('row')).toHaveLength(3)
+  })
+
+  it('shows the plain count, not a filtered count, on a whitespace-only term', async () => {
+    render(<Harness />)
+    await userEvent.click(screen.getByRole('button', { name: /unplaced families/i }))
+    await userEvent.type(screen.getByPlaceholderText(/filter by name/i), '   ')
+    expect(screen.getByText('3')).toBeInTheDocument()
+    expect(screen.queryByText('3/3')).not.toBeInTheDocument()
+    expect(screen.queryByText('0/3')).not.toBeInTheDocument()
+  })
+
+  it('closes on the first ESC when the term is whitespace-only, same as if it were empty', async () => {
+    // There's no active filter to clear, so the first press should behave
+    // like the "already empty" case in the ESC test above and close
+    // immediately rather than spending a press clearing an inert space.
+    render(<Harness />)
+    await userEvent.click(screen.getByRole('button', { name: /unplaced families/i }))
+    await userEvent.type(screen.getByPlaceholderText(/filter by name/i), '   ')
+
+    await userEvent.keyboard('{Escape}')
+    expect(screen.queryByTestId('row')).not.toBeInTheDocument()
+  })
+
+  it('quotes the trimmed term in the empty-state message, not the padded raw input', async () => {
+    render(<Harness />)
+    await userEvent.click(screen.getByRole('button', { name: /unplaced families/i }))
+    await userEvent.type(screen.getByPlaceholderText(/filter by name/i), '  zzz  ')
+    const message = screen.getByText(/No families match/)
+    expect(message.textContent).toBe('No families match "zzz"')
+  })
+
+  it('still shows the inline clear button on a whitespace-only term — there is text to clear, even though it is not filtering', async () => {
+    // Deliberately NOT one of the four coupled sites: this button answers
+    // "is there literal text in the box to clear", not "is a filter active",
+    // so it stays keyed to the raw (untrimmed) search term.
+    render(<Harness />)
+    await userEvent.click(screen.getByRole('button', { name: /unplaced families/i }))
+    await userEvent.type(screen.getByPlaceholderText(/filter by name/i), '   ')
+    expect(screen.getByTitle('Clear')).toBeInTheDocument()
+  })
+})
+
 describe('FloatingQueueBadge — drop target', () => {
   // Two separate class decisions off one prop: the popover's border and the
   // list's tint. C2's drag phase builds on both.

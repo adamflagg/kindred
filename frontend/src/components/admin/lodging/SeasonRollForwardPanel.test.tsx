@@ -138,7 +138,15 @@ describe('SeasonRollForwardPanel', () => {
         skipped_codes: ['test-unit-a'],
       },
     })
-    expect(await screen.findByRole('button', { name: /nothing to carry forward/i })).toBeDisabled()
+    // Found by "forward" -- the word every state of this button renders
+    // ("Carrying forward…", "Carry N forward", "Nothing to carry forward") --
+    // rather than by "nothing to carry forward" itself. That exact phrase is
+    // what `nothingToCarry` controls, so anchoring the query on it would make
+    // a broken condition disappear as "button not found" instead of naming
+    // the property the assertions below actually pin.
+    const applyButton = await screen.findByRole('button', { name: /forward/i })
+    expect(applyButton).toHaveTextContent(/nothing to carry forward/i)
+    expect(applyButton).toBeDisabled()
   })
 
   it('names the units it left alone', async () => {

@@ -81,6 +81,13 @@ export function FloatingQueueBadge<T>({
   const popoverRef = useRef<HTMLDivElement>(null)
   const searchInputRef = useRef<HTMLInputElement>(null)
   const [searchTerm, setSearchTerm] = useState('')
+  // A whitespace-only term is not a filter — every site below that judges
+  // "is a filter active" reads this instead of the raw box contents, so a
+  // stray space can't make the count, the list, or the ESC key disagree
+  // about whether anything is actually being searched for. The one
+  // exception is the inline clear button: it answers "is there text to
+  // clear", so it stays keyed to the raw `searchTerm`.
+  const trimmedSearchTerm = searchTerm.trim()
 
   const visible = useMemo(() => {
     const sorted = items.toSorted((a, b) => {
@@ -93,10 +100,10 @@ export function FloatingQueueBadge<T>({
       return 0
     })
 
-    if (!searchTerm) return sorted
-    const term = searchTerm.toLowerCase()
+    if (!trimmedSearchTerm) return sorted
+    const term = trimmedSearchTerm.toLowerCase()
     return sorted.filter((item) => getSearchText(item).toLowerCase().includes(term))
-  }, [items, searchTerm, sortKey, getSearchText])
+  }, [items, trimmedSearchTerm, sortKey, getSearchText])
 
   const handleClickOutside = useCallback(
     (event: MouseEvent) => {
@@ -121,11 +128,11 @@ export function FloatingQueueBadge<T>({
   const handleKeyDown = useCallback(
     (event: KeyboardEvent) => {
       if (event.key === 'Escape' && isExpanded) {
-        if (searchTerm) setSearchTerm('')
+        if (trimmedSearchTerm) setSearchTerm('')
         else onClose()
       }
     },
-    [isExpanded, onClose, searchTerm]
+    [isExpanded, onClose, trimmedSearchTerm]
   )
 
   useEffect(() => {
@@ -192,7 +199,7 @@ export function FloatingQueueBadge<T>({
                 <span className="text-muted-foreground ml-1.5 text-sm font-normal">
                   (
                   <span>
-                    {searchTerm
+                    {trimmedSearchTerm
                       ? `${String(visible.length)}/${String(items.length)}`
                       : items.length}
                   </span>
@@ -250,7 +257,7 @@ export function FloatingQueueBadge<T>({
             ) : visible.length === 0 ? (
               <div className="flex h-full flex-col items-center justify-center py-8 text-center">
                 <p className="text-muted-foreground text-sm">
-                  No {noun} match "{searchTerm}"
+                  No {noun} match "{trimmedSearchTerm}"
                 </p>
               </div>
             ) : (

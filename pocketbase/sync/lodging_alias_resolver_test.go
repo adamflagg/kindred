@@ -48,41 +48,87 @@ func TestAliasResolverUnboundedWindows(t *testing.T) {
 // across camp, and nothing downstream would notice.
 func TestAliasResolverRespectsRenameWindows(t *testing.T) {
 	app := newLodgingTestApp(t)
-	// gtWawona is queried at 2023 (inside its window) and hcDoctors at 2025
-	// (inside its own), so each needs a row at exactly the year it is resolved
-	// against. gtFront/gtBack are never resolved directly in this test -- only
-	// named as members of an alias nothing here calls Resolve on -- so their
-	// year is unconstrained; 2025 matches the rename they stand in for.
-	gtWawona := addUnit(t, app, "gt-wawona", 2023)
+	// Every building here gets a row in EVERY year the test resolves against,
+	// including the years its own alias window excludes. A rename retires the
+	// STRING, not the building, and the registry is year-scoped (migration
+	// 1500000141), so a house that survives a season has a distinct row, and
+	// id, every year it stands. Skipping the out-of-window years would let
+	// Resolve's missing-row gate answer "unresolved" before covers() is ever
+	// consulted -- the window assertions below would then still pass with the
+	// window checks deleted, which is exactly what they exist to catch.
+	years := []int{2022, 2023, 2024, 2025}
+	gtWawonaByYear := make(map[int]string, len(years))
+	hcDoctorsByYear := make(map[int]string, len(years))
+	for _, year := range years {
+		gtWawonaByYear[year] = addUnit(t, app, "gt-wawona", year)
+		hcDoctorsByYear[year] = addUnit(t, app, "hc-doctors-house", year)
+	}
+	// The 2025 split of the Golden Triangle house into two lettable rooms.
+	// Never resolved directly here -- only named as members of an alias nothing
+	// in this test calls Resolve on -- so 2025 alone is enough.
 	gtFront := addUnit(t, app, "gt-wawona-front", 2025)
 	gtBack := addUnit(t, app, "gt-wawona-back", 2025)
-	hcDoctors := addUnit(t, app, "hc-doctors-house", 2025)
 
-	addAlias(t, app, "Golden Triangle - Doctor's House", []string{gtWawona}, 0, 2024)
+	// An alias stores whichever season's ids existed when it was authored and is
+	// never re-pointed; Resolve threads stored id -> code -> requested year.
+	addAlias(t, app, "Golden Triangle - Doctor's House", []string{gtWawonaByYear[2023]}, 0, 2024)
 	addAlias(t, app, "Golden Triangle - Wawona", []string{gtFront, gtBack}, 2025, 0)
-	addAlias(t, app, "Health Center - Doctor's House", []string{hcDoctors}, 0, 2024)
-	addAlias(t, app, "Doctor's House", []string{hcDoctors}, 2025, 0)
+	addAlias(t, app, "Health Center - Doctor's House", []string{hcDoctorsByYear[2023]}, 0, 2024)
+	addAlias(t, app, "Doctor's House", []string{hcDoctorsByYear[2025]}, 2025, 0)
 
 	r, err := NewAliasResolver(app)
 	if err != nil {
 		t.Fatalf("NewAliasResolver: %v", err)
 	}
 
-	// In window.
+	// In window at the start of the span too -- valid_from_year is unbounded
+	// (0), so 2022 (the year the buildings actually opened, per the doc comment
+	// above) must resolve exactly like 2023 does. Also what makes the 2022 rows
+	// created above load-bearing instead of dead fixture weight.
+	if got := r.Resolve("Golden Triangle - Doctor's House", 2022); !got.Resolved ||
+		got.UnitIDs[0] != gtWawonaByYear[2022] {
+		t.Errorf("2022 GT Doctor's House: %+v", got)
+	}
+	if got := r.Resolve("Health Center - Doctor's House", 2022); !got.Resolved ||
+		got.UnitIDs[0] != hcDoctorsByYear[2022] {
+		t.Errorf("2022 HC Doctor's House: %+v", got)
+	}
+	// In window, both retired strings.
 	if got := r.Resolve("Golden Triangle - Doctor's House", 2023); !got.Resolved ||
-		got.UnitIDs[0] != gtWawona {
+		got.UnitIDs[0] != gtWawonaByYear[2023] {
 		t.Errorf("2023 GT Doctor's House: %+v", got)
 	}
+	if got := r.Resolve("Health Center - Doctor's House", 2023); !got.Resolved ||
+		got.UnitIDs[0] != hcDoctorsByYear[2023] {
+		t.Errorf("2023 HC Doctor's House: %+v", got)
+	}
+	// The valid_to_year boundary itself is INCLUSIVE: the window "0..2024" still
+	// covers 2024, not just years strictly before it. This is the half-closed
+	// gap the lower bound already had coverage for and the upper bound did not.
+	if got := r.Resolve("Golden Triangle - Doctor's House", 2024); !got.Resolved ||
+		got.UnitIDs[0] != gtWawonaByYear[2024] {
+		t.Errorf("2024 GT Doctor's House (inclusive upper boundary): %+v", got)
+	}
+	if got := r.Resolve("Health Center - Doctor's House", 2024); !got.Resolved ||
+		got.UnitIDs[0] != hcDoctorsByYear[2024] {
+		t.Errorf("2024 HC Doctor's House (inclusive upper boundary): %+v", got)
+	}
 	// Out of window on the high side -- the string was retired, so it must NOT
-	// silently fall through to the Health Center row of the same shape.
+	// silently fall through to the Health Center row of the same shape. Both
+	// buildings have a 2025 row, so only the window can refuse these.
 	if got := r.Resolve("Golden Triangle - Doctor's House", 2025); got.Resolved {
 		t.Errorf("2025 GT Doctor's House resolved to %v; the window ends at 2024", got.UnitCodes)
 	}
-	// Out of window on the low side.
+	if got := r.Resolve("Health Center - Doctor's House", 2025); got.Resolved {
+		t.Errorf("2025 HC Doctor's House resolved to %v; the window ends at 2024", got.UnitCodes)
+	}
+	// Out of window on the low side. hc-doctors-house has a 2024 row, so only
+	// the window can refuse this.
 	if got := r.Resolve("Doctor's House", 2024); got.Resolved {
 		t.Errorf("2024 bare Doctor's House resolved to %v; the window starts at 2025", got.UnitCodes)
 	}
-	if got := r.Resolve("Doctor's House", 2025); !got.Resolved || got.UnitIDs[0] != hcDoctors {
+	if got := r.Resolve("Doctor's House", 2025); !got.Resolved ||
+		got.UnitIDs[0] != hcDoctorsByYear[2025] {
 		t.Errorf("2025 bare Doctor's House: %+v", got)
 	}
 }
