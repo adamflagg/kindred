@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router'
 import { QueryClientProvider, QueryClient } from '@tanstack/react-query'
 
@@ -117,6 +118,39 @@ describe('Users page access control', () => {
     expect(await screen.findByText(name)).toBeTruthy()
     const row = screen.getByText(name).closest('[class*="flex items-center gap"]')
     expect(row?.className).not.toContain('cursor-pointer')
+  })
+})
+
+// jsx-a11y sweep (board-graph-users chunk): the row's click handler had no
+// keyboard equivalent. A manageable row is now a real <button> (native
+// Enter/Space activation); a non-manageable row gets no button at all — same
+// "no button at all, not just an inert row" rule GeoDetailList follows
+// (kindred#2063).
+describe('Users page row keyboard reachability', () => {
+  beforeEach(() => {
+    mockHasPermission.mockReset()
+    mockIsAdmin = false
+    mockCurrentUserId = 'user-1'
+  })
+
+  it('opens the roles panel with Enter when a manageable row is focused', async () => {
+    mockHasPermission.mockImplementation((perm: string) => perm === 'users.manage')
+    renderUsers()
+    expect(await screen.findByText('Liam Garcia')).toBeTruthy()
+
+    const row = screen.getByRole('button', { name: /Liam Garcia/ })
+    row.focus()
+    await userEvent.keyboard('{Enter}')
+
+    expect(await screen.findByRole('heading', { name: 'Liam Garcia' })).toBeInTheDocument()
+  })
+
+  it('renders a non-manageable row with no button at all', async () => {
+    mockHasPermission.mockReturnValue(false)
+    renderUsers()
+    expect(await screen.findByText('Liam Garcia')).toBeTruthy()
+
+    expect(screen.queryByRole('button', { name: /Liam Garcia/ })).not.toBeInTheDocument()
   })
 })
 

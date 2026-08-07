@@ -5,6 +5,7 @@
  * so the fixed-bottom bar isn't covered by the panel.
  */
 import { render, screen, fireEvent } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 
 // Controls what each useQuery returns — swap per test. Splitting by queryKey
@@ -625,5 +626,64 @@ describe('LockGroupPanel — deleting the selected group clears selectedGroupId'
     expect(onGroupSelect).toHaveBeenCalledWith(null)
 
     vi.restoreAllMocks()
+  })
+})
+
+// jsx-a11y sweep (board-graph-users chunk): the group header's expand/collapse
+// toggle was a `<div onClick>` with no keyboard listener. It can't become the
+// whole header <button> (the header also contains a nested "Delete group"
+// button, and buttons cannot nest), so only the toggle portion — chevron,
+// name, member count — moves into a real <button>, sibling to Delete.
+describe('LockGroupPanel — group header toggle is keyboard reachable', () => {
+  const testGroup = {
+    id: 'group-abc',
+    name: 'The Lovins',
+    color: '#ec4899',
+    scenario_id: 'scn-1',
+    session_pb_id: 'sess-1',
+    year: 2026,
+    collectionId: 'col1',
+    collectionName: 'locked_groups',
+    created: '',
+    updated: '',
+  }
+
+  it('expands the group body with Enter on the header toggle', async () => {
+    mockQueryData = [testGroup]
+    render(
+      <LockGroupPanel
+        isOpen={true}
+        onClose={() => {}}
+        sessionPbId="sess-1"
+        scenarioId="scn-1"
+        selectedGroupId={null}
+      />
+    )
+
+    expect(screen.queryByText('Group Name')).not.toBeInTheDocument()
+
+    const toggle = screen.getByRole('button', { name: /The Lovins/ })
+    toggle.focus()
+    await userEvent.keyboard('{Enter}')
+
+    expect(screen.getByText('Group Name')).toBeInTheDocument()
+  })
+
+  it('keeps the Delete button independently clickable, not nested in the toggle', () => {
+    mockQueryData = [testGroup]
+    mockContext.membersByGroup = { 'group-abc': [] }
+    render(
+      <LockGroupPanel
+        isOpen={true}
+        onClose={() => {}}
+        sessionPbId="sess-1"
+        scenarioId="scn-1"
+        selectedGroupId="group-abc"
+      />
+    )
+
+    const deleteButton = screen.getByRole('button', { name: 'Delete group' })
+    const toggle = screen.getByRole('button', { name: /The Lovins/ })
+    expect(toggle).not.toContainElement(deleteButton)
   })
 })
