@@ -127,6 +127,20 @@ describe('FamilyCard — what it shows', () => {
     expect(screen.getByText('Returning')).toBeInTheDocument()
   })
 
+  it('marks a first-time household when is_returning is false', () => {
+    render(<FamilyCard party={party({ is_returning: false })} onOpen={vi.fn()} />)
+    expect(screen.getByText('First-time')).toBeInTheDocument()
+    expect(screen.queryByText('Returning')).not.toBeInTheDocument()
+  })
+
+  it('marks a first-time household when is_returning is undefined', () => {
+    const p = party()
+    delete p.is_returning
+    render(<FamilyCard party={p as RosterPartyRow} onOpen={vi.fn()} />)
+    expect(screen.getByText('First-time')).toBeInTheDocument()
+    expect(screen.queryByText('Returning')).not.toBeInTheDocument()
+  })
+
   it('says the fit is unverified rather than judging against an unconfirmed cabin', () => {
     // `has_power: false` on an unconfirmed row means "nobody has said". 0 of
     // 93 units are confirmed today, so this is the normal verdict.

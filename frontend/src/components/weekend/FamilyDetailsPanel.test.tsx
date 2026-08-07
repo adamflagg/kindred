@@ -219,6 +219,27 @@ describe('FamilyDetailsPanel — household identity', () => {
     expect(screen.getByText(/Friday 6pm/)).toBeInTheDocument()
     expect(screen.getByText('Returning')).toBeInTheDocument()
   })
+
+  it('marks a first-time family when is_returning is false', () => {
+    render(
+      <FamilyDetailsPanel party={party({ is_returning: false })} year={2026} onClose={vi.fn()} />,
+      {
+        wrapper,
+      }
+    )
+    expect(screen.getByText('First-time')).toBeInTheDocument()
+    expect(screen.queryByText('Returning')).not.toBeInTheDocument()
+  })
+
+  it('marks a first-time family when is_returning is undefined', () => {
+    const p = party()
+    delete p.is_returning
+    render(<FamilyDetailsPanel party={p as RosterPartyRow} year={2026} onClose={vi.fn()} />, {
+      wrapper,
+    })
+    expect(screen.getByText('First-time')).toBeInTheDocument()
+    expect(screen.queryByText('Returning')).not.toBeInTheDocument()
+  })
 })
 
 describe('FamilyDetailsPanel — current placement', () => {

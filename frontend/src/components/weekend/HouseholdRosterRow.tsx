@@ -11,7 +11,7 @@
  * no rails at all, so the design tells the truth about the weekend's state
  * instead of decorating every row equally.
  */
-import { Clock, Repeat } from 'lucide-react'
+import { Clock, Repeat, Star } from 'lucide-react'
 import { Fragment } from 'react'
 
 import type {
@@ -129,6 +129,15 @@ export function HouseholdRosterRow({ party, showRequests, unit, onOpen }: Househ
               >
                 <Repeat className="h-3 w-3 flex-shrink-0" />
                 Returning
+              </span>
+            )}
+            {party.is_returning !== true && (
+              <span
+                title="First time at camp"
+                className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-700 dark:bg-amber-900/50 dark:text-amber-300"
+              >
+                <Star className="h-3 w-3 flex-shrink-0" />
+                First-time
               </span>
             )}
           </span>

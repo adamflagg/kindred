@@ -227,6 +227,24 @@ describe('HouseholdRosterTable', () => {
     expect(screen.getByText('Returning')).toBeInTheDocument()
   })
 
+  it('marks a first-time family when is_returning is false', () => {
+    render(<HouseholdRosterTable year={2026} parties={[party({ is_returning: false })]} />, {
+      wrapper,
+    })
+    expect(screen.getByText('First-time')).toBeInTheDocument()
+    expect(screen.queryByText('Returning')).not.toBeInTheDocument()
+  })
+
+  it('marks a first-time family when is_returning is undefined', () => {
+    const p = party()
+    delete p.is_returning
+    render(<HouseholdRosterTable year={2026} parties={[p as RosterPartyRow]} />, {
+      wrapper,
+    })
+    expect(screen.getByText('First-time')).toBeInTheDocument()
+    expect(screen.queryByText('Returning')).not.toBeInTheDocument()
+  })
+
   it('shows the arrival ETA when the family gave one', () => {
     render(
       <HouseholdRosterTable year={2026} parties={[party({ arrival_eta: 'Friday around 4pm' })]} />,

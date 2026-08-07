@@ -18,7 +18,7 @@
  * **One component, both surfaces.** The board and the map both open this same
  * slide-in overlay — there is no second implementation to keep in sync.
  */
-import { Clock, Home, Repeat, Users, X } from 'lucide-react'
+import { Clock, Home, Repeat, Star, Users, X } from 'lucide-react'
 import { useCallback, useEffect, useState } from 'react'
 
 import type {
@@ -183,6 +183,12 @@ export function FamilyDetailsPanel({
             <span className="text-forest-700 dark:text-forest-300 inline-flex items-center gap-1 font-semibold">
               <Repeat className="h-3.5 w-3.5" aria-hidden="true" />
               Returning
+            </span>
+          )}
+          {party.is_returning !== true && (
+            <span className="inline-flex items-center gap-1 font-semibold text-amber-700 dark:text-amber-300">
+              <Star className="h-3.5 w-3.5" aria-hidden="true" />
+              First-time
             </span>
           )}
         </div>

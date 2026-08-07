@@ -28,7 +28,7 @@
  * chips the fit check actually judges.
  */
 import { useDraggable } from '@dnd-kit/core'
-import { Repeat, Users } from 'lucide-react'
+import { Repeat, Star, Users } from 'lucide-react'
 import { Fragment } from 'react'
 
 import type { LodgingUnitRow, RosterPartyRow } from '../../types/lodging'
@@ -178,6 +178,12 @@ function FamilyCardBody({
           <span className="text-forest-700 dark:text-forest-300 inline-flex items-center gap-0.5 text-xs font-semibold">
             <Repeat className="h-2.5 w-2.5 flex-shrink-0" aria-hidden="true" />
             Returning
+          </span>
+        )}
+        {party.is_returning !== true && (
+          <span className="inline-flex items-center gap-0.5 text-xs font-semibold text-amber-700 dark:text-amber-300">
+            <Star className="h-2.5 w-2.5 flex-shrink-0" aria-hidden="true" />
+            First-time
           </span>
         )}
       </span>
