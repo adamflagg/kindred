@@ -226,10 +226,16 @@ export default function Users() {
                 // everyone else, a manageable row is a real <button> (native
                 // Enter/Space) and a non-manageable row gets no button at all —
                 // same rule GeoDetailList's rows follow (kindred#2063).
+                // `span`, not `div`, throughout rowContent — it renders inside
+                // a <button> for manageable rows (native <button> permits
+                // phrasing content only; same reasoning as CamperCard, which
+                // established this pattern). `block`/`flex` classes are kept
+                // explicit rather than relying on flex-item blockification,
+                // matching CamperCard's own div→span conversions.
                 const rowContent = (
                   <>
                     {/* Avatar */}
-                    <div
+                    <span
                       className={`flex h-10 w-10 flex-shrink-0 items-center justify-center overflow-hidden rounded-full sm:h-11 sm:w-11 ${
                         avatar ? '' : getAvatarColor(email)
                       }`}
@@ -245,11 +251,11 @@ export default function Users() {
                           {(name || email).charAt(0).toUpperCase()}
                         </span>
                       )}
-                    </div>
+                    </span>
 
                     {/* User Info */}
-                    <div className="min-w-0 flex-1">
-                      <div className="flex items-center gap-2">
+                    <span className="block min-w-0 flex-1">
+                      <span className="flex items-center gap-2">
                         <span className="text-foreground truncate text-sm font-medium sm:text-base">
                           {name || email.split('@')[0]}
                         </span>
@@ -266,30 +272,30 @@ export default function Users() {
                             {role.name}
                           </span>
                         ))}
-                      </div>
-                      <div className="text-muted-foreground flex items-center gap-1.5 text-xs sm:text-sm">
+                      </span>
+                      <span className="text-muted-foreground flex items-center gap-1.5 text-xs sm:text-sm">
                         <Mail className="h-3 w-3 flex-shrink-0 sm:h-3.5 sm:w-3.5" />
                         <span className="truncate">{email}</span>
-                      </div>
-                    </div>
+                      </span>
+                    </span>
 
                     {/* Join Date */}
                     {created && (
-                      <div className="text-muted-foreground hidden w-36 flex-shrink-0 flex-col items-start text-sm sm:flex">
+                      <span className="text-muted-foreground hidden w-36 flex-shrink-0 flex-col items-start text-sm sm:flex">
                         <span className="text-[10px] tracking-wider uppercase opacity-60">
                           Joined
                         </span>
-                        <div className="flex items-center gap-1.5">
+                        <span className="flex items-center gap-1.5">
                           <Calendar className="h-3.5 w-3.5" />
                           <span>{formatDistanceToNow(new Date(created), { addSuffix: true })}</span>
-                        </div>
-                      </div>
+                        </span>
+                      </span>
                     )}
 
                     {/* Last Login — admin/user-manager only */}
                     {canSeeLastLogin &&
                       (lastLogin ? (
-                        <div
+                        <span
                           data-testid={`last-login-${user.id}`}
                           className="text-muted-foreground hidden w-36 flex-shrink-0 flex-col items-start text-sm sm:flex"
                           title={new Date(lastLogin).toLocaleString()}
@@ -297,26 +303,26 @@ export default function Users() {
                           <span className="text-[10px] tracking-wider uppercase opacity-60">
                             Last login
                           </span>
-                          <div className="flex items-center gap-1.5">
+                          <span className="flex items-center gap-1.5">
                             <LogIn className="h-3.5 w-3.5" />
                             <span>
                               {formatDistanceToNow(new Date(lastLogin), { addSuffix: true })}
                             </span>
-                          </div>
-                        </div>
+                          </span>
+                        </span>
                       ) : (
-                        <div
+                        <span
                           data-testid={`last-login-${user.id}`}
                           className="text-muted-foreground/50 hidden w-36 flex-shrink-0 flex-col items-start text-sm sm:flex"
                         >
                           <span className="text-[10px] tracking-wider uppercase opacity-60">
                             Last login
                           </span>
-                          <div className="flex items-center gap-1.5">
+                          <span className="flex items-center gap-1.5">
                             <LogIn className="h-3.5 w-3.5" />
                             <span>Never</span>
-                          </div>
-                        </div>
+                          </span>
+                        </span>
                       ))}
                   </>
                 )

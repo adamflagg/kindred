@@ -292,14 +292,16 @@ export default function FriendGroups({ campers, constraints, bunks = [] }: Frien
               selectedGroup === group.id ? 'ring-primary ring-2' : ''
             }`}
           >
-            {/* Group Header */}
-            <div className="mb-3 flex items-center justify-between">
-              <div className="flex items-center gap-2">
+            {/* Group Header. `span`, not `div` — this is button content, and a
+                native <button> permits phrasing content only (see CamperCard,
+                which established the pattern this card follows). */}
+            <span className="mb-3 flex items-center justify-between">
+              <span className="flex items-center gap-2">
                 {getGroupTypeIcon(group)}
                 <span className="font-semibold">
                   {group.size === 1 ? 'Individual' : `Group of ${group.size}`}
                 </span>
-              </div>
+              </span>
               {group.hasError && (
                 <span className="rounded-full bg-red-100 px-2 py-1 text-xs text-red-800">
                   Error
@@ -315,37 +317,39 @@ export default function FriendGroups({ campers, constraints, bunks = [] }: Frien
                   Complete
                 </span>
               )}
-            </div>
+            </span>
 
             {/* Campers List */}
-            <div className="space-y-2">
+            <span className="block space-y-2">
               {group.campers.slice(0, selectedGroup === group.id ? undefined : 3).map((camper) => (
-                <div key={camper.id} className="flex items-center justify-between text-sm">
+                <span key={camper.id} className="flex items-center justify-between text-sm">
                   <span className="font-medium">{camper.name}</span>
                   <span className="text-muted-foreground">
                     {camper.assigned_bunk
                       ? (bunkIdToName.get(camper.assigned_bunk) ?? camper.assigned_bunk)
                       : 'Unassigned'}
                   </span>
-                </div>
+                </span>
               ))}
               {!selectedGroup && group.campers.length > 3 && (
-                <div className="text-muted-foreground text-sm">
+                <span className="text-muted-foreground block text-sm">
                   +{group.campers.length - 3} more...
-                </div>
+                </span>
               )}
-            </div>
+            </span>
 
             {/* Bunks Summary */}
             {group.bunks.size > 1 && (
-              <div className="text-muted-foreground mt-3 border-t pt-3 text-xs">
+              <span className="text-muted-foreground mt-3 block border-t pt-3 text-xs">
                 Spread across {group.bunks.size} bunks
-              </div>
+              </span>
             )}
 
             {/* Error Message */}
             {group.hasError && group.errorMessage && (
-              <div className="mt-3 border-t pt-3 text-xs text-red-600">⚠️ {group.errorMessage}</div>
+              <span className="mt-3 block border-t pt-3 text-xs text-red-600">
+                ⚠️ {group.errorMessage}
+              </span>
             )}
           </button>
         ))}
