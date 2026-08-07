@@ -230,6 +230,11 @@ export default function ManualResolutionModal({
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               className="bg-background text-foreground focus:ring-primary focus:border-primary w-full rounded-xl border-2 py-2.5 pr-4 pl-10 transition-all focus:ring-2"
+              // Deliberate: this modal's entire purpose is "search for a camper to
+              // resolve", opened by an explicit staff click; focusing the search box
+              // on open lets them start typing immediately instead of needing an
+              // extra click.
+              // eslint-disable-next-line jsx-a11y/no-autofocus
               autoFocus
             />
           </div>

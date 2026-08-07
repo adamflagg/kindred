@@ -1,6 +1,6 @@
 import { memo, useCallback } from 'react'
 import clsx from 'clsx'
-import { CheckCircle, CheckCheck, XCircle, Scissors } from 'lucide-react'
+import { CheckCircle, CheckCheck, ChevronDown, ChevronRight, XCircle, Scissors } from 'lucide-react'
 import type { BunkRequestsResponse, PersonsResponse } from '../types/pocketbase-types'
 import EditableRequestType from './EditableRequestType'
 import EditableRequestTarget from './EditableRequestTarget'
@@ -19,6 +19,7 @@ export interface RequestRowDesktopProps {
   requester: PersonsResponse | undefined
   requestee: PersonsResponse | undefined
   isSelected: boolean
+  isExpanded: boolean
   sessionId: number
   year: number
   sessionName?: string | undefined
@@ -33,6 +34,7 @@ export interface RequestRowDesktopProps {
     action: 'approve' | 'decline',
     id: string
   ) => void
+  onExpandRow: (id: string) => void
 }
 
 function getConfidenceColor(score: number) {
@@ -84,6 +86,7 @@ function RequestRowDesktop({
   requester,
   requestee,
   isSelected,
+  isExpanded,
   sessionId,
   year,
   sessionName,
@@ -94,12 +97,17 @@ function RequestRowDesktop({
   onValidatedUpdate,
   onSplit,
   onConfirmAction,
+  onExpandRow,
 }: RequestRowDesktopProps) {
   // Stable per-row callbacks so the memoized editable children skip re-renders
   // when the row's identity is unchanged.
   const handleToggleSelection = useCallback(() => {
     onToggleSelection(request.id)
   }, [onToggleSelection, request.id])
+
+  const handleExpandRow = useCallback(() => {
+    onExpandRow(request.id)
+  }, [onExpandRow, request.id])
 
   const handleSelectRequester = useCallback(
     (e: React.MouseEvent) => {
@@ -150,16 +158,31 @@ function RequestRowDesktop({
 
   return (
     <div className="request-table-grid">
-      <div
-        className="flex items-center justify-center px-3 py-3"
-        onClick={(e) => e.stopPropagation()}
-      >
+      <div className="flex items-center justify-center gap-1 px-3 py-3">
         <input
           type="checkbox"
           checked={isSelected}
           onChange={handleToggleSelection}
           className="rounded"
         />
+        {/* The row's own click-to-expand affordance (a real, native button — see
+            kindred#2094/#2095 house style) rather than a click handler on the
+            surrounding row div. Living in the "checkbox+expand" column matches
+            this grid's own column comment in index.css. */}
+        <button
+          type="button"
+          data-testid="request-row-expand-button"
+          onClick={handleExpandRow}
+          aria-expanded={isExpanded}
+          aria-label={isExpanded ? 'Collapse request details' : 'Expand request details'}
+          className="text-muted-foreground hover:text-foreground hover:bg-muted rounded p-0.5 transition-colors"
+        >
+          {isExpanded ? (
+            <ChevronDown className="h-3.5 w-3.5" />
+          ) : (
+            <ChevronRight className="h-3.5 w-3.5" />
+          )}
+        </button>
       </div>
       <div className="flex min-w-0 items-center gap-1.5 px-4 py-3">
         <button
@@ -178,7 +201,7 @@ function RequestRowDesktop({
         </button>
         {request.is_reciprocal && <span className={MUTUAL_BADGE_CLASSES}>mutual</span>}
       </div>
-      <div className="flex items-center px-4 py-3" onClick={(e) => e.stopPropagation()}>
+      <div className="flex items-center px-4 py-3">
         <EditableRequestTarget
           requestType={request.request_type}
           currentPersonId={request.requestee_id}
@@ -200,7 +223,7 @@ function RequestRowDesktop({
           </span>
         )}
       </div>
-      <div className="flex items-center px-4 py-3" onClick={(e) => e.stopPropagation()}>
+      <div className="flex items-center px-4 py-3">
         <EditableRequestType value={request.request_type} onChange={handleTypeChange} />
       </div>
       <div className="flex items-center justify-center px-4 py-3">
@@ -225,7 +248,7 @@ function RequestRowDesktop({
           </span>
         )}
       </div>
-      <div className="flex items-center justify-end px-4 py-3" onClick={(e) => e.stopPropagation()}>
+      <div className="flex items-center justify-end px-4 py-3">
         <div className="flex min-w-[100px] items-center justify-end gap-1">
           {hasMultipleSources && (
             <button

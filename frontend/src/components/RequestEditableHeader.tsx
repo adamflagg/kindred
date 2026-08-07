@@ -27,7 +27,7 @@ export function RequestEditableHeader({
 }: RequestEditableHeaderProps) {
   return (
     <div className="flex flex-wrap items-center gap-2 text-sm">
-      <div onClick={(e) => e.stopPropagation()}>
+      <div>
         <EditableRequestType
           value={request.request_type}
           onChange={(newType) =>
@@ -36,7 +36,7 @@ export function RequestEditableHeader({
         />
       </div>
       <span className="text-muted-foreground">→</span>
-      <div onClick={(e) => e.stopPropagation()}>
+      <div>
         <EditableRequestTarget
           requestType={request.request_type}
           currentPersonId={request.requestee_id}

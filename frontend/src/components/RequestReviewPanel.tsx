@@ -117,10 +117,38 @@ export default function RequestReviewPanel({
       bulkConfirmPreviousFocusRef.current = document.activeElement as HTMLElement | null
       const buttons = bulkConfirmRef.current?.querySelectorAll<HTMLElement>('button')
       buttons?.[buttons.length - 1]?.focus()
-    } else {
-      bulkConfirmPreviousFocusRef.current?.focus()
-      bulkConfirmPreviousFocusRef.current = null
+
+      // Escape-to-close + Tab focus trap, as a document-level listener rather
+      // than an inline onKeyDown on the role="dialog" element — matching
+      // ui/Modal.tsx's own pattern. jsx-a11y/no-noninteractive-element-interactions
+      // flags an onKeyDown JSX prop on a non-interactive role like "dialog";
+      // an imperative listener sidesteps that while keeping identical behavior
+      // (keydown bubbles from any focused button inside the dialog either way).
+      const handleKeyDown = (e: KeyboardEvent) => {
+        if (e.key === 'Escape') {
+          setBulkConfirm(null)
+          return
+        }
+        if (e.key === 'Tab') {
+          const dialogButtons = Array.from(
+            bulkConfirmRef.current?.querySelectorAll<HTMLElement>('button') ?? []
+          )
+          if (dialogButtons.length === 0) return
+          e.preventDefault()
+          const idx = dialogButtons.indexOf(document.activeElement as HTMLElement)
+          if (e.shiftKey) {
+            dialogButtons[idx <= 0 ? dialogButtons.length - 1 : idx - 1]?.focus()
+          } else {
+            dialogButtons[idx >= dialogButtons.length - 1 ? 0 : idx + 1]?.focus()
+          }
+        }
+      }
+      document.addEventListener('keydown', handleKeyDown)
+      return () => document.removeEventListener('keydown', handleKeyDown)
     }
+    bulkConfirmPreviousFocusRef.current?.focus()
+    bulkConfirmPreviousFocusRef.current = null
+    return undefined
   }, [bulkConfirm])
 
   const openConfirmPopover = useCallback(
@@ -977,7 +1005,6 @@ export default function RequestReviewPanel({
                           : [...prev.statuses, status],
                       }))
                     }}
-                    role="button"
                     aria-pressed={isSelected}
                     className={clsx(
                       'rounded-full border px-3 py-1 text-xs font-medium capitalize transition-all',
@@ -1009,7 +1036,6 @@ export default function RequestReviewPanel({
                           : [...prev.requestTypes, type],
                       }))
                     }}
-                    role="button"
                     aria-pressed={isSelected}
                     className={clsx(
                       'rounded-full border px-3 py-1 text-xs font-medium transition-all',
@@ -1148,18 +1174,18 @@ export default function RequestReviewPanel({
                         key={request.id}
                         data-request-row-id={request.id}
                         className={clsx(
-                          'cursor-pointer border-b transition-colors',
+                          'border-b transition-colors',
                           selectedRequests.has(request.id)
                             ? 'bg-primary/5 hover:bg-primary/10'
                             : 'hover:bg-muted/50'
                         )}
-                        onClick={() => toggleRowExpansion(request.id, request)}
                       >
                         <RequestRowDesktop
                           request={request}
                           requester={requester}
                           requestee={requestee}
                           isSelected={selectedRequests.has(request.id)}
+                          isExpanded={isExpanded}
                           sessionId={sessionId}
                           year={year}
                           sessionName={sessionName}
@@ -1170,12 +1196,12 @@ export default function RequestReviewPanel({
                           onValidatedUpdate={handleValidatedUpdate}
                           onSplit={handleSplitRow}
                           onConfirmAction={openConfirmPopover}
+                          onExpandRow={() => toggleRowExpansion(request.id, request)}
                         />
                         {isExpanded && (
                           <div
                             className="bg-parchment-50/50 dark:bg-forest-950/20 border-border border-t px-4 py-4"
                             data-testid="request-row-expanded-content"
-                            onClick={(e) => e.stopPropagation()}
                           >
                             <div className="ml-10 grid max-w-6xl grid-cols-1 gap-6 lg:grid-cols-2">
                               <div className="max-w-3xl space-y-3">
@@ -1606,32 +1632,17 @@ export default function RequestReviewPanel({
 
       {bulkConfirm && (
         <div className="fixed inset-0 z-50 flex items-center justify-center">
-          <div className="absolute inset-0 bg-black/50" onClick={() => setBulkConfirm(null)} />
+          <div
+            className="absolute inset-0 bg-black/50"
+            onClick={() => setBulkConfirm(null)}
+            aria-hidden="true"
+          />
           <div
             ref={bulkConfirmRef}
             role="dialog"
             aria-modal="true"
             aria-labelledby="bulk-confirm-label"
             className="bg-card border-border relative mx-4 w-full max-w-sm rounded-xl border p-6 shadow-xl"
-            onKeyDown={(e) => {
-              if (e.key === 'Escape') {
-                setBulkConfirm(null)
-                return
-              }
-              if (e.key === 'Tab') {
-                const buttons = Array.from(
-                  bulkConfirmRef.current?.querySelectorAll<HTMLElement>('button') ?? []
-                )
-                if (buttons.length === 0) return
-                e.preventDefault()
-                const idx = buttons.indexOf(document.activeElement as HTMLElement)
-                if (e.shiftKey) {
-                  buttons[idx <= 0 ? buttons.length - 1 : idx - 1]?.focus()
-                } else {
-                  buttons[idx >= buttons.length - 1 ? 0 : idx + 1]?.focus()
-                }
-              }
-            }}
           >
             <p id="bulk-confirm-label" className="text-foreground mb-5 text-base font-medium">
               {bulkConfirm.action === 'approve'
