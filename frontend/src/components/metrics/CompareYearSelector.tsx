@@ -48,7 +48,12 @@ export function CompareYearSelector({
       <div className="flex items-center gap-2 text-sm">
         <span className="text-foreground font-semibold">{primaryYear}</span>
         <span className="text-muted-foreground">vs</span>
+        {/* This select replaces the "Compare to..." button the user just
+            activated, so focus should move here the same way it would into
+            a newly opened menu; without it a keyboard user who just pressed
+            the button lands nowhere. */}
         <select
+          // eslint-disable-next-line jsx-a11y/no-autofocus -- deliberate, see comment above
           autoFocus
           value=""
           onChange={(e) => {

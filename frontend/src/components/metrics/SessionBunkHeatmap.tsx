@@ -106,9 +106,15 @@ function BunkHeatmapTable({ title, sessions, bunks, lookup, bunkStaff }: BunkHea
                   const hasStaff = staffMap?.has(`${session}|${bunk}`)
                   if (!item) {
                     return (
+                      // No explicit role: <td> already has an implicit
+                      // "cell" role in a plain (non-grid) table — restating
+                      // it as role="cell" is what trips
+                      // no-interactive-element-to-noninteractive-role, since
+                      // aria-query's <td> schema is ambiguous between
+                      // "cell" and "gridcell". getByRole('cell') still
+                      // matches via the implicit role.
                       <td
                         key={bunk}
-                        role="cell"
                         className="bg-muted/30 text-muted-foreground border-border/50 min-w-[2.5rem] border px-2 py-2 text-center"
                       >
                         —
@@ -122,9 +128,11 @@ function BunkHeatmapTable({ title, sessions, bunks, lookup, bunkStaff }: BunkHea
                     hasStaff ? 'cursor-help' : 'cursor-default',
                   ].join(' ')
                   return (
+                    // See the empty-cell branch above: role="cell" is
+                    // redundant on a <td> and trips the interactive-role
+                    // check via aria-query's ambiguous gridcell/cell schema.
                     <td
                       key={bunk}
-                      role="cell"
                       className={cellClass}
                       onMouseEnter={(e) => handleMouseEnter(session, bunk, e)}
                       onMouseMove={handleMouseMove}

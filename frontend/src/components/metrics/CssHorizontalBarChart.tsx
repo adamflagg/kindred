@@ -96,51 +96,75 @@ export function CssHorizontalBarChart({
             handleMouseLeave()
           }}
         >
-          {data.map((item, index) => (
-            <div
-              key={index}
-              className={`flex items-center ${isDense ? 'gap-2' : 'gap-3'} rounded ${isClickable ? 'cursor-pointer' : ''}`}
-              onClick={() => isClickable && handleClick(item)}
-              onMouseEnter={() => setHoveredIndex(index)}
-              onMouseMove={(e) => handleMouseMove(e, item)}
-            >
-              {/* Label */}
-              <span
-                className="text-muted-foreground shrink-0 truncate text-right text-sm"
-                style={{ width: labelWidth }}
-              >
-                {item.name}
-              </span>
+          {data.map((item, index) => {
+            const rowClass = `flex items-center ${isDense ? 'gap-2' : 'gap-3'} rounded ${isClickable ? 'cursor-pointer' : ''}`
+            const rowContent = (
+              <>
+                {/* Label */}
+                <span
+                  className="text-muted-foreground shrink-0 truncate text-right text-sm"
+                  style={{ width: labelWidth }}
+                >
+                  {item.name}
+                </span>
 
-              {/* Bar track */}
+                {/* Bar track */}
+                <div
+                  className="relative flex-1 overflow-hidden rounded"
+                  style={{ height: barHeight }}
+                >
+                  {/* Background track */}
+                  <div
+                    className={`absolute inset-0 rounded transition-colors ${hoveredIndex === index ? 'bg-foreground/20' : 'bg-muted'}`}
+                  />
+                  {/* Bar fill */}
+                  <div
+                    className="relative h-full rounded transition-all duration-300"
+                    style={{
+                      width: `${(item.value / axisMax) * 100}%`,
+                      backgroundColor: color,
+                      minWidth: item.value > 0 ? '4px' : '0px',
+                    }}
+                  />
+                </div>
+
+                {/* Value label */}
+                <span
+                  className="text-muted-foreground shrink-0 text-center text-sm tabular-nums"
+                  style={{ width: valueWidth }}
+                >
+                  {item.value}
+                </span>
+              </>
+            )
+
+            // A clickable row becomes a real <button> so it's keyboard-
+            // operable and gets a discoverable accessible name — bolting
+            // role="button"/tabIndex/onKeyDown onto a <div> is exactly what
+            // this house style avoids (kindred#2094). Non-clickable rows
+            // stay plain <div>s.
+            return isClickable ? (
+              <button
+                key={index}
+                type="button"
+                className={`${rowClass} w-full text-left`}
+                onClick={() => handleClick(item)}
+                onMouseEnter={() => setHoveredIndex(index)}
+                onMouseMove={(e) => handleMouseMove(e, item)}
+              >
+                {rowContent}
+              </button>
+            ) : (
               <div
-                className="relative flex-1 overflow-hidden rounded"
-                style={{ height: barHeight }}
+                key={index}
+                className={rowClass}
+                onMouseEnter={() => setHoveredIndex(index)}
+                onMouseMove={(e) => handleMouseMove(e, item)}
               >
-                {/* Background track */}
-                <div
-                  className={`absolute inset-0 rounded transition-colors ${hoveredIndex === index ? 'bg-foreground/20' : 'bg-muted'}`}
-                />
-                {/* Bar fill */}
-                <div
-                  className="relative h-full rounded transition-all duration-300"
-                  style={{
-                    width: `${(item.value / axisMax) * 100}%`,
-                    backgroundColor: color,
-                    minWidth: item.value > 0 ? '4px' : '0px',
-                  }}
-                />
+                {rowContent}
               </div>
-
-              {/* Value label */}
-              <span
-                className="text-muted-foreground shrink-0 text-center text-sm tabular-nums"
-                style={{ width: valueWidth }}
-              >
-                {item.value}
-              </span>
-            </div>
-          ))}
+            )
+          })}
         </div>
 
         {/* X-axis line + tick labels */}

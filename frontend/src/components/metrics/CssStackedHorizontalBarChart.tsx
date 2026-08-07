@@ -94,14 +94,9 @@ export function CssStackedHorizontalBarChart({
           }}
         >
           {data.map((item, index) => {
-            return (
-              <div
-                key={index}
-                className={`flex items-center ${isDense ? 'gap-2' : 'gap-3'} rounded ${isClickable ? 'cursor-pointer' : ''}`}
-                onClick={() => onBarClick?.(item)}
-                onMouseEnter={() => setHoveredIndex(index)}
-                onMouseMove={(e) => handleMouseMove(e, item)}
-              >
+            const rowClass = `flex items-center ${isDense ? 'gap-2' : 'gap-3'} rounded ${isClickable ? 'cursor-pointer' : ''}`
+            const rowContent = (
+              <>
                 {/* Label */}
                 <span
                   className="text-muted-foreground shrink-0 truncate text-right text-sm"
@@ -153,6 +148,33 @@ export function CssStackedHorizontalBarChart({
                 >
                   {item.total}
                 </span>
+              </>
+            )
+
+            // A clickable row becomes a real <button> so it's keyboard-
+            // operable and gets a discoverable accessible name — bolting
+            // role="button"/tabIndex/onKeyDown onto a <div> is exactly what
+            // this house style avoids (kindred#2094). Non-clickable rows
+            // stay plain <div>s.
+            return isClickable ? (
+              <button
+                key={index}
+                type="button"
+                className={`${rowClass} w-full text-left`}
+                onClick={() => onBarClick(item)}
+                onMouseEnter={() => setHoveredIndex(index)}
+                onMouseMove={(e) => handleMouseMove(e, item)}
+              >
+                {rowContent}
+              </button>
+            ) : (
+              <div
+                key={index}
+                className={rowClass}
+                onMouseEnter={() => setHoveredIndex(index)}
+                onMouseMove={(e) => handleMouseMove(e, item)}
+              >
+                {rowContent}
               </div>
             )
           })}
