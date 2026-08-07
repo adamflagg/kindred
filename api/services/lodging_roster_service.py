@@ -853,7 +853,7 @@ class LodgingRosterService:
                             person_cm_id=_i(child, "cm_id"),
                             display_name=_person_display_name(child),
                             # persons.age is CampMinder's yy.mm as a REAL (kindred#2088):
-                            # 0.06 is a real 1-month-old, not a rounding artifact, so this
+                            # 0.06 is a real 6-month-old, not a rounding artifact, so this
                             # must read the raw float, not _i()'s truncated int. `or None`
                             # is still deliberate here -- age == 0.0 is the UNKNOWN-AGE
                             # population (no birthdate on file), not a newborn.
