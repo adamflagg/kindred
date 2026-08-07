@@ -86,6 +86,10 @@ For each issue, decide which path it takes:
 
 Always offer the user the choice for borderline cases.
 
+**The invariant: an open issue in the feedback repo means the public copy is lossy.** Nothing else. That is what makes `--state open` on the feedback repo a usable intake queue, and it is what Step 1b reconciles.
+
+So don't "improve" this by leaving transfers open too. It's a tempting idea — keep everything open and linked so triage can always reach the private context — but it buys nothing and costs the signal. Closing a GitHub issue doesn't delete it, and the footer from Step 7 already makes the private original reachable, so the context is available either way. Leaving transfers open instead turns Step 1a into a filter over every issue ever transferred, gives Step 1b an unbounded sweep, and destroys the one bit of state the open/closed flag was carrying. There's a safety argument too: when every public issue routinely drags its private twin into an agent's context during triage, real names are in context constantly and only discipline keeps them out of a public body. Opt-in per issue is the safer default.
+
 ## Step 3: Anonymize each issue
 
 Strip the following from the body:
@@ -124,10 +128,13 @@ Step 1's sort fixed.
 
 For each approved issue, create in the target repo with appropriate labels.
 
-**Transfer mode** body footer:
+**Transfer mode** body footer — name what is behind the link, don't just leave a link:
 ```
-*Source: {repo}-feedback#{N}*
+*Reported via {repo}-feedback#{N} — the private original, which holds the reporter, the page it was filed from, and the app version.*
 ```
+Add `, the screenshot` to that list when the feedback issue has one.
+
+**Why the wording, and don't trim it back.** A bare `*Source: …*` line reads as provenance, so no later reader follows it. But the public issue is a strict *subset* of the private one: closing a GitHub issue doesn't delete it, and the private original keeps the reporter identity (who asked changes how a request is prioritised), the exact page URL, the app version that dates the report, and any screenshot that couldn't travel because the feedback repo is private. That context stays reachable forever — but only if the footer says it's there. The `triage-it` skill's step 4a depends on this line to know a twin exists and is worth pulling.
 
 **Placeholder mode** body must:
 - Describe the bug in generic terms only (no real names, IDs, schools, families)
@@ -137,7 +144,7 @@ For each approved issue, create in the target repo with appropriate labels.
 ```
 ---
 
-**Mirror:** {repo}-feedback#{N}
+**Mirror:** {repo}-feedback#{N} — the private original, which holds the reporter, the page it was filed from, the app version, the screenshot, and the detail withheld above.
 
 **Note to agents closing this issue:** also close the private mirror with:
 \`\`\`
@@ -145,7 +152,7 @@ gh issue close {N} --repo {owner}/{repo}-feedback --comment "Auto-closed via {ow
 \`\`\`
 ```
 
-Substitute `{N}` (private number), `{PUBLIC_N}` (public number after creation), `{owner}`, and `{repo}`.
+Substitute `{N}` (private number), `{PUBLIC_N}` (public number after creation), `{owner}`, and `{repo}`. Drop `the screenshot,` from the `Mirror:` line if the feedback issue has none.
 
 ## Step 8: Close or annotate originals
 
