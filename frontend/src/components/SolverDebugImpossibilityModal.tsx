@@ -1,5 +1,6 @@
 import { Suspense, useEffect, useMemo, useRef, useState } from 'react'
 import { Modal } from './ui/Modal'
+import { SortableColumnHeader } from './ui/SortableColumnHeader'
 import type { ImpossibilityReport, ImpossibilityReportItem } from '../services/solver'
 import { CamperNameButton } from './impossibility/CamperNameButton'
 import { BunkRequestProvider } from '../providers/BunkRequestProvider'
@@ -89,41 +90,6 @@ interface Props {
   report: ImpossibilityReport
   sessionCmId: number | null
   year: number
-}
-
-function SortableHeader({
-  column,
-  label,
-  sortCol,
-  sortDir,
-  onSort,
-  arrow,
-}: {
-  column: SortColumn
-  label: string
-  sortCol: SortColumn
-  sortDir: SortDir
-  onSort: (col: SortColumn) => void
-  arrow: (col: SortColumn) => string
-}) {
-  const ariaSort: 'ascending' | 'descending' | 'none' =
-    sortCol === column ? (sortDir === 'asc' ? 'ascending' : 'descending') : 'none'
-  return (
-    <th
-      aria-sort={ariaSort}
-      className="border-b border-stone-300 px-2 py-1 text-left font-semibold"
-    >
-      <button
-        type="button"
-        aria-label={`Sort by ${label.toLowerCase()}`}
-        onClick={() => onSort(column)}
-        className="-mx-2 -my-1 inline-block w-full cursor-pointer bg-transparent px-2 py-1 text-left font-semibold hover:bg-stone-200 focus:bg-stone-200 focus:outline-none"
-      >
-        {label}
-        {arrow(column)}
-      </button>
-    </th>
-  )
 }
 
 function BucketChip({ bucket }: { bucket: Bucket }) {
@@ -238,8 +204,6 @@ export default function SolverDebugImpossibilityModal({
       setSortDir('asc')
     }
   }
-  const arrow = (col: SortColumn) => (sortCol === col ? (sortDir === 'asc' ? ' ↑' : ' ↓') : '')
-
   const handleCopyJson = async () => {
     // Copy the full unfiltered report — the filter is a view, not a slice.
     const text = JSON.stringify(report, null, 2)
@@ -403,32 +367,41 @@ export default function SolverDebugImpossibilityModal({
                   <th className="border-b border-stone-300 px-2 py-1 text-left font-semibold">
                     Bucket
                   </th>
-                  <SortableHeader
-                    column="reason"
+                  <SortableColumnHeader
                     label="Reason"
-                    sortCol={sortCol}
-                    sortDir={sortDir}
-                    onSort={handleSort}
-                    arrow={arrow}
+                    direction={
+                      sortCol === 'reason' ? (sortDir === 'asc' ? 'ascending' : 'descending') : null
+                    }
+                    onSort={() => {
+                      handleSort('reason')
+                    }}
+                    className="border-b border-stone-300 px-2 py-1 text-left font-semibold"
+                    buttonClassName="-mx-2 -my-1 px-2 py-1 font-semibold hover:bg-stone-200 focus-visible:bg-stone-200 focus-visible:outline-none"
                   />
-                  <SortableHeader
-                    column="name"
+                  <SortableColumnHeader
                     label="Camper A"
-                    sortCol={sortCol}
-                    sortDir={sortDir}
-                    onSort={handleSort}
-                    arrow={arrow}
+                    direction={
+                      sortCol === 'name' ? (sortDir === 'asc' ? 'ascending' : 'descending') : null
+                    }
+                    onSort={() => {
+                      handleSort('name')
+                    }}
+                    className="border-b border-stone-300 px-2 py-1 text-left font-semibold"
+                    buttonClassName="-mx-2 -my-1 px-2 py-1 font-semibold hover:bg-stone-200 focus-visible:bg-stone-200 focus-visible:outline-none"
                   />
                   <th className="border-b border-stone-300 px-2 py-1 text-left font-semibold">
                     Camper B
                   </th>
-                  <SortableHeader
-                    column="type"
+                  <SortableColumnHeader
                     label="Type"
-                    sortCol={sortCol}
-                    sortDir={sortDir}
-                    onSort={handleSort}
-                    arrow={arrow}
+                    direction={
+                      sortCol === 'type' ? (sortDir === 'asc' ? 'ascending' : 'descending') : null
+                    }
+                    onSort={() => {
+                      handleSort('type')
+                    }}
+                    className="border-b border-stone-300 px-2 py-1 text-left font-semibold"
+                    buttonClassName="-mx-2 -my-1 px-2 py-1 font-semibold hover:bg-stone-200 focus-visible:bg-stone-200 focus-visible:outline-none"
                   />
                   <th className="border-b border-stone-300 px-2 py-1 text-left font-semibold">
                     Detail

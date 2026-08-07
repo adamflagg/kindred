@@ -22,6 +22,7 @@ import {
   getConfidenceClasses,
 } from '../../utils/dispositionColors'
 import { useVirtualTable } from '../../hooks/useVirtualTable'
+import { SortableColumnHeader } from '../ui/SortableColumnHeader'
 
 /** Fixed height for the virtualized scroll viewport. */
 const VIRTUAL_VIEWPORT_HEIGHT = 696
@@ -352,23 +353,16 @@ export function PipelineBatchList({
                 const isActive = sort?.field === col.field
                 const isDesc = isActive && sort.desc
                 return (
-                  <div
+                  <SortableColumnHeader
+                    as="div"
                     key={col.field}
-                    role="columnheader"
-                    tabIndex={0}
-                    aria-sort={isActive ? (sort?.desc ? 'descending' : 'ascending') : undefined}
-                    onClick={() => toggleSort(col.field)}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter' || e.key === ' ') {
-                        e.preventDefault()
-                        toggleSort(col.field)
-                      }
+                    label={col.label}
+                    direction={isActive ? (isDesc ? 'descending' : 'ascending') : null}
+                    onSort={() => {
+                      toggleSort(col.field)
                     }}
-                    className={`text-muted-foreground hover:text-foreground group focus-visible:ring-forest-500 cursor-pointer px-3 py-2 text-left text-xs font-medium select-none focus-visible:ring-2 focus-visible:outline-none focus-visible:ring-inset ${col.hiddenClass ?? ''}`}
-                  >
-                    <span className="inline-flex items-center gap-1">
-                      {col.label}
-                      {isActive ? (
+                    indicator={
+                      isActive ? (
                         isDesc ? (
                           <ArrowDown className="h-3 w-3" />
                         ) : (
@@ -376,9 +370,11 @@ export function PipelineBatchList({
                         )
                       ) : (
                         <ArrowUpDown className="h-3 w-3 opacity-0 group-hover:opacity-100" />
-                      )}
-                    </span>
-                  </div>
+                      )
+                    }
+                    className={`group ${col.hiddenClass ?? ''}`}
+                    buttonClassName="text-muted-foreground hover:text-foreground focus-visible:ring-forest-500 px-3 py-2 text-left text-xs font-medium select-none focus-visible:ring-2 focus-visible:outline-none focus-visible:ring-inset"
+                  />
                 )
               })}
             </div>

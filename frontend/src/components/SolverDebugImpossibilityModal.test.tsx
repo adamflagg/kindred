@@ -430,11 +430,29 @@ describe('SolverDebugImpossibilityModal — sortable headers preserved from main
         year={2026}
       />
     )
-    await user.click(screen.getByRole('button', { name: /sort by camper a/i }))
+    await user.click(screen.getByRole('button', { name: /camper a/i }))
     const camperHeader = screen
       .getAllByRole('columnheader')
       .find((h) => h.textContent?.includes('Camper A'))
     expect(camperHeader).toHaveAttribute('aria-sort', 'ascending')
+  })
+
+  it('omits aria-sort on an inactive column instead of announcing "none"', () => {
+    render(
+      <SolverDebugImpossibilityModal
+        isOpen
+        onClose={() => {}}
+        report={makeReport()}
+        sessionCmId={12}
+        year={2026}
+      />
+    )
+    // Default sort is by reason — Type is inactive and must carry no aria-sort
+    // attribute at all, not the previous SortableHeader's 'none'.
+    const typeHeader = screen
+      .getAllByRole('columnheader')
+      .find((h) => h.textContent?.includes('Type'))
+    expect(typeHeader).not.toHaveAttribute('aria-sort')
   })
 })
 
