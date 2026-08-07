@@ -171,7 +171,7 @@ class PartyChild(BaseModel):
 
     person_cm_id: int = 0
     display_name: str = ""
-    age: int | None = None
+    age: float | None = None
     grade: int | None = None
 
 

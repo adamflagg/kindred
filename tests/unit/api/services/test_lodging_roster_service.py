@@ -148,7 +148,7 @@ def _child(
     cm_id: int = 1000001,
     first: str = "Emma",
     last: str = "Johnson",
-    age: int = 9,
+    age: float = 9,
     grade: int = 4,
     household_pb_id: str = "hh_1",
 ) -> SimpleNamespace:
@@ -221,6 +221,69 @@ class TestFamilyCampParties:
         assert [a.display_name for a in party.adults] == ["Olivia Johnson", "Noah Johnson"]
         assert [c.display_name for c in party.children] == ["Emma Johnson"]
         assert party.party_size == 3
+
+    @pytest.mark.asyncio
+    async def test_fractional_age_survives_as_the_raw_float(self) -> None:
+        """kindred#2088: persons.age is CampMinder's yy.mm as a REAL --
+
+        7 years 4 months is literally 7.04. `int()` truncated an infant's
+        0.06 to 0 before `or None` ever saw it, so it rendered blank. The
+        fix is to stop truncating: the raw float must pass through whole.
+        """
+        repo = _repo(
+            fetch_session=FAMILY_SESSION,
+            fetch_households={"hh_1": _household()},
+            fetch_attendees_for_session=[_child(age=0.06)],
+        )
+        roster = await LodgingRosterService(repo).build_roster(2026, 1000001)
+
+        assert roster.parties[0].children[0].age == 0.06
+
+    @pytest.mark.asyncio
+    async def test_zero_age_is_unknown_not_a_newborn(self) -> None:
+        """age == 0.0 is the UNKNOWN-AGE population (no birthdate on file),
+
+        not a newborn -- `or None` deliberately collapses it to None. Do
+        NOT "fix" this into `is not None`; that would turn 18 unknown-age
+        rows into fake newborns.
+        """
+        repo = _repo(
+            fetch_session=FAMILY_SESSION,
+            fetch_households={"hh_1": _household()},
+            fetch_attendees_for_session=[_child(age=0.0)],
+        )
+        roster = await LodgingRosterService(repo).build_roster(2026, 1000001)
+
+        assert roster.parties[0].children[0].age is None
+
+    @pytest.mark.asyncio
+    async def test_children_sort_oldest_first_by_the_raw_float(self) -> None:
+        """1.11 (1 year 11 months) must sort above 1.02 (1 year 2 months).
+
+        Truncated to int they both round to 1 and the sort becomes a coin
+        flip on input order -- the sort key has to compare the float, not
+        the int() of it.
+        """
+        # Leo (1.02) is listed BEFORE Mia (1.11) deliberately: truncated to
+        # int they tie at 1, and a stable sort on the tied int key would
+        # leave Leo ahead of Mia -- the wrong order. Only comparing the raw
+        # float breaks the tie correctly.
+        repo = _repo(
+            fetch_session=FAMILY_SESSION,
+            fetch_households={"hh_1": _household()},
+            fetch_attendees_for_session=[
+                _child(cm_id=1000003, first="Leo", last="Nguyen", age=1.02),
+                _child(cm_id=1000002, first="Mia", last="Nguyen", age=1.11),
+                _child(cm_id=1000001, first="Ava", last="Nguyen", age=0.06),
+            ],
+        )
+        roster = await LodgingRosterService(repo).build_roster(2026, 1000001)
+
+        assert [c.display_name for c in roster.parties[0].children] == [
+            "Mia Nguyen",
+            "Leo Nguyen",
+            "Ava Nguyen",
+        ]
 
     @pytest.mark.asyncio
     async def test_returning_family_flag_from_prior_year_household(self) -> None:

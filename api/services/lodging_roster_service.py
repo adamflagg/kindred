@@ -829,7 +829,7 @@ class LodgingRosterService:
             registration = registrations.get(household_pb_id)
             adults = adults_by_household.get(household_pb_id, [])
             placement = placement_by_household.get(household_cm_id, _NO_PLACEMENT)
-            children_oldest_first = sorted(children, key=lambda c: -_i(c, "age"))
+            children_oldest_first = sorted(children, key=lambda c: -(_f(c, "age") or 0.0))
 
             parties.append(
                 RosterParty(
@@ -852,7 +852,12 @@ class LodgingRosterService:
                         PartyChild(
                             person_cm_id=_i(child, "cm_id"),
                             display_name=_person_display_name(child),
-                            age=_i(child, "age") or None,
+                            # persons.age is CampMinder's yy.mm as a REAL (kindred#2088):
+                            # 0.06 is a real 1-month-old, not a rounding artifact, so this
+                            # must read the raw float, not _i()'s truncated int. `or None`
+                            # is still deliberate here -- age == 0.0 is the UNKNOWN-AGE
+                            # population (no birthdate on file), not a newborn.
+                            age=_f(child, "age") or None,
                             grade=_i(child, "grade") or None,
                         )
                         for child in children_oldest_first
