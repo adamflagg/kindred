@@ -611,6 +611,100 @@ func (o *Orchestrator) runSingleSyncInternal(parentCtx context.Context, syncType
 	return runToken, nil
 }
 
+// RunSingleSyncWithService atomically checks that syncType is not already running and, if
+// free, marks it running and executes the given service instance in the background. Unlike
+// RunSingleSync, it never looks the service up from the orchestrator's registry — it runs
+// exactly the instance the caller passed in, and never registers it.
+//
+// This exists for handlers whose parameters (year, dry_run) are per-request: they build a
+// private instance — e.g. NewCamperHistorySync(app) — configured for just this request, and
+// hand it here instead of writing those fields onto the shared singleton returned by
+// GetService. That older pattern (see #1881) let DryRun stick on the singleton after a run
+// with nothing to reset it, and let two concurrent requests race on Year, because the
+// IsRunning check a handler did up front was never atomic with the field writes that followed
+// it. Here the "already running" check and the "mark running" write happen under a single
+// lock, so two concurrent callers for the same syncType can never both pass.
+//
+// Returns an error immediately, before starting anything, if syncType is already running.
+func (o *Orchestrator) RunSingleSyncWithService(parentCtx context.Context, syncType string, service Service) error {
+	o.mu.Lock()
+	if existing, exists := o.runningJobs[syncType]; exists && existing.Status == statusRunning {
+		o.mu.Unlock()
+		return fmt.Errorf("sync already in progress: %s", syncType)
+	}
+
+	status := &Status{
+		Type:      syncType,
+		Status:    statusRunning,
+		StartTime: time.Now(),
+		Summary:   Stats{},
+		Year:      o.currentSyncYear,
+		RunToken:  generateRunToken(),
+	}
+	o.runningJobs[syncType] = status
+	o.mu.Unlock()
+
+	// Run sync with panic recovery — mirrors runSingleSyncInternal's goroutine below, but
+	// against the caller-supplied `service` rather than a registry lookup.
+	go func() {
+		defer func() {
+			if r := recover(); r != nil {
+				slog.Error("Sync panicked", "syncType", syncType, "panic", r)
+				endTime := time.Now()
+				panicStatus := *status
+				panicStatus.Status = statusFailed
+				panicStatus.Error = fmt.Sprintf("panic: %v", r)
+				panicStatus.EndTime = &endTime
+
+				o.mu.Lock()
+				o.lastCompletedStatus[syncType] = &panicStatus
+				delete(o.runningJobs, syncType)
+				o.mu.Unlock()
+			}
+		}()
+
+		// Independent timeout, not derived from parentCtx — see the identical comment in
+		// runSingleSyncInternal for why: a handler's own deferred cancel() must never cascade
+		// into this goroutine once the handler has responded.
+		timeout := 2 * time.Hour
+		if parentDeadline, hasDeadline := parentCtx.Deadline(); hasDeadline {
+			timeout = max(timeout, time.Until(parentDeadline))
+		}
+		syncCtx, cancel := context.WithTimeout(context.Background(), timeout)
+		defer cancel()
+
+		err := service.Sync(syncCtx)
+
+		// Build completed status as a copy — never mutate the shared pointer
+		endTime := time.Now()
+		completed := *status
+		completed.EndTime = &endTime
+
+		duration := int(endTime.Sub(completed.StartTime).Seconds())
+		stats := service.GetStats()
+		stats.Duration = duration
+		completed.Summary = stats
+
+		if err != nil {
+			completed.Status = statusFailed
+			completed.Error = err.Error()
+			slog.Error("Sync failed", "syncType", syncType, "error", err)
+		} else {
+			completed.Status = statusSuccess
+			slog.Info("Sync completed successfully", "syncType", syncType,
+				"created", stats.Created, "updated", stats.Updated,
+				"deleted", stats.Deleted, "errors", stats.Errors)
+		}
+
+		o.mu.Lock()
+		o.lastCompletedStatus[syncType] = &completed
+		delete(o.runningJobs, syncType)
+		o.mu.Unlock()
+	}()
+
+	return nil
+}
+
 // MarkSyncRunning sets a sync's status to "running" without starting it.
 // Used by API handlers to ensure status is visible before the goroutine executes.
 // This prevents the race condition where the frontend polls before the status is set.
