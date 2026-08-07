@@ -86,15 +86,6 @@ export default tseslint.config(
       // getByRole over 1,200 times, so a broken role breaks the query layer.
       ...jsxA11y.flatConfigs.recommended.rules,
 
-      // Violated today — warn, then promote. Counts as of 2026-08-07:
-      'jsx-a11y/click-events-have-key-events': 'warn', //           44
-      'jsx-a11y/no-static-element-interactions': 'warn', //         42
-      'jsx-a11y/label-has-associated-control': 'warn', //           27
-      'jsx-a11y/no-autofocus': 'warn', //                            9
-      'jsx-a11y/no-redundant-roles': 'warn', //                      7
-      'jsx-a11y/no-noninteractive-element-interactions': 'warn', //  2
-      'jsx-a11y/no-interactive-element-to-noninteractive-role': 'warn', // 2
-
       // React Hooks rules - core rules as errors, compiler rules as warnings
       'react-hooks/rules-of-hooks': 'error',
       'react-hooks/exhaustive-deps': 'error',
@@ -137,6 +128,31 @@ export default tseslint.config(
       '@typescript-eslint/prefer-string-starts-ends-with': 'warn',
       '@typescript-eslint/prefer-includes': 'warn',
       '@typescript-eslint/prefer-reduce-type-parameter': 'warn',
+    },
+  },
+
+  // jsx-a11y severity overrides — hoisted into their own config object.
+  // ESLint flat config MERGES a severity-only override onto an earlier
+  // config's rule options rather than replacing them, but only across
+  // separate config objects; a later key inside the SAME object literal
+  // replaces the earlier value outright. Keeping these in the main
+  // TypeScript config's `rules` block (alongside the
+  // `...jsxA11y.flatConfigs.recommended.rules` spread) discarded the
+  // options on rules that carry them, e.g. `no-static-element-interactions`
+  // lost `allowExpressionValues`. This object must stay separate so the
+  // 'warn' string here layers onto the recommended `[error, {options}]`
+  // value instead of clobbering it.
+  {
+    files: ['**/*.{ts,tsx}'],
+    rules: {
+      // Violated today — warn, then promote. Counts as of 2026-08-07:
+      'jsx-a11y/click-events-have-key-events': 'warn', //           44
+      'jsx-a11y/no-static-element-interactions': 'warn', //         42
+      'jsx-a11y/label-has-associated-control': 'warn', //           27
+      'jsx-a11y/no-autofocus': 'warn', //                            9
+      'jsx-a11y/no-redundant-roles': 'warn', //                      7
+      'jsx-a11y/no-noninteractive-element-interactions': 'warn', //  2
+      'jsx-a11y/no-interactive-element-to-noninteractive-role': 'warn', // 2
     },
   },
 
