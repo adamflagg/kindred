@@ -201,6 +201,10 @@ export function FamilyDetailsPanel({
         </div>
 
         {isHousehold && adults.length > 0 && (
+          // NOT redundant: Tailwind Preflight sets list-style: none on every <ul>, which strips the
+          // implicit `list` role in Safari's a11y tree unless role="list" is explicit. See
+          // CamperAlertSection.tsx for the same pattern.
+          // eslint-disable-next-line jsx-a11y/no-redundant-roles
           <ul className="flex flex-col gap-0.5" role="list">
             {adults.map((adult, index) => (
               <li
@@ -217,6 +221,10 @@ export function FamilyDetailsPanel({
         )}
 
         {children.length > 0 && (
+          // NOT redundant: Tailwind Preflight sets list-style: none on every <ul>, which strips the
+          // implicit `list` role in Safari's a11y tree unless role="list" is explicit. See
+          // CamperAlertSection.tsx for the same pattern.
+          // eslint-disable-next-line jsx-a11y/no-redundant-roles
           <ul className="flex flex-col gap-0.5" role="list">
             {children.map((child, index) => (
               <li

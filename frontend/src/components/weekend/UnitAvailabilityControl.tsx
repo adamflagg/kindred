@@ -108,6 +108,10 @@ export function UnitAvailabilityControl({
             placeholder="Burst pipe, caretaker…"
             value={reason}
             maxLength={500}
+            // deliberate: this input only mounts when the staff member just clicked
+            // "Hold"/"Release" (a modal-open equivalent), and the whole point of the click is to
+            // type a reason next.
+            // eslint-disable-next-line jsx-a11y/no-autofocus
             autoFocus
             aria-invalid={wantsReason && reason.trim() === ''}
             onChange={(event) => {
