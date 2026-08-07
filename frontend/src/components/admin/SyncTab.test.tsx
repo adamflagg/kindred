@@ -54,7 +54,7 @@ vi.mock('../../hooks/useFinancialAidApplicationsSync', () => ({
 vi.mock('../../hooks/useHouseholdDemographicsSync', () => ({
   useHouseholdDemographicsSync: () => notPending,
 }))
-// The mutation under test: camper_dietary was one of the six hooks missing from the disabled
+// The mutation under test: camper_dietary was one of the eleven hooks missing from the disabled
 // condition entirely. Marking it pending must disable ONLY the Dietary card.
 vi.mock('../../hooks/useCamperDietarySync', () => ({
   useCamperDietarySync: () => ({ mutate: vi.fn(), isPending: true }),
