@@ -146,7 +146,8 @@ function SessionRow({
       {/* WL pill column */}
       <td className="border-border/50 min-w-[2.5rem] border px-2 py-2 text-center">
         {hasWaitlist ? (
-          <span
+          <button
+            type="button"
             className="inline-flex cursor-pointer items-center justify-center rounded-full border border-amber-400 bg-amber-50 px-1.5 text-[10px] font-bold text-amber-800 dark:border-amber-600 dark:bg-amber-900/30 dark:text-amber-400"
             onMouseEnter={(e) =>
               onHover?.(e, genderData.waitlisted, gender, genderData.waitlisted_persons)
@@ -164,7 +165,7 @@ function SessionRow({
             }
           >
             {genderData.waitlisted}
-          </span>
+          </button>
         ) : (
           <span className="text-muted-foreground">&mdash;</span>
         )}
@@ -230,7 +231,8 @@ function AGSessionRow({
       {/* WL pill column */}
       <td className="border-border/50 min-w-[2.5rem] border px-2 py-2 text-center">
         {hasWaitlist ? (
-          <span
+          <button
+            type="button"
             className="inline-flex cursor-pointer items-center justify-center rounded-full border border-amber-400 bg-amber-50 px-1.5 text-[10px] font-bold text-amber-800 dark:border-amber-600 dark:bg-amber-900/30 dark:text-amber-400"
             onMouseEnter={(e) => onHover?.(e, session.waitlisted, '', session.waitlisted_persons)}
             onMouseMove={(e) => onMove?.(e)}
@@ -240,7 +242,7 @@ function AGSessionRow({
             }
           >
             {session.waitlisted}
-          </span>
+          </button>
         ) : (
           <span className="text-muted-foreground">&mdash;</span>
         )}
@@ -300,7 +302,8 @@ function TeenSessionRow({
       {/* WL pill column */}
       <td className="border-border/50 min-w-[2.5rem] border px-2 py-2 text-center">
         {hasWaitlist ? (
-          <span
+          <button
+            type="button"
             className="inline-flex cursor-pointer items-center justify-center rounded-full border border-amber-400 bg-amber-50 px-1.5 text-[10px] font-bold text-amber-800 dark:border-amber-600 dark:bg-amber-900/30 dark:text-amber-400"
             onMouseEnter={(e) => onHover?.(e, session.waitlisted, '', session.waitlisted_persons)}
             onMouseMove={(e) => onMove?.(e)}
@@ -308,7 +311,7 @@ function TeenSessionRow({
             onClick={() => onTeenCellClick?.(session.session_type, session.session_name)}
           >
             {session.waitlisted}
-          </span>
+          </button>
         ) : (
           <span className="text-muted-foreground">&mdash;</span>
         )}
