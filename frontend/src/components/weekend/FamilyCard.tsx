@@ -32,6 +32,7 @@ import { Repeat, Star, Users } from 'lucide-react'
 import { Fragment } from 'react'
 
 import type { LodgingUnitRow, RosterPartyRow } from '../../types/lodging'
+import { displayCampMinderAge } from '../../utils/age'
 import { partySize, SHARE_WORDING, shareWordingChip } from './boardLayout'
 import { partyKey } from './partyKey'
 import { ATTENTION_LABEL, partyAttention } from './rosterAttention'
@@ -135,7 +136,7 @@ function FamilyCardBody({
               <span>
                 {child.age === null || child.age === undefined
                   ? child.display_name
-                  : `${String(child.display_name)} (${String(child.age)})`}
+                  : `${String(child.display_name)} (${displayCampMinderAge(child.age)})`}
               </span>
             </Fragment>
           ))}

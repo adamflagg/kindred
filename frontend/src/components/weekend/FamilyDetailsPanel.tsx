@@ -27,6 +27,7 @@ import type {
   RosterPartyRow,
   ShareRequest,
 } from '../../types/lodging'
+import { displayCampMinderAge } from '../../utils/age'
 import { AccessibilityFlagList } from './AccessibilityFlagList'
 import { MedicalNarrative } from './MedicalNarrative'
 import { partyKey } from './partyKey'
@@ -226,7 +227,9 @@ export function FamilyDetailsPanel({
                 <span className="text-muted-foreground text-xs">
                   {/* An age or grade we do not have is omitted, never zero. */}
                   {[
-                    child.age === null || child.age === undefined ? '' : `Age ${String(child.age)}`,
+                    child.age === null || child.age === undefined
+                      ? ''
+                      : `Age ${displayCampMinderAge(child.age)}`,
                     child.grade === null || child.grade === undefined || child.grade === 0
                       ? ''
                       : `Grade ${String(child.grade)}`,

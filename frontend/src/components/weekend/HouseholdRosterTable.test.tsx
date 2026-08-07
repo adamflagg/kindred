@@ -151,7 +151,29 @@ describe('HouseholdRosterTable', () => {
     expect(screen.getByText('The Johnson Family')).toBeInTheDocument()
     expect(screen.getByText('1 adult · 1 child')).toBeInTheDocument()
     expect(screen.getByText('Samuel Johnson')).toBeInTheDocument()
-    expect(screen.getByText('Emma Johnson (9)')).toBeInTheDocument()
+    expect(screen.getByText('Emma Johnson (9.00)')).toBeInTheDocument()
+  })
+
+  it('renders age in CampMinder yy.mm format through displayCampMinderAge', () => {
+    // kindred#2088: the row printed `String(child.age)` verbatim. Both
+    // fractional and whole ages must go through the shared helper summer
+    // already uses -- two-digit months, no leading-zero years.
+    render(
+      <HouseholdRosterTable
+        year={2026}
+        parties={[
+          party({
+            children: [
+              { person_cm_id: 1000001, display_name: 'Noah', age: 1.5, grade: 0 },
+              { person_cm_id: 1000002, display_name: 'Ava', age: 0.06, grade: 0 },
+            ],
+          }),
+        ]}
+      />,
+      { wrapper }
+    )
+    expect(screen.getByText('Noah (1.50)')).toBeInTheDocument()
+    expect(screen.getByText('Ava (0.06)')).toBeInTheDocument()
   })
 
   it('pluralises adults and children correctly', () => {
