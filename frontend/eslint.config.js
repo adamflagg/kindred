@@ -1,6 +1,7 @@
 import eslint from '@eslint/js'
 import tseslint from 'typescript-eslint'
 import reactHooks from 'eslint-plugin-react-hooks'
+import jsxA11y from 'eslint-plugin-jsx-a11y'
 import { reactRefresh } from 'eslint-plugin-react-refresh'
 import eslintConfigPrettier from 'eslint-config-prettier'
 
@@ -65,8 +66,35 @@ export default tseslint.config(
     },
     plugins: {
       'react-hooks': reactHooks,
+      'jsx-a11y': jsxA11y,
     },
     rules: {
+      // ── jsx-a11y (kindred#2063, kindred#2068) ────────────────────────
+      // The recommended set, split by what this codebase already satisfies.
+      //
+      // 27 of the 34 recommended rules pass on the tree TODAY, so they are
+      // errors: they cost nothing now and they cannot regress. The remaining
+      // 7 have pre-existing violations (133 at the time of writing) and are
+      // warnings, so the gate lands without turning CI red on code nobody is
+      // touching. Promote each to 'error' as its count reaches zero — that
+      // ratchet is the point; a permanent warning is a backlog, not a gate.
+      //
+      // What this plugin does NOT do: judge whether an aria-label is
+      // meaningful, or whether focus order makes sense. It catches structural
+      // mistakes only. The ~290 hand-written aria-* attributes here remain
+      // hand-maintained. The self-interested case is the test suite — it calls
+      // getByRole over 1,200 times, so a broken role breaks the query layer.
+      ...jsxA11y.flatConfigs.recommended.rules,
+
+      // Violated today — warn, then promote. Counts as of 2026-08-07:
+      'jsx-a11y/click-events-have-key-events': 'warn', //           44
+      'jsx-a11y/no-static-element-interactions': 'warn', //         42
+      'jsx-a11y/label-has-associated-control': 'warn', //           27
+      'jsx-a11y/no-autofocus': 'warn', //                            9
+      'jsx-a11y/no-redundant-roles': 'warn', //                      7
+      'jsx-a11y/no-noninteractive-element-interactions': 'warn', //  2
+      'jsx-a11y/no-interactive-element-to-noninteractive-role': 'warn', // 2
+
       // React Hooks rules - core rules as errors, compiler rules as warnings
       'react-hooks/rules-of-hooks': 'error',
       'react-hooks/exhaustive-deps': 'error',
