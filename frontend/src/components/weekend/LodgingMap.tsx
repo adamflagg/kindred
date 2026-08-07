@@ -536,6 +536,11 @@ export function LodgingMap({ parties, units, year }: LodgingMapProps) {
             <span className="text-muted-foreground ml-auto tabular-nums">{view.k.toFixed(1)}×</span>
           </div>
 
+          {/* Pointer-driven pan/zoom canvas; per the ACCESSIBILITY note at the top of this file, this
+              surface is deliberately not keyboard-navigable (the accessible equivalent is Manage →
+              Family Camp Lodging). This click is background-dismiss only, and Escape already closes
+              the same popover via the keydown listener registered above. */}
+          {/* eslint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions */}
           <div
             ref={canvasRef}
             data-testid="map-canvas"
@@ -779,6 +784,11 @@ export function LodgingMap({ parties, units, year }: LodgingMapProps) {
               if (flagged > 0) halo = `0 0 0 2px #fff, 0 0 0 4.5px ${CONSENT_AMBER}`
               else if (shared) halo = `0 0 0 2px #fff, 0 0 0 4.5px ${hue}`
               return (
+                // Deliberately a plain clickable div, not role="button": see the ACCESSIBILITY note
+                // at the top of this file. A role this mark cannot honour with real keyboard/focus
+                // support (82 unreachable tab stops) is a worse lie than an honest non-control; the
+                // accessible equivalent is Manage → Family Camp Lodging.
+                // eslint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions
                 <div
                   key={key}
                   data-testid="map-mark"
