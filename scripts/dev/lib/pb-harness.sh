@@ -28,6 +28,7 @@
 #   pb_harness_pick_port
 #   pb_harness_install_trap [extra cleanup command]
 #   pb_harness_boot <pb_bin> <db_dir> <migrations_dir> <log_path>
+#   pb_harness_index_columns <db_path> <index_name>
 # See each function's header comment below for details.
 
 # PID of the currently-running background `pocketbase serve`, if any. Internal
@@ -215,4 +216,30 @@ pb_harness_boot() {
     cat "$log" >&2
     exit 2
   fi
+}
+
+# pb_harness_index_columns <db_path> <index_name>
+#
+# Prints the columns an index covers as a comma-joined list sorted by name --
+# a SET, not a sequence. Callers assert what an index KEYS ON; column order is
+# a query-planner concern no caller here is entitled to pin. kindred#2032: a
+# `(year, code)` index enforces exactly the uniqueness a `(code, year)` one
+# does, and the only single-column filter the lodging code issues is
+# `year = {:y}` (lodging/rollforward.go x3), which the reversed order would
+# serve BETTER -- so failing on order would block a change that is at worst
+# neutral, and a comment justifying the current order would be asserting a
+# rationale the query sites contradict.
+#
+# Reads pragma_index_info rather than substring-matching the stored CREATE
+# INDEX text; the two traps that rules out are documented at the call site.
+#
+# Deliberately NOT `group_concat(name ORDER BY name)`: that ordered-aggregate
+# form needs SQLite 3.44+ and is a parse error ("near ORDER: syntax error")
+# on Debian bookworm's stock sqlite3 (3.40) and Ubuntu 22.04's (3.37). There
+# is no fallback for that error -- under a caller's `set -euo pipefail`, the
+# failing command substitution aborts the whole script, skipping every
+# assertion after it, not just this one. Sorting the subquery instead of the
+# aggregate call gets the same column-SET result on every sqlite3 version.
+pb_harness_index_columns() {
+  sqlite3 "$1" "SELECT group_concat(name) FROM (SELECT name FROM pragma_index_info('$2') ORDER BY name);"
 }

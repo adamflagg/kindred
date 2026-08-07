@@ -38,6 +38,7 @@ import (
 
 const (
 	collectionUnits            = "lodging_units"
+	collectionAreas            = "lodging_areas"
 	collectionAssignments      = "lodging_assignments"
 	collectionAssignmentsDraft = "lodging_assignments_draft"
 	collectionAliases          = "lodging_unit_aliases"
@@ -46,28 +47,70 @@ const (
 	collectionSlotMerges       = "lodging_slot_merges"
 )
 
-// yearScopedUnitRefs are the collections that carry BOTH a year of their own
-// and a relation into lodging_units. Once units are year-scoped (1500000141
-// gives lodging_units its own `year`, making (code, year) a distinct record)
-// those two years can disagree -- a 2027 row pointing at a 2026 building -- a
-// state that was unrepresentable before and that nothing in the database
-// prevents.
+// yearScopedRef is one relation the year guard follows: the field to read on
+// the row, and the collection its ids resolve in. A SLICE of these rather than
+// a field->collection map, because map iteration is randomized and
+// lodging_units is the first entry carrying two relations -- a row cross-year
+// on both would otherwise name a different field on every run.
+type yearScopedRef struct {
+	field  string
+	target string
+}
+
+// yearScopedRefs are the collections carrying BOTH a year of their own and a
+// relation into a year-scoped registry table. Once the registry is year-scoped
+// (1500000141 gives lodging_units AND lodging_areas their own `year`, making
+// (code, year) a distinct record) those two years can disagree -- a 2027 row
+// pointing at a 2026 building -- a state that was unrepresentable before and
+// that nothing in the database prevents.
+//
+// lodging_units is here as of kindred#2039 and is the odd one out twice over:
+// it is both a referencing and a referenced table, and its `area` resolves in
+// lodging_areas rather than in itself. Neither of its relations is reachable
+// cross-year from the Kindred UI -- both pickers are fed year-scoped lists
+// (unitTree.ts, and the area select from the year-scoped areas query) -- but
+// 1500000130 widened create/update on lodging_units to bunking.manage, so the
+// admin UI and a direct REST write both reach it.
 //
 // lodging_assignment_history is deliberately absent: it stores old_unit /
 // new_unit as TEXT so an unresolvable historical string is still recorded
 // (1500000119). It cannot express this bug and must not be given a relation
 // to "fix" it.
 //
-// lodging_slot_merges does not exist in this worktree -- it belongs to a
-// parallel branch (migration 1500000139) that has not merged yet. It is
-// listed here anyway so the guard starts covering it automatically the moment
-// that migration lands; wireHooks skips whatever collection it cannot find
-// rather than failing the boot over it.
-var yearScopedUnitRefs = map[string][]string{
-	collectionAvailability:     {"unit"},
-	collectionAssignments:      {"units"},
-	collectionAssignmentsDraft: {"units"},
-	collectionSlotMerges:       {"unit"},
+// wireHooks binds only to the collections it can actually find, so a table
+// that is absent in an older environment -- or removed in a future one --
+// logs a warning instead of taking the boot down.
+//
+// SCOPE: this guard is one-directional. It checks the row being written
+// against the OUTGOING relations listed in its own entry above; it never
+// re-checks rows elsewhere that point back AT the thing just written. Two
+// gaps follow, both residual as of kindred#2039, not regressions:
+//
+//   - lodging_areas is a valid TARGET above (lodging_units.area resolves into
+//     it) but is not itself a key in this map, so it carries no binding at
+//     all. A superuser or bunking.manage PATCH that edits an existing area
+//     row's own `year` in place hits no check, and every lodging_units row
+//     already pointing at that area -- written for whatever year it was
+//     created -- is now silently cross-season.
+//   - Editing a lodging_units row's own `year` is checked against that row's
+//     OWN area/parent_unit, but nothing re-validates the rows that point AT
+//     it: lodging_availability, lodging_assignments,
+//     lodging_assignments_draft, lodging_slot_merges. Those keep whatever
+//     year they were written with, now possibly disagreeing with the unit's
+//     new one.
+//
+// Closing either gap means cascading to every DEPENDENT row on a parent's
+// write, not validating only the row under write -- a materially bigger
+// change than this guard makes anywhere else, so it is not done here.
+var yearScopedRefs = map[string][]yearScopedRef{
+	collectionAvailability:     {{field: "unit", target: collectionUnits}},
+	collectionAssignments:      {{field: "units", target: collectionUnits}},
+	collectionAssignmentsDraft: {{field: "units", target: collectionUnits}},
+	collectionSlotMerges:       {{field: "unit", target: collectionUnits}},
+	collectionUnits: {
+		{field: "area", target: collectionAreas},
+		{field: "parent_unit", target: collectionUnits},
+	},
 }
 
 // RegisterHooks wires the lodging integrity guards onto the app.
@@ -89,11 +132,10 @@ func wireHooks(app core.App) {
 	app.OnRecordUpdate(collectionUnits).BindFunc(guardUnitParentCycle)
 	app.OnRecordAfterUpdateSuccess(collectionIngestIssues).BindFunc(replayOnResolve)
 
-	// Bind only to collections that actually exist. lodging_slot_merges
-	// belongs to a migration that has not landed in every environment yet
-	// (see yearScopedUnitRefs), and a future table removal must not take the
-	// boot down either -- so this checks, rather than assumes, before binding.
-	for name := range yearScopedUnitRefs {
+	// Bind only to collections that actually exist -- a future table removal
+	// must not take the boot down, so this checks rather than assumes before
+	// binding (see yearScopedRefs).
+	for name := range yearScopedRefs {
 		if _, err := app.FindCollectionByNameOrId(name); err != nil {
 			// app.Logger(), not the package-level slog: the latter's default
 			// handler writes to stderr, invisible to captureStdout (the only
@@ -118,17 +160,17 @@ func wireHooks(app core.App) {
 	}
 }
 
-// guardUnitYear refuses a row whose own year disagrees with any unit it
-// names, for every collection in yearScopedUnitRefs.
+// guardUnitYear refuses a row whose own year disagrees with any registry row
+// it names, for every collection in yearScopedRefs.
 //
 // A multi-valued relation (`units`, maxSelect 20, added to the placement
 // tables by 1500000134 when lodging_merges was folded in) has every element
 // checked, not just the first -- it is the column lodging_assignments_sync.go
 // writes, and therefore exactly the one a stale alias resolution would
 // corrupt. GetStringSlice reads a single relation (`unit`) as a one-element
-// slice, so one loop over yearScopedUnitRefs[collection] covers both shapes.
+// slice, so one loop over yearScopedRefs[collection] covers both shapes.
 func guardUnitYear(app core.App, rec *core.Record) error {
-	fields, watched := yearScopedUnitRefs[rec.Collection().Name]
+	refs, watched := yearScopedRefs[rec.Collection().Name]
 	if !watched {
 		return nil
 	}
@@ -137,16 +179,30 @@ func guardUnitYear(app core.App, rec *core.Record) error {
 		return nil // required elsewhere; not this guard's complaint to make
 	}
 
-	for _, field := range fields {
-		for _, id := range rec.GetStringSlice(field) {
-			unit, err := app.FindRecordById(collectionUnits, id)
-			if err != nil {
-				return fmt.Errorf("resolving %s %q: %w", field, id, err)
+	for _, ref := range refs {
+		for _, id := range rec.GetStringSlice(ref.field) {
+			// A row cannot disagree with ITSELF about its own year, and
+			// lodging_units is the only table that can name itself
+			// (parent_unit is a self-relation). Two failures without this:
+			// on update FindRecordById returns the STORED row, so editing a
+			// self-parented row's year would be refused naming the row itself;
+			// on create the id is autogenerated inside e.Next(), AFTER this
+			// runs, so an explicitly-self-parenting create resolves to a row
+			// that does not exist yet and fails with a lookup error instead.
+			// Inert everywhere else: GetStringSlice never yields an empty id,
+			// so this never accidentally matches a blank rec.Id on create.
+			if id == rec.Id {
+				continue
 			}
-			if unitYear := unit.GetInt("year"); unitYear != rowYear {
+			target, err := app.FindRecordById(ref.target, id)
+			if err != nil {
+				return fmt.Errorf("resolving %s %q: %w", ref.field, id, err)
+			}
+			if targetYear := target.GetInt("year"); targetYear != rowYear {
 				return fmt.Errorf(
-					"%s row is for year %d but names unit %q from year %d",
-					rec.Collection().Name, rowYear, unit.GetString("code"), unitYear)
+					"%s row is for year %d but its %s relation names %q from year %d",
+					rec.Collection().Name, rowYear, ref.field,
+					target.GetString("code"), targetYear)
 			}
 		}
 	}

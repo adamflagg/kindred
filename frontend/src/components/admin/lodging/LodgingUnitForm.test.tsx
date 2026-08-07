@@ -380,6 +380,74 @@ describe('LodgingUnitForm — parent picker safety', () => {
   })
 })
 
+/**
+ * `UnitIdentityFields` takes `inventoryClass` as a prop, live off the
+ * Allocation select, rather than reading `unit.inventory_class` off the
+ * record — see that prop's own docstring. The only reason to thread it live
+ * is so the Parent unit picker re-narrows the instant a staffer flips
+ * Allocation, without a save and a reopen. `unitTree.test.ts` covers
+ * `parentCandidates` itself against both allocation values, but nothing
+ * before this rendered the form and drove the select — so the wiring that is
+ * the entire justification for the prop was untested.
+ */
+describe('LodgingUnitForm — the parent picker reflects a live allocation change', () => {
+  it('re-narrows the Parent unit options the moment Allocation changes, with no save and no remount', async () => {
+    const room: LodgingUnitRecord = {
+      ...UNIT,
+      id: 'room1',
+      name: 'Alpine Room',
+      code: 'alpine-room',
+      parent_unit: '',
+      inventory_class: 'family_pool',
+      is_container: false,
+    }
+    const guestBuilding: LodgingUnitRecord = {
+      ...UNIT,
+      id: 'guest_building',
+      name: 'Guest Lodge',
+      code: 'guest-lodge',
+      is_container: true,
+      inventory_class: 'family_pool',
+    }
+    const staffBuilding: LodgingUnitRecord = {
+      ...UNIT,
+      id: 'staff_building',
+      name: 'Staff Quarters',
+      code: 'staff-quarters',
+      is_container: true,
+      inventory_class: 'staff_default',
+    }
+    const user = userEvent.setup()
+
+    render(
+      <LodgingUnitForm
+        areas={AREAS}
+        units={[room, guestBuilding, staffBuilding]}
+        year={2026}
+        unit={room}
+        onSaved={vi.fn()}
+        onCancel={vi.fn()}
+      />
+    )
+
+    // Held onto across the change below, not re-queried — a remount would
+    // detach this reference rather than update it.
+    const parentSelect = screen.getByLabelText<HTMLSelectElement>('Parent unit')
+    // A room still marked for guests is not offered the staff building.
+    expect([...parentSelect.options].map((o) => o.value)).toEqual(['', 'guest_building'])
+
+    await user.selectOptions(screen.getByLabelText('Allocation'), 'staff_default')
+
+    // Same render, no save, no remount — the picker widens to include the
+    // staff building the instant Allocation flips to "Held for staff".
+    expect([...parentSelect.options].map((o) => o.value)).toEqual([
+      '',
+      'guest_building',
+      'staff_building',
+    ])
+  })
+})
+
 describe('LodgingUnitForm — beds', () => {
   it('shows the suggested occupancy from the bed inventory', async () => {
     const user = userEvent.setup()

@@ -34,6 +34,22 @@ import (
 func setupCollections(t *testing.T, app core.App) {
 	t.Helper()
 
+	// lodging_areas exists here only because guardUnitYear follows
+	// lodging_units.area into it (1500000141 gave BOTH tables a year).
+	// `code` is what the guard's error message prints, so it is not optional
+	// decoration.
+	areas := core.NewBaseCollection("lodging_areas")
+	areas.Fields.Add(&core.TextField{Name: "code", Required: true})
+	areas.Fields.Add(&core.TextField{Name: "name", Required: true})
+	areas.Fields.Add(&core.NumberField{Name: "year"})
+	if err := app.Save(areas); err != nil {
+		t.Fatalf("save lodging_areas: %v", err)
+	}
+	areasCol, areasErr := app.FindCollectionByNameOrId("lodging_areas")
+	if areasErr != nil {
+		t.Fatalf("find lodging_areas: %v", areasErr)
+	}
+
 	units := core.NewBaseCollection("lodging_units")
 	units.Fields.Add(&core.TextField{Name: "code", Required: true})
 	units.Fields.Add(&core.TextField{Name: "name", Required: true})
@@ -43,6 +59,13 @@ func setupCollections(t *testing.T, app core.App) {
 	// left optional here, as elsewhere in this fixture, so newUnit's callers
 	// that predate the year dimension are not forced to supply one).
 	units.Fields.Add(&core.NumberField{Name: "year"})
+	// OPTIONAL here, REQUIRED in production (1500000116). Every fixture helper
+	// in this file predates the area dimension and creates units without one;
+	// making this required would fail ~20 tests for a reason none of them is
+	// about. Same reasoning as `year` above.
+	units.Fields.Add(&core.RelationField{
+		Name: "area", CollectionId: areasCol.Id, MaxSelect: 1,
+	})
 	// Self-relation. CollectionId is set after the first Save, below, because
 	// the collection has no id until it exists.
 	if err := app.Save(units); err != nil {
@@ -240,6 +263,21 @@ func seedUnit(t *testing.T, app core.App, code string, year int) string {
 	r.Set("year", year)
 	if err := app.Save(r); err != nil {
 		t.Fatalf("seed unit %q year %d: %v", code, year, err)
+	}
+	return r.Id
+}
+
+// seedArea creates a lodging_areas row for the given year and returns its id --
+// the lodging_areas twin of seedUnit, for the guardUnitYear cases that need a
+// unit and its area to disagree about the season.
+func seedArea(t *testing.T, app core.App, code string, year int) string {
+	t.Helper()
+	r := core.NewRecord(mustCollection(t, app, "lodging_areas"))
+	r.Set("code", code)
+	r.Set("name", "Test Area A")
+	r.Set("year", year)
+	if err := app.Save(r); err != nil {
+		t.Fatalf("seed area %q year %d: %v", code, year, err)
 	}
 	return r.Id
 }
@@ -1196,6 +1234,39 @@ func TestGuardUnitYearRejectsACrossYearRow(t *testing.T) {
 	}
 }
 
+// TestGuardUnitYearRejectsACrossYearRowOnUpdate is the SAME rejection as the
+// test above, driven through OnRecordUpdate instead of OnRecordCreate.
+//
+// wireHooks binds guardUnitYear to both (hooks.go), but until this test every
+// case exercised only create. The update path is the one that matters
+// operationally: a row is written in its own season and only later re-pointed
+// at a unit, which is the write a staff edit actually makes. The two bindings
+// share an identical closure body today, so this cannot catch a divergence in
+// behavior -- it catches the binding going missing, which is a one-line edit
+// away and would otherwise be silent (kindred#2035).
+func TestGuardUnitYearRejectsACrossYearRowOnUpdate(t *testing.T) {
+	app := newHooksTestApp(t)
+	same := seedUnit(t, app, "test-unit-a", 2027)
+	stale := seedUnit(t, app, "test-unit-b", 2026)
+
+	rec := core.NewRecord(mustCollection(t, app, "lodging_availability"))
+	rec.Set("year", 2027)
+	rec.Set("unit", same)
+	rec.Set("session", seedSession(t, app))
+	if err := app.Save(rec); err != nil {
+		t.Fatalf("seeding a consistent 2027 row: %v", err)
+	}
+
+	rec.Set("unit", stale)
+	err := app.Save(rec)
+	if err == nil {
+		t.Fatal("re-pointed a 2027 row at a 2026 unit; want a refusal")
+	}
+	if !strings.Contains(err.Error(), "year") {
+		t.Errorf("error does not name the problem: %v", err)
+	}
+}
+
 // TestGuardUnitYearChecksEveryMemberOfTheMultiRelation is the multi-relation
 // case, and the one that matters more: `units` (maxSelect 20) is what
 // 1500000134 gave lodging_assignments and lodging_assignments_draft when it
@@ -1245,19 +1316,21 @@ func TestGuardUnitYearAllowsAMatchingRow(t *testing.T) {
 }
 
 // TestGuardUnitYearSkipsAnAbsentCollection pins that wiring the guard cannot
-// take the boot down over lodging_slot_merges, which belongs to a parallel
-// branch (migration 1500000139) that has not merged into this worktree.
-// yearScopedUnitRefs names it as one of the four tables to guard, but
-// setupCollections -- deliberately, matching the real schema this worktree
-// carries -- never creates it. wireHooks has to look before it binds, skip
-// what it does not find, and say so, rather than letting
-// app.OnRecordCreate(name) panic or error deep inside PocketBase's own
-// binding machinery.
+// take the boot down over a collection that is missing. lodging_slot_merges
+// has in fact merged (1500000139, 1500000140), but setupCollections never
+// creates it -- this fixture stops at the tables the guard's other tests
+// actually need, and lodging_slot_merges is not one of them. yearScopedRefs
+// names it as one of the tables to guard regardless, so wireHooks has to look
+// before it binds, skip what it does not find, and say so, rather than
+// letting app.OnRecordCreate(name) panic or error deep inside PocketBase's
+// own binding machinery.
 //
-// This also doubles as the reason the guard automatically starts covering
-// lodging_slot_merges the moment that migration lands: nothing here special-
-// cases the collection by name, only by whether FindCollectionByNameOrId
-// succeeds.
+// This also doubles as the reason the guard would automatically start
+// covering lodging_slot_merges the moment this fixture grows the collection:
+// nothing here special-cases the name, only whether FindCollectionByNameOrId
+// succeeds. Until then, guard coverage on lodging_slot_merges itself is
+// untested (kindred#2039 follow-up) -- closing that gap means adding the
+// collection to setupCollections, not touching this test.
 func TestGuardUnitYearSkipsAnAbsentCollection(t *testing.T) {
 	app, err := tests.NewTestAppWithConfig(core.BaseAppConfig{
 		EncryptionEnv: "pb_test_env",
@@ -1276,5 +1349,158 @@ func TestGuardUnitYearSkipsAnAbsentCollection(t *testing.T) {
 
 	if !strings.Contains(output, "lodging_slot_merges") {
 		t.Fatalf("expected a warning naming the absent collection, got: %q", output)
+	}
+}
+
+// TestGuardUnitYearRejectsACrossYearArea is the first of the two relations
+// lodging_units carries that guardUnitYear did not previously follow, because
+// the guard resolved every id it checked against lodging_units and `area`
+// points at a different table (kindred#2039).
+//
+// A 2027 room filed under 2026's area is silent in the worst way: Manage drops
+// it into "No area" (unitSort.ts groupUnitsByArea), which someone would
+// eventually notice, but the roster's `area` expand resolves the 2026 row and
+// renders the wrong name and the wrong sort_order on the board and the map with
+// no error anywhere.
+func TestGuardUnitYearRejectsACrossYearArea(t *testing.T) {
+	app := newHooksTestApp(t)
+	area2026 := seedArea(t, app, "test-area-a", 2026)
+
+	rec := core.NewRecord(mustCollection(t, app, "lodging_units"))
+	rec.Set("code", "test-unit-a")
+	rec.Set("name", "Test Building A")
+	rec.Set("year", 2027)
+	rec.Set("area", area2026)
+
+	err := app.Save(rec)
+	if err == nil {
+		t.Fatal("saved a 2027 unit filed under a 2026 area; want a refusal")
+	}
+	if !strings.Contains(err.Error(), "year") {
+		t.Errorf("error does not name the problem: %v", err)
+	}
+}
+
+// TestGuardUnitYearRejectsACrossYearParentUnit drives the SELF-relation, and
+// does it through an UPDATE on purpose: a unit is created in its own season and
+// only later re-parented, which is the write that actually produces the bug.
+// A cross-year parent puts 2027 rooms inside a 2026 building, so the container
+// tree spans seasons and directChildren attaches across the boundary.
+//
+// The assertion is on "year", not merely on non-nil: guardUnitParentCycle also
+// runs on this save, and its refusal ("That parent would create a loop in the
+// unit tree.") says nothing about years -- so a test that accepted any error
+// would pass against a guard that never looked at the season at all.
+func TestGuardUnitYearRejectsACrossYearParentUnit(t *testing.T) {
+	app := newHooksTestApp(t)
+	parent2026 := seedUnit(t, app, "test-unit-a", 2026)
+	childID := seedUnit(t, app, "test-unit-b", 2027)
+
+	child, err := app.FindRecordById(collectionUnits, childID)
+	if err != nil {
+		t.Fatalf("reloading the child unit: %v", err)
+	}
+	child.Set("parent_unit", parent2026)
+
+	saveErr := app.Save(child)
+	if saveErr == nil {
+		t.Fatal("re-parented a 2027 room under a 2026 building; want a refusal")
+	}
+	if !strings.Contains(saveErr.Error(), "year") {
+		t.Errorf("error does not name the problem: %v", saveErr)
+	}
+}
+
+// TestGuardUnitYearAllowsAUnitWhoseParentAndAreaShareItsYear is the positive
+// control for the lodging_units coverage. Without it, a guard that refused
+// EVERY write to lodging_units would pass both refusal tests above -- and
+// lodging_units is the one table where that mistake would be catastrophic
+// rather than merely wrong, because it is the table the roll-forward writes.
+func TestGuardUnitYearAllowsAUnitWhoseParentAndAreaShareItsYear(t *testing.T) {
+	app := newHooksTestApp(t)
+	area := seedArea(t, app, "test-area-a", 2027)
+	parent := seedUnit(t, app, "test-unit-a", 2027)
+
+	rec := core.NewRecord(mustCollection(t, app, "lodging_units"))
+	rec.Set("code", "test-unit-b")
+	rec.Set("name", "Test Building B")
+	rec.Set("year", 2027)
+	rec.Set("area", area)
+	rec.Set("parent_unit", parent)
+
+	if err := app.Save(rec); err != nil {
+		t.Fatalf("refused a consistent unit: %v", err)
+	}
+}
+
+// TestGuardUnitYearIgnoresAnEmptyParentUnit pins the COMMON case, which is the
+// one an optional relation makes easy to break silently: every top-level
+// building has no parent at all.
+//
+// GetStringSlice is what makes this work -- a MaxSelect:1 relation reads as a
+// string, and ToUniqueStringSlice returns an EMPTY slice for "" rather than a
+// one-element slice holding it, so the loop body never runs and FindRecordById
+// is never called with an empty id. That is a property of PocketBase, not of
+// this file, so it gets a test rather than a comment.
+//
+// MUTATION-CHECK: replace the inner loop with an unconditional
+// app.FindRecordById(ref.target, rec.GetString(ref.field)) and this test goes
+// red with `resolving parent_unit ""`, while every other test here stays green.
+func TestGuardUnitYearIgnoresAnEmptyParentUnit(t *testing.T) {
+	app := newHooksTestApp(t)
+	area := seedArea(t, app, "test-area-a", 2027)
+
+	rec := core.NewRecord(mustCollection(t, app, "lodging_units"))
+	rec.Set("code", "test-unit-a")
+	rec.Set("name", "Test Building A")
+	rec.Set("year", 2027)
+	rec.Set("area", area)
+	// parent_unit deliberately unset: a top-level building.
+
+	if err := app.Save(rec); err != nil {
+		t.Fatalf("refused a top-level unit with no parent: %v", err)
+	}
+}
+
+// TestGuardUnitYearSkipsAUnitsSelfReference pins that the guard does not
+// compare a row against ITSELF, which lodging_units is the only table that can
+// do -- it is both the referencing and the referenced table.
+//
+// The self-parented row is staged BEFORE wireHooks, standing in for data
+// written when no guard existed: guardUnitParentCycle refuses to CREATE the
+// link (HasParentCycle returns true when unitID == parentID) but its diff gate
+// lets a pre-existing one through untouched, so this state is reachable and
+// permanent. Editing such a row's year is then the trap: FindRecordById returns
+// the STORED row, whose year is the OLD one, and the guard rejects the write
+// naming the row itself as the offending unit.
+//
+// MUTATION-CHECK: delete the `if id == rec.Id { continue }` line in
+// guardUnitYear and this test goes red; nothing else does.
+func TestGuardUnitYearSkipsAUnitsSelfReference(t *testing.T) {
+	app, err := tests.NewTestApp()
+	if err != nil {
+		t.Fatalf("NewTestApp: %v", err)
+	}
+	defer app.Cleanup()
+
+	setupCollections(t, app)
+	u := newUnit(t, app, "test-unit-a", "Test Building A")
+	u.Set("parent_unit", u.Id)
+	if seedErr := app.Save(u); seedErr != nil {
+		t.Fatalf("staging the self-parented row: %v", seedErr)
+	}
+
+	wireHooks(app)
+
+	// Re-read, so Original() holds the stored parent and guardUnitParentCycle's
+	// diff gate sees an unchanged parent_unit -- the same reason
+	// TestAnEditThatLeavesParentUnitAloneSurvivesAPreExistingCycle reloads.
+	stored, err := app.FindRecordById(collectionUnits, u.Id)
+	if err != nil {
+		t.Fatalf("reloading the unit: %v", err)
+	}
+	stored.Set("year", 2027)
+	if err := app.Save(stored); err != nil {
+		t.Fatalf("a row must not be refused for disagreeing with itself: %v", err)
 	}
 }

@@ -31,10 +31,28 @@ reviews:
     issue_assessment:
       mode: "off"
 
-  # We don't open drafts (see CLAUDE.md global-preferences). No need to auto-review them.
-  # Default behavior is to only auto-review PRs targeting the default branch — opt in to
-  # all base branches so stacked PRs (e.g. `feature/foo` → `feature/foo-parent`) get reviews.
+  # AUTO-REVIEW IS OFF, DELIBERATELY. Reviews are opt-in per PR via an
+  # `@coderabbitai review` comment.
+  #
+  # Why: the plan enforces a ROLLING volume limit, not a per-window quota that
+  # resets on a clock. On 2026-08-06 a batch of twelve PRs went up inside an
+  # hour and ten of them came back with a rate-limit notice instead of a review
+  # — and a rate-limit notice is indistinguishable from "this PR is clean"
+  # unless you read the comment body. Six hours later the limit had only
+  # partially recovered. So auto-review does not spend the quota evenly, it
+  # spends it on whichever PRs happen to be first, which is uncorrelated with
+  # which PRs are worth reviewing.
+  #
+  # Opting in puts the quota where it is pointed. `scripts/../.claude/skills/scan-it`
+  # asks per PR whether to use CodeRabbit and posts the comment when the answer
+  # is yes.
+  #
+  # `base_branches: [".*"]` is retained BECAUSE it is still load-bearing for
+  # stacked PRs: a manually-triggered review on a PR targeting another feature
+  # branch would otherwise be declined. drafts stays false — we don't open
+  # drafts (see CLAUDE.md global-preferences).
   auto_review:
+    enabled: false
     drafts: false
     base_branches:
       - ".*"

@@ -405,3 +405,30 @@ func TestApplyRollForwardRetryAfterAFailureLinksParents(t *testing.T) {
 			got, parent.Id)
 	}
 }
+
+// TestApplyRollForwardSurvivesTheUnitYearGuard is the reason kindred#2039 is
+// safe to ship. Extending guardUnitYear to lodging_units means the guard now
+// fires on every write the roll-forward makes, inside its transaction, and the
+// roll-forward is the only thing in the system that writes a whole season's
+// worth of `area` and `parent_unit` at once.
+//
+// It passes by construction today -- copyUnits resolves `area` into the TARGET
+// year and leaves parent_unit unset, and relinkParents resolves the parent by
+// (code, targetYear), so every write is same-year. This test exists so that
+// stops being something a future reader has to re-derive from rollforward.go.
+//
+// GREEN BEFORE AND AFTER kindred#2039: a regression guard, not a red-first test.
+func TestApplyRollForwardSurvivesTheUnitYearGuard(t *testing.T) {
+	app := newRollForwardTestApp(t)
+	seedYear(t, app, 2026)
+
+	wireHooks(app)
+
+	plan, err := ApplyRollForward(app, 2026, 2027)
+	if err != nil {
+		t.Fatalf("the year guard refused the roll-forward: %v", err)
+	}
+	if plan.UnitsToCreate == 0 {
+		t.Fatal("the roll-forward created no units; the assertion above is vacuous")
+	}
+}

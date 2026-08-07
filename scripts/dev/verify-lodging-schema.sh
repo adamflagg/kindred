@@ -398,9 +398,13 @@ for table in lodging_units lodging_areas; do
   # PocketBase pretty-prints a multi-column list across lines --
   # `(\n  \`code\`,\n  \`year\`\n)` -- so even a literal '(`code`, `year`)'
   # match on one line never fires. pragma_index_info sidesteps both.
-  cols=$(sqlite3 "$DB" "SELECT group_concat(name) FROM pragma_index_info('$idx');")
+  #
+  # The comparison is against a column SET: pb_harness_index_columns sorts, so
+  # (year, code) passes too. Order is not this check's business -- see
+  # kindred#2032 and that function's header.
+  cols=$(pb_harness_index_columns "$DB" "$idx")
   [[ "$cols" == "code,year" ]] \
-    || note "$idx is not composite on (code, year): columns are '$cols'"
+    || note "$idx does not key on {code, year}: columns are '$cols'"
 
   # ...and separately, that it is UNIQUE. pragma_index_info answers only which
   # columns an index spans, so a plain (code, year) index satisfies the check

@@ -175,6 +175,23 @@ Be careful with the comparison, because summer is not uniform: the bunking board
 
 When weekend genuinely must differ, say why at the divergence. `useHouseholdMedical`'s `staleTime: 0, gcTime: 0` is the model: PHI must not sit in the cache after the panel closes, and the comment says so.
 
+### A Wrong Issue Body Gets Fixed, Not Worked Around
+
+**When you find an issue body that is wrong — a renamed symbol, a moved line number, a stale count, a proposed fix that would not compile or would cause harm — edit the issue body. Do not merely note it in a PR, a comment, or a triage doc.**
+
+The body is what the next reader implements from. A correction that lives anywhere else does not travel: the next agent opens the issue, follows it, and reproduces the mistake. Two concrete cases from this repo: a proposed fix on #1889 would have re-introduced the class #1875 had just fixed, and a #1925-derived "delete blank rows" would have erased 136 real adults.
+
+The failure mode is systemic, not occasional. A 2026-08-06 sweep of all 70 open issues found **40 of 69 bodies stale** — overwhelmingly not wrong *premises* but wrong *identifiers*, because issues filed from inside a PR are written against a tree a sibling PR has already moved.
+
+**What to do:**
+
+- Fix the body in place with `gh issue edit <N> --body-file …`, and say what changed and why in a comment so the edit is auditable.
+- Keep the original reasoning when it is still sound — correct the identifiers, do not rewrite the argument.
+- If the *approach* is obsolete rather than the details, say so at the top of the body rather than silently leaving a plan nobody should follow (`#1218`'s one-shot re-inventory, `#1766`'s routing, `#1484`'s non-compiling hook signatures).
+- If an issue turns out to be already shipped, close it with the commit as evidence — `#2007` sat open through two triage passes after shipping in #2040, and was recommended as the *next thing to build*.
+
+**Never implement a Group 84 / lodging issue from its body alone.** Verify against the tree and the data first.
+
 ### Test-Driven Development
 
 Write failing tests first, verify they fail, then implement. **Tests are the specification — never edit a test to match what the implementation happens to do.** Tests and implementation may land in the same commit (PRs are squash-merged); what matters is the order you write them in. Marker semantics and which tests are skipped in CI: `tests/CLAUDE.md`.
