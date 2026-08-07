@@ -67,7 +67,12 @@ export default function RequestForm({ campers, constraint, onSubmit, onCancel }:
     <form onSubmit={handleSubmit} className="space-y-4">
       {/* Constraint Type */}
       <div>
-        <label className="text-foreground mb-1 block text-sm font-medium">Constraint Type</label>
+        <label
+          htmlFor="constraint-type-button"
+          className="text-foreground mb-1 block text-sm font-medium"
+        >
+          Constraint Type
+        </label>
         <Listbox
           value={type}
           onChange={(v) => {
@@ -76,7 +81,7 @@ export default function RequestForm({ campers, constraint, onSubmit, onCancel }:
           }}
         >
           <div className="relative">
-            <ListboxButton className="listbox-button">
+            <ListboxButton id="constraint-type-button" className="listbox-button">
               <span>
                 {type === 'pair_together'
                   ? 'Pair Together'
@@ -126,13 +131,15 @@ export default function RequestForm({ campers, constraint, onSubmit, onCancel }:
                 }
                 className="mr-3 h-5 w-5 cursor-pointer sm:h-4 sm:w-4"
               />
-              <div className="flex-1">
-                <span className="font-medium">{camper.name}</span>
-                <span className="text-muted-foreground ml-2 text-sm">
-                  Age {(getDisplayAgeForYear(camper, viewingYear) ?? 0).toFixed(2)} •{' '}
-                  {formatGradeOrdinal(camper.grade)}
-                </span>
-              </div>
+              {/* Direct children, not wrapped in an intermediate div — jsx-a11y/
+                  label-has-associated-control only walks 2 levels deep by default,
+                  and the label's accessible text (inside these spans) needs to
+                  stay within that budget. */}
+              <span className="font-medium">{camper.name}</span>
+              <span className="text-muted-foreground ml-2 text-sm">
+                Age {(getDisplayAgeForYear(camper, viewingYear) ?? 0).toFixed(2)} •{' '}
+                {formatGradeOrdinal(camper.grade)}
+              </span>
             </label>
           ))}
         </div>
@@ -141,13 +148,18 @@ export default function RequestForm({ campers, constraint, onSubmit, onCancel }:
       {/* Type-specific fields */}
       {type === 'age_preference' && (
         <div>
-          <label className="text-foreground mb-1 block text-sm font-medium">Age Preference</label>
+          <label
+            htmlFor="age-preference-button"
+            className="text-foreground mb-1 block text-sm font-medium"
+          >
+            Age Preference
+          </label>
           <Listbox
             value={(metadata['preference'] as string) || 'similar'}
             onChange={(v) => setMetadata({ ...metadata, preference: v })}
           >
             <div className="relative">
-              <ListboxButton className="listbox-button">
+              <ListboxButton id="age-preference-button" className="listbox-button">
                 <span>
                   {(metadata['preference'] as string) === 'older'
                     ? 'Older Campers'
@@ -175,10 +187,14 @@ export default function RequestForm({ campers, constraint, onSubmit, onCancel }:
 
       {type === 'bunk_preference' && (
         <div>
-          <label className="text-foreground mb-1 block text-sm font-medium">
+          <label
+            htmlFor="bunk-preference-name"
+            className="text-foreground mb-1 block text-sm font-medium"
+          >
             Preferred Bunk Name (optional)
           </label>
           <input
+            id="bunk-preference-name"
             type="text"
             value={(metadata['bunkName'] as string) || ''}
             onChange={(e) => setMetadata({ ...metadata, bunkName: e.target.value })}

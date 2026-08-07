@@ -1372,8 +1372,11 @@ describe('RequestReviewPanel', () => {
    * decline, the just-processed row MUST collapse.
    */
   describe('Row collapse after approve/decline (feedback #11)', () => {
-    // Expand a request row by ID. Clicks the row container (desktop layout) and
-    // waits for the expanded content block to appear.
+    // Expand a request row by ID. Clicks the row's dedicated expand button
+    // (desktop layout) and waits for the expanded content block to appear.
+    // The click affordance lives on a real <button> (kindred#2094/#2095 house
+    // style), not on the row container itself, so it — not the container —
+    // is what gets clicked.
     async function expandRowById(requestId: string) {
       const rowContainers = await waitFor(() => {
         const found = document.querySelectorAll(`[data-request-row-id="${requestId}"]`)
@@ -1382,7 +1385,9 @@ describe('RequestReviewPanel', () => {
       })
       const rowContainer = rowContainers[0] as HTMLElement
       expect(rowContainer).toBeTruthy()
-      fireEvent.click(rowContainer)
+      const expandButton = rowContainer.querySelector('[data-testid="request-row-expand-button"]')
+      expect(expandButton).toBeTruthy()
+      fireEvent.click(expandButton as HTMLElement)
       await waitFor(() => {
         expect(
           rowContainers[0]?.querySelector('[data-testid="request-row-expanded-content"]')
@@ -1497,7 +1502,9 @@ describe('RequestReviewPanel', () => {
       })
       const mobileRowA = rowAContainers[0] as HTMLElement
       expect(mobileRowA).toBeTruthy()
-      fireEvent.click(mobileRowA)
+      const expandButtonA = mobileRowA.querySelector('[data-testid="request-row-expand-button"]')
+      expect(expandButtonA).toBeTruthy()
+      fireEvent.click(expandButtonA as HTMLElement)
 
       // Confirm row A is expanded
       await waitFor(() => {
@@ -1514,7 +1521,9 @@ describe('RequestReviewPanel', () => {
       })
       const mobileRowB = rowBContainers[0] as HTMLElement
       expect(mobileRowB).toBeTruthy()
-      fireEvent.click(mobileRowB)
+      const expandButtonB = mobileRowB.querySelector('[data-testid="request-row-expand-button"]')
+      expect(expandButtonB).toBeTruthy()
+      fireEvent.click(expandButtonB as HTMLElement)
 
       // Both rows expanded — two expanded-content blocks visible
       await waitFor(() => {
@@ -1543,6 +1552,69 @@ describe('RequestReviewPanel', () => {
         ).toBe(1)
       })
     }, 15000)
+  })
+
+  /**
+   * jsx-a11y sweep: the row's click-to-expand affordance used to live on a
+   * non-interactive <div onClick>, with no keyboard equivalent at all
+   * (jsx-a11y/click-events-have-key-events, no-static-element-interactions).
+   * It now lives on a real <button> in the row's first cell. These tests pin
+   * that the button is genuinely keyboard-operable, not just present.
+   */
+  describe('Row expand button is keyboard-operable (jsx-a11y sweep)', () => {
+    it('is a real button with aria-expanded reflecting state', async () => {
+      await renderPanelWithRequest({
+        id: 'req-kbd-expand-1',
+        requester_id: 500,
+        requestee_id: 501,
+        session_id: 1001,
+        year: 2025,
+        status: 'pending',
+        request_type: 'bunk_with',
+        confidence_score: 0.7,
+      })
+
+      const rowContainer = await waitFor(() => {
+        const found = document.querySelector('[data-request-row-id="req-kbd-expand-1"]')
+        if (!found) throw new Error('row not yet rendered')
+        return found as HTMLElement
+      })
+      const expandButton = within(rowContainer).getByTestId('request-row-expand-button')
+      expect(expandButton.tagName).toBe('BUTTON')
+      expect(expandButton).toHaveAttribute('aria-expanded', 'false')
+    })
+
+    it('expands the row via Enter on the focused expand button, no mouse click', async () => {
+      const { user } = await renderPanelWithRequest({
+        id: 'req-kbd-expand-2',
+        requester_id: 502,
+        requestee_id: 503,
+        session_id: 1001,
+        year: 2025,
+        status: 'pending',
+        request_type: 'bunk_with',
+        confidence_score: 0.7,
+      })
+
+      const rowContainer = await waitFor(() => {
+        const found = document.querySelector('[data-request-row-id="req-kbd-expand-2"]')
+        if (!found) throw new Error('row not yet rendered')
+        return found as HTMLElement
+      })
+      const expandButton = within(rowContainer).getByTestId('request-row-expand-button')
+
+      expect(rowContainer.querySelector('[data-testid="request-row-expanded-content"]')).toBeNull()
+
+      expandButton.focus()
+      await user.keyboard('{Enter}')
+
+      await waitFor(() => {
+        expect(
+          rowContainer.querySelector('[data-testid="request-row-expanded-content"]')
+        ).toBeTruthy()
+      })
+      expect(expandButton).toHaveAttribute('aria-expanded', 'true')
+    })
   })
 
   /**

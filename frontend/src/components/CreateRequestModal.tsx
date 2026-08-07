@@ -158,8 +158,11 @@ export default function CreateRequestModal({ sessionId, year, onClose }: CreateR
           <div className="space-y-6">
             {/* Request Type */}
             <div>
-              <label className="mb-2 block text-sm font-semibold">Request Type</label>
+              <label htmlFor="create-request-type" className="mb-2 block text-sm font-semibold">
+                Request Type
+              </label>
               <select
+                id="create-request-type"
                 value={requestType}
                 onChange={(e) => {
                   setRequestType(e.target.value as RequestType)
@@ -175,10 +178,16 @@ export default function CreateRequestModal({ sessionId, year, onClose }: CreateR
 
             {/* Requester */}
             <div>
-              <label className="mb-2 block text-sm font-semibold">Requester</label>
+              <label
+                htmlFor="create-request-requester"
+                className="mb-2 block text-sm font-semibold"
+              >
+                Requester
+              </label>
               <div className="relative">
                 <Search className="text-muted-foreground absolute top-1/2 left-4 h-4 w-4 -translate-y-1/2 transform" />
                 <input
+                  id="create-request-requester"
                   type="text"
                   placeholder="Search for requester..."
                   value={requesterSearch}
@@ -219,10 +228,13 @@ export default function CreateRequestModal({ sessionId, year, onClose }: CreateR
             {/* Target (for non-age preference) */}
             {requestType !== 'age_preference' && (
               <div>
-                <label className="mb-2 block text-sm font-semibold">Target Person</label>
+                <label htmlFor="create-request-target" className="mb-2 block text-sm font-semibold">
+                  Target Person
+                </label>
                 <div className="relative">
                   <Search className="text-muted-foreground absolute top-1/2 left-4 h-4 w-4 -translate-y-1/2 transform" />
                   <input
+                    id="create-request-target"
                     type="text"
                     placeholder="Search for target person..."
                     value={targetSearch}
@@ -264,8 +276,14 @@ export default function CreateRequestModal({ sessionId, year, onClose }: CreateR
             {/* Age Preference Target */}
             {requestType === 'age_preference' && (
               <div>
-                <label className="mb-2 block text-sm font-semibold">Age Preference</label>
+                <label
+                  htmlFor="create-request-age-preference"
+                  className="mb-2 block text-sm font-semibold"
+                >
+                  Age Preference
+                </label>
                 <select
+                  id="create-request-age-preference"
                   value={agePreferenceTarget}
                   onChange={(e) => setAgePreferenceTarget(e.target.value as 'older' | 'younger')}
                   className="input-lodge"
@@ -278,8 +296,11 @@ export default function CreateRequestModal({ sessionId, year, onClose }: CreateR
 
             {/* Notes */}
             <div>
-              <label className="mb-2 block text-sm font-semibold">Notes (Optional)</label>
+              <label htmlFor="create-request-notes" className="mb-2 block text-sm font-semibold">
+                Notes (Optional)
+              </label>
               <textarea
+                id="create-request-notes"
                 value={notes}
                 onChange={(e) => setNotes(e.target.value)}
                 placeholder="Any additional notes about this request..."
