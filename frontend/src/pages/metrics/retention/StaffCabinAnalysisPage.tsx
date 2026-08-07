@@ -15,7 +15,10 @@ import { useStaffRetentionData } from '../../../hooks/useStaffRetentionData'
 import type { StaffRetentionRow } from '../../../hooks/useStaffRetentionData'
 import { useMetricsSession } from '../../../hooks/useMetricsSession'
 import { MetricsQueryGuard } from '../../../components/metrics/MetricsQueryGuard'
-import { SortIcon } from '../../../components/metrics/SortIcon'
+import {
+  SortableColumnHeader,
+  type SortDirection,
+} from '../../../components/ui/SortableColumnHeader'
 import { BunkCellTooltip } from '../../../components/metrics/BunkStaffTooltip'
 import type { BunkStaffInfo } from '../../../hooks/useBunkStaff'
 import { getRetentionCellColor } from '../../../utils/retentionColors'
@@ -76,6 +79,9 @@ export default function StaffCabinAnalysisPage() {
       setSortDir(field === 'overall' ? 'desc' : 'asc')
     }
   }
+
+  const sortDirectionFor = (field: SortField): SortDirection | null =>
+    sortField === field ? (sortDir === 'desc' ? 'descending' : 'ascending') : null
 
   const handleMouseEnter = useCallback(
     (e: React.MouseEvent, rowPersonId: string, session: string, bunkName: string) => {
@@ -167,21 +173,14 @@ export default function StaffCabinAnalysisPage() {
             <div className="overflow-x-auto">
               <table className="w-full border-separate border-spacing-0 text-xs" role="table">
                 <thead>
-                  <tr>
-                    <th
-                      role="columnheader"
-                      className="bg-muted/50 text-muted-foreground sticky left-0 z-10 cursor-pointer px-3 py-2 text-left font-medium select-none"
-                      onClick={() => handleSort('name')}
-                      data-tour="retention-staff-sort-name"
-                    >
-                      Staff{' '}
-                      <SortIcon
-                        field="name"
-                        activeField={sortField}
-                        direction={sortDir}
-                        className="inline h-3 w-3"
-                      />
-                    </th>
+                  <tr data-tour="retention-staff-header-row">
+                    <SortableColumnHeader
+                      label="Staff"
+                      direction={sortDirectionFor('name')}
+                      onSort={() => handleSort('name')}
+                      className="bg-muted/50 sticky left-0 z-10"
+                      buttonClassName="text-muted-foreground hover:text-foreground px-3 py-2 font-medium select-none"
+                    />
                     {sortedSessions.map((session) => (
                       <th
                         key={session}
@@ -191,20 +190,13 @@ export default function StaffCabinAnalysisPage() {
                         {session}
                       </th>
                     ))}
-                    <th
-                      role="columnheader"
-                      className="bg-muted/50 text-muted-foreground sticky right-0 z-10 cursor-pointer px-3 py-2 text-center font-medium select-none"
-                      onClick={() => handleSort('overall')}
-                      data-tour="retention-staff-sort-overall"
-                    >
-                      Overall{' '}
-                      <SortIcon
-                        field="overall"
-                        activeField={sortField}
-                        direction={sortDir}
-                        className="inline h-3 w-3"
-                      />
-                    </th>
+                    <SortableColumnHeader
+                      label="Overall"
+                      direction={sortDirectionFor('overall')}
+                      onSort={() => handleSort('overall')}
+                      className="bg-muted/50 sticky right-0 z-10"
+                      buttonClassName="text-muted-foreground hover:text-foreground justify-center px-3 py-2 text-center font-medium select-none"
+                    />
                   </tr>
                 </thead>
                 <tbody>

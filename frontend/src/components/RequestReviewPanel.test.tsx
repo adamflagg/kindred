@@ -340,6 +340,48 @@ describe('RequestReviewPanel', () => {
     })
   })
 
+  // #2068 — the desktop header's sortable columns were a bare `<div onClick>`
+  // with no tab stop: no key press could sort them.
+  describe('#2068: sortable column headers are keyboard reachable', () => {
+    it('every sortable header (Requester, Request, Confidence, Status) has a real button', async () => {
+      render(<RequestReviewPanel sessionId={1001} year={2025} />)
+
+      for (const name of ['Requester', 'Request', 'Confidence', 'Status']) {
+        const header = await screen.findByRole('columnheader', { name })
+        expect(within(header).getByRole('button').tagName).toBe('BUTTON')
+      }
+    })
+
+    it('the unsortable Type and Actions columns are not columnheaders', () => {
+      render(<RequestReviewPanel sessionId={1001} year={2025} />)
+
+      expect(screen.queryByRole('columnheader', { name: 'Type' })).not.toBeInTheDocument()
+      expect(screen.queryByRole('columnheader', { name: 'Actions' })).not.toBeInTheDocument()
+    })
+
+    it('Tab reaches the Requester header and Enter sorts it', async () => {
+      render(<RequestReviewPanel sessionId={1001} year={2025} />)
+
+      const requesterButton = await screen.findByRole('button', { name: 'Requester' })
+      requesterButton.focus()
+      await userEvent.keyboard('{Enter}')
+
+      const header = requesterButton.closest('[role="columnheader"]') as HTMLElement
+      expect(['ascending', 'descending']).toContain(header.getAttribute('aria-sort'))
+    })
+
+    it('Space also sorts the Confidence header', async () => {
+      render(<RequestReviewPanel sessionId={1001} year={2025} />)
+
+      const confidenceButton = await screen.findByRole('button', { name: 'Confidence' })
+      confidenceButton.focus()
+      await userEvent.keyboard(' ')
+
+      const header = confidenceButton.closest('[role="columnheader"]') as HTMLElement
+      expect(['ascending', 'descending']).toContain(header.getAttribute('aria-sort'))
+    })
+  })
+
   /**
    * TDD TESTS: Collapsible Filter Bar (UI Optimization Part 1)
    *
