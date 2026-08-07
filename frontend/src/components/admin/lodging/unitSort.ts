@@ -67,7 +67,7 @@ export function sortUnits(units: LodgingUnitRecord[], sort: UnitSort): LodgingUn
     if (ka < kb) return -1 * direction
     if (ka > kb) return 1 * direction
     // Stable tiebreak so equal keys never reshuffle between renders.
-    return a.name.localeCompare(b.name)
+    return a.name.localeCompare(b.name) * direction
   })
 }
 

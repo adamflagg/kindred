@@ -93,6 +93,23 @@ describe('sortUnits', () => {
     sortUnits(rows, { field: 'name', desc: false })
     expect(rows.map((u) => u.id)).toEqual(['b', 'a'])
   })
+
+  it('respects sort direction in tiebreak when all sort keys are equal', () => {
+    // All three units have is_confirmed: true, so they all have the same sort key (1).
+    // The tiebreak should use the name sort, but in the correct direction.
+    const rows = [
+      unit({ id: 'a', name: 'Alpha', is_confirmed: true }),
+      unit({ id: 'b', name: 'Beta', is_confirmed: true }),
+      unit({ id: 'c', name: 'Gamma', is_confirmed: true }),
+    ]
+    const ascending = sortUnits(rows, { field: 'is_confirmed', desc: false })
+    const descending = sortUnits(rows, { field: 'is_confirmed', desc: true })
+
+    // Ascending tiebreak should be alphabetical by name
+    expect(ascending.map((u) => u.id)).toEqual(['a', 'b', 'c'])
+    // Descending tiebreak should be reverse alphabetical by name
+    expect(descending.map((u) => u.id)).toEqual(['c', 'b', 'a'])
+  })
 })
 
 describe('groupUnitsByArea', () => {
