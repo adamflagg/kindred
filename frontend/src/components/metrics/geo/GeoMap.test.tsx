@@ -36,9 +36,16 @@ vi.mock('react-leaflet', () => ({
       fillColor: pathOptions?.fillColor,
     })
     return (
-      <div data-testid="circle-marker" data-pane={pane ?? ''} onClick={eventHandlers?.click}>
+      // Real <button> stand-in for react-leaflet's CircleMarker click
+      // handler — not a <div> with a bolted-on onClick, per house style.
+      <button
+        type="button"
+        data-testid="circle-marker"
+        data-pane={pane ?? ''}
+        onClick={eventHandlers?.click}
+      >
         {children}
-      </div>
+      </button>
     )
   },
   Tooltip: ({ children }: { children: ReactNode }) => <div>{children}</div>,

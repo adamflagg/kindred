@@ -25,7 +25,10 @@ vi.mock('recharts', () => ({
     capturedActiveDotClick = activeDot?.onClick
     capturedStrokeLinecap = strokeLinecap
     return activeDot?.onClick ? (
-      <div
+      // Real <button> stand-in for recharts' clickable dot — not a <div>
+      // with a bolted-on onClick, per house style.
+      <button
+        type="button"
         data-testid="line-dot-clickable"
         onClick={() =>
           activeDot.onClick!({

@@ -196,26 +196,34 @@ export function CssVerticalGroupedBarChart({
                         if (value === 0) return null
                         const barHeightPx = (value / axisMax) * drawingHeight
 
-                        return (
-                          <div
+                        const segmentClassName = 'relative z-[1] transition-all duration-300'
+                        const segmentStyle: React.CSSProperties = {
+                          width: `${100 / series.length}%`,
+                          height: `${barHeightPx}px`,
+                          minHeight: '4px',
+                          backgroundColor: s.color,
+                          borderRadius: '3px 3px 0 0',
+                          ...(effectiveBarWidthPercent
+                            ? { maxWidth: `${effectiveBarWidthPercent}%` }
+                            : {}),
+                        }
+
+                        // A clickable segment becomes a real <button> so
+                        // it's keyboard-operable and gets a discoverable
+                        // accessible name — bolting role="button" +
+                        // tabIndex + onKeyDown onto a <div> is exactly what
+                        // this house style avoids (kindred#2094).
+                        // Non-clickable segments stay plain <div>s.
+                        return isClickable ? (
+                          <button
                             key={s.key}
-                            className="relative z-[1] transition-all duration-300"
-                            style={{
-                              width: `${100 / series.length}%`,
-                              height: `${barHeightPx}px`,
-                              minHeight: '4px',
-                              backgroundColor: s.color,
-                              borderRadius: '3px 3px 0 0',
-                              ...(effectiveBarWidthPercent
-                                ? { maxWidth: `${effectiveBarWidthPercent}%` }
-                                : {}),
-                            }}
-                            onClick={
-                              isClickable
-                                ? () => handleBarClick(item as Record<string, unknown>, s.key)
-                                : undefined
-                            }
+                            type="button"
+                            className={segmentClassName}
+                            style={segmentStyle}
+                            onClick={() => handleBarClick(item as Record<string, unknown>, s.key)}
                           />
+                        ) : (
+                          <div key={s.key} className={segmentClassName} style={segmentStyle} />
                         )
                       })}
                     </div>

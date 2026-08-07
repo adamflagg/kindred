@@ -184,24 +184,15 @@ export function CssVerticalStackedBarChart({
                 .filter(Boolean)
                 .join(' ')
 
-              return (
-                <div
-                  key={index}
-                  className={columnClass}
-                  style={{
-                    ...(columnSizing.maxWidth
-                      ? { maxWidth: `${columnSizing.maxWidth}px`, width: '100%' }
-                      : {}),
-                    paddingLeft: `${columnSizing.columnPadding + halfGap}px`,
-                    paddingRight: `${columnSizing.columnPadding + halfGap}px`,
-                  }}
-                  onMouseEnter={(e) =>
-                    handleColumnEnter(index, e.currentTarget.getBoundingClientRect())
-                  }
-                  onMouseMove={(e) => handleColumnMove(e, item)}
-                  onMouseLeave={handleColumnLeave}
-                  onClick={() => onBarClick?.(item)}
-                >
+              const columnStyle: React.CSSProperties = {
+                ...(columnSizing.maxWidth
+                  ? { maxWidth: `${columnSizing.maxWidth}px`, width: '100%' }
+                  : {}),
+                paddingLeft: `${columnSizing.columnPadding + halfGap}px`,
+                paddingRight: `${columnSizing.columnPadding + halfGap}px`,
+              }
+              const columnContent = (
+                <>
                   {/* Label above bar */}
                   {shouldShowLabel && (
                     <span className="text-muted-foreground relative z-[1] mb-1 text-sm tabular-nums">
@@ -233,6 +224,41 @@ export function CssVerticalStackedBarChart({
                       )
                     })}
                   </div>
+                </>
+              )
+
+              // A clickable column becomes a real <button> so it's
+              // keyboard-operable and gets a discoverable accessible name —
+              // bolting role="button"/tabIndex/onKeyDown onto a <div> is
+              // exactly what this house style avoids (kindred#2094).
+              // Non-clickable columns stay plain <div>s.
+              return isClickable ? (
+                <button
+                  key={index}
+                  type="button"
+                  className={`${columnClass} text-left`}
+                  style={columnStyle}
+                  onMouseEnter={(e) =>
+                    handleColumnEnter(index, e.currentTarget.getBoundingClientRect())
+                  }
+                  onMouseMove={(e) => handleColumnMove(e, item)}
+                  onMouseLeave={handleColumnLeave}
+                  onClick={() => onBarClick(item)}
+                >
+                  {columnContent}
+                </button>
+              ) : (
+                <div
+                  key={index}
+                  className={columnClass}
+                  style={columnStyle}
+                  onMouseEnter={(e) =>
+                    handleColumnEnter(index, e.currentTarget.getBoundingClientRect())
+                  }
+                  onMouseMove={(e) => handleColumnMove(e, item)}
+                  onMouseLeave={handleColumnLeave}
+                >
+                  {columnContent}
                 </div>
               )
             })}
