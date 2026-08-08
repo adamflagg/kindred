@@ -1,6 +1,7 @@
 package sync
 
 import (
+	"context"
 	"testing"
 
 	"github.com/pocketbase/pocketbase/core"
@@ -374,4 +375,119 @@ func addHouseholdValue(
 		"household": householdPBID, "field_definition": fieldDefPBID,
 		"value": value, "last_updated": lastUpdated, "year": year,
 	})
+}
+
+// assertLodgingCollectionsEmpty fails the test if any of the three tables the
+// unguarded #2061 bug churns -- placements, the work queue, and the audit
+// trail -- hold a row. A guarded skip must leave all three untouched.
+func assertLodgingCollectionsEmpty(t *testing.T, app core.App) {
+	t.Helper()
+	for _, collection := range []string{
+		"lodging_assignments", "lodging_ingest_issues", "lodging_assignment_history",
+	} {
+		rows, err := app.FindRecordsByFilter(collection, "", "", 0, 0)
+		if err != nil {
+			t.Fatalf("find %s: %v", collection, err)
+		}
+		if len(rows) != 0 {
+			t.Errorf("%s: got %d rows, want 0 -- the year guard must skip before any lodging write", collection, len(rows))
+		}
+	}
+}
+
+// TestLodgingAssignmentsSyncSkipsWhenRegistryNeverLoaded is #2061: with zero
+// lodging_units rows for ANY year, AliasResolver.Resolve can never succeed --
+// it is all-or-nothing on (code, year), per its own doc comment -- so every
+// cabin string in the household/person grains would otherwise queue an
+// unresolved_alias issue and grow lodging_assignment_history forever, on a
+// season nobody has loaded a registry for at all. Sync must skip the lodging
+// portion and return nil, not fail the whole run.
+func TestLodgingAssignmentsSyncSkipsWhenRegistryNeverLoaded(t *testing.T) {
+	app := newLodgingTestApp(t)
+	// No addUnit call anywhere: lodging_units is empty for every year.
+
+	sessionID := addSession(t, app, cmIDFamilyCamp1, "Family Camp 1", "family",
+		testSessionStart, testSessionEnd, 2027)
+	cabinDef := addFieldDef(t, app, cmIDFamilyCampCabin, fieldNameFamilyCampCabin)
+	hh := addHousehold(t, app, 9001, 2027)
+	emma := addPerson(t, app, 5001, 9001, 2027, hh)
+	addAttendee(t, app, emma, sessionID, 5001, 2, 2027)
+	addHouseholdValue(t, app, hh, cabinDef, "Ridge A", testLastUpdated, 2027)
+
+	s := NewLodgingAssignmentsSync(app)
+	s.Year = 2027
+	if err := s.Sync(context.Background()); err != nil {
+		t.Fatalf("Sync: %v, want nil -- a registryless season must skip, not fail the run", err)
+	}
+	if !s.SyncSuccessful {
+		t.Error("SyncSuccessful = false, want true -- a guarded skip is not a failure")
+	}
+	assertLodgingCollectionsEmpty(t, app)
+}
+
+// TestLodgingAssignmentsSyncSkipsWhenSeasonNotRolledForward is the shape #2061
+// describes production actually hitting: a prior season's registry exists,
+// this one has not been carried forward yet. The alias's stored member id
+// still points at the prior year's unit row -- "authored once and never
+// re-pointed", per AliasResolver's own doc comment -- so idByCodeYear misses
+// for the new year and every cabin unresolves unless the guard catches it
+// first.
+func TestLodgingAssignmentsSyncSkipsWhenSeasonNotRolledForward(t *testing.T) {
+	app := newLodgingTestApp(t)
+	priorYearUnit := addUnit(t, app, "ridge-a", 2026)
+	addAlias(t, app, "Ridge A", []string{priorYearUnit}, 0, 0)
+	// No lodging_units row for 2027: roll-forward has not run yet.
+
+	sessionID := addSession(t, app, cmIDFamilyCamp1, "Family Camp 1", "family",
+		testSessionStart, testSessionEnd, 2027)
+	cabinDef := addFieldDef(t, app, cmIDFamilyCampCabin, fieldNameFamilyCampCabin)
+	hh := addHousehold(t, app, 9001, 2027)
+	emma := addPerson(t, app, 5001, 9001, 2027, hh)
+	addAttendee(t, app, emma, sessionID, 5001, 2, 2027)
+	addHouseholdValue(t, app, hh, cabinDef, "Ridge A", testLastUpdated, 2027)
+
+	s := NewLodgingAssignmentsSync(app)
+	s.Year = 2027
+	if err := s.Sync(context.Background()); err != nil {
+		t.Fatalf("Sync: %v, want nil", err)
+	}
+	assertLodgingCollectionsEmpty(t, app)
+}
+
+// TestAliasResolverHasUnitsForYear exercises the two lookups Sync's year guard
+// depends on, distinguishing "never loaded" from "not this year".
+func TestAliasResolverHasUnitsForYear(t *testing.T) {
+	app := newLodgingTestApp(t)
+	addUnit(t, app, "ridge-a", 2026)
+
+	r, err := NewAliasResolver(app)
+	if err != nil {
+		t.Fatalf("NewAliasResolver: %v", err)
+	}
+	if !r.HasAnyUnits() {
+		t.Error("HasAnyUnits() = false, want true -- 2026 has a row")
+	}
+	if !r.HasUnitsForYear(2026) {
+		t.Error("HasUnitsForYear(2026) = false, want true")
+	}
+	if r.HasUnitsForYear(2027) {
+		t.Error("HasUnitsForYear(2027) = true, want false -- no row seeded for 2027")
+	}
+}
+
+// TestAliasResolverHasAnyUnitsFalseWhenEmpty covers the other guard branch:
+// no registry loaded for any season at all.
+func TestAliasResolverHasAnyUnitsFalseWhenEmpty(t *testing.T) {
+	app := newLodgingTestApp(t)
+
+	r, err := NewAliasResolver(app)
+	if err != nil {
+		t.Fatalf("NewAliasResolver: %v", err)
+	}
+	if r.HasAnyUnits() {
+		t.Error("HasAnyUnits() = true, want false -- no lodging_units rows seeded")
+	}
+	if r.HasUnitsForYear(2027) {
+		t.Error("HasUnitsForYear(2027) = true, want false")
+	}
 }

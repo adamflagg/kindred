@@ -270,6 +270,12 @@ func TestLodgingAssignmentsSyncQueuesUnresolvedAlias(t *testing.T) {
 	app := newLodgingTestApp(t)
 	sess := addSession(t, app, cmIDFamilyCamp1, "Family Camp 1", "family",
 		"2025-05-23 07:00:00.000Z", "2025-05-26 07:00:00.000Z", 2025)
+	// Unrelated to "Tuolumne 7" below -- this only gives 2025 a registry, so
+	// Sync's #2061 year guard (no lodging_units rows for the year) does not
+	// intercept before reaching alias resolution. Without it, this fixture is
+	// indistinguishable from "no registry loaded at all," and the case this
+	// test means to cover -- one string that matches no alias -- never runs.
+	addUnit(t, app, "ridge-a", 2025)
 	cabinDef := addFieldDef(t, app, cmIDFamilyCampCabin, fieldNameFamilyCampCabin)
 	hh := addHousehold(t, app, 9001, 2025)
 	emma := addPerson(t, app, 5001, 9001, 2025, hh)
