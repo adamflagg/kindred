@@ -108,8 +108,10 @@ class LodgingYearCache:
     def invalidate_all(self) -> int:
         """Clear every cached entry. Returns the number cleared.
 
-        Not wired to anything yet (see module docstring) -- exposed so the
-        follow-up that wires it to sync completion needs no change here.
+        Called by `api/routers/metrics.py`'s `POST /api/metrics/cache/invalidate`
+        (kindred#2142), which the frontend fires on CampMinder sync completion --
+        see the module docstring for which syncs write the four cached reads and
+        for the residual gap the TTL still covers.
         """
         with self._lock:
             count = len(self._cache)
