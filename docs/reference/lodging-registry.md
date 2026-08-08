@@ -254,26 +254,39 @@ change, and applying that would write a code into a relation field.
 
 ### What confirming a unit gates across the system
 
-Marking a unit `is_confirmed: true` gates several behaviors and disables others:
+Marking a unit `is_confirmed: true` gates the following behavior. **8 behavioral gates**
+determine whether staff see confirmation prompts and whether the system judges amenity
+compliance. **6 write sites** modify the flag:
 
-**Roster fit verification** — `rosterAttention.ts:105` evaluates whether a party's
-accommodation needs (power, private bathroom) are satisfied only for confirmed units.
+**Fit-verification gate (core)** — `rosterAttention.ts:105` evaluates whether a party's
+accommodation needs (power, private bathroom) are satisfied **only for confirmed units**.
 On unconfirmed units, an unset `has_power: false` means "nobody has said", not "there
 is no power", so the check reports `unverified` and stays silent.
 
-**Board amenity suggestions** — `capacityFlag.ts:52-58` offers to fill a unit's `sleeps`
-when it differs from bed count — but **only for leaf units, and only when unconfirmed**.
-Containers never show suggestions because their `sleeps` records shared furniture (a
-futon), not whole-house capacity; every container carries the check suppressed
-unconditionally.
+**Capacity-suggestion gate** — `capacityFlag.ts:52` offers to fill a unit's `sleeps`
+when it differs from bed count — **only when unconfirmed**. Confirmed units suppress
+the suggestion permanently. Containers suppress it unconditionally (line 58) because
+their `sleeps` records shared furniture (a futon), not whole-house capacity.
 
-**Admin UI indicators** — The manage lodging surface shows an `Unconfirmed` badge
-(LodgingUnitRow.tsx:96-101) and a `Confirm` button (LodgingUnitRow.tsx:106-109)
-only on unconfirmed units. Confirmed units list their amenities without qualification.
+**Admin UI visibility gates**:
+- `LodgingUnitRow.tsx:96` shows the `Unconfirmed` badge only on unconfirmed units
+- `LodgingUnitRow.tsx:106` shows the `Confirm` button only on unconfirmed units
+- `unitSort.ts:52–55` allows sorting by confirmed status as a dimension
 
-**Sorting and roster summary** — Units can be sorted by confirmed status
-(unitSort.ts:52-55); the roster summary reports how many units remain unconfirmed
-(lodging_roster_service.py:1044).
+**Weekend board gates**:
+- `MapUnitPopover.tsx:142` renders the badge container only when `is_confirmed === false`
+- `MapUnitPopover.tsx:157` renders the unconfirmed badge only when `is_confirmed === false`
+
+**Roster summary** — `lodging_roster_service.py:1044` counts how many units have
+`is_confirmed` false.
+
+**Write sites** (where `is_confirmed` is modified):
+1. `LodgingUnitForm.tsx:338` — Form checkbox updates state on save
+2. `lodgingCrud.ts:166` — Bulk confirm function sets all selected units to true
+3. `lodgingCrud.ts:124` — Create function defaults to false
+4. `registry.go:495` — Loader sets false on every row it creates
+5. `api/schemas/lodging.py:117` — Schema field definition with false default
+6. `confirm_lodging_units.py:135` — Script API call for manual bulk updates
 
 **Is confirmation ephemeral?** No. A confirmed unit carries that state across
 seasons by roll-forward (pocketbase/lodging/rollforward.go), and the unit's
