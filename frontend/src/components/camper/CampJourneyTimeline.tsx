@@ -5,6 +5,7 @@
 import { TreePine, Home } from 'lucide-react'
 import { getSessionDisplayNameFromString } from '../../utils/sessionDisplay'
 import { getStatusIndicator } from '../../utils/enrollmentFilter'
+import { isFamilySessionType } from '../../utils/sessionTypePredicates'
 import type { HistoricalRecord } from '../../hooks/camper/types'
 
 interface CampJourneyTimelineProps {
@@ -87,7 +88,7 @@ export function CampJourneyTimeline({
                         muted tag instead of being hidden, so a reader can
                         visually skip a run of family rows without losing the
                         underlying data. */}
-                    {record.sessionType === 'family' && (
+                    {isFamilySessionType(record.sessionType) && (
                       <span className="bg-muted text-muted-foreground flex-shrink-0 rounded px-1.5 py-0.5 text-[10px] font-medium">
                         Family
                       </span>

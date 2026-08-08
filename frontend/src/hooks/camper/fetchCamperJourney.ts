@@ -70,26 +70,34 @@ export async function fetchCamperJourney(
   // show one Main row. AG enrolled without its parent main keeps its own row.
   // This is the ONLY same-year row collapse (family/quest/teen alongside summer
   // stay distinct).
+  //
+  // Guards against the `cm_id`/`parent_id` sentinel: both default to 0 when
+  // absent (mirrors the same guard in agCollapse.ts for current-year
+  // enrollments), so a non-positive parent_id never identifies a real parent.
+  // Without the `> 0` checks, a cm_id-less session would seed 0 into
+  // enrolledByYear and silently collapse an unrelated parentless AG row.
   const enrolledByYear = new Map<number, Set<number>>()
   for (const att of attendees) {
     const cmId = att.expand.session?.cm_id
-    if (cmId === undefined) continue
+    if (cmId === undefined || cmId <= 0) continue
     const set = enrolledByYear.get(att.year) ?? new Set<number>()
     set.add(cmId)
     enrolledByYear.set(att.year, set)
   }
   const deduped = attendees.filter((att) => {
     const session = att.expand.session
-    if (session?.session_type !== 'ag') return true
+    if (session?.session_type !== 'ag' || session.parent_id <= 0) return true
     // AG row drops only when its parent main is also enrolled that year;
-    // an unmatched parent_id (e.g. 0) is never present in enrolledByYear → kept.
+    // an unmatched parent_id is never present in enrolledByYear → kept.
     return !enrolledByYear.get(att.year)?.has(session.parent_id)
   })
 
   // 2. Prior-year bunk assignments — used ONLY to label a row, never to gate it.
-  // Restricted to journey session types: without this, a lone family-camp bunk in
-  // a year could be attached to a summer row via the year-fallback below (the same
-  // leak fb1a88d2 closed for current-year views in useCamperEnrollment).
+  // Restricted to journey session types (as of #2113, that now includes family) so
+  // a camper's own family-camp assignment can exact-match their family row. The
+  // year-fallback below has its own family/non-family guard to stop a lone family
+  // assignment from leaking onto an unrelated summer row (the leak fb1a88d2 closed
+  // for current-year views in useCamperEnrollment).
   const assignments = await pb
     .collection<BunkAssignmentsResponse<AssignmentExpand>>('bunk_assignments')
     .getFullList({
@@ -121,8 +129,18 @@ export async function fetchCamperJourney(
     // Bunk-label join precedence (spec §7):
     // 1. exact (year, session) match
     let match = yearAssignments.find((a) => a.expand.session?.cm_id === session?.cm_id)
-    // 2. else year-fallback ONLY when the year has exactly one assignment
-    if (!match && yearAssignments.length === 1) match = yearAssignments[0]
+    // 2. else year-fallback ONLY when the year has exactly one assignment, AND that
+    // assignment's session type is on the same side of the family/non-family split
+    // as the row it would label. Without this guard, a lone family-camp assignment
+    // (now reachable here since #2113 widened typeFilter to include family) could
+    // attach to an unrelated summer/teen row via the fallback — the exact leak
+    // fb1a88d2 closed for current-year views in useCamperEnrollment.
+    if (!match && yearAssignments.length === 1) {
+      const candidate = yearAssignments[0]
+      const candidateIsFamily = candidate?.expand.session?.session_type === 'family'
+      const rowIsFamily = session?.session_type === 'family'
+      if (candidateIsFamily === rowIsFamily) match = candidate
+    }
     // 3. else (>=2 assignments, no match, or zero) → no label
     const bunkName = match?.expand.bunk?.name
 

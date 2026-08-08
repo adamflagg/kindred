@@ -22,6 +22,7 @@ import {
   isInDropdownType,
   isSummerCampSessionType,
   isTeenProgramType,
+  isFamilySessionType,
   AT_CAMP_TYPES,
   DROPDOWN_TYPES,
   SUMMER_CAMP_TYPES,
@@ -423,6 +424,17 @@ describe('isTeenProgramType (string predicate)', () => {
   it('returns true for "tli"', () => expect(isTeenProgramType('tli')).toBe(true))
   it('returns false for "teen"', () => expect(isTeenProgramType('teen')).toBe(false))
   it('returns false for "main"', () => expect(isTeenProgramType('main')).toBe(false))
+})
+
+// #2113: extracted so components stop inline-checking `sessionType === 'family'`,
+// per this module's own rule ("never write inline session_type === 'ag' checks").
+describe('isFamilySessionType (string predicate)', () => {
+  it('returns true for "family"', () => expect(isFamilySessionType('family')).toBe(true))
+  it('returns false for "main"', () => expect(isFamilySessionType('main')).toBe(false))
+  it('returns false for null/undefined', () => {
+    expect(isFamilySessionType(null)).toBe(false)
+    expect(isFamilySessionType(undefined)).toBe(false)
+  })
 })
 
 // ============================================================================

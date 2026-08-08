@@ -28,26 +28,11 @@ describe('Year calculation logic', () => {
     })
   })
 
-  describe('calculateAvailableYears', () => {
-    function calculateAvailableYears(baseYear: number, count: number = 5): number[] {
-      if (baseYear === 0) return []
-      return Array.from({ length: count }, (_, i) => baseYear - i)
-    }
-
-    it('should generate 5 years descending from base year', () => {
-      expect(calculateAvailableYears(2026)).toEqual([2026, 2025, 2024, 2023, 2022])
-    })
-
-    it('should work with any base year', () => {
-      expect(calculateAvailableYears(2024, 3)).toEqual([2024, 2023, 2022])
-    })
-
-    it('should return empty array when base year is 0 (not ready)', () => {
-      expect(calculateAvailableYears(0)).toEqual([])
-    })
-  })
-
-  // #2113: the real calculateAvailableYears (exported from CurrentYearContext)
+  // #2113: replaces a stale local re-implementation of calculateAvailableYears
+  // that asserted the old, now-replaced fixed-5-year-window contract (a
+  // private closure shadowing the real export — it stayed green regardless
+  // of the real implementation, per code review on #2113). This block tests
+  // the real calculateAvailableYears (exported from CurrentYearContext)
   // must reach back to 2017, where summer data starts, instead of a fixed
   // 5-year window that stopped list/board year navigation at 2022.
   describe('calculateAvailableYears (real implementation, #2113 widening)', () => {
@@ -66,6 +51,15 @@ describe('Year calculation logic', () => {
 
     it('returns empty array when base year is 0 (not ready)', () => {
       expect(realCalculateAvailableYears(0)).toEqual([])
+    })
+
+    // Code-review finding on #2113: a bogus baseYear below the data floor
+    // (e.g. a misconfigured backend _configured_year) must not fabricate a
+    // single-year result — that would assert an out-of-range year as
+    // "available with data" when the function's own contract says data
+    // starts at EARLIEST_AVAILABLE_YEAR.
+    it('returns empty array for a nonzero base year below the data floor', () => {
+      expect(realCalculateAvailableYears(2010)).toEqual([])
     })
   })
 

@@ -18,7 +18,8 @@ export const EARLIEST_AVAILABLE_YEAR = 2017
 // eslint-disable-next-line react-refresh/only-export-components
 export function calculateAvailableYears(baseYear: number): number[] {
   if (baseYear === 0) return []
-  const length = Math.max(1, baseYear - EARLIEST_AVAILABLE_YEAR + 1)
+  const length = baseYear - EARLIEST_AVAILABLE_YEAR + 1
+  if (length <= 0) return []
   return Array.from({ length }, (_, i) => baseYear - i)
 }
 

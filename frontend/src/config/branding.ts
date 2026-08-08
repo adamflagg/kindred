@@ -61,10 +61,6 @@ export function getCampDescription(): string {
   return branding.camp_description
 }
 
-export function getCampTagline(): string {
-  return branding.camp_tagline
-}
-
 export function getSsoDisplayName(): string {
   return branding.sso_display_name
 }

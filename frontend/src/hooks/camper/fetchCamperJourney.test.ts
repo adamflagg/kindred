@@ -47,12 +47,19 @@ function attendee(
   }
 }
 
-function assignment(year: number, sessionCmId: number | null, bunkName: string) {
+function assignment(
+  year: number,
+  sessionCmId: number | null,
+  bunkName: string,
+  sessionType?: string
+) {
   return {
     id: `asn-${year}-${sessionCmId ?? 'x'}`,
     year,
     expand: {
-      ...(sessionCmId !== null ? { session: { cm_id: sessionCmId } } : {}),
+      ...(sessionCmId !== null
+        ? { session: { cm_id: sessionCmId, ...(sessionType ? { session_type: sessionType } : {}) } }
+        : {}),
       bunk: { name: bunkName },
     },
   }
@@ -112,6 +119,37 @@ describe('fetchCamperJourney', () => {
     expect(out[0]).toMatchObject({ year: 2023, sessionName: 'Session 3', bunkName: 'G-8B' })
   })
 
+  // Regression for #2113 code review: widening CAMPER_JOURNEY_TYPES to include
+  // 'family' means a lone family-camp assignment can now appear in yearAssignments
+  // for a year that also has a summer enrollment. The exact-match branch correctly
+  // claims it for the family row — but the year-fallback (length===1) doesn't know
+  // the assignment was already exact-matched elsewhere, and would attach the same
+  // family bunk to the unrelated summer row too. This is the exact leak fb1a88d2
+  // closed for current-year views (useCamperEnrollment) — reopening it here would
+  // show a family lodging unit as if it were the camper's summer cabin.
+  it('does not leak a lone family-camp assignment onto an unrelated summer row via the year-fallback', async () => {
+    mockAttendeesGetFullList.mockResolvedValue([
+      attendee(2019, 100, 'main', 'Session 2'),
+      attendee(2019, 900, 'family', 'Winter Family Weekend'),
+    ])
+    mockAssignmentsGetFullList.mockResolvedValue([assignment(2019, 900, 'Cabin FC-2', 'family')])
+    const out = await fetchCamperJourney(PERSON, CURRENT_YEAR)
+    const main = out.find((r) => r.sessionName === 'Session 2')
+    const family = out.find((r) => r.sessionName === 'Winter Family Weekend')
+    expect(family?.bunkName).toBe('Cabin FC-2') // exact match — correct
+    expect(main?.bunkName).toBeUndefined() // must NOT inherit the family bunk via fallback
+  })
+
+  it('still applies the year-fallback within summer/teen types (pre-existing behavior, unchanged)', async () => {
+    // A quest enrollment with no exact-match bunk, and exactly one (non-family)
+    // assignment that year for a different session — the fallback still fires,
+    // same as before #2113 widened the type filter.
+    mockAttendeesGetFullList.mockResolvedValue([attendee(2020, 500, 'quest', 'Quest Session')])
+    mockAssignmentsGetFullList.mockResolvedValue([assignment(2020, 501, 'Q-Cabin', 'main')])
+    const out = await fetchCamperJourney(PERSON, CURRENT_YEAR)
+    expect(out[0]?.bunkName).toBe('Q-Cabin')
+  })
+
   it('relabels an AG-only year to its parent main via camp_sessions lookup, keeping the AG bunk', async () => {
     // AG enrollment session cm_id 200 (parent main 199 NOT enrolled, so the AG row
     // survives). The bunk is filed under the AG session itself (exact match → AG-4).
@@ -144,6 +182,23 @@ describe('fetchCamperJourney', () => {
     const out = await fetchCamperJourney(PERSON, CURRENT_YEAR)
     expect(out).toHaveLength(1)
     expect(out[0]).toMatchObject({ year: 2023, sessionType: 'main', sessionName: 'Session 2' })
+  })
+
+  // Regression for #2113 code review: cm_id and parent_id both default to 0
+  // when unset (same sentinel agCollapse.ts guards against for current-year
+  // enrollments). Without a `> 0` guard here, a cm_id-less session (cm_id 0)
+  // seeds 0 into enrolledByYear, and an unrelated parentless AG row (parent_id
+  // 0) would then match has(0) and get silently dropped from the journey.
+  it('does not collapse a parentless AG row (parent_id 0) against an unrelated cm_id-less session (cm_id 0)', async () => {
+    mockAttendeesGetFullList.mockResolvedValue([
+      attendee(2023, 0, 'main', 'Session With No CM ID'),
+      attendee(2023, 200, 'ag', 'Standalone AG Session', 0),
+    ])
+    const out = await fetchCamperJourney(PERSON, CURRENT_YEAR)
+    expect(out).toHaveLength(2)
+    expect(out.map((r) => r.sessionName)).toEqual(
+      expect.arrayContaining(['Session With No CM ID', 'Standalone AG Session'])
+    )
   })
 
   it('leaves a row unlabeled when its year has >=2 assignments and none match the session', async () => {
