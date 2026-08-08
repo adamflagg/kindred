@@ -27,6 +27,7 @@ const deleteGroup = vi.fn()
 let groupsResult: {
   data: { groups: FriendGroupRow[] } | undefined
   isLoading: boolean
+  isPending: boolean
   error: unknown
 }
 
@@ -45,7 +46,7 @@ let client: QueryClient
 beforeEach(() => {
   vi.clearAllMocks()
   client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
-  groupsResult = { data: { groups: [] }, isLoading: false, error: null }
+  groupsResult = { data: { groups: [] }, isLoading: false, isPending: false, error: null }
 })
 
 function wrapper({ children }: { children: ReactNode }) {
@@ -122,14 +123,19 @@ describe('authoring a group', () => {
     await user.click(screen.getByRole('button', { name: /Garcia/ }))
     await user.click(screen.getByRole('button', { name: /create group/i }))
 
-    expect(createGroup).toHaveBeenCalledWith({
-      year: 2026,
-      session_cm_id: 1000001,
-      name: 'Garcia, Johnson',
-      color: '#ef4444',
-      intent: 'with',
-      household_cm_ids: [2000001, 2000002],
-    })
+    expect(createGroup).toHaveBeenCalledWith(
+      {
+        year: 2026,
+        session_cm_id: 1000001,
+        name: 'Garcia, Johnson',
+        color: '#ef4444',
+        intent: 'with',
+        household_cm_ids: [2000001, 2000002],
+      },
+      // The second argument is what makes the clear conditional — see
+      // "keeps the selection when the create fails" below.
+      expect.objectContaining({ onSuccess: expect.any(Function) })
+    )
   })
 
   it('sends NEAR when staff pick proximity rather than co-housing', async () => {
@@ -140,7 +146,10 @@ describe('authoring a group', () => {
     await user.click(screen.getByRole('radio', { name: /nearby/i }))
     await user.click(screen.getByRole('button', { name: /create group/i }))
 
-    expect(createGroup).toHaveBeenCalledWith(expect.objectContaining({ intent: 'near' }))
+    expect(createGroup).toHaveBeenCalledWith(
+      expect.objectContaining({ intent: 'near' }),
+      expect.anything()
+    )
   })
 
   it('keeps a typed name over the auto-name', async () => {
@@ -151,7 +160,10 @@ describe('authoring a group', () => {
     await user.type(screen.getByLabelText(/group name/i), 'Lake cabins')
     await user.click(screen.getByRole('button', { name: /create group/i }))
 
-    expect(createGroup).toHaveBeenCalledWith(expect.objectContaining({ name: 'Lake cabins' }))
+    expect(createGroup).toHaveBeenCalledWith(
+      expect.objectContaining({ name: 'Lake cabins' }),
+      expect.anything()
+    )
   })
 
   it('clears the selection', async () => {
@@ -159,6 +171,57 @@ describe('authoring a group', () => {
     renderTab()
     await user.click(screen.getByRole('button', { name: /Johnson/ }))
     await user.click(screen.getByRole('button', { name: /^clear$/i }))
+    expect(screen.queryByTestId('friend-group-action-bar')).not.toBeInTheDocument()
+  })
+
+  it('keeps the selection when the create FAILS', async () => {
+    // `mutate` is fire-and-forget. Clearing straight after the call throws the
+    // staff member's whole selection and typed name away on a 403, a 400 or a
+    // dropped connection — and there is nothing to undo it with. Summer clears
+    // in `onSuccess` for exactly this reason.
+    const user = userEvent.setup()
+    createGroup.mockImplementation(() => {
+      /* the mutation rejected: onSuccess is never called */
+    })
+    renderTab()
+    await user.click(screen.getByRole('button', { name: /Johnson/ }))
+    await user.click(screen.getByRole('button', { name: /Garcia/ }))
+    await user.click(screen.getByRole('button', { name: /create group/i }))
+
+    const bar = screen.getByTestId('friend-group-action-bar')
+    expect(within(bar).getByText('2 households selected')).toBeInTheDocument()
+  })
+
+  it('clears the selection once the create SUCCEEDS', async () => {
+    const user = userEvent.setup()
+    createGroup.mockImplementation((_body, options?: { onSuccess?: () => void }) => {
+      options?.onSuccess?.()
+    })
+    renderTab()
+    await user.click(screen.getByRole('button', { name: /Johnson/ }))
+    await user.click(screen.getByRole('button', { name: /Garcia/ }))
+    await user.click(screen.getByRole('button', { name: /create group/i }))
+
+    expect(screen.queryByTestId('friend-group-action-bar')).not.toBeInTheDocument()
+  })
+
+  it('drops a selection carried over from another weekend', async () => {
+    // The weekend switcher re-renders this route element rather than
+    // remounting it, so without an explicit reset the households picked on
+    // one weekend stay selected and get authored against the next.
+    const user = userEvent.setup()
+    const { rerender } = renderTab()
+    await user.click(screen.getByRole('button', { name: /Johnson/ }))
+    expect(screen.getByTestId('friend-group-action-bar')).toBeInTheDocument()
+
+    rerender(
+      <WeekendFriendGroups
+        year={2026}
+        sessionCmId={1000002}
+        parties={[JOHNSON, GARCIA, CHEN]}
+        canManage
+      />
+    )
     expect(screen.queryByTestId('friend-group-action-bar')).not.toBeInTheDocument()
   })
 })
@@ -177,7 +240,7 @@ describe('existing groups', () => {
   }
 
   it('lists the group with its members named by surname', () => {
-    groupsResult = { data: { groups: [group] }, isLoading: false, error: null }
+    groupsResult = { data: { groups: [group] }, isLoading: false, isPending: false, error: null }
     renderTab()
     const card = screen.getByTestId('friend-group-grp_1')
     expect(within(card).getByText('Garcia, Johnson')).toBeInTheDocument()
@@ -189,6 +252,7 @@ describe('existing groups', () => {
     groupsResult = {
       data: { groups: [group, { ...group, group_id: 'grp_2', intent: 'near' }] },
       isLoading: false,
+      isPending: false,
       error: null,
     }
     renderTab()
@@ -206,6 +270,7 @@ describe('existing groups', () => {
         ],
       },
       isLoading: false,
+      isPending: false,
       error: null,
     }
     renderTab()
@@ -215,7 +280,7 @@ describe('existing groups', () => {
 
   it('dissolves a group', async () => {
     const user = userEvent.setup()
-    groupsResult = { data: { groups: [group] }, isLoading: false, error: null }
+    groupsResult = { data: { groups: [group] }, isLoading: false, isPending: false, error: null }
     renderTab()
     await user.click(
       within(screen.getByTestId('friend-group-grp_1')).getByRole('button', { name: /dissolve/i })
@@ -225,7 +290,7 @@ describe('existing groups', () => {
 
   it('renames a group', async () => {
     const user = userEvent.setup()
-    groupsResult = { data: { groups: [group] }, isLoading: false, error: null }
+    groupsResult = { data: { groups: [group] }, isLoading: false, isPending: false, error: null }
     renderTab()
     const card = screen.getByTestId('friend-group-grp_1')
     await user.click(within(card).getByRole('button', { name: /rename/i }))
@@ -239,7 +304,7 @@ describe('existing groups', () => {
 
   it('recolours a group', async () => {
     const user = userEvent.setup()
-    groupsResult = { data: { groups: [group] }, isLoading: false, error: null }
+    groupsResult = { data: { groups: [group] }, isLoading: false, isPending: false, error: null }
     renderTab()
     const card = screen.getByTestId('friend-group-grp_1')
     await user.click(within(card).getByRole('button', { name: /rename/i }))
@@ -269,6 +334,7 @@ describe('permissions and grain', () => {
         ],
       },
       isLoading: false,
+      isPending: false,
       error: null,
     }
     renderTab({ canManage: false })
@@ -289,13 +355,28 @@ describe('permissions and grain', () => {
 
 describe('query states', () => {
   it('reports a load', () => {
-    groupsResult = { data: undefined, isLoading: true, error: null }
+    groupsResult = { data: undefined, isLoading: true, isPending: true, error: null }
     renderTab()
     expect(screen.getByText(/loading/i)).toBeInTheDocument()
   })
 
+  it('does not claim an empty list while the query is still idle', () => {
+    // A disabled query (year 0 on a cold load, or an unresolved slug) reports
+    // `isLoading: false` with no data. Reading only `isLoading` would render
+    // "No data available" for a weekend that has not been asked about yet.
+    groupsResult = { data: undefined, isLoading: false, isPending: true, error: null }
+    renderTab()
+    expect(screen.getByText(/loading/i)).toBeInTheDocument()
+  })
+
+  it('names the empty state rather than saying "No data available"', () => {
+    groupsResult = { data: undefined, isLoading: false, isPending: false, error: null }
+    renderTab()
+    expect(screen.getByText(/no friend groups/i)).toBeInTheDocument()
+  })
+
   it('reports a failure rather than an empty list', () => {
-    groupsResult = { data: undefined, isLoading: false, error: new Error('boom') }
+    groupsResult = { data: undefined, isLoading: false, isPending: false, error: new Error('boom') }
     renderTab()
     expect(screen.getByText(/boom|error|failed/i)).toBeInTheDocument()
   })

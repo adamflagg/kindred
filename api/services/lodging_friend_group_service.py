@@ -207,10 +207,24 @@ class LodgingFriendGroupService:
 
         NOT a transaction, because PocketBase's REST API gives this layer no
         way to make it one. A failure part-way through the member loop leaves a
-        group with fewer households than asked for -- which the UI shows, and a
-        staff member fixes by editing the group. The alternative, deleting the
-        group to unwind, trades a visible partial result for a silent total
-        loss of the staff member's selection.
+        REAL group holding fewer households than were asked for.
+
+        That partial row is kept rather than unwound, and the two halves of
+        that choice both matter:
+
+        * It must be VISIBLE. `useFriendGroupMutations` therefore invalidates
+          the group query on the ERROR path as well as the success path --
+          without that the partial group exists, staff cannot see it, and a
+          retry makes a second one.
+        * It must be REPAIRABLE with what the UI actually offers, which is
+          Rename, Recolour and Dissolve -- NOT member editing, which
+          kindred#1913 half 1 deliberately does not build. So the repair is
+          "dissolve it and author it again", and the group being visible is
+          what makes that possible at all.
+
+        Deleting the group here to unwind would trade a visible, dissolvable
+        partial result for a silent total loss of the staff member's
+        selection, which the caller cannot reconstruct.
         """
         session_pb_id = await self._resolve_session_pb_id(request.year, request.session_cm_id)
 

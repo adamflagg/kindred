@@ -55,8 +55,18 @@ export function useWeekendFriendGroups(year: number, sessionCmId: number | null)
   })
 }
 
+/** What a caller may hang off a mutation that SUCCEEDED. */
+export interface MutationCallbacks {
+  onSuccess?: () => void
+}
+
 export interface FriendGroupMutations {
-  createGroup: (body: FriendGroupCreate) => void
+  /**
+   * `options.onSuccess` is not decoration. `mutate` is fire-and-forget, so a
+   * caller that resets its own UI on the next line resets it on failure too —
+   * and the action bar's "own UI" is the staff member's entire selection.
+   */
+  createGroup: (body: FriendGroupCreate, options?: MutationCallbacks) => void
   updateGroup: (groupId: string, body: FriendGroupUpdate) => void
   deleteGroup: (groupId: string) => void
   isPending: boolean
@@ -91,7 +101,17 @@ export function useFriendGroupMutations(year: number, sessionCmId: number): Frie
       // eslint-disable-next-line @typescript-eslint/prefer-nullish-coalescing -- '' is a real stored value meaning "unnamed"
       toast.success(`Created ${group.name || 'the group'}`)
     },
-    onError: (error: Error) => toast.error(error.message),
+    onError: (error: Error) => {
+      // INVALIDATE ON FAILURE TOO, and only here. `create_group` writes the
+      // group row and then one member row per household, and PocketBase's
+      // REST API gives that no transaction — so a failure part-way through
+      // leaves a REAL group holding fewer households than asked for. Without
+      // this the list would not refetch and that group would be invisible
+      // until something else happened to invalidate, which is the worst of
+      // both: it exists, staff cannot see it, and re-creating makes a second.
+      invalidate()
+      toast.error(error.message)
+    },
   })
 
   const update = useMutation({
@@ -114,7 +134,9 @@ export function useFriendGroupMutations(year: number, sessionCmId: number): Frie
   })
 
   return {
-    createGroup: create.mutate,
+    createGroup: (body: FriendGroupCreate, options?: MutationCallbacks) => {
+      create.mutate(body, options)
+    },
     updateGroup: (groupId: string, body: FriendGroupUpdate) => {
       update.mutate({ groupId, body })
     },

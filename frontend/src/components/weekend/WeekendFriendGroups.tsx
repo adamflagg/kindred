@@ -259,6 +259,31 @@ export function WeekendFriendGroups({
   const [intent, setIntent] = useState<FriendGroupIntent>('with')
   const [color, setColor] = useState<string | null>(null)
 
+  /**
+   * DROP THE SELECTION WHEN THE WEEKEND CHANGES.
+   *
+   * The weekend switcher navigates to `/weekend/:otherRef/:view`, which
+   * re-renders this same route element rather than remounting it — so nothing
+   * resets this state on its own. Households picked on one weekend would stay
+   * selected on the next, and the action bar would author them against a
+   * weekend they are not enrolled in. (`selected` filters against the new
+   * roster, so the visible count would silently shrink rather than error,
+   * which is worse: it looks deliberate.)
+   *
+   * Adjusted DURING render rather than in an effect — the "storing information
+   * from previous renders" pattern the React docs give for exactly this shape,
+   * and the same one `WeekendRosterPage`'s `openedViews` uses one level up. It
+   * is self-terminating: once `lastSessionCmId` matches, the branch is false
+   * on the very next render.
+   */
+  const [lastSessionCmId, setLastSessionCmId] = useState(sessionCmId)
+  if (lastSessionCmId !== sessionCmId) {
+    setLastSessionCmId(sessionCmId)
+    setSelectedIds(new Set())
+    setName('')
+    setColor(null)
+  }
+
   const households = useMemo(
     () => parties.filter((party) => party.grain === 'household'),
     [parties]
@@ -295,10 +320,20 @@ export function WeekendFriendGroups({
 
   return (
     <QueryGuard
-      isLoading={groupsQuery.isLoading}
+      // `isPending`, NOT `isLoading`. A DISABLED query — `year` still 0 on a
+      // cold load, or a slug the session list has not resolved yet — reports
+      // `isLoading: false` with no data, which lands on QueryGuard's
+      // no-data branch and tells staff there is nothing here for a weekend
+      // nothing has been asked about. `isPending` is true for both the
+      // in-flight and the not-yet-asked cases, which is what the user is
+      // actually looking at.
+      isLoading={groupsQuery.isPending}
       error={groupsQuery.error}
       data={groupsQuery.data}
       label="friend group"
+      // Reached only if the server ever answers with no body. Named rather
+      // than left as the generic "No data available", which reads as a fault.
+      emptyMessage="No friend groups for this weekend."
     >
       {(list) => {
         const groups = list.groups ?? []
@@ -398,19 +433,27 @@ export function WeekendFriendGroups({
                 onIntentChange={setIntent}
                 onClear={clearSelection}
                 onCreate={() => {
-                  createGroup({
-                    year,
-                    session_cm_id: sessionCmId,
-                    // A blank field means "use the auto-name", which the bar
-                    // shows as its placeholder. The server stores what it is
-                    // given, so the fallback is applied HERE rather than left
-                    // for the row to be renamed later.
-                    name: name.trim() || defaultFriendGroupName(selected),
-                    color: activeColor,
-                    intent,
-                    household_cm_ids: selected.map((party) => party.household_cm_id ?? 0),
-                  })
-                  clearSelection()
+                  createGroup(
+                    {
+                      year,
+                      session_cm_id: sessionCmId,
+                      // A blank field means "use the auto-name", which the bar
+                      // shows as its placeholder. The server stores what it is
+                      // given, so the fallback is applied HERE rather than left
+                      // for the row to be renamed later.
+                      name: name.trim() || defaultFriendGroupName(selected),
+                      color: activeColor,
+                      intent,
+                      household_cm_ids: selected.map((party) => party.household_cm_id ?? 0),
+                    },
+                    // CLEARED ON SUCCESS ONLY, as summer's bar does. `mutate`
+                    // is fire-and-forget, so clearing straight after the call
+                    // throws away the whole selection and the typed name on a
+                    // 403, a 400 or a dropped connection — with nothing to
+                    // undo it, and a toast that says what failed but not what
+                    // was lost.
+                    { onSuccess: clearSelection }
+                  )
                 }}
                 isPending={isPending}
               />
