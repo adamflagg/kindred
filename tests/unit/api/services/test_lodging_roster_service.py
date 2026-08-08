@@ -930,6 +930,27 @@ class TestCountsFollowTheDrawLevel:
         assert roster.counts.units_total == 1
         assert roster.counts.beds_family_available == 13
 
+    @pytest.mark.asyncio
+    async def test_an_inactive_room_does_not_swell_a_combined_containers_total(self) -> None:
+        """A decommissioned room stays in the registry (kindred#1899-adjacent
+        history), but never contributes beds -- the same guard `drawn` already
+        applies to a container's OWN row. The inactive room here carries a
+        deliberately large `sleeps` (10) so the assertion fails loudly if the
+        leaf walk ever stops filtering it out.
+        """
+        repo = _repo(
+            fetch_session=FAMILY_SESSION,
+            fetch_units=[
+                _unit("u1", "house", "The House", sleeps=5, is_container=True, default_combined=True),
+                _unit("u2", "r1", "Room 1", sleeps=3, parent_unit="u1"),
+                _unit("u3", "r2", "Room 2 (decommissioned)", sleeps=10, parent_unit="u1", is_active=False),
+            ],
+        )
+        roster = await LodgingRosterService(repo).build_roster(2026, 1000001)
+
+        assert roster.counts.units_total == 1
+        assert roster.counts.beds_family_available == 8
+
 
 class TestSlotMergeTiers:
     """resolve_combined's three tiers, exercised through the roster assembly.

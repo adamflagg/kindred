@@ -1224,7 +1224,7 @@ class LodgingRosterService:
             leaf_total = sum(
                 leaf.sleeps
                 for code in tree.leaf_codes_under(unit.code)
-                if (leaf := tree.units_by_code.get(code)) is not None and leaf.sleeps is not None
+                if (leaf := tree.units_by_code.get(code)) is not None and leaf.is_active and leaf.sleeps is not None
             )
             return (unit.sleeps or 0) + leaf_total
 
