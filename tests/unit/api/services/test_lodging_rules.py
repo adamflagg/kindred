@@ -16,6 +16,7 @@ Python would regress two fixes that live only on the Go side.
 import pytest
 
 from api.services.lodging_rules import (
+    container_bathroom,
     effective_bathroom,
     is_family_available,
     unit_capacity,
@@ -115,3 +116,32 @@ class TestEffectiveBathroom:
 
     def test_shared_without_a_group_stays_shared(self) -> None:
         assert effective_bathroom("shared", "", frozenset(), frozenset({"x"})) == "shared"
+
+
+class TestContainerBathroom:
+    """kindred#2022's second gap. All 15 registry containers store
+    bathroom = "none" on their own row -- a building is not a room -- which
+    short-circuits `effective_bathroom`'s exclusivity branch (line 108-109)
+    before it ever runs. A party that books the whole container (the
+    health-center apartments: two bedrooms over one shared bath, normally
+    let whole) needs the container's input substituted from its leaves
+    instead. This is that substitution, kept OUTSIDE `effective_bathroom`
+    itself -- that function stays the same four-argument pure test the
+    class above already pins, rather than growing a fifth argument to know
+    about children it has no way to walk.
+    """
+
+    def test_leaves_sharing_one_group_inherit_shared(self) -> None:
+        assert container_bathroom(frozenset({"hc-dh-bath"})) == ("shared", "hc-dh-bath")
+
+    def test_leaves_with_no_group_inherit_nothing(self) -> None:
+        assert container_bathroom(frozenset({""})) == ("none", "")
+
+    def test_leaves_split_across_groups_inherit_nothing(self) -> None:
+        """Ambiguous -- rooms that don't share one physical bathroom have no
+        single answer, so the container reports exactly what its own
+        registry row already says."""
+        assert container_bathroom(frozenset({"group-a", "group-b"})) == ("none", "")
+
+    def test_no_leaves_inherit_nothing(self) -> None:
+        assert container_bathroom(frozenset()) == ("none", "")

@@ -13,6 +13,7 @@ import {
 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { useYear } from '../../hooks/useCurrentYear'
+import { EARLIEST_AVAILABLE_YEAR } from '../../contexts/CurrentYearContext'
 import { type SyncStatus, type QueuedSyncItem } from '../../hooks/useSyncStatusAPI'
 import { useSyncCompletionToasts } from '../../hooks/useSyncCompletionToasts'
 import { useRunIndividualSync } from '../../hooks/useRunIndividualSync'
@@ -405,13 +406,14 @@ export function SyncTab() {
                 disabled={unifiedSync.isPending || runPhaseSync.isPending}
               >
                 <option value={currentYear}>{currentYear}</option>
-                {Array.from({ length: currentYear - 2017 }, (_, i) => currentYear - 1 - i).map(
-                  (year) => (
-                    <option key={year} value={year}>
-                      {year}
-                    </option>
-                  )
-                )}
+                {Array.from(
+                  { length: currentYear - EARLIEST_AVAILABLE_YEAR },
+                  (_, i) => currentYear - 1 - i
+                ).map((year) => (
+                  <option key={year} value={year}>
+                    {year}
+                  </option>
+                ))}
               </select>
 
               <div className="bg-border/50 h-6 w-px" />

@@ -20,7 +20,7 @@ React + TypeScript + Vite. Dev server on `:3000` (HMR); prod served via Caddy at
 ## Component patterns
 
 - **Modular extraction** — large components (e.g. `SocialNetworkGraph.tsx`) decompose into utility modules
-- **Custom hooks** — data fetching extracted (`useSocialGraphData`, `useBunkNames`, `useSessionHierarchy`)
+- **Custom hooks** — extract data fetching once a query has **2+ consumers** (`useSocialGraphData`, `useBunkNames`, `useSessionHierarchy`, `useLodgingAreas`, `useLodgingUnits`). A query with a single consumer is fine inline — don't extract pre-emptively.
 - **Barrel exports** — directories use `index.ts` for clean imports
 
 ## Error handling — non-negotiable

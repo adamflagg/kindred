@@ -92,6 +92,31 @@ func (s *LodgingAssignmentsSync) Sync(ctx context.Context) error {
 	if s.resolver, err = NewAliasResolver(s.App); err != nil {
 		return fmt.Errorf("building alias resolver: %w", err)
 	}
+
+	// A season with no lodging_units rows at all cannot resolve anything:
+	// Resolve is all-or-nothing on (code, year), so every alias's stored
+	// member id -- still pointing at whatever year it was last authored
+	// against -- misses. Left unguarded that unresolves every cabin: each
+	// distinct raw string queues an unresolved_alias work-queue item that
+	// never self-clears (IssueRecorder.Flush only sets is_resolved on
+	// create), and writeHistory on the unresolved path is unconditional, so
+	// every run appends another lodging_assignment_history row per household.
+	// Skip and return nil -- one unseeded season must not fail the whole sync
+	// run. Two distinguishable messages, because they call for different
+	// action: nothing has ever been loaded for this year, vs. a prior season
+	// exists but this one has not been carried forward yet. See #2061.
+	if !s.resolver.HasUnitsForYear(year) {
+		if s.resolver.HasAnyUnits() {
+			slog.Warn("lodging_assignments_sync: skipping -- registry has not been rolled forward to this season yet",
+				"year", year)
+		} else {
+			slog.Warn("lodging_assignments_sync: skipping -- no lodging registry has ever been loaded for this season",
+				"year", year)
+		}
+		s.SyncSuccessful = true
+		return nil
+	}
+
 	s.issues = NewIssueRecorder(s.App, year)
 
 	fieldTargets, err := LodgingFieldDefIDs(s.App)

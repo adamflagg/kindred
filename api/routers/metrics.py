@@ -27,7 +27,7 @@ from api.services.waitlist_service import WaitlistService
 from api.utils.validators import check_duration_session_exclusive
 from bunking.auth_middleware import AuthUser, get_current_user
 
-from ..dependencies import metrics_cache, pb
+from ..dependencies import lodging_cache, metrics_cache, pb
 from ..schemas.day1 import Day1Response
 from ..schemas.forecast import ForecastResponse, WeekOption
 from ..schemas.metrics import (
@@ -634,7 +634,7 @@ async def get_day1(
 
 @router.post("/cache/invalidate")
 async def invalidate_metrics_cache() -> dict[str, int]:
-    """Invalidate all cached metrics responses + geo person-id cache.
+    """Invalidate all cached metrics responses + geo person-id cache + lodging year cache.
 
     Auth is handled by the middleware (skipped for this path since cache
     clearing is safe and idempotent). Called by:
@@ -644,9 +644,16 @@ async def invalidate_metrics_cache() -> dict[str, int]:
 
     Geo's _PERSON_ID_CACHE piggybacks on the same signal — CampMinder sync
     changes attendee status_id, which feeds _fetch_active_person_pb_ids.
+
+    lodging_cache (kindred#1963) piggybacks here too (kindred#2142): its four
+    cached reads are written only by the "persons" sync (households) and the
+    "family_camp_derived" sync (family_camp_adults, family_camp_registrations),
+    both of which are polled sync types that fire invalidateSyncData on
+    completion — same signal, same reasoning as geo's cache above.
     """
     cleared = metrics_cache.invalidate_all()
     clear_person_id_cache()
+    lodging_cache.invalidate_all()
     return {"cleared": cleared}
 
 

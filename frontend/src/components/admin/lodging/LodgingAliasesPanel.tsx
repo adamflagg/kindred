@@ -16,11 +16,8 @@ import { useEffect, useRef, useState } from 'react'
 import toast from 'react-hot-toast'
 
 import { useCurrentYear } from '../../../hooks/useCurrentYear'
-import {
-  deleteLodgingAlias,
-  listLodgingAliases,
-  listLodgingUnits,
-} from '../../../services/lodgingCrud'
+import { useLodgingUnits } from '../../../hooks/useLodgingUnits'
+import { deleteLodgingAlias, listLodgingAliases } from '../../../services/lodgingCrud'
 import type { LodgingAliasRecord } from '../../../types/lodging'
 import {
   invalidateLodgingRegistryQueries,
@@ -47,20 +44,6 @@ export function LodgingAliasesPanel() {
   const [editing, setEditing] = useState<LodgingAliasRecord | 'new' | null>(null)
   const formRef = useRef<HTMLDivElement>(null)
 
-  /**
-   * Move attention to the editor whenever it opens — including switching
-   * straight from editing one alias to another, since the form never
-   * unmounts in between (see the `key` below). Without this, opening the
-   * form on a 90-row table produces no visible change below the fold, and
-   * the natural response — clicking Edit again, or on a different row — is
-   * exactly how a stale-record write would go unnoticed.
-   */
-  useEffect(() => {
-    if (editing === null) return
-    formRef.current?.scrollIntoView({ block: 'nearest' })
-    formRef.current?.querySelector<HTMLElement>('input, select, textarea')?.focus()
-  }, [editing])
-
   const aliasesQuery = useQuery({
     queryKey: queryKeys.lodgingAliases(),
     ...userDataOptions,
@@ -75,19 +58,40 @@ export function LodgingAliasesPanel() {
   // configured year. PocketBase answers `year = 0` with a successful `200
   // []` rather than an error, so without this gate the picker would render
   // as if there were genuinely no units to map an alias to.
-  // ONE constant for the fetch gate and the render guard, because gating only
-  // the fetch does not fix what the gate is for. A disabled TanStack query is
-  // `isLoading === false` (pending but idle -- nothing is fetching) with `data
-  // === undefined`, which is indistinguishable from a settled empty result to
-  // every consumer below. Derive both from this and they cannot drift apart.
+  // ONE constant for the render guard below. useLodgingUnits gates its own
+  // fetch on year-readiness; a disabled TanStack query is `isLoading ===
+  // false` (pending but idle -- nothing is fetching) with `data ===
+  // undefined`, which is indistinguishable from a settled empty result to
+  // every consumer below, so the render guard still needs this separately.
   const yearReady = currentYear > 0
 
-  const unitsQuery = useQuery({
-    queryKey: queryKeys.lodgingUnits(currentYear),
-    ...userDataOptions,
-    queryFn: () => listLodgingUnits(currentYear),
-    enabled: yearReady,
-  })
+  const unitsQuery = useLodgingUnits()
+
+  /**
+   * Move attention to the editor whenever it opens — including switching
+   * straight from editing one alias to another, since the form never
+   * unmounts in between (see the `key` below). Without this, opening the
+   * form on a 90-row table produces no visible change below the fold, and
+   * the natural response — clicking Edit again, or on a different row — is
+   * exactly how a stale-record write would go unnoticed.
+   *
+   * `unitsQuery.isSuccess` IS A DEPENDENCY, not a stray one — and it is why
+   * this effect sits BELOW the query rather than up with the other state. The
+   * form is gated on the units having loaded (the branch below), so opening
+   * the editor during a slow fetch runs this effect against the "Loading
+   * units…" placeholder, where there is nothing to scroll to or focus. Keyed
+   * on `[editing]` alone it would never re-run once the real form mounts,
+   * leaving focus on the button and the member-unit fieldset — this form's
+   * whole payload — unreachable by keyboard. `isSuccess` is the right flag
+   * rather than the raw `isLoading`: a units query disabled on an unresolved
+   * year reports `isLoading === false` while still having no data, and only
+   * the loaded case renders anything focusable.
+   */
+  useEffect(() => {
+    if (editing === null) return
+    formRef.current?.scrollIntoView({ block: 'nearest' })
+    formRef.current?.querySelector<HTMLElement>('input, select, textarea')?.focus()
+  }, [editing, unitsQuery.isSuccess])
 
   const refresh = () => {
     setEditing(null)
@@ -157,7 +161,7 @@ export function LodgingAliasesPanel() {
                records writes the PREVIOUS alias's fields to the new one. */
             <LodgingAliasForm
               key={editing === 'new' ? 'new' : editing.id}
-              units={unitsQuery.data ?? []}
+              units={unitsQuery.items}
               alias={editing === 'new' ? undefined : editing}
               onSaved={refresh}
               onCancel={() => {

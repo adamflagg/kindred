@@ -4898,6 +4898,10 @@ export type RosterParty = {
    */
   unit_codes?: Array<string>
   /**
+   * Effective Bathroom
+   */
+  effective_bathroom?: 'unknown' | 'none' | 'private' | 'shared'
+  /**
    * Arrival Eta
    */
   arrival_eta?: string

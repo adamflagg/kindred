@@ -252,6 +252,31 @@ class TestCacheInvalidationEndpoint:
         assert resp.status_code == 200
         assert len(_PERSON_ID_CACHE) == 0
 
+    def test_invalidation_endpoint_also_clears_lodging_year_cache(self, test_client, fresh_cache):
+        """The same /cache/invalidate endpoint must also clear lodging_cache (kindred#2142).
+
+        lodging_cache (kindred#1963) was shipped TTL-only, with no invalidation
+        hook wired anywhere -- exactly the trap root CLAUDE.md's caching section
+        names: "long staleTime plus explicit invalidation on mutation -- never
+        short staleTime plus hope." The frontend already fires this same
+        endpoint after every CampMinder sync completes (invalidateSyncData in
+        queryClient.ts), and both of lodging_cache's writers -- the "persons"
+        sync (households) and the "family_camp_derived" sync (family_camp_adults,
+        family_camp_registrations) -- are polled sync types that trigger that
+        callback, so wiring lodging_cache in here is the one-line follow-up its
+        own module docstring calls for.
+        """
+        from api.dependencies import lodging_cache
+
+        lodging_cache.invalidate_all()  # isolate from any bleed; it's a process-wide singleton
+        lodging_cache.set("fetch_households", 2026, {"hh_1": object()})
+        assert lodging_cache.get("fetch_households", 2026) is not None
+
+        resp = test_client.post("/api/metrics/cache/invalidate")
+
+        assert resp.status_code == 200
+        assert lodging_cache.get("fetch_households", 2026) is None
+
 
 class TestCacheStatsEndpoint:
     """Test the GET /api/metrics/cache/stats endpoint."""

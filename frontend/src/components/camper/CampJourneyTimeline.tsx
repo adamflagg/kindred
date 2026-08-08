@@ -5,8 +5,8 @@
 import { TreePine, Home } from 'lucide-react'
 import { getSessionDisplayNameFromString } from '../../utils/sessionDisplay'
 import { getStatusIndicator } from '../../utils/enrollmentFilter'
+import { isFamilySessionType } from '../../utils/sessionTypePredicates'
 import type { HistoricalRecord } from '../../hooks/camper/types'
-import { getCampTagline } from '../../config/branding'
 
 interface CampJourneyTimelineProps {
   history: HistoricalRecord[]
@@ -27,8 +27,11 @@ export function CampJourneyTimeline({
           <TreePine className="h-5 w-5" />
           Camp Journey
         </h2>
+        {/* Program-agnostic count (#2113): the branding tagline reads as
+            summer-only ("summers at camp") and the journey now includes
+            family camp and teen years, so it's no longer paired here. */}
         <p className="text-forest-200 mt-1 text-sm">
-          {yearsAtCamp} {getCampTagline()}
+          {yearsAtCamp} {yearsAtCamp === 1 ? 'year' : 'years'} at camp
         </p>
       </div>
 
@@ -79,6 +82,18 @@ export function CampJourneyTimeline({
                       {getSessionDisplayNameFromString(record.sessionName, record.sessionType)}
                     </span>
 
+                    {/* Family-camp de-emphasis tag (#2113): family rows were
+                        excluded from the journey because they made it noisy
+                        for multi-session staff kids. Now included, they get a
+                        muted tag instead of being hidden, so a reader can
+                        visually skip a run of family rows without losing the
+                        underlying data. */}
+                    {isFamilySessionType(record.sessionType) && (
+                      <span className="bg-muted text-muted-foreground flex-shrink-0 rounded px-1.5 py-0.5 text-[10px] font-medium">
+                        Family
+                      </span>
+                    )}
+
                     {/* Status indicator for non-enrolled */}
                     {statusIndicator && (
                       <span
@@ -123,7 +138,9 @@ export function CampJourneyTimeline({
         ) : (
           <div className="py-4 text-center">
             <TreePine className="text-muted-foreground/50 mx-auto mb-2 h-8 w-8" />
-            <p className="text-muted-foreground text-sm">First summer at camp!</p>
+            {/* Program-agnostic (#2113): a family-camp-only or teen-only
+                first year should not read as "summer" */}
+            <p className="text-muted-foreground text-sm">First year at camp!</p>
           </div>
         )}
       </div>

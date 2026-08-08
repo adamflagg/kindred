@@ -1615,8 +1615,8 @@ func handlePersonCustomFieldValuesSync(e *core.RequestEvent, scheduler *Schedule
 	orchestrator := scheduler.GetOrchestrator()
 	syncType := "person_custom_values"
 
-	// Note: "already running" check is handled by MarkSyncRunning below,
-	// which returns an error if the sync is already in progress
+	// Note: "already running" check is handled by RunSingleSyncWithService below,
+	// which reserves the run and returns an error if the sync is already in progress
 
 	// Parse session filter (accepts "all" or a numeric cm_id)
 	session := normalizeSession(e.Request.URL.Query().Get("session"))
@@ -1632,19 +1632,19 @@ func handlePersonCustomFieldValuesSync(e *core.RequestEvent, scheduler *Schedule
 	debugParam := e.Request.URL.Query().Get("debug")
 	debug := debugParam == boolTrueStr || debugParam == "1"
 
-	// Get the service and set options
-	service, ok := orchestrator.GetService(syncType).(*PersonCustomFieldValuesSync)
-	if !ok || service == nil {
-		return e.JSON(http.StatusInternalServerError, map[string]any{
-			"error": "Person custom field values sync service not found",
-		})
-	}
+	// Request-scoped instance — never the shared registered singleton. Mutating the
+	// singleton let a rejected (409) request's SetSession stick before MarkSyncRunning ever
+	// ran, silently narrowing whichever request was actually in flight (#2105).
+	// RunSingleSyncWithService also reserves the run atomically, so the check-then-mutate gap
+	// the old pattern had between GetService and MarkSyncRunning can't reopen.
+	service := NewPersonCustomFieldValuesSync(e.App, orchestrator.BaseClient())
 	service.SetSession(session)
 	service.SetDebug(debug)
 
-	// Mark as running BEFORE starting goroutine to prevent race condition
-	// This ensures the first frontend poll sees the sync as active
-	if err := orchestrator.MarkSyncRunning(syncType); err != nil {
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Minute)
+	defer cancel()
+
+	if err := orchestrator.RunSingleSyncWithService(ctx, syncType, service); err != nil {
 		return e.JSON(http.StatusConflict, map[string]any{
 			"error":    err.Error(),
 			"status":   "running",
@@ -1652,27 +1652,10 @@ func handlePersonCustomFieldValuesSync(e *core.RequestEvent, scheduler *Schedule
 		})
 	}
 
-	// Run in background
-	go func() {
-		ctx, cancel := context.WithTimeout(context.Background(), 60*time.Minute)
-		defer cancel()
-
-		slog.Info("Starting person_custom_values sync",
-			"session", session,
-			"debug", debug,
-		)
-		if err := orchestrator.RunSingleSync(ctx, syncType); err != nil {
-			slog.Error("Person custom field values sync failed", "error", err)
-		} else {
-			stats := service.GetStats()
-			slog.Info("Person custom field values sync completed",
-				"created", stats.Created,
-				"updated", stats.Updated,
-				"skipped", stats.Skipped,
-				"errors", stats.Errors,
-			)
-		}
-	}()
+	slog.Info("Starting person_custom_values sync",
+		"session", session,
+		"debug", debug,
+	)
 
 	return e.JSON(http.StatusOK, map[string]any{
 		"message":  fmt.Sprintf("%s sync started", syncType),
@@ -1691,8 +1674,8 @@ func handleHouseholdCustomFieldValuesSync(e *core.RequestEvent, scheduler *Sched
 	orchestrator := scheduler.GetOrchestrator()
 	syncType := "household_custom_values"
 
-	// Note: "already running" check is handled by MarkSyncRunning below,
-	// which returns an error if the sync is already in progress
+	// Note: "already running" check is handled by RunSingleSyncWithService below,
+	// which reserves the run and returns an error if the sync is already in progress
 
 	// Parse session filter (accepts "all" or a numeric cm_id)
 	session := normalizeSession(e.Request.URL.Query().Get("session"))
@@ -1708,19 +1691,19 @@ func handleHouseholdCustomFieldValuesSync(e *core.RequestEvent, scheduler *Sched
 	debugParam := e.Request.URL.Query().Get("debug")
 	debug := debugParam == boolTrueStr || debugParam == "1"
 
-	// Get the service and set options
-	service, ok := orchestrator.GetService(syncType).(*HouseholdCustomFieldValuesSync)
-	if !ok || service == nil {
-		return e.JSON(http.StatusInternalServerError, map[string]any{
-			"error": "Household custom field values sync service not found",
-		})
-	}
+	// Request-scoped instance — never the shared registered singleton. Mutating the
+	// singleton let a rejected (409) request's SetSession stick before MarkSyncRunning ever
+	// ran, silently narrowing whichever request was actually in flight (#2105).
+	// RunSingleSyncWithService also reserves the run atomically, so the check-then-mutate gap
+	// the old pattern had between GetService and MarkSyncRunning can't reopen.
+	service := NewHouseholdCustomFieldValuesSync(e.App, orchestrator.BaseClient())
 	service.SetSession(session)
 	service.SetDebug(debug)
 
-	// Mark as running BEFORE starting goroutine to prevent race condition
-	// This ensures the first frontend poll sees the sync as active
-	if err := orchestrator.MarkSyncRunning(syncType); err != nil {
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Minute)
+	defer cancel()
+
+	if err := orchestrator.RunSingleSyncWithService(ctx, syncType, service); err != nil {
 		return e.JSON(http.StatusConflict, map[string]any{
 			"error":    err.Error(),
 			"status":   "running",
@@ -1728,27 +1711,10 @@ func handleHouseholdCustomFieldValuesSync(e *core.RequestEvent, scheduler *Sched
 		})
 	}
 
-	// Run in background
-	go func() {
-		ctx, cancel := context.WithTimeout(context.Background(), 60*time.Minute)
-		defer cancel()
-
-		slog.Info("Starting household_custom_values sync",
-			"session", session,
-			"debug", debug,
-		)
-		if err := orchestrator.RunSingleSync(ctx, syncType); err != nil {
-			slog.Error("Household custom field values sync failed", "error", err)
-		} else {
-			stats := service.GetStats()
-			slog.Info("Household custom field values sync completed",
-				"created", stats.Created,
-				"updated", stats.Updated,
-				"skipped", stats.Skipped,
-				"errors", stats.Errors,
-			)
-		}
-	}()
+	slog.Info("Starting household_custom_values sync",
+		"session", session,
+		"debug", debug,
+	)
 
 	return e.JSON(http.StatusOK, map[string]any{
 		"message":  fmt.Sprintf("%s sync started", syncType),

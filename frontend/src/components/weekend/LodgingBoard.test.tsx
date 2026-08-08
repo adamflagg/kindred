@@ -534,7 +534,9 @@ describe('LodgingBoard — nobody disappears', () => {
       { wrapper }
     )
     expect(screen.getByText(/Placed outside the board/i)).toBeInTheDocument()
-    expect(screen.getByText('Johnson')).toBeInTheDocument()
+    // kindred#2074 removed the household salutation from the card -- it
+    // leads with the children instead, so the identity check moves there.
+    expect(screen.getByText(/Noah Johnson/)).toBeInTheDocument()
   })
 
   it('does not draw that section when everything fits on the board', () => {
@@ -630,7 +632,16 @@ describe('LodgingBoard — the details panel updates in place', () => {
       <LodgingBoard
         parties={[
           party({ display_name: 'Johnson Household', sort_name: 'Johnson', household_cm_id: 101 }),
-          party({ display_name: 'Chen Household', sort_name: 'Chen', household_cm_id: 102 }),
+          party({
+            display_name: 'Chen Household',
+            sort_name: 'Chen',
+            household_cm_id: 102,
+            // kindred#2074: the card leads with the children now, and the
+            // default fixture's child is 'Noah Johnson' regardless of which
+            // household overrides display_name -- distinct children are what
+            // make the two cards reachable apart below.
+            children: [{ person_cm_id: 9002, display_name: 'Mia Chen', age: 6, grade: 0 }],
+          }),
         ]}
         units={[unit()]}
         year={2026}
@@ -641,10 +652,10 @@ describe('LodgingBoard — the details panel updates in place', () => {
     // both cards are reachable from the corner queue and the panel can be
     // switched between them without touching the board itself.
     await userEvent.click(screen.getByRole('button', { name: /2 unplaced parties/i }))
-    await userEvent.click(screen.getByRole('button', { name: /Johnson Household/ }))
+    await userEvent.click(screen.getByRole('button', { name: /Noah Johnson/ }))
     const first = screen.getByTestId('family-details-panel')
 
-    await userEvent.click(screen.getByRole('button', { name: /Chen Household/ }))
+    await userEvent.click(screen.getByRole('button', { name: /Mia Chen/ }))
     const second = screen.getByTestId('family-details-panel')
 
     expect(second).toBe(first)

@@ -3,12 +3,16 @@ package sync
 import (
 	"context"
 	"fmt"
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
 	"testing/synctest"
 	"time"
+
+	"github.com/pocketbase/pocketbase/core"
 )
 
 // MockService implements Service interface for testing
@@ -3544,5 +3548,108 @@ func TestRunSingleSyncWithServiceConcurrentCallsExactlyOneWins(t *testing.T) {
 	}
 	if ranCount != 1 {
 		t.Errorf("expected exactly 1 service instance to have run, got %d", ranCount)
+	}
+}
+
+// TestCustomFieldValuesHandlersReserveBeforeMutatingSharedState pins the fix for #2105.
+//
+// Both on-demand custom-field-values handlers (person and household) used to fetch the
+// orchestrator's registered singleton and call SetSession/SetDebug on it *before* calling
+// MarkSyncRunning to reserve the run. A second request that lost the reservation race still
+// got to mutate the singleton on its way to a 409 response. That mutation is not cosmetic:
+// person_custom_field_values.go:225 (and the household twin) read Session mid-run to decide
+// which persons/households to sync, so a rejected request could silently narrow whatever
+// session a still-running request had asked for.
+//
+// The fix builds a private, request-scoped service instance per request and hands it to
+// RunSingleSyncWithService instead of writing onto the shared registered singleton. This test
+// simulates "request A is already running an all-sessions sync" by reserving directly via
+// MarkSyncRunning (mirroring exactly what a real in-flight run leaves behind), then drives
+// the real handler for "request B" (a single-session request that must lose the race) and
+// asserts the registered singleton's Session field is untouched by B, no matter how B is
+// rejected.
+func TestCustomFieldValuesHandlersReserveBeforeMutatingSharedState(t *testing.T) {
+	cases := []struct {
+		name     string
+		syncType string
+		register func(o *Orchestrator)
+		handler  func(e *core.RequestEvent, scheduler *Scheduler) error
+		session  func(svc Service) (session string, ok bool)
+	}{
+		{
+			name:     "person",
+			syncType: "person_custom_values",
+			register: func(o *Orchestrator) {
+				o.RegisterService("person_custom_values", NewPersonCustomFieldValuesSync(nil, nil))
+			},
+			handler: handlePersonCustomFieldValuesSync,
+			session: func(svc Service) (string, bool) {
+				s, ok := svc.(*PersonCustomFieldValuesSync)
+				if !ok {
+					return "", false
+				}
+				return s.Session, true
+			},
+		},
+		{
+			name:     "household",
+			syncType: "household_custom_values",
+			register: func(o *Orchestrator) {
+				o.RegisterService("household_custom_values", NewHouseholdCustomFieldValuesSync(nil, nil))
+			},
+			handler: handleHouseholdCustomFieldValuesSync,
+			session: func(svc Service) (string, bool) {
+				s, ok := svc.(*HouseholdCustomFieldValuesSync)
+				if !ok {
+					return "", false
+				}
+				return s.Session, true
+			},
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			scheduler := NewScheduler(nil)
+			orchestrator := scheduler.GetOrchestrator()
+			tc.register(orchestrator)
+
+			// Simulate request A: an all-sessions sync already reserved and running. We don't
+			// need its goroutine to actually execute a real Sync() -- only that
+			// runningJobs[syncType] is occupied, exactly as it would be while a real request-A
+			// sync is in flight.
+			if err := orchestrator.MarkSyncRunning(tc.syncType); err != nil {
+				t.Fatalf("MarkSyncRunning: %v", err)
+			}
+
+			singleton := orchestrator.GetService(tc.syncType)
+			sessionBefore, ok := tc.session(singleton)
+			if !ok {
+				t.Fatalf("registered singleton has unexpected type %T", singleton)
+			}
+			if sessionBefore != DefaultSession {
+				t.Fatalf("test setup: expected registered singleton Session=%q, got %q", DefaultSession, sessionBefore)
+			}
+
+			// Request B: a single-session request that must lose the reservation race and be
+			// rejected with 409, since request A already occupies syncType.
+			re := &core.RequestEvent{}
+			re.Request = httptest.NewRequest(http.MethodPost, "/?session=1", http.NoBody)
+			rec := httptest.NewRecorder()
+			re.Response = rec
+
+			if err := tc.handler(re, scheduler); err != nil {
+				t.Fatalf("handler returned error: %v", err)
+			}
+			if rec.Code != http.StatusConflict {
+				t.Errorf("expected %d (already running), got %d: %s", http.StatusConflict, rec.Code, rec.Body.String())
+			}
+
+			sessionAfter, _ := tc.session(orchestrator.GetService(tc.syncType))
+			if sessionAfter != sessionBefore {
+				t.Errorf("rejected request B mutated the shared singleton's Session from %q to %q -- "+
+					"request A's in-flight run would silently narrow to it", sessionBefore, sessionAfter)
+			}
+		})
 	}
 }

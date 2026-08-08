@@ -307,6 +307,19 @@ func (o *Orchestrator) GetService(name string) Service {
 	return o.services[name]
 }
 
+// BaseClient returns the orchestrator's base CampMinder client (set by InitializeSyncServices).
+//
+// This exists so on-demand handlers can build a private, request-scoped service instance
+// (e.g. NewPersonCustomFieldValuesSync(e.App, orchestrator.BaseClient())) instead of fetching
+// and mutating the registered singleton returned by GetService (#2105). baseClient itself
+// stays unexported to keep year-override cloning (CloneWithYear) as the orchestrator's own
+// concern.
+func (o *Orchestrator) BaseClient() *campminder.Client {
+	o.mu.RLock()
+	defer o.mu.RUnlock()
+	return o.baseClient
+}
+
 // IsRunning checks if a sync type is currently running
 func (o *Orchestrator) IsRunning(syncType string) bool {
 	o.mu.RLock()

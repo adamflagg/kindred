@@ -157,23 +157,12 @@ func (s *SessionsSync) Sync(ctx context.Context) error {
 		}
 	}
 
-	// Second pass: classify sessions using group-based classification
+	// Second pass: classify sessions using group-based classification, falling back to
+	// name-based rules when the GroupID doesn't resolve to a known group (see
+	// classifySessionType).
 	for _, info := range allSessionInfos {
 		groupID := sessionGroupIDs[info.cmID]
-		var sessionType string
-
-		if groupID > 0 {
-			// Use group-based classification (more reliable for historical data)
-			sessionType = s.getSessionTypeFromGroupID(groupID, info.name)
-
-			// Refine summer camp sessions to main/ag/embedded
-			if sessionType == "summer_candidate" {
-				sessionType = s.refineSummerSessionType(info, allSessionInfos)
-			}
-		} else {
-			// Fallback to name-based classification for sessions without groups
-			sessionType = s.getSessionTypeFromName(info.name)
-		}
+		sessionType := s.classifySessionType(info, groupID, allSessionInfos)
 
 		initialTypes[info.cmID] = sessionType
 
@@ -651,6 +640,37 @@ type sessionInfo struct {
 	name      string
 	startDate string
 	endDate   string
+}
+
+// classifySessionType determines a session's type, preferring group-based classification
+// (stable across years) but falling back to name-based rules when the GroupID either is
+// absent or doesn't resolve to a known group.
+//
+// An unrecognized GroupID (getSessionTypeFromGroupID's default arm, returning
+// sessionTypeOther) is not treated as a confident classification: some CampMinder groups
+// (e.g. a catch-all "Camp Sessions" bucket) hold real, differently-typed programs that
+// were never added to the switch. Falling through to getSessionTypeFromName recovers those
+// cases without touching a *recognized* group's result - which never equals
+// sessionTypeOther, so it is returned as-is. See issue #2114.
+func (s *SessionsSync) classifySessionType(info sessionInfo, groupID int, allSessionInfos []sessionInfo) string {
+	if groupID <= 0 {
+		// No GroupID on this session at all - fall back to name-based classification.
+		return s.getSessionTypeFromName(info.name)
+	}
+
+	sessionType := s.getSessionTypeFromGroupID(groupID, info.name)
+
+	// Refine summer camp sessions to main/ag/embedded.
+	if sessionType == "summer_candidate" {
+		return s.refineSummerSessionType(info, allSessionInfos)
+	}
+
+	if sessionType == sessionTypeOther {
+		// Unrecognized group - defer to the name rules rather than accepting "other".
+		return s.getSessionTypeFromName(info.name)
+	}
+
+	return sessionType
 }
 
 // getSessionTypeFromGroupID returns the session type based on the session group cm_id.

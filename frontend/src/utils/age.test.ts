@@ -2,7 +2,7 @@
  * Tests for age utility functions
  */
 import { describe, it, expect } from 'vitest'
-import { formatAge, displayCampMinderAge } from './age'
+import { formatAge, displayCampMinderAge, displayTruncatedAge } from './age'
 
 describe('formatAge', () => {
   it('should format age with years and months', () => {
@@ -39,5 +39,36 @@ describe('displayCampMinderAge', () => {
   it('should handle edge cases', () => {
     expect(displayCampMinderAge(0)).toBe('0.00')
     expect(displayCampMinderAge(15.11)).toBe('15.11')
+  })
+})
+
+describe('displayTruncatedAge', () => {
+  // kindred#2074: the family card leads with the campers' whole-year ages.
+  // `persons.age` is CampMinder's yy.mm, encoded so months never exceed .11
+  // -- a fraction that itself always rounds DOWN (0.11 < 0.5), so `Math.round`
+  // happens to agree with `Math.trunc` on every value this format can produce.
+  // `Math.trunc` is still required: it matches the "completed years" semantics
+  // the format intends, rather than "nearest year", which coincides today only
+  // because no valid month fraction reaches .5. The out-of-range case below is
+  // what actually goes red under `Math.round` -- see its comment.
+  it('truncates 6 years 11 months to 6, never rounds up to 7', () => {
+    expect(displayTruncatedAge(6.11)).toBe('6')
+  })
+
+  it('truncates a sub-1 age to 0, not 1', () => {
+    // A real 6-month-old (0.06), not the "unknown age" sentinel -- the
+    // caller is responsible for that distinction, this just truncates.
+    expect(displayTruncatedAge(0.06)).toBe('0')
+  })
+
+  it('leaves a whole-year age unchanged', () => {
+    expect(displayTruncatedAge(15)).toBe('15')
+  })
+
+  it('does not round the fractional part under any circumstance', () => {
+    // Not a realistic CampMinder value (months cap at .11) -- deliberately
+    // out of range to prove the implementation truncates unconditionally
+    // rather than happening to work only inside the CampMinder envelope.
+    expect(displayTruncatedAge(11.99)).toBe('11')
   })
 })

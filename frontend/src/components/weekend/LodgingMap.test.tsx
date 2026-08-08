@@ -175,13 +175,23 @@ describe('LodgingMap', () => {
   it('puts an unplaced party in the corner queue', async () => {
     render(
       <LodgingMap
-        parties={[party({ display_name: 'Silva', sort_name: 'Silva' })]}
+        parties={[
+          party({
+            display_name: 'Silva',
+            sort_name: 'Silva',
+            // kindred#2074: the card leads with the children now, and the
+            // fixture's default `children: []` renders no accessible name at
+            // all for a household party -- a real one always has at least
+            // one child (see `_build_household_parties`), so give it one.
+            children: [{ person_cm_id: 9101, display_name: 'Mia Silva', age: 7, grade: 1 }],
+          }),
+        ]}
         units={UNITS}
         year={2026}
       />
     )
     await userEvent.click(screen.getByRole('button', { name: /1 unplaced parties/i }))
-    expect(screen.getByTestId('family-card-name')).toHaveTextContent('Silva')
+    expect(screen.getByTestId('family-card-name')).toHaveTextContent('Mia Silva')
   })
 
   it('lists a merged party below the map, never as unplaced', async () => {
@@ -191,6 +201,9 @@ describe('LodgingMap', () => {
       unit_code: '',
       unit_name: 'Cedar 1 + Cedar 2',
       is_merged_slot: true,
+      // kindred#2074: same reason as 'Silva' above -- a household party
+      // needs a child to have any accessible name on the card.
+      children: [{ person_cm_id: 9102, display_name: 'Leo Nguyen', age: 9, grade: 3 }],
     })
     render(<LodgingMap parties={[merged]} units={UNITS} year={2026} />)
 
@@ -272,7 +285,15 @@ describe('LodgingMap', () => {
       // click twice.
       render(
         <LodgingMap
-          parties={[party({ display_name: 'Garcia', sort_name: 'Garcia' })]}
+          parties={[
+            party({
+              display_name: 'Garcia',
+              sort_name: 'Garcia',
+              // kindred#2074: same reason as 'Silva' above -- a household
+              // party needs a child to have any accessible name on the card.
+              children: [{ person_cm_id: 9103, display_name: 'Ivy Garcia', age: 5, grade: 0 }],
+            }),
+          ]}
           units={UNITS}
           year={2026}
         />,
@@ -754,6 +775,47 @@ describe('LodgingMap controls', () => {
     render(<LodgingMap parties={[]} units={UNITS} year={2026} />)
     expect(screen.getByText(/scroll to zoom/i)).toBeInTheDocument()
     expect(screen.getByText(/double-click to reset/i)).toBeInTheDocument()
+  })
+})
+
+describe('LodgingMap — clears a stale selection (kindred#2062)', () => {
+  // A weekend switch re-renders the map with a different `parties` prop
+  // without unmounting it, so the previously-open family's panel — including
+  // its medical narrative — stayed open over the new weekend's roster.
+  it('closes the panel when the selected party is no longer in parties', async () => {
+    const { rerender } = render(<LodgingMap parties={[PLACED]} units={UNITS} year={2026} />, {
+      wrapper,
+    })
+    await userEvent.click(screen.getAllByTestId('map-mark')[0] as HTMLElement)
+    await userEvent.click(screen.getByRole('button', { name: /Johnson/ }))
+    expect(screen.getByTestId('family-details-panel')).toBeInTheDocument()
+
+    const other = party({
+      display_name: 'Chen',
+      sort_name: 'Chen',
+      household_cm_id: 9002,
+      unit_code: 'cedar-1',
+      unit_name: 'Cedar 1',
+    })
+    rerender(<LodgingMap parties={[other]} units={UNITS} year={2026} />)
+    expect(screen.queryByTestId('family-details-panel')).not.toBeInTheDocument()
+  })
+
+  // The trap: a refetch that returns the SAME parties (new array identity,
+  // same content) must not close a panel out from under whoever has it open.
+  it('keeps the panel open when parties refetches with the same content', async () => {
+    const makeParties = () => [
+      party({ display_name: 'Johnson', unit_code: 'cedar-1', unit_name: 'Cedar 1' }),
+    ]
+    const { rerender } = render(<LodgingMap parties={makeParties()} units={UNITS} year={2026} />, {
+      wrapper,
+    })
+    await userEvent.click(screen.getAllByTestId('map-mark')[0] as HTMLElement)
+    await userEvent.click(screen.getByRole('button', { name: /Johnson/ }))
+    expect(screen.getByTestId('family-details-panel')).toBeInTheDocument()
+
+    rerender(<LodgingMap parties={makeParties()} units={UNITS} year={2026} />)
+    expect(screen.getByTestId('family-details-panel')).toBeInTheDocument()
   })
 })
 

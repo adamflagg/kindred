@@ -8,11 +8,37 @@
  */
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import type { LodgingUnitRow, RosterPartyRow } from '../../types/lodging'
 import type { BoardSlot } from './boardLayout'
+import { mergeDragId, unitDroppableId } from './dragPlacement'
 import { LodgingUnitCard } from './LodgingUnitCard'
+
+/**
+ * jsdom cannot perform a pointer drag, so `useDroppable`'s real `isOver`
+ * never goes true here. The settled idiom (`LodgingBoard.drag.test.tsx`) is
+ * to mock at the `@dnd-kit/core` boundary; this one only needs `isOver`
+ * itself, controlled by `overDroppableId`, to prove the drop-target state
+ * outranks the shared-space ring below. `useDraggable` stays real — the
+ * merge-handle tests click a plain `onClick`, which does not touch it.
+ */
+let overDroppableId: string | null = null
+
+vi.mock('@dnd-kit/core', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@dnd-kit/core')>()
+  return {
+    ...actual,
+    useDroppable: (args: { id: string; disabled?: boolean }) => ({
+      setNodeRef: vi.fn(),
+      isOver: args.disabled !== true && args.id === overDroppableId,
+    }),
+  }
+})
+
+beforeEach(() => {
+  overDroppableId = null
+})
 
 function unit(overrides: Partial<LodgingUnitRow> = {}): LodgingUnitRow {
   return {
@@ -118,15 +144,28 @@ describe('LodgingUnitCard', () => {
   })
 
   it('renders the families it holds', () => {
+    // kindred#2074 removed the household salutation from the card -- it
+    // leads with the children instead, so two parties need DISTINCT
+    // children to stay distinguishable here (the default fixture's child
+    // is 'Noah Johnson' regardless of which household overrides display_name).
     render(
       <LodgingUnitCard
-        slot={slot({ parties: [party(), party({ household_cm_id: 102, display_name: 'Garcia' })] })}
+        slot={slot({
+          parties: [
+            party(),
+            party({
+              household_cm_id: 102,
+              display_name: 'Garcia',
+              children: [{ person_cm_id: 9002, display_name: 'Liam Garcia', age: 6, grade: 0 }],
+            }),
+          ],
+        })}
         hue="hsl(160 45% 42%)"
         onOpenParty={vi.fn()}
       />
     )
-    expect(screen.getByText('Johnson')).toBeInTheDocument()
-    expect(screen.getByText('Garcia')).toBeInTheDocument()
+    expect(screen.getByText(/Noah Johnson/)).toBeInTheDocument()
+    expect(screen.getByText(/Liam Garcia/)).toBeInTheDocument()
   })
 
   it('says two parties are sharing', () => {
@@ -157,6 +196,17 @@ describe('LodgingUnitCard', () => {
       />
     )
     expect(screen.getByText('1 family did not request sharing')).toBeInTheDocument()
+  })
+
+  it('keeps an empty unit dashed and washed out', () => {
+    // Pre-existing behaviour, preserved through the ordered-switch refactor
+    // below rather than displaced by it.
+    const { container } = render(
+      <LodgingUnitCard slot={slot()} hue="hsl(160 45% 42%)" onOpenParty={vi.fn()} />
+    )
+    const card = container.querySelector('[data-unit-card]')
+    expect(card).toHaveClass('bg-muted/25')
+    expect(card).toHaveClass('border-dashed')
   })
 
   it('badges a staff hold rather than hiding the room', () => {
@@ -327,16 +377,30 @@ describe('LodgingUnitCard — the per-party sharing chip follows ROOM overlap, n
         slot={slot({
           unit: mergedHouse,
           parties: [
-            declinedParty({ household_cm_id: 101, display_name: 'Alpha', unit_code: 'r1' }),
-            declinedParty({ household_cm_id: 102, display_name: 'Beta', unit_code: 'r2' }),
+            declinedParty({
+              household_cm_id: 101,
+              display_name: 'Alpha',
+              unit_code: 'r1',
+              // kindred#2074: the card leads with the children now, and
+              // `declinedParty`/`party()`'s default child is 'Noah Johnson'
+              // regardless of display_name -- distinct children are what
+              // make Alpha and Beta distinguishable below.
+              children: [{ person_cm_id: 9101, display_name: 'Ivy Alpha', age: 7, grade: 1 }],
+            }),
+            declinedParty({
+              household_cm_id: 102,
+              display_name: 'Beta',
+              unit_code: 'r2',
+              children: [{ person_cm_id: 9102, display_name: 'Leo Beta', age: 9, grade: 3 }],
+            }),
           ],
         })}
         hue="hsl(160 45% 42%)"
         onOpenParty={vi.fn()}
       />
     )
-    expect(screen.getByText('Alpha')).toBeInTheDocument()
-    expect(screen.getByText('Beta')).toBeInTheDocument()
+    expect(screen.getByText(/Ivy Alpha/)).toBeInTheDocument()
+    expect(screen.getByText(/Leo Beta/)).toBeInTheDocument()
     expect(screen.queryByText('Did not request sharing')).not.toBeInTheDocument()
   })
 
@@ -371,7 +435,14 @@ describe('LodgingUnitCard — the per-party sharing chip follows ROOM overlap, n
               is_merged_slot: true,
             }),
             declinedParty({ household_cm_id: 102, display_name: 'Beta', unit_code: 'r1' }),
-            declinedParty({ household_cm_id: 103, display_name: 'Gamma', unit_code: 'r3' }),
+            declinedParty({
+              household_cm_id: 103,
+              display_name: 'Gamma',
+              unit_code: 'r3',
+              // kindred#2074: located by child name below, since the card no
+              // longer renders the household salutation.
+              children: [{ person_cm_id: 9103, display_name: 'Mia Gamma', age: 5, grade: 0 }],
+            }),
           ],
         })}
         hue="hsl(160 45% 42%)"
@@ -379,7 +450,7 @@ describe('LodgingUnitCard — the per-party sharing chip follows ROOM overlap, n
       />
     )
     expect(screen.getAllByText('Did not request sharing')).toHaveLength(2)
-    const gammaCard = screen.getByText('Gamma').closest('button')
+    const gammaCard = screen.getByText(/Mia Gamma/).closest('button')
     expect(gammaCard?.textContent).not.toContain('Did not request sharing')
   })
 
@@ -453,6 +524,225 @@ describe('LodgingUnitCard — the per-party sharing chip follows ROOM overlap, n
       />
     )
     expect(screen.getAllByText('Did not request sharing')).toHaveLength(2)
+  })
+})
+
+describe('LodgingUnitCard — the shared-space mark (#2091)', () => {
+  // The master housing sheet's fill for "two families here", adopted as the
+  // ring `LodgingMap.tsx`'s `halo` already draws for the identical flag
+  // (`0 0 0 4.5px ${hue}` there, on a small circular mark; this card is a
+  // rectangle with its own 2px `.card-lodge` border, so `2px` is the ring
+  // weight rather than the map's offset-plus-ring pair).
+  const hue = 'hsl(160 45% 42%)'
+  const sharedParties = [party(), party({ household_cm_id: 102, display_name: 'Garcia' })]
+  const declinedConsent = {
+    declinedCount: 1,
+    unansweredCount: 0,
+    conflictCount: 0,
+    reason: '1 family did not request sharing',
+  }
+
+  function card(container: HTMLElement): HTMLElement {
+    const el = container.querySelector('[data-unit-card]')
+    if (!el) throw new Error('no card rendered')
+    return el as HTMLElement
+  }
+
+  // `.card-lodge`'s own elevation shadow (`index.css:440-443`), pinned here
+  // independently of the implementation's own constant name — this is the
+  // exact value a shared card must NOT lose (review finding 1 on #2119).
+  const cardElevationShadow =
+    '0 1px 2px hsl(var(--shadow-color) / 0.06), 0 4px 16px hsl(var(--shadow-color) / 0.08)'
+
+  it('rings a shared unit in the area hue AND keeps the card elevation shadow', () => {
+    // An inline `boxShadow` beats `.card-lodge`'s own stylesheet box-shadow
+    // for the same property outright — setting ONLY the ring here (as the
+    // code did before this fix) silently drops the elevation every other
+    // card keeps, so a shared card reads as flat against its neighbours.
+    // The fix composes both shadows into the one inline value rather than
+    // letting the ring replace the elevation.
+    const { container } = render(
+      <LodgingUnitCard slot={slot({ parties: sharedParties })} hue={hue} onOpenParty={vi.fn()} />
+    )
+    expect(card(container)).toHaveStyle({
+      boxShadow: `0 0 0 2px ${hue}, ${cardElevationShadow}`,
+    })
+  })
+
+  it('leaves a single-party unit without the shared ring', () => {
+    const { container } = render(
+      <LodgingUnitCard slot={slot({ parties: [party()] })} hue={hue} onOpenParty={vi.fn()} />
+    )
+    expect(card(container)).not.toHaveStyle({ boxShadow: `0 0 0 2px ${hue}` })
+  })
+
+  it('leaves an empty unit without the shared ring', () => {
+    const { container } = render(<LodgingUnitCard slot={slot()} hue={hue} onOpenParty={vi.fn()} />)
+    expect(card(container)).not.toHaveStyle({ boxShadow: `0 0 0 2px ${hue}` })
+  })
+
+  it('promotes the consent ring to ring-2', () => {
+    // Prerequisite named in #2091: the mark this test file is otherwise
+    // about needs a `ring-1` consent edge promoted first, so the new mark
+    // has a weight to lose to.
+    const { container } = render(
+      <LodgingUnitCard
+        slot={slot({ parties: sharedParties, consent: declinedConsent })}
+        hue={hue}
+        onOpenParty={vi.fn()}
+      />
+    )
+    expect(card(container)).toHaveClass('ring-2')
+    expect(card(container)).not.toHaveClass('ring-1')
+  })
+
+  it('lets the consent flag outrank the shared-space ring', () => {
+    // Amber supersedes the hue ring, exactly as `LodgingMap.tsx`'s `halo`
+    // does for the same two flags — a consent flag only ever exists on a
+    // shared room, so the two never compete for meaning, only for the one
+    // ring a card can draw.
+    const { container } = render(
+      <LodgingUnitCard
+        slot={slot({ parties: sharedParties, consent: declinedConsent })}
+        hue={hue}
+        onOpenParty={vi.fn()}
+      />
+    )
+    expect(card(container)).toHaveClass('border-amber-400')
+    expect(card(container)).not.toHaveStyle({ boxShadow: `0 0 0 2px ${hue}` })
+  })
+
+  it('lets an active drop target outrank the shared-space ring', () => {
+    // The hue ring lives OUTSIDE the Tailwind class switch as an inline
+    // `boxShadow` (`hue` is a runtime value), so nothing in the class
+    // cascade stops it from fighting the drop-target ring's own box-shadow
+    // — only the explicit precedence below does.
+    overDroppableId = unitDroppableId('cedar-1')
+    const { container } = render(
+      <LodgingUnitCard
+        slot={slot({ parties: sharedParties })}
+        hue={hue}
+        canPlace
+        onOpenParty={vi.fn()}
+      />
+    )
+    expect(card(container)).toHaveClass('border-primary')
+    expect(card(container)).not.toHaveStyle({ boxShadow: `0 0 0 2px ${hue}` })
+  })
+
+  it('lets an invalid merge target outrank the shared-space ring', () => {
+    const room = unit({ code: 'cedar-1', parent_code: 'east-wing' })
+    const draggedSibling = unit({ code: 'other-1', parent_code: 'west-wing' })
+    const { container } = render(
+      <LodgingUnitCard
+        slot={slot({ unit: room, parties: sharedParties })}
+        hue={hue}
+        mergeSourceUnit={draggedSibling}
+        onOpenParty={vi.fn()}
+      />
+    )
+    expect(card(container)).toHaveClass('opacity-40')
+    expect(card(container)).not.toHaveStyle({ boxShadow: `0 0 0 2px ${hue}` })
+  })
+
+  it('lets an active drop target outrank a CONSENT-flagged room too', () => {
+    // The existing "outranks the shared-space ring" test above only ever
+    // combines an active drop target with `sharedParties` (no `consent`).
+    // Consent has its own ring (`border-amber-400`), which is what a drop
+    // target actually has to fight over the shared CSS slot with here.
+    overDroppableId = unitDroppableId('cedar-1')
+    const { container } = render(
+      <LodgingUnitCard
+        slot={slot({ parties: sharedParties, consent: declinedConsent })}
+        hue={hue}
+        canPlace
+        onOpenParty={vi.fn()}
+      />
+    )
+    expect(card(container)).toHaveClass('border-primary')
+    expect(card(container)).not.toHaveClass('border-amber-400')
+  })
+
+  it('treats a merge-handle drop (isMergeOver) as an active drop target on its own', () => {
+    // Isolates `isMergeOver` from `isUnitOver`: no `canPlace`, so the party
+    // droppable never activates, and no party is being dragged either. Only
+    // the merge droppable is over. If `isUnitOver || isMergeOver` ever lost
+    // its `isMergeOver` half, this card would fall all the way through to
+    // the empty-room dashed state instead of the drop-target ring.
+    const room = unit({ code: 'cedar-1', parent_code: 'east-wing' })
+    const validSibling = unit({ code: 'other-1', parent_code: 'east-wing' })
+    overDroppableId = mergeDragId('cedar-1')
+    const { container } = render(
+      <LodgingUnitCard
+        slot={slot({ unit: room })}
+        hue={hue}
+        mergeSourceUnit={validSibling}
+        onOpenParty={vi.fn()}
+      />
+    )
+    expect(card(container)).toHaveClass('border-primary')
+  })
+
+  it('keeps the consent amber accent visible while an invalid merge drag dims the card', () => {
+    // Pre-existing (pre-refactor) behaviour this PR's ordered `cardState`
+    // switch silently dropped: dimming and the consent ring are ORTHOGONAL
+    // CSS properties (opacity/pointer-events vs border-color/box-shadow), so
+    // an invalid merge target should not blank out a real consent warning —
+    // it just dims the whole card, warning included.
+    const room = unit({ code: 'cedar-1', parent_code: 'east-wing' })
+    const draggedSibling = unit({ code: 'other-1', parent_code: 'west-wing' })
+    const { container } = render(
+      <LodgingUnitCard
+        slot={slot({ unit: room, parties: sharedParties, consent: declinedConsent })}
+        hue={hue}
+        mergeSourceUnit={draggedSibling}
+        onOpenParty={vi.fn()}
+      />
+    )
+    expect(card(container)).toHaveClass('opacity-40')
+    expect(card(container)).toHaveClass('border-amber-400')
+  })
+
+  it('keeps the empty-room dashed cue visible while an invalid merge drag dims the card', () => {
+    const room = unit({ code: 'cedar-1', parent_code: 'east-wing' })
+    const draggedSibling = unit({ code: 'other-1', parent_code: 'west-wing' })
+    const { container } = render(
+      <LodgingUnitCard
+        slot={slot({ unit: room })}
+        hue={hue}
+        mergeSourceUnit={draggedSibling}
+        onOpenParty={vi.fn()}
+      />
+    )
+    expect(card(container)).toHaveClass('opacity-40')
+    expect(card(container)).toHaveClass('border-dashed')
+  })
+
+  it('keeps the empty-room dashed cue visible under an active drop target', () => {
+    overDroppableId = unitDroppableId('cedar-1')
+    const { container } = render(
+      <LodgingUnitCard slot={slot()} hue={hue} canPlace onOpenParty={vi.fn()} />
+    )
+    expect(card(container)).toHaveClass('border-primary')
+    expect(card(container)).toHaveClass('border-dashed')
+  })
+
+  it('drops the empty-room background wash under an active drop target, so the two never race', () => {
+    // `.bg-muted/25` (the dashed wash) and `.bg-primary/5` (the drop-target
+    // wash) both set `background-color` — a `toHaveClass('border-dashed')`
+    // check alone (the test above) cannot see this, because jsdom parses no
+    // Tailwind and a class string proves nothing about which declaration a
+    // real browser's cascade would pick. This is the same pairing the file's
+    // own top-of-diff comment names as the SECOND byte-offset race this
+    // refactor exists to kill (the first being `.border-amber-400` vs
+    // `.border-primary`) — this is the case of it that mattered for a real,
+    // high-frequency gesture: hovering a family drag over an empty room.
+    overDroppableId = unitDroppableId('cedar-1')
+    const { container } = render(
+      <LodgingUnitCard slot={slot()} hue={hue} canPlace onOpenParty={vi.fn()} />
+    )
+    expect(card(container)).toHaveClass('bg-primary/5')
+    expect(card(container)).not.toHaveClass('bg-muted/25')
   })
 })
 

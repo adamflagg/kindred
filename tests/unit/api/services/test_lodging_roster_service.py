@@ -89,6 +89,12 @@ def _repo(**overrides: Any) -> MagicMock:
         "fetch_slot_merges": [],
         "fetch_attendees_for_session": [],
         "fetch_households": {},
+        # The kindred#2143 fallback: a fresh attendee can name a household the
+        # cached year snapshot above does not have yet. Empty by default so a
+        # test that never sets it up fails loudly (AttributeError on a bare
+        # dict, not a silently-invented MagicMock) if the service calls it
+        # unexpectedly.
+        "fetch_households_by_ids": {},
         "fetch_prior_household_cm_ids": set(),
         "fetch_family_camp_adults": {},
         "fetch_family_camp_registrations": {},
@@ -415,6 +421,96 @@ class TestFamilyCampParties:
         assert party.share.preference == "unknown"
         assert party.share.proximity == []
         assert party.flags.needs_private_bathroom is False
+
+
+class TestFreshHouseholdOutrunsTheCache:
+    """kindred#2143: households is cached for up to 15 minutes (kindred#1963)
+    but attendees is always fetched fresh, in the SAME TaskGroup. A household
+    created after the cache snapshot was taken is absent from the cached dict
+    even though a brand-new attendee can already name it. Left unhandled,
+    `_build_household_parties` falls through to a blank record -- the
+    confirmed failure rendered "Household 0" with a spurious
+    `is_returning=False` on screen. The fix is a targeted live fetch for
+    exactly the missing ids, never a second cache.
+    """
+
+    @pytest.mark.asyncio
+    async def test_a_household_missing_from_the_cache_is_fetched_fresh_not_rendered_as_household_zero(
+        self,
+    ) -> None:
+        repo = _repo(
+            fetch_session=FAMILY_SESSION,
+            # The cached year snapshot predates this household entirely --
+            # it is absent, not present with a stale value.
+            fetch_households={},
+            fetch_households_by_ids={"hh_1": _household(cm_id=2000009, title="The Nguyen Family")},
+            fetch_attendees_for_session=[_child(cm_id=1000002, first="Mai", last="Nguyen", household_pb_id="hh_1")],
+            fetch_prior_household_cm_ids={2000009},
+        )
+
+        roster = await LodgingRosterService(repo).build_roster(2026, 1000001)
+
+        assert len(roster.parties) == 1
+        party = roster.parties[0]
+        assert party.household_cm_id == 2000009
+        assert party.display_name == "The Nguyen Family"
+        assert party.is_returning is True
+        repo.fetch_households_by_ids.assert_awaited_once_with(["hh_1"])
+
+    @pytest.mark.asyncio
+    async def test_no_missing_households_never_calls_the_fallback(self) -> None:
+        repo = _repo(
+            fetch_session=FAMILY_SESSION,
+            fetch_households={"hh_1": _household()},
+            fetch_attendees_for_session=[_child()],
+        )
+
+        await LodgingRosterService(repo).build_roster(2026, 1000001)
+
+        repo.fetch_households_by_ids.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_adult_weekend_never_calls_the_household_fallback(self) -> None:
+        """Person-grain parties never read the households dict at all, so
+        there is nothing for this fallback to patch."""
+        attendee = _rec(
+            person_id=1000004,
+            expand={
+                "person": _rec(
+                    cm_id=1000004,
+                    first_name="Ava",
+                    last_name="Kim",
+                    preferred_name="",
+                    age=34,
+                    grade=0,
+                    household="hh_missing",
+                )
+            },
+        )
+        repo = _repo(fetch_session=ADULT_SESSION, fetch_attendees_for_session=[attendee])
+
+        await LodgingRosterService(repo).build_roster(2026, 1000002)
+
+        repo.fetch_households_by_ids.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_build_summary_gets_the_same_fallback_as_build_roster(self) -> None:
+        """The parallel TaskGroup in build_summary carries the identical
+        cached-households/fresh-attendees mix (see TestBuildSummary's own
+        guard tests for this file's established pattern: fixing only one of
+        the two TaskGroups is the half-fix those tests exist to catch)."""
+        repo = _repo(
+            fetch_weekend_sessions=[FAMILY_SESSION],
+            fetch_session=FAMILY_SESSION,
+            fetch_households={},
+            fetch_households_by_ids={"hh_1": _household(cm_id=2000009, title="The Nguyen Family")},
+            fetch_attendees_for_session=[_child(cm_id=1000002, first="Mai", last="Nguyen", household_pb_id="hh_1")],
+        )
+
+        summary = await LodgingRosterService(repo).build_summary(2026)
+
+        assert summary.weekends[0].counts.parties_total == 1
+        repo.fetch_households_by_ids.assert_awaited_once_with(["hh_1"])
 
 
 class TestAdultWeekendParties:
@@ -1098,6 +1194,303 @@ class TestSlotMergeTiers:
         roster = await LodgingRosterService(repo).build_roster(2026, 1000001)
 
         assert {u.bathroom for u in roster.units} == {"shared"}
+
+
+class TestPartyEffectiveBathroom:
+    """kindred#2022 -- `RosterParty.effective_bathroom`, resolved against the
+    OCCUPYING placement rather than any single unit's own view.
+
+    `TestUnitsAndCounts.test_full_bathroom_group_merge_is_not_assumed_for_a_lone_unit`
+    above pins that the units INVENTORY is unaffected by this fix -- it has
+    no occupant, so `roster.units[*].bathroom` keeps evaluating one unit at
+    a time. This class is the party-level half: the same exclusivity rule,
+    now reachable, plus the container-inheritance arm #2022's re-measurement
+    widened the issue to cover.
+
+    SCORE ONLY: this field feeds matching/scoring. It is not surfaced as a
+    claim to staff on any card or panel in this PR -- that is #1982's.
+    """
+
+    @pytest.mark.asyncio
+    async def test_full_group_merge_upgrades_the_party_to_private(self) -> None:
+        repo = _repo(
+            fetch_session=FAMILY_SESSION,
+            fetch_households={"hh_1": _household(title="The Garcia Family")},
+            fetch_attendees_for_session=[_child(cm_id=1000002, first="Liam", last="Garcia")],
+            fetch_units=[
+                _unit("u1", "gt-tioga-1", "Tioga 1", sleeps=4, bathroom="shared", bathroom_group="gt-tioga-12"),
+                _unit("u2", "gt-tioga-2", "Tioga 2", sleeps=4, bathroom="shared", bathroom_group="gt-tioga-12"),
+            ],
+            fetch_assignments=[
+                _rec(
+                    household_cm_id=2000001,
+                    person_cm_id=0,
+                    units=["u1", "u2"],
+                    expand={
+                        "units": [
+                            _rec(id="u1", code="gt-tioga-1", name="Tioga 1"),
+                            _rec(id="u2", code="gt-tioga-2", name="Tioga 2"),
+                        ]
+                    },
+                ),
+            ],
+        )
+        roster = await LodgingRosterService(repo).build_roster(2026, 1000001)
+
+        party = roster.parties[0]
+        assert party.is_merged_slot is True
+        assert party.effective_bathroom == "private"
+        # The units inventory has no occupant and is untouched by this fix.
+        assert {u.bathroom for u in roster.units} == {"shared"}
+
+    @pytest.mark.asyncio
+    async def test_a_placement_naming_an_unindexed_code_is_unknown_not_scored_on_the_rest(self) -> None:
+        """A code the index cannot resolve makes the WHOLE placement unknown.
+
+        Skipping the absent code and scoring from whatever is left asserts a
+        bathroom for a placement we cannot see all of: the party below spans
+        two units, only one of which is in the registry, and that one is
+        private. Answering "private" would claim exclusivity on the strength
+        of half the evidence. `unknown` is the same answer the function
+        already gives for an empty `unit_codes` -- absence of evidence, not
+        evidence of a private bathroom.
+        """
+        repo = _repo(
+            fetch_session=FAMILY_SESSION,
+            fetch_households={"hh_1": _household()},
+            fetch_attendees_for_session=[_child()],
+            # Only u1 is in the registry. u2's code is named by the placement
+            # but resolves to nothing -- a stale or not-yet-rolled-forward row.
+            fetch_units=[
+                _unit("u1", "gt-tioga-1", "Tioga 1", sleeps=4, bathroom="private", bathroom_group=""),
+            ],
+            fetch_assignments=[
+                _rec(
+                    household_cm_id=2000001,
+                    person_cm_id=0,
+                    units=["u1", "u2"],
+                    expand={
+                        "units": [
+                            _rec(id="u1", code="gt-tioga-1", name="Tioga 1"),
+                            _rec(id="u2", code="gt-absent-9", name="Absent 9"),
+                        ]
+                    },
+                ),
+            ],
+        )
+        roster = await LodgingRosterService(repo).build_roster(2026, 1000001)
+
+        assert roster.parties[0].effective_bathroom == "unknown"
+
+    @pytest.mark.asyncio
+    async def test_partial_group_merge_stays_shared(self) -> None:
+        """merge{Upstairs 1, Upstairs 2} leaves a third member of the group
+        out, so the party does not clear the bar -- same fixture shape as
+        `TestEffectiveBathroom.test_partial_group_merge_stays_shared`."""
+        repo = _repo(
+            fetch_session=FAMILY_SESSION,
+            fetch_households={"hh_1": _household()},
+            fetch_attendees_for_session=[_child()],
+            fetch_units=[
+                _unit("u1", "hc-upstairs-1", "Upstairs 1", bathroom="shared", bathroom_group="hc-upstairs-hall"),
+                _unit("u2", "hc-upstairs-2", "Upstairs 2", bathroom="shared", bathroom_group="hc-upstairs-hall"),
+                _unit("u3", "hc-upstairs-3", "Upstairs 3", bathroom="shared", bathroom_group="hc-upstairs-hall"),
+            ],
+            fetch_assignments=[
+                _rec(
+                    household_cm_id=2000001,
+                    person_cm_id=0,
+                    units=["u1", "u2"],
+                    expand={
+                        "units": [
+                            _rec(id="u1", code="hc-upstairs-1", name="Upstairs 1"),
+                            _rec(id="u2", code="hc-upstairs-2", name="Upstairs 2"),
+                        ]
+                    },
+                ),
+            ],
+        )
+        roster = await LodgingRosterService(repo).build_roster(2026, 1000001)
+
+        assert roster.parties[0].effective_bathroom == "shared"
+
+    @pytest.mark.asyncio
+    async def test_lone_leaf_in_a_group_stays_shared(self) -> None:
+        """One occupant does not clear the bar alone. Party-level mirror of
+        `test_full_bathroom_group_merge_is_not_assumed_for_a_lone_unit`."""
+        repo = _repo(
+            fetch_session=FAMILY_SESSION,
+            fetch_households={"hh_1": _household()},
+            fetch_attendees_for_session=[_child()],
+            fetch_units=[
+                _unit("u1", "gt-tioga-1", "Tioga 1", bathroom="shared", bathroom_group="gt-tioga-12"),
+                _unit("u2", "gt-tioga-2", "Tioga 2", bathroom="shared", bathroom_group="gt-tioga-12"),
+            ],
+            fetch_assignments=[
+                _rec(
+                    household_cm_id=2000001,
+                    person_cm_id=0,
+                    units=["u1"],
+                    expand={"units": [_rec(id="u1", code="gt-tioga-1", name="Tioga 1")]},
+                ),
+            ],
+        )
+        roster = await LodgingRosterService(repo).build_roster(2026, 1000001)
+
+        assert roster.parties[0].effective_bathroom == "shared"
+
+    @pytest.mark.asyncio
+    async def test_genuinely_private_single_unit_passes_through(self) -> None:
+        repo = _repo(
+            fetch_session=FAMILY_SESSION,
+            fetch_households={"hh_1": _household()},
+            fetch_attendees_for_session=[_child()],
+            fetch_units=[_unit("u1", "hc-upstairs-5", "Upstairs 5", bathroom="private")],
+            fetch_assignments=[
+                _rec(
+                    household_cm_id=2000001,
+                    person_cm_id=0,
+                    units=["u1"],
+                    expand={"units": [_rec(id="u1", code="hc-upstairs-5", name="Upstairs 5")]},
+                ),
+            ],
+        )
+        roster = await LodgingRosterService(repo).build_roster(2026, 1000001)
+
+        assert roster.parties[0].effective_bathroom == "private"
+
+    @pytest.mark.asyncio
+    async def test_whole_container_let_covering_its_bathroom_group_is_private(self) -> None:
+        """A party placed on the CONTAINER id alone -- staff booked the whole
+        Doctor's House rather than naming its two bedrooms. The container's
+        own row is bathroom="none" (a building is not a room), so without
+        inheritance from its leaves this reads as no bathroom at all -- the
+        "container whole-let" gap #2022's re-measurement widened the issue
+        to cover, separate from the plain multi-leaf merge above.
+        """
+        repo = _repo(
+            fetch_session=FAMILY_SESSION,
+            fetch_households={"hh_1": _household()},
+            fetch_attendees_for_session=[_child()],
+            fetch_units=[
+                _unit("u1", "hc-dh", "Doctor's House", sleeps=6, is_container=True, default_combined=True),
+                _unit(
+                    "u2",
+                    "hc-dh-a",
+                    "Doctor's House A",
+                    sleeps=3,
+                    bathroom="shared",
+                    bathroom_group="hc-dh-bath",
+                    parent_unit="u1",
+                ),
+                _unit(
+                    "u3",
+                    "hc-dh-b",
+                    "Doctor's House B",
+                    sleeps=3,
+                    bathroom="shared",
+                    bathroom_group="hc-dh-bath",
+                    parent_unit="u1",
+                ),
+            ],
+            fetch_assignments=[
+                _rec(
+                    household_cm_id=2000001,
+                    person_cm_id=0,
+                    units=["u1"],
+                    expand={"units": [_rec(id="u1", code="hc-dh", name="Doctor's House")]},
+                ),
+            ],
+        )
+        roster = await LodgingRosterService(repo).build_roster(2026, 1000001)
+
+        party = roster.parties[0]
+        assert party.is_merged_slot is False  # one unit named -- the container itself
+        assert party.effective_bathroom == "private"
+
+    @pytest.mark.asyncio
+    async def test_partial_container_stays_at_its_own_value(self) -> None:
+        """A container whose leaves DISAGREE on a group has nothing to
+        inherit, and reports its own registry row -- "none" -- unchanged."""
+        repo = _repo(
+            fetch_session=FAMILY_SESSION,
+            fetch_households={"hh_1": _household()},
+            fetch_attendees_for_session=[_child()],
+            fetch_units=[
+                _unit("u1", "block", "The Block", sleeps=6, is_container=True, default_combined=True),
+                _unit(
+                    "u2", "block-a", "Block A", sleeps=3, bathroom="shared", bathroom_group="group-a", parent_unit="u1"
+                ),
+                _unit(
+                    "u3", "block-b", "Block B", sleeps=3, bathroom="shared", bathroom_group="group-b", parent_unit="u1"
+                ),
+            ],
+            fetch_assignments=[
+                _rec(
+                    household_cm_id=2000001,
+                    person_cm_id=0,
+                    units=["u1"],
+                    expand={"units": [_rec(id="u1", code="block", name="The Block")]},
+                ),
+            ],
+        )
+        roster = await LodgingRosterService(repo).build_roster(2026, 1000001)
+
+        assert roster.parties[0].effective_bathroom == "none"
+
+    @pytest.mark.asyncio
+    async def test_unplaced_party_is_unknown(self) -> None:
+        repo = _repo(
+            fetch_session=FAMILY_SESSION,
+            fetch_households={"hh_1": _household()},
+            fetch_attendees_for_session=[_child()],
+        )
+        roster = await LodgingRosterService(repo).build_roster(2026, 1000001)
+
+        assert roster.parties[0].effective_bathroom == "unknown"
+
+    @pytest.mark.asyncio
+    async def test_adult_weekend_party_gets_the_same_scoring(self) -> None:
+        """Adult weekends place PERSONS, not households -- the resolver must
+        not be wired to the household branch alone."""
+        attendee = _rec(
+            person_id=1000004,
+            expand={
+                "person": _rec(
+                    cm_id=1000004,
+                    first_name="Olivia",
+                    last_name="Chen",
+                    preferred_name="",
+                    age=41,
+                    grade=None,
+                    household="hh_9",
+                )
+            },
+        )
+        repo = _repo(
+            fetch_session=ADULT_SESSION,
+            fetch_attendees_for_session=[attendee],
+            fetch_units=[
+                _unit("u1", "gt-tioga-1", "Tioga 1", bathroom="shared", bathroom_group="gt-tioga-12"),
+                _unit("u2", "gt-tioga-2", "Tioga 2", bathroom="shared", bathroom_group="gt-tioga-12"),
+            ],
+            fetch_assignments=[
+                _rec(
+                    household_cm_id=0,
+                    person_cm_id=1000004,
+                    units=["u1", "u2"],
+                    expand={
+                        "units": [
+                            _rec(id="u1", code="gt-tioga-1", name="Tioga 1"),
+                            _rec(id="u2", code="gt-tioga-2", name="Tioga 2"),
+                        ]
+                    },
+                ),
+            ],
+        )
+        roster = await LodgingRosterService(repo).build_roster(2026, 1000002)
+
+        assert roster.parties[0].effective_bathroom == "private"
 
 
 class TestPlacementOf:

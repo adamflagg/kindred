@@ -775,6 +775,150 @@ func TestGetSessionTypeFromGroupID(t *testing.T) {
 	}
 }
 
+// TestClassifySessionType_UnmappedGroupFallsThroughToNameRules covers issue #2114:
+// seven real 2021 sessions (six Family Camp weekends + one Family School) carry a
+// CampMinder GroupID that resolves to none of the cases in getSessionTypeFromGroupID's
+// switch (group cm_id 3062, "Camp Sessions" - CampMinder's catch-all bucket, unmapped in
+// every year 2017-2026, not just 2021). Because groupID > 0 was true, the old code took
+// getSessionTypeFromGroupID's "other" at face value and never consulted the name rules,
+// even though getSessionTypeFromName would have classified these names correctly.
+//
+// The fix: an unmapped GroupID (group-based result == "other") is not a confident
+// classification, so it falls through to getSessionTypeFromName instead of being
+// accepted as-is. A *mapped* group's result is never overridden - it only equals
+// sessionTypeOther when the switch actually hit its default arm.
+func TestClassifySessionType_UnmappedGroupFallsThroughToNameRules(t *testing.T) {
+	s := &SessionsSync{}
+
+	// cm_id 3062 ("Camp Sessions") is the real, historically stable unmapped group ID
+	// from the issue - present every year 2017-2026 and absent from the switch's cases.
+	const groupUnmapped = 3062
+
+	tests := []struct {
+		name     string
+		session  sessionInfo
+		groupID  int
+		expected string
+	}{
+		// The seven 2021 rows from the issue: unmapped group, but the name matches an
+		// existing getSessionTypeFromName rule. These are the 1,151 attendee rows that
+		// were hidden as "other" before the fix.
+		{
+			name:     "2021 Family Camp 1 falls through to family",
+			session:  sessionInfo{cmID: 501, name: "2021 Family Camp 1: Keshet LGBTQ Weekend"},
+			groupID:  groupUnmapped,
+			expected: sessionTypeFamily,
+		},
+		{
+			name:     "2021 Family Camp 2 falls through to family",
+			session:  sessionInfo{cmID: 502, name: "2021 Family Camp 2"},
+			groupID:  groupUnmapped,
+			expected: sessionTypeFamily,
+		},
+		{
+			name:     "2021 Family Camp 3 falls through to family",
+			session:  sessionInfo{cmID: 503, name: "2021 Family Camp 3: Labor Day Weekend"},
+			groupID:  groupUnmapped,
+			expected: sessionTypeFamily,
+		},
+		{
+			name:     "2021 Family Camp 4 falls through to family",
+			session:  sessionInfo{cmID: 504, name: "2021 Family Camp 4: Families of Color Weekend"},
+			groupID:  groupUnmapped,
+			expected: sessionTypeFamily,
+		},
+		{
+			name:     "2021 Family Camp 5 falls through to family",
+			session:  sessionInfo{cmID: 505, name: "2021 Family Camp 5"},
+			groupID:  groupUnmapped,
+			expected: sessionTypeFamily,
+		},
+		{
+			name:     "2021 Family Camp 6 falls through to family",
+			session:  sessionInfo{cmID: 506, name: "2021 Family Camp 6"},
+			groupID:  groupUnmapped,
+			expected: sessionTypeFamily,
+		},
+		{
+			name:     "2021 Family School falls through to school",
+			session:  sessionInfo{cmID: 507, name: "Family School Weekend"},
+			groupID:  groupUnmapped,
+			expected: "school",
+		},
+
+		// Regression guards: unmapped-group fall-through must not change classification
+		// for sessions that were already correct.
+		{
+			name:     "mapped family camp group is unaffected by the fall-through branch",
+			session:  sessionInfo{cmID: 601, name: "Family Camp 1"},
+			groupID:  groupFamilyCamp,
+			expected: sessionTypeFamily,
+		},
+		{
+			name:     "mapped adult group is unaffected by the fall-through branch",
+			session:  sessionInfo{cmID: 602, name: "Adults Unplugged"},
+			groupID:  groupAdult,
+			expected: sessionTypeAdult,
+		},
+		{
+			name: "summer_candidate still refines via refineSummerSessionType, not the name rules",
+			session: sessionInfo{
+				cmID: 603, name: "Session 2",
+				startDate: "2025-06-15", endDate: "2025-07-13",
+			},
+			groupID:  groupSummerCamp,
+			expected: sessionTypeMain,
+		},
+		{
+			name:     "no GroupID at all still uses name-based classification directly",
+			session:  sessionInfo{cmID: 604, name: "Family Camp 1"},
+			groupID:  0,
+			expected: sessionTypeFamily,
+		},
+		{
+			name:     "unmapped group with a name matching no rule still falls to other",
+			session:  sessionInfo{cmID: 605, name: "Some Unrelated Meeting"},
+			groupID:  groupUnmapped,
+			expected: sessionTypeOther,
+		},
+		// Issue #2114's fold-in checkbox: group 3062 also covers "Gold Rush" and
+		// "Staff Kids at Camp" in production, every year 2017-2026 (verified against
+		// prod, read-only). Neither name matches any getSessionTypeFromName rule, so the
+		// fall-through does NOT recover them - they remain "other" both before and after
+		// this fix. Left unmapped deliberately: their correct target type is a domain
+		// call the issue doesn't make, and group 3062 is a heterogeneous catch-all (it
+		// also holds a non-attendee governance session), so a blind name-pattern rule
+		// risks misclassifying it.
+		{
+			name:     "Gold Rush stays other - group 3062 fold-in, not recovered by name rules",
+			session:  sessionInfo{cmID: 606, name: "Gold Rush"},
+			groupID:  groupUnmapped,
+			expected: sessionTypeOther,
+		},
+		{
+			name:     "Staff Kids at Camp stays other - group 3062 fold-in, not recovered by name rules",
+			session:  sessionInfo{cmID: 607, name: "Staff Kids at Camp"},
+			groupID:  groupUnmapped,
+			expected: sessionTypeOther,
+		},
+	}
+
+	allSessionInfos := make([]sessionInfo, 0, len(tests))
+	for _, tt := range tests {
+		allSessionInfos = append(allSessionInfos, tt.session)
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := s.classifySessionType(tt.session, tt.groupID, allSessionInfos)
+			if got != tt.expected {
+				t.Errorf("classifySessionType(%+v, groupID=%d) = %q, want %q",
+					tt.session, tt.groupID, got, tt.expected)
+			}
+		})
+	}
+}
+
 // TestRefineSummerSessionType tests that summer camp sessions are correctly classified
 // as main, ag, or embedded based on name and date patterns
 func TestRefineSummerSessionType(t *testing.T) {
