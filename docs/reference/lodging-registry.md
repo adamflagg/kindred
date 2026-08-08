@@ -252,10 +252,39 @@ member wrote would destroy it.
 a record id — so comparing raw values reports every parented unit as needing a
 change, and applying that would write a code into a relation field.
 
+### What confirming a unit gates across the system
+
+Marking a unit `is_confirmed: true` gates several behaviors and disables others:
+
+**Roster fit verification** — `rosterAttention.ts:105` evaluates whether a party's
+accommodation needs (power, private bathroom) are satisfied only for confirmed units.
+On unconfirmed units, an unset `has_power: false` means "nobody has said", not "there
+is no power", so the check reports `unverified` and stays silent.
+
+**Board amenity suggestions** — `capacityFlag.ts:52-58` offers to fill a unit's `sleeps`
+when it differs from bed count — but **only for leaf units, and only when unconfirmed**.
+Containers never show suggestions because their `sleeps` records shared furniture (a
+futon), not whole-house capacity; every container carries the check suppressed
+unconditionally.
+
+**Admin UI indicators** — The manage lodging surface shows an `Unconfirmed` badge
+(LodgingUnitRow.tsx:96-101) and a `Confirm` button (LodgingUnitRow.tsx:106-109)
+only on unconfirmed units. Confirmed units list their amenities without qualification.
+
+**Sorting and roster summary** — Units can be sorted by confirmed status
+(unitSort.ts:52-55); the roster summary reports how many units remain unconfirmed
+(lodging_roster_service.py:1044).
+
+**Is confirmation ephemeral?** No. A confirmed unit carries that state across
+seasons by roll-forward (pocketbase/lodging/rollforward.go), and the unit's
+confirmed status asserts *permanently* that staff have verified the amenity values
+recorded on that row. A yearly re-confirm is unnecessary: staff confirm once,
+and the recorded amenities remain the staff's last verified answer until someone
+explicitly edits the row.
+
 ### Lighting up the fit check locally
 
-`partyAttention` refuses to judge a housing need against an unconfirmed cabin,
-and the loader writes `is_confirmed: false` on everything, so the fit check is
+The loader writes `is_confirmed: false` on everything, so the fit check is
 dark until staff confirm cabins. `scripts/dev/confirm_lodging_units.py` flips
 the flag on a **local** database so the surface can be developed against. It
 refuses a non-loopback URL unless explicitly overridden: bulk confirmation on
