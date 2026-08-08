@@ -60,8 +60,8 @@ type AliasResolver struct {
 }
 
 // NewAliasResolver loads the unit and alias tables into memory. Build one per
-// sync run: the tables are small (89 units, 100 aliases) and Resolve is called
-// once per observed cabin value.
+// sync run: the tables are small (118 units, 187 aliases) and Resolve is
+// called once per observed cabin value.
 func NewAliasResolver(app core.App) (*AliasResolver, error) {
 	r := &AliasResolver{
 		byString: make(map[string][]aliasRow),
@@ -95,6 +95,30 @@ func NewAliasResolver(app core.App) (*AliasResolver, error) {
 		r.byString[key] = append(r.byString[key], row)
 	}
 	return r, nil
+}
+
+// HasUnitsForYear reports whether the registry holds at least one
+// lodging_units row for the given year. Resolve is all-or-nothing on
+// (code, year) -- a stored member id that cannot find its code's row in the
+// requested year never resolves -- so Sync's year guard uses this to detect a
+// season with no registry loaded before it lets every cabin string unresolve.
+// See #2061.
+func (r *AliasResolver) HasUnitsForYear(year int) bool {
+	for key := range r.idByCodeYear {
+		if key.year == year {
+			return true
+		}
+	}
+	return false
+}
+
+// HasAnyUnits reports whether the registry holds a lodging_units row for any
+// year at all. Paired with HasUnitsForYear, it lets the year guard tell "no
+// registry has ever been loaded" apart from "a prior season exists but this
+// one has not been rolled forward yet" -- the two cases call for different
+// action from whoever reads the log. See #2061.
+func (r *AliasResolver) HasAnyUnits() bool {
+	return len(r.idByCodeYear) > 0
 }
 
 // aliasLookupKey normalises outer whitespace and case only.
