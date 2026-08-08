@@ -5,7 +5,7 @@
  * between weekends belongs to the lander; this page's title doubles as the
  * switcher, mirroring the summer session header.
  */
-import { render, screen } from '@testing-library/react'
+import { fireEvent, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter, Route, Routes, useLocation, useNavigate } from 'react-router'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -326,6 +326,17 @@ describe('header', () => {
   it('says so when the URL names a weekend that does not exist', () => {
     renderPage('9999999')
     expect(screen.getByRole('button', { name: /Weekend not found/ })).toBeInTheDocument()
+  })
+
+  it('mounts a Visual Guide covering Roster, Board and Map — one button, not per-tab (kindred#1997)', async () => {
+    // Summer's SessionHeader mounts `BunkingLegendButton` once in its header;
+    // the weekend gains the same move rather than a copy bolted onto the map
+    // tab, where the other two tabs could never reach it.
+    renderPage('1000001', 'map')
+    const trigger = screen.getByRole('button', { name: /show visual guide/i })
+    expect(screen.getByRole('banner')).toContainElement(trigger)
+    await userEvent.click(trigger)
+    expect(screen.getByText('Visual Guide')).toBeInTheDocument()
   })
 })
 
@@ -712,22 +723,27 @@ describe('tab component state survives switching (#2004)', () => {
   })
 
   it('survives a tab switch away and back with the map zoom intact', async () => {
+    // Zoom buttons and the `1.0×` readout went with the control bar
+    // (kindred#1997) — wheel is the remaining zoom path, same as
+    // `LodgingMap.test.tsx`'s own tests drive it.
     renderPage()
     await userEvent.click(screen.getByRole('tab', { name: /Map/ }))
-    await screen.findByTestId('map-canvas')
-    expect(screen.getByText('1.0×')).toBeInTheDocument()
+    const canvas = await screen.findByTestId('map-canvas')
+    const transform = () => screen.getByTestId('map-backdrop').style.transform
+    const atRest = transform()
 
-    await userEvent.click(screen.getByRole('button', { name: 'Zoom in' }))
-    expect(screen.getByText('1.4×')).toBeInTheDocument()
+    fireEvent.wheel(canvas, { deltaY: -600 })
+    const zoomed = transform()
+    expect(zoomed).not.toBe(atRest)
 
     await userEvent.click(screen.getByRole('tab', { name: /Roster/ }))
     await userEvent.click(screen.getByRole('tab', { name: /Map/ }))
 
-    // A remount would reset to the identity viewport (1.0×). Seeing 1.4×
-    // still on screen proves the SAME LodgingMap instance came back, not a
-    // fresh one — exactly the acceptance criterion #2004 states: "Map
-    // pan/zoom survives a tab switch away and back."
-    expect(screen.getByText('1.4×')).toBeInTheDocument()
+    // A remount would reset to the identity viewport. Seeing the SAME zoomed
+    // transform still on screen proves the SAME LodgingMap instance came
+    // back, not a fresh one — exactly the acceptance criterion #2004 states:
+    // "Map pan/zoom survives a tab switch away and back."
+    expect(transform()).toBe(zoomed)
   })
 
   // The chunk-eagerness guard used to live here as "never mounts a tab that
