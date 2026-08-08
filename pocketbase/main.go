@@ -151,10 +151,20 @@ func main() {
 	// Warn-and-boot only for the clone-with-no-private-config case: no
 	// registry file means nothing to load, and refusing to boot over that
 	// would break every clone and CI run that lacks kindred-local. Once the
-	// registry file IS present, an unresolvable season stops being "nothing
-	// to load" and becomes "someone configured this deployment to have
-	// lodging and it silently has none" — that case fails the boot instead
-	// of leaving it behind a single warn-level log line nobody is watching.
+	// registry file IS present AND the database has no lodging rows yet, an
+	// unresolvable season stops being "nothing to load" and becomes "someone
+	// configured this deployment to have lodging and it silently has none"
+	// — that case fails the boot instead of leaving it behind a single
+	// warn-level log line nobody is watching.
+	//
+	// The hasRows check matters on its own: SeedRegistry is a bootstrap that
+	// no-ops once any season already has rows (registry.go:175-185), so a
+	// production deployment with an already-seeded registry has nothing at
+	// risk when the season goes missing or malformed after the fact — the
+	// existing data is untouched either way. Failing the boot on
+	// file-presence alone, without checking hasRows, would turn a harmless
+	// env var hiccup on an already-seeded deployment into a full outage for
+	// a condition SeedRegistry itself would have silently ignored.
 	// See issue #2054 (Half 2); lodgingRegistryBootDecision below carries the
 	// tests for this split.
 	//
@@ -164,7 +174,16 @@ func main() {
 	app.OnServe().BindFunc(func(e *core.ServeEvent) error {
 		year, err := sync.ParseSeasonYear()
 		if err != nil {
-			if bootErr := lodgingRegistryBootDecision(err, lodging.RegistryFilePresent()); bootErr != nil {
+			hasRows, rowsErr := lodging.RegistryHasRows(e.App)
+			if rowsErr != nil {
+				// Can't determine whether the registry already has rows —
+				// fail open (warn, don't take the boot down) rather than
+				// compound one failure with a second, less legible one.
+				slog.Warn("lodging registry load skipped: season unavailable "+
+					"(row-presence check also failed)", "err", err, "rows_check_err", rowsErr)
+				return e.Next()
+			}
+			if bootErr := lodgingRegistryBootDecision(err, lodging.RegistryFilePresent(), hasRows); bootErr != nil {
 				return bootErr
 			}
 			return e.Next()
@@ -287,22 +306,32 @@ func runHistorySync(app core.App) error {
 
 // lodgingRegistryBootDecision turns a sync.ParseSeasonYear failure into
 // either a warning (boot continues) or a boot error, depending on whether the
-// private lodging registry file exists on disk.
+// private lodging registry file exists on disk AND whether the database
+// already has lodging rows from a prior successful seed.
 //
 //   - registryPresent == false: a clone (or CI run) with no kindred-local
 //     config. Nothing to load — warn and let the boot continue, the same
 //     graceful degradation this loader has always given a fresh clone.
-//   - registryPresent == true: the registry file IS there, but the season it
-//     needs to seed against can't be resolved. That combination means an
-//     operator configured this deployment to have lodging data, and it would
+//   - registryPresent == true, hasRows == true: the registry file is there,
+//     but the database was already seeded by an earlier boot.
+//     lodging.SeedRegistry is a bootstrap that no-ops once any season has
+//     rows (registry.go:175-185), so this deployment's existing lodging data
+//     is not at risk from an unresolvable season — warn and continue, the
+//     same as the no-file case. Gating on file-presence alone here would
+//     turn a harmless env var hiccup on an already-seeded production
+//     deployment into a full boot failure.
+//   - registryPresent == true, hasRows == false: the registry file IS there,
+//     the database is genuinely empty, and the season it needs to seed
+//     against can't be resolved. That combination means an operator
+//     configured this deployment to have lodging data, and it would
 //     otherwise come up with an empty registry — every cabin string failing
 //     to resolve — signaled by nothing but a warn-level log line. Failing
 //     the boot makes that visible immediately instead of months later.
 //
 // Split out from the OnServe hook so the decision is unit-testable without
 // booting a PocketBase app or touching the filesystem. See issue #2054.
-func lodgingRegistryBootDecision(seasonErr error, registryPresent bool) error {
-	if !registryPresent {
+func lodgingRegistryBootDecision(seasonErr error, registryPresent, hasRows bool) error {
+	if !registryPresent || hasRows {
 		slog.Warn("lodging registry load skipped: season unavailable", "err", seasonErr)
 		return nil
 	}

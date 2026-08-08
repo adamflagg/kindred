@@ -173,7 +173,7 @@ type registryAlias struct {
 // season that already exists is apply_lodging_inventory.py --apply --year N,
 // run by hand.
 func SeedRegistry(app core.App, year int) error {
-	hasRows, err := registryHasAnyRows(app)
+	hasRows, err := RegistryHasRows(app)
 	if err != nil {
 		return err
 	}
@@ -263,7 +263,7 @@ func seedRegistryFromFile(app core.App, path string, year int) error {
 	// Create-if-absent used to make this self-healing: a seed that died halfway
 	// was finished by the next boot, which created whatever was still missing.
 	// SeedRegistry's any-season check ended that. The areas a failed run
-	// committed are enough to make registryHasAnyRows report true forever, so
+	// committed are enough to make RegistryHasRows report true forever, so
 	// every later boot logs "skipping" and the registry stays half-built with
 	// nothing anywhere reporting it.
 	//
@@ -632,12 +632,16 @@ func seedAliases(app core.App, aliases []registryAlias, year int) (added int, er
 	return added, nil
 }
 
-// registryHasAnyRows reports whether lodging_areas or lodging_units holds a
-// row for ANY season. SeedRegistry uses this to decide whether it is a
-// bootstrap or a no-op — a year-scoped check would miss the case this exists
-// to catch, which is a season flip landing on a registry another season
-// already populated.
-func registryHasAnyRows(app core.App) (bool, error) {
+// RegistryHasRows reports whether lodging_areas or lodging_units holds a row
+// for ANY season. SeedRegistry uses this to decide whether it is a bootstrap
+// or a no-op — a year-scoped check would miss the case this exists to catch,
+// which is a season flip landing on a registry another season already
+// populated.
+//
+// Exported so main.go's boot-decision gate (issue #2054, Half 2) can check
+// it too: a deployment whose database already has rows has nothing at risk
+// from an unresolvable season, since SeedRegistry would no-op regardless.
+func RegistryHasRows(app core.App) (bool, error) {
 	for _, collection := range []string{"lodging_areas", "lodging_units"} {
 		recs, err := app.FindRecordsByFilter(collection, "", "", 1, 0)
 		if err != nil {

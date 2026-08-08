@@ -1125,7 +1125,7 @@ func TestSeedRegistrySecondSeasonIsANoOpOnceOneSeasonHasRows(t *testing.T) {
 // consequence is that the create-if-absent behavior no longer finishes a job
 // a previous run started: before the gate, a seed that died halfway was
 // completed by the next boot; now the areas it committed make
-// registryHasAnyRows report true forever, so the loader logs "skipping" and
+// RegistryHasRows report true forever, so the loader logs "skipping" and
 // the registry stays permanently half-built, with no error anywhere to say so.
 //
 // The gate is not the bug and must not be loosened to fix this. The seed has
@@ -1145,7 +1145,7 @@ func TestSeedRegistryLeavesNothingBehindWhenAPassFails(t *testing.T) {
 	}
 	if n := countRecords(t, app, "lodging_areas"); n != 0 {
 		t.Errorf("%d areas survived a failed bootstrap; want 0 -- a committed area "+
-			"makes registryHasAnyRows true, so the bootstrap never runs again", n)
+			"makes RegistryHasRows true, so the bootstrap never runs again", n)
 	}
 
 	// The point of atomicity here: the next boot must still be able to seed.
