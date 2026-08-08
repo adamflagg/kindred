@@ -22,6 +22,63 @@ import { partyKey } from './partyKey'
 import { reservationBadge } from './unitBadges'
 import { UnitAvailabilityControl } from './UnitAvailabilityControl'
 
+/**
+ * `.card-lodge`'s own elevation shadow (`index.css:440-443`), duplicated here
+ * rather than imported: an inline `boxShadow` (the shared-space ring below)
+ * and this stylesheet rule occupy the SAME CSS property, and inline always
+ * wins outright regardless of specificity or layer order — box-shadow does
+ * not merge across the two, so setting the ring alone silently DELETES the
+ * elevation the class rule was supplying. Composing it back in here is what
+ * keeps a shared card from reading as flat against its unshared neighbours.
+ */
+const CARD_ELEVATION_SHADOW =
+  '0 1px 2px hsl(var(--shadow-color) / 0.06), 0 4px 16px hsl(var(--shadow-color) / 0.08)'
+
+/**
+ * The card's border/ring treatment, keyed off an ordered, MUTUALLY EXCLUSIVE
+ * `ringState` — these three (plus `plain`) fight over the same CSS slot
+ * (`border-color` plus a Tailwind `ring-*` box-shadow, or the inline
+ * `boxShadow` below for `shared`), so only one may ever paint at a time. That
+ * used to matter concretely: `.border-amber-400` (consent) and
+ * `.border-primary` (an active drop target) could both be true at once, and
+ * which one painted depended on which utility Tailwind's generated
+ * stylesheet happened to emit LATER — a byte offset, not an intent.
+ *
+ * Dimming (an invalid merge target mid-drag) and dashing (an empty room) are
+ * DELIBERATELY NOT in this table — they are additive booleans where this
+ * table is consulted, because `opacity`/`pointer-events` (dimming) and
+ * `border-style` (dashing's dashed edge) don't compete with `border-color`
+ * or `box-shadow`. Folding all five into one exclusive `cardState` string, as
+ * an earlier version of this file did, silently dropped real combinations
+ * that used to co-render: a consent-flagged room mid an invalid merge drag
+ * lost its amber accent entirely, and an empty room lost its dashed border
+ * mid an invalid drag.
+ *
+ * One piece of dashing is NOT additive, and stays gated below rather than
+ * joining `border-dashed` in the unconditional list: `bg-muted/25`, dashing's
+ * background wash, targets the SAME `background-color` property as
+ * `dropTarget`'s own `bg-primary/5` — reintroducing, for exactly this one
+ * pairing, the identical byte-offset race this table exists to kill. An empty
+ * room being actively hovered for a drop keeps its dashed OUTLINE but not the
+ * muted wash, so `dropTarget`'s own background wins outright.
+ *
+ * Module scope, not component state: this table references nothing per-card
+ * and would otherwise be rebuilt on every one of up to ~82 cards on a board.
+ */
+const RING_CLASSES: Record<'dropTarget' | 'consentFlagged' | 'shared' | 'plain', string> = {
+  dropTarget: 'border-primary ring-primary/50 bg-primary/5 ring-2',
+  // Promoted from `ring-1`: the shared-space mark below needs a weight to
+  // lose TO, and a 1px ring was not it.
+  consentFlagged: 'border-amber-400 ring-2 ring-amber-400/40 dark:border-amber-500',
+  // No class here — the ring itself is the inline `boxShadow` below. `hue`
+  // is a RUNTIME value (`LodgingBoard.tsx` passes `area.hue`), so it cannot
+  // live in a Tailwind class the way the other two do. This is the one
+  // exception to "the table is the source of truth", and it lives in
+  // `style` rather than here for exactly that reason.
+  shared: '',
+  plain: '',
+}
+
 /** What the reserve/release control asks the board to write. */
 export interface UnitAvailabilityWrite {
   familyAvailable: boolean | null
@@ -138,6 +195,21 @@ export function LodgingUnitCard({
   // The "N families" count chip below: a true statement about the CARD
   // regardless of which rooms anyone actually holds, so it stays keyed on
   // the card's whole party count.
+  //
+  // OPEN QUESTION, not yet decided (PR #2119 review, 2026-08-08): this same
+  // `parties.length > 1` also drives the shared-space ring below
+  // (`ringState`), and unlike `consent` the ring is NOT overlap-aware.
+  // `consent` was deliberately rewritten onto `overlappingPartyKeys` to stop
+  // conflating "two households on one merged card" with "two households in
+  // one ROOM" — see that function's doc in `boardLayout.ts`. A combined
+  // container holding two households in DISJOINT rooms (the Front/Back case
+  // pinned in `boardLayout.test.ts:985-1000`) correctly resolves `consent` to
+  // `null` for exactly that reason, but still draws the hue ring here, which
+  // may read to staff as "these two families share a ROOM" when they do not
+  // — even though the pre-existing "N families" chip already counts the
+  // same slot-wide way. Whether the ring should follow `consent`'s
+  // overlap-aware definition instead is a product call the PR owner has not
+  // made yet; see the PR discussion. Do not change this without that call.
   const isShared = parties.length > 1
   // Each FamilyCard's own "did not request sharing" chip, in contrast, must
   // be a true statement about that ONE party — whether it shares a ROOM with
@@ -194,12 +266,104 @@ export function LodgingUnitCard({
     setMergeDropRef(node)
   }
 
+  /*
+   * Which of the four mutually-exclusive RING states wins — see
+   * `RING_CLASSES` above for why exactly these four compete for one slot and
+   * why dimming/dashing are handled separately, additively, below rather
+   * than folded in here.
+   *
+   * Highest wins, and every check below assumes every state above it false:
+   *   1. an active drop target — dragging a family onto it, or a card onto
+   *      its merge-sibling. The placement affordance has to read clearly
+   *      even over a flagged or shared room.
+   *   2. the consent flag (#1926) — a household sharing without having
+   *      agreed to.
+   *   3. two or more families sharing without a flag — the mark #2091 adds,
+   *      matching `LodgingMap.tsx`'s `halo` for the identical slot flag.
+   *   4. plain — none of the above.
+   */
+  let ringState: 'dropTarget' | 'consentFlagged' | 'shared' | 'plain' = 'plain'
+  if (isUnitOver || isMergeOver) {
+    ringState = 'dropTarget'
+  } else if (consent) {
+    ringState = 'consentFlagged'
+  } else if (isShared) {
+    ringState = 'shared'
+  }
+
+  /*
+   * An invalid merge target mid-drag: dims the card so a doomed drop is not
+   * attempted, as summer's `isValidDropTarget()` does for gender. Additive
+   * rather than a `ringState` of its own — dimming and, say, the consent
+   * amber accent are ORTHOGONAL CSS properties (`opacity`/`pointer-events`
+   * vs `border-color`/`box-shadow`) with no reason to be mutually exclusive.
+   * Pre-refactor, the two used to co-render; folding them into one exclusive
+   * `cardState` string silently dropped that.
+   *
+   * The one ring this DOES still suppress is `shared`'s inline `boxShadow`
+   * below (`sharedRingActive`) — a deliberate exception, not an oversight: a
+   * doomed drop dims the card specifically to discourage it, and the hue
+   * ring is the first thing a staff member's eye goes to, so it goes dark
+   * with everything else. Consent's Tailwind ring stays lit through the same
+   * dim because it is warning about something the merge drag did not cause
+   * and will still be true once the drag ends.
+   */
+  const dimmed = mergeDragActive && !isValidTarget
+
+  /*
+   * An empty room — the master sheet's "open" case (#2093). Additive for the
+   * same reason as `dimmed`: `border-style` (the dashed outline) doesn't
+   * compete with `border-color` or `box-shadow`, so an empty room dragged
+   * over, or caught in someone else's invalid merge drag, keeps its dashed
+   * edge AND whichever ring/dim state is active, rather than losing one to
+   * the other.
+   */
+  const dashed = parties.length === 0
+
+  // The one piece of `dashed` that is NOT unconditionally additive — see
+  // `RING_CLASSES`'s doc above for why `bg-muted/25` has to stand down
+  // specifically against `dropTarget`'s own `bg-primary/5`, both being
+  // `background-color`. An empty room mid-hover shows the drop ring's own
+  // wash, not its own muted one.
+  const dashedWashActive = dashed && ringState !== 'dropTarget'
+
+  // `ringState` alone can't gate the inline ring below: `dimmed` still wins
+  // against `shared` specifically (see the comment on `dimmed` above), and
+  // `ringState` does not know about `dimmed` by design.
+  const sharedRingActive = ringState === 'shared' && !dimmed
+
+  const cardStateClassName = [
+    RING_CLASSES[ringState],
+    dashed ? 'border-dashed' : '',
+    dashedWashActive ? 'bg-muted/25' : '',
+    dimmed ? 'pointer-events-none opacity-40' : '',
+  ]
+    .filter(Boolean)
+    .join(' ')
+
   return (
     <div
       data-unit-card
       data-unit-code={unit.code}
       ref={setCardRef}
-      style={{ borderTopColor: hue }}
+      style={{
+        borderTopColor: hue,
+        // Distinguishable from the amber consent edge and an active drop
+        // target by construction, not by colour alone: `sharedRingActive`
+        // can only be true once both `ringState` branches above it have
+        // been ruled out, AND while not `dimmed` (see that comment).
+        //
+        // Composed with `CARD_ELEVATION_SHADOW` rather than replacing it —
+        // see that constant's comment for why a bare ring here would
+        // silently flatten every shared card. One piece of that loss is
+        // NOT recovered by composing: `.card-lodge:hover`'s deeper lift
+        // (`index.css:445-450`) is also the `box-shadow` property, so it
+        // stays defeated by this inline style regardless of hover state —
+        // there is no CSS-only way to hand that back without moving the
+        // ring out of `style` entirely. Only the baseline (at-rest)
+        // elevation is being restored here.
+        ...(sharedRingActive ? { boxShadow: `0 0 0 2px ${hue}, ${CARD_ELEVATION_SHADOW}` } : {}),
+      }}
       /*
        * `.card-lodge` is summer's card chrome, not a lookalike — the same
        * class `BunkCard` wears (CLAUDE.md §4, "Family Camp Models Summer").
@@ -208,12 +372,16 @@ export function LodgingUnitCard({
        * `bg-card rounded-xl border`, which is the same idea minus the shadow
        * and the hover — so it read as a table row rather than a card.
        *
-       * ORDER MATTERS BELOW. `.card-lodge` lives in `@layer components`, so
-       * every utility here outranks it whatever the string order: the amber
-       * consent edge, the empty-slot wash and the drop-target ring all still
-       * land. The hue top edge is an inline style and outranks both, which is
-       * what keeps §3.10's secondary channel through `card-lodge`'s own
-       * `border-border` and its `border-primary/50` hover.
+       * Every utility below outranks `.card-lodge` itself regardless of
+       * string order — it lives in `@layer components`, so `cardStateClassName`
+       * always beats its `border-border` and `border-primary/50` hover. What
+       * is NOT order-independent is `RING_CLASSES`' four entries against EACH
+       * OTHER, which is exactly why `ringState` above picks one rather than
+       * concatenating four; the dashed/dimmed fragments alongside it are
+       * additive on purpose (see their own comments) and never race anything
+       * in this table. The hue top edge is a separate inline style and
+       * outranks all of it, which is what keeps §3.10's secondary channel
+       * alive underneath whichever state wins.
        *
        * NO `hover:shadow-lodge-lg` HERE, though `BunkCard` carries one. That
        * class is inert: `.shadow-lodge-*` are hand-written rules in `@layer
@@ -229,17 +397,7 @@ export function LodgingUnitCard({
        * and roster with `mb-3`). This ran at a flat 8px, which left the title
        * sitting on top of the amenity row.
        */
-      className={`card-lodge flex flex-col gap-3 border-t-[3px] p-4 ${
-        consent ? 'border-amber-400 ring-1 ring-amber-400/40 dark:border-amber-500' : ''
-      } ${parties.length === 0 ? 'bg-muted/25 border-dashed' : ''} ${
-        isUnitOver || isMergeOver ? 'border-primary ring-primary/50 bg-primary/5 ring-2' : ''
-      } ${
-        // Invalid targets grey out mid-drag, as summer's `isValidDropTarget()`
-        // does for gender. Gated on `mergeDragActive` too: with no card drag
-        // in flight `isValidTarget` is trivially false for every card, and
-        // without this guard the whole board would sit permanently dimmed.
-        mergeDragActive && !isValidTarget ? 'pointer-events-none opacity-40' : ''
-      }`}
+      className={`card-lodge flex flex-col gap-3 border-t-[3px] p-4 ${cardStateClassName}`}
     >
       <div className="flex items-baseline gap-1.5">
         {/* Summer's scale, not a parallel one (CLAUDE.md §4): `text-lg` title
