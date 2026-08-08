@@ -15,7 +15,6 @@ import userEvent from '@testing-library/user-event'
 import { MemoryRouter, Route, Routes } from 'react-router'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { LodgingApiError } from '../services/lodgingApi'
 import WeekendRosterPage from './WeekendRosterPage'
 
 const rosterQuery = { data: undefined as unknown, isLoading: false, error: null as Error | null }
@@ -112,16 +111,6 @@ vi.mock('../hooks/useApiWithAuth', () => ({
   }),
 }))
 
-const copyPlacementsFromMirror = vi.fn()
-
-vi.mock('../services/lodgingApi', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('../services/lodgingApi')>()
-  return {
-    ...actual,
-    copyPlacementsFromMirror: (...args: unknown[]) => copyPlacementsFromMirror(...args),
-  }
-})
-
 const invalidateQueries = vi.fn()
 
 vi.mock('@tanstack/react-query', async (importOriginal) => {
@@ -202,7 +191,6 @@ beforeEach(() => {
   loadScenarios.mockReset()
   selectScenario.mockReset()
   createScenario.mockReset().mockResolvedValue(NEW_PLAN)
-  copyPlacementsFromMirror.mockReset().mockResolvedValue({ copied: 47, skipped: 0 })
   invalidateQueries.mockReset()
   toastSuccess.mockReset()
   toastError.mockReset()
@@ -317,128 +305,15 @@ describe('the mode badge', () => {
   })
 })
 
-describe('seeding an empty scenario', () => {
-  it('offers a way out of an empty board', () => {
-    // #1974 made a scenario REPLACE the mirror, so a fresh one renders
-    // nothing — all 62 families gone. That reads as a bug, not as a blank
-    // plan, and staff need an obvious way to fill it.
-    currentScenario = OPTION_A
-    renderPage()
-    expect(screen.getByRole('button', { name: /start from campminder/i })).toBeInTheDocument()
-  })
-
-  it('does NOT offer it in mirror mode, where there is nothing to seed into', () => {
-    renderPage()
-    expect(screen.queryByRole('button', { name: /start from campminder/i })).not.toBeInTheDocument()
-  })
-
-  it('does NOT offer it once the scenario holds placements', () => {
-    currentScenario = OPTION_A
-    rosterQuery.data = { ...emptyPlan(), counts: { parties_total: 62, parties_assigned: 47 } }
-    renderPage()
-    expect(screen.queryByRole('button', { name: /start from campminder/i })).not.toBeInTheDocument()
-  })
-
-  it('does NOT offer it on a weekend with no families at all', () => {
-    // An empty board is CORRECT here, and seeding would copy nothing.
-    currentScenario = OPTION_A
-    rosterQuery.data = { ...emptyPlan(), counts: { parties_total: 0, parties_assigned: 0 } }
-    renderPage()
-    expect(screen.queryByRole('button', { name: /start from campminder/i })).not.toBeInTheDocument()
-  })
-
-  it('is hidden from a user without bunking.manage', () => {
-    permissions = new Set()
-    currentScenario = OPTION_A
-    renderPage()
-    expect(screen.queryByRole('button', { name: /start from campminder/i })).not.toBeInTheDocument()
-  })
-
-  it('sends the weekend and the scenario', async () => {
-    currentScenario = OPTION_A
-    renderPage()
-    await userEvent.click(screen.getByRole('button', { name: /start from campminder/i }))
-
-    await waitFor(() => {
-      expect(copyPlacementsFromMirror).toHaveBeenCalledWith(expect.anything(), {
-        year: 2026,
-        sessionCmId: 1000001,
-        scenario: 'scn7x2k9qw3mnbv',
-      })
-    })
-  })
-
-  it('INVALIDATES the roster afterwards, because nothing refreshes on its own', async () => {
-    // These queries carry the app default 30 minute staleTime. Without an
-    // explicit invalidation the seed writes 47 rows and the board keeps
-    // showing the empty plan for half an hour.
-    currentScenario = OPTION_A
-    renderPage()
-    await userEvent.click(screen.getByRole('button', { name: /start from campminder/i }))
-
-    await waitFor(() => {
-      const keys = invalidateQueries.mock.calls.map(
-        ([arg]) => (arg as { queryKey: readonly unknown[] }).queryKey
-      )
-      expect(keys).toContainEqual(['weekend-roster', 2026, 1000001, 'scn7x2k9qw3mnbv'])
-      expect(keys).toContainEqual(['weekend-summary', 2026])
-    })
-  })
-
-  it('reports what it wrote', async () => {
-    currentScenario = OPTION_A
-    renderPage()
-    await userEvent.click(screen.getByRole('button', { name: /start from campminder/i }))
-
-    await waitFor(() => expect(toastSuccess).toHaveBeenCalledWith(expect.stringMatching(/47/)))
-  })
-
-  it('surfaces skipped rows rather than silently showing fewer families', async () => {
-    // `skipped` means mirror rows naming a party or a unit that no longer
-    // resolves. Unreported, the only evidence is a board with fewer families
-    // on it than CampMinder shows.
-    copyPlacementsFromMirror.mockResolvedValue({ copied: 45, skipped: 2 })
-    currentScenario = OPTION_A
-    renderPage()
-    await userEvent.click(screen.getByRole('button', { name: /start from campminder/i }))
-
-    await waitFor(() => expect(toastSuccess).toHaveBeenCalledWith(expect.stringMatching(/2/)))
-  })
-
-  it('treats a 409 as ALREADY SEEDED, not as a failure', async () => {
-    // The server refuses a second copy because it would overwrite what staff
-    // placed and re-place everything they unplaced. That refusal protects
-    // them; reporting it as an error teaches them to distrust the button.
-    // The REAL error class, not an Object.assign stand-in — a synthetic
-    // fixture would keep passing if `toError` stopped attaching the status.
-    copyPlacementsFromMirror.mockRejectedValue(
-      new LodgingApiError('Scenario already holds placements', 409)
-    )
-    currentScenario = OPTION_A
-    renderPage()
-    await userEvent.click(screen.getByRole('button', { name: /start from campminder/i }))
-
-    await waitFor(() =>
-      expect(toastSuccess).toHaveBeenCalledWith(expect.stringMatching(/already/i))
-    )
-    expect(toastError).not.toHaveBeenCalled()
-  })
-
-  it('still reports a real failure as a failure', async () => {
-    copyPlacementsFromMirror.mockRejectedValue(
-      new LodgingApiError('Permission required: bunking.manage', 403)
-    )
-    currentScenario = OPTION_A
-    renderPage()
-    await userEvent.click(screen.getByRole('button', { name: /start from campminder/i }))
-
-    await waitFor(() =>
-      expect(toastError).toHaveBeenCalledWith(expect.stringMatching(/bunking\.manage/))
-    )
-  })
-})
-
 describe('creating a weekend plan', () => {
+  // kindred#2021: creation and its copy are now ONE call — `POST
+  // /api/scenarios` is program-aware server-side (LodgingWriteService reads
+  // lodging_assignments / lodging_assignments_draft for a weekend session,
+  // exactly as summer's copy reads bunk_assignments(_draft)). There is no
+  // longer a second "seed" round trip for these tests to watch: the mock
+  // `createScenario` (from `useScenario`) stands in for the whole backend
+  // call, so what matters here is which `copyOptions` it receives.
+
   async function openCreateModal() {
     await userEvent.click(screen.getByRole('button', { name: /^scenario$/i }))
     await userEvent.click(screen.getByRole('option', { name: /New Scenario/i }))
@@ -456,78 +331,111 @@ describe('creating a weekend plan', () => {
     expect(screen.queryByLabelText(/empty bunks/i)).not.toBeInTheDocument()
   })
 
-  it('offers the mirror seed AT CREATION, where summer puts it', async () => {
+  it('offers copy from CampMinder, exactly as summer does', async () => {
     renderPage()
     await openCreateModal()
 
-    expect(screen.getByLabelText(/Copy placements from CampMinder/i)).toBeInTheDocument()
+    expect(screen.getByLabelText(/Copy from CampMinder/i)).toBeInTheDocument()
   })
 
-  it('does NOT offer the inert copy-from-another-scenario radios', async () => {
-    // `Option A` is in the picker's list, so before this these rendered —
-    // mapping to `{ fromScenario }`, the same `POST /api/scenarios` path that
-    // copies `bunk_assignments` and returns zero rows for a weekend. Exactly
-    // the defect already fixed for the production radio, arriving by the same
-    // route. Copying a weekend plan needs a source field the API lacks (#1988).
+  it('offers copy from another scenario too, now that the backend copy works for a weekend', async () => {
+    // Before kindred#2021 these radios were hidden: they mapped to
+    // `{ fromScenario }`, the same `POST /api/scenarios` path that copied
+    // bunk_assignments and returned zero rows for a weekend. The backend is
+    // program-aware now, so hiding them would be withholding a working
+    // choice, not avoiding a broken one — and the owner's requirement is
+    // that all three choices work, identically, for both programs.
     renderPage()
     await openCreateModal()
 
-    expect(screen.queryByText(/Copy from scenario/i)).not.toBeInTheDocument()
-    expect(screen.queryByLabelText(/^Option A$/)).not.toBeInTheDocument()
+    expect(screen.getByText(/Copy from scenario/i)).toBeInTheDocument()
+    expect(screen.getByLabelText(/^Option A$/)).toBeInTheDocument()
   })
 
-  it('creates the plan, then seeds THE NEW ONE from the mirror', async () => {
-    // Two calls, and the second must name the scenario the first returned.
-    // Seeding the previously-selected scenario instead would fill a plan the
-    // staff member is not looking at — and 409 doing it.
+  it('sends { fromProduction: true } when Copy from CampMinder is chosen', async () => {
     renderPage()
     await openCreateModal()
-    await userEvent.click(screen.getByLabelText(/Copy placements from CampMinder/i))
+    await userEvent.click(screen.getByLabelText(/Copy from CampMinder/i))
     await userEvent.type(screen.getByLabelText(/Scenario Name/i), 'Option B')
     await userEvent.click(screen.getByRole('button', { name: /Create Scenario/i }))
 
     await waitFor(() => {
-      expect(copyPlacementsFromMirror).toHaveBeenCalledWith(expect.anything(), {
-        year: 2026,
-        sessionCmId: 1000001,
-        scenario: 'scnNEW00000000',
+      expect(createScenario).toHaveBeenCalledWith('Option B', 1000001, 2026, undefined, {
+        fromProduction: true,
       })
     })
   })
 
-  it('does NOT seed when the empty plan was chosen', async () => {
+  it('sends { fromScenario: id } when copy from another scenario is chosen', async () => {
+    renderPage()
+    await openCreateModal()
+    await userEvent.click(screen.getByLabelText(/^Option A$/))
+    await userEvent.type(screen.getByLabelText(/Scenario Name/i), 'Option B')
+    await userEvent.click(screen.getByRole('button', { name: /Create Scenario/i }))
+
+    await waitFor(() => {
+      expect(createScenario).toHaveBeenCalledWith('Option B', 1000001, 2026, undefined, {
+        fromScenario: 'scn7x2k9qw3mnbv',
+      })
+    })
+  })
+
+  it('sends { fromProduction: false } when the empty plan was chosen', async () => {
     renderPage()
     await openCreateModal()
     await userEvent.click(screen.getByLabelText(/Start with an empty plan/i))
     await userEvent.type(screen.getByLabelText(/Scenario Name/i), 'Option B')
     await userEvent.click(screen.getByRole('button', { name: /Create Scenario/i }))
 
-    await waitFor(() => expect(createScenario).toHaveBeenCalled())
-    expect(copyPlacementsFromMirror).not.toHaveBeenCalled()
+    await waitFor(() => {
+      expect(createScenario).toHaveBeenCalledWith('Option B', 1000001, 2026, undefined, {
+        fromProduction: false,
+      })
+    })
   })
 
-  it('tells staff when the plan was created but the seed failed', async () => {
-    // The scenario EXISTS at this point. Closing quietly would leave them on
-    // an empty board believing the copy ran. The way back is
-    // `SeedScenarioNotice`, which still renders for exactly this state — see
-    // "offers a way out of an empty board" above.
-    copyPlacementsFromMirror.mockRejectedValue(new LodgingApiError('PocketBase unreachable', 502))
+  it('tells staff when creation (copy included) failed', async () => {
+    // The create-and-copy is now one call, so a failure here means the
+    // scenario was never created either — unlike the old two-step flow,
+    // there is no "created but empty" state left to recover from. The
+    // modal shows the failure in its own error box rather than closing.
+    createScenario.mockRejectedValue(new Error('PocketBase unreachable'))
     renderPage()
     await openCreateModal()
-    await userEvent.click(screen.getByLabelText(/Copy placements from CampMinder/i))
+    await userEvent.click(screen.getByLabelText(/Copy from CampMinder/i))
     await userEvent.type(screen.getByLabelText(/Scenario Name/i), 'Option B')
     await userEvent.click(screen.getByRole('button', { name: /Create Scenario/i }))
 
     await waitFor(() => expect(screen.getByText(/PocketBase unreachable/i)).toBeInTheDocument())
   })
 
-  it('reports the seeded count on the happy path', async () => {
+  it('reports success with the new scenario name, matching summer’s own create flow', async () => {
+    // SessionView.tsx's own "+ New Scenario" flow toasts
+    // `Created scenario: ${scenario.name}`; this is the weekend analogue.
     renderPage()
     await openCreateModal()
-    await userEvent.click(screen.getByLabelText(/Copy placements from CampMinder/i))
+    await userEvent.click(screen.getByLabelText(/Copy from CampMinder/i))
     await userEvent.type(screen.getByLabelText(/Scenario Name/i), 'Option B')
     await userEvent.click(screen.getByRole('button', { name: /Create Scenario/i }))
 
-    await waitFor(() => expect(toastSuccess).toHaveBeenCalledWith(expect.stringMatching(/47/)))
+    await waitFor(() =>
+      expect(toastSuccess).toHaveBeenCalledWith(expect.stringMatching(/Created scenario: Option B/))
+    )
+  })
+
+  it('surfaces a nonzero copy_skipped instead of silently showing fewer families', async () => {
+    // copy_skipped names a mirror/source row whose party or unit no longer
+    // resolves. Unreported, the only evidence would be a board with fewer
+    // families than the source shows.
+    createScenario.mockResolvedValue({ ...NEW_PLAN, copy_skipped: 2 })
+    renderPage()
+    await openCreateModal()
+    await userEvent.click(screen.getByLabelText(/Copy from CampMinder/i))
+    await userEvent.type(screen.getByLabelText(/Scenario Name/i), 'Option B')
+    await userEvent.click(screen.getByRole('button', { name: /Create Scenario/i }))
+
+    await waitFor(() =>
+      expect(toastSuccess).toHaveBeenCalledWith(expect.stringMatching(/Skipped 2/))
+    )
   })
 })

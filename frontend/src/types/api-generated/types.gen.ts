@@ -745,10 +745,6 @@ export type CreateScenarioRequest = {
    * Copy From Scenario
    */
   copy_from_scenario?: string | null
-  /**
-   * Created By
-   */
-  created_by?: string | null
 }
 
 /**
@@ -5112,10 +5108,6 @@ export type SavedScenario = {
    */
   year: number
   /**
-   * Created By
-   */
-  created_by?: string | null
-  /**
    * Is Active
    */
   is_active?: boolean
@@ -5123,6 +5115,10 @@ export type SavedScenario = {
    * Description
    */
   description?: string | null
+  /**
+   * Copy Skipped
+   */
+  copy_skipped?: number | null
 }
 
 /**

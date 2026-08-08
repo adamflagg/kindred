@@ -103,11 +103,8 @@ describe('the empty-plan label is parameterised', () => {
   })
 })
 
-describe('suppressing the inert copy sources', () => {
-  it('hides copy-from-another-scenario when the caller cannot use it', () => {
-    // Same defect as the production radio, arriving by the same route: a
-    // `{ fromScenario }` copy is `POST /api/scenarios`, which copies
-    // `bunk_assignments` and returns zero rows for a weekend session.
+describe('a caller with no source to copy from', () => {
+  it('hides copy-from-another-scenario when the caller passes canCopyFromScenario=false', () => {
     render(
       <NewScenarioModal
         sessionId={1000001}
@@ -141,56 +138,15 @@ describe('suppressing the inert copy sources', () => {
   })
 })
 
-describe('caller-supplied sources', () => {
-  const EXTRA = [{ value: 'lodging-mirror', label: 'Copy placements from CampMinder' }]
+describe('onScenarioCreated', () => {
+  // POST /api/scenarios does the copy server-side now (kindred#2021,
+  // program-aware — LodgingWriteService for a weekend session, the existing
+  // bunk_assignments(_draft) copy for summer), so by the time this fires the
+  // scenario is fully seeded. It is still awaited, though: a caller may have
+  // its own work to do with the result (closing a picker, toasting), and a
+  // rejection there is still a real failure to show.
 
-  it('renders an extra source as a choice', () => {
-    render(
-      <NewScenarioModal
-        sessionId={1000001}
-        onClose={vi.fn()}
-        onScenarioCreated={vi.fn()}
-        canCopyFromProduction={false}
-        canCopyFromScenario={false}
-        extraSources={EXTRA}
-      />
-    )
-    expect(screen.getByLabelText(/Copy placements from CampMinder/i)).toBeInTheDocument()
-  })
-
-  it('creates the scenario EMPTY and reports the choice, leaving the copy to the caller', async () => {
-    // The modal cannot perform this copy: it is a second endpoint that needs
-    // the scenario id the create has not returned yet. So the create must not
-    // ask `POST /api/scenarios` for a copy it would do wrong.
-    const onScenarioCreated = vi.fn()
-    render(
-      <NewScenarioModal
-        sessionId={1000001}
-        onClose={vi.fn()}
-        onScenarioCreated={onScenarioCreated}
-        canCopyFromProduction={false}
-        canCopyFromScenario={false}
-        extraSources={EXTRA}
-      />
-    )
-    await userEvent.click(screen.getByLabelText(/Copy placements from CampMinder/i))
-    await fillNameAndSubmit()
-
-    await waitFor(() => {
-      expect(createScenario).toHaveBeenCalledWith('Option B', 1000001, 2026, undefined, {
-        fromProduction: false,
-      })
-    })
-    expect(onScenarioCreated).toHaveBeenCalledWith(
-      expect.objectContaining({ id: 'scnNEW00000000' }),
-      'lodging-mirror'
-    )
-  })
-
-  it('AWAITS the caller before finishing, so the board never flashes empty', async () => {
-    // Create-then-seed is two calls. Returning from the modal between them
-    // would drop staff on a board with every family missing for the length of
-    // the seed, which is the exact impression #1974 already risks giving.
+  it('AWAITS the caller before finishing', async () => {
     let release: () => void = () => undefined
     const onScenarioCreated = vi.fn(
       () =>
@@ -203,7 +159,6 @@ describe('caller-supplied sources', () => {
         sessionId={1000001}
         onClose={vi.fn()}
         onScenarioCreated={onScenarioCreated}
-        extraSources={EXTRA}
       />
     )
     await fillNameAndSubmit()
@@ -218,21 +173,16 @@ describe('caller-supplied sources', () => {
   })
 
   it('surfaces a caller failure instead of reporting a clean create', async () => {
-    // The scenario IS created when the seed fails. Saying nothing would leave
-    // staff on an empty board believing the copy ran.
-    const onScenarioCreated = vi.fn().mockRejectedValue(new Error('Failed to seed the scenario'))
+    const onScenarioCreated = vi.fn().mockRejectedValue(new Error('Failed to notify'))
     render(
       <NewScenarioModal
         sessionId={1000001}
         onClose={vi.fn()}
         onScenarioCreated={onScenarioCreated}
-        extraSources={EXTRA}
       />
     )
     await fillNameAndSubmit()
 
-    await waitFor(() =>
-      expect(screen.getByText(/Failed to seed the scenario/i)).toBeInTheDocument()
-    )
+    await waitFor(() => expect(screen.getByText(/Failed to notify/i)).toBeInTheDocument())
   })
 })

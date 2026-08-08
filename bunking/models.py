@@ -136,9 +136,14 @@ class SavedScenario(BaseModel):
     name: str
     session_cm_id: int
     year: int  # Required for year-scoped queries
-    created_by: str | None = None
     is_active: bool = True
     description: str | None = None
+    # Weekend copy only (kindred#2021): a mirror row or a source-scenario row
+    # naming a party or unit that no longer resolves is skipped rather than
+    # failed on -- see LodgingCopyResponse. 0 for a blank creation, and always
+    # 0 for summer: its copy loop does not count skips (pre-existing).
+    # None on GET/PUT responses, which never ran a copy this request.
+    copy_skipped: int | None = None
 
     model_config = ConfigDict()
 
@@ -193,7 +198,6 @@ class CreateScenarioRequest(BaseModel):
     description: str | None = None
     copy_from_production: bool | None = None  # Deprecated, kept for backward compatibility
     copy_from_scenario: str | None = None  # ID of scenario to copy from
-    created_by: str | None = None
 
     @property
     def should_copy_from_production(self) -> bool:

@@ -49,6 +49,7 @@ def _repo(**overrides: Any) -> MagicMock:
         "delete_draft_assignment": None,
         "count_draft_assignments": 0,
         "fetch_assignments": [],
+        "fetch_draft_assignments": [],
         "find_availability_override": None,
         "create_availability": SimpleNamespace(id="avail_new"),
         "update_availability": SimpleNamespace(id="avail_existing"),
@@ -56,6 +57,7 @@ def _repo(**overrides: Any) -> MagicMock:
         "find_slot_merge": None,
         "create_slot_merge": SimpleNamespace(id="merge_new"),
         "update_slot_merge": SimpleNamespace(id="merge_existing"),
+        "fetch_slot_merges": [],
     }
     defaults.update(overrides)
     for method, value in defaults.items():
@@ -544,6 +546,223 @@ class TestCopyFromMirror:
         await write_service.copy_from_mirror(PlacementCopyRequest(year=2026, session_cm_id=1000001, scenario="scn_1"))
 
         repo.create_availability.assert_not_called()
+
+
+def _draft_row(**overrides: Any) -> SimpleNamespace:
+    """One `lodging_assignments_draft` row, as fetch_draft_assignments returns it."""
+    fields: dict[str, Any] = {
+        "id": "draft_1",
+        "household_cm_id": 2000001,
+        "person_cm_id": 0,
+        "units": ["u1"],
+        "source": "staff_manual",
+        "staff_touched": True,
+        "expand": {"units": [SimpleNamespace(id="u1", code="ridge-a", name="Ridge A")]},
+    }
+    fields.update(overrides)
+    return SimpleNamespace(**fields)
+
+
+class TestCopyScenarioToScenario:
+    """Copying one weekend's placements from an existing scenario into a fresh one.
+
+    kindred#2021's "copy from another scenario" for weekend. `copy_from_mirror`
+    seeds from the CampMinder mirror; this seeds from a scenario's own
+    `lodging_assignments_draft` rows -- the weekend analogue of summer's
+    `copy_from_scenario` inside `POST /api/scenarios`. Same emptiness guard,
+    same race handling: the destination is checked for existing placements
+    the same way `copy_from_mirror`'s is, and the failure paths reuse
+    `_seed_failure` rather than duplicate its race/refusal logic.
+    """
+
+    @pytest.mark.asyncio
+    async def test_each_source_placement_becomes_a_draft_row_in_the_destination(
+        self, write_service: LodgingWriteService, repo: MagicMock
+    ) -> None:
+        repo.fetch_draft_assignments = AsyncMock(
+            return_value=[
+                _draft_row(),
+                _draft_row(
+                    id="draft_2",
+                    household_cm_id=2000002,
+                    units=["u2", "u3"],
+                    expand={
+                        "units": [
+                            SimpleNamespace(id="u2", code="gt-tioga-1", name="Tioga 1"),
+                            SimpleNamespace(id="u3", code="gt-tioga-2", name="Tioga 2"),
+                        ]
+                    },
+                ),
+            ]
+        )
+
+        result = await write_service.copy_scenario_to_scenario(
+            year=2026, session_cm_id=1000001, from_scenario="scn_source", to_scenario="scn_dest"
+        )
+
+        assert result.copied == 2
+        assert result.skipped == 0
+        repo.fetch_draft_assignments.assert_awaited_once_with(2026, "sess_1", "scn_source")
+        written = [call[0][0] for call in repo.create_draft_assignment.call_args_list]
+        assert [row["units"] for row in written] == [["u1"], ["u2", "u3"]]
+        assert {row["scenario"] for row in written} == {"scn_dest"}
+        assert {row["session"] for row in written} == {"sess_1"}
+        assert {row["session_cm_id"] for row in written} == {1000001}
+        assert {row["year"] for row in written} == {2026}
+
+    @pytest.mark.asyncio
+    async def test_the_person_grain_is_preserved(self, write_service: LodgingWriteService, repo: MagicMock) -> None:
+        repo.fetch_draft_assignments = AsyncMock(return_value=[_draft_row(household_cm_id=0, person_cm_id=1000001)])
+
+        await write_service.copy_scenario_to_scenario(
+            year=2026, session_cm_id=1000001, from_scenario="scn_source", to_scenario="scn_dest"
+        )
+
+        data = repo.create_draft_assignment.call_args[0][0]
+        assert data["person_cm_id"] == 1000001
+        assert data["household_cm_id"] == 0
+
+    @pytest.mark.asyncio
+    async def test_staff_touched_and_source_are_carried_over_not_reset(
+        self, write_service: LodgingWriteService, repo: MagicMock
+    ) -> None:
+        """Unlike `copy_from_mirror` (a seed has not been touched by staff),
+        this copies an ALREADY-WORKED plan: a party staff dragged in the
+        source scenario is still staff-touched in the copy, and a row that
+        was never touched stays that way -- the copy must not silently
+        promote or demote what a human actually decided."""
+        repo.fetch_draft_assignments = AsyncMock(return_value=[_draft_row(staff_touched=True, source="staff_manual")])
+
+        await write_service.copy_scenario_to_scenario(
+            year=2026, session_cm_id=1000001, from_scenario="scn_source", to_scenario="scn_dest"
+        )
+
+        data = repo.create_draft_assignment.call_args[0][0]
+        assert data["staff_touched"] is True
+        assert data["source"] == "staff_manual"
+
+    @pytest.mark.asyncio
+    async def test_a_row_whose_units_are_all_deleted_is_skipped(
+        self, write_service: LodgingWriteService, repo: MagicMock
+    ) -> None:
+        repo.fetch_draft_assignments = AsyncMock(return_value=[_draft_row(units=["u_deleted"], expand={})])
+
+        result = await write_service.copy_scenario_to_scenario(
+            year=2026, session_cm_id=1000001, from_scenario="scn_source", to_scenario="scn_dest"
+        )
+
+        assert result.copied == 0
+        assert result.skipped == 1
+        repo.create_draft_assignment.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_copying_into_a_scenario_that_already_has_placements_is_refused(
+        self, write_service: LodgingWriteService, repo: MagicMock
+    ) -> None:
+        repo.count_draft_assignments = AsyncMock(return_value=3)
+
+        with pytest.raises(ScenarioNotEmptyError):
+            await write_service.copy_scenario_to_scenario(
+                year=2026, session_cm_id=1000001, from_scenario="scn_source", to_scenario="scn_dest"
+            )
+
+        repo.create_draft_assignment.assert_not_called()
+        repo.fetch_draft_assignments.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_the_emptiness_check_is_scoped_to_the_destination_scenario(
+        self, write_service: LodgingWriteService, repo: MagicMock
+    ) -> None:
+        """The precheck must ask about `to_scenario`, not `from_scenario` --
+        the source is expected to hold placements; that is what is being
+        copied."""
+        repo.fetch_draft_assignments = AsyncMock(return_value=[_draft_row()])
+
+        await write_service.copy_scenario_to_scenario(
+            year=2026, session_cm_id=1000001, from_scenario="scn_source", to_scenario="scn_dest"
+        )
+
+        repo.count_draft_assignments.assert_awaited_once_with(2026, "sess_1", "scn_dest")
+
+    @pytest.mark.asyncio
+    async def test_losing_the_copy_race_is_refused_the_same_way_as_a_mirror_seed(
+        self, write_service: LodgingWriteService, repo: MagicMock
+    ) -> None:
+        repo.count_draft_assignments = AsyncMock(side_effect=[0, 5])
+        repo.fetch_draft_assignments = AsyncMock(return_value=[_draft_row()])
+        repo.create_draft_assignment = AsyncMock(
+            side_effect=ClientResponseError(
+                "unique constraint", status=400, data={}, url="", is_abort=False, original_error=None
+            )
+        )
+
+        with pytest.raises(ScenarioNotEmptyError):
+            await write_service.copy_scenario_to_scenario(
+                year=2026, session_cm_id=1000001, from_scenario="scn_source", to_scenario="scn_dest"
+            )
+
+
+class TestCopyScenarioToScenarioAlsoCopiesSlotMerges:
+    """A house merged into one card, or split back into rooms, is a
+    scenario-scoped decision (`lodging_slot_merges`), exactly the kind of
+    thing `_copy_locked_groups` exists to carry over on summer's side
+    (kindred#1046). Dropping it here would mean "copy from Option A" does
+    not actually copy what Option A's board shows.
+    """
+
+    @pytest.mark.asyncio
+    async def test_the_source_scenario_s_own_merge_rows_are_copied(
+        self, write_service: LodgingWriteService, repo: MagicMock
+    ) -> None:
+        repo.fetch_slot_merges = AsyncMock(
+            return_value=[SimpleNamespace(unit="unit_1", scenario="scn_source", combined=True)]
+        )
+
+        await write_service.copy_scenario_to_scenario(
+            year=2026, session_cm_id=1000001, from_scenario="scn_source", to_scenario="scn_dest"
+        )
+
+        repo.fetch_slot_merges.assert_awaited_once_with(2026, "sess_1", "scn_source")
+        repo.create_slot_merge.assert_awaited_once()
+        data = repo.create_slot_merge.call_args[0][0]
+        assert data["unit"] == "unit_1"
+        assert data["scenario"] == "scn_dest"
+        assert data["combined"] is True
+        assert data["session"] == "sess_1"
+        assert data["session_cm_id"] == 1000001
+        assert data["year"] == 2026
+
+    @pytest.mark.asyncio
+    async def test_the_weekend_level_tier_is_not_copied_as_a_scenario_row(
+        self, write_service: LodgingWriteService, repo: MagicMock
+    ) -> None:
+        """`fetch_slot_merges(..., "scn_source")` returns the weekend-level
+        rows (`scenario == ""`) UNIONED with scn_source's own -- only the
+        latter are this copy's to make. Copying the weekend-level tier as a
+        scenario row would pin the destination against a later change to it
+        instead of letting it inherit, same argument as availability having
+        no scenario dimension at all."""
+        repo.fetch_slot_merges = AsyncMock(
+            return_value=[
+                SimpleNamespace(unit="unit_1", scenario="scn_source", combined=True),
+                SimpleNamespace(unit="unit_2", scenario="", combined=False),
+            ]
+        )
+
+        await write_service.copy_scenario_to_scenario(
+            year=2026, session_cm_id=1000001, from_scenario="scn_source", to_scenario="scn_dest"
+        )
+
+        repo.create_slot_merge.assert_awaited_once()
+        assert repo.create_slot_merge.call_args[0][0]["unit"] == "unit_1"
+
+    @pytest.mark.asyncio
+    async def test_no_merges_means_no_create_calls(self, write_service: LodgingWriteService, repo: MagicMock) -> None:
+        await write_service.copy_scenario_to_scenario(
+            year=2026, session_cm_id=1000001, from_scenario="scn_source", to_scenario="scn_dest"
+        )
+
+        repo.create_slot_merge.assert_not_called()
 
 
 class TestARefusedWriteIsNeverReportedAsSuccess:

@@ -26,10 +26,12 @@ vi.mock('../hooks/useCurrentYear', () => ({
   useYear: () => 2026,
 }))
 
-// The picker seeds through `useSeedScenario`, which reaches `useApiWithAuth`
-// and `useQueryClient` on RENDER, not just on click — so this file needs both
-// even though nothing here ever seeds. Without them every test in the file
-// dies on "useAuth must be used within an AuthProvider".
+// Scenario creation (POST /api/scenarios, kindred#2021) reaches
+// `useApiWithAuth` and `useQueryClient` through `useCreateScenario` — kept
+// stubbed here even though `useScenario` below is fully mocked, since a
+// real AuthProvider is otherwise required for `useApiWithAuth` to resolve.
+// Without them every test in the file dies on "useAuth must be used within
+// an AuthProvider".
 vi.mock('../hooks/useApiWithAuth', () => ({
   useApiWithAuth: () => ({ fetchWithAuth: vi.fn(), isAuthenticated: true, isAuthLoading: false }),
 }))

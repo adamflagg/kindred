@@ -1,6 +1,9 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { pb } from '../lib/pocketbase'
 import type { SavedScenario } from '../types/app-types'
+import { clearScenario as clearScenarioRequest } from '../services/scenariosApi'
+import { queryKeys } from '../utils/queryKeys'
+import { useApiWithAuth } from './useApiWithAuth'
 
 interface UpdateScenarioParams {
   scenarioId: string
@@ -14,6 +17,12 @@ interface UpdateScenarioParams {
 interface ClearScenarioParams {
   scenarioId: string
   year: number
+  /**
+   * The scenario's own session, for cache invalidation only — the server
+   * resolves the program (and so which draft table to clear) from the
+   * scenario's own `session` relation, not from this.
+   */
+  sessionCmId: number
 }
 
 export function useUpdateScenario() {
@@ -44,31 +53,35 @@ export function useUpdateScenario() {
   })
 }
 
+/**
+ * Clear every assignment in a scenario.
+ *
+ * Routed through `POST /api/scenarios/{id}/clear` (kindred#2021),
+ * program-aware server-side, rather than a client-side delete loop over
+ * `bunk_assignments_draft`. That table is empty for a weekend session by
+ * construction (weekend drafts live in `lodging_assignments_draft`), so the
+ * old client-side version reported "cleared" while deleting nothing — the
+ * bug this issue is titled after.
+ */
 export function useClearScenario() {
   const queryClient = useQueryClient()
+  const { fetchWithAuth } = useApiWithAuth()
 
   return useMutation({
     mutationFn: async ({ scenarioId, year }: ClearScenarioParams) => {
-      // Build filter for assignments to delete (include year for safety)
-      const filter = `scenario = "${scenarioId}" && year = ${year}`
-
-      // Get assignments to delete
-      const assignments = await pb.collection('bunk_assignments_draft').getFullList({
-        filter,
-      })
-
-      // Delete each assignment
-      const deletePromises = assignments.map((assignment) =>
-        pb.collection('bunk_assignments_draft').delete(assignment.id)
-      )
-
-      await Promise.all(deletePromises)
-
-      return { deletedCount: assignments.length }
+      return await clearScenarioRequest(fetchWithAuth, scenarioId, year)
     },
-    onSuccess: () => {
-      // Invalidate any queries that might be affected
+    onSuccess: (_result, { scenarioId, year, sessionCmId }) => {
+      // Summer: unchanged from before this hook moved server-side.
       void queryClient.invalidateQueries({ queryKey: ['bunk-assignments'] })
+      // Weekend: a no-op for a summer sessionCmId, since nothing is cached
+      // under these keys for one. Required for the same reason
+      // useCreateScenario invalidates them (CLAUDE.md §4: a 30-minute
+      // staleTime needs every writer to invalidate explicitly).
+      void queryClient.invalidateQueries({ queryKey: queryKeys.weekendSummary(year) })
+      void queryClient.invalidateQueries({
+        queryKey: queryKeys.weekendRoster(year, sessionCmId, scenarioId),
+      })
     },
   })
 }

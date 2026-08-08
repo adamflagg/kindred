@@ -11,20 +11,8 @@ interface Scenario {
   created_by?: string
   is_active: boolean
   description?: string
-}
-
-/**
- * A copy source this modal cannot perform itself.
- *
- * `POST /api/scenarios` does the built-in copies as part of creating the
- * record, so they are available before the scenario has an id. A lodging seed
- * is a second endpoint that NEEDS that id, so it cannot ride inside creation —
- * the modal offers the choice and hands it back, and the caller does the work.
- */
-export interface ScenarioCopySource {
-  /** Radio value, reported verbatim to `onScenarioCreated`. */
-  value: string
-  label: string
+  /** Set only when this creation ran a copy — see useScenario.ts's Scenario. */
+  copy_skipped?: number | null
 }
 
 interface NewScenarioModalProps {
@@ -33,46 +21,35 @@ interface NewScenarioModalProps {
   /**
    * Called with the created scenario and the copy source that was chosen.
    *
-   * AWAITED. A caller doing create-then-seed needs the modal to stay busy
-   * across both calls; returning in between drops staff on a board with every
-   * party missing for the length of the seed. A rejection is shown in the
-   * modal's own error box, because by then the scenario exists and reporting
-   * a clean create would be a lie.
+   * AWAITED. `POST /api/scenarios` does the copy as part of creating the
+   * record (kindred#2021, program-aware server-side — weekend and summer
+   * both), so by the time this fires the scenario is already fully seeded;
+   * a caller has nothing left to do but react to it. `copyFrom` is kept for
+   * callers that still branch on it (e.g. a toast wording the source), not
+   * because there is a second call to make.
    */
   onScenarioCreated: (scenario: Scenario, copyFrom: string) => void | Promise<void>
   /**
-   * Whether "Copy from CampMinder" is on offer. Summer keeps it (and keeps it
-   * as the DEFAULT — do not flip that, `SessionView` and
-   * `ScenarioManagementModal` both depend on it).
-   *
-   * Weekend passes false. That copy is `api/routers/scenarios.py:96-103`,
-   * which copies `bunk_assignments` filtered by session and returns zero rows
-   * for a weekend — inert rather than harmful, but an option that silently
-   * does nothing is worse than no option. The lodging seed is a separate
-   * endpoint on a separate affordance (kindred#1967, #1974).
+   * Whether "Copy from CampMinder" is on offer. Defaults to true for both
+   * programs (kindred#2021) — `POST /api/scenarios` is program-aware
+   * server-side, so this is no longer a summer-only working copy source.
+   * `false` is for a caller with no source to copy FROM at all, not a
+   * program distinction.
    */
   canCopyFromProduction?: boolean
   /**
-   * Whether copy-from-another-scenario is on offer.
-   *
-   * Weekend passes false, for the SAME reason and by the same route as
-   * `canCopyFromProduction`: these radios map to `{ fromScenario }`, which is
-   * the same `POST /api/scenarios` path, copying `bunk_assignments` — zero
-   * rows for a weekend. They render whenever the session has a scenario, so a
-   * weekend acquired inert radios the moment it had one to list.
-   *
-   * Copying one weekend plan into another is real and wanted; it needs a
-   * source field on `PlacementCopyRequest` that does not exist yet (#1988).
+   * Whether copy-from-another-scenario is on offer. Defaults to true for
+   * both programs, for the same reason as `canCopyFromProduction`.
    */
   canCopyFromScenario?: boolean
   /**
    * Label for the no-copy radio. Summer starts with empty BUNKS; a weekend has
    * none and places parties into cabins, so it names the thing it starts empty
-   * (CLAUDE.md §4 — model the pattern, not the vocabulary).
+   * (CLAUDE.md §4 — model the pattern, not the vocabulary). The one
+   * deliberate wording divergence between programs; everything else about
+   * this modal — the three choices, their order, the layout — is identical.
    */
   emptyLabel?: string
-  /** Sources the CALLER seeds, after creation. See `ScenarioCopySource`. */
-  extraSources?: ScenarioCopySource[]
 }
 
 export default function NewScenarioModal({
@@ -82,7 +59,6 @@ export default function NewScenarioModal({
   canCopyFromProduction = true,
   canCopyFromScenario = true,
   emptyLabel = 'Start with empty bunks',
-  extraSources = [],
 }: NewScenarioModalProps) {
   const { createScenario, scenarios } = useScenario()
   const currentYear = useYear()
@@ -100,17 +76,10 @@ export default function NewScenarioModal({
     ? scenarios.filter((scenario) => scenario.session_cm_id === sessionId)
     : []
 
-  /**
-   * What `POST /api/scenarios` should copy as part of creating the record.
-   *
-   * An extra source resolves to NO copy: the caller performs it afterwards
-   * against a different endpoint, and asking this one for a copy it would do
-   * wrong is how the inert radios got here in the first place.
-   */
+  /** What `POST /api/scenarios` should copy as part of creating the record. */
   const copyOptions = () => {
     if (copyFrom === 'production') return { fromProduction: true }
     if (copyFrom === 'none') return { fromProduction: false }
-    if (extraSources.some((source) => source.value === copyFrom)) return { fromProduction: false }
     return { fromScenario: copyFrom }
   }
 
@@ -211,23 +180,6 @@ export default function NewScenarioModal({
                 </span>
               </label>
             )}
-
-            {extraSources.map((source) => (
-              <label key={source.value} className="flex cursor-pointer items-center space-x-2">
-                <input
-                  type="radio"
-                  name="copy-from"
-                  value={source.value}
-                  checked={copyFrom === source.value}
-                  onChange={(e) => setCopyFrom(e.target.value)}
-                  className="text-primary focus:ring-primary h-4 w-4 focus:ring-2"
-                />
-                <span className="flex items-center gap-2 text-sm">
-                  <Package className="text-primary h-4 w-4" />
-                  {source.label}
-                </span>
-              </label>
-            ))}
 
             {sessionScenarios.length > 0 && (
               <>

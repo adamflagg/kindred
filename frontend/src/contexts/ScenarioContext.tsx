@@ -61,7 +61,10 @@ export const ScenarioProvider: FC<ScenarioProviderProps> = ({ children }) => {
     // React Query will automatically fetch when sessionId changes
   }, [])
 
-  // Create a new scenario
+  // Create a new scenario. useCreateScenario already returns Scenario-shaped
+  // data (POST /api/scenarios resolves session_cm_id server-side, kindred#2021)
+  // — no savedScenarioToScenario unwrap needed, unlike updateScenario below,
+  // which still goes through the raw PocketBase SDK.
   const createScenario = useCallback(
     async (
       name: string,
@@ -70,7 +73,7 @@ export const ScenarioProvider: FC<ScenarioProviderProps> = ({ children }) => {
       description?: string,
       copyOptions?: { fromProduction: boolean } | { fromScenario: string }
     ): Promise<Scenario> => {
-      const savedScenario = await createScenarioMutation.mutateAsync({
+      const scenario = await createScenarioMutation.mutateAsync({
         name,
         session_cm_id: sessionId,
         year,
@@ -78,7 +81,6 @@ export const ScenarioProvider: FC<ScenarioProviderProps> = ({ children }) => {
         ...(copyOptions !== undefined && { copyOptions }),
       })
 
-      const scenario = savedScenarioToScenario(savedScenario)
       setCurrentScenario(scenario)
       return scenario
     },
@@ -131,13 +133,16 @@ export const ScenarioProvider: FC<ScenarioProviderProps> = ({ children }) => {
     [currentScenario, deleteScenarioMutation]
   )
 
-  // Clear all assignments in a scenario
+  // Clear all assignments in a scenario. Returns the server's own message
+  // so a caller can report what actually happened (see useScenario.ts).
   const clearScenario = useCallback(
-    async (scenarioId: string, year: number) => {
-      await clearScenarioMutation.mutateAsync({
+    async (scenarioId: string, year: number, sessionCmId: number) => {
+      const result = await clearScenarioMutation.mutateAsync({
         scenarioId,
         year,
+        sessionCmId,
       })
+      return result.message
     },
     [clearScenarioMutation]
   )

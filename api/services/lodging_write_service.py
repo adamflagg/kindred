@@ -373,15 +373,12 @@ class LodgingWriteService:
                 raise await self._seed_failure(exc, request, session_pb_id, copied) from exc
             copied += 1
 
+        # Inlined into the message, not `extra={}` -- see the identical note
+        # on `copy_scenario_to_scenario`'s own logger.info call below.
         logger.info(
-            "Seeded lodging scenario from the CampMinder mirror",
-            extra={
-                "year": request.year,
-                "session_cm_id": request.session_cm_id,
-                "scenario": request.scenario,
-                "copied": copied,
-                "skipped": skipped,
-            },
+            f"Seeded lodging scenario from the CampMinder mirror: year={request.year} "
+            f"session_cm_id={request.session_cm_id} scenario={request.scenario} "
+            f"copied={copied} skipped={skipped}"
         )
         return LodgingCopyResponse(copied=copied, skipped=skipped)
 
@@ -432,6 +429,118 @@ class LodgingWriteService:
                 f"{copied} written by this copy)"
             )
         return pb_error_to_http(exc)
+
+    async def copy_scenario_to_scenario(
+        self, year: int, session_cm_id: int, from_scenario: str, to_scenario: str
+    ) -> LodgingCopyResponse:
+        """Copy one weekend's placements from an existing scenario into a fresh one.
+
+        The weekend analogue of summer's `copy_from_scenario` inside
+        `POST /api/scenarios` (kindred#2021). `copy_from_mirror` seeds a
+        scenario from the CampMinder mirror; this seeds one from ANOTHER
+        scenario's own `lodging_assignments_draft` rows -- the source is
+        already-worked staff decisions, not synced data, so unlike a mirror
+        seed this carries `staff_touched` and `source` over unchanged rather
+        than resetting them. Promoting or demoting what a human already
+        decided is not this operation's call to make.
+
+        SEED-ONLY, exactly as `copy_from_mirror` is: the destination must be
+        empty, checked and enforced the same way, for the same reason -- a
+        second copy would overwrite what staff placed since. Weekend-scoped,
+        not scenario-scoped: `count_draft_assignments` and
+        `fetch_draft_assignments` both take `session_pb_id`, so a scenario
+        spanning weekends only has ITS placements for this one weekend
+        checked and copied, matching `copy_from_mirror`'s own scoping.
+
+        A source row is SKIPPED when every unit it names has been deleted --
+        the same case `copy_from_mirror` skips a mirror row for. Unlike a
+        mirror row, a draft row cannot lack a grain: `PartyGrainRequest`
+        validates exactly one at write time, so there is nothing here for
+        `placement_grain` to catch that this method needs to guard against.
+
+        The count and the creates RACE the same way `copy_from_mirror`'s do,
+        and the recovery is the identical `_seed_failure` -- built against
+        `PlacementCopyRequest`, which this constructs purely to reuse that
+        race/refusal logic rather than duplicate it.
+
+        Also copies `lodging_slot_merges` rows -- a house merged into one
+        card, or split back into rooms -- for the same reason
+        `_copy_locked_groups` exists on summer's side of this feature
+        (kindred#1046): dropping them would silently re-split or re-merge a
+        house the source scenario had decided differently, so "copy from
+        Option A" would not actually copy what Option A shows.
+        """
+        session_pb_id = await self._resolve_session_pb_id(year, session_cm_id)
+
+        held = await self.repository.count_draft_assignments(year, session_pb_id, to_scenario)
+        if held:
+            raise ScenarioNotEmptyError(
+                f"Scenario {to_scenario} already holds {held} placement(s) for weekend {session_cm_id} in {year}"
+            )
+
+        rows = await self.repository.fetch_draft_assignments(year, session_pb_id, from_scenario)
+
+        copied = 0
+        skipped = 0
+        dest_request = PlacementCopyRequest(year=year, session_cm_id=session_cm_id, scenario=to_scenario)
+        for row in rows:
+            unit_ids = [str(getattr(unit, "id", "")) for unit in resolved_units(row)]
+            if not unit_ids:
+                skipped += 1
+                continue
+
+            data: dict[str, Any] = {
+                "session": session_pb_id,
+                "session_cm_id": session_cm_id,
+                "year": year,
+                "scenario": to_scenario,
+                "household_cm_id": int(getattr(row, "household_cm_id", 0) or 0),
+                "person_cm_id": int(getattr(row, "person_cm_id", 0) or 0),
+                "units": unit_ids,
+                # Carried over, not reset -- see the docstring. Unlike a
+                # mirror seed, this source is already a staff decision.
+                "source": str(getattr(row, "source", "") or ""),
+                "staff_touched": bool(getattr(row, "staff_touched", False)),
+            }
+            try:
+                await self.repository.create_draft_assignment(data)
+            except ClientResponseError as exc:
+                raise await self._seed_failure(exc, dest_request, session_pb_id, copied) from exc
+            copied += 1
+
+        # Slot merges: `fetch_slot_merges` UNIONS the named scenario's own
+        # rows with the weekend-level tier (`scenario == ""`); only the rows
+        # that are actually `from_scenario`'s own are this copy's to make.
+        # The weekend-level tier already applies to `to_scenario`
+        # automatically -- copying it as a scenario-scoped row would PIN the
+        # destination against a later change to that tier instead of
+        # inheriting it, the same argument `fetch_availability`'s docstring
+        # makes for why availability carries no scenario dimension at all.
+        merges = await self.repository.fetch_slot_merges(year, session_pb_id, from_scenario)
+        for merge in merges:
+            if str(getattr(merge, "scenario", "")) != from_scenario:
+                continue
+            await self.repository.create_slot_merge(
+                {
+                    "unit": getattr(merge, "unit", None),
+                    "session": session_pb_id,
+                    "session_cm_id": session_cm_id,
+                    "year": year,
+                    "scenario": to_scenario,
+                    "combined": bool(getattr(merge, "combined", False)),
+                }
+            )
+
+        # Inlined into the message, not `extra={}` -- `extra` is silently
+        # dropped at format time (bunking/logging_config.py's
+        # ISO8601Formatter.format only ever renders record.getMessage()),
+        # the same trap `_log_recovered_race` documents and works around a
+        # few hundred lines above.
+        logger.info(
+            f"Copied a lodging scenario into a fresh one: year={year} session_cm_id={session_cm_id} "
+            f"from_scenario={from_scenario} to_scenario={to_scenario} copied={copied} skipped={skipped}"
+        )
+        return LodgingCopyResponse(copied=copied, skipped=skipped)
 
     async def set_availability(self, request: AvailabilityWriteRequest) -> LodgingWriteResponse:
         """Reserve or release one unit for this weekend.

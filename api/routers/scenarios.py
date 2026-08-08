@@ -16,6 +16,10 @@ from uuid import uuid4
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Path, Query
 from pocketbase.client import ClientResponseError  # type: ignore[attr-defined]
 
+from api.schemas.lodging import PlacementCopyRequest
+from api.services.lodging_repository import WEEKEND_SESSION_TYPES, LodgingRepository
+from api.services.lodging_roster_service import SessionNotFoundError as LodgingSessionNotFoundError
+from api.services.lodging_write_service import LodgingWriteService, ScenarioNotEmptyError
 from bunking.auth_middleware import AuthUser
 from bunking.logging_config import get_logger
 from bunking.models import (
@@ -36,18 +40,163 @@ from ..constants.collections import (
     BUNK_PLANS,
     BUNK_REQUESTS,
     BUNKS,
+    LOCKED_GROUP_MEMBERS,
+    LOCKED_GROUPS,
+    LODGING_ASSIGNMENTS_DRAFT,
     PERSONS,
     SAVED_SCENARIOS,
 )
 from ..dependencies import graph_cache, pb, solver_runs
-from ..services.session_context import build_session_context
+from ..services.session_context import SessionContext, build_session_context
 from ..services.solver_runner import run_solver_task_v2
 from ..utils.pb_error import pb_error_to_http
+from ..utils.pb_filters import pb_escape
 from ..utils.session_metrics import get_person_from_expand, get_session_from_expand
 
 logger = get_logger(__name__)
 
 router = APIRouter(prefix="/api/scenarios", tags=["scenarios"])
+
+# Every `get_full_list` call below pages through LIMIT/OFFSET without an
+# ORDER BY unless one is given, and SQLite may then return a different row
+# order per request -- a row past the first page can be skipped or
+# duplicated across pages. Summer alone holds 1,248 draft rows across 8
+# scenarios (~156/scenario on average), well past the SDK's 100-row default
+# page size, so this is a live risk for a session-scoped read here, not a
+# hypothetical. Same defect class `lodging_repository.py`'s own
+# `STABLE_SORT` documents; the record id is stable and indexed.
+STABLE_SORT = "id"
+
+
+def _is_weekend_session_type(session_type: str) -> bool:
+    """The one place `session_type in WEEKEND_SESSION_TYPES` gets spelled.
+
+    Both `create_scenario` and `clear_scenario` branch on this; a shared
+    predicate means a future change to what "weekend" means is one edit,
+    not two greppable-but-independent copies.
+    """
+    return session_type in WEEKEND_SESSION_TYPES
+
+
+def _expanded_session(scenario_record: Any) -> Any:
+    """The scenario's session RECORD, from `expand`, not the bare relation id.
+
+    PocketBase's Python SDK loads a record's own fields (including a
+    relation like `session`) as the raw id string it always is on the wire;
+    `expand: "session"` adds a SEPARATE `expand` dict carrying the resolved
+    record (`pocketbase/models/record.py:Record.load`). Reading
+    `getattr(scenario_record, "session", None)` -- which `delete_scenario`
+    and `clear_scenario` used to do -- returns that bare string, and a
+    string has no `.cm_id`, so the cache invalidation and the program branch
+    below silently no-op against a real PocketBase server even though a
+    MagicMock double that sets `.session` directly to an object cannot catch
+    the difference. `get_session_from_expand` reads the right place.
+    """
+    return get_session_from_expand(scenario_record)
+
+
+def _session_cm_id(scenario_record: Any) -> int:
+    """A scenario's session CampMinder id, from the expanded `session` relation.
+
+    `saved_scenarios` carries no `session_cm_id` column (kindred#2021) --
+    only the `session` relation. Every caller of this must have fetched the
+    record with `{"expand": "session"}`; without it there is nothing in
+    `expand` to read and this falls through to 0.
+    """
+    session = _expanded_session(scenario_record)
+    if session is None:
+        return 0
+    return int(getattr(session, "cm_id", 0) or 0)
+
+
+async def _copy_locked_groups(from_scenario: str, to_scenario: str, year: int) -> None:
+    """Port of the frontend's copyLockedGroupsToScenario (kindred#1046).
+
+    Summer's scenario creation used to run this client-side, after copying
+    bunk_assignments_draft rows. Moving creation onto this endpoint
+    (kindred#2021) must not silently drop it: a "copy from scenario" that
+    lost its locked friend groups would be a correctness regression the
+    solver depends on, not merely a cosmetic one. Weekend has no locked-group
+    concept, so this is summer-only and is never called from the weekend
+    branch below.
+
+    PRODUCTION-source copies never call this -- matching the frontend
+    comment this replaces ("Production-source copies are skipped via the
+    callsite"): there is no prior scenario to carry groups from.
+
+    Sequential, like every copy loop in this router: a failure here raises
+    into the same try/except `create_scenario` already has, exactly as a
+    failed draft-assignment copy already does above.
+    """
+    groups = await asyncio.to_thread(
+        pb.collection(LOCKED_GROUPS).get_full_list,
+        query_params={"filter": f'scenario = "{pb_escape(from_scenario)}" && year = {year}', "sort": STABLE_SORT},
+    )
+    if not groups:
+        return
+
+    group_id_map: dict[str, str] = {}
+    for group in groups:
+        new_group = await asyncio.to_thread(
+            pb.collection(LOCKED_GROUPS).create,
+            {
+                "scenario": to_scenario,
+                "name": getattr(group, "name", ""),
+                "color": getattr(group, "color", ""),
+                "session": getattr(group, "session", None),
+                "year": getattr(group, "year", year),
+            },
+        )
+        group_id_map[group.id] = new_group.id
+
+    member_filter = " || ".join(f'group = "{gid}"' for gid in group_id_map)
+    members = await asyncio.to_thread(
+        pb.collection(LOCKED_GROUP_MEMBERS).get_full_list,
+        query_params={"filter": member_filter, "sort": STABLE_SORT},
+    )
+    for member in members:
+        new_group_id = group_id_map.get(getattr(member, "group", ""))
+        if new_group_id is None:
+            # The parent group failed to create; skip rather than orphan a
+            # member row under a group id that does not exist.
+            continue
+        await asyncio.to_thread(
+            pb.collection(LOCKED_GROUP_MEMBERS).create,
+            {"group": new_group_id, "attendee": getattr(member, "attendee", None)},
+        )
+
+
+async def _seed_weekend_scenario(request: CreateScenarioRequest, ctx: SessionContext, scenario_id: str) -> int | None:
+    """Fill a fresh weekend scenario through LodgingWriteService.
+
+    Weekend-scoped, deliberately (`PlacementCopyRequest`'s own docstring): a
+    scenario is worked one weekend at a time. `ctx.related_session_ids` for a
+    family/adult `session_type` is always exactly `[ctx.session_cm_id]` --
+    `get_related_session_ids` only expands AG children for `session_type ==
+    "main"` -- so this coincides with summer's own session-family scoping for
+    every session this branch runs on.
+
+    Returns the `skipped` count from `LodgingCopyResponse` when a copy ran,
+    or None for a blank creation. A skipped row names a party or a unit that
+    no longer resolves (see `copy_from_mirror`'s own docstring); silently
+    dropping this count would leave staff looking at a board with fewer
+    families than the source has, with nothing anywhere saying so.
+    """
+    writes = LodgingWriteService(LodgingRepository(pb))
+    if request.copy_from_scenario:
+        result = await writes.copy_scenario_to_scenario(
+            year=ctx.year,
+            session_cm_id=ctx.session_cm_id,
+            from_scenario=request.copy_from_scenario,
+            to_scenario=scenario_id,
+        )
+        return result.skipped
+    elif request.should_copy_from_production:
+        result = await writes.copy_from_mirror(
+            PlacementCopyRequest(year=ctx.year, session_cm_id=ctx.session_cm_id, scenario=scenario_id)
+        )
+        return result.skipped
+    return None
 
 
 # ========================================
@@ -59,128 +208,86 @@ router = APIRouter(prefix="/api/scenarios", tags=["scenarios"])
 async def create_scenario(
     request: CreateScenarioRequest, user: AuthUser = Depends(require_permission(Permission.BUNKING_MANAGE))
 ) -> SavedScenario:
-    """Create a new scenario, optionally copying from production data."""
+    """Create a new scenario: blank, copied from production, or copied from another scenario.
+
+    Program-aware (kindred#2021): `ctx.session_type` decides which draft
+    grain gets seeded. A weekend session (`session_type` in
+    `WEEKEND_SESSION_TYPES`) routes through `LodgingWriteService`, reading
+    `lodging_assignments` / `lodging_assignments_draft`; every other session
+    type keeps summer's existing `bunk_assignments` /
+    `bunk_assignments_draft` copy below. Both branches write the identical
+    `saved_scenarios` row shape -- only the SOURCE of the copy differs, which
+    is what lets the frontend offer the same three choices, worded and laid
+    out identically, for both programs.
+    """
     try:
         # Build session context from request (validates session exists for year)
         ctx = await build_session_context(request.session_cm_id, request.year, pb)
 
-        # Create the scenario record with year
+        if request.copy_from_scenario:
+            # useSavedScenarios carries a 30-minute staleTime
+            # (userDataOptions), so the picker staff chose "copy from" out
+            # of can already be stale by the time this request lands.
+            # Without this check, a deleted source scenario reads as zero
+            # rows everywhere downstream (BUNK_ASSIGNMENTS_DRAFT filtered by
+            # a dead id, or copy_scenario_to_scenario's
+            # fetch_draft_assignments) -- a blank scenario, reported as a
+            # clean 200, silently different from the copy that was asked
+            # for. Checked up front, before the destination scenario is even
+            # created, so a caller never has to tell "copied and genuinely
+            # empty" apart from "the source never existed" after the fact.
+            try:
+                await asyncio.to_thread(pb.collection(SAVED_SCENARIOS).get_one, request.copy_from_scenario)
+            except ClientResponseError as e:
+                if e.status == 404:
+                    raise HTTPException(
+                        status_code=404,
+                        detail=f"Scenario {request.copy_from_scenario} to copy from was not found",
+                    ) from e
+                raise
+
+        # Create the scenario record. NO session_cm_id, NO created_by: neither
+        # is a column on saved_scenarios (pb_migrations/1500000021), so both
+        # used to be written and silently dropped by PocketBase. `session` is
+        # the only durable link to the CampMinder id, via ctx below.
         scenario_data = {
             "name": request.name,
             "session": ctx.session_pb_id,  # Use PB ID for relation
-            "session_cm_id": request.session_cm_id,  # Keep CM ID for queries
             "year": request.year,  # Store year in scenario
-            "created_by": request.created_by or "system",
             "description": request.description,
             "is_active": True,
         }
 
         scenario = await asyncio.to_thread(pb.collection(SAVED_SCENARIOS).create, scenario_data)
 
-        # Use pre-built filter from SessionContext
-        session_filter_relation = ctx.session_relation_filter
-
-        # Determine copy source
-        copy_source_assignments = []
-
-        if request.copy_from_scenario:
-            logger.info(f"Copying assignments from scenario: {request.copy_from_scenario}")
-            copy_source_assignments = await asyncio.to_thread(
-                pb.collection(BUNK_ASSIGNMENTS_DRAFT).get_full_list,
-                query_params={
-                    "filter": f'scenario = "{request.copy_from_scenario}" && ({session_filter_relation}) && year = {ctx.year}',
-                    "expand": "person,session,bunk,bunk_plan",
-                },
-            )
-        elif request.should_copy_from_production:
-            logger.info("Copying assignments from production for all related sessions")
-            copy_source_assignments = await asyncio.to_thread(
-                pb.collection(BUNK_ASSIGNMENTS).get_full_list,
-                query_params={
-                    "filter": f"({session_filter_relation}) && year = {ctx.year}",
-                    "expand": "person,session,bunk",
-                },
-            )
-
-        # If we have assignments to copy
-        if copy_source_assignments:
-            bunk_plan_map = {}
-            if request.should_copy_from_production and not request.copy_from_scenario:
-                bunk_plans = await asyncio.to_thread(
-                    pb.collection(BUNK_PLANS).get_full_list,
-                    query_params={
-                        "filter": f"({session_filter_relation}) && year = {ctx.year}",
-                        "expand": "bunk,session",
-                    },
-                )
-                for plan in bunk_plans:
-                    plan_expand = getattr(plan, "expand", {}) or {}
-                    bunk_data = (
-                        plan_expand.get("bunk") if isinstance(plan_expand, dict) else getattr(plan_expand, "bunk", None)
-                    )
-                    bunk_cm_id = bunk_data.cm_id if bunk_data and hasattr(bunk_data, "cm_id") else None
-                    if bunk_cm_id:
-                        bunk_plan_map[bunk_cm_id] = getattr(plan, "cm_id", 0)
-
-            # Copy each assignment to new scenario
-            for assignment in copy_source_assignments:
-                if request.should_copy_from_production and not request.copy_from_scenario:
-                    assign_expand = getattr(assignment, "expand", {}) or {}
-                    person_data = get_person_from_expand(assignment)
-                    session_data = get_session_from_expand(assignment)
-                    bunk_data = (
-                        assign_expand.get("bunk")
-                        if isinstance(assign_expand, dict)
-                        else getattr(assign_expand, "bunk", None)
-                    )
-
-                    person_cm_id = person_data.cm_id if person_data and hasattr(person_data, "cm_id") else None
-                    session_cm_id = session_data.cm_id if session_data and hasattr(session_data, "cm_id") else None
-                    bunk_cm_id = bunk_data.cm_id if bunk_data and hasattr(bunk_data, "cm_id") else None
-
-                    if not all([person_cm_id, session_cm_id, bunk_cm_id]):
-                        logger.warning("Missing expanded relation data for assignment")
-                        continue
-
-                    if bunk_cm_id not in bunk_plan_map:
-                        logger.warning(f"No bunk_plan found for bunk_cm_id {bunk_cm_id}")
-                        continue
-
-                    # Use the session context's ID cache
-                    # Handle potential None values with type narrowing
-                    if person_cm_id is None or bunk_cm_id is None or session_cm_id is None:
-                        logger.warning("Missing CM ID in assignment copy")
-                        continue
-                    person_pb_id = await ctx.id_cache.get_person_pb_id(person_cm_id)
-                    bunk_pb_id = await ctx.id_cache.get_bunk_pb_id(bunk_cm_id)
-                    session_pb_id = await ctx.id_cache.get_session_pb_id(session_cm_id)
-                    bunk_plan_pb_id = await ctx.id_cache.get_bunk_plan_id(bunk_cm_id, session_cm_id, ctx.year)
-
-                    if not all([person_pb_id, bunk_pb_id, session_pb_id]):
-                        logger.warning("Failed to resolve PB IDs for production copy")
-                        continue
-
-                    draft_data = {
-                        "scenario": scenario.id,
-                        "person": person_pb_id,
-                        "bunk": bunk_pb_id,
-                        "session": session_pb_id,
-                        "bunk_plan": bunk_plan_pb_id,
-                        "year": getattr(assignment, "year", ctx.year),
-                        "assignment_locked": False,
-                    }
-                else:
-                    draft_data = {
-                        "scenario": scenario.id,
-                        "person": getattr(assignment, "person", None),
-                        "bunk": getattr(assignment, "bunk", None),
-                        "session": getattr(assignment, "session", None),
-                        "bunk_plan": getattr(assignment, "bunk_plan", None),
-                        "year": getattr(assignment, "year", ctx.year),
-                        "assignment_locked": getattr(assignment, "assignment_locked", False),
-                    }
-
-                await asyncio.to_thread(pb.collection(BUNK_ASSIGNMENTS_DRAFT).create, draft_data)
+        copy_skipped: int | None = None
+        try:
+            if _is_weekend_session_type(ctx.session_type):
+                copy_skipped = await _seed_weekend_scenario(request, ctx, scenario.id)
+            else:
+                # Summer's copy loop does not count skips (pre-existing --
+                # it silently `continue`s past an unresolvable relation);
+                # copy_skipped stays None rather than claiming a count that
+                # was never actually tracked.
+                await _seed_summer_scenario(request, ctx, scenario.id)
+        except Exception:
+            # This scenario row was JUST created by this call, empty or
+            # partially seeded -- no one else has ever seen it, so there is
+            # nothing to preserve. A seed failure (an expired token
+            # mid-copy, a locked-groups create that 400s, a genuinely
+            # broken PocketBase write) must not leave an orphan for staff to
+            # trip over with no way to finish or retry it: the two-step
+            # create-then-seed flow's own recovery UI
+            # (SeedScenarioNotice/useSeedScenario) is retired by this same
+            # PR, and re-seeding an existing scenario 409s (seed-only).
+            # Deleting the scenario CASCADES every table this call could
+            # have written to -- bunk_assignments_draft,
+            # lodging_assignments_draft, locked_groups (+ members),
+            # lodging_slot_merges all carry `cascadeDelete: true` on their
+            # `scenario` relation -- so "create failed" now means nothing
+            # persists, not "created, empty or half-seeded, forever."
+            await asyncio.to_thread(pb.collection(SAVED_SCENARIOS).delete, scenario.id)
+            raise
 
         # Defensively invalidate the new scenario's cache slot. A brand-new
         # scenario should not have any cached graph yet, but if its id reuses
@@ -191,19 +298,155 @@ async def create_scenario(
         return SavedScenario(
             id=scenario.id,
             name=str(getattr(scenario, "name", "")),
-            session_cm_id=int(getattr(scenario, "session_cm_id", request.session_cm_id)),
+            # ctx is validated against the same `session` relation the record
+            # was just created with, so this is authoritative without a
+            # second round trip to re-fetch and expand what was just written.
+            session_cm_id=ctx.session_cm_id,
             year=ctx.year,
             is_active=bool(getattr(scenario, "is_active", True)),
             description=str(getattr(scenario, "description", "")),
-            created_by=str(getattr(scenario, "created_by", "")),
+            copy_skipped=copy_skipped,
         )
 
+    except LodgingSessionNotFoundError as e:
+        # ctx already validated this exact session_cm_id/year against
+        # camp_sessions, so LodgingRepository.fetch_session (which applies
+        # the identical filter plus a weekend session_type predicate) cannot
+        # legitimately miss here. Surfaced as a 404 rather than falling
+        # through to the generic 500 handler below, in case that invariant
+        # is ever wrong.
+        raise HTTPException(status_code=404, detail=str(e)) from e
+    except ScenarioNotEmptyError as e:
+        # Cannot legitimately happen: scenario.id above is freshly minted by
+        # this same call. Answered as a 409 rather than a 500 anyway, in case
+        # a future change makes it reachable.
+        raise HTTPException(status_code=409, detail=str(e)) from e
+    except HTTPException:
+        # The copy-from-scenario existence check above is client-input-shaped
+        # (404), not a server error -- don't pollute error logs with a
+        # stacktrace for it.
+        raise
     except ClientResponseError as e:
         logger.error(f"PocketBase error creating scenario: {e}", exc_info=True)
         raise pb_error_to_http(e)
     except Exception as e:
         logger.error(f"Error creating scenario: {e}", exc_info=True)
         raise
+
+
+async def _seed_summer_scenario(request: CreateScenarioRequest, ctx: SessionContext, scenario_id: str) -> None:
+    """Fill a fresh summer scenario: bunk_assignments / bunk_assignments_draft.
+
+    Pre-existing logic, unchanged in substance -- only extracted out of
+    `create_scenario` so the program branch above reads as a branch rather
+    than a page of summer-specific code with a weekend `if` buried in it.
+    The one addition is the locked-groups copy at the end, which used to run
+    client-side (kindred#1046) and must not go missing now that creation
+    moves server-side.
+    """
+    # Use pre-built filter from SessionContext
+    session_filter_relation = ctx.session_relation_filter
+
+    # Determine copy source
+    copy_source_assignments = []
+
+    if request.copy_from_scenario:
+        logger.info(f"Copying assignments from scenario: {request.copy_from_scenario}")
+        copy_source_assignments = await asyncio.to_thread(
+            pb.collection(BUNK_ASSIGNMENTS_DRAFT).get_full_list,
+            query_params={
+                "filter": f'scenario = "{pb_escape(request.copy_from_scenario)}" && ({session_filter_relation}) && year = {ctx.year}',
+                "expand": "person,session,bunk,bunk_plan",
+                "sort": STABLE_SORT,
+            },
+        )
+    elif request.should_copy_from_production:
+        logger.info("Copying assignments from production for all related sessions")
+        copy_source_assignments = await asyncio.to_thread(
+            pb.collection(BUNK_ASSIGNMENTS).get_full_list,
+            query_params={
+                "filter": f"({session_filter_relation}) && year = {ctx.year}",
+                "expand": "person,session,bunk",
+                "sort": STABLE_SORT,
+            },
+        )
+
+    # If we have assignments to copy
+    if copy_source_assignments:
+        # Copy each assignment to new scenario
+        for assignment in copy_source_assignments:
+            if request.should_copy_from_production and not request.copy_from_scenario:
+                assign_expand = getattr(assignment, "expand", {}) or {}
+                person_data = get_person_from_expand(assignment)
+                session_data = get_session_from_expand(assignment)
+                bunk_data = (
+                    assign_expand.get("bunk")
+                    if isinstance(assign_expand, dict)
+                    else getattr(assign_expand, "bunk", None)
+                )
+
+                person_cm_id = person_data.cm_id if person_data and hasattr(person_data, "cm_id") else None
+                session_cm_id = session_data.cm_id if session_data and hasattr(session_data, "cm_id") else None
+                bunk_cm_id = bunk_data.cm_id if bunk_data and hasattr(bunk_data, "cm_id") else None
+
+                if not all([person_cm_id, session_cm_id, bunk_cm_id]):
+                    logger.warning("Missing expanded relation data for assignment")
+                    continue
+
+                # Use the session context's ID cache
+                # Handle potential None values with type narrowing
+                if person_cm_id is None or bunk_cm_id is None or session_cm_id is None:
+                    logger.warning("Missing CM ID in assignment copy")
+                    continue
+                person_pb_id = await ctx.id_cache.get_person_pb_id(person_cm_id)
+                bunk_pb_id = await ctx.id_cache.get_bunk_pb_id(bunk_cm_id)
+                session_pb_id = await ctx.id_cache.get_session_pb_id(session_cm_id)
+                # get_bunk_plan_id does its OWN targeted (bunk, session, year)
+                # lookup and may legitimately return None -- that is not a
+                # reason to drop the camper. bunk_assignments_draft.bunk_plan
+                # is required: false (1500000022), and the retired
+                # client-side copyProductionToScenario copied a camper
+                # unconditionally, including bunk_plan only when the source
+                # row happened to carry one. A pre-fetched, session-family-
+                # scoped bunk_plan_map used to gate the WHOLE camper on
+                # appearing in that separate list, which is both redundant
+                # with this lookup and stricter than it -- kindred#2021 found
+                # this promotes what was dead code (this branch had no
+                # frontend caller before this PR) into a path that could
+                # silently drop cabins the old path always copied.
+                bunk_plan_pb_id = await ctx.id_cache.get_bunk_plan_id(bunk_cm_id, session_cm_id, ctx.year)
+
+                if not all([person_pb_id, bunk_pb_id, session_pb_id]):
+                    logger.warning("Failed to resolve PB IDs for production copy")
+                    continue
+
+                draft_data = {
+                    "scenario": scenario_id,
+                    "person": person_pb_id,
+                    "bunk": bunk_pb_id,
+                    "session": session_pb_id,
+                    "bunk_plan": bunk_plan_pb_id,
+                    "year": getattr(assignment, "year", ctx.year),
+                    "assignment_locked": False,
+                }
+            else:
+                draft_data = {
+                    "scenario": scenario_id,
+                    "person": getattr(assignment, "person", None),
+                    "bunk": getattr(assignment, "bunk", None),
+                    "session": getattr(assignment, "session", None),
+                    "bunk_plan": getattr(assignment, "bunk_plan", None),
+                    "year": getattr(assignment, "year", ctx.year),
+                    "assignment_locked": getattr(assignment, "assignment_locked", False),
+                }
+
+            await asyncio.to_thread(pb.collection(BUNK_ASSIGNMENTS_DRAFT).create, draft_data)
+
+    # kindred#1046, ported: a copy FROM another scenario carries its locked
+    # friend groups along. A production copy has no prior scenario to carry
+    # them from, matching the frontend callsite this replaces.
+    if request.copy_from_scenario:
+        await _copy_locked_groups(request.copy_from_scenario, scenario_id, ctx.year)
 
 
 @router.get("")
@@ -217,26 +460,27 @@ async def list_scenarios(
     try:
         # Build session context (validates session exists for year)
         ctx = await build_session_context(session_id, year, pb)
-        session_filter = " || ".join([f"session_cm_id = {sid}" for sid in ctx.related_session_ids])
 
-        # Filter by session and year
-        filter_str = f"({session_filter}) && year = {ctx.year}"
+        # The RELATION filter, not a bare session_cm_id column (kindred#2021)
+        # -- saved_scenarios has never had one, so this used to match zero
+        # rows unconditionally.
+        filter_str = f"({ctx.session_relation_filter}) && year = {ctx.year}"
         if not include_inactive:
             filter_str += " && is_active = true"
 
         scenarios = await asyncio.to_thread(
-            pb.collection(SAVED_SCENARIOS).get_full_list, query_params={"filter": filter_str}
+            pb.collection(SAVED_SCENARIOS).get_full_list,
+            query_params={"filter": filter_str, "expand": "session"},
         )
 
         return [
             SavedScenario(
                 id=s.id,
                 name=str(getattr(s, "name", "")),
-                session_cm_id=int(getattr(s, "session_cm_id", 0)),
+                session_cm_id=_session_cm_id(s),
                 year=int(getattr(s, "year", ctx.year)),
                 is_active=bool(getattr(s, "is_active", True)),
                 description=str(getattr(s, "description", "")),
-                created_by=str(getattr(s, "created_by", "")),
             )
             for s in scenarios
         ]
@@ -403,30 +647,41 @@ async def get_scenario(
 ) -> SavedScenario | dict[str, Any]:
     """Get a specific scenario with optional assignments."""
     try:
-        scenario = await asyncio.to_thread(pb.collection(SAVED_SCENARIOS).get_one, scenario_id)
+        scenario = await asyncio.to_thread(pb.collection(SAVED_SCENARIOS).get_one, scenario_id, {"expand": "session"})
+        session_type = str(getattr(_expanded_session(scenario), "session_type", "") or "")
 
         # Include year in response (required field now)
         scenario_result = SavedScenario(
             id=scenario.id,
             name=str(getattr(scenario, "name", "")),
-            session_cm_id=int(getattr(scenario, "session_cm_id", 0)),
+            session_cm_id=_session_cm_id(scenario),
             year=int(getattr(scenario, "year", 0)),
             is_active=bool(getattr(scenario, "is_active", True)),
             description=str(getattr(scenario, "description", "")),
-            created_by=str(getattr(scenario, "created_by", "")),
         )
 
         if include_assignments:
             # Filter assignments by scenario and year for safety
             scenario_year = getattr(scenario, "year", None)
-            filter_str = f'scenario = "{scenario_id}"'
+            filter_str = f'scenario = "{pb_escape(scenario_id)}"'
             if scenario_year:
                 filter_str += f" && year = {scenario_year}"
 
-            assignments = await asyncio.to_thread(
-                pb.collection(BUNK_ASSIGNMENTS_DRAFT).get_full_list,
-                query_params={"filter": filter_str, "expand": "person,session,bunk,bunk_plan"},
-            )
+            # Program-aware (kindred#2021): this endpoint has no frontend
+            # caller today, but it is public API surface this same PR made
+            # program-aware everywhere else -- unconditionally reading
+            # bunk_assignments_draft would silently return an empty
+            # assignment list for every weekend scenario.
+            if _is_weekend_session_type(session_type):
+                assignments = await asyncio.to_thread(
+                    pb.collection(LODGING_ASSIGNMENTS_DRAFT).get_full_list,
+                    query_params={"filter": filter_str, "expand": "units"},
+                )
+            else:
+                assignments = await asyncio.to_thread(
+                    pb.collection(BUNK_ASSIGNMENTS_DRAFT).get_full_list,
+                    query_params={"filter": filter_str, "expand": "person,session,bunk,bunk_plan"},
+                )
 
             return {"scenario": scenario_result, "assignments": assignments}
 
@@ -460,16 +715,17 @@ async def update_scenario(
 
         update_data["updated"] = datetime.now(UTC).isoformat()
 
-        scenario = await asyncio.to_thread(pb.collection(SAVED_SCENARIOS).update, scenario_id, update_data)
+        scenario = await asyncio.to_thread(
+            pb.collection(SAVED_SCENARIOS).update, scenario_id, update_data, {"expand": "session"}
+        )
 
         return SavedScenario(
             id=scenario.id,
             name=str(getattr(scenario, "name", "")),
-            session_cm_id=int(getattr(scenario, "session_cm_id", 0)),
+            session_cm_id=_session_cm_id(scenario),
             year=int(getattr(scenario, "year", 0)),
             is_active=bool(getattr(scenario, "is_active", True)),
             description=str(getattr(scenario, "description", "")),
-            created_by=str(getattr(scenario, "created_by", "")),
         )
 
     except ClientResponseError as e:
@@ -488,9 +744,9 @@ async def delete_scenario(
         # Expand session up front so we can grab session.cm_id for the
         # post-delete cache invalidation without a second round-trip.
         scenario = await asyncio.to_thread(pb.collection(SAVED_SCENARIOS).get_one, scenario_id, {"expand": "session"})
-        scenario_session = getattr(scenario, "session", None)
+        scenario_session = _expanded_session(scenario)
         scenario_session_cm_id: int | None = None
-        if scenario_session is not None and hasattr(scenario_session, "cm_id"):
+        if scenario_session is not None:
             scenario_session_cm_id = int(getattr(scenario_session, "cm_id", 0)) or None
         scenario_year = int(getattr(scenario, "year", 0)) or None
 
@@ -717,10 +973,31 @@ async def solve_scenario(
     and produces optimized assignments for the scenario.
     """
     try:
-        scenario = await asyncio.to_thread(pb.collection(SAVED_SCENARIOS).get_one, scenario_id)
+        scenario = await asyncio.to_thread(pb.collection(SAVED_SCENARIOS).get_one, scenario_id, {"expand": "session"})
 
-        session_cm_id: int = getattr(scenario, "session_cm_id", 0)
+        # Read via the relation (kindred#2021) -- session_cm_id has never been
+        # a column on saved_scenarios, so the bare getattr this replaced
+        # always fell through to 0, which would collide every scenario's
+        # single-flight guard below onto the same fake session.
+        session_cm_id: int = _session_cm_id(scenario)
         scenario_year: int = getattr(scenario, "year", 0)
+
+        # A dangling session relation (saved_scenarios.session is
+        # cascadeDelete: false, same edge case clear_scenario guards) or a
+        # malformed year resolves session_cm_id=0 / year=0, which the
+        # single-flight guard just below can never match against a real
+        # run -- slipping past into a doomed sweep that fails later inside
+        # fetch_session_data_v2, the identical failure mode solver.py's
+        # sweep endpoint already guards against. Reject up front with 422
+        # rather than let it start and fail confusingly.
+        if session_cm_id == 0 or scenario_year == 0:
+            raise HTTPException(
+                status_code=422,
+                detail=(
+                    f"Scenario {scenario_id} has missing or invalid session_cm_id "
+                    f"({session_cm_id}) or year ({scenario_year})"
+                ),
+            )
 
         # Single-flight guard: reject duplicate in-progress runs for the same session.
         # Mirrors the guard in solver.py:run_solver — uses the unified "session_cm_id" key
@@ -758,6 +1035,11 @@ async def solve_scenario(
 
         return {"run_id": run_id, "status": "started", "message": "Solver run started for scenario"}
 
+    except HTTPException:
+        # Both the malformed-session guard (422) and the single-flight
+        # guard (409) above are client-input-shaped, not server errors --
+        # don't pollute error logs with a stacktrace for either.
+        raise
     except ClientResponseError as e:
         raise pb_error_to_http(e)
     except Exception as e:
@@ -771,25 +1053,57 @@ async def clear_scenario(
     request: ClearScenarioRequest,
     user: AuthUser = Depends(require_permission(Permission.BUNKING_MANAGE)),
 ) -> dict[str, str | int]:
-    """Clear all assignments in a scenario."""
+    """Clear all assignments in a scenario.
+
+    Program-aware (kindred#2021): before this fix, clearing ALWAYS deleted
+    `bunk_assignments_draft` rows and nothing else, so calling it against a
+    weekend scenario reported "Cleared 0 assignments" whether or not the
+    scenario held any placements -- success, with nothing deleted, because
+    the rows it needed to delete live in `lodging_assignments_draft` and
+    this never looked there.
+    """
     try:
-        # Expand session so we have cm_id for cache invalidation below.
+        # Expand session so we have cm_id (for cache invalidation), the PB id
+        # (to scope the delete filter) and session_type (for the program
+        # branch) in one round trip.
         scenario = await asyncio.to_thread(pb.collection(SAVED_SCENARIOS).get_one, scenario_id, {"expand": "session"})
-        scenario_session = getattr(scenario, "session", None)
-        scenario_session_cm_id: int | None = None
-        if scenario_session is not None and hasattr(scenario_session, "cm_id"):
-            scenario_session_cm_id = int(getattr(scenario_session, "cm_id", 0)) or None
+        scenario_session = _expanded_session(scenario)
+        if scenario_session is None:
+            # `saved_scenarios.session` is `cascadeDelete: false` (kindred#1879
+            # / 1500000021), so a resynced or deleted session can leave the
+            # relation dangling. Defaulting session_type to "" here used to
+            # fall through to the summer branch silently -- reproducing this
+            # PR's own bug (a program-blind clear that deletes nothing) under
+            # a narrower trigger. Answered as an explicit error instead of a
+            # guess at which draft table to clear.
+            raise HTTPException(
+                status_code=409,
+                detail=f"Scenario {scenario_id} names a session that no longer resolves; cannot determine which assignments to clear",
+            )
+        session_pb_id = str(getattr(scenario_session, "id", ""))
+        scenario_session_cm_id = int(getattr(scenario_session, "cm_id", 0)) or None
+        session_type = str(getattr(scenario_session, "session_type", "") or "")
 
-        # Use year from request for scoping (required field now)
-        filter_str = f'scenario = "{scenario_id}" && year = {request.year}'
+        # Session-scoped, matching how every weekend draft write already is
+        # (LodgingWriteService, LodgingRepository) -- a scenario id alone
+        # does not prove which weekend a row belongs to; nothing at the write
+        # path cross-checks a placement's session_cm_id against the
+        # scenario's own `session` relation.
+        filter_str = (
+            f'scenario = "{pb_escape(scenario_id)}" && session = "{pb_escape(session_pb_id)}" && year = {request.year}'
+        )
 
+        target_collection = (
+            LODGING_ASSIGNMENTS_DRAFT if _is_weekend_session_type(session_type) else BUNK_ASSIGNMENTS_DRAFT
+        )
         assignments = await asyncio.to_thread(
-            pb.collection(BUNK_ASSIGNMENTS_DRAFT).get_full_list, query_params={"filter": filter_str}
+            pb.collection(target_collection).get_full_list,
+            query_params={"filter": filter_str, "sort": STABLE_SORT},
         )
 
         deleted_count = 0
         for assignment in assignments:
-            await asyncio.to_thread(pb.collection(BUNK_ASSIGNMENTS_DRAFT).delete, assignment.id)
+            await asyncio.to_thread(pb.collection(target_collection).delete, assignment.id)
             deleted_count += 1
 
         # Drop this scenario's cache slot so the next graph request rebuilds
@@ -801,6 +1115,10 @@ async def clear_scenario(
             "message": f"Cleared {deleted_count} assignments from scenario for year {request.year}",
         }
 
+    except HTTPException:
+        # The dangling-session guard above is client-input-shaped (409), not
+        # a server error -- don't pollute error logs with a stacktrace for it.
+        raise
     except ClientResponseError as e:
         raise pb_error_to_http(e)
     except Exception as e:

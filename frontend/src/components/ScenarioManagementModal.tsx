@@ -23,11 +23,22 @@ interface Scenario {
 interface ScenarioManagementModalProps {
   sessionId: number
   onClose: () => void
+  /**
+   * Passed straight through to `NewScenarioModal`. `POST /api/scenarios`
+   * is program-aware server-side now (kindred#2021), so both programs get
+   * the same three choices — this is the one deliberate wording
+   * divergence CLAUDE.md §4 permits: a weekend has no bunks to start
+   * empty, so it names the thing it does start empty. See
+   * `WeekendScenarioPicker`, which passes the weekend wording here; summer
+   * (`SessionView`) uses the default.
+   */
+  emptyLabel?: string
 }
 
 export default function ScenarioManagementModal({
   sessionId,
   onClose,
+  emptyLabel,
 }: ScenarioManagementModalProps) {
   const currentYear = useYear()
   // Read `isLoading` (initial query fetch) rather than the combined
@@ -81,8 +92,11 @@ export default function ScenarioManagementModal({
   const handleClear = async (scenario: Scenario) => {
     setIsProcessing(true)
     try {
-      await clearScenario(scenario.id, currentYear)
-      toast.success(`Cleared assignments in: ${scenario.name}`)
+      // The server's own message names the count actually deleted ("Cleared
+      // N assignments..."), not a fixed string that reads the same whether
+      // 0 or 400 rows were cleared.
+      const message = await clearScenario(scenario.id, currentYear, sessionId)
+      toast.success(message)
       setConfirmAction(null)
     } catch {
       toast.error('Failed to clear scenario')
@@ -311,6 +325,7 @@ export default function ScenarioManagementModal({
       {showNewScenarioModal && (
         <NewScenarioModal
           sessionId={sessionId}
+          {...(emptyLabel !== undefined && { emptyLabel })}
           onClose={() => setShowNewScenarioModal(false)}
           onScenarioCreated={(scenario) => {
             setShowNewScenarioModal(false)

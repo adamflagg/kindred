@@ -189,8 +189,14 @@ class TestClearScenarioInvalidatesCache:
         from api.routers.scenarios import router
 
         # The clear path expands `session` so it can read cm_id for invalidation.
-        camp_session = SimpleNamespace(id="sess_pb", cm_id=1235404)
-        scenario_pb_with_session = SimpleNamespace(id="scn_abc", name="May 7", session=camp_session)
+        # A real PocketBase Record keeps the bare relation id on `.session` and
+        # puts the resolved record under `.expand["session"]` (Record.load) --
+        # this mock matches that shape rather than putting the resolved record
+        # directly on `.session`, which no real response ever does.
+        camp_session = SimpleNamespace(id="sess_pb", cm_id=1235404, session_type="main")
+        scenario_pb_with_session = SimpleNamespace(
+            id="scn_abc", name="May 7", session="sess_pb", expand={"session": camp_session}
+        )
 
         mock_cache = MagicMock()
         mock_pb = MagicMock()
@@ -229,7 +235,8 @@ class TestDeleteScenarioInvalidatesCache:
         scenario_pb = SimpleNamespace(
             id="scn_abc",
             name="May 7",
-            session=camp_session,
+            session="sess_pb",
+            expand={"session": camp_session},
             year=2026,
         )
 
