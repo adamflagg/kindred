@@ -165,6 +165,45 @@ describe('FamilyCard — what it shows', () => {
     expect(screen.getByTestId('family-card-name')).toHaveTextContent('Priya Patel')
   })
 
+  it('falls back rather than leaving a blank identity line for a nameless child', () => {
+    // `_person_display_name` (unlike `_household_display_name`) has no
+    // fallback and returns '' when a synced person has no preferred_name,
+    // first_name, or last_name on file. Before the salutation was removed
+    // this was invisible -- the bold line came from `display_name`, never
+    // from a child's own name. Now it is the ONLY source for a household
+    // card, so a blank name must not leave the button with no accessible
+    // text at all.
+    render(
+      <FamilyCard
+        party={party({
+          children: [{ person_cm_id: 9001, display_name: '', age: 6, grade: 1 }],
+        })}
+        onOpen={vi.fn()}
+      />
+    )
+    expect(screen.getByTestId('family-card-name')).toHaveTextContent('Unnamed camper (6)')
+  })
+
+  it('renders a person-grain party’s own children, with CampMinder precision, not truncated', () => {
+    // Person-grain (adult weekend) parties don't carry children under
+    // today's sync (`_build_person_parties` never sets the field), but the
+    // grey line's fallback for the rare case it does is real code, not dead
+    // weight -- it should render, and keep the full (Y)Y.MM the household
+    // branch above deliberately does NOT use.
+    render(
+      <FamilyCard
+        party={party({
+          grain: 'person',
+          display_name: 'Priya Patel',
+          adults: [{ adult_number: 1, display_name: 'Priya Patel' }],
+          children: [{ person_cm_id: 9001, display_name: 'Kai Patel', age: 6.11, grade: 1 }],
+        })}
+        onOpen={vi.fn()}
+      />
+    )
+    expect(screen.getByText('Kai Patel (6.11)')).toBeInTheDocument()
+  })
+
   it('omits an age it does not have rather than inventing one', () => {
     render(
       <FamilyCard

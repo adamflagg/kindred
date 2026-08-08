@@ -117,14 +117,16 @@ function FamilyCardBody({
 }) {
   const flags = party.flags ?? {}
   const children = party.children ?? []
+  const isHousehold = party.grain === 'household'
   // family_camp_adults stores adult slots 1-5 as separate rows per household,
   // and a slot with no name on file is not an attending adult -- CampMinder
   // leaves it blank rather than omitting the row. Filtered here, at render,
   // rather than upstream, so "not a fixed five" stays true of what's shown.
-  const attendingAdults = (party.adults ?? []).filter((adult) =>
-    Boolean(adult.display_name?.trim())
-  )
-  const isHousehold = party.grain === 'household'
+  // Only the household branch reads this, so it is skipped for a person-grain
+  // card rather than computed and discarded on every render.
+  const attendingAdults = isHousehold
+    ? (party.adults ?? []).filter((adult) => Boolean(adult.display_name?.trim()))
+    : []
   const attention = partyAttention(party, unit)
   const proximity = party.share?.proximity ?? []
   // `similar_ages` ACCOMPANIES `with`; it never replaces it. One chip covering
@@ -138,17 +140,27 @@ function FamilyCardBody({
       <span className="flex items-baseline gap-1.5">
         <span
           data-testid="family-card-name"
-          className="text-foreground text-sm leading-tight font-semibold"
+          // `min-w-0 flex-1 truncate` matches summer's CamperCard.tsx, whose
+          // equivalent identity line needs it for the same reason: an
+          // unbounded name (here, a multi-child concatenation) sits in a flex
+          // row against the party-size badge at the end and would otherwise
+          // squeeze it rather than wrap or clip.
+          className="text-foreground min-w-0 flex-1 truncate text-sm leading-tight font-semibold"
         >
           {isHousehold
             ? children.map((child, index) => (
                 <Fragment key={String(child.person_cm_id ?? index)}>
                   {index > 0 && ' · '}
-                  {/* An age we do not have is omitted, never rendered as 0. */}
+                  {/* An age we do not have is omitted, never rendered as 0.
+                      A blank name (no first/preferred/last name on file --
+                      `_person_display_name` has no fallback the way
+                      `_household_display_name` does) falls back rather than
+                      leaving this segment, or the whole card when it's the
+                      only child, with no accessible text at all. */}
                   <span>
                     {child.age === null || child.age === undefined
-                      ? child.display_name
-                      : `${String(child.display_name)} (${displayTruncatedAge(child.age)})`}
+                      ? child.display_name || 'Unnamed camper'
+                      : `${child.display_name || 'Unnamed camper'} (${displayTruncatedAge(child.age)})`}
                   </span>
                 </Fragment>
               ))
@@ -180,11 +192,12 @@ function FamilyCardBody({
               {children.map((child, index) => (
                 <Fragment key={String(child.person_cm_id ?? index)}>
                   {index > 0 && ' · '}
-                  {/* An age we do not have is omitted, never rendered as 0. */}
+                  {/* An age we do not have is omitted, never rendered as 0.
+                      Same blank-name fallback as the household branch above. */}
                   <span>
                     {child.age === null || child.age === undefined
-                      ? child.display_name
-                      : `${String(child.display_name)} (${displayCampMinderAge(child.age)})`}
+                      ? child.display_name || 'Unnamed camper'
+                      : `${child.display_name || 'Unnamed camper'} (${displayCampMinderAge(child.age)})`}
                   </span>
                 </Fragment>
               ))}
@@ -235,7 +248,7 @@ function FamilyCardBody({
             never set and arrives as the Pydantic default `false` -- untracked,
             not "no". Gating on grain keeps this badge from calling every
             adult weekend regular a first-timer. */}
-        {party.grain === 'household' && party.is_returning !== true && (
+        {isHousehold && party.is_returning !== true && (
           <span className="inline-flex items-center gap-0.5 text-xs font-semibold text-amber-700 dark:text-amber-300">
             <Star className="h-2.5 w-2.5 flex-shrink-0" aria-hidden="true" />
             First-time
