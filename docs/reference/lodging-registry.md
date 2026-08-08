@@ -252,10 +252,52 @@ member wrote would destroy it.
 a record id — so comparing raw values reports every parented unit as needing a
 change, and applying that would write a code into a relation field.
 
+### What confirming a unit gates across the system
+
+Marking a unit `is_confirmed: true` gates the following behavior. **8 behavioral gates**
+determine whether staff see confirmation prompts and whether the system judges amenity
+compliance. **6 write sites** modify the flag:
+
+**Fit-verification gate (core)** — `rosterAttention.ts:105` evaluates whether a party's
+accommodation needs (power, private bathroom) are satisfied **only for confirmed units**.
+On unconfirmed units, an unset `has_power: false` means "nobody has said", not "there
+is no power", so the check reports `unverified` and stays silent.
+
+**Capacity-suggestion gate** — `capacityFlag.ts:52` offers to fill a unit's `sleeps`
+when it differs from bed count — **only when unconfirmed**. Confirmed units suppress
+the suggestion permanently. Containers suppress it unconditionally (line 58) because
+their `sleeps` records shared furniture (a futon), not whole-house capacity.
+
+**Admin UI visibility gates**:
+- `LodgingUnitRow.tsx:96` shows the `Unconfirmed` badge only on unconfirmed units
+- `LodgingUnitRow.tsx:106` shows the `Confirm` button only on unconfirmed units
+- `unitSort.ts:52–55` allows sorting by confirmed status as a dimension
+
+**Weekend board gates**:
+- `MapUnitPopover.tsx:142` renders the badge container only when `is_confirmed === false`
+- `MapUnitPopover.tsx:157` renders the unconfirmed badge only when `is_confirmed === false`
+
+**Roster summary** — `lodging_roster_service.py:1044` counts how many units have
+`is_confirmed` false.
+
+**Write sites** (where `is_confirmed` is modified):
+1. `LodgingUnitForm.tsx:338` — Form checkbox updates state on save
+2. `lodgingCrud.ts:166` — Bulk confirm function sets all selected units to true
+3. `lodgingCrud.ts:124` — Create function defaults to false
+4. `registry.go:495` — Loader sets false on every row it creates
+5. `api/schemas/lodging.py:117` — Schema field definition with false default
+6. `confirm_lodging_units.py:135` — Script API call for manual bulk updates
+
+**Is confirmation ephemeral?** No. A confirmed unit carries that state across
+seasons by roll-forward (pocketbase/lodging/rollforward.go), and the unit's
+confirmed status asserts *permanently* that staff have verified the amenity values
+recorded on that row. A yearly re-confirm is unnecessary: staff confirm once,
+and the recorded amenities remain the staff's last verified answer until someone
+explicitly edits the row.
+
 ### Lighting up the fit check locally
 
-`partyAttention` refuses to judge a housing need against an unconfirmed cabin,
-and the loader writes `is_confirmed: false` on everything, so the fit check is
+The loader writes `is_confirmed: false` on everything, so the fit check is
 dark until staff confirm cabins. `scripts/dev/confirm_lodging_units.py` flips
 the flag on a **local** database so the surface can be developed against. It
 refuses a non-loopback URL unless explicitly overridden: bulk confirmation on
