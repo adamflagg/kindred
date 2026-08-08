@@ -29,13 +29,24 @@ LodgingRepository is built fresh per request (api/routers/lodging.py's
 `_service` / `_writes`), so an instance-level cache would never be reused, and
 this must live as a singleton instead -- see api/dependencies.py.
 
-TTL-only for now. There is no `/api/lodging/cache/invalidate` endpoint wired
-to CampMinder sync completion yet, because that wiring lives in
-api/routers/lodging.py (and possibly the frontend's sync-completion hook),
-both outside kindred#1963's scope. `invalidate_all` is exposed so adding that
-call is a one-line follow-up, not a re-architecture -- exactly how
-`api/routers/metrics.py`'s `/cache/invalidate` already calls both
-`metrics_cache.invalidate_all()` and geo_service's `clear_person_id_cache()`.
+TTL is the fallback, not the plan (kindred#2142): `api/routers/metrics.py`'s
+existing `POST /api/metrics/cache/invalidate` now calls `invalidate_all()`
+here too, alongside `metrics_cache.invalidate_all()` and geo_service's
+`clear_person_id_cache()`. That endpoint already fires on every CampMinder
+sync completion (the frontend's `invalidateSyncData`, via
+`useSyncCompletionToasts`), and both of this cache's writers -- the
+"persons" sync (households) and the "family_camp_derived" sync
+(family_camp_adults, family_camp_registrations) -- are polled sync types
+that trigger it. So a hit here is stale only for the gap between a sync
+finishing and a staff member's browser polling it (typically seconds), or
+for the rare sync that runs with nobody watching, in which case the TTL is
+what closes the gap.
+
+A cached `fetch_households` snapshot can still miss a household a FRESH
+attendee already names, in the narrow window before that invalidation call
+lands -- `LodgingRosterService._resolve_households` (kindred#2143) is the
+per-request patch for exactly that gap: one small live fetch for the
+missing id(s), never a second cache.
 """
 
 import functools

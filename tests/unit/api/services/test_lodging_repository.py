@@ -466,6 +466,68 @@ class TestFetchFamilyCampRegistrations:
         assert result["hh_1"].share_cabin_gate == "yes_share"
 
 
+class TestFetchHouseholdsByIds:
+    """The fresh-fetch escape hatch for kindred#2143.
+
+    `fetch_households` is cached for up to 15 minutes (kindred#1963); a
+    household created after the snapshot was cached is absent from it even
+    though a fresh attendee can already name it. This method is the roster
+    service's fallback for exactly that gap -- deliberately NOT decorated
+    with @cached_by_year, unlike every other read in this class.
+    """
+
+    @pytest.mark.asyncio
+    async def test_filters_by_id_and_keys_by_pb_id(self, repo: LodgingRepository, pb: MagicMock) -> None:
+        pb.collection.return_value.get_full_list.return_value = [_record(id="hh_9", cm_id=2000009)]
+
+        result = await repo.fetch_households_by_ids(["hh_9"])
+
+        pb.collection.assert_called_with("households")
+        filter_str = _last_query(pb)["filter"]
+        assert 'id = "hh_9"' in filter_str
+        assert result["hh_9"].cm_id == 2000009
+
+    @pytest.mark.asyncio
+    async def test_multiple_ids_are_ored_together(self, repo: LodgingRepository, pb: MagicMock) -> None:
+        pb.collection.return_value.get_full_list.return_value = [
+            _record(id="hh_1", cm_id=2000001),
+            _record(id="hh_2", cm_id=2000002),
+        ]
+
+        result = await repo.fetch_households_by_ids(["hh_1", "hh_2"])
+
+        filter_str = _last_query(pb)["filter"]
+        assert 'id = "hh_1"' in filter_str
+        assert 'id = "hh_2"' in filter_str
+        assert "||" in filter_str
+        assert set(result) == {"hh_1", "hh_2"}
+
+    @pytest.mark.asyncio
+    async def test_an_empty_id_list_makes_no_request(self, repo: LodgingRepository, pb: MagicMock) -> None:
+        result = await repo.fetch_households_by_ids([])
+
+        assert result == {}
+        pb.collection.return_value.get_full_list.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_not_cached_across_calls(self, repo: LodgingRepository, pb: MagicMock) -> None:
+        """Unlike fetch_households, a second call must hit PocketBase again --
+        this method exists BECAUSE the cached snapshot is stale."""
+        pb.collection.return_value.get_full_list.return_value = [_record(id="hh_1", cm_id=2000001)]
+
+        await repo.fetch_households_by_ids(["hh_1"])
+        await repo.fetch_households_by_ids(["hh_1"])
+
+        assert pb.collection.return_value.get_full_list.call_count == 2
+
+    @pytest.mark.asyncio
+    async def test_ids_are_escaped(self, repo: LodgingRepository, pb: MagicMock) -> None:
+        await repo.fetch_households_by_ids(['hh_1" || year != ""'])
+
+        filter_str = _last_query(pb)["filter"]
+        assert '\\"' in filter_str
+
+
 def _last_list_query(pb: MagicMock) -> dict[str, Any]:
     call = pb.collection.return_value.get_list.call_args
     params: dict[str, Any] = call[1]["query_params"]

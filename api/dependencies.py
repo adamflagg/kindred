@@ -133,8 +133,9 @@ metrics_cache = MetricsCache(ttl_seconds=7200, max_size=200)
 #
 # TTL 15 minutes, matching geo_service's _PERSON_ID_CACHE -- the closer
 # sibling here, since it is the other cache built for a fresh-per-request
-# service rather than metrics_cache's router-owned 2-hour fallback. No active
-# invalidation is wired yet (see lodging_cache.py's module docstring).
+# service rather than metrics_cache's router-owned 2-hour fallback. Wired to
+# POST /api/metrics/cache/invalidate (kindred#2142) -- see lodging_cache.py's
+# module docstring for why the TTL is the fallback rather than the plan.
 lodging_cache = LodgingYearCache(ttl_seconds=900, max_size=64)
 
 

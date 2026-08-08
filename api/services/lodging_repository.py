@@ -331,6 +331,34 @@ class LodgingRepository:
         )
         return {row.id: row for row in rows}
 
+    async def fetch_households_by_ids(self, household_pb_ids: list[str]) -> dict[str, Any]:
+        """Households fetched fresh by PocketBase id, bypassing the year cache.
+
+        The escape hatch for kindred#2143: `fetch_households`' cached snapshot
+        can be up to 15 minutes stale (kindred#1963), but `build_roster` and
+        `build_summary` always fetch attendees fresh. A household created
+        after the snapshot was cached is absent from it even though a
+        brand-new attendee can already name it -- the roster service calls
+        this for exactly those ids, never for the whole year, so the fix costs
+        one small extra read instead of giving up the cache entirely.
+
+        Deliberately NOT decorated with @cached_by_year: caching this would
+        reintroduce the exact staleness it exists to patch around.
+
+        `household_pb_ids` is small by construction -- the caller has already
+        narrowed to just the ids missing from the cached snapshot, typically
+        zero or one -- so an OR clause of `id = "..."` terms is safe here even
+        though the same shape was rejected for fetch_prior_household_cm_ids at
+        250 terms (see that method's docstring): this list does not grow with
+        the year's household count, only with how many are mid-flight right
+        now. Every id is escaped, matching every other filter in this file.
+        """
+        if not household_pb_ids:
+            return {}
+        ids_clause = " || ".join(f'id = "{pb_escape(hid)}"' for hid in household_pb_ids)
+        rows = await self._page(HOUSEHOLDS, query_params={"filter": ids_clause, "sort": STABLE_SORT})
+        return {row.id: row for row in rows}
+
     async def fetch_household_by_cm_id(self, year: int, household_cm_id: int) -> Any | None:
         """One household by CampMinder id, or None.
 

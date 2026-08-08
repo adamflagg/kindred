@@ -89,6 +89,12 @@ def _repo(**overrides: Any) -> MagicMock:
         "fetch_slot_merges": [],
         "fetch_attendees_for_session": [],
         "fetch_households": {},
+        # The kindred#2143 fallback: a fresh attendee can name a household the
+        # cached year snapshot above does not have yet. Empty by default so a
+        # test that never sets it up fails loudly (AttributeError on a bare
+        # dict, not a silently-invented MagicMock) if the service calls it
+        # unexpectedly.
+        "fetch_households_by_ids": {},
         "fetch_prior_household_cm_ids": set(),
         "fetch_family_camp_adults": {},
         "fetch_family_camp_registrations": {},
@@ -415,6 +421,96 @@ class TestFamilyCampParties:
         assert party.share.preference == "unknown"
         assert party.share.proximity == []
         assert party.flags.needs_private_bathroom is False
+
+
+class TestFreshHouseholdOutrunsTheCache:
+    """kindred#2143: households is cached for up to 15 minutes (kindred#1963)
+    but attendees is always fetched fresh, in the SAME TaskGroup. A household
+    created after the cache snapshot was taken is absent from the cached dict
+    even though a brand-new attendee can already name it. Left unhandled,
+    `_build_household_parties` falls through to a blank record -- the
+    confirmed failure rendered "Household 0" with a spurious
+    `is_returning=False` on screen. The fix is a targeted live fetch for
+    exactly the missing ids, never a second cache.
+    """
+
+    @pytest.mark.asyncio
+    async def test_a_household_missing_from_the_cache_is_fetched_fresh_not_rendered_as_household_zero(
+        self,
+    ) -> None:
+        repo = _repo(
+            fetch_session=FAMILY_SESSION,
+            # The cached year snapshot predates this household entirely --
+            # it is absent, not present with a stale value.
+            fetch_households={},
+            fetch_households_by_ids={"hh_1": _household(cm_id=2000009, title="The Nguyen Family")},
+            fetch_attendees_for_session=[_child(cm_id=1000002, first="Mai", last="Nguyen", household_pb_id="hh_1")],
+            fetch_prior_household_cm_ids={2000009},
+        )
+
+        roster = await LodgingRosterService(repo).build_roster(2026, 1000001)
+
+        assert len(roster.parties) == 1
+        party = roster.parties[0]
+        assert party.household_cm_id == 2000009
+        assert party.display_name == "The Nguyen Family"
+        assert party.is_returning is True
+        repo.fetch_households_by_ids.assert_awaited_once_with(["hh_1"])
+
+    @pytest.mark.asyncio
+    async def test_no_missing_households_never_calls_the_fallback(self) -> None:
+        repo = _repo(
+            fetch_session=FAMILY_SESSION,
+            fetch_households={"hh_1": _household()},
+            fetch_attendees_for_session=[_child()],
+        )
+
+        await LodgingRosterService(repo).build_roster(2026, 1000001)
+
+        repo.fetch_households_by_ids.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_adult_weekend_never_calls_the_household_fallback(self) -> None:
+        """Person-grain parties never read the households dict at all, so
+        there is nothing for this fallback to patch."""
+        attendee = _rec(
+            person_id=1000004,
+            expand={
+                "person": _rec(
+                    cm_id=1000004,
+                    first_name="Ava",
+                    last_name="Kim",
+                    preferred_name="",
+                    age=34,
+                    grade=0,
+                    household="hh_missing",
+                )
+            },
+        )
+        repo = _repo(fetch_session=ADULT_SESSION, fetch_attendees_for_session=[attendee])
+
+        await LodgingRosterService(repo).build_roster(2026, 1000002)
+
+        repo.fetch_households_by_ids.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_build_summary_gets_the_same_fallback_as_build_roster(self) -> None:
+        """The parallel TaskGroup in build_summary carries the identical
+        cached-households/fresh-attendees mix (see TestBuildSummary's own
+        guard tests for this file's established pattern: fixing only one of
+        the two TaskGroups is the half-fix those tests exist to catch)."""
+        repo = _repo(
+            fetch_weekend_sessions=[FAMILY_SESSION],
+            fetch_session=FAMILY_SESSION,
+            fetch_households={},
+            fetch_households_by_ids={"hh_1": _household(cm_id=2000009, title="The Nguyen Family")},
+            fetch_attendees_for_session=[_child(cm_id=1000002, first="Mai", last="Nguyen", household_pb_id="hh_1")],
+        )
+
+        summary = await LodgingRosterService(repo).build_summary(2026)
+
+        assert summary.weekends[0].counts.parties_total == 1
+        repo.fetch_households_by_ids.assert_awaited_once_with(["hh_1"])
 
 
 class TestAdultWeekendParties:
