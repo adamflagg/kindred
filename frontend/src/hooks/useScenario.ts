@@ -53,10 +53,17 @@ export interface ScenarioContextType {
     updates: { name?: string; description?: string }
   ) => Promise<void>
   deleteScenario: (scenarioId: string) => Promise<void>
-  /** `sessionCmId` is the scenario's own session — used for cache
+  /**
+   * `sessionCmId` is the scenario's own session — used for cache
    * invalidation only; the server decides what to clear from the
-   * scenario's `session` relation, not from this. */
-  clearScenario: (scenarioId: string, year: number, sessionCmId: number) => Promise<void>
+   * scenario's `session` relation, not from this.
+   *
+   * Resolves to the server's own message ("Cleared N assignments from
+   * scenario for year Y") rather than void, so a caller can report what
+   * actually happened instead of a fixed string that would say the same
+   * thing whether 0 or 400 rows were deleted.
+   */
+  clearScenario: (scenarioId: string, year: number, sessionCmId: number) => Promise<string>
 }
 
 export const ScenarioContext = createContext<ScenarioContextType | undefined>(undefined)

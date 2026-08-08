@@ -7,7 +7,7 @@
  * for a "Loading scenarios..." placeholder, not isMutating.
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen } from '@testing-library/react'
+import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import type { ReactNode } from 'react'
@@ -66,7 +66,7 @@ function makeContext(overrides: Partial<ScenarioContextType>): ScenarioContextTy
     selectScenario: vi.fn(),
     updateScenario: vi.fn().mockResolvedValue(undefined),
     deleteScenario: vi.fn().mockResolvedValue(undefined),
-    clearScenario: vi.fn().mockResolvedValue(undefined),
+    clearScenario: vi.fn().mockResolvedValue('Cleared 0 assignments from scenario for year 2026'),
     ...overrides,
   }
 }
@@ -142,12 +142,30 @@ describe('clearing a scenario names its own session', () => {
     // key (queryKeys.weekendRoster) still needs the session cm id — this is
     // where it comes from (ScenarioManagementModal already knows it; every
     // scenario listed here belongs to this same session).
-    const clearScenario = vi.fn().mockResolvedValue(undefined)
+    const clearScenario = vi
+      .fn()
+      .mockResolvedValue('Cleared 0 assignments from scenario for year 2026')
     renderModal(makeContext({ clearScenario }))
 
     await userEvent.click(screen.getByRole('button', { name: /clear assignments/i }))
     await userEvent.click(screen.getByRole('button', { name: /^clear$/i }))
 
     expect(clearScenario).toHaveBeenCalledWith('scenario-1', 2026, 1000001)
+  })
+
+  it('toasts the server’s own message, not a fixed string that reads the same at 0 or 400 rows', async () => {
+    const clearScenario = vi
+      .fn()
+      .mockResolvedValue('Cleared 47 assignments from scenario for year 2026')
+    renderModal(makeContext({ clearScenario }))
+
+    await userEvent.click(screen.getByRole('button', { name: /clear assignments/i }))
+    await userEvent.click(screen.getByRole('button', { name: /^clear$/i }))
+
+    await waitFor(() =>
+      expect(
+        screen.getByText('Cleared 47 assignments from scenario for year 2026')
+      ).toBeInTheDocument()
+    )
   })
 })

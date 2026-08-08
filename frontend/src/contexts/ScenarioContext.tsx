@@ -133,14 +133,16 @@ export const ScenarioProvider: FC<ScenarioProviderProps> = ({ children }) => {
     [currentScenario, deleteScenarioMutation]
   )
 
-  // Clear all assignments in a scenario
+  // Clear all assignments in a scenario. Returns the server's own message
+  // so a caller can report what actually happened (see useScenario.ts).
   const clearScenario = useCallback(
     async (scenarioId: string, year: number, sessionCmId: number) => {
-      await clearScenarioMutation.mutateAsync({
+      const result = await clearScenarioMutation.mutateAsync({
         scenarioId,
         year,
         sessionCmId,
       })
+      return result.message
     },
     [clearScenarioMutation]
   )

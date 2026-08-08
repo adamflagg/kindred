@@ -92,8 +92,11 @@ export default function ScenarioManagementModal({
   const handleClear = async (scenario: Scenario) => {
     setIsProcessing(true)
     try {
-      await clearScenario(scenario.id, currentYear, sessionId)
-      toast.success(`Cleared assignments in: ${scenario.name}`)
+      // The server's own message names the count actually deleted ("Cleared
+      // N assignments..."), not a fixed string that reads the same whether
+      // 0 or 400 rows were cleared.
+      const message = await clearScenario(scenario.id, currentYear, sessionId)
+      toast.success(message)
       setConfirmAction(null)
     } catch {
       toast.error('Failed to clear scenario')
