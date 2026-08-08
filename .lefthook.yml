@@ -88,7 +88,23 @@ commit-msg:
 
 # ─── Pre-push: fast type checks + linters (parallel) ─────────────────
 # Keeps: type checkers (mypy, tsc), compilation (go build), fast linters (<1s each)
-# Moved to CI-only: eslint, golangci-lint, hadolint, caddy-validate, all test suites
+# Moved to CI-only: eslint, golangci-lint, hadolint, caddy-validate
+# (pytest was added back below in #1617 — it is NOT CI-only; it also runs here)
+#
+# kindred#1937: lefthook 2.1.6 never reads the pre-push stdin refs (its only
+# file query at this stage is `git diff --name-only --cached`, which is
+# empty on a normal push). That makes `{files}` empty and `{push_files}`
+# fall back to "every tracked file in the repo", so every `glob:` below
+# always matches and never actually gates — a single-commit, markdown-only
+# branch was measured still running `go-build`. The `glob:` keys are kept
+# only as documentation of each command's intended scope; the real gate is
+# the `skip:` condition on each command, computed over the actual push range
+# (`origin/main...HEAD`, three-dot/merge-base form — two-dot misreports once
+# `main` moves). Each condition best-effort fetches `origin/main` first
+# (mirroring `behind-origin` below) and fails OPEN — i.e. runs the check —
+# if `origin/main` can't be resolved at all, so a missing/unfetchable ref
+# never silently skips every check. This mirrors the in-repo precedent of
+# `shellcheck` guarding itself with a `skip: - run:` condition below.
 pre-push:
   parallel: true
   commands:
@@ -98,6 +114,8 @@ pre-push:
         - "ruff.toml"
         - "pyproject.toml"
       run: uv run ruff check .
+      skip:
+        - run: "git fetch origin main --quiet 2>/dev/null || true; git rev-parse -q --verify origin/main >/dev/null 2>&1 && ! git diff --name-only origin/main...HEAD | grep -qE '\\.py$|(^|/)ruff\\.toml$|(^|/)pyproject\\.toml$'"
 
     # Full mockable Python suite, parallelized (~37s on 12 cores via xdist
     # worksteal). SKIP_POCKETBASE_TESTS gates the server/DB-dependent suites;
@@ -109,12 +127,16 @@ pre-push:
         - "pyproject.toml"
         - "conftest.py"
       run: SKIP_POCKETBASE_TESTS=true uv run pytest tests/ -n auto --dist worksteal -q -p no:cacheprovider
+      skip:
+        - run: "git fetch origin main --quiet 2>/dev/null || true; git rev-parse -q --verify origin/main >/dev/null 2>&1 && ! git diff --name-only origin/main...HEAD | grep -qE '\\.py$|(^|/)pyproject\\.toml$|(^|/)conftest\\.py$'"
 
     mypy:
       glob:
         - "**/*.py"
         - "pyproject.toml"
       run: uv run mypy . --explicit-package-bases
+      skip:
+        - run: "git fetch origin main --quiet 2>/dev/null || true; git rev-parse -q --verify origin/main >/dev/null 2>&1 && ! git diff --name-only origin/main...HEAD | grep -qE '\\.py$|(^|/)pyproject\\.toml$'"
 
     type-check:
       root: "frontend/"
@@ -123,6 +145,8 @@ pre-push:
         - "frontend/tsconfig.json"
         - "frontend/tsconfig.node.json"
       run: npm run type-check
+      skip:
+        - run: "git fetch origin main --quiet 2>/dev/null || true; git rev-parse -q --verify origin/main >/dev/null 2>&1 && ! git diff --name-only origin/main...HEAD | grep -qE '^frontend/.*\\.(ts|tsx)$|^frontend/tsconfig(\\.node)?\\.json$'"
 
     go-build:
       root: "pocketbase/"
@@ -132,12 +156,15 @@ pre-push:
         - "pocketbase/go.mod"
         - "pocketbase/go.sum"
       run: go build .
+      skip:
+        - run: "git fetch origin main --quiet 2>/dev/null || true; git rev-parse -q --verify origin/main >/dev/null 2>&1 && ! git diff --name-only origin/main...HEAD | grep -qE '^pocketbase/.*\\.go$|^pocketbase/go\\.(mod|sum)$'"
 
     shellcheck:
       glob: "**/*.sh"
       run: find scripts/ docker/ frontend/ tests/shell/ -maxdepth 3 -name '*.sh' 2>/dev/null | xargs shellcheck --severity=warning
       skip:
         - run: "! command -v shellcheck >/dev/null 2>&1"
+        - run: "git fetch origin main --quiet 2>/dev/null || true; git rev-parse -q --verify origin/main >/dev/null 2>&1 && ! git diff --name-only origin/main...HEAD | grep -qE '\\.sh$'"
 
     pb-js-lint:
       root: "pocketbase/"
@@ -146,10 +173,14 @@ pre-push:
         - "pocketbase/pb_hooks/*.js"
         - "pocketbase/package.json"
       run: npm run lint
+      skip:
+        - run: "git fetch origin main --quiet 2>/dev/null || true; git rev-parse -q --verify origin/main >/dev/null 2>&1 && ! git diff --name-only origin/main...HEAD | grep -qE '^pocketbase/pb_(migrations|hooks)/.*\\.js$|^pocketbase/package\\.json$'"
 
     markdownlint:
       glob: "**/*.md"
       run: npx markdownlint-cli2 "**/*.md"
+      skip:
+        - run: "git fetch origin main --quiet 2>/dev/null || true; git rev-parse -q --verify origin/main >/dev/null 2>&1 && ! git diff --name-only origin/main...HEAD | grep -qE '\\.md$'"
 
     # Verify generated API types match the current Python schema.
     # Regenerates to a temp directory (no on-disk mutation) so this can run
@@ -159,6 +190,8 @@ pre-push:
       glob:
         - "api/**/*.py"
         - "bunking/**/*.py"
+      skip:
+        - run: "git fetch origin main --quiet 2>/dev/null || true; git rev-parse -q --verify origin/main >/dev/null 2>&1 && ! git diff --name-only origin/main...HEAD | grep -qE '^(api|bunking)/.*\\.py$'"
       run: |
         REGEN_LOG=$(mktemp)
         REGEN_DIR=$(mktemp -d)
