@@ -290,13 +290,20 @@ class RosterParty(BaseModel):
 
 
 class RosterCounts(BaseModel):
-    """Honest counts. Every capacity figure excludes container rows."""
+    """Honest counts, at the level the board DRAWS -- see `drawn_units`. A
+    split container's own row is excluded and its rooms count instead; a
+    combined container's row counts ONCE, for a `sleeps` that now folds in
+    every leaf beneath it (kindred#2041) -- never a container and its own
+    rooms both.
+    """
 
     parties_total: int = 0
     parties_assigned: int = 0
     parties_unassigned: int = 0
-    # Active, non-container units that are PLANNING INVENTORY -- permanent
-    # staff housing is excluded and reported by units_staff_housing.
+    # Units the board draws that are PLANNING INVENTORY -- permanent staff
+    # housing is excluded and reported by units_staff_housing. A combined
+    # container's own drawn row is included here; its rooms, which never
+    # draw their own card, are not counted a second time.
     units_total: int = 0
     units_family_available: int = 0
     # Planning inventory held back from families this session -- a burst pipe,

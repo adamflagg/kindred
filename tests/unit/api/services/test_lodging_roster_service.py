@@ -23,11 +23,11 @@ same AttributeError a real record would, so getattr defaults are exercised.
 
 from types import SimpleNamespace
 from typing import Any
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from api.services.lodging_roster_service import LodgingRosterService, SessionNotFoundError
+from api.services.lodging_roster_service import LodgingRosterService, SessionNotFoundError, _BathroomIndex
 
 
 def _rec(**kwargs: Any) -> SimpleNamespace:
@@ -751,6 +751,25 @@ class TestUnitsAndCounts:
         roster = await LodgingRosterService(repo).build_roster(2026, 1000001, scenario="scn_1")
 
         assert roster.units[0].is_combined is True
+
+    @pytest.mark.asyncio
+    async def test_the_unit_index_is_built_once_per_roster_call(self) -> None:
+        """`_BathroomIndex`'s own docstring says built ONCE per roster/summary
+        call, not once per consumer. kindred#2041 added a second consumer
+        (`_build_counts`'s `_effective_sleeps`) and an early draft rebuilt the
+        index there instead of reusing `_build_parties`'s -- caught in
+        review, not by a test. This pins the invariant down so a future
+        consumer cannot reintroduce the same duplicate walk.
+        """
+        repo = _repo(
+            fetch_session=FAMILY_SESSION,
+            fetch_units=[_unit("u1", "ridge-a", "Ridge A", sleeps=5)],
+        )
+
+        with patch.object(_BathroomIndex, "build", wraps=_BathroomIndex.build) as spy:
+            await LodgingRosterService(repo).build_roster(2026, 1000001)
+
+        spy.assert_called_once()
 
 
 class TestCountsFollowTheDrawLevel:
