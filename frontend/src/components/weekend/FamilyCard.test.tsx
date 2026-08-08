@@ -74,9 +74,8 @@ function confirmedUnit(overrides: Partial<LodgingUnitRow> = {}): LodgingUnitRow 
 const REQUEST_TEXT = 'Please put us near the Garcia family, and we need a ground-floor room.'
 
 describe('FamilyCard — what it shows', () => {
-  it('names the household and its size', () => {
+  it('shows the party size', () => {
     render(<FamilyCard party={party()} onOpen={vi.fn()} />)
-    expect(screen.getByText('Johnson')).toBeInTheDocument()
     expect(screen.getByText('4')).toBeInTheDocument()
   })
 
@@ -88,23 +87,82 @@ describe('FamilyCard — what it shows', () => {
     expect(screen.getByText(/5/)).toBeInTheDocument()
   })
 
-  it('renders age in CampMinder yy.mm format through displayCampMinderAge', () => {
-    // kindred#2088: `String(child.age)` printed a raw float verbatim (or
-    // truncated one on the backend). Both sites must go through the shared
-    // helper summer already uses -- two-digit months, no leading-zero years.
+  it('truncates the child’s age to whole years, never rounding up', () => {
+    // kindred#2074: `persons.age` is CampMinder's yy.mm; months never exceed
+    // .11, so a child of 6.11 -- six years, eleven months -- is six, not
+    // seven. The card truncates; only the detail panel keeps `(Y)Y.MM`.
     render(
       <FamilyCard
         party={party({
           children: [
-            { person_cm_id: 9001, display_name: 'Noah', age: 1.5, grade: 0 },
+            { person_cm_id: 9001, display_name: 'Noah', age: 6.11, grade: 0 },
             { person_cm_id: 9002, display_name: 'Ava', age: 0.06, grade: 0 },
           ],
         })}
         onOpen={vi.fn()}
       />
     )
-    expect(screen.getByText('Noah (1.50)')).toBeInTheDocument()
-    expect(screen.getByText('Ava (0.06)')).toBeInTheDocument()
+    expect(screen.getByText('Noah (6)')).toBeInTheDocument()
+    expect(screen.getByText('Ava (0)')).toBeInTheDocument()
+    expect(screen.queryByText(/Noah \(7\)/)).not.toBeInTheDocument()
+  })
+
+  it('shows the attending adults on the grey line beneath the children', () => {
+    render(
+      <FamilyCard
+        party={party({
+          adults: [
+            { adult_number: 1, display_name: 'Emma Johnson', relationship: 'Mother' },
+            { adult_number: 2, display_name: 'Liam Johnson', relationship: 'Father' },
+          ],
+        })}
+        onOpen={vi.fn()}
+      />
+    )
+    expect(screen.getByText(/Emma Johnson/)).toBeInTheDocument()
+    expect(screen.getByText(/Liam Johnson/)).toBeInTheDocument()
+  })
+
+  it('drops blank adult slots -- family_camp_adults is not a fixed five', () => {
+    render(
+      <FamilyCard
+        party={party({
+          adults: [
+            { adult_number: 1, display_name: 'Emma Johnson', relationship: 'Mother' },
+            { adult_number: 2, display_name: '', relationship: '' },
+          ],
+        })}
+        onOpen={vi.fn()}
+      />
+    )
+    const adultsLine = screen.getByText(/Emma Johnson/).parentElement
+    expect(adultsLine).toHaveTextContent('Emma Johnson')
+    expect(adultsLine).not.toHaveTextContent('·')
+  })
+
+  it('removes the household salutation from the card entirely', () => {
+    // kindred#2074: display_name is CampMinder's mailing_title, which
+    // disagrees with the actual adult list on 26.7% of 2026 households.
+    // Deletion, not a demotion to the grey line -- the grey line is adults.
+    render(<FamilyCard party={party({ display_name: 'Mr. and Mrs. Johnson' })} onOpen={vi.fn()} />)
+    expect(screen.queryByText('Mr. and Mrs. Johnson')).not.toBeInTheDocument()
+  })
+
+  it('keeps the guest’s own name for an adult weekend party (person grain)', () => {
+    // Person-grain parties are one guest, not a household -- there is no
+    // untrustworthy salutation to remove, so the identity line is unchanged.
+    render(
+      <FamilyCard
+        party={party({
+          grain: 'person',
+          display_name: 'Priya Patel',
+          children: [],
+          adults: [{ adult_number: 1, display_name: 'Priya Patel' }],
+        })}
+        onOpen={vi.fn()}
+      />
+    )
+    expect(screen.getByTestId('family-card-name')).toHaveTextContent('Priya Patel')
   })
 
   it('omits an age it does not have rather than inventing one', () => {
@@ -358,11 +416,11 @@ describe('FamilyCardPreview — the drag overlay', () => {
     expect(screen.queryByRole('button')).not.toBeInTheDocument()
   })
 
-  it('shows the same children and ages the real card does', () => {
+  it('shows the same children and truncated ages the real card does', () => {
     // It is the card being dragged, so it has to LOOK like the card. Sharing
     // the body is what keeps that true without a second copy to maintain.
     render(<FamilyCardPreview party={party()} />)
-    expect(screen.getByText(/Noah Johnson \(8\.00\)/)).toBeInTheDocument()
+    expect(screen.getByText(/Noah Johnson \(8\)/)).toBeInTheDocument()
   })
 })
 
@@ -447,18 +505,28 @@ describe('FamilyCard — summer’s type scale', () => {
     expect(arbitraryTextSizes(container)).toEqual([])
   })
 
-  it('names the household at summer’s CamperCard name size', () => {
+  it('sets the card’s bold identity line at summer’s CamperCard name size', () => {
     render(<FamilyCard party={party()} onOpen={vi.fn()} />)
     expect(screen.getByTestId('family-card-name')).toHaveClass('text-sm')
   })
 
-  it('sets the children line one step below the name, as summer does', () => {
-    render(<FamilyCard party={party()} onOpen={vi.fn()} />)
-    // Each child gets its own `<span>`, so walk up one to the line that holds
+  it('sets the adults line one step below the children, as summer steps its secondary line', () => {
+    render(
+      <FamilyCard
+        party={party({
+          adults: [
+            { adult_number: 1, display_name: 'Emma Johnson', relationship: 'Mother' },
+            { adult_number: 2, display_name: 'Liam Johnson', relationship: 'Father' },
+          ],
+        })}
+        onOpen={vi.fn()}
+      />
+    )
+    // Each adult gets its own `<span>`, so walk up one to the line that holds
     // them all — asserting on the inner span would pin nothing, since the size
     // is set on the line.
-    const line = screen.getByText(/Noah Johnson \(8\.00\)/).parentElement
-    expect(line).toHaveTextContent('Ava Johnson (5.00)')
+    const line = screen.getByText(/Emma Johnson/).parentElement
+    expect(line).toHaveTextContent('Liam Johnson')
     expect(line).toHaveClass('text-xs')
   })
 

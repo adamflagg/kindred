@@ -23,16 +23,29 @@
  * `FamilyCard.test.tsx` pins all three as ABSENCES, because each is exactly
  * the kind of thing a later session adds back helpfully.
  *
- * What IS here: the household name, the party size, the children with their
- * ages — ages are the entire point of a "similar ages" match — and the housing
- * chips the fit check actually judges.
+ * What IS here: the children lead, bold, with truncated whole-year ages —
+ * ages are the entire point of a "similar ages" match — the party size, the
+ * attending adults one line down in grey, and the housing chips the fit
+ * check actually judges.
+ *
+ * ## The household salutation is gone, not demoted (kindred#2074)
+ *
+ * The bold line used to be `party.display_name`, which is CampMinder's
+ * `mailing_title` -- a postal salutation, not a party manifest. Measured
+ * against 2026's 382 rostered households, it disagreed with the actual adult
+ * list on 26.7%, in both directions: naming an adult who wasn't attending,
+ * and naming only one adult when two were. A two-directional failure can't
+ * be repaired inside the string, so it was deleted rather than sanitised —
+ * see the issue for the full accounting. This only applies to household-grain
+ * parties: a person-grain party (an adult weekend guest) IS the identity, so
+ * its `display_name` stays.
  */
 import { useDraggable } from '@dnd-kit/core'
 import { Repeat, Star, Users } from 'lucide-react'
 import { Fragment } from 'react'
 
 import type { LodgingUnitRow, RosterPartyRow } from '../../types/lodging'
-import { displayCampMinderAge } from '../../utils/age'
+import { displayCampMinderAge, displayTruncatedAge } from '../../utils/age'
 import { partySize, SHARE_WORDING, shareWordingChip } from './boardLayout'
 import { partyKey } from './partyKey'
 import { ATTENTION_LABEL, partyAttention } from './rosterAttention'
@@ -104,6 +117,14 @@ function FamilyCardBody({
 }) {
   const flags = party.flags ?? {}
   const children = party.children ?? []
+  // family_camp_adults stores adult slots 1-5 as separate rows per household,
+  // and a slot with no name on file is not an attending adult -- CampMinder
+  // leaves it blank rather than omitting the row. Filtered here, at render,
+  // rather than upstream, so "not a fixed five" stays true of what's shown.
+  const attendingAdults = (party.adults ?? []).filter((adult) =>
+    Boolean(adult.display_name?.trim())
+  )
+  const isHousehold = party.grain === 'household'
   const attention = partyAttention(party, unit)
   const proximity = party.share?.proximity ?? []
   // `similar_ages` ACCOMPANIES `with`; it never replaces it. One chip covering
@@ -119,7 +140,19 @@ function FamilyCardBody({
           data-testid="family-card-name"
           className="text-foreground text-sm leading-tight font-semibold"
         >
-          {party.display_name}
+          {isHousehold
+            ? children.map((child, index) => (
+                <Fragment key={String(child.person_cm_id ?? index)}>
+                  {index > 0 && ' · '}
+                  {/* An age we do not have is omitted, never rendered as 0. */}
+                  <span>
+                    {child.age === null || child.age === undefined
+                      ? child.display_name
+                      : `${String(child.display_name)} (${displayTruncatedAge(child.age)})`}
+                  </span>
+                </Fragment>
+              ))
+            : party.display_name}
         </span>
         <span className="text-muted-foreground ml-auto inline-flex items-center gap-0.5 text-xs tabular-nums">
           <Users className="h-3 w-3 flex-shrink-0" aria-hidden="true" />
@@ -127,21 +160,36 @@ function FamilyCardBody({
         </span>
       </span>
 
-      {children.length > 0 && (
-        <span className="text-muted-foreground text-xs leading-snug">
-          {children.map((child, index) => (
-            <Fragment key={String(child.person_cm_id ?? index)}>
-              {index > 0 && ' · '}
-              {/* An age we do not have is omitted, never rendered as 0. */}
-              <span>
-                {child.age === null || child.age === undefined
-                  ? child.display_name
-                  : `${String(child.display_name)} (${displayCampMinderAge(child.age)})`}
-              </span>
-            </Fragment>
-          ))}
-        </span>
-      )}
+      {isHousehold
+        ? attendingAdults.length > 0 && (
+            <span className="text-muted-foreground text-xs leading-snug">
+              {attendingAdults.map((adult, index) => (
+                <Fragment key={String(adult.adult_number ?? index)}>
+                  {index > 0 && ' · '}
+                  <span>{adult.display_name}</span>
+                </Fragment>
+              ))}
+            </span>
+          )
+        : // Person-grain (adult weekend) parties are a single guest identified
+          // by the bold line above, not a household -- so there is no separate
+          // adult list. The old children-with-CampMinder-age line stays for the
+          // rare person-grain party that carries children of its own.
+          children.length > 0 && (
+            <span className="text-muted-foreground text-xs leading-snug">
+              {children.map((child, index) => (
+                <Fragment key={String(child.person_cm_id ?? index)}>
+                  {index > 0 && ' · '}
+                  {/* An age we do not have is omitted, never rendered as 0. */}
+                  <span>
+                    {child.age === null || child.age === undefined
+                      ? child.display_name
+                      : `${String(child.display_name)} (${displayCampMinderAge(child.age)})`}
+                  </span>
+                </Fragment>
+              ))}
+            </span>
+          )}
 
       <span className="flex flex-wrap gap-1">
         {/* The needs a cabin field can actually answer — the same two the fit
