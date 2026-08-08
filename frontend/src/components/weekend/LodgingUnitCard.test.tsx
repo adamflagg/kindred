@@ -12,7 +12,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import type { LodgingUnitRow, RosterPartyRow } from '../../types/lodging'
 import type { BoardSlot } from './boardLayout'
-import { unitDroppableId } from './dragPlacement'
+import { mergeDragId, unitDroppableId } from './dragPlacement'
 import { LodgingUnitCard } from './LodgingUnitCard'
 
 /**
@@ -514,11 +514,25 @@ describe('LodgingUnitCard — the shared-space mark (#2091)', () => {
     return el as HTMLElement
   }
 
-  it('rings a shared unit in the area hue when nobody has flagged it', () => {
+  // `.card-lodge`'s own elevation shadow (`index.css:440-443`), pinned here
+  // independently of the implementation's own constant name — this is the
+  // exact value a shared card must NOT lose (review finding 1 on #2119).
+  const cardElevationShadow =
+    '0 1px 2px hsl(var(--shadow-color) / 0.06), 0 4px 16px hsl(var(--shadow-color) / 0.08)'
+
+  it('rings a shared unit in the area hue AND keeps the card elevation shadow', () => {
+    // An inline `boxShadow` beats `.card-lodge`'s own stylesheet box-shadow
+    // for the same property outright — setting ONLY the ring here (as the
+    // code did before this fix) silently drops the elevation every other
+    // card keeps, so a shared card reads as flat against its neighbours.
+    // The fix composes both shadows into the one inline value rather than
+    // letting the ring replace the elevation.
     const { container } = render(
       <LodgingUnitCard slot={slot({ parties: sharedParties })} hue={hue} onOpenParty={vi.fn()} />
     )
-    expect(card(container)).toHaveStyle({ boxShadow: `0 0 0 2px ${hue}` })
+    expect(card(container)).toHaveStyle({
+      boxShadow: `0 0 0 2px ${hue}, ${cardElevationShadow}`,
+    })
   })
 
   it('leaves a single-party unit without the shared ring', () => {
@@ -595,6 +609,88 @@ describe('LodgingUnitCard — the shared-space mark (#2091)', () => {
     )
     expect(card(container)).toHaveClass('opacity-40')
     expect(card(container)).not.toHaveStyle({ boxShadow: `0 0 0 2px ${hue}` })
+  })
+
+  it('lets an active drop target outrank a CONSENT-flagged room too', () => {
+    // The existing "outranks the shared-space ring" test above only ever
+    // combines an active drop target with `sharedParties` (no `consent`).
+    // Consent has its own ring (`border-amber-400`), which is what a drop
+    // target actually has to fight over the shared CSS slot with here.
+    overDroppableId = unitDroppableId('cedar-1')
+    const { container } = render(
+      <LodgingUnitCard
+        slot={slot({ parties: sharedParties, consent: declinedConsent })}
+        hue={hue}
+        canPlace
+        onOpenParty={vi.fn()}
+      />
+    )
+    expect(card(container)).toHaveClass('border-primary')
+    expect(card(container)).not.toHaveClass('border-amber-400')
+  })
+
+  it('treats a merge-handle drop (isMergeOver) as an active drop target on its own', () => {
+    // Isolates `isMergeOver` from `isUnitOver`: no `canPlace`, so the party
+    // droppable never activates, and no party is being dragged either. Only
+    // the merge droppable is over. If `isUnitOver || isMergeOver` ever lost
+    // its `isMergeOver` half, this card would fall all the way through to
+    // the empty-room dashed state instead of the drop-target ring.
+    const room = unit({ code: 'cedar-1', parent_code: 'east-wing' })
+    const validSibling = unit({ code: 'other-1', parent_code: 'east-wing' })
+    overDroppableId = mergeDragId('cedar-1')
+    const { container } = render(
+      <LodgingUnitCard
+        slot={slot({ unit: room })}
+        hue={hue}
+        mergeSourceUnit={validSibling}
+        onOpenParty={vi.fn()}
+      />
+    )
+    expect(card(container)).toHaveClass('border-primary')
+  })
+
+  it('keeps the consent amber accent visible while an invalid merge drag dims the card', () => {
+    // Pre-existing (pre-refactor) behaviour this PR's ordered `cardState`
+    // switch silently dropped: dimming and the consent ring are ORTHOGONAL
+    // CSS properties (opacity/pointer-events vs border-color/box-shadow), so
+    // an invalid merge target should not blank out a real consent warning —
+    // it just dims the whole card, warning included.
+    const room = unit({ code: 'cedar-1', parent_code: 'east-wing' })
+    const draggedSibling = unit({ code: 'other-1', parent_code: 'west-wing' })
+    const { container } = render(
+      <LodgingUnitCard
+        slot={slot({ unit: room, parties: sharedParties, consent: declinedConsent })}
+        hue={hue}
+        mergeSourceUnit={draggedSibling}
+        onOpenParty={vi.fn()}
+      />
+    )
+    expect(card(container)).toHaveClass('opacity-40')
+    expect(card(container)).toHaveClass('border-amber-400')
+  })
+
+  it('keeps the empty-room dashed cue visible while an invalid merge drag dims the card', () => {
+    const room = unit({ code: 'cedar-1', parent_code: 'east-wing' })
+    const draggedSibling = unit({ code: 'other-1', parent_code: 'west-wing' })
+    const { container } = render(
+      <LodgingUnitCard
+        slot={slot({ unit: room })}
+        hue={hue}
+        mergeSourceUnit={draggedSibling}
+        onOpenParty={vi.fn()}
+      />
+    )
+    expect(card(container)).toHaveClass('opacity-40')
+    expect(card(container)).toHaveClass('border-dashed')
+  })
+
+  it('keeps the empty-room dashed cue visible under an active drop target', () => {
+    overDroppableId = unitDroppableId('cedar-1')
+    const { container } = render(
+      <LodgingUnitCard slot={slot()} hue={hue} canPlace onOpenParty={vi.fn()} />
+    )
+    expect(card(container)).toHaveClass('border-primary')
+    expect(card(container)).toHaveClass('border-dashed')
   })
 })
 
