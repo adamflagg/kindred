@@ -112,8 +112,13 @@ class TestCreateRequestSchema:
     def test_intent_is_required(self) -> None:
         # No default. `near` and `with` are different requests; a group that
         # does not say which is not a group we can honour.
+        # The `type: ignore` is the point rather than an escape: mypy ALSO
+        # refuses this call, which is half the guarantee. The other half --
+        # that a request arriving over HTTP without an intent is a 422 rather
+        # than a silent "with" -- is what the runtime raise below pins, and no
+        # type checker can see that one.
         with pytest.raises(ValidationError):
-            FriendGroupCreateRequest(
+            FriendGroupCreateRequest(  # type: ignore[call-arg]
                 year=YEAR,
                 session_cm_id=SESSION_CM_ID,
                 color="#22c55e",
