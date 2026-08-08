@@ -367,10 +367,19 @@ def drawn_units(units: list[LodgingUnitSummary]) -> list[LodgingUnitSummary]:
 
 
 class _BathroomIndex(NamedTuple):
-    """Lookups `_resolve_party_bathroom` needs, built ONCE per roster/summary
-    call from the unit registry rather than once per party -- the same
-    "compute across all units, read per party" split `_build_units` already
-    uses for `group_members`.
+    """The unit tree, built ONCE per roster/summary call from the unit
+    registry and threaded through to every consumer, rather than rebuilt per
+    consumer -- the same "compute across all units, read per party" split
+    `_build_units` already uses for `group_members`.
+
+    Two consumers share it: `_resolve_party_bathroom` (via `_build_parties`)
+    and, since kindred#2041, `_build_counts`'s `_effective_sleeps`, which
+    walks `leaf_codes_under` to total a combined container's rooms. Both
+    orchestrators (`build_roster`, `build_summary`'s per-weekend `_entry`)
+    build ONE instance right after `_build_units` and pass it to both --
+    building a second one from the same `units` list was caught in review on
+    kindred#2041's PR and is exactly the duplicate work this docstring
+    already warned against.
     """
 
     units_by_code: dict[str, LodgingUnitSummary]
@@ -578,6 +587,11 @@ class LodgingRosterService:
             availability_task.result(),
             merges_task.result(),
         )
+        # ONE index, threaded to both consumers below -- see `_BathroomIndex`'s
+        # own "built ONCE per call" docstring. Rebuilding a second one from the
+        # same `unit_summaries` for `_build_counts` was caught in review on
+        # kindred#2041's PR.
+        unit_index = _BathroomIndex.build(unit_summaries)
         parties = self._build_parties(
             session_type=session_type,
             attendees=attendees_task.result(),
@@ -586,9 +600,9 @@ class LodgingRosterService:
             adults_by_household=adults_task.result(),
             registrations=registrations_task.result(),
             assignments=placements_task.result(),
-            units=unit_summaries,
+            unit_index=unit_index,
         )
-        counts = self._build_counts(unit_summaries, parties, aliases_task.result())
+        counts = self._build_counts(unit_summaries, parties, aliases_task.result(), unit_index)
 
         return WeekendRosterResponse(
             year=year,
@@ -686,6 +700,9 @@ class LodgingRosterService:
                 availability_task.result(),
                 merges_task.result(),
             )
+            # Same one-index-per-call rule `build_roster` follows -- see the
+            # comment there and `_BathroomIndex`'s own docstring.
+            unit_index = _BathroomIndex.build(unit_summaries)
             parties = self._build_parties(
                 session_type=_s(session, "session_type"),
                 attendees=attendees_task.result(),
@@ -694,11 +711,11 @@ class LodgingRosterService:
                 adults_by_household=adults_by_household,
                 registrations=registrations,
                 assignments=placements_task.result(),
-                units=unit_summaries,
+                unit_index=unit_index,
             )
             return WeekendSummaryEntry(
                 session=self._session_summary(session),
-                counts=self._build_counts(unit_summaries, parties, unresolved_aliases),
+                counts=self._build_counts(unit_summaries, parties, unresolved_aliases, unit_index),
             )
 
         async with asyncio.TaskGroup() as tg:
@@ -881,13 +898,12 @@ class LodgingRosterService:
         adults_by_household: dict[str, list[Any]],
         registrations: dict[str, Any],
         assignments: list[Any],
-        units: list[LodgingUnitSummary],
+        unit_index: _BathroomIndex,
     ) -> list[RosterParty]:
         placement_by_household, placement_by_person = self._index_assignments(assignments)
-        bathroom_index = _BathroomIndex.build(units)
 
         if session_type == "adult":
-            return self._build_person_parties(attendees, placement_by_person, bathroom_index)
+            return self._build_person_parties(attendees, placement_by_person, unit_index)
 
         return self._build_household_parties(
             attendees=attendees,
@@ -896,7 +912,7 @@ class LodgingRosterService:
             adults_by_household=adults_by_household,
             registrations=registrations,
             placement_by_household=placement_by_household,
-            bathroom_index=bathroom_index,
+            bathroom_index=unit_index,
         )
 
     @staticmethod
@@ -1187,28 +1203,51 @@ class LodgingRosterService:
         units: list[LodgingUnitSummary],
         parties: list[RosterParty],
         unresolved_aliases: int,
+        unit_index: _BathroomIndex,
     ) -> RosterCounts:
         # The population the BOARD DRAWS, at each tree's resolved level -- not
         # "every non-container row". A combined container IS one space a
-        # family can hold, at the whole-house `sleeps` somebody measured, and
-        # its rooms are not separately lettable, so counting them instead
-        # reports more spaces than the board draws cards. That is the exact
-        # drift `_is_planning_inventory` exists to prevent, one field over.
+        # family can hold, and its rooms are not separately lettable, so
+        # counting them instead reports more spaces than the board draws
+        # cards. That is the exact drift `_is_planning_inventory` exists to
+        # prevent, one field over.
         #
         # A NON-combined container is still excluded, for the original reason:
         # it carries a whole-building aggregate its rooms already report, and
         # counting both double-counts beds (408 vs a true 389). What changed is
         # that "container" stopped being the same question as "not drawn".
         #
-        # The bed figure can move OPPOSITE the space figure, which is correct:
-        # a container's `sleeps` is independently measured and NOT the sum of
-        # its rooms (one house records 7 against rooms summing to 6). Fewer,
-        # larger spaces.
+        # Owner ruling, kindred#2041: a container's `sleeps` is a DELTA over
+        # its rooms -- the beds in space belonging to no single room, e.g. a
+        # futon on a landing -- never a whole-house total. A drawn combined
+        # container's true capacity is its own `sleeps` PLUS every LEAF
+        # beneath it, walked past any intermediate container via
+        # `unit_index.leaf_codes_under` -- the SAME index `_build_parties`
+        # already built for bathroom resolution, passed in rather than
+        # rebuilt here (see `_BathroomIndex`'s own "built ONCE" docstring).
+        # An unset container reads as a delta of 0 -- real common space
+        # nobody measured, correctly zero and never "unknown" -- so only a
+        # genuinely unmeasured LEAF can still leave a total unknown.
         drawn = [u for u in drawn_units(units) if u.is_active]
         bookable = [u for u in drawn if _is_planning_inventory(u)]
         staff_housing = [u for u in drawn if not _is_planning_inventory(u)]
         available = [u for u in bookable if u.is_family_available]
         assigned = sum(1 for p in parties if p.unit_code or p.unit_name)
+
+        def _effective_sleeps(unit: LodgingUnitSummary) -> int | None:
+            if not unit.is_container:
+                return unit.sleeps
+            leaf_total = sum(
+                leaf.sleeps
+                for code in unit_index.leaf_codes_under(unit.code)
+                if (leaf := unit_index.units_by_code.get(code)) is not None
+                and leaf.is_active
+                and leaf.sleeps is not None
+            )
+            return (unit.sleeps or 0) + leaf_total
+
+        effective_sleeps = {u.unit_id: _effective_sleeps(u) for u in bookable}
+
         return RosterCounts(
             parties_total=len(parties),
             parties_assigned=assigned,
@@ -1217,8 +1256,8 @@ class LodgingRosterService:
             units_family_available=len(available),
             units_reserved=len(bookable) - len(available),
             units_staff_housing=len(staff_housing),
-            beds_family_available=sum(u.sleeps for u in available if u.sleeps is not None),
-            units_capacity_unknown=sum(1 for u in bookable if u.sleeps is None),
+            beds_family_available=sum(s for u in available if (s := effective_sleeps[u.unit_id]) is not None),
+            units_capacity_unknown=sum(1 for u in bookable if effective_sleeps[u.unit_id] is None),
             # Over `bookable`, NOT a separate PocketBase count. The old query
             # filtered is_confirmed/is_container/is_active with no inventory
             # predicate, so once units_total dropped staff housing the two

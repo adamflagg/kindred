@@ -119,9 +119,11 @@ class LodgingUnitSummary(BaseModel):
     # A building/grouping row. Present in the payload so the map and board
     # can draw the building. Whether it COUNTS is no longer this flag's
     # answer: a container resolved combined (see `is_combined`) is the one
-    # space the board draws, at its own measured `sleeps`, and its rooms
-    # count for nothing. `drawn_units` is the one predicate for that, and
-    # `_build_counts` reads it -- never filter on `is_container` alone.
+    # space the board draws. Its own `sleeps` is a DELTA over its rooms, not
+    # a whole-house total (owner ruling, kindred#2041) -- the drawn total is
+    # its own `sleeps` PLUS every leaf beneath it. `drawn_units` is the one
+    # predicate for which units get a card, and `_build_counts` reads it --
+    # never filter on `is_container` alone.
     is_container: bool = False
     # The parent container's CODE, not its record id — the board keys on code,
     # and code is the cross-year identity thread. "" means no parent.
@@ -288,13 +290,20 @@ class RosterParty(BaseModel):
 
 
 class RosterCounts(BaseModel):
-    """Honest counts. Every capacity figure excludes container rows."""
+    """Honest counts, at the level the board DRAWS -- see `drawn_units`. A
+    split container's own row is excluded and its rooms count instead; a
+    combined container's row counts ONCE, for a `sleeps` that now folds in
+    every leaf beneath it (kindred#2041) -- never a container and its own
+    rooms both.
+    """
 
     parties_total: int = 0
     parties_assigned: int = 0
     parties_unassigned: int = 0
-    # Active, non-container units that are PLANNING INVENTORY -- permanent
-    # staff housing is excluded and reported by units_staff_housing.
+    # Units the board draws that are PLANNING INVENTORY -- permanent staff
+    # housing is excluded and reported by units_staff_housing. A combined
+    # container's own drawn row is included here; its rooms, which never
+    # draw their own card, are not counted a second time.
     units_total: int = 0
     units_family_available: int = 0
     # Planning inventory held back from families this session -- a burst pipe,

@@ -181,12 +181,15 @@ export function indexUnitsByCode(units: LodgingUnitRow[]): Map<string, LodgingUn
  * matches its neighbour.
  */
 export function countUnmeasuredSpaces(units: LodgingUnitRow[]): number {
-  // Over the DRAWN units, not "every non-container row". A combined house is
-  // the space, at the whole-house capacity somebody measured; its rooms draw
-  // no card and their own missing `sleeps` describes nothing a family could
-  // be put in. `drawnUnits` resolves that top-down and is the one definition
-  // of which units get a card — deriving it here a second way is how this
-  // starts disagreeing with the board it sits above.
+  // Over the DRAWN units, not "every non-container row". A combined house
+  // draws one card, at its own registry row; its rooms draw no card. That
+  // row's `sleeps` is now read as a DELTA over its rooms, not a whole-house
+  // total (kindred#2041) — but a container with no `sleeps` of its own is
+  // still nothing this walk can call measured, since its rooms never get a
+  // card here to speak for themselves. `drawnUnits` resolves the draw level
+  // top-down and is the one definition of which units get a card — deriving
+  // it here a second way is how this starts disagreeing with the board it
+  // sits above.
   return drawnUnits(units).filter(
     (unit) =>
       unit.is_family_available === true && (unit.sleeps === null || unit.sleeps === undefined)
