@@ -4,8 +4,13 @@ Domain facts these tests pin down:
   * Family camp enrols only CHILDREN, so a party is a household and its
     adults come from family_camp_adults.
   * Adult weekends enrol individuals, so a party is a person.
-  * Container units are in the payload but never in a capacity count.
-  * sleeps = 0 is UNKNOWN, so it is neither summed nor rendered.
+  * Container units are in the payload; a SPLIT one never counts on its own
+    row. A COMBINED one counts at its own `sleeps` PLUS every leaf beneath
+    it -- `sleeps` on a container is a DELTA over its rooms, never a
+    whole-house total (owner ruling, kindred#2041).
+  * sleeps = 0 is UNKNOWN on a leaf, so it is neither summed nor rendered.
+    On a container it is a legitimate zero delta (no measured common space)
+    and does not block totalling its rooms.
   * Staff-reserved units stay visible but are excluded from availability.
   * The share layer is READ from ingest-derived columns, never re-parsed.
 
@@ -755,24 +760,25 @@ class TestCountsFollowTheDrawLevel:
     two drift, the Housing tab and the stats bar describe different weekends
     -- the board drawing 81 cards beside a bar reporting 102 units is exactly
     the disagreement this shape exists to prevent." A combined container is
-    ONE space a family can hold, at the whole-house `sleeps` somebody
-    measured; its rooms are not separately lettable and must not be counted
-    as though they were.
+    ONE space a family can hold; its rooms are not separately lettable and
+    never draw their own card.
 
-    The bed figure moves in the OPPOSITE direction from the space figure on
-    real data, which looks wrong until you see why: a container's `sleeps` is
-    an independently measured whole-house number and NOT the sum of its rooms
-    (one house records 7 against rooms summing to 6, and one records 6
-    against two rooms nobody has measured at all). Fewer, larger spaces.
+    Owner ruling, kindred#2041: a container's `sleeps` is a DELTA over its
+    rooms -- the beds in space belonging to no single room, e.g. a futon on a
+    landing -- never a whole-house total. A combined container's true
+    capacity is therefore its own `sleeps` PLUS every LEAF beneath it, walked
+    past any intermediate container rather than stopping at its immediate
+    children. An unset container reads as a delta of zero (real, not
+    "unknown") and still totals its measured rooms.
     """
 
     @pytest.mark.asyncio
-    async def test_a_combined_container_counts_once_at_its_own_sleeps(self) -> None:
-        """The whole-house figure, never the sum of the rooms it replaces.
+    async def test_a_combined_container_counts_its_own_delta_plus_every_leaf_beneath_it(self) -> None:
+        """7 (the container's own delta) + 3 + 3 (its rooms) = 13, not 7.
 
-        7 vs 3+3 is the real shape: the measured whole is one bed larger than
-        its parts, because a house let whole sleeps somebody on a landing
-        that belongs to no single room. Summing would report 6.
+        Summing ONLY the rooms would report 6 and silently drop the space the
+        container's own row measures; reading the container's row ALONE (the
+        pre-#2041 behaviour) would report 7 and silently drop the rooms.
         """
         repo = _repo(
             fetch_session=FAMILY_SESSION,
@@ -786,7 +792,30 @@ class TestCountsFollowTheDrawLevel:
 
         assert roster.counts.units_total == 1
         assert roster.counts.units_family_available == 1
-        assert roster.counts.beds_family_available == 7
+        assert roster.counts.beds_family_available == 13
+
+    @pytest.mark.asyncio
+    async def test_a_combined_containers_sleeps_is_a_delta_not_a_whole_house_total(self) -> None:
+        """The real shape kindred#2041 measured against production: a
+        whole-let building's own `sleeps` records ONE piece of shared
+        furniture (a futon on a landing), not the building's capacity. Its
+        four rooms sleep 8 between them. The whole-house total is 9 -- the
+        live defect was reporting 1.
+        """
+        repo = _repo(
+            fetch_session=FAMILY_SESSION,
+            fetch_units=[
+                _unit("u1", "wl-lodge", "Lodge", sleeps=1, is_container=True, default_combined=True),
+                _unit("u2", "wl-lodge-1", "Lodge Room 1", sleeps=2, parent_unit="u1"),
+                _unit("u3", "wl-lodge-2", "Lodge Room 2", sleeps=2, parent_unit="u1"),
+                _unit("u4", "wl-lodge-3", "Lodge Room 3", sleeps=2, parent_unit="u1"),
+                _unit("u5", "wl-lodge-4", "Lodge Room 4", sleeps=2, parent_unit="u1"),
+            ],
+        )
+        roster = await LodgingRosterService(repo).build_roster(2026, 1000001)
+
+        assert roster.counts.units_total == 1
+        assert roster.counts.beds_family_available == 9
 
     @pytest.mark.asyncio
     async def test_a_split_container_still_counts_its_rooms_and_not_itself(self) -> None:
@@ -811,8 +840,14 @@ class TestCountsFollowTheDrawLevel:
     async def test_a_combined_ancestor_swallows_an_intermediate_container(self) -> None:
         """Top-down, first-true -- the same rule `drawnUnits` applies. Two
         nodes on one root-to-leaf path can both resolve combined; the higher
-        one draws and nothing beneath it counts, or the block's rooms would
-        be counted under a card that does not exist.
+        one draws and nothing beneath it gets its OWN card, or the block's
+        rooms would be counted under a card that does not exist.
+
+        The total still walks THROUGH the intermediate container to the real
+        LEAVES beneath it (10 + room1 3 + room2 3 = 16). The intermediate
+        container's own `sleeps` (7) is not itself a leaf, so it is not
+        added a second time -- only the outermost drawn container's own
+        delta and the actual rooms count.
         """
         repo = _repo(
             fetch_session=FAMILY_SESSION,
@@ -826,17 +861,18 @@ class TestCountsFollowTheDrawLevel:
         roster = await LodgingRosterService(repo).build_roster(2026, 1000001)
 
         assert roster.counts.units_total == 1
-        assert roster.counts.beds_family_available == 10
+        assert roster.counts.beds_family_available == 16
 
     @pytest.mark.asyncio
     async def test_a_combined_container_reports_its_own_measured_beds_over_unmeasured_rooms(self) -> None:
-        """The real Doctor's House shape, and the sharpest case for this rule.
+        """The real Doctor's House shape.
 
         Its two rooms were split out of the container with `sleeps`
         deliberately left unset -- the bed lists carry their capacity, the
-        number does not. Counting the rooms reports a house that sleeps
-        NOBODY and two spaces of unknown capacity; counting the drawn card
-        reports the 6 somebody measured.
+        number does not. An unmeasured room contributes nothing to the total
+        (same silent-skip treatment an unmeasured LEAF gets everywhere else),
+        so the total is the container's own measured 6 plus two zeros: 6, not
+        "unknown".
         """
         repo = _repo(
             fetch_session=FAMILY_SESSION,
@@ -853,10 +889,12 @@ class TestCountsFollowTheDrawLevel:
         assert roster.counts.units_capacity_unknown == 0
 
     @pytest.mark.asyncio
-    async def test_a_combined_container_nobody_has_measured_is_the_unknown_one(self) -> None:
-        """The inverse: the card drawn is the one whose capacity is unknown,
-        not the rooms it replaced. `sleeps` maps 0 -> None here, so an
-        unmeasured house is an unmeasured SPACE.
+    async def test_a_combined_container_with_no_own_figure_still_totals_its_measured_rooms(self) -> None:
+        """The inverse of the Doctor's House case: no common-space furniture
+        was ever recorded for this house, and that is a real zero, not a
+        missing measurement (kindred#2041) -- 14 of 15 production containers
+        are in exactly this state. The card drawn still totals what its
+        rooms report: 0 + 2 + 2 = 4, and the total is KNOWN.
         """
         repo = _repo(
             fetch_session=FAMILY_SESSION,
@@ -869,8 +907,8 @@ class TestCountsFollowTheDrawLevel:
         roster = await LodgingRosterService(repo).build_roster(2026, 1000001)
 
         assert roster.counts.units_total == 1
-        assert roster.counts.units_capacity_unknown == 1
-        assert roster.counts.beds_family_available == 0
+        assert roster.counts.units_capacity_unknown == 0
+        assert roster.counts.beds_family_available == 4
 
     @pytest.mark.asyncio
     async def test_a_scenario_merge_moves_the_counts_the_same_way_the_default_does(self) -> None:
@@ -890,7 +928,7 @@ class TestCountsFollowTheDrawLevel:
         roster = await LodgingRosterService(repo).build_roster(2026, 1000001, scenario="scn_1")
 
         assert roster.counts.units_total == 1
-        assert roster.counts.beds_family_available == 7
+        assert roster.counts.beds_family_available == 13
 
 
 class TestSlotMergeTiers:

@@ -2,9 +2,11 @@
  * Which units the board draws, given each container's resolved draw level.
  *
  * A merge is a PROMOTION TO THE PARENT: the card drawn for a combined house is
- * the house's own registry row, never a synthetic one, so it carries the
- * measured whole-house `sleeps` — which is NOT the sum of its rooms. One house
- * records 7 against rooms summing to 6. Never re-derive it.
+ * the house's own registry row, never a synthetic one. That row's `sleeps` is
+ * a DELTA over its rooms, not a whole-house total (owner ruling, kindred#2041)
+ * — the beds in space belonging to no single room, e.g. a futon on a landing.
+ * Whole-house capacity is `sleeps` plus every leaf beneath it; this module
+ * only decides which card is drawn, so it never computes that total itself.
  *
  * Top-down, stopping at the first combined node. Two nodes on one root-to-leaf
  * path can both resolve combined — a scenario override can set one where an

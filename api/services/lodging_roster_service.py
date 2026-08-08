@@ -1190,25 +1190,46 @@ class LodgingRosterService:
     ) -> RosterCounts:
         # The population the BOARD DRAWS, at each tree's resolved level -- not
         # "every non-container row". A combined container IS one space a
-        # family can hold, at the whole-house `sleeps` somebody measured, and
-        # its rooms are not separately lettable, so counting them instead
-        # reports more spaces than the board draws cards. That is the exact
-        # drift `_is_planning_inventory` exists to prevent, one field over.
+        # family can hold, and its rooms are not separately lettable, so
+        # counting them instead reports more spaces than the board draws
+        # cards. That is the exact drift `_is_planning_inventory` exists to
+        # prevent, one field over.
         #
         # A NON-combined container is still excluded, for the original reason:
         # it carries a whole-building aggregate its rooms already report, and
         # counting both double-counts beds (408 vs a true 389). What changed is
         # that "container" stopped being the same question as "not drawn".
         #
-        # The bed figure can move OPPOSITE the space figure, which is correct:
-        # a container's `sleeps` is independently measured and NOT the sum of
-        # its rooms (one house records 7 against rooms summing to 6). Fewer,
-        # larger spaces.
+        # Owner ruling, kindred#2041: a container's `sleeps` is a DELTA over
+        # its rooms -- the beds in space belonging to no single room, e.g. a
+        # futon on a landing -- never a whole-house total. A drawn combined
+        # container's true capacity is its own `sleeps` PLUS every LEAF
+        # beneath it, walked past any intermediate container the same way
+        # `_BathroomIndex.leaf_codes_under` already walks the same
+        # `parent_code` relation for bathrooms. An unset container reads as a
+        # delta of 0 -- real common space nobody measured, correctly zero and
+        # never "unknown" -- so only a genuinely unmeasured LEAF can still
+        # leave a total unknown.
         drawn = [u for u in drawn_units(units) if u.is_active]
         bookable = [u for u in drawn if _is_planning_inventory(u)]
         staff_housing = [u for u in drawn if not _is_planning_inventory(u)]
         available = [u for u in bookable if u.is_family_available]
         assigned = sum(1 for p in parties if p.unit_code or p.unit_name)
+
+        tree = _BathroomIndex.build(units)
+
+        def _effective_sleeps(unit: LodgingUnitSummary) -> int | None:
+            if not unit.is_container:
+                return unit.sleeps
+            leaf_total = sum(
+                leaf.sleeps
+                for code in tree.leaf_codes_under(unit.code)
+                if (leaf := tree.units_by_code.get(code)) is not None and leaf.sleeps is not None
+            )
+            return (unit.sleeps or 0) + leaf_total
+
+        effective_sleeps = {u.unit_id: _effective_sleeps(u) for u in bookable}
+
         return RosterCounts(
             parties_total=len(parties),
             parties_assigned=assigned,
@@ -1217,8 +1238,8 @@ class LodgingRosterService:
             units_family_available=len(available),
             units_reserved=len(bookable) - len(available),
             units_staff_housing=len(staff_housing),
-            beds_family_available=sum(u.sleeps for u in available if u.sleeps is not None),
-            units_capacity_unknown=sum(1 for u in bookable if u.sleeps is None),
+            beds_family_available=sum(s for u in available if (s := effective_sleeps[u.unit_id]) is not None),
+            units_capacity_unknown=sum(1 for u in bookable if effective_sleeps[u.unit_id] is None),
             # Over `bookable`, NOT a separate PocketBase count. The old query
             # filtered is_confirmed/is_container/is_active with no inventory
             # predicate, so once units_total dropped staff housing the two

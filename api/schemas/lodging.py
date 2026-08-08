@@ -119,9 +119,11 @@ class LodgingUnitSummary(BaseModel):
     # A building/grouping row. Present in the payload so the map and board
     # can draw the building. Whether it COUNTS is no longer this flag's
     # answer: a container resolved combined (see `is_combined`) is the one
-    # space the board draws, at its own measured `sleeps`, and its rooms
-    # count for nothing. `drawn_units` is the one predicate for that, and
-    # `_build_counts` reads it -- never filter on `is_container` alone.
+    # space the board draws. Its own `sleeps` is a DELTA over its rooms, not
+    # a whole-house total (owner ruling, kindred#2041) -- the drawn total is
+    # its own `sleeps` PLUS every leaf beneath it. `drawn_units` is the one
+    # predicate for which units get a card, and `_build_counts` reads it --
+    # never filter on `is_container` alone.
     is_container: bool = False
     # The parent container's CODE, not its record id — the board keys on code,
     # and code is the cross-year identity thread. "" means no parent.
