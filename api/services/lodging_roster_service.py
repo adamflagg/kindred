@@ -456,7 +456,12 @@ def _resolve_party_bathroom(unit_codes: list[str], index: _BathroomIndex) -> str
     for code in unit_codes:
         unit = index.units_by_code.get(code)
         if unit is None:
-            continue
+            # A code the registry cannot resolve makes the WHOLE placement
+            # unknown, rather than scoring from whatever else resolved.
+            # Continuing here would answer "private"/"shared" on the strength
+            # of a placement we can only partly see -- the same claim the
+            # empty-`unit_codes` guard above already refuses to make.
+            return "unknown"
         if unit.is_container:
             leaves = index.leaf_codes_under(code)
             occupied |= leaves

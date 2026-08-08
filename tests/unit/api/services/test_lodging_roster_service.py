@@ -1148,6 +1148,45 @@ class TestPartyEffectiveBathroom:
         assert {u.bathroom for u in roster.units} == {"shared"}
 
     @pytest.mark.asyncio
+    async def test_a_placement_naming_an_unindexed_code_is_unknown_not_scored_on_the_rest(self) -> None:
+        """A code the index cannot resolve makes the WHOLE placement unknown.
+
+        Skipping the absent code and scoring from whatever is left asserts a
+        bathroom for a placement we cannot see all of: the party below spans
+        two units, only one of which is in the registry, and that one is
+        private. Answering "private" would claim exclusivity on the strength
+        of half the evidence. `unknown` is the same answer the function
+        already gives for an empty `unit_codes` -- absence of evidence, not
+        evidence of a private bathroom.
+        """
+        repo = _repo(
+            fetch_session=FAMILY_SESSION,
+            fetch_households={"hh_1": _household()},
+            fetch_attendees_for_session=[_child()],
+            # Only u1 is in the registry. u2's code is named by the placement
+            # but resolves to nothing -- a stale or not-yet-rolled-forward row.
+            fetch_units=[
+                _unit("u1", "gt-tioga-1", "Tioga 1", sleeps=4, bathroom="private", bathroom_group=""),
+            ],
+            fetch_assignments=[
+                _rec(
+                    household_cm_id=2000001,
+                    person_cm_id=0,
+                    units=["u1", "u2"],
+                    expand={
+                        "units": [
+                            _rec(id="u1", code="gt-tioga-1", name="Tioga 1"),
+                            _rec(id="u2", code="gt-absent-9", name="Absent 9"),
+                        ]
+                    },
+                ),
+            ],
+        )
+        roster = await LodgingRosterService(repo).build_roster(2026, 1000001)
+
+        assert roster.parties[0].effective_bathroom == "unknown"
+
+    @pytest.mark.asyncio
     async def test_partial_group_merge_stays_shared(self) -> None:
         """merge{Upstairs 1, Upstairs 2} leaves a third member of the group
         out, so the party does not clear the bar -- same fixture shape as
