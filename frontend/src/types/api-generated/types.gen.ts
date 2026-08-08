@@ -4781,7 +4781,11 @@ export type RetentionTrendsResponse = {
 /**
  * RosterCounts
  *
- * Honest counts. Every capacity figure excludes container rows.
+ * Honest counts, at the level the board DRAWS -- see `drawn_units`. A
+ * split container's own row is excluded and its rooms count instead; a
+ * combined container's row counts ONCE, for a `sleeps` that now folds in
+ * every leaf beneath it (kindred#2041) -- never a container and its own
+ * rooms both.
  */
 export type RosterCounts = {
   /**
