@@ -143,6 +143,22 @@ type registryAlias struct {
 	ValidToYear   *int `json:"valid_to_year"`
 }
 
+// ErrRegistryRowCheck tags the one SeedRegistry failure that means "the
+// loader could not tell whether there is anything at risk" rather than "the
+// registry is broken": RegistryHasRows itself erroring out.
+//
+// main.go's boot gate keys on this to split SeedRegistry's two error sources
+// into opposite boot treatments (issue #2141). A row-check failure fails OPEN
+// — warn and boot — because taking the app down over a failure to READ the
+// state compounds one problem with a second, less legible one, and it is the
+// same call the season branch already makes. Every other error means a
+// registry file that is present and genuinely unloadable, which fails the
+// boot rather than coming up with an empty registry behind a warn line.
+//
+// A sentinel rather than error-string matching so the split survives any
+// rewording of the messages below.
+var ErrRegistryRowCheck = errors.New("lodging registry row check failed")
+
 // SeedRegistry loads the private lodging registry into the database for one
 // season.
 //
@@ -173,9 +189,9 @@ type registryAlias struct {
 // season that already exists is apply_lodging_inventory.py --apply --year N,
 // run by hand.
 func SeedRegistry(app core.App, year int) error {
-	hasRows, err := registryHasAnyRows(app)
+	hasRows, err := RegistryHasRows(app)
 	if err != nil {
-		return err
+		return fmt.Errorf("%w: %w", ErrRegistryRowCheck, err)
 	}
 	if hasRows {
 		slog.Info("lodging registry already has rows for another season; "+
@@ -184,16 +200,7 @@ func SeedRegistry(app core.App, year int) error {
 		return nil
 	}
 
-	candidates := make([]string, 0, len(registryAbsoluteRoots)+2)
-	for _, root := range registryAbsoluteRoots {
-		candidates = append(candidates, filepath.Join(root, registryFileName)) // Docker
-	}
-	candidates = append(candidates,
-		filepath.Join(registryBasePath, "config", registryFileName),       // from the repo root
-		filepath.Join(registryBasePath, "..", "config", registryFileName), // from pocketbase/
-	)
-
-	for _, path := range candidates {
+	for _, path := range registryCandidatePaths() {
 		if _, err := os.Stat(path); err != nil {
 			continue
 		}
@@ -203,6 +210,38 @@ func SeedRegistry(app core.App, year int) error {
 	slog.Info("lodging registry file not found; registry left as-is",
 		"looked_for", registryFileName)
 	return nil
+}
+
+// registryCandidatePaths lists every path SeedRegistry searches, in order.
+// Shared with RegistryFilePresent so the two never drift: SeedRegistry decides
+// whether to load, RegistryFilePresent decides whether an unreadable season
+// is a misconfiguration worth failing boot over (main.go, issue #2054).
+func registryCandidatePaths() []string {
+	candidates := make([]string, 0, len(registryAbsoluteRoots)+2)
+	for _, root := range registryAbsoluteRoots {
+		candidates = append(candidates, filepath.Join(root, registryFileName)) // Docker
+	}
+	candidates = append(candidates,
+		filepath.Join(registryBasePath, "config", registryFileName),       // from the repo root
+		filepath.Join(registryBasePath, "..", "config", registryFileName), // from pocketbase/
+	)
+	return candidates
+}
+
+// RegistryFilePresent reports whether a private lodging registry file exists
+// on any of the candidate paths SeedRegistry searches. It is presence-only —
+// it does not read, parse, or validate the file — so main.go can tell "no
+// private config, nothing to load" (must still boot) apart from "config is
+// here and unreadable without a season" (a misconfigured deployment that
+// would otherwise silently come up with an empty registry behind a single
+// warn-level log line). See issue #2054.
+func RegistryFilePresent() bool {
+	for _, path := range registryCandidatePaths() {
+		if _, err := os.Stat(path); err == nil {
+			return true
+		}
+	}
+	return false
 }
 
 // seedRegistryFromFile is CREATE-IF-ABSENT, not a full upsert.
@@ -240,7 +279,7 @@ func seedRegistryFromFile(app core.App, path string, year int) error {
 	// Create-if-absent used to make this self-healing: a seed that died halfway
 	// was finished by the next boot, which created whatever was still missing.
 	// SeedRegistry's any-season check ended that. The areas a failed run
-	// committed are enough to make registryHasAnyRows report true forever, so
+	// committed are enough to make RegistryHasRows report true forever, so
 	// every later boot logs "skipping" and the registry stays half-built with
 	// nothing anywhere reporting it.
 	//
@@ -609,12 +648,16 @@ func seedAliases(app core.App, aliases []registryAlias, year int) (added int, er
 	return added, nil
 }
 
-// registryHasAnyRows reports whether lodging_areas or lodging_units holds a
-// row for ANY season. SeedRegistry uses this to decide whether it is a
-// bootstrap or a no-op — a year-scoped check would miss the case this exists
-// to catch, which is a season flip landing on a registry another season
-// already populated.
-func registryHasAnyRows(app core.App) (bool, error) {
+// RegistryHasRows reports whether lodging_areas or lodging_units holds a row
+// for ANY season. SeedRegistry uses this to decide whether it is a bootstrap
+// or a no-op — a year-scoped check would miss the case this exists to catch,
+// which is a season flip landing on a registry another season already
+// populated.
+//
+// Exported so main.go's boot-decision gate (issue #2054, Half 2) can check
+// it too: a deployment whose database already has rows has nothing at risk
+// from an unresolvable season, since SeedRegistry would no-op regardless.
+func RegistryHasRows(app core.App) (bool, error) {
 	for _, collection := range []string{"lodging_areas", "lodging_units"} {
 		recs, err := app.FindRecordsByFilter(collection, "", "", 1, 0)
 		if err != nil {
