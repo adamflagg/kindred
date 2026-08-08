@@ -153,6 +153,28 @@ type lodgingOrphanCandidate struct {
 // skipped (grain-less); a session with zero reliably-enrolled parties of that
 // grain is skipped entirely, mirroring findEnrollmentOrphans' own per-session
 // guard.
+// lodgingCandidatesFromRecords projects placed lodging_assignments /
+// lodging_assignments_draft rows into candidates for
+// findLodgingEnrollmentOrphans, skipping rows already unplaced (nothing to
+// sweep). Shared by the draft-sweep and prod-audit halves of
+// reconcileLodgingOrphans below, which otherwise duplicate this loop verbatim
+// except for the by-id index the draft half needs to write its updates back.
+func lodgingCandidatesFromRecords(records []*core.Record) (map[string]*core.Record, []lodgingOrphanCandidate) {
+	byID := make(map[string]*core.Record, len(records))
+	candidates := make([]lodgingOrphanCandidate, 0, len(records))
+	for _, r := range records {
+		if len(r.GetStringSlice("units")) == 0 {
+			continue // already unplaced -- nothing to sweep
+		}
+		byID[r.Id] = r
+		candidates = append(candidates, lodgingOrphanCandidate{
+			RecordID: r.Id, SessionID: r.GetString("session"),
+			HouseholdCMID: r.GetInt("household_cm_id"), PersonCMID: r.GetInt("person_cm_id"),
+		})
+	}
+	return byID, candidates
+}
+
 func findLodgingEnrollmentOrphans(
 	householdIndex, personIndex map[int][]SessionWindow,
 	candidates []lodgingOrphanCandidate,
@@ -414,18 +436,7 @@ func reconcileLodgingOrphans(app core.App, year int, stats *Stats) error {
 		stats.Errors++
 		return fmt.Errorf("stranded_assignment_cleanup: query lodging_assignments_draft: %w", err)
 	}
-	draftByID := make(map[string]*core.Record, len(drafts))
-	draftCandidates := make([]lodgingOrphanCandidate, 0, len(drafts))
-	for _, d := range drafts {
-		if len(d.GetStringSlice("units")) == 0 {
-			continue // already unplaced -- nothing to sweep
-		}
-		draftByID[d.Id] = d
-		draftCandidates = append(draftCandidates, lodgingOrphanCandidate{
-			RecordID: d.Id, SessionID: d.GetString("session"),
-			HouseholdCMID: d.GetInt("household_cm_id"), PersonCMID: d.GetInt("person_cm_id"),
-		})
-	}
+	draftByID, draftCandidates := lodgingCandidatesFromRecords(drafts)
 	orphanDrafts := findLodgingEnrollmentOrphans(householdIndex, personIndex, draftCandidates)
 
 	writes := 0
@@ -450,16 +461,7 @@ func reconcileLodgingOrphans(app core.App, year int, stats *Stats) error {
 		stats.Errors++
 		slog.Error("stranded_assignment_cleanup: query lodging_assignments", "error", err)
 	} else {
-		prodCandidates := make([]lodgingOrphanCandidate, 0, len(prod))
-		for _, p := range prod {
-			if len(p.GetStringSlice("units")) == 0 {
-				continue
-			}
-			prodCandidates = append(prodCandidates, lodgingOrphanCandidate{
-				RecordID: p.Id, SessionID: p.GetString("session"),
-				HouseholdCMID: p.GetInt("household_cm_id"), PersonCMID: p.GetInt("person_cm_id"),
-			})
-		}
+		_, prodCandidates := lodgingCandidatesFromRecords(prod)
 		orphanProd := findLodgingEnrollmentOrphans(householdIndex, personIndex, prodCandidates)
 		stats.LodgingProdAuditWarnings = len(orphanProd)
 		if len(orphanProd) > 0 {

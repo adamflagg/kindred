@@ -18,6 +18,12 @@ const serviceNameLodgingAssignments = "lodging_assignments"
 // distinguish them from staff placements.
 const sourceCampMinderSync = "campminder_sync"
 
+// sourceFieldOrphanSweep labels a lodging_assignment_history row written by
+// deleteLodgingOrphans, so a hard delete driven by cancelled enrolment reads
+// distinctly in the audit trail from a row driven by one of the CampMinder
+// field names (fieldNameFamilyCampCabin / fieldNameReportableFamilyCampCabin).
+const sourceFieldOrphanSweep = "orphan_sweep"
+
 // LodgingAssignmentsSync derives lodging_assignments from the two CampMinder
 // cabin custom fields.
 //
@@ -157,8 +163,31 @@ func (s *LodgingAssignmentsSync) Sync(ctx context.Context) error {
 	// CampMinder never clears the source custom-field value on cancellation, so
 	// the ingest above never revisits an existing row once its Candidates go
 	// empty; this is the only pass that does.
-	if delErr := s.deleteLodgingOrphans(year); delErr != nil {
-		return delErr
+	//
+	// GATED to the season this deployment is actively configured for
+	// (CAMPMINDER_SEASON_ID), never merely to whatever `year` this particular
+	// call carries. handleLodgingAssignmentsSync's ?year= query param and the
+	// orchestrator's historical re-registration (opts.Year) both drive this
+	// Sync() with an arbitrary year, and s.householdSessionIndex /
+	// s.personSessionIndex above are built from the LOCAL attendees table for
+	// THAT year, not from CampMinder. Before this guard, a stale or partial
+	// local snapshot for a season that already happened read as "nobody is
+	// enrolled", and the sweep hard-deleted real historical placements with no
+	// way back. Every year outside the active season keeps the pre-#2028
+	// create/update-only behavior that was safe before this pass existed.
+	// deleteLodgingOrphans repeats the SyncSuccessful half of this guard
+	// itself, matching the idiom every other derived sync in this package
+	// uses before its own orphan pass (e.g. FamilyCampDerivedSync.
+	// deleteOrphanedAdults, NormalizeGeographicSync, StaffSkillsSync) -- so the
+	// check travels with the delete even if this call site is ever moved.
+	if active := s.activeSeasonYear(); year != active {
+		slog.Info("lodging_assignments_sync: skipping orphan sweep -- year is not the actively configured season",
+			"year", year, "configured_season", active)
+	} else {
+		s.SyncSuccessful = true
+		if delErr := s.deleteLodgingOrphans(year, now); delErr != nil {
+			return delErr
+		}
 	}
 
 	priorCounts, err := s.valueCountsByCMID(year-1, fieldTargets)
@@ -823,18 +852,50 @@ func (s *LodgingAssignmentsSync) partySize(in *ingestContext, sessionID string) 
 	return enrolled + adultCount
 }
 
+// activeSeasonYear resolves CAMPMINDER_SEASON_ID -- the year this deployment
+// is actively maintaining right now, independent of s.Year. deleteLodgingOrphans
+// must run for THAT year alone; any other caller (an explicit ?year= sync, a
+// historical re-registration) is asking this ingest to compute placements for
+// a year it is not currently responsible for, and must get create/update only.
+// A resolution failure fails closed: 0 can never equal a validated 2017-2050
+// year (Sync already rejected anything outside that range), so an
+// unset/invalid CAMPMINDER_SEASON_ID blocks the sweep rather than accidentally
+// allowing it.
+func (s *LodgingAssignmentsSync) activeSeasonYear() int {
+	active, err := ParseSeasonYear()
+	if err != nil {
+		return 0
+	}
+	return active
+}
+
 // deleteLodgingOrphans removes lodging_assignments rows for a party no longer
 // actively enrolled in the session the row names -- #2028's mirror-table half.
 //
-// Driven by absence from BuildHouseholdSessionIndex / BuildPersonSessionIndex
-// -- specifically s.householdSessionIndex / s.personSessionIndex, the SAME
-// indexes syncHouseholdGrain / syncPersonGrain just built above, not
-// re-derived -- exactly as bunk_assignments.deleteOrphans() is driven by
-// absence from its own CampMinder pull. A household that cancels after being
-// placed keeps its cabin value in household_custom_values (CampMinder does not
-// clear it), so ingestValue's Candidates go empty and the row is never
-// revisited by the write path; this pass is the only thing that ever will
-// revisit it.
+// Callers: Sync()'s year gate above is the only call site, and it never calls
+// this function for a year other than the active season. SyncSuccessful is
+// checked again here regardless, matching the shared idiom every other
+// derived sync in this package uses before its own orphan pass
+// (BaseSyncService.DeleteOrphans; FamilyCampDerivedSync.deleteOrphanedAdults;
+// NormalizeGeographicSync; StaffSkillsSync) -- deletion only ever runs once the
+// read it is trusting has actually completed, and the check travels with the
+// delete rather than living only at one call site.
+//
+// Orphan detection reuses findLodgingEnrollmentOrphans (stranded_assignment_
+// cleanup.go) -- the SAME predicate stranded_assignment_cleanup's production
+// audit runs against lodging_assignments -- instead of a hand-rolled copy, so
+// the audit log and the actual deletion can never silently disagree about
+// which rows are orphaned. That function is driven by absence from
+// s.householdSessionIndex / s.personSessionIndex, the SAME indexes
+// syncHouseholdGrain / syncPersonGrain just built above, not re-derived --
+// exactly as bunk_assignments.deleteOrphans() is driven by absence from its own
+// CampMinder pull. A household that cancels after being placed keeps its cabin
+// value in household_custom_values (CampMinder does not clear it), so
+// ingestValue's Candidates go empty and the row is never revisited by the
+// write path; this pass is the only thing that ever will revisit it. The same
+// function also carries the per-session reliability guard: a session with zero
+// reliably-enrolled parties of a grain is left untouched, so an attendee-sync
+// hiccup can't read as "everyone cancelled" and empty the whole session.
 //
 // staff_touched is NOT a guard here, unlike upsertAssignment's write-path
 // skip: that skip protects a staff move from being overwritten by a
@@ -842,46 +903,66 @@ func (s *LodgingAssignmentsSync) partySize(in *ingestContext, sessionID string) 
 // attending regardless of who last touched its placement -- the same ruling
 // #2028 makes for the draft-null pass in stranded_assignment_cleanup.go.
 //
-// Per-session guard: a session with zero reliably-enrolled parties of a grain
-// is left untouched -- an attendee-sync hiccup must not read as "everyone
-// cancelled" and empty the whole session's placements.
-func (s *LodgingAssignmentsSync) deleteLodgingOrphans(year int) error {
+// Every other way a lodging_assignments row changes is recorded in
+// lodging_assignment_history (writeHistory, called from upsertAssignment and
+// recordHistory above); a hard delete with no history row would be
+// unrecoverable AND untraceable, so this writes one too -- OldUnit the
+// placement's label just before removal, NewUnit empty, SourceField
+// sourceFieldOrphanSweep so it reads distinctly from a CampMinder field name.
+func (s *LodgingAssignmentsSync) deleteLodgingOrphans(year int, now time.Time) error {
+	if !s.SyncSuccessful {
+		slog.Info("lodging_assignments_sync: skipping orphan sweep -- sync not marked successful")
+		return nil
+	}
+
 	rows, err := findAllRecords(s.App, "lodging_assignments", fmt.Sprintf("year = %d", year))
 	if err != nil {
 		return fmt.Errorf("querying lodging_assignments for orphan sweep: %w", err)
 	}
 
-	householdReliable := reliableEnrolledSessions(s.householdSessionIndex)
-	personReliable := reliableEnrolledSessions(s.personSessionIndex)
-
+	byID := make(map[string]*core.Record, len(rows))
+	candidates := make([]lodgingOrphanCandidate, 0, len(rows))
 	for _, rec := range rows {
-		sessionID := rec.GetString("session")
 		hhCMID := rec.GetInt("household_cm_id")
 		personCMID := rec.GetInt("person_cm_id")
-
-		var stillEnrolled, reliable bool
-		switch {
-		case hhCMID > 0:
-			reliable = householdReliable[sessionID]
-			stillEnrolled = sessionIndexHasWindow(s.householdSessionIndex[hhCMID], sessionID)
-		case personCMID > 0:
-			reliable = personReliable[sessionID]
-			stillEnrolled = sessionIndexHasWindow(s.personSessionIndex[personCMID], sessionID)
-		default:
+		if hhCMID == 0 && personCMID == 0 {
 			continue // grain-less row -- not this pass's concern
 		}
+		byID[rec.Id] = rec
+		candidates = append(candidates, lodgingOrphanCandidate{
+			RecordID: rec.Id, SessionID: rec.GetString("session"),
+			HouseholdCMID: hhCMID, PersonCMID: personCMID,
+		})
+	}
 
-		if !reliable || stillEnrolled {
-			continue
-		}
+	orphans := findLodgingEnrollmentOrphans(s.householdSessionIndex, s.personSessionIndex, candidates)
+
+	for _, c := range orphans {
+		rec := byID[c.RecordID]
+		// Snapshot before Delete for the same reason upsertAssignment snapshots
+		// before its Sets: nothing guarantees a field read after the mutating
+		// call still reflects the pre-delete row.
+		oldLabel := s.labelOf(rec)
+		sessionCMID := rec.GetInt("session_cm_id")
 
 		if delErr := s.App.Delete(rec); delErr != nil {
 			s.Stats.Errors++
 			slog.Error("lodging_assignments_sync: deleting cancelled-party mirror row",
-				"id", rec.Id, "household_cm_id", hhCMID, "person_cm_id", personCMID, "error", delErr)
+				"id", rec.Id, "household_cm_id", c.HouseholdCMID, "person_cm_id", c.PersonCMID, "error", delErr)
 			continue
 		}
 		s.Stats.Deleted++
+
+		if histErr := s.writeHistory(&historyInput{
+			HouseholdCMID: c.HouseholdCMID, PersonCMID: c.PersonCMID,
+			SessionID: c.SessionID, SessionCMID: sessionCMID, Year: year,
+			OldUnit: oldLabel, NewUnit: "",
+			SourceField: sourceFieldOrphanSweep, Now: now,
+		}); histErr != nil {
+			s.Stats.Errors++
+			slog.Error("lodging_assignments_sync: recording orphan-sweep history",
+				"id", c.RecordID, "error", histErr)
+		}
 	}
 	return nil
 }
