@@ -22,6 +22,7 @@ import type {
 } from '../../types/lodging'
 import { displayCampMinderAge } from '../../utils/age'
 import { AccessibilityFlagList } from './AccessibilityFlagList'
+import { partyIdentityLabel } from './householdIdentity'
 import type { AttentionLevel } from './rosterAttention'
 import { partyAttention } from './rosterAttention'
 import { ShareRequestPanel } from './ShareRequestPanel'
@@ -122,7 +123,17 @@ export function HouseholdRosterRow({ party, showRequests, unit, onOpen }: Househ
           className="hover:bg-muted/30 focus-visible:ring-ring block w-full cursor-pointer py-3 pr-4 pl-3 text-left transition-colors focus-visible:ring-2 focus-visible:outline-none"
         >
           <span className="flex flex-wrap items-center gap-x-2 gap-y-1">
-            <span className="text-foreground text-sm font-semibold">{party.display_name}</span>
+            {/* kindred#2084: this used to be `party.display_name` -- CampMinder's
+                mailing_title salutation, which disagreed with the real
+                attending-adult list on 26.7% of 2026's rostered households.
+                Reuses FamilyCard's own construction (`householdIdentity.ts`)
+                instead, so staff never learn two identities for one household. */}
+            <span
+              data-testid="household-row-name"
+              className="text-foreground text-sm font-semibold"
+            >
+              {partyIdentityLabel(party)}
+            </span>
             {party.is_returning === true && (
               <span
                 title="Stayed with us before"

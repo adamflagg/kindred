@@ -29,6 +29,7 @@ import type {
 } from '../../types/lodging'
 import { displayCampMinderAge } from '../../utils/age'
 import { AccessibilityFlagList } from './AccessibilityFlagList'
+import { partyIdentityLabel } from './householdIdentity'
 import { MedicalNarrative } from './MedicalNarrative'
 import { partyKey } from './partyKey'
 import { ATTENTION_LABEL, partyAttention } from './rosterAttention'
@@ -132,6 +133,11 @@ export function FamilyDetailsPanel({
   // omitting the field. `null` says "nothing to look up", so the medical
   // narrative is not fetched where it could only ever 404.
   const householdCmId = isHousehold ? (party.household_cm_id ?? 0) : 0
+  // kindred#2084: the header used to be `party.display_name` -- CampMinder's
+  // mailing_title salutation, which disagreed with the real attending-adult
+  // list on 26.7% of 2026's rostered households. This reuses FamilyCard's
+  // own construction (`householdIdentity.ts`) instead.
+  const identityLabel = partyIdentityLabel(party)
   const attention = partyAttention(party, unit)
   const isPlaced = (party.unit_name ?? '').length > 0
   const partySize = party.party_size ?? adults.length + children.length
@@ -272,7 +278,7 @@ export function FamilyDetailsPanel({
   const header = (
     <div className="from-forest-700 via-forest-800 to-forest-900 flex flex-shrink-0 items-start gap-3 bg-gradient-to-br p-4 text-white">
       <div className="min-w-0 flex-1">
-        <h2 className="truncate text-lg font-bold">{party.display_name}</h2>
+        <h2 className="truncate text-lg font-bold">{identityLabel}</h2>
         <p className="text-forest-100 mt-0.5 text-xs">
           {isHousehold ? 'Household' : 'Adult weekend guest'}
         </p>
@@ -301,7 +307,7 @@ export function FamilyDetailsPanel({
         data-panel="family-details"
         data-testid="family-details-panel"
         role="dialog"
-        aria-label={`${String(party.display_name)} details`}
+        aria-label={`${identityLabel} details`}
         className={`bg-card shadow-lodge-xl border-border fixed top-0 right-0 bottom-0 z-[60] flex w-[26rem] max-w-full flex-col border-l ${
           exiting ? 'animate-slide-out-right' : 'animate-slide-in-right'
         }`}

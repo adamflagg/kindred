@@ -47,6 +47,7 @@ import { Fragment } from 'react'
 import type { LodgingUnitRow, PartyChildRow, RosterPartyRow } from '../../types/lodging'
 import { displayCampMinderAge, displayTruncatedAge } from '../../utils/age'
 import { partySize, SHARE_WORDING, shareWordingChip } from './boardLayout'
+import { attendingAdults as computeAttendingAdults } from './householdIdentity'
 import { partyKey } from './partyKey'
 import { ATTENTION_LABEL, partyAttention } from './rosterAttention'
 
@@ -166,15 +167,12 @@ function FamilyCardBody({
   const flags = party.flags ?? {}
   const children = party.children ?? []
   const isHousehold = party.grain === 'household'
-  // family_camp_adults stores adult slots 1-5 as separate rows per household,
-  // and a slot with no name on file is not an attending adult -- CampMinder
-  // leaves it blank rather than omitting the row. Filtered here, at render,
-  // rather than upstream, so "not a fixed five" stays true of what's shown.
-  // Only the household branch reads this, so it is skipped for a person-grain
-  // card rather than computed and discarded on every render.
-  const attendingAdults = isHousehold
-    ? (party.adults ?? []).filter((adult) => Boolean(adult.display_name?.trim()))
-    : []
+  // The filter itself -- family_camp_adults stores adult slots 1-5 as
+  // separate rows per household, and a slot with no name on file is not an
+  // attending adult, CampMinder leaves it blank rather than omitting the
+  // row -- lives in `householdIdentity.ts`, shared with the four non-card
+  // surfaces that replaced the salutation with this same list (kindred#2084).
+  const attendingAdults = computeAttendingAdults(party)
   const attention = partyAttention(party, unit)
   const proximity = party.share?.proximity ?? []
   // `similar_ages` ACCOMPANIES `with`; it never replaces it. One chip covering
