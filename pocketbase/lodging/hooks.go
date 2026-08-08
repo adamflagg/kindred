@@ -97,11 +97,12 @@ type yearScopedRef struct {
 //     point AT it: lodging_availability, lodging_assignments,
 //     lodging_assignments_draft, lodging_slot_merges.
 //
-// What that does NOT close: lodging_units is ALSO a valid TARGET via
-// parent_unit (line 111 below), the identical shape to the lodging_areas
-// bullet above, but yearImmutableRefs carries no reverse entry for it -- see
-// that map's own doc comment for why, and kindred#2146 for the maintenance
-// hazard this un-mirrored entry is one instance of.
+// What that does NOT close: lodging_units is ALSO a valid TARGET via the
+// parent_unit entry below, the identical shape to the lodging_areas bullet
+// above, but yearImmutableRefs carries no reverse entry for it -- see that
+// map's own doc comment for why. It is the single allowlisted exception in
+// TestYearRefMapsAgreeOnEveryRelation, so it stays a stated scoping choice
+// rather than becoming a silent one (kindred#2146).
 //
 // Cascading the new year onto every dependent row on a parent's write would
 // be a materially bigger change than this guard makes anywhere else, so
@@ -130,10 +131,15 @@ var yearScopedRefs = map[string][]yearScopedRef{
 // real id (see countAssignments's own comment). The reverse mistake is not
 // silent the same way -- checked directly, a joined "unit.id ?= {:id}" against
 // a single relation still matches the dependent row correctly, so writing it
-// that way is merely non-idiomatic, not wrong. kindred#2146 tracks the
-// hand-typed-per-entry risk this comment describes, including mechanizing the
-// derivation instead of leaving it to be gotten right by hand at each entry
-// below.
+// that way is merely non-idiomatic, not wrong.
+//
+// Hand-typing per entry buys that correctness at the cost of the two maps
+// drifting apart unnoticed, so it is paid for by a test rather than by an
+// abstraction: TestYearRefMapsAgreeOnEveryRelation walks both maps and fails
+// the moment an entry in one has no counterpart in the other (kindred#2146).
+// The filter string itself is still on the author to get right -- the test
+// checks that an edge is declared from both ends, not that its filter uses
+// the arity-correct operator.
 type dependentRef struct {
 	collection string
 	filter     string
@@ -149,8 +155,10 @@ type dependentRef struct {
 // collections its own body names below. A child unit pointing at a
 // re-seasoned parent via parent_unit is the same shape of gap and is not
 // covered by this guard. It is also the one entry in yearScopedRefs with no
-// hand-typed reverse here -- kindred#2146 tracks that as a maintenance
-// hazard in this map's own shape, not just as a scoping choice.
+// hand-typed reverse here, and therefore the sole allowlisted exception in
+// TestYearRefMapsAgreeOnEveryRelation (kindred#2146) -- which also fails if
+// the exception is ever mirrored or dropped without the allowlist following,
+// so this paragraph cannot quietly go out of date.
 var yearImmutableRefs = map[string][]dependentRef{
 	collectionAreas: {
 		{collection: collectionUnits, filter: "area = {:id}"},

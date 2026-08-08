@@ -1761,3 +1761,118 @@ func TestGuardYearImmutableAllowsAYearChangeWithNoDependents(t *testing.T) {
 		t.Fatalf("refused a year change on a unit nothing depends on: %v", err)
 	}
 }
+
+// relationPair is one (dependent -> target) edge, the unit of correspondence
+// between the two maps. yearScopedRefs states the edge from the dependent's
+// side (a key plus a ref.target); yearImmutableRefs states the same edge from
+// the target's side (a key plus a dependentRef.collection). The pair is what
+// both spellings have to agree on.
+type relationPair struct {
+	dependent string
+	target    string
+}
+
+// unmirroredPairs are the (dependent -> target) edges that exist in
+// yearScopedRefs and are deliberately NOT mirrored in yearImmutableRefs. Every
+// entry here needs a reason recorded next to it, and both maps' doc comments
+// must already say the same thing -- an allowlist that outgrows its comments
+// is how the drift this test exists to catch gets waved through instead.
+var unmirroredPairs = map[relationPair]string{
+	// kindred#2067 scoped guardYearImmutable to the four collections its body
+	// named, and lodging_units.parent_unit was not one of them: a child unit
+	// pointing at a re-seasoned parent is the same shape of gap, stated as
+	// residual risk in both maps' doc comments rather than closed. Deleting
+	// this line the day parent_unit gains a reverse entry is the point --
+	// TestYearRefMapsAgreeOnEveryRelation fails on a stale allowlist too.
+	{dependent: collectionUnits, target: collectionUnits}: "kindred#2067 left parent_unit un-mirrored on purpose",
+}
+
+// TestYearRefMapsAgreeOnEveryRelation is the symmetry check kindred#2146 asks
+// for. yearScopedRefs and yearImmutableRefs describe the same set of edges
+// from opposite ends and are hand-maintained in step with each other -- both
+// maps' doc comments explain why the reverse is hand-typed per entry rather
+// than derived (the `?=` join is only correct for a multi-valued relation and
+// is silently zero-matching in one direction), which leaves nothing but a test
+// to notice when someone adds to one map and forgets the other.
+//
+// The failure this catches is silent by construction: a new year-scoped table
+// added to yearScopedRefs alone still gets its OWN writes checked, so its
+// tests pass, while guardYearImmutable quietly stops covering a parent's year
+// edit against it -- exactly the bug kindred#2067 closed, reopened by
+// omission.
+//
+// It walks both directions. Forward alone would miss a yearImmutableRefs entry
+// naming a dependent that no longer references the target at all, which is the
+// same drift pointing the other way.
+func TestYearRefMapsAgreeOnEveryRelation(t *testing.T) {
+	seenExceptions := make(map[relationPair]bool, len(unmirroredPairs))
+
+	// Forward: everything yearScopedRefs says a row points AT must appear in
+	// yearImmutableRefs as something that points back.
+	for dependent, refs := range yearScopedRefs {
+		for _, ref := range refs {
+			pair := relationPair{dependent: dependent, target: ref.target}
+			mirrored := false
+			for _, dep := range yearImmutableRefs[ref.target] {
+				if dep.collection == dependent {
+					mirrored = true
+					break
+				}
+			}
+			if _, allowed := unmirroredPairs[pair]; allowed {
+				seenExceptions[pair] = true
+				if mirrored {
+					t.Errorf(
+						"%s.%s -> %s is now mirrored in yearImmutableRefs but is still"+
+							" listed in unmirroredPairs; drop the allowlist entry and the"+
+							" doc comments that call it residual",
+						dependent, ref.field, ref.target,
+					)
+				}
+				continue
+			}
+			if !mirrored {
+				t.Errorf(
+					"yearScopedRefs says %s.%s references %s, but yearImmutableRefs[%s]"+
+						" carries no entry for %s -- guardYearImmutable will not refuse a"+
+						" %s year edit that strands it (kindred#2067)",
+					dependent, ref.field, ref.target, ref.target, dependent, ref.target,
+				)
+			}
+		}
+	}
+
+	// Reverse: everything yearImmutableRefs treats as a dependent must be a
+	// collection yearScopedRefs actually points at that target.
+	for target, deps := range yearImmutableRefs {
+		for _, dep := range deps {
+			mirrored := false
+			for _, ref := range yearScopedRefs[dep.collection] {
+				if ref.target == target {
+					mirrored = true
+					break
+				}
+			}
+			if !mirrored {
+				t.Errorf(
+					"yearImmutableRefs[%s] lists %s as a dependent, but"+
+						" yearScopedRefs[%s] declares no relation into %s -- one of the"+
+						" two maps is stale",
+					target, dep.collection, dep.collection, target,
+				)
+			}
+		}
+	}
+
+	// An allowlist entry for an edge yearScopedRefs no longer declares would
+	// silently excuse a future edge of the same shape, so it has to be an
+	// error rather than dead data.
+	for pair, why := range unmirroredPairs {
+		if !seenExceptions[pair] {
+			t.Errorf(
+				"unmirroredPairs still excuses %s -> %s (%s), but yearScopedRefs declares no such relation",
+				pair.dependent, pair.target, why,
+			)
+		}
+	}
+}
