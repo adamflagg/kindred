@@ -6,8 +6,9 @@
  * is pending — only the initial query-fetch (isLoading) should swap the list
  * for a "Loading scenarios..." placeholder, not isMutating.
  */
-import { describe, it, expect, vi } from 'vitest'
+import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import type { ReactNode } from 'react'
 import { Toaster } from 'react-hot-toast'
@@ -25,7 +26,17 @@ vi.mock('../hooks/useCurrentYear', async () => {
 
 // Render the modal without its child modals doing anything.
 vi.mock('./ScenarioEditModal', () => ({ default: () => null }))
-vi.mock('./NewScenarioModal', () => ({ default: () => null }))
+
+// Captures the props ScenarioManagementModal forwards to NewScenarioModal
+// (kindred#2021: emptyLabel is threaded through so a weekend caller can name
+// what it starts empty, matching WeekendScenarioPicker's own direct render).
+const newScenarioModalProps = vi.fn()
+vi.mock('./NewScenarioModal', () => ({
+  default: (props: Record<string, unknown>) => {
+    newScenarioModalProps(props)
+    return null
+  },
+}))
 
 import ScenarioManagementModal from './ScenarioManagementModal'
 import { ScenarioContext } from '../hooks/useScenario'
@@ -60,7 +71,7 @@ function makeContext(overrides: Partial<ScenarioContextType>): ScenarioContextTy
   }
 }
 
-function renderModal(ctx: ScenarioContextType) {
+function renderModal(ctx: ScenarioContextType, emptyLabel?: string) {
   const qc = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
   })
@@ -70,8 +81,19 @@ function renderModal(ctx: ScenarioContextType) {
       <Toaster />
     </QueryClientProvider>
   )
-  return render(<ScenarioManagementModal sessionId={1000001} onClose={vi.fn()} />, { wrapper })
+  return render(
+    <ScenarioManagementModal
+      sessionId={1000001}
+      onClose={vi.fn()}
+      {...(emptyLabel !== undefined && { emptyLabel })}
+    />,
+    { wrapper }
+  )
 }
+
+beforeEach(() => {
+  newScenarioModalProps.mockReset()
+})
 
 describe('ScenarioManagementModal loading state', () => {
   it('shows "Loading scenarios..." during initial query fetch', () => {
@@ -90,5 +112,42 @@ describe('ScenarioManagementModal loading state', () => {
 
     expect(screen.getByText('Dorm Cabin Plan A')).toBeInTheDocument()
     expect(screen.queryByText('Loading scenarios...')).not.toBeInTheDocument()
+  })
+})
+
+describe('the create-modal invocation (kindred#2021 parity)', () => {
+  it('forwards no emptyLabel by default, so NewScenarioModal falls back to its own ("empty bunks")', async () => {
+    renderModal(makeContext({}))
+    await userEvent.click(screen.getByRole('button', { name: /Create New Scenario/i }))
+
+    expect(newScenarioModalProps).toHaveBeenCalled()
+    const props = newScenarioModalProps.mock.calls.at(-1)?.[0] as Record<string, unknown>
+    expect(props['emptyLabel']).toBeUndefined()
+  })
+
+  it('forwards a caller-supplied emptyLabel — WeekendScenarioPicker uses this for weekend wording', async () => {
+    renderModal(makeContext({}), 'Start with an empty plan')
+    await userEvent.click(screen.getByRole('button', { name: /Create New Scenario/i }))
+
+    expect(newScenarioModalProps).toHaveBeenCalled()
+    const props = newScenarioModalProps.mock.calls.at(-1)?.[0] as Record<string, unknown>
+    expect(props['emptyLabel']).toBe('Start with an empty plan')
+  })
+})
+
+describe('clearing a scenario names its own session', () => {
+  it('passes sessionId as the third clearScenario argument, for weekend cache invalidation', async () => {
+    // POST /api/scenarios/{id}/clear resolves the program from the
+    // scenario's own `session` relation server-side, but the frontend cache
+    // key (queryKeys.weekendRoster) still needs the session cm id — this is
+    // where it comes from (ScenarioManagementModal already knows it; every
+    // scenario listed here belongs to this same session).
+    const clearScenario = vi.fn().mockResolvedValue(undefined)
+    renderModal(makeContext({ clearScenario }))
+
+    await userEvent.click(screen.getByRole('button', { name: /clear assignments/i }))
+    await userEvent.click(screen.getByRole('button', { name: /^clear$/i }))
+
+    expect(clearScenario).toHaveBeenCalledWith('scenario-1', 2026, 1000001)
   })
 })

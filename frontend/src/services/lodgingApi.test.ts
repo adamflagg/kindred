@@ -9,7 +9,6 @@
 import { describe, expect, it, vi } from 'vitest'
 
 import {
-  copyPlacementsFromMirror,
   fetchHouseholdMedical,
   fetchWeekendRoster,
   fetchWeekendSessions,
@@ -109,48 +108,6 @@ describe('fetchWeekendRoster', () => {
     await expect(fetchWeekendRoster(mockFetch, 2026, 9999999, '')).rejects.toThrow(
       /No family or adult session with CampMinder id 9999999/
     )
-  })
-})
-
-describe('copyPlacementsFromMirror', () => {
-  it('POSTs the weekend and scenario as a JSON body', async () => {
-    const mockFetch = vi.fn().mockResolvedValue(okResponse({ copied: 47, skipped: 2 }))
-
-    const result = await copyPlacementsFromMirror(mockFetch, {
-      year: 2026,
-      sessionCmId: 1000001,
-      scenario: 'scn7x2k9qw3mnbv',
-    })
-
-    const [url, options] = mockFetch.mock.calls[0] as [string, RequestInit]
-    expect(url).toBe('/api/lodging/placements/copy')
-    expect(options.method).toBe('POST')
-    expect(JSON.parse(options.body as string)).toEqual({
-      year: 2026,
-      session_cm_id: 1000001,
-      scenario: 'scn7x2k9qw3mnbv',
-    })
-    expect(result).toEqual({ copied: 47, skipped: 2 })
-  })
-
-  it('carries the status so a 409 can be told apart from a real failure', async () => {
-    // A 409 means the scenario already holds placements, which is a normal
-    // thing for staff to bump into by clicking seed twice. The UI has to say
-    // "already seeded" rather than "failed", and it cannot tell the two apart
-    // from the message alone.
-    const mockFetch = vi.fn().mockResolvedValue({
-      ok: false,
-      status: 409,
-      json: async () => ({ detail: 'Scenario already holds placements for this weekend' }),
-    })
-
-    await expect(
-      copyPlacementsFromMirror(mockFetch, {
-        year: 2026,
-        sessionCmId: 1000001,
-        scenario: 'scn7x2k9qw3mnbv',
-      })
-    ).rejects.toMatchObject({ status: 409 })
   })
 })
 

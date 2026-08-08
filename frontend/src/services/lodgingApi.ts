@@ -109,37 +109,6 @@ export async function fetchWeekendRoster(
   return response.json() as Promise<WeekendRoster>
 }
 
-/** What the seed wrote: rows created, and mirror rows it could not resolve. */
-export interface LodgingCopyResult {
-  copied: number
-  skipped: number
-}
-
-/**
- * Seed a scenario from the CampMinder mirror, for one weekend.
- *
- * A scenario REPLACES the mirror rather than overlaying it (kindred#1974), so
- * a freshly created one renders an empty board — every family gone. This is
- * the call that fills it.
- *
- * **409 is not a failure.** It means the scenario already holds placements for
- * this weekend, and the server refuses because a second copy would overwrite
- * what staff placed and re-place everything they unplaced. Callers branch on
- * `LodgingApiError.status`.
- */
-export async function copyPlacementsFromMirror(
-  fetchWithAuth: FetchWithAuth,
-  { year, sessionCmId, scenario }: { year: number; sessionCmId: number; scenario: string }
-): Promise<LodgingCopyResult> {
-  const response = await fetchWithAuth(`${API_BASE}/placements/copy`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ year, session_cm_id: sessionCmId, scenario }),
-  })
-  if (!response.ok) throw await toError(response, 'Failed to seed the scenario')
-  return response.json() as Promise<LodgingCopyResult>
-}
-
 /** One weekend, in one scenario — the shape every placement write shares. */
 export interface PlacementWriteBase {
   year: number

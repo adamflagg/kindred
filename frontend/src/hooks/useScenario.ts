@@ -42,7 +42,10 @@ export interface ScenarioContextType {
     updates: { name?: string; description?: string }
   ) => Promise<void>
   deleteScenario: (scenarioId: string) => Promise<void>
-  clearScenario: (scenarioId: string, year: number) => Promise<void>
+  /** `sessionCmId` is the scenario's own session — used for cache
+   * invalidation only; the server decides what to clear from the
+   * scenario's `session` relation, not from this. */
+  clearScenario: (scenarioId: string, year: number, sessionCmId: number) => Promise<void>
 }
 
 export const ScenarioContext = createContext<ScenarioContextType | undefined>(undefined)

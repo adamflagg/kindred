@@ -41,8 +41,6 @@ import {
   partyBeds,
   resolveWeekendRef,
   scenarioForWeekend,
-  SeedScenarioNotice,
-  shouldOfferSeed,
   shortWeekendName,
   sortWeekendsByDate,
   weekendRef,
@@ -289,7 +287,6 @@ export default function WeekendRosterPage() {
             {selectedCmId !== null && (
               <WeekendScenarioPicker
                 sessionCmId={selectedCmId}
-                year={currentYear}
                 canManage={canManageLodging}
                 scenario={scenario}
               />
@@ -357,19 +354,6 @@ export default function WeekendRosterPage() {
                 bedsNeeded={bedsNeeded}
                 spacesUnmeasured={spacesUnmeasured}
               />
-
-              {/* A scenario REPLACES the mirror (#1974), so a fresh one draws
-                  an empty board. Without this the page just looks broken. */}
-              {canManageLodging &&
-                selectedCmId !== null &&
-                shouldOfferSeed(scenario, roster.counts) && (
-                  <SeedScenarioNotice
-                    year={currentYear}
-                    sessionCmId={selectedCmId}
-                    scenario={scenario}
-                    partiesTotal={roster.counts?.parties_total ?? 0}
-                  />
-                )}
             </div>
 
             {/* THREE STATIC PANELS, not one panel whose id follows `view`.

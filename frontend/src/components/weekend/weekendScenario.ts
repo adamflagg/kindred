@@ -30,21 +30,3 @@ export function scenarioForWeekend(
   if (currentScenario === null || sessionCmId === null) return ''
   return currentScenario.session_cm_id === sessionCmId ? currentScenario.id : ''
 }
-
-/**
- * Whether to offer the CampMinder seed.
- *
- * Only inside a scenario (the mirror has nothing to seed INTO), only when the
- * plan holds no placements, and only when the weekend actually has families —
- * an empty board is the correct rendering of a weekend nobody registered for,
- * and seeding it would copy nothing while implying the board was broken.
- */
-export function shouldOfferSeed(
-  scenario: string,
-  counts: { parties_total?: number; parties_assigned?: number } | undefined
-): boolean {
-  if (scenario === '') return false
-  const total = counts?.parties_total ?? 0
-  const assigned = counts?.parties_assigned ?? 0
-  return total > 0 && assigned === 0
-}
