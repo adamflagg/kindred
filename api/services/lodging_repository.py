@@ -50,6 +50,7 @@ from api.constants.collections import (
     LODGING_UNITS,
 )
 from api.constants.filters import ACTIVE_ENROLLED_FILTER
+from api.dependencies import lodging_cache
 from api.utils.pb_filters import pb_escape
 from bunking.logging_config import get_logger
 
@@ -167,6 +168,14 @@ class LodgingRepository:
         year-scoped in 1500000141, so an unfiltered read returns every season
         at once — and since `code` is only unique per (code, year), the board's
         code-keyed index would collide two seasons onto one card.
+
+        Deliberately NOT cached, despite being year-scoped like the four in
+        lodging_cache.py (kindred#1963). `lodging_units` is written straight
+        to PocketBase from the browser by the admin panel
+        (createLodgingUnit / updateLodgingUnit / confirmLodgingUnits /
+        deactivateLodgingUnit in frontend/src/services/lodgingCrud.ts), never
+        through this API. A cache hit here would show a stale confirmation
+        state for the TTL, to buy back a read that is not the expensive one.
         """
         return await self._page(
             LODGING_UNITS,
@@ -309,12 +318,21 @@ class LodgingRepository:
         )
 
     async def fetch_households(self, year: int) -> dict[str, Any]:
-        """Households for a year, keyed by PocketBase record id."""
+        """Households for a year, keyed by PocketBase record id.
+
+        Cached (kindred#1963): year-scoped and sync-written only, so a hit is
+        safe for the cache's whole TTL. See api/services/lodging_cache.py.
+        """
+        cached = lodging_cache.get("fetch_households", year)
+        if cached is not None:
+            return cached  # type: ignore[no-any-return]
         rows = await self._page(
             HOUSEHOLDS,
             query_params={"filter": f"year = {year}", "sort": STABLE_SORT},
         )
-        return {row.id: row for row in rows}
+        result = {row.id: row for row in rows}
+        lodging_cache.set("fetch_households", year, result)
+        return result
 
     async def fetch_household_by_cm_id(self, year: int, household_cm_id: int) -> Any | None:
         """One household by CampMinder id, or None.
@@ -336,19 +354,40 @@ class LodgingRepository:
 
         This is the returning-family signal: households rows are per-year, so
         a cm_id present before `year` means the family has been here before.
+
+        The expensive one -- 20,256 rows on 2026 prod data for one boolean
+        per party (kindred#1966). #1966/#1976 already bought back the
+        round-trip cost (batch=PAGE_SIZE, 21 requests instead of 203) and
+        explicitly rejected narrowing the filter to the current year's
+        household ids: a 250-term OR clause returns HTTP 400 (undocumented,
+        fails closed), so there is no query-shape lever left to pull. Caching
+        is what is left, and it is safe here for the same reason as
+        fetch_households: year-scoped, sync-written only. See
+        api/services/lodging_cache.py.
         """
+        cached = lodging_cache.get("fetch_prior_household_cm_ids", year)
+        if cached is not None:
+            return cached  # type: ignore[no-any-return]
         rows = await self._page(
             HOUSEHOLDS,
             query_params={"filter": f"year < {year}", "fields": "cm_id", "sort": STABLE_SORT},
         )
-        return {int(getattr(row, "cm_id", 0)) for row in rows if getattr(row, "cm_id", 0)}
+        result = {int(getattr(row, "cm_id", 0)) for row in rows if getattr(row, "cm_id", 0)}
+        lodging_cache.set("fetch_prior_household_cm_ids", year, result)
+        return result
 
     async def fetch_family_camp_adults(self, year: int) -> dict[str, list[Any]]:
         """Accompanying adults grouped by household PB id, in adult_number order.
 
         CampMinder enrols only the children for family camp; the adults exist
         only as custom-field values scraped into this table.
+
+        Cached (kindred#1963): year-scoped and sync-written only. See
+        api/services/lodging_cache.py.
         """
+        cached = lodging_cache.get("fetch_family_camp_adults", year)
+        if cached is not None:
+            return cached  # type: ignore[no-any-return]
         rows = await self._page(
             FAMILY_CAMP_ADULTS,
             query_params={"filter": f"year = {year}", "sort": "adult_number"},
@@ -358,7 +397,9 @@ class LodgingRepository:
             grouped[str(getattr(row, "household", ""))].append(row)
         for adults in grouped.values():
             adults.sort(key=lambda a: int(getattr(a, "adult_number", 0) or 0))
-        return dict(grouped)
+        result = dict(grouped)
+        lodging_cache.set("fetch_family_camp_adults", year, result)
+        return result
 
     async def fetch_family_camp_registrations(self, year: int) -> dict[str, Any]:
         """Registration answers keyed by household PB id.
@@ -368,12 +409,20 @@ class LodgingRepository:
         four PHI-free housing flags. Read those columns; do not re-derive them
         from share_cabin_preference / shared_cabin_modes_raw, which are the raw
         profile values kept for provenance.
+
+        Cached (kindred#1963): year-scoped and sync-written only. See
+        api/services/lodging_cache.py.
         """
+        cached = lodging_cache.get("fetch_family_camp_registrations", year)
+        if cached is not None:
+            return cached  # type: ignore[no-any-return]
         rows = await self._page(
             FAMILY_CAMP_REGISTRATIONS,
             query_params={"filter": f"year = {year}", "sort": STABLE_SORT},
         )
-        return {str(getattr(row, "household", "")): row for row in rows}
+        result = {str(getattr(row, "household", "")): row for row in rows}
+        lodging_cache.set("fetch_family_camp_registrations", year, result)
+        return result
 
     async def fetch_family_camp_medical(self, year: int) -> dict[str, Any]:
         """PHI, keyed by household PB id. NO PRODUCTION CALLER.
@@ -440,6 +489,15 @@ class LodgingRepository:
         season's unmapped cabin names, disagreeing with the year-scoped
         Unresolved names queue underneath the same header. Same defect, same
         fix, as `listUnresolvedAliasIssues` in `lodgingCrud.ts`.
+
+        Deliberately NOT cached, despite being year-scoped like the four in
+        lodging_cache.py (kindred#1963). The ROW is ingest-written, but
+        `is_resolved` -- the column this filter tests -- is flipped straight
+        against PocketBase from the admin panel
+        (mapUnresolvedAlias / ignoreIngestIssue in
+        frontend/src/services/lodgingCrud.ts), never through this API. A
+        cache hit here would leave a cabin name staff just resolved sitting
+        in the "unmapped" count for the TTL.
         """
         return await self._count(
             LODGING_INGEST_ISSUES,

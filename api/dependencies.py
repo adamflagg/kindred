@@ -18,6 +18,7 @@ from pocketbase import PocketBase
 
 from .constants.collections import SUPERUSERS
 from .services.id_cache import IDLookupCache
+from .services.lodging_cache import LodgingYearCache
 from .services.metrics_cache import MetricsCache
 from .settings import get_settings
 
@@ -117,6 +118,27 @@ metrics_cache = MetricsCache(ttl_seconds=7200, max_size=200)
 
 
 # ========================================
+# Lodging Year-Scoped Read Cache
+# ========================================
+
+# Caches four of build_roster/build_summary's six year-scoped reads --
+# households, the prior-household set, family-camp adults, and registrations
+# (see api/services/lodging_cache.py for why the other two, fetch_units and
+# count_open_unresolved_aliases, are deliberately excluded: both are
+# admin-panel-writable straight from the browser).
+#
+# MUST be a module-level singleton, not per-instance state: api/routers/
+# lodging.py's `_service`/`_writes` build a fresh LodgingRepository on every
+# request, so a cache living on `self` would never be reused across requests.
+#
+# TTL 15 minutes, matching geo_service's _PERSON_ID_CACHE -- the closer
+# sibling here, since it is the other cache built for a fresh-per-request
+# service rather than metrics_cache's router-owned 2-hour fallback. No active
+# invalidation is wired yet (see lodging_cache.py's module docstring).
+lodging_cache = LodgingYearCache(ttl_seconds=900, max_size=64)
+
+
+# ========================================
 # Solver Runs Storage
 # ========================================
 
@@ -167,6 +189,7 @@ __all__ = [
     "create_task_pb_client",
     "get_pb_client",
     "graph_cache",
+    "lodging_cache",
     "metrics_cache",
     "pb",
     "pb_url",
