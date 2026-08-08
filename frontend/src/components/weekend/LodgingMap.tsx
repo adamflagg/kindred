@@ -690,16 +690,19 @@ export function LodgingMap({ parties, units, year }: LodgingMapProps) {
               for the blue dots. staff-default, near-bathhouse and area colour
               moved to the shared Visual Guide (kindred#1997) — they are no
               longer map-only, now that the board's own cards carry them too. */}
-          <dl
-            data-testid="map-legend"
-            className="text-muted-foreground flex flex-wrap items-center gap-x-4 gap-y-1.5 text-[11px]"
-          >
+          <div className="text-muted-foreground flex flex-wrap items-center gap-x-4 gap-y-1.5 text-[11px]">
             {/* DEMOTED from the control bar, not deleted (kindred#1997): it
                 hides 25 of 76 marks on the busiest 2026 weekend, and it is the
                 map's LAST keyboard-reachable control — see the note at
                 `:16-26` above. Still a real `<input>` behind a real `<label>`,
-                per that note, not re-invented as a div. */}
-            <div className="flex items-center gap-1.5">
+                per that note, not re-invented as a div. A SIBLING of the
+                `<dl>` below, not a child of it (kindred#2157): a description
+                list has no defined semantics for a live form control, so the
+                `<dl>` keeps only its dt/dd term-definition pairs and this
+                `role="group"` carries the checkbox instead. No wrapping div
+                around the label either; the label already declares the same
+                `inline-flex items-center gap-1.5` a wrapper would add. */}
+            <div role="group" aria-label="Map controls">
               <label className="inline-flex cursor-pointer items-center gap-1.5">
                 <input
                   type="checkbox"
@@ -715,51 +718,59 @@ export function LodgingMap({ parties, units, year }: LodgingMapProps) {
                 Empty rooms
               </label>
             </div>
-            <div className="flex items-center gap-1.5">
-              <span className="border-muted-foreground/70 h-3 w-3 rounded-full border-2 bg-transparent" />
-              <dt className="sr-only">Hollow mark</dt>
-              <dd>empty</dd>
-            </div>
-            <div className="flex items-center gap-1.5">
-              <span className="bg-muted-foreground/70 border-muted-foreground/70 h-3 w-3 rounded-full border-2" />
-              <dt className="sr-only">Solid mark</dt>
-              <dd>one party</dd>
-            </div>
-            <div className="flex items-center gap-1.5">
-              <span className="bg-muted-foreground/70 border-muted-foreground/70 h-3 w-3 rounded-full border-2 ring-2 ring-current ring-offset-1" />
-              <dt className="sr-only">Ringed mark</dt>
-              <dd>shared</dd>
-            </div>
-            <div className="flex items-center gap-1.5">
-              <span className="text-foreground font-bold">?</span>
-              <dt className="sr-only">Question mark</dt>
-              <dd>capacity unknown (never 0)</dd>
-            </div>
-            {/* A cluster's mark GROWS with what is under it and wears the
-                count on its face. Without this, a big numbered mark reads as
-                importance rather than as "there are more of them here". */}
-            <div className="flex items-center gap-1.5">
-              <span
-                aria-hidden="true"
-                className="bg-muted-foreground/70 border-muted-foreground/70 grid h-4 w-4 place-items-center rounded-full border-2 text-[8px] font-bold text-white"
-              >
-                3
-              </span>
-              <dt className="sr-only">Bigger numbered mark</dt>
-              <dd>bigger mark, more rooms under it</dd>
-            </div>
-            <div className="ml-auto flex items-center gap-1.5">
-              <dt className="sr-only">Counts</dt>
-              <dd className="tabular-nums">
-                <b className="text-foreground font-semibold">{roomCount}</b>{' '}
-                {roomCount === 1 ? 'room' : 'rooms'} ·{' '}
-                <b className="text-foreground font-semibold">{containerCount}</b>{' '}
-                {containerCount === 1 ? 'container' : 'containers'} not drawn ·{' '}
-                <b className="text-foreground font-semibold">{clusterCount}</b>{' '}
-                {clusterCount === 1 ? 'cluster' : 'clusters'} at this zoom
-              </dd>
-            </div>
-          </dl>
+            {/* `contents`: the `<dl>` still owns these dt/dd pairs in the DOM
+                (and the accessibility tree) so the definition-list semantics
+                stay correct, but it generates no box of its own — its
+                children lay out as direct items of the flex-wrap row above,
+                unchanged from before kindred#2157, `ml-auto` on Counts
+                included. */}
+            <dl data-testid="map-legend" className="contents">
+              <div className="flex items-center gap-1.5">
+                <span className="border-muted-foreground/70 h-3 w-3 rounded-full border-2 bg-transparent" />
+                <dt className="sr-only">Hollow mark</dt>
+                <dd>empty</dd>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <span className="bg-muted-foreground/70 border-muted-foreground/70 h-3 w-3 rounded-full border-2" />
+                <dt className="sr-only">Solid mark</dt>
+                <dd>one party</dd>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <span className="bg-muted-foreground/70 border-muted-foreground/70 h-3 w-3 rounded-full border-2 ring-2 ring-current ring-offset-1" />
+                <dt className="sr-only">Ringed mark</dt>
+                <dd>shared</dd>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <span className="text-foreground font-bold">?</span>
+                <dt className="sr-only">Question mark</dt>
+                <dd>capacity unknown (never 0)</dd>
+              </div>
+              {/* A cluster's mark GROWS with what is under it and wears the
+                  count on its face. Without this, a big numbered mark reads as
+                  importance rather than as "there are more of them here". */}
+              <div className="flex items-center gap-1.5">
+                <span
+                  aria-hidden="true"
+                  className="bg-muted-foreground/70 border-muted-foreground/70 grid h-4 w-4 place-items-center rounded-full border-2 text-[8px] font-bold text-white"
+                >
+                  3
+                </span>
+                <dt className="sr-only">Bigger numbered mark</dt>
+                <dd>bigger mark, more rooms under it</dd>
+              </div>
+              <div className="ml-auto flex items-center gap-1.5">
+                <dt className="sr-only">Counts</dt>
+                <dd className="tabular-nums">
+                  <b className="text-foreground font-semibold">{roomCount}</b>{' '}
+                  {roomCount === 1 ? 'room' : 'rooms'} ·{' '}
+                  <b className="text-foreground font-semibold">{containerCount}</b>{' '}
+                  {containerCount === 1 ? 'container' : 'containers'} not drawn ·{' '}
+                  <b className="text-foreground font-semibold">{clusterCount}</b>{' '}
+                  {clusterCount === 1 ? 'cluster' : 'clusters'} at this zoom
+                </dd>
+              </div>
+            </dl>
+          </div>
 
           {/* A merge carries no unit code, and an assignment can name a
               container or a unit the map has no coordinate for. Those

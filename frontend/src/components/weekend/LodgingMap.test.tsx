@@ -709,11 +709,15 @@ describe('LodgingMap controls', () => {
 
   it("demotes Empty rooms into the legend strip — the map's last keyboard-reachable control", () => {
     // kindred#1997: the control bar is gone entirely. `Empty rooms` survives
-    // as a real, labelled checkbox, but it must live INSIDE the legend now,
-    // not float unattached beside the canvas.
+    // as a real, labelled checkbox, next to the legend strip. kindred#2157:
+    // it lives in a sibling `role="group"`, not inside the legend `<dl>` —
+    // a description list has no defined semantics for a live form control
+    // as a child, so the checkbox must NOT be a descendant of `map-legend`.
     render(<LodgingMap parties={[PLACED]} units={UNITS} year={2026} />)
+    const controls = screen.getByRole('group', { name: 'Map controls' })
+    expect(within(controls).getByLabelText('Empty rooms')).toBeInTheDocument()
     const legend = screen.getByTestId('map-legend')
-    expect(within(legend).getByLabelText('Empty rooms')).toBeInTheDocument()
+    expect(within(legend).queryByLabelText('Empty rooms')).not.toBeInTheDocument()
   })
 
   it('removes the control bar entirely — no zoom buttons, fade slider, highlights or area tint', () => {
