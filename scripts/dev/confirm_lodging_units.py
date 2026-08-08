@@ -97,10 +97,13 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="required for a non-loopback URL; confirming cabins nobody checked is a lie to staff",
     )
+    # Compute default year: use CAMPMINDER_SEASON_ID if it's numeric, else fall back to calendar year
+    season_id = os.getenv("CAMPMINDER_SEASON_ID", "")
+    default_year = int(season_id) if season_id.isdigit() else datetime.now().year
     parser.add_argument(
         "--year",
         type=int,
-        default=int(os.getenv("CAMPMINDER_SEASON_ID", str(datetime.now().year))),
+        default=default_year,
         help="Season to confirm. Defaults to CAMPMINDER_SEASON_ID.",
     )
     args = parser.parse_args(argv)

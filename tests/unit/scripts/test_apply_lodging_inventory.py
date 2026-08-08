@@ -93,3 +93,23 @@ def test_an_explicit_year_flag_beats_the_environment(monkeypatch: pytest.MonkeyP
     """The operator's flag is the whole reason the season is not read directly."""
     monkeypatch.setenv("CAMPMINDER_SEASON_ID", "2031")
     assert _drive_main(monkeypatch, tmp_path, ["--year", "2033"]) == [2033]
+
+
+def test_the_year_falls_back_to_calendar_year_when_season_id_is_blank(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """A blank CAMPMINDER_SEASON_ID (empty string) should fall back to calendar year, not raise."""
+    monkeypatch.setenv("CAMPMINDER_SEASON_ID", "")
+    before = datetime.now().year
+    seen = _drive_main(monkeypatch, tmp_path, [])
+    assert seen[0] in {before, datetime.now().year}
+
+
+def test_the_year_falls_back_to_calendar_year_when_season_id_is_non_numeric(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """A non-numeric CAMPMINDER_SEASON_ID should fall back to calendar year, not raise."""
+    monkeypatch.setenv("CAMPMINDER_SEASON_ID", "abc")
+    before = datetime.now().year
+    seen = _drive_main(monkeypatch, tmp_path, [])
+    assert seen[0] in {before, datetime.now().year}
