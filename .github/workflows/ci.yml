@@ -569,9 +569,22 @@ jobs:
           exit 1
         fi
 
-        # Validate schema via API
+        # Validate schema via API. perPage is required: PocketBase's default
+        # page size is 30, well under the ~69 collections the real migrations
+        # produce, so an unpaginated call here silently truncates the dump.
+        # validate_migrations.py never noticed -- every collection in its
+        # REQUIRED_COLLECTIONS/REQUIRED_FIELDS happens to be an early one that
+        # already fell inside the first 30 -- but kindred#1921's
+        # fixture-schema-agreement step (below) walks every collection
+        # newLodgingTestApp builds, several of them late (lodging_* from
+        # migration 1500000116+), which is what surfaced this. Pinned to
+        # PocketBase's own MaxPerPage (tools/search/provider.go) rather than
+        # some smaller headroom number: a perPage above MaxPerPage is
+        # silently clamped down to it, never rejected, so this asks for
+        # everything the API could ever return in one page and can't
+        # under-ask again as collections keep being added.
         echo "Validating migration schema..."
-        curl -sf http://127.0.0.1:18999/api/collections \
+        curl -sf "http://127.0.0.1:18999/api/collections?perPage=1000" \
           -H "Authorization: Bearer $AUTH_TOKEN" \
           > /tmp/collections.json
 
@@ -597,6 +610,32 @@ jobs:
         rm -rf ./pb_test_data
 
         echo "✅ Migration smoke test passed"
+
+    # kindred#1921: the sync package's fixtures build their PocketBase
+    # collections by hand (see newLodgingTestApp in
+    # pocketbase/sync/lodging_testsupport_test.go) rather than replaying
+    # pb_migrations, so a column a migration drops or renames can stay in the
+    # fixture indefinitely -- go test ./... never notices. /tmp/collections.json
+    # above is the real schema those same migrations just produced; this step
+    # diffs the fixture's declared fields against it and fails on a field the
+    # fixture has that production does not (drop/rename direction only).
+    #
+    # -count=1 disables the test result cache deliberately: Go's cache only
+    # tracks files opened from within the package's own module tree, and
+    # /tmp/collections.json lives outside it, so the cache can't see it
+    # change between runs. KINDRED_PROD_SCHEMA_JSON is the same literal path
+    # every time, and actions/setup-go's cache:true (keyed on
+    # pocketbase/go.sum, which most PRs don't touch) restores GOCACHE across
+    # separate CI runs. Without -count=1, once this test passes once with
+    # unchanged Go source, a later PR that drops/renames a field in
+    # pb_migrations -- without touching this test's .go file -- can get a
+    # cached "ok" and never re-read that run's schema dump at all, silently
+    # defeating the guard.
+    - name: Fixture schema agreement (kindred#1921)
+      working-directory: ./pocketbase
+      env:
+        KINDRED_PROD_SCHEMA_JSON: /tmp/collections.json
+      run: go test -count=1 ./sync/... -run TestLodgingTestsupportFixtureFieldsExistInProductionSchema -v
 
   # Frontend tests — sharded across 2 matrix jobs to cut wall-clock
   # (vitest --shard splits files; matrix gives each shard its own runner)
