@@ -314,10 +314,13 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="also apply bathroom/container/parent corrections, which OVERWRITE existing values",
     )
+    # Compute default year: use CAMPMINDER_SEASON_ID if it's numeric, else fall back to calendar year
+    season_id = os.getenv("CAMPMINDER_SEASON_ID", "")
+    default_year = int(season_id) if season_id.isdigit() else datetime.now().year
     parser.add_argument(
         "--year",
         type=int,
-        default=int(os.getenv("CAMPMINDER_SEASON_ID", datetime.now().year)),
+        default=default_year,
         help="Season to apply against. Defaults to CAMPMINDER_SEASON_ID.",
     )
     args = parser.parse_args(argv)

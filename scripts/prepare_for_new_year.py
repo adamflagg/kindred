@@ -18,9 +18,13 @@ def load_env_config() -> dict[str, Any] | None:
     """Load current configuration from .env file."""
     load_dotenv()
 
+    # Compute default year: use CAMPMINDER_SEASON_ID if it's numeric, else fall back to calendar year
+    season_id = os.getenv("CAMPMINDER_SEASON_ID", "")
+    default_year = int(season_id) if season_id.isdigit() else datetime.now().year
+
     config = {
-        "season_id": int(os.getenv("CAMPMINDER_SEASON_ID", datetime.now().year)),
-        "active_year": int(os.getenv("CAMPMINDER_SEASON_ID", datetime.now().year)),
+        "season_id": default_year,
+        "active_year": default_year,
         "api_key": os.getenv("CAMPMINDER_API_KEY"),
         "primary_key": os.getenv("CAMPMINDER_PRIMARY_KEY"),
         "client_id": os.getenv("CAMPMINDER_CLIENT_ID"),
