@@ -865,3 +865,226 @@ func TestLodgingAssignmentsSyncLabelDropsUnresolvableUnits(t *testing.T) {
 		t.Errorf("units = %v, want just %q; the re-save should still drop the dangling id", got, ridge)
 	}
 }
+
+// --- #2028: orphan cleanup for the mirror table ---
+//
+// A household/person placed while enrolled, later cancelled. CampMinder never
+// clears the custom-field value, so ingestValue keeps observing the same raw
+// string every run -- but the party's Candidates go empty (sessionIndex only
+// counts status_id=2), so the write path never revisits the existing row (see
+// syncHouseholdGrain/syncPersonGrain). staleHouseholdAssignment/
+// stalePersonAssignment insert that row directly, the only way to stage the
+// state #2028 describes.
+
+func staleHouseholdAssignment(
+	t *testing.T, app core.App, sessionID string, sessionCMID, hhCMID, year int, unitID string, staffTouched bool,
+) string {
+	t.Helper()
+	return saveRecord(t, app, "lodging_assignments", map[string]any{
+		"session": sessionID, "session_cm_id": sessionCMID, "year": year,
+		"units": []string{unitID}, "household_cm_id": hhCMID, "party_size": 2,
+		"source": sourceCampMinderSync, "staff_touched": staffTouched,
+	})
+}
+
+func stalePersonAssignment(
+	t *testing.T, app core.App, sessionID string, sessionCMID, personCMID, year int, unitID string,
+) string {
+	t.Helper()
+	return saveRecord(t, app, "lodging_assignments", map[string]any{
+		"session": sessionID, "session_cm_id": sessionCMID, "year": year,
+		"units": []string{unitID}, "person_cm_id": personCMID, "party_size": 1,
+		"source": sourceCampMinderSync, "staff_touched": false,
+	})
+}
+
+// TestLodgingAssignmentsSyncDeletesOrphanedHouseholdMirrorRow is #2028 itself:
+// nothing ever removed a cancelled household's lodging_assignments row before
+// this pass.
+func TestLodgingAssignmentsSyncDeletesOrphanedHouseholdMirrorRow(t *testing.T) {
+	app := newLodgingTestApp(t)
+	sess := addSession(t, app, cmIDFamilyCamp1, "Family Camp 1", "family",
+		testSessionStart, testSessionEnd, 2025)
+	unit := addUnit(t, app, "ridge-a", 2025)
+	addAlias(t, app, "Ridge A", []string{unit}, 0, 0)
+	cabinDef := addFieldDef(t, app, cmIDFamilyCampCabin, fieldNameFamilyCampCabin)
+
+	// The cancelled household: still has a cabin value, no active enrolment.
+	hh := addHousehold(t, app, 9001, 2025)
+	emma := addPerson(t, app, 5001, 9001, 2025, hh)
+	addAttendee(t, app, emma, sess, 5001, 32, 2025) // cancelled
+	addHouseholdValue(t, app, hh, cabinDef, "Ridge A", testLastUpdated, 2025)
+	staleRow := staleHouseholdAssignment(t, app, sess, cmIDFamilyCamp1, 9001, 2025, unit, false)
+
+	// A still-enrolled household keeps the session's enrolled set non-empty,
+	// so the per-session reliability guard passes.
+	hh2 := addHousehold(t, app, 9002, 2025)
+	liam := addPerson(t, app, 5002, 9002, 2025, hh2)
+	addAttendee(t, app, liam, sess, 5002, 2, 2025)
+
+	s := NewLodgingAssignmentsSync(app)
+	s.Year = 2025
+	if err := s.Sync(context.Background()); err != nil {
+		t.Fatalf("Sync: %v", err)
+	}
+
+	if _, err := app.FindRecordById("lodging_assignments", staleRow); err == nil {
+		t.Error("cancelled household's stale mirror row still exists")
+	}
+	if s.GetStats().Deleted != 1 {
+		t.Errorf("Stats.Deleted = %d, want 1", s.GetStats().Deleted)
+	}
+}
+
+// TestLodgingAssignmentsSyncKeepsMirrorRowForStillEnrolledHousehold is the
+// obvious regression the sweep must not cause.
+func TestLodgingAssignmentsSyncKeepsMirrorRowForStillEnrolledHousehold(t *testing.T) {
+	app := newLodgingTestApp(t)
+	sess := addSession(t, app, cmIDFamilyCamp1, "Family Camp 1", "family",
+		testSessionStart, testSessionEnd, 2025)
+	unit := addUnit(t, app, "ridge-a", 2025)
+	addAlias(t, app, "Ridge A", []string{unit}, 0, 0)
+	cabinDef := addFieldDef(t, app, cmIDFamilyCampCabin, fieldNameFamilyCampCabin)
+
+	hh := addHousehold(t, app, 9001, 2025)
+	emma := addPerson(t, app, 5001, 9001, 2025, hh)
+	addAttendee(t, app, emma, sess, 5001, 2, 2025) // still enrolled
+	addHouseholdValue(t, app, hh, cabinDef, "Ridge A", testLastUpdated, 2025)
+	staleRow := staleHouseholdAssignment(t, app, sess, cmIDFamilyCamp1, 9001, 2025, unit, false)
+
+	s := NewLodgingAssignmentsSync(app)
+	s.Year = 2025
+	if err := s.Sync(context.Background()); err != nil {
+		t.Fatalf("Sync: %v", err)
+	}
+
+	if _, err := app.FindRecordById("lodging_assignments", staleRow); err != nil {
+		t.Errorf("still-enrolled household's mirror row was deleted: %v", err)
+	}
+	if s.GetStats().Deleted != 0 {
+		t.Errorf("Stats.Deleted = %d, want 0", s.GetStats().Deleted)
+	}
+}
+
+// TestLodgingAssignmentsSyncSkipsMirrorDeletionWhenSessionHasZeroEnrolled pins
+// the per-session reliability guard: a session with no actively-enrolled
+// household of this grain at all is as likely to mean "attendees failed to
+// sync" as "everyone cancelled" -- indistinguishable from inside this pass --
+// so its placements are left untouched rather than swept.
+func TestLodgingAssignmentsSyncSkipsMirrorDeletionWhenSessionHasZeroEnrolled(t *testing.T) {
+	app := newLodgingTestApp(t)
+	sess := addSession(t, app, cmIDFamilyCamp1, "Family Camp 1", "family",
+		testSessionStart, testSessionEnd, 2025)
+	unit := addUnit(t, app, "ridge-a", 2025)
+
+	// No attendee row at all for this session -- the enrolled set is empty.
+	staleRow := staleHouseholdAssignment(t, app, sess, cmIDFamilyCamp1, 9001, 2025, unit, false)
+
+	s := NewLodgingAssignmentsSync(app)
+	s.Year = 2025
+	if err := s.Sync(context.Background()); err != nil {
+		t.Fatalf("Sync: %v", err)
+	}
+
+	if _, err := app.FindRecordById("lodging_assignments", staleRow); err != nil {
+		t.Errorf("zero-enrolled guard failed -- mirror row swept: %v", err)
+	}
+	if s.GetStats().Deleted != 0 {
+		t.Errorf("Stats.Deleted = %d, want 0 (guard should skip)", s.GetStats().Deleted)
+	}
+}
+
+// TestLodgingAssignmentsSyncDeletesOrphanedPersonGrainMirrorRow is the adult
+// weekend twin: the sweep must treat person-grain rows the same way.
+func TestLodgingAssignmentsSyncDeletesOrphanedPersonGrainMirrorRow(t *testing.T) {
+	app := newLodgingTestApp(t)
+	sess := addSession(t, app, cmIDWomensWeekend, "Women's Weekend", "adult",
+		testAdultSessionStart, testAdultSessionEnd, 2025)
+	unit := addUnit(t, app, "river-c", 2025)
+	def := addFieldDef(t, app, cmIDReportableFamilyCampCabin, fieldNameReportableFamilyCampCabin)
+
+	hh := addHousehold(t, app, 9001, 2025)
+	emma := addPerson(t, app, 5001, 9001, 2025, hh)
+	addAttendee(t, app, emma, sess, 5001, 32, 2025) // cancelled
+	addPersonValue(t, app, emma, def, "River C", testLastUpdated, 2025)
+	staleRow := stalePersonAssignment(t, app, sess, cmIDWomensWeekend, 5001, 2025, unit)
+
+	// Keeps the session's enrolled set non-empty.
+	liam := addPerson(t, app, 5002, 9001, 2025, hh)
+	addAttendee(t, app, liam, sess, 5002, 2, 2025)
+
+	s := NewLodgingAssignmentsSync(app)
+	s.Year = 2025
+	if err := s.Sync(context.Background()); err != nil {
+		t.Fatalf("Sync: %v", err)
+	}
+
+	if _, err := app.FindRecordById("lodging_assignments", staleRow); err == nil {
+		t.Error("cancelled person's stale mirror row still exists")
+	}
+}
+
+// TestLodgingAssignmentsSyncDeletesStaffTouchedOrphanedMirrorRow: unlike
+// upsertAssignment's write-path skip -- which protects a staff move from a
+// CONFLICTING campminder_sync value -- the orphan sweep is not gated on
+// staff_touched. A cancelled household is gone whether or not staff moved it,
+// matching the ruling #2028 makes for the draft-null pass in
+// stranded_assignment_cleanup.go.
+func TestLodgingAssignmentsSyncDeletesStaffTouchedOrphanedMirrorRow(t *testing.T) {
+	app := newLodgingTestApp(t)
+	sess := addSession(t, app, cmIDFamilyCamp1, "Family Camp 1", "family",
+		testSessionStart, testSessionEnd, 2025)
+	unit := addUnit(t, app, "ridge-a", 2025)
+	cabinDef := addFieldDef(t, app, cmIDFamilyCampCabin, fieldNameFamilyCampCabin)
+
+	hh := addHousehold(t, app, 9001, 2025)
+	emma := addPerson(t, app, 5001, 9001, 2025, hh)
+	addAttendee(t, app, emma, sess, 5001, 32, 2025) // cancelled
+	addHouseholdValue(t, app, hh, cabinDef, "Ridge A", testLastUpdated, 2025)
+	staleRow := staleHouseholdAssignment(t, app, sess, cmIDFamilyCamp1, 9001, 2025, unit, true) // staff_touched
+
+	hh2 := addHousehold(t, app, 9002, 2025)
+	liam := addPerson(t, app, 5002, 9002, 2025, hh2)
+	addAttendee(t, app, liam, sess, 5002, 2, 2025)
+
+	s := NewLodgingAssignmentsSync(app)
+	s.Year = 2025
+	if err := s.Sync(context.Background()); err != nil {
+		t.Fatalf("Sync: %v", err)
+	}
+
+	if _, err := app.FindRecordById("lodging_assignments", staleRow); err == nil {
+		t.Error("staff-touched but cancelled household's row still exists -- staff_touched must not block the orphan sweep")
+	}
+}
+
+// TestLodgingAssignmentsSyncDryRunDoesNotDeleteOrphans: DryRun computes but
+// does not write, full stop -- including the delete path.
+func TestLodgingAssignmentsSyncDryRunDoesNotDeleteOrphans(t *testing.T) {
+	app := newLodgingTestApp(t)
+	sess := addSession(t, app, cmIDFamilyCamp1, "Family Camp 1", "family",
+		testSessionStart, testSessionEnd, 2025)
+	unit := addUnit(t, app, "ridge-a", 2025)
+	cabinDef := addFieldDef(t, app, cmIDFamilyCampCabin, fieldNameFamilyCampCabin)
+
+	hh := addHousehold(t, app, 9001, 2025)
+	emma := addPerson(t, app, 5001, 9001, 2025, hh)
+	addAttendee(t, app, emma, sess, 5001, 32, 2025) // cancelled
+	addHouseholdValue(t, app, hh, cabinDef, "Ridge A", testLastUpdated, 2025)
+	staleRow := staleHouseholdAssignment(t, app, sess, cmIDFamilyCamp1, 9001, 2025, unit, false)
+
+	hh2 := addHousehold(t, app, 9002, 2025)
+	liam := addPerson(t, app, 5002, 9002, 2025, hh2)
+	addAttendee(t, app, liam, sess, 5002, 2, 2025)
+
+	s := NewLodgingAssignmentsSync(app)
+	s.Year = 2025
+	s.DryRun = true
+	if err := s.Sync(context.Background()); err != nil {
+		t.Fatalf("Sync: %v", err)
+	}
+
+	if _, err := app.FindRecordById("lodging_assignments", staleRow); err != nil {
+		t.Errorf("dry run deleted a mirror row: %v", err)
+	}
+}

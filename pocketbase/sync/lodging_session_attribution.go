@@ -268,6 +268,35 @@ func findAllRecords(app core.App, collection, filter string, params ...dbx.Param
 	}
 }
 
+// sessionIndexHasWindow reports whether windows -- one party's enrolled
+// sessions, as returned per-party by BuildHouseholdSessionIndex /
+// BuildPersonSessionIndex -- includes sessionID (a camp_sessions PB id).
+func sessionIndexHasWindow(windows []SessionWindow, sessionID string) bool {
+	for _, w := range windows {
+		if w.ID == sessionID {
+			return true
+		}
+	}
+	return false
+}
+
+// reliableEnrolledSessions returns the set of session PB ids with at least one
+// actively-enrolled party in index. It is the per-session guard #2028 shares
+// with stranded_assignment_cleanup.go's findEnrollmentOrphans: a session
+// absent here had zero enrolled parties of this grain when index was built,
+// which is as likely to be a failed attendee sync as a genuinely empty
+// weekend, so nothing keyed to that session is swept by either caller
+// (LodgingAssignmentsSync.deleteLodgingOrphans, reconcileLodgingOrphans).
+func reliableEnrolledSessions(index map[int][]SessionWindow) map[string]bool {
+	out := make(map[string]bool)
+	for _, windows := range index {
+		for _, w := range windows {
+			out[w.ID] = true
+		}
+	}
+	return out
+}
+
 // AttributeSession pins one cabin value to one weekend.
 //
 // candidates must be sorted by Start ascending (BuildHouseholdSessionIndex and

@@ -43,6 +43,13 @@ type LodgingAssignmentsSync struct {
 	personsByHouseholdCMID  map[int][]*core.Record
 	enrolledByPersonSession map[string]int // "<personPBID>|<sessionPBID>" -> count
 	adultsByHouseholdPBID   map[string]int
+
+	// householdSessionIndex / personSessionIndex are the SAME indexes
+	// syncHouseholdGrain / syncPersonGrain build to attribute values, captured
+	// here so deleteLodgingOrphans can reuse them rather than re-deriving the
+	// enrolled set (#2028).
+	householdSessionIndex map[int][]SessionWindow
+	personSessionIndex    map[int][]SessionWindow
 }
 
 // NewLodgingAssignmentsSync builds the service. Year 0 means "resolve from the
@@ -145,6 +152,15 @@ func (s *LodgingAssignmentsSync) Sync(ctx context.Context) error {
 		return nil
 	}
 
+	// #2028: remove mirror rows for a party no longer actively enrolled in the
+	// session they name -- e.g. a household that cancelled after being placed.
+	// CampMinder never clears the source custom-field value on cancellation, so
+	// the ingest above never revisits an existing row once its Candidates go
+	// empty; this is the only pass that does.
+	if delErr := s.deleteLodgingOrphans(year); delErr != nil {
+		return delErr
+	}
+
 	priorCounts, err := s.valueCountsByCMID(year-1, fieldTargets)
 	if err != nil {
 		return err
@@ -190,6 +206,7 @@ func (s *LodgingAssignmentsSync) Sync(ctx context.Context) error {
 		"year", year,
 		"created", s.Stats.Created,
 		"updated", s.Stats.Updated,
+		"deleted", s.Stats.Deleted,
 		"skipped", s.Stats.Skipped,
 		"errors", s.Stats.Errors,
 		"queued_issues", issuesCreated+issuesUpdated,
@@ -206,6 +223,7 @@ func (s *LodgingAssignmentsSync) syncHouseholdGrain(
 	if err != nil {
 		return fmt.Errorf("building household session index: %w", err)
 	}
+	s.householdSessionIndex = sessionIndex
 	householdCMIDs, err := s.cmIDsByPBID("households", year)
 	if err != nil {
 		return err
@@ -272,6 +290,7 @@ func (s *LodgingAssignmentsSync) syncPersonGrain(
 	if err != nil {
 		return fmt.Errorf("building person session index: %w", err)
 	}
+	s.personSessionIndex = sessionIndex
 	personCMIDs, err := s.cmIDsByPBID("persons", year)
 	if err != nil {
 		return err
@@ -802,6 +821,69 @@ func (s *LodgingAssignmentsSync) partySize(in *ingestContext, sessionID string) 
 		adultCount += s.adultsByHouseholdPBID[hh]
 	}
 	return enrolled + adultCount
+}
+
+// deleteLodgingOrphans removes lodging_assignments rows for a party no longer
+// actively enrolled in the session the row names -- #2028's mirror-table half.
+//
+// Driven by absence from BuildHouseholdSessionIndex / BuildPersonSessionIndex
+// -- specifically s.householdSessionIndex / s.personSessionIndex, the SAME
+// indexes syncHouseholdGrain / syncPersonGrain just built above, not
+// re-derived -- exactly as bunk_assignments.deleteOrphans() is driven by
+// absence from its own CampMinder pull. A household that cancels after being
+// placed keeps its cabin value in household_custom_values (CampMinder does not
+// clear it), so ingestValue's Candidates go empty and the row is never
+// revisited by the write path; this pass is the only thing that ever will
+// revisit it.
+//
+// staff_touched is NOT a guard here, unlike upsertAssignment's write-path
+// skip: that skip protects a staff move from being overwritten by a
+// CONFLICTING campminder_sync value, but a cancelled household is not
+// attending regardless of who last touched its placement -- the same ruling
+// #2028 makes for the draft-null pass in stranded_assignment_cleanup.go.
+//
+// Per-session guard: a session with zero reliably-enrolled parties of a grain
+// is left untouched -- an attendee-sync hiccup must not read as "everyone
+// cancelled" and empty the whole session's placements.
+func (s *LodgingAssignmentsSync) deleteLodgingOrphans(year int) error {
+	rows, err := findAllRecords(s.App, "lodging_assignments", fmt.Sprintf("year = %d", year))
+	if err != nil {
+		return fmt.Errorf("querying lodging_assignments for orphan sweep: %w", err)
+	}
+
+	householdReliable := reliableEnrolledSessions(s.householdSessionIndex)
+	personReliable := reliableEnrolledSessions(s.personSessionIndex)
+
+	for _, rec := range rows {
+		sessionID := rec.GetString("session")
+		hhCMID := rec.GetInt("household_cm_id")
+		personCMID := rec.GetInt("person_cm_id")
+
+		var stillEnrolled, reliable bool
+		switch {
+		case hhCMID > 0:
+			reliable = householdReliable[sessionID]
+			stillEnrolled = sessionIndexHasWindow(s.householdSessionIndex[hhCMID], sessionID)
+		case personCMID > 0:
+			reliable = personReliable[sessionID]
+			stillEnrolled = sessionIndexHasWindow(s.personSessionIndex[personCMID], sessionID)
+		default:
+			continue // grain-less row -- not this pass's concern
+		}
+
+		if !reliable || stillEnrolled {
+			continue
+		}
+
+		if delErr := s.App.Delete(rec); delErr != nil {
+			s.Stats.Errors++
+			slog.Error("lodging_assignments_sync: deleting cancelled-party mirror row",
+				"id", rec.Id, "household_cm_id", hhCMID, "person_cm_id", personCMID, "error", delErr)
+			continue
+		}
+		s.Stats.Deleted++
+	}
+	return nil
 }
 
 // cmIDsByPBID maps a collection's PB record id -> its CampMinder id for one
