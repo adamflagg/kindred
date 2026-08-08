@@ -194,12 +194,71 @@ export function LodgingUnitCard({
     setMergeDropRef(node)
   }
 
+  /*
+   * The card's border/ring treatment, chosen from an ORDERED set of mutually
+   * exclusive states rather than four independently-true ternaries appended
+   * as strings. That used to matter: `.border-amber-400` (the consent flag)
+   * and `.border-primary` (an active drop target) could both be true at
+   * once, and which one painted depended on which utility Tailwind's
+   * generated stylesheet happened to emit LATER — a byte offset, not an
+   * intent. Same failure for `bg-muted/25` (empty) against `bg-primary/5`
+   * (drop target): two `background-color` declarations racing on generation
+   * order whenever an empty room was dragged over.
+   *
+   * Highest wins, and every check below assumes every state above it false:
+   *   1. an active drop target — dragging a family onto it, or a card onto
+   *      its merge-sibling. The placement affordance has to read clearly
+   *      even over a flagged or shared room.
+   *   2. an invalid merge target mid-drag — dims the card so a doomed drop
+   *      is not attempted, as summer's `isValidDropTarget()` does for
+   *      gender.
+   *   3. the consent flag (#1926) — a household sharing without having
+   *      agreed to.
+   *   4. two or more families sharing without a flag — the mark #2091 adds,
+   *      matching `LodgingMap.tsx`'s `halo` for the identical slot flag.
+   *   5. an empty room — the master sheet's "open" case (#2093).
+   */
+  let cardState:
+    'dropTarget' | 'invalidMergeTarget' | 'consentFlagged' | 'shared' | 'open' | 'plain' = 'plain'
+  if (isUnitOver || isMergeOver) {
+    cardState = 'dropTarget'
+  } else if (mergeDragActive && !isValidTarget) {
+    cardState = 'invalidMergeTarget'
+  } else if (consent) {
+    cardState = 'consentFlagged'
+  } else if (isShared) {
+    cardState = 'shared'
+  } else if (parties.length === 0) {
+    cardState = 'open'
+  }
+
+  const cardStateClasses: Record<typeof cardState, string> = {
+    dropTarget: 'border-primary ring-primary/50 bg-primary/5 ring-2',
+    invalidMergeTarget: 'pointer-events-none opacity-40',
+    // Promoted from `ring-1`: the mark below needs a weight to lose TO, and
+    // a 1px ring was not it.
+    consentFlagged: 'border-amber-400 ring-2 ring-amber-400/40 dark:border-amber-500',
+    // No class here — the ring itself is the inline `boxShadow` below.
+    // `hue` is a RUNTIME value (`LodgingBoard.tsx` passes `area.hue`), so it
+    // cannot live in a Tailwind class the way the other four states do.
+    shared: '',
+    open: 'bg-muted/25 border-dashed',
+    plain: '',
+  }
+  const cardStateClassName = cardStateClasses[cardState]
+
   return (
     <div
       data-unit-card
       data-unit-code={unit.code}
       ref={setCardRef}
-      style={{ borderTopColor: hue }}
+      style={{
+        borderTopColor: hue,
+        // Distinguishable from the amber consent edge by construction, not
+        // by colour alone: `cardState` above can only be `'shared'` once the
+        // `consentFlagged` branch has already been ruled out.
+        ...(cardState === 'shared' ? { boxShadow: `0 0 0 2px ${hue}` } : {}),
+      }}
       /*
        * `.card-lodge` is summer's card chrome, not a lookalike — the same
        * class `BunkCard` wears (CLAUDE.md §4, "Family Camp Models Summer").
@@ -208,12 +267,14 @@ export function LodgingUnitCard({
        * `bg-card rounded-xl border`, which is the same idea minus the shadow
        * and the hover — so it read as a table row rather than a card.
        *
-       * ORDER MATTERS BELOW. `.card-lodge` lives in `@layer components`, so
-       * every utility here outranks it whatever the string order: the amber
-       * consent edge, the empty-slot wash and the drop-target ring all still
-       * land. The hue top edge is an inline style and outranks both, which is
-       * what keeps §3.10's secondary channel through `card-lodge`'s own
-       * `border-border` and its `border-primary/50` hover.
+       * Every utility below outranks `.card-lodge` itself regardless of
+       * string order — it lives in `@layer components`, so `cardState`'s
+       * class always beats its `border-border` and `border-primary/50`
+       * hover. What is NOT order-independent is the state classes against
+       * EACH OTHER, which is exactly why `cardState` above picks one rather
+       * than concatenating five. The hue top edge is a separate inline style
+       * and outranks both, which is what keeps §3.10's secondary channel
+       * alive underneath whichever state wins.
        *
        * NO `hover:shadow-lodge-lg` HERE, though `BunkCard` carries one. That
        * class is inert: `.shadow-lodge-*` are hand-written rules in `@layer
@@ -229,17 +290,7 @@ export function LodgingUnitCard({
        * and roster with `mb-3`). This ran at a flat 8px, which left the title
        * sitting on top of the amenity row.
        */
-      className={`card-lodge flex flex-col gap-3 border-t-[3px] p-4 ${
-        consent ? 'border-amber-400 ring-1 ring-amber-400/40 dark:border-amber-500' : ''
-      } ${parties.length === 0 ? 'bg-muted/25 border-dashed' : ''} ${
-        isUnitOver || isMergeOver ? 'border-primary ring-primary/50 bg-primary/5 ring-2' : ''
-      } ${
-        // Invalid targets grey out mid-drag, as summer's `isValidDropTarget()`
-        // does for gender. Gated on `mergeDragActive` too: with no card drag
-        // in flight `isValidTarget` is trivially false for every card, and
-        // without this guard the whole board would sit permanently dimmed.
-        mergeDragActive && !isValidTarget ? 'pointer-events-none opacity-40' : ''
-      }`}
+      className={`card-lodge flex flex-col gap-3 border-t-[3px] p-4 ${cardStateClassName}`}
     >
       <div className="flex items-baseline gap-1.5">
         {/* Summer's scale, not a parallel one (CLAUDE.md §4): `text-lg` title

@@ -8,11 +8,37 @@
  */
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import type { LodgingUnitRow, RosterPartyRow } from '../../types/lodging'
 import type { BoardSlot } from './boardLayout'
+import { unitDroppableId } from './dragPlacement'
 import { LodgingUnitCard } from './LodgingUnitCard'
+
+/**
+ * jsdom cannot perform a pointer drag, so `useDroppable`'s real `isOver`
+ * never goes true here. The settled idiom (`LodgingBoard.drag.test.tsx`) is
+ * to mock at the `@dnd-kit/core` boundary; this one only needs `isOver`
+ * itself, controlled by `overDroppableId`, to prove the drop-target state
+ * outranks the shared-space ring below. `useDraggable` stays real — the
+ * merge-handle tests click a plain `onClick`, which does not touch it.
+ */
+let overDroppableId: string | null = null
+
+vi.mock('@dnd-kit/core', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@dnd-kit/core')>()
+  return {
+    ...actual,
+    useDroppable: (args: { id: string; disabled?: boolean }) => ({
+      setNodeRef: vi.fn(),
+      isOver: args.disabled !== true && args.id === overDroppableId,
+    }),
+  }
+})
+
+beforeEach(() => {
+  overDroppableId = null
+})
 
 function unit(overrides: Partial<LodgingUnitRow> = {}): LodgingUnitRow {
   return {
@@ -157,6 +183,17 @@ describe('LodgingUnitCard', () => {
       />
     )
     expect(screen.getByText('1 family did not request sharing')).toBeInTheDocument()
+  })
+
+  it('keeps an empty unit dashed and washed out', () => {
+    // Pre-existing behaviour, preserved through the ordered-switch refactor
+    // below rather than displaced by it.
+    const { container } = render(
+      <LodgingUnitCard slot={slot()} hue="hsl(160 45% 42%)" onOpenParty={vi.fn()} />
+    )
+    const card = container.querySelector('[data-unit-card]')
+    expect(card).toHaveClass('bg-muted/25')
+    expect(card).toHaveClass('border-dashed')
   })
 
   it('badges a staff hold rather than hiding the room', () => {
@@ -453,6 +490,111 @@ describe('LodgingUnitCard — the per-party sharing chip follows ROOM overlap, n
       />
     )
     expect(screen.getAllByText('Did not request sharing')).toHaveLength(2)
+  })
+})
+
+describe('LodgingUnitCard — the shared-space mark (#2091)', () => {
+  // The master housing sheet's fill for "two families here", adopted as the
+  // ring `LodgingMap.tsx`'s `halo` already draws for the identical flag
+  // (`0 0 0 4.5px ${hue}` there, on a small circular mark; this card is a
+  // rectangle with its own 2px `.card-lodge` border, so `2px` is the ring
+  // weight rather than the map's offset-plus-ring pair).
+  const hue = 'hsl(160 45% 42%)'
+  const sharedParties = [party(), party({ household_cm_id: 102, display_name: 'Garcia' })]
+  const declinedConsent = {
+    declinedCount: 1,
+    unansweredCount: 0,
+    conflictCount: 0,
+    reason: '1 family did not request sharing',
+  }
+
+  function card(container: HTMLElement): HTMLElement {
+    const el = container.querySelector('[data-unit-card]')
+    if (!el) throw new Error('no card rendered')
+    return el as HTMLElement
+  }
+
+  it('rings a shared unit in the area hue when nobody has flagged it', () => {
+    const { container } = render(
+      <LodgingUnitCard slot={slot({ parties: sharedParties })} hue={hue} onOpenParty={vi.fn()} />
+    )
+    expect(card(container)).toHaveStyle({ boxShadow: `0 0 0 2px ${hue}` })
+  })
+
+  it('leaves a single-party unit without the shared ring', () => {
+    const { container } = render(
+      <LodgingUnitCard slot={slot({ parties: [party()] })} hue={hue} onOpenParty={vi.fn()} />
+    )
+    expect(card(container)).not.toHaveStyle({ boxShadow: `0 0 0 2px ${hue}` })
+  })
+
+  it('leaves an empty unit without the shared ring', () => {
+    const { container } = render(<LodgingUnitCard slot={slot()} hue={hue} onOpenParty={vi.fn()} />)
+    expect(card(container)).not.toHaveStyle({ boxShadow: `0 0 0 2px ${hue}` })
+  })
+
+  it('promotes the consent ring to ring-2', () => {
+    // Prerequisite named in #2091: the mark this test file is otherwise
+    // about needs a `ring-1` consent edge promoted first, so the new mark
+    // has a weight to lose to.
+    const { container } = render(
+      <LodgingUnitCard
+        slot={slot({ parties: sharedParties, consent: declinedConsent })}
+        hue={hue}
+        onOpenParty={vi.fn()}
+      />
+    )
+    expect(card(container)).toHaveClass('ring-2')
+    expect(card(container)).not.toHaveClass('ring-1')
+  })
+
+  it('lets the consent flag outrank the shared-space ring', () => {
+    // Amber supersedes the hue ring, exactly as `LodgingMap.tsx`'s `halo`
+    // does for the same two flags — a consent flag only ever exists on a
+    // shared room, so the two never compete for meaning, only for the one
+    // ring a card can draw.
+    const { container } = render(
+      <LodgingUnitCard
+        slot={slot({ parties: sharedParties, consent: declinedConsent })}
+        hue={hue}
+        onOpenParty={vi.fn()}
+      />
+    )
+    expect(card(container)).toHaveClass('border-amber-400')
+    expect(card(container)).not.toHaveStyle({ boxShadow: `0 0 0 2px ${hue}` })
+  })
+
+  it('lets an active drop target outrank the shared-space ring', () => {
+    // The hue ring lives OUTSIDE the Tailwind class switch as an inline
+    // `boxShadow` (`hue` is a runtime value), so nothing in the class
+    // cascade stops it from fighting the drop-target ring's own box-shadow
+    // — only the explicit precedence below does.
+    overDroppableId = unitDroppableId('cedar-1')
+    const { container } = render(
+      <LodgingUnitCard
+        slot={slot({ parties: sharedParties })}
+        hue={hue}
+        canPlace
+        onOpenParty={vi.fn()}
+      />
+    )
+    expect(card(container)).toHaveClass('border-primary')
+    expect(card(container)).not.toHaveStyle({ boxShadow: `0 0 0 2px ${hue}` })
+  })
+
+  it('lets an invalid merge target outrank the shared-space ring', () => {
+    const room = unit({ code: 'cedar-1', parent_code: 'east-wing' })
+    const draggedSibling = unit({ code: 'other-1', parent_code: 'west-wing' })
+    const { container } = render(
+      <LodgingUnitCard
+        slot={slot({ unit: room, parties: sharedParties })}
+        hue={hue}
+        mergeSourceUnit={draggedSibling}
+        onOpenParty={vi.fn()}
+      />
+    )
+    expect(card(container)).toHaveClass('opacity-40')
+    expect(card(container)).not.toHaveStyle({ boxShadow: `0 0 0 2px ${hue}` })
   })
 })
 
