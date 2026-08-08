@@ -184,16 +184,7 @@ func SeedRegistry(app core.App, year int) error {
 		return nil
 	}
 
-	candidates := make([]string, 0, len(registryAbsoluteRoots)+2)
-	for _, root := range registryAbsoluteRoots {
-		candidates = append(candidates, filepath.Join(root, registryFileName)) // Docker
-	}
-	candidates = append(candidates,
-		filepath.Join(registryBasePath, "config", registryFileName),       // from the repo root
-		filepath.Join(registryBasePath, "..", "config", registryFileName), // from pocketbase/
-	)
-
-	for _, path := range candidates {
+	for _, path := range registryCandidatePaths() {
 		if _, err := os.Stat(path); err != nil {
 			continue
 		}
@@ -203,6 +194,38 @@ func SeedRegistry(app core.App, year int) error {
 	slog.Info("lodging registry file not found; registry left as-is",
 		"looked_for", registryFileName)
 	return nil
+}
+
+// registryCandidatePaths lists every path SeedRegistry searches, in order.
+// Shared with RegistryFilePresent so the two never drift: SeedRegistry decides
+// whether to load, RegistryFilePresent decides whether an unreadable season
+// is a misconfiguration worth failing boot over (main.go, issue #2054).
+func registryCandidatePaths() []string {
+	candidates := make([]string, 0, len(registryAbsoluteRoots)+2)
+	for _, root := range registryAbsoluteRoots {
+		candidates = append(candidates, filepath.Join(root, registryFileName)) // Docker
+	}
+	candidates = append(candidates,
+		filepath.Join(registryBasePath, "config", registryFileName),       // from the repo root
+		filepath.Join(registryBasePath, "..", "config", registryFileName), // from pocketbase/
+	)
+	return candidates
+}
+
+// RegistryFilePresent reports whether a private lodging registry file exists
+// on any of the candidate paths SeedRegistry searches. It is presence-only —
+// it does not read, parse, or validate the file — so main.go can tell "no
+// private config, nothing to load" (must still boot) apart from "config is
+// here and unreadable without a season" (a misconfigured deployment that
+// would otherwise silently come up with an empty registry behind a single
+// warn-level log line). See issue #2054.
+func RegistryFilePresent() bool {
+	for _, path := range registryCandidatePaths() {
+		if _, err := os.Stat(path); err == nil {
+			return true
+		}
+	}
+	return false
 }
 
 // seedRegistryFromFile is CREATE-IF-ABSENT, not a full upsert.

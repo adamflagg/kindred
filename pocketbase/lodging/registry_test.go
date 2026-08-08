@@ -872,6 +872,56 @@ func TestSeedRegistryResolvesAbsoluteConfigRoot(t *testing.T) {
 	}
 }
 
+// --- RegistryFilePresent -----------------------------------------------------
+//
+// main.go (issue #2054, Half 2) needs to tell "no private config, nothing to
+// load" apart from "config is here and unreadable without a season" so a
+// season-less boot can warn-and-continue in the first case but fail in the
+// second. RegistryFilePresent is presence-only — it must not read, parse, or
+// validate the file, so it shares the same candidate-path search SeedRegistry
+// uses without duplicating any of the loading behavior.
+func TestRegistryFilePresentTrueWhenFileExistsUnderWorkingDirectory(t *testing.T) {
+	base := t.TempDir()
+	if err := os.Mkdir(filepath.Join(base, "config"), 0o750); err != nil {
+		t.Fatalf("mkdir config: %v", err)
+	}
+	if err := os.WriteFile(
+		filepath.Join(base, "config", registryFileName), []byte(fixtureRegistry), 0o600,
+	); err != nil {
+		t.Fatalf("write registry: %v", err)
+	}
+	withRegistryBasePath(t, base)
+	withRegistryAbsoluteRoots(t, []string{filepath.Join(t.TempDir(), "unused")})
+
+	if !RegistryFilePresent() {
+		t.Error("expected RegistryFilePresent() true when config/lodging_registry.json exists under the working directory")
+	}
+}
+
+func TestRegistryFilePresentTrueViaAbsoluteRoot(t *testing.T) {
+	absRoot := t.TempDir()
+	if err := os.WriteFile(
+		filepath.Join(absRoot, registryFileName), []byte(fixtureRegistry), 0o600,
+	); err != nil {
+		t.Fatalf("write registry: %v", err)
+	}
+	withRegistryAbsoluteRoots(t, []string{absRoot})
+	withRegistryBasePath(t, t.TempDir())
+
+	if !RegistryFilePresent() {
+		t.Error("expected RegistryFilePresent() true when the file exists under an absolute root")
+	}
+}
+
+func TestRegistryFilePresentFalseWhenNoConfigAnywhere(t *testing.T) {
+	withRegistryBasePath(t, t.TempDir())
+	withRegistryAbsoluteRoots(t, []string{filepath.Join(t.TempDir(), "unused")})
+
+	if RegistryFilePresent() {
+		t.Error("expected RegistryFilePresent() false with no registry file on any candidate path")
+	}
+}
+
 // --- season-scoped seeding --------------------------------------------------
 //
 // yearFixtureRegistry is a container with one child, keyed off the codes

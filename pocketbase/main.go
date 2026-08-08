@@ -148,9 +148,15 @@ func main() {
 	// takes effect. Absent file is a logged no-op, the same graceful
 	// degradation branding has. See docs/reference/lodging-registry.md.
 	//
-	// Warn rather than fail: a clone without the private config must still
-	// boot, and an unreadable registry should not take the whole service down.
-	// The log line is the signal that the registry is empty on purpose.
+	// Warn-and-boot only for the clone-with-no-private-config case: no
+	// registry file means nothing to load, and refusing to boot over that
+	// would break every clone and CI run that lacks kindred-local. Once the
+	// registry file IS present, an unresolvable season stops being "nothing
+	// to load" and becomes "someone configured this deployment to have
+	// lodging and it silently has none" — that case fails the boot instead
+	// of leaving it behind a single warn-level log line nobody is watching.
+	// See issue #2054 (Half 2); lodgingRegistryBootDecision below carries the
+	// tests for this split.
 	//
 	// Skip rather than guess. Seeding ~118 units into a guessed season is
 	// strictly worse than seeding none: the first roll-forward would carry
@@ -158,7 +164,9 @@ func main() {
 	app.OnServe().BindFunc(func(e *core.ServeEvent) error {
 		year, err := sync.ParseSeasonYear()
 		if err != nil {
-			slog.Warn("lodging registry load skipped: season unavailable", "err", err)
+			if bootErr := lodgingRegistryBootDecision(err, lodging.RegistryFilePresent()); bootErr != nil {
+				return bootErr
+			}
 			return e.Next()
 		}
 		if err := lodging.SeedRegistry(e.App, year); err != nil {
@@ -275,6 +283,33 @@ func runHistorySync(app core.App) error {
 		return fmt.Errorf("history-sync WAL checkpoint failed: %w", err)
 	}
 	return nil
+}
+
+// lodgingRegistryBootDecision turns a sync.ParseSeasonYear failure into
+// either a warning (boot continues) or a boot error, depending on whether the
+// private lodging registry file exists on disk.
+//
+//   - registryPresent == false: a clone (or CI run) with no kindred-local
+//     config. Nothing to load — warn and let the boot continue, the same
+//     graceful degradation this loader has always given a fresh clone.
+//   - registryPresent == true: the registry file IS there, but the season it
+//     needs to seed against can't be resolved. That combination means an
+//     operator configured this deployment to have lodging data, and it would
+//     otherwise come up with an empty registry — every cabin string failing
+//     to resolve — signaled by nothing but a warn-level log line. Failing
+//     the boot makes that visible immediately instead of months later.
+//
+// Split out from the OnServe hook so the decision is unit-testable without
+// booting a PocketBase app or touching the filesystem. See issue #2054.
+func lodgingRegistryBootDecision(seasonErr error, registryPresent bool) error {
+	if !registryPresent {
+		slog.Warn("lodging registry load skipped: season unavailable", "err", seasonErr)
+		return nil
+	}
+	return fmt.Errorf(
+		"lodging registry file present but no season is resolvable "+
+			"(set CAMPMINDER_SEASON_ID): %w", seasonErr,
+	)
 }
 
 // the default pb_public dir location is relative to the executable
