@@ -398,6 +398,39 @@ describe('LodgingUnitsPanel — areas query state', () => {
     expect(screen.getByText('Cabin A')).toBeInTheDocument()
   })
 
+  it('still moves focus into the form when the areas resolve after the editor opened', async () => {
+    // The form is gated on `areasQuery.isSuccess`, so a staffer who clicks
+    // "New unit" during a slow areas fetch opens a dialog whose only content
+    // is the "Loading areas…" placeholder — nothing focusable. The focus
+    // effect fires once on that empty dialog and, keyed on `[editing]` alone,
+    // never re-runs when the real form finally mounts: focus is left on the
+    // trigger behind the backdrop, and a keyboard user is stranded outside an
+    // open aria-modal dialog.
+    let resolveAreas: (areas: typeof AREAS) => void = () => undefined
+    listLodgingAreas.mockReturnValue(
+      new Promise<typeof AREAS>((resolve) => {
+        resolveAreas = resolve
+      })
+    )
+    const user = userEvent.setup()
+    render(<LodgingUnitsPanel />, { wrapper })
+    await waitFor(() => {
+      expect(screen.getByText('Cabin A')).toBeInTheDocument()
+    })
+
+    await user.click(screen.getByRole('button', { name: 'New unit' }))
+    // The dialog is open but the form has not mounted yet — this is the
+    // window the bug lives in, so assert it rather than assuming it.
+    expect(screen.getByText(/Loading areas/i)).toBeInTheDocument()
+    expect(screen.queryByLabelText('Name')).not.toBeInTheDocument()
+
+    resolveAreas(AREAS)
+
+    await waitFor(() => {
+      expect(screen.getByLabelText('Name')).toHaveFocus()
+    })
+  })
+
   it('does not open the editor when there are no areas to assign a unit to', async () => {
     // The Area select is a required relation with no blank option. Opening the
     // form against an empty list offers a create whose only outcome is a

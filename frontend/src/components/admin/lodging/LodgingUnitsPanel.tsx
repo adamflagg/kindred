@@ -49,24 +49,6 @@ export function LodgingUnitsPanel() {
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set())
   const formRef = useRef<HTMLDivElement>(null)
 
-  /**
-   * Move FOCUS to the editor whenever it opens — including switching straight
-   * from editing one unit to another, since the form never unmounts in between
-   * (see the `key` below).
-   *
-   * This used to scroll as well, because the editor mounted above a 93-row
-   * table and opening it otherwise produced no visible change below the fold —
-   * and the natural response, clicking Edit again or on a different row, is
-   * exactly how a stale-record write went unnoticed. The dialog solves that
-   * outright: it is unmissable without moving anything, so the staffer keeps
-   * their place in the list. Only the focus half is still needed, and the
-   * shared Modal does not set initial focus itself.
-   */
-  useEffect(() => {
-    if (editing === null) return
-    formRef.current?.querySelector<HTMLElement>('input, select, textarea')?.focus()
-  }, [editing])
-
   // RENDER guard only, not a fetch gate. useLodgingUnits / useLodgingAreas
   // each gate their own fetch on year-readiness internally — currentYear > 0
   // is not passed to either call below — so this constant does not control
@@ -81,6 +63,35 @@ export function LodgingUnitsPanel() {
 
   const unitsQuery = useLodgingUnits()
   const areasQuery = useLodgingAreas()
+
+  /**
+   * Move FOCUS to the editor whenever it opens — including switching straight
+   * from editing one unit to another, since the form never unmounts in between
+   * (see the `key` below).
+   *
+   * This used to scroll as well, because the editor mounted above a 93-row
+   * table and opening it otherwise produced no visible change below the fold —
+   * and the natural response, clicking Edit again or on a different row, is
+   * exactly how a stale-record write went unnoticed. The dialog solves that
+   * outright: it is unmissable without moving anything, so the staffer keeps
+   * their place in the list. Only the focus half is still needed, and the
+   * shared Modal does not set initial focus itself.
+   *
+   * `areasQuery.isSuccess` IS A DEPENDENCY, not a stray one — and it is why
+   * this effect sits BELOW the query rather than up with the other state. The
+   * form is gated on that flag: until the areas resolve, the dialog holds the
+   * "Loading areas…" paragraph and there is nothing to focus. Opening the
+   * editor during a slow areas fetch therefore runs this effect against an
+   * empty dialog, and keyed on `[editing]` alone it would never re-run once
+   * the real form mounts — leaving focus on the trigger behind the backdrop,
+   * which for an aria-modal dialog strands a keyboard or screen-reader user
+   * outside it entirely. Only the success branch renders anything focusable
+   * (the error branch is a message paragraph), so this one flag covers it.
+   */
+  useEffect(() => {
+    if (editing === null) return
+    formRef.current?.querySelector<HTMLElement>('input, select, textarea')?.focus()
+  }, [editing, areasQuery.isSuccess])
 
   const refresh = () => {
     setEditing(null)

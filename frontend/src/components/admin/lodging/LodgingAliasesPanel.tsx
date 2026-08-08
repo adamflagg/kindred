@@ -44,20 +44,6 @@ export function LodgingAliasesPanel() {
   const [editing, setEditing] = useState<LodgingAliasRecord | 'new' | null>(null)
   const formRef = useRef<HTMLDivElement>(null)
 
-  /**
-   * Move attention to the editor whenever it opens — including switching
-   * straight from editing one alias to another, since the form never
-   * unmounts in between (see the `key` below). Without this, opening the
-   * form on a 90-row table produces no visible change below the fold, and
-   * the natural response — clicking Edit again, or on a different row — is
-   * exactly how a stale-record write would go unnoticed.
-   */
-  useEffect(() => {
-    if (editing === null) return
-    formRef.current?.scrollIntoView({ block: 'nearest' })
-    formRef.current?.querySelector<HTMLElement>('input, select, textarea')?.focus()
-  }, [editing])
-
   const aliasesQuery = useQuery({
     queryKey: queryKeys.lodgingAliases(),
     ...userDataOptions,
@@ -80,6 +66,32 @@ export function LodgingAliasesPanel() {
   const yearReady = currentYear > 0
 
   const unitsQuery = useLodgingUnits()
+
+  /**
+   * Move attention to the editor whenever it opens — including switching
+   * straight from editing one alias to another, since the form never
+   * unmounts in between (see the `key` below). Without this, opening the
+   * form on a 90-row table produces no visible change below the fold, and
+   * the natural response — clicking Edit again, or on a different row — is
+   * exactly how a stale-record write would go unnoticed.
+   *
+   * `unitsQuery.isSuccess` IS A DEPENDENCY, not a stray one — and it is why
+   * this effect sits BELOW the query rather than up with the other state. The
+   * form is gated on the units having loaded (the branch below), so opening
+   * the editor during a slow fetch runs this effect against the "Loading
+   * units…" placeholder, where there is nothing to scroll to or focus. Keyed
+   * on `[editing]` alone it would never re-run once the real form mounts,
+   * leaving focus on the button and the member-unit fieldset — this form's
+   * whole payload — unreachable by keyboard. `isSuccess` is the right flag
+   * rather than the raw `isLoading`: a units query disabled on an unresolved
+   * year reports `isLoading === false` while still having no data, and only
+   * the loaded case renders anything focusable.
+   */
+  useEffect(() => {
+    if (editing === null) return
+    formRef.current?.scrollIntoView({ block: 'nearest' })
+    formRef.current?.querySelector<HTMLElement>('input, select, textarea')?.focus()
+  }, [editing, unitsQuery.isSuccess])
 
   const refresh = () => {
     setEditing(null)
