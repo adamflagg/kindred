@@ -17,25 +17,18 @@
  * Deactivate, never delete (spec §3.8). The Go guard in pocketbase/lodging
  * blocks deleting a referenced unit anyway, but the UI should not offer it.
  */
-import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { useQueryClient } from '@tanstack/react-query'
 import { Home, Map, Plus } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import toast from 'react-hot-toast'
 import { Link } from 'react-router'
 
 import { useCurrentYear } from '../../../hooks/useCurrentYear'
-import {
-  confirmLodgingUnits,
-  deactivateLodgingUnit,
-  listLodgingAreas,
-  listLodgingUnits,
-} from '../../../services/lodgingCrud'
+import { useLodgingAreas } from '../../../hooks/useLodgingAreas'
+import { useLodgingUnits } from '../../../hooks/useLodgingUnits'
+import { confirmLodgingUnits, deactivateLodgingUnit } from '../../../services/lodgingCrud'
 import type { LodgingUnitRecord } from '../../../types/lodging'
-import {
-  invalidateLodgingRegistryQueries,
-  queryKeys,
-  userDataOptions,
-} from '../../../utils/queryKeys'
+import { invalidateLodgingRegistryQueries } from '../../../utils/queryKeys'
 import { QueryGuard } from '../../QueryGuard'
 import { Modal } from '../../ui/Modal'
 import { BUTTON_PRIMARY, BUTTON_SECONDARY } from './lodgingStyles'
@@ -81,23 +74,13 @@ export function LodgingUnitsPanel() {
   // every consumer below. Derive both from this and they cannot drift apart.
   const yearReady = currentYear > 0
 
-  const unitsQuery = useQuery({
-    queryKey: queryKeys.lodgingUnits(currentYear),
-    ...userDataOptions,
-    queryFn: () => listLodgingUnits(currentYear),
-    // CurrentYearContext returns the literal 0 until the backend supplies the
-    // configured year. Unlike the FastAPI routers (`ge=2000` -> a loud 422),
-    // PocketBase answers `year = 0` with a successful `200 []`, so without
-    // this gate a cold load would render "no lodging units" as if it were
-    // true. Convention: `useWeekendRoster.ts:30-37`.
-    enabled: yearReady,
-  })
-  const areasQuery = useQuery({
-    queryKey: queryKeys.lodgingAreas(currentYear),
-    ...userDataOptions,
-    queryFn: () => listLodgingAreas(currentYear),
-    enabled: yearReady,
-  })
+  // useLodgingUnits / useLodgingAreas each gate on year-readiness themselves
+  // (CurrentYearContext returns the literal 0 until the backend supplies the
+  // configured year, and PocketBase answers `year = 0` with a successful
+  // `200 []` rather than an error). `yearReady` above is still needed here as
+  // the RENDER guard, not the fetch gate — see the ONE constant comment.
+  const unitsQuery = useLodgingUnits()
+  const areasQuery = useLodgingAreas()
 
   const refresh = () => {
     setEditing(null)

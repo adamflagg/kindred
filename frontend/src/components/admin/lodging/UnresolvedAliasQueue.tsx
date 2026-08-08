@@ -19,9 +19,9 @@ import { useState } from 'react'
 import toast from 'react-hot-toast'
 
 import { useCurrentYear } from '../../../hooks/useCurrentYear'
+import { useLodgingUnits } from '../../../hooks/useLodgingUnits'
 import {
   ignoreIngestIssue,
-  listLodgingUnits,
   listUnresolvedAliasIssues,
   mapUnresolvedAlias,
 } from '../../../services/lodgingCrud'
@@ -60,12 +60,7 @@ export function UnresolvedAliasQueue() {
     queryFn: () => listUnresolvedAliasIssues(currentYear),
     enabled: yearReady,
   })
-  const unitsQuery = useQuery({
-    queryKey: queryKeys.lodgingUnits(currentYear),
-    ...userDataOptions,
-    queryFn: () => listLodgingUnits(currentYear),
-    enabled: yearReady,
-  })
+  const unitsQuery = useLodgingUnits()
 
   const refresh = () => {
     invalidateLodgingRegistryQueries(queryClient)

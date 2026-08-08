@@ -16,11 +16,8 @@ import { useEffect, useRef, useState } from 'react'
 import toast from 'react-hot-toast'
 
 import { useCurrentYear } from '../../../hooks/useCurrentYear'
-import {
-  deleteLodgingAlias,
-  listLodgingAliases,
-  listLodgingUnits,
-} from '../../../services/lodgingCrud'
+import { useLodgingUnits } from '../../../hooks/useLodgingUnits'
+import { deleteLodgingAlias, listLodgingAliases } from '../../../services/lodgingCrud'
 import type { LodgingAliasRecord } from '../../../types/lodging'
 import {
   invalidateLodgingRegistryQueries,
@@ -75,19 +72,14 @@ export function LodgingAliasesPanel() {
   // configured year. PocketBase answers `year = 0` with a successful `200
   // []` rather than an error, so without this gate the picker would render
   // as if there were genuinely no units to map an alias to.
-  // ONE constant for the fetch gate and the render guard, because gating only
-  // the fetch does not fix what the gate is for. A disabled TanStack query is
-  // `isLoading === false` (pending but idle -- nothing is fetching) with `data
-  // === undefined`, which is indistinguishable from a settled empty result to
-  // every consumer below. Derive both from this and they cannot drift apart.
+  // ONE constant for the render guard below. useLodgingUnits gates its own
+  // fetch on year-readiness; a disabled TanStack query is `isLoading ===
+  // false` (pending but idle -- nothing is fetching) with `data ===
+  // undefined`, which is indistinguishable from a settled empty result to
+  // every consumer below, so the render guard still needs this separately.
   const yearReady = currentYear > 0
 
-  const unitsQuery = useQuery({
-    queryKey: queryKeys.lodgingUnits(currentYear),
-    ...userDataOptions,
-    queryFn: () => listLodgingUnits(currentYear),
-    enabled: yearReady,
-  })
+  const unitsQuery = useLodgingUnits()
 
   const refresh = () => {
     setEditing(null)

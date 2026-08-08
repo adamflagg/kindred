@@ -11,25 +11,21 @@
  * bathhouse" gets answered (spec §7.2b).
  */
 import { Dialog, DialogPanel, DialogTitle } from '@headlessui/react'
-import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { useQueryClient } from '@tanstack/react-query'
 import { ChevronDown, ChevronUp, Plus, X } from 'lucide-react'
 import { useState } from 'react'
 import toast from 'react-hot-toast'
 
 import { useCurrentYear } from '../../../hooks/useCurrentYear'
+import { useLodgingAreas } from '../../../hooks/useLodgingAreas'
 import {
   createLodgingArea,
   deleteLodgingArea,
-  listLodgingAreas,
   reorderLodgingAreas,
   updateLodgingArea,
 } from '../../../services/lodgingCrud'
 import type { LodgingAreaRecord } from '../../../types/lodging'
-import {
-  invalidateLodgingRegistryQueries,
-  queryKeys,
-  userDataOptions,
-} from '../../../utils/queryKeys'
+import { invalidateLodgingRegistryQueries } from '../../../utils/queryKeys'
 import { ACTION_LINK, BUTTON_PRIMARY, FIELD_INLINE as FIELD, LABEL } from './lodgingStyles'
 
 function slugify(name: string): string {
@@ -49,16 +45,11 @@ export function LodgingAreasDrawer({ open, onClose }: LodgingAreasDrawerProps) {
   const { currentYear } = useCurrentYear()
   const [draftName, setDraftName] = useState('')
 
-  const areasQuery = useQuery({
-    queryKey: queryKeys.lodgingAreas(currentYear),
-    ...userDataOptions,
-    queryFn: () => listLodgingAreas(currentYear),
-    // Gated on the drawer being open AND the year having resolved.
-    // CurrentYearContext returns the literal 0 until the backend supplies
-    // the configured year, and PocketBase answers `year = 0` with a
-    // successful `200 []` rather than an error — see LodgingUnitsPanel.
-    enabled: open && currentYear > 0,
-  })
+  // Gated on the drawer being open — useLodgingAreas ANDs that with the year
+  // having resolved. CurrentYearContext returns the literal 0 until the
+  // backend supplies the configured year, and PocketBase answers `year = 0`
+  // with a successful `200 []` rather than an error — see LodgingUnitsPanel.
+  const areasQuery = useLodgingAreas({ enabled: open })
 
   const refresh = () => {
     invalidateLodgingRegistryQueries(queryClient)
