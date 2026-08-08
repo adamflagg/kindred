@@ -7,8 +7,9 @@
  * indicator without updating the legend.
  */
 import { render, screen } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { describe, it, expect } from 'vitest'
-import BunkingLegend from './BunkingLegend'
+import BunkingLegend, { WeekendLegendButton } from './BunkingLegend'
 
 describe('BunkingLegend', () => {
   it('renders when open', () => {
@@ -108,5 +109,69 @@ describe('BunkingLegend', () => {
       render(<BunkingLegend isOpen={true} onClose={() => {}} />)
       expect(screen.getByText(/production mode/i)).toBeInTheDocument()
     })
+  })
+})
+
+/**
+ * The weekend's own Visual Guide (kindred#1997) — the same shell BunkingLegend
+ * uses, DRY'd rather than copied, with entirely different sections: the three
+ * rows moved out of the map's own legend, plus the board's shared-consent
+ * ring. None of summer's camper/bunk/scenario content belongs here — a
+ * weekend has no friend groups, gender cards or AG grade ratios.
+ */
+describe('WeekendLegendButton', () => {
+  it('starts closed, behind a trigger button', () => {
+    render(<WeekendLegendButton />)
+    expect(screen.queryByText('Visual Guide')).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /show visual guide/i })).toBeInTheDocument()
+  })
+
+  it('opens the guide on click', async () => {
+    render(<WeekendLegendButton />)
+    await userEvent.click(screen.getByRole('button', { name: /show visual guide/i }))
+    expect(screen.getByText('Visual Guide')).toBeInTheDocument()
+  })
+
+  it('documents the staff-cabin dashed square moved off the map', async () => {
+    render(<WeekendLegendButton />)
+    await userEvent.click(screen.getByRole('button', { name: /show visual guide/i }))
+    expect(screen.getByText(/staff cabin/i)).toBeInTheDocument()
+  })
+
+  it('documents the near-bathhouse blue dot moved off the map', async () => {
+    render(<WeekendLegendButton />)
+    await userEvent.click(screen.getByRole('button', { name: /show visual guide/i }))
+    expect(screen.getByText(/near bathhouse/i)).toBeInTheDocument()
+  })
+
+  it('documents the area-colour hue moved off the map', async () => {
+    render(<WeekendLegendButton />)
+    await userEvent.click(screen.getByRole('button', { name: /show visual guide/i }))
+    expect(screen.getByText(/area colou?r/i)).toBeInTheDocument()
+  })
+
+  it("documents the board's own shared-consent ring alongside the map rows", async () => {
+    // Not one of the three moved rows — the board's own signal, included per
+    // the issue's "alongside them".
+    render(<WeekendLegendButton />)
+    await userEvent.click(screen.getByRole('button', { name: /show visual guide/i }))
+    expect(screen.getByText(/not consented/i)).toBeInTheDocument()
+  })
+
+  it('carries none of the summer-only camper/bunk content', async () => {
+    // Pins the DRY move being sections, not a copy of the file: reusing
+    // CAMPER_SECTIONS here would smuggle friend groups onto a weekend.
+    render(<WeekendLegendButton />)
+    await userEvent.click(screen.getByRole('button', { name: /show visual guide/i }))
+    expect(screen.queryByText(/friend group/i)).not.toBeInTheDocument()
+    expect(screen.queryByText(/gender card/i)).not.toBeInTheDocument()
+    expect(screen.queryByText(/scenario mode/i)).not.toBeInTheDocument()
+  })
+
+  it('closes on "Got it"', async () => {
+    render(<WeekendLegendButton />)
+    await userEvent.click(screen.getByRole('button', { name: /show visual guide/i }))
+    await userEvent.click(screen.getByRole('button', { name: /got it/i }))
+    expect(screen.queryByText('Visual Guide')).not.toBeInTheDocument()
   })
 })

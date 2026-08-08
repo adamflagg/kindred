@@ -2,7 +2,7 @@
  * The map surface. Fictional data throughout.
  */
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { act, fireEvent, render, screen } from '@testing-library/react'
+import { act, fireEvent, render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import type { ReactNode } from 'react'
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -635,24 +635,32 @@ describe('LodgingMap', () => {
  */
 describe('LodgingMap legend', () => {
   it('says what each mark channel means', () => {
+    // staff-default and near-bathhouse moved to the shared Visual Guide
+    // (kindred#1997) — the map's own legend keeps only what still has no
+    // control of its own to explain it.
     render(<LodgingMap parties={[]} units={UNITS} year={2026} />)
     const legend = screen.getByTestId('map-legend')
     expect(legend).toHaveTextContent(/empty/i)
     expect(legend).toHaveTextContent(/one party/i)
     expect(legend).toHaveTextContent(/shared/i)
-    expect(legend).toHaveTextContent(/staff-default/i)
-    expect(legend).toHaveTextContent(/near bathhouse/i)
     expect(legend).toHaveTextContent(/capacity unknown/i)
   })
 
-  it('says what colour and mark size encode, not only shape', () => {
-    // Shape and the blue dot were keyed; hue and size were not. Hue drives the
-    // fill, the border, the shared ring AND the area tint, and a cluster's mark
-    // grows with what is under it — five of the seven channels are colour or
-    // size, so keying only the shapes explains the smaller half of the mark.
+  it('no longer explains staff-default or near-bathhouse here — the Guide does', () => {
     render(<LodgingMap parties={[]} units={UNITS} year={2026} />)
     const legend = screen.getByTestId('map-legend')
-    expect(legend).toHaveTextContent(/area colour/i)
+    expect(legend).not.toHaveTextContent(/staff-default/i)
+    expect(legend).not.toHaveTextContent(/near bathhouse/i)
+  })
+
+  it('says what mark size encodes; area colour moved to the shared Visual Guide', () => {
+    // Shape and the blue dot were keyed; hue and size were not. Hue drives the
+    // fill, the border and the shared ring; a cluster's mark grows with what
+    // is under it. Hue's OWN key moved out (kindred#1997) since it is no
+    // longer a map-only channel — the board's cards wear it too.
+    render(<LodgingMap parties={[]} units={UNITS} year={2026} />)
+    const legend = screen.getByTestId('map-legend')
+    expect(legend).not.toHaveTextContent(/area colour/i)
     expect(legend).toHaveTextContent(/bigger mark, more rooms/i)
   })
 
@@ -685,31 +693,7 @@ describe('LodgingMap legend', () => {
   })
 })
 
-describe('LodgingMap highlight controls', () => {
-  const BATH = unit({ unit_id: 'u1', code: 'cedar-1', name: 'Cedar 1', near_bathhouse: true })
-  /**
-   * A staff cabin RELEASED to families, which is why it is still on the map.
-   *
-   * `unit()` defaults `is_family_available: true`, and that is load-bearing
-   * here rather than incidental: the board — and therefore the map, which
-   * projects from it — now excludes staff housing that has NOT been released.
-   * Set `is_family_available: false` on this fixture and every test below
-   * stops finding its mark at all.
-   *
-   * That also means the "Staff cabins" highlight now matches almost nothing
-   * in practice, since released staff cabins are rare and unreleased ones no
-   * longer reach the map. Tracked as its own issue rather than fixed here —
-   * staff asked to review the map's toggles as a set.
-   */
-  const STAFF = unit({
-    unit_id: 'u2',
-    code: 'cedar-2',
-    name: 'Cedar 2',
-    map_x: 0.7,
-    map_y: 0.2,
-    inventory_class: 'staff_default',
-  })
-
+describe('LodgingMap controls', () => {
   it('draws empty rooms by default', () => {
     render(<LodgingMap parties={[PLACED]} units={UNITS} year={2026} />)
     expect(screen.getAllByTestId('map-mark')).toHaveLength(2)
@@ -723,87 +707,49 @@ describe('LodgingMap highlight controls', () => {
     expect(marks[0]).toHaveAttribute('title', expect.stringContaining('Cedar 1'))
   })
 
-  it('dims the rooms with no bathhouse when near-bathhouse highlighting is on', async () => {
-    render(<LodgingMap parties={[]} units={[BATH, STAFF]} year={2026} />)
-    await userEvent.click(screen.getByRole('radio', { name: 'Near bathhouse' }))
-    expect(screen.getByTitle(/Cedar 1/)).toHaveStyle({ opacity: '1' })
-    expect(screen.getByTitle(/Cedar 2/)).toHaveStyle({ opacity: '0.22' })
-  })
-
-  it('dims the rooms with no staff cabin when staff highlighting is on', async () => {
-    render(<LodgingMap parties={[]} units={[BATH, STAFF]} year={2026} />)
-    await userEvent.click(screen.getByRole('radio', { name: 'Staff cabins' }))
-    expect(screen.getByTitle(/Cedar 2/)).toHaveStyle({ opacity: '1' })
-    expect(screen.getByTitle(/Cedar 1/)).toHaveStyle({ opacity: '0.22' })
-  })
-
-  it('leaves every mark at full strength when no highlight is on', () => {
-    render(<LodgingMap parties={[]} units={[BATH, STAFF]} year={2026} />)
-    expect(screen.getByTitle(/Cedar 1/)).toHaveStyle({ opacity: '1' })
-    expect(screen.getByTitle(/Cedar 2/)).toHaveStyle({ opacity: '1' })
-  })
-
-  it('lets one highlight replace the other rather than competing with it', async () => {
-    // As two checkboxes these ANDed, so ticking both dimmed nearly everything
-    // and read as a filter that had eaten the map. They answer two different
-    // questions about the same marks; only one can be asked at a time.
-    render(<LodgingMap parties={[]} units={[BATH, STAFF]} year={2026} />)
-    await userEvent.click(screen.getByRole('radio', { name: 'Near bathhouse' }))
-    await userEvent.click(screen.getByRole('radio', { name: 'Staff cabins' }))
-
-    expect(screen.getByRole('radio', { name: 'Near bathhouse' })).not.toBeChecked()
-    // The staff answer, whole — not the empty intersection of both questions.
-    expect(screen.getByTitle(/Cedar 2/)).toHaveStyle({ opacity: '1' })
-  })
-
-  it('turns every highlight off again', async () => {
-    render(<LodgingMap parties={[]} units={[BATH, STAFF]} year={2026} />)
-    await userEvent.click(screen.getByRole('radio', { name: 'Staff cabins' }))
-    await userEvent.click(screen.getByRole('radio', { name: 'No highlight' }))
-    expect(screen.getByTitle(/Cedar 1/)).toHaveStyle({ opacity: '1' })
-    expect(screen.getByTitle(/Cedar 2/)).toHaveStyle({ opacity: '1' })
-  })
-
-  it('keeps area tint and empty rooms independent of the highlight', async () => {
-    // These two do not compete with anything: one is a backdrop, the other
-    // changes which rooms exist on the map at all.
+  it("demotes Empty rooms into the legend strip — the map's last keyboard-reachable control", () => {
+    // kindred#1997: the control bar is gone entirely. `Empty rooms` survives
+    // as a real, labelled checkbox, but it must live INSIDE the legend now,
+    // not float unattached beside the canvas.
     render(<LodgingMap parties={[PLACED]} units={UNITS} year={2026} />)
-    await userEvent.click(screen.getByRole('radio', { name: 'Near bathhouse' }))
-    await userEvent.click(screen.getByLabelText('Area tint'))
-    await userEvent.click(screen.getByLabelText('Empty rooms'))
-
-    expect(screen.getByRole('radio', { name: 'Near bathhouse' })).toBeChecked()
-    expect(screen.getByLabelText('Area tint')).toBeChecked()
-    expect(screen.getAllByTestId('map-mark')).toHaveLength(1)
+    const legend = screen.getByTestId('map-legend')
+    expect(within(legend).getByLabelText('Empty rooms')).toBeInTheDocument()
   })
 
-  it('tints areas only once the area tint is switched on', async () => {
-    // Off by default: the background labels its own areas, and a tint over an
-    // illustration fights it. On demand it answers "where does this area end".
+  it('removes the control bar entirely — no zoom buttons, fade slider, highlights or area tint', () => {
+    // kindred#1997. Reset moves to double-click (tested below); the fade
+    // slider, the highlight radios and the area-tint checkbox are deleted
+    // outright, with nothing replacing them.
+    render(<LodgingMap parties={[]} units={UNITS} year={2026} />)
+    expect(screen.queryByRole('button', { name: /fit all/i })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /zoom in/i })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /zoom out/i })).not.toBeInTheDocument()
+    expect(screen.queryByLabelText(/fade map/i)).not.toBeInTheDocument()
+    expect(screen.queryByTestId('map-fade-value')).not.toBeInTheDocument()
+    expect(screen.queryByRole('radio')).not.toBeInTheDocument()
+    expect(screen.queryByLabelText('Area tint')).not.toBeInTheDocument()
+    expect(screen.queryByText(/\d+(\.\d+)?×/)).not.toBeInTheDocument()
+  })
+
+  it('never draws an area tint box — the control and the boxes both went', async () => {
     render(<LodgingMap parties={[]} units={UNITS} year={2026} />)
     expect(screen.queryAllByTestId('map-area-tint')).toHaveLength(0)
-    await userEvent.click(screen.getByLabelText('Area tint'))
-    expect(screen.getAllByTestId('map-area-tint')).toHaveLength(1)
   })
 
-  it('shows the fade percentage and follows the slider', () => {
-    // Asserting only the initial 25% would pass against a hardcoded string.
+  it('keeps a fixed scrim over the map for mark readability, with no control for it', () => {
+    // "Fade map"'s STATE goes; the scrim itself stays pinned at DEFAULT_FADE
+    // so marks stay readable against the illustration without the user being
+    // asked (kindred#1997).
     render(<LodgingMap parties={[]} units={UNITS} year={2026} />)
-    expect(screen.getByTestId('map-fade-value')).toHaveTextContent('25%')
-    fireEvent.change(screen.getByLabelText(/fade map/i), { target: { value: '60' } })
-    expect(screen.getByTestId('map-fade-value')).toHaveTextContent('60%')
+    expect(screen.getByTestId('map-scrim')).toHaveStyle({ opacity: '0.25' })
   })
 
-  it('says how to zoom, pan and open a pin', () => {
-    // Wheel-zoom and drag-pan have no affordance of their own. Without this
-    // line the map reads as a static picture.
+  it('says how to zoom, pan, reset and open a pin', () => {
+    // Wheel-zoom and drag-pan have no affordance of their own. Reset moved to
+    // double-click and used to go entirely unmentioned in this hint.
     render(<LodgingMap parties={[]} units={UNITS} year={2026} />)
     expect(screen.getByText(/scroll to zoom/i)).toBeInTheDocument()
-  })
-
-  it('labels the fit control in words, not only for screen readers', () => {
-    render(<LodgingMap parties={[]} units={UNITS} year={2026} />)
-    expect(screen.getByRole('button', { name: /fit all/i })).toBeInTheDocument()
+    expect(screen.getByText(/double-click to reset/i)).toBeInTheDocument()
   })
 })
 

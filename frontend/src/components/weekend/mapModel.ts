@@ -133,11 +133,17 @@ export function buildMapModel(parties: RosterPartyRow[], units: LodgingUnitRow[]
  * How many BOOKABLE ROOMS ARE POSITIONED — what the Map tab's badge counts.
  *
  * This is NOT how many marks the map draws. Clustering runs AFTER this
- * count, so overlapping rooms collapse into fewer marks — measured live, 103
- * positioned rooms render as 75 marks at rest — and the mark count keeps
- * falling as you zoom out further. A badge that changed as you zoomed would
- * be absurd, so it reports the room count, which is stable, rather than the
- * mark count, which is not.
+ * count, so overlapping rooms collapse into fewer marks whenever any of them
+ * share a spot — measured live on 2026's busiest weekend, 76 positioned
+ * rooms render as 76 marks at rest (nothing happens to overlap there this
+ * year), and the mark count keeps falling as you zoom out further wherever
+ * it does. A badge that changed as you zoomed would be absurd, so it reports
+ * the room count, which is stable, rather than the mark count, which is not.
+ *
+ * The 76 itself is NOT the old 103 with a typo fixed — kindred#1993 stopped
+ * `buildBoard` (which this projects) drawing unreleased staff housing, so
+ * the room count this function returns fell along with it. Re-measure rather
+ * than trusting either number if it drifts again.
  *
  * Shares `buildMapModel` with the surface on purpose: two copies of the
  * predicate is how a tab starts promising a number of rooms this count does

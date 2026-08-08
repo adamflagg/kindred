@@ -28,6 +28,7 @@ import { Home, Map as MapIcon, Users } from 'lucide-react'
 import { Activity, lazy, Suspense, useEffect, useMemo, useState } from 'react'
 import { useNavigate, useParams } from 'react-router'
 
+import { WeekendLegendButton } from '../components/BunkingLegend'
 import { ErrorBoundary } from '../components/ErrorBoundary'
 import { QueryGuard } from '../components/QueryGuard'
 import { TitleSwitcher } from '../components/ui'
@@ -293,6 +294,11 @@ export default function WeekendRosterPage() {
                 scenario={scenario}
               />
             )}
+
+            {/* One guide for all three tabs — the same move summer's
+                SessionHeader makes, mounted here rather than on the map tab
+                alone so Roster and Board can reach it too (kindred#1997). */}
+            <WeekendLegendButton />
           </div>
         </div>
       </header>
