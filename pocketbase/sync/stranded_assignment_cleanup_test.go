@@ -978,3 +978,101 @@ func TestStrandedAssignmentCleanup_LeavesEnrolledLodgingDraftUntouched(t *testin
 		t.Error("still-enrolled household's lodging draft was swept")
 	}
 }
+
+// TestStrandedAssignmentCleanup_StatsResetBetweenRuns pins the per-run contract
+// of Stats on the single long-lived service instance the orchestrator registers
+// (orchestrator.go registers one StrandedAssignmentCleanupSync for the process
+// lifetime). Every counter must describe the run that just finished, not the
+// sum of every run since boot — matching LodgingAssignmentsSync.Sync()'s
+// `s.Stats = Stats{}`. Run 1 sweeps a stranded draft and warns on a stranded
+// prod row; run 2 has nothing left to sweep, so Updated must be 0, and the
+// still-present prod row must warn exactly once again — not twice.
+func TestStrandedAssignmentCleanup_StatsResetBetweenRuns(t *testing.T) {
+	app, err := pbtests.NewTestApp()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer app.Cleanup()
+	setupStrandedCollections(t, app)
+
+	sess := saveRec(t, app, "camp_sessions", map[string]any{"cm_id": 100, "year": 2026})
+	keptBunk := saveRec(t, app, "bunks", map[string]any{"cm_id": 1, "name": "B-1", "year": 2026})
+	goneBunk := saveRec(t, app, "bunks", map[string]any{"cm_id": 2, "name": "G-5", "year": 2026})
+	person := saveRec(t, app, "persons", map[string]any{"cm_id": 9001})
+	saveRec(t, app, "bunk_plans", map[string]any{"bunk": keptBunk.Id, "session": sess.Id, "year": 2026})
+	scenario := saveRec(t, app, "saved_scenarios", map[string]any{"name": "April", "session": sess.Id, "year": 2026})
+	saveRec(t, app, "bunk_assignments_draft", map[string]any{
+		"scenario": scenario.Id, "person": person.Id, "session": sess.Id,
+		"bunk": goneBunk.Id, "year": 2026,
+	})
+	// A stranded production row: observe-only, so it re-warns on every run.
+	saveRec(t, app, "bunk_assignments", map[string]any{
+		"person": person.Id, "session": sess.Id, "bunk": goneBunk.Id, "year": 2026,
+	})
+
+	// One instance, reused across runs — exactly how the orchestrator holds it.
+	svc := NewStrandedAssignmentCleanupSync(app)
+	svc.SetYear(2026)
+
+	if err = svc.Sync(context.Background()); err != nil {
+		t.Fatalf("Sync run 1: %v", err)
+	}
+	if svc.GetStats().Updated != 1 {
+		t.Fatalf("run 1: want Updated=1, got %d", svc.GetStats().Updated)
+	}
+	if svc.GetStats().ProdAuditWarnings != 1 {
+		t.Fatalf("run 1: want ProdAuditWarnings=1, got %d", svc.GetStats().ProdAuditWarnings)
+	}
+
+	if err = svc.Sync(context.Background()); err != nil {
+		t.Fatalf("Sync run 2: %v", err)
+	}
+	if got := svc.GetStats().Updated; got != 0 {
+		t.Errorf("run 2 swept nothing — want Updated=0, got %d (Stats accumulated across runs)", got)
+	}
+}
+
+// TestStrandedAssignmentCleanup_ProdAuditWarningsClearWhenRunGatesOut covers the
+// other half of the same reset contract: the audit counters are assigned (not
+// incremented), so they look self-correcting — until a run short-circuits
+// before the audit ever executes. Here run 2 hits the zero-bunk_plans gate and
+// audits nothing at all; without a per-run reset it keeps reporting run 1's
+// warning count, describing an audit that never happened.
+func TestStrandedAssignmentCleanup_ProdAuditWarningsClearWhenRunGatesOut(t *testing.T) {
+	app, err := pbtests.NewTestApp()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer app.Cleanup()
+	setupStrandedCollections(t, app)
+
+	sess := saveRec(t, app, "camp_sessions", map[string]any{"cm_id": 100, "year": 2026})
+	plannedBunk := saveRec(t, app, "bunks", map[string]any{"cm_id": 1, "name": "B-1", "year": 2026})
+	strandedBunk := saveRec(t, app, "bunks", map[string]any{"cm_id": 2, "name": "G-5", "year": 2026})
+	person := saveRec(t, app, "persons", map[string]any{"cm_id": 9001})
+	plan := saveRec(t, app, "bunk_plans", map[string]any{"bunk": plannedBunk.Id, "session": sess.Id, "year": 2026})
+	saveRec(t, app, "bunk_assignments", map[string]any{
+		"person": person.Id, "session": sess.Id, "bunk": strandedBunk.Id, "year": 2026,
+	})
+
+	svc := NewStrandedAssignmentCleanupSync(app)
+	svc.SetYear(2026)
+
+	if err = svc.Sync(context.Background()); err != nil {
+		t.Fatalf("Sync run 1: %v", err)
+	}
+	if svc.GetStats().ProdAuditWarnings != 1 {
+		t.Fatalf("run 1: want ProdAuditWarnings=1, got %d", svc.GetStats().ProdAuditWarnings)
+	}
+
+	// Simulate a failed bunk_plans sync: run 2 gates out before the prod audit.
+	if err = app.Delete(plan); err != nil {
+		t.Fatalf("delete bunk_plan: %v", err)
+	}
+	if err = svc.Sync(context.Background()); err != nil {
+		t.Fatalf("Sync run 2: %v", err)
+	}
+	if got := svc.GetStats().ProdAuditWarnings; got != 0 {
+		t.Errorf("run 2 audited nothing — want ProdAuditWarnings=0, got %d (stale value carried from run 1)", got)
+	}
+}

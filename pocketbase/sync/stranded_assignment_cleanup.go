@@ -248,6 +248,12 @@ func (s *StrandedAssignmentCleanupSync) WasSuccessful() bool { return s.Stats.Er
 // (the daily-sync registration path), falls back to CAMPMINDER_SEASON_ID via
 // ParseSeasonYear, matching every other yearless service in this package.
 func (s *StrandedAssignmentCleanupSync) Sync(_ context.Context) error {
+	// Stats describe THIS run, not every run since boot. The orchestrator holds
+	// one instance for the process lifetime, so without this the counters climb
+	// forever and GetStats() reports a sweep that happened days ago (matching
+	// LodgingAssignmentsSync.Sync()'s reset).
+	s.Stats = Stats{}
+
 	year := s.Year
 	if year == 0 {
 		var err error
