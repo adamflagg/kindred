@@ -2,6 +2,7 @@ package sync
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 	"testing"
 
@@ -92,7 +93,7 @@ type productionCollection struct {
 func loadProductionSchema(path string) (map[string]map[string]bool, error) {
 	raw, err := os.ReadFile(path)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("read %s: %w", path, err)
 	}
 
 	var cols []productionCollection
@@ -101,7 +102,8 @@ func loadProductionSchema(path string) (map[string]map[string]bool, error) {
 			Items []productionCollection `json:"items"`
 		}
 		if err2 := json.Unmarshal(raw, &envelope); err2 != nil {
-			return nil, err
+			return nil, fmt.Errorf("%s is neither a bare collections array (%w) "+
+				"nor a paginated {items:[...]} envelope (%w)", path, err, err2)
 		}
 		cols = envelope.Items
 	}
