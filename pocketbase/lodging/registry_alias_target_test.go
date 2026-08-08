@@ -34,14 +34,14 @@ import (
 // it is only wrong when the named unit is absent from its own alias.
 //
 // Nor is a container resolving to its own rooms. "Health Center Downstairs" and
-// "Tawonga Village 5" both name a container and resolve to its children, which
+// "Forest Village 5" both name a container and resolve to its children, which
 // is what booking a whole building HAS to mean: the container is not bookable
 // itself, so the alias has to name the rooms it is made of. That is the same
 // whole-versus-split distinction Clouds Rest turns on. Requiring the container
 // to appear in its own member list would flag both of these real rows.
 //
 // Deliberately NOT a fuzzy check. It fires only on an exact name collision, so
-// a genuine synonym ("Teen Village 1" for tawonga-village-1, whose name is
+// a genuine synonym ("Teen Village 1" for forest-village-1, whose name is
 // different) is untouched. The alternative -- scoring how well an alias
 // resembles its target -- would re-derive its answers on data nobody is
 // looking at, which is what put the wrong code in the file to begin with.
@@ -147,11 +147,11 @@ func TestFindMisdirectedAliasesAllowsACorrectlyTargetedAlias(t *testing.T) {
 }
 
 func TestFindMisdirectedAliasesAllowsASynonymThatNamesNoUnit(t *testing.T) {
-	// "Teen Village 1" is the CampMinder spelling; the unit is "Tawonga Village
+	// "Teen Village 1" is the CampMinder spelling; the unit is "Forest Village
 	// 1". The string matches no unit name, so the check must stay silent.
-	units := []registryUnit{{Code: "tawonga-village-1", Name: "Tawonga Village 1"}}
+	units := []registryUnit{{Code: "forest-village-1", Name: "Forest Village 1"}}
 	aliases := []registryAlias{
-		{AliasString: "Teen Village 1", MemberUnits: []string{"tawonga-village-1"}},
+		{AliasString: "Teen Village 1", MemberUnits: []string{"forest-village-1"}},
 	}
 
 	if got := findMisdirectedAliases(units, aliases); len(got) != 0 {

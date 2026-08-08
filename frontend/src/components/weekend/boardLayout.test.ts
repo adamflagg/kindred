@@ -236,7 +236,7 @@ describe('areaTokens — the URL shorthand for each area', () => {
       'Ridge Side',
       'Ridge Yurts',
       'River Side',
-      'Tawonga Village',
+      'Forest Village',
       'Tuolumne Heights',
     ]
     const tokens = areaTokens(areasNamed(...names))
