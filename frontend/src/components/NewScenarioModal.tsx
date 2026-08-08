@@ -11,6 +11,8 @@ interface Scenario {
   created_by?: string
   is_active: boolean
   description?: string
+  /** Set only when this creation ran a copy — see useScenario.ts's Scenario. */
+  copy_skipped?: number | null
 }
 
 interface NewScenarioModalProps {

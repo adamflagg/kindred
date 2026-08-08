@@ -44,7 +44,16 @@ export function useCreateScenario() {
         sessionCmId: params.session_cm_id,
         year: params.year,
         ...(params.description !== undefined && { description: params.description }),
-        ...(params.copyOptions !== undefined && { copyFrom: params.copyOptions }),
+        // Omitted copyOptions means BLANK, not "let the backend decide" —
+        // CreateScenarioRequest.should_copy_from_production defaults an
+        // absent copy_from_production/copy_from_scenario pair to copying
+        // from production (kept for callers that predate copyOptions
+        // existing at all). The retired client-side path's own contract was
+        // the opposite: `if (params.copyOptions) { ...copy... }` did nothing
+        // at all when the param was omitted. Explicit here so this hook
+        // keeps that contract rather than silently inheriting the
+        // backend's different default.
+        copyFrom: params.copyOptions ?? { fromProduction: false },
       })
     },
     onSuccess: (scenario, params) => {

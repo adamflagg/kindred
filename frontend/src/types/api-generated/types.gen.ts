@@ -5115,6 +5115,10 @@ export type SavedScenario = {
    * Description
    */
   description?: string | null
+  /**
+   * Copy Skipped
+   */
+  copy_skipped?: number | null
 }
 
 /**

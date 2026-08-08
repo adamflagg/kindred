@@ -411,8 +411,7 @@ describe('creating a weekend plan', () => {
 
   it('reports success with the new scenario name, matching summer’s own create flow', async () => {
     // SessionView.tsx's own "+ New Scenario" flow toasts
-    // `Created scenario: ${scenario.name}` — this is the weekend analogue,
-    // not a count, since the copy count no longer round-trips back here.
+    // `Created scenario: ${scenario.name}`; this is the weekend analogue.
     renderPage()
     await openCreateModal()
     await userEvent.click(screen.getByLabelText(/Copy from CampMinder/i))
@@ -421,6 +420,22 @@ describe('creating a weekend plan', () => {
 
     await waitFor(() =>
       expect(toastSuccess).toHaveBeenCalledWith(expect.stringMatching(/Created scenario: Option B/))
+    )
+  })
+
+  it('surfaces a nonzero copy_skipped instead of silently showing fewer families', async () => {
+    // copy_skipped names a mirror/source row whose party or unit no longer
+    // resolves. Unreported, the only evidence would be a board with fewer
+    // families than the source shows.
+    createScenario.mockResolvedValue({ ...NEW_PLAN, copy_skipped: 2 })
+    renderPage()
+    await openCreateModal()
+    await userEvent.click(screen.getByLabelText(/Copy from CampMinder/i))
+    await userEvent.type(screen.getByLabelText(/Scenario Name/i), 'Option B')
+    await userEvent.click(screen.getByRole('button', { name: /Create Scenario/i }))
+
+    await waitFor(() =>
+      expect(toastSuccess).toHaveBeenCalledWith(expect.stringMatching(/Skipped 2/))
     )
   })
 })

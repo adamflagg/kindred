@@ -135,7 +135,16 @@ export function WeekendScenarioPicker({
             // — nothing left to do here but close and report, matching
             // summer's own "+ New Scenario" flow (SessionView.tsx).
             setShowNewModal(false)
-            toast.success(`Created scenario: ${created.name}`)
+            // copy_skipped names a mirror/source row whose party or unit no
+            // longer resolves — surfaced so staff don't discover fewer
+            // families than expected with no explanation. Undefined for a
+            // blank creation and always for summer (its copy loop doesn't
+            // count skips), so only a truthy count changes the wording.
+            toast.success(
+              created.copy_skipped
+                ? `Created scenario: ${created.name}. Skipped ${String(created.copy_skipped)} — the family or cabin no longer resolves.`
+                : `Created scenario: ${created.name}`
+            )
           }}
         />
       )}

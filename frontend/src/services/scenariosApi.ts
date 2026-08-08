@@ -24,34 +24,21 @@
 
 import type { FetchWithAuth } from './lodgingApi'
 import type { Scenario } from '../hooks/useScenario'
+import { ApiError, toApiError } from './apiError'
 
 const API_BASE = '/api/scenarios'
 
-/** An API failure that still knows its HTTP status — mirrors LodgingApiError. */
-export class ScenarioApiError extends Error {
-  readonly status: number
-
+/** An API failure that still knows its HTTP status. See `apiError.ts` for
+ * why this stays its own subclass rather than a shared `ApiError`. */
+export class ScenarioApiError extends ApiError {
   constructor(message: string, status: number) {
-    super(message)
+    super(message, status)
     this.name = 'ScenarioApiError'
-    this.status = status
   }
 }
 
 async function toError(response: Response, fallback: string): Promise<ScenarioApiError> {
-  let detail: unknown
-  try {
-    const body: unknown = await response.json()
-    if (body && typeof body === 'object' && 'detail' in body) {
-      detail = body.detail
-    }
-  } catch {
-    detail = undefined
-  }
-  if (typeof detail === 'string' && detail.length > 0) {
-    return new ScenarioApiError(detail, response.status)
-  }
-  return new ScenarioApiError(`${fallback} (HTTP ${String(response.status)})`, response.status)
+  return toApiError(response, fallback, ScenarioApiError)
 }
 
 /** What the create modal asks the backend to seed the new scenario with. */

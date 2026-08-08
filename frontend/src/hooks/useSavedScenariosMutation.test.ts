@@ -114,6 +114,8 @@ describe('useCreateScenario', () => {
       name: 'My Scenario',
       session_cm_id: 1000001,
       year: 2025,
+      // Omitted copyOptions defaults to blank -- see the dedicated test below.
+      copy_from_production: false,
     })
   })
 
@@ -186,7 +188,14 @@ describe('useCreateScenario', () => {
     expect(body).not.toHaveProperty('copy_from_production')
   })
 
-  it('omits both copy fields when no copyOptions is given', async () => {
+  it('defaults an omitted copyOptions to blank, not to the backend default', async () => {
+    // CreateScenarioRequest.should_copy_from_production treats an absent
+    // copy_from_production/copy_from_scenario pair as "copy from
+    // production" (backward compatibility for callers older than
+    // copyOptions). The retired client-side path's own contract was the
+    // opposite — omitting copyOptions did nothing at all — so this hook
+    // must send an explicit `copy_from_production: false` rather than
+    // silently inheriting the backend's different default.
     const { result } = renderHook(() => useCreateScenario(), { wrapper: createWrapper() })
 
     await act(async () => {
@@ -195,7 +204,7 @@ describe('useCreateScenario', () => {
 
     const [, options] = mockFetchWithAuth.mock.calls[0] as [string, RequestInit]
     const body = JSON.parse(options.body as string) as Record<string, unknown>
-    expect(body).not.toHaveProperty('copy_from_production')
+    expect(body['copy_from_production']).toBe(false)
     expect(body).not.toHaveProperty('copy_from_scenario')
   })
 

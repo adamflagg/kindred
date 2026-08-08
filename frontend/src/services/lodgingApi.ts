@@ -15,6 +15,7 @@ import type {
   WeekendSessionList,
   WeekendSummary,
 } from '../types/lodging'
+import { ApiError, toApiError } from './apiError'
 
 const API_BASE = '/api/lodging'
 
@@ -22,7 +23,8 @@ const API_BASE = '/api/lodging'
 export type FetchWithAuth = (url: string, options?: RequestInit) => Promise<Response>
 
 /**
- * An API failure that still knows its HTTP status.
+ * An API failure that still knows its HTTP status. See `apiError.ts` for
+ * why this stays its own subclass rather than a shared `ApiError`.
  *
  * The seed endpoint's 409 is the reason this exists: "this scenario already
  * holds placements" is a normal thing for staff to bump into, not a fault,
@@ -30,13 +32,10 @@ export type FetchWithAuth = (url: string, options?: RequestInit) => Promise<Resp
  * the only reliable way to tell the two apart — `detail` is prose the server
  * is free to reword.
  */
-export class LodgingApiError extends Error {
-  readonly status: number
-
+export class LodgingApiError extends ApiError {
   constructor(message: string, status: number) {
-    super(message)
+    super(message, status)
     this.name = 'LodgingApiError'
-    this.status = status
   }
 }
 
@@ -46,19 +45,7 @@ export class LodgingApiError extends Error {
  * a bare status code.
  */
 async function toError(response: Response, fallback: string): Promise<LodgingApiError> {
-  let detail: unknown
-  try {
-    const body: unknown = await response.json()
-    if (body && typeof body === 'object' && 'detail' in body) {
-      detail = body.detail
-    }
-  } catch {
-    detail = undefined
-  }
-  if (typeof detail === 'string' && detail.length > 0) {
-    return new LodgingApiError(detail, response.status)
-  }
-  return new LodgingApiError(`${fallback} (HTTP ${String(response.status)})`, response.status)
+  return toApiError(response, fallback, LodgingApiError)
 }
 
 /** List every family-camp and adult-weekend session for a year. */

@@ -9,6 +9,17 @@ export interface Scenario {
   updated?: string
   is_active: boolean
   description?: string
+  /**
+   * Set only on a `POST /api/scenarios` response that ran a copy: how many
+   * source rows named a party or unit that no longer resolves and were
+   * skipped. `null`/`undefined` on every other response (list, update —
+   * nothing ran a copy) and on a blank creation; `0` means a copy ran and
+   * skipped nothing. Summer's copy loop does not count skips
+   * (pre-existing), so this is always null for a summer scenario
+   * regardless of source. `null`, not just optional, because that is what
+   * `bunking.models.SavedScenario.copy_skipped: int | None` serializes to.
+   */
+  copy_skipped?: number | null
 }
 
 export interface ScenarioContextType {
