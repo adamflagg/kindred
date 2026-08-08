@@ -2,6 +2,7 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -168,6 +169,13 @@ func main() {
 	// See issue #2054 (Half 2); lodgingRegistryBootDecision below carries the
 	// tests for this split.
 	//
+	// The seed branch below applies the SAME rule to the same symptom from the
+	// other direction: a season that resolves fine but a registry file that is
+	// present and unloadable (malformed JSON, a duplicate code, an unknown
+	// reference) also fails the boot rather than warning, since it lands in an
+	// identically empty registry. lodgingRegistrySeedBootDecision carries that
+	// decision and its tests. See issue #2141.
+	//
 	// Skip rather than guess. Seeding ~118 units into a guessed season is
 	// strictly worse than seeding none: the first roll-forward would carry
 	// the phantom season forward as though it were real.
@@ -188,8 +196,8 @@ func main() {
 			}
 			return e.Next()
 		}
-		if err := lodging.SeedRegistry(e.App, year); err != nil {
-			slog.Warn("lodging registry load failed", "err", err)
+		if bootErr := lodgingRegistrySeedBootDecision(lodging.SeedRegistry(e.App, year)); bootErr != nil {
+			return bootErr
 		}
 		return e.Next()
 	})
@@ -339,6 +347,46 @@ func lodgingRegistryBootDecision(seasonErr error, registryPresent, hasRows bool)
 		"lodging registry file present but no season is resolvable "+
 			"(set CAMPMINDER_SEASON_ID): %w", seasonErr,
 	)
+}
+
+// lodgingRegistrySeedBootDecision turns a lodging.SeedRegistry failure into
+// either a warning (boot continues) or a boot error.
+//
+// This is the sibling of lodgingRegistryBootDecision above, and exists
+// because the two branches of the same OnServe hook were inconsistent: the
+// season-unresolvable case failed the boot while a registry file that is
+// present and unloadable — malformed JSON, a duplicate code, an unknown
+// area/parent/alias-member reference — only warned. Same hook, same symptom
+// (an empty registry, every cabin string failing to resolve), on a likelier
+// trigger, since a hand-edited registry file is more prone to a JSON typo
+// than an env var is to going missing. See issue #2141.
+//
+//   - nil: the seed succeeded, or had nothing to do. Both the absent-file
+//     cases already return nil (registry.go), so a clone or CI run without
+//     kindred-local keeps booting exactly as before.
+//   - lodging.ErrRegistryRowCheck: the loader could not determine whether the
+//     registry already has rows, so it does not know whether anything is at
+//     risk. Fail open — warn and boot — the same call the season branch above
+//     makes for its own row-check failure, rather than compounding one
+//     failure with a second, less legible one.
+//   - anything else: the registry file is present and genuinely unloadable.
+//     Fail the boot.
+//
+// The hasRows bound that lodgingRegistryBootDecision has to check explicitly
+// comes free here: SeedRegistry returns nil early once ANY season has rows
+// (registry.go:175-185), so a non-nil error out of it already implies a
+// genuinely empty registry. An already-seeded deployment cannot reach the
+// failing branch at all.
+func lodgingRegistrySeedBootDecision(seedErr error) error {
+	if seedErr == nil {
+		return nil
+	}
+	if errors.Is(seedErr, lodging.ErrRegistryRowCheck) {
+		slog.Warn("lodging registry load skipped: could not check for existing rows",
+			"err", seedErr)
+		return nil
+	}
+	return fmt.Errorf("loading lodging registry: %w", seedErr)
 }
 
 // the default pb_public dir location is relative to the executable

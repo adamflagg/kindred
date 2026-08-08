@@ -3,9 +3,12 @@ package main
 import (
 	"bytes"
 	"errors"
+	"fmt"
 	"log/slog"
 	"strings"
 	"testing"
+
+	"github.com/camp/kindred/pocketbase/lodging"
 )
 
 // captureMainLogs mirrors the lodging package's captureLogs helper (unexported
@@ -78,6 +81,61 @@ func TestLodgingRegistryBootDecision(t *testing.T) {
 		}
 		if !strings.Contains(err.Error(), "CAMPMINDER_SEASON_ID") {
 			t.Errorf("expected the boot error to name the fix (CAMPMINDER_SEASON_ID), got: %v", err)
+		}
+	})
+}
+
+// TestLodgingRegistrySeedBootDecision pins issue #2141: the sibling error
+// path in the same OnServe hook that #2054 Half 2 rewrote.
+//
+// Before this, the season-unresolvable branch failed the boot while the
+// branch three lines below it -- SeedRegistry itself failing on a malformed
+// registry file, a duplicate code, an unknown area/parent/alias-member
+// reference -- only warned. Same hook, same symptom (an empty registry, every
+// cabin string failing to resolve), on a likelier trigger: a hand-edited
+// registry file is more prone to a JSON typo than an env var is to going
+// missing.
+//
+// The hasRows bound #2054 Half 2 chose comes free here rather than needing a
+// second check: SeedRegistry returns nil early once ANY season has rows
+// (registry.go:175-185), so a non-nil error out of it already implies a
+// genuinely empty registry. An absent file is likewise already nil, so a
+// clone with no kindred-local keeps booting.
+func TestLodgingRegistrySeedBootDecision(t *testing.T) {
+	t.Run("no error: boot continues", func(t *testing.T) {
+		if err := lodgingRegistrySeedBootDecision(nil); err != nil {
+			t.Fatalf("expected nil when the seed succeeded, got: %v", err)
+		}
+	})
+
+	t.Run("row-check failure: warns and lets the boot continue", func(t *testing.T) {
+		// The loader could not even determine whether the registry already
+		// has rows, so it does not know whether anything is at risk. Fail
+		// open, exactly as the season branch above already does rather than
+		// compounding one failure with a second, less legible one.
+		logs := captureMainLogs(t)
+		rowsErr := fmt.Errorf("%w: checking lodging_areas for existing rows",
+			lodging.ErrRegistryRowCheck)
+
+		if err := lodgingRegistrySeedBootDecision(rowsErr); err != nil {
+			t.Fatalf("expected nil (boot continues) on a row-check failure, got: %v", err)
+		}
+		if !strings.Contains(logs.String(), "lodging registry") {
+			t.Errorf("expected a warning logged about the registry, got:\n%s", logs.String())
+		}
+	})
+
+	t.Run("bad registry file: fails the boot", func(t *testing.T) {
+		fileErr := errors.New("parsing lodging registry /config/lodging_registry.json: " +
+			"invalid character 'N'")
+
+		err := lodgingRegistrySeedBootDecision(fileErr)
+		if err == nil {
+			t.Fatal("expected a boot error when the registry file failed to load, got nil " +
+				"-- an unreadable registry must not boot to an empty one behind a warn line")
+		}
+		if !errors.Is(err, fileErr) {
+			t.Errorf("expected the boot error to wrap the underlying load error, got: %v", err)
 		}
 	})
 }

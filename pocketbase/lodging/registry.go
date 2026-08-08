@@ -143,6 +143,22 @@ type registryAlias struct {
 	ValidToYear   *int `json:"valid_to_year"`
 }
 
+// ErrRegistryRowCheck tags the one SeedRegistry failure that means "the
+// loader could not tell whether there is anything at risk" rather than "the
+// registry is broken": RegistryHasRows itself erroring out.
+//
+// main.go's boot gate keys on this to split SeedRegistry's two error sources
+// into opposite boot treatments (issue #2141). A row-check failure fails OPEN
+// — warn and boot — because taking the app down over a failure to READ the
+// state compounds one problem with a second, less legible one, and it is the
+// same call the season branch already makes. Every other error means a
+// registry file that is present and genuinely unloadable, which fails the
+// boot rather than coming up with an empty registry behind a warn line.
+//
+// A sentinel rather than error-string matching so the split survives any
+// rewording of the messages below.
+var ErrRegistryRowCheck = errors.New("lodging registry row check failed")
+
 // SeedRegistry loads the private lodging registry into the database for one
 // season.
 //
@@ -175,7 +191,7 @@ type registryAlias struct {
 func SeedRegistry(app core.App, year int) error {
 	hasRows, err := RegistryHasRows(app)
 	if err != nil {
-		return err
+		return fmt.Errorf("%w: %w", ErrRegistryRowCheck, err)
 	}
 	if hasRows {
 		slog.Info("lodging registry already has rows for another season; "+
