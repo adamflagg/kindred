@@ -67,6 +67,25 @@ describe('weekendStatus', () => {
     delete undated.end_date
     expect(weekendStatus(undated, 20260601)).toBe('upcoming')
   })
+
+  it('reports a cancelled weekend as cancelled, whatever the calendar says', () => {
+    // kindred#2092. Cancellation OUTRANKS the dates: a weekend cancelled in
+    // March is still cancelled on the day it would have started, and one
+    // cancelled after the fact is not simply "completed" — staff need to be
+    // able to tell "nobody came" from "we ran it".
+    const cancelled = session({ status: 'cancelled' })
+    expect(weekendStatus(cancelled, 20260501)).toBe('cancelled')
+    expect(weekendStatus(cancelled, 20260523)).toBe('cancelled')
+    expect(weekendStatus(cancelled, 20260601)).toBe('cancelled')
+  })
+
+  it('treats an explicitly active weekend exactly as one with no status at all', () => {
+    // ABSENCE OF A ROW MEANS ACTIVE, so the server sends `active` for almost
+    // every weekend and omits it entirely on an older payload. Neither may
+    // change the lifecycle answer.
+    expect(weekendStatus(session({ status: 'active' }), 20260501)).toBe('upcoming')
+    expect(weekendStatus(session(), 20260501)).toBe('upcoming')
+  })
 })
 
 describe('groupWeekends', () => {
@@ -107,6 +126,47 @@ describe('groupWeekends', () => {
 
   it('returns empty groups for an empty year', () => {
     const groups = groupWeekends([], 20260501)
-    expect(groups).toEqual({ inProgress: [], upcoming: [], completed: [] })
+    expect(groups).toEqual({ inProgress: [], upcoming: [], completed: [], cancelled: [] })
+  })
+
+  it('files a cancelled weekend in its own group and out of every calendar one', () => {
+    // BADGE, DO NOT HIDE (kindred#2092). A cancelled weekend still holds
+    // lodging rows the sync deliberately cannot clean up, and deep links to
+    // it must keep resolving, so it must still appear somewhere — just not
+    // among the weekends staff are being asked to plan.
+    const groups = groupWeekends(
+      [
+        session({ session_cm_id: 1, name: 'Cancelled', status: 'cancelled' }),
+        session({ session_cm_id: 2, name: 'Running' }),
+      ],
+      20260501
+    )
+    expect(groups.cancelled.map((s) => s.name)).toEqual(['Cancelled'])
+    expect(groups.upcoming.map((s) => s.name)).toEqual(['Running'])
+    expect(groups.inProgress).toEqual([])
+    expect(groups.completed).toEqual([])
+  })
+
+  it('sorts the cancelled group by start date like every other group', () => {
+    const groups = groupWeekends(
+      [
+        session({
+          session_cm_id: 2,
+          name: 'Later',
+          status: 'cancelled',
+          start_date: '2026-09-04 07:00:00.000Z',
+          end_date: '2026-09-07 07:00:00.000Z',
+        }),
+        session({
+          session_cm_id: 1,
+          name: 'Sooner',
+          status: 'cancelled',
+          start_date: '2026-06-05 07:00:00.000Z',
+          end_date: '2026-06-08 07:00:00.000Z',
+        }),
+      ],
+      20260501
+    )
+    expect(groups.cancelled.map((s) => s.name)).toEqual(['Sooner', 'Later'])
   })
 })

@@ -40,6 +40,7 @@ import {
   listUnresolvedAliasIssues,
   mapUnresolvedAlias,
   reorderLodgingAreas,
+  setWeekendSessionStatus,
 } from './lodgingCrud'
 
 beforeEach(() => {
@@ -273,5 +274,72 @@ describe('reorderLodgingAreas', () => {
     expect(update).toHaveBeenCalledTimes(2)
     expect(update).toHaveBeenNthCalledWith(1, 'a3', { sort_order: 1 })
     expect(update).toHaveBeenNthCalledWith(2, 'a1', { sort_order: 2 })
+  })
+})
+
+// ── Weekend status (kindred#2092) ─────────────────────────────────────────────
+//
+// STAFF-OWNED and derivable from nothing: CampMinder's Sessions API has no
+// status concept, so this is the one lodging table with no upstream at all.
+// The key is the PAIR (session_cm_id, year) — CampMinder reuses session ids
+// across years — and ABSENCE OF A ROW MEANS ACTIVE, which is why going back to
+// active DELETES rather than writing a second spelling of the same state.
+describe('setWeekendSessionStatus', () => {
+  it('creates a row keyed on the CampMinder id and the year', async () => {
+    getFullList.mockResolvedValue([])
+
+    await setWeekendSessionStatus(2026, 1000002, 'cancelled')
+
+    expect(collection).toHaveBeenCalledWith('lodging_session_status')
+    const [payload] = create.mock.calls[0] as [Record<string, unknown>]
+    expect(payload).toEqual({ session_cm_id: 1000002, year: 2026, status: 'cancelled' })
+  })
+
+  it('scopes the existing-row lookup to BOTH the weekend and the season', async () => {
+    // Without the year, a 2026 cancellation would find and overwrite the 2027
+    // row for the weekend that inherited the same CampMinder id.
+    getFullList.mockResolvedValue([])
+
+    await setWeekendSessionStatus(2026, 1000002, 'cancelled')
+
+    const [options] = getFullList.mock.calls[0] as [{ filter?: string }]
+    expect(options.filter).toContain('session_cm_id = 1000002')
+    expect(options.filter).toContain('year = 2026')
+  })
+
+  it('updates the existing row rather than creating a second one', async () => {
+    getFullList.mockResolvedValue([
+      { id: 'st_1', session_cm_id: 1000002, year: 2026, status: 'active' },
+    ])
+
+    await setWeekendSessionStatus(2026, 1000002, 'cancelled')
+
+    expect(create).not.toHaveBeenCalled()
+    expect(update).toHaveBeenCalledWith('st_1', { status: 'cancelled' })
+  })
+
+  it('DELETES the row when a weekend goes back to running', async () => {
+    // Absence is what "active" means, so storing `active` would be a second
+    // spelling of a state the empty table already expresses — the same shape
+    // `lodging_availability` uses for clearing an override.
+    getFullList.mockResolvedValue([
+      { id: 'st_1', session_cm_id: 1000002, year: 2026, status: 'cancelled' },
+    ])
+
+    await setWeekendSessionStatus(2026, 1000002, 'active')
+
+    expect(deleteRecord).toHaveBeenCalledWith('st_1')
+    expect(create).not.toHaveBeenCalled()
+    expect(update).not.toHaveBeenCalled()
+  })
+
+  it('writes nothing at all when a weekend with no row is set to running', async () => {
+    getFullList.mockResolvedValue([])
+
+    await setWeekendSessionStatus(2026, 1000002, 'active')
+
+    expect(create).not.toHaveBeenCalled()
+    expect(update).not.toHaveBeenCalled()
+    expect(deleteRecord).not.toHaveBeenCalled()
   })
 })

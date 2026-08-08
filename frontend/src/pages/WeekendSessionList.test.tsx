@@ -55,11 +55,16 @@ const WOMENS = {
 
 beforeEach(() => {
   client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+  // COPIES, not the shared constants. `beforeEach` rebuilds the wrapper object
+  // but the two session literals are module-scoped, so a test that edits one
+  // (the cancellation cases below) would otherwise leave it edited for every
+  // test that runs after it — a failure that depends on test order and reads
+  // as a bug in the component.
   summaryQuery.data = {
     year: 2026,
     weekends: [
       {
-        session: FAMILY_CAMP_1,
+        session: { ...FAMILY_CAMP_1 },
         counts: {
           parties_total: 62,
           parties_assigned: 56,
@@ -68,7 +73,7 @@ beforeEach(() => {
         },
       },
       {
-        session: WOMENS,
+        session: { ...WOMENS },
         counts: {
           parties_total: 123,
           parties_assigned: 0,
@@ -121,6 +126,57 @@ describe('rows', () => {
     // whichever group they land in, the lander must head it.
     const headings = screen.getAllByRole('heading', { level: 2 })
     expect(headings.length).toBeGreaterThan(0)
+  })
+})
+
+describe('cancelled weekends', () => {
+  /**
+   * kindred#2092. The flag is STAFF-OWNED — CampMinder exposes no status field
+   * to derive it from — and this lander is READ-ONLY about it: it badges, it
+   * does not set. The write surface lives at /manage/lodging beside the
+   * registry and the season roll-forward, behind the same permission gate.
+   */
+  function cancelWomensWeekend() {
+    const data = summaryQuery.data as {
+      weekends: { session: { status?: string } }[]
+    }
+    const womens = data.weekends[1]
+    if (!womens) throw new Error('fixture changed: expected a second weekend to cancel')
+    womens.session.status = 'cancelled'
+  }
+
+  it('badges a cancelled weekend in its own section rather than hiding it', () => {
+    cancelWomensWeekend()
+    render(<WeekendSessionList />, { wrapper })
+
+    // Still reachable: a cancelled weekend keeps lodging rows the sync cannot
+    // clean up, and its deep link must keep resolving.
+    expect(screen.getByRole('link', { name: /Women's Weekend/ })).toHaveAttribute(
+      'href',
+      '/weekend/ww'
+    )
+    expect(screen.getByRole('heading', { level: 2, name: /Cancelled/ })).toBeInTheDocument()
+  })
+
+  it('counts a running weekend toward the header "need a cabin" figure', () => {
+    // The baseline for the test below. Women's Weekend is the only one of the
+    // two still upcoming — Family Camp 1's May dates are behind the clock, and
+    // completed weekends were already excluded before this change — so the
+    // header figure is its 123 alone.
+    render(<WeekendSessionList />, { wrapper })
+    expect(screen.getByText('123')).toBeInTheDocument()
+  })
+
+  it('stops counting a cancelled weekend toward "need a cabin"', () => {
+    // Asking staff to house 123 families for a weekend that is not happening
+    // is the whole complaint in kindred#2092.
+    cancelWomensWeekend()
+    render(<WeekendSessionList />, { wrapper })
+
+    expect(screen.queryByText('123')).not.toBeInTheDocument()
+    // …and the weekend itself is still on the page, badged. A figure that
+    // dropped because the row vanished would be the wrong fix.
+    expect(screen.getByText('CANCELLED')).toBeInTheDocument()
   })
 })
 

@@ -2,9 +2,12 @@
  * Family Camp lodging registry CRUD.
  *
  * Writes go straight to PocketBase through the JS SDK, not through FastAPI:
- * all lodging collections carry `@request.auth.is_admin = true` on create,
- * update and delete, so PocketBase is the authorisation boundary, and the Go
- * record hooks in `pocketbase/lodging` are the integrity boundary.
+ * every collection reached from here carries the canonical
+ * `@request.auth.is_admin = true || @request.auth.cached_permissions ~
+ * "bunking.manage"` rule on create, update and delete (1500000130 widened them
+ * off admin-only, because the people who do this job hold `bunking.manage`,
+ * not admin), so PocketBase is the authorisation boundary, and the Go record
+ * hooks in `pocketbase/lodging` are the integrity boundary.
  *
  * Nothing in the registry is hardcoded anywhere in this repo (spec §3.8) —
  * areas, units, aliases, parent relations, staff-default flags and amenity
@@ -20,11 +23,22 @@ import type {
   LodgingIngestIssueRecord,
   LodgingUnitInput,
   LodgingUnitRecord,
+  WeekendSessionStatusValue,
 } from '../types/lodging'
 
 const AREAS = 'lodging_areas'
 const UNITS = 'lodging_units'
 const ALIASES = 'lodging_unit_aliases'
+
+/**
+ * The staff-owned weekend status (kindred#2092, migration 1500000142).
+ *
+ * The one lodging table with NO SYNC SOURCE. CampMinder's Sessions API exposes
+ * twenty properties and none of them is a status or a registration-availability
+ * concept, so "this weekend is cancelled" cannot be derived — it is typed here
+ * and nowhere else.
+ */
+const SESSION_STATUS = 'lodging_session_status'
 
 /**
  * The ingest work queue.
@@ -314,4 +328,55 @@ export async function ignoreIngestIssue(
     is_resolved: true,
     resolution_note: note,
   })
+}
+
+// ── Weekend status ────────────────────────────────────────────────────────────
+
+/**
+ * Mark one weekend cancelled, or put it back.
+ *
+ * THE KEY IS THE PAIR. CampMinder reuses session ids across years — which is
+ * why camp_sessions is unique on (cm_id, year) — so a lookup on
+ * `session_cm_id` alone would let a 2026 cancellation overwrite the 2027
+ * weekend that inherited the id.
+ *
+ * ACTIVE DELETES THE ROW. Absence of a row is what "active" means: the
+ * migration seeds nothing, so writing `active` would be a second spelling of
+ * a state the empty table already expresses — exactly the shape
+ * `lodging_availability` uses for `family_available: null`, where there is no
+ * value meaning "normal" because writing one would pin the record against a
+ * later change. `active` stays in the column's vocabulary so a row is
+ * self-describing and so widening the select later is a value addition, and
+ * the read path treats a hand-written `active` as active.
+ *
+ * Reads through `getFullList` rather than `getFirstListItem`, which THROWS on
+ * no match — and no match is the normal case here, not an error.
+ *
+ * Callers must invalidate afterwards: the status is projected into
+ * `/api/lodging/sessions` and `/api/lodging/summary`, whose queries inherit
+ * the app's 30-minute staleTime. `invalidateLodgingRegistryQueries` already
+ * carries all three weekend prefixes.
+ */
+export async function setWeekendSessionStatus(
+  year: number,
+  sessionCmId: number,
+  status: WeekendSessionStatusValue
+): Promise<void> {
+  const existing = await pb.collection(SESSION_STATUS).getFullList<{ id: string }>({
+    filter: `session_cm_id = ${String(sessionCmId)} && year = ${String(year)}`,
+  })
+
+  if (status === 'active') {
+    for (const row of existing) {
+      await pb.collection(SESSION_STATUS).delete(row.id)
+    }
+    return
+  }
+
+  const current = existing[0]
+  if (current) {
+    await pb.collection(SESSION_STATUS).update(current.id, { status })
+    return
+  }
+  await pb.collection(SESSION_STATUS).create({ session_cm_id: sessionCmId, year, status })
 }

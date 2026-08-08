@@ -1,4 +1,10 @@
-/** The lodging settings host: three sections, driven by the route param. */
+/**
+ * The lodging settings host: five sections, driven by the route param.
+ *
+ * The docstring said "three" while the file rendered four — `season` shipped
+ * without being covered here, and this test was the thing that should have
+ * noticed. Every section now has a case, including `status` (kindred#2092).
+ */
 import { render, screen } from '@testing-library/react'
 import { MemoryRouter, Route, Routes } from 'react-router'
 import { describe, expect, it, vi } from 'vitest'
@@ -10,6 +16,10 @@ import { LodgingSettingsTab } from './LodgingSettingsTab'
 vi.mock('./LodgingUnitsPanel', () => ({ LodgingUnitsPanel: () => <div>UNITS PANEL</div> }))
 vi.mock('./LodgingAliasesPanel', () => ({ LodgingAliasesPanel: () => <div>ALIASES PANEL</div> }))
 vi.mock('./UnresolvedAliasQueue', () => ({ UnresolvedAliasQueue: () => <div>QUEUE PANEL</div> }))
+vi.mock('./SeasonRollForwardPanel', () => ({
+  SeasonRollForwardPanel: () => <div>SEASON PANEL</div>,
+}))
+vi.mock('./WeekendStatusPanel', () => ({ WeekendStatusPanel: () => <div>STATUS PANEL</div> }))
 
 function renderAt(path: string) {
   return render(
@@ -59,24 +69,36 @@ describe('LodgingSettingsTab', () => {
     expect(screen.getByText('QUEUE PANEL')).toBeInTheDocument()
   })
 
+  it('renders the season roll-forward section', () => {
+    renderAt('/manage/lodging/season')
+    expect(screen.getByText('SEASON PANEL')).toBeInTheDocument()
+  })
+
+  it('renders the weekend status section', () => {
+    // kindred#2092. The WRITE surface for the cancellation flag lives here,
+    // beside the registry and the roll-forward and behind the same
+    // bunking.manage gate — the weekend lander only badges it.
+    renderAt('/manage/lodging/status')
+    expect(screen.getByText('STATUS PANEL')).toBeInTheDocument()
+  })
+
   it('falls back to units for an unknown section rather than rendering nothing', () => {
     renderAt('/manage/lodging/nonsense')
     expect(screen.getByText('UNITS PANEL')).toBeInTheDocument()
   })
 
-  it('links to all three sections', () => {
+  it('links to every section', () => {
     renderAt('/manage/lodging/units')
-    expect(screen.getByRole('link', { name: 'Units' })).toHaveAttribute(
-      'href',
-      '/manage/lodging/units'
-    )
-    expect(screen.getByRole('link', { name: 'Cabin name aliases' })).toHaveAttribute(
-      'href',
-      '/manage/lodging/aliases'
-    )
-    expect(screen.getByRole('link', { name: 'Unresolved names' })).toHaveAttribute(
-      'href',
-      '/manage/lodging/unresolved'
-    )
+    const expected: Array<[string, string]> = [
+      ['Units', '/manage/lodging/units'],
+      ['Cabin name aliases', '/manage/lodging/aliases'],
+      ['Unresolved names', '/manage/lodging/unresolved'],
+      ['Season', '/manage/lodging/season'],
+      ['Weekend status', '/manage/lodging/status'],
+    ]
+    for (const [name, href] of expected) {
+      expect(screen.getByRole('link', { name })).toHaveAttribute('href', href)
+    }
+    expect(screen.getAllByRole('link')).toHaveLength(expected.length)
   })
 })

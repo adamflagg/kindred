@@ -80,6 +80,10 @@ def _repo(**overrides: Any) -> MagicMock:
     repo = MagicMock()
     defaults: dict[str, Any] = {
         "fetch_weekend_sessions": [],
+        # The staff-owned cancelled flag (kindred#2092), keyed by CampMinder
+        # session id. EMPTY is the honest default: the migration seeds
+        # nothing, so absence of a row means active.
+        "fetch_session_statuses": {},
         "fetch_session": None,
         "fetch_units": [],
         "fetch_availability": [],
@@ -191,6 +195,95 @@ class TestSessionLookup:
         assert result.year == 2026
         assert [s.session_cm_id for s in result.sessions] == [1000001, 1000002]
         assert [s.session_type for s in result.sessions] == ["family", "adult"]
+
+
+class TestWeekendCancellation:
+    """kindred#2092: a cancelled weekend is STAFF-OWNED data.
+
+    CampMinder's Sessions API carries no status field, and neither derived
+    rule the issue tried survived measurement -- "attendee rows exist but none
+    are enrolled" fires on one owner-confirmed cancelled weekend and not on
+    another, because a weekend cancelled before anyone registered is
+    byte-identical to one that has not opened yet. So the flag is read from a
+    table nothing syncs, and every weekend without a row is ACTIVE.
+
+    BADGE, DO NOT HIDE: a cancelled weekend still holds lodging rows the sync
+    deliberately cannot clean up (1500000124), and deep links to it must keep
+    resolving, so it stays in both payloads.
+    """
+
+    @pytest.mark.asyncio
+    async def test_a_weekend_with_no_status_row_is_active(self) -> None:
+        service = LodgingRosterService(_repo(fetch_weekend_sessions=[FAMILY_SESSION, ADULT_SESSION]))
+
+        result = await service.list_sessions(2026)
+
+        assert [s.status for s in result.sessions] == ["active", "active"]
+
+    @pytest.mark.asyncio
+    async def test_a_cancelled_weekend_is_reported_cancelled_and_still_listed(self) -> None:
+        service = LodgingRosterService(
+            _repo(
+                fetch_weekend_sessions=[FAMILY_SESSION, ADULT_SESSION],
+                fetch_session_statuses={1000002: "cancelled"},
+            )
+        )
+
+        result = await service.list_sessions(2026)
+
+        assert [s.session_cm_id for s in result.sessions] == [1000001, 1000002]
+        assert [s.status for s in result.sessions] == ["active", "cancelled"]
+
+    @pytest.mark.asyncio
+    async def test_an_unrecognised_stored_value_reads_as_active(self) -> None:
+        """The select is widenable by decision (owner, 2026-08-07).
+
+        Two values today, more later. A value this layer does not know must
+        not be rendered as a cancellation -- saying a running weekend is
+        cancelled is the one error that empties a board staff are working.
+        """
+        service = LodgingRosterService(
+            _repo(
+                fetch_weekend_sessions=[FAMILY_SESSION],
+                fetch_session_statuses={1000001: "closed_for_registration"},
+            )
+        )
+
+        result = await service.list_sessions(2026)
+
+        assert [s.status for s in result.sessions] == ["active"]
+
+    @pytest.mark.asyncio
+    async def test_a_status_row_for_another_weekend_does_not_leak(self) -> None:
+        service = LodgingRosterService(
+            _repo(
+                fetch_weekend_sessions=[FAMILY_SESSION],
+                fetch_session_statuses={9999999: "cancelled"},
+            )
+        )
+
+        result = await service.list_sessions(2026)
+
+        assert [s.status for s in result.sessions] == ["active"]
+
+    @pytest.mark.asyncio
+    async def test_the_lander_summary_reports_the_same_status(self) -> None:
+        """The lander reads `/summary`, not `/sessions`.
+
+        Both build their identity block through `_session_summary`, so wiring
+        only one of them is exactly the half-fix that would leave the badge
+        invisible on the page it was asked for.
+        """
+        service = LodgingRosterService(
+            _repo(
+                fetch_weekend_sessions=[FAMILY_SESSION, ADULT_SESSION],
+                fetch_session_statuses={1000001: "cancelled"},
+            )
+        )
+
+        summary = await service.build_summary(2026)
+
+        assert [e.session.status for e in summary.weekends] == ["cancelled", "active"]
 
 
 class TestFamilyCampParties:

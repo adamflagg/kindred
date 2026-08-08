@@ -12,9 +12,18 @@
  * weekend meant twelve composed reads whose cost is dominated by year-scoped
  * work identical across all of them — a weekend with zero parties still took
  * ~3s — so `/api/lodging/summary` does that work once for the year.
+ *
+ * CANCELLATION IS READ-ONLY HERE (kindred#2092). This page BADGES a cancelled
+ * weekend; it does not set the flag. The write surface is at
+ * /manage/lodging/status, beside the registry and the season roll-forward and
+ * behind the same permission gate, because every other season-grain fact
+ * already lives there. And it badges rather than hides: a cancelled weekend
+ * still holds lodging rows the sync deliberately cannot clean up, and its deep
+ * link must keep resolving.
  */
 import {
   AlertCircle,
+  Ban,
   Calendar,
   CheckCircle2,
   ChevronRight,
@@ -83,11 +92,29 @@ const STATUS_STYLE: Record<
     text: 'text-stone-600 dark:text-stone-300',
     iconBg: 'bg-stone-100 dark:bg-stone-700',
   },
+  // Staff-owned, not derived — CampMinder has no field to read this from, so
+  // somebody ticked a box at /manage/lodging/status. Amber rather than red:
+  // the weekend is off, which is information, not a system fault.
+  cancelled: {
+    label: 'Cancelled',
+    subtitle: 'Not running — nobody to place',
+    bg: 'bg-amber-50 dark:bg-amber-900/40',
+    border: 'border-amber-200 dark:border-amber-700',
+    text: 'text-amber-700 dark:text-amber-200',
+    iconBg: 'bg-amber-100 dark:bg-amber-800',
+  },
+}
+
+const STATUS_ICON: Record<WeekendStatus, typeof Tent> = {
+  'in-progress': PlayCircle,
+  upcoming: Tent,
+  completed: CheckCircle2,
+  cancelled: Ban,
 }
 
 function StatusSectionHeader({ status, count }: { status: WeekendStatus; count: number }) {
   const style = STATUS_STYLE[status]
-  const Icon = status === 'completed' ? CheckCircle2 : status === 'in-progress' ? PlayCircle : Tent
+  const Icon = STATUS_ICON[status]
   return (
     <div className={`flex items-center gap-3 border-b px-4 py-2.5 ${style.bg} ${style.border}`}>
       <div className={`flex h-7 w-7 items-center justify-center rounded-lg ${style.iconBg}`}>
@@ -126,6 +153,10 @@ function WeekendRow({
   stats: WeekendStats | undefined
 }) {
   const isCompleted = status === 'completed'
+  const isCancelled = status === 'cancelled'
+  // Both states mean "there is nothing to do here", and the row says so the
+  // same way: dimmed, stone-toned, and with the placement nag suppressed.
+  const isMuted = isCompleted || isCancelled
   const isAdult = session.session_type === 'adult'
   const dates = formatSessionDates(session.start_date, session.end_date)
   const { short, qualifier } = splitWeekendName(session.name)
@@ -134,20 +165,22 @@ function WeekendRow({
     <Link
       to={`/weekend/${weekendRef(session, siblings)}`}
       className={`group hover:bg-forest-50/50 dark:hover:bg-forest-800/40 block transition-all duration-200 ${
-        isCompleted ? 'opacity-70 hover:opacity-100' : ''
+        isMuted ? 'opacity-70 hover:opacity-100' : ''
       }`}
     >
       <div className="flex items-center gap-3 px-3 py-3 sm:gap-4 sm:px-4">
         <div
           className={`flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-xl sm:h-10 sm:w-10 ${
-            isCompleted
+            isMuted
               ? 'bg-stone-100 dark:bg-stone-700/80'
               : isAdult
                 ? 'bg-amber-100 dark:bg-amber-800/60'
                 : 'bg-forest-100 dark:bg-forest-800/60'
           }`}
         >
-          {isCompleted ? (
+          {isCancelled ? (
+            <Ban className="h-4 w-4 text-stone-500 sm:h-5 sm:w-5 dark:text-stone-400" />
+          ) : isCompleted ? (
             <CheckCircle2 className="h-4 w-4 text-stone-500 sm:h-5 sm:w-5 dark:text-stone-400" />
           ) : isAdult ? (
             <Users className="h-4 w-4 text-amber-600 sm:h-5 sm:w-5 dark:text-amber-400" />
@@ -160,7 +193,7 @@ function WeekendRow({
           <div className="flex flex-wrap items-center gap-2">
             <h3
               className={`font-display group-hover:text-primary truncate text-base font-semibold transition-colors sm:text-lg ${
-                isCompleted ? 'text-stone-600 dark:text-stone-400' : 'text-foreground'
+                isMuted ? 'text-stone-600 dark:text-stone-400' : 'text-foreground'
               }`}
             >
               {short}
@@ -177,6 +210,14 @@ function WeekendRow({
             {status === 'in-progress' && (
               <span className="rounded-full bg-green-100 px-2 py-0.5 text-xs font-semibold text-green-700 dark:bg-green-900/50 dark:text-green-300">
                 LIVE
+              </span>
+            )}
+            {/* The row carries the badge as well as the section header: a
+                deep-linked row read on its own must still say the weekend is
+                off, and the section header scrolls away on a long year. */}
+            {isCancelled && (
+              <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-700 dark:bg-amber-900/50 dark:text-amber-300">
+                CANCELLED
               </span>
             )}
           </div>
@@ -213,7 +254,7 @@ function WeekendRow({
             </div>
 
             <div className="hidden w-[110px] items-center justify-end sm:flex">
-              {stats.unplaced > 0 && status !== 'completed' && (
+              {stats.unplaced > 0 && !isMuted && (
                 <span className="inline-flex items-center gap-1 rounded-lg bg-amber-100 px-2 py-1 text-xs font-semibold text-amber-700 dark:bg-amber-900/50 dark:text-amber-300">
                   <AlertCircle className="h-3 w-3" />
                   {stats.unplaced} need a cabin
@@ -248,10 +289,14 @@ export default function WeekendSessionList() {
     0
   )
 
+  // Cancelled sits LAST, after completed: it is the section staff need least
+  // often, and putting it above the weekends they are actually planning would
+  // be the "hide it" outcome in reverse.
   const ordered: Array<[WeekendStatus, WeekendSession[]]> = [
     ['in-progress', groups.inProgress],
     ['upcoming', groups.upcoming],
     ['completed', groups.completed],
+    ['cancelled', groups.cancelled],
   ]
 
   return (

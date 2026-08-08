@@ -118,6 +118,21 @@ export type ShareEligibilityValue = NonNullable<ShareRequestSummary['eligibility
  */
 export type ShareEligibilitySourceValue = NonNullable<ShareRequestSummary['eligibility_source']>
 
+/**
+ * The STAFF-OWNED weekend status (kindred#2092).
+ *
+ * The one vocabulary on this surface that mirrors no Go ingest, because there
+ * is no ingest: CampMinder's Sessions API carries no status concept at all, so
+ * a cancelled weekend cannot be derived from synced data and nothing in the
+ * sync layer writes or clears it.
+ *
+ * The field is OPTIONAL on the wire (Pydantic default `"active"`), and absence
+ * of a status ROW is what "active" means — the migration seeds nothing. So
+ * undefined, `"active"` and no row are all the same answer, and only
+ * `"cancelled"` is a claim.
+ */
+export type WeekendSessionStatusValue = NonNullable<WeekendSessionSummary['status']>
+
 /** `unknown` means the amenity was never recorded, NOT "no bathroom". */
 export type BathroomValue = NonNullable<LodgingUnitSummary['bathroom']>
 
