@@ -23,8 +23,13 @@ vi.mock('../../../services/lodgingCrud', () => ({
   setWeekendSessionStatus: (...args: unknown[]) => setWeekendSessionStatus(...args),
 }))
 
+let mockCurrentYear = 2026
 vi.mock('../../../hooks/useCurrentYear', () => ({
-  useCurrentYear: () => ({ currentYear: 2026, setCurrentYear: vi.fn(), isYearReady: true }),
+  useCurrentYear: () => ({
+    currentYear: mockCurrentYear,
+    setCurrentYear: vi.fn(),
+    isYearReady: mockCurrentYear > 0,
+  }),
 }))
 
 const sessionsQuery = {
@@ -63,6 +68,7 @@ function renderPanel(ui: ReactElement) {
 }
 
 beforeEach(() => {
+  mockCurrentYear = 2026
   client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   setWeekendSessionStatus.mockReset().mockResolvedValue(undefined)
   sessionsQuery.isLoading = false
@@ -138,6 +144,23 @@ describe('WeekendStatusPanel', () => {
     sessionsQuery.error = new Error('boom')
     renderPanel(<WeekendStatusPanel />)
     expect(screen.getByText(/Failed to load weekend sessions data: boom/i)).toBeInTheDocument()
+  })
+
+  it('waits for the season rather than claiming the year has no weekends', () => {
+    // CurrentYearContext answers the literal 0 until the backend supplies the
+    // configured season, and `useWeekendSessions` gates its fetch on
+    // `year > 0`. A DISABLED TanStack query reports `isLoading === false` with
+    // `data === undefined` — exactly the shape QueryGuard reads as "settled,
+    // nothing here" — so gating only the fetch trades a spinner for a
+    // confident empty state. Same trap SeasonRollForwardPanel hit through
+    // auth-loading.
+    mockCurrentYear = 0
+    sessionsQuery.data = undefined
+    sessionsQuery.isLoading = false
+    renderPanel(<WeekendStatusPanel />)
+
+    expect(screen.getByText(/Loading weekend sessions/i)).toBeInTheDocument()
+    expect(screen.queryByText(/No family or adult weekends/i)).not.toBeInTheDocument()
   })
 
   it('says the season has no weekends rather than rendering an empty table', () => {

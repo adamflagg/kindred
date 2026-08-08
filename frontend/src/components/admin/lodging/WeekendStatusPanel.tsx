@@ -52,6 +52,12 @@ export function WeekendStatusPanel() {
   // the router declares `ge=2000`, so an ungated call eats a 422 on every cold
   // load. Its query inherits the app cache defaults, as every weekend hook does.
   const sessionsQuery = useWeekendSessions(currentYear)
+  // The RENDER half of that gate, and it is not optional. A DISABLED TanStack
+  // query reports `isLoading === false` with `data === undefined`, which is
+  // exactly the shape QueryGuard reads as "settled, nothing here" — so gating
+  // only the fetch would trade a spinner for a confident "no weekends in 0".
+  // SeasonRollForwardPanel folds `isAuthLoading` in for the identical reason.
+  const yearReady = currentYear > 0
 
   const write = useMutation({
     mutationFn: ({ session, status }: StatusWrite) =>
@@ -84,7 +90,7 @@ export function WeekendStatusPanel() {
       </p>
 
       <QueryGuard
-        isLoading={sessionsQuery.isLoading}
+        isLoading={sessionsQuery.isLoading || !yearReady}
         error={sessionsQuery.error}
         data={sessionsQuery.data}
         label="weekend sessions"
