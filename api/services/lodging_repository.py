@@ -51,6 +51,7 @@ from api.constants.collections import (
 )
 from api.constants.filters import ACTIVE_ENROLLED_FILTER
 from api.dependencies import lodging_cache
+from api.services.lodging_cache import cached_by_year
 from api.utils.pb_filters import pb_escape
 from bunking.logging_config import get_logger
 
@@ -317,22 +318,18 @@ class LodgingRepository:
             },
         )
 
+    @cached_by_year(lodging_cache)
     async def fetch_households(self, year: int) -> dict[str, Any]:
         """Households for a year, keyed by PocketBase record id.
 
         Cached (kindred#1963): year-scoped and sync-written only, so a hit is
         safe for the cache's whole TTL. See api/services/lodging_cache.py.
         """
-        cached = lodging_cache.get("fetch_households", year)
-        if cached is not None:
-            return cached  # type: ignore[no-any-return]
         rows = await self._page(
             HOUSEHOLDS,
             query_params={"filter": f"year = {year}", "sort": STABLE_SORT},
         )
-        result = {row.id: row for row in rows}
-        lodging_cache.set("fetch_households", year, result)
-        return result
+        return {row.id: row for row in rows}
 
     async def fetch_household_by_cm_id(self, year: int, household_cm_id: int) -> Any | None:
         """One household by CampMinder id, or None.
@@ -349,6 +346,7 @@ class LodgingRepository:
         )
         return rows[0] if rows else None
 
+    @cached_by_year(lodging_cache)
     async def fetch_prior_household_cm_ids(self, year: int) -> set[int]:
         """CampMinder ids of every household seen in an EARLIER year.
 
@@ -365,17 +363,13 @@ class LodgingRepository:
         fetch_households: year-scoped, sync-written only. See
         api/services/lodging_cache.py.
         """
-        cached = lodging_cache.get("fetch_prior_household_cm_ids", year)
-        if cached is not None:
-            return cached  # type: ignore[no-any-return]
         rows = await self._page(
             HOUSEHOLDS,
             query_params={"filter": f"year < {year}", "fields": "cm_id", "sort": STABLE_SORT},
         )
-        result = {int(getattr(row, "cm_id", 0)) for row in rows if getattr(row, "cm_id", 0)}
-        lodging_cache.set("fetch_prior_household_cm_ids", year, result)
-        return result
+        return {int(getattr(row, "cm_id", 0)) for row in rows if getattr(row, "cm_id", 0)}
 
+    @cached_by_year(lodging_cache)
     async def fetch_family_camp_adults(self, year: int) -> dict[str, list[Any]]:
         """Accompanying adults grouped by household PB id, in adult_number order.
 
@@ -385,9 +379,6 @@ class LodgingRepository:
         Cached (kindred#1963): year-scoped and sync-written only. See
         api/services/lodging_cache.py.
         """
-        cached = lodging_cache.get("fetch_family_camp_adults", year)
-        if cached is not None:
-            return cached  # type: ignore[no-any-return]
         rows = await self._page(
             FAMILY_CAMP_ADULTS,
             query_params={"filter": f"year = {year}", "sort": "adult_number"},
@@ -397,10 +388,9 @@ class LodgingRepository:
             grouped[str(getattr(row, "household", ""))].append(row)
         for adults in grouped.values():
             adults.sort(key=lambda a: int(getattr(a, "adult_number", 0) or 0))
-        result = dict(grouped)
-        lodging_cache.set("fetch_family_camp_adults", year, result)
-        return result
+        return dict(grouped)
 
+    @cached_by_year(lodging_cache)
     async def fetch_family_camp_registrations(self, year: int) -> dict[str, Any]:
         """Registration answers keyed by household PB id.
 
@@ -413,16 +403,11 @@ class LodgingRepository:
         Cached (kindred#1963): year-scoped and sync-written only. See
         api/services/lodging_cache.py.
         """
-        cached = lodging_cache.get("fetch_family_camp_registrations", year)
-        if cached is not None:
-            return cached  # type: ignore[no-any-return]
         rows = await self._page(
             FAMILY_CAMP_REGISTRATIONS,
             query_params={"filter": f"year = {year}", "sort": STABLE_SORT},
         )
-        result = {str(getattr(row, "household", "")): row for row in rows}
-        lodging_cache.set("fetch_family_camp_registrations", year, result)
-        return result
+        return {str(getattr(row, "household", "")): row for row in rows}
 
     async def fetch_family_camp_medical(self, year: int) -> dict[str, Any]:
         """PHI, keyed by household PB id. NO PRODUCTION CALLER.

@@ -38,13 +38,17 @@ call is a one-line follow-up, not a re-architecture -- exactly how
 `metrics_cache.invalidate_all()` and geo_service's `clear_person_id_cache()`.
 """
 
+import functools
 import threading
 import time
-from typing import Any
+from collections.abc import Callable, Coroutine
+from typing import Any, TypeVar
 
 from bunking.logging_config import get_logger
 
 logger = get_logger(__name__)
+
+T = TypeVar("T")
 
 
 class LodgingYearCache:
@@ -63,8 +67,6 @@ class LodgingYearCache:
         self._ttl = ttl_seconds
         self._max_size = max_size
         self._lock = threading.RLock()
-        self._hit_count = 0
-        self._miss_count = 0
 
     @staticmethod
     def _make_key(read_name: str, year: int) -> str:
@@ -77,12 +79,9 @@ class LodgingYearCache:
             if key in self._cache:
                 if time.time() - self._cache_times[key] > self._ttl:
                     self._evict(key)
-                    self._miss_count += 1
                     return None
                 self._access_times[key] = time.time()
-                self._hit_count += 1
                 return self._cache[key]
-            self._miss_count += 1
             return None
 
     def set(self, read_name: str, year: int, value: Any) -> None:
@@ -90,9 +89,10 @@ class LodgingYearCache:
         with self._lock:
             if len(self._cache) >= self._max_size and key not in self._cache:
                 self._evict_lru()
+            now = time.time()
             self._cache[key] = value
-            self._cache_times[key] = time.time()
-            self._access_times[key] = time.time()
+            self._cache_times[key] = now
+            self._access_times[key] = now
 
     def invalidate_all(self) -> int:
         """Clear every cached entry. Returns the number cleared.
@@ -109,19 +109,6 @@ class LodgingYearCache:
                 logger.info(f"Lodging year cache invalidated: cleared {count} entries")
             return count
 
-    def get_stats(self) -> dict[str, Any]:
-        with self._lock:
-            total = self._hit_count + self._miss_count
-            return {
-                "cache_size": len(self._cache),
-                "hit_count": self._hit_count,
-                "miss_count": self._miss_count,
-                "hit_rate": round(self._hit_count / total, 3) if total else 0.0,
-                "total_requests": total,
-                "ttl_seconds": self._ttl,
-                "max_size": self._max_size,
-            }
-
     def _evict(self, key: str) -> None:
         self._cache.pop(key, None)
         self._cache_times.pop(key, None)
@@ -132,3 +119,32 @@ class LodgingYearCache:
             return
         lru_key = min(self._access_times.items(), key=lambda x: x[1])[0]
         self._evict(lru_key)
+
+
+_YearRead = Callable[[Any, int], Coroutine[Any, Any, T]]
+
+
+def cached_by_year(cache: LodgingYearCache) -> Callable[[_YearRead[T]], _YearRead[T]]:
+    """Wrap a `(self, year: int) -> T` repository method with `cache`.
+
+    Keyed on the wrapped function's own `__name__`, not a hand-typed string --
+    the four call sites in lodging_repository.py used to each repeat their own
+    get-check / fetch / set block with the read name passed as a free string
+    literal, which a rename or a copy-paste could silently desync from the
+    method it was supposed to key. Tying the key to `__name__` makes that
+    class of bug impossible instead of just avoided.
+    """
+
+    def decorator(fn: _YearRead[T]) -> _YearRead[T]:
+        @functools.wraps(fn)
+        async def wrapper(self: Any, year: int) -> T:
+            cached = cache.get(fn.__name__, year)
+            if cached is not None:
+                return cached  # type: ignore[no-any-return]
+            result = await fn(self, year)
+            cache.set(fn.__name__, year, result)
+            return result
+
+        return wrapper
+
+    return decorator
