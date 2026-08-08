@@ -19,7 +19,7 @@ seeding one from the synced placements is an explicit operation.
 
 from types import SimpleNamespace
 from typing import Any
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from fastapi import HTTPException
@@ -647,6 +647,96 @@ class TestARefusedWriteIsNeverReportedAsSuccess:
         assert record_id == "avail_winner"
         assert data["family_available"] is False
         assert response.record_id == "avail_existing"
+
+
+class TestARecoveredRaceLogsTheErrorItSwallowed:
+    """kindred#2043: the recovery masks the original error with no trace of it.
+
+    `place_party`, `set_availability`, and `set_slot_merge` each guard the
+    same race, and each guard is the same width: ANY non-refusal status --
+    not only the unique-constraint one the race actually produces -- falls
+    through to "assume we lost a race", re-reads, and updates the row that is
+    there. That guard is deliberately this wide (see
+    `TestARefusedWriteIsNeverReportedAsSuccess` above): whether PocketBase
+    answers a partial-unique violation with 400 or 409 is not settled, so
+    narrowing to a guessed status would break the recovery that works today.
+
+    The write these three make is idempotent, so a spurious recovery still
+    leaves the row exactly where the caller asked -- which is why this is not
+    urgent. But a create failing for a reason that is NOT contention -- a
+    malformed relation id, a PocketBase-side constraint this code does not
+    know about, a transient backend fault -- reaches the same recovery, and
+    today nothing records that `exc` at all: the caller sees a 200, and the
+    only place the original failure ever existed is a stack frame that has
+    already unwound.
+
+    This does not narrow REFUSAL_STATUSES and does not touch `_seed_failure`
+    -- that method already refuses first and tests `held > copied`, which is
+    the correct version of this guard, not an instance of the bug. It only
+    makes the swallow in the three still-wide guards visible in the logs.
+    """
+
+    @pytest.mark.asyncio
+    async def test_a_recovered_placement_race_logs_the_swallowed_error(
+        self, write_service: LodgingWriteService, repo: MagicMock
+    ) -> None:
+        """Status 500 -- not the unique-constraint 400 the race actually
+        produces -- to prove the guard's own width is what gets logged."""
+        repo.create_draft_assignment = AsyncMock(
+            side_effect=ClientResponseError("boom", status=500, data={}, url="", is_abort=False, original_error=None)
+        )
+        repo.find_draft_assignment = AsyncMock(side_effect=[None, SimpleNamespace(id="draft_winner")])
+
+        with patch("api.services.lodging_write_service.logger") as mock_logger:
+            await write_service.place_party(_request(unit_ids=["u1"]))
+
+        assert mock_logger.warning.called, "a swallowed non-refusal create failure must be logged"
+
+    @pytest.mark.asyncio
+    async def test_a_recovered_availability_race_logs_the_swallowed_error(
+        self, write_service: LodgingWriteService, repo: MagicMock
+    ) -> None:
+        repo.create_availability = AsyncMock(
+            side_effect=ClientResponseError("boom", status=500, data={}, url="", is_abort=False, original_error=None)
+        )
+        repo.find_availability_override = AsyncMock(side_effect=[None, SimpleNamespace(id="avail_winner")])
+
+        with patch("api.services.lodging_write_service.logger") as mock_logger:
+            await write_service.set_availability(_availability_request())
+
+        assert mock_logger.warning.called, "a swallowed non-refusal create failure must be logged"
+
+    @pytest.mark.asyncio
+    async def test_a_recovered_merge_race_logs_the_swallowed_error(
+        self, write_service: LodgingWriteService, repo: MagicMock
+    ) -> None:
+        repo.create_slot_merge = AsyncMock(
+            side_effect=ClientResponseError("boom", status=500, data={}, url="", is_abort=False, original_error=None)
+        )
+        repo.find_slot_merge = AsyncMock(side_effect=[None, SimpleNamespace(id="merge_winner")])
+
+        with patch("api.services.lodging_write_service.logger") as mock_logger:
+            await write_service.set_slot_merge(_slot_merge_request())
+
+        assert mock_logger.warning.called, "a swallowed non-refusal create failure must be logged"
+
+    @pytest.mark.asyncio
+    async def test_a_lost_race_that_is_not_recovered_is_not_logged_here(
+        self, write_service: LodgingWriteService, repo: MagicMock
+    ) -> None:
+        """`raced is None` re-raises `exc` through `pb_error_to_http` --
+        that failure reaches the caller as a real error response, so it is
+        not the silent case this class guards. Nothing new needs to log it."""
+        repo.create_draft_assignment = AsyncMock(
+            side_effect=ClientResponseError("boom", status=500, data={}, url="", is_abort=False, original_error=None)
+        )
+        repo.find_draft_assignment = AsyncMock(side_effect=[None, None])
+
+        with patch("api.services.lodging_write_service.logger") as mock_logger:
+            with pytest.raises(HTTPException):
+                await write_service.place_party(_request(unit_ids=["u1"]))
+
+        assert not mock_logger.warning.called
 
 
 class TestTheAvailabilityWriteShape:
