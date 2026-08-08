@@ -14,6 +14,7 @@ import { useDismissOnDeadSpace } from '../../hooks/useDismissOnDeadSpace'
 import type { LodgingUnitRow, RosterPartyRow } from '../../types/lodging'
 import { FamilyDetailsPanel } from './FamilyDetailsPanel'
 import { HouseholdRosterRow } from './HouseholdRosterRow'
+import { partyKey } from './partyKey'
 import { attentionSections, indexUnitsByCode } from './rosterAttention'
 
 export interface HouseholdRosterTableProps {
@@ -61,7 +62,20 @@ export function HouseholdRosterTable({ parties, units = [], year }: HouseholdRos
     setRequestClose(false)
   }, [])
 
-  useDismissOnDeadSpace(selected !== null, () => {
+  // DERIVED, not effect-cleared (kindred#2062). A weekend switch re-renders
+  // this table with a different `parties` prop but never unmounts it, so a
+  // `selected` that outlived its own row's departure kept the panel — and
+  // its medical narrative — open over the new weekend's roster. Computing
+  // this at render time, rather than in a useEffect that calls setState,
+  // avoids the extra render pass React's docs warn an Effect would add here
+  // (`selected` itself is untouched; only what gets rendered changes). A
+  // refetch that returns the SAME parties (new array identity, same
+  // content) still resolves to present, because `partyKey` compares
+  // content, not identity — see partyKey.ts's own docstring.
+  const panelParty =
+    selected !== null && parties.some((p) => partyKey(p) === partyKey(selected)) ? selected : null
+
+  useDismissOnDeadSpace(panelParty !== null, () => {
     setRequestClose(true)
   })
 
@@ -129,10 +143,10 @@ export function HouseholdRosterTable({ parties, units = [], year }: HouseholdRos
         </table>
       </div>
 
-      {selected !== null && (
+      {panelParty !== null && (
         <FamilyDetailsPanel
-          party={selected}
-          unit={unitsByCode.get(selected.unit_code ?? '')}
+          party={panelParty}
+          unit={unitsByCode.get(panelParty.unit_code ?? '')}
           year={year}
           requestClose={requestClose}
           onClose={closePanel}

@@ -306,8 +306,21 @@ export function LodgingBoard({
     setRequestClose(false)
   }, [])
 
+  // DERIVED, not effect-cleared (kindred#2062). A weekend switch re-renders
+  // the board with a different `parties` prop but never unmounts it, so a
+  // `selected` that outlived its own card's departure kept the panel — and
+  // its medical narrative — open over the new weekend's roster. Computing
+  // this at render time, rather than in a useEffect that calls setState,
+  // avoids the extra render pass React's docs warn an Effect would add here
+  // (`selected` itself is untouched; only what gets rendered changes). A
+  // refetch that returns the SAME parties (new array identity, same
+  // content) still resolves to present, because `partyKey` compares
+  // content, not identity — see partyKey.ts's own docstring.
+  const panelParty =
+    selected !== null && parties.some((p) => partyKey(p) === partyKey(selected)) ? selected : null
+
   // Same dead-space dismissal the summer board uses, through the same hook.
-  useDismissOnDeadSpace(selected !== null, () => {
+  useDismissOnDeadSpace(panelParty !== null, () => {
     setRequestClose(true)
   })
 
@@ -512,14 +525,14 @@ export function LodgingBoard({
         <FloatingUnplacedBadge
           parties={board.unplaced}
           onOpenParty={openParty}
-          isPanelOpen={selected !== null}
+          isPanelOpen={panelParty !== null}
           canPlace={canPlace}
         />
 
-        {selected !== null && (
+        {panelParty !== null && (
           <FamilyDetailsPanel
-            party={selected}
-            unit={unitsByCode.get(selected.unit_code ?? '')}
+            party={panelParty}
+            unit={unitsByCode.get(panelParty.unit_code ?? '')}
             year={year}
             requestClose={requestClose}
             onClose={closePanel}

@@ -806,3 +806,44 @@ describe('LodgingMap highlight controls', () => {
     expect(screen.getByRole('button', { name: /fit all/i })).toBeInTheDocument()
   })
 })
+
+describe('LodgingMap — clears a stale selection (kindred#2062)', () => {
+  // A weekend switch re-renders the map with a different `parties` prop
+  // without unmounting it, so the previously-open family's panel — including
+  // its medical narrative — stayed open over the new weekend's roster.
+  it('closes the panel when the selected party is no longer in parties', async () => {
+    const { rerender } = render(<LodgingMap parties={[PLACED]} units={UNITS} year={2026} />, {
+      wrapper,
+    })
+    await userEvent.click(screen.getAllByTestId('map-mark')[0] as HTMLElement)
+    await userEvent.click(screen.getByRole('button', { name: /Johnson/ }))
+    expect(screen.getByTestId('family-details-panel')).toBeInTheDocument()
+
+    const other = party({
+      display_name: 'Chen',
+      sort_name: 'Chen',
+      household_cm_id: 9002,
+      unit_code: 'cedar-1',
+      unit_name: 'Cedar 1',
+    })
+    rerender(<LodgingMap parties={[other]} units={UNITS} year={2026} />)
+    expect(screen.queryByTestId('family-details-panel')).not.toBeInTheDocument()
+  })
+
+  // The trap: a refetch that returns the SAME parties (new array identity,
+  // same content) must not close a panel out from under whoever has it open.
+  it('keeps the panel open when parties refetches with the same content', async () => {
+    const makeParties = () => [
+      party({ display_name: 'Johnson', unit_code: 'cedar-1', unit_name: 'Cedar 1' }),
+    ]
+    const { rerender } = render(<LodgingMap parties={makeParties()} units={UNITS} year={2026} />, {
+      wrapper,
+    })
+    await userEvent.click(screen.getAllByTestId('map-mark')[0] as HTMLElement)
+    await userEvent.click(screen.getByRole('button', { name: /Johnson/ }))
+    expect(screen.getByTestId('family-details-panel')).toBeInTheDocument()
+
+    rerender(<LodgingMap parties={makeParties()} units={UNITS} year={2026} />)
+    expect(screen.getByTestId('family-details-panel')).toBeInTheDocument()
+  })
+})
