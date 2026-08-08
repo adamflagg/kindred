@@ -49,14 +49,21 @@ describe('FloatingUnplacedBadge', () => {
   })
 
   it('files a household under its surname, not its mailing title', async () => {
-    // The two names are chosen so the orderings DISAGREE: by surname it is
-    // Chen then Johnson, by mailing title it is "Johnson Household" then "The
-    // Chen Family". A pair that sorted the same either way would pin nothing.
+    // The queue orders by `sort_name` (surname), registration order
+    // notwithstanding: Chen before Johnson below. kindred#2074 removed the
+    // mailing-title salutation from the card entirely, so this reads the
+    // order off each party's own (distinct) child rather than off
+    // `display_name` text that no longer renders.
     render(
       <FloatingUnplacedBadge
         parties={[
           party({ display_name: 'Johnson Household', sort_name: 'Johnson', household_cm_id: 101 }),
-          party({ display_name: 'The Chen Family', sort_name: 'Chen', household_cm_id: 102 }),
+          party({
+            display_name: 'The Chen Family',
+            sort_name: 'Chen',
+            household_cm_id: 102,
+            children: [{ person_cm_id: 9002, display_name: 'Mia Chen', age: 6, grade: 0 }],
+          }),
         ]}
         onOpenParty={vi.fn()}
       />,
@@ -64,7 +71,7 @@ describe('FloatingUnplacedBadge', () => {
     )
     await userEvent.click(screen.getByRole('button', { name: /unplaced parties/i }))
     const names = screen.getAllByTestId('family-card-name').map((el) => el.textContent)
-    expect(names).toEqual(['The Chen Family', 'Johnson Household'])
+    expect(names).toEqual(['Mia Chen (6)', 'Noah Johnson (8)'])
   })
 
   it('finds a household by a child’s name', async () => {
@@ -85,8 +92,10 @@ describe('FloatingUnplacedBadge', () => {
     )
     await userEvent.click(screen.getByRole('button', { name: /unplaced parties/i }))
     await userEvent.type(screen.getByPlaceholderText(/filter by name/i), 'Olivia')
+    // kindred#2074: the surviving card shows the child's name, not the
+    // household's removed salutation.
     expect(screen.getAllByTestId('family-card-name').map((el) => el.textContent)).toEqual([
-      'Garcia Household',
+      'Olivia Garcia (7)',
     ])
   })
 
@@ -148,7 +157,9 @@ describe('FloatingUnplacedBadge', () => {
     const onOpenParty = vi.fn()
     render(<FloatingUnplacedBadge parties={[party()]} onOpenParty={onOpenParty} />, { wrapper })
     await userEvent.click(screen.getByRole('button', { name: /unplaced parties/i }))
-    await userEvent.click(screen.getByRole('button', { name: /The Johnson Family/ }))
+    // kindred#2074: the card is reached by its child's name now -- the
+    // household salutation ('The Johnson Family') no longer renders.
+    await userEvent.click(screen.getByRole('button', { name: /Noah Johnson/ }))
     expect(onOpenParty).toHaveBeenCalledWith(expect.objectContaining({ household_cm_id: 101 }))
   })
 })

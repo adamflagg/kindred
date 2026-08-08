@@ -144,15 +144,28 @@ describe('LodgingUnitCard', () => {
   })
 
   it('renders the families it holds', () => {
+    // kindred#2074 removed the household salutation from the card -- it
+    // leads with the children instead, so two parties need DISTINCT
+    // children to stay distinguishable here (the default fixture's child
+    // is 'Noah Johnson' regardless of which household overrides display_name).
     render(
       <LodgingUnitCard
-        slot={slot({ parties: [party(), party({ household_cm_id: 102, display_name: 'Garcia' })] })}
+        slot={slot({
+          parties: [
+            party(),
+            party({
+              household_cm_id: 102,
+              display_name: 'Garcia',
+              children: [{ person_cm_id: 9002, display_name: 'Liam Garcia', age: 6, grade: 0 }],
+            }),
+          ],
+        })}
         hue="hsl(160 45% 42%)"
         onOpenParty={vi.fn()}
       />
     )
-    expect(screen.getByText('Johnson')).toBeInTheDocument()
-    expect(screen.getByText('Garcia')).toBeInTheDocument()
+    expect(screen.getByText(/Noah Johnson/)).toBeInTheDocument()
+    expect(screen.getByText(/Liam Garcia/)).toBeInTheDocument()
   })
 
   it('says two parties are sharing', () => {
@@ -364,16 +377,30 @@ describe('LodgingUnitCard — the per-party sharing chip follows ROOM overlap, n
         slot={slot({
           unit: mergedHouse,
           parties: [
-            declinedParty({ household_cm_id: 101, display_name: 'Alpha', unit_code: 'r1' }),
-            declinedParty({ household_cm_id: 102, display_name: 'Beta', unit_code: 'r2' }),
+            declinedParty({
+              household_cm_id: 101,
+              display_name: 'Alpha',
+              unit_code: 'r1',
+              // kindred#2074: the card leads with the children now, and
+              // `declinedParty`/`party()`'s default child is 'Noah Johnson'
+              // regardless of display_name -- distinct children are what
+              // make Alpha and Beta distinguishable below.
+              children: [{ person_cm_id: 9101, display_name: 'Ivy Alpha', age: 7, grade: 1 }],
+            }),
+            declinedParty({
+              household_cm_id: 102,
+              display_name: 'Beta',
+              unit_code: 'r2',
+              children: [{ person_cm_id: 9102, display_name: 'Leo Beta', age: 9, grade: 3 }],
+            }),
           ],
         })}
         hue="hsl(160 45% 42%)"
         onOpenParty={vi.fn()}
       />
     )
-    expect(screen.getByText('Alpha')).toBeInTheDocument()
-    expect(screen.getByText('Beta')).toBeInTheDocument()
+    expect(screen.getByText(/Ivy Alpha/)).toBeInTheDocument()
+    expect(screen.getByText(/Leo Beta/)).toBeInTheDocument()
     expect(screen.queryByText('Did not request sharing')).not.toBeInTheDocument()
   })
 
@@ -408,7 +435,14 @@ describe('LodgingUnitCard — the per-party sharing chip follows ROOM overlap, n
               is_merged_slot: true,
             }),
             declinedParty({ household_cm_id: 102, display_name: 'Beta', unit_code: 'r1' }),
-            declinedParty({ household_cm_id: 103, display_name: 'Gamma', unit_code: 'r3' }),
+            declinedParty({
+              household_cm_id: 103,
+              display_name: 'Gamma',
+              unit_code: 'r3',
+              // kindred#2074: located by child name below, since the card no
+              // longer renders the household salutation.
+              children: [{ person_cm_id: 9103, display_name: 'Mia Gamma', age: 5, grade: 0 }],
+            }),
           ],
         })}
         hue="hsl(160 45% 42%)"
@@ -416,7 +450,7 @@ describe('LodgingUnitCard — the per-party sharing chip follows ROOM overlap, n
       />
     )
     expect(screen.getAllByText('Did not request sharing')).toHaveLength(2)
-    const gammaCard = screen.getByText('Gamma').closest('button')
+    const gammaCard = screen.getByText(/Mia Gamma/).closest('button')
     expect(gammaCard?.textContent).not.toContain('Did not request sharing')
   })
 
