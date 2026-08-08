@@ -569,18 +569,22 @@ jobs:
           exit 1
         fi
 
-        # Validate schema via API. perPage=200 is required: PocketBase's
-        # default page size is 30, well under the ~69 collections the real
-        # migrations produce, so an unpaginated call here silently truncates
-        # the dump. validate_migrations.py never noticed -- every collection
-        # in its REQUIRED_COLLECTIONS/REQUIRED_FIELDS happens to be an early
-        # one that already fell inside the first 30 -- but kindred#1921's
-        # fixture-schema-agreement step (below) walks all of newLodgingTestApp's
-        # collections and several of those are late enough (lodging_* from
-        # migration 1500000116+) to land past that cutoff, which is exactly
-        # what surfaced this.
+        # Validate schema via API. perPage is required: PocketBase's default
+        # page size is 30, well under the ~69 collections the real migrations
+        # produce, so an unpaginated call here silently truncates the dump.
+        # validate_migrations.py never noticed -- every collection in its
+        # REQUIRED_COLLECTIONS/REQUIRED_FIELDS happens to be an early one that
+        # already fell inside the first 30 -- but kindred#1921's
+        # fixture-schema-agreement step (below) walks every collection
+        # newLodgingTestApp builds, several of them late (lodging_* from
+        # migration 1500000116+), which is what surfaced this. Pinned to
+        # PocketBase's own MaxPerPage (tools/search/provider.go) rather than
+        # some smaller headroom number: a perPage above MaxPerPage is
+        # silently clamped down to it, never rejected, so this asks for
+        # everything the API could ever return in one page and can't
+        # under-ask again as collections keep being added.
         echo "Validating migration schema..."
-        curl -sf "http://127.0.0.1:18999/api/collections?perPage=200" \
+        curl -sf "http://127.0.0.1:18999/api/collections?perPage=1000" \
           -H "Authorization: Bearer $AUTH_TOKEN" \
           > /tmp/collections.json
 

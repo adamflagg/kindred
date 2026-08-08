@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/pocketbase/pocketbase/core"
+	"github.com/pocketbase/pocketbase/tests"
 )
 
 // TestLodgingUnitsFixtureRejectsDuplicateCodeYear guards the sync package's
@@ -101,9 +102,16 @@ func loadProductionSchema(path string) (map[string]map[string]bool, error) {
 		var envelope struct {
 			Items []productionCollection `json:"items"`
 		}
-		if err2 := json.Unmarshal(raw, &envelope); err2 != nil {
+		// envelope.Items stays nil (not just empty) when the JSON has no
+		// "items" key at all -- Go's json package doesn't error on an unknown
+		// shape, it just leaves unmatched fields at their zero value. Without
+		// this check, a genuinely malformed document (e.g. a PocketBase error
+		// body: {"code":400,"message":"..."}) would unmarshal "successfully"
+		// into an empty envelope, and the caller would see a confusing
+		// "no collections" failure instead of the real parse error.
+		if err2 := json.Unmarshal(raw, &envelope); err2 != nil || envelope.Items == nil {
 			return nil, fmt.Errorf("%s is neither a bare collections array (%w) "+
-				"nor a paginated {items:[...]} envelope (%w)", path, err, err2)
+				"nor a paginated {items:[...]} envelope", path, err)
 		}
 		cols = envelope.Items
 	}
@@ -155,31 +163,43 @@ func TestLodgingTestsupportFixtureFieldsExistInProductionSchema(t *testing.T) {
 		t.Fatalf("production schema at %s has no collections -- boot step likely broken", schemaPath)
 	}
 
-	app := newLodgingTestApp(t)
+	// A bare, un-fixtured app carries tests.NewTestApp()'s own bundled
+	// testdata -- e.g. a demo "users" collection with username/file/rel,
+	// unrelated to production's staff-auth "users" collection. Diffing
+	// newLodgingTestApp's collections against THIS baseline -- rather than a
+	// hardcoded list of names newLodgingTestApp happens to build today -- is
+	// what keeps this test honest as that function grows: a collection added
+	// there later is picked up automatically, with no allowlist to remember
+	// to update. Iterating app.FindAllCollections() without this diff would
+	// flag the "users" name collision as fixture drift it is not.
+	baseline, err := tests.NewTestApp()
+	if err != nil {
+		t.Fatalf("new baseline test app: %v", err)
+	}
+	t.Cleanup(baseline.Cleanup)
+	baselineCols, err := baseline.FindAllCollections()
+	if err != nil {
+		t.Fatalf("list baseline collections: %v", err)
+	}
+	baselineNames := make(map[string]bool, len(baselineCols))
+	for _, c := range baselineCols {
+		baselineNames[c.Name] = true
+	}
 
-	// The exact set newLodgingTestApp builds -- NOT app.FindAllCollections(),
-	// which also returns tests.NewTestApp()'s own bundled testdata (a demo
-	// "users" collection with username/file/rel, unrelated to production's
-	// staff-auth "users" collection). Iterating everything the test app
-	// happens to contain would flag that coincidental name collision as a
-	// fixture bug it is not.
-	fixtureCollections := []string{
-		"custom_field_defs", "camp_sessions", "households", "persons", "attendees",
-		"family_camp_adults", "household_custom_values", "person_custom_values",
-		"lodging_units", "lodging_unit_aliases", "lodging_assignments",
-		"lodging_assignment_history", "lodging_ingest_issues", "lodging_field_mappings",
+	app := newLodgingTestApp(t)
+	fixtureCols, err := app.FindAllCollections()
+	if err != nil {
+		t.Fatalf("list fixture collections: %v", err)
 	}
 
 	checked := 0
-	for _, name := range fixtureCollections {
-		col, err := app.FindCollectionByNameOrId(name)
-		if err != nil {
-			t.Errorf("newLodgingTestApp no longer builds collection %q -- update fixtureCollections above", name)
-			continue
+	for _, col := range fixtureCols {
+		if baselineNames[col.Name] {
+			continue // part of tests.NewTestApp()'s own bundled testdata, not something newLodgingTestApp added
 		}
-		prodFields, ok := prod[name]
+		prodFields, ok := prod[col.Name]
 		if !ok {
-			t.Errorf("collection %q: fixture builds it, but the production schema has no collection by that name", name)
+			t.Errorf("collection %q: fixture builds it, but the production schema has no collection by that name", col.Name)
 			continue
 		}
 		checked++
@@ -191,11 +211,12 @@ func TestLodgingTestsupportFixtureFieldsExistInProductionSchema(t *testing.T) {
 			t.Errorf("collection %q: fixture declares field %q, which the real "+
 				"pb_migrations schema does not have -- dropped or renamed? "+
 				"update newLodgingTestApp in lodging_testsupport_test.go",
-				name, fieldName)
+				col.Name, fieldName)
 		}
 	}
 
-	if checked != len(fixtureCollections) {
-		t.Fatalf("checked %d/%d fixture collections against %s", checked, len(fixtureCollections), schemaPath)
+	if checked == 0 {
+		t.Fatalf("compared zero collections against %s -- newLodgingTestApp and the "+
+			"baseline test app collection sets came out identical", schemaPath)
 	}
 }
