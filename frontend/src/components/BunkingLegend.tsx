@@ -11,9 +11,20 @@ import {
   History,
 } from 'lucide-react'
 
-interface LegendEntryProps {
+import { BATHHOUSE_BLUE, CONSENT_AMBER } from './weekend/mapColors'
+
+/** What one legend row and one legend section share: an icon and a title.
+ *  A row's body is `children` (rendered inline by `LegendEntry` below); a
+ *  section's is `content` (one or more rows, rendered by `VisualGuideModal`).
+ *  Different field names because the two nest — a section's `content` IS a
+ *  list of entries — so reusing `children` for both would blur which level
+ *  a given JSX blob belongs to. */
+interface LegendIconTitle {
   icon: React.ReactNode
   title: string
+}
+
+interface LegendEntryProps extends LegendIconTitle {
   children: React.ReactNode
   iconClass?: string
 }
@@ -30,9 +41,7 @@ function LegendEntry({ icon, title, children, iconClass }: LegendEntryProps) {
   )
 }
 
-interface LegendSection {
-  icon: React.ReactNode
-  title: string
+interface LegendSection extends LegendIconTitle {
   content: React.ReactNode
 }
 
@@ -349,19 +358,6 @@ export function BunkingLegendButton() {
   return <LegendButton sections={CAMPER_SECTIONS} />
 }
 
-/**
- * DUPLICATED, not imported, from `LodgingMap.tsx` / `MapUnitPopover.tsx`.
- *
- * This button mounts unconditionally in the weekend header (WeekendRosterPage,
- * outside the lazy tab panels), so an import from either would drag
- * `LodgingMap`'s whole lazy chunk into the eager bundle — exactly what
- * `WeekendRosterPage.chunkGraph.test.ts` exists to catch (kindred#2057).
- * A colour literal is cheap to keep in sync by hand; a chunk-graph regression
- * is not.
- */
-const WEEKEND_BATHHOUSE_BLUE = '#2563eb'
-const WEEKEND_CONSENT_AMBER = '#fbbf24'
-
 const WEEKEND_SECTIONS: LegendSection[] = [
   {
     icon: <Home className="h-4 w-4" />,
@@ -383,7 +379,7 @@ const WEEKEND_SECTIONS: LegendSection[] = [
         <LegendEntry
           icon={
             <span
-              style={{ backgroundColor: WEEKEND_BATHHOUSE_BLUE }}
+              style={{ backgroundColor: BATHHOUSE_BLUE }}
               className="h-3 w-3 rounded-full ring-1 ring-white"
             />
           }
@@ -413,7 +409,7 @@ const WEEKEND_SECTIONS: LegendSection[] = [
         <LegendEntry
           icon={
             <div
-              style={{ boxShadow: `0 0 0 2px #fff, 0 0 0 4.5px ${WEEKEND_CONSENT_AMBER}` }}
+              style={{ boxShadow: `0 0 0 2px #fff, 0 0 0 4.5px ${CONSENT_AMBER}` }}
               className="h-5 w-5 rounded-full bg-white"
             />
           }

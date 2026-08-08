@@ -10,6 +10,7 @@ import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, it, expect } from 'vitest'
 import BunkingLegend, { WeekendLegendButton } from './BunkingLegend'
+import { BATHHOUSE_BLUE, CONSENT_AMBER } from './weekend/mapColors'
 
 describe('BunkingLegend', () => {
   it('renders when open', () => {
@@ -156,6 +157,31 @@ describe('WeekendLegendButton', () => {
     render(<WeekendLegendButton />)
     await userEvent.click(screen.getByRole('button', { name: /show visual guide/i }))
     expect(screen.getByText(/not consented/i)).toBeInTheDocument()
+  })
+
+  it('draws its swatches from the SAME colour tokens the map itself uses, not a re-typed copy', async () => {
+    // code review on #1997 flagged the original literal duplication as a
+    // drift risk; `mapColors.ts` is the single source both this guide and
+    // `LodgingMap.tsx`/`MapUnitPopover.tsx` import from now. Checked via
+    // `.style` properties, matching how `LodgingMap.test.tsx` pins the same
+    // tokens — jsdom re-serialises a hex `background-color` to `rgb(...)`,
+    // so an attribute-string match on the hex literal would false-negative.
+    render(<WeekendLegendButton />)
+    await userEvent.click(screen.getByRole('button', { name: /show visual guide/i }))
+    const swatches = [...document.querySelectorAll<HTMLElement>('[style]')]
+
+    // jsdom re-serialises a hex `background-color` to `rgb(...)`, so a probe
+    // element run through the SAME normalisation is what makes this an
+    // honest "same token" check rather than a hardcoded rgb() guess.
+    const probe = document.createElement('div')
+    probe.style.backgroundColor = BATHHOUSE_BLUE
+    expect(swatches.some((el) => el.style.backgroundColor === probe.style.backgroundColor)).toBe(
+      true
+    )
+    // `box-shadow` is a shorthand jsdom does not re-normalise the same way,
+    // so the hex survives verbatim — matching how `LodgingMap.test.tsx` pins
+    // `CONSENT_AMBER` on the mark's own ring.
+    expect(swatches.some((el) => el.style.boxShadow.includes(CONSENT_AMBER))).toBe(true)
   })
 
   it('carries none of the summer-only camper/bunk content', async () => {

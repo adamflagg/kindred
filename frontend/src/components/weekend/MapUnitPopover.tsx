@@ -13,6 +13,7 @@ import { Accessibility, Bath, Plug, Refrigerator, Snowflake } from 'lucide-react
 import type { ReactNode } from 'react'
 
 import type { RosterPartyRow } from '../../types/lodging'
+import { CONSENT_AMBER } from './mapColors'
 import type { MapUnit } from './mapModel'
 import { partyKey } from './partyKey'
 import { partyAttention, partyBeds } from './rosterAttention'
@@ -21,10 +22,15 @@ import { reservationBadge } from './unitBadges'
 /**
  * The board's `border-amber-400`, reused rather than re-picked. A consent flag
  * that were amber on one surface and orange on the other would read as two
- * different warnings. Lives here because `LodgingMap` imports this module and
- * not the reverse — putting it there would close an import cycle.
+ * different warnings.
+ *
+ * RE-EXPORTED from `mapColors.ts` rather than defined here (kindred#1997
+ * review): the Guide's own `WeekendLegendButton` needs the same token from an
+ * eager surface, and importing this file there would drag `LodgingMap`'s lazy
+ * chunk in with it. Existing callers (`LodgingMap.tsx`, its tests) keep
+ * importing `CONSENT_AMBER` from here unchanged.
  */
-export const CONSENT_AMBER = '#fbbf24'
+export { CONSENT_AMBER }
 
 /** Said in words, because colour alone is not a signal (WCAG 1.4.1). */
 export const CONSENT_PHRASE = 'sharing not consented'

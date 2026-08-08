@@ -45,6 +45,7 @@ import { FamilyDetailsPanel } from './FamilyDetailsPanel'
 import { FloatingUnplacedBadge } from './FloatingUnplacedBadge'
 import { indexUnitsByCode } from './rosterAttention'
 import { clusterByProximity, type Cluster } from './mapClustering'
+import { BATHHOUSE_BLUE } from './mapColors'
 import { buildMapModel, type MapUnit } from './mapModel'
 import { CONSENT_AMBER, CONSENT_PHRASE, MapUnitPopover } from './MapUnitPopover'
 import { partyKey } from './partyKey'
@@ -79,9 +80,6 @@ const DEFAULT_FADE = 25
  * which is a lot of machinery for something a click already solves.
  */
 const DWELL_MS = 400
-
-/** The bathhouse dot. Blue, and not one of the eight area hues. */
-const BATHHOUSE_BLUE = '#2563eb'
 
 /** Half of the popover's `max-w-[15rem]` (240px), padded a bit. Clamping the
  *  anchor at least this far from each edge keeps the box on-screen. Height
