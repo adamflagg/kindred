@@ -342,4 +342,35 @@ describe('setWeekendSessionStatus', () => {
     expect(update).not.toHaveBeenCalled()
     expect(deleteRecord).not.toHaveBeenCalled()
   })
+
+  it('resolves a create race by updating the row the other writer won, rather than surfacing a raw PocketBase error', async () => {
+    // Read-then-write, not atomic (kindred#2092 finding 3): two staff
+    // cancelling the same weekend at once both see `existing` empty and both
+    // reach `create()`. The unique index on (session_cm_id, year) —
+    // 1500000142 — lets only one through; the loser must not hand
+    // `toast.error` a raw PocketBase 400. Its INTENT — mark the weekend
+    // `cancelled` — is still true once the winner's row exists, so the loser
+    // re-reads and updates that row instead of failing.
+    getFullList.mockResolvedValueOnce([]) // the initial read, before either write
+    create.mockRejectedValueOnce(new Error('Failed to create record.'))
+    getFullList.mockResolvedValueOnce([
+      { id: 'st_1', session_cm_id: 1000002, year: 2026, status: 'cancelled' },
+    ]) // the retry read, after the other writer's row landed
+
+    await expect(setWeekendSessionStatus(2026, 1000002, 'cancelled')).resolves.toBeUndefined()
+
+    expect(update).toHaveBeenCalledWith('st_1', { status: 'cancelled' })
+  })
+
+  it('still throws when create fails for a reason other than the race', async () => {
+    // The retry finds no row either — this was never a duplicate-key
+    // collision, so swallowing it would hide a real failure (permissions,
+    // network) behind a silent no-op.
+    getFullList.mockResolvedValueOnce([])
+    const error = new Error('Network error')
+    create.mockRejectedValueOnce(error)
+    getFullList.mockResolvedValueOnce([])
+
+    await expect(setWeekendSessionStatus(2026, 1000002, 'cancelled')).rejects.toThrow(error)
+  })
 })

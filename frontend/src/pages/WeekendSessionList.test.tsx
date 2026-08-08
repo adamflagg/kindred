@@ -9,7 +9,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { render, screen } from '@testing-library/react'
 import type { ReactNode } from 'react'
 import { MemoryRouter } from 'react-router'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import WeekendSessionList from './WeekendSessionList'
 
@@ -135,7 +135,26 @@ describe('cancelled weekends', () => {
    * to derive it from — and this lander is READ-ONLY about it: it badges, it
    * does not set. The write surface lives at /manage/lodging beside the
    * registry and the season roll-forward, behind the same permission gate.
+   *
+   * The "need a cabin" tests below assert a SPECIFIC lifecycle split — Family
+   * Camp 1 completed, Women's Weekend upcoming — not "whichever group they
+   * land in" like the grouping test above. That split depends on the wall
+   * clock relative to the hardcoded fixture dates, so the clock is frozen
+   * between the two: after Family Camp 1's May dates, before Women's
+   * Weekend's October ones. Without this, the suite passes today and starts
+   * lying once real time crosses Oct 18 2026 — Women's Weekend would go
+   * `completed` on its own, and the "stops counting a cancelled weekend" test
+   * would pass because the weekend ended, not because it was cancelled.
    */
+  beforeEach(() => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date(2026, 5, 15, 12, 0, 0))
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
   function cancelWomensWeekend() {
     const data = summaryQuery.data as {
       weekends: { session: { status?: string } }[]

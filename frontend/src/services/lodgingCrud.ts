@@ -356,15 +356,28 @@ export async function ignoreIngestIssue(
  * `/api/lodging/sessions` and `/api/lodging/summary`, whose queries inherit
  * the app's 30-minute staleTime. `invalidateLodgingRegistryQueries` already
  * carries all three weekend prefixes.
+ *
+ * READ-THEN-WRITE, NOT ATOMIC (kindred#2092 finding 3). Two staff cancelling
+ * the same weekend in the same instant can both read `existing` as empty and
+ * both reach `create()` below. The unique index on (session_cm_id, year)
+ * (1500000142) stops the second row at the database, but a raw PocketBase 400
+ * reaching `toast.error(error.message)` is not something staff can act on —
+ * and the collision is not actually a failure: the loser's INTENT ("mark this
+ * weekend `status`") is still true once the winner's row exists. So a
+ * `create` failure re-reads and, if a row now exists, updates it to the
+ * requested status instead of throwing. A create failure that is NOT the
+ * race — the retry still finds nothing — rethrows the original error
+ * unchanged, so a genuine failure (permissions, network) is not swallowed.
+ * The single-editor weekend workflow (CLAUDE.md) makes the race itself
+ * unlikely; this is about the message, not the concurrency.
  */
 export async function setWeekendSessionStatus(
   year: number,
   sessionCmId: number,
   status: WeekendSessionStatusValue
 ): Promise<void> {
-  const existing = await pb.collection(SESSION_STATUS).getFullList<{ id: string }>({
-    filter: `session_cm_id = ${String(sessionCmId)} && year = ${String(year)}`,
-  })
+  const filter = `session_cm_id = ${String(sessionCmId)} && year = ${String(year)}`
+  const existing = await pb.collection(SESSION_STATUS).getFullList<{ id: string }>({ filter })
 
   if (status === 'active') {
     for (const row of existing) {
@@ -378,5 +391,12 @@ export async function setWeekendSessionStatus(
     await pb.collection(SESSION_STATUS).update(current.id, { status })
     return
   }
-  await pb.collection(SESSION_STATUS).create({ session_cm_id: sessionCmId, year, status })
+
+  try {
+    await pb.collection(SESSION_STATUS).create({ session_cm_id: sessionCmId, year, status })
+  } catch (error) {
+    const winner = (await pb.collection(SESSION_STATUS).getFullList<{ id: string }>({ filter }))[0]
+    if (!winner) throw error
+    await pb.collection(SESSION_STATUS).update(winner.id, { status })
+  }
 }

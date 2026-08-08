@@ -496,10 +496,35 @@ class LodgingRosterService:
     def __init__(self, repository: LodgingRepository) -> None:
         self.repository = repository
 
+    async def _fetch_session_statuses_or_active(self, year: int) -> Mapping[int, str]:
+        """`fetch_session_statuses`, degraded to {} on a failed read.
+
+        kindred#2092 finding 2. This method's caller runs the read INSIDE a
+        TaskGroup alongside reads that must not fail -- `asyncio.TaskGroup`
+        cancels every sibling task the moment any one of them raises, so an
+        unwrapped failure here would 500 the whole endpoint (`/sessions` or
+        `/summary`) over a status badge. The realistic trigger is ordinary:
+        the API container starting against a PocketBase that has not yet
+        applied migration 1500000142, so the collection does not exist yet.
+
+        {} is not a made-up fallback -- it is the SAME value an empty,
+        untouched `lodging_session_status` table produces, and this layer's
+        own design is that absence of a row means active. Degrading a failed
+        read to {} keeps that design holding end to end instead of adding a
+        second "unknown" state nothing downstream understands.
+        """
+        try:
+            return await self.repository.fetch_session_statuses(year)
+        except Exception as exc:
+            logger.warning(
+                f"lodging_session_status read failed for year {year}, treating every weekend as active: {exc}"
+            )
+            return {}
+
     async def list_sessions(self, year: int) -> WeekendSessionListResponse:
         async with asyncio.TaskGroup() as tg:
             rows_task = tg.create_task(self.repository.fetch_weekend_sessions(year))
-            statuses_task = tg.create_task(self.repository.fetch_session_statuses(year))
+            statuses_task = tg.create_task(self._fetch_session_statuses_or_active(year))
 
         statuses = statuses_task.result()
         return WeekendSessionListResponse(
@@ -687,7 +712,13 @@ class LodgingRosterService:
             # weekend for the same reason: it is one small table for the whole
             # year, and the lander must badge from the same map `/sessions`
             # reads or the two pages would disagree about a weekend.
-            statuses_task = tg.create_task(self.repository.fetch_session_statuses(year))
+            #
+            # Wrapped, not the raw repository call: this TaskGroup has six
+            # OTHER reads in it, and this is the one PocketBase collection
+            # that can legitimately not exist yet (a fresh migration). See
+            # `_fetch_session_statuses_or_active` for why a failed read here
+            # must not cancel the other six and 500 the lander.
+            statuses_task = tg.create_task(self._fetch_session_statuses_or_active(year))
 
         units = units_task.result()
         households = households_task.result()

@@ -285,6 +285,37 @@ class TestWeekendCancellation:
 
         assert [e.session.status for e in summary.weekends] == ["cancelled", "active"]
 
+    @pytest.mark.asyncio
+    async def test_a_failed_status_read_degrades_list_sessions_to_active(self) -> None:
+        """kindred#2092 finding 2. `fetch_session_statuses` sits in the SAME
+        TaskGroup as the read that must not fail -- a broken read of the
+        brand-new `lodging_session_status` collection (the realistic trigger:
+        the API container starting against a PocketBase that has not yet
+        applied migration 1500000142) must not cancel the sibling task and
+        500 the whole endpoint. This layer's own design is that absence of a
+        row means active; a FAILED read degrading to the same {} an EMPTY
+        table produces keeps that design holding end to end.
+        """
+        repo = _repo(fetch_weekend_sessions=[FAMILY_SESSION, ADULT_SESSION])
+        repo.fetch_session_statuses = AsyncMock(side_effect=RuntimeError("collection not found"))
+        service = LodgingRosterService(repo)
+
+        result = await service.list_sessions(2026)
+
+        assert [s.status for s in result.sessions] == ["active", "active"]
+
+    @pytest.mark.asyncio
+    async def test_a_failed_status_read_degrades_build_summary_to_active(self) -> None:
+        """Same failure, the lander's own endpoint. See the sibling test on
+        `list_sessions` above for why this must not 500."""
+        repo = _repo(fetch_weekend_sessions=[FAMILY_SESSION, ADULT_SESSION])
+        repo.fetch_session_statuses = AsyncMock(side_effect=RuntimeError("collection not found"))
+        service = LodgingRosterService(repo)
+
+        summary = await service.build_summary(2026)
+
+        assert [e.session.status for e in summary.weekends] == ["active", "active"]
+
 
 class TestFamilyCampParties:
     @pytest.mark.asyncio
