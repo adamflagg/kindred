@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/pocketbase/pocketbase/core"
@@ -85,39 +86,64 @@ type productionCollection struct {
 	Fields []productionField `json:"fields"`
 }
 
+// productionSchemaEnvelope mirrors the paginated shape PocketBase's
+// /api/collections endpoint actually returns. Confirmed empirically against
+// the pinned v0.39.10 binary (built from this repo's own pb_migrations):
+// it is always this envelope, never a bare array. scripts/ci/validate_migrations.py
+// also tolerates a bare array, but that's a different, Python caller with its
+// own history -- there is no bare-array code path here to keep in sync with.
+type productionSchemaEnvelope struct {
+	Items      []productionCollection `json:"items"`
+	Page       int                    `json:"page"`
+	PerPage    int                    `json:"perPage"`
+	TotalItems int                    `json:"totalItems"`
+	TotalPages int                    `json:"totalPages"`
+}
+
 // loadProductionSchema reads a dump of PocketBase's /api/collections response
 // -- booted from the real pocketbase/pb_migrations, no Go fixtures involved
 // -- and returns collection name -> set of field names actually present in
-// that schema. Tolerates both response shapes load_collections() in
-// scripts/ci/validate_migrations.py already tolerates: a bare array, or the
-// paginated {"items": [...]} envelope.
+// that schema.
 func loadProductionSchema(path string) (map[string]map[string]bool, error) {
 	raw, err := os.ReadFile(path)
 	if err != nil {
 		return nil, fmt.Errorf("read %s: %w", path, err)
 	}
 
-	var cols []productionCollection
-	if err := json.Unmarshal(raw, &cols); err != nil {
-		var envelope struct {
-			Items []productionCollection `json:"items"`
-		}
-		// envelope.Items stays nil (not just empty) when the JSON has no
-		// "items" key at all -- Go's json package doesn't error on an unknown
-		// shape, it just leaves unmatched fields at their zero value. Without
-		// this check, a genuinely malformed document (e.g. a PocketBase error
-		// body: {"code":400,"message":"..."}) would unmarshal "successfully"
-		// into an empty envelope, and the caller would see a confusing
-		// "no collections" failure instead of the real parse error.
-		if err2 := json.Unmarshal(raw, &envelope); err2 != nil || envelope.Items == nil {
-			return nil, fmt.Errorf("%s is neither a bare collections array (%w) "+
-				"nor a paginated {items:[...]} envelope", path, err)
-		}
-		cols = envelope.Items
+	var envelope productionSchemaEnvelope
+	if err := json.Unmarshal(raw, &envelope); err != nil {
+		return nil, fmt.Errorf("parse %s as a paginated {items:[...]} envelope: %w", path, err)
+	}
+	// envelope.Items stays nil (not just empty) when the JSON has no "items"
+	// key at all -- Go's json package doesn't error on an unrecognized
+	// shape, it just leaves unmatched fields at their zero value. Without
+	// this check, a genuinely malformed document (e.g. a PocketBase error
+	// body: {"code":400,"message":"..."}) would unmarshal "successfully"
+	// into an empty envelope, and the caller would see a confusing
+	// "no collections" failure instead of the real parse error.
+	if envelope.Items == nil {
+		return nil, fmt.Errorf("%s has no \"items\" key -- not a valid /api/collections "+
+			"response (got a %d-byte body)", path, len(raw))
+	}
+	// The ci.yml curl call that produces this dump has already truncated it
+	// silently once, when the request had no perPage at all and PocketBase's
+	// default page size (30) cut off the real ~69 collections (kindred#1921's
+	// own history). Bumping perPage to a bigger literal only pushes the same
+	// failure mode further out -- it recreates itself the moment collection
+	// count grows past whatever number is hardcoded there. totalItems is
+	// PocketBase's own count of everything that request could have returned,
+	// so comparing it against what was actually read catches truncation
+	// structurally, at any perPage, rather than trusting the literal.
+	if len(envelope.Items) < envelope.TotalItems {
+		return nil, fmt.Errorf("%s is truncated: got %d of %d total collections "+
+			"(page=%d perPage=%d totalPages=%d) -- raise perPage in the curl call "+
+			"that produced this dump (.github/workflows/ci.yml)",
+			path, len(envelope.Items), envelope.TotalItems,
+			envelope.Page, envelope.PerPage, envelope.TotalPages)
 	}
 
-	out := make(map[string]map[string]bool, len(cols))
-	for _, c := range cols {
+	out := make(map[string]map[string]bool, len(envelope.Items))
+	for _, c := range envelope.Items {
 		fields := make(map[string]bool, len(c.Fields))
 		for _, f := range c.Fields {
 			fields[f.Name] = true
@@ -125,6 +151,62 @@ func loadProductionSchema(path string) (map[string]map[string]bool, error) {
 		out[c.Name] = fields
 	}
 	return out, nil
+}
+
+// TestLoadProductionSchema exercises loadProductionSchema directly against
+// small in-memory fixtures rather than a real PocketBase boot, so these run
+// everywhere (no KINDRED_PROD_SCHEMA_JSON skip) and fail fast on the parsing
+// contract itself, separate from TestLodgingTestsupportFixtureFieldsExist...
+// below, which needs the full CI boot to exercise the comparison it guards.
+func TestLoadProductionSchema(t *testing.T) {
+	write := func(t *testing.T, body string) string {
+		t.Helper()
+		path := filepath.Join(t.TempDir(), "collections.json")
+		if err := os.WriteFile(path, []byte(body), 0o600); err != nil {
+			t.Fatalf("write fixture: %v", err)
+		}
+		return path
+	}
+
+	t.Run("complete envelope parses", func(t *testing.T) {
+		path := write(t, `{"page":1,"perPage":1000,"totalItems":1,"totalPages":1,"items":[
+			{"name":"lodging_units","fields":[{"name":"code"},{"name":"year"}]}
+		]}`)
+		schema, err := loadProductionSchema(path)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if !schema["lodging_units"]["year"] {
+			t.Fatalf("expected lodging_units.year in the parsed schema, got %v", schema)
+		}
+	})
+
+	// totalItems says 69 collections exist; the dump only carries 1 -- the
+	// exact shape a perPage that's too small produces. This is the class of
+	// bug this repo already hit once for real: the ci.yml curl call had no
+	// perPage at all, silently truncating the dump to PocketBase's default
+	// page size (30) of the real ~69 collections (see this file's git
+	// history and kindred#1921). A hardcoded perPage, however generous,
+	// recreates the same trap the moment collection count grows past it;
+	// this test pins the fix -- checking totalItems against what was
+	// actually returned -- rather than trusting the number in ci.yml.
+	t.Run("truncated envelope is rejected, not silently accepted", func(t *testing.T) {
+		path := write(t, `{"page":1,"perPage":1,"totalItems":69,"totalPages":69,"items":[
+			{"name":"lodging_units","fields":[{"name":"code"}]}
+		]}`)
+		_, err := loadProductionSchema(path)
+		if err == nil {
+			t.Fatal("expected an error for a dump reporting totalItems=69 but carrying only 1 item, got nil")
+		}
+	})
+
+	t.Run("malformed response body is rejected, not read as zero collections", func(t *testing.T) {
+		path := write(t, `{"code":400,"message":"something went wrong"}`)
+		_, err := loadProductionSchema(path)
+		if err == nil {
+			t.Fatal("expected an error for a non-collections response body, got nil")
+		}
+	})
 }
 
 // TestLodgingTestsupportFixtureFieldsExistInProductionSchema is kindred#1921's

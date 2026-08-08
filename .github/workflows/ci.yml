@@ -619,11 +619,23 @@ jobs:
     # above is the real schema those same migrations just produced; this step
     # diffs the fixture's declared fields against it and fails on a field the
     # fixture has that production does not (drop/rename direction only).
+    #
+    # -count=1 disables the test result cache deliberately: Go's cache only
+    # tracks files opened from within the package's own module tree, and
+    # /tmp/collections.json lives outside it, so the cache can't see it
+    # change between runs. KINDRED_PROD_SCHEMA_JSON is the same literal path
+    # every time, and actions/setup-go's cache:true (keyed on
+    # pocketbase/go.sum, which most PRs don't touch) restores GOCACHE across
+    # separate CI runs. Without -count=1, once this test passes once with
+    # unchanged Go source, a later PR that drops/renames a field in
+    # pb_migrations -- without touching this test's .go file -- can get a
+    # cached "ok" and never re-read that run's schema dump at all, silently
+    # defeating the guard.
     - name: Fixture schema agreement (kindred#1921)
       working-directory: ./pocketbase
       env:
         KINDRED_PROD_SCHEMA_JSON: /tmp/collections.json
-      run: go test ./sync/... -run TestLodgingTestsupportFixtureFieldsExistInProductionSchema -v
+      run: go test -count=1 ./sync/... -run TestLodgingTestsupportFixtureFieldsExistInProductionSchema -v
 
   # Frontend tests — sharded across 2 matrix jobs to cut wall-clock
   # (vitest --shard splits files; matrix gives each shard its own runner)
