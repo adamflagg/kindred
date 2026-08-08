@@ -327,6 +327,52 @@ func newHooksTestApp(t *testing.T) core.App {
 	return app
 }
 
+// newSlotMergesTestApp is the lodging_slot_merges twin of newHooksTestApp.
+//
+// lodging_slot_merges is deliberately NOT part of the shared setupCollections
+// fixture every other test in this file builds on --
+// TestGuardUnitYearSkipsAnAbsentCollection needs it ABSENT there to pin
+// wireHooks's collection-not-found skip path. So this adds it as a SEPARATE,
+// later step, mirroring lodging_availability's shape (setupCollections):
+// unit/session/year, since lodging_slot_merges is the second single-relation
+// case ("unit", MaxSelect 1) alongside availability -- session_cm_id and
+// scenario are on the production table (1500000139) but unread by any guard,
+// so they are left out the same way setupCollections leaves out fields
+// nothing under test reads.
+//
+// The collection has to exist BEFORE wireHooks runs: wireHooks's dependent-
+// collection loop pre-filters yearImmutableRefs to collections that exist AT
+// BIND TIME (see its own comment in hooks.go), so creating lodging_slot_merges
+// afterward would leave it permanently excluded from refs for this app's
+// lifetime.
+func newSlotMergesTestApp(t *testing.T) core.App {
+	t.Helper()
+	app, err := tests.NewTestApp()
+	if err != nil {
+		t.Fatalf("NewTestApp: %v", err)
+	}
+	t.Cleanup(app.Cleanup)
+	setupCollections(t, app)
+
+	unitsCol := mustCollection(t, app, "lodging_units")
+	sessionsCol := mustCollection(t, app, "camp_sessions")
+
+	slotMerges := core.NewBaseCollection("lodging_slot_merges")
+	slotMerges.Fields.Add(&core.RelationField{
+		Name: "unit", CollectionId: unitsCol.Id, MaxSelect: 1,
+	})
+	slotMerges.Fields.Add(&core.RelationField{
+		Name: "session", CollectionId: sessionsCol.Id, MaxSelect: 1,
+	})
+	slotMerges.Fields.Add(&core.NumberField{Name: "year"})
+	if err := app.Save(slotMerges); err != nil {
+		t.Fatalf("save lodging_slot_merges: %v", err)
+	}
+
+	wireHooks(app)
+	return app
+}
+
 // newIssue seeds an OPEN work-queue row of the given kind -- unlike
 // newResolvedIssue, which hardcodes unresolved_alias and is_resolved=true.
 func newIssue(
@@ -1537,14 +1583,7 @@ func TestGuardUnitYearSkipsAUnitsSelfReference(t *testing.T) {
 func TestGuardYearImmutableAllowsARoutineEditThatResendsTheSameYear(t *testing.T) {
 	app := newHooksTestApp(t)
 	unit := seedUnit(t, app, "test-unit-a", 2027)
-
-	avail := core.NewRecord(mustCollection(t, app, "lodging_availability"))
-	avail.Set("year", 2027)
-	avail.Set("unit", unit)
-	avail.Set("session", seedSession(t, app))
-	if err := app.Save(avail); err != nil {
-		t.Fatalf("seeding a dependent availability row: %v", err)
-	}
+	seedAvailability(t, app, unit, 2027)
 
 	rec, err := app.FindRecordById(collectionUnits, unit)
 	if err != nil {
@@ -1565,14 +1604,7 @@ func TestGuardYearImmutableAllowsARoutineEditThatResendsTheSameYear(t *testing.T
 func TestGuardYearImmutableRejectsAUnitYearChangeWithAnAvailabilityDependent(t *testing.T) {
 	app := newHooksTestApp(t)
 	unit := seedUnit(t, app, "test-unit-a", 2027)
-
-	avail := core.NewRecord(mustCollection(t, app, "lodging_availability"))
-	avail.Set("year", 2027)
-	avail.Set("unit", unit)
-	avail.Set("session", seedSession(t, app))
-	if err := app.Save(avail); err != nil {
-		t.Fatalf("seeding a dependent availability row: %v", err)
-	}
+	seedAvailability(t, app, unit, 2027)
 
 	rec, err := app.FindRecordById(collectionUnits, unit)
 	if err != nil {
@@ -1645,6 +1677,39 @@ func TestGuardYearImmutableRejectsAUnitYearChangeWithADraftAssignmentDependent(t
 
 	if err := app.Save(rec); err == nil {
 		t.Fatal("re-seasoned a unit with a dependent draft assignment row; want a refusal")
+	}
+}
+
+// TestGuardYearImmutableRejectsAUnitYearChangeWithASlotMergeDependent is
+// lodging_slot_merges's own entry in yearImmutableRefs -- the second
+// single-relation case (`unit`, MaxSelect 1) alongside lodging_availability,
+// and the fourth of the four dependents this guard watches for
+// collectionUnits. Uses newSlotMergesTestApp rather than newHooksTestApp
+// because lodging_slot_merges is absent from the shared fixture (see that
+// helper's own comment). Same coverage gap as the draft-assignment test
+// above: nothing about the availability or assignment tests exercises this
+// entry's filter, so a mutation that broke ONLY it left the suite green
+// before this test existed.
+func TestGuardYearImmutableRejectsAUnitYearChangeWithASlotMergeDependent(t *testing.T) {
+	app := newSlotMergesTestApp(t)
+	unit := seedUnit(t, app, "test-unit-a", 2027)
+
+	merge := core.NewRecord(mustCollection(t, app, "lodging_slot_merges"))
+	merge.Set("unit", unit)
+	merge.Set("session", seedSession(t, app))
+	merge.Set("year", 2027)
+	if err := app.Save(merge); err != nil {
+		t.Fatalf("seeding a dependent slot-merge row: %v", err)
+	}
+
+	rec, err := app.FindRecordById(collectionUnits, unit)
+	if err != nil {
+		t.Fatalf("reloading the unit: %v", err)
+	}
+	rec.Set("year", 2028)
+
+	if err := app.Save(rec); err == nil {
+		t.Fatal("re-seasoned a unit with a dependent slot-merge row; want a refusal")
 	}
 }
 

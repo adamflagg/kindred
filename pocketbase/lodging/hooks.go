@@ -85,8 +85,8 @@ type yearScopedRef struct {
 // against the OUTGOING relations listed in its own entry above; it never
 // re-checks rows elsewhere that point back AT the thing just written. Two
 // gaps followed from that, both residual as of kindred#2039, not
-// regressions, and both closed below by guardYearImmutable (kindred#2067)
-// rather than by extending this map:
+// regressions, and both named below are closed by guardYearImmutable
+// (kindred#2067) rather than by extending this map:
 //
 //   - lodging_areas is a valid TARGET above (lodging_units.area resolves into
 //     it) but is not itself a key in this map, so editing an existing area
@@ -96,6 +96,12 @@ type yearScopedRef struct {
 //     row's OWN area/parent_unit, but nothing re-validated the rows that
 //     point AT it: lodging_availability, lodging_assignments,
 //     lodging_assignments_draft, lodging_slot_merges.
+//
+// What that does NOT close: lodging_units is ALSO a valid TARGET via
+// parent_unit (line 111 below), the identical shape to the lodging_areas
+// bullet above, but yearImmutableRefs carries no reverse entry for it -- see
+// that map's own doc comment for why, and kindred#2148 for the maintenance
+// hazard this un-mirrored entry is one instance of.
 //
 // Cascading the new year onto every dependent row on a parent's write would
 // be a materially bigger change than this guard makes anywhere else, so
@@ -119,8 +125,14 @@ var yearScopedRefs = map[string][]yearScopedRef{
 // assembled (see its comment): `?=` plus the `.id` join is only correct for a
 // MULTI-valued relation (`units`, MaxSelect 20); a single relation (`unit`,
 // `area`, MaxSelect 1) stores the id as a plain string and needs a plain `=`.
-// Getting that backwards is silent -- both a bare "units = {:id}" and a
-// joined "unit.id ?= {:id}" compile and match ZERO rows against a real id.
+// Getting that backwards is silent in ONE direction: a bare "units = {:id}"
+// against a multi-valued relation compiles and matches ZERO rows against a
+// real id (see countAssignments's own comment). The reverse mistake is not
+// silent the same way -- checked directly, a joined "unit.id ?= {:id}" against
+// a single relation still matches the dependent row correctly, so writing it
+// that way is merely non-idiomatic, not wrong. kindred#2148 tracks
+// mechanizing this derivation instead of leaving it to be gotten right by
+// hand at each entry below.
 type dependentRef struct {
 	collection string
 	filter     string
@@ -135,7 +147,9 @@ type dependentRef struct {
 // collectionUnits here -- kindred#2067 scoped this fix to the four
 // collections its own body names below. A child unit pointing at a
 // re-seasoned parent via parent_unit is the same shape of gap and is not
-// covered by this guard.
+// covered by this guard. It is also the one entry in yearScopedRefs with no
+// hand-typed reverse here -- kindred#2148 tracks that as a maintenance
+// hazard in this map's own shape, not just as a scoping choice.
 var yearImmutableRefs = map[string][]dependentRef{
 	collectionAreas: {
 		{collection: collectionUnits, filter: "area = {:id}"},
@@ -152,6 +166,17 @@ var yearImmutableRefs = map[string][]dependentRef{
 func RegisterHooks(app *pocketbase.PocketBase) {
 	wireHooks(app)
 	slog.Info("lodging integrity hooks registered")
+}
+
+// collectionExists reports whether name resolves in app. Three separate spots
+// in wireHooks below need this same "look before you bind" check -- the
+// yearScopedRefs loop's collection, and yearImmutableRefs's loop for both its
+// own collection and each dependent's -- and each wants its own distinct log
+// message on a miss, so this factors out only the lookup and leaves what to
+// do about a "no" at each call site.
+func collectionExists(app core.App, name string) bool {
+	_, err := app.FindCollectionByNameOrId(name)
+	return err == nil
 }
 
 // wireHooks binds the guards to any core.App. Extracted so the test suite,
@@ -171,7 +196,7 @@ func wireHooks(app core.App) {
 	// must not take the boot down, so this checks rather than assumes before
 	// binding (see yearScopedRefs).
 	for name := range yearScopedRefs {
-		if _, err := app.FindCollectionByNameOrId(name); err != nil {
+		if !collectionExists(app, name) {
 			// app.Logger(), not the package-level slog: the latter's default
 			// handler writes to stderr, invisible to captureStdout (the only
 			// way this test suite can observe a log line -- see its doc
@@ -203,7 +228,7 @@ func wireHooks(app core.App) {
 	// owns it exists (same reasoning as guardUnitParentCycle's absent create
 	// binding).
 	for name := range yearImmutableRefs {
-		if _, err := app.FindCollectionByNameOrId(name); err != nil {
+		if !collectionExists(app, name) {
 			app.Logger().Warn("year-immutable guard skipped: collection absent", "collection", name)
 			continue
 		}
@@ -219,7 +244,7 @@ func wireHooks(app core.App) {
 		// leaving it in would make FindRecordsByFilter error instead.
 		refs := make([]dependentRef, 0, len(yearImmutableRefs[name]))
 		for _, ref := range yearImmutableRefs[name] {
-			if _, err := app.FindCollectionByNameOrId(ref.collection); err != nil {
+			if !collectionExists(app, ref.collection) {
 				app.Logger().Warn("year-immutable guard: dependent collection absent",
 					"collection", name, "dependent", ref.collection)
 				continue
@@ -314,8 +339,8 @@ func guardYearImmutable(e *core.RecordEvent, refs []dependentRef) error {
 			ref.collection,
 			ref.filter,
 			"",
-			1, // existence check only -- one match is enough to refuse
-			0,
+			0, // 0 = unlimited -- the refusal message below reports a real count,
+			0, // matching guardUnitDelete and guardAliasDelete's own queries
 			map[string]any{"id": e.Record.Id},
 		)
 		if err != nil {
@@ -325,10 +350,10 @@ func guardYearImmutable(e *core.RecordEvent, refs []dependentRef) error {
 		if len(records) > 0 {
 			return apis.NewBadRequestError(
 				fmt.Sprintf(
-					"Cannot change %q's year from %d to %d: at least one %s row "+
-						"references it. Use the roll-forward to move it to a new "+
-						"season instead of re-seasoning an existing row in place.",
-					e.Record.GetString("code"), oldYear, newYear, ref.collection,
+					"Cannot change %q's year from %d to %d: %d %s row(s) reference "+
+						"it. Use the roll-forward to move it to a new season instead "+
+						"of re-seasoning an existing row in place.",
+					e.Record.GetString("code"), oldYear, newYear, len(records), ref.collection,
 				),
 				nil,
 			)
