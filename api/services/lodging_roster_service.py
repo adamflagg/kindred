@@ -571,6 +571,8 @@ class LodgingRosterService:
             # resolve_combined then sees both tiers.
             merges_task = tg.create_task(self.repository.fetch_slot_merges(year, session_pb_id, scenario))
 
+        households = await self._resolve_households(session_type, attendees_task.result(), households_task.result())
+
         unit_summaries = self._build_units(
             units_task.result(),
             availability_task.result(),
@@ -579,7 +581,7 @@ class LodgingRosterService:
         parties = self._build_parties(
             session_type=session_type,
             attendees=attendees_task.result(),
-            households=households_task.result(),
+            households=households,
             prior_cm_ids=prior_task.result(),
             adults_by_household=adults_task.result(),
             registrations=registrations_task.result(),
@@ -668,6 +670,17 @@ class LodgingRosterService:
                 # rather than an empty list.
                 merges_task = inner.create_task(self.repository.fetch_slot_merges(year, session_pb_id, scenario))
 
+            # Own local variable, not a mutation of the shared `households`
+            # above: `_entry` runs concurrently, one per weekend, in the
+            # TaskGroup below, and `_resolve_households` returns a merged
+            # COPY rather than patching in place (kindred#2143) -- so two
+            # weekends resolving different missing households at once can
+            # never step on each other or leak one weekend's fresh fetch into
+            # another's.
+            session_households = await self._resolve_households(
+                _s(session, "session_type"), attendees_task.result(), households
+            )
+
             unit_summaries = self._build_units(
                 units,
                 availability_task.result(),
@@ -676,7 +689,7 @@ class LodgingRosterService:
             parties = self._build_parties(
                 session_type=_s(session, "session_type"),
                 attendees=attendees_task.result(),
-                households=households,
+                households=session_households,
                 prior_cm_ids=prior_cm_ids,
                 adults_by_household=adults_by_household,
                 registrations=registrations,
@@ -815,6 +828,48 @@ class LodgingRosterService:
         return summaries
 
     # -------------------------------------------------------------- parties
+
+    async def _resolve_households(
+        self, session_type: str, attendees: list[Any], households: dict[str, Any]
+    ) -> dict[str, Any]:
+        """`households`, patched with any household a fresh attendee names
+        that the cached year snapshot does not have (kindred#2143).
+
+        `households` is cached for up to 15 minutes (`fetch_households`,
+        kindred#1963); `attendees` is fetched fresh on every call, in the
+        SAME TaskGroup. A household created after the snapshot was cached is
+        absent from the cached dict even though a brand-new attendee can
+        already name it -- the fresh half of this mixed read outrunning the
+        cached half. Left alone, `_build_household_parties` falls through to
+        a blank record: display_name renders "Household 0" and is_returning
+        reads False for a family that may have been coming for years.
+
+        Person-grain (adult weekend) parties never read `households` at all
+        (see `_build_parties`), so there is nothing to patch and no reason to
+        pay for the check.
+
+        Scoped to exactly the missing ids -- typically zero -- and never
+        written back to `lodging_cache`: this is a per-request patch for a
+        rare race, not a second cache to keep coherent with the first.
+        """
+        if session_type == "adult":
+            return households
+        missing_ids = sorted(
+            {
+                household_pb_id
+                for attendee in attendees
+                if (person := (getattr(attendee, "expand", None) or {}).get("person")) is not None
+                and (household_pb_id := _s(person, "household"))
+                and household_pb_id not in households
+            }
+        )
+        if not missing_ids:
+            return households
+        fresh = await self.repository.fetch_households_by_ids(missing_ids)
+        if not fresh:
+            return households
+        logger.info(f"Lodging roster: fetched {len(fresh)} household(s) fresh past the {len(households)}-entry cache")
+        return {**households, **fresh}
 
     def _build_parties(
         self,
