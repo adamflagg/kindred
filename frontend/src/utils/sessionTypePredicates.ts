@@ -36,11 +36,32 @@ export const QUEST_SESSION_TYPES = ['quest'] as const
 export const TEEN_PROGRAM_TYPES = ['scit', 'tli'] as const
 
 /**
- * Curated set shown in a camper's journey timeline: summer + teen, no family —
- * mirrors what's visible on the All Campers page and metrics. (Family camp made
- * the journey noisy for multi-session staff kids; intentionally excluded.)
+ * Curated set shown in a camper's journey timeline: summer + teen + family.
+ *
+ * Originally excluded family camp (mirroring the All Campers page and
+ * metrics) because family rows made the journey noisy for multi-session
+ * staff kids. That exclusion is REVERSED as of #2113: measured against
+ * production it was hiding ~45% of enrolled attendance and left the journey
+ * completely blank for over a thousand people in some years (2018/2023/2024),
+ * with no offsetting benefit — the "no year floor" in fetchCamperJourney
+ * already meant summer/teen history back to 2017 was reachable, so the gap
+ * was pure data loss, not curation. The noise concern is still real; it's
+ * handled with a visual de-emphasis on family rows in CampJourneyTimeline
+ * rather than by hiding the data.
+ *
+ * CAMPER_DETAIL_TYPES below is a separate consumer (the camper detail page's
+ * current-year fetch) and keeps the original no-family curation — #2113 did
+ * not decide that one.
  */
-export const CAMPER_JOURNEY_TYPES = ['main', 'embedded', 'ag', 'quest', 'scit', 'tli'] as const
+export const CAMPER_JOURNEY_TYPES = [
+  'main',
+  'embedded',
+  'ag',
+  'quest',
+  'scit',
+  'tli',
+  'family',
+] as const
 
 /** Curated set driving a camper detail page's current-year fetch: summer + teen, no family. */
 export const CAMPER_DETAIL_TYPES = ['main', 'embedded', 'ag', 'quest', 'scit', 'tli'] as const
@@ -206,7 +227,8 @@ export function buildSummerSessionTypeFilter(): string {
 
 /**
  * Build a PocketBase OR-clause restricting `session.session_type` to the camper
- * journey set (summer + teen, no family). Caller wraps the result in `(...)`.
+ * journey set (summer + teen + family, see CAMPER_JOURNEY_TYPES). Caller wraps
+ * the result in `(...)`.
  */
 export function buildCamperJourneySessionTypeFilter(): string {
   return CAMPER_JOURNEY_TYPES.map((t) => `session.session_type = "${t}"`).join(' || ')

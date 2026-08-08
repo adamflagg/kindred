@@ -73,27 +73,35 @@ describe('fetchCamperJourney', () => {
   })
 
   it('sources rows from attendees and queries by year < currentYear, enrolled, curated types', async () => {
+    // #2113: family camp was reversed into the journey set (was excluded to
+    // mirror All Campers). bmitzvah/hebrew/adult/school/teen/other remain
+    // excluded — CAMPER_JOURNEY_TYPES was widened, not opened up entirely.
     mockAttendeesGetFullList.mockResolvedValue([attendee(2023, 100, 'main', 'Session 3')])
     await fetchCamperJourney(PERSON, CURRENT_YEAR)
     const filter = String(mockAttendeesGetFullList.mock.calls[0]?.[0]?.filter ?? '')
     expect(filter).toContain(`person_id = ${PERSON}`)
     expect(filter).toContain(`year < ${CURRENT_YEAR}`)
     expect(filter).toContain('status = "enrolled"')
-    expect(filter).not.toContain('"family"') // family excluded — journey mirrors All Campers
+    expect(filter).toContain('session.session_type = "family"') // #2113: now included
+    expect(filter).not.toContain('"bmitzvah"') // still excluded — not a journey type
     expect(filter).toContain('session.session_type = "scit"')
   })
 
-  it('restricts the bunk_assignments query to journey session types (no family-camp bunk leak)', async () => {
-    // A summer enrollment with no summer bunk + a lone family-camp bunk that year
-    // must NOT have the family bunk attached via the length===1 fallback. The
-    // query itself excludes non-journey (family) session types — mirrors the
-    // fb1a88d2 fix applied to current-year views in useCamperEnrollment.
+  it('restricts the bunk_assignments query to journey session types (family included, others still excluded)', async () => {
+    // The year-fallback attaches a lone same-year assignment to an unbunked
+    // enrolled row when there's exactly one. Restricting the query to journey
+    // session types stops a NON-journey type (e.g. bmitzvah) from leaking in
+    // via that fallback — the same leak fb1a88d2 closed for current-year views
+    // in useCamperEnrollment. Family is now a journey type (#2113), so a lone
+    // family-camp bunk legitimately participates in the fallback like any
+    // other journey type; bmitzvah/hebrew/adult/school/teen/other still can't.
     mockAttendeesGetFullList.mockResolvedValue([attendee(2022, 100, 'main', 'Session 3')])
     await fetchCamperJourney(PERSON, CURRENT_YEAR)
     const filter = String(mockAssignmentsGetFullList.mock.calls[0]?.[0]?.filter ?? '')
     expect(filter).toContain(`person.cm_id = ${PERSON}`)
     expect(filter).toContain(`year < ${CURRENT_YEAR}`)
-    expect(filter).not.toContain('"family"')
+    expect(filter).toContain('session.session_type = "family"')
+    expect(filter).not.toContain('"bmitzvah"')
     expect(filter).toContain('session.session_type = "main"')
   })
 

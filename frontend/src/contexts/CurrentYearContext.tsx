@@ -5,10 +5,21 @@ import { useSyncStatusAPI } from '../hooks/useSyncStatusAPI'
 
 const STORAGE_KEY = 'bunking-current-year'
 
-// Calculate available years based on a base year
-function calculateAvailableYears(baseYear: number): number[] {
+/**
+ * Earliest year with historical attendee data — summer data starts in 2017
+ * (#2113). Was a fixed 5-year window, which blocked list/board year
+ * navigation to 2017-2021 even though the underlying data (and the camper
+ * journey timeline, which reads prior years directly) goes back that far.
+ */
+export const EARLIEST_AVAILABLE_YEAR = 2017
+
+// Calculate available years: descending from baseYear back through the
+// earliest year with data, rather than a fixed-size window (#2113).
+// eslint-disable-next-line react-refresh/only-export-components
+export function calculateAvailableYears(baseYear: number): number[] {
   if (baseYear === 0) return []
-  return Array.from({ length: 5 }, (_, i) => baseYear - i)
+  const length = Math.max(1, baseYear - EARLIEST_AVAILABLE_YEAR + 1)
+  return Array.from({ length }, (_, i) => baseYear - i)
 }
 
 function getStoredYear(availableYears: number[]): number | null {

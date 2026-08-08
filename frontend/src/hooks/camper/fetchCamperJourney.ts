@@ -1,9 +1,9 @@
 /**
  * Shared prior-year journey source. Lists every prior year a camper was
- * ENROLLED (curated types: summer + teen, no family), labeling each row with its
- * bunk/day-group when an assignment exists. Sourcing from attendees (not
- * bunk_assignments) is what surfaces 2022 (a CampMinder export gap), teens, and
- * family camp uniformly.
+ * ENROLLED (curated types: summer + teen + family, see #2113), labeling each
+ * row with its bunk/day-group when an assignment exists. Sourcing from
+ * attendees (not bunk_assignments) is what surfaces 2022 (a CampMinder export
+ * gap), teens, and family camp uniformly.
  *
  * AG is never shown as its own session: a Main+AG same-year pair collapses to the
  * Main row, and an AG-only year is relabeled to its parent main (name resolved via

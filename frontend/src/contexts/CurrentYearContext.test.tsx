@@ -3,6 +3,7 @@
  * and the isYearReady flag that prevents premature query firing.
  */
 import { describe, it, expect } from 'vitest'
+import { calculateAvailableYears as realCalculateAvailableYears } from './CurrentYearContext'
 
 // Test the year calculation logic without needing full React context
 describe('Year calculation logic', () => {
@@ -43,6 +44,28 @@ describe('Year calculation logic', () => {
 
     it('should return empty array when base year is 0 (not ready)', () => {
       expect(calculateAvailableYears(0)).toEqual([])
+    })
+  })
+
+  // #2113: the real calculateAvailableYears (exported from CurrentYearContext)
+  // must reach back to 2017, where summer data starts, instead of a fixed
+  // 5-year window that stopped list/board year navigation at 2022.
+  describe('calculateAvailableYears (real implementation, #2113 widening)', () => {
+    it('reaches back to 2017 from the current base year', () => {
+      const years = realCalculateAvailableYears(2026)
+      expect(years[0]).toBe(2026)
+      expect(years[years.length - 1]).toBe(2017)
+      expect(years).toHaveLength(10)
+      expect(years).not.toContain(2016)
+    })
+
+    it('stays descending and contiguous', () => {
+      const years = realCalculateAvailableYears(2020)
+      expect(years).toEqual([2020, 2019, 2018, 2017])
+    })
+
+    it('returns empty array when base year is 0 (not ready)', () => {
+      expect(realCalculateAvailableYears(0)).toEqual([])
     })
   })
 

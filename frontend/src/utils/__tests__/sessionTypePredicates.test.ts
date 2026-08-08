@@ -492,21 +492,39 @@ describe('teen cohort', () => {
 })
 
 describe('camper journey/detail session-type sets', () => {
-  it('CAMPER_JOURNEY_TYPES is summer + teen, no family (mirrors All Campers / metrics)', () => {
-    expect(CAMPER_JOURNEY_TYPES).toEqual(['main', 'embedded', 'ag', 'quest', 'scit', 'tli'])
-    expect(CAMPER_JOURNEY_TYPES).not.toContain('family')
+  // #2113 reverses the prior "no family" pinning on CAMPER_JOURNEY_TYPES only.
+  // The original decision (summer + teen, no family) was made because family
+  // camp made the journey noisy for multi-session staff kids — see the comment
+  // at sessionTypePredicates.ts:38-43. Measured against production, that
+  // exclusion was hiding ~45% of enrolled attendance and blanking entire years
+  // for 700-1000+ people per year (2018/2023/2024). The noise concern is
+  // handled by a visual de-emphasis on family rows in CampJourneyTimeline
+  // rather than by hiding the data. CAMPER_DETAIL_TYPES (the camper detail
+  // page's current-year fetch) is a separate consumer and keeps the original
+  // no-family behavior — not decided by this issue.
+  it('CAMPER_JOURNEY_TYPES is summer + teen + family (issue #2113: historical journey completeness)', () => {
+    expect(CAMPER_JOURNEY_TYPES).toEqual([
+      'main',
+      'embedded',
+      'ag',
+      'quest',
+      'scit',
+      'tli',
+      'family',
+    ])
+    expect(CAMPER_JOURNEY_TYPES).toContain('family')
   })
 
-  it('CAMPER_DETAIL_TYPES is summer + teen, no family', () => {
+  it('CAMPER_DETAIL_TYPES is summer + teen, no family (unchanged by #2113)', () => {
     expect(CAMPER_DETAIL_TYPES).toEqual(['main', 'embedded', 'ag', 'quest', 'scit', 'tli'])
     expect(CAMPER_DETAIL_TYPES).not.toContain('family')
   })
 
-  it('buildCamperJourneySessionTypeFilter ORs every journey type on session.session_type', () => {
+  it('buildCamperJourneySessionTypeFilter ORs every journey type on session.session_type, including family', () => {
     const f = buildCamperJourneySessionTypeFilter()
     for (const t of CAMPER_JOURNEY_TYPES) expect(f).toContain(`session.session_type = "${t}"`)
     expect(f).toContain('||')
-    expect(f).not.toContain('"family"') // family is excluded from the journey
+    expect(f).toContain('session.session_type = "family"') // #2113: family is now included
     expect(f.startsWith('(')).toBe(false) // caller wraps, matching buildSummerSessionTypeFilter
   })
 
