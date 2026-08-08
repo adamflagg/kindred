@@ -433,6 +433,90 @@ class LodgingWriteService:
             )
         return pb_error_to_http(exc)
 
+    async def copy_scenario_to_scenario(
+        self, year: int, session_cm_id: int, from_scenario: str, to_scenario: str
+    ) -> LodgingCopyResponse:
+        """Copy one weekend's placements from an existing scenario into a fresh one.
+
+        The weekend analogue of summer's `copy_from_scenario` inside
+        `POST /api/scenarios` (kindred#2021). `copy_from_mirror` seeds a
+        scenario from the CampMinder mirror; this seeds one from ANOTHER
+        scenario's own `lodging_assignments_draft` rows -- the source is
+        already-worked staff decisions, not synced data, so unlike a mirror
+        seed this carries `staff_touched` and `source` over unchanged rather
+        than resetting them. Promoting or demoting what a human already
+        decided is not this operation's call to make.
+
+        SEED-ONLY, exactly as `copy_from_mirror` is: the destination must be
+        empty, checked and enforced the same way, for the same reason -- a
+        second copy would overwrite what staff placed since. Weekend-scoped,
+        not scenario-scoped: `count_draft_assignments` and
+        `fetch_draft_assignments` both take `session_pb_id`, so a scenario
+        spanning weekends only has ITS placements for this one weekend
+        checked and copied, matching `copy_from_mirror`'s own scoping.
+
+        A source row is SKIPPED when every unit it names has been deleted --
+        the same case `copy_from_mirror` skips a mirror row for. Unlike a
+        mirror row, a draft row cannot lack a grain: `PartyGrainRequest`
+        validates exactly one at write time, so there is nothing here for
+        `placement_grain` to catch that this method needs to guard against.
+
+        The count and the creates RACE the same way `copy_from_mirror`'s do,
+        and the recovery is the identical `_seed_failure` -- built against
+        `PlacementCopyRequest`, which this constructs purely to reuse that
+        race/refusal logic rather than duplicate it.
+        """
+        session_pb_id = await self._resolve_session_pb_id(year, session_cm_id)
+
+        held = await self.repository.count_draft_assignments(year, session_pb_id, to_scenario)
+        if held:
+            raise ScenarioNotEmptyError(
+                f"Scenario {to_scenario} already holds {held} placement(s) for weekend {session_cm_id} in {year}"
+            )
+
+        rows = await self.repository.fetch_draft_assignments(year, session_pb_id, from_scenario)
+
+        copied = 0
+        skipped = 0
+        dest_request = PlacementCopyRequest(year=year, session_cm_id=session_cm_id, scenario=to_scenario)
+        for row in rows:
+            unit_ids = [str(getattr(unit, "id", "")) for unit in resolved_units(row)]
+            if not unit_ids:
+                skipped += 1
+                continue
+
+            data: dict[str, Any] = {
+                "session": session_pb_id,
+                "session_cm_id": session_cm_id,
+                "year": year,
+                "scenario": to_scenario,
+                "household_cm_id": int(getattr(row, "household_cm_id", 0) or 0),
+                "person_cm_id": int(getattr(row, "person_cm_id", 0) or 0),
+                "units": unit_ids,
+                # Carried over, not reset -- see the docstring. Unlike a
+                # mirror seed, this source is already a staff decision.
+                "source": str(getattr(row, "source", "") or ""),
+                "staff_touched": bool(getattr(row, "staff_touched", False)),
+            }
+            try:
+                await self.repository.create_draft_assignment(data)
+            except ClientResponseError as exc:
+                raise await self._seed_failure(exc, dest_request, session_pb_id, copied) from exc
+            copied += 1
+
+        logger.info(
+            "Copied a lodging scenario into a fresh one",
+            extra={
+                "year": year,
+                "session_cm_id": session_cm_id,
+                "from_scenario": from_scenario,
+                "to_scenario": to_scenario,
+                "copied": copied,
+                "skipped": skipped,
+            },
+        )
+        return LodgingCopyResponse(copied=copied, skipped=skipped)
+
     async def set_availability(self, request: AvailabilityWriteRequest) -> LodgingWriteResponse:
         """Reserve or release one unit for this weekend.
 

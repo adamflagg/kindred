@@ -136,7 +136,6 @@ class SavedScenario(BaseModel):
     name: str
     session_cm_id: int
     year: int  # Required for year-scoped queries
-    created_by: str | None = None
     is_active: bool = True
     description: str | None = None
 
@@ -193,7 +192,6 @@ class CreateScenarioRequest(BaseModel):
     description: str | None = None
     copy_from_production: bool | None = None  # Deprecated, kept for backward compatibility
     copy_from_scenario: str | None = None  # ID of scenario to copy from
-    created_by: str | None = None
 
     @property
     def should_copy_from_production(self) -> bool:

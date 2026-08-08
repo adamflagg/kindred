@@ -390,7 +390,12 @@ def _scenario_client(solver_runs_state: dict[str, Any]) -> Iterator[TestClient]:
 
     mock_pb = MagicMock()
     mock_scenario = MagicMock()
-    mock_scenario.session_cm_id = 5001
+    # session_cm_id is read via the expanded `session` relation (kindred#2021)
+    # -- saved_scenarios has never had a session_cm_id column, so a bare
+    # `.session_cm_id` attribute on this mock (as a real PocketBase Record
+    # would never have it set to anything meaningful) would silently mask
+    # the single-flight guard this test exists to pin.
+    mock_scenario.expand = {"session": MagicMock(cm_id=5001)}
     mock_scenario.year = 2026
     mock_pb.collection.return_value.get_one.return_value = mock_scenario
 
