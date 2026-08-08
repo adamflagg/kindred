@@ -646,11 +646,11 @@ type sessionInfo struct {
 // (stable across years) but falling back to name-based rules when the GroupID either is
 // absent or doesn't resolve to a known group.
 //
-// An unrecognised GroupID (getSessionTypeFromGroupID's default arm, returning
+// An unrecognized GroupID (getSessionTypeFromGroupID's default arm, returning
 // sessionTypeOther) is not treated as a confident classification: some CampMinder groups
 // (e.g. a catch-all "Camp Sessions" bucket) hold real, differently-typed programs that
 // were never added to the switch. Falling through to getSessionTypeFromName recovers those
-// cases without touching a *recognised* group's result - which never equals
+// cases without touching a *recognized* group's result - which never equals
 // sessionTypeOther, so it is returned as-is. See issue #2114.
 func (s *SessionsSync) classifySessionType(info sessionInfo, groupID int, allSessionInfos []sessionInfo) string {
 	if groupID <= 0 {
@@ -666,7 +666,7 @@ func (s *SessionsSync) classifySessionType(info sessionInfo, groupID int, allSes
 	}
 
 	if sessionType == sessionTypeOther {
-		// Unrecognised group - defer to the name rules rather than accepting "other".
+		// Unrecognized group - defer to the name rules rather than accepting "other".
 		return s.getSessionTypeFromName(info.name)
 	}
 
