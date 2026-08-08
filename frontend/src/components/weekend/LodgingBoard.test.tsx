@@ -641,6 +641,13 @@ describe('LodgingBoard — the details panel updates in place', () => {
             // household overrides display_name -- distinct children are what
             // make the two cards reachable apart below.
             children: [{ person_cm_id: 9002, display_name: 'Mia Chen', age: 6, grade: 0 }],
+            // kindred#2084: the panel's own identity is the attending-adult
+            // list now, not `display_name` -- and the default fixture's
+            // adult ('Emma Johnson') is shared by both households here, so
+            // this must override it too, or the panel would read identically
+            // for both and this test could pass while showing the FIRST
+            // household's details under the second one.
+            adults: [{ adult_number: 1, display_name: 'Priya Chen', relationship: 'Mother' }],
           }),
         ]}
         units={[unit()]}
@@ -659,7 +666,7 @@ describe('LodgingBoard — the details panel updates in place', () => {
     const second = screen.getByTestId('family-details-panel')
 
     expect(second).toBe(first)
-    expect(second).toHaveTextContent('Chen Household')
+    expect(second).toHaveTextContent('Priya Chen')
   })
 })
 

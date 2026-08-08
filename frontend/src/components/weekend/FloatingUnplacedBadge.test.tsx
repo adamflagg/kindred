@@ -74,6 +74,35 @@ describe('FloatingUnplacedBadge', () => {
     expect(names).toEqual(['Mia Chen (6)', 'Noah Johnson (8)'])
   })
 
+  it('no longer finds a household by its stale salutation, only by its real identity', async () => {
+    // kindred#2084: the search index used to include `party.display_name`
+    // (CampMinder's mailing_title salutation) verbatim. This household's
+    // salutation names only one adult in a form that includes 'Mr.'; its
+    // real attending adult ('Emma Johnson') is what the search index now
+    // carries instead, via the same construction FamilyCard uses.
+    render(
+      <FloatingUnplacedBadge
+        parties={[
+          party({
+            display_name: 'Mr. and Mrs. Johnson',
+            sort_name: 'Johnson',
+            adults: [{ adult_number: 1, display_name: 'Emma Johnson', relationship: 'Mother' }],
+          }),
+        ]}
+        onOpenParty={vi.fn()}
+      />,
+      { wrapper }
+    )
+    await userEvent.click(screen.getByRole('button', { name: /unplaced parties/i }))
+
+    await userEvent.type(screen.getByPlaceholderText(/filter by name/i), 'Mr.')
+    expect(screen.queryAllByTestId('family-card-name')).toEqual([])
+
+    await userEvent.clear(screen.getByPlaceholderText(/filter by name/i))
+    await userEvent.type(screen.getByPlaceholderText(/filter by name/i), 'Emma')
+    expect(screen.getAllByTestId('family-card-name')).toHaveLength(1)
+  })
+
   it('finds a household by a child’s name', async () => {
     render(
       <FloatingUnplacedBadge

@@ -15,6 +15,7 @@ import type { RosterPartyRow } from '../../types/lodging'
 import { FloatingQueueBadge } from '../ui'
 import { UNPLACED_DROPPABLE_ID } from './dragPlacement'
 import { FamilyCard } from './FamilyCard'
+import { partyIdentityLabel } from './householdIdentity'
 import { partyKey } from './partyKey'
 
 export interface FloatingUnplacedBadgeProps {
@@ -28,16 +29,24 @@ export interface FloatingUnplacedBadgeProps {
 
 // Module-level so their identity is stable across renders: the shell memoises
 // its sort and filter on them.
+//
+// The tiebreaker is `partyIdentityLabel`, not `party.display_name` --
+// kindred#2084: the latter is CampMinder's mailing_title salutation, which
+// disagreed with the real attending-adult list on 26.7% of 2026's rostered
+// households. Same construction FamilyCard uses (`householdIdentity.ts`).
 const sortKey = (party: RosterPartyRow): string[] => [
   party.sort_name ?? '',
-  party.display_name ?? '',
+  partyIdentityLabel(party),
 ]
 
 // Children and adults included so a household can be found by the name of
-// whoever the staff member happens to remember.
+// whoever the staff member happens to remember. The leading element is the
+// SAME identity the card shows (kindred#2084), not the salutation -- a
+// search for the stale salutation's wording should not resurrect it here
+// when the card itself no longer shows it.
 const getSearchText = (party: RosterPartyRow): string =>
   [
-    party.display_name ?? '',
+    partyIdentityLabel(party),
     ...(party.adults ?? []).map((adult) => adult.display_name ?? ''),
     ...(party.children ?? []).map((child) => child.display_name ?? ''),
   ].join(' ')
