@@ -107,6 +107,33 @@ class LodgingWriteService:
             raise SessionNotFoundError(f"No weekend session {session_cm_id} in {year}")
         return str(getattr(session, "id", ""))
 
+    def _log_recovered_race(self, what: str, exc: ClientResponseError, **context: Any) -> None:
+        """WARN that a create failure was treated as a lost race (kindred#2043).
+
+        The guard this backs is deliberately wide -- ANY non-refusal status
+        reaches it, not only the unique-constraint one an actual race
+        produces -- so this is the only trace left of a create that may have
+        failed for an unrelated reason (a 500, a malformed relation id, a
+        transient fault) once the recovery reports success.
+
+        Context is inlined into the message rather than passed as `extra`:
+        `bunking.logging_config.ISO8601Formatter.format` only ever renders
+        `record.getMessage()`, so an `extra={}` payload is silently dropped
+        and never reaches log output -- the same trap `api/routers/scenarios.py`
+        documents and works around at its own `logger.error` call. `str(exc)`
+        is deliberately NOT included: PocketBase's error bodies are not
+        guaranteed single-line, and a multi-line value here would break the
+        `key=value` shape the rest of this codebase's logs use.
+
+        Call this only once the recovery's own update has SUCCEEDED. Logging
+        it any earlier -- e.g. right after the raced row is found -- would
+        claim a recovery that the update call could still go on to fail,
+        which reaches the caller as an error despite the log saying
+        "Recovered".
+        """
+        fields = " ".join(f"{key}={value}" for key, value in context.items())
+        logger.warning(f"Recovered a {what} create as a lost race: status={exc.status} {fields}")
+
     async def place_party(self, request: PlacementWriteRequest) -> LodgingWriteResponse:
         """Upsert one party's placement inside a scenario.
 
@@ -185,23 +212,16 @@ class LodgingWriteService:
                     )
                     if raced is None:
                         raise pb_error_to_http(exc) from exc
-                    # The guard above is deliberately wide (see REFUSAL_STATUSES'
-                    # comment) -- ANY non-refusal status reaches here, not only
-                    # the unique-constraint one an actual race produces. The
-                    # write is idempotent either way, but a create that failed
-                    # for an unrelated reason now looks like a plain success. Log
-                    # it so that failure is still traceable (kindred#2043).
-                    logger.warning(
-                        "Recovered a draft-assignment create as a lost race",
-                        extra={
-                            "year": request.year,
-                            "session_cm_id": request.session_cm_id,
-                            "scenario": request.scenario,
-                            "status": exc.status,
-                            "error": str(exc),
-                        },
-                    )
                     record = await self.repository.update_draft_assignment(str(raced.id), data)
+                    self._log_recovered_race(
+                        "draft-assignment",
+                        exc,
+                        year=request.year,
+                        session_cm_id=request.session_cm_id,
+                        scenario=request.scenario,
+                        household_cm_id=request.household_cm_id,
+                        person_cm_id=request.person_cm_id,
+                    )
                 except ClientResponseError as retry_exc:
                     raise pb_error_to_http(retry_exc) from retry_exc
         return LodgingWriteResponse(record_id=str(getattr(record, "id", "")))
@@ -493,19 +513,14 @@ class LodgingWriteService:
                     )
                     if raced is None:
                         raise pb_error_to_http(exc) from exc
-                    # Same width, same reason to log as place_party's own
-                    # recovery above -- see the comment there (kindred#2043).
-                    logger.warning(
-                        "Recovered an availability create as a lost race",
-                        extra={
-                            "year": request.year,
-                            "session_cm_id": request.session_cm_id,
-                            "unit_id": request.unit_id,
-                            "status": exc.status,
-                            "error": str(exc),
-                        },
-                    )
                     record = await self.repository.update_availability(str(raced.id), data)
+                    self._log_recovered_race(
+                        "availability",
+                        exc,
+                        year=request.year,
+                        session_cm_id=request.session_cm_id,
+                        unit_id=request.unit_id,
+                    )
                 except ClientResponseError as retry_exc:
                     raise pb_error_to_http(retry_exc) from retry_exc
         return LodgingWriteResponse(record_id=str(getattr(record, "id", "")))
@@ -573,20 +588,15 @@ class LodgingWriteService:
                     )
                     if raced is None:
                         raise pb_error_to_http(exc) from exc
-                    # Same width, same reason to log as place_party's own
-                    # recovery above -- see the comment there (kindred#2043).
-                    logger.warning(
-                        "Recovered a slot-merge create as a lost race",
-                        extra={
-                            "year": request.year,
-                            "session_cm_id": request.session_cm_id,
-                            "unit_id": request.unit_id,
-                            "scenario": request.scenario,
-                            "status": exc.status,
-                            "error": str(exc),
-                        },
-                    )
                     record = await self.repository.update_slot_merge(str(raced.id), data)
+                    self._log_recovered_race(
+                        "slot-merge",
+                        exc,
+                        year=request.year,
+                        session_cm_id=request.session_cm_id,
+                        unit_id=request.unit_id,
+                        scenario=request.scenario,
+                    )
                 except ClientResponseError as retry_exc:
                     raise pb_error_to_http(retry_exc) from retry_exc
         return LodgingWriteResponse(record_id=str(getattr(record, "id", "")))

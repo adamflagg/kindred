@@ -17,9 +17,10 @@ half of that change is `copy_from_mirror`: a scenario now starts empty, so
 seeding one from the synced placements is an explicit operation.
 """
 
+import logging
 from types import SimpleNamespace
 from typing import Any
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from fastapi import HTTPException
@@ -34,6 +35,7 @@ from api.schemas.lodging import (
     SlotMergeRequest,
 )
 from api.services.lodging_write_service import LodgingWriteService, ScenarioNotEmptyError
+from bunking.logging_config import ISO8601Formatter
 
 
 def _repo(**overrides: Any) -> MagicMock:
@@ -674,11 +676,24 @@ class TestARecoveredRaceLogsTheErrorItSwallowed:
     -- that method already refuses first and tests `held > copied`, which is
     the correct version of this guard, not an instance of the bug. It only
     makes the swallow in the three still-wide guards visible in the logs.
+
+    Assertions run the record through the REAL `ISO8601Formatter`, not just
+    `logger.warning.called`. `bunking.logging_config.ISO8601Formatter.format`
+    only ever emits `record.getMessage()` -- an `extra={}` payload is silently
+    dropped and never reaches log output, which patching `logger` and checking
+    `.called` cannot catch (the earlier version of this test class did not).
+    Context therefore has to be IN the message, and these tests are what would
+    have failed had it stayed in `extra`.
     """
+
+    @staticmethod
+    def _formatted(records: list[logging.LogRecord]) -> str:
+        formatter = ISO8601Formatter(source="api")
+        return "\n".join(formatter.format(r) for r in records)
 
     @pytest.mark.asyncio
     async def test_a_recovered_placement_race_logs_the_swallowed_error(
-        self, write_service: LodgingWriteService, repo: MagicMock
+        self, write_service: LodgingWriteService, repo: MagicMock, caplog: pytest.LogCaptureFixture
     ) -> None:
         """Status 500 -- not the unique-constraint 400 the race actually
         produces -- to prove the guard's own width is what gets logged."""
@@ -687,42 +702,50 @@ class TestARecoveredRaceLogsTheErrorItSwallowed:
         )
         repo.find_draft_assignment = AsyncMock(side_effect=[None, SimpleNamespace(id="draft_winner")])
 
-        with patch("api.services.lodging_write_service.logger") as mock_logger:
+        with caplog.at_level(logging.WARNING, logger="api.services.lodging_write_service"):
             await write_service.place_party(_request(unit_ids=["u1"]))
 
-        assert mock_logger.warning.called, "a swallowed non-refusal create failure must be logged"
+        output = self._formatted(caplog.records)
+        assert "status=500" in output
+        assert "household_cm_id=2000001" in output
+        assert "scenario=scn_1" in output
 
     @pytest.mark.asyncio
     async def test_a_recovered_availability_race_logs_the_swallowed_error(
-        self, write_service: LodgingWriteService, repo: MagicMock
+        self, write_service: LodgingWriteService, repo: MagicMock, caplog: pytest.LogCaptureFixture
     ) -> None:
         repo.create_availability = AsyncMock(
             side_effect=ClientResponseError("boom", status=500, data={}, url="", is_abort=False, original_error=None)
         )
         repo.find_availability_override = AsyncMock(side_effect=[None, SimpleNamespace(id="avail_winner")])
 
-        with patch("api.services.lodging_write_service.logger") as mock_logger:
+        with caplog.at_level(logging.WARNING, logger="api.services.lodging_write_service"):
             await write_service.set_availability(_availability_request())
 
-        assert mock_logger.warning.called, "a swallowed non-refusal create failure must be logged"
+        output = self._formatted(caplog.records)
+        assert "status=500" in output
+        assert "unit_id=u1" in output
 
     @pytest.mark.asyncio
     async def test_a_recovered_merge_race_logs_the_swallowed_error(
-        self, write_service: LodgingWriteService, repo: MagicMock
+        self, write_service: LodgingWriteService, repo: MagicMock, caplog: pytest.LogCaptureFixture
     ) -> None:
         repo.create_slot_merge = AsyncMock(
             side_effect=ClientResponseError("boom", status=500, data={}, url="", is_abort=False, original_error=None)
         )
         repo.find_slot_merge = AsyncMock(side_effect=[None, SimpleNamespace(id="merge_winner")])
 
-        with patch("api.services.lodging_write_service.logger") as mock_logger:
+        with caplog.at_level(logging.WARNING, logger="api.services.lodging_write_service"):
             await write_service.set_slot_merge(_slot_merge_request())
 
-        assert mock_logger.warning.called, "a swallowed non-refusal create failure must be logged"
+        output = self._formatted(caplog.records)
+        assert "status=500" in output
+        assert "unit_id=u1" in output
+        assert "scenario=scn_1" in output
 
     @pytest.mark.asyncio
     async def test_a_lost_race_that_is_not_recovered_is_not_logged_here(
-        self, write_service: LodgingWriteService, repo: MagicMock
+        self, write_service: LodgingWriteService, repo: MagicMock, caplog: pytest.LogCaptureFixture
     ) -> None:
         """`raced is None` re-raises `exc` through `pb_error_to_http` --
         that failure reaches the caller as a real error response, so it is
@@ -732,11 +755,36 @@ class TestARecoveredRaceLogsTheErrorItSwallowed:
         )
         repo.find_draft_assignment = AsyncMock(side_effect=[None, None])
 
-        with patch("api.services.lodging_write_service.logger") as mock_logger:
+        with caplog.at_level(logging.WARNING, logger="api.services.lodging_write_service"):
             with pytest.raises(HTTPException):
                 await write_service.place_party(_request(unit_ids=["u1"]))
 
-        assert not mock_logger.warning.called
+        assert caplog.records == []
+
+    @pytest.mark.asyncio
+    async def test_a_recovery_whose_own_update_fails_is_not_logged_as_recovered(
+        self, write_service: LodgingWriteService, repo: MagicMock, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """The log fires only once `update_draft_assignment` has SUCCEEDED.
+
+        If the winner's row vanishes again before this call's own update
+        lands, the second failure is real -- reported to the caller as an
+        error -- and must not be logged as a successful "Recovered", which
+        would be a lie about what happened.
+        """
+        repo.create_draft_assignment = AsyncMock(
+            side_effect=ClientResponseError("boom", status=500, data={}, url="", is_abort=False, original_error=None)
+        )
+        repo.find_draft_assignment = AsyncMock(side_effect=[None, SimpleNamespace(id="draft_winner")])
+        repo.update_draft_assignment = AsyncMock(
+            side_effect=ClientResponseError("gone", status=404, data={}, url="", is_abort=False, original_error=None)
+        )
+
+        with caplog.at_level(logging.WARNING, logger="api.services.lodging_write_service"):
+            with pytest.raises(HTTPException):
+                await write_service.place_party(_request(unit_ids=["u1"]))
+
+        assert caplog.records == []
 
 
 class TestTheAvailabilityWriteShape:
