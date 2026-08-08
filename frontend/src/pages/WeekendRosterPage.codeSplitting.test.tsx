@@ -29,6 +29,19 @@ vi.mock('../hooks/useWeekendRoster', () => ({
   useHouseholdMedical: () => ({ data: undefined, isLoading: false, error: null }),
 }))
 
+// The Groups tab (kindred#1913) is a real React Query hook, and these page
+// tests deliberately render without a QueryClientProvider — every other data
+// hook here is mocked for the same reason. The tab strip reads only the count.
+vi.mock('../hooks/useWeekendFriendGroups', () => ({
+  useWeekendFriendGroups: () => ({ data: { groups: [] }, isLoading: false, error: null }),
+  useFriendGroupMutations: () => ({
+    createGroup: vi.fn(),
+    updateGroup: vi.fn(),
+    deleteGroup: vi.fn(),
+    isPending: false,
+  }),
+}))
+
 vi.mock('../hooks/useCurrentYear', () => ({
   useCurrentYear: () => ({ currentYear: 2026, setCurrentYear: vi.fn() }),
   useYear: () => 2026,

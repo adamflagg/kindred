@@ -21,6 +21,19 @@ vi.mock('../hooks/useWeekendRoster', () => ({
   useHouseholdMedical: () => ({ data: undefined, isLoading: false, error: null }),
 }))
 
+// The Groups tab (kindred#1913) is a real React Query hook, and these page
+// tests deliberately render without a QueryClientProvider — every other data
+// hook here is mocked for the same reason. The tab strip reads only the count.
+vi.mock('../hooks/useWeekendFriendGroups', () => ({
+  useWeekendFriendGroups: () => ({ data: { groups: [] }, isLoading: false, error: null }),
+  useFriendGroupMutations: () => ({
+    createGroup: vi.fn(),
+    updateGroup: vi.fn(),
+    deleteGroup: vi.fn(),
+    isPending: false,
+  }),
+}))
+
 vi.mock('../hooks/useCurrentYear', () => ({
   useCurrentYear: () => ({ currentYear: 2026, setCurrentYear: vi.fn() }),
   useYear: () => 2026,
@@ -474,14 +487,18 @@ describe('tabs', () => {
     expect(screen.getAllByRole('tab').map((tab) => tab.textContent)).toEqual([
       'Housing (0)',
       'Roster (0)',
+      // Groups sits with the Roster rather than beside the Map: both are about
+      // the families, and the Map is about the ground (kindred#1913).
+      'Groups (0)',
       'Map (0)',
     ])
   })
 
-  it('offers Housing, Roster and Map, and no Inventory tab', () => {
+  it('offers Housing, Roster, Groups and Map, and no Inventory tab', () => {
     renderPage()
     expect(screen.getByRole('tab', { name: /Housing/ })).toBeInTheDocument()
     expect(screen.getByRole('tab', { name: /Roster/ })).toBeInTheDocument()
+    expect(screen.getByRole('tab', { name: /Groups/ })).toBeInTheDocument()
     expect(screen.getByRole('tab', { name: /Map/ })).toBeInTheDocument()
     expect(screen.queryByRole('tab', { name: /Inventory/ })).not.toBeInTheDocument()
   })

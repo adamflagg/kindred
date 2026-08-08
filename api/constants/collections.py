@@ -76,6 +76,12 @@ LODGING_SLOT_MERGES = "lodging_slot_merges"
 # kind = "unresolved_alias". Deliberately NOT a second surfaces-only collection.
 LODGING_INGEST_ISSUES = "lodging_ingest_issues"
 
+# Staff-authored friend groups at HOUSEHOLD grain (1500000144, kindred#1913).
+# No scenario dimension, unlike summer's locked_groups: a group records what
+# households asked for, which is true of the weekend in every plan for it.
+LODGING_FRIEND_GROUPS = "lodging_friend_groups"
+LODGING_FRIEND_GROUP_MEMBERS = "lodging_friend_group_members"
+
 # Pipeline debug
 DEBUG_PIPELINE_RUNS = "debug_pipeline_runs"
 DEBUG_PIPELINE_SUMMARY = "debug_pipeline_summary"

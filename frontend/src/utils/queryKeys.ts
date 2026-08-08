@@ -490,6 +490,18 @@ export const queryKeys = {
   weekendSessionsPrefix: () => ['weekend-sessions'] as const,
   weekendSummaryPrefix: () => ['weekend-summary'] as const,
   weekendRosterPrefix: () => ['weekend-roster'] as const,
+  /**
+   * Staff-authored friend groups for one weekend (kindred#1913).
+   *
+   * NO `scenario`, unlike `weekendRoster` directly above, and the asymmetry is
+   * the point: migration 1500000144 gives the table no scenario dimension
+   * because a group records what households ASKED FOR, which is true of the
+   * weekend in every plan for it. A scenario here would mint one cache entry
+   * per plan for identical data, and make a group authored in one plan
+   * invisible in another.
+   */
+  weekendFriendGroups: (year: number, sessionCmId: number) =>
+    ['weekend-friend-groups', year, sessionCmId] as const,
   /** PHI. Only ever fetched behind an explicit, permission-checked reveal. */
   householdMedical: (year: number, householdCmId: number) =>
     ['household-medical', year, householdCmId] as const,
