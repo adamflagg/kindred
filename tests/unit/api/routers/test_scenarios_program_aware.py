@@ -31,6 +31,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
+from pocketbase.client import ClientResponseError  # type: ignore[attr-defined]
 
 from bunking.auth_middleware import AuthUser, get_current_user
 from bunking.rbac.permissions import ALL_PERMISSIONS
@@ -288,6 +289,86 @@ class TestSummerCreationIsUnchanged:
         draft_call = mock_pb.collection.call_args_list[-1]
         assert draft_call[0][0] == "bunk_assignments_draft"
 
+    def test_the_production_copy_source_fetch_pins_a_stable_sort(self) -> None:
+        """Same unordered-pagination risk documented on STABLE_SORT: no
+        ORDER BY means a row past the first page can be skipped or
+        duplicated, and a session family's bunk_assignments can exceed one
+        page on a real camp."""
+        mock_pb = MagicMock()
+        mock_pb.collection.return_value.create.return_value = _rec(
+            id="scn_new", name="May 8", is_active=True, description=""
+        )
+        mock_pb.collection.return_value.get_full_list.return_value = []
+
+        app = _build_app()
+        body = {"name": "May 8", "session_cm_id": 1235404, "year": 2026, "copy_from_production": True}
+        with (
+            patch("api.routers.scenarios.pb", mock_pb),
+            patch("api.routers.scenarios.graph_cache", MagicMock()),
+            patch("api.routers.scenarios.build_session_context", AsyncMock(return_value=_ctx(session_type="main"))),
+        ):
+            resp = TestClient(app).post("/api/scenarios", json=body)
+        assert resp.status_code == 200, resp.text
+
+        query_params = mock_pb.collection.return_value.get_full_list.call_args.kwargs["query_params"]
+        assert query_params.get("sort") == "id"
+
+    def test_a_camper_is_not_dropped_when_the_bunk_plans_prefetch_misses_but_id_cache_resolves(self) -> None:
+        """The retired client-side copyProductionToScenario copied a camper
+        unconditionally and included bunk_plan only if the source row
+        happened to carry one -- nobody was ever skipped. This backend path
+        was dead code until this PR routed the frontend through it, and it
+        has a stricter, different failure mode: it pre-fetches bunk_plans
+        scoped to the session family and skips the WHOLE camper if their
+        bunk is not in that list, even though `ctx.id_cache.get_bunk_plan_id`
+        -- called two lines later in the same branch -- does its own
+        targeted (bunk, session, year) lookup and could still resolve it.
+        Promoting this dead branch to the live path (kindred#2021) must not
+        silently drop cabins that the old path always copied."""
+        mock_pb = MagicMock()
+        mock_pb.collection.return_value.create.side_effect = [
+            _rec(id="scn_new", name="May 8", is_active=True, description=""),  # saved_scenarios
+            _rec(id="draft_1"),  # bunk_assignments_draft
+        ]
+        person = _rec(id="person_pb", cm_id=5001, expand=None)
+        session_rec = _rec(id="sess_pb", cm_id=1235404, expand=None)
+        bunk = _rec(id="bunk_pb", cm_id=42, expand=None)
+        assignment = _rec(
+            id="assign_1",
+            person="person_pb",
+            bunk="bunk_pb",
+            session="sess_pb",
+            year=2026,
+            expand={"person": person, "session": session_rec, "bunk": bunk},
+        )
+        mock_pb.collection.return_value.get_full_list.side_effect = [
+            [assignment],  # bunk_assignments
+            [],  # bunk_plans prefetch -- misses this bunk entirely
+        ]
+
+        ctx = _ctx(session_type="main")
+        # id_cache CAN still resolve it -- this is what the old bunk_plan_map
+        # gate ignored.
+        ctx.id_cache.get_bunk_plan_id = AsyncMock(return_value="bp_pb")
+
+        app = _build_app()
+        body = {"name": "May 8", "session_cm_id": 1235404, "year": 2026, "copy_from_production": True}
+        with (
+            patch("api.routers.scenarios.pb", mock_pb),
+            patch("api.routers.scenarios.graph_cache", MagicMock()),
+            patch("api.routers.scenarios.build_session_context", AsyncMock(return_value=ctx)),
+        ):
+            resp = TestClient(app).post("/api/scenarios", json=body)
+        assert resp.status_code == 200, resp.text
+
+        created_collections = [call.args[0] for call in mock_pb.collection.call_args_list]
+        assert "bunk_assignments_draft" in created_collections, (
+            "the camper was skipped -- the bunk_plans prefetch missed even though id_cache could resolve it"
+        )
+        draft_data = mock_pb.collection.return_value.create.call_args_list[-1][0][0]
+        assert draft_data["person"] == "person_pb"
+        assert draft_data["bunk_plan"] == "bp_pb"
+
     def test_a_weekend_session_never_touches_bunk_assignments(self) -> None:
         """The other half of program-awareness: a weekend create must not
         fall into summer's branch and read bunk_assignments (which would
@@ -454,6 +535,92 @@ class TestWeekendCreationRoutesThroughLodgingWriteService:
         mock_write_service.copy_scenario_to_scenario.assert_not_called()
 
 
+class TestCopyFromScenarioValidatesTheSourceExists:
+    """`copy_from_scenario` names a scenario the caller already saw in the
+    picker, but `useSavedScenarios` carries a 30-minute staleTime
+    (`userDataOptions`) -- staff can select an entry that has since been
+    deleted. Without a check, the source read (BUNK_ASSIGNMENTS_DRAFT
+    filtered by that id, or LodgingWriteService.copy_scenario_to_scenario's
+    fetch_draft_assignments) just returns zero rows: a blank scenario,
+    reported as a clean 200, silently different from the copy staff asked
+    for. Checked once, up front, before the destination scenario is even
+    created, so a caller does not have to distinguish "copied and empty"
+    from "the source never existed" after the fact.
+    """
+
+    def test_summer_create_404s_when_the_source_scenario_does_not_exist(self) -> None:
+        mock_pb = MagicMock()
+        mock_pb.collection.return_value.get_one.side_effect = ClientResponseError(
+            "not found", status=404, data={}, url="", is_abort=False, original_error=None
+        )
+
+        app = _build_app()
+        body = {
+            "name": "Option B",
+            "session_cm_id": 1235404,
+            "year": 2026,
+            "copy_from_scenario": "scn_deleted",
+        }
+        with (
+            patch("api.routers.scenarios.pb", mock_pb),
+            patch("api.routers.scenarios.build_session_context", AsyncMock(return_value=_ctx(session_type="main"))),
+        ):
+            resp = TestClient(app).post("/api/scenarios", json=body)
+
+        assert resp.status_code == 404, resp.text
+        # Never even created the destination scenario.
+        mock_pb.collection.return_value.create.assert_not_called()
+
+    def test_weekend_create_404s_when_the_source_scenario_does_not_exist(self) -> None:
+        mock_pb = MagicMock()
+        mock_pb.collection.return_value.get_one.side_effect = ClientResponseError(
+            "not found", status=404, data={}, url="", is_abort=False, original_error=None
+        )
+
+        app = _build_app()
+        body = {
+            "name": "Family Weekend Option B",
+            "session_cm_id": 2000001,
+            "year": 2026,
+            "copy_from_scenario": "scn_deleted",
+        }
+        with (
+            patch("api.routers.scenarios.pb", mock_pb),
+            patch(
+                "api.routers.scenarios.build_session_context",
+                AsyncMock(return_value=_ctx(session_type="family", session_cm_id=2000001)),
+            ),
+        ):
+            resp = TestClient(app).post("/api/scenarios", json=body)
+
+        assert resp.status_code == 404, resp.text
+        mock_pb.collection.return_value.create.assert_not_called()
+
+    def test_a_live_source_scenario_still_proceeds(self) -> None:
+        mock_pb = MagicMock()
+        mock_pb.collection.return_value.get_one.return_value = _rec(id="scn_source", name="Option A")
+        mock_pb.collection.return_value.create.return_value = _rec(
+            id="scn_new", name="Option B", is_active=True, description=""
+        )
+        mock_pb.collection.return_value.get_full_list.return_value = []
+
+        app = _build_app()
+        body = {
+            "name": "Option B",
+            "session_cm_id": 1235404,
+            "year": 2026,
+            "copy_from_scenario": "scn_source",
+        }
+        with (
+            patch("api.routers.scenarios.pb", mock_pb),
+            patch("api.routers.scenarios.graph_cache", MagicMock()),
+            patch("api.routers.scenarios.build_session_context", AsyncMock(return_value=_ctx(session_type="main"))),
+        ):
+            resp = TestClient(app).post("/api/scenarios", json=body)
+
+        assert resp.status_code == 200, resp.text
+
+
 class TestSummerCopyFromScenarioCarriesLockedGroups:
     """kindred#1046, ported server-side. The frontend's client-side
     copyScenarioToScenario used to copy locked_groups + locked_group_members
@@ -504,6 +671,39 @@ class TestSummerCopyFromScenarioCarriesLockedGroups:
         member_create_call = mock_pb.collection.return_value.create.call_args_list[2]
         assert member_create_call[0][0]["group"] == "group_new"
         assert member_create_call[0][0]["attendee"] == "attendee_1"
+
+    def test_the_locked_groups_fetch_pins_a_stable_sort(self) -> None:
+        """Same unordered-pagination risk as clear_scenario's delete-target
+        fetch: `get_full_list` with no ORDER BY can skip or duplicate rows
+        across pages once a scenario's locked-group count exceeds one page."""
+        mock_pb = MagicMock()
+        mock_pb.collection.return_value.create.return_value = _rec(
+            id="scn_new", name="Option B", is_active=True, description=""
+        )
+        mock_pb.collection.return_value.get_full_list.return_value = []
+
+        app = _build_app()
+        body = {
+            "name": "Option B",
+            "session_cm_id": 1235404,
+            "year": 2026,
+            "copy_from_scenario": "scn_source",
+        }
+        with (
+            patch("api.routers.scenarios.pb", mock_pb),
+            patch("api.routers.scenarios.graph_cache", MagicMock()),
+            patch(
+                "api.routers.scenarios.build_session_context",
+                AsyncMock(return_value=_ctx(session_type="main")),
+            ),
+        ):
+            resp = TestClient(app).post("/api/scenarios", json=body)
+        assert resp.status_code == 200, resp.text
+
+        # First get_full_list call is bunk_assignments_draft's copy source,
+        # second is locked_groups.
+        locked_groups_call = mock_pb.collection.return_value.get_full_list.call_args_list[1]
+        assert locked_groups_call.kwargs["query_params"].get("sort") == "id"
 
     def test_a_copy_from_scenario_value_naming_a_quote_cannot_widen_the_locked_groups_filter(self) -> None:
         """`copy_from_scenario` is client-supplied. Unescaped, a value like
@@ -733,6 +933,30 @@ class TestClearScenarioIsProgramAware:
         query_params = mock_pb.collection.return_value.get_full_list.call_args.kwargs["query_params"]
         assert 'session = "sess_pb"' in query_params["filter"]
 
+    def test_the_delete_target_fetch_pins_a_stable_sort(self) -> None:
+        """`get_full_list` pages through LIMIT/OFFSET with no ORDER BY unless
+        one is given, so a row past the first page can be skipped or
+        duplicated across requests. Summer alone holds 1,248 draft rows
+        across 8 scenarios -- not a hypothetical for a session-scoped read
+        here."""
+        weekend_session = _rec(id="sess_pb", cm_id=2000001, session_type="family")
+        scenario = _rec(id="scn_1", name="Family Weekend", session="sess_pb", expand={"session": weekend_session})
+
+        mock_pb = MagicMock()
+        mock_pb.collection.return_value.get_one.return_value = scenario
+        mock_pb.collection.return_value.get_full_list.return_value = []
+
+        app = _build_app()
+        with (
+            patch("api.routers.scenarios.pb", mock_pb),
+            patch("api.routers.scenarios.graph_cache", MagicMock()),
+        ):
+            resp = TestClient(app).post("/api/scenarios/scn_1/clear", json={"year": 2026})
+        assert resp.status_code == 200, resp.text
+
+        query_params = mock_pb.collection.return_value.get_full_list.call_args.kwargs["query_params"]
+        assert query_params.get("sort") == "id"
+
     def test_weekend_clear_with_no_placements_reports_zero_honestly(self) -> None:
         """Before the fix this already said "Cleared 0" -- for the wrong
         reason (it never looked at the right table). After the fix it still
@@ -806,3 +1030,65 @@ class TestClearScenarioRefusesADanglingSession:
         assert resp.status_code == 409, resp.text
         # Never guessed at either draft table.
         mock_pb.collection.return_value.get_full_list.assert_not_called()
+
+
+class TestSolveScenarioRejectsAMalformedSession:
+    """`solve_scenario` reads `session_cm_id` from the scenario's own
+    `session` relation (kindred#2021 -- there is no column). A dangling
+    relation (same edge case `clear_scenario` guards -- `saved_scenarios
+    .session` is `cascadeDelete: false`) resolves session_cm_id=0, which the
+    single-flight guard just below can never match against a real run --
+    slipping past into a doomed sweep that fails later inside
+    fetch_session_data_v2, exactly the failure mode `solver.py`'s sweep
+    endpoint already guards against for the identical shape.
+    """
+
+    def test_a_dangling_session_relation_is_422_not_a_doomed_run(self) -> None:
+        scenario = _rec(id="scn_1", name="Orphaned", session="sess_gone", expand={}, year=2026)
+
+        mock_pb = MagicMock()
+        mock_pb.collection.return_value.get_one.return_value = scenario
+
+        app = _build_app()
+        with (
+            patch("api.routers.scenarios.pb", mock_pb),
+            patch("api.routers.scenarios.solver_runs", {}),
+            patch("api.routers.scenarios.run_solver_task_v2"),
+        ):
+            resp = TestClient(app).post("/api/scenarios/scn_1/solve")
+
+        assert resp.status_code == 422, resp.text
+
+    def test_a_zero_year_is_also_422(self) -> None:
+        weekend_session = _rec(id="sess_pb", cm_id=2000001)
+        scenario = _rec(id="scn_1", name="No year", session="sess_pb", expand={"session": weekend_session}, year=0)
+
+        mock_pb = MagicMock()
+        mock_pb.collection.return_value.get_one.return_value = scenario
+
+        app = _build_app()
+        with (
+            patch("api.routers.scenarios.pb", mock_pb),
+            patch("api.routers.scenarios.solver_runs", {}),
+            patch("api.routers.scenarios.run_solver_task_v2"),
+        ):
+            resp = TestClient(app).post("/api/scenarios/scn_1/solve")
+
+        assert resp.status_code == 422, resp.text
+
+    def test_a_healthy_scenario_still_starts_a_run(self) -> None:
+        weekend_session = _rec(id="sess_pb", cm_id=2000001)
+        scenario = _rec(id="scn_1", name="Healthy", session="sess_pb", expand={"session": weekend_session}, year=2026)
+
+        mock_pb = MagicMock()
+        mock_pb.collection.return_value.get_one.return_value = scenario
+
+        app = _build_app()
+        with (
+            patch("api.routers.scenarios.pb", mock_pb),
+            patch("api.routers.scenarios.solver_runs", {}),
+            patch("api.routers.scenarios.run_solver_task_v2"),
+        ):
+            resp = TestClient(app).post("/api/scenarios/scn_1/solve")
+
+        assert resp.status_code == 200, resp.text
