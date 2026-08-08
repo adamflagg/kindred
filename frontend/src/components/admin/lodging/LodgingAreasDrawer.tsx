@@ -45,17 +45,23 @@ export function LodgingAreasDrawer({ open, onClose }: LodgingAreasDrawerProps) {
   const { currentYear } = useCurrentYear()
   const [draftName, setDraftName] = useState('')
 
-  // Gated on the drawer being open — useLodgingAreas ANDs that with the year
-  // having resolved. CurrentYearContext returns the literal 0 until the
-  // backend supplies the configured year, and PocketBase answers `year = 0`
-  // with a successful `200 []` rather than an error — see LodgingUnitsPanel.
-  const areasQuery = useLodgingAreas({ enabled: open })
+  // Not gated on `open`: LodgingUnitsPanel — this drawer's only mount point —
+  // already calls useLodgingAreas() unconditionally to feed the units table's
+  // grouping and the unit edit form's area picker, under this identical query
+  // key. That call has already warmed the cache by the time a staffer opens
+  // this drawer, so a per-drawer "while open" gate would never observably
+  // defer a fetch; an earlier version of this hook carried one and it was
+  // dead weight (kindred#2132). useLodgingAreas still gates on the year
+  // itself: CurrentYearContext returns the literal 0 until the backend
+  // supplies the configured year, and PocketBase answers `year = 0` with a
+  // successful `200 []` rather than an error.
+  const areasQuery = useLodgingAreas()
 
   const refresh = () => {
     invalidateLodgingRegistryQueries(queryClient)
   }
 
-  const areas = areasQuery.data ?? []
+  const areas = areasQuery.items
 
   /**
    * Runs a write and reports whether it landed.

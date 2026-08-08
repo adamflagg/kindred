@@ -149,7 +149,7 @@ export function LodgingAliasesPanel() {
                records writes the PREVIOUS alias's fields to the new one. */
             <LodgingAliasForm
               key={editing === 'new' ? 'new' : editing.id}
-              units={unitsQuery.data ?? []}
+              units={unitsQuery.items}
               alias={editing === 'new' ? undefined : editing}
               onSaved={refresh}
               onCancel={() => {

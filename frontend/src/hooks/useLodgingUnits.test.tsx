@@ -4,12 +4,13 @@
  *
  * Fictional data throughout.
  */
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { type QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { renderHook, waitFor } from '@testing-library/react'
 import type { ReactNode } from 'react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { queryKeys } from '../utils/queryKeys'
+import { createTestQueryClient } from '../test/test-helpers'
+import { queryKeys, userDataOptions } from '../utils/queryKeys'
 import { CurrentYearContext, type CurrentYearContextType } from './useCurrentYear'
 import { useLodgingUnits } from './useLodgingUnits'
 
@@ -26,8 +27,21 @@ let client: QueryClient
 beforeEach(() => {
   vi.clearAllMocks()
   listLodgingUnits.mockResolvedValue(UNITS)
-  client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+  client = createTestQueryClient()
 })
+
+/**
+ * The options React Query actually resolved for a mounted query, client
+ * defaults merged in. Read from the OBSERVER, not the query — see
+ * `useWeekendRoster.test.tsx`, which this mirrors.
+ */
+function resolvedOptions(queryKey: readonly unknown[]) {
+  const query = client.getQueryCache().find({ queryKey })
+  if (!query) throw new Error(`no query cached for ${JSON.stringify(queryKey)}`)
+  const observer = query.observers[0]
+  if (!observer) throw new Error(`query ${JSON.stringify(queryKey)} has no mounted observer`)
+  return observer.options
+}
 
 const YEAR_CONTEXT: CurrentYearContextType = {
   currentYear: 2026,
@@ -56,10 +70,15 @@ describe('useLodgingUnits', () => {
     expect(listLodgingUnits).toHaveBeenCalledWith(2026)
   })
 
-  it('shares a cache entry under the centralised query key', async () => {
-    // Three components each declared this query separately before #1896;
-    // centralising means they now read one cache entry rather than each
-    // trusting its own copy of the key and the `?? []` fallback to agree.
+  it('resolves fetched data under the centralised `queryKeys.lodgingUnits` key', async () => {
+    // NOTE on what this does and does not prove: all three consumers already
+    // called `queryKeys.lodgingUnits(currentYear)` before this hook existed
+    // (they already shared the factory), so a single cache entry across
+    // consumers is not new behaviour this hook introduces — reverting to
+    // three independent inline `useQuery` calls that each spell the key via
+    // the same factory still shares one entry. What centralising buys is that
+    // there is now exactly ONE place that could get the key, the options, or
+    // the `?? []` coercion (see `.items` below) wrong instead of several.
     const { result } = renderHook(() => useLodgingUnits(), { wrapper: wrapper(YEAR_CONTEXT) })
     await waitFor(() => {
       expect(result.current.isSuccess).toBe(true)
@@ -76,5 +95,34 @@ describe('useLodgingUnits', () => {
       wrapper: wrapper({ ...YEAR_CONTEXT, currentYear: 0, isYearReady: false }),
     })
     expect(listLodgingUnits).not.toHaveBeenCalled()
+  })
+
+  describe('.items', () => {
+    it('coerces to an empty array before the query settles, so callers need no `?? []`', () => {
+      const { result } = renderHook(() => useLodgingUnits(), {
+        wrapper: wrapper({ ...YEAR_CONTEXT, currentYear: 0, isYearReady: false }),
+      })
+      expect(result.current.data).toBeUndefined()
+      expect(result.current.items).toEqual([])
+    })
+
+    it('mirrors `.data` once the query resolves', async () => {
+      const { result } = renderHook(() => useLodgingUnits(), { wrapper: wrapper(YEAR_CONTEXT) })
+      await waitFor(() => {
+        expect(result.current.isSuccess).toBe(true)
+      })
+      expect(result.current.items).toEqual(UNITS)
+    })
+  })
+
+  it('pins the cache options to userDataOptions, so opting down needs a stated reason', async () => {
+    const { result } = renderHook(() => useLodgingUnits(), { wrapper: wrapper(YEAR_CONTEXT) })
+    await waitFor(() => {
+      expect(result.current.isSuccess).toBe(true)
+    })
+    const options = resolvedOptions(queryKeys.lodgingUnits(2026))
+    expect(options.staleTime).toBe(userDataOptions.staleTime)
+    expect(options.gcTime).toBe(userDataOptions.gcTime)
+    expect(options.refetchOnWindowFocus).toBe(userDataOptions.refetchOnWindowFocus)
   })
 })

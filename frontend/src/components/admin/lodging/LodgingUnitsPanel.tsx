@@ -67,18 +67,18 @@ export function LodgingUnitsPanel() {
     formRef.current?.querySelector<HTMLElement>('input, select, textarea')?.focus()
   }, [editing])
 
-  // ONE constant for the fetch gate and the render guard, because gating only
-  // the fetch does not fix what the gate is for. A disabled TanStack query is
-  // `isLoading === false` (pending but idle -- nothing is fetching) with `data
-  // === undefined`, which is indistinguishable from a settled empty result to
-  // every consumer below. Derive both from this and they cannot drift apart.
+  // RENDER guard only, not a fetch gate. useLodgingUnits / useLodgingAreas
+  // each gate their own fetch on year-readiness internally — currentYear > 0
+  // is not passed to either call below — so this constant does not control
+  // when they fetch, only when they render. It is still needed for that: a
+  // disabled TanStack query is `isLoading === false` (pending but idle --
+  // nothing is fetching) with `data === undefined`, which is indistinguishable
+  // from a settled empty result to every consumer below. CurrentYearContext
+  // returns the literal 0 until the backend supplies the configured year, and
+  // PocketBase answers `year = 0` with a successful `200 []` rather than an
+  // error — this guard is what keeps that from rendering as genuinely empty.
   const yearReady = currentYear > 0
 
-  // useLodgingUnits / useLodgingAreas each gate on year-readiness themselves
-  // (CurrentYearContext returns the literal 0 until the backend supplies the
-  // configured year, and PocketBase answers `year = 0` with a successful
-  // `200 []` rather than an error). `yearReady` above is still needed here as
-  // the RENDER guard, not the fetch gate — see the ONE constant comment.
   const unitsQuery = useLodgingUnits()
   const areasQuery = useLodgingAreas()
 
@@ -243,7 +243,7 @@ export function LodgingUnitsPanel() {
                   <p className="text-forest-200 text-sm">
                     {editing === 'new'
                       ? 'A cabin, tent, yurt or room'
-                      : (areasQuery.data?.find((a) => a.id === editing.area)?.name ?? 'No area')}
+                      : (areasQuery.items.find((a) => a.id === editing.area)?.name ?? 'No area')}
                   </p>
                 </div>
               </div>
@@ -266,8 +266,8 @@ export function LodgingUnitsPanel() {
                  records writes the PREVIOUS unit's fields to the new one. */
               <LodgingUnitForm
                 key={editing === 'new' ? 'new' : editing.id}
-                areas={areasQuery.data}
-                units={unitsQuery.data ?? []}
+                areas={areasQuery.items}
+                units={unitsQuery.items}
                 unit={editing === 'new' ? undefined : editing}
                 year={currentYear}
                 onSaved={refresh}
@@ -317,7 +317,7 @@ export function LodgingUnitsPanel() {
             <div className="card-lodge overflow-x-auto p-4">
               <table className="w-full text-left text-sm">
                 <UnitsTableHeader sort={sort} onToggleSort={toggleSort} />
-                {groupUnitsByArea(units, areasQuery.data ?? []).map((group) => (
+                {groupUnitsByArea(units, areasQuery.items).map((group) => (
                   <UnitAreaGroup
                     key={group.areaId}
                     group={group}

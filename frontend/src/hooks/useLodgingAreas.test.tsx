@@ -5,12 +5,13 @@
  *
  * Fictional data throughout.
  */
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { type QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { renderHook, waitFor } from '@testing-library/react'
 import type { ReactNode } from 'react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { queryKeys } from '../utils/queryKeys'
+import { createTestQueryClient } from '../test/test-helpers'
+import { queryKeys, userDataOptions } from '../utils/queryKeys'
 import { CurrentYearContext, type CurrentYearContextType } from './useCurrentYear'
 import { useLodgingAreas } from './useLodgingAreas'
 
@@ -29,8 +30,21 @@ let client: QueryClient
 beforeEach(() => {
   vi.clearAllMocks()
   listLodgingAreas.mockResolvedValue(AREAS)
-  client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+  client = createTestQueryClient()
 })
+
+/**
+ * The options React Query actually resolved for a mounted query, client
+ * defaults merged in. Read from the OBSERVER, not the query — see
+ * `useWeekendRoster.test.tsx`, which this mirrors.
+ */
+function resolvedOptions(queryKey: readonly unknown[]) {
+  const query = client.getQueryCache().find({ queryKey })
+  if (!query) throw new Error(`no query cached for ${JSON.stringify(queryKey)}`)
+  const observer = query.observers[0]
+  if (!observer) throw new Error(`query ${JSON.stringify(queryKey)} has no mounted observer`)
+  return observer.options
+}
 
 const YEAR_CONTEXT: CurrentYearContextType = {
   currentYear: 2026,
@@ -59,11 +73,15 @@ describe('useLodgingAreas', () => {
     expect(listLodgingAreas).toHaveBeenCalledWith(2026)
   })
 
-  it('shares a cache entry across consumers under the centralised query key', async () => {
-    // The two duplicated inline declarations this hook replaces each had
-    // their own `?? []` coercion — the point of centralising is that both
-    // consumers now read the SAME cache entry rather than issuing their own
-    // fetch under a key they happened to spell identically.
+  it('resolves fetched data under the centralised `queryKeys.lodgingAreas` key', async () => {
+    // NOTE on what this does and does not prove: the drawer and the units
+    // table both called `queryKeys.lodgingAreas(currentYear)` even before this
+    // hook existed (they already shared the factory), so a single cache entry
+    // for two consumers is not new behaviour this hook introduces — reverting
+    // to two independent inline `useQuery` calls that each spell the key via
+    // the same factory still shares one entry. What centralising buys is that
+    // there is now exactly ONE place that could get the key, the options, or
+    // the `?? []` coercion (see `.items` below) wrong instead of several.
     const { result } = renderHook(() => useLodgingAreas(), { wrapper: wrapper(YEAR_CONTEXT) })
     await waitFor(() => {
       expect(result.current.isSuccess).toBe(true)
@@ -82,17 +100,32 @@ describe('useLodgingAreas', () => {
     expect(listLodgingAreas).not.toHaveBeenCalled()
   })
 
-  it('does not fetch when the caller passes enabled: false, even with a resolved year', () => {
-    // The drawer only wants this while open. The extra gate must AND with
-    // year-readiness, not replace it — see the next test.
-    renderHook(() => useLodgingAreas({ enabled: false }), { wrapper: wrapper(YEAR_CONTEXT) })
-    expect(listLodgingAreas).not.toHaveBeenCalled()
+  describe('.items', () => {
+    it('coerces to an empty array before the query settles, so callers need no `?? []`', () => {
+      const { result } = renderHook(() => useLodgingAreas(), {
+        wrapper: wrapper({ ...YEAR_CONTEXT, currentYear: 0, isYearReady: false }),
+      })
+      expect(result.current.data).toBeUndefined()
+      expect(result.current.items).toEqual([])
+    })
+
+    it('mirrors `.data` once the query resolves', async () => {
+      const { result } = renderHook(() => useLodgingAreas(), { wrapper: wrapper(YEAR_CONTEXT) })
+      await waitFor(() => {
+        expect(result.current.isSuccess).toBe(true)
+      })
+      expect(result.current.items).toEqual(AREAS)
+    })
   })
 
-  it('still withholds the fetch when enabled is true but the year has not resolved', () => {
-    renderHook(() => useLodgingAreas({ enabled: true }), {
-      wrapper: wrapper({ ...YEAR_CONTEXT, currentYear: 0, isYearReady: false }),
+  it('pins the cache options to userDataOptions, so opting down needs a stated reason', async () => {
+    const { result } = renderHook(() => useLodgingAreas(), { wrapper: wrapper(YEAR_CONTEXT) })
+    await waitFor(() => {
+      expect(result.current.isSuccess).toBe(true)
     })
-    expect(listLodgingAreas).not.toHaveBeenCalled()
+    const options = resolvedOptions(queryKeys.lodgingAreas(2026))
+    expect(options.staleTime).toBe(userDataOptions.staleTime)
+    expect(options.gcTime).toBe(userDataOptions.gcTime)
+    expect(options.refetchOnWindowFocus).toBe(userDataOptions.refetchOnWindowFocus)
   })
 })
