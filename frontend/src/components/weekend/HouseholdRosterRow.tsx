@@ -22,7 +22,7 @@ import type {
 } from '../../types/lodging'
 import { displayCampMinderAge } from '../../utils/age'
 import { AccessibilityFlagList } from './AccessibilityFlagList'
-import { partyIdentityLabel } from './householdIdentity'
+import { namedAdults, partyIdentityLabel } from './householdIdentity'
 import type { AttentionLevel } from './rosterAttention'
 import { partyAttention } from './rosterAttention'
 import { ShareRequestPanel } from './ShareRequestPanel'
@@ -79,7 +79,10 @@ const REASON_TONE: Record<AttentionLevel, string> = {
 }
 
 function composition(party: RosterPartyRow): string {
-  const adults = party.adults?.length ?? 0
+  // A blank `family_camp_adults` slot is not an attending adult -- counting
+  // it inflated this figure right beside the (now-filtered) identity label
+  // above it (kindred#2084 scan finding).
+  const adults = namedAdults(party).length
   const children = party.children?.length ?? 0
   const parts: string[] = [`${String(adults)} adult${adults === 1 ? '' : 's'}`]
   if (children > 0) {
@@ -91,7 +94,10 @@ function composition(party: RosterPartyRow): string {
 export function HouseholdRosterRow({ party, showRequests, unit, onOpen }: HouseholdRosterRowProps) {
   const isAssigned = (party.unit_name ?? '').length > 0
   const attention = partyAttention(party, unit)
-  const adults = party.adults ?? []
+  // A blank `family_camp_adults` slot is not an attending adult -- rendering
+  // it left a dangling ', ' separator with nothing after it (kindred#2084
+  // scan finding).
+  const adults = namedAdults(party)
   const children = party.children ?? []
   const showAdults = party.grain === 'household'
 
@@ -176,7 +182,10 @@ export function HouseholdRosterRow({ party, showRequests, unit, onOpen }: Househ
               line rather than two stacked ones, so 62 rows stay a page. An
               adult weekend enrols the individual directly, so the party IS the
               adult and `display_name` above already named them. */}
-          <span className="text-muted-foreground/75 mt-0.5 block text-xs leading-snug">
+          <span
+            data-testid="household-row-members"
+            className="text-muted-foreground/75 mt-0.5 block text-xs leading-snug"
+          >
             {showAdults &&
               adults.map((adult, index) => (
                 <Fragment

@@ -52,3 +52,21 @@ export function partyIdentityLabel(party: RosterPartyRow): string {
   if (adults.length === 0) return party.display_name ?? ''
   return adults.map((adult) => adult.display_name ?? '').join(' · ')
 }
+
+/**
+ * `party.adults`, with any blank `family_camp_adults` slot dropped -- for
+ * every OTHER place that lists or counts a party's adults, not just the
+ * identity label.
+ *
+ * Unlike `attendingAdults`, this is NOT gated to household grain: a
+ * person-grain party's single adult entry (`_build_person_parties` gives it
+ * exactly one, the guest's own name) is real, never a blank slot to drop, so
+ * filtering it is safe and correct for both grains alike. Scan finding on
+ * kindred#2084: `HouseholdRosterRow`'s `composition()` count and its members
+ * line, and `FamilyDetailsPanel`'s Party section, all read `party.adults`
+ * raw -- inflating a headcount and rendering a nameless list item for a
+ * blank slot, right beside an identity label that already filters it out.
+ */
+export function namedAdults(party: RosterPartyRow): PartyAdultRow[] {
+  return (party.adults ?? []).filter((adult) => Boolean(adult.display_name?.trim()))
+}

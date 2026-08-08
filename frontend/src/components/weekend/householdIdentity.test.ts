@@ -6,7 +6,7 @@
 import { describe, expect, it } from 'vitest'
 
 import type { RosterPartyRow } from '../../types/lodging'
-import { attendingAdults, partyIdentityLabel } from './householdIdentity'
+import { attendingAdults, namedAdults, partyIdentityLabel } from './householdIdentity'
 
 function party(overrides: Partial<RosterPartyRow> = {}): RosterPartyRow {
   return {
@@ -50,6 +50,40 @@ describe('attendingAdults', () => {
     const p = party()
     delete p.adults
     expect(attendingAdults(p)).toEqual([])
+  })
+})
+
+describe('namedAdults', () => {
+  // Scan finding on kindred#2084: `composition()` and the members line in
+  // HouseholdRosterRow, and the Party section in FamilyDetailsPanel, all
+  // counted/rendered `party.adults` raw -- including a blank
+  // `family_camp_adults` slot. Unlike `attendingAdults`, this is NOT gated
+  // to household grain: a person-grain party's own single adult entry is
+  // real, not a blank slot to drop.
+  it('drops a blank adult slot regardless of grain', () => {
+    const p = party({
+      adults: [
+        { adult_number: 1, display_name: 'Emma Johnson', relationship: 'Mother' },
+        { adult_number: 2, display_name: '', relationship: '' },
+      ],
+    })
+    expect(namedAdults(p)).toEqual([
+      { adult_number: 1, display_name: 'Emma Johnson', relationship: 'Mother' },
+    ])
+  })
+
+  it('keeps a person-grain party’s own adult entry -- it is real, not a blank slot', () => {
+    const p = party({
+      grain: 'person',
+      adults: [{ adult_number: 1, display_name: 'Priya Patel' }],
+    })
+    expect(namedAdults(p)).toEqual([{ adult_number: 1, display_name: 'Priya Patel' }])
+  })
+
+  it('returns an empty list rather than throwing when adults is missing', () => {
+    const p = party()
+    delete p.adults
+    expect(namedAdults(p)).toEqual([])
   })
 })
 

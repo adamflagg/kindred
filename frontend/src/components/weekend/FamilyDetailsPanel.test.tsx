@@ -257,6 +257,30 @@ describe('FamilyDetailsPanel — household identity', () => {
     expect(screen.getByText('David Johnson')).toBeInTheDocument()
   })
 
+  it('drops a blank adult slot from the Party list -- family_camp_adults is not a fixed five', () => {
+    // Scan finding on kindred#2084: a slot with no name on file rendered as
+    // an empty <li>, the same bug the identity label and the roster row's
+    // members line already had to guard against.
+    render(
+      <FamilyDetailsPanel
+        party={party({
+          adults: [
+            { adult_number: 1, display_name: 'Emma Johnson', relationship: 'Mother' },
+            { adult_number: 2, display_name: '', relationship: '' },
+          ],
+        })}
+        year={2026}
+        onClose={vi.fn()}
+      />,
+      { wrapper }
+    )
+    // Scoped to the adults <ul> specifically -- the panel has other
+    // `role="list"` blocks (AccessibilityFlagList) whose item count isn't
+    // this test's concern, and the header now also reads "Emma Johnson"
+    // (kindred#2084), so a plain `getByText` would be ambiguous.
+    expect(screen.getByTestId('family-panel-adults').querySelectorAll('li')).toHaveLength(1)
+  })
+
   it('lists children with ages and grades', () => {
     render(<FamilyDetailsPanel party={party()} year={2026} onClose={vi.fn()} />, { wrapper })
     expect(screen.getByText('Noah Johnson')).toBeInTheDocument()

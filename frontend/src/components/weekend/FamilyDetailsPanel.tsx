@@ -29,7 +29,7 @@ import type {
 } from '../../types/lodging'
 import { displayCampMinderAge } from '../../utils/age'
 import { AccessibilityFlagList } from './AccessibilityFlagList'
-import { partyIdentityLabel } from './householdIdentity'
+import { namedAdults, partyIdentityLabel } from './householdIdentity'
 import { MedicalNarrative } from './MedicalNarrative'
 import { partyKey } from './partyKey'
 import { ATTENTION_LABEL, partyAttention } from './rosterAttention'
@@ -126,7 +126,9 @@ export function FamilyDetailsPanel({
     }
   }, [isClosing, handleClose])
 
-  const adults = party.adults ?? []
+  // A blank `family_camp_adults` slot is not an attending adult -- rendering
+  // it left an empty <li> in the Party list (kindred#2084 scan finding).
+  const adults = namedAdults(party)
   const children = party.children ?? []
   const isHousehold = party.grain === 'household'
   // A person-grain party has no household, and the API sends 0 rather than
@@ -211,7 +213,7 @@ export function FamilyDetailsPanel({
           // implicit `list` role in Safari's a11y tree unless role="list" is explicit. See
           // CamperAlertSection.tsx for the same pattern.
           // eslint-disable-next-line jsx-a11y/no-redundant-roles
-          <ul className="flex flex-col gap-0.5" role="list">
+          <ul data-testid="family-panel-adults" className="flex flex-col gap-0.5" role="list">
             {adults.map((adult, index) => (
               <li
                 key={`${String(adult.adult_number ?? index)}-${String(adult.display_name)}`}

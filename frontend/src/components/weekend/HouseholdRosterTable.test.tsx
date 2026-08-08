@@ -176,6 +176,48 @@ describe('HouseholdRosterTable', () => {
     expect(screen.getByText('Emma Johnson (9.00)')).toBeInTheDocument()
   })
 
+  it('does not count a blank adult slot -- family_camp_adults is not a fixed five', () => {
+    // Scan finding on kindred#2084: `composition()` counted `party.adults`
+    // raw, inflating the figure shown right beside the (now-filtered)
+    // identity label.
+    render(
+      <HouseholdRosterTable
+        year={2026}
+        parties={[
+          party({
+            adults: [
+              { adult_number: 1, display_name: 'Samuel Johnson', relationship: 'Parent' },
+              { adult_number: 2, display_name: '', relationship: '' },
+            ],
+          }),
+        ]}
+      />,
+      { wrapper }
+    )
+    expect(screen.getByText('1 adult · 1 child')).toBeInTheDocument()
+    expect(screen.queryByText('2 adults · 1 child')).not.toBeInTheDocument()
+  })
+
+  it('drops a blank adult slot from the members line rather than a dangling separator', () => {
+    render(
+      <HouseholdRosterTable
+        year={2026}
+        parties={[
+          party({
+            adults: [
+              { adult_number: 1, display_name: 'Samuel Johnson', relationship: 'Parent' },
+              { adult_number: 2, display_name: '', relationship: '' },
+            ],
+          }),
+        ]}
+      />,
+      { wrapper }
+    )
+    const membersLine = screen.getByTestId('household-row-members')
+    expect(membersLine).toHaveTextContent('Samuel Johnson · Emma Johnson (9.00)')
+    expect(membersLine.textContent).not.toMatch(/,\s*·/)
+  })
+
   it('renders age in CampMinder yy.mm format through displayCampMinderAge', () => {
     // kindred#2088: the row printed `String(child.age)` verbatim. Both
     // fractional and whole ages must go through the shared helper summer
