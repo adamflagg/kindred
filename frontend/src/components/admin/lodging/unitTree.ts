@@ -99,25 +99,38 @@ export function combinedAncestor(
  * room, so hiding guest buildings from staff units would deny a new staff room
  * there its real parent. Buildings are mixed; staff housing is not.
  *
- * Both narrowings spare the unit's CURRENT parent whatever it is. Filtering a
- * stored parent out of its own picker would leave the select with no matching
- * option, so it would fall to the first entry and the next save would silently
- * reparent a unit the staffer only meant to rename — the exact accident these
- * filters exist to prevent, arriving through them.
+ * Both narrowings spare the CURRENT parent whatever it is — the caller's
+ * `currentParentId`, not something this function looks up. Filtering a
+ * current parent out of its own picker would leave the select with no
+ * matching option, so it would fall to the first entry and the next save
+ * would silently reparent a unit the staffer only meant to rename — the
+ * exact accident these filters exist to prevent, arriving through them.
+ *
+ * `currentParentId` MUST be the LIVE, not-yet-saved selection — the same
+ * value `LodgingUnitForm`'s `blockingAncestor` reads off `identity.parent_unit`
+ * — not a lookup of the STORED record (`units.find((u) => u.id ===
+ * unitId)?.parent_unit`, #2065). A staffer can pick a parent, then change
+ * Area or Allocation before saving; if the narrowing looks up the stored
+ * value it still finds the OLD parent (or none, on a unit being created),
+ * so the just-picked selection silently drops out of the options while
+ * remaining the form's value. A `<select>` whose value isn't among its
+ * options renders blank while the stale value rides through to the next
+ * save. On mount the caller's live value equals the stored one, so the
+ * grandfather-clause behavior below is unchanged for that case.
  */
 export function parentCandidates(
   unitId: string | undefined,
   units: LodgingUnitRecord[],
+  currentParentId: string,
   areaId?: string,
   inventoryClass?: string
 ): LodgingUnitRecord[] {
   const excluded = unitId === undefined ? new Set<string>() : descendantIds(unitId, units)
-  const currentParent = units.find((u) => u.id === unitId)?.parent_unit ?? ''
   return units.filter((candidate) => {
     if (!candidate.is_container || candidate.id === unitId || excluded.has(candidate.id)) {
       return false
     }
-    if (candidate.id === currentParent) return true
+    if (candidate.id === currentParentId) return true
     if (areaId !== undefined && candidate.area !== areaId) return false
     // One direction only — see the header. Guest rooms are kept out of staff
     // housing; staff rooms are NOT kept out of guest buildings, because more
