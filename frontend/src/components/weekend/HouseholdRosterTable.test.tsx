@@ -467,3 +467,43 @@ describe('HouseholdRosterTable — the row opens FamilyDetailsPanel (kindred#199
     expect(screen.getByTestId('family-details-panel')).toHaveClass('animate-slide-out-right')
   })
 })
+
+describe('HouseholdRosterTable — clears a stale selection (kindred#2062)', () => {
+  // A weekend switch re-renders this table with a different `parties` prop
+  // but never unmounts it, so the previously-open household stayed open over
+  // the new weekend's roster — including its `FamilyDetailsPanel`, which
+  // shows a medical narrative that no longer belongs to anyone on screen.
+  it('closes the panel when the selected party is no longer in parties', async () => {
+    const { rerender } = render(
+      <HouseholdRosterTable
+        year={2026}
+        parties={[party({ display_name: 'Johnson Family', household_cm_id: 2000001 })]}
+      />,
+      { wrapper }
+    )
+    await userEvent.click(screen.getByRole('button', { name: /Johnson Family/ }))
+    expect(screen.getByTestId('family-details-panel')).toBeInTheDocument()
+
+    rerender(
+      <HouseholdRosterTable
+        year={2026}
+        parties={[party({ display_name: 'Chen Family', household_cm_id: 2000002 })]}
+      />
+    )
+    expect(screen.queryByTestId('family-details-panel')).not.toBeInTheDocument()
+  })
+
+  // The trap: a refetch that returns the SAME parties (new array identity,
+  // same content) must not close a panel out from under whoever has it open.
+  it('keeps the panel open when parties refetches with the same content', async () => {
+    const makeParties = () => [party({ display_name: 'Johnson Family', household_cm_id: 2000001 })]
+    const { rerender } = render(<HouseholdRosterTable year={2026} parties={makeParties()} />, {
+      wrapper,
+    })
+    await userEvent.click(screen.getByRole('button', { name: /Johnson Family/ }))
+    expect(screen.getByTestId('family-details-panel')).toBeInTheDocument()
+
+    rerender(<HouseholdRosterTable year={2026} parties={makeParties()} />)
+    expect(screen.getByTestId('family-details-panel')).toBeInTheDocument()
+  })
+})

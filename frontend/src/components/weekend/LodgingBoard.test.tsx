@@ -651,3 +651,53 @@ describe('LodgingBoard — the details panel updates in place', () => {
     expect(second).toHaveTextContent('Chen Household')
   })
 })
+
+describe('LodgingBoard — clears a stale selection (kindred#2062)', () => {
+  // A weekend switch re-renders the board with a different `parties` prop
+  // without unmounting it, so the previously-open family's panel — including
+  // its medical narrative — stayed open over the new weekend's roster.
+  it('closes the panel when the selected party is no longer in parties', async () => {
+    const { rerender } = render(
+      <LodgingBoard
+        parties={[party({ unit_code: 'cedar-1', unit_name: 'Cedar 1' })]}
+        units={[unit()]}
+        year={2026}
+      />,
+      { wrapper }
+    )
+    await userEvent.click(screen.getByRole('button', { name: /Johnson/ }))
+    expect(screen.getByTestId('family-details-panel')).toBeInTheDocument()
+
+    rerender(
+      <LodgingBoard
+        parties={[
+          party({
+            household_cm_id: 102,
+            display_name: 'Chen',
+            sort_name: 'Chen',
+            unit_code: 'cedar-1',
+            unit_name: 'Cedar 1',
+          }),
+        ]}
+        units={[unit()]}
+        year={2026}
+      />
+    )
+    expect(screen.queryByTestId('family-details-panel')).not.toBeInTheDocument()
+  })
+
+  // The trap: a refetch that returns the SAME parties (new array identity,
+  // same content) must not close a panel out from under whoever has it open.
+  it('keeps the panel open when parties refetches with the same content', async () => {
+    const makeParties = () => [party({ unit_code: 'cedar-1', unit_name: 'Cedar 1' })]
+    const { rerender } = render(
+      <LodgingBoard parties={makeParties()} units={[unit()]} year={2026} />,
+      { wrapper }
+    )
+    await userEvent.click(screen.getByRole('button', { name: /Johnson/ }))
+    expect(screen.getByTestId('family-details-panel')).toBeInTheDocument()
+
+    rerender(<LodgingBoard parties={makeParties()} units={[unit()]} year={2026} />)
+    expect(screen.getByTestId('family-details-panel')).toBeInTheDocument()
+  })
+})
