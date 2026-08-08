@@ -598,6 +598,20 @@ jobs:
 
         echo "✅ Migration smoke test passed"
 
+    # kindred#1921: the sync package's fixtures build their PocketBase
+    # collections by hand (see newLodgingTestApp in
+    # pocketbase/sync/lodging_testsupport_test.go) rather than replaying
+    # pb_migrations, so a column a migration drops or renames can stay in the
+    # fixture indefinitely -- go test ./... never notices. /tmp/collections.json
+    # above is the real schema those same migrations just produced; this step
+    # diffs the fixture's declared fields against it and fails on a field the
+    # fixture has that production does not (drop/rename direction only).
+    - name: Fixture schema agreement (kindred#1921)
+      working-directory: ./pocketbase
+      env:
+        KINDRED_PROD_SCHEMA_JSON: /tmp/collections.json
+      run: go test ./sync/... -run TestLodgingTestsupportFixtureFieldsExistInProductionSchema -v
+
   # Frontend tests — sharded across 2 matrix jobs to cut wall-clock
   # (vitest --shard splits files; matrix gives each shard its own runner)
   tests-frontend:
