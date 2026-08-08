@@ -45,6 +45,7 @@ const _exhaustiveRosterParty: Required<RosterPartyRow> = {
   unit_name: 'Ridge 1',
   is_merged_slot: false,
   unit_codes: ['ridge-1'],
+  effective_bathroom: 'unknown',
   arrival_eta: '',
   is_returning: false,
   share: {

@@ -112,3 +112,43 @@ def effective_bathroom(
     if group_member_codes and group_member_codes <= merged_codes:
         return "private"
     return "shared"
+
+
+def container_bathroom(leaf_bathroom_groups: frozenset[str]) -> tuple[str, str]:
+    """A container's bathroom, inherited from its leaf descendants.
+
+    Containers (buildings, apartments) store `bathroom = "none"` on the
+    registry row itself -- the field describes a ROOM, and a building is
+    not one. That is correct for the units inventory, which has no
+    occupant to resolve the ambiguity for. It is wrong for a party that has
+    booked the WHOLE container: the health-center apartments are two
+    bedrooms over one shared bath, normally let whole, which is exactly the
+    case `effective_bathroom`'s exclusivity branch exists for -- except the
+    container's own "none" short-circuits that branch (line 108-109) before
+    it ever runs.
+
+    This resolves what "bathroom" and "bathroom_group" to FEED
+    `effective_bathroom` on the container's behalf, rather than widening
+    that function's signature to know about children. `effective_bathroom`
+    stays the same four-argument pure test the class above already pins;
+    the inheritance a container needs is a fact about its children, computed
+    here and handed in as an ordinary "shared" input.
+
+    Args:
+        leaf_bathroom_groups: the `bathroom_group` of every LEAF unit
+            directly or indirectly under the container ("" for a leaf with
+            no group).
+
+    Returns:
+        ("shared", group) when every leaf agrees on the same non-empty
+        group -- the children physically share one bathroom, so booking the
+        whole container definitionally covers that group. ("none", "")
+        when the leaves disagree, carry no group, or there are none at all:
+        nothing to inherit, so the container reports exactly what its own
+        registry row already says.
+    """
+    if len(leaf_bathroom_groups) == 1:
+        (group,) = leaf_bathroom_groups
+        if group:
+            return "shared", group
+    return "none", ""

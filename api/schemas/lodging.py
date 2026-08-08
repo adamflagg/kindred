@@ -273,6 +273,13 @@ class RosterParty(BaseModel):
     # for a caller -- the map view -- that needs to know WHICH units a merged
     # party spans, not just how many.
     unit_codes: list[str] = Field(default_factory=list)
+    # The bathroom this party ends up with once every code in unit_codes
+    # counts toward ONE merge -- lodging_rules.effective_bathroom resolved
+    # against the OCCUPYING placement, not any single unit's own view
+    # (kindred#2022). "unknown" when unplaced. SCORING ONLY: this feeds
+    # matching, and is not itself surfaced as a claim to staff on any card
+    # or panel -- see LodgingRosterService._resolve_party_bathroom.
+    effective_bathroom: EffectiveBathroom = "unknown"
     arrival_eta: str = ""
     # The household's cm_id was seen in an earlier year.
     is_returning: bool = False

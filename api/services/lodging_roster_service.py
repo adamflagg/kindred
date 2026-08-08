@@ -20,6 +20,7 @@ from typing import TYPE_CHECKING, Any, NamedTuple, cast
 from api.schemas.lodging import (
     PHI_FIELD_NAMES,
     AccessibilityFlagSummary,
+    EffectiveBathroom,
     HouseholdMedicalResponse,
     LodgingUnitSummary,
     PartyAdult,
@@ -38,6 +39,7 @@ from api.schemas.lodging import (
     WeekendSummaryResponse,
 )
 from api.services.lodging_rules import (
+    container_bathroom,
     effective_bathroom,
     is_family_available,
     unit_capacity,
@@ -364,6 +366,114 @@ def drawn_units(units: list[LodgingUnitSummary]) -> list[LodgingUnitSummary]:
     return drawn
 
 
+class _BathroomIndex(NamedTuple):
+    """Lookups `_resolve_party_bathroom` needs, built ONCE per roster/summary
+    call from the unit registry rather than once per party -- the same
+    "compute across all units, read per party" split `_build_units` already
+    uses for `group_members`.
+    """
+
+    units_by_code: dict[str, LodgingUnitSummary]
+    # Immediate children only, keyed by the PARENT's code. Nesting (a
+    # container inside a container, e.g. Doctor's House under a larger
+    # block) is walked at read time in `leaf_codes_under`, mirroring
+    # `drawn_units`' own upward walk of the same `parent_code` relation.
+    children_by_parent: dict[str, tuple[LodgingUnitSummary, ...]]
+    group_members: dict[str, frozenset[str]]
+
+    @classmethod
+    def build(cls, units: list[LodgingUnitSummary]) -> _BathroomIndex:
+        units_by_code = {unit.code: unit for unit in units}
+
+        children: dict[str, list[LodgingUnitSummary]] = {}
+        for unit in units:
+            if unit.parent_code:
+                children.setdefault(unit.parent_code, []).append(unit)
+
+        group_members: dict[str, set[str]] = {}
+        for unit in units:
+            if unit.bathroom_group:
+                group_members.setdefault(unit.bathroom_group, set()).add(unit.code)
+
+        return cls(
+            units_by_code=units_by_code,
+            children_by_parent={code: tuple(rows) for code, rows in children.items()},
+            group_members={group: frozenset(codes) for group, codes in group_members.items()},
+        )
+
+    def leaf_codes_under(self, container_code: str) -> frozenset[str]:
+        """Every LEAF unit code under a container, walking the tree.
+
+        Recurses rather than reading one level, because a container's own
+        children may themselves be containers. Cycle-guarded for the same
+        reason `drawn_units` guards its walk: a cycle already in the data
+        must not hang a request.
+        """
+        leaves: set[str] = set()
+        seen: set[str] = {container_code}
+        stack = list(self.children_by_parent.get(container_code, ()))
+        while stack:
+            child = stack.pop()
+            if child.code in seen:
+                continue
+            seen.add(child.code)
+            if child.is_container:
+                stack.extend(self.children_by_parent.get(child.code, ()))
+            else:
+                leaves.add(child.code)
+        return frozenset(leaves)
+
+
+def _resolve_party_bathroom(unit_codes: list[str], index: _BathroomIndex) -> str:
+    """The bathroom a party ends up with once every code it occupies counts
+    toward ONE merge -- kindred#2022.
+
+    `effective_bathroom`'s exclusivity branch is unreachable at its one
+    existing call site (`_build_units`, below) because that call always
+    passes a one-element `frozenset({code})`: the units INVENTORY has no
+    occupant, so it is evaluated one unit at a time and stays that way (see
+    the comment there). This is the OTHER caller, added for exactly this
+    fix: it passes the full set of codes the placement actually covers, so
+    a real multi-unit merge can clear the bar.
+
+    A container in `unit_codes` (a whole-let placement naming the building
+    rather than its rooms) is expanded to its leaf descendants via
+    `container_bathroom`, rather than read from its own registry row, which
+    is always "none" -- see that function's docstring.
+
+    The FIRST occupied code supplies the representative bathroom/group fed
+    to `effective_bathroom`; every registry bathroom_group's members share
+    one physical bathroom by construction, so any member speaks for the
+    group. `unit_codes` naming units from two DIFFERENT groups is not a
+    case any registry data produces today.
+    """
+    if not unit_codes:
+        return "unknown"
+
+    occupied: set[str] = set()
+    bathroom = ""
+    group = ""
+    for code in unit_codes:
+        unit = index.units_by_code.get(code)
+        if unit is None:
+            continue
+        if unit.is_container:
+            leaves = index.leaf_codes_under(code)
+            occupied |= leaves
+            leaf_groups = frozenset(index.units_by_code[leaf].bathroom_group for leaf in leaves)
+            inherited_bathroom, inherited_group = container_bathroom(leaf_groups)
+            if not bathroom:
+                bathroom, group = inherited_bathroom, inherited_group
+        else:
+            occupied.add(code)
+            if not bathroom:
+                bathroom, group = unit.bathroom, unit.bathroom_group
+
+    if not bathroom:
+        return "unknown"
+    return effective_bathroom(bathroom, group, index.group_members.get(group, frozenset()), frozenset(occupied))
+
+
 class LodgingRosterService:
     """Builds the read-only weekend roster from repository output."""
 
@@ -469,6 +579,7 @@ class LodgingRosterService:
             adults_by_household=adults_task.result(),
             registrations=registrations_task.result(),
             assignments=placements_task.result(),
+            units=unit_summaries,
         )
         counts = self._build_counts(unit_summaries, parties, aliases_task.result())
 
@@ -565,6 +676,7 @@ class LodgingRosterService:
                 adults_by_household=adults_by_household,
                 registrations=registrations,
                 assignments=placements_task.result(),
+                units=unit_summaries,
             )
             return WeekendSummaryEntry(
                 session=self._session_summary(session),
@@ -709,11 +821,13 @@ class LodgingRosterService:
         adults_by_household: dict[str, list[Any]],
         registrations: dict[str, Any],
         assignments: list[Any],
+        units: list[LodgingUnitSummary],
     ) -> list[RosterParty]:
         placement_by_household, placement_by_person = self._index_assignments(assignments)
+        bathroom_index = _BathroomIndex.build(units)
 
         if session_type == "adult":
-            return self._build_person_parties(attendees, placement_by_person)
+            return self._build_person_parties(attendees, placement_by_person, bathroom_index)
 
         return self._build_household_parties(
             attendees=attendees,
@@ -722,6 +836,7 @@ class LodgingRosterService:
             adults_by_household=adults_by_household,
             registrations=registrations,
             placement_by_household=placement_by_household,
+            bathroom_index=bathroom_index,
         )
 
     @staticmethod
@@ -776,7 +891,10 @@ class LodgingRosterService:
         return by_household, by_person
 
     def _build_person_parties(
-        self, attendees: list[Any], placement_by_person: dict[int, _Placement]
+        self,
+        attendees: list[Any],
+        placement_by_person: dict[int, _Placement],
+        bathroom_index: _BathroomIndex,
     ) -> list[RosterParty]:
         parties: list[RosterParty] = []
         for attendee in attendees:
@@ -797,6 +915,9 @@ class LodgingRosterService:
                     unit_name=placement.unit_name,
                     is_merged_slot=placement.is_merged_slot,
                     unit_codes=list(placement.unit_codes),
+                    effective_bathroom=cast(
+                        EffectiveBathroom, _resolve_party_bathroom(list(placement.unit_codes), bathroom_index)
+                    ),
                 )
             )
         parties.sort(key=lambda p: (p.sort_name.casefold(), p.display_name.casefold()))
@@ -811,6 +932,7 @@ class LodgingRosterService:
         adults_by_household: dict[str, list[Any]],
         registrations: dict[str, Any],
         placement_by_household: dict[int, _Placement],
+        bathroom_index: _BathroomIndex,
     ) -> list[RosterParty]:
         children_by_household: dict[str, list[Any]] = {}
         for attendee in attendees:
@@ -867,6 +989,9 @@ class LodgingRosterService:
                     unit_name=placement.unit_name,
                     is_merged_slot=placement.is_merged_slot,
                     unit_codes=list(placement.unit_codes),
+                    effective_bathroom=cast(
+                        EffectiveBathroom, _resolve_party_bathroom(list(placement.unit_codes), bathroom_index)
+                    ),
                     arrival_eta=_s(registration, "arrival_eta") if registration is not None else "",
                     is_returning=household_cm_id in prior_cm_ids,
                     share=self._build_share(registration),
