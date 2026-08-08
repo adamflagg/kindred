@@ -70,7 +70,8 @@ func TestLodgingRegistryBootDecision(t *testing.T) {
 	t.Run("registry file present, database empty: fails the boot", func(t *testing.T) {
 		err := lodgingRegistryBootDecision(seasonErr, true, false)
 		if err == nil {
-			t.Fatal("expected a boot error when the registry file is present, the database is empty, and the season is unresolvable, got nil")
+			t.Fatal("expected a boot error when the registry file is present, " +
+				"the database is empty, and the season is unresolvable, got nil")
 		}
 		if !errors.Is(err, seasonErr) {
 			t.Errorf("expected the boot error to wrap the underlying season error, got: %v", err)
