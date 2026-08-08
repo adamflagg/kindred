@@ -100,7 +100,7 @@ type yearScopedRef struct {
 // What that does NOT close: lodging_units is ALSO a valid TARGET via
 // parent_unit (line 111 below), the identical shape to the lodging_areas
 // bullet above, but yearImmutableRefs carries no reverse entry for it -- see
-// that map's own doc comment for why, and kindred#2148 for the maintenance
+// that map's own doc comment for why, and kindred#2146 for the maintenance
 // hazard this un-mirrored entry is one instance of.
 //
 // Cascading the new year onto every dependent row on a parent's write would
@@ -130,9 +130,10 @@ var yearScopedRefs = map[string][]yearScopedRef{
 // real id (see countAssignments's own comment). The reverse mistake is not
 // silent the same way -- checked directly, a joined "unit.id ?= {:id}" against
 // a single relation still matches the dependent row correctly, so writing it
-// that way is merely non-idiomatic, not wrong. kindred#2148 tracks
-// mechanizing this derivation instead of leaving it to be gotten right by
-// hand at each entry below.
+// that way is merely non-idiomatic, not wrong. kindred#2146 tracks the
+// hand-typed-per-entry risk this comment describes, including mechanizing the
+// derivation instead of leaving it to be gotten right by hand at each entry
+// below.
 type dependentRef struct {
 	collection string
 	filter     string
@@ -148,7 +149,7 @@ type dependentRef struct {
 // collections its own body names below. A child unit pointing at a
 // re-seasoned parent via parent_unit is the same shape of gap and is not
 // covered by this guard. It is also the one entry in yearScopedRefs with no
-// hand-typed reverse here -- kindred#2148 tracks that as a maintenance
+// hand-typed reverse here -- kindred#2146 tracks that as a maintenance
 // hazard in this map's own shape, not just as a scoping choice.
 var yearImmutableRefs = map[string][]dependentRef{
 	collectionAreas: {
