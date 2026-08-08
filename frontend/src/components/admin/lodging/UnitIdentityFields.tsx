@@ -146,7 +146,9 @@ export function UnitIdentityFields({
 
             Scoped to the Area chosen above, so switching area re-scopes the
             buildings on offer. See ./unitTree for why the unit's existing
-            parent survives that narrowing regardless. */}
+            parent survives that narrowing regardless — and why that has to be
+            `value.parent_unit`, the LIVE selection below, not a lookup of the
+            stored record (#2065). */}
         <select
           className={FIELD}
           value={value.parent_unit}
@@ -155,11 +157,13 @@ export function UnitIdentityFields({
           }}
         >
           <option value="">No parent</option>
-          {parentCandidates(unitId, units, value.area, inventoryClass).map((candidate) => (
-            <option key={candidate.id} value={candidate.id}>
-              {candidate.name}
-            </option>
-          ))}
+          {parentCandidates(unitId, units, value.parent_unit, value.area, inventoryClass).map(
+            (candidate) => (
+              <option key={candidate.id} value={candidate.id}>
+                {candidate.name}
+              </option>
+            )
+          )}
         </select>
       </label>
 

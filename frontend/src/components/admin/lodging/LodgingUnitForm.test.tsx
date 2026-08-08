@@ -446,6 +446,66 @@ describe('LodgingUnitForm — the parent picker reflects a live allocation chang
       'staff_building',
     ])
   })
+
+  // #2065: the mirror of the test above. #2051 pinned only the widening
+  // direction (guest → staff, options grow); the narrowing direction — staff
+  // → guest, options shrink — is where the bug actually lived.
+  it('keeps the just-picked parent visible and selected after Allocation flips back to guest, rather than blanking the select while the stale value still saves', async () => {
+    const room: LodgingUnitRecord = {
+      ...UNIT,
+      id: 'room1',
+      name: 'Alpine Room',
+      code: 'alpine-room',
+      parent_unit: '',
+      inventory_class: 'family_pool',
+      is_container: false,
+    }
+    const guestBuilding: LodgingUnitRecord = {
+      ...UNIT,
+      id: 'guest_building',
+      name: 'Guest Lodge',
+      code: 'guest-lodge',
+      is_container: true,
+      inventory_class: 'family_pool',
+    }
+    const staffBuilding: LodgingUnitRecord = {
+      ...UNIT,
+      id: 'staff_building',
+      name: 'Staff Quarters',
+      code: 'staff-quarters',
+      is_container: true,
+      inventory_class: 'staff_default',
+    }
+    const user = userEvent.setup()
+
+    render(
+      <LodgingUnitForm
+        areas={AREAS}
+        units={[room, guestBuilding, staffBuilding]}
+        year={2026}
+        unit={room}
+        onSaved={vi.fn()}
+        onCancel={vi.fn()}
+      />
+    )
+
+    const parentSelect = screen.getByLabelText<HTMLSelectElement>('Parent unit')
+
+    // Flip to staff, pick the staff building as parent, then flip back to
+    // guest — all in the same render, no save, no remount.
+    await user.selectOptions(screen.getByLabelText('Allocation'), 'staff_default')
+    await user.selectOptions(parentSelect, 'staff_building')
+    await user.selectOptions(screen.getByLabelText('Allocation'), 'family_pool')
+
+    // `parentCandidates` used to spare the STORED parent
+    // (`units.find(...)?.parent_unit`, still '' for this room) rather than
+    // the live selection, so the staff building dropped out of the options
+    // while `identity.parent_unit` still held it. A `<select>` whose value
+    // is not among its options renders blank while quietly keeping the
+    // stale value, which is what saved a guest room under a staff building.
+    expect([...parentSelect.options].map((o) => o.value)).toContain('staff_building')
+    expect(parentSelect.value).toBe('staff_building')
+  })
 })
 
 describe('LodgingUnitForm — beds', () => {
