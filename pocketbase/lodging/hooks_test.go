@@ -1504,3 +1504,147 @@ func TestGuardUnitYearSkipsAUnitsSelfReference(t *testing.T) {
 		t.Fatalf("a row must not be refused for disagreeing with itself: %v", err)
 	}
 }
+
+// TestGuardYearImmutableAllowsARoutineEditThatResendsTheSameYear pins the trap
+// kindred#2067 calls out by name: LodgingUnitForm.handleSubmit
+// (frontend/src/components/admin/lodging/LodgingUnitForm.tsx) sends
+// `year: openedYear` on EVERY save, routine edits included -- so a guard that
+// tests whether `year` is PRESENT in the write, rather than whether it
+// CHANGED, would refuse ordinary saves on any unit with so much as one
+// dependent.
+//
+// MUTATION-CHECK: replace guardYearImmutable's
+// `oldYear := e.Record.Original().GetInt("year")` / `oldYear == newYear` pair
+// with a presence test and this test goes red -- the save below resends the
+// unit's unchanged year while a real dependent (the availability row) exists,
+// which is exactly the shape a presence test would wrongly refuse.
+func TestGuardYearImmutableAllowsARoutineEditThatResendsTheSameYear(t *testing.T) {
+	app := newHooksTestApp(t)
+	unit := seedUnit(t, app, "test-unit-a", 2027)
+
+	avail := core.NewRecord(mustCollection(t, app, "lodging_availability"))
+	avail.Set("year", 2027)
+	avail.Set("unit", unit)
+	avail.Set("session", seedSession(t, app))
+	if err := app.Save(avail); err != nil {
+		t.Fatalf("seeding a dependent availability row: %v", err)
+	}
+
+	rec, err := app.FindRecordById(collectionUnits, unit)
+	if err != nil {
+		t.Fatalf("reloading the unit: %v", err)
+	}
+	rec.Set("year", 2027)                 // the value the form always resends
+	rec.Set("name", "Renamed Building A") // the actual edit being made
+
+	if err := app.Save(rec); err != nil {
+		t.Fatalf("refused a routine edit that resent the unchanged year: %v", err)
+	}
+}
+
+// TestGuardYearImmutableRejectsAUnitYearChangeWithAnAvailabilityDependent is
+// the single-relation case (`lodging_availability.unit`, MaxSelect 1) --
+// kindred#2067's second gap: guardUnitYear checks a unit's own OUTGOING
+// relations (area, parent_unit) but never the rows pointing back AT it.
+func TestGuardYearImmutableRejectsAUnitYearChangeWithAnAvailabilityDependent(t *testing.T) {
+	app := newHooksTestApp(t)
+	unit := seedUnit(t, app, "test-unit-a", 2027)
+
+	avail := core.NewRecord(mustCollection(t, app, "lodging_availability"))
+	avail.Set("year", 2027)
+	avail.Set("unit", unit)
+	avail.Set("session", seedSession(t, app))
+	if err := app.Save(avail); err != nil {
+		t.Fatalf("seeding a dependent availability row: %v", err)
+	}
+
+	rec, err := app.FindRecordById(collectionUnits, unit)
+	if err != nil {
+		t.Fatalf("reloading the unit: %v", err)
+	}
+	rec.Set("year", 2028)
+
+	if err := app.Save(rec); err == nil {
+		t.Fatal("re-seasoned a unit with a dependent availability row; want a refusal")
+	}
+}
+
+// TestGuardYearImmutableRejectsAUnitYearChangeWithAnAssignmentDependent is the
+// MULTI-relation case (`lodging_assignments.units`, MaxSelect 20). Filtering a
+// multi-valued relation needs the `.id` join and `?=` any-match operator -- a
+// plain "units = {:id}" compiles and matches ZERO rows against a real id
+// (see countAssignments's own comment, above). This is what would catch
+// yearImmutableRefs getting that filter wrong for lodging_units' dependents,
+// the same way TestMultiRelationAnyMatchFilter guards countAssignments.
+func TestGuardYearImmutableRejectsAUnitYearChangeWithAnAssignmentDependent(t *testing.T) {
+	app := newHooksTestApp(t)
+	unit := seedUnit(t, app, "test-unit-a", 2027)
+
+	placement := core.NewRecord(mustCollection(t, app, "lodging_assignments"))
+	placement.Set("year", 2027)
+	placement.Set("units", []string{unit})
+	placement.Set("session", seedSession(t, app))
+	placement.Set("household_cm_id", 2000001) // satisfies guardAssignmentGrain's XOR
+	if err := app.Save(placement); err != nil {
+		t.Fatalf("seeding a dependent assignment row: %v", err)
+	}
+
+	rec, err := app.FindRecordById(collectionUnits, unit)
+	if err != nil {
+		t.Fatalf("reloading the unit: %v", err)
+	}
+	rec.Set("year", 2028)
+
+	if err := app.Save(rec); err == nil {
+		t.Fatal("re-seasoned a unit with a dependent assignment row; want a refusal")
+	}
+}
+
+// TestGuardYearImmutableRejectsAnAreaYearChangeWithAUnitDependent is
+// kindred#2067's first gap: lodging_areas carried no binding at all, so a
+// superuser or bunking.manage PATCH editing an existing area's own `year` hit
+// no check while lodging_units rows already pointing at it went silently
+// cross-season.
+func TestGuardYearImmutableRejectsAnAreaYearChangeWithAUnitDependent(t *testing.T) {
+	app := newHooksTestApp(t)
+	area := seedArea(t, app, "test-area-a", 2027)
+
+	rec := core.NewRecord(mustCollection(t, app, "lodging_units"))
+	rec.Set("code", "test-unit-a")
+	rec.Set("name", "Test Building A")
+	rec.Set("year", 2027)
+	rec.Set("area", area)
+	if err := app.Save(rec); err != nil {
+		t.Fatalf("seeding a dependent unit: %v", err)
+	}
+
+	areaRec, err := app.FindRecordById(collectionAreas, area)
+	if err != nil {
+		t.Fatalf("reloading the area: %v", err)
+	}
+	areaRec.Set("year", 2028)
+
+	if err := app.Save(areaRec); err == nil {
+		t.Fatal("re-seasoned an area with a dependent unit; want a refusal")
+	}
+}
+
+// TestGuardYearImmutableAllowsAYearChangeWithNoDependents is the positive
+// control, same shape as TestGuardUnitYearAllowsAMatchingRow above: a year
+// change on a unit nothing references must still succeed. Without this, a
+// guard that refused every lodging_units update would also pass every
+// refusal test in this section.
+func TestGuardYearImmutableAllowsAYearChangeWithNoDependents(t *testing.T) {
+	app := newHooksTestApp(t)
+	unit := seedUnit(t, app, "test-unit-a", 2027)
+
+	rec, err := app.FindRecordById(collectionUnits, unit)
+	if err != nil {
+		t.Fatalf("reloading the unit: %v", err)
+	}
+	rec.Set("year", 2028)
+
+	if err := app.Save(rec); err != nil {
+		t.Fatalf("refused a year change on a unit nothing depends on: %v", err)
+	}
+}

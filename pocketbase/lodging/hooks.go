@@ -84,24 +84,23 @@ type yearScopedRef struct {
 // SCOPE: this guard is one-directional. It checks the row being written
 // against the OUTGOING relations listed in its own entry above; it never
 // re-checks rows elsewhere that point back AT the thing just written. Two
-// gaps follow, both residual as of kindred#2039, not regressions:
+// gaps followed from that, both residual as of kindred#2039, not
+// regressions, and both closed below by guardYearImmutable (kindred#2067)
+// rather than by extending this map:
 //
 //   - lodging_areas is a valid TARGET above (lodging_units.area resolves into
-//     it) but is not itself a key in this map, so it carries no binding at
-//     all. A superuser or bunking.manage PATCH that edits an existing area
-//     row's own `year` in place hits no check, and every lodging_units row
-//     already pointing at that area -- written for whatever year it was
-//     created -- is now silently cross-season.
-//   - Editing a lodging_units row's own `year` is checked against that row's
-//     OWN area/parent_unit, but nothing re-validates the rows that point AT
-//     it: lodging_availability, lodging_assignments,
-//     lodging_assignments_draft, lodging_slot_merges. Those keep whatever
-//     year they were written with, now possibly disagreeing with the unit's
-//     new one.
+//     it) but is not itself a key in this map, so editing an existing area
+//     row's own `year` in place hit no check here, leaving every
+//     lodging_units row already pointing at it silently cross-season.
+//   - Editing a lodging_units row's own `year` was checked against that
+//     row's OWN area/parent_unit, but nothing re-validated the rows that
+//     point AT it: lodging_availability, lodging_assignments,
+//     lodging_assignments_draft, lodging_slot_merges.
 //
-// Closing either gap means cascading to every DEPENDENT row on a parent's
-// write, not validating only the row under write -- a materially bigger
-// change than this guard makes anywhere else, so it is not done here.
+// Cascading the new year onto every dependent row on a parent's write would
+// be a materially bigger change than this guard makes anywhere else, so
+// guardYearImmutable refuses the write outright instead -- see its own doc
+// comment for why that is the right shape here specifically.
 var yearScopedRefs = map[string][]yearScopedRef{
 	collectionAvailability:     {{field: "unit", target: collectionUnits}},
 	collectionAssignments:      {{field: "units", target: collectionUnits}},
@@ -110,6 +109,42 @@ var yearScopedRefs = map[string][]yearScopedRef{
 	collectionUnits: {
 		{field: "area", target: collectionAreas},
 		{field: "parent_unit", target: collectionUnits},
+	},
+}
+
+// dependentRef names one collection that may hold a foreign key pointing back
+// at the row guardYearImmutable is checking, and the filter to find it. The
+// filter is baked in per entry rather than derived from a single/multi flag,
+// for the same reason countAssignments's filter is hardcoded rather than
+// assembled (see its comment): `?=` plus the `.id` join is only correct for a
+// MULTI-valued relation (`units`, MaxSelect 20); a single relation (`unit`,
+// `area`, MaxSelect 1) stores the id as a plain string and needs a plain `=`.
+// Getting that backwards is silent -- both a bare "units = {:id}" and a
+// joined "unit.id ?= {:id}" compile and match ZERO rows against a real id.
+type dependentRef struct {
+	collection string
+	filter     string
+}
+
+// yearImmutableRefs is the REVERSE of yearScopedRefs: for each collection
+// guardYearImmutable binds to, every OTHER collection that may hold a foreign
+// key pointing back at it. yearScopedRefs asks what a row points AT;
+// yearImmutableRefs asks what points AT a row.
+//
+// lodging_units.parent_unit is deliberately absent as a dependent of
+// collectionUnits here -- kindred#2067 scoped this fix to the four
+// collections its own body names below. A child unit pointing at a
+// re-seasoned parent via parent_unit is the same shape of gap and is not
+// covered by this guard.
+var yearImmutableRefs = map[string][]dependentRef{
+	collectionAreas: {
+		{collection: collectionUnits, filter: "area = {:id}"},
+	},
+	collectionUnits: {
+		{collection: collectionAvailability, filter: "unit = {:id}"},
+		{collection: collectionAssignments, filter: "units.id ?= {:id}"},
+		{collection: collectionAssignmentsDraft, filter: "units.id ?= {:id}"},
+		{collection: collectionSlotMerges, filter: "unit = {:id}"},
 	},
 }
 
@@ -156,6 +191,44 @@ func wireHooks(app core.App) {
 				return apis.NewBadRequestError(err.Error(), nil)
 			}
 			return e.Next()
+		})
+	}
+
+	// guardYearImmutable's dependents run in the OPPOSITE direction from the
+	// loop above (see yearImmutableRefs's doc comment), so it gets its own
+	// loop rather than being folded into it. Same existence-check guard on
+	// the collection being bound to, since lodging_areas is not otherwise
+	// bound in this function. UPDATE only: a create cannot have a stale
+	// dependent, because nothing can reference an id before the record that
+	// owns it exists (same reasoning as guardUnitParentCycle's absent create
+	// binding).
+	for name := range yearImmutableRefs {
+		if _, err := app.FindCollectionByNameOrId(name); err != nil {
+			app.Logger().Warn("year-immutable guard skipped: collection absent", "collection", name)
+			continue
+		}
+
+		// Filter to DEPENDENT collections that actually exist, once here at
+		// bind time rather than on every write. lodging_slot_merges
+		// (1500000139) postdates several of the tables this guard watches, so
+		// an older or partial environment can be missing it -- the same real
+		// state TestGuardUnitYearSkipsAnAbsentCollection pins for
+		// guardUnitYear's own targets above. A dependent collection that does
+		// not exist cannot hold a row depending on anything, so skipping it
+		// here is equivalent to querying it and finding zero matches --
+		// leaving it in would make FindRecordsByFilter error instead.
+		refs := make([]dependentRef, 0, len(yearImmutableRefs[name]))
+		for _, ref := range yearImmutableRefs[name] {
+			if _, err := app.FindCollectionByNameOrId(ref.collection); err != nil {
+				app.Logger().Warn("year-immutable guard: dependent collection absent",
+					"collection", name, "dependent", ref.collection)
+				continue
+			}
+			refs = append(refs, ref)
+		}
+
+		app.OnRecordUpdate(name).BindFunc(func(e *core.RecordEvent) error {
+			return guardYearImmutable(e, refs)
 		})
 	}
 }
@@ -207,6 +280,61 @@ func guardUnitYear(app core.App, rec *core.Record) error {
 		}
 	}
 	return nil
+}
+
+// guardYearImmutable refuses to change a lodging_areas or lodging_units row's
+// `year` in place once anything depends on it -- the "refuse" shape kindred
+// #2067 weighed against cascading the new year onto every dependent row.
+// Cascading is a materially bigger change than any other guard in this file
+// makes, and nothing in the product has a legitimate reason to re-season an
+// existing row: copyAreas and copyUnits (rollforward.go) -- the one supported
+// way to move a row between seasons -- both call core.NewRecord for the
+// target year rather than mutating the source row, so a categorical refusal
+// here costs the roll-forward nothing.
+//
+// Compares Original().GetInt("year") against the new value, NOT whether
+// `year` is PRESENT in the write: LodgingUnitForm's handleSubmit
+// (frontend/src/components/admin/lodging/LodgingUnitForm.tsx) sends
+// `year: openedYear` on EVERY save, routine edits included, so a presence
+// test would refuse ordinary saves rather than catch an actual change.
+// Mirrors guardUnitParentCycle's Original() comparison for the same reason.
+//
+// refs is pre-filtered by wireHooks to the dependent collections that exist
+// in this environment -- see the bind-time loop's comment -- rather than
+// looked up here from yearImmutableRefs directly.
+func guardYearImmutable(e *core.RecordEvent, refs []dependentRef) error {
+	oldYear := e.Record.Original().GetInt("year")
+	newYear := e.Record.GetInt("year")
+	if oldYear == newYear {
+		return e.Next()
+	}
+
+	for _, ref := range refs {
+		records, err := e.App.FindRecordsByFilter(
+			ref.collection,
+			ref.filter,
+			"",
+			1, // existence check only -- one match is enough to refuse
+			0,
+			map[string]any{"id": e.Record.Id},
+		)
+		if err != nil {
+			return fmt.Errorf("checking %s for rows depending on %s: %w",
+				ref.collection, e.Record.Id, err)
+		}
+		if len(records) > 0 {
+			return apis.NewBadRequestError(
+				fmt.Sprintf(
+					"Cannot change %q's year from %d to %d: %s row(s) reference it. "+
+						"Use the roll-forward to move it to a new season instead of "+
+						"re-seasoning an existing row in place.",
+					e.Record.GetString("code"), oldYear, newYear, ref.collection,
+				),
+				nil,
+			)
+		}
+	}
+	return e.Next()
 }
 
 // countAssignments counts the placements holding this unit, across BOTH grains.
