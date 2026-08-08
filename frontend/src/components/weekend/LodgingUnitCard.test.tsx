@@ -692,6 +692,24 @@ describe('LodgingUnitCard — the shared-space mark (#2091)', () => {
     expect(card(container)).toHaveClass('border-primary')
     expect(card(container)).toHaveClass('border-dashed')
   })
+
+  it('drops the empty-room background wash under an active drop target, so the two never race', () => {
+    // `.bg-muted/25` (the dashed wash) and `.bg-primary/5` (the drop-target
+    // wash) both set `background-color` — a `toHaveClass('border-dashed')`
+    // check alone (the test above) cannot see this, because jsdom parses no
+    // Tailwind and a class string proves nothing about which declaration a
+    // real browser's cascade would pick. This is the same pairing the file's
+    // own top-of-diff comment names as the SECOND byte-offset race this
+    // refactor exists to kill (the first being `.border-amber-400` vs
+    // `.border-primary`) — this is the case of it that mattered for a real,
+    // high-frequency gesture: hovering a family drag over an empty room.
+    overDroppableId = unitDroppableId('cedar-1')
+    const { container } = render(
+      <LodgingUnitCard slot={slot()} hue={hue} canPlace onOpenParty={vi.fn()} />
+    )
+    expect(card(container)).toHaveClass('bg-primary/5')
+    expect(card(container)).not.toHaveClass('bg-muted/25')
+  })
 })
 
 /*

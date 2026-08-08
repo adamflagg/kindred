@@ -46,15 +46,21 @@ const CARD_ELEVATION_SHADOW =
  *
  * Dimming (an invalid merge target mid-drag) and dashing (an empty room) are
  * DELIBERATELY NOT in this table — they are additive booleans where this
- * table is consulted, because neither occupies a property any ring state
- * needs: `opacity`/`pointer-events` and `border-style`/`bg-muted` don't
- * compete with `border-color` or `box-shadow`. Folding all five into one
- * exclusive `cardState` string, as an earlier version of this file did,
- * silently dropped real combinations that used to co-render: a
- * consent-flagged room mid an invalid merge drag lost its amber accent
- * entirely, and an empty room lost its dashed border both mid an invalid
- * drag and under an active drop target. None of those pairs conflict, so
- * none of them should have been exclusive.
+ * table is consulted, because `opacity`/`pointer-events` (dimming) and
+ * `border-style` (dashing's dashed edge) don't compete with `border-color`
+ * or `box-shadow`. Folding all five into one exclusive `cardState` string, as
+ * an earlier version of this file did, silently dropped real combinations
+ * that used to co-render: a consent-flagged room mid an invalid merge drag
+ * lost its amber accent entirely, and an empty room lost its dashed border
+ * mid an invalid drag.
+ *
+ * One piece of dashing is NOT additive, and stays gated below rather than
+ * joining `border-dashed` in the unconditional list: `bg-muted/25`, dashing's
+ * background wash, targets the SAME `background-color` property as
+ * `dropTarget`'s own `bg-primary/5` — reintroducing, for exactly this one
+ * pairing, the identical byte-offset race this table exists to kill. An empty
+ * room being actively hovered for a drop keeps its dashed OUTLINE but not the
+ * muted wash, so `dropTarget`'s own background wins outright.
  *
  * Module scope, not component state: this table references nothing per-card
  * and would otherwise be rebuilt on every one of up to ~82 cards on a board.
@@ -306,13 +312,20 @@ export function LodgingUnitCard({
 
   /*
    * An empty room — the master sheet's "open" case (#2093). Additive for the
-   * same reason as `dimmed`: `border-style`/`bg-muted` don't compete with
-   * `border-color` or `box-shadow`, so an empty room being dragged over, or
-   * caught in someone else's invalid merge drag, can show its dashed border
-   * AND whichever ring/dim state is active, rather than losing one to the
-   * other.
+   * same reason as `dimmed`: `border-style` (the dashed outline) doesn't
+   * compete with `border-color` or `box-shadow`, so an empty room dragged
+   * over, or caught in someone else's invalid merge drag, keeps its dashed
+   * edge AND whichever ring/dim state is active, rather than losing one to
+   * the other.
    */
   const dashed = parties.length === 0
+
+  // The one piece of `dashed` that is NOT unconditionally additive — see
+  // `RING_CLASSES`'s doc above for why `bg-muted/25` has to stand down
+  // specifically against `dropTarget`'s own `bg-primary/5`, both being
+  // `background-color`. An empty room mid-hover shows the drop ring's own
+  // wash, not its own muted one.
+  const dashedWashActive = dashed && ringState !== 'dropTarget'
 
   // `ringState` alone can't gate the inline ring below: `dimmed` still wins
   // against `shared` specifically (see the comment on `dimmed` above), and
@@ -321,7 +334,8 @@ export function LodgingUnitCard({
 
   const cardStateClassName = [
     RING_CLASSES[ringState],
-    dashed ? 'bg-muted/25 border-dashed' : '',
+    dashed ? 'border-dashed' : '',
+    dashedWashActive ? 'bg-muted/25' : '',
     dimmed ? 'pointer-events-none opacity-40' : '',
   ]
     .filter(Boolean)
