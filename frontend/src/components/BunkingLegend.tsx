@@ -330,15 +330,6 @@ const CAMPER_SECTIONS: LegendSection[] = [
   },
 ]
 
-interface BunkingLegendProps {
-  isOpen: boolean
-  onClose: () => void
-}
-
-export default function BunkingLegend({ isOpen, onClose }: BunkingLegendProps) {
-  return <VisualGuideModal isOpen={isOpen} onClose={onClose} sections={CAMPER_SECTIONS} />
-}
-
 /** The open/close state and trigger both `BunkingLegendButton` and
  *  `WeekendLegendButton` share; only the `sections` they open differ. */
 function LegendButton({ sections }: { sections: LegendSection[] }) {
