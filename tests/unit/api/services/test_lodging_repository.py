@@ -9,6 +9,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
+from api.dependencies import lodging_cache
 from api.services.lodging_repository import (
     PAGE_SIZE,
     WEEKEND_SESSION_TYPES,
@@ -21,6 +22,19 @@ def _record(**kwargs: Any) -> MagicMock:
     for key, value in kwargs.items():
         setattr(record, key, value)
     return record
+
+
+@pytest.fixture(autouse=True)
+def _reset_lodging_cache() -> Any:
+    """`lodging_cache` is a process-wide singleton (kindred#1963), so a value
+    one test's mock sets up would otherwise leak into the next test's
+    assertions -- most of this file reuses year 2026 across dozens of tests
+    with different mocked rows. Every test in this module runs against an
+    empty cache and leaves one behind it.
+    """
+    lodging_cache.invalidate_all()
+    yield
+    lodging_cache.invalidate_all()
 
 
 @pytest.fixture
@@ -452,6 +466,68 @@ class TestFetchFamilyCampRegistrations:
         assert result["hh_1"].share_cabin_gate == "yes_share"
 
 
+class TestFetchHouseholdsByIds:
+    """The fresh-fetch escape hatch for kindred#2143.
+
+    `fetch_households` is cached for up to 15 minutes (kindred#1963); a
+    household created after the snapshot was cached is absent from it even
+    though a fresh attendee can already name it. This method is the roster
+    service's fallback for exactly that gap -- deliberately NOT decorated
+    with @cached_by_year, unlike every other read in this class.
+    """
+
+    @pytest.mark.asyncio
+    async def test_filters_by_id_and_keys_by_pb_id(self, repo: LodgingRepository, pb: MagicMock) -> None:
+        pb.collection.return_value.get_full_list.return_value = [_record(id="hh_9", cm_id=2000009)]
+
+        result = await repo.fetch_households_by_ids(["hh_9"])
+
+        pb.collection.assert_called_with("households")
+        filter_str = _last_query(pb)["filter"]
+        assert 'id = "hh_9"' in filter_str
+        assert result["hh_9"].cm_id == 2000009
+
+    @pytest.mark.asyncio
+    async def test_multiple_ids_are_ored_together(self, repo: LodgingRepository, pb: MagicMock) -> None:
+        pb.collection.return_value.get_full_list.return_value = [
+            _record(id="hh_1", cm_id=2000001),
+            _record(id="hh_2", cm_id=2000002),
+        ]
+
+        result = await repo.fetch_households_by_ids(["hh_1", "hh_2"])
+
+        filter_str = _last_query(pb)["filter"]
+        assert 'id = "hh_1"' in filter_str
+        assert 'id = "hh_2"' in filter_str
+        assert "||" in filter_str
+        assert set(result) == {"hh_1", "hh_2"}
+
+    @pytest.mark.asyncio
+    async def test_an_empty_id_list_makes_no_request(self, repo: LodgingRepository, pb: MagicMock) -> None:
+        result = await repo.fetch_households_by_ids([])
+
+        assert result == {}
+        pb.collection.return_value.get_full_list.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_not_cached_across_calls(self, repo: LodgingRepository, pb: MagicMock) -> None:
+        """Unlike fetch_households, a second call must hit PocketBase again --
+        this method exists BECAUSE the cached snapshot is stale."""
+        pb.collection.return_value.get_full_list.return_value = [_record(id="hh_1", cm_id=2000001)]
+
+        await repo.fetch_households_by_ids(["hh_1"])
+        await repo.fetch_households_by_ids(["hh_1"])
+
+        assert pb.collection.return_value.get_full_list.call_count == 2
+
+    @pytest.mark.asyncio
+    async def test_ids_are_escaped(self, repo: LodgingRepository, pb: MagicMock) -> None:
+        await repo.fetch_households_by_ids(['hh_1" || year != ""'])
+
+        filter_str = _last_query(pb)["filter"]
+        assert '\\"' in filter_str
+
+
 def _last_list_query(pb: MagicMock) -> dict[str, Any]:
     call = pb.collection.return_value.get_list.call_args
     params: dict[str, Any] = call[1]["query_params"]
@@ -626,3 +702,155 @@ class TestFilterEscaping:
         filter_str = _last_query(pb)["filter"]
         assert 'pb"evil' not in filter_str, "raw quote reached the filter unescaped"
         assert 'pb\\"evil' in filter_str, "quote was not backslash-escaped"
+
+
+# kindred#1963 -- of the six year-scoped reads in build_roster's TaskGroup,
+# only these four are safe to cache. The other two, fetch_units and
+# count_open_unresolved_aliases, are written straight to PocketBase from the
+# browser by the admin panels (frontend/src/services/lodgingCrud.ts) and would
+# hide an admin's own edit for the cache's whole TTL.
+CACHED_YEAR_SCOPED_READS = [
+    "fetch_households",
+    "fetch_prior_household_cm_ids",
+    "fetch_family_camp_adults",
+    "fetch_family_camp_registrations",
+]
+
+
+class TestYearScopedCaching:
+    """The four sync-only year-scoped reads collapse to one PocketBase round
+    trip per year, however many weekends or requests ask for it.
+    """
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("method_name", CACHED_YEAR_SCOPED_READS)
+    async def test_second_call_for_the_same_year_is_a_cache_hit(
+        self, repo: LodgingRepository, pb: MagicMock, method_name: str
+    ) -> None:
+        method = getattr(repo, method_name)
+        await method(2026)
+        assert pb.collection.return_value.get_full_list.call_count == 1
+
+        await method(2026)
+
+        assert pb.collection.return_value.get_full_list.call_count == 1, "second call must not hit PocketBase again"
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("method_name", CACHED_YEAR_SCOPED_READS)
+    async def test_different_years_are_different_cache_entries(
+        self, repo: LodgingRepository, pb: MagicMock, method_name: str
+    ) -> None:
+        method = getattr(repo, method_name)
+        await method(2026)
+        await method(2027)
+
+        assert pb.collection.return_value.get_full_list.call_count == 2, "each year must issue its own read"
+
+    @pytest.mark.asyncio
+    async def test_two_repository_instances_share_one_cache(self, pb: MagicMock) -> None:
+        """The cache is a module-level singleton (kindred#1963 trap #3): the
+        router builds a fresh LodgingRepository per request
+        (api/routers/lodging.py's `_service`), so per-instance state would
+        never be reused across two requests for the same year.
+        """
+        await LodgingRepository(pb).fetch_households(2026)
+        await LodgingRepository(pb).fetch_households(2026)
+
+        assert pb.collection.return_value.get_full_list.call_count == 1
+
+    @pytest.mark.asyncio
+    async def test_fetch_units_is_never_cached(self, repo: LodgingRepository, pb: MagicMock) -> None:
+        """`lodging_units` is written straight to PocketBase from the admin
+        panel (createLodgingUnit / confirmLodgingUnits / deactivateLodgingUnit
+        in lodgingCrud.ts). Caching it would hide a just-confirmed unit for
+        the whole TTL to buy a read that is not even the expensive one.
+        """
+        await repo.fetch_units(2026)
+        await repo.fetch_units(2026)
+
+        assert pb.collection.return_value.get_full_list.call_count == 2
+
+    @pytest.mark.asyncio
+    async def test_open_unresolved_aliases_is_never_cached(self, repo: LodgingRepository, pb: MagicMock) -> None:
+        """`lodging_ingest_issues.is_resolved` is written straight to
+        PocketBase from the admin panel (mapUnresolvedAlias / ignoreIngestIssue
+        in lodgingCrud.ts). Caching the count would leave a cabin name staff
+        just resolved sitting in the "unmapped" figure for the whole TTL.
+        """
+        pb.collection.return_value.get_list.return_value = _record(total_items=3)
+
+        await repo.count_open_unresolved_aliases(2026)
+        await repo.count_open_unresolved_aliases(2026)
+
+        assert pb.collection.return_value.get_list.call_count == 2
+
+
+class TestLodgingYearCache:
+    """The cache class itself, independent of LodgingRepository.
+
+    Modeled on tests/unit/metrics/test_metrics_cache.py for
+    api/services/metrics_cache.py, the sibling this class is shaped after.
+    """
+
+    def test_get_returns_none_on_miss(self) -> None:
+        from api.services.lodging_cache import LodgingYearCache
+
+        cache = LodgingYearCache(ttl_seconds=300, max_size=10)
+        assert cache.get("fetch_households", 2026) is None
+
+    def test_set_then_get_returns_the_cached_value(self) -> None:
+        from api.services.lodging_cache import LodgingYearCache
+
+        cache = LodgingYearCache(ttl_seconds=300, max_size=10)
+        value = {"hh_1": "household"}
+        cache.set("fetch_households", 2026, value)
+        assert cache.get("fetch_households", 2026) == value
+
+    def test_read_name_and_year_are_independent_axes(self) -> None:
+        from api.services.lodging_cache import LodgingYearCache
+
+        cache = LodgingYearCache(ttl_seconds=300, max_size=10)
+        cache.set("fetch_households", 2026, "households-2026")
+        cache.set("fetch_households", 2027, "households-2027")
+        cache.set("fetch_family_camp_adults", 2026, "adults-2026")
+
+        assert cache.get("fetch_households", 2026) == "households-2026"
+        assert cache.get("fetch_households", 2027) == "households-2027"
+        assert cache.get("fetch_family_camp_adults", 2026) == "adults-2026"
+
+    def test_entry_expires_after_ttl(self) -> None:
+        import time
+
+        from api.services.lodging_cache import LodgingYearCache
+
+        cache = LodgingYearCache(ttl_seconds=1, max_size=10)
+        cache.set("fetch_households", 2026, "value")
+        assert cache.get("fetch_households", 2026) is not None
+        time.sleep(1.1)
+        assert cache.get("fetch_households", 2026) is None
+
+    def test_invalidate_all_clears_every_entry(self) -> None:
+        from api.services.lodging_cache import LodgingYearCache
+
+        cache = LodgingYearCache(ttl_seconds=300, max_size=10)
+        cache.set("fetch_households", 2026, "a")
+        cache.set("fetch_family_camp_adults", 2026, "b")
+
+        cleared = cache.invalidate_all()
+
+        assert cleared == 2
+        assert cache.get("fetch_households", 2026) is None
+        assert cache.get("fetch_family_camp_adults", 2026) is None
+
+    def test_evicts_lru_when_at_capacity(self) -> None:
+        from api.services.lodging_cache import LodgingYearCache
+
+        cache = LodgingYearCache(ttl_seconds=300, max_size=2)
+        cache.set("fetch_households", 2024, "a")
+        cache.set("fetch_households", 2025, "b")
+        cache.get("fetch_households", 2024)  # touch 2024 so 2025 is the LRU entry
+        cache.set("fetch_households", 2026, "c")
+
+        assert cache.get("fetch_households", 2024) is not None
+        assert cache.get("fetch_households", 2025) is None, "least-recently-used entry must be evicted"
+        assert cache.get("fetch_households", 2026) is not None

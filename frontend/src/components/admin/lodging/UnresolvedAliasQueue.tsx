@@ -19,9 +19,9 @@ import { useState } from 'react'
 import toast from 'react-hot-toast'
 
 import { useCurrentYear } from '../../../hooks/useCurrentYear'
+import { useLodgingUnits } from '../../../hooks/useLodgingUnits'
 import {
   ignoreIngestIssue,
-  listLodgingUnits,
   listUnresolvedAliasIssues,
   mapUnresolvedAlias,
 } from '../../../services/lodgingCrud'
@@ -47,11 +47,14 @@ export function UnresolvedAliasQueue() {
   // configured year. PocketBase answers `year = 0` with a successful `200
   // []` rather than an error, so without this gate a cold load would render
   // an empty queue as if there were genuinely nothing to resolve.
-  // ONE constant for the fetch gate and the render guard, because gating only
-  // the fetch does not fix what the gate is for. A disabled TanStack query is
-  // `isLoading === false` (pending but idle -- nothing is fetching) with `data
-  // === undefined`, which is indistinguishable from a settled empty result to
-  // every consumer below. Derive both from this and they cannot drift apart.
+  // FETCH gate for queueQuery below (`enabled: yearReady`), and RENDER guard
+  // for both queries — including unitsQuery, which gates its own fetch on
+  // year-readiness internally (see useLodgingUnits.ts) and does not take
+  // yearReady as an argument. A disabled TanStack query is `isLoading ===
+  // false` (pending but idle -- nothing is fetching) with `data === undefined`,
+  // which is indistinguishable from a settled empty result to every consumer
+  // below, so the render guard is still needed here separately from the fetch
+  // gate.
   const yearReady = currentYear > 0
 
   const queueQuery = useQuery({
@@ -60,12 +63,7 @@ export function UnresolvedAliasQueue() {
     queryFn: () => listUnresolvedAliasIssues(currentYear),
     enabled: yearReady,
   })
-  const unitsQuery = useQuery({
-    queryKey: queryKeys.lodgingUnits(currentYear),
-    ...userDataOptions,
-    queryFn: () => listLodgingUnits(currentYear),
-    enabled: yearReady,
-  })
+  const unitsQuery = useLodgingUnits()
 
   const refresh = () => {
     invalidateLodgingRegistryQueries(queryClient)
@@ -157,7 +155,7 @@ export function UnresolvedAliasQueue() {
                   ) : (
                     <fieldset className="flex flex-wrap gap-3">
                       <legend className={LABEL}>Maps to (pick two or more for a merge)</legend>
-                      {eligibleAliasMembers(unitsQuery.data ?? [], chosen).map((unit) => (
+                      {eligibleAliasMembers(unitsQuery.items, chosen).map((unit) => (
                         <label key={unit.id} className="inline-flex items-center gap-1.5 text-sm">
                           <input
                             type="checkbox"

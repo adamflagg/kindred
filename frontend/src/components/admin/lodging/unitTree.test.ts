@@ -140,14 +140,14 @@ describe('directChildren', () => {
 describe('parentCandidates', () => {
   it('excludes the unit itself', () => {
     const units = [unit({ id: 'a', is_container: true }), unit({ id: 'b', is_container: true })]
-    const ids = parentCandidates('a', units).map((u) => u.id)
+    const ids = parentCandidates('a', units, '').map((u) => u.id)
     expect(ids).not.toContain('a')
     expect(ids).toEqual(['b'])
   })
 
   it('excludes non-container units — a room may not be a parent', () => {
     const units = [unit({ id: 'a', is_container: true }), unit({ id: 'b', is_container: false })]
-    expect(parentCandidates('a', units)).toEqual([])
+    expect(parentCandidates('a', units, '')).toEqual([])
   })
 
   it('excludes a direct child, which would create a cycle', () => {
@@ -155,7 +155,7 @@ describe('parentCandidates', () => {
       unit({ id: 'a', is_container: true }),
       unit({ id: 'b', parent_unit: 'a', is_container: true }),
     ]
-    expect(parentCandidates('a', units).map((u) => u.id)).not.toContain('b')
+    expect(parentCandidates('a', units, '').map((u) => u.id)).not.toContain('b')
   })
 
   it('excludes a grandchild, not just a direct child', () => {
@@ -164,14 +164,14 @@ describe('parentCandidates', () => {
       unit({ id: 'b', parent_unit: 'a', is_container: true }),
       unit({ id: 'c', parent_unit: 'b', is_container: true }),
     ]
-    const ids = parentCandidates('a', units).map((u) => u.id)
+    const ids = parentCandidates('a', units, '').map((u) => u.id)
     expect(ids).not.toContain('b')
     expect(ids).not.toContain('c')
   })
 
   it('offers every container on create, since there is no self or descendant yet', () => {
     const units = [unit({ id: 'a', is_container: true }), unit({ id: 'b', is_container: true })]
-    expect(parentCandidates(undefined, units).map((u) => u.id)).toEqual(['a', 'b'])
+    expect(parentCandidates(undefined, units, '').map((u) => u.id)).toEqual(['a', 'b'])
   })
 })
 
@@ -190,7 +190,7 @@ describe('parentCandidates — scoped to the area', () => {
       unit({ id: 'far', area: SOUTH, is_container: true }),
     ]
 
-    const ids = parentCandidates('child', units, NORTH).map((u) => u.id)
+    const ids = parentCandidates('child', units, '', NORTH).map((u) => u.id)
     expect(ids).toEqual(['near'])
   })
 
@@ -198,13 +198,16 @@ describe('parentCandidates — scoped to the area', () => {
     // Filtering a stored parent out of its own picker would leave the select
     // with no matching option: it would fall to the first entry, and the next
     // save would silently REPARENT the unit the staffer only meant to rename.
+    // The caller passes the CURRENT parent explicitly (#2065) — on initial
+    // load that's the stored value, `unit.parent_unit`, but this function no
+    // longer looks it up itself.
     const units = [
       unit({ id: 'child', area: NORTH, parent_unit: 'far' }),
       unit({ id: 'near', area: NORTH, is_container: true }),
       unit({ id: 'far', area: SOUTH, is_container: true }),
     ]
 
-    const ids = parentCandidates('child', units, NORTH).map((u) => u.id)
+    const ids = parentCandidates('child', units, 'far', NORTH).map((u) => u.id)
     expect(ids).toContain('far')
     expect(ids).toContain('near')
   })
@@ -215,7 +218,7 @@ describe('parentCandidates — scoped to the area', () => {
       unit({ id: 'far', area: SOUTH, is_container: true }),
     ]
 
-    expect(parentCandidates(undefined, units).map((u) => u.id)).toEqual(['near', 'far'])
+    expect(parentCandidates(undefined, units, '').map((u) => u.id)).toEqual(['near', 'far'])
   })
 })
 
@@ -232,7 +235,7 @@ describe('parentCandidates — scoped to how the unit is used', () => {
       unit({ id: 'staff-bldg', area: A, is_container: true, inventory_class: 'staff_default' }),
     ]
 
-    const ids = parentCandidates('guest-room', units, A, 'family_pool').map((u) => u.id)
+    const ids = parentCandidates('guest-room', units, '', A, 'family_pool').map((u) => u.id)
     expect(ids).toEqual(['guest-bldg'])
   })
 
@@ -246,7 +249,7 @@ describe('parentCandidates — scoped to how the unit is used', () => {
       unit({ id: 'staff-bldg', area: A, is_container: true, inventory_class: 'staff_default' }),
     ]
 
-    const ids = parentCandidates('staff-room', units, A, 'staff_default').map((u) => u.id)
+    const ids = parentCandidates('staff-room', units, '', A, 'staff_default').map((u) => u.id)
     expect(ids).toEqual(['guest-bldg', 'staff-bldg'])
   })
 
@@ -263,8 +266,31 @@ describe('parentCandidates — scoped to how the unit is used', () => {
       unit({ id: 'staff-bldg', area: A, is_container: true, inventory_class: 'staff_default' }),
     ]
 
-    expect(parentCandidates('guest-room', units, A, 'family_pool').map((u) => u.id)).toContain(
-      'staff-bldg'
+    expect(
+      parentCandidates('guest-room', units, 'staff-bldg', A, 'family_pool').map((u) => u.id)
+    ).toContain('staff-bldg')
+  })
+
+  // #2065: `parentCandidates` used to spare the STORED parent
+  // (`units.find((u) => u.id === unitId)?.parent_unit`) rather than the LIVE
+  // selection the caller is about to render. This reproduces the narrowing
+  // direction the widening test above's sibling (#2051) never covered: a
+  // guest room picks a staff parent while Allocation is briefly "staff",
+  // then Allocation flips back to "guest" — the stored record was never
+  // saved, so a stored-parent lookup would still return '', but the LIVE,
+  // not-yet-saved selection is the staff building.
+  it('spares the LIVE selection when narrowing, not the stale stored parent', () => {
+    const units = [
+      unit({ id: 'guest-room', area: A, inventory_class: 'family_pool' }), // stored parent_unit: ''
+      unit({ id: 'guest-bldg', area: A, is_container: true, inventory_class: 'family_pool' }),
+      unit({ id: 'staff-bldg', area: A, is_container: true, inventory_class: 'staff_default' }),
+    ]
+
+    // Live selection is staff-bldg even though the stored record's
+    // parent_unit is still ''.
+    const ids = parentCandidates('guest-room', units, 'staff-bldg', A, 'family_pool').map(
+      (u) => u.id
     )
+    expect(ids).toContain('staff-bldg')
   })
 })

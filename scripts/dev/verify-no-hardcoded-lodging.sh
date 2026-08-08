@@ -62,6 +62,19 @@ if [[ "$grep_status" -ge 2 ]]; then
   exit 2
 fi
 
+# The _test./.test. exemption below is a known blind spot, not an oversight:
+# kindred#1909 found that two NEEDLES-matching literals landed in test files
+# (via PR #2006 and #2037) and sailed through, because this filter drops
+# every hit in a test file -- comment prose and fixture code alike -- with no
+# distinction between them. The fix applied there was to scrub those two
+# literals at the source, not narrow this filter: a narrower filter (still
+# failing on fixture literals, only dropping prose) would also fail on the
+# many OTHER lodging test files that legitimately hardcode real unit names as
+# fixture data (lodging_alias_resolver_test.go, LodgingUnitForm.test.tsx, and
+# others) -- the exact case this exemption exists for. A green run on a test
+# file only ever proved "no unit name outside a test file", never "no unit
+# name in test fixtures either" -- treat a future NEEDLES hit inside one as
+# worth a look, not an automatic pass.
 HITS=""
 if [[ -n "$RAW" ]]; then
   HITS=$(printf '%s\n' "$RAW" \

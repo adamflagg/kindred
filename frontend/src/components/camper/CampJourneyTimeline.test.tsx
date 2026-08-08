@@ -30,3 +30,41 @@ describe('CampJourneyTimeline display rules (spec §8)', () => {
     expect(screen.getByText('Unassigned')).toBeInTheDocument()
   })
 })
+
+// #2113: widening CAMPER_JOURNEY_TYPES to include family camp means the
+// empty state and header strings can no longer read as summer-only, and
+// family rows get a visual de-emphasis tag to address the "noisy for
+// multi-session staff kids" concern the original exclusion was guarding.
+describe('CampJourneyTimeline program-agnostic strings (#2113)', () => {
+  it('shows a program-agnostic empty state, not "First summer at camp!"', () => {
+    render(<CampJourneyTimeline history={[]} yearsAtCamp={0} currentYear={2026} />)
+    expect(screen.queryByText(/first summer at camp/i)).toBeNull()
+    expect(screen.getByText(/first year at camp/i)).toBeInTheDocument()
+  })
+
+  it('renders the header year count without a summer-flavored tagline', () => {
+    render(<CampJourneyTimeline history={[]} yearsAtCamp={3} currentYear={2026} />)
+    expect(screen.getByText('3 years at camp')).toBeInTheDocument()
+  })
+
+  it('singularizes the header count for one year', () => {
+    render(<CampJourneyTimeline history={[]} yearsAtCamp={1} currentYear={2026} />)
+    expect(screen.getByText('1 year at camp')).toBeInTheDocument()
+  })
+
+  it('tags a family-camp row with a de-emphasis label', () => {
+    const history: HistoricalRecord[] = [
+      { year: 2019, sessionName: 'Winter Family Weekend', sessionType: 'family' },
+    ]
+    render(<CampJourneyTimeline history={history} yearsAtCamp={1} currentYear={2026} />)
+    expect(screen.getByText('Family')).toBeInTheDocument()
+  })
+
+  it('does not tag a summer row with the family de-emphasis label', () => {
+    const history: HistoricalRecord[] = [
+      { year: 2019, sessionName: 'Session 2', sessionType: 'main' },
+    ]
+    render(<CampJourneyTimeline history={history} yearsAtCamp={1} currentYear={2026} />)
+    expect(screen.queryByText('Family')).toBeNull()
+  })
+})

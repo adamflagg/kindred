@@ -44,8 +44,22 @@ skipping instead.
 
 **Absent file is not an error.** A clone without `kindred-local` boots normally
 with an empty registry and a log line — the same graceful degradation
-`branding.local.json` has. An unreadable or malformed file logs a warning and
-leaves the registry alone rather than taking the service down.
+`branding.local.json` has.
+
+**A file that IS present but unloadable fails the boot.** Malformed JSON, a
+duplicate code, an unknown area/parent/alias-member reference — anything that
+makes `SeedRegistry` return an error stops the service from starting, rather
+than coming up with an empty registry behind a single warn-level log line
+nobody is watching (issues #2054, #2141). The bound is the same one the
+bootstrap gate already gives for free: once any season has rows the loader
+returns early without reading the file at all, so an already-seeded
+deployment cannot be taken down by a bad file on a later boot. Only a
+genuinely empty registry with a broken file present fails.
+
+The one exception is a failure to *check* for existing rows
+(`lodging.ErrRegistryRowCheck`): the loader then cannot tell whether anything
+is at risk, so it warns and boots rather than compounding one failure with a
+second, less legible one.
 
 ## Loader semantics: create-if-absent, never update
 
@@ -144,8 +158,9 @@ and `scripts/worktree/new.sh` does the same for a new worktree.
 
 The block below is annotated for documentation. **The loader uses Go's
 `encoding/json`, which rejects `//` comments** — strip them from the real file.
-A file that fails to parse is a logged warning, not a crash, so the symptom is
-an empty registry rather than an error anyone will see.
+On a fresh deployment a file that fails to parse **fails the boot** (#2141), so
+the symptom is a service that will not start with the parse error in the log —
+loud on purpose, rather than a silently empty registry.
 
 ```jsonc
 {

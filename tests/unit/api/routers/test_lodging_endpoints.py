@@ -117,6 +117,23 @@ def _medical_reads(**kwargs: Any) -> list[Any]:
     return []
 
 
+@pytest.fixture(autouse=True)
+def _reset_lodging_cache() -> Generator[None]:
+    """`lodging_cache` is a process-wide singleton (kindred#1963): the router
+    builds a real `LodgingRepository` per request even in these router tests
+    (`_build_app` only patches the PocketBase client, not the repository
+    layer), so a value one test's mock warms would otherwise survive into the
+    next test's assertions for the same year. Mirrors
+    tests/unit/api/services/test_lodging_repository.py's fixture of the same
+    name.
+    """
+    from api.dependencies import lodging_cache
+
+    lodging_cache.invalidate_all()
+    yield
+    lodging_cache.invalidate_all()
+
+
 @pytest.fixture
 def mock_pb() -> MagicMock:
     client = MagicMock()

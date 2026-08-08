@@ -313,6 +313,38 @@ describe('LodgingAliasesPanel — units query state', () => {
   // The editor's member checkboxes come from a SECOND query. Coerced to [],
   // a failed units fetch opens an editor with nothing to pick, and saving
   // then strips the alias of its members.
+  it('still moves focus into the form when the units resolve after the editor opened', async () => {
+    // The editor body is gated on the units query, so a staffer who clicks
+    // "New alias" during a slow fetch gets the "Loading units…" placeholder
+    // and nothing focusable. The focus effect fires once against that
+    // placeholder and, keyed on `[editing]` alone, never re-runs when the
+    // real form mounts — focus is left on the button, and the member-unit
+    // fieldset that IS this form's payload is never reached by keyboard.
+    let resolveUnits: (units: unknown[]) => void = () => undefined
+    listLodgingUnits.mockReturnValue(
+      new Promise<unknown[]>((resolve) => {
+        resolveUnits = resolve
+      })
+    )
+    const user = userEvent.setup()
+    render(<LodgingAliasesPanel />, { wrapper })
+    await waitFor(() => {
+      expect(screen.getByText('North Lodge - Whole')).toBeInTheDocument()
+    })
+
+    await user.click(screen.getByRole('button', { name: 'New alias' }))
+    // The editor is open but the form has not mounted yet — this is the
+    // window the bug lives in, so assert it rather than assuming it.
+    expect(screen.getByText(/Loading units/i)).toBeInTheDocument()
+    expect(screen.queryByLabelText('Cabin string')).not.toBeInTheDocument()
+
+    resolveUnits([{ id: 'u1', name: 'North Lodge Front', code: 'north-lodge-front' }])
+
+    await waitFor(() => {
+      expect(screen.getByLabelText('Cabin string')).toHaveFocus()
+    })
+  })
+
   it('says so rather than opening an editor with no units to choose', async () => {
     listLodgingUnits.mockRejectedValue(new Error('network'))
     const user = userEvent.setup()

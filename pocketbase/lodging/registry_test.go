@@ -2,6 +2,7 @@ package lodging
 
 import (
 	"bytes"
+	"errors"
 	"log/slog"
 	"os"
 	"path/filepath"
@@ -872,6 +873,56 @@ func TestSeedRegistryResolvesAbsoluteConfigRoot(t *testing.T) {
 	}
 }
 
+// --- RegistryFilePresent -----------------------------------------------------
+//
+// main.go (issue #2054, Half 2) needs to tell "no private config, nothing to
+// load" apart from "config is here and unreadable without a season" so a
+// season-less boot can warn-and-continue in the first case but fail in the
+// second. RegistryFilePresent is presence-only — it must not read, parse, or
+// validate the file, so it shares the same candidate-path search SeedRegistry
+// uses without duplicating any of the loading behavior.
+func TestRegistryFilePresentTrueWhenFileExistsUnderWorkingDirectory(t *testing.T) {
+	base := t.TempDir()
+	if err := os.Mkdir(filepath.Join(base, "config"), 0o750); err != nil {
+		t.Fatalf("mkdir config: %v", err)
+	}
+	if err := os.WriteFile(
+		filepath.Join(base, "config", registryFileName), []byte(fixtureRegistry), 0o600,
+	); err != nil {
+		t.Fatalf("write registry: %v", err)
+	}
+	withRegistryBasePath(t, base)
+	withRegistryAbsoluteRoots(t, []string{filepath.Join(t.TempDir(), "unused")})
+
+	if !RegistryFilePresent() {
+		t.Error("expected RegistryFilePresent() true when config/lodging_registry.json exists under the working directory")
+	}
+}
+
+func TestRegistryFilePresentTrueViaAbsoluteRoot(t *testing.T) {
+	absRoot := t.TempDir()
+	if err := os.WriteFile(
+		filepath.Join(absRoot, registryFileName), []byte(fixtureRegistry), 0o600,
+	); err != nil {
+		t.Fatalf("write registry: %v", err)
+	}
+	withRegistryAbsoluteRoots(t, []string{absRoot})
+	withRegistryBasePath(t, t.TempDir())
+
+	if !RegistryFilePresent() {
+		t.Error("expected RegistryFilePresent() true when the file exists under an absolute root")
+	}
+}
+
+func TestRegistryFilePresentFalseWhenNoConfigAnywhere(t *testing.T) {
+	withRegistryBasePath(t, t.TempDir())
+	withRegistryAbsoluteRoots(t, []string{filepath.Join(t.TempDir(), "unused")})
+
+	if RegistryFilePresent() {
+		t.Error("expected RegistryFilePresent() false with no registry file on any candidate path")
+	}
+}
+
 // --- season-scoped seeding --------------------------------------------------
 //
 // yearFixtureRegistry is a container with one child, keyed off the codes
@@ -1075,7 +1126,7 @@ func TestSeedRegistrySecondSeasonIsANoOpOnceOneSeasonHasRows(t *testing.T) {
 // consequence is that the create-if-absent behavior no longer finishes a job
 // a previous run started: before the gate, a seed that died halfway was
 // completed by the next boot; now the areas it committed make
-// registryHasAnyRows report true forever, so the loader logs "skipping" and
+// RegistryHasRows report true forever, so the loader logs "skipping" and
 // the registry stays permanently half-built, with no error anywhere to say so.
 //
 // The gate is not the bug and must not be loosened to fix this. The seed has
@@ -1095,7 +1146,7 @@ func TestSeedRegistryLeavesNothingBehindWhenAPassFails(t *testing.T) {
 	}
 	if n := countRecords(t, app, "lodging_areas"); n != 0 {
 		t.Errorf("%d areas survived a failed bootstrap; want 0 -- a committed area "+
-			"makes registryHasAnyRows true, so the bootstrap never runs again", n)
+			"makes RegistryHasRows true, so the bootstrap never runs again", n)
 	}
 
 	// The point of atomicity here: the next boot must still be able to seed.
@@ -1106,5 +1157,64 @@ func TestSeedRegistryLeavesNothingBehindWhenAPassFails(t *testing.T) {
 	if n := countRecords(t, app, "lodging_units"); n != 2 {
 		t.Errorf("%d units after the retry; want 2 -- a transient failure must not "+
 			"permanently disable the bootstrap", n)
+	}
+}
+
+// TestSeedRegistryRowCheckFailureIsTaggedAsSuch pins the sentinel main.go's
+// boot gate keys on (issue #2141).
+//
+// SeedRegistry has exactly two error sources, and they warrant opposite boot
+// treatments: a RegistryHasRows failure means the loader could not even
+// determine whether there is anything at risk, so the boot must fail OPEN
+// (warn and continue) rather than compound one failure with a second, less
+// legible one -- the same call main.go already makes for the season branch.
+// Everything else is a genuinely bad registry file and must take the boot
+// down. Tagging only the row-check failure is what lets main.go tell them
+// apart without inspecting error strings.
+func TestSeedRegistryRowCheckFailureIsTaggedAsSuch(t *testing.T) {
+	app, err := tests.NewTestApp()
+	if err != nil {
+		t.Fatalf("NewTestApp: %v", err)
+	}
+	t.Cleanup(app.Cleanup)
+	// Deliberately NO setupRegistryCollections: with lodging_areas absent,
+	// RegistryHasRows cannot answer and SeedRegistry fails on its first step.
+
+	seedErr := SeedRegistry(app, testYear)
+	if seedErr == nil {
+		t.Fatal("SeedRegistry returned nil with no lodging collections, want a row-check error")
+	}
+	if !errors.Is(seedErr, ErrRegistryRowCheck) {
+		t.Errorf("row-check failure is not tagged ErrRegistryRowCheck, so main.go "+
+			"cannot fail open on it; got: %v", seedErr)
+	}
+}
+
+// The other half of the same contract: a bad registry FILE must not be
+// mistaken for a row-check failure, or #2141's whole point is lost and the
+// malformed-file case keeps the warn-and-boot treatment it has today.
+func TestSeedRegistryFileErrorIsNotTaggedAsARowCheckFailure(t *testing.T) {
+	app := newRegistryTestApp(t)
+
+	base := t.TempDir()
+	if err := os.Mkdir(filepath.Join(base, "config"), 0o750); err != nil {
+		t.Fatalf("mkdir config: %v", err)
+	}
+	if err := os.WriteFile(
+		filepath.Join(base, "config", "lodging_registry.json"),
+		[]byte(`{"areas": [ NOT JSON`), 0o600,
+	); err != nil {
+		t.Fatalf("write registry: %v", err)
+	}
+	withRegistryBasePath(t, base)
+	withRegistryAbsoluteRoots(t, nil)
+
+	seedErr := SeedRegistry(app, testYear)
+	if seedErr == nil {
+		t.Fatal("malformed registry file returned nil, want an error")
+	}
+	if errors.Is(seedErr, ErrRegistryRowCheck) {
+		t.Errorf("a malformed registry file was tagged as a row-check failure, so "+
+			"main.go would fail open on the very case #2141 exists to catch; got: %v", seedErr)
 	}
 }

@@ -17,25 +17,18 @@
  * Deactivate, never delete (spec §3.8). The Go guard in pocketbase/lodging
  * blocks deleting a referenced unit anyway, but the UI should not offer it.
  */
-import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { useQueryClient } from '@tanstack/react-query'
 import { Home, Map, Plus } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import toast from 'react-hot-toast'
 import { Link } from 'react-router'
 
 import { useCurrentYear } from '../../../hooks/useCurrentYear'
-import {
-  confirmLodgingUnits,
-  deactivateLodgingUnit,
-  listLodgingAreas,
-  listLodgingUnits,
-} from '../../../services/lodgingCrud'
+import { useLodgingAreas } from '../../../hooks/useLodgingAreas'
+import { useLodgingUnits } from '../../../hooks/useLodgingUnits'
+import { confirmLodgingUnits, deactivateLodgingUnit } from '../../../services/lodgingCrud'
 import type { LodgingUnitRecord } from '../../../types/lodging'
-import {
-  invalidateLodgingRegistryQueries,
-  queryKeys,
-  userDataOptions,
-} from '../../../utils/queryKeys'
+import { invalidateLodgingRegistryQueries } from '../../../utils/queryKeys'
 import { QueryGuard } from '../../QueryGuard'
 import { Modal } from '../../ui/Modal'
 import { BUTTON_PRIMARY, BUTTON_SECONDARY } from './lodgingStyles'
@@ -56,6 +49,21 @@ export function LodgingUnitsPanel() {
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set())
   const formRef = useRef<HTMLDivElement>(null)
 
+  // RENDER guard only, not a fetch gate. useLodgingUnits / useLodgingAreas
+  // each gate their own fetch on year-readiness internally — currentYear > 0
+  // is not passed to either call below — so this constant does not control
+  // when they fetch, only when they render. It is still needed for that: a
+  // disabled TanStack query is `isLoading === false` (pending but idle --
+  // nothing is fetching) with `data === undefined`, which is indistinguishable
+  // from a settled empty result to every consumer below. CurrentYearContext
+  // returns the literal 0 until the backend supplies the configured year, and
+  // PocketBase answers `year = 0` with a successful `200 []` rather than an
+  // error — this guard is what keeps that from rendering as genuinely empty.
+  const yearReady = currentYear > 0
+
+  const unitsQuery = useLodgingUnits()
+  const areasQuery = useLodgingAreas()
+
   /**
    * Move FOCUS to the editor whenever it opens — including switching straight
    * from editing one unit to another, since the form never unmounts in between
@@ -68,36 +76,22 @@ export function LodgingUnitsPanel() {
    * outright: it is unmissable without moving anything, so the staffer keeps
    * their place in the list. Only the focus half is still needed, and the
    * shared Modal does not set initial focus itself.
+   *
+   * `areasQuery.isSuccess` IS A DEPENDENCY, not a stray one — and it is why
+   * this effect sits BELOW the query rather than up with the other state. The
+   * form is gated on that flag: until the areas resolve, the dialog holds the
+   * "Loading areas…" paragraph and there is nothing to focus. Opening the
+   * editor during a slow areas fetch therefore runs this effect against an
+   * empty dialog, and keyed on `[editing]` alone it would never re-run once
+   * the real form mounts — leaving focus on the trigger behind the backdrop,
+   * which for an aria-modal dialog strands a keyboard or screen-reader user
+   * outside it entirely. Only the success branch renders anything focusable
+   * (the error branch is a message paragraph), so this one flag covers it.
    */
   useEffect(() => {
     if (editing === null) return
     formRef.current?.querySelector<HTMLElement>('input, select, textarea')?.focus()
-  }, [editing])
-
-  // ONE constant for the fetch gate and the render guard, because gating only
-  // the fetch does not fix what the gate is for. A disabled TanStack query is
-  // `isLoading === false` (pending but idle -- nothing is fetching) with `data
-  // === undefined`, which is indistinguishable from a settled empty result to
-  // every consumer below. Derive both from this and they cannot drift apart.
-  const yearReady = currentYear > 0
-
-  const unitsQuery = useQuery({
-    queryKey: queryKeys.lodgingUnits(currentYear),
-    ...userDataOptions,
-    queryFn: () => listLodgingUnits(currentYear),
-    // CurrentYearContext returns the literal 0 until the backend supplies the
-    // configured year. Unlike the FastAPI routers (`ge=2000` -> a loud 422),
-    // PocketBase answers `year = 0` with a successful `200 []`, so without
-    // this gate a cold load would render "no lodging units" as if it were
-    // true. Convention: `useWeekendRoster.ts:30-37`.
-    enabled: yearReady,
-  })
-  const areasQuery = useQuery({
-    queryKey: queryKeys.lodgingAreas(currentYear),
-    ...userDataOptions,
-    queryFn: () => listLodgingAreas(currentYear),
-    enabled: yearReady,
-  })
+  }, [editing, areasQuery.isSuccess])
 
   const refresh = () => {
     setEditing(null)
@@ -260,7 +254,7 @@ export function LodgingUnitsPanel() {
                   <p className="text-forest-200 text-sm">
                     {editing === 'new'
                       ? 'A cabin, tent, yurt or room'
-                      : (areasQuery.data?.find((a) => a.id === editing.area)?.name ?? 'No area')}
+                      : (areasQuery.items.find((a) => a.id === editing.area)?.name ?? 'No area')}
                   </p>
                 </div>
               </div>
@@ -283,8 +277,8 @@ export function LodgingUnitsPanel() {
                  records writes the PREVIOUS unit's fields to the new one. */
               <LodgingUnitForm
                 key={editing === 'new' ? 'new' : editing.id}
-                areas={areasQuery.data}
-                units={unitsQuery.data ?? []}
+                areas={areasQuery.items}
+                units={unitsQuery.items}
                 unit={editing === 'new' ? undefined : editing}
                 year={currentYear}
                 onSaved={refresh}
@@ -313,6 +307,11 @@ export function LodgingUnitsPanel() {
       <QueryGuard
         isLoading={unitsQuery.isLoading || !yearReady}
         error={unitsQuery.error}
+        // Deliberately `.data`, not `.items` — QueryGuard's empty-vs-loading
+        // branch below keys on `!data`. `.items` coerces to `[]` while
+        // pending, which reads to QueryGuard as a settled empty result and
+        // would swap "still loading" for "No lodging units yet." See the
+        // warning on `UseLodgingUnitsResult.data` in useLodgingUnits.ts.
         data={unitsQuery.data}
         label="lodging units"
         emptyMessage="No lodging units yet."
@@ -334,7 +333,7 @@ export function LodgingUnitsPanel() {
             <div className="card-lodge overflow-x-auto p-4">
               <table className="w-full text-left text-sm">
                 <UnitsTableHeader sort={sort} onToggleSort={toggleSort} />
-                {groupUnitsByArea(units, areasQuery.data ?? []).map((group) => (
+                {groupUnitsByArea(units, areasQuery.items).map((group) => (
                   <UnitAreaGroup
                     key={group.areaId}
                     group={group}

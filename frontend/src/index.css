@@ -14,6 +14,7 @@
    ============================================ */
 @theme {
   /* Camp Forest Palette - Deepened & Warmed */
+  --color-forest-950: oklch(14% 0.06 158); /* #061c13 - Twilight forest */
   --color-forest-900: oklch(18% 0.08 160); /* #0a2e1f - Deep forest shadow */
   --color-forest-800: oklch(23% 0.1 162); /* #0d3d28 - Night forest */
   --color-forest-700: oklch(28% 0.12 164); /* #124d33 - Dense canopy */
@@ -704,31 +705,6 @@
     border-radius: 9999px;
   }
 
-  /* Lodge shadows */
-  .shadow-lodge-sm {
-    box-shadow:
-      0 1px 2px hsl(var(--shadow-color) / 0.04),
-      0 2px 8px hsl(var(--shadow-color) / 0.06);
-  }
-
-  .shadow-lodge {
-    box-shadow:
-      0 1px 2px hsl(var(--shadow-color) / 0.04),
-      0 4px 16px hsl(var(--shadow-color) / 0.08);
-  }
-
-  .shadow-lodge-lg {
-    box-shadow:
-      0 2px 4px hsl(var(--shadow-color) / 0.04),
-      0 8px 32px hsl(var(--shadow-color) / 0.12);
-  }
-
-  .shadow-lodge-xl {
-    box-shadow:
-      0 4px 8px hsl(var(--shadow-color) / 0.05),
-      0 16px 48px hsl(var(--shadow-color) / 0.15);
-  }
-
   /* Glow effects */
   .glow-accent {
     box-shadow:
@@ -1096,6 +1072,32 @@
   .toast-exit {
     animation: toastSlideOut 0.25s ease-in forwards;
   }
+}
+
+/* Lodge shadows — @utility (not @layer utilities) so variants like
+   hover: and dark: generate; see #2027. */
+@utility shadow-lodge-sm {
+  box-shadow:
+    0 1px 2px hsl(var(--shadow-color) / 0.04),
+    0 2px 8px hsl(var(--shadow-color) / 0.06);
+}
+
+@utility shadow-lodge {
+  box-shadow:
+    0 1px 2px hsl(var(--shadow-color) / 0.04),
+    0 4px 16px hsl(var(--shadow-color) / 0.08);
+}
+
+@utility shadow-lodge-lg {
+  box-shadow:
+    0 2px 4px hsl(var(--shadow-color) / 0.04),
+    0 8px 32px hsl(var(--shadow-color) / 0.12);
+}
+
+@utility shadow-lodge-xl {
+  box-shadow:
+    0 4px 8px hsl(var(--shadow-color) / 0.05),
+    0 16px 48px hsl(var(--shadow-color) / 0.15);
 }
 
 /* ============================================
