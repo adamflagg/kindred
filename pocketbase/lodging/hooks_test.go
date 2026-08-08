@@ -294,6 +294,22 @@ func seedSession(t *testing.T, app core.App) string {
 	return r.Id
 }
 
+// seedAvailability creates a lodging_availability row naming unit for the
+// given year and returns its id -- the lodging_availability twin of
+// seedUnit/seedArea, for the guardYearImmutable tests that need a dependent
+// availability row without inlining its construction at each call site.
+func seedAvailability(t *testing.T, app core.App, unit string, year int) string {
+	t.Helper()
+	r := core.NewRecord(mustCollection(t, app, "lodging_availability"))
+	r.Set("year", year)
+	r.Set("unit", unit)
+	r.Set("session", seedSession(t, app))
+	if err := app.Save(r); err != nil {
+		t.Fatalf("seed availability for unit %q year %d: %v", unit, year, err)
+	}
+	return r.Id
+}
+
 // newHooksTestApp builds a fresh test app carrying the lodging fixture with
 // the integrity hooks already wired, for tests that don't need to stage state
 // before the guards go live (contrast the delete-guard tests above, which
@@ -307,6 +323,52 @@ func newHooksTestApp(t *testing.T) core.App {
 	}
 	t.Cleanup(app.Cleanup)
 	setupCollections(t, app)
+	wireHooks(app)
+	return app
+}
+
+// newSlotMergesTestApp is the lodging_slot_merges twin of newHooksTestApp.
+//
+// lodging_slot_merges is deliberately NOT part of the shared setupCollections
+// fixture every other test in this file builds on --
+// TestGuardUnitYearSkipsAnAbsentCollection needs it ABSENT there to pin
+// wireHooks's collection-not-found skip path. So this adds it as a SEPARATE,
+// later step, mirroring lodging_availability's shape (setupCollections):
+// unit/session/year, since lodging_slot_merges is the second single-relation
+// case ("unit", MaxSelect 1) alongside availability -- session_cm_id and
+// scenario are on the production table (1500000139) but unread by any guard,
+// so they are left out the same way setupCollections leaves out fields
+// nothing under test reads.
+//
+// The collection has to exist BEFORE wireHooks runs: wireHooks's dependent-
+// collection loop pre-filters yearImmutableRefs to collections that exist AT
+// BIND TIME (see its own comment in hooks.go), so creating lodging_slot_merges
+// afterward would leave it permanently excluded from refs for this app's
+// lifetime.
+func newSlotMergesTestApp(t *testing.T) core.App {
+	t.Helper()
+	app, err := tests.NewTestApp()
+	if err != nil {
+		t.Fatalf("NewTestApp: %v", err)
+	}
+	t.Cleanup(app.Cleanup)
+	setupCollections(t, app)
+
+	unitsCol := mustCollection(t, app, "lodging_units")
+	sessionsCol := mustCollection(t, app, "camp_sessions")
+
+	slotMerges := core.NewBaseCollection("lodging_slot_merges")
+	slotMerges.Fields.Add(&core.RelationField{
+		Name: "unit", CollectionId: unitsCol.Id, MaxSelect: 1,
+	})
+	slotMerges.Fields.Add(&core.RelationField{
+		Name: "session", CollectionId: sessionsCol.Id, MaxSelect: 1,
+	})
+	slotMerges.Fields.Add(&core.NumberField{Name: "year"})
+	if err := app.Save(slotMerges); err != nil {
+		t.Fatalf("save lodging_slot_merges: %v", err)
+	}
+
 	wireHooks(app)
 	return app
 }
@@ -1502,5 +1564,315 @@ func TestGuardUnitYearSkipsAUnitsSelfReference(t *testing.T) {
 	stored.Set("year", 2027)
 	if err := app.Save(stored); err != nil {
 		t.Fatalf("a row must not be refused for disagreeing with itself: %v", err)
+	}
+}
+
+// TestGuardYearImmutableAllowsARoutineEditThatResendsTheSameYear pins the trap
+// kindred#2067 calls out by name: LodgingUnitForm.handleSubmit
+// (frontend/src/components/admin/lodging/LodgingUnitForm.tsx) sends
+// `year: openedYear` on EVERY save, routine edits included -- so a guard that
+// tests whether `year` is PRESENT in the write, rather than whether it
+// CHANGED, would refuse ordinary saves on any unit with so much as one
+// dependent.
+//
+// MUTATION-CHECK: replace guardYearImmutable's
+// `oldYear := e.Record.Original().GetInt("year")` / `oldYear == newYear` pair
+// with a presence test and this test goes red -- the save below resends the
+// unit's unchanged year while a real dependent (the availability row) exists,
+// which is exactly the shape a presence test would wrongly refuse.
+func TestGuardYearImmutableAllowsARoutineEditThatResendsTheSameYear(t *testing.T) {
+	app := newHooksTestApp(t)
+	unit := seedUnit(t, app, "test-unit-a", 2027)
+	seedAvailability(t, app, unit, 2027)
+
+	rec, err := app.FindRecordById(collectionUnits, unit)
+	if err != nil {
+		t.Fatalf("reloading the unit: %v", err)
+	}
+	rec.Set("year", 2027)                 // the value the form always resends
+	rec.Set("name", "Renamed Building A") // the actual edit being made
+
+	if err := app.Save(rec); err != nil {
+		t.Fatalf("refused a routine edit that resent the unchanged year: %v", err)
+	}
+}
+
+// TestGuardYearImmutableRejectsAUnitYearChangeWithAnAvailabilityDependent is
+// the single-relation case (`lodging_availability.unit`, MaxSelect 1) --
+// kindred#2067's second gap: guardUnitYear checks a unit's own OUTGOING
+// relations (area, parent_unit) but never the rows pointing back AT it.
+func TestGuardYearImmutableRejectsAUnitYearChangeWithAnAvailabilityDependent(t *testing.T) {
+	app := newHooksTestApp(t)
+	unit := seedUnit(t, app, "test-unit-a", 2027)
+	seedAvailability(t, app, unit, 2027)
+
+	rec, err := app.FindRecordById(collectionUnits, unit)
+	if err != nil {
+		t.Fatalf("reloading the unit: %v", err)
+	}
+	rec.Set("year", 2028)
+
+	if err := app.Save(rec); err == nil {
+		t.Fatal("re-seasoned a unit with a dependent availability row; want a refusal")
+	}
+}
+
+// TestGuardYearImmutableRejectsAUnitYearChangeWithAnAssignmentDependent is the
+// MULTI-relation case (`lodging_assignments.units`, MaxSelect 20). Filtering a
+// multi-valued relation needs the `.id` join and `?=` any-match operator -- a
+// plain "units = {:id}" compiles and matches ZERO rows against a real id
+// (see countAssignments's own comment, above). This is what would catch
+// yearImmutableRefs getting that filter wrong for lodging_units' dependents,
+// the same way TestMultiRelationAnyMatchFilter guards countAssignments.
+func TestGuardYearImmutableRejectsAUnitYearChangeWithAnAssignmentDependent(t *testing.T) {
+	app := newHooksTestApp(t)
+	unit := seedUnit(t, app, "test-unit-a", 2027)
+
+	placement := core.NewRecord(mustCollection(t, app, "lodging_assignments"))
+	placement.Set("year", 2027)
+	placement.Set("units", []string{unit})
+	placement.Set("session", seedSession(t, app))
+	placement.Set("household_cm_id", 2000001) // satisfies guardAssignmentGrain's XOR
+	if err := app.Save(placement); err != nil {
+		t.Fatalf("seeding a dependent assignment row: %v", err)
+	}
+
+	rec, err := app.FindRecordById(collectionUnits, unit)
+	if err != nil {
+		t.Fatalf("reloading the unit: %v", err)
+	}
+	rec.Set("year", 2028)
+
+	if err := app.Save(rec); err == nil {
+		t.Fatal("re-seasoned a unit with a dependent assignment row; want a refusal")
+	}
+}
+
+// TestGuardYearImmutableRejectsAUnitYearChangeWithADraftAssignmentDependent is
+// lodging_assignments_draft's own entry in yearImmutableRefs -- the SCENARIO
+// grain (kindred#1923(a)), not the confirmed board covered above. It is a
+// separate table with its own filter string
+// (`"units.id ?= {:id}"`, hooks.go), so nothing about the assignments test
+// above exercises it: a mutation that broke ONLY this entry -- e.g. reverting
+// it to the bare, silently-zero-matching "units = {:id}" -- left the suite
+// green before this test existed.
+func TestGuardYearImmutableRejectsAUnitYearChangeWithADraftAssignmentDependent(t *testing.T) {
+	app := newHooksTestApp(t)
+	unit := seedUnit(t, app, "test-unit-a", 2027)
+
+	placement := core.NewRecord(mustCollection(t, app, "lodging_assignments_draft"))
+	placement.Set("year", 2027)
+	placement.Set("units", []string{unit})
+	placement.Set("session", seedSession(t, app))
+	placement.Set("household_cm_id", 2000001) // satisfies guardDraftAssignmentGrain's XOR
+	if err := app.Save(placement); err != nil {
+		t.Fatalf("seeding a dependent draft assignment row: %v", err)
+	}
+
+	rec, err := app.FindRecordById(collectionUnits, unit)
+	if err != nil {
+		t.Fatalf("reloading the unit: %v", err)
+	}
+	rec.Set("year", 2028)
+
+	if err := app.Save(rec); err == nil {
+		t.Fatal("re-seasoned a unit with a dependent draft assignment row; want a refusal")
+	}
+}
+
+// TestGuardYearImmutableRejectsAUnitYearChangeWithASlotMergeDependent is
+// lodging_slot_merges's own entry in yearImmutableRefs -- the second
+// single-relation case (`unit`, MaxSelect 1) alongside lodging_availability,
+// and the fourth of the four dependents this guard watches for
+// collectionUnits. Uses newSlotMergesTestApp rather than newHooksTestApp
+// because lodging_slot_merges is absent from the shared fixture (see that
+// helper's own comment). Same coverage gap as the draft-assignment test
+// above: nothing about the availability or assignment tests exercises this
+// entry's filter, so a mutation that broke ONLY it left the suite green
+// before this test existed.
+func TestGuardYearImmutableRejectsAUnitYearChangeWithASlotMergeDependent(t *testing.T) {
+	app := newSlotMergesTestApp(t)
+	unit := seedUnit(t, app, "test-unit-a", 2027)
+
+	merge := core.NewRecord(mustCollection(t, app, "lodging_slot_merges"))
+	merge.Set("unit", unit)
+	merge.Set("session", seedSession(t, app))
+	merge.Set("year", 2027)
+	if err := app.Save(merge); err != nil {
+		t.Fatalf("seeding a dependent slot-merge row: %v", err)
+	}
+
+	rec, err := app.FindRecordById(collectionUnits, unit)
+	if err != nil {
+		t.Fatalf("reloading the unit: %v", err)
+	}
+	rec.Set("year", 2028)
+
+	if err := app.Save(rec); err == nil {
+		t.Fatal("re-seasoned a unit with a dependent slot-merge row; want a refusal")
+	}
+}
+
+// TestGuardYearImmutableRejectsAnAreaYearChangeWithAUnitDependent is
+// kindred#2067's first gap: lodging_areas carried no binding at all, so a
+// superuser or bunking.manage PATCH editing an existing area's own `year` hit
+// no check while lodging_units rows already pointing at it went silently
+// cross-season.
+func TestGuardYearImmutableRejectsAnAreaYearChangeWithAUnitDependent(t *testing.T) {
+	app := newHooksTestApp(t)
+	area := seedArea(t, app, "test-area-a", 2027)
+
+	rec := core.NewRecord(mustCollection(t, app, "lodging_units"))
+	rec.Set("code", "test-unit-a")
+	rec.Set("name", "Test Building A")
+	rec.Set("year", 2027)
+	rec.Set("area", area)
+	if err := app.Save(rec); err != nil {
+		t.Fatalf("seeding a dependent unit: %v", err)
+	}
+
+	areaRec, err := app.FindRecordById(collectionAreas, area)
+	if err != nil {
+		t.Fatalf("reloading the area: %v", err)
+	}
+	areaRec.Set("year", 2028)
+
+	if err := app.Save(areaRec); err == nil {
+		t.Fatal("re-seasoned an area with a dependent unit; want a refusal")
+	}
+}
+
+// TestGuardYearImmutableAllowsAYearChangeWithNoDependents is the positive
+// control, same shape as TestGuardUnitYearAllowsAMatchingRow above: a year
+// change on a unit nothing references must still succeed. Without this, a
+// guard that refused every lodging_units update would also pass every
+// refusal test in this section.
+func TestGuardYearImmutableAllowsAYearChangeWithNoDependents(t *testing.T) {
+	app := newHooksTestApp(t)
+	unit := seedUnit(t, app, "test-unit-a", 2027)
+
+	rec, err := app.FindRecordById(collectionUnits, unit)
+	if err != nil {
+		t.Fatalf("reloading the unit: %v", err)
+	}
+	rec.Set("year", 2028)
+
+	if err := app.Save(rec); err != nil {
+		t.Fatalf("refused a year change on a unit nothing depends on: %v", err)
+	}
+}
+
+// relationPair is one (dependent -> target) edge, the unit of correspondence
+// between the two maps. yearScopedRefs states the edge from the dependent's
+// side (a key plus a ref.target); yearImmutableRefs states the same edge from
+// the target's side (a key plus a dependentRef.collection). The pair is what
+// both spellings have to agree on.
+type relationPair struct {
+	dependent string
+	target    string
+}
+
+// unmirroredPairs are the (dependent -> target) edges that exist in
+// yearScopedRefs and are deliberately NOT mirrored in yearImmutableRefs. Every
+// entry here needs a reason recorded next to it, and both maps' doc comments
+// must already say the same thing -- an allowlist that outgrows its comments
+// is how the drift this test exists to catch gets waved through instead.
+var unmirroredPairs = map[relationPair]string{
+	// kindred#2067 scoped guardYearImmutable to the four collections its body
+	// named, and lodging_units.parent_unit was not one of them: a child unit
+	// pointing at a re-seasoned parent is the same shape of gap, stated as
+	// residual risk in both maps' doc comments rather than closed. Deleting
+	// this line the day parent_unit gains a reverse entry is the point --
+	// TestYearRefMapsAgreeOnEveryRelation fails on a stale allowlist too.
+	{dependent: collectionUnits, target: collectionUnits}: "kindred#2067 left parent_unit un-mirrored on purpose",
+}
+
+// TestYearRefMapsAgreeOnEveryRelation is the symmetry check kindred#2146 asks
+// for. yearScopedRefs and yearImmutableRefs describe the same set of edges
+// from opposite ends and are hand-maintained in step with each other -- both
+// maps' doc comments explain why the reverse is hand-typed per entry rather
+// than derived (the `?=` join is only correct for a multi-valued relation and
+// is silently zero-matching in one direction), which leaves nothing but a test
+// to notice when someone adds to one map and forgets the other.
+//
+// The failure this catches is silent by construction: a new year-scoped table
+// added to yearScopedRefs alone still gets its OWN writes checked, so its
+// tests pass, while guardYearImmutable quietly stops covering a parent's year
+// edit against it -- exactly the bug kindred#2067 closed, reopened by
+// omission.
+//
+// It walks both directions. Forward alone would miss a yearImmutableRefs entry
+// naming a dependent that no longer references the target at all, which is the
+// same drift pointing the other way.
+func TestYearRefMapsAgreeOnEveryRelation(t *testing.T) {
+	seenExceptions := make(map[relationPair]bool, len(unmirroredPairs))
+
+	// Forward: everything yearScopedRefs says a row points AT must appear in
+	// yearImmutableRefs as something that points back.
+	for dependent, refs := range yearScopedRefs {
+		for _, ref := range refs {
+			pair := relationPair{dependent: dependent, target: ref.target}
+			mirrored := false
+			for _, dep := range yearImmutableRefs[ref.target] {
+				if dep.collection == dependent {
+					mirrored = true
+					break
+				}
+			}
+			if _, allowed := unmirroredPairs[pair]; allowed {
+				seenExceptions[pair] = true
+				if mirrored {
+					t.Errorf(
+						"%s.%s -> %s is now mirrored in yearImmutableRefs but is still"+
+							" listed in unmirroredPairs; drop the allowlist entry and the"+
+							" doc comments that call it residual",
+						dependent, ref.field, ref.target,
+					)
+				}
+				continue
+			}
+			if !mirrored {
+				t.Errorf(
+					"yearScopedRefs says %s.%s references %s, but yearImmutableRefs[%s]"+
+						" carries no entry for %s -- guardYearImmutable will not refuse a"+
+						" %s year edit that strands it (kindred#2067)",
+					dependent, ref.field, ref.target, ref.target, dependent, ref.target,
+				)
+			}
+		}
+	}
+
+	// Reverse: everything yearImmutableRefs treats as a dependent must be a
+	// collection yearScopedRefs actually points at that target.
+	for target, deps := range yearImmutableRefs {
+		for _, dep := range deps {
+			mirrored := false
+			for _, ref := range yearScopedRefs[dep.collection] {
+				if ref.target == target {
+					mirrored = true
+					break
+				}
+			}
+			if !mirrored {
+				t.Errorf(
+					"yearImmutableRefs[%s] lists %s as a dependent, but"+
+						" yearScopedRefs[%s] declares no relation into %s -- one of the"+
+						" two maps is stale",
+					target, dep.collection, dep.collection, target,
+				)
+			}
+		}
+	}
+
+	// An allowlist entry for an edge yearScopedRefs no longer declares would
+	// silently excuse a future edge of the same shape, so it has to be an
+	// error rather than dead data.
+	for pair, why := range unmirroredPairs {
+		if !seenExceptions[pair] {
+			t.Errorf(
+				"unmirroredPairs still excuses %s -> %s (%s), but yearScopedRefs declares no such relation",
+				pair.dependent, pair.target, why,
+			)
+		}
 	}
 }
