@@ -55,6 +55,62 @@ func TestFindEnrollmentOrphans(t *testing.T) {
 	}
 }
 
+func TestFindLodgingEnrollmentOrphans(t *testing.T) {
+	householdIndex := map[int][]SessionWindow{
+		9001: {{ID: "sess1"}}, // still enrolled in sess1
+	}
+	personIndex := map[int][]SessionWindow{
+		7001: {{ID: "sess3"}}, // enrolled, but in a DIFFERENT session than the candidate names
+		7099: {{ID: "sess1"}}, // keeps sess1 "reliable" for the person grain
+	}
+	candidates := []lodgingOrphanCandidate{
+		{RecordID: "r1", SessionID: "sess1", HouseholdCMID: 9001},             // enrolled - kept
+		{RecordID: "r2", SessionID: "sess1", HouseholdCMID: 9002},             // cancelled - orphan
+		{RecordID: "r3", SessionID: "sess2", HouseholdCMID: 9003},             // session has zero enrolled - skipped
+		{RecordID: "r4", SessionID: "sess1", PersonCMID: 7001},                // wrong session for this person - orphan
+		{RecordID: "r5", SessionID: "sess1", HouseholdCMID: 0, PersonCMID: 0}, // grain-less - skipped
+	}
+
+	orphans := findLodgingEnrollmentOrphans(householdIndex, personIndex, candidates)
+
+	got := make(map[string]bool, len(orphans))
+	for _, o := range orphans {
+		got[o.RecordID] = true
+	}
+	if len(got) != 2 || !got["r2"] || !got["r4"] {
+		t.Fatalf("want orphans [r2 r4], got %+v", orphans)
+	}
+}
+
+func TestReliableEnrolledSessions(t *testing.T) {
+	index := map[int][]SessionWindow{
+		9001: {{ID: "sess1"}, {ID: "sess2"}},
+		9002: {{ID: "sess1"}},
+	}
+	reliable := reliableEnrolledSessions(index)
+	for _, id := range []string{"sess1", "sess2"} {
+		if !reliable[id] {
+			t.Errorf("reliable[%q] = false, want true", id)
+		}
+	}
+	if reliable["sess3"] {
+		t.Error("reliable[sess3] = true, want false -- no party enrolled there")
+	}
+}
+
+func TestSessionIndexHasWindow(t *testing.T) {
+	windows := []SessionWindow{{ID: "a"}, {ID: "b"}}
+	if !sessionIndexHasWindow(windows, "a") {
+		t.Error("want true for a present window id")
+	}
+	if sessionIndexHasWindow(windows, "z") {
+		t.Error("want false for an absent window id")
+	}
+	if sessionIndexHasWindow(nil, "a") {
+		t.Error("want false against a nil slice")
+	}
+}
+
 // setupStrandedCollections builds the minimal schema the reconciler touches.
 func setupStrandedCollections(t *testing.T, app core.App) {
 	t.Helper()
@@ -62,6 +118,13 @@ func setupStrandedCollections(t *testing.T, app core.App) {
 	sessions := core.NewBaseCollection("camp_sessions")
 	sessions.Fields.Add(&core.NumberField{Name: "cm_id", Required: true})
 	sessions.Fields.Add(&core.NumberField{Name: "year"})
+	// Needed by BuildHouseholdSessionIndex/BuildPersonSessionIndex (the lodging
+	// pass reuses them, see #2028) -- unset on the existing bunk-only fixtures,
+	// which is fine: LoadSessionWindows' `session_type = 'family'`/`'adult'`
+	// filter then matches nothing, so those tests' lodging pass is a no-op.
+	sessions.Fields.Add(&core.TextField{Name: "session_type"})
+	sessions.Fields.Add(&core.DateField{Name: "start_date"})
+	sessions.Fields.Add(&core.DateField{Name: "end_date"})
 	if err := app.Save(sessions); err != nil {
 		t.Fatalf("create camp_sessions: %v", err)
 	}
@@ -76,6 +139,10 @@ func setupStrandedCollections(t *testing.T, app core.App) {
 
 	persons := core.NewBaseCollection("persons")
 	persons.Fields.Add(&core.NumberField{Name: "cm_id", Required: true})
+	// household_id/year: BuildHouseholdSessionIndex's loadPersonHouseholdCMIDs
+	// filters "year = %d && household_id > 0" on this collection.
+	persons.Fields.Add(&core.NumberField{Name: "household_id"})
+	persons.Fields.Add(&core.NumberField{Name: "year"})
 	if err := app.Save(persons); err != nil {
 		t.Fatalf("create persons: %v", err)
 	}
@@ -118,12 +185,66 @@ func setupStrandedCollections(t *testing.T, app core.App) {
 
 	attendees := core.NewBaseCollection("attendees")
 	attendees.Fields.Add(&core.RelationField{Name: "person", CollectionId: persons.Id, MaxSelect: 1})
+	// BuildHouseholdSessionIndex/BuildPersonSessionIndex key off person_id (the
+	// CampMinder id), not the `person` relation -- see buildSessionIndex.
+	attendees.Fields.Add(&core.NumberField{Name: "person_id"})
 	attendees.Fields.Add(&core.RelationField{Name: "session", CollectionId: sessions.Id, MaxSelect: 1})
 	attendees.Fields.Add(&core.NumberField{Name: "status_id"})
 	attendees.Fields.Add(&core.NumberField{Name: "year"})
 	if err := app.Save(attendees); err != nil {
 		t.Fatalf("create attendees: %v", err)
 	}
+
+	// --- lodging: #2028's tables, minimal shape (mirrors newLodgingTestApp) ---
+
+	units := core.NewBaseCollection("lodging_units")
+	units.Fields.Add(&core.TextField{Name: "code"})
+	if err := app.Save(units); err != nil {
+		t.Fatalf("create lodging_units: %v", err)
+	}
+
+	lodgingAssignments := core.NewBaseCollection("lodging_assignments")
+	lodgingAssignments.Fields.Add(&core.RelationField{Name: "session", CollectionId: sessions.Id, MaxSelect: 1})
+	lodgingAssignments.Fields.Add(&core.NumberField{Name: "session_cm_id"})
+	lodgingAssignments.Fields.Add(&core.NumberField{Name: "year"})
+	lodgingAssignments.Fields.Add(&core.RelationField{Name: "units", CollectionId: units.Id, MaxSelect: 20})
+	lodgingAssignments.Fields.Add(&core.NumberField{Name: "household_cm_id"})
+	lodgingAssignments.Fields.Add(&core.NumberField{Name: "person_cm_id"})
+	lodgingAssignments.Fields.Add(&core.TextField{Name: "source"})
+	lodgingAssignments.Fields.Add(&core.BoolField{Name: "staff_touched"})
+	if err := app.Save(lodgingAssignments); err != nil {
+		t.Fatalf("create lodging_assignments: %v", err)
+	}
+
+	lodgingDraft := core.NewBaseCollection("lodging_assignments_draft")
+	lodgingDraft.Fields.Add(&core.RelationField{Name: "session", CollectionId: sessions.Id, MaxSelect: 1})
+	lodgingDraft.Fields.Add(&core.NumberField{Name: "session_cm_id"})
+	lodgingDraft.Fields.Add(&core.NumberField{Name: "year"})
+	lodgingDraft.Fields.Add(&core.RelationField{Name: "scenario", CollectionId: scenarios.Id, MaxSelect: 1})
+	lodgingDraft.Fields.Add(&core.RelationField{Name: "units", CollectionId: units.Id, MaxSelect: 20})
+	lodgingDraft.Fields.Add(&core.NumberField{Name: "household_cm_id"})
+	lodgingDraft.Fields.Add(&core.NumberField{Name: "person_cm_id"})
+	lodgingDraft.Fields.Add(&core.TextField{Name: "source"})
+	lodgingDraft.Fields.Add(&core.BoolField{Name: "staff_touched"})
+	if err := app.Save(lodgingDraft); err != nil {
+		t.Fatalf("create lodging_assignments_draft: %v", err)
+	}
+}
+
+// addLodgingSession seeds a camp_sessions row with the fields
+// BuildHouseholdSessionIndex/BuildPersonSessionIndex need, which the bunk-only
+// sessions above deliberately omit.
+func addLodgingSession(t *testing.T, app core.App, cmID int, sessionType string, year int) *core.Record {
+	t.Helper()
+	return saveRec(t, app, "camp_sessions", map[string]any{
+		"cm_id": cmID, "session_type": sessionType, "year": year,
+		"start_date": "2026-05-23 07:00:00.000Z", "end_date": "2026-05-26 07:00:00.000Z",
+	})
+}
+
+func addLodgingUnit(t *testing.T, app core.App, code string) *core.Record {
+	t.Helper()
+	return saveRec(t, app, "lodging_units", map[string]any{"code": code})
 }
 
 func saveRec(t *testing.T, app core.App, collection string, data map[string]any) *core.Record {
@@ -586,5 +707,372 @@ func TestStrandedAssignmentCleanup_EnrollmentOrphanProdAudit(t *testing.T) {
 	}
 	if got.GetString("bunk") != bunk.Id {
 		t.Errorf("prod row bunk must not be cleared (observe-only), got %q", got.GetString("bunk"))
+	}
+}
+
+// --- #2028: lodging enrollment-orphan pass ---
+//
+// The weekend mirror of the enrollment-orphan half above, built from
+// BuildHouseholdSessionIndex/BuildPersonSessionIndex rather than a second
+// attendees query (see #2028's insistence on reuse over re-derivation).
+
+func TestStrandedAssignmentCleanup_SweepsLodgingEnrollmentOrphanDraftHousehold(t *testing.T) {
+	app, err := pbtests.NewTestApp()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer app.Cleanup()
+	setupStrandedCollections(t, app)
+
+	sess := addLodgingSession(t, app, 100, "family", 2026)
+	unit := addLodgingUnit(t, app, "ridge-a")
+	scenario := saveRec(t, app, "saved_scenarios", map[string]any{"name": "April", "session": sess.Id, "year": 2026})
+
+	cancelled := saveRec(t, app, "persons", map[string]any{"cm_id": 9001, "household_id": 5001, "year": 2026})
+	enrolledPerson := saveRec(t, app, "persons", map[string]any{"cm_id": 9002, "household_id": 5002, "year": 2026})
+	saveRec(t, app, "attendees", map[string]any{
+		"person": cancelled.Id, "person_id": 9001, "session": sess.Id, "status_id": 32, "year": 2026,
+	})
+	// Keeps the session's enrolled set non-empty so the per-session guard passes.
+	saveRec(t, app, "attendees", map[string]any{
+		"person": enrolledPerson.Id, "person_id": 9002, "session": sess.Id, "status_id": 2, "year": 2026,
+	})
+
+	draft := saveRec(t, app, "lodging_assignments_draft", map[string]any{
+		"session": sess.Id, "session_cm_id": 100, "year": 2026, "scenario": scenario.Id,
+		"units": []string{unit.Id}, "household_cm_id": 5001, "source": "campminder_sync", "staff_touched": false,
+	})
+
+	svc := NewStrandedAssignmentCleanupSync(app)
+	svc.SetYear(2026)
+	if err = svc.Sync(context.Background()); err != nil {
+		t.Fatalf("Sync: %v", err)
+	}
+
+	got, err := app.FindRecordById("lodging_assignments_draft", draft.Id)
+	if err != nil {
+		t.Fatalf("reload draft: %v", err)
+	}
+	if len(got.GetStringSlice("units")) != 0 {
+		t.Errorf("want units cleared for cancelled household, got %v", got.GetStringSlice("units"))
+	}
+}
+
+// TestStrandedAssignmentCleanup_LodgingDraftPreservesStaffTouchedAndSource pins
+// the mechanism ruling: the null-out is unconditional (a cancelled household is
+// gone whether or not staff moved them), but only `units` clears -- the flag
+// and source survive, exactly like bunk+bunk_plan nulling leaves everything
+// else on the row alone.
+func TestStrandedAssignmentCleanup_LodgingDraftPreservesStaffTouchedAndSource(t *testing.T) {
+	app, err := pbtests.NewTestApp()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer app.Cleanup()
+	setupStrandedCollections(t, app)
+
+	sess := addLodgingSession(t, app, 100, "family", 2026)
+	unit := addLodgingUnit(t, app, "ridge-a")
+	scenario := saveRec(t, app, "saved_scenarios", map[string]any{"name": "April", "session": sess.Id, "year": 2026})
+
+	cancelled := saveRec(t, app, "persons", map[string]any{"cm_id": 9001, "household_id": 5001, "year": 2026})
+	enrolledPerson := saveRec(t, app, "persons", map[string]any{"cm_id": 9002, "household_id": 5002, "year": 2026})
+	saveRec(t, app, "attendees", map[string]any{
+		"person": cancelled.Id, "person_id": 9001, "session": sess.Id, "status_id": 32, "year": 2026,
+	})
+	saveRec(t, app, "attendees", map[string]any{
+		"person": enrolledPerson.Id, "person_id": 9002, "session": sess.Id, "status_id": 2, "year": 2026,
+	})
+
+	draft := saveRec(t, app, "lodging_assignments_draft", map[string]any{
+		"session": sess.Id, "session_cm_id": 100, "year": 2026, "scenario": scenario.Id,
+		"units": []string{unit.Id}, "household_cm_id": 5001, "source": "staff_manual", "staff_touched": true,
+	})
+
+	svc := NewStrandedAssignmentCleanupSync(app)
+	svc.SetYear(2026)
+	if err = svc.Sync(context.Background()); err != nil {
+		t.Fatalf("Sync: %v", err)
+	}
+
+	got, err := app.FindRecordById("lodging_assignments_draft", draft.Id)
+	if err != nil {
+		t.Fatalf("reload draft: %v", err)
+	}
+	if len(got.GetStringSlice("units")) != 0 {
+		t.Errorf("want units cleared, got %v", got.GetStringSlice("units"))
+	}
+	if !got.GetBool("staff_touched") {
+		t.Error("staff_touched was cleared -- the flag must survive the sweep")
+	}
+	if got.GetString("source") != "staff_manual" {
+		t.Errorf("source = %q, want unchanged %q", got.GetString("source"), "staff_manual")
+	}
+}
+
+func TestStrandedAssignmentCleanup_LodgingEnrollmentGateSkipsPerSession(t *testing.T) {
+	app, err := pbtests.NewTestApp()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer app.Cleanup()
+	setupStrandedCollections(t, app)
+
+	sessA := addLodgingSession(t, app, 100, "family", 2026) // has an enrolled household
+	sessB := addLodgingSession(t, app, 200, "family", 2026) // zero enrolled -- attendee sync may have failed
+	unit := addLodgingUnit(t, app, "ridge-a")
+	scenario := saveRec(t, app, "saved_scenarios", map[string]any{"name": "April", "session": sessB.Id, "year": 2026})
+
+	enrolledA := saveRec(t, app, "persons", map[string]any{"cm_id": 9001, "household_id": 5001, "year": 2026})
+	saveRec(t, app, "attendees", map[string]any{
+		"person": enrolledA.Id, "person_id": 9001, "session": sessA.Id, "status_id": 2, "year": 2026,
+	})
+
+	// A draft in session B for a household with no enrolled attendee there. It
+	// must NOT be swept -- session B's empty enrolled set is unreliable, not
+	// authoritative (mirrors TestStrandedAssignmentCleanup_EnrollmentGateSkipsPerSession).
+	draftB := saveRec(t, app, "lodging_assignments_draft", map[string]any{
+		"session": sessB.Id, "session_cm_id": 200, "year": 2026, "scenario": scenario.Id,
+		"units": []string{unit.Id}, "household_cm_id": 5099, "source": "campminder_sync", "staff_touched": false,
+	})
+
+	svc := NewStrandedAssignmentCleanupSync(app)
+	svc.SetYear(2026)
+	if err = svc.Sync(context.Background()); err != nil {
+		t.Fatalf("Sync: %v", err)
+	}
+
+	got, err := app.FindRecordById("lodging_assignments_draft", draftB.Id)
+	if err != nil {
+		t.Fatalf("reload draft: %v", err)
+	}
+	if len(got.GetStringSlice("units")) == 0 {
+		t.Error("per-session lodging gate failed -- session-B draft swept despite zero enrolled")
+	}
+}
+
+// TestStrandedAssignmentCleanup_LodgingProdAuditDoesNotDelete pins the split of
+// responsibility: this pass only audits lodging_assignments (the mirror) --
+// deletion is LodgingAssignmentsSync.deleteLodgingOrphans' job (#2028).
+func TestStrandedAssignmentCleanup_LodgingProdAuditDoesNotDelete(t *testing.T) {
+	app, err := pbtests.NewTestApp()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer app.Cleanup()
+	setupStrandedCollections(t, app)
+
+	sess := addLodgingSession(t, app, 100, "family", 2026)
+	unit := addLodgingUnit(t, app, "ridge-a")
+
+	cancelled := saveRec(t, app, "persons", map[string]any{"cm_id": 9001, "household_id": 5001, "year": 2026})
+	enrolledPerson := saveRec(t, app, "persons", map[string]any{"cm_id": 9002, "household_id": 5002, "year": 2026})
+	saveRec(t, app, "attendees", map[string]any{
+		"person": cancelled.Id, "person_id": 9001, "session": sess.Id, "status_id": 32, "year": 2026,
+	})
+	saveRec(t, app, "attendees", map[string]any{
+		"person": enrolledPerson.Id, "person_id": 9002, "session": sess.Id, "status_id": 2, "year": 2026,
+	})
+
+	prodRow := saveRec(t, app, "lodging_assignments", map[string]any{
+		"session": sess.Id, "session_cm_id": 100, "year": 2026,
+		"units": []string{unit.Id}, "household_cm_id": 5001, "source": "campminder_sync", "staff_touched": false,
+	})
+
+	svc := NewStrandedAssignmentCleanupSync(app)
+	svc.SetYear(2026)
+	if err = svc.Sync(context.Background()); err != nil {
+		t.Fatalf("Sync: %v", err)
+	}
+
+	if svc.Stats.LodgingProdAuditWarnings != 1 {
+		t.Errorf("want LodgingProdAuditWarnings=1, got %d", svc.Stats.LodgingProdAuditWarnings)
+	}
+	got, err := app.FindRecordById("lodging_assignments", prodRow.Id)
+	if err != nil {
+		t.Fatalf("prod lodging row was deleted by the reconciler: %v", err)
+	}
+	if len(got.GetStringSlice("units")) == 0 {
+		t.Error("prod lodging row units must not be cleared (observe-only)")
+	}
+}
+
+// TestStrandedAssignmentCleanup_LodgingPersonGrainOrphanDraft is the adult
+// weekend twin of the household-grain sweep.
+func TestStrandedAssignmentCleanup_LodgingPersonGrainOrphanDraft(t *testing.T) {
+	app, err := pbtests.NewTestApp()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer app.Cleanup()
+	setupStrandedCollections(t, app)
+
+	sess := addLodgingSession(t, app, 300, "adult", 2026)
+	unit := addLodgingUnit(t, app, "river-c")
+	scenario := saveRec(t, app, "saved_scenarios", map[string]any{"name": "October", "session": sess.Id, "year": 2026})
+
+	cancelled := saveRec(t, app, "persons", map[string]any{"cm_id": 7001, "year": 2026})
+	enrolled := saveRec(t, app, "persons", map[string]any{"cm_id": 7002, "year": 2026})
+	saveRec(t, app, "attendees", map[string]any{
+		"person": cancelled.Id, "person_id": 7001, "session": sess.Id, "status_id": 32, "year": 2026,
+	})
+	saveRec(t, app, "attendees", map[string]any{
+		"person": enrolled.Id, "person_id": 7002, "session": sess.Id, "status_id": 2, "year": 2026,
+	})
+
+	draft := saveRec(t, app, "lodging_assignments_draft", map[string]any{
+		"session": sess.Id, "session_cm_id": 300, "year": 2026, "scenario": scenario.Id,
+		"units": []string{unit.Id}, "person_cm_id": 7001, "source": "campminder_sync", "staff_touched": false,
+	})
+
+	svc := NewStrandedAssignmentCleanupSync(app)
+	svc.SetYear(2026)
+	if err = svc.Sync(context.Background()); err != nil {
+		t.Fatalf("Sync: %v", err)
+	}
+
+	got, err := app.FindRecordById("lodging_assignments_draft", draft.Id)
+	if err != nil {
+		t.Fatalf("reload draft: %v", err)
+	}
+	if len(got.GetStringSlice("units")) != 0 {
+		t.Errorf("want units cleared for cancelled person, got %v", got.GetStringSlice("units"))
+	}
+}
+
+// TestStrandedAssignmentCleanup_LeavesEnrolledLodgingDraftUntouched is the
+// obvious regression: a household still enrolled keeps its draft placement.
+func TestStrandedAssignmentCleanup_LeavesEnrolledLodgingDraftUntouched(t *testing.T) {
+	app, err := pbtests.NewTestApp()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer app.Cleanup()
+	setupStrandedCollections(t, app)
+
+	sess := addLodgingSession(t, app, 100, "family", 2026)
+	unit := addLodgingUnit(t, app, "ridge-a")
+	scenario := saveRec(t, app, "saved_scenarios", map[string]any{"name": "April", "session": sess.Id, "year": 2026})
+
+	enrolled := saveRec(t, app, "persons", map[string]any{"cm_id": 9001, "household_id": 5001, "year": 2026})
+	saveRec(t, app, "attendees", map[string]any{
+		"person": enrolled.Id, "person_id": 9001, "session": sess.Id, "status_id": 2, "year": 2026,
+	})
+
+	draft := saveRec(t, app, "lodging_assignments_draft", map[string]any{
+		"session": sess.Id, "session_cm_id": 100, "year": 2026, "scenario": scenario.Id,
+		"units": []string{unit.Id}, "household_cm_id": 5001, "source": "campminder_sync", "staff_touched": false,
+	})
+
+	svc := NewStrandedAssignmentCleanupSync(app)
+	svc.SetYear(2026)
+	if err = svc.Sync(context.Background()); err != nil {
+		t.Fatalf("Sync: %v", err)
+	}
+
+	got, err := app.FindRecordById("lodging_assignments_draft", draft.Id)
+	if err != nil {
+		t.Fatalf("reload draft: %v", err)
+	}
+	if len(got.GetStringSlice("units")) == 0 {
+		t.Error("still-enrolled household's lodging draft was swept")
+	}
+}
+
+// TestStrandedAssignmentCleanup_StatsResetBetweenRuns pins the per-run contract
+// of Stats on the single long-lived service instance the orchestrator registers
+// (orchestrator.go registers one StrandedAssignmentCleanupSync for the process
+// lifetime). Every counter must describe the run that just finished, not the
+// sum of every run since boot — matching LodgingAssignmentsSync.Sync()'s
+// `s.Stats = Stats{}`. Run 1 sweeps a stranded draft and warns on a stranded
+// prod row; run 2 has nothing left to sweep, so Updated must be 0, and the
+// still-present prod row must warn exactly once again — not twice.
+func TestStrandedAssignmentCleanup_StatsResetBetweenRuns(t *testing.T) {
+	app, err := pbtests.NewTestApp()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer app.Cleanup()
+	setupStrandedCollections(t, app)
+
+	sess := saveRec(t, app, "camp_sessions", map[string]any{"cm_id": 100, "year": 2026})
+	keptBunk := saveRec(t, app, "bunks", map[string]any{"cm_id": 1, "name": "B-1", "year": 2026})
+	goneBunk := saveRec(t, app, "bunks", map[string]any{"cm_id": 2, "name": "G-5", "year": 2026})
+	person := saveRec(t, app, "persons", map[string]any{"cm_id": 9001})
+	saveRec(t, app, "bunk_plans", map[string]any{"bunk": keptBunk.Id, "session": sess.Id, "year": 2026})
+	scenario := saveRec(t, app, "saved_scenarios", map[string]any{"name": "April", "session": sess.Id, "year": 2026})
+	saveRec(t, app, "bunk_assignments_draft", map[string]any{
+		"scenario": scenario.Id, "person": person.Id, "session": sess.Id,
+		"bunk": goneBunk.Id, "year": 2026,
+	})
+	// A stranded production row: observe-only, so it re-warns on every run.
+	saveRec(t, app, "bunk_assignments", map[string]any{
+		"person": person.Id, "session": sess.Id, "bunk": goneBunk.Id, "year": 2026,
+	})
+
+	// One instance, reused across runs — exactly how the orchestrator holds it.
+	svc := NewStrandedAssignmentCleanupSync(app)
+	svc.SetYear(2026)
+
+	if err = svc.Sync(context.Background()); err != nil {
+		t.Fatalf("Sync run 1: %v", err)
+	}
+	if svc.GetStats().Updated != 1 {
+		t.Fatalf("run 1: want Updated=1, got %d", svc.GetStats().Updated)
+	}
+	if svc.GetStats().ProdAuditWarnings != 1 {
+		t.Fatalf("run 1: want ProdAuditWarnings=1, got %d", svc.GetStats().ProdAuditWarnings)
+	}
+
+	if err = svc.Sync(context.Background()); err != nil {
+		t.Fatalf("Sync run 2: %v", err)
+	}
+	if got := svc.GetStats().Updated; got != 0 {
+		t.Errorf("run 2 swept nothing — want Updated=0, got %d (Stats accumulated across runs)", got)
+	}
+}
+
+// TestStrandedAssignmentCleanup_ProdAuditWarningsClearWhenRunGatesOut covers the
+// other half of the same reset contract: the audit counters are assigned (not
+// incremented), so they look self-correcting — until a run short-circuits
+// before the audit ever executes. Here run 2 hits the zero-bunk_plans gate and
+// audits nothing at all; without a per-run reset it keeps reporting run 1's
+// warning count, describing an audit that never happened.
+func TestStrandedAssignmentCleanup_ProdAuditWarningsClearWhenRunGatesOut(t *testing.T) {
+	app, err := pbtests.NewTestApp()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer app.Cleanup()
+	setupStrandedCollections(t, app)
+
+	sess := saveRec(t, app, "camp_sessions", map[string]any{"cm_id": 100, "year": 2026})
+	plannedBunk := saveRec(t, app, "bunks", map[string]any{"cm_id": 1, "name": "B-1", "year": 2026})
+	strandedBunk := saveRec(t, app, "bunks", map[string]any{"cm_id": 2, "name": "G-5", "year": 2026})
+	person := saveRec(t, app, "persons", map[string]any{"cm_id": 9001})
+	plan := saveRec(t, app, "bunk_plans", map[string]any{"bunk": plannedBunk.Id, "session": sess.Id, "year": 2026})
+	saveRec(t, app, "bunk_assignments", map[string]any{
+		"person": person.Id, "session": sess.Id, "bunk": strandedBunk.Id, "year": 2026,
+	})
+
+	svc := NewStrandedAssignmentCleanupSync(app)
+	svc.SetYear(2026)
+
+	if err = svc.Sync(context.Background()); err != nil {
+		t.Fatalf("Sync run 1: %v", err)
+	}
+	if svc.GetStats().ProdAuditWarnings != 1 {
+		t.Fatalf("run 1: want ProdAuditWarnings=1, got %d", svc.GetStats().ProdAuditWarnings)
+	}
+
+	// Simulate a failed bunk_plans sync: run 2 gates out before the prod audit.
+	if err = app.Delete(plan); err != nil {
+		t.Fatalf("delete bunk_plan: %v", err)
+	}
+	if err = svc.Sync(context.Background()); err != nil {
+		t.Fatalf("Sync run 2: %v", err)
+	}
+	if got := svc.GetStats().ProdAuditWarnings; got != 0 {
+		t.Errorf("run 2 audited nothing — want ProdAuditWarnings=0, got %d (stale value carried from run 1)", got)
 	}
 }

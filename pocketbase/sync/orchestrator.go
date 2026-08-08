@@ -91,7 +91,7 @@ var syncJobMeta = []JobMeta{
 	{"staff_vehicle_info", PhaseTransform, "Extract staff vehicle info from custom values"},
 	{"normalize_geographic", PhaseTransform, "Normalize geographic data (cities, schools, congregations)"},
 	{"enrollment_snapshots", PhaseTransform, "Capture daily enrollment counts per session"},
-	{"stranded_assignment_cleanup", PhaseTransform, "Auto-unassign scenario drafts stranded by bunk-plan changes"},
+	{"stranded_assignment_cleanup", PhaseTransform, "Auto-unassign scenario drafts stranded by bunk or cancellation"},
 
 	// Process phase - CSV + AI
 	{"reconcile_request_lifecycle", PhaseProcess, "Mark moved-requester OBRs for reprocessing"},
@@ -235,6 +235,9 @@ type Stats struct {
 	AlreadyProcessed int `json:"already_processed,omitempty"`
 	// ProdAuditWarnings counts bunk_assignments rows found stranded but not cleared (observe-only).
 	ProdAuditWarnings int `json:"prod_audit_warnings,omitempty"`
+	// LodgingProdAuditWarnings counts lodging_assignments rows found enrollment-orphaned
+	// but not cleared (observe-only; deletion is LodgingAssignmentsSync's job, #2028).
+	LodgingProdAuditWarnings int `json:"lodging_prod_audit_warnings,omitempty"`
 	// Duration in seconds
 	Duration int `json:"duration"`
 	// SubStats for combined syncs (e.g., persons includes households)
