@@ -12,6 +12,14 @@ import { queryKeys, userDataOptions } from '../utils/queryKeys'
 import { useYear } from './useCurrentYear'
 
 export interface UseLodgingAreasResult {
+  /**
+   * `undefined` until the query settles, exactly like the raw TanStack
+   * result — deliberately NOT coerced. If a future caller passes this to
+   * `QueryGuard` (see `useLodgingUnits.ts`'s twin warning — its `data` feeds
+   * `LodgingUnitsPanel.tsx`'s `QueryGuard` today), that component's
+   * empty-vs-loading branch keys on `!data`; coercing it here would make
+   * that check always false. Use `.items` below at render sites, never here.
+   */
   data: LodgingAreaRecord[] | undefined
   /** `.data ?? []` — the coercion every call site used to do for itself. */
   items: LodgingAreaRecord[]

@@ -296,6 +296,11 @@ export function LodgingUnitsPanel() {
       <QueryGuard
         isLoading={unitsQuery.isLoading || !yearReady}
         error={unitsQuery.error}
+        // Deliberately `.data`, not `.items` — QueryGuard's empty-vs-loading
+        // branch below keys on `!data`. `.items` coerces to `[]` while
+        // pending, which reads to QueryGuard as a settled empty result and
+        // would swap "still loading" for "No lodging units yet." See the
+        // warning on `UseLodgingUnitsResult.data` in useLodgingUnits.ts.
         data={unitsQuery.data}
         label="lodging units"
         emptyMessage="No lodging units yet."

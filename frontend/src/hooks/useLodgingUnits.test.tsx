@@ -86,6 +86,25 @@ describe('useLodgingUnits', () => {
     expect(client.getQueryData(queryKeys.lodgingUnits(2026))).toEqual(UNITS)
   })
 
+  it('fetches once for two concurrent consumers under one QueryClient', async () => {
+    // A genuine regression guard for the caching behaviour, not proof that
+    // extraction is what CAUSES it — see the NOTE above: three independent
+    // inline `useQuery({ queryKey: queryKeys.lodgingUnits(currentYear) })`
+    // calls (the actual pre-#1896 shape) also single-fetch here, since
+    // TanStack Query dedupes by serialized queryKey regardless of which
+    // function issued the call. This still earns its keep: it would catch a
+    // future regression where the hook stopped resolving to one shared key
+    // (e.g. a per-call cache-buster) even though it wouldn't distinguish
+    // "hook" from "N inline copies of the same key".
+    const consumerA = renderHook(() => useLodgingUnits(), { wrapper: wrapper(YEAR_CONTEXT) })
+    const consumerB = renderHook(() => useLodgingUnits(), { wrapper: wrapper(YEAR_CONTEXT) })
+    await waitFor(() => {
+      expect(consumerA.result.current.isSuccess).toBe(true)
+      expect(consumerB.result.current.isSuccess).toBe(true)
+    })
+    expect(listLodgingUnits).toHaveBeenCalledTimes(1)
+  })
+
   it('does not fetch until the year resolves', () => {
     // CurrentYearContext returns the literal 0 until the backend supplies the
     // configured year, and PocketBase answers `year = 0` with a successful
