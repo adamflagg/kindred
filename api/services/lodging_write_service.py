@@ -373,15 +373,12 @@ class LodgingWriteService:
                 raise await self._seed_failure(exc, request, session_pb_id, copied) from exc
             copied += 1
 
+        # Inlined into the message, not `extra={}` -- see the identical note
+        # on `copy_scenario_to_scenario`'s own logger.info call below.
         logger.info(
-            "Seeded lodging scenario from the CampMinder mirror",
-            extra={
-                "year": request.year,
-                "session_cm_id": request.session_cm_id,
-                "scenario": request.scenario,
-                "copied": copied,
-                "skipped": skipped,
-            },
+            f"Seeded lodging scenario from the CampMinder mirror: year={request.year} "
+            f"session_cm_id={request.session_cm_id} scenario={request.scenario} "
+            f"copied={copied} skipped={skipped}"
         )
         return LodgingCopyResponse(copied=copied, skipped=skipped)
 
@@ -465,6 +462,13 @@ class LodgingWriteService:
         and the recovery is the identical `_seed_failure` -- built against
         `PlacementCopyRequest`, which this constructs purely to reuse that
         race/refusal logic rather than duplicate it.
+
+        Also copies `lodging_slot_merges` rows -- a house merged into one
+        card, or split back into rooms -- for the same reason
+        `_copy_locked_groups` exists on summer's side of this feature
+        (kindred#1046): dropping them would silently re-split or re-merge a
+        house the source scenario had decided differently, so "copy from
+        Option A" would not actually copy what Option A shows.
         """
         session_pb_id = await self._resolve_session_pb_id(year, session_cm_id)
 
@@ -504,16 +508,37 @@ class LodgingWriteService:
                 raise await self._seed_failure(exc, dest_request, session_pb_id, copied) from exc
             copied += 1
 
+        # Slot merges: `fetch_slot_merges` UNIONS the named scenario's own
+        # rows with the weekend-level tier (`scenario == ""`); only the rows
+        # that are actually `from_scenario`'s own are this copy's to make.
+        # The weekend-level tier already applies to `to_scenario`
+        # automatically -- copying it as a scenario-scoped row would PIN the
+        # destination against a later change to that tier instead of
+        # inheriting it, the same argument `fetch_availability`'s docstring
+        # makes for why availability carries no scenario dimension at all.
+        merges = await self.repository.fetch_slot_merges(year, session_pb_id, from_scenario)
+        for merge in merges:
+            if str(getattr(merge, "scenario", "")) != from_scenario:
+                continue
+            await self.repository.create_slot_merge(
+                {
+                    "unit": getattr(merge, "unit", None),
+                    "session": session_pb_id,
+                    "session_cm_id": session_cm_id,
+                    "year": year,
+                    "scenario": to_scenario,
+                    "combined": bool(getattr(merge, "combined", False)),
+                }
+            )
+
+        # Inlined into the message, not `extra={}` -- `extra` is silently
+        # dropped at format time (bunking/logging_config.py's
+        # ISO8601Formatter.format only ever renders record.getMessage()),
+        # the same trap `_log_recovered_race` documents and works around a
+        # few hundred lines above.
         logger.info(
-            "Copied a lodging scenario into a fresh one",
-            extra={
-                "year": year,
-                "session_cm_id": session_cm_id,
-                "from_scenario": from_scenario,
-                "to_scenario": to_scenario,
-                "copied": copied,
-                "skipped": skipped,
-            },
+            f"Copied a lodging scenario into a fresh one: year={year} session_cm_id={session_cm_id} "
+            f"from_scenario={from_scenario} to_scenario={to_scenario} copied={copied} skipped={skipped}"
         )
         return LodgingCopyResponse(copied=copied, skipped=skipped)
 

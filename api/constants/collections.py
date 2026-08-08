@@ -18,6 +18,8 @@ ORIGINAL_BUNK_REQUESTS = "original_bunk_requests"
 # Solver
 SOLVER_RUNS = "solver_runs"
 SAVED_SCENARIOS = "saved_scenarios"
+LOCKED_GROUPS = "locked_groups"
+LOCKED_GROUP_MEMBERS = "locked_group_members"
 
 # Metrics & snapshots
 ENROLLMENT_SNAPSHOTS = "enrollment_snapshots"

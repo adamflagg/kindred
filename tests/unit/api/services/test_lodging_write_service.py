@@ -49,6 +49,7 @@ def _repo(**overrides: Any) -> MagicMock:
         "delete_draft_assignment": None,
         "count_draft_assignments": 0,
         "fetch_assignments": [],
+        "fetch_draft_assignments": [],
         "find_availability_override": None,
         "create_availability": SimpleNamespace(id="avail_new"),
         "update_availability": SimpleNamespace(id="avail_existing"),
@@ -56,6 +57,7 @@ def _repo(**overrides: Any) -> MagicMock:
         "find_slot_merge": None,
         "create_slot_merge": SimpleNamespace(id="merge_new"),
         "update_slot_merge": SimpleNamespace(id="merge_existing"),
+        "fetch_slot_merges": [],
     }
     defaults.update(overrides)
     for method, value in defaults.items():
@@ -698,6 +700,69 @@ class TestCopyScenarioToScenario:
             await write_service.copy_scenario_to_scenario(
                 year=2026, session_cm_id=1000001, from_scenario="scn_source", to_scenario="scn_dest"
             )
+
+
+class TestCopyScenarioToScenarioAlsoCopiesSlotMerges:
+    """A house merged into one card, or split back into rooms, is a
+    scenario-scoped decision (`lodging_slot_merges`), exactly the kind of
+    thing `_copy_locked_groups` exists to carry over on summer's side
+    (kindred#1046). Dropping it here would mean "copy from Option A" does
+    not actually copy what Option A's board shows.
+    """
+
+    @pytest.mark.asyncio
+    async def test_the_source_scenario_s_own_merge_rows_are_copied(
+        self, write_service: LodgingWriteService, repo: MagicMock
+    ) -> None:
+        repo.fetch_slot_merges = AsyncMock(
+            return_value=[SimpleNamespace(unit="unit_1", scenario="scn_source", combined=True)]
+        )
+
+        await write_service.copy_scenario_to_scenario(
+            year=2026, session_cm_id=1000001, from_scenario="scn_source", to_scenario="scn_dest"
+        )
+
+        repo.fetch_slot_merges.assert_awaited_once_with(2026, "sess_1", "scn_source")
+        repo.create_slot_merge.assert_awaited_once()
+        data = repo.create_slot_merge.call_args[0][0]
+        assert data["unit"] == "unit_1"
+        assert data["scenario"] == "scn_dest"
+        assert data["combined"] is True
+        assert data["session"] == "sess_1"
+        assert data["session_cm_id"] == 1000001
+        assert data["year"] == 2026
+
+    @pytest.mark.asyncio
+    async def test_the_weekend_level_tier_is_not_copied_as_a_scenario_row(
+        self, write_service: LodgingWriteService, repo: MagicMock
+    ) -> None:
+        """`fetch_slot_merges(..., "scn_source")` returns the weekend-level
+        rows (`scenario == ""`) UNIONED with scn_source's own -- only the
+        latter are this copy's to make. Copying the weekend-level tier as a
+        scenario row would pin the destination against a later change to it
+        instead of letting it inherit, same argument as availability having
+        no scenario dimension at all."""
+        repo.fetch_slot_merges = AsyncMock(
+            return_value=[
+                SimpleNamespace(unit="unit_1", scenario="scn_source", combined=True),
+                SimpleNamespace(unit="unit_2", scenario="", combined=False),
+            ]
+        )
+
+        await write_service.copy_scenario_to_scenario(
+            year=2026, session_cm_id=1000001, from_scenario="scn_source", to_scenario="scn_dest"
+        )
+
+        repo.create_slot_merge.assert_awaited_once()
+        assert repo.create_slot_merge.call_args[0][0]["unit"] == "unit_1"
+
+    @pytest.mark.asyncio
+    async def test_no_merges_means_no_create_calls(self, write_service: LodgingWriteService, repo: MagicMock) -> None:
+        await write_service.copy_scenario_to_scenario(
+            year=2026, session_cm_id=1000001, from_scenario="scn_source", to_scenario="scn_dest"
+        )
+
+        repo.create_slot_merge.assert_not_called()
 
 
 class TestARefusedWriteIsNeverReportedAsSuccess:

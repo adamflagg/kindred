@@ -182,6 +182,64 @@ class TestListScenariosFiltersThroughTheRelation:
         assert resp.json()[0]["session_cm_id"] == 1235404
 
 
+class TestGetScenarioAssignmentsAreProgramAware:
+    """GET /api/scenarios/{id} has no frontend caller today, but this PR
+    made every other scenario endpoint program-aware -- leaving this one
+    reading bunk_assignments_draft unconditionally would silently return an
+    empty assignment list for every weekend scenario, for any future or
+    external caller."""
+
+    def test_a_weekend_scenario_reads_lodging_assignments_draft(self) -> None:
+        weekend_session = _rec(id="sess_pb", cm_id=2000001, session_type="family")
+        scenario = _rec(
+            id="scn_1",
+            name="Family Weekend",
+            session="sess_pb",
+            expand={"session": weekend_session},
+            year=2026,
+            is_active=True,
+            description="",
+        )
+
+        mock_pb = MagicMock()
+        mock_pb.collection.return_value.get_one.return_value = scenario
+        mock_pb.collection.return_value.get_full_list.return_value = []
+
+        app = _build_app()
+        with patch("api.routers.scenarios.pb", mock_pb):
+            resp = TestClient(app).get("/api/scenarios/scn_1")
+        assert resp.status_code == 200, resp.text
+
+        collections_touched = {call.args[0] for call in mock_pb.collection.call_args_list}
+        assert "lodging_assignments_draft" in collections_touched
+        assert "bunk_assignments_draft" not in collections_touched
+
+    def test_a_summer_scenario_still_reads_bunk_assignments_draft(self) -> None:
+        summer_session = _rec(id="sess_pb", cm_id=1235404, session_type="main")
+        scenario = _rec(
+            id="scn_1",
+            name="May 7",
+            session="sess_pb",
+            expand={"session": summer_session},
+            year=2026,
+            is_active=True,
+            description="",
+        )
+
+        mock_pb = MagicMock()
+        mock_pb.collection.return_value.get_one.return_value = scenario
+        mock_pb.collection.return_value.get_full_list.return_value = []
+
+        app = _build_app()
+        with patch("api.routers.scenarios.pb", mock_pb):
+            resp = TestClient(app).get("/api/scenarios/scn_1")
+        assert resp.status_code == 200, resp.text
+
+        collections_touched = {call.args[0] for call in mock_pb.collection.call_args_list}
+        assert "bunk_assignments_draft" in collections_touched
+        assert "lodging_assignments_draft" not in collections_touched
+
+
 # ---------------------------------------------------------------------------
 # Program-aware creation
 # ---------------------------------------------------------------------------
@@ -217,7 +275,7 @@ class TestSummerCreationIsUnchanged:
         ]
 
         app = _build_app()
-        body = {"name": "May 8", "session_cm_id": 1235404, "year": 2026, "should_copy_from_production": True}
+        body = {"name": "May 8", "session_cm_id": 1235404, "year": 2026, "copy_from_production": True}
         with (
             patch("api.routers.scenarios.pb", mock_pb),
             patch("api.routers.scenarios.graph_cache", MagicMock()),
@@ -247,7 +305,7 @@ class TestSummerCreationIsUnchanged:
             "name": "Family Weekend",
             "session_cm_id": 2000001,
             "year": 2026,
-            "should_copy_from_production": True,
+            "copy_from_production": True,
         }
         with (
             patch("api.routers.scenarios.pb", mock_pb),
@@ -282,7 +340,7 @@ class TestWeekendCreationRoutesThroughLodgingWriteService:
             "name": "Family Weekend",
             "session_cm_id": 2000001,
             "year": 2026,
-            "should_copy_from_production": True,
+            "copy_from_production": True,
         }
         with (
             patch("api.routers.scenarios.pb", mock_pb),
@@ -301,6 +359,37 @@ class TestWeekendCreationRoutesThroughLodgingWriteService:
         assert sent.scenario == "scn_new"
         assert sent.session_cm_id == 2000001
         assert sent.year == 2026
+
+        # LodgingCopyResponse.skipped surfaced, not discarded -- a skipped
+        # row names a party or unit that no longer resolves, and dropping
+        # this count silently would leave staff looking at a board with
+        # fewer families than the source shows.
+        assert resp.json()["copy_skipped"] == 1
+
+    def test_a_summer_creation_never_claims_a_skip_count_it_never_tracked(self) -> None:
+        """Summer's copy loop does not count skips (pre-existing -- it
+        silently `continue`s past an unresolvable relation). copy_skipped
+        must stay null rather than defaulting to 0 and implying a count
+        that was never actually taken."""
+        mock_pb = MagicMock()
+        mock_pb.collection.return_value.create.return_value = _rec(
+            id="scn_new", name="May 8", is_active=True, description=""
+        )
+        mock_pb.collection.return_value.get_full_list.return_value = []
+
+        app = _build_app()
+        body = {"name": "May 8", "session_cm_id": 1235404, "year": 2026, "copy_from_production": True}
+        with (
+            patch("api.routers.scenarios.pb", mock_pb),
+            patch("api.routers.scenarios.graph_cache", MagicMock()),
+            patch(
+                "api.routers.scenarios.build_session_context",
+                AsyncMock(return_value=_ctx(session_type="main")),
+            ),
+        ):
+            resp = TestClient(app).post("/api/scenarios", json=body)
+        assert resp.status_code == 200, resp.text
+        assert resp.json()["copy_skipped"] is None
 
     def test_copy_from_scenario_calls_copy_scenario_to_scenario(self) -> None:
         mock_pb = MagicMock()
@@ -416,6 +505,51 @@ class TestSummerCopyFromScenarioCarriesLockedGroups:
         assert member_create_call[0][0]["group"] == "group_new"
         assert member_create_call[0][0]["attendee"] == "attendee_1"
 
+    def test_a_copy_from_scenario_value_naming_a_quote_cannot_widen_the_locked_groups_filter(self) -> None:
+        """`copy_from_scenario` is client-supplied. Unescaped, a value like
+        `x" || year > 0 || scenario = "` would widen `scenario = "{id}" &&
+        year = {year}` past its own scoping (PocketBase binds `&&` tighter
+        than `||` -- `LodgingRepository.fetch_draft_assignments`'s own
+        docstring warns of exactly this shape) and clone every locked_groups
+        row in the table into the new scenario."""
+        mock_pb = MagicMock()
+        mock_pb.collection.return_value.create.return_value = _rec(
+            id="scn_new", name="Injected", is_active=True, description=""
+        )
+        mock_pb.collection.return_value.get_full_list.side_effect = [
+            [],  # bunk_assignments_draft
+            [],  # locked_groups
+        ]
+        malicious = 'x" || year > 0 || scenario = "'
+
+        app = _build_app()
+        body = {
+            "name": "Injected",
+            "session_cm_id": 1235404,
+            "year": 2026,
+            "copy_from_scenario": malicious,
+        }
+        with (
+            patch("api.routers.scenarios.pb", mock_pb),
+            patch("api.routers.scenarios.graph_cache", MagicMock()),
+            patch(
+                "api.routers.scenarios.build_session_context",
+                AsyncMock(return_value=_ctx(session_type="main")),
+            ),
+        ):
+            resp = TestClient(app).post("/api/scenarios", json=body)
+        assert resp.status_code == 200, resp.text
+
+        # First call is bunk_assignments_draft's own copy-source lookup,
+        # second is locked_groups' -- both interpolate the same value.
+        draft_call = mock_pb.collection.return_value.get_full_list.call_args_list[0]
+        draft_filter = draft_call.kwargs["query_params"]["filter"]
+        assert '\\"' in draft_filter, f"unescaped quote reached the draft filter: {draft_filter!r}"
+
+        locked_groups_call = mock_pb.collection.return_value.get_full_list.call_args_list[1]
+        filter_str = locked_groups_call.kwargs["query_params"]["filter"]
+        assert '\\"' in filter_str, f"unescaped quote reached the filter: {filter_str!r}"
+
     def test_copy_from_production_does_not_copy_locked_groups(self) -> None:
         """Matches the frontend comment this replaces: "Production-source
         copies are skipped via the callsite" -- there is no prior scenario to
@@ -431,7 +565,7 @@ class TestSummerCopyFromScenarioCarriesLockedGroups:
             "name": "Fresh from prod",
             "session_cm_id": 1235404,
             "year": 2026,
-            "should_copy_from_production": True,
+            "copy_from_production": True,
         }
         with (
             patch("api.routers.scenarios.pb", mock_pb),
@@ -446,6 +580,96 @@ class TestSummerCopyFromScenarioCarriesLockedGroups:
 
         created_collections = [call.args[0] for call in mock_pb.collection.call_args_list]
         assert "locked_groups" not in created_collections
+
+
+class TestAFailedSeedLeavesNoOrphanScenario:
+    """The scenario row this call creates is empty or partially seeded, and
+    no one else has ever seen it -- SeedScenarioNotice/useSeedScenario, the
+    two-step flow's own recovery path for exactly this state, are retired by
+    this same PR. A seed failure must not leave an orphan with no way to
+    finish or retry it: this pins that the scenario is deleted (cascading
+    every table the seed could have written to) rather than left behind.
+    """
+
+    def test_a_failed_weekend_seed_deletes_the_scenario_it_just_created(self) -> None:
+        mock_pb = MagicMock()
+        mock_pb.collection.return_value.create.return_value = _rec(
+            id="scn_new", name="Family Weekend", is_active=True, description=""
+        )
+        mock_write_service = MagicMock()
+        mock_write_service.copy_from_mirror = AsyncMock(side_effect=RuntimeError("PocketBase unreachable"))
+
+        app = _build_app()
+        body = {
+            "name": "Family Weekend",
+            "session_cm_id": 2000001,
+            "year": 2026,
+            "copy_from_production": True,
+        }
+        with (
+            patch("api.routers.scenarios.pb", mock_pb),
+            patch("api.routers.scenarios.graph_cache", MagicMock()),
+            patch(
+                "api.routers.scenarios.build_session_context",
+                AsyncMock(return_value=_ctx(session_type="family", session_cm_id=2000001)),
+            ),
+            patch("api.routers.scenarios.LodgingWriteService", return_value=mock_write_service),
+        ):
+            resp = TestClient(app, raise_server_exceptions=False).post("/api/scenarios", json=body)
+
+        assert resp.status_code == 500, resp.text
+        mock_pb.collection.return_value.delete.assert_called_once_with("scn_new")
+
+    def test_a_failed_summer_locked_groups_copy_deletes_the_scenario_it_just_created(self) -> None:
+        mock_pb = MagicMock()
+        mock_pb.collection.return_value.create.return_value = _rec(
+            id="scn_new", name="Option B", is_active=True, description=""
+        )
+        mock_pb.collection.return_value.get_full_list.side_effect = [
+            [],  # bunk_assignments_draft (copy_from_scenario source, empty)
+            RuntimeError("locked_groups lookup failed"),
+        ]
+
+        app = _build_app()
+        body = {
+            "name": "Option B",
+            "session_cm_id": 1235404,
+            "year": 2026,
+            "copy_from_scenario": "scn_source",
+        }
+        with (
+            patch("api.routers.scenarios.pb", mock_pb),
+            patch("api.routers.scenarios.graph_cache", MagicMock()),
+            patch(
+                "api.routers.scenarios.build_session_context",
+                AsyncMock(return_value=_ctx(session_type="main")),
+            ),
+        ):
+            resp = TestClient(app, raise_server_exceptions=False).post("/api/scenarios", json=body)
+
+        assert resp.status_code == 500, resp.text
+        mock_pb.collection.return_value.delete.assert_called_once_with("scn_new")
+
+    def test_a_successful_creation_never_deletes_the_scenario(self) -> None:
+        """Regression guard on the guard: the delete-on-failure branch must
+        not fire on the happy path."""
+        mock_pb = MagicMock()
+        mock_pb.collection.return_value.create.return_value = _rec(
+            id="scn_new", name="Blank", is_active=True, description=""
+        )
+        mock_pb.collection.return_value.get_full_list.return_value = []
+
+        app = _build_app()
+        body = {"name": "Blank", "session_cm_id": 1235404, "year": 2026, "copy_from_production": False}
+        with (
+            patch("api.routers.scenarios.pb", mock_pb),
+            patch("api.routers.scenarios.graph_cache", MagicMock()),
+            patch("api.routers.scenarios.build_session_context", AsyncMock(return_value=_ctx())),
+        ):
+            resp = TestClient(app).post("/api/scenarios", json=body)
+
+        assert resp.status_code == 200, resp.text
+        mock_pb.collection.return_value.delete.assert_not_called()
 
 
 # ---------------------------------------------------------------------------
@@ -483,6 +707,31 @@ class TestClearScenarioIsProgramAware:
 
         delete_call = mock_pb.collection.return_value.delete.call_args
         assert delete_call[0][0] == "placement_1"
+
+    def test_clear_filter_is_scoped_to_the_scenario_s_own_session(self) -> None:
+        """A scenario id alone does not prove which weekend a draft row
+        belongs to -- nothing at the write path (`place_party` takes
+        `session_cm_id` from the request, not cross-checked against the
+        scenario's own relation) rules out two weekends' rows sharing one
+        scenario id. Matches how every weekend draft write is already
+        scoped in `LodgingWriteService`/`LodgingRepository`."""
+        weekend_session = _rec(id="sess_pb", cm_id=2000001, session_type="family")
+        scenario = _rec(id="scn_1", name="Family Weekend", session="sess_pb", expand={"session": weekend_session})
+
+        mock_pb = MagicMock()
+        mock_pb.collection.return_value.get_one.return_value = scenario
+        mock_pb.collection.return_value.get_full_list.return_value = []
+
+        app = _build_app()
+        with (
+            patch("api.routers.scenarios.pb", mock_pb),
+            patch("api.routers.scenarios.graph_cache", MagicMock()),
+        ):
+            resp = TestClient(app).post("/api/scenarios/scn_1/clear", json={"year": 2026})
+        assert resp.status_code == 200, resp.text
+
+        query_params = mock_pb.collection.return_value.get_full_list.call_args.kwargs["query_params"]
+        assert 'session = "sess_pb"' in query_params["filter"]
 
     def test_weekend_clear_with_no_placements_reports_zero_honestly(self) -> None:
         """Before the fix this already said "Cleared 0" -- for the wrong
@@ -526,4 +775,34 @@ class TestClearScenarioIsProgramAware:
 
         collections_touched = {call.args[0] for call in mock_pb.collection.call_args_list}
         assert "bunk_assignments_draft" in collections_touched
-        assert "lodging_assignments_draft" not in collections_touched
+
+
+class TestClearScenarioRefusesADanglingSession:
+    """`saved_scenarios.session` is `cascadeDelete: false` (1500000021), so a
+    resynced or deleted session can leave the relation dangling -- `expand`
+    then carries no `session` key and `_expanded_session` returns None.
+
+    Defaulting `session_type` to `""` in that case used to fall through to
+    the summer branch silently, reproducing this very issue's bug (a
+    program-blind clear that deletes nothing) under a narrower trigger. This
+    pins the fix: an explicit 409 instead of a silent guess.
+    """
+
+    def test_a_dangling_session_relation_is_a_409_not_a_silent_summer_guess(self) -> None:
+        # No `expand` key at all -- exactly what a real PocketBase Record
+        # looks like when the relation target no longer resolves.
+        scenario = _rec(id="scn_1", name="Orphaned", session="sess_gone", expand={})
+
+        mock_pb = MagicMock()
+        mock_pb.collection.return_value.get_one.return_value = scenario
+
+        app = _build_app()
+        with (
+            patch("api.routers.scenarios.pb", mock_pb),
+            patch("api.routers.scenarios.graph_cache", MagicMock()),
+        ):
+            resp = TestClient(app).post("/api/scenarios/scn_1/clear", json={"year": 2026})
+
+        assert resp.status_code == 409, resp.text
+        # Never guessed at either draft table.
+        mock_pb.collection.return_value.get_full_list.assert_not_called()
