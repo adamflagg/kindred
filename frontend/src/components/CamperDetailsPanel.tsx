@@ -30,7 +30,7 @@ import {
   getSessionDisplayNameFromString,
   getSessionShortName as getSessionShortNameUtil,
 } from '../utils/sessionDisplay'
-import { buildSummerSessionTypeFilter } from '../utils/sessionTypePredicates'
+import { buildSummerSessionTypeFilter, isFamilySessionType } from '../utils/sessionTypePredicates'
 import type {
   PersonsResponse,
   AttendeesResponse,
@@ -1052,6 +1052,16 @@ export default function CamperDetailsPanel({
                       <span className="text-muted-foreground truncate text-xs">
                         {getSessionDisplayNameFromString(record.sessionName, record.sessionType)}
                       </span>
+                      {/* Family-camp de-emphasis tag (#2113 code review): this panel
+                          renders the same widened fetchCamperJourney rows as
+                          CampJourneyTimeline, which gained this tag to keep family
+                          rows from reading as noise for multi-session staff kids —
+                          mirrored here so the board popout gets the same treatment. */}
+                      {isFamilySessionType(record.sessionType) && (
+                        <span className="bg-muted text-muted-foreground flex-shrink-0 rounded px-1 py-0.5 text-[9px] font-medium">
+                          Family
+                        </span>
+                      )}
                       {record.bunkName !== undefined && (
                         <>
                           <span className="text-muted-foreground text-xs">·</span>
