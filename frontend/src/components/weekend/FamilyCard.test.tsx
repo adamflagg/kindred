@@ -204,6 +204,53 @@ describe('FamilyCard — what it shows', () => {
     expect(screen.getByText('Kai Patel (6.11)')).toBeInTheDocument()
   })
 
+  it('falls back for a nameless child on the person-grain grey line too', () => {
+    // The two child lists share one renderer (kindred#2153), so the blank-name
+    // fallback pinned above for the household bold line must hold here as
+    // well. Pinned separately because a shared renderer is exactly the thing a
+    // later session could re-split, and this branch would go quiet first.
+    render(
+      <FamilyCard
+        party={party({
+          grain: 'person',
+          display_name: 'Priya Patel',
+          adults: [{ adult_number: 1, display_name: 'Priya Patel' }],
+          children: [{ person_cm_id: 9001, display_name: '', age: 6.11, grade: 1 }],
+        })}
+        onOpen={vi.fn()}
+      />
+    )
+    expect(screen.getByText('Unnamed camper (6.11)')).toBeInTheDocument()
+  })
+
+  it('separates multiple children with a middot on both child lines', () => {
+    // The separator is the one piece of the child list with no other test
+    // holding it, and it is shared by both lines.
+    const { unmount } = render(<FamilyCard party={party()} onOpen={vi.fn()} />)
+    expect(screen.getByTestId('family-card-name')).toHaveTextContent(
+      'Noah Johnson (8) · Ava Johnson (5)'
+    )
+    unmount()
+
+    render(
+      <FamilyCard
+        party={party({
+          grain: 'person',
+          display_name: 'Priya Patel',
+          adults: [{ adult_number: 1, display_name: 'Priya Patel' }],
+          children: [
+            { person_cm_id: 9001, display_name: 'Kai Patel', age: 6.11, grade: 1 },
+            { person_cm_id: 9002, display_name: 'Mia Patel', age: 4.02, grade: 0 },
+          ],
+        })}
+        onOpen={vi.fn()}
+      />
+    )
+    expect(screen.getByText('Kai Patel (6.11)').parentElement).toHaveTextContent(
+      'Kai Patel (6.11) · Mia Patel (4.02)'
+    )
+  })
+
   it('omits an age it does not have rather than inventing one', () => {
     render(
       <FamilyCard

@@ -44,7 +44,7 @@ import { useDraggable } from '@dnd-kit/core'
 import { Repeat, Star, Users } from 'lucide-react'
 import { Fragment } from 'react'
 
-import type { LodgingUnitRow, RosterPartyRow } from '../../types/lodging'
+import type { LodgingUnitRow, PartyChildRow, RosterPartyRow } from '../../types/lodging'
 import { displayCampMinderAge, displayTruncatedAge } from '../../utils/age'
 import { partySize, SHARE_WORDING, shareWordingChip } from './boardLayout'
 import { partyKey } from './partyKey'
@@ -100,6 +100,54 @@ function Chip({ label, tone }: { label: string; tone: ChipTone }) {
 }
 
 /**
+ * A party's children as one `Name (age) · Name (age)` run.
+ *
+ * `FamilyCardBody` renders a child list TWICE — the household bold identity
+ * line and the person-grain grey secondary line — and the two differ only in
+ * which age formatter they call and what wraps them. Everything else (the key
+ * strategy, the separator, the missing-age omission, the blank-name fallback)
+ * is one decision each, and each was drifting toward being made in two places:
+ * the blank-name fallback had to be hand-applied to both copies in kindred#2074.
+ * Shared for the same reason `FamilyCardPreview` shares `FamilyCardBody` —
+ * so the copies cannot drift apart (kindred#2153).
+ *
+ * The caller supplies the wrapper, because the two sites want different ones:
+ * the bold line's span is also the non-household branch's, and the grey line's
+ * exists only when there are children to put in it.
+ *
+ * @param formatAge - `displayTruncatedAge` on the bold line (whole years are
+ *   the point of a similar-ages match), `displayCampMinderAge` on the grey one.
+ */
+function ChildList({
+  children,
+  formatAge,
+}: {
+  children: PartyChildRow[]
+  formatAge: (age: number) => string
+}) {
+  return (
+    <>
+      {children.map((child, index) => (
+        <Fragment key={String(child.person_cm_id ?? index)}>
+          {index > 0 && ' · '}
+          {/* An age we do not have is omitted, never rendered as 0.
+              A blank name (no first/preferred/last name on file --
+              `_person_display_name` has no fallback the way
+              `_household_display_name` does) falls back rather than
+              leaving this segment, or the whole card when it's the
+              only child, with no accessible text at all. */}
+          <span>
+            {child.age === null || child.age === undefined
+              ? child.display_name || 'Unnamed camper'
+              : `${child.display_name || 'Unnamed camper'} (${formatAge(child.age)})`}
+          </span>
+        </Fragment>
+      ))}
+    </>
+  )
+}
+
+/**
  * Everything the card SHOWS, with nothing about how it is picked up.
  *
  * Split out so the drag overlay can render the card without dnd-kit — see
@@ -147,24 +195,11 @@ function FamilyCardBody({
           // squeeze it rather than wrap or clip.
           className="text-foreground min-w-0 flex-1 truncate text-sm leading-tight font-semibold"
         >
-          {isHousehold
-            ? children.map((child, index) => (
-                <Fragment key={String(child.person_cm_id ?? index)}>
-                  {index > 0 && ' · '}
-                  {/* An age we do not have is omitted, never rendered as 0.
-                      A blank name (no first/preferred/last name on file --
-                      `_person_display_name` has no fallback the way
-                      `_household_display_name` does) falls back rather than
-                      leaving this segment, or the whole card when it's the
-                      only child, with no accessible text at all. */}
-                  <span>
-                    {child.age === null || child.age === undefined
-                      ? child.display_name || 'Unnamed camper'
-                      : `${child.display_name || 'Unnamed camper'} (${displayTruncatedAge(child.age)})`}
-                  </span>
-                </Fragment>
-              ))
-            : party.display_name}
+          {isHousehold ? (
+            <ChildList children={children} formatAge={displayTruncatedAge} />
+          ) : (
+            party.display_name
+          )}
         </span>
         <span className="text-muted-foreground ml-auto inline-flex items-center gap-0.5 text-xs tabular-nums">
           <Users className="h-3 w-3 flex-shrink-0" aria-hidden="true" />
@@ -189,18 +224,7 @@ function FamilyCardBody({
           // rare person-grain party that carries children of its own.
           children.length > 0 && (
             <span className="text-muted-foreground text-xs leading-snug">
-              {children.map((child, index) => (
-                <Fragment key={String(child.person_cm_id ?? index)}>
-                  {index > 0 && ' · '}
-                  {/* An age we do not have is omitted, never rendered as 0.
-                      Same blank-name fallback as the household branch above. */}
-                  <span>
-                    {child.age === null || child.age === undefined
-                      ? child.display_name || 'Unnamed camper'
-                      : `${child.display_name || 'Unnamed camper'} (${displayCampMinderAge(child.age)})`}
-                  </span>
-                </Fragment>
-              ))}
+              <ChildList children={children} formatAge={displayCampMinderAge} />
             </span>
           )}
 
