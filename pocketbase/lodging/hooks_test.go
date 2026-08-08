@@ -294,6 +294,22 @@ func seedSession(t *testing.T, app core.App) string {
 	return r.Id
 }
 
+// seedAvailability creates a lodging_availability row naming unit for the
+// given year and returns its id -- the lodging_availability twin of
+// seedUnit/seedArea, for the guardYearImmutable tests that need a dependent
+// availability row without inlining its construction at each call site.
+func seedAvailability(t *testing.T, app core.App, unit string, year int) string {
+	t.Helper()
+	r := core.NewRecord(mustCollection(t, app, "lodging_availability"))
+	r.Set("year", year)
+	r.Set("unit", unit)
+	r.Set("session", seedSession(t, app))
+	if err := app.Save(r); err != nil {
+		t.Fatalf("seed availability for unit %q year %d: %v", unit, year, err)
+	}
+	return r.Id
+}
+
 // newHooksTestApp builds a fresh test app carrying the lodging fixture with
 // the integrity hooks already wired, for tests that don't need to stage state
 // before the guards go live (contrast the delete-guard tests above, which
@@ -1597,6 +1613,38 @@ func TestGuardYearImmutableRejectsAUnitYearChangeWithAnAssignmentDependent(t *te
 
 	if err := app.Save(rec); err == nil {
 		t.Fatal("re-seasoned a unit with a dependent assignment row; want a refusal")
+	}
+}
+
+// TestGuardYearImmutableRejectsAUnitYearChangeWithADraftAssignmentDependent is
+// lodging_assignments_draft's own entry in yearImmutableRefs -- the SCENARIO
+// grain (kindred#1923(a)), not the confirmed board covered above. It is a
+// separate table with its own filter string
+// (`"units.id ?= {:id}"`, hooks.go), so nothing about the assignments test
+// above exercises it: a mutation that broke ONLY this entry -- e.g. reverting
+// it to the bare, silently-zero-matching "units = {:id}" -- left the suite
+// green before this test existed.
+func TestGuardYearImmutableRejectsAUnitYearChangeWithADraftAssignmentDependent(t *testing.T) {
+	app := newHooksTestApp(t)
+	unit := seedUnit(t, app, "test-unit-a", 2027)
+
+	placement := core.NewRecord(mustCollection(t, app, "lodging_assignments_draft"))
+	placement.Set("year", 2027)
+	placement.Set("units", []string{unit})
+	placement.Set("session", seedSession(t, app))
+	placement.Set("household_cm_id", 2000001) // satisfies guardDraftAssignmentGrain's XOR
+	if err := app.Save(placement); err != nil {
+		t.Fatalf("seeding a dependent draft assignment row: %v", err)
+	}
+
+	rec, err := app.FindRecordById(collectionUnits, unit)
+	if err != nil {
+		t.Fatalf("reloading the unit: %v", err)
+	}
+	rec.Set("year", 2028)
+
+	if err := app.Save(rec); err == nil {
+		t.Fatal("re-seasoned a unit with a dependent draft assignment row; want a refusal")
 	}
 }
 

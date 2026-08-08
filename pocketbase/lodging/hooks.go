@@ -325,9 +325,9 @@ func guardYearImmutable(e *core.RecordEvent, refs []dependentRef) error {
 		if len(records) > 0 {
 			return apis.NewBadRequestError(
 				fmt.Sprintf(
-					"Cannot change %q's year from %d to %d: %s row(s) reference it. "+
-						"Use the roll-forward to move it to a new season instead of "+
-						"re-seasoning an existing row in place.",
+					"Cannot change %q's year from %d to %d: at least one %s row "+
+						"references it. Use the roll-forward to move it to a new "+
+						"season instead of re-seasoning an existing row in place.",
 					e.Record.GetString("code"), oldYear, newYear, ref.collection,
 				),
 				nil,
