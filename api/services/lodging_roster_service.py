@@ -1343,6 +1343,12 @@ class LodgingRosterService:
                         PartyChild(
                             person_cm_id=_i(child, "cm_id"),
                             display_name=_person_display_name(child),
+                            # The same column `_person_display_name` appends,
+                            # sent separately so the client never has to split
+                            # it back off (kindred#2180) -- 32 of 2026's
+                            # rostered children have a SPACE inside their own
+                            # last_name, for which that split is wrong.
+                            last_name=_s(child, "last_name"),
                             # persons.age is CampMinder's yy.mm as a REAL (kindred#2088):
                             # 0.06 is a real 6-month-old, not a rounding artifact, so this
                             # must read the raw float, not _i()'s truncated int. `or None`

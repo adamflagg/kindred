@@ -13,11 +13,17 @@
  *
  * The state worth surfacing is a party whose cabin does not provide what they
  * asked for. Answering that needs the registry to record what each cabin HAS,
- * and today every cabin is `is_confirmed: false` — an unset `has_power` means
- * "nobody has said", not "there is no power". So the check runs only against
- * CONFIRMED cabins and otherwise reports `unverified`. It costs nothing now
- * and starts working the moment staff confirm amenities, rather than flagging
- * every constrained family on the strength of unset defaults.
+ * and an unset `has_power` means "nobody has said", not "there is no power".
+ * So the check runs only against CONFIRMED cabins and otherwise reports
+ * `unverified`, rather than flagging every constrained family on the strength
+ * of unset defaults.
+ *
+ * That gate is now OPEN, which this comment used to deny: it claimed "today
+ * every cabin is `is_confirmed: false`", and production is 118/118 confirmed
+ * as of 2026-08-09. The `unverified` branch is a live fallback for a cabin
+ * nobody has confirmed yet, not the state of the whole registry — do not read
+ * it as evidence that the fit check is inert. (Found during kindred#1912's
+ * review, fixed under kindred#2180.)
  */
 import type { LodgingUnitRow, RosterPartyRow } from '../../types/lodging'
 import { partyHeadcount } from './householdIdentity'
