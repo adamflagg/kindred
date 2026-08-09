@@ -13,8 +13,14 @@ Two invariants this file exists to pin:
   (a future solver tool), not of the group itself. `TestIntentIsGone` pins
   the absence directly, on the request models and the response row, so a
   future agent cannot silently reintroduce the column.
-* A group is at HOUSEHOLD grain and needs at least two of them. One household
-  is not a friend group, it is a household.
+* A group is at HOUSEHOLD grain and needs at least two of them TO BE CREATED.
+  One household is not a friend group, it is a household. The floor is a
+  CREATE-time rule only, exactly as summer's is: `LockGroupActionBar` gates
+  its Create button on `pendingCampers.length >= 2`, while
+  `LockGroupPanel`'s `removeMemberMutation` deletes a member unconditionally
+  and `getGroupValidationIssues` returns nothing at all for a group under
+  two. A PATCH here may therefore take a group down to one household or to
+  none -- owner ruling, 2026-08-09, "same behavior" as summer.
 
 Fictional CampMinder ids throughout (tests/CLAUDE.md): nothing here is a real
 household.
@@ -163,9 +169,38 @@ class TestUpdateRequestSchema:
         assert request.color is None
         assert request.household_cm_ids is None
 
-    def test_a_membership_edit_still_needs_two_households(self) -> None:
+    def test_a_membership_edit_may_take_a_group_down_to_one(self) -> None:
+        # THE FLOOR IS A CREATE-TIME RULE, NOT AN EDIT-TIME ONE. Summer's
+        # `removeMemberMutation` (LockGroupPanel) deletes a member with no
+        # guard whatsoever, and `getGroupValidationIssues` reports NO issue
+        # for a group of fewer than two. Owner ruling 2026-08-09: same
+        # behaviour here. A `min_length=2` on PATCH turned the member row's X
+        # button into a 422 the moment a group was down to two.
+        assert FriendGroupUpdateRequest(household_cm_ids=[JOHNSON]).household_cm_ids == [JOHNSON]
+
+    def test_a_membership_edit_may_empty_a_group(self) -> None:
+        # Removing the last member is summer's behaviour too -- it leaves an
+        # empty group rather than refusing, and Dissolve is the way to get
+        # rid of one.
+        assert FriendGroupUpdateRequest(household_cm_ids=[]).household_cm_ids == []
+
+    def test_a_membership_edit_still_dedupes(self) -> None:
+        # Dropping the floor must not drop the dedupe: two rows for one
+        # household would violate the per-group unique index in 1500000146.
+        assert FriendGroupUpdateRequest(household_cm_ids=[JOHNSON, JOHNSON]).household_cm_ids == [JOHNSON]
+
+    def test_a_membership_edit_still_rejects_non_positive_ids(self) -> None:
+        # 0 is the wire value a person-grain roster party carries, so it must
+        # never reach the table through the edit path either.
         with pytest.raises(ValidationError):
-            FriendGroupUpdateRequest(household_cm_ids=[JOHNSON])
+            FriendGroupUpdateRequest(household_cm_ids=[JOHNSON, 0])
+
+    def test_the_floor_still_applies_on_the_create_path(self) -> None:
+        # The other half of the ruling: dropping it from PATCH must not drop
+        # it from POST. Pinned here, beside the PATCH tests, so a future edit
+        # that "simplifies" the two validators into one is caught.
+        with pytest.raises(ValidationError):
+            _create_request(household_cm_ids=[JOHNSON])
 
     def test_renaming_to_blank_is_allowed(self) -> None:
         # Blank means "fall back to the auto-name", exactly as summer's blank

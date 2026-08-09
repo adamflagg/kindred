@@ -35,7 +35,7 @@
  * nothing to group and the tab says so rather than showing an empty picker
  * that can never fill.
  *
- * ## Membership add/remove (kindred#1913 half 2, Option A)
+ * ## Membership add/remove
  *
  * The member CHIPS above became member ROWS with a remove control, mirroring
  * `LockGroupPanel.tsx`'s member list grammar — see `FriendGroupCard` below.
@@ -44,10 +44,22 @@
  * `AddToGroupPicker` beside "Create Group" (`FriendGroupActionBar`'s summer
  * counterpart has "Add to existing" beside "Create group").
  *
- * THE ONE PLACE THIS SURFACE IS ALLOWED TO DIFFER FROM SUMMER, per CLAUDE.md
- * §4, is the GRAIN — summer's is the camper, this one's is the household —
- * and `addSelectedToGroup` below is where that difference actually changes
- * behaviour, not just a noun. See its own comment.
+ * ## Multi-group tenancy is summer's, exactly — owner ruling 2026-08-09
+ *
+ * All THREE write paths (create, the card picker, the board's "Add to group")
+ * warn through the same `confirmIfGrouped`, and confirming ADDS a second
+ * membership without touching the first. Nothing here deletes a membership
+ * except the member row's X and Dissolve, which is the shape summer has:
+ * `LockGroupContext.addCamperToGroup` only ever creates a row, and
+ * `LockGroupActionBar`'s create mutation runs the same sequential pre-check
+ * against the sentinel target `'__new__'`.
+ *
+ * The two-household floor is likewise a CREATE-time rule only, as summer's
+ * is: `LockGroupPanel.removeMemberMutation` deletes a member unconditionally
+ * and `getGroupValidationIssues` reports nothing for a group under two. An
+ * earlier cut of this file MOVED a conflicted household — draining its old
+ * group — which both diverged from summer for no stated reason and could
+ * half-apply, since the drain 422'd on the floor after the add had landed.
  */
 import { Trash2, X } from 'lucide-react'
 import clsx from 'clsx'
@@ -60,7 +72,7 @@ import type { FriendGroupRow, FriendGroupUpdate } from '../../types/friendGroups
 import type { RosterPartyRow } from '../../types/lodging'
 import { AddHouseholdPicker } from './AddHouseholdPicker'
 import { FriendGroupActionBar } from './FriendGroupActionBar'
-import { FriendGroupMoveDialog } from './FriendGroupMoveDialog'
+import { FriendGroupConflictDialog } from './FriendGroupConflictDialog'
 import {
   defaultFriendGroupName,
   FRIEND_GROUP_COLOR_NAMES,
@@ -73,6 +85,14 @@ import {
   withHousehold,
   withoutHousehold,
 } from './friendGroups'
+
+/**
+ * Sentinel target for the CREATE path's conflict check, straight from
+ * summer's `LockGroupActionBar`: the group does not exist yet, so no existing
+ * membership can carry this id and every already-grouped household counts as
+ * a conflict.
+ */
+const NEW_GROUP_SENTINEL = '__new__'
 
 export interface WeekendFriendGroupsProps {
   year: number
@@ -112,7 +132,7 @@ function FriendGroupCard({
   byHouseholdCmId: Map<number, RosterPartyRow>
   /** Every household on this weekend — passed through to the add picker. */
   households: RosterPartyRow[]
-  /** household_cm_id -> the group it's already in, for the add picker's gate. */
+  /** household_cm_id -> a group it's already in, for the picker's warning label. */
   householdToGroup: Map<number, FriendGroupRow>
   canManage: boolean
   onUpdate: (groupId: string, body: FriendGroupUpdate) => void
@@ -137,6 +157,14 @@ function FriendGroupCard({
           .filter((party): party is RosterPartyRow => party !== undefined)
       ),
     [group.members, byHouseholdCmId]
+  )
+
+  // The only households the add picker hides: this group's own members, for
+  // which an add is a no-op. Anything already in ANOTHER group stays on offer
+  // and is warned about instead — see `AddHouseholdPicker`'s header.
+  const memberCmIds = useMemo(
+    () => new Set((group.members ?? []).map((member) => member.household_cm_id)),
+    [group.members]
   )
 
   function openEditor() {
@@ -287,6 +315,7 @@ function FriendGroupCard({
             // eslint-disable-next-line @typescript-eslint/prefer-nullish-coalescing -- '' is a real stored value meaning "unnamed"
             groupName={group.name || 'this group'}
             households={households}
+            memberCmIds={memberCmIds}
             householdToGroup={householdToGroup}
             onAdd={(party) => {
               onAddMember(group, party)
@@ -367,8 +396,8 @@ export function WeekendFriendGroups({
     useFriendGroupMutations(year, sessionCmId)
   const groups = useMemo(() => groupsQuery.data?.groups ?? [], [groupsQuery.data])
 
-  // household_cm_id -> the group it's already in, if any — the gate for the
-  // per-card add picker and the conflict check for the board's bulk add.
+  // household_cm_id -> a group it's already in, if any — the conflict check
+  // behind all three write paths, and the label the warning names.
   const householdToGroup = useMemo(() => householdGroupIndex(groups), [groups])
 
   const conflictConfirm = useHouseholdGroupConflictConfirm()
@@ -379,6 +408,12 @@ export function WeekendFriendGroups({
   // state to drive the disabled trigger.
   const isAddingToGroupRef = useRef(false)
   const [isAddingToGroup, setIsAddingToGroup] = useState(false)
+
+  // The same guard on the create path, which is now also awaitable: without
+  // it a double-click during the conflict dialog would open a second one and
+  // cancel the first awaiter (`confirmAdd` releases a pending resolver), so
+  // half the selection would be confirmed against a dialog nobody saw.
+  const isCreatingRef = useRef(false)
 
   // A Set, not an array: it preserves insertion order in JS, so the created
   // group's membership arrives in the order staff picked it, and membership
@@ -411,6 +446,11 @@ export function WeekendFriendGroups({
     setName('')
     setColor(null)
   }
+
+  // Rotates by how many groups the weekend already has, exactly as summer's
+  // does, until staff pick one. At component scope rather than inside the
+  // QueryGuard's render prop, because `handleCreate` reads it too.
+  const activeColor = color ?? nextFriendGroupColor(groups.length)
 
   const households = useMemo(
     () => parties.filter((party) => party.grain === 'household'),
@@ -446,10 +486,42 @@ export function WeekendFriendGroups({
     setColor(null)
   }
 
-  // Per-card picker: the household is guaranteed ungrouped (`ungroupedHouseholds`
-  // is the picker's own filter), so this is a plain append — no conflict is
-  // reachable through this entry point.
-  function handleAddMember(group: FriendGroupRow, party: RosterPartyRow) {
+  /**
+   * Warn about one household that is already in some OTHER group.
+   *
+   * Returns `false` if staff cancelled. Shared by all three write paths, so
+   * the same sentence appears whether the household came from the card
+   * picker, the board's "Add to group", or a fresh Create — summer warns on
+   * every one of its equivalents too (`addCamperToGroup` for the first two,
+   * the create mutation's own pre-check for the third).
+   */
+  async function confirmIfGrouped(
+    party: RosterPartyRow,
+    targetGroupId: string,
+    targetGroupName: string
+  ): Promise<boolean> {
+    const existingGroup = householdToGroup.get(party.household_cm_id ?? 0)
+    if (!existingGroup || existingGroup.group_id === targetGroupId) return true
+    const outcome = await conflictConfirm.confirmAdd({
+      householdName: householdLabel(party),
+      // eslint-disable-next-line @typescript-eslint/prefer-nullish-coalescing -- '' is a real stored value meaning "unnamed"
+      existingGroupName: existingGroup.name || 'another friend group',
+      targetGroupName,
+    })
+    return outcome === 'confirmed'
+  }
+
+  /**
+   * Per-card picker. The picker no longer hides an already-grouped household
+   * (owner ruling 2026-08-09), so a conflict IS reachable here — warn, then
+   * append. Nothing is removed from the other group: summer's
+   * `addCamperToGroup` only ever creates a membership row, and the only two
+   * deletes on this surface are the member row's X and Dissolve.
+   */
+  async function handleAddMember(group: FriendGroupRow, party: RosterPartyRow) {
+    // eslint-disable-next-line @typescript-eslint/prefer-nullish-coalescing -- '' is a real stored value meaning "unnamed"
+    const ok = await confirmIfGrouped(party, group.group_id, group.name || 'this group')
+    if (!ok) return
     updateGroup(group.group_id, {
       household_cm_ids: withHousehold(group.members ?? [], party.household_cm_id ?? 0),
     })
@@ -464,21 +536,22 @@ export function WeekendFriendGroups({
 
   /**
    * The board's "Add to group": add every currently-selected household to
-   * `targetGroupId`, one PATCH to the target and (if needed) one PATCH per
-   * source group a household is moved OUT of.
+   * `targetGroupId`, in ONE PATCH to that group and nothing else.
    *
-   * THE GRAIN DIVERGENCE THAT ACTUALLY CHANGES BEHAVIOUR (CLAUDE.md §4). A
-   * camper can knowingly sit in two overlapping lock groups — summer's
-   * solver merges them transitively at solve time, so `addCamperToGroup`
-   * only ever ADDS a membership row. A household has no solver step to lean
-   * on for that (migration 1500000146's header: nothing enforces
-   * one-group-per-household at the schema layer), so kindred#1913 half 2's
-   * approved design enforces it here instead — a household picked from the
-   * grid that is already in a DIFFERENT group is, after confirmation, MOVED:
-   * added to the target AND removed from its old group, never left in both.
-   * A household picked via the per-card `AddHouseholdPicker` never reaches
-   * this branch at all, because that picker excludes anything already
-   * grouped before the household is ever selectable.
+   * NO SOURCE-GROUP DRAIN, and its absence fixes two defects at once. An
+   * earlier cut treated a household already in another group as a MOVE — a
+   * second PATCH stripping it from that group. Neither summer path does
+   * that (`LockGroupContext.addCamperToGroup` only creates a membership row;
+   * the only two `locked_group_members` deletes in the tree are the explicit
+   * per-member X and dissolve), and the drain was also the second way to
+   * cross the two-household create floor: draining a group of two down to
+   * one was rejected by the API AFTER the add to the target had already been
+   * written, leaving a partial result no undo could reach. Owner ruling
+   * 2026-08-09, "same behavior" as summer.
+   *
+   * Cancelling one household skips that household and KEEPS the selection,
+   * which is summer's `handleAddToExisting` exactly — it clears pending only
+   * when every add came back true.
    */
   async function addSelectedToGroup(targetGroupId: string) {
     if (isAddingToGroupRef.current) return
@@ -497,46 +570,28 @@ export function WeekendFriendGroups({
       const targetIdSet = new Set(existingTargetIds)
 
       const toAdd: number[] = []
-      // Per-source-group removals, keyed by that group's id.
-      const removalsBySource = new Map<string, Set<number>>()
+      let allConfirmed = true
 
       for (const party of selected) {
         const cmId = party.household_cm_id ?? 0
         if (targetIdSet.has(cmId)) continue // already a member of the target — nothing to do
-
-        const existingGroup = householdToGroup.get(cmId)
-        if (existingGroup && existingGroup.group_id !== targetGroupId) {
-          const outcome = await conflictConfirm.confirmMove({
-            householdName: householdLabel(party),
-            // eslint-disable-next-line @typescript-eslint/prefer-nullish-coalescing -- '' is a real stored value meaning "unnamed"
-            existingGroupName: existingGroup.name || 'another friend group',
-            targetGroupName: targetName,
-          })
-          if (outcome === 'cancelled') continue
-          const removed = removalsBySource.get(existingGroup.group_id) ?? new Set<number>()
-          removed.add(cmId)
-          removalsBySource.set(existingGroup.group_id, removed)
+        if (!(await confirmIfGrouped(party, targetGroupId, targetName))) {
+          allConfirmed = false
+          continue
         }
         toAdd.push(cmId)
       }
 
       if (toAdd.length === 0) return // nothing confirmed and nothing new — leave the selection as-is
 
-      const operations: Array<Promise<unknown>> = [
-        updateGroupAsync(targetGroupId, { household_cm_ids: [...existingTargetIds, ...toAdd] }),
-      ]
-      for (const [sourceGroupId, removedIds] of removalsBySource) {
-        const sourceGroup = groups.find((g) => g.group_id === sourceGroupId)
-        if (!sourceGroup) continue
-        const remaining = (sourceGroup.members ?? [])
-          .map((m) => m.household_cm_id)
-          .filter((id) => !removedIds.has(id))
-        operations.push(updateGroupAsync(sourceGroupId, { household_cm_ids: remaining }))
-      }
-
       try {
-        await Promise.all(operations)
-        clearSelection()
+        await updateGroupAsync(targetGroupId, {
+          household_cm_ids: [...existingTargetIds, ...toAdd],
+        })
+        // Only once every household staff picked actually landed — summer
+        // clears pending on `allSucceeded` for the same reason: a partial
+        // add with the selection thrown away leaves nothing to retry from.
+        if (allConfirmed) clearSelection()
       } catch {
         // Leave the selection intact on failure, exactly as "keeps the
         // selection when the create FAILS" does above — the mutation's own
@@ -545,6 +600,56 @@ export function WeekendFriendGroups({
     } finally {
       isAddingToGroupRef.current = false
       setIsAddingToGroup(false)
+    }
+  }
+
+  /**
+   * Create, with summer's sequential pre-check in front of it.
+   *
+   * `LockGroupActionBar`'s create mutation loops the pending campers BEFORE
+   * writing anything, confirming each one already in a group against the
+   * sentinel target `'__new__'`, and throws on the first cancel so no group
+   * is created at all. The weekend had this check on its add path and not on
+   * its create path, so authoring a second group over already-grouped
+   * households happened silently.
+   *
+   * Cancelling ANY household aborts the WHOLE create — summer's behaviour,
+   * and the only coherent one: the group's identity is the set staff picked,
+   * so quietly authoring a smaller one is not what was asked for. The
+   * selection survives, so they can drop the conflicting household and retry.
+   */
+  async function handleCreate() {
+    if (isCreatingRef.current) return
+    isCreatingRef.current = true
+    try {
+      // A blank field means "use the auto-name", which the bar shows as its
+      // placeholder. The server stores what it is given, so the fallback is
+      // applied HERE rather than left for the row to be renamed later.
+      const finalName = name.trim() || defaultFriendGroupName(selected)
+      for (const party of selected) {
+        // `finalName` is a plain string, so `||` needs no lint exemption here:
+        // it is '' when every selected household lacks a surname, and summer
+        // falls back to the same literal in that case.
+        const ok = await confirmIfGrouped(party, NEW_GROUP_SENTINEL, finalName || 'new group')
+        if (!ok) return
+      }
+      createGroup(
+        {
+          year,
+          session_cm_id: sessionCmId,
+          name: finalName,
+          color: activeColor,
+          household_cm_ids: selected.map((party) => party.household_cm_id ?? 0),
+        },
+        // CLEARED ON SUCCESS ONLY, as summer's bar does. `mutate` is
+        // fire-and-forget, so clearing straight after the call throws away
+        // the whole selection and the typed name on a 403, a 400 or a
+        // dropped connection — with nothing to undo it, and a toast that
+        // says what failed but not what was lost.
+        { onSuccess: clearSelection }
+      )
+    } finally {
+      isCreatingRef.current = false
     }
   }
 
@@ -567,10 +672,6 @@ export function WeekendFriendGroups({
         emptyMessage="No friend groups for this weekend."
       >
         {() => {
-          // Rotates by how many the weekend already has, exactly as summer's
-          // does, until staff pick one for this group.
-          const activeColor = color ?? nextFriendGroupColor(groups.length)
-
           if (households.length === 0) {
             return (
               <div className="space-y-3">
@@ -616,7 +717,9 @@ export function WeekendFriendGroups({
                         canManage={canManage}
                         onUpdate={updateGroup}
                         onDissolve={deleteGroup}
-                        onAddMember={handleAddMember}
+                        onAddMember={(g, party) => {
+                          void handleAddMember(g, party)
+                        }}
                         onRemoveMember={handleRemoveMember}
                         isPending={isPending}
                       />
@@ -678,26 +781,7 @@ export function WeekendFriendGroups({
                   onColorChange={setColor}
                   onClear={clearSelection}
                   onCreate={() => {
-                    createGroup(
-                      {
-                        year,
-                        session_cm_id: sessionCmId,
-                        // A blank field means "use the auto-name", which the bar
-                        // shows as its placeholder. The server stores what it is
-                        // given, so the fallback is applied HERE rather than left
-                        // for the row to be renamed later.
-                        name: name.trim() || defaultFriendGroupName(selected),
-                        color: activeColor,
-                        household_cm_ids: selected.map((party) => party.household_cm_id ?? 0),
-                      },
-                      // CLEARED ON SUCCESS ONLY, as summer's bar does. `mutate`
-                      // is fire-and-forget, so clearing straight after the call
-                      // throws away the whole selection and the typed name on a
-                      // 403, a 400 or a dropped connection — with nothing to
-                      // undo it, and a toast that says what failed but not what
-                      // was lost.
-                      { onSuccess: clearSelection }
-                    )
+                    void handleCreate()
                   }}
                   isPending={isPending}
                   groups={groups}
@@ -711,7 +795,7 @@ export function WeekendFriendGroups({
           )
         }}
       </QueryGuard>
-      <FriendGroupMoveDialog
+      <FriendGroupConflictDialog
         isOpen={conflictConfirm.dialogState.isOpen}
         householdName={conflictConfirm.dialogState.householdName}
         existingGroupName={conflictConfirm.dialogState.existingGroupName}

@@ -215,6 +215,87 @@ describe('authoring a group', () => {
     expect(screen.queryByTestId('friend-group-action-bar')).not.toBeInTheDocument()
   })
 
+  /**
+   * Summer runs this check and the weekend did not. `LockGroupActionBar`'s
+   * create mutation loops the pending campers BEFORE writing anything,
+   * confirming each one that is already grouped against the sentinel target
+   * `'__new__'`, and throws on the first cancel so no group is created at
+   * all. Without it, staff could author a second group over households
+   * already in one and only find out afterwards.
+   */
+  describe('the create-time conflict check', () => {
+    const grouped: FriendGroupRow = {
+      group_id: 'grp_1',
+      year: 2026,
+      session_cm_id: 1000001,
+      name: 'Garcia, Johnson',
+      color: '#22c55e',
+      source: 'staff_manual',
+      created_by: 'staff@example.com',
+      members: [{ household_cm_id: 2000001 }],
+    }
+
+    beforeEach(() => {
+      groupsResult = {
+        data: { groups: [grouped] },
+        isLoading: false,
+        isPending: false,
+        error: null,
+      }
+    })
+
+    it('warns before creating a group from a household already in another one', async () => {
+      const user = userEvent.setup()
+      renderTab()
+      await user.click(householdToggle(/Johnson/))
+      await user.click(householdToggle(/Chen/))
+      await user.click(screen.getByRole('button', { name: /create group/i }))
+
+      const dialog = await screen.findByRole('dialog')
+      expect(dialog.textContent).toMatch(/Garcia, Johnson/)
+      expect(dialog.textContent).toMatch(/leaves them in both/i)
+      expect(createGroup).not.toHaveBeenCalled()
+
+      await user.click(within(dialog).getByRole('button', { name: /continue/i }))
+
+      await waitFor(() => {
+        expect(createGroup).toHaveBeenCalledWith(
+          expect.objectContaining({ household_cm_ids: [2000001, 2000003] }),
+          expect.anything()
+        )
+      })
+    })
+
+    it('cancelling aborts the WHOLE create, as summer does', async () => {
+      const user = userEvent.setup()
+      renderTab()
+      await user.click(householdToggle(/Johnson/))
+      await user.click(householdToggle(/Chen/))
+      await user.click(screen.getByRole('button', { name: /create group/i }))
+
+      const dialog = await screen.findByRole('dialog')
+      await user.click(within(dialog).getByRole('button', { name: /cancel/i }))
+
+      expect(createGroup).not.toHaveBeenCalled()
+      // The selection survives, so staff can drop the conflicting household
+      // and try again without rebuilding it.
+      expect(screen.getByTestId('friend-group-action-bar')).toBeInTheDocument()
+    })
+
+    it('does not warn when nothing selected is already grouped', async () => {
+      const user = userEvent.setup()
+      renderTab()
+      await user.click(householdToggle(/Garcia/))
+      await user.click(householdToggle(/Chen/))
+      await user.click(screen.getByRole('button', { name: /create group/i }))
+
+      await waitFor(() => {
+        expect(createGroup).toHaveBeenCalled()
+      })
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+    })
+  })
+
   it('drops a selection carried over from another weekend', async () => {
     // The weekend switcher re-renders this route element rather than
     // remounting it, so without an explicit reset the households picked on
@@ -385,7 +466,7 @@ describe('membership add/remove (kindred#1913 half 2, Option A)', () => {
     expect(updateGroup).toHaveBeenCalledWith('grp_1', { household_cm_ids: [2000002] })
   })
 
-  it('the picker excludes households already in a group — the picker is the gate', async () => {
+  it('the picker excludes only the households already in THIS group', async () => {
     const user = userEvent.setup()
     groupsResult = { data: { groups: [grp1] }, isLoading: false, isPending: false, error: null }
     renderTab()
@@ -396,6 +477,77 @@ describe('membership add/remove (kindred#1913 half 2, Option A)', () => {
     expect(within(listbox).queryByRole('option', { name: /Johnson/ })).not.toBeInTheDocument()
     expect(within(listbox).queryByRole('option', { name: /Garcia/ })).not.toBeInTheDocument()
     expect(within(listbox).getByRole('option', { name: /Chen/ })).toBeInTheDocument()
+  })
+
+  it('the picker OFFERS a household already in another group rather than hiding it', async () => {
+    // Owner ruling 2026-08-09, "same behavior" as summer: a household may sit
+    // in more than one group, so a picker that silently drops the grouped
+    // ones offers staff no way to express that at all — and gives no reason
+    // for the absence. It is offered, labelled with the group it is already
+    // in, and warned about on select.
+    const user = userEvent.setup()
+    groupsResult = {
+      data: { groups: [grp1, grp2] },
+      isLoading: false,
+      isPending: false,
+      error: null,
+    }
+    renderTab()
+    const card = screen.getByTestId('friend-group-grp_2')
+    await user.click(within(card).getByRole('button', { name: /add household/i }))
+
+    // `^Johnson` because the OTHER options now carry an "Already in
+    // “Garcia, Johnson”" sub-line, so a bare /Johnson/ matches all of them.
+    const listbox = screen.getByRole('listbox')
+    const johnson = within(listbox).getByRole('option', { name: /^Johnson/ })
+    expect(johnson).toBeInTheDocument()
+    expect(johnson.textContent).toMatch(/already in .*Garcia, Johnson/i)
+  })
+
+  it('the card picker warns before adding an already-grouped household, and keeps it in both', async () => {
+    const user = userEvent.setup()
+    groupsResult = {
+      data: { groups: [grp1, grp2] },
+      isLoading: false,
+      isPending: false,
+      error: null,
+    }
+    renderTab()
+    const card = screen.getByTestId('friend-group-grp_2')
+    await user.click(within(card).getByRole('button', { name: /add household/i }))
+    await user.click(screen.getByRole('option', { name: /^Johnson/ }))
+
+    const dialog = await screen.findByRole('dialog')
+    expect(dialog.textContent).toMatch(/leaves them in both/i)
+    await user.click(within(dialog).getByRole('button', { name: /continue/i }))
+
+    await waitFor(() => {
+      expect(updateGroup).toHaveBeenCalledWith('grp_2', {
+        household_cm_ids: [2000003, 2000001],
+      })
+    })
+    // The old group is never touched — the only two deletes in the whole
+    // surface are the member row's X and Dissolve, exactly as in summer.
+    expect(updateGroup).not.toHaveBeenCalledWith('grp_1', expect.anything())
+  })
+
+  it('cancelling the card picker warning writes nothing at all', async () => {
+    const user = userEvent.setup()
+    groupsResult = {
+      data: { groups: [grp1, grp2] },
+      isLoading: false,
+      isPending: false,
+      error: null,
+    }
+    renderTab()
+    const card = screen.getByTestId('friend-group-grp_2')
+    await user.click(within(card).getByRole('button', { name: /add household/i }))
+    await user.click(screen.getByRole('option', { name: /^Johnson/ }))
+
+    const dialog = await screen.findByRole('dialog')
+    await user.click(within(dialog).getByRole('button', { name: /cancel/i }))
+
+    expect(updateGroup).not.toHaveBeenCalled()
   })
 
   it('adds an ungrouped household via the card picker', async () => {
@@ -411,7 +563,7 @@ describe('membership add/remove (kindred#1913 half 2, Option A)', () => {
     })
   })
 
-  it('says so when every household is already in a group', async () => {
+  it('says so when every household on the weekend is already in THIS group', async () => {
     const user = userEvent.setup()
     const fullGroup: FriendGroupRow = {
       ...grp1,
@@ -431,7 +583,7 @@ describe('membership add/remove (kindred#1913 half 2, Option A)', () => {
     const card = screen.getByTestId('friend-group-grp_1')
     await user.click(within(card).getByRole('button', { name: /add household/i }))
 
-    expect(screen.getByText(/every household.*already in a group/i)).toBeInTheDocument()
+    expect(screen.getByText(/every household.*already in this group/i)).toBeInTheDocument()
   })
 
   it('hides add/remove controls without bunking.manage', () => {
@@ -484,7 +636,7 @@ describe('membership add/remove (kindred#1913 half 2, Option A)', () => {
       })
     })
 
-    it('adding a household already in another group triggers the confirm and then moves it', async () => {
+    it('adding a household already in another group warns, then leaves it in BOTH', async () => {
       const user = userEvent.setup()
       updateGroupAsync.mockResolvedValue({})
       groupsResult = {
@@ -502,18 +654,45 @@ describe('membership add/remove (kindred#1913 half 2, Option A)', () => {
       const dialog = await screen.findByRole('dialog')
       expect(dialog.textContent).toMatch(/Garcia, Johnson/)
       expect(dialog.textContent).toMatch(/Pine cabins/)
+      expect(dialog.textContent).toMatch(/leaves them in both/i)
 
-      await user.click(within(dialog).getByRole('button', { name: /move household/i }))
+      await user.click(within(dialog).getByRole('button', { name: /continue/i }))
 
       await waitFor(() => {
         expect(updateGroupAsync).toHaveBeenCalledWith('grp_2', {
           household_cm_ids: [2000003, 2000001],
         })
       })
-      expect(updateGroupAsync).toHaveBeenCalledWith('grp_1', { household_cm_ids: [2000002] })
+      // NO source-group drain. Neither summer path deletes the old row, and
+      // draining here was the second way to cross the two-household floor —
+      // it half-applied, adding to the target and then 422ing on the source.
+      expect(updateGroupAsync).not.toHaveBeenCalledWith('grp_1', expect.anything())
+      expect(updateGroupAsync).toHaveBeenCalledTimes(1)
     })
 
-    it('cancelling the move leaves the household in its original group and the selection intact', async () => {
+    it('the warning never claims a household can only be in one group', async () => {
+      // The sentence contradicted the very migration it cited: 1500000146's
+      // header says in as many words that nothing enforces one-group-per-
+      // household, and calls two memberships "two groups, not a conflict".
+      const user = userEvent.setup()
+      groupsResult = {
+        data: { groups: [grp1, grp2] },
+        isLoading: false,
+        isPending: false,
+        error: null,
+      }
+      renderTab()
+      await user.click(householdToggle(/Johnson/))
+      await user.click(screen.getByRole('button', { name: /^add to group$/i }))
+      await user.click(screen.getByRole('option', { name: /Pine cabins/ }))
+
+      const dialog = await screen.findByRole('dialog')
+      expect(dialog.textContent).not.toMatch(/only be in one/i)
+      expect(dialog.textContent).not.toMatch(/take it out of/i)
+      expect(within(dialog).queryByRole('button', { name: /move household/i })).toBeNull()
+    })
+
+    it('cancelling the warning leaves the household in its original group and the selection intact', async () => {
       const user = userEvent.setup()
       groupsResult = {
         data: { groups: [grp1, grp2] },

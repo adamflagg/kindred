@@ -1,16 +1,23 @@
 /**
  * AddHouseholdPicker — the per-card "Add household" trigger and its filter
- * popover (kindred#1913 half 2, Option A).
+ * popover (kindred#1913).
  *
  * Ported from `LockGroupPanel.tsx`'s `AddMemberPicker` — trigger styling,
  * portal + fixed positioning recomputed on open/scroll/resize, outside-click
- * dismissal, and Escape handling all mirror it line for line. What differs
- * is the eligibility rule: summer excludes a camper already in ANY lock
- * group AND filters by gender to match the group's existing members; a
- * weekend group has no gender split (weekends do not split by gender — see
- * `FriendGroupActionBar.tsx`'s header), so this excludes ONLY households
- * already grouped (`ungroupedHouseholds` — the picker is the gate, per the
- * approved design).
+ * dismissal, and Escape handling all mirror it line for line.
+ *
+ * The eligibility rule excludes ONLY this group's own current members. It
+ * does NOT exclude a household that is in some OTHER group: the owner ruled
+ * on 2026-08-09 that multi-group tenancy behaves as summer's does, and
+ * summer's add path (`LockGroupContext.addCamperToGroup`) warns and then
+ * creates a second membership rather than refusing or moving. Such a
+ * household is listed with the group it is already in, and `onAdd` raises
+ * the warning. An earlier cut filtered them out silently and called the
+ * picker "the gate" — which offered staff no way to express a legitimate
+ * second group, and gave no reason for the absence.
+ *
+ * Summer's gender filter does not come across: weekends do not split by
+ * gender (see `FriendGroupActionBar.tsx`'s header).
  */
 import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
@@ -18,13 +25,15 @@ import { Plus } from 'lucide-react'
 
 import type { FriendGroupRow } from '../../types/friendGroups'
 import type { RosterPartyRow } from '../../types/lodging'
-import { householdLabel, ungroupedHouseholds } from './friendGroups'
+import { householdLabel, pickableHouseholds } from './friendGroups'
 
 export interface AddHouseholdPickerProps {
   groupName: string
   /** Every household on this weekend. */
   households: RosterPartyRow[]
-  /** household_cm_id -> the group it already belongs to, if any. */
+  /** This group's current members — the only households the picker hides. */
+  memberCmIds: Set<number>
+  /** household_cm_id -> a group it already belongs to, if any. Label only. */
   householdToGroup: Map<number, FriendGroupRow>
   onAdd: (party: RosterPartyRow) => void
 }
@@ -32,6 +41,7 @@ export interface AddHouseholdPickerProps {
 export function AddHouseholdPicker({
   groupName,
   households,
+  memberCmIds,
   householdToGroup,
   onAdd,
 }: AddHouseholdPickerProps) {
@@ -41,7 +51,7 @@ export function AddHouseholdPicker({
   const dropdownRef = useRef<HTMLDivElement>(null)
   const [dropdownPos, setDropdownPos] = useState<{ top: number; left: number } | null>(null)
 
-  const eligible = ungroupedHouseholds(households, householdToGroup, filter)
+  const eligible = pickableHouseholds(households, memberCmIds, filter)
 
   // Position recompute — runs on open, on window scroll (capture phase to
   // catch an inner scroller), and on resize, exactly as AddMemberPicker's.
@@ -136,23 +146,37 @@ export function AddHouseholdPicker({
             <div role="listbox" className="max-h-48 overflow-y-auto">
               {eligible.length === 0 ? (
                 <p className="text-muted-foreground px-3 py-2 text-sm">
-                  Every household on this weekend is already in a group.
+                  {filter.trim() === ''
+                    ? 'Every household on this weekend is already in this group.'
+                    : 'No households match that filter.'}
                 </p>
               ) : (
-                eligible.map((party) => (
-                  <button
-                    key={party.household_cm_id}
-                    type="button"
-                    role="option"
-                    aria-selected={false}
-                    onClick={() => {
-                      handleSelect(party)
-                    }}
-                    className="hover:bg-muted w-full px-3 py-1.5 text-left text-sm"
-                  >
-                    {householdLabel(party)}
-                  </button>
-                ))
+                eligible.map((party) => {
+                  const otherGroup = householdToGroup.get(party.household_cm_id ?? 0)
+                  return (
+                    <button
+                      key={party.household_cm_id}
+                      type="button"
+                      role="option"
+                      aria-selected={false}
+                      onClick={() => {
+                        handleSelect(party)
+                      }}
+                      className="hover:bg-muted w-full px-3 py-1.5 text-left text-sm"
+                    >
+                      <span className="block truncate">{householdLabel(party)}</span>
+                      {/* Named, not hidden. The add is allowed and warned
+                          about, so the reason it is worth a second look
+                          belongs on the option itself. */}
+                      {otherGroup && (
+                        <span className="text-muted-foreground block truncate text-xs">
+                          {/* eslint-disable-next-line @typescript-eslint/prefer-nullish-coalescing -- '' is a real stored value meaning "unnamed" */}
+                          Already in “{otherGroup.name || 'Unnamed group'}”
+                        </span>
+                      )}
+                    </button>
+                  )
+                })
               )}
             </div>
           </div>,

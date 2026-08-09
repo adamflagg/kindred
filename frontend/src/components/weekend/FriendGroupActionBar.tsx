@@ -31,12 +31,12 @@
  * BESIDE "Create Group" rather than replacing it — the household grid still
  * feeds both.
  *
- * Unlike the picker's per-card "Add household" (which excludes any already-
- * grouped household so a conflict there is structurally impossible), a
- * household chosen from the GRID may already be in a different group.
- * `WeekendFriendGroups.addSelectedToGroup` is what confirms and moves it —
- * see `useHouseholdGroupConflictConfirm.ts` for why that confirmation
- * dialog is forked from summer's rather than reused.
+ * A household chosen from the GRID may already be in a different group, as
+ * may one chosen from a card's own "Add household" picker.
+ * `WeekendFriendGroups.confirmIfGrouped` warns on both paths and then leaves
+ * the household in BOTH groups — summer's behaviour, per the owner ruling of
+ * 2026-08-09. See `useHouseholdGroupConflictConfirm.ts` for why that dialog
+ * is forked from summer's rather than reused.
  */
 import { Heart, Users } from 'lucide-react'
 import clsx from 'clsx'

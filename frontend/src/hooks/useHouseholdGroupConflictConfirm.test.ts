@@ -3,7 +3,7 @@
  *
  * Forked from useGroupConflictConfirm.test.ts's shape, minus the PB-query
  * half: a household's current group is already known to the caller from the
- * already-loaded weekend groups list, so `confirmMove` only has to drive the
+ * already-loaded weekend groups list, so `confirmAdd` only has to drive the
  * dialog's open/await/resolve state machine, not go fetch anything.
  *
  * TDD red phase — these tests must fail before implementation is written.
@@ -24,7 +24,7 @@ describe('useHouseholdGroupConflictConfirm', () => {
     const { result } = renderHook(() => useHouseholdGroupConflictConfirm())
 
     act(() => {
-      void result.current.confirmMove({
+      void result.current.confirmAdd({
         householdName: 'Johnson',
         existingGroupName: 'Lake cabins',
         targetGroupName: 'Ridge cabins',
@@ -43,7 +43,7 @@ describe('useHouseholdGroupConflictConfirm', () => {
     let outcome: string | undefined
     let pending: Promise<string>
     act(() => {
-      pending = result.current.confirmMove({
+      pending = result.current.confirmAdd({
         householdName: 'Johnson',
         existingGroupName: 'Lake cabins',
         targetGroupName: 'Ridge cabins',
@@ -66,7 +66,7 @@ describe('useHouseholdGroupConflictConfirm', () => {
     let outcome: string | undefined
     let pending: Promise<string>
     act(() => {
-      pending = result.current.confirmMove({
+      pending = result.current.confirmAdd({
         householdName: 'Johnson',
         existingGroupName: 'Lake cabins',
         targetGroupName: 'Ridge cabins',
@@ -91,7 +91,7 @@ describe('useHouseholdGroupConflictConfirm', () => {
     let firstOutcome: string | undefined
     let first: Promise<string>
     act(() => {
-      first = result.current.confirmMove({
+      first = result.current.confirmAdd({
         householdName: 'Johnson',
         existingGroupName: 'Lake cabins',
         targetGroupName: 'Ridge cabins',
@@ -100,7 +100,7 @@ describe('useHouseholdGroupConflictConfirm', () => {
 
     let second: Promise<string>
     act(() => {
-      second = result.current.confirmMove({
+      second = result.current.confirmAdd({
         householdName: 'Garcia',
         existingGroupName: 'Pine cabins',
         targetGroupName: 'Ridge cabins',
@@ -127,7 +127,7 @@ describe('useHouseholdGroupConflictConfirm', () => {
 
     let pending: Promise<string>
     act(() => {
-      pending = result.current.confirmMove({
+      pending = result.current.confirmAdd({
         householdName: 'Johnson',
         existingGroupName: 'Lake cabins',
         targetGroupName: 'Ridge cabins',

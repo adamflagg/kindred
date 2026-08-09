@@ -23,7 +23,7 @@ import {
   householdLabel,
   nextFriendGroupColor,
   partyComposition,
-  ungroupedHouseholds,
+  pickableHouseholds,
   withHousehold,
   withoutHousehold,
 } from './friendGroups'
@@ -279,21 +279,29 @@ describe('withHousehold / withoutHousehold', () => {
   })
 })
 
-describe('ungroupedHouseholds', () => {
+describe('pickableHouseholds', () => {
   const households = [
     party({ household_cm_id: 2000001, sort_name: 'Johnson' }),
     party({ household_cm_id: 2000002, sort_name: 'Garcia' }),
     party({ household_cm_id: 2000003, sort_name: 'Chen' }),
   ]
 
-  it('excludes a household already in ANY group — the picker is the gate', () => {
-    const index = householdGroupIndex([group({ members: [{ household_cm_id: 2000001 }] })])
-    const eligible = ungroupedHouseholds(households, index, '')
+  it('excludes only the households already in THIS group', () => {
+    const eligible = pickableHouseholds(households, new Set([2000001]), '')
     expect(eligible.map((p) => p.household_cm_id)).toEqual([2000002, 2000003])
   })
 
+  it('KEEPS a household that is in some other group — it is warned about, not hidden', () => {
+    // Owner ruling 2026-08-09: multi-group tenancy behaves as summer's does,
+    // so the picker offers the household and the add path warns. Silently
+    // filtering left staff with no way to express it and no reason given.
+    expect(pickableHouseholds(households, new Set(), '').map((p) => p.household_cm_id)).toEqual([
+      2000001, 2000002, 2000003,
+    ])
+  })
+
   it('filters the remaining households by name, case-insensitively', () => {
-    const eligible = ungroupedHouseholds(households, new Map(), 'gar')
+    const eligible = pickableHouseholds(households, new Set(), 'gar')
     expect(eligible.map((p) => p.household_cm_id)).toEqual([2000002])
   })
 })

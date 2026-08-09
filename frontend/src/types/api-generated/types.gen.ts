@@ -1474,6 +1474,18 @@ export type FriendGroupMember = {
  * another weekend is not an edit to it; the membership is a set of
  * households enrolled in THAT weekend, and re-pointing the row would carry
  * households that are not on the destination roster.
+ *
+ * NO TWO-HOUSEHOLD FLOOR ON THIS PATH, and its absence is load-bearing.
+ * The floor is a create-time rule -- `FriendGroupCreateRequest` keeps it --
+ * exactly as summer's is (`LockGroupActionBar` gates Create on two pending
+ * campers; `LockGroupPanel.removeMemberMutation` then deletes members with
+ * no guard at all, and `getGroupValidationIssues` reports nothing for a
+ * group under two). Owner ruling, 2026-08-09. With `min_length=2` here the
+ * member row's X button 422'd the moment a group was down to two, and the
+ * board's bulk add could half-apply: the PATCH adding households to the
+ * target succeeded while the PATCH draining their old group was rejected.
+ * Positivity and the dedupe still apply -- both are structural, unlike the
+ * floor.
  */
 export type FriendGroupUpdateRequest = {
   /**

@@ -1,7 +1,6 @@
 /**
- * useHouseholdGroupConflictConfirm — drives the confirmation dialog for
- * moving a household from one weekend friend group to another
- * (kindred#1913 half 2, Option A).
+ * useHouseholdGroupConflictConfirm — drives the warning shown before a
+ * household is put into a SECOND weekend friend group (kindred#1913).
  *
  * Forked from `useGroupConflictConfirm`, NOT reused, and not merely for the
  * camper/household wording. That hook's first half is an async PocketBase
@@ -13,23 +12,21 @@
  * synchronous `householdGroupIndex` lookup the caller does itself; this hook
  * is only the dialog half: open, await the user, resolve.
  *
- * The OUTCOME differs from summer's too, and that is the actual behavioural
- * divergence CLAUDE.md §4 asks to be called out, not just the wording.
- * Summer's dialog warns that the solver will MERGE two camper groups
- * transitively — both memberships survive. A household's grain has no
- * solver merge step to lean on: migration 1500000146's header is explicit
- * that nothing enforces one-group-per-household at the schema layer, so
- * kindred#1913 half 2's approved design enforces it in the UI instead —
- * confirming here MOVES the household (removed from the old group, added to
- * the new one), it does not leave it in both.
+ * The OUTCOME is summer's, and that is the whole point of the 2026-08-09
+ * owner ruling. Confirming ADDS a second membership and leaves the first
+ * alone — `addCamperToGroup` (`LockGroupContext`) does exactly that, and no
+ * summer path deletes an old membership to make a new one. An earlier cut of
+ * this hook was called `confirmMove` and its caller drained the source group;
+ * that was a divergence nobody asked for, and it half-applied whenever the
+ * drain would have taken the source group below two households.
  *
  * Usage:
  * ```tsx
- * const { confirmMove, dialogState } = useHouseholdGroupConflictConfirm()
- * const outcome = await confirmMove({ householdName, existingGroupName, targetGroupName })
+ * const { confirmAdd, dialogState } = useHouseholdGroupConflictConfirm()
+ * const outcome = await confirmAdd({ householdName, existingGroupName, targetGroupName })
  * if (outcome === 'cancelled') return
- * // outcome is 'confirmed' — perform the move (remove from old, add to new)
- * <FriendGroupMoveDialog {...dialogState} />
+ * // outcome is 'confirmed' — add to the target, touching nothing else
+ * <FriendGroupConflictDialog {...dialogState} />
  * ```
  */
 
@@ -37,12 +34,12 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 
 export type ConflictOutcome = 'confirmed' | 'cancelled'
 
-export interface ConfirmMoveParams {
-  /** Display label for the household being moved (dialog copy only). */
+export interface ConfirmAddParams {
+  /** Display label for the household being added (dialog copy only). */
   householdName: string
-  /** Name of the group the household is currently in. */
+  /** Name of a group the household is already in. */
   existingGroupName: string
-  /** Name of the group it would move to. */
+  /** Name of the group it would ALSO join. */
   targetGroupName: string
 }
 
@@ -56,7 +53,7 @@ export interface HouseholdConflictDialogState {
 }
 
 export interface UseHouseholdGroupConflictConfirmReturn {
-  confirmMove: (params: ConfirmMoveParams) => Promise<ConflictOutcome>
+  confirmAdd: (params: ConfirmAddParams) => Promise<ConflictOutcome>
   dialogState: HouseholdConflictDialogState
 }
 
@@ -66,7 +63,7 @@ export function useHouseholdGroupConflictConfirm(): UseHouseholdGroupConflictCon
   const [existingGroupName, setExistingGroupName] = useState('')
   const [targetGroupName, setTargetGroupName] = useState('')
 
-  // Promise resolver ref — set while a confirmMove() call is awaiting the
+  // Promise resolver ref — set while a confirmAdd() call is awaiting the
   // user's response. Mirrors useGroupConflictConfirm's resolveRef exactly.
   const resolveRef = useRef<((outcome: ConflictOutcome) => void) | null>(null)
 
@@ -90,8 +87,8 @@ export function useHouseholdGroupConflictConfirm(): UseHouseholdGroupConflictCon
     }
   }, [])
 
-  const confirmMove = useCallback(
-    ({ householdName, existingGroupName, targetGroupName }: ConfirmMoveParams) => {
+  const confirmAdd = useCallback(
+    ({ householdName, existingGroupName, targetGroupName }: ConfirmAddParams) => {
       // A caller iterating several households sequentially (the board's
       // "Add to group" flow) must never leave a prior awaiter hanging if it
       // starts a second confirm before the first resolved.
@@ -110,7 +107,7 @@ export function useHouseholdGroupConflictConfirm(): UseHouseholdGroupConflictCon
   )
 
   return {
-    confirmMove,
+    confirmAdd,
     dialogState: {
       isOpen: dialogOpen,
       householdName,

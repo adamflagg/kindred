@@ -186,10 +186,12 @@ export function partyComposition(party: RosterPartyRow): string {
  * already in hand once the groups list has loaded.
  *
  * The schema does not enforce one-group-per-household (that migration's own
- * header says so): a household CAN legitimately sit in two groups already.
- * This index keeps the first group found for such a household, which is
- * arbitrary but deterministic -- good enough for "is this a conflict",
- * which is the only thing that reads it.
+ * header says so): a household CAN legitimately sit in two groups already,
+ * and after the 2026-08-09 ruling the UI encourages exactly that. This index
+ * keeps the FIRST group found for such a household, which is arbitrary but
+ * deterministic -- and is all its two readers need, since both only want a
+ * group to NAME in a warning. Summer's `camperToGroup` is built the same way
+ * and used for the same purpose.
  */
 export function householdGroupIndex(groups: FriendGroupRow[]): Map<number, FriendGroupRow> {
   const index = new Map<number, FriendGroupRow>()
@@ -214,22 +216,29 @@ export function withoutHousehold(members: FriendGroupMemberRow[], householdCmId:
 }
 
 /**
- * Households on this weekend eligible for the card's "Add household" picker.
+ * Households on this weekend the card's "Add household" picker may offer.
  *
- * ONLY households not already in ANY group -- the picker is the gate, per
- * kindred#1913 half 2's approved design. A household already grouped is
- * added to a DIFFERENT group through the board's "Add to group" flow
- * instead, which confirms the move rather than silently offering it here.
+ * Excludes ONLY the group's own current members -- adding one of those is a
+ * no-op, and a picker that offers it is offering nothing.
+ *
+ * A household already in a DIFFERENT group is deliberately KEPT. An earlier
+ * cut filtered those out and called the picker "the gate"; the owner ruled on
+ * 2026-08-09 that multi-group tenancy behaves as summer's does, and summer
+ * never deletes an old membership to make a new one --
+ * `LockGroupContext.addCamperToGroup` warns and then creates a second row.
+ * Filtering here gave staff no way to express a legitimate second group and
+ * no reason for the absence; the add path warns instead
+ * (`FriendGroupConflictDialog`).
  */
-export function ungroupedHouseholds(
+export function pickableHouseholds(
   households: RosterPartyRow[],
-  householdToGroup: Map<number, FriendGroupRow>,
+  memberCmIds: Set<number>,
   filterText: string
 ): RosterPartyRow[] {
   const needle = filterText.trim().toLowerCase()
   return households.filter((party) => {
     const cmId = party.household_cm_id ?? 0
-    if (householdToGroup.has(cmId)) return false
+    if (memberCmIds.has(cmId)) return false
     if (needle === '') return true
     return householdLabel(party).toLowerCase().includes(needle)
   })

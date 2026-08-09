@@ -32,12 +32,13 @@ FriendGroupSource = Literal["staff_manual", "proposed"]
 HEX_COLOR = r"^#[0-9a-fA-F]{6}$"
 
 
-def _distinct_households(values: list[int]) -> list[int]:
-    """Order-preserving dedupe, then the two-household floor.
+def _dedupe(values: list[int]) -> list[int]:
+    """Order-preserving dedupe.
 
-    Deduping BEFORE the floor is the point: `[JOHNSON, JOHNSON]` is one
-    household written twice, not a group of two, and accepting it would create
-    a "group" that no placement rule could ever act on.
+    Applied on BOTH the create and the edit path. `[JOHNSON, JOHNSON]` is one
+    household written twice, and two member rows for one household would
+    violate 1500000146's per-group unique index -- so the dedupe is a
+    structural rule, unlike the floor below.
     """
     seen: set[int] = set()
     unique: list[int] = []
@@ -45,6 +46,25 @@ def _distinct_households(values: list[int]) -> list[int]:
         if value not in seen:
             seen.add(value)
             unique.append(value)
+    return unique
+
+
+def _distinct_households(values: list[int]) -> list[int]:
+    """Dedupe, then the two-household floor. CREATE ONLY.
+
+    Deduping BEFORE the floor is the point: `[JOHNSON, JOHNSON]` is one
+    household written twice, not a group of two, and accepting it would create
+    a "group" that no placement rule could ever act on.
+
+    THE FLOOR IS A CREATE-TIME RULE AND IS NOT REUSED ON PATCH, which is what
+    summer does and what the owner ruled on 2026-08-09. Summer gates its
+    Create button on `pendingCampers.length >= 2` and then never checks again:
+    `LockGroupPanel`'s `removeMemberMutation` deletes a member unconditionally
+    and `getGroupValidationIssues` returns no issue at all for a group under
+    two. Re-applying the floor on PATCH turned the member row's X button into
+    a 422 as soon as a group was down to two members.
+    """
+    unique = _dedupe(values)
     if len(unique) < 2:
         raise ValueError("a friend group needs at least two distinct households")
     return unique
@@ -126,11 +146,23 @@ class FriendGroupUpdateRequest(BaseModel):
     another weekend is not an edit to it; the membership is a set of
     households enrolled in THAT weekend, and re-pointing the row would carry
     households that are not on the destination roster.
+
+    NO TWO-HOUSEHOLD FLOOR ON THIS PATH, and its absence is load-bearing.
+    The floor is a create-time rule -- `FriendGroupCreateRequest` keeps it --
+    exactly as summer's is (`LockGroupActionBar` gates Create on two pending
+    campers; `LockGroupPanel.removeMemberMutation` then deletes members with
+    no guard at all, and `getGroupValidationIssues` reports nothing for a
+    group under two). Owner ruling, 2026-08-09. With `min_length=2` here the
+    member row's X button 422'd the moment a group was down to two, and the
+    board's bulk add could half-apply: the PATCH adding households to the
+    target succeeded while the PATCH draining their old group was rejected.
+    Positivity and the dedupe still apply -- both are structural, unlike the
+    floor.
     """
 
     name: str | None = Field(None, max_length=200)
     color: str | None = Field(None, pattern=HEX_COLOR)
-    household_cm_ids: list[int] | None = Field(None, min_length=2)
+    household_cm_ids: list[int] | None = None
 
     @field_validator("household_cm_ids")
     @classmethod
@@ -139,7 +171,7 @@ class FriendGroupUpdateRequest(BaseModel):
             return None
         if any(value <= 0 for value in values):
             raise ValueError("household_cm_ids must be positive CampMinder ids")
-        return _distinct_households(values)
+        return _dedupe(values)
 
 
 class FriendGroupDeleteResponse(BaseModel):
