@@ -15,6 +15,17 @@ SCOPE, honestly stated, matching the guard this serves:
   * C-style files (.go/.js/.ts/.tsx) use a character scan that tracks string
     and block-comment state. It understands quotes well enough not to mistake
     "https://example/Tuolumne" for a comment, but it is not a parser.
+  * .jsx/.tsx additionally recognize `{/*` and `*/}` as a fused JSX comment
+    delimiter (kindred#2181): the braces are the comment container's own
+    syntax, not code that happens to share a line with one. Without this, a
+    multi-line `{/* ... */}` comment's opening and closing lines each carry
+    a leftover `{` or `}` after the comment content is stripped, so the
+    "is this line all comment" check never sees an empty line and the whole
+    comment -- prose included -- reads as code. That is what let a real unit
+    name sit in a JSX comment on `main` until #2178 scrubbed it at the
+    source. The fusion only fires when `{`/`}` sit flush against `/*`/`*/`
+    (no space), so `{ /* note */ x() }` -- real code around a comment -- is
+    untouched.
   * A file that will not parse or read is treated as ALL CODE, so its hits
     survive. A guard that goes quiet because a file is malformed is worse than
     one that reports a line you have to read.
@@ -29,6 +40,10 @@ import tokenize
 from pathlib import Path
 
 C_STYLE_SUFFIXES = {".go", ".js", ".jsx", ".ts", ".tsx"}
+# Files where a `{/* ... */}` JSX comment is possible -- restricted so a
+# .go/.js/.ts file's `{ /* note */ }` (a real block scoping a comment) never
+# gets the fused-brace treatment meant only for JSX's own comment syntax.
+JSX_SUFFIXES = {".jsx", ".tsx"}
 
 
 def _python_noncode_lines(source: str) -> set[int]:
@@ -73,11 +88,16 @@ def _python_noncode_lines(source: str) -> set[int]:
     return noncode
 
 
-def _c_style_noncode_lines(source: str) -> set[int]:
+def _c_style_noncode_lines(source: str, *, jsx: bool = False) -> set[int]:
     """Line numbers wholly given over to `//` or `/* */` comments.
 
     A line counts as non-code only if everything on it outside a comment is
     whitespace, so `const x = "Tuolumne" // note` still reports.
+
+    When `jsx` is set, a `{` flush against an opening `/*` and a `}` flush
+    against a closing `*/` are folded into the comment delimiter rather than
+    counted as leftover code (kindred#2181) -- see the module docstring for
+    why that is exactly what a JSX `{/* ... */}` comment needs.
     """
     noncode: set[int] = set()
     in_block = False
@@ -93,7 +113,12 @@ def _c_style_noncode_lines(source: str) -> set[int]:
             if in_block:
                 if pair == "*/":
                     in_block = False
-                    index += 2
+                    # `*/}` -- the `}` closes the JSX expression container
+                    # that the comment opened; it is the delimiter, not code.
+                    if jsx and line[index + 2 : index + 3] == "}":
+                        index += 3
+                    else:
+                        index += 2
                     continue
                 index += 1
                 continue
@@ -112,6 +137,13 @@ def _c_style_noncode_lines(source: str) -> set[int]:
                 in_string = char
                 code_chars.append(char)
                 index += 1
+                continue
+
+            # `{/*` -- the `{` opens the JSX expression container that only
+            # exists to hold this comment; it is the delimiter, not code.
+            if jsx and line[index : index + 3] == "{/*":
+                in_block = True
+                index += 3
                 continue
 
             if pair == "//":
@@ -139,7 +171,7 @@ def noncode_lines(path: Path) -> set[int]:
     if path.suffix == ".py":
         return _python_noncode_lines(source)
     if path.suffix in C_STYLE_SUFFIXES:
-        return _c_style_noncode_lines(source)
+        return _c_style_noncode_lines(source, jsx=path.suffix in JSX_SUFFIXES)
     return set()
 
 

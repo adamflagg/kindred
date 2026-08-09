@@ -200,4 +200,40 @@ fi
 echo "PASS: a failed scan exits 2 and says so"
 
 echo
+echo "=== TEST 7: a needle on the CLOSING line of a multi-line JSX comment should NOT fail ==="
+# kindred#2181: this is the exact shape that carried a real unit name past
+# review on `main` until #2178 scrubbed it at the source -- a two-line JSX
+# {/* ... */} comment whose needle sits on the second line, alongside the
+# closing */}. The dropper's line-level check used to require the WHOLE line
+# to be blank once comment content was stripped, and a JSX comment's own
+# `{`/`}` scaffolding survived that strip as leftover "code", so this needle
+# never got dropped even though it sits in ordinary documentation prose.
+TSX_PROBE="$REPO_ROOT/frontend/src/leak_probe_kindred2181.tsx"
+cleanup4() { rm -f "$TSX_PROBE"; }
+trap 'cleanup4; cleanup3; cleanup' EXIT INT TERM
+cat > "$TSX_PROBE" <<'PROBE'
+export function Probe() {
+  return (
+    <div>
+      {/* The area, because the row it came from is now behind a
+          backdrop and "which Tioga is this" is the first question. */}
+      <span>hi</span>
+    </div>
+  );
+}
+PROBE
+set +e
+OUT=$("$GUARD_SCRIPT" 2>&1)
+rc=$?
+set -e
+rm -f "$TSX_PROBE"
+if [[ $rc -eq 0 ]]; then
+  echo "PASS: a needle on a JSX comment's closing */} line does not trip the guard"
+else
+  echo "FAIL: expected exit 0 for a needle inside a multi-line JSX comment, got $rc" >&2
+  echo "$OUT" >&2
+  exit 1
+fi
+
+echo
 echo "All tests passed."
