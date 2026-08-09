@@ -74,9 +74,38 @@ function confirmedUnit(overrides: Partial<LodgingUnitRow> = {}): LodgingUnitRow 
 const REQUEST_TEXT = 'Please put us near the Garcia family, and we need a ground-floor room.'
 
 describe('FamilyCard — what it shows', () => {
-  it('shows the party size', () => {
+  // kindred#2152: the badge used to render the server's raw `party_size`,
+  // which became a BED count under kindred#1925/#2046 (it drops
+  // blank/placeholder adult slots and discounts an under-18-month infant) and
+  // can legitimately disagree with the names actually printed on the card.
+  // The default fixture's `party_size: 4` deliberately overstates its one
+  // named adult + two named children (3) -- the badge must show the count
+  // that agrees with what's printed below it, not the raw report.
+  it('shows the count of adults and children actually printed, not the raw party_size', () => {
     render(<FamilyCard party={party()} onOpen={vi.fn()} />)
-    expect(screen.getByText('4')).toBeInTheDocument()
+    expect(screen.getByText('3')).toBeInTheDocument()
+    expect(screen.queryByText('4')).not.toBeInTheDocument()
+  })
+
+  // kindred#1946's nameless-row cleanup runs on the next successful derived
+  // sync, not on merge -- prod still carries rows like these today, so the
+  // badge must already be correct with them present.
+  it('excludes blank and placeholder adult rows from the badge even though party_size still counts them', () => {
+    render(
+      <FamilyCard
+        party={party({
+          party_size: 5,
+          adults: [
+            { adult_number: 1, display_name: 'Emma Johnson', relationship: 'Mother' },
+            { adult_number: 2, display_name: '', relationship: '' },
+            { adult_number: 3, display_name: 'NA', relationship: '' },
+          ],
+        })}
+        onOpen={vi.fn()}
+      />
+    )
+    // 1 named adult + 2 named children = 3, not the reported 5.
+    expect(screen.getByText('3')).toBeInTheDocument()
   })
 
   it('shows children with ages, which is the entire point of a similar-ages match', () => {

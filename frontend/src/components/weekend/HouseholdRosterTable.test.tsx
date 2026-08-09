@@ -212,6 +212,45 @@ describe('HouseholdRosterTable', () => {
     expect(screen.getByText('Emma Johnson (9.00)')).toBeInTheDocument()
   })
 
+  it('counts the PEOPLE printed, not the bed number, for an infant household', () => {
+    // kindred#2152: `composition()` prints the members it renders below, so it
+    // must never read `party.party_size`. Since #2046 that field is a BED
+    // count -- the server discounts a child under 18 months -- so here it says
+    // 2 while three people are named. Whichever way this row drifted the two
+    // lines would contradict each other on screen.
+    //
+    // This also pins why `composition()` does NOT call `partyHeadcount`
+    // despite wanting the people number: it needs the adult and child figures
+    // BROKEN OUT to build the string, and `partyHeadcount` returns only their
+    // sum. Collapsing it would turn "1 adult · 2 children" into "3".
+    render(
+      <HouseholdRosterTable
+        year={2026}
+        parties={[
+          party({
+            party_size: 2,
+            adults: [{ adult_number: 1, display_name: 'Olivia Chen', relationship: 'Parent' }],
+            children: [
+              { person_cm_id: 1000010, display_name: 'Mateo Chen', age: 6, grade: 1 },
+              { person_cm_id: 1000011, display_name: 'Ivy Chen', age: 0.11, grade: 0 },
+            ],
+            flags: {
+              needs_private_bathroom: false,
+              needs_power: false,
+              needs_accommodation: false,
+              accommodation_is_mandatory: false,
+              has_infant: true,
+            },
+          }),
+        ]}
+      />,
+      { wrapper }
+    )
+    expect(screen.getByText('1 adult · 2 children')).toBeInTheDocument()
+    expect(screen.queryByText('1 adult · 1 child')).not.toBeInTheDocument()
+    expect(screen.queryByText('3')).not.toBeInTheDocument()
+  })
+
   it('does not count a blank adult slot -- family_camp_adults is not a fixed five', () => {
     // Scan finding on kindred#2084: `composition()` counted `party.adults`
     // raw, inflating the figure shown right beside the (now-filtered)

@@ -20,7 +20,7 @@
  * every constrained family on the strength of unset defaults.
  */
 import type { LodgingUnitRow, RosterPartyRow } from '../../types/lodging'
-import { namedAdults } from './householdIdentity'
+import { partyHeadcount } from './householdIdentity'
 import { coveredCodes, drawnUnits } from './unitLevel'
 
 /** Ordered most urgent first. The order of this array IS the section order. */
@@ -80,14 +80,21 @@ const VERIFIABLE_NEEDS = [
 /**
  * How many beds the party consumes. Adult weekends enrol one person.
  *
- * ONE OF THREE COPIES of this read — `boardLayout.partySize` carries the full
- * account of the rule and of the newly-reachable reported 0, and
- * `FamilyDetailsPanel` holds the third. Change one, change all three.
+ * ONE OF TWO COPIES of this read — `boardLayout.partySize` carries the full
+ * account of the rule and of the newly-reachable reported 0. Change one,
+ * change both. (It was three until #2152; `FamilyDetailsPanel`'s copy wanted
+ * the PEOPLE number and now calls `partyHeadcount`.)
+ *
+ * ⚠️ BEDS, NOT PEOPLE — do not collapse this into `partyHeadcount`. Only the
+ * fallback arm is shared: the reported `party_size` already has blank and
+ * placeholder adult slots dropped and a child under 18 months discounted
+ * (#1925/#2046), so for an infant household it sits one BELOW the headcount
+ * on purpose. `rosterAttention.test` asserts both numbers on one such party.
  */
 export function partyBeds(party: RosterPartyRow): number {
   const reported = party.party_size ?? 0
   if (reported > 0) return reported
-  return namedAdults(party).length + (party.children?.length ?? 0)
+  return partyHeadcount(party)
 }
 
 /**
