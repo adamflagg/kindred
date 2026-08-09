@@ -357,4 +357,133 @@ describe('useCamperEnrollment', () => {
     const assignmentFilter = String(mockAssignmentsGetFullList.mock.calls[0]?.[0]?.filter ?? '')
     expect(assignmentFilter).not.toContain('"scit"')
   })
+
+  // ==========================================================================
+  // Issue #2149: family-camp-only campers get an early-return-to-empty page.
+  // ==========================================================================
+
+  it('queries attendees with family type included in the filter (issue #2149)', async () => {
+    mockAttendeesGetFullList.mockResolvedValue([
+      makeAttendee({
+        id: 'att_family',
+        sessionPbId: 'sess_family',
+        sessionCmId: 1500001,
+        sessionType: 'family',
+      }),
+    ])
+    mockAssignmentsGetFullList.mockResolvedValue([])
+
+    const { result } = renderHook(() => useCamperEnrollment(PERSON_CM_ID, YEAR), {
+      wrapper: createWrapper(),
+    })
+    await waitFor(() => expect(result.current.isLoading).toBe(false))
+
+    const attendeeFilter = String(mockAttendeesGetFullList.mock.calls[0]?.[0]?.filter ?? '')
+    expect(attendeeFilter).toContain('session.session_type = "family"')
+  })
+
+  it('a family-only person yields a non-empty allCampers instead of the empty-attendees early return (issue #2149)', async () => {
+    // Real PocketBase applies `filter` server-side. Simulate that here so
+    // this test actually reproduces the bug: before the fix,
+    // CAMPER_DETAIL_TYPES omits "family" and the server-side filter excludes
+    // this attendee, so the hook's `attendees.length === 0` branch fires and
+    // allCampers stays empty.
+    const familyAttendee = makeAttendee({
+      id: 'att_family',
+      sessionPbId: 'sess_family',
+      sessionCmId: 1500001,
+      sessionType: 'family',
+    })
+    mockAttendeesGetFullList.mockImplementation((opts: { filter?: string } = {}) => {
+      const filter = opts.filter ?? ''
+      const matches = filter.includes('session.session_type = "family"')
+      return Promise.resolve(matches ? [familyAttendee] : [])
+    })
+    mockAssignmentsGetFullList.mockResolvedValue([])
+
+    const { result } = renderHook(() => useCamperEnrollment(PERSON_CM_ID, YEAR), {
+      wrapper: createWrapper(),
+    })
+    await waitFor(() => expect(result.current.isLoading).toBe(false))
+
+    expect(result.current.allAttendees).toHaveLength(1)
+    const camper = expectDefined(result.current.allAttendees[0], 'family attendee')
+    expect(camper.session_cm_id).toBe(1500001)
+  })
+
+  it('a family session degrades to no bunk rather than throwing or borrowing another session’s (issue #2149)', async () => {
+    mockAttendeesGetFullList.mockResolvedValue([
+      makeAttendee({
+        id: 'att_family',
+        sessionPbId: 'sess_family',
+        sessionCmId: 1500001,
+        sessionType: 'family',
+      }),
+    ])
+    // A summer bunk exists but for an unrelated session — must not leak onto
+    // the family attendee.
+    mockAssignmentsGetFullList.mockResolvedValue([
+      makeAssignment({
+        id: 'asn_other',
+        sessionPbId: 'sess_other',
+        sessionCmId: 1300000,
+        sessionType: 'main',
+        bunkPbId: 'bunk_other',
+        bunkCmId: 7000077,
+        bunkName: 'Cabin 7',
+      }),
+    ])
+
+    const { result } = renderHook(() => useCamperEnrollment(PERSON_CM_ID, YEAR), {
+      wrapper: createWrapper(),
+    })
+    await waitFor(() => expect(result.current.isLoading).toBe(false))
+
+    expect(result.current.allAttendees).toHaveLength(1)
+    const camper = expectDefined(result.current.allAttendees[0], 'family attendee')
+    expect(camper.assigned_bunk_cm_id).toBeUndefined()
+    expect(camper.assigned_bunk).toBe('')
+  })
+
+  it('an AG camper who also attends family camp keeps their AG bunk via the fallback (issue #2149)', async () => {
+    // Two current-year attendee rows now that family is included: the AG
+    // session and a family session. The AG fallback must still fire — it was
+    // gated on `attendees.length === 1`, which this scenario breaks.
+    mockAttendeesGetFullList.mockResolvedValue([
+      makeAttendee({
+        id: 'att_ag',
+        sessionPbId: 'sess_2a_ag',
+        sessionCmId: 1356533,
+        sessionType: 'ag',
+      }),
+      makeAttendee({
+        id: 'att_family',
+        sessionPbId: 'sess_family',
+        sessionCmId: 1500001,
+        sessionType: 'family',
+      }),
+    ])
+    mockAssignmentsGetFullList.mockResolvedValue([
+      makeAssignment({
+        id: 'asn_parent_main',
+        sessionPbId: 'sess_2_main',
+        sessionCmId: 1300000,
+        sessionType: 'main',
+        bunkPbId: 'bunk_main',
+        bunkCmId: 7000099,
+        bunkName: 'Cabin 9',
+      }),
+    ])
+
+    const { result } = renderHook(() => useCamperEnrollment(PERSON_CM_ID, YEAR), {
+      wrapper: createWrapper(),
+    })
+    await waitFor(() => expect(result.current.isLoading).toBe(false))
+
+    expect(result.current.allAttendees).toHaveLength(2)
+    const agCamper = result.current.allAttendees.find((c) => c.session_cm_id === 1356533)
+    const familyCamper = result.current.allAttendees.find((c) => c.session_cm_id === 1500001)
+    expect(expectDefined(agCamper, 'ag attendee').assigned_bunk_cm_id).toBe(7000099)
+    expect(expectDefined(familyCamper, 'family attendee').assigned_bunk_cm_id).toBeUndefined()
+  })
 })

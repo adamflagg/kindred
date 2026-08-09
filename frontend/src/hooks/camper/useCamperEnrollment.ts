@@ -88,6 +88,18 @@ export function useCamperEnrollment(
           expand: 'person,session,bunk',
         })
 
+      // Number of this person's current-year attendee rows that are actual
+      // summer-camp sessions (main/embedded/ag/quest) — as opposed to teen or
+      // family rows, which now also come back from the attendees query
+      // (#2149) but were never part of what the AG fallback below was
+      // guarding against. Using this instead of `attendees.length` keeps the
+      // fallback firing for an AG camper who also attends family camp, while
+      // still refusing to fire for an AG camper enrolled in a second summer
+      // session (where a bunk really should show as unassigned, not borrowed).
+      const summerAttendeeCount = attendees.filter((a) =>
+        isSummerCampSessionType((a.expand as AttendeeExpand | undefined)?.session?.session_type)
+      ).length
+
       // Transform attendees to campers
       const allCampers = attendees.map((attendee) => {
         const expand = attendee.expand as AttendeeExpand | undefined
@@ -104,12 +116,15 @@ export function useCamperEnrollment(
 
         // Fallback: AG campers' bunks live under the parent main session, so
         // an exact session_cm_id match won't exist. Restrict to AG attendees
-        // with no other summer attendee — a non-AG attendee whose bunk doesn't
+        // with no OTHER SUMMER attendee — a non-AG attendee whose bunk doesn't
         // match exactly should show no bunk, not borrow another session's.
+        // Gate on summerAttendeeCount rather than attendees.length: a family
+        // (or teen) row alongside the AG row must not suppress the fallback
+        // (#2149) — it's still the camper's only summer session.
         if (
           !assignment &&
           personAssignments.length > 0 &&
-          attendees.length === 1 &&
+          summerAttendeeCount === 1 &&
           expandedSession?.session_type === 'ag'
         ) {
           assignment = personAssignments.find((a) =>

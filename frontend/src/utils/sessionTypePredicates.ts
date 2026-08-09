@@ -35,29 +35,53 @@ export const QUEST_SESSION_TYPES = ['quest'] as const
 /** Teen program session types */
 export const TEEN_PROGRAM_TYPES = ['scit', 'tli'] as const
 
-/** Curated set driving a camper detail page's current-year fetch: summer + teen, no family. */
-export const CAMPER_DETAIL_TYPES = ['main', 'embedded', 'ag', 'quest', 'scit', 'tli'] as const
+/**
+ * Curated set driving a camper detail page's current-year fetch: summer +
+ * teen + family.
+ *
+ * Originally excluded family camp — a person whose only current-year
+ * attendee row was a family session got zero rows back from this filter,
+ * which made the attendees query return empty and the whole camper detail
+ * page early-return to an "Unable to load camper details" / false "no active
+ * enrollments" state (#2149). Measured against production, this affected
+ * hundreds of enrolled people every year (the exact count depends on how
+ * strictly "family-only" is defined — see #2149 for the three disagreeing
+ * counts and why).
+ */
+export const CAMPER_DETAIL_TYPES = [
+  'main',
+  'embedded',
+  'ag',
+  'quest',
+  'scit',
+  'tli',
+  'family',
+] as const
 
 /**
- * Curated set shown in a camper's journey timeline: CAMPER_DETAIL_TYPES + family.
+ * Curated set shown in a camper's journey timeline: currently identical to
+ * CAMPER_DETAIL_TYPES now that both include family (#2149), but derived as a
+ * deduped union rather than assumed-equal — CAMPER_DETAIL_TYPES and
+ * CAMPER_JOURNEY_TYPES answer different questions (current-year fetch vs.
+ * historical journey) and are free to diverge again if a future type applies
+ * to one but not the other. A plain spread-and-append here would silently
+ * double 'family' now that it's already in CAMPER_DETAIL_TYPES — doubling the
+ * generated PocketBase filter clause and any React key mapped over the array.
  *
- * Originally excluded family camp too (mirroring the All Campers page and
- * metrics) because family rows made the journey noisy for multi-session
- * staff kids. That exclusion is REVERSED as of #2113: measured against
- * production it was hiding ~45% of enrolled attendance and left the journey
- * completely blank for over a thousand people in some years (2018/2023/2024),
- * with no offsetting benefit — the "no year floor" in fetchCamperJourney
- * already meant summer/teen history back to 2017 was reachable, so the gap
- * was pure data loss, not curation. The noise concern is still real; it's
- * handled with a visual de-emphasis on family rows in CampJourneyTimeline
- * rather than by hiding the data.
- *
- * CAMPER_DETAIL_TYPES (the camper detail page's current-year fetch) keeps its
- * original no-family curation — #2113 did not decide that one. Deriving this
- * array from it (rather than hand-duplicating the shared 6 types) keeps the
- * two from silently diverging if a new summer type is ever added to either.
+ * History: originally excluded family camp too (mirroring the All Campers
+ * page and metrics) because family rows made the journey noisy for
+ * multi-session staff kids. That exclusion was REVERSED for the journey set
+ * as of #2113: measured against production it was hiding ~45% of enrolled
+ * attendance and left the journey completely blank for over a thousand
+ * people in some years (2018/2023/2024), with no offsetting benefit — the
+ * "no year floor" in fetchCamperJourney already meant summer/teen history
+ * back to 2017 was reachable, so the gap was pure data loss, not curation.
+ * The noise concern is still real; it's handled with a visual de-emphasis on
+ * family rows in CampJourneyTimeline rather than by hiding the data.
  */
-export const CAMPER_JOURNEY_TYPES = [...CAMPER_DETAIL_TYPES, 'family'] as const
+export const CAMPER_JOURNEY_TYPES = Array.from(
+  new Set([...CAMPER_DETAIL_TYPES, 'family'])
+) as readonly SessionTypeLiteral[]
 
 /** View mode for metrics: camp sessions, quest sessions, all combined, or teens */
 export type MetricsViewMode = 'sessions' | 'quests' | 'all' | 'teens'
@@ -234,7 +258,8 @@ export function buildCamperJourneySessionTypeFilter(): string {
 
 /**
  * Build a PocketBase OR-clause restricting `session.session_type` to the camper
- * detail-page current-year set (summer + teen, no family). Caller wraps in `(...)`.
+ * detail-page current-year set (summer + teen + family, see
+ * CAMPER_DETAIL_TYPES). Caller wraps in `(...)`.
  */
 export function buildCamperDetailSessionTypeFilter(): string {
   return CAMPER_DETAIL_TYPES.map((t) => `session.session_type = "${t}"`).join(' || ')
