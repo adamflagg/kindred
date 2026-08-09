@@ -183,6 +183,21 @@ export type BathroomStoredValue = 'none' | 'private' | 'shared' | ''
  */
 export type InventoryClassValue = 'family_pool' | 'staff_default'
 
+/**
+ * The STORED shareability vocabulary — may more than one party sleep here at
+ * once (1500000145, kindred#2026).
+ *
+ * `''` is a real third state and the reason this is a select rather than a
+ * bool: nobody has classified the unit. It is neither permission to
+ * double-book nor a ruling that one family only may go here, and the admin
+ * form must be able to leave it unanswered.
+ *
+ * NOT the same vocabulary the READ api uses: `LodgingUnitRow.shareability`
+ * renders `''` as the token `unknown`, exactly as `bathroom` does, and writing
+ * that token back would fail the select's validation.
+ */
+export type ShareabilityStoredValue = 'shareable' | 'single_party' | ''
+
 /** A named zone of the site. */
 export interface LodgingAreaRecord extends PocketBaseRecordBase {
   name: string
@@ -226,6 +241,14 @@ export interface LodgingUnitRecord extends PocketBaseRecordBase {
   has_changing_table: boolean
   has_shared_fridge: boolean
   inventory_class: InventoryClassValue | ''
+  /**
+   * Whether more than one party may sleep here at once.
+   *
+   * Distinct from a HOUSEHOLD's willingness to share (`share_eligibility` on
+   * the party rows): both have to be true before two parties may be put in one
+   * space, and this is the half that had no column until kindred#2026.
+   */
+  shareability: ShareabilityStoredValue
   /**
    * Whether staff have actually verified this row's amenities.
    *
@@ -346,6 +369,18 @@ export interface LodgingUnitInput {
   is_active: boolean
   inventory_class: InventoryClassValue
   year: number
+  /**
+   * REQUIRED, and always sent, for the same reason as `is_active` and
+   * `inventory_class` above — but note the reason is different in one respect:
+   * `''` is a genuinely meaningful value here (unclassified), not a broken
+   * one. What makes omission wrong is the EDIT path. Leaving the key out would
+   * leave the previous classification in place, so a staffer clearing the
+   * field back to "Not classified" would get a silent no-op they believe
+   * worked. `LodgingUnitForm` holds it in its own state and always supplies
+   * it; making it non-optional here is what keeps a second write path from
+   * quietly dropping it.
+   */
+  shareability: ShareabilityStoredValue
   parent_unit?: string
   map_x?: number
   map_y?: number

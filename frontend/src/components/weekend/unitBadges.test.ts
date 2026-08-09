@@ -17,7 +17,7 @@
 import { describe, expect, it } from 'vitest'
 
 import type { LodgingUnitRow } from '../../types/lodging'
-import { availabilityAction, reservationBadge } from './unitBadges'
+import { availabilityAction, reservationBadge, shareabilityBadge } from './unitBadges'
 
 function unit(overrides: Partial<LodgingUnitRow> = {}): LodgingUnitRow {
   return {
@@ -38,6 +38,7 @@ function unit(overrides: Partial<LodgingUnitRow> = {}): LodgingUnitRow {
     is_active: true,
     is_container: false,
     inventory_class: 'family_pool',
+    shareability: 'single_party',
     family_available_override: null,
     reason: '',
     is_family_available: true,
@@ -225,5 +226,38 @@ describe('availabilityAction', () => {
     // one would write an availability row against a unit no family can be
     // placed into, and the board draws no card for it anyway.
     expect(availabilityAction(unit({ is_container: true }))).toBeNull()
+  })
+})
+
+describe('shareabilityBadge', () => {
+  // kindred#2026. The unit half of "may two families sleep here", distinct
+  // from the household half (`share_eligibility`) that the party cards carry.
+
+  it('marks a unit a second party may be placed into', () => {
+    expect(shareabilityBadge(unit({ shareability: 'shareable' }))?.label).toBe('Shared OK')
+  })
+
+  it('says nothing on a one-family room', () => {
+    // 74 of 118 registry rows are single_party, so badging them would put a
+    // chip on most of the board to state the default expectation. Silence
+    // here is the SAFE direction: it advertises no permission.
+    expect(shareabilityBadge(unit({ shareability: 'single_party' }))).toBeNull()
+  })
+
+  it('says so out loud when nobody has classified the unit', () => {
+    // NOT silence, and this is the whole reason the column is a select rather
+    // than a bool. After 1500000145's backfill no registry row is unknown, so
+    // this chip only ever appears on a hand-created unit — where it is the one
+    // prompt a staffer gets to answer the question before the board is worked.
+    expect(shareabilityBadge(unit({ shareability: 'unknown' }))?.label).toBe('Sharing unset')
+  })
+
+  it('treats an absent field as unclassified rather than as permission', () => {
+    // Pydantic defaults render optional in TypeScript, so a payload built by
+    // an older server arrives with the key missing. Undefined must land on the
+    // same non-permissive answer as an empty column, never on 'shareable'.
+    const withoutField = unit()
+    delete (withoutField as Partial<LodgingUnitRow>).shareability
+    expect(shareabilityBadge(withoutField)?.label).toBe('Sharing unset')
   })
 })

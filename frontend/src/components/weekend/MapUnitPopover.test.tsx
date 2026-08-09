@@ -28,6 +28,7 @@ function row(overrides: Partial<LodgingUnitRow> = {}): LodgingUnitRow {
     is_active: true,
     is_container: false,
     inventory_class: 'family_pool',
+    shareability: 'single_party',
     family_available_override: null,
     reason: '',
     is_family_available: true,
@@ -322,6 +323,57 @@ describe('MapUnitPopover — one room', () => {
     const messages = warn.mock.calls.map((call) => String(call[0])).join('\n')
     warn.mockRestore()
     expect(messages).not.toMatch(/same key/i)
+  })
+})
+
+describe('MapUnitPopover — shareability (kindred#2026)', () => {
+  // This popover is the ONE surface that already prints `shared by N`. Saying a
+  // room is shared by two while saying nothing about whether it MAY be is the
+  // drift `unitBadges`' header exists to prevent ("shared by the board's slot
+  // cards and the map's unit popover so the two cannot drift").
+
+  it('says a unit may take a second family', () => {
+    render(
+      <MapUnitPopover
+        units={[mapUnit(row({ shareability: 'shareable' }))]}
+        hue={HUE}
+        onOpenParty={vi.fn()}
+      />
+    )
+    expect(screen.getByText('Shared OK')).toBeInTheDocument()
+  })
+
+  it('flags an unclassified unit rather than letting silence read as safe', () => {
+    render(
+      <MapUnitPopover
+        units={[mapUnit(row({ shareability: 'unknown' }))]}
+        hue={HUE}
+        onOpenParty={vi.fn()}
+      />
+    )
+    expect(screen.getByText('Sharing unset')).toBeInTheDocument()
+  })
+
+  it('stays silent on a one-family room, exactly as the board card does', () => {
+    render(<MapUnitPopover units={[mapUnit(row())]} hue={HUE} onOpenParty={vi.fn()} />)
+    expect(screen.queryByText('Shared OK')).not.toBeInTheDocument()
+    expect(screen.queryByText('Sharing unset')).not.toBeInTheDocument()
+  })
+
+  it('shows BOTH the occupancy fact and the permission on a shared room', () => {
+    // The pairing is the point: `shared by 2` reports what IS, the chip reports
+    // what is ALLOWED. A staffer seeing the first without the second cannot
+    // tell a legitimate share from a double-booking.
+    render(
+      <MapUnitPopover
+        units={[
+          mapUnit(row({ shareability: 'single_party' }), [party('Johnson'), party('Garcia')]),
+        ]}
+        hue={HUE}
+        onOpenParty={vi.fn()}
+      />
+    )
+    expect(screen.getByText(/shared by 2/)).toBeInTheDocument()
   })
 })
 

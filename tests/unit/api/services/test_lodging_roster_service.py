@@ -50,6 +50,7 @@ def _unit(
     map_y: float | None = 0.5,
     default_combined: bool = False,
     parent_unit: str = "",
+    shareability: str = "",
 ) -> SimpleNamespace:
     return _rec(
         id=pb_id,
@@ -71,6 +72,9 @@ def _unit(
         map_y=map_y,
         default_combined=default_combined,
         parent_unit=parent_unit,
+        # Blank by default: the migration leaves an unclassifiable row empty
+        # rather than guessing, so "" is a state the service really sees.
+        shareability=shareability,
         expand={"area": _rec(code="RIDGE", name="Ridge Side", sort_order=1)},
     )
 
@@ -894,6 +898,64 @@ class TestUnitsAndCounts:
             await LodgingRosterService(repo).build_roster(2026, 1000001)
 
         spy.assert_called_once()
+
+
+class TestShareabilityPassthrough:
+    """kindred#2026. The unit's classification is READ, never re-derived here.
+
+    The registry is canonical (`feedback_registry_no_silent_fallback`): the
+    rule that produces `shareable` / `single_party` lives in exactly two
+    places, the migration backfill and the Go loader, and this layer must not
+    grow a third copy that could disagree with the stored column. So the only
+    thing worth pinning here is that the value arrives intact and that an
+    unclassified row surfaces as `unknown` rather than being guessed into
+    either real answer.
+    """
+
+    @pytest.mark.asyncio
+    async def test_the_stored_classification_reaches_the_payload(self) -> None:
+        repo = _repo(
+            fetch_session=FAMILY_SESSION,
+            fetch_units=[
+                _unit("u1", "ridge-a", "Ridge A", sleeps=15, shareability="shareable"),
+                _unit("u2", "hc-upstairs-1", "Upstairs 1", sleeps=4, shareability="single_party"),
+            ],
+        )
+        roster = await LodgingRosterService(repo).build_roster(2026, 1000001)
+
+        by_code = {u.code: u for u in roster.units}
+        assert by_code["ridge-a"].shareability == "shareable"
+        assert by_code["hc-upstairs-1"].shareability == "single_party"
+
+    @pytest.mark.asyncio
+    async def test_an_unclassified_row_reads_unknown_not_a_guess(self) -> None:
+        """An empty column is the ONE case a read-time default would be
+        tempting, and the one where it would do the damage: `sleeps` 15 is
+        exactly the shape the rule calls shareable, so a service that
+        re-derived would answer `shareable` here off a column nobody set.
+        """
+        repo = _repo(
+            fetch_session=FAMILY_SESSION,
+            fetch_units=[_unit("u1", "ridge-a", "Ridge A", sleeps=15, shareability="")],
+        )
+        roster = await LodgingRosterService(repo).build_roster(2026, 1000001)
+
+        assert roster.units[0].shareability == "unknown"
+
+    @pytest.mark.asyncio
+    async def test_an_unrecognised_stored_value_reads_unknown_not_permissive(self) -> None:
+        """A select gains values over time and a stale API build must not fail
+        open. Anything this layer does not recognise degrades to `unknown`,
+        the non-permissive state, rather than raising or passing through into
+        a Literal the frontend has no branch for.
+        """
+        repo = _repo(
+            fetch_session=FAMILY_SESSION,
+            fetch_units=[_unit("u1", "ridge-a", "Ridge A", sleeps=15, shareability="two_parties_max")],
+        )
+        roster = await LodgingRosterService(repo).build_roster(2026, 1000001)
+
+        assert roster.units[0].shareability == "unknown"
 
 
 class TestCountsFollowTheDrawLevel:

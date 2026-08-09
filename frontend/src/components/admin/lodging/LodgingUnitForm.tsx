@@ -46,6 +46,7 @@ import type {
   LodgingAreaRecord,
   LodgingUnitInput,
   LodgingUnitRecord,
+  ShareabilityStoredValue,
 } from '../../../types/lodging'
 import { amenitiesOf } from './unitAmenities'
 import { BUTTON_PRIMARY, BUTTON_SECONDARY, FIELD, LABEL } from './lodgingStyles'
@@ -126,6 +127,15 @@ export function LodgingUnitForm({
   const [inventoryClass, setInventoryClass] = useState<InventoryClassValue>(
     unit?.inventory_class === 'staff_default' ? 'staff_default' : 'family_pool'
   )
+  // Its own state, NOT part of `amenities` (kindred#2026). The amenity bag is
+  // governed by the single `is_confirmed` checkbox; shareability is a policy
+  // classification the read path trusts the moment it is stored, so it sits
+  // with the other policy classifications below rather than with the flags.
+  // '' is UNCLASSIFIED and is where a new unit starts — defaulting a fresh
+  // unit to 'single_party' would look tidier and would be a claim nobody made.
+  const [shareability, setShareability] = useState<ShareabilityStoredValue>(
+    unit?.shareability ?? ''
+  )
   const [isActive, setIsActive] = useState(unit ? unit.is_active : true)
   const [isContainer, setIsContainer] = useState(unit?.is_container ?? false)
   const [combined, setCombined] = useState(unit?.default_combined ?? false)
@@ -173,6 +183,11 @@ export function LodgingUnitForm({
       // Never omitted — see the header comment.
       is_active: isActive,
       inventory_class: inventoryClass,
+      // Always sent, create and edit alike, for the same reason `is_active`
+      // and `inventory_class` are: '' is a real value here (unclassified), so
+      // omitting the key on an EDIT would make clearing the field a silent
+      // no-op the staffer believes worked.
+      shareability,
       is_container: isContainer,
       default_combined: combined,
       notes,
@@ -225,6 +240,11 @@ export function LodgingUnitForm({
         value={amenities}
         onChange={setAmenities}
         bathroomGroups={bathroomGroups}
+        shareability={shareability}
+        onShareabilityChange={setShareability}
+        inventoryClass={inventoryClass}
+        isContainer={isContainer}
+        sleeps={capacity.sleeps}
       />
 
       <div className="flex flex-col justify-end gap-2 pb-1 text-sm">

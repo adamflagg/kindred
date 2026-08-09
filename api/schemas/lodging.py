@@ -78,6 +78,19 @@ ShareEligibilitySource = Literal["form", "registration", "none"]
 PartyGrain = Literal["household", "person"]
 EffectiveBathroom = Literal["unknown", "none", "private", "shared"]
 
+# The UNIT half of "may two families sleep here", from
+# lodging_units.shareability (1500000145, kindred#2026). Distinct from
+# SharePreference / ShareEligibility above, which are the HOUSEHOLD half:
+# whether a family is willing to share. Both must be true before two parties
+# may be put in one space, and the unit's half had no column until #2026.
+#
+# "unknown" is this layer's rendering of the column's empty string, exactly as
+# EffectiveBathroom renders its own. A select rather than a bool because three
+# states are real and collapsing them loses the one that matters: unrecorded is
+# neither permission to double-book nor a ruling that one family only may go
+# here. It is never coerced into either.
+Shareability = Literal["unknown", "shareable", "single_party"]
+
 # The STAFF-OWNED weekend status, from lodging_session_status (1500000142).
 # Unlike every other vocabulary in this module it mirrors no Go ingest, because
 # there is no ingest: CampMinder's Sessions API has no status concept at all,
@@ -159,6 +172,18 @@ class LodgingUnitSummary(BaseModel):
     # "default" name until 1500000136, which implied an override -- and the
     # override is a rare per-weekend exception rather than the point.
     inventory_class: str = ""
+    # Whether more than one party may sleep here at once. READ from the
+    # registry, never re-derived on this side: the rule lives in exactly two
+    # places (1500000145's backfill and `classifyShareability` in
+    # pocketbase/lodging/registry.go), and a third copy here is how a surface
+    # comes to disagree with the column it is rendering.
+    #
+    # Compared AT THE LEVEL THE ASSIGNMENT WAS MADE (owner ruling, 2026-08-07),
+    # never always resolved down to leaves: two households on one container is
+    # a legitimate share, because they occupy different rooms beneath it and
+    # CampMinder has no sub-room concept for every building. Measured over
+    # 2022-2025, resolving down instead would raise 36 false alarms.
+    shareability: Shareability = "unknown"
     # None when no lodging_availability row exists for this unit this weekend,
     # i.e. the unit's ROLE decides. None and False are different answers and
     # must not be flattened into one: False is "closed this weekend".

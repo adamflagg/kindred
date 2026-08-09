@@ -67,3 +67,19 @@ describe('amenitiesOf', () => {
     }
   })
 })
+
+describe('shareability is deliberately NOT an amenity (kindred#2026)', () => {
+  it('stays out of the bag the is_confirmed checkbox governs', () => {
+    // The regression this pins: everything in UnitAmenities is confirmed by one
+    // checkbox, and until it is ticked the roster reads `has_power: false` as
+    // "nobody has said". Shareability is trusted by the read path the moment it
+    // is stored, so folding it back in here would put a value the board acts on
+    // beside values the board discounts, saved by the same click. It lives in
+    // its own state in LodgingUnitForm; the payload assertions are there.
+    expect('shareability' in amenitiesOf()).toBe(false)
+  })
+
+  it('is not an AMENITY_FLAGS entry either', () => {
+    expect(AMENITY_FLAGS.some((f) => (f.key as string) === 'shareability')).toBe(false)
+  })
+})
