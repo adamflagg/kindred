@@ -1341,6 +1341,16 @@ class LodgingRosterService:
             ]
             # ACTIVE leaves only, in both directions: a retired room adds no
             # beds, and equally must not drag its whole house into "unknown".
+            #
+            # NOT additionally filtered by `_is_planning_inventory`, and that
+            # is deliberate rather than an oversight. Six active
+            # `staff_default` leaves sit under active containers in production
+            # (44 family_pool + 6 staff_default under 15 containers), and the
+            # SUM below has counted their beds since kindred#2041 -- a family
+            # holding the whole house holds that room too, which is what
+            # "combined" means. Gating the unknown on a narrower leaf set than
+            # the sum reads from would let a room's beds count while its
+            # missing measurement did not.
             if any(s is None for s in leaf_sleeps):
                 return None
             # The degenerate case. "Unset container reads as a delta of 0"

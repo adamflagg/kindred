@@ -2833,11 +2833,15 @@ class TestPartySortName:
         # token is "Family". So the last resort files every household that
         # reaches it under F, not under its surname.
         #
-        # Pinned rather than fixed. This rung is reached only when NO adult and
-        # NO child on the party carries a last_name, and family_camp_adults
-        # populates those columns for adults 1-2 — so it is the rare tail, and
-        # the pair still tie-break on display_name. Recorded here so the rung's
-        # real output is on the page instead of implied by a kinder fixture.
+        # Pinned rather than fixed. Since kindred#1945 retired the dead adult
+        # rung this is the ONLY rung below the child's `last_name`, so it is
+        # worth saying how rare it is rather than leaving that implied: every
+        # household party has an enrolled child by construction
+        # (`_build_household_parties` iterates them), and measured against
+        # production ZERO rostered households in any year 2022-2026 lack a
+        # child surname. Nothing reaches this rung today, and the pair still
+        # tie-break on display_name. Recorded here so the rung's real output is
+        # on the page instead of implied by a kinder fixture.
         repo = _repo(
             fetch_session=FAMILY_SESSION,
             fetch_households={"hh_1": _household(title="The Chen Family")},
