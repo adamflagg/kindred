@@ -26,7 +26,13 @@ import type { Viewport } from './mapViewport'
 /** Served from the private repo, exactly as the logos are. */
 export const MAP_IMAGE_URL = '/local/assets/camp-map.webp'
 
-/** Default scrim over the map so the marks read against a busy illustration. */
+/**
+ * The scrim over the map, so the marks read against a busy illustration.
+ *
+ * A CONSTANT AND NOT A PROP (kindred#1997): "Fade map" used to be a control
+ * and was deliberately retired, so a `fade` override here would quietly hand
+ * one caller the knob every caller had taken away.
+ */
 export const DEFAULT_FADE = 25
 
 export interface MapBaseLayerProps {
@@ -35,11 +41,9 @@ export interface MapBaseLayerProps {
   /** Canvas size in real pixels; the image is laid out against it. */
   width: number
   height: number
-  /** Scrim strength, 0-100. */
-  fade?: number
 }
 
-export function MapBaseLayer({ view, width, height, fade = DEFAULT_FADE }: MapBaseLayerProps) {
+export function MapBaseLayer({ view, width, height }: MapBaseLayerProps) {
   const [imageFailed, setImageFailed] = useState(false)
 
   return (
@@ -76,7 +80,7 @@ export function MapBaseLayer({ view, width, height, fade = DEFAULT_FADE }: MapBa
       <div
         data-testid="map-scrim"
         aria-hidden="true"
-        style={{ opacity: fade / 100 }}
+        style={{ opacity: DEFAULT_FADE / 100 }}
         className="bg-card pointer-events-none absolute inset-0"
       />
       {imageFailed && (

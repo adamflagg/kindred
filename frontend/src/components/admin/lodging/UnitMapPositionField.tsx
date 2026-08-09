@@ -22,6 +22,11 @@
  * a flag, and it is why the handlers are spread conditionally below rather
  * than written with an early return inside.
  *
+ * INSIDE the gate a drag is still one pointer's primary-button gesture, and
+ * the handlers say why at each guard: a right-click delivers a pointerup all
+ * the same, a second finger must not seize a drag in flight, and a release
+ * the canvas never sees must END the gesture rather than leave it armed.
+ *
  * THE GATE IS A REAL CHECKBOX, for the reason LodgingMap's accessibility note
  * gives about the empty-rooms toggle: that toggle is the map's last
  * keyboard-reachable control, and a pointer-only control here would repeat the
@@ -66,6 +71,26 @@ function clamp01(value: number): number {
   return Math.min(1, Math.max(0, value))
 }
 
+/** The finest step this field can express, and so the smallest nudge that is
+ *  still a different coordinate. */
+const EPSILON = 10 ** -PRECISION
+
+/**
+ * (0,0) IS THE SENTINEL for "never placed" — it is what `hasCoordinates` reads
+ * as no position at all — so it is the one pair a placement may never write.
+ * A drag off the TOP-LEFT corner clamps to exactly it, and storing that would
+ * UNPLACE the unit through the very gesture meant to place it: the pin would
+ * be gone the next time this editor opened.
+ *
+ * Only the exact corner is special-cased. Every other edge is a real
+ * coordinate and goes on clamping to the edge, and a ten-thousandth of the map
+ * is a third of a pixel at full render — the pin does not visibly move.
+ */
+function offOrigin(point: Point): Point {
+  if (point.x === 0 && point.y === 0) return { x: EPSILON, y: EPSILON }
+  return point
+}
+
 /** The pin is placed as a PERCENTAGE of an aspect-locked box, so it needs no
  *  measurement and cannot drift out of register with the backdrop. */
 function percent(value: number): string {
@@ -95,7 +120,12 @@ export function UnitMapPositionField({ unit, onPositionSaved }: UnitMapPositionF
   // What the pointer is currently proposing. Null between gestures, so the pin
   // renders from `saved` at rest and there is no second copy to keep in step.
   const [draft, setDraft] = useState<Point | null>(null)
-  const draggingRef = useRef(false)
+  // THE POINTER THAT OWNS THE GESTURE, not a bare boolean. A drag belongs to
+  // one pointer: a second finger landing mid-drag, or the stray pointerup of a
+  // pointer that never pressed here, must not be able to move or commit it.
+  const draggingRef = useRef<number | null>(null)
+  /** Which write is the current one; see `commit`. */
+  const writeSeq = useRef(0)
   const canvasRef = useRef<HTMLDivElement>(null)
 
   // Measured for the SAME reason LodgingMap measures: the backdrop is laid out
@@ -133,16 +163,31 @@ export function UnitMapPositionField({ unit, onPositionSaved }: UnitMapPositionF
     }
   }
 
+  /** The gesture is over and nothing is being written: forget the draft, or
+   *  the pin sits at a position no one ever saved. */
+  const abandon = () => {
+    draggingRef.current = null
+    setDraft(null)
+  }
+
   const commit = async (point: Point) => {
-    const next = { x: round(point.x), y: round(point.y) }
+    const next = offOrigin({ x: round(point.x), y: round(point.y) })
     // Mirrors saveCentroid's `if (value === area[axis]) return` — a press that
     // put the pin back where it already was is not an edit.
+    // (`saved?.x` then a bare `saved.y`: the first comparison narrows `saved`
+    // to non-null, so the second chain would be flagged as unnecessary.)
     if (saved?.x === next.x && saved.y === next.y) {
       setDraft(null)
       return
     }
+    // THE LAST DROP WINS, not the last response. Two drags inside one
+    // round-trip are easy to make and the requests can answer out of order; an
+    // older one landing late would otherwise drag the pin back to where it is
+    // no longer, and its `finally` would blank a drop still waiting.
+    const seq = ++writeSeq.current
     try {
       await updateLodgingUnit(unit.id, { map_x: next.x, map_y: next.y })
+      if (seq !== writeSeq.current) return
       setSaved(next)
       onPositionSaved?.()
     } catch (error) {
@@ -151,33 +196,58 @@ export function UnitMapPositionField({ unit, onPositionSaved }: UnitMapPositionF
       // refused to put it is indistinguishable from a saved one.
       toast.error(error instanceof Error ? error.message : 'Failed to save the map position')
     } finally {
-      setDraft(null)
+      if (seq === writeSeq.current) setDraft(null)
     }
   }
 
   const dragHandlers = {
     onPointerDown: (event: React.PointerEvent<HTMLDivElement>) => {
+      // A placement is a PRIMARY-button press. A right-click opens the context
+      // menu and still delivers its pointerup here, so without this guard it
+      // would write a coordinate wherever the menu was opened.
+      if (event.button !== 0) return
+      // One gesture at a time: the second finger of a pinch must not seize a
+      // drag the first is in the middle of.
+      if (draggingRef.current !== null) return
       const point = pointAt(event)
       if (!point) return
-      draggingRef.current = true
+      draggingRef.current = event.pointerId
+      // KEEP THE GESTURE OURS once the pointer leaves the canvas. Without
+      // capture, a drag released outside is delivered to whatever is under the
+      // cursor instead, this handler's pointerup never runs, and the field is
+      // left armed — a later mouse-over then drags the pin and the next click
+      // writes it. jsdom implements no pointer capture, hence the try.
+      try {
+        event.currentTarget.setPointerCapture(event.pointerId)
+      } catch {
+        // Unsupported, or the pointer is already gone. Neither is a reason to
+        // refuse the drag; the `buttons` check below is the fallback.
+      }
       setDraft(point)
     },
     onPointerMove: (event: React.PointerEvent<HTMLDivElement>) => {
-      if (!draggingRef.current) return
+      if (draggingRef.current !== event.pointerId) return
+      // No button is down, so the release happened somewhere we never saw it
+      // and this is a plain hover. Ending the gesture here is what stops the
+      // pin from following an unpressed cursor if capture was unavailable.
+      if (event.buttons === 0) {
+        abandon()
+        return
+      }
       const point = pointAt(event)
       if (point) setDraft(point)
     },
     onPointerUp: (event: React.PointerEvent<HTMLDivElement>) => {
-      if (!draggingRef.current) return
-      draggingRef.current = false
+      if (draggingRef.current !== event.pointerId) return
+      draggingRef.current = null
       const point = pointAt(event) ?? draft
       if (point) void commit(point)
     },
     // The browser took the gesture away. Nothing is committed, and the draft
     // has to go or the pin stays where a cancelled drag left it.
-    onPointerCancel: () => {
-      draggingRef.current = false
-      setDraft(null)
+    onPointerCancel: (event: React.PointerEvent<HTMLDivElement>) => {
+      if (draggingRef.current !== event.pointerId) return
+      abandon()
     },
   }
 
@@ -229,10 +299,7 @@ export function UnitMapPositionField({ unit, onPositionSaved }: UnitMapPositionF
                 setEditing(event.target.checked)
                 // A draft belongs to a gesture, and switching the gate off
                 // ends any gesture in flight without committing it.
-                if (!event.target.checked) {
-                  draggingRef.current = false
-                  setDraft(null)
-                }
+                if (!event.target.checked) abandon()
               }}
             />
             Edit position
