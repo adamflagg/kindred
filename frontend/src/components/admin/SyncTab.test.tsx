@@ -8,7 +8,7 @@
  * cards could submit a second request before status polling flipped the card to "running".
  */
 import { render, screen, within } from '@testing-library/react'
-import { describe, it, expect, vi } from 'vitest'
+import { describe, it, expect, vi, afterEach } from 'vitest'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { SyncTab } from './SyncTab'
 
@@ -17,6 +17,11 @@ vi.mock('../../hooks/useCurrentYear', () => ({
 }))
 
 const idleStatus = { status: 'idle' } as const
+
+// Mutable per-test override for the stranded_assignment_cleanup status, read at call time so a
+// single test (#2161's lodging⚠ badge) can inject a status without re-declaring the whole mock.
+// Reset in `beforeEach` so tests stay isolated.
+let strandedAssignmentCleanupStatus: unknown = idleStatus
 
 vi.mock('../../hooks/useSyncCompletionToasts', () => ({
   useSyncCompletionToasts: () => ({
@@ -31,6 +36,9 @@ vi.mock('../../hooks/useSyncCompletionToasts', () => ({
     quest_registrations: idleStatus,
     staff_applications: idleStatus,
     staff_vehicle_info: idleStatus,
+    get stranded_assignment_cleanup() {
+      return strandedAssignmentCleanupStatus
+    },
   }),
 }))
 
@@ -105,5 +113,36 @@ describe('SyncTab generic card pending guard (#1881)', () => {
 
     expect(getCardRunButton('Camper History')).not.toBeDisabled()
     expect(getCardRunButton('Staff Skills')).not.toBeDisabled()
+  })
+})
+
+// Regression test for #2161: Stats.LodgingProdAuditWarnings (pocketbase/sync/orchestrator.go)
+// had zero frontend consumers. The bunk-side prod_audit_warnings already renders an amber
+// "prod⚠" badge on the Stranded Assignment Cleanup card; the parallel lodging count must render
+// its own distinguishable "lodging⚠" badge on the same card.
+describe('SyncTab lodging prod audit warnings badge (#2161)', () => {
+  afterEach(() => {
+    strandedAssignmentCleanupStatus = idleStatus
+  })
+
+  it('renders a lodging⚠ badge when lodging_prod_audit_warnings is positive', () => {
+    strandedAssignmentCleanupStatus = {
+      status: 'success',
+      summary: {
+        created: 0,
+        updated: 0,
+        skipped: 0,
+        errors: 0,
+        lodging_prod_audit_warnings: 3,
+      },
+    }
+
+    renderSyncTab()
+
+    const heading = screen.getByText('Stranded Assignment Cleanup', { selector: 'div' })
+    const card = heading.closest('.flex.flex-col')
+    if (!card) throw new Error('could not find Stranded Assignment Cleanup card')
+
+    expect(within(card as HTMLElement).getByText('3 lodging⚠')).toBeInTheDocument()
   })
 })
