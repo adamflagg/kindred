@@ -1332,6 +1332,14 @@ class LodgingRosterService:
         assigned = sum(1 for p in parties if p.unit_code or p.unit_name)
 
         def _effective_sleeps(unit: LodgingUnitSummary) -> int | None:
+            # MIRRORED by `effectiveSleeps` in
+            # `frontend/src/components/weekend/rosterAttention.ts`, which
+            # `countUnmeasuredSpaces` reads to answer the same "has anyone
+            # measured this?" question for the chip `WeekendStatsBar` prints
+            # beside `beds_family_available`. Named in BOTH directions on
+            # purpose: the pairing being undocumented is what let the two drift
+            # apart unnoticed until kindred#1945's PR, and a change here that
+            # is not made there puts two disagreeing numbers on one line.
             if not unit.is_container:
                 return unit.sleeps
             leaf_sleeps = [
