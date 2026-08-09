@@ -93,9 +93,17 @@ export interface LodgingMapProps {
   parties: RosterPartyRow[]
   units: LodgingUnitRow[]
   year: number
+  /**
+   * The weekend this map belongs to, so a household enrolled in TWO
+   * weekends (kindred#2138) can be told apart from one that merely
+   * refetched. Optional and defaulting to 0 for the same reason
+   * `LodgingBoard`'s prop of the same name does: most tests render one
+   * weekend's map and never exercise a session change.
+   */
+  sessionCmId?: number
 }
 
-export function LodgingMap({ parties, units, year }: LodgingMapProps) {
+export function LodgingMap({ parties, units, year, sessionCmId = 0 }: LodgingMapProps) {
   // MEMOISED, and not as a micro-optimisation: panning updates `view` on every
   // pointermove, and an unmemoised call would re-run buildBoard — area bucketing,
   // sorting, hue assignment, the lot — on every frame of a drag.
@@ -191,6 +199,28 @@ export function LodgingMap({ parties, units, year }: LodgingMapProps) {
     setSelected(null)
     setRequestClose(false)
   }, [])
+
+  // RESET, not filtered (kindred#2138) — the owner's ruling was explicit: a
+  // session change closes the panel outright, it does not merely stop
+  // rendering it while `selected` quietly survives underneath. The
+  // `panelParty` guard below only catches a household that drops OUT of
+  // `parties`; a household enrolled in two weekends never does that, since
+  // `partyKey` (deliberately — see partyKey.ts) carries no session
+  // dimension, so the same key still matches after the switch and the panel
+  // would keep rendering the PREVIOUS weekend's placement data.
+  //
+  // This is React's own "storing information from previous renders"
+  // pattern: compare this render's prop against the last one seen, and if
+  // it moved, correct the state right here in the render body rather than
+  // in an Effect. Calling `setSelected` conditionally during render does not
+  // add a paint the way an Effect would — React discards this render's
+  // output and re-renders synchronously with the corrected state before
+  // anything commits, so nobody ever sees the stale mid-render frame.
+  const [lastSessionCmId, setLastSessionCmId] = useState(sessionCmId)
+  if (sessionCmId !== lastSessionCmId) {
+    setLastSessionCmId(sessionCmId)
+    setSelected(null)
+  }
 
   // DERIVED, not effect-cleared (kindred#2062). A weekend switch re-renders
   // the map with a different `parties` prop but never unmounts it, so a

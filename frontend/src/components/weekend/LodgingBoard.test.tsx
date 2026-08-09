@@ -734,3 +734,56 @@ describe('LodgingBoard — clears a stale selection (kindred#2062)', () => {
     expect(screen.getByTestId('family-details-panel')).toBeInTheDocument()
   })
 })
+
+describe('LodgingBoard — clears the selection on a SESSION change (kindred#2138)', () => {
+  // #2062's guard above only clears `selected` when the household stops
+  // matching `partyKey` — and `partyKey` carries no session dimension
+  // (partyKey.ts). A household enrolled in BOTH weekends still matches
+  // after the switch, so the #2062 tests (which use a party that
+  // disappears) pass without ever exercising this path. This one keeps the
+  // same household in `parties` across the rerender and changes only
+  // `sessionCmId`.
+  it('closes the panel on a session change even though the same household is still in parties', async () => {
+    const johnsonInBothWeekends = () => [party({ unit_code: 'cedar-1', unit_name: 'Cedar 1' })]
+    const { rerender } = render(
+      <LodgingBoard
+        parties={johnsonInBothWeekends()}
+        units={[unit()]}
+        year={2026}
+        sessionCmId={101}
+      />,
+      { wrapper }
+    )
+    await userEvent.click(screen.getByRole('button', { name: /Johnson/ }))
+    expect(screen.getByTestId('family-details-panel')).toBeInTheDocument()
+
+    // Same household, same partyKey — a different weekend's roster.
+    rerender(
+      <LodgingBoard
+        parties={johnsonInBothWeekends()}
+        units={[unit()]}
+        year={2026}
+        sessionCmId={202}
+      />
+    )
+    expect(screen.queryByTestId('family-details-panel')).not.toBeInTheDocument()
+  })
+
+  // The companion trap to #2062's own: a rerender that keeps the SAME
+  // session must not close a panel out from under whoever has it open, even
+  // when `parties` is a fresh array identity from a refetch.
+  it('keeps the panel open when the session is unchanged, even across a parties refetch', async () => {
+    const makeParties = () => [party({ unit_code: 'cedar-1', unit_name: 'Cedar 1' })]
+    const { rerender } = render(
+      <LodgingBoard parties={makeParties()} units={[unit()]} year={2026} sessionCmId={101} />,
+      { wrapper }
+    )
+    await userEvent.click(screen.getByRole('button', { name: /Johnson/ }))
+    expect(screen.getByTestId('family-details-panel')).toBeInTheDocument()
+
+    rerender(
+      <LodgingBoard parties={makeParties()} units={[unit()]} year={2026} sessionCmId={101} />
+    )
+    expect(screen.getByTestId('family-details-panel')).toBeInTheDocument()
+  })
+})
