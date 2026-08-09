@@ -207,37 +207,44 @@ def _household_display_name(household: Any, fallback_cm_id: int) -> str:
 
 def _last_token(value: str) -> str:
     """Last whitespace-delimited token. The one heuristic in the chain, reached
-    only when no last_name column is populated anywhere on the party."""
+    only when no enrolled child on the party carries a last_name.
+
+    For a household its input is the MAILING TITLE, not a name, so its answer
+    is wrong whenever the title does not end in the surname -- "The Chen
+    Family" files under F. Pinned rather than fixed
+    (`test_last_resort_yields_family_for_a_real_mailing_title`), and safe to
+    leave that way: every household party has an enrolled child by
+    construction, and measured against production ZERO rostered households in
+    any year 2022-2026 lack a child `last_name`, so nothing reaches this rung.
+    """
     parts = value.split()
     return parts[-1] if parts else ""
 
 
-def _adult_last_name(adults: list[Any]) -> str:
-    """Adult 1's surname, else the lowest-numbered adult that has one.
-
-    Reads the `last_name` COLUMN, never the combined `name` column:
-    family_camp_adults populates first_name/last_name only for adults 1-2, and
-    that is exactly the range this walk reaches before giving up.
-    """
-    # A missing adult_number reads as 0 through _i, which would sort AHEAD of
-    # adult 1. Push it to the back instead -- an unnumbered row is the least
-    # trustworthy source of the household's surname, not the most.
-    for adult in sorted(adults, key=lambda a: _i(a, "adult_number") or 999):
-        last = _s(adult, "last_name")
-        if last:
-            return last
-    return ""
-
-
-def _household_sort_name(adults: list[Any], children: list[Any], display_name: str) -> str:
-    """Surname for a household party. First non-empty rung wins.
+def _household_sort_name(children: list[Any], display_name: str) -> str:
+    """Surname for a household party, from the ELDEST enrolled child's column.
 
     `children` arrives oldest-first, so the child rung prefers the eldest
     enrolled camper.
+
+    THERE IS DELIBERATELY NO ADULT RUNG (kindred#1945). This used to read
+    `family_camp_adults.last_name` first, on the reasoning that a household's
+    surname is its adults'. That column is DEAD UPSTREAM: its two CampMinder
+    sources (`Family Camp-P1/P2 Last Name`, cm_id 216785/216786) stopped being
+    populated after 2022, so measured against the production snapshot the
+    column holds 0 of 834 rows in 2026 and 2 rows a year in 2023-2025. The rung
+    could not fire on any current weekend -- retiring it moved the sort key for
+    ZERO of the 382 rostered 2026 households -- while its docstring described a
+    walk over "adults 1-2" that in fact reached nothing.
+
+    Do NOT reinstate it by deriving a surname from the combined `name` column
+    instead. `name` is a whole name typed into a field CampMinder labels "First
+    Name" (773 of 788 2026 values contain a space), so a last-token split is a
+    heuristic, and the rung it would shadow -- the child's `last_name` -- is a
+    real column that is actually populated. Never persist such a derivation
+    back to the database either; a split that works on ~95% mishandles the rest
+    permanently.
     """
-    adult_last = _adult_last_name(adults)
-    if adult_last:
-        return adult_last
     for child in children:
         child_last = _s(child, "last_name")
         if child_last:
@@ -1106,11 +1113,27 @@ class LodgingRosterService:
                     household_cm_id=household_cm_id,
                     display_name=_household_display_name(household, household_cm_id),
                     sort_name=_household_sort_name(
-                        adults, children_oldest_first, _household_display_name(household, household_cm_id)
+                        children_oldest_first, _household_display_name(household, household_cm_id)
                     ),
                     adults=[
                         PartyAdult(
                             adult_number=_i(adult, "adult_number"),
+                            # `name` is the COLUMN OF RECORD for an attending
+                            # adult, and the split columns are a best-effort
+                            # Adult-1/2-only extra: first_name/last_name are
+                            # empty for 100% of adult_number 3-5 rows in every
+                            # measured year, and last_name is empty for all of
+                            # 2026 (kindred#1945).
+                            #
+                            # THE FALLBACK IS LOAD-BEARING -- do not "simplify"
+                            # it away on the grounds that `name` is
+                            # authoritative. 377 of 382 rostered 2026
+                            # households have a non-blank `name`; for several
+                            # of the rest this is the only thing that renders
+                            # an adult at all. Equally, never conclude a row is
+                            # empty from the split columns alone: 136 real
+                            # adults across 2022-2026 are blank in
+                            # first_name/last_name and populated in `name`.
                             display_name=_s(adult, "name")
                             or f"{_s(adult, 'first_name')} {_s(adult, 'last_name')}".strip(),
                             relationship=_s(adult, "relationship_to_camper"),
@@ -1299,6 +1322,16 @@ class LodgingRosterService:
         # An unset container reads as a delta of 0 -- real common space
         # nobody measured, correctly zero and never "unknown" -- so only a
         # genuinely unmeasured LEAF can still leave a total unknown.
+        #
+        # And it DOES leave it unknown, including a leaf beneath a drawn
+        # container. That sentence used to be aspirational: the container
+        # branch dropped unmeasured leaves from its sum, so it could never
+        # return None, which structurally excluded every container from
+        # `units_capacity_unknown` and let a half-measured house report a
+        # confident undercount. Latent when fixed -- 0 of 15 active production
+        # containers had an unmeasured active leaf, so no reported number moved
+        # -- and live the moment staff add a room with no bed count under a
+        # combined house.
         drawn = [u for u in drawn_units(units) if u.is_active]
         bookable = [u for u in drawn if _is_planning_inventory(u)]
         staff_housing = [u for u in drawn if not _is_planning_inventory(u)]
@@ -1306,16 +1339,42 @@ class LodgingRosterService:
         assigned = sum(1 for p in parties if p.unit_code or p.unit_name)
 
         def _effective_sleeps(unit: LodgingUnitSummary) -> int | None:
+            # MIRRORED by `effectiveSleeps` in
+            # `frontend/src/components/weekend/rosterAttention.ts`, which
+            # `countUnmeasuredSpaces` reads to answer the same "has anyone
+            # measured this?" question for the chip `WeekendStatsBar` prints
+            # beside `beds_family_available`. Named in BOTH directions on
+            # purpose: the pairing being undocumented is what let the two drift
+            # apart unnoticed until kindred#1945's PR, and a change here that
+            # is not made there puts two disagreeing numbers on one line.
             if not unit.is_container:
                 return unit.sleeps
-            leaf_total = sum(
+            leaf_sleeps = [
                 leaf.sleeps
                 for code in unit_index.leaf_codes_under(unit.code)
-                if (leaf := unit_index.units_by_code.get(code)) is not None
-                and leaf.is_active
-                and leaf.sleeps is not None
-            )
-            return (unit.sleeps or 0) + leaf_total
+                if (leaf := unit_index.units_by_code.get(code)) is not None and leaf.is_active
+            ]
+            # ACTIVE leaves only, in both directions: a retired room adds no
+            # beds, and equally must not drag its whole house into "unknown".
+            #
+            # NOT additionally filtered by `_is_planning_inventory`, and that
+            # is deliberate rather than an oversight. Six active
+            # `staff_default` leaves sit under active containers in production
+            # (44 family_pool + 6 staff_default under 15 containers), and the
+            # SUM below has counted their beds since kindred#2041 -- a family
+            # holding the whole house holds that room too, which is what
+            # "combined" means. Gating the unknown on a narrower leaf set than
+            # the sum reads from would let a room's beds count while its
+            # missing measurement did not.
+            if any(s is None for s in leaf_sleeps):
+                return None
+            # The degenerate case. "Unset container reads as a delta of 0"
+            # holds only because its rooms supply the rest of the answer --
+            # with no rooms to supply it, 0 is not a delta over anything, it
+            # is the claim "this house sleeps nobody".
+            if unit.sleeps is None and not leaf_sleeps:
+                return None
+            return (unit.sleeps or 0) + sum(s for s in leaf_sleeps if s is not None)
 
         effective_sleeps = {u.unit_id: _effective_sleeps(u) for u in bookable}
 
