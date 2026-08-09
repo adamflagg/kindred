@@ -856,6 +856,75 @@ class TestLodgingYearCache:
         assert cache.get("fetch_households", 2026) is not None
 
 
+class TestCachedByYearSingleFlight:
+    """Concurrent misses on the same key must coalesce onto one fetch (kindred#2144).
+
+    A test that merely calls the wrapper twice in sequence passes against the
+    *unfixed* code -- the second call would just see the first call's already-
+    written cache entry. This races two coroutines through a shared
+    `asyncio.Event` so both have genuinely entered the wrapper concurrently,
+    before either one has written the cache, and asserts the wrapped
+    function only ran once.
+    """
+
+    @pytest.mark.asyncio
+    async def test_concurrent_misses_on_the_same_key_coalesce_to_one_fetch(self) -> None:
+        import asyncio
+
+        from api.services.lodging_cache import LodgingYearCache, cached_by_year
+
+        cache = LodgingYearCache(ttl_seconds=300, max_size=10)
+        call_count = 0
+        callers_entered = 0
+        both_entered = asyncio.Event()
+
+        class Fake:
+            @cached_by_year(cache)
+            async def fetch_households(self, year: int) -> str:
+                nonlocal call_count
+                call_count += 1
+                # Blocks until the test confirms BOTH callers have already
+                # entered the wrapper -- proving the second caller observed
+                # the first one's in-flight fetch rather than running after
+                # it had already finished and written the cache.
+                await both_entered.wait()
+                return "value"
+
+        fake = Fake()
+
+        async def caller() -> str:
+            nonlocal callers_entered
+            callers_entered += 1
+            if callers_entered == 2:
+                both_entered.set()
+            return await fake.fetch_households(2026)
+
+        first, second = await asyncio.gather(caller(), caller())
+
+        assert call_count == 1, "single-flight must coalesce concurrent misses into one fetch"
+        assert first == "value"
+        assert second == "value"
+
+    def test_invalidate_all_clears_stale_inflight_locks(self) -> None:
+        """`asyncio.Lock` binds to the event loop it is first awaited on, and
+        pytest-asyncio hands every test its own loop -- a lock left behind by
+        a prior test's loop raises RuntimeError when a later test awaits it.
+        `invalidate_all()` must drop the in-flight lock map, not just the
+        cached values, so the existing `_reset_lodging_cache` autouse fixture
+        (which already calls `invalidate_all()` around every test) keeps the
+        suite green.
+        """
+        from api.services.lodging_cache import LodgingYearCache
+
+        cache = LodgingYearCache(ttl_seconds=300, max_size=10)
+        lock_before = cache._lock_for("fetch_households", 2026)
+
+        cache.invalidate_all()
+
+        lock_after = cache._lock_for("fetch_households", 2026)
+        assert lock_before is not lock_after, "invalidate_all must drop stale per-key locks"
+
+
 class TestFetchSessionStatuses:
     """The staff-owned cancelled flag (kindred#2092).
 
