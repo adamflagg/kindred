@@ -2099,8 +2099,13 @@ func TestRegistrationNeedsUpdateIgnoresTheUnknownSpelling(t *testing.T) {
 func TestProcessAdultsPersonFieldsTakeTheFirstLoadedSibling(t *testing.T) {
 	s := &FamilyCampDerivedSync{}
 
+	// A local constant rather than the literal twice: goconst counts repeated
+	// string literals across the package and this name is already used in
+	// three other sync tests.
+	const wantName = "Emma Johnson"
+
 	householdValues := []customValueEntry{
-		{householdPBID: "hh_1", fieldName: "Family Camp Adult 1", value: "Emma Johnson"},
+		{householdPBID: "hh_1", fieldName: "Family Camp Adult 1", value: wantName},
 	}
 	// Both entries come from the same household via two different children.
 	// Order here is the order loadPersonCustomValues yields: ascending record
@@ -2126,7 +2131,7 @@ func TestProcessAdultsPersonFieldsTakeTheFirstLoadedSibling(t *testing.T) {
 	if len(adults) != 1 {
 		t.Fatalf("expected 1 merged adult, got %d", len(adults))
 	}
-	if adults[0].name != "Emma Johnson" {
+	if adults[0].name != wantName {
 		t.Errorf("household `name` is the column of record: got %q", adults[0].name)
 	}
 	if adults[0].relationship != "Mother" {

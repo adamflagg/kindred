@@ -589,7 +589,7 @@ func (s *FamilyCampDerivedSync) loadPersonCustomValues(
 // CollapseToHouseholdGrain) would pick differently in 130 of them. Which
 // sibling should win is a product decision, coupled to the still-open question
 // of whether gender/date_of_birth/email/pronouns are kept at all, so today's
-// behaviour is pinned by test instead of changed on a guess.
+// behavior is pinned by test instead of changed on a guess.
 func (s *FamilyCampDerivedSync) processAdults(
 	householdValues []customValueEntry, personValues []customValueEntry,
 ) []*adultData {
