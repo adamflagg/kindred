@@ -2,7 +2,7 @@
  * The map surface. Fictional data throughout.
  */
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { act, fireEvent, render, screen, within } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import type { ReactNode } from 'react'
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -26,8 +26,44 @@ vi.mock('../../hooks/usePermissions', () => ({
   }),
 }))
 
-vi.mock('../../hooks/useWeekendRoster', () => ({
-  useHouseholdMedical: () => ({ data: undefined, isLoading: false, error: null }),
+// `medicalFetchMode.real` toggles this file's ONE `useHouseholdMedical` mock
+// between the fast canned value every other suite in this file wants and the
+// REAL hook, wired through the mocked `fetchHouseholdMedical` service call
+// below -- so "the actual PHI fetch" describe block near the bottom of this
+// file can drive the genuine fetch path without touching the rest of this
+// file's tests, which never flip it. `vi.hoisted` is required: `vi.mock`
+// factories run before any other module-level code, so a plain `const`
+// referenced inside one would be a use-before-initialization error.
+const { medicalFetchMode, mockFetchHouseholdMedical } = vi.hoisted(() => ({
+  medicalFetchMode: { real: false },
+  mockFetchHouseholdMedical: vi.fn(),
+}))
+
+vi.mock('../../services/lodgingApi', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../services/lodgingApi')>()
+  return {
+    ...actual,
+    fetchHouseholdMedical: (...args: unknown[]) =>
+      (mockFetchHouseholdMedical as (...a: unknown[]) => unknown)(...args),
+  }
+})
+
+vi.mock('../../hooks/useWeekendRoster', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../hooks/useWeekendRoster')>()
+  return {
+    ...actual,
+    useHouseholdMedical: (year: number, householdCmId: number | null, enabled: boolean) =>
+      medicalFetchMode.real
+        ? actual.useHouseholdMedical(year, householdCmId, enabled)
+        : { data: undefined, isLoading: false, error: null },
+  }
+})
+
+// Only reached when `medicalFetchMode.real` is true — `useHouseholdMedical`
+// itself is mocked away for every other test in this file, so it never
+// invokes `useApiWithAuth` for them.
+vi.mock('../../hooks/useApiWithAuth', () => ({
+  useApiWithAuth: () => ({ fetchWithAuth: vi.fn(), isAuthenticated: true, isAuthLoading: false }),
 }))
 
 // One client per TEST, built outside the render path. Constructing it inside the
@@ -819,11 +855,15 @@ describe('LodgingMap — clears a stale selection (kindred#2062)', () => {
   })
 })
 
-describe('LodgingMap — clears a stale selection (kindred#2062)', () => {
-  // A weekend switch re-renders the map with a different `parties` prop
-  // without unmounting it, so the previously-open family's panel — including
-  // its medical narrative — stayed open over the new weekend's roster.
-  it('closes the panel when the selected party is no longer in parties', async () => {
+describe('LodgingMap — closes the panel all the way to the ORIGINAL parties (kindred#2137 bug 1)', () => {
+  // Every #2062-era test above stops at ONE rerender — B replaces A and the
+  // panel closes, full stop. That passes against the broken implementation
+  // just as well as the fixed one. The actual #2137 bug only shows up on a
+  // THIRD rerender that returns to the roster the panel was originally
+  // opened against: without clearing the stored selection, `partyKey`
+  // matches again and the panel silently reopens with no click, re-issuing
+  // a real PHI fetch for a household nobody asked to see.
+  it('does not resurrect the panel when the party reappears (A -> B -> A)', async () => {
     const { rerender } = render(<LodgingMap parties={[PLACED]} units={UNITS} year={2026} />, {
       wrapper,
     })
@@ -838,25 +878,91 @@ describe('LodgingMap — clears a stale selection (kindred#2062)', () => {
       unit_code: 'cedar-1',
       unit_name: 'Cedar 1',
     })
+    // B: Johnson drops out of the roster (a weekend switch).
     rerender(<LodgingMap parties={[other]} units={UNITS} year={2026} />)
     expect(screen.queryByTestId('family-details-panel')).not.toBeInTheDocument()
-  })
 
-  // The trap: a refetch that returns the SAME parties (new array identity,
-  // same content) must not close a panel out from under whoever has it open.
-  it('keeps the panel open when parties refetches with the same content', async () => {
-    const makeParties = () => [
-      party({ display_name: 'Johnson', unit_code: 'cedar-1', unit_name: 'Cedar 1' }),
-    ]
-    const { rerender } = render(<LodgingMap parties={makeParties()} units={UNITS} year={2026} />, {
+    // A: back to a roster that once again contains Johnson (switching back
+    // to the first weekend, already cached this session). This is the bug.
+    rerender(<LodgingMap parties={[PLACED]} units={UNITS} year={2026} />)
+    expect(screen.queryByTestId('family-details-panel')).not.toBeInTheDocument()
+  })
+})
+
+describe('LodgingMap — reflects the live party, not the one captured at click time (kindred#2137 bug 3)', () => {
+  it('shows the post-drag cabin after the selected party is placed elsewhere', async () => {
+    const { rerender } = render(<LodgingMap parties={[PLACED]} units={UNITS} year={2026} />, {
       wrapper,
     })
     await userEvent.click(screen.getAllByTestId('map-mark')[0] as HTMLElement)
     await userEvent.click(screen.getByRole('button', { name: /Johnson/ }))
-    expect(screen.getByTestId('family-details-panel')).toBeInTheDocument()
+    // Scoped to the panel: the mark's own popover is still pinned open behind
+    // it and repeats "Cedar 1" as its own heading.
+    const panel = screen.getByTestId('family-details-panel')
+    expect(within(panel).getByText('Cedar 1')).toBeInTheDocument()
 
-    rerender(<LodgingMap parties={makeParties()} units={UNITS} year={2026} />)
-    expect(screen.getByTestId('family-details-panel')).toBeInTheDocument()
+    // An optimistic drag placement (`dragPlacement.ts`'s `applyPlacement`)
+    // returns a NEW party object with a changed `unit_code`/`unit_name`, kept
+    // at the same `partyKey`. The panel must show the post-drag cabin, not
+    // the object captured when the row was clicked.
+    const draggedJohnson = { ...PLACED, unit_code: 'cedar-2', unit_name: 'Cedar 2' }
+    rerender(<LodgingMap parties={[draggedJohnson]} units={UNITS} year={2026} />)
+
+    expect(within(panel).getByText('Cedar 2')).toBeInTheDocument()
+    expect(within(panel).queryByText('No cabin yet')).not.toBeInTheDocument()
+  })
+})
+
+describe('LodgingMap — isPanelOpen and useDismissOnDeadSpace track panelParty, not raw selection (kindred#2137)', () => {
+  // Nothing in this file asserted on either prop before — reverting them to
+  // `selected !== null` would still pass the whole suite. The floating badge
+  // shifts left (`translateX(-28.5rem)`) only while `isPanelOpen` is true,
+  // which is what makes it an observable proxy for the prop.
+  function badgeTransform(container: HTMLElement): string | undefined {
+    const badge = container.querySelector('[data-floating-badge]')
+    return badge instanceof HTMLElement ? badge.style.transform : undefined
+  }
+
+  it('shifts the unplaced badge while the panel is open and un-shifts once the party departs', async () => {
+    const { container, rerender } = render(
+      <LodgingMap parties={[PLACED]} units={UNITS} year={2026} />,
+      { wrapper }
+    )
+    expect(badgeTransform(container)).toBe('none')
+
+    await userEvent.click(screen.getAllByTestId('map-mark')[0] as HTMLElement)
+    await userEvent.click(screen.getByRole('button', { name: /Johnson/ }))
+    expect(badgeTransform(container)).toBe('translateX(-28.5rem)')
+
+    // Johnson drops out of the roster -- `panelParty` resolves null, and
+    // `isPanelOpen` must follow it back to false rather than staying pinned
+    // on a `selected` that never got cleared.
+    rerender(<LodgingMap parties={[]} units={UNITS} year={2026} />)
+    expect(badgeTransform(container)).toBe('none')
+  })
+})
+
+describe('LodgingMap — clears a stale pin/dwell when its cluster dissolves (kindred#2137 bug 4)', () => {
+  // `openCluster` itself already derives correctly (a fresh `.find` against
+  // the current `clusters` every render) -- what was missing is resetting
+  // `pinnedKey`/`dwellKey` when their cluster stops existing. A `units` prop
+  // change that drops the pinned mark's unit dissolves the cluster; a LATER
+  // prop change that re-adds the identical unit re-mints the same
+  // `clusterKey` (sorted unit ids) and, without a fix, reopens the popover
+  // with no click.
+  it('does not reopen a pinned popover when its unit reappears', async () => {
+    const { rerender } = render(<LodgingMap parties={[]} units={UNITS} year={2026} />, {
+      wrapper,
+    })
+    await userEvent.click(screen.getAllByTestId('map-mark')[0] as HTMLElement)
+    expect(screen.getByText('Cedar 1')).toBeInTheDocument()
+
+    const withoutCedar1 = UNITS.filter((u) => u.unit_id !== 'u1')
+    rerender(<LodgingMap parties={[]} units={withoutCedar1} year={2026} />)
+    expect(screen.queryByText('Cedar 1')).not.toBeInTheDocument()
+
+    rerender(<LodgingMap parties={[]} units={UNITS} year={2026} />)
+    expect(screen.queryByText('Cedar 1')).not.toBeInTheDocument()
   })
 })
 
@@ -901,5 +1007,59 @@ describe('LodgingMap — clears the selection on a SESSION change (kindred#2138)
 
     rerender(<LodgingMap parties={makeParties()} units={UNITS} year={2026} sessionCmId={101} />)
     expect(screen.getByTestId('family-details-panel')).toBeInTheDocument()
+  })
+})
+
+describe('LodgingMap — the actual PHI fetch (kindred#2139)', () => {
+  // Every other test in this file mocks `useHouseholdMedical` to a constant,
+  // so `MedicalNarrative`'s fetch -- the exact harm #2062 named -- is never
+  // exercised by any assertion in the whole suite. This block flips
+  // `medicalFetchMode.real` to drive the GENUINE `useHouseholdMedical` hook,
+  // through the same mocked-service-plus-`useApiWithAuth` harness
+  // `useWeekendRoster.test.tsx` already uses to drive its own hooks for
+  // real.
+  beforeEach(() => {
+    medicalFetchMode.real = true
+    mockFetchHouseholdMedical.mockReset().mockResolvedValue({
+      household_cm_id: 9001,
+      year: 2026,
+      allergy_info: 'Peanuts',
+    })
+  })
+
+  afterEach(() => {
+    medicalFetchMode.real = false
+  })
+
+  it('fetches the real medical narrative when the panel opens', async () => {
+    render(<LodgingMap parties={[PLACED]} units={UNITS} year={2026} />, { wrapper })
+    expect(mockFetchHouseholdMedical).not.toHaveBeenCalled()
+
+    await userEvent.click(screen.getAllByTestId('map-mark')[0] as HTMLElement)
+    await userEvent.click(screen.getByRole('button', { name: /Johnson/ }))
+
+    await waitFor(() => {
+      expect(mockFetchHouseholdMedical).toHaveBeenCalledWith(expect.anything(), 2026, 9001)
+    })
+    expect(await screen.findByText('Peanuts')).toBeInTheDocument()
+  })
+
+  it('never fetches for a party with no household to look up', async () => {
+    const adultGuest = party({
+      grain: 'person',
+      household_cm_id: 0,
+      person_cm_id: 5001,
+      display_name: 'Priya Patel',
+      sort_name: 'Priya Patel',
+      adults: [],
+      children: [],
+      unit_code: 'cedar-1',
+      unit_name: 'Cedar 1',
+    })
+    render(<LodgingMap parties={[adultGuest]} units={UNITS} year={2026} />, { wrapper })
+    await userEvent.click(screen.getAllByTestId('map-mark')[0] as HTMLElement)
+    await userEvent.click(screen.getByRole('button', { name: /Priya Patel/ }))
+    expect(screen.getByTestId('family-details-panel')).toBeInTheDocument()
+    expect(mockFetchHouseholdMedical).not.toHaveBeenCalled()
   })
 })

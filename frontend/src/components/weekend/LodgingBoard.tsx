@@ -46,6 +46,7 @@ import { useSearchParams } from 'react-router'
 
 import { useDismissOnDeadSpace } from '../../hooks/useDismissOnDeadSpace'
 import { useLodgingPlacement } from '../../hooks/useLodgingPlacement'
+import { usePanelParty } from '../../hooks/usePanelParty'
 import { useUnitAvailability } from '../../hooks/useUnitAvailability'
 import { useUnitMerge } from '../../hooks/useUnitMerge'
 import type { LodgingUnitRow, RosterPartyRow } from '../../types/lodging'
@@ -125,8 +126,8 @@ export function LodgingBoard({
     () => new Set(searchParams.getAll(CLOSED_PARAM)),
     [searchParams]
   )
-  const [selected, setSelected] = useState<RosterPartyRow | null>(null)
-  const [requestClose, setRequestClose] = useState(false)
+  const { panelParty, requestClose, openParty, closePanel, requestPanelClose } =
+    usePanelParty(parties)
   const [dragging, setDragging] = useState<RosterPartyRow | null>(null)
   /** The card currently being dragged BY ITS MERGE HANDLE, for grey-out. */
   const [draggingMergeUnit, setDraggingMergeUnit] = useState<LodgingUnitRow | null>(null)
@@ -158,24 +159,24 @@ export function LodgingBoard({
 
   // RESET, not filtered (kindred#2138) — the owner's ruling was explicit: a
   // session change closes the panel outright, it does not merely stop
-  // rendering it while `selected` quietly survives underneath. The
-  // `panelParty` guard further down only catches a household that drops OUT
-  // of `parties`; a household enrolled in two weekends never does that,
-  // since `partyKey` (deliberately — see partyKey.ts) carries no session
+  // rendering it while the selection quietly survives underneath.
+  // `usePanelParty`'s own guard only catches a household that drops OUT of
+  // `parties`; a household enrolled in two weekends never does that, since
+  // `partyKey` (deliberately — see partyKey.ts) carries no session
   // dimension, so the same key still matches after the switch and the panel
   // would keep rendering the PREVIOUS weekend's placement data.
   //
   // This is React's own "storing information from previous renders"
   // pattern: compare this render's prop against the last one seen, and if
   // it moved, correct the state right here in the render body rather than
-  // in an Effect. Calling `setSelected` conditionally during render does not
+  // in an Effect. Calling `closePanel` conditionally during render does not
   // add a paint the way an Effect would — React discards this render's
   // output and re-renders synchronously with the corrected state before
   // anything commits, so nobody ever sees the stale mid-render frame.
   const [lastSessionCmId, setLastSessionCmId] = useState(sessionCmId)
   if (sessionCmId !== lastSessionCmId) {
     setLastSessionCmId(sessionCmId)
-    setSelected(null)
+    closePanel()
   }
 
   const { move } = useLodgingPlacement({ year, sessionCmId, scenario })
@@ -319,33 +320,13 @@ export function LodgingBoard({
     [setAvailability]
   )
 
-  const openParty = useCallback((party: RosterPartyRow) => {
-    setRequestClose(false)
-    setSelected(party)
-  }, [])
-
-  const closePanel = useCallback(() => {
-    setSelected(null)
-    setRequestClose(false)
-  }, [])
-
-  // DERIVED, not effect-cleared (kindred#2062). A weekend switch re-renders
-  // the board with a different `parties` prop but never unmounts it, so a
-  // `selected` that outlived its own card's departure kept the panel — and
-  // its medical narrative — open over the new weekend's roster. Computing
-  // this at render time, rather than in a useEffect that calls setState,
-  // avoids the extra render pass React's docs warn an Effect would add here
-  // (`selected` itself is untouched; only what gets rendered changes). A
-  // refetch that returns the SAME parties (new array identity, same
-  // content) still resolves to present, because `partyKey` compares
-  // content, not identity — see partyKey.ts's own docstring.
-  const panelParty =
-    selected !== null && parties.some((p) => partyKey(p) === partyKey(selected)) ? selected : null
+  // `openParty`/`closePanel`/`panelParty` come from `usePanelParty` above —
+  // shared with `LodgingMap` and `HouseholdRosterTable` (kindred#2139). See
+  // its own docstring for the derivation and why it stores `selectedKey`
+  // rather than the party object.
 
   // Same dead-space dismissal the summer board uses, through the same hook.
-  useDismissOnDeadSpace(panelParty !== null, () => {
-    setRequestClose(true)
-  })
+  useDismissOnDeadSpace(panelParty !== null, requestPanelClose)
 
   const toggleArea = (token: string) => {
     setSearchParams(
