@@ -65,7 +65,13 @@ export function LodgingAliasesPanel() {
   // every consumer below, so the render guard still needs this separately.
   const yearReady = currentYear > 0
 
-  const unitsQuery = useLodgingUnits()
+  // The aliases table's own content comes from a separate query above; the
+  // unit list is only read inside the editor (the member-unit picker, and
+  // the isSuccess-driven focus effect below), so it is only worth fetching
+  // while that editor is open (kindred#2154). UnresolvedAliasQueue and
+  // LodgingUnitsPanel read the unit list unconditionally and keep the
+  // hook's always-on default.
+  const unitsQuery = useLodgingUnits({ enabled: editing !== null })
 
   /**
    * Move attention to the editor whenever it opens — including switching
