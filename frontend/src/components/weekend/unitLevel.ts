@@ -176,14 +176,14 @@ export function buildingGroups(units: LodgingUnitRow[]): Map<string, string[]> {
  * one card — `slots.length` already counts CARDS; this counts something
  * different on purpose.
  */
-export function buildingsSpanned(drawnUnits: LodgingUnitRow[], units: LodgingUnitRow[]): number {
+export function buildingsSpanned(drawnCards: LodgingUnitRow[], units: LodgingUnitRow[]): number {
   const groups = buildingGroups(units)
   const leafBuilding = new Map<string, string>()
   for (const [key, leaves] of groups) {
     for (const leaf of leaves) leafBuilding.set(leaf, key)
   }
   const touched = new Set<string>()
-  for (const unit of drawnUnits) {
+  for (const unit of drawnCards) {
     for (const leaf of coveredCodes(unit, units)) {
       const key = leafBuilding.get(leaf)
       if (key !== undefined) touched.add(key)
