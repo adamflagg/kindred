@@ -278,9 +278,19 @@ class RosterParty(BaseModel):
     # The bathroom this party ends up with once every code in unit_codes
     # counts toward ONE merge -- lodging_rules.effective_bathroom resolved
     # against the OCCUPYING placement, not any single unit's own view
-    # (kindred#2022). "unknown" when unplaced. SCORING ONLY: this feeds
-    # matching, and is not itself surfaced as a claim to staff on any card
-    # or panel -- see LodgingRosterService._resolve_party_bathroom.
+    # (kindred#2022). "unknown" when unplaced.
+    #
+    # Sanctioned staff-facing use, added by kindred#1982: the roster's fit
+    # check (`rosterAttention.ts`'s `needs_private_bathroom` predicate) reads
+    # this to decide the party's Private-bathroom verdict (settled / unmet /
+    # unverified) shown on the roster row, family card, map popover, and
+    # detail panel -- #2022's own body named this the intended consumer
+    # ("#1982 consumes it"). The RAW enum value is still never rendered
+    # directly; only the derived verdict, and only for a CONFIRMED unit --
+    # `rosterAttention.ts`'s `is_confirmed` gate still stands between this
+    # field and the UI. Any OTHER surface reading this value directly, past
+    # that gate, is the thing to stay wary of -- see
+    # LodgingRosterService._resolve_party_bathroom.
     effective_bathroom: EffectiveBathroom = "unknown"
     arrival_eta: str = ""
     # The household's cm_id was seen in an earlier year.

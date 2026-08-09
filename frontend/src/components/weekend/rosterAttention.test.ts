@@ -97,7 +97,7 @@ describe('partyAttention — ranking', () => {
 describe('partyAttention — does the cabin provide what was asked for', () => {
   it('reports an unmet need when a CONFIRMED cabin lacks it', () => {
     const a = partyAttention(
-      party({ flags: { needs_private_bathroom: true } }),
+      party({ flags: { needs_private_bathroom: true }, effective_bathroom: 'shared' }),
       unit({ is_confirmed: true, bathroom: 'shared' })
     )
     expect(a.level).toBe('unmet')
@@ -106,7 +106,10 @@ describe('partyAttention — does the cabin provide what was asked for', () => {
 
   it('settles when a confirmed cabin provides everything asked for', () => {
     const a = partyAttention(
-      party({ flags: { needs_private_bathroom: true, needs_power: true } }),
+      party({
+        flags: { needs_private_bathroom: true, needs_power: true },
+        effective_bathroom: 'private',
+      }),
       unit({ is_confirmed: true, bathroom: 'private', has_power: true })
     )
     expect(a.level).toBe('settled')
@@ -114,7 +117,10 @@ describe('partyAttention — does the cabin provide what was asked for', () => {
 
   it('names every unmet need, not just the first', () => {
     const a = partyAttention(
-      party({ flags: { needs_private_bathroom: true, needs_power: true } }),
+      party({
+        flags: { needs_private_bathroom: true, needs_power: true },
+        effective_bathroom: 'none',
+      }),
       unit({ is_confirmed: true, bathroom: 'none', has_power: false })
     )
     expect(a.level).toBe('unmet')
@@ -134,10 +140,71 @@ describe('partyAttention — does the cabin provide what was asked for', () => {
   })
 
   it('reports "not verified" when the assigned cabin cannot be found', () => {
-    // A merged slot is named for the merge, not a unit code.
+    // A merged slot is named for the merge, not a unit code — `unit` is
+    // undefined here for exactly that reason. The `is_confirmed` gate is
+    // still load-bearing even though the private-bathroom predicate now
+    // reads a party-level field: the server already resolved this merge as
+    // `private` (kindred#2022), and it must STILL read as unverified with no
+    // cabin to confirm it against, never a false `settled`.
     const a = partyAttention(
-      party({ flags: { needs_private_bathroom: true }, is_merged_slot: true }),
+      party({
+        flags: { needs_private_bathroom: true },
+        is_merged_slot: true,
+        effective_bathroom: 'private',
+      }),
       undefined
+    )
+    expect(a.level).toBe('unverified')
+  })
+
+  it('credits a whole-house merge as settled once the server resolves it private (kindred#1982)', () => {
+    // `RosterParty.unit_code` is "" on a merged slot by design, so the fit
+    // check cannot read a bathroom off a single unit here — that is exactly
+    // the gap kindred#1982 closes. `effective_bathroom` is the SERVER's
+    // answer across every code the placement covers
+    // (`lodging_rules.effective_bathroom`, kindred#2022): it already
+    // credits "private" once the party holds every member of a
+    // bathroom_group, so the fix is to read it rather than `unit.bathroom`.
+    // `unit` here stands for whichever occupied leaf a caller resolved it
+    // against (the map draws a merged party once per leaf it occupies) —
+    // its own `bathroom` is still 'shared', proving the credit comes from
+    // `effective_bathroom`, not from the unit's own field.
+    const a = partyAttention(
+      party({
+        flags: { needs_private_bathroom: true },
+        is_merged_slot: true,
+        unit_code: '',
+        unit_codes: ['tioga-1', 'tioga-2'],
+        effective_bathroom: 'private',
+      }),
+      unit({ code: 'tioga-1', bathroom: 'shared', is_confirmed: true })
+    )
+    expect(a.level).toBe('settled')
+  })
+
+  it('does not credit a strict subset of a bathroom_group', () => {
+    // Holding only one of the two rooms in the group never clears the
+    // exclusivity bar server-side, so `effective_bathroom` stays 'shared'.
+    const a = partyAttention(
+      party({
+        flags: { needs_private_bathroom: true },
+        is_merged_slot: false,
+        effective_bathroom: 'shared',
+      }),
+      unit({ bathroom: 'shared', is_confirmed: true })
+    )
+    expect(a.level).toBe('unmet')
+    expect(a.reason).toBe('No private bathroom')
+  })
+
+  it('never infers settled from a missing bathroom_group, even unconfirmed', () => {
+    // The "8 containers whose every child carries no group" gap the issue
+    // calls out: no group to test exclusivity against means "we don't
+    // know", not "private" — and an unconfirmed cabin on top of that must
+    // stay unverified, never settled on the strength of unset data.
+    const a = partyAttention(
+      party({ flags: { needs_private_bathroom: true }, effective_bathroom: 'unknown' }),
+      unit({ is_confirmed: false })
     )
     expect(a.level).toBe('unverified')
   })
