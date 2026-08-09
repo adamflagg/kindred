@@ -147,6 +147,16 @@ export function LodgingUnitForm({
   const [combined, setCombined] = useState(unit?.default_combined ?? false)
   const [notes, setNotes] = useState(unit?.notes ?? '')
   const [isSaving, setIsSaving] = useState(false)
+  // A CREATE THAT LANDED IS NOT RETRYABLE AS A CREATE. The peer writes below
+  // are N+1 and non-atomic, so a create can succeed and leave the bathroom
+  // group half written — and this form deliberately stays open on that,
+  // because the retry is the only way to finish it. But `code` is UNIQUE per
+  // (code, year), so a second submit would be rejected by PocketBase for
+  // colliding with the row this same form just wrote, and the staffer would
+  // be stranded with a peer pointing at a group nothing else joined. Holding
+  // the new record's id turns every submit after the first into an UPDATE of
+  // it, which is idempotent and converges.
+  const [createdId, setCreatedId] = useState<string | null>(null)
   // Captured, not read live — see the `year` prop's doc comment above.
   const [openedYear] = useState(year)
   // Untying this unit's children from it would leave them parented by a
@@ -205,6 +215,11 @@ export function LodgingUnitForm({
       setIsSaving(false)
       return
     }
+    // WHETHER THE ROW EXISTS, not which button was pressed. An editor opened
+    // on a stored unit has one from the start; a create form acquires one the
+    // moment `createLodgingUnit` returns, and every rule below that says
+    // "on edit" turns on this and not on `unit`.
+    const existingId = unit?.id ?? createdId ?? undefined
     const payload: LodgingUnitInput = {
       area: identity.area,
       name: identity.name,
@@ -227,25 +242,44 @@ export function LodgingUnitForm({
       // Create omits it so PocketBase writes its own 0. Edit sends an explicit
       // 0, because 0 IS the stored representation of UNKNOWN — omitting the
       // key would leave the previous number in place and make clearing the
-      // field a silent no-op the staffer believes worked.
-      ...(parsedSleeps === null ? (unit ? { sleeps: 0 } : {}) : { sleeps: parsedSleeps }),
+      // field a silent no-op the staffer believes worked. Keyed on
+      // `existingId`, so the second submit after a create that landed follows
+      // the EDIT rule, which is what it now is.
+      ...(parsedSleeps === null
+        ? existingId !== undefined
+          ? { sleeps: 0 }
+          : {}
+        : { sleeps: parsedSleeps }),
     }
     // Sharing a bathroom is SYMMETRIC and the column is one string per unit,
     // so what the staffer asserted here has to land on the peers' records too
     // — removals included. Computed BEFORE the unit's own write, off the units
-    // the form was given.
-    const peerWrites = sharePeerWrites(
-      unit?.id,
-      storedBathroomGroup,
-      bathroomPeerIds,
-      amenities.bathroom_group,
-      units
-    )
+    // the form was given. `existingId` excludes the edited row from the removal
+    // sweep, which a retry after a landed create needs as much as an edit does.
+    //
+    // GATED ON THE CHIPS, not on the column. Symmetric peer writes are what
+    // the chips MEAN, and a parentless unit has no chips — it keeps the raw-id
+    // input (see UnitAmenityFieldset). Driving peer writes off that field would
+    // rewrite records nothing on screen ever named, and the partial-failure
+    // toast below would report rooms the staffer has no idea they touched.
+    // Zero parentless units carry a group in production, so this costs
+    // nothing today and keeps the invisible destructive write impossible.
+    const peerWrites =
+      shareParent === undefined
+        ? []
+        : sharePeerWrites(
+            existingId,
+            storedBathroomGroup,
+            bathroomPeerIds,
+            amenities.bathroom_group,
+            units
+          )
     try {
-      if (unit) {
-        await updateLodgingUnit(unit.id, payload)
+      if (existingId !== undefined) {
+        await updateLodgingUnit(existingId, payload)
       } else {
-        await createLodgingUnit(payload)
+        const created = await createLodgingUnit(payload)
+        setCreatedId(created.id)
       }
     } catch (error) {
       // Nothing else is attempted. Peers pointing at a group the unit never
@@ -287,7 +321,7 @@ export function LodgingUnitForm({
       toast.error(
         `This room saved, but the shared bathroom is only half recorded. Updated: ${
           wrote.length > 0 ? wrote.join(', ') : 'no other rooms'
-        }. Not updated: ${failed.join(', ')}. Save again to finish.`
+        }. Not updated: ${failed.join(', ')}. Submit again to finish.`
       )
       setIsSaving(false)
       return
