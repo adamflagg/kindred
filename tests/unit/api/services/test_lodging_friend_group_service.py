@@ -358,6 +358,26 @@ class TestUpdateGroup:
         )
         groups.update_group.assert_not_awaited()
 
+    @pytest.mark.asyncio
+    async def test_emptying_a_group_actually_deletes_the_last_member(self) -> None:
+        # `[]` IS A VALUE, NOT AN ABSENCE, and this is the one place that
+        # distinction is load-bearing rather than pedantic. The schema test
+        # above only proves the model ACCEPTS an empty list; the service is
+        # where an empty list has to survive the `is not None` gate. Spelling
+        # that gate `if household_cm_ids:` -- the obvious-looking simplification
+        # -- makes removing the LAST household a silent no-op: the PATCH
+        # returns 200, the toast says "Group updated", and the member is still
+        # there on the next refetch. Summer's `removeMemberMutation` deletes
+        # unconditionally and there is no floor on this path (owner ruling,
+        # 2026-08-09), so emptying a group is a legal edit that must land.
+        groups = _groups_repo(find_group=_group_row(), fetch_members=[_member_row("grp_1", JOHNSON)])
+        await _service(groups=groups).update_group(
+            "grp_1", FriendGroupUpdateRequest(household_cm_ids=[]), "s@example.com"
+        )
+
+        groups.delete_member.assert_awaited_once_with(f"mem_{JOHNSON}")
+        groups.create_member.assert_not_awaited()
+
 
 class TestDeleteGroup:
     @pytest.mark.asyncio

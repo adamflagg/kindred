@@ -44,6 +44,17 @@
  * `AddToGroupPicker` beside "Create Group" (`FriendGroupActionBar`'s summer
  * counterpart has "Add to existing" beside "Create group").
  *
+ * ONE MEMBERSHIP EDIT AT A TIME, which summer does not need and this does.
+ * Summer adds with a single `locked_group_members` create and removes with a
+ * single delete, so two overlapping edits compose. Every write here instead
+ * PATCHes an ABSOLUTE `household_cm_ids` computed from the CACHED group, and
+ * the server replaces the membership with exactly that list — so a second
+ * gesture issued before the first has landed is computed from a membership the
+ * first already changed and silently undoes it, with a success toast and no
+ * error. Hence `isPending` disables all three add/remove controls, and
+ * `useWeekendFriendGroups`'s `invalidate` is AWAITED so that flag spans the
+ * refetch rather than only the PATCH.
+ *
  * ## Multi-group tenancy is summer's, exactly — owner ruling 2026-08-09
  *
  * All THREE write paths (create, the card picker, the board's "Add to group")
@@ -273,7 +284,8 @@ function FriendGroupCard({
                       onClick={() => {
                         onRemoveMember(group, member.household_cm_id)
                       }}
-                      className="hover:bg-muted flex-shrink-0 rounded p-1"
+                      disabled={isPending}
+                      className="hover:bg-muted flex-shrink-0 rounded p-1 disabled:cursor-not-allowed disabled:opacity-50"
                       title="Remove from group"
                       aria-label={`Remove household ${String(member.household_cm_id)} from group`}
                     >
@@ -299,7 +311,8 @@ function FriendGroupCard({
                     onClick={() => {
                       onRemoveMember(group, member.household_cm_id)
                     }}
-                    className="hover:bg-muted flex-shrink-0 rounded p-1"
+                    disabled={isPending}
+                    className="hover:bg-muted flex-shrink-0 rounded p-1 disabled:cursor-not-allowed disabled:opacity-50"
                     title="Remove from group"
                     aria-label={`Remove ${label} from group`}
                   >
@@ -317,6 +330,9 @@ function FriendGroupCard({
             households={households}
             memberCmIds={memberCmIds}
             householdToGroup={householdToGroup}
+            // A second add computed from the membership the first one already
+            // changed would delete it again — see the picker's own prop doc.
+            disabled={isPending}
             onAdd={(party) => {
               onAddMember(group, party)
             }}
@@ -788,7 +804,11 @@ export function WeekendFriendGroups({
                   onAddToGroup={(groupId) => {
                     void addSelectedToGroup(groupId)
                   }}
-                  isAddingToGroup={isAddingToGroup}
+                  // `|| isPending`, not the re-entrancy flag alone: this write
+                  // also sends an absolute `household_cm_ids` derived from the
+                  // cached target group, so it must wait out a card-level
+                  // add/remove too, not merely another board-level one.
+                  isAddingToGroup={isAddingToGroup || isPending}
                 />
               )}
             </div>

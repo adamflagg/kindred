@@ -53,6 +53,7 @@ vi.mock('../hooks/useWeekendFriendGroups', () => ({
   useFriendGroupMutations: () => ({
     createGroup: vi.fn(),
     updateGroup: vi.fn(),
+    updateGroupAsync: vi.fn().mockResolvedValue({}),
     deleteGroup: vi.fn(),
     isPending: false,
   }),

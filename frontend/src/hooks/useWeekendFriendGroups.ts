@@ -11,8 +11,10 @@
  *
  * The other half of that bargain is NOT optional and is what the roster's
  * comment warns about: long staleTime plus EXPLICIT invalidation on mutation,
- * never short staleTime plus hope. Each of the three mutations below
- * invalidates the group key before it resolves.
+ * never short staleTime plus hope. Each of the three mutations below AWAITS
+ * the invalidation of the group key before it resolves — see `invalidate`,
+ * where the difference between awaiting it and firing it off decides whether
+ * two overlapping membership edits can silently undo one another.
  *
  * ## The key carries no scenario, and that is deliberate
  *
@@ -74,13 +76,21 @@ export interface FriendGroupMutations {
   createGroup: (body: FriendGroupCreate, options?: MutationCallbacks) => void
   updateGroup: (groupId: string, body: FriendGroupUpdate) => void
   /**
-   * Promise-returning sibling of `updateGroup`, for a caller that must
-   * SEQUENCE more than one PATCH before deciding whether to clear its own UI
-   * state — kindred#1913 half 2's "Add to group" flow, which may write to
-   * both the target group and a household's previous group in the same
-   * gesture (a move). `updateGroup` stays fire-and-forget for the ordinary
-   * single-write callers (rename, recolour, the per-card add/remove) so
-   * their call sites don't have to think about a promise they don't need.
+   * Promise-returning sibling of `updateGroup`, for a caller that must know
+   * whether the write LANDED before deciding what to do with its own UI state
+   * — kindred#1913's board-level "Add to group", which keeps the staff
+   * member's selection when the PATCH fails and clears it when every household
+   * they picked made it in.
+   *
+   * It writes to the TARGET GROUP ONLY. An earlier cut drained the household's
+   * previous group in the same gesture, which is why this was introduced; the
+   * owner struck that on 2026-08-09 ("same behavior" as summer, which never
+   * deletes a membership to make one), so the sequencing this exists for is
+   * now success-vs-failure rather than two writes.
+   *
+   * `updateGroup` stays fire-and-forget for the ordinary callers (rename,
+   * recolour, the per-card add/remove) so their call sites don't have to think
+   * about a promise they don't need.
    */
   updateGroupAsync: (groupId: string, body: FriendGroupUpdate) => Promise<FriendGroupRow>
   deleteGroup: (groupId: string) => void
@@ -100,21 +110,43 @@ export function useFriendGroupMutations(year: number, sessionCmId: number): Frie
   const { fetchWithAuth } = useApiWithAuth()
   const queryClient = useQueryClient()
 
-  const invalidate = useCallback(() => {
-    void queryClient.invalidateQueries({
-      queryKey: queryKeys.weekendFriendGroups(year, sessionCmId),
-    })
-  }, [queryClient, year, sessionCmId])
+  /**
+   * RETURNS THE PROMISE, and every `onSuccess` below AWAITS IT — which is what
+   * keeps `isPending` true until the refetched list has actually landed, not
+   * merely until the write's own response has.
+   *
+   * That gap is not cosmetic here, because the membership PATCH sends an
+   * ABSOLUTE `household_cm_ids` list computed from the CACHED group. Re-enable
+   * the card's controls the moment the PATCH answers and the next add is
+   * computed from the pre-write membership, so the server's `_replace_members`
+   * deletes whatever the first write added — with a success toast and no error
+   * anywhere. Summer cannot hit this: `LockGroupPanel` adds one
+   * `locked_group_members` row and removes one row, so two overlapping edits
+   * compose instead of overwriting.
+   *
+   * `invalidateQueries` RESOLVES rather than rejects when the refetch itself
+   * fails (`throwOnError` is off by default), so a dead network after a
+   * successful write still reports the write as the success it was — pinned in
+   * `useWeekendFriendGroups.test.tsx`, which goes red if `throwOnError: true`
+   * is ever added here.
+   */
+  const invalidate = useCallback(
+    () =>
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.weekendFriendGroups(year, sessionCmId),
+      }),
+    [queryClient, year, sessionCmId]
+  )
 
   const create = useMutation({
     mutationFn: (body: FriendGroupCreate) => createFriendGroup(fetchWithAuth, body),
-    onSuccess: (group) => {
-      invalidate()
+    onSuccess: async (group) => {
       // `||`, not `??`: '' is the real stored value for an unnamed group, so
       // `??` would toast "Created " with a trailing space. Same trap
       // `partyKey.ts` documents at length.
       // eslint-disable-next-line @typescript-eslint/prefer-nullish-coalescing -- '' is a real stored value meaning "unnamed"
       toast.success(`Created ${group.name || 'the group'}`)
+      await invalidate()
     },
     onError: (error: Error) => {
       // INVALIDATE ON FAILURE TOO, and only here. `create_group` writes the
@@ -124,7 +156,7 @@ export function useFriendGroupMutations(year: number, sessionCmId: number): Frie
       // this the list would not refetch and that group would be invisible
       // until something else happened to invalidate, which is the worst of
       // both: it exists, staff cannot see it, and re-creating makes a second.
-      invalidate()
+      void invalidate()
       toast.error(error.message)
     },
   })
@@ -132,18 +164,18 @@ export function useFriendGroupMutations(year: number, sessionCmId: number): Frie
   const update = useMutation({
     mutationFn: ({ groupId, body }: { groupId: string; body: FriendGroupUpdate }) =>
       updateFriendGroup(fetchWithAuth, groupId, body),
-    onSuccess: () => {
-      invalidate()
+    onSuccess: async () => {
       toast.success('Group updated')
+      await invalidate()
     },
     onError: (error: Error) => toast.error(error.message),
   })
 
   const remove = useMutation({
     mutationFn: (groupId: string) => deleteFriendGroup(fetchWithAuth, groupId),
-    onSuccess: () => {
-      invalidate()
+    onSuccess: async () => {
       toast.success('Group dissolved')
+      await invalidate()
     },
     onError: (error: Error) => toast.error(error.message),
   })

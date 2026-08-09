@@ -35,6 +35,15 @@ export interface AddHouseholdPickerProps {
   memberCmIds: Set<number>
   /** household_cm_id -> a group it already belongs to, if any. Label only. */
   householdToGroup: Map<number, FriendGroupRow>
+  /**
+   * True while any friend-group write is in flight or its refetch is still
+   * out. `memberCmIds` and the membership `onAdd` computes are both read from
+   * the CACHED group, so a second add over a list the first one already
+   * changed would send an absolute `household_cm_ids` that deletes it again.
+   * Summer's `AddMemberPicker` needs no equivalent: its add is a single
+   * `locked_group_members` create, so two of them compose.
+   */
+  disabled: boolean
   onAdd: (party: RosterPartyRow) => void
 }
 
@@ -43,6 +52,7 @@ export function AddHouseholdPicker({
   households,
   memberCmIds,
   householdToGroup,
+  disabled,
   onAdd,
 }: AddHouseholdPickerProps) {
   const [open, setOpen] = useState(false)
@@ -114,7 +124,8 @@ export function AddHouseholdPicker({
         onClick={() => {
           setOpen((o) => !o)
         }}
-        className="text-muted-foreground hover:text-foreground flex items-center gap-1 text-sm"
+        disabled={disabled}
+        className="text-muted-foreground hover:text-foreground flex items-center gap-1 text-sm disabled:cursor-not-allowed disabled:opacity-50"
         aria-label={`Add household to ${groupName}`}
         aria-haspopup="listbox"
         aria-expanded={open}

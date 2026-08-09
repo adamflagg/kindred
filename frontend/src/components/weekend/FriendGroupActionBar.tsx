@@ -63,7 +63,12 @@ export interface FriendGroupActionBarProps {
   /** Existing groups this weekend, for the "Add to group" picker. */
   groups: FriendGroupRow[]
   onAddToGroup: (groupId: string) => void
-  /** True while an "Add to group" move is in flight — disables the trigger. */
+  /**
+   * True while an "Add to group" write is in flight, or while any other
+   * friend-group write is — either way the trigger is disabled, because the
+   * membership PATCH sends an absolute list computed from the cached group.
+   * See `WeekendFriendGroups.addSelectedToGroup`.
+   */
   isAddingToGroup: boolean
 }
 

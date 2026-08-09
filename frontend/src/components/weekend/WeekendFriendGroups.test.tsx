@@ -32,6 +32,9 @@ let groupsResult: {
   error: unknown
 }
 
+/** True while a friend-group write is in flight — see the stale-write tests. */
+let mutationPending: boolean
+
 vi.mock('../../hooks/useWeekendFriendGroups', () => ({
   useWeekendFriendGroups: () => groupsResult,
   useFriendGroupMutations: () => ({
@@ -39,7 +42,7 @@ vi.mock('../../hooks/useWeekendFriendGroups', () => ({
     updateGroup,
     updateGroupAsync,
     deleteGroup,
-    isPending: false,
+    isPending: mutationPending,
   }),
 }))
 
@@ -48,6 +51,7 @@ let client: QueryClient
 beforeEach(() => {
   vi.clearAllMocks()
   updateGroupAsync.mockResolvedValue({})
+  mutationPending = false
   client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   groupsResult = { data: { groups: [] }, isLoading: false, isPending: false, error: null }
 })
@@ -584,6 +588,52 @@ describe('membership add/remove (kindred#1913 half 2, Option A)', () => {
     await user.click(within(card).getByRole('button', { name: /add household/i }))
 
     expect(screen.getByText(/every household.*already in this group/i)).toBeInTheDocument()
+  })
+
+  /**
+   * THE MEMBERSHIP PATCH SENDS AN ABSOLUTE LIST, SO TWO OVERLAPPING EDITS LOSE
+   * ONE OF THEM.
+   *
+   * Summer cannot hit this: `LockGroupPanel` adds with a single
+   * `locked_group_members` create and removes with a single delete, so two
+   * edits in flight at once compose. The weekend PATCHes
+   * `household_cm_ids` — the WHOLE membership, computed from the cached group
+   * — and the server's `_replace_members` deletes anything absent from it. Add
+   * Chen, then add Sam before the invalidated query has come back, and the
+   * second body is still `[Johnson, Garcia, Sam]`: Chen is deleted again, with
+   * a success toast and no error anywhere.
+   *
+   * The fix is to refuse the second gesture until the first has landed AND the
+   * list it is computed from has been refetched — `isPending` spans both, see
+   * `useWeekendFriendGroups.test.tsx`. It is the same treatment Dissolve on
+   * this card already gets.
+   */
+  describe('while a write is in flight', () => {
+    beforeEach(() => {
+      mutationPending = true
+      groupsResult = { data: { groups: [grp1] }, isLoading: false, isPending: false, error: null }
+    })
+
+    it('refuses another add, so the second PATCH cannot resurrect a stale membership', () => {
+      renderTab()
+      const card = screen.getByTestId('friend-group-grp_1')
+      expect(within(card).getByRole('button', { name: /add household/i })).toBeDisabled()
+    })
+
+    it('refuses another remove for the same reason', () => {
+      renderTab()
+      const card = screen.getByTestId('friend-group-grp_1')
+      for (const button of within(card).getAllByRole('button', { name: /remove.*from group/i })) {
+        expect(button).toBeDisabled()
+      }
+    })
+
+    it('refuses the board’s "Add to group" too', async () => {
+      const user = userEvent.setup()
+      renderTab({ parties: [JOHNSON, GARCIA, CHEN, SAM] })
+      await user.click(householdToggle(/Sam/))
+      expect(screen.getByRole('button', { name: /^add to group$/i })).toBeDisabled()
+    })
   })
 
   it('hides add/remove controls without bunking.manage', () => {
