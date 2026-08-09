@@ -59,6 +59,7 @@ def _unit(
     default_combined: bool = False,
     parent_unit: str = "",
     shareability: str = "",
+    has_power: bool = False,
 ) -> SimpleNamespace:
     return _rec(
         id=pb_id,
@@ -72,7 +73,7 @@ def _unit(
         bathroom=bathroom,
         bathroom_group=bathroom_group,
         near_bathhouse=False,
-        has_power=False,
+        has_power=has_power,
         has_ac=False,
         has_fridge=False,
         is_accessible=False,
@@ -3382,3 +3383,131 @@ class TestPartySizeIsABedCount:
 
         seen = {call.kwargs["session_start"] for call in build_parties.call_args_list}
         assert seen == {date(2026, 9, 4), date(2026, 10, 10)}
+
+
+class TestUnitPowerCoverage:
+    """kindred#1912 -- `LodgingUnitSummary.power_coverage`, resolved over LEAF
+    descendants rather than read off the row.
+
+    A container's stored amenity flags describe the CONTAINER, not its rooms:
+    the same shape as the settled "a container's `sleeps` is a delta" ruling,
+    on a different column. Twelve of the fourteen 2026 family-pool containers
+    record `has_power = 0` while every leaf beneath them has power, so reading
+    the row marks twelve entirely-powered buildings unpowered.
+
+    Computed here rather than stored, because the admin panels write
+    `lodging_units` straight to PocketBase from the browser
+    (`frontend/src/services/lodgingCrud.ts`), bypassing FastAPI entirely -- a
+    stored `effective_has_power` would have no recompute trigger on the one
+    path that actually edits amenities.
+    """
+
+    @pytest.mark.asyncio
+    async def test_a_leaf_answers_for_itself(self) -> None:
+        repo = _repo(
+            fetch_session=FAMILY_SESSION,
+            fetch_units=[
+                _unit("u1", "ridge-1", "Ridge 1", sleeps=4, has_power=True),
+                _unit("u2", "ridge-2", "Ridge 2", sleeps=4, has_power=False),
+            ],
+        )
+        roster = await LodgingRosterService(repo).build_roster(2026, 1000001)
+
+        by_code = {u.code: u for u in roster.units}
+        assert by_code["ridge-1"].power_coverage == "all"
+        assert by_code["ridge-2"].power_coverage == "none"
+
+    @pytest.mark.asyncio
+    async def test_a_container_inherits_from_its_rooms_not_its_own_row(self) -> None:
+        """The 12-of-14 trap. The building records no power; every room has it."""
+        repo = _repo(
+            fetch_session=FAMILY_SESSION,
+            fetch_units=[
+                _unit("c1", "gt-lodge", "Lodge", is_container=True, has_power=False),
+                _unit("u1", "gt-lodge-1", "Lodge 1", sleeps=4, has_power=True, parent_unit="c1"),
+                _unit("u2", "gt-lodge-2", "Lodge 2", sleeps=4, has_power=True, parent_unit="c1"),
+            ],
+        )
+        roster = await LodgingRosterService(repo).build_roster(2026, 1000001)
+
+        by_code = {u.code: u for u in roster.units}
+        assert by_code["gt-lodge"].power_coverage == "all"
+        assert by_code["gt-lodge"].has_power is False
+
+    @pytest.mark.asyncio
+    async def test_it_resolves_to_leaves_at_any_depth_never_direct_children(self) -> None:
+        """The `hc-health-center` shape, which is why one level is not enough.
+
+        The building's two direct children are themselves containers recording
+        no power, and every leaf beneath THEM has power. A one-level walk
+        answers "none" here -- wrong in the direction that looks plausible.
+        """
+        repo = _repo(
+            fetch_session=FAMILY_SESSION,
+            fetch_units=[
+                _unit("c1", "hc-block", "Health Block", is_container=True, has_power=False),
+                _unit("c2", "hc-wing-a", "Wing A", is_container=True, has_power=False, parent_unit="c1"),
+                _unit("c3", "hc-wing-b", "Wing B", is_container=True, has_power=False, parent_unit="c1"),
+                _unit("u1", "hc-a-1", "A1", sleeps=2, has_power=True, parent_unit="c2"),
+                _unit("u2", "hc-b-1", "B1", sleeps=2, has_power=True, parent_unit="c3"),
+            ],
+        )
+        roster = await LodgingRosterService(repo).build_roster(2026, 1000001)
+
+        assert {u.code: u.power_coverage for u in roster.units}["hc-block"] == "all"
+
+    @pytest.mark.asyncio
+    async def test_a_split_building_is_some_not_all_or_none(self) -> None:
+        repo = _repo(
+            fetch_session=FAMILY_SESSION,
+            fetch_units=[
+                _unit("c1", "gt-lodge", "Lodge", is_container=True, has_power=True),
+                _unit("u1", "gt-lodge-1", "Lodge 1", sleeps=4, has_power=True, parent_unit="c1"),
+                _unit("u2", "gt-lodge-2", "Lodge 2", sleeps=4, has_power=False, parent_unit="c1"),
+            ],
+        )
+        roster = await LodgingRosterService(repo).build_roster(2026, 1000001)
+
+        assert {u.code: u.power_coverage for u in roster.units}["gt-lodge"] == "some"
+
+    @pytest.mark.asyncio
+    async def test_an_unconfirmed_room_is_unknown_not_unmet(self) -> None:
+        """`has_power = False` on an unconfirmed row means "nobody has said"."""
+        repo = _repo(
+            fetch_session=FAMILY_SESSION,
+            fetch_units=[_unit("u1", "ridge-1", "Ridge 1", sleeps=4, is_confirmed=False, has_power=False)],
+        )
+        roster = await LodgingRosterService(repo).build_roster(2026, 1000001)
+
+        assert roster.units[0].power_coverage == "unknown"
+
+    @pytest.mark.asyncio
+    async def test_one_unconfirmed_room_makes_the_whole_building_unknown(self) -> None:
+        repo = _repo(
+            fetch_session=FAMILY_SESSION,
+            fetch_units=[
+                _unit("c1", "gt-lodge", "Lodge", is_container=True, has_power=True),
+                _unit("u1", "gt-lodge-1", "Lodge 1", sleeps=4, has_power=True, parent_unit="c1"),
+                _unit("u2", "gt-lodge-2", "Lodge 2", sleeps=4, has_power=True, is_confirmed=False, parent_unit="c1"),
+            ],
+        )
+        roster = await LodgingRosterService(repo).build_roster(2026, 1000001)
+
+        assert {u.code: u.power_coverage for u in roster.units}["gt-lodge"] == "unknown"
+
+    @pytest.mark.asyncio
+    async def test_a_deactivated_room_does_not_answer_for_the_building(self) -> None:
+        """Nobody can be placed in it, so it cannot supply the building's
+        power -- the same `is_active` filter `_effective_sleeps` applies when
+        totalling a combined container's rooms."""
+        repo = _repo(
+            fetch_session=FAMILY_SESSION,
+            fetch_units=[
+                _unit("c1", "gt-lodge", "Lodge", is_container=True, has_power=False),
+                _unit("u1", "gt-lodge-1", "Lodge 1", sleeps=4, has_power=True, parent_unit="c1"),
+                _unit("u2", "gt-lodge-2", "Lodge 2", sleeps=4, has_power=False, is_active=False, parent_unit="c1"),
+            ],
+        )
+        roster = await LodgingRosterService(repo).build_roster(2026, 1000001)
+
+        assert {u.code: u.power_coverage for u in roster.units}["gt-lodge"] == "all"

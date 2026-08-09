@@ -25,6 +25,8 @@ ingest never touches.
 
 from __future__ import annotations
 
+from collections.abc import Sequence
+
 # Values of lodging_units.bathroom. An unset PocketBase select stores as "",
 # which means "nobody has told us yet", not "no bathroom".
 BATHROOM_VALUES = ("none", "private", "shared")
@@ -138,6 +140,61 @@ def effective_bathroom(
     if group_member_codes and group_member_codes <= merged_codes:
         return "private"
     return "shared"
+
+
+# Values of an amenity's resolved coverage over the rooms a slot actually
+# contains (kindred#1912). `unknown` is not a fourth grain -- it is the
+# absence of evidence, exactly as it is for `bathroom` and `shareability`.
+AMENITY_COVERAGE_VALUES = ("all", "some", "none", "unknown")
+
+
+def amenity_coverage(values: Sequence[bool | None]) -> str:
+    """How much of a slot carries an amenity — kindred#1912.
+
+    A container's stored amenity flags describe the CONTAINER, not its rooms.
+    That is the same shape as the settled "a container's `sleeps` is a delta
+    over its rooms" ruling, on a different column, and it is the trap this
+    function exists for: twelve of the fourteen 2026 family-pool containers
+    record `has_power = 0` while every leaf beneath them has power, so a
+    caller reading the container's own row marks twelve entirely-powered
+    buildings unpowered.
+
+    THREE grains, not a boolean, because both boolean policies fall out of it
+    for free -- `OR == result != "none"`, `AND == result == "all"` -- so a
+    per-criterion OR/AND policy map would be a strict subset of this that
+    costs more to build. What the three grains MEAN differs per criterion
+    (for `is_accessible`, SOME is worse than NONE: a building advertising two
+    step-free rooms out of ten invites the placement that lands in one of the
+    other eight), and that nuance belongs to the renderer, not here.
+
+    This function does not walk anything. Resolving which rooms answer for a
+    slot is the caller's job -- `_BathroomIndex.leaf_codes_under` in
+    `lodging_roster_service` is the ONE walk over that tree, and a second one
+    would be free to drift from it.
+
+    Args:
+        values: one entry per unit that answers for the slot -- a leaf's own
+            flag, or every leaf descendant's for a container. `None` means
+            the unit is unconfirmed, i.e. nobody has recorded the amenity;
+            `has_power = False` on an unconfirmed row means "nobody has
+            said", never "there is no power".
+
+    Returns:
+        "all" | "some" | "none" | "unknown". `unknown` whenever there is
+        nothing to judge or ANY contributing unit is unmeasured -- the same
+        all-or-nothing evidence bar `resolvePartyUnit` already applies to a
+        multi-room merge, rather than a looser standard for having more
+        rooms. Never "none" on missing evidence: this feeds a mark that
+        STATES something about a slot, and "nothing here meets the need" is
+        not a claim an unrecorded row supports.
+    """
+    if not values or any(value is None for value in values):
+        return "unknown"
+    if all(values):
+        return "all"
+    if any(values):
+        return "some"
+    return "none"
 
 
 def container_bathroom(leaf_bathroom_groups: frozenset[str]) -> tuple[str, str]:

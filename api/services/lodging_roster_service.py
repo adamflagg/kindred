@@ -23,6 +23,7 @@ from api.constants.lodging import INFANT_BED_EXEMPT_MONTHS, is_attending_adult_n
 from api.schemas.lodging import (
     PHI_FIELD_NAMES,
     AccessibilityFlagSummary,
+    AmenityCoverage,
     EffectiveBathroom,
     HouseholdMedicalResponse,
     LodgingUnitSummary,
@@ -44,6 +45,7 @@ from api.schemas.lodging import (
     WeekendSummaryResponse,
 )
 from api.services.lodging_rules import (
+    amenity_coverage,
     container_bathroom,
     effective_bathroom,
     is_family_available,
@@ -585,6 +587,60 @@ def _resolve_party_bathroom(unit_codes: list[str], index: _BathroomIndex) -> str
     return effective_bathroom(bathroom, group, index.group_members.get(group, frozenset()), frozenset(occupied))
 
 
+def _resolve_power_coverage(units: list[LodgingUnitSummary], index: _BathroomIndex) -> None:
+    """Fill in every unit's `power_coverage` in place — kindred#1912.
+
+    Beside `_resolve_party_bathroom` above, and for the identical reason: a
+    container's registry row describes the CONTAINER, not its rooms. Twelve of
+    the fourteen 2026 family-pool containers record `has_power = 0` while
+    every leaf beneath them has power, so the board judging a drop against the
+    row marks twelve entirely-powered buildings unpowered.
+
+    Resolved SERVER-SIDE and never stored. The admin panels write
+    `lodging_units` straight to PocketBase from the browser
+    (`frontend/src/services/lodgingCrud.ts`), bypassing FastAPI entirely, so a
+    stored `effective_has_power` column would have no recompute trigger on the
+    one path that actually edits amenities and would go stale the first time
+    staff toggled a flag.
+
+    Walks `index.leaf_codes_under`, which is the ONE walk over this tree --
+    already shared by `_resolve_party_bathroom` and `_build_counts` -- rather
+    than a second traversal of its own, because two walks over one tree are
+    free to drift. It recurses to LEAVES at any depth, which is the whole
+    point: `hc-health-center` looks split one level down (1 powered child, 2
+    not) and is not, because its two "unpowered" children are themselves
+    containers whose every leaf has power. A one-level walk gets that wrong in
+    the direction that looks plausible.
+
+    Rooms that are `is_active = False` do not answer for their building -- the
+    same filter `_effective_sleeps` applies when totalling a combined
+    container's rooms, and for the same reason: nobody can be placed there. A
+    unit with no leaf descendants (every ordinary room, and a childless
+    container) answers for itself, mirroring `container_bathroom`'s "nothing
+    to inherit, so the container reports what its own row says".
+
+    IN PLACE, on the very objects `index.units_by_code` holds, rather than
+    returning a rebuilt list: a second list of summaries would leave the index
+    pointing at the pre-resolution copies, which is exactly the kind of drift
+    the one-index-per-call rule above exists to prevent.
+    """
+    for unit in units:
+        rooms = [
+            leaf
+            for code in sorted(index.leaf_codes_under(unit.code))
+            if (leaf := index.units_by_code.get(code)) is not None and leaf.is_active
+        ]
+        answering = rooms or [unit]
+        unit.power_coverage = cast(
+            AmenityCoverage,
+            # `None` where nobody has confirmed the row: an unconfirmed
+            # `has_power = False` means "nobody has said", never "there is no
+            # power" -- the same gate `rosterAttention` already applies to the
+            # roster's own fit check.
+            amenity_coverage([room.has_power if room.is_confirmed else None for room in answering]),
+        )
+
+
 class LodgingRosterService:
     """Builds the read-only weekend roster from repository output."""
 
@@ -739,6 +795,10 @@ class LodgingRosterService:
         # same `unit_summaries` for `_build_counts` was caught in review on
         # kindred#2041's PR.
         unit_index = _BathroomIndex.build(unit_summaries)
+        # Only on THIS path. `build_summary` builds its own units and index to
+        # get at the counts, but its `WeekendSummaryEntry` carries no `units`
+        # -- so resolving coverage there would be work no response can read.
+        _resolve_power_coverage(unit_summaries, unit_index)
         parties = self._build_parties(
             session_type=session_type,
             session_start=_as_date(_s(session, "start_date")),

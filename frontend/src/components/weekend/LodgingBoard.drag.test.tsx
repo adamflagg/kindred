@@ -14,7 +14,7 @@
  * Fictional data throughout.
  */
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { render } from '@testing-library/react'
+import { act, render } from '@testing-library/react'
 import type { ReactNode } from 'react'
 import { MemoryRouter } from 'react-router'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
@@ -63,6 +63,8 @@ vi.mock('../../hooks/useUnitMerge', () => ({
 
 /** The last `onDragEnd` the board handed to DndContext. */
 let onDragEnd: ((event: unknown) => void) | undefined
+/** Its `onDragStart` sibling — the half the needs-misfit hatch (#1912) rides on. */
+let onDragStart: ((event: unknown) => void) | undefined
 
 vi.mock('@dnd-kit/core', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@dnd-kit/core')>()
@@ -71,11 +73,14 @@ vi.mock('@dnd-kit/core', async (importOriginal) => {
     DndContext: ({
       children,
       onDragEnd: handler,
+      onDragStart: startHandler,
     }: {
       children: ReactNode
       onDragEnd: (e: unknown) => void
+      onDragStart: (e: unknown) => void
     }) => {
       onDragEnd = handler
+      onDragStart = startHandler
       return <div data-testid="dnd-context">{children}</div>
     },
   }
@@ -86,6 +91,7 @@ let client: QueryClient
 beforeEach(() => {
   vi.clearAllMocks()
   onDragEnd = undefined
+  onDragStart = undefined
   placementOptions = []
   client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
 })
@@ -164,6 +170,14 @@ function renderBoard(props: Partial<Parameters<typeof LodgingBoard>[0]> = {}) {
     />,
     { wrapper }
   )
+}
+
+function startDrag(activeId: string) {
+  if (!onDragStart) throw new Error('the board never registered a drag-start handler')
+  const start = onDragStart
+  act(() => {
+    start({ active: { id: activeId } })
+  })
 }
 
 function drop(activeId: string, overId: string | null) {
@@ -248,5 +262,64 @@ describe('LodgingBoard — a drop becomes a write', () => {
       sessionCmId: 1000001,
       scenario: SCENARIO,
     })
+  })
+})
+
+describe('LodgingBoard — threading the dragged family for the needs hatch (#1912)', () => {
+  /*
+   * The card receives no drag state of its own, so the board is where the
+   * party in flight reaches all ~82 of them. That plumbing IS the frontend
+   * half of #1912; the mark itself is pinned in `LodgingUnitCard.test.tsx`.
+   *
+   * Advisory throughout: nothing here disables a droppable or dims a card.
+   */
+  const needsPower = party({
+    household_cm_id: 101,
+    flags: { needs_power: true },
+  })
+  const dark = unit({ unit_id: 'u1', code: 'cedar-1', name: 'Cedar 1', power_coverage: 'none' })
+  const lit = unit({ unit_id: 'u2', code: 'cedar-2', name: 'Cedar 2', power_coverage: 'all' })
+
+  function cards(container: HTMLElement) {
+    return {
+      dark: container.querySelector('[data-unit-code="cedar-1"]'),
+      lit: container.querySelector('[data-unit-code="cedar-2"]'),
+    }
+  }
+
+  it('marks nothing until a family is actually in flight', () => {
+    const { container } = renderBoard({ parties: [needsPower], units: [dark, lit] })
+    expect(cards(container).dark).not.toHaveAttribute('data-needs-fit')
+  })
+
+  it('marks the spaces that cannot meet the dragged family need', () => {
+    const { container } = renderBoard({ parties: [needsPower], units: [dark, lit] })
+    startDrag('household-101')
+    expect(cards(container).dark).toHaveAttribute('data-needs-fit', 'unmet')
+    expect(cards(container).lit).not.toHaveAttribute('data-needs-fit')
+  })
+
+  it("leaves the drop accepted — this is advisory, not #2087's block", () => {
+    const { container } = renderBoard({ parties: [needsPower], units: [dark, lit] })
+    startDrag('household-101')
+    expect(cards(container).dark).not.toHaveClass('opacity-40')
+    expect(cards(container).dark).not.toHaveClass('pointer-events-none')
+    drop('household-101', unitDroppableId('cedar-1'))
+    expect(move).toHaveBeenCalledTimes(1)
+  })
+
+  it('raises no hatch for a MERGE drag, which carries no family at all', () => {
+    // `handleDragStart` clears `dragging` the moment it recognises a card
+    // drag, so the misfit hatch and the invalid-merge dim can never be raised
+    // by one gesture — which is why the card needs no gate between them.
+    const { container } = renderBoard({
+      parties: [needsPower],
+      units: [
+        { ...dark, parent_code: 'east-wing' },
+        { ...lit, parent_code: 'east-wing' },
+      ],
+    })
+    startDrag('merge:cedar-2')
+    expect(cards(container).dark).not.toHaveAttribute('data-needs-fit')
   })
 })

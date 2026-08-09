@@ -1402,3 +1402,166 @@ describe('LodgingUnitCard shareability (kindred#2026)', () => {
     expect(screen.getByText('Sharing unset')).toBeInTheDocument()
   })
 })
+
+describe('LodgingUnitCard — the needs-misfit hatch (#1912)', () => {
+  /*
+   * The board's signal vocabulary, ruled 2026-08-09 and binding here:
+   *
+   *   dim (`opacity-40` + `pointer-events-none`) = REFUSAL — an invalid merge
+   *     target, or a held space (#2087). "You may not."
+   *   hatch (`background-image`, FULL strength) = ADVISORY MISFIT — "it will
+   *     work; nothing here meets the need". This block.
+   *   forest tint = open and available, at rest (#2093).
+   *
+   * The hatch must never touch opacity. Counted across the board there were
+   * four meanings on the opacity channel before the ruling, three of them
+   * able to appear at once mid-drag; a card dimmed for a fit miss reads as a
+   * weaker refusal rather than as a different kind of statement.
+   */
+  const hue = 'hsl(160 45% 42%)'
+  /** Enough of the arbitrary property to identify the mark, whatever its period. */
+  const HATCH = '[background-image:repeating-linear-gradient'
+  const needsPower = party({ flags: { needs_power: true } })
+
+  function card(container: HTMLElement): HTMLElement {
+    const el = container.querySelector('[data-unit-card]')
+    if (!el) throw new Error('no card rendered')
+    return el as HTMLElement
+  }
+
+  function hatchClass(container: HTMLElement): string {
+    const el = card(container)
+    return [...el.classList].find((name) => name.startsWith(HATCH)) ?? ''
+  }
+
+  it('marks nothing at rest, however badly the space fits', () => {
+    // The mark is a DRAG-STATE mark. At rest there is no family to judge it
+    // against, and a permanently hatched board says nothing at all.
+    const { container } = render(
+      <LodgingUnitCard
+        slot={slot({ unit: unit({ power_coverage: 'none' }) })}
+        hue={hue}
+        onOpenParty={vi.fn()}
+      />
+    )
+    expect(hatchClass(container)).toBe('')
+    expect(card(container)).not.toHaveAttribute('data-needs-fit')
+  })
+
+  it('hatches a space where no room meets the dragged family need', () => {
+    const { container } = render(
+      <LodgingUnitCard
+        slot={slot({ unit: unit({ power_coverage: 'none' }) })}
+        hue={hue}
+        draggingParty={needsPower}
+        onOpenParty={vi.fn()}
+      />
+    )
+    expect(hatchClass(container)).toContain('repeating-linear-gradient')
+    expect(card(container)).toHaveAttribute('data-needs-fit', 'unmet')
+  })
+
+  it('grades SOME from NONE by hatch period, never by a second channel', () => {
+    const none = render(
+      <LodgingUnitCard
+        slot={slot({ unit: unit({ power_coverage: 'none' }) })}
+        hue={hue}
+        draggingParty={needsPower}
+        onOpenParty={vi.fn()}
+      />
+    )
+    const some = render(
+      <LodgingUnitCard
+        slot={slot({ unit: unit({ power_coverage: 'some' }) })}
+        hue={hue}
+        draggingParty={needsPower}
+        onOpenParty={vi.fn()}
+      />
+    )
+    const tight = hatchClass(none.container)
+    const wide = hatchClass(some.container)
+    expect(tight).not.toBe('')
+    expect(wide).not.toBe('')
+    expect(tight).not.toBe(wide)
+    // Same ink, different spacing. If the two ever differ in their colour
+    // stop, the grade has quietly moved onto a strength channel.
+    expect(tight).toContain('hsl(var(--foreground)_/_0.1)')
+    expect(wide).toContain('hsl(var(--foreground)_/_0.1)')
+    expect(some.container.querySelector('[data-unit-card]')).toHaveAttribute(
+      'data-needs-fit',
+      'partial'
+    )
+  })
+
+  it('never dims — the hatch is advisory and a dim is a refusal', () => {
+    const { container } = render(
+      <LodgingUnitCard
+        slot={slot({ unit: unit({ power_coverage: 'none' }) })}
+        hue={hue}
+        canPlace
+        draggingParty={needsPower}
+        onOpenParty={vi.fn()}
+      />
+    )
+    expect(hatchClass(container)).not.toBe('')
+    expect(card(container)).not.toHaveClass('opacity-40')
+    expect(card(container)).not.toHaveClass('pointer-events-none')
+    expect([...card(container).classList].filter((n) => n.startsWith('opacity-'))).toEqual([])
+  })
+
+  it('leaves a space that meets the need unmarked mid-drag', () => {
+    const { container } = render(
+      <LodgingUnitCard
+        slot={slot({ unit: unit({ power_coverage: 'all' }) })}
+        hue={hue}
+        draggingParty={needsPower}
+        onOpenParty={vi.fn()}
+      />
+    )
+    expect(hatchClass(container)).toBe('')
+  })
+
+  it('marks nothing for a family that asked for nothing', () => {
+    const { container } = render(
+      <LodgingUnitCard
+        slot={slot({ unit: unit({ power_coverage: 'none' }) })}
+        hue={hue}
+        draggingParty={party()}
+        onOpenParty={vi.fn()}
+      />
+    )
+    expect(hatchClass(container)).toBe('')
+  })
+
+  it('judges the resolved coverage, never the container row', () => {
+    // Twelve of the fourteen 2026 family-pool containers record
+    // `has_power = 0` while every leaf beneath them has power.
+    const { container } = render(
+      <LodgingUnitCard
+        slot={slot({ unit: unit({ has_power: false, power_coverage: 'all' }) })}
+        hue={hue}
+        draggingParty={needsPower}
+        onOpenParty={vi.fn()}
+      />
+    )
+    expect(hatchClass(container)).toBe('')
+  })
+
+  it('composes with the open-space forest tint rather than suppressing it', () => {
+    // ORTHOGONAL properties: #2093's tint is `background-color`, this is
+    // `background-image`. Both paint, at full strength — an empty space that
+    // does not meet the need is still an empty space. No suppression logic
+    // belongs between them, and adding any would be reaching into #2093's
+    // own gate.
+    const { container } = render(
+      <LodgingUnitCard
+        slot={slot({ unit: unit({ power_coverage: 'none' }) })}
+        hue={hue}
+        draggingParty={needsPower}
+        onOpenParty={vi.fn()}
+      />
+    )
+    expect(card(container)).toHaveClass('bg-primary/10')
+    expect(hatchClass(container)).not.toBe('')
+  })
+})

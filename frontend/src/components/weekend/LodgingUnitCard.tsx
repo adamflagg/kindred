@@ -23,6 +23,7 @@ import {
 } from './boardLayout'
 import { isValidMergeTarget, mergeDragId, unitDroppableId } from './dragPlacement'
 import { FamilyCard } from './FamilyCard'
+import { resolveNeedsFit } from './needsFit'
 import { resolveRingPrecedence } from './ringPrecedence'
 import { partyKey } from './partyKey'
 import { reservationBadge, shareabilityBadge } from './unitBadges'
@@ -85,6 +86,45 @@ const RING_CLASSES: Record<'dropTarget' | 'consentFlagged' | 'shared' | 'plain',
   plain: '',
 }
 
+/**
+ * The needs-misfit mark (#1912) — TEXTURE, and nothing else.
+ *
+ * The board's hues are committed (forest to area identity, amber to share
+ * consent, red to over-capacity), so a fifth meaning cannot have a fifth
+ * colour without collapsing the ones that exist. It cannot have an OPACITY
+ * either: the 2026-08-09 signal-vocabulary ruling assigns one channel per
+ * question, and `opacity-40` is REFUSAL ("you may not") — the invalid merge
+ * target below and #2087's held space. This mark says "it will work; nothing
+ * here meets the need", which is a different KIND of statement rather than a
+ * weaker refusal, so it stays at full contrast: legible, droppable, flagged.
+ *
+ * Additive, never a `RING_CLASSES` entry, for the reason that table's own doc
+ * gives: it exists only for channels that fight over one CSS property
+ * (`border-color`, `box-shadow`). `background-image` competes with neither —
+ * including with #2093's `bg-primary/10` open-space tint, which is
+ * `background-color`. The two compose deliberately: a drag-state mark over a
+ * resting-state marker, each still saying its own true thing.
+ *
+ * Degree is the hatch PERIOD and only the period — same angle, same ink, same
+ * alpha, tighter lines. Grading NONE from SOME on a second channel is exactly
+ * the collapse the ruling struck.
+ *
+ * An ARBITRARY PROPERTY rather than a `bg-` utility, so there is no question
+ * of Tailwind inferring `background-color` from a gradient value; and a
+ * `--foreground` token rather than a fixed ink, so the mark inverts with the
+ * theme for free. Both class strings are complete literals because Tailwind
+ * scans raw source text — a composed string emits nothing at all, which is
+ * the `forest-950` failure (#1894) CLAUDE.md §4 names. Verified against a
+ * real `vite build`: both rules are in the emitted stylesheet, setting
+ * `background-image` and no other property.
+ */
+const NEEDS_HATCH_CLASSES: Record<'unmet' | 'partial', string> = {
+  unmet:
+    '[background-image:repeating-linear-gradient(45deg,transparent_0_4px,hsl(var(--foreground)_/_0.1)_4px_5px)]',
+  partial:
+    '[background-image:repeating-linear-gradient(45deg,transparent_0_10px,hsl(var(--foreground)_/_0.1)_10px_11px)]',
+}
+
 /** What the reserve/release control asks the board to write. */
 export interface UnitAvailabilityWrite {
   familyAvailable: boolean | null
@@ -139,6 +179,21 @@ export interface LodgingUnitCardProps {
    */
   mergeSourceUnit?: LodgingUnitRow | null
   /**
+   * The FAMILY currently in flight, or `null`/`undefined` when no party drag
+   * is running — the same board-wide broadcast `mergeSourceUnit` above is,
+   * and for the same reason: every card gets the identical value and decides
+   * its own verdict from it.
+   *
+   * The card has no other way to know. Fit is a question about a PAIR, and
+   * until #1912 this component only ever saw one half of it.
+   *
+   * A merge drag never sets this — `LodgingBoard` clears `dragging` the
+   * moment it recognises a card drag — so the misfit hatch and the invalid
+   * merge dim cannot be raised by the same gesture, and no gate between them
+   * is needed here.
+   */
+  draggingParty?: RosterPartyRow | null
+  /**
    * Split a combined card back into its rooms. Rendered only on one, and
    * only when `canMerge` — `undefined` is how the board spells "not writable
    * right now" under `exactOptionalPropertyTypes`, matching `onSetAvailability`
@@ -176,6 +231,7 @@ export function LodgingUnitCard({
   onSetAvailability,
   canMerge = false,
   mergeSourceUnit = null,
+  draggingParty = null,
   onSplit,
   onMerge,
   savingMerge = false,
@@ -381,6 +437,25 @@ export function LodgingUnitCard({
   // an invitation.
   const openMarkerActive = dashed && !held && ringState !== 'dropTarget'
 
+  /*
+   * Whether this space meets the needs of the family in flight (#1912) —
+   * `'fits' | 'partial' | 'unmet'`, resolved by `needsFit.ts` against the
+   * SERVER's `power_coverage`, which is taken over the unit's leaf
+   * descendants rather than off its own row. Twelve of the fourteen 2026
+   * family-pool containers record `has_power = 0` while every leaf beneath
+   * them has power, so judging a building by the flag the amenity strip
+   * renders would mark twelve entirely-powered buildings unpowered.
+   *
+   * `'fits'` at rest, and that is the state, not a fallback: with no family
+   * in flight there is nothing to be a misfit FOR, and a board hatched all
+   * the time says nothing at all.
+   *
+   * ADVISORY. Nothing below this line touches `useDroppable`, `opacity` or
+   * `pointer-events` — the drop is still accepted, exactly as the comment on
+   * the party droppable above insists it must be.
+   */
+  const needsFit = draggingParty === null ? 'fits' : resolveNeedsFit(draggingParty, unit)
+
   // `ringState` alone can't gate the inline ring below: `dimmed` still wins
   // against `shared` specifically (see the comment on `dimmed` above), and
   // `ringState` does not know about `dimmed` by design.
@@ -390,6 +465,10 @@ export function LodgingUnitCard({
     RING_CLASSES[ringState],
     dashed ? 'border-dashed' : '',
     openMarkerActive ? 'bg-primary/10' : '',
+    // Additive and UNGATED against everything above it — see
+    // `NEEDS_HATCH_CLASSES`. `background-image` competes with no other
+    // channel on this card, tint included.
+    needsFit === 'fits' ? '' : NEEDS_HATCH_CLASSES[needsFit],
     dimmed ? 'pointer-events-none opacity-40' : '',
   ]
     .filter(Boolean)
@@ -413,6 +492,15 @@ export function LodgingUnitCard({
     <div
       data-unit-card
       data-unit-code={unit.code}
+      // ABSENT rather than `"fits"` when there is nothing to say, so the
+      // attribute is a mark rather than a per-card verdict log — and so
+      // `exactOptionalPropertyTypes` keeps it out of the DOM entirely.
+      //
+      // No ARIA counterpart, deliberately: this is a drag-state affordance,
+      // and the board registers Mouse and Touch sensors only, so there is no
+      // keyboard drag for a screen reader to be mid-way through. The roster's
+      // own `attentionSections` is where the same fact is stated in text.
+      {...(needsFit === 'fits' ? {} : { 'data-needs-fit': needsFit })}
       ref={setCardRef}
       style={{
         borderTopColor: hue,

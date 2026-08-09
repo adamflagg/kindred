@@ -468,6 +468,19 @@ export function LodgingBoard({
                             onSetAvailability={writeAvailability}
                             canMerge={canMergeUnits}
                             mergeSourceUnit={draggingMergeUnit}
+                            // The FAMILY in flight (#1912), broadcast to
+                            // every card exactly as `mergeSourceUnit` above
+                            // is: fit is a question about a pair, and the
+                            // card only ever saw the space half of it. Each
+                            // one resolves its own verdict from this, against
+                            // the server's leaf-resolved coverage.
+                            //
+                            // `dragging` and `draggingMergeUnit` are mutually
+                            // exclusive by construction (`handleDragStart`
+                            // clears one when it sets the other), so the
+                            // advisory misfit hatch and the invalid-merge dim
+                            // can never be raised by the same gesture.
+                            draggingParty={dragging}
                             onSplit={splitUnit}
                             onMerge={mergeUnit}
                             // THIS card, or its PARENT. A merge names the
