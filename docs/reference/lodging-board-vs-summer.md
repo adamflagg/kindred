@@ -166,24 +166,33 @@ close, not a build.
 grade count, over capacity — have no family analogue. Over capacity is the
 exception and is handled by the emphasis state above.
 
-### The occupancy numerator is knowingly wrong
+### The occupancy numerator is BEDS, and used to be knowingly wrong
 
-`party_size` counts the household's **listed** adults rather than the attending
-ones. **kindred#1925** is the fix and carries the data investigation: the errors
-run in **both** directions and the worst cases are under-counts. Two structural
-causes have their own issues — #1946 (rows with no name in any column) and #1947
-(a second adults field that overlaps unpredictably).
+`party_size` used to be `len(adults) + len(children)` over the household's
+**listed** adults — blank and placeholder `family_camp_adults` slots included —
+and every child, infants among them. **#1925** and **#2046** fixed both terms
+server-side: an adult slot counts only when its coalesced name is neither blank
+nor a placeholder, and a child under **18 months** at session start consumes no
+bed. The rules and the placeholder token list are hardcoded in
+`api/constants/lodging.py` and mirrored in `householdIdentity.ts`, with a
+grep-based test failing if the two drift.
 
-Building on it anyway was a deliberate call, on the grounds that the board
-**already** prints this number on every `FamilyCard`. Summing it onto the room
-creates no new class of error, but it does make an existing one more
-consequential, because a room reading full is trusted in a way a household
-reading 6 is not.
+The payload still carries **every** adult row, so the number is legitimately
+lower than the names printed beside it. Splitting the card into two figures is
+**#2152**'s, not this layer's.
 
-`partySize` therefore lives in `boardLayout.ts` as the **one** definition — it
-was private to `FamilyCard`, which was fine while the card was the only thing
-counting people — so #1925 is one edit rather than a hunt. Both read sites say so
-in a comment.
+Two related issues are settled rather than open: **#1946** (rows with no name in
+any column) shipped as `5f29cf3b` and clears at the source on the next derived
+sync; **#1947** (a second adults field) was ruled against — that field is
+deliberately never ingested.
+
+⚠️ **There is no "one definition".** This section used to say `partySize` lived
+in `boardLayout.ts` as the single read site, "so #1925 is one edit rather than a
+hunt". That was false when written: `rosterAttention.partyBeds` is a
+byte-identical copy and `FamilyDetailsPanel` holds a third, inline — and the
+third was spelled `??` where the other two used `> 0`, so a reported `0`
+rendered "0 people" on one surface while the board beside it counted bodies.
+All three now agree. Change one, change all three.
 
 ### Spanning withholds the verdict, not the figure
 
