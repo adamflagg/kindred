@@ -308,6 +308,35 @@ describe('resolveDrop', () => {
     ).toEqual({ kind: 'unplace', party: merged })
   })
 
+  it('refuses a drop onto a held unit (#2087) — a hold blocks placement outright', () => {
+    // Owner ruling on #2090: a hold is global and blocks placement, not merely
+    // dimmed. This is the load-bearing check, since `resolveDrop` is the only
+    // path #2080's picker reaches — a `disabled`-only fix would not cover it.
+    const held = unit({ family_available_override: false, is_family_available: false })
+    const p = party()
+    expect(
+      resolveDrop({
+        activeId: partyKey(p),
+        overId: unitDroppableId('cedar-1'),
+        parties: [p],
+        units: [held],
+      })
+    ).toBeNull()
+  })
+
+  it('still accepts a drop onto an ordinary unheld unit (regression guard)', () => {
+    const unheld = unit({ family_available_override: null, is_family_available: true })
+    const p = party()
+    expect(
+      resolveDrop({
+        activeId: partyKey(p),
+        overId: unitDroppableId('cedar-1'),
+        parties: [p],
+        units: [unheld],
+      })
+    ).toMatchObject({ kind: 'place', unitId: 'u1' })
+  })
+
   it('refuses to move a party carrying neither CampMinder id', () => {
     // The roster service emits household_cm_id = 0 for a household whose
     // record failed to resolve, and `partyKey` falls back to display_name for

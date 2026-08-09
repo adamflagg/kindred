@@ -284,9 +284,17 @@ export function LodgingUnitCard({
   // simultaneously-enabled droppables — this one and the merge droppable
   // above — and which one dnd-kit resolves `over` to would be a tie decided
   // by hook registration order, not by which gesture is actually in flight.
+  //
+  // Disabled on a HELD unit (#2087): a hold is global and blocks placement
+  // outright, per the owner ruling on #2090. This is the AFFORDANCE half —
+  // it keeps dnd-kit from ever reporting `isOver` here, so the card cannot
+  // even highlight as a target — while `resolveDrop` (`dragPlacement.ts`) is
+  // the half that actually enforces it, because #2080 adds a placement path
+  // that reaches `resolveDrop` without ever touching this hook.
+  const held = unit.family_available_override === false
   const { setNodeRef: setUnitDropRef, isOver: isUnitOver } = useDroppable({
     id: unitDroppableId(unit.code),
-    disabled: !canPlace || mergeDragActive,
+    disabled: !canPlace || mergeDragActive || held,
   })
 
   const setCardRef = (node: HTMLDivElement | null) => {
@@ -514,6 +522,7 @@ export function LodgingUnitCard({
         <UnitAvailabilityControl
           unit={unit}
           canManage={canSetAvailability && onSetAvailability !== undefined}
+          occupied={parties.length > 0}
           isSaving={savingAvailability}
           onSubmit={(write) => {
             onSetAvailability?.(unit, write)

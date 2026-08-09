@@ -285,6 +285,42 @@ describe('LodgingUnitCard', () => {
   })
 })
 
+describe('LodgingUnitCard — a held unit refuses the drop outright (#2087)', () => {
+  // The `disabled` half of the fix. `resolveDrop` (dragPlacement.test.ts) is
+  // the load-bearing check — #2080's picker never touches a droppable at
+  // all — but `useDroppable`'s own `disabled` flag is what keeps dnd-kit
+  // from ever reporting `isOver` for a held card in the first place, which
+  // is what this asserts.
+  function card(container: HTMLElement): HTMLElement {
+    const el = container.querySelector('[data-unit-card]')
+    if (!el) throw new Error('no card rendered')
+    return el as HTMLElement
+  }
+
+  const held = unit({ family_available_override: false, is_family_available: false })
+
+  it('keeps the droppable disabled on a held unit even while placement is live', () => {
+    overDroppableId = unitDroppableId('cedar-1')
+    const { container } = render(
+      <LodgingUnitCard
+        slot={slot({ unit: held })}
+        hue="hsl(160 45% 42%)"
+        canPlace
+        onOpenParty={vi.fn()}
+      />
+    )
+    expect(card(container)).not.toHaveClass('border-primary')
+  })
+
+  it('keeps an ordinary unheld unit droppable enabled (regression guard)', () => {
+    overDroppableId = unitDroppableId('cedar-1')
+    const { container } = render(
+      <LodgingUnitCard slot={slot()} hue="hsl(160 45% 42%)" canPlace onOpenParty={vi.fn()} />
+    )
+    expect(card(container)).toHaveClass('border-primary')
+  })
+})
+
 describe('LodgingUnitCard — the split control belongs to containers only', () => {
   it('offers a split control on a combined CONTAINER', () => {
     render(
