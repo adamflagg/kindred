@@ -42,14 +42,17 @@ describe('CampJourneyTimeline program-agnostic strings (#2113)', () => {
     expect(screen.getByText(/first year at camp/i)).toBeInTheDocument()
   })
 
-  it('renders the header year count without a summer-flavored tagline', () => {
+  it('renders the header count as summers, not program-agnostic years (#2123)', () => {
+    // years_at_camp counts SUMMER attendance only (#2123 ruling), so the
+    // label must say so, or a family-camp row below a 0 reads as a
+    // contradiction.
     render(<CampJourneyTimeline history={[]} yearsAtCamp={3} currentYear={2026} />)
-    expect(screen.getByText('3 years at camp')).toBeInTheDocument()
+    expect(screen.getByText('3 summers at camp')).toBeInTheDocument()
   })
 
-  it('singularizes the header count for one year', () => {
+  it('singularizes the header count for one summer (#2123)', () => {
     render(<CampJourneyTimeline history={[]} yearsAtCamp={1} currentYear={2026} />)
-    expect(screen.getByText('1 year at camp')).toBeInTheDocument()
+    expect(screen.getByText('1 summer at camp')).toBeInTheDocument()
   })
 
   it('tags a family-camp row with a de-emphasis label', () => {
