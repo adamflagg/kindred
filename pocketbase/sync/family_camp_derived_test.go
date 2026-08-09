@@ -2150,7 +2150,7 @@ func TestProcessAdultsPersonFieldsTakeTheFirstLoadedSibling(t *testing.T) {
 // household `name` column authoritative: adults 3-5 arrive with ONLY `name`,
 // and first_name/last_name empty for 100% of those rows in every measured
 // year. An admission filter that reads the split columns to decide whether a
-// row is real would drop them -- 136 real adults across 2022-2026 are blank in
+// row is real would drop them -- 196 real adults across 2022-2026 are blank in
 // first_name/last_name and populated in `name` (kindred#1945).
 func TestProcessAdultsKeepsANameOnlyAdult(t *testing.T) {
 	s := &FamilyCampDerivedSync{}
@@ -2169,6 +2169,64 @@ func TestProcessAdultsKeepsANameOnlyAdult(t *testing.T) {
 	}
 	if adults[0].firstName != "" || adults[0].lastName != "" {
 		t.Errorf("nothing may invent split columns: got first=%q last=%q", adults[0].firstName, adults[0].lastName)
+	}
+}
+
+// TestProcessAdultsDropsNamelessRows pins kindred#1946: an adult with no
+// name in ANY field (name/first_name/last_name) must not be admitted, even
+// if email or gender data exists for it -- those two arms of the old
+// admission OR-chain let 194 wholly nameless rows into production. A real
+// `name` with blank split columns is the OPPOSITE case (kindred#1945/#1946
+// safety point, ~196 real adults across 2022-2026) and must still survive.
+func TestProcessAdultsDropsNamelessRows(t *testing.T) {
+	cases := []struct {
+		name            string
+		householdValues []customValueEntry
+		personValues    []customValueEntry
+		wantAdmitted    bool
+	}{
+		{
+			name: "gender only, no name anywhere -- NOT admitted",
+			personValues: []customValueEntry{
+				{householdPBID: "hh_1", fieldName: "Family Camp Gender 1", value: "Female"},
+			},
+			wantAdmitted: false,
+		},
+		{
+			name: "email only, no name anywhere -- NOT admitted",
+			personValues: []customValueEntry{
+				{householdPBID: "hh_1", fieldName: "Family Camp Adult 1 Email", value: "parent@example.com"},
+			},
+			wantAdmitted: false,
+		},
+		{
+			name: "gender placeholder NA does not rescue a nameless row",
+			personValues: []customValueEntry{
+				{householdPBID: "hh_1", fieldName: "Family Camp Gender 1", value: "NA"},
+			},
+			wantAdmitted: false,
+		},
+		{
+			name: "real name, blank first/last name -- IS admitted (196-row safety case)",
+			householdValues: []customValueEntry{
+				{householdPBID: "hh_1", fieldName: "Family Camp Adult 1", value: "Noah Smith"},
+			},
+			wantAdmitted: true,
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			s := &FamilyCampDerivedSync{}
+			adults := s.processAdults(tc.householdValues, tc.personValues)
+			gotAdmitted := len(adults) == 1
+			if len(adults) > 1 {
+				t.Fatalf("expected at most 1 adult, got %d", len(adults))
+			}
+			if gotAdmitted != tc.wantAdmitted {
+				t.Errorf("admitted = %v, want %v (adults: %+v)", gotAdmitted, tc.wantAdmitted, adults)
+			}
+		})
 	}
 }
 

@@ -1144,7 +1144,7 @@ class LodgingRosterService:
                             # households have a non-blank `name`; for several
                             # of the rest this is the only thing that renders
                             # an adult at all. Equally, never conclude a row is
-                            # empty from the split columns alone: 136 real
+                            # empty from the split columns alone: 196 real
                             # adults across 2022-2026 are blank in
                             # first_name/last_name and populated in `name`.
                             display_name=_s(adult, "name")
