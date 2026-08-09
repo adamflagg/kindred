@@ -93,6 +93,23 @@ func (s *bootFailureSentinel) Reset() {
 
 var bootSentinel bootFailureSentinel
 
+// Seams for the fallible calls inside the boot-stopping OnServe hooks below
+// (lodgingRegistryOnServeHook, syncServiceOnServeHook). Package-level
+// function variables rather than direct calls to sync.ParseSeasonYear,
+// lodging.RegistryHasRows, etc., so tests can substitute a failing
+// implementation and invoke the extracted hook functions directly to verify
+// each call site actually records a boot failure -- see
+// main_boot_failure_sentinel_test.go and issue #2140. Production wiring
+// never reassigns these; only tests do, and always restore the original
+// afterward.
+var (
+	parseSeasonYearFn       = sync.ParseSeasonYear
+	registryHasRowsFn       = lodging.RegistryHasRows
+	registryFilePresentFn   = lodging.RegistryFilePresent
+	seedRegistryFn          = lodging.SeedRegistry
+	initializeSyncServiceFn = sync.InitializeSyncService
+)
+
 // recordBootFailure marks a boot-stopping OnServe hook failure for main()
 // to observe after app.Start() returns nil despite the hook's error. See
 // bootFailureSentinel above.
@@ -250,34 +267,7 @@ func main() {
 	// Skip rather than guess. Seeding ~118 units into a guessed season is
 	// strictly worse than seeding none: the first roll-forward would carry
 	// the phantom season forward as though it were real.
-	app.OnServe().BindFunc(func(e *core.ServeEvent) error {
-		year, err := sync.ParseSeasonYear()
-		if err != nil {
-			hasRows, rowsErr := lodging.RegistryHasRows(e.App)
-			if rowsErr != nil {
-				// Can't determine whether the registry already has rows —
-				// fail open (warn, don't take the boot down) rather than
-				// compound one failure with a second, less legible one.
-				slog.Warn("lodging registry load skipped: season unavailable "+
-					"(row-presence check also failed)", "err", err, "rows_check_err", rowsErr)
-				return e.Next()
-			}
-			if bootErr := lodgingRegistryBootDecision(err, lodging.RegistryFilePresent(), hasRows); bootErr != nil {
-				// Recorded so main() can os.Exit(1) after app.Start()
-				// returns nil regardless -- see bootFailureSentinel (#2140).
-				recordBootFailure(bootErr)
-				return bootErr
-			}
-			return e.Next()
-		}
-		if bootErr := lodgingRegistrySeedBootDecision(lodging.SeedRegistry(e.App, year)); bootErr != nil {
-			// Recorded so main() can os.Exit(1) after app.Start() returns
-			// nil regardless -- see bootFailureSentinel (#2140).
-			recordBootFailure(bootErr)
-			return bootErr
-		}
-		return e.Next()
-	})
+	app.OnServe().BindFunc(lodgingRegistryOnServeHook)
 
 	// Config initialization now handled by migrations
 
@@ -288,17 +278,7 @@ func main() {
 	// Register sync service
 	app.OnServe().Bind(&hook.Handler[*core.ServeEvent]{
 		Func: func(e *core.ServeEvent) error {
-			// Initialize sync service
-			slog.Info("Initializing Kindred sync service")
-			if err := sync.InitializeSyncService(app, e); err != nil {
-				bootErr := fmt.Errorf("initializing sync service: %w", err)
-				// Recorded so main() can os.Exit(1) after app.Start()
-				// returns nil regardless -- see bootFailureSentinel (#2140).
-				recordBootFailure(bootErr)
-				return bootErr
-			}
-
-			return e.Next()
+			return syncServiceOnServeHook(app, e)
 		},
 	})
 
@@ -401,6 +381,58 @@ func runHistorySync(app core.App) error {
 		return fmt.Errorf("history-sync WAL checkpoint failed: %w", err)
 	}
 	return nil
+}
+
+// lodgingRegistryOnServeHook is the OnServe hook body for the lodging
+// registry loader (bound in main() via app.OnServe().BindFunc). Extracted to
+// a named, directly-callable function -- rather than left as an anonymous
+// closure -- so a test can invoke it against a substituted (failing) seam
+// and assert bootFailure() becomes non-nil, pinning that this call site
+// really does call recordBootFailure(bootErr) before returning the error.
+// See main_boot_failure_sentinel_test.go and issue #2140.
+func lodgingRegistryOnServeHook(e *core.ServeEvent) error {
+	year, err := parseSeasonYearFn()
+	if err != nil {
+		hasRows, rowsErr := registryHasRowsFn(e.App)
+		if rowsErr != nil {
+			// Can't determine whether the registry already has rows —
+			// fail open (warn, don't take the boot down) rather than
+			// compound one failure with a second, less legible one.
+			slog.Warn("lodging registry load skipped: season unavailable "+
+				"(row-presence check also failed)", "err", err, "rows_check_err", rowsErr)
+			return e.Next()
+		}
+		if bootErr := lodgingRegistryBootDecision(err, registryFilePresentFn(), hasRows); bootErr != nil {
+			// Recorded so main() can os.Exit(1) after app.Start()
+			// returns nil regardless -- see bootFailureSentinel (#2140).
+			recordBootFailure(bootErr)
+			return bootErr
+		}
+		return e.Next()
+	}
+	if bootErr := lodgingRegistrySeedBootDecision(seedRegistryFn(e.App, year)); bootErr != nil {
+		// Recorded so main() can os.Exit(1) after app.Start() returns
+		// nil regardless -- see bootFailureSentinel (#2140).
+		recordBootFailure(bootErr)
+		return bootErr
+	}
+	return e.Next()
+}
+
+// syncServiceOnServeHook is the OnServe hook body that initializes the
+// Kindred sync service (bound in main() via app.OnServe().Bind). Extracted
+// for the same reason as lodgingRegistryOnServeHook above -- see its doc
+// comment.
+func syncServiceOnServeHook(app *pocketbase.PocketBase, e *core.ServeEvent) error {
+	slog.Info("Initializing Kindred sync service")
+	if err := initializeSyncServiceFn(app, e); err != nil {
+		bootErr := fmt.Errorf("initializing sync service: %w", err)
+		// Recorded so main() can os.Exit(1) after app.Start()
+		// returns nil regardless -- see bootFailureSentinel (#2140).
+		recordBootFailure(bootErr)
+		return bootErr
+	}
+	return e.Next()
 }
 
 // lodgingRegistryBootDecision turns a sync.ParseSeasonYear failure into
