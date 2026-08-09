@@ -197,8 +197,12 @@ export function FamilyDetailsPanel({
             <span className="text-muted-foreground text-xs">{unit.area_name}</span>
           )}
         </div>
-        {/* 0 of 93 units are confirmed today, so "unverified" is the honest
-            verdict for every constrained party — not a bug to route around. */}
+        {/* "Unverified" is the honest verdict for a constrained party whose
+            cabin nobody has confirmed — an unset `has_power` means "nobody has
+            said", not "there is no power". Not a bug to route around, and no
+            longer the universal case this used to claim: it said "0 of 93
+            units are confirmed today", and production is 118/118 confirmed as
+            of 2026-08-09. */}
         {attention.level !== 'settled' && attention.level !== 'unplaced' && (
           <p className="text-muted-foreground flex flex-wrap items-baseline gap-1.5 text-xs">
             <span className="font-medium">{ATTENTION_LABEL[attention.level]}</span>

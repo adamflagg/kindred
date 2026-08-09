@@ -166,10 +166,25 @@ export function partyHeadcount(party: RosterPartyRow): number {
  * UNION across years, which is what its heading spans.
  */
 export function childSurnames(children: readonly PartyChildRow[] | null | undefined): string[] {
+  return distinctSurnames((children ?? []).map((child) => child.last_name ?? ''))
+}
+
+/**
+ * Trim, drop the blanks, and keep the first spelling of each surname.
+ *
+ * Shared by `childSurnames` and `familyNameLabel` rather than living only in
+ * the former, because `familyNameLabel` is exported for kindred#2073, whose
+ * heading takes the UNION of a household's surnames across years. A union
+ * assembled by concatenating per-year lists holds the same surname once per
+ * year -- and in whatever casing each year's CampMinder record was typed in.
+ * Normalising in one place is what makes `familyNameLabel` idempotent, so
+ * that caller cannot print "The Johnson & johnson Family".
+ */
+function distinctSurnames(values: readonly string[]): string[] {
   const seen = new Set<string>()
   const surnames: string[] = []
-  for (const child of children ?? []) {
-    const surname = (child.last_name ?? '').trim()
+  for (const value of values) {
+    const surname = value.trim()
     if (surname.length === 0) continue
     const key = surname.toLowerCase()
     if (seen.has(key)) continue
@@ -191,13 +206,21 @@ export function childSurnames(children: readonly PartyChildRow[] | null | undefi
  *
  * Empty for no surnames -- "The Family" names nobody. Callers that need
  * something to print fall back; see `partyFamilyLabel`.
+ *
+ * Normalises its own input through `distinctSurnames` rather than trusting
+ * the caller to have done it. `childSurnames` already has, so that path is a
+ * no-op -- but kindred#2073 passes the cross-year UNION, and a union built by
+ * concatenating per-year lists repeats every surname once per year. This is
+ * the difference between "The Johnson Family" and
+ * "The Johnson, johnson & Johnson Family" on a four-year household.
  */
 export function familyNameLabel(surnames: readonly string[]): string {
-  if (surnames.length === 0) return ''
+  const distinct = distinctSurnames(surnames)
+  if (distinct.length === 0) return ''
   const joined =
-    surnames.length === 1
-      ? (surnames[0] ?? '')
-      : `${surnames.slice(0, -1).join(', ')} & ${surnames[surnames.length - 1] ?? ''}`
+    distinct.length === 1
+      ? (distinct[0] ?? '')
+      : `${distinct.slice(0, -1).join(', ')} & ${distinct[distinct.length - 1] ?? ''}`
   return `The ${joined} Family`
 }
 
@@ -314,6 +337,12 @@ export function dedupeAdultNames(adults: readonly PartyAdultRow[]): DedupedNameR
   if (tokens.some((parts) => parts.length < 2)) return { names: displayNames, sharedSurname: '' }
   const trailing = tokens.map((parts) => parts[parts.length - 1] ?? '')
   const first = trailing[0] ?? ''
+  // NOT redundant with `dedupedRun`'s own check below, and it is the word
+  // boundary this rule has. `nameBeforeSurname` asks only whether a name ENDS
+  // WITH the surname string -- safe for the children, whose `display_name` is
+  // built as `first + ' ' + last_name`, but not for an adult's free text:
+  // "Olivia MacJohnson" ends with "Johnson", and without this the line would
+  // read "Olivia Mac · Noah Johnson". `householdIdentity.test.ts` pins it.
   if (trailing.some((token) => token.toLowerCase() !== first.toLowerCase())) {
     return { names: displayNames, sharedSurname: '' }
   }

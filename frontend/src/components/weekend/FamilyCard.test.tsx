@@ -347,8 +347,10 @@ describe('FamilyCard — what it shows', () => {
   })
 
   it('says the fit is unverified rather than judging against an unconfirmed cabin', () => {
-    // `has_power: false` on an unconfirmed row means "nobody has said". 0 of
-    // 93 units are confirmed today, so this is the normal verdict.
+    // `has_power: false` on an UNCONFIRMED row means "nobody has said", which
+    // is what this fixture pins. It used to add "0 of 93 units are confirmed
+    // today, so this is the normal verdict" — production is 118/118 confirmed
+    // as of 2026-08-09, so this is now the exception branch, not the norm.
     render(
       <FamilyCard
         party={party({ flags: { needs_power: true } })}
