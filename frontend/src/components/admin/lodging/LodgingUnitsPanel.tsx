@@ -250,7 +250,16 @@ export function LodgingUnitsPanel() {
                     {editing === 'new' ? 'Add a unit' : editing.name}
                   </h2>
                   {/* The area, because the row it came from is now behind a
-                      backdrop and "which Tioga is this" is the first question. */}
+                      backdrop and "which of the four rooms in that building is
+                      this one" is the first question. Several buildings number
+                      their rooms identically, so the name alone does not say.
+
+                      The original wording named a real unit, which put a camp
+                      name in a public repo and made
+                      verify-no-hardcoded-lodging.sh red on main -- its filter
+                      exempts test files but not JSX comments in application
+                      source. Fixed at the source rather than by narrowing the
+                      guard, following the precedent set in kindred#1909. */}
                   <p className="text-forest-200 text-sm">
                     {editing === 'new'
                       ? 'A cabin, tent, yurt or room'

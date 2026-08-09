@@ -72,6 +72,7 @@ describe('createLodgingUnit', () => {
       code: 'ridge-n',
       is_active: true,
       inventory_class: 'family_pool',
+      shareability: '',
       year: 2026,
     })
 
@@ -87,6 +88,7 @@ describe('createLodgingUnit', () => {
       code: 'ridge-n',
       is_active: true,
       inventory_class: 'staff_default',
+      shareability: '',
       year: 2026,
     })
 

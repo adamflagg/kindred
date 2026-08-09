@@ -126,3 +126,31 @@ def test_a_leaf_below_a_cycle_is_blocked_too() -> None:
     leaf = LodgingUnitSummary(unit_id="rec_leaf", code="leaf", name="Room", parent_code="p1")
 
     assert drawn_units([p1, p2, leaf]) == []
+
+
+# ── Shareability (kindred#2026) ───────────────────────────────────────────────
+#
+# A UNIT property: may more than one party sleep here at once. Not to be
+# confused with the household-level share vocabulary above (`SharePreference`,
+# `ShareEligibility`), which answers whether a FAMILY is willing to share. Both
+# have to be true before two parties may be put in one space, and the unit's
+# half is the one that had no column until this issue.
+
+
+def test_shareability_defaults_to_unknown_never_to_a_permissive_value() -> None:
+    """Unrecorded must never read as permission to double-book.
+
+    `unknown` is a distinct third state, exactly as `bathroom` renders its
+    empty column: the point of a select over a bool (#2026) is that "nobody
+    has classified this" and "one family only" stay different facts.
+    """
+    summary = LodgingUnitSummary(unit_id="rec1", code="hc-upstairs-1", name="Upstairs 1")
+    assert summary.shareability == "unknown"
+
+
+def test_shareability_carries_both_classified_values() -> None:
+    shared = LodgingUnitSummary(unit_id="r1", code="ridge-a", name="Ridge A", shareability="shareable")
+    single = LodgingUnitSummary(unit_id="r2", code="hc-upstairs-1", name="Upstairs 1", shareability="single_party")
+
+    assert shared.shareability == "shareable"
+    assert single.shareability == "single_party"

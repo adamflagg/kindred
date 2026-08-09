@@ -35,7 +35,7 @@ export type { AttentionLevel, AttentionSection, PartyAttention } from './rosterA
 export { formatSessionDates } from './sessionDates'
 export { SharePreferenceChip } from './SharePreferenceChip'
 export { ShareRequestPanel } from './ShareRequestPanel'
-export { reservationBadge } from './unitBadges'
+export { reservationBadge, shareabilityBadge } from './unitBadges'
 export type { UnitBadge } from './unitBadges'
 export { scenarioForWeekend } from './weekendScenario'
 export type { ScenarioRef } from './weekendScenario'

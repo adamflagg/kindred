@@ -2111,6 +2111,10 @@ export type LodgingUnitSummary = {
    */
   inventory_class?: string
   /**
+   * Shareability
+   */
+  shareability?: 'unknown' | 'shareable' | 'single_party'
+  /**
    * Family Available Override
    */
   family_available_override?: boolean | null

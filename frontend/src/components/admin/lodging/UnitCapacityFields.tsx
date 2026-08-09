@@ -83,7 +83,12 @@ export function UnitCapacityFields({
             The button lives inside, which is the one compromise. Keeping it
             out would mean breaking the text and its action onto separate rows;
             the cost is that the announcement ends with the control's label. */}
-        <div role="status" aria-live="polite">
+        {/* NAMED, because this form now has two live regions (the sharing
+            advisory in UnitAmenityFieldset is the other). Two unnamed `status`
+            regions are indistinguishable to a screen-reader user moving
+            between landmarks — the announcement arrives with no indication of
+            which control it belongs to. */}
+        <div role="status" aria-live="polite" aria-label="Capacity advisory">
           {flag.kind === 'suggestion' && (
             <div className="text-muted-foreground mt-1.5 flex items-center gap-2 text-xs">
               <span>Suggested: sleeps {flag.derived}</span>

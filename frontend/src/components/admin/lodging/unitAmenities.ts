@@ -77,6 +77,24 @@ export const AMENITY_FLAGS: readonly { key: AmenityFlag; label: string; icon: Lu
   { key: 'has_changing_table', label: 'Has changing table', icon: Table },
 ]
 
+/**
+ * `shareability` is DELIBERATELY NOT in this object (kindred#2026).
+ *
+ * Everything here is governed by the one `is_confirmed` checkbox: until it is
+ * true, the roster reads `has_power: false` as "nobody has said" rather than
+ * "there is no power". Shareability is not like that. It is a policy
+ * classification, and the read path (`unit_shareability`, lodging_rules.py)
+ * treats it as authoritative the moment it is stored — so riding in this bag
+ * would put a value the board trusts immediately next to values the board
+ * discounts, saved by the same click and confirmed by the same checkbox that
+ * does not apply to it.
+ *
+ * It lives in its own `useState` in `LodgingUnitForm`, alongside the other
+ * policy classifications (`inventoryClass`, `isContainer`, `combined`), and is
+ * passed to `UnitAmenityFieldset` as its own prop purely so the control renders
+ * in that section of the form.
+ */
+
 /** An existing unit's amenity state, or the all-unrecorded state for a new one. */
 export function amenitiesOf(unit?: LodgingUnitRecord): UnitAmenities {
   return {

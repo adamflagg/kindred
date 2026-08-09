@@ -556,7 +556,40 @@ func (s *FamilyCampDerivedSync) loadPersonCustomValues(
 	return result, nil
 }
 
-// processAdults extracts adult data from custom values
+// processAdults extracts adult data from custom values.
+//
+// `name`, from the household-partition `Family Camp Adult 1-5`, is the COLUMN
+// OF RECORD for who is attending. Staff transpose the person-level FC-P1/P2
+// fields into Adults 1-2 and `Family Camp-Additional Adults` into Adults 3-5,
+// splitting the names themselves, so it is a curated list rather than a
+// household contact roster. The split columns below are a best-effort extra
+// that only ever populates for adults 1-2: first_name/last_name are empty for
+// 100% of adult_number 3-5 rows in every measured year, and CampMinder itself
+// stopped filling `Family Camp-P1/P2 Last Name` (cm_id 216785/216786) after
+// 2022, so `last_name` holds 0 of 834 rows in 2026.
+//
+// TWO CONSEQUENCES, both of which have already caught someone (kindred#1945):
+//
+//   - `first_name` is a MISLABELED FULL NAME. 773 of 788 2026 values contain a
+//     space -- parents type their whole name into a field CampMinder labels
+//     "First Name". Nothing may treat it as a given name.
+//   - NEVER conclude a row is empty from the split columns. 136 real adults
+//     across 2022-2026 are blank in first_name/last_name and populated in
+//     `name`; a "delete the blank rows" cleanup written from that misreading
+//     would have erased every one of them.
+//
+// PENDING, and deliberately not resolved here (owner ruling, kindred#1945):
+// the person-partition loop below merges with "first non-empty wins" over a
+// slice loadPersonCustomValues returns in record-id order, so when two
+// enrolled siblings carry different answers the winner is whichever row has
+// the lower id -- which correlates with nothing. Measured over the 382
+// rostered 2026 households: 254 (household, field, adult) groups disagree
+// across 113 households, and resolving by CampMinder's own last_updated (the
+// rule spec 4.1 already applies to the REQUEST fields, via
+// CollapseToHouseholdGrain) would pick differently in 130 of them. Which
+// sibling should win is a product decision, coupled to the still-open question
+// of whether gender/date_of_birth/email/pronouns are kept at all, so today's
+// behavior is pinned by test instead of changed on a guess.
 func (s *FamilyCampDerivedSync) processAdults(
 	householdValues []customValueEntry, personValues []customValueEntry,
 ) []*adultData {

@@ -50,6 +50,7 @@ def _unit(
     map_y: float | None = 0.5,
     default_combined: bool = False,
     parent_unit: str = "",
+    shareability: str = "",
 ) -> SimpleNamespace:
     return _rec(
         id=pb_id,
@@ -71,6 +72,9 @@ def _unit(
         map_y=map_y,
         default_combined=default_combined,
         parent_unit=parent_unit,
+        # Blank by default: the migration leaves an unclassifiable row empty
+        # rather than guessing, so "" is a state the service really sees.
+        shareability=shareability,
         expand={"area": _rec(code="RIDGE", name="Ridge Side", sort_order=1)},
     )
 
@@ -356,6 +360,38 @@ class TestFamilyCampParties:
         assert [a.display_name for a in party.adults] == ["Olivia Johnson", "Noah Johnson"]
         assert [c.display_name for c in party.children] == ["Emma Johnson"]
         assert party.party_size == 3
+
+    @pytest.mark.asyncio
+    async def test_a_blank_name_column_falls_back_to_first_plus_last(self) -> None:
+        """THE LOAD-BEARING COALESCE (kindred#1945). Do not remove it.
+
+        `family_camp_adults.name` is the column of record, but it is blank on a
+        small tail of rows. Measured against 2026: of the 382 rostered family
+        households, 377 have at least one non-blank `name` and 5 do not -- and
+        this fallback is the only thing that renders any adult at all for
+        several of those. Deleting it in the name of "name is authoritative"
+        would blank real adults off the board.
+        """
+        repo = _repo(
+            fetch_session=FAMILY_SESSION,
+            fetch_households={"hh_1": _household()},
+            fetch_attendees_for_session=[_child()],
+            fetch_family_camp_adults={
+                "hh_1": [
+                    _rec(
+                        adult_number=1,
+                        name="",
+                        first_name="Olivia",
+                        last_name="Johnson",
+                        relationship_to_camper="Parent",
+                    ),
+                ]
+            },
+        )
+
+        roster = await LodgingRosterService(repo).build_roster(2026, 1000001)
+
+        assert [a.display_name for a in roster.parties[0].adults] == ["Olivia Johnson"]
 
     @pytest.mark.asyncio
     async def test_fractional_age_survives_as_the_raw_float(self) -> None:
@@ -896,6 +932,64 @@ class TestUnitsAndCounts:
         spy.assert_called_once()
 
 
+class TestShareabilityPassthrough:
+    """kindred#2026. The unit's classification is READ, never re-derived here.
+
+    The registry is canonical (`feedback_registry_no_silent_fallback`): the
+    rule that produces `shareable` / `single_party` lives in exactly two
+    places, the migration backfill and the Go loader, and this layer must not
+    grow a third copy that could disagree with the stored column. So the only
+    thing worth pinning here is that the value arrives intact and that an
+    unclassified row surfaces as `unknown` rather than being guessed into
+    either real answer.
+    """
+
+    @pytest.mark.asyncio
+    async def test_the_stored_classification_reaches_the_payload(self) -> None:
+        repo = _repo(
+            fetch_session=FAMILY_SESSION,
+            fetch_units=[
+                _unit("u1", "ridge-a", "Ridge A", sleeps=15, shareability="shareable"),
+                _unit("u2", "hc-upstairs-1", "Upstairs 1", sleeps=4, shareability="single_party"),
+            ],
+        )
+        roster = await LodgingRosterService(repo).build_roster(2026, 1000001)
+
+        by_code = {u.code: u for u in roster.units}
+        assert by_code["ridge-a"].shareability == "shareable"
+        assert by_code["hc-upstairs-1"].shareability == "single_party"
+
+    @pytest.mark.asyncio
+    async def test_an_unclassified_row_reads_unknown_not_a_guess(self) -> None:
+        """An empty column is the ONE case a read-time default would be
+        tempting, and the one where it would do the damage: `sleeps` 15 is
+        exactly the shape the rule calls shareable, so a service that
+        re-derived would answer `shareable` here off a column nobody set.
+        """
+        repo = _repo(
+            fetch_session=FAMILY_SESSION,
+            fetch_units=[_unit("u1", "ridge-a", "Ridge A", sleeps=15, shareability="")],
+        )
+        roster = await LodgingRosterService(repo).build_roster(2026, 1000001)
+
+        assert roster.units[0].shareability == "unknown"
+
+    @pytest.mark.asyncio
+    async def test_an_unrecognised_stored_value_reads_unknown_not_permissive(self) -> None:
+        """A select gains values over time and a stale API build must not fail
+        open. Anything this layer does not recognise degrades to `unknown`,
+        the non-permissive state, rather than raising or passing through into
+        a Literal the frontend has no branch for.
+        """
+        repo = _repo(
+            fetch_session=FAMILY_SESSION,
+            fetch_units=[_unit("u1", "ridge-a", "Ridge A", sleeps=15, shareability="two_parties_max")],
+        )
+        roster = await LodgingRosterService(repo).build_roster(2026, 1000001)
+
+        assert roster.units[0].shareability == "unknown"
+
+
 class TestCountsFollowTheDrawLevel:
     """The counts describe the population the BOARD DRAWS, at its resolved level.
 
@@ -913,6 +1007,12 @@ class TestCountsFollowTheDrawLevel:
     past any intermediate container rather than stopping at its immediate
     children. An unset container reads as a delta of zero (real, not
     "unknown") and still totals its measured rooms.
+
+    "Measured" is load-bearing in that last sentence (kindred#1945's PR): a
+    delta of zero over rooms that HAVE numbers is a real total, but a delta of
+    zero over a room nobody counted -- or over no rooms at all -- is not. Any
+    active leaf with `sleeps` unset makes its container UNKNOWN, so it counts
+    in `units_capacity_unknown` and contributes no beds.
     """
 
     @pytest.mark.asyncio
@@ -1007,29 +1107,88 @@ class TestCountsFollowTheDrawLevel:
         assert roster.counts.beds_family_available == 16
 
     @pytest.mark.asyncio
-    async def test_a_combined_container_reports_its_own_measured_beds_over_unmeasured_rooms(self) -> None:
-        """The real Doctor's House shape.
+    async def test_a_container_with_an_unmeasured_room_is_unknown_not_a_confident_undercount(self) -> None:
+        """An unmeasured ACTIVE room leaves its container's total UNKNOWN.
 
-        Its two rooms were split out of the container with `sleeps`
-        deliberately left unset -- the bed lists carry their capacity, the
-        number does not. An unmeasured room contributes nothing to the total
-        (same silent-skip treatment an unmeasured LEAF gets everywhere else),
-        so the total is the container's own measured 6 plus two zeros: 6, not
-        "unknown".
+        This reverses what this test asserted before. It used to pin "6, not
+        unknown", on the reasoning that an unmeasured room gets "the same
+        silent-skip treatment an unmeasured LEAF gets everywhere else". That
+        reasoning does not hold: a STANDALONE unmeasured leaf is not skipped at
+        all -- it returns None and lands in `units_capacity_unknown`. Only a
+        leaf that happened to sit under a container was silently read as zero.
+
+        It also contradicted the kindred#2041 delta ruling the container branch
+        is built on. If the container's own `sleeps` is a DELTA over its rooms
+        -- the futon on the landing, not the house -- then 6 plus two unknowns
+        is unknown, and reporting 6 is a confident undercount of a house nobody
+        has measured. `_build_counts`' own comment already said so ("only a
+        genuinely unmeasured LEAF can still leave a total unknown"); the code
+        was what disagreed.
+
+        Latent, not live, when this changed: measured against the production
+        snapshot, 0 of 15 active containers had an unmeasured active leaf, so
+        no reported number moved. It goes live the moment staff add a room with
+        no bed count under a combined house.
         """
         repo = _repo(
             fetch_session=FAMILY_SESSION,
             fetch_units=[
-                _unit("u1", "hc-dh", "Doctor's House", sleeps=6, is_container=True, default_combined=True),
-                _unit("u2", "hc-dh-a", "Doctor's House A", sleeps=0, parent_unit="u1"),
-                _unit("u3", "hc-dh-b", "Doctor's House B", sleeps=0, parent_unit="u1"),
+                _unit("u1", "hc-house", "Combined House", sleeps=6, is_container=True, default_combined=True),
+                _unit("u2", "hc-house-a", "Combined House A", sleeps=4, parent_unit="u1"),
+                _unit("u3", "hc-house-b", "Combined House B", sleeps=0, parent_unit="u1"),
             ],
         )
         roster = await LodgingRosterService(repo).build_roster(2026, 1000001)
 
         assert roster.counts.units_total == 1
-        assert roster.counts.beds_family_available == 6
+        # NOT 10. The house is not measured, so it contributes no bed count
+        # and is flagged for measurement instead.
+        assert roster.counts.beds_family_available == 0
+        assert roster.counts.units_capacity_unknown == 1
+
+    @pytest.mark.asyncio
+    async def test_an_inactive_room_does_not_make_its_container_unknown(self) -> None:
+        """Only an ACTIVE leaf counts, in both directions.
+
+        A retired room contributes no beds to the total (the behaviour that
+        was already there) and equally must not drag the whole house into
+        `units_capacity_unknown` because nobody bothered to measure a room
+        that is out of service.
+        """
+        repo = _repo(
+            fetch_session=FAMILY_SESSION,
+            fetch_units=[
+                _unit("u1", "hc-house", "Combined House", sleeps=6, is_container=True, default_combined=True),
+                _unit("u2", "hc-house-a", "Combined House A", sleeps=4, parent_unit="u1"),
+                _unit("u3", "hc-house-b", "Combined House B", sleeps=0, parent_unit="u1", is_active=False),
+            ],
+        )
+        roster = await LodgingRosterService(repo).build_roster(2026, 1000001)
+
+        assert roster.counts.units_total == 1
+        assert roster.counts.beds_family_available == 10
         assert roster.counts.units_capacity_unknown == 0
+
+    @pytest.mark.asyncio
+    async def test_an_unset_container_with_nothing_measured_beneath_it_is_unknown(self) -> None:
+        """The degenerate case: no figure of its own, and no leaf to total.
+
+        "Unset container" reads as a delta of ZERO only because its rooms
+        supply the rest of the answer. With no rooms to supply it, zero is not
+        a delta over anything -- it is the claim "this house sleeps nobody",
+        which is never a measurement anyone took.
+        """
+        repo = _repo(
+            fetch_session=FAMILY_SESSION,
+            fetch_units=[
+                _unit("u1", "hc-house", "Combined House", sleeps=0, is_container=True, default_combined=True),
+            ],
+        )
+        roster = await LodgingRosterService(repo).build_roster(2026, 1000001)
+
+        assert roster.counts.units_total == 1
+        assert roster.counts.beds_family_available == 0
+        assert roster.counts.units_capacity_unknown == 1
 
     @pytest.mark.asyncio
     async def test_a_combined_container_with_no_own_figure_still_totals_its_measured_rooms(self) -> None:
@@ -2616,17 +2775,25 @@ class TestPartySortName:
     """A household's display_name is a mailing title, so it cannot be the sort key.
 
     "The Johnson Family" would file under T. sort_name carries the surname the
-    list actually needs, read from last_name COLUMNS -- family_camp_adults
-    populates first/last only for adults 1-2, which is exactly the range the
-    adult rungs look at.
+    list actually needs, read from the ENROLLED CHILD's `last_name` column.
+
+    There used to be a rung above it reading `family_camp_adults.last_name`.
+    kindred#1945 retired it: that column is dead upstream. Its two CampMinder
+    source fields (`Family Camp-P1/P2 Last Name`) have carried nothing since
+    2022, so the column holds 0 of 834 rows in 2026 and 2 rows a year in
+    2023-2025. The rung could not fire, and the child rung it shadowed reads a
+    column that is actually populated.
     """
 
     @pytest.mark.asyncio
-    async def test_household_sorts_under_adult_ones_surname(self) -> None:
+    async def test_household_sorts_under_the_enrolled_childs_surname(self) -> None:
+        # The adults carry a `last_name` that DISAGREES with the child, so the
+        # two rungs give different answers and the test pins which one wins.
+        # A fixture where they agreed would pass against either implementation.
         repo = _repo(
             fetch_session=FAMILY_SESSION,
             fetch_households={"hh_1": _household(title="The Johnson Family")},
-            fetch_attendees_for_session=[_child()],
+            fetch_attendees_for_session=[_child(first="Emma", last="Johnson")],
             fetch_family_camp_adults={
                 "hh_1": [
                     _rec(
@@ -2638,9 +2805,9 @@ class TestPartySortName:
                     ),
                     _rec(
                         adult_number=1,
-                        name="Emma Johnson",
-                        first_name="Emma",
-                        last_name="Johnson",
+                        name="Liam Silva",
+                        first_name="Liam",
+                        last_name="Silva",
                         relationship_to_camper="Parent",
                     ),
                 ]
@@ -2650,30 +2817,36 @@ class TestPartySortName:
 
         roster = await service.build_roster(2026, 1000001)
 
-        # Adult 1 wins even though adult 2 is listed first in the payload.
+        # NOT "Silva" (adult 1's dead column) and NOT "Garcia" (adult 2's).
         assert roster.parties[0].sort_name == "Johnson"
 
     @pytest.mark.asyncio
-    async def test_falls_back_to_a_later_adult_when_adult_one_has_no_surname(self) -> None:
+    async def test_the_adults_are_name_only_which_is_productions_actual_shape(self) -> None:
+        """Adults 3-5 carry ONLY the combined `name`; 1-2 usually do too.
+
+        first_name/last_name are empty for 100% of adult_number 3-5 rows in
+        every measured year, so this fixture is the common case, not an edge.
+        The sort key still has to come out right.
+        """
         repo = _repo(
             fetch_session=FAMILY_SESSION,
             fetch_households={"hh_1": _household(title="The Chen Family")},
-            fetch_attendees_for_session=[_child()],
+            fetch_attendees_for_session=[_child(first="Olivia", last="Chen")],
             fetch_family_camp_adults={
                 "hh_1": [
                     _rec(
                         adult_number=1,
-                        name="Olivia",
-                        first_name="Olivia",
+                        name="Sofia Chen",
+                        first_name="",
                         last_name="",
                         relationship_to_camper="Parent",
                     ),
                     _rec(
-                        adult_number=2,
-                        name="Liam Chen",
-                        first_name="Liam",
-                        last_name="Chen",
-                        relationship_to_camper="Parent",
+                        adult_number=3,
+                        name="Mateo Rivera",
+                        first_name="",
+                        last_name="",
+                        relationship_to_camper="Grandparent",
                     ),
                 ]
             },
@@ -2683,6 +2856,7 @@ class TestPartySortName:
         roster = await service.build_roster(2026, 1000001)
 
         assert roster.parties[0].sort_name == "Chen"
+        assert [a.display_name for a in roster.parties[0].adults] == ["Sofia Chen", "Mateo Rivera"]
 
     @pytest.mark.asyncio
     async def test_falls_back_to_the_enrolled_child_when_no_adult_has_a_surname(self) -> None:
@@ -2721,11 +2895,15 @@ class TestPartySortName:
         # token is "Family". So the last resort files every household that
         # reaches it under F, not under its surname.
         #
-        # Pinned rather than fixed. This rung is reached only when NO adult and
-        # NO child on the party carries a last_name, and family_camp_adults
-        # populates those columns for adults 1-2 — so it is the rare tail, and
-        # the pair still tie-break on display_name. Recorded here so the rung's
-        # real output is on the page instead of implied by a kinder fixture.
+        # Pinned rather than fixed. Since kindred#1945 retired the dead adult
+        # rung this is the ONLY rung below the child's `last_name`, so it is
+        # worth saying how rare it is rather than leaving that implied: every
+        # household party has an enrolled child by construction
+        # (`_build_household_parties` iterates them), and measured against
+        # production ZERO rostered households in any year 2022-2026 lack a
+        # child surname. Nothing reaches this rung today, and the pair still
+        # tie-break on display_name. Recorded here so the rung's real output is
+        # on the page instead of implied by a kinder fixture.
         repo = _repo(
             fetch_session=FAMILY_SESSION,
             fetch_households={"hh_1": _household(title="The Chen Family")},
@@ -2782,3 +2960,58 @@ class TestPartySortName:
         roster = await service.build_roster(2026, 1000001)
 
         assert [p.sort_name for p in roster.parties] == ["Chen", "Johnson"]
+
+    @pytest.mark.asyncio
+    async def test_board_order_across_the_three_adult_shapes(self) -> None:
+        """BOARD SORT ORDER IS VISIBLE OUTPUT -- pin it across every adult shape.
+
+        The three households cover what `family_camp_adults` actually contains:
+        name-only rows (all of adults 3-5, and most of 1-2), first+last rows
+        (the adults 1-2 tail), and no adult row at all. Retiring the dead
+        `last_name` rung changes the answer for exactly the middle one, so the
+        surnames are chosen to make that a REORDER rather than a relabel: under
+        the old chain hh_2 filed under "Rivera" and the order was
+        Adams/Johnson/Rivera.
+        """
+        repo = _repo(
+            fetch_session=FAMILY_SESSION,
+            fetch_households={
+                "hh_1": _household(pb_id="hh_1", cm_id=2000001, title="The Johnson Family"),
+                "hh_2": _household(pb_id="hh_2", cm_id=2000002, title="The Chen Family"),
+                "hh_3": _household(pb_id="hh_3", cm_id=2000003, title="The Adams Family"),
+            },
+            fetch_attendees_for_session=[
+                _child(cm_id=1000001, first="Emma", last="Johnson", household_pb_id="hh_1"),
+                _child(cm_id=1000002, first="Olivia", last="Chen", household_pb_id="hh_2"),
+                _child(cm_id=1000003, first="Noah", last="Adams", household_pb_id="hh_3"),
+            ],
+            fetch_family_camp_adults={
+                # Name-only: the shape 100% of adults 3-5 arrive in.
+                "hh_1": [
+                    _rec(
+                        adult_number=1,
+                        name="Sofia Silva",
+                        first_name="",
+                        last_name="",
+                        relationship_to_camper="Parent",
+                    ),
+                ],
+                # first + last populated, and DISAGREEING with the child.
+                "hh_2": [
+                    _rec(
+                        adult_number=1,
+                        name="Mateo Rivera",
+                        first_name="Mateo",
+                        last_name="Rivera",
+                        relationship_to_camper="Parent",
+                    ),
+                ],
+                # hh_3 has no adult row at all.
+            },
+        )
+        service = LodgingRosterService(repo)
+
+        roster = await service.build_roster(2026, 1000001)
+
+        assert [p.sort_name for p in roster.parties] == ["Adams", "Chen", "Johnson"]
+        assert [p.household_cm_id for p in roster.parties] == [2000003, 2000002, 2000001]
