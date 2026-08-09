@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/pocketbase/pocketbase"
@@ -39,6 +40,76 @@ func init() {
 			return p
 		}
 	}
+}
+
+// bootFailureSentinel records an error from a boot-stopping OnServe hook so
+// main() can observe it after app.Start() returns. It exists because
+// pocketbase.PocketBase.Execute() (pocketbase.go:179-212) runs cobra's
+// RootCmd.Execute() in a goroutine and discards its return value: the
+// serve command's OnServe-hook error does stop apis.Serve and gets printed
+// by cobra, but Execute() itself returns whatever OnTerminate().Trigger(...)
+// produces, which is nil on the normal shutdown path regardless of whether
+// serve actually failed. So app.Start() -- a thin wrapper over Execute() --
+// comes back nil too, and main()'s existing `if err := app.Start(); err !=
+// nil { os.Exit(1) }` block never fires for this class of failure. See
+// issue #2140.
+//
+// A hook that decides the boot must not continue calls Set alongside
+// returning its error (the hook's return value is unchanged -- OnServe
+// still needs it to stop apis.Serve and to have cobra print it). main()
+// then checks Get once app.Start() returns.
+//
+// atomic.Pointer over a mutex-guarded var: Set/Get are single-word CAS/load
+// ops, so there's no lock to forget to take, and a zero-value
+// bootFailureSentinel is immediately safe to use -- no constructor needed
+// for the package-level instance below.
+type bootFailureSentinel struct {
+	err atomic.Pointer[error]
+}
+
+// Set records err as the reason the boot must not continue. A later Set
+// overwrites an earlier one -- main() only needs to know that at least one
+// boot-stopping hook failed and why, not the full history.
+func (s *bootFailureSentinel) Set(err error) {
+	s.err.Store(&err)
+}
+
+// Get returns the most recently recorded boot failure, or nil if no
+// boot-stopping hook has failed.
+func (s *bootFailureSentinel) Get() error {
+	p := s.err.Load()
+	if p == nil {
+		return nil
+	}
+	return *p
+}
+
+// Reset clears any recorded boot failure. Exists for tests: the sentinel
+// below is a package-level singleton, so a test that records into it must
+// clear it afterward to avoid leaking state into the next test.
+func (s *bootFailureSentinel) Reset() {
+	s.err.Store(nil)
+}
+
+var bootSentinel bootFailureSentinel
+
+// recordBootFailure marks a boot-stopping OnServe hook failure for main()
+// to observe after app.Start() returns nil despite the hook's error. See
+// bootFailureSentinel above.
+func recordBootFailure(err error) {
+	bootSentinel.Set(err)
+}
+
+// bootFailure returns the last error recorded by recordBootFailure, or nil
+// if no boot-stopping hook has failed.
+func bootFailure() error {
+	return bootSentinel.Get()
+}
+
+// resetBootFailure clears the sentinel. Exists for tests -- see
+// bootFailureSentinel.Reset.
+func resetBootFailure() {
+	bootSentinel.Reset()
 }
 
 func main() {
@@ -192,11 +263,17 @@ func main() {
 				return e.Next()
 			}
 			if bootErr := lodgingRegistryBootDecision(err, lodging.RegistryFilePresent(), hasRows); bootErr != nil {
+				// Recorded so main() can os.Exit(1) after app.Start()
+				// returns nil regardless -- see bootFailureSentinel (#2140).
+				recordBootFailure(bootErr)
 				return bootErr
 			}
 			return e.Next()
 		}
 		if bootErr := lodgingRegistrySeedBootDecision(lodging.SeedRegistry(e.App, year)); bootErr != nil {
+			// Recorded so main() can os.Exit(1) after app.Start() returns
+			// nil regardless -- see bootFailureSentinel (#2140).
+			recordBootFailure(bootErr)
 			return bootErr
 		}
 		return e.Next()
@@ -214,7 +291,11 @@ func main() {
 			// Initialize sync service
 			slog.Info("Initializing Kindred sync service")
 			if err := sync.InitializeSyncService(app, e); err != nil {
-				return fmt.Errorf("initializing sync service: %w", err)
+				bootErr := fmt.Errorf("initializing sync service: %w", err)
+				// Recorded so main() can os.Exit(1) after app.Start()
+				// returns nil regardless -- see bootFailureSentinel (#2140).
+				recordBootFailure(bootErr)
+				return bootErr
 			}
 
 			return e.Next()
@@ -288,6 +369,16 @@ func main() {
 
 	if err := app.Start(); err != nil {
 		slog.Error("Failed to start application", "error", err)
+		os.Exit(1)
+	}
+
+	// app.Start() can return nil even though a boot-stopping OnServe hook
+	// failed: pocketbase.PocketBase.Execute() runs cobra's RootCmd in a
+	// goroutine and discards its return value, so the serve command's
+	// error never reaches here. Check the sentinel those hooks record into
+	// instead. See bootFailureSentinel above and issue #2140.
+	if err := bootFailure(); err != nil {
+		slog.Error("Boot aborted by a serve hook", "error", err)
 		os.Exit(1)
 	}
 }
