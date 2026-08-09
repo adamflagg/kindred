@@ -61,12 +61,12 @@ const CARD_ELEVATION_SHADOW =
  * mid an invalid drag.
  *
  * One piece of dashing is NOT additive, and stays gated below rather than
- * joining `border-dashed` in the unconditional list: `bg-muted/25`, dashing's
- * background wash, targets the SAME `background-color` property as
- * `dropTarget`'s own `bg-primary/5` — reintroducing, for exactly this one
+ * joining `border-dashed` in the unconditional list: the open-space forest
+ * tint (#2093, `bg-primary/10`) targets the SAME `background-color` property
+ * as `dropTarget`'s own `bg-primary/5` — reintroducing, for exactly this one
  * pairing, the identical byte-offset race this table exists to kill. An empty
  * room being actively hovered for a drop keeps its dashed OUTLINE but not the
- * muted wash, so `dropTarget`'s own background wins outright.
+ * tint, so `dropTarget`'s own background wins outright.
  *
  * Module scope, not component state: this table references nothing per-card
  * and would otherwise be rebuilt on every one of up to ~82 cards on a board.
@@ -354,11 +354,32 @@ export function LodgingUnitCard({
   const dashed = parties.length === 0
 
   // The one piece of `dashed` that is NOT unconditionally additive — see
-  // `RING_CLASSES`'s doc above for why `bg-muted/25` has to stand down
-  // specifically against `dropTarget`'s own `bg-primary/5`, both being
-  // `background-color`. An empty room mid-hover shows the drop ring's own
-  // wash, not its own muted one.
-  const dashedWashActive = dashed && ringState !== 'dropTarget'
+  // `RING_CLASSES`'s doc above for why the open-space forest tint has to
+  // stand down specifically against `dropTarget`'s own `bg-primary/5`, both
+  // being `background-color`. An empty room mid-hover shows the drop ring's
+  // own wash, not its own tint.
+  //
+  // Owner ruling 2026-08-09 (#2093): HIGHLIGHT an open space with a
+  // low-saturation forest tint, not the grey `bg-muted/25` this used to be —
+  // grey is the visual language of "deactivated", the opposite of what the
+  // one state most wanting staff action should say. `--primary` IS the
+  // board's forest hue (index.css), so this reuses the identical token
+  // `dropTarget` above already spends at `/5`, just at resting-state
+  // strength — the two are close ON PURPOSE and never co-render, which is
+  // exactly what this gate enforces. The tint is a RESTING-STATE signal:
+  // suppressed the instant this card becomes an active drop target, same as
+  // the old wash was.
+  //
+  // `!held` is the second gate, and it is not cosmetic: EMPTY and OPEN are
+  // different predicates and this is where they part. A hold blocks
+  // placement outright (`held` above; `dragPlacement.ts` refuses the drop),
+  // so a held cabin has no family in it and can take none. That was harmless
+  // while the empty treatment was a neutral grey wash, but the forest tint
+  // says "the remaining work is here" — and the marker is the to-do list.
+  // Painting a held cabin forest sends staff at the one room they may not
+  // fill. The dashed EDGE still applies to it, being structural rather than
+  // an invitation.
+  const openMarkerActive = dashed && !held && ringState !== 'dropTarget'
 
   // `ringState` alone can't gate the inline ring below: `dimmed` still wins
   // against `shared` specifically (see the comment on `dimmed` above), and
@@ -368,11 +389,25 @@ export function LodgingUnitCard({
   const cardStateClassName = [
     RING_CLASSES[ringState],
     dashed ? 'border-dashed' : '',
-    dashedWashActive ? 'bg-muted/25' : '',
+    openMarkerActive ? 'bg-primary/10' : '',
     dimmed ? 'pointer-events-none opacity-40' : '',
   ]
     .filter(Boolean)
     .join(' ')
+
+  // The title half of the same forest-tint signal (#2093) — additive for the
+  // identical reason `dashed` itself is (see that comment above): `color`
+  // and `font-weight` on this child `<h3>` don't compete with the parent's
+  // `border-color`/`box-shadow`/`background-color` channels, so this is a
+  // plain either/or on ONE property pair rather than a `RING_CLASSES` entry.
+  // Deliberately reuses `openMarkerActive` rather than bare `dashed`: the
+  // owner ruling frames the tint as ONE resting-state signal, and a title
+  // that stayed bold forest while the background wash had already stood down
+  // — for an active drop target, or for a held room — would be the two halves
+  // of the same mark silently drifting apart.
+  const openTitleClassName = openMarkerActive
+    ? 'text-primary font-bold'
+    : 'text-foreground font-semibold'
 
   return (
     <div
@@ -446,7 +481,7 @@ export function LodgingUnitCard({
             which is why the boards still read differently once the sizes
             matched. `text-lg` is a utility and outranks the base rule's
             `text-2xl md:text-3xl`, so only the face and tracking carry over. */}
-        <h3 className="text-foreground truncate text-lg font-semibold">{unit.name}</h3>
+        <h3 className={`truncate text-lg ${openTitleClassName}`}>{unit.name}</h3>
         <span
           title={
             capacityKnown

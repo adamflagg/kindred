@@ -378,6 +378,22 @@ describe('partyBeds', () => {
     delete withoutSize.party_size
     expect(partyBeds(withoutSize)).toBe(3)
   })
+
+  it('does not recount a placeholder adult in the fallback', () => {
+    // Same predicate as the server (`householdIdentity.namedAdults`), so a
+    // household discounted server-side is not re-inflated here. This copy is
+    // byte-identical to `boardLayout.partySize` and pinned separately on
+    // purpose — three copies is exactly how they stop being identical.
+    const reportedZero = party({
+      party_size: 0,
+      adults: [
+        { adult_number: 1, display_name: 'Olivia Chen' },
+        { adult_number: 2, display_name: 'NA' },
+      ],
+      children: [{ person_cm_id: 1, display_name: 'Liam Garcia' }],
+    })
+    expect(partyBeds(reportedZero)).toBe(2)
+  })
 })
 
 describe('countUnmeasuredSpaces', () => {

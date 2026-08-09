@@ -177,9 +177,16 @@ function DetailCard({ entry, hue, onOpenParty }: DetailCardProps) {
           <dt className="text-muted-foreground">Sleeps</dt>
           <dd>{capacityKnown ? capacity : <em>unknown</em>}</dd>
         </div>
-        {/* A SIZING HINT, not a verdict — `party_size` counts every adult in
-            the household whether or not they attend, so it runs high. Shown
-            only against a capacity that exists; "3 of unknown" says nothing. */}
+        {/* A SIZING HINT, not a verdict. This comment used to say the number
+            "counts every adult in the household whether or not they attend,
+            so it runs high" — no longer true since #1925 and #2046: the
+            server drops blank and placeholder `family_camp_adults` slots and
+            discounts a child under 18 months, so `partyBeds` is BEDS. Still a
+            hint rather than a verdict, because the adult list is a five-slot
+            scrape staff transpose by hand and 16–22 households a year carry
+            adults it never receives (#1925's accepted cost) — the error now
+            runs in both directions instead of only high. Shown only against a
+            capacity that exists; "3 of unknown" says nothing. */}
         {parties.length > 0 && capacityKnown && (
           <div className="flex justify-between gap-3">
             <dt className="text-muted-foreground">Beds</dt>
