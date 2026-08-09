@@ -171,4 +171,17 @@ describe('CamperDetail — family-camp-only camper (#2149)', () => {
     expect(screen.queryByText(/no active enrollments/i)).toBeNull()
     expect((await screen.findAllByText(/Family Camp Weekend/i)).length).toBeGreaterThan(0)
   })
+
+  it('does not render the summer-camp Bunking Status panel for a family-only attendee', async () => {
+    // Family camp never goes through the summer cabin-assignment workflow —
+    // assigned_bunk_cm_id is intentionally left undefined for family
+    // attendees (see useCamperEnrollment.ts). The Bunking Status panel is
+    // summer-only UI; showing it here would fabricate an "Awaiting
+    // Assignment" state for a person who was never going to be cabin-assigned.
+    renderDetail()
+
+    await screen.findByText(/Noah/i)
+    expect(screen.queryByText(/Bunking Status/i)).toBeNull()
+    expect(screen.queryByText(/Awaiting Assignment/i)).toBeNull()
+  })
 })
