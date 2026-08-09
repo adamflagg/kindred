@@ -129,6 +129,11 @@ const _exhaustiveLodgingUnit: Required<LodgingUnitRow> = {
   bathroom_group: '',
   near_bathhouse: false,
   has_power: false,
+  // ADDITIVE to `has_power`, never a replacement (kindred#1912): the raw flag
+  // is the registry's own fact about the ROW, and this is the same question
+  // resolved over the rooms the slot actually contains. Twelve of the
+  // fourteen 2026 family-pool containers disagree with themselves on it.
+  power_coverage: 'none',
   has_ac: false,
   has_fridge: false,
   is_accessible: false,

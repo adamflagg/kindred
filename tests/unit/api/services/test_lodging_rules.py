@@ -16,6 +16,7 @@ Python would regress two fixes that live only on the Go side.
 import pytest
 
 from api.services.lodging_rules import (
+    amenity_coverage,
     container_bathroom,
     effective_bathroom,
     is_family_available,
@@ -145,3 +146,52 @@ class TestContainerBathroom:
 
     def test_no_leaves_inherit_nothing(self) -> None:
         assert container_bathroom(frozenset()) == ("none", "")
+
+
+class TestAmenityCoverage:
+    """kindred#1912. A container's stored amenity flags describe the
+    CONTAINER, not its rooms -- the same shape as the settled
+    "a container's `sleeps` is a delta" ruling, on a different column. In the
+    2026 registry twelve of the fourteen family-pool containers record
+    `has_power = 0` while every leaf beneath them has power, so reading a
+    container's own flag marks twelve entirely-powered buildings unpowered.
+
+    The grain is three-valued rather than boolean because both boolean
+    policies fall out of it for free (`OR == state != "none"`,
+    `AND == state == "all"`), so a per-criterion policy map would be a strict
+    subset that costs more to build.
+
+    `None` is the fourth answer and it is not a grain: it is the ABSENCE of
+    evidence, which `unit_capacity`, `unit_shareability` and
+    `effective_bathroom` each already spell as "unknown" for the same reason.
+    An unconfirmed cabin's `has_power = False` means "nobody has said", not
+    "there is no power" -- the gate `rosterAttention` already applies to the
+    roster's own fit check.
+    """
+
+    def test_every_source_has_it(self) -> None:
+        assert amenity_coverage([True, True, True]) == "all"
+
+    def test_no_source_has_it(self) -> None:
+        assert amenity_coverage([False, False]) == "none"
+
+    def test_a_mixed_set_is_some(self) -> None:
+        assert amenity_coverage([True, False, True]) == "some"
+
+    def test_a_single_source_answers_for_itself(self) -> None:
+        """A leaf has no descendants, so it is its own one-element set."""
+        assert amenity_coverage([True]) == "all"
+        assert amenity_coverage([False]) == "none"
+
+    def test_nothing_to_judge_is_unknown(self) -> None:
+        """Never "none": marking a slot we cannot see as unmet asserts a fact
+        about it, and the mark this feeds exists to state a fact."""
+        assert amenity_coverage([]) == "unknown"
+
+    def test_one_unmeasured_source_makes_the_whole_answer_unknown(self) -> None:
+        """The same all-or-nothing evidence bar `resolvePartyUnit` applies to
+        a merge: one unconfirmed room is an absence of data, not a looser
+        standard for having more rooms."""
+        assert amenity_coverage([True, None]) == "unknown"
+        assert amenity_coverage([False, None]) == "unknown"
+        assert amenity_coverage([None]) == "unknown"

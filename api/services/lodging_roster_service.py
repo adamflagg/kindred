@@ -23,6 +23,7 @@ from api.constants.lodging import INFANT_BED_EXEMPT_MONTHS, is_attending_adult_n
 from api.schemas.lodging import (
     PHI_FIELD_NAMES,
     AccessibilityFlagSummary,
+    AmenityCoverage,
     EffectiveBathroom,
     HouseholdMedicalResponse,
     LodgingUnitSummary,
@@ -44,6 +45,7 @@ from api.schemas.lodging import (
     WeekendSummaryResponse,
 )
 from api.services.lodging_rules import (
+    amenity_coverage,
     container_bathroom,
     effective_bathroom,
     is_family_available,
@@ -585,6 +587,73 @@ def _resolve_party_bathroom(unit_codes: list[str], index: _BathroomIndex) -> str
     return effective_bathroom(bathroom, group, index.group_members.get(group, frozenset()), frozenset(occupied))
 
 
+def _resolve_power_coverage(units: list[LodgingUnitSummary], index: _BathroomIndex) -> None:
+    """Fill in every unit's `power_coverage` in place — kindred#1912.
+
+    Beside `_resolve_party_bathroom` above, and for the identical reason: a
+    container's registry row describes the CONTAINER, not its rooms. Twelve of
+    the fourteen 2026 family-pool containers record `has_power = 0` while
+    every leaf beneath them has power, so the board judging a drop against the
+    row marks twelve entirely-powered buildings unpowered.
+
+    Resolved SERVER-SIDE and never stored. The admin panels write
+    `lodging_units` straight to PocketBase from the browser
+    (`frontend/src/services/lodgingCrud.ts`), bypassing FastAPI entirely, so a
+    stored `effective_has_power` column would have no recompute trigger on the
+    one path that actually edits amenities and would go stale the first time
+    staff toggled a flag.
+
+    Walks `index.leaf_codes_under`, which is the ONE walk over this tree --
+    already shared by `_resolve_party_bathroom` and `_build_counts` -- rather
+    than a second traversal of its own, because two walks over one tree are
+    free to drift. It recurses to LEAVES at any depth, which is the whole
+    point: `hc-health-center` looks split one level down (1 powered child, 2
+    not) and is not, because its two "unpowered" children are themselves
+    containers whose every leaf has power. A one-level walk gets that wrong in
+    the direction that looks plausible.
+
+    Rooms that are `is_active = False` do not answer for their building -- the
+    same filter `_effective_sleeps` applies when totalling a combined
+    container's rooms, and for the same reason: nobody can be placed there.
+
+    A LEAF answers for itself: it has nothing beneath it to inherit from, so
+    its own row is the only fact there is. A CONTAINER never does, and that
+    asymmetry is the point of the function. Once no active room is left to
+    supply the answer the container reports `unknown`, exactly as
+    `_effective_sleeps` returns `None` in the same degenerate case ("0 is not
+    a delta over anything, it is the claim 'this house sleeps nobody'"). It is
+    tempting to fall back to the container's own flag here, on
+    `container_bathroom`'s "nothing to inherit, so the container reports what
+    its own row says" -- but that reasoning holds for `bathroom` only because
+    a container's stored `"none"` is a deliberate registry convention.
+    `has_power` is not: THIRTEEN of the fifteen 2026 containers record
+    `has_power = 0` while their rooms are powered, so the fallback would take
+    the one field this function exists to distrust and publish it as "nothing
+    here has power" -- a mark stating a fact no row supports, in the
+    plausible-looking direction.
+
+    IN PLACE, on the very objects `index.units_by_code` holds, rather than
+    returning a rebuilt list: a second list of summaries would leave the index
+    pointing at the pre-resolution copies, which is exactly the kind of drift
+    the one-index-per-call rule above exists to prevent.
+    """
+    for unit in units:
+        rooms = [
+            leaf
+            for code in sorted(index.leaf_codes_under(unit.code))
+            if (leaf := index.units_by_code.get(code)) is not None and leaf.is_active
+        ]
+        answering = rooms if unit.is_container else [unit]
+        unit.power_coverage = cast(
+            AmenityCoverage,
+            # `None` where nobody has confirmed the row: an unconfirmed
+            # `has_power = False` means "nobody has said", never "there is no
+            # power" -- the same gate `rosterAttention` already applies to the
+            # roster's own fit check.
+            amenity_coverage([room.has_power if room.is_confirmed else None for room in answering]),
+        )
+
+
 class LodgingRosterService:
     """Builds the read-only weekend roster from repository output."""
 
@@ -681,6 +750,12 @@ class LodgingRosterService:
         if session is None:
             raise SessionNotFoundError(f"No weekend session {session_cm_id} in {year}")
 
+        # TWO IDS, and the difference is kindred#2042. The lodging tables are
+        # keyed on the weekend's CampMinder id (migration 1500000147 re-keyed
+        # their unique indexes onto `session_cm_id`), which survives a
+        # camp_sessions record being recreated rather than updated. `attendees`
+        # is not a lodging table and has no such column, so it is still read
+        # through the PocketBase relation.
         session_pb_id = _s(session, "id")
         session_type = _s(session, "session_type")
 
@@ -695,7 +770,7 @@ class LodgingRosterService:
         # carrying the normaliser fixes this layer cannot see.
         async with asyncio.TaskGroup() as tg:
             units_task = tg.create_task(self.repository.fetch_units(year))
-            availability_task = tg.create_task(self.repository.fetch_availability(year, session_pb_id))
+            availability_task = tg.create_task(self.repository.fetch_availability(year, session_cm_id))
             attendees_task = tg.create_task(self.repository.fetch_attendees_for_session(year, session_pb_id))
             households_task = tg.create_task(self.repository.fetch_households(year))
             prior_task = tg.create_task(self.repository.fetch_prior_household_cm_ids(year))
@@ -708,9 +783,9 @@ class LodgingRosterService:
             # merge that used to follow it, and saves a session-scoped round
             # trip while it is at it.
             placements_task = tg.create_task(
-                self.repository.fetch_draft_assignments(year, session_pb_id, scenario)
+                self.repository.fetch_draft_assignments(year, session_cm_id, scenario)
                 if scenario
-                else self.repository.fetch_assignments(year, session_pb_id)
+                else self.repository.fetch_assignments(year, session_cm_id)
             )
             # There is deliberately NO second availability read here. 1500000135
             # deleted this table's scenario dimension, so a scenario has nothing
@@ -725,7 +800,7 @@ class LodgingRosterService:
             # WEEKEND-LEVEL row, and fetch_slot_merges returns exactly that
             # tier for a blank scenario rather than an empty list.
             # resolve_combined then sees both tiers.
-            merges_task = tg.create_task(self.repository.fetch_slot_merges(year, session_pb_id, scenario))
+            merges_task = tg.create_task(self.repository.fetch_slot_merges(year, session_cm_id, scenario))
 
         households = await self._resolve_households(session_type, attendees_task.result(), households_task.result())
 
@@ -739,6 +814,10 @@ class LodgingRosterService:
         # same `unit_summaries` for `_build_counts` was caught in review on
         # kindred#2041's PR.
         unit_index = _BathroomIndex.build(unit_summaries)
+        # Only on THIS path. `build_summary` builds its own units and index to
+        # get at the counts, but its `WeekendSummaryEntry` carries no `units`
+        # -- so resolving coverage there would be work no response can read.
+        _resolve_power_coverage(unit_summaries, unit_index)
         parties = self._build_parties(
             session_type=session_type,
             session_start=_as_date(_s(session, "start_date")),
@@ -830,15 +909,20 @@ class LodgingRosterService:
         entry_gate = asyncio.Semaphore(SUMMARY_ENTRY_CONCURRENCY)
 
         async def _entry(session: Any) -> WeekendSummaryEntry:
+            # Both ids, read off THIS weekend's record -- see build_roster's
+            # own note. `_entry` runs once per weekend, so a session id hoisted
+            # out of this closure would report every weekend against the first
+            # one's placements.
             session_pb_id = _s(session, "id")
+            entry_cm_id = _i(session, "cm_id")
             async with entry_gate, asyncio.TaskGroup() as inner:
-                availability_task = inner.create_task(self.repository.fetch_availability(year, session_pb_id))
+                availability_task = inner.create_task(self.repository.fetch_availability(year, entry_cm_id))
                 attendees_task = inner.create_task(self.repository.fetch_attendees_for_session(year, session_pb_id))
                 # One placement source, exactly as build_roster chooses it.
                 placements_task = inner.create_task(
-                    self.repository.fetch_draft_assignments(year, session_pb_id, scenario)
+                    self.repository.fetch_draft_assignments(year, entry_cm_id, scenario)
                     if scenario
-                    else self.repository.fetch_assignments(year, session_pb_id)
+                    else self.repository.fetch_assignments(year, entry_cm_id)
                 )
                 # No second availability read, exactly as build_roster issues
                 # none. These are separate TaskGroups and fixing only one of
@@ -847,7 +931,7 @@ class LodgingRosterService:
                 # Merges are ALWAYS fetched, exactly as build_roster now does
                 # (1500000140) -- the mirror gets the weekend-level tier
                 # rather than an empty list.
-                merges_task = inner.create_task(self.repository.fetch_slot_merges(year, session_pb_id, scenario))
+                merges_task = inner.create_task(self.repository.fetch_slot_merges(year, entry_cm_id, scenario))
 
             # Own local variable, not a mutation of the shared `households`
             # above: `_entry` runs concurrently, one per weekend, in the

@@ -644,21 +644,29 @@ type assignmentInput struct {
 }
 
 func (s *LodgingAssignmentsSync) findAssignment(in *assignmentInput) (*core.Record, error) {
+	// Keyed on session_cm_id, NOT the `session` relation (kindred#2042,
+	// migration 1500000147 re-keys idx_lodging_assign_hh_live /
+	// idx_lodging_assign_person_live to match). camp_sessions is unique on
+	// (cm_id, year), so the two select the same row -- until the camp_sessions
+	// record is RECREATED rather than updated, which replaces its PocketBase id
+	// and leaves this lookup finding nothing while the row sits in the table.
+	// The next sync then writes a duplicate beside it rather than updating it.
+	//
 	// No scenario clause: migration 1500000132 dropped that column. The ingest
 	// owns this table outright and every row in it IS the live plan -- staff
 	// planning happens in lodging_assignments_draft, which this sync never
 	// touches. Filtering on the column now fails the whole upsert with
 	// "unknown field \"scenario\"", so do not reinstate it.
 	//
-	// Note `> 0` is not used on the party ids because both are compared to a
-	// known value, but never write `!= ''` against these columns: PocketBase
-	// numbers are NUMERIC DEFAULT 0 NOT NULL and SQLite treats
+	// Note `> 0` is not used on the three number columns because each is
+	// compared to a known value, but never write `!= ''` against any of them:
+	// PocketBase numbers are NUMERIC DEFAULT 0 NOT NULL and SQLite treats
 	// 0-vs-empty-string inequality as TRUE, which would match every row of the
 	// other grain.
-	const filter = "session = {:session} && year = {:year} && " +
+	const filter = "session_cm_id = {:sessionCMID} && year = {:year} && " +
 		"household_cm_id = {:hh} && person_cm_id = {:person}"
 	rows, err := s.App.FindRecordsByFilter("lodging_assignments", filter, "", 1, 0, dbx.Params{
-		"session": in.SessionID, "year": in.Year,
+		"sessionCMID": in.SessionCMID, "year": in.Year,
 		"hh": in.HouseholdCMID, "person": in.PersonCMID,
 	})
 	if err != nil {
@@ -930,7 +938,7 @@ func (s *LodgingAssignmentsSync) deleteLodgingOrphans(year int, now time.Time) e
 		}
 		byID[rec.Id] = rec
 		candidates = append(candidates, lodgingOrphanCandidate{
-			RecordID: rec.Id, SessionID: rec.GetString("session"),
+			RecordID: rec.Id, SessionCMID: rec.GetInt("session_cm_id"),
 			HouseholdCMID: hhCMID, PersonCMID: personCMID,
 		})
 	}
@@ -943,6 +951,12 @@ func (s *LodgingAssignmentsSync) deleteLodgingOrphans(year int, now time.Time) e
 		// before its Sets: nothing guarantees a field read after the mutating
 		// call still reflects the pre-delete row.
 		oldLabel := s.labelOf(rec)
+		// The history row keeps BOTH keys, exactly as writeHistory's own
+		// comment explains: `session` so a live row joins, `session_cm_id` so a
+		// row that outlives its session can still name the weekend. Read off
+		// the record rather than the candidate, which since kindred#2042
+		// carries only the CampMinder id.
+		sessionID := rec.GetString("session")
 		sessionCMID := rec.GetInt("session_cm_id")
 
 		if delErr := s.App.Delete(rec); delErr != nil {
@@ -955,7 +969,7 @@ func (s *LodgingAssignmentsSync) deleteLodgingOrphans(year int, now time.Time) e
 
 		if histErr := s.writeHistory(&historyInput{
 			HouseholdCMID: c.HouseholdCMID, PersonCMID: c.PersonCMID,
-			SessionID: c.SessionID, SessionCMID: sessionCMID, Year: year,
+			SessionID: sessionID, SessionCMID: sessionCMID, Year: year,
 			OldUnit: oldLabel, NewUnit: "",
 			SourceField: sourceFieldOrphanSweep, Now: now,
 		}); histErr != nil {

@@ -101,3 +101,37 @@ export function partyIdentityLabel(party: RosterPartyRow): string {
 export function namedAdults(party: RosterPartyRow): PartyAdultRow[] {
   return (party.adults ?? []).filter((adult) => isAttendingAdultName(adult.display_name))
 }
+
+/**
+ * The headcount to print beside a party's own name/adult list -- the number
+ * of adults and children actually NAMED, never `party.party_size`
+ * (kindred#2152).
+ *
+ * `party_size` became a BED count under kindred#1925/#2046: the server drops
+ * blank and placeholder adult slots from it AND discounts a child under 18
+ * months at session start, so it legitimately diverges from the names on the
+ * card -- `boardLayout.partySize` and `rosterAttention.partyBeds` both need
+ * that bed number for the fit check. A badge sitting next to the printed
+ * list needs the OTHER number: whatever this function returns, so it can
+ * never disagree with the names underneath it.
+ *
+ * kindred#1946's nameless-row cleanup runs on the next successful derived
+ * sync, not on merge -- the rows this excludes are still live in `adults`
+ * today, which is exactly why the filtering has to happen here rather than
+ * being trusted to have already happened upstream.
+ *
+ * `namedAdults`, NOT the grain-gated `attendingAdults` -- deliberately, and
+ * do not "make them consistent". A person-grain party (an adult weekend
+ * guest) carries exactly one adult entry, its own name, which the card and
+ * panel both print; `attendingAdults` returns `[]` for that grain, so
+ * swapping it in here would silently render a 0 badge on every adult-weekend
+ * card. The person-grain test in `householdIdentity.test.ts` pins this.
+ *
+ * Every child is counted because every child is PRINTED: `FamilyCard`'s
+ * `ChildList` renders a nameless child as "Unnamed camper" rather than
+ * dropping it, so there is no child-side equivalent of the blank adult slot
+ * to filter. If that fallback ever goes, this count has to filter too.
+ */
+export function partyHeadcount(party: RosterPartyRow): number {
+  return namedAdults(party).length + (party.children?.length ?? 0)
+}

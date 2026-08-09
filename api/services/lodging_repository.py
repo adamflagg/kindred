@@ -227,7 +227,7 @@ class LodgingRepository:
             },
         )
 
-    async def fetch_availability(self, year: int, session_pb_id: str) -> list[Any]:
+    async def fetch_availability(self, year: int, session_cm_id: int) -> list[Any]:
         """Staff reservations and releases for one session.
 
         ONE layer, read identically with or without a scenario. 1500000135
@@ -241,12 +241,12 @@ class LodgingRepository:
         return await self._page(
             LODGING_AVAILABILITY,
             query_params={
-                "filter": f'session = "{pb_escape(session_pb_id)}" && year = {year}',
+                "filter": f"session_cm_id = {session_cm_id} && year = {year}",
                 "sort": STABLE_SORT,
             },
         )
 
-    async def fetch_assignments(self, year: int, session_pb_id: str) -> list[Any]:
+    async def fetch_assignments(self, year: int, session_cm_id: int) -> list[Any]:
         """Synced lodging assignments for one session.
 
         No scenario predicate: 1500000132 dropped that column. It was never
@@ -267,13 +267,13 @@ class LodgingRepository:
         return await self._page(
             LODGING_ASSIGNMENTS,
             query_params={
-                "filter": f'session = "{pb_escape(session_pb_id)}" && year = {year}',
+                "filter": f"session_cm_id = {session_cm_id} && year = {year}",
                 "expand": "units",
                 "sort": STABLE_SORT,
             },
         )
 
-    async def fetch_draft_assignments(self, year: int, session_pb_id: str, scenario_id: str) -> list[Any]:
+    async def fetch_draft_assignments(self, year: int, session_cm_id: int, scenario_id: str) -> list[Any]:
         """One scenario's placements for one session -- ALL of them.
 
         Not a delta over fetch_assignments. Under kindred#1974 these rows are
@@ -287,26 +287,34 @@ class LodgingRepository:
         multiple rooms is just a `units` list with 2+ ids now, whether the
         ingest or the board put it there.
 
-        EVERY interpolated string here goes through pb_escape. `scenario_id`
+        EVERY interpolated STRING here goes through pb_escape. `scenario_id`
         reaches this method straight off the `?scenario=` query parameter, and
         a value carrying a double quote closes the literal early: PocketBase
         binds `&&` tighter than `||`, so an injected `||` clause widens the
-        predicate past its own session/year/scenario scoping. `session_pb_id`
-        is server-resolved and cannot carry one today, but it is escaped too so
-        that reading this line requires no argument about provenance.
+        predicate past its own session/year/scenario scoping. The session term
+        is not a string -- see the note on the weekend key below -- so there is
+        no literal for it to close.
+
+        THE WEEKEND KEY IS `session_cm_id`, not the `session` relation
+        (kindred#2042, migration 1500000147). camp_sessions is unique on
+        (cm_id, year), so the two select the same row today -- but the
+        PocketBase id is replaced if that record is ever recreated rather than
+        updated, and the rows keyed on the old one stay in the table
+        unreachable. Never write `!= ''` against it: PocketBase numbers are
+        NUMERIC DEFAULT 0 NOT NULL and SQLite reads `0 != ''` as TRUE.
         """
         return await self._page(
             LODGING_ASSIGNMENTS_DRAFT,
             query_params={
                 "filter": (
-                    f'session = "{pb_escape(session_pb_id)}" && year = {year} && scenario = "{pb_escape(scenario_id)}"'
+                    f'session_cm_id = {session_cm_id} && year = {year} && scenario = "{pb_escape(scenario_id)}"'
                 ),
                 "expand": "units",
                 "sort": STABLE_SORT,
             },
         )
 
-    async def fetch_slot_merges(self, year: int, session_pb_id: str, scenario_id: str) -> list[Any]:
+    async def fetch_slot_merges(self, year: int, session_cm_id: int, scenario_id: str) -> list[Any]:
         """One session's draw-level overrides: the weekend-level tier, plus a
         named scenario's own rows when there is one.
 
@@ -328,9 +336,10 @@ class LodgingRepository:
         higher one. The row's own `scenario` column is what tells the two
         tiers apart on the way back out.
 
-        EVERY interpolated string here goes through pb_escape, matching
+        EVERY interpolated STRING here goes through pb_escape, matching
         fetch_draft_assignments: `scenario_id` reaches this straight off the
-        `?scenario=` query parameter.
+        `?scenario=` query parameter. The weekend is named by `session_cm_id`,
+        a number -- see fetch_draft_assignments for why.
         """
         scenario_clause = (
             'scenario = ""' if not scenario_id else f'(scenario = "{pb_escape(scenario_id)}" || scenario = "")'
@@ -338,7 +347,7 @@ class LodgingRepository:
         return await self._page(
             LODGING_SLOT_MERGES,
             query_params={
-                "filter": (f'session = "{pb_escape(session_pb_id)}" && year = {year} && {scenario_clause}'),
+                "filter": (f"session_cm_id = {session_cm_id} && year = {year} && {scenario_clause}"),
                 "sort": STABLE_SORT,
             },
         )
@@ -504,13 +513,21 @@ class LodgingRepository:
         A blank id means the household did not resolve, and is never turned
         into a query: an unanchored filter is how one family's narrative
         reaches another family's request.
+
+        `pb_escape` for the same reason, and it is the same anchor: a quote in
+        the id closes the literal, and PocketBase binds `&&` tighter than
+        `||`, so an injected `||` widens the predicate past BOTH the year and
+        the household and this returns the first row of whatever is left. The
+        id is server-resolved today, so this is defence in depth -- but every
+        other id-carrying filter in this file escapes, and a PHI read is the
+        last place to leave the odd one out.
         """
         if not household_pb_id:
             return None
         rows = await self._page(
             FAMILY_CAMP_MEDICAL,
             query_params={
-                "filter": f'year = {year} && household = "{household_pb_id}"',
+                "filter": f'year = {year} && household = "{pb_escape(household_pb_id)}"',
                 "sort": STABLE_SORT,
             },
         )
@@ -565,14 +582,17 @@ class LodgingRepository:
     # in PocketBase regardless of what this layer asks for.
 
     async def find_draft_assignment(
-        self, year: int, session_pb_id: str, scenario_id: str, household_cm_id: int, person_cm_id: int
+        self, year: int, session_cm_id: int, scenario_id: str, household_cm_id: int, person_cm_id: int
     ) -> Any | None:
         """The one draft row for a party in a scenario, or None.
 
         Keyed exactly as the draft's two partial unique indexes are, so the
         lookup either finds the row the next write would collide with, or
-        there is none. Both grain columns are compared to a known value; never
-        write `!= ''` against them, because PocketBase numbers are
+        there is none. Migration 1500000147 re-keyed both onto `session_cm_id`
+        (kindred#2042), so this filter moved with them -- naming the `session`
+        relation here would ask for a row through a key the index no longer
+        carries. THREE number columns are compared to a known value now; never
+        write `!= ''` against any of them, because PocketBase numbers are
         NUMERIC DEFAULT 0 NOT NULL and SQLite reads `0 != ''` as TRUE, which
         matches every row of the other grain.
 
@@ -585,7 +605,7 @@ class LodgingRepository:
             LODGING_ASSIGNMENTS_DRAFT,
             query_params={
                 "filter": (
-                    f'session = "{pb_escape(session_pb_id)}" && year = {year} '
+                    f"session_cm_id = {session_cm_id} && year = {year} "
                     f'&& scenario = "{pb_escape(scenario_id)}" '
                     f"&& household_cm_id = {household_cm_id} && person_cm_id = {person_cm_id}"
                 ),
@@ -594,7 +614,7 @@ class LodgingRepository:
         )
         return rows[0] if rows else None
 
-    async def count_draft_assignments(self, year: int, session_pb_id: str, scenario_id: str) -> int:
+    async def count_draft_assignments(self, year: int, session_cm_id: int, scenario_id: str) -> int:
         """How many placements a scenario holds for one weekend.
 
         The copy operation's precheck. Scoped to the weekend as well as the
@@ -608,7 +628,7 @@ class LodgingRepository:
         """
         return await self._count(
             LODGING_ASSIGNMENTS_DRAFT,
-            (f'session = "{pb_escape(session_pb_id)}" && year = {year} && scenario = "{pb_escape(scenario_id)}"'),
+            (f'session_cm_id = {session_cm_id} && year = {year} && scenario = "{pb_escape(scenario_id)}"'),
         )
 
     async def create_draft_assignment(self, data: dict[str, Any]) -> Any:
@@ -620,11 +640,12 @@ class LodgingRepository:
     async def delete_draft_assignment(self, record_id: str) -> None:
         await asyncio.to_thread(self.pb.collection(LODGING_ASSIGNMENTS_DRAFT).delete, record_id)
 
-    async def find_availability_override(self, year: int, session_pb_id: str, unit_pb_id: str) -> Any | None:
+    async def find_availability_override(self, year: int, session_cm_id: int, unit_pb_id: str) -> Any | None:
         """The one availability row for a unit this weekend, or None.
 
         Matches idx_lodging_avail_unique, which 1500000135 rebuilt as
-        (session, year, unit). Without an index of exactly this shape a unit
+        (session, year, unit) and 1500000147 re-keyed to
+        (session_cm_id, year, unit). Without an index of exactly this shape a unit
         could carry two contradicting rows for one weekend and "is this cabin
         available?" would stop being a question with an answer -- which is why
         the migration rebuilds the index rather than only dropping the column.
@@ -636,9 +657,7 @@ class LodgingRepository:
         rows = await self._page(
             LODGING_AVAILABILITY,
             query_params={
-                "filter": (
-                    f'session = "{pb_escape(session_pb_id)}" && year = {year} && unit = "{pb_escape(unit_pb_id)}"'
-                ),
+                "filter": (f'session_cm_id = {session_cm_id} && year = {year} && unit = "{pb_escape(unit_pb_id)}"'),
                 "sort": STABLE_SORT,
             },
         )
@@ -653,14 +672,15 @@ class LodgingRepository:
     async def delete_availability(self, record_id: str) -> None:
         await asyncio.to_thread(self.pb.collection(LODGING_AVAILABILITY).delete, record_id)
 
-    async def find_slot_merge(self, year: int, session_pb_id: str, unit_pb_id: str, scenario: str) -> Any | None:
+    async def find_slot_merge(self, year: int, session_cm_id: int, unit_pb_id: str, scenario: str) -> Any | None:
         """The one merge row for a container at this tier, or None.
 
         `scenario` is optional (1500000140): a blank value looks up the
         WEEKEND-LEVEL row exactly as a named one looks up that scenario's own
         row -- same filter shape, same tier the caller asked for.
 
-        Matches idx_lodging_slot_merge_unique (unit, session, year, scenario).
+        Matches idx_lodging_slot_merge_unique, which 1500000147 re-keyed to
+        (unit, session_cm_id, year, scenario).
         Without an index of exactly this shape a container could carry two
         contradicting rows and "is this house one card?" would stop having an
         answer -- the same argument as find_availability_override.
@@ -672,7 +692,7 @@ class LodgingRepository:
             LODGING_SLOT_MERGES,
             query_params={
                 "filter": (
-                    f'session = "{pb_escape(session_pb_id)}" && year = {year} '
+                    f"session_cm_id = {session_cm_id} && year = {year} "
                     f'&& unit = "{pb_escape(unit_pb_id)}" && scenario = "{pb_escape(scenario)}"'
                 ),
                 "sort": STABLE_SORT,

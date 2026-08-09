@@ -91,6 +91,18 @@ EffectiveBathroom = Literal["unknown", "none", "private", "shared"]
 # here. It is never coerced into either.
 Shareability = Literal["unknown", "shareable", "single_party"]
 
+# How much of a slot carries one amenity, resolved over its LEAF descendants
+# (kindred#1912). Three grains rather than a bool because both boolean
+# policies fall out of it for free -- `OR == != "none"`, `AND == == "all"` --
+# and because what SOME means differs per criterion: for `is_accessible`, some
+# is worse than none, since a building advertising two step-free rooms out of
+# ten invites the placement that lands in one of the other eight.
+#
+# "unknown" is the absence of evidence, exactly as EffectiveBathroom and
+# Shareability spell their own. `has_power = False` on an unconfirmed row
+# means "nobody has said", not "there is no power". See `amenity_coverage`.
+AmenityCoverage = Literal["all", "some", "none", "unknown"]
+
 # The STAFF-OWNED weekend status, from lodging_session_status (1500000142).
 # Unlike every other vocabulary in this module it mirrors no Go ingest, because
 # there is no ingest: CampMinder's Sessions API has no status concept at all,
@@ -140,6 +152,18 @@ class LodgingUnitSummary(BaseModel):
     bathroom_group: str = ""
     near_bathhouse: bool = False
     has_power: bool = False
+    # The SAME question `has_power` answers, asked of the rooms a slot
+    # actually contains rather than of the row (kindred#1912). Additive, never
+    # a replacement: `has_power` is still the registry's own fact, and the
+    # amenity strip on the card renders that. This is what a drop is judged
+    # against, because a container's flags describe the container -- twelve of
+    # the fourteen 2026 family-pool containers record `has_power = 0` while
+    # every leaf beneath them has power.
+    #
+    # Defaults to "unknown" rather than "none" for the same reason
+    # `amenity_coverage` never returns "none" on missing evidence: a payload
+    # built without the resolution pass must not claim an unmet need.
+    power_coverage: AmenityCoverage = "unknown"
     has_ac: bool = False
     has_fridge: bool = False
     is_accessible: bool = False
