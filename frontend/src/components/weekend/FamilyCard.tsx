@@ -47,7 +47,12 @@ import { Fragment } from 'react'
 import type { LodgingUnitRow, PartyChildRow, RosterPartyRow } from '../../types/lodging'
 import { displayCampMinderAge, displayTruncatedAge } from '../../utils/age'
 import { answersConflictDetail, SHARE_WORDING, shareWordingChip } from './boardLayout'
-import { attendingAdults as computeAttendingAdults, partyHeadcount } from './householdIdentity'
+import {
+  attendingAdults as computeAttendingAdults,
+  dedupeAdultNames,
+  dedupeChildNames,
+  partyHeadcount,
+} from './householdIdentity'
 import { partyKey } from './partyKey'
 import { ATTENTION_LABEL, partyAttention } from './rosterAttention'
 
@@ -147,6 +152,14 @@ function Chip({
  * the bold line's span is also the non-household branch's, and the grey line's
  * exists only when there are children to put in it.
  *
+ * A surname every child shares is lifted off the individual names and printed
+ * ONCE, after the run — `Noah (8) · Ava (5) Johnson` (kindred#2180). The
+ * derivation is `dedupeChildNames`, which reads the structured `last_name`
+ * the API sends rather than splitting `display_name`: 4.7% of 2026's rostered
+ * children have a surname containing a space and 10.6% a hyphenated one, and
+ * both break under a token split. Nothing is lifted unless every child shares
+ * it, so a two-surname household still prints in full.
+ *
  * @param formatAge - `displayTruncatedAge` on the bold line (whole years are
  *   the point of a similar-ages match), `displayCampMinderAge` on the grey one.
  */
@@ -157,6 +170,7 @@ function ChildList({
   children: PartyChildRow[]
   formatAge: (age: number) => string
 }) {
+  const { names, sharedSurname } = dedupeChildNames(children)
   return (
     <>
       {children.map((child, index) => (
@@ -170,11 +184,12 @@ function ChildList({
               only child, with no accessible text at all. */}
           <span>
             {child.age === null || child.age === undefined
-              ? child.display_name || 'Unnamed camper'
-              : `${child.display_name || 'Unnamed camper'} (${formatAge(child.age)})`}
+              ? names[index] || 'Unnamed camper'
+              : `${names[index] || 'Unnamed camper'} (${formatAge(child.age)})`}
           </span>
         </Fragment>
       ))}
+      {sharedSurname.length > 0 && ` ${sharedSurname}`}
     </>
   )
 }
@@ -206,6 +221,7 @@ function FamilyCardBody({
   // row -- lives in `householdIdentity.ts`, shared with the four non-card
   // surfaces that replaced the salutation with this same list (kindred#2084).
   const attendingAdults = computeAttendingAdults(party)
+  const { names: adultNames, sharedSurname: sharedAdultSurname } = dedupeAdultNames(attendingAdults)
   const attention = partyAttention(party, unit)
   const proximity = party.share?.proximity ?? []
   // `similar_ages` ACCOMPANIES `with`; it never replaces it. One chip covering
@@ -246,13 +262,26 @@ function FamilyCardBody({
 
       {isHousehold
         ? attendingAdults.length > 0 && (
-            <span className="text-muted-foreground text-xs leading-snug">
-              {attendingAdults.map((adult, index) => (
-                <Fragment key={String(adult.adult_number ?? index)}>
+            <span
+              data-testid="family-card-adults"
+              className="text-muted-foreground text-xs leading-snug"
+            >
+              {/* A surname every adult shares is printed once at the end of
+                  the line, the same shape as the children's run above
+                  (kindred#2180) -- but on a weaker signal, and deliberately
+                  not the same rule: `family_camp_adults.last_name` is empty
+                  on every 2026 row, so `dedupeAdultNames` can only compare
+                  the trailing token of a free-text name. It fires on 135 of
+                  the 340 multi-adult rostered households and leaves the other
+                  205 written out in full. The adults are the FILTERED list,
+                  so a placeholder slot cannot suppress the dedupe. */}
+              {adultNames.map((name, index) => (
+                <Fragment key={String(attendingAdults[index]?.adult_number ?? index)}>
                   {index > 0 && ' · '}
-                  <span>{adult.display_name}</span>
+                  <span>{name}</span>
                 </Fragment>
               ))}
+              {sharedAdultSurname.length > 0 && ` ${sharedAdultSurname}`}
             </span>
           )
         : // Person-grain (adult weekend) parties are a single guest identified

@@ -16,7 +16,7 @@
  * its own identity -- `display_name` stays for it, unchanged, both here and
  * on the card.
  */
-import type { PartyAdultRow, RosterPartyRow } from '../../types/lodging'
+import type { PartyAdultRow, PartyChildRow, RosterPartyRow } from '../../types/lodging'
 
 /**
  * Tokens a registrant types into an unused `family_camp_adults` slot instead
@@ -134,4 +134,188 @@ export function namedAdults(party: RosterPartyRow): PartyAdultRow[] {
  */
 export function partyHeadcount(party: RosterPartyRow): number {
   return namedAdults(party).length + (party.children?.length ?? 0)
+}
+
+/**
+ * The distinct surnames of a party's children, in the order they arrive.
+ *
+ * ★ THE DERIVATION LIVES HERE AND NOWHERE ELSE (kindred#2180). The card, the
+ * details panel and kindred#2073's year-over-year household heading all name
+ * a family from this one function. Two implementations of a naming rule
+ * drift, and the drift is invisible: both look right in isolation.
+ *
+ * ⚠️ **A HYPHENATED SURNAME IS ONE NAME.** 72 of 2026's 680 distinct
+ * rostered children carry one (measured 2026-08-09). The dedupe is on the
+ * WHOLE string -- never on hyphen parts, and never on whitespace tokens
+ * either: 32 of those children have a `last_name` that itself contains a
+ * space. "Garcia-Lopez" is one surname; a household of Garcia-Lopez children
+ * is "The Garcia-Lopez Family", never "The Garcia & Lopez Family".
+ *
+ * Reads `child.last_name`, the structured column, NOT the trailing token of
+ * `display_name` -- `_person_display_name` builds that string as
+ * `preferred_or_first + ' ' + last_name`, so splitting it back apart is the
+ * wrong surname for those same 32 children (4.7%). kindred#2180 put
+ * `last_name` on the wire for exactly this reason; do not "simplify" it back
+ * out.
+ *
+ * Case-insensitive dedupe, first-seen casing kept -- CampMinder holds the
+ * casing a parent typed, and two spellings of one surname are one family.
+ * Blank surnames are dropped rather than becoming an empty name in the list.
+ *
+ * Takes the child rows rather than a party so kindred#2073 can pass the
+ * UNION across years, which is what its heading spans.
+ */
+export function childSurnames(children: readonly PartyChildRow[] | null | undefined): string[] {
+  const seen = new Set<string>()
+  const surnames: string[] = []
+  for (const child of children ?? []) {
+    const surname = (child.last_name ?? '').trim()
+    if (surname.length === 0) continue
+    const key = surname.toLowerCase()
+    if (seen.has(key)) continue
+    seen.add(key)
+    surnames.push(surname)
+  }
+  return surnames
+}
+
+/**
+ * Surnames as the household's name: `The Johnson Family`,
+ * `The Johnson & Garcia Family`, `The Johnson, Garcia & Nguyen Family`.
+ *
+ * The 3+ form is REQUIRED, not defensive. One of 2026's 382 rostered
+ * households already has three distinct child surnames (374 single / 7
+ * double / 1 triple, measured 2026-08-09), and kindred#2073's heading takes
+ * the UNION across years, which goes higher again. Do not special-case it
+ * away into "and 2 others".
+ *
+ * Empty for no surnames -- "The Family" names nobody. Callers that need
+ * something to print fall back; see `partyFamilyLabel`.
+ */
+export function familyNameLabel(surnames: readonly string[]): string {
+  if (surnames.length === 0) return ''
+  const joined =
+    surnames.length === 1
+      ? (surnames[0] ?? '')
+      : `${surnames.slice(0, -1).join(', ')} & ${surnames[surnames.length - 1] ?? ''}`
+  return `The ${joined} Family`
+}
+
+/**
+ * One household party's family name, for a single weekend.
+ *
+ * Falls back to `partyIdentityLabel` -- the attending adults, and beneath
+ * them the salutation -- when no child on the party carries a surname, so a
+ * party with no enrolled children still has something to print. It never
+ * falls back to a name derived from the ADULTS' surnames:
+ * `family_camp_adults.last_name` is empty on every 2026 row and on every row
+ * from 2017-2021, which is precisely why the children are the source.
+ *
+ * A person-grain party (an adult weekend guest) is not a family and keeps
+ * its own name.
+ */
+export function partyFamilyLabel(party: RosterPartyRow): string {
+  if (party.grain !== 'household') return partyIdentityLabel(party)
+  const label = familyNameLabel(childSurnames(party.children))
+  return label.length > 0 ? label : partyIdentityLabel(party)
+}
+
+/**
+ * A run of names with the surname they all share lifted out, so a card can
+ * print it once at the end of the line instead of on every name
+ * (kindred#2180).
+ */
+export interface DedupedNameRun {
+  /** One entry per person, index-aligned with the input, surname removed. */
+  names: string[]
+  /** The surname to print once after the run, or `''` when none is shared. */
+  sharedSurname: string
+}
+
+/**
+ * Splits `display_name` into what precedes `surname`, or `null` when the
+ * name does not end in that surname or consists of nothing else.
+ *
+ * The `null` on "the name IS the surname" is load-bearing: lifting the
+ * surname off "Johnson" leaves an empty segment, and the card would render a
+ * bare separator. Case-insensitive, because CampMinder holds whatever casing
+ * was typed and two spellings are one name.
+ */
+function nameBeforeSurname(displayName: string, surname: string): string | null {
+  const name = displayName.trim()
+  const suffix = surname.trim()
+  if (suffix.length === 0 || name.length <= suffix.length) return null
+  if (name.slice(-suffix.length).toLowerCase() !== suffix.toLowerCase()) return null
+  const head = name.slice(0, -suffix.length).trimEnd()
+  return head.length > 0 ? head : null
+}
+
+function dedupedRun(displayNames: readonly string[], surname: string): DedupedNameRun {
+  const unchanged: DedupedNameRun = { names: [...displayNames], sharedSurname: '' }
+  if (displayNames.length < 2 || surname.length === 0) return unchanged
+  const heads: string[] = []
+  for (const name of displayNames) {
+    const head = nameBeforeSurname(name, surname)
+    if (head === null) return unchanged
+    heads.push(head)
+  }
+  return { names: heads, sharedSurname: surname }
+}
+
+/**
+ * The children of a party as one run, with a surname every one of them
+ * shares printed once at the end (kindred#2180).
+ *
+ * Driven by the structured `last_name`, so a multi-word or hyphenated
+ * surname is lifted WHOLE. Nothing is lifted unless all of it holds: two or
+ * more children, every one carrying the same surname, and every one having
+ * something in front of it. A single child shares nothing with anybody, and
+ * a household whose children have two surnames has nothing to factor out --
+ * both print unchanged, which is the right answer rather than a gap.
+ */
+export function dedupeChildNames(
+  children: readonly PartyChildRow[] | null | undefined
+): DedupedNameRun {
+  const rows = children ?? []
+  const displayNames = rows.map((child) => child.display_name ?? '')
+  const surnames = childSurnames(rows)
+  // Every child must carry the ONE surname -- `childSurnames` drops blanks,
+  // so a single distinct surname does not by itself mean every child has it.
+  const shared = surnames[0]
+  if (
+    surnames.length !== 1 ||
+    shared === undefined ||
+    rows.some((child) => (child.last_name ?? '').trim().length === 0)
+  ) {
+    return { names: displayNames, sharedSurname: '' }
+  }
+  return dedupedRun(displayNames, shared)
+}
+
+/**
+ * The same treatment for the grey adult line -- but on a MATERIALLY WEAKER
+ * signal, and deliberately not the children's rule (kindred#2180).
+ *
+ * An adult has no structured surname to read: `family_camp_adults.last_name`
+ * is empty on every 2026 row, so `display_name` is the free-text `name` a
+ * parent typed. All this can do is compare the trailing whitespace token.
+ * Measured on production 2026-08-09: of the 340 rostered 2026 households
+ * with two or more named adults, only 135 (39.7%) have all adults sharing
+ * one, and printing the other 205 unchanged is the correct outcome.
+ *
+ * Pass the FILTERED adults (`attendingAdults` / `namedAdults`) -- a blank or
+ * placeholder slot has no trailing token and would suppress every dedupe.
+ */
+export function dedupeAdultNames(adults: readonly PartyAdultRow[]): DedupedNameRun {
+  const displayNames = adults.map((adult) => (adult.display_name ?? '').trim())
+  if (displayNames.length < 2) return { names: displayNames, sharedSurname: '' }
+  const tokens = displayNames.map((name) => name.split(/\s+/))
+  // A one-token name has nothing in front of its "surname" to keep.
+  if (tokens.some((parts) => parts.length < 2)) return { names: displayNames, sharedSurname: '' }
+  const trailing = tokens.map((parts) => parts[parts.length - 1] ?? '')
+  const first = trailing[0] ?? ''
+  if (trailing.some((token) => token.toLowerCase() !== first.toLowerCase())) {
+    return { names: displayNames, sharedSurname: '' }
+  }
+  return dedupedRun(displayNames, first)
 }

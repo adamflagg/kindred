@@ -148,8 +148,10 @@ describe('FamilyCard — what it shows', () => {
         onOpen={vi.fn()}
       />
     )
-    expect(screen.getByText(/Emma Johnson/)).toBeInTheDocument()
-    expect(screen.getByText(/Liam Johnson/)).toBeInTheDocument()
+    // The surname they share is printed once at the end of the line rather
+    // than on each name (kindred#2180) -- so this asserts on the LINE, not on
+    // a per-adult span that no longer holds a whole name.
+    expect(screen.getByTestId('family-card-adults')).toHaveTextContent('Emma · Liam Johnson')
   })
 
   it('drops blank adult slots -- family_camp_adults is not a fixed five', () => {
@@ -698,11 +700,10 @@ describe('FamilyCard — summer’s type scale', () => {
         onOpen={vi.fn()}
       />
     )
-    // Each adult gets its own `<span>`, so walk up one to the line that holds
-    // them all — asserting on the inner span would pin nothing, since the size
-    // is set on the line.
-    const line = screen.getByText(/Emma Johnson/).parentElement
-    expect(line).toHaveTextContent('Liam Johnson')
+    // Each adult gets its own `<span>`, so the size is asserted on the LINE
+    // that holds them all — an inner span would pin nothing.
+    const line = screen.getByTestId('family-card-adults')
+    expect(line).toHaveTextContent('Emma · Liam Johnson')
     expect(line).toHaveClass('text-xs')
   })
 
@@ -722,5 +723,173 @@ describe('FamilyCard — summer’s type scale', () => {
     // the point. It fails the moment somebody hand-rolls a second body.
     render(<FamilyCardPreview party={party()} />)
     expect(screen.getByTestId('family-card-name')).toHaveClass('text-sm')
+  })
+})
+
+/**
+ * kindred#2180 — a shared surname is printed once, at the end of the line.
+ *
+ * The children's half runs off the structured `last_name` the API now sends
+ * (a surname containing a space is 4.7% of 2026's rostered children, and a
+ * hyphenated one is 10.6%); the adults' half has no such column and can only
+ * compare the trailing token of a free-text name, so it fires on 39.7% of
+ * multi-adult households and leaves the rest alone.
+ */
+describe('FamilyCard — a shared surname is not repeated', () => {
+  it('prints the children’s shared surname once, after the run', () => {
+    render(
+      <FamilyCard
+        party={party({
+          children: [
+            { person_cm_id: 9001, display_name: 'Noah Johnson', last_name: 'Johnson', age: 8 },
+            { person_cm_id: 9002, display_name: 'Ava Johnson', last_name: 'Johnson', age: 5 },
+          ],
+        })}
+        onOpen={vi.fn()}
+      />
+    )
+    expect(screen.getByTestId('family-card-name')).toHaveTextContent('Noah (8) · Ava (5) Johnson')
+  })
+
+  // ⚠️ A hyphenated surname is ONE name. 72 of 2026's 680 distinct rostered
+  // children carry one; splitting on the hyphen would name them "The Garcia
+  // & Lopez Family" and print half a surname on the card.
+  it('treats a hyphenated surname as one name', () => {
+    render(
+      <FamilyCard
+        party={party({
+          children: [
+            {
+              person_cm_id: 9001,
+              display_name: 'Noah Garcia-Lopez',
+              last_name: 'Garcia-Lopez',
+              age: 8,
+            },
+            {
+              person_cm_id: 9002,
+              display_name: 'Ava Garcia-Lopez',
+              last_name: 'Garcia-Lopez',
+              age: 5,
+            },
+          ],
+        })}
+        onOpen={vi.fn()}
+      />
+    )
+    expect(screen.getByTestId('family-card-name')).toHaveTextContent(
+      'Noah (8) · Ava (5) Garcia-Lopez'
+    )
+  })
+
+  // The reason `last_name` had to go on the wire: the trailing token of
+  // `display_name` would have left "Martinez" on both children and printed
+  // "Garcia" as the shared surname.
+  it('lifts a surname that contains a space whole', () => {
+    render(
+      <FamilyCard
+        party={party({
+          children: [
+            {
+              person_cm_id: 9001,
+              display_name: 'Noah Martinez Garcia',
+              last_name: 'Martinez Garcia',
+              age: 8,
+            },
+            {
+              person_cm_id: 9002,
+              display_name: 'Ava Martinez Garcia',
+              last_name: 'Martinez Garcia',
+              age: 5,
+            },
+          ],
+        })}
+        onOpen={vi.fn()}
+      />
+    )
+    expect(screen.getByTestId('family-card-name')).toHaveTextContent(
+      'Noah (8) · Ava (5) Martinez Garcia'
+    )
+  })
+
+  it('leaves two different surnames written out in full', () => {
+    render(
+      <FamilyCard
+        party={party({
+          children: [
+            { person_cm_id: 9001, display_name: 'Noah Johnson', last_name: 'Johnson', age: 8 },
+            { person_cm_id: 9002, display_name: 'Ava Garcia', last_name: 'Garcia', age: 5 },
+          ],
+        })}
+        onOpen={vi.fn()}
+      />
+    )
+    expect(screen.getByTestId('family-card-name')).toHaveTextContent(
+      'Noah Johnson (8) · Ava Garcia (5)'
+    )
+  })
+
+  it('leaves an only child their whole name', () => {
+    render(
+      <FamilyCard
+        party={party({
+          children: [
+            { person_cm_id: 9001, display_name: 'Noah Johnson', last_name: 'Johnson', age: 8 },
+          ],
+        })}
+        onOpen={vi.fn()}
+      />
+    )
+    expect(screen.getByTestId('family-card-name')).toHaveTextContent('Noah Johnson (8)')
+  })
+
+  it('prints the adults’ shared surname once, after their line', () => {
+    render(
+      <FamilyCard
+        party={party({
+          adults: [
+            { adult_number: 1, display_name: 'Emma Johnson', relationship: 'Mother' },
+            { adult_number: 2, display_name: 'David Johnson', relationship: 'Father' },
+          ],
+        })}
+        onOpen={vi.fn()}
+      />
+    )
+    expect(screen.getByTestId('family-card-adults')).toHaveTextContent('Emma · David Johnson')
+  })
+
+  it('leaves adults with different surnames written out in full', () => {
+    render(
+      <FamilyCard
+        party={party({
+          adults: [
+            { adult_number: 1, display_name: 'Emma Johnson', relationship: 'Mother' },
+            { adult_number: 2, display_name: 'David Garcia', relationship: 'Father' },
+          ],
+        })}
+        onOpen={vi.fn()}
+      />
+    )
+    expect(screen.getByTestId('family-card-adults')).toHaveTextContent(
+      'Emma Johnson · David Garcia'
+    )
+  })
+
+  // A placeholder slot has no trailing token to share, so it must be gone
+  // BEFORE the comparison -- otherwise one "NA" row suppresses the dedupe on
+  // every card that has one.
+  it('dedupes past a placeholder adult slot', () => {
+    render(
+      <FamilyCard
+        party={party({
+          adults: [
+            { adult_number: 1, display_name: 'Emma Johnson', relationship: 'Mother' },
+            { adult_number: 2, display_name: 'David Johnson', relationship: 'Father' },
+            { adult_number: 3, display_name: 'NA', relationship: '' },
+          ],
+        })}
+        onOpen={vi.fn()}
+      />
+    )
+    expect(screen.getByTestId('family-card-adults')).toHaveTextContent('Emma · David Johnson')
   })
 })

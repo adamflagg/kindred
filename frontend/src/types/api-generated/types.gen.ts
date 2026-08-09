@@ -2884,6 +2884,10 @@ export type PartyChild = {
    */
   display_name?: string
   /**
+   * Last Name
+   */
+  last_name?: string
+  /**
    * Age
    */
   age?: number | null
