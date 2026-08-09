@@ -41,7 +41,7 @@
  * its `display_name` stays.
  */
 import { useDraggable } from '@dnd-kit/core'
-import { Repeat, Star, Users } from 'lucide-react'
+import { Home, Repeat, Star, Users, type LucideIcon } from 'lucide-react'
 import { Fragment } from 'react'
 
 import type { LodgingUnitRow, PartyChildRow, RosterPartyRow } from '../../types/lodging'
@@ -62,6 +62,14 @@ export interface FamilyCardProps {
    */
   sharedSlot?: boolean
   /**
+   * Whether this PLACEMENT — this party's own occupied leaves, not the
+   * card it happens to share — covers an entire building (kindred#2008).
+   * A household holding a whole building is private in a way no
+   * combination of room-level flags conveys; the caller computes this from
+   * `boardLayout.ts`'s `wholeBuildingHolders`, never re-derived here.
+   */
+  holdsWholeBuilding?: boolean
+  /**
    * The card is in the unplaced queue rather than in a slot on the board.
    * Purely a surface choice: the popover's own background is already the
    * page's, so a card inside it needs `bg-card` to read as a card at all,
@@ -80,7 +88,7 @@ export interface FamilyCardProps {
   onOpen: (party: RosterPartyRow) => void
 }
 
-type ChipTone = 'need' | 'warn' | 'share' | 'quiet' | 'muted'
+type ChipTone = 'need' | 'warn' | 'share' | 'quiet' | 'muted' | 'building'
 
 const CHIP_TONE: Record<ChipTone, string> = {
   need: 'bg-amber-100 text-amber-800 dark:bg-amber-950/50 dark:text-amber-300',
@@ -88,13 +96,28 @@ const CHIP_TONE: Record<ChipTone, string> = {
   share: 'bg-forest-100 text-forest-800 dark:bg-forest-950/50 dark:text-forest-300',
   quiet: 'border-border text-muted-foreground border border-dashed',
   muted: 'bg-muted text-muted-foreground',
+  // Distinct from `share` (a REQUEST) and `warn` (a problem) — a whole
+  // building held is neither, it is a privacy fact staff act on. Distinct
+  // from `unitBadges.ts`'s violet "Staff" badge too, so the two never read
+  // as the same signal on adjoining cards.
+  building: 'bg-indigo-100 text-indigo-800 dark:bg-indigo-950/50 dark:text-indigo-300',
 }
 
-function Chip({ label, tone }: { label: string; tone: ChipTone }) {
+function Chip({
+  label,
+  tone,
+  icon: Icon,
+}: {
+  label: string
+  tone: ChipTone
+  /** Optional, e.g. the "Whole building" chip's `Home` — every other chip omits it. */
+  icon?: LucideIcon
+}) {
   return (
     <span
       className={`inline-flex items-center rounded-full px-1.5 py-0.5 text-xs font-semibold whitespace-nowrap ${CHIP_TONE[tone]}`}
     >
+      {Icon && <Icon className="mr-0.5 h-3 w-3 flex-shrink-0" aria-hidden="true" />}
       {label}
     </span>
   )
@@ -159,10 +182,12 @@ function FamilyCardBody({
   party,
   unit,
   sharedSlot,
+  holdsWholeBuilding = false,
 }: {
   party: RosterPartyRow
   unit?: LodgingUnitRow | undefined
   sharedSlot: boolean
+  holdsWholeBuilding?: boolean
 }) {
   const flags = party.flags ?? {}
   const children = party.children ?? []
@@ -227,6 +252,11 @@ function FamilyCardBody({
           )}
 
       <span className="flex flex-wrap gap-1">
+        {/* #2008: this PLACEMENT covers every leaf of a building, not merely
+            a card it happens to share — see `holdsWholeBuilding`'s doc.
+            First in the row: it is a fact about the household's privacy, not
+            a need or a warning, and staff scan left-to-right. */}
+        {holdsWholeBuilding && <Chip label="Whole building" tone="building" icon={Home} />}
         {/* The needs a cabin field can actually answer — the same two the fit
             check judges. `needs_accommodation` names no specific amenity, so
             it is carried by the verdict chip below instead of duplicated. */}
@@ -300,6 +330,7 @@ export function FamilyCard({
   party,
   unit,
   sharedSlot = false,
+  holdsWholeBuilding = false,
   inQueue = false,
   isDraggable = false,
   onOpen,
@@ -338,7 +369,12 @@ export function FamilyCard({
         isDragging ? 'opacity-40' : ''
       }`}
     >
-      <FamilyCardBody party={party} unit={unit} sharedSlot={sharedSlot} />
+      <FamilyCardBody
+        party={party}
+        unit={unit}
+        sharedSlot={sharedSlot}
+        holdsWholeBuilding={holdsWholeBuilding}
+      />
     </button>
   )
 }
@@ -363,14 +399,21 @@ export function FamilyCardPreview({
   party,
   unit,
   sharedSlot = false,
+  holdsWholeBuilding = false,
 }: {
   party: RosterPartyRow
   unit?: LodgingUnitRow | undefined
   sharedSlot?: boolean
+  holdsWholeBuilding?: boolean
 }) {
   return (
     <div className={`${CARD_FRAME} bg-card shadow-lodge-lg border-primary/50 rotate-2`}>
-      <FamilyCardBody party={party} unit={unit} sharedSlot={sharedSlot} />
+      <FamilyCardBody
+        party={party}
+        unit={unit}
+        sharedSlot={sharedSlot}
+        holdsWholeBuilding={holdsWholeBuilding}
+      />
     </div>
   )
 }

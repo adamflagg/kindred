@@ -45,7 +45,13 @@
  */
 import type { LodgingUnitRow, RosterPartyRow, ShareEligibilityValue } from '../../types/lodging'
 import { partyKey } from './partyKey'
-import { coveredCodes, drawnUnits, representingCodes } from './unitLevel'
+import {
+  buildingsSpanned,
+  coveredCodes,
+  drawnUnits,
+  representingCodes,
+  wholeBuildingHeld,
+} from './unitLevel'
 
 /**
  * The leaf codes a party currently occupies.
@@ -346,6 +352,17 @@ export interface BoardArea {
   hue: string
   slots: BoardSlot[]
   partyCount: number
+  /**
+   * How many distinct buildings the area's DRAWN slots span — kindred#2009.
+   *
+   * Reads `slots`, the same set `slots.length` (rooms) counts, not just the
+   * occupied ones: a static fact about how this area's inventory is carved
+   * up into buildings, the same way "rooms" is a static fact about its
+   * inventory rather than a count of who is in it. `buildingsSpanned`
+   * (`unitLevel.ts`) is the one definition — the immediate-parent grain
+   * ruled on #2008, so a two-half house counts as two buildings here too.
+   */
+  buildingCount: number
 }
 
 export interface BoardModel {
@@ -428,6 +445,33 @@ export function overlappingPartyKeys(
     for (const owner of owners) overlapping.add(partyKey(owner))
   }
   return overlapping
+}
+
+/**
+ * Which of these parties hold an entire building, keyed by `partyKey` —
+ * kindred#2008's placement marker.
+ *
+ * Read against each party's OWN occupied leaves (`occupiedLeafCodes`), never
+ * the slot's combined membership. Two households splitting one combined
+ * house between disjoint rooms is the Front/Back case `overlappingPartyKeys`
+ * already treats as NOT a share of a room; it is likewise not a whole-
+ * building HOLD for either one of them individually, even though the CARD
+ * they share is structurally the whole building — the marker is about a
+ * placement, not a card. See `unitLevel.ts`'s `wholeBuildingHeld` for the
+ * grain (immediate parent, ruled on #2008) and why a one-room "building" can
+ * never qualify.
+ */
+export function wholeBuildingHolders(
+  parties: RosterPartyRow[],
+  units: LodgingUnitRow[]
+): Set<string> {
+  const unitsByCode = new Map(units.map((unit) => [unit.code, unit]))
+  const holders = new Set<string>()
+  for (const party of parties) {
+    const leaves = occupiedLeafCodes(party, units, unitsByCode)
+    if (wholeBuildingHeld(leaves, units)) holders.add(partyKey(party))
+  }
+  return holders
 }
 
 /**
@@ -623,6 +667,17 @@ function indexPayload(parties: RosterPartyRow[], units: LodgingUnitRow[]) {
     const unit = unitsByCode.get(named)
     if (unit === undefined) return []
     // Roll up: walk to the drawn ancestor.
+    //
+    // REJECTED as the "whole building" grain for #2008/#2009, deliberately.
+    // This walk stops at the nearest DRAWN ancestor, which depends on
+    // `is_combined` — a VIEW-level fact that flips when staff merge or split
+    // a card — not on registry structure. Using it for "whole building"
+    // would make the same placement read as holding a whole building only
+    // while its house happens to be combined, and stop the moment somebody
+    // splits it back to rooms. #2008 ruled a purely structural grain instead
+    // (immediate parent, never walk-to-root either) — see `buildingKey` and
+    // `buildingGroups` in `unitLevel.ts`, which this function does not call
+    // and must not be made to.
     let cursor = unit
     const seen = new Set<string>()
     while ((cursor.parent_code ?? '') !== '' && !seen.has(cursor.code)) {
@@ -716,12 +771,17 @@ export function buildBoard(parties: RosterPartyRow[], units: LodgingUnitRow[]): 
 
   const areas: BoardArea[] = orderedKeys.map((key, index) => {
     const bucket = buckets.get(key)
+    const slots = bucket?.slots ?? []
     return {
       key,
       name: bucket?.name ?? '',
       hue: AREA_HUES[index % AREA_HUES.length] ?? AREA_HUES[0],
-      slots: bucket?.slots ?? [],
+      slots,
       partyCount: bucket?.partyKeys.size ?? 0,
+      buildingCount: buildingsSpanned(
+        slots.map((slot) => slot.unit),
+        units
+      ),
     }
   })
 

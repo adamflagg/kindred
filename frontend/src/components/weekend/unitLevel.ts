@@ -13,6 +13,12 @@
  * ancestor default already holds — and taking the higher is what keeps a room
  * from being drawn twice. The admin control that prevents the confusing state
  * is a UX guard, not what makes this total.
+ *
+ * A second, related question also lives here: not which units get a card, but
+ * which BUILDING a unit belongs to (`buildingKey`, `buildingGroups`) — the
+ * grain kindred#2008 ruled (immediate parent, not walk-to-root), and what
+ * #2008's placement marker (`wholeBuildingHeld`) and #2009's area header count
+ * (`buildingsSpanned`) both read.
  */
 import type { LodgingUnitRow } from '../../types/lodging'
 
@@ -94,6 +100,131 @@ export function representingCodes(
     else queue.push(...(children.get(next.code) ?? []))
   }
   return out
+}
+
+/**
+ * A leaf unit's "building" — the grain ruled on kindred#2008: the leaf's
+ * IMMEDIATE parent, never walked further toward the root.
+ *
+ * Registry nesting is two levels deep, and a small number of buildings are
+ * modelled as a root with two container HALVES beneath it — an upstairs and
+ * a downstairs, each carrying its own `bathroom_group` — so the halves
+ * behave as independently lettable units under one roof. Walking to the
+ * root would merge two halves staff let separately into one "building"
+ * neither of them is. The evidence for the grain is the placement history,
+ * not the structural argument alone: whole-building holds resolved per
+ * weekend across 2022-2025 are overwhelmingly half-level (13-17/year), not
+ * root-level (see #2008).
+ *
+ * A leaf with no resolvable parent code is its OWN one-room building — a
+ * genuinely freestanding cabin, not a fragment of anything larger. 71 of the
+ * 103 leaf units in the production registry are this way (2026 measurement).
+ *
+ * `boardLayout.ts`'s `cardCodesFor` ALSO rolls a named code up toward an
+ * ancestor, but to the nearest DRAWN one — whichever ancestor the board
+ * happens to be showing a card for right now, which flips with
+ * `is_combined`. That rule is deliberately NOT reused here and is rejected
+ * at its own definition site: "whole building" has to be a fact about the
+ * REGISTRY, not about which card the board is currently drawing, or the same
+ * placement would read as holding a whole building only while its house
+ * happens to be combined and stop being one the moment somebody splits it.
+ */
+export function buildingKey(
+  unit: LodgingUnitRow,
+  unitsByCode: ReadonlyMap<string, LodgingUnitRow>
+): string {
+  const parent = unit.parent_code ?? ''
+  return parent !== '' && unitsByCode.has(parent) ? parent : unit.code
+}
+
+/**
+ * Every LEAF unit, grouped into its building (`buildingKey`).
+ *
+ * Containers are never members of a group — a container's OWN code is what
+ * becomes a group's key when a leaf names it as an immediate parent, and
+ * grouping the container too would double-count it against its own
+ * children.
+ *
+ * ONE per-registry computation, shared by both #2008's and #2009's reads —
+ * `wholeBuildingHeld` below (a placement's marker) and `buildingsSpanned`
+ * below (the area header's distinct count). Two copies of "what building is
+ * this" is exactly how the two numbers would start disagreeing.
+ */
+export function buildingGroups(units: LodgingUnitRow[]): Map<string, string[]> {
+  const unitsByCode = new Map(units.map((unit) => [unit.code, unit]))
+  const groups = new Map<string, string[]>()
+  for (const unit of units) {
+    if (unit.is_container === true) continue
+    const key = buildingKey(unit, unitsByCode)
+    const bucket = groups.get(key)
+    if (bucket) bucket.push(unit.code)
+    else groups.set(key, [unit.code])
+  }
+  return groups
+}
+
+/**
+ * How many distinct buildings a set of drawn units span — #2009's area
+ * header count.
+ *
+ * Reads the RAW LEAVES beneath each drawn unit (`coveredCodes`), never the
+ * drawn unit's own code: a container combined at the ROOT rather than at a
+ * half (rare — the placement history says whole-building holds are nearly
+ * always half-level) still structurally spans however many `buildingKey`
+ * groups its leaves fall into. A card drawn ABOVE the building grain must
+ * not be counted as one building just because the board is drawing it as
+ * one card — `slots.length` already counts CARDS; this counts something
+ * different on purpose.
+ */
+export function buildingsSpanned(drawnUnits: LodgingUnitRow[], units: LodgingUnitRow[]): number {
+  const groups = buildingGroups(units)
+  const leafBuilding = new Map<string, string>()
+  for (const [key, leaves] of groups) {
+    for (const leaf of leaves) leafBuilding.set(leaf, key)
+  }
+  const touched = new Set<string>()
+  for (const unit of drawnUnits) {
+    for (const leaf of coveredCodes(unit, units)) {
+      const key = leafBuilding.get(leaf)
+      if (key !== undefined) touched.add(key)
+    }
+  }
+  return touched.size
+}
+
+/**
+ * Whether a set of occupied LEAF codes covers an entire building —
+ * #2008's placement marker.
+ *
+ * Takes the already-expanded leaf set rather than a party or a named code,
+ * so this module stays pure over `LodgingUnitRow[]` — the party-shaped
+ * wrapper (`occupiedLeafCodes` in `boardLayout.ts`) calls this, not the
+ * reverse, which is what keeps the two files from cycling.
+ *
+ * A group of exactly one is a standalone room, not a building with siblings
+ * to hold ALL of — see `buildingKey`'s doc. Requiring `length > 1` is what
+ * keeps this signal to the genuine whole-building holds in the placement
+ * history rather than firing on most single-room placements: 71 of the 103
+ * production leaf units have no registry parent at all, so without this
+ * exclusion every one of those ordinary single-room placements would
+ * trivially "cover" its own one-room group.
+ */
+export function wholeBuildingHeld(
+  occupiedLeaves: ReadonlySet<string>,
+  units: LodgingUnitRow[]
+): boolean {
+  const unitsByCode = new Map(units.map((unit) => [unit.code, unit]))
+  const groups = buildingGroups(units)
+  const touchedKeys = new Set<string>()
+  for (const leaf of occupiedLeaves) {
+    const unit = unitsByCode.get(leaf)
+    if (unit !== undefined) touchedKeys.add(buildingKey(unit, unitsByCode))
+  }
+  for (const key of touchedKeys) {
+    const group = groups.get(key) ?? []
+    if (group.length > 1 && group.every((code) => occupiedLeaves.has(code))) return true
+  }
+  return false
 }
 
 /** The units that get a card, at the level each tree resolves to. */
