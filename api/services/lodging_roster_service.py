@@ -1191,6 +1191,21 @@ class LodgingRosterService:
         placement_by_household: dict[int, _Placement],
         bathroom_index: _BathroomIndex,
     ) -> list[RosterParty]:
+        if session_start is None:
+            # SAY IT. The keyword above is required rather than defaulted so a
+            # caller cannot silently switch the infant discount off; an
+            # unreadable `start_date` switches it off for the whole weekend
+            # from the data side, where that guard cannot reach. Every party
+            # keeps its infant bed and the board looks entirely ordinary.
+            #
+            # One line per roster build, and only on the broken path -- a
+            # warning on the ordinary path would appear on every weekend and
+            # stop being read. Deliberately NOT extended to a child's missing
+            # `birthdate`: that loses one bed's worth of discount, toward
+            # keeping the bed, and coverage on the rostered cohort is 100%.
+            logger.warning(
+                "Lodging roster: unreadable session start_date -- the infant bed discount is off for this weekend"
+            )
         children_by_household: dict[str, list[Any]] = {}
         for attendee in attendees:
             person = (getattr(attendee, "expand", None) or {}).get("person")

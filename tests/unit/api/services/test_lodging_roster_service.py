@@ -22,6 +22,7 @@ same AttributeError a real record would, so getattr defaults are exercised.
 """
 
 import asyncio
+import logging
 from datetime import date
 from types import SimpleNamespace
 from typing import Any
@@ -3284,6 +3285,59 @@ class TestPartySizeIsABedCount:
         )
         roster = await LodgingRosterService(repo).build_roster(2026, 1000001)
         assert roster.parties[0].party_size == 2
+
+    @pytest.mark.asyncio
+    async def test_an_unreadable_session_start_says_so_out_loud(self, caplog: pytest.LogCaptureFixture) -> None:
+        """The discount switching itself off must not be silent.
+
+        `_build_parties` takes `session_start` as a REQUIRED keyword precisely
+        so a caller that omitted it would raise rather than "stop discounting
+        on every weekend at once with nothing to notice" -- its own comment.
+        An unreadable `start_date` produces the identical outage from the DATA
+        side, and the keyword guard cannot see it: every party on the weekend
+        quietly keeps its infant bed and the board looks ordinary. One
+        WARNING per roster build, bounded, is the whole cost of noticing.
+
+        Deliberately NOT extended to a child's missing `birthdate`: that fails
+        one bed at a time toward keeping it, and coverage on the rostered
+        cohort is 100%. This one fails a whole weekend.
+        """
+        repo = _repo(
+            fetch_session=_rec(
+                id="sess_1",
+                cm_id=1000001,
+                name="Family Camp 1",
+                session_type="family",
+                year=2026,
+                start_date="not-a-date",
+                end_date="",
+                sort_order=1,
+            ),
+            fetch_households={"hh_1": _household()},
+            fetch_attendees_for_session=[_child(cm_id=2, age=0.05, birthdate="2026-08-01")],
+            fetch_family_camp_adults={"hh_1": [_adult(1, "Olivia Johnson")]},
+        )
+        with caplog.at_level(logging.WARNING, logger="api.services.lodging_roster_service"):
+            roster = await LodgingRosterService(repo).build_roster(2026, 1000001)
+
+        assert roster.parties[0].party_size == 2
+        warnings = [r.getMessage() for r in caplog.records if r.levelno >= logging.WARNING]
+        assert any("infant" in message and "start_date" in message for message in warnings), warnings
+
+    @pytest.mark.asyncio
+    async def test_a_readable_session_start_warns_about_nothing(self, caplog: pytest.LogCaptureFixture) -> None:
+        """The mutation guard on the test above: a warning on the ordinary
+        path would be noise on every weekend and would stop being read."""
+        repo = _repo(
+            fetch_session=FAMILY_SESSION,
+            fetch_households={"hh_1": _household()},
+            fetch_attendees_for_session=[_child()],
+            fetch_family_camp_adults={"hh_1": [_adult(1, "Olivia Johnson")]},
+        )
+        with caplog.at_level(logging.WARNING, logger="api.services.lodging_roster_service"):
+            await LodgingRosterService(repo).build_roster(2026, 1000001)
+
+        assert [r.getMessage() for r in caplog.records if r.levelno >= logging.WARNING] == []
 
     @pytest.mark.asyncio
     async def test_a_timestamped_session_start_is_read_as_a_date(self) -> None:
