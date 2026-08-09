@@ -124,19 +124,41 @@ function zeroYearWrapper({ children }: { children: ReactNode }) {
 }
 
 describe('LodgingAliasesPanel', () => {
-  it('asks the units picker for the current season only', async () => {
+  it('does not fetch the units picker while the editor is closed', async () => {
+    // kindred#2154: the aliases table's own content comes from a separate
+    // query (listLodgingAliases); the unit list is only needed by the
+    // member-unit picker inside the editor, which is not rendered here.
     render(<LodgingAliasesPanel />, { wrapper })
     await waitFor(() => {
       expect(screen.getByText('North Lodge - Whole')).toBeInTheDocument()
     })
-    expect(listLodgingUnits).toHaveBeenCalledWith(2026)
+    expect(listLodgingUnits).not.toHaveBeenCalled()
   })
 
-  it('does not fetch the units picker until the year resolves', async () => {
+  it('asks the units picker for the current season once the editor opens', async () => {
+    const user = userEvent.setup()
+    render(<LodgingAliasesPanel />, { wrapper })
+    await waitFor(() => {
+      expect(screen.getByText('North Lodge - Whole')).toBeInTheDocument()
+    })
+    expect(listLodgingUnits).not.toHaveBeenCalled()
+
+    await user.click(screen.getByRole('button', { name: 'New alias' }))
+    await waitFor(() => {
+      expect(listLodgingUnits).toHaveBeenCalledWith(2026)
+    })
+  })
+
+  it('does not fetch the units picker until the year resolves, even with the editor open', async () => {
+    // With the editor closed alone sufficient to gate the fetch, this test
+    // must open the editor to still exercise the YEAR gate specifically.
+    const user = userEvent.setup()
     render(<LodgingAliasesPanel />, { wrapper: zeroYearWrapper })
     await waitFor(() => {
       expect(screen.getByText('North Lodge - Whole')).toBeInTheDocument()
     })
+
+    await user.click(await screen.findByRole('button', { name: /new alias/i }))
     expect(listLodgingUnits).not.toHaveBeenCalled()
   })
 
