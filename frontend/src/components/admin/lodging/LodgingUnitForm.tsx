@@ -234,6 +234,8 @@ export function LodgingUnitForm({
         onChange={setCapacity}
         isConfirmed={amenities.is_confirmed}
         isContainer={isContainer}
+        unit={unit}
+        units={units}
       />
 
       <UnitAmenityFieldset
