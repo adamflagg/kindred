@@ -854,3 +854,55 @@ class TestLodgingYearCache:
         assert cache.get("fetch_households", 2024) is not None
         assert cache.get("fetch_households", 2025) is None, "least-recently-used entry must be evicted"
         assert cache.get("fetch_households", 2026) is not None
+
+
+class TestFetchSessionStatuses:
+    """The staff-owned cancelled flag (kindred#2092).
+
+    CampMinder's Sessions API exposes no status or registration-availability
+    concept, so nothing syncs this. It is keyed on (session_cm_id, year) --
+    CampMinder reuses session ids across years -- and read as a MAP so the
+    caller never has to scan a list per weekend.
+    """
+
+    @pytest.mark.asyncio
+    async def test_reads_the_whole_season_keyed_by_campminder_id(self, repo: LodgingRepository, pb: MagicMock) -> None:
+        pb.collection.return_value.get_full_list.return_value = [
+            _record(session_cm_id=1000001, year=2026, status="cancelled"),
+            _record(session_cm_id=1000002, year=2026, status="active"),
+        ]
+
+        statuses = await repo.fetch_session_statuses(2026)
+
+        pb.collection.assert_called_with("lodging_session_status")
+        assert _last_query(pb)["filter"] == "year = 2026"
+        assert statuses == {1000001: "cancelled", 1000002: "active"}
+
+    @pytest.mark.asyncio
+    async def test_a_season_with_no_rows_is_an_empty_map_not_an_error(
+        self, repo: LodgingRepository, pb: MagicMock
+    ) -> None:
+        """ABSENCE OF A ROW MEANS ACTIVE, so an untouched season reads empty.
+
+        The migration seeds nothing on purpose; if this raised or returned a
+        sentinel, every weekend in every season before staff first used the
+        panel would have to be special-cased by the caller.
+        """
+        pb.collection.return_value.get_full_list.return_value = []
+
+        assert await repo.fetch_session_statuses(2026) == {}
+
+    @pytest.mark.asyncio
+    async def test_is_not_cached(self, repo: LodgingRepository, pb: MagicMock) -> None:
+        """Written from the browser, exactly like lodging_units (kindred#1963).
+
+        A cache hit here would keep showing a weekend as running for the TTL
+        after staff cancelled it, to buy back a read of at most a dozen rows.
+        """
+        pb.collection.return_value.get_full_list.return_value = [
+            _record(session_cm_id=1, year=2026, status="cancelled")
+        ]
+        await repo.fetch_session_statuses(2026)
+
+        pb.collection.return_value.get_full_list.return_value = []
+        assert await repo.fetch_session_statuses(2026) == {}

@@ -30,6 +30,16 @@ def test_lodging_collection_constants_exist() -> None:
     assert collections.LODGING_ASSIGNMENT_HISTORY == "lodging_assignment_history"
 
 
+def test_weekend_status_constant_exists() -> None:
+    """kindred#2092. Its own collection, NOT a column on camp_sessions.
+
+    SessionsSync deletes local sessions CampMinder stopped returning, and a
+    cancelled weekend is exactly the one it may stop returning — so a column on
+    that row would be deleted by the event it exists to record.
+    """
+    assert collections.LODGING_SESSION_STATUS == "lodging_session_status"
+
+
 def test_lodging_merge_constants_are_gone() -> None:
     """1500000134 deleted both `lodging_merges` and `lodging_merges_draft`
     outright, collapsing the three placement targets into one `units`

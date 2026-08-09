@@ -15,6 +15,7 @@ Permission.LODGING_PHI at the router.
 from __future__ import annotations
 
 import asyncio
+from collections.abc import Mapping
 from typing import TYPE_CHECKING, Any, NamedTuple, cast
 
 from api.schemas.lodging import (
@@ -34,6 +35,7 @@ from api.schemas.lodging import (
     ShareRequestSummary,
     WeekendRosterResponse,
     WeekendSessionListResponse,
+    WeekendSessionStatus,
     WeekendSessionSummary,
     WeekendSummaryEntry,
     WeekendSummaryResponse,
@@ -494,25 +496,75 @@ class LodgingRosterService:
     def __init__(self, repository: LodgingRepository) -> None:
         self.repository = repository
 
+    async def _fetch_session_statuses_or_active(self, year: int) -> Mapping[int, str]:
+        """`fetch_session_statuses`, degraded to {} on a failed read.
+
+        kindred#2092 finding 2. This method's caller runs the read INSIDE a
+        TaskGroup alongside reads that must not fail -- `asyncio.TaskGroup`
+        cancels every sibling task the moment any one of them raises, so an
+        unwrapped failure here would 500 the whole endpoint (`/sessions` or
+        `/summary`) over a status badge. The realistic trigger is ordinary:
+        the API container starting against a PocketBase that has not yet
+        applied migration 1500000142, so the collection does not exist yet.
+
+        {} is not a made-up fallback -- it is the SAME value an empty,
+        untouched `lodging_session_status` table produces, and this layer's
+        own design is that absence of a row means active. Degrading a failed
+        read to {} keeps that design holding end to end instead of adding a
+        second "unknown" state nothing downstream understands.
+        """
+        try:
+            return await self.repository.fetch_session_statuses(year)
+        except Exception as exc:
+            logger.warning(
+                f"lodging_session_status read failed for year {year}, treating every weekend as active: {exc}"
+            )
+            return {}
+
     async def list_sessions(self, year: int) -> WeekendSessionListResponse:
-        rows = await self.repository.fetch_weekend_sessions(year)
+        async with asyncio.TaskGroup() as tg:
+            rows_task = tg.create_task(self.repository.fetch_weekend_sessions(year))
+            statuses_task = tg.create_task(self._fetch_session_statuses_or_active(year))
+
+        statuses = statuses_task.result()
         return WeekendSessionListResponse(
             year=year,
-            sessions=[self._session_summary(row) for row in rows],
+            sessions=[self._session_summary(row, statuses) for row in rows_task.result()],
         )
 
     @staticmethod
-    def _session_summary(row: Any) -> WeekendSessionSummary:
+    def _weekend_status(raw: str) -> WeekendSessionStatus:
+        """One stored value -> the vocabulary this layer publishes.
+
+        TOTAL BY DESIGN, and it falls back to "active". The select is
+        widenable on purpose (owner, 2026-08-07: two values now so a third is
+        a value addition, not a type migration), so a value added to the
+        column before this layer knows it must not be rendered as a
+        cancellation -- telling staff a running weekend is cancelled is the
+        one error here that empties a board somebody is working.
+        """
+        return "cancelled" if raw == "cancelled" else "active"
+
+    @classmethod
+    def _session_summary(cls, row: Any, statuses: Mapping[int, str]) -> WeekendSessionSummary:
         """One weekend's identity. Shared so the lander and the session list
-        can never describe the same weekend differently."""
+        can never describe the same weekend differently.
+
+        `statuses` is the season's staff-owned status map keyed by CampMinder
+        id (kindred#2092). A weekend with no entry is ACTIVE -- the migration
+        seeds nothing, so absence of a row is the normal state and not a gap
+        to warn about.
+        """
+        session_cm_id = _i(row, "cm_id")
         return WeekendSessionSummary(
             session_id=_s(row, "id"),
-            session_cm_id=_i(row, "cm_id"),
+            session_cm_id=session_cm_id,
             name=_s(row, "name"),
             session_type=_s(row, "session_type"),
             start_date=_s(row, "start_date"),
             end_date=_s(row, "end_date"),
             sort_order=_i(row, "sort_order"),
+            status=cls._weekend_status(statuses.get(session_cm_id, "")),
         )
 
     async def build_roster(self, year: int, session_cm_id: int, scenario: str = "") -> WeekendRosterResponse:
@@ -656,6 +708,17 @@ class LodgingRosterService:
             adults_task = tg.create_task(self.repository.fetch_family_camp_adults(year))
             registrations_task = tg.create_task(self.repository.fetch_family_camp_registrations(year))
             aliases_task = tg.create_task(self.repository.count_open_unresolved_aliases(year))
+            # Season-scoped like the six above, and read HERE rather than per
+            # weekend for the same reason: it is one small table for the whole
+            # year, and the lander must badge from the same map `/sessions`
+            # reads or the two pages would disagree about a weekend.
+            #
+            # Wrapped, not the raw repository call: this TaskGroup has six
+            # OTHER reads in it, and this is the one PocketBase collection
+            # that can legitimately not exist yet (a fresh migration). See
+            # `_fetch_session_statuses_or_active` for why a failed read here
+            # must not cancel the other six and 500 the lander.
+            statuses_task = tg.create_task(self._fetch_session_statuses_or_active(year))
 
         units = units_task.result()
         households = households_task.result()
@@ -663,6 +726,7 @@ class LodgingRosterService:
         adults_by_household = adults_task.result()
         registrations = registrations_task.result()
         unresolved_aliases = aliases_task.result()
+        statuses = statuses_task.result()
 
         async def _entry(session: Any) -> WeekendSummaryEntry:
             session_pb_id = _s(session, "id")
@@ -714,7 +778,7 @@ class LodgingRosterService:
                 unit_index=unit_index,
             )
             return WeekendSummaryEntry(
-                session=self._session_summary(session),
+                session=self._session_summary(session, statuses),
                 counts=self._build_counts(unit_summaries, parties, unresolved_aliases, unit_index),
             )
 

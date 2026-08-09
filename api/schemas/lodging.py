@@ -78,6 +78,17 @@ ShareEligibilitySource = Literal["form", "registration", "none"]
 PartyGrain = Literal["household", "person"]
 EffectiveBathroom = Literal["unknown", "none", "private", "shared"]
 
+# The STAFF-OWNED weekend status, from lodging_session_status (1500000142).
+# Unlike every other vocabulary in this module it mirrors no Go ingest, because
+# there is no ingest: CampMinder's Sessions API has no status concept at all,
+# so a cancelled weekend cannot be derived from synced data (kindred#2092).
+#
+# Two values by decision (owner, 2026-08-07), so widening later -- "closed for
+# registration", say -- is a value addition rather than a bool-to-select
+# migration. "active" is the DEFAULT rather than a stored fact: the migration
+# seeds nothing and absence of a row means active.
+WeekendSessionStatus = Literal["active", "cancelled"]
+
 
 class WeekendSessionSummary(BaseModel):
     """One family or adult weekend."""
@@ -89,6 +100,11 @@ class WeekendSessionSummary(BaseModel):
     start_date: str = ""
     end_date: str = ""
     sort_order: int = 0
+    # Staff-owned; nothing in the sync layer writes or clears it. A cancelled
+    # weekend is BADGED, NOT HIDDEN — it still holds lodging rows the sync
+    # deliberately cannot clean up (1500000124), and deep links to it must keep
+    # resolving, so neither /sessions nor /summary filters on this.
+    status: WeekendSessionStatus = "active"
 
 
 class WeekendSessionListResponse(BaseModel):

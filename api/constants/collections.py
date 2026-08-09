@@ -76,6 +76,15 @@ LODGING_SLOT_MERGES = "lodging_slot_merges"
 # kind = "unresolved_alias". Deliberately NOT a second surfaces-only collection.
 LODGING_INGEST_ISSUES = "lodging_ingest_issues"
 
+# The staff-owned weekend status (1500000142, kindred#2092). CampMinder's
+# Sessions API exposes no status or registration-availability concept, so
+# NOTHING SYNCS THIS -- it is the one lodging table with no upstream at all.
+# Keyed on (session_cm_id, year) rather than a camp_sessions relation, so a
+# weekend that drops out of a CampMinder response does not take its own
+# cancellation with it. ABSENCE OF A ROW MEANS ACTIVE; the migration seeds
+# nothing.
+LODGING_SESSION_STATUS = "lodging_session_status"
+
 # Pipeline debug
 DEBUG_PIPELINE_RUNS = "debug_pipeline_runs"
 DEBUG_PIPELINE_SUMMARY = "debug_pipeline_summary"

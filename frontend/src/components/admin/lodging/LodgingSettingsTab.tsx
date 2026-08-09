@@ -6,22 +6,29 @@
  * in source code — not the area list, the unit list, the alias mapping, the
  * parent relations, the staff-default flags, or any amenity.
  */
-import { AlertCircle, BedDouble, CalendarPlus, Link2 } from 'lucide-react'
+import { AlertCircle, Ban, BedDouble, CalendarPlus, Link2 } from 'lucide-react'
 import { Link, useParams } from 'react-router'
 
 import { LodgingAliasesPanel } from './LodgingAliasesPanel'
 import { LodgingUnitsPanel } from './LodgingUnitsPanel'
 import { SeasonRollForwardPanel } from './SeasonRollForwardPanel'
 import { UnresolvedAliasQueue } from './UnresolvedAliasQueue'
+import { WeekendStatusPanel } from './WeekendStatusPanel'
 
 // The summer session view's tab grammar (`SessionTabs`), not a second one.
-// An icon per section for the same reason it has them: four pills of similar
+// An icon per section for the same reason it has them: five pills of similar
 // length are hard to reacquire after looking away at a 93-row table.
+//
+// `status` is here rather than on the weekend lander because every other
+// season-grain fact is edited on this screen, behind the route's single
+// `bunking.manage` gate — the lander badges a cancelled weekend and never sets
+// it (kindred#2092).
 const SECTIONS = [
   { id: 'units', label: 'Units', icon: BedDouble },
   { id: 'aliases', label: 'Cabin name aliases', icon: Link2 },
   { id: 'unresolved', label: 'Unresolved names', icon: AlertCircle },
   { id: 'season', label: 'Season', icon: CalendarPlus },
+  { id: 'status', label: 'Weekend status', icon: Ban },
 ] as const
 
 type SectionId = (typeof SECTIONS)[number]['id']
@@ -69,6 +76,7 @@ export function LodgingSettingsTab() {
       {active === 'aliases' && <LodgingAliasesPanel />}
       {active === 'unresolved' && <UnresolvedAliasQueue />}
       {active === 'season' && <SeasonRollForwardPanel />}
+      {active === 'status' && <WeekendStatusPanel />}
     </div>
   )
 }

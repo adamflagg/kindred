@@ -6737,6 +6737,10 @@ export type WeekendSessionSummary = {
    * Sort Order
    */
   sort_order?: number
+  /**
+   * Status
+   */
+  status?: 'active' | 'cancelled'
 }
 
 /**
