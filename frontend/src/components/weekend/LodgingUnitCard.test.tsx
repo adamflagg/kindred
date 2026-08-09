@@ -59,6 +59,7 @@ function unit(overrides: Partial<LodgingUnitRow> = {}): LodgingUnitRow {
     is_active: true,
     is_container: false,
     inventory_class: 'family_pool',
+    shareability: 'single_party',
     family_available_override: null,
     reason: '',
     is_family_available: true,
@@ -1221,5 +1222,35 @@ describe('LodgingUnitCard — summer’s chrome, the rest of it', () => {
     const roster = container.querySelector('[data-family-card]')?.parentElement
     expect(roster).toHaveClass('gap-2')
     expect(roster).not.toHaveClass('gap-1.5')
+  })
+})
+
+describe('LodgingUnitCard shareability (kindred#2026)', () => {
+  it('marks a unit a second family may be placed into', () => {
+    render(
+      <LodgingUnitCard
+        slot={slot({ unit: unit({ shareability: 'shareable' }) })}
+        hue="hsl(160 45% 42%)"
+        onOpenParty={vi.fn()}
+      />
+    )
+    expect(screen.getByText('Shared OK')).toBeInTheDocument()
+  })
+
+  it('says nothing on a one-family room', () => {
+    render(<LodgingUnitCard slot={slot()} hue="hsl(160 45% 42%)" onOpenParty={vi.fn()} />)
+    expect(screen.queryByText('Shared OK')).not.toBeInTheDocument()
+    expect(screen.queryByText('Sharing unset')).not.toBeInTheDocument()
+  })
+
+  it('flags a unit nobody has classified rather than letting it read as safe', () => {
+    render(
+      <LodgingUnitCard
+        slot={slot({ unit: unit({ shareability: 'unknown' }) })}
+        hue="hsl(160 45% 42%)"
+        onOpenParty={vi.fn()}
+      />
+    )
+    expect(screen.getByText('Sharing unset')).toBeInTheDocument()
   })
 })

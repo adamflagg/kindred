@@ -51,6 +51,7 @@ const UNIT: LodgingUnitRecord = {
   has_changing_table: false,
   has_shared_fridge: false,
   inventory_class: 'family_pool',
+  shareability: '',
   is_confirmed: false,
   is_active: true,
   is_container: false,

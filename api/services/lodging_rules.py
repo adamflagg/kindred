@@ -45,6 +45,32 @@ def unit_capacity(sleeps: int | None) -> int | None:
     return int(sleeps)
 
 
+# Values of lodging_units.shareability (1500000145, kindred#2026). An unset
+# select stores as "", which is a real third state: nobody has classified this
+# unit. It is neither permission to double-book nor a ruling that one family
+# only may go here.
+SHAREABILITY_VALUES = ("shareable", "single_party")
+
+
+def unit_shareability(stored: str) -> str:
+    """Render the stored classification, or `unknown` when there is none.
+
+    NOT a derivation, and deliberately so. The rule that decides `shareable`
+    vs `single_party` lives in exactly two places -- 1500000145's backfill and
+    `classifyShareability` in pocketbase/lodging/registry.go -- and the
+    registry they write is canonical. Re-deriving it here from `sleeps` would
+    be a third copy free to disagree with the column it is rendering, and it
+    would answer confidently on rows nobody has classified: an unmeasured
+    cabin is exactly where a guess is both easiest and most damaging.
+
+    So this maps and nothing more. Anything unrecognised -- an empty column, or
+    a value added to the select by a schema newer than this build -- degrades
+    to `unknown`, the non-permissive state, rather than being passed through
+    into a Literal no consumer has a branch for.
+    """
+    return stored if stored in SHAREABILITY_VALUES else "unknown"
+
+
 def is_family_available(inventory_class: str, override: bool | None) -> bool:
     """Whether this unit can take a family this weekend, in exactly one place.
 

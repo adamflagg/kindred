@@ -67,3 +67,22 @@ describe('amenitiesOf', () => {
     }
   })
 })
+
+describe('shareability', () => {
+  // kindred#2026. Edited beside the other unit-level classifications rather
+  // than derived in the form: the rule that produced the stored value lives in
+  // the migration and the Go loader, and a third copy in the browser would be
+  // the one staff could not see disagreeing.
+
+  it('reads a new unit as unclassified rather than as one family', () => {
+    // '' is UNKNOWN, and the staffer has to answer it. Defaulting a fresh
+    // unit to 'single_party' would look tidier and would be a claim nobody
+    // made — the same failure the select exists to prevent on the read side.
+    expect(amenitiesOf().shareability).toBe('')
+  })
+
+  it('carries a stored classification off an existing unit', () => {
+    const unit = { shareability: 'shareable' } as Parameters<typeof amenitiesOf>[0]
+    expect(amenitiesOf(unit).shareability).toBe('shareable')
+  })
+})

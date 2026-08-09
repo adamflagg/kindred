@@ -24,7 +24,7 @@ import {
 import { isValidMergeTarget, mergeDragId, unitDroppableId } from './dragPlacement'
 import { FamilyCard } from './FamilyCard'
 import { partyKey } from './partyKey'
-import { reservationBadge } from './unitBadges'
+import { reservationBadge, shareabilityBadge } from './unitBadges'
 import { UnitAvailabilityControl } from './UnitAvailabilityControl'
 
 /**
@@ -182,6 +182,9 @@ export function LodgingUnitCard({
 }: LodgingUnitCardProps) {
   const { unit, parties, consent } = slot
   const badge = reservationBadge(unit)
+  // Only on rooms. A container is a whole-building aggregate that no family is
+  // placed into directly, and `reservationBadge` already labels it "Building".
+  const sharing = unit.is_container === true ? null : shareabilityBadge(unit)
   const capacityKnown = unit.sleeps !== null && unit.sleeps !== undefined
   /*
    * How full the room is. The corner figure used to be CAPACITY alone, so the
@@ -459,6 +462,14 @@ export function LodgingUnitCard({
         {badge && (
           <span className={`rounded-full px-1.5 py-0.5 text-xs font-medium ${badge.className}`}>
             {badge.label}
+          </span>
+        )}
+        {/* Beside the availability badge because the two answer adjacent
+            questions about the same room: whether a family may go in it at
+            all, and whether a SECOND one may. */}
+        {sharing && (
+          <span className={`rounded-full px-1.5 py-0.5 text-xs font-medium ${sharing.className}`}>
+            {sharing.label}
           </span>
         )}
         {/* The only actionable capacity state, and the only one summer's

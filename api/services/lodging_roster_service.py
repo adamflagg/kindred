@@ -29,6 +29,7 @@ from api.schemas.lodging import (
     ProximityKind,
     RosterCounts,
     RosterParty,
+    Shareability,
     ShareEligibility,
     ShareEligibilitySource,
     SharePreference,
@@ -45,6 +46,7 @@ from api.services.lodging_rules import (
     effective_bathroom,
     is_family_available,
     unit_capacity,
+    unit_shareability,
 )
 from bunking.logging_config import get_logger
 
@@ -899,6 +901,11 @@ class LodgingRosterService:
                         session_override=session_merge_by_unit.get(_s(unit, "id")),
                     ),
                     inventory_class=inventory_class,
+                    # cast, not a re-derivation: `unit_shareability` is total
+                    # over the Literal's three members and rails everything
+                    # else to `unknown`, but mypy cannot narrow a `str` return
+                    # to the Literal on its own.
+                    shareability=cast(Shareability, unit_shareability(_s(unit, "shareability"))),
                     family_available_override=override,
                     reason=reason_by_unit.get(_s(unit, "id"), ""),
                     is_family_available=is_family_available(inventory_class, override),

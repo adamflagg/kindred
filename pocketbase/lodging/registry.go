@@ -17,6 +17,83 @@ import (
 // scripts/setup/setup-local-config.sh.
 const registryFileName = "lodging_registry.json"
 
+// The lodging_units.shareability vocabulary (kindred#2026, added by
+// pb_migrations/1500000145). A UNIT property -- may more than one party sleep
+// here at once -- and NOT to be confused with the household-side share
+// vocabulary in sync/lodging_requests.go, which answers whether a FAMILY is
+// willing to share. Both must be true before two parties may occupy one space.
+//
+// The empty string is the third state and is never spelled here, because it is
+// what a row carries when the classifier declines to answer: nobody has
+// classified this. It must never read as permission to double-book, and
+// equally must never read as a ruling that one family only may go here.
+const (
+	shareabilityShareable   = "shareable"
+	shareabilitySingleParty = "single_party"
+)
+
+// classifyShareability decides whether a unit about to be CREATED may hold
+// more than one party. Returns "" when it cannot honestly answer.
+//
+// The rule, and why each leg is what it is, is documented in full on
+// pb_migrations/1500000145 -- read that header before changing this, because
+// the two implementations have to agree. In short: a family LEAF sleeping 12
+// or more is shareable (this reproduces the owner's own enumeration of the
+// shared cabins exactly); a family CONTAINER is shareable at its own level,
+// because two households on one container occupy different rooms beneath it
+// and that is a legitimate share rather than a violation (owner ruling); staff
+// housing is not family-camp inventory, so multi-family occupancy is not a
+// question it answers.
+//
+// A container is deliberately NOT tested against `sleeps`. A container's
+// `sleeps` is a DELTA over its rooms (kindred#2041), not a whole-house total,
+// and the whole-house total is not the right input either -- the container
+// carrying the most historical two-household shares totals 9 across its rooms.
+// What makes a container shareable is having rooms, not having capacity.
+//
+// NEVER `max_beds`: it disagrees with the unit's own recorded bed inventory on
+// roughly a third of rows, including rows where it falls BELOW the bed count.
+//
+// A FRESH DATABASE WILL NOT MATCH PRODUCTION, and that is not this function
+// misbehaving. The registry file's `sleeps` is the pre-inventory seed: measured
+// 2026-08-08, it disagrees with production on 77 of the 118 units, and NO leaf
+// in the file reaches 12 (the file's leaf maximum is 9) where production has 31.
+// Production's capacities arrived later, from the 2026 Master Housing import and
+// from staff editing confirmed rows -- neither of which writes back to the file.
+// So a fresh worktree or a rebuilt CD seed classifies the family CONTAINERS
+// shareable and no leaves at all, while production classifies 44 units shareable.
+// Both are this rule applied faithfully to the data actually present.
+//
+// The consequence is a pre-existing staleness this feature inherits rather than
+// creates -- a fresh database already disagrees with production about capacity,
+// which the capacity counts and the bed flags have always reflected. Do not
+// "fix" it by loosening the rule here or by seeding from a second column; the
+// fix, if one is wanted, is to refresh `sleeps` in the private registry file,
+// which is a data decision for the owner and not a code change.
+func classifyShareability(inventoryClass string, isContainer bool, sleeps *int) string {
+	switch inventoryClass {
+	case "staff_default":
+		return shareabilitySingleParty
+	case "family_pool":
+		if isContainer {
+			return shareabilityShareable
+		}
+		// nil is "never observed" and 0 is how PocketBase stores that, so both
+		// mean UNMEASURED -- never "zero capacity". An unmeasured leaf cannot
+		// be classified, and guessing would be wrong in both directions.
+		if sleeps == nil || *sleeps < 1 {
+			return ""
+		}
+		if *sleeps >= 12 {
+			return shareabilityShareable
+		}
+		return shareabilitySingleParty
+	default:
+		// No role recorded, so a role-dependent question has no answer.
+		return ""
+	}
+}
+
 // registryBasePath is the base for the relative candidate paths below.
 // Overridden in tests.
 var registryBasePath = "."
@@ -498,6 +575,15 @@ func seedUnits(
 		rec.Set("near_bathhouse", u.NearBathhouse)
 		rec.Set("inventory_class", u.InventoryClass)
 		rec.Set("is_container", u.IsContainer)
+		// Derived here rather than read from the registry file, so the private
+		// JSON needs no new key and cannot drift from the rule. Left unset when
+		// the classifier declines, so UNCLASSIFIED reaches the database as an
+		// empty select rather than as a decision -- same handling as HasRamp
+		// below. This is the FRESH-DATABASE half only: 1500000145 backfills
+		// every row that already exists, which on production is all of them.
+		if s := classifyShareability(u.InventoryClass, u.IsContainer, u.Sleeps); s != "" {
+			rec.Set("shareability", s)
+		}
 		rec.Set("default_combined", u.DefaultCombined)
 		rec.Set("notes", u.Notes)
 		rec.Set("has_power", u.HasPower)

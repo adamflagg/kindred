@@ -12,7 +12,7 @@
  * family's housing need against this cabin at all — so it belongs beside Save,
  * where the form's other commitments live.
  */
-import type { BathroomStoredValue } from '../../../types/lodging'
+import type { BathroomStoredValue, ShareabilityStoredValue } from '../../../types/lodging'
 import { AMENITY_FLAGS, type UnitAmenities } from './unitAmenities'
 import { FIELD, LABEL } from './lodgingStyles'
 
@@ -65,6 +65,33 @@ export function UnitAmenityFieldset({ value, onChange, bathroomGroups }: UnitAme
             <option key={group} value={group} />
           ))}
         </datalist>
+      </label>
+
+      <label className="text-sm">
+        <span className={LABEL}>Sharing</span>
+        {/* THE BLANK OPTION IS NOT DECORATION. It is what makes "nobody has
+            classified this" answerable, which is the whole reason the column
+            is a select rather than a bool: unrecorded must be distinguishable
+            from "one family only", and must never read as permission to
+            double-book. Contrast the Allocation select above, which has no
+            blank option because an empty inventory_class matches neither
+            branch of the availability rules — there, blank is meaningless;
+            here it is a state 1500000145 deliberately leaves rows in when it
+            cannot honestly classify them.
+
+            Wording is the staff question, not the column name: a staffer
+            deciding this is asking whether two families can go in the room. */}
+        <select
+          className={FIELD}
+          value={value.shareability}
+          onChange={(e) => {
+            onChange({ ...value, shareability: e.target.value as ShareabilityStoredValue })
+          }}
+        >
+          <option value="">Not classified</option>
+          <option value="shareable">Two or more families may share</option>
+          <option value="single_party">One family only</option>
+        </select>
       </label>
 
       <fieldset className="sm:col-span-2">

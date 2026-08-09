@@ -54,6 +54,44 @@ export function reservationBadge(unit: LodgingUnitRow): UnitBadge | null {
   return null
 }
 
+/**
+ * Whether a second family may go in this room — the UNIT half of the sharing
+ * question (kindred#2026). The household half (`share_eligibility`) rides on
+ * the party cards; both have to be true before two parties may occupy one
+ * space.
+ *
+ * TWO OF THE THREE STATES BADGE, AND THE SILENT ONE IS THE SAFE ONE.
+ *
+ *   shareable    -> badged. It grants something, so it has to be legible.
+ *   single_party -> silent. It is the default expectation and the majority of
+ *                   the registry; a chip on most of the board to restate what
+ *                   staff already assume is noise, and silence advertises no
+ *                   permission, so nothing is risked by it.
+ *   unknown      -> badged. NOT silent, and this is the point of a select over
+ *                   a bool. After 1500000145's backfill no registry row is
+ *                   unclassified, so this chip only ever appears on a
+ *                   hand-created unit — where it is the one prompt a staffer
+ *                   gets to answer the question before the board is worked.
+ *
+ * Undefined is treated as unknown rather than trusted: Pydantic fields with a
+ * default render OPTIONAL in TypeScript, so a payload from an older server
+ * arrives with the key missing, and the only wrong answer to give there is a
+ * permissive one.
+ */
+export function shareabilityBadge(unit: LodgingUnitRow): UnitBadge | null {
+  if (unit.shareability === 'shareable') {
+    return {
+      label: 'Shared OK',
+      className: 'bg-sky-100 text-sky-800 dark:bg-sky-950/40 dark:text-sky-300',
+    }
+  }
+  if (unit.shareability === 'single_party') return null
+  return {
+    label: 'Sharing unset',
+    className: 'border-border text-muted-foreground border',
+  }
+}
+
 /** Which of the three reachable availability outcomes this unit can move to. */
 export interface AvailabilityAction {
   kind: 'hold' | 'release' | 'clear'

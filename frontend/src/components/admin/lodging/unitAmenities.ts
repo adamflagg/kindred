@@ -25,7 +25,11 @@ import {
 } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 
-import type { BathroomStoredValue, LodgingUnitRecord } from '../../../types/lodging'
+import type {
+  BathroomStoredValue,
+  LodgingUnitRecord,
+  ShareabilityStoredValue,
+} from '../../../types/lodging'
 
 export type AmenityFlag =
   | 'has_power'
@@ -42,6 +46,14 @@ export type AmenityFlag =
 export interface UnitAmenities {
   bathroom: BathroomStoredValue
   bathroom_group: string
+  /**
+   * Whether more than one party may sleep here at once (kindred#2026). Travels
+   * with the amenities because it is saved by the same form submit, but it is
+   * NOT an amenity and is not in AMENITY_FLAGS: it is a policy classification
+   * about occupancy, not a fact about what the cabin contains, so it renders
+   * as its own select rather than as an eleventh checkbox.
+   */
+  shareability: ShareabilityStoredValue
   has_power: boolean
   has_ac: boolean
   has_fridge: boolean
@@ -84,6 +96,10 @@ export function amenitiesOf(unit?: LodgingUnitRecord): UnitAmenities {
     // column as the token `unknown`, which PocketBase would reject on write.
     bathroom: unit?.bathroom ?? '',
     bathroom_group: unit?.bathroom_group ?? '',
+    // '' is UNCLASSIFIED, and a new unit starts there rather than at
+    // 'single_party'. Defaulting to the safe-looking answer would look tidier
+    // and would be a claim nobody made.
+    shareability: unit?.shareability ?? '',
     has_power: unit?.has_power ?? false,
     has_ac: unit?.has_ac ?? false,
     has_fridge: unit?.has_fridge ?? false,
