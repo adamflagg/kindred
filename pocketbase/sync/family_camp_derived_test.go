@@ -2071,3 +2071,95 @@ func TestRegistrationNeedsUpdateIgnoresTheUnknownSpelling(t *testing.T) {
 		t.Error("a real verdict change must still be detected")
 	}
 }
+
+// TestProcessAdultsPersonFieldsTakeTheFirstLoadedSibling pins the CURRENT,
+// arbitrary tie-break in processAdults' per-person merge, so that changing it
+// is a deliberate, visible break rather than a silent drift.
+//
+// The person-partition fields (FC-P1/P2 First/Last Name, Email, Pronouns,
+// Gender, DOB, Relationship) describe the household's ADULTS, but CampMinder
+// stores them on every enrolled child's record. A household with two children
+// therefore supplies two copies, and when a form was filled twice they can
+// disagree. processAdults resolves that with "first non-empty wins" over a
+// slice that loadPersonCustomValues returns in person_custom_values record-id
+// order -- so the winner is whichever sibling's row happens to carry the lower
+// record id, which correlates with nothing about the answer.
+//
+// Measured against the production snapshot for 2026, over the 382 rostered
+// family-camp households: 254 (household, field, adult) groups have siblings
+// that disagree, spread across 113 households, and resolving by CampMinder's
+// own last_updated instead would pick a different value in 130 of them. So
+// this is a live arbitrary choice, not a theoretical one -- but it is also a
+// small one, because only two of the merged columns reach the UI at all.
+//
+// PENDING, deliberately (owner ruling on kindred#1945): which sibling should
+// win is a product decision, and it is coupled to the still-open question of
+// whether gender/date_of_birth/email/pronouns are kept. Do not "fix" this test
+// by changing the merge until that ruling lands.
+func TestProcessAdultsPersonFieldsTakeTheFirstLoadedSibling(t *testing.T) {
+	s := &FamilyCampDerivedSync{}
+
+	householdValues := []customValueEntry{
+		{householdPBID: "hh_1", fieldName: "Family Camp Adult 1", value: "Emma Johnson"},
+	}
+	// Both entries come from the same household via two different children.
+	// Order here is the order loadPersonCustomValues yields: ascending record
+	// id. The SECOND one is the more recently edited, which is exactly why the
+	// choice matters.
+	personValues := []customValueEntry{
+		{
+			householdPBID: "hh_1",
+			fieldName:     "Family Camp-Relationship to 1",
+			value:         "Mother",
+			lastUpdated:   time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC),
+		},
+		{
+			householdPBID: "hh_1",
+			fieldName:     "Family Camp-Relationship to 1",
+			value:         "Stepmother",
+			lastUpdated:   time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC),
+		},
+	}
+
+	adults := s.processAdults(householdValues, personValues)
+
+	if len(adults) != 1 {
+		t.Fatalf("expected 1 merged adult, got %d", len(adults))
+	}
+	if adults[0].name != "Emma Johnson" {
+		t.Errorf("household `name` is the column of record: got %q", adults[0].name)
+	}
+	if adults[0].relationship != "Mother" {
+		t.Errorf(
+			"first-loaded sibling wins today: got %q, want %q (if you changed the merge on purpose, "+
+				"update this test and kindred#1945 together)",
+			adults[0].relationship, "Mother",
+		)
+	}
+}
+
+// TestProcessAdultsKeepsANameOnlyAdult guards the shape that makes the
+// household `name` column authoritative: adults 3-5 arrive with ONLY `name`,
+// and first_name/last_name empty for 100% of those rows in every measured
+// year. An admission filter that reads the split columns to decide whether a
+// row is real would drop them -- 136 real adults across 2022-2026 are blank in
+// first_name/last_name and populated in `name` (kindred#1945).
+func TestProcessAdultsKeepsANameOnlyAdult(t *testing.T) {
+	s := &FamilyCampDerivedSync{}
+
+	householdValues := []customValueEntry{
+		{householdPBID: "hh_1", fieldName: "Family Camp Adult 3", value: "Mateo Rivera"},
+	}
+
+	adults := s.processAdults(householdValues, nil)
+
+	if len(adults) != 1 {
+		t.Fatalf("a name-only adult must survive the merge, got %d adults", len(adults))
+	}
+	if adults[0].adultNumber != 3 || adults[0].name != "Mateo Rivera" {
+		t.Errorf("got adult %d %q, want 3 %q", adults[0].adultNumber, adults[0].name, "Mateo Rivera")
+	}
+	if adults[0].firstName != "" || adults[0].lastName != "" {
+		t.Errorf("nothing may invent split columns: got first=%q last=%q", adults[0].firstName, adults[0].lastName)
+	}
+}

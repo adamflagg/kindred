@@ -205,37 +205,35 @@ def _household_display_name(household: Any, fallback_cm_id: int) -> str:
 
 def _last_token(value: str) -> str:
     """Last whitespace-delimited token. The one heuristic in the chain, reached
-    only when no last_name column is populated anywhere on the party."""
+    only when no enrolled child on the party carries a last_name."""
     parts = value.split()
     return parts[-1] if parts else ""
 
 
-def _adult_last_name(adults: list[Any]) -> str:
-    """Adult 1's surname, else the lowest-numbered adult that has one.
-
-    Reads the `last_name` COLUMN, never the combined `name` column:
-    family_camp_adults populates first_name/last_name only for adults 1-2, and
-    that is exactly the range this walk reaches before giving up.
-    """
-    # A missing adult_number reads as 0 through _i, which would sort AHEAD of
-    # adult 1. Push it to the back instead -- an unnumbered row is the least
-    # trustworthy source of the household's surname, not the most.
-    for adult in sorted(adults, key=lambda a: _i(a, "adult_number") or 999):
-        last = _s(adult, "last_name")
-        if last:
-            return last
-    return ""
-
-
-def _household_sort_name(adults: list[Any], children: list[Any], display_name: str) -> str:
-    """Surname for a household party. First non-empty rung wins.
+def _household_sort_name(children: list[Any], display_name: str) -> str:
+    """Surname for a household party, from the ELDEST enrolled child's column.
 
     `children` arrives oldest-first, so the child rung prefers the eldest
     enrolled camper.
+
+    THERE IS DELIBERATELY NO ADULT RUNG (kindred#1945). This used to read
+    `family_camp_adults.last_name` first, on the reasoning that a household's
+    surname is its adults'. That column is DEAD UPSTREAM: its two CampMinder
+    sources (`Family Camp-P1/P2 Last Name`, cm_id 216785/216786) stopped being
+    populated after 2022, so measured against the production snapshot the
+    column holds 0 of 834 rows in 2026 and 2 rows a year in 2023-2025. The rung
+    could not fire on any current weekend -- retiring it moved the sort key for
+    ZERO of the 382 rostered 2026 households -- while its docstring described a
+    walk over "adults 1-2" that in fact reached nothing.
+
+    Do NOT reinstate it by deriving a surname from the combined `name` column
+    instead. `name` is a whole name typed into a field CampMinder labels "First
+    Name" (773 of 788 2026 values contain a space), so a last-token split is a
+    heuristic, and the rung it would shadow -- the child's `last_name` -- is a
+    real column that is actually populated. Never persist such a derivation
+    back to the database either; a split that works on ~95% mishandles the rest
+    permanently.
     """
-    adult_last = _adult_last_name(adults)
-    if adult_last:
-        return adult_last
     for child in children:
         child_last = _s(child, "last_name")
         if child_last:
@@ -1099,11 +1097,27 @@ class LodgingRosterService:
                     household_cm_id=household_cm_id,
                     display_name=_household_display_name(household, household_cm_id),
                     sort_name=_household_sort_name(
-                        adults, children_oldest_first, _household_display_name(household, household_cm_id)
+                        children_oldest_first, _household_display_name(household, household_cm_id)
                     ),
                     adults=[
                         PartyAdult(
                             adult_number=_i(adult, "adult_number"),
+                            # `name` is the COLUMN OF RECORD for an attending
+                            # adult, and the split columns are a best-effort
+                            # Adult-1/2-only extra: first_name/last_name are
+                            # empty for 100% of adult_number 3-5 rows in every
+                            # measured year, and last_name is empty for all of
+                            # 2026 (kindred#1945).
+                            #
+                            # THE FALLBACK IS LOAD-BEARING -- do not "simplify"
+                            # it away on the grounds that `name` is
+                            # authoritative. 377 of 382 rostered 2026
+                            # households have a non-blank `name`; for several
+                            # of the rest this is the only thing that renders
+                            # an adult at all. Equally, never conclude a row is
+                            # empty from the split columns alone: 136 real
+                            # adults across 2022-2026 are blank in
+                            # first_name/last_name and populated in `name`.
                             display_name=_s(adult, "name")
                             or f"{_s(adult, 'first_name')} {_s(adult, 'last_name')}".strip(),
                             relationship=_s(adult, "relationship_to_camper"),
