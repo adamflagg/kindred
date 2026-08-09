@@ -778,6 +778,24 @@ class TestFilterEscaping:
     """
 
     @pytest.mark.asyncio
+    async def test_the_phi_read_escapes_the_household_id(self, repo: LodgingRepository, pb: MagicMock) -> None:
+        """`fetch_medical_for_household` is the one that did not.
+
+        It is also the worst one to leave out: an unescaped quote closes the
+        `household = "..."` literal, and PocketBase binds `&&` tighter than
+        `||`, so an injected `||` clause widens the predicate past the year
+        AND the household -- and the first row of the result is returned as
+        THIS family's medical narrative. The method's own docstring already
+        argues that an unanchored filter is how one family's PHI reaches
+        another family's request; escaping is the other half of that anchor.
+        """
+        await repo.fetch_medical_for_household(2026, 'hh_1" || id != "')
+
+        filter_str = _last_query(pb)["filter"]
+        assert 'household = "hh_1\\" || id != \\""' in filter_str
+        assert '" || id != "' not in filter_str
+
+    @pytest.mark.asyncio
     async def test_attendees_escapes_the_session_id(self, repo: LodgingRepository, pb: MagicMock) -> None:
         await repo.fetch_attendees_for_session(2026, 'pb"; //')
 

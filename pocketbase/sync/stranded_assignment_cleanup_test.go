@@ -1098,10 +1098,12 @@ func TestStrandedAssignmentCleanup_ProdAuditWarningsClearWhenRunGatesOut(t *test
 // fail-closed, but permanently off. `session_cm_id` is what both sides can
 // still agree on.
 //
-// The draft below carries a BLANK `session` relation, which is the state
-// PocketBase leaves behind when the referenced camp_sessions record goes: an
-// optional relation to a deleted record is nullified. `session_cm_id` still
-// names the weekend, and that is the whole point.
+// The draft below points at a STALE camp_sessions record, not at a blank
+// relation. `lodging_assignments_draft.session` is `required: true`
+// (1500000132:190), so PocketBase never leaves it empty and a fixture that
+// blanked it would be testing a state production cannot reach. What production
+// reaches is this: two records, same CampMinder id, different PocketBase id --
+// the attendees on the new one, the placement still on the old.
 func TestStrandedAssignmentCleanup_LodgingOrphanPassKeysOnTheCampMinderSessionID(t *testing.T) {
 	app, err := pbtests.NewTestApp()
 	if err != nil {
@@ -1110,6 +1112,11 @@ func TestStrandedAssignmentCleanup_LodgingOrphanPassKeysOnTheCampMinderSessionID
 	defer app.Cleanup()
 	setupStrandedCollections(t, app)
 
+	// The record the placement was written against, replaced by `sess` when the
+	// weekend was recreated. Same cm_id and year -- camp_sessions is unique on
+	// that pair, so only one of these two can exist at a time in production;
+	// keeping both here is what lets one fixture hold the before and the after.
+	staleSess := addLodgingSession(t, app, 100, "family", 2026)
 	sess := addLodgingSession(t, app, 100, "family", 2026)
 	unit := addLodgingUnit(t, app, "ridge-a")
 	scenario := saveRec(t, app, "saved_scenarios", map[string]any{"name": "April", "session": sess.Id, "year": 2026})
@@ -1125,7 +1132,7 @@ func TestStrandedAssignmentCleanup_LodgingOrphanPassKeysOnTheCampMinderSessionID
 	})
 
 	draft := saveRec(t, app, "lodging_assignments_draft", map[string]any{
-		"session": "", "session_cm_id": 100, "year": 2026, "scenario": scenario.Id,
+		"session": staleSess.Id, "session_cm_id": 100, "year": 2026, "scenario": scenario.Id,
 		"units": []string{unit.Id}, "household_cm_id": 5001, "source": "campminder_sync", "staff_touched": false,
 	})
 

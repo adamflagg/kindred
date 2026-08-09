@@ -513,13 +513,21 @@ class LodgingRepository:
         A blank id means the household did not resolve, and is never turned
         into a query: an unanchored filter is how one family's narrative
         reaches another family's request.
+
+        `pb_escape` for the same reason, and it is the same anchor: a quote in
+        the id closes the literal, and PocketBase binds `&&` tighter than
+        `||`, so an injected `||` widens the predicate past BOTH the year and
+        the household and this returns the first row of whatever is left. The
+        id is server-resolved today, so this is defence in depth -- but every
+        other id-carrying filter in this file escapes, and a PHI read is the
+        last place to leave the odd one out.
         """
         if not household_pb_id:
             return None
         rows = await self._page(
             FAMILY_CAMP_MEDICAL,
             query_params={
-                "filter": f'year = {year} && household = "{household_pb_id}"',
+                "filter": f'year = {year} && household = "{pb_escape(household_pb_id)}"',
                 "sort": STABLE_SORT,
             },
         )
