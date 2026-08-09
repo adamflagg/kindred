@@ -101,3 +101,25 @@ export function partyIdentityLabel(party: RosterPartyRow): string {
 export function namedAdults(party: RosterPartyRow): PartyAdultRow[] {
   return (party.adults ?? []).filter((adult) => isAttendingAdultName(adult.display_name))
 }
+
+/**
+ * The headcount to print beside a party's own name/adult list -- the number
+ * of adults and children actually NAMED, never `party.party_size`
+ * (kindred#2152).
+ *
+ * `party_size` became a BED count under kindred#1925/#2046: the server drops
+ * blank and placeholder adult slots from it AND discounts a child under 18
+ * months at session start, so it legitimately diverges from the names on the
+ * card -- `boardLayout.partySize` and `rosterAttention.partyBeds` both need
+ * that bed number for the fit check. A badge sitting next to the printed
+ * list needs the OTHER number: whatever this function returns, so it can
+ * never disagree with the names underneath it.
+ *
+ * kindred#1946's nameless-row cleanup runs on the next successful derived
+ * sync, not on merge -- the rows this excludes are still live in `adults`
+ * today, which is exactly why the filtering has to happen here rather than
+ * being trusted to have already happened upstream.
+ */
+export function partyHeadcount(party: RosterPartyRow): number {
+  return namedAdults(party).length + (party.children?.length ?? 0)
+}

@@ -29,7 +29,7 @@ import type {
 } from '../../types/lodging'
 import { displayCampMinderAge } from '../../utils/age'
 import { AccessibilityFlagList } from './AccessibilityFlagList'
-import { namedAdults, partyIdentityLabel } from './householdIdentity'
+import { namedAdults, partyHeadcount, partyIdentityLabel } from './householdIdentity'
 import { MedicalNarrative } from './MedicalNarrative'
 import { partyKey } from './partyKey'
 import { ATTENTION_LABEL, partyAttention } from './rosterAttention'
@@ -148,15 +148,14 @@ export function FamilyDetailsPanel({
   const identityLabel = partyIdentityLabel(party)
   const attention = partyAttention(party, unit)
   const isPlaced = (party.unit_name ?? '').length > 0
-  // `> 0`, not `??` — the THIRD copy of the party_size read, and the one
-  // that used to disagree with the other two (kindred#1925, kindred#2046).
-  // `??` only falls back on null/undefined, so a reported 0 rendered
-  // "0 people" here while `boardLayout.partySize` and
-  // `rosterAttention.partyBeds` counted the bodies on the same screen. 0
-  // means NOT STATED, not "nobody"; see `boardLayout.partySize` for the full
-  // account, including why that 0 is newly reachable.
-  const reportedBeds = party.party_size ?? 0
-  const partySize = reportedBeds > 0 ? reportedBeds : adults.length + children.length
+  // NOT `party.party_size` — that became a BED count under kindred#1925/
+  // #2046 (it drops blank/placeholder adult slots and discounts an
+  // under-18-month infant) and can legitimately disagree with the adults and
+  // children this panel prints just below. `partyHeadcount` is that printed
+  // count, the same one FamilyCard's own badge uses, so the two surfaces —
+  // and this panel's own list — can never disagree with each other
+  // (kindred#2152).
+  const partySize = partyHeadcount(party)
 
   const body = (
     <div className="flex flex-col gap-4 p-4">
