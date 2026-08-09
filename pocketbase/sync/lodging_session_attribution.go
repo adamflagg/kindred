@@ -270,28 +270,40 @@ func findAllRecords(app core.App, collection, filter string, params ...dbx.Param
 
 // sessionIndexHasWindow reports whether windows -- one party's enrolled
 // sessions, as returned per-party by BuildHouseholdSessionIndex /
-// BuildPersonSessionIndex -- includes sessionID (a camp_sessions PB id).
-func sessionIndexHasWindow(windows []SessionWindow, sessionID string) bool {
+// BuildPersonSessionIndex -- includes sessionCMID (a camp_sessions CampMinder
+// id).
+//
+// Keyed on the CampMinder id, not the PB record id (kindred#2042). Its only
+// callers match a LODGING row's session against this index, and the lodging
+// row's durable key is session_cm_id: a camp_sessions record recreated rather
+// than updated gets a new PB id, the attendees re-sync onto it, and every
+// lodging row keyed on the old one silently stops matching. camp_sessions is
+// unique on (cm_id, year) and this index is built one year at a time, so the
+// CampMinder id identifies a window just as precisely.
+func sessionIndexHasWindow(windows []SessionWindow, sessionCMID int) bool {
 	for _, w := range windows {
-		if w.ID == sessionID {
+		if w.CMID == sessionCMID {
 			return true
 		}
 	}
 	return false
 }
 
-// reliableEnrolledSessions returns the set of session PB ids with at least one
-// actively-enrolled party in index. It is the per-session guard #2028 shares
-// with stranded_assignment_cleanup.go's findEnrollmentOrphans: a session
-// absent here had zero enrolled parties of this grain when index was built,
-// which is as likely to be a failed attendee sync as a genuinely empty
+// reliableEnrolledSessions returns the set of session CampMinder ids with at
+// least one actively-enrolled party in index. It is the per-session guard
+// #2028 shares with stranded_assignment_cleanup.go's findEnrollmentOrphans: a
+// session absent here had zero enrolled parties of this grain when index was
+// built, which is as likely to be a failed attendee sync as a genuinely empty
 // weekend, so nothing keyed to that session is swept by either caller
 // (LodgingAssignmentsSync.deleteLodgingOrphans, reconcileLodgingOrphans).
-func reliableEnrolledSessions(index map[int][]SessionWindow) map[string]bool {
-	out := make(map[string]bool)
+//
+// Keyed on the CampMinder id for the same reason sessionIndexHasWindow is --
+// see that function.
+func reliableEnrolledSessions(index map[int][]SessionWindow) map[int]bool {
+	out := make(map[int]bool)
 	for _, windows := range index {
 		for _, w := range windows {
-			out[w.ID] = true
+			out[w.CMID] = true
 		}
 	}
 	return out

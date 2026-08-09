@@ -103,9 +103,9 @@ class TestStableSort:
         "call",
         [
             pytest.param(lambda r: r.fetch_session(2026, 1), id="fetch_session"),
-            pytest.param(lambda r: r.fetch_availability(2026, "s1"), id="fetch_availability"),
-            pytest.param(lambda r: r.fetch_assignments(2026, "s1"), id="fetch_assignments"),
-            pytest.param(lambda r: r.fetch_slot_merges(2026, "s1", "scn_1"), id="fetch_slot_merges"),
+            pytest.param(lambda r: r.fetch_availability(2026, 1000001), id="fetch_availability"),
+            pytest.param(lambda r: r.fetch_assignments(2026, 1000001), id="fetch_assignments"),
+            pytest.param(lambda r: r.fetch_slot_merges(2026, 1000001, "scn_1"), id="fetch_slot_merges"),
             pytest.param(lambda r: r.fetch_attendees_for_session(2026, "s1"), id="fetch_attendees"),
             pytest.param(lambda r: r.fetch_households(2026), id="fetch_households"),
             pytest.param(lambda r: r.fetch_prior_household_cm_ids(2026), id="fetch_prior_cm_ids"),
@@ -176,6 +176,128 @@ class TestNarrowPhiReads:
         pb.collection.return_value.get_full_list.assert_not_called()
 
 
+class TestLodgingReadsKeyOnTheCampMinderSessionId:
+    """Every lodging read names the weekend by `session_cm_id` (kindred#2042).
+
+    CLAUDE.md section 1: cross-table relationships use CampMinder ids, never
+    PocketBase ids. The four lodging tables have carried both since 1500000124
+    -- a `session` relation AND a required `session_cm_id` -- and every filter
+    in this file keyed on the relation, which is the one of the two that does
+    not survive a camp_sessions record being RECREATED rather than updated.
+    The rows survive that (`cascadeDelete: false`, #1879); they just stop being
+    reachable through a relation-keyed filter while the durable key beside them
+    still points at the right weekend.
+
+    Migration 1500000147 re-keys the six unique indexes to match, so a filter
+    that kept naming the relation would no longer be answered by an index
+    either.
+
+    `fetch_attendees_for_session` is deliberately NOT in this list: `attendees`
+    is not a lodging table and carries no `session_cm_id`.
+    """
+
+    SESSION_CM_ID = 1000001
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        ("call", "collection"),
+        [
+            pytest.param(
+                lambda r, s: r.fetch_availability(2026, s),
+                "lodging_availability",
+                id="fetch_availability",
+            ),
+            pytest.param(
+                lambda r, s: r.fetch_assignments(2026, s),
+                "lodging_assignments",
+                id="fetch_assignments",
+            ),
+            pytest.param(
+                lambda r, s: r.fetch_draft_assignments(2026, s, "scn_1"),
+                "lodging_assignments_draft",
+                id="fetch_draft_assignments",
+            ),
+            pytest.param(
+                lambda r, s: r.fetch_slot_merges(2026, s, "scn_1"),
+                "lodging_slot_merges",
+                id="fetch_slot_merges",
+            ),
+            pytest.param(
+                lambda r, s: r.find_draft_assignment(2026, s, "scn_1", 2000001, 0),
+                "lodging_assignments_draft",
+                id="find_draft_assignment",
+            ),
+            pytest.param(
+                lambda r, s: r.find_availability_override(2026, s, "u1"),
+                "lodging_availability",
+                id="find_availability_override",
+            ),
+            pytest.param(
+                lambda r, s: r.find_slot_merge(2026, s, "u1", "scn_1"),
+                "lodging_slot_merges",
+                id="find_slot_merge",
+            ),
+        ],
+    )
+    async def test_the_session_term_is_the_campminder_id(
+        self, repo: LodgingRepository, pb: MagicMock, call: Any, collection: str
+    ) -> None:
+        await call(repo, self.SESSION_CM_ID)
+
+        pb.collection.assert_called_with(collection)
+        filter_str = _last_query(pb)["filter"]
+        assert f"session_cm_id = {self.SESSION_CM_ID}" in filter_str
+        # The relation must not also be filtered on: keying on both would
+        # reinstate exactly the unreachability this change removes.
+        assert 'session = "' not in filter_str
+
+    @pytest.mark.asyncio
+    async def test_count_draft_assignments_keys_on_the_campminder_id(
+        self, repo: LodgingRepository, pb: MagicMock
+    ) -> None:
+        """The counting read goes through `get_list`, not `get_full_list`."""
+        await repo.count_draft_assignments(2026, self.SESSION_CM_ID, "scn_1")
+
+        pb.collection.assert_called_with("lodging_assignments_draft")
+        filter_str = pb.collection.return_value.get_list.call_args[1]["query_params"]["filter"]
+        assert f"session_cm_id = {self.SESSION_CM_ID}" in filter_str
+        assert 'session = "' not in filter_str
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "call",
+        [
+            pytest.param(lambda r, s: r.fetch_availability(2026, s), id="fetch_availability"),
+            pytest.param(lambda r, s: r.fetch_assignments(2026, s), id="fetch_assignments"),
+            pytest.param(lambda r, s: r.fetch_draft_assignments(2026, s, "scn_1"), id="fetch_draft_assignments"),
+            pytest.param(lambda r, s: r.fetch_slot_merges(2026, s, "scn_1"), id="fetch_slot_merges"),
+            pytest.param(lambda r, s: r.find_draft_assignment(2026, s, "scn_1", 2000001, 0), id="find_draft"),
+            pytest.param(lambda r, s: r.find_availability_override(2026, s, "u1"), id="find_availability"),
+            pytest.param(lambda r, s: r.find_slot_merge(2026, s, "u1", "scn_1"), id="find_slot_merge"),
+        ],
+    )
+    async def test_the_session_term_is_never_compared_to_a_string(
+        self, repo: LodgingRepository, pb: MagicMock, call: Any
+    ) -> None:
+        """`session_cm_id` is a number column; it is never quoted, and never
+        tested with `!= ''`.
+
+        PocketBase declares number fields as NUMERIC DEFAULT 0 NOT NULL and
+        SQLite evaluates `0 != ''` as TRUE, so a string comparison against this
+        column matches rows it should exclude -- the same trap
+        `find_draft_assignment`'s docstring documents for the two party grains.
+        An unquoted integer also leaves no string literal for an injected `||`
+        to close, which is why these filters need no `pb_escape` on the session
+        term.
+        """
+        await call(repo, self.SESSION_CM_ID)
+
+        filter_str = _last_query(pb)["filter"]
+        assert 'session_cm_id = "' not in filter_str
+        assert "session_cm_id != ''" not in filter_str
+        assert 'session_cm_id != ""' not in filter_str
+
+
 class TestFetchAssignments:
     @pytest.mark.asyncio
     async def test_reads_the_synced_rows_and_expands_units(self, repo: LodgingRepository, pb: MagicMock) -> None:
@@ -189,11 +311,11 @@ class TestFetchAssignments:
         request naming a scenario does not read them at all -- it reads
         fetch_draft_assignments instead.
         """
-        await repo.fetch_assignments(2026, "sess_pb_1")
+        await repo.fetch_assignments(2026, 1000001)
 
         pb.collection.assert_called_with("lodging_assignments")
         params = _last_query(pb)
-        assert 'session = "sess_pb_1"' in params["filter"]
+        assert "session_cm_id = 1000001" in params["filter"]
         assert "year = 2026" in params["filter"]
         assert "scenario" not in params["filter"]
         assert params["expand"] == "units"
@@ -210,11 +332,11 @@ class TestFetchDraftAssignments:
         relation -- a read that does not expand it renders a placed party as
         unplaced, whether that placement is one room or several.
         """
-        await repo.fetch_draft_assignments(2026, "sess_pb_1", "scn_1")
+        await repo.fetch_draft_assignments(2026, 1000001, "scn_1")
 
         pb.collection.assert_called_with("lodging_assignments_draft")
         params = _last_query(pb)
-        assert 'session = "sess_pb_1"' in params["filter"]
+        assert "session_cm_id = 1000001" in params["filter"]
         assert "year = 2026" in params["filter"]
         assert 'scenario = "scn_1"' in params["filter"]
         assert params["expand"] == "units"
@@ -237,11 +359,11 @@ class TestFetchSlotMerges:
         resolve_combined is what picks the winner; this call must not
         pre-filter one tier away before that happens.
         """
-        await repo.fetch_slot_merges(2026, "sess_pb_1", "scn_1")
+        await repo.fetch_slot_merges(2026, 1000001, "scn_1")
 
         pb.collection.assert_called_with("lodging_slot_merges")
         params = _last_query(pb)
-        assert 'session = "sess_pb_1"' in params["filter"]
+        assert "session_cm_id = 1000001" in params["filter"]
         assert "year = 2026" in params["filter"]
         assert 'scenario = "scn_1"' in params["filter"]
         assert 'scenario = ""' in params["filter"]
@@ -257,11 +379,11 @@ class TestFetchSlotMerges:
         "every scenario's own rows"; it gets exactly the weekend-level tier,
         because `scenario = ""` is already that filter with no OR needed.
         """
-        await repo.fetch_slot_merges(2026, "sess_pb_1", "")
+        await repo.fetch_slot_merges(2026, 1000001, "")
 
         pb.collection.assert_called_with("lodging_slot_merges")
         params = _last_query(pb)
-        assert 'session = "sess_pb_1"' in params["filter"]
+        assert "session_cm_id = 1000001" in params["filter"]
         assert "year = 2026" in params["filter"]
         assert 'scenario = ""' in params["filter"]
         # No OR clause: a blank scenario_id must not turn into "any scenario".
@@ -288,7 +410,7 @@ class TestClientSuppliedValuesAreEscaped:
 
     @pytest.mark.asyncio
     async def test_fetch_draft_assignments_escapes_the_scenario(self, repo: LodgingRepository, pb: MagicMock) -> None:
-        await repo.fetch_draft_assignments(2026, "sess_pb_1", self.INJECTION)
+        await repo.fetch_draft_assignments(2026, 1000001, self.INJECTION)
 
         filter_str = _last_query(pb)["filter"]
         assert f'scenario = "{self.ESCAPED}"' in filter_str
@@ -296,7 +418,7 @@ class TestClientSuppliedValuesAreEscaped:
 
     @pytest.mark.asyncio
     async def test_find_draft_assignment_escapes_the_scenario(self, repo: LodgingRepository, pb: MagicMock) -> None:
-        await repo.find_draft_assignment(2026, "sess_pb_1", self.INJECTION, 1000001, 0)
+        await repo.find_draft_assignment(2026, 1000001, self.INJECTION, 2000001, 0)
 
         filter_str = _last_query(pb)["filter"]
         assert f'scenario = "{self.ESCAPED}"' in filter_str
@@ -304,7 +426,7 @@ class TestClientSuppliedValuesAreEscaped:
 
     @pytest.mark.asyncio
     async def test_fetch_slot_merges_escapes_the_scenario(self, repo: LodgingRepository, pb: MagicMock) -> None:
-        await repo.fetch_slot_merges(2026, "sess_pb_1", self.INJECTION)
+        await repo.fetch_slot_merges(2026, 1000001, self.INJECTION)
 
         filter_str = _last_query(pb)["filter"]
         assert f'scenario = "{self.ESCAPED}"' in filter_str
@@ -318,39 +440,19 @@ class TestClientSuppliedValuesAreEscaped:
         injected `||` would make this return some OTHER weekend's row -- which
         `set_availability` then updates or deletes.
         """
-        await repo.find_availability_override(2026, "sess_pb_1", 'u1" || id != "')
+        await repo.find_availability_override(2026, 1000001, 'u1" || id != "')
 
         filter_str = _last_query(pb)["filter"]
         assert 'unit = "u1\\" || id != \\""' in filter_str
         assert "scenario" not in filter_str
         assert '" || id != "' not in filter_str
 
-    @pytest.mark.asyncio
-    @pytest.mark.parametrize(
-        "call",
-        [
-            pytest.param(lambda r, s: r.fetch_availability(2026, s), id="fetch_availability"),
-            pytest.param(lambda r, s: r.fetch_assignments(2026, s), id="fetch_assignments"),
-            pytest.param(lambda r, s: r.fetch_draft_assignments(2026, s, "scn_1"), id="fetch_draft_assignments"),
-            pytest.param(lambda r, s: r.fetch_slot_merges(2026, s, "scn_1"), id="fetch_slot_merges"),
-        ],
-    )
-    async def test_every_session_filter_escapes_the_session_id(
-        self, repo: LodgingRepository, pb: MagicMock, call: Any
-    ) -> None:
-        """One convention across the whole file, not a per-call-site argument.
-
-        `session_pb_id` is server-resolved today, so none of these is
-        exploitable. The hazard is the split: escaping it in some session
-        filters and not others leaves a reader to work out which is which, and
-        the next caller to pass a client value inherits whichever form they
-        copied.
-        """
-        await call(repo, 'sess" || id != "')
-
-        filter_str = _last_query(pb)["filter"]
-        assert 'session = "sess\\" || id != \\""' in filter_str
-        assert '" || id != "' not in filter_str
+    # The session term used to be pinned here too, as a string that had to be
+    # escaped like every other. kindred#2042 made it `session_cm_id`, a NUMBER,
+    # so there is no literal left for an injected `||` to close and nothing for
+    # `pb_escape` to do -- what replaces this is
+    # `TestLodgingReadsKeyOnTheCampMinderSessionId.test_the_session_term_is_never_compared_to_a_string`,
+    # which pins the stronger property that the term is never quoted at all.
 
 
 class TestFetchAvailability:
@@ -367,11 +469,11 @@ class TestFetchAvailability:
         that no longer exists, which PocketBase rejects at query time rather
         than ignoring.
         """
-        await repo.fetch_availability(2026, "sess_pb_1")
+        await repo.fetch_availability(2026, 1000001)
 
         pb.collection.assert_called_with("lodging_availability")
         params = _last_query(pb)
-        assert 'session = "sess_pb_1"' in params["filter"]
+        assert "session_cm_id = 1000001" in params["filter"]
         assert "year = 2026" in params["filter"]
         assert "scenario" not in params["filter"]
 
@@ -660,15 +762,19 @@ class TestPageSize:
 
 
 class TestFilterEscaping:
-    """Every id interpolated into a filter goes through `pb_escape`.
+    """Every PocketBase id interpolated into a filter goes through `pb_escape`.
 
-    `session_pb_id` is server-derived today -- it comes from `fetch_session`
-    or `_resolve_session_pb_id`, never straight off the wire -- so this is
-    defence in depth rather than a live hole. It is worth pinning anyway:
-    six of the seven reads taking a `session_pb_id` escaped it and one did
-    not, and that asymmetry is how the next one gets written wrong. A reader
-    comparing two adjacent methods cannot tell which convention is the
-    deliberate one.
+    These ids are server-derived today -- they come from `fetch_session`,
+    `_resolve_session_pb_id` or a resolved household, never straight off the
+    wire -- so this is defence in depth rather than a live hole. It is worth
+    pinning anyway: the asymmetry is how the next one gets written wrong, and
+    a reader comparing two adjacent methods cannot tell which convention is
+    the deliberate one.
+
+    The LODGING reads left this list with kindred#2042: they name the weekend
+    by `session_cm_id`, a number, so there is no string literal to escape. The
+    guard that replaced them is
+    `TestLodgingReadsKeyOnTheCampMinderSessionId.test_the_session_term_is_never_compared_to_a_string`.
     """
 
     @pytest.mark.asyncio
@@ -683,25 +789,12 @@ class TestFilterEscaping:
         assert 'pb"; //' not in filter_str, "raw quote reached the filter unescaped"
         assert 'pb\\"; //' in filter_str, "quote was not backslash-escaped"
 
-    @pytest.mark.asyncio
-    @pytest.mark.parametrize(
-        "call",
-        [
-            pytest.param(lambda r, s: r.fetch_availability(2026, s), id="fetch_availability"),
-            pytest.param(lambda r, s: r.fetch_assignments(2026, s), id="fetch_assignments"),
-            pytest.param(lambda r, s: r.fetch_attendees_for_session(2026, s), id="fetch_attendees"),
-            pytest.param(lambda r, s: r.fetch_draft_assignments(2026, s, "sc"), id="fetch_draft_assignments"),
-        ],
-    )
-    async def test_every_session_scoped_read_escapes_alike(
-        self, repo: LodgingRepository, pb: MagicMock, call: Any
-    ) -> None:
-        """The convention, asserted across all of them rather than one by one."""
-        await call(repo, 'pb"evil')
-
-        filter_str = _last_query(pb)["filter"]
-        assert 'pb"evil' not in filter_str, "raw quote reached the filter unescaped"
-        assert 'pb\\"evil' in filter_str, "quote was not backslash-escaped"
+    # This class used to parametrize the same assertion across four
+    # session-scoped reads. Three of them (fetch_availability,
+    # fetch_assignments, fetch_draft_assignments) left the list with
+    # kindred#2042 -- they no longer interpolate a session STRING at all -- and
+    # `fetch_attendees_for_session` above is the only PocketBase id a lodging
+    # read still puts in a filter, so the parametrize collapsed to one case.
 
 
 # kindred#1963 -- of the six year-scoped reads in build_roster's TaskGroup,

@@ -55,20 +55,24 @@ func TestFindEnrollmentOrphans(t *testing.T) {
 	}
 }
 
+// Both sides of the match are keyed on the weekend's CampMinder id since
+// kindred#2042 -- the candidate's own session_cm_id against SessionWindow.CMID
+// -- so that a camp_sessions record recreated rather than updated cannot turn
+// the whole sweep into a silent no-op.
 func TestFindLodgingEnrollmentOrphans(t *testing.T) {
 	householdIndex := map[int][]SessionWindow{
-		9001: {{ID: "sess1"}}, // still enrolled in sess1
+		9001: {{ID: "pb1", CMID: 101}}, // still enrolled in weekend 101
 	}
 	personIndex := map[int][]SessionWindow{
-		7001: {{ID: "sess3"}}, // enrolled, but in a DIFFERENT session than the candidate names
-		7099: {{ID: "sess1"}}, // keeps sess1 "reliable" for the person grain
+		7001: {{ID: "pb3", CMID: 103}}, // enrolled, but in a DIFFERENT weekend than the candidate names
+		7099: {{ID: "pb1", CMID: 101}}, // keeps weekend 101 "reliable" for the person grain
 	}
 	candidates := []lodgingOrphanCandidate{
-		{RecordID: "r1", SessionID: "sess1", HouseholdCMID: 9001},             // enrolled - kept
-		{RecordID: "r2", SessionID: "sess1", HouseholdCMID: 9002},             // cancelled - orphan
-		{RecordID: "r3", SessionID: "sess2", HouseholdCMID: 9003},             // session has zero enrolled - skipped
-		{RecordID: "r4", SessionID: "sess1", PersonCMID: 7001},                // wrong session for this person - orphan
-		{RecordID: "r5", SessionID: "sess1", HouseholdCMID: 0, PersonCMID: 0}, // grain-less - skipped
+		{RecordID: "r1", SessionCMID: 101, HouseholdCMID: 9001},             // enrolled - kept
+		{RecordID: "r2", SessionCMID: 101, HouseholdCMID: 9002},             // cancelled - orphan
+		{RecordID: "r3", SessionCMID: 102, HouseholdCMID: 9003},             // weekend has zero enrolled - skipped
+		{RecordID: "r4", SessionCMID: 101, PersonCMID: 7001},                // wrong weekend for this person - orphan
+		{RecordID: "r5", SessionCMID: 101, HouseholdCMID: 0, PersonCMID: 0}, // grain-less - skipped
 	}
 
 	orphans := findLodgingEnrollmentOrphans(householdIndex, personIndex, candidates)
@@ -84,29 +88,34 @@ func TestFindLodgingEnrollmentOrphans(t *testing.T) {
 
 func TestReliableEnrolledSessions(t *testing.T) {
 	index := map[int][]SessionWindow{
-		9001: {{ID: "sess1"}, {ID: "sess2"}},
-		9002: {{ID: "sess1"}},
+		9001: {{ID: "pb1", CMID: 101}, {ID: "pb2", CMID: 102}},
+		9002: {{ID: "pb1", CMID: 101}},
 	}
 	reliable := reliableEnrolledSessions(index)
-	for _, id := range []string{"sess1", "sess2"} {
-		if !reliable[id] {
-			t.Errorf("reliable[%q] = false, want true", id)
+	for _, cmID := range []int{101, 102} {
+		if !reliable[cmID] {
+			t.Errorf("reliable[%d] = false, want true", cmID)
 		}
 	}
-	if reliable["sess3"] {
-		t.Error("reliable[sess3] = true, want false -- no party enrolled there")
+	if reliable[103] {
+		t.Error("reliable[103] = true, want false -- no party enrolled there")
+	}
+	// The PB record id must NOT be what keys the set: keyed on it, a recreated
+	// camp_sessions record makes every lodging row's weekend look unreliable.
+	if len(reliable) != 2 {
+		t.Errorf("reliable has %d entries, want 2 (one per weekend, not per PB record)", len(reliable))
 	}
 }
 
 func TestSessionIndexHasWindow(t *testing.T) {
-	windows := []SessionWindow{{ID: "a"}, {ID: "b"}}
-	if !sessionIndexHasWindow(windows, "a") {
-		t.Error("want true for a present window id")
+	windows := []SessionWindow{{ID: "pb-a", CMID: 101}, {ID: "pb-b", CMID: 102}}
+	if !sessionIndexHasWindow(windows, 101) {
+		t.Error("want true for a present window CampMinder id")
 	}
-	if sessionIndexHasWindow(windows, "z") {
-		t.Error("want false for an absent window id")
+	if sessionIndexHasWindow(windows, 999) {
+		t.Error("want false for an absent window CampMinder id")
 	}
-	if sessionIndexHasWindow(nil, "a") {
+	if sessionIndexHasWindow(nil, 101) {
 		t.Error("want false against a nil slice")
 	}
 }
@@ -1074,5 +1083,64 @@ func TestStrandedAssignmentCleanup_ProdAuditWarningsClearWhenRunGatesOut(t *test
 	}
 	if got := svc.GetStats().ProdAuditWarnings; got != 0 {
 		t.Errorf("run 2 audited nothing — want ProdAuditWarnings=0, got %d (stale value carried from run 1)", got)
+	}
+}
+
+// TestStrandedAssignmentCleanup_LodgingOrphanPassKeysOnTheCampMinderSessionID
+// pins kindred#2042 on the enrollment-orphan sweep.
+//
+// The candidate's session and the enrolled-party index are matched against each
+// other, and both used to be keyed on the camp_sessions PocketBase record id.
+// That id is replaced outright when the record is RECREATED rather than updated
+// (a restore, a manual repair): the attendees re-sync onto the new record while
+// the lodging rows keep the old one, so every candidate falls through the
+// per-session reliability guard and the sweep silently becomes a no-op --
+// fail-closed, but permanently off. `session_cm_id` is what both sides can
+// still agree on.
+//
+// The draft below carries a BLANK `session` relation, which is the state
+// PocketBase leaves behind when the referenced camp_sessions record goes: an
+// optional relation to a deleted record is nullified. `session_cm_id` still
+// names the weekend, and that is the whole point.
+func TestStrandedAssignmentCleanup_LodgingOrphanPassKeysOnTheCampMinderSessionID(t *testing.T) {
+	app, err := pbtests.NewTestApp()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer app.Cleanup()
+	setupStrandedCollections(t, app)
+
+	sess := addLodgingSession(t, app, 100, "family", 2026)
+	unit := addLodgingUnit(t, app, "ridge-a")
+	scenario := saveRec(t, app, "saved_scenarios", map[string]any{"name": "April", "session": sess.Id, "year": 2026})
+
+	cancelled := saveRec(t, app, "persons", map[string]any{"cm_id": 9001, "household_id": 5001, "year": 2026})
+	enrolledPerson := saveRec(t, app, "persons", map[string]any{"cm_id": 9002, "household_id": 5002, "year": 2026})
+	saveRec(t, app, "attendees", map[string]any{
+		"person": cancelled.Id, "person_id": 9001, "session": sess.Id, "status_id": 32, "year": 2026,
+	})
+	// Keeps the weekend's enrolled set non-empty so the per-session guard passes.
+	saveRec(t, app, "attendees", map[string]any{
+		"person": enrolledPerson.Id, "person_id": 9002, "session": sess.Id, "status_id": 2, "year": 2026,
+	})
+
+	draft := saveRec(t, app, "lodging_assignments_draft", map[string]any{
+		"session": "", "session_cm_id": 100, "year": 2026, "scenario": scenario.Id,
+		"units": []string{unit.Id}, "household_cm_id": 5001, "source": "campminder_sync", "staff_touched": false,
+	})
+
+	svc := NewStrandedAssignmentCleanupSync(app)
+	svc.SetYear(2026)
+	if err = svc.Sync(context.Background()); err != nil {
+		t.Fatalf("Sync: %v", err)
+	}
+
+	got, err := app.FindRecordById("lodging_assignments_draft", draft.Id)
+	if err != nil {
+		t.Fatalf("reload draft: %v", err)
+	}
+	if len(got.GetStringSlice("units")) != 0 {
+		t.Errorf("want units cleared for the cancelled household, got %v -- the sweep is still keyed "+
+			"on the session relation, so a recreated camp_sessions record turns it off", got.GetStringSlice("units"))
 	}
 }
