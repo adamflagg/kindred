@@ -17,6 +17,7 @@ import type { RosterPartyRow } from '../../types/lodging'
 import {
   defaultFriendGroupName,
   FRIEND_GROUP_COLORS,
+  friendGroupMemberLabels,
   householdLabel,
   nextFriendGroupColor,
 } from './friendGroups'
@@ -112,5 +113,65 @@ describe('householdLabel', () => {
     expect(householdLabel(party({ sort_name: '', display_name: '', children: [] }))).toBe(
       'Household 2000001'
     )
+  })
+})
+
+describe('friendGroupMemberLabels', () => {
+  // The member CHIPS render only this label and nothing else -- unlike the
+  // household picker's cards, which carry a children sub-line underneath.
+  // Two households sharing a surname must not render two identical chips.
+
+  it('leaves a label alone when nothing else in the group collides with it', () => {
+    const labels = friendGroupMemberLabels([
+      party({ household_cm_id: 2000001, sort_name: 'Johnson' }),
+      party({ household_cm_id: 2000002, sort_name: 'Garcia' }),
+    ])
+    expect(labels.get(2000001)).toBe('Johnson')
+    expect(labels.get(2000002)).toBe('Garcia')
+  })
+
+  it('disambiguates two households that share a surname with the eldest child', () => {
+    const labels = friendGroupMemberLabels([
+      party({
+        household_cm_id: 2000001,
+        sort_name: 'Johnson',
+        children: [{ person_cm_id: 3000001, display_name: 'Emma Johnson' }],
+      }),
+      party({
+        household_cm_id: 2000002,
+        sort_name: 'Johnson',
+        children: [{ person_cm_id: 3000002, display_name: 'Noah Johnson' }],
+      }),
+    ])
+    expect(labels.get(2000001)).toBe('Johnson · Emma Johnson')
+    expect(labels.get(2000002)).toBe('Johnson · Noah Johnson')
+  })
+
+  it('falls back to the CampMinder id when a colliding household has no child on file', () => {
+    const labels = friendGroupMemberLabels([
+      party({ household_cm_id: 2000001, sort_name: 'Johnson', children: [] }),
+      party({ household_cm_id: 2000002, sort_name: 'Johnson', children: [] }),
+    ])
+    expect(labels.get(2000001)).toBe('Johnson · 2000001')
+    expect(labels.get(2000002)).toBe('Johnson · 2000002')
+  })
+
+  it('does not disambiguate a household against a different label', () => {
+    // Three households, only two of which collide -- the third keeps its
+    // bare label.
+    const labels = friendGroupMemberLabels([
+      party({
+        household_cm_id: 2000001,
+        sort_name: 'Johnson',
+        children: [{ person_cm_id: 3000001, display_name: 'Emma Johnson' }],
+      }),
+      party({
+        household_cm_id: 2000002,
+        sort_name: 'Johnson',
+        children: [{ person_cm_id: 3000002, display_name: 'Noah Johnson' }],
+      }),
+      party({ household_cm_id: 2000003, sort_name: 'Chen' }),
+    ])
+    expect(labels.get(2000003)).toBe('Chen')
   })
 })

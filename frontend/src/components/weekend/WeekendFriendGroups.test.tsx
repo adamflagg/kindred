@@ -77,6 +77,7 @@ function renderTab(props: Partial<Parameters<typeof WeekendFriendGroups>[0]> = {
       sessionCmId={1000001}
       parties={[JOHNSON, GARCIA, CHEN]}
       canManage
+      sessionType="family"
       {...props}
     />,
     { wrapper }
@@ -220,6 +221,7 @@ describe('authoring a group', () => {
         sessionCmId={1000002}
         parties={[JOHNSON, GARCIA, CHEN]}
         canManage
+        sessionType="family"
       />
     )
     expect(screen.queryByTestId('friend-group-action-bar')).not.toBeInTheDocument()
@@ -246,6 +248,31 @@ describe('existing groups', () => {
     expect(within(card).getByText('Garcia, Johnson')).toBeInTheDocument()
     expect(within(card).getByText('Johnson')).toBeInTheDocument()
     expect(within(card).getByText('Garcia')).toBeInTheDocument()
+  })
+
+  it('tells apart two member chips that would otherwise both say "Johnson"', () => {
+    // The picker cards below carry a children sub-line and so escape this;
+    // the member chips carry only the label, so two households sharing a
+    // surname would render two identical, unreadable chips.
+    const JOHNSON_TWO = household(2000004, 'Johnson', 'Noah Johnson')
+    groupsResult = {
+      data: {
+        groups: [
+          {
+            ...group,
+            members: [{ household_cm_id: 2000001 }, { household_cm_id: 2000004 }],
+          },
+        ],
+      },
+      isLoading: false,
+      isPending: false,
+      error: null,
+    }
+    renderTab({ parties: [JOHNSON, GARCIA, CHEN, JOHNSON_TWO] })
+    const card = screen.getByTestId('friend-group-grp_1')
+    expect(within(card).getByText(/Johnson · Emma Johnson/)).toBeInTheDocument()
+    expect(within(card).getByText(/Johnson · Noah Johnson/)).toBeInTheDocument()
+    expect(within(card).queryByText('Johnson')).not.toBeInTheDocument()
   })
 
   it('says WITH and NEAR differently — they are different requests', () => {
@@ -347,8 +374,22 @@ describe('permissions and grain', () => {
   it('explains itself on an adult weekend, where there are no households', () => {
     renderTab({
       parties: [{ grain: 'person', person_cm_id: 4000001, household_cm_id: 0 }],
+      sessionType: 'adult',
     })
     expect(screen.getByText(/household/i)).toBeInTheDocument()
+    expect(screen.getByText(/individual guests rather than households/i)).toBeInTheDocument()
+    expect(screen.queryByTestId('friend-group-action-bar')).not.toBeInTheDocument()
+  })
+
+  it('does not claim a family weekend has no households, when it just has no registrations yet', () => {
+    // households.length === 0 is ALSO the state of a family weekend nobody has
+    // registered for yet -- the "this weekend enrols individual guests rather
+    // than households" copy would be false there, not merely empty.
+    renderTab({ parties: [], sessionType: 'family' })
+    expect(screen.queryByText(/individual guests rather than households/i)).not.toBeInTheDocument()
+    expect(
+      screen.getByText(/no (?:households|families).*(?:registered|enrolled)/i)
+    ).toBeInTheDocument()
     expect(screen.queryByTestId('friend-group-action-bar')).not.toBeInTheDocument()
   })
 })

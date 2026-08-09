@@ -276,6 +276,15 @@ class LodgingFriendGroupService:
         (blank means "fall back to the auto-name") that must not be confused
         with an omitted field.
 
+        `exclude_none` is stacked alongside it, and closes a gap
+        `exclude_unset` alone leaves open: it keys off `model_fields_set`, not
+        the value, so an EXPLICIT `{"name": null}` on the wire is "set" and
+        would survive into `changes` and write null over a live name. Every
+        optional field here already means "leave it alone" at `None` --
+        clearing the name is spelled `""`, not `null` -- so a field that is
+        `None` is never a value worth writing, whether it arrived as the
+        default or as an explicit null.
+
         Membership is replaced by DIFF, not by delete-all-then-recreate. A
         household that stays in the group keeps its row, its `added_by` and its
         creation time -- and the unique index cannot reject a re-add that races
@@ -285,7 +294,7 @@ class LodgingFriendGroupService:
         if row is None:
             raise FriendGroupNotFoundError(group_id)
 
-        changes = request.model_dump(exclude_unset=True)
+        changes = request.model_dump(exclude_unset=True, exclude_none=True)
         household_cm_ids = changes.pop("household_cm_ids", None)
 
         if changes:

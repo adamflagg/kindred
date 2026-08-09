@@ -478,6 +478,7 @@ export default function WeekendRosterPage() {
                         sessionCmId={selectedCmId ?? 0}
                         parties={parties}
                         canManage={canManageLodging}
+                        sessionType={selectedSession?.session_type ?? ''}
                       />
                     </ErrorBoundary>
                   </Activity>

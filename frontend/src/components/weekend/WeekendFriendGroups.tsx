@@ -44,6 +44,7 @@ import {
   FRIEND_GROUP_COLOR_NAMES,
   FRIEND_GROUP_COLORS,
   FRIEND_GROUP_INTENT_LABEL,
+  friendGroupMemberLabels,
   householdLabel,
   nextFriendGroupColor,
 } from './friendGroups'
@@ -56,6 +57,17 @@ export interface WeekendFriendGroupsProps {
   parties: RosterPartyRow[]
   /** `bunking.manage`. Without it the tab is a read-only list. */
   canManage: boolean
+  /**
+   * `WeekendSessionSummary.session_type`, e.g. `'adult'` or `'family'`.
+   *
+   * `households.length === 0` is ambiguous on its own: it is the PERMANENT
+   * state of an adult weekend (person grain, nothing to group -- ever), and
+   * it is ALSO the ordinary, temporary state of a family weekend nobody has
+   * registered for yet. Without this the empty state told every zero-household
+   * weekend "this weekend enrols individual guests rather than households",
+   * which is simply false for the second case.
+   */
+  sessionType: string
 }
 
 /** One group's card, with the inline editor its Rename button opens. */
@@ -79,6 +91,20 @@ function FriendGroupCard({
   const [draftColor, setDraftColor] = useState(group.color ?? FRIEND_GROUP_COLORS[0])
 
   const intent: FriendGroupIntent = group.intent ?? 'with'
+
+  // Disambiguated labels for the member chips below — see
+  // `friendGroupMemberLabels`. Built only from members still on the roster;
+  // a household that left it already gets its own "no longer enrolled" chip
+  // and has no label to collide with.
+  const memberLabels = useMemo(
+    () =>
+      friendGroupMemberLabels(
+        (group.members ?? [])
+          .map((member) => byHouseholdCmId.get(member.household_cm_id))
+          .filter((party): party is RosterPartyRow => party !== undefined)
+      ),
+    [group.members, byHouseholdCmId]
+  )
 
   function openEditor() {
     setDraftName(group.name ?? '')
@@ -163,7 +189,7 @@ function FriendGroupCard({
               key={member.household_cm_id}
               className="bg-muted text-foreground rounded-full px-2 py-0.5 text-xs"
             >
-              {householdLabel(party)}
+              {memberLabels.get(member.household_cm_id) ?? householdLabel(party)}
             </span>
           ) : (
             // NAMED, not dropped. A household that cancelled after the group
@@ -244,6 +270,7 @@ export function WeekendFriendGroups({
   sessionCmId,
   parties,
   canManage,
+  sessionType,
 }: WeekendFriendGroupsProps) {
   const groupsQuery = useWeekendFriendGroups(year, sessionCmId)
   const { createGroup, updateGroup, deleteGroup, isPending } = useFriendGroupMutations(
@@ -346,8 +373,17 @@ export function WeekendFriendGroups({
             <div className="space-y-3">
               <h2 className="text-foreground text-base font-semibold">Friend groups</h2>
               <p className="text-muted-foreground text-sm">
-                Friend groups are authored at household grain, and this weekend enrols individual
-                guests rather than households. There is nothing here to group.
+                {sessionType === 'adult' ? (
+                  <>
+                    Friend groups are authored at household grain, and this weekend enrols
+                    individual guests rather than households. There is nothing here to group.
+                  </>
+                ) : (
+                  <>
+                    No households are registered for this weekend yet. Friend groups can be made
+                    once families enrol.
+                  </>
+                )}
               </p>
             </div>
           )

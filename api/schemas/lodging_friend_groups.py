@@ -124,6 +124,13 @@ class FriendGroupUpdateRequest(BaseModel):
     blank input means in summer's action bar too. Collapsing the two would
     make a recolour silently blank the name.
 
+    `None` means "leave alone" REGARDLESS of whether the field was omitted or
+    sent explicitly as `null`. The service enforces this with
+    `model_dump(exclude_unset=True, exclude_none=True)` -- `exclude_unset`
+    alone is not enough, because it keys off `model_fields_set`, not the
+    value, so an explicit `null` on the wire would otherwise survive as a
+    write.
+
     `year` and `session_cm_id` are absent on purpose. Moving a group to
     another weekend is not an edit to it; the membership is a set of
     households enrolled in THAT weekend, and re-pointing the row would carry

@@ -303,6 +303,21 @@ class TestUpdateGroup:
         assert added == [CHEN]
 
     @pytest.mark.asyncio
+    async def test_an_explicit_null_means_leave_alone_not_write_null(self) -> None:
+        # `model_dump(exclude_unset=True)` keys off `model_fields_set`, NOT the
+        # value -- an explicit `{"name": null}` in the wire body counts as
+        # "set", so without also excluding `None` values it lands in `changes`
+        # and writes null over a live group name. The schema's own docstring
+        # says `name=None` means "leave the name alone"; this pins the service
+        # actually doing that for an EXPLICIT null, not just an omitted field.
+        groups = _groups_repo(find_group=_group_row(), fetch_members=[_member_row("grp_1", JOHNSON)])
+        request = FriendGroupUpdateRequest.model_validate({"name": None, "color": "#3b82f6"})
+        await _service(groups=groups).update_group("grp_1", request, "s@example.com")
+
+        data = groups.update_group.await_args.args[1]
+        assert data == {"color": "#3b82f6"}
+
+    @pytest.mark.asyncio
     async def test_a_membership_edit_does_not_touch_the_group_row(self) -> None:
         groups = _groups_repo(
             find_group=_group_row(),

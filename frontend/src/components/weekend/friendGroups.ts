@@ -111,6 +111,48 @@ export function householdLabel(party: RosterPartyRow): string {
   return `Household ${String(party.household_cm_id ?? 0)}`
 }
 
+/**
+ * Member-chip labels for one group, disambiguated.
+ *
+ * `householdLabel` alone collapses to a bare surname, and a group's member
+ * chips show ONLY that text — unlike the household picker's cards, which
+ * carry a children sub-line underneath and so read fine even when two labels
+ * collide. Two households sharing a surname in the same group would
+ * otherwise render two identical chips with nothing to tell them apart:
+ * React keys on `household_cm_id`, not the label, so nothing crashes — it is
+ * silently unreadable instead.
+ *
+ * A household whose label collides with another member's gets the eldest
+ * enrolled child appended, the same fallback rung `householdLabel` already
+ * uses when there is no surname at all. A household with no child on file
+ * falls back to its CampMinder id, which is always unique.
+ */
+export function friendGroupMemberLabels(parties: RosterPartyRow[]): Map<number, string> {
+  const withLabels = parties.map((party) => ({ party, label: householdLabel(party) }))
+
+  const counts = new Map<string, number>()
+  for (const { label } of withLabels) {
+    counts.set(label, (counts.get(label) ?? 0) + 1)
+  }
+
+  const result = new Map<number, string>()
+  for (const { party, label } of withLabels) {
+    const cmId = party.household_cm_id ?? 0
+    if ((counts.get(label) ?? 0) <= 1) {
+      result.set(cmId, label)
+      continue
+    }
+    const eldest = (party.children ?? [])[0]?.display_name?.trim()
+    // Truthy, not nullish -- a whitespace-only name trims to '', which must
+    // fall back to the id exactly as an absent one does. `??` would let ''
+    // through and print "Johnson · " for that household.
+    // eslint-disable-next-line @typescript-eslint/prefer-nullish-coalescing
+    const disambiguator = eldest ? eldest : String(cmId)
+    result.set(cmId, `${label} · ${disambiguator}`)
+  }
+  return result
+}
+
 /** What a group's intent means, in the roster's own words. */
 export const FRIEND_GROUP_INTENT_LABEL = {
   with: 'Same cabin',
