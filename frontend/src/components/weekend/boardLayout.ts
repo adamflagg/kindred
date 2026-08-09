@@ -50,6 +50,7 @@ import type {
   ShareRequest,
   SharePreferenceValue,
 } from '../../types/lodging'
+import { namedAdults } from './householdIdentity'
 import { partyKey } from './partyKey'
 import {
   buildingsSpanned,
@@ -114,26 +115,37 @@ function occupiedLeafCodes(
 }
 
 /**
- * How many people a party brings.
+ * How many BEDS a party consumes.
  *
- * THE ONE DEFINITION. It used to live privately inside `FamilyCard`, which was
- * fine while the card was the only thing that counted people; the moment a
- * ROOM counts them too, two copies is how the household total and the room
- * total start disagreeing.
+ * Beds, not bodies, since #1925 and #2046: the server drops blank and
+ * placeholder `family_camp_adults` slots from the count, and discounts a
+ * child under 18 months at session start. For the 24 households with an
+ * infant this figure is deliberately one lower than the names printed beside
+ * it — `slotOccupancy`, `partyBeds` and `bedsNeeded` all want beds, and the
+ * card's own names-chip is #2152's to split out.
  *
- * `party_size` is KNOWN WRONG and #1925 is the fix: it counts the household's
- * LISTED adults rather than the attending ones, and that issue's data
- * investigation found the errors run in BOTH directions, with the worst cases
- * under-counts. This is deliberately the single place it is read, so that fix
- * is one edit rather than a hunt.
+ * ⚠️ THERE ARE THREE COPIES OF THIS READ, not one. This doc comment used to
+ * claim it was "deliberately the single place it is read"; that was false
+ * when written and cost #2046 a re-sweep. The others are
+ * `rosterAttention.partyBeds` (byte-identical body) and an inline expression
+ * in `FamilyDetailsPanel`. Change one, change all three.
  *
  * A reported 0 means NOT STATED, not "nobody" — hence the fall back to the
- * people actually named.
+ * people actually named. That 0 is newly reachable now that the server
+ * discounts: a household whose only adult slot holds a placeholder and whose
+ * only child is an infant reports zero beds. Recounting the bodies there
+ * over-states, which is the safe direction on this surface — it reads as
+ * "look at this", where 0 reads as "nothing here".
+ *
+ * The fallback applies the adult predicate (`namedAdults`, the SAME rule the
+ * server counts by) but cannot apply the infant one: `PartyChild` carries
+ * `age` as CampMinder's `yy.mm`, which is exactly the field #2046 forbids
+ * thresholding, and no birthdate reaches the client.
  */
 export function partySize(party: RosterPartyRow): number {
   const reported = party.party_size ?? 0
   if (reported > 0) return reported
-  return (party.adults?.length ?? 0) + (party.children?.length ?? 0)
+  return namedAdults(party).length + (party.children?.length ?? 0)
 }
 
 /** What a card can say about how full it is. */

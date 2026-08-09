@@ -500,3 +500,51 @@ describe('FamilyDetailsPanel — interaction contract', () => {
     expect(onClose).not.toHaveBeenCalled()
   })
 })
+
+describe('FamilyDetailsPanel — the headcount reads party_size the way the board does', () => {
+  /*
+   * kindred#1925/#2046: this panel is the THIRD copy of the party_size read,
+   * after `boardLayout.partySize` and `rosterAttention.partyBeds`, and it was
+   * the only one spelled `??` rather than `> 0`. A reported 0 therefore
+   * rendered "0 people" here while the board beside it counted the bodies --
+   * two numbers for one household, on two surfaces open at once.
+   *
+   * `0` means NOT STATED, not "nobody". It is newly reachable now that
+   * placeholders and infants are discounted server-side (a household whose
+   * only adult slot says "NA" and whose only child is an infant), and the
+   * over-count is the deliberate direction: it reads as "look at this",
+   * where 0 reads as "nothing here".
+   */
+  it('falls back to counting people when party_size is 0', () => {
+    render(<FamilyDetailsPanel party={party({ party_size: 0 })} year={2026} onClose={vi.fn()} />, {
+      wrapper,
+    })
+    expect(screen.getByText('3 people')).toBeInTheDocument()
+  })
+
+  it('reports the server bed count when it is stated, even below the body count', () => {
+    // The infant discount in the flesh: three named people, two beds.
+    render(<FamilyDetailsPanel party={party({ party_size: 2 })} year={2026} onClose={vi.fn()} />, {
+      wrapper,
+    })
+    expect(screen.getByText('2 people')).toBeInTheDocument()
+  })
+
+  it('does not count a placeholder adult slot in the fallback', () => {
+    render(
+      <FamilyDetailsPanel
+        party={party({
+          party_size: 0,
+          adults: [
+            { adult_number: 1, display_name: 'Emma Johnson', relationship: 'Mother' },
+            { adult_number: 2, display_name: 'NA', relationship: '' },
+          ],
+        })}
+        year={2026}
+        onClose={vi.fn()}
+      />,
+      { wrapper }
+    )
+    expect(screen.getByText('2 people')).toBeInTheDocument()
+  })
+})

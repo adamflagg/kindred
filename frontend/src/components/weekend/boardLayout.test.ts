@@ -86,14 +86,15 @@ describe('slotOccupancy — how many people the card can account for', () => {
    * The corner figure was CAPACITY, so a card looked identical whether the
    * room was empty or full. This is the numerator that fixes that.
    *
-   * THE NUMERATOR IS KNOWN TO BE WRONG, and #1925 is the fix. `party_size`
-   * counts the household's LISTED adults rather than the attending ones, and
-   * a data investigation there found the errors run in BOTH directions, with
-   * the worst cases under-counts. It is already displayed per household on
-   * every `FamilyCard`; summing it onto the room does not create a new class
-   * of error, but it does make an existing one more consequential, because a
-   * room reading full is trusted in a way a household reading 6 is not. This
-   * is deliberately the ONE place that computes it, so #1925 has one edit.
+   * THE NUMERATOR IS BEDS, not bodies, since #1925 and #2046. It used to
+   * count the household's LISTED adults — blank and placeholder
+   * `family_camp_adults` slots included — and every child, infants among
+   * them. Both terms are now filtered server-side, so a room reading full is
+   * worth the trust that summing onto a room asks for.
+   *
+   * There were never "one place that computes it" — three copies read
+   * `party_size`, and this file's own doc comment claiming otherwise is what
+   * made #2046 re-sweep the tree. See `boardLayout.partySize`.
    *
    * SPANNING is the other half. Since #2010 a party holding several rooms is
    * drawn on each of them, and #2040 deliberately left that rule alone. When
@@ -128,6 +129,28 @@ describe('slotOccupancy — how many people the card can account for', () => {
     // One adult and one child in the fixture. A `party_size` of 0 is "not
     // stated", not "nobody" — the same reading `FamilyCard` has always used.
     const slot = { unit: unit(), parties: [party({ party_size: 0 })], consent: null }
+    expect(slotOccupancy(slot, [unit()]).occupants).toBe(2)
+  })
+
+  it('does not recount a placeholder adult in that fallback', () => {
+    // The fallback runs the SAME adult predicate the server counts by
+    // (`householdIdentity.namedAdults`), or a household whose only adult slot
+    // holds "NA" would be discounted server-side and silently re-inflated
+    // here — the exact drift #1925 step 5 exists to close.
+    const slot = {
+      unit: unit(),
+      parties: [
+        party({
+          party_size: 0,
+          adults: [
+            { adult_number: 1, display_name: 'Emma Johnson', relationship: 'Mother' },
+            { adult_number: 2, display_name: 'NA', relationship: '' },
+            { adult_number: 3, display_name: '', relationship: '' },
+          ],
+        }),
+      ],
+      consent: null,
+    }
     expect(slotOccupancy(slot, [unit()]).occupants).toBe(2)
   })
 

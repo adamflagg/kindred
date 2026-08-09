@@ -305,6 +305,19 @@ class RosterParty(BaseModel):
     sort_name: str = ""
     adults: list[PartyAdult] = Field(default_factory=list)
     children: list[PartyChild] = Field(default_factory=list)
+    # BEDS, not `len(adults) + len(children)` (kindred#1925, kindred#2046).
+    # Both lists above are published in full; this number counts only the
+    # adult slots holding a real name and the children who need a bed of
+    # their own -- a child under 18 months at session start does not. So it
+    # is legitimately LOWER than the rows beside it, and a consumer that
+    # recomputes it from those rows undoes both fixes. The rules and the
+    # placeholder tokens live in `api/constants/lodging.py`.
+    #
+    # 0 means NOT STATED, never "nobody": every frontend reader falls back to
+    # counting named people on 0, so do not start emitting it as a real
+    # answer. (`lodging_assignments.party_size`, written by the Go sync, is a
+    # SEPARATE stored column on a different table with the older
+    # every-body-counts meaning. It is written and never read.)
     party_size: int = 0
     unit_code: str = ""
     unit_name: str = ""
