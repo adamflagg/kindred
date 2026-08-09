@@ -403,11 +403,15 @@ const WEEKEND_SECTIONS: LegendSection[] = [
           }
           title="Area Color"
         >
+          {/* The parenthetical is for staff who remember the ring, not a changelog —
+              keep the tracker id (kindred#2179) here in the source, never in the
+              rendered copy. This is the Visual Guide: staff read it, and an issue
+              number means nothing to them. */}
           <p className="text-muted-foreground text-sm">
             Fill and border color group rooms by the area they sit in — the same color on the map's
             mark and the board's card edge. A secondary channel only: nothing depends on telling one
-            hue from another. (It used to ring a shared room too; that mark was struck in
-            kindred#2179 for firing on every cabin built to hold several families.)
+            hue from another. (It used to ring a shared room too; that ring was removed because it
+            fired on every cabin built to hold several families.)
           </p>
         </LegendEntry>
 
