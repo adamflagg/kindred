@@ -1,19 +1,30 @@
 /**
- * The in-place peek on the map.
+ * The in-place peek on the map — the surface that answers WHO IS HOUSED WHERE.
  *
- * One room gets a detail card; a cluster gets its rooms as a footprint grid.
- * Both matter: a pin whose only affordance is a native tooltip reads as broken,
- * and over half the site's rooms are lone cabins that would otherwise have no
- * interaction at all.
+ * One room gets a detail card. A cluster gets MASTER-DETAIL (kindred#2183): a
+ * summary over the whole building, the footprint grid beneath it as a spatial
+ * picker, and this same detail card for whichever room the picker selects.
+ *
+ * That replaced an either/or — `units.length === 1 ? DetailCard : FootprintGrid`
+ * — under which a multi-room building could NEVER show the rich card, because
+ * having more than one room was itself the disqualifier. Its cells carried a
+ * family label and nothing else, so the owner's question about a house ("who
+ * is in it") was answerable only for lone cabins.
+ *
+ * THE GRID'S CELLS STAY SMALL. It is the cluster disambiguator: proximity
+ * clustering can put rooms from more than one building under one pin, and a
+ * numbered blob is unreadable without a footprint. Layering a summary above it
+ * costs the grid nothing; growing its cells to carry detail would break the
+ * thing it exists for.
  *
  * `sleeps: null` is UNKNOWN and says so. "Sleeps 0" would be a lie about a
  * cabin nobody has measured.
  */
 import { Accessibility, Bath, Plug, Refrigerator, Snowflake } from 'lucide-react'
-import type { ReactNode } from 'react'
+import { type ReactNode, useState } from 'react'
 
 import type { RosterPartyRow } from '../../types/lodging'
-import { partyIdentityLabel } from './householdIdentity'
+import { namedAdults, partyIdentityLabel } from './householdIdentity'
 import { CONSENT_AMBER } from './mapColors'
 import type { MapUnit } from './mapModel'
 import { partyKey } from './partyKey'
@@ -72,6 +83,29 @@ function Amenities({ unit }: { unit: MapUnit['unit'] }): ReactNode {
   )
 }
 
+/**
+ * EVERY PERSON in the party, adults then children — the owner's ask on
+ * kindred#2183: "who is housed where", not which household's label is on the
+ * door.
+ *
+ * `namedAdults` rather than `party.adults`: `family_camp_adults` has five
+ * fixed slots and leaves the unused ones blank rather than omitting them, so
+ * the raw list renders nameless entries. Children are filtered the same way
+ * for the same reason.
+ *
+ * Falls back to `partyIdentityLabel` when there is nobody named at all, which
+ * is the one case where CampMinder's salutation is the only identity on file
+ * — the same fallback, and the same reasoning, as `householdIdentity.ts`.
+ */
+function partyPeopleLabel(party: RosterPartyRow): string {
+  const people = [
+    ...namedAdults(party).map((adult) => adult.display_name ?? ''),
+    ...(party.children ?? []).map((child) => child.display_name ?? ''),
+  ].filter((name) => name.trim() !== '')
+  if (people.length === 0) return partyIdentityLabel(party)
+  return people.join(' · ')
+}
+
 function occupantButtons(
   parties: RosterPartyRow[],
   onOpenParty: (party: RosterPartyRow) => void
@@ -85,16 +119,26 @@ function occupantButtons(
       }}
       className="text-foreground hover:text-primary text-right text-xs font-semibold underline-offset-2 hover:underline"
     >
-      {partyIdentityLabel(party)}
+      {partyPeopleLabel(party)}
     </button>
   ))
 }
 
-function DetailCard({ units, hue, onOpenParty }: MapUnitPopoverProps) {
-  const entry = units[0]
-  if (!entry) return null
-  const { unit, parties, consent } = entry
-  const capacityKnown = unit.sleeps !== null && unit.sleeps !== undefined
+interface DetailCardProps {
+  entry: MapUnit
+  hue: string
+  onOpenParty: (party: RosterPartyRow) => void
+}
+
+function DetailCard({ entry, hue, onOpenParty }: DetailCardProps) {
+  const { unit, parties, consent, capacity } = entry
+  // `capacity`, NOT `unit.sleeps` (kindred#2183). They are the same number for
+  // every ordinary room, and different for the one case this card could not
+  // previously tell the truth about: a combined house's own `sleeps` is a
+  // DELTA over its rooms (kindred#2041) — the landing futon — so reading it
+  // raw understates a four-room house as sleeping one. The map draws such a
+  // house as a single mark, so this lone card is exactly where that lands.
+  const capacityKnown = capacity !== null
   const badge = reservationBadge(unit)
   const bedsNeeded = parties.reduce((sum, party) => sum + partyBeds(party), 0)
 
@@ -131,16 +175,23 @@ function DetailCard({ units, hue, onOpenParty }: MapUnitPopoverProps) {
         </div>
         <div className="flex justify-between gap-3">
           <dt className="text-muted-foreground">Sleeps</dt>
-          <dd>{capacityKnown ? unit.sleeps : <em>unknown</em>}</dd>
+          <dd>{capacityKnown ? capacity : <em>unknown</em>}</dd>
         </div>
-        {/* A SIZING HINT, not a verdict — `party_size` counts every adult in
-            the household whether or not they attend, so it runs high. Shown
-            only against a capacity that exists; "3 of unknown" says nothing. */}
+        {/* A SIZING HINT, not a verdict. This comment used to say the number
+            "counts every adult in the household whether or not they attend,
+            so it runs high" — no longer true since #1925 and #2046: the
+            server drops blank and placeholder `family_camp_adults` slots and
+            discounts a child under 18 months, so `partyBeds` is BEDS. Still a
+            hint rather than a verdict, because the adult list is a five-slot
+            scrape staff transpose by hand and 16–22 households a year carry
+            adults it never receives (#1925's accepted cost) — the error now
+            runs in both directions instead of only high. Shown only against a
+            capacity that exists; "3 of unknown" says nothing. */}
         {parties.length > 0 && capacityKnown && (
           <div className="flex justify-between gap-3">
             <dt className="text-muted-foreground">Beds</dt>
-            <dd className={bedsNeeded > (unit.sleeps ?? 0) ? 'font-semibold text-amber-700' : ''}>
-              {`${String(bedsNeeded)} of ${String(unit.sleeps)}`}
+            <dd className={bedsNeeded > capacity ? 'font-semibold text-amber-700' : ''}>
+              {`${String(bedsNeeded)} of ${String(capacity)}`}
             </dd>
           </div>
         )}
@@ -251,6 +302,10 @@ interface ClusterNames {
  * cabins. Computed over UNIT NAMES only, never party names — a cell's label
  * is the occupant's name once a room is taken, and a prefix walk across mixed
  * unit/party strings would find something meaningless.
+ *
+ * The non-empty `prefix` is now ALSO the building's name in the master
+ * summary's heading and in its "← All of …" control (kindred#2183), which is
+ * the same fact put to a second use — not a second derivation of it.
  */
 function distinguishingNames(units: MapUnit[]): ClusterNames {
   const names = units.map((entry) => entry.unit.name)
@@ -267,17 +322,173 @@ function distinguishingNames(units: MapUnit[]): ClusterNames {
   }
 }
 
-function FootprintGrid({ units, hue, onOpenParty }: MapUnitPopoverProps) {
-  const taken = units.filter((entry) => entry.parties.length > 0).length
+/**
+ * One family's PEOPLE, wherever in the building they are — the summary's chip.
+ *
+ * Grouped by `partyKey` rather than by room, because a household placed across
+ * two rooms of one house is still ONE family and listing it twice would say
+ * two families are in the building. `flagged` is true when ANY of the rooms it
+ * occupies carries a consent flag: the summary is the first thing read, and a
+ * warning that only surfaced once you picked the right cell would be lost
+ * exactly when it matters.
+ */
+interface SummaryFamily {
+  party: RosterPartyRow
+  flagged: boolean
+}
+
+function summaryFamilies(units: MapUnit[]): SummaryFamily[] {
+  const out: SummaryFamily[] = []
+  const byKey = new Map<string, SummaryFamily>()
+  for (const entry of units) {
+    for (const party of entry.parties) {
+      const key = partyKey(party)
+      const seen = byKey.get(key)
+      if (seen) {
+        seen.flagged = seen.flagged || entry.consent !== null
+        continue
+      }
+      const record = { party, flagged: entry.consent !== null }
+      byKey.set(key, record)
+      out.push(record)
+    }
+  }
+  return out
+}
+
+interface ClusterSummaryProps {
+  units: MapUnit[]
+  hue: string
+  /** The building name the cells share, or '' for a cluster of unrelated cabins. */
+  prefix: string
+  onOpenParty: (party: RosterPartyRow) => void
+}
+
+/**
+ * The MASTER half of the master-detail peek: what is true of the whole
+ * building, in the same shape as the single-room card beside it.
+ *
+ * Every number here is aggregated over `MapUnit.roomCount` / `MapUnit.capacity`
+ * rather than over the marks — a combined house is ONE drawn unit standing for
+ * several rooms, and counting marks would report it as one room. Those two
+ * fields exist for exactly this reason and are computed in `buildMapModel`,
+ * which is the only place with the registry needed to walk a house's rooms.
+ */
+function ClusterSummary({ units, hue, prefix, onOpenParty }: ClusterSummaryProps) {
+  const rooms = units.reduce((total, entry) => total + entry.roomCount, 0)
+  // A drawn unit is taken as a WHOLE: a family holding a combined house holds
+  // every room in it, which is what "combined" means.
+  const taken = units.reduce(
+    (total, entry) => total + (entry.parties.length > 0 ? entry.roomCount : 0),
+    0
+  )
+  // ONE unmeasured room leaves the building total unknown — a partial sum
+  // understates capacity silently, which is worse than saying nothing.
+  const capacities = units.map((entry) => entry.capacity)
+  const capacity = capacities.some((value) => value === null)
+    ? null
+    : capacities.reduce((total: number, value) => total + (value ?? 0), 0)
+  const families = summaryFamilies(units)
+  // OVER THE DEDUPED FAMILIES, never over `units.flatMap(parties)`. A party
+  // holding two rooms is deliberately attached to BOTH of them by
+  // `indexPayload` — "A party holding several rooms appears on each of them",
+  // which is what stops the second room rendering empty — so the flat list
+  // counts its beds once per door, and can print more placed than the
+  // building sleeps. One chip, one household, one bed total.
+  const placed = families.reduce((total, { party }) => total + partyBeds(party), 0)
+
+  return (
+    <div className="flex min-w-[11rem] flex-col gap-1.5">
+      <h4 className="text-xs font-bold" style={{ color: hue }}>
+        {prefix === '' ? `${String(rooms)} rooms` : prefix}
+      </h4>
+      <dl className="flex flex-col gap-0.5 text-xs">
+        <div className="flex justify-between gap-3">
+          <dt className="text-muted-foreground">Rooms</dt>
+          <dd>{`${String(rooms)} · ${String(taken)} taken, ${String(rooms - taken)} open`}</dd>
+        </div>
+        <div className="flex justify-between gap-3">
+          <dt className="text-muted-foreground">Sleeps</dt>
+          <dd>
+            {capacity === null ? (
+              <em>unknown</em>
+            ) : (
+              `${String(capacity)} · ${String(placed)} placed`
+            )}
+          </dd>
+        </div>
+      </dl>
+
+      {/* A BLOCK, not a right-aligned `dd`: a chip naming four people needs the
+          popover's full width, and wrapping it into a 6rem column would put one
+          name per line. */}
+      <div className="flex flex-col gap-1">
+        <span className="text-muted-foreground text-xs">Occupied by</span>
+        {families.length === 0 ? (
+          <em className="text-muted-foreground text-xs">empty</em>
+        ) : (
+          <ul className="flex flex-col gap-1">
+            {families.map(({ party, flagged: notConsented }) => (
+              <li key={partyKey(party)}>
+                <button
+                  data-testid="map-popover-family"
+                  type="button"
+                  onClick={() => {
+                    onOpenParty(party)
+                  }}
+                  style={{ borderColor: notConsented ? CONSENT_AMBER : hue }}
+                  className="bg-card hover:bg-muted/60 flex w-full flex-col items-start gap-0.5 rounded-md border px-1.5 py-1 text-left"
+                >
+                  <span className="text-foreground text-[11px] font-semibold">
+                    {partyPeopleLabel(party)}
+                  </span>
+                  {/* SAID IN WORDS. The amber border alone would be colour as
+                      the sole signal (WCAG 1.4.1), and this chip is the only
+                      place the flag appears before a room is picked. */}
+                  {notConsented && (
+                    <span className="text-[10px] font-medium text-amber-700 dark:text-amber-400">
+                      {CONSENT_PHRASE}
+                    </span>
+                  )}
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+    </div>
+  )
+}
+
+interface FootprintGridProps {
+  units: MapUnit[]
+  hue: string
+  /** Per-room labels with the shared building name stripped, from the parent. */
+  shortNames: string[]
+  selectedUnitId: string | null
+  onSelectUnit: (unitId: string) => void
+}
+
+/**
+ * The DETAIL half's picker: the building's footprint, one cell per room.
+ *
+ * A cell now SELECTS its room rather than opening the occupant's panel — the
+ * panel is one step further in, off the room card's own occupant chips. The
+ * cluster header this used to carry moved up into `ClusterSummary`, which
+ * always sits above it; two headers saying "3 rooms · 1 taken" a few pixels
+ * apart is noise in a 15rem popover.
+ */
+function FootprintGrid({
+  units,
+  hue,
+  shortNames,
+  selectedUnitId,
+  onSelectUnit,
+}: FootprintGridProps) {
   const columns = Math.ceil(Math.sqrt(units.length))
-  const { names: shortNames, prefix } = distinguishingNames(units)
 
   return (
     <div className="flex flex-col gap-1.5">
-      <h4 className="text-xs font-bold" style={{ color: hue }}>
-        {prefix && `${prefix} · `}
-        {units.length} rooms · {taken} taken
-      </h4>
       <div
         className="grid gap-1"
         style={{ gridTemplateColumns: `repeat(${String(columns)}, auto)` }}
@@ -365,8 +576,12 @@ function FootprintGrid({ units, hue, onOpenParty }: MapUnitPopoverProps) {
               type="button"
               title={described}
               aria-label={described}
+              // PICKS the room; it no longer opens the family panel directly.
+              // `aria-pressed` because that is what this control now is — a
+              // toggle into the detail below, not a link out of the popover.
+              aria-pressed={selectedUnitId === entry.unit.unit_id}
               onClick={() => {
-                onOpenParty(first)
+                onSelectUnit(entry.unit.unit_id)
               }}
               style={style}
               className={className}
@@ -380,15 +595,66 @@ function FootprintGrid({ units, hue, onOpenParty }: MapUnitPopoverProps) {
   )
 }
 
-export function MapUnitPopover(props: MapUnitPopoverProps) {
-  if (props.units.length === 0) return null
+export function MapUnitPopover({ units, hue, onOpenParty }: MapUnitPopoverProps) {
+  // LOCAL and nothing leaves the popover: which room of a container is being
+  // read is not a fact the map, the board or the URL has any use for.
+  const [pickedUnitId, setPickedUnitId] = useState<string | null>(null)
+
+  const { names: shortNames, prefix } = distinguishingNames(units)
+  // DERIVED from the current props every render, never trusted from state.
+  // This popover is reconciled by POSITION — `LodgingMap` renders it inside an
+  // unkeyed wrapper — so a roster refetch or a pan that dissolves this cluster
+  // and opens another reuses the same component instance. Looking the id up in
+  // THIS render's units is what stops a room from staying picked under a pin
+  // that no longer contains it; the same latch shape as `LodgingMap`'s
+  // pinned/dwell keys (kindred#2137 bug 4).
+  const picked = units.find((entry) => entry.unit.unit_id === pickedUnitId) ?? null
+  // And DROPPED, not merely ignored, the moment it stops resolving. Falling
+  // back to the summary is only half the latch: the id would still be in state
+  // when the original cluster came back — pin A, pin B, pin A — and the room
+  // card would reappear under a click that only asked for the building.
+  // Cleared right here during render rather than in an Effect, the same shape
+  // and for the same reason as `LodgingMap`'s pinned/dwell keys.
+  if (pickedUnitId !== null && picked === null) setPickedUnitId(null)
+
+  if (units.length === 0) return null
+
+  const lone = units[0]
   return (
     <div
       data-map-popover
-      style={{ borderColor: props.hue }}
+      style={{ borderColor: hue }}
       className="bg-card shadow-lodge-sm max-w-[15rem] rounded-xl border-2 p-2"
     >
-      {props.units.length === 1 ? <DetailCard {...props} /> : <FootprintGrid {...props} />}
+      {units.length === 1 && lone ? (
+        <DetailCard entry={lone} hue={hue} onOpenParty={onOpenParty} />
+      ) : (
+        <div className="flex flex-col gap-2">
+          {picked === null ? (
+            <ClusterSummary units={units} hue={hue} prefix={prefix} onOpenParty={onOpenParty} />
+          ) : (
+            <div className="flex flex-col gap-1.5">
+              <button
+                type="button"
+                onClick={() => {
+                  setPickedUnitId(null)
+                }}
+                className="text-muted-foreground hover:text-foreground self-start text-[11px] font-semibold underline-offset-2 hover:underline"
+              >
+                {prefix === '' ? '← All rooms' : `← All of ${prefix}`}
+              </button>
+              <DetailCard entry={picked} hue={hue} onOpenParty={onOpenParty} />
+            </div>
+          )}
+          <FootprintGrid
+            units={units}
+            hue={hue}
+            shortNames={shortNames}
+            selectedUnitId={picked?.unit.unit_id ?? null}
+            onSelectUnit={setPickedUnitId}
+          />
+        </div>
+      )}
     </div>
   )
 }

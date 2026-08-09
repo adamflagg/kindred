@@ -1,17 +1,30 @@
 /**
- * The weekend lodging MAP — read-only, and a projection of the board.
+ * The weekend lodging MAP — a REFERENCE surface, and a projection of the board.
  *
  * Same roster payload, same `buildBoard`, plus position. It answers the two
  * questions a grid cannot: is this family near that one, and does this family
- * sit beside a bathhouse or a staff cabin.
+ * sit beside a bathhouse or a staff cabin. Since kindred#2183 it answers a
+ * third, which is now its main job: WHO IS HOUSED WHERE — the peek lists every
+ * person in a room or a building, grouped into family chips, and clicking one
+ * opens the same family panel the board opens.
+ *
+ * READ-ONLY BY RULING, NOT BY NOT-YET (kindred#2183). Placement was specified
+ * for this surface and never built, and the owner has since closed the door:
+ * "staff have informed me they will only be looking at the map as a data point
+ * and not bunking on it." What survived was scaffolding — a `dropTarget`
+ * threaded into `resolveRingPrecedence` only to be hard-set false, and a
+ * shared unplaced queue mounted without `canPlace` — and it is gone. Treat a
+ * placement affordance appearing here as a decision to reopen with the owner,
+ * not as finishing something half-wired. `LodgingMap.test.tsx` guards this
+ * with a source read, because none of it changed a rendered pixel.
  *
  * SCENARIO AWARENESS MIRRORS THE BOARD AND NOTHING MORE — currently none. The
  * header's `ModeBadge` says which plan is on screen, for this tab and every
  * other; a chip here as well was a second claim to keep true, and it stopped
- * being true the moment #1967 let staff select a draft. Drag placement (#1985)
- * is what earns a scenario id back, and the board must gain it in the same
- * change: a map that knew about scenarios while the board did not would be a
- * second system of record, which is the one thing this must not be.
+ * being true the moment #1967 let staff select a draft. Nothing on this
+ * surface earns a scenario id back while it stays a reference view: a map that
+ * knew about scenarios while the board did not would be a second system of
+ * record, which is the one thing this must not be.
  *
  * ACCESSIBILITY, stated rather than implied: a pan/zoom map is not
  * keyboard-navigable. The accessible equivalent is Manage → Family Camp
@@ -85,11 +98,17 @@ const DWELL_MS = 400
 
 /** Half of the popover's `max-w-[15rem]` (240px), padded a bit. Clamping the
  *  anchor at least this far from each edge keeps the box on-screen. Height
- *  is content-dependent (a detail card is shorter than a multi-room
- *  footprint grid), so this is deliberately generous rather than exact —
- *  better a small unnecessary gap than a clipped popover. */
+ *  is content-dependent, so this is deliberately generous rather than exact —
+ *  better a small unnecessary gap than a clipped popover.
+ *
+ *  RAISED for kindred#2183: a container's peek is now a summary card STACKED
+ *  ON the footprint grid rather than the grid alone, so the tallest thing this
+ *  has to keep on canvas grew by roughly the height of a detail card. The
+ *  policy in the line above is what makes raising it the right response to
+ *  that — jsdom performs no layout, so no test here can measure the real box.
+ */
 const POPOVER_HALF_WIDTH = 130
-const POPOVER_HALF_HEIGHT = 110
+const POPOVER_HALF_HEIGHT = 150
 
 export interface LodgingMapProps {
   parties: RosterPartyRow[]
@@ -598,11 +617,11 @@ export function LodgingMap({ parties, units, year, sessionCmId = 0 }: LodgingMap
               // a consent flag only ever exists on a shared room, so the two
               // can never both need the same ring. The ORDERING is
               // `resolveRingPrecedence` (kindred#2136), shared with
-              // `LodgingUnitCard.tsx`'s `ringState` — the map has no drag, so
-              // `dropTarget` is always `false` here and this can only ever
+              // `LodgingUnitCard.tsx`'s `ringState`. The drop-target state is
+              // OMITTED, not passed as false: this surface has no placement to
+              // have a target for (kindred#2183), so the resolver can only
               // land on `consentFlagged`, `shared` or `plain`.
               const ringState = resolveRingPrecedence({
-                dropTarget: false,
                 consentFlagged: flagged > 0,
                 shared,
               })
@@ -837,6 +856,12 @@ export function LodgingMap({ parties, units, year, sessionCmId = 0 }: LodgingMap
         </div>
       </div>
 
+      {/* The SHARED corner queue the board mounts too, deliberately without
+          the placement permission the board passes it. That omission is a
+          RULING, not an oversight (kindred#2183): the queue here is a list of
+          who still needs a room, and this surface does not give anyone one.
+          The component defaults the permission off, so the omission is the
+          whole implementation — nothing to hard-code false. */}
       <FloatingUnplacedBadge
         parties={model.unplaced}
         onOpenParty={openParty}

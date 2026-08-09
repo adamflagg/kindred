@@ -243,6 +243,121 @@ describe('buildMapModel', () => {
   })
 })
 
+/**
+ * kindred#2183 — the popover's container summary needs a room count and a
+ * whole-house capacity, and it CANNOT derive either: it is handed `MapUnit[]`,
+ * never the registry, so a walk to the leaves beneath a combined house is
+ * impossible there. Both are computed here and threaded down.
+ */
+describe('buildMapModel — what a drawn unit stands for (kindred#2183)', () => {
+  /**
+   * A three-level house, drawn as ONE card: root combined, an intermediate
+   * container half, two rooms beneath THAT. Three levels on purpose — a
+   * direct-children walk finds nothing here and reports the house as 0 rooms
+   * with no capacity, which looks plausible rather than broken.
+   */
+  const HOUSE: LodgingUnitRow[] = [
+    unit({
+      unit_id: 'h0',
+      code: 'cedar-house',
+      name: 'Cedar House',
+      is_container: true,
+      is_combined: true,
+      // A container's own `sleeps` is a DELTA over its rooms (kindred#2041) —
+      // the landing futon, not the whole house.
+      sleeps: 1,
+      map_x: 0.3,
+      map_y: 0.3,
+    }),
+    unit({
+      unit_id: 'h1',
+      code: 'cedar-house-up',
+      name: 'Cedar House Upstairs',
+      is_container: true,
+      parent_code: 'cedar-house',
+      sleeps: 0,
+      map_x: 0.3,
+      map_y: 0.3,
+    }),
+    unit({
+      unit_id: 'h2',
+      code: 'cedar-house-a',
+      name: 'Cedar House A',
+      parent_code: 'cedar-house-up',
+      sleeps: 2,
+      map_x: 0.3,
+      map_y: 0.3,
+    }),
+    unit({
+      unit_id: 'h3',
+      code: 'cedar-house-b',
+      name: 'Cedar House B',
+      parent_code: 'cedar-house-up',
+      sleeps: 3,
+      map_x: 0.3,
+      map_y: 0.3,
+    }),
+  ]
+
+  it('says an ordinary room stands for exactly one room', () => {
+    const model = buildMapModel([], [unit()])
+    expect(model.units[0]?.roomCount).toBe(1)
+  })
+
+  it('reports an ordinary room’s own capacity', () => {
+    const model = buildMapModel([], [unit({ sleeps: 4 })])
+    expect(model.units[0]?.capacity).toBe(4)
+  })
+
+  it('leaves an unmeasured room’s capacity unknown rather than calling it 0', () => {
+    const model = buildMapModel([], [unit({ sleeps: null })])
+    expect(model.units[0]?.capacity).toBeNull()
+  })
+
+  it('counts the LEAF rooms under a combined house, at any depth', () => {
+    const model = buildMapModel([], HOUSE)
+    expect(model.units.map((u) => u.unit.code)).toEqual(['cedar-house'])
+    expect(model.units[0]?.roomCount).toBe(2)
+  })
+
+  it('adds the house delta to every room beneath it', () => {
+    const model = buildMapModel([], HOUSE)
+    expect(model.units[0]?.capacity).toBe(6)
+  })
+
+  it('refuses a whole-house total when one room beneath is unmeasured', () => {
+    const withUnmeasured = HOUSE.map((row) =>
+      row.code === 'cedar-house-b' ? { ...row, sleeps: null } : row
+    )
+    const model = buildMapModel([], withUnmeasured)
+    expect(model.units[0]?.capacity).toBeNull()
+  })
+
+  it('skips a retired room in both directions — no beds, and no veto', () => {
+    // A deactivated room adds nothing and must not park its house in the
+    // unmeasured state forever. Same rule as `effectiveSleeps`.
+    const retired = HOUSE.map((row) =>
+      row.code === 'cedar-house-b' ? { ...row, sleeps: null, is_active: false } : row
+    )
+    const model = buildMapModel([], retired)
+    expect(model.units[0]?.capacity).toBe(3)
+  })
+
+  it('leaves a retired room out of the ROOM COUNT too, not only out of the beds', () => {
+    // The two numbers are printed on adjacent lines of one summary — "Rooms 2
+    // · 1 taken, 1 open" over "Sleeps 3" — so counting a room the capacity
+    // deliberately skipped makes the pair disagree, and offers a retired room
+    // as one of the building's "open" ones. Whichever way the active filter
+    // goes it has to go the same way in both.
+    const retired = HOUSE.map((row) =>
+      row.code === 'cedar-house-b' ? { ...row, is_active: false } : row
+    )
+    const model = buildMapModel([], retired)
+    expect(model.units[0]?.roomCount).toBe(1)
+    expect(model.units[0]?.capacity).toBe(3)
+  })
+})
+
 describe('countMapUnits', () => {
   it('counts what the map draws, which is not the inventory count', () => {
     const units = [

@@ -16,6 +16,11 @@ import re
 from pathlib import Path
 
 from api.constants import collections
+from api.constants.lodging import (
+    ADULT_NAME_PLACEHOLDERS,
+    INFANT_BED_EXEMPT_MONTHS,
+    is_attending_adult_name,
+)
 from bunking.rbac.permissions import ALL_PERMISSIONS, PERMISSION_DESCRIPTIONS, Permission
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
@@ -79,3 +84,54 @@ def test_typescript_permission_file_mirrors_python() -> None:
     """
     ts = (REPO_ROOT / "frontend" / "src" / "constants" / "permissions.ts").read_text()
     assert re.search(r"""LODGING_PHI:\s*['"]lodging\.phi['"]""", ts)
+
+
+def test_infant_bed_exemption_is_eighteen_months_hardcoded() -> None:
+    """kindred#2046, settled by the owner: 18 MONTHS, not 1.5 years.
+
+    Whole months, because the input is `birthdate` measured against
+    `camp_sessions.start_date`. It is emphatically NOT a threshold on
+    `persons.age`: that column is CampMinder's `yy.mm` as a REAL, where the
+    fractional part never exceeds `.11`, so `age < 1.5` reads as "under 24
+    months" and discounts every 19-23 month old the ruling says must keep a
+    bed. Measured on 2026's rostered cohort, the naive form discounts 44
+    children where the derived rule discounts 24.
+    """
+    assert INFANT_BED_EXEMPT_MONTHS == 18
+
+
+def test_adult_name_placeholders_are_lowercase_tokens() -> None:
+    """The set is compared against a casefolded, stripped name, so every
+    member must already be lowercase or it can never match."""
+    assert frozenset({"na", "n/a", "none", "-", "0", "no"}) == ADULT_NAME_PLACEHOLDERS
+    assert all(token == token.lower() for token in ADULT_NAME_PLACEHOLDERS)
+
+
+def test_is_attending_adult_name_rejects_blanks_and_placeholders() -> None:
+    assert is_attending_adult_name("Emma Johnson")
+    # A real surname that merely CONTAINS a placeholder token is not one.
+    assert is_attending_adult_name("Nona Garcia")
+    assert not is_attending_adult_name("")
+    assert not is_attending_adult_name("   ")
+    assert not is_attending_adult_name("NA")
+    assert not is_attending_adult_name(" n/a ")
+    assert not is_attending_adult_name("None")
+    assert not is_attending_adult_name("-")
+    assert not is_attending_adult_name("0")
+    assert not is_attending_adult_name("No")
+
+
+def test_typescript_household_identity_mirrors_the_placeholder_set() -> None:
+    """kindred#1925 step 5. The board must not render an adult the party size
+    refuses to count, so the two surfaces share ONE token list.
+
+    Grepped rather than executed: there is no JS runtime here. The guarantee
+    is that every Python token appears as a quoted string literal in
+    `householdIdentity.ts`'s placeholder set, so adding a token on one side
+    and not the other is a test failure rather than a silent divergence.
+    """
+    ts = (REPO_ROOT / "frontend" / "src" / "components" / "weekend" / "householdIdentity.ts").read_text()
+    block = re.search(r"ADULT_NAME_PLACEHOLDERS[^=]*=\s*new Set\(\[(.*?)\]\)", ts, re.DOTALL)
+    assert block is not None, "householdIdentity.ts must export an ADULT_NAME_PLACEHOLDERS Set"
+    tokens = set(re.findall(r"'([^']*)'", block.group(1)))
+    assert tokens == set(ADULT_NAME_PLACEHOLDERS)
