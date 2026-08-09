@@ -13,13 +13,19 @@
  */
 import { describe, expect, it } from 'vitest'
 
+import type { FriendGroupRow } from '../../types/friendGroups'
 import type { RosterPartyRow } from '../../types/lodging'
 import {
   defaultFriendGroupName,
   FRIEND_GROUP_COLORS,
   friendGroupMemberLabels,
+  householdGroupIndex,
   householdLabel,
   nextFriendGroupColor,
+  partyComposition,
+  ungroupedHouseholds,
+  withHousehold,
+  withoutHousehold,
 } from './friendGroups'
 
 function party(overrides: Partial<RosterPartyRow> = {}): RosterPartyRow {
@@ -173,5 +179,121 @@ describe('friendGroupMemberLabels', () => {
       party({ household_cm_id: 2000003, sort_name: 'Chen' }),
     ])
     expect(labels.get(2000003)).toBe('Chen')
+  })
+})
+
+function group(overrides: Partial<FriendGroupRow> = {}): FriendGroupRow {
+  return {
+    group_id: 'grp_1',
+    year: 2026,
+    session_cm_id: 1000001,
+    name: '',
+    color: FRIEND_GROUP_COLORS[0],
+    source: 'staff_manual',
+    created_by: 'staff@example.com',
+    members: [],
+    ...overrides,
+  }
+}
+
+describe('partyComposition', () => {
+  // kindred#1913 half 2 (Option A member rows). `RosterParty.party_size` is
+  // the roster service's own `len(adults) + len(children)`
+  // (api/services/lodging_roster_service.py), so counting the SAME two
+  // arrays the server already summed is not a second, drifting count -- it
+  // is the one the server already trusts. No API call added: everything
+  // here is already on the roster payload the group card was handed.
+  it('counts adults and children separately, and totals them', () => {
+    const composition = partyComposition(
+      party({
+        party_size: 4,
+        adults: [
+          { adult_number: 1, display_name: 'Pat Johnson' },
+          { adult_number: 2, display_name: 'Sam Johnson' },
+        ],
+        children: [{ person_cm_id: 3000001, display_name: 'Emma Johnson' }],
+      })
+    )
+    expect(composition).toBe('4 people · 2 adults, 1 child')
+  })
+
+  it('singularises one person, one adult, one child', () => {
+    const composition = partyComposition(
+      party({
+        party_size: 2,
+        adults: [{ adult_number: 1, display_name: 'Pat Johnson' }],
+        children: [{ person_cm_id: 3000001, display_name: 'Emma Johnson' }],
+      })
+    )
+    expect(composition).toBe('2 people · 1 adult, 1 child')
+  })
+
+  it('falls back to adults.length + children.length when party_size is absent', () => {
+    // A plain literal, not `party({...})`: `exactOptionalPropertyTypes`
+    // rejects an explicit `party_size: undefined` override, and the point of
+    // this fixture is that the key is OMITTED, not set to undefined.
+    const composition = partyComposition({
+      grain: 'household',
+      household_cm_id: 2000001,
+      adults: [{ adult_number: 1, display_name: 'Pat Johnson' }],
+      children: [],
+    })
+    expect(composition).toBe('1 person · 1 adult, 0 children')
+  })
+})
+
+describe('householdGroupIndex', () => {
+  it('maps each member household to the group it belongs to', () => {
+    const groups = [
+      group({
+        group_id: 'grp_1',
+        members: [{ household_cm_id: 2000001 }, { household_cm_id: 2000002 }],
+      }),
+      group({ group_id: 'grp_2', members: [{ household_cm_id: 2000003 }] }),
+    ]
+    const index = householdGroupIndex(groups)
+    expect(index.get(2000001)?.group_id).toBe('grp_1')
+    expect(index.get(2000002)?.group_id).toBe('grp_1')
+    expect(index.get(2000003)?.group_id).toBe('grp_2')
+  })
+
+  it('leaves an ungrouped household absent from the map', () => {
+    const index = householdGroupIndex([group({ members: [{ household_cm_id: 2000001 }] })])
+    expect(index.has(2000099)).toBe(false)
+  })
+})
+
+describe('withHousehold / withoutHousehold', () => {
+  const members = [{ household_cm_id: 2000001 }, { household_cm_id: 2000002 }]
+
+  it('appends a household id to the existing membership', () => {
+    expect(withHousehold(members, 2000003)).toEqual([2000001, 2000002, 2000003])
+  })
+
+  it('drops one household id and keeps the rest', () => {
+    expect(withoutHousehold(members, 2000001)).toEqual([2000002])
+  })
+
+  it('is a no-op removal when the id is not a member', () => {
+    expect(withoutHousehold(members, 2000099)).toEqual([2000001, 2000002])
+  })
+})
+
+describe('ungroupedHouseholds', () => {
+  const households = [
+    party({ household_cm_id: 2000001, sort_name: 'Johnson' }),
+    party({ household_cm_id: 2000002, sort_name: 'Garcia' }),
+    party({ household_cm_id: 2000003, sort_name: 'Chen' }),
+  ]
+
+  it('excludes a household already in ANY group — the picker is the gate', () => {
+    const index = householdGroupIndex([group({ members: [{ household_cm_id: 2000001 }] })])
+    const eligible = ungroupedHouseholds(households, index, '')
+    expect(eligible.map((p) => p.household_cm_id)).toEqual([2000002, 2000003])
+  })
+
+  it('filters the remaining households by name, case-insensitively', () => {
+    const eligible = ungroupedHouseholds(households, new Map(), 'gar')
+    expect(eligible.map((p) => p.household_cm_id)).toEqual([2000002])
   })
 })

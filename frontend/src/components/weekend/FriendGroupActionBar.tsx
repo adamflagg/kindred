@@ -17,17 +17,33 @@
  *
  * ## What summer has that this deliberately does not
  *
- * The cross-session and cross-gender validation, and the conflict dialog for a
- * camper already in another group. Neither transfers. Every household in the
- * picker is on THIS weekend's roster by construction, weekends do not split by
- * gender, and a household may legitimately want to be locked with one family
- * and separately with a different one — which is two groups, not a conflict.
- * See migration 1500000146's header for why the schema permits it.
+ * The cross-session and cross-gender validation. Neither transfers: every
+ * household in the picker is on THIS weekend's roster by construction, and
+ * weekends do not split by gender.
+ *
+ * ## "Add to group", added in kindred#1913 half 2
+ *
+ * Summer picks an "Add to existing" target by pre-selecting a group in the
+ * side panel (`LockGroupPanel`), which the panel's own `onGroupSelect` wires
+ * into `LockGroupContext.selectedGroupId` and flips this bar's summer
+ * counterpart into add mode. The weekend board has no side panel to select a
+ * group from, so `AddToGroupPicker` here is the target picker itself, shown
+ * BESIDE "Create Group" rather than replacing it — the household grid still
+ * feeds both.
+ *
+ * Unlike the picker's per-card "Add household" (which excludes any already-
+ * grouped household so a conflict there is structurally impossible), a
+ * household chosen from the GRID may already be in a different group.
+ * `WeekendFriendGroups.addSelectedToGroup` is what confirms and moves it —
+ * see `useHouseholdGroupConflictConfirm.ts` for why that confirmation
+ * dialog is forked from summer's rather than reused.
  */
 import { Heart, Users } from 'lucide-react'
 import clsx from 'clsx'
 
+import type { FriendGroupRow } from '../../types/friendGroups'
 import type { RosterPartyRow } from '../../types/lodging'
+import { AddToGroupPicker } from './AddToGroupPicker'
 import {
   defaultFriendGroupName,
   FRIEND_GROUP_COLOR_NAMES,
@@ -44,6 +60,11 @@ export interface FriendGroupActionBarProps {
   onClear: () => void
   onCreate: () => void
   isPending: boolean
+  /** Existing groups this weekend, for the "Add to group" picker. */
+  groups: FriendGroupRow[]
+  onAddToGroup: (groupId: string) => void
+  /** True while an "Add to group" move is in flight — disables the trigger. */
+  isAddingToGroup: boolean
 }
 
 /** A colour swatch as a real radio, so the palette is reachable without sight. */
@@ -92,6 +113,9 @@ export function FriendGroupActionBar({
   onClear,
   onCreate,
   isPending,
+  groups,
+  onAddToGroup,
+  isAddingToGroup,
 }: FriendGroupActionBarProps) {
   // Nothing selected is nothing to do — the bar is absent rather than empty,
   // exactly as summer's returns null on an empty pending list.
@@ -158,6 +182,13 @@ export function FriendGroupActionBar({
             >
               Clear
             </button>
+            {groups.length > 0 && (
+              <AddToGroupPicker
+                groups={groups}
+                onSelect={onAddToGroup}
+                disabled={isAddingToGroup}
+              />
+            )}
             <button
               type="button"
               onClick={onCreate}

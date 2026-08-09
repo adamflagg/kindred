@@ -11,7 +11,7 @@
  * Fictional households throughout (tests/CLAUDE.md).
  */
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { render, screen, within } from '@testing-library/react'
+import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import type { ReactNode } from 'react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
@@ -22,6 +22,7 @@ import { WeekendFriendGroups } from './WeekendFriendGroups'
 
 const createGroup = vi.fn()
 const updateGroup = vi.fn()
+const updateGroupAsync = vi.fn()
 const deleteGroup = vi.fn()
 
 let groupsResult: {
@@ -36,6 +37,7 @@ vi.mock('../../hooks/useWeekendFriendGroups', () => ({
   useFriendGroupMutations: () => ({
     createGroup,
     updateGroup,
+    updateGroupAsync,
     deleteGroup,
     isPending: false,
   }),
@@ -45,6 +47,7 @@ let client: QueryClient
 
 beforeEach(() => {
   vi.clearAllMocks()
+  updateGroupAsync.mockResolvedValue({})
   client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   groupsResult = { data: { groups: [] }, isLoading: false, isPending: false, error: null }
 })
@@ -69,6 +72,7 @@ function household(cmId: number, surname: string, child: string): RosterPartyRow
 const JOHNSON = household(2000001, 'Johnson', 'Emma Johnson')
 const GARCIA = household(2000002, 'Garcia', 'Liam Garcia')
 const CHEN = household(2000003, 'Chen', 'Olivia Chen')
+const SAM = household(2000004, 'Sam', 'Riley Sam')
 
 function renderTab(props: Partial<Parameters<typeof WeekendFriendGroups>[0]> = {}) {
   return render(
@@ -82,6 +86,16 @@ function renderTab(props: Partial<Parameters<typeof WeekendFriendGroups>[0]> = {
     />,
     { wrapper }
   )
+}
+
+/**
+ * The Families grid's toggle button for a household. Scoped to
+ * `friend-group-households` rather than a bare `screen.getByRole` name match:
+ * once a group exists, its member row's "Remove {name} from group" button
+ * matches the same regex and `getByRole` throws on the ambiguity.
+ */
+function householdToggle(name: RegExp) {
+  return within(screen.getByTestId('friend-group-households')).getByRole('button', { name })
 }
 
 describe('authoring a group', () => {
@@ -244,10 +258,10 @@ describe('existing groups', () => {
     expect(within(card).getByText('Garcia')).toBeInTheDocument()
   })
 
-  it('tells apart two member chips that would otherwise both say "Johnson"', () => {
+  it('tells apart two member rows that would otherwise both say "Johnson"', () => {
     // The picker cards below carry a children sub-line and so escape this;
-    // the member chips carry only the label, so two households sharing a
-    // surname would render two identical, unreadable chips.
+    // a member row's primary line carries only the label, so two households
+    // sharing a surname would render two identical, unreadable rows.
     const JOHNSON_TWO = household(2000004, 'Johnson', 'Noah Johnson')
     groupsResult = {
       data: {
@@ -326,6 +340,204 @@ describe('existing groups', () => {
     await user.click(within(card).getByRole('button', { name: /save/i }))
 
     expect(updateGroup).toHaveBeenCalledWith('grp_1', { color: '#6366f1' })
+  })
+})
+
+describe('membership add/remove (kindred#1913 half 2, Option A)', () => {
+  const grp1: FriendGroupRow = {
+    group_id: 'grp_1',
+    year: 2026,
+    session_cm_id: 1000001,
+    name: 'Garcia, Johnson',
+    color: '#22c55e',
+    source: 'staff_manual',
+    created_by: 'staff@example.com',
+    members: [{ household_cm_id: 2000001 }, { household_cm_id: 2000002 }],
+  }
+  const grp2: FriendGroupRow = {
+    group_id: 'grp_2',
+    year: 2026,
+    session_cm_id: 1000001,
+    name: 'Pine cabins',
+    color: '#3b82f6',
+    source: 'staff_manual',
+    created_by: 'staff@example.com',
+    members: [{ household_cm_id: 2000003 }],
+  }
+
+  it('shows a member row with its composition line', () => {
+    groupsResult = { data: { groups: [grp1] }, isLoading: false, isPending: false, error: null }
+    renderTab()
+    const card = screen.getByTestId('friend-group-grp_1')
+    // JOHNSON's fixture: adults: [], children: [one], party_size: 3 — the row
+    // for the household labelled "Johnson" carries that composition line.
+    const johnsonRow = within(card).getByText('Johnson').closest('div')!
+    expect(within(johnsonRow).getByText('3 people · 0 adults, 1 child')).toBeInTheDocument()
+  })
+
+  it('removing a member calls the mutation', async () => {
+    const user = userEvent.setup()
+    groupsResult = { data: { groups: [grp1] }, isLoading: false, isPending: false, error: null }
+    renderTab()
+    const card = screen.getByTestId('friend-group-grp_1')
+    await user.click(within(card).getAllByRole('button', { name: /remove.*from group/i })[0]!)
+
+    expect(updateGroup).toHaveBeenCalledWith('grp_1', { household_cm_ids: [2000002] })
+  })
+
+  it('the picker excludes households already in a group — the picker is the gate', async () => {
+    const user = userEvent.setup()
+    groupsResult = { data: { groups: [grp1] }, isLoading: false, isPending: false, error: null }
+    renderTab()
+    const card = screen.getByTestId('friend-group-grp_1')
+    await user.click(within(card).getByRole('button', { name: /add household/i }))
+
+    const listbox = screen.getByRole('listbox')
+    expect(within(listbox).queryByRole('option', { name: /Johnson/ })).not.toBeInTheDocument()
+    expect(within(listbox).queryByRole('option', { name: /Garcia/ })).not.toBeInTheDocument()
+    expect(within(listbox).getByRole('option', { name: /Chen/ })).toBeInTheDocument()
+  })
+
+  it('adds an ungrouped household via the card picker', async () => {
+    const user = userEvent.setup()
+    groupsResult = { data: { groups: [grp1] }, isLoading: false, isPending: false, error: null }
+    renderTab()
+    const card = screen.getByTestId('friend-group-grp_1')
+    await user.click(within(card).getByRole('button', { name: /add household/i }))
+    await user.click(screen.getByRole('option', { name: /Chen/ }))
+
+    expect(updateGroup).toHaveBeenCalledWith('grp_1', {
+      household_cm_ids: [2000001, 2000002, 2000003],
+    })
+  })
+
+  it('says so when every household is already in a group', async () => {
+    const user = userEvent.setup()
+    const fullGroup: FriendGroupRow = {
+      ...grp1,
+      members: [
+        { household_cm_id: 2000001 },
+        { household_cm_id: 2000002 },
+        { household_cm_id: 2000003 },
+      ],
+    }
+    groupsResult = {
+      data: { groups: [fullGroup] },
+      isLoading: false,
+      isPending: false,
+      error: null,
+    }
+    renderTab()
+    const card = screen.getByTestId('friend-group-grp_1')
+    await user.click(within(card).getByRole('button', { name: /add household/i }))
+
+    expect(screen.getByText(/every household.*already in a group/i)).toBeInTheDocument()
+  })
+
+  it('hides add/remove controls without bunking.manage', () => {
+    groupsResult = { data: { groups: [grp1] }, isLoading: false, isPending: false, error: null }
+    renderTab({ canManage: false })
+    const card = screen.getByTestId('friend-group-grp_1')
+    expect(
+      within(card).queryByRole('button', { name: /remove.*from group/i })
+    ).not.toBeInTheDocument()
+    expect(within(card).queryByRole('button', { name: /add household/i })).not.toBeInTheDocument()
+  })
+
+  describe('the board: "Add to group"', () => {
+    it('adds an unconflicted selection straight to the target group', async () => {
+      const user = userEvent.setup()
+      groupsResult = {
+        data: { groups: [grp1, grp2] },
+        isLoading: false,
+        isPending: false,
+        error: null,
+      }
+      renderTab({ parties: [JOHNSON, GARCIA, CHEN, SAM] })
+      // SAM is on the roster but in neither group — no conflict.
+      await user.click(householdToggle(/Sam/))
+      await user.click(screen.getByRole('button', { name: /^add to group$/i }))
+      await user.click(screen.getByRole('option', { name: /Garcia, Johnson/ }))
+
+      await waitFor(() => {
+        expect(updateGroupAsync).toHaveBeenCalledWith('grp_1', {
+          household_cm_ids: [2000001, 2000002, 2000004],
+        })
+      })
+    })
+
+    it('clears the selection once every write resolves', async () => {
+      const user = userEvent.setup()
+      groupsResult = {
+        data: { groups: [grp1, grp2] },
+        isLoading: false,
+        isPending: false,
+        error: null,
+      }
+      renderTab({ parties: [JOHNSON, GARCIA, CHEN, SAM] })
+      await user.click(householdToggle(/Sam/))
+      await user.click(screen.getByRole('button', { name: /^add to group$/i }))
+      await user.click(screen.getByRole('option', { name: /Garcia, Johnson/ }))
+
+      await waitFor(() => {
+        expect(screen.queryByTestId('friend-group-action-bar')).not.toBeInTheDocument()
+      })
+    })
+
+    it('adding a household already in another group triggers the confirm and then moves it', async () => {
+      const user = userEvent.setup()
+      updateGroupAsync.mockResolvedValue({})
+      groupsResult = {
+        data: { groups: [grp1, grp2] },
+        isLoading: false,
+        isPending: false,
+        error: null,
+      }
+      renderTab()
+      // JOHNSON is already in grp1 — targeting grp2 is a conflict.
+      await user.click(householdToggle(/Johnson/))
+      await user.click(screen.getByRole('button', { name: /^add to group$/i }))
+      await user.click(screen.getByRole('option', { name: /Pine cabins/ }))
+
+      const dialog = await screen.findByRole('dialog')
+      expect(dialog.textContent).toMatch(/Garcia, Johnson/)
+      expect(dialog.textContent).toMatch(/Pine cabins/)
+
+      await user.click(within(dialog).getByRole('button', { name: /move household/i }))
+
+      await waitFor(() => {
+        expect(updateGroupAsync).toHaveBeenCalledWith('grp_2', {
+          household_cm_ids: [2000003, 2000001],
+        })
+      })
+      expect(updateGroupAsync).toHaveBeenCalledWith('grp_1', { household_cm_ids: [2000002] })
+    })
+
+    it('cancelling the move leaves the household in its original group and the selection intact', async () => {
+      const user = userEvent.setup()
+      groupsResult = {
+        data: { groups: [grp1, grp2] },
+        isLoading: false,
+        isPending: false,
+        error: null,
+      }
+      renderTab()
+      await user.click(householdToggle(/Johnson/))
+      await user.click(screen.getByRole('button', { name: /^add to group$/i }))
+      await user.click(screen.getByRole('option', { name: /Pine cabins/ }))
+
+      const dialog = await screen.findByRole('dialog')
+      await user.click(within(dialog).getByRole('button', { name: /cancel/i }))
+
+      expect(updateGroupAsync).not.toHaveBeenCalled()
+      expect(screen.getByTestId('friend-group-action-bar')).toBeInTheDocument()
+    })
+
+    it('offers no "Add to group" control until a friend group exists', () => {
+      groupsResult = { data: { groups: [] }, isLoading: false, isPending: false, error: null }
+      renderTab()
+      expect(screen.queryByRole('button', { name: /^add to group$/i })).not.toBeInTheDocument()
+    })
   })
 })
 

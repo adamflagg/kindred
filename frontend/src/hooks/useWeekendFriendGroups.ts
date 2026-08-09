@@ -41,7 +41,12 @@ import {
   fetchFriendGroups,
   updateFriendGroup,
 } from '../services/friendGroupsApi'
-import type { FriendGroupCreate, FriendGroupList, FriendGroupUpdate } from '../types/friendGroups'
+import type {
+  FriendGroupCreate,
+  FriendGroupList,
+  FriendGroupRow,
+  FriendGroupUpdate,
+} from '../types/friendGroups'
 import { queryKeys } from '../utils/queryKeys'
 import { useApiWithAuth } from './useApiWithAuth'
 
@@ -68,6 +73,16 @@ export interface FriendGroupMutations {
    */
   createGroup: (body: FriendGroupCreate, options?: MutationCallbacks) => void
   updateGroup: (groupId: string, body: FriendGroupUpdate) => void
+  /**
+   * Promise-returning sibling of `updateGroup`, for a caller that must
+   * SEQUENCE more than one PATCH before deciding whether to clear its own UI
+   * state — kindred#1913 half 2's "Add to group" flow, which may write to
+   * both the target group and a household's previous group in the same
+   * gesture (a move). `updateGroup` stays fire-and-forget for the ordinary
+   * single-write callers (rename, recolour, the per-card add/remove) so
+   * their call sites don't have to think about a promise they don't need.
+   */
+  updateGroupAsync: (groupId: string, body: FriendGroupUpdate) => Promise<FriendGroupRow>
   deleteGroup: (groupId: string) => void
   isPending: boolean
 }
@@ -140,6 +155,8 @@ export function useFriendGroupMutations(year: number, sessionCmId: number): Frie
     updateGroup: (groupId: string, body: FriendGroupUpdate) => {
       update.mutate({ groupId, body })
     },
+    updateGroupAsync: (groupId: string, body: FriendGroupUpdate) =>
+      update.mutateAsync({ groupId, body }),
     deleteGroup: remove.mutate,
     isPending: create.isPending || update.isPending || remove.isPending,
   }

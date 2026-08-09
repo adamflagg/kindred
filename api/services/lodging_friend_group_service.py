@@ -214,13 +214,18 @@ class LodgingFriendGroupService:
           the group query on the ERROR path as well as the success path --
           without that the partial group exists, staff cannot see it, and a
           retry makes a second one.
-        * It must be REPAIRABLE with what the UI actually offers, which is
-          Rename, Recolour and Dissolve -- NOT member editing, which
-          kindred#1913 half 1 deliberately does not build. So the repair is
-          "dissolve it and author it again", and the group being visible is
-          what makes that possible at all.
+        * It must be REPAIRABLE with what the UI actually offers. As of
+          kindred#1913 half 2 that is member editing itself: the card's "Add
+          household" picker (`AddHouseholdPicker.tsx`) PATCHes this same
+          group with `household_cm_ids`, and `_replace_members` below only
+          creates the rows that are missing -- a household already written
+          keeps its row untouched. The repair for a partial group is
+          therefore "add the missing household(s)", not "dissolve it and
+          author it again": half 1's docstring said the latter because half 1
+          shipped Rename, Recolour and Dissolve with no way to touch
+          membership at all, and that gap is what this half closed.
 
-        Deleting the group here to unwind would trade a visible, dissolvable
+        Deleting the group here to unwind would trade a visible, repairable
         partial result for a silent total loss of the staff member's
         selection, which the caller cannot reconstruct.
         """

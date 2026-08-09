@@ -34,23 +34,44 @@
  * adult one. A group is defined at household grain, so an adult weekend has
  * nothing to group and the tab says so rather than showing an empty picker
  * that can never fill.
+ *
+ * ## Membership add/remove (kindred#1913 half 2, Option A)
+ *
+ * The member CHIPS above became member ROWS with a remove control, mirroring
+ * `LockGroupPanel.tsx`'s member list grammar — see `FriendGroupCard` below.
+ * Adding is two entry points, also both ported from summer: the per-card
+ * `AddHouseholdPicker` (`LockGroupPanel`'s `AddMemberPicker`) and the board's
+ * `AddToGroupPicker` beside "Create Group" (`FriendGroupActionBar`'s summer
+ * counterpart has "Add to existing" beside "Create group").
+ *
+ * THE ONE PLACE THIS SURFACE IS ALLOWED TO DIFFER FROM SUMMER, per CLAUDE.md
+ * §4, is the GRAIN — summer's is the camper, this one's is the household —
+ * and `addSelectedToGroup` below is where that difference actually changes
+ * behaviour, not just a noun. See its own comment.
  */
-import { Trash2 } from 'lucide-react'
+import { Trash2, X } from 'lucide-react'
 import clsx from 'clsx'
-import { useMemo, useState } from 'react'
+import { Fragment, useMemo, useRef, useState } from 'react'
 
 import { QueryGuard } from '../QueryGuard'
 import { useFriendGroupMutations, useWeekendFriendGroups } from '../../hooks/useWeekendFriendGroups'
+import { useHouseholdGroupConflictConfirm } from '../../hooks/useHouseholdGroupConflictConfirm'
 import type { FriendGroupRow, FriendGroupUpdate } from '../../types/friendGroups'
 import type { RosterPartyRow } from '../../types/lodging'
+import { AddHouseholdPicker } from './AddHouseholdPicker'
 import { FriendGroupActionBar } from './FriendGroupActionBar'
+import { FriendGroupMoveDialog } from './FriendGroupMoveDialog'
 import {
   defaultFriendGroupName,
   FRIEND_GROUP_COLOR_NAMES,
   FRIEND_GROUP_COLORS,
   friendGroupMemberLabels,
+  householdGroupIndex,
   householdLabel,
   nextFriendGroupColor,
+  partyComposition,
+  withHousehold,
+  withoutHousehold,
 } from './friendGroups'
 
 export interface WeekendFriendGroupsProps {
@@ -78,16 +99,26 @@ export interface WeekendFriendGroupsProps {
 function FriendGroupCard({
   group,
   byHouseholdCmId,
+  households,
+  householdToGroup,
   canManage,
   onUpdate,
   onDissolve,
+  onAddMember,
+  onRemoveMember,
   isPending,
 }: {
   group: FriendGroupRow
   byHouseholdCmId: Map<number, RosterPartyRow>
+  /** Every household on this weekend — passed through to the add picker. */
+  households: RosterPartyRow[]
+  /** household_cm_id -> the group it's already in, for the add picker's gate. */
+  householdToGroup: Map<number, FriendGroupRow>
   canManage: boolean
   onUpdate: (groupId: string, body: FriendGroupUpdate) => void
   onDissolve: (groupId: string) => void
+  onAddMember: (group: FriendGroupRow, party: RosterPartyRow) => void
+  onRemoveMember: (group: FriendGroupRow, householdCmId: number) => void
   isPending: boolean
 }) {
   const [isEditing, setIsEditing] = useState(false)
@@ -180,28 +211,88 @@ function FriendGroupCard({
         )}
       </div>
 
-      <div className="mt-2 flex flex-wrap items-center gap-1.5">
-        {(group.members ?? []).map((member) => {
-          const party = byHouseholdCmId.get(member.household_cm_id)
-          return party ? (
-            <span
-              key={member.household_cm_id}
-              className="bg-muted text-foreground rounded-full px-2 py-0.5 text-xs"
-            >
-              {memberLabels.get(member.household_cm_id) ?? householdLabel(party)}
-            </span>
-          ) : (
-            // NAMED, not dropped. A household that cancelled after the group
-            // was authored is exactly the case a staff member has to notice —
-            // silently shrinking the group to the survivors would hide it.
-            <span
-              key={member.household_cm_id}
-              className="rounded-full bg-amber-100 px-2 py-0.5 text-xs text-amber-800 dark:bg-amber-900/50 dark:text-amber-300"
-            >
-              Household {member.household_cm_id} · no longer enrolled
-            </span>
-          )
-        })}
+      {/* Member rows — summer's `LockGroupPanel` grammar exactly (row, primary
+          line, secondary composition line, remove control), over households
+          rather than campers. Replaces the old member CHIPS, which carried
+          only a bare label and no way to act on a member at all. */}
+      <div className="mt-3 space-y-2">
+        {(group.members ?? []).length === 0 ? (
+          <p className="text-muted-foreground text-sm">No households in this group yet.</p>
+        ) : (
+          (group.members ?? []).map((member) => {
+            const party = byHouseholdCmId.get(member.household_cm_id)
+            const label = party
+              ? (memberLabels.get(member.household_cm_id) ?? householdLabel(party))
+              : ''
+
+            if (!party) {
+              // NAMED, not dropped. A household that cancelled after the group
+              // was authored is exactly the case a staff member has to notice —
+              // silently shrinking the group to the survivors would hide it.
+              // There is no composition line to show: the roster has nothing
+              // left to report for a household that isn't on it any more.
+              return (
+                <div
+                  key={member.household_cm_id}
+                  className="flex items-center justify-between rounded border border-amber-200 bg-amber-100 p-2 dark:border-amber-900/50 dark:bg-amber-900/50"
+                >
+                  <p className="truncate text-sm text-amber-800 dark:text-amber-300">
+                    Household {member.household_cm_id} · no longer enrolled
+                  </p>
+                  {canManage && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        onRemoveMember(group, member.household_cm_id)
+                      }}
+                      className="hover:bg-muted flex-shrink-0 rounded p-1"
+                      title="Remove from group"
+                      aria-label={`Remove household ${String(member.household_cm_id)} from group`}
+                    >
+                      <X className="h-3 w-3" aria-hidden="true" />
+                    </button>
+                  )}
+                </div>
+              )
+            }
+
+            return (
+              <div
+                key={member.household_cm_id}
+                className="bg-background flex items-center justify-between rounded border p-2"
+              >
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-sm font-medium">{label}</p>
+                  <p className="text-muted-foreground text-xs">{partyComposition(party)}</p>
+                </div>
+                {canManage && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      onRemoveMember(group, member.household_cm_id)
+                    }}
+                    className="hover:bg-muted flex-shrink-0 rounded p-1"
+                    title="Remove from group"
+                    aria-label={`Remove ${label} from group`}
+                  >
+                    <X className="h-3 w-3" aria-hidden="true" />
+                  </button>
+                )}
+              </div>
+            )
+          })
+        )}
+        {canManage && (
+          <AddHouseholdPicker
+            // eslint-disable-next-line @typescript-eslint/prefer-nullish-coalescing -- '' is a real stored value meaning "unnamed"
+            groupName={group.name || 'this group'}
+            households={households}
+            householdToGroup={householdToGroup}
+            onAdd={(party) => {
+              onAddMember(group, party)
+            }}
+          />
+        )}
       </div>
 
       {isEditing && (
@@ -272,10 +363,22 @@ export function WeekendFriendGroups({
   sessionType,
 }: WeekendFriendGroupsProps) {
   const groupsQuery = useWeekendFriendGroups(year, sessionCmId)
-  const { createGroup, updateGroup, deleteGroup, isPending } = useFriendGroupMutations(
-    year,
-    sessionCmId
-  )
+  const { createGroup, updateGroup, updateGroupAsync, deleteGroup, isPending } =
+    useFriendGroupMutations(year, sessionCmId)
+  const groups = useMemo(() => groupsQuery.data?.groups ?? [], [groupsQuery.data])
+
+  // household_cm_id -> the group it's already in, if any — the gate for the
+  // per-card add picker and the conflict check for the board's bulk add.
+  const householdToGroup = useMemo(() => householdGroupIndex(groups), [groups])
+
+  const conflictConfirm = useHouseholdGroupConflictConfirm()
+
+  // Re-entrancy guard for the bulk "Add to group" flow, matching summer's
+  // LockGroupActionBar.handleAddToExisting: a ref for the synchronous check
+  // (state would race React's render scheduling on a rapid double-click) and
+  // state to drive the disabled trigger.
+  const isAddingToGroupRef = useRef(false)
+  const [isAddingToGroup, setIsAddingToGroup] = useState(false)
 
   // A Set, not an array: it preserves insertion order in JS, so the created
   // group's membership arrives in the order staff picked it, and membership
@@ -343,155 +446,279 @@ export function WeekendFriendGroups({
     setColor(null)
   }
 
-  return (
-    <QueryGuard
-      // `isPending`, NOT `isLoading`. A DISABLED query — `year` still 0 on a
-      // cold load, or a slug the session list has not resolved yet — reports
-      // `isLoading: false` with no data, which lands on QueryGuard's
-      // no-data branch and tells staff there is nothing here for a weekend
-      // nothing has been asked about. `isPending` is true for both the
-      // in-flight and the not-yet-asked cases, which is what the user is
-      // actually looking at.
-      isLoading={groupsQuery.isPending}
-      error={groupsQuery.error}
-      data={groupsQuery.data}
-      label="friend group"
-      // Reached only if the server ever answers with no body. Named rather
-      // than left as the generic "No data available", which reads as a fault.
-      emptyMessage="No friend groups for this weekend."
-    >
-      {(list) => {
-        const groups = list.groups ?? []
-        // Rotates by how many the weekend already has, exactly as summer's
-        // does, until staff pick one for this group.
-        const activeColor = color ?? nextFriendGroupColor(groups.length)
+  // Per-card picker: the household is guaranteed ungrouped (`ungroupedHouseholds`
+  // is the picker's own filter), so this is a plain append — no conflict is
+  // reachable through this entry point.
+  function handleAddMember(group: FriendGroupRow, party: RosterPartyRow) {
+    updateGroup(group.group_id, {
+      household_cm_ids: withHousehold(group.members ?? [], party.household_cm_id ?? 0),
+    })
+  }
 
-        if (households.length === 0) {
+  // Member row's X button.
+  function handleRemoveMember(group: FriendGroupRow, householdCmId: number) {
+    updateGroup(group.group_id, {
+      household_cm_ids: withoutHousehold(group.members ?? [], householdCmId),
+    })
+  }
+
+  /**
+   * The board's "Add to group": add every currently-selected household to
+   * `targetGroupId`, one PATCH to the target and (if needed) one PATCH per
+   * source group a household is moved OUT of.
+   *
+   * THE GRAIN DIVERGENCE THAT ACTUALLY CHANGES BEHAVIOUR (CLAUDE.md §4). A
+   * camper can knowingly sit in two overlapping lock groups — summer's
+   * solver merges them transitively at solve time, so `addCamperToGroup`
+   * only ever ADDS a membership row. A household has no solver step to lean
+   * on for that (migration 1500000146's header: nothing enforces
+   * one-group-per-household at the schema layer), so kindred#1913 half 2's
+   * approved design enforces it here instead — a household picked from the
+   * grid that is already in a DIFFERENT group is, after confirmation, MOVED:
+   * added to the target AND removed from its old group, never left in both.
+   * A household picked via the per-card `AddHouseholdPicker` never reaches
+   * this branch at all, because that picker excludes anything already
+   * grouped before the household is ever selectable.
+   */
+  async function addSelectedToGroup(targetGroupId: string) {
+    if (isAddingToGroupRef.current) return
+    const targetGroup = groups.find((g) => g.group_id === targetGroupId)
+    if (!targetGroup) return
+
+    isAddingToGroupRef.current = true
+    setIsAddingToGroup(true)
+    try {
+      // `||`, not `??`: '' is the real stored value for an unnamed group
+      // (same trap `partyKey.ts` documents at length), so `??` would let it
+      // through as a blank dialog/label instead of falling back.
+      // eslint-disable-next-line @typescript-eslint/prefer-nullish-coalescing -- '' is a real stored value meaning "unnamed"
+      const targetName = targetGroup.name || 'this group'
+      const existingTargetIds = (targetGroup.members ?? []).map((m) => m.household_cm_id)
+      const targetIdSet = new Set(existingTargetIds)
+
+      const toAdd: number[] = []
+      // Per-source-group removals, keyed by that group's id.
+      const removalsBySource = new Map<string, Set<number>>()
+
+      for (const party of selected) {
+        const cmId = party.household_cm_id ?? 0
+        if (targetIdSet.has(cmId)) continue // already a member of the target — nothing to do
+
+        const existingGroup = householdToGroup.get(cmId)
+        if (existingGroup && existingGroup.group_id !== targetGroupId) {
+          const outcome = await conflictConfirm.confirmMove({
+            householdName: householdLabel(party),
+            // eslint-disable-next-line @typescript-eslint/prefer-nullish-coalescing -- '' is a real stored value meaning "unnamed"
+            existingGroupName: existingGroup.name || 'another friend group',
+            targetGroupName: targetName,
+          })
+          if (outcome === 'cancelled') continue
+          const removed = removalsBySource.get(existingGroup.group_id) ?? new Set<number>()
+          removed.add(cmId)
+          removalsBySource.set(existingGroup.group_id, removed)
+        }
+        toAdd.push(cmId)
+      }
+
+      if (toAdd.length === 0) return // nothing confirmed and nothing new — leave the selection as-is
+
+      const operations: Array<Promise<unknown>> = [
+        updateGroupAsync(targetGroupId, { household_cm_ids: [...existingTargetIds, ...toAdd] }),
+      ]
+      for (const [sourceGroupId, removedIds] of removalsBySource) {
+        const sourceGroup = groups.find((g) => g.group_id === sourceGroupId)
+        if (!sourceGroup) continue
+        const remaining = (sourceGroup.members ?? [])
+          .map((m) => m.household_cm_id)
+          .filter((id) => !removedIds.has(id))
+        operations.push(updateGroupAsync(sourceGroupId, { household_cm_ids: remaining }))
+      }
+
+      try {
+        await Promise.all(operations)
+        clearSelection()
+      } catch {
+        // Leave the selection intact on failure, exactly as "keeps the
+        // selection when the create FAILS" does above — the mutation's own
+        // onError already toasts the reason.
+      }
+    } finally {
+      isAddingToGroupRef.current = false
+      setIsAddingToGroup(false)
+    }
+  }
+
+  return (
+    <Fragment>
+      <QueryGuard
+        // `isPending`, NOT `isLoading`. A DISABLED query — `year` still 0 on a
+        // cold load, or a slug the session list has not resolved yet — reports
+        // `isLoading: false` with no data, which lands on QueryGuard's
+        // no-data branch and tells staff there is nothing here for a weekend
+        // nothing has been asked about. `isPending` is true for both the
+        // in-flight and the not-yet-asked cases, which is what the user is
+        // actually looking at.
+        isLoading={groupsQuery.isPending}
+        error={groupsQuery.error}
+        data={groupsQuery.data}
+        label="friend group"
+        // Reached only if the server ever answers with no body. Named rather
+        // than left as the generic "No data available", which reads as a fault.
+        emptyMessage="No friend groups for this weekend."
+      >
+        {() => {
+          // Rotates by how many the weekend already has, exactly as summer's
+          // does, until staff pick one for this group.
+          const activeColor = color ?? nextFriendGroupColor(groups.length)
+
+          if (households.length === 0) {
+            return (
+              <div className="space-y-3">
+                <h2 className="text-foreground text-base font-semibold">Friend groups</h2>
+                <p className="text-muted-foreground text-sm">
+                  {sessionType === 'adult' ? (
+                    <>
+                      Friend groups are authored at household grain, and this weekend enrols
+                      individual guests rather than households. There is nothing here to group.
+                    </>
+                  ) : (
+                    <>
+                      No households are registered for this weekend yet. Friend groups can be made
+                      once families enrol.
+                    </>
+                  )}
+                </p>
+              </div>
+            )
+          }
+
           return (
-            <div className="space-y-3">
-              <h2 className="text-foreground text-base font-semibold">Friend groups</h2>
-              <p className="text-muted-foreground text-sm">
-                {sessionType === 'adult' ? (
-                  <>
-                    Friend groups are authored at household grain, and this weekend enrols
-                    individual guests rather than households. There is nothing here to group.
-                  </>
+            <div className={clsx('space-y-6', selected.length > 0 && 'pb-24')}>
+              <section className="space-y-2">
+                <h2 className="text-foreground text-base font-semibold">
+                  Friend groups ({groups.length})
+                </h2>
+                {groups.length === 0 ? (
+                  <p className="text-muted-foreground text-sm">
+                    {canManage
+                      ? 'None yet. Pick two or more families below to make one.'
+                      : 'None yet.'}
+                  </p>
                 ) : (
-                  <>
-                    No households are registered for this weekend yet. Friend groups can be made
-                    once families enrol.
-                  </>
+                  <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
+                    {groups.map((group) => (
+                      <FriendGroupCard
+                        key={group.group_id}
+                        group={group}
+                        byHouseholdCmId={byHouseholdCmId}
+                        households={households}
+                        householdToGroup={householdToGroup}
+                        canManage={canManage}
+                        onUpdate={updateGroup}
+                        onDissolve={deleteGroup}
+                        onAddMember={handleAddMember}
+                        onRemoveMember={handleRemoveMember}
+                        isPending={isPending}
+                      />
+                    ))}
+                  </div>
                 )}
-              </p>
+              </section>
+
+              {canManage && (
+                <section className="space-y-2">
+                  <h2 className="text-foreground text-base font-semibold">Families</h2>
+                  <div
+                    data-testid="friend-group-households"
+                    className="grid grid-cols-2 gap-2 md:grid-cols-3 xl:grid-cols-4"
+                  >
+                    {households.map((party) => {
+                      const cmId = party.household_cm_id ?? 0
+                      const isSelected = selectedIds.has(cmId)
+                      return (
+                        <button
+                          key={cmId}
+                          type="button"
+                          aria-pressed={isSelected}
+                          onClick={() => {
+                            toggle(cmId)
+                          }}
+                          className={clsx(
+                            'bg-card rounded-lg border p-2 text-left transition-all',
+                            isSelected
+                              ? // BARE, not a `hover:` variant. `pending-lock-glow` is a
+                                // hand-written @layer utilities rule (index.css:856) and
+                                // Tailwind v4 never emits `hover:` forms of those — the
+                                // inert-class trap of #1894 / #2091.
+                                'pending-lock-glow border-amber-400 dark:border-amber-500'
+                              : 'hover:border-primary/50'
+                          )}
+                        >
+                          <span className="text-foreground block truncate text-sm font-semibold">
+                            {householdLabel(party)}
+                          </span>
+                          <span className="text-muted-foreground block truncate text-xs">
+                            {(party.children ?? [])
+                              .map((child) => child.display_name)
+                              .join(' · ') || `${String(party.party_size ?? 0)} in party`}
+                          </span>
+                        </button>
+                      )
+                    })}
+                  </div>
+                </section>
+              )}
+
+              {canManage && (
+                <FriendGroupActionBar
+                  selected={selected}
+                  name={name}
+                  onNameChange={setName}
+                  color={activeColor}
+                  onColorChange={setColor}
+                  onClear={clearSelection}
+                  onCreate={() => {
+                    createGroup(
+                      {
+                        year,
+                        session_cm_id: sessionCmId,
+                        // A blank field means "use the auto-name", which the bar
+                        // shows as its placeholder. The server stores what it is
+                        // given, so the fallback is applied HERE rather than left
+                        // for the row to be renamed later.
+                        name: name.trim() || defaultFriendGroupName(selected),
+                        color: activeColor,
+                        household_cm_ids: selected.map((party) => party.household_cm_id ?? 0),
+                      },
+                      // CLEARED ON SUCCESS ONLY, as summer's bar does. `mutate`
+                      // is fire-and-forget, so clearing straight after the call
+                      // throws away the whole selection and the typed name on a
+                      // 403, a 400 or a dropped connection — with nothing to
+                      // undo it, and a toast that says what failed but not what
+                      // was lost.
+                      { onSuccess: clearSelection }
+                    )
+                  }}
+                  isPending={isPending}
+                  groups={groups}
+                  onAddToGroup={(groupId) => {
+                    void addSelectedToGroup(groupId)
+                  }}
+                  isAddingToGroup={isAddingToGroup}
+                />
+              )}
             </div>
           )
-        }
-
-        return (
-          <div className={clsx('space-y-6', selected.length > 0 && 'pb-24')}>
-            <section className="space-y-2">
-              <h2 className="text-foreground text-base font-semibold">
-                Friend groups ({groups.length})
-              </h2>
-              {groups.length === 0 ? (
-                <p className="text-muted-foreground text-sm">
-                  {canManage
-                    ? 'None yet. Pick two or more families below to make one.'
-                    : 'None yet.'}
-                </p>
-              ) : (
-                <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
-                  {groups.map((group) => (
-                    <FriendGroupCard
-                      key={group.group_id}
-                      group={group}
-                      byHouseholdCmId={byHouseholdCmId}
-                      canManage={canManage}
-                      onUpdate={updateGroup}
-                      onDissolve={deleteGroup}
-                      isPending={isPending}
-                    />
-                  ))}
-                </div>
-              )}
-            </section>
-
-            {canManage && (
-              <section className="space-y-2">
-                <h2 className="text-foreground text-base font-semibold">Families</h2>
-                <div className="grid grid-cols-2 gap-2 md:grid-cols-3 xl:grid-cols-4">
-                  {households.map((party) => {
-                    const cmId = party.household_cm_id ?? 0
-                    const isSelected = selectedIds.has(cmId)
-                    return (
-                      <button
-                        key={cmId}
-                        type="button"
-                        aria-pressed={isSelected}
-                        onClick={() => {
-                          toggle(cmId)
-                        }}
-                        className={clsx(
-                          'bg-card rounded-lg border p-2 text-left transition-all',
-                          isSelected
-                            ? // BARE, not a `hover:` variant. `pending-lock-glow` is a
-                              // hand-written @layer utilities rule (index.css:856) and
-                              // Tailwind v4 never emits `hover:` forms of those — the
-                              // inert-class trap of #1894 / #2091.
-                              'pending-lock-glow border-amber-400 dark:border-amber-500'
-                            : 'hover:border-primary/50'
-                        )}
-                      >
-                        <span className="text-foreground block truncate text-sm font-semibold">
-                          {householdLabel(party)}
-                        </span>
-                        <span className="text-muted-foreground block truncate text-xs">
-                          {(party.children ?? []).map((child) => child.display_name).join(' · ') ||
-                            `${String(party.party_size ?? 0)} in party`}
-                        </span>
-                      </button>
-                    )
-                  })}
-                </div>
-              </section>
-            )}
-
-            {canManage && (
-              <FriendGroupActionBar
-                selected={selected}
-                name={name}
-                onNameChange={setName}
-                color={activeColor}
-                onColorChange={setColor}
-                onClear={clearSelection}
-                onCreate={() => {
-                  createGroup(
-                    {
-                      year,
-                      session_cm_id: sessionCmId,
-                      // A blank field means "use the auto-name", which the bar
-                      // shows as its placeholder. The server stores what it is
-                      // given, so the fallback is applied HERE rather than left
-                      // for the row to be renamed later.
-                      name: name.trim() || defaultFriendGroupName(selected),
-                      color: activeColor,
-                      household_cm_ids: selected.map((party) => party.household_cm_id ?? 0),
-                    },
-                    // CLEARED ON SUCCESS ONLY, as summer's bar does. `mutate`
-                    // is fire-and-forget, so clearing straight after the call
-                    // throws away the whole selection and the typed name on a
-                    // 403, a 400 or a dropped connection — with nothing to
-                    // undo it, and a toast that says what failed but not what
-                    // was lost.
-                    { onSuccess: clearSelection }
-                  )
-                }}
-                isPending={isPending}
-              />
-            )}
-          </div>
-        )
-      }}
-    </QueryGuard>
+        }}
+      </QueryGuard>
+      <FriendGroupMoveDialog
+        isOpen={conflictConfirm.dialogState.isOpen}
+        householdName={conflictConfirm.dialogState.householdName}
+        existingGroupName={conflictConfirm.dialogState.existingGroupName}
+        targetGroupName={conflictConfirm.dialogState.targetGroupName}
+        onConfirm={conflictConfirm.dialogState.onConfirm}
+        onCancel={conflictConfirm.dialogState.onCancel}
+      />
+    </Fragment>
   )
 }

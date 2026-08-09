@@ -20,6 +20,7 @@
  * `last_name`, then the eldest child's), which is what summer's `last_name`
  * actually is.
  */
+import type { FriendGroupMemberRow, FriendGroupRow } from '../../types/friendGroups'
 import type { RosterPartyRow } from '../../types/lodging'
 
 /**
@@ -151,4 +152,85 @@ export function friendGroupMemberLabels(parties: RosterPartyRow[]): Map<number, 
     result.set(cmId, `${label} · ${disambiguator}`)
   }
   return result
+}
+
+/**
+ * The member-row composition subtext — "N people · N adults, N children"
+ * (kindred#1913 half 2, Option A).
+ *
+ * `party.adults` and `party.children` are the same two arrays the roster
+ * service sums into `party_size` itself (`len(adults) + len(children)` in
+ * `api/services/lodging_roster_service.py`), so this counts what the server
+ * already counted rather than inventing a third figure or a new API call.
+ * `party_size` is preferred over re-summing locally because it is what the
+ * server actually returned; the sum is only a fallback for a hand-built
+ * fixture that omits it.
+ */
+export function partyComposition(party: RosterPartyRow): string {
+  const adultCount = party.adults?.length ?? 0
+  const childCount = party.children?.length ?? 0
+  const total = party.party_size ?? adultCount + childCount
+  const people = total === 1 ? 'person' : 'people'
+  const adults = adultCount === 1 ? 'adult' : 'adults'
+  const children = childCount === 1 ? 'child' : 'children'
+  return `${String(total)} ${people} · ${String(adultCount)} ${adults}, ${String(childCount)} ${children}`
+}
+
+/**
+ * household_cm_id -> the one group it belongs to, for the add/remove flows
+ * (kindred#1913 half 2).
+ *
+ * Built from the ALREADY-LOADED groups list (`useWeekendFriendGroups`), not
+ * a second query -- there is no scenario dimension to a friend group
+ * (migration 1500000146), so the full membership picture for the weekend is
+ * already in hand once the groups list has loaded.
+ *
+ * The schema does not enforce one-group-per-household (that migration's own
+ * header says so): a household CAN legitimately sit in two groups already.
+ * This index keeps the first group found for such a household, which is
+ * arbitrary but deterministic -- good enough for "is this a conflict",
+ * which is the only thing that reads it.
+ */
+export function householdGroupIndex(groups: FriendGroupRow[]): Map<number, FriendGroupRow> {
+  const index = new Map<number, FriendGroupRow>()
+  for (const group of groups) {
+    for (const member of group.members ?? []) {
+      if (!index.has(member.household_cm_id)) {
+        index.set(member.household_cm_id, group)
+      }
+    }
+  }
+  return index
+}
+
+/** A group's membership with one household appended, for a PATCH `household_cm_ids`. */
+export function withHousehold(members: FriendGroupMemberRow[], householdCmId: number): number[] {
+  return [...members.map((member) => member.household_cm_id), householdCmId]
+}
+
+/** A group's membership with one household dropped, for a PATCH `household_cm_ids`. */
+export function withoutHousehold(members: FriendGroupMemberRow[], householdCmId: number): number[] {
+  return members.map((member) => member.household_cm_id).filter((id) => id !== householdCmId)
+}
+
+/**
+ * Households on this weekend eligible for the card's "Add household" picker.
+ *
+ * ONLY households not already in ANY group -- the picker is the gate, per
+ * kindred#1913 half 2's approved design. A household already grouped is
+ * added to a DIFFERENT group through the board's "Add to group" flow
+ * instead, which confirms the move rather than silently offering it here.
+ */
+export function ungroupedHouseholds(
+  households: RosterPartyRow[],
+  householdToGroup: Map<number, FriendGroupRow>,
+  filterText: string
+): RosterPartyRow[] {
+  const needle = filterText.trim().toLowerCase()
+  return households.filter((party) => {
+    const cmId = party.household_cm_id ?? 0
+    if (householdToGroup.has(cmId)) return false
+    if (needle === '') return true
+    return householdLabel(party).toLowerCase().includes(needle)
+  })
 }
