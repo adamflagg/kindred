@@ -132,7 +132,16 @@ export function Modal({
       // existing pattern in this repo — and jsdom doesn't implement native
       // Tab focus movement at all, so tests depend on it too.
       if (e.key === 'Tab') {
-        const focusable = contentRef.current ? getFocusable(contentRef.current) : []
+        const container = contentRef.current
+        // A nested overlay (e.g. ConfirmActionPopover, rendered as a Modal
+        // child but portaled independently to document.body — see
+        // AllCamperRequestsModal.tsx) can hold focus outside this dialog's
+        // own content subtree. If it does, this trap must no-op rather than
+        // yank focus back in: both listeners are on `document`, so acting
+        // here would fight the nested overlay's own trap for every Tab
+        // press instead of leaving it to run its own cycle.
+        if (!container?.contains(document.activeElement)) return
+        const focusable = getFocusable(container)
         if (focusable.length === 0) return
         e.preventDefault()
         const idx = focusable.indexOf(document.activeElement as HTMLElement)

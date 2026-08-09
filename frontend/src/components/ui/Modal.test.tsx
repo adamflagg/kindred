@@ -461,6 +461,37 @@ describe('Modal', () => {
       fireEvent.keyDown(document, { key: 'Tab' })
       expect(document.activeElement).toBe(closeButton)
     })
+
+    it('leaves focus alone on Tab when it is outside the dialog content, so a nested portal (e.g. ConfirmActionPopover rendered as a Modal child, as in AllCamperRequestsModal) keeps its own trap', () => {
+      render(
+        <Modal isOpen={true} onClose={() => {}} title="Nested Overlay Test">
+          <input placeholder="Field" />
+        </Modal>
+      )
+
+      // Simulate a child that portals outside the dialog's own contentRef
+      // subtree, exactly like ConfirmActionPopover does when it is rendered
+      // as a child of an open Modal (both portal independently to
+      // document.body, so the popover's DOM node is a *sibling* of the
+      // modal's content div, not a descendant of it).
+      const external = document.createElement('button')
+      external.textContent = 'External overlay button'
+      document.body.appendChild(external)
+      external.focus()
+      expect(document.activeElement).toBe(external)
+
+      fireEvent.keyDown(document, { key: 'Tab' })
+
+      // Modal's own trap must not hijack focus meant for the nested
+      // overlay's trap — it should no-op when activeElement isn't inside
+      // its own content.
+      expect(document.activeElement).toBe(external)
+
+      fireEvent.keyDown(document, { key: 'Tab', shiftKey: true })
+      expect(document.activeElement).toBe(external)
+
+      external.remove()
+    })
   })
 
   describe('background inert', () => {
