@@ -365,12 +365,21 @@ export function LodgingUnitCard({
   // one state most wanting staff action should say. `--primary` IS the
   // board's forest hue (index.css), so this reuses the identical token
   // `dropTarget` above already spends at `/5`, just at resting-state
-  // strength — the two are close ON PURPOSE (mockup:
-  // `docs/plans/2026-08-09-card-signal-vocabulary.html` §05) and never
-  // co-render, which is exactly what this gate (below) enforces. The tint is
-  // a RESTING-STATE signal: suppressed the instant this card becomes an
-  // active drop target, same as the old wash was.
-  const dashedWashActive = dashed && ringState !== 'dropTarget'
+  // strength — the two are close ON PURPOSE and never co-render, which is
+  // exactly what this gate enforces. The tint is a RESTING-STATE signal:
+  // suppressed the instant this card becomes an active drop target, same as
+  // the old wash was.
+  //
+  // `!held` is the second gate, and it is not cosmetic: EMPTY and OPEN are
+  // different predicates and this is where they part. A hold blocks
+  // placement outright (`held` above; `dragPlacement.ts` refuses the drop),
+  // so a held cabin has no family in it and can take none. That was harmless
+  // while the empty treatment was a neutral grey wash, but the forest tint
+  // says "the remaining work is here" — and the marker is the to-do list.
+  // Painting a held cabin forest sends staff at the one room they may not
+  // fill. The dashed EDGE still applies to it, being structural rather than
+  // an invitation.
+  const openMarkerActive = dashed && !held && ringState !== 'dropTarget'
 
   // `ringState` alone can't gate the inline ring below: `dimmed` still wins
   // against `shared` specifically (see the comment on `dimmed` above), and
@@ -380,7 +389,7 @@ export function LodgingUnitCard({
   const cardStateClassName = [
     RING_CLASSES[ringState],
     dashed ? 'border-dashed' : '',
-    dashedWashActive ? 'bg-primary/10' : '',
+    openMarkerActive ? 'bg-primary/10' : '',
     dimmed ? 'pointer-events-none opacity-40' : '',
   ]
     .filter(Boolean)
@@ -391,12 +400,12 @@ export function LodgingUnitCard({
   // and `font-weight` on this child `<h3>` don't compete with the parent's
   // `border-color`/`box-shadow`/`background-color` channels, so this is a
   // plain either/or on ONE property pair rather than a `RING_CLASSES` entry.
-  // Deliberately reuses `dashedWashActive` rather than bare `dashed`: the
-  // owner ruling frames the tint as one resting-state signal, and a title
-  // that stayed bold forest while the background wash already stood down for
-  // an active drop target would be the two halves of "the same mark"
-  // silently drifting apart.
-  const openTitleClassName = dashedWashActive
+  // Deliberately reuses `openMarkerActive` rather than bare `dashed`: the
+  // owner ruling frames the tint as ONE resting-state signal, and a title
+  // that stayed bold forest while the background wash had already stood down
+  // — for an active drop target, or for a held room — would be the two halves
+  // of the same mark silently drifting apart.
+  const openTitleClassName = openMarkerActive
     ? 'text-primary font-bold'
     : 'text-foreground font-semibold'
 

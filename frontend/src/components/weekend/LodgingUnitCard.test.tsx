@@ -877,10 +877,11 @@ describe('LodgingUnitCard — the open-space title marker (#2093)', () => {
   // with a yellow fill on its title, and the request was to HIGHLIGHT, never
   // dim, the to-do list. `RING_CLASSES` stays untouched — `color`/`font-weight`
   // on the child `<h3>` doesn't compete with `border-color`/`box-shadow`, so
-  // this is additive exactly like `dashed` itself. Gated on `dashedWashActive`
+  // this is additive exactly like `dashed` itself. Gated on `openMarkerActive`
   // rather than bare `dashed` for the same reason the background wash is: the
   // forest tint is a RESTING-STATE signal only, suppressed the instant this
-  // card becomes an active drop target.
+  // card becomes an active drop target — and never spent on a held room,
+  // which is empty but not open.
   const hue = 'hsl(160 45% 42%)'
 
   it('spends the forest tint on an open unit title — colour AND weight, not dimmed', () => {
@@ -906,7 +907,7 @@ describe('LodgingUnitCard — the open-space title marker (#2093)', () => {
   it('suppresses the open-space title emphasis while this card is an active drop target', () => {
     // Mid-drag the board is answering a different question — this is the
     // title-side half of the same suppression the background wash already
-    // gets, sharing the identical `dashedWashActive` gate rather than a
+    // gets, sharing the identical `openMarkerActive` gate rather than a
     // second, independently-derived condition that could drift from it.
     overDroppableId = unitDroppableId('cedar-1')
     render(<LodgingUnitCard slot={slot()} hue={hue} canPlace onOpenParty={vi.fn()} />)
@@ -915,6 +916,45 @@ describe('LodgingUnitCard — the open-space title marker (#2093)', () => {
     expect(title).not.toHaveClass('font-bold')
     expect(title).toHaveClass('text-foreground')
     expect(title).toHaveClass('font-semibold')
+  })
+
+  it('does not call a HELD room open — no tint, no bold title, dashed edge kept', () => {
+    /*
+     * A hold (#2087 / the #2090 ruling) blocks placement outright:
+     * `dragPlacement.ts:222` refuses the drop and the card's own droppable is
+     * `disabled`. An empty held cabin therefore has no family in it and can
+     * take none — "empty" and "open" are not the same predicate, and this is
+     * the one place they part.
+     *
+     * This was harmless while the empty treatment was a neutral grey wash.
+     * The forest tint is not neutral: it says "this is where the remaining
+     * work is", and the marker IS the to-do list. Painting a held cabin
+     * forest sends staff at the one room they are not allowed to fill.
+     *
+     * Scope note: the approved 2026-08-09 vocabulary gives a held card a
+     * refusal treatment of its own (dim + `not-allowed`), queued separately.
+     * This asserts only that the OPEN marker stands down — it does not
+     * pre-empt that.
+     */
+    const { container } = render(
+      <LodgingUnitCard
+        slot={slot({ unit: unit({ family_available_override: false, reason: 'Maintenance' }) })}
+        hue={hue}
+        canPlace
+        onOpenParty={vi.fn()}
+      />
+    )
+    const title = screen.getByText('Cedar 1')
+    expect(title).not.toHaveClass('text-primary')
+    expect(title).not.toHaveClass('font-bold')
+    expect(title).toHaveClass('text-foreground')
+    expect(title).toHaveClass('font-semibold')
+
+    const card = container.querySelector('[data-unit-card]')
+    expect(card).not.toHaveClass('bg-primary/10')
+    // The dashed EDGE is a structural "nobody is in here" and stays — only
+    // the affirmative "go fill this" half stands down.
+    expect(card).toHaveClass('border-dashed')
   })
 })
 
