@@ -854,6 +854,26 @@ describe('answersConflictDetail — which two answers disagreed, and which one w
     expect(detail).toMatch(/named/i)
   })
 
+  it('never attributes the resolved answer to the form when eligibility_source says otherwise', () => {
+    // DeriveShareEligibility (Go, lodging_requests.go) only ever sets
+    // `answers_conflict` true on its form-answered branch -- measured on 2026
+    // production, all 16 conflicting rows carry `eligibility_source: 'form'`.
+    // This reads the field rather than assuming it, so a future Go change or
+    // a stale mid-recompute row can never misattribute a registration-only
+    // verdict to a form the household may not have even returned.
+    const detail = answersConflictDetail(
+      shareBlock({
+        preference: 'no_share',
+        eligibility: 'open',
+        eligibility_source: 'registration',
+        answers_conflict: true,
+      })
+    )
+    expect(detail).not.toBeNull()
+    expect(detail).not.toMatch(/Family Camp form/i)
+    expect(detail).toMatch(/open to sharing/)
+  })
+
   it('never crashes on an unrecognised preference or eligibility value', () => {
     // Same guard philosophy as `SharePreferenceChip`: a payload ahead of a
     // type regen must degrade, not throw and take the whole card with it.

@@ -296,12 +296,21 @@ function wordingFor<T extends string>(
  * resolution in one sentence.
  *
  * Reads `preference` (the registration gate) and `eligibility` (the
- * resolved verdict) directly rather than re-deriving either from `proximity`
- * — `DeriveShareEligibility` only ever sets `answers_conflict` true on its
- * form-answered branch (Go, `lodging_requests.go`), so whenever this
- * returns non-null, `eligibility` already IS the Family Camp form's own
- * answer, confirmed against 2026 production: all 16 conflicting households
- * carry `eligibility_source: 'form'`.
+ * resolved verdict) directly rather than re-deriving either from `proximity`.
+ * `DeriveShareEligibility` only ever sets `answers_conflict` true on its
+ * form-answered branch (Go, `lodging_requests.go`), so whenever this returns
+ * non-null, `eligibility` already IS the Family Camp form's own answer,
+ * confirmed against 2026 production: all 16 conflicting households carry
+ * `eligibility_source: 'form'`.
+ *
+ * That invariant is enforced only in a separate Go file, with nothing here
+ * to catch a future change or a stale mid-`family_camp_derived`-recompute
+ * row that briefly disagrees with it — so this still BRANCHES on
+ * `eligibility_source` rather than assuming it, and only names "the Family
+ * Camp form" when the field itself says so. Off that branch the resolved
+ * answer is worded as "the answer on file" instead: a claim this function
+ * can defend either way, matching `consentFlag`'s own rule of reporting only
+ * what was recorded.
  *
  * Returns null when there is nothing to report: no conflict, or no share
  * block at all — the shape of an adult-weekend guest, who has no share
@@ -316,8 +325,12 @@ export function answersConflictDetail(share: ShareRequest | undefined): string |
     share.preference ?? 'unknown',
     'not answered'
   )
-  const form = wordingFor(FORM_ANSWER, share.eligibility ?? 'unknown', 'not answered')
-  return `Registration said ${registration}; the Family Camp form said ${form} — staff use the form's answer.`
+  const resolved = wordingFor(FORM_ANSWER, share.eligibility ?? 'unknown', 'not answered')
+  const winner =
+    share.eligibility_source === 'form'
+      ? `the Family Camp form said ${resolved} — staff use the form's answer`
+      : `the answer on file is ${resolved} — staff use that answer`
+  return `Registration said ${registration}; ${winner}.`
 }
 
 /** A shared unit holding somebody who did not consent to sharing it. */
