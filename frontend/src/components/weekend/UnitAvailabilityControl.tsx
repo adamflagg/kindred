@@ -41,6 +41,15 @@ export interface UnitAvailabilityControlProps {
    * CampMinder mirror could not close a cabin at all.
    */
   canManage: boolean
+  /**
+   * Whether the slot this unit sits in already holds a party this scenario —
+   * a fact read off the CARD, never off availability itself. Owner ruling on
+   * #2090: held and occupied are mutually exclusive states, so an occupied
+   * unit offers no "Hold" action. Kept separate from `canManage`: folding
+   * occupancy into the permission gate would resurrect the scenario
+   * dimension 1500000135 deleted from availability.
+   */
+  occupied: boolean
   /** True while THIS unit's write is in flight. */
   isSaving: boolean
   onSubmit: (write: { familyAvailable: boolean | null; reason: string }) => void
@@ -49,13 +58,14 @@ export interface UnitAvailabilityControlProps {
 export function UnitAvailabilityControl({
   unit,
   canManage,
+  occupied,
   isSaving,
   onSubmit,
 }: UnitAvailabilityControlProps) {
   const [reason, setReason] = useState('')
   const [isOpen, setIsOpen] = useState(false)
   const [wantsReason, setWantsReason] = useState(false)
-  const action = availabilityAction(unit)
+  const action = availabilityAction(unit, occupied)
 
   const close = () => {
     setIsOpen(false)

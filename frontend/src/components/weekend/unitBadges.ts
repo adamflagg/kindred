@@ -119,8 +119,20 @@ export interface AvailabilityAction {
  *
  * Lives beside `reservationBadge` so the two cannot drift. A card badged
  * "Held" that offers to "Hold" it says two things about one cabin.
+ *
+ * `occupied` names a fact from the SLOT (whether any party is placed on this
+ * card this scenario), never folded into `canManage`'s permission gate.
+ * Owner ruling on #2090: held and occupied are mutually exclusive states, so
+ * a space that already holds a family may not also be marked held — but this
+ * must not become a THIRD dimension threaded onto availability itself.
+ * `family_available_override` stays exactly what 1500000135 made it: global,
+ * scenario-less, and reachable only through `clear` for a space that somehow
+ * already carries both facts.
  */
-export function availabilityAction(unit: LodgingUnitRow): AvailabilityAction | null {
+export function availabilityAction(
+  unit: LodgingUnitRow,
+  occupied = false
+): AvailabilityAction | null {
   // A container is a whole-building aggregate, never a bookable room.
   if (unit.is_container === true) return null
   // `!== null` and not truthiness: null (no row for this weekend) and false
@@ -140,5 +152,10 @@ export function availabilityAction(unit: LodgingUnitRow): AvailabilityAction | n
   if (unit.inventory_class === 'staff_default') {
     return { kind: 'release', label: 'Release', familyAvailable: true, needsReason: true }
   }
+  // An already-occupied space offers no "Hold": the fix for #2090. Only
+  // reachable here, past both branches above, so an already-held unit keeps
+  // its `clear` action regardless of occupancy — clearing only ever REDUCES
+  // the conflict, so it is never the state that needs blocking.
+  if (occupied) return null
   return { kind: 'hold', label: 'Hold', familyAvailable: false, needsReason: true }
 }

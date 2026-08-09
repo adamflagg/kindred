@@ -211,6 +211,15 @@ export function resolveDrop({
 
   const unit = units.find((candidate) => candidate.code === target.unitCode)
   if (unit === undefined) return null
+  // Owner ruling on #2090: a hold is a GLOBAL fact about the building (who is
+  // in it, chiefly non-rostered staff), not a scenario-scoped reservation of
+  // empty space, and held/occupied are mutually exclusive states. Dragging
+  // onto a held unit is refused outright, not dimmed — see #2087. This is
+  // the load-bearing check: #2080 adds a placement path that never touches a
+  // `useDroppable`, so a refusal only on that hook's `disabled` flag would be
+  // silently bypassed by it. `LodgingUnitCard` also disables its droppable
+  // for the drag affordance, but this is what actually enforces it.
+  if (unit.family_available_override === false) return null
   // A COMBINED container IS a card now — Task 6 draws its own row in place of
   // its rooms (unitLevel.ts, `drawnUnits`) — so it must accept a drop exactly
   // like any other drawn unit. A NON-combined container still carries only
