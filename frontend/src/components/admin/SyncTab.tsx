@@ -298,6 +298,11 @@ export function SyncTab() {
                     {status.summary.prod_audit_warnings} prod⚠
                   </span>
                 )}
+                {(status.summary.lodging_prod_audit_warnings ?? 0) > 0 && (
+                  <span className="font-medium text-amber-600 dark:text-amber-400">
+                    {status.summary.lodging_prod_audit_warnings} lodging⚠
+                  </span>
+                )}
               </div>
               <div className="text-muted-foreground truncate text-xs sm:text-sm">
                 {status.summary.duration !== undefined && formatDuration(status.summary.duration)}

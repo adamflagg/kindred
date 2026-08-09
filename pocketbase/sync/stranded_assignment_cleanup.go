@@ -490,7 +490,7 @@ func reconcileLodgingOrphans(app core.App, year int, stats *Stats) error {
 		"year", year,
 		"orphaned_drafts", len(orphanDrafts),
 		"drafts_swept", writes,
-		"prod_audit_warnings", stats.LodgingProdAuditWarnings,
+		"lodging_prod_audit_warnings", stats.LodgingProdAuditWarnings,
 		"errors", stats.Errors,
 	)
 	return nil
