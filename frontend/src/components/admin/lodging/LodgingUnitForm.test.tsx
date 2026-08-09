@@ -16,9 +16,13 @@ vi.mock('../../../services/lodgingCrud', () => ({
 }))
 
 const toastError = vi.fn()
+const toastSuccess = vi.fn()
 
 vi.mock('react-hot-toast', () => ({
-  default: { success: vi.fn(), error: (...args: unknown[]) => toastError(...args) },
+  default: {
+    success: (...args: unknown[]) => toastSuccess(...args),
+    error: (...args: unknown[]) => toastError(...args),
+  },
 }))
 
 import type { LodgingAreaRecord, LodgingUnitInput, LodgingUnitRecord } from '../../../types/lodging'
@@ -1366,5 +1370,151 @@ describe('LodgingUnitForm — the default-combined control', () => {
     const [, payload] = updateLodgingUnit.mock.calls[0] as [string, LodgingUnitInput]
     expect(payload.default_combined).toBe(false)
     expect(payload.is_container).toBe(false)
+  })
+})
+
+/**
+ * The bathroom share, said as ROOMS rather than as the opaque group id staff
+ * had no reason to know existed (kindred#2023).
+ *
+ * Sharing is symmetric and `bathroom_group` is one string per unit, so the
+ * owner's ruling is that every assertion made from one room's form lands on
+ * the peers' records too — REMOVAL INCLUDED. The peer writes are N+1 and
+ * non-atomic, which is why the partial-failure case below is the most
+ * important test in this group: a half-written group must never be reported
+ * as a completed save.
+ */
+describe('LodgingUnitForm — a bathroom share is named in rooms', () => {
+  const room = (over: Partial<LodgingUnitRecord> & { id: string }): LodgingUnitRecord => ({
+    ...UNIT,
+    name: over.id,
+    code: over.id,
+    ...over,
+  })
+
+  const HOUSE = room({ id: 'house', name: 'Hall House', code: 'hh', is_container: true })
+  const ROOM_ONE = room({ id: 'r1', name: 'Room One', parent_unit: 'house' })
+  const ROOM_TWO = room({ id: 'r2', name: 'Room Two', parent_unit: 'house' })
+  const ROOM_THREE = room({ id: 'r3', name: 'Room Three', parent_unit: 'house' })
+
+  const grouped = (unit: LodgingUnitRecord, group: string) => ({ ...unit, bathroom_group: group })
+
+  const renderRoom = (unit: LodgingUnitRecord, units: LodgingUnitRecord[], onSaved = vi.fn()) => {
+    render(
+      <LodgingUnitForm
+        areas={AREAS}
+        units={units}
+        year={2026}
+        unit={unit}
+        onSaved={onSaved}
+        onCancel={vi.fn()}
+      />
+    )
+    return onSaved
+  }
+
+  it('names the peer room and never shows the group id', () => {
+    const one = grouped(ROOM_ONE, 'hh-hall')
+    renderRoom(one, [HOUSE, one, grouped(ROOM_TWO, 'hh-hall'), ROOM_THREE])
+
+    expect(screen.getByText('Room Two')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Remove Room Two' })).toBeInTheDocument()
+    // The id is storage, not vocabulary. Nothing on screen may carry it.
+    expect(screen.queryByDisplayValue('hh-hall')).not.toBeInTheDocument()
+  })
+
+  it('writes the group onto the added room as well as this one', async () => {
+    updateLodgingUnit.mockResolvedValue({})
+    const user = userEvent.setup()
+    const one = grouped(ROOM_ONE, 'hh-hall')
+    renderRoom(one, [HOUSE, one, grouped(ROOM_TWO, 'hh-hall'), ROOM_THREE])
+
+    await user.selectOptions(screen.getByLabelText('Add a room that shares this bathroom'), 'r3')
+    await user.click(screen.getByRole('button', { name: 'Add room' }))
+    await user.click(screen.getByRole('button', { name: 'Save unit' }))
+
+    await waitFor(() => {
+      expect(updateLodgingUnit).toHaveBeenCalledWith('r3', { bathroom_group: 'hh-hall' })
+    })
+    const [, payload] = updateLodgingUnit.mock.calls[0] as [string, LodgingUnitInput]
+    expect(payload.bathroom_group).toBe('hh-hall')
+  })
+
+  it('CLEARS the peer too when the last listed room is removed', async () => {
+    // The dangerous direction. Clearing only this room would leave Room Two
+    // alone in the group — the group-of-one this feature exists to eliminate,
+    // recreated by the act of dissolving it.
+    updateLodgingUnit.mockResolvedValue({})
+    const user = userEvent.setup()
+    const one = grouped(ROOM_ONE, 'hh-hall')
+    renderRoom(one, [HOUSE, one, grouped(ROOM_TWO, 'hh-hall')])
+
+    await user.click(screen.getByRole('button', { name: 'Remove Room Two' }))
+    await user.click(screen.getByRole('button', { name: 'Save unit' }))
+
+    await waitFor(() => {
+      expect(updateLodgingUnit).toHaveBeenCalledWith('r2', { bathroom_group: '' })
+    })
+    const [, payload] = updateLodgingUnit.mock.calls[0] as [string, LodgingUnitInput]
+    expect(payload.bathroom_group).toBe('')
+  })
+
+  it('refuses to report a partial peer write as a saved unit', async () => {
+    // N+1 non-atomic writes are the accepted cost of symmetric peers. What is
+    // NOT acceptable is a green toast over a half-written group: the staffer
+    // has to be told which rooms landed and which did not, and the form must
+    // stay open so the retry is one click away.
+    updateLodgingUnit.mockImplementation((id: string) =>
+      id === 'r3' ? Promise.reject(new Error('network')) : Promise.resolve({})
+    )
+    const user = userEvent.setup()
+    const one = grouped(ROOM_ONE, 'hh-hall')
+    const onSaved = renderRoom(one, [
+      HOUSE,
+      one,
+      grouped(ROOM_TWO, 'hh-hall'),
+      grouped(ROOM_THREE, 'hh-hall'),
+    ])
+
+    await user.click(screen.getByRole('button', { name: 'Remove Room Two' }))
+    await user.click(screen.getByRole('button', { name: 'Remove Room Three' }))
+    await user.click(screen.getByRole('button', { name: 'Save unit' }))
+
+    await waitFor(() => {
+      expect(toastError).toHaveBeenCalled()
+    })
+    const message = String((toastError.mock.calls[0] as [string])[0])
+    expect(message).toContain('Room Two')
+    expect(message).toContain('Room Three')
+    // Both halves named, and named as different halves.
+    expect(message.indexOf('Room Two')).toBeLessThan(message.indexOf('Room Three'))
+    expect(message).toMatch(/not updated/i)
+    expect(toastSuccess).not.toHaveBeenCalled()
+    expect(onSaved).not.toHaveBeenCalled()
+    // Still editable — the modal has not been dismissed out from under a
+    // half-finished write.
+    expect(screen.getByRole('button', { name: 'Save unit' })).toBeEnabled()
+  })
+
+  it('disables the add picker when every other room is already listed', () => {
+    // Nine of the ten production groups are in exactly this state, so it is
+    // the ordinary rendering of this control, not an edge case.
+    const one = grouped(ROOM_ONE, 'hh-hall')
+    renderRoom(one, [HOUSE, one, grouped(ROOM_TWO, 'hh-hall')])
+
+    expect(screen.getByLabelText('Add a room that shares this bathroom')).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Add room' })).toBeDisabled()
+    expect(screen.getByText(/already listed/i)).toBeInTheDocument()
+  })
+
+  it('leaves a room with no parent on the raw id field', () => {
+    // Zero parentless units carry a group in production, so the "same area"
+    // fallback the proposal sketched is unexercised by any real row. Rather
+    // than ship an untested branch, a parentless room keeps the field it has.
+    const orphan = { ...UNIT, id: 'solo', name: 'Solo Room', parent_unit: '' }
+    renderRoom(orphan, [orphan])
+
+    expect(screen.getByLabelText('Shares a bathroom with')).toHaveAttribute('list')
+    expect(screen.queryByLabelText('Add a room that shares this bathroom')).not.toBeInTheDocument()
   })
 })

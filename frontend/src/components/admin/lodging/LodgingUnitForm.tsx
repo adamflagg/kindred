@@ -48,6 +48,12 @@ import type {
   LodgingUnitRecord,
   ShareabilityStoredValue,
 } from '../../../types/lodging'
+import {
+  resolveShareGroupId,
+  sharePeerCandidates,
+  sharePeerWrites,
+  storedPeerIds,
+} from './bathroomShare'
 import { amenitiesOf } from './unitAmenities'
 import { BUTTON_PRIMARY, BUTTON_SECONDARY, FIELD, LABEL } from './lodgingStyles'
 import { parseSleeps } from './sleepsValue'
@@ -156,6 +162,31 @@ export function LodgingUnitForm({
   const bathroomGroups = [
     ...new Set(units.map((u) => u.bathroom_group).filter((g) => g !== '')),
   ].sort((a, b) => a.localeCompare(b))
+  // The bathroom share, named in ROOMS (kindred#2023). `bathroomPeerIds` is
+  // the on-screen membership; `amenities.bathroom_group` stays the stored id
+  // and is recomputed only when a chip is added or removed, never at mount —
+  // an untouched group of one is warned about, not silently rewritten.
+  const storedBathroomGroup = unit?.bathroom_group ?? ''
+  const [bathroomPeerIds, setBathroomPeerIds] = useState(() => storedPeerIds(unit, units))
+  const unitsById = new Map(units.map((u) => [u.id, u]))
+  const shareParent = unitsById.get(identity.parent_unit)
+  const sharePeers = bathroomPeerIds
+    .map((id) => unitsById.get(id))
+    .filter((peer): peer is LodgingUnitRecord => peer !== undefined)
+  const shareCandidates = sharePeerCandidates(
+    unit?.id,
+    identity.parent_unit,
+    bathroomPeerIds,
+    units,
+    storedBathroomGroup
+  )
+  const setBathroomPeers = (next: string[]) => {
+    setBathroomPeerIds(next)
+    setAmenities((current) => ({
+      ...current,
+      bathroom_group: resolveShareGroupId(storedBathroomGroup, next, units, shareParent),
+    }))
+  }
 
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault()
@@ -199,19 +230,72 @@ export function LodgingUnitForm({
       // field a silent no-op the staffer believes worked.
       ...(parsedSleeps === null ? (unit ? { sleeps: 0 } : {}) : { sleeps: parsedSleeps }),
     }
+    // Sharing a bathroom is SYMMETRIC and the column is one string per unit,
+    // so what the staffer asserted here has to land on the peers' records too
+    // — removals included. Computed BEFORE the unit's own write, off the units
+    // the form was given.
+    const peerWrites = sharePeerWrites(
+      unit?.id,
+      storedBathroomGroup,
+      bathroomPeerIds,
+      amenities.bathroom_group,
+      units
+    )
     try {
       if (unit) {
         await updateLodgingUnit(unit.id, payload)
       } else {
         await createLodgingUnit(payload)
       }
-      toast.success(unit ? 'Unit saved' : 'Unit created')
-      onSaved()
     } catch (error) {
+      // Nothing else is attempted. Peers pointing at a group the unit never
+      // joined is the one partial state with no honest way to describe it.
       toast.error(saveErrorMessage(error))
-    } finally {
       setIsSaving(false)
+      return
     }
+
+    // N+1 SEQUENTIAL, NON-ATOMIC WRITES. That is the accepted cost of saying
+    // this in rooms rather than in ids, and the loop is deliberate rather than
+    // an oversight — but unlike `reorderLodgingAreas`, which stops at the
+    // first failure because a PREFIX of a ranking is meaningful, group
+    // membership is a SET: a prefix is worth no more than any other subset, so
+    // every write is attempted and the exact partition is reported by name.
+    // That is `confirmLodgingUnits`' discipline, one step further — names, not
+    // a count, because the staffer has to know WHICH room to check.
+    //
+    // A retry is safe and converges: every write sets an absolute value, so
+    // replaying the whole set over a partially-applied one lands in the same
+    // place. The form keeps its (now slightly stale) `units`, which only means
+    // the successful writes are attempted again.
+    const wrote: string[] = []
+    const failed: string[] = []
+    for (const peer of peerWrites) {
+      try {
+        await updateLodgingUnit(peer.id, { bathroom_group: peer.bathroom_group })
+        wrote.push(peer.name)
+      } catch {
+        failed.push(peer.name)
+      }
+    }
+
+    if (failed.length > 0) {
+      // NOT a completed state: no success toast, and `onSaved` is not called,
+      // so the editor stays open on a half-written group instead of closing
+      // over it. The precedent this deliberately does NOT follow is
+      // WeekendFriendGroups, which reports a partial write as a success.
+      toast.error(
+        `This room saved, but the shared bathroom is only half recorded. Updated: ${
+          wrote.length > 0 ? wrote.join(', ') : 'no other rooms'
+        }. Not updated: ${failed.join(', ')}. Save again to finish.`
+      )
+      setIsSaving(false)
+      return
+    }
+
+    toast.success(unit ? 'Unit saved' : 'Unit created')
+    onSaved()
+    setIsSaving(false)
   }
 
   return (
@@ -242,6 +326,15 @@ export function LodgingUnitForm({
         value={amenities}
         onChange={setAmenities}
         bathroomGroups={bathroomGroups}
+        shareParent={shareParent}
+        sharePeers={sharePeers}
+        shareCandidates={shareCandidates}
+        onAddSharePeer={(id) => {
+          setBathroomPeers([...bathroomPeerIds, id])
+        }}
+        onRemoveSharePeer={(id) => {
+          setBathroomPeers(bathroomPeerIds.filter((peer) => peer !== id))
+        }}
         shareability={shareability}
         onShareabilityChange={setShareability}
         inventoryClass={inventoryClass}
