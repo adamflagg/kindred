@@ -33,7 +33,18 @@ const BASE = '/api/custom/lodging/roll-forward'
 /** Ties the Details disclosure to the list it expands, for assistive tech. */
 const UNIT_CODES_ID = 'roll-forward-unit-codes'
 
-/** What both the preview and apply endpoints return — a dry run and a real one render identically. */
+/**
+ * What both the preview and apply endpoints return — a dry run and a real one
+ * render identically.
+ *
+ * `unit_codes` / `skipped_codes` are typed nullable because the Go side only
+ * ever grows them with `append` (pocketbase/lodging/rollforward.go); a source
+ * year that copies and skips nothing never runs either append, and an
+ * uninitialized `[]string` field marshals as `null`, not `[]` (#2182). The Go
+ * fix initializes both to `[]string{}`, but this type stays nullable and the
+ * two call sites below keep their `?? []` guard as insurance against the same
+ * class from any other nil slice on this endpoint — not the fix itself.
+ */
 export interface RollForwardPlan {
   from_year: number
   to_year: number
@@ -41,8 +52,8 @@ export interface RollForwardPlan {
   units_to_create: number
   areas_present: number
   units_present: number
-  unit_codes: string[]
-  skipped_codes: string[]
+  unit_codes: string[] | null
+  skipped_codes: string[] | null
 }
 
 /** This is a PocketBase custom route, not FastAPI — errors carry `error`, not `detail`. */
@@ -191,18 +202,18 @@ export function SeasonRollForwardPanel() {
               </button>
             </div>
 
-            {plan.skipped_codes.length > 0 && (
+            {(plan.skipped_codes ?? []).length > 0 && (
               <p className="text-muted-foreground text-xs">
-                Left as-is, already present in {toYear}: {plan.skipped_codes.join(', ')}
+                Left as-is, already present in {toYear}: {(plan.skipped_codes ?? []).join(', ')}
               </p>
             )}
 
-            {expanded && plan.unit_codes.length > 0 && (
+            {expanded && (plan.unit_codes ?? []).length > 0 && (
               <ul
                 id={UNIT_CODES_ID}
                 className="text-muted-foreground grid grid-cols-2 gap-x-4 gap-y-1 text-xs sm:grid-cols-3"
               >
-                {plan.unit_codes.map((code) => (
+                {(plan.unit_codes ?? []).map((code) => (
                   <li key={code} className="font-mono">
                     {code}
                   </li>
