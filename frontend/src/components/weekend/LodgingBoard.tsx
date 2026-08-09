@@ -56,6 +56,7 @@ import { FamilyDetailsPanel } from './FamilyDetailsPanel'
 import { FloatingUnplacedBadge } from './FloatingUnplacedBadge'
 import { LodgingUnitCard } from './LodgingUnitCard'
 import { partyKey } from './partyKey'
+import { resolvePartyUnit } from './rosterAttention'
 
 export interface LodgingBoardProps {
   parties: RosterPartyRow[]
@@ -532,7 +533,7 @@ export function LodgingBoard({
         {panelParty !== null && (
           <FamilyDetailsPanel
             party={panelParty}
-            unit={unitsByCode.get(panelParty.unit_code ?? '')}
+            unit={resolvePartyUnit(panelParty, unitsByCode)}
             year={year}
             requestClose={requestClose}
             onClose={closePanel}

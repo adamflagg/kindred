@@ -22,6 +22,7 @@ import {
   countUnmeasuredSpaces,
   partyAttention,
   partyBeds,
+  resolvePartyUnit,
 } from './rosterAttention'
 
 function party(overrides: Partial<RosterPartyRow> = {}): RosterPartyRow {
@@ -256,6 +257,108 @@ describe('partyAttention — does the cabin provide what was asked for', () => {
       unit()
     )
     expect(a.level).toBe('settled')
+  })
+})
+
+describe('resolvePartyUnit', () => {
+  // `unit_code` is "" on a merged slot by design (kindred#1982), so
+  // `unitsByCode.get(party.unit_code ?? '')` — the resolution every caller
+  // used — always returns undefined for a genuine multi-leaf merge, and
+  // `partyAttention`'s `is_confirmed` gate never gets evidence to check.
+  // `resolvePartyUnit` is the caller-side fix: it falls back to
+  // `unit_codes` and only trusts the merge as evidence once EVERY member
+  // resolves and is confirmed — one unconfirmed room is still an absence
+  // of data, same principle as the single-unit gate, not a looser one for
+  // having more rooms.
+
+  it('resolves an ordinary placement off unit_code, unchanged', () => {
+    const u = unit({ code: 'ridge-a' })
+    const resolved = resolvePartyUnit(party({ unit_code: 'ridge-a' }), new Map([['ridge-a', u]]))
+    expect(resolved).toBe(u)
+  })
+
+  it('resolves a whole-house merge once every member is confirmed', () => {
+    const a = unit({ code: 'tioga-1', is_confirmed: true })
+    const b = unit({ code: 'tioga-2', is_confirmed: true })
+    const resolved = resolvePartyUnit(
+      party({ unit_code: '', unit_codes: ['tioga-1', 'tioga-2'], is_merged_slot: true }),
+      new Map([
+        ['tioga-1', a],
+        ['tioga-2', b],
+      ])
+    )
+    expect(resolved).toBeDefined()
+    expect(resolved?.is_confirmed).toBe(true)
+  })
+
+  it('refuses to treat a merge as evidence while ANY member is unconfirmed', () => {
+    const a = unit({ code: 'tioga-1', is_confirmed: true })
+    const b = unit({ code: 'tioga-2', is_confirmed: false })
+    const resolved = resolvePartyUnit(
+      party({ unit_code: '', unit_codes: ['tioga-1', 'tioga-2'], is_merged_slot: true }),
+      new Map([
+        ['tioga-1', a],
+        ['tioga-2', b],
+      ])
+    )
+    expect(resolved).toBeUndefined()
+  })
+
+  it('refuses to treat a merge as evidence when a member code cannot be found', () => {
+    const a = unit({ code: 'tioga-1', is_confirmed: true })
+    const resolved = resolvePartyUnit(
+      party({ unit_code: '', unit_codes: ['tioga-1', 'ghost'], is_merged_slot: true }),
+      new Map([['tioga-1', a]])
+    )
+    expect(resolved).toBeUndefined()
+  })
+
+  it('returns undefined for an unplaced party (neither field set)', () => {
+    expect(resolvePartyUnit(party({ unit_code: '', unit_codes: [] }), new Map())).toBeUndefined()
+  })
+})
+
+describe('partyAttention + resolvePartyUnit — the roster row / card / panel pipeline', () => {
+  // The pipeline every caller actually runs: resolve a unit, then feed it to
+  // `partyAttention`. `settled` here proves the fix reaches the surfaces
+  // that resolve off `unit_code`/`unit_codes` — the roster row, family
+  // card, and detail panel — not just a hand-picked `unit` fixture.
+  it('credits a confirmed whole-house merge as settled end to end', () => {
+    const a = unit({ code: 'tioga-1', bathroom: 'shared', is_confirmed: true })
+    const b = unit({ code: 'tioga-2', bathroom: 'shared', is_confirmed: true })
+    const mergedParty = party({
+      flags: { needs_private_bathroom: true },
+      is_merged_slot: true,
+      unit_code: '',
+      unit_name: 'Tioga 1 + Tioga 2',
+      unit_codes: ['tioga-1', 'tioga-2'],
+      effective_bathroom: 'private',
+    })
+    const unitsByCode = new Map([
+      ['tioga-1', a],
+      ['tioga-2', b],
+    ])
+    const attention = partyAttention(mergedParty, resolvePartyUnit(mergedParty, unitsByCode))
+    expect(attention.level).toBe('settled')
+  })
+
+  it('mutation guard: one unconfirmed member of the merge keeps it unverified', () => {
+    const a = unit({ code: 'tioga-1', bathroom: 'shared', is_confirmed: true })
+    const b = unit({ code: 'tioga-2', bathroom: 'shared', is_confirmed: false })
+    const mergedParty = party({
+      flags: { needs_private_bathroom: true },
+      is_merged_slot: true,
+      unit_code: '',
+      unit_name: 'Tioga 1 + Tioga 2',
+      unit_codes: ['tioga-1', 'tioga-2'],
+      effective_bathroom: 'private',
+    })
+    const unitsByCode = new Map([
+      ['tioga-1', a],
+      ['tioga-2', b],
+    ])
+    const attention = partyAttention(mergedParty, resolvePartyUnit(mergedParty, unitsByCode))
+    expect(attention.level).toBe('unverified')
   })
 })
 
