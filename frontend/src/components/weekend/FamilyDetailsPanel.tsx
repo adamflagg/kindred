@@ -29,7 +29,7 @@ import type {
 } from '../../types/lodging'
 import { displayCampMinderAge } from '../../utils/age'
 import { AccessibilityFlagList } from './AccessibilityFlagList'
-import { namedAdults, partyHeadcount, partyIdentityLabel } from './householdIdentity'
+import { namedAdults, partyFamilyLabel, partyHeadcount } from './householdIdentity'
 import { MedicalNarrative } from './MedicalNarrative'
 import { partyKey } from './partyKey'
 import { ATTENTION_LABEL, partyAttention } from './rosterAttention'
@@ -141,11 +141,24 @@ export function FamilyDetailsPanel({
   // omitting the field. `null` says "nothing to look up", so the medical
   // narrative is not fetched where it could only ever 404.
   const householdCmId = isHousehold ? (party.household_cm_id ?? 0) : 0
-  // kindred#2084: the header used to be `party.display_name` -- CampMinder's
-  // mailing_title salutation, which disagreed with the real attending-adult
-  // list on 26.7% of 2026's rostered households. This reuses FamilyCard's
-  // own construction (`householdIdentity.ts`) instead.
-  const identityLabel = partyIdentityLabel(party)
+  // "The X Family", built from the children's deduplicated surnames
+  // (kindred#2180, owner ruling 2026-08-09). It REPLACES the attending-adult
+  // headline kindred#2084 installed here; the adults are not lost and are not
+  // demoted to a sub-line -- they are in the Party list below, with the kids.
+  //
+  // This is not the salutation coming back. That was CampMinder's
+  // `mailing_title`, which disagreed with the real adult list on 26.7% of
+  // 2026's 382 rostered households, in both directions; a surname derived
+  // from the children's own `persons.last_name` carries none of that. The
+  // four OTHER surfaces (`HouseholdRosterRow`, `MapUnitPopover`,
+  // `FloatingUnplacedBadge`, and the card's grey line) still show the adult
+  // list -- this replacement is scoped to the panel headline, where there is
+  // a full members list one section down to carry the names.
+  //
+  // `partyFamilyLabel` falls all the way back through the adult list to the
+  // salutation, so a party whose children carry no surname still has a
+  // heading.
+  const identityLabel = partyFamilyLabel(party)
   const attention = partyAttention(party, unit)
   const isPlaced = (party.unit_name ?? '').length > 0
   // NOT `party.party_size` — that became a BED count under kindred#1925/
@@ -184,8 +197,12 @@ export function FamilyDetailsPanel({
             <span className="text-muted-foreground text-xs">{unit.area_name}</span>
           )}
         </div>
-        {/* 0 of 93 units are confirmed today, so "unverified" is the honest
-            verdict for every constrained party — not a bug to route around. */}
+        {/* "Unverified" is the honest verdict for a constrained party whose
+            cabin nobody has confirmed — an unset `has_power` means "nobody has
+            said", not "there is no power". Not a bug to route around, and no
+            longer the universal case this used to claim: it said "0 of 93
+            units are confirmed today", and production is 118/118 confirmed as
+            of 2026-08-09. */}
         {attention.level !== 'settled' && attention.level !== 'unplaced' && (
           <p className="text-muted-foreground flex flex-wrap items-baseline gap-1.5 text-xs">
             <span className="font-medium">{ATTENTION_LABEL[attention.level]}</span>

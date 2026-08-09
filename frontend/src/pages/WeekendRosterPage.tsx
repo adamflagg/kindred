@@ -24,7 +24,7 @@
  * preference, proximity mode or request text looks wrong, the fix belongs in
  * the Go ingest so every surface sees the correction at once.
  */
-import { Home, Map as MapIcon, Users } from 'lucide-react'
+import { Heart, Home, Map as MapIcon, Users } from 'lucide-react'
 import { Activity, lazy, Suspense, useEffect, useMemo, useState } from 'react'
 import { useNavigate, useParams } from 'react-router'
 
@@ -44,12 +44,14 @@ import {
   shortWeekendName,
   sortWeekendsByDate,
   weekendRef,
+  WeekendFriendGroups,
   WeekendScenarioPicker,
   WeekendStatsBar,
 } from '../components/weekend'
 import { useCurrentYear } from '../hooks/useCurrentYear'
 import { usePermissions } from '../hooks/usePermissions'
 import { useScenario } from '../hooks/useScenario'
+import { useWeekendFriendGroups } from '../hooks/useWeekendFriendGroups'
 import { useWeekendRoster, useWeekendSessions } from '../hooks/useWeekendRoster'
 
 /**
@@ -100,10 +102,10 @@ function TabLoadingFallback() {
  * is a happy accident rather than a route: the URL is left exactly as the
  * bookmark wrote it.
  */
-type View = 'roster' | 'housing' | 'map'
+type View = 'roster' | 'housing' | 'groups' | 'map'
 
 /** Tab order. `DEFAULT_VIEW` is a separate choice — see below. */
-const VIEWS: View[] = ['housing', 'roster', 'map']
+const VIEWS: View[] = ['housing', 'roster', 'groups', 'map']
 
 /**
  * Housing, not the roster: the tab strip already leads with it, as summer's
@@ -162,6 +164,12 @@ export default function WeekendRosterPage() {
   // than be passed through. See `weekendScenario.ts`.
   const scenario = scenarioForWeekend(currentScenario, selectedCmId)
   const rosterQuery = useWeekendRoster(currentYear, selectedCmId, scenario)
+
+  // Read here as well as inside the Groups tab, for the tab strip's count —
+  // React Query dedupes the two against one cache entry, so this costs no
+  // second request. NO `scenario` argument, unlike the roster above: a friend
+  // group has no scenario dimension (migration 1500000146).
+  const friendGroupsQuery = useWeekendFriendGroups(currentYear, selectedCmId)
 
   // A slug with no list yet is UNRESOLVED, not unknown — but the title's
   // existing `sessionsQuery.isLoading` branch already says "Loading weekends…"
@@ -229,6 +237,14 @@ export default function WeekendRosterPage() {
     // The house is summer's icon for the same tab — its Bunks tab is `Home`.
     { id: 'housing', label: 'Housing', icon: Home, count: boardSlotCount },
     { id: 'roster', label: 'Roster', icon: Users, count: parties.length },
+    // The heart is summer's icon for the same idea — `LockGroupActionBar`'s
+    // create button wears it (kindred#1913).
+    {
+      id: 'groups',
+      label: 'Groups',
+      icon: Heart,
+      count: friendGroupsQuery.data?.groups?.length ?? 0,
+    },
     { id: 'map', label: 'Map', icon: MapIcon, count: mapUnitCount },
   ]
 
@@ -356,13 +372,13 @@ export default function WeekendRosterPage() {
               />
             </div>
 
-            {/* THREE STATIC PANELS, not one panel whose id follows `view`.
-                Under `Activity` all three subtrees stay mounted at once, so a
-                single dynamic id would either collide across the three (all
-                three claiming `weekend-panel-${view}` — impossible, there is
-                only one `view`) or leave two tabs' `aria-controls` pointing at
-                an id that only the third panel currently wears. Each tab's
-                `aria-controls` (above) targets one of these three fixed ids,
+            {/* FOUR STATIC PANELS, not one panel whose id follows `view`.
+                Under `Activity` all four subtrees stay mounted at once, so a
+                single dynamic id would either collide across them (all four
+                claiming `weekend-panel-${view}` — impossible, there is
+                only one `view`) or leave three tabs' `aria-controls` pointing
+                at an id that only the fourth panel currently wears. Each tab's
+                `aria-controls` (above) targets one of these four fixed ids,
                 which exist for the lifetime of the page.
 
                 Each container also carries `hidden={view !== id}`. `Activity`
@@ -383,7 +399,7 @@ export default function WeekendRosterPage() {
                 so a crash in a BACKGROUND tab (its chunk still loading while
                 the user has already switched away) would otherwise climb to
                 the route-level boundary in App.tsx and blank the header,
-                scenario picker and tab strip along with the two tabs that
+                scenario picker and tab strip along with the tabs that
                 never broke. `ErrorBoundary`'s default fallback supplies the
                 retry — the ONLY way back for a panel that already crashed,
                 since `Activity` no longer remounts it on a tab switch. */}
@@ -442,6 +458,37 @@ export default function WeekendRosterPage() {
                         units={units}
                         year={currentYear}
                         sessionCmId={selectedCmId ?? 0}
+                      />
+                    </ErrorBoundary>
+                  </Activity>
+                )}
+              </div>
+
+              <div
+                role="tabpanel"
+                id="weekend-panel-groups"
+                aria-labelledby="weekend-tab-groups"
+                hidden={view !== 'groups'}
+              >
+                {openedViews.has('groups') && (
+                  <Activity mode={view === 'groups' ? 'visible' : 'hidden'}>
+                    <ErrorBoundary>
+                      {/* No `Suspense`: this tab is not code-split. The board
+                          and the map are, because each carries a large
+                          dependency (dnd-kit, the map model) that a visitor who
+                          never opens the tab should not download. This one is
+                          a list and a picker over data the page already has.
+
+                          NO `scenario` prop, unlike the board. A friend group
+                          has no scenario dimension (migration 1500000146): it
+                          records what households asked for, which is true of
+                          the weekend in every plan for it. */}
+                      <WeekendFriendGroups
+                        year={currentYear}
+                        sessionCmId={selectedCmId ?? 0}
+                        parties={parties}
+                        canManage={canManageLodging}
+                        sessionType={selectedSession?.session_type ?? ''}
                       />
                     </ErrorBoundary>
                   </Activity>

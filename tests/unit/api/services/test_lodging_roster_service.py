@@ -490,6 +490,46 @@ class TestFamilyCampParties:
         ]
 
     @pytest.mark.asyncio
+    async def test_a_child_carries_its_structured_last_name_not_just_a_display_name(self) -> None:
+        """kindred#2180: the board names a family from its children's surnames.
+
+        `display_name` is `preferred_or_first + ' ' + last_name`, so splitting
+        the trailing token back off it is the wrong surname for every child
+        whose `last_name` itself contains a space -- 32 of 2026's 680 distinct
+        rostered children, measured against production 2026-08-09. The client
+        cannot recover the surname from the string, so the surname travels as
+        its own field.
+        """
+        repo = _repo(
+            fetch_session=FAMILY_SESSION,
+            fetch_households={"hh_1": _household()},
+            fetch_attendees_for_session=[_child(first="Ava", last="Martinez Garcia")],
+        )
+        roster = await LodgingRosterService(repo).build_roster(2026, 1000001)
+
+        child = roster.parties[0].children[0]
+        assert child.display_name == "Ava Martinez Garcia"
+        assert child.last_name == "Martinez Garcia"
+
+    @pytest.mark.asyncio
+    async def test_a_child_with_no_last_name_on_file_sends_an_empty_surname(self) -> None:
+        """Not the display name, and not a guess. No 2026 rostered child has a
+        blank `last_name` (0 of 680), but the schema default has to be the
+        honest empty string so the client's "every child shares one surname"
+        test cannot pass on a household it knows nothing about.
+        """
+        repo = _repo(
+            fetch_session=FAMILY_SESSION,
+            fetch_households={"hh_1": _household()},
+            fetch_attendees_for_session=[_child(first="Ava", last="")],
+        )
+        roster = await LodgingRosterService(repo).build_roster(2026, 1000001)
+
+        child = roster.parties[0].children[0]
+        assert child.display_name == "Ava"
+        assert child.last_name == ""
+
+    @pytest.mark.asyncio
     async def test_returning_family_flag_from_prior_year_household(self) -> None:
         repo = _repo(
             fetch_session=FAMILY_SESSION,

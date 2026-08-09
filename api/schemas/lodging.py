@@ -238,6 +238,16 @@ class PartyChild(BaseModel):
 
     person_cm_id: int = 0
     display_name: str = ""
+    # The STRUCTURED surname, sent alongside `display_name` rather than left
+    # for the client to recover from it (kindred#2180). The board names a
+    # household from its children's deduplicated surnames, and
+    # `_person_display_name` builds `display_name` as
+    # `preferred_or_first + " " + last_name` -- so splitting the trailing
+    # token back off that string is the WRONG surname for every child whose
+    # own last_name contains a space: 32 of 2026's 680 distinct rostered
+    # children (4.7%), measured 2026-08-09. Blank only when persons.last_name
+    # is blank, which no rostered 2026 child is.
+    last_name: str = ""
     age: float | None = None
     grade: int | None = None
 

@@ -4,6 +4,14 @@ export type { BoardArea, BoardModel, BoardSlot, ConsentFlag } from './boardLayou
 export { FamilyCard } from './FamilyCard'
 export { FamilyDetailsPanel } from './FamilyDetailsPanel'
 export { FloatingUnplacedBadge } from './FloatingUnplacedBadge'
+export { FriendGroupActionBar } from './FriendGroupActionBar'
+export {
+  defaultFriendGroupName,
+  FRIEND_GROUP_COLOR_NAMES,
+  FRIEND_GROUP_COLORS,
+  householdLabel,
+  nextFriendGroupColor,
+} from './friendGroups'
 export { HouseholdRosterRow } from './HouseholdRosterRow'
 export { HouseholdRosterTable } from './HouseholdRosterTable'
 export { LodgingUnitCard } from './LodgingUnitCard'
@@ -29,6 +37,7 @@ export { reservationBadge, shareabilityBadge } from './unitBadges'
 export type { UnitBadge } from './unitBadges'
 export { scenarioForWeekend } from './weekendScenario'
 export type { ScenarioRef } from './weekendScenario'
+export { WeekendFriendGroups } from './WeekendFriendGroups'
 export { WeekendScenarioPicker } from './WeekendScenarioPicker'
 export { WeekendStatsBar } from './WeekendStatsBar'
 export {

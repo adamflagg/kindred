@@ -30,7 +30,26 @@ import type {
   PlacementWriteRequest,
   SlotMergeRequest,
 } from './api-generated'
-import type { LodgingUnitRow, RosterPartyRow } from './lodging'
+import type { LodgingUnitRow, PartyChildRow, RosterPartyRow } from './lodging'
+
+/**
+ * kindred#2180 added `last_name` to `PartyChild`, and the board's family
+ * naming reads it. `RosterParty`'s own fixture writes `children: []`, so it
+ * proves nothing about the child shape — this is the guard that a later
+ * regen dropping the field, or renaming it, stops the build here rather than
+ * silently degrading every card to full names.
+ */
+const _exhaustivePartyChild: Required<PartyChildRow> = {
+  person_cm_id: 1000001,
+  display_name: 'Ava Martinez Garcia',
+  // The STRUCTURED surname, not the trailing token of `display_name` — for
+  // 4.7% of 2026's rostered children those two disagree, and this fixture
+  // value is one of them.
+  last_name: 'Martinez Garcia',
+  age: 9,
+  grade: 4,
+}
+void _exhaustivePartyChild
 
 const _exhaustiveRosterParty: Required<RosterPartyRow> = {
   grain: 'household',

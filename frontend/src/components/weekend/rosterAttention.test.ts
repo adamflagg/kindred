@@ -5,14 +5,20 @@
  * to say which ones need a decision and why. That only works if the signals it
  * ranks on are actually discriminating: measured against real 2026 data,
  * `needs_resolution` is true for 44 of 62 parties, and `has_medical_narrative`
- * (deleted in kindred#1889) was true for 62 of 62
- * for 62 of 62, so neither can drive triage.
+ * (deleted in kindred#1889) was true for 62 of 62, so neither can drive
+ * triage.
  *
  * The state that matters most is a party whose cabin does not provide what
- * they asked for. That cannot be computed until the registry records what each
- * cabin HAS — all 82 cabins are `is_confirmed: false` today — so the check is
- * built now and reports "not verified" until the data exists, rather than
- * guessing from unset amenity defaults and flagging everyone.
+ * they asked for. That is computed only against a CONFIRMED cabin, because an
+ * unset `has_power` means "nobody has said" rather than "there is no power" —
+ * so an unconfirmed cabin reports "not verified" instead of flagging every
+ * constrained family off unset amenity defaults.
+ *
+ * That gate is now OPEN. This paragraph used to say "all 82 cabins are
+ * `is_confirmed: false` today", and production is 118/118 confirmed as of
+ * 2026-08-09 — the unconfirmed fixtures below are the fallback branch, not
+ * the state of the registry. Corrected alongside the same claim in
+ * `rosterAttention.ts` under kindred#2180.
  */
 import { describe, expect, it } from 'vitest'
 

@@ -88,7 +88,9 @@ function party(overrides: Partial<RosterPartyRow> = {}): RosterPartyRow {
       { adult_number: 1, display_name: 'Emma Johnson', relationship: 'Mother' },
       { adult_number: 2, display_name: 'David Johnson', relationship: 'Father' },
     ],
-    children: [{ person_cm_id: 9001, display_name: 'Noah Johnson', age: 8, grade: 3 }],
+    children: [
+      { person_cm_id: 9001, display_name: 'Noah Johnson', last_name: 'Johnson', age: 8, grade: 3 },
+    ],
     party_size: 3,
     unit_code: 'cedar-1',
     unit_name: 'Cedar 1',
@@ -196,39 +198,139 @@ describe('FamilyDetailsPanel — the content the card omits', () => {
 })
 
 describe('FamilyDetailsPanel — household identity', () => {
-  // kindred#2084: the header used to be `party.display_name` -- CampMinder's
-  // mailing_title salutation, which disagreed with the real attending-adult
-  // list on 26.7% of 2026's 382 rostered households. It now reuses
-  // FamilyCard's own attending-adults construction (`householdIdentity.ts`)
-  // instead, so staff never learn two identities for one household. The
-  // fixture's `display_name: 'Johnson'` deliberately does NOT match either
-  // adult's name, so a heading of 'Johnson' would mean the old salutation
-  // leaked back in.
-  it('names the household from its attending adults, not the salutation', () => {
+  /*
+   * kindred#2180, owner ruling 2026-08-09: "The X Family" REPLACES the
+   * attending-adult headline. The adults are not lost and are not demoted to
+   * a sub-line -- they stay in the Party list alongside the children, which
+   * the section below pins.
+   *
+   * That supersedes kindred#2084's choice ON THIS SURFACE ONLY, and it is not
+   * a return of what #2084 deleted: the salutation was CampMinder's
+   * `mailing_title`, which disagreed with the real adult list on 26.7% of
+   * 2026's 382 rostered households. A surname derived from the children's own
+   * `persons.last_name` carries none of that. The other four surfaces still
+   * use `partyIdentityLabel`.
+   *
+   * The fixture's `display_name: 'Johnson'` deliberately matches neither the
+   * adult list nor the derived label's full form, so a bare heading of
+   * 'Johnson' would mean the old salutation leaked back in.
+   */
+  it('names the household from its children’s surnames, not the salutation or the adults', () => {
     render(<FamilyDetailsPanel party={party()} year={2026} onClose={vi.fn()} />, { wrapper })
-    expect(
-      screen.getByRole('heading', { name: 'Emma Johnson · David Johnson' })
-    ).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'The Johnson Family' })).toBeInTheDocument()
     expect(screen.queryByRole('heading', { name: 'Johnson' })).not.toBeInTheDocument()
+    expect(
+      screen.queryByRole('heading', { name: 'Emma Johnson · David Johnson' })
+    ).not.toBeInTheDocument()
   })
 
   it('carries the same identity into the panel’s aria-label', () => {
     render(<FamilyDetailsPanel party={party()} year={2026} onClose={vi.fn()} />, { wrapper })
+    expect(screen.getByRole('dialog', { name: 'The Johnson Family details' })).toBeInTheDocument()
+  })
+
+  it('joins two child surnames with an ampersand', () => {
+    render(
+      <FamilyDetailsPanel
+        party={party({
+          children: [
+            { person_cm_id: 9001, display_name: 'Noah Johnson', last_name: 'Johnson', age: 8 },
+            { person_cm_id: 9002, display_name: 'Ava Garcia', last_name: 'Garcia', age: 5 },
+          ],
+        })}
+        year={2026}
+        onClose={vi.fn()}
+      />,
+      { wrapper }
+    )
+    expect(screen.getByRole('heading', { name: 'The Johnson & Garcia Family' })).toBeInTheDocument()
+  })
+
+  // One of 2026's 382 rostered households already needs this form, and
+  // kindred#2073's heading spans years and goes higher. Not hypothetical.
+  it('commas the middle of three or more child surnames', () => {
+    render(
+      <FamilyDetailsPanel
+        party={party({
+          children: [
+            { person_cm_id: 9001, display_name: 'Noah Johnson', last_name: 'Johnson', age: 8 },
+            { person_cm_id: 9002, display_name: 'Ava Garcia', last_name: 'Garcia', age: 5 },
+            { person_cm_id: 9003, display_name: 'Mia Nguyen', last_name: 'Nguyen', age: 3 },
+          ],
+        })}
+        year={2026}
+        onClose={vi.fn()}
+      />,
+      { wrapper }
+    )
     expect(
-      screen.getByRole('dialog', { name: 'Emma Johnson · David Johnson details' })
+      screen.getByRole('heading', { name: 'The Johnson, Garcia & Nguyen Family' })
     ).toBeInTheDocument()
   })
 
-  it('falls back to display_name when no adult has a name on file', () => {
+  // ⚠️ A hyphenated surname is ONE name -- 72 of 2026's 680 distinct rostered
+  // children carry one. Never "The Garcia & Lopez Family".
+  it('keeps a hyphenated surname whole', () => {
     render(
       <FamilyDetailsPanel
-        party={party({ display_name: 'Household 4021', adults: [] })}
+        party={party({
+          children: [
+            {
+              person_cm_id: 9001,
+              display_name: 'Noah Garcia-Lopez',
+              last_name: 'Garcia-Lopez',
+              age: 8,
+            },
+          ],
+        })}
+        year={2026}
+        onClose={vi.fn()}
+      />,
+      { wrapper }
+    )
+    expect(screen.getByRole('heading', { name: 'The Garcia-Lopez Family' })).toBeInTheDocument()
+  })
+
+  // `family_camp_adults.last_name` is empty on every 2026 row, so the adults
+  // can never supply the surname -- when the children cannot either, this
+  // falls back to the attending-adult label rather than to "The Family".
+  it('falls back to the attending adults when no child carries a surname', () => {
+    render(
+      <FamilyDetailsPanel
+        party={party({
+          children: [{ person_cm_id: 9001, display_name: 'Noah', last_name: '', age: 8 }],
+        })}
+        year={2026}
+        onClose={vi.fn()}
+      />,
+      { wrapper }
+    )
+    expect(
+      screen.getByRole('heading', { name: 'Emma Johnson · David Johnson' })
+    ).toBeInTheDocument()
+  })
+
+  it('falls back to display_name when no adult and no child has a name on file', () => {
+    render(
+      <FamilyDetailsPanel
+        party={party({ display_name: 'Household 4021', adults: [], children: [] })}
         year={2026}
         onClose={vi.fn()}
       />,
       { wrapper }
     )
     expect(screen.getByRole('heading', { name: 'Household 4021' })).toBeInTheDocument()
+  })
+
+  // The owner's ruling in full: the headline stops naming the adults, and the
+  // adults are STILL THERE, in the members list with the kids. This is the
+  // half that would go quiet if the headline change were made alone.
+  it('still lists the adults in the Party section once the headline stops naming them', () => {
+    render(<FamilyDetailsPanel party={party()} year={2026} onClose={vi.fn()} />, { wrapper })
+    const adults = screen.getByTestId('family-panel-adults')
+    expect(adults).toHaveTextContent('Emma Johnson')
+    expect(adults).toHaveTextContent('David Johnson')
+    expect(screen.getByRole('heading', { name: 'The Johnson Family' })).toBeInTheDocument()
   })
 
   it('keeps its own display_name for a person-grain party -- it IS the identity', () => {
