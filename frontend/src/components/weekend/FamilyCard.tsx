@@ -46,7 +46,7 @@ import { Fragment } from 'react'
 
 import type { LodgingUnitRow, PartyChildRow, RosterPartyRow } from '../../types/lodging'
 import { displayCampMinderAge, displayTruncatedAge } from '../../utils/age'
-import { partySize, SHARE_WORDING, shareWordingChip } from './boardLayout'
+import { answersConflictDetail, partySize, SHARE_WORDING, shareWordingChip } from './boardLayout'
 import { attendingAdults as computeAttendingAdults } from './householdIdentity'
 import { partyKey } from './partyKey'
 import { ATTENTION_LABEL, partyAttention } from './rosterAttention'
@@ -107,14 +107,22 @@ function Chip({
   label,
   tone,
   icon: Icon,
+  title,
 }: {
   label: string
   tone: ChipTone
   /** Optional, e.g. the "Whole building" chip's `Home` — every other chip omits it. */
   icon?: LucideIcon
+  /**
+   * Native hover tooltip, e.g. the "Answers disagree" chip's per-party detail
+   * (kindred#2083) — matches `SharePreferenceChip`'s `raw` tooltip pattern
+   * rather than inventing a second affordance for the same idea.
+   */
+  title?: string
 }) {
   return (
     <span
+      title={title}
       className={`inline-flex items-center rounded-full px-1.5 py-0.5 text-xs font-semibold whitespace-nowrap ${CHIP_TONE[tone]}`}
     >
       {Icon && <Icon className="mr-0.5 h-3 w-3 flex-shrink-0" aria-hidden="true" />}
@@ -205,6 +213,7 @@ function FamilyCardBody({
   // view — a chip showing one *or* the other loses them.
   const wantsToShare = proximity.includes('with') || proximity.includes('similar_ages')
   const wantsNear = proximity.includes('near')
+  const conflictDetail = answersConflictDetail(party.share)
 
   return (
     <>
@@ -279,9 +288,19 @@ function FamilyCardBody({
           <Chip label={shareWordingChip(SHARE_WORDING.declined)} tone="warn" />
         )}
         {/* 16 households for 2026 carry disagreeing answers. Shown on the card
-            as well as the slot, so a party sitting alone still surfaces one. */}
-        {party.share?.answers_conflict === true && (
-          <Chip label={shareWordingChip(SHARE_WORDING.conflict)} tone="warn" />
+            as well as the slot, so a party sitting alone still surfaces one.
+            Gated on the DETAIL, not the raw boolean (kindred#2083): a party
+            this can't explain — none exist today, but a person-grain party
+            carries no share block to begin with — never renders an empty
+            chip. The tooltip names which two answers disagreed and which one
+            staff are acting on, matching `SharePreferenceChip`'s hover
+            pattern rather than a bare unexplained flag. */}
+        {conflictDetail !== null && (
+          <Chip
+            label={shareWordingChip(SHARE_WORDING.conflict)}
+            tone="warn"
+            title={conflictDetail}
+          />
         )}
         {wantsToShare && <Chip label="Wants to share" tone="share" />}
         {/* NEAR and WITH are different requests: NEAR is satisfied by map

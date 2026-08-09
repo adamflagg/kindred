@@ -43,7 +43,13 @@
  *    rooms is drawn on each of them, which is why an area's family count reads
  *    distinct `partyKey`s rather than slot entries.
  */
-import type { LodgingUnitRow, RosterPartyRow, ShareEligibilityValue } from '../../types/lodging'
+import type {
+  LodgingUnitRow,
+  RosterPartyRow,
+  ShareEligibilityValue,
+  ShareRequest,
+  SharePreferenceValue,
+} from '../../types/lodging'
 import { partyKey } from './partyKey'
 import {
   buildingsSpanned,
@@ -236,6 +242,82 @@ export const SHARE_WORDING = {
 /** The same phrase as a standalone chip label. One source, two positions. */
 export function shareWordingChip(phrase: string): string {
   return phrase.charAt(0).toUpperCase() + phrase.slice(1)
+}
+
+/**
+ * The REGISTRATION gate's answer, worded for a sentence rather than a chip.
+ *
+ * `preference` (`share_cabin_gate`) is a 3-state answer plus "never
+ * answered" — see `SharePreferenceChip`'s doc, which owns the CHIP-label
+ * spelling of the same four values. This is a distinct wording, not a
+ * duplicate: it exists to sit in a sentence fragment ("Registration said
+ * …"), where the chip's title-case labels ("Will not share") read oddly.
+ */
+const REGISTRATION_ANSWER: Record<SharePreferenceValue, string> = {
+  no_share: 'will not share',
+  maybe_mutual: 'only if a mutual match',
+  yes_share: 'open to sharing',
+  unknown: 'not answered',
+}
+
+/**
+ * The FAMILY CAMP FORM's resolved answer, worded for the same sentence.
+ *
+ * `declined` reuses `SHARE_WORDING.declined` rather than its own phrase —
+ * ONE definition of that claim, so the slot flag, the card's "did not
+ * request sharing" chip, and this tooltip cannot drift into three different
+ * wordings of a form that has no refusal option to record.
+ */
+const FORM_ANSWER: Record<ShareEligibilityValue, string> = {
+  open: 'open to sharing',
+  named: 'wants to share with a named family',
+  declined: SHARE_WORDING.declined,
+  unknown: 'not answered',
+}
+
+/**
+ * Guarded lookup — same philosophy as `SharePreferenceChip`'s `Object.hasOwn`
+ * guard on `CHIP`: a payload sent ahead of a type regen must degrade to the
+ * "not answered" phrasing rather than throw and take the whole card with it.
+ */
+function wordingFor<T extends string>(
+  table: Record<T, string>,
+  value: T,
+  fallback: string
+): string {
+  return Object.hasOwn(table, value) ? table[value] : fallback
+}
+
+/**
+ * The tooltip text for the per-party "answers disagree" chip (kindred#2083).
+ *
+ * The chip alone said only that the two forms disagreed, never which two
+ * answers or which one staff are acting on. This names both sides and the
+ * resolution in one sentence.
+ *
+ * Reads `preference` (the registration gate) and `eligibility` (the
+ * resolved verdict) directly rather than re-deriving either from `proximity`
+ * — `DeriveShareEligibility` only ever sets `answers_conflict` true on its
+ * form-answered branch (Go, `lodging_requests.go`), so whenever this
+ * returns non-null, `eligibility` already IS the Family Camp form's own
+ * answer, confirmed against 2026 production: all 16 conflicting households
+ * carry `eligibility_source: 'form'`.
+ *
+ * Returns null when there is nothing to report: no conflict, or no share
+ * block at all — the shape of an adult-weekend guest, who has no share
+ * question to disagree on (`_build_person_parties` attaches no share data).
+ * The caller gates the whole chip on this, rather than on the raw boolean,
+ * so a party this can't explain never renders an empty chip.
+ */
+export function answersConflictDetail(share: ShareRequest | undefined): string | null {
+  if (share?.answers_conflict !== true) return null
+  const registration = wordingFor(
+    REGISTRATION_ANSWER,
+    share.preference ?? 'unknown',
+    'not answered'
+  )
+  const form = wordingFor(FORM_ANSWER, share.eligibility ?? 'unknown', 'not answered')
+  return `Registration said ${registration}; the Family Camp form said ${form} — staff use the form's answer.`
 }
 
 /** A shared unit holding somebody who did not consent to sharing it. */

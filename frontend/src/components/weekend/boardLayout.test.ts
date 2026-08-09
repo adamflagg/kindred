@@ -12,12 +12,15 @@ import type {
   RosterPartyRow,
   ShareEligibilityValue,
   SharePreferenceValue,
+  ShareRequest,
 } from '../../types/lodging'
 import {
+  answersConflictDetail,
   AREA_HUES,
   areaTokens,
   buildBoard,
   countBoardSlots,
+  SHARE_WORDING,
   slotOccupancy,
   wholeBuildingHolders,
 } from './boardLayout'
@@ -776,6 +779,91 @@ describe('buildBoard — consent flagging on ELIGIBILITY, not the gate', () => {
   it('reports how many slots are flagged across the whole board', () => {
     expect(shared(['declined', 'open']).flaggedCount).toBe(1)
     expect(shared(['open', 'open']).flaggedCount).toBe(0)
+  })
+})
+
+describe('answersConflictDetail — which two answers disagreed, and which one won (kindred#2083)', () => {
+  /** A minimal share block, defaulting to no conflict. */
+  function shareBlock(overrides: Partial<ShareRequest> = {}): ShareRequest {
+    return {
+      preference: 'unknown',
+      proximity: [],
+      request_text: '',
+      needs_resolution: false,
+      eligibility: 'unknown',
+      eligibility_source: 'none',
+      answers_conflict: false,
+      ...overrides,
+    }
+  }
+
+  it('says nothing when there is no conflict', () => {
+    expect(answersConflictDetail(shareBlock({ answers_conflict: false }))).toBeNull()
+  })
+
+  it('says nothing for a party with no share block at all — an adult weekend guest', () => {
+    // Adult weekends carry no share question (_build_person_parties attaches
+    // no share data), so there is nothing here to disagree about.
+    expect(answersConflictDetail(undefined)).toBeNull()
+  })
+
+  it('names the registration answer, the form answer, and that the form wins', () => {
+    // Measured against production 2026 data: all 16 conflicting households
+    // resolved with `eligibility_source: 'form'` — DeriveShareEligibility only
+    // ever sets `answers_conflict` true on that branch, so `eligibility` here
+    // already IS the form's own verdict, not a re-derivation of it.
+    const detail = answersConflictDetail(
+      shareBlock({
+        preference: 'no_share',
+        eligibility: 'open',
+        eligibility_source: 'form',
+        answers_conflict: true,
+      })
+    )
+    expect(detail).not.toBeNull()
+    expect(detail).toMatch(/regist.*will not share/i)
+    expect(detail).toMatch(/form.*open to sharing/i)
+    expect(detail).toMatch(/form/i)
+  })
+
+  it('reuses the ONE "did not request sharing" wording for a form decline, never "declined"', () => {
+    // SHARE_WORDING is defined once specifically so the slot flag, the card
+    // chip, and this tooltip cannot drift into three different claims about a
+    // form with no refusal option.
+    const detail = answersConflictDetail(
+      shareBlock({
+        preference: 'yes_share',
+        eligibility: 'declined',
+        eligibility_source: 'form',
+        answers_conflict: true,
+      })
+    )
+    expect(detail).toContain(SHARE_WORDING.declined)
+    expect(detail).not.toMatch(/\bdeclined\b/i)
+  })
+
+  it('names a named-partner form answer distinctly from an open one', () => {
+    const detail = answersConflictDetail(
+      shareBlock({
+        preference: 'no_share',
+        eligibility: 'named',
+        eligibility_source: 'form',
+        answers_conflict: true,
+      })
+    )
+    expect(detail).toMatch(/named/i)
+  })
+
+  it('never crashes on an unrecognised preference or eligibility value', () => {
+    // Same guard philosophy as `SharePreferenceChip`: a payload ahead of a
+    // type regen must degrade, not throw and take the whole card with it.
+    expect(() =>
+      answersConflictDetail({
+        ...shareBlock({ answers_conflict: true }),
+        preference: 'bogus' as unknown as SharePreferenceValue,
+        eligibility: 'bogus' as unknown as ShareEligibilityValue,
+      })
+    ).not.toThrow()
   })
 })
 
