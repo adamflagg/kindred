@@ -573,7 +573,7 @@ func (s *FamilyCampDerivedSync) loadPersonCustomValues(
 //   - `first_name` is a MISLABELED FULL NAME. 773 of 788 2026 values contain a
 //     space -- parents type their whole name into a field CampMinder labels
 //     "First Name". Nothing may treat it as a given name.
-//   - NEVER conclude a row is empty from the split columns. 136 real adults
+//   - NEVER conclude a row is empty from the split columns. 196 real adults
 //     across 2022-2026 are blank in first_name/last_name and populated in
 //     `name`; a "delete the blank rows" cleanup written from that misreading
 //     would have erased every one of them.
@@ -674,12 +674,16 @@ func (s *FamilyCampDerivedSync) processAdults(
 		}
 	}
 
-	// Convert map to slice, only include adults with data
+	// Convert map to slice, only include adults with a real name somewhere.
+	// kindred#1946: the email/gender arms this filter used to carry let 194
+	// wholly nameless rows into production -- an adult with only a gender
+	// value (including a placeholder like "NA") or only an email is not a
+	// person on its own. A `name` with blank first_name/last_name is the
+	// opposite case and must still be admitted; see the doc comment above.
 	var result []*adultData
 	for _, adults := range adultMap {
 		for _, adult := range adults {
-			if adult.name != "" || adult.firstName != "" || adult.lastName != "" ||
-				adult.email != "" || adult.gender != "" {
+			if adult.name != "" || adult.firstName != "" || adult.lastName != "" {
 				result = append(result, adult)
 			}
 		}

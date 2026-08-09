@@ -179,7 +179,7 @@ When weekend genuinely must differ, say why at the divergence. `useHouseholdMedi
 
 **When you find an issue body that is wrong — a renamed symbol, a moved line number, a stale count, a proposed fix that would not compile or would cause harm — edit the issue body. Do not merely note it in a PR, a comment, or a triage doc.**
 
-The body is what the next reader implements from. A correction that lives anywhere else does not travel: the next agent opens the issue, follows it, and reproduces the mistake. Two concrete cases from this repo: a proposed fix on #1889 would have re-introduced the class #1875 had just fixed, and a #1925-derived "delete blank rows" would have erased 136 real adults.
+The body is what the next reader implements from. A correction that lives anywhere else does not travel: the next agent opens the issue, follows it, and reproduces the mistake. Two concrete cases from this repo: a proposed fix on #1889 would have re-introduced the class #1875 had just fixed, and a #1925-derived "delete blank rows" would have erased 196 real adults.
 
 The failure mode is systemic, not occasional. A 2026-08-06 sweep of all 70 open issues found **40 of 69 bodies stale** — overwhelmingly not wrong *premises* but wrong *identifiers*, because issues filed from inside a PR are written against a tree a sibling PR has already moved.
 
