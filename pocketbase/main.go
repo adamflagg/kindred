@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/pocketbase/pocketbase"
@@ -39,6 +40,93 @@ func init() {
 			return p
 		}
 	}
+}
+
+// bootFailureSentinel records an error from a boot-stopping OnServe hook so
+// main() can observe it after app.Start() returns. It exists because
+// pocketbase.PocketBase.Execute() (pocketbase.go:179-212) runs cobra's
+// RootCmd.Execute() in a goroutine and discards its return value: the
+// serve command's OnServe-hook error does stop apis.Serve and gets printed
+// by cobra, but Execute() itself returns whatever OnTerminate().Trigger(...)
+// produces, which is nil on the normal shutdown path regardless of whether
+// serve actually failed. So app.Start() -- a thin wrapper over Execute() --
+// comes back nil too, and main()'s existing `if err := app.Start(); err !=
+// nil { os.Exit(1) }` block never fires for this class of failure. See
+// issue #2140.
+//
+// A hook that decides the boot must not continue calls Set alongside
+// returning its error (the hook's return value is unchanged -- OnServe
+// still needs it to stop apis.Serve and to have cobra print it). main()
+// then checks Get once app.Start() returns.
+//
+// atomic.Pointer over a mutex-guarded var: Set/Get are single-word CAS/load
+// ops, so there's no lock to forget to take, and a zero-value
+// bootFailureSentinel is immediately safe to use -- no constructor needed
+// for the package-level instance below.
+type bootFailureSentinel struct {
+	err atomic.Pointer[error]
+}
+
+// Set records err as the reason the boot must not continue. A later Set
+// overwrites an earlier one -- main() only needs to know that at least one
+// boot-stopping hook failed and why, not the full history.
+func (s *bootFailureSentinel) Set(err error) {
+	s.err.Store(&err)
+}
+
+// Get returns the most recently recorded boot failure, or nil if no
+// boot-stopping hook has failed.
+func (s *bootFailureSentinel) Get() error {
+	p := s.err.Load()
+	if p == nil {
+		return nil
+	}
+	return *p
+}
+
+// Reset clears any recorded boot failure. Exists for tests: the sentinel
+// below is a package-level singleton, so a test that records into it must
+// clear it afterward to avoid leaking state into the next test.
+func (s *bootFailureSentinel) Reset() {
+	s.err.Store(nil)
+}
+
+var bootSentinel bootFailureSentinel
+
+// Seams for the fallible calls inside the boot-stopping OnServe hooks below
+// (lodgingRegistryOnServeHook, syncServiceOnServeHook). Package-level
+// function variables rather than direct calls to sync.ParseSeasonYear,
+// lodging.RegistryHasRows, etc., so tests can substitute a failing
+// implementation and invoke the extracted hook functions directly to verify
+// each call site actually records a boot failure -- see
+// main_boot_failure_sentinel_test.go and issue #2140. Production wiring
+// never reassigns these; only tests do, and always restore the original
+// afterward.
+var (
+	parseSeasonYearFn       = sync.ParseSeasonYear
+	registryHasRowsFn       = lodging.RegistryHasRows
+	registryFilePresentFn   = lodging.RegistryFilePresent
+	seedRegistryFn          = lodging.SeedRegistry
+	initializeSyncServiceFn = sync.InitializeSyncService
+)
+
+// recordBootFailure marks a boot-stopping OnServe hook failure for main()
+// to observe after app.Start() returns nil despite the hook's error. See
+// bootFailureSentinel above.
+func recordBootFailure(err error) {
+	bootSentinel.Set(err)
+}
+
+// bootFailure returns the last error recorded by recordBootFailure, or nil
+// if no boot-stopping hook has failed.
+func bootFailure() error {
+	return bootSentinel.Get()
+}
+
+// resetBootFailure clears the sentinel. Exists for tests -- see
+// bootFailureSentinel.Reset.
+func resetBootFailure() {
+	bootSentinel.Reset()
 }
 
 func main() {
@@ -179,28 +267,7 @@ func main() {
 	// Skip rather than guess. Seeding ~118 units into a guessed season is
 	// strictly worse than seeding none: the first roll-forward would carry
 	// the phantom season forward as though it were real.
-	app.OnServe().BindFunc(func(e *core.ServeEvent) error {
-		year, err := sync.ParseSeasonYear()
-		if err != nil {
-			hasRows, rowsErr := lodging.RegistryHasRows(e.App)
-			if rowsErr != nil {
-				// Can't determine whether the registry already has rows —
-				// fail open (warn, don't take the boot down) rather than
-				// compound one failure with a second, less legible one.
-				slog.Warn("lodging registry load skipped: season unavailable "+
-					"(row-presence check also failed)", "err", err, "rows_check_err", rowsErr)
-				return e.Next()
-			}
-			if bootErr := lodgingRegistryBootDecision(err, lodging.RegistryFilePresent(), hasRows); bootErr != nil {
-				return bootErr
-			}
-			return e.Next()
-		}
-		if bootErr := lodgingRegistrySeedBootDecision(lodging.SeedRegistry(e.App, year)); bootErr != nil {
-			return bootErr
-		}
-		return e.Next()
-	})
+	app.OnServe().BindFunc(lodgingRegistryOnServeHook)
 
 	// Config initialization now handled by migrations
 
@@ -211,13 +278,7 @@ func main() {
 	// Register sync service
 	app.OnServe().Bind(&hook.Handler[*core.ServeEvent]{
 		Func: func(e *core.ServeEvent) error {
-			// Initialize sync service
-			slog.Info("Initializing Kindred sync service")
-			if err := sync.InitializeSyncService(app, e); err != nil {
-				return fmt.Errorf("initializing sync service: %w", err)
-			}
-
-			return e.Next()
+			return syncServiceOnServeHook(app, e)
 		},
 	})
 
@@ -290,6 +351,16 @@ func main() {
 		slog.Error("Failed to start application", "error", err)
 		os.Exit(1)
 	}
+
+	// app.Start() can return nil even though a boot-stopping OnServe hook
+	// failed: pocketbase.PocketBase.Execute() runs cobra's RootCmd in a
+	// goroutine and discards its return value, so the serve command's
+	// error never reaches here. Check the sentinel those hooks record into
+	// instead. See bootFailureSentinel above and issue #2140.
+	if err := bootFailure(); err != nil {
+		slog.Error("Boot aborted by a serve hook", "error", err)
+		os.Exit(1)
+	}
 }
 
 // runHistorySync removes _migrations rows whose files no longer exist on disk
@@ -310,6 +381,58 @@ func runHistorySync(app core.App) error {
 		return fmt.Errorf("history-sync WAL checkpoint failed: %w", err)
 	}
 	return nil
+}
+
+// lodgingRegistryOnServeHook is the OnServe hook body for the lodging
+// registry loader (bound in main() via app.OnServe().BindFunc). Extracted to
+// a named, directly-callable function -- rather than left as an anonymous
+// closure -- so a test can invoke it against a substituted (failing) seam
+// and assert bootFailure() becomes non-nil, pinning that this call site
+// really does call recordBootFailure(bootErr) before returning the error.
+// See main_boot_failure_sentinel_test.go and issue #2140.
+func lodgingRegistryOnServeHook(e *core.ServeEvent) error {
+	year, err := parseSeasonYearFn()
+	if err != nil {
+		hasRows, rowsErr := registryHasRowsFn(e.App)
+		if rowsErr != nil {
+			// Can't determine whether the registry already has rows —
+			// fail open (warn, don't take the boot down) rather than
+			// compound one failure with a second, less legible one.
+			slog.Warn("lodging registry load skipped: season unavailable "+
+				"(row-presence check also failed)", "err", err, "rows_check_err", rowsErr)
+			return e.Next()
+		}
+		if bootErr := lodgingRegistryBootDecision(err, registryFilePresentFn(), hasRows); bootErr != nil {
+			// Recorded so main() can os.Exit(1) after app.Start()
+			// returns nil regardless -- see bootFailureSentinel (#2140).
+			recordBootFailure(bootErr)
+			return bootErr
+		}
+		return e.Next()
+	}
+	if bootErr := lodgingRegistrySeedBootDecision(seedRegistryFn(e.App, year)); bootErr != nil {
+		// Recorded so main() can os.Exit(1) after app.Start() returns
+		// nil regardless -- see bootFailureSentinel (#2140).
+		recordBootFailure(bootErr)
+		return bootErr
+	}
+	return e.Next()
+}
+
+// syncServiceOnServeHook is the OnServe hook body that initializes the
+// Kindred sync service (bound in main() via app.OnServe().Bind). Extracted
+// for the same reason as lodgingRegistryOnServeHook above -- see its doc
+// comment.
+func syncServiceOnServeHook(app *pocketbase.PocketBase, e *core.ServeEvent) error {
+	slog.Info("Initializing Kindred sync service")
+	if err := initializeSyncServiceFn(app, e); err != nil {
+		bootErr := fmt.Errorf("initializing sync service: %w", err)
+		// Recorded so main() can os.Exit(1) after app.Start()
+		// returns nil regardless -- see bootFailureSentinel (#2140).
+		recordBootFailure(bootErr)
+		return bootErr
+	}
+	return e.Next()
 }
 
 // lodgingRegistryBootDecision turns a sync.ParseSeasonYear failure into

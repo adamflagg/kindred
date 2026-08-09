@@ -9,7 +9,13 @@
 import { describe, expect, it } from 'vitest'
 
 import type { LodgingUnitRecord } from '../../../types/lodging'
-import { combinedAncestor, descendantIds, directChildren, parentCandidates } from './unitTree'
+import {
+  combinedAncestor,
+  descendantIds,
+  directChildren,
+  flattenUnitTree,
+  parentCandidates,
+} from './unitTree'
 
 function unit(over: Partial<LodgingUnitRecord> & { id: string }): LodgingUnitRecord {
   return {
@@ -220,6 +226,87 @@ describe('parentCandidates — scoped to the area', () => {
     ]
 
     expect(parentCandidates(undefined, units, '').map((u) => u.id)).toEqual(['near', 'far'])
+  })
+})
+
+describe('flattenUnitTree', () => {
+  // #2082: the lodging table renders in TREE order — a parent's row
+  // immediately followed by its own subtree — so the depth used for the
+  // indent has to come from walking `parent_unit`, not from `!== ''`.
+  // Measured on production: 79 roots / 21 at depth 1 / 18 at depth 2, and
+  // three containers hold container children, so a one-level model would
+  // put 18 of 118 rows at the wrong depth.
+  it('computes depth from a parent_unit walk, not from merely having a parent', () => {
+    const units = [
+      unit({ id: 'building', is_container: true }),
+      unit({ id: 'room', parent_unit: 'building', is_container: true }),
+      unit({ id: 'bunk', parent_unit: 'room' }),
+    ]
+    const rows = flattenUnitTree(units, { field: 'name', desc: false })
+    expect(rows.map((r) => [r.unit.id, r.depth])).toEqual([
+      ['building', 0],
+      ['room', 1],
+      ['bunk', 2],
+    ])
+  })
+
+  it('sorts a sibling set by the chosen column while it stays under its parent', () => {
+    const units = [
+      unit({ id: 'building', is_container: true }),
+      unit({ id: 'room-b', parent_unit: 'building', sleeps: 2 }),
+      unit({ id: 'room-a', parent_unit: 'building', sleeps: 4 }),
+    ]
+    // Ascending by sleeps: room-b (2) before room-a (4) — the reverse of
+    // name order — proving the column, not the name tiebreak, drove this.
+    const rows = flattenUnitTree(units, { field: 'sleeps', desc: false })
+    expect(rows.map((r) => r.unit.id)).toEqual(['building', 'room-b', 'room-a'])
+  })
+
+  // This is the case #2082 rules out shipping without: "indent-plus-
+  // unchanged-flat-sort" would let a child whose own sort key ranks ahead of
+  // ANOTHER root's row read as indented under that other root — a FALSE
+  // PARENT. Tree-order-always means the column only ranks siblings; a root
+  // and its whole subtree move together.
+  it('keeps a root and its subtree together even when a child would outrank another root by the sorted column', () => {
+    const units = [
+      unit({ id: 'big-building', is_container: true, sleeps: 20 }),
+      unit({ id: 'big-building-room', parent_unit: 'big-building', sleeps: 1 }),
+      unit({ id: 'small-building', is_container: true, sleeps: 2 }),
+    ]
+    const rows = flattenUnitTree(units, { field: 'sleeps', desc: false })
+    expect(rows.map((r) => r.unit.id)).toEqual([
+      'small-building',
+      'big-building',
+      'big-building-room',
+    ])
+  })
+
+  // A unit whose area was deleted lands in `groupUnitsByArea`'s trailing
+  // `__unassigned__` bucket (see unitSort.test.ts) alongside units it has no
+  // real relationship to — its actual parent, if it has one, is not
+  // guaranteed to be in that same bucket. This must render rather than
+  // crash the walk on a parent lookup that can't find its target.
+  it('renders a unit whose parent is outside this group flat, at depth 0, instead of crashing the walk', () => {
+    const units = [unit({ id: 'orphan', parent_unit: 'not-in-this-group' })]
+    const rows = flattenUnitTree(units, { field: 'name', desc: false })
+    expect(rows).toEqual([{ unit: units[0], depth: 0 }])
+  })
+
+  // Same rationale as descendantIds' and combinedAncestor's matching tests
+  // above: guardUnitParentCycle (#1899) cannot un-write a cycle already
+  // sitting in the database from before it existed, and this walk has no
+  // way to know whether the hook ran on any given row. Unlike those two
+  // walks, this one starts from ROOTS rather than from a known id — a pure
+  // cycle with no unit reachable from an actual root would never be found by
+  // a top-down walk at all, so every member has to be picked up afterward
+  // rather than silently dropped from the roster.
+  it('terminates on already-cyclic stored data and renders every member once, rather than dropping it', () => {
+    const units = [
+      unit({ id: 'a', parent_unit: 'b', is_container: true }),
+      unit({ id: 'b', parent_unit: 'a', is_container: true }),
+    ]
+    const rows = flattenUnitTree(units, { field: 'name', desc: false })
+    expect(rows.map((r) => r.unit.id).sort()).toEqual(['a', 'b'])
   })
 })
 

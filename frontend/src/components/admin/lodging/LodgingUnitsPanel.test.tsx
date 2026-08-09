@@ -202,18 +202,53 @@ describe('LodgingUnitsPanel', () => {
     expect(screen.getAllByText('Unconfirmed')).toHaveLength(2)
   })
 
-  it('sorts within an area when a column header is activated', async () => {
+  // This used to pin a flat, whole-area sort. #2082 replaced that with
+  // TREE order: rows render under their parent regardless of which column
+  // is active, and the chosen column only ranks a sibling set — a building's
+  // own rooms among themselves, and the area's roots among themselves.
+  // Shipping indent-plus-unchanged-flat-sort was ruled out because it is the
+  // one option that can display a FALSE PARENT: a child whose own sort key
+  // outranks another root's row would read as indented under that root.
+  it('sorts a sibling set by the chosen column, indented under its own parent — not the whole area flat', async () => {
+    // Cabin B Loft is a CHILD of Cabin B (parent_unit: 'u3'), not a sibling
+    // of Cabin A/Cabin B at the area's root. Its sleeps value (2) is lower
+    // than both roots', so a flat area-wide sort by Sleeps would rank it
+    // FIRST — exactly the false-parent-producing case #2082 rules out.
+    listLodgingUnits.mockResolvedValueOnce([
+      fixtureUnit({ id: 'u1', name: 'Cabin A', code: 'cabin-a', area: 'area_1', sleeps: 0 }),
+      fixtureUnit({
+        id: 'u3',
+        name: 'Cabin B',
+        code: 'cabin-b',
+        area: 'area_1',
+        sleeps: 4,
+        is_container: true,
+      }),
+      fixtureUnit({
+        id: 'u4',
+        name: 'Cabin B Loft',
+        code: 'cabin-b-loft',
+        area: 'area_1',
+        parent_unit: 'u3',
+        sleeps: 2,
+      }),
+    ])
     const user = userEvent.setup()
     await renderPanel()
 
     await user.click(screen.getByRole('button', { name: 'Sleeps' }))
 
     const north = screen.getByTestId('area-group-area_1')
-    const names = within(north)
-      .getAllByTestId('unit-name')
-      .map((el) => el.textContent)
-    // Cabin B sleeps 4; Cabin A is unknown and must sort last, not first.
-    expect(names).toEqual(['Cabin B', 'Cabin A'])
+    const rows = within(north).getAllByTestId('unit-name')
+    // Cabin B (4) ranks ahead of Cabin A (unknown, always last regardless of
+    // direction) at the root. Cabin B Loft (2) stays directly under Cabin B
+    // — it never jumps ahead of Cabin B, and it is never compared against
+    // Cabin A at all, despite having the lowest sleeps value of the three.
+    expect(rows.map((el) => el.textContent)).toEqual(['Cabin B', 'Cabin B Loft', 'Cabin A'])
+    // The indent itself: Cabin B Loft is the only row under a parent.
+    expect(rows[0]).not.toHaveStyle({ paddingLeft: '20px' })
+    expect(rows[1]).toHaveStyle({ paddingLeft: '20px' })
+    expect(rows[2]).not.toHaveStyle({ paddingLeft: '20px' })
   })
 
   it('marks the active column with aria-sort', async () => {

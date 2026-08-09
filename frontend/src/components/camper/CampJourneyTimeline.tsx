@@ -27,11 +27,14 @@ export function CampJourneyTimeline({
           <TreePine className="h-5 w-5" />
           Camp Journey
         </h2>
-        {/* Program-agnostic count (#2113): the branding tagline reads as
-            summer-only ("summers at camp") and the journey now includes
-            family camp and teen years, so it's no longer paired here. */}
+        {/* Summer-flavored count (#2123, reverses #2113): years_at_camp is
+            CampMinder's calculated field and counts SUMMER attendance only —
+            it is not a program-agnostic total. The journey below can include
+            family camp and teen years, so leaving this program-agnostic
+            reads as a contradiction on a family-camp row under a 0. Say what
+            the number actually measures. */}
         <p className="text-forest-200 mt-1 text-sm">
-          {yearsAtCamp} {yearsAtCamp === 1 ? 'year' : 'years'} at camp
+          {yearsAtCamp} {yearsAtCamp === 1 ? 'summer' : 'summers'} at camp
         </p>
       </div>
 

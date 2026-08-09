@@ -6,14 +6,17 @@
  * cycle `descendantIds`' own walk below and the Go-side `HasParentCycle`
  * would otherwise have to guard against every time they run — and a
  * non-container parent, which `scripts/dev/verify-lodging-seed.sh` treats as
- * a seed failure. Nothing else walks parent links: `descendantIds` below and
- * the Go-side `HasParentCycle` are the only two, and both carry visited
- * guards. The cycle case now has a server-side backstop too
- * (`guardUnitParentCycle`, #1899), for the direct write this picker can't
- * filter; the non-container case still has no PocketBase rule or Go hook at
- * all. This filters both before either ever reaches a write.
+ * a seed failure. Nothing else walks parent links DOWNWARD: `descendantIds`
+ * below, `flattenUnitTree` below (the lodging table's tree-order render,
+ * #2082), and the Go-side `HasParentCycle` are the only three, and all carry
+ * visited guards. `combinedAncestor` below walks the other direction, up
+ * toward the root, and carries its own visited guard for the same reason —
+ * a data-only cycle predates `guardUnitParentCycle` (#1899) and that hook
+ * cannot un-write one already sitting in the database. This filters both
+ * things the picker rejects before either ever reaches a write.
  */
 import type { LodgingUnitRecord } from '../../../types/lodging'
+import { sortUnits, type UnitSort } from './unitSort'
 
 /** Every id descending from `unitId` via `parent_unit` — its children, grandchildren, and so on. */
 export function descendantIds(unitId: string, units: LodgingUnitRecord[]): Set<string> {
@@ -140,4 +143,82 @@ export function parentCandidates(
     }
     return true
   })
+}
+
+/** One row of a tree-ordered unit table: the unit, and how deep its `parent_unit` chain put it. */
+export interface UnitTreeRow {
+  unit: LodgingUnitRecord
+  depth: number
+}
+
+/**
+ * `units` — one area group's worth — in TREE order: a parent's row
+ * immediately followed by its own subtree, at whatever depth the
+ * `parent_unit` chain actually puts it. NEVER one level — three containers
+ * on site hold container children too (#2082), so `parent_unit !== ''` alone
+ * would misplace those rows.
+ *
+ * `sort` orders each SIBLING SET only — a building's own rooms among
+ * themselves, and the group's roots among themselves — never the group as
+ * one flat ranking. That is the load-bearing decision behind this function:
+ * "indent-plus-unchanged-flat-sort" (sorting the whole group, then indenting
+ * whatever came out) is the one option #2082 rules out shipping, because it
+ * is the only one that can display a FALSE PARENT — a child whose own sort
+ * key outranks another root's row would read as indented under that root.
+ * Tree-order-always means a root and its whole subtree move together
+ * regardless of which column is active.
+ *
+ * A unit whose `parent_unit` does not resolve to another unit IN THIS GROUP
+ * — unset, or naming a unit outside it — renders as its own root at depth 0
+ * rather than being dropped. That is what keeps `groupUnitsByArea`'s
+ * trailing `__unassigned__` bucket (`unitSort.ts`) safe to walk: those units
+ * have no guaranteed parent in the same bucket, so this never crashes on a
+ * lookup that can't find its target.
+ *
+ * Visited guard to match this file's other walks. Unlike `descendantIds` and
+ * `combinedAncestor`, which start from one known id, this one starts from
+ * every ROOT in the group — so a pure cycle with no unit reachable from an
+ * actual root (every member's `parent_unit` also resolves inside the cycle)
+ * would never be found by the top-down pass at all. Rather than let those
+ * rows silently vanish from the roster, anything still unvisited afterward
+ * is walked again as an extra root: each member still renders exactly once,
+ * and the recursion still stops the instant it loops back to an id already
+ * drawn.
+ */
+export function flattenUnitTree(units: LodgingUnitRecord[], sort: UnitSort): UnitTreeRow[] {
+  const byId = new Map(units.map((unit) => [unit.id, unit]))
+  const childrenOf = new Map<string, LodgingUnitRecord[]>()
+  const roots: LodgingUnitRecord[] = []
+
+  for (const unit of units) {
+    const parent = unit.parent_unit !== '' ? byId.get(unit.parent_unit) : undefined
+    if (parent === undefined) {
+      roots.push(unit)
+      continue
+    }
+    const siblings = childrenOf.get(parent.id)
+    if (siblings) siblings.push(unit)
+    else childrenOf.set(parent.id, [unit])
+  }
+
+  const rows: UnitTreeRow[] = []
+  const visited = new Set<string>()
+
+  const walk = (level: LodgingUnitRecord[], depth: number) => {
+    for (const unit of sortUnits(level, sort)) {
+      if (visited.has(unit.id)) continue
+      visited.add(unit.id)
+      rows.push({ unit, depth })
+      const children = childrenOf.get(unit.id)
+      if (children) walk(children, depth + 1)
+    }
+  }
+
+  walk(roots, 0)
+  // Cycle members with no external entry point: never reached from a real
+  // root, so pick them up here instead of losing them from the render.
+  const stranded = units.filter((unit) => !visited.has(unit.id))
+  if (stranded.length > 0) walk(stranded, 0)
+
+  return rows
 }

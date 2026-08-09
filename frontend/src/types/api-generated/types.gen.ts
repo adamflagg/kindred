@@ -2075,6 +2075,10 @@ export type LodgingUnitSummary = {
    */
   has_power?: boolean
   /**
+   * Power Coverage
+   */
+  power_coverage?: 'all' | 'some' | 'none' | 'unknown'
+  /**
    * Has Ac
    */
   has_ac?: boolean

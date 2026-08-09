@@ -16,11 +16,14 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import Mapping
+from datetime import date
 from typing import TYPE_CHECKING, Any, NamedTuple, cast
 
+from api.constants.lodging import INFANT_BED_EXEMPT_MONTHS, is_attending_adult_name
 from api.schemas.lodging import (
     PHI_FIELD_NAMES,
     AccessibilityFlagSummary,
+    AmenityCoverage,
     EffectiveBathroom,
     HouseholdMedicalResponse,
     LodgingUnitSummary,
@@ -42,6 +45,7 @@ from api.schemas.lodging import (
     WeekendSummaryResponse,
 )
 from api.services.lodging_rules import (
+    amenity_coverage,
     container_bathroom,
     effective_bathroom,
     is_family_available,
@@ -64,6 +68,14 @@ _GATE_VALUES: frozenset[str] = frozenset({"no_share", "maybe_mutual", "yes_share
 # would hide a value drifting out of the migration's select list.
 _ELIGIBILITY_VALUES: frozenset[str] = frozenset({"open", "named", "declined"})
 _ELIGIBILITY_SOURCE_VALUES: frozenset[str] = frozenset({"form", "registration"})
+
+# kindred#1920: `build_summary` opens a `TaskGroup` per weekend and each one
+# opens four `to_thread` reads of its own, so an uncapped year is 4x its
+# weekend count in concurrent reads against one executor -- 48 for 2026's 12
+# weekends, 72 for 2024's 18. The default `to_thread` pool is
+# `min(32, cpu+4)`, so 8 concurrent weekends (32 reads) keeps the fan-out
+# from ever queuing behind itself.
+SUMMARY_ENTRY_CONCURRENCY = 8
 
 
 class SessionNotFoundError(LookupError):
@@ -121,6 +133,82 @@ def _f(record: Any, field: str) -> float | None:
         return None if value is None else float(value)
     except TypeError, ValueError:
         return None
+
+
+def _as_date(value: str) -> date | None:
+    """A PocketBase date column as a `date`, or None when it says nothing.
+
+    PocketBase hands dates back as `YYYY-MM-DD HH:MM:SS.mmmZ` -- a space, not
+    a `T`, and a `Z` suffix `fromisoformat` will not take before the time is
+    dropped. Only the calendar day matters here: a session starts on a day,
+    and an age in whole months does not care what time the gate opened.
+    """
+    text = value.strip()[:10]
+    if not text:
+        return None
+    try:
+        return date.fromisoformat(text)
+    except ValueError:
+        return None
+
+
+def _completed_months(start: date, end: date) -> int:
+    """Whole months elapsed, the way a parent counts them.
+
+    Calendar months, not `days // 30`: a child born on the 4th is "18 months"
+    on the 4th, whatever the intervening month lengths were. The day-of-month
+    adjustment is what makes the last month count only once it has finished.
+    """
+    months = (end.year - start.year) * 12 + (end.month - start.month)
+    return months - 1 if end.day < start.day else months
+
+
+def _consumes_a_bed(child: Any, session_start: date | None) -> bool:
+    """Whether this child needs a bed of their own (kindred#2046).
+
+    Under 18 months at session start they do not -- they travel in a cot or
+    share with a parent. Everything else here is the same decision made
+    conservatively: an unreadable session date, a missing birthdate, or the
+    unknown-age sentinel all KEEP the bed, because over-stating a party reads
+    as "look at this" while under-stating it reads as "room for more".
+
+    `persons.age == 0.0` is the documented unknown-age sentinel, and a bed is
+    never removed on the strength of a sentinel -- not even when a birthdate
+    sits beside it saying newborn. Measured on 2026's rostered cohort exactly
+    one child is in that state, which is why the rule discounts 24 households
+    rather than 25.
+
+    The birthdate is already in hand: `fetch_attendees_for_session` expands
+    `person`, so this costs no read.
+    """
+    if session_start is None:
+        return True
+    birthdate = _as_date(_s(child, "birthdate"))
+    if birthdate is None:
+        return True
+    if (_f(child, "age") or 0.0) == 0.0:
+        return True
+    return _completed_months(birthdate, session_start) >= INFANT_BED_EXEMPT_MONTHS
+
+
+def _adult_display_name(adult: Any) -> str:
+    """A `family_camp_adults` row's name, coalesced.
+
+    `name` is the COLUMN OF RECORD for an attending adult, and the split
+    columns are a best-effort Adult-1/2-only extra: first_name/last_name are
+    empty for 100% of adult_number 3-5 rows in every measured year, and
+    last_name is empty for all of 2026 (kindred#1945).
+
+    THE FALLBACK IS LOAD-BEARING -- do not "simplify" it away on the grounds
+    that `name` is authoritative. Re-measured against production 2026-08-09:
+    376 of the 382 rostered 2026 households have a non-blank `name`; the
+    fallback rescues 5 of the remaining 6, taking coverage to 381/382. For
+    those 5 it is the only thing that renders an adult at all. Equally, never
+    conclude a row is empty from the split columns alone: 196 real adults
+    across 2022-2026 are blank in first_name/last_name and populated in
+    `name`.
+    """
+    return _s(adult, "name") or f"{_s(adult, 'first_name')} {_s(adult, 'last_name')}".strip()
 
 
 def _map_point(record: Any) -> tuple[float | None, float | None]:
@@ -499,6 +587,73 @@ def _resolve_party_bathroom(unit_codes: list[str], index: _BathroomIndex) -> str
     return effective_bathroom(bathroom, group, index.group_members.get(group, frozenset()), frozenset(occupied))
 
 
+def _resolve_power_coverage(units: list[LodgingUnitSummary], index: _BathroomIndex) -> None:
+    """Fill in every unit's `power_coverage` in place — kindred#1912.
+
+    Beside `_resolve_party_bathroom` above, and for the identical reason: a
+    container's registry row describes the CONTAINER, not its rooms. Twelve of
+    the fourteen 2026 family-pool containers record `has_power = 0` while
+    every leaf beneath them has power, so the board judging a drop against the
+    row marks twelve entirely-powered buildings unpowered.
+
+    Resolved SERVER-SIDE and never stored. The admin panels write
+    `lodging_units` straight to PocketBase from the browser
+    (`frontend/src/services/lodgingCrud.ts`), bypassing FastAPI entirely, so a
+    stored `effective_has_power` column would have no recompute trigger on the
+    one path that actually edits amenities and would go stale the first time
+    staff toggled a flag.
+
+    Walks `index.leaf_codes_under`, which is the ONE walk over this tree --
+    already shared by `_resolve_party_bathroom` and `_build_counts` -- rather
+    than a second traversal of its own, because two walks over one tree are
+    free to drift. It recurses to LEAVES at any depth, which is the whole
+    point: `hc-health-center` looks split one level down (1 powered child, 2
+    not) and is not, because its two "unpowered" children are themselves
+    containers whose every leaf has power. A one-level walk gets that wrong in
+    the direction that looks plausible.
+
+    Rooms that are `is_active = False` do not answer for their building -- the
+    same filter `_effective_sleeps` applies when totalling a combined
+    container's rooms, and for the same reason: nobody can be placed there.
+
+    A LEAF answers for itself: it has nothing beneath it to inherit from, so
+    its own row is the only fact there is. A CONTAINER never does, and that
+    asymmetry is the point of the function. Once no active room is left to
+    supply the answer the container reports `unknown`, exactly as
+    `_effective_sleeps` returns `None` in the same degenerate case ("0 is not
+    a delta over anything, it is the claim 'this house sleeps nobody'"). It is
+    tempting to fall back to the container's own flag here, on
+    `container_bathroom`'s "nothing to inherit, so the container reports what
+    its own row says" -- but that reasoning holds for `bathroom` only because
+    a container's stored `"none"` is a deliberate registry convention.
+    `has_power` is not: THIRTEEN of the fifteen 2026 containers record
+    `has_power = 0` while their rooms are powered, so the fallback would take
+    the one field this function exists to distrust and publish it as "nothing
+    here has power" -- a mark stating a fact no row supports, in the
+    plausible-looking direction.
+
+    IN PLACE, on the very objects `index.units_by_code` holds, rather than
+    returning a rebuilt list: a second list of summaries would leave the index
+    pointing at the pre-resolution copies, which is exactly the kind of drift
+    the one-index-per-call rule above exists to prevent.
+    """
+    for unit in units:
+        rooms = [
+            leaf
+            for code in sorted(index.leaf_codes_under(unit.code))
+            if (leaf := index.units_by_code.get(code)) is not None and leaf.is_active
+        ]
+        answering = rooms if unit.is_container else [unit]
+        unit.power_coverage = cast(
+            AmenityCoverage,
+            # `None` where nobody has confirmed the row: an unconfirmed
+            # `has_power = False` means "nobody has said", never "there is no
+            # power" -- the same gate `rosterAttention` already applies to the
+            # roster's own fit check.
+            amenity_coverage([room.has_power if room.is_confirmed else None for room in answering]),
+        )
+
+
 class LodgingRosterService:
     """Builds the read-only weekend roster from repository output."""
 
@@ -595,6 +750,12 @@ class LodgingRosterService:
         if session is None:
             raise SessionNotFoundError(f"No weekend session {session_cm_id} in {year}")
 
+        # TWO IDS, and the difference is kindred#2042. The lodging tables are
+        # keyed on the weekend's CampMinder id (migration 1500000147 re-keyed
+        # their unique indexes onto `session_cm_id`), which survives a
+        # camp_sessions record being recreated rather than updated. `attendees`
+        # is not a lodging table and has no such column, so it is still read
+        # through the PocketBase relation.
         session_pb_id = _s(session, "id")
         session_type = _s(session, "session_type")
 
@@ -609,7 +770,7 @@ class LodgingRosterService:
         # carrying the normaliser fixes this layer cannot see.
         async with asyncio.TaskGroup() as tg:
             units_task = tg.create_task(self.repository.fetch_units(year))
-            availability_task = tg.create_task(self.repository.fetch_availability(year, session_pb_id))
+            availability_task = tg.create_task(self.repository.fetch_availability(year, session_cm_id))
             attendees_task = tg.create_task(self.repository.fetch_attendees_for_session(year, session_pb_id))
             households_task = tg.create_task(self.repository.fetch_households(year))
             prior_task = tg.create_task(self.repository.fetch_prior_household_cm_ids(year))
@@ -622,9 +783,9 @@ class LodgingRosterService:
             # merge that used to follow it, and saves a session-scoped round
             # trip while it is at it.
             placements_task = tg.create_task(
-                self.repository.fetch_draft_assignments(year, session_pb_id, scenario)
+                self.repository.fetch_draft_assignments(year, session_cm_id, scenario)
                 if scenario
-                else self.repository.fetch_assignments(year, session_pb_id)
+                else self.repository.fetch_assignments(year, session_cm_id)
             )
             # There is deliberately NO second availability read here. 1500000135
             # deleted this table's scenario dimension, so a scenario has nothing
@@ -639,7 +800,7 @@ class LodgingRosterService:
             # WEEKEND-LEVEL row, and fetch_slot_merges returns exactly that
             # tier for a blank scenario rather than an empty list.
             # resolve_combined then sees both tiers.
-            merges_task = tg.create_task(self.repository.fetch_slot_merges(year, session_pb_id, scenario))
+            merges_task = tg.create_task(self.repository.fetch_slot_merges(year, session_cm_id, scenario))
 
         households = await self._resolve_households(session_type, attendees_task.result(), households_task.result())
 
@@ -653,8 +814,13 @@ class LodgingRosterService:
         # same `unit_summaries` for `_build_counts` was caught in review on
         # kindred#2041's PR.
         unit_index = _BathroomIndex.build(unit_summaries)
+        # Only on THIS path. `build_summary` builds its own units and index to
+        # get at the counts, but its `WeekendSummaryEntry` carries no `units`
+        # -- so resolving coverage there would be work no response can read.
+        _resolve_power_coverage(unit_summaries, unit_index)
         parties = self._build_parties(
             session_type=session_type,
+            session_start=_as_date(_s(session, "start_date")),
             attendees=attendees_task.result(),
             households=households,
             prior_cm_ids=prior_task.result(),
@@ -699,12 +865,12 @@ class LodgingRosterService:
         lander cannot drift from the page it links to, and it resolves a
         scenario the same way: replace, never fall through.
 
-        THREE session-scoped reads per weekend, with or without a scenario.
-        Naming one used to cost a fourth -- the scenario's own availability
-        overrides -- and 1500000135 deleted that dimension outright rather than
-        making the extra read cheaper. Nothing caps the resulting fan-out;
-        that is deliberate for now, since no lander calls this with a scenario
-        yet, and kindred#1920 records the two ways to bound it when one does.
+        FOUR session-scoped reads per weekend, with or without a scenario:
+        availability, attendees, one placement source, and slot merges (the
+        last of these unconditional since 1500000140). A `Semaphore` below
+        bounds how many weekends' worth of those run at once -- kindred#1920,
+        which also records why a per-weekend cap was chosen over collapsing
+        the placement read to one call for the whole year.
         """
         sessions = await self.repository.fetch_weekend_sessions(year)
         if not sessions:
@@ -737,16 +903,26 @@ class LodgingRosterService:
         unresolved_aliases = aliases_task.result()
         statuses = statuses_task.result()
 
+        # Bounds how many weekends' four-read TaskGroups run at once. Per-year
+        # (one instance per `build_summary` call), not module-level -- see
+        # SUMMARY_ENTRY_CONCURRENCY.
+        entry_gate = asyncio.Semaphore(SUMMARY_ENTRY_CONCURRENCY)
+
         async def _entry(session: Any) -> WeekendSummaryEntry:
+            # Both ids, read off THIS weekend's record -- see build_roster's
+            # own note. `_entry` runs once per weekend, so a session id hoisted
+            # out of this closure would report every weekend against the first
+            # one's placements.
             session_pb_id = _s(session, "id")
-            async with asyncio.TaskGroup() as inner:
-                availability_task = inner.create_task(self.repository.fetch_availability(year, session_pb_id))
+            entry_cm_id = _i(session, "cm_id")
+            async with entry_gate, asyncio.TaskGroup() as inner:
+                availability_task = inner.create_task(self.repository.fetch_availability(year, entry_cm_id))
                 attendees_task = inner.create_task(self.repository.fetch_attendees_for_session(year, session_pb_id))
                 # One placement source, exactly as build_roster chooses it.
                 placements_task = inner.create_task(
-                    self.repository.fetch_draft_assignments(year, session_pb_id, scenario)
+                    self.repository.fetch_draft_assignments(year, entry_cm_id, scenario)
                     if scenario
-                    else self.repository.fetch_assignments(year, session_pb_id)
+                    else self.repository.fetch_assignments(year, entry_cm_id)
                 )
                 # No second availability read, exactly as build_roster issues
                 # none. These are separate TaskGroups and fixing only one of
@@ -755,7 +931,7 @@ class LodgingRosterService:
                 # Merges are ALWAYS fetched, exactly as build_roster now does
                 # (1500000140) -- the mirror gets the weekend-level tier
                 # rather than an empty list.
-                merges_task = inner.create_task(self.repository.fetch_slot_merges(year, session_pb_id, scenario))
+                merges_task = inner.create_task(self.repository.fetch_slot_merges(year, entry_cm_id, scenario))
 
             # Own local variable, not a mutation of the shared `households`
             # above: `_entry` runs concurrently, one per weekend, in the
@@ -778,6 +954,10 @@ class LodgingRosterService:
             unit_index = _BathroomIndex.build(unit_summaries)
             parties = self._build_parties(
                 session_type=_s(session, "session_type"),
+                # THIS weekend's start. The six year-scoped fetches above are
+                # shared across every weekend in the year; the as-of date is
+                # emphatically not one of them.
+                session_start=_as_date(_s(session, "start_date")),
                 attendees=attendees_task.result(),
                 households=session_households,
                 prior_cm_ids=prior_cm_ids,
@@ -970,6 +1150,7 @@ class LodgingRosterService:
         self,
         *,
         session_type: str,
+        session_start: date | None,
         attendees: list[Any],
         households: dict[str, Any],
         prior_cm_ids: set[int],
@@ -985,6 +1166,11 @@ class LodgingRosterService:
 
         return self._build_household_parties(
             attendees=attendees,
+            # THIS weekend's start, not the year's. Required rather than
+            # defaulted: the infant discount is measured against it, and a
+            # caller that quietly omitted it would stop discounting on every
+            # weekend at once with nothing to notice.
+            session_start=session_start,
             households=households,
             prior_cm_ids=prior_cm_ids,
             adults_by_household=adults_by_household,
@@ -1081,6 +1267,7 @@ class LodgingRosterService:
         self,
         *,
         attendees: list[Any],
+        session_start: date | None,
         households: dict[str, Any],
         prior_cm_ids: set[int],
         adults_by_household: dict[str, list[Any]],
@@ -1088,6 +1275,21 @@ class LodgingRosterService:
         placement_by_household: dict[int, _Placement],
         bathroom_index: _BathroomIndex,
     ) -> list[RosterParty]:
+        if session_start is None:
+            # SAY IT. The keyword above is required rather than defaulted so a
+            # caller cannot silently switch the infant discount off; an
+            # unreadable `start_date` switches it off for the whole weekend
+            # from the data side, where that guard cannot reach. Every party
+            # keeps its infant bed and the board looks entirely ordinary.
+            #
+            # One line per roster build, and only on the broken path -- a
+            # warning on the ordinary path would appear on every weekend and
+            # stop being read. Deliberately NOT extended to a child's missing
+            # `birthdate`: that loses one bed's worth of discount, toward
+            # keeping the bed, and coverage on the rostered cohort is 100%.
+            logger.warning(
+                "Lodging roster: unreadable session start_date -- the infant bed discount is off for this weekend"
+            )
         children_by_household: dict[str, list[Any]] = {}
         for attendee in attendees:
             person = (getattr(attendee, "expand", None) or {}).get("person")
@@ -1106,6 +1308,14 @@ class LodgingRosterService:
             adults = adults_by_household.get(household_pb_id, [])
             placement = placement_by_household.get(household_cm_id, _NO_PLACEMENT)
             children_oldest_first = sorted(children, key=lambda c: -(_f(c, "age") or 0.0))
+            # THE BED COUNT, and the only two terms in it (kindred#1925,
+            # kindred#2046). Both are narrower than the rows they come from:
+            # a five-slot adult scrape holds blanks and placeholders, and a
+            # child under 18 months brings no bed. The ROWS are published
+            # unchanged below -- only the count is filtered, so the frontend
+            # can still show what it chose not to count.
+            beds = sum(1 for adult in adults if is_attending_adult_name(_adult_display_name(adult)))
+            beds += sum(1 for child in children if _consumes_a_bed(child, session_start))
 
             parties.append(
                 RosterParty(
@@ -1115,27 +1325,16 @@ class LodgingRosterService:
                     sort_name=_household_sort_name(
                         children_oldest_first, _household_display_name(household, household_cm_id)
                     ),
+                    # EVERY row, placeholders and blanks included -- see
+                    # `_adult_display_name` for the coalesce and why it is
+                    # load-bearing. Filtering here instead would blind the
+                    # frontend to what the server declined to count, and the
+                    # frontend applies the same predicate at render time
+                    # (`householdIdentity.isAttendingAdultName`).
                     adults=[
                         PartyAdult(
                             adult_number=_i(adult, "adult_number"),
-                            # `name` is the COLUMN OF RECORD for an attending
-                            # adult, and the split columns are a best-effort
-                            # Adult-1/2-only extra: first_name/last_name are
-                            # empty for 100% of adult_number 3-5 rows in every
-                            # measured year, and last_name is empty for all of
-                            # 2026 (kindred#1945).
-                            #
-                            # THE FALLBACK IS LOAD-BEARING -- do not "simplify"
-                            # it away on the grounds that `name` is
-                            # authoritative. 377 of 382 rostered 2026
-                            # households have a non-blank `name`; for several
-                            # of the rest this is the only thing that renders
-                            # an adult at all. Equally, never conclude a row is
-                            # empty from the split columns alone: 136 real
-                            # adults across 2022-2026 are blank in
-                            # first_name/last_name and populated in `name`.
-                            display_name=_s(adult, "name")
-                            or f"{_s(adult, 'first_name')} {_s(adult, 'last_name')}".strip(),
+                            display_name=_adult_display_name(adult),
                             relationship=_s(adult, "relationship_to_camper"),
                         )
                         for adult in adults
@@ -1149,12 +1348,18 @@ class LodgingRosterService:
                             # must read the raw float, not _i()'s truncated int. `or None`
                             # is still deliberate here -- age == 0.0 is the UNKNOWN-AGE
                             # population (no birthdate on file), not a newborn.
+                            #
+                            # DO NOT threshold the infant discount on this field, here or
+                            # client-side (kindred#2046). yy.mm means months never exceed
+                            # `.11`, so `age < 1.5` is really "under 24 months" -- 44
+                            # children on 2026's rostered cohort against the derived
+                            # rule's 24. `_consumes_a_bed` reads `birthdate` instead.
                             age=_f(child, "age") or None,
                             grade=_i(child, "grade") or None,
                         )
                         for child in children_oldest_first
                     ],
-                    party_size=len(adults) + len(children),
+                    party_size=beds,
                     unit_code=placement.unit_code,
                     unit_name=placement.unit_name,
                     is_merged_slot=placement.is_merged_slot,
@@ -1339,14 +1544,28 @@ class LodgingRosterService:
         assigned = sum(1 for p in parties if p.unit_code or p.unit_name)
 
         def _effective_sleeps(unit: LodgingUnitSummary) -> int | None:
-            # MIRRORED by `effectiveSleeps` in
-            # `frontend/src/components/weekend/rosterAttention.ts`, which
-            # `countUnmeasuredSpaces` reads to answer the same "has anyone
-            # measured this?" question for the chip `WeekendStatsBar` prints
-            # beside `beds_family_available`. Named in BOTH directions on
-            # purpose: the pairing being undocumented is what let the two drift
-            # apart unnoticed until kindred#1945's PR, and a change here that
-            # is not made there puts two disagreeing numbers on one line.
+            # MIRRORED IN TWO PLACES, and both are named here on purpose --
+            # the pairing being undocumented is what let the first two drift
+            # apart unnoticed, and a change here that is not made there puts
+            # disagreeing numbers on one screen:
+            #
+            #   1. `effectiveSleeps` in
+            #      `frontend/src/components/weekend/rosterAttention.ts`, which
+            #      `countUnmeasuredSpaces` reads to answer the same "has anyone
+            #      measured this?" question for the chip `WeekendStatsBar`
+            #      prints beside `beds_family_available`.
+            #   2. `derivedWholeHouseSleeps` in
+            #      `frontend/src/components/admin/lodging/derivedCapacity.ts`
+            #      (kindred#2079), the read-only whole-house figure shown beside
+            #      the container's delta field on the units admin form.
+            #
+            # THREE copies is one too many. (2) could not import (1): it is an
+            # unexported helper, and routing admin code through a `weekend/**`
+            # module adds a static import edge across two lazily-chunked route
+            # trees -- see `WeekendRosterPage.chunkGraph.test.ts`, the real
+            # `vite build` that guards it. The fix is a neutral leaf module both
+            # frontends import, not a cross-tree import. Until then: change one,
+            # change all three.
             if not unit.is_container:
                 return unit.sleeps
             leaf_sleeps = [

@@ -16,6 +16,24 @@
  * picker "the gate" — which offered staff no way to express a legitimate
  * second group, and gave no reason for the absence.
  *
+ * ⚠️ DELIBERATE DIVERGENCE FROM SUMMER, ruled by the owner 2026-08-09 after
+ * the discrepancy was measured. Read this before "fixing" it back.
+ *
+ * Summer's own per-card picker does NOT warn — it hides. `AddMemberPicker`
+ * (`LockGroupPanel.tsx`) filters on `!getCamperLockGroup(c.person_cm_id)`,
+ * so a camper already in a group simply is not offered. The warn quoted
+ * above lives in `addCamperToGroup`, which the board and action-bar paths
+ * reach and that picker never does. So summer is internally inconsistent:
+ * its board path warns, its picker hides.
+ *
+ * Copying summer literally here would have imported that inconsistency.
+ * The owner chose consistency instead: all three weekend add paths warn and
+ * keep both memberships. The reason is that a hidden household is
+ * indistinguishable from one that is not on the weekend at all — staff
+ * cannot tell "already grouped" from "not here", and the absence explains
+ * nothing. Per the root CLAUDE.md §4 rule, this is the justification for
+ * departing from the mature surface, stated at the divergence.
+ *
  * Summer's gender filter does not come across: weekends do not split by
  * gender (see `FriendGroupActionBar.tsx`'s header).
  */

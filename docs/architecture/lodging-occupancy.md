@@ -139,6 +139,25 @@ rule: it blocks legitimate work and teaches staff to ignore warnings.
   deleted it, because availability is a fact about the weekend rather than
   about the plan — a burst pipe closes a cabin in every scenario for that
   weekend.
+
+  ### What a hold represents (owner ruling, 2026-08-09; kindred#2090, kindred#2087)
+
+  A hold records **who is in a building** — chiefly non-rostered staff, a
+  caretaker, a burst pipe — not a reservation of empty space. It is a fact
+  about the BUILDING for one weekend; a placement is a fact about a PLAN.
+  They used to live on different axes for that reason, but the two questions
+  "is anyone in this building" and "has a family been placed here" answer the
+  same underlying fact from two directions, and the ruling settles them as
+  **mutually exclusive states**: a unit cannot be both held and occupied.
+
+  Concretely: `family_available_override = false` on a unit **blocks
+  placement outright** (`resolveDrop` in `dragPlacement.ts`, plus the
+  matching `useDroppable` `disabled` flag in `LodgingUnitCard.tsx`, refuse a
+  drop onto a held unit rather than merely dimming it), and a unit already
+  holding a placed party offers no "Hold" action (`availabilityAction` in
+  `unitBadges.ts` takes the slot's own occupancy and returns `null` for the
+  `hold` branch). The `clear` action — removing an existing hold — is never
+  blocked by occupancy, since clearing only ever reduces the conflict.
 - The unique indexes on `lodging_assignments` are
   `(session, year, household_cm_id)` and the person-grain equivalent, each
   partial on `> 0` so the two grains do not collide. (Migration `1500000132`

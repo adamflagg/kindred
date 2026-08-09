@@ -21,13 +21,21 @@ below would pass without the service doing anything. A namespace raises the
 same AttributeError a real record would, so getattr defaults are exercised.
 """
 
+import asyncio
+import logging
+from datetime import date
 from types import SimpleNamespace
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from api.services.lodging_roster_service import LodgingRosterService, SessionNotFoundError, _BathroomIndex
+from api.services.lodging_roster_service import (
+    SUMMARY_ENTRY_CONCURRENCY,
+    LodgingRosterService,
+    SessionNotFoundError,
+    _BathroomIndex,
+)
 
 
 def _rec(**kwargs: Any) -> SimpleNamespace:
@@ -51,6 +59,7 @@ def _unit(
     default_combined: bool = False,
     parent_unit: str = "",
     shareability: str = "",
+    has_power: bool = False,
 ) -> SimpleNamespace:
     return _rec(
         id=pb_id,
@@ -64,7 +73,7 @@ def _unit(
         bathroom=bathroom,
         bathroom_group=bathroom_group,
         near_bathhouse=False,
-        has_power=False,
+        has_power=has_power,
         has_ac=False,
         has_fridge=False,
         is_accessible=False,
@@ -170,6 +179,7 @@ def _child(
     age: float = 9,
     grade: int = 4,
     household_pb_id: str = "hh_1",
+    birthdate: str = "",
 ) -> SimpleNamespace:
     person = _rec(
         cm_id=cm_id,
@@ -179,8 +189,28 @@ def _child(
         age=age,
         grade=grade,
         household=household_pb_id,
+        # The bed-exemption input (kindred#2046). Blank by default because
+        # most fixtures here do not care -- and a blank one must keep its
+        # bed, which is itself pinned below.
+        birthdate=birthdate,
     )
     return _rec(person_id=cm_id, expand={"person": person})
+
+
+def _adult(
+    adult_number: int = 1,
+    name: str = "Olivia Johnson",
+    first_name: str = "",
+    last_name: str = "",
+    relationship: str = "Parent",
+) -> SimpleNamespace:
+    return _rec(
+        adult_number=adult_number,
+        name=name,
+        first_name=first_name,
+        last_name=last_name,
+        relationship_to_camper=relationship,
+    )
 
 
 class TestSessionLookup:
@@ -366,11 +396,14 @@ class TestFamilyCampParties:
         """THE LOAD-BEARING COALESCE (kindred#1945). Do not remove it.
 
         `family_camp_adults.name` is the column of record, but it is blank on a
-        small tail of rows. Measured against 2026: of the 382 rostered family
-        households, 377 have at least one non-blank `name` and 5 do not -- and
-        this fallback is the only thing that renders any adult at all for
-        several of those. Deleting it in the name of "name is authoritative"
-        would blank real adults off the board.
+        small tail of rows. Re-measured directly against production
+        2026-08-09: of the 382 rostered family households, 376 have at least
+        one non-blank `name` and 6 do not. This fallback rescues 5 of those 6
+        -- taking coverage to 381/382 -- and is the only thing that renders
+        any adult at all for them. (An earlier version of this docstring said
+        377 and 5; the number was never re-measured after the cohort was
+        corrected.) Deleting it in the name of "name is authoritative" would
+        blank real adults off the board.
         """
         repo = _repo(
             fetch_session=FAMILY_SESSION,
@@ -1365,7 +1398,7 @@ class TestSlotMergeTiers:
         roster = await LodgingRosterService(repo).build_roster(2026, 1000001)
 
         assert roster.units[0].is_combined is True
-        repo.fetch_slot_merges.assert_awaited_once_with(2026, "sess_1", "")
+        repo.fetch_slot_merges.assert_awaited_once_with(2026, 1000001, "")
 
     @pytest.mark.asyncio
     async def test_parent_code_resolves_through_the_id_to_code_map(self) -> None:
@@ -2553,7 +2586,56 @@ class TestBuildSummary:
         await LodgingRosterService(repo).build_summary(2026, scenario="scn123")
 
         assert repo.fetch_availability.await_count == 2
-        assert repo.fetch_scenario_availability.await_count == 0
+
+    @pytest.mark.asyncio
+    async def test_per_weekend_fan_out_is_bounded_by_a_semaphore(self) -> None:
+        """kindred#1920: `_entry` must not run unboundedly for every weekend at once.
+
+        12 weekends (2026's real count) each open a `TaskGroup` of four
+        concurrent reads inside `_entry`. Uncapped, that is 48 simultaneous
+        `asyncio.to_thread` calls sharing one executor. This pins the ACTUAL
+        bound -- peak concurrent `_entry` bodies in flight -- rather than
+        merely asserting a `Semaphore` object exists, which would pin nothing
+        (a `Semaphore(9999)` would satisfy that check and cap nothing real).
+        """
+        sessions = [
+            _rec(
+                id=f"sess_{i}",
+                cm_id=1000000 + i,
+                name=f"Weekend {i}",
+                session_type="family",
+                year=2026,
+                start_date="2026-09-04",
+                end_date="2026-09-07",
+                sort_order=i,
+            )
+            for i in range(12)
+        ]
+        repo = _repo(fetch_weekend_sessions=sessions)
+
+        concurrency = {"current": 0, "peak": 0}
+
+        async def _tracked_fetch_availability(*_args: Any, **_kwargs: Any) -> list[Any]:
+            concurrency["current"] += 1
+            concurrency["peak"] = max(concurrency["peak"], concurrency["current"])
+            # Cede control so overlapping `_entry` calls actually interleave --
+            # without a yield point, cooperative scheduling would never let a
+            # second `_entry` start before the first one finishes.
+            await asyncio.sleep(0.01)
+            concurrency["current"] -= 1
+            return []
+
+        repo.fetch_availability = AsyncMock(side_effect=_tracked_fetch_availability)
+
+        await LodgingRosterService(repo).build_summary(2026)
+
+        assert concurrency["peak"] <= SUMMARY_ENTRY_CONCURRENCY, (
+            f"peak concurrent weekend entries ({concurrency['peak']}) exceeded the bound ({SUMMARY_ENTRY_CONCURRENCY})"
+        )
+        # Not a tautology: with 12 weekends and a bound below 12, the fan-out
+        # must actually have been throttled at some point, not merely never
+        # have reached the cap by coincidence.
+        assert concurrency["peak"] == SUMMARY_ENTRY_CONCURRENCY
 
     @pytest.mark.asyncio
     async def test_returns_one_entry_per_weekend_carrying_its_identity(self) -> None:
@@ -3015,3 +3097,503 @@ class TestPartySortName:
 
         assert [p.sort_name for p in roster.parties] == ["Adams", "Chen", "Johnson"]
         assert [p.household_cm_id for p in roster.parties] == [2000003, 2000002, 2000001]
+
+
+class TestTheRosterNamesTheWeekendByItsCampMinderId:
+    """kindred#2042: the four lodging reads key on `session_cm_id`.
+
+    `build_roster` and `build_summary` each carry their OWN TaskGroup issuing
+    the same four lodging reads, so re-keying one and not the other is the
+    obvious half-fix -- the same shape `test_the_summary_reads_no_second_availability_layer`
+    guards against. Both are pinned here.
+
+    `fetch_attendees_for_session` is deliberately still passed the PocketBase
+    record id: `attendees` is not a lodging table and has no `session_cm_id`
+    column to key on.
+    """
+
+    @pytest.mark.asyncio
+    async def test_build_roster_passes_the_campminder_id_to_the_lodging_reads(self) -> None:
+        repo = _repo(fetch_session=FAMILY_SESSION)
+
+        await LodgingRosterService(repo).build_roster(2026, 1000001, scenario="scn_1")
+
+        repo.fetch_availability.assert_awaited_once_with(2026, 1000001)
+        repo.fetch_draft_assignments.assert_awaited_once_with(2026, 1000001, "scn_1")
+        repo.fetch_slot_merges.assert_awaited_once_with(2026, 1000001, "scn_1")
+        repo.fetch_attendees_for_session.assert_awaited_once_with(2026, "sess_1")
+
+    @pytest.mark.asyncio
+    async def test_build_roster_without_a_scenario_reads_the_mirror_by_campminder_id(self) -> None:
+        repo = _repo(fetch_session=FAMILY_SESSION)
+
+        await LodgingRosterService(repo).build_roster(2026, 1000001)
+
+        repo.fetch_assignments.assert_awaited_once_with(2026, 1000001)
+
+    @pytest.mark.asyncio
+    async def test_build_summary_passes_each_weekends_own_campminder_id(self) -> None:
+        """Two weekends, two different CampMinder ids -- not one repeated.
+
+        `_entry` runs per session, so reading the id off the wrong record
+        would report both weekends against the first one's placements.
+        """
+        repo = _repo(fetch_weekend_sessions=[FAMILY_SESSION, ADULT_SESSION])
+
+        await LodgingRosterService(repo).build_summary(2026)
+
+        assert sorted(call.args[1] for call in repo.fetch_availability.await_args_list) == [1000001, 1000002]
+        assert sorted(call.args[1] for call in repo.fetch_assignments.await_args_list) == [1000001, 1000002]
+        assert sorted(call.args[1] for call in repo.fetch_slot_merges.await_args_list) == [1000001, 1000002]
+
+
+class TestPartySizeIsABedCount:
+    """`party_size` counts BEDS, not bodies (kindred#1925 + kindred#2046).
+
+    Two independent corrections to the same expression, one per term:
+
+    * ADULTS -- a `family_camp_adults` slot only counts when the load-bearing
+      `name`/`first+last` coalesce yields a name that is not blank and not a
+      placeholder. Measured on 2026's 382 rostered households: 3 blank rows
+      and 2 placeholder rows (`NA`, `0`) were being counted as people, and
+      both placeholders were RENDERED on the family card -- staff were
+      looking at an adult called "NA".
+    * CHILDREN -- a child under 18 months at session start travels in a cot
+      or shares with a parent, so consumes no bed (owner ruling). Derived
+      from `persons.birthdate` against `camp_sessions.start_date`, never from
+      `persons.age`.
+
+    Because the chip is now beds rather than names, the card deliberately
+    shows one fewer than the people it prints for the 24 households with an
+    infant. That two-numbers split is kindred#2152's, not this layer's: the
+    payload keeps every adult row it always did, placeholders included, and
+    only the COUNT changes here.
+    """
+
+    @staticmethod
+    async def _party(**repo_overrides: Any) -> Any:
+        repo = _repo(
+            fetch_session=FAMILY_SESSION,
+            fetch_households={"hh_1": _household()},
+            **repo_overrides,
+        )
+        roster = await LodgingRosterService(repo).build_roster(2026, 1000001)
+        assert len(roster.parties) == 1
+        return roster.parties[0]
+
+    @pytest.mark.asyncio
+    async def test_placeholder_adult_name_is_not_a_bed(self) -> None:
+        party = await self._party(
+            fetch_attendees_for_session=[_child()],
+            fetch_family_camp_adults={
+                "hh_1": [_adult(1, "Olivia Johnson"), _adult(2, "NA")],
+            },
+        )
+        assert party.party_size == 2
+
+    @pytest.mark.asyncio
+    async def test_placeholder_adult_row_is_still_in_the_payload(self) -> None:
+        """The COUNT drops it; the payload does not.
+
+        Provenance stays server-side so the board can explain itself, and the
+        frontend applies the SAME predicate at render time
+        (`householdIdentity.isAttendingAdultName`). Filtering the row out here
+        instead would leave the two surfaces unable to disagree only because
+        one of them had been blinded.
+        """
+        party = await self._party(
+            fetch_attendees_for_session=[_child()],
+            fetch_family_camp_adults={
+                "hh_1": [_adult(1, "Olivia Johnson"), _adult(2, "NA")],
+            },
+        )
+        assert [a.display_name for a in party.adults] == ["Olivia Johnson", "NA"]
+
+    @pytest.mark.asyncio
+    async def test_a_zero_in_the_name_column_is_not_a_bed(self) -> None:
+        party = await self._party(
+            fetch_attendees_for_session=[_child()],
+            fetch_family_camp_adults={"hh_1": [_adult(1, "Olivia Johnson"), _adult(3, "0")]},
+        )
+        assert party.party_size == 2
+
+    @pytest.mark.asyncio
+    async def test_a_blank_adult_slot_is_not_a_bed(self) -> None:
+        """`family_camp_adults` leaves an unused slot blank rather than
+        omitting the row, so `len(adults)` counted furniture."""
+        party = await self._party(
+            fetch_attendees_for_session=[_child()],
+            fetch_family_camp_adults={
+                "hh_1": [_adult(1, "Olivia Johnson"), _adult(2, "", "", ""), _adult(3, "   ")],
+            },
+        )
+        assert party.party_size == 2
+
+    @pytest.mark.asyncio
+    async def test_the_coalesce_still_feeds_the_count(self) -> None:
+        """A row blank in `name` but populated in first/last is a real adult
+        and a real bed -- 196 such rows across 2022-2026 (kindred#1945)."""
+        party = await self._party(
+            fetch_attendees_for_session=[_child()],
+            fetch_family_camp_adults={"hh_1": [_adult(1, "", "Olivia", "Johnson")]},
+        )
+        assert party.party_size == 2
+
+    @pytest.mark.asyncio
+    async def test_a_child_under_eighteen_months_consumes_no_bed(self) -> None:
+        # 2025-04-04 is 17 months before the 2026-09-04 session start.
+        party = await self._party(
+            fetch_attendees_for_session=[
+                _child(cm_id=1, first="Emma", age=9, birthdate="2016-05-01"),
+                _child(cm_id=2, first="Liam", age=1.05, birthdate="2025-04-04"),
+            ],
+            fetch_family_camp_adults={"hh_1": [_adult(1, "Olivia Johnson")]},
+        )
+        assert len(party.children) == 2
+        assert party.party_size == 2
+
+    @pytest.mark.asyncio
+    async def test_a_child_of_exactly_eighteen_months_keeps_its_bed(self) -> None:
+        """The cutoff is `< 18`, not `<= 18`."""
+        party = await self._party(
+            fetch_attendees_for_session=[_child(cm_id=2, age=1.06, birthdate="2025-03-04")],
+            fetch_family_camp_adults={"hh_1": [_adult(1, "Olivia Johnson")]},
+        )
+        assert party.party_size == 2
+
+    @pytest.mark.asyncio
+    async def test_the_last_month_counts_only_once_it_has_finished(self) -> None:
+        """Born 2025-03-10, session starts 2026-09-04: eighteen calendar
+        months have been ENTERED but only seventeen completed, so the child is
+        still exempt. Dropping the day-of-month adjustment ages every child
+        born after the session's day-of-month by a month.
+        """
+        party = await self._party(
+            fetch_attendees_for_session=[_child(cm_id=2, age=1.05, birthdate="2025-03-10")],
+            fetch_family_camp_adults={"hh_1": [_adult(1, "Olivia Johnson")]},
+        )
+        assert party.party_size == 1
+
+    @pytest.mark.asyncio
+    async def test_a_nineteen_month_old_keeps_its_bed_despite_the_yy_mm_trap(self) -> None:
+        """THE TRAP kindred#2046 exists to stop being re-introduced.
+
+        This child's `persons.age` is 1.07 -- CampMinder's `yy.mm`, meaning
+        one year seven months. Every naive threshold spelled against that
+        column (`age < 1.5`, and any decimal-years reading of it) discounts
+        this child, because months never exceed `.11` so `1.5` is really "24
+        months". The owner's ruling is 18 months and this child is 19.
+        """
+        party = await self._party(
+            fetch_attendees_for_session=[_child(cm_id=2, age=1.07, birthdate="2025-02-04")],
+            fetch_family_camp_adults={"hh_1": [_adult(1, "Olivia Johnson")]},
+        )
+        assert party.party_size == 2
+
+    @pytest.mark.asyncio
+    async def test_the_unknown_age_sentinel_keeps_its_bed(self) -> None:
+        """`persons.age == 0.0` is the UNKNOWN-AGE sentinel, and a bed is
+        never removed on the strength of a sentinel. The birthdate here says
+        one month old; the sentinel outranks it, and the party keeps the bed.
+        Measured on 2026: exactly one rostered child is in this state, which
+        is why the derived rule discounts 24 households and not 25.
+        """
+        party = await self._party(
+            fetch_attendees_for_session=[_child(cm_id=2, age=0.0, birthdate="2026-08-01")],
+            fetch_family_camp_adults={"hh_1": [_adult(1, "Olivia Johnson")]},
+        )
+        assert party.party_size == 2
+
+    @pytest.mark.asyncio
+    async def test_a_child_with_no_birthdate_keeps_its_bed(self) -> None:
+        """Coverage is 100% on the rostered cohort, so this is a guard rather
+        than a live case -- and it fails toward the bed, which is the safe
+        direction for a capacity read."""
+        party = await self._party(
+            fetch_attendees_for_session=[_child(cm_id=2, age=0.05, birthdate="")],
+            fetch_family_camp_adults={"hh_1": [_adult(1, "Olivia Johnson")]},
+        )
+        assert party.party_size == 2
+
+    @pytest.mark.asyncio
+    async def test_an_unreadable_session_start_keeps_every_bed(self) -> None:
+        repo = _repo(
+            fetch_session=_rec(
+                id="sess_1",
+                cm_id=1000001,
+                name="Family Camp 1",
+                session_type="family",
+                year=2026,
+                start_date="",
+                end_date="",
+                sort_order=1,
+            ),
+            fetch_households={"hh_1": _household()},
+            fetch_attendees_for_session=[_child(cm_id=2, age=0.05, birthdate="2026-08-01")],
+            fetch_family_camp_adults={"hh_1": [_adult(1, "Olivia Johnson")]},
+        )
+        roster = await LodgingRosterService(repo).build_roster(2026, 1000001)
+        assert roster.parties[0].party_size == 2
+
+    @pytest.mark.asyncio
+    async def test_an_unreadable_session_start_says_so_out_loud(self, caplog: pytest.LogCaptureFixture) -> None:
+        """The discount switching itself off must not be silent.
+
+        `_build_parties` takes `session_start` as a REQUIRED keyword precisely
+        so a caller that omitted it would raise rather than "stop discounting
+        on every weekend at once with nothing to notice" -- its own comment.
+        An unreadable `start_date` produces the identical outage from the DATA
+        side, and the keyword guard cannot see it: every party on the weekend
+        quietly keeps its infant bed and the board looks ordinary. One
+        WARNING per roster build, bounded, is the whole cost of noticing.
+
+        Deliberately NOT extended to a child's missing `birthdate`: that fails
+        one bed at a time toward keeping it, and coverage on the rostered
+        cohort is 100%. This one fails a whole weekend.
+        """
+        repo = _repo(
+            fetch_session=_rec(
+                id="sess_1",
+                cm_id=1000001,
+                name="Family Camp 1",
+                session_type="family",
+                year=2026,
+                start_date="not-a-date",
+                end_date="",
+                sort_order=1,
+            ),
+            fetch_households={"hh_1": _household()},
+            fetch_attendees_for_session=[_child(cm_id=2, age=0.05, birthdate="2026-08-01")],
+            fetch_family_camp_adults={"hh_1": [_adult(1, "Olivia Johnson")]},
+        )
+        with caplog.at_level(logging.WARNING, logger="api.services.lodging_roster_service"):
+            roster = await LodgingRosterService(repo).build_roster(2026, 1000001)
+
+        assert roster.parties[0].party_size == 2
+        warnings = [r.getMessage() for r in caplog.records if r.levelno >= logging.WARNING]
+        assert any("infant" in message and "start_date" in message for message in warnings), warnings
+
+    @pytest.mark.asyncio
+    async def test_a_readable_session_start_warns_about_nothing(self, caplog: pytest.LogCaptureFixture) -> None:
+        """The mutation guard on the test above: a warning on the ordinary
+        path would be noise on every weekend and would stop being read."""
+        repo = _repo(
+            fetch_session=FAMILY_SESSION,
+            fetch_households={"hh_1": _household()},
+            fetch_attendees_for_session=[_child()],
+            fetch_family_camp_adults={"hh_1": [_adult(1, "Olivia Johnson")]},
+        )
+        with caplog.at_level(logging.WARNING, logger="api.services.lodging_roster_service"):
+            await LodgingRosterService(repo).build_roster(2026, 1000001)
+
+        assert [r.getMessage() for r in caplog.records if r.levelno >= logging.WARNING] == []
+
+    @pytest.mark.asyncio
+    async def test_a_timestamped_session_start_is_read_as_a_date(self) -> None:
+        """PocketBase hands dates back as `YYYY-MM-DD HH:MM:SS.mmmZ`."""
+        repo = _repo(
+            fetch_session=_rec(
+                id="sess_1",
+                cm_id=1000001,
+                name="Family Camp 1",
+                session_type="family",
+                year=2026,
+                start_date="2026-09-04 07:00:00.000Z",
+                end_date="2026-09-07 07:00:00.000Z",
+                sort_order=1,
+            ),
+            fetch_households={"hh_1": _household()},
+            fetch_attendees_for_session=[_child(cm_id=2, age=1.05, birthdate="2025-04-04")],
+            fetch_family_camp_adults={"hh_1": [_adult(1, "Olivia Johnson")]},
+        )
+        roster = await LodgingRosterService(repo).build_roster(2026, 1000001)
+        assert roster.parties[0].party_size == 1
+
+    @pytest.mark.asyncio
+    async def test_the_summary_lander_dates_every_weekend_it_builds(self) -> None:
+        """`build_summary` shares `_build_parties` with `build_roster`, so it
+        must supply the SAME as-of date -- its own weekend's start, not the
+        first one it happened to fetch.
+
+        The lander publishes counts rather than parties, so there is no bed
+        figure in its response to assert against; this pins the wiring at the
+        seam instead. A summary that passed `None` would silently stop
+        discounting infants on every weekend at once.
+        """
+        repo = _repo(
+            fetch_weekend_sessions=[FAMILY_SESSION, ADULT_SESSION],
+            fetch_households={"hh_1": _household()},
+            fetch_attendees_for_session=[_child()],
+        )
+        service = LodgingRosterService(repo)
+        with patch.object(LodgingRosterService, "_build_parties", return_value=[]) as build_parties:
+            await service.build_summary(2026)
+
+        seen = {call.kwargs["session_start"] for call in build_parties.call_args_list}
+        assert seen == {date(2026, 9, 4), date(2026, 10, 10)}
+
+
+class TestUnitPowerCoverage:
+    """kindred#1912 -- `LodgingUnitSummary.power_coverage`, resolved over LEAF
+    descendants rather than read off the row.
+
+    A container's stored amenity flags describe the CONTAINER, not its rooms:
+    the same shape as the settled "a container's `sleeps` is a delta" ruling,
+    on a different column. Twelve of the fourteen 2026 family-pool containers
+    record `has_power = 0` while every leaf beneath them has power, so reading
+    the row marks twelve entirely-powered buildings unpowered.
+
+    Computed here rather than stored, because the admin panels write
+    `lodging_units` straight to PocketBase from the browser
+    (`frontend/src/services/lodgingCrud.ts`), bypassing FastAPI entirely -- a
+    stored `effective_has_power` would have no recompute trigger on the one
+    path that actually edits amenities.
+    """
+
+    @pytest.mark.asyncio
+    async def test_a_leaf_answers_for_itself(self) -> None:
+        repo = _repo(
+            fetch_session=FAMILY_SESSION,
+            fetch_units=[
+                _unit("u1", "ridge-1", "Ridge 1", sleeps=4, has_power=True),
+                _unit("u2", "ridge-2", "Ridge 2", sleeps=4, has_power=False),
+            ],
+        )
+        roster = await LodgingRosterService(repo).build_roster(2026, 1000001)
+
+        by_code = {u.code: u for u in roster.units}
+        assert by_code["ridge-1"].power_coverage == "all"
+        assert by_code["ridge-2"].power_coverage == "none"
+
+    @pytest.mark.asyncio
+    async def test_a_container_inherits_from_its_rooms_not_its_own_row(self) -> None:
+        """The 12-of-14 trap. The building records no power; every room has it."""
+        repo = _repo(
+            fetch_session=FAMILY_SESSION,
+            fetch_units=[
+                _unit("c1", "gt-lodge", "Lodge", is_container=True, has_power=False),
+                _unit("u1", "gt-lodge-1", "Lodge 1", sleeps=4, has_power=True, parent_unit="c1"),
+                _unit("u2", "gt-lodge-2", "Lodge 2", sleeps=4, has_power=True, parent_unit="c1"),
+            ],
+        )
+        roster = await LodgingRosterService(repo).build_roster(2026, 1000001)
+
+        by_code = {u.code: u for u in roster.units}
+        assert by_code["gt-lodge"].power_coverage == "all"
+        assert by_code["gt-lodge"].has_power is False
+
+    @pytest.mark.asyncio
+    async def test_it_resolves_to_leaves_at_any_depth_never_direct_children(self) -> None:
+        """The `hc-health-center` shape, which is why one level is not enough.
+
+        The building's two direct children are themselves containers recording
+        no power, and every leaf beneath THEM has power. A one-level walk
+        answers "none" here -- wrong in the direction that looks plausible.
+        """
+        repo = _repo(
+            fetch_session=FAMILY_SESSION,
+            fetch_units=[
+                _unit("c1", "hc-block", "Health Block", is_container=True, has_power=False),
+                _unit("c2", "hc-wing-a", "Wing A", is_container=True, has_power=False, parent_unit="c1"),
+                _unit("c3", "hc-wing-b", "Wing B", is_container=True, has_power=False, parent_unit="c1"),
+                _unit("u1", "hc-a-1", "A1", sleeps=2, has_power=True, parent_unit="c2"),
+                _unit("u2", "hc-b-1", "B1", sleeps=2, has_power=True, parent_unit="c3"),
+            ],
+        )
+        roster = await LodgingRosterService(repo).build_roster(2026, 1000001)
+
+        assert {u.code: u.power_coverage for u in roster.units}["hc-block"] == "all"
+
+    @pytest.mark.asyncio
+    async def test_a_split_building_is_some_not_all_or_none(self) -> None:
+        repo = _repo(
+            fetch_session=FAMILY_SESSION,
+            fetch_units=[
+                _unit("c1", "gt-lodge", "Lodge", is_container=True, has_power=True),
+                _unit("u1", "gt-lodge-1", "Lodge 1", sleeps=4, has_power=True, parent_unit="c1"),
+                _unit("u2", "gt-lodge-2", "Lodge 2", sleeps=4, has_power=False, parent_unit="c1"),
+            ],
+        )
+        roster = await LodgingRosterService(repo).build_roster(2026, 1000001)
+
+        assert {u.code: u.power_coverage for u in roster.units}["gt-lodge"] == "some"
+
+    @pytest.mark.asyncio
+    async def test_an_unconfirmed_room_is_unknown_not_unmet(self) -> None:
+        """`has_power = False` on an unconfirmed row means "nobody has said"."""
+        repo = _repo(
+            fetch_session=FAMILY_SESSION,
+            fetch_units=[_unit("u1", "ridge-1", "Ridge 1", sleeps=4, is_confirmed=False, has_power=False)],
+        )
+        roster = await LodgingRosterService(repo).build_roster(2026, 1000001)
+
+        assert roster.units[0].power_coverage == "unknown"
+
+    @pytest.mark.asyncio
+    async def test_one_unconfirmed_room_makes_the_whole_building_unknown(self) -> None:
+        repo = _repo(
+            fetch_session=FAMILY_SESSION,
+            fetch_units=[
+                _unit("c1", "gt-lodge", "Lodge", is_container=True, has_power=True),
+                _unit("u1", "gt-lodge-1", "Lodge 1", sleeps=4, has_power=True, parent_unit="c1"),
+                _unit("u2", "gt-lodge-2", "Lodge 2", sleeps=4, has_power=True, is_confirmed=False, parent_unit="c1"),
+            ],
+        )
+        roster = await LodgingRosterService(repo).build_roster(2026, 1000001)
+
+        assert {u.code: u.power_coverage for u in roster.units}["gt-lodge"] == "unknown"
+
+    @pytest.mark.asyncio
+    async def test_a_deactivated_room_does_not_answer_for_the_building(self) -> None:
+        """Nobody can be placed in it, so it cannot supply the building's
+        power -- the same `is_active` filter `_effective_sleeps` applies when
+        totalling a combined container's rooms."""
+        repo = _repo(
+            fetch_session=FAMILY_SESSION,
+            fetch_units=[
+                _unit("c1", "gt-lodge", "Lodge", is_container=True, has_power=False),
+                _unit("u1", "gt-lodge-1", "Lodge 1", sleeps=4, has_power=True, parent_unit="c1"),
+                _unit("u2", "gt-lodge-2", "Lodge 2", sleeps=4, has_power=False, is_active=False, parent_unit="c1"),
+            ],
+        )
+        roster = await LodgingRosterService(repo).build_roster(2026, 1000001)
+
+        assert {u.code: u.power_coverage for u in roster.units}["gt-lodge"] == "all"
+
+    @pytest.mark.asyncio
+    async def test_a_building_with_no_active_room_left_is_unknown_never_its_own_row(self) -> None:
+        """The degenerate case, ruled the same way `_effective_sleeps` rules it.
+
+        `_effective_sleeps` refuses to answer for a container once no active
+        room is left to supply the answer -- "0 is not a delta over anything,
+        it is the claim 'this house sleeps nobody'". A container's `has_power`
+        is the same kind of value: THIRTEEN of the fifteen 2026 containers
+        record `has_power = 0` while their rooms are powered, so falling back
+        to the row here would take the one field this whole function exists to
+        distrust and turn it into "nothing here has power" -- a hatch stating
+        a fact no row supports, in the plausible-looking direction.
+
+        A LEAF is different and still answers for itself: it has no rooms to
+        inherit from, so its own row is the only fact there is.
+        """
+        repo = _repo(
+            fetch_session=FAMILY_SESSION,
+            fetch_units=[
+                _unit("c1", "gt-lodge", "Lodge", is_container=True, has_power=False),
+                _unit("u1", "gt-lodge-1", "Lodge 1", sleeps=4, has_power=True, is_active=False, parent_unit="c1"),
+            ],
+        )
+        roster = await LodgingRosterService(repo).build_roster(2026, 1000001)
+
+        assert {u.code: u.power_coverage for u in roster.units}["gt-lodge"] == "unknown"
+
+    @pytest.mark.asyncio
+    async def test_a_container_that_never_had_rooms_is_unknown_too(self) -> None:
+        """Same rule, reached without anyone retiring anything."""
+        repo = _repo(
+            fetch_session=FAMILY_SESSION,
+            fetch_units=[_unit("c1", "gt-lodge", "Lodge", is_container=True, has_power=False)],
+        )
+        roster = await LodgingRosterService(repo).build_roster(2026, 1000001)
+
+        assert roster.units[0].power_coverage == "unknown"

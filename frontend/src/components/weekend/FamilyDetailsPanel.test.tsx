@@ -500,3 +500,50 @@ describe('FamilyDetailsPanel — interaction contract', () => {
     expect(onClose).not.toHaveBeenCalled()
   })
 })
+
+describe('FamilyDetailsPanel — the headcount agrees with the printed adult/child list (kindred#2152)', () => {
+  /*
+   * `party.party_size` became a BED count under kindred#1925/#2046: the
+   * server drops blank/placeholder adult slots from it AND discounts a child
+   * under 18 months at session start, so it can legitimately disagree with
+   * the names this panel actually prints in the Party section below. The
+   * panel's own headcount must agree with ITS list, not the raw report --
+   * that's the same fix FamilyCard's badge got, applied to the third copy.
+   */
+  it('counts the printed adults and children rather than reading party_size', () => {
+    render(<FamilyDetailsPanel party={party({ party_size: 0 })} year={2026} onClose={vi.fn()} />, {
+      wrapper,
+    })
+    expect(screen.getByText('3 people')).toBeInTheDocument()
+  })
+
+  it('shows the printed headcount even when the reported bed count is lower (the infant-discount case)', () => {
+    // party_size: 2 is the bed count kindred#2046 would report for this
+    // fixture's 2 adults + 1 child if the child were an infant -- the panel
+    // must still show 3, agreeing with the 2 adults + 1 child list beneath
+    // it, not the server's bed figure.
+    render(<FamilyDetailsPanel party={party({ party_size: 2 })} year={2026} onClose={vi.fn()} />, {
+      wrapper,
+    })
+    expect(screen.getByText('3 people')).toBeInTheDocument()
+    expect(screen.queryByText('2 people')).not.toBeInTheDocument()
+  })
+
+  it('does not count a placeholder adult slot', () => {
+    render(
+      <FamilyDetailsPanel
+        party={party({
+          party_size: 0,
+          adults: [
+            { adult_number: 1, display_name: 'Emma Johnson', relationship: 'Mother' },
+            { adult_number: 2, display_name: 'NA', relationship: '' },
+          ],
+        })}
+        year={2026}
+        onClose={vi.fn()}
+      />,
+      { wrapper }
+    )
+    expect(screen.getByText('2 people')).toBeInTheDocument()
+  })
+})

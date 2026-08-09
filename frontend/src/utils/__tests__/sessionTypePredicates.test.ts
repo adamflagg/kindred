@@ -504,17 +504,18 @@ describe('teen cohort', () => {
 })
 
 describe('camper journey/detail session-type sets', () => {
-  // #2113 reverses the prior "no family" pinning on CAMPER_JOURNEY_TYPES only.
-  // The original decision (summer + teen, no family) was made because family
-  // camp made the journey noisy for multi-session staff kids — see the comment
-  // at sessionTypePredicates.ts:38-43. Measured against production, that
-  // exclusion was hiding ~45% of enrolled attendance and blanking entire years
-  // for 700-1000+ people per year (2018/2023/2024). The noise concern is
-  // handled by a visual de-emphasis on family rows in CampJourneyTimeline
-  // rather than by hiding the data. CAMPER_DETAIL_TYPES (the camper detail
-  // page's current-year fetch) is a separate consumer and keeps the original
-  // no-family behavior — not decided by this issue.
-  it('CAMPER_JOURNEY_TYPES is summer + teen + family (issue #2113: historical journey completeness)', () => {
+  // #2113 reversed the prior "no family" pinning on CAMPER_JOURNEY_TYPES only.
+  // #2149 now also adds 'family' to CAMPER_DETAIL_TYPES (the camper detail
+  // page's current-year fetch): a person whose only current-year attendee row
+  // is a family session was getting zero rows back from the attendees query,
+  // which early-returned an empty allCampers and made the whole page render
+  // "Unable to load camper details" / a false "no active enrollments" state.
+  //
+  // CAMPER_JOURNEY_TYPES is DERIVED from CAMPER_DETAIL_TYPES (spread + append
+  // 'family'). Now that 'family' is already in CAMPER_DETAIL_TYPES, deriving
+  // must dedupe or the derived array — and therefore the generated PB filter
+  // and any React-key mapping over it — would contain 'family' twice.
+  it('CAMPER_JOURNEY_TYPES is summer + teen + family, deduped (issue #2149)', () => {
     expect(CAMPER_JOURNEY_TYPES).toEqual([
       'main',
       'embedded',
@@ -527,23 +528,37 @@ describe('camper journey/detail session-type sets', () => {
     expect(CAMPER_JOURNEY_TYPES).toContain('family')
   })
 
-  it('CAMPER_DETAIL_TYPES is summer + teen, no family (unchanged by #2113)', () => {
-    expect(CAMPER_DETAIL_TYPES).toEqual(['main', 'embedded', 'ag', 'quest', 'scit', 'tli'])
-    expect(CAMPER_DETAIL_TYPES).not.toContain('family')
+  it('CAMPER_JOURNEY_TYPES has no duplicate entries', () => {
+    expect(new Set(CAMPER_JOURNEY_TYPES).size).toBe(CAMPER_JOURNEY_TYPES.length)
+    expect(CAMPER_JOURNEY_TYPES.filter((t) => t === 'family')).toHaveLength(1)
   })
 
-  it('buildCamperJourneySessionTypeFilter ORs every journey type on session.session_type, including family', () => {
+  it('CAMPER_DETAIL_TYPES is summer + teen + family (issue #2149: fixes unreachable camper detail page)', () => {
+    expect(CAMPER_DETAIL_TYPES).toEqual([
+      'main',
+      'embedded',
+      'ag',
+      'quest',
+      'scit',
+      'tli',
+      'family',
+    ])
+    expect(CAMPER_DETAIL_TYPES).toContain('family')
+  })
+
+  it('buildCamperJourneySessionTypeFilter ORs every journey type on session.session_type exactly once, including family', () => {
     const f = buildCamperJourneySessionTypeFilter()
     for (const t of CAMPER_JOURNEY_TYPES) expect(f).toContain(`session.session_type = "${t}"`)
     expect(f).toContain('||')
-    expect(f).toContain('session.session_type = "family"') // #2113: family is now included
+    expect(f).toContain('session.session_type = "family"')
+    expect(f.split('session.session_type = "family"')).toHaveLength(2) // exactly one occurrence
     expect(f.startsWith('(')).toBe(false) // caller wraps, matching buildSummerSessionTypeFilter
   })
 
-  it('buildCamperDetailSessionTypeFilter includes teens and excludes family', () => {
+  it('buildCamperDetailSessionTypeFilter includes teens and family (issue #2149)', () => {
     const f = buildCamperDetailSessionTypeFilter()
     expect(f).toContain('session.session_type = "scit"')
     expect(f).toContain('session.session_type = "tli"')
-    expect(f).not.toContain('"family"')
+    expect(f).toContain('session.session_type = "family"')
   })
 })

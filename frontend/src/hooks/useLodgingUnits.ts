@@ -29,7 +29,19 @@ export interface UseLodgingUnitsResult {
   error: Error | null
 }
 
-export function useLodgingUnits(): UseLodgingUnitsResult {
+export interface UseLodgingUnitsOptions {
+  /**
+   * ANDed with the year-readiness gate below, never a replacement for it —
+   * see the comment on that gate. Defaults to `true` (always-on), which is
+   * what `LodgingUnitsPanel` and `UnresolvedAliasQueue` want: they read the
+   * unit list unconditionally. `LodgingAliasesPanel` is the one consumer
+   * that only needs it while its own editor is open (kindred#2154).
+   */
+  enabled?: boolean
+}
+
+export function useLodgingUnits(options: UseLodgingUnitsOptions = {}): UseLodgingUnitsResult {
+  const { enabled = true } = options
   const currentYear = useYear()
 
   const query = useQuery({
@@ -39,8 +51,9 @@ export function useLodgingUnits(): UseLodgingUnitsResult {
     // CurrentYearContext returns the literal 0 until the backend supplies the
     // configured year, and PocketBase answers `year = 0` with a successful
     // `200 []` rather than an error — without this gate a cold load renders a
-    // false empty state.
-    enabled: currentYear > 0,
+    // false empty state. The caller-supplied `enabled` is ANDed on top, never
+    // in place of it.
+    enabled: enabled && currentYear > 0,
   })
 
   return {

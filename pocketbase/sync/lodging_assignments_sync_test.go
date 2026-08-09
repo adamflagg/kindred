@@ -1214,3 +1214,84 @@ func TestLodgingAssignmentsSyncWritesHistoryOnOrphanDelete(t *testing.T) {
 		t.Errorf("year = %d, want 2025", got)
 	}
 }
+
+// TestFindAssignmentMatchesOnTheCampMinderSessionID pins kindred#2042: the
+// mirror's upsert lookup keys on `session_cm_id`, not on the `session`
+// relation.
+//
+// camp_sessions is unique on (cm_id, year), so its PocketBase record id is
+// scoped to one season and is replaced outright if the record is ever
+// RECREATED rather than updated -- a restore, a manual repair, a re-sync that
+// deletes and re-adds. Migration 1500000124 already stopped that taking the
+// lodging rows with it (`cascadeDelete: false`), so the placement SURVIVES;
+// keyed on the relation it simply stops being found, and the next sync writes
+// a duplicate beside it instead of updating it.
+//
+// The fixture keeps both camp_sessions rows because `session` is a REQUIRED
+// relation on lodging_assignments and cannot point at a deleted record. In
+// production the stale row is gone and the placement's relation dangles; here
+// it stands in for the record the placement was written against.
+func TestFindAssignmentMatchesOnTheCampMinderSessionID(t *testing.T) {
+	app := newLodgingTestApp(t)
+	sessOld := addSession(t, app, cmIDFamilyCamp1, "Family Camp 1", "family",
+		testSessionStart, testSessionEnd, 2025)
+	sessRecreated := addSession(t, app, cmIDFamilyCamp1, "Family Camp 1", "family",
+		testSessionStart, testSessionEnd, 2025)
+	unitID := addUnit(t, app, "ridge-a", 2025)
+
+	existing := saveRecord(t, app, "lodging_assignments", map[string]any{
+		"session": sessOld, "session_cm_id": cmIDFamilyCamp1, "year": 2025,
+		"household_cm_id": 9001, "person_cm_id": 0, "units": []string{unitID},
+		"source": "campminder_sync", "staff_touched": false,
+	})
+
+	s := NewLodgingAssignmentsSync(app)
+	got, err := s.findAssignment(&assignmentInput{
+		SessionID: sessRecreated, SessionCMID: cmIDFamilyCamp1, Year: 2025,
+		HouseholdCMID: 9001, PersonCMID: 0,
+	})
+	if err != nil {
+		t.Fatalf("findAssignment: %v", err)
+	}
+	if got == nil {
+		t.Fatal("findAssignment returned nil -- the row is keyed on the stale session relation, " +
+			"so the next sync writes a duplicate beside it")
+	}
+	if got.Id != existing {
+		t.Errorf("findAssignment returned %q, want the existing row %q", got.Id, existing)
+	}
+}
+
+// TestFindAssignmentStillSeparatesWeekends is the other half: re-keying must
+// not widen the lookup. Two weekends in the same year hold a placement for the
+// same household, and asking for one must never return the other's row.
+func TestFindAssignmentStillSeparatesWeekends(t *testing.T) {
+	app := newLodgingTestApp(t)
+	sessA := addSession(t, app, cmIDFamilyCamp1, "Family Camp 1", "family",
+		testSessionStart, testSessionEnd, 2025)
+	sessB := addSession(t, app, cmIDFamilyCamp6, "Family Camp 6", "family",
+		"2025-06-06 07:00:00.000Z", "2025-06-09 07:00:00.000Z", 2025)
+	unitID := addUnit(t, app, "ridge-a", 2025)
+
+	saveRecord(t, app, "lodging_assignments", map[string]any{
+		"session": sessA, "session_cm_id": cmIDFamilyCamp1, "year": 2025,
+		"household_cm_id": 9001, "units": []string{unitID},
+		"source": "campminder_sync", "staff_touched": false,
+	})
+	wantB := saveRecord(t, app, "lodging_assignments", map[string]any{
+		"session": sessB, "session_cm_id": cmIDFamilyCamp6, "year": 2025,
+		"household_cm_id": 9001, "units": []string{unitID},
+		"source": "campminder_sync", "staff_touched": false,
+	})
+
+	s := NewLodgingAssignmentsSync(app)
+	got, err := s.findAssignment(&assignmentInput{
+		SessionID: sessB, SessionCMID: cmIDFamilyCamp6, Year: 2025, HouseholdCMID: 9001,
+	})
+	if err != nil {
+		t.Fatalf("findAssignment: %v", err)
+	}
+	if got == nil || got.Id != wantB {
+		t.Fatalf("findAssignment returned %v, want the second weekend's row %q", got, wantB)
+	}
+}

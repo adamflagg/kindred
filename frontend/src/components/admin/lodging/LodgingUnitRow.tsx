@@ -14,6 +14,12 @@
  * Every action is labelled with the unit name (`Confirm Cabin A`, not
  * `Confirm`) so a screen reader — and a test — can tell 93 identical buttons
  * apart.
+ *
+ * `depth` indents the name cell under its parent's row (#2082) — the caller
+ * (`UnitAreaGroup`, via `flattenUnitTree`) has already put this row in tree
+ * order, so this component only draws what depth it landed at. It is not a
+ * new visual channel: the existing name cell just gains left padding, same
+ * spacing primitive already used everywhere else on this surface.
  */
 import { Bath } from 'lucide-react'
 
@@ -22,8 +28,13 @@ import { normaliseBeds, totalBedCount } from '../../../types/beds'
 import { ACTION_LINK, MUTED_PILL, PILL } from './lodgingStyles'
 import { AMENITY_FLAGS } from './unitAmenities'
 
+/** Indent per tree depth, in pixels. Inline, not a Tailwind class — depth is unbounded, so no fixed set of classes covers it. */
+const INDENT_STEP_PX = 20
+
 export interface LodgingUnitRowProps {
   unit: LodgingUnitRecord
+  /** How deep `flattenUnitTree` placed this row under its parent. 0 = a root row, no indent. */
+  depth: number
   isSelected: boolean
   onToggleSelect: () => void
   onEdit: () => void
@@ -33,6 +44,7 @@ export interface LodgingUnitRowProps {
 
 export function LodgingUnitRow({
   unit,
+  depth,
   isSelected,
   onToggleSelect,
   onEdit,
@@ -58,7 +70,11 @@ export function LodgingUnitRow({
           onChange={onToggleSelect}
         />
       </td>
-      <td className="py-1.5 font-medium" data-testid="unit-name">
+      <td
+        className="py-1.5 font-medium"
+        data-testid="unit-name"
+        style={depth > 0 ? { paddingLeft: `${depth * INDENT_STEP_PX}px` } : undefined}
+      >
         {unit.name}
       </td>
       <td className="py-1.5 tabular-nums">

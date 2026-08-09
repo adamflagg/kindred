@@ -49,6 +49,7 @@ per-request patch for exactly that gap: one small live fetch for the
 missing id(s), never a second cache.
 """
 
+import asyncio
 import functools
 import threading
 import time
@@ -78,6 +79,16 @@ class LodgingYearCache:
         self._ttl = ttl_seconds
         self._max_size = max_size
         self._lock = threading.RLock()
+        # Per-key single-flight coalescing (kindred#2144): one asyncio.Lock
+        # per (read_name, year) so concurrent misses on the same key await
+        # the first in-flight fetch instead of each issuing their own. This
+        # dict is itself only ever touched synchronously under `self._lock`
+        # -- never awaited on while holding it -- the same rule that governs
+        # `_cache`/`_cache_times`/`_access_times`. The locks it hands out are
+        # a different story: `cached_by_year`'s wrapper awaits one of THOSE
+        # across the fetch, but that await happens after `_lock_for` has
+        # already released `self._lock`.
+        self._inflight_locks: dict[str, asyncio.Lock] = {}
 
     @staticmethod
     def _make_key(read_name: str, year: int) -> str:
@@ -112,15 +123,42 @@ class LodgingYearCache:
         (kindred#2142), which the frontend fires on CampMinder sync completion --
         see the module docstring for which syncs write the four cached reads and
         for the residual gap the TTL still covers.
+
+        Also drops the in-flight lock map (kindred#2144). `asyncio.Lock` binds
+        to the event loop it is first awaited on, and this cache is a
+        process-wide singleton (`api/dependencies.py`) shared across every
+        pytest-asyncio test, each of which gets its own loop. Leaving a lock
+        from a prior test's loop in the map raises `RuntimeError` the next
+        time a test awaits it -- `_reset_lodging_cache`
+        (`tests/unit/api/services/test_lodging_repository.py`) already calls
+        `invalidate_all()` around every test, which is what keeps that from
+        happening.
         """
         with self._lock:
             count = len(self._cache)
             self._cache.clear()
             self._cache_times.clear()
             self._access_times.clear()
+            self._inflight_locks.clear()
             if count:
                 logger.info(f"Lodging year cache invalidated: cleared {count} entries")
             return count
+
+    def _lock_for(self, read_name: str, year: int) -> asyncio.Lock:
+        """The per-(read_name, year) asyncio.Lock, created on first ask.
+
+        Looking the lock up (or creating it) is a plain dict operation, so it
+        stays under `self._lock` like every other access to this instance's
+        state. The lock this returns is then awaited OUTSIDE that
+        `threading.RLock` -- by `cached_by_year`'s wrapper -- never inside it.
+        """
+        key = self._make_key(read_name, year)
+        with self._lock:
+            lock = self._inflight_locks.get(key)
+            if lock is None:
+                lock = asyncio.Lock()
+                self._inflight_locks[key] = lock
+            return lock
 
     def _evict(self, key: str) -> None:
         self._cache.pop(key, None)
@@ -146,6 +184,13 @@ def cached_by_year(cache: LodgingYearCache) -> Callable[[_YearRead[T]], _YearRea
     literal, which a rename or a copy-paste could silently desync from the
     method it was supposed to key. Tying the key to `__name__` makes that
     class of bug impossible instead of just avoided.
+
+    Single-flight coalesced (kindred#2144): a miss acquires the per-key
+    `asyncio.Lock` from `cache._lock_for` and re-checks the cache once inside
+    it, so a caller that lost the race to another concurrent miss on the same
+    key finds the winner's result already written and never calls `fn` at
+    all. The fast-path check above stays lock-free -- only a miss pays for
+    the lock.
     """
 
     def decorator(fn: _YearRead[T]) -> _YearRead[T]:
@@ -154,9 +199,15 @@ def cached_by_year(cache: LodgingYearCache) -> Callable[[_YearRead[T]], _YearRea
             cached = cache.get(fn.__name__, year)
             if cached is not None:
                 return cached  # type: ignore[no-any-return]
-            result = await fn(self, year)
-            cache.set(fn.__name__, year, result)
-            return result
+            async with cache._lock_for(fn.__name__, year):
+                # Re-check: another coroutine may have already populated this
+                # key while we were waiting for the lock.
+                cached = cache.get(fn.__name__, year)
+                if cached is not None:
+                    return cached  # type: ignore[no-any-return]
+                result = await fn(self, year)
+                cache.set(fn.__name__, year, result)
+                return result
 
         return wrapper
 

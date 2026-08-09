@@ -1,17 +1,30 @@
 /**
- * The weekend lodging MAP — read-only, and a projection of the board.
+ * The weekend lodging MAP — a REFERENCE surface, and a projection of the board.
  *
  * Same roster payload, same `buildBoard`, plus position. It answers the two
  * questions a grid cannot: is this family near that one, and does this family
- * sit beside a bathhouse or a staff cabin.
+ * sit beside a bathhouse or a staff cabin. Since kindred#2183 it answers a
+ * third, which is now its main job: WHO IS HOUSED WHERE — the peek lists every
+ * person in a room or a building, grouped into family chips, and clicking one
+ * opens the same family panel the board opens.
+ *
+ * READ-ONLY BY RULING, NOT BY NOT-YET (kindred#2183). Placement was specified
+ * for this surface and never built, and the owner has since closed the door:
+ * "staff have informed me they will only be looking at the map as a data point
+ * and not bunking on it." What survived was scaffolding — a `dropTarget`
+ * threaded into `resolveRingPrecedence` only to be hard-set false, and a
+ * shared unplaced queue mounted without `canPlace` — and it is gone. Treat a
+ * placement affordance appearing here as a decision to reopen with the owner,
+ * not as finishing something half-wired. `LodgingMap.test.tsx` guards this
+ * with a source read, because none of it changed a rendered pixel.
  *
  * SCENARIO AWARENESS MIRRORS THE BOARD AND NOTHING MORE — currently none. The
  * header's `ModeBadge` says which plan is on screen, for this tab and every
  * other; a chip here as well was a second claim to keep true, and it stopped
- * being true the moment #1967 let staff select a draft. Drag placement (#1985)
- * is what earns a scenario id back, and the board must gain it in the same
- * change: a map that knew about scenarios while the board did not would be a
- * second system of record, which is the one thing this must not be.
+ * being true the moment #1967 let staff select a draft. Nothing on this
+ * surface earns a scenario id back while it stays a reference view: a map that
+ * knew about scenarios while the board did not would be a second system of
+ * record, which is the one thing this must not be.
  *
  * ACCESSIBILITY, stated rather than implied: a pan/zoom map is not
  * keyboard-navigable. The accessible equivalent is Manage → Family Camp
@@ -39,11 +52,13 @@ import { Info } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import { useDismissOnDeadSpace } from '../../hooks/useDismissOnDeadSpace'
+import { usePanelParty } from '../../hooks/usePanelParty'
 import type { LodgingUnitRow, RosterPartyRow } from '../../types/lodging'
 import { FamilyCard } from './FamilyCard'
 import { FamilyDetailsPanel } from './FamilyDetailsPanel'
 import { FloatingUnplacedBadge } from './FloatingUnplacedBadge'
 import { indexUnitsByCode, resolvePartyUnit } from './rosterAttention'
+import { MapBaseLayer } from './MapBaseLayer'
 import { clusterByProximity, type Cluster } from './mapClustering'
 import { BATHHOUSE_BLUE } from './mapColors'
 import { buildMapModel, type MapUnit } from './mapModel'
@@ -58,16 +73,11 @@ import {
   type Viewport,
   zoomAt,
 } from './mapViewport'
-
-/** Served from the private repo, exactly as the logos are. */
-const MAP_IMAGE_URL = '/local/assets/camp-map.webp'
+import { resolveRingPrecedence } from './ringPrecedence'
 
 /** Below this a pointer gesture is a click, above it a pan. Capturing the
  *  pointer any earlier retargets the click away from the mark under it. */
 const DRAG_THRESHOLD_PX = 4
-
-/** Default scrim over the map so the marks read against a busy illustration. */
-const DEFAULT_FADE = 25
 
 /**
  * Dwell before the peek opens, per spec §7 and tuned in the mockup.
@@ -83,19 +93,33 @@ const DWELL_MS = 400
 
 /** Half of the popover's `max-w-[15rem]` (240px), padded a bit. Clamping the
  *  anchor at least this far from each edge keeps the box on-screen. Height
- *  is content-dependent (a detail card is shorter than a multi-room
- *  footprint grid), so this is deliberately generous rather than exact —
- *  better a small unnecessary gap than a clipped popover. */
+ *  is content-dependent, so this is deliberately generous rather than exact —
+ *  better a small unnecessary gap than a clipped popover.
+ *
+ *  RAISED for kindred#2183: a container's peek is now a summary card STACKED
+ *  ON the footprint grid rather than the grid alone, so the tallest thing this
+ *  has to keep on canvas grew by roughly the height of a detail card. The
+ *  policy in the line above is what makes raising it the right response to
+ *  that — jsdom performs no layout, so no test here can measure the real box.
+ */
 const POPOVER_HALF_WIDTH = 130
-const POPOVER_HALF_HEIGHT = 110
+const POPOVER_HALF_HEIGHT = 150
 
 export interface LodgingMapProps {
   parties: RosterPartyRow[]
   units: LodgingUnitRow[]
   year: number
+  /**
+   * The weekend this map belongs to, so a household enrolled in TWO
+   * weekends (kindred#2138) can be told apart from one that merely
+   * refetched. Optional and defaulting to 0 for the same reason
+   * `LodgingBoard`'s prop of the same name does: most tests render one
+   * weekend's map and never exercise a session change.
+   */
+  sessionCmId?: number
 }
 
-export function LodgingMap({ parties, units, year }: LodgingMapProps) {
+export function LodgingMap({ parties, units, year, sessionCmId = 0 }: LodgingMapProps) {
   // MEMOISED, and not as a micro-optimisation: panning updates `view` on every
   // pointermove, and an unmemoised call would re-run buildBoard — area bucketing,
   // sorting, hue assignment, the lot — on every frame of a drag.
@@ -123,7 +147,6 @@ export function LodgingMap({ parties, units, year }: LodgingMapProps) {
   const wasDraggingRef = useRef(false)
   const [view, setView] = useState<Viewport>(IDENTITY_VIEW)
   const [size, setSize] = useState({ width: 0, height: 0 })
-  const [imageFailed, setImageFailed] = useState(false)
   // Empty rooms are DRAWN by default: the map's job when you arrive is the
   // whole site, and the toggle is a question you bring to it rather than one
   // the surface should ask for you.
@@ -136,8 +159,8 @@ export function LodgingMap({ parties, units, year }: LodgingMapProps) {
   const [pinnedKey, setPinnedKey] = useState<string | null>(null)
   const [dwellKey, setDwellKey] = useState<string | null>(null)
   const dwellTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const [selected, setSelected] = useState<RosterPartyRow | null>(null)
-  const [requestClose, setRequestClose] = useState(false)
+  const { panelParty, requestClose, openParty, closePanel, requestPanelClose } =
+    usePanelParty(parties)
   const unitsByCode = useMemo(() => indexUnitsByCode(units), [units])
 
   const openKey = pinnedKey ?? dwellKey
@@ -182,28 +205,32 @@ export function LodgingMap({ parties, units, year }: LodgingMapProps) {
     }
   }, [])
 
-  const openParty = useCallback((party: RosterPartyRow) => {
-    setRequestClose(false)
-    setSelected(party)
-  }, [])
+  // `openParty`/`closePanel`/`panelParty` come from `usePanelParty` above —
+  // shared with `LodgingBoard` and `HouseholdRosterTable` (kindred#2139). See
+  // its own docstring for the derivation and why it stores `selectedKey`
+  // rather than the party object.
 
-  const closePanel = useCallback(() => {
-    setSelected(null)
-    setRequestClose(false)
-  }, [])
-
-  // DERIVED, not effect-cleared (kindred#2062). A weekend switch re-renders
-  // the map with a different `parties` prop but never unmounts it, so a
-  // `selected` that outlived its own mark's departure kept the panel — and
-  // its medical narrative — open over the new weekend's roster. Computing
-  // this at render time, rather than in a useEffect that calls setState,
-  // avoids the extra render pass React's docs warn an Effect would add here
-  // (`selected` itself is untouched; only what gets rendered changes). A
-  // refetch that returns the SAME parties (new array identity, same
-  // content) still resolves to present, because `partyKey` compares
-  // content, not identity — see partyKey.ts's own docstring.
-  const panelParty =
-    selected !== null && parties.some((p) => partyKey(p) === partyKey(selected)) ? selected : null
+  // RESET, not filtered (kindred#2138) — the owner's ruling was explicit: a
+  // session change closes the panel outright, it does not merely stop
+  // rendering it while the selection quietly survives underneath.
+  // `usePanelParty`'s own guard only catches a household that drops OUT of
+  // `parties`; a household enrolled in two weekends never does that, since
+  // `partyKey` (deliberately — see partyKey.ts) carries no session
+  // dimension, so the same key still matches after the switch and the panel
+  // would keep rendering the PREVIOUS weekend's placement data.
+  //
+  // This is React's own "storing information from previous renders"
+  // pattern: compare this render's prop against the last one seen, and if
+  // it moved, correct the state right here in the render body rather than
+  // in an Effect. Calling `closePanel` conditionally during render does not
+  // add a paint the way an Effect would — React discards this render's
+  // output and re-renders synchronously with the corrected state before
+  // anything commits, so nobody ever sees the stale mid-render frame.
+  const [lastSessionCmId, setLastSessionCmId] = useState(sessionCmId)
+  if (sessionCmId !== lastSessionCmId) {
+    setLastSessionCmId(sessionCmId)
+    closePanel()
+  }
 
   // Same dead-space dismissal the summer board and the weekend board use, and
   // deliberately the same one line they use. The canvas is a bare div that a
@@ -215,9 +242,7 @@ export function LodgingMap({ parties, units, year }: LodgingMapProps) {
   // rather than by teaching this callback to second-guess the clicks it does
   // get. A callback that remembers things about earlier gestures is a callback
   // that can be wrong about the current one.
-  useDismissOnDeadSpace(panelParty !== null, () => {
-    setRequestClose(true)
-  })
+  useDismissOnDeadSpace(panelParty !== null, requestPanelClose)
 
   // jsdom performs no layout, so clientWidth/clientHeight are 0 there (verified).
   // Without this fallback every mark computes position (0,0), the clusterer
@@ -317,6 +342,22 @@ export function LodgingMap({ parties, units, year }: LodgingMapProps) {
   // null and the ternary short-circuits — only once a mark has been clicked.
   const openCluster =
     openKey === null ? undefined : clusters.find((cluster) => clusterKey(cluster) === openKey)
+
+  // Same latch as `usePanelParty`'s `selectedKey` above, applied to
+  // `pinnedKey`/`dwellKey` (kindred#2137 bug 4). `openCluster` already
+  // derives correctly — a fresh `.find` against the CURRENT `clusters` every
+  // render — but nothing reset `pinnedKey`/`dwellKey` when their cluster
+  // stopped existing. A `parties`/`units` prop change (a roster refetch or a
+  // weekend switch) can dissolve a cluster and a LATER prop change can
+  // re-mint the identical `clusterKey` (sorted unit ids), reopening a
+  // popover with no click. `MapUnitPopover` renders no `MedicalNarrative`,
+  // so this is a correctness/UX defect, not a PHI exposure — but the fix
+  // shape is identical: clear the stored key(s) right here, during render,
+  // rather than in an Effect.
+  if (openKey !== null && openCluster === undefined) {
+    if (pinnedKey !== null) setPinnedKey(null)
+    if (dwellKey !== null) setDwellKey(null)
+  }
 
   // The only way left to reset the view — the control bar's `Fit all` button
   // is gone. Called from the canvas's own `onDoubleClick` below; a bare
@@ -465,46 +506,9 @@ export function LodgingMap({ parties, units, year }: LodgingMapProps) {
               dragRef.current = null
             }}
           >
-            {!imageFailed && (
-              <img
-                data-testid="map-backdrop"
-                src={MAP_IMAGE_URL}
-                alt=""
-                loading="lazy"
-                onError={() => {
-                  setImageFailed(true)
-                }}
-                style={{
-                  width,
-                  height,
-                  transform: `translate(${String(view.tx)}px, ${String(view.ty)}px) scale(${String(view.k)})`,
-                  // LOAD-BEARING, not incidental. The marks are placed at
-                  // `u * size * k + t`, which matches this image only while it
-                  // scales about its top-left. With the CSS default of 50% 50%
-                  // an image point lands at `k*a + (1-k)*w/2 + t` — an offset
-                  // that is ZERO ONLY AT k=1, so the map would look
-                  // pixel-perfect at rest and drift further out of register the
-                  // more you zoom. jsdom performs no layout, so no test here can
-                  // catch it; the algebra is the only guard.
-                  transformOrigin: '0 0',
-                }}
-                className="pointer-events-none absolute top-0 left-0 max-w-none"
-              />
-            )}
-            {/* Pinned at DEFAULT_FADE, not a control anymore (kindred#1997):
-                marks reading against a busy illustration is not a question
-                the user should be asked. */}
-            <div
-              data-testid="map-scrim"
-              aria-hidden="true"
-              style={{ opacity: DEFAULT_FADE / 100 }}
-              className="bg-card pointer-events-none absolute inset-0"
-            />
-            {imageFailed && (
-              <p className="text-muted-foreground pointer-events-none absolute top-3 left-3 text-xs">
-                Map image unavailable — showing positions only.
-              </p>
-            )}
+            {/* The illustration, its scrim and the art-missing notice, shared
+                with the admin unit editor's pin canvas (kindred#2013). */}
+            <MapBaseLayer view={view} width={width} height={height} />
 
             {clusters.map((cluster) => {
               const key = clusterKey(cluster)
@@ -568,10 +572,20 @@ export function LodgingMap({ parties, units, year }: LodgingMapProps) {
               if (!many && unmeasured) summary += ' · capacity unknown'
               // Amber SUPERSEDES the shared ring rather than competing with it:
               // a consent flag only ever exists on a shared room, so the two
-              // can never both need the same ring.
+              // can never both need the same ring. The ORDERING is
+              // `resolveRingPrecedence` (kindred#2136), shared with
+              // `LodgingUnitCard.tsx`'s `ringState`. The drop-target state is
+              // OMITTED, not passed as false: this surface has no placement to
+              // have a target for (kindred#2183), so the resolver can only
+              // land on `consentFlagged`, `shared` or `plain`.
+              const ringState = resolveRingPrecedence({
+                consentFlagged: flagged > 0,
+                shared,
+              })
               let halo = '0 0 0 2px rgba(255,255,255,.95)'
-              if (flagged > 0) halo = `0 0 0 2px #fff, 0 0 0 4.5px ${CONSENT_AMBER}`
-              else if (shared) halo = `0 0 0 2px #fff, 0 0 0 4.5px ${hue}`
+              if (ringState === 'consentFlagged')
+                halo = `0 0 0 2px #fff, 0 0 0 4.5px ${CONSENT_AMBER}`
+              else if (ringState === 'shared') halo = `0 0 0 2px #fff, 0 0 0 4.5px ${hue}`
               return (
                 // Deliberately a plain clickable div, not role="button": see the ACCESSIBILITY note
                 // at the top of this file. A role this mark cannot honour with real keyboard/focus
@@ -799,6 +813,12 @@ export function LodgingMap({ parties, units, year }: LodgingMapProps) {
         </div>
       </div>
 
+      {/* The SHARED corner queue the board mounts too, deliberately without
+          the placement permission the board passes it. That omission is a
+          RULING, not an oversight (kindred#2183): the queue here is a list of
+          who still needs a room, and this surface does not give anyone one.
+          The component defaults the permission off, so the omission is the
+          whole implementation — nothing to hard-code false. */}
       <FloatingUnplacedBadge
         parties={model.unplaced}
         onOpenParty={openParty}

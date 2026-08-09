@@ -221,6 +221,14 @@ describe('availabilityAction', () => {
     ).toBe('clear')
   })
 
+  it('offers nothing to hold an OCCUPIED family cabin — held and occupied are mutually exclusive (#2090)', () => {
+    expect(availabilityAction(unit(), true)).toBeNull()
+  })
+
+  it('still offers to hold an unoccupied family cabin (regression guard)', () => {
+    expect(availabilityAction(unit(), false)?.kind).toBe('hold')
+  })
+
   it('offers nothing on a building row', () => {
     // A container is a whole-building aggregate, not a bookable room. Holding
     // one would write an availability row against a unit no family can be

@@ -12,11 +12,21 @@
  * WHICH of the two advisory states shows, and the far larger set of rows where
  * neither does, is `capacityFlag` — read its header before changing anything
  * here. This file only renders what that decides.
+ *
+ * A CONTAINER's Sleeps field carries a second, unrelated bit of help text:
+ * the whole-house figure derived from its rooms (kindred#2079). It is not
+ * part of the capacity flag above — that rule is silent on every container,
+ * deliberately (its own beds are not the building's) — and it never writes
+ * anything. See derivedCapacity.ts for the arithmetic and the owner ruling
+ * it implements: offer the number, never populate the field with it.
  */
 import { type BedInventory } from '../../../types/beds'
+import type { LodgingUnitRecord } from '../../../types/lodging'
 import { BedInventoryEditor } from './BedInventoryEditor'
 import { capacityFlag } from './capacityFlag'
+import { activeLeavesUnder, derivedWholeHouseSleeps } from './derivedCapacity'
 import { FIELD, LABEL } from './lodgingStyles'
+import { parseSleeps } from './sleepsValue'
 
 export interface UnitCapacity {
   /** A string because blank is a real value: UNKNOWN. */
@@ -34,6 +44,14 @@ export interface UnitCapacityFieldsProps {
    */
   isConfirmed: boolean
   isContainer: boolean
+  /**
+   * The unit being edited, and every unit in the registry — together they
+   * let this derive the whole-house figure from stored rooms. `unit` is
+   * `undefined` on CREATE, where there is no id yet to look up children by,
+   * so nothing derives.
+   */
+  unit: LodgingUnitRecord | undefined
+  units: LodgingUnitRecord[]
 }
 
 export function UnitCapacityFields({
@@ -41,24 +59,52 @@ export function UnitCapacityFields({
   onChange,
   isConfirmed,
   isContainer,
+  unit,
+  units,
 }: UnitCapacityFieldsProps) {
   const flag = capacityFlag({ beds: value.beds, sleeps: value.sleeps, isConfirmed, isContainer })
 
+  // Gated on having at least one room to sum, not just on `derivedSleeps`
+  // being non-null: a childless container's total IS its own delta, and
+  // printing that delta a second time under a "derived from rooms" label
+  // would be noise — no room contributed anything to it.
+  const derivedSleeps =
+    isContainer && unit && activeLeavesUnder(unit.id, units).length > 0
+      ? derivedWholeHouseSleeps(unit.id, parseSleeps(value.sleeps) ?? 0, units)
+      : null
+
   return (
     <>
-      <label className="text-sm">
-        <span className={LABEL}>Sleeps</span>
-        <input
-          className={FIELD}
-          type="number"
-          min={1}
-          value={value.sleeps}
-          placeholder="Unknown"
-          onChange={(e) => {
-            onChange({ ...value, sleeps: e.target.value })
-          }}
-        />
-      </label>
+      <div className="text-sm">
+        <label>
+          <span className={LABEL}>Sleeps</span>
+          <input
+            className={FIELD}
+            type="number"
+            min={1}
+            value={value.sleeps}
+            placeholder="Unknown"
+            onChange={(e) => {
+              onChange({ ...value, sleeps: e.target.value })
+            }}
+          />
+        </label>
+        {/* A SIBLING of the label, not a child of it — nesting it inside
+            would fold this text into the label's accessible name and break
+            every `getByLabelText('Sleeps')` lookup, this file's own tests
+            included.
+
+            READ-ONLY. Plain helper text, same treatment as the suggestion
+            copy below — no new colour, chip or control. Reacts live to the
+            field above because it reads the value being TYPED
+            (`value.sleeps`), not the last-saved one — the same choice
+            `capacityFlag` already makes for its conflict/suggestion text. */}
+        {derivedSleeps !== null && (
+          <p className="text-muted-foreground mt-1.5 text-xs">
+            Derived from rooms: sleeps {derivedSleeps}
+          </p>
+        )}
+      </div>
 
       <div className="text-sm">
         <span className={LABEL}>Beds</span>

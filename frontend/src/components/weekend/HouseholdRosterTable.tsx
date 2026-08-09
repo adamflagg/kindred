@@ -8,9 +8,10 @@
  *
  * Read-only in this slice.
  */
-import { useCallback, useState } from 'react'
+import { useState } from 'react'
 
 import { useDismissOnDeadSpace } from '../../hooks/useDismissOnDeadSpace'
+import { usePanelParty } from '../../hooks/usePanelParty'
 import type { LodgingUnitRow, RosterPartyRow } from '../../types/lodging'
 import { FamilyDetailsPanel } from './FamilyDetailsPanel'
 import { HouseholdRosterRow } from './HouseholdRosterRow'
@@ -27,6 +28,14 @@ export interface HouseholdRosterTableProps {
   units?: LodgingUnitRow[]
   /** Threads through to `FamilyDetailsPanel`'s medical-narrative fetch (kindred#1996). */
   year: number
+  /**
+   * The weekend this roster belongs to, so a household enrolled in TWO
+   * weekends (kindred#2138) can be told apart from one that merely refetched.
+   * Optional and defaulting to 0 for the same reason `LodgingBoard`'s prop
+   * of the same name does: most tests render one weekend's roster and never
+   * exercise a session change.
+   */
+  sessionCmId?: number
 }
 
 const HEAD_CELL = 'text-muted-foreground pb-2 text-xs font-bold tracking-wider uppercase'
@@ -43,41 +52,46 @@ function hasAnyRequest(parties: RosterPartyRow[]): boolean {
   })
 }
 
-export function HouseholdRosterTable({ parties, units = [], year }: HouseholdRosterTableProps) {
+export function HouseholdRosterTable({
+  parties,
+  units = [],
+  year,
+  sessionCmId = 0,
+}: HouseholdRosterTableProps) {
   // A third `FamilyDetailsPanel` callsite (kindred#1996), wired exactly as
-  // `LodgingBoard` and `LodgingMap` wire the other two — same `selected` /
-  // `requestClose` pair, same `useDismissOnDeadSpace` hookup. The row itself
-  // stays chips-only per kindred#1889; this only gives it somewhere to send
-  // a click.
-  const [selected, setSelected] = useState<RosterPartyRow | null>(null)
-  const [requestClose, setRequestClose] = useState(false)
+  // `LodgingBoard` and `LodgingMap` wire the other two — same `usePanelParty`
+  // hook, same `useDismissOnDeadSpace` hookup. The row itself stays
+  // chips-only per kindred#1889; this only gives it somewhere to send a
+  // click. `panelParty`/`requestClose`/`openParty`/`closePanel` used to be
+  // four lines of hand-rolled state and an 11-line comment per surface
+  // (kindred#2139) — see `usePanelParty`'s own docstring for the derivation
+  // this now shares with `LodgingBoard` and `LodgingMap`.
+  const { panelParty, requestClose, openParty, closePanel, requestPanelClose } =
+    usePanelParty(parties)
 
-  const openParty = useCallback((party: RosterPartyRow) => {
-    setRequestClose(false)
-    setSelected(party)
-  }, [])
+  // RESET, not filtered (kindred#2138) — the owner's ruling was explicit: a
+  // session change closes the panel outright, it does not merely stop
+  // rendering it while the selection quietly survives underneath.
+  // `usePanelParty`'s own guard only catches a household that drops OUT of
+  // `parties`; a household enrolled in two weekends never does that, since
+  // `partyKey` (deliberately — see partyKey.ts) carries no session
+  // dimension, so the same key still matches after the switch and the panel
+  // would keep rendering the PREVIOUS weekend's placement data.
+  //
+  // This is React's own "storing information from previous renders"
+  // pattern: compare this render's prop against the last one seen, and if
+  // it moved, correct the state right here in the render body rather than
+  // in an Effect. Calling `closePanel` conditionally during render does not
+  // add a paint the way an Effect would — React discards this render's
+  // output and re-renders synchronously with the corrected state before
+  // anything commits, so nobody ever sees the stale mid-render frame.
+  const [lastSessionCmId, setLastSessionCmId] = useState(sessionCmId)
+  if (sessionCmId !== lastSessionCmId) {
+    setLastSessionCmId(sessionCmId)
+    closePanel()
+  }
 
-  const closePanel = useCallback(() => {
-    setSelected(null)
-    setRequestClose(false)
-  }, [])
-
-  // DERIVED, not effect-cleared (kindred#2062). A weekend switch re-renders
-  // this table with a different `parties` prop but never unmounts it, so a
-  // `selected` that outlived its own row's departure kept the panel — and
-  // its medical narrative — open over the new weekend's roster. Computing
-  // this at render time, rather than in a useEffect that calls setState,
-  // avoids the extra render pass React's docs warn an Effect would add here
-  // (`selected` itself is untouched; only what gets rendered changes). A
-  // refetch that returns the SAME parties (new array identity, same
-  // content) still resolves to present, because `partyKey` compares
-  // content, not identity — see partyKey.ts's own docstring.
-  const panelParty =
-    selected !== null && parties.some((p) => partyKey(p) === partyKey(selected)) ? selected : null
-
-  useDismissOnDeadSpace(panelParty !== null, () => {
-    setRequestClose(true)
-  })
+  useDismissOnDeadSpace(panelParty !== null, requestPanelClose)
 
   if (parties.length === 0) {
     return (
@@ -128,10 +142,16 @@ export function HouseholdRosterTable({ parties, units = [], year }: HouseholdRos
                 </tr>
               )}
               {section.parties.map((party) => (
-                // Both grains number independently, so a household cm_id can
-                // equal a person cm_id — the key carries the grain and both ids.
+                // `partyKey`, not a hand-rolled string (kindred#2139): the two
+                // used to disagree on an unresolved household (both ids 0),
+                // where this file's own inline key collapsed two different
+                // households into one React key and `partyKey` did not, by
+                // falling through to `display_name`. No live incidence — see
+                // `partyKey.ts`'s own docstring — but importing `partyKey`
+                // into this file and then hand-rolling a second, weaker
+                // definition beside it was the inconsistency worth fixing.
                 <HouseholdRosterRow
-                  key={`${party.grain}-${String(party.household_cm_id ?? 0)}-${String(party.person_cm_id ?? 0)}`}
+                  key={partyKey(party)}
                   party={party}
                   showRequests={showRequests}
                   unit={resolvePartyUnit(party, unitsByCode)}

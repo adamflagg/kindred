@@ -2150,7 +2150,7 @@ func TestProcessAdultsPersonFieldsTakeTheFirstLoadedSibling(t *testing.T) {
 // household `name` column authoritative: adults 3-5 arrive with ONLY `name`,
 // and first_name/last_name empty for 100% of those rows in every measured
 // year. An admission filter that reads the split columns to decide whether a
-// row is real would drop them -- 136 real adults across 2022-2026 are blank in
+// row is real would drop them -- 196 real adults across 2022-2026 are blank in
 // first_name/last_name and populated in `name` (kindred#1945).
 func TestProcessAdultsKeepsANameOnlyAdult(t *testing.T) {
 	s := &FamilyCampDerivedSync{}
@@ -2169,5 +2169,192 @@ func TestProcessAdultsKeepsANameOnlyAdult(t *testing.T) {
 	}
 	if adults[0].firstName != "" || adults[0].lastName != "" {
 		t.Errorf("nothing may invent split columns: got first=%q last=%q", adults[0].firstName, adults[0].lastName)
+	}
+}
+
+// TestProcessAdultsDropsNamelessRows pins kindred#1946: an adult with no
+// name in ANY field (name/first_name/last_name) must not be admitted, even
+// if email or gender data exists for it -- those two arms of the old
+// admission OR-chain let 194 wholly nameless rows into production. A real
+// `name` with blank split columns is the OPPOSITE case (kindred#1945/#1946
+// safety point, ~196 real adults across 2022-2026) and must still survive.
+func TestProcessAdultsDropsNamelessRows(t *testing.T) {
+	cases := []struct {
+		name            string
+		householdValues []customValueEntry
+		personValues    []customValueEntry
+		wantAdmitted    bool
+	}{
+		{
+			name: "gender only, no name anywhere -- NOT admitted",
+			personValues: []customValueEntry{
+				{householdPBID: "hh_1", fieldName: "Family Camp Gender 1", value: "Female"},
+			},
+			wantAdmitted: false,
+		},
+		{
+			name: "email only, no name anywhere -- NOT admitted",
+			personValues: []customValueEntry{
+				{householdPBID: "hh_1", fieldName: "Family Camp Adult 1 Email", value: "parent@example.com"},
+			},
+			wantAdmitted: false,
+		},
+		{
+			name: "gender placeholder NA does not rescue a nameless row",
+			personValues: []customValueEntry{
+				{householdPBID: "hh_1", fieldName: "Family Camp Gender 1", value: "NA"},
+			},
+			wantAdmitted: false,
+		},
+		{
+			name: "real name, blank first/last name -- IS admitted (196-row safety case)",
+			householdValues: []customValueEntry{
+				{householdPBID: "hh_1", fieldName: "Family Camp Adult 1", value: "Noah Smith"},
+			},
+			wantAdmitted: true,
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			s := &FamilyCampDerivedSync{}
+			adults := s.processAdults(tc.householdValues, tc.personValues)
+			gotAdmitted := len(adults) == 1
+			if len(adults) > 1 {
+				t.Fatalf("expected at most 1 adult, got %d", len(adults))
+			}
+			if gotAdmitted != tc.wantAdmitted {
+				t.Errorf("admitted = %v, want %v (adults: %+v)", gotAdmitted, tc.wantAdmitted, adults)
+			}
+		})
+	}
+}
+
+// TestProcessAdultsEmailMergePrefersWellFormedValue pins the kindred#1945
+// fix: when two sibling forms carry DIFFERENT NON-EMPTY emails for the same
+// adult, the well-formed one must win, regardless of which sibling's row
+// processAdults sees first. Both orderings are asserted for every case
+// because the bug being fixed IS the iteration-order tie-break -- a test
+// that only tried the order where the well-formed value happens to load
+// first would pass against the OLD, buggy code too (first-non-empty already
+// gets it right by luck in that order) and would prove nothing.
+func TestProcessAdultsEmailMergePrefersWellFormedValue(t *testing.T) {
+	cases := []struct {
+		name       string
+		malformed  string
+		wellFormed string
+	}{
+		// Missing dot in the domain -- mirrors the "domain typo" harm the
+		// issue measured against production (5 stored emails, 4 with a
+		// correct sibling value discarded by iteration order).
+		{name: "missing dot in domain", malformed: "amy.johnson@examplecom", wellFormed: "amy.johnson@example.com"},
+		// Trailing junk -- the other malformation kindred#1945 calls out
+		// explicitly ("no trailing/leading junk such as a trailing comma").
+		{name: "trailing comma junk", malformed: "ben.garcia@example.com,", wellFormed: "ben.garcia@example.com"},
+	}
+
+	for _, tc := range cases {
+		for _, order := range []string{"malformed-first", "well-formed-first"} {
+			t.Run(tc.name+"/"+order, func(t *testing.T) {
+				s := &FamilyCampDerivedSync{}
+				householdValues := []customValueEntry{
+					{householdPBID: "hh_1", fieldName: "Family Camp Adult 1", value: "Amy Johnson"},
+				}
+				malformedEntry := customValueEntry{
+					householdPBID: "hh_1", fieldName: "Family Camp Adult 1 Email", value: tc.malformed,
+				}
+				wellFormedEntry := customValueEntry{
+					householdPBID: "hh_1", fieldName: "Family Camp Adult 1 Email", value: tc.wellFormed,
+				}
+
+				var personValues []customValueEntry
+				if order == "malformed-first" {
+					personValues = []customValueEntry{malformedEntry, wellFormedEntry}
+				} else {
+					personValues = []customValueEntry{wellFormedEntry, malformedEntry}
+				}
+
+				adults := s.processAdults(householdValues, personValues)
+
+				if len(adults) != 1 {
+					t.Fatalf("expected 1 merged adult, got %d", len(adults))
+				}
+				if adults[0].email != tc.wellFormed {
+					t.Errorf(
+						"order=%s: got email %q, want well-formed %q -- validity must decide, not load order",
+						order, adults[0].email, tc.wellFormed,
+					)
+				}
+			})
+		}
+	}
+}
+
+// TestProcessAdultsEmailBothWellFormedKeepsFirstLoaded guards the OTHER half
+// of the kindred#1945 rule: validity only breaks a tie when it actually
+// discriminates. Two different but BOTH well-formed emails (e.g. two
+// legitimately distinct addresses) must fall back to the pre-existing
+// first-loaded-sibling behavior, not get silently overwritten just because
+// email now has a validity notion.
+func TestProcessAdultsEmailBothWellFormedKeepsFirstLoaded(t *testing.T) {
+	const first = "amy.johnson@example.com"
+	const second = "amy.j.johnson@example.org"
+
+	s := &FamilyCampDerivedSync{}
+	householdValues := []customValueEntry{
+		{householdPBID: "hh_1", fieldName: "Family Camp Adult 1", value: "Amy Johnson"},
+	}
+	personValues := []customValueEntry{
+		{householdPBID: "hh_1", fieldName: "Family Camp Adult 1 Email", value: first},
+		{householdPBID: "hh_1", fieldName: "Family Camp Adult 1 Email", value: second},
+	}
+
+	adults := s.processAdults(householdValues, personValues)
+
+	if len(adults) != 1 {
+		t.Fatalf("expected 1 merged adult, got %d", len(adults))
+	}
+	if adults[0].email != first {
+		t.Errorf("both emails are well-formed: got %q, want first-loaded %q unchanged", adults[0].email, first)
+	}
+}
+
+// TestProcessAdultsEmailGapFillStillWins is the regression guard the issue
+// asks for: gap-fill (one sibling blank, the other filled) must keep
+// producing the filled value, in both iteration orders. This is ~246 of
+// what the merge does across the dataset, and a validity change that broke
+// it would be a regression, not a fix.
+func TestProcessAdultsEmailGapFillStillWins(t *testing.T) {
+	const filled = "amy.johnson@example.com"
+
+	for _, order := range []string{"blank-first", "filled-first"} {
+		t.Run(order, func(t *testing.T) {
+			s := &FamilyCampDerivedSync{}
+			householdValues := []customValueEntry{
+				{householdPBID: "hh_1", fieldName: "Family Camp Adult 1", value: "Amy Johnson"},
+			}
+			blankEntry := customValueEntry{
+				householdPBID: "hh_1", fieldName: "Family Camp Adult 1 Email", value: "",
+			}
+			filledEntry := customValueEntry{
+				householdPBID: "hh_1", fieldName: "Family Camp Adult 1 Email", value: filled,
+			}
+
+			var personValues []customValueEntry
+			if order == "blank-first" {
+				personValues = []customValueEntry{blankEntry, filledEntry}
+			} else {
+				personValues = []customValueEntry{filledEntry, blankEntry}
+			}
+
+			adults := s.processAdults(householdValues, personValues)
+
+			if len(adults) != 1 {
+				t.Fatalf("expected 1 merged adult, got %d", len(adults))
+			}
+			if adults[0].email != filled {
+				t.Errorf("order=%s: got email %q, want %q -- gap-fill must still win", order, adults[0].email, filled)
+			}
+		})
 	}
 }

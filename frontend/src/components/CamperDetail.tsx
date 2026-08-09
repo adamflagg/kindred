@@ -14,7 +14,7 @@ import { usePermissions } from '../hooks/usePermissions'
 import { Permission } from '../constants/permissions'
 import { getLocationDisplay } from '../utils/addressUtils'
 import { getSessionShortName } from '../utils/sessionDisplay'
-import { isTeenProgram } from '../utils/sessionTypePredicates'
+import { isSummerCampSession } from '../utils/sessionTypePredicates'
 import { BunkRequestContext } from '../contexts/BunkRequestContext'
 import { BunkRequestProvider } from '../providers/BunkRequestProvider'
 import type { PersonsResponse } from '../types/pocketbase-types'
@@ -101,9 +101,14 @@ function CamperDetailBody({
   const bunkRequestCtx = useContext(BunkRequestContext)!
   const camperSatisfaction = bunkRequestCtx.getSatisfiedRequestInfo(camper.person_cm_id)
 
-  // Teens aren't bunked and never enter request processing — hide bunk panels
-  // and cohort context for teen-program sessions (spec §6.6).
-  const isTeen = camper.expand?.session ? isTeenProgram(camper.expand.session) : false
+  // Teens aren't bunked and never enter request processing, and family camp
+  // never enters the summer cabin-assignment workflow either (#2149) —
+  // assigned_bunk_cm_id is intentionally left undefined for family attendees
+  // (see useCamperEnrollment.ts), and there is no bunk-request pipeline or
+  // cohort-matching concept for a family weekend. The bunking panels and
+  // cohort context below are summer-only UI (spec §6.6 for teens); gate on
+  // isSummerCampSession so both teen and family sessions are excluded.
+  const showBunkingUI = camper.expand?.session ? isSummerCampSession(camper.expand.session) : false
 
   // Single source of truth for per-row satisfaction pills: read directly from
   // BunkRequestProvider's /api/satisfaction response. Replaces the previous
@@ -173,7 +178,7 @@ function CamperDetailBody({
             defaultExpanded={true}
             cohortContext={
               camper.attendee_status === 'enrolled' &&
-              !isTeen &&
+              showBunkingUI &&
               camper.expand?.session?.year === currentYear &&
               camper.person_cm_id &&
               camper.session_cm_id > 0
@@ -188,8 +193,10 @@ function CamperDetailBody({
             }
           />
 
-          {/* Bunking panels - only shown for enrolled, non-teen campers */}
-          {camper.attendee_status === 'enrolled' && !isTeen && (
+          {/* Bunking panels - only shown for enrolled, summer-camp campers
+              (excludes teen programs and family camp, neither of which use
+              the cabin-assignment workflow these panels represent) */}
+          {camper.attendee_status === 'enrolled' && showBunkingUI && (
             <>
               {/* Bunking Status */}
               <BunkingStatusPanel

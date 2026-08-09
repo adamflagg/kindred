@@ -58,6 +58,23 @@ type RollForwardPlan struct {
 	SkippedCodes  []string `json:"skipped_codes"`
 }
 
+// newRollForwardPlan initializes both slice fields to empty (non-nil) slices,
+// not just FromYear/ToYear. UnitCodes and SkippedCodes are only ever grown by
+// append, so a source year that copies or skips nothing never runs either
+// append, and a zero-value `[]string` field stays nil. encoding/json marshals
+// a nil slice as `null`, not `[]`, which crashes the frontend's RollForwardPlan
+// type -- it declares both fields as non-nullable string[]. Every construction
+// site must go through here, including the early error returns, so nothing on
+// this type can ever reach json.Marshal holding a nil slice.
+func newRollForwardPlan(from, to int) RollForwardPlan {
+	return RollForwardPlan{
+		FromYear:     from,
+		ToYear:       to,
+		UnitCodes:    []string{},
+		SkippedCodes: []string{},
+	}
+}
+
 // PreviewRollForward reports what ApplyRollForward would do, without writing.
 func PreviewRollForward(app core.App, from, to int) (RollForwardPlan, error) {
 	return rollForward(app, from, to, false)
@@ -101,7 +118,7 @@ func ApplyRollForward(app core.App, from, to int) (RollForwardPlan, error) {
 // a rolled-back attempt cannot return counts for rows that no longer exist.
 func rollForward(app core.App, from, to int, write bool) (RollForwardPlan, error) {
 	if from == to {
-		return RollForwardPlan{FromYear: from, ToYear: to},
+		return newRollForwardPlan(from, to),
 			fmt.Errorf("cannot roll year %d onto itself", from)
 	}
 
@@ -109,21 +126,21 @@ func rollForward(app core.App, from, to int, write bool) (RollForwardPlan, error
 	// `plan` through the pointer, so the call is sequenced before the return
 	// rather than sharing a return statement with the value it mutates.
 	if !write {
-		plan := RollForwardPlan{FromYear: from, ToYear: to}
+		plan := newRollForwardPlan(from, to)
 		err := rollForwardPasses(app, from, to, false, &plan)
 		return plan, err
 	}
 
 	var committed RollForwardPlan
 	if err := app.RunInTransaction(func(txApp core.App) error {
-		plan := RollForwardPlan{FromYear: from, ToYear: to}
+		plan := newRollForwardPlan(from, to)
 		if err := rollForwardPasses(txApp, from, to, true, &plan); err != nil {
 			return err
 		}
 		committed = plan
 		return nil
 	}); err != nil {
-		return RollForwardPlan{FromYear: from, ToYear: to},
+		return newRollForwardPlan(from, to),
 			fmt.Errorf("rolling %d forward to %d: %w", from, to, err)
 	}
 	return committed, nil

@@ -1,7 +1,6 @@
 import { useState } from 'react'
 import {
   HelpCircle,
-  X,
   Lock,
   AlertTriangle,
   Users,
@@ -11,6 +10,7 @@ import {
   History,
 } from 'lucide-react'
 
+import { Modal } from './ui/Modal'
 import { BATHHOUSE_BLUE, CONSENT_AMBER } from './weekend/mapColors'
 
 /** What one legend row and one legend section share: an icon and a title.
@@ -61,45 +61,57 @@ interface VisualGuideModalProps {
  * section shape and the `LegendEntry` primitive are the one shell both use.
  * Copying this file to give the weekend its own guide would be the thing
  * CLAUDE.md §4 names by name.
+ *
+ * Built on `ui/Modal` (kindred#2156) rather than hand-rolled chrome, so the
+ * guide inherits Modal's Escape-key listener, its `document.body` portal
+ * and a named close button — none of which this component provided when it
+ * painted its own `fixed inset-0` shell. Traded away deliberately: the
+ * card's `animate-fade-in`/`animate-scale-in` open animation, which Modal
+ * doesn't have and isn't gaining one here — adding a pass-through animation
+ * prop to `Modal.tsx` would edit the same file kindred#2025 is adding a
+ * focus trap to in parallel, turning two independent PRs into a merge
+ * conflict for a cosmetic difference.
  */
 function VisualGuideModal({ isOpen, onClose, sections }: VisualGuideModalProps) {
-  if (!isOpen) return null
-
   return (
-    <div className="animate-fade-in fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm">
-      <div className="card-lodge shadow-lodge-lg animate-scale-in max-h-[90vh] w-full max-w-2xl overflow-hidden">
-        {/* Header */}
-        <div className="bg-muted/50 border-border flex items-center justify-between border-b px-6 py-4">
-          <h2 className="font-display text-foreground flex items-center gap-2 text-xl font-bold">
+    <Modal
+      isOpen={isOpen}
+      onClose={onClose}
+      size="lg"
+      noPadding
+      scrollable
+      ariaLabelledBy="visual-guide-title"
+      header={
+        <div className="bg-muted/50 border-border flex items-center border-b px-6 py-4">
+          <h2
+            id="visual-guide-title"
+            className="font-display text-foreground flex items-center gap-2 text-xl font-bold"
+          >
             <HelpCircle className="text-primary h-5 w-5" />
             Visual Guide
           </h2>
-          <button onClick={onClose} className="btn-ghost p-2">
-            <X className="h-6 w-6" />
-          </button>
         </div>
-
-        {/* Content */}
-        <div className="max-h-[calc(90vh-8rem)] space-y-8 overflow-y-auto p-6">
-          {sections.map((section) => (
-            <section key={section.title}>
-              <h3 className="text-muted-foreground mb-4 flex items-center gap-2 text-sm font-medium tracking-wider uppercase">
-                {section.icon}
-                {section.title}
-              </h3>
-              <div className="space-y-4">{section.content}</div>
-            </section>
-          ))}
-        </div>
-
-        {/* Footer */}
+      }
+      footer={
         <div className="bg-muted/50 border-border flex justify-end border-t px-6 py-4">
           <button onClick={onClose} className="btn-primary">
             Got it
           </button>
         </div>
+      }
+    >
+      <div className="space-y-8 p-6">
+        {sections.map((section) => (
+          <section key={section.title}>
+            <h3 className="text-muted-foreground mb-4 flex items-center gap-2 text-sm font-medium tracking-wider uppercase">
+              {section.icon}
+              {section.title}
+            </h3>
+            <div className="space-y-4">{section.content}</div>
+          </section>
+        ))}
       </div>
-    </div>
+    </Modal>
   )
 }
 

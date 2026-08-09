@@ -291,6 +291,13 @@ export function LodgingUnitsPanel() {
                 unit={editing === 'new' ? undefined : editing}
                 year={currentYear}
                 onSaved={refresh}
+                // NOT `refresh` (kindred#2013): the map pin saves on
+                // pointer-up while the staffer is still editing, so the
+                // cached registry has to hear about it but the editor must
+                // stay open.
+                onPositionSaved={() => {
+                  invalidateLodgingRegistryQueries(queryClient)
+                }}
                 onCancel={() => {
                   setEditing(null)
                 }}

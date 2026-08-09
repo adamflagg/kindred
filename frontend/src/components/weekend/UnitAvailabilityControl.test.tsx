@@ -62,6 +62,7 @@ function renderControl(props: Partial<React.ComponentProps<typeof UnitAvailabili
     <UnitAvailabilityControl
       unit={unit()}
       canManage
+      occupied={false}
       isSaving={false}
       onSubmit={onSubmit}
       {...props}
@@ -77,6 +78,22 @@ describe('UnitAvailabilityControl', () => {
     renderControl({ canManage: false })
 
     expect(screen.queryByRole('button')).not.toBeInTheDocument()
+  })
+
+  it('offers nothing to hold an OCCUPIED unit — held and occupied are mutually exclusive (#2090)', () => {
+    // A space that already has a family assigned may not also be marked
+    // held. `occupied` is a fact from the slot's own parties, kept separate
+    // from `canManage`'s permission gate — folding it in there would
+    // resurrect the scenario dimension 1500000135 deleted.
+    renderControl({ occupied: true })
+
+    expect(screen.queryByRole('button')).not.toBeInTheDocument()
+  })
+
+  it('still offers to hold an unoccupied unit (regression guard)', () => {
+    renderControl({ occupied: false })
+
+    expect(screen.getByRole('button', { name: /hold/i })).toBeInTheDocument()
   })
 
   it('holds a family cabin back for this weekend, with the reason staff gave', async () => {

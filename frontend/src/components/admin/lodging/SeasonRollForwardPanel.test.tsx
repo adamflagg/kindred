@@ -44,8 +44,14 @@ interface RollForwardPlanFixture {
   units_to_create: number
   areas_present: number
   units_present: number
-  unit_codes: string[]
-  skipped_codes: string[]
+  // Widened to allow `null`: a source year with no registry at all never runs
+  // either `append` on the Go side, so an uninitialized `[]string` field stays
+  // nil and marshals as `null`, not `[]` (pocketbase/lodging/rollforward.go).
+  // The fixture type used to make that shape unrepresentable, which is why
+  // the suite stayed green through the outage -- widening it is part of the
+  // regression test, not just a type fix.
+  unit_codes: string[] | null
+  skipped_codes: string[] | null
 }
 
 const DEFAULT_PLAN: RollForwardPlanFixture = {
@@ -161,6 +167,26 @@ describe('SeasonRollForwardPanel', () => {
       },
     })
     expect(await screen.findByText(/test-unit-a/)).toBeInTheDocument()
+  })
+
+  it('renders instead of throwing when the endpoint returns null arrays', async () => {
+    // Reproduces #2182: a source year with no registry leaves both slices nil
+    // on the Go side, which encoding/json marshals as `null`. Before the fix,
+    // `plan.skipped_codes.length` throws `Cannot read properties of null
+    // (reading 'length')` during render -- the Season tab crashes outright,
+    // not through an error handler QueryGuard could catch.
+    renderWithProviders(<SeasonRollForwardPanel />, {
+      preview: {
+        units_to_create: 0,
+        areas_to_create: 0,
+        units_present: 0,
+        areas_present: 0,
+        unit_codes: null,
+        skipped_codes: null,
+      },
+    })
+    const applyButton = await screen.findByRole('button', { name: /forward/i })
+    expect(applyButton).toHaveTextContent(/nothing to carry forward/i)
   })
 
   it('does not fetch the preview before the season resolves', () => {

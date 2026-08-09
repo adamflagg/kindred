@@ -116,6 +116,23 @@ describe('useLodgingUnits', () => {
     expect(listLodgingUnits).not.toHaveBeenCalled()
   })
 
+  it('does not fetch when the caller disables it, even with a ready year', () => {
+    // kindred#2154: LodgingAliasesPanel only needs the unit list while its
+    // editor is open, so the hook needs a real `enabled` escape hatch.
+    renderHook(() => useLodgingUnits({ enabled: false }), { wrapper: wrapper(YEAR_CONTEXT) })
+    expect(listLodgingUnits).not.toHaveBeenCalled()
+  })
+
+  it('ANDs a caller-supplied enabled with the year gate, rather than replacing it', () => {
+    // enabled: true from the caller must not override an unresolved year —
+    // otherwise a cold load with the editor open would reintroduce the
+    // false-empty-state bug the year gate exists to prevent.
+    renderHook(() => useLodgingUnits({ enabled: true }), {
+      wrapper: wrapper({ ...YEAR_CONTEXT, currentYear: 0, isYearReady: false }),
+    })
+    expect(listLodgingUnits).not.toHaveBeenCalled()
+  })
+
   describe('.items', () => {
     it('coerces to an empty array before the query settles, so callers need no `?? []`', () => {
       const { result } = renderHook(() => useLodgingUnits(), {

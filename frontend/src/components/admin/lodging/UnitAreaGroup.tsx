@@ -3,14 +3,26 @@
  *
  * A `tbody` per area rather than a table per area: staff reason about the site
  * by zone and a flat 93-row list loses that, but the sort control has to stay
- * singular (see `UnitsTableHeader`). The chosen column sorts WITHIN the zone.
+ * singular (see `UnitsTableHeader`).
+ *
+ * Within the zone, rows render in TREE order (#2082): a parent's row is
+ * immediately followed by its own subtree, indented by its computed
+ * `parent_unit` depth, and the chosen column sorts only WITHIN each sibling
+ * set — a building's own rooms among themselves, and the zone's root-level
+ * buildings among themselves — never as one flat ranking across the whole
+ * zone. That is deliberate, not a simplification: sorting the zone flat and
+ * indenting whatever came out could draw a room under a building's row that
+ * does not actually contain it (a FALSE PARENT) the moment the chosen column
+ * scattered a subtree apart. See `flattenUnitTree` in `./unitTree` for the
+ * walk that produces this order.
  */
 import { ChevronDown, ChevronRight } from 'lucide-react'
 
 import type { LodgingUnitRecord } from '../../../types/lodging'
 import { GROUP_HEADING, MUTED_PILL } from './lodgingStyles'
 import { LodgingUnitRow } from './LodgingUnitRow'
-import { sortUnits, UNIT_SORT_COLUMNS, type AreaGroup, type UnitSort } from './unitSort'
+import { UNIT_SORT_COLUMNS, type AreaGroup, type UnitSort } from './unitSort'
+import { flattenUnitTree } from './unitTree'
 
 export interface UnitAreaGroupProps {
   group: AreaGroup
@@ -35,7 +47,7 @@ export function UnitAreaGroup({
   onConfirm,
   onDeactivate,
 }: UnitAreaGroupProps) {
-  const rows = sortUnits(group.units, sort)
+  const rows = flattenUnitTree(group.units, sort)
   const Chevron = isCollapsed ? ChevronRight : ChevronDown
 
   return (
@@ -67,10 +79,11 @@ export function UnitAreaGroup({
         </td>
       </tr>
       {!isCollapsed &&
-        rows.map((unit) => (
+        rows.map(({ unit, depth }) => (
           <LodgingUnitRow
             key={unit.id}
             unit={unit}
+            depth={depth}
             isSelected={selected.has(unit.id)}
             onToggleSelect={() => {
               onToggleSelect(unit.id)

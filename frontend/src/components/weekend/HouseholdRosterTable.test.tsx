@@ -4,10 +4,10 @@
  * weekends, where individuals enrol directly).
  */
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { fireEvent, render, screen } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import type { ReactNode } from 'react'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import type { RosterPartyRow } from '../../types/lodging'
 import { HouseholdRosterTable } from './HouseholdRosterTable'
@@ -21,8 +21,44 @@ vi.mock('../../hooks/usePermissions', () => ({
   }),
 }))
 
-vi.mock('../../hooks/useWeekendRoster', () => ({
-  useHouseholdMedical: () => ({ data: undefined, isLoading: false, error: null }),
+// `medicalFetchMode.real` toggles this file's ONE `useHouseholdMedical` mock
+// between the fast canned value every other suite in this file wants and the
+// REAL hook, wired through the mocked `fetchHouseholdMedical` service call
+// below -- so "the actual PHI fetch" describe block near the bottom of this
+// file can drive the genuine fetch path without touching the rest of this
+// file's tests, which never flip it. `vi.hoisted` is required: `vi.mock`
+// factories run before any other module-level code, so a plain `const`
+// referenced inside one would be a use-before-initialization error.
+const { medicalFetchMode, mockFetchHouseholdMedical } = vi.hoisted(() => ({
+  medicalFetchMode: { real: false },
+  mockFetchHouseholdMedical: vi.fn(),
+}))
+
+vi.mock('../../services/lodgingApi', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../services/lodgingApi')>()
+  return {
+    ...actual,
+    fetchHouseholdMedical: (...args: unknown[]) =>
+      (mockFetchHouseholdMedical as (...a: unknown[]) => unknown)(...args),
+  }
+})
+
+vi.mock('../../hooks/useWeekendRoster', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../hooks/useWeekendRoster')>()
+  return {
+    ...actual,
+    useHouseholdMedical: (year: number, householdCmId: number | null, enabled: boolean) =>
+      medicalFetchMode.real
+        ? actual.useHouseholdMedical(year, householdCmId, enabled)
+        : { data: undefined, isLoading: false, error: null },
+  }
+})
+
+// Only reached when `medicalFetchMode.real` is true — `useHouseholdMedical`
+// itself is mocked away for every other test in this file, so it never
+// invokes `useApiWithAuth` for them.
+vi.mock('../../hooks/useApiWithAuth', () => ({
+  useApiWithAuth: () => ({ fetchWithAuth: vi.fn(), isAuthenticated: true, isAuthLoading: false }),
 }))
 
 let client: QueryClient
@@ -174,6 +210,45 @@ describe('HouseholdRosterTable', () => {
     expect(screen.queryByText('The Johnson Family')).not.toBeInTheDocument()
     expect(screen.getByText('1 adult · 1 child')).toBeInTheDocument()
     expect(screen.getByText('Emma Johnson (9.00)')).toBeInTheDocument()
+  })
+
+  it('counts the PEOPLE printed, not the bed number, for an infant household', () => {
+    // kindred#2152: `composition()` prints the members it renders below, so it
+    // must never read `party.party_size`. Since #2046 that field is a BED
+    // count -- the server discounts a child under 18 months -- so here it says
+    // 2 while three people are named. Whichever way this row drifted the two
+    // lines would contradict each other on screen.
+    //
+    // This also pins why `composition()` does NOT call `partyHeadcount`
+    // despite wanting the people number: it needs the adult and child figures
+    // BROKEN OUT to build the string, and `partyHeadcount` returns only their
+    // sum. Collapsing it would turn "1 adult · 2 children" into "3".
+    render(
+      <HouseholdRosterTable
+        year={2026}
+        parties={[
+          party({
+            party_size: 2,
+            adults: [{ adult_number: 1, display_name: 'Olivia Chen', relationship: 'Parent' }],
+            children: [
+              { person_cm_id: 1000010, display_name: 'Mateo Chen', age: 6, grade: 1 },
+              { person_cm_id: 1000011, display_name: 'Ivy Chen', age: 0.11, grade: 0 },
+            ],
+            flags: {
+              needs_private_bathroom: false,
+              needs_power: false,
+              needs_accommodation: false,
+              accommodation_is_mandatory: false,
+              has_infant: true,
+            },
+          }),
+        ]}
+      />,
+      { wrapper }
+    )
+    expect(screen.getByText('1 adult · 2 children')).toBeInTheDocument()
+    expect(screen.queryByText('1 adult · 1 child')).not.toBeInTheDocument()
+    expect(screen.queryByText('3')).not.toBeInTheDocument()
   })
 
   it('does not count a blank adult slot -- family_camp_adults is not a fixed five', () => {
@@ -572,5 +647,160 @@ describe('HouseholdRosterTable — clears a stale selection (kindred#2062)', () 
 
     rerender(<HouseholdRosterTable year={2026} parties={makeParties()} />)
     expect(screen.getByTestId('family-details-panel')).toBeInTheDocument()
+  })
+})
+
+describe('HouseholdRosterTable — closes the panel all the way to the ORIGINAL parties (kindred#2137 bug 1)', () => {
+  // The #2062 tests above stop at ONE rerender: B replaces A and the panel
+  // closes. That passes against the broken implementation just as well as
+  // the fixed one. The actual bug only shows up on a THIRD rerender that
+  // returns to the roster the panel was originally opened against: without
+  // clearing the stored selection, `partyKey` matches again and the panel
+  // silently reopens with no click, re-issuing a real PHI fetch for a
+  // household nobody asked to see.
+  it('does not resurrect the panel when the party reappears (A -> B -> A)', async () => {
+    const johnson = party({ display_name: 'Johnson Family', household_cm_id: 2000001 })
+    const chen = party({ display_name: 'Chen Family', household_cm_id: 2000002 })
+    const { rerender } = render(<HouseholdRosterTable year={2026} parties={[johnson]} />, {
+      wrapper,
+    })
+    await userEvent.click(screen.getByRole('button', { name: /Johnson Family/ }))
+    expect(screen.getByTestId('family-details-panel')).toBeInTheDocument()
+
+    // B: Johnson drops out of the roster (a weekend switch).
+    rerender(<HouseholdRosterTable year={2026} parties={[chen]} />)
+    expect(screen.queryByTestId('family-details-panel')).not.toBeInTheDocument()
+
+    // A: back to a roster that once again contains Johnson (switching back
+    // to the first weekend, already cached this session). This is the bug.
+    rerender(<HouseholdRosterTable year={2026} parties={[johnson]} />)
+    expect(screen.queryByTestId('family-details-panel')).not.toBeInTheDocument()
+  })
+})
+
+describe('HouseholdRosterTable — reflects the live party, not the one captured at click time (kindred#2137 bug 3)', () => {
+  it('shows the freshly assigned cabin after an optimistic placement', async () => {
+    const johnson = party({
+      display_name: 'Johnson Family',
+      household_cm_id: 2000001,
+      unit_code: 'cedar-1',
+      unit_name: 'Cedar 1',
+    })
+    const { rerender } = render(<HouseholdRosterTable year={2026} parties={[johnson]} />, {
+      wrapper,
+    })
+    await userEvent.click(screen.getByRole('button', { name: /Johnson Family/ }))
+    expect(screen.getByTestId('family-details-panel')).toHaveTextContent('Cedar 1')
+
+    // A drag placement elsewhere (`dragPlacement.ts`'s `applyPlacement`)
+    // returns a NEW party object with a changed `unit_code`/`unit_name`, kept
+    // at the same `partyKey`. The panel must show the new cabin, not the
+    // object captured when the row was clicked.
+    const movedJohnson = { ...johnson, unit_code: 'ridge-a', unit_name: 'Ridge A' }
+    rerender(<HouseholdRosterTable year={2026} parties={[movedJohnson]} />)
+    expect(screen.getByTestId('family-details-panel')).toHaveTextContent('Ridge A')
+    expect(screen.getByTestId('family-details-panel')).not.toHaveTextContent('No cabin yet')
+  })
+})
+
+describe('HouseholdRosterTable — clears the selection on a SESSION change (kindred#2138)', () => {
+  // #2062's guard only clears `selected` when the household stops matching
+  // `partyKey` — and `partyKey` carries no session dimension (partyKey.ts).
+  // A household enrolled in BOTH weekends still matches after the switch, so
+  // the #2062 tests above (which use a party that disappears) pass without
+  // ever exercising this path. This one keeps the same household in
+  // `parties` across the rerender and changes only `sessionCmId`.
+  it('closes the panel on a session change even though the same household is still in parties', async () => {
+    const johnsonInBothWeekends = () => [
+      party({ display_name: 'Johnson Family', household_cm_id: 2000001 }),
+    ]
+    const { rerender } = render(
+      <HouseholdRosterTable year={2026} sessionCmId={101} parties={johnsonInBothWeekends()} />,
+      { wrapper }
+    )
+    await userEvent.click(screen.getByRole('button', { name: /Johnson Family/ }))
+    expect(screen.getByTestId('family-details-panel')).toBeInTheDocument()
+
+    // Same household, same partyKey — a different weekend's roster.
+    rerender(
+      <HouseholdRosterTable year={2026} sessionCmId={202} parties={johnsonInBothWeekends()} />
+    )
+    expect(screen.queryByTestId('family-details-panel')).not.toBeInTheDocument()
+  })
+
+  // The companion trap to #2062's own: a rerender that keeps the SAME
+  // session must not close a panel out from under whoever has it open, even
+  // when `parties` is a fresh array identity from a refetch.
+  it('keeps the panel open when the session is unchanged, even across a parties refetch', async () => {
+    const makeParties = () => [party({ display_name: 'Johnson Family', household_cm_id: 2000001 })]
+    const { rerender } = render(
+      <HouseholdRosterTable year={2026} sessionCmId={101} parties={makeParties()} />,
+      { wrapper }
+    )
+    await userEvent.click(screen.getByRole('button', { name: /Johnson Family/ }))
+    expect(screen.getByTestId('family-details-panel')).toBeInTheDocument()
+
+    rerender(<HouseholdRosterTable year={2026} sessionCmId={101} parties={makeParties()} />)
+    expect(screen.getByTestId('family-details-panel')).toBeInTheDocument()
+  })
+})
+
+describe('HouseholdRosterTable — the actual PHI fetch (kindred#2139)', () => {
+  // Every other test in this file mocks `useHouseholdMedical` to a constant,
+  // so `MedicalNarrative`'s fetch -- the exact harm #2062 named -- is never
+  // exercised by any assertion in the whole suite. This block flips
+  // `medicalFetchMode.real` to drive the GENUINE `useHouseholdMedical` hook,
+  // through the same mocked-service-plus-`useApiWithAuth` harness
+  // `useWeekendRoster.test.tsx` already uses to drive its own hooks for
+  // real.
+  beforeEach(() => {
+    medicalFetchMode.real = true
+    mockFetchHouseholdMedical.mockReset().mockResolvedValue({
+      household_cm_id: 2000001,
+      year: 2026,
+      allergy_info: 'Peanuts',
+    })
+  })
+
+  afterEach(() => {
+    medicalFetchMode.real = false
+  })
+
+  it('fetches the real medical narrative when the panel opens', async () => {
+    render(
+      <HouseholdRosterTable
+        year={2026}
+        parties={[party({ display_name: 'Johnson Family', household_cm_id: 2000001 })]}
+      />,
+      { wrapper }
+    )
+    expect(mockFetchHouseholdMedical).not.toHaveBeenCalled()
+
+    await userEvent.click(screen.getByRole('button', { name: /Johnson Family/ }))
+
+    await waitFor(() => {
+      expect(mockFetchHouseholdMedical).toHaveBeenCalledWith(expect.anything(), 2026, 2000001)
+    })
+    expect(await screen.findByText('Peanuts')).toBeInTheDocument()
+  })
+
+  it('never fetches for a party with no household to look up', async () => {
+    render(
+      <HouseholdRosterTable
+        year={2026}
+        parties={[
+          party({
+            grain: 'person',
+            household_cm_id: 0,
+            person_cm_id: 1000004,
+            display_name: 'Olivia Chen',
+          }),
+        ]}
+      />,
+      { wrapper }
+    )
+    await userEvent.click(screen.getByRole('button', { name: /Olivia Chen/ }))
+    expect(screen.getByTestId('family-details-panel')).toBeInTheDocument()
+    expect(mockFetchHouseholdMedical).not.toHaveBeenCalled()
   })
 })

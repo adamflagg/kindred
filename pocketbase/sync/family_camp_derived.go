@@ -573,23 +573,33 @@ func (s *FamilyCampDerivedSync) loadPersonCustomValues(
 //   - `first_name` is a MISLABELED FULL NAME. 773 of 788 2026 values contain a
 //     space -- parents type their whole name into a field CampMinder labels
 //     "First Name". Nothing may treat it as a given name.
-//   - NEVER conclude a row is empty from the split columns. 136 real adults
+//   - NEVER conclude a row is empty from the split columns. 196 real adults
 //     across 2022-2026 are blank in first_name/last_name and populated in
 //     `name`; a "delete the blank rows" cleanup written from that misreading
 //     would have erased every one of them.
 //
-// PENDING, and deliberately not resolved here (owner ruling, kindred#1945):
-// the person-partition loop below merges with "first non-empty wins" over a
+// The person-partition loop below merges with "first non-empty wins" over a
 // slice loadPersonCustomValues returns in record-id order, so when two
 // enrolled siblings carry different answers the winner is whichever row has
 // the lower id -- which correlates with nothing. Measured over the 382
 // rostered 2026 households: 254 (household, field, adult) groups disagree
-// across 113 households, and resolving by CampMinder's own last_updated (the
-// rule spec 4.1 already applies to the REQUEST fields, via
-// CollapseToHouseholdGrain) would pick differently in 130 of them. Which
-// sibling should win is a product decision, coupled to the still-open question
-// of whether gender/date_of_birth/email/pronouns are kept at all, so today's
-// behavior is pinned by test instead of changed on a guess.
+// across 113 households.
+//
+// RESOLVED for email only (owner ruling 2026-08-09, kindred#1945): when the
+// siblings' emails differ and are both non-empty, preferEmail breaks the tie
+// by well-formedness instead of load order -- see its doc comment. Email got
+// a rule because the harm is concrete and the rule is crisp: 5 stored adult
+// emails carry a domain typo in production, 4 of which have a correct
+// version on a sibling form that iteration order was discarding.
+//
+// STILL PENDING for every other merged field (first/last name, pronouns,
+// gender, date_of_birth, relationship): first-non-empty-wins over load order
+// stands, unchanged, because none of them has a validity notion as crisp as
+// "syntactically valid email" -- inventing one to feel consistent would be
+// guessing, not fixing. Which sibling should win there remains a product
+// decision, coupled to the still-open question of whether
+// gender/date_of_birth/pronouns are kept at all, so today's behavior for
+// those fields is pinned by test instead of changed on a guess.
 func (s *FamilyCampDerivedSync) processAdults(
 	householdValues []customValueEntry, personValues []customValueEntry,
 ) []*adultData {
@@ -642,14 +652,17 @@ func (s *FamilyCampDerivedSync) processAdults(
 
 		adult := adultMap[v.householdPBID][adultNum]
 
-		// Only set if empty (first non-empty wins for deduplication)
+		// Only set if empty (first non-empty wins for deduplication), EXCEPT
+		// email: see preferEmail for the kindred#1945 validity-preferring rule.
 		switch {
 		case strings.Contains(v.fieldName, "First Name") && adult.firstName == "":
 			adult.firstName = v.value
 		case strings.Contains(v.fieldName, "Last Name") && adult.lastName == "":
 			adult.lastName = v.value
-		case strings.Contains(v.fieldName, "Email") && adult.email == "":
-			adult.email = v.value
+		case strings.Contains(v.fieldName, "Email"):
+			if preferEmail(adult.email, v.value) {
+				adult.email = v.value
+			}
 		case strings.Contains(v.fieldName, "Pronouns") && adult.pronouns == "":
 			adult.pronouns = v.value
 		case strings.Contains(v.fieldName, "Gender") && adult.gender == "":
@@ -661,18 +674,53 @@ func (s *FamilyCampDerivedSync) processAdults(
 		}
 	}
 
-	// Convert map to slice, only include adults with data
+	// Convert map to slice, only include adults with a real name somewhere.
+	// kindred#1946: the email/gender arms this filter used to carry let 194
+	// wholly nameless rows into production -- an adult with only a gender
+	// value (including a placeholder like "NA") or only an email is not a
+	// person on its own. A `name` with blank first_name/last_name is the
+	// opposite case and must still be admitted; see the doc comment above.
 	var result []*adultData
 	for _, adults := range adultMap {
 		for _, adult := range adults {
-			if adult.name != "" || adult.firstName != "" || adult.lastName != "" ||
-				adult.email != "" || adult.gender != "" {
+			if adult.name != "" || adult.firstName != "" || adult.lastName != "" {
 				result = append(result, adult)
 			}
 		}
 	}
 
 	return result
+}
+
+// emailFormatPattern is a narrow, defensible notion of "well-formed enough
+// to prefer in a merge tie" -- local@domain.tld, no embedded whitespace or
+// commas (the two junk shapes measured in the 2026 snapshot), and at least
+// one dot in the domain. It is NOT full RFC 5322 validation and it is not
+// used to reject input anywhere; it exists solely to break a tie between two
+// sibling forms' answers for the same adult (kindred#1945).
+var emailFormatPattern = regexp.MustCompile(`^[^\s@,]+@[^\s@,]+\.[^\s@,]+$`)
+
+// isWellFormedEmail reports whether value looks like a syntactically valid
+// email address per emailFormatPattern.
+func isWellFormedEmail(value string) bool {
+	return emailFormatPattern.MatchString(value)
+}
+
+// preferEmail decides whether candidate should replace current in the
+// per-adult email merge (kindred#1945). Gap-fill is unchanged: an empty
+// current always loses to any non-empty candidate. When both are non-empty
+// and differ, well-formed beats malformed; when validity does not
+// discriminate between them (both well-formed, or both malformed), the
+// pre-existing first-loaded-sibling tie-break stands -- candidate does not
+// replace current.
+func preferEmail(current, candidate string) bool {
+	if current == "" {
+		return true
+	}
+	if candidate == "" || candidate == current {
+		return false
+	}
+	return isWellFormedEmail(candidate) && !isWellFormedEmail(current)
 }
 
 // processRegistrations extracts registration data from custom values

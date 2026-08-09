@@ -6,7 +6,7 @@
  * corresponding entry in the legend. This test fails if someone adds a new
  * indicator without updating the legend.
  */
-import { render, screen } from '@testing-library/react'
+import { render, screen, fireEvent } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, it, expect } from 'vitest'
 import { BunkingLegendButton, WeekendLegendButton } from './BunkingLegend'
@@ -125,6 +125,33 @@ describe('BunkingLegend', () => {
       expect(screen.getByText(/production mode/i)).toBeInTheDocument()
     })
   })
+
+  /** kindred#2156: the guide is built on `ui/Modal` rather than hand-rolled
+   *  chrome, so it must pick up Modal's Escape handler, its `document.body`
+   *  portal and its named close button. */
+  describe('built on ui/Modal (kindred#2156)', () => {
+    it('closes on Escape', async () => {
+      await openLegend()
+      expect(screen.getByText('Visual Guide')).toBeInTheDocument()
+
+      fireEvent.keyDown(document, { key: 'Escape' })
+
+      expect(screen.queryByText('Visual Guide')).not.toBeInTheDocument()
+    })
+
+    it('renders via a portal into document.body, not the trigger container', async () => {
+      const { container } = render(<BunkingLegendButton />)
+      await userEvent.click(screen.getByRole('button', { name: /show visual guide/i }))
+
+      expect(container.querySelector('[role="dialog"]')).toBeNull()
+      expect(screen.getByRole('dialog')).toBeInTheDocument()
+    })
+
+    it('has a close button with an accessible name', async () => {
+      await openLegend()
+      expect(screen.getByRole('button', { name: /close modal/i })).toBeInTheDocument()
+    })
+  })
 })
 
 /**
@@ -213,5 +240,23 @@ describe('WeekendLegendButton', () => {
     await userEvent.click(screen.getByRole('button', { name: /show visual guide/i }))
     await userEvent.click(screen.getByRole('button', { name: /got it/i }))
     expect(screen.queryByText('Visual Guide')).not.toBeInTheDocument()
+  })
+
+  it('closes on Escape (kindred#2156)', async () => {
+    render(<WeekendLegendButton />)
+    await userEvent.click(screen.getByRole('button', { name: /show visual guide/i }))
+    expect(screen.getByText('Visual Guide')).toBeInTheDocument()
+
+    fireEvent.keyDown(document, { key: 'Escape' })
+
+    expect(screen.queryByText('Visual Guide')).not.toBeInTheDocument()
+  })
+
+  it('renders via a portal into document.body, not the trigger container (kindred#2156)', async () => {
+    const { container } = render(<WeekendLegendButton />)
+    await userEvent.click(screen.getByRole('button', { name: /show visual guide/i }))
+
+    expect(container.querySelector('[role="dialog"]')).toBeNull()
+    expect(screen.getByRole('dialog')).toBeInTheDocument()
   })
 })

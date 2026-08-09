@@ -199,14 +199,18 @@ describe('LodgingUnitCard', () => {
     expect(screen.getByText('1 family did not request sharing')).toBeInTheDocument()
   })
 
-  it('keeps an empty unit dashed and washed out', () => {
-    // Pre-existing behaviour, preserved through the ordered-switch refactor
-    // below rather than displaced by it.
+  it('keeps an empty unit dashed and forest-tinted (#2093)', () => {
+    // Owner ruling 2026-08-09: HIGHLIGHT an open space with a low-saturation
+    // forest tint. The grey `bg-muted/25` wash this used to carry read as
+    // "deactivated" and is retired in favour of `bg-primary/10` — `--primary`
+    // IS the board's forest hue (index.css), just at resting-state strength
+    // rather than the drop target's `bg-primary/5` accent.
     const { container } = render(
       <LodgingUnitCard slot={slot()} hue="hsl(160 45% 42%)" onOpenParty={vi.fn()} />
     )
     const card = container.querySelector('[data-unit-card]')
-    expect(card).toHaveClass('bg-muted/25')
+    expect(card).toHaveClass('bg-primary/10')
+    expect(card).not.toHaveClass('bg-muted/25')
     expect(card).toHaveClass('border-dashed')
   })
 
@@ -282,6 +286,42 @@ describe('LodgingUnitCard', () => {
       />
     )
     expect(screen.getByText('Inactive')).toBeInTheDocument()
+  })
+})
+
+describe('LodgingUnitCard — a held unit refuses the drop outright (#2087)', () => {
+  // The `disabled` half of the fix. `resolveDrop` (dragPlacement.test.ts) is
+  // the load-bearing check — #2080's picker never touches a droppable at
+  // all — but `useDroppable`'s own `disabled` flag is what keeps dnd-kit
+  // from ever reporting `isOver` for a held card in the first place, which
+  // is what this asserts.
+  function card(container: HTMLElement): HTMLElement {
+    const el = container.querySelector('[data-unit-card]')
+    if (!el) throw new Error('no card rendered')
+    return el as HTMLElement
+  }
+
+  const held = unit({ family_available_override: false, is_family_available: false })
+
+  it('keeps the droppable disabled on a held unit even while placement is live', () => {
+    overDroppableId = unitDroppableId('cedar-1')
+    const { container } = render(
+      <LodgingUnitCard
+        slot={slot({ unit: held })}
+        hue="hsl(160 45% 42%)"
+        canPlace
+        onOpenParty={vi.fn()}
+      />
+    )
+    expect(card(container)).not.toHaveClass('border-primary')
+  })
+
+  it('keeps an ordinary unheld unit droppable enabled (regression guard)', () => {
+    overDroppableId = unitDroppableId('cedar-1')
+    const { container } = render(
+      <LodgingUnitCard slot={slot()} hue="hsl(160 45% 42%)" canPlace onOpenParty={vi.fn()} />
+    )
+    expect(card(container)).toHaveClass('border-primary')
   })
 })
 
@@ -812,21 +852,109 @@ describe('LodgingUnitCard — the shared-space mark (#2091)', () => {
   })
 
   it('drops the empty-room background wash under an active drop target, so the two never race', () => {
-    // `.bg-muted/25` (the dashed wash) and `.bg-primary/5` (the drop-target
-    // wash) both set `background-color` — a `toHaveClass('border-dashed')`
-    // check alone (the test above) cannot see this, because jsdom parses no
-    // Tailwind and a class string proves nothing about which declaration a
-    // real browser's cascade would pick. This is the same pairing the file's
-    // own top-of-diff comment names as the SECOND byte-offset race this
-    // refactor exists to kill (the first being `.border-amber-400` vs
-    // `.border-primary`) — this is the case of it that mattered for a real,
-    // high-frequency gesture: hovering a family drag over an empty room.
+    // `.bg-primary/10` (the open-space tint, #2093) and `.bg-primary/5` (the
+    // drop-target wash) both set `background-color` — a
+    // `toHaveClass('border-dashed')` check alone (the test above) cannot see
+    // this, because jsdom parses no Tailwind and a class string proves
+    // nothing about which declaration a real browser's cascade would pick.
+    // This is the same pairing the file's own top-of-diff comment names as
+    // the SECOND byte-offset race this refactor exists to kill (the first
+    // being `.border-amber-400` vs `.border-primary`) — this is the case of
+    // it that mattered for a real, high-frequency gesture: hovering a family
+    // drag over an empty room.
     overDroppableId = unitDroppableId('cedar-1')
     const { container } = render(
       <LodgingUnitCard slot={slot()} hue={hue} canPlace onOpenParty={vi.fn()} />
     )
     expect(card(container)).toHaveClass('bg-primary/5')
+    expect(card(container)).not.toHaveClass('bg-primary/10')
     expect(card(container)).not.toHaveClass('bg-muted/25')
+  })
+})
+
+describe('LodgingUnitCard — the open-space title marker (#2093)', () => {
+  // Owner ruling 2026-08-09: the master housing sheet marks an open space
+  // with a yellow fill on its title, and the request was to HIGHLIGHT, never
+  // dim, the to-do list. `RING_CLASSES` stays untouched — `color`/`font-weight`
+  // on the child `<h3>` doesn't compete with `border-color`/`box-shadow`, so
+  // this is additive exactly like `dashed` itself. Gated on `openMarkerActive`
+  // rather than bare `dashed` for the same reason the background wash is: the
+  // forest tint is a RESTING-STATE signal only, suppressed the instant this
+  // card becomes an active drop target — and never spent on a held room,
+  // which is empty but not open.
+  const hue = 'hsl(160 45% 42%)'
+
+  it('spends the forest tint on an open unit title — colour AND weight, not dimmed', () => {
+    render(<LodgingUnitCard slot={slot()} hue={hue} onOpenParty={vi.fn()} />)
+    const title = screen.getByText('Cedar 1')
+    expect(title).toHaveClass('text-primary')
+    expect(title).toHaveClass('font-bold')
+    expect(title).not.toHaveClass('text-foreground')
+    expect(title).not.toHaveClass('font-semibold')
+    expect(title).not.toHaveClass('text-muted-foreground')
+    expect(title).not.toHaveClass('opacity-40')
+  })
+
+  it('leaves an occupied unit title in the plain foreground weight', () => {
+    render(<LodgingUnitCard slot={slot({ parties: [party()] })} hue={hue} onOpenParty={vi.fn()} />)
+    const title = screen.getByText('Cedar 1')
+    expect(title).toHaveClass('text-foreground')
+    expect(title).toHaveClass('font-semibold')
+    expect(title).not.toHaveClass('text-primary')
+    expect(title).not.toHaveClass('font-bold')
+  })
+
+  it('suppresses the open-space title emphasis while this card is an active drop target', () => {
+    // Mid-drag the board is answering a different question — this is the
+    // title-side half of the same suppression the background wash already
+    // gets, sharing the identical `openMarkerActive` gate rather than a
+    // second, independently-derived condition that could drift from it.
+    overDroppableId = unitDroppableId('cedar-1')
+    render(<LodgingUnitCard slot={slot()} hue={hue} canPlace onOpenParty={vi.fn()} />)
+    const title = screen.getByText('Cedar 1')
+    expect(title).not.toHaveClass('text-primary')
+    expect(title).not.toHaveClass('font-bold')
+    expect(title).toHaveClass('text-foreground')
+    expect(title).toHaveClass('font-semibold')
+  })
+
+  it('does not call a HELD room open — no tint, no bold title, dashed edge kept', () => {
+    /*
+     * A hold (#2087 / the #2090 ruling) blocks placement outright:
+     * `dragPlacement.ts:222` refuses the drop and the card's own droppable is
+     * `disabled`. An empty held cabin therefore has no family in it and can
+     * take none — "empty" and "open" are not the same predicate, and this is
+     * the one place they part.
+     *
+     * This was harmless while the empty treatment was a neutral grey wash.
+     * The forest tint is not neutral: it says "this is where the remaining
+     * work is", and the marker IS the to-do list. Painting a held cabin
+     * forest sends staff at the one room they are not allowed to fill.
+     *
+     * Scope note: the approved 2026-08-09 vocabulary gives a held card a
+     * refusal treatment of its own (dim + `not-allowed`), queued separately.
+     * This asserts only that the OPEN marker stands down — it does not
+     * pre-empt that.
+     */
+    const { container } = render(
+      <LodgingUnitCard
+        slot={slot({ unit: unit({ family_available_override: false, reason: 'Maintenance' }) })}
+        hue={hue}
+        canPlace
+        onOpenParty={vi.fn()}
+      />
+    )
+    const title = screen.getByText('Cedar 1')
+    expect(title).not.toHaveClass('text-primary')
+    expect(title).not.toHaveClass('font-bold')
+    expect(title).toHaveClass('text-foreground')
+    expect(title).toHaveClass('font-semibold')
+
+    const card = container.querySelector('[data-unit-card]')
+    expect(card).not.toHaveClass('bg-primary/10')
+    // The dashed EDGE is a structural "nobody is in here" and stays — only
+    // the affirmative "go fill this" half stands down.
+    expect(card).toHaveClass('border-dashed')
   })
 })
 
@@ -1272,5 +1400,168 @@ describe('LodgingUnitCard shareability (kindred#2026)', () => {
       />
     )
     expect(screen.getByText('Sharing unset')).toBeInTheDocument()
+  })
+})
+
+describe('LodgingUnitCard — the needs-misfit hatch (#1912)', () => {
+  /*
+   * The board's signal vocabulary, ruled 2026-08-09 and binding here:
+   *
+   *   dim (`opacity-40` + `pointer-events-none`) = REFUSAL — an invalid merge
+   *     target, or a held space (#2087). "You may not."
+   *   hatch (`background-image`, FULL strength) = ADVISORY MISFIT — "it will
+   *     work; nothing here meets the need". This block.
+   *   forest tint = open and available, at rest (#2093).
+   *
+   * The hatch must never touch opacity. Counted across the board there were
+   * four meanings on the opacity channel before the ruling, three of them
+   * able to appear at once mid-drag; a card dimmed for a fit miss reads as a
+   * weaker refusal rather than as a different kind of statement.
+   */
+  const hue = 'hsl(160 45% 42%)'
+  /** Enough of the arbitrary property to identify the mark, whatever its period. */
+  const HATCH = '[background-image:repeating-linear-gradient'
+  const needsPower = party({ flags: { needs_power: true } })
+
+  function card(container: HTMLElement): HTMLElement {
+    const el = container.querySelector('[data-unit-card]')
+    if (!el) throw new Error('no card rendered')
+    return el as HTMLElement
+  }
+
+  function hatchClass(container: HTMLElement): string {
+    const el = card(container)
+    return [...el.classList].find((name) => name.startsWith(HATCH)) ?? ''
+  }
+
+  it('marks nothing at rest, however badly the space fits', () => {
+    // The mark is a DRAG-STATE mark. At rest there is no family to judge it
+    // against, and a permanently hatched board says nothing at all.
+    const { container } = render(
+      <LodgingUnitCard
+        slot={slot({ unit: unit({ power_coverage: 'none' }) })}
+        hue={hue}
+        onOpenParty={vi.fn()}
+      />
+    )
+    expect(hatchClass(container)).toBe('')
+    expect(card(container)).not.toHaveAttribute('data-needs-fit')
+  })
+
+  it('hatches a space where no room meets the dragged family need', () => {
+    const { container } = render(
+      <LodgingUnitCard
+        slot={slot({ unit: unit({ power_coverage: 'none' }) })}
+        hue={hue}
+        draggingParty={needsPower}
+        onOpenParty={vi.fn()}
+      />
+    )
+    expect(hatchClass(container)).toContain('repeating-linear-gradient')
+    expect(card(container)).toHaveAttribute('data-needs-fit', 'unmet')
+  })
+
+  it('grades SOME from NONE by hatch period, never by a second channel', () => {
+    const none = render(
+      <LodgingUnitCard
+        slot={slot({ unit: unit({ power_coverage: 'none' }) })}
+        hue={hue}
+        draggingParty={needsPower}
+        onOpenParty={vi.fn()}
+      />
+    )
+    const some = render(
+      <LodgingUnitCard
+        slot={slot({ unit: unit({ power_coverage: 'some' }) })}
+        hue={hue}
+        draggingParty={needsPower}
+        onOpenParty={vi.fn()}
+      />
+    )
+    const tight = hatchClass(none.container)
+    const wide = hatchClass(some.container)
+    expect(tight).not.toBe('')
+    expect(wide).not.toBe('')
+    expect(tight).not.toBe(wide)
+    // Same ink, different spacing. If the two ever differ in their colour
+    // stop, the grade has quietly moved onto a strength channel.
+    expect(tight).toContain('hsl(var(--foreground)_/_0.1)')
+    expect(wide).toContain('hsl(var(--foreground)_/_0.1)')
+    expect(some.container.querySelector('[data-unit-card]')).toHaveAttribute(
+      'data-needs-fit',
+      'partial'
+    )
+  })
+
+  it('never dims — the hatch is advisory and a dim is a refusal', () => {
+    const { container } = render(
+      <LodgingUnitCard
+        slot={slot({ unit: unit({ power_coverage: 'none' }) })}
+        hue={hue}
+        canPlace
+        draggingParty={needsPower}
+        onOpenParty={vi.fn()}
+      />
+    )
+    expect(hatchClass(container)).not.toBe('')
+    expect(card(container)).not.toHaveClass('opacity-40')
+    expect(card(container)).not.toHaveClass('pointer-events-none')
+    expect([...card(container).classList].filter((n) => n.startsWith('opacity-'))).toEqual([])
+  })
+
+  it('leaves a space that meets the need unmarked mid-drag', () => {
+    const { container } = render(
+      <LodgingUnitCard
+        slot={slot({ unit: unit({ power_coverage: 'all' }) })}
+        hue={hue}
+        draggingParty={needsPower}
+        onOpenParty={vi.fn()}
+      />
+    )
+    expect(hatchClass(container)).toBe('')
+  })
+
+  it('marks nothing for a family that asked for nothing', () => {
+    const { container } = render(
+      <LodgingUnitCard
+        slot={slot({ unit: unit({ power_coverage: 'none' }) })}
+        hue={hue}
+        draggingParty={party()}
+        onOpenParty={vi.fn()}
+      />
+    )
+    expect(hatchClass(container)).toBe('')
+  })
+
+  it('judges the resolved coverage, never the container row', () => {
+    // Twelve of the fourteen 2026 family-pool containers record
+    // `has_power = 0` while every leaf beneath them has power.
+    const { container } = render(
+      <LodgingUnitCard
+        slot={slot({ unit: unit({ has_power: false, power_coverage: 'all' }) })}
+        hue={hue}
+        draggingParty={needsPower}
+        onOpenParty={vi.fn()}
+      />
+    )
+    expect(hatchClass(container)).toBe('')
+  })
+
+  it('composes with the open-space forest tint rather than suppressing it', () => {
+    // ORTHOGONAL properties: #2093's tint is `background-color`, this is
+    // `background-image`. Both paint, at full strength — an empty space that
+    // does not meet the need is still an empty space. No suppression logic
+    // belongs between them, and adding any would be reaching into #2093's
+    // own gate.
+    const { container } = render(
+      <LodgingUnitCard
+        slot={slot({ unit: unit({ power_coverage: 'none' }) })}
+        hue={hue}
+        draggingParty={needsPower}
+        onOpenParty={vi.fn()}
+      />
+    )
+    expect(card(container)).toHaveClass('bg-primary/10')
+    expect(hatchClass(container)).not.toBe('')
   })
 })

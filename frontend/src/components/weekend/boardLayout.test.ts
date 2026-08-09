@@ -20,10 +20,12 @@ import {
   areaTokens,
   buildBoard,
   countBoardSlots,
+  partySize,
   SHARE_WORDING,
   slotOccupancy,
   wholeBuildingHolders,
 } from './boardLayout'
+import { partyHeadcount } from './householdIdentity'
 import { partyKey } from './partyKey'
 
 function unit(overrides: Partial<LodgingUnitRow> = {}): LodgingUnitRow {
@@ -81,19 +83,69 @@ function party(overrides: Partial<RosterPartyRow> = {}): RosterPartyRow {
   }
 }
 
+describe('partySize — BEDS, never the headcount', () => {
+  /*
+   * THE TWO NUMBERS MUST NOT CONVERGE.
+   *
+   * `partySize` is the BED number the fit check runs on; `partyHeadcount` is
+   * the PEOPLE number a badge prints next to the names. Since #2046 the
+   * server discounts a child under 18 months at session start, so for the 24
+   * households with an infant the bed figure is deliberately one BELOW the
+   * names. kindred#2152 exists because a badge reached for the wrong one, and
+   * collapsing this function into `partyHeadcount` would re-create it while
+   * looking like a tidy-up.
+   */
+  it('is the bed number for an infant household, one below the headcount', () => {
+    const infantHousehold = party({
+      // Server-reported: 1 adult + 1 school-age child. The infant is discounted.
+      party_size: 2,
+      adults: [{ adult_number: 1, display_name: 'Emma Johnson', relationship: 'Mother' }],
+      children: [
+        { person_cm_id: 9001, display_name: 'Noah Johnson', age: 8, grade: 3 },
+        { person_cm_id: 9002, display_name: 'Ava Johnson', age: 0.11, grade: 0 },
+      ],
+    })
+    expect(partySize(infantHousehold)).toBe(2)
+    expect(partyHeadcount(infantHousehold)).toBe(3)
+  })
+
+  /*
+   * The FALLBACK arm — and only the fallback arm — is `partyHeadcount`. A
+   * reported 0 means NOT STATED, so there is no bed figure to honour and the
+   * client cannot re-derive the infant discount (`PartyChild.age` is
+   * CampMinder's `yy.mm`, the field #2046 forbids thresholding). Counting the
+   * bodies over-states, the safe direction on this surface.
+   */
+  it('falls back to the headcount when no bed count was reported', () => {
+    const unreported = party({
+      party_size: 0,
+      adults: [
+        { adult_number: 1, display_name: 'Emma Johnson', relationship: 'Mother' },
+        // Still live in `adults` until #1946's cleanup resyncs — the fallback
+        // applies the server's own predicate rather than re-inflating.
+        { adult_number: 2, display_name: 'NA', relationship: '' },
+      ],
+      children: [{ person_cm_id: 9001, display_name: 'Noah Johnson', age: 8, grade: 3 }],
+    })
+    expect(partySize(unreported)).toBe(partyHeadcount(unreported))
+    expect(partySize(unreported)).toBe(2)
+  })
+})
+
 describe('slotOccupancy — how many people the card can account for', () => {
   /*
    * The corner figure was CAPACITY, so a card looked identical whether the
    * room was empty or full. This is the numerator that fixes that.
    *
-   * THE NUMERATOR IS KNOWN TO BE WRONG, and #1925 is the fix. `party_size`
-   * counts the household's LISTED adults rather than the attending ones, and
-   * a data investigation there found the errors run in BOTH directions, with
-   * the worst cases under-counts. It is already displayed per household on
-   * every `FamilyCard`; summing it onto the room does not create a new class
-   * of error, but it does make an existing one more consequential, because a
-   * room reading full is trusted in a way a household reading 6 is not. This
-   * is deliberately the ONE place that computes it, so #1925 has one edit.
+   * THE NUMERATOR IS BEDS, not bodies, since #1925 and #2046. It used to
+   * count the household's LISTED adults — blank and placeholder
+   * `family_camp_adults` slots included — and every child, infants among
+   * them. Both terms are now filtered server-side, so a room reading full is
+   * worth the trust that summing onto a room asks for.
+   *
+   * There were never "one place that computes it" — three copies read
+   * `party_size`, and this file's own doc comment claiming otherwise is what
+   * made #2046 re-sweep the tree. See `boardLayout.partySize`.
    *
    * SPANNING is the other half. Since #2010 a party holding several rooms is
    * drawn on each of them, and #2040 deliberately left that rule alone. When
@@ -128,6 +180,28 @@ describe('slotOccupancy — how many people the card can account for', () => {
     // One adult and one child in the fixture. A `party_size` of 0 is "not
     // stated", not "nobody" — the same reading `FamilyCard` has always used.
     const slot = { unit: unit(), parties: [party({ party_size: 0 })], consent: null }
+    expect(slotOccupancy(slot, [unit()]).occupants).toBe(2)
+  })
+
+  it('does not recount a placeholder adult in that fallback', () => {
+    // The fallback runs the SAME adult predicate the server counts by
+    // (`householdIdentity.namedAdults`), or a household whose only adult slot
+    // holds "NA" would be discounted server-side and silently re-inflated
+    // here — the exact drift #1925 step 5 exists to close.
+    const slot = {
+      unit: unit(),
+      parties: [
+        party({
+          party_size: 0,
+          adults: [
+            { adult_number: 1, display_name: 'Emma Johnson', relationship: 'Mother' },
+            { adult_number: 2, display_name: 'NA', relationship: '' },
+            { adult_number: 3, display_name: '', relationship: '' },
+          ],
+        }),
+      ],
+      consent: null,
+    }
     expect(slotOccupancy(slot, [unit()]).occupants).toBe(2)
   })
 

@@ -1,7 +1,9 @@
 package lodging
 
 import (
+	"encoding/json"
 	"fmt"
+	"strings"
 	"testing"
 
 	"github.com/pocketbase/pocketbase/core"
@@ -244,6 +246,38 @@ func TestPreviewRollForwardWritesNothing(t *testing.T) {
 	rec, _ := findByCodeAndYear(app, "lodging_units", "test-unit-a", 2027)
 	if rec != nil {
 		t.Error("preview created a row")
+	}
+}
+
+// TestPreviewRollForwardEmptySourceMarshalsEmptyArraysNotNull pins the wire
+// format, not the struct: a source year with no registry at all leaves
+// UnitCodes and SkippedCodes never appended to, so an unintialized `[]string`
+// field stays nil and encoding/json marshals a nil slice as `null`, not `[]`.
+// The frontend's RollForwardPlan type declares both fields as non-nullable
+// string[], so a `null` on the wire crashes the Season tab's render. Asserting
+// on the struct fields would NOT catch this -- nil and []string{} are both
+// falsy-empty and indistinguishable there. Only json.Marshal exposes the bug.
+func TestPreviewRollForwardEmptySourceMarshalsEmptyArraysNotNull(t *testing.T) {
+	app := newRollForwardTestApp(t)
+	// Deliberately no seedYear call: 2030 has no registry at all, so both
+	// passes iterate zero source rows and neither append ever runs.
+
+	plan, err := PreviewRollForward(app, 2030, 2031)
+	if err != nil {
+		t.Fatalf("PreviewRollForward: %v", err)
+	}
+
+	raw, err := json.Marshal(plan)
+	if err != nil {
+		t.Fatalf("json.Marshal: %v", err)
+	}
+
+	body := string(raw)
+	if !strings.Contains(body, `"unit_codes":[]`) {
+		t.Errorf("expected unit_codes to marshal as [], got: %s", body)
+	}
+	if !strings.Contains(body, `"skipped_codes":[]`) {
+		t.Errorf("expected skipped_codes to marshal as [], got: %s", body)
 	}
 }
 
