@@ -24,10 +24,17 @@
  *
  *    `sleeps` is the ONLY field with an omission rule, because it is the only
  *    one here whose blank means something. `map_x` / `map_y` used to be the
- *    other half of this paragraph; they are no longer edited on this form at
- *    all, and a stored coordinate now survives a save because the key is
- *    UNCONDITIONALLY ABSENT — not because a guard omits it when blank. Anyone
- *    wiring the map editor back in has to add that guard, not assume it.
+ *    other half of this paragraph, and a stored coordinate survives a save
+ *    because those keys are UNCONDITIONALLY ABSENT from the payload — not
+ *    because a guard omits them when blank.
+ *
+ *    THAT IS STILL TRUE now the map editor is back (kindred#2013), and it is
+ *    true BY CONSTRUCTION rather than by a guard: `UnitMapPositionField`
+ *    writes the coordinate itself on pointer-up, the way
+ *    `LodgingAreasDrawer` writes an area's centroid on blur. It never feeds
+ *    this payload, so there is no blank field here that could land as a 0
+ *    and turn "unpositioned" into "positioned at the top-left". Anyone
+ *    moving the coordinate INTO this payload has to add that guard first.
  *
  * 3. The season is captured WHEN THE EDITOR OPENS, not read live. Units are
  *    year-scoped since 1500000141 and this form always submits `year`, so a
@@ -56,6 +63,7 @@ import { combinedAncestor, directChildren } from './unitTree'
 import { UnitAmenityFieldset } from './UnitAmenityFieldset'
 import { UnitCapacityFields } from './UnitCapacityFields'
 import { UnitIdentityFields } from './UnitIdentityFields'
+import { UnitMapPositionField } from './UnitMapPositionField'
 
 export interface LodgingUnitFormProps {
   areas: LodgingAreaRecord[]
@@ -80,6 +88,13 @@ export interface LodgingUnitFormProps {
   year: number
   onSaved: () => void
   onCancel: () => void
+  /**
+   * A map coordinate landed (kindred#2013). SEPARATE from `onSaved`, which
+   * closes the editor: the pin saves on pointer-up and the staffer is still
+   * working, so the host may only refresh the cached registry here — it must
+   * not dismiss the form out from under them.
+   */
+  onPositionSaved?: (() => void) | undefined
 }
 
 /**
@@ -111,6 +126,7 @@ export function LodgingUnitForm({
   year,
   onSaved,
   onCancel,
+  onPositionSaved,
 }: LodgingUnitFormProps) {
   const [identity, setIdentity] = useState({
     name: unit?.name ?? '',
@@ -327,6 +343,18 @@ export function LodgingUnitForm({
           </div>
         )}
       </div>
+
+      {/* EDIT ONLY, and only for a room. A unit being created has no id to
+          write a coordinate to, and a CONTAINER never gets a pin at all — a
+          building carries its rooms' positions through its children, so
+          `buildMapModel` draws the children and never the building. Read
+          LIVE off `isContainer`, like the capacity flag above: a staffer who
+          has just ticked "this is a building" has already made the ruling.
+          The pin writes on pointer-up and is NOT part of this form's payload
+          — see UnitMapPositionField's header. */}
+      {unit && !isContainer && (
+        <UnitMapPositionField unit={unit} onPositionSaved={onPositionSaved} />
+      )}
 
       <label className="text-sm sm:col-span-2">
         <span className={LABEL}>Notes</span>
