@@ -46,8 +46,8 @@ import { Fragment } from 'react'
 
 import type { LodgingUnitRow, PartyChildRow, RosterPartyRow } from '../../types/lodging'
 import { displayCampMinderAge, displayTruncatedAge } from '../../utils/age'
-import { answersConflictDetail, partySize, SHARE_WORDING, shareWordingChip } from './boardLayout'
-import { attendingAdults as computeAttendingAdults } from './householdIdentity'
+import { answersConflictDetail, SHARE_WORDING, shareWordingChip } from './boardLayout'
+import { attendingAdults as computeAttendingAdults, partyHeadcount } from './householdIdentity'
 import { partyKey } from './partyKey'
 import { ATTENTION_LABEL, partyAttention } from './rosterAttention'
 
@@ -235,7 +235,12 @@ function FamilyCardBody({
         </span>
         <span className="text-muted-foreground ml-auto inline-flex items-center gap-0.5 text-xs tabular-nums">
           <Users className="h-3 w-3 flex-shrink-0" aria-hidden="true" />
-          {partySize(party)}
+          {/* `party.party_size` is a BED count since kindred#1925/#2046 (it
+              drops blank/placeholder adult slots and discounts an infant),
+              which can legitimately disagree with the names printed below --
+              `partyHeadcount` is that printed count, so the badge can never
+              disagree with its own card (kindred#2152). */}
+          {partyHeadcount(party)}
         </span>
       </span>
 

@@ -138,8 +138,14 @@ func loadEnrolledAttendeeSets(app core.App, year int, stats *Stats) (enrolledSes
 // most one of HouseholdCMID / PersonCMID is set, matching lodging_assignments'
 // own dual-grain rule (1500000119).
 type lodgingOrphanCandidate struct {
-	RecordID      string
-	SessionID     string // camp_sessions PB id
+	RecordID string
+	// The weekend's CampMinder id, read off the row's own `session_cm_id`
+	// rather than its `session` relation (kindred#2042). The relation's PB id
+	// is replaced when a camp_sessions record is recreated rather than
+	// updated, which re-points the attendees but not the lodging rows -- and
+	// every candidate then falls through the per-session reliability guard, so
+	// the sweep silently becomes a permanent no-op.
+	SessionCMID   int
 	HouseholdCMID int
 	PersonCMID    int
 }
@@ -168,7 +174,7 @@ func lodgingCandidatesFromRecords(records []*core.Record) (map[string]*core.Reco
 		}
 		byID[r.Id] = r
 		candidates = append(candidates, lodgingOrphanCandidate{
-			RecordID: r.Id, SessionID: r.GetString("session"),
+			RecordID: r.Id, SessionCMID: r.GetInt("session_cm_id"),
 			HouseholdCMID: r.GetInt("household_cm_id"), PersonCMID: r.GetInt("person_cm_id"),
 		})
 	}
@@ -186,17 +192,17 @@ func findLodgingEnrollmentOrphans(
 	for _, c := range candidates {
 		switch {
 		case c.HouseholdCMID > 0:
-			if !householdReliable[c.SessionID] {
+			if !householdReliable[c.SessionCMID] {
 				continue
 			}
-			if !sessionIndexHasWindow(householdIndex[c.HouseholdCMID], c.SessionID) {
+			if !sessionIndexHasWindow(householdIndex[c.HouseholdCMID], c.SessionCMID) {
 				orphans = append(orphans, c)
 			}
 		case c.PersonCMID > 0:
-			if !personReliable[c.SessionID] {
+			if !personReliable[c.SessionCMID] {
 				continue
 			}
-			if !sessionIndexHasWindow(personIndex[c.PersonCMID], c.SessionID) {
+			if !sessionIndexHasWindow(personIndex[c.PersonCMID], c.SessionCMID) {
 				orphans = append(orphans, c)
 			}
 		}
@@ -473,8 +479,8 @@ func reconcileLodgingOrphans(app core.App, year int, stats *Stats) error {
 		if len(orphanProd) > 0 {
 			recs := make([]string, len(orphanProd))
 			for i, c := range orphanProd {
-				recs[i] = fmt.Sprintf("%s(session=%s,household_cm_id=%d,person_cm_id=%d)",
-					c.RecordID, c.SessionID, c.HouseholdCMID, c.PersonCMID)
+				recs[i] = fmt.Sprintf("%s(session_cm_id=%d,household_cm_id=%d,person_cm_id=%d)",
+					c.RecordID, c.SessionCMID, c.HouseholdCMID, c.PersonCMID)
 			}
 			slog.Warn(msgOrphanLodgingProd, "year", year, "count", len(orphanProd), "records", recs)
 		}

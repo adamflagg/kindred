@@ -78,6 +78,21 @@ const REASON_TONE: Record<AttentionLevel, string> = {
   settled: '',
 }
 
+/**
+ * "1 adult · 2 children" — the PEOPLE this row prints, broken out.
+ *
+ * NOT `party.party_size`: that is a BED count since #1925/#2046 (blank and
+ * placeholder adult slots dropped, a child under 18 months discounted), so for
+ * an infant household it sits below the members listed just underneath. This
+ * line and that list have to agree, which is what kindred#2152 is about.
+ *
+ * NOT `partyHeadcount` either, and this is the interesting half: it wants the
+ * same PEOPLE number, but as two figures rather than one. `partyHeadcount`
+ * returns only their sum, so substituting it would render "3" where the row
+ * needs "1 adult · 2 children". The genuinely shared primitive is
+ * `namedAdults`, which this already calls — there is no duplicated arithmetic
+ * left here to hoist. `HouseholdRosterTable.test` pins both halves.
+ */
 function composition(party: RosterPartyRow): string {
   // A blank `family_camp_adults` slot is not an attending adult -- counting
   // it inflated this figure right beside the (now-filtered) identity label

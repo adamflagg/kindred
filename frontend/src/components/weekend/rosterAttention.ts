@@ -20,7 +20,7 @@
  * every constrained family on the strength of unset defaults.
  */
 import type { LodgingUnitRow, RosterPartyRow } from '../../types/lodging'
-import { namedAdults } from './householdIdentity'
+import { partyHeadcount } from './householdIdentity'
 import { coveredCodes, drawnUnits } from './unitLevel'
 
 /** Ordered most urgent first. The order of this array IS the section order. */
@@ -80,14 +80,21 @@ const VERIFIABLE_NEEDS = [
 /**
  * How many beds the party consumes. Adult weekends enrol one person.
  *
- * ONE OF THREE COPIES of this read — `boardLayout.partySize` carries the full
- * account of the rule and of the newly-reachable reported 0, and
- * `FamilyDetailsPanel` holds the third. Change one, change all three.
+ * ONE OF TWO COPIES of this read — `boardLayout.partySize` carries the full
+ * account of the rule and of the newly-reachable reported 0. Change one,
+ * change both. (It was three until #2152; `FamilyDetailsPanel`'s copy wanted
+ * the PEOPLE number and now calls `partyHeadcount`.)
+ *
+ * ⚠️ BEDS, NOT PEOPLE — do not collapse this into `partyHeadcount`. Only the
+ * fallback arm is shared: the reported `party_size` already has blank and
+ * placeholder adult slots dropped and a child under 18 months discounted
+ * (#1925/#2046), so for an infant household it sits one BELOW the headcount
+ * on purpose. `rosterAttention.test` asserts both numbers on one such party.
  */
 export function partyBeds(party: RosterPartyRow): number {
   const reported = party.party_size ?? 0
   if (reported > 0) return reported
-  return namedAdults(party).length + (party.children?.length ?? 0)
+  return partyHeadcount(party)
 }
 
 /**
@@ -266,9 +273,16 @@ export function countUnmeasuredSpaces(units: LodgingUnitRow[]): number {
 /**
  * A drawn unit's capacity, or `null` when nobody has measured it.
  *
- * THE MIRROR of `_effective_sleeps` in `api/services/lodging_roster_service.py`
- * — that one returns the total, this returns only whether there is one, which
- * is all this file needs. Keep the two in step.
+ * THE MIRROR of `_effective_sleeps` in `api/services/lodging_roster_service.py`.
+ * Keep the two in step. `derivedCapacity.ts` holds a third copy, by necessity
+ * rather than by choice: it is written against `LodgingUnitRecord`, a
+ * different shape, and says so at its own definition.
+ *
+ * EXPORTED for `mapModel.ts` (kindred#2183 review), which needs the number
+ * itself rather than only its presence — the map draws a combined house as a
+ * single mark, so its peek is the one place the whole-house figure has to be
+ * printed. That file takes `LodgingUnitRow[]` too, so a fourth copy of the
+ * arithmetic would have been a copy with no shape difference to justify it.
  *
  * Under the kindred#2041 delta ruling a container's own `sleeps` is the beds in
  * space belonging to no single room, so a combined house's capacity is that
@@ -283,7 +297,7 @@ export function countUnmeasuredSpaces(units: LodgingUnitRow[]): number {
  * Gating the unknown on a narrower set than the sum reads from would let a
  * room's beds count while its missing measurement did not.
  */
-function effectiveSleeps(unit: LodgingUnitRow, units: LodgingUnitRow[]): number | null {
+export function effectiveSleeps(unit: LodgingUnitRow, units: LodgingUnitRow[]): number | null {
   const own = unit.sleeps ?? null
   if (unit.is_container !== true) return own
 

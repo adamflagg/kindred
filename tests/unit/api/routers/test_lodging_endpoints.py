@@ -190,7 +190,7 @@ class TestRosterEndpoint:
 
         def get_full_list(**kwargs: Any) -> list[Any]:
             query_filter = kwargs.get("query_params", {}).get("filter", "")
-            if "cm_id = 1000001" in query_filter:
+            if _is_session_lookup(query_filter):
                 return [
                     _rec(
                         id="sess_1",
@@ -232,7 +232,7 @@ class TestScenarioParameter:
         def record(**kwargs: Any) -> list[Any]:
             seen.append(kwargs.get("query_params", {}).get("filter", ""))
             query_filter = kwargs.get("query_params", {}).get("filter", "")
-            if "cm_id = 1000001" in query_filter:
+            if _is_session_lookup(query_filter):
                 return [
                     _rec(
                         id="sess_1",
@@ -376,7 +376,7 @@ class TestMedicalEndpointIsPermissionGated:
 
         def get_full_list(**kwargs: Any) -> list[Any]:
             query_filter = kwargs.get("query_params", {}).get("filter", "")
-            if "cm_id = 1000001" in query_filter:
+            if _is_session_lookup(query_filter):
                 return [
                     _rec(
                         id="sess_1",
@@ -509,10 +509,22 @@ WRITE_MODELS: dict[tuple[str, str], type[BaseModel]] = {
 }
 
 
+def _is_session_lookup(query_filter: str) -> bool:
+    """Is this read `fetch_session`, or one of the lodging reads?
+
+    `session_type` is the discriminator, and it has to be: every lodging read
+    now carries `session_cm_id = 1000001` (kindred#2042), and the obvious
+    `"cm_id = 1000001" in query_filter` test matches that as a SUBSTRING --
+    handing a draft lookup the camp_sessions record and turning every create
+    into an update of the weekend itself.
+    """
+    return "session_type" in query_filter and "cm_id = 1000001" in query_filter
+
+
 def _session_lookup(**kwargs: Any) -> list[Any]:
     """Resolve the weekend; everything else reads empty, so writes create."""
     query_filter = kwargs.get("query_params", {}).get("filter", "")
-    if "cm_id = 1000001" in query_filter:
+    if _is_session_lookup(query_filter):
         return [
             _rec(
                 id="sess_1",
@@ -902,7 +914,7 @@ class TestPlacementWrites:
 
         def staged(**kwargs: Any) -> list[Any]:
             query_filter = kwargs.get("query_params", {}).get("filter", "")
-            if "cm_id = 1000001" in query_filter:
+            if _is_session_lookup(query_filter):
                 return _session_lookup(**kwargs)
             return reads.pop(0) if reads else []
 
@@ -968,7 +980,7 @@ class TestPlacementWrites:
 
         def staged(**kwargs: Any) -> list[Any]:
             query_filter = kwargs.get("query_params", {}).get("filter", "")
-            if "cm_id = 1000001" in query_filter:
+            if _is_session_lookup(query_filter):
                 return _session_lookup(**kwargs)
             if reads:
                 return reads.pop(0)
@@ -1006,7 +1018,7 @@ class TestPlacementWrites:
 
         def staged(**kwargs: Any) -> list[Any]:
             query_filter = kwargs.get("query_params", {}).get("filter", "")
-            if "cm_id = 1000001" in query_filter:
+            if _is_session_lookup(query_filter):
                 return _session_lookup(**kwargs)
             return reads.pop(0) if reads else []
 
@@ -1062,7 +1074,7 @@ class TestCopyFromMirror:
     @staticmethod
     def _mirror_reads(**kwargs: Any) -> list[Any]:
         query_filter = kwargs.get("query_params", {}).get("filter", "")
-        if 'session = "sess_1"' in query_filter:
+        if "session_cm_id = 1000001" in query_filter:
             return [
                 _rec(
                     id="assign_1",
@@ -1336,7 +1348,7 @@ class TestAvailabilityWrites:
 
         def staged(**kwargs: Any) -> list[Any]:
             query_filter = kwargs.get("query_params", {}).get("filter", "")
-            if "cm_id = 1000001" in query_filter:
+            if _is_session_lookup(query_filter):
                 return _session_lookup(**kwargs)
             return reads.pop(0) if reads else []
 
@@ -1400,7 +1412,7 @@ class TestAvailabilityWrites:
 
         def staged(**kwargs: Any) -> list[Any]:
             query_filter = kwargs.get("query_params", {}).get("filter", "")
-            if "cm_id = 1000001" in query_filter:
+            if _is_session_lookup(query_filter):
                 return _session_lookup(**kwargs)
             if reads:
                 return reads.pop(0)
@@ -1433,7 +1445,7 @@ class TestAvailabilityWrites:
 
         def staged(**kwargs: Any) -> list[Any]:
             query_filter = kwargs.get("query_params", {}).get("filter", "")
-            if "cm_id = 1000001" in query_filter:
+            if _is_session_lookup(query_filter):
                 return _session_lookup(**kwargs)
             return reads.pop(0) if reads else []
 

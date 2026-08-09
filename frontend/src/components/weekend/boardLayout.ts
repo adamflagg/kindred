@@ -50,7 +50,7 @@ import type {
   ShareRequest,
   SharePreferenceValue,
 } from '../../types/lodging'
-import { namedAdults } from './householdIdentity'
+import { partyHeadcount } from './householdIdentity'
 import { partyKey } from './partyKey'
 import {
   buildingsSpanned,
@@ -124,11 +124,22 @@ function occupiedLeafCodes(
  * it — `slotOccupancy`, `partyBeds` and `bedsNeeded` all want beds, and the
  * card's own names-chip is #2152's to split out.
  *
- * ⚠️ THERE ARE THREE COPIES OF THIS READ, not one. This doc comment used to
- * claim it was "deliberately the single place it is read"; that was false
- * when written and cost #2046 a re-sweep. The others are
- * `rosterAttention.partyBeds` (byte-identical body) and an inline expression
- * in `FamilyDetailsPanel`. Change one, change all three.
+ * ⚠️ TWO COPIES OF THIS READ, not one. This doc comment once claimed it was
+ * "deliberately the single place it is read"; that was false when written and
+ * cost #2046 a re-sweep, so it is worth stating the count exactly. The other
+ * is `rosterAttention.partyBeds`, whose body is identical. Change one, change
+ * both. (It said THREE until #2152: `FamilyDetailsPanel` held the third, and
+ * that one turned out to want the PEOPLE number, not this one — it now calls
+ * `partyHeadcount`. Deleting a copy by noticing it wanted a different number
+ * is the only good way to lose one.)
+ *
+ * ⚠️ DO NOT COLLAPSE THIS INTO `partyHeadcount`. Only the FALLBACK arm is
+ * shared. The reported `party_size` is a BED count and must survive: since
+ * #1925/#2046 the server drops blank and placeholder adult slots from it AND
+ * discounts a child under 18 months, so for a household with an infant it is
+ * deliberately one BELOW the headcount. Making the two agree re-creates
+ * exactly the bug #2152 fixed, while reading as a tidy-up. `boardLayout.test`
+ * asserts both numbers on one infant party so the collapse fails loudly.
  *
  * A reported 0 means NOT STATED, not "nobody" — hence the fall back to the
  * people actually named. That 0 is newly reachable now that the server
@@ -137,15 +148,17 @@ function occupiedLeafCodes(
  * over-states, which is the safe direction on this surface — it reads as
  * "look at this", where 0 reads as "nothing here".
  *
- * The fallback applies the adult predicate (`namedAdults`, the SAME rule the
- * server counts by) but cannot apply the infant one: `PartyChild` carries
- * `age` as CampMinder's `yy.mm`, which is exactly the field #2046 forbids
- * thresholding, and no birthdate reaches the client.
+ * That fallback IS `partyHeadcount` — same adult predicate the server counts
+ * by (`namedAdults`), plus every child. It cannot apply the infant rule:
+ * `PartyChild` carries `age` as CampMinder's `yy.mm`, which is exactly the
+ * field #2046 forbids thresholding, and no birthdate reaches the client. So
+ * with nothing reported the bed number and the headcount coincide — that
+ * coincidence is the shared part, and the whole of it.
  */
 export function partySize(party: RosterPartyRow): number {
   const reported = party.party_size ?? 0
   if (reported > 0) return reported
-  return namedAdults(party).length + (party.children?.length ?? 0)
+  return partyHeadcount(party)
 }
 
 /** What a card can say about how full it is. */

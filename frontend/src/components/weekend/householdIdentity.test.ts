@@ -10,6 +10,7 @@ import {
   attendingAdults,
   isAttendingAdultName,
   namedAdults,
+  partyHeadcount,
   partyIdentityLabel,
 } from './householdIdentity'
 
@@ -132,6 +133,58 @@ describe('partyIdentityLabel', () => {
       adults: [{ adult_number: 1, display_name: 'Priya Patel' }],
     })
     expect(partyIdentityLabel(p)).toBe('Priya Patel')
+  })
+})
+
+describe('partyHeadcount -- kindred#2152', () => {
+  // `party_size` became a BED count under kindred#1925/#2046 -- it drops
+  // placeholder/blank adult slots AND discounts a child under 18 months, so
+  // it can legitimately disagree with the names actually printed on a card.
+  // Any badge or count that stands next to the printed adult/child list must
+  // use THIS, never `party.party_size`, or the two disagree on screen.
+  it('counts the named adults and the children, ignoring the reported party_size', () => {
+    const p = party({
+      party_size: 9,
+      adults: [{ adult_number: 1, display_name: 'Emma Johnson', relationship: 'Mother' }],
+      children: [
+        { person_cm_id: 9001, display_name: 'Noah Johnson', age: 8, grade: 3 },
+        { person_cm_id: 9002, display_name: 'Ava Johnson', age: 5, grade: 0 },
+      ],
+    })
+    expect(partyHeadcount(p)).toBe(3)
+  })
+
+  // kindred#1946's cleanup hasn't run against prod yet -- the nameless rows
+  // this predicate exists for are still live. The count must be correct with
+  // them present, not just after a resync nobody has confirmed happened.
+  it('excludes blank and placeholder adult rows even though party.adults still carries them', () => {
+    const p = party({
+      party_size: 5,
+      adults: [
+        { adult_number: 1, display_name: 'Emma Johnson', relationship: 'Mother' },
+        { adult_number: 2, display_name: '', relationship: '' },
+        { adult_number: 3, display_name: 'NA', relationship: '' },
+      ],
+      children: [],
+    })
+    expect(partyHeadcount(p)).toBe(1)
+  })
+
+  it('counts a person-grain party’s own adult entry, not just household grain', () => {
+    const p = party({
+      grain: 'person',
+      display_name: 'Priya Patel',
+      adults: [{ adult_number: 1, display_name: 'Priya Patel' }],
+      children: [],
+    })
+    expect(partyHeadcount(p)).toBe(1)
+  })
+
+  it('returns 0 rather than throwing when adults and children are both missing', () => {
+    const p = party()
+    delete p.adults
+    delete p.children
+    expect(partyHeadcount(p)).toBe(0)
   })
 })
 

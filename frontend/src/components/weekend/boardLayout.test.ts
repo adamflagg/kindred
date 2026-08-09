@@ -20,10 +20,12 @@ import {
   areaTokens,
   buildBoard,
   countBoardSlots,
+  partySize,
   SHARE_WORDING,
   slotOccupancy,
   wholeBuildingHolders,
 } from './boardLayout'
+import { partyHeadcount } from './householdIdentity'
 import { partyKey } from './partyKey'
 
 function unit(overrides: Partial<LodgingUnitRow> = {}): LodgingUnitRow {
@@ -80,6 +82,55 @@ function party(overrides: Partial<RosterPartyRow> = {}): RosterPartyRow {
     ...overrides,
   }
 }
+
+describe('partySize — BEDS, never the headcount', () => {
+  /*
+   * THE TWO NUMBERS MUST NOT CONVERGE.
+   *
+   * `partySize` is the BED number the fit check runs on; `partyHeadcount` is
+   * the PEOPLE number a badge prints next to the names. Since #2046 the
+   * server discounts a child under 18 months at session start, so for the 24
+   * households with an infant the bed figure is deliberately one BELOW the
+   * names. kindred#2152 exists because a badge reached for the wrong one, and
+   * collapsing this function into `partyHeadcount` would re-create it while
+   * looking like a tidy-up.
+   */
+  it('is the bed number for an infant household, one below the headcount', () => {
+    const infantHousehold = party({
+      // Server-reported: 1 adult + 1 school-age child. The infant is discounted.
+      party_size: 2,
+      adults: [{ adult_number: 1, display_name: 'Emma Johnson', relationship: 'Mother' }],
+      children: [
+        { person_cm_id: 9001, display_name: 'Noah Johnson', age: 8, grade: 3 },
+        { person_cm_id: 9002, display_name: 'Ava Johnson', age: 0.11, grade: 0 },
+      ],
+    })
+    expect(partySize(infantHousehold)).toBe(2)
+    expect(partyHeadcount(infantHousehold)).toBe(3)
+  })
+
+  /*
+   * The FALLBACK arm — and only the fallback arm — is `partyHeadcount`. A
+   * reported 0 means NOT STATED, so there is no bed figure to honour and the
+   * client cannot re-derive the infant discount (`PartyChild.age` is
+   * CampMinder's `yy.mm`, the field #2046 forbids thresholding). Counting the
+   * bodies over-states, the safe direction on this surface.
+   */
+  it('falls back to the headcount when no bed count was reported', () => {
+    const unreported = party({
+      party_size: 0,
+      adults: [
+        { adult_number: 1, display_name: 'Emma Johnson', relationship: 'Mother' },
+        // Still live in `adults` until #1946's cleanup resyncs — the fallback
+        // applies the server's own predicate rather than re-inflating.
+        { adult_number: 2, display_name: 'NA', relationship: '' },
+      ],
+      children: [{ person_cm_id: 9001, display_name: 'Noah Johnson', age: 8, grade: 3 }],
+    })
+    expect(partySize(unreported)).toBe(partyHeadcount(unreported))
+    expect(partySize(unreported)).toBe(2)
+  })
+})
 
 describe('slotOccupancy — how many people the card can account for', () => {
   /*

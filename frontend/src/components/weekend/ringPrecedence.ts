@@ -27,7 +27,17 @@
  */
 
 export interface RingPrecedenceInputs {
-  dropTarget: boolean
+  /**
+   * OPTIONAL, because a caller can have no placement affordance to speak of.
+   *
+   * `LodgingMap` is that caller (kindred#2183): the owner ruled the weekend
+   * map a reference surface — "staff have informed me they will only be
+   * looking at the map as a data point and not bunking on it" — so it omits
+   * this rather than passing a hard-coded `false` under a comment explaining
+   * that it can only ever be false. An omission is the same verdict with none
+   * of the reading-as-unfinished-wiring.
+   */
+  dropTarget?: boolean
   consentFlagged: boolean
   shared: boolean
 }
@@ -37,8 +47,8 @@ export type RingState = 'dropTarget' | 'consentFlagged' | 'shared' | 'plain'
 /**
  * Highest wins, and every check assumes every state above it false:
  *   1. an active drop target — the placement affordance has to read clearly
- *      even over a flagged or shared room. Always `false` on the map, which
- *      is read-only and has no drag.
+ *      even over a flagged or shared room. Absent on the map, which is a
+ *      reference surface with no placement at all (kindred#2183).
  *   2. the consent flag (#1926) — a household sharing without having agreed
  *      to.
  *   3. two or more families sharing without a flag.

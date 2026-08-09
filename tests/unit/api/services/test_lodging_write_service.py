@@ -533,7 +533,7 @@ class TestCopyFromMirror:
 
         await write_service.copy_from_mirror(PlacementCopyRequest(year=2026, session_cm_id=1000001, scenario="scn_1"))
 
-        repo.count_draft_assignments.assert_awaited_once_with(2026, "sess_1", "scn_1")
+        repo.count_draft_assignments.assert_awaited_once_with(2026, 1000001, "scn_1")
 
     @pytest.mark.asyncio
     async def test_availability_is_not_copied(self, write_service: LodgingWriteService, repo: MagicMock) -> None:
@@ -602,7 +602,7 @@ class TestCopyScenarioToScenario:
 
         assert result.copied == 2
         assert result.skipped == 0
-        repo.fetch_draft_assignments.assert_awaited_once_with(2026, "sess_1", "scn_source")
+        repo.fetch_draft_assignments.assert_awaited_once_with(2026, 1000001, "scn_source")
         written = [call[0][0] for call in repo.create_draft_assignment.call_args_list]
         assert [row["units"] for row in written] == [["u1"], ["u2", "u3"]]
         assert {row["scenario"] for row in written} == {"scn_dest"}
@@ -682,7 +682,7 @@ class TestCopyScenarioToScenario:
             year=2026, session_cm_id=1000001, from_scenario="scn_source", to_scenario="scn_dest"
         )
 
-        repo.count_draft_assignments.assert_awaited_once_with(2026, "sess_1", "scn_dest")
+        repo.count_draft_assignments.assert_awaited_once_with(2026, 1000001, "scn_dest")
 
     @pytest.mark.asyncio
     async def test_losing_the_copy_race_is_refused_the_same_way_as_a_mirror_seed(
@@ -722,7 +722,7 @@ class TestCopyScenarioToScenarioAlsoCopiesSlotMerges:
             year=2026, session_cm_id=1000001, from_scenario="scn_source", to_scenario="scn_dest"
         )
 
-        repo.fetch_slot_merges.assert_awaited_once_with(2026, "sess_1", "scn_source")
+        repo.fetch_slot_merges.assert_awaited_once_with(2026, 1000001, "scn_source")
         repo.create_slot_merge.assert_awaited_once()
         data = repo.create_slot_merge.call_args[0][0]
         assert data["unit"] == "unit_1"
@@ -1206,6 +1206,105 @@ class TestARefusedSeedIsNotReportedAsARace:
             )
 
 
+class TestEveryLookupIsKeyedOnTheCampMinderSessionId:
+    """kindred#2042: the lookups name the weekend by `session_cm_id`.
+
+    The write paths still resolve the PocketBase record id -- `_resolve_session_pb_id`
+    is what turns an unknown weekend into a 404, and the `session` relation is
+    still written on every row for expand-based reads -- but the id that keys
+    the lookup against the table's unique index is now the CampMinder one.
+    Passing the PB id here would look up a row through a key the index no
+    longer carries.
+
+    `fetch_session` still takes the CampMinder id and always did; what changed
+    is everything downstream of it.
+    """
+
+    SESSION_CM_ID = 1000001
+
+    @pytest.mark.asyncio
+    async def test_place_party_looks_up_the_draft_by_campminder_session_id(
+        self, write_service: LodgingWriteService, repo: MagicMock
+    ) -> None:
+        await write_service.place_party(_request())
+
+        repo.find_draft_assignment.assert_awaited_once_with(2026, self.SESSION_CM_ID, "scn_1", 2000001, 0)
+
+    @pytest.mark.asyncio
+    async def test_unplace_party_looks_up_the_draft_by_campminder_session_id(
+        self, write_service: LodgingWriteService, repo: MagicMock
+    ) -> None:
+        await write_service.unplace_party(
+            PlacementDeleteRequest(
+                year=2026, session_cm_id=self.SESSION_CM_ID, scenario="scn_1", household_cm_id=2000001
+            )
+        )
+
+        repo.find_draft_assignment.assert_awaited_once_with(2026, self.SESSION_CM_ID, "scn_1", 2000001, 0)
+
+    @pytest.mark.asyncio
+    async def test_set_availability_looks_up_the_override_by_campminder_session_id(
+        self, write_service: LodgingWriteService, repo: MagicMock
+    ) -> None:
+        await write_service.set_availability(_availability_request())
+
+        repo.find_availability_override.assert_awaited_once_with(2026, self.SESSION_CM_ID, "u1")
+
+    @pytest.mark.asyncio
+    async def test_set_slot_merge_looks_up_the_row_by_campminder_session_id(
+        self, write_service: LodgingWriteService, repo: MagicMock
+    ) -> None:
+        await write_service.set_slot_merge(_slot_merge_request())
+
+        repo.find_slot_merge.assert_awaited_once_with(2026, self.SESSION_CM_ID, "u1", "scn_1")
+
+    @pytest.mark.asyncio
+    async def test_copy_from_mirror_counts_and_reads_by_campminder_session_id(
+        self, write_service: LodgingWriteService, repo: MagicMock
+    ) -> None:
+        await write_service.copy_from_mirror(
+            PlacementCopyRequest(year=2026, session_cm_id=self.SESSION_CM_ID, scenario="scn_1")
+        )
+
+        repo.count_draft_assignments.assert_awaited_once_with(2026, self.SESSION_CM_ID, "scn_1")
+        repo.fetch_assignments.assert_awaited_once_with(2026, self.SESSION_CM_ID)
+
+    @pytest.mark.asyncio
+    async def test_copy_scenario_to_scenario_reads_by_campminder_session_id(
+        self, write_service: LodgingWriteService, repo: MagicMock
+    ) -> None:
+        await write_service.copy_scenario_to_scenario(2026, self.SESSION_CM_ID, "scn_source", "scn_dest")
+
+        repo.count_draft_assignments.assert_awaited_once_with(2026, self.SESSION_CM_ID, "scn_dest")
+        repo.fetch_draft_assignments.assert_awaited_once_with(2026, self.SESSION_CM_ID, "scn_source")
+        repo.fetch_slot_merges.assert_awaited_once_with(2026, self.SESSION_CM_ID, "scn_source")
+
+    @pytest.mark.asyncio
+    async def test_every_written_row_still_carries_both_keys(
+        self, write_service: LodgingWriteService, repo: MagicMock
+    ) -> None:
+        """The relation is not dropped -- it stops being an identity.
+
+        `session` is still `required: true` on all four tables and is still
+        what an expand-based read joins through, so a write that stopped
+        setting it would be refused by the schema.
+        """
+        await write_service.place_party(_request())
+        placement = repo.create_draft_assignment.call_args[0][0]
+        assert placement["session"] == "sess_1"
+        assert placement["session_cm_id"] == self.SESSION_CM_ID
+
+        await write_service.set_availability(_availability_request())
+        availability = repo.create_availability.call_args[0][0]
+        assert availability["session"] == "sess_1"
+        assert availability["session_cm_id"] == self.SESSION_CM_ID
+
+        await write_service.set_slot_merge(_slot_merge_request())
+        merge = repo.create_slot_merge.call_args[0][0]
+        assert merge["session"] == "sess_1"
+        assert merge["session_cm_id"] == self.SESSION_CM_ID
+
+
 class TestMergeWritesAreGone:
     """create_merge / delete_merge wrote lodging_merges_draft, which
     migration 1500000134 deleted outright -- they cannot survive it."""
@@ -1296,7 +1395,7 @@ class TestSetSlotMerge:
         """
         await write_service.set_slot_merge(_slot_merge_request())
 
-        repo.find_slot_merge.assert_awaited_once_with(2026, "sess_1", "u1", "scn_1")
+        repo.find_slot_merge.assert_awaited_once_with(2026, 1000001, "u1", "scn_1")
 
     @pytest.mark.asyncio
     @pytest.mark.parametrize("status", [401, 403])
