@@ -54,13 +54,25 @@ const VERIFIABLE_NEEDS = [
     flag: 'needs_private_bathroom',
     label: 'Private bathroom',
     unmet: 'No private bathroom',
-    satisfiedBy: (unit: LodgingUnitRow) => unit.bathroom === 'private',
+    // NOT `unit.bathroom` — that is one room's own field, and a merged
+    // slot's `unit_code` is "" BY DESIGN (kindred#1982), so there is no
+    // single unit to read it off for exactly the placement this need exists
+    // to catch: a whole-house merge that IS the private-bathroom
+    // accommodation. `RosterParty.effective_bathroom` is the SERVER's
+    // answer across every code the placement covers
+    // (`lodging_rules.effective_bathroom`, kindred#2022) — it already
+    // credits "private" once the party's placement covers every member of a
+    // bathroom_group, container inheritance included. Reading it here means
+    // no caller changes: every `party` this function receives already
+    // carries it.
+    satisfiedBy: (_unit: LodgingUnitRow, party: RosterPartyRow) =>
+      party.effective_bathroom === 'private',
   },
   {
     flag: 'needs_power',
     label: 'Power',
     unmet: 'No power',
-    satisfiedBy: (unit: LodgingUnitRow) => unit.has_power === true,
+    satisfiedBy: (unit: LodgingUnitRow, _party: RosterPartyRow) => unit.has_power === true,
   },
 ] as const
 
@@ -74,7 +86,13 @@ export function partyBeds(party: RosterPartyRow): number {
 /**
  * @param unit The cabin the party is assigned to, when it can be resolved.
  *   A merged slot is named for the merge rather than a unit code, so this is
- *   undefined for merges and the fit reports as unverified.
+ *   undefined for a caller keyed off `unit_code` alone — and with no unit to
+ *   confirm, the fit reports as unverified regardless of what
+ *   `party.effective_bathroom` says (kindred#1982's `is_confirmed` gate: an
+ *   unconfirmed cabin is an absence of data, not evidence). A caller that
+ *   resolves `unit` per occupied leaf instead (the map draws a merged party
+ *   once per unit it spans) can still credit the merge once that leaf is
+ *   confirmed — see `VERIFIABLE_NEEDS`.
  */
 export function partyAttention(
   party: RosterPartyRow,
@@ -103,7 +121,7 @@ export function partyAttention(
 
   // Only a confirmed cabin is evidence. Anything else is an absence of data.
   if (unit?.is_confirmed === true) {
-    const unmet = asked.filter((need) => !need.satisfiedBy(unit))
+    const unmet = asked.filter((need) => !need.satisfiedBy(unit, party))
     if (unmet.length > 0) {
       return { level: 'unmet', reason: unmet.map((need) => need.unmet).join(' · ') }
     }
