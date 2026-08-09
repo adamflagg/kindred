@@ -155,7 +155,12 @@ export function FamilyDetailsPanel({
   // count, the same one FamilyCard's own badge uses, so the two surfaces —
   // and this panel's own list — can never disagree with each other
   // (kindred#2152).
-  const partySize = partyHeadcount(party)
+  //
+  // Named `headcount`, NOT `partySize`: "party size" is the bed number now
+  // (`boardLayout.partySize`, `rosterAttention.partyBeds`), and a local of
+  // that name holding the other figure is the exact confusion this issue
+  // exists to end.
+  const headcount = partyHeadcount(party)
 
   const body = (
     <div className="flex flex-col gap-4 p-4">
@@ -193,7 +198,7 @@ export function FamilyDetailsPanel({
         <div className="text-muted-foreground flex flex-wrap items-center gap-3 text-xs">
           <span className="inline-flex items-center gap-1">
             <Users className="h-3.5 w-3.5" aria-hidden="true" />
-            {`${String(partySize)} ${partySize === 1 ? 'person' : 'people'}`}
+            {`${String(headcount)} ${headcount === 1 ? 'person' : 'people'}`}
           </span>
           {(party.arrival_eta ?? '').length > 0 && (
             <span className="inline-flex items-center gap-1">
