@@ -43,7 +43,7 @@ import type { LodgingUnitRow, RosterPartyRow } from '../../types/lodging'
 import { FamilyCard } from './FamilyCard'
 import { FamilyDetailsPanel } from './FamilyDetailsPanel'
 import { FloatingUnplacedBadge } from './FloatingUnplacedBadge'
-import { indexUnitsByCode } from './rosterAttention'
+import { indexUnitsByCode, resolvePartyUnit } from './rosterAttention'
 import { clusterByProximity, type Cluster } from './mapClustering'
 import { BATHHOUSE_BLUE } from './mapColors'
 import { buildMapModel, type MapUnit } from './mapModel'
@@ -808,7 +808,7 @@ export function LodgingMap({ parties, units, year }: LodgingMapProps) {
       {panelParty !== null && (
         <FamilyDetailsPanel
           party={panelParty}
-          unit={unitsByCode.get(panelParty.unit_code ?? '')}
+          unit={resolvePartyUnit(panelParty, unitsByCode)}
           year={year}
           requestClose={requestClose}
           onClose={closePanel}

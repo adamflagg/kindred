@@ -15,7 +15,7 @@ import type { LodgingUnitRow, RosterPartyRow } from '../../types/lodging'
 import { FamilyDetailsPanel } from './FamilyDetailsPanel'
 import { HouseholdRosterRow } from './HouseholdRosterRow'
 import { partyKey } from './partyKey'
-import { attentionSections, indexUnitsByCode } from './rosterAttention'
+import { attentionSections, indexUnitsByCode, resolvePartyUnit } from './rosterAttention'
 
 export interface HouseholdRosterTableProps {
   parties: RosterPartyRow[]
@@ -134,7 +134,7 @@ export function HouseholdRosterTable({ parties, units = [], year }: HouseholdRos
                   key={`${party.grain}-${String(party.household_cm_id ?? 0)}-${String(party.person_cm_id ?? 0)}`}
                   party={party}
                   showRequests={showRequests}
-                  unit={unitsByCode.get(party.unit_code ?? '')}
+                  unit={resolvePartyUnit(party, unitsByCode)}
                   onOpen={openParty}
                 />
               ))}
@@ -146,7 +146,7 @@ export function HouseholdRosterTable({ parties, units = [], year }: HouseholdRos
       {panelParty !== null && (
         <FamilyDetailsPanel
           party={panelParty}
-          unit={unitsByCode.get(panelParty.unit_code ?? '')}
+          unit={resolvePartyUnit(panelParty, unitsByCode)}
           year={year}
           requestClose={requestClose}
           onClose={closePanel}

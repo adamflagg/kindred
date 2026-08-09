@@ -84,15 +84,52 @@ export function partyBeds(party: RosterPartyRow): number {
 }
 
 /**
- * @param unit The cabin the party is assigned to, when it can be resolved.
- *   A merged slot is named for the merge rather than a unit code, so this is
- *   undefined for a caller keyed off `unit_code` alone — and with no unit to
- *   confirm, the fit reports as unverified regardless of what
- *   `party.effective_bathroom` says (kindred#1982's `is_confirmed` gate: an
- *   unconfirmed cabin is an absence of data, not evidence). A caller that
- *   resolves `unit` per occupied leaf instead (the map draws a merged party
- *   once per unit it spans) can still credit the merge once that leaf is
- *   confirmed — see `VERIFIABLE_NEEDS`.
+ * The unit whose confirmed data backs this party's fit check, or undefined
+ * when there is no confirmed evidence to read.
+ *
+ * An ordinary placement resolves off `unit_code`, same as always. A merged
+ * slot's `unit_code` is "" BY DESIGN (kindred#1982) — `unitsByCode.get('')`
+ * finds nothing, which is exactly how the roster row, family card, and
+ * detail panel each lost every genuine multi-leaf merge to `unverified`
+ * even after `party.effective_bathroom` started reporting `private` for
+ * them. `unit_codes` (kindred#1940) carries every leaf the placement
+ * covers, and each leaf's OWN `is_confirmed` is real staff signal. Trusting
+ * the merge as evidence requires EVERY member to resolve AND be confirmed —
+ * one unconfirmed room is still an absence of data, the same principle the
+ * single-unit gate already enforces, not a looser one for having more
+ * rooms.
+ *
+ * The first resolved member stands in as the representative for a
+ * `VERIFIABLE_NEEDS` check that reads a raw unit field (`needs_power`).
+ * `needs_private_bathroom` never looks at it — it reads
+ * `party.effective_bathroom` — so which member gets picked never changes
+ * that verdict; `is_confirmed` is what has to hold for every one of them.
+ *
+ * The map surface (`MapUnitPopover`) does not call this: it already resolves
+ * a real, defined per-leaf unit for a merged party (drawing it once per
+ * room it occupies), so it never hit this gap.
+ */
+export function resolvePartyUnit(
+  party: RosterPartyRow,
+  unitsByCode: Map<string, LodgingUnitRow>
+): LodgingUnitRow | undefined {
+  const singleCode = party.unit_code ?? ''
+  if (singleCode.length > 0) return unitsByCode.get(singleCode)
+
+  const codes = party.unit_codes ?? []
+  if (codes.length === 0) return undefined
+  const members = codes.map((code) => unitsByCode.get(code))
+  const allConfirmed = members.every((member) => member?.is_confirmed === true)
+  return allConfirmed ? members[0] : undefined
+}
+
+/**
+ * @param unit The cabin the party is assigned to, when it can be resolved —
+ *   ordinarily via `unit_code`, or via `resolvePartyUnit` for a merge.
+ *   Undefined means no confirmed evidence, and the fit reports as
+ *   unverified regardless of what `party.effective_bathroom` says
+ *   (kindred#1982's `is_confirmed` gate: an unconfirmed cabin is an absence
+ *   of data, not evidence).
  */
 export function partyAttention(
   party: RosterPartyRow,
@@ -159,7 +196,7 @@ export function attentionSections(
 ): AttentionSection[] {
   const buckets = new Map<AttentionLevel, RosterPartyRow[]>()
   for (const party of parties) {
-    const { level } = partyAttention(party, unitsByCode.get(party.unit_code ?? ''))
+    const { level } = partyAttention(party, resolvePartyUnit(party, unitsByCode))
     const bucket = buckets.get(level)
     if (bucket) bucket.push(party)
     else buckets.set(level, [party])
