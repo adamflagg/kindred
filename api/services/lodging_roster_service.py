@@ -1352,14 +1352,28 @@ class LodgingRosterService:
         assigned = sum(1 for p in parties if p.unit_code or p.unit_name)
 
         def _effective_sleeps(unit: LodgingUnitSummary) -> int | None:
-            # MIRRORED by `effectiveSleeps` in
-            # `frontend/src/components/weekend/rosterAttention.ts`, which
-            # `countUnmeasuredSpaces` reads to answer the same "has anyone
-            # measured this?" question for the chip `WeekendStatsBar` prints
-            # beside `beds_family_available`. Named in BOTH directions on
-            # purpose: the pairing being undocumented is what let the two drift
-            # apart unnoticed until kindred#1945's PR, and a change here that
-            # is not made there puts two disagreeing numbers on one line.
+            # MIRRORED IN TWO PLACES, and both are named here on purpose --
+            # the pairing being undocumented is what let the first two drift
+            # apart unnoticed, and a change here that is not made there puts
+            # disagreeing numbers on one screen:
+            #
+            #   1. `effectiveSleeps` in
+            #      `frontend/src/components/weekend/rosterAttention.ts`, which
+            #      `countUnmeasuredSpaces` reads to answer the same "has anyone
+            #      measured this?" question for the chip `WeekendStatsBar`
+            #      prints beside `beds_family_available`.
+            #   2. `derivedWholeHouseSleeps` in
+            #      `frontend/src/components/admin/lodging/derivedCapacity.ts`
+            #      (kindred#2079), the read-only whole-house figure shown beside
+            #      the container's delta field on the units admin form.
+            #
+            # THREE copies is one too many. (2) could not import (1): it is an
+            # unexported helper, and routing admin code through a `weekend/**`
+            # module adds a static import edge across two lazily-chunked route
+            # trees -- see `WeekendRosterPage.chunkGraph.test.ts`, the real
+            # `vite build` that guards it. The fix is a neutral leaf module both
+            # frontends import, not a cross-tree import. Until then: change one,
+            # change all three.
             if not unit.is_container:
                 return unit.sleeps
             leaf_sleeps = [
