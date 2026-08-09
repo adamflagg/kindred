@@ -43,9 +43,21 @@
  *    rooms is drawn on each of them, which is why an area's family count reads
  *    distinct `partyKey`s rather than slot entries.
  */
-import type { LodgingUnitRow, RosterPartyRow, ShareEligibilityValue } from '../../types/lodging'
+import type {
+  LodgingUnitRow,
+  RosterPartyRow,
+  ShareEligibilityValue,
+  ShareRequest,
+  SharePreferenceValue,
+} from '../../types/lodging'
 import { partyKey } from './partyKey'
-import { coveredCodes, drawnUnits, representingCodes } from './unitLevel'
+import {
+  buildingsSpanned,
+  coveredCodes,
+  drawnUnits,
+  representingCodes,
+  wholeBuildingHeld,
+} from './unitLevel'
 
 /**
  * The leaf codes a party currently occupies.
@@ -232,6 +244,95 @@ export function shareWordingChip(phrase: string): string {
   return phrase.charAt(0).toUpperCase() + phrase.slice(1)
 }
 
+/**
+ * The REGISTRATION gate's answer, worded for a sentence rather than a chip.
+ *
+ * `preference` (`share_cabin_gate`) is a 3-state answer plus "never
+ * answered" — see `SharePreferenceChip`'s doc, which owns the CHIP-label
+ * spelling of the same four values. This is a distinct wording, not a
+ * duplicate: it exists to sit in a sentence fragment ("Registration said
+ * …"), where the chip's title-case labels ("Will not share") read oddly.
+ */
+const REGISTRATION_ANSWER: Record<SharePreferenceValue, string> = {
+  no_share: 'will not share',
+  maybe_mutual: 'only if a mutual match',
+  yes_share: 'open to sharing',
+  unknown: 'not answered',
+}
+
+/**
+ * The FAMILY CAMP FORM's resolved answer, worded for the same sentence.
+ *
+ * `declined` reuses `SHARE_WORDING.declined` rather than its own phrase —
+ * ONE definition of that claim, so the slot flag, the card's "did not
+ * request sharing" chip, and this tooltip cannot drift into three different
+ * wordings of a form that has no refusal option to record.
+ */
+const FORM_ANSWER: Record<ShareEligibilityValue, string> = {
+  open: 'open to sharing',
+  named: 'wants to share with a named family',
+  declined: SHARE_WORDING.declined,
+  unknown: 'not answered',
+}
+
+/**
+ * Guarded lookup — same philosophy as `SharePreferenceChip`'s `Object.hasOwn`
+ * guard on `CHIP`: a payload sent ahead of a type regen must degrade to the
+ * "not answered" phrasing rather than throw and take the whole card with it.
+ */
+function wordingFor<T extends string>(
+  table: Record<T, string>,
+  value: T,
+  fallback: string
+): string {
+  return Object.hasOwn(table, value) ? table[value] : fallback
+}
+
+/**
+ * The tooltip text for the per-party "answers disagree" chip (kindred#2083).
+ *
+ * The chip alone said only that the two forms disagreed, never which two
+ * answers or which one staff are acting on. This names both sides and the
+ * resolution in one sentence.
+ *
+ * Reads `preference` (the registration gate) and `eligibility` (the
+ * resolved verdict) directly rather than re-deriving either from `proximity`.
+ * `DeriveShareEligibility` only ever sets `answers_conflict` true on its
+ * form-answered branch (Go, `lodging_requests.go`), so whenever this returns
+ * non-null, `eligibility` already IS the Family Camp form's own answer,
+ * confirmed against 2026 production: all 16 conflicting households carry
+ * `eligibility_source: 'form'`.
+ *
+ * That invariant is enforced only in a separate Go file, with nothing here
+ * to catch a future change or a stale mid-`family_camp_derived`-recompute
+ * row that briefly disagrees with it — so this still BRANCHES on
+ * `eligibility_source` rather than assuming it, and only names "the Family
+ * Camp form" when the field itself says so. Off that branch the resolved
+ * answer is worded as "the answer on file" instead: a claim this function
+ * can defend either way, matching `consentFlag`'s own rule of reporting only
+ * what was recorded.
+ *
+ * Returns null when there is nothing to report: no conflict, or no share
+ * block at all — the shape of an adult-weekend guest, who has no share
+ * question to disagree on (`_build_person_parties` attaches no share data).
+ * The caller gates the whole chip on this, rather than on the raw boolean,
+ * so a party this can't explain never renders an empty chip.
+ */
+export function answersConflictDetail(share: ShareRequest | undefined): string | null {
+  if (share?.answers_conflict !== true) return null
+  const registration = wordingFor(
+    REGISTRATION_ANSWER,
+    share.preference ?? 'unknown',
+    'not answered'
+  )
+  const resolved = wordingFor(FORM_ANSWER, share.eligibility ?? 'unknown', 'not answered')
+  const winner =
+    share.eligibility_source === 'form'
+      ? `the Family Camp form said ${resolved} — staff use the form's answer`
+      : `the answer on file is ${resolved} — staff use that answer`
+  return `Registration said ${registration}; ${winner}.`
+}
+
 /** A shared unit holding somebody who did not consent to sharing it. */
 export interface ConsentFlag {
   /** Parties whose resolved answer declines sharing. */
@@ -346,6 +447,17 @@ export interface BoardArea {
   hue: string
   slots: BoardSlot[]
   partyCount: number
+  /**
+   * How many distinct buildings the area's DRAWN slots span — kindred#2009.
+   *
+   * Reads `slots`, the same set `slots.length` (rooms) counts, not just the
+   * occupied ones: a static fact about how this area's inventory is carved
+   * up into buildings, the same way "rooms" is a static fact about its
+   * inventory rather than a count of who is in it. `buildingsSpanned`
+   * (`unitLevel.ts`) is the one definition — the immediate-parent grain
+   * ruled on #2008, so a two-half house counts as two buildings here too.
+   */
+  buildingCount: number
 }
 
 export interface BoardModel {
@@ -428,6 +540,33 @@ export function overlappingPartyKeys(
     for (const owner of owners) overlapping.add(partyKey(owner))
   }
   return overlapping
+}
+
+/**
+ * Which of these parties hold an entire building, keyed by `partyKey` —
+ * kindred#2008's placement marker.
+ *
+ * Read against each party's OWN occupied leaves (`occupiedLeafCodes`), never
+ * the slot's combined membership. Two households splitting one combined
+ * house between disjoint rooms is the Front/Back case `overlappingPartyKeys`
+ * already treats as NOT a share of a room; it is likewise not a whole-
+ * building HOLD for either one of them individually, even though the CARD
+ * they share is structurally the whole building — the marker is about a
+ * placement, not a card. See `unitLevel.ts`'s `wholeBuildingHeld` for the
+ * grain (immediate parent, ruled on #2008) and why a one-room "building" can
+ * never qualify.
+ */
+export function wholeBuildingHolders(
+  parties: RosterPartyRow[],
+  units: LodgingUnitRow[]
+): Set<string> {
+  const unitsByCode = new Map(units.map((unit) => [unit.code, unit]))
+  const holders = new Set<string>()
+  for (const party of parties) {
+    const leaves = occupiedLeafCodes(party, units, unitsByCode)
+    if (wholeBuildingHeld(leaves, units)) holders.add(partyKey(party))
+  }
+  return holders
 }
 
 /**
@@ -623,6 +762,17 @@ function indexPayload(parties: RosterPartyRow[], units: LodgingUnitRow[]) {
     const unit = unitsByCode.get(named)
     if (unit === undefined) return []
     // Roll up: walk to the drawn ancestor.
+    //
+    // REJECTED as the "whole building" grain for #2008/#2009, deliberately.
+    // This walk stops at the nearest DRAWN ancestor, which depends on
+    // `is_combined` — a VIEW-level fact that flips when staff merge or split
+    // a card — not on registry structure. Using it for "whole building"
+    // would make the same placement read as holding a whole building only
+    // while its house happens to be combined, and stop the moment somebody
+    // splits it back to rooms. #2008 ruled a purely structural grain instead
+    // (immediate parent, never walk-to-root either) — see `buildingKey` and
+    // `buildingGroups` in `unitLevel.ts`, which this function does not call
+    // and must not be made to.
     let cursor = unit
     const seen = new Set<string>()
     while ((cursor.parent_code ?? '') !== '' && !seen.has(cursor.code)) {
@@ -716,12 +866,17 @@ export function buildBoard(parties: RosterPartyRow[], units: LodgingUnitRow[]): 
 
   const areas: BoardArea[] = orderedKeys.map((key, index) => {
     const bucket = buckets.get(key)
+    const slots = bucket?.slots ?? []
     return {
       key,
       name: bucket?.name ?? '',
       hue: AREA_HUES[index % AREA_HUES.length] ?? AREA_HUES[0],
-      slots: bucket?.slots ?? [],
+      slots,
       partyCount: bucket?.partyKeys.size ?? 0,
+      buildingCount: buildingsSpanned(
+        slots.map((slot) => slot.unit),
+        units
+      ),
     }
   })
 

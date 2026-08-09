@@ -187,6 +187,21 @@ describe('LodgingBoard — layout', () => {
     expect(screen.getByRole('heading', { name: /North Ridge/ })).toBeInTheDocument()
   })
 
+  it('shows the building count alongside rooms and families in the area header — #2009', () => {
+    // Two halves of one house are DIFFERENT buildings under the
+    // immediate-parent grain ruled on #2008, so three rooms read as two
+    // buildings, not one.
+    const halvedHouseUnits = [
+      unit({ unit_id: 'up', code: 'upstairs', is_container: true }),
+      unit({ unit_id: 'down', code: 'downstairs', is_container: true }),
+      unit({ code: 'up-r1', parent_code: 'upstairs' }),
+      unit({ unit_id: 'u2', code: 'up-r2', parent_code: 'upstairs' }),
+      unit({ unit_id: 'u3', code: 'down-r1', parent_code: 'downstairs' }),
+    ]
+    render(<LodgingBoard parties={[]} units={halvedHouseUnits} year={2026} />, { wrapper })
+    expect(screen.getByText('3 rooms · 0 families · 2 buildings')).toBeInTheDocument()
+  })
+
   it('spaces the card grid on summer’s gap-3', () => {
     /*
      * `BunkingBoardByArea` lays its bunks out at `gap-3` (12px); this board
@@ -641,6 +656,13 @@ describe('LodgingBoard — the details panel updates in place', () => {
             // household overrides display_name -- distinct children are what
             // make the two cards reachable apart below.
             children: [{ person_cm_id: 9002, display_name: 'Mia Chen', age: 6, grade: 0 }],
+            // kindred#2084: the panel's own identity is the attending-adult
+            // list now, not `display_name` -- and the default fixture's
+            // adult ('Emma Johnson') is shared by both households here, so
+            // this must override it too, or the panel would read identically
+            // for both and this test could pass while showing the FIRST
+            // household's details under the second one.
+            adults: [{ adult_number: 1, display_name: 'Priya Chen', relationship: 'Mother' }],
           }),
         ]}
         units={[unit()]}
@@ -659,7 +681,7 @@ describe('LodgingBoard — the details panel updates in place', () => {
     const second = screen.getByTestId('family-details-panel')
 
     expect(second).toBe(first)
-    expect(second).toHaveTextContent('Chen Household')
+    expect(second).toHaveTextContent('Priya Chen')
   })
 })
 

@@ -41,12 +41,13 @@
  * its `display_name` stays.
  */
 import { useDraggable } from '@dnd-kit/core'
-import { Repeat, Star, Users } from 'lucide-react'
+import { Home, Repeat, Star, Users, type LucideIcon } from 'lucide-react'
 import { Fragment } from 'react'
 
 import type { LodgingUnitRow, PartyChildRow, RosterPartyRow } from '../../types/lodging'
 import { displayCampMinderAge, displayTruncatedAge } from '../../utils/age'
-import { partySize, SHARE_WORDING, shareWordingChip } from './boardLayout'
+import { answersConflictDetail, partySize, SHARE_WORDING, shareWordingChip } from './boardLayout'
+import { attendingAdults as computeAttendingAdults } from './householdIdentity'
 import { partyKey } from './partyKey'
 import { ATTENTION_LABEL, partyAttention } from './rosterAttention'
 
@@ -60,6 +61,14 @@ export interface FamilyCardProps {
    * worth saying when somebody else is in the room (spec §11).
    */
   sharedSlot?: boolean
+  /**
+   * Whether this PLACEMENT — this party's own occupied leaves, not the
+   * card it happens to share — covers an entire building (kindred#2008).
+   * A household holding a whole building is private in a way no
+   * combination of room-level flags conveys; the caller computes this from
+   * `boardLayout.ts`'s `wholeBuildingHolders`, never re-derived here.
+   */
+  holdsWholeBuilding?: boolean
   /**
    * The card is in the unplaced queue rather than in a slot on the board.
    * Purely a surface choice: the popover's own background is already the
@@ -79,7 +88,7 @@ export interface FamilyCardProps {
   onOpen: (party: RosterPartyRow) => void
 }
 
-type ChipTone = 'need' | 'warn' | 'share' | 'quiet' | 'muted'
+type ChipTone = 'need' | 'warn' | 'share' | 'quiet' | 'muted' | 'building'
 
 const CHIP_TONE: Record<ChipTone, string> = {
   need: 'bg-amber-100 text-amber-800 dark:bg-amber-950/50 dark:text-amber-300',
@@ -87,13 +96,36 @@ const CHIP_TONE: Record<ChipTone, string> = {
   share: 'bg-forest-100 text-forest-800 dark:bg-forest-950/50 dark:text-forest-300',
   quiet: 'border-border text-muted-foreground border border-dashed',
   muted: 'bg-muted text-muted-foreground',
+  // Distinct from `share` (a REQUEST) and `warn` (a problem) — a whole
+  // building held is neither, it is a privacy fact staff act on. Distinct
+  // from `unitBadges.ts`'s violet "Staff" badge too, so the two never read
+  // as the same signal on adjoining cards.
+  building: 'bg-indigo-100 text-indigo-800 dark:bg-indigo-950/50 dark:text-indigo-300',
 }
 
-function Chip({ label, tone }: { label: string; tone: ChipTone }) {
+function Chip({
+  label,
+  tone,
+  icon: Icon,
+  title,
+}: {
+  label: string
+  tone: ChipTone
+  /** Optional, e.g. the "Whole building" chip's `Home` — every other chip omits it. */
+  icon?: LucideIcon
+  /**
+   * Native hover tooltip, e.g. the "Answers disagree" chip's per-party detail
+   * (kindred#2083) — matches `SharePreferenceChip`'s `raw` tooltip pattern
+   * rather than inventing a second affordance for the same idea.
+   */
+  title?: string
+}) {
   return (
     <span
+      title={title}
       className={`inline-flex items-center rounded-full px-1.5 py-0.5 text-xs font-semibold whitespace-nowrap ${CHIP_TONE[tone]}`}
     >
+      {Icon && <Icon className="mr-0.5 h-3 w-3 flex-shrink-0" aria-hidden="true" />}
       {label}
     </span>
   )
@@ -158,23 +190,22 @@ function FamilyCardBody({
   party,
   unit,
   sharedSlot,
+  holdsWholeBuilding = false,
 }: {
   party: RosterPartyRow
   unit?: LodgingUnitRow | undefined
   sharedSlot: boolean
+  holdsWholeBuilding?: boolean
 }) {
   const flags = party.flags ?? {}
   const children = party.children ?? []
   const isHousehold = party.grain === 'household'
-  // family_camp_adults stores adult slots 1-5 as separate rows per household,
-  // and a slot with no name on file is not an attending adult -- CampMinder
-  // leaves it blank rather than omitting the row. Filtered here, at render,
-  // rather than upstream, so "not a fixed five" stays true of what's shown.
-  // Only the household branch reads this, so it is skipped for a person-grain
-  // card rather than computed and discarded on every render.
-  const attendingAdults = isHousehold
-    ? (party.adults ?? []).filter((adult) => Boolean(adult.display_name?.trim()))
-    : []
+  // The filter itself -- family_camp_adults stores adult slots 1-5 as
+  // separate rows per household, and a slot with no name on file is not an
+  // attending adult, CampMinder leaves it blank rather than omitting the
+  // row -- lives in `householdIdentity.ts`, shared with the four non-card
+  // surfaces that replaced the salutation with this same list (kindred#2084).
+  const attendingAdults = computeAttendingAdults(party)
   const attention = partyAttention(party, unit)
   const proximity = party.share?.proximity ?? []
   // `similar_ages` ACCOMPANIES `with`; it never replaces it. One chip covering
@@ -182,6 +213,7 @@ function FamilyCardBody({
   // view — a chip showing one *or* the other loses them.
   const wantsToShare = proximity.includes('with') || proximity.includes('similar_ages')
   const wantsNear = proximity.includes('near')
+  const conflictDetail = answersConflictDetail(party.share)
 
   return (
     <>
@@ -229,6 +261,11 @@ function FamilyCardBody({
           )}
 
       <span className="flex flex-wrap gap-1">
+        {/* #2008: this PLACEMENT covers every leaf of a building, not merely
+            a card it happens to share — see `holdsWholeBuilding`'s doc.
+            First in the row: it is a fact about the household's privacy, not
+            a need or a warning, and staff scan left-to-right. */}
+        {holdsWholeBuilding && <Chip label="Whole building" tone="building" icon={Home} />}
         {/* The needs a cabin field can actually answer — the same two the fit
             check judges. `needs_accommodation` names no specific amenity, so
             it is carried by the verdict chip below instead of duplicated. */}
@@ -251,9 +288,19 @@ function FamilyCardBody({
           <Chip label={shareWordingChip(SHARE_WORDING.declined)} tone="warn" />
         )}
         {/* 16 households for 2026 carry disagreeing answers. Shown on the card
-            as well as the slot, so a party sitting alone still surfaces one. */}
-        {party.share?.answers_conflict === true && (
-          <Chip label={shareWordingChip(SHARE_WORDING.conflict)} tone="warn" />
+            as well as the slot, so a party sitting alone still surfaces one.
+            Gated on the DETAIL, not the raw boolean (kindred#2083): a party
+            this can't explain — none exist today, but a person-grain party
+            carries no share block to begin with — never renders an empty
+            chip. The tooltip names which two answers disagreed and which one
+            staff are acting on, matching `SharePreferenceChip`'s hover
+            pattern rather than a bare unexplained flag. */}
+        {conflictDetail !== null && (
+          <Chip
+            label={shareWordingChip(SHARE_WORDING.conflict)}
+            tone="warn"
+            title={conflictDetail}
+          />
         )}
         {wantsToShare && <Chip label="Wants to share" tone="share" />}
         {/* NEAR and WITH are different requests: NEAR is satisfied by map
@@ -302,6 +349,7 @@ export function FamilyCard({
   party,
   unit,
   sharedSlot = false,
+  holdsWholeBuilding = false,
   inQueue = false,
   isDraggable = false,
   onOpen,
@@ -340,7 +388,12 @@ export function FamilyCard({
         isDragging ? 'opacity-40' : ''
       }`}
     >
-      <FamilyCardBody party={party} unit={unit} sharedSlot={sharedSlot} />
+      <FamilyCardBody
+        party={party}
+        unit={unit}
+        sharedSlot={sharedSlot}
+        holdsWholeBuilding={holdsWholeBuilding}
+      />
     </button>
   )
 }
@@ -365,14 +418,21 @@ export function FamilyCardPreview({
   party,
   unit,
   sharedSlot = false,
+  holdsWholeBuilding = false,
 }: {
   party: RosterPartyRow
   unit?: LodgingUnitRow | undefined
   sharedSlot?: boolean
+  holdsWholeBuilding?: boolean
 }) {
   return (
     <div className={`${CARD_FRAME} bg-card shadow-lodge-lg border-primary/50 rotate-2`}>
-      <FamilyCardBody party={party} unit={unit} sharedSlot={sharedSlot} />
+      <FamilyCardBody
+        party={party}
+        unit={unit}
+        sharedSlot={sharedSlot}
+        holdsWholeBuilding={holdsWholeBuilding}
+      />
     </div>
   )
 }

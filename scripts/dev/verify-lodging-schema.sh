@@ -428,7 +428,8 @@ ADMIN_ONLY_RULE='@request.auth.is_admin = true'
 AUTHED_READ_RULE='@request.auth.id != ""'
 
 for c in lodging_assignments_draft lodging_availability \
-         lodging_areas lodging_units lodging_unit_aliases lodging_ingest_issues; do
+         lodging_areas lodging_units lodging_unit_aliases lodging_ingest_issues \
+         lodging_session_status; do
   for r in createRule updateRule deleteRule; do
     got=$(rule_of "$c" "$r" || true)
     [[ "$got" == "$BUNKING_MANAGE_RULE" ]] \
@@ -450,12 +451,64 @@ done
 # would blank the board rather than freeze it.
 for c in lodging_assignments_draft lodging_assignments \
          lodging_availability lodging_areas lodging_units lodging_unit_aliases \
-         lodging_ingest_issues lodging_assignment_history; do
+         lodging_ingest_issues lodging_assignment_history lodging_session_status; do
   for r in listRule viewRule; do
     got=$(rule_of "$c" "$r" || true)
     [[ "$got" == "$AUTHED_READ_RULE" ]] || note "$c.$r is '$got', want $AUTHED_READ_RULE"
   done
 done
+
+# ---------------------------------------------------------------------------
+# lodging_session_status (1500000142) -- the staff-owned cancelled flag.
+#
+# The one lodging collection with NO SYNC SOURCE: CampMinder's Sessions API has
+# no status concept, so nothing upstream can supply or correct this. Two
+# properties are load-bearing and both fail silently if the migration drifts.
+#
+# 1. The unique key is the PAIR (session_cm_id, year). CampMinder REUSES session
+#    ids across years, so a key on session_cm_id alone would let a 2026
+#    cancellation apply to the 2027 weekend that inherited the id -- and the
+#    only symptom would be a board quietly disappearing off next year's lander.
+# 2. There is NO `session` relation. lodging_availability and the two assignment
+#    tables carry one at cascadeDelete:false so a vanishing session errors
+#    instead of silently deleting placements. That is wrong here: a cancelled
+#    weekend is precisely the one CampMinder may stop returning, and a required
+#    relation would make SessionsSync's orphan cleanup fail on it every run.
+n=$(sqlite3 "$DB" "SELECT COUNT(*) FROM _collections WHERE name = 'lodging_session_status'")
+if [[ "$n" -ne 1 ]]; then
+  note "collection lodging_session_status missing"
+else
+  sv=$(field_prop lodging_session_status status values || true)
+  want_sv='["active","cancelled"]'
+  [[ "$sv" == "$want_sv" ]]     || note "lodging_session_status.status values are $sv, want $want_sv"
+
+  [[ "$(field_prop lodging_session_status status type || true)" == "select" ]]     || note "lodging_session_status.status is not a select -- widening it later must be a value addition, not a type migration"
+
+  for f in session_cm_id year; do
+    req=$(field_prop lodging_session_status "$f" required || true)
+    [[ "$req" == "1" || "$req" == "true" ]]       || note "lodging_session_status.$f required is '$req' (expected true) -- the key is the pair"
+    [[ "$(field_prop lodging_session_status "$f" onlyInt || true)" == "1" ]]       || note "lodging_session_status.$f is not onlyInt"
+  done
+
+  rel=$(field_prop lodging_session_status session type || true)
+  [[ -z "$rel" ]]     || note "lodging_session_status has a 'session' field ($rel); it must key on session_cm_id alone so orphan cleanup of a cancelled weekend does not fail"
+
+  key_sql=$(sqlite3 "$DB" "SELECT sql FROM sqlite_master WHERE type='index' AND name='idx_lodging_session_status_key'")
+  if [[ -z "$key_sql" ]]; then
+    note "idx_lodging_session_status_key missing"
+  else
+    [[ "$key_sql" == *UNIQUE* ]] || note "idx_lodging_session_status_key is not UNIQUE: $key_sql"
+    # pragma_index_info rather than substring matching: the index NAME contains
+    # "status", and PocketBase pretty-prints a multi-column list across lines.
+    cols=$(sqlite3 "$DB" "SELECT group_concat(name, ',') FROM pragma_index_info('idx_lodging_session_status_key')")
+    [[ "$cols" == "session_cm_id,year" ]]       || note "idx_lodging_session_status_key covers ($cols), want (session_cm_id,year)"
+  fi
+
+  # NO SEED, deliberately: absence of a row means active, so a backfill would
+  # write a second spelling of a state the empty table already expresses.
+  rows=$(sqlite3 "$DB" "SELECT COUNT(*) FROM lodging_session_status")
+  [[ "$rows" -eq 0 ]]     || note "lodging_session_status was seeded with $rows row(s); absence of a row means active and 1500000142 must seed nothing"
+fi
 
 if [[ "$fail" -ne 0 ]]; then echo "verify-lodging-schema: FAILED" >&2; exit 1; fi
 echo "verify-lodging-schema: OK ($js_migs js migrations applied)"

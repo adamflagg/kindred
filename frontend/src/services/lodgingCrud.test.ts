@@ -40,6 +40,7 @@ import {
   listUnresolvedAliasIssues,
   mapUnresolvedAlias,
   reorderLodgingAreas,
+  setWeekendSessionStatus,
 } from './lodgingCrud'
 
 beforeEach(() => {
@@ -273,5 +274,103 @@ describe('reorderLodgingAreas', () => {
     expect(update).toHaveBeenCalledTimes(2)
     expect(update).toHaveBeenNthCalledWith(1, 'a3', { sort_order: 1 })
     expect(update).toHaveBeenNthCalledWith(2, 'a1', { sort_order: 2 })
+  })
+})
+
+// ── Weekend status (kindred#2092) ─────────────────────────────────────────────
+//
+// STAFF-OWNED and derivable from nothing: CampMinder's Sessions API has no
+// status concept, so this is the one lodging table with no upstream at all.
+// The key is the PAIR (session_cm_id, year) — CampMinder reuses session ids
+// across years — and ABSENCE OF A ROW MEANS ACTIVE, which is why going back to
+// active DELETES rather than writing a second spelling of the same state.
+describe('setWeekendSessionStatus', () => {
+  it('creates a row keyed on the CampMinder id and the year', async () => {
+    getFullList.mockResolvedValue([])
+
+    await setWeekendSessionStatus(2026, 1000002, 'cancelled')
+
+    expect(collection).toHaveBeenCalledWith('lodging_session_status')
+    const [payload] = create.mock.calls[0] as [Record<string, unknown>]
+    expect(payload).toEqual({ session_cm_id: 1000002, year: 2026, status: 'cancelled' })
+  })
+
+  it('scopes the existing-row lookup to BOTH the weekend and the season', async () => {
+    // Without the year, a 2026 cancellation would find and overwrite the 2027
+    // row for the weekend that inherited the same CampMinder id.
+    getFullList.mockResolvedValue([])
+
+    await setWeekendSessionStatus(2026, 1000002, 'cancelled')
+
+    const [options] = getFullList.mock.calls[0] as [{ filter?: string }]
+    expect(options.filter).toContain('session_cm_id = 1000002')
+    expect(options.filter).toContain('year = 2026')
+  })
+
+  it('updates the existing row rather than creating a second one', async () => {
+    getFullList.mockResolvedValue([
+      { id: 'st_1', session_cm_id: 1000002, year: 2026, status: 'active' },
+    ])
+
+    await setWeekendSessionStatus(2026, 1000002, 'cancelled')
+
+    expect(create).not.toHaveBeenCalled()
+    expect(update).toHaveBeenCalledWith('st_1', { status: 'cancelled' })
+  })
+
+  it('DELETES the row when a weekend goes back to running', async () => {
+    // Absence is what "active" means, so storing `active` would be a second
+    // spelling of a state the empty table already expresses — the same shape
+    // `lodging_availability` uses for clearing an override.
+    getFullList.mockResolvedValue([
+      { id: 'st_1', session_cm_id: 1000002, year: 2026, status: 'cancelled' },
+    ])
+
+    await setWeekendSessionStatus(2026, 1000002, 'active')
+
+    expect(deleteRecord).toHaveBeenCalledWith('st_1')
+    expect(create).not.toHaveBeenCalled()
+    expect(update).not.toHaveBeenCalled()
+  })
+
+  it('writes nothing at all when a weekend with no row is set to running', async () => {
+    getFullList.mockResolvedValue([])
+
+    await setWeekendSessionStatus(2026, 1000002, 'active')
+
+    expect(create).not.toHaveBeenCalled()
+    expect(update).not.toHaveBeenCalled()
+    expect(deleteRecord).not.toHaveBeenCalled()
+  })
+
+  it('resolves a create race by updating the row the other writer won, rather than surfacing a raw PocketBase error', async () => {
+    // Read-then-write, not atomic (kindred#2092 finding 3): two staff
+    // cancelling the same weekend at once both see `existing` empty and both
+    // reach `create()`. The unique index on (session_cm_id, year) —
+    // 1500000142 — lets only one through; the loser must not hand
+    // `toast.error` a raw PocketBase 400. Its INTENT — mark the weekend
+    // `cancelled` — is still true once the winner's row exists, so the loser
+    // re-reads and updates that row instead of failing.
+    getFullList.mockResolvedValueOnce([]) // the initial read, before either write
+    create.mockRejectedValueOnce(new Error('Failed to create record.'))
+    getFullList.mockResolvedValueOnce([
+      { id: 'st_1', session_cm_id: 1000002, year: 2026, status: 'cancelled' },
+    ]) // the retry read, after the other writer's row landed
+
+    await expect(setWeekendSessionStatus(2026, 1000002, 'cancelled')).resolves.toBeUndefined()
+
+    expect(update).toHaveBeenCalledWith('st_1', { status: 'cancelled' })
+  })
+
+  it('still throws when create fails for a reason other than the race', async () => {
+    // The retry finds no row either — this was never a duplicate-key
+    // collision, so swallowing it would hide a real failure (permissions,
+    // network) behind a silent no-op.
+    getFullList.mockResolvedValueOnce([])
+    const error = new Error('Network error')
+    create.mockRejectedValueOnce(error)
+    getFullList.mockResolvedValueOnce([])
+
+    await expect(setWeekendSessionStatus(2026, 1000002, 'cancelled')).rejects.toThrow(error)
   })
 })

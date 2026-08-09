@@ -105,6 +105,21 @@ describe('MapUnitPopover — one room', () => {
     expect(screen.getByRole('button', { name: /Johnson/ })).toBeInTheDocument()
   })
 
+  it('names the occupant by its attending adults, not a mismatched salutation', () => {
+    // kindred#2084: `display_name` is CampMinder's mailing_title, which
+    // disagreed with the real attending-adult list on 26.7% of 2026's
+    // rostered households. This reuses FamilyCard's own construction
+    // (`householdIdentity.ts`) instead of the salutation.
+    const johnson = party('Mr. and Mrs. Johnson')
+    johnson.adults = [
+      { adult_number: 1, display_name: 'Emma Johnson', relationship: 'Mother' },
+      { adult_number: 2, display_name: 'David Johnson', relationship: 'Father' },
+    ]
+    render(<MapUnitPopover units={[mapUnit(row(), [johnson])]} hue={HUE} onOpenParty={vi.fn()} />)
+    expect(screen.getByRole('button', { name: 'Emma Johnson · David Johnson' })).toBeInTheDocument()
+    expect(screen.queryByText('Mr. and Mrs. Johnson')).not.toBeInTheDocument()
+  })
+
   it('says a room is empty rather than leaving it blank', () => {
     render(<MapUnitPopover units={[mapUnit(row())]} hue={HUE} onOpenParty={vi.fn()} />)
     expect(screen.getByText(/empty/i)).toBeInTheDocument()
@@ -224,6 +239,27 @@ describe('MapUnitPopover — one room', () => {
       />
     )
     expect(screen.getByText(/No power/)).toBeInTheDocument()
+  })
+
+  it('names the unmet occupant by its attending adults too', () => {
+    const needsPower = party('Mr. and Mrs. Johnson')
+    needsPower.adults = [{ adult_number: 1, display_name: 'Emma Johnson', relationship: 'Mother' }]
+    needsPower.flags = {
+      needs_private_bathroom: false,
+      needs_power: true,
+      needs_accommodation: false,
+      accommodation_is_mandatory: false,
+      has_infant: false,
+    }
+    render(
+      <MapUnitPopover
+        units={[mapUnit(row({ is_confirmed: true, has_power: false }), [needsPower])]}
+        hue={HUE}
+        onOpenParty={vi.fn()}
+      />
+    )
+    expect(screen.getByText(/Emma Johnson — No power/)).toBeInTheDocument()
+    expect(screen.queryByText(/Mr\. and Mrs\. Johnson/)).not.toBeInTheDocument()
   })
 
   it('does not accuse an UNCONFIRMED cabin of failing a request', () => {
@@ -359,6 +395,19 @@ describe('MapUnitPopover — a cluster of rooms', () => {
     ]
     render(<MapUnitPopover units={shared} hue={HUE} onOpenParty={vi.fn()} />)
     expect(screen.getByText('Johnson +1')).toBeInTheDocument()
+  })
+
+  it('labels a cluster cell by attending adults, not a mismatched salutation', () => {
+    // kindred#2084, same construction as the single-room DetailCard above.
+    const johnson = party('Mr. and Mrs. Johnson')
+    johnson.adults = [{ adult_number: 1, display_name: 'Emma Johnson', relationship: 'Mother' }]
+    const cluster = [
+      mapUnit(row({ unit_id: 'u1', code: 'cedar-1', name: 'Cedar 1' }), [johnson]),
+      mapUnit(row({ unit_id: 'u2', code: 'cedar-2', name: 'Cedar 2' })),
+    ]
+    render(<MapUnitPopover units={cluster} hue={HUE} onOpenParty={vi.fn()} />)
+    expect(screen.getByText('Emma Johnson')).toBeInTheDocument()
+    expect(screen.queryByText(/Mr\. and Mrs\. Johnson/)).not.toBeInTheDocument()
   })
 
   const units = [

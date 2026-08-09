@@ -76,6 +76,15 @@ LODGING_SLOT_MERGES = "lodging_slot_merges"
 # kind = "unresolved_alias". Deliberately NOT a second surfaces-only collection.
 LODGING_INGEST_ISSUES = "lodging_ingest_issues"
 
+# The staff-owned weekend status (1500000142, kindred#2092). CampMinder's
+# Sessions API exposes no status or registration-availability concept, so
+# NOTHING SYNCS THIS -- it is the one lodging table with no upstream at all.
+# Keyed on (session_cm_id, year) rather than a camp_sessions relation, so a
+# weekend that drops out of a CampMinder response does not take its own
+# cancellation with it. ABSENCE OF A ROW MEANS ACTIVE; the migration seeds
+# nothing.
+LODGING_SESSION_STATUS = "lodging_session_status"
+
 # Staff-authored friend groups at HOUSEHOLD grain (1500000144, kindred#1913).
 # No scenario dimension, unlike summer's locked_groups: a group records what
 # households asked for, which is true of the weekend in every plan for it.

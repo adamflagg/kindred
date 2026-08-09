@@ -36,12 +36,19 @@ beforeEach(() => {
 })
 
 function party(overrides: Partial<RosterPartyRow> = {}): RosterPartyRow {
+  // kindred#2084: the row's visible identity is now the attending-adult list
+  // (`householdIdentity.ts`), not `display_name`. Defaulting the sole adult's
+  // name to match `displayName` keeps every existing `display_name` override
+  // in this file behaving as the row's on-screen label, same as before the
+  // identity source changed -- callers that need a specific adult roster
+  // still override `adults` explicitly, which wins over this default.
+  const displayName = overrides.display_name ?? 'The Johnson Family'
   return {
     grain: 'household',
     household_cm_id: 2000001,
     person_cm_id: 0,
-    display_name: 'The Johnson Family',
-    adults: [{ adult_number: 1, display_name: 'Samuel Johnson', relationship: 'Parent' }],
+    display_name: displayName,
+    adults: [{ adult_number: 1, display_name: displayName, relationship: 'Parent' }],
     children: [{ person_cm_id: 1000001, display_name: 'Emma Johnson', age: 9, grade: 4 }],
     party_size: 2,
     unit_code: '',
@@ -147,11 +154,68 @@ describe('HouseholdRosterTable', () => {
   })
 
   it('renders adults and children counts for a household party', () => {
-    render(<HouseholdRosterTable year={2026} parties={[party()]} />, { wrapper })
-    expect(screen.getByText('The Johnson Family')).toBeInTheDocument()
+    render(
+      <HouseholdRosterTable
+        year={2026}
+        parties={[
+          party({
+            display_name: 'The Johnson Family', // stale salutation, no longer rendered
+            adults: [{ adult_number: 1, display_name: 'Samuel Johnson', relationship: 'Parent' }],
+          }),
+        ]}
+      />,
+      { wrapper }
+    )
+    // kindred#2084: the row's identity is the attending-adult list, not
+    // `display_name` -- and it duplicates the members line below for a
+    // single-adult household, so this reads the identity through its own
+    // testid rather than `getByText`, which would find both.
+    expect(screen.getByTestId('household-row-name')).toHaveTextContent('Samuel Johnson')
+    expect(screen.queryByText('The Johnson Family')).not.toBeInTheDocument()
     expect(screen.getByText('1 adult · 1 child')).toBeInTheDocument()
-    expect(screen.getByText('Samuel Johnson')).toBeInTheDocument()
     expect(screen.getByText('Emma Johnson (9.00)')).toBeInTheDocument()
+  })
+
+  it('does not count a blank adult slot -- family_camp_adults is not a fixed five', () => {
+    // Scan finding on kindred#2084: `composition()` counted `party.adults`
+    // raw, inflating the figure shown right beside the (now-filtered)
+    // identity label.
+    render(
+      <HouseholdRosterTable
+        year={2026}
+        parties={[
+          party({
+            adults: [
+              { adult_number: 1, display_name: 'Samuel Johnson', relationship: 'Parent' },
+              { adult_number: 2, display_name: '', relationship: '' },
+            ],
+          }),
+        ]}
+      />,
+      { wrapper }
+    )
+    expect(screen.getByText('1 adult · 1 child')).toBeInTheDocument()
+    expect(screen.queryByText('2 adults · 1 child')).not.toBeInTheDocument()
+  })
+
+  it('drops a blank adult slot from the members line rather than a dangling separator', () => {
+    render(
+      <HouseholdRosterTable
+        year={2026}
+        parties={[
+          party({
+            adults: [
+              { adult_number: 1, display_name: 'Samuel Johnson', relationship: 'Parent' },
+              { adult_number: 2, display_name: '', relationship: '' },
+            ],
+          }),
+        ]}
+      />,
+      { wrapper }
+    )
+    const membersLine = screen.getByTestId('household-row-members')
+    expect(membersLine).toHaveTextContent('Samuel Johnson · Emma Johnson (9.00)')
+    expect(membersLine.textContent).not.toMatch(/,\s*·/)
   })
 
   it('renders age in CampMinder yy.mm format through displayCampMinderAge', () => {
@@ -365,8 +429,11 @@ describe('HouseholdRosterTable', () => {
       />,
       { wrapper }
     )
-    expect(screen.getByText('The Johnson Family')).toBeInTheDocument()
-    expect(screen.getByText('Olivia Chen')).toBeInTheDocument()
+    // kindred#2084: 'The Johnson Family' now also appears in the members
+    // line for a single-adult household, so this reads each row's identity
+    // through its own testid rather than `getByText`, which would find both.
+    const names = screen.getAllByTestId('household-row-name').map((el) => el.textContent)
+    expect(names).toEqual(['The Johnson Family', 'Olivia Chen'])
   })
 
   it('renders one table row per party, not collapsed into the header (kindred#2063)', () => {

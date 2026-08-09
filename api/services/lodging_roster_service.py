@@ -15,6 +15,7 @@ Permission.LODGING_PHI at the router.
 from __future__ import annotations
 
 import asyncio
+from collections.abc import Mapping
 from typing import TYPE_CHECKING, Any, NamedTuple, cast
 
 from api.schemas.lodging import (
@@ -34,6 +35,7 @@ from api.schemas.lodging import (
     ShareRequestSummary,
     WeekendRosterResponse,
     WeekendSessionListResponse,
+    WeekendSessionStatus,
     WeekendSessionSummary,
     WeekendSummaryEntry,
     WeekendSummaryResponse,
@@ -367,10 +369,19 @@ def drawn_units(units: list[LodgingUnitSummary]) -> list[LodgingUnitSummary]:
 
 
 class _BathroomIndex(NamedTuple):
-    """Lookups `_resolve_party_bathroom` needs, built ONCE per roster/summary
-    call from the unit registry rather than once per party -- the same
-    "compute across all units, read per party" split `_build_units` already
-    uses for `group_members`.
+    """The unit tree, built ONCE per roster/summary call from the unit
+    registry and threaded through to every consumer, rather than rebuilt per
+    consumer -- the same "compute across all units, read per party" split
+    `_build_units` already uses for `group_members`.
+
+    Two consumers share it: `_resolve_party_bathroom` (via `_build_parties`)
+    and, since kindred#2041, `_build_counts`'s `_effective_sleeps`, which
+    walks `leaf_codes_under` to total a combined container's rooms. Both
+    orchestrators (`build_roster`, `build_summary`'s per-weekend `_entry`)
+    build ONE instance right after `_build_units` and pass it to both --
+    building a second one from the same `units` list was caught in review on
+    kindred#2041's PR and is exactly the duplicate work this docstring
+    already warned against.
     """
 
     units_by_code: dict[str, LodgingUnitSummary]
@@ -485,25 +496,75 @@ class LodgingRosterService:
     def __init__(self, repository: LodgingRepository) -> None:
         self.repository = repository
 
+    async def _fetch_session_statuses_or_active(self, year: int) -> Mapping[int, str]:
+        """`fetch_session_statuses`, degraded to {} on a failed read.
+
+        kindred#2092 finding 2. This method's caller runs the read INSIDE a
+        TaskGroup alongside reads that must not fail -- `asyncio.TaskGroup`
+        cancels every sibling task the moment any one of them raises, so an
+        unwrapped failure here would 500 the whole endpoint (`/sessions` or
+        `/summary`) over a status badge. The realistic trigger is ordinary:
+        the API container starting against a PocketBase that has not yet
+        applied migration 1500000142, so the collection does not exist yet.
+
+        {} is not a made-up fallback -- it is the SAME value an empty,
+        untouched `lodging_session_status` table produces, and this layer's
+        own design is that absence of a row means active. Degrading a failed
+        read to {} keeps that design holding end to end instead of adding a
+        second "unknown" state nothing downstream understands.
+        """
+        try:
+            return await self.repository.fetch_session_statuses(year)
+        except Exception as exc:
+            logger.warning(
+                f"lodging_session_status read failed for year {year}, treating every weekend as active: {exc}"
+            )
+            return {}
+
     async def list_sessions(self, year: int) -> WeekendSessionListResponse:
-        rows = await self.repository.fetch_weekend_sessions(year)
+        async with asyncio.TaskGroup() as tg:
+            rows_task = tg.create_task(self.repository.fetch_weekend_sessions(year))
+            statuses_task = tg.create_task(self._fetch_session_statuses_or_active(year))
+
+        statuses = statuses_task.result()
         return WeekendSessionListResponse(
             year=year,
-            sessions=[self._session_summary(row) for row in rows],
+            sessions=[self._session_summary(row, statuses) for row in rows_task.result()],
         )
 
     @staticmethod
-    def _session_summary(row: Any) -> WeekendSessionSummary:
+    def _weekend_status(raw: str) -> WeekendSessionStatus:
+        """One stored value -> the vocabulary this layer publishes.
+
+        TOTAL BY DESIGN, and it falls back to "active". The select is
+        widenable on purpose (owner, 2026-08-07: two values now so a third is
+        a value addition, not a type migration), so a value added to the
+        column before this layer knows it must not be rendered as a
+        cancellation -- telling staff a running weekend is cancelled is the
+        one error here that empties a board somebody is working.
+        """
+        return "cancelled" if raw == "cancelled" else "active"
+
+    @classmethod
+    def _session_summary(cls, row: Any, statuses: Mapping[int, str]) -> WeekendSessionSummary:
         """One weekend's identity. Shared so the lander and the session list
-        can never describe the same weekend differently."""
+        can never describe the same weekend differently.
+
+        `statuses` is the season's staff-owned status map keyed by CampMinder
+        id (kindred#2092). A weekend with no entry is ACTIVE -- the migration
+        seeds nothing, so absence of a row is the normal state and not a gap
+        to warn about.
+        """
+        session_cm_id = _i(row, "cm_id")
         return WeekendSessionSummary(
             session_id=_s(row, "id"),
-            session_cm_id=_i(row, "cm_id"),
+            session_cm_id=session_cm_id,
             name=_s(row, "name"),
             session_type=_s(row, "session_type"),
             start_date=_s(row, "start_date"),
             end_date=_s(row, "end_date"),
             sort_order=_i(row, "sort_order"),
+            status=cls._weekend_status(statuses.get(session_cm_id, "")),
         )
 
     async def build_roster(self, year: int, session_cm_id: int, scenario: str = "") -> WeekendRosterResponse:
@@ -578,6 +639,11 @@ class LodgingRosterService:
             availability_task.result(),
             merges_task.result(),
         )
+        # ONE index, threaded to both consumers below -- see `_BathroomIndex`'s
+        # own "built ONCE per call" docstring. Rebuilding a second one from the
+        # same `unit_summaries` for `_build_counts` was caught in review on
+        # kindred#2041's PR.
+        unit_index = _BathroomIndex.build(unit_summaries)
         parties = self._build_parties(
             session_type=session_type,
             attendees=attendees_task.result(),
@@ -586,9 +652,9 @@ class LodgingRosterService:
             adults_by_household=adults_task.result(),
             registrations=registrations_task.result(),
             assignments=placements_task.result(),
-            units=unit_summaries,
+            unit_index=unit_index,
         )
-        counts = self._build_counts(unit_summaries, parties, aliases_task.result())
+        counts = self._build_counts(unit_summaries, parties, aliases_task.result(), unit_index)
 
         return WeekendRosterResponse(
             year=year,
@@ -642,6 +708,17 @@ class LodgingRosterService:
             adults_task = tg.create_task(self.repository.fetch_family_camp_adults(year))
             registrations_task = tg.create_task(self.repository.fetch_family_camp_registrations(year))
             aliases_task = tg.create_task(self.repository.count_open_unresolved_aliases(year))
+            # Season-scoped like the six above, and read HERE rather than per
+            # weekend for the same reason: it is one small table for the whole
+            # year, and the lander must badge from the same map `/sessions`
+            # reads or the two pages would disagree about a weekend.
+            #
+            # Wrapped, not the raw repository call: this TaskGroup has six
+            # OTHER reads in it, and this is the one PocketBase collection
+            # that can legitimately not exist yet (a fresh migration). See
+            # `_fetch_session_statuses_or_active` for why a failed read here
+            # must not cancel the other six and 500 the lander.
+            statuses_task = tg.create_task(self._fetch_session_statuses_or_active(year))
 
         units = units_task.result()
         households = households_task.result()
@@ -649,6 +726,7 @@ class LodgingRosterService:
         adults_by_household = adults_task.result()
         registrations = registrations_task.result()
         unresolved_aliases = aliases_task.result()
+        statuses = statuses_task.result()
 
         async def _entry(session: Any) -> WeekendSummaryEntry:
             session_pb_id = _s(session, "id")
@@ -686,6 +764,9 @@ class LodgingRosterService:
                 availability_task.result(),
                 merges_task.result(),
             )
+            # Same one-index-per-call rule `build_roster` follows -- see the
+            # comment there and `_BathroomIndex`'s own docstring.
+            unit_index = _BathroomIndex.build(unit_summaries)
             parties = self._build_parties(
                 session_type=_s(session, "session_type"),
                 attendees=attendees_task.result(),
@@ -694,11 +775,11 @@ class LodgingRosterService:
                 adults_by_household=adults_by_household,
                 registrations=registrations,
                 assignments=placements_task.result(),
-                units=unit_summaries,
+                unit_index=unit_index,
             )
             return WeekendSummaryEntry(
-                session=self._session_summary(session),
-                counts=self._build_counts(unit_summaries, parties, unresolved_aliases),
+                session=self._session_summary(session, statuses),
+                counts=self._build_counts(unit_summaries, parties, unresolved_aliases, unit_index),
             )
 
         async with asyncio.TaskGroup() as tg:
@@ -881,13 +962,12 @@ class LodgingRosterService:
         adults_by_household: dict[str, list[Any]],
         registrations: dict[str, Any],
         assignments: list[Any],
-        units: list[LodgingUnitSummary],
+        unit_index: _BathroomIndex,
     ) -> list[RosterParty]:
         placement_by_household, placement_by_person = self._index_assignments(assignments)
-        bathroom_index = _BathroomIndex.build(units)
 
         if session_type == "adult":
-            return self._build_person_parties(attendees, placement_by_person, bathroom_index)
+            return self._build_person_parties(attendees, placement_by_person, unit_index)
 
         return self._build_household_parties(
             attendees=attendees,
@@ -896,7 +976,7 @@ class LodgingRosterService:
             adults_by_household=adults_by_household,
             registrations=registrations,
             placement_by_household=placement_by_household,
-            bathroom_index=bathroom_index,
+            bathroom_index=unit_index,
         )
 
     @staticmethod
@@ -1187,28 +1267,51 @@ class LodgingRosterService:
         units: list[LodgingUnitSummary],
         parties: list[RosterParty],
         unresolved_aliases: int,
+        unit_index: _BathroomIndex,
     ) -> RosterCounts:
         # The population the BOARD DRAWS, at each tree's resolved level -- not
         # "every non-container row". A combined container IS one space a
-        # family can hold, at the whole-house `sleeps` somebody measured, and
-        # its rooms are not separately lettable, so counting them instead
-        # reports more spaces than the board draws cards. That is the exact
-        # drift `_is_planning_inventory` exists to prevent, one field over.
+        # family can hold, and its rooms are not separately lettable, so
+        # counting them instead reports more spaces than the board draws
+        # cards. That is the exact drift `_is_planning_inventory` exists to
+        # prevent, one field over.
         #
         # A NON-combined container is still excluded, for the original reason:
         # it carries a whole-building aggregate its rooms already report, and
         # counting both double-counts beds (408 vs a true 389). What changed is
         # that "container" stopped being the same question as "not drawn".
         #
-        # The bed figure can move OPPOSITE the space figure, which is correct:
-        # a container's `sleeps` is independently measured and NOT the sum of
-        # its rooms (one house records 7 against rooms summing to 6). Fewer,
-        # larger spaces.
+        # Owner ruling, kindred#2041: a container's `sleeps` is a DELTA over
+        # its rooms -- the beds in space belonging to no single room, e.g. a
+        # futon on a landing -- never a whole-house total. A drawn combined
+        # container's true capacity is its own `sleeps` PLUS every LEAF
+        # beneath it, walked past any intermediate container via
+        # `unit_index.leaf_codes_under` -- the SAME index `_build_parties`
+        # already built for bathroom resolution, passed in rather than
+        # rebuilt here (see `_BathroomIndex`'s own "built ONCE" docstring).
+        # An unset container reads as a delta of 0 -- real common space
+        # nobody measured, correctly zero and never "unknown" -- so only a
+        # genuinely unmeasured LEAF can still leave a total unknown.
         drawn = [u for u in drawn_units(units) if u.is_active]
         bookable = [u for u in drawn if _is_planning_inventory(u)]
         staff_housing = [u for u in drawn if not _is_planning_inventory(u)]
         available = [u for u in bookable if u.is_family_available]
         assigned = sum(1 for p in parties if p.unit_code or p.unit_name)
+
+        def _effective_sleeps(unit: LodgingUnitSummary) -> int | None:
+            if not unit.is_container:
+                return unit.sleeps
+            leaf_total = sum(
+                leaf.sleeps
+                for code in unit_index.leaf_codes_under(unit.code)
+                if (leaf := unit_index.units_by_code.get(code)) is not None
+                and leaf.is_active
+                and leaf.sleeps is not None
+            )
+            return (unit.sleeps or 0) + leaf_total
+
+        effective_sleeps = {u.unit_id: _effective_sleeps(u) for u in bookable}
+
         return RosterCounts(
             parties_total=len(parties),
             parties_assigned=assigned,
@@ -1217,8 +1320,8 @@ class LodgingRosterService:
             units_family_available=len(available),
             units_reserved=len(bookable) - len(available),
             units_staff_housing=len(staff_housing),
-            beds_family_available=sum(u.sleeps for u in available if u.sleeps is not None),
-            units_capacity_unknown=sum(1 for u in bookable if u.sleeps is None),
+            beds_family_available=sum(s for u in available if (s := effective_sleeps[u.unit_id]) is not None),
+            units_capacity_unknown=sum(1 for u in bookable if effective_sleeps[u.unit_id] is None),
             # Over `bookable`, NOT a separate PocketBase count. The old query
             # filtered is_confirmed/is_container/is_active with no inventory
             # predicate, so once units_total dropped staff housing the two

@@ -379,6 +379,57 @@ describe('FamilyCard — what it shows', () => {
     expect(screen.queryByText('Declined sharing')).not.toBeInTheDocument()
   })
 
+  it('says which two answers disagreed, and that the form wins, on the "Answers disagree" chip (kindred#2083)', () => {
+    render(
+      <FamilyCard
+        party={party({
+          share: {
+            preference: 'no_share',
+            proximity: [],
+            request_text: '',
+            needs_resolution: false,
+            eligibility: 'open',
+            eligibility_source: 'form',
+            answers_conflict: true,
+          },
+        })}
+        onOpen={vi.fn()}
+      />
+    )
+    const chip = screen.getByText('Answers disagree')
+    expect(chip).toHaveAttribute('title', expect.stringContaining('will not share'))
+    expect(chip).toHaveAttribute('title', expect.stringContaining('open to sharing'))
+    expect(chip).toHaveAttribute('title', expect.stringContaining("form's answer"))
+  })
+
+  it('renders no "Answers disagree" chip, and no tooltip, when there is no conflict', () => {
+    render(
+      <FamilyCard
+        party={party({
+          share: {
+            preference: 'yes_share',
+            proximity: ['with'],
+            request_text: '',
+            needs_resolution: false,
+            eligibility: 'open',
+            eligibility_source: 'form',
+            answers_conflict: false,
+          },
+        })}
+        onOpen={vi.fn()}
+      />
+    )
+    expect(screen.queryByText('Answers disagree')).not.toBeInTheDocument()
+  })
+
+  it('never shows "Answers disagree" for an adult weekend guest — there is no share question to disagree on', () => {
+    // person-grain parties carry no share block at all
+    // (`_build_person_parties` attaches none), so there is nothing here to
+    // report — not an empty chip.
+    render(<FamilyCard party={party({ grain: 'person' })} onOpen={vi.fn()} />)
+    expect(screen.queryByText('Answers disagree')).not.toBeInTheDocument()
+  })
+
   it('shows a share request as one chip covering both `with` and `similar_ages`', () => {
     // `similar_ages` ACCOMPANIES `with`; a chip showing one or the other drops
     // 22 households out of any "wants to share" view.
@@ -413,6 +464,16 @@ describe('FamilyCard — what it shows', () => {
       />
     )
     expect(screen.getByText('Wants to share')).toBeInTheDocument()
+  })
+
+  it('marks a placement that holds a whole building — #2008', () => {
+    render(<FamilyCard party={party()} holdsWholeBuilding={true} onOpen={vi.fn()} />)
+    expect(screen.getByText('Whole building')).toBeInTheDocument()
+  })
+
+  it('says nothing about a placement that does not hold a whole building', () => {
+    render(<FamilyCard party={party()} onOpen={vi.fn()} />)
+    expect(screen.queryByText('Whole building')).not.toBeInTheDocument()
   })
 })
 

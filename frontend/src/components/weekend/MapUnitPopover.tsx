@@ -13,6 +13,7 @@ import { Accessibility, Bath, Plug, Refrigerator, Snowflake } from 'lucide-react
 import type { ReactNode } from 'react'
 
 import type { RosterPartyRow } from '../../types/lodging'
+import { partyIdentityLabel } from './householdIdentity'
 import { CONSENT_AMBER } from './mapColors'
 import type { MapUnit } from './mapModel'
 import { partyKey } from './partyKey'
@@ -84,7 +85,7 @@ function occupantButtons(
       }}
       className="text-foreground hover:text-primary text-right text-xs font-semibold underline-offset-2 hover:underline"
     >
-      {party.display_name}
+      {partyIdentityLabel(party)}
     </button>
   ))
 }
@@ -177,7 +178,7 @@ function DetailCard({ units, hue, onOpenParty }: MapUnitPopoverProps) {
               key={partyKey(party)}
               className="text-[11px] font-medium text-red-700 dark:text-red-400"
             >
-              {`${party.display_name ?? ''} — ${attention.reason}`}
+              {`${partyIdentityLabel(party)} — ${attention.reason}`}
             </li>
           ))}
         </ul>
@@ -275,11 +276,11 @@ function FootprintGrid({ units, hue, onOpenParty }: MapUnitPopoverProps) {
           // are genuinely shared in the current year's data.
           const label = first
             ? extra > 0
-              ? `${first.display_name ?? ''} +${String(extra)}`
-              : (first.display_name ?? '')
+              ? `${partyIdentityLabel(first)} +${String(extra)}`
+              : partyIdentityLabel(first)
             : shortName
           const who = first
-            ? entry.parties.map((party) => party.display_name ?? '').join(', ')
+            ? entry.parties.map((party) => partyIdentityLabel(party)).join(', ')
             : 'empty'
           // Prefixed by the visible label so the accessible name contains it
           // (WCAG 2.5.3), and duplicated into `title` because a tooltip alone is

@@ -46,6 +46,7 @@ from api.constants.collections import (
     LODGING_ASSIGNMENTS_DRAFT,
     LODGING_AVAILABILITY,
     LODGING_INGEST_ISSUES,
+    LODGING_SESSION_STATUS,
     LODGING_SLOT_MERGES,
     LODGING_UNITS,
 )
@@ -156,6 +157,45 @@ class LodgingRepository:
             },
         )
         return rows[0] if rows else None
+
+    async def fetch_session_statuses(self, year: int) -> dict[int, str]:
+        """The staff-owned weekend status for a season, keyed by CampMinder id.
+
+        kindred#2092. THE ONE LODGING TABLE WITH NO UPSTREAM: CampMinder's
+        Sessions API exposes twenty properties and none is a status or
+        registration-availability concept, so a cancelled weekend cannot be
+        derived. Both derived rules the issue tried were measured and
+        retracted -- `is_active` is 25% precise for this, and "attendee rows
+        exist but none are enrolled" misses a weekend cancelled before anyone
+        registered, which is byte-identical to one that has not opened yet.
+
+        Keyed on `session_cm_id` and not on a `session` relation. camp_sessions
+        rows are orphan-deleted by SessionsSync, and a cancelled weekend is
+        precisely the one CampMinder may stop returning; the CampMinder id is
+        what survives that (CLAUDE.md section 1) and is what the callers
+        already hold.
+
+        Returns a MAP so the caller does one read per season rather than one
+        scan per weekend. An empty map is the normal state of an untouched
+        season -- absence of a row means active, and the migration seeds
+        nothing.
+
+        Deliberately NOT cached, for the same reason as `fetch_units` above:
+        this collection is written straight to PocketBase from the browser by
+        the admin panel (`setWeekendSessionStatus` in
+        frontend/src/services/lodgingCrud.ts), never through this API, so a
+        cache hit would keep reporting a weekend as running for the whole TTL
+        after staff cancelled it -- to buy back a read of at most a dozen rows.
+        """
+        rows = await self._page(
+            LODGING_SESSION_STATUS,
+            query_params={"filter": f"year = {year}", "sort": STABLE_SORT},
+        )
+        return {
+            int(getattr(row, "session_cm_id", 0)): str(getattr(row, "status", ""))
+            for row in rows
+            if getattr(row, "session_cm_id", 0)
+        }
 
     async def fetch_units(self, year: int) -> list[Any]:
         """Every lodging unit for ONE SEASON, with its area expanded.

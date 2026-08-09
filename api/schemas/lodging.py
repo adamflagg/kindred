@@ -78,6 +78,17 @@ ShareEligibilitySource = Literal["form", "registration", "none"]
 PartyGrain = Literal["household", "person"]
 EffectiveBathroom = Literal["unknown", "none", "private", "shared"]
 
+# The STAFF-OWNED weekend status, from lodging_session_status (1500000142).
+# Unlike every other vocabulary in this module it mirrors no Go ingest, because
+# there is no ingest: CampMinder's Sessions API has no status concept at all,
+# so a cancelled weekend cannot be derived from synced data (kindred#2092).
+#
+# Two values by decision (owner, 2026-08-07), so widening later -- "closed for
+# registration", say -- is a value addition rather than a bool-to-select
+# migration. "active" is the DEFAULT rather than a stored fact: the migration
+# seeds nothing and absence of a row means active.
+WeekendSessionStatus = Literal["active", "cancelled"]
+
 
 class WeekendSessionSummary(BaseModel):
     """One family or adult weekend."""
@@ -89,6 +100,11 @@ class WeekendSessionSummary(BaseModel):
     start_date: str = ""
     end_date: str = ""
     sort_order: int = 0
+    # Staff-owned; nothing in the sync layer writes or clears it. A cancelled
+    # weekend is BADGED, NOT HIDDEN — it still holds lodging rows the sync
+    # deliberately cannot clean up (1500000124), and deep links to it must keep
+    # resolving, so neither /sessions nor /summary filters on this.
+    status: WeekendSessionStatus = "active"
 
 
 class WeekendSessionListResponse(BaseModel):
@@ -119,9 +135,11 @@ class LodgingUnitSummary(BaseModel):
     # A building/grouping row. Present in the payload so the map and board
     # can draw the building. Whether it COUNTS is no longer this flag's
     # answer: a container resolved combined (see `is_combined`) is the one
-    # space the board draws, at its own measured `sleeps`, and its rooms
-    # count for nothing. `drawn_units` is the one predicate for that, and
-    # `_build_counts` reads it -- never filter on `is_container` alone.
+    # space the board draws. Its own `sleeps` is a DELTA over its rooms, not
+    # a whole-house total (owner ruling, kindred#2041) -- the drawn total is
+    # its own `sleeps` PLUS every leaf beneath it. `drawn_units` is the one
+    # predicate for which units get a card, and `_build_counts` reads it --
+    # never filter on `is_container` alone.
     is_container: bool = False
     # The parent container's CODE, not its record id — the board keys on code,
     # and code is the cross-year identity thread. "" means no parent.
@@ -276,9 +294,19 @@ class RosterParty(BaseModel):
     # The bathroom this party ends up with once every code in unit_codes
     # counts toward ONE merge -- lodging_rules.effective_bathroom resolved
     # against the OCCUPYING placement, not any single unit's own view
-    # (kindred#2022). "unknown" when unplaced. SCORING ONLY: this feeds
-    # matching, and is not itself surfaced as a claim to staff on any card
-    # or panel -- see LodgingRosterService._resolve_party_bathroom.
+    # (kindred#2022). "unknown" when unplaced.
+    #
+    # Sanctioned staff-facing use, added by kindred#1982: the roster's fit
+    # check (`rosterAttention.ts`'s `needs_private_bathroom` predicate) reads
+    # this to decide the party's Private-bathroom verdict (settled / unmet /
+    # unverified) shown on the roster row, family card, map popover, and
+    # detail panel -- #2022's own body named this the intended consumer
+    # ("#1982 consumes it"). The RAW enum value is still never rendered
+    # directly; only the derived verdict, and only for a CONFIRMED unit --
+    # `rosterAttention.ts`'s `is_confirmed` gate still stands between this
+    # field and the UI. Any OTHER surface reading this value directly, past
+    # that gate, is the thing to stay wary of -- see
+    # LodgingRosterService._resolve_party_bathroom.
     effective_bathroom: EffectiveBathroom = "unknown"
     arrival_eta: str = ""
     # The household's cm_id was seen in an earlier year.
@@ -288,13 +316,20 @@ class RosterParty(BaseModel):
 
 
 class RosterCounts(BaseModel):
-    """Honest counts. Every capacity figure excludes container rows."""
+    """Honest counts, at the level the board DRAWS -- see `drawn_units`. A
+    split container's own row is excluded and its rooms count instead; a
+    combined container's row counts ONCE, for a `sleeps` that now folds in
+    every leaf beneath it (kindred#2041) -- never a container and its own
+    rooms both.
+    """
 
     parties_total: int = 0
     parties_assigned: int = 0
     parties_unassigned: int = 0
-    # Active, non-container units that are PLANNING INVENTORY -- permanent
-    # staff housing is excluded and reported by units_staff_housing.
+    # Units the board draws that are PLANNING INVENTORY -- permanent staff
+    # housing is excluded and reported by units_staff_housing. A combined
+    # container's own drawn row is included here; its rooms, which never
+    # draw their own card, are not counted a second time.
     units_total: int = 0
     units_family_available: int = 0
     # Planning inventory held back from families this session -- a burst pipe,

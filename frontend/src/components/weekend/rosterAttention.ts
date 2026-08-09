@@ -54,13 +54,25 @@ const VERIFIABLE_NEEDS = [
     flag: 'needs_private_bathroom',
     label: 'Private bathroom',
     unmet: 'No private bathroom',
-    satisfiedBy: (unit: LodgingUnitRow) => unit.bathroom === 'private',
+    // NOT `unit.bathroom` — that is one room's own field, and a merged
+    // slot's `unit_code` is "" BY DESIGN (kindred#1982), so there is no
+    // single unit to read it off for exactly the placement this need exists
+    // to catch: a whole-house merge that IS the private-bathroom
+    // accommodation. `RosterParty.effective_bathroom` is the SERVER's
+    // answer across every code the placement covers
+    // (`lodging_rules.effective_bathroom`, kindred#2022) — it already
+    // credits "private" once the party's placement covers every member of a
+    // bathroom_group, container inheritance included. Reading it here means
+    // no caller changes: every `party` this function receives already
+    // carries it.
+    satisfiedBy: (_unit: LodgingUnitRow, party: RosterPartyRow) =>
+      party.effective_bathroom === 'private',
   },
   {
     flag: 'needs_power',
     label: 'Power',
     unmet: 'No power',
-    satisfiedBy: (unit: LodgingUnitRow) => unit.has_power === true,
+    satisfiedBy: (unit: LodgingUnitRow, _party: RosterPartyRow) => unit.has_power === true,
   },
 ] as const
 
@@ -72,9 +84,52 @@ export function partyBeds(party: RosterPartyRow): number {
 }
 
 /**
- * @param unit The cabin the party is assigned to, when it can be resolved.
- *   A merged slot is named for the merge rather than a unit code, so this is
- *   undefined for merges and the fit reports as unverified.
+ * The unit whose confirmed data backs this party's fit check, or undefined
+ * when there is no confirmed evidence to read.
+ *
+ * An ordinary placement resolves off `unit_code`, same as always. A merged
+ * slot's `unit_code` is "" BY DESIGN (kindred#1982) — `unitsByCode.get('')`
+ * finds nothing, which is exactly how the roster row, family card, and
+ * detail panel each lost every genuine multi-leaf merge to `unverified`
+ * even after `party.effective_bathroom` started reporting `private` for
+ * them. `unit_codes` (kindred#1940) carries every leaf the placement
+ * covers, and each leaf's OWN `is_confirmed` is real staff signal. Trusting
+ * the merge as evidence requires EVERY member to resolve AND be confirmed —
+ * one unconfirmed room is still an absence of data, the same principle the
+ * single-unit gate already enforces, not a looser one for having more
+ * rooms.
+ *
+ * The first resolved member stands in as the representative for a
+ * `VERIFIABLE_NEEDS` check that reads a raw unit field (`needs_power`).
+ * `needs_private_bathroom` never looks at it — it reads
+ * `party.effective_bathroom` — so which member gets picked never changes
+ * that verdict; `is_confirmed` is what has to hold for every one of them.
+ *
+ * The map surface (`MapUnitPopover`) does not call this: it already resolves
+ * a real, defined per-leaf unit for a merged party (drawing it once per
+ * room it occupies), so it never hit this gap.
+ */
+export function resolvePartyUnit(
+  party: RosterPartyRow,
+  unitsByCode: Map<string, LodgingUnitRow>
+): LodgingUnitRow | undefined {
+  const singleCode = party.unit_code ?? ''
+  if (singleCode.length > 0) return unitsByCode.get(singleCode)
+
+  const codes = party.unit_codes ?? []
+  if (codes.length === 0) return undefined
+  const members = codes.map((code) => unitsByCode.get(code))
+  const allConfirmed = members.every((member) => member?.is_confirmed === true)
+  return allConfirmed ? members[0] : undefined
+}
+
+/**
+ * @param unit The cabin the party is assigned to, when it can be resolved —
+ *   ordinarily via `unit_code`, or via `resolvePartyUnit` for a merge.
+ *   Undefined means no confirmed evidence, and the fit reports as
+ *   unverified regardless of what `party.effective_bathroom` says
+ *   (kindred#1982's `is_confirmed` gate: an unconfirmed cabin is an absence
+ *   of data, not evidence).
  */
 export function partyAttention(
   party: RosterPartyRow,
@@ -103,7 +158,7 @@ export function partyAttention(
 
   // Only a confirmed cabin is evidence. Anything else is an absence of data.
   if (unit?.is_confirmed === true) {
-    const unmet = asked.filter((need) => !need.satisfiedBy(unit))
+    const unmet = asked.filter((need) => !need.satisfiedBy(unit, party))
     if (unmet.length > 0) {
       return { level: 'unmet', reason: unmet.map((need) => need.unmet).join(' · ') }
     }
@@ -141,7 +196,7 @@ export function attentionSections(
 ): AttentionSection[] {
   const buckets = new Map<AttentionLevel, RosterPartyRow[]>()
   for (const party of parties) {
-    const { level } = partyAttention(party, unitsByCode.get(party.unit_code ?? ''))
+    const { level } = partyAttention(party, resolvePartyUnit(party, unitsByCode))
     const bucket = buckets.get(level)
     if (bucket) bucket.push(party)
     else buckets.set(level, [party])
@@ -181,12 +236,15 @@ export function indexUnitsByCode(units: LodgingUnitRow[]): Map<string, LodgingUn
  * matches its neighbour.
  */
 export function countUnmeasuredSpaces(units: LodgingUnitRow[]): number {
-  // Over the DRAWN units, not "every non-container row". A combined house is
-  // the space, at the whole-house capacity somebody measured; its rooms draw
-  // no card and their own missing `sleeps` describes nothing a family could
-  // be put in. `drawnUnits` resolves that top-down and is the one definition
-  // of which units get a card — deriving it here a second way is how this
-  // starts disagreeing with the board it sits above.
+  // Over the DRAWN units, not "every non-container row". A combined house
+  // draws one card, at its own registry row; its rooms draw no card. That
+  // row's `sleeps` is now read as a DELTA over its rooms, not a whole-house
+  // total (kindred#2041) — but a container with no `sleeps` of its own is
+  // still nothing this walk can call measured, since its rooms never get a
+  // card here to speak for themselves. `drawnUnits` resolves the draw level
+  // top-down and is the one definition of which units get a card — deriving
+  // it here a second way is how this starts disagreeing with the board it
+  // sits above.
   return drawnUnits(units).filter(
     (unit) =>
       unit.is_family_available === true && (unit.sleeps === null || unit.sleeps === undefined)

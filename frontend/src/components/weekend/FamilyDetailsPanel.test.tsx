@@ -196,9 +196,58 @@ describe('FamilyDetailsPanel — the content the card omits', () => {
 })
 
 describe('FamilyDetailsPanel — household identity', () => {
-  it('names the household', () => {
+  // kindred#2084: the header used to be `party.display_name` -- CampMinder's
+  // mailing_title salutation, which disagreed with the real attending-adult
+  // list on 26.7% of 2026's 382 rostered households. It now reuses
+  // FamilyCard's own attending-adults construction (`householdIdentity.ts`)
+  // instead, so staff never learn two identities for one household. The
+  // fixture's `display_name: 'Johnson'` deliberately does NOT match either
+  // adult's name, so a heading of 'Johnson' would mean the old salutation
+  // leaked back in.
+  it('names the household from its attending adults, not the salutation', () => {
     render(<FamilyDetailsPanel party={party()} year={2026} onClose={vi.fn()} />, { wrapper })
-    expect(screen.getByRole('heading', { name: 'Johnson' })).toBeInTheDocument()
+    expect(
+      screen.getByRole('heading', { name: 'Emma Johnson · David Johnson' })
+    ).toBeInTheDocument()
+    expect(screen.queryByRole('heading', { name: 'Johnson' })).not.toBeInTheDocument()
+  })
+
+  it('carries the same identity into the panel’s aria-label', () => {
+    render(<FamilyDetailsPanel party={party()} year={2026} onClose={vi.fn()} />, { wrapper })
+    expect(
+      screen.getByRole('dialog', { name: 'Emma Johnson · David Johnson details' })
+    ).toBeInTheDocument()
+  })
+
+  it('falls back to display_name when no adult has a name on file', () => {
+    render(
+      <FamilyDetailsPanel
+        party={party({ display_name: 'Household 4021', adults: [] })}
+        year={2026}
+        onClose={vi.fn()}
+      />,
+      { wrapper }
+    )
+    expect(screen.getByRole('heading', { name: 'Household 4021' })).toBeInTheDocument()
+  })
+
+  it('keeps its own display_name for a person-grain party -- it IS the identity', () => {
+    render(
+      <FamilyDetailsPanel
+        party={party({
+          grain: 'person',
+          household_cm_id: 0,
+          person_cm_id: 5001,
+          display_name: 'Priya Patel',
+          adults: [{ adult_number: 1, display_name: 'Priya Patel' }],
+          children: [],
+        })}
+        year={2026}
+        onClose={vi.fn()}
+      />,
+      { wrapper }
+    )
+    expect(screen.getByRole('heading', { name: 'Priya Patel' })).toBeInTheDocument()
   })
 
   it('lists adults with their relationships', () => {
@@ -206,6 +255,30 @@ describe('FamilyDetailsPanel — household identity', () => {
     expect(screen.getByText('Emma Johnson')).toBeInTheDocument()
     expect(screen.getByText('Mother')).toBeInTheDocument()
     expect(screen.getByText('David Johnson')).toBeInTheDocument()
+  })
+
+  it('drops a blank adult slot from the Party list -- family_camp_adults is not a fixed five', () => {
+    // Scan finding on kindred#2084: a slot with no name on file rendered as
+    // an empty <li>, the same bug the identity label and the roster row's
+    // members line already had to guard against.
+    render(
+      <FamilyDetailsPanel
+        party={party({
+          adults: [
+            { adult_number: 1, display_name: 'Emma Johnson', relationship: 'Mother' },
+            { adult_number: 2, display_name: '', relationship: '' },
+          ],
+        })}
+        year={2026}
+        onClose={vi.fn()}
+      />,
+      { wrapper }
+    )
+    // Scoped to the adults <ul> specifically -- the panel has other
+    // `role="list"` blocks (AccessibilityFlagList) whose item count isn't
+    // this test's concern, and the header now also reads "Emma Johnson"
+    // (kindred#2084), so a plain `getByText` would be ambiguous.
+    expect(screen.getByTestId('family-panel-adults').querySelectorAll('li')).toHaveLength(1)
   })
 
   it('lists children with ages and grades', () => {

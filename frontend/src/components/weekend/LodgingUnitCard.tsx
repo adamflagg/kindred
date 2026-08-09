@@ -15,7 +15,12 @@ import { useDraggable, useDroppable } from '@dnd-kit/core'
 import { Bath, Merge, Plug, Snowflake, Split, TriangleAlert, Users } from 'lucide-react'
 
 import type { LodgingUnitRow, RosterPartyRow } from '../../types/lodging'
-import { overlappingPartyKeys, slotOccupancy, type BoardSlot } from './boardLayout'
+import {
+  overlappingPartyKeys,
+  slotOccupancy,
+  wholeBuildingHolders,
+  type BoardSlot,
+} from './boardLayout'
 import { isValidMergeTarget, mergeDragId, unitDroppableId } from './dragPlacement'
 import { FamilyCard } from './FamilyCard'
 import { partyKey } from './partyKey'
@@ -218,6 +223,14 @@ export function LodgingUnitCard({
   // expansion is identical too: the slot flag and the per-card chip can never
   // answer "do these two overlap" two different ways.
   const overlappingKeys = overlappingPartyKeys(parties, units)
+
+  // #2008: read against each party's OWN occupied leaves, not the slot's
+  // combined membership — two households splitting this card between
+  // disjoint rooms neither holds it alone, even when the CARD itself is the
+  // whole building. Computed from THIS slot's own parties, the same way
+  // `overlappingKeys` above is: the answer depends only on a party's own
+  // occupied codes, never on its neighbours in the slot.
+  const wholeBuildingKeys = wholeBuildingHolders(parties, units)
 
   // Merging is promotion to the parent, so a parentless room offers nothing
   // to promote it to — the handle is ABSENT, not merely disabled.
@@ -606,6 +619,7 @@ export function LodgingUnitCard({
               party={party}
               unit={unit}
               sharedSlot={overlappingKeys.has(partyKey(party))}
+              holdsWholeBuilding={wholeBuildingKeys.has(partyKey(party))}
               isDraggable={canPlace}
               onOpen={onOpenParty}
             />

@@ -12,8 +12,19 @@ import type {
   RosterPartyRow,
   ShareEligibilityValue,
   SharePreferenceValue,
+  ShareRequest,
 } from '../../types/lodging'
-import { AREA_HUES, areaTokens, buildBoard, countBoardSlots, slotOccupancy } from './boardLayout'
+import {
+  answersConflictDetail,
+  AREA_HUES,
+  areaTokens,
+  buildBoard,
+  countBoardSlots,
+  SHARE_WORDING,
+  slotOccupancy,
+  wholeBuildingHolders,
+} from './boardLayout'
+import { partyKey } from './partyKey'
 
 function unit(overrides: Partial<LodgingUnitRow> = {}): LodgingUnitRow {
   return {
@@ -771,6 +782,111 @@ describe('buildBoard — consent flagging on ELIGIBILITY, not the gate', () => {
   })
 })
 
+describe('answersConflictDetail — which two answers disagreed, and which one won (kindred#2083)', () => {
+  /** A minimal share block, defaulting to no conflict. */
+  function shareBlock(overrides: Partial<ShareRequest> = {}): ShareRequest {
+    return {
+      preference: 'unknown',
+      proximity: [],
+      request_text: '',
+      needs_resolution: false,
+      eligibility: 'unknown',
+      eligibility_source: 'none',
+      answers_conflict: false,
+      ...overrides,
+    }
+  }
+
+  it('says nothing when there is no conflict', () => {
+    expect(answersConflictDetail(shareBlock({ answers_conflict: false }))).toBeNull()
+  })
+
+  it('says nothing for a party with no share block at all — an adult weekend guest', () => {
+    // Adult weekends carry no share question (_build_person_parties attaches
+    // no share data), so there is nothing here to disagree about.
+    expect(answersConflictDetail(undefined)).toBeNull()
+  })
+
+  it('names the registration answer, the form answer, and that the form wins', () => {
+    // Measured against production 2026 data: all 16 conflicting households
+    // resolved with `eligibility_source: 'form'` — DeriveShareEligibility only
+    // ever sets `answers_conflict` true on that branch, so `eligibility` here
+    // already IS the form's own verdict, not a re-derivation of it.
+    const detail = answersConflictDetail(
+      shareBlock({
+        preference: 'no_share',
+        eligibility: 'open',
+        eligibility_source: 'form',
+        answers_conflict: true,
+      })
+    )
+    expect(detail).not.toBeNull()
+    expect(detail).toMatch(/regist.*will not share/i)
+    expect(detail).toMatch(/form.*open to sharing/i)
+    expect(detail).toMatch(/form/i)
+  })
+
+  it('reuses the ONE "did not request sharing" wording for a form decline, never "declined"', () => {
+    // SHARE_WORDING is defined once specifically so the slot flag, the card
+    // chip, and this tooltip cannot drift into three different claims about a
+    // form with no refusal option.
+    const detail = answersConflictDetail(
+      shareBlock({
+        preference: 'yes_share',
+        eligibility: 'declined',
+        eligibility_source: 'form',
+        answers_conflict: true,
+      })
+    )
+    expect(detail).toContain(SHARE_WORDING.declined)
+    expect(detail).not.toMatch(/\bdeclined\b/i)
+  })
+
+  it('names a named-partner form answer distinctly from an open one', () => {
+    const detail = answersConflictDetail(
+      shareBlock({
+        preference: 'no_share',
+        eligibility: 'named',
+        eligibility_source: 'form',
+        answers_conflict: true,
+      })
+    )
+    expect(detail).toMatch(/named/i)
+  })
+
+  it('never attributes the resolved answer to the form when eligibility_source says otherwise', () => {
+    // DeriveShareEligibility (Go, lodging_requests.go) only ever sets
+    // `answers_conflict` true on its form-answered branch -- measured on 2026
+    // production, all 16 conflicting rows carry `eligibility_source: 'form'`.
+    // This reads the field rather than assuming it, so a future Go change or
+    // a stale mid-recompute row can never misattribute a registration-only
+    // verdict to a form the household may not have even returned.
+    const detail = answersConflictDetail(
+      shareBlock({
+        preference: 'no_share',
+        eligibility: 'open',
+        eligibility_source: 'registration',
+        answers_conflict: true,
+      })
+    )
+    expect(detail).not.toBeNull()
+    expect(detail).not.toMatch(/Family Camp form/i)
+    expect(detail).toMatch(/open to sharing/)
+  })
+
+  it('never crashes on an unrecognised preference or eligibility value', () => {
+    // Same guard philosophy as `SharePreferenceChip`: a payload ahead of a
+    // type regen must degrade, not throw and take the whole card with it.
+    expect(() =>
+      answersConflictDetail({
+        ...shareBlock({ answers_conflict: true }),
+        preference: 'bogus' as unknown as SharePreferenceValue,
+        eligibility: 'bogus' as unknown as ShareEligibilityValue,
+      })
+    ).not.toThrow()
+  })
+})
+
 describe('buildBoard — area grouping and colour', () => {
   it('groups units into one section per area', () => {
     const board = buildBoard(
@@ -845,6 +961,24 @@ describe('buildBoard — area grouping and colour', () => {
       [unit(), unit({ unit_id: 'u2', code: 'ridge-1', area_code: 'NR', area_name: 'North Ridge' })]
     )
     expect(board.areas.map((area) => area.partyCount)).toEqual([2, 0])
+  })
+
+  it('counts distinct buildings the area draws — #2009', () => {
+    // Two halves of one house share a root but are DIFFERENT buildings under
+    // the immediate-parent grain ruled on #2008; a third, freestanding cabin
+    // in the same area is its own building. The halves themselves are
+    // containers and never drawn, so they add no slots of their own.
+    const units = [
+      unit({ unit_id: 'up', code: 'upstairs', is_container: true }),
+      unit({ unit_id: 'down', code: 'downstairs', is_container: true }),
+      unit({ code: 'up-r1', parent_code: 'upstairs' }),
+      unit({ unit_id: 'u2', code: 'up-r2', parent_code: 'upstairs' }),
+      unit({ unit_id: 'u3', code: 'down-r1', parent_code: 'downstairs' }),
+      unit({ unit_id: 'u4', code: 'cabin-9' }),
+    ]
+    const board = buildBoard([], units)
+    expect(board.areas[0]?.slots).toHaveLength(4)
+    expect(board.areas[0]?.buildingCount).toBe(3)
   })
 })
 
@@ -1121,5 +1255,67 @@ describe('buildBoard — consent flag follows leaf overlap, not the card (task-1
     )
     expect(board.areas[0]?.slots[0]?.consent).not.toBeNull()
     expect(board.flaggedCount).toBe(1)
+  })
+})
+
+describe("wholeBuildingHolders — #2008's placement marker, keyed by party", () => {
+  const halvedHouse = [
+    unit({ unit_id: 'up', code: 'upstairs', is_container: true }),
+    unit({ unit_id: 'down', code: 'downstairs', is_container: true }),
+    unit({ code: 'up-r1', parent_code: 'upstairs' }),
+    unit({ unit_id: 'u2', code: 'up-r2', parent_code: 'upstairs' }),
+    unit({ unit_id: 'u3', code: 'down-r1', parent_code: 'downstairs' }),
+    unit({ unit_id: 'u4', code: 'down-r2', parent_code: 'downstairs' }),
+  ]
+
+  it('marks a party whose own unit_codes cover one whole half', () => {
+    const alpha = party({
+      household_cm_id: 500001,
+      unit_code: '',
+      unit_codes: ['up-r1', 'up-r2'],
+      is_merged_slot: true,
+    })
+    expect(wholeBuildingHolders([alpha], halvedHouse)).toEqual(new Set([partyKey(alpha)]))
+  })
+
+  it('does not mark a party holding only part of a half', () => {
+    const alpha = party({ household_cm_id: 500001, unit_code: 'up-r1', unit_codes: ['up-r1'] })
+    expect(wholeBuildingHolders([alpha], halvedHouse).size).toBe(0)
+  })
+
+  it('does not mark either of two households splitting one combined house between them', () => {
+    // The Front/Back case: a combined card holding two DISJOINT households.
+    // The CARD is the whole building, but neither PARTY individually is —
+    // that is the point of the signal being about the placement, not the
+    // slot. Named at a container code that expands to every leaf via the
+    // container row itself, mirroring how a real combined-house drop names
+    // the container's own code.
+    const combinedHouse = [
+      unit({ code: 'house', is_container: true, is_combined: true }),
+      unit({ code: 'r1', parent_code: 'house' }),
+      unit({ code: 'r2', parent_code: 'house' }),
+    ]
+    const alpha = party({ household_cm_id: 500001, unit_code: 'r1', unit_codes: ['r1'] })
+    const beta = party({ household_cm_id: 500002, unit_code: 'r2', unit_codes: ['r2'] })
+    expect(wholeBuildingHolders([alpha, beta], combinedHouse).size).toBe(0)
+  })
+
+  it('marks a single party named at the combined container code covering both its rooms', () => {
+    const combinedHouse = [
+      unit({ code: 'house', is_container: true, is_combined: true }),
+      unit({ code: 'r1', parent_code: 'house' }),
+      unit({ code: 'r2', parent_code: 'house' }),
+    ]
+    const alpha = party({
+      household_cm_id: 500001,
+      unit_code: 'house',
+      unit_codes: ['house'],
+    })
+    expect(wholeBuildingHolders([alpha], combinedHouse)).toEqual(new Set([partyKey(alpha)]))
+  })
+
+  it('never marks a party alone in a freestanding room with no registry parent', () => {
+    const alpha = party({ household_cm_id: 500001, unit_code: 'cedar-1', unit_codes: ['cedar-1'] })
+    expect(wholeBuildingHolders([alpha], [unit()]).size).toBe(0)
   })
 })
