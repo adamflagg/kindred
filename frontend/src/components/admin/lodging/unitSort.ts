@@ -2,7 +2,14 @@
  * Unit table ordering.
  *
  * Area is the OUTER ordering — staff think about the site by zone, and a flat
- * 93-row list loses that. The chosen column then sorts within each zone.
+ * 93-row list loses that. `sortUnits` below is the comparator for one SIBLING
+ * SET — this file no longer flattens a whole zone with it. Since #2082 the
+ * zone itself renders in TREE order (`flattenUnitTree` in `./unitTree`): a
+ * parent's row immediately followed by its own subtree, and this comparator
+ * only orders a building's own rooms among themselves, or a zone's root-level
+ * buildings among themselves. Sorting a whole zone flat and indenting
+ * whatever came out was ruled out — it is the one way to draw a room
+ * indented under a building's row that does not actually contain it.
  *
  * `sleeps === 0` means UNKNOWN (PocketBase stores an unset number as 0), so it
  * sorts last in BOTH directions. Treating it as the smallest number would put
