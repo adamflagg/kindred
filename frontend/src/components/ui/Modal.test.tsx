@@ -1,5 +1,5 @@
 import { render, screen, fireEvent } from '@testing-library/react'
-import { describe, it, expect, vi } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { Modal } from './Modal'
 
 describe('Modal', () => {
@@ -355,6 +355,164 @@ describe('Modal', () => {
 
       const dialog = screen.getByRole('dialog')
       expect(dialog).toHaveClass('z-[100]')
+    })
+  })
+
+  describe('focus management', () => {
+    it('moves focus inside the dialog when it opens', () => {
+      render(
+        <Modal isOpen={true} onClose={() => {}} title="Focus Test">
+          <input placeholder="First field" />
+        </Modal>
+      )
+
+      const dialog = screen.getByRole('dialog')
+      expect(dialog.contains(document.activeElement)).toBe(true)
+    })
+
+    it('restores focus to the previously focused element when the dialog closes', () => {
+      const trigger = document.createElement('button')
+      trigger.textContent = 'Open modal'
+      document.body.appendChild(trigger)
+      trigger.focus()
+      expect(document.activeElement).toBe(trigger)
+
+      const { rerender } = render(
+        <Modal isOpen={true} onClose={() => {}}>
+          <p>Modal content</p>
+        </Modal>
+      )
+      expect(document.activeElement).not.toBe(trigger)
+
+      rerender(
+        <Modal isOpen={false} onClose={() => {}}>
+          <p>Modal content</p>
+        </Modal>
+      )
+
+      expect(document.activeElement).toBe(trigger)
+      trigger.remove()
+    })
+
+    it('Tab wraps from the last focusable element to the first', () => {
+      render(
+        <Modal isOpen={true} onClose={() => {}} title="Wrap Test">
+          <input placeholder="Field" />
+          <button>Save</button>
+        </Modal>
+      )
+
+      const saveButton = screen.getByRole('button', { name: 'Save' })
+      saveButton.focus()
+      expect(document.activeElement).toBe(saveButton)
+
+      fireEvent.keyDown(document, { key: 'Tab' })
+
+      const closeButton = screen.getByRole('button', { name: /close/i })
+      expect(document.activeElement).toBe(closeButton)
+    })
+
+    it('Shift+Tab wraps from the first focusable element to the last', () => {
+      render(
+        <Modal isOpen={true} onClose={() => {}} title="Wrap Test">
+          <input placeholder="Field" />
+          <button>Save</button>
+        </Modal>
+      )
+
+      const closeButton = screen.getByRole('button', { name: /close/i })
+      closeButton.focus()
+
+      fireEvent.keyDown(document, { key: 'Tab', shiftKey: true })
+
+      const saveButton = screen.getByRole('button', { name: 'Save' })
+      expect(document.activeElement).toBe(saveButton)
+    })
+
+    it('cycles through every focusable element type, not just buttons', () => {
+      render(
+        <Modal isOpen={true} onClose={() => {}} title="All Fields">
+          <input placeholder="Text field" />
+          <select>
+            <option>A</option>
+          </select>
+          <textarea placeholder="Notes" />
+          <a href="#anchor">Link</a>
+        </Modal>
+      )
+
+      // DOM order: close button, input, select, textarea, link.
+      const closeButton = screen.getByRole('button', { name: /close/i })
+      expect(document.activeElement).toBe(closeButton)
+
+      fireEvent.keyDown(document, { key: 'Tab' })
+      expect(document.activeElement).toBe(screen.getByPlaceholderText('Text field'))
+
+      fireEvent.keyDown(document, { key: 'Tab' })
+      expect(document.activeElement?.tagName).toBe('SELECT')
+
+      fireEvent.keyDown(document, { key: 'Tab' })
+      expect(document.activeElement).toBe(screen.getByPlaceholderText('Notes'))
+
+      fireEvent.keyDown(document, { key: 'Tab' })
+      expect(document.activeElement).toBe(screen.getByRole('link', { name: 'Link' }))
+
+      // Wraps back to the close button after the last focusable element.
+      fireEvent.keyDown(document, { key: 'Tab' })
+      expect(document.activeElement).toBe(closeButton)
+    })
+  })
+
+  describe('background inert', () => {
+    // ui/Modal targets `#root` (the app's mount point in index.html) rather
+    // than document.body, since document.body also hosts the portal itself —
+    // marking body inert would make the dialog inert too. Tests recreate that
+    // element since jsdom doesn't load index.html.
+    beforeEach(() => {
+      const root = document.createElement('div')
+      root.id = 'root'
+      document.body.appendChild(root)
+    })
+
+    afterEach(() => {
+      document.getElementById('root')?.remove()
+    })
+
+    it('marks the app root inert while the dialog is open', () => {
+      render(
+        <Modal isOpen={true} onClose={() => {}}>
+          <p>Content</p>
+        </Modal>
+      )
+
+      expect(document.getElementById('root')).toHaveAttribute('inert')
+    })
+
+    it('does not mark the app root inert while the dialog is closed', () => {
+      render(
+        <Modal isOpen={false} onClose={() => {}}>
+          <p>Content</p>
+        </Modal>
+      )
+
+      expect(document.getElementById('root')).not.toHaveAttribute('inert')
+    })
+
+    it('removes inert from the app root once the dialog closes', () => {
+      const { rerender } = render(
+        <Modal isOpen={true} onClose={() => {}}>
+          <p>Content</p>
+        </Modal>
+      )
+      expect(document.getElementById('root')).toHaveAttribute('inert')
+
+      rerender(
+        <Modal isOpen={false} onClose={() => {}}>
+          <p>Content</p>
+        </Modal>
+      )
+
+      expect(document.getElementById('root')).not.toHaveAttribute('inert')
     })
   })
 

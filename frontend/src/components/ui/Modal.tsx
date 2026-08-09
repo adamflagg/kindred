@@ -1,5 +1,5 @@
 import { X } from 'lucide-react'
-import { useEffect } from 'react'
+import { useEffect, useRef } from 'react'
 import type { ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 
@@ -38,6 +38,44 @@ const sizeClasses = {
   xl: 'max-w-4xl',
   '2xl': 'max-w-6xl',
 } as const
+
+// Elements a keyboard user can Tab to inside the dialog. Modal content is
+// arbitrary (inputs, selects, textareas, links, buttons — not just buttons),
+// unlike the button-only queries in ConfirmActionPopover.tsx and
+// RequestReviewPanel.tsx, so this needs the real focusable set or form
+// fields get silently stranded outside the trap.
+const FOCUSABLE_SELECTOR = [
+  'a[href]',
+  'button:not([disabled])',
+  'textarea:not([disabled])',
+  'input:not([disabled])',
+  'select:not([disabled])',
+  '[tabindex]:not([tabindex="-1"])',
+].join(', ')
+
+function getFocusable(container: HTMLElement): HTMLElement[] {
+  return Array.from(container.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR))
+}
+
+// How many ui/Modal instances currently hold the app root inert. Tracked at
+// module scope, not per-instance state, so that if a second dialog ever
+// opens on top of a first, the first closing doesn't remove inert out from
+// under the second — it only comes off once nothing needs it.
+let inertHolders = 0
+
+function acquireBackgroundInert() {
+  inertHolders += 1
+  if (inertHolders === 1) {
+    document.getElementById('root')?.setAttribute('inert', '')
+  }
+}
+
+function releaseBackgroundInert() {
+  inertHolders = Math.max(0, inertHolders - 1)
+  if (inertHolders === 0) {
+    document.getElementById('root')?.removeAttribute('inert')
+  }
+}
 
 /**
  * Shared modal component for consistent modal styling across the app.
@@ -78,17 +116,57 @@ export function Modal({
   backdropInsetRight,
   headerOnDark = false,
 }: ModalProps) {
+  const contentRef = useRef<HTMLDivElement>(null)
+  const previouslyFocusedRef = useRef<HTMLElement | null>(null)
+
   useEffect(() => {
     if (!isOpen) return
 
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
         onClose()
+        return
+      }
+      // Manual cycling (not letting the browser's native Tab handling run)
+      // matches ConfirmActionPopover.tsx and RequestReviewPanel.tsx's
+      // existing pattern in this repo — and jsdom doesn't implement native
+      // Tab focus movement at all, so tests depend on it too.
+      if (e.key === 'Tab') {
+        const focusable = contentRef.current ? getFocusable(contentRef.current) : []
+        if (focusable.length === 0) return
+        e.preventDefault()
+        const idx = focusable.indexOf(document.activeElement as HTMLElement)
+        if (e.shiftKey) {
+          focusable[idx <= 0 ? focusable.length - 1 : idx - 1]?.focus()
+        } else {
+          focusable[idx >= focusable.length - 1 ? 0 : idx + 1]?.focus()
+        }
       }
     }
     document.addEventListener('keydown', handleKeyDown)
     return () => document.removeEventListener('keydown', handleKeyDown)
   }, [isOpen, onClose])
+
+  // Initial focus, background inert, and focus restoration on close. Kept
+  // separate from the keydown effect above — this one only needs to run on
+  // open/close transitions ([isOpen]), not on every render where a caller
+  // passes a new onClose identity.
+  useEffect(() => {
+    if (!isOpen) return
+
+    previouslyFocusedRef.current = document.activeElement as HTMLElement | null
+    acquireBackgroundInert()
+
+    const container = contentRef.current
+    const focusable = container ? getFocusable(container) : []
+    ;(focusable[0] ?? container)?.focus()
+
+    return () => {
+      releaseBackgroundInert()
+      previouslyFocusedRef.current?.focus()
+      previouslyFocusedRef.current = null
+    }
+  }, [isOpen])
 
   if (!isOpen) return null
 
@@ -129,7 +207,11 @@ export function Modal({
           click-only by design, which is why it and this rule are exempted here but
           not elsewhere in this wave. */}
       <div
+        ref={contentRef}
         data-testid="modal-content"
+        // -1: not a natural Tab stop, only a JS-focus fallback for the rare
+        // dialog with no focusable content of its own.
+        tabIndex={-1}
         className={`bg-card relative overflow-hidden rounded-2xl ${
           // A dark header slot paints its own chrome to the card's edge, and a
           // light 1px ring around it reads as a white outline against the
