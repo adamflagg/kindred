@@ -199,14 +199,18 @@ describe('LodgingUnitCard', () => {
     expect(screen.getByText('1 family did not request sharing')).toBeInTheDocument()
   })
 
-  it('keeps an empty unit dashed and washed out', () => {
-    // Pre-existing behaviour, preserved through the ordered-switch refactor
-    // below rather than displaced by it.
+  it('keeps an empty unit dashed and forest-tinted (#2093)', () => {
+    // Owner ruling 2026-08-09: HIGHLIGHT an open space with a low-saturation
+    // forest tint. The grey `bg-muted/25` wash this used to carry read as
+    // "deactivated" and is retired in favour of `bg-primary/10` — `--primary`
+    // IS the board's forest hue (index.css), just at resting-state strength
+    // rather than the drop target's `bg-primary/5` accent.
     const { container } = render(
       <LodgingUnitCard slot={slot()} hue="hsl(160 45% 42%)" onOpenParty={vi.fn()} />
     )
     const card = container.querySelector('[data-unit-card]')
-    expect(card).toHaveClass('bg-muted/25')
+    expect(card).toHaveClass('bg-primary/10')
+    expect(card).not.toHaveClass('bg-muted/25')
     expect(card).toHaveClass('border-dashed')
   })
 
@@ -848,21 +852,69 @@ describe('LodgingUnitCard — the shared-space mark (#2091)', () => {
   })
 
   it('drops the empty-room background wash under an active drop target, so the two never race', () => {
-    // `.bg-muted/25` (the dashed wash) and `.bg-primary/5` (the drop-target
-    // wash) both set `background-color` — a `toHaveClass('border-dashed')`
-    // check alone (the test above) cannot see this, because jsdom parses no
-    // Tailwind and a class string proves nothing about which declaration a
-    // real browser's cascade would pick. This is the same pairing the file's
-    // own top-of-diff comment names as the SECOND byte-offset race this
-    // refactor exists to kill (the first being `.border-amber-400` vs
-    // `.border-primary`) — this is the case of it that mattered for a real,
-    // high-frequency gesture: hovering a family drag over an empty room.
+    // `.bg-primary/10` (the open-space tint, #2093) and `.bg-primary/5` (the
+    // drop-target wash) both set `background-color` — a
+    // `toHaveClass('border-dashed')` check alone (the test above) cannot see
+    // this, because jsdom parses no Tailwind and a class string proves
+    // nothing about which declaration a real browser's cascade would pick.
+    // This is the same pairing the file's own top-of-diff comment names as
+    // the SECOND byte-offset race this refactor exists to kill (the first
+    // being `.border-amber-400` vs `.border-primary`) — this is the case of
+    // it that mattered for a real, high-frequency gesture: hovering a family
+    // drag over an empty room.
     overDroppableId = unitDroppableId('cedar-1')
     const { container } = render(
       <LodgingUnitCard slot={slot()} hue={hue} canPlace onOpenParty={vi.fn()} />
     )
     expect(card(container)).toHaveClass('bg-primary/5')
+    expect(card(container)).not.toHaveClass('bg-primary/10')
     expect(card(container)).not.toHaveClass('bg-muted/25')
+  })
+})
+
+describe('LodgingUnitCard — the open-space title marker (#2093)', () => {
+  // Owner ruling 2026-08-09: the master housing sheet marks an open space
+  // with a yellow fill on its title, and the request was to HIGHLIGHT, never
+  // dim, the to-do list. `RING_CLASSES` stays untouched — `color`/`font-weight`
+  // on the child `<h3>` doesn't compete with `border-color`/`box-shadow`, so
+  // this is additive exactly like `dashed` itself. Gated on `dashedWashActive`
+  // rather than bare `dashed` for the same reason the background wash is: the
+  // forest tint is a RESTING-STATE signal only, suppressed the instant this
+  // card becomes an active drop target.
+  const hue = 'hsl(160 45% 42%)'
+
+  it('spends the forest tint on an open unit title — colour AND weight, not dimmed', () => {
+    render(<LodgingUnitCard slot={slot()} hue={hue} onOpenParty={vi.fn()} />)
+    const title = screen.getByText('Cedar 1')
+    expect(title).toHaveClass('text-primary')
+    expect(title).toHaveClass('font-bold')
+    expect(title).not.toHaveClass('text-foreground')
+    expect(title).not.toHaveClass('font-semibold')
+    expect(title).not.toHaveClass('text-muted-foreground')
+    expect(title).not.toHaveClass('opacity-40')
+  })
+
+  it('leaves an occupied unit title in the plain foreground weight', () => {
+    render(<LodgingUnitCard slot={slot({ parties: [party()] })} hue={hue} onOpenParty={vi.fn()} />)
+    const title = screen.getByText('Cedar 1')
+    expect(title).toHaveClass('text-foreground')
+    expect(title).toHaveClass('font-semibold')
+    expect(title).not.toHaveClass('text-primary')
+    expect(title).not.toHaveClass('font-bold')
+  })
+
+  it('suppresses the open-space title emphasis while this card is an active drop target', () => {
+    // Mid-drag the board is answering a different question — this is the
+    // title-side half of the same suppression the background wash already
+    // gets, sharing the identical `dashedWashActive` gate rather than a
+    // second, independently-derived condition that could drift from it.
+    overDroppableId = unitDroppableId('cedar-1')
+    render(<LodgingUnitCard slot={slot()} hue={hue} canPlace onOpenParty={vi.fn()} />)
+    const title = screen.getByText('Cedar 1')
+    expect(title).not.toHaveClass('text-primary')
+    expect(title).not.toHaveClass('font-bold')
+    expect(title).toHaveClass('text-foreground')
+    expect(title).toHaveClass('font-semibold')
   })
 })
 
