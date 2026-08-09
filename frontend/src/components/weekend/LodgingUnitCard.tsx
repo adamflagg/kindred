@@ -23,6 +23,7 @@ import {
 } from './boardLayout'
 import { isValidMergeTarget, mergeDragId, unitDroppableId } from './dragPlacement'
 import { FamilyCard } from './FamilyCard'
+import { resolveRingPrecedence } from './ringPrecedence'
 import { partyKey } from './partyKey'
 import { reservationBadge, shareabilityBadge } from './unitBadges'
 import { UnitAvailabilityControl } from './UnitAvailabilityControl'
@@ -309,14 +310,11 @@ export function LodgingUnitCard({
    *      matching `LodgingMap.tsx`'s `halo` for the identical slot flag.
    *   4. plain — none of the above.
    */
-  let ringState: 'dropTarget' | 'consentFlagged' | 'shared' | 'plain' = 'plain'
-  if (isUnitOver || isMergeOver) {
-    ringState = 'dropTarget'
-  } else if (consent) {
-    ringState = 'consentFlagged'
-  } else if (isShared) {
-    ringState = 'shared'
-  }
+  const ringState = resolveRingPrecedence({
+    dropTarget: isUnitOver || isMergeOver,
+    consentFlagged: consent !== null,
+    shared: isShared,
+  })
 
   /*
    * An invalid merge target mid-drag: dims the card so a doomed drop is not

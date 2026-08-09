@@ -58,6 +58,7 @@ import {
   type Viewport,
   zoomAt,
 } from './mapViewport'
+import { resolveRingPrecedence } from './ringPrecedence'
 
 /** Served from the private repo, exactly as the logos are. */
 const MAP_IMAGE_URL = '/local/assets/camp-map.webp'
@@ -568,10 +569,20 @@ export function LodgingMap({ parties, units, year }: LodgingMapProps) {
               if (!many && unmeasured) summary += ' · capacity unknown'
               // Amber SUPERSEDES the shared ring rather than competing with it:
               // a consent flag only ever exists on a shared room, so the two
-              // can never both need the same ring.
+              // can never both need the same ring. The ORDERING is
+              // `resolveRingPrecedence` (kindred#2136), shared with
+              // `LodgingUnitCard.tsx`'s `ringState` — the map has no drag, so
+              // `dropTarget` is always `false` here and this can only ever
+              // land on `consentFlagged`, `shared` or `plain`.
+              const ringState = resolveRingPrecedence({
+                dropTarget: false,
+                consentFlagged: flagged > 0,
+                shared,
+              })
               let halo = '0 0 0 2px rgba(255,255,255,.95)'
-              if (flagged > 0) halo = `0 0 0 2px #fff, 0 0 0 4.5px ${CONSENT_AMBER}`
-              else if (shared) halo = `0 0 0 2px #fff, 0 0 0 4.5px ${hue}`
+              if (ringState === 'consentFlagged')
+                halo = `0 0 0 2px #fff, 0 0 0 4.5px ${CONSENT_AMBER}`
+              else if (ringState === 'shared') halo = `0 0 0 2px #fff, 0 0 0 4.5px ${hue}`
               return (
                 // Deliberately a plain clickable div, not role="button": see the ACCESSIBILITY note
                 // at the top of this file. A role this mark cannot honour with real keyboard/focus
