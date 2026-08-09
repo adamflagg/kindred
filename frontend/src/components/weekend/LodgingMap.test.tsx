@@ -4,6 +4,8 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import { readFileSync } from 'fs'
+import { resolve } from 'path'
 import type { ReactNode } from 'react'
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -1061,5 +1063,48 @@ describe('LodgingMap — the actual PHI fetch (kindred#2139)', () => {
     await userEvent.click(screen.getByRole('button', { name: /Priya Patel/ }))
     expect(screen.getByTestId('family-details-panel')).toBeInTheDocument()
     expect(mockFetchHouseholdMedical).not.toHaveBeenCalled()
+  })
+})
+
+/**
+ * kindred#2183 — the owner ruled the map a REFERENCE surface: "staff have
+ * informed me they will only be looking at the map as a data point and not
+ * bunking on it." Placement was specified for it and never built, but the
+ * scaffolding survived — a `dropTarget` threaded into the ring resolver only
+ * to be hard-set `false`, under a comment saying it could only ever be false.
+ *
+ * A source read, deliberately: the ring these lines produced was already
+ * correct, so removing them changes no rendered output and no behavioural
+ * test can catch them coming back. What must not come back is the SCAFFOLDING
+ * — the next person to add a placement affordance here should have to argue
+ * with this test and the ruling behind it, not find the wiring half-done and
+ * assume it was meant to be finished.
+ */
+describe('LodgingMap — no placement scaffolding (kindred#2183)', () => {
+  const source = readFileSync(resolve(__dirname, 'LodgingMap.tsx'), 'utf-8')
+
+  // ANCHORED ON THE SYNTAX OF PASSING THEM — an object key (`dropTarget:`) and
+  // a JSX prop (`canPlace=`) — not on the bare identifiers. The file's own
+  // header has to be able to NAME what was removed and why, and a guard that
+  // fired on the prose would force the explanation out of the file it explains.
+  it('imports no drag-and-drop machinery', () => {
+    expect(source).not.toMatch(/@dnd-kit/)
+  })
+
+  it('does not thread a drop target through the ring resolver', () => {
+    expect(source).not.toMatch(/dropTarget\s*:/)
+  })
+
+  it('does not thread a placement permission into the unplaced queue', () => {
+    expect(source).not.toMatch(/canPlace\s*=/)
+  })
+
+  it('still keeps the empty-rooms checkbox, the surface’s last keyboard control', () => {
+    // Paired with the removals above on purpose. "Strip what placement left
+    // behind" is one edit away from "strip the controls", and this one is not
+    // a placement affordance — it is the only thing on the map a keyboard can
+    // reach at all.
+    render(<LodgingMap parties={[]} units={UNITS} year={2026} />, { wrapper })
+    expect(screen.getByRole('checkbox', { name: /Empty rooms/i })).toBeInTheDocument()
   })
 })
