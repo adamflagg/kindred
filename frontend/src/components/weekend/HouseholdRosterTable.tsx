@@ -27,6 +27,14 @@ export interface HouseholdRosterTableProps {
   units?: LodgingUnitRow[]
   /** Threads through to `FamilyDetailsPanel`'s medical-narrative fetch (kindred#1996). */
   year: number
+  /**
+   * The weekend this roster belongs to, so a household enrolled in TWO
+   * weekends (kindred#2138) can be told apart from one that merely refetched.
+   * Optional and defaulting to 0 for the same reason `LodgingBoard`'s prop
+   * of the same name does: most tests render one weekend's roster and never
+   * exercise a session change.
+   */
+  sessionCmId?: number
 }
 
 const HEAD_CELL = 'text-muted-foreground pb-2 text-xs font-bold tracking-wider uppercase'
@@ -43,7 +51,12 @@ function hasAnyRequest(parties: RosterPartyRow[]): boolean {
   })
 }
 
-export function HouseholdRosterTable({ parties, units = [], year }: HouseholdRosterTableProps) {
+export function HouseholdRosterTable({
+  parties,
+  units = [],
+  year,
+  sessionCmId = 0,
+}: HouseholdRosterTableProps) {
   // A third `FamilyDetailsPanel` callsite (kindred#1996), wired exactly as
   // `LodgingBoard` and `LodgingMap` wire the other two — same `selected` /
   // `requestClose` pair, same `useDismissOnDeadSpace` hookup. The row itself
@@ -61,6 +74,28 @@ export function HouseholdRosterTable({ parties, units = [], year }: HouseholdRos
     setSelected(null)
     setRequestClose(false)
   }, [])
+
+  // RESET, not filtered (kindred#2138) — the owner's ruling was explicit: a
+  // session change closes the panel outright, it does not merely stop
+  // rendering it while `selected` quietly survives underneath. #2062's
+  // `panelParty` guard below only catches a household that drops OUT of
+  // `parties`; a household enrolled in two weekends never does that, since
+  // `partyKey` (deliberately — see partyKey.ts) carries no session
+  // dimension, so the same key still matches after the switch and the panel
+  // would keep rendering the PREVIOUS weekend's placement data.
+  //
+  // This is React's own "storing information from previous renders"
+  // pattern: compare this render's prop against the last one seen, and if
+  // it moved, correct the state right here in the render body rather than
+  // in an Effect. Calling `setSelected` conditionally during render does not
+  // add a paint the way an Effect would — React discards this render's
+  // output and re-renders synchronously with the corrected state before
+  // anything commits, so nobody ever sees the stale mid-render frame.
+  const [lastSessionCmId, setLastSessionCmId] = useState(sessionCmId)
+  if (sessionCmId !== lastSessionCmId) {
+    setLastSessionCmId(sessionCmId)
+    setSelected(null)
+  }
 
   // DERIVED, not effect-cleared (kindred#2062). A weekend switch re-renders
   // this table with a different `parties` prop but never unmounts it, so a

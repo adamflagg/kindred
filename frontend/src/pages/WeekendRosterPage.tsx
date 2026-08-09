@@ -394,10 +394,15 @@ export default function WeekendRosterPage() {
                 aria-labelledby="weekend-tab-housing"
                 hidden={view !== 'housing'}
               >
-                {/* The board takes the scenario, the weekend and the manage
-                    permission because it WRITES now (#1989) — main's note that
-                    drag placement "is what earns plumbing it back down" is
-                    this. The map still takes only what it renders.
+                {/* The board takes the scenario AND the manage permission
+                    because it WRITES now (#1989) — main's note that drag
+                    placement "is what earns plumbing it back down" is this.
+                    The map and roster table still take neither; they only
+                    read. All three take `sessionCmId` regardless (#2138) —
+                    every surface needs to know which weekend it is showing
+                    so a party panel left open across a weekend switch can
+                    be told apart from one that merely refetched the same
+                    household.
 
                     Each is its own Suspense boundary, not one wrapping the
                     whole panel: `Activity` keeps a previously-opened tab
@@ -432,7 +437,12 @@ export default function WeekendRosterPage() {
                 {openedViews.has('roster') && (
                   <Activity mode={view === 'roster' ? 'visible' : 'hidden'}>
                     <ErrorBoundary>
-                      <HouseholdRosterTable parties={parties} units={units} year={currentYear} />
+                      <HouseholdRosterTable
+                        parties={parties}
+                        units={units}
+                        year={currentYear}
+                        sessionCmId={selectedCmId ?? 0}
+                      />
                     </ErrorBoundary>
                   </Activity>
                 )}
@@ -448,7 +458,12 @@ export default function WeekendRosterPage() {
                   <Activity mode={view === 'map' ? 'visible' : 'hidden'}>
                     <ErrorBoundary>
                       <Suspense fallback={<TabLoadingFallback />}>
-                        <LodgingMap parties={parties} units={units} year={currentYear} />
+                        <LodgingMap
+                          parties={parties}
+                          units={units}
+                          year={currentYear}
+                          sessionCmId={selectedCmId ?? 0}
+                        />
                       </Suspense>
                     </ErrorBoundary>
                   </Activity>
