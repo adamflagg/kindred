@@ -1326,6 +1326,183 @@ export type ForecastResponse = {
 }
 
 /**
+ * FriendGroup
+ *
+ * One staff-authored group, with its membership resolved.
+ */
+export type FriendGroup = {
+  /**
+   * Group Id
+   */
+  group_id: string
+  /**
+   * Year
+   */
+  year: number
+  /**
+   * Session Cm Id
+   */
+  session_cm_id: number
+  /**
+   * Name
+   */
+  name?: string
+  /**
+   * Color
+   */
+  color?: string
+  /**
+   * Source
+   */
+  source?: 'staff_manual' | 'proposed'
+  /**
+   * Created By
+   */
+  created_by?: string
+  /**
+   * Members
+   */
+  members?: Array<FriendGroupMember>
+}
+
+/**
+ * FriendGroupCreateRequest
+ *
+ * Create one group for one weekend.
+ *
+ * NO `scenario`. Migration 1500000146 gives this table no scenario dimension,
+ * following `lodging_availability` rather than summer's `locked_groups`: a
+ * group records what households asked for, which is true of the weekend in
+ * every plan for it. See that migration's header for the full argument.
+ */
+export type FriendGroupCreateRequest = {
+  /**
+   * Year
+   */
+  year: number
+  /**
+   * Session Cm Id
+   */
+  session_cm_id: number
+  /**
+   * Name
+   */
+  name?: string
+  /**
+   * Color
+   */
+  color: string
+  /**
+   * Source
+   */
+  source?: 'staff_manual' | 'proposed'
+  /**
+   * Household Cm Ids
+   */
+  household_cm_ids: Array<number>
+}
+
+/**
+ * FriendGroupDeleteResponse
+ */
+export type FriendGroupDeleteResponse = {
+  /**
+   * Group Id
+   */
+  group_id: string
+  /**
+   * Deleted
+   */
+  deleted?: boolean
+}
+
+/**
+ * FriendGroupListResponse
+ */
+export type FriendGroupListResponse = {
+  /**
+   * Year
+   */
+  year: number
+  /**
+   * Session Cm Id
+   */
+  session_cm_id: number
+  /**
+   * Groups
+   */
+  groups?: Array<FriendGroup>
+}
+
+/**
+ * FriendGroupMember
+ *
+ * One household in a group.
+ *
+ * A CampMinder id, never a PocketBase id -- the repo-wide rule (CLAUDE.md
+ * §1) and what every other household-grain lodging row stores.
+ */
+export type FriendGroupMember = {
+  /**
+   * Household Cm Id
+   */
+  household_cm_id: number
+  /**
+   * Added By
+   */
+  added_by?: string
+}
+
+/**
+ * FriendGroupUpdateRequest
+ *
+ * PATCH one group. Every field is optional; omitted means untouched.
+ *
+ * The distinction that matters: `name=None` is "leave the name alone",
+ * `name=""` is "clear it, and fall back to the auto-name" -- which is what a
+ * blank input means in summer's action bar too. Collapsing the two would
+ * make a recolour silently blank the name.
+ *
+ * `None` means "leave alone" REGARDLESS of whether the field was omitted or
+ * sent explicitly as `null`. The service enforces this with
+ * `model_dump(exclude_unset=True, exclude_none=True)` -- `exclude_unset`
+ * alone is not enough, because it keys off `model_fields_set`, not the
+ * value, so an explicit `null` on the wire would otherwise survive as a
+ * write.
+ *
+ * `year` and `session_cm_id` are absent on purpose. Moving a group to
+ * another weekend is not an edit to it; the membership is a set of
+ * households enrolled in THAT weekend, and re-pointing the row would carry
+ * households that are not on the destination roster.
+ *
+ * NO TWO-HOUSEHOLD FLOOR ON THIS PATH, and its absence is load-bearing.
+ * The floor is a create-time rule -- `FriendGroupCreateRequest` keeps it --
+ * exactly as summer's is (`LockGroupActionBar` gates Create on two pending
+ * campers; `LockGroupPanel.removeMemberMutation` then deletes members with
+ * no guard at all, and `getGroupValidationIssues` reports nothing for a
+ * group under two). Owner ruling, 2026-08-09. With `min_length=2` here the
+ * member row's X button 422'd the moment a group was down to two, and the
+ * board's bulk add could half-apply: the PATCH adding households to the
+ * target succeeded while the PATCH draining their old group was rejected.
+ * Positivity and the dedupe still apply -- both are structural, unlike the
+ * floor.
+ */
+export type FriendGroupUpdateRequest = {
+  /**
+   * Name
+   */
+  name?: string | null
+  /**
+   * Color
+   */
+  color?: string | null
+  /**
+   * Household Cm Ids
+   */
+  household_cm_ids?: Array<number> | null
+}
+
+/**
  * GapItem
  *
  * A single gap entry (normalized value missing coordinates).
@@ -10146,6 +10323,137 @@ export type SetSlotMergeApiLodgingMergePutResponses = {
 
 export type SetSlotMergeApiLodgingMergePutResponse =
   SetSlotMergeApiLodgingMergePutResponses[keyof SetSlotMergeApiLodgingMergePutResponses]
+
+export type ListFriendGroupsApiLodgingFriendGroupsGetData = {
+  body?: never
+  path?: never
+  query: {
+    /**
+     * Year
+     *
+     * Year of the weekend
+     */
+    year: number
+    /**
+     * Session Cm Id
+     *
+     * CampMinder id of the weekend session
+     */
+    session_cm_id: number
+  }
+  url: '/api/lodging/friend-groups'
+}
+
+export type ListFriendGroupsApiLodgingFriendGroupsGetErrors = {
+  /**
+   * Validation Error
+   */
+  422: HttpValidationError
+}
+
+export type ListFriendGroupsApiLodgingFriendGroupsGetError =
+  ListFriendGroupsApiLodgingFriendGroupsGetErrors[keyof ListFriendGroupsApiLodgingFriendGroupsGetErrors]
+
+export type ListFriendGroupsApiLodgingFriendGroupsGetResponses = {
+  /**
+   * Successful Response
+   */
+  200: FriendGroupListResponse
+}
+
+export type ListFriendGroupsApiLodgingFriendGroupsGetResponse =
+  ListFriendGroupsApiLodgingFriendGroupsGetResponses[keyof ListFriendGroupsApiLodgingFriendGroupsGetResponses]
+
+export type CreateFriendGroupApiLodgingFriendGroupsPostData = {
+  body: FriendGroupCreateRequest
+  path?: never
+  query?: never
+  url: '/api/lodging/friend-groups'
+}
+
+export type CreateFriendGroupApiLodgingFriendGroupsPostErrors = {
+  /**
+   * Validation Error
+   */
+  422: HttpValidationError
+}
+
+export type CreateFriendGroupApiLodgingFriendGroupsPostError =
+  CreateFriendGroupApiLodgingFriendGroupsPostErrors[keyof CreateFriendGroupApiLodgingFriendGroupsPostErrors]
+
+export type CreateFriendGroupApiLodgingFriendGroupsPostResponses = {
+  /**
+   * Successful Response
+   */
+  200: FriendGroup
+}
+
+export type CreateFriendGroupApiLodgingFriendGroupsPostResponse =
+  CreateFriendGroupApiLodgingFriendGroupsPostResponses[keyof CreateFriendGroupApiLodgingFriendGroupsPostResponses]
+
+export type DeleteFriendGroupApiLodgingFriendGroupsGroupIdDeleteData = {
+  body?: never
+  path: {
+    /**
+     * Group Id
+     */
+    group_id: string
+  }
+  query?: never
+  url: '/api/lodging/friend-groups/{group_id}'
+}
+
+export type DeleteFriendGroupApiLodgingFriendGroupsGroupIdDeleteErrors = {
+  /**
+   * Validation Error
+   */
+  422: HttpValidationError
+}
+
+export type DeleteFriendGroupApiLodgingFriendGroupsGroupIdDeleteError =
+  DeleteFriendGroupApiLodgingFriendGroupsGroupIdDeleteErrors[keyof DeleteFriendGroupApiLodgingFriendGroupsGroupIdDeleteErrors]
+
+export type DeleteFriendGroupApiLodgingFriendGroupsGroupIdDeleteResponses = {
+  /**
+   * Successful Response
+   */
+  200: FriendGroupDeleteResponse
+}
+
+export type DeleteFriendGroupApiLodgingFriendGroupsGroupIdDeleteResponse =
+  DeleteFriendGroupApiLodgingFriendGroupsGroupIdDeleteResponses[keyof DeleteFriendGroupApiLodgingFriendGroupsGroupIdDeleteResponses]
+
+export type UpdateFriendGroupApiLodgingFriendGroupsGroupIdPatchData = {
+  body: FriendGroupUpdateRequest
+  path: {
+    /**
+     * Group Id
+     */
+    group_id: string
+  }
+  query?: never
+  url: '/api/lodging/friend-groups/{group_id}'
+}
+
+export type UpdateFriendGroupApiLodgingFriendGroupsGroupIdPatchErrors = {
+  /**
+   * Validation Error
+   */
+  422: HttpValidationError
+}
+
+export type UpdateFriendGroupApiLodgingFriendGroupsGroupIdPatchError =
+  UpdateFriendGroupApiLodgingFriendGroupsGroupIdPatchErrors[keyof UpdateFriendGroupApiLodgingFriendGroupsGroupIdPatchErrors]
+
+export type UpdateFriendGroupApiLodgingFriendGroupsGroupIdPatchResponses = {
+  /**
+   * Successful Response
+   */
+  200: FriendGroup
+}
+
+export type UpdateFriendGroupApiLodgingFriendGroupsGroupIdPatchResponse =
+  UpdateFriendGroupApiLodgingFriendGroupsGroupIdPatchResponses[keyof UpdateFriendGroupApiLodgingFriendGroupsGroupIdPatchResponses]
 
 export type GetGapsApiGeoGapsGetData = {
   body?: never
