@@ -205,7 +205,16 @@ def _household_display_name(household: Any, fallback_cm_id: int) -> str:
 
 def _last_token(value: str) -> str:
     """Last whitespace-delimited token. The one heuristic in the chain, reached
-    only when no enrolled child on the party carries a last_name."""
+    only when no enrolled child on the party carries a last_name.
+
+    For a household its input is the MAILING TITLE, not a name, so its answer
+    is wrong whenever the title does not end in the surname -- "The Chen
+    Family" files under F. Pinned rather than fixed
+    (`test_last_resort_yields_family_for_a_real_mailing_title`), and safe to
+    leave that way: every household party has an enrolled child by
+    construction, and measured against production ZERO rostered households in
+    any year 2022-2026 lack a child `last_name`, so nothing reaches this rung.
+    """
     parts = value.split()
     return parts[-1] if parts else ""
 

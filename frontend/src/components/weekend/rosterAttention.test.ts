@@ -319,17 +319,65 @@ describe('countUnmeasuredSpaces', () => {
     ).toBe(1)
   })
 
-  it('drops the unmeasured rooms of a MEASURED combined house', () => {
-    // The real Doctor's House shape: the container carries the only recorded
-    // capacity and its two rooms carry none. Once it draws as one card there
-    // is nothing unmeasured on the board at all.
+  it('counts a combined house whose ROOMS are unmeasured, even when the house is not', () => {
+    // This asserted 0 until kindred#1945's PR, on the reading that the
+    // container's own 6 was the house's capacity. It is not: kindred#2041
+    // ruled a container's `sleeps` is a DELTA over its rooms — the futon on
+    // the landing — so 6 plus two unmeasured rooms is an unmeasured house.
+    //
+    // THE MIRROR of `_effective_sleeps` in
+    // `api/services/lodging_roster_service.py`, which returns None for exactly
+    // this shape. `WeekendStatsBar` prints the backend's
+    // `beds_family_available` on the same line as this count, so if the two
+    // disagree the bar reports beds for a house it simultaneously calls
+    // measured.
     expect(
       countUnmeasuredSpaces([
         unit({ code: 'house', is_container: true, is_combined: true, sleeps: 6 }),
         unit({ code: 'r1', parent_code: 'house', sleeps: null }),
         unit({ code: 'r2', parent_code: 'house', sleeps: null }),
       ])
+    ).toBe(1)
+  })
+
+  it('does NOT count a combined house whose rooms all carry numbers', () => {
+    // The regression guard for the case above: walking to the leaves must not
+    // start calling every combined house unmeasured. Also the 14-of-15
+    // production shape — no common-space furniture recorded on the house
+    // itself, which the delta rule reads as a real zero.
+    expect(
+      countUnmeasuredSpaces([
+        unit({ code: 'house', is_container: true, is_combined: true, sleeps: null }),
+        unit({ code: 'r1', parent_code: 'house', sleeps: 2 }),
+        unit({ code: 'r2', parent_code: 'house', sleeps: 2 }),
+      ])
     ).toBe(0)
+  })
+
+  it('ignores an INACTIVE room when judging its house', () => {
+    // Active leaves only, the same qualifier `_effective_sleeps` applies. A
+    // retired room nobody will ever measure must not park its whole house in
+    // the unmeasured list permanently.
+    expect(
+      countUnmeasuredSpaces([
+        unit({ code: 'house', is_container: true, is_combined: true, sleeps: 6 }),
+        unit({ code: 'r1', parent_code: 'house', sleeps: 4 }),
+        unit({ code: 'r2', parent_code: 'house', sleeps: null, is_active: false }),
+      ])
+    ).toBe(0)
+  })
+
+  it('counts a combined house with no figure of its own and no rooms beneath it', () => {
+    // The degenerate case, and the one worth writing a test for because the
+    // obvious implementation gets it wrong: summing an absent delta over an
+    // empty room list yields 0, i.e. the confident claim "this house sleeps
+    // nobody". "Unset container reads as a delta of zero" holds only because
+    // its rooms supply the rest of the answer.
+    expect(
+      countUnmeasuredSpaces([
+        unit({ code: 'house', is_container: true, is_combined: true, sleeps: null }),
+      ])
+    ).toBe(1)
   })
 
   it('still counts the rooms of a SPLIT house, and never the house', () => {

@@ -20,7 +20,7 @@
  * every constrained family on the strength of unset defaults.
  */
 import type { LodgingUnitRow, RosterPartyRow } from '../../types/lodging'
-import { drawnUnits } from './unitLevel'
+import { coveredCodes, drawnUnits } from './unitLevel'
 
 /** Ordered most urgent first. The order of this array IS the section order. */
 export const ATTENTION_ORDER = ['required', 'unmet', 'unplaced', 'unverified', 'settled'] as const
@@ -200,16 +200,59 @@ export function indexUnitsByCode(units: LodgingUnitRow[]): Map<string, LodgingUn
  */
 export function countUnmeasuredSpaces(units: LodgingUnitRow[]): number {
   // Over the DRAWN units, not "every non-container row". A combined house
-  // draws one card, at its own registry row; its rooms draw no card. That
-  // row's `sleeps` is now read as a DELTA over its rooms, not a whole-house
-  // total (kindred#2041) — but a container with no `sleeps` of its own is
-  // still nothing this walk can call measured, since its rooms never get a
-  // card here to speak for themselves. `drawnUnits` resolves the draw level
-  // top-down and is the one definition of which units get a card — deriving
-  // it here a second way is how this starts disagreeing with the board it
-  // sits above.
+  // draws one card, at its own registry row; its rooms draw no card.
+  // `drawnUnits` resolves the draw level top-down and is the one definition of
+  // which units get a card — deriving it here a second way is how this starts
+  // disagreeing with the board it sits above.
+  //
+  // What "measured" MEANS is `effectiveSleeps` below, and it has to stay the
+  // mirror of the backend's (kindred#1945's PR). This used to read only the
+  // drawn row's own `sleeps`, which got both container cases wrong in opposite
+  // directions: a house whose rooms all carry numbers read as unmeasured
+  // because the house row was blank, and a house with a recorded delta read as
+  // measured even though no room beneath it had ever been counted. The backend
+  // made the second mistake too, and the two were fixed together — they cannot
+  // be allowed to disagree, because `WeekendStatsBar` prints this number on
+  // the same line as the backend's `beds_family_available`.
   return drawnUnits(units).filter(
-    (unit) =>
-      unit.is_family_available === true && (unit.sleeps === null || unit.sleeps === undefined)
+    (unit) => unit.is_family_available === true && effectiveSleeps(unit, units) === null
   ).length
+}
+
+/**
+ * A drawn unit's capacity, or `null` when nobody has measured it.
+ *
+ * THE MIRROR of `_effective_sleeps` in `api/services/lodging_roster_service.py`
+ * — that one returns the total, this returns only whether there is one, which
+ * is all this file needs. Keep the two in step.
+ *
+ * Under the kindred#2041 delta ruling a container's own `sleeps` is the beds in
+ * space belonging to no single room, so a combined house's capacity is that
+ * delta PLUS its rooms, and one unmeasured ACTIVE room leaves the whole total
+ * unknown. Inactive leaves are skipped in both directions: a retired room adds
+ * no beds and must not park its house in the unmeasured list forever.
+ *
+ * Leaves are NOT additionally filtered by inventory class, deliberately. Six
+ * active `staff_default` leaves sit under active containers in production and
+ * the backend's sum has counted their beds since kindred#2041 — a family
+ * holding the whole house holds that room too, which is what "combined" means.
+ * Gating the unknown on a narrower set than the sum reads from would let a
+ * room's beds count while its missing measurement did not.
+ */
+function effectiveSleeps(unit: LodgingUnitRow, units: LodgingUnitRow[]): number | null {
+  const own = unit.sleeps ?? null
+  if (unit.is_container !== true) return own
+
+  const byCode = new Map(units.map((row) => [row.code, row]))
+  const leaves = coveredCodes(unit, units)
+    .map((code) => byCode.get(code))
+    .filter((leaf): leaf is LodgingUnitRow => leaf !== undefined && leaf.is_active !== false)
+
+  if (leaves.some((leaf) => (leaf.sleeps ?? null) === null)) return null
+  // The degenerate case, and the one an obvious implementation gets wrong:
+  // summing an absent delta over an empty room list yields 0, i.e. the
+  // confident claim "this house sleeps nobody". "Unset container reads as a
+  // delta of zero" holds only because its rooms supply the rest of the answer.
+  if (own === null && leaves.length === 0) return null
+  return (own ?? 0) + leaves.reduce((total, leaf) => total + (leaf.sleeps ?? 0), 0)
 }
