@@ -151,7 +151,16 @@ export function sharingConflictBadge(
     // colour: the palette is committed (forest to area identity and open
     // space, amber to a share worth a look, red to over-capacity).
     className: 'bg-amber-100 text-amber-800 dark:bg-amber-950/50 dark:text-amber-300',
-    title: `Classified for one family — ${String(overlappingParties)} families are placed here`,
+    /*
+     * "SHARING a room", not "placed here", because the count is an OVERLAP and
+     * the card already carries a placement count of its own. On a leaf the two
+     * agree; on a card that is a whole building they need not — three families
+     * under it, two of them in the same room, gives 2 here beside a chip
+     * reading "3 families". Reporting the overlap as an occupancy would make
+     * the card contradict itself, and the number has to be the one that
+     * TRIGGERED the warning or the warning cannot be checked against the card.
+     */
+    title: `Classified for one family — ${String(overlappingParties)} families are sharing a room here`,
   }
 }
 

@@ -20,7 +20,7 @@ import { LodgingUnitCard } from './LodgingUnitCard'
  * never goes true here. The settled idiom (`LodgingBoard.drag.test.tsx`) is
  * to mock at the `@dnd-kit/core` boundary; this one only needs `isOver`
  * itself, controlled by `overDroppableId`, to prove the drop-target state
- * outranks the shared-space ring below. `useDraggable` stays real — the
+ * outranks the consent ring below. `useDraggable` stays real — the
  * merge-handle tests click a plain `onClick`, which does not touch it.
  */
 let overDroppableId: string | null = null
@@ -778,8 +778,8 @@ describe('LodgingUnitCard — no shared-space ring (#2179)', () => {
   })
 
   it('lets an active drop target outrank a CONSENT-flagged room too', () => {
-    // The existing "outranks the shared-space ring" test above only ever
-    // combines an active drop target with `sharedParties` (no `consent`).
+    // The "still gives an active drop target its own ring" test above only
+    // ever combines an active drop target with `sharedParties` (no `consent`).
     // Consent has its own ring (`border-amber-400`), which is what a drop
     // target actually has to fight over the shared CSS slot with here.
     overDroppableId = unitDroppableId('cedar-1')
@@ -917,7 +917,7 @@ describe('LodgingUnitCard — the one-family conflict chip (#2179)', () => {
         onOpenParty={vi.fn()}
       />
     )
-    expect(screen.getByTitle(/2 families are placed here/i)).toBeInTheDocument()
+    expect(screen.getByTitle(/2 families are sharing a room here/i)).toBeInTheDocument()
   })
 
   it('is silent on the same unit holding one family', () => {
@@ -1061,6 +1061,90 @@ describe('LodgingUnitCard — the one-family conflict chip (#2179)', () => {
     )
     const chip = screen.getByText('One-family space')
     expect(chip.parentElement).toBe(screen.getByText('Staff').parentElement)
+  })
+
+  it('states the count as a SHARE, never as the card’s occupancy', () => {
+    // The two numbers on this card are counting different things and only one
+    // of them is a placement count. `overlappingPartyKeys` returns the parties
+    // that share a ROOM, so on a card holding three families of which only two
+    // are in the same room it is 2 — while the card's own chip, correctly,
+    // says three families are placed here. A warning that says "2 families are
+    // placed here" next to a chip saying "3 families" is not a rounding
+    // difference, it is a false statement about the placement.
+    const building = unit({
+      code: 'east-wing',
+      name: 'East Wing',
+      is_container: true,
+      is_combined: true,
+      shareability: 'single_party',
+    })
+    const front = unit({ code: 'east-1', name: 'East 1', parent_code: 'east-wing' })
+    const back = unit({ code: 'east-2', name: 'East 2', parent_code: 'east-wing' })
+    render(
+      <LodgingUnitCard
+        slot={slot({
+          unit: building,
+          parties: [
+            party({ unit_code: 'east-1', unit_name: 'East 1' }),
+            party({
+              household_cm_id: 102,
+              display_name: 'Garcia',
+              unit_code: 'east-1',
+              unit_name: 'East 1',
+            }),
+            party({
+              household_cm_id: 103,
+              display_name: 'Nguyen',
+              unit_code: 'east-2',
+              unit_name: 'East 2',
+            }),
+          ],
+        })}
+        units={[building, front, back]}
+        hue={hue}
+        onOpenParty={vi.fn()}
+      />
+    )
+    expect(screen.getByText('3 families')).toBeInTheDocument()
+    expect(screen.getByTitle(/2 families are sharing a room here/i)).toBeInTheDocument()
+  })
+
+  it('is silent on a SPLIT container, exactly as the sharing badge beside it is', () => {
+    // A split container is not a slot: the board fans its parties down to the
+    // room cards and draws no card for the container itself, which is why
+    // `shareabilityBadge` is suppressed on one. This chip reads the SAME
+    // `unit.shareability` from the SAME card, so leaving it ungated makes the
+    // belt-and-braces guard beside it half a guard — and the sentence it would
+    // print, "two families are in this one-family space", is about a space
+    // nobody was placed in.
+    const container = unit({
+      code: 'east-wing',
+      name: 'East Wing',
+      is_container: true,
+      is_combined: false,
+      shareability: 'single_party',
+    })
+    const front = unit({ code: 'east-1', name: 'East 1', parent_code: 'east-wing' })
+    render(
+      <LodgingUnitCard
+        slot={slot({
+          unit: container,
+          parties: [
+            party({ unit_code: 'east-wing', unit_name: 'East Wing' }),
+            party({
+              household_cm_id: 102,
+              display_name: 'Garcia',
+              unit_code: 'east-wing',
+              unit_name: 'East Wing',
+            }),
+          ],
+        })}
+        units={[container, front]}
+        hue={hue}
+        onOpenParty={vi.fn()}
+      />
+    )
+    expect(screen.queryByText('One-family space')).not.toBeInTheDocument()
   })
 })
 

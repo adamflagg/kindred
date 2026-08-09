@@ -1,6 +1,6 @@
 /**
- * The "consent supersedes shared" precedence rule, shared between
- * `LodgingUnitCard.tsx`'s `ringState` and `LodgingMap.tsx`'s `halo`
+ * The "a drop target supersedes a consent flag" precedence rule, shared
+ * between `LodgingUnitCard.tsx`'s `ringState` and `LodgingMap.tsx`'s `halo`
  * (kindred#2136) — both sites independently encoded the identical ordering,
  * and nothing kept them in sync.
  *

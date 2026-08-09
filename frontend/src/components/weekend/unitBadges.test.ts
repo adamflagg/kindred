@@ -297,13 +297,13 @@ describe('sharingConflictBadge', () => {
     expect(sharingConflictBadge(unit({ shareability: 'single_party' }), 2)).toEqual({
       label: 'One-family space',
       className: AMBER,
-      title: 'Classified for one family — 2 families are placed here',
+      title: 'Classified for one family — 2 families are sharing a room here',
     })
   })
 
   it('counts every party in the room, not just the second', () => {
     expect(sharingConflictBadge(unit({ shareability: 'single_party' }), 3)?.title).toBe(
-      'Classified for one family — 3 families are placed here'
+      'Classified for one family — 3 families are sharing a room here'
     )
   })
 

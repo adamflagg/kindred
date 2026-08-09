@@ -454,8 +454,13 @@ export function LodgingUnitCard({
    * combined building do not raise it. Judged against THIS card's own unit,
    * which is the level the assignment was made at (owner ruling 2026-08-07);
    * see `sharingConflictBadge` for why that makes a whole-house let silent.
+   *
+   * Gated on `isSplitContainer` for the same reason `sharing` above is, and it
+   * has to be the same gate: both read `unit.shareability` off this one card,
+   * so gating one and not the other would let the LOUDER of the two speak
+   * about a unit the quieter one has already ruled is not a slot at all.
    */
-  const sharingConflict = sharingConflictBadge(unit, overlappingKeys.size)
+  const sharingConflict = isSplitContainer ? null : sharingConflictBadge(unit, overlappingKeys.size)
 
   const cardStateClassName = [
     RING_CLASSES[ringState],

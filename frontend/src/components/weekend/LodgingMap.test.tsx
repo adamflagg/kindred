@@ -764,8 +764,8 @@ describe('LodgingMap legend', () => {
 
   it('says what mark size encodes; area colour moved to the shared Visual Guide', () => {
     // Shape and the blue dot were keyed; hue and size were not. Hue drives the
-    // fill, the border and the shared ring; a cluster's mark grows with what
-    // is under it. Hue's OWN key moved out (kindred#1997) since it is no
+    // fill and the border — it drove the struck shared ring too, until
+    // kindred#2179 — and a cluster's mark grows with what is under it. Hue's OWN key moved out (kindred#1997) since it is no
     // longer a map-only channel — the board's cards wear it too.
     render(<LodgingMap parties={[]} units={UNITS} year={2026} />)
     const legend = screen.getByTestId('map-legend')

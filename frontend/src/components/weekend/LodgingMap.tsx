@@ -40,9 +40,11 @@
  *
  * THE MARK CARRIES SPEC §6.3's ENCODING IN FULL, and the list is closed on
  * purpose — position, fill, area hue, dashed square for staff-default, a blue
- * dot for `near_bathhouse`, `?` for unmeasured capacity, and a ring that is
- * the area hue when a room is shared and amber when that sharing was never
- * consented to. Everything else the payload carries — reservation state,
+ * dot for `near_bathhouse`, `?` for unmeasured capacity, and an amber ring
+ * for a share nobody consented to. The list got SHORTER on 2026-08-09
+ * (kindred#2179): there was also a ring in the area hue for any shared room,
+ * struck for firing on the units built to hold several families. Everything
+ * else the payload carries — reservation state,
  * inactive, unconfirmed, amenities, beds, and a cabin that does not answer
  * what a family asked for — lives in the peek. A 16px pin has room for about
  * seven channels before it stops being readable, which is the failure §6.2
