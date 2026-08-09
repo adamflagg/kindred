@@ -68,21 +68,18 @@ describe('amenitiesOf', () => {
   })
 })
 
-describe('shareability', () => {
-  // kindred#2026. Edited beside the other unit-level classifications rather
-  // than derived in the form: the rule that produced the stored value lives in
-  // the migration and the Go loader, and a third copy in the browser would be
-  // the one staff could not see disagreeing.
-
-  it('reads a new unit as unclassified rather than as one family', () => {
-    // '' is UNKNOWN, and the staffer has to answer it. Defaulting a fresh
-    // unit to 'single_party' would look tidier and would be a claim nobody
-    // made — the same failure the select exists to prevent on the read side.
-    expect(amenitiesOf().shareability).toBe('')
+describe('shareability is deliberately NOT an amenity (kindred#2026)', () => {
+  it('stays out of the bag the is_confirmed checkbox governs', () => {
+    // The regression this pins: everything in UnitAmenities is confirmed by one
+    // checkbox, and until it is ticked the roster reads `has_power: false` as
+    // "nobody has said". Shareability is trusted by the read path the moment it
+    // is stored, so folding it back in here would put a value the board acts on
+    // beside values the board discounts, saved by the same click. It lives in
+    // its own state in LodgingUnitForm; the payload assertions are there.
+    expect('shareability' in amenitiesOf()).toBe(false)
   })
 
-  it('carries a stored classification off an existing unit', () => {
-    const unit = { shareability: 'shareable' } as Parameters<typeof amenitiesOf>[0]
-    expect(amenitiesOf(unit).shareability).toBe('shareable')
+  it('is not an AMENITY_FLAGS entry either', () => {
+    expect(AMENITY_FLAGS.some((f) => (f.key as string) === 'shareability')).toBe(false)
   })
 })

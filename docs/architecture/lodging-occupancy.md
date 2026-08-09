@@ -114,9 +114,26 @@ rule: it blocks legitimate work and teaches staff to ignore warnings.
 
 ## What is not yet modelled
 
-- `lodging_units` has no shareability field. `inventory_class`
-  (`family_pool` / `staff_default`) describes who a unit is *reserved for*, not
-  how many parties may occupy it.
+- ~~`lodging_units` has no shareability field.~~ **Modelled as of kindred#2026**
+  (migration `1500000145`). `lodging_units.shareability` is a three-state select
+  — `shareable`, `single_party`, and blank for "nobody has classified this",
+  which must never read as permission to double-book nor as a ruling that one
+  family only may go here. `inventory_class` (`family_pool` / `staff_default`)
+  still describes who a unit is *reserved for*, not how many parties may occupy
+  it; the two are read together, and only a `family_pool` unit is ever
+  `shareable`.
+
+  Classified at BOTH levels, and compared at whichever level the assignment was
+  actually made (owner ruling, 2026-08-07). Two households on one container is a
+  legitimate share, not a violation: they occupy different rooms beneath it, and
+  CampMinder has no sub-room concept for every building, so staff assign at
+  container level for some buildings and will keep doing so. Measured over
+  2022-2025, resolving down to leaves instead raises 36 false alarms.
+
+  **Still not modelled: the enforcement itself.** The column makes the question
+  answerable; nothing yet blocks or warns on a second party being dropped into a
+  `single_party` unit. That is the board-side check this document's next section
+  describes, and it remains where a human is choosing.
 - `lodging_availability` carries a per-unit `family_available` boolean per
   session, not capacity. It has no scenario dimension: migration `1500000135`
   deleted it, because availability is a fact about the weekend rather than

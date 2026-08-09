@@ -370,12 +370,17 @@ export interface LodgingUnitInput {
   inventory_class: InventoryClassValue
   year: number
   /**
-   * Optional, unlike `inventory_class` above, because `''` IS a meaningful
-   * value here — the unit is unclassified and the staffer has not answered.
-   * Omitting the key on create leaves PocketBase's own empty select, which is
-   * the same state, so nothing is lost by its absence.
+   * REQUIRED, and always sent, for the same reason as `is_active` and
+   * `inventory_class` above — but note the reason is different in one respect:
+   * `''` is a genuinely meaningful value here (unclassified), not a broken
+   * one. What makes omission wrong is the EDIT path. Leaving the key out would
+   * leave the previous classification in place, so a staffer clearing the
+   * field back to "Not classified" would get a silent no-op they believe
+   * worked. `LodgingUnitForm` holds it in its own state and always supplies
+   * it; making it non-optional here is what keeps a second write path from
+   * quietly dropping it.
    */
-  shareability?: ShareabilityStoredValue
+  shareability: ShareabilityStoredValue
   parent_unit?: string
   map_x?: number
   map_y?: number

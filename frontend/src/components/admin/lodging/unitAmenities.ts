@@ -25,11 +25,7 @@ import {
 } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 
-import type {
-  BathroomStoredValue,
-  LodgingUnitRecord,
-  ShareabilityStoredValue,
-} from '../../../types/lodging'
+import type { BathroomStoredValue, LodgingUnitRecord } from '../../../types/lodging'
 
 export type AmenityFlag =
   | 'has_power'
@@ -46,14 +42,6 @@ export type AmenityFlag =
 export interface UnitAmenities {
   bathroom: BathroomStoredValue
   bathroom_group: string
-  /**
-   * Whether more than one party may sleep here at once (kindred#2026). Travels
-   * with the amenities because it is saved by the same form submit, but it is
-   * NOT an amenity and is not in AMENITY_FLAGS: it is a policy classification
-   * about occupancy, not a fact about what the cabin contains, so it renders
-   * as its own select rather than as an eleventh checkbox.
-   */
-  shareability: ShareabilityStoredValue
   has_power: boolean
   has_ac: boolean
   has_fridge: boolean
@@ -89,6 +77,24 @@ export const AMENITY_FLAGS: readonly { key: AmenityFlag; label: string; icon: Lu
   { key: 'has_changing_table', label: 'Has changing table', icon: Table },
 ]
 
+/**
+ * `shareability` is DELIBERATELY NOT in this object (kindred#2026).
+ *
+ * Everything here is governed by the one `is_confirmed` checkbox: until it is
+ * true, the roster reads `has_power: false` as "nobody has said" rather than
+ * "there is no power". Shareability is not like that. It is a policy
+ * classification, and the read path (`unit_shareability`, lodging_rules.py)
+ * treats it as authoritative the moment it is stored — so riding in this bag
+ * would put a value the board trusts immediately next to values the board
+ * discounts, saved by the same click and confirmed by the same checkbox that
+ * does not apply to it.
+ *
+ * It lives in its own `useState` in `LodgingUnitForm`, alongside the other
+ * policy classifications (`inventoryClass`, `isContainer`, `combined`), and is
+ * passed to `UnitAmenityFieldset` as its own prop purely so the control renders
+ * in that section of the form.
+ */
+
 /** An existing unit's amenity state, or the all-unrecorded state for a new one. */
 export function amenitiesOf(unit?: LodgingUnitRecord): UnitAmenities {
   return {
@@ -96,10 +102,6 @@ export function amenitiesOf(unit?: LodgingUnitRecord): UnitAmenities {
     // column as the token `unknown`, which PocketBase would reject on write.
     bathroom: unit?.bathroom ?? '',
     bathroom_group: unit?.bathroom_group ?? '',
-    // '' is UNCLASSIFIED, and a new unit starts there rather than at
-    // 'single_party'. Defaulting to the safe-looking answer would look tidier
-    // and would be a claim nobody made.
-    shareability: unit?.shareability ?? '',
     has_power: unit?.has_power ?? false,
     has_ac: unit?.has_ac ?? false,
     has_fridge: unit?.has_fridge ?? false,

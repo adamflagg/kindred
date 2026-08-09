@@ -111,6 +111,21 @@ rv=$(field_prop lodging_units has_ramp values || true)
 rr=$(field_prop lodging_units has_ramp required || true)
 [[ "$rr" != "1" && "$rr" != "true" ]] || note "lodging_units.has_ramp is required (must be optional: blank means not assessed)"
 
+# shareability is deliberately NOT a bool, and deliberately NOT required —
+# kindred#2026, migration 1500000145. Same discipline as has_ramp above and for
+# a sharper reason: a bool collapses "nobody has classified this cabin" into
+# "one family only", and a REQUIRED select makes that third state
+# unrepresentable altogether. Unrecorded must never read as permission to
+# double-book, and must equally never read as a ruling. Both halves are pinned
+# here because a later migration flipping either would ship green otherwise —
+# the Go table test only exercises the rule in memory and never sees the schema.
+st=$(field_prop lodging_units shareability type || true)
+[[ "$st" == "select" ]] || note "lodging_units.shareability type is '$st' (expected select, so blank can mean 'not classified')"
+sv=$(field_prop lodging_units shareability values || true)
+[[ "$sv" == '["shareable","single_party"]' ]] || note "lodging_units.shareability values are $sv (expected [\"shareable\",\"single_party\"])"
+sr=$(field_prop lodging_units shareability required || true)
+[[ "$sr" != "1" && "$sr" != "true" ]] || note "lodging_units.shareability is required (must be optional: blank means not classified)"
+
 # max_beds is the sheet's total sleeping spots. It is NOT sleeps, which is a
 # staff judgement for the session type and disagrees with it on most units —
 # HANDOFF §6, spaces not beds. Both columns exist precisely so neither

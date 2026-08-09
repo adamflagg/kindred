@@ -18,7 +18,7 @@ import { CONSENT_AMBER } from './mapColors'
 import type { MapUnit } from './mapModel'
 import { partyKey } from './partyKey'
 import { partyAttention, partyBeds } from './rosterAttention'
-import { reservationBadge } from './unitBadges'
+import { reservationBadge, shareabilityBadge } from './unitBadges'
 
 /**
  * The board's `border-amber-400`, reused rather than re-picked. A consent flag
@@ -110,6 +110,14 @@ function DetailCard({ units, hue, onOpenParty }: MapUnitPopoverProps) {
   if (unit.near_bathhouse) tags.push('near bathhouse')
   if (unit.inventory_class === 'staff_default') tags.push('staff-default')
   if (parties.length > 1) tags.push(`shared by ${String(parties.length)}`)
+  // kindred#2026, and it belongs HERE rather than only on the board because
+  // this popover is the one surface that already prints `shared by N`. Saying
+  // a room is shared by two while saying nothing about whether it MAY be is
+  // the disagreement `unitBadges`' own header exists to prevent ("shared by
+  // the board's slot cards and the map's unit popover so the two cannot
+  // drift"). Rendered through the shared helper, never re-derived, so the
+  // wording and the silence on `single_party` match the board exactly.
+  const sharing = shareabilityBadge(unit)
 
   return (
     <div className="flex min-w-[11rem] flex-col gap-1.5">
@@ -182,6 +190,13 @@ function DetailCard({ units, hue, onOpenParty }: MapUnitPopoverProps) {
             </li>
           ))}
         </ul>
+      )}
+      {sharing && (
+        <div>
+          <span className={`rounded-full px-1.5 py-0.5 text-xs font-medium ${sharing.className}`}>
+            {sharing.label}
+          </span>
+        </div>
       )}
       {tags.length > 0 && (
         <ul className="flex flex-wrap gap-1">

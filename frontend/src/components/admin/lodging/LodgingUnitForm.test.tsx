@@ -101,6 +101,98 @@ describe('LodgingUnitForm — create', () => {
     expect(payload.year).toBe(2027)
   })
 
+  it('sends an explicit shareability on create, and it is UNCLASSIFIED', async () => {
+    // kindred#2026. A new unit must not be born claiming to be one-family-only
+    // — that is a ruling nobody made. '' is the honest state and is what the
+    // read path renders as `unknown`.
+    createLodgingUnit.mockResolvedValue({ id: 'u1' })
+    const user = userEvent.setup()
+
+    render(
+      <LodgingUnitForm areas={AREAS} units={[]} year={2026} onSaved={vi.fn()} onCancel={vi.fn()} />
+    )
+
+    await user.type(screen.getByLabelText('Name'), 'Cabin N')
+    await user.click(screen.getByRole('button', { name: 'Create unit' }))
+
+    await waitFor(() => {
+      expect(createLodgingUnit).toHaveBeenCalledTimes(1)
+    })
+    const [payload] = createLodgingUnit.mock.calls[0] as [LodgingUnitInput]
+    expect(payload.shareability).toBe('')
+  })
+
+  it.each(['shareable', 'single_party', ''] as const)(
+    'carries shareability %j through to the save payload unchanged',
+    async (value) => {
+      createLodgingUnit.mockResolvedValue({ id: 'u1' })
+      const user = userEvent.setup()
+
+      render(
+        <LodgingUnitForm
+          areas={AREAS}
+          units={[]}
+          year={2026}
+          onSaved={vi.fn()}
+          onCancel={vi.fn()}
+        />
+      )
+
+      await user.type(screen.getByLabelText('Name'), 'Cabin N')
+      await user.selectOptions(screen.getByLabelText('Sharing'), value)
+      await user.click(screen.getByRole('button', { name: 'Create unit' }))
+
+      await waitFor(() => {
+        expect(createLodgingUnit).toHaveBeenCalledTimes(1)
+      })
+      const [payload] = createLodgingUnit.mock.calls[0] as [LodgingUnitInput]
+      expect(payload.shareability).toBe(value)
+    }
+  )
+
+  it('warns when a shareable unit is edited below the capacity threshold', async () => {
+    // The staleness this feature can create: shareability is derived once and
+    // then human-owned, so correcting `sleeps` downward leaves an affirmative
+    // "Shared OK" chip on the board endorsing a double-booking. Advisory only
+    // — settling it is the staffer's ruling, not the form's.
+    const user = userEvent.setup()
+    render(
+      <LodgingUnitForm areas={AREAS} units={[]} year={2026} onSaved={vi.fn()} onCancel={vi.fn()} />
+    )
+
+    await user.selectOptions(screen.getByLabelText('Sharing'), 'shareable')
+    await user.type(screen.getByLabelText('Sleeps'), '8')
+
+    expect(
+      await screen.findByText(/but the unit as edited reads one family only/)
+    ).toBeInTheDocument()
+  })
+
+  it('stays quiet while the unit still agrees with its classification', async () => {
+    const user = userEvent.setup()
+    render(
+      <LodgingUnitForm areas={AREAS} units={[]} year={2026} onSaved={vi.fn()} onCancel={vi.fn()} />
+    )
+
+    await user.selectOptions(screen.getByLabelText('Sharing'), 'shareable')
+    await user.type(screen.getByLabelText('Sleeps'), '15')
+
+    expect(screen.queryByText(/but the unit as edited reads/)).not.toBeInTheDocument()
+  })
+
+  it('offers a real blank option for sharing, unlike allocation', () => {
+    // The contrast is the point. An empty inventory_class matches neither
+    // branch of the availability rules, so Allocation offers no blank. An
+    // empty shareability is a STATE — nobody has classified this — and the
+    // migration deliberately leaves rows in it, so the staffer must be able
+    // to both see it and return to it.
+    render(
+      <LodgingUnitForm areas={AREAS} units={[]} year={2026} onSaved={vi.fn()} onCancel={vi.fn()} />
+    )
+    const select = screen.getByLabelText<HTMLSelectElement>('Sharing')
+    expect([...select.options].map((o) => o.value)).toEqual(['', 'shareable', 'single_party'])
+  })
+
   it('offers no blank option for the allocation default', () => {
     render(
       <LodgingUnitForm areas={AREAS} units={[]} year={2026} onSaved={vi.fn()} onCancel={vi.fn()} />
@@ -670,7 +762,7 @@ describe('LodgingUnitForm — capacity flag', () => {
     // typing the number that creates the conflict.
     renderUnit({ ...BUNKED, sleeps: 3 })
 
-    const region = screen.getByRole('status')
+    const region = screen.getByRole('status', { name: 'Capacity advisory' })
     expect(region).toBeInTheDocument()
     expect(region).toHaveAttribute('aria-live', 'polite')
     expect(region).toHaveTextContent('')
@@ -682,13 +774,17 @@ describe('LodgingUnitForm — capacity flag', () => {
     // noticed; drawing it in amber does that for one class of user only.
     renderUnit(CONFLICTED)
 
-    expect(screen.getByRole('status')).toHaveTextContent('Beds account for 4, but sleeps says 8.')
+    expect(screen.getByRole('status', { name: 'Capacity advisory' })).toHaveTextContent(
+      'Beds account for 4, but sleeps says 8.'
+    )
   })
 
   it('announces the suggestion too', () => {
     renderUnit({ ...BUNKED, sleeps: 0 })
 
-    expect(screen.getByRole('status')).toHaveTextContent(/Suggested: sleeps 4/i)
+    expect(screen.getByRole('status', { name: 'Capacity advisory' })).toHaveTextContent(
+      /Suggested: sleeps 4/i
+    )
   })
 
   it('carries the conflict once, not as a second hidden copy', () => {
@@ -709,7 +805,7 @@ describe('LodgingUnitForm — capacity flag', () => {
 
     const text = screen.getByText(/beds account for 4, but sleeps says 8/i)
     expect(text).not.toHaveAttribute('aria-hidden')
-    expect(screen.getByRole('status')).toContainElement(text)
+    expect(screen.getByRole('status', { name: 'Capacity advisory' })).toContainElement(text)
   })
 
   it('never shows the sheet capacity, which is not a corroborating number', () => {

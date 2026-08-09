@@ -54,22 +54,17 @@ const (
 // NEVER `max_beds`: it disagrees with the unit's own recorded bed inventory on
 // roughly a third of rows, including rows where it falls BELOW the bed count.
 //
-// A FRESH DATABASE WILL NOT MATCH PRODUCTION, and that is not this function
-// misbehaving. The registry file's `sleeps` is the pre-inventory seed: measured
-// 2026-08-08, it disagrees with production on 77 of the 118 units, and NO leaf
-// in the file reaches 12 (the file's leaf maximum is 9) where production has 31.
-// Production's capacities arrived later, from the 2026 Master Housing import and
-// from staff editing confirmed rows -- neither of which writes back to the file.
-// So a fresh worktree or a rebuilt CD seed classifies the family CONTAINERS
-// shareable and no leaves at all, while production classifies 44 units shareable.
-// Both are this rule applied faithfully to the data actually present.
+// A FRESH DATABASE CARRIES A SUBSET OF PRODUCTION'S CLASSIFICATION, never a
+// contradicting one, and that is enforced at the CALL SITE rather than here:
+// `seedUnits` passes nil for `sleeps` because the registry file's capacities
+// are a pre-inventory guess (77 of 118 disagree with production, and no leaf in
+// the file reaches 12). Read the note there before changing either.
 //
-// The consequence is a pre-existing staleness this feature inherits rather than
-// creates -- a fresh database already disagrees with production about capacity,
-// which the capacity counts and the bed flags have always reflected. Do not
-// "fix" it by loosening the rule here or by seeding from a second column; the
-// fix, if one is wanted, is to refresh `sleeps` in the private registry file,
-// which is a data decision for the owner and not a code change.
+// This function stays a total, honest rule over whatever it is given. Do not
+// "fix" the fresh-database gap by loosening the thresholds here or by seeding
+// from a second column; the fix, if one is wanted, is to refresh `sleeps` in
+// the private registry file, which is a data decision for the owner rather
+// than a code change.
 func classifyShareability(inventoryClass string, isContainer bool, sleeps *int) string {
 	switch inventoryClass {
 	case "staff_default":
@@ -575,13 +570,37 @@ func seedUnits(
 		rec.Set("near_bathhouse", u.NearBathhouse)
 		rec.Set("inventory_class", u.InventoryClass)
 		rec.Set("is_container", u.IsContainer)
-		// Derived here rather than read from the registry file, so the private
-		// JSON needs no new key and cannot drift from the rule. Left unset when
-		// the classifier declines, so UNCLASSIFIED reaches the database as an
-		// empty select rather than as a decision -- same handling as HasRamp
-		// below. This is the FRESH-DATABASE half only: 1500000145 backfills
-		// every row that already exists, which on production is all of them.
-		if s := classifyShareability(u.InventoryClass, u.IsContainer, u.Sleeps); s != "" {
+		// NOTE THE `nil`: the loader deliberately declines to classify from the
+		// file's `sleeps`.
+		//
+		// Measured 2026-08-08, the registry file disagrees with production on
+		// `sleeps` for 77 of 118 units and NO leaf in it reaches 12, while it
+		// disagrees on `is_container` for 0 and on `inventory_class` for 2.
+		// So the file is authoritative for the two structural fields and is a
+		// pre-inventory guess for the capacity one -- production's capacities
+		// arrived later, from the Master Housing import and from staff editing
+		// confirmed rows, neither of which writes back to the file.
+		//
+		// Feeding that guess in would stamp every family leaf `single_party`
+		// off a number known to be wrong, on a row this same loop marks
+		// `is_confirmed: false` three lines below precisely because "every
+		// seeded value is a guess until staff confirm it". Unlike the amenity
+		// flags, nothing downstream discounts shareability for being
+		// unconfirmed, so that stamp would be read as settled. Passing nil
+		// makes the leaf legs return "" -- the honest "nobody has classified
+		// this" the select exists to represent -- while the container and
+		// staff-housing legs, which need no capacity, still classify.
+		//
+		// The RULE is not forked to achieve this: `classifyShareability` has
+		// one definition, shared with 1500000145, and only the input differs.
+		// A fresh database therefore classifies strictly FEWER units than
+		// production -- measured, 14 containers and 23 staff rows against
+		// production's 44 and 74, with all 81 family leaves left honestly
+		// blank. It is not literally a subset: the file also disagrees with
+		// production on `inventory_class` for TWO units, so those two can land
+		// differently. That is an inventory_class data divergence rather than
+		// anything this rule does, and it predates this feature.
+		if s := classifyShareability(u.InventoryClass, u.IsContainer, nil); s != "" {
 			rec.Set("shareability", s)
 		}
 		rec.Set("default_combined", u.DefaultCombined)
