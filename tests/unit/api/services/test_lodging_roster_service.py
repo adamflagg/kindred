@@ -1039,29 +1039,88 @@ class TestCountsFollowTheDrawLevel:
         assert roster.counts.beds_family_available == 16
 
     @pytest.mark.asyncio
-    async def test_a_combined_container_reports_its_own_measured_beds_over_unmeasured_rooms(self) -> None:
-        """The real Doctor's House shape.
+    async def test_a_container_with_an_unmeasured_room_is_unknown_not_a_confident_undercount(self) -> None:
+        """An unmeasured ACTIVE room leaves its container's total UNKNOWN.
 
-        Its two rooms were split out of the container with `sleeps`
-        deliberately left unset -- the bed lists carry their capacity, the
-        number does not. An unmeasured room contributes nothing to the total
-        (same silent-skip treatment an unmeasured LEAF gets everywhere else),
-        so the total is the container's own measured 6 plus two zeros: 6, not
-        "unknown".
+        This reverses what this test asserted before. It used to pin "6, not
+        unknown", on the reasoning that an unmeasured room gets "the same
+        silent-skip treatment an unmeasured LEAF gets everywhere else". That
+        reasoning does not hold: a STANDALONE unmeasured leaf is not skipped at
+        all -- it returns None and lands in `units_capacity_unknown`. Only a
+        leaf that happened to sit under a container was silently read as zero.
+
+        It also contradicted the kindred#2041 delta ruling the container branch
+        is built on. If the container's own `sleeps` is a DELTA over its rooms
+        -- the futon on the landing, not the house -- then 6 plus two unknowns
+        is unknown, and reporting 6 is a confident undercount of a house nobody
+        has measured. `_build_counts`' own comment already said so ("only a
+        genuinely unmeasured LEAF can still leave a total unknown"); the code
+        was what disagreed.
+
+        Latent, not live, when this changed: measured against the production
+        snapshot, 0 of 15 active containers had an unmeasured active leaf, so
+        no reported number moved. It goes live the moment staff add a room with
+        no bed count under a combined house.
         """
         repo = _repo(
             fetch_session=FAMILY_SESSION,
             fetch_units=[
-                _unit("u1", "hc-dh", "Doctor's House", sleeps=6, is_container=True, default_combined=True),
-                _unit("u2", "hc-dh-a", "Doctor's House A", sleeps=0, parent_unit="u1"),
-                _unit("u3", "hc-dh-b", "Doctor's House B", sleeps=0, parent_unit="u1"),
+                _unit("u1", "hc-house", "Combined House", sleeps=6, is_container=True, default_combined=True),
+                _unit("u2", "hc-house-a", "Combined House A", sleeps=4, parent_unit="u1"),
+                _unit("u3", "hc-house-b", "Combined House B", sleeps=0, parent_unit="u1"),
             ],
         )
         roster = await LodgingRosterService(repo).build_roster(2026, 1000001)
 
         assert roster.counts.units_total == 1
-        assert roster.counts.beds_family_available == 6
+        # NOT 10. The house is not measured, so it contributes no bed count
+        # and is flagged for measurement instead.
+        assert roster.counts.beds_family_available == 0
+        assert roster.counts.units_capacity_unknown == 1
+
+    @pytest.mark.asyncio
+    async def test_an_inactive_room_does_not_make_its_container_unknown(self) -> None:
+        """Only an ACTIVE leaf counts, in both directions.
+
+        A retired room contributes no beds to the total (the behaviour that
+        was already there) and equally must not drag the whole house into
+        `units_capacity_unknown` because nobody bothered to measure a room
+        that is out of service.
+        """
+        repo = _repo(
+            fetch_session=FAMILY_SESSION,
+            fetch_units=[
+                _unit("u1", "hc-house", "Combined House", sleeps=6, is_container=True, default_combined=True),
+                _unit("u2", "hc-house-a", "Combined House A", sleeps=4, parent_unit="u1"),
+                _unit("u3", "hc-house-b", "Combined House B", sleeps=0, parent_unit="u1", is_active=False),
+            ],
+        )
+        roster = await LodgingRosterService(repo).build_roster(2026, 1000001)
+
+        assert roster.counts.units_total == 1
+        assert roster.counts.beds_family_available == 10
         assert roster.counts.units_capacity_unknown == 0
+
+    @pytest.mark.asyncio
+    async def test_an_unset_container_with_nothing_measured_beneath_it_is_unknown(self) -> None:
+        """The degenerate case: no figure of its own, and no leaf to total.
+
+        "Unset container" reads as a delta of ZERO only because its rooms
+        supply the rest of the answer. With no rooms to supply it, zero is not
+        a delta over anything -- it is the claim "this house sleeps nobody",
+        which is never a measurement anyone took.
+        """
+        repo = _repo(
+            fetch_session=FAMILY_SESSION,
+            fetch_units=[
+                _unit("u1", "hc-house", "Combined House", sleeps=0, is_container=True, default_combined=True),
+            ],
+        )
+        roster = await LodgingRosterService(repo).build_roster(2026, 1000001)
+
+        assert roster.counts.units_total == 1
+        assert roster.counts.beds_family_available == 0
+        assert roster.counts.units_capacity_unknown == 1
 
     @pytest.mark.asyncio
     async def test_a_combined_container_with_no_own_figure_still_totals_its_measured_rooms(self) -> None:

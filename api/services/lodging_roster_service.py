@@ -1306,6 +1306,16 @@ class LodgingRosterService:
         # An unset container reads as a delta of 0 -- real common space
         # nobody measured, correctly zero and never "unknown" -- so only a
         # genuinely unmeasured LEAF can still leave a total unknown.
+        #
+        # And it DOES leave it unknown, including a leaf beneath a drawn
+        # container. That sentence used to be aspirational: the container
+        # branch dropped unmeasured leaves from its sum, so it could never
+        # return None, which structurally excluded every container from
+        # `units_capacity_unknown` and let a half-measured house report a
+        # confident undercount. Latent when fixed -- 0 of 15 active production
+        # containers had an unmeasured active leaf, so no reported number moved
+        # -- and live the moment staff add a room with no bed count under a
+        # combined house.
         drawn = [u for u in drawn_units(units) if u.is_active]
         bookable = [u for u in drawn if _is_planning_inventory(u)]
         staff_housing = [u for u in drawn if not _is_planning_inventory(u)]
@@ -1315,14 +1325,22 @@ class LodgingRosterService:
         def _effective_sleeps(unit: LodgingUnitSummary) -> int | None:
             if not unit.is_container:
                 return unit.sleeps
-            leaf_total = sum(
+            leaf_sleeps = [
                 leaf.sleeps
                 for code in unit_index.leaf_codes_under(unit.code)
-                if (leaf := unit_index.units_by_code.get(code)) is not None
-                and leaf.is_active
-                and leaf.sleeps is not None
-            )
-            return (unit.sleeps or 0) + leaf_total
+                if (leaf := unit_index.units_by_code.get(code)) is not None and leaf.is_active
+            ]
+            # ACTIVE leaves only, in both directions: a retired room adds no
+            # beds, and equally must not drag its whole house into "unknown".
+            if any(s is None for s in leaf_sleeps):
+                return None
+            # The degenerate case. "Unset container reads as a delta of 0"
+            # holds only because its rooms supply the rest of the answer --
+            # with no rooms to supply it, 0 is not a delta over anything, it
+            # is the claim "this house sleeps nobody".
+            if unit.sleeps is None and not leaf_sleeps:
+                return None
+            return (unit.sleeps or 0) + sum(s for s in leaf_sleeps if s is not None)
 
         effective_sleeps = {u.unit_id: _effective_sleeps(u) for u in bookable}
 
