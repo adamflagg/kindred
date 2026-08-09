@@ -1243,6 +1243,26 @@ describe('LodgingUnitCard shareability (kindred#2026)', () => {
     expect(screen.queryByText('Sharing unset')).not.toBeInTheDocument()
   })
 
+  it('marks a WHOLE-HOUSE let, which is the card the ruling is actually about', () => {
+    // A split container gets no card at all — `dragPlacement` rejects it as a
+    // drop target and `unitLevel` fans down past it — so the only container
+    // that reaches this component is a COMBINED one, and that is the slot
+    // staff place into. The owner's ruling is that two households on one
+    // container is a legitimate share, so this is the card that most needs to
+    // say so. An earlier version suppressed the chip on every container and
+    // hid it in exactly the place it earns its keep.
+    render(
+      <LodgingUnitCard
+        slot={slot({
+          unit: unit({ is_container: true, is_combined: true, shareability: 'shareable' }),
+        })}
+        hue="hsl(160 45% 42%)"
+        onOpenParty={vi.fn()}
+      />
+    )
+    expect(screen.getByText('Shared OK')).toBeInTheDocument()
+  })
+
   it('flags a unit nobody has classified rather than letting it read as safe', () => {
     render(
       <LodgingUnitCard
