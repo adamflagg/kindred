@@ -104,8 +104,13 @@ export interface MapModel {
  * function as its defence-in-depth partner. This is the second line, not the
  * only one; it stays because it is the guard that has been holding this up so
  * far, and because the same payload shape is reachable from a cached client.
+ *
+ * TAKES THE PAIR, not a whole row (kindred#2013), so the admin registry's
+ * `LodgingUnitRecord` can be judged by the same rule the roster's
+ * `LodgingUnitRow` is. A second copy of "both axes zero means unset" is
+ * exactly how the (0,0) trap gets back in.
  */
-export function hasCoordinates(unit: LodgingUnitRow): boolean {
+export function hasCoordinates(unit: Pick<LodgingUnitRow, 'map_x' | 'map_y'>): boolean {
   const x = unit.map_x
   const y = unit.map_y
   if (x === null || x === undefined || y === null || y === undefined) return false

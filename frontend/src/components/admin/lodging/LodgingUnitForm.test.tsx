@@ -992,15 +992,47 @@ describe('LodgingUnitForm — fields staff have no use for', () => {
     expect(screen.getByRole('button', { name: /set it manually/i })).toBeInTheDocument()
   })
 
-  it('asks for no map coordinates, which mean nothing without the map', () => {
-    // Typing 0.4389 into a number field is not how a pin gets placed; dragging
-    // it on the map view is. Omitting the keys leaves any stored coordinate
-    // untouched on update, exactly as a blank field did.
+  it('offers the pin, not two number fields', () => {
+    // kindred#2013. Typing 0.4389 into a number field is not how a pin gets
+    // placed; dragging it onto the cabin is. The coordinate is edited on the
+    // map itself and saved there — it is NOT a field of this form's payload,
+    // which is what keeps the (0,0) guarantee below true by construction.
     renderUnit(UNIT)
 
     expect(screen.queryByLabelText('Map X')).not.toBeInTheDocument()
     expect(screen.queryByLabelText('Map Y')).not.toBeInTheDocument()
-    expect(screen.queryByText(/map position/i)).not.toBeInTheDocument()
+    expect(screen.getByText('Map position')).toBeInTheDocument()
+    expect(screen.getByLabelText(/edit position/i)).not.toBeChecked()
+  })
+
+  it('offers no pin on create, since there is no record to write one to', () => {
+    render(
+      <LodgingUnitForm areas={AREAS} units={[]} year={2026} onSaved={vi.fn()} onCancel={vi.fn()} />
+    )
+
+    expect(screen.queryByText('Map position')).not.toBeInTheDocument()
+  })
+
+  it('offers no pin for a container, which the map never draws', () => {
+    // A building carries its rooms' positions through its children, so
+    // `buildMapModel` draws the children and never the container itself.
+    renderUnit({ ...UNIT, is_container: true })
+
+    expect(screen.queryByText('Map position')).not.toBeInTheDocument()
+  })
+
+  it('withdraws the pin the moment the unit is declared a building', async () => {
+    // Read LIVE off the checkbox, not off the stored record: a staffer who has
+    // just ticked "this is a building" has already made the ruling.
+    const user = userEvent.setup()
+    renderUnit(UNIT)
+    expect(screen.getByText('Map position')).toBeInTheDocument()
+
+    await user.click(
+      screen.getByLabelText('This is a building or building area with multiple bedrooms.')
+    )
+
+    expect(screen.queryByText('Map position')).not.toBeInTheDocument()
   })
 
   it('leaves a stored coordinate alone when saving a unit that has one', async () => {

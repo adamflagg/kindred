@@ -58,6 +58,7 @@ import { FamilyCard } from './FamilyCard'
 import { FamilyDetailsPanel } from './FamilyDetailsPanel'
 import { FloatingUnplacedBadge } from './FloatingUnplacedBadge'
 import { indexUnitsByCode, resolvePartyUnit } from './rosterAttention'
+import { MapBaseLayer } from './MapBaseLayer'
 import { clusterByProximity, type Cluster } from './mapClustering'
 import { BATHHOUSE_BLUE } from './mapColors'
 import { buildMapModel, type MapUnit } from './mapModel'
@@ -74,15 +75,9 @@ import {
 } from './mapViewport'
 import { resolveRingPrecedence } from './ringPrecedence'
 
-/** Served from the private repo, exactly as the logos are. */
-const MAP_IMAGE_URL = '/local/assets/camp-map.webp'
-
 /** Below this a pointer gesture is a click, above it a pan. Capturing the
  *  pointer any earlier retargets the click away from the mark under it. */
 const DRAG_THRESHOLD_PX = 4
-
-/** Default scrim over the map so the marks read against a busy illustration. */
-const DEFAULT_FADE = 25
 
 /**
  * Dwell before the peek opens, per spec §7 and tuned in the mockup.
@@ -152,7 +147,6 @@ export function LodgingMap({ parties, units, year, sessionCmId = 0 }: LodgingMap
   const wasDraggingRef = useRef(false)
   const [view, setView] = useState<Viewport>(IDENTITY_VIEW)
   const [size, setSize] = useState({ width: 0, height: 0 })
-  const [imageFailed, setImageFailed] = useState(false)
   // Empty rooms are DRAWN by default: the map's job when you arrive is the
   // whole site, and the toggle is a question you bring to it rather than one
   // the surface should ask for you.
@@ -512,46 +506,9 @@ export function LodgingMap({ parties, units, year, sessionCmId = 0 }: LodgingMap
               dragRef.current = null
             }}
           >
-            {!imageFailed && (
-              <img
-                data-testid="map-backdrop"
-                src={MAP_IMAGE_URL}
-                alt=""
-                loading="lazy"
-                onError={() => {
-                  setImageFailed(true)
-                }}
-                style={{
-                  width,
-                  height,
-                  transform: `translate(${String(view.tx)}px, ${String(view.ty)}px) scale(${String(view.k)})`,
-                  // LOAD-BEARING, not incidental. The marks are placed at
-                  // `u * size * k + t`, which matches this image only while it
-                  // scales about its top-left. With the CSS default of 50% 50%
-                  // an image point lands at `k*a + (1-k)*w/2 + t` — an offset
-                  // that is ZERO ONLY AT k=1, so the map would look
-                  // pixel-perfect at rest and drift further out of register the
-                  // more you zoom. jsdom performs no layout, so no test here can
-                  // catch it; the algebra is the only guard.
-                  transformOrigin: '0 0',
-                }}
-                className="pointer-events-none absolute top-0 left-0 max-w-none"
-              />
-            )}
-            {/* Pinned at DEFAULT_FADE, not a control anymore (kindred#1997):
-                marks reading against a busy illustration is not a question
-                the user should be asked. */}
-            <div
-              data-testid="map-scrim"
-              aria-hidden="true"
-              style={{ opacity: DEFAULT_FADE / 100 }}
-              className="bg-card pointer-events-none absolute inset-0"
-            />
-            {imageFailed && (
-              <p className="text-muted-foreground pointer-events-none absolute top-3 left-3 text-xs">
-                Map image unavailable — showing positions only.
-              </p>
-            )}
+            {/* The illustration, its scrim and the art-missing notice, shared
+                with the admin unit editor's pin canvas (kindred#2013). */}
+            <MapBaseLayer view={view} width={width} height={height} />
 
             {clusters.map((cluster) => {
               const key = clusterKey(cluster)
