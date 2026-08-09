@@ -1,4 +1,4 @@
-"""Weekend friend groups: a staff-authored set of HOUSEHOLDS, with an intent.
+"""Weekend friend groups: a staff-authored set of HOUSEHOLDS.
 
 kindred#1913 half 1. The object is deliberately NOT derived from anything --
 no free-text parsing, no name resolution, no solver. Staff select households
@@ -7,11 +7,12 @@ through without a schema change.
 
 Two invariants this file exists to pin:
 
-* `intent` is REQUIRED and is `with` or `near`. The issue is explicit that
-  those are different requests -- `near` is satisfied by distance between
-  units, `with` by putting both parties in one room -- so a group that cannot
-  say which one it means is the wrong object. There is no default; a caller
-  that does not choose gets a 422.
+* There is NO `intent` field, anywhere in this vocabulary. kindred#1913's
+  owner ruling: a friend group is "lock these households together," full
+  stop -- `with` vs. `near` is a property of whatever later CONSUMES a group
+  (a future solver tool), not of the group itself. `TestIntentIsGone` pins
+  the absence directly, on the request models and the response row, so a
+  future agent cannot silently reintroduce the column.
 * A group is at HOUSEHOLD grain and needs at least two of them. One household
   is not a friend group, it is a household.
 
@@ -27,6 +28,7 @@ import pytest
 from pydantic import ValidationError
 
 from api.schemas.lodging_friend_groups import (
+    FriendGroup,
     FriendGroupCreateRequest,
     FriendGroupUpdateRequest,
 )
@@ -79,7 +81,6 @@ def _create_request(**overrides: Any) -> FriendGroupCreateRequest:
         "session_cm_id": SESSION_CM_ID,
         "name": "Johnson, Garcia",
         "color": "#22c55e",
-        "intent": "with",
         "household_cm_ids": [JOHNSON, GARCIA],
     }
     fields.update(overrides)
@@ -93,7 +94,6 @@ def _group_row(**overrides: Any) -> SimpleNamespace:
         "session_cm_id": SESSION_CM_ID,
         "name": "Johnson, Garcia",
         "color": "#22c55e",
-        "intent": "with",
         "source": "staff_manual",
         "created_by": "staff@example.com",
     }
@@ -108,33 +108,26 @@ def _member_row(group: str, household_cm_id: int) -> SimpleNamespace:
 # --------------------------------------------------------------------- schema
 
 
+class TestIntentIsGone:
+    """kindred#1913 owner ruling, Part 1: "a friend group is 'lock these
+    households together,' full stop." `with` vs. `near` is a property of
+    whatever later consumes a group -- a future solver tool -- not of the
+    group itself, so it is not a column here at all. Pinned directly on the
+    models, not inferred from a missing kwarg, so a future agent cannot
+    silently reintroduce the field.
+    """
+
+    def test_the_create_request_has_no_intent_field(self) -> None:
+        assert "intent" not in FriendGroupCreateRequest.model_fields
+
+    def test_the_update_request_has_no_intent_field(self) -> None:
+        assert "intent" not in FriendGroupUpdateRequest.model_fields
+
+    def test_a_group_row_has_no_intent_field(self) -> None:
+        assert "intent" not in FriendGroup.model_fields
+
+
 class TestCreateRequestSchema:
-    def test_intent_is_required(self) -> None:
-        # No default. `near` and `with` are different requests; a group that
-        # does not say which is not a group we can honour.
-        # The `type: ignore` is the point rather than an escape: mypy ALSO
-        # refuses this call, which is half the guarantee. The other half --
-        # that a request arriving over HTTP without an intent is a 422 rather
-        # than a silent "with" -- is what the runtime raise below pins, and no
-        # type checker can see that one.
-        with pytest.raises(ValidationError):
-            FriendGroupCreateRequest(  # type: ignore[call-arg]
-                year=YEAR,
-                session_cm_id=SESSION_CM_ID,
-                color="#22c55e",
-                household_cm_ids=[JOHNSON, GARCIA],
-            )
-
-    def test_intent_rejects_a_third_value(self) -> None:
-        # `similar_ages` is a ProximityKind but not a placement intent: it
-        # ACCOMPANIES `with`, it is not an alternative to it.
-        with pytest.raises(ValidationError):
-            _create_request(intent="similar_ages")
-
-    def test_both_intents_build(self) -> None:
-        assert _create_request(intent="near").intent == "near"
-        assert _create_request(intent="with").intent == "with"
-
     def test_a_group_needs_two_households(self) -> None:
         with pytest.raises(ValidationError):
             _create_request(household_cm_ids=[JOHNSON])
@@ -168,7 +161,6 @@ class TestUpdateRequestSchema:
         request = FriendGroupUpdateRequest()
         assert request.name is None
         assert request.color is None
-        assert request.intent is None
         assert request.household_cm_ids is None
 
     def test_a_membership_edit_still_needs_two_households(self) -> None:
@@ -201,7 +193,6 @@ class TestListGroups:
 
         assert len(response.groups) == 1
         assert [m.household_cm_id for m in response.groups[0].members] == [JOHNSON, GARCIA]
-        assert response.groups[0].intent == "with"
 
     @pytest.mark.asyncio
     async def test_a_member_of_another_group_does_not_leak_in(self) -> None:
@@ -248,6 +239,17 @@ class TestCreateGroup:
         assert data["source"] == "staff_manual"
 
     @pytest.mark.asyncio
+    async def test_the_written_row_carries_no_intent_key(self) -> None:
+        # See TestIntentIsGone: the schema pins the field's absence from the
+        # request; this pins that the service does not smuggle one back in
+        # via a stray dict key on the write.
+        groups = _groups_repo()
+        await _service(groups=groups).create_group(_create_request(), "staff@example.com")
+
+        data = groups.create_group.await_args.args[0]
+        assert "intent" not in data
+
+    @pytest.mark.asyncio
     async def test_one_member_row_per_household(self) -> None:
         groups = _groups_repo()
         await _service(groups=groups).create_group(_create_request(), "staff@example.com")
@@ -278,13 +280,6 @@ class TestUpdateGroup:
 
         data = groups.update_group.await_args.args[1]
         assert data == {"color": "#3b82f6"}
-
-    @pytest.mark.asyncio
-    async def test_the_intent_can_be_switched(self) -> None:
-        groups = _groups_repo(find_group=_group_row(), fetch_members=[_member_row("grp_1", JOHNSON)])
-        await _service(groups=groups).update_group("grp_1", FriendGroupUpdateRequest(intent="near"), "s@example.com")
-
-        assert groups.update_group.await_args.args[1] == {"intent": "near"}
 
     @pytest.mark.asyncio
     async def test_membership_is_replaced_not_appended(self) -> None:

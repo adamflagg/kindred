@@ -45,14 +45,16 @@
  * CampMinder response must fail the orphan delete with a 400 rather than
  * silently taking its lodging rows.
  *
- * `intent` IS REQUIRED AND HAS NO DEFAULT
+ * THERE IS NO `intent` COLUMN, AND THAT IS AN OWNER RULING, NOT AN OMISSION
  *
- * NEAR and WITH are different requests and must not collapse: NEAR is
- * satisfied by distance between units, WITH by putting both parties in one
- * room. The vocabulary is the placement-relevant subset of the ingest's own
- * `ProximityKind` (`near | with | similar_ages`); `similar_ages` is absent
- * because it ACCOMPANIES `with` rather than replacing it, and a group whose
- * members are named cannot mean "somebody with kids about this age".
+ * A friend group is "lock these households together," full stop. Whether
+ * that means the same cabin (NEAR is satisfied by distance between units,
+ * WITH only by putting both parties in one room) is a property of whatever
+ * later CONSUMES the group -- the solver tool kindred#1913 half 2 will
+ * build -- not of the group itself. An earlier revision stored it here; the
+ * owner struck it before this migration ever reached production, so removing
+ * it cost nothing but a line in an unapplied migration rather than a second,
+ * required-column migration after the fact.
  *
  * `source` IS THE SEAM, AND IS THE WHOLE OF IT
  *
@@ -64,9 +66,9 @@
  *
  * NOTHING ENFORCES THAT A HOUSEHOLD BELONGS TO AT MOST ONE GROUP
  *
- * Deliberate. A household can legitimately want the same cabin as one family
- * and to be near a different one, which is two groups with two intents. The
- * unique index below is per-group only: a household appears at most once
+ * Deliberate. A household can legitimately want to be locked with one family
+ * and separately with a different one, which is two groups, not a conflict.
+ * The unique index below is per-group only: a household appears at most once
  * INSIDE a group. Summer has the same permissiveness and warns in the UI
  * rather than in the schema.
  *
@@ -110,7 +112,6 @@ migrate((app) => {
       // select: the palette is a presentation choice that belongs in the
       // frontend, and pinning it here would need a migration to add a colour.
       { type: "text", name: "color", required: true, presentable: false, min: 0, max: 7, pattern: "^#[0-9a-fA-F]{6}$" },
-      { type: "select", name: "intent", required: true, presentable: false, values: ["with", "near"], maxSelect: 1 },
       {
         type: "select", name: "source", required: true, presentable: false,
         values: ["staff_manual", "proposed"], maxSelect: 1

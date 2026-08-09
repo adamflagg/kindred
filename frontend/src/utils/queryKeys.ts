@@ -494,7 +494,7 @@ export const queryKeys = {
    * Staff-authored friend groups for one weekend (kindred#1913).
    *
    * NO `scenario`, unlike `weekendRoster` directly above, and the asymmetry is
-   * the point: migration 1500000144 gives the table no scenario dimension
+   * the point: migration 1500000146 gives the table no scenario dimension
    * because a group records what households ASKED FOR, which is true of the
    * weekend in every plan for it. A scenario here would mint one cache entry
    * per plan for identical data, and make a group authored in one plan

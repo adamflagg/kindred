@@ -168,7 +168,7 @@ export default function WeekendRosterPage() {
   // Read here as well as inside the Groups tab, for the tab strip's count —
   // React Query dedupes the two against one cache entry, so this costs no
   // second request. NO `scenario` argument, unlike the roster above: a friend
-  // group has no scenario dimension (migration 1500000144).
+  // group has no scenario dimension (migration 1500000146).
   const friendGroupsQuery = useWeekendFriendGroups(currentYear, selectedCmId)
 
   // A slug with no list yet is UNRESOLVED, not unknown — but the title's
@@ -470,7 +470,7 @@ export default function WeekendRosterPage() {
                           a list and a picker over data the page already has.
 
                           NO `scenario` prop, unlike the board. A friend group
-                          has no scenario dimension (migration 1500000144): it
+                          has no scenario dimension (migration 1500000146): it
                           records what households asked for, which is true of
                           the weekend in every plan for it. */}
                       <WeekendFriendGroups

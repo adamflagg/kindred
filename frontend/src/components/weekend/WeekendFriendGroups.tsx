@@ -1,11 +1,16 @@
 /**
  * The weekend Groups tab — staff-authored friend groups (kindred#1913 half 1).
  *
- * A friend group here is a named set of HOUSEHOLDS with a stated intent,
- * authored by a staff member. Nothing on this surface parses a request,
- * resolves a name, or solves anything: the staff member is the resolver. The
- * seam a later proposer would arrive through is the row's `source` column and
- * nothing else — see `api/services/lodging_friend_group_service.py`.
+ * A friend group here is a named set of HOUSEHOLDS, authored by a staff
+ * member. Nothing on this surface parses a request, resolves a name, or
+ * solves anything: the staff member is the resolver. The seam a later
+ * proposer would arrive through is the row's `source` column and nothing
+ * else — see `api/services/lodging_friend_group_service.py`.
+ *
+ * NO `intent`. A friend group is "lock these households together," full
+ * stop — whether that means the same cabin or merely nearby is a property of
+ * whatever later consumes the group (the solver tool half 2 of the issue
+ * builds), not of the group itself. Owner ruling, kindred#1913.
  *
  * ## What came across from summer, and what did not
  *
@@ -36,14 +41,13 @@ import { useMemo, useState } from 'react'
 
 import { QueryGuard } from '../QueryGuard'
 import { useFriendGroupMutations, useWeekendFriendGroups } from '../../hooks/useWeekendFriendGroups'
-import type { FriendGroupIntent, FriendGroupRow, FriendGroupUpdate } from '../../types/friendGroups'
+import type { FriendGroupRow, FriendGroupUpdate } from '../../types/friendGroups'
 import type { RosterPartyRow } from '../../types/lodging'
 import { FriendGroupActionBar } from './FriendGroupActionBar'
 import {
   defaultFriendGroupName,
   FRIEND_GROUP_COLOR_NAMES,
   FRIEND_GROUP_COLORS,
-  FRIEND_GROUP_INTENT_LABEL,
   friendGroupMemberLabels,
   householdLabel,
   nextFriendGroupColor,
@@ -89,8 +93,6 @@ function FriendGroupCard({
   const [isEditing, setIsEditing] = useState(false)
   const [draftName, setDraftName] = useState(group.name ?? '')
   const [draftColor, setDraftColor] = useState(group.color ?? FRIEND_GROUP_COLORS[0])
-
-  const intent: FriendGroupIntent = group.intent ?? 'with'
 
   // Disambiguated labels for the member chips below — see
   // `friendGroupMemberLabels`. Built only from members still on the roster;
@@ -146,9 +148,6 @@ function FriendGroupCard({
               `??` passes '' straight through and renders an empty heading. */}
           {/* eslint-disable-next-line @typescript-eslint/prefer-nullish-coalescing -- '' is a real stored value meaning "unnamed", so `??` would render a blank heading */}
           {group.name || 'Unnamed group'}
-        </span>
-        <span className="bg-muted text-muted-foreground rounded-full px-2 py-0.5 text-xs font-medium">
-          {FRIEND_GROUP_INTENT_LABEL[intent]}
         </span>
         {/* The seam, made visible. A group a machine proposed must never read
             as one a staff member authored. Nothing writes this today. */}
@@ -283,7 +282,6 @@ export function WeekendFriendGroups({
   // tests stay O(1) across a roster of several hundred households.
   const [selectedIds, setSelectedIds] = useState<Set<number>>(() => new Set())
   const [name, setName] = useState('')
-  const [intent, setIntent] = useState<FriendGroupIntent>('with')
   const [color, setColor] = useState<string | null>(null)
 
   /**
@@ -465,8 +463,6 @@ export function WeekendFriendGroups({
                 onNameChange={setName}
                 color={activeColor}
                 onColorChange={setColor}
-                intent={intent}
-                onIntentChange={setIntent}
                 onClear={clearSelection}
                 onCreate={() => {
                   createGroup(
@@ -479,7 +475,6 @@ export function WeekendFriendGroups({
                       // for the row to be renamed later.
                       name: name.trim() || defaultFriendGroupName(selected),
                       color: activeColor,
-                      intent,
                       household_cm_ids: selected.map((party) => party.household_cm_id ?? 0),
                     },
                     // CLEARED ON SUCCESS ONLY, as summer's bar does. `mutate`

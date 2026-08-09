@@ -117,7 +117,7 @@ describe('authoring a group', () => {
     expect(screen.getByLabelText(/group name/i)).toHaveAttribute('placeholder', 'Garcia, Johnson')
   })
 
-  it('creates the group with the auto-name, the chosen colour and the intent', async () => {
+  it('creates the group with the auto-name and the chosen colour, and no intent field', async () => {
     const user = userEvent.setup()
     renderTab()
     await user.click(screen.getByRole('button', { name: /Johnson/ }))
@@ -130,7 +130,6 @@ describe('authoring a group', () => {
         session_cm_id: 1000001,
         name: 'Garcia, Johnson',
         color: '#ef4444',
-        intent: 'with',
         household_cm_ids: [2000001, 2000002],
       },
       // The second argument is what makes the clear conditional — see
@@ -139,18 +138,14 @@ describe('authoring a group', () => {
     )
   })
 
-  it('sends NEAR when staff pick proximity rather than co-housing', async () => {
+  it('offers no intent control at all — owner ruling, kindred#1913', async () => {
     const user = userEvent.setup()
     renderTab()
     await user.click(screen.getByRole('button', { name: /Johnson/ }))
     await user.click(screen.getByRole('button', { name: /Garcia/ }))
-    await user.click(screen.getByRole('radio', { name: /nearby/i }))
-    await user.click(screen.getByRole('button', { name: /create group/i }))
 
-    expect(createGroup).toHaveBeenCalledWith(
-      expect.objectContaining({ intent: 'near' }),
-      expect.anything()
-    )
+    const bar = screen.getByTestId('friend-group-action-bar')
+    expect(within(bar).queryByRole('radio', { name: /nearby|same cabin/i })).not.toBeInTheDocument()
   })
 
   it('keeps a typed name over the auto-name', async () => {
@@ -235,7 +230,6 @@ describe('existing groups', () => {
     session_cm_id: 1000001,
     name: 'Garcia, Johnson',
     color: '#22c55e',
-    intent: 'with',
     source: 'staff_manual',
     created_by: 'staff@example.com',
     members: [{ household_cm_id: 2000001 }, { household_cm_id: 2000002 }],
@@ -275,18 +269,11 @@ describe('existing groups', () => {
     expect(within(card).queryByText('Johnson')).not.toBeInTheDocument()
   })
 
-  it('says WITH and NEAR differently — they are different requests', () => {
-    groupsResult = {
-      data: { groups: [group, { ...group, group_id: 'grp_2', intent: 'near' }] },
-      isLoading: false,
-      isPending: false,
-      error: null,
-    }
+  it('renders no intent chip on a group card — owner ruling, kindred#1913', () => {
+    groupsResult = { data: { groups: [group] }, isLoading: false, isPending: false, error: null }
     renderTab()
-    expect(
-      within(screen.getByTestId('friend-group-grp_1')).getByText('Same cabin')
-    ).toBeInTheDocument()
-    expect(within(screen.getByTestId('friend-group-grp_2')).getByText('Nearby')).toBeInTheDocument()
+    const card = screen.getByTestId('friend-group-grp_1')
+    expect(within(card).queryByText(/same cabin|nearby/i)).not.toBeInTheDocument()
   })
 
   it('names a member who has left the roster rather than dropping them silently', () => {
@@ -353,7 +340,6 @@ describe('permissions and grain', () => {
             session_cm_id: 1000001,
             name: 'Garcia, Johnson',
             color: '#22c55e',
-            intent: 'with',
             source: 'staff_manual',
             created_by: '',
             members: [{ household_cm_id: 2000001 }],

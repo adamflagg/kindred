@@ -1,8 +1,12 @@
 """Weekend friend groups: read, author, edit, dissolve (kindred#1913 half 1).
 
-A friend group is a STAFF-AUTHORED set of households with a stated intent. It
-is not derived from anything: no free-text parsing, no name resolution, no
-solver. The staff member is the resolver.
+A friend group is a STAFF-AUTHORED set of households -- "lock these households
+together," full stop, per the owner's ruling. It is not derived from
+anything: no free-text parsing, no name resolution, no solver. The staff
+member is the resolver. NOR does it carry an `intent`: whether a placement
+means the same cabin or merely nearby is a property of whatever later
+consumes the group, not of the group itself -- see
+`api/schemas/lodging_friend_groups.py` for the fuller argument.
 
 WHAT THE "SEAM" IS, AND WHAT IT IS NOT. The issue asks for somewhere a later
 solver or "processed requests" pipeline can plug in, while explicitly not
@@ -180,12 +184,6 @@ class LodgingFriendGroupService:
                 session_cm_id=_i(row, "session_cm_id") or session_cm_id,
                 name=_s(row, "name"),
                 color=_s(row, "color"),
-                # The stored values are constrained by the migration's select
-                # list, so these cannot widen the Literal at runtime; Pydantic
-                # still validates them, so a row hand-edited in the PocketBase
-                # admin UI to something else fails loudly here rather than
-                # reaching the UI as an unrenderable intent.
-                intent=_s(row, "intent") or "with",
                 source=_s(row, "source") or "staff_manual",
                 created_by=_s(row, "created_by"),
                 members=by_group.get(_s(row, "id"), []),
@@ -235,7 +233,6 @@ class LodgingFriendGroupService:
             "year": request.year,
             "name": request.name,
             "color": request.color,
-            "intent": request.intent,
             "source": request.source,
             "created_by": actor,
         }
@@ -262,14 +259,13 @@ class LodgingFriendGroupService:
             session_cm_id=request.session_cm_id,
             name=request.name,
             color=request.color,
-            intent=request.intent,
             source=request.source,
             created_by=actor,
             members=members,
         )
 
     async def update_group(self, group_id: str, request: FriendGroupUpdateRequest, actor: str) -> FriendGroup:
-        """Rename, recolour, switch intent, or replace the membership.
+        """Rename, recolour, or replace the membership.
 
         `exclude_unset` is what makes this a PATCH rather than a PUT: a
         recolour must not blank the name, and a rename to "" is a real edit
@@ -339,7 +335,7 @@ class LodgingFriendGroupService:
     async def delete_group(self, group_id: str) -> FriendGroupDeleteResponse:
         """Dissolve a group.
 
-        ONE delete. `lodging_friend_group_members.group` cascades (1500000144),
+        ONE delete. `lodging_friend_group_members.group` cascades (1500000146),
         so PocketBase sweeps the membership server-side -- the same reason
         summer's draft relation was flipped to cascade, to delete an N+1
         client-side pre-delete loop rather than write one here.

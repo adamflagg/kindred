@@ -9,34 +9,29 @@
  * `lodging_friend_groups` rows over households, so a shared component would be
  * a grain-generic prop soup. The scenario modal is the in-repo precedent.
  *
- * ## What summer does not have: the intent choice
+ * ## No intent choice, here or on the wire
  *
- * NEAR and WITH are different requests — NEAR is satisfied by distance between
- * units, WITH only by putting both parties in one room — so a weekend group
- * that cannot say which one it means is the wrong object (kindred#1913). It is
- * a two-radio group rather than a checkbox, because the two are alternatives
- * and the control has to make that visible before the group is created.
+ * A weekend group is "lock these households together," full stop — whether
+ * that means the same cabin or merely nearby is a property of whatever later
+ * consumes the group, not of the group itself (owner ruling, kindred#1913).
  *
  * ## What summer has that this deliberately does not
  *
  * The cross-session and cross-gender validation, and the conflict dialog for a
  * camper already in another group. Neither transfers. Every household in the
  * picker is on THIS weekend's roster by construction, weekends do not split by
- * gender, and a household may legitimately want the same cabin as one family
- * and to be near a different one — which is two groups, not a conflict. See
- * migration 1500000144's header for why the schema permits it.
+ * gender, and a household may legitimately want to be locked with one family
+ * and separately with a different one — which is two groups, not a conflict.
+ * See migration 1500000146's header for why the schema permits it.
  */
 import { Heart, Users } from 'lucide-react'
 import clsx from 'clsx'
 
-import type { FriendGroupIntent } from '../../types/friendGroups'
 import type { RosterPartyRow } from '../../types/lodging'
 import {
   defaultFriendGroupName,
   FRIEND_GROUP_COLOR_NAMES,
   FRIEND_GROUP_COLORS,
-  FRIEND_GROUP_INTENT_HELP,
-  FRIEND_GROUP_INTENT_LABEL,
 } from './friendGroups'
 
 export interface FriendGroupActionBarProps {
@@ -46,8 +41,6 @@ export interface FriendGroupActionBarProps {
   onNameChange: (name: string) => void
   color: string
   onColorChange: (color: string) => void
-  intent: FriendGroupIntent
-  onIntentChange: (intent: FriendGroupIntent) => void
   onClear: () => void
   onCreate: () => void
   isPending: boolean
@@ -96,8 +89,6 @@ export function FriendGroupActionBar({
   onNameChange,
   color,
   onColorChange,
-  intent,
-  onIntentChange,
   onClear,
   onCreate,
   isPending,
@@ -142,38 +133,6 @@ export function FriendGroupActionBar({
               placeholder={autoName || 'Group name'}
               className="bg-background focus:ring-primary/50 w-44 rounded-lg border px-3 py-1.5 text-sm focus:ring-2 focus:outline-none"
             />
-
-            <div className="bg-border h-6 w-px" aria-hidden="true" />
-
-            {/* The one control summer has no equivalent for. `fieldset` so the
-                pair announces as a group rather than as two loose radios. */}
-            <fieldset className="flex items-center gap-2">
-              <legend className="sr-only">What this group needs</legend>
-              {(['with', 'near'] as const).map((candidate) => (
-                <label
-                  key={candidate}
-                  title={FRIEND_GROUP_INTENT_HELP[candidate]}
-                  className={clsx(
-                    'cursor-pointer rounded-lg border px-3 py-1.5 text-sm transition-colors',
-                    intent === candidate
-                      ? 'border-primary bg-primary/10 text-foreground font-medium'
-                      : 'text-muted-foreground hover:bg-muted'
-                  )}
-                >
-                  <input
-                    type="radio"
-                    name="friend-group-intent"
-                    value={candidate}
-                    checked={intent === candidate}
-                    onChange={() => {
-                      onIntentChange(candidate)
-                    }}
-                    className="sr-only"
-                  />
-                  {FRIEND_GROUP_INTENT_LABEL[candidate]}
-                </label>
-              ))}
-            </fieldset>
 
             <div className="bg-border h-6 w-px" aria-hidden="true" />
 

@@ -18,7 +18,7 @@
  *
  * `weekendRoster` keys on `(year, sessionCmId, scenario)` because a scenario
  * REPLACES the mirror, so the two are different documents. A friend group has
- * no scenario dimension at all (migration 1500000144): it records what
+ * no scenario dimension at all (migration 1500000146): it records what
  * households asked for, which is true of the weekend in every plan for it. A
  * scenario in this key would mint one cache entry per scenario for identical
  * data and make a group authored in one invisible in another.

@@ -152,20 +152,3 @@ export function friendGroupMemberLabels(parties: RosterPartyRow[]): Map<number, 
   }
   return result
 }
-
-/** What a group's intent means, in the roster's own words. */
-export const FRIEND_GROUP_INTENT_LABEL = {
-  with: 'Same cabin',
-  near: 'Nearby',
-} as const
-
-/**
- * The longer form, for the authoring control where staff are choosing rather
- * than reading back. Deliberately spells out what each one is satisfied by:
- * the whole reason the two are separate is that a NEAR is met by distance and
- * a WITH only by one room.
- */
-export const FRIEND_GROUP_INTENT_HELP = {
-  with: 'Place these households in the same cabin',
-  near: 'Place these households close to each other',
-} as const

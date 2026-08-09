@@ -1352,10 +1352,6 @@ export type FriendGroup = {
    */
   color?: string
   /**
-   * Intent
-   */
-  intent?: 'with' | 'near'
-  /**
    * Source
    */
   source?: 'staff_manual' | 'proposed'
@@ -1374,7 +1370,7 @@ export type FriendGroup = {
  *
  * Create one group for one weekend.
  *
- * NO `scenario`. Migration 1500000144 gives this table no scenario dimension,
+ * NO `scenario`. Migration 1500000146 gives this table no scenario dimension,
  * following `lodging_availability` rather than summer's `locked_groups`: a
  * group records what households asked for, which is true of the weekend in
  * every plan for it. See that migration's header for the full argument.
@@ -1396,10 +1392,6 @@ export type FriendGroupCreateRequest = {
    * Color
    */
   color: string
-  /**
-   * Intent
-   */
-  intent: 'with' | 'near'
   /**
    * Source
    */
@@ -1492,10 +1484,6 @@ export type FriendGroupUpdateRequest = {
    * Color
    */
   color?: string | null
-  /**
-   * Intent
-   */
-  intent?: 'with' | 'near' | null
   /**
    * Household Cm Ids
    */

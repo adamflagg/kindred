@@ -66,7 +66,7 @@ export async function createFriendGroup(
 }
 
 /**
- * Rename, recolour, switch intent, or replace the membership.
+ * Rename, recolour, or replace the membership.
  *
  * A true PATCH: send ONLY what changed. Sending the whole group back would
  * turn a recolour into a rewrite of the name and membership too, which is the
@@ -86,7 +86,7 @@ export async function updateFriendGroup(
   return response.json() as Promise<FriendGroupRow>
 }
 
-/** Dissolve a group. Its membership cascades away server-side (1500000144). */
+/** Dissolve a group. Its membership cascades away server-side (1500000146). */
 export async function deleteFriendGroup(
   fetchWithAuth: FetchWithAuth,
   groupId: string

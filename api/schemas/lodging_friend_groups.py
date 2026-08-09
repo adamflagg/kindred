@@ -5,13 +5,12 @@ object is independent of the roster: nothing here is derived from a request,
 parsed out of free text, or resolved against a name. Staff select households
 and say what they mean.
 
-The vocabulary this shares with the roster is deliberately narrow and is
-restated here rather than imported, because the two are not the same list.
-`ProximityKind` is `near | with | similar_ages` — what the REGISTRATION FORM
-can say. A friend group's `intent` is the placement-relevant subset,
-`with | near`: `similar_ages` accompanies `with` rather than replacing it, and
-a group whose members are named by a staff member cannot mean "somebody with
-kids about this age".
+NO `intent` FIELD, ON PURPOSE. kindred#1913's owner ruling: a friend group is
+"lock these households together," full stop -- `with` (same cabin) vs. `near`
+(distance-satisfied) is a property of whatever later CONSUMES a group, the
+solver tool half 2 of the issue builds, not of the group itself. The
+registration form's own `ProximityKind` (`near | with | similar_ages`) is a
+different vocabulary for a different object and was never mirrored here.
 """
 
 from __future__ import annotations
@@ -19,12 +18,6 @@ from __future__ import annotations
 from typing import Literal
 
 from pydantic import BaseModel, Field, field_validator
-
-# What placing this group would have to satisfy. NOT interchangeable: `near`
-# is satisfied by distance between units, `with` by putting both parties in
-# one room. Required everywhere, with no default -- a group that cannot say
-# which one it means is the wrong object.
-FriendGroupIntent = Literal["with", "near"]
 
 # WHO authored the group. `staff_manual` is the only value anything writes
 # today; `proposed` is the seam kindred#1913 asks for and nothing more -- a
@@ -76,7 +69,6 @@ class FriendGroup(BaseModel):
     session_cm_id: int
     name: str = ""
     color: str = ""
-    intent: FriendGroupIntent = "with"
     source: FriendGroupSource = "staff_manual"
     created_by: str = ""
     members: list[FriendGroupMember] = Field(default_factory=list)
@@ -91,7 +83,7 @@ class FriendGroupListResponse(BaseModel):
 class FriendGroupCreateRequest(BaseModel):
     """Create one group for one weekend.
 
-    NO `scenario`. Migration 1500000144 gives this table no scenario dimension,
+    NO `scenario`. Migration 1500000146 gives this table no scenario dimension,
     following `lodging_availability` rather than summer's `locked_groups`: a
     group records what households asked for, which is true of the weekend in
     every plan for it. See that migration's header for the full argument.
@@ -101,7 +93,6 @@ class FriendGroupCreateRequest(BaseModel):
     session_cm_id: int = Field(..., gt=0)
     name: str = Field("", max_length=200)
     color: str = Field(..., pattern=HEX_COLOR)
-    intent: FriendGroupIntent
     source: FriendGroupSource = "staff_manual"
     household_cm_ids: list[int] = Field(..., min_length=2)
 
@@ -139,7 +130,6 @@ class FriendGroupUpdateRequest(BaseModel):
 
     name: str | None = Field(None, max_length=200)
     color: str | None = Field(None, pattern=HEX_COLOR)
-    intent: FriendGroupIntent | None = None
     household_cm_ids: list[int] | None = Field(None, min_length=2)
 
     @field_validator("household_cm_ids")

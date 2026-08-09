@@ -67,7 +67,7 @@ async def list_friend_groups(
 ) -> FriendGroupListResponse:
     """Every friend group on one weekend, with its household membership.
 
-    NO `scenario` parameter, unlike the roster. Migration 1500000144 gives this
+    NO `scenario` parameter, unlike the roster. Migration 1500000146 gives this
     table no scenario dimension: a group records what households asked for,
     which is true of the weekend in every plan for it -- the same argument
     1500000135 made for `lodging_availability`. See that migration's header.
@@ -85,10 +85,10 @@ async def create_friend_group(
 ) -> FriendGroup:
     """Author one group over at least two households.
 
-    `intent` is required and has no default: NEAR and WITH are different
-    requests -- NEAR is satisfied by distance between units, WITH by putting
-    both parties in one room -- so a group that does not say which one it
-    means is refused with a 422 rather than guessed at.
+    No `intent`. A friend group is "lock these households together," full
+    stop -- whether that means the same cabin or merely nearby is a property
+    of whatever later consumes the group, not of the group itself (owner
+    ruling, kindred#1913).
     """
     try:
         return await _service().create_group(request, user.email)
@@ -102,7 +102,7 @@ async def update_friend_group(
     request: FriendGroupUpdateRequest,
     user: AuthUser = Depends(require_permission(Permission.BUNKING_MANAGE)),
 ) -> FriendGroup:
-    """Rename, recolour, switch intent, or replace the membership.
+    """Rename, recolour, or replace the membership.
 
     A true PATCH: an omitted field is untouched, while `name: ""` is a real
     edit meaning "fall back to the auto-name". The weekend and the year are
@@ -120,7 +120,7 @@ async def delete_friend_group(
     group_id: str,
     user: AuthUser = Depends(require_permission(Permission.BUNKING_MANAGE)),
 ) -> FriendGroupDeleteResponse:
-    """Dissolve a group. Its membership cascades away with it (1500000144)."""
+    """Dissolve a group. Its membership cascades away with it (1500000146)."""
     try:
         return await _service().delete_group(group_id)
     except FriendGroupNotFoundError as exc:

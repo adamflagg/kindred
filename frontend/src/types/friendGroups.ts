@@ -5,11 +5,15 @@
  * `types/lodging.ts` uses — import these rather than reaching into
  * `api-generated/` directly.
  *
- * The unions are DERIVED, never hand-written. `intent` in particular is a
- * two-value Literal on the Python side, and a hand-copied union here is
- * exactly how a surface drifts from the wire contract: `NonNullable<...>`
- * makes a change to the Pydantic Literal a type error at the read sites
- * instead of a silently unreachable branch.
+ * NO `FriendGroupIntent` export, on purpose. A friend group is "lock these
+ * households together," full stop — `with`/`near` is a property of whatever
+ * later consumes a group, not of the group itself (owner ruling,
+ * kindred#1913). See `api/schemas/lodging_friend_groups.py`.
+ *
+ * The unions that DO remain are DERIVED, never hand-written: a hand-copied
+ * union here is exactly how a surface drifts from the wire contract.
+ * `NonNullable<...>` makes a change to the Pydantic Literal a type error at
+ * the read sites instead of a silently unreachable branch.
  *
  * GOTCHA, same as `types/lodging.ts`: a Pydantic field with a default renders
  * as OPTIONAL in TypeScript (`name: str = ""` -> `name?: string`). The server
@@ -34,22 +38,6 @@ export type FriendGroupMemberRow = FriendGroupMember
 export type FriendGroupCreate = FriendGroupCreateRequest
 /** PATCH body. Every field optional; omitted means untouched. */
 export type FriendGroupUpdate = FriendGroupUpdateRequest
-
-/**
- * What placing this group would have to satisfy.
- *
- * `with` and `near` are DIFFERENT REQUESTS and must never collapse into one:
- * `near` is satisfied by distance between units, `with` only by putting both
- * parties in one room. A UI that renders them alike is the failure kindred#1913
- * names explicitly.
- *
- * Note this is NARROWER than `ProximityKindValue` in `types/lodging.ts`, which
- * is what the registration form can say (`near | with | similar_ages`).
- * `similar_ages` accompanies `with` rather than replacing it, and a group whose
- * members are named by a staff member cannot mean "somebody with kids about
- * this age".
- */
-export type FriendGroupIntent = NonNullable<FriendGroup['intent']>
 
 /**
  * WHO authored the group. `staff_manual` is all anything writes today;

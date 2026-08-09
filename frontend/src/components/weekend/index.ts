@@ -9,8 +9,6 @@ export {
   defaultFriendGroupName,
   FRIEND_GROUP_COLOR_NAMES,
   FRIEND_GROUP_COLORS,
-  FRIEND_GROUP_INTENT_HELP,
-  FRIEND_GROUP_INTENT_LABEL,
   householdLabel,
   nextFriendGroupColor,
 } from './friendGroups'

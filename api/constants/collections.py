@@ -85,7 +85,7 @@ LODGING_INGEST_ISSUES = "lodging_ingest_issues"
 # nothing.
 LODGING_SESSION_STATUS = "lodging_session_status"
 
-# Staff-authored friend groups at HOUSEHOLD grain (1500000144, kindred#1913).
+# Staff-authored friend groups at HOUSEHOLD grain (1500000146, kindred#1913).
 # No scenario dimension, unlike summer's locked_groups: a group records what
 # households asked for, which is true of the weekend in every plan for it.
 LODGING_FRIEND_GROUPS = "lodging_friend_groups"
