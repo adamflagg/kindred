@@ -90,7 +90,13 @@ export function FamilyDetailsPanel({
   //
   // Adjusted during render, not in an effect: an effect commits one frame with
   // the exit class still on, which is the flicker this exists to prevent.
-  // `requestClose` needs no equivalent — the parent's `openParty` sets it false.
+  // `requestClose` needs no equivalent HERE for a same-click family switch —
+  // the parent's `openParty` already sets it false. A party that DEPARTS the
+  // roster instead of being switched away from is a different path
+  // (kindred#2137 bug 2): this panel can unmount mid-exit-animation before
+  // `onClose` ever fires, so nothing here would clear a latched
+  // `requestClose` for it. `usePanelParty`'s own render-time correction is
+  // what clears it in that case, not this component.
   const identity = partyKey(party)
   const [shownIdentity, setShownIdentity] = useState(identity)
   if (identity !== shownIdentity) {

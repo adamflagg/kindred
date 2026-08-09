@@ -39,6 +39,7 @@ import { Info } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import { useDismissOnDeadSpace } from '../../hooks/useDismissOnDeadSpace'
+import { usePanelParty } from '../../hooks/usePanelParty'
 import type { LodgingUnitRow, RosterPartyRow } from '../../types/lodging'
 import { FamilyCard } from './FamilyCard'
 import { FamilyDetailsPanel } from './FamilyDetailsPanel'
@@ -145,8 +146,8 @@ export function LodgingMap({ parties, units, year, sessionCmId = 0 }: LodgingMap
   const [pinnedKey, setPinnedKey] = useState<string | null>(null)
   const [dwellKey, setDwellKey] = useState<string | null>(null)
   const dwellTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const [selected, setSelected] = useState<RosterPartyRow | null>(null)
-  const [requestClose, setRequestClose] = useState(false)
+  const { panelParty, requestClose, openParty, closePanel, requestPanelClose } =
+    usePanelParty(parties)
   const unitsByCode = useMemo(() => indexUnitsByCode(units), [units])
 
   const openKey = pinnedKey ?? dwellKey
@@ -191,20 +192,15 @@ export function LodgingMap({ parties, units, year, sessionCmId = 0 }: LodgingMap
     }
   }, [])
 
-  const openParty = useCallback((party: RosterPartyRow) => {
-    setRequestClose(false)
-    setSelected(party)
-  }, [])
-
-  const closePanel = useCallback(() => {
-    setSelected(null)
-    setRequestClose(false)
-  }, [])
+  // `openParty`/`closePanel`/`panelParty` come from `usePanelParty` above —
+  // shared with `LodgingBoard` and `HouseholdRosterTable` (kindred#2139). See
+  // its own docstring for the derivation and why it stores `selectedKey`
+  // rather than the party object.
 
   // RESET, not filtered (kindred#2138) — the owner's ruling was explicit: a
   // session change closes the panel outright, it does not merely stop
-  // rendering it while `selected` quietly survives underneath. The
-  // `panelParty` guard below only catches a household that drops OUT of
+  // rendering it while the selection quietly survives underneath.
+  // `usePanelParty`'s own guard only catches a household that drops OUT of
   // `parties`; a household enrolled in two weekends never does that, since
   // `partyKey` (deliberately — see partyKey.ts) carries no session
   // dimension, so the same key still matches after the switch and the panel
@@ -213,28 +209,15 @@ export function LodgingMap({ parties, units, year, sessionCmId = 0 }: LodgingMap
   // This is React's own "storing information from previous renders"
   // pattern: compare this render's prop against the last one seen, and if
   // it moved, correct the state right here in the render body rather than
-  // in an Effect. Calling `setSelected` conditionally during render does not
+  // in an Effect. Calling `closePanel` conditionally during render does not
   // add a paint the way an Effect would — React discards this render's
   // output and re-renders synchronously with the corrected state before
   // anything commits, so nobody ever sees the stale mid-render frame.
   const [lastSessionCmId, setLastSessionCmId] = useState(sessionCmId)
   if (sessionCmId !== lastSessionCmId) {
     setLastSessionCmId(sessionCmId)
-    setSelected(null)
+    closePanel()
   }
-
-  // DERIVED, not effect-cleared (kindred#2062). A weekend switch re-renders
-  // the map with a different `parties` prop but never unmounts it, so a
-  // `selected` that outlived its own mark's departure kept the panel — and
-  // its medical narrative — open over the new weekend's roster. Computing
-  // this at render time, rather than in a useEffect that calls setState,
-  // avoids the extra render pass React's docs warn an Effect would add here
-  // (`selected` itself is untouched; only what gets rendered changes). A
-  // refetch that returns the SAME parties (new array identity, same
-  // content) still resolves to present, because `partyKey` compares
-  // content, not identity — see partyKey.ts's own docstring.
-  const panelParty =
-    selected !== null && parties.some((p) => partyKey(p) === partyKey(selected)) ? selected : null
 
   // Same dead-space dismissal the summer board and the weekend board use, and
   // deliberately the same one line they use. The canvas is a bare div that a
@@ -246,9 +229,7 @@ export function LodgingMap({ parties, units, year, sessionCmId = 0 }: LodgingMap
   // rather than by teaching this callback to second-guess the clicks it does
   // get. A callback that remembers things about earlier gestures is a callback
   // that can be wrong about the current one.
-  useDismissOnDeadSpace(panelParty !== null, () => {
-    setRequestClose(true)
-  })
+  useDismissOnDeadSpace(panelParty !== null, requestPanelClose)
 
   // jsdom performs no layout, so clientWidth/clientHeight are 0 there (verified).
   // Without this fallback every mark computes position (0,0), the clusterer
@@ -348,6 +329,22 @@ export function LodgingMap({ parties, units, year, sessionCmId = 0 }: LodgingMap
   // null and the ternary short-circuits — only once a mark has been clicked.
   const openCluster =
     openKey === null ? undefined : clusters.find((cluster) => clusterKey(cluster) === openKey)
+
+  // Same latch as `usePanelParty`'s `selectedKey` above, applied to
+  // `pinnedKey`/`dwellKey` (kindred#2137 bug 4). `openCluster` already
+  // derives correctly — a fresh `.find` against the CURRENT `clusters` every
+  // render — but nothing reset `pinnedKey`/`dwellKey` when their cluster
+  // stopped existing. A `parties`/`units` prop change (a roster refetch or a
+  // weekend switch) can dissolve a cluster and a LATER prop change can
+  // re-mint the identical `clusterKey` (sorted unit ids), reopening a
+  // popover with no click. `MapUnitPopover` renders no `MedicalNarrative`,
+  // so this is a correctness/UX defect, not a PHI exposure — but the fix
+  // shape is identical: clear the stored key(s) right here, during render,
+  // rather than in an Effect.
+  if (openKey !== null && openCluster === undefined) {
+    if (pinnedKey !== null) setPinnedKey(null)
+    if (dwellKey !== null) setDwellKey(null)
+  }
 
   // The only way left to reset the view — the control bar's `Fit all` button
   // is gone. Called from the canvas's own `onDoubleClick` below; a bare
