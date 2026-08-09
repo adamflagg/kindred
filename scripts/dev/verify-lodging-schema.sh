@@ -378,10 +378,36 @@ if [[ -z "$sql" ]]; then
 else
   [[ "$sql" == *UNIQUE* ]] || note "index idx_lodging_avail_unique is not UNIQUE: $sql"
   [[ "$sql" != *scenario* ]] || note "index idx_lodging_avail_unique still keys on scenario: $sql"
-  for col in session year unit; do
+  for col in session_cm_id year unit; do
     [[ "$sql" == *"\`$col\`"* ]] || note "index idx_lodging_avail_unique must key on $col: $sql"
   done
 fi
+
+# kindred#2042 / 1500000147: every lodging unique index keys on the DURABLE
+# CampMinder id, never on the `session` relation.
+#
+# CLAUDE.md section 1 -- cross-table relationships use CampMinder ids. The four
+# lodging tables carry both, and the PB record id is the one that is replaced
+# when a camp_sessions record is RECREATED rather than updated: the rows
+# survive (cascadeDelete false, #1879) but stop being reachable through a
+# relation-keyed filter, while session_cm_id beside them still names the right
+# weekend.
+#
+# The two globs distinguish correctly BECAUSE they are backtick-delimited:
+# `session_cm_id` does not match the literal \`session\`.
+for idx in idx_lodging_assign_hh_live idx_lodging_assign_person_live \
+           idx_lodging_draft_hh idx_lodging_draft_person \
+           idx_lodging_slot_merge_unique idx_lodging_avail_unique; do
+  sql=$(sqlite3 "$DB" "SELECT COALESCE(sql,'') FROM sqlite_master WHERE type='index' AND name='$idx'" || true)
+  if [[ -z "$sql" ]]; then
+    note "index $idx missing"
+  else
+    [[ "$sql" == *'`session_cm_id`'* ]] \
+      || note "index $idx must key on session_cm_id, not the session relation (kindred#2042): $sql"
+    [[ "$sql" != *'`session`'* ]] \
+      || note "index $idx still keys on the session relation (kindred#2042): $sql"
+  fi
+done
 
 # -------------------------------------------------------------- season scoping
 #

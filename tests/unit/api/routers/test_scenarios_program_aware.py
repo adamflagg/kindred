@@ -914,7 +914,12 @@ class TestClearScenarioIsProgramAware:
         `session_cm_id` from the request, not cross-checked against the
         scenario's own relation) rules out two weekends' rows sharing one
         scenario id. Matches how every weekend draft write is already
-        scoped in `LodgingWriteService`/`LodgingRepository`."""
+        scoped in `LodgingWriteService`/`LodgingRepository`.
+
+        The SCOPING is the invariant; the key it is expressed in changed with
+        kindred#2042 -- see the CampMinder-id test below. This one only pins
+        that a weekend clear stays weekend-scoped at all.
+        """
         weekend_session = _rec(id="sess_pb", cm_id=2000001, session_type="family")
         scenario = _rec(id="scn_1", name="Family Weekend", session="sess_pb", expand={"session": weekend_session})
 
@@ -931,7 +936,94 @@ class TestClearScenarioIsProgramAware:
         assert resp.status_code == 200, resp.text
 
         query_params = mock_pb.collection.return_value.get_full_list.call_args.kwargs["query_params"]
-        assert 'session = "sess_pb"' in query_params["filter"]
+        assert "2000001" in query_params["filter"] or 'session = "sess_pb"' in query_params["filter"]
+
+    def test_the_weekend_clear_keys_on_the_campminder_session_id(self) -> None:
+        """kindred#2042 / migration 1500000147: `lodging_assignments_draft` is
+        keyed on `session_cm_id`, not on the `session` relation.
+
+        This read is the fourth lodging draft read in the codebase and the one
+        that does not live in `LodgingRepository`, which is how it was missed.
+        Left on the relation it carries the whole of the bug #2021 fixed, under
+        the trigger #2042 describes: a camp_sessions record RECREATED rather
+        than updated gets a new PocketBase id, the scenario's relation follows
+        it, the placements do not, and this endpoint answers "Cleared 0
+        assignments" with every placement still on the board. It is also no
+        longer an indexed read -- 1500000147 moved
+        `idx_lodging_draft_session_year` onto `session_cm_id` too.
+        """
+        weekend_session = _rec(id="sess_pb", cm_id=2000001, session_type="family")
+        scenario = _rec(id="scn_1", name="Family Weekend", session="sess_pb", expand={"session": weekend_session})
+
+        mock_pb = MagicMock()
+        mock_pb.collection.return_value.get_one.return_value = scenario
+        mock_pb.collection.return_value.get_full_list.return_value = []
+
+        app = _build_app()
+        with (
+            patch("api.routers.scenarios.pb", mock_pb),
+            patch("api.routers.scenarios.graph_cache", MagicMock()),
+        ):
+            resp = TestClient(app).post("/api/scenarios/scn_1/clear", json={"year": 2026})
+        assert resp.status_code == 200, resp.text
+
+        filter_str = mock_pb.collection.return_value.get_full_list.call_args.kwargs["query_params"]["filter"]
+        assert "session_cm_id = 2000001" in filter_str
+        assert 'session = "sess_pb"' not in filter_str
+        assert 'scenario = "scn_1"' in filter_str
+        assert "year = 2026" in filter_str
+
+    def test_the_summer_clear_still_keys_on_the_session_relation(self) -> None:
+        """The other half, and the reason this is a branch rather than a
+        rename: `bunk_assignments_draft` has no `session_cm_id` column at all
+        (pb_migrations/1500000022), so filtering it on one is a PocketBase
+        "unknown field" error, not a wrong answer.
+        """
+        summer_session = _rec(id="sess_pb", cm_id=1235404, session_type="main")
+        scenario = _rec(id="scn_1", name="May 7", session="sess_pb", expand={"session": summer_session})
+
+        mock_pb = MagicMock()
+        mock_pb.collection.return_value.get_one.return_value = scenario
+        mock_pb.collection.return_value.get_full_list.return_value = []
+
+        app = _build_app()
+        with (
+            patch("api.routers.scenarios.pb", mock_pb),
+            patch("api.routers.scenarios.graph_cache", MagicMock()),
+        ):
+            resp = TestClient(app).post("/api/scenarios/scn_1/clear", json={"year": 2026})
+        assert resp.status_code == 200, resp.text
+
+        filter_str = mock_pb.collection.return_value.get_full_list.call_args.kwargs["query_params"]["filter"]
+        assert 'session = "sess_pb"' in filter_str
+        assert "session_cm_id" not in filter_str
+
+    def test_a_weekend_session_with_no_campminder_id_is_a_409_not_a_silent_zero(self) -> None:
+        """The same argument as the dangling-relation 409 below.
+
+        `session_cm_id` is what the weekend filter is built from now, and a
+        weekend whose expanded record carries no usable `cm_id` would build
+        `session_cm_id = 0` -- a column PocketBase declares `min: 1`, so the
+        read matches nothing and the endpoint reports a confident "Cleared 0"
+        over a scenario that may hold every placement staff made. Refused
+        instead, exactly as an unresolvable relation is.
+        """
+        weekend_session = _rec(id="sess_pb", cm_id=0, session_type="family")
+        scenario = _rec(id="scn_1", name="Family Weekend", session="sess_pb", expand={"session": weekend_session})
+
+        mock_pb = MagicMock()
+        mock_pb.collection.return_value.get_one.return_value = scenario
+
+        app = _build_app()
+        with (
+            patch("api.routers.scenarios.pb", mock_pb),
+            patch("api.routers.scenarios.graph_cache", MagicMock()),
+        ):
+            resp = TestClient(app).post("/api/scenarios/scn_1/clear", json={"year": 2026})
+
+        assert resp.status_code == 409, resp.text
+        mock_pb.collection.return_value.get_full_list.assert_not_called()
+        mock_pb.collection.return_value.delete.assert_not_called()
 
     def test_the_delete_target_fetch_pins_a_stable_sort(self) -> None:
         """`get_full_list` pages through LIMIT/OFFSET with no ORDER BY unless

@@ -1397,7 +1397,7 @@ class TestSlotMergeTiers:
         roster = await LodgingRosterService(repo).build_roster(2026, 1000001)
 
         assert roster.units[0].is_combined is True
-        repo.fetch_slot_merges.assert_awaited_once_with(2026, "sess_1", "")
+        repo.fetch_slot_merges.assert_awaited_once_with(2026, 1000001, "")
 
     @pytest.mark.asyncio
     async def test_parent_code_resolves_through_the_id_to_code_map(self) -> None:
@@ -3096,6 +3096,54 @@ class TestPartySortName:
 
         assert [p.sort_name for p in roster.parties] == ["Adams", "Chen", "Johnson"]
         assert [p.household_cm_id for p in roster.parties] == [2000003, 2000002, 2000001]
+
+
+class TestTheRosterNamesTheWeekendByItsCampMinderId:
+    """kindred#2042: the four lodging reads key on `session_cm_id`.
+
+    `build_roster` and `build_summary` each carry their OWN TaskGroup issuing
+    the same four lodging reads, so re-keying one and not the other is the
+    obvious half-fix -- the same shape `test_the_summary_reads_no_second_availability_layer`
+    guards against. Both are pinned here.
+
+    `fetch_attendees_for_session` is deliberately still passed the PocketBase
+    record id: `attendees` is not a lodging table and has no `session_cm_id`
+    column to key on.
+    """
+
+    @pytest.mark.asyncio
+    async def test_build_roster_passes_the_campminder_id_to_the_lodging_reads(self) -> None:
+        repo = _repo(fetch_session=FAMILY_SESSION)
+
+        await LodgingRosterService(repo).build_roster(2026, 1000001, scenario="scn_1")
+
+        repo.fetch_availability.assert_awaited_once_with(2026, 1000001)
+        repo.fetch_draft_assignments.assert_awaited_once_with(2026, 1000001, "scn_1")
+        repo.fetch_slot_merges.assert_awaited_once_with(2026, 1000001, "scn_1")
+        repo.fetch_attendees_for_session.assert_awaited_once_with(2026, "sess_1")
+
+    @pytest.mark.asyncio
+    async def test_build_roster_without_a_scenario_reads_the_mirror_by_campminder_id(self) -> None:
+        repo = _repo(fetch_session=FAMILY_SESSION)
+
+        await LodgingRosterService(repo).build_roster(2026, 1000001)
+
+        repo.fetch_assignments.assert_awaited_once_with(2026, 1000001)
+
+    @pytest.mark.asyncio
+    async def test_build_summary_passes_each_weekends_own_campminder_id(self) -> None:
+        """Two weekends, two different CampMinder ids -- not one repeated.
+
+        `_entry` runs per session, so reading the id off the wrong record
+        would report both weekends against the first one's placements.
+        """
+        repo = _repo(fetch_weekend_sessions=[FAMILY_SESSION, ADULT_SESSION])
+
+        await LodgingRosterService(repo).build_summary(2026)
+
+        assert sorted(call.args[1] for call in repo.fetch_availability.await_args_list) == [1000001, 1000002]
+        assert sorted(call.args[1] for call in repo.fetch_assignments.await_args_list) == [1000001, 1000002]
+        assert sorted(call.args[1] for call in repo.fetch_slot_merges.await_args_list) == [1000001, 1000002]
 
 
 class TestPartySizeIsABedCount:

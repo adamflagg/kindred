@@ -101,6 +101,19 @@ class LodgingWriteService:
         PocketBase id is year-scoped and cannot be sent by a client that wants
         to mean the same weekend next season. Both are stored on the row --
         the relation for joins, session_cm_id as the durable key (#1879).
+
+        WHAT THIS IS STILL FOR, after kindred#2042 moved every lookup onto
+        `session_cm_id`. Two things, and neither is identity:
+
+        1. It is the 404. An unknown or non-weekend cm_id has to be refused
+           before anything is written, and this is the one read that can tell.
+        2. `session` is `required: true` on all four lodging tables and is
+           what an expand-based read joins through, so every write still has
+           to carry a real record id.
+
+        What it is NOT any more is the key a row is FOUND by -- that is
+        `session_cm_id`, which survives a camp_sessions record being recreated
+        rather than updated. See migration 1500000147.
         """
         session = await self.repository.fetch_session(year, session_cm_id)
         if session is None:
@@ -138,7 +151,7 @@ class LodgingWriteService:
         """Upsert one party's placement inside a scenario.
 
         Upsert rather than insert because the draft's partial unique indexes
-        allow exactly one row per (session, year, party, scenario).
+        allow exactly one row per (session_cm_id, year, party, scenario).
 
         The find and the create are two round trips, so they RACE. Two staff
         dragging the same family at the same moment both read no row, both
@@ -166,7 +179,7 @@ class LodgingWriteService:
 
         existing = await self.repository.find_draft_assignment(
             request.year,
-            session_pb_id,
+            request.session_cm_id,
             request.scenario,
             request.household_cm_id,
             request.person_cm_id,
@@ -205,7 +218,7 @@ class LodgingWriteService:
                 try:
                     raced = await self.repository.find_draft_assignment(
                         request.year,
-                        session_pb_id,
+                        request.session_cm_id,
                         request.scenario,
                         request.household_cm_id,
                         request.person_cm_id,
@@ -247,11 +260,16 @@ class LodgingWriteService:
         failure keeps its status through pb_error_to_http, because "the delete
         was refused" must not read as "there was nothing to delete".
         """
-        session_pb_id = await self._resolve_session_pb_id(request.year, request.session_cm_id)
+        # The RESULT is discarded, the call is not. Nothing on the delete path
+        # needs the PocketBase record id any more (kindred#2042 moved the lookup
+        # onto session_cm_id), but an unknown or non-weekend cm_id still has to
+        # be refused as a 404 before this reports "nothing to delete" -- which
+        # is what this read, and only this read, can tell.
+        await self._resolve_session_pb_id(request.year, request.session_cm_id)
 
         existing = await self.repository.find_draft_assignment(
             request.year,
-            session_pb_id,
+            request.session_cm_id,
             request.scenario,
             request.household_cm_id,
             request.person_cm_id,
@@ -326,14 +344,14 @@ class LodgingWriteService:
         """
         session_pb_id = await self._resolve_session_pb_id(request.year, request.session_cm_id)
 
-        held = await self.repository.count_draft_assignments(request.year, session_pb_id, request.scenario)
+        held = await self.repository.count_draft_assignments(request.year, request.session_cm_id, request.scenario)
         if held:
             raise ScenarioNotEmptyError(
                 f"Scenario {request.scenario} already holds {held} placement(s) for weekend "
                 f"{request.session_cm_id} in {request.year}"
             )
 
-        rows = await self.repository.fetch_assignments(request.year, session_pb_id)
+        rows = await self.repository.fetch_assignments(request.year, request.session_cm_id)
 
         copied = 0
         skipped = 0
@@ -370,7 +388,7 @@ class LodgingWriteService:
             try:
                 await self.repository.create_draft_assignment(data)
             except ClientResponseError as exc:
-                raise await self._seed_failure(exc, request, session_pb_id, copied) from exc
+                raise await self._seed_failure(exc, request, copied) from exc
             copied += 1
 
         # Inlined into the message, not `extra={}` -- see the identical note
@@ -382,9 +400,7 @@ class LodgingWriteService:
         )
         return LodgingCopyResponse(copied=copied, skipped=skipped)
 
-    async def _seed_failure(
-        self, exc: ClientResponseError, request: PlacementCopyRequest, session_pb_id: str, copied: int
-    ) -> Exception:
+    async def _seed_failure(self, exc: ClientResponseError, request: PlacementCopyRequest, copied: int) -> Exception:
         """Decide what a failed seed create means: a lost race, or a failure.
 
         Rows BEYOND the ones this call wrote mean another caller seeded the
@@ -419,7 +435,7 @@ class LodgingWriteService:
         if exc.status in REFUSAL_STATUSES:
             return pb_error_to_http(exc)
         try:
-            held = await self.repository.count_draft_assignments(request.year, session_pb_id, request.scenario)
+            held = await self.repository.count_draft_assignments(request.year, request.session_cm_id, request.scenario)
         except ClientResponseError as recheck_exc:
             return pb_error_to_http(recheck_exc)
         if held > copied:
@@ -448,7 +464,7 @@ class LodgingWriteService:
         empty, checked and enforced the same way, for the same reason -- a
         second copy would overwrite what staff placed since. Weekend-scoped,
         not scenario-scoped: `count_draft_assignments` and
-        `fetch_draft_assignments` both take `session_pb_id`, so a scenario
+        `fetch_draft_assignments` both take the weekend's CampMinder id, so a scenario
         spanning weekends only has ITS placements for this one weekend
         checked and copied, matching `copy_from_mirror`'s own scoping.
 
@@ -472,13 +488,13 @@ class LodgingWriteService:
         """
         session_pb_id = await self._resolve_session_pb_id(year, session_cm_id)
 
-        held = await self.repository.count_draft_assignments(year, session_pb_id, to_scenario)
+        held = await self.repository.count_draft_assignments(year, session_cm_id, to_scenario)
         if held:
             raise ScenarioNotEmptyError(
                 f"Scenario {to_scenario} already holds {held} placement(s) for weekend {session_cm_id} in {year}"
             )
 
-        rows = await self.repository.fetch_draft_assignments(year, session_pb_id, from_scenario)
+        rows = await self.repository.fetch_draft_assignments(year, session_cm_id, from_scenario)
 
         copied = 0
         skipped = 0
@@ -505,7 +521,7 @@ class LodgingWriteService:
             try:
                 await self.repository.create_draft_assignment(data)
             except ClientResponseError as exc:
-                raise await self._seed_failure(exc, dest_request, session_pb_id, copied) from exc
+                raise await self._seed_failure(exc, dest_request, copied) from exc
             copied += 1
 
         # Slot merges: `fetch_slot_merges` UNIONS the named scenario's own
@@ -516,7 +532,7 @@ class LodgingWriteService:
         # destination against a later change to that tier instead of
         # inheriting it, the same argument `fetch_availability`'s docstring
         # makes for why availability carries no scenario dimension at all.
-        merges = await self.repository.fetch_slot_merges(year, session_pb_id, from_scenario)
+        merges = await self.repository.fetch_slot_merges(year, session_cm_id, from_scenario)
         for merge in merges:
             if str(getattr(merge, "scenario", "")) != from_scenario:
                 continue
@@ -567,8 +583,9 @@ class LodgingWriteService:
         double-click. ONLY 404 is swallowed, exactly as unplace_party's
         delete is; any other failure keeps its status through pb_error_to_http.
 
-        The create: `idx_lodging_avail_unique` is UNIQUE on (session, year,
-        unit), so two staff reserving the same unit for the same weekend both
+        The create: `idx_lodging_avail_unique` is UNIQUE on (session_cm_id,
+        year, unit) since 1500000147, so two staff reserving the same unit for
+        the same weekend both
         find no override, both create, and the index rejects the loser. That is
         exactly the race place_party guards on the draft's own partial unique
         index, guarded the identical way -- the loser re-reads and updates the
@@ -579,7 +596,9 @@ class LodgingWriteService:
         """
         session_pb_id = await self._resolve_session_pb_id(request.year, request.session_cm_id)
 
-        existing = await self.repository.find_availability_override(request.year, session_pb_id, request.unit_id)
+        existing = await self.repository.find_availability_override(
+            request.year, request.session_cm_id, request.unit_id
+        )
 
         if request.family_available is None:
             if existing is None:
@@ -618,7 +637,7 @@ class LodgingWriteService:
                     raise pb_error_to_http(exc) from exc
                 try:
                     raced = await self.repository.find_availability_override(
-                        request.year, session_pb_id, request.unit_id
+                        request.year, request.session_cm_id, request.unit_id
                     )
                     if raced is None:
                         raise pb_error_to_http(exc) from exc
@@ -657,8 +676,8 @@ class LodgingWriteService:
         one.
 
         The create races exactly as set_availability's does:
-        idx_lodging_slot_merge_unique is UNIQUE on (unit, session, year,
-        scenario) -- '' is an ordinary value in that index, same as any
+        idx_lodging_slot_merge_unique is UNIQUE on (unit, session_cm_id, year,
+        scenario) since 1500000147 -- '' is an ordinary value in that index, same as any
         scenario id -- so two staff merging the same house at the same tier
         both find no row, both create, and the index rejects the loser.
         Guarded identically -- the loser re-reads and updates the winner's
@@ -666,7 +685,9 @@ class LodgingWriteService:
         """
         session_pb_id = await self._resolve_session_pb_id(request.year, request.session_cm_id)
 
-        existing = await self.repository.find_slot_merge(request.year, session_pb_id, request.unit_id, request.scenario)
+        existing = await self.repository.find_slot_merge(
+            request.year, request.session_cm_id, request.unit_id, request.scenario
+        )
 
         data: dict[str, Any] = {
             "unit": request.unit_id,
@@ -693,7 +714,7 @@ class LodgingWriteService:
                     raise pb_error_to_http(exc) from exc
                 try:
                     raced = await self.repository.find_slot_merge(
-                        request.year, session_pb_id, request.unit_id, request.scenario
+                        request.year, request.session_cm_id, request.unit_id, request.scenario
                     )
                     if raced is None:
                         raise pb_error_to_http(exc) from exc

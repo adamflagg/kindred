@@ -917,13 +917,45 @@ async def clear_scenario(
         # does not prove which weekend a row belongs to; nothing at the write
         # path cross-checks a placement's session_cm_id against the
         # scenario's own `session` relation.
-        filter_str = (
-            f'scenario = "{pb_escape(scenario_id)}" && session = "{pb_escape(session_pb_id)}" && year = {request.year}'
-        )
+        #
+        # WHICH id scopes it depends on the table, and the two are not
+        # interchangeable (kindred#2042, migration 1500000147):
+        #
+        #   lodging_assignments_draft -> session_cm_id. Every lodging read and
+        #     index keys on the CampMinder id, which survives a camp_sessions
+        #     record being RECREATED rather than updated. Keyed on the
+        #     relation, this endpoint reports "Cleared 0 assignments" over a
+        #     full board the moment that happens -- exactly the bug #2021
+        #     fixed, under a narrower trigger -- and reads unindexed besides.
+        #   bunk_assignments_draft   -> the `session` relation. Summer's draft
+        #     table has no session_cm_id column at all (1500000022), so a
+        #     filter naming one is an "unknown field" error.
+        is_weekend = _is_weekend_session_type(session_type)
+        target_collection = LODGING_ASSIGNMENTS_DRAFT if is_weekend else BUNK_ASSIGNMENTS_DRAFT
 
-        target_collection = (
-            LODGING_ASSIGNMENTS_DRAFT if _is_weekend_session_type(session_type) else BUNK_ASSIGNMENTS_DRAFT
-        )
+        if is_weekend:
+            if scenario_session_cm_id is None:
+                # Same call as the dangling-relation guard above, for the same
+                # reason: `session_cm_id = 0` is a filter PocketBase answers
+                # with zero rows (the column is `min: 1`), so guessing here
+                # reports a confident "Cleared 0" over placements that are
+                # still there. Refuse instead of clearing nothing quietly.
+                raise HTTPException(
+                    status_code=409,
+                    detail=(
+                        f"Scenario {scenario_id} names a weekend session with no CampMinder id; "
+                        "cannot determine which assignments to clear"
+                    ),
+                )
+            filter_str = (
+                f'scenario = "{pb_escape(scenario_id)}" '
+                f"&& session_cm_id = {scenario_session_cm_id} && year = {request.year}"
+            )
+        else:
+            filter_str = (
+                f'scenario = "{pb_escape(scenario_id)}" '
+                f'&& session = "{pb_escape(session_pb_id)}" && year = {request.year}'
+            )
         assignments = await asyncio.to_thread(
             pb.collection(target_collection).get_full_list,
             query_params={"filter": filter_str, "sort": STABLE_SORT},

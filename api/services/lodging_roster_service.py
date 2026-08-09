@@ -681,6 +681,12 @@ class LodgingRosterService:
         if session is None:
             raise SessionNotFoundError(f"No weekend session {session_cm_id} in {year}")
 
+        # TWO IDS, and the difference is kindred#2042. The lodging tables are
+        # keyed on the weekend's CampMinder id (migration 1500000147 re-keyed
+        # their unique indexes onto `session_cm_id`), which survives a
+        # camp_sessions record being recreated rather than updated. `attendees`
+        # is not a lodging table and has no such column, so it is still read
+        # through the PocketBase relation.
         session_pb_id = _s(session, "id")
         session_type = _s(session, "session_type")
 
@@ -695,7 +701,7 @@ class LodgingRosterService:
         # carrying the normaliser fixes this layer cannot see.
         async with asyncio.TaskGroup() as tg:
             units_task = tg.create_task(self.repository.fetch_units(year))
-            availability_task = tg.create_task(self.repository.fetch_availability(year, session_pb_id))
+            availability_task = tg.create_task(self.repository.fetch_availability(year, session_cm_id))
             attendees_task = tg.create_task(self.repository.fetch_attendees_for_session(year, session_pb_id))
             households_task = tg.create_task(self.repository.fetch_households(year))
             prior_task = tg.create_task(self.repository.fetch_prior_household_cm_ids(year))
@@ -708,9 +714,9 @@ class LodgingRosterService:
             # merge that used to follow it, and saves a session-scoped round
             # trip while it is at it.
             placements_task = tg.create_task(
-                self.repository.fetch_draft_assignments(year, session_pb_id, scenario)
+                self.repository.fetch_draft_assignments(year, session_cm_id, scenario)
                 if scenario
-                else self.repository.fetch_assignments(year, session_pb_id)
+                else self.repository.fetch_assignments(year, session_cm_id)
             )
             # There is deliberately NO second availability read here. 1500000135
             # deleted this table's scenario dimension, so a scenario has nothing
@@ -725,7 +731,7 @@ class LodgingRosterService:
             # WEEKEND-LEVEL row, and fetch_slot_merges returns exactly that
             # tier for a blank scenario rather than an empty list.
             # resolve_combined then sees both tiers.
-            merges_task = tg.create_task(self.repository.fetch_slot_merges(year, session_pb_id, scenario))
+            merges_task = tg.create_task(self.repository.fetch_slot_merges(year, session_cm_id, scenario))
 
         households = await self._resolve_households(session_type, attendees_task.result(), households_task.result())
 
@@ -830,15 +836,20 @@ class LodgingRosterService:
         entry_gate = asyncio.Semaphore(SUMMARY_ENTRY_CONCURRENCY)
 
         async def _entry(session: Any) -> WeekendSummaryEntry:
+            # Both ids, read off THIS weekend's record -- see build_roster's
+            # own note. `_entry` runs once per weekend, so a session id hoisted
+            # out of this closure would report every weekend against the first
+            # one's placements.
             session_pb_id = _s(session, "id")
+            entry_cm_id = _i(session, "cm_id")
             async with entry_gate, asyncio.TaskGroup() as inner:
-                availability_task = inner.create_task(self.repository.fetch_availability(year, session_pb_id))
+                availability_task = inner.create_task(self.repository.fetch_availability(year, entry_cm_id))
                 attendees_task = inner.create_task(self.repository.fetch_attendees_for_session(year, session_pb_id))
                 # One placement source, exactly as build_roster chooses it.
                 placements_task = inner.create_task(
-                    self.repository.fetch_draft_assignments(year, session_pb_id, scenario)
+                    self.repository.fetch_draft_assignments(year, entry_cm_id, scenario)
                     if scenario
-                    else self.repository.fetch_assignments(year, session_pb_id)
+                    else self.repository.fetch_assignments(year, entry_cm_id)
                 )
                 # No second availability read, exactly as build_roster issues
                 # none. These are separate TaskGroups and fixing only one of
@@ -847,7 +858,7 @@ class LodgingRosterService:
                 # Merges are ALWAYS fetched, exactly as build_roster now does
                 # (1500000140) -- the mirror gets the weekend-level tier
                 # rather than an empty list.
-                merges_task = inner.create_task(self.repository.fetch_slot_merges(year, session_pb_id, scenario))
+                merges_task = inner.create_task(self.repository.fetch_slot_merges(year, entry_cm_id, scenario))
 
             # Own local variable, not a mutation of the shared `households`
             # above: `_entry` runs concurrently, one per weekend, in the
