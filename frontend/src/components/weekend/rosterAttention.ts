@@ -266,9 +266,16 @@ export function countUnmeasuredSpaces(units: LodgingUnitRow[]): number {
 /**
  * A drawn unit's capacity, or `null` when nobody has measured it.
  *
- * THE MIRROR of `_effective_sleeps` in `api/services/lodging_roster_service.py`
- * — that one returns the total, this returns only whether there is one, which
- * is all this file needs. Keep the two in step.
+ * THE MIRROR of `_effective_sleeps` in `api/services/lodging_roster_service.py`.
+ * Keep the two in step. `derivedCapacity.ts` holds a third copy, by necessity
+ * rather than by choice: it is written against `LodgingUnitRecord`, a
+ * different shape, and says so at its own definition.
+ *
+ * EXPORTED for `mapModel.ts` (kindred#2183 review), which needs the number
+ * itself rather than only its presence — the map draws a combined house as a
+ * single mark, so its peek is the one place the whole-house figure has to be
+ * printed. That file takes `LodgingUnitRow[]` too, so a fourth copy of the
+ * arithmetic would have been a copy with no shape difference to justify it.
  *
  * Under the kindred#2041 delta ruling a container's own `sleeps` is the beds in
  * space belonging to no single room, so a combined house's capacity is that
@@ -283,7 +290,7 @@ export function countUnmeasuredSpaces(units: LodgingUnitRow[]): number {
  * Gating the unknown on a narrower set than the sum reads from would let a
  * room's beds count while its missing measurement did not.
  */
-function effectiveSleeps(unit: LodgingUnitRow, units: LodgingUnitRow[]): number | null {
+export function effectiveSleeps(unit: LodgingUnitRow, units: LodgingUnitRow[]): number | null {
   const own = unit.sleeps ?? null
   if (unit.is_container !== true) return own
 

@@ -643,6 +643,34 @@ describe('MapUnitPopover — a container, master-detail (kindred#2183)', () => {
     expect(screen.getByText('9 · 6 placed')).toBeInTheDocument()
   })
 
+  it('counts a family holding two rooms once, not once per room', () => {
+    // ONE TOGGLE AWAY on the 2026 registry, not hypothetical. A household is
+    // already let across two adjacent rooms of one house as a single merged
+    // placement, and `indexPayload` puts a multi-room party on EVERY room it
+    // occupies — "A party holding several rooms appears on each of them",
+    // which is what stops the second room rendering empty. It does not double
+    // today only because that house is drawn COMBINED, so the two rooms are
+    // one card; splitting it is a scenario toggle staff have already used on
+    // another house this year, and the rooms are close enough to cluster
+    // under one pin, which makes this peek exactly what opens over it.
+    //
+    // The chip list already dedupes by `partyKey`; the bed total must too, or
+    // the summary contradicts itself — one family, twice its beds, and a
+    // "placed" figure that can exceed the building's own capacity.
+    const spread = [
+      mapUnit(row({ unit_id: 'u1', code: 'cedar-back', name: 'Cedar Lodge Back', sleeps: 2 }), [
+        JOHNSON,
+      ]),
+      mapUnit(row({ unit_id: 'u2', code: 'cedar-loft', name: 'Cedar Lodge Loft', sleeps: 3 }), [
+        JOHNSON,
+      ]),
+    ]
+    render(<MapUnitPopover units={spread} hue={HUE} onOpenParty={vi.fn()} />)
+    expect(screen.getAllByTestId('map-popover-family')).toHaveLength(1)
+    // 2 + 3 beds; ONE household of 3, however many doors it is behind.
+    expect(screen.getByText('5 · 3 placed')).toBeInTheDocument()
+  })
+
   it('refuses a building total when one of its rooms is unmeasured', () => {
     const partial = [HOUSE[0], mapUnit(row({ unit_id: 'u9', code: 'cedar-x', sleeps: null }))]
     render(<MapUnitPopover units={partial as MapUnit[]} hue={HUE} onOpenParty={vi.fn()} />)
@@ -711,6 +739,26 @@ describe('MapUnitPopover — a container, master-detail (kindred#2183)', () => {
     ]
     rerender(<MapUnitPopover units={elsewhere} hue={HUE} onOpenParty={vi.fn()} />)
     expect(screen.getByText('2 · 0 taken, 2 open')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /← All of/ })).not.toBeInTheDocument()
+  })
+
+  it('does not restore the old pick when the original cluster comes back', async () => {
+    // The other half of the latch above. Falling back to the summary while the
+    // room is absent is not enough on its own: the id is still in state, so
+    // clicking pin A, then pin B, then pin A again re-applies it and room 2's
+    // card reappears under a click that only asked for the building. That is
+    // the same "a view reopens with no click" defect `LodgingMap` fixed for
+    // its own pinned/dwell keys (kindred#2137 bug 4), one level in.
+    const elsewhere = [
+      mapUnit(row({ unit_id: 'z1', code: 'birch-1', name: 'Birch 1' })),
+      mapUnit(row({ unit_id: 'z2', code: 'birch-2', name: 'Birch 2' })),
+    ]
+    const { rerender } = render(<MapUnitPopover units={HOUSE} hue={HUE} onOpenParty={vi.fn()} />)
+    await userEvent.click(screen.getByRole('button', { name: /Cedar Lodge Loft/ }))
+    rerender(<MapUnitPopover units={elsewhere} hue={HUE} onOpenParty={vi.fn()} />)
+    rerender(<MapUnitPopover units={HOUSE} hue={HUE} onOpenParty={vi.fn()} />)
+
+    expect(screen.getByText('3 · 2 taken, 1 open')).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: /← All of/ })).not.toBeInTheDocument()
   })
 

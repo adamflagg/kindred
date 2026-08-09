@@ -388,10 +388,14 @@ function ClusterSummary({ units, hue, prefix, onOpenParty }: ClusterSummaryProps
   const capacity = capacities.some((value) => value === null)
     ? null
     : capacities.reduce((total: number, value) => total + (value ?? 0), 0)
-  const placed = units
-    .flatMap((entry) => entry.parties)
-    .reduce((total, party) => total + partyBeds(party), 0)
   const families = summaryFamilies(units)
+  // OVER THE DEDUPED FAMILIES, never over `units.flatMap(parties)`. A party
+  // holding two rooms is deliberately attached to BOTH of them by
+  // `indexPayload` — "A party holding several rooms appears on each of them",
+  // which is what stops the second room rendering empty — so the flat list
+  // counts its beds once per door, and can print more placed than the
+  // building sleeps. One chip, one household, one bed total.
+  const placed = families.reduce((total, { party }) => total + partyBeds(party), 0)
 
   return (
     <div className="flex min-w-[11rem] flex-col gap-1.5">
@@ -605,6 +609,13 @@ export function MapUnitPopover({ units, hue, onOpenParty }: MapUnitPopoverProps)
   // that no longer contains it; the same latch shape as `LodgingMap`'s
   // pinned/dwell keys (kindred#2137 bug 4).
   const picked = units.find((entry) => entry.unit.unit_id === pickedUnitId) ?? null
+  // And DROPPED, not merely ignored, the moment it stops resolving. Falling
+  // back to the summary is only half the latch: the id would still be in state
+  // when the original cluster came back — pin A, pin B, pin A — and the room
+  // card would reappear under a click that only asked for the building.
+  // Cleared right here during render rather than in an Effect, the same shape
+  // and for the same reason as `LodgingMap`'s pinned/dwell keys.
+  if (pickedUnitId !== null && picked === null) setPickedUnitId(null)
 
   if (units.length === 0) return null
 

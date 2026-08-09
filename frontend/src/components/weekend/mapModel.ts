@@ -13,6 +13,7 @@
  */
 import type { LodgingUnitRow, RosterPartyRow } from '../../types/lodging'
 import { buildBoard, type ConsentFlag } from './boardLayout'
+import { effectiveSleeps } from './rosterAttention'
 import { coveredCodes } from './unitLevel'
 
 /** Why the map cannot draw a party the board can. */
@@ -53,7 +54,8 @@ export interface MapUnit {
    *
    * For an ordinary room this is just its own `sleeps`. For a combined house
    * it is the container's `sleeps` DELTA (kindred#2041) plus every active
-   * leaf beneath it — see `unitCapacity` below.
+   * leaf beneath it — `effectiveSleeps` in `rosterAttention.ts`, imported
+   * rather than reimplemented.
    */
   capacity: number | null
   /** Normalized 0-1 map coordinates. Projection to pixels is the viewport's job. */
@@ -115,8 +117,7 @@ function offMapReason(party: RosterPartyRow): OffMapReason {
 }
 
 /**
- * The ACTIVE leaf rows beneath a drawn unit — itself, when it is an ordinary
- * room.
+ * How many ACTIVE leaf rooms a drawn unit stands for.
  *
  * `coveredCodes` walks to the leaves at ANY depth, past every intermediate
  * container, which is the part a direct-children walk gets wrong: the
@@ -125,45 +126,10 @@ function offMapReason(party: RosterPartyRow): OffMapReason {
  * containers, no rooms, and reports a plausible-looking nothing. It carries
  * the cycle backstop too.
  *
- * A retired room is dropped in BOTH directions: it contributes no beds, and
- * it must not park its house in the unmeasured state forever.
- */
-function activeLeavesOf(unit: LodgingUnitRow, units: LodgingUnitRow[]): LodgingUnitRow[] {
-  const byCode = new Map(units.map((row) => [row.code, row]))
-  return coveredCodes(unit, units)
-    .map((code) => byCode.get(code))
-    .filter((leaf): leaf is LodgingUnitRow => leaf !== undefined && leaf.is_active !== false)
-}
-
-/**
- * A drawn unit's whole-house capacity, or `null` when nobody has measured it.
- *
- * THE SAME ARITHMETIC as `_effective_sleeps` in
- * `api/services/lodging_roster_service.py`, `effectiveSleeps` in
- * `rosterAttention.ts` and `derivedWholeHouseSleeps` in
- * `components/admin/lodging/derivedCapacity.ts`. Those three already say it
- * of each other; this is the map's read of it, and it exists here rather
- * than as an import because the two frontend copies are each private to a
- * file whose props shape differs (`LodgingUnitRow` vs `LodgingUnitRecord`).
- * IF THE ARITHMETIC CHANGES, CHANGE IT IN ALL FOUR.
- *
- * An ordinary room short-circuits to its own `sleeps` — no walk, and no way
- * for the container rules below to alter what a plain cabin reports.
- */
-function unitCapacity(unit: LodgingUnitRow, units: LodgingUnitRow[]): number | null {
-  const own = unit.sleeps ?? null
-  if (unit.is_container !== true) return own
-
-  const leaves = activeLeavesOf(unit, units)
-  if (leaves.some((leaf) => (leaf.sleeps ?? null) === null)) return null
-  // Summing an absent delta over an empty room list yields 0 — the confident
-  // claim "this house sleeps nobody" rather than "nobody has measured it".
-  if (own === null && leaves.length === 0) return null
-  return (own ?? 0) + leaves.reduce((total, leaf) => total + (leaf.sleeps ?? 0), 0)
-}
-
-/**
- * How many leaf rooms a drawn unit stands for.
+ * A RETIRED ROOM IS SKIPPED, for the same reason `effectiveSleeps` skips it
+ * and so that the two agree: the popover prints this count and that capacity
+ * on adjacent lines of one summary, and a room the beds total deliberately
+ * left out must not come back as one of the building's "open" ones.
  *
  * A childless combined container has no rooms beneath it, but it is still one
  * bookable thing with one card and one mark, so it counts as 1 rather than as
@@ -172,7 +138,11 @@ function unitCapacity(unit: LodgingUnitRow, units: LodgingUnitRow[]): number | n
  */
 function unitRoomCount(unit: LodgingUnitRow, units: LodgingUnitRow[]): number {
   if (unit.is_container !== true) return 1
-  return Math.max(coveredCodes(unit, units).length, 1)
+  const byCode = new Map(units.map((row) => [row.code, row]))
+  const active = coveredCodes(unit, units).filter(
+    (code) => byCode.get(code)?.is_active !== false
+  ).length
+  return Math.max(active, 1)
 }
 
 export function buildMapModel(parties: RosterPartyRow[], units: LodgingUnitRow[]): MapModel {
@@ -200,7 +170,12 @@ export function buildMapModel(parties: RosterPartyRow[], units: LodgingUnitRow[]
         consent: slot.consent,
         hue: area.hue,
         roomCount: unitRoomCount(slot.unit, units),
-        capacity: unitCapacity(slot.unit, units),
+        // `effectiveSleeps`, IMPORTED rather than re-derived: the kindred#2041
+        // delta arithmetic already exists three times (the roster service, the
+        // roster's unmeasured chip, the admin editor) and a fourth copy here
+        // would be one with no shape difference to excuse it — that helper
+        // takes the same `LodgingUnitRow[]` this file has in hand.
+        capacity: effectiveSleeps(slot.unit, units),
         // Non-null by hasCoordinates above; narrowed for the type checker.
         x: slot.unit.map_x ?? 0,
         y: slot.unit.map_y ?? 0,

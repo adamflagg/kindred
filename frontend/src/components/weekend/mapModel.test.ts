@@ -342,6 +342,20 @@ describe('buildMapModel — what a drawn unit stands for (kindred#2183)', () => 
     const model = buildMapModel([], retired)
     expect(model.units[0]?.capacity).toBe(3)
   })
+
+  it('leaves a retired room out of the ROOM COUNT too, not only out of the beds', () => {
+    // The two numbers are printed on adjacent lines of one summary — "Rooms 2
+    // · 1 taken, 1 open" over "Sleeps 3" — so counting a room the capacity
+    // deliberately skipped makes the pair disagree, and offers a retired room
+    // as one of the building's "open" ones. Whichever way the active filter
+    // goes it has to go the same way in both.
+    const retired = HOUSE.map((row) =>
+      row.code === 'cedar-house-b' ? { ...row, is_active: false } : row
+    )
+    const model = buildMapModel([], retired)
+    expect(model.units[0]?.roomCount).toBe(1)
+    expect(model.units[0]?.capacity).toBe(3)
+  })
 })
 
 describe('countMapUnits', () => {
