@@ -22,6 +22,7 @@ same AttributeError a real record would, so getattr defaults are exercised.
 """
 
 import asyncio
+from datetime import date
 from types import SimpleNamespace
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -176,6 +177,7 @@ def _child(
     age: float = 9,
     grade: int = 4,
     household_pb_id: str = "hh_1",
+    birthdate: str = "",
 ) -> SimpleNamespace:
     person = _rec(
         cm_id=cm_id,
@@ -185,8 +187,28 @@ def _child(
         age=age,
         grade=grade,
         household=household_pb_id,
+        # The bed-exemption input (kindred#2046). Blank by default because
+        # most fixtures here do not care -- and a blank one must keep its
+        # bed, which is itself pinned below.
+        birthdate=birthdate,
     )
     return _rec(person_id=cm_id, expand={"person": person})
+
+
+def _adult(
+    adult_number: int = 1,
+    name: str = "Olivia Johnson",
+    first_name: str = "",
+    last_name: str = "",
+    relationship: str = "Parent",
+) -> SimpleNamespace:
+    return _rec(
+        adult_number=adult_number,
+        name=name,
+        first_name=first_name,
+        last_name=last_name,
+        relationship_to_camper=relationship,
+    )
 
 
 class TestSessionLookup:
@@ -372,11 +394,14 @@ class TestFamilyCampParties:
         """THE LOAD-BEARING COALESCE (kindred#1945). Do not remove it.
 
         `family_camp_adults.name` is the column of record, but it is blank on a
-        small tail of rows. Measured against 2026: of the 382 rostered family
-        households, 377 have at least one non-blank `name` and 5 do not -- and
-        this fallback is the only thing that renders any adult at all for
-        several of those. Deleting it in the name of "name is authoritative"
-        would blank real adults off the board.
+        small tail of rows. Re-measured directly against production
+        2026-08-09: of the 382 rostered family households, 376 have at least
+        one non-blank `name` and 6 do not. This fallback rescues 5 of those 6
+        -- taking coverage to 381/382 -- and is the only thing that renders
+        any adult at all for them. (An earlier version of this docstring said
+        377 and 5; the number was never re-measured after the cohort was
+        corrected.) Deleting it in the name of "name is authoritative" would
+        blank real adults off the board.
         """
         repo = _repo(
             fetch_session=FAMILY_SESSION,
@@ -3070,3 +3095,236 @@ class TestPartySortName:
 
         assert [p.sort_name for p in roster.parties] == ["Adams", "Chen", "Johnson"]
         assert [p.household_cm_id for p in roster.parties] == [2000003, 2000002, 2000001]
+
+
+class TestPartySizeIsABedCount:
+    """`party_size` counts BEDS, not bodies (kindred#1925 + kindred#2046).
+
+    Two independent corrections to the same expression, one per term:
+
+    * ADULTS -- a `family_camp_adults` slot only counts when the load-bearing
+      `name`/`first+last` coalesce yields a name that is not blank and not a
+      placeholder. Measured on 2026's 382 rostered households: 3 blank rows
+      and 2 placeholder rows (`NA`, `0`) were being counted as people, and
+      both placeholders were RENDERED on the family card -- staff were
+      looking at an adult called "NA".
+    * CHILDREN -- a child under 18 months at session start travels in a cot
+      or shares with a parent, so consumes no bed (owner ruling). Derived
+      from `persons.birthdate` against `camp_sessions.start_date`, never from
+      `persons.age`.
+
+    Because the chip is now beds rather than names, the card deliberately
+    shows one fewer than the people it prints for the 24 households with an
+    infant. That two-numbers split is kindred#2152's, not this layer's: the
+    payload keeps every adult row it always did, placeholders included, and
+    only the COUNT changes here.
+    """
+
+    @staticmethod
+    async def _party(**repo_overrides: Any) -> Any:
+        repo = _repo(
+            fetch_session=FAMILY_SESSION,
+            fetch_households={"hh_1": _household()},
+            **repo_overrides,
+        )
+        roster = await LodgingRosterService(repo).build_roster(2026, 1000001)
+        assert len(roster.parties) == 1
+        return roster.parties[0]
+
+    @pytest.mark.asyncio
+    async def test_placeholder_adult_name_is_not_a_bed(self) -> None:
+        party = await self._party(
+            fetch_attendees_for_session=[_child()],
+            fetch_family_camp_adults={
+                "hh_1": [_adult(1, "Olivia Johnson"), _adult(2, "NA")],
+            },
+        )
+        assert party.party_size == 2
+
+    @pytest.mark.asyncio
+    async def test_placeholder_adult_row_is_still_in_the_payload(self) -> None:
+        """The COUNT drops it; the payload does not.
+
+        Provenance stays server-side so the board can explain itself, and the
+        frontend applies the SAME predicate at render time
+        (`householdIdentity.isAttendingAdultName`). Filtering the row out here
+        instead would leave the two surfaces unable to disagree only because
+        one of them had been blinded.
+        """
+        party = await self._party(
+            fetch_attendees_for_session=[_child()],
+            fetch_family_camp_adults={
+                "hh_1": [_adult(1, "Olivia Johnson"), _adult(2, "NA")],
+            },
+        )
+        assert [a.display_name for a in party.adults] == ["Olivia Johnson", "NA"]
+
+    @pytest.mark.asyncio
+    async def test_a_zero_in_the_name_column_is_not_a_bed(self) -> None:
+        party = await self._party(
+            fetch_attendees_for_session=[_child()],
+            fetch_family_camp_adults={"hh_1": [_adult(1, "Olivia Johnson"), _adult(3, "0")]},
+        )
+        assert party.party_size == 2
+
+    @pytest.mark.asyncio
+    async def test_a_blank_adult_slot_is_not_a_bed(self) -> None:
+        """`family_camp_adults` leaves an unused slot blank rather than
+        omitting the row, so `len(adults)` counted furniture."""
+        party = await self._party(
+            fetch_attendees_for_session=[_child()],
+            fetch_family_camp_adults={
+                "hh_1": [_adult(1, "Olivia Johnson"), _adult(2, "", "", ""), _adult(3, "   ")],
+            },
+        )
+        assert party.party_size == 2
+
+    @pytest.mark.asyncio
+    async def test_the_coalesce_still_feeds_the_count(self) -> None:
+        """A row blank in `name` but populated in first/last is a real adult
+        and a real bed -- 196 such rows across 2022-2026 (kindred#1945)."""
+        party = await self._party(
+            fetch_attendees_for_session=[_child()],
+            fetch_family_camp_adults={"hh_1": [_adult(1, "", "Olivia", "Johnson")]},
+        )
+        assert party.party_size == 2
+
+    @pytest.mark.asyncio
+    async def test_a_child_under_eighteen_months_consumes_no_bed(self) -> None:
+        # 2025-04-04 is 17 months before the 2026-09-04 session start.
+        party = await self._party(
+            fetch_attendees_for_session=[
+                _child(cm_id=1, first="Emma", age=9, birthdate="2016-05-01"),
+                _child(cm_id=2, first="Liam", age=1.05, birthdate="2025-04-04"),
+            ],
+            fetch_family_camp_adults={"hh_1": [_adult(1, "Olivia Johnson")]},
+        )
+        assert len(party.children) == 2
+        assert party.party_size == 2
+
+    @pytest.mark.asyncio
+    async def test_a_child_of_exactly_eighteen_months_keeps_its_bed(self) -> None:
+        """The cutoff is `< 18`, not `<= 18`."""
+        party = await self._party(
+            fetch_attendees_for_session=[_child(cm_id=2, age=1.06, birthdate="2025-03-04")],
+            fetch_family_camp_adults={"hh_1": [_adult(1, "Olivia Johnson")]},
+        )
+        assert party.party_size == 2
+
+    @pytest.mark.asyncio
+    async def test_the_last_month_counts_only_once_it_has_finished(self) -> None:
+        """Born 2025-03-10, session starts 2026-09-04: eighteen calendar
+        months have been ENTERED but only seventeen completed, so the child is
+        still exempt. Dropping the day-of-month adjustment ages every child
+        born after the session's day-of-month by a month.
+        """
+        party = await self._party(
+            fetch_attendees_for_session=[_child(cm_id=2, age=1.05, birthdate="2025-03-10")],
+            fetch_family_camp_adults={"hh_1": [_adult(1, "Olivia Johnson")]},
+        )
+        assert party.party_size == 1
+
+    @pytest.mark.asyncio
+    async def test_a_nineteen_month_old_keeps_its_bed_despite_the_yy_mm_trap(self) -> None:
+        """THE TRAP kindred#2046 exists to stop being re-introduced.
+
+        This child's `persons.age` is 1.07 -- CampMinder's `yy.mm`, meaning
+        one year seven months. Every naive threshold spelled against that
+        column (`age < 1.5`, and any decimal-years reading of it) discounts
+        this child, because months never exceed `.11` so `1.5` is really "24
+        months". The owner's ruling is 18 months and this child is 19.
+        """
+        party = await self._party(
+            fetch_attendees_for_session=[_child(cm_id=2, age=1.07, birthdate="2025-02-04")],
+            fetch_family_camp_adults={"hh_1": [_adult(1, "Olivia Johnson")]},
+        )
+        assert party.party_size == 2
+
+    @pytest.mark.asyncio
+    async def test_the_unknown_age_sentinel_keeps_its_bed(self) -> None:
+        """`persons.age == 0.0` is the UNKNOWN-AGE sentinel, and a bed is
+        never removed on the strength of a sentinel. The birthdate here says
+        one month old; the sentinel outranks it, and the party keeps the bed.
+        Measured on 2026: exactly one rostered child is in this state, which
+        is why the derived rule discounts 24 households and not 25.
+        """
+        party = await self._party(
+            fetch_attendees_for_session=[_child(cm_id=2, age=0.0, birthdate="2026-08-01")],
+            fetch_family_camp_adults={"hh_1": [_adult(1, "Olivia Johnson")]},
+        )
+        assert party.party_size == 2
+
+    @pytest.mark.asyncio
+    async def test_a_child_with_no_birthdate_keeps_its_bed(self) -> None:
+        """Coverage is 100% on the rostered cohort, so this is a guard rather
+        than a live case -- and it fails toward the bed, which is the safe
+        direction for a capacity read."""
+        party = await self._party(
+            fetch_attendees_for_session=[_child(cm_id=2, age=0.05, birthdate="")],
+            fetch_family_camp_adults={"hh_1": [_adult(1, "Olivia Johnson")]},
+        )
+        assert party.party_size == 2
+
+    @pytest.mark.asyncio
+    async def test_an_unreadable_session_start_keeps_every_bed(self) -> None:
+        repo = _repo(
+            fetch_session=_rec(
+                id="sess_1",
+                cm_id=1000001,
+                name="Family Camp 1",
+                session_type="family",
+                year=2026,
+                start_date="",
+                end_date="",
+                sort_order=1,
+            ),
+            fetch_households={"hh_1": _household()},
+            fetch_attendees_for_session=[_child(cm_id=2, age=0.05, birthdate="2026-08-01")],
+            fetch_family_camp_adults={"hh_1": [_adult(1, "Olivia Johnson")]},
+        )
+        roster = await LodgingRosterService(repo).build_roster(2026, 1000001)
+        assert roster.parties[0].party_size == 2
+
+    @pytest.mark.asyncio
+    async def test_a_timestamped_session_start_is_read_as_a_date(self) -> None:
+        """PocketBase hands dates back as `YYYY-MM-DD HH:MM:SS.mmmZ`."""
+        repo = _repo(
+            fetch_session=_rec(
+                id="sess_1",
+                cm_id=1000001,
+                name="Family Camp 1",
+                session_type="family",
+                year=2026,
+                start_date="2026-09-04 07:00:00.000Z",
+                end_date="2026-09-07 07:00:00.000Z",
+                sort_order=1,
+            ),
+            fetch_households={"hh_1": _household()},
+            fetch_attendees_for_session=[_child(cm_id=2, age=1.05, birthdate="2025-04-04")],
+            fetch_family_camp_adults={"hh_1": [_adult(1, "Olivia Johnson")]},
+        )
+        roster = await LodgingRosterService(repo).build_roster(2026, 1000001)
+        assert roster.parties[0].party_size == 1
+
+    @pytest.mark.asyncio
+    async def test_the_summary_lander_dates_every_weekend_it_builds(self) -> None:
+        """`build_summary` shares `_build_parties` with `build_roster`, so it
+        must supply the SAME as-of date -- its own weekend's start, not the
+        first one it happened to fetch.
+
+        The lander publishes counts rather than parties, so there is no bed
+        figure in its response to assert against; this pins the wiring at the
+        seam instead. A summary that passed `None` would silently stop
+        discounting infants on every weekend at once.
+        """
+        repo = _repo(
+            fetch_weekend_sessions=[FAMILY_SESSION, ADULT_SESSION],
+            fetch_households={"hh_1": _household()},
+            fetch_attendees_for_session=[_child()],
+        )
+        service = LodgingRosterService(repo)
+        with patch.object(LodgingRosterService, "_build_parties", return_value=[]) as build_parties:
+            await service.build_summary(2026)
+
+        seen = {call.kwargs["session_start"] for call in build_parties.call_args_list}
+        assert seen == {date(2026, 9, 4), date(2026, 10, 10)}

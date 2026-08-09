@@ -20,6 +20,7 @@
  * every constrained family on the strength of unset defaults.
  */
 import type { LodgingUnitRow, RosterPartyRow } from '../../types/lodging'
+import { namedAdults } from './householdIdentity'
 import { coveredCodes, drawnUnits } from './unitLevel'
 
 /** Ordered most urgent first. The order of this array IS the section order. */
@@ -76,11 +77,17 @@ const VERIFIABLE_NEEDS = [
   },
 ] as const
 
-/** How many beds the party consumes. Adult weekends enrol one person. */
+/**
+ * How many beds the party consumes. Adult weekends enrol one person.
+ *
+ * ONE OF THREE COPIES of this read — `boardLayout.partySize` carries the full
+ * account of the rule and of the newly-reachable reported 0, and
+ * `FamilyDetailsPanel` holds the third. Change one, change all three.
+ */
 export function partyBeds(party: RosterPartyRow): number {
   const reported = party.party_size ?? 0
   if (reported > 0) return reported
-  return (party.adults?.length ?? 0) + (party.children?.length ?? 0)
+  return namedAdults(party).length + (party.children?.length ?? 0)
 }
 
 /**
