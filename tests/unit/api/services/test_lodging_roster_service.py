@@ -3511,3 +3511,41 @@ class TestUnitPowerCoverage:
         roster = await LodgingRosterService(repo).build_roster(2026, 1000001)
 
         assert {u.code: u.power_coverage for u in roster.units}["gt-lodge"] == "all"
+
+    @pytest.mark.asyncio
+    async def test_a_building_with_no_active_room_left_is_unknown_never_its_own_row(self) -> None:
+        """The degenerate case, ruled the same way `_effective_sleeps` rules it.
+
+        `_effective_sleeps` refuses to answer for a container once no active
+        room is left to supply the answer -- "0 is not a delta over anything,
+        it is the claim 'this house sleeps nobody'". A container's `has_power`
+        is the same kind of value: THIRTEEN of the fifteen 2026 containers
+        record `has_power = 0` while their rooms are powered, so falling back
+        to the row here would take the one field this whole function exists to
+        distrust and turn it into "nothing here has power" -- a hatch stating
+        a fact no row supports, in the plausible-looking direction.
+
+        A LEAF is different and still answers for itself: it has no rooms to
+        inherit from, so its own row is the only fact there is.
+        """
+        repo = _repo(
+            fetch_session=FAMILY_SESSION,
+            fetch_units=[
+                _unit("c1", "gt-lodge", "Lodge", is_container=True, has_power=False),
+                _unit("u1", "gt-lodge-1", "Lodge 1", sleeps=4, has_power=True, is_active=False, parent_unit="c1"),
+            ],
+        )
+        roster = await LodgingRosterService(repo).build_roster(2026, 1000001)
+
+        assert {u.code: u.power_coverage for u in roster.units}["gt-lodge"] == "unknown"
+
+    @pytest.mark.asyncio
+    async def test_a_container_that_never_had_rooms_is_unknown_too(self) -> None:
+        """Same rule, reached without anyone retiring anything."""
+        repo = _repo(
+            fetch_session=FAMILY_SESSION,
+            fetch_units=[_unit("c1", "gt-lodge", "Lodge", is_container=True, has_power=False)],
+        )
+        roster = await LodgingRosterService(repo).build_roster(2026, 1000001)
+
+        assert roster.units[0].power_coverage == "unknown"

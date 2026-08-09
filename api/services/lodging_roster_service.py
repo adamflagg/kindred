@@ -614,10 +614,23 @@ def _resolve_power_coverage(units: list[LodgingUnitSummary], index: _BathroomInd
 
     Rooms that are `is_active = False` do not answer for their building -- the
     same filter `_effective_sleeps` applies when totalling a combined
-    container's rooms, and for the same reason: nobody can be placed there. A
-    unit with no leaf descendants (every ordinary room, and a childless
-    container) answers for itself, mirroring `container_bathroom`'s "nothing
-    to inherit, so the container reports what its own row says".
+    container's rooms, and for the same reason: nobody can be placed there.
+
+    A LEAF answers for itself: it has nothing beneath it to inherit from, so
+    its own row is the only fact there is. A CONTAINER never does, and that
+    asymmetry is the point of the function. Once no active room is left to
+    supply the answer the container reports `unknown`, exactly as
+    `_effective_sleeps` returns `None` in the same degenerate case ("0 is not
+    a delta over anything, it is the claim 'this house sleeps nobody'"). It is
+    tempting to fall back to the container's own flag here, on
+    `container_bathroom`'s "nothing to inherit, so the container reports what
+    its own row says" -- but that reasoning holds for `bathroom` only because
+    a container's stored `"none"` is a deliberate registry convention.
+    `has_power` is not: THIRTEEN of the fifteen 2026 containers record
+    `has_power = 0` while their rooms are powered, so the fallback would take
+    the one field this function exists to distrust and publish it as "nothing
+    here has power" -- a mark stating a fact no row supports, in the
+    plausible-looking direction.
 
     IN PLACE, on the very objects `index.units_by_code` holds, rather than
     returning a rebuilt list: a second list of summaries would leave the index
@@ -630,7 +643,7 @@ def _resolve_power_coverage(units: list[LodgingUnitSummary], index: _BathroomInd
             for code in sorted(index.leaf_codes_under(unit.code))
             if (leaf := index.units_by_code.get(code)) is not None and leaf.is_active
         ]
-        answering = rooms or [unit]
+        answering = rooms if unit.is_container else [unit]
         unit.power_coverage = cast(
             AmenityCoverage,
             # `None` where nobody has confirmed the row: an unconfirmed

@@ -45,6 +45,20 @@ const FIT_ORDER = ['unmet', 'partial', 'fits'] as const
 export type NeedsFit = (typeof FIT_ORDER)[number]
 
 /**
+ * The worse of two verdicts, by `FIT_ORDER`.
+ *
+ * Exported, and a named function rather than an inline comparison in the
+ * loop below, because `NEEDS_DIMENSIONS` holds exactly ONE entry: the loop
+ * can never run twice, so no assertion made through `resolveNeedsFit` can
+ * distinguish "worst wins" from "the last dimension wins". The combining
+ * rule is the one part of this module that a second dimension will lean on,
+ * and it would otherwise ship untested — pinned directly instead.
+ */
+export function worseOf(a: NeedsFit, b: NeedsFit): NeedsFit {
+  return FIT_ORDER.indexOf(a) <= FIT_ORDER.indexOf(b) ? a : b
+}
+
+/**
  * One needs-vs-amenity pairing.
  *
  * SEEDED WITH EXACTLY ONE — `needs_power` vs the server's resolved power
@@ -103,7 +117,7 @@ export function resolveNeedsFit(party: RosterPartyRow, unit: LodgingUnitRow): Ne
     const coverage = dimension.coverage(unit)
     const verdict: NeedsFit =
       coverage === 'none' ? 'unmet' : coverage === 'some' ? dimension.someIs : 'fits'
-    if (FIT_ORDER.indexOf(verdict) < FIT_ORDER.indexOf(worst)) worst = verdict
+    worst = worseOf(verdict, worst)
   }
   return worst
 }

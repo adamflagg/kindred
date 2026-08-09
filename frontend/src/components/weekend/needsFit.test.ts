@@ -12,7 +12,7 @@
 import { describe, expect, it } from 'vitest'
 
 import type { LodgingUnitRow, RosterPartyRow } from '../../types/lodging'
-import { resolveNeedsFit } from './needsFit'
+import { resolveNeedsFit, worseOf } from './needsFit'
 
 function unit(overrides: Partial<LodgingUnitRow> = {}): LodgingUnitRow {
   return {
@@ -85,14 +85,41 @@ describe('resolveNeedsFit', () => {
     ).toBe('fits')
   })
 
-  it('takes the worst verdict across dimensions', () => {
-    // Seeded with one dimension today. This pins the combining rule so adding
-    // dimension two is a constant in the table, not a design decision.
+  it('ignores a need no dimension answers yet', () => {
+    // `needs_private_bathroom` is a real flag with no entry in the table, so
+    // it contributes nothing and the power verdict stands alone. This does
+    // NOT pin the combining rule — with one dimension the loop can only ever
+    // run once, so `worseOf` below is where that rule is actually pinned.
     expect(
       resolveNeedsFit(
         party({ flags: { needs_power: true, needs_private_bathroom: true } }),
         unit({ power_coverage: 'none' })
       )
     ).toBe('unmet')
+  })
+})
+
+describe('worseOf', () => {
+  /*
+   * The combining rule, tested directly rather than through
+   * `resolveNeedsFit`, because `NEEDS_DIMENSIONS` holds ONE entry: a
+   * `resolveNeedsFit` assertion would pass just as happily against a
+   * combiner that kept the LAST verdict rather than the worst, and so would
+   * pin nothing. The issue's whole claim is that dimension two is a constant
+   * in the table and not a design exercise; this is what makes that true.
+   */
+  it('keeps the worse verdict whichever side it arrives on', () => {
+    expect(worseOf('unmet', 'fits')).toBe('unmet')
+    expect(worseOf('fits', 'unmet')).toBe('unmet')
+    expect(worseOf('partial', 'fits')).toBe('partial')
+    expect(worseOf('fits', 'partial')).toBe('partial')
+    expect(worseOf('unmet', 'partial')).toBe('unmet')
+    expect(worseOf('partial', 'unmet')).toBe('unmet')
+  })
+
+  it('returns the shared verdict when both agree', () => {
+    expect(worseOf('fits', 'fits')).toBe('fits')
+    expect(worseOf('partial', 'partial')).toBe('partial')
+    expect(worseOf('unmet', 'unmet')).toBe('unmet')
   })
 })
