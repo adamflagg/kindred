@@ -50,4 +50,23 @@ describe('resolveRingPrecedence', () => {
       'dropTarget'
     )
   })
+
+  /**
+   * kindred#2183 — the map is a reference surface with no placement, so it
+   * OMITS `dropTarget` rather than passing a hard-coded `false` the reader has
+   * to interpret. An absent drop target must resolve exactly as `false` did.
+   */
+  describe('a caller with no placement affordance at all', () => {
+    it('is plain when nothing else is set either', () => {
+      expect(resolveRingPrecedence({ consentFlagged: false, shared: false })).toBe('plain')
+    })
+
+    it('is shared when the room is shared', () => {
+      expect(resolveRingPrecedence({ consentFlagged: false, shared: true })).toBe('shared')
+    })
+
+    it('is consentFlagged when the sharing was never consented to', () => {
+      expect(resolveRingPrecedence({ consentFlagged: true, shared: true })).toBe('consentFlagged')
+    })
+  })
 })

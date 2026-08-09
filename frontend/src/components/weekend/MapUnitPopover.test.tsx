@@ -70,7 +70,19 @@ function party(name: string): RosterPartyRow {
 }
 
 function mapUnit(unit: LodgingUnitRow, parties: RosterPartyRow[] = []): MapUnit {
-  return { unit, parties, consent: null, hue: 'hsl(160 45% 42%)', x: 0.4, y: 0.5 }
+  return {
+    unit,
+    parties,
+    consent: null,
+    hue: 'hsl(160 45% 42%)',
+    // What `buildMapModel` computes for an ORDINARY room (kindred#2183) — one
+    // room, its own capacity. A combined house overrides both; see the
+    // container tests at the foot of this file.
+    roomCount: 1,
+    capacity: unit.sleeps ?? null,
+    x: 0.4,
+    y: 0.5,
+  }
 }
 
 /** A room whose sharing nobody consented to — what #1926 exists to surface. */
@@ -421,8 +433,11 @@ describe('MapUnitPopover — a cluster of rooms', () => {
     expect(screen.getByText('Loft')).toBeInTheDocument()
     expect(screen.queryByText(/Cedar Lodge Back/)).not.toBeInTheDocument()
     // Stripping the building name from every cell must not delete it
-    // entirely — it belongs in the header instead.
-    expect(screen.getByText('Cedar Lodge · 2 rooms · 0 taken')).toBeInTheDocument()
+    // entirely — it belongs in the header instead. That header is now the
+    // master summary's, not the grid's own (kindred#2183); the rule it
+    // encodes is unchanged, only where the name is said once.
+    expect(screen.getByText('Cedar Lodge')).toBeInTheDocument()
+    expect(screen.getByText('2 · 0 taken, 2 open')).toBeInTheDocument()
   })
 
   it('leaves unrelated cabin names alone', () => {
@@ -433,8 +448,9 @@ describe('MapUnitPopover — a cluster of rooms', () => {
     render(<MapUnitPopover units={scattered} hue={HUE} onOpenParty={vi.fn()} />)
     expect(screen.getByText('Cedar 1')).toBeInTheDocument()
     expect(screen.getByText('Birch 2')).toBeInTheDocument()
-    // No shared prefix means no stray building name in the header either.
-    expect(screen.getByText('2 rooms · 0 taken')).toBeInTheDocument()
+    // No shared prefix means no stray building name in the header either —
+    // the summary falls back to the room count.
+    expect(screen.getByText('2 rooms')).toBeInTheDocument()
   })
 
   it('says a room is shared rather than showing only the first family', () => {
@@ -458,7 +474,10 @@ describe('MapUnitPopover — a cluster of rooms', () => {
       mapUnit(row({ unit_id: 'u2', code: 'cedar-2', name: 'Cedar 2' })),
     ]
     render(<MapUnitPopover units={cluster} hue={HUE} onOpenParty={vi.fn()} />)
-    expect(screen.getByText('Emma Johnson')).toBeInTheDocument()
+    // Scoped to the CELL: the master summary above it names the same people
+    // (kindred#2183), so an unscoped `getByText` now matches two elements and
+    // would fail for a reason that has nothing to do with the salutation.
+    expect(screen.getAllByTestId('map-popover-cell')[0]).toHaveTextContent('Emma Johnson')
     expect(screen.queryByText(/Mr\. and Mrs\. Johnson/)).not.toBeInTheDocument()
   })
 
@@ -469,9 +488,12 @@ describe('MapUnitPopover — a cluster of rooms', () => {
   ]
 
   it('summarises how many rooms and how many are taken', () => {
+    // Said once, in the master summary, since kindred#2183 — the grid's own
+    // duplicate header went with it. The building name these three share
+    // ("Cedar") leads the summary; the counts follow.
     render(<MapUnitPopover units={units} hue={HUE} onOpenParty={vi.fn()} />)
-    expect(screen.getByText(/3 rooms/)).toBeInTheDocument()
-    expect(screen.getByText(/1 taken/)).toBeInTheDocument()
+    expect(screen.getByText('Cedar')).toBeInTheDocument()
+    expect(screen.getByText('3 · 1 taken, 2 open')).toBeInTheDocument()
   })
 
   it('draws one cell per room', () => {
@@ -517,5 +539,267 @@ describe('MapUnitPopover — a cluster of rooms', () => {
     const flaggedCell = screen.getByTitle(/Cedar 2.*sharing not consented/i)
     expect(flaggedCell).toBeInTheDocument()
     expect(screen.queryByTitle(/Cedar 1.*sharing not consented/i)).not.toBeInTheDocument()
+  })
+})
+
+/**
+ * kindred#2183 — the container's peek. Before this, `units.length === 1`
+ * chose between a rich `DetailCard` and a bare `FootprintGrid`, so a
+ * multi-room building could NEVER show the good card: its cells carried a
+ * family label and nothing else. The owner's ruling replaced the either/or
+ * with master-detail — a summary over every room, the grid beneath it as a
+ * spatial picker, and today's single-room card reachable from a cell.
+ */
+describe('MapUnitPopover — a container, master-detail (kindred#2183)', () => {
+  /** Distinct `household_cm_id`s, so `partyKey` tells the families apart. */
+  function family(
+    cmId: number,
+    salutation: string,
+    adults: string[],
+    children: string[] = []
+  ): RosterPartyRow {
+    const base = party(salutation)
+    base.household_cm_id = cmId
+    base.adults = adults.map((name, index) => ({
+      adult_number: index + 1,
+      display_name: name,
+      relationship: '',
+    }))
+    base.children = children.map((name) => ({
+      person_cm_id: 0,
+      display_name: name,
+      age: 8,
+      grade: 3,
+    }))
+    return base
+  }
+
+  /**
+   * The SUMMARY's chip for the Garcias, not the grid cell that also names
+   * them: a cell's accessible name lists its occupants too, so a role query
+   * matches both.
+   */
+  function garciaChip(): HTMLElement {
+    const chip = screen
+      .getAllByTestId('map-popover-family')
+      .find((node) => node.textContent.includes('Sofia Garcia'))
+    if (!chip) throw new Error('no family chip for the Garcias')
+    return chip
+  }
+
+  const JOHNSON = family(
+    9001,
+    'The Johnsons',
+    ['Dana Johnson', 'Marcus Johnson'],
+    ['Emma Johnson', 'Noah Johnson']
+  )
+  const GARCIA = family(9002, 'The Garcias', ['Sofia Garcia'])
+
+  const HOUSE = [
+    mapUnit(row({ unit_id: 'u1', code: 'cedar-back', name: 'Cedar Lodge Back', sleeps: 4 }), [
+      JOHNSON,
+    ]),
+    mapUnit(row({ unit_id: 'u2', code: 'cedar-loft', name: 'Cedar Lodge Loft', sleeps: 2 }), [
+      GARCIA,
+    ]),
+    mapUnit(row({ unit_id: 'u3', code: 'cedar-side', name: 'Cedar Lodge Side', sleeps: 3 })),
+  ]
+
+  it('summarises the whole building above the grid, rather than only the cells', () => {
+    render(<MapUnitPopover units={HOUSE} hue={HUE} onOpenParty={vi.fn()} />)
+    // The building name the cells no longer carry.
+    expect(screen.getByText('Cedar Lodge')).toBeInTheDocument()
+    expect(screen.getByText('Rooms')).toBeInTheDocument()
+    expect(screen.getByText('3 · 2 taken, 1 open')).toBeInTheDocument()
+    // The grid is still there — it is the cluster disambiguator, not decoration.
+    expect(screen.getAllByTestId('map-popover-cell')).toHaveLength(3)
+  })
+
+  it('lists every PERSON housed in the building, grouped one chip per family', () => {
+    // The owner's ask verbatim: not a family label, the people. Adults and
+    // children alike — a chip that named only the grown-ups would answer
+    // "who is housed here" with half the household.
+    render(<MapUnitPopover units={HOUSE} hue={HUE} onOpenParty={vi.fn()} />)
+    expect(
+      screen.getByRole('button', {
+        name: 'Dana Johnson · Marcus Johnson · Emma Johnson · Noah Johnson',
+      })
+    ).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Sofia Garcia' })).toBeInTheDocument()
+    // The salutation is never the identity — kindred#2084's rule, inherited.
+    expect(screen.queryByText(/The Johnsons/)).not.toBeInTheDocument()
+  })
+
+  it('opens the family panel when a family chip is clicked', async () => {
+    const onOpenParty = vi.fn()
+    render(<MapUnitPopover units={HOUSE} hue={HUE} onOpenParty={onOpenParty} />)
+    await userEvent.click(screen.getByRole('button', { name: 'Sofia Garcia' }))
+    expect(onOpenParty).toHaveBeenCalledWith(GARCIA)
+  })
+
+  it('totals the building’s beds and says how many are spoken for', () => {
+    render(<MapUnitPopover units={HOUSE} hue={HUE} onOpenParty={vi.fn()} />)
+    // 4 + 2 + 3 beds; both parties report `party_size: 3`.
+    expect(screen.getByText('9 · 6 placed')).toBeInTheDocument()
+  })
+
+  it('counts a family holding two rooms once, not once per room', () => {
+    // ONE TOGGLE AWAY on the 2026 registry, not hypothetical. A household is
+    // already let across two adjacent rooms of one house as a single merged
+    // placement, and `indexPayload` puts a multi-room party on EVERY room it
+    // occupies — "A party holding several rooms appears on each of them",
+    // which is what stops the second room rendering empty. It does not double
+    // today only because that house is drawn COMBINED, so the two rooms are
+    // one card; splitting it is a scenario toggle staff have already used on
+    // another house this year, and the rooms are close enough to cluster
+    // under one pin, which makes this peek exactly what opens over it.
+    //
+    // The chip list already dedupes by `partyKey`; the bed total must too, or
+    // the summary contradicts itself — one family, twice its beds, and a
+    // "placed" figure that can exceed the building's own capacity.
+    const spread = [
+      mapUnit(row({ unit_id: 'u1', code: 'cedar-back', name: 'Cedar Lodge Back', sleeps: 2 }), [
+        JOHNSON,
+      ]),
+      mapUnit(row({ unit_id: 'u2', code: 'cedar-loft', name: 'Cedar Lodge Loft', sleeps: 3 }), [
+        JOHNSON,
+      ]),
+    ]
+    render(<MapUnitPopover units={spread} hue={HUE} onOpenParty={vi.fn()} />)
+    expect(screen.getAllByTestId('map-popover-family')).toHaveLength(1)
+    // 2 + 3 beds; ONE household of 3, however many doors it is behind.
+    expect(screen.getByText('5 · 3 placed')).toBeInTheDocument()
+  })
+
+  it('refuses a building total when one of its rooms is unmeasured', () => {
+    const partial = [HOUSE[0], mapUnit(row({ unit_id: 'u9', code: 'cedar-x', sleeps: null }))]
+    render(<MapUnitPopover units={partial as MapUnit[]} hue={HUE} onOpenParty={vi.fn()} />)
+    expect(screen.getByText(/unknown/i)).toBeInTheDocument()
+    expect(screen.queryByText(/^4 · /)).not.toBeInTheDocument()
+  })
+
+  it('carries a flagged room’s consent warning onto the family chip, in words', () => {
+    // A cluster mark rings amber if ANY member is flagged. The summary is the
+    // first thing a staff member reads, so the warning has to survive into it
+    // — and as TEXT, because colour alone is not a signal (WCAG 1.4.1).
+    const withFlag = [
+      flagged(row({ unit_id: 'u1', code: 'cedar-back', name: 'Cedar Lodge Back' }), [
+        JOHNSON,
+        GARCIA,
+      ]),
+      mapUnit(row({ unit_id: 'u2', code: 'cedar-loft', name: 'Cedar Lodge Loft' })),
+    ]
+    render(<MapUnitPopover units={withFlag} hue={HUE} onOpenParty={vi.fn()} />)
+    expect(garciaChip()).toHaveTextContent(/sharing not consented/i)
+  })
+
+  it('leaves an unflagged family chip free of the consent warning', () => {
+    render(<MapUnitPopover units={HOUSE} hue={HUE} onOpenParty={vi.fn()} />)
+    expect(garciaChip()).not.toHaveTextContent(/sharing not consented/i)
+  })
+
+  it('says a whole empty building is empty rather than listing nobody', () => {
+    const vacant = [
+      mapUnit(row({ unit_id: 'u1', code: 'cedar-back', name: 'Cedar Lodge Back' })),
+      mapUnit(row({ unit_id: 'u2', code: 'cedar-loft', name: 'Cedar Lodge Loft' })),
+    ]
+    render(<MapUnitPopover units={vacant} hue={HUE} onOpenParty={vi.fn()} />)
+    expect(screen.getByText('2 · 0 taken, 2 open')).toBeInTheDocument()
+    // Exact, not `/empty/i`: each cell carries its own sr-only " — empty",
+    // and this is asserting the SUMMARY says so once for the building.
+    expect(screen.getByText('empty')).toBeInTheDocument()
+    expect(screen.queryAllByTestId('map-popover-family')).toHaveLength(0)
+  })
+
+  it('swaps the detail to one room when its cell is picked, and back again', async () => {
+    render(<MapUnitPopover units={HOUSE} hue={HUE} onOpenParty={vi.fn()} />)
+    await userEvent.click(screen.getByRole('button', { name: /Cedar Lodge Loft/ }))
+    // Today's single-room DetailCard, now reachable from a container.
+    expect(screen.getByText('Cedar Lodge Loft')).toBeInTheDocument()
+    expect(screen.getByText('Cedar Grove')).toBeInTheDocument()
+    expect(screen.queryByText('3 · 2 taken, 1 open')).not.toBeInTheDocument()
+    // The grid stays put — it is the picker, and picking must not remove it.
+    expect(screen.getAllByTestId('map-popover-cell')).toHaveLength(3)
+
+    await userEvent.click(screen.getByRole('button', { name: '← All of Cedar Lodge' }))
+    expect(screen.getByText('3 · 2 taken, 1 open')).toBeInTheDocument()
+  })
+
+  it('falls back to the summary when the picked room leaves the cluster', async () => {
+    // The popover is reconciled by POSITION, so a refetch that dissolves this
+    // cluster and mints another would otherwise leave a room selected that is
+    // no longer under the pin. Same latch shape as `LodgingMap`'s pinned key.
+    const { rerender } = render(<MapUnitPopover units={HOUSE} hue={HUE} onOpenParty={vi.fn()} />)
+    await userEvent.click(screen.getByRole('button', { name: /Cedar Lodge Loft/ }))
+    expect(screen.getByText('Cedar Lodge Loft')).toBeInTheDocument()
+
+    const elsewhere = [
+      mapUnit(row({ unit_id: 'z1', code: 'birch-1', name: 'Birch 1' })),
+      mapUnit(row({ unit_id: 'z2', code: 'birch-2', name: 'Birch 2' })),
+    ]
+    rerender(<MapUnitPopover units={elsewhere} hue={HUE} onOpenParty={vi.fn()} />)
+    expect(screen.getByText('2 · 0 taken, 2 open')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /← All of/ })).not.toBeInTheDocument()
+  })
+
+  it('does not restore the old pick when the original cluster comes back', async () => {
+    // The other half of the latch above. Falling back to the summary while the
+    // room is absent is not enough on its own: the id is still in state, so
+    // clicking pin A, then pin B, then pin A again re-applies it and room 2's
+    // card reappears under a click that only asked for the building. That is
+    // the same "a view reopens with no click" defect `LodgingMap` fixed for
+    // its own pinned/dwell keys (kindred#2137 bug 4), one level in.
+    const elsewhere = [
+      mapUnit(row({ unit_id: 'z1', code: 'birch-1', name: 'Birch 1' })),
+      mapUnit(row({ unit_id: 'z2', code: 'birch-2', name: 'Birch 2' })),
+    ]
+    const { rerender } = render(<MapUnitPopover units={HOUSE} hue={HUE} onOpenParty={vi.fn()} />)
+    await userEvent.click(screen.getByRole('button', { name: /Cedar Lodge Loft/ }))
+    rerender(<MapUnitPopover units={elsewhere} hue={HUE} onOpenParty={vi.fn()} />)
+    rerender(<MapUnitPopover units={HOUSE} hue={HUE} onOpenParty={vi.fn()} />)
+
+    expect(screen.getByText('3 · 2 taken, 1 open')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /← All of/ })).not.toBeInTheDocument()
+  })
+
+  it('still shows a lone room as a plain detail card, with no grid or summary', () => {
+    render(<MapUnitPopover units={[mapUnit(row(), [JOHNSON])]} hue={HUE} onOpenParty={vi.fn()} />)
+    expect(screen.queryAllByTestId('map-popover-cell')).toHaveLength(0)
+    expect(screen.queryByText('Rooms')).not.toBeInTheDocument()
+  })
+
+  it('names the whole family on a lone room too, not only its adults', () => {
+    render(<MapUnitPopover units={[mapUnit(row(), [JOHNSON])]} hue={HUE} onOpenParty={vi.fn()} />)
+    expect(
+      screen.getByRole('button', {
+        name: 'Dana Johnson · Marcus Johnson · Emma Johnson · Noah Johnson',
+      })
+    ).toBeInTheDocument()
+  })
+
+  it('reports a combined house’s WHOLE capacity, not its landing-futon delta', () => {
+    // kindred#2041: a container's own `sleeps` is a DELTA over its rooms. The
+    // map draws a combined house as ONE mark, so its peek is a lone
+    // `DetailCard` — reading the raw delta there understates a four-room
+    // house as sleeping one. `buildMapModel` resolves the whole-house figure;
+    // this card must read THAT.
+    const house = mapUnit(
+      row({
+        unit_id: 'h0',
+        code: 'cedar-house',
+        name: 'Cedar House',
+        is_container: true,
+        sleeps: 1,
+      })
+    )
+    render(
+      <MapUnitPopover
+        units={[{ ...house, roomCount: 4, capacity: 9 }]}
+        hue={HUE}
+        onOpenParty={vi.fn()}
+      />
+    )
+    expect(screen.getByText('9')).toBeInTheDocument()
+    expect(screen.queryByText('1')).not.toBeInTheDocument()
   })
 })

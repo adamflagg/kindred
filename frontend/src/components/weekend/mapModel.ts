@@ -13,6 +13,8 @@
  */
 import type { LodgingUnitRow, RosterPartyRow } from '../../types/lodging'
 import { buildBoard, type ConsentFlag } from './boardLayout'
+import { effectiveSleeps } from './rosterAttention'
+import { coveredCodes } from './unitLevel'
 
 /** Why the map cannot draw a party the board can. */
 export type OffMapReason =
@@ -37,6 +39,25 @@ export interface MapUnit {
   consent: ConsentFlag | null
   /** The area's colour, from the board's array in the board's order. */
   hue: string
+  /**
+   * How many LEAF ROOMS this mark stands for — 1 for an ordinary cabin, N for
+   * a combined house drawn as a single card.
+   *
+   * Computed HERE and threaded down because `MapUnitPopover` receives
+   * `MapUnit[]` and never the registry, so it cannot walk a house's rooms
+   * (kindred#2183). Without it a container's peek can only say "1 room",
+   * which is the wrong number in the direction that looks plausible.
+   */
+  roomCount: number
+  /**
+   * Whole-house capacity, or `null` when nobody has measured it.
+   *
+   * For an ordinary room this is just its own `sleeps`. For a combined house
+   * it is the container's `sleeps` DELTA (kindred#2041) plus every active
+   * leaf beneath it — `effectiveSleeps` in `rosterAttention.ts`, imported
+   * rather than reimplemented.
+   */
+  capacity: number | null
   /** Normalized 0-1 map coordinates. Projection to pixels is the viewport's job. */
   x: number
   y: number
@@ -95,6 +116,35 @@ function offMapReason(party: RosterPartyRow): OffMapReason {
   return party.is_merged_slot === true ? 'merged-slot' : 'not-on-board'
 }
 
+/**
+ * How many ACTIVE leaf rooms a drawn unit stands for.
+ *
+ * `coveredCodes` walks to the leaves at ANY depth, past every intermediate
+ * container, which is the part a direct-children walk gets wrong: the
+ * production registry is three levels deep (a house, its upstairs/downstairs
+ * halves, their rooms), so a one-level walk off a combined house finds two
+ * containers, no rooms, and reports a plausible-looking nothing. It carries
+ * the cycle backstop too.
+ *
+ * A RETIRED ROOM IS SKIPPED, for the same reason `effectiveSleeps` skips it
+ * and so that the two agree: the popover prints this count and that capacity
+ * on adjacent lines of one summary, and a room the beds total deliberately
+ * left out must not come back as one of the building's "open" ones.
+ *
+ * A childless combined container has no rooms beneath it, but it is still one
+ * bookable thing with one card and one mark, so it counts as 1 rather than as
+ * 0 — a peek reading "0 rooms" over a mark you can see is worse than the
+ * approximation. Every other case is the honest leaf count.
+ */
+function unitRoomCount(unit: LodgingUnitRow, units: LodgingUnitRow[]): number {
+  if (unit.is_container !== true) return 1
+  const byCode = new Map(units.map((row) => [row.code, row]))
+  const active = coveredCodes(unit, units).filter(
+    (code) => byCode.get(code)?.is_active !== false
+  ).length
+  return Math.max(active, 1)
+}
+
 export function buildMapModel(parties: RosterPartyRow[], units: LodgingUnitRow[]): MapModel {
   const board = buildBoard(parties, units)
 
@@ -119,6 +169,13 @@ export function buildMapModel(parties: RosterPartyRow[], units: LodgingUnitRow[]
         parties: slot.parties,
         consent: slot.consent,
         hue: area.hue,
+        roomCount: unitRoomCount(slot.unit, units),
+        // `effectiveSleeps`, IMPORTED rather than re-derived: the kindred#2041
+        // delta arithmetic already exists three times (the roster service, the
+        // roster's unmeasured chip, the admin editor) and a fourth copy here
+        // would be one with no shape difference to excuse it — that helper
+        // takes the same `LodgingUnitRow[]` this file has in hand.
+        capacity: effectiveSleeps(slot.unit, units),
         // Non-null by hasCoordinates above; narrowed for the type checker.
         x: slot.unit.map_x ?? 0,
         y: slot.unit.map_y ?? 0,
