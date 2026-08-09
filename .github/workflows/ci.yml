@@ -172,6 +172,31 @@ jobs:
     - name: Run Gitleaks
       run: gitleaks detect --source . --config .gitleaks.toml --verbose
 
+  # Lodging-name guard (spec 3.8) -- the tripwire that fails the build if a
+  # real camp unit name lands in source. Unconditional like secret-scan
+  # above, not gated behind detect-changes: it scans four fixed roots
+  # (pocketbase/ api/ bunking/ frontend/src/) rather than the PR diff, so a
+  # leak added under any of them must fail regardless of which
+  # detect-changes filter the touched files happen to match. It also needs a
+  # real git checkout -- `git rev-parse --show-toplevel` inside the script
+  # exits 128 without one -- so actions/checkout below is load-bearing, not
+  # boilerplate. kindred#2181: this was entirely unwired before, so nothing
+  # ran it and nothing failed when it would have caught something.
+  lodging-guard:
+    name: Lodging Name Guard
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      with:
+        persist-credentials: false
+
+    - name: No hardcoded lodging unit names
+      run: ./scripts/dev/verify-no-hardcoded-lodging.sh
+
+    - name: Guard self-test
+      run: ./scripts/dev/test-verify-no-hardcoded-lodging.sh
+
   # Python linting (parallel with other lint jobs)
   python-lint:
     name: Python Lint
@@ -672,7 +697,7 @@ jobs:
   # Summary job - gate for PR merges
   summary:
     name: CI Summary
-    needs: [pr-title-lint, detect-changes, secret-scan, python-lint, go-lint, frontend-lint, docker-lint, security-lint, tests-python, tests-go, tests-migrations, tests-frontend]
+    needs: [pr-title-lint, detect-changes, secret-scan, lodging-guard, python-lint, go-lint, frontend-lint, docker-lint, security-lint, tests-python, tests-go, tests-migrations, tests-frontend]
     if: always()
     runs-on: ubuntu-latest
     steps:
@@ -681,6 +706,7 @@ jobs:
         DETECT_CHANGES: ${{ needs.detect-changes.result }}
         PR_TITLE_LINT: ${{ needs.pr-title-lint.result }}
         SECRET_SCAN: ${{ needs.secret-scan.result }}
+        LODGING_GUARD: ${{ needs.lodging-guard.result }}
         PYTHON_LINT: ${{ needs.python-lint.result }}
         GO_LINT: ${{ needs.go-lint.result }}
         FRONTEND_LINT: ${{ needs.frontend-lint.result }}
@@ -705,6 +731,10 @@ jobs:
         if [ "$SECRET_SCAN" != "success" ]; then
           echo "Secret scanning failed! Check for leaked credentials."
           echo "   If these are intentional dev/test values, add them to .gitleaks.toml"
+          exit 1
+        fi
+        if [ "$LODGING_GUARD" != "success" ]; then
+          echo "::error::Lodging name guard failed! A camp unit name may have landed in source -- see docs/reference/lodging-registry.md."
           exit 1
         fi
         # Lint jobs: success or skipped (when no relevant changes)
