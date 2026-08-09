@@ -527,6 +527,89 @@ describe('LodgingUnitCard — the per-party sharing chip follows ROOM overlap, n
   })
 })
 
+describe('LodgingUnitCard — the whole-building mark (#2008)', () => {
+  // A halved house: `upstairs`/`downstairs` are DIFFERENT buildings under
+  // the immediate-parent grain ruled on #2008, even though both share the
+  // `house` root.
+  const halvedHouseUnits = [
+    unit({ unit_id: 'up', code: 'upstairs', is_container: true }),
+    unit({ unit_id: 'down', code: 'downstairs', is_container: true }),
+    unit({ unit_id: 'r1', code: 'up-r1', parent_code: 'upstairs' }),
+    unit({ unit_id: 'r2', code: 'up-r2', parent_code: 'upstairs' }),
+  ]
+  const combinedUpstairs = unit({
+    unit_id: 'up',
+    code: 'upstairs',
+    name: 'Upstairs',
+    is_container: true,
+    is_combined: true,
+  })
+
+  it('marks a party whose own unit_codes cover the whole card it is drawn on', () => {
+    render(
+      <LodgingUnitCard
+        slot={slot({
+          unit: combinedUpstairs,
+          parties: [
+            party({
+              household_cm_id: 101,
+              unit_code: 'upstairs',
+              unit_codes: ['upstairs'],
+            }),
+          ],
+        })}
+        units={halvedHouseUnits}
+        hue="hsl(160 45% 42%)"
+        onOpenParty={vi.fn()}
+      />
+    )
+    expect(screen.getByText('Whole building')).toBeInTheDocument()
+  })
+
+  it('does not mark a party holding only one room of a two-room half', () => {
+    render(
+      <LodgingUnitCard
+        slot={slot({
+          unit: unit({ code: 'up-r1', parent_code: 'upstairs' }),
+          parties: [party({ household_cm_id: 101, unit_code: 'up-r1', unit_codes: ['up-r1'] })],
+        })}
+        units={halvedHouseUnits}
+        hue="hsl(160 45% 42%)"
+        onOpenParty={vi.fn()}
+      />
+    )
+    expect(screen.queryByText('Whole building')).not.toBeInTheDocument()
+  })
+
+  it('does not mark either of two households splitting a combined card between disjoint rooms', () => {
+    render(
+      <LodgingUnitCard
+        slot={slot({
+          unit: combinedUpstairs,
+          parties: [
+            party({
+              household_cm_id: 101,
+              display_name: 'Alpha',
+              unit_code: 'up-r1',
+              children: [{ person_cm_id: 9101, display_name: 'Ivy Alpha', age: 7, grade: 1 }],
+            }),
+            party({
+              household_cm_id: 102,
+              display_name: 'Beta',
+              unit_code: 'up-r2',
+              children: [{ person_cm_id: 9102, display_name: 'Leo Beta', age: 9, grade: 3 }],
+            }),
+          ],
+        })}
+        units={halvedHouseUnits}
+        hue="hsl(160 45% 42%)"
+        onOpenParty={vi.fn()}
+      />
+    )
+    expect(screen.queryByText('Whole building')).not.toBeInTheDocument()
+  })
+})
+
 describe('LodgingUnitCard — the shared-space mark (#2091)', () => {
   // The master housing sheet's fill for "two families here", adopted as the
   // ring `LodgingMap.tsx`'s `halo` already draws for the identical flag

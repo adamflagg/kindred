@@ -187,6 +187,21 @@ describe('LodgingBoard — layout', () => {
     expect(screen.getByRole('heading', { name: /North Ridge/ })).toBeInTheDocument()
   })
 
+  it('shows the building count alongside rooms and families in the area header — #2009', () => {
+    // Two halves of one house are DIFFERENT buildings under the
+    // immediate-parent grain ruled on #2008, so three rooms read as two
+    // buildings, not one.
+    const halvedHouseUnits = [
+      unit({ unit_id: 'up', code: 'upstairs', is_container: true }),
+      unit({ unit_id: 'down', code: 'downstairs', is_container: true }),
+      unit({ code: 'up-r1', parent_code: 'upstairs' }),
+      unit({ unit_id: 'u2', code: 'up-r2', parent_code: 'upstairs' }),
+      unit({ unit_id: 'u3', code: 'down-r1', parent_code: 'downstairs' }),
+    ]
+    render(<LodgingBoard parties={[]} units={halvedHouseUnits} year={2026} />, { wrapper })
+    expect(screen.getByText('3 rooms · 0 families · 2 buildings')).toBeInTheDocument()
+  })
+
   it('spaces the card grid on summer’s gap-3', () => {
     /*
      * `BunkingBoardByArea` lays its bunks out at `gap-3` (12px); this board

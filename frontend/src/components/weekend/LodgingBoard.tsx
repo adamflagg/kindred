@@ -435,7 +435,13 @@ export function LodgingBoard({
                           {area.name}
                         </span>
                         <span className="text-muted-foreground/70 text-[11px] tabular-nums">
-                          {`${String(area.slots.length)} rooms · ${String(area.partyCount)} families`}
+                          {/* Buildings alongside rooms and families (#2009):
+                              how many DISTINCT buildings this area's drawn
+                              rooms belong to, at the immediate-parent grain
+                              #2008 ruled — a two-half house counts as two,
+                              not one. Reads `area.buildingCount`
+                              (`buildBoard`), never re-derived here. */}
+                          {`${String(area.slots.length)} rooms · ${String(area.partyCount)} families · ${String(area.buildingCount)} buildings`}
                         </span>
                         <span className="bg-border/70 ml-1 h-px flex-1" aria-hidden="true" />
                       </button>

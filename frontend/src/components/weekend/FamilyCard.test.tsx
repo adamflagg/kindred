@@ -414,6 +414,16 @@ describe('FamilyCard — what it shows', () => {
     )
     expect(screen.getByText('Wants to share')).toBeInTheDocument()
   })
+
+  it('marks a placement that holds a whole building — #2008', () => {
+    render(<FamilyCard party={party()} holdsWholeBuilding={true} onOpen={vi.fn()} />)
+    expect(screen.getByText('Whole building')).toBeInTheDocument()
+  })
+
+  it('says nothing about a placement that does not hold a whole building', () => {
+    render(<FamilyCard party={party()} onOpen={vi.fn()} />)
+    expect(screen.queryByText('Whole building')).not.toBeInTheDocument()
+  })
 })
 
 describe('FamilyCard — spec §3.8, what must stay off it', () => {

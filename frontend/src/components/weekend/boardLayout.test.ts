@@ -13,7 +13,15 @@ import type {
   ShareEligibilityValue,
   SharePreferenceValue,
 } from '../../types/lodging'
-import { AREA_HUES, areaTokens, buildBoard, countBoardSlots, slotOccupancy } from './boardLayout'
+import {
+  AREA_HUES,
+  areaTokens,
+  buildBoard,
+  countBoardSlots,
+  slotOccupancy,
+  wholeBuildingHolders,
+} from './boardLayout'
+import { partyKey } from './partyKey'
 
 function unit(overrides: Partial<LodgingUnitRow> = {}): LodgingUnitRow {
   return {
@@ -846,6 +854,24 @@ describe('buildBoard — area grouping and colour', () => {
     )
     expect(board.areas.map((area) => area.partyCount)).toEqual([2, 0])
   })
+
+  it('counts distinct buildings the area draws — #2009', () => {
+    // Two halves of one house share a root but are DIFFERENT buildings under
+    // the immediate-parent grain ruled on #2008; a third, freestanding cabin
+    // in the same area is its own building. The halves themselves are
+    // containers and never drawn, so they add no slots of their own.
+    const units = [
+      unit({ unit_id: 'up', code: 'upstairs', is_container: true }),
+      unit({ unit_id: 'down', code: 'downstairs', is_container: true }),
+      unit({ code: 'up-r1', parent_code: 'upstairs' }),
+      unit({ unit_id: 'u2', code: 'up-r2', parent_code: 'upstairs' }),
+      unit({ unit_id: 'u3', code: 'down-r1', parent_code: 'downstairs' }),
+      unit({ unit_id: 'u4', code: 'cabin-9' }),
+    ]
+    const board = buildBoard([], units)
+    expect(board.areas[0]?.slots).toHaveLength(4)
+    expect(board.areas[0]?.buildingCount).toBe(3)
+  })
 })
 
 describe('buildBoard — drawing at the resolved container level', () => {
@@ -1121,5 +1147,67 @@ describe('buildBoard — consent flag follows leaf overlap, not the card (task-1
     )
     expect(board.areas[0]?.slots[0]?.consent).not.toBeNull()
     expect(board.flaggedCount).toBe(1)
+  })
+})
+
+describe("wholeBuildingHolders — #2008's placement marker, keyed by party", () => {
+  const halvedHouse = [
+    unit({ unit_id: 'up', code: 'upstairs', is_container: true }),
+    unit({ unit_id: 'down', code: 'downstairs', is_container: true }),
+    unit({ code: 'up-r1', parent_code: 'upstairs' }),
+    unit({ unit_id: 'u2', code: 'up-r2', parent_code: 'upstairs' }),
+    unit({ unit_id: 'u3', code: 'down-r1', parent_code: 'downstairs' }),
+    unit({ unit_id: 'u4', code: 'down-r2', parent_code: 'downstairs' }),
+  ]
+
+  it('marks a party whose own unit_codes cover one whole half', () => {
+    const alpha = party({
+      household_cm_id: 500001,
+      unit_code: '',
+      unit_codes: ['up-r1', 'up-r2'],
+      is_merged_slot: true,
+    })
+    expect(wholeBuildingHolders([alpha], halvedHouse)).toEqual(new Set([partyKey(alpha)]))
+  })
+
+  it('does not mark a party holding only part of a half', () => {
+    const alpha = party({ household_cm_id: 500001, unit_code: 'up-r1', unit_codes: ['up-r1'] })
+    expect(wholeBuildingHolders([alpha], halvedHouse).size).toBe(0)
+  })
+
+  it('does not mark either of two households splitting one combined house between them', () => {
+    // The Front/Back case: a combined card holding two DISJOINT households.
+    // The CARD is the whole building, but neither PARTY individually is —
+    // that is the point of the signal being about the placement, not the
+    // slot. Named at a container code that expands to every leaf via the
+    // container row itself, mirroring how a real combined-house drop names
+    // the container's own code.
+    const combinedHouse = [
+      unit({ code: 'house', is_container: true, is_combined: true }),
+      unit({ code: 'r1', parent_code: 'house' }),
+      unit({ code: 'r2', parent_code: 'house' }),
+    ]
+    const alpha = party({ household_cm_id: 500001, unit_code: 'r1', unit_codes: ['r1'] })
+    const beta = party({ household_cm_id: 500002, unit_code: 'r2', unit_codes: ['r2'] })
+    expect(wholeBuildingHolders([alpha, beta], combinedHouse).size).toBe(0)
+  })
+
+  it('marks a single party named at the combined container code covering both its rooms', () => {
+    const combinedHouse = [
+      unit({ code: 'house', is_container: true, is_combined: true }),
+      unit({ code: 'r1', parent_code: 'house' }),
+      unit({ code: 'r2', parent_code: 'house' }),
+    ]
+    const alpha = party({
+      household_cm_id: 500001,
+      unit_code: 'house',
+      unit_codes: ['house'],
+    })
+    expect(wholeBuildingHolders([alpha], combinedHouse)).toEqual(new Set([partyKey(alpha)]))
+  })
+
+  it('never marks a party alone in a freestanding room with no registry parent', () => {
+    const alpha = party({ household_cm_id: 500001, unit_code: 'cedar-1', unit_codes: ['cedar-1'] })
+    expect(wholeBuildingHolders([alpha], [unit()]).size).toBe(0)
   })
 })

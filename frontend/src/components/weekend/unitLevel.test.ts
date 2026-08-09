@@ -1,7 +1,13 @@
 import { describe, expect, it } from 'vitest'
 
 import type { LodgingUnitRow } from '../../types/lodging'
-import { coveredCodes, drawnUnits } from './unitLevel'
+import {
+  buildingGroups,
+  buildingsSpanned,
+  coveredCodes,
+  drawnUnits,
+  wholeBuildingHeld,
+} from './unitLevel'
 
 function u(over: Partial<LodgingUnitRow> & { code: string }): LodgingUnitRow {
   return {
@@ -158,5 +164,124 @@ describe('coveredCodes', () => {
     // `offBoard` — never `[unit.code]`, which would fabricate a card.
     const lonelyContainer = u({ code: 'lone-container', is_container: true })
     expect(coveredCodes(lonelyContainer, [lonelyContainer])).toEqual([])
+  })
+})
+
+// house -> {upstairs, downstairs} -> two rooms each. Mirrors the real halved
+// buildings (e.g. gt-tioga-upstairs/gt-tioga-downstairs, measured against
+// production) the grain ruling on #2008 is about: each half is independently
+// lettable and carries its own bathroom_group, so it is a DIFFERENT building
+// from its sibling half under the IMMEDIATE-PARENT grain even though both
+// share one root.
+const HALVED_HOUSE = [
+  u({ code: 'house', is_container: true }),
+  u({ code: 'upstairs', is_container: true, parent_code: 'house' }),
+  u({ code: 'downstairs', is_container: true, parent_code: 'house' }),
+  u({ code: 'up-r1', parent_code: 'upstairs' }),
+  u({ code: 'up-r2', parent_code: 'upstairs' }),
+  u({ code: 'down-r1', parent_code: 'downstairs' }),
+  u({ code: 'down-r2', parent_code: 'downstairs' }),
+]
+
+describe('buildingGroups — the immediate-parent grain ruled on #2008', () => {
+  it('groups leaves under their immediate parent, not the root', () => {
+    const groups = buildingGroups(HALVED_HOUSE)
+    expect(groups.get('upstairs')?.toSorted()).toEqual(['up-r1', 'up-r2'])
+    expect(groups.get('downstairs')?.toSorted()).toEqual(['down-r1', 'down-r2'])
+    // 'house' the root is never a group key on its own — the two halves are
+    // different buildings under this grain, not one.
+    expect(groups.has('house')).toBe(false)
+  })
+
+  it('gives a parentless leaf its own one-room group', () => {
+    const solo = u({ code: 'solo' })
+    expect(buildingGroups([solo]).get('solo')).toEqual(['solo'])
+  })
+
+  it('never groups a container as a member of any group', () => {
+    const groups = buildingGroups(HALVED_HOUSE)
+    for (const leaves of groups.values()) {
+      expect(leaves).not.toContain('house')
+      expect(leaves).not.toContain('upstairs')
+      expect(leaves).not.toContain('downstairs')
+    }
+  })
+})
+
+describe("wholeBuildingHeld — #2008's placement marker", () => {
+  it('is true when occupied leaves cover an entire half', () => {
+    expect(wholeBuildingHeld(new Set(['up-r1', 'up-r2']), HALVED_HOUSE)).toBe(true)
+  })
+
+  it('is false when one leaf of the half is missing', () => {
+    expect(wholeBuildingHeld(new Set(['up-r1']), HALVED_HOUSE)).toBe(false)
+  })
+
+  it('is false for a standalone room with no registry parent — a single room is not a "building"', () => {
+    // 71 of the 103 production leaf units have no parent at all (2026
+    // measurement). Without this exclusion, every one of those placements
+    // would trivially "cover" its own one-room group and the marker would
+    // fire on most single-room placements instead of the ~15/year genuine
+    // whole-building holds.
+    const solo = u({ code: 'solo' })
+    expect(wholeBuildingHeld(new Set(['solo']), [solo])).toBe(false)
+  })
+
+  it('is true when the occupied leaves cover BOTH halves under the root', () => {
+    // A party naming the whole house directly (both halves split) still
+    // occupies every leaf of each half individually.
+    const leaves = new Set(['up-r1', 'up-r2', 'down-r1', 'down-r2'])
+    expect(wholeBuildingHeld(leaves, HALVED_HOUSE)).toBe(true)
+  })
+
+  it('is true when a party fully covers one half AND holds a stray room in the other', () => {
+    // The first half is fully covered, which is enough — the marker asks
+    // "does this placement hold at least one whole building", not "does it
+    // hold ONLY whole buildings".
+    const leaves = new Set(['up-r1', 'up-r2', 'down-r1'])
+    expect(wholeBuildingHeld(leaves, HALVED_HOUSE)).toBe(true)
+  })
+
+  it('ignores an occupied code the registry has no unit for', () => {
+    expect(wholeBuildingHeld(new Set(['up-r1', 'up-r2', 'ghost-code']), HALVED_HOUSE)).toBe(true)
+  })
+})
+
+describe("buildingsSpanned — #2009's distinct-building count", () => {
+  it('counts each half as its own building', () => {
+    const drawn = HALVED_HOUSE.filter((x) => ['up-r1', 'up-r2', 'down-r1'].includes(x.code))
+    expect(buildingsSpanned(drawn, HALVED_HOUSE)).toBe(2)
+  })
+
+  it('de-duplicates two rooms of the same half into one building', () => {
+    const drawn = HALVED_HOUSE.filter((x) => ['up-r1', 'up-r2'].includes(x.code))
+    expect(buildingsSpanned(drawn, HALVED_HOUSE)).toBe(1)
+  })
+
+  it('counts a card combined at the immediate-parent grain as ONE building', () => {
+    const combined = HALVED_HOUSE.map((x) =>
+      x.code === 'upstairs' ? { ...x, is_combined: true } : x
+    )
+    const upstairsCard = combined.find((x) => x.code === 'upstairs')!
+    expect(buildingsSpanned([upstairsCard], combined)).toBe(1)
+  })
+
+  it('counts a card combined at the ROOT as spanning every grain-level building beneath it', () => {
+    // Structurally correct even though it draws as ONE card: `drawnUnits`
+    // takes the highest combined node, but the root still structurally
+    // covers both halves' full leaf sets, and each half is its own building
+    // under this grain.
+    const combined = HALVED_HOUSE.map((x) => (x.code === 'house' ? { ...x, is_combined: true } : x))
+    const houseCard = combined.find((x) => x.code === 'house')!
+    expect(buildingsSpanned([houseCard], combined)).toBe(2)
+  })
+
+  it('counts each freestanding leaf as its own building', () => {
+    const solos = [u({ code: 'a' }), u({ code: 'b' }), u({ code: 'c' })]
+    expect(buildingsSpanned(solos, solos)).toBe(3)
+  })
+
+  it('returns 0 for nothing drawn', () => {
+    expect(buildingsSpanned([], HALVED_HOUSE)).toBe(0)
   })
 })
