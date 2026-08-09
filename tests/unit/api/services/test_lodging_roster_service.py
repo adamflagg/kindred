@@ -945,6 +945,12 @@ class TestCountsFollowTheDrawLevel:
     past any intermediate container rather than stopping at its immediate
     children. An unset container reads as a delta of zero (real, not
     "unknown") and still totals its measured rooms.
+
+    "Measured" is load-bearing in that last sentence (kindred#1945's PR): a
+    delta of zero over rooms that HAVE numbers is a real total, but a delta of
+    zero over a room nobody counted -- or over no rooms at all -- is not. Any
+    active leaf with `sleeps` unset makes its container UNKNOWN, so it counts
+    in `units_capacity_unknown` and contributes no beds.
     """
 
     @pytest.mark.asyncio

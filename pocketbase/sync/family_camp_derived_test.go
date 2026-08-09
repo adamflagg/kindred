@@ -2090,7 +2090,10 @@ func TestRegistrationNeedsUpdateIgnoresTheUnknownSpelling(t *testing.T) {
 // that disagree, spread across 113 households, and resolving by CampMinder's
 // own last_updated instead would pick a different value in 130 of them. So
 // this is a live arbitrary choice, not a theoretical one -- but it is also a
-// small one, because only two of the merged columns reach the UI at all.
+// small one: of the columns merged here, only relationship and the split name
+// pair reach the UI (the latter solely through the roster's `name or
+// first+last` coalesce, which fires for 5 of 382 households). gender,
+// date_of_birth, email and pronouns have zero readers anywhere.
 //
 // PENDING, deliberately (owner ruling on kindred#1945): which sibling should
 // win is a product decision, and it is coupled to the still-open question of
