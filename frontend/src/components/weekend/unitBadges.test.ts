@@ -17,7 +17,12 @@
 import { describe, expect, it } from 'vitest'
 
 import type { LodgingUnitRow } from '../../types/lodging'
-import { availabilityAction, reservationBadge, shareabilityBadge } from './unitBadges'
+import {
+  availabilityAction,
+  reservationBadge,
+  shareabilityBadge,
+  sharingConflictBadge,
+} from './unitBadges'
 
 function unit(overrides: Partial<LodgingUnitRow> = {}): LodgingUnitRow {
   return {
@@ -267,5 +272,74 @@ describe('shareabilityBadge', () => {
     const withoutField = unit()
     delete (withoutField as Partial<LodgingUnitRow>).shareability
     expect(shareabilityBadge(withoutField)?.label).toBe('Sharing unset')
+  })
+})
+
+/**
+ * kindred#2179 — the warning this issue exists for, and the one occupancy mark
+ * on this board that is genuinely RARE.
+ *
+ * Its opposite number, the shared-space ring, was STRUCK on 2026-08-09 for
+ * firing constantly: it lit the buildings designed to hold several families,
+ * which is every dormitory- and village-style unit every weekend. This chip is
+ * the inverse population — `single_party` is 74 of the 118 registry rows, and a
+ * second party in one of them is an anomaly rather than the designed case.
+ *
+ * Counts OVERLAPPING parties, never the card's raw party count. The caller
+ * passes `overlappingPartyKeys(...).size`, so two households in disjoint rooms
+ * of one building never reach the > 1 branch — the same "disjoint means no
+ * shared bedroom" reasoning that killed the ring.
+ */
+describe('sharingConflictBadge', () => {
+  const AMBER = 'bg-amber-100 text-amber-800 dark:bg-amber-950/50 dark:text-amber-300'
+
+  it('warns when a second party lands in a unit classified one-family', () => {
+    expect(sharingConflictBadge(unit({ shareability: 'single_party' }), 2)).toEqual({
+      label: 'One-family space',
+      className: AMBER,
+      title: 'Classified for one family — 2 families are placed here',
+    })
+  })
+
+  it('counts every party in the room, not just the second', () => {
+    expect(sharingConflictBadge(unit({ shareability: 'single_party' }), 3)?.title).toBe(
+      'Classified for one family — 3 families are placed here'
+    )
+  })
+
+  it('reuses the board amber rather than introducing a fourth alarm colour', () => {
+    // The vocabulary ruled 2026-08-09 commits opacity to REFUSAL, the hatch to
+    // advisory misfit and the forest tint to open-and-available. A warning
+    // spends the board's existing amber — consent's tone — and nothing new.
+    expect(sharingConflictBadge(unit({ shareability: 'single_party' }), 2)?.className).toBe(AMBER)
+  })
+
+  it('is silent on the one-family unit holding exactly one party', () => {
+    expect(sharingConflictBadge(unit({ shareability: 'single_party' }), 1)).toBeNull()
+  })
+
+  it('is silent on an empty one-family unit', () => {
+    expect(sharingConflictBadge(unit({ shareability: 'single_party' }), 0)).toBeNull()
+  })
+
+  it('is silent on a shareable unit holding two parties — that is the designed case', () => {
+    // Under 1500000145's backfill predicate every family-pool CONTAINER is
+    // shareable, which is why a whole-house let can never fire this warning.
+    // That is the compare-at-the-assignment's-own-level ruling working, not a
+    // gap in the check.
+    expect(sharingConflictBadge(unit({ shareability: 'shareable' }), 2)).toBeNull()
+  })
+
+  it('is silent on an unclassified unit — there is no rule there to violate', () => {
+    // Nagging on a unit nobody has classified teaches staff to dismiss the
+    // chip, which is exactly what `docs/architecture/lodging-occupancy.md:112`
+    // warns against.
+    expect(sharingConflictBadge(unit({ shareability: 'unknown' }), 2)).toBeNull()
+  })
+
+  it('is silent when an older payload omits the field entirely', () => {
+    const withoutField = unit()
+    delete (withoutField as Partial<LodgingUnitRow>).shareability
+    expect(sharingConflictBadge(withoutField, 2)).toBeNull()
   })
 })

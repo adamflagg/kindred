@@ -516,7 +516,6 @@ export function LodgingMap({ parties, units, year, sessionCmId = 0 }: LodgingMap
               if (!first) return null
               const many = cluster.members.length > 1
               const occupied = cluster.members.filter((m) => m.item.parties.length > 0).length
-              const shared = !many && first.parties.length > 1
               // ORDER-INVARIANT, mirroring MapUnitPopover's own semantics. A
               // cluster is only "a staff building" — SHAPE: a dashed square —
               // if EVERY member is one, but ANY staff member still HIGHLIGHTS
@@ -570,22 +569,26 @@ export function LodgingMap({ parties, units, year, sessionCmId = 0 }: LodgingMap
               // no other text.
               if (bathhouse) summary += ' · near bathhouse'
               if (!many && unmeasured) summary += ' · capacity unknown'
-              // Amber SUPERSEDES the shared ring rather than competing with it:
-              // a consent flag only ever exists on a shared room, so the two
-              // can never both need the same ring. The ORDERING is
-              // `resolveRingPrecedence` (kindred#2136), shared with
-              // `LodgingUnitCard.tsx`'s `ringState`. The drop-target state is
-              // OMITTED, not passed as false: this surface has no placement to
-              // have a target for (kindred#2183), so the resolver can only
-              // land on `consentFlagged`, `shared` or `plain`.
-              const ringState = resolveRingPrecedence({
-                consentFlagged: flagged > 0,
-                shared,
-              })
-              let halo = '0 0 0 2px rgba(255,255,255,.95)'
-              if (ringState === 'consentFlagged')
-                halo = `0 0 0 2px #fff, 0 0 0 4.5px ${CONSENT_AMBER}`
-              else if (ringState === 'shared') halo = `0 0 0 2px #fff, 0 0 0 4.5px ${hue}`
+              // The ORDERING is `resolveRingPrecedence` (kindred#2136), shared
+              // with `LodgingUnitCard.tsx`'s `ringState`. The drop-target state
+              // is OMITTED, not passed as false: this surface has no placement
+              // to have a target for (kindred#2183), so the resolver can only
+              // land on `consentFlagged` or `plain`.
+              //
+              // ⚠️ THE SHARED HALO IS STRUCK (kindred#2179, owner ruling
+              // 2026-08-09). It drew the area hue on any lone room holding two
+              // families — the units built to hold several, so it was on almost
+              // all the time, and a constant is not a signal. It went with the
+              // board's matching ring, in the same change, because #2193 made
+              // this one rule: striking it on the board and leaving it here
+              // would be the two surfaces disagreeing about what a shared space
+              // looks like. Amber is unaffected — it marks a share nobody
+              // consented to, which is the rare fact worth a mark.
+              const ringState = resolveRingPrecedence({ consentFlagged: flagged > 0 })
+              const halo =
+                ringState === 'consentFlagged'
+                  ? `0 0 0 2px #fff, 0 0 0 4.5px ${CONSENT_AMBER}`
+                  : '0 0 0 2px rgba(255,255,255,.95)'
               return (
                 // Deliberately a plain clickable div, not role="button": see the ACCESSIBILITY note
                 // at the top of this file. A role this mark cannot honour with real keyboard/focus
@@ -749,11 +752,10 @@ export function LodgingMap({ parties, units, year, sessionCmId = 0 }: LodgingMap
                 <dt className="sr-only">Solid mark</dt>
                 <dd>one party</dd>
               </div>
-              <div className="flex items-center gap-1.5">
-                <span className="bg-muted-foreground/70 border-muted-foreground/70 h-3 w-3 rounded-full border-2 ring-2 ring-current ring-offset-1" />
-                <dt className="sr-only">Ringed mark</dt>
-                <dd>shared</dd>
-              </div>
+              {/* The ringed "shared" row is GONE with the halo it keyed
+                  (kindred#2179). A legend entry for a mark the surface no
+                  longer draws is worse than no entry: it sends staff looking
+                  for a ring that cannot appear. */}
               <div className="flex items-center gap-1.5">
                 <span className="text-foreground font-bold">?</span>
                 <dt className="sr-only">Question mark</dt>

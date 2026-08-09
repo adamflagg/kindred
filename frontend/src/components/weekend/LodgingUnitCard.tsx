@@ -26,30 +26,33 @@ import { FamilyCard } from './FamilyCard'
 import { resolveNeedsFit } from './needsFit'
 import { resolveRingPrecedence } from './ringPrecedence'
 import { partyKey } from './partyKey'
-import { reservationBadge, shareabilityBadge } from './unitBadges'
+import { reservationBadge, shareabilityBadge, sharingConflictBadge } from './unitBadges'
 import { UnitAvailabilityControl } from './UnitAvailabilityControl'
 
 /**
- * `.card-lodge`'s own elevation shadow (`index.css:440-443`), duplicated here
- * rather than imported: an inline `boxShadow` (the shared-space ring below)
- * and this stylesheet rule occupy the SAME CSS property, and inline always
- * wins outright regardless of specificity or layer order — box-shadow does
- * not merge across the two, so setting the ring alone silently DELETES the
- * elevation the class rule was supplying. Composing it back in here is what
- * keeps a shared card from reading as flat against its unshared neighbours.
- */
-const CARD_ELEVATION_SHADOW =
-  '0 1px 2px hsl(var(--shadow-color) / 0.06), 0 4px 16px hsl(var(--shadow-color) / 0.08)'
-
-/**
  * The card's border/ring treatment, keyed off an ordered, MUTUALLY EXCLUSIVE
- * `ringState` — these three (plus `plain`) fight over the same CSS slot
- * (`border-color` plus a Tailwind `ring-*` box-shadow, or the inline
- * `boxShadow` below for `shared`), so only one may ever paint at a time. That
- * used to matter concretely: `.border-amber-400` (consent) and
- * `.border-primary` (an active drop target) could both be true at once, and
- * which one painted depended on which utility Tailwind's generated
- * stylesheet happened to emit LATER — a byte offset, not an intent.
+ * `ringState` — these two (plus `plain`) fight over the same CSS slot
+ * (`border-color` plus a Tailwind `ring-*` box-shadow), so only one may ever
+ * paint at a time. That used to matter concretely: `.border-amber-400`
+ * (consent) and `.border-primary` (an active drop target) could both be true
+ * at once, and which one painted depended on which utility Tailwind's
+ * generated stylesheet happened to emit LATER — a byte offset, not an intent.
+ *
+ * ⚠️ THERE WAS A THIRD STATE AND IT IS STRUCK (kindred#2179, owner ruling
+ * 2026-08-09). `shared` drew a ring in the area hue on any card holding two
+ * families, as an inline `boxShadow` because `hue` is a runtime value. It
+ * fired on the units DESIGNED to hold several families, so it was on almost
+ * all the time — and a constant is not a signal. NOTHING REPLACED IT: not a
+ * subtler ring, not a fixed hue, not a smaller dot. `consentFlagged` already
+ * outranked it, so every share worth an alarm was already caught. The one
+ * occupancy warning that is genuinely rare — a second party in a unit
+ * classified `single_party` — is a CHIP in the badge row below
+ * (`sharingConflictBadge`), on a channel of its own.
+ *
+ * With that ring gone, nothing here writes `box-shadow` inline any more, so
+ * `.card-lodge`'s own elevation AND its `:hover` lift (`index.css`) apply to
+ * every card again — neither of which the composed inline value could hand
+ * back, since inline always beats a stylesheet rule for the same property.
  *
  * Dimming (an invalid merge target mid-drag) and dashing (an empty room) are
  * DELIBERATELY NOT in this table — they are additive booleans where this
@@ -72,17 +75,12 @@ const CARD_ELEVATION_SHADOW =
  * Module scope, not component state: this table references nothing per-card
  * and would otherwise be rebuilt on every one of up to ~82 cards on a board.
  */
-const RING_CLASSES: Record<'dropTarget' | 'consentFlagged' | 'shared' | 'plain', string> = {
+const RING_CLASSES: Record<'dropTarget' | 'consentFlagged' | 'plain', string> = {
   dropTarget: 'border-primary ring-primary/50 bg-primary/5 ring-2',
-  // Promoted from `ring-1`: the shared-space mark below needs a weight to
-  // lose TO, and a 1px ring was not it.
+  // `ring-2` rather than the original `ring-1`: promoted when the struck
+  // shared mark needed a weight to lose to, and KEPT after it went — a 1px
+  // edge was too quiet for the one alarm this card raises at rest.
   consentFlagged: 'border-amber-400 ring-2 ring-amber-400/40 dark:border-amber-500',
-  // No class here — the ring itself is the inline `boxShadow` below. `hue`
-  // is a RUNTIME value (`LodgingBoard.tsx` passes `area.hue`), so it cannot
-  // live in a Tailwind class the way the other two do. This is the one
-  // exception to "the table is the source of truth", and it lives in
-  // `style` rather than here for exactly that reason.
-  shared: '',
   plain: '',
 }
 
@@ -272,20 +270,17 @@ export function LodgingUnitCard({
   // regardless of which rooms anyone actually holds, so it stays keyed on
   // the card's whole party count.
   //
-  // OPEN QUESTION, not yet decided (PR #2119 review, 2026-08-08): this same
-  // `parties.length > 1` also drives the shared-space ring below
-  // (`ringState`), and unlike `consent` the ring is NOT overlap-aware.
-  // `consent` was deliberately rewritten onto `overlappingPartyKeys` to stop
-  // conflating "two households on one merged card" with "two households in
-  // one ROOM" — see that function's doc in `boardLayout.ts`. A combined
-  // container holding two households in DISJOINT rooms (the Front/Back case
-  // pinned in `boardLayout.test.ts:985-1000`) correctly resolves `consent` to
-  // `null` for exactly that reason, but still draws the hue ring here, which
-  // may read to staff as "these two families share a ROOM" when they do not
-  // — even though the pre-existing "N families" chip already counts the
-  // same slot-wide way. Whether the ring should follow `consent`'s
-  // overlap-aware definition instead is a product call the PR owner has not
-  // made yet; see the PR discussion. Do not change this without that call.
+  // The OPEN QUESTION that used to sit here (PR #2119 review, 2026-08-08) —
+  // whether the shared-space ring should follow `consent`'s overlap-aware
+  // definition rather than this slot-wide count — was ANSWERED on 2026-08-09
+  // by striking the ring outright (kindred#2179). The owner's reasoning went
+  // past the definition: "the overlap aware should understand disjoint means
+  // no shared bedroom, so don't do the overlap glow, it is nonsensical", and
+  // then — since the ring lit the units built to hold several families —
+  // "let's strike that". So `parties.length > 1` now drives ONLY this count
+  // chip, where a slot-wide count is the true statement. Nothing that judges
+  // a SHARE reads it: `consent` and `sharingConflictBadge` both go through
+  // `overlappingPartyKeys` below.
   const isShared = parties.length > 1
   // Each FamilyCard's own "did not request sharing" chip, in contrast, must
   // be a true statement about that ONE party — whether it shares a ROOM with
@@ -359,25 +354,22 @@ export function LodgingUnitCard({
   }
 
   /*
-   * Which of the four mutually-exclusive RING states wins — see
-   * `RING_CLASSES` above for why exactly these four compete for one slot and
-   * why dimming/dashing are handled separately, additively, below rather
-   * than folded in here.
+   * Which of the three mutually-exclusive RING states wins — see
+   * `RING_CLASSES` above for why they compete for one slot, why the fourth
+   * was struck, and why dimming/dashing are handled separately, additively,
+   * below rather than folded in here.
    *
    * Highest wins, and every check below assumes every state above it false:
    *   1. an active drop target — dragging a family onto it, or a card onto
    *      its merge-sibling. The placement affordance has to read clearly
-   *      even over a flagged or shared room.
+   *      even over a flagged room.
    *   2. the consent flag (#1926) — a household sharing without having
    *      agreed to.
-   *   3. two or more families sharing without a flag — the mark #2091 adds,
-   *      matching `LodgingMap.tsx`'s `halo` for the identical slot flag.
-   *   4. plain — none of the above.
+   *   3. plain — neither of the above.
    */
   const ringState = resolveRingPrecedence({
     dropTarget: isUnitOver || isMergeOver,
     consentFlagged: consent !== null,
-    shared: isShared,
   })
 
   /*
@@ -389,13 +381,10 @@ export function LodgingUnitCard({
    * Pre-refactor, the two used to co-render; folding them into one exclusive
    * `cardState` string silently dropped that.
    *
-   * The one ring this DOES still suppress is `shared`'s inline `boxShadow`
-   * below (`sharedRingActive`) — a deliberate exception, not an oversight: a
-   * doomed drop dims the card specifically to discourage it, and the hue
-   * ring is the first thing a staff member's eye goes to, so it goes dark
-   * with everything else. Consent's Tailwind ring stays lit through the same
-   * dim because it is warning about something the merge drag did not cause
-   * and will still be true once the drag ends.
+   * It suppresses no ring at all now. The one it used to — `shared`'s inline
+   * `boxShadow` — is struck (kindred#2179), and consent's Tailwind ring has
+   * always stayed lit through the dim because it warns about something the
+   * merge drag did not cause and that will still be true once the drag ends.
    */
   const dimmed = mergeDragActive && !isValidTarget
 
@@ -456,10 +445,17 @@ export function LodgingUnitCard({
    */
   const needsFit = draggingParty === null ? 'fits' : resolveNeedsFit(draggingParty, unit)
 
-  // `ringState` alone can't gate the inline ring below: `dimmed` still wins
-  // against `shared` specifically (see the comment on `dimmed` above), and
-  // `ringState` does not know about `dimmed` by design.
-  const sharedRingActive = ringState === 'shared' && !dimmed
+  /*
+   * kindred#2179's warning: a second party in a space classified for ONE.
+   *
+   * Read off `overlappingKeys`, never `parties.length`, so it asks about a
+   * shared ROOM rather than a shared card — the distinction the struck ring
+   * never made, and the reason two households in disjoint rooms of one
+   * combined building do not raise it. Judged against THIS card's own unit,
+   * which is the level the assignment was made at (owner ruling 2026-08-07);
+   * see `sharingConflictBadge` for why that makes a whole-house let silent.
+   */
+  const sharingConflict = sharingConflictBadge(unit, overlappingKeys.size)
 
   const cardStateClassName = [
     RING_CLASSES[ringState],
@@ -502,24 +498,13 @@ export function LodgingUnitCard({
       // own `attentionSections` is where the same fact is stated in text.
       {...(needsFit === 'fits' ? {} : { 'data-needs-fit': needsFit })}
       ref={setCardRef}
-      style={{
-        borderTopColor: hue,
-        // Distinguishable from the amber consent edge and an active drop
-        // target by construction, not by colour alone: `sharedRingActive`
-        // can only be true once both `ringState` branches above it have
-        // been ruled out, AND while not `dimmed` (see that comment).
-        //
-        // Composed with `CARD_ELEVATION_SHADOW` rather than replacing it —
-        // see that constant's comment for why a bare ring here would
-        // silently flatten every shared card. One piece of that loss is
-        // NOT recovered by composing: `.card-lodge:hover`'s deeper lift
-        // (`index.css:445-450`) is also the `box-shadow` property, so it
-        // stays defeated by this inline style regardless of hover state —
-        // there is no CSS-only way to hand that back without moving the
-        // ring out of `style` entirely. Only the baseline (at-rest)
-        // elevation is being restored here.
-        ...(sharedRingActive ? { boxShadow: `0 0 0 2px ${hue}, ${CARD_ELEVATION_SHADOW}` } : {}),
-      }}
+      // The area's top edge, and NOTHING else — §3.10's secondary channel,
+      // which the #2179 deletion deliberately did not take with it. No
+      // `boxShadow` here any more: `.card-lodge`'s own elevation and its
+      // `:hover` lift are both the `box-shadow` property, and an inline value
+      // beats a stylesheet rule outright, so the struck ring was silently
+      // flattening every shared card's hover.
+      style={{ borderTopColor: hue }}
       /*
        * `.card-lodge` is summer's card chrome, not a lookalike — the same
        * class `BunkCard` wears (CLAUDE.md §4, "Family Camp Models Summer").
@@ -531,7 +516,7 @@ export function LodgingUnitCard({
        * Every utility below outranks `.card-lodge` itself regardless of
        * string order — it lives in `@layer components`, so `cardStateClassName`
        * always beats its `border-border` and `border-primary/50` hover. What
-       * is NOT order-independent is `RING_CLASSES`' four entries against EACH
+       * is NOT order-independent is `RING_CLASSES`' entries against EACH
        * OTHER, which is exactly why `ringState` above picks one rather than
        * concatenating four; the dashed/dimmed fragments alongside it are
        * additive on purpose (see their own comments) and never race anything
@@ -610,6 +595,25 @@ export function LodgingUnitCard({
         {sharing && (
           <span className={`rounded-full px-1.5 py-0.5 text-xs font-medium ${sharing.className}`}>
             {sharing.label}
+          </span>
+        )}
+        {/* kindred#2179. Beside the sharing badge because it answers the same
+            question in the one case that badge is deliberately silent on: the
+            space says one family, and there are two in it.
+
+            A WARNING, not a refusal — the chip is the whole mark. Nothing here
+            touches `useDroppable`, `opacity` or `pointer-events`: the drop
+            stays accepted, and `opacity-40` is spoken for by refusal in the
+            board's ruled vocabulary. The count is in the `title` because
+            colour alone is not a signal (WCAG 1.4.1) and the icon carries no
+            text. */}
+        {sharingConflict && (
+          <span
+            title={sharingConflict.title}
+            className={`inline-flex items-center gap-0.5 rounded-full px-1.5 py-0.5 text-xs font-medium ${sharingConflict.className}`}
+          >
+            <TriangleAlert className="h-3 w-3 flex-shrink-0" aria-hidden="true" />
+            {sharingConflict.label}
           </span>
         )}
         {/* The only actionable capacity state, and the only one summer's

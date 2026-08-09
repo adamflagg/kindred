@@ -17,13 +17,26 @@
  * that catches a regression here.
  *
  * ONLY the precedence is shared. The two callers' inputs are deliberately
- * different — the card's `consent` is one slot's `ConsentFlag | null` and
- * its `shared` is `parties.length > 1`; the map's `flagged` is a COUNT of
- * cluster members with `consent !== null` and its `shared` is
- * `!many && first.parties.length > 1`, so a multi-room cluster is never
- * "shared". Each caller keeps deriving its own booleans and keeps rendering
- * its own way (Tailwind classes vs. an inline `boxShadow`) — this function
- * knows nothing about either.
+ * different — the card's `consentFlagged` is one slot's `ConsentFlag | null`
+ * tested for presence, the map's is a COUNT of cluster members with
+ * `consent !== null`. Each caller keeps deriving its own booleans and keeps
+ * rendering its own way (Tailwind classes vs. an inline `boxShadow`) — this
+ * function knows nothing about either.
+ *
+ * ⚠️ THERE WAS A THIRD TIER AND IT IS STRUCK (kindred#2179, owner ruling
+ * 2026-08-09). "Two or more families in this space" drew a ring in the area
+ * hue below the consent flag. It fired on the units DESIGNED to hold several
+ * families — the dormitory- and village-style accommodations that hold
+ * several parties every weekend by construction — so it was on almost all the
+ * time, and a constant is not a signal. Nothing replaced it: not a subtler
+ * ring, not a fixed hue, not a smaller dot.
+ *
+ * Striking it lost nothing, because `consentFlagged` already outranked it:
+ * every share worth an alarm was already being caught one tier up. The one
+ * occupancy warning that IS rare — a second party in a unit classified
+ * `single_party` — is a CHIP in the card's badge row (`unitBadges.ts`'s
+ * `sharingConflictBadge`), on a channel of its own, and must not be brought
+ * back through this table.
  */
 
 export interface RingPrecedenceInputs {
@@ -39,28 +52,24 @@ export interface RingPrecedenceInputs {
    */
   dropTarget?: boolean
   consentFlagged: boolean
-  shared: boolean
 }
 
-export type RingState = 'dropTarget' | 'consentFlagged' | 'shared' | 'plain'
+export type RingState = 'dropTarget' | 'consentFlagged' | 'plain'
 
 /**
  * Highest wins, and every check assumes every state above it false:
  *   1. an active drop target — the placement affordance has to read clearly
- *      even over a flagged or shared room. Absent on the map, which is a
- *      reference surface with no placement at all (kindred#2183).
+ *      even over a flagged room. Absent on the map, which is a reference
+ *      surface with no placement at all (kindred#2183).
  *   2. the consent flag (#1926) — a household sharing without having agreed
  *      to.
- *   3. two or more families sharing without a flag.
- *   4. plain — none of the above.
+ *   3. plain — neither of the above.
  */
 export function resolveRingPrecedence({
   dropTarget,
   consentFlagged,
-  shared,
 }: RingPrecedenceInputs): RingState {
   if (dropTarget) return 'dropTarget'
   if (consentFlagged) return 'consentFlagged'
-  if (shared) return 'shared'
   return 'plain'
 }

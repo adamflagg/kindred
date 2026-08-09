@@ -405,7 +405,9 @@ const WEEKEND_SECTIONS: LegendSection[] = [
         >
           <p className="text-muted-foreground text-sm">
             Fill and border color group rooms by the area they sit in — the same color on the map's
-            mark, the board's card edge and its shared-room ring.
+            mark and the board's card edge. A secondary channel only: nothing depends on telling one
+            hue from another. (It used to ring a shared room too; that mark was struck in
+            kindred#2179 for firing on every cabin built to hold several families.)
           </p>
         </LegendEntry>
 

@@ -651,12 +651,16 @@ describe('LodgingUnitCard — the whole-building mark (#2008)', () => {
   })
 })
 
-describe('LodgingUnitCard — the shared-space mark (#2091)', () => {
-  // The master housing sheet's fill for "two families here", adopted as the
-  // ring `LodgingMap.tsx`'s `halo` already draws for the identical flag
-  // (`0 0 0 4.5px ${hue}` there, on a small circular mark; this card is a
-  // rectangle with its own 2px `.card-lodge` border, so `2px` is the ring
-  // weight rather than the map's offset-plus-ring pair).
+/**
+ * The shared-space ring (#2091) is STRUCK — owner ruling 2026-08-09 on #2179.
+ *
+ * It fired on the units DESIGNED to hold several families, so it was on almost
+ * all the time, and a constant is not a signal. There is no replacement mark:
+ * not a subtler ring, not a different colour, not a smaller dot. What survives
+ * of this block is the precedence it used to sit inside, which now has three
+ * tiers instead of four and must still resolve in the same order.
+ */
+describe('LodgingUnitCard — no shared-space ring (#2179)', () => {
   const hue = 'hsl(160 45% 42%)'
   const sharedParties = [party(), party({ household_cm_id: 102, display_name: 'Garcia' })]
   const declinedConsent = {
@@ -672,37 +676,36 @@ describe('LodgingUnitCard — the shared-space mark (#2091)', () => {
     return el as HTMLElement
   }
 
-  // `.card-lodge`'s own elevation shadow (`index.css:440-443`), pinned here
-  // independently of the implementation's own constant name — this is the
-  // exact value a shared card must NOT lose (review finding 1 on #2119).
-  const cardElevationShadow =
-    '0 1px 2px hsl(var(--shadow-color) / 0.06), 0 4px 16px hsl(var(--shadow-color) / 0.08)'
-
-  it('rings a shared unit in the area hue AND keeps the card elevation shadow', () => {
-    // An inline `boxShadow` beats `.card-lodge`'s own stylesheet box-shadow
-    // for the same property outright — setting ONLY the ring here (as the
-    // code did before this fix) silently drops the elevation every other
-    // card keeps, so a shared card reads as flat against its neighbours.
-    // The fix composes both shadows into the one inline value rather than
-    // letting the ring replace the elevation.
+  it('draws no ring at all on a card holding two families', () => {
+    // The mark that used to live here. The card now says "two families" in
+    // the chip below and in nothing else.
     const { container } = render(
       <LodgingUnitCard slot={slot({ parties: sharedParties })} hue={hue} onOpenParty={vi.fn()} />
     )
-    expect(card(container)).toHaveStyle({
-      boxShadow: `0 0 0 2px ${hue}, ${cardElevationShadow}`,
-    })
+    expect(card(container).style.boxShadow).toBe('')
   })
 
-  it('leaves a single-party unit without the shared ring', () => {
+  it('paints no inline box-shadow at ANY occupancy', () => {
+    // The whole channel is gone, not merely its two-party branch — with no
+    // inline `boxShadow` competing for the property, `.card-lodge`'s own
+    // elevation AND its hover lift (`index.css`) come back for free, which
+    // the composed ring could never hand back.
+    for (const parties of [[], [party()], sharedParties]) {
+      const { container, unmount } = render(
+        <LodgingUnitCard slot={slot({ parties })} hue={hue} onOpenParty={vi.fn()} />
+      )
+      expect(card(container).style.boxShadow).toBe('')
+      unmount()
+    }
+  })
+
+  it('keeps the area hue on the top edge — that is not a ring', () => {
+    // Explicitly NOT struck. `borderTopColor` is §3.10's secondary channel,
+    // and the deletion above must not take it with it.
     const { container } = render(
-      <LodgingUnitCard slot={slot({ parties: [party()] })} hue={hue} onOpenParty={vi.fn()} />
+      <LodgingUnitCard slot={slot({ parties: sharedParties })} hue={hue} onOpenParty={vi.fn()} />
     )
-    expect(card(container)).not.toHaveStyle({ boxShadow: `0 0 0 2px ${hue}` })
-  })
-
-  it('leaves an empty unit without the shared ring', () => {
-    const { container } = render(<LodgingUnitCard slot={slot()} hue={hue} onOpenParty={vi.fn()} />)
-    expect(card(container)).not.toHaveStyle({ boxShadow: `0 0 0 2px ${hue}` })
+    expect(card(container)).toHaveStyle({ borderTopColor: hue })
   })
 
   it('promotes the consent ring to ring-2', () => {
@@ -720,11 +723,10 @@ describe('LodgingUnitCard — the shared-space mark (#2091)', () => {
     expect(card(container)).not.toHaveClass('ring-1')
   })
 
-  it('lets the consent flag outrank the shared-space ring', () => {
-    // Amber supersedes the hue ring, exactly as `LodgingMap.tsx`'s `halo`
-    // does for the same two flags — a consent flag only ever exists on a
-    // shared room, so the two never compete for meaning, only for the one
-    // ring a card can draw.
+  it('still rings a two-family card amber when the sharing was never consented to', () => {
+    // The tier that SURVIVES the deletion, and the one that was always doing
+    // the real work: striking `shared` loses nothing because every case worth
+    // an alarm was already caught here.
     const { container } = render(
       <LodgingUnitCard
         slot={slot({ parties: sharedParties, consent: declinedConsent })}
@@ -733,14 +735,11 @@ describe('LodgingUnitCard — the shared-space mark (#2091)', () => {
       />
     )
     expect(card(container)).toHaveClass('border-amber-400')
-    expect(card(container)).not.toHaveStyle({ boxShadow: `0 0 0 2px ${hue}` })
   })
 
-  it('lets an active drop target outrank the shared-space ring', () => {
-    // The hue ring lives OUTSIDE the Tailwind class switch as an inline
-    // `boxShadow` (`hue` is a runtime value), so nothing in the class
-    // cascade stops it from fighting the drop-target ring's own box-shadow
-    // — only the explicit precedence below does.
+  it('still gives an active drop target its own ring on an occupied card', () => {
+    // Removing a tier from an ordered table is exactly where the remaining
+    // tiers silently reindex, so each one is re-pinned rather than assumed.
     overDroppableId = unitDroppableId('cedar-1')
     const { container } = render(
       <LodgingUnitCard
@@ -751,10 +750,9 @@ describe('LodgingUnitCard — the shared-space mark (#2091)', () => {
       />
     )
     expect(card(container)).toHaveClass('border-primary')
-    expect(card(container)).not.toHaveStyle({ boxShadow: `0 0 0 2px ${hue}` })
   })
 
-  it('lets an invalid merge target outrank the shared-space ring', () => {
+  it('still dims an invalid merge target holding two families', () => {
     const room = unit({ code: 'cedar-1', parent_code: 'east-wing' })
     const draggedSibling = unit({ code: 'other-1', parent_code: 'west-wing' })
     const { container } = render(
@@ -766,7 +764,17 @@ describe('LodgingUnitCard — the shared-space mark (#2091)', () => {
       />
     )
     expect(card(container)).toHaveClass('opacity-40')
-    expect(card(container)).not.toHaveStyle({ boxShadow: `0 0 0 2px ${hue}` })
+  })
+
+  it('leaves a plain occupied card with no ring class at all', () => {
+    // The bottom tier. `plain` has to stay reachable after the table shrinks.
+    const { container } = render(
+      <LodgingUnitCard slot={slot({ parties: [party()] })} hue={hue} onOpenParty={vi.fn()} />
+    )
+    expect(card(container)).not.toHaveClass('border-amber-400')
+    expect(card(container)).not.toHaveClass('border-primary')
+    expect(card(container)).not.toHaveClass('ring-2')
+    expect(card(container).style.boxShadow).toBe('')
   })
 
   it('lets an active drop target outrank a CONSENT-flagged room too', () => {
@@ -869,6 +877,190 @@ describe('LodgingUnitCard — the shared-space mark (#2091)', () => {
     expect(card(container)).toHaveClass('bg-primary/5')
     expect(card(container)).not.toHaveClass('bg-primary/10')
     expect(card(container)).not.toHaveClass('bg-muted/25')
+  })
+})
+
+/**
+ * kindred#2179's own warning, which the ring's deletion does NOT strike.
+ *
+ * A chip in the badge row, on a fourth channel of its own. The vocabulary
+ * ruled 2026-08-09 spends `opacity-40` on REFUSAL, `background-image` on the
+ * advisory needs misfit and the forest tint on open-and-available; this is a
+ * warning about a placement that already happened, so it takes none of them.
+ */
+describe('LodgingUnitCard — the one-family conflict chip (#2179)', () => {
+  const hue = 'hsl(160 45% 42%)'
+  const twoParties = [party(), party({ household_cm_id: 102, display_name: 'Garcia' })]
+
+  function card(container: HTMLElement): HTMLElement {
+    const el = container.querySelector('[data-unit-card]')
+    if (!el) throw new Error('no card rendered')
+    return el as HTMLElement
+  }
+
+  it('warns when a second family lands in a unit classified one-family', () => {
+    render(
+      <LodgingUnitCard
+        slot={slot({ unit: unit({ shareability: 'single_party' }), parties: twoParties })}
+        hue={hue}
+        onOpenParty={vi.fn()}
+      />
+    )
+    expect(screen.getByText('One-family space')).toBeInTheDocument()
+  })
+
+  it('says the count in words on the chip itself, not in colour alone', () => {
+    render(
+      <LodgingUnitCard
+        slot={slot({ unit: unit({ shareability: 'single_party' }), parties: twoParties })}
+        hue={hue}
+        onOpenParty={vi.fn()}
+      />
+    )
+    expect(screen.getByTitle(/2 families are placed here/i)).toBeInTheDocument()
+  })
+
+  it('is silent on the same unit holding one family', () => {
+    render(
+      <LodgingUnitCard
+        slot={slot({ unit: unit({ shareability: 'single_party' }), parties: [party()] })}
+        hue={hue}
+        onOpenParty={vi.fn()}
+      />
+    )
+    expect(screen.queryByText('One-family space')).not.toBeInTheDocument()
+  })
+
+  it('is silent on a shareable unit holding two families', () => {
+    render(
+      <LodgingUnitCard
+        slot={slot({ unit: unit({ shareability: 'shareable' }), parties: twoParties })}
+        hue={hue}
+        onOpenParty={vi.fn()}
+      />
+    )
+    expect(screen.queryByText('One-family space')).not.toBeInTheDocument()
+  })
+
+  it('is silent on an unclassified unit holding two families', () => {
+    render(
+      <LodgingUnitCard
+        slot={slot({ unit: unit({ shareability: 'unknown' }), parties: twoParties })}
+        hue={hue}
+        onOpenParty={vi.fn()}
+      />
+    )
+    expect(screen.queryByText('One-family space')).not.toBeInTheDocument()
+  })
+
+  it('does not fire on two families in DISJOINT rooms of one combined building', () => {
+    // The compare-at-the-assignment's-own-level ruling, and the same reason
+    // the ring was struck: disjoint means no shared bedroom. Two households
+    // in different rooms of one building is not a share, so a card that
+    // happens to be the whole building must not report one — even when the
+    // building itself is classified one-family.
+    const building = unit({
+      code: 'east-wing',
+      name: 'East Wing',
+      is_container: true,
+      is_combined: true,
+      shareability: 'single_party',
+    })
+    const front = unit({ code: 'east-1', name: 'East 1', parent_code: 'east-wing' })
+    const back = unit({ code: 'east-2', name: 'East 2', parent_code: 'east-wing' })
+    render(
+      <LodgingUnitCard
+        slot={slot({
+          unit: building,
+          parties: [
+            party({ unit_code: 'east-1', unit_name: 'East 1' }),
+            party({
+              household_cm_id: 102,
+              display_name: 'Garcia',
+              unit_code: 'east-2',
+              unit_name: 'East 2',
+            }),
+          ],
+        })}
+        units={[building, front, back]}
+        hue={hue}
+        onOpenParty={vi.fn()}
+      />
+    )
+    expect(screen.queryByText('One-family space')).not.toBeInTheDocument()
+  })
+
+  it('DOES fire when both families named the same room beneath that building', () => {
+    // The mirror of the test above, so "never fires on a container" cannot
+    // pass for "correctly overlap-aware".
+    const building = unit({
+      code: 'east-wing',
+      name: 'East Wing',
+      is_container: true,
+      is_combined: true,
+      shareability: 'single_party',
+    })
+    const front = unit({ code: 'east-1', name: 'East 1', parent_code: 'east-wing' })
+    const back = unit({ code: 'east-2', name: 'East 2', parent_code: 'east-wing' })
+    render(
+      <LodgingUnitCard
+        slot={slot({
+          unit: building,
+          parties: [
+            party({ unit_code: 'east-1', unit_name: 'East 1' }),
+            party({
+              household_cm_id: 102,
+              display_name: 'Garcia',
+              unit_code: 'east-1',
+              unit_name: 'East 1',
+            }),
+          ],
+        })}
+        units={[building, front, back]}
+        hue={hue}
+        onOpenParty={vi.fn()}
+      />
+    )
+    expect(screen.getByText('One-family space')).toBeInTheDocument()
+  })
+
+  it('WARNS without refusing — no dim, no blocked drop, no new ring', () => {
+    // `opacity-40` + `pointer-events-none` is the board's REFUSAL signal and
+    // this is not a refusal; the placement has already happened and staff are
+    // being told, not stopped. Nor does it become a fourth ring: the channel
+    // this issue struck stays struck.
+    overDroppableId = unitDroppableId('cedar-1')
+    const { container } = render(
+      <LodgingUnitCard
+        slot={slot({ unit: unit({ shareability: 'single_party' }), parties: twoParties })}
+        hue={hue}
+        canPlace
+        onOpenParty={vi.fn()}
+      />
+    )
+    expect(screen.getByText('One-family space')).toBeInTheDocument()
+    expect(card(container)).not.toHaveClass('opacity-40')
+    expect(card(container)).not.toHaveClass('pointer-events-none')
+    expect(card(container).style.boxShadow).toBe('')
+    // Still an active, highlighted drop target while the warning shows.
+    expect(card(container)).toHaveClass('border-primary')
+  })
+
+  it('sits in the badge row beside the availability chips', () => {
+    // Not a ring, not a wash, not a row of its own — the existing chip row,
+    // which is where the card already answers "may a family go in here".
+    render(
+      <LodgingUnitCard
+        slot={slot({
+          unit: unit({ shareability: 'single_party', inventory_class: 'staff_default' }),
+          parties: twoParties,
+        })}
+        hue={hue}
+        onOpenParty={vi.fn()}
+      />
+    )
+    const chip = screen.getByText('One-family space')
+    expect(chip.parentElement).toBe(screen.getByText('Staff').parentElement)
   })
 })
 

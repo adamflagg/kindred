@@ -21,6 +21,13 @@ import type { LodgingUnitRow } from '../../types/lodging'
 export interface UnitBadge {
   label: string
   className: string
+  /**
+   * OPTIONAL long form, rendered as the chip's `title`. Only the warning chip
+   * below carries one: the availability badges are single words whose whole
+   * meaning is the word, where a warning has a COUNT to state and colour alone
+   * is never a signal (WCAG 1.4.1).
+   */
+  title?: string
 }
 
 export function reservationBadge(unit: LodgingUnitRow): UnitBadge | null {
@@ -89,6 +96,62 @@ export function shareabilityBadge(unit: LodgingUnitRow): UnitBadge | null {
   return {
     label: 'Sharing unset',
     className: 'border-border text-muted-foreground border',
+  }
+}
+
+/**
+ * A second party in a space classified for one — kindred#2179's warning, and
+ * the counterpart `shareabilityBadge` above deliberately does not render.
+ *
+ * A NEW element rather than a variant of that badge, because `single_party` is
+ * SILENT there on purpose: it is 74 of the 118 registry rows, so a chip
+ * restating it would sit on most of the board. There is no chip there to turn
+ * red. This one appears only in the anomaly.
+ *
+ * ⚠️ IT IS THE RARE ONE, AND THAT IS THE WHOLE POINT. Its opposite number — the
+ * shared-space ring, which lit any card holding two families — was STRUCK on
+ * 2026-08-09 (see `ringPrecedence.ts`) for firing on the units DESIGNED to hold
+ * several families, every weekend, by construction. A mark that is always on is
+ * chrome staff learn to read past, which is the failure
+ * `docs/architecture/lodging-occupancy.md:112` names. Anything that would make
+ * this chip common again is the same mistake wearing a different shape.
+ *
+ * WARN, DO NOT BLOCK. The placement has already happened and the drop stays
+ * accepted: no `opacity-40` (the board's reserved REFUSAL signal), no hatch
+ * (advisory needs misfit, #1912), no forest tint (open and available, #2093).
+ * A chip in the badge row is a fourth channel and takes none of those three.
+ *
+ * `overlappingParties` is a count of parties that actually share a ROOM
+ * (`overlappingPartyKeys`), never the card's raw party count. Two households in
+ * disjoint rooms of one building is a legitimate share — the owner ruling of
+ * 2026-08-07 — and the same "disjoint means no shared bedroom" reasoning that
+ * struck the ring applies here. Compare at the level the assignment was made:
+ * a container-level placement is judged against the CONTAINER's own
+ * `shareability`, and since 1500000145's backfill makes every family-pool
+ * container `shareable`, a whole-house let cannot fire this. That is the ruling
+ * working, not a gap.
+ *
+ * Silent on an unclassified unit for the reason the doc gives: a unit nobody
+ * has classified has no rule to violate, and nagging there teaches dismissal.
+ * This reads the STORED value and re-states the classification rule nowhere —
+ * `shareabilityDrift.ts` already records that the rule has three expressions
+ * (the migration header, `registry.go`'s `classifyShareability`, and itself)
+ * and that a fourth would make that worse.
+ */
+export function sharingConflictBadge(
+  unit: LodgingUnitRow,
+  overlappingParties: number
+): UnitBadge | null {
+  if (unit.shareability !== 'single_party') return null
+  if (overlappingParties < 2) return null
+  return {
+    label: 'One-family space',
+    // The board's existing amber — consent's tone, and the precedent this
+    // issue names for "a human should look at this". Not a fourth alarm
+    // colour: the palette is committed (forest to area identity and open
+    // space, amber to a share worth a look, red to over-capacity).
+    className: 'bg-amber-100 text-amber-800 dark:bg-amber-950/50 dark:text-amber-300',
+    title: `Classified for one family — ${String(overlappingParties)} families are placed here`,
   }
 }
 

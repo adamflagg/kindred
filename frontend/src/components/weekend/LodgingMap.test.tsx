@@ -483,6 +483,50 @@ describe('LodgingMap', () => {
     expect(mark.querySelector('span')?.style.boxShadow).toContain(CONSENT_AMBER)
   })
 
+  it('draws NO halo on a consented shared room — the mark is struck (kindred#2179)', () => {
+    // The board's shared-space ring was struck on 2026-08-09 because it fired
+    // on the units DESIGNED to hold several families, so it was on almost all
+    // the time. #2193 made the precedence rule shared via `ringPrecedence.ts`,
+    // which is exactly why this test exists on the map too: striking the ring
+    // on the board and leaving the halo here is the half-fix, and it would
+    // leave the two surfaces disagreeing about what a shared space looks like.
+    const consenting = {
+      preference: 'yes_share' as const,
+      preference_raw: '',
+      proximity: [],
+      request_text: '',
+      needs_resolution: false,
+      eligibility: 'open' as const,
+      eligibility_source: 'form' as const,
+      answers_conflict: false,
+    }
+    render(
+      <LodgingMap
+        parties={[
+          party({
+            display_name: 'Johnson',
+            unit_code: 'cedar-1',
+            unit_name: 'Cedar 1',
+            share: consenting,
+          }),
+          party({
+            household_cm_id: 9002,
+            display_name: 'Garcia',
+            unit_code: 'cedar-1',
+            unit_name: 'Cedar 1',
+            share: consenting,
+          }),
+        ]}
+        units={[unit()]}
+        year={2026}
+      />
+    )
+    const halo = screen.getByTestId('map-mark').querySelector('span')?.style.boxShadow
+    // The plain white outline every other mark wears, and nothing beyond it.
+    expect(halo).not.toMatch(/4\.5px/)
+    expect(halo).toMatch(/rgba\(255, ?255, ?255/)
+  })
+
   it('reports rooms nobody has positioned rather than dropping them silently', () => {
     render(
       <LodgingMap
@@ -701,8 +745,14 @@ describe('LodgingMap legend', () => {
     const legend = screen.getByTestId('map-legend')
     expect(legend).toHaveTextContent(/empty/i)
     expect(legend).toHaveTextContent(/one party/i)
-    expect(legend).toHaveTextContent(/shared/i)
     expect(legend).toHaveTextContent(/capacity unknown/i)
+  })
+
+  it('no longer keys a ringed mark as "shared" — that mark is gone (kindred#2179)', () => {
+    // A legend row for a channel the surface no longer draws is worse than no
+    // row: it sends staff looking for a ring that cannot appear.
+    render(<LodgingMap parties={[]} units={UNITS} year={2026} />)
+    expect(screen.getByTestId('map-legend')).not.toHaveTextContent(/shared/i)
   })
 
   it('no longer explains staff-default or near-bathhouse here — the Guide does', () => {
