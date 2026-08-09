@@ -899,10 +899,11 @@ class TestCachedByYearSingleFlight:
                 both_entered.set()
             return await fake.fetch_households(2026)
 
-        results = await asyncio.gather(caller(), caller())
+        first, second = await asyncio.gather(caller(), caller())
 
         assert call_count == 1, "single-flight must coalesce concurrent misses into one fetch"
-        assert results == ["value", "value"]
+        assert first == "value"
+        assert second == "value"
 
     def test_invalidate_all_clears_stale_inflight_locks(self) -> None:
         """`asyncio.Lock` binds to the event loop it is first awaited on, and
