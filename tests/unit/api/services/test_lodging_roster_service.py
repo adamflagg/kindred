@@ -21,13 +21,19 @@ below would pass without the service doing anything. A namespace raises the
 same AttributeError a real record would, so getattr defaults are exercised.
 """
 
+import asyncio
 from types import SimpleNamespace
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from api.services.lodging_roster_service import LodgingRosterService, SessionNotFoundError, _BathroomIndex
+from api.services.lodging_roster_service import (
+    SUMMARY_ENTRY_CONCURRENCY,
+    LodgingRosterService,
+    SessionNotFoundError,
+    _BathroomIndex,
+)
 
 
 def _rec(**kwargs: Any) -> SimpleNamespace:
@@ -2553,7 +2559,56 @@ class TestBuildSummary:
         await LodgingRosterService(repo).build_summary(2026, scenario="scn123")
 
         assert repo.fetch_availability.await_count == 2
-        assert repo.fetch_scenario_availability.await_count == 0
+
+    @pytest.mark.asyncio
+    async def test_per_weekend_fan_out_is_bounded_by_a_semaphore(self) -> None:
+        """kindred#1920: `_entry` must not run unboundedly for every weekend at once.
+
+        12 weekends (2026's real count) each open a `TaskGroup` of four
+        concurrent reads inside `_entry`. Uncapped, that is 48 simultaneous
+        `asyncio.to_thread` calls sharing one executor. This pins the ACTUAL
+        bound -- peak concurrent `_entry` bodies in flight -- rather than
+        merely asserting a `Semaphore` object exists, which would pin nothing
+        (a `Semaphore(9999)` would satisfy that check and cap nothing real).
+        """
+        sessions = [
+            _rec(
+                id=f"sess_{i}",
+                cm_id=1000000 + i,
+                name=f"Weekend {i}",
+                session_type="family",
+                year=2026,
+                start_date="2026-09-04",
+                end_date="2026-09-07",
+                sort_order=i,
+            )
+            for i in range(12)
+        ]
+        repo = _repo(fetch_weekend_sessions=sessions)
+
+        concurrency = {"current": 0, "peak": 0}
+
+        async def _tracked_fetch_availability(*_args: Any, **_kwargs: Any) -> list[Any]:
+            concurrency["current"] += 1
+            concurrency["peak"] = max(concurrency["peak"], concurrency["current"])
+            # Cede control so overlapping `_entry` calls actually interleave --
+            # without a yield point, cooperative scheduling would never let a
+            # second `_entry` start before the first one finishes.
+            await asyncio.sleep(0.01)
+            concurrency["current"] -= 1
+            return []
+
+        repo.fetch_availability = AsyncMock(side_effect=_tracked_fetch_availability)
+
+        await LodgingRosterService(repo).build_summary(2026)
+
+        assert concurrency["peak"] <= SUMMARY_ENTRY_CONCURRENCY, (
+            f"peak concurrent weekend entries ({concurrency['peak']}) exceeded the bound ({SUMMARY_ENTRY_CONCURRENCY})"
+        )
+        # Not a tautology: with 12 weekends and a bound below 12, the fan-out
+        # must actually have been throttled at some point, not merely never
+        # have reached the cap by coincidence.
+        assert concurrency["peak"] == SUMMARY_ENTRY_CONCURRENCY
 
     @pytest.mark.asyncio
     async def test_returns_one_entry_per_weekend_carrying_its_identity(self) -> None:

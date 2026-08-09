@@ -65,6 +65,14 @@ _GATE_VALUES: frozenset[str] = frozenset({"no_share", "maybe_mutual", "yes_share
 _ELIGIBILITY_VALUES: frozenset[str] = frozenset({"open", "named", "declined"})
 _ELIGIBILITY_SOURCE_VALUES: frozenset[str] = frozenset({"form", "registration"})
 
+# kindred#1920: `build_summary` opens a `TaskGroup` per weekend and each one
+# opens four `to_thread` reads of its own, so an uncapped year is 4x its
+# weekend count in concurrent reads against one executor -- 48 for 2026's 12
+# weekends, 72 for 2024's 18. The default `to_thread` pool is
+# `min(32, cpu+4)`, so 8 concurrent weekends (32 reads) keeps the fan-out
+# from ever queuing behind itself.
+SUMMARY_ENTRY_CONCURRENCY = 8
+
 
 class SessionNotFoundError(LookupError):
     """No family/adult session matches the requested (year, cm_id)."""
@@ -699,12 +707,12 @@ class LodgingRosterService:
         lander cannot drift from the page it links to, and it resolves a
         scenario the same way: replace, never fall through.
 
-        THREE session-scoped reads per weekend, with or without a scenario.
-        Naming one used to cost a fourth -- the scenario's own availability
-        overrides -- and 1500000135 deleted that dimension outright rather than
-        making the extra read cheaper. Nothing caps the resulting fan-out;
-        that is deliberate for now, since no lander calls this with a scenario
-        yet, and kindred#1920 records the two ways to bound it when one does.
+        FOUR session-scoped reads per weekend, with or without a scenario:
+        availability, attendees, one placement source, and slot merges (the
+        last of these unconditional since 1500000140). A `Semaphore` below
+        bounds how many weekends' worth of those run at once -- kindred#1920,
+        which also records why a per-weekend cap was chosen over collapsing
+        the placement read to one call for the whole year.
         """
         sessions = await self.repository.fetch_weekend_sessions(year)
         if not sessions:
@@ -737,9 +745,14 @@ class LodgingRosterService:
         unresolved_aliases = aliases_task.result()
         statuses = statuses_task.result()
 
+        # Bounds how many weekends' four-read TaskGroups run at once. Per-year
+        # (one instance per `build_summary` call), not module-level -- see
+        # SUMMARY_ENTRY_CONCURRENCY.
+        entry_gate = asyncio.Semaphore(SUMMARY_ENTRY_CONCURRENCY)
+
         async def _entry(session: Any) -> WeekendSummaryEntry:
             session_pb_id = _s(session, "id")
-            async with asyncio.TaskGroup() as inner:
+            async with entry_gate, asyncio.TaskGroup() as inner:
                 availability_task = inner.create_task(self.repository.fetch_availability(year, session_pb_id))
                 attendees_task = inner.create_task(self.repository.fetch_attendees_for_session(year, session_pb_id))
                 # One placement source, exactly as build_roster chooses it.
