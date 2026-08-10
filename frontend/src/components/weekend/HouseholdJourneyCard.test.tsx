@@ -138,6 +138,22 @@ describe('the enrolment states', () => {
 
     expect(within(rowFor(2025)).queryByText('No enrolment')).not.toBeInTheDocument()
   })
+
+  it('explains the flag on a tooltip a keyboard and a tablet can reach', () => {
+    // kindred#2177. This chip is on the weekend surface and carried the same
+    // bare `title` as the rest of it — it just landed late enough to miss the
+    // sweep's file list, which is exactly how a half-swept surface happens.
+    // The row around it is a `<div>`, not a `<button>`, so unlike
+    // `HouseholdRosterRow`'s in-button badges this one CAN be a real trigger.
+    show([_row({ year: 2021, enrollment: 'none_on_file', children: [] })])
+
+    const chip = within(rowFor(2021)).getByRole('button', { name: 'No enrolment' })
+    expect(chip).not.toHaveAttribute('title')
+    expect(chip).toHaveAccessibleDescription(/no enrolled child/i)
+
+    fireEvent.focus(chip)
+    expect(screen.getByRole('tooltip')).toHaveTextContent(/no enrolled child/i)
+  })
 })
 
 describe('the family name', () => {

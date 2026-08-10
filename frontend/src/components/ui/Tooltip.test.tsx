@@ -9,6 +9,7 @@ import { act, fireEvent, render, screen } from '@testing-library/react'
 import { useEffect } from 'react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
+import { Modal } from './Modal'
 import { Tooltip } from './Tooltip'
 
 afterEach(() => {
@@ -230,5 +231,120 @@ describe('Tooltip — Escape does not reach the host', () => {
     render(<Host onEscape={onEscape} />)
     fireEvent.keyDown(trigger(), { key: 'Escape' })
     expect(onEscape).toHaveBeenCalledTimes(1)
+  })
+
+  it('dismisses a HOVER-opened bubble, which no handler on the trigger can see', () => {
+    // WCAG 1.4.13 "Dismissible" asks for a way to dismiss hover content
+    // WITHOUT moving the pointer. When the pointer opened the bubble the
+    // keyboard focus is somewhere else entirely, so the trigger's own
+    // `onKeyDown` never runs and Escape did nothing at all.
+    const onEscape = vi.fn()
+    render(<Host onEscape={onEscape} />)
+    fireEvent.pointerEnter(trigger())
+    expect(screen.getByRole('tooltip')).toBeInTheDocument()
+
+    fireEvent.keyDown(document.body, { key: 'Escape' })
+
+    expect(screen.queryByRole('tooltip')).not.toBeInTheDocument()
+    // ...and it still must not take the host down with it. A `document`
+    // listener cannot stop another `document` listener in the same phase, so
+    // this one runs in CAPTURE — see the file header.
+    expect(onEscape).not.toHaveBeenCalled()
+  })
+
+  it('leaves every other key alone while a hover bubble is showing', () => {
+    const onKey = vi.fn()
+    function KeyHost() {
+      useEffect(() => {
+        document.addEventListener('keydown', onKey)
+        return () => {
+          document.removeEventListener('keydown', onKey)
+        }
+      }, [])
+      return <Tooltip content="A sentence.">Answers disagree</Tooltip>
+    }
+    render(<KeyHost />)
+    fireEvent.pointerEnter(trigger())
+    fireEvent.keyDown(document.body, { key: 'Tab' })
+    expect(onKey).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe('Tooltip — inside a real ui/Modal', () => {
+  /**
+   * The other host composition kindred#2177 has to survive. `ui/Modal` closes
+   * itself from a `document` keydown listener, so a tooltip inside a dialog is
+   * the case where a hand-rolled second Escape owner would dismiss the dialog
+   * out from under the bubble.
+   */
+  function ModalHost({ onClose }: { onClose: () => void }) {
+    return (
+      <Modal isOpen onClose={onClose} title="Weekend lodging">
+        <Tooltip content="The registration form and the Family Camp form disagree.">
+          Answers disagree
+        </Tooltip>
+      </Modal>
+    )
+  }
+
+  it('closes only the bubble on Escape, never the dialog around it', () => {
+    const onClose = vi.fn()
+    render(<ModalHost onClose={onClose} />)
+    fireEvent.click(trigger())
+    expect(screen.getByRole('tooltip')).toBeInTheDocument()
+
+    fireEvent.keyDown(trigger(), { key: 'Escape' })
+
+    expect(screen.queryByRole('tooltip')).not.toBeInTheDocument()
+    expect(onClose).not.toHaveBeenCalled()
+  })
+
+  it('closes only the bubble when the POINTER opened it, dialog still open', () => {
+    const onClose = vi.fn()
+    render(<ModalHost onClose={onClose} />)
+    fireEvent.pointerEnter(trigger())
+
+    fireEvent.keyDown(document.body, { key: 'Escape' })
+
+    expect(screen.queryByRole('tooltip')).not.toBeInTheDocument()
+    expect(onClose).not.toHaveBeenCalled()
+  })
+
+  it('hands Escape back to the dialog once no bubble is showing', () => {
+    const onClose = vi.fn()
+    render(<ModalHost onClose={onClose} />)
+    fireEvent.keyDown(trigger(), { key: 'Escape' })
+    expect(onClose).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe('Tooltip — a trigger the sentence already names', () => {
+  const SENTENCE = 'Cedar 2 — Emma Johnson, sharing not consented'
+
+  /**
+   * `MapUnitPopover`'s room cell needs the whole sentence as its accessible
+   * NAME, because the family name it shows is repeated by a second control in
+   * the same popover. Describing it with the identical string as well makes a
+   * screen reader read the sentence out twice in a row.
+   */
+  it('is not also DESCRIBED by its own accessible name', () => {
+    render(
+      <Tooltip content={SENTENCE} aria-label={SENTENCE}>
+        Emma Johnson
+      </Tooltip>
+    )
+    const button = screen.getByRole('button', { name: SENTENCE })
+    expect(button).not.toHaveAttribute('aria-describedby')
+    expect(button).toHaveAccessibleDescription('')
+  })
+
+  it('still shows the bubble, which is what a sighted touch user came for', () => {
+    render(
+      <Tooltip content={SENTENCE} aria-label={SENTENCE}>
+        Emma Johnson
+      </Tooltip>
+    )
+    fireEvent.focus(screen.getByRole('button', { name: SENTENCE }))
+    expect(screen.getByRole('tooltip')).toHaveTextContent(SENTENCE)
   })
 })

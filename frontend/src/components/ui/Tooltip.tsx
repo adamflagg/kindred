@@ -34,14 +34,26 @@
  *    popover in `ui/`, is click-toggled, and no weekend surface auto-dismisses
  *    anything.
  *
- * 4. **Escape is handled ON THE TRIGGER, never on `document`.** `ui/modalStack`
- *    exists because two `document` Escape listeners cannot stop each other by
- *    propagation, so one keypress dismissed a dialog AND the panel under it.
- *    A React handler on the trigger runs at the root container, which IS a
- *    descendant of `document` — so `stopPropagation` genuinely works and a
- *    tooltip inside `FamilyDetailsPanel` or a `Modal` closes itself without
- *    closing its host. The event is only swallowed while a bubble is showing;
- *    otherwise it passes straight through.
+ * 4. **Escape never lands on a BUBBLE-phase `document` listener.**
+ *    `ui/modalStack` exists because two bubble-phase `document` listeners
+ *    cannot stop each other by propagation, so one keypress dismissed a dialog
+ *    AND the panel under it. Both of this component's Escape paths avoid that
+ *    trap, and which one runs depends on where focus is:
+ *
+ *    - **Focus is on the trigger** (opened by Tab, or by a tap the browser
+ *      focused): a React `onKeyDown`. React's handler runs at the root
+ *      container, a descendant of `document`, so `stopPropagation` genuinely
+ *      stops the native event before `FamilyDetailsPanel`'s or `Modal`'s
+ *      listener sees it.
+ *    - **Focus is elsewhere and the POINTER opened the bubble**: nothing on
+ *      the trigger can see the key at all, and WCAG 1.4.13 "Dismissible"
+ *      still requires a way out that does not move the pointer. So a
+ *      `document` listener in the CAPTURE phase, which runs before the event
+ *      has reached anything and can therefore stop every bubble-phase host
+ *      listener with one `stopPropagation`.
+ *
+ *    Either way the event is swallowed ONLY while a bubble is showing, and
+ *    only for Escape; anything else passes straight through.
  */
 import {
   useEffect,
@@ -118,6 +130,13 @@ export function Tooltip({
 
   const open = !dismissed && (hovering || focused || pinned)
 
+  // A description identical to the accessible NAME is read out twice in a row.
+  // `MapUnitPopover`'s room cell is the one trigger that has to carry the
+  // whole sentence as its name — the family name it shows is repeated by a
+  // second control in the same popover — so there the bubble is for eyes only
+  // and the `aria-describedby` relationship is dropped rather than doubled.
+  const namedByContent = ariaLabel === content
+
   const [coords, setCoords] = useState<{ top: number; left: number }>({ top: 0, left: 0 })
 
   useLayoutEffect(() => {
@@ -167,12 +186,30 @@ export function Tooltip({
     }
   }, [pinned])
 
+  // The pointer-opened half of the Escape story — see decision 4 in the file
+  // header for why this is the CAPTURE phase and why it only exists while
+  // focus is somewhere other than the trigger.
+  useEffect(() => {
+    if (!open || focused) return
+    const onEscapeCapture = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape') return
+      event.stopPropagation()
+      setPinned(false)
+      setHovering(false)
+      setDismissed(true)
+    }
+    document.addEventListener('keydown', onEscapeCapture, true)
+    return () => {
+      document.removeEventListener('keydown', onEscapeCapture, true)
+    }
+  }, [open, focused])
+
   return (
     <>
       <button
         ref={triggerRef}
         type="button"
-        aria-describedby={describedById}
+        aria-describedby={namedByContent ? undefined : describedById}
         aria-label={ariaLabel}
         aria-pressed={ariaPressed}
         data-testid={testId}
@@ -219,7 +256,7 @@ export function Tooltip({
         {children}
       </button>
 
-      {open ? (
+      {open &&
         createPortal(
           <div
             ref={bubbleRef}
@@ -242,8 +279,9 @@ export function Tooltip({
             </div>
           </div>,
           document.body
-        )
-      ) : (
+        )}
+
+      {!open && !namedByContent && (
         <span id={describedById} className="sr-only">
           {content}
         </span>

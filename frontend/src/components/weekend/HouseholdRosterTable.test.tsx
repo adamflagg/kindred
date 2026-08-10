@@ -428,10 +428,15 @@ describe('HouseholdRosterTable', () => {
     expect(screen.getByText('Returning')).not.toHaveAttribute('title')
     expect(screen.getByText('(stayed with us before)')).toBeInTheDocument()
     expect(screen.getByText('Returning').tagName).toBe('SPAN')
+    // In the DOM is not the same as ANNOUNCED: the row's own `<button>` takes
+    // its name from its contents, so the sentence has to survive into that
+    // computation or it is decoration.
+    expect(screen.getAllByRole('button')[0]).toHaveAccessibleName(/stayed with us before/)
 
     rerender(<HouseholdRosterTable year={2026} parties={[party({ is_returning: false })]} />)
     expect(screen.getByText('First-time')).not.toHaveAttribute('title')
     expect(screen.getByText('(first time at camp)')).toBeInTheDocument()
+    expect(screen.getAllByRole('button')[0]).toHaveAccessibleName(/first time at camp/)
   })
 
   it('flags a returning family', () => {

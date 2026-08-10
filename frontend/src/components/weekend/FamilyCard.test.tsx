@@ -439,6 +439,10 @@ describe('FamilyCard — what it shows', () => {
     expect(chip?.textContent).toMatch(/will not share/)
     expect(chip?.textContent).toMatch(/open to sharing/)
     expect(chip?.textContent).toMatch(/form's answer/)
+    // In the DOM is not the same as ANNOUNCED. The card is one `<button>`, so
+    // the sentence has to reach its computed accessible name or the `sr-only`
+    // span is decoration — which is what the `title` it replaced amounted to.
+    expect(screen.getByRole('button')).toHaveAccessibleName(/form's answer/)
   })
 
   it('never nests a control inside the card, which is itself a button', () => {

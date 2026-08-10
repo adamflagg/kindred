@@ -544,11 +544,19 @@ describe('MapUnitPopover — a cluster of rooms', () => {
     )
     expect(flaggedCell).toBeDefined()
     expect(flaggedCell).not.toHaveAttribute('title')
-    expect(flaggedCell).toHaveAccessibleDescription(/Cedar 2.*sharing not consented/i)
+    // The NAME, not a description: this cell is the one trigger whose bubble
+    // sentence has to double as its accessible name, so `ui/Tooltip` drops the
+    // `aria-describedby` rather than making a reader say it twice in a row.
+    expect(flaggedCell).toHaveAccessibleName(/Cedar 2.*sharing not consented/i)
+    expect(flaggedCell).not.toHaveAttribute('aria-describedby')
+    // Eyes still get it, which is the half a `title` never gave a tablet.
+    fireEvent.focus(flaggedCell as HTMLElement)
+    expect(screen.getByRole('tooltip')).toHaveTextContent(/Cedar 2.*sharing not consented/i)
+
     const plainCell = cells.find((cell) =>
       (cell.getAttribute('aria-label') ?? '').includes('Cedar 1')
     )
-    expect(plainCell).not.toHaveAccessibleDescription(/sharing not consented/i)
+    expect(plainCell).not.toHaveAccessibleName(/sharing not consented/i)
   })
 
   it('a room cell still PICKS its room when tapped, tooltip and all', () => {
