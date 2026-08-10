@@ -1158,3 +1158,64 @@ describe('LodgingMap — no placement scaffolding (kindred#2183)', () => {
     expect(screen.getByRole('checkbox', { name: /Empty rooms/i })).toBeInTheDocument()
   })
 })
+
+describe('LodgingMap — extends the whole-building marker to the popover (kindred#2174)', () => {
+  // A halved house, same shape as `LodgingUnitCard.test.tsx`'s own fixture:
+  // `up-r1`/`up-r2` share the `upstairs` parent, so together they ARE a
+  // building under the immediate-parent grain ruled on #2008. Positioned far
+  // apart so each keeps its OWN mark rather than proximity-clustering into
+  // one — this is testing that `LodgingMap` computes `wholeBuildingHolders`
+  // over the FULL registry and threads it down, not the cluster-summary
+  // rendering itself (that is `MapUnitPopover.test.tsx`'s job).
+  const halvedHouseUnits = [
+    unit({ unit_id: 'up', code: 'upstairs', name: 'Upstairs', is_container: true }),
+    unit({
+      unit_id: 'r1',
+      code: 'up-r1',
+      name: 'Up Back',
+      parent_code: 'upstairs',
+      map_x: 0.1,
+      map_y: 0.1,
+    }),
+    unit({
+      unit_id: 'r2',
+      code: 'up-r2',
+      name: 'Up Front',
+      parent_code: 'upstairs',
+      map_x: 0.9,
+      map_y: 0.9,
+    }),
+  ]
+  const holder = party({
+    display_name: 'Johnson',
+    unit_code: 'up-r1',
+    unit_name: 'Up Back',
+    unit_codes: ['up-r1', 'up-r2'],
+  })
+
+  it('badges the room of a party whose placement covers the whole building', async () => {
+    // Which mark is `up-r1` vs `up-r2` is not asserted — `holder` occupies
+    // BOTH, so whichever the click opens shows the same party and the same
+    // badge. What this pins is that `LodgingMap` computed
+    // `wholeBuildingHolders` over the FULL registry and threaded it down;
+    // `MapUnitPopover.test.tsx` already pins the badge's own render rules.
+    render(<LodgingMap parties={[holder]} units={halvedHouseUnits} year={2026} />, { wrapper })
+    await userEvent.click(screen.getAllByTestId('map-mark')[0] as HTMLElement)
+    expect(screen.getByText('Whole building')).toBeInTheDocument()
+  })
+
+  it('does not badge a party holding only one room of the pair', async () => {
+    const oneRoom = party({
+      display_name: 'Garcia',
+      household_cm_id: 9002,
+      unit_code: 'up-r1',
+      unit_name: 'Up Back',
+      unit_codes: ['up-r1'],
+    })
+    render(<LodgingMap parties={[oneRoom]} units={halvedHouseUnits} year={2026} />, { wrapper })
+    await userEvent.click(screen.getAllByTestId('map-mark')[0] as HTMLElement)
+    expect(screen.queryByText('Whole building')).not.toBeInTheDocument()
+    await userEvent.click(screen.getAllByTestId('map-mark')[1] as HTMLElement)
+    expect(screen.queryByText('Whole building')).not.toBeInTheDocument()
+  })
+})

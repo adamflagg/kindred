@@ -20,7 +20,7 @@
  * `sleeps: null` is UNKNOWN and says so. "Sleeps 0" would be a lie about a
  * cabin nobody has measured.
  */
-import { Accessibility, Bath, Plug, Refrigerator, Snowflake } from 'lucide-react'
+import { Accessibility, Bath, Home, Plug, Refrigerator, Snowflake } from 'lucide-react'
 import { type ReactNode, useState } from 'react'
 
 import type { RosterPartyRow } from '../../types/lodging'
@@ -53,6 +53,41 @@ export interface MapUnitPopoverProps {
   units: MapUnit[]
   hue: string
   onOpenParty: (party: RosterPartyRow) => void
+  /**
+   * Party keys holding an entire building this weekend (kindred#2008's
+   * placement marker, extended to the map by kindred#2174). Computed by
+   * `LodgingMap` from `boardLayout.ts`'s `wholeBuildingHolders(parties,
+   * units)` — the full registry, which this popover never receives — and
+   * handed down as one `Set`. Never re-derived here: this popover's own
+   * `units` prop is only a cluster's members, and cannot answer the question
+   * alone (see `MapUnitPopoverProps.units`'s own doc).
+   *
+   * Optional and defaulting to empty so the ~50 existing call sites that
+   * predate this prop keep compiling and keep meaning "nobody holds a whole
+   * building here" rather than needing a threaded-through empty set.
+   */
+  wholeBuildingKeys?: Set<string>
+}
+
+/** Referentially stable so an omitted `wholeBuildingKeys` never re-triggers
+ *  a memoised child on every render. */
+const NO_WHOLE_BUILDING_HOLDERS: Set<string> = new Set()
+
+/**
+ * The board's own "Whole building" chip (`FamilyCard.tsx`'s `Chip` with
+ * `tone="building"`), reproduced rather than imported: that `Chip` is local
+ * to `FamilyCard.tsx` and not exported, and exporting it is a `FamilyCard.tsx`
+ * change outside this fix's scope. Same label, same indigo tokens, same
+ * `Home` icon, so the fact reads identically on both surfaces — mirroring the
+ * board's vocabulary, not inventing a second one for it.
+ */
+function WholeBuildingBadge() {
+  return (
+    <span className="inline-flex items-center gap-0.5 rounded-full bg-indigo-100 px-1.5 py-0.5 text-[10px] font-semibold whitespace-nowrap text-indigo-800 dark:bg-indigo-950/50 dark:text-indigo-300">
+      <Home className="h-2.5 w-2.5 flex-shrink-0" aria-hidden="true" />
+      Whole building
+    </span>
+  )
 }
 
 /**
@@ -129,9 +164,10 @@ interface DetailCardProps {
   entry: MapUnit
   hue: string
   onOpenParty: (party: RosterPartyRow) => void
+  wholeBuildingKeys: Set<string>
 }
 
-function DetailCard({ entry, hue, onOpenParty }: DetailCardProps) {
+function DetailCard({ entry, hue, onOpenParty, wholeBuildingKeys }: DetailCardProps) {
   const { unit, parties, consent, capacity } = entry
   // `capacity`, NOT `unit.sleeps` (kindred#2183). They are the same number for
   // every ordinary room, and different for the one case this card could not
@@ -163,6 +199,11 @@ function DetailCard({ entry, hue, onOpenParty }: DetailCardProps) {
   // drift"). Rendered through the shared helper, never re-derived, so the
   // wording and the silence on `single_party` match the board exactly.
   const sharing = shareabilityBadge(unit)
+  // ANY occupant, not the first: a shared room's second party could not
+  // itself hold the whole building (holding every leaf leaves no room for
+  // another household), but checking `some` rather than assuming
+  // `parties[0]` keeps this from silently depending on array order.
+  const holdsWholeBuilding = parties.some((party) => wholeBuildingKeys.has(partyKey(party)))
 
   return (
     <div className="flex min-w-[11rem] flex-col gap-1.5">
@@ -250,8 +291,18 @@ function DetailCard({ entry, hue, onOpenParty }: DetailCardProps) {
           </span>
         </div>
       )}
-      {tags.length > 0 && (
+      {(tags.length > 0 || holdsWholeBuilding) && (
         <ul className="flex flex-wrap gap-1">
+          {/* Its own indigo/`Home` token, not pushed into `tags` above: those
+              render as hue-coloured pills, which would put this fact in a
+              SECOND visual language from the board's own indigo chip for the
+              same fact — exactly what kindred#2174 rules out. Same tags ROW,
+              different token, on purpose. */}
+          {holdsWholeBuilding && (
+            <li>
+              <WholeBuildingBadge />
+            </li>
+          )}
           {tags.map((tag) => (
             <li
               key={tag}
@@ -363,6 +414,7 @@ interface ClusterSummaryProps {
   /** The building name the cells share, or '' for a cluster of unrelated cabins. */
   prefix: string
   onOpenParty: (party: RosterPartyRow) => void
+  wholeBuildingKeys: Set<string>
 }
 
 /**
@@ -375,7 +427,13 @@ interface ClusterSummaryProps {
  * fields exist for exactly this reason and are computed in `buildMapModel`,
  * which is the only place with the registry needed to walk a house's rooms.
  */
-function ClusterSummary({ units, hue, prefix, onOpenParty }: ClusterSummaryProps) {
+function ClusterSummary({
+  units,
+  hue,
+  prefix,
+  onOpenParty,
+  wholeBuildingKeys,
+}: ClusterSummaryProps) {
   const rooms = units.reduce((total, entry) => total + entry.roomCount, 0)
   // A drawn unit is taken as a WHOLE: a family holding a combined house holds
   // every room in it, which is what "combined" means.
@@ -440,8 +498,14 @@ function ClusterSummary({ units, hue, prefix, onOpenParty }: ClusterSummaryProps
                   style={{ borderColor: notConsented ? CONSENT_AMBER : hue }}
                   className="bg-card hover:bg-muted/60 flex w-full flex-col items-start gap-0.5 rounded-md border px-1.5 py-1 text-left"
                 >
-                  <span className="text-foreground text-[11px] font-semibold">
-                    {partyPeopleLabel(party)}
+                  <span className="flex items-center gap-1">
+                    <span className="text-foreground text-[11px] font-semibold">
+                      {partyPeopleLabel(party)}
+                    </span>
+                    {/* kindred#2174: the same fact as the DetailCard's tags-row
+                        badge, on the OTHER surface the ruling named — this
+                        family's chip, not the cluster mark or a new ring. */}
+                    {wholeBuildingKeys.has(partyKey(party)) && <WholeBuildingBadge />}
                   </span>
                   {/* SAID IN WORDS. The amber border alone would be colour as
                       the sole signal (WCAG 1.4.1), and this chip is the only
@@ -606,7 +670,12 @@ function FootprintGrid({
   )
 }
 
-export function MapUnitPopover({ units, hue, onOpenParty }: MapUnitPopoverProps) {
+export function MapUnitPopover({
+  units,
+  hue,
+  onOpenParty,
+  wholeBuildingKeys = NO_WHOLE_BUILDING_HOLDERS,
+}: MapUnitPopoverProps) {
   // LOCAL and nothing leaves the popover: which room of a container is being
   // read is not a fact the map, the board or the URL has any use for.
   const [pickedUnitId, setPickedUnitId] = useState<string | null>(null)
@@ -638,11 +707,22 @@ export function MapUnitPopover({ units, hue, onOpenParty }: MapUnitPopoverProps)
       className="bg-card shadow-lodge-sm max-w-[15rem] rounded-xl border-2 p-2"
     >
       {units.length === 1 && lone ? (
-        <DetailCard entry={lone} hue={hue} onOpenParty={onOpenParty} />
+        <DetailCard
+          entry={lone}
+          hue={hue}
+          onOpenParty={onOpenParty}
+          wholeBuildingKeys={wholeBuildingKeys}
+        />
       ) : (
         <div className="flex flex-col gap-2">
           {picked === null ? (
-            <ClusterSummary units={units} hue={hue} prefix={prefix} onOpenParty={onOpenParty} />
+            <ClusterSummary
+              units={units}
+              hue={hue}
+              prefix={prefix}
+              onOpenParty={onOpenParty}
+              wholeBuildingKeys={wholeBuildingKeys}
+            />
           ) : (
             <div className="flex flex-col gap-1.5">
               <button
@@ -654,7 +734,12 @@ export function MapUnitPopover({ units, hue, onOpenParty }: MapUnitPopoverProps)
               >
                 {prefix === '' ? '← All rooms' : `← All of ${prefix}`}
               </button>
-              <DetailCard entry={picked} hue={hue} onOpenParty={onOpenParty} />
+              <DetailCard
+                entry={picked}
+                hue={hue}
+                onOpenParty={onOpenParty}
+                wholeBuildingKeys={wholeBuildingKeys}
+              />
             </div>
           )}
           <FootprintGrid

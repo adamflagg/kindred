@@ -8,6 +8,7 @@ import { describe, expect, it, vi } from 'vitest'
 import type { LodgingUnitRow, RosterPartyRow } from '../../types/lodging'
 import type { MapUnit } from './mapModel'
 import { MapUnitPopover } from './MapUnitPopover'
+import { partyKey } from './partyKey'
 
 function row(overrides: Partial<LodgingUnitRow> = {}): LodgingUnitRow {
   return {
@@ -837,5 +838,110 @@ describe('MapUnitPopover — a container, master-detail (kindred#2183)', () => {
     )
     expect(screen.getByText('9')).toBeInTheDocument()
     expect(screen.queryByText('1')).not.toBeInTheDocument()
+  })
+})
+
+describe('MapUnitPopover — the whole-building marker, extended from the board (kindred#2174)', () => {
+  // `wholeBuildingKeys` is computed by `LodgingMap` from the full registry
+  // (`wholeBuildingHolders(parties, units)`, kindred#2008) and handed down as
+  // one prop — this popover never re-derives the grain from its own `units`,
+  // which is only a cluster's members and cannot answer the question alone.
+
+  it('badges the DetailCard tags row when the room’s occupant holds the whole building', () => {
+    const johnson = party('Johnson')
+    render(
+      <MapUnitPopover
+        units={[mapUnit(row(), [johnson])]}
+        hue={HUE}
+        onOpenParty={vi.fn()}
+        wholeBuildingKeys={new Set([partyKey(johnson)])}
+      />
+    )
+    expect(screen.getByText('Whole building')).toBeInTheDocument()
+  })
+
+  it('does not badge an ordinary room, with no `wholeBuildingKeys` supplied at all', () => {
+    render(
+      <MapUnitPopover
+        units={[mapUnit(row(), [party('Johnson')])]}
+        hue={HUE}
+        onOpenParty={vi.fn()}
+      />
+    )
+    expect(screen.queryByText('Whole building')).not.toBeInTheDocument()
+  })
+
+  it('does not badge a room whose occupant is not in the holder set', () => {
+    const johnson = party('Johnson')
+    render(
+      <MapUnitPopover
+        units={[mapUnit(row(), [johnson])]}
+        hue={HUE}
+        onOpenParty={vi.fn()}
+        // A DIFFERENT party's key — the set is non-empty but doesn't name this one.
+        wholeBuildingKeys={new Set(['household-9999'])}
+      />
+    )
+    expect(screen.queryByText('Whole building')).not.toBeInTheDocument()
+  })
+
+  it('badges the ClusterSummary chip for the family that holds the whole building, and not the other', () => {
+    const johnson = party('Johnson')
+    johnson.household_cm_id = 9001
+    const garcia = party('Garcia')
+    garcia.household_cm_id = 9002
+    const house = [
+      mapUnit(row({ unit_id: 'u1', code: 'cedar-back', name: 'Cedar Lodge Back', sleeps: 2 }), [
+        johnson,
+      ]),
+      mapUnit(row({ unit_id: 'u2', code: 'cedar-loft', name: 'Cedar Lodge Loft', sleeps: 2 }), [
+        garcia,
+      ]),
+    ]
+    render(
+      <MapUnitPopover
+        units={house}
+        hue={HUE}
+        onOpenParty={vi.fn()}
+        wholeBuildingKeys={new Set([partyKey(johnson)])}
+      />
+    )
+    const chips = screen.getAllByTestId('map-popover-family')
+    const johnsonChip = chips.find((node) => node.textContent.includes('Johnson'))
+    const garciaChip = chips.find((node) => node.textContent.includes('Garcia'))
+    if (!johnsonChip || !garciaChip) throw new Error('expected both family chips')
+    expect(johnsonChip.textContent).toContain('Whole building')
+    expect(garciaChip.textContent).not.toContain('Whole building')
+  })
+
+  it('renders the whole-building badge and a write-in badge together, legibly', () => {
+    // #2078 added the write-in badge (via `reservationBadge`, unit-level, in
+    // the DetailCard's status list) after this issue was filed. It is
+    // orthogonal to `wholeBuildingKeys` (party-keyed) — a room can carry both
+    // — and the two must render as two distinct, readable badges, not collide
+    // into one string.
+    const johnson = party('Johnson')
+    render(
+      <MapUnitPopover
+        units={[
+          mapUnit(
+            row({
+              family_available_override: false,
+              occupant_name: 'Emma Johnson',
+              is_family_available: false,
+            }),
+            [johnson]
+          ),
+        ]}
+        hue={HUE}
+        onOpenParty={vi.fn()}
+        wholeBuildingKeys={new Set([partyKey(johnson)])}
+      />
+    )
+    const writeIn = screen.getByText('Write-in')
+    const wholeBuilding = screen.getByText('Whole building')
+    expect(writeIn).toBeInTheDocument()
+    expect(wholeBuilding).toBeInTheDocument()
+    expect(writeIn).not.toBe(wholeBuilding)
   })
 })
