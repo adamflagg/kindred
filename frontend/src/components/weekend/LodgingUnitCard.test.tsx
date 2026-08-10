@@ -2100,3 +2100,144 @@ describe('LodgingUnitCard — placing a family from the space itself (kindred#20
     expect(screen.queryByRole('combobox')).not.toBeInTheDocument()
   })
 })
+
+describe('LodgingUnitCard — the sr-only placement announcement (kindred#2219, round 6)', () => {
+  /*
+   * The ANNOUNCEMENT half only. The focus half stays an open owner question
+   * — this suite proves nothing about where focus lands, only that a screen
+   * reader is told who was placed and where.
+   */
+  const HUE = 'hsl(160 45% 42%)'
+  const unplaced = party({
+    household_cm_id: 303,
+    display_name: 'Diaz',
+    sort_name: 'Diaz',
+    adults: [{ adult_number: 1, display_name: 'Sofia Diaz', relationship: 'Mother' }],
+    children: [{ person_cm_id: 9101, display_name: 'Mateo Diaz', age: 6, grade: 1 }],
+    unit_code: '',
+    unit_name: '',
+    unit_codes: [],
+  })
+
+  function renderCard(props: Record<string, unknown> = {}) {
+    const onPlaceParty = vi.fn()
+    const view = render(
+      <LodgingUnitCard
+        slot={slot()}
+        hue={HUE}
+        canPlace={true}
+        unplacedParties={[unplaced]}
+        onPlaceParty={onPlaceParty}
+        onOpenParty={vi.fn()}
+        {...props}
+      />
+    )
+    return { ...view, onPlaceParty }
+  }
+
+  /*
+   * Elements that actually sit in the Tab order: a native interactive tag
+   * with no disqualifying state, or anything carrying a non-negative
+   * `tabindex`. `tabIndex={-1}` (the picker's own rows; `ui/Modal.tsx:210`'s
+   * idiom) is explicitly NOT counted, matching the owner ruling on this issue
+   * that focusable-by-script is not the same thing as a tab stop.
+   */
+  function tabStopCount(container: HTMLElement): number {
+    const candidates = Array.from(
+      container.querySelectorAll<HTMLElement>('button, [href], input, select, textarea, [tabindex]')
+    )
+    return candidates.filter((element) => {
+      const explicit = element.getAttribute('tabindex')
+      if (explicit !== null) return Number(explicit) >= 0
+      return !(element as HTMLButtonElement).disabled
+    }).length
+  }
+
+  it('is present, empty, and shaped like the region before any placement', () => {
+    // The region must exist in the DOM before the text changes, or a screen
+    // reader misses the first update entirely — the classic aria-live bug.
+    renderCard()
+    const region = screen.getByRole('status', { hidden: true })
+    expect(region).toHaveAttribute('aria-live', 'polite')
+    expect(region).toHaveClass('sr-only')
+    expect(region).toHaveTextContent('')
+  })
+
+  it('announces who was placed and where, once a family is chosen from the picker', async () => {
+    const user = userEvent.setup()
+    renderCard()
+    await user.click(screen.getByRole('combobox', { name: /place a family in cedar 1/i }))
+    await user.click(screen.getByRole('option', { name: /Sofia Diaz/ }))
+    const region = screen.getByRole('status', { hidden: true })
+    expect(region).toHaveTextContent('Sofia Diaz')
+    expect(region).toHaveTextContent('Cedar 1')
+  })
+
+  it('handles a singular headcount without pluralizing "person"', async () => {
+    // A person-grain party (an adult weekend guest) carries exactly one
+    // adult entry, its own name — `_build_person_parties` on the server,
+    // `namedAdults`'s own doc on the client (`householdIdentity.ts`).
+    const user = userEvent.setup()
+    renderCard({
+      unplacedParties: [
+        party({
+          grain: 'person',
+          household_cm_id: 0,
+          person_cm_id: 404,
+          display_name: 'Priya Nair',
+          adults: [{ adult_number: 1, display_name: 'Priya Nair', relationship: 'Self' }],
+          children: [],
+          unit_code: '',
+          unit_name: '',
+          unit_codes: [],
+        }),
+      ],
+    })
+    await user.click(screen.getByRole('combobox', { name: /place a family in cedar 1/i }))
+    await user.click(screen.getByRole('option', { name: /Priya Nair/ }))
+    const region = screen.getByRole('status', { hidden: true })
+    expect(region).toHaveTextContent('1 person')
+    expect(region).not.toHaveTextContent('1 people')
+  })
+
+  it('falls back to an unnamed label rather than announcing nothing', async () => {
+    // `partyIdentityLabel` returns '' when a household has no attending
+    // adult AND no `display_name` (`householdIdentity.ts`) — the one
+    // candidate in this list is the only option, so it is selected by
+    // position rather than by a name that does not exist to match on.
+    const user = userEvent.setup()
+    renderCard({
+      unplacedParties: [
+        party({
+          household_cm_id: 505,
+          display_name: '',
+          sort_name: '',
+          adults: [],
+          children: [{ person_cm_id: 9202, display_name: 'Unnamed camper', age: 4, grade: 0 }],
+          unit_code: '',
+          unit_name: '',
+          unit_codes: [],
+        }),
+      ],
+    })
+    await user.click(screen.getByRole('combobox', { name: /place a family in cedar 1/i }))
+    const options = screen.getAllByRole('option')
+    expect(options).toHaveLength(1)
+    await user.click(options[0] as HTMLElement)
+    const region = screen.getByRole('status', { hidden: true })
+    expect(region).toHaveTextContent('Unnamed family')
+    expect(region).toHaveTextContent('Cedar 1')
+  })
+
+  it('introduces no new tab stop when a placement is announced', async () => {
+    const user = userEvent.setup()
+    const { container } = renderCard()
+    const before = tabStopCount(container)
+    await user.click(screen.getByRole('combobox', { name: /place a family in cedar 1/i }))
+    await user.click(screen.getByRole('option', { name: /Sofia Diaz/ }))
+    expect(tabStopCount(container)).toBe(before)
+    const region = screen.getByRole('status', { hidden: true })
+    expect(region.tagName).toBe('DIV')
+    expect(region).not.toHaveAttribute('tabindex')
+  })
+})
