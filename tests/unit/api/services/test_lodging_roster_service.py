@@ -1556,6 +1556,39 @@ class TestSlotMergeTiers:
         assert roster.counts.units_capacity_unknown == 0
 
     @pytest.mark.asyncio
+    async def test_a_write_in_surfaces_its_occupant_name_beside_the_note(self) -> None:
+        """kindred#2078: a hold IS a write-in, and a write-in has an occupant.
+
+        `occupant_name` is its own column, translated nowhere -- unlike `note`,
+        which the API renames to `reason` on the way out. The two travel
+        together so the card can print the occupant as a NAME and keep the
+        note as the note.
+        """
+        repo = _repo(
+            fetch_session=FAMILY_SESSION,
+            fetch_units=[_unit("u1", "ridge-a", "Ridge A", sleeps=5)],
+            fetch_availability=[
+                _rec(unit="u1", family_available=False, note="Kitchen lead, Fri-Sun", occupant_name="Emma Johnson")
+            ],
+        )
+        roster = await LodgingRosterService(repo).build_roster(2026, 1000001)
+
+        by_code = {u.code: u for u in roster.units}
+        assert by_code["ridge-a"].occupant_name == "Emma Johnson"
+        assert by_code["ridge-a"].reason == "Kitchen lead, Fri-Sun"
+
+    @pytest.mark.asyncio
+    async def test_a_unit_with_no_availability_row_names_no_occupant(self) -> None:
+        repo = _repo(
+            fetch_session=FAMILY_SESSION,
+            fetch_units=[_unit("u1", "ridge-a", "Ridge A", sleeps=5)],
+            fetch_availability=[],
+        )
+        roster = await LodgingRosterService(repo).build_roster(2026, 1000001)
+
+        assert roster.units[0].occupant_name == ""
+
+    @pytest.mark.asyncio
     async def test_a_released_staff_cabin_rejoins_the_planning_inventory(self) -> None:
         """Releasing is the whole reason the capability is kept."""
         repo = _repo(

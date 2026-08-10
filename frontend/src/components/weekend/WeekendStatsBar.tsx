@@ -99,19 +99,25 @@ export function WeekendStatsBar({ counts, bedsNeeded, spacesUnmeasured }: Weeken
           <span className="text-muted-foreground tabular-nums">
             ({spare < 0 ? `${String(Math.abs(spare))} short` : `${String(spare)} spare`})
           </span>
-          {/* Held and staff housing are DIFFERENT facts with different
+          {/* Write-ins and staff housing are DIFFERENT facts with different
               remedies, and were one number until `units_staff_housing` split
-              them. A held cabin is inventory that comes back next weekend — a
-              burst pipe, a caretaker in residence. A staff cabin never does:
-              it houses full-time staff who are not enrolled per session, and
-              was never part of the weekend's inventory to begin with. */}
+              them. A written-into cabin is inventory that comes back next
+              weekend — somebody the system does not know about is sleeping in
+              it, most often non-rostered weekend staff. A staff cabin never
+              comes back: it houses full-time staff who are not enrolled per
+              session, and was never part of the weekend's inventory to begin
+              with.
+
+              "held" until kindred#2078. The count is unchanged — it is still
+              `units_reserved` — but the word was the one thing on this bar
+              that described the opposite of what staff use the control for. */}
           {unitsReserved > 0 && (
             <Tooltip
-              content="Out of service this weekend, excluded from spaces"
-              aria-label={`${String(unitsReserved)} held cabins`}
+              content="Written in for this weekend, excluded from family spaces"
+              aria-label={`${String(unitsReserved)} write-ins`}
               className="text-muted-foreground"
             >
-              · {unitsReserved} held
+              · {unitsReserved} write-ins
             </Tooltip>
           )}
           {unitsStaffHousing > 0 && (

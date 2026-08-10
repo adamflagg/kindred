@@ -88,23 +88,26 @@ describe('WeekendStatsBar', () => {
     expect(screen.getByText('(1 unmeasured space)')).toBeInTheDocument()
   })
 
-  it('notes held cabins as excluded from the space count', () => {
+  it('notes written-into cabins as excluded from the space count', () => {
+    // "held" until kindred#2078. Staff never used the control to reserve an
+    // empty room -- they used it to write in an occupant -- so the old word
+    // described the opposite of what the number counts.
     render(<WeekendStatsBar counts={counts()} bedsNeeded={223} spacesUnmeasured={0} />)
-    expect(screen.getByText('· 3 held')).toBeInTheDocument()
+    expect(screen.getByText('· 3 write-ins')).toBeInTheDocument()
   })
 
-  it('does not describe held cabins as staff housing', () => {
-    // "Held" and "staff housing" were one number until units_staff_housing
-    // split them, and the tooltip still said "Held for staff". They are
-    // different facts with different remedies: a held cabin comes back next
-    // weekend, a staff cabin never does.
+  it('does not describe written-into cabins as staff housing', () => {
+    // The two were one number until units_staff_housing split them, and the
+    // tooltip still said "Held for staff". They are different facts with
+    // different remedies: a written-into cabin comes back next weekend, a
+    // staff cabin never does.
     render(<WeekendStatsBar counts={counts()} bedsNeeded={223} spacesUnmeasured={0} />)
-    const held = screen.getByRole('button', { name: '3 held cabins' })
-    expect(held).toHaveAccessibleDescription(/excluded from spaces/i)
-    expect(held).not.toHaveAccessibleDescription(/held for staff/i)
+    const writeIns = screen.getByRole('button', { name: '3 write-ins' })
+    expect(writeIns).toHaveAccessibleDescription(/excluded from family spaces/i)
+    expect(writeIns).not.toHaveAccessibleDescription(/staff/i)
   })
 
-  it('puts the spaces, held and staff notes on tooltips keyboard and touch can reach', () => {
+  it('puts the spaces, write-in and staff notes on tooltips keyboard and touch can reach', () => {
     // kindred#2177: all three were bare `title` attributes on a `<span>`.
     render(
       <WeekendStatsBar
@@ -130,7 +133,7 @@ describe('WeekendStatsBar', () => {
   })
 
   it('reports staff housing separately, because it was never inventory', () => {
-    // 21 cabins reading as "held" would say staff took them out of service
+    // 21 cabins reading as write-ins would say staff took them out of service
     // this weekend. They were never in service.
     render(
       <WeekendStatsBar

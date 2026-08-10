@@ -144,7 +144,11 @@ const _exhaustiveAvailabilityWriteRequest: Required<AvailabilityWriteRequest> = 
   session_cm_id: 3000001,
   unit_id: 'unit123456789012345',
   family_available: false,
-  reason: 'Burst pipe',
+  // kindred#2078: a hold IS a write-in, so the write that closes a cabin also
+  // names WHO is in it. Required through the control, permissive at the schema
+  // — the same split `reason` makes, for the same reason.
+  occupant_name: 'Emma Johnson',
+  reason: 'Kitchen lead, Fri–Sun',
 }
 void _exhaustiveAvailabilityWriteRequest
 
@@ -198,6 +202,7 @@ const _exhaustiveLodgingUnit: Required<LodgingUnitRow> = {
   inventory_class: 'family_pool',
   shareability: 'single_party',
   family_available_override: null,
+  occupant_name: '',
   reason: '',
   is_family_available: true,
   map_x: 0.5,

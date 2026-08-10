@@ -1210,6 +1210,11 @@ class LodgingRosterService:
         # than renamed to `reason`); surfaced to the API as `reason`. This and
         # `set_availability` are the only two places that translate.
         reason_by_unit = {_s(row, "unit"): _s(row, "note") for row in availability}
+        # WHO is in the room (kindred#2078). Travels BESIDE the decision like
+        # `reason`, and translated nowhere: the column and the API field share
+        # one name, so unlike `note`/`reason` there is nothing here that can
+        # drift out of step with a writer.
+        occupant_by_unit = {_s(row, "unit"): _s(row, "occupant_name") for row in availability}
 
         # id -> code, so the parent relation can be published as a code.
         code_by_id = {_s(unit, "id"): _s(unit, "code") for unit in units}
@@ -1293,6 +1298,7 @@ class LodgingRosterService:
                     # to the Literal on its own.
                     shareability=cast(Shareability, unit_shareability(_s(unit, "shareability"))),
                     family_available_override=override,
+                    occupant_name=occupant_by_unit.get(_s(unit, "id"), ""),
                     reason=reason_by_unit.get(_s(unit, "id"), ""),
                     is_family_available=is_family_available(inventory_class, override),
                     map_x=map_x,

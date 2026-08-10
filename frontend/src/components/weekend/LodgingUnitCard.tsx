@@ -35,6 +35,9 @@ import {
   type UnitBadge,
 } from './unitBadges'
 import { UnitAvailabilityControl } from './UnitAvailabilityControl'
+import type { UnitAvailabilityWrite } from './UnitAvailabilityControl'
+import { writeInOccupant } from './writeIn'
+import { WriteInCard } from './WriteInCard'
 
 /**
  * The card's border/ring treatment, keyed off an ordered, MUTUALLY EXCLUSIVE
@@ -128,12 +131,6 @@ const NEEDS_HATCH_CLASSES: Record<'unmet' | 'partial', string> = {
     '[background-image:repeating-linear-gradient(45deg,transparent_0_4px,hsl(var(--foreground)_/_0.1)_4px_5px)]',
   partial:
     '[background-image:repeating-linear-gradient(45deg,transparent_0_10px,hsl(var(--foreground)_/_0.1)_10px_11px)]',
-}
-
-/** What the reserve/release control asks the board to write. */
-export interface UnitAvailabilityWrite {
-  familyAvailable: boolean | null
-  reason: string
 }
 
 export interface LodgingUnitCardProps {
@@ -390,13 +387,22 @@ export function LodgingUnitCard({
   // above — and which one dnd-kit resolves `over` to would be a tie decided
   // by hook registration order, not by which gesture is actually in flight.
   //
-  // Disabled on a HELD unit (#2087): a hold is global and blocks placement
-  // outright, per the owner ruling on #2090. This is the AFFORDANCE half —
-  // it keeps dnd-kit from ever reporting `isOver` here, so the card cannot
-  // even highlight as a target — while `resolveDrop` (`dragPlacement.ts`) is
-  // the half that actually enforces it, because #2080 adds a placement path
-  // that reaches `resolveDrop` without ever touching this hook.
-  const held = unit.family_available_override === false
+  // Disabled on a WRITTEN-INTO unit (#2078/#2087): a write-in is global and
+  // blocks placement outright, per the owner ruling on #2090. This is the
+  // AFFORDANCE half — it keeps dnd-kit from ever reporting `isOver` here, so
+  // the card cannot even highlight as a target — while `resolveDrop`
+  // (`dragPlacement.ts`) is the half that actually enforces it, because #2080
+  // adds a placement path that reaches `resolveDrop` without ever touching
+  // this hook.
+  //
+  // Read through `writeInOccupant` rather than as an inline
+  // `family_available_override === false`, which is what this was until
+  // kindred#2078. Three consumers on this card shared that expression under
+  // the name `held`, and one of them — #2093's open-tint gate below — was
+  // using it as a PROXY for "is somebody in this room". Naming the fact once
+  // is what stops the tint being keyed on a spelling.
+  const writeIn = writeInOccupant(unit)
+  const held = writeIn !== null
   const { setNodeRef: setUnitDropRef, isOver: isUnitOver } = useDroppable({
     id: unitDroppableId(unit.code),
     disabled: !canPlace || mergeDragActive || held,
@@ -469,16 +475,39 @@ export function LodgingUnitCard({
   // suppressed the instant this card becomes an active drop target, same as
   // the old wash was.
   //
-  // `!held` is the second gate, and it is not cosmetic: EMPTY and OPEN are
-  // different predicates and this is where they part. A hold blocks
-  // placement outright (`held` above; `dragPlacement.ts` refuses the drop),
-  // so a held cabin has no family in it and can take none. That was harmless
-  // while the empty treatment was a neutral grey wash, but the forest tint
-  // says "the remaining work is here" — and the marker is the to-do list.
-  // Painting a held cabin forest sends staff at the one room they may not
-  // fill. The dashed EDGE still applies to it, being structural rather than
-  // an invitation.
-  const openMarkerActive = dashed && !held && ringState !== 'dropTarget'
+  // `writeIn === null` is the second gate, and it is not cosmetic: EMPTY and
+  // OPEN are different predicates and this is where they part. A write-in
+  // blocks placement outright (`held` above; `dragPlacement.ts` refuses the
+  // drop), so a written-into cabin has no family in it and can take none.
+  // That was harmless while the empty treatment was a neutral grey wash, but
+  // the forest tint says "the remaining work is here" — and the marker is the
+  // to-do list. Painting such a cabin forest sends staff at the one room they
+  // may not fill. The dashed EDGE still applies to it, being structural
+  // rather than an invitation.
+  //
+  // Keyed on the OCCUPANT SIGNAL, never on the occupant's NAME being filled
+  // in: a write-in nobody named still closes the room, and gating on the name
+  // would hand exactly that room back to the to-do marker.
+  const openMarkerActive = dashed && writeIn === null && ringState !== 'dropTarget'
+
+  /*
+   * The corner figure, and the sentence behind it (kindred#2078).
+   *
+   * A write-in with nobody else in the room reports the em dash rather than a
+   * count: it occupies wholesale and has no party size, so any digit here
+   * would assert something nobody recorded. A card that somehow carries BOTH a
+   * write-in and a placement keeps the placement count — that is a real number
+   * about real people, and the card should not go quiet about them.
+   */
+  const wholesaleWriteIn = writeIn !== null && occupants === 0
+  const occupancyFigure = wholesaleWriteIn ? '—' : String(occupants)
+  const occupancyTooltip = wholesaleWriteIn
+    ? capacityKnown
+      ? `Written in — occupies the whole room · sleeps ${String(unit.sleeps)}`
+      : 'Written in — occupies the whole room · capacity not recorded'
+    : capacityKnown
+      ? `Sleeps ${String(unit.sleeps)} · ${String(occupants)} placed`
+      : `Capacity not recorded · ${String(occupants)} placed`
 
   /*
    * Whether this space meets the needs of the family in flight (#1912) —
@@ -650,19 +679,21 @@ export function LodgingUnitCard({
             whatever it wraps — a drawn box would collide with the dashed
             border this card already spends on "empty room". */}
         <Tooltip
-          content={
-            capacityKnown
-              ? `Sleeps ${String(unit.sleeps)} · ${String(occupants)} placed`
-              : `Capacity not recorded · ${String(occupants)} placed`
-          }
+          content={occupancyTooltip}
           data-testid="unit-occupancy"
           className={`ml-auto text-sm tabular-nums ${
             overCapacity ? 'text-destructive font-semibold' : 'text-muted-foreground'
           }`}
         >
           {/* An unmeasured room keeps the em dash as its DENOMINATOR. `0/0`
-              would be the same lie the em dash exists to refuse. */}
-          {`${String(occupants)}/${capacityKnown ? String(unit.sleeps) : '—'}`}
+              would be the same lie the em dash exists to refuse.
+
+              A write-in takes it as the NUMERATOR, for the same reason: it
+              occupies the room WHOLESALE, with no party size and no partial
+              bed arithmetic, so `0/5` beside a full room is a lie and `5/5`
+              is a different one. The em dash is this card's existing way of
+              refusing to assert a number it does not have. */}
+          {`${occupancyFigure}/${capacityKnown ? String(unit.sleeps) : '—'}`}
         </Tooltip>
       </div>
 
@@ -859,7 +890,13 @@ export function LodgingUnitCard({
         together before stretch has to do anything.
       */}
       <div className="flex min-h-[100px] flex-1 flex-col gap-2">
-        {parties.length === 0 ? (
+        {/* A write-in, drawn where the board draws occupancy (kindred#2078).
+            FIRST and unconditionally, never in an either/or with the parties
+            below: a card carrying both is not a state any writer produces
+            (#2090 rules the two mutually exclusive), but if a legacy row ever
+            does, hiding one of them would drop somebody from the board. */}
+        {writeIn !== null && <WriteInCard occupant={writeIn} />}
+        {parties.length === 0 && writeIn === null ? (
           /* Summer's wording in family vocabulary — `BunkCard` says "Drop
              campers here". An empty slot's job is to be a target, and "Empty"
              described the state without offering the action.

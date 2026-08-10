@@ -216,9 +216,28 @@ class LodgingUnitSummary(BaseModel):
     # meaning "the opposite of this unit's current default", which an ordinary
     # registry edit would silently invert (1500000135).
     family_available_override: bool | None = None
+    # WHO is in the room. A hold IS a write-in (owner ruling, kindred#2078):
+    # staff do not reserve an empty cabin, they record an occupant the system
+    # does not know about -- most often non-rostered weekend staff. Read
+    # straight off the availability row's `occupant_name` column, which unlike
+    # `note`/`reason` below carries the SAME name on both sides, so there is
+    # no second translation to keep in step.
+    #
+    # Display only, like `reason`. The rule never branches on it: what closes
+    # a cabin is `family_available_override`, and an occupant with no override
+    # is not a state any writer can produce.
+    occupant_name: str = ""
     # Display only. The rule never branches on it. Read from the availability
     # row's `note` column -- see the migration header on why `note` was kept
     # rather than renamed.
+    #
+    # OPTIONAL since kindred#2078, and empty on every historical row by
+    # construction: 1500000148 moved each existing note into `occupant_name`
+    # and cleared the column behind it, because the same string rendered as
+    # both the occupant's name and the card's italic reason line printed
+    # twice on one card. Nothing should "repair" that emptiness by copying
+    # `occupant_name` back -- the note is PROSPECTIVE, for write-ins recorded
+    # from 1500000148 onward.
     reason: str = ""
     is_family_available: bool = False
     map_x: float | None = None
@@ -716,12 +735,26 @@ class AvailabilityWriteRequest(BaseModel):
     session_cm_id: int = Field(..., gt=0)
     unit_id: str = Field(..., min_length=1)
     family_available: bool | None = None
+    # WHO is being written in (kindred#2078). REQUIRED through the control and
+    # permissive here, exactly the split `reason` already makes below and for
+    # the same reason: a row written by an ingest or a fixture has no author to
+    # ask, and a clear (`family_available: null`) sends neither field because
+    # it DELETES the row.
+    #
+    # Same name as the column, deliberately. `reason`/`note` carry two names
+    # only because 1500000135 reused a column that already existed; there is no
+    # such inheritance here, so this write path gains no second translation.
+    occupant_name: str = Field("", max_length=500)
     # Stored in the `note` COLUMN. 1500000135 kept `note` rather than adding
     # `reason` and dropping it -- identical semantics, one less schema change
     # on an empty table. The API name is the design doc's; the column name is
     # the one that already existed. `set_availability` (write) and
     # `_build_units` (read) are the only two places they meet, and a third
     # would mean renaming the column instead.
+    #
+    # OPTIONAL at the control since kindred#2078 -- the occupant is the
+    # required half now, and the note is the "say why, so next week's staff
+    # can act on it" affordance riding beside it.
     reason: str = Field("", max_length=500)
 
 

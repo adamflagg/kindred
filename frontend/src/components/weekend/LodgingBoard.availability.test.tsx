@@ -139,19 +139,20 @@ function renderBoard(props: Partial<Parameters<typeof LodgingBoard>[0]> = {}) {
 
 describe('LodgingBoard — the availability gate', () => {
   it('offers the control on the CampMinder mirror, where placement is refused', () => {
-    // THE divergence from `canPlace`, and the reason this file exists. A burst
-    // pipe is a fact about the weekend, not about a plan: staff must be able to
-    // record one without first creating a scenario to record it in.
+    // THE divergence from `canPlace`, and the reason this file exists. Who is
+    // sleeping in a cabin is a fact about the weekend, not about a plan: staff
+    // must be able to record one without first creating a scenario to record
+    // it in.
     renderBoard({ scenario: '' })
 
-    expect(screen.getByRole('button', { name: 'Hold Cedar 1' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Write in Cedar 1' })).toBeInTheDocument()
   })
 
   it('offers no control without bunking.manage', () => {
     // The same gate as the endpoint, which is `require_permission(BUNKING_MANAGE)`.
     renderBoard({ canManage: false })
 
-    expect(screen.queryByRole('button', { name: 'Hold Cedar 1' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Write in Cedar 1' })).not.toBeInTheDocument()
   })
 
   it('offers no control without a weekend to write into', () => {
@@ -159,7 +160,7 @@ describe('LodgingBoard — the availability gate', () => {
     // board tests that exercise no writes.
     renderBoard({ sessionCmId: 0 })
 
-    expect(screen.queryByRole('button', { name: 'Hold Cedar 1' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Write in Cedar 1' })).not.toBeInTheDocument()
   })
 
   it('names the weekend it is writing into', () => {
@@ -170,31 +171,33 @@ describe('LodgingBoard — the availability gate', () => {
 })
 
 describe('LodgingBoard — the control becomes a write', () => {
-  it('sends the unit staff clicked, with the reason they typed', async () => {
+  it('sends the unit staff clicked, with the occupant and note they typed', async () => {
     const user = userEvent.setup()
     renderBoard()
 
-    await user.click(screen.getByRole('button', { name: 'Hold Cedar 2' }))
-    await user.type(screen.getByRole('textbox', { name: /reason/i }), 'Burst pipe')
-    await user.click(screen.getByRole('button', { name: /^hold$/i }))
+    await user.click(screen.getByRole('button', { name: 'Write in Cedar 2' }))
+    await user.type(screen.getByRole('textbox', { name: /^occupant$/i }), 'Emma Johnson')
+    await user.type(screen.getByRole('textbox', { name: /note/i }), 'Back Monday')
+    await user.click(screen.getByRole('button', { name: /^write in$/i }))
 
     expect(setAvailability).toHaveBeenCalledTimes(1)
     expect(setAvailability).toHaveBeenCalledWith({
       unitId: 'u2',
       unitName: 'Cedar 2',
       familyAvailable: false,
-      reason: 'Burst pipe',
+      occupantName: 'Emma Johnson',
+      reason: 'Back Monday',
     })
   })
 
   it('waits on the card being written, and only that one', async () => {
     // 81 cards share one mutation. A bare `isPending` would freeze the whole
-    // board while one cabin is being held.
+    // board while one cabin is being written into.
     pendingUnitId = 'u1'
     renderBoard()
 
-    expect(screen.getByRole('button', { name: 'Hold Cedar 1' })).toBeDisabled()
-    expect(screen.getByRole('button', { name: 'Hold Cedar 2' })).toBeEnabled()
+    expect(screen.getByRole('button', { name: 'Write in Cedar 1' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Write in Cedar 2' })).toBeEnabled()
     await Promise.resolve()
   })
 })

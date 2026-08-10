@@ -575,6 +575,11 @@ class LodgingWriteService:
         the only two places that translate between the two names -- see
         AvailabilityWriteRequest.
 
+        `occupant_name` is written UNTRANSLATED, because a hold IS a write-in
+        (owner ruling, kindred#2078) and the column was added for it under the
+        name the API already wanted. It is required through the control and
+        optional here; see the schema for why the requirement lives there.
+
         Both the delete and the create below race the same way the placement
         writes do, and are guarded the same two ways.
 
@@ -617,6 +622,9 @@ class LodgingWriteService:
             "year": request.year,
             "unit": request.unit_id,
             "family_available": request.family_available,
+            # WHO is in the room (kindred#2078). No translation: the API field
+            # and the column share one name, so this is the whole of it.
+            "occupant_name": request.occupant_name,
             # The API's `reason` meets the column's `note` HERE, and in
             # `_build_units` on the way back out. Nowhere else.
             "note": request.reason,

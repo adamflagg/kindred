@@ -1,5 +1,5 @@
 /**
- * Holding one cabin back for a weekend, or releasing one to families.
+ * Writing somebody into one cabin for a weekend, or releasing one to families.
  *
  * ## Why this is not `useLodgingPlacement` with a different body
  *
@@ -49,11 +49,17 @@ export interface AvailabilityIntent {
   /** For the confirmation only — the write names the unit by id. */
   unitName: string
   /**
-   * `false` holds the unit back, `true` releases it, `null` DELETES the row so
-   * the unit's own role decides again. Never read for truthiness.
+   * `false` writes an occupant into the unit, `true` releases it, `null`
+   * DELETES the row so the unit's own role decides again. Never read for
+   * truthiness.
    */
   familyAvailable: boolean | null
-  /** Required by the card on a hold or a release; `''` when clearing. */
+  /**
+   * WHO is in the room (kindred#2078). Required by the card on a write-in;
+   * `''` on a release and when clearing.
+   */
+  occupantName: string
+  /** OPTIONAL on a write-in, required on a release; `''` when clearing. */
   reason: string
 }
 
@@ -68,12 +74,21 @@ export interface UseUnitAvailabilityReturn {
   pendingUnitId: string
 }
 
-/** Outcome wording, matching the badge vocabulary in `unitBadges.ts`. */
-function confirmation({ unitName, familyAvailable }: AvailabilityIntent): string {
+/**
+ * Outcome wording, matching the badge vocabulary in `unitBadges.ts`.
+ *
+ * The write-in line NAMES the occupant, because that is the fact the staff
+ * member just asserted and the one they can check the card against. It falls
+ * back to the cabin alone if the name is somehow empty — the write schema is
+ * permissive where the control is not — rather than confirming a blank.
+ */
+function confirmation({ unitName, familyAvailable, occupantName }: AvailabilityIntent): string {
   if (familyAvailable === null) return `${unitName} follows its usual role again`
-  return familyAvailable
-    ? `${unitName} is released to families for this weekend`
-    : `${unitName} is held for this weekend`
+  if (familyAvailable) return `${unitName} is released to families for this weekend`
+  const named = occupantName.trim()
+  return named === ''
+    ? `${unitName} is written in for this weekend`
+    : `${named} is written into ${unitName} for this weekend`
 }
 
 export function useUnitAvailability({
@@ -90,6 +105,7 @@ export function useUnitAvailability({
         sessionCmId,
         unitId: intent.unitId,
         familyAvailable: intent.familyAvailable,
+        occupantName: intent.occupantName,
         reason: intent.reason,
       })
     },

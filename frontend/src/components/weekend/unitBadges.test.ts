@@ -9,8 +9,11 @@
  * a family_pool unit was storable and meaningless. The reason survives as free
  * text on `reason` and no longer drives the badge.
  *
- * The label vocabulary is unchanged on purpose -- "Staff", "Held", "Released"
- * are already the staff-facing wording and must not drift.
+ * "Staff" and "Released" are unchanged on purpose -- they are already the
+ * staff-facing wording and must not drift. "Held" DID change, once, and only
+ * as a word: kindred#2078's owner ruling is that a hold IS a write-in, so the
+ * badge reads "Write-in" and KEEPS ITS SLATE TONE. No new colour is introduced
+ * for a fact the board already had a colour for.
  *
  * Fictional data throughout.
  */
@@ -65,15 +68,20 @@ describe('reservationBadge', () => {
     expect(reservationBadge(unit())).toBeNull()
   })
 
-  it('badges a family cabin held back for this weekend', () => {
-    // A burst pipe, a caretaker in residence. The unit is still planning
-    // inventory -- it is inventory that is unavailable, not inventory that is
-    // missing -- which is why this is "Held" and not "Staff".
+  it('badges a family cabin written into for this weekend', () => {
+    // Somebody the system does not know about is sleeping here -- most often
+    // non-rostered weekend staff. The unit is still planning inventory -- it is
+    // inventory that is unavailable, not inventory that is missing -- which is
+    // why this is "Write-in" and not "Staff".
     const badge = reservationBadge(
-      unit({ family_available_override: false, reason: 'Burst pipe', is_family_available: false })
+      unit({
+        family_available_override: false,
+        occupant_name: 'Emma Johnson',
+        is_family_available: false,
+      })
     )
 
-    expect(badge?.label).toBe('Held')
+    expect(badge?.label).toBe('Write-in')
     expect(badge?.className).toBe(
       'bg-slate-200 text-slate-800 dark:bg-slate-800 dark:text-slate-200'
     )
@@ -113,7 +121,7 @@ describe('reservationBadge', () => {
     expect(
       reservationBadge(unit({ family_available_override: false, is_family_available: false }))
         ?.label
-    ).toBe('Held')
+    ).toBe('Write-in')
   })
 
   it('does not badge a staff cabin as Released merely for lacking an override', () => {
@@ -157,12 +165,12 @@ describe('availabilityAction', () => {
   // must not say two things about one cabin: a card badged "Held" offering to
   // "Hold" it is the drift this prevents.
 
-  it('offers to hold an ordinary family cabin', () => {
+  it('offers to write somebody into an ordinary family cabin', () => {
     expect(availabilityAction(unit())).toEqual({
       kind: 'hold',
-      label: 'Hold',
+      label: 'Write in',
       familyAvailable: false,
-      needsReason: true,
+      prompt: 'occupant',
     })
   })
 
@@ -171,7 +179,7 @@ describe('availabilityAction', () => {
     // cabins are never released; it does not prove it, so the capability stays.
     expect(
       availabilityAction(unit({ inventory_class: 'staff_default', is_family_available: false }))
-    ).toEqual({ kind: 'release', label: 'Release', familyAvailable: true, needsReason: true })
+    ).toEqual({ kind: 'release', label: 'Release', familyAvailable: true, prompt: 'reason' })
   })
 
   it('offers to clear a held family cabin, and asks for no reason to do it', () => {
@@ -181,7 +189,7 @@ describe('availabilityAction', () => {
       availabilityAction(
         unit({ family_available_override: false, reason: 'Burst pipe', is_family_available: false })
       )
-    ).toEqual({ kind: 'clear', label: 'Clear', familyAvailable: null, needsReason: false })
+    ).toEqual({ kind: 'clear', label: 'Clear', familyAvailable: null, prompt: 'none' })
   })
 
   it('offers to clear a released staff cabin', () => {

@@ -165,6 +165,20 @@ far=$(field_prop lodging_availability family_available required || true)
 nt=$(field_prop lodging_availability note type || true)
 [[ "$nt" == "text" ]] || note "lodging_availability.note type is '$nt' (expected text)"
 
+# WHO is in the room (1500000148, kindred#2078). A hold IS a write-in, so the
+# row that closes a cabin also names its occupant. Untranslated: the column and
+# the API field share one name, unlike note/reason above.
+on=$(field_prop lodging_availability occupant_name type || true)
+[[ "$on" == "text" ]] || note "lodging_availability.occupant_name type is '$on' (expected text)"
+
+# NOT required, and that is load-bearing twice over: a required text field
+# would have refused every pre-1500000148 row before the backfill could fill
+# it, and the release branch (a staff cabin opened to families) has no occupant
+# to name at all.
+onr=$(field_prop lodging_availability occupant_name required || true)
+[[ "$onr" != "1" && "$onr" != "true" ]] \
+  || note "lodging_availability.occupant_name is required -- the release branch names no occupant"
+
 # Unbounded numbers must be null, not 0 (0 would reject positive values).
 mx=$(field_prop lodging_units sleeps max || true)
 [[ -z "$mx" || "$mx" == "null" ]] || note "lodging_units.sleeps max is '$mx' (expected null for unbounded)"

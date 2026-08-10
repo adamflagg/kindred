@@ -3,9 +3,15 @@
  * map's unit popover so the two cannot drift.
  *
  * Reserved units are BADGED, not hidden (spec §3.7): staff reason about
- * adjacency, and hiding a held room would make the site look smaller than it
- * is. Container rows are labelled so nobody mistakes a whole-building
+ * adjacency, and hiding a written-into room would make the site look smaller
+ * than it is. Container rows are labelled so nobody mistakes a whole-building
  * aggregate for a bookable room.
+ *
+ * "Held" BECAME "Write-in" (kindred#2078), and it is the only label here that
+ * has ever moved. Staff never used the control to reserve an empty room — they
+ * used it to record an occupant the system does not know about — so the old
+ * word described the opposite of what the row means. The tone did not move
+ * with it; see the branch itself.
  *
  * THREE branches became two. 1500000135 replaced the `reserved_staff` /
  * `reserved_other` / `released_to_family` enum with an explicit
@@ -52,10 +58,24 @@ export function reservationBadge(unit: LodgingUnitRow): UnitBadge | null {
       className: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-300',
     }
   }
-  // A family cabin closed for this weekend -- a burst pipe, a caretaker.
+  // A family cabin somebody has been WRITTEN INTO for this weekend.
+  //
+  // "Held" until kindred#2078. Staff never used the control to reserve an
+  // empty room -- they used it to record an occupant the system does not know
+  // about, most often non-rostered weekend staff -- and "Held" set the
+  // opposite expectation: a room kept empty, when in truth it is full.
+  //
+  // ONLY THE WORD CHANGES. The slate tone stays, because the underlying fact
+  // (this cabin is not available to a family this weekend) is the one the
+  // board already had a colour for, and inventing a second colour for a
+  // renamed concept is how a palette stops meaning anything.
+  //
+  // It still does not read `occupant_name`: "written in for a caretaker" and
+  // "written in for a burst pipe" are the same fact about availability, which
+  // is the same reason the reason text never reached this badge.
   if (unit.inventory_class !== 'staff_default' && unit.family_available_override === false) {
     return {
-      label: 'Held',
+      label: 'Write-in',
       className: 'bg-slate-200 text-slate-800 dark:bg-slate-800 dark:text-slate-200',
     }
   }
@@ -173,13 +193,30 @@ export interface AvailabilityAction {
   label: string
   /** What the write sends. `null` DELETES the row. */
   familyAvailable: boolean | null
-  /**
-   * A cabin taken out of service with no stated reason is the row a staff
-   * member cannot act on next week. Clearing needs none: it restores the
-   * unit's standing role rather than asserting anything about this weekend.
-   */
-  needsReason: boolean
+  /** What the control collects before it may write — see `AvailabilityPrompt`. */
+  prompt: AvailabilityPrompt
 }
+
+/**
+ * What the control must collect before it may write.
+ *
+ * RESHAPED from a `needsReason: boolean` by kindred#2078 rather than added
+ * beside it, because that flag was never really about a reason — it was about
+ * whether the action has anything to ask. What it asks FOR now differs by
+ * action, and a boolean cannot say which:
+ *
+ *   'occupant' — a write-in. A REQUIRED occupant name plus an OPTIONAL note.
+ *                ONE control and one action: hold IS the write-in (owner
+ *                ruling, 2026-08-09), so there is no second "mark unavailable"
+ *                path and no burst-pipe / staff-write-in split.
+ *   'reason'   — a release. A required reason and nothing else: opening a
+ *                staff cabin to families names no occupant, so prompting for
+ *                one would ask for a fact that does not exist.
+ *   'none'     — a clear. It restores the unit's standing role rather than
+ *                asserting anything about this weekend, so there is nothing
+ *                to say.
+ */
+export type AvailabilityPrompt = 'occupant' | 'reason' | 'none'
 
 /**
  * The one action a unit's card offers, or null if it offers none.
@@ -192,7 +229,7 @@ export interface AvailabilityAction {
  * nothing staff can see.
  *
  * Lives beside `reservationBadge` so the two cannot drift. A card badged
- * "Held" that offers to "Hold" it says two things about one cabin.
+ * "Write-in" that offers to "Write in" says two things about one cabin.
  *
  * `occupied` names a fact from the SLOT (whether any party is placed on this
  * card this scenario), never folded into `canManage`'s permission gate.
@@ -211,9 +248,9 @@ export function availabilityAction(
   if (unit.is_container === true) return null
   // `!== null` and not truthiness: null (no row for this weekend) and false
   // (closed this weekend) are different answers, and collapsing them makes
-  // either "Hold" or "Clear" unreachable across most of the board.
+  // either "Write in" or "Clear" unreachable across most of the board.
   if (unit.family_available_override !== null && unit.family_available_override !== undefined) {
-    return { kind: 'clear', label: 'Clear', familyAvailable: null, needsReason: false }
+    return { kind: 'clear', label: 'Clear', familyAvailable: null, prompt: 'none' }
   }
   // NO SURFACE REACHES THIS BRANCH TODAY, and that is deliberate rather than
   // an oversight. Releasing a staff cabin to families is a registry edit on the
@@ -224,12 +261,12 @@ export function availabilityAction(
   // state this branch describes. Kept, unused, because the write path behind it
   // still exists; see the design spec's §7.3 "stays, unused and noted".
   if (unit.inventory_class === 'staff_default') {
-    return { kind: 'release', label: 'Release', familyAvailable: true, needsReason: true }
+    return { kind: 'release', label: 'Release', familyAvailable: true, prompt: 'reason' }
   }
-  // An already-occupied space offers no "Hold": the fix for #2090. Only
+  // An already-occupied space offers no write-in: the fix for #2090. Only
   // reachable here, past both branches above, so an already-held unit keeps
   // its `clear` action regardless of occupancy — clearing only ever REDUCES
   // the conflict, so it is never the state that needs blocking.
   if (occupied) return null
-  return { kind: 'hold', label: 'Hold', familyAvailable: false, needsReason: true }
+  return { kind: 'hold', label: 'Write in', familyAvailable: false, prompt: 'occupant' }
 }

@@ -179,7 +179,12 @@ export function UnitIdentityFields({
           }}
         >
           <option value="family_pool">Available to guests</option>
-          <option value="staff_default">Held for staff</option>
+          {/* "Staff housing", not "Held for staff" (kindred#2078). This is a
+              PERMANENT role — a cabin that was never weekend inventory — where
+              the board's per-weekend control is now a write-in. Three surfaces
+              shared the word "held" and the stats bar already counts the two
+              facts separately. */}
+          <option value="staff_default">Staff housing</option>
         </select>
       </label>
     </>
