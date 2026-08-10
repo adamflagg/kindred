@@ -136,6 +136,144 @@ describe('LodgingUnitCard', () => {
     expect(screen.getByRole('tooltip')).toHaveTextContent(/Sleeps 5/)
   })
 
+  describe('the infant bed exemption clause (kindred#2212 stage 1)', () => {
+    // The card's own `occupants` figure is a BED count (`slotOccupancy` sums
+    // `partySize`, which reads the server-reported `party_size`); the reader
+    // never sees the NAMED headcount anywhere on this card. When they
+    // disagree, a bed was exempted for an infant under 18 months
+    // (`INFANT_BED_EXEMPT_MONTHS`, `api/constants/lodging.py`) and the
+    // tooltip should say so, rather than silently showing the smaller number.
+    //
+    // ⚠️ Deliberately built from `party_size` vs. named adults/children --
+    // NEVER from `PartyChild.age`, which is CampMinder `yy.mm` and carries a
+    // `0.0` unknown-age sentinel (kindred#2212). Thresholding age here would
+    // silently sweep that sentinel in as a false "infant".
+
+    it('names the exemption when a party carries more people than recorded beds', () => {
+      render(
+        <LodgingUnitCard
+          slot={slot({
+            parties: [
+              party({
+                adults: [{ adult_number: 1, display_name: 'Emma Johnson', relationship: 'Mother' }],
+                children: [
+                  { person_cm_id: 9001, display_name: 'Noah Johnson', age: 8, grade: 3 },
+                  { person_cm_id: 9002, display_name: 'Ivy Johnson', age: 0.11, grade: 0 },
+                ],
+                // Headcount is 1 adult + 2 children = 3; the server reports
+                // only 2 beds, discounting the infant.
+                party_size: 2,
+              }),
+            ],
+          })}
+          hue="hsl(160 45% 42%)"
+          onOpenParty={vi.fn()}
+        />
+      )
+      const occupancy = screen.getByTestId('unit-occupancy')
+      fireEvent.focus(occupancy)
+      expect(screen.getByRole('tooltip')).toHaveTextContent(
+        'Sleeps 5 · 2 placed · an infant is exempt from the bed count'
+      )
+    })
+
+    it('says nothing extra, and leaves the existing sentence untouched, when headcount matches recorded beds', () => {
+      render(
+        <LodgingUnitCard
+          slot={slot({
+            parties: [
+              party({
+                adults: [{ adult_number: 1, display_name: 'Emma Johnson', relationship: 'Mother' }],
+                children: [{ person_cm_id: 9001, display_name: 'Noah Johnson', age: 8, grade: 3 }],
+                // Headcount is 1 adult + 1 child = 2, matching the 2 beds
+                // recorded. No infant was exempted; nothing to explain.
+                party_size: 2,
+              }),
+            ],
+          })}
+          hue="hsl(160 45% 42%)"
+          onOpenParty={vi.fn()}
+        />
+      )
+      const occupancy = screen.getByTestId('unit-occupancy')
+      fireEvent.focus(occupancy)
+      // Pinned exact, not a substring match: a future edit that silently
+      // reworded the ordinary sentence must fail this test.
+      expect(screen.getByRole('tooltip')).toHaveTextContent('Sleeps 5 · 2 placed')
+      expect(screen.queryByText(/exempt/)).not.toBeInTheDocument()
+    })
+
+    it('does not mistake the 0.0 unknown-age sentinel for an infant (the 24-vs-25 case)', () => {
+      // kindred#2212: one child in the real 2026 cohort carries `age: 0.0`,
+      // CampMinder's UNKNOWN-AGE sentinel, not a newborn's age. The server
+      // never discounts that child's bed on the strength of the sentinel, so
+      // headcount and recorded beds AGREE for this household and the
+      // exemption clause must not fire -- this is exactly why the measured
+      // population is 24 affected households, not 25.
+      render(
+        <LodgingUnitCard
+          slot={slot({
+            parties: [
+              party({
+                adults: [{ adult_number: 1, display_name: 'Emma Johnson', relationship: 'Mother' }],
+                children: [
+                  { person_cm_id: 9003, display_name: 'Unnamed camper', age: 0.0, grade: 0 },
+                ],
+                // Headcount is 1 adult + 1 child = 2, matching the 2 beds
+                // recorded -- the sentinel child keeps its bed.
+                party_size: 2,
+              }),
+            ],
+          })}
+          hue="hsl(160 45% 42%)"
+          onOpenParty={vi.fn()}
+        />
+      )
+      const occupancy = screen.getByTestId('unit-occupancy')
+      fireEvent.focus(occupancy)
+      expect(screen.getByRole('tooltip')).toHaveTextContent('Sleeps 5 · 2 placed')
+      expect(screen.queryByText(/exempt/)).not.toBeInTheDocument()
+    })
+
+    it('pluralizes the clause when more than one infant is exempted in a shared slot', () => {
+      render(
+        <LodgingUnitCard
+          slot={slot({
+            parties: [
+              party({
+                household_cm_id: 101,
+                display_name: 'Johnson',
+                adults: [{ adult_number: 1, display_name: 'Emma Johnson', relationship: 'Mother' }],
+                children: [
+                  { person_cm_id: 9001, display_name: 'Noah Johnson', age: 8, grade: 3 },
+                  { person_cm_id: 9002, display_name: 'Ivy Johnson', age: 0.11, grade: 0 },
+                ],
+                party_size: 2,
+              }),
+              party({
+                household_cm_id: 102,
+                display_name: 'Garcia',
+                adults: [{ adult_number: 1, display_name: 'Liam Garcia', relationship: 'Father' }],
+                children: [
+                  { person_cm_id: 9004, display_name: 'Mia Garcia', age: 5, grade: 0 },
+                  { person_cm_id: 9005, display_name: 'Leo Garcia', age: 0.3, grade: 0 },
+                ],
+                party_size: 2,
+              }),
+            ],
+          })}
+          hue="hsl(160 45% 42%)"
+          onOpenParty={vi.fn()}
+        />
+      )
+      const occupancy = screen.getByTestId('unit-occupancy')
+      fireEvent.focus(occupancy)
+      expect(screen.getByRole('tooltip')).toHaveTextContent(
+        'Sleeps 5 · 4 placed · 2 infants are exempt from the bed count'
+      )
+    })
+  })
+
   it('describes the unit NAME without turning it into a tooltip trigger', () => {
     // The occupancy `<span>` carried the tooltip, never the `<h3>` beside it.
     render(<LodgingUnitCard slot={slot()} hue="hsl(160 45% 42%)" onOpenParty={vi.fn()} />)
