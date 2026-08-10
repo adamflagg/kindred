@@ -69,6 +69,13 @@ describe('SharePreferenceChip inside ShareRequestPanel', () => {
     expect(screen.getByText('Not answered')).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Not answered' })).not.toBeInTheDocument()
   })
+
+  it('treats a whitespace-only answer as no answer at all', () => {
+    // A blank-but-not-empty CampMinder cell would otherwise pass the length
+    // check and mint a focusable chip whose bubble renders nothing.
+    render(<ShareRequestPanel share={share({ preference: 'no_share', preference_raw: '  ' })} />)
+    expect(screen.queryByRole('button', { name: 'Will not share' })).not.toBeInTheDocument()
+  })
 })
 
 describe('proximity kinds', () => {

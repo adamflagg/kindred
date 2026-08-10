@@ -99,7 +99,7 @@ describe('WeekendStatsBar', () => {
     // different facts with different remedies: a held cabin comes back next
     // weekend, a staff cabin never does.
     render(<WeekendStatsBar counts={counts()} bedsNeeded={223} spacesUnmeasured={0} />)
-    const held = screen.getByRole('button', { name: /held/ })
+    const held = screen.getByRole('button', { name: '3 held cabins' })
     expect(held).toHaveAccessibleDescription(/excluded from spaces/i)
     expect(held).not.toHaveAccessibleDescription(/held for staff/i)
   })
@@ -113,13 +113,18 @@ describe('WeekendStatsBar', () => {
         spacesUnmeasured={0}
       />
     )
-    const spaces = screen.getByRole('button', { name: '79' })
+    // Each figure names its own unit. Making these tab stops turned three
+    // bare numerals into three buttons called "79", "3" and "21" — the word
+    // that says what is counted lives in a sibling `<span>` the accessible
+    // name cannot see. The visible text is kept INSIDE each label so the
+    // name still contains it (WCAG 2.5.3).
+    const spaces = screen.getByRole('button', { name: '79 spaces' })
     expect(spaces).not.toHaveAttribute('title')
     expect(spaces).toHaveAccessibleDescription(/Merging or splitting cabins/i)
     fireEvent.focus(spaces)
     expect(screen.getByRole('tooltip')).toHaveTextContent(/Merging or splitting cabins/i)
 
-    expect(screen.getByRole('button', { name: /staff/ })).toHaveAccessibleDescription(
+    expect(screen.getByRole('button', { name: '21 staff cabins' })).toHaveAccessibleDescription(
       /never part of the weekend/i
     )
   })

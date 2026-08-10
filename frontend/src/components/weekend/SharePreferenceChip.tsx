@@ -54,7 +54,11 @@ export function SharePreferenceChip({ preference, raw }: SharePreferenceChipProp
   // explains itself, and a focusable chip that reveals nothing is a dead stop
   // in the tab order — the same argument `MapUnitPopover` makes for its empty
   // cells.
-  if (raw === undefined || raw.length === 0) {
+  // TRIMMED, unlike `FamilyCard`'s `Chip`, whose detail is built from a code
+  // template and cannot be blank: this string comes straight out of a
+  // CampMinder cell, and a whitespace-only one would otherwise mint a
+  // focusable chip whose bubble renders nothing.
+  if (raw === undefined || raw.trim().length === 0) {
     return <span className={chipClassName}>{chip.label}</span>
   }
 

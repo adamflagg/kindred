@@ -82,8 +82,15 @@ export function WeekendStatsBar({ counts, bedsNeeded, spacesUnmeasured }: Weeken
           {/* kindred#2177: all three notes in this group were `title` on a
               plain `<span>`, so a staff member on a tablet could read the
               figure and never why it moves. */}
+          {/* Each figure names its own unit. As a `<span>` these were never
+              focusable and the word beside them was enough; as tab stops they
+              were three buttons called "79", "3" and "21", because the word
+              lives in a sibling the accessible name cannot reach. Each label
+              still CONTAINS its visible text, so the name matches what is on
+              screen (WCAG 2.5.3). */}
           <Tooltip
             content="Merging or splitting cabins on the board changes this count"
+            aria-label={`${String(spaces)} spaces`}
             className="font-semibold tabular-nums"
           >
             {spaces}
@@ -101,6 +108,7 @@ export function WeekendStatsBar({ counts, bedsNeeded, spacesUnmeasured }: Weeken
           {unitsReserved > 0 && (
             <Tooltip
               content="Out of service this weekend, excluded from spaces"
+              aria-label={`${String(unitsReserved)} held cabins`}
               className="text-muted-foreground"
             >
               · {unitsReserved} held
@@ -109,6 +117,7 @@ export function WeekendStatsBar({ counts, bedsNeeded, spacesUnmeasured }: Weeken
           {unitsStaffHousing > 0 && (
             <Tooltip
               content="Permanent staff housing, never part of the weekend's inventory"
+              aria-label={`${String(unitsStaffHousing)} staff cabins`}
               className="text-muted-foreground"
             >
               · {unitsStaffHousing} staff
