@@ -10,6 +10,7 @@ import { useEffect, useState } from 'react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { Modal } from './Modal'
+import { hasOpenModal } from './modalStack'
 import { Tooltip } from './Tooltip'
 
 afterEach(() => {
@@ -366,6 +367,11 @@ describe('Tooltip — a stale hover bubble does not outrank a modal opened on to
     fireEvent.pointerEnter(trigger())
     expect(screen.getByRole('tooltip')).toBeInTheDocument()
     unmount()
+
+    // The direct assertion — see Modal.test.tsx's equivalent leak test for
+    // why the "fresh overlay is still topmost" check below cannot catch a
+    // leak on its own (a newly-acquired token is always last in the stack).
+    expect(hasOpenModal()).toBe(false)
 
     // A fresh modal opening afterward must be topmost immediately — a
     // leaked tooltip token would silently swallow its Escape instead.

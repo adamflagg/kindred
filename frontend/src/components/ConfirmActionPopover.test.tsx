@@ -3,6 +3,7 @@ import { useState } from 'react'
 import { describe, it, expect, vi } from 'vitest'
 import { ConfirmActionPopover } from './ConfirmActionPopover'
 import { Modal } from './ui/Modal'
+import { hasOpenModal } from './ui/modalStack'
 
 describe('ConfirmActionPopover', () => {
   const defaultProps = {
@@ -291,6 +292,11 @@ describe('ConfirmActionPopover — over a ui/Modal (kindred#2205)', () => {
       />
     )
     unmount()
+
+    // The direct assertion — see Modal.test.tsx's equivalent leak test for
+    // why the "fresh overlay is still topmost" check below cannot catch a
+    // leak on its own (a newly-acquired token is always last in the stack).
+    expect(hasOpenModal()).toBe(false)
 
     // A fresh Modal opening afterward must be topmost immediately — a leaked
     // popover token would silently no-op its Escape.

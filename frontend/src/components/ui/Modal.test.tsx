@@ -1,6 +1,7 @@
 import { render, screen, fireEvent } from '@testing-library/react'
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { Modal } from './Modal'
+import { hasOpenModal } from './modalStack'
 
 describe('Modal', () => {
   describe('when isOpen is false', () => {
@@ -647,6 +648,13 @@ describe('Modal', () => {
         </Modal>
       )
       unmount()
+
+      // The direct assertion: a leaked token leaves the stack non-empty even
+      // with nothing open. LIFO ordering means the "fresh modal is still
+      // topmost" check below would pass even with a leak underneath it — a
+      // newly-acquired token is always last — so it cannot catch a leak on
+      // its own; this is the one that actually pins "does not leak".
+      expect(hasOpenModal()).toBe(false)
 
       // A fresh modal opening afterward must be topmost immediately — if the
       // old token were still in the stack, this one's Escape would silently
