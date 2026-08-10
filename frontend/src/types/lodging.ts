@@ -19,6 +19,8 @@
 
 import type {
   AccessibilityFlagSummary,
+  HouseholdJourneyResponse,
+  HouseholdJourneyYear,
   HouseholdMedicalResponse,
   LodgingUnitSummary,
   LodgingWriteResponse,
@@ -59,6 +61,10 @@ export type WeekendSummary = WeekendSummaryResponse
 export type WeekendSummaryRow = WeekendSummaryEntry
 /** PHI. Only ever fetched from the permission-gated endpoint. */
 export type HouseholdMedical = HouseholdMedicalResponse
+/** A household's year-over-year family-camp record, newest year first. */
+export type HouseholdJourney = HouseholdJourneyResponse
+/** One year of it — housing, enrolment, and that year's own party. */
+export type HouseholdJourneyRow = HouseholdJourneyYear
 /** A registered adult on a household party. */
 export type PartyAdultRow = PartyAdult
 /** An enrolled child on a household party. */
@@ -132,6 +138,29 @@ export type ShareEligibilitySourceValue = NonNullable<ShareRequestSummary['eligi
  * `"cancelled"` is a claim.
  */
 export type WeekendSessionStatusValue = NonNullable<WeekendSessionSummary['status']>
+
+/**
+ * What is known about where a household slept in one journey year.
+ *
+ * THREE STATES, NOT TWO. `unknown` is a gap in the RECORD — 2017-2021 carry
+ * 1,433 family registrations and not one cabin assignment, so nothing can be
+ * said about any household in those years. `not_placed` is a gap in this
+ * family's placement, in a year that demonstrably recorded cabins for other
+ * households. Rendering them alike is the defect the vocabulary exists to
+ * prevent: one is a to-do and the other is not.
+ */
+export type HousingStateValue = NonNullable<HouseholdJourneyYear['housing']>
+
+/**
+ * Whether a journey year has an enrolled child on file.
+ *
+ * `none_on_file` is NOT "a childless family". 2020's whole season was
+ * cancelled (1,264 family attendee rows, none enrolled) and 2021 has no
+ * family attendee rows at all despite 247 registrations — while
+ * `family_camp_adults` carries adults for both. Both are real attendance the
+ * enrolment tables cannot describe, and neither is an error.
+ */
+export type EnrollmentStateValue = NonNullable<HouseholdJourneyYear['enrollment']>
 
 /** `unknown` means the amenity was never recorded, NOT "no bathroom". */
 export type BathroomValue = NonNullable<LodgingUnitSummary['bathroom']>

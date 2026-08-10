@@ -9,6 +9,7 @@
 
 import type { PartyGrainBody } from '../components/weekend/dragPlacement'
 import type {
+  HouseholdJourney,
   HouseholdMedical,
   LodgingWriteResult,
   WeekendRoster,
@@ -237,6 +238,23 @@ export async function setSlotMerge(
   })
   if (!response.ok) throw await toError(response, 'Failed to update the merge')
   return (await response.json()) as LodgingWriteResult
+}
+
+/**
+ * A household's year-over-year family-camp record (kindred#2073).
+ *
+ * TAKES NO YEAR, unlike every other read here. The journey's window is
+ * discovered from the household's own traces, not chosen by the caller —
+ * see the endpoint's docstring. That is also why the query key below is
+ * keyed on the household alone.
+ */
+export async function fetchHouseholdJourney(
+  fetchWithAuth: FetchWithAuth,
+  householdCmId: number
+): Promise<HouseholdJourney> {
+  const response = await fetchWithAuth(`${API_BASE}/households/${String(householdCmId)}/journey`)
+  if (!response.ok) throw await toError(response, 'Failed to load household history')
+  return response.json() as Promise<HouseholdJourney>
 }
 
 /**

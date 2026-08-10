@@ -122,6 +122,13 @@ def _repo(**overrides: Any) -> MagicMock:
         # household CampMinder id. Empty by default -- most families have no
         # prior-year cabin, and that must be the shape the card sees.
         "fetch_cabin_assignments_by_household_cm_id": {},
+        # kindred#2073's three cross-year reads, for ONE household. Empty by
+        # default -- a first-time family is the shape the journey must handle,
+        # and a bare MagicMock would return an un-awaitable attribute instead
+        # of failing where the mistake is.
+        "fetch_household_family_attendees": [],
+        "fetch_household_adults_by_year": {},
+        "fetch_household_registration_years": set(),
         "fetch_family_camp_adults": {},
         "fetch_family_camp_registrations": {},
         "fetch_family_camp_medical": {},
@@ -3703,3 +3710,271 @@ class TestUnitPowerCoverage:
         roster = await LodgingRosterService(repo).build_roster(2026, 1000001)
 
         assert roster.units[0].power_coverage == "unknown"
+
+
+def _journey_repo(**overrides: Any) -> MagicMock:
+    """A repository mock for the household journey's three cross-year reads.
+
+    `fetch_cabin_assignments_by_household_cm_id` is the ONE read the journey
+    still issues per year (kindred#2075's helper, whose year is the
+    parameter), so it is mocked as a per-year MAP that a `side_effect` serves
+    -- the plain `_repo` default returns the same dict for every year, which
+    would make the whole housing-state derivation untestable.
+    """
+    cabins_by_year: dict[int, dict[int, str]] = overrides.pop("cabins_by_year", {})
+    repo = _repo(**overrides)
+
+    async def _cabins(year: int) -> dict[int, str]:
+        return cabins_by_year.get(year, {})
+
+    repo.fetch_cabin_assignments_by_household_cm_id = AsyncMock(side_effect=_cabins)
+    return repo
+
+
+class TestHouseholdJourney:
+    """The household's year-over-year record (kindred#2073).
+
+    THE DATA HAS FIVE STATES, NOT TWO, and conflating any pair of them is the
+    main risk this view carries. Measured on the production snapshot
+    2026-08-09:
+
+    1. 2022-2025 -- housing history exists. 423 households are placed in two
+       or more of those four years; that is the population this pays off for.
+    2. 2017-2021 -- 1,433 family registrations and ZERO cabin assignments. A
+       year with attendance and no cabin is UNKNOWN HOUSING, not "attended,
+       unplaced".
+    3. 2026 -- about 16% placed. A blank there is a genuine to-do, not a gap
+       in the record, and the two must not read alike.
+    4. 2020 -- 1,264 family attendee rows and not one with `status_id = 2`.
+       The season was cancelled.
+    5. 2021 -- no family attendee rows AT ALL despite 247 registrations and 7
+       family sessions, while `family_camp_adults` carries 647 rows across 351
+       households. So 2021 shows adults and no children.
+    """
+
+    @pytest.mark.asyncio
+    async def test_a_placed_year_carries_the_staff_written_cabin(self) -> None:
+        repo = _journey_repo(
+            fetch_household_family_attendees=[_rec(year=2025, **vars(_child()))],
+            cabins_by_year={2025: {2000001: "Cedar Lodge - Room 2"}},
+        )
+
+        journey = await LodgingRosterService(repo).build_household_journey(2000001)
+
+        assert [y.year for y in journey.years] == [2025]
+        assert journey.years[0].housing == "placed"
+        assert journey.years[0].cabin_name == "Cedar Lodge - Room 2"
+
+    @pytest.mark.asyncio
+    async def test_a_year_nobody_was_placed_in_is_unknown_housing_not_unplaced(self) -> None:
+        """State 2. 2017-2021 record no cabin for ANY household, so a blank
+        there is a gap in the record and must never be reported as a family
+        who went unhoused.
+        """
+        repo = _journey_repo(
+            fetch_household_family_attendees=[_rec(year=2019, **vars(_child()))],
+            cabins_by_year={},
+        )
+
+        journey = await LodgingRosterService(repo).build_household_journey(2000001)
+
+        assert journey.years[0].housing == "unknown"
+        assert journey.years[0].cabin_name == ""
+
+    @pytest.mark.asyncio
+    async def test_a_blank_in_a_year_others_were_placed_in_is_not_placed(self) -> None:
+        """State 3, and the distinction that is the whole point. The year
+        records housing for somebody, so this household's blank is a real
+        absence rather than an unrecorded one.
+        """
+        repo = _journey_repo(
+            fetch_household_family_attendees=[_rec(year=2026, **vars(_child()))],
+            cabins_by_year={2026: {2000999: "Pine Cabin"}},
+        )
+
+        journey = await LodgingRosterService(repo).build_household_journey(2000001)
+
+        assert journey.years[0].housing == "not_placed"
+        assert journey.years[0].cabin_name == ""
+
+    @pytest.mark.asyncio
+    async def test_a_cancelled_season_leaves_the_year_registered_with_no_enrolment(self) -> None:
+        """State 4. Every 2020 attendee row is cancelled, so `status_id = 2`
+        removes them all -- the year still happened on the registration and
+        must not vanish, and it is not a childless family.
+        """
+        repo = _journey_repo(
+            fetch_household_family_attendees=[],
+            fetch_household_registration_years={2020},
+        )
+
+        journey = await LodgingRosterService(repo).build_household_journey(2000001)
+
+        assert [y.year for y in journey.years] == [2020]
+        assert journey.years[0].enrollment == "none_on_file"
+        assert journey.years[0].children == []
+
+    @pytest.mark.asyncio
+    async def test_a_year_with_adults_and_no_attendee_rows_still_lists_the_adults(self) -> None:
+        """State 5. 2021 has no family attendee rows at all, so the ONLY
+        representation of that year's party is `family_camp_adults` -- adults
+        who have no `persons` row anywhere.
+        """
+        repo = _journey_repo(
+            fetch_household_family_attendees=[],
+            fetch_household_adults_by_year={2021: [_adult(name="Olivia Johnson")]},
+        )
+
+        journey = await LodgingRosterService(repo).build_household_journey(2000001)
+
+        assert [y.year for y in journey.years] == [2021]
+        assert [a.display_name for a in journey.years[0].adults] == ["Olivia Johnson"]
+        assert journey.years[0].enrollment == "none_on_file"
+
+    @pytest.mark.asyncio
+    async def test_the_party_is_derived_per_year_never_carried_forward(self) -> None:
+        """HOUSEHOLD GRAIN, NOT CAMPER GRAIN. A household's party changes
+        composition year to year -- children age out, adults change -- so
+        each year's members come from that year's rows and no other's.
+        """
+        repo = _journey_repo(
+            fetch_household_family_attendees=[
+                _rec(year=2024, **vars(_child(cm_id=1000001, first="Ava", last="Martinez"))),
+                _rec(year=2025, **vars(_child(cm_id=1000001, first="Ava", last="Martinez"))),
+                _rec(year=2025, **vars(_child(cm_id=1000002, first="Liam", last="Martinez"))),
+            ],
+            fetch_household_adults_by_year={2025: [_adult(name="Sofia Martinez")]},
+        )
+
+        journey = await LodgingRosterService(repo).build_household_journey(2000001)
+
+        by_year = {y.year: y for y in journey.years}
+        assert [c.display_name for c in by_year[2024].children] == ["Ava Martinez"]
+        assert by_year[2024].adults == []
+        assert sorted(c.display_name for c in by_year[2025].children) == ["Ava Martinez", "Liam Martinez"]
+        assert [a.display_name for a in by_year[2025].adults] == ["Sofia Martinez"]
+
+    @pytest.mark.asyncio
+    async def test_a_child_enrolled_in_two_weekends_of_one_year_is_listed_once(self) -> None:
+        """A JOURNEY ROW IS A YEAR, NOT A SESSION, and this is the seam where
+        that stops being a wording point.
+
+        A family can book two of a season's weekends, which gives one child
+        TWO enrolled family attendee rows in the same year -- both expanding
+        to the same `persons` record, because `persons` is per-year rather
+        than per-enrolment. Measured on the production snapshot 2026-08-09:
+        every year from 2017 on has some, 9 to 20 children a year, across 64
+        distinct (household, year) pairs. One household alone lists three
+        children in 2026 and five attendee rows for them.
+
+        Collecting per attendee row therefore prints the child twice, adds
+        them twice to the modal's headcount, and renders two <li>s under one
+        `person_cm_id` React key. Dedupe on the CampMinder person id, which is
+        the identity the wire already keys the child by.
+        """
+        repo = _journey_repo(
+            fetch_household_family_attendees=[
+                _rec(year=2026, **vars(_child(cm_id=1000001, first="Emma", last="Johnson", age=9))),
+                _rec(year=2026, **vars(_child(cm_id=1000001, first="Emma", last="Johnson", age=9))),
+                _rec(year=2026, **vars(_child(cm_id=1000002, first="Liam", last="Johnson", age=7))),
+            ],
+        )
+
+        journey = await LodgingRosterService(repo).build_household_journey(2000001)
+
+        assert [c.person_cm_id for c in journey.years[0].children] == [1000001, 1000002]
+
+    @pytest.mark.asyncio
+    async def test_years_run_newest_first_and_span_every_trace(self) -> None:
+        """The window is DISCOVERED, not chosen. A hard-coded floor would
+        either invent empty rows or truncate a long-standing family, and the
+        three traces disagree about which years exist -- attendance reaches
+        further back than housing, and registration reaches years that carry
+        neither a child nor an adult.
+        """
+        repo = _journey_repo(
+            fetch_household_family_attendees=[_rec(year=2018, **vars(_child()))],
+            fetch_household_adults_by_year={2021: [_adult()]},
+            fetch_household_registration_years={2024},
+            cabins_by_year={2024: {2000001: "Pine Cabin"}},
+        )
+
+        journey = await LodgingRosterService(repo).build_household_journey(2000001)
+
+        assert [y.year for y in journey.years] == [2024, 2021, 2018]
+
+    @pytest.mark.asyncio
+    async def test_the_cabin_read_is_issued_once_per_traced_year(self) -> None:
+        """Composes kindred#2075's helper rather than writing a second
+        housing query, and never at a hard-coded year: the helper takes a
+        plain year precisely so this can sweep. It is asked only about years
+        the household actually appears in.
+        """
+        repo = _journey_repo(
+            fetch_household_family_attendees=[
+                _rec(year=2024, **vars(_child())),
+                _rec(year=2025, **vars(_child())),
+            ],
+        )
+
+        await LodgingRosterService(repo).build_household_journey(2000001)
+
+        asked = sorted(call.args[0] for call in repo.fetch_cabin_assignments_by_household_cm_id.await_args_list)
+        assert asked == [2024, 2025]
+
+    @pytest.mark.asyncio
+    async def test_a_household_with_no_trace_at_all_returns_no_years(self) -> None:
+        """Empty is a legitimate answer -- a first-time family -- and must be
+        an empty list rather than a fabricated current-year row.
+        """
+        journey = await LodgingRosterService(_journey_repo()).build_household_journey(2000001)
+
+        assert journey.household_cm_id == 2000001
+        assert journey.years == []
+
+    @pytest.mark.asyncio
+    async def test_a_blank_adult_slot_is_published_unfiltered(self) -> None:
+        """Same contract as the roster's own party (kindred#1925/#2046): the
+        server publishes every `family_camp_adults` row and only the COUNT is
+        filtered, so the client can still see what was declined. The client
+        applies `isAttendingAdultName` at render time.
+        """
+        repo = _journey_repo(
+            fetch_household_adults_by_year={2025: [_adult(name="Olivia Johnson"), _adult(adult_number=2, name="NA")]},
+        )
+
+        journey = await LodgingRosterService(repo).build_household_journey(2000001)
+
+        assert [a.display_name for a in journey.years[0].adults] == ["Olivia Johnson", "NA"]
+
+    @pytest.mark.asyncio
+    async def test_children_carry_the_structured_surname_the_naming_rule_reads(self) -> None:
+        """kindred#2180 put `last_name` on the wire because the family label
+        is built from the children's deduplicated surnames, and splitting the
+        trailing token off `display_name` is the wrong surname for the 4.7% of
+        children whose own last_name contains a space. The journey's heading
+        takes the UNION of these across years, so it needs the same column.
+        """
+        repo = _journey_repo(
+            fetch_household_family_attendees=[
+                _rec(year=2025, **vars(_child(first="Ava", last="Martinez Garcia"))),
+            ],
+        )
+
+        journey = await LodgingRosterService(repo).build_household_journey(2000001)
+
+        child = journey.years[0].children[0]
+        assert child.display_name == "Ava Martinez Garcia"
+        assert child.last_name == "Martinez Garcia"
+
+    @pytest.mark.asyncio
+    async def test_an_unresolvable_household_is_an_empty_journey_not_a_query(self) -> None:
+        """`_build_household_parties` gives an unresolvable household
+        `household_cm_id = 0`; a journey for it must read nothing.
+        """
+        repo = _journey_repo()
+
+        journey = await LodgingRosterService(repo).build_household_journey(0)
+
+        assert journey.years == []
+        repo.fetch_cabin_assignments_by_household_cm_id.assert_not_called()

@@ -25,7 +25,10 @@ from api.schemas.lodging import (
     AccessibilityFlagSummary,
     AmenityCoverage,
     EffectiveBathroom,
+    HouseholdJourneyResponse,
+    HouseholdJourneyYear,
     HouseholdMedicalResponse,
+    HousingState,
     LodgingUnitSummary,
     PartyAdult,
     PartyChild,
@@ -283,6 +286,76 @@ def _person_display_name(person: Any) -> str:
     first = preferred or _s(person, "first_name")
     last = _s(person, "last_name")
     return f"{first} {last}".strip()
+
+
+def _party_adult(adult: Any) -> PartyAdult:
+    """A `family_camp_adults` row as the wire sees it.
+
+    ONE mapping, shared by the roster's party and kindred#2073's per-year
+    journey party, because they are the same thing seen at two grains: a
+    journey year IS a household's party for that year. Two mappings would
+    drift, and the drift would be invisible -- both render fine in isolation.
+    """
+    return PartyAdult(
+        adult_number=_i(adult, "adult_number"),
+        display_name=_adult_display_name(adult),
+        relationship=_s(adult, "relationship_to_camper"),
+    )
+
+
+def _party_child(child: Any) -> PartyChild:
+    """A `persons` row as the wire sees it. See `_party_adult` on sharing."""
+    return PartyChild(
+        person_cm_id=_i(child, "cm_id"),
+        display_name=_person_display_name(child),
+        # The same column `_person_display_name` appends, sent separately so
+        # the client never has to split it back off (kindred#2180) -- 32 of
+        # 2026's rostered children have a SPACE inside their own last_name,
+        # for which that split is wrong.
+        last_name=_s(child, "last_name"),
+        # persons.age is CampMinder's yy.mm as a REAL (kindred#2088): 0.06 is a
+        # real 6-month-old, not a rounding artifact, so this must read the raw
+        # float, not _i()'s truncated int. `or None` is still deliberate here
+        # -- age == 0.0 is the UNKNOWN-AGE population (no birthdate on file),
+        # not a newborn.
+        #
+        # DO NOT threshold the infant discount on this field, here or
+        # client-side (kindred#2046). yy.mm means months never exceed `.11`, so
+        # `age < 1.5` is really "under 24 months" -- 44 children on 2026's
+        # rostered cohort against the derived rule's 24. `_consumes_a_bed`
+        # reads `birthdate` instead.
+        age=_f(child, "age") or None,
+        grade=_i(child, "grade") or None,
+    )
+
+
+def _children_oldest_first(children: list[Any]) -> list[Any]:
+    """The order every surface prints a household's children in."""
+    return sorted(children, key=lambda c: -(_f(c, "age") or 0.0))
+
+
+def _housing_state(cabin: str, year_assignments: Mapping[int, str]) -> HousingState:
+    """What is known about one household's housing in one year (kindred#2073).
+
+    ⚠️ AN EMPTY CABIN IS NOT MISSING DATA, and the second argument is the
+    whole reason this is a function rather than a ternary: the SAME blank
+    means two different things depending on whether the year recorded housing
+    for anybody at all.
+
+    * 2017-2021 record 1,433 family registrations and ZERO cabin assignments,
+      so the map is empty and nothing can be said -- "unknown".
+    * 2022-2025 and 2026 record cabins for other households, so a blank is a
+      real absence -- "not_placed". The client words it: "not yet placed" for
+      the season being worked, "no cabin on file" for a past one.
+
+    Derived from the data rather than from a hard-coded 2022 floor, so the
+    boundary moves when the data does -- when 2026 fills in, nothing here
+    changes, and if housing history is ever backfilled to 2019 that year
+    stops claiming ignorance on its own.
+    """
+    if cabin:
+        return "placed"
+    return "not_placed" if year_assignments else "unknown"
 
 
 def _household_display_name(household: Any, fallback_cm_id: int) -> str:
@@ -1016,6 +1089,111 @@ class LodgingRosterService:
             **{field: _s(record, field) for field in sorted(PHI_FIELD_NAMES)},
         )
 
+    async def build_household_journey(self, household_cm_id: int) -> HouseholdJourneyResponse:
+        """A household's family-camp record, year by year (kindred#2073).
+
+        THE WINDOW IS DISCOVERED, NOT CHOSEN. A year appears when the
+        household has a trace in it, and the three traces disagree about which
+        years exist: attendance reaches back to 2017, housing only to 2022,
+        and between 24 and 89 registrations a year carry neither an enrolled
+        child nor an adult row. Taking their union is what makes the view
+        honest about a four-year housing window sitting inside a longer
+        attendance one -- and a hard-coded floor would either invent empty
+        rows or truncate a long-standing family.
+
+        The cabin comes from kindred#2075's helper, once per traced year. That
+        helper takes a plain year precisely so this can sweep, and composing
+        over it is what keeps ONE definition of "where did they sleep": it
+        already knows that `cabin_assignment` is free text, that the bridge is
+        `households.cm_id` and not the PB id, and that a year before 2022
+        answers nothing. A second query here would be a second answer.
+
+        HOUSEHOLD GRAIN, NOT CAMPER GRAIN. Each year's members are built from
+        that year's rows and no other's -- children age out, adults change,
+        and a party carried forward would show a family who no longer exists.
+
+        Concurrency mirrors the roster's: the three cross-year reads go
+        together, then the per-year cabin reads go together. The cabin reads
+        are `@cached_by_year`, so a year the roster already loaded is free and
+        a four-year sweep pays each year once per process.
+        """
+        # An unresolvable household (`household_cm_id = 0`) reads nothing --
+        # each repository method refuses it too, but returning here keeps the
+        # sweep from running against an empty trace set as though it were a
+        # real first-time family.
+        if household_cm_id <= 0:
+            return HouseholdJourneyResponse(household_cm_id=household_cm_id)
+
+        attendees, adults_by_year, registration_years = await asyncio.gather(
+            self.repository.fetch_household_family_attendees(household_cm_id),
+            self.repository.fetch_household_adults_by_year(household_cm_id),
+            self.repository.fetch_household_registration_years(household_cm_id),
+        )
+
+        children_by_year: dict[int, list[Any]] = {}
+        # A JOURNEY ROW IS A YEAR, NOT A SESSION, and this is where that stops
+        # being a wording point. A family can book two of a season's weekends,
+        # which gives one child TWO enrolled family attendee rows in the same
+        # year -- both expanding to the SAME `persons` record, because
+        # `persons` is per-year rather than per-enrolment. Measured on the
+        # production snapshot 2026-08-09: 9 to 20 children a year from 2017
+        # on, across 64 distinct (household, year) pairs.
+        #
+        # Keyed on the CampMinder person id, which is the identity the wire
+        # already publishes the child under (`PartyChild.person_cm_id`) and
+        # the key the members modal renders each <li> with -- so a duplicate
+        # here is a duplicate name, a headcount overstated by one, and two
+        # React children under one key. The PB record id is the fallback for
+        # the rare person row with no cm_id; a row with neither is kept rather
+        # than collapsed onto every other anonymous sibling.
+        seen_by_year: dict[int, set[Any]] = {}
+        for attendee in attendees:
+            person = (getattr(attendee, "expand", None) or {}).get("person")
+            if person is None:
+                continue
+            year = _i(attendee, "year")
+            identity = _i(person, "cm_id") or str(getattr(person, "id", ""))
+            if identity:
+                seen = seen_by_year.setdefault(year, set())
+                if identity in seen:
+                    continue
+                seen.add(identity)
+            children_by_year.setdefault(year, []).append(person)
+
+        # Year 0 is not a year. A row whose `year` column never populated
+        # would otherwise open the journey with a blank heading.
+        years = [
+            year
+            for year in sorted(
+                set(children_by_year) | set(adults_by_year) | set(registration_years),
+                reverse=True,
+            )
+            if year > 0
+        ]
+        cabin_maps = await asyncio.gather(
+            *(self.repository.fetch_cabin_assignments_by_household_cm_id(year) for year in years)
+        )
+
+        rows: list[HouseholdJourneyYear] = []
+        for year, assignments in zip(years, cabin_maps, strict=True):
+            cabin = assignments.get(household_cm_id, "")
+            children = _children_oldest_first(children_by_year.get(year, []))
+            rows.append(
+                HouseholdJourneyYear(
+                    year=year,
+                    housing=_housing_state(cabin, assignments),
+                    cabin_name=cabin,
+                    # An empty child list is NOT a childless family: 2020 was
+                    # cancelled outright and 2021 has no family attendee rows
+                    # at all. Naming the state here is what stops the client
+                    # rendering either as an error or as a family with no kids.
+                    enrollment="enrolled" if children else "none_on_file",
+                    adults=[_party_adult(adult) for adult in adults_by_year.get(year, [])],
+                    children=[_party_child(child) for child in children],
+                )
+            )
+        return HouseholdJourneyResponse(household_cm_id=household_cm_id, years=rows)
+
     # ---------------------------------------------------------------- units
 
     def _build_units(self, units: list[Any], availability: list[Any], merges: list[Any]) -> list[LodgingUnitSummary]:
@@ -1338,7 +1516,7 @@ class LodgingRosterService:
             registration = registrations.get(household_pb_id)
             adults = adults_by_household.get(household_pb_id, [])
             placement = placement_by_household.get(household_cm_id, _NO_PLACEMENT)
-            children_oldest_first = sorted(children, key=lambda c: -(_f(c, "age") or 0.0))
+            children_oldest_first = _children_oldest_first(children)
             # THE BED COUNT, and the only two terms in it (kindred#1925,
             # kindred#2046). Both are narrower than the rows they come from:
             # a five-slot adult scrape holds blanks and placeholders, and a
@@ -1362,40 +1540,8 @@ class LodgingRosterService:
                     # frontend to what the server declined to count, and the
                     # frontend applies the same predicate at render time
                     # (`householdIdentity.isAttendingAdultName`).
-                    adults=[
-                        PartyAdult(
-                            adult_number=_i(adult, "adult_number"),
-                            display_name=_adult_display_name(adult),
-                            relationship=_s(adult, "relationship_to_camper"),
-                        )
-                        for adult in adults
-                    ],
-                    children=[
-                        PartyChild(
-                            person_cm_id=_i(child, "cm_id"),
-                            display_name=_person_display_name(child),
-                            # The same column `_person_display_name` appends,
-                            # sent separately so the client never has to split
-                            # it back off (kindred#2180) -- 32 of 2026's
-                            # rostered children have a SPACE inside their own
-                            # last_name, for which that split is wrong.
-                            last_name=_s(child, "last_name"),
-                            # persons.age is CampMinder's yy.mm as a REAL (kindred#2088):
-                            # 0.06 is a real 6-month-old, not a rounding artifact, so this
-                            # must read the raw float, not _i()'s truncated int. `or None`
-                            # is still deliberate here -- age == 0.0 is the UNKNOWN-AGE
-                            # population (no birthdate on file), not a newborn.
-                            #
-                            # DO NOT threshold the infant discount on this field, here or
-                            # client-side (kindred#2046). yy.mm means months never exceed
-                            # `.11`, so `age < 1.5` is really "under 24 months" -- 44
-                            # children on 2026's rostered cohort against the derived
-                            # rule's 24. `_consumes_a_bed` reads `birthdate` instead.
-                            age=_f(child, "age") or None,
-                            grade=_i(child, "grade") or None,
-                        )
-                        for child in children_oldest_first
-                    ],
+                    adults=[_party_adult(adult) for adult in adults],
+                    children=[_party_child(child) for child in children_oldest_first],
                     party_size=beds,
                     unit_code=placement.unit_code,
                     unit_name=placement.unit_name,

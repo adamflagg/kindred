@@ -39,12 +39,14 @@
 import { useQuery } from '@tanstack/react-query'
 
 import {
+  fetchHouseholdJourney,
   fetchHouseholdMedical,
   fetchWeekendRoster as fetchRoster,
   fetchWeekendSessions as fetchSessions,
   fetchWeekendSummary as fetchSummary,
 } from '../services/lodgingApi'
 import type {
+  HouseholdJourney,
   HouseholdMedical,
   WeekendRoster,
   WeekendSessionList,
@@ -92,6 +94,30 @@ export function useWeekendRoster(year: number, sessionCmId: number | null, scena
     queryKey: queryKeys.weekendRoster(year, sessionCmId ?? 0, scenario),
     enabled: year > 0 && sessionCmId !== null,
     queryFn: () => fetchRoster(fetchWithAuth, year, sessionCmId as number, scenario),
+  })
+}
+
+/**
+ * A household's year-over-year family-camp record (kindred#2073). Idle until
+ * there is a household to look up — an adult weekend guest is person-grain
+ * and has none.
+ *
+ * Sets NO cache options, inheriting the app defaults in `utils/queryClient.ts`
+ * exactly as the roster hooks above do and as summer's own board hooks do.
+ * Nothing in this repo writes a past year's `cabin_assignment` or
+ * `family_camp_adults` — both are sync-written — so there is no writer to
+ * invalidate against and no freshness being given up. The lodging registry
+ * edits that DO feed the roster do not reach this payload: it carries staff
+ * free text out of `family_camp_registrations`, never a `lodging_units` row.
+ *
+ * NOT year-scoped, unlike every other hook here. See `queryKeys.householdJourney`.
+ */
+export function useHouseholdJourney(householdCmId: number | null) {
+  const { fetchWithAuth } = useApiWithAuth()
+  return useQuery<HouseholdJourney>({
+    queryKey: queryKeys.householdJourney(householdCmId ?? 0),
+    enabled: householdCmId !== null && householdCmId > 0,
+    queryFn: () => fetchHouseholdJourney(fetchWithAuth, householdCmId as number),
   })
 }
 

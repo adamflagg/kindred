@@ -367,6 +367,113 @@ class LodgingRepository:
             },
         )
 
+    async def fetch_household_family_attendees(self, household_cm_id: int) -> list[Any]:
+        """One household's enrolled family-camp children, across EVERY year.
+
+        The cross-year read behind the household journey (kindred#2073). The
+        year is deliberately NOT a parameter here -- unlike every other read
+        in this file -- because the journey's window is not chosen, it is
+        discovered: the years a household appears in are exactly the years it
+        has a trace, and a hard-coded floor would either invent empty rows or
+        silently truncate a long-standing family's history.
+
+        ⚠️ `person.household_id`, NOT `person.household`. Both exist on
+        `persons` and both look right. `household` is a PocketBase relation
+        into the YEAR-SCOPED `households` table, and `persons` rows are
+        themselves per-year (11,432 distinct people across 28,635 rows on the
+        production snapshot), so each year's person row points at that same
+        year's household record. Filtering on it can therefore only ever
+        match one season. `household_id` is the CampMinder id, which is the
+        identity thread across seasons (CLAUDE.md section 1).
+
+        `session.session_type = "family"` because an adult weekend is
+        person-grain: it enrols the adult directly, and letting those rows
+        through would file a parent's own weekend under their children.
+
+        `status_id = 2` for the reason it is everywhere else, with one year
+        that makes it vivid: 2020 has 1,264 family attendee rows and not one
+        enrolled -- the season was cancelled outright -- so an unfiltered read
+        renders 2020 as an ordinary year.
+
+        NOT cached. `lodging_cache` is keyed by year and this read has no
+        year; it is also per-household rather than per-season, so it is small
+        (one family's children) and there is no year-scoped sharing to win.
+        """
+        # Never issue the query for an unresolvable household.
+        # `_build_household_parties` gives one `household_cm_id = 0`, and
+        # `person.household_id = 0` is a real predicate that matches whatever
+        # rows carry a zero rather than an error.
+        if household_cm_id <= 0:
+            return []
+        return await self._page(
+            ATTENDEES,
+            query_params={
+                "filter": (
+                    f"person.household_id = {household_cm_id} "
+                    f'&& session.session_type = "family" && {ACTIVE_ENROLLED_FILTER}'
+                ),
+                "expand": "person",
+                "sort": STABLE_SORT,
+            },
+        )
+
+    async def fetch_household_adults_by_year(self, household_cm_id: int) -> dict[int, list[Any]]:
+        """One household's accompanying adults, grouped by year (kindred#2073).
+
+        Family Camp adults have NO `persons` row at all -- `family_camp_adults`
+        is their only representation, and its rows are year-scoped -- so this
+        is the only place a past year's adults can come from. That is also why
+        2021 shows adults and no children: 647 adult rows against zero family
+        attendee rows.
+
+        Bridged through the relation's `cm_id` for the same reason
+        `fetch_cabin_assignments_by_household_cm_id` is: `households` is
+        year-scoped, so one PB id names one season and a cross-year read keyed
+        on it returns one year's worth of rows and no error.
+
+        Rows are published as they are found, blanks and placeholders
+        included, exactly as `_build_household_parties` publishes them -- the
+        client applies `isAttendingAdultName` at render time and must be able
+        to see what the server declined to count.
+        """
+        if household_cm_id <= 0:
+            return {}
+        rows = await self._page(
+            FAMILY_CAMP_ADULTS,
+            query_params={
+                "filter": f"household.cm_id = {household_cm_id}",
+                "sort": "adult_number",
+            },
+        )
+        grouped: dict[int, list[Any]] = defaultdict(list)
+        for row in rows:
+            grouped[int(getattr(row, "year", 0) or 0)].append(row)
+        for adults in grouped.values():
+            adults.sort(key=lambda a: int(getattr(a, "adult_number", 0) or 0))
+        return dict(grouped)
+
+    async def fetch_household_registration_years(self, household_cm_id: int) -> set[int]:
+        """The years this household registered for family camp (kindred#2073).
+
+        A trace of its own, and NOT recoverable from
+        `fetch_cabin_assignments_by_household_cm_id`, which drops every blank
+        `cabin_assignment` -- and blank is all 1,433 rows from 2017-2021.
+        Measured on the production snapshot, between 24 and 89 registrations a
+        year carry neither an enrolled child nor an adult row, so a journey
+        assembled from children and adults alone loses those years entirely.
+        """
+        if household_cm_id <= 0:
+            return set()
+        rows = await self._page(
+            FAMILY_CAMP_REGISTRATIONS,
+            query_params={
+                "filter": f"household.cm_id = {household_cm_id}",
+                "fields": "year",
+                "sort": STABLE_SORT,
+            },
+        )
+        return {year for row in rows if (year := int(getattr(row, "year", 0) or 0))}
+
     @cached_by_year(lodging_cache)
     async def fetch_households(self, year: int) -> dict[str, Any]:
         """Households for a year, keyed by PocketBase record id.
