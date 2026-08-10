@@ -545,13 +545,46 @@ export function LodgingUnitCard({
    */
   const wholesaleWriteIn = writeIn !== null && occupants === 0
   const occupancyFigure = wholesaleWriteIn ? '—' : String(occupants)
+
+  /*
+   * kindred#2212 stage 1: why headcount and bed count can disagree.
+   *
+   * `occupants` above is a BED count -- `slotOccupancy` sums `partySize`,
+   * which reads the server-reported `party_size` and falls back to headcount
+   * only when nothing was reported. The reader never sees the NAMED headcount
+   * anywhere else on this card, so when the two numbers diverge the card goes
+   * quiet about why: a child under 18 months (`INFANT_BED_EXEMPT_MONTHS`,
+   * `api/constants/lodging.py`) does not consume a bed.
+   *
+   * Deliberately built from `partyHeadcount` (named adults + every child)
+   * against the already-computed `occupants` (bed count), NEVER from
+   * `PartyChild.age` directly -- that field is CampMinder `yy.mm` and carries
+   * a `0.0` UNKNOWN-AGE SENTINEL, not a newborn's age (kindred#2212). Reading
+   * age here would silently sweep that sentinel in as a false "infant". This
+   * formula never looks at age at all, so the trap cannot fire: a party whose
+   * reported beds already equal its headcount contributes zero regardless of
+   * what any child's `age` field says.
+   *
+   * When `party_size` is unreported (0/null), `partySize` already falls back
+   * to `partyHeadcount` for that party, so it contributes nothing to the
+   * difference here either -- no separate guard needed.
+   */
+  const totalHeadcount = slot.parties.reduce((sum, p) => sum + partyHeadcount(p), 0)
+  const exemptedInfants = wholesaleWriteIn ? 0 : totalHeadcount - occupants
+  const infantExemptionClause =
+    exemptedInfants > 0
+      ? ` · ${
+          exemptedInfants === 1 ? 'an infant is' : `${String(exemptedInfants)} infants are`
+        } exempt from the bed count`
+      : ''
+
   const occupancyTooltip = wholesaleWriteIn
     ? capacityKnown
       ? `Written in — occupies the whole room · sleeps ${String(unit.sleeps)}`
       : 'Written in — occupies the whole room · capacity not recorded'
     : capacityKnown
-      ? `Sleeps ${String(unit.sleeps)} · ${String(occupants)} placed`
-      : `Capacity not recorded · ${String(occupants)} placed`
+      ? `Sleeps ${String(unit.sleeps)} · ${String(occupants)} placed${infantExemptionClause}`
+      : `Capacity not recorded · ${String(occupants)} placed${infantExemptionClause}`
 
   /*
    * Whether this space meets the needs of the family in flight (#1912) —
