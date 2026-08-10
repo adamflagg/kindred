@@ -120,119 +120,145 @@ export function HouseholdRosterRow({ party, showRequests, unit, onOpen }: Househ
   return (
     // `role="button"` used to live here, overriding the native `row` role —
     // `queryAllByRole('row')` collapsed to 1 (the header alone) and the four
-    // `<td>` cells lost their owning row (kindred#2063). The affordance now
-    // lives in a real `<button>` inside the first cell instead, which keeps
-    // row/cell semantics intact and still satisfies `clickoutsidePredicate`'s
-    // `isInteractive` check (`button` is already in its selector list).
+    // `<td>` cells lost their owning row (kindred#2063). The affordance
+    // lives in the first cell instead, which keeps row/cell semantics intact
+    // and still satisfies `clickoutsidePredicate`'s `isInteractive` check
+    // (`button` is already in its selector list).
     <tr className="border-border/40 border-b align-top">
       <td className={`border-l-[3px] ${RAIL[attention.level]}`}>
-        {/* Content below stays `<span>`, never `<div>`/`<p>` — a `<button>`'s
-            content model is phrasing content only, the same reason
-            `FamilyCardBody` (this row's card-view counterpart) is spans
-            throughout. Tailwind's `block`/`flex` classes still give each span
-            the same layout its `<div>`/`<p>` had. */}
-        <button
-          type="button"
-          onClick={() => {
-            onOpen(party)
-          }}
-          onKeyDown={(event) => {
-            if (event.key === 'Enter' || event.key === ' ') {
-              event.preventDefault()
+        {/* THE EXPLICIT OPEN CONTROL (kindred#2222). The cell used to be one
+            `<button>` wrapping every line, including the Returning/
+            First-time badges — a `<button>`'s content model forbids an
+            interactive descendant, so those badges' `sr-only` detail
+            (kindred#2177) could never become a real, touch-reachable
+            tooltip trigger (kindred#2212) without first breaking that wall.
+            The badges are laid out here as siblings of the control rather
+            than a shrunken click target, using the "stretched link" trick:
+            `hover:bg-muted/30` lives on THIS `relative` wrapper (so the
+            hover wash paints behind the text, not over it — CSS `:hover`
+            reaches every ancestor of whatever the pointer is actually over),
+            the control itself is an `absolute inset-0` button carrying the
+            click/keyboard activation and the focus ring, and the visible
+            content below is a plain, non-positioned sibling — which a
+            positioned `absolute` box always paints ABOVE regardless of DOM
+            order. Nothing in the content is interactive today, so that
+            ordering is invisible; the day kindred#2212 wires a real tooltip
+            trigger into a badge, that trigger needs its own `relative z-10`
+            (or similar) to sit above this layer and receive its own clicks
+            — the standard caveat of this pattern, not a defect on its own. */}
+        <div className="hover:bg-muted/30 relative transition-colors">
+          <button
+            type="button"
+            aria-label={partyIdentityLabel(party)}
+            onClick={() => {
               onOpen(party)
-            }
-          }}
-          className="hover:bg-muted/30 focus-visible:ring-ring block w-full cursor-pointer py-3 pr-4 pl-3 text-left transition-colors focus-visible:ring-2 focus-visible:outline-none"
-        >
-          <span className="flex flex-wrap items-center gap-x-2 gap-y-1">
-            {/* kindred#2084: this used to be `party.display_name` -- CampMinder's
-                mailing_title salutation, which disagreed with the real
-                attending-adult list on 26.7% of 2026's rostered households.
-                Reuses FamilyCard's own construction (`householdIdentity.ts`)
-                instead, so staff never learn two identities for one household. */}
-            <span
-              data-testid="household-row-name"
-              className="text-foreground text-sm font-semibold"
-            >
-              {partyIdentityLabel(party)}
-            </span>
-            {/* kindred#2177 converted the board's `title` tooltips to a
-                focusable `ui/Tooltip`. These two badges are the deliberate
-                exception, and the reason is three lines up: they sit INSIDE
-                the row's own `<button>`, whose content model is phrasing
-                content with no interactive descendants. A focusable trigger
-                here would be invalid HTML and would eat the row's click.
+            }}
+            onKeyDown={(event) => {
+              if (event.key === 'Enter' || event.key === ' ') {
+                event.preventDefault()
+                onOpen(party)
+              }
+            }}
+            className="focus-visible:ring-ring absolute inset-0 cursor-pointer rounded focus-visible:ring-2 focus-visible:outline-none"
+          />
+          {/* Content below stays `<span>`, never `<div>`/`<p>` — a `<button>`'s
+              content model is phrasing content only, the same reason
+              `FamilyCardIdentity` (this row's card-view counterpart) is spans
+              throughout. Tailwind's `block`/`flex` classes still give each span
+              the same layout its `<div>`/`<p>` had. Kept even though this is no
+              longer literally inside the button: the grammar is shared with the
+              card on purpose. */}
+          <div className="py-3 pr-4 pl-3 text-left">
+            <span className="flex flex-wrap items-center gap-x-2 gap-y-1">
+              {/* kindred#2084: this used to be `party.display_name` -- CampMinder's
+                  mailing_title salutation, which disagreed with the real
+                  attending-adult list on 26.7% of 2026's rostered households.
+                  Reuses FamilyCard's own construction (`householdIdentity.ts`)
+                  instead, so staff never learn two identities for one household.
+                  Also the control's `aria-label` above, now that this text is a
+                  sibling of the control rather than its accessible-name source. */}
+              <span
+                data-testid="household-row-name"
+                className="text-foreground text-sm font-semibold"
+              >
+                {partyIdentityLabel(party)}
+              </span>
+              {/* kindred#2177 converted the board's `title` tooltips to a
+                  focusable `ui/Tooltip`. These two badges are the deliberate
+                  exception — see the cell-level comment above for the wall and
+                  the escape from it.
 
-                Real `sr-only` text instead. That is strictly more than the
-                `title` gave — `title` on a `<span>` is not reliably announced
-                at all — and the touch gap it leaves is the smallest on the
-                board, since the badge's visible word already IS the fact and
-                the sentence only rephrases it. */}
-            {party.is_returning === true && (
-              <span className="text-forest-700 dark:text-forest-300 bg-forest-100 dark:bg-forest-900/50 inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-semibold">
-                <Repeat className="h-3 w-3 flex-shrink-0" />
-                Returning
-                <span className="sr-only">(stayed with us before)</span>
-              </span>
-            )}
-            {/* `is_returning` is only ever computed for household-grain
-                parties (`_build_household_parties` sets it from
-                `prior_cm_ids`). An adult weekend guest is `grain: 'person'`
-                (`showAdults` false), for which the field is never set and
-                arrives as the Pydantic default `false` -- untracked, not
-                "no". Gating on grain keeps this badge from calling every
-                adult weekend regular a first-timer. */}
-            {showAdults && party.is_returning !== true && (
-              <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-700 dark:bg-amber-900/50 dark:text-amber-300">
-                <Star className="h-3 w-3 flex-shrink-0" />
-                First-time
-                <span className="sr-only">(first time at camp)</span>
-              </span>
-            )}
-          </span>
-          {/* Only the two states that name a real failure get words. "No cabin
-              yet" would repeat the Cabin column's "Unassigned", and an
-              unverified need would repeat the chips under Housing needs — the
-              rail and the section heading already carry the state. */}
-          {(attention.level === 'required' || attention.level === 'unmet') && (
-            <span className={`mt-0.5 block text-xs font-medium ${REASON_TONE[attention.level]}`}>
-              {attention.level === 'required' ? 'Accommodation required' : attention.reason}
+                  Real `sr-only` text instead. That is strictly more than the
+                  `title` gave — `title` on a `<span>` is not reliably announced
+                  at all — and the touch gap it leaves is the smallest on the
+                  board, since the badge's visible word already IS the fact and
+                  the sentence only rephrases it. */}
+              {party.is_returning === true && (
+                <span className="text-forest-700 dark:text-forest-300 bg-forest-100 dark:bg-forest-900/50 inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-semibold">
+                  <Repeat className="h-3 w-3 flex-shrink-0" />
+                  Returning
+                  <span className="sr-only">(stayed with us before)</span>
+                </span>
+              )}
+              {/* `is_returning` is only ever computed for household-grain
+                  parties (`_build_household_parties` sets it from
+                  `prior_cm_ids`). An adult weekend guest is `grain: 'person'`
+                  (`showAdults` false), for which the field is never set and
+                  arrives as the Pydantic default `false` -- untracked, not
+                  "no". Gating on grain keeps this badge from calling every
+                  adult weekend regular a first-timer. */}
+              {showAdults && party.is_returning !== true && (
+                <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-700 dark:bg-amber-900/50 dark:text-amber-300">
+                  <Star className="h-3 w-3 flex-shrink-0" />
+                  First-time
+                  <span className="sr-only">(first time at camp)</span>
+                </span>
+              )}
             </span>
-          )}
-          <span className="text-muted-foreground mt-1 block text-xs tabular-nums">
-            {composition(party)}
-          </span>
-          {/* Members are reference detail, not scanning material — one wrapped
-              line rather than two stacked ones, so 62 rows stay a page. An
-              adult weekend enrols the individual directly, so the party IS the
-              adult and `display_name` above already named them. */}
-          <span
-            data-testid="household-row-members"
-            className="text-muted-foreground/75 mt-0.5 block text-xs leading-snug"
-          >
-            {showAdults &&
-              adults.map((adult, index) => (
-                <Fragment
-                  key={`${String(adult.adult_number ?? index)}-${String(adult.display_name)}`}
-                >
-                  {index > 0 && ', '}
-                  {/* Each name is its own element so it stays one text node —
-                      a separator inside the span would split it. */}
-                  <span>{adult.display_name}</span>
+            {/* Only the two states that name a real failure get words. "No cabin
+                yet" would repeat the Cabin column's "Unassigned", and an
+                unverified need would repeat the chips under Housing needs — the
+                rail and the section heading already carry the state. */}
+            {(attention.level === 'required' || attention.level === 'unmet') && (
+              <span className={`mt-0.5 block text-xs font-medium ${REASON_TONE[attention.level]}`}>
+                {attention.level === 'required' ? 'Accommodation required' : attention.reason}
+              </span>
+            )}
+            <span className="text-muted-foreground mt-1 block text-xs tabular-nums">
+              {composition(party)}
+            </span>
+            {/* Members are reference detail, not scanning material — one wrapped
+                line rather than two stacked ones, so 62 rows stay a page. An
+                adult weekend enrols the individual directly, so the party IS the
+                adult and `display_name` above already named them. */}
+            <span
+              data-testid="household-row-members"
+              className="text-muted-foreground/75 mt-0.5 block text-xs leading-snug"
+            >
+              {showAdults &&
+                adults.map((adult, index) => (
+                  <Fragment
+                    key={`${String(adult.adult_number ?? index)}-${String(adult.display_name)}`}
+                  >
+                    {index > 0 && ', '}
+                    {/* Each name is its own element so it stays one text node —
+                        a separator inside the span would split it. */}
+                    <span>{adult.display_name}</span>
+                  </Fragment>
+                ))}
+              {children.map((child, index) => (
+                <Fragment key={String(child.person_cm_id ?? index)}>
+                  {(index > 0 || (showAdults && adults.length > 0)) && ' · '}
+                  <span>
+                    {child.age === null || child.age === undefined
+                      ? child.display_name
+                      : `${String(child.display_name)} (${displayCampMinderAge(child.age)})`}
+                  </span>
                 </Fragment>
               ))}
-            {children.map((child, index) => (
-              <Fragment key={String(child.person_cm_id ?? index)}>
-                {(index > 0 || (showAdults && adults.length > 0)) && ' · '}
-                <span>
-                  {child.age === null || child.age === undefined
-                    ? child.display_name
-                    : `${String(child.display_name)} (${displayCampMinderAge(child.age)})`}
-                </span>
-              </Fragment>
-            ))}
-          </span>
-        </button>
+            </span>
+          </div>
+        </div>
       </td>
 
       <td className="py-3 pr-4">

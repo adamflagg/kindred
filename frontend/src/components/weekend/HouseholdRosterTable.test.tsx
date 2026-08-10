@@ -4,7 +4,7 @@
  * weekends, where individuals enrol directly).
  */
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import type { ReactNode } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -386,12 +386,14 @@ describe('HouseholdRosterTable', () => {
     expect(screen.getByRole('tooltip')).toHaveTextContent('Two rooms combined into one slot')
   })
 
-  it('never nests a control inside the row button', () => {
-    // kindred#2177's structural guard. The name cell IS a `<button>`, whose
-    // content model forbids interactive descendants — the reason the two
-    // badges inside it carry `sr-only` text while the "Merged" chip in the
-    // next cell gets the real tooltip. A nested trigger would also eat the
-    // row's own click.
+  it('never nests an interactive control inside another one — checked by ROLE, not TAG (kindred#2222)', () => {
+    // kindred#2177's structural guard, re-keyed for kindred#2222. The
+    // original matched on the TAG (`button button`); re-keyed onto the
+    // computed accessible ROLE instead — `getAllByRole('button')` catches
+    // both a native `<button>` and an explicit `role="button"` element, so a
+    // future regression that makes the wrapping cell itself an ARIA button
+    // (without literally being a `<button>` tag) still trips this, where a
+    // tag-only selector would not.
     const { container } = render(
       <HouseholdRosterTable
         year={2026}
@@ -411,16 +413,23 @@ describe('HouseholdRosterTable', () => {
       />,
       { wrapper }
     )
-    expect(container.querySelectorAll('button button')).toHaveLength(0)
+    const roleButtons = within(container).getAllByRole('button')
+    expect(roleButtons.length).toBeGreaterThan(0)
+    for (const outer of roleButtons) {
+      const nested = roleButtons.filter((el) => el !== outer && outer.contains(el))
+      expect(nested).toHaveLength(0)
+      expect(outer.querySelectorAll('[tabindex]:not([tabindex="-1"])')).toHaveLength(0)
+    }
   })
 
   it('spells out the returning and first-time badges in text, not a title', () => {
-    // kindred#2177, and the one place the tooltip primitive is NOT the answer:
-    // these two badges live INSIDE the row's own `<button>`, whose content
-    // model is phrasing content with no interactive descendants. A focusable
-    // trigger there would be invalid HTML and would swallow the row's click.
-    // Real `sr-only` text instead — which is strictly more than the `title`
-    // gave, since `title` on a `<span>` is not reliably announced at all.
+    // kindred#2177, and the one place the tooltip primitive is NOT the
+    // answer YET: these two badges are a SIBLING of the row's own open
+    // control (kindred#2222), not its child — a focusable trigger nested
+    // inside the control would be invalid HTML and would swallow the row's
+    // click. Real `sr-only` text instead — which is strictly more than the
+    // `title` it replaced, since `title` on a `<span>` is not reliably
+    // announced at all.
     const { rerender } = render(
       <HouseholdRosterTable year={2026} parties={[party({ is_returning: true })]} />,
       { wrapper }
@@ -428,15 +437,18 @@ describe('HouseholdRosterTable', () => {
     expect(screen.getByText('Returning')).not.toHaveAttribute('title')
     expect(screen.getByText('(stayed with us before)')).toBeInTheDocument()
     expect(screen.getByText('Returning').tagName).toBe('SPAN')
-    // In the DOM is not the same as ANNOUNCED: the row's own `<button>` takes
-    // its name from its contents, so the sentence has to survive into that
-    // computation or it is decoration.
-    expect(screen.getAllByRole('button')[0]).toHaveAccessibleName(/stayed with us before/)
+    // kindred#2222: the sentence is in the DOM (asserted above) but the
+    // badge no longer lives inside the open control, so it no longer folds
+    // into that control's accessible name — the coupling that assertion
+    // used to pin was itself a symptom of the one-big-button design this
+    // issue dismantles. Giving the sentence a real accessible relationship
+    // to a trigger a touch user can reach is kindred#2212's job.
+    expect(screen.getAllByRole('button')[0]).not.toHaveAccessibleName(/stayed with us before/)
 
     rerender(<HouseholdRosterTable year={2026} parties={[party({ is_returning: false })]} />)
     expect(screen.getByText('First-time')).not.toHaveAttribute('title')
     expect(screen.getByText('(first time at camp)')).toBeInTheDocument()
-    expect(screen.getAllByRole('button')[0]).toHaveAccessibleName(/first time at camp/)
+    expect(screen.getAllByRole('button')[0]).not.toHaveAccessibleName(/first time at camp/)
   })
 
   it('flags a returning family', () => {

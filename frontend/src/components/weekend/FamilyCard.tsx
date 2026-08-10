@@ -135,23 +135,28 @@ function Chip({
    * The chip's per-party detail, e.g. "Answers disagree"'s account of which
    * two answers disagreed (kindred#2083).
    *
-   * ## Why this is NOT `ui/Tooltip`, unlike every other chip on this surface
+   * ## Why this is still NOT `ui/Tooltip`, unlike every other chip on this surface
    *
    * kindred#2177 replaced the board's `title` attributes with a focusable
-   * tooltip, and this chip was named as the highest-leverage one. It cannot
-   * have it: THE WHOLE CARD IS A `<button>` (see `FamilyCard` below), and a
-   * `<button>`'s content model forbids interactive descendants. A nested
-   * trigger would be invalid HTML and its tap would bubble straight into
-   * `onOpen`, opening the details panel instead of the bubble.
-   * `HouseholdRosterRow`'s in-button badges hit the identical wall and take
-   * the identical way out.
+   * tooltip, and this chip was named as the highest-leverage one. It
+   * couldn't have it: THE WHOLE CARD WAS A `<button>` (see `FamilyCard`
+   * below), and a `<button>`'s content model forbids interactive
+   * descendants. A nested trigger would have been invalid HTML and its tap
+   * would have bubbled straight into `onOpen`, opening the details panel
+   * instead of the bubble. `HouseholdRosterRow`'s in-button badges hit the
+   * identical wall and took the identical way out.
    *
-   * So the detail becomes REAL `sr-only` TEXT. That is strictly more than the
-   * `title` gave — `title` on a `<span>` is not reliably announced at all —
-   * and it leaves one gap, honestly stated: a touch user still cannot summon
-   * this sentence. Closing that needs the card to stop being one big button,
-   * which is a structural change with its own blast radius, not something to
-   * slip into a tooltip sweep.
+   * kindred#2222 removed that wall — `FamilyCard`'s frame is a `<div>` now,
+   * and this chip row is a SIBLING of the card's open control, not its
+   * child, so a real interactive trigger here would no longer be invalid
+   * HTML or steal the click. This chip still doesn't carry one: #2222 was
+   * the structural unblock, not the tooltip wiring — that's kindred#2212.
+   *
+   * So the detail is still REAL `sr-only` TEXT, exactly as kindred#2177
+   * shipped it. That is strictly more than the `title` it replaced gave —
+   * `title` on a `<span>` is not reliably announced at all — and it leaves
+   * one gap, honestly stated: a touch user still cannot summon this
+   * sentence. #2212 is what closes it.
    */
   title?: string
 }) {
@@ -168,14 +173,16 @@ function Chip({
 /**
  * A party's children as one `Name (age) · Name (age)` run.
  *
- * `FamilyCardBody` renders a child list TWICE — the household bold identity
- * line and the person-grain grey secondary line — and the two differ only in
- * which age formatter they call and what wraps them. Everything else (the key
- * strategy, the separator, the missing-age omission, the blank-name fallback)
- * is one decision each, and each was drifting toward being made in two places:
- * the blank-name fallback had to be hand-applied to both copies in kindred#2074.
- * Shared for the same reason `FamilyCardPreview` shares `FamilyCardBody` —
- * so the copies cannot drift apart (kindred#2153).
+ * `FamilyCardIdentity` renders a child list TWICE — the household bold
+ * identity line and the person-grain grey secondary line — and the two
+ * differ only in which age formatter they call and what wraps them.
+ * Everything else (the key strategy, the separator, the missing-age
+ * omission, the blank-name fallback) is one decision each, and each was
+ * drifting toward being made in two places: the blank-name fallback had to
+ * be hand-applied to both copies in kindred#2074. Shared for the same reason
+ * `FamilyCardPreview` shares `FamilyCardIdentity`/`FamilyCardChips`
+ * (kindred#2222, formerly one `FamilyCardBody`) — so the copies cannot drift
+ * apart (kindred#2153).
  *
  * The caller supplies the wrapper, because the two sites want different ones:
  * the bold line's span is also the non-household branch's, and the grey line's
@@ -224,24 +231,20 @@ function ChildList({
 }
 
 /**
- * Everything the card SHOWS, with nothing about how it is picked up.
+ * Lines 1–2: the household's identity, headcount and last year's cabin.
  *
- * Split out so the drag overlay can render the card without dnd-kit — see
- * `FamilyCardPreview`. Sharing the body rather than hand-rolling a second one
- * is the only reason the overlay cannot drift away from the real card.
+ * Split out of what used to be one `FamilyCardBody` so `FamilyCard` can put
+ * ONLY this half inside its real, focusable `<button>` (kindred#2222).
+ * `FamilyCardChips` (below) sits beside it as a SIBLING rather than a child,
+ * on purpose: a `<button>`'s content model forbids an interactive
+ * descendant, and the chip row is exactly where kindred#2177 left a
+ * `sr-only` detail sentence waiting for a real tooltip trigger
+ * (kindred#2212). Swapping the card's outer frame to a `<div>` while still
+ * wrapping the WHOLE body in one inner `<button>` would just move that wall
+ * one level deeper — nothing would actually be unblocked. Keeping the chip
+ * row OUT of the button is what does.
  */
-function FamilyCardBody({
-  party,
-  unit,
-  sharedSlot,
-  holdsWholeBuilding = false,
-}: {
-  party: RosterPartyRow
-  unit?: LodgingUnitRow | undefined
-  sharedSlot: boolean
-  holdsWholeBuilding?: boolean
-}) {
-  const flags = party.flags ?? {}
+function FamilyCardIdentity({ party }: { party: RosterPartyRow }) {
   const children = party.children ?? []
   const isHousehold = party.grain === 'household'
   // The filter itself -- family_camp_adults stores adult slots 1-5 as
@@ -260,14 +263,6 @@ function FamilyCardBody({
   // because a redundant `isHousehold` guard would look like the load-bearing
   // one and outlive the branch it duplicates.
   const lastYearCabin = (party.last_year_cabin ?? '').trim()
-  const attention = partyAttention(party, unit)
-  const proximity = party.share?.proximity ?? []
-  // `similar_ages` ACCOMPANIES `with`; it never replaces it. One chip covering
-  // both is what keeps 22 households from dropping out of a "wants to share"
-  // view — a chip showing one *or* the other loses them.
-  const wantsToShare = proximity.includes('with') || proximity.includes('similar_ages')
-  const wantsNear = proximity.includes('near')
-  const conflictDetail = answersConflictDetail(party.share)
 
   return (
     <>
@@ -398,35 +393,69 @@ function FamilyCardBody({
               <ChildList children={children} formatAge={displayCampMinderAge} />
             </span>
           )}
+    </>
+  )
+}
 
-      <span className="flex flex-wrap gap-1">
-        {/* #2008: this PLACEMENT covers every leaf of a building, not merely
+/**
+ * Line 3: the chip row — housing flags, the fit verdict, share-request
+ * chips, and the Returning/First-time badges.
+ *
+ * A SIBLING of `FamilyCardIdentity`'s `<button>` (kindred#2222), never its
+ * child — see that component's doc for why. The one chip carrying a `title`
+ * today (`Chip`'s "Answers disagree" detail, kindred#2083) still renders it
+ * as `sr-only` text, exactly as kindred#2177 shipped: this refactor
+ * unblocks a real `ui/Tooltip` trigger here, it does not wire one in.
+ */
+function FamilyCardChips({
+  party,
+  unit,
+  sharedSlot,
+  holdsWholeBuilding = false,
+}: {
+  party: RosterPartyRow
+  unit?: LodgingUnitRow | undefined
+  sharedSlot: boolean
+  holdsWholeBuilding?: boolean
+}) {
+  const flags = party.flags ?? {}
+  const isHousehold = party.grain === 'household'
+  const attention = partyAttention(party, unit)
+  const proximity = party.share?.proximity ?? []
+  // `similar_ages` ACCOMPANIES `with`; it never replaces it. One chip covering
+  // both is what keeps 22 households from dropping out of a "wants to share"
+  // view — a chip showing one *or* the other loses them.
+  const wantsToShare = proximity.includes('with') || proximity.includes('similar_ages')
+  const wantsNear = proximity.includes('near')
+  const conflictDetail = answersConflictDetail(party.share)
+
+  return (
+    <span className="flex flex-wrap gap-1">
+      {/* #2008: this PLACEMENT covers every leaf of a building, not merely
             a card it happens to share — see `holdsWholeBuilding`'s doc.
             First in the row: it is a fact about the household's privacy, not
             a need or a warning, and staff scan left-to-right. */}
-        {holdsWholeBuilding && <Chip label="Whole building" tone="building" icon={Home} />}
-        {/* The needs a cabin field can actually answer — the same two the fit
+      {holdsWholeBuilding && <Chip label="Whole building" tone="building" icon={Home} />}
+      {/* The needs a cabin field can actually answer — the same two the fit
             check judges. `needs_accommodation` names no specific amenity, so
             it is carried by the verdict chip below instead of duplicated. */}
-        {flags.needs_private_bathroom === true && <Chip label="Private bathroom" tone="need" />}
-        {flags.needs_power === true && <Chip label="Power" tone="need" />}
+      {flags.needs_private_bathroom === true && <Chip label="Private bathroom" tone="need" />}
+      {flags.needs_power === true && <Chip label="Power" tone="need" />}
 
-        {attention.level === 'required' && <Chip label={ATTENTION_LABEL.required} tone="warn" />}
-        {attention.level === 'unmet' && <Chip label={attention.reason} tone="warn" />}
-        {attention.level === 'unverified' && (
-          <Chip label={ATTENTION_LABEL.unverified} tone="quiet" />
-        )}
+      {attention.level === 'required' && <Chip label={ATTENTION_LABEL.required} tone="warn" />}
+      {attention.level === 'unmet' && <Chip label={attention.reason} tone="warn" />}
+      {attention.level === 'unverified' && <Chip label={ATTENTION_LABEL.unverified} tone="quiet" />}
 
-        {/* Keyed off the RESOLVED verdict, not the registration gate. The gate
+      {/* Keyed off the RESOLVED verdict, not the registration gate. The gate
             is superseded wherever the Family Camp form answered, so a household
             that said no at registration and then named a partner is legitimately
             placed — chipping it "declined" repeats at card level exactly the
             false positive the slot flag was moved off the gate to avoid.
             Wording matches the slot: the form has no refusal option. */}
-        {sharedSlot && party.share?.eligibility === 'declined' && (
-          <Chip label={shareWordingChip(SHARE_WORDING.declined)} tone="warn" />
-        )}
-        {/* 16 households for 2026 carry disagreeing answers. Shown on the card
+      {sharedSlot && party.share?.eligibility === 'declined' && (
+        <Chip label={shareWordingChip(SHARE_WORDING.declined)} tone="warn" />
+      )}
+      {/* 16 households for 2026 carry disagreeing answers. Shown on the card
             as well as the slot, so a party sitting alone still surfaces one.
             Gated on the DETAIL, not the raw boolean (kindred#2083): a party
             this can't explain — none exist today, but a person-grain party
@@ -434,38 +463,33 @@ function FamilyCardBody({
             chip. The tooltip names which two answers disagreed and which one
             staff are acting on, matching `SharePreferenceChip`'s hover
             pattern rather than a bare unexplained flag. */}
-        {conflictDetail !== null && (
-          <Chip
-            label={shareWordingChip(SHARE_WORDING.conflict)}
-            tone="warn"
-            title={conflictDetail}
-          />
-        )}
-        {wantsToShare && <Chip label="Wants to share" tone="share" />}
-        {/* NEAR and WITH are different requests: NEAR is satisfied by map
+      {conflictDetail !== null && (
+        <Chip label={shareWordingChip(SHARE_WORDING.conflict)} tone="warn" title={conflictDetail} />
+      )}
+      {wantsToShare && <Chip label="Wants to share" tone="share" />}
+      {/* NEAR and WITH are different requests: NEAR is satisfied by map
             distance between units, WITH by putting both in one room. */}
-        {wantsNear && <Chip label="Near another family" tone="muted" />}
+      {wantsNear && <Chip label="Near another family" tone="muted" />}
 
-        {party.is_returning === true && (
-          <span className="text-forest-700 dark:text-forest-300 inline-flex items-center gap-0.5 text-xs font-semibold">
-            <Repeat className="h-2.5 w-2.5 flex-shrink-0" aria-hidden="true" />
-            Returning
-          </span>
-        )}
-        {/* `is_returning` is only ever computed for household-grain parties
+      {party.is_returning === true && (
+        <span className="text-forest-700 dark:text-forest-300 inline-flex items-center gap-0.5 text-xs font-semibold">
+          <Repeat className="h-2.5 w-2.5 flex-shrink-0" aria-hidden="true" />
+          Returning
+        </span>
+      )}
+      {/* `is_returning` is only ever computed for household-grain parties
             (`_build_household_parties` sets it from `prior_cm_ids`). An
             adult weekend guest is `grain: 'person'`, for which the field is
             never set and arrives as the Pydantic default `false` -- untracked,
             not "no". Gating on grain keeps this badge from calling every
             adult weekend regular a first-timer. */}
-        {isHousehold && party.is_returning !== true && (
-          <span className="inline-flex items-center gap-0.5 text-xs font-semibold text-amber-700 dark:text-amber-300">
-            <Star className="h-2.5 w-2.5 flex-shrink-0" aria-hidden="true" />
-            First-time
-          </span>
-        )}
-      </span>
-    </>
+      {isHousehold && party.is_returning !== true && (
+        <span className="inline-flex items-center gap-0.5 text-xs font-semibold text-amber-700 dark:text-amber-300">
+          <Star className="h-2.5 w-2.5 flex-shrink-0" aria-hidden="true" />
+          First-time
+        </span>
+      )}
+    </span>
   )
 }
 
@@ -505,20 +529,26 @@ export function FamilyCard({
   })
 
   return (
-    <button
-      type="button"
+    // NOT a `<button>` (kindred#2222) — a `<div>` frame, so the chip row
+    // below can host a real interactive trigger (kindred#2212) as a SIBLING
+    // instead of a forbidden nested descendant.
+    //
+    // `ref`/`listeners` stay HERE, not on the inner control below: dnd-kit's
+    // `listeners` is pointer/keyboard event handlers, not ARIA, so keeping
+    // them on the full frame is what lets a drag still start from ANYWHERE
+    // on the card, matching today's behaviour exactly — `onPointerDown`
+    // fired on the inner button still bubbles up here regardless. What must
+    // NOT land here is `attributes`: it carries `role: 'button'` +
+    // `tabIndex: 0` UNCONDITIONALLY (`useDraggable`'s own doc), and spreading
+    // it onto this `<div>` would silently recreate
+    // `<div role="button" tabindex="0">` — still an ARIA button, the exact
+    // defect this refactor exists to remove. `attributes` moves to the
+    // explicit inner control below instead.
+    <div
       data-family-card
       ref={setNodeRef}
-      // Spread ONLY when draggable. dnd-kit sets `aria-roledescription` and
-      // the rest regardless of its own `disabled` flag, so a read-only board
-      // would announce every card as draggable to a screen reader and offer a
-      // keyboard drag that goes nowhere.
-      {...(isDraggable ? attributes : {})}
       {...(isDraggable ? listeners : {})}
-      onClick={() => {
-        onOpen(party)
-      }}
-      className={`${CARD_FRAME} hover:border-primary/50 focus-visible:ring-ring transition-colors focus-visible:ring-2 focus-visible:outline-none ${
+      className={`${CARD_FRAME} hover:border-primary/50 transition-colors ${
         inQueue ? 'bg-card' : 'bg-background'
       } ${isDraggable ? 'cursor-grab active:cursor-grabbing' : ''} ${
         // The card stays mounted and dimmed rather than being removed: the
@@ -527,13 +557,31 @@ export function FamilyCard({
         isDragging ? 'opacity-40' : ''
       }`}
     >
-      <FamilyCardBody
+      {/* THE EXPLICIT INNER CONTROL (kindred#2222). Carries click, keyboard
+          activation (native `<button>` semantics) and the focus ring — the
+          same three the old single `<button>` carried, just narrowed to the
+          identity lines rather than the whole card. `attributes` lands here,
+          not on the frame above: a native `<button>` is already
+          `role="button"` and already `tabIndex 0`, so dnd-kit's values are
+          redundant-but-harmless here, where on the frame they would be the
+          defect. */}
+      <button
+        type="button"
+        {...(isDraggable ? attributes : {})}
+        onClick={() => {
+          onOpen(party)
+        }}
+        className="focus-visible:ring-ring flex w-full flex-col gap-1 rounded-lg text-left focus-visible:ring-2 focus-visible:outline-none"
+      >
+        <FamilyCardIdentity party={party} />
+      </button>
+      <FamilyCardChips
         party={party}
         unit={unit}
         sharedSlot={sharedSlot}
         holdsWholeBuilding={holdsWholeBuilding}
       />
-    </button>
+    </div>
   )
 }
 
@@ -566,7 +614,8 @@ export function FamilyCardPreview({
 }) {
   return (
     <div className={`${CARD_FRAME} bg-card shadow-lodge-lg border-primary/50 rotate-2`}>
-      <FamilyCardBody
+      <FamilyCardIdentity party={party} />
+      <FamilyCardChips
         party={party}
         unit={unit}
         sharedSlot={sharedSlot}

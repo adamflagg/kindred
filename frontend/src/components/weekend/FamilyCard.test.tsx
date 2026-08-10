@@ -16,7 +16,7 @@
  *
  * Fictional data throughout.
  */
-import { render, screen } from '@testing-library/react'
+import { render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 
@@ -439,17 +439,34 @@ describe('FamilyCard — what it shows', () => {
     expect(chip?.textContent).toMatch(/will not share/)
     expect(chip?.textContent).toMatch(/open to sharing/)
     expect(chip?.textContent).toMatch(/form's answer/)
-    // In the DOM is not the same as ANNOUNCED. The card is one `<button>`, so
-    // the sentence has to reach its computed accessible name or the `sr-only`
-    // span is decoration — which is what the `title` it replaced amounted to.
-    expect(screen.getByRole('button')).toHaveAccessibleName(/form's answer/)
+    // kindred#2222: the sr-only sentence is still in the DOM (asserted above
+    // via `chip?.textContent`, and jsdom does not hide `sr-only` text any
+    // more than a screen reader's ordinary reading cursor does), but the
+    // card's open control no longer wraps the chip row at all — the whole
+    // point of this refactor is that the chip row is a SIBLING of the
+    // control, not its child, so a future interactive trigger there
+    // (kindred#2212) is never nested inside another one. That means the
+    // sentence is no longer folded into the control's accessible name the
+    // way it was when the card was one big `<button>`. Closing THAT gap —
+    // giving the sentence a real accessible relationship to a trigger a
+    // touch user can reach — is kindred#2212's job, not this one's.
+    expect(screen.getByRole('button', { name: /Johnson/ })).not.toHaveAccessibleName(
+      /form's answer/
+    )
   })
 
-  it('never nests a control inside the card, which is itself a button', () => {
-    // The guard behind the chip's `sr-only` detail (kindred#2177). A nested
-    // `<button>` is invalid inside a `<button>`'s content model AND its tap
-    // would bubble into `onOpen`, so if the tooltip primitive is ever wired
-    // in here, this fails first.
+  it('never nests an interactive control inside another one — checked by ROLE, not TAG (kindred#2222)', () => {
+    // The guard behind the chip's `sr-only` detail (kindred#2177), re-keyed
+    // for kindred#2222. The original version of this guard matched on the
+    // TAG (`button button`), which a `<div>` frame defeats trivially even
+    // when it is STILL an ARIA button: `useDraggable`'s `attributes` carries
+    // `role: 'button'` + `tabIndex: 0` UNCONDITIONALLY, so a naive tag swap
+    // that still spreads them onto the frame recreates
+    // `<div role="button" tabindex="0">` — which assistive tech, and the
+    // HTML content model, still treat as a button. A tag-based selector
+    // cannot see that; a role-based one can, because `getAllByRole('button')`
+    // resolves the computed ACCESSIBLE role (explicit `role="button"` as well
+    // as a native `<button>` tag), not the literal tag name.
     const { container } = render(
       <FamilyCard
         party={party({
@@ -467,8 +484,15 @@ describe('FamilyCard — what it shows', () => {
       />
     )
     expect(screen.getByText('Wants to share')).toBeInTheDocument()
-    expect(container.querySelectorAll('button button')).toHaveLength(0)
-    expect(container.querySelectorAll('button [tabindex]')).toHaveLength(0)
+    const roleButtons = within(container).getAllByRole('button')
+    expect(roleButtons.length).toBeGreaterThan(0)
+    for (const outer of roleButtons) {
+      const nested = roleButtons.filter((el) => el !== outer && outer.contains(el))
+      expect(nested).toHaveLength(0)
+      // Catches a focusable-but-not-role="button" descendant too — e.g. an
+      // element some future edit makes tabbable without giving it a role.
+      expect(outer.querySelectorAll('[tabindex]:not([tabindex="-1"])')).toHaveLength(0)
+    }
   })
 
   it('renders no "Answers disagree" chip, and no tooltip, when there is no conflict', () => {
@@ -757,8 +781,9 @@ describe('FamilyCard — summer’s type scale', () => {
   })
 
   it('carries the same scale into the drag overlay', () => {
-    // The overlay shares `FamilyCardBody`, so this passes for free — which is
-    // the point. It fails the moment somebody hand-rolls a second body.
+    // The overlay shares `FamilyCardIdentity`/`FamilyCardChips`, so this
+    // passes for free — which is the point. It fails the moment somebody
+    // hand-rolls a second body.
     render(<FamilyCardPreview party={party()} />)
     expect(screen.getByTestId('family-card-name')).toHaveClass('text-sm')
   })
