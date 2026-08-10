@@ -181,6 +181,10 @@ const _exhaustiveLodgingUnit: Required<LodgingUnitRow> = {
   name: 'Ridge 1',
   area_code: 'RIDGE',
   area_name: 'Ridge Side',
+  // kindred#2076: the Manage screen's area rank, read off
+  // `lodging_areas.sort_order`. The board sorts its areas by this instead of
+  // the area name.
+  area_sort_order: 3,
   sleeps: 5,
   bathroom: 'shared',
   bathroom_group: '',

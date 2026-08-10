@@ -2122,6 +2122,10 @@ export type LodgingUnitSummary = {
    */
   area_name?: string
   /**
+   * Area Sort Order
+   */
+  area_sort_order?: number
+  /**
    * Sleeps
    */
   sleeps?: number | null

@@ -60,6 +60,10 @@ def _unit(
     parent_unit: str = "",
     shareability: str = "",
     has_power: bool = False,
+    # False builds the default RIDGE area (honouring `area_sort_order`); True
+    # resolves the expanded `area` relation to None -- the missing-area case.
+    area_missing: bool = False,
+    area_sort_order: int = 1,
 ) -> SimpleNamespace:
     return _rec(
         id=pb_id,
@@ -84,7 +88,7 @@ def _unit(
         # Blank by default: the migration leaves an unclassifiable row empty
         # rather than guessing, so "" is a state the service really sees.
         shareability=shareability,
-        expand={"area": _rec(code="RIDGE", name="Ridge Side", sort_order=1)},
+        expand={"area": None if area_missing else _rec(code="RIDGE", name="Ridge Side", sort_order=area_sort_order)},
     )
 
 
@@ -907,6 +911,39 @@ class TestUnitsAndCounts:
 
         assert roster.units[0].map_x is None
         assert roster.units[0].map_y is None
+
+    @pytest.mark.asyncio
+    async def test_area_sort_order_travels_from_the_expanded_area_to_the_summary(self) -> None:
+        """kindred#2076: the board keys area order off the Manage screen's
+        rank, which lives on the expanded `area.sort_order` column. It never
+        reached the payload before this -- see `LodgingUnitSummary`.
+        """
+        repo = _repo(
+            fetch_session=FAMILY_SESSION,
+            fetch_units=[
+                _unit("u1", "ridge-a", "Ridge A", area_sort_order=7),
+                _unit("u2", "cedar-a", "Cedar A", area_sort_order=2),
+            ],
+        )
+        roster = await LodgingRosterService(repo).build_roster(2026, 1000001)
+
+        by_code = {u.code: u for u in roster.units}
+        assert by_code["ridge-a"].area_sort_order == 7
+        assert by_code["cedar-a"].area_sort_order == 2
+
+    @pytest.mark.asyncio
+    async def test_a_unit_with_no_expanded_area_reports_zero_sort_order(self) -> None:
+        """No `area` relation resolves (a dangling or unset link) means the
+        service has nothing to rank by -- 0, the schema default, same
+        treatment `area_code`/`area_name` already give a missing area.
+        """
+        repo = _repo(
+            fetch_session=FAMILY_SESSION,
+            fetch_units=[_unit("u1", "ridge-a", "Ridge A", area_missing=True)],
+        )
+        roster = await LodgingRosterService(repo).build_roster(2026, 1000001)
+
+        assert roster.units[0].area_sort_order == 0
 
     @pytest.mark.asyncio
     @pytest.mark.parametrize(

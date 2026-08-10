@@ -35,6 +35,7 @@ function unit(overrides: Partial<LodgingUnitRow> = {}): LodgingUnitRow {
     name: 'Cedar 1',
     area_code: 'CG',
     area_name: 'Cedar Grove',
+    area_sort_order: 0,
     sleeps: 5,
     bathroom: 'shared',
     bathroom_group: '',
@@ -979,6 +980,111 @@ describe('buildBoard — area grouping and colour', () => {
     )
     expect(board.areas.map((area) => area.name)).toEqual(['Cedar Grove', 'North Ridge'])
     expect(board.areas[0]?.slots).toHaveLength(2)
+  })
+
+  it('orders areas by the Manage screen rank, NOT alphabetically (kindred#2076)', () => {
+    // Alphabetically "Cedar Grove" < "North Ridge", but the Manage screen's
+    // rank puts North Ridge first -- the board must follow the rank, not
+    // the name.
+    const board = buildBoard(
+      [],
+      [
+        unit({ area_code: 'CG', area_name: 'Cedar Grove', area_sort_order: 9 }),
+        unit({
+          unit_id: 'u2',
+          code: 'ridge-1',
+          name: 'Ridge 1',
+          area_code: 'NR',
+          area_name: 'North Ridge',
+          area_sort_order: 1,
+        }),
+      ]
+    )
+    expect(board.areas.map((area) => area.name)).toEqual(['North Ridge', 'Cedar Grove'])
+  })
+
+  it('breaks a tied (or missing) area rank by name, deterministically', () => {
+    // Two areas with the SAME rank -- kindred#2076's reorder script is
+    // documented non-atomic, so a mid-loop failure can leave two areas
+    // sharing a rank. 0 counts as "no rank" and is a tie too.
+    const board = buildBoard(
+      [],
+      [
+        unit({
+          unit_id: 'u1',
+          code: 'bend-1',
+          name: 'Bend 1',
+          area_code: 'RB',
+          area_name: 'River Bend',
+          area_sort_order: 5,
+        }),
+        unit({
+          unit_id: 'u2',
+          code: 'ridge-1',
+          name: 'Ridge 1',
+          area_code: 'NR',
+          area_name: 'North Ridge',
+          area_sort_order: 5,
+        }),
+        unit({
+          unit_id: 'u3',
+          code: 'cedar-1',
+          name: 'Cedar 1',
+          area_code: 'CG',
+          area_name: 'Cedar Grove',
+          area_sort_order: 0,
+        }),
+        unit({
+          unit_id: 'u4',
+          code: 'aspen-1',
+          name: 'Aspen 1',
+          area_code: 'AS',
+          area_name: 'Aspen',
+          area_sort_order: 0,
+        }),
+      ]
+    )
+    // Rank 5 pair breaks to name (North Ridge < River Bend); the two
+    // rank-0 areas break to name too (Aspen < Cedar Grove) and, because 0 is
+    // the lowest rank present, sort ahead of the ranked pair.
+    expect(board.areas.map((area) => area.name)).toEqual([
+      'Aspen',
+      'Cedar Grove',
+      'North Ridge',
+      'River Bend',
+    ])
+  })
+
+  it('never reorders the units WITHIN an area — only the area order changes', () => {
+    // The payload already arrives unit-alphabetical within an area (the
+    // repository's own query sorts `area.sort_order,name`); `buildBoard`
+    // must not second-guess that order once an area's rank moves it. Here
+    // the two units are handed in already-alphabetical order inside an area
+    // that the rank reorder moves to the FRONT of the board, and they must
+    // stay in that same relative order.
+    const board = buildBoard(
+      [],
+      [
+        unit({
+          area_code: 'NR',
+          area_name: 'North Ridge',
+          area_sort_order: 1,
+          code: 'ridge-1',
+          name: 'Ridge 1',
+        }),
+        unit({
+          unit_id: 'u2',
+          area_code: 'NR',
+          area_name: 'North Ridge',
+          area_sort_order: 1,
+          code: 'ridge-2',
+          name: 'Ridge 2',
+        }),
+        unit({ unit_id: 'u3', area_code: 'CG', area_name: 'Cedar Grove', area_sort_order: 9 }),
+      ]
+    )
+    expect(board.areas.map((area) => area.name)).toEqual(['North Ridge', 'Cedar Grove'])
+    expect(board.areas[0]?.slots.map((slot) => slot.unit.code)).toEqual(['ridge-1', 'ridge-2'])
   })
 
   it('keeps two areas apart when they share a blank code but not a name', () => {

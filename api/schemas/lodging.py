@@ -145,6 +145,11 @@ class LodgingUnitSummary(BaseModel):
     name: str
     area_code: str = ""
     area_name: str = ""
+    # The Manage screen's area rank (kindred#2076), read straight off
+    # `lodging_areas.sort_order` -- the board keys its area order off this,
+    # not off the area name. 0 for a unit with no expanded area, same
+    # treatment `area_code`/`area_name` already give that case.
+    area_sort_order: int = 0
     # None means UNKNOWN. PocketBase stores an unset number as 0, so the
     # service maps 0 -> None here; never render "sleeps 0".
     sleeps: int | None = None

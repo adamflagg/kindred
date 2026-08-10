@@ -1256,6 +1256,7 @@ class LodgingRosterService:
                     name=_s(unit, "name"),
                     area_code=_s(area, "code") if area is not None else "",
                     area_name=_s(area, "name") if area is not None else "",
+                    area_sort_order=_i(area, "sort_order") if area is not None else 0,
                     sleeps=unit_capacity(_i(unit, "sleeps")),
                     # The units INVENTORY evaluates each unit as its own
                     # one-element slot, so a room that only clears the
