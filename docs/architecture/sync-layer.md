@@ -177,6 +177,49 @@ After implementation, verify ALL of these work:
 | Global table in historical sync | Unnecessary re-sync of static data | Check if table has `year` field - if not, it's global |
 | Missing `SyncJobToCollections` entry | Sheet always re-exported even when no changes | Add sync job to mapping in `table_exporter.go` |
 
+## Reading Derived Informational Tables (Active-Enrolment Filtering)
+
+A derived informational table must be filtered by **active enrolment at read time** — an `attendees`
+row with `status_id = 2` for that person and that year — never swept by deletion. This is a read-side
+rule, not a sync change: rows for a cancelled camper or a staffer who left mid-season stay in the
+table by design. None of these tables has a history table behind it, so a delete is unrecoverable — a
+re-registration, a correction, or a later re-enrolment cannot get a deleted row back.
+
+⚠️ **The filter is per-(person, year) and must not be applied across years.** A staffer who worked a
+prior session, or a camper attending a second session, keeps their historical rows — that is why a
+read-side filter is correct where a delete is not: the filter is scoped to the view's own year, a
+delete is not.
+
+⛔ **`family_camp_registrations` must never be touched, swept, or filtered destructively.** Its
+`cabin_assignment` column is populated on 427 / 423 / 472 / 464 rows for 2022 / 2023 / 2024 / 2025 and
+is the only pre-2026 placement history anywhere in the database.
+
+**Which tables the predicate applies to** (measured 2026-08-08 against the production snapshot — cited
+as measured on that date, not re-derived live):
+
+| Table | Grain | 2026 rows | no active enrolment (2026) | 2025 |
+|---|---|---|---|---|
+| `camper_dietary` | person × year | 895 | 64 (7.2%) | 145 / 1084 (13.4%) |
+| `camper_transportation` | person × session | 1661 | 10 (0.6%) | 11 / 1969 |
+| `quest_registrations` | person × year | 69 | 1 | 0 / 64 |
+| `staff_skills` | person, not enrolment | 401 | predicate does not apply — staff are not attendees | — |
+| `household_demographics` | household, not enrolment | 1603 | predicate does not apply — household-grain | — |
+
+**The point worth stating plainly: a dashboard that reads `camper_dietary` unfiltered ships a 7.2%
+(2026) / 13.4% (2025) error.** That gap is the whole reason this rule exists: the three
+enrolment-grain tables above (`camper_dietary`, `camper_transportation`, `quest_registrations`) each
+carry stale rows for people no longer actively enrolled, at the percentages measured.
+
+**No reader applies this filter today, because these three tables have no reader today.**
+`table_exporter.go`'s `SyncJobToCollections` map is *not* a reader — its own comment says it exists
+only so the export-skip optimisation knows which collections a sync job writes; nothing there touches
+a row. The one real live reader, `GetReadableYearExports()`, covers `staff_skills` and
+`household_demographics` — the two tables above where the predicate does **not** apply, since staff
+are not attendees and the household grain has no per-person enrolment to check. This rule is written
+down for whoever builds the first reader of `camper_dietary`, `camper_transportation`, or
+`quest_registrations` — a future staff dashboard or PDF export — so that reader doesn't inherit the
+error above silently.
+
 ## Python Request Processor (`bunking/sync/bunk_request_processor/`)
 Unified processor for all 5 bunk request field types:
 

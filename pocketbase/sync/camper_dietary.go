@@ -42,6 +42,12 @@ const (
 // - Family Medical-Allergies -> has_allergies (bool)
 // - Family Medical-Allergy Info -> allergy_info
 // - Family Medical-Additional -> additional_medical
+//
+// Rows persist after a camper cancels; this table is never swept by deletion. A future reader
+// (e.g. a staff dashboard) must filter by active enrolment for the view's own year -- an
+// `attendees` row with status_id = 2 for that person and year -- and must not filter across
+// years. See "Reading Derived Informational Tables (Active-Enrolment Filtering)" in
+// docs/architecture/sync-layer.md.
 type CamperDietarySync struct {
 	App            core.App
 	Year           int

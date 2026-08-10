@@ -35,6 +35,12 @@ const (
 //
 // Field mapping: 45+ Quest-* and Q-* prefixed fields covering signatures, preferences,
 // parent questionnaires, and transportation details.
+//
+// Rows persist after a participant cancels; this table is never swept by deletion. A future
+// reader (e.g. a staff dashboard) must filter by active enrolment for the view's own year -- an
+// `attendees` row with status_id = 2 for that person and year -- and must not filter across
+// years. See "Reading Derived Informational Tables (Active-Enrolment Filtering)" in
+// docs/architecture/sync-layer.md.
 type QuestRegistrationsSync struct {
 	App            core.App
 	Year           int
