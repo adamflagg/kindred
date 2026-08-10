@@ -9,11 +9,15 @@
  * ## What this file will NOT do
  *
  * **It never validates fit.** `partyAttention` is advisory and
- * `place_party` deliberately enforces no capacity or amenity rule; every
- * cabin is `is_confirmed = false` until staff walk the property, so a fit
- * gate here would refuse nearly every drop for a reason that is really "we
- * have not checked yet". A drop into a full or unsuitable room is allowed and
- * the board flags it afterwards.
+ * `place_party` deliberately enforces no capacity or amenity rule: a misfit is
+ * surfaced on the board's hatch channel (kindred#1912), never refused at the
+ * door, so a fit gate here would turn an advisory signal into a hard block. A
+ * drop into a full or unsuitable room is allowed and the board flags it
+ * afterwards.
+ *
+ * This once rested on "every cabin is `is_confirmed = false` until staff walk
+ * the property". That is no longer true — 118 of 118 units are confirmed in the
+ * production snapshot of 2026-08-06 — but the rule never depended on it.
  *
  * **It never validates a unit SET.** A merge-legality rule was built across
  * nine tasks and removed in kindred#1903; `docs/architecture/lodging-occupancy.md`
