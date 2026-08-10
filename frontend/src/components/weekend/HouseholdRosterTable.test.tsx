@@ -136,6 +136,35 @@ describe('HouseholdRosterTable', () => {
     expect(names.indexOf('Waiting Family')).toBeLessThan(names.indexOf('Settled Family'))
   })
 
+  it('carries attention level and count on the section header alone, with no per-row stripe', () => {
+    // kindred#2072-rail: the row's left border used to repeat the section it
+    // already sits under -- CONSTANT within a section, so it added no
+    // information (the same fence #2179 applied to the shared-space ring).
+    // The section header is now the sole carrier: it names the level AND
+    // says how many parties are in it.
+    render(
+      <HouseholdRosterTable
+        year={2026}
+        parties={[
+          party({ display_name: 'Settled Family', unit_name: 'Ridge A' }),
+          party({ display_name: 'Waiting Family', unit_name: '', household_cm_id: 2000002 }),
+        ]}
+      />,
+      { wrapper }
+    )
+
+    const heading = screen.getByText('Needs a cabin')
+    expect(heading.closest('th')).toHaveTextContent('1')
+
+    // No attention-keyed left border on the row that used to carry it.
+    const waitingNameEl = screen
+      .getAllByTestId('household-row-name')
+      .find((el) => el.textContent === 'Waiting Family')
+    const nameCell = waitingNameEl?.closest('td')
+    expect(nameCell?.className ?? '').not.toMatch(/border-l-\[3px\]/)
+    expect(nameCell?.className ?? '').not.toMatch(/border-(red|amber|sky)-(400|500)/)
+  })
+
   it('does not draw section headings when every party shares one state', () => {
     // An untouched adult weekend: heading the whole roster "Needs a cabin"
     // repeats what the banner already said.
