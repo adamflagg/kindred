@@ -895,3 +895,121 @@ describe('FamilyCard — a shared surname is not repeated', () => {
     expect(screen.getByTestId('family-card-adults')).toHaveTextContent('Emma · David Johnson')
   })
 })
+
+/**
+ * kindred#2075 — last year's housing, right-anchored on the EXISTING grey line.
+ *
+ * Ruled Option A: mirror what summer already ships. `CamperCard.tsx` renders
+ * its `historyDisplay` right-anchored on line 2 beside Age/Grade; this puts
+ * the prior-year cabin right-anchored on line 2 beside the adults. NO THIRD
+ * LINE — the card is already denser than the request was filed against.
+ *
+ * The density constraint is the interesting half. Summer's line 2 carries a
+ * fixed-width "Age 9.42 · 4th"; this one carries variable-length adult names,
+ * and the card is about 244 px wide inside `LodgingUnitCard` (its `p-4` +
+ * `border-2` eat 36 px off the board's `minmax(280px,1fr)` column). So the two
+ * genuinely compete, and the ruling settles which one gives: TRUNCATE THE
+ * ADULT NAMES. The cabin string is the new information and must stay legible.
+ */
+describe('FamilyCard — last year’s housing', () => {
+  it('right-anchors the prior-year cabin on the same grey line as the adults', () => {
+    render(
+      <FamilyCard
+        party={party({ is_returning: true, last_year_cabin: 'Cedar Lodge - Room 2' })}
+        onOpen={vi.fn()}
+      />
+    )
+    const housing = screen.getByTestId('family-card-last-year-cabin')
+    expect(housing).toHaveTextContent('Cedar Lodge - Room 2')
+    // The SAME row as the adults, not a line of its own — the whole point of
+    // the ruling is 0 px added to the card.
+    expect(housing.parentElement).toContainElement(screen.getByTestId('family-card-adults'))
+  })
+
+  // THE COMMON CASE. 202 of 2026's 459 registered households have no 2025
+  // cabin, and "" covers three different facts (first-timer, skipped a year,
+  // last here before 2022 when `cabin_assignment` was blank on all 1,433
+  // rows). None of them is "nobody assigned them", so none of them gets a
+  // placeholder, an em dash, or a "First year" label.
+  it('renders nothing at all when there is no prior-year cabin', () => {
+    render(<FamilyCard party={party({ last_year_cabin: '' })} onOpen={vi.fn()} />)
+    expect(screen.queryByTestId('family-card-last-year-cabin')).not.toBeInTheDocument()
+    expect(screen.queryByText('—')).not.toBeInTheDocument()
+    expect(screen.queryByText(/first year/i)).not.toBeInTheDocument()
+  })
+
+  // DIRECTLY PRIOR YEAR ONLY. A family placed two years ago but not last year
+  // arrives with `is_returning: true` and an empty cabin — the two fields come
+  // from different tables and the "Returning" badge must not tempt anything
+  // here into showing an older stay.
+  it('shows nothing for a returning family whose last stay was not last year', () => {
+    render(
+      <FamilyCard party={party({ is_returning: true, last_year_cabin: '' })} onOpen={vi.fn()} />
+    )
+    expect(screen.getByText('Returning')).toBeInTheDocument()
+    expect(screen.queryByTestId('family-card-last-year-cabin')).not.toBeInTheDocument()
+  })
+
+  it('truncates the adult names and never the cabin', () => {
+    render(
+      <FamilyCard
+        party={party({
+          adults: [
+            { adult_number: 1, display_name: 'Genevieve Aleksandrova', relationship: 'Mother' },
+            { adult_number: 2, display_name: 'Bartholomew Aleksandrov', relationship: 'Father' },
+          ],
+          last_year_cabin: 'Cedar Grove Lodge - Room 12B',
+        })}
+        onOpen={vi.fn()}
+      />
+    )
+    const adults = screen.getByTestId('family-card-adults')
+    const housing = screen.getByTestId('family-card-last-year-cabin')
+    // The adults give way: `min-w-0` is what lets a flex child shrink below
+    // its content width at all, and without it `truncate` never fires.
+    expect(adults).toHaveClass('min-w-0', 'flex-1', 'truncate')
+    // The cabin does not: it neither shrinks nor wraps nor clips.
+    expect(housing).toHaveClass('whitespace-nowrap')
+    expect(housing).not.toHaveClass('truncate')
+    expect(housing).toHaveTextContent('Cedar Grove Lodge - Room 12B')
+  })
+
+  // 63 of 2026's 459 registered households have no named adult row at all
+  // (kindred#1925/#1946 dropped the nameless ones), so the grey line they sit
+  // on may not exist. The cabin is real data and is not dropped to preserve a
+  // line that was never there.
+  it('still shows the cabin for a household with no attending adults', () => {
+    render(
+      <FamilyCard party={party({ adults: [], last_year_cabin: 'Pine Cabin' })} onOpen={vi.fn()} />
+    )
+    expect(screen.getByTestId('family-card-last-year-cabin')).toHaveTextContent('Pine Cabin')
+    expect(screen.queryByTestId('family-card-adults')).not.toBeInTheDocument()
+  })
+
+  // Same grain gate as the "Returning" badge, and for the same reason: the
+  // server only ever keys this off a HOUSEHOLD cm_id, so a person-grain adult
+  // weekend guest has no prior-year cabin to have. Rendering one would put a
+  // line on a card that has no grey line at all.
+  it('never renders on a person-grain adult weekend guest', () => {
+    render(
+      <FamilyCard
+        party={party({
+          grain: 'person',
+          household_cm_id: 0,
+          person_cm_id: 5001,
+          display_name: 'Liam Garcia',
+          adults: [],
+          children: [],
+          last_year_cabin: 'Pine Cabin',
+        })}
+        onOpen={vi.fn()}
+      />
+    )
+    expect(screen.queryByTestId('family-card-last-year-cabin')).not.toBeInTheDocument()
+  })
+
+  it('carries the cabin into the drag overlay too', () => {
+    render(<FamilyCardPreview party={party({ last_year_cabin: 'Pine Cabin' })} />)
+    expect(screen.getByTestId('family-card-last-year-cabin')).toHaveTextContent('Pine Cabin')
+  })
+})

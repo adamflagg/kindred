@@ -568,6 +568,148 @@ class TestFetchFamilyCampRegistrations:
         assert result["hh_1"].share_cabin_gate == "yes_share"
 
 
+def _route_by_collection(pb: MagicMock, rows: dict[str, list[Any]]) -> dict[str, list[dict[str, Any]]]:
+    """Give the pb mock a different row set per collection name.
+
+    Every other test in this file reads ONE collection, so the shared `pb`
+    fixture can hand the same list to any caller.
+    `fetch_cabin_assignments_by_household_cm_id` reads TWO -- and the whole
+    point of it is that they are joined on the right key, which a mock
+    returning the same rows to both would make untestable.
+
+    Returns the per-collection record of `query_params` each read was issued
+    with, so a test can assert both filters carry the SAME year.
+    """
+    queries: dict[str, list[dict[str, Any]]] = {}
+
+    def _collection(name: str) -> MagicMock:
+        def _get_full_list(**kwargs: Any) -> list[Any]:
+            queries.setdefault(name, []).append(kwargs["query_params"])
+            return rows.get(name, [])
+
+        col = MagicMock()
+        col.get_full_list.side_effect = _get_full_list
+        return col
+
+    pb.collection.side_effect = _collection
+    return queries
+
+
+class TestFetchCabinAssignmentsByHouseholdCmId:
+    """The prior-year housing read, keyed by CampMinder id.
+
+    ⚠️ THE JOIN IS THE WHOLE TEST. `family_camp_registrations.household` is a
+    PocketBase relation, and `households` is YEAR-SCOPED -- a 2025
+    registration hangs off the *2025* households record, whose PB id the 2026
+    roster is not carrying. Joining a prior year's registrations onto the
+    current year's household ids returns a plausible near-empty map rather
+    than an error, so the board would quietly report a camp of first-timers.
+    Measured on the 2026 prod snapshot: bridging on `cm_id` finds 257 of 459
+    registered households with a 2025 cabin; joining on the PB id finds 0.
+
+    Deliberately NOT restricted to "last year" here. kindred#2073 needs the
+    identical read once per year of 2022-2025, so the YEAR is the parameter
+    and "directly prior" is the caller's decision (kindred#2075's ruling
+    limits what the CARD renders, not what this can fetch).
+    """
+
+    @pytest.mark.asyncio
+    async def test_keys_by_household_cm_id_not_pocketbase_id(self, repo: LodgingRepository, pb: MagicMock) -> None:
+        _route_by_collection(
+            pb,
+            {
+                "family_camp_registrations": [_record(household="hh_2025_1", cabin_assignment="Cedar Lodge - Room 2")],
+                "households": [_record(id="hh_2025_1", cm_id=2000001)],
+            },
+        )
+
+        result = await repo.fetch_cabin_assignments_by_household_cm_id(2025)
+
+        assert result == {2000001: "Cedar Lodge - Room 2"}
+        # Belt and braces on the key SPACE, not just the value: a map keyed by
+        # PocketBase id would still satisfy an equality check written against
+        # whatever it happened to produce.
+        assert all(isinstance(key, int) for key in result)
+
+    @pytest.mark.asyncio
+    async def test_both_reads_are_scoped_to_the_year_asked_for(self, repo: LodgingRepository, pb: MagicMock) -> None:
+        """Reading registrations at 2025 against households at 2026 is the
+        same defect as joining on the PB id, one layer up.
+        """
+        queries = _route_by_collection(pb, {"family_camp_registrations": [], "households": []})
+
+        await repo.fetch_cabin_assignments_by_household_cm_id(2025)
+
+        assert "year = 2025" in queries["family_camp_registrations"][0]["filter"]
+        assert "year = 2025" in queries["households"][0]["filter"]
+
+    @pytest.mark.asyncio
+    async def test_blank_and_whitespace_assignments_are_dropped(self, repo: LodgingRepository, pb: MagicMock) -> None:
+        """`cabin_assignment` is empty for every row 2017-2021 (0 of 1,433) and
+        for the 16% of a live year not yet placed. An entry here means "we know
+        where they were"; a blank one would render as an empty right-anchored
+        gap on the card.
+        """
+        _route_by_collection(
+            pb,
+            {
+                "family_camp_registrations": [
+                    _record(household="hh_a", cabin_assignment=""),
+                    _record(household="hh_b", cabin_assignment="   "),
+                    _record(household="hh_c", cabin_assignment=None),
+                    _record(household="hh_d", cabin_assignment="  Pine Cabin  "),
+                ],
+                "households": [
+                    _record(id="hh_a", cm_id=2000001),
+                    _record(id="hh_b", cm_id=2000002),
+                    _record(id="hh_c", cm_id=2000003),
+                    _record(id="hh_d", cm_id=2000004),
+                ],
+            },
+        )
+
+        result = await repo.fetch_cabin_assignments_by_household_cm_id(2025)
+
+        assert result == {2000004: "Pine Cabin"}
+
+    @pytest.mark.asyncio
+    async def test_a_registration_with_no_matching_household_is_dropped(
+        self, repo: LodgingRepository, pb: MagicMock
+    ) -> None:
+        """Never key on 0. `_build_household_parties` gives an unresolvable
+        household `household_cm_id = 0`, so a 0 key here would hand every
+        such party somebody else's cabin.
+        """
+        _route_by_collection(
+            pb,
+            {
+                "family_camp_registrations": [_record(household="hh_gone", cabin_assignment="Pine Cabin")],
+                "households": [_record(id="hh_other", cm_id=2000001)],
+            },
+        )
+
+        result = await repo.fetch_cabin_assignments_by_household_cm_id(2025)
+
+        assert result == {}
+
+    @pytest.mark.asyncio
+    async def test_composes_over_the_two_cached_reads(self, repo: LodgingRepository, pb: MagicMock) -> None:
+        """Two round trips the first time, none the second.
+
+        Both halves are already `@cached_by_year`, so kindred#2073's sweep of
+        2022-2025 pays each year once per process rather than once per
+        request. A bespoke narrower query would have its own cache to keep
+        coherent with those two.
+        """
+        queries = _route_by_collection(pb, {"family_camp_registrations": [], "households": []})
+
+        await repo.fetch_cabin_assignments_by_household_cm_id(2025)
+        await repo.fetch_cabin_assignments_by_household_cm_id(2025)
+
+        assert len(queries["family_camp_registrations"]) == 1
+        assert len(queries["households"]) == 1
+
+
 class TestFetchHouseholdsByIds:
     """The fresh-fetch escape hatch for kindred#2143.
 

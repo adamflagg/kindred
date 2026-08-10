@@ -67,6 +67,12 @@ const _exhaustiveRosterParty: Required<RosterPartyRow> = {
   effective_bathroom: 'unknown',
   arrival_eta: '',
   is_returning: false,
+  // kindred#2075: the DIRECTLY prior year's staff-written cabin string, free
+  // text out of `family_camp_registrations.cabin_assignment`. '' is the
+  // common case and means UNKNOWN, not "unassigned" — a regen that dropped
+  // this field would degrade every returning family's card to silence with
+  // nothing else to notice.
+  last_year_cabin: '',
   share: {
     preference: 'unknown',
     preference_raw: '',

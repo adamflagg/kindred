@@ -5098,6 +5098,10 @@ export type RosterParty = {
    * Is Returning
    */
   is_returning?: boolean
+  /**
+   * Last Year Cabin
+   */
+  last_year_cabin?: string
   share?: ShareRequestSummary
   flags?: AccessibilityFlagSummary
 }

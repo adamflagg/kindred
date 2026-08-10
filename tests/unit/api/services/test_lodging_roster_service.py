@@ -118,6 +118,10 @@ def _repo(**overrides: Any) -> MagicMock:
         # unexpectedly.
         "fetch_households_by_ids": {},
         "fetch_prior_household_cm_ids": set(),
+        # kindred#2075: last year's staff-written cabin string, keyed by
+        # household CampMinder id. Empty by default -- most families have no
+        # prior-year cabin, and that must be the shape the card sees.
+        "fetch_cabin_assignments_by_household_cm_id": {},
         "fetch_family_camp_adults": {},
         "fetch_family_camp_registrations": {},
         "fetch_family_camp_medical": {},
@@ -540,6 +544,50 @@ class TestFamilyCampParties:
         roster = await LodgingRosterService(repo).build_roster(2026, 1000001)
 
         assert roster.parties[0].is_returning is True
+
+    @pytest.mark.asyncio
+    async def test_last_year_cabin_comes_from_the_directly_prior_year(self) -> None:
+        """kindred#2075, ruled Option A: the DIRECTLY prior year, like summer.
+
+        `year - 1` is computed here and nowhere else -- the repository read
+        takes a plain year so kindred#2073 can sweep 2022-2025 with it.
+        """
+        repo = _repo(
+            fetch_session=FAMILY_SESSION,
+            fetch_households={"hh_1": _household(title="The Garcia Family")},
+            fetch_attendees_for_session=[_child(cm_id=1000002, first="Liam", last="Garcia")],
+            fetch_prior_household_cm_ids={2000001},
+            fetch_cabin_assignments_by_household_cm_id={2000001: "Cedar Lodge - Room 2"},
+        )
+
+        roster = await LodgingRosterService(repo).build_roster(2026, 1000001)
+
+        assert roster.parties[0].last_year_cabin == "Cedar Lodge - Room 2"
+        repo.fetch_cabin_assignments_by_household_cm_id.assert_awaited_once_with(2025)
+
+    @pytest.mark.asyncio
+    async def test_a_household_with_no_prior_year_cabin_carries_an_empty_string(self) -> None:
+        """The COMMON case, and it must render as nothing at all.
+
+        202 of 2026's 459 registered households have no 2025 cabin -- a
+        first-timer, a family who skipped a year, or anyone whose last visit
+        predates 2022 (`cabin_assignment` is blank on all 1,433 rows from
+        2017-2021). None of those is "nobody assigned them", so the field
+        stays empty and the card prints no placeholder.
+        """
+        repo = _repo(
+            fetch_session=FAMILY_SESSION,
+            fetch_households={"hh_1": _household(title="The Johnson Family")},
+            fetch_attendees_for_session=[_child(cm_id=1000002, first="Noah", last="Johnson")],
+            # Returning -- but the prior year they were here is not 2025.
+            fetch_prior_household_cm_ids={2000001},
+            fetch_cabin_assignments_by_household_cm_id={2000777: "Pine Cabin"},
+        )
+
+        roster = await LodgingRosterService(repo).build_roster(2026, 1000001)
+
+        assert roster.parties[0].is_returning is True
+        assert roster.parties[0].last_year_cabin == ""
 
     @pytest.mark.asyncio
     async def test_request_text_is_read_from_the_derived_column(self) -> None:
@@ -2537,13 +2585,15 @@ class TestMedicalFlagsAndNarrative:
 class TestBuildSummary:
     """The lander's batched read.
 
-    It exists for one reason: `build_roster` makes ten fetches of which seven
-    are year-scoped, so filling a lander weekend-by-weekend repeats that
+    It exists for one reason: `build_roster` makes twelve fetches of which
+    seven are year-scoped, so filling a lander weekend-by-weekend repeats that
     year-wide work once per weekend. The point of these tests is that the
     batch does it ONCE and still agrees with the roster.
 
-    Both counts were one higher until kindred#1889 removed the whole-year
-    medical read from both paths.
+    Both counts were one lower until kindred#2075 added last year's cabins,
+    and one higher again before that until kindred#1889 removed the whole-year
+    medical read from both paths. The lander batches SIX of the seven -- see
+    `test_the_lander_never_reads_last_years_cabins` for the one it declines.
     """
 
     @pytest.mark.asyncio
@@ -2571,6 +2621,22 @@ class TestBuildSummary:
 
         repo.fetch_family_camp_medical.assert_not_called()
         repo.count_unconfirmed_units.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_the_lander_never_reads_last_years_cabins(self) -> None:
+        """kindred#2075's read belongs to the ROSTER, not the lander.
+
+        `build_summary` shares `_build_parties`, but it keeps only
+        `_build_counts`' numbers off the result -- no `WeekendSummaryEntry`
+        carries a party. Fetching a whole prior year of registrations and
+        households to fill a field nothing reads would put the cost back that
+        kindred#1963 bought out.
+        """
+        repo = _repo(fetch_weekend_sessions=[FAMILY_SESSION, ADULT_SESSION])
+
+        await LodgingRosterService(repo).build_summary(2026)
+
+        repo.fetch_cabin_assignments_by_household_cm_id.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_session_scoped_reads_happen_once_per_weekend(self) -> None:

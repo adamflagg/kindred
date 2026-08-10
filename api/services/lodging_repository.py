@@ -486,6 +486,62 @@ class LodgingRepository:
         )
         return {str(getattr(row, "household", "")): row for row in rows}
 
+    @cached_by_year(lodging_cache)
+    async def fetch_cabin_assignments_by_household_cm_id(self, year: int) -> dict[int, str]:
+        """Where each household slept in `year`, keyed by household CampMinder id.
+
+        The staff-written string out of `family_camp_registrations.cabin_assignment`
+        -- FREE TEXT, not a relation. It is deliberately NOT resolved to a
+        `lodging_units` row here: `lodging_units` holds only the current year,
+        so a 2023 string can name a cabin that no longer exists under that
+        name, and 3 of the 88 distinct strings across 2022-2025 resolve to no
+        alias at all. What staff wrote is the fact they are recalling; the
+        alias resolution (`lodging_unit_aliases` → `member_units`, honouring
+        `valid_from_year` / `valid_to_year`) is a separate job with a separate
+        failure mode.
+
+        ⚠️ KEYED BY cm_id, AND THAT IS THE ENTIRE POINT. `registration.household`
+        is a PocketBase relation into a YEAR-SCOPED `households` table, so a
+        2025 registration hangs off the *2025* households record -- a PB id the
+        2026 roster has never seen. Joining a prior year's registrations onto
+        the current year's household ids returns a plausible near-empty map
+        rather than an error, which reads as "everyone is a first-timer" and
+        survives review. Measured on the 2026 prod snapshot: bridging on
+        `cm_id` finds 257 of 459 registered households with a 2025 cabin;
+        joining on the PB id finds 0.
+
+        THE YEAR IS THE PARAMETER, and no "last year" arithmetic happens here
+        (kindred#2073 wants this same read once per year of 2022-2025;
+        kindred#2075's card asks only for `year - 1`). Composed from the two
+        existing `@cached_by_year` reads rather than a bespoke narrower query,
+        so a year already in hand costs nothing and a sweep across four years
+        pays each of them once per process. Its own cache entry on top is for
+        the join, not the round trips.
+
+        Empty for every year before 2022: `cabin_assignment` is blank on all
+        1,433 rows from 2017-2021, so a family last here in 2019 is genuinely
+        unrecoverable rather than missing.
+        """
+        registrations, households = await asyncio.gather(
+            self.fetch_family_camp_registrations(year),
+            self.fetch_households(year),
+        )
+        assignments: dict[int, str] = {}
+        for household_pb_id, registration in registrations.items():
+            cabin = str(getattr(registration, "cabin_assignment", "") or "").strip()
+            if not cabin:
+                continue
+            household = households.get(household_pb_id)
+            if household is None:
+                continue
+            # Never key on 0 -- `_build_household_parties` gives an
+            # unresolvable household `household_cm_id = 0`, so a 0 entry here
+            # would hand every one of those parties somebody else's cabin.
+            household_cm_id = int(getattr(household, "cm_id", 0) or 0)
+            if household_cm_id:
+                assignments[household_cm_id] = cabin
+        return assignments
+
     async def fetch_family_camp_medical(self, year: int) -> dict[str, Any]:
         """PHI, keyed by household PB id. NO PRODUCTION CALLER.
 
