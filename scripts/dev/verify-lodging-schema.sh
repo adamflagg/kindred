@@ -27,6 +27,16 @@ REPO_ROOT=$(git rev-parse --show-toplevel)
 PB_BIN="$REPO_ROOT/pocketbase/pocketbase"
 MIG_DIR="$REPO_ROOT/pocketbase/pb_migrations"
 
+# The registry loader (pocketbase/main.go) runs as a serve hook and ABORTS THE
+# BOOT with "lodging registry file present but no season is resolvable" when it
+# finds ./config/lodging_registry.json and no season. Every dev checkout that
+# ran setup-local-config.sh has that symlink, so running this from the repo
+# root -- the normal thing -- made the boot fail and the script exit 2 without
+# checking a single field. This check is about SHAPE, not rows, so the year
+# only has to exist. Same fix, same reason, as verify-lodging-seed.sh, and
+# defaulted rather than forced so a caller's own season still wins.
+export CAMPMINDER_SEASON_ID="${CAMPMINDER_SEASON_ID:-2026}"
+
 # Rebuild rather than assert existence: a stale binary would let this report
 # PASS against a Go model-level guard that no longer exists in the source.
 # Incremental, so it is near-free on an unchanged tree. See kindred#1922.

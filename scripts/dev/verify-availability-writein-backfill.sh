@@ -31,6 +31,16 @@ MIGRATION="1500000148_lodging_availability_occupant_name.js"
 
 [[ -f "$MIG_DIR/$MIGRATION" ]] || { echo "error: $MIGRATION not found in $MIG_DIR" >&2; exit 2; }
 
+# The registry loader (pocketbase/main.go) runs as a serve hook and ABORTS THE
+# BOOT with "lodging registry file present but no season is resolvable" when it
+# finds ./config/lodging_registry.json and no season. Every dev checkout that
+# ran setup-local-config.sh has that symlink, so running this from the repo
+# root -- the normal thing -- made the boot fail and the script exit 2 without
+# testing anything. Nothing here reads the registry; the year only has to
+# exist. Same fix, same reason, as verify-lodging-seed.sh, and defaulted rather
+# than forced so a caller's own season still wins.
+export CAMPMINDER_SEASON_ID="${CAMPMINDER_SEASON_ID:-2026}"
+
 echo ">> building pocketbase binary..."
 pb_harness_build_binary "$REPO_ROOT/pocketbase" "$PB_BIN"
 
