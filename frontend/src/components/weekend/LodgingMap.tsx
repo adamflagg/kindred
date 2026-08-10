@@ -56,6 +56,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useDismissOnDeadSpace } from '../../hooks/useDismissOnDeadSpace'
 import { usePanelParty } from '../../hooks/usePanelParty'
 import type { LodgingUnitRow, RosterPartyRow } from '../../types/lodging'
+import { wholeBuildingHolders } from './boardLayout'
 import { FamilyCard } from './FamilyCard'
 import { FamilyDetailsPanel } from './FamilyDetailsPanel'
 import { FloatingUnplacedBadge } from './FloatingUnplacedBadge'
@@ -126,6 +127,14 @@ export function LodgingMap({ parties, units, year, sessionCmId = 0 }: LodgingMap
   // pointermove, and an unmemoised call would re-run buildBoard — area bucketing,
   // sorting, hue assignment, the lot — on every frame of a drag.
   const model = useMemo(() => buildMapModel(parties, units), [parties, units])
+  // kindred#2174: the board's own placement fact (kindred#2008), extended to
+  // the map. Computed here rather than inside `buildMapModel` or the popover
+  // itself — `MapUnitPopover` only ever sees a cluster's own members
+  // (`MapUnit[]`), not the full registry `wholeBuildingHolders` needs, and
+  // `LodgingMap` already holds both `parties` and `units` as props. Read
+  // against each party's OWN occupied leaves, so a combined card split
+  // between two disjoint-room households marks neither of them.
+  const wholeBuildingKeys = useMemo(() => wholeBuildingHolders(parties, units), [parties, units])
 
   const canvasRef = useRef<HTMLDivElement>(null)
   const dragRef = useRef<{
@@ -690,6 +699,7 @@ export function LodgingMap({ parties, units, year, sessionCmId = 0 }: LodgingMap
                   units={openCluster.members.map((member) => member.item)}
                   hue={openCluster.members[0]?.item.hue ?? ''}
                   onOpenParty={openParty}
+                  wholeBuildingKeys={wholeBuildingKeys}
                 />
               </div>
             )}
