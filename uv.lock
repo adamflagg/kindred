@@ -783,7 +783,7 @@ requires-dist = [
     { name = "rich", specifier = ">=15.0.0" },
     { name = "tqdm", specifier = ">=4.70.0" },
     { name = "tzdata", specifier = ">=2026.3" },
-    { name = "uvicorn", extras = ["standard"], specifier = ">=0.52.0" },
+    { name = "uvicorn", extras = ["standard"], specifier = ">=0.52.1" },
 ]
 
 [package.metadata.requires-dev]
