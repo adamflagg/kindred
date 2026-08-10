@@ -17,6 +17,7 @@ import {
   partyGrainBody,
   resolveDrop,
   resolveMergeDrop,
+  resolvePickerPlacement,
   unitDroppableId,
 } from './dragPlacement'
 import { partyKey } from './partyKey'
@@ -640,5 +641,106 @@ describe('applyPlacement', () => {
       unitName: 'Cedar 1',
     })
     expect(next.parties?.[1]).toEqual(other)
+  })
+})
+
+describe('resolvePickerPlacement', () => {
+  /*
+   * kindred#2080's placement path. The point of these tests is that there is
+   * only ONE path: the picker must produce the intent the equivalent DROP
+   * would produce, and inherit every refusal, rather than growing a parallel
+   * set of rules that can drift.
+   */
+  it('produces the same intent an equivalent drop would', () => {
+    const p = party()
+    const viaPicker = resolvePickerPlacement({
+      party: p,
+      unitCode: 'cedar-1',
+      parties: [p],
+      units: [CEDAR_1],
+    })
+    const viaDrop = resolveDrop({
+      activeId: partyKey(p),
+      overId: unitDroppableId('cedar-1'),
+      parties: [p],
+      units: [CEDAR_1],
+    })
+    expect(viaPicker).toEqual(viaDrop)
+    expect(viaPicker).toEqual({
+      kind: 'place',
+      party: p,
+      unitId: 'u1',
+      unitCode: 'cedar-1',
+      unitName: 'Cedar 1',
+    })
+  })
+
+  it('inherits the held-space refusal rather than adding a second one', () => {
+    // #2087/#2199 put the refusal in `resolveDrop` precisely because #2080
+    // reaches placement without touching a `useDroppable`. A picker-layer
+    // check of its own would be the second copy that comment exists to
+    // prevent.
+    const p = party()
+    const held = unit({ family_available_override: false })
+    expect(
+      resolvePickerPlacement({ party: p, unitCode: 'cedar-1', parties: [p], units: [held] })
+    ).toBeNull()
+  })
+
+  it('refuses a party carrying neither CampMinder id', () => {
+    const nameless = party({ household_cm_id: 0, person_cm_id: 0, display_name: 'Unresolved' })
+    expect(
+      resolvePickerPlacement({
+        party: nameless,
+        unitCode: 'cedar-1',
+        parties: [nameless],
+        units: [CEDAR_1],
+      })
+    ).toBeNull()
+  })
+
+  it('refuses a container the tree has not combined', () => {
+    const split = unit({ is_container: true, is_combined: false })
+    const p = party()
+    expect(
+      resolvePickerPlacement({ party: p, unitCode: 'cedar-1', parties: [p], units: [split] })
+    ).toBeNull()
+  })
+
+  it('refuses a unit the payload does not carry', () => {
+    const p = party()
+    expect(
+      resolvePickerPlacement({ party: p, unitCode: 'nowhere-9', parties: [p], units: [CEDAR_1] })
+    ).toBeNull()
+  })
+
+  it('does nothing for a party already alone in that unit', () => {
+    // Every write flips one-way `staff_touched`, so a no-op must stay a no-op
+    // on this path too.
+    const settled = party({ unit_code: 'cedar-1', unit_name: 'Cedar 1', unit_codes: ['cedar-1'] })
+    expect(
+      resolvePickerPlacement({
+        party: settled,
+        unitCode: 'cedar-1',
+        parties: [settled],
+        units: [CEDAR_1],
+      })
+    ).toBeNull()
+  })
+
+  it('resolves the party against the CURRENT roster, not the row it was handed', () => {
+    // The list is rendered from a snapshot. If a refetch lands between render
+    // and click, the party the row closed over may be gone — and inventing a
+    // write for a party the roster no longer has is how a placement lands on
+    // a stale identity.
+    const stale = party({ household_cm_id: 999, display_name: 'Departed' })
+    expect(
+      resolvePickerPlacement({
+        party: stale,
+        unitCode: 'cedar-1',
+        parties: [party()],
+        units: [CEDAR_1],
+      })
+    ).toBeNull()
   })
 })
