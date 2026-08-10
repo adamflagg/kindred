@@ -1,0 +1,253 @@
+/**
+ * A tooltip a keyboard and a touchscreen can actually reach (kindred#2177).
+ *
+ * The weekend lodging board explained a dozen chips, cells and counters with
+ * the native `title` attribute alone. `title` fires on mouse hover and nothing
+ * else: a staff member on a tablet, or moving by Tab, saw the chip and never
+ * the sentence explaining it. `eslint-plugin-jsx-a11y` has no rule for that,
+ * so the gap survived a whole a11y sweep.
+ *
+ * There was nothing here to extend — `CamperTooltip`, `WaitlistTooltip` and
+ * `BunkCellTooltip` are chart-cell content renderers positioned by their
+ * caller, not trigger primitives — so this is the one place the behaviour is
+ * written down.
+ *
+ * Four decisions worth keeping:
+ *
+ * 1. **The bubble is portalled to `document.body`.** Three of the call sites
+ *    sit inside a clipping ancestor (`HouseholdRosterTable`'s `overflow-x-auto`,
+ *    `FamilyDetailsPanel`'s `overflow-y-auto`, `LodgingBoard`'s
+ *    `overflow-hidden`), and `position: fixed` is not a way out of those when
+ *    any ancestor is transformed. `BunkCellTooltip` portals for the same
+ *    reason.
+ *
+ * 2. **The description is in the DOM even when the bubble is not.** While
+ *    closed, the text renders as an `sr-only` span carrying the same id, so
+ *    `aria-describedby` always resolves. Setting the relationship only on open
+ *    races the screen reader, which computes the description at focus time.
+ *
+ * 3. **A tap PINS the bubble; nothing dismisses it on a timer.** WCAG 2.2
+ *    §1.4.13 requires hover/focus content to be persistent — visible until
+ *    dismissed, until the pointer leaves, or until it stops being valid. A
+ *    three-second fade would fail the very criterion this component exists to
+ *    satisfy. It also matches the surface: `FloatingQueueBadge`, the nearest
+ *    popover in `ui/`, is click-toggled, and no weekend surface auto-dismisses
+ *    anything.
+ *
+ * 4. **Escape is handled ON THE TRIGGER, never on `document`.** `ui/modalStack`
+ *    exists because two `document` Escape listeners cannot stop each other by
+ *    propagation, so one keypress dismissed a dialog AND the panel under it.
+ *    A React handler on the trigger runs at the root container, which IS a
+ *    descendant of `document` — so `stopPropagation` genuinely works and a
+ *    tooltip inside `FamilyDetailsPanel` or a `Modal` closes itself without
+ *    closing its host. The event is only swallowed while a bubble is showing;
+ *    otherwise it passes straight through.
+ */
+import {
+  useEffect,
+  useId,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type CSSProperties,
+  type ReactNode,
+} from 'react'
+import { createPortal } from 'react-dom'
+
+export interface TooltipProps {
+  /** The sentence the bubble carries. Also the trigger's accessible description. */
+  content: string
+  /** The visible trigger content — a chip label, a count, a room name. */
+  children: ReactNode
+  /** Classes for the trigger itself: it replaces the `<span>` that used to carry `title`. */
+  className?: string
+  style?: CSSProperties
+  /**
+   * Only where the visible content does not already name the control. Most
+   * triggers get their name from their own text and must not set this.
+   */
+  'aria-label'?: string
+  'aria-pressed'?: boolean
+  'data-testid'?: string
+  /**
+   * The trigger's OWN action, for an element that was already a control
+   * (`MapUnitPopover`'s room cell picks the room). When set, a click runs the
+   * action and does not pin — the bubble is already open from the hover or the
+   * focus the tap produced.
+   */
+  onActivate?: () => void
+}
+
+/**
+ * Guarantees a 24x24 CSS-pixel target (WCAG 2.5.8) around triggers as small as
+ * a two-digit occupancy figure, without drawing anything.
+ *
+ * A transparent pseudo-element rather than padding, and emphatically not a
+ * visible box: `LodgingUnitCard` already spends a dashed border on "empty
+ * room", and the board's signal vocabulary has no room for a fifth mark. The
+ * pseudo-element grows only where the trigger is under 24px, so a wide chip is
+ * untouched.
+ */
+const HIT_TARGET =
+  "relative after:absolute after:top-1/2 after:left-1/2 after:h-[max(100%,24px)] after:w-[max(100%,24px)] after:-translate-x-1/2 after:-translate-y-1/2 after:content-['']"
+
+/** `HouseholdRosterRow`'s ring, so a focused chip looks like a focused row. */
+const FOCUS_RING = 'focus-visible:ring-ring focus-visible:ring-2 focus-visible:outline-none'
+
+export function Tooltip({
+  content,
+  children,
+  className = '',
+  style,
+  'aria-label': ariaLabel,
+  'aria-pressed': ariaPressed,
+  'data-testid': testId,
+  onActivate,
+}: TooltipProps) {
+  const describedById = useId()
+  const triggerRef = useRef<HTMLButtonElement>(null)
+  const bubbleRef = useRef<HTMLDivElement>(null)
+
+  const [hovering, setHovering] = useState(false)
+  const [focused, setFocused] = useState(false)
+  const [pinned, setPinned] = useState(false)
+  // Escape suppresses a bubble whose reason to be open (focus on the trigger)
+  // has not gone away. Cleared by the next deliberate interaction, so the
+  // trigger is not left mute for as long as it holds focus.
+  const [dismissed, setDismissed] = useState(false)
+
+  const open = !dismissed && (hovering || focused || pinned)
+
+  const [coords, setCoords] = useState<{ top: number; left: number }>({ top: 0, left: 0 })
+
+  useLayoutEffect(() => {
+    if (!open) return
+    const place = () => {
+      const anchor = triggerRef.current
+      const bubble = bubbleRef.current
+      if (!anchor || !bubble) return
+      const rect = anchor.getBoundingClientRect()
+      const width = bubble.offsetWidth
+      const height = bubble.offsetHeight
+      const EDGE = 6
+      // Above by default, flipped below when there is no room. The bubble's
+      // own transparent padding IS the visual gap, so its box touches the
+      // trigger's — a pointer travelling up to read it never crosses dead
+      // space, which is what keeps `relatedTarget` inside the bubble and the
+      // bubble open (WCAG 1.4.13 "hoverable").
+      const above = rect.top - height
+      const top = above < EDGE ? rect.bottom : above
+      const centred = rect.left + rect.width / 2 - width / 2
+      const left = Math.max(EDGE, Math.min(centred, window.innerWidth - width - EDGE))
+      setCoords({ top, left })
+    }
+    place()
+    window.addEventListener('scroll', place, true)
+    window.addEventListener('resize', place)
+    return () => {
+      window.removeEventListener('scroll', place, true)
+      window.removeEventListener('resize', place)
+    }
+  }, [open, content])
+
+  // Pointer-down anywhere else drops a pinned bubble. `pointerdown`, not
+  // `keydown` — nothing here competes with the Escape coordination in
+  // `modalStack`.
+  useEffect(() => {
+    if (!pinned) return
+    const onPointerDown = (event: PointerEvent) => {
+      const target = event.target as Node | null
+      if (target && (triggerRef.current?.contains(target) ?? false)) return
+      if (target && (bubbleRef.current?.contains(target) ?? false)) return
+      setPinned(false)
+    }
+    document.addEventListener('pointerdown', onPointerDown)
+    return () => {
+      document.removeEventListener('pointerdown', onPointerDown)
+    }
+  }, [pinned])
+
+  return (
+    <>
+      <button
+        ref={triggerRef}
+        type="button"
+        aria-describedby={describedById}
+        aria-label={ariaLabel}
+        aria-pressed={ariaPressed}
+        data-testid={testId}
+        style={style}
+        className={`${HIT_TARGET} ${FOCUS_RING} ${onActivate ? '' : 'cursor-help'} ${className}`}
+        onPointerEnter={() => {
+          setDismissed(false)
+          setHovering(true)
+        }}
+        // No "did the pointer land on the bubble" guard here, deliberately.
+        // React synthesises leave AND enter from the SAME native `pointerout`,
+        // so a pointer moving straight from the trigger onto the bubble runs
+        // both handlers in one batch and `hovering` never settles false. What
+        // makes that reliable is the bubble's transparent bridge — see
+        // `place` — which leaves no gap for the pointer to fall through.
+        onPointerLeave={() => {
+          setHovering(false)
+        }}
+        onFocus={() => {
+          setFocused(true)
+        }}
+        onBlur={() => {
+          setFocused(false)
+          setPinned(false)
+          setDismissed(false)
+        }}
+        onClick={() => {
+          setDismissed(false)
+          if (onActivate) {
+            onActivate()
+            return
+          }
+          setPinned((wasPinned) => !wasPinned)
+        }}
+        onKeyDown={(event) => {
+          if (event.key !== 'Escape' || !open) return
+          // Only swallowed while something is showing — see the file header.
+          event.stopPropagation()
+          setPinned(false)
+          setHovering(false)
+          setDismissed(true)
+        }}
+      >
+        {children}
+      </button>
+
+      {open ? (
+        createPortal(
+          <div
+            ref={bubbleRef}
+            id={describedById}
+            role="tooltip"
+            style={{ top: coords.top, left: coords.left }}
+            // `py-1.5` is transparent bridge, not spacing — see `place`.
+            className="fixed z-[100] max-w-[18rem] py-1.5"
+            onPointerEnter={() => {
+              setHovering(true)
+            }}
+            onPointerLeave={() => {
+              setHovering(false)
+            }}
+          >
+            {/* `BunkCellTooltip`'s popover surface, so the board's two tooltip
+                shapes read as one thing. */}
+            <div className="bg-popover text-popover-foreground border-border rounded-lg border px-2.5 py-1.5 text-xs leading-snug shadow-lg">
+              {content}
+            </div>
+          </div>,
+          document.body
+        )
+      ) : (
+        <span id={describedById} className="sr-only">
+          {content}
+        </span>
+      )}
+    </>
+  )
+}
