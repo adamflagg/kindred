@@ -206,6 +206,22 @@ describe('LodgingUnitForm — create', () => {
     expect(values).toEqual(['family_pool', 'staff_default'])
   })
 
+  it('calls staff allocation "Staff housing", not "Held for staff" (kindred#2078)', () => {
+    // THREE things shared one word until this. `inventory_class` is a
+    // PERMANENT role — a cabin that houses full-time staff and was never
+    // weekend inventory — while the board's per-weekend control is now a
+    // write-in, and the stats bar counts the two separately for exactly that
+    // reason. Leaving the registry saying "Held for staff" beside a board
+    // badge saying "Write-in" would keep the collision alive in the one place
+    // staff go to set the role.
+    render(
+      <LodgingUnitForm areas={AREAS} units={[]} year={2026} onSaved={vi.fn()} onCancel={vi.fn()} />
+    )
+    const select = screen.getByLabelText<HTMLSelectElement>('Allocation')
+    const labels = [...select.options].map((option) => option.textContent)
+    expect(labels).toEqual(['Available to guests', 'Staff housing'])
+  })
+
   it('sends no sleeps value when capacity is left blank', async () => {
     createLodgingUnit.mockResolvedValue({ id: 'u1' })
     const user = userEvent.setup()
@@ -536,7 +552,7 @@ describe('LodgingUnitForm — the parent picker reflects a live allocation chang
     await user.selectOptions(screen.getByLabelText('Allocation'), 'staff_default')
 
     // Same render, no save, no remount — the picker widens to include the
-    // staff building the instant Allocation flips to "Held for staff".
+    // staff building the instant Allocation flips to "Staff housing".
     expect([...parentSelect.options].map((o) => o.value)).toEqual([
       '',
       'guest_building',

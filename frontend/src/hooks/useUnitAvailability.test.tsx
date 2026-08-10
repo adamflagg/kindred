@@ -41,11 +41,12 @@ const YEAR = 2026
 const SESSION = 1000001
 const DRAFT = 'scn7x2k9qw3mnbv'
 
-const HOLD = {
+const WRITE_IN = {
   unitId: 'u1',
   unitName: 'Cedar 1',
   familyAvailable: false as boolean | null,
-  reason: 'Burst pipe',
+  occupantName: 'Emma Johnson',
+  reason: '',
 }
 
 let client: QueryClient
@@ -81,7 +82,7 @@ describe('useUnitAvailability', () => {
     const { result } = renderAvailability()
 
     await act(async () => {
-      await result.current.setAvailability(HOLD)
+      await result.current.setAvailability(WRITE_IN)
     })
 
     expect(setUnitAvailability).toHaveBeenCalledTimes(1)
@@ -90,13 +91,14 @@ describe('useUnitAvailability', () => {
       sessionCmId: SESSION,
       unitId: 'u1',
       familyAvailable: false,
-      reason: 'Burst pipe',
+      occupantName: 'Emma Johnson',
+      reason: '',
     })
   })
 
   it('refreshes EVERY scenario of the weekend, not just the one on screen', async () => {
     // The failure this pins is silent. Availability carries no scenario, so a
-    // hold recorded while a draft is open changes the mirror and every other
+    // write-in recorded while a draft is open changes the mirror and every other
     // draft as well — and the weekend queries carry a 30 minute staleTime, so
     // "stale" means half an hour of a board showing a cabin as open after
     // staff closed it. Invalidating only the visible key looks correct on the
@@ -104,7 +106,7 @@ describe('useUnitAvailability', () => {
     const { result } = renderAvailability()
 
     await act(async () => {
-      await result.current.setAvailability(HOLD)
+      await result.current.setAvailability(WRITE_IN)
     })
 
     await waitFor(() => {
@@ -125,7 +127,7 @@ describe('useUnitAvailability', () => {
 
     const { result } = renderAvailability()
     act(() => {
-      void result.current.setAvailability(HOLD)
+      void result.current.setAvailability(WRITE_IN)
     })
 
     await waitFor(() => {
@@ -141,12 +143,36 @@ describe('useUnitAvailability', () => {
     })
   })
 
+  it('confirms a write-in by NAMING the occupant, which is the fact just asserted', async () => {
+    // The toast is what a staff member checks the card against. "Cedar 1 is
+    // held for this weekend" said neither what happened nor to whom.
+    const { result } = renderAvailability()
+
+    await act(async () => {
+      await result.current.setAvailability(WRITE_IN)
+    })
+
+    expect(toastSuccess).toHaveBeenCalledWith(
+      'Emma Johnson is written into Cedar 1 for this weekend'
+    )
+  })
+
+  it('confirms a nameless write-in without pretending to a name', async () => {
+    const { result } = renderAvailability()
+
+    await act(async () => {
+      await result.current.setAvailability({ ...WRITE_IN, occupantName: '  ' })
+    })
+
+    expect(toastSuccess).toHaveBeenCalledWith('Cedar 1 is written in for this weekend')
+  })
+
   it('says what a refused write was, rather than leaving the card looking saved', async () => {
     setUnitAvailability.mockRejectedValue(new Error('Permission required: bunking.manage'))
 
     const { result } = renderAvailability()
     await act(async () => {
-      await result.current.setAvailability(HOLD).catch(() => undefined)
+      await result.current.setAvailability(WRITE_IN).catch(() => undefined)
     })
 
     expect(toastError).toHaveBeenCalledWith('Permission required: bunking.manage')
@@ -159,7 +185,7 @@ describe('useUnitAvailability', () => {
     // scenario.
     const { result } = renderAvailability(0)
 
-    await expect(result.current.setAvailability(HOLD)).rejects.toThrow(/weekend/i)
+    await expect(result.current.setAvailability(WRITE_IN)).rejects.toThrow(/weekend/i)
     expect(setUnitAvailability).not.toHaveBeenCalled()
   })
 })

@@ -63,6 +63,7 @@ import { FloatingUnplacedBadge } from './FloatingUnplacedBadge'
 import { LodgingUnitCard } from './LodgingUnitCard'
 import { partyKey } from './partyKey'
 import { resolvePartyUnit } from './rosterAttention'
+import type { UnitAvailabilityWrite } from './UnitAvailabilityControl'
 
 export interface LodgingBoardProps {
   parties: RosterPartyRow[]
@@ -338,7 +339,7 @@ export function LodgingBoard({
   )
 
   const writeAvailability = useCallback(
-    (unit: LodgingUnitRow, write: { familyAvailable: boolean | null; reason: string }) => {
+    (unit: LodgingUnitRow, write: UnitAvailabilityWrite) => {
       // The rejection path is the hook's: it raises the toast. Catching here
       // keeps the rejected promise from surfacing as an unhandled rejection,
       // exactly as the drop handler does.
@@ -346,6 +347,7 @@ export function LodgingBoard({
         unitId: unit.unit_id,
         unitName: unit.name,
         familyAvailable: write.familyAvailable,
+        occupantName: write.occupantName,
         reason: write.reason,
       }).catch(() => undefined)
     },

@@ -61,6 +61,7 @@ function unit(overrides: Partial<LodgingUnitRow> = {}): LodgingUnitRow {
     inventory_class: 'family_pool',
     shareability: 'single_party',
     family_available_override: null,
+    occupant_name: '',
     reason: '',
     is_family_available: true,
     map_x: 0.5,
@@ -1217,9 +1218,9 @@ describe('LodgingUnitCard — the open-space title marker (#2093)', () => {
     expect(title).toHaveClass('font-semibold')
   })
 
-  it('does not call a HELD room open — no tint, no bold title, dashed edge kept', () => {
+  it('does not call a WRITTEN-INTO room open — no tint, no bold title, dashed edge kept', () => {
     /*
-     * A hold (#2087 / the #2090 ruling) blocks placement outright:
+     * A write-in (#2078; #2087 / the #2090 ruling) blocks placement outright:
      * `dragPlacement.ts:222` refuses the drop and the card's own droppable is
      * `disabled`. An empty held cabin therefore has no family in it and can
      * take none — "empty" and "open" are not the same predicate, and this is
@@ -1227,17 +1228,25 @@ describe('LodgingUnitCard — the open-space title marker (#2093)', () => {
      *
      * This was harmless while the empty treatment was a neutral grey wash.
      * The forest tint is not neutral: it says "this is where the remaining
-     * work is", and the marker IS the to-do list. Painting a held cabin
-     * forest sends staff at the one room they are not allowed to fill.
+     * work is", and the marker IS the to-do list. Painting a written-into
+     * cabin forest sends staff at the one room they are not allowed to fill.
      *
-     * Scope note: the approved 2026-08-09 vocabulary gives a held card a
+     * kindred#2078 RE-EXPRESSED this conjunct. It used to read the proxy
+     * `unit.family_available_override === false` inline under the name `held`;
+     * it now goes through `writeInOccupant`, so the tint is keyed on the fact
+     * ("somebody is in this room") rather than on a spelling. This test is
+     * what pins that the re-expression did not drop the gate.
+     *
+     * Scope note: the approved 2026-08-09 vocabulary gives such a card a
      * refusal treatment of its own (dim + `not-allowed`), queued separately.
      * This asserts only that the OPEN marker stands down — it does not
      * pre-empt that.
      */
     const { container } = render(
       <LodgingUnitCard
-        slot={slot({ unit: unit({ family_available_override: false, reason: 'Maintenance' }) })}
+        slot={slot({
+          unit: unit({ family_available_override: false, occupant_name: 'Emma Johnson' }),
+        })}
         hue={hue}
         canPlace
         onOpenParty={vi.fn()}
@@ -1251,9 +1260,130 @@ describe('LodgingUnitCard — the open-space title marker (#2093)', () => {
 
     const card = container.querySelector('[data-unit-card]')
     expect(card).not.toHaveClass('bg-primary/10')
-    // The dashed EDGE is a structural "nobody is in here" and stays — only
+    // The dashed EDGE is a structural "no family is in here" and stays — only
     // the affirmative "go fill this" half stands down.
     expect(card).toHaveClass('border-dashed')
+  })
+
+  it('withholds the tint from a write-in nobody named, too', () => {
+    // The room is closed whether or not anybody filled the name in, so the
+    // gate cannot be keyed on the NAME being present -- that would hand the
+    // one room staff may not fill straight back to the to-do marker. Reachable
+    // from a pre-1500000148 row with an empty note, or through the permissive
+    // write schema.
+    const { container } = render(
+      <LodgingUnitCard
+        slot={slot({ unit: unit({ family_available_override: false }) })}
+        hue={hue}
+        canPlace
+        onOpenParty={vi.fn()}
+      />
+    )
+
+    expect(container.querySelector('[data-unit-card]')).not.toHaveClass('bg-primary/10')
+  })
+
+  it('still calls a RELEASED staff cabin open', () => {
+    // `true` and `false` are opposite answers. A release opens a room to
+    // families -- it is exactly the room the marker exists to send staff at --
+    // so reading the override for truthiness here would suppress the tint on
+    // the one card that most deserves it.
+    const { container } = render(
+      <LodgingUnitCard
+        slot={slot({
+          unit: unit({
+            inventory_class: 'staff_default',
+            family_available_override: true,
+            reason: 'Overflow weekend',
+          }),
+        })}
+        hue={hue}
+        canPlace
+        onOpenParty={vi.fn()}
+      />
+    )
+
+    expect(container.querySelector('[data-unit-card]')).toHaveClass('bg-primary/10')
+  })
+})
+
+describe('the write-in occupant card (kindred#2078)', () => {
+  const hue = 'hsl(160 45% 42%)'
+
+  it('draws the occupant in the well, where the board prints occupancy', () => {
+    // The name used to be a small italic muted line under the badge row while
+    // the well below said "Drop families here" -- the room read as empty and
+    // closed when in truth it was full.
+    render(
+      <LodgingUnitCard
+        slot={slot({
+          unit: unit({
+            family_available_override: false,
+            occupant_name: 'Emma Johnson',
+            is_family_available: false,
+          }),
+        })}
+        hue={hue}
+        canPlace
+        onOpenParty={vi.fn()}
+      />
+    )
+
+    expect(screen.getByText('Emma Johnson')).toBeInTheDocument()
+    expect(screen.queryByText('Drop families here')).not.toBeInTheDocument()
+  })
+
+  it('prints the occupant ONCE, not twice', () => {
+    // 1500000148 moved every historical note into `occupant_name` and cleared
+    // the column behind it precisely so one string cannot render as both the
+    // card's italic reason line and the occupant's name.
+    render(
+      <LodgingUnitCard
+        slot={slot({
+          unit: unit({
+            family_available_override: false,
+            occupant_name: 'Liam Garcia',
+            is_family_available: false,
+          }),
+        })}
+        hue={hue}
+        canSetAvailability
+        onSetAvailability={vi.fn()}
+        onOpenParty={vi.fn()}
+      />
+    )
+
+    expect(screen.getAllByText('Liam Garcia')).toHaveLength(1)
+  })
+
+  it('does not draw an occupant card on an ordinary open room', () => {
+    render(<LodgingUnitCard slot={slot()} hue={hue} canPlace onOpenParty={vi.fn()} />)
+
+    expect(screen.getByText('Drop families here')).toBeInTheDocument()
+    expect(screen.queryByText('Occupant not named')).not.toBeInTheDocument()
+  })
+
+  it('refuses to assert a number it does not have, where 0 would be a lie', () => {
+    // A write-in occupies WHOLESALE: no party size, no partial bed arithmetic.
+    // `0/5` beside a full room is a lie and `5/5` is a different one, so the
+    // numerator takes the em dash the card already uses to refuse an
+    // unmeasured denominator.
+    render(
+      <LodgingUnitCard
+        slot={slot({
+          unit: unit({
+            family_available_override: false,
+            occupant_name: 'Emma Johnson',
+            is_family_available: false,
+          }),
+        })}
+        hue={hue}
+        canPlace
+        onOpenParty={vi.fn()}
+      />
+    )
+
+    expect(screen.getByTestId('unit-occupancy')).toHaveTextContent('—/5')
   })
 })
 

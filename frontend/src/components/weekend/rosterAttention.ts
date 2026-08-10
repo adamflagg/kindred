@@ -245,11 +245,12 @@ export function indexUnitsByCode(units: LodgingUnitRow[]): Map<string, LodgingUn
  *
  * They are still not the same question, which is why this survives. This one
  * asks about spaces a family could be put in RIGHT NOW, so it filters on
- * `is_family_available` and drops a cabin held back this weekend.
- * `units_capacity_unknown` asks about the planning inventory, which includes
- * that held cabin because it returns next weekend. They diverge the moment
- * anything is held — today nothing is, because `lodging_availability` has
- * never held a row.
+ * `is_family_available` and drops a cabin somebody has been written into this
+ * weekend. `units_capacity_unknown` asks about the planning inventory, which
+ * includes that cabin because it returns next weekend. They diverge the moment
+ * anything is written into — and things are: `lodging_availability` DOES hold
+ * rows in production, which the old claim here ("has never held a row") got
+ * wrong. It was measured against a development database and never re-checked.
  *
  * It sits beside the BED count on the stats bar, and beds there are
  * `beds_family_available`, so the available-only reading is the one that

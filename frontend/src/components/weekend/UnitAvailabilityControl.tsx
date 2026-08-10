@@ -1,33 +1,67 @@
 /**
- * Holding a cabin back for a weekend, or releasing one to families.
+ * Writing somebody into a cabin for a weekend, or releasing one to families.
  *
- * `PUT /api/lodging/availability` shipped with no caller: `lodging_availability`
- * has never held a row, and the request model required a scenario nobody could
- * supply. Landing the model with no writer is how it drifted, so this is the
- * writer.
+ * `PUT /api/lodging/availability` shipped with no caller: the request model
+ * required a scenario nobody could supply, so nothing wrote the table. Landing
+ * the model with no writer is how it drifted, so this is the writer.
  *
- * ## One button, not a menu
+ * ## ONE control, and hold IS the write-in
  *
- * `family_available` has three reachable outcomes and a unit is always in
+ * Owner ruling, 2026-08-09 (kindred#2078). Staff never used this to reserve an
+ * empty room — they used it to record somebody sleeping in one, almost always
+ * non-rostered weekend staff — so "Hold" set the opposite expectation and the
+ * card read *empty and closed* for a room that was full.
+ *
+ * There is no second "mark unavailable" action beside it and no burst-pipe /
+ * staff-write-in split. A staff member who types "burst pipe" into the occupant
+ * field gets a card showing an occupant called "burst pipe": an ACCEPTED COST,
+ * ruled on, not worth a second concept or a discriminator column to prevent.
+ *
+ * `family_available` still has three reachable outcomes and a unit is always in
  * exactly one of them, so `availabilityAction` resolves the single action this
  * card can offer and the button IS the gate — no modal carrying its own
  * eligibility logic. Writing a value that AGREES with the unit's role is
- * deliberately unreachable: it would pin the unit against a later registry
- * edit while changing nothing staff can see.
+ * deliberately unreachable: it would pin the unit against a later registry edit
+ * while changing nothing staff can see.
  *
- * ## Why the reason is required here and not at the schema
+ * ## Two inputs, and which one is required depends on the action
  *
- * `reason` is `Field("", max_length=500)` server-side, because a row written by
- * an ingest or a fixture has no author to ask. Through this control there is
- * always an author, and a cabin taken out of service with no stated reason is
- * the row a staff member cannot act on next week — they can see it is closed
- * and have no way to learn whether the pipe has been fixed. Clearing asks for
- * none: it restores the unit's standing role rather than asserting anything.
+ * A write-in asks for a REQUIRED occupant and an OPTIONAL note. A release asks
+ * for a required reason and nothing else — opening a staff cabin to families
+ * names no occupant. That is why `availabilityAction` carries a three-way
+ * `prompt` rather than the `needsReason` boolean it used to: the question is
+ * not *whether* to ask but *what for*.
+ *
+ * ## Why the requirement lives here and not at the schema
+ *
+ * Both fields are `Field("", max_length=500)` server-side, because a row
+ * written by an ingest or a fixture has no author to ask. Through this control
+ * there is always an author, and a closed cabin with nobody named on it is the
+ * row a staff member cannot act on next week — they can see it is unavailable
+ * and have no way to learn who is in it. Clearing asks for neither: it restores
+ * the unit's standing role rather than asserting anything.
+ *
+ * ## Why no italic line under the badge row any more
+ *
+ * It used to print `unit.reason` there for every override. Since kindred#2078 a
+ * write-in draws a `WriteInCard` in the unit's well carrying both the occupant
+ * and the note, so printing the note here too would put the identical string
+ * twice on one card — the double-print 1500000148 was written to unwind. The
+ * line survives for the RELEASE branch alone, which draws no card in the well
+ * and so has nowhere else for its reason to be read.
  */
 import { useState } from 'react'
 
 import type { LodgingUnitRow } from '../../types/lodging'
 import { availabilityAction } from './unitBadges'
+
+export interface UnitAvailabilityWrite {
+  familyAvailable: boolean | null
+  /** Who is in the room. `''` on a release and on a clear. */
+  occupantName: string
+  /** Optional beside a write-in; required on a release. `''` on a clear. */
+  reason: string
+}
 
 export interface UnitAvailabilityControlProps {
   unit: LodgingUnitRow
@@ -36,7 +70,8 @@ export interface UnitAvailabilityControlProps {
    *
    * NOT the board's `canPlace`, which also requires a scenario. Availability
    * carries no scenario since 1500000135 — a burst pipe closes a cabin in
-   * every plan for that weekend — so requiring one to record it would put the
+   * every plan for that weekend, and a write-in is a fact about who is in the
+   * building rather than a draft — so requiring one to record it would put the
    * deleted dimension back at the UI layer, and staff looking at the
    * CampMinder mirror could not close a cabin at all.
    */
@@ -44,15 +79,15 @@ export interface UnitAvailabilityControlProps {
   /**
    * Whether the slot this unit sits in already holds a party this scenario —
    * a fact read off the CARD, never off availability itself. Owner ruling on
-   * #2090: held and occupied are mutually exclusive states, so an occupied
-   * unit offers no "Hold" action. Kept separate from `canManage`: folding
-   * occupancy into the permission gate would resurrect the scenario
-   * dimension 1500000135 deleted from availability.
+   * #2090: a write-in and a placement are mutually exclusive states, so an
+   * occupied unit offers no write-in action. Kept separate from `canManage`:
+   * folding occupancy into the permission gate would resurrect the scenario
+   * dimension 1500000135 deleted.
    */
   occupied: boolean
   /** True while THIS unit's write is in flight. */
   isSaving: boolean
-  onSubmit: (write: { familyAvailable: boolean | null; reason: string }) => void
+  onSubmit: (write: UnitAvailabilityWrite) => void
 }
 
 export function UnitAvailabilityControl({
@@ -62,33 +97,47 @@ export function UnitAvailabilityControl({
   isSaving,
   onSubmit,
 }: UnitAvailabilityControlProps) {
-  const [reason, setReason] = useState('')
+  // The REQUIRED field of whichever prompt is showing — an occupant for a
+  // write-in, a reason for a release. One piece of state, because exactly one
+  // of the two is ever mounted and a second would be dead on every render.
+  const [required, setRequired] = useState('')
+  // The optional note, mounted only by the write-in prompt.
+  const [note, setNote] = useState('')
   const [isOpen, setIsOpen] = useState(false)
-  const [wantsReason, setWantsReason] = useState(false)
+  const [wantsRequired, setWantsRequired] = useState(false)
   const action = availabilityAction(unit, occupied)
 
   const close = () => {
     setIsOpen(false)
-    setWantsReason(false)
-    // Cleared on the way out, not on the way in: a reason left over from an
-    // abandoned edit is how a burst-pipe note ends up on the wrong cabin.
-    setReason('')
+    setWantsRequired(false)
+    // Cleared on the way out, not on the way in: an entry left over from an
+    // abandoned edit is how one cabin's occupant ends up written into another.
+    setRequired('')
+    setNote('')
   }
 
   // Shown to everyone, including a reader without `bunking.manage`. Knowing a
-  // cabin is closed for a burst pipe is not a write, and the staff member who
-  // needs it most may not hold the permission.
+  // staff cabin was opened to families is not a write, and the staff member
+  // who needs it most may not hold the permission.
+  //
+  // RELEASE ONLY (kindred#2078). A write-in's note rides inside its occupant
+  // card in the well; repeating it here would print one string twice on one
+  // card.
   const storedReason = unit.reason ?? ''
   const explanation =
-    unit.family_available_override !== null &&
-    unit.family_available_override !== undefined &&
-    storedReason !== '' ? (
+    unit.family_available_override === true && storedReason !== '' ? (
       <span className="text-muted-foreground w-full text-sm italic">{storedReason}</span>
     ) : null
 
   if (action === null || !canManage) return explanation
 
-  if (isOpen && action.needsReason) {
+  if (isOpen && action.prompt !== 'none') {
+    const askingOccupant = action.prompt === 'occupant'
+    const requiredLabel = askingOccupant ? 'Occupant' : 'Reason'
+    const refusal = askingOccupant
+      ? 'Say who is in it, so next week’s staff know who to ask.'
+      : 'Say why, so next week’s staff can act on it.'
+
     return (
       <>
         {explanation}
@@ -96,43 +145,68 @@ export function UnitAvailabilityControl({
           className="flex w-full flex-col gap-1"
           onSubmit={(event) => {
             event.preventDefault()
-            const trimmed = reason.trim()
-            // The ONLY place an empty reason is refused. The submit button is
-            // deliberately NOT disabled while the box is empty: a disabled
-            // button plus a guard here mask each other — deleting either leaves
-            // the other quietly holding the rule, so a test can pin neither,
-            // which is exactly what a surviving mutation caught. An inert
-            // button also explains nothing to the staff member wondering why
-            // their click did nothing.
+            const trimmed = required.trim()
+            // The ONLY place an empty required field is refused. The submit
+            // button is deliberately NOT disabled while the box is empty: a
+            // disabled button plus a guard here mask each other — deleting
+            // either leaves the other quietly holding the rule, so a test can
+            // pin neither, which is exactly what a surviving mutation caught.
+            // An inert button also explains nothing to the staff member
+            // wondering why their click did nothing.
             if (trimmed === '') {
-              setWantsReason(true)
+              setWantsRequired(true)
               return
             }
-            onSubmit({ familyAvailable: action.familyAvailable, reason: trimmed })
+            onSubmit({
+              familyAvailable: action.familyAvailable,
+              // The note NEVER stands in for the occupant, and the occupant
+              // never doubles as the note: two fields, two facts. Collapsing
+              // them is the state 1500000148 spent two guarded statements
+              // unwinding.
+              occupantName: askingOccupant ? trimmed : '',
+              reason: askingOccupant ? note.trim() : trimmed,
+            })
             close()
           }}
         >
           <input
             type="text"
-            aria-label="Reason"
-            placeholder="Burst pipe, caretaker…"
-            value={reason}
+            aria-label={requiredLabel}
+            placeholder={askingOccupant ? 'Emma Johnson, burst pipe…' : 'Burst pipe, caretaker…'}
+            value={required}
             maxLength={500}
             // deliberate: this input only mounts when the staff member just clicked
-            // "Hold"/"Release" (a modal-open equivalent), and the whole point of the click is to
-            // type a reason next.
+            // "Write in"/"Release" (a modal-open equivalent), and the whole point of the
+            // click is to type into it next.
             // eslint-disable-next-line jsx-a11y/no-autofocus
             autoFocus
-            aria-invalid={wantsReason && reason.trim() === ''}
+            aria-invalid={wantsRequired && required.trim() === ''}
             onChange={(event) => {
-              setReason(event.target.value)
-              setWantsReason(false)
+              setRequired(event.target.value)
+              setWantsRequired(false)
             }}
             className="border-border bg-background text-foreground placeholder:text-muted-foreground/60 focus:border-primary/50 focus:ring-primary/10 w-full rounded-md border px-1.5 py-1 text-sm focus:ring-2 focus:outline-none aria-[invalid=true]:border-amber-500"
           />
-          {wantsReason && reason.trim() === '' && (
+          {/* OPTIONAL, and only beside a write-in. It carries the "say why, so
+              next week's staff can act on it" affordance a bare name loses —
+              prospectively: 1500000148 cleared the note of every row it moved,
+              so this column is empty on all of them and that is correct. */}
+          {askingOccupant && (
+            <input
+              type="text"
+              aria-label="Note (optional)"
+              placeholder="Note (optional) — back Monday…"
+              value={note}
+              maxLength={500}
+              onChange={(event) => {
+                setNote(event.target.value)
+              }}
+              className="border-border bg-background text-foreground placeholder:text-muted-foreground/60 focus:border-primary/50 focus:ring-primary/10 w-full rounded-md border px-1.5 py-1 text-sm focus:ring-2 focus:outline-none"
+            />
+          )}
+          {wantsRequired && required.trim() === '' && (
             <span className="text-xs font-medium text-amber-700 dark:text-amber-400">
-              Say why, so next week&rsquo;s staff can act on it.
+              {refusal}
             </span>
           )}
           <div className="flex items-center gap-1.5">
@@ -163,14 +237,14 @@ export function UnitAvailabilityControl({
         type="button"
         disabled={isSaving}
         // Named for the cabin: eighty-one cards each carrying a button called
-        // "Hold" is unusable with a screen reader.
+        // "Write in" is unusable with a screen reader.
         aria-label={`${action.label} ${unit.name}`}
         onClick={() => {
-          if (action.needsReason) {
+          if (action.prompt !== 'none') {
             setIsOpen(true)
             return
           }
-          onSubmit({ familyAvailable: action.familyAvailable, reason: '' })
+          onSubmit({ familyAvailable: action.familyAvailable, occupantName: '', reason: '' })
         }}
         className="border-border text-muted-foreground hover:text-foreground hover:border-foreground/30 rounded-full border px-1.5 py-0.5 text-xs font-medium disabled:opacity-40"
       >

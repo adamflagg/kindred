@@ -27,6 +27,16 @@ REPO_ROOT=$(git rev-parse --show-toplevel)
 PB_BIN="$REPO_ROOT/pocketbase/pocketbase"
 MIG_DIR="$REPO_ROOT/pocketbase/pb_migrations"
 
+# The registry loader (pocketbase/main.go) runs as a serve hook and ABORTS THE
+# BOOT with "lodging registry file present but no season is resolvable" when it
+# finds ./config/lodging_registry.json and no season. Every dev checkout that
+# ran setup-local-config.sh has that symlink, so running this from the repo
+# root -- the normal thing -- made the boot fail and the script exit 2 without
+# checking a single field. This check is about SHAPE, not rows, so the year
+# only has to exist. Same fix, same reason, as verify-lodging-seed.sh, and
+# defaulted rather than forced so a caller's own season still wins.
+export CAMPMINDER_SEASON_ID="${CAMPMINDER_SEASON_ID:-2026}"
+
 # Rebuild rather than assert existence: a stale binary would let this report
 # PASS against a Go model-level guard that no longer exists in the source.
 # Incremental, so it is near-free on an unchanged tree. See kindred#1922.
@@ -164,6 +174,20 @@ far=$(field_prop lodging_availability family_available required || true)
 # _build_units on read).
 nt=$(field_prop lodging_availability note type || true)
 [[ "$nt" == "text" ]] || note "lodging_availability.note type is '$nt' (expected text)"
+
+# WHO is in the room (1500000148, kindred#2078). A hold IS a write-in, so the
+# row that closes a cabin also names its occupant. Untranslated: the column and
+# the API field share one name, unlike note/reason above.
+on=$(field_prop lodging_availability occupant_name type || true)
+[[ "$on" == "text" ]] || note "lodging_availability.occupant_name type is '$on' (expected text)"
+
+# NOT required, and that is load-bearing twice over: a required text field
+# would have refused every pre-1500000148 row before the backfill could fill
+# it, and the release branch (a staff cabin opened to families) has no occupant
+# to name at all.
+onr=$(field_prop lodging_availability occupant_name required || true)
+[[ "$onr" != "1" && "$onr" != "true" ]] \
+  || note "lodging_availability.occupant_name is required -- the release branch names no occupant"
 
 # Unbounded numbers must be null, not 0 (0 would reject positive values).
 mx=$(field_prop lodging_units sleeps max || true)

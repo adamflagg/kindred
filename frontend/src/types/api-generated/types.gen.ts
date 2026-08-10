@@ -156,6 +156,10 @@ export type AvailabilityWriteRequest = {
    */
   family_available?: boolean | null
   /**
+   * Occupant Name
+   */
+  occupant_name?: string
+  /**
    * Reason
    */
   reason?: string
@@ -2185,6 +2189,10 @@ export type LodgingUnitSummary = {
    * Family Available Override
    */
   family_available_override?: boolean | null
+  /**
+   * Occupant Name
+   */
+  occupant_name?: string
   /**
    * Reason
    */

@@ -216,7 +216,8 @@ describe('setUnitAvailability', () => {
     const result = await setUnitAvailability(mockFetch, {
       ...WEEKEND,
       familyAvailable: false,
-      reason: 'Burst pipe',
+      occupantName: 'Emma Johnson',
+      reason: 'Kitchen lead, Fri–Sun',
     })
 
     const [url, options] = mockFetch.mock.calls[0] as [string, RequestInit]
@@ -224,29 +225,35 @@ describe('setUnitAvailability', () => {
     expect(options.method).toBe('PUT')
     // No scenario. The endpoint takes none since 1500000135, and sending one
     // would be a 422 against a model that no longer extends ScenarioWriteRequest.
+    //
+    // `occupant_name` travels under the column's own name (kindred#2078);
+    // only `reason` is renamed on the wire, and only because 1500000135 reused
+    // a `note` column that already existed.
     expect(JSON.parse(options.body as string)).toEqual({
       year: 2026,
       session_cm_id: 1000001,
       unit_id: 'u1',
       family_available: false,
-      reason: 'Burst pipe',
+      occupant_name: 'Emma Johnson',
+      reason: 'Kitchen lead, Fri–Sun',
     })
     expect(result).toEqual({ record_id: 'r1', deleted: false })
   })
 
-  it('sends a hold as an explicit false, never as a missing field', async () => {
+  it('sends a write-in as an explicit false, never as a missing field', async () => {
     // THE trap. `false` and `null` are different answers — false is "closed
     // this weekend", null DELETES the row and hands the question back to the
     // unit's role. Any falsy handling on the way out (`|| null`, a spread that
     // drops it, `familyAvailable ? ... : undefined`) turns "hold this cabin"
     // into "clear the override", and the write reads as a no-op that staff
-    // only notice when a family arrives at a cabin with no water.
+    // only notice when a family arrives at a cabin somebody else is sleeping in.
     const mockFetch = vi.fn().mockResolvedValue(okResponse({ record_id: 'r1', deleted: false }))
 
     await setUnitAvailability(mockFetch, {
       ...WEEKEND,
       familyAvailable: false,
-      reason: 'Burst pipe',
+      occupantName: 'Emma Johnson',
+      reason: '',
     })
 
     const body = JSON.parse((mockFetch.mock.calls[0] as [string, RequestInit])[1].body as string)
@@ -264,6 +271,7 @@ describe('setUnitAvailability', () => {
     const result = await setUnitAvailability(mockFetch, {
       ...WEEKEND,
       familyAvailable: null,
+      occupantName: '',
       reason: '',
     })
 
@@ -283,7 +291,12 @@ describe('setUnitAvailability', () => {
     })
 
     await expect(
-      setUnitAvailability(mockFetch, { ...WEEKEND, familyAvailable: true, reason: 'Overflow' })
+      setUnitAvailability(mockFetch, {
+        ...WEEKEND,
+        familyAvailable: true,
+        occupantName: '',
+        reason: 'Overflow',
+      })
     ).rejects.toMatchObject({ status: 403, message: 'Permission required: bunking.manage' })
   })
 })

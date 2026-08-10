@@ -160,7 +160,7 @@ export async function unplaceParty(
   if (!response.ok) throw await toError(response, 'Failed to unplace the party')
 }
 
-/** Holding one unit back for a weekend, or releasing one to families. */
+/** Writing somebody into one unit for a weekend, or releasing one to families. */
 export interface AvailabilityWrite {
   year: number
   sessionCmId: number
@@ -169,10 +169,19 @@ export interface AvailabilityWrite {
   /**
    * THREE values, not two. `false` closes the unit for this weekend, `true`
    * opens it, and `null` DELETES the row so the unit's own role decides again.
-   * Nothing here may be read for truthiness: `!familyAvailable` folds a hold
-   * into a clear.
+   * Nothing here may be read for truthiness: `!familyAvailable` folds a
+   * write-in into a clear.
    */
   familyAvailable: boolean | null
+  /**
+   * WHO is in the room (kindred#2078). Required through the control on a
+   * write-in; `''` on a release and on a clear.
+   *
+   * Sent under the SAME name the column carries, unlike `reason` below —
+   * `reason`/`note` carry two names only because 1500000135 reused a column
+   * that already existed.
+   */
+  occupantName: string
   /** Display only — the rule never branches on it. `''` when clearing. */
   reason: string
 }
@@ -189,7 +198,7 @@ export interface AvailabilityWrite {
  */
 export async function setUnitAvailability(
   fetchWithAuth: FetchWithAuth,
-  { year, sessionCmId, unitId, familyAvailable, reason }: AvailabilityWrite
+  { year, sessionCmId, unitId, familyAvailable, occupantName, reason }: AvailabilityWrite
 ): Promise<LodgingWriteResult> {
   const response = await fetchWithAuth(`${API_BASE}/availability`, {
     method: 'PUT',
@@ -199,6 +208,7 @@ export async function setUnitAvailability(
       session_cm_id: sessionCmId,
       unit_id: unitId,
       family_available: familyAvailable,
+      occupant_name: occupantName,
       reason,
     }),
   })

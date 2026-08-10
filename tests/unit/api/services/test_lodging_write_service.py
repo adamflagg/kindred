@@ -1061,6 +1061,36 @@ class TestTheAvailabilityWriteShape:
         assert "scenario" not in data
         assert "state" not in data
 
+    def test_an_occupant_name_is_optional_at_the_schema_but_bounded(self) -> None:
+        """Required through the CONTROL, permissive at the schema.
+
+        Exactly the split `reason` already makes, and for the same reason: a
+        row written by an ingest or a fixture has no author to ask. The
+        write-in form is where the requirement lives, because that is the only
+        path with an author -- and a clear (`family_available: null`) sends
+        neither field.
+        """
+        assert AvailabilityWriteRequest(year=2026, session_cm_id=1000001, unit_id="u1").occupant_name == ""
+        with pytest.raises(ValidationError):
+            AvailabilityWriteRequest(year=2026, session_cm_id=1000001, unit_id="u1", occupant_name="x" * 501)
+
+    @pytest.mark.asyncio
+    async def test_the_occupant_name_is_stored_under_its_own_name(
+        self, write_service: LodgingWriteService, repo: MagicMock
+    ) -> None:
+        """kindred#2078. `occupant_name` is NOT translated, and that is deliberate.
+
+        `reason`/`note` carry two names because 1500000135 reused a column that
+        already existed. There is no such inheritance here, so the API name and
+        the column name are the same one and this write path has no second
+        translation to keep in step.
+        """
+        await write_service.set_availability(_availability_request(occupant_name="Emma Johnson"))
+
+        data = repo.create_availability.call_args[0][0]
+        assert data["occupant_name"] == "Emma Johnson"
+        assert data["note"] == "Burst pipe"
+
     @pytest.mark.asyncio
     async def test_a_release_writes_true_rather_than_a_state_name(
         self, write_service: LodgingWriteService, repo: MagicMock

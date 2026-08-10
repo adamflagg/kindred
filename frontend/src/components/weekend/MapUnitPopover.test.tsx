@@ -158,16 +158,18 @@ describe('MapUnitPopover — one room', () => {
     expect(onOpenParty).toHaveBeenCalledWith(johnson)
   })
 
-  it('badges a held room, reusing the inventory and board wording', () => {
+  it('badges a written-into room, reusing the inventory and board wording', () => {
     // `reservationBadge` is the shared source for this; a second copy is how
-    // the three surfaces start disagreeing about what "Held" means.
+    // the three surfaces start disagreeing about what the word means. It
+    // INHERITED kindred#2078's rename for free, which is the point — this
+    // popover renders no availability string of its own.
     render(
       <MapUnitPopover
         units={[
           mapUnit(
             row({
               family_available_override: false,
-              reason: 'Burst pipe',
+              occupant_name: 'Emma Johnson',
               is_family_available: false,
             })
           ),
@@ -176,7 +178,7 @@ describe('MapUnitPopover — one room', () => {
         onOpenParty={vi.fn()}
       />
     )
-    expect(screen.getByText('Held')).toBeInTheDocument()
+    expect(screen.getByText('Write-in')).toBeInTheDocument()
   })
 
   it('says a deactivated room is inactive', () => {
@@ -501,7 +503,7 @@ describe('MapUnitPopover — a cluster of rooms', () => {
     expect(screen.getAllByTestId('map-popover-cell')).toHaveLength(3)
   })
 
-  it('carries a held or deactivated room’s status into the cluster cell', () => {
+  it('carries a written-into or deactivated room’s status into the cluster cell', () => {
     // The grid has no room for badges, but a cell that says nothing makes a
     // held room in a house indistinguishable from a bookable one. The tooltip
     // is free space.
@@ -519,8 +521,8 @@ describe('MapUnitPopover — a cluster of rooms', () => {
       ),
     ]
     render(<MapUnitPopover units={house} hue={HUE} onOpenParty={vi.fn()} />)
-    expect(screen.getByTitle(/Cedar 2.*Held.*Inactive/i)).toBeInTheDocument()
-    expect(screen.queryByTitle(/Cedar 1.*Held/i)).not.toBeInTheDocument()
+    expect(screen.getByTitle(/Cedar 2.*Write-in.*Inactive/i)).toBeInTheDocument()
+    expect(screen.queryByTitle(/Cedar 1.*Write-in/i)).not.toBeInTheDocument()
   })
 
   it('says WHICH room in a cluster carries the consent flag', () => {

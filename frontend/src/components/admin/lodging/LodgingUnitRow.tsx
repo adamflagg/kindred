@@ -87,7 +87,10 @@ export function LodgingUnitRow({
         )}
       </td>
       <td className="py-1.5">
-        {unit.inventory_class === 'staff_default' ? 'Held for staff' : 'Available to guests'}
+        {/* "Staff housing", not "Held for staff" (kindred#2078) — the same
+            permanent role the Allocation select names, and deliberately not
+            the board's per-weekend write-in. */}
+        {unit.inventory_class === 'staff_default' ? 'Staff housing' : 'Available to guests'}
       </td>
       <td className="py-1.5">
         <div className="flex flex-wrap items-center gap-1.5">
