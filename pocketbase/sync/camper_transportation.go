@@ -44,6 +44,12 @@ const (
 //
 // Field mapping handles both new BUS-* fields and legacy "Bus to/From Camp" fields.
 // New fields take priority; legacy fields are used as fallback.
+//
+// Rows persist after a camper cancels; this table is never swept by deletion. A future reader
+// (e.g. a staff dashboard) must filter by active enrolment for the view's own year -- an
+// `attendees` row with status_id = 2 for that person and year -- and must not filter across
+// years. See "Reading Derived Informational Tables (Active-Enrolment Filtering)" in
+// docs/architecture/sync-layer.md.
 type CamperTransportationSync struct {
 	App            core.App
 	Year           int
