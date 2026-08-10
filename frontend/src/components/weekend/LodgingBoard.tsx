@@ -324,16 +324,24 @@ export function LodgingBoard({
    * re-checks it: the card's own gate is the affordance half, and a write
    * gate that lives only in an affordance is one prop away from being
    * bypassed.
+   *
+   * Returns whether the placement landed, so `LodgingUnitCard`'s sr-only
+   * announcement (kindred#2219 round 6) fires only on a real move —
+   * `false` for a refused intent (stale picker row) or a rejected mutation
+   * (the rollback path below), never for the ones that never happened.
    */
   const placeParty = useCallback(
-    (unit: LodgingUnitRow, party: RosterPartyRow) => {
-      if (!canPlace) return
+    (unit: LodgingUnitRow, party: RosterPartyRow): Promise<boolean> => {
+      if (!canPlace) return Promise.resolve(false)
       const intent = resolvePickerPlacement({ party, unitCode: unit.code, parties, units })
-      if (intent === null) return
+      if (intent === null) return Promise.resolve(false)
       // The rejection path is the hook's — it rolls the optimistic move back
-      // and raises the toast. Catching keeps the rejected promise from
-      // surfacing as an unhandled rejection, exactly as the drop handler does.
-      void move(intent).catch(() => undefined)
+      // and raises the toast. Caught here only to turn it into `false`
+      // rather than an unhandled rejection, exactly as the drop handler does.
+      return move(intent).then(
+        () => true,
+        () => false
+      )
     },
     [canPlace, move, parties, units]
   )
