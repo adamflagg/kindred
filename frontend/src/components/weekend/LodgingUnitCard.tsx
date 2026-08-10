@@ -240,8 +240,16 @@ export interface LodgingUnitCardProps {
    * `exactOptionalPropertyTypes`, matching `onSetAvailability` and `onSplit`
    * above. The board resolves the intent through `resolvePickerPlacement`,
    * which is `resolveDrop` — there is one placement path, not two.
+   *
+   * Returns whether the placement actually landed (kindred#2219 round 6,
+   * CodeRabbit finding). `resolvePickerPlacement` can refuse a stale picker
+   * row synchronously, and the optimistic mutation behind it
+   * (`useLodgingPlacement.move`) can still reject and roll itself back —
+   * either way nothing moved, so the sr-only announcement below must not
+   * fire. An `undefined` return (no signal either way) is treated as success
+   * for backward compatibility with callers that predate this contract.
    */
-  onPlaceParty?: (unit: LodgingUnitRow, party: RosterPartyRow) => void
+  onPlaceParty?: (unit: LodgingUnitRow, party: RosterPartyRow) => Promise<boolean> | undefined
   onOpenParty: (party: RosterPartyRow) => void
 }
 
@@ -840,8 +848,23 @@ export function LodgingUnitCard({
             // whole-house capacity rather than by its container row's delta.
             units={units}
             onSelect={(party) => {
-              setAnnouncement(placementAnnouncementText(unit, party))
-              onPlaceParty(unit, party)
+              // Announce only once the placement actually lands (kindred#2219
+              // round 6, CodeRabbit finding). `onPlaceParty` can refuse a
+              // stale picker row synchronously (`resolvePickerPlacement`
+              // returning null) or roll itself back after an async failure
+              // (`useLodgingPlacement.move` rejecting) — a screen reader told
+              // "placed in Cedar 1" in either case would be told a lie. A
+              // `void` return (no signal) is treated as success, for callers
+              // that predate this contract.
+              const text = placementAnnouncementText(unit, party)
+              const result = onPlaceParty(unit, party)
+              if (result === undefined) {
+                setAnnouncement(text)
+              } else {
+                void result.then((succeeded) => {
+                  if (succeeded) setAnnouncement(text)
+                })
+              }
             }}
           />
         )}

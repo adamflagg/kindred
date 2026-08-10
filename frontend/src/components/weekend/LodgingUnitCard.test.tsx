@@ -2240,4 +2240,39 @@ describe('LodgingUnitCard — the sr-only placement announcement (kindred#2219, 
     expect(region.tagName).toBe('DIV')
     expect(region).not.toHaveAttribute('tabindex')
   })
+
+  /*
+   * CodeRabbit finding on this PR: `onPlaceParty` can refuse a stale picker
+   * row (`resolvePickerPlacement` returning null, synchronously) or roll
+   * itself back after a rejected mutation (`useLodgingPlacement.move`,
+   * asynchronously) -- in both cases nothing moved, so announcing "placed"
+   * would tell a screen reader user a lie the sighted board never told them
+   * (the card stays exactly where it was, silently, per the rollback
+   * contract in `useLodgingPlacement.ts`). These two pin that the region
+   * only speaks once `onPlaceParty` actually reports success.
+   */
+  it('does not announce when the placement is refused or fails', async () => {
+    const user = userEvent.setup()
+    // `renderCard`'s own return always hands back its internal default mock,
+    // not an override passed through `props` (the spread wins in the JSX,
+    // but the function still closes over and returns the discarded one) —
+    // so the override has to be captured directly to assert on it.
+    const onPlaceParty = vi.fn().mockResolvedValue(false)
+    renderCard({ onPlaceParty })
+    await user.click(screen.getByRole('combobox', { name: /place a family in cedar 1/i }))
+    await user.click(screen.getByRole('option', { name: /Sofia Diaz/ }))
+    expect(onPlaceParty).toHaveBeenCalledTimes(1)
+    const region = screen.getByRole('status', { hidden: true })
+    expect(region).toHaveTextContent('')
+  })
+
+  it('announces once the placement resolves as successful', async () => {
+    const user = userEvent.setup()
+    renderCard({ onPlaceParty: vi.fn().mockResolvedValue(true) })
+    await user.click(screen.getByRole('combobox', { name: /place a family in cedar 1/i }))
+    await user.click(screen.getByRole('option', { name: /Sofia Diaz/ }))
+    const region = screen.getByRole('status', { hidden: true })
+    expect(region).toHaveTextContent('Sofia Diaz')
+    expect(region).toHaveTextContent('Cedar 1')
+  })
 })
