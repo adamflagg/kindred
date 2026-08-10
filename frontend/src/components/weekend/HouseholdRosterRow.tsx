@@ -6,10 +6,12 @@
  * Adult weekends: individuals enrol directly, so the party is one person and
  * has no children.
  *
- * The left rail is the page's scanning spine. It is drawn ONLY for parties
- * that need something — a weekend that is fully placed and unconstrained shows
- * no rails at all, so the design tells the truth about the weekend's state
- * instead of decorating every row equally.
+ * Attention level (required a decision vs settled) is carried by the section
+ * heading in `HouseholdRosterTable`, not by this row — a per-row left-edge
+ * stripe used to repeat it here, but the stripe colour was CONSTANT within a
+ * section and so restated the heading the row was already sitting under
+ * (kindred#2072-rail). Deleted rather than kept for consistency's sake: a
+ * constant is not a signal.
  */
 import { Clock, Repeat, Star } from 'lucide-react'
 import { Fragment } from 'react'
@@ -60,15 +62,6 @@ const NO_FLAGS: AccessibilityFlags = {
   needs_accommodation: false,
   accommodation_is_mandatory: false,
   has_infant: false,
-}
-
-/** Settled parties get no rail — absence is the signal. */
-const RAIL: Record<AttentionLevel, string> = {
-  required: 'border-red-500',
-  unmet: 'border-red-500',
-  unplaced: 'border-amber-500',
-  unverified: 'border-sky-400 dark:border-sky-500',
-  settled: 'border-transparent',
 }
 
 const REASON_TONE: Record<AttentionLevel, string> = {
@@ -125,7 +118,7 @@ export function HouseholdRosterRow({ party, showRequests, unit, onOpen }: Househ
     // and still satisfies `clickoutsidePredicate`'s `isInteractive` check
     // (`button` is already in its selector list).
     <tr className="border-border/40 border-b align-top">
-      <td className={`border-l-[3px] ${RAIL[attention.level]}`}>
+      <td>
         {/* THE EXPLICIT OPEN CONTROL (kindred#2222). The cell used to be one
             `<button>` wrapping every line, including the Returning/
             First-time badges — a `<button>`'s content model forbids an
