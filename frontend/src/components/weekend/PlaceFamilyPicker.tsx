@@ -23,6 +23,13 @@
  * focus — which covers a Tab arrival as well as a click — is arrow-navigable,
  * and closes on Escape without letting the key reach the surfaces behind it.
  *
+ * It also closes when focus LEAVES, which is the same rule stated from the
+ * other end: a card that was Tabbed away from has been abandoned as surely as
+ * one clicked away from, and must shrink back. Focus itself never enters the
+ * list — the rows are `tabIndex={-1}` and the combobox keeps focus through
+ * `aria-activedescendant` — so one Tab leaves the whole control however many
+ * families are in it.
+ *
  * ## It never hides a family
  *
  * See `placementCandidates.ts` for the arithmetic. Rows are annotated and
@@ -35,12 +42,12 @@
  * misfit, forest tint = open), and draw no ring — kindred#2179 struck the last
  * one an hour before this was written.
  */
-import { useEffect, useId, useRef, useState } from 'react'
+import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react'
 
 import type { LodgingUnitRow, RosterPartyRow } from '../../types/lodging'
-import { partyIdentityLabel } from './householdIdentity'
+import { partyIdentityLabel, partySearchText } from './householdIdentity'
 import { partyKey } from './partyKey'
-import { candidateSearchText, placementCandidates } from './placementCandidates'
+import { placementCandidates } from './placementCandidates'
 import { partyBeds } from './rosterAttention'
 
 export interface PlaceFamilyPickerProps {
@@ -57,8 +64,6 @@ export interface PlaceFamilyPickerProps {
    */
   units?: LodgingUnitRow[]
   onSelect: (party: RosterPartyRow) => void
-  /** A placement write from this card is in flight. */
-  disabled?: boolean
 }
 
 /**
@@ -72,13 +77,7 @@ const NOTE_TONE: Record<'partial' | 'unmet', string> = {
   partial: 'text-muted-foreground',
 }
 
-export function PlaceFamilyPicker({
-  unit,
-  parties,
-  units = [],
-  onSelect,
-  disabled = false,
-}: PlaceFamilyPickerProps) {
+export function PlaceFamilyPicker({ unit, parties, units = [], onSelect }: PlaceFamilyPickerProps) {
   const [open, setOpen] = useState(false)
   const [query, setQuery] = useState('')
   /** -1 is "no row active", which is the state Enter must do nothing in. */
@@ -91,32 +90,65 @@ export function PlaceFamilyPicker({
   const baseId = useId()
   const listId = `${baseId}-list`
 
+  /**
+   * Shut, and forget which row was active.
+   *
+   * Both halves, always. A dismissal that dropped `open` but left
+   * `activeIndex` would leave `aria-activedescendant` naming a row that no
+   * longer exists — the next thing a screen reader would try to announce.
+   */
+  const close = useCallback(() => {
+    setOpen(false)
+    setActiveIndex(-1)
+  }, [])
+
   useEffect(() => {
     if (!open) return
     const handler = (event: MouseEvent) => {
       if (containerRef.current?.contains(event.target as Node) === true) return
-      setOpen(false)
+      close()
     }
     document.addEventListener('mousedown', handler)
     return () => {
       document.removeEventListener('mousedown', handler)
     }
-  }, [open])
+  }, [open, close])
+
+  /*
+   * The active row follows the arrows THROUGH the scroller.
+   *
+   * The list is `max-h-48` — about five rows — over a queue that ran to 63
+   * unplaced parties on the 2026 weekend, so without this the highlight walks
+   * off the bottom on the sixth ArrowDown and the keyboard user is steering
+   * something they cannot see. `block: 'nearest'` scrolls the list only when
+   * the row is actually out of view, and never moves the page.
+   */
+  useEffect(() => {
+    if (activeIndex < 0) return
+    document.getElementById(`${baseId}-${String(activeIndex)}`)?.scrollIntoView({
+      block: 'nearest',
+    })
+  }, [activeIndex, baseId])
 
   const trimmed = query.trim()
   const needle = trimmed.toLowerCase()
   // Annotated and ordered FIRST, then narrowed by what the staff member
   // typed. The typed filter is the user's own; it is not a fit gate, and it
   // is the only thing that ever removes a row.
-  const candidates = placementCandidates(parties, unit, units).filter(
-    (candidate) =>
-      needle === '' || candidateSearchText(candidate.party).toLowerCase().includes(needle)
+  //
+  // Memoised because ~82 of these are mounted at once and every one of them
+  // holds the WHOLE unplaced queue: recomputed on each render, one board
+  // re-render (a drag starting, a panel opening) would re-annotate and re-sort
+  // that queue eighty-two times over. `parties` is `board.unplaced` and
+  // `units` the registry, both already memo-stable in `LodgingBoard`.
+  const candidates = useMemo(
+    () =>
+      placementCandidates(parties, unit, units).filter(
+        (candidate) =>
+          needle === '' || partySearchText(candidate.party).toLowerCase().includes(needle)
+      ),
+    [parties, unit, units, needle]
   )
-
-  const close = () => {
-    setOpen(false)
-    setActiveIndex(-1)
-  }
 
   const choose = (party: RosterPartyRow) => {
     onSelect(party)
@@ -161,7 +193,25 @@ export function PlaceFamilyPicker({
       : undefined
 
   return (
-    <div ref={containerRef} className="flex w-full flex-col gap-1">
+    <div
+      ref={containerRef}
+      className="flex w-full flex-col gap-1"
+      /*
+       * Focus leaving the control closes it, and that is the other half of
+       * "the card only grows while somebody is using it". Dismissal on an
+       * outside MOUSEDOWN alone leaves a card that was Tabbed away from
+       * standing open — grown, and holding a listbox nobody is looking at.
+       *
+       * `relatedTarget` is where focus WENT: `null` (focus fell to the body)
+       * and anything outside this container both count as leaving. A click on
+       * a row never gets here — the row's `onMouseDown` keeps focus on the
+       * combobox precisely so it does not.
+       */
+      onBlur={(event) => {
+        if (event.currentTarget.contains(event.relatedTarget)) return
+        close()
+      }}
+    >
       <input
         ref={inputRef}
         type="text"
@@ -171,7 +221,6 @@ export function PlaceFamilyPicker({
         aria-label={`Place a family in ${unit.name}`}
         placeholder="Place a family…"
         value={query}
-        disabled={disabled}
         aria-expanded={open}
         aria-autocomplete="list"
         // Unconditional, though the listbox only exists while open: the
@@ -228,6 +277,12 @@ export function PlaceFamilyPicker({
                 type="button"
                 role="option"
                 aria-selected={index === activeIndex}
+                // Out of the tab order, because `aria-activedescendant` means
+                // focus never leaves the combobox. A `<button>` is a tab stop
+                // by default, so without this every row is one: Tabbing off a
+                // card would walk the staff member through all 63 unplaced
+                // parties first, on each of ~82 cards.
+                tabIndex={-1}
                 data-fit={candidate.fit}
                 // Keeps focus on the combobox through the click, so Escape and
                 // the arrows still work after a mis-click on a row.

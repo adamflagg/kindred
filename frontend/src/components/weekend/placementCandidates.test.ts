@@ -12,7 +12,7 @@
 import { describe, expect, it } from 'vitest'
 
 import type { LodgingUnitRow, RosterPartyRow } from '../../types/lodging'
-import { candidateFit, candidateSearchText, placementCandidates } from './placementCandidates'
+import { candidateFit, placementCandidates } from './placementCandidates'
 
 function unit(overrides: Partial<LodgingUnitRow> = {}): LodgingUnitRow {
   return {
@@ -240,33 +240,5 @@ describe('placementCandidates', () => {
       []
     )
     expect(rows.map((row) => row.party.sort_name)).toEqual(['Garcia', 'Nguyen', 'Rodriguez'])
-  })
-})
-
-describe('candidateSearchText', () => {
-  it('finds a household by any member, adult or child', () => {
-    const text = candidateSearchText(
-      party({
-        adults: [{ adult_number: 1, display_name: 'Emma Johnson', relationship: 'Mother' }],
-        children: [{ person_cm_id: 9001, display_name: 'Noah Johnson', age: 8, grade: 3 }],
-      })
-    ).toLowerCase()
-    expect(text).toContain('emma johnson')
-    expect(text).toContain('noah johnson')
-  })
-
-  it('leads with the identity the card shows, not CampMinder salutation', () => {
-    // kindred#2084: `display_name` is the mailing_title salutation and
-    // disagreed with the attending-adult list on 26.7% of 2026 households.
-    // Searching for the stale wording must not resurrect it here.
-    const text = candidateSearchText(
-      party({
-        display_name: 'The Garcia Family',
-        adults: [{ adult_number: 1, display_name: 'Liam Garcia', relationship: 'Father' }],
-        children: [],
-      })
-    )
-    expect(text).toContain('Liam Garcia')
-    expect(text).not.toContain('The Garcia Family')
   })
 })

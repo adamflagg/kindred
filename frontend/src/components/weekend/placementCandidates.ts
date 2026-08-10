@@ -187,29 +187,6 @@ export function candidateFit(
 const DISPLAY_ORDER: readonly CandidateFitLevel[] = ['fits', 'partial', 'unmet']
 
 /**
- * Text a staff member might type to find this party.
- *
- * Children and adults included so a household can be found by whoever the
- * staff member happens to remember. The LEADING element is
- * `partyIdentityLabel`, the same identity the card shows (kindred#2084) —
- * `display_name` is CampMinder's `mailing_title` salutation, which disagreed
- * with the real attending-adult list on 26.7% of 2026's rostered households,
- * and a search that still matched it would resurrect wording the card
- * deliberately stopped showing.
- *
- * The same construction `FloatingUnplacedBadge`'s own `getSearchText` uses,
- * over the same queue of unplaced parties. Two searches over one list that
- * disagreed about which names count would be the worse outcome.
- */
-export function candidateSearchText(party: RosterPartyRow): string {
-  return [
-    partyIdentityLabel(party),
-    ...(party.adults ?? []).map((adult) => adult.display_name ?? ''),
-    ...(party.children ?? []).map((child) => child.display_name ?? ''),
-  ].join(' ')
-}
-
-/**
  * Every party, annotated and ordered by fit. NOTHING IS OMITTED — see the
  * module doc for why that is a ruling rather than an oversight.
  *

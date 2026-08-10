@@ -237,8 +237,6 @@ export interface LodgingUnitCardProps {
    * which is `resolveDrop` — there is one placement path, not two.
    */
   onPlaceParty?: (unit: LodgingUnitRow, party: RosterPartyRow) => void
-  /** True while THIS unit's placement write is in flight. */
-  savingPlacement?: boolean
   onOpenParty: (party: RosterPartyRow) => void
 }
 
@@ -258,7 +256,6 @@ export function LodgingUnitCard({
   savingMerge = false,
   unplacedParties = [],
   onPlaceParty,
-  savingPlacement = false,
   onOpenParty,
 }: LodgingUnitCardProps) {
   const { unit, parties, consent } = slot
@@ -732,7 +729,6 @@ export function LodgingUnitCard({
             // The registry, only so a combined house is judged by its
             // whole-house capacity rather than by its container row's delta.
             units={units}
-            disabled={savingPlacement}
             onSelect={(party) => {
               onPlaceParty(unit, party)
             }}

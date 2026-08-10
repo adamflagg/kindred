@@ -17,6 +17,7 @@ import {
   partyFamilyLabel,
   partyHeadcount,
   partyIdentityLabel,
+  partySearchText,
 } from './householdIdentity'
 
 function party(overrides: Partial<RosterPartyRow> = {}): RosterPartyRow {
@@ -708,5 +709,48 @@ describe('dedupeAdultNames -- kindred#2180', () => {
     ])
     expect(run.names).toEqual(['Olivia Marie', 'Noah'])
     expect(run.sharedSurname).toBe('Johnson')
+  })
+})
+
+describe('partySearchText', () => {
+  /*
+   * ONE search text for one queue. `FloatingUnplacedBadge` and the unit
+   * card's placement picker (kindred#2080) search the SAME list of unplaced
+   * parties; two copies of this construction that drifted would mean a
+   * household findable in one and not the other.
+   */
+  it('finds a household by any member, adult or child', () => {
+    const text = partySearchText(
+      party({
+        adults: [{ adult_number: 1, display_name: 'Emma Johnson', relationship: 'Mother' }],
+        children: [{ person_cm_id: 9001, display_name: 'Noah Johnson', age: 8, grade: 3 }],
+      })
+    ).toLowerCase()
+    expect(text).toContain('emma johnson')
+    expect(text).toContain('noah johnson')
+  })
+
+  it('leads with the identity the card shows, not CampMinder salutation', () => {
+    // kindred#2084: `display_name` is the mailing_title salutation and
+    // disagreed with the attending-adult list on 26.7% of 2026 households.
+    // Searching for the stale wording must not resurrect it here.
+    const text = partySearchText(
+      party({
+        display_name: 'The Garcia Family',
+        adults: [{ adult_number: 1, display_name: 'Liam Garcia', relationship: 'Father' }],
+        children: [],
+      })
+    )
+    expect(text).toContain('Liam Garcia')
+    expect(text).not.toContain('The Garcia Family')
+  })
+
+  it('still names a person-grain guest, who has no household identity', () => {
+    // An adult weekend's parties are person-grain; `partyIdentityLabel`
+    // falls back to `display_name` for them and this must not go blank.
+    const text = partySearchText(
+      party({ grain: 'person', person_cm_id: 501, display_name: 'Liam Garcia', adults: [] })
+    )
+    expect(text).toContain('Liam Garcia')
   })
 })

@@ -91,7 +91,8 @@ function renderPicker(props: Partial<Parameters<typeof PlaceFamilyPicker>[0]> = 
   const view = render(
     <>
       {/* A preceding control, so `userEvent.tab()` has somewhere to start —
-          the Tab-reachability claim is worthless asserted from nowhere. */}
+          the Tab-reachability claim is worthless asserted from nowhere. And a
+          following one, so "Tab LEAVES the control" has somewhere to land. */}
       <button type="button">Before</button>
       <PlaceFamilyPicker
         unit={unit()}
@@ -100,6 +101,7 @@ function renderPicker(props: Partial<Parameters<typeof PlaceFamilyPicker>[0]> = 
         onSelect={onSelect}
         {...props}
       />
+      <button type="button">After</button>
     </>
   )
   return { ...view, onSelect }
@@ -310,6 +312,88 @@ describe('PlaceFamilyPicker — closing', () => {
     await user.keyboard('{Escape}')
     expect(onKeyDown).not.toHaveBeenCalled()
   })
+
+  it('does not let Escape reach a DOCUMENT listener either, which is what the panel uses', async () => {
+    /*
+     * The React-handler assertion above does not prove the claim on its own.
+     * `FamilyDetailsPanel` does not listen through React — it calls
+     * `document.addEventListener('keydown', …)`, which sits ABOVE React's root
+     * container in the bubble path. So the containment only holds if the
+     * synthetic `stopPropagation` reaches the NATIVE event, and that is what
+     * this pins. Get it wrong and Escape dismisses the open family panel from
+     * inside a card picker.
+     */
+    const user = userEvent.setup()
+    const onDocumentKeyDown = vi.fn()
+    document.addEventListener('keydown', onDocumentKeyDown)
+    try {
+      renderPicker()
+      await user.click(searchBox())
+      await user.keyboard('{Escape}')
+      expect(onDocumentKeyDown).not.toHaveBeenCalled()
+    } finally {
+      document.removeEventListener('keydown', onDocumentKeyDown)
+    }
+  })
+
+  it('closes when focus leaves the control, so an abandoned card does not stay grown', async () => {
+    /*
+     * The whole point of gating the list behind engagement is that a card only
+     * grows while somebody is using it. Dismissal on an outside MOUSEDOWN is
+     * half the story: a staff member who Tabs onward has left just as surely,
+     * and the card they left must shrink back.
+     */
+    const user = userEvent.setup()
+    renderPicker()
+    await user.click(searchBox())
+    expect(screen.getByRole('listbox')).toBeInTheDocument()
+    await user.tab()
+    expect(screen.queryByRole('listbox')).not.toBeInTheDocument()
+  })
+
+  it('lets one Tab leave the whole control, however long the list is', async () => {
+    /*
+     * The rows are `<button>`s, so they are natively tab stops unless told not
+     * to be — and `aria-activedescendant` REQUIRES that focus stay on the
+     * combobox. Left alone, a keyboard user leaving a card would have to Tab
+     * past every unplaced family first: 63 of them on the 2026 weekend, per
+     * card, on a board of ~82 cards.
+     */
+    const user = userEvent.setup()
+    renderPicker()
+    await user.click(searchBox())
+    await user.tab()
+    expect(screen.getByRole('button', { name: 'After' })).toHaveFocus()
+  })
+
+  it('stops pointing at a row once the list it lived in is gone', async () => {
+    // A dangling `aria-activedescendant` names an element that no longer
+    // exists, which is what a screen reader would try to announce next.
+    const user = userEvent.setup()
+    renderPicker()
+    await user.click(searchBox())
+    await user.keyboard('{ArrowDown}')
+    expect(searchBox()).toHaveAttribute('aria-activedescendant')
+    await user.click(document.body)
+    expect(searchBox()).not.toHaveAttribute('aria-activedescendant')
+  })
+})
+
+describe('PlaceFamilyPicker — the active row stays in view', () => {
+  it('scrolls the arrow-selected row into view', async () => {
+    /*
+     * The list is a `max-h-48` scroller — about five rows — over a queue that
+     * ran to 63 parties on the 2026 weekend. Without this the highlight walks
+     * off the bottom on the sixth ArrowDown and the keyboard user is steering
+     * something they cannot see. jsdom has no layout engine, so what is pinned
+     * is the CALL; `src/test/setup.ts` stubs it.
+     */
+    const user = userEvent.setup()
+    renderPicker()
+    await user.click(searchBox())
+    await user.keyboard('{ArrowDown}')
+    expect(Element.prototype.scrollIntoView).toHaveBeenCalledWith({ block: 'nearest' })
+  })
 })
 
 describe('PlaceFamilyPicker — searching', () => {
@@ -343,15 +427,5 @@ describe('PlaceFamilyPicker — nothing left to place', () => {
     renderPicker({ parties: [] })
     await user.click(searchBox())
     expect(screen.getByText('Everyone has a cabin.')).toBeInTheDocument()
-  })
-})
-
-describe('PlaceFamilyPicker — while a write is in flight', () => {
-  it('takes no second choice', async () => {
-    const user = userEvent.setup()
-    const { onSelect } = renderPicker({ disabled: true })
-    await user.click(searchBox())
-    expect(screen.queryByRole('listbox')).not.toBeInTheDocument()
-    expect(onSelect).not.toHaveBeenCalled()
   })
 })

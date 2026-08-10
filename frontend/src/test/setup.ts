@@ -41,6 +41,12 @@ globalThis.IntersectionObserver = class IntersectionObserver {
   }
 } as unknown as typeof IntersectionObserver
 
+// jsdom has no layout engine and does not implement scrollIntoView at all, so
+// any component that keeps an active row in view throws without this. Stubbed
+// globally beside the other layout APIs above; a test that wants to ASSERT on
+// it can still reassign its own mock (`LodgingUnitsPanel.test.tsx` does).
+Element.prototype.scrollIntoView = vi.fn()
+
 // Mock ResizeObserver (required for Headless UI components)
 globalThis.ResizeObserver = class ResizeObserver {
   disconnect() {}
