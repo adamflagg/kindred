@@ -50,10 +50,16 @@
  *      still requires a way out that does not move the pointer. So a
  *      `document` listener in the CAPTURE phase, which runs before the event
  *      has reached anything and can therefore stop every bubble-phase host
- *      listener with one `stopPropagation`.
+ *      listener with one `stopPropagation` — but ONLY once it has confirmed,
+ *      via `ui/modalStack`'s overlay token stack, that this bubble is the
+ *      TOPMOST open overlay. Capture always runs first regardless of open
+ *      order, so an ungated version can beat a dialog that opens outside and
+ *      AFTER a bubble a hovering pointer left open — kindred#2205's second
+ *      finding, fixed the same way as the bubble-phase collision it names.
  *
- *    Either way the event is swallowed ONLY while a bubble is showing, and
- *    only for Escape; anything else passes straight through.
+ *    Either way the event is swallowed ONLY while a bubble is showing AND
+ *    this bubble is topmost, and only for Escape; anything else passes
+ *    straight through.
  */
 import {
   useEffect,
@@ -65,6 +71,8 @@ import {
   type ReactNode,
 } from 'react'
 import { createPortal } from 'react-dom'
+
+import { acquireOverlayToken, isTopOverlay, releaseOverlayToken } from './modalStack'
 
 export interface TooltipProps {
   /** The sentence the bubble carries. Also the trigger's accessible description. */
@@ -189,10 +197,24 @@ export function Tooltip({
   // The pointer-opened half of the Escape story — see decision 4 in the file
   // header for why this is the CAPTURE phase and why it only exists while
   // focus is somewhere other than the trigger.
+  //
+  // kindred#2205: capture always runs before ANY bubble-phase overlay, no
+  // matter which one opened more recently — that's what lets it beat
+  // `ui/Modal`'s listener when the bubble is INSIDE the dialog. Left
+  // ungated, it is exactly as able to beat a dialog that opens OUTSIDE and
+  // AFTER a stale hover bubble (mouse resting on a trigger while a click or
+  // Tab elsewhere opens a modal) — a fresh instance of the same defect. This
+  // component still registers in the shared overlay stack and only acts —
+  // swallowing the key and dismissing itself — while it is the topmost
+  // overlay; otherwise it lets the event continue so whichever overlay
+  // really is on top (its own bubble-phase listener, gated the same way)
+  // gets it.
   useEffect(() => {
     if (!open || focused) return
+    const token = acquireOverlayToken()
     const onEscapeCapture = (event: KeyboardEvent) => {
       if (event.key !== 'Escape') return
+      if (!isTopOverlay(token)) return
       event.stopPropagation()
       setPinned(false)
       setHovering(false)
@@ -201,6 +223,7 @@ export function Tooltip({
     document.addEventListener('keydown', onEscapeCapture, true)
     return () => {
       document.removeEventListener('keydown', onEscapeCapture, true)
+      releaseOverlayToken(token)
     }
   }, [open, focused])
 

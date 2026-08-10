@@ -6,7 +6,7 @@
  * travelling onto the bubble to read it.
  */
 import { act, fireEvent, render, screen } from '@testing-library/react'
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { Modal } from './Modal'
@@ -314,6 +314,69 @@ describe('Tooltip — inside a real ui/Modal', () => {
     const onClose = vi.fn()
     render(<ModalHost onClose={onClose} />)
     fireEvent.keyDown(trigger(), { key: 'Escape' })
+    expect(onClose).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe('Tooltip — a stale hover bubble does not outrank a modal opened on top of it (kindred#2205)', () => {
+  /**
+   * The capture-phase listener runs before ANY bubble-phase overlay,
+   * regardless of which one opened more recently — that's what makes it able
+   * to beat `ui/Modal`'s own bubble listener when the tooltip is INSIDE the
+   * dialog (the describe block above). It is exactly as able to beat a
+   * dialog that opens OUTSIDE and AFTER it, which is a fresh instance of the
+   * bug this file's stack exists to fix, not the one it was built for.
+   *
+   * The repro: the pointer rests on a background tooltip trigger (hover
+   * opens the bubble) without moving away — plausible when the modal is
+   * opened by a click or Tab elsewhere while the mouse stays put. Escape is
+   * then pressed to dismiss the freshly-opened, topmost modal, not the
+   * incidental hover state underneath it.
+   */
+  function Scene({ onCloseModal }: { onCloseModal: () => void }) {
+    const [modalOpen, setModalOpen] = useState(false)
+    return (
+      <>
+        <Tooltip content="Background hint, incidentally hovered.">Answers disagree</Tooltip>
+        <button onClick={() => setModalOpen(true)}>Open modal</button>
+        <Modal isOpen={modalOpen} onClose={onCloseModal} title="Weekend lodging">
+          <p>Dialog content</p>
+        </Modal>
+      </>
+    )
+  }
+
+  it('lets Escape close the modal that opened on top of it, not the stale bubble', () => {
+    const onCloseModal = vi.fn()
+    render(<Scene onCloseModal={onCloseModal} />)
+
+    fireEvent.pointerEnter(trigger())
+    expect(screen.getByRole('tooltip')).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Open modal' }))
+    expect(screen.getByRole('dialog')).toBeInTheDocument()
+
+    fireEvent.keyDown(document.body, { key: 'Escape' })
+
+    expect(onCloseModal).toHaveBeenCalledTimes(1)
+  })
+
+  it('releases its overlay token once the bubble closes, so the stack does not leak', () => {
+    const { unmount } = renderChip()
+    fireEvent.pointerEnter(trigger())
+    expect(screen.getByRole('tooltip')).toBeInTheDocument()
+    unmount()
+
+    // A fresh modal opening afterward must be topmost immediately — a
+    // leaked tooltip token would silently swallow its Escape instead.
+    const onClose = vi.fn()
+    render(
+      <Modal isOpen onClose={onClose} title="Fresh">
+        <p>Content</p>
+      </Modal>
+    )
+    fireEvent.keyDown(document, { key: 'Escape' })
+
     expect(onClose).toHaveBeenCalledTimes(1)
   })
 })

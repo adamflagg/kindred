@@ -1,6 +1,8 @@
 import { useEffect, useRef } from 'react'
 import { createPortal } from 'react-dom'
 
+import { acquireOverlayToken, isTopOverlay, releaseOverlayToken } from './ui/modalStack'
+
 export interface ConfirmActionPopoverProps {
   isOpen: boolean
   anchorRect: Pick<DOMRect, 'top' | 'left' | 'width' | 'height'>
@@ -24,9 +26,15 @@ export function ConfirmActionPopover({
 
     const previouslyFocused = document.activeElement as HTMLElement | null
     confirmButtonRef.current?.focus()
+    // kindred#2205: this popover portals independently of `ui/Modal`, so a
+    // host rendering `<Modal><ConfirmActionPopover /></Modal>`
+    // (`AllCamperRequestsModal.tsx`, `RequestReviewPanel.tsx`) has two
+    // separate `document` Escape listeners. Only the topmost overlay acts.
+    const token = acquireOverlayToken()
 
     function handleKeyDown(e: KeyboardEvent) {
       if (e.key === 'Escape') {
+        if (!isTopOverlay(token)) return
         onCancel()
       } else if (e.key === 'Tab') {
         const buttons = popoverRef.current
@@ -66,6 +74,7 @@ export function ConfirmActionPopover({
       document.removeEventListener('keydown', handleKeyDown)
       document.removeEventListener('mousedown', handleMouseDown)
       document.removeEventListener('scroll', handleScroll, true)
+      releaseOverlayToken(token)
       previouslyFocused?.focus()
     }
   }, [isOpen, onCancel])
