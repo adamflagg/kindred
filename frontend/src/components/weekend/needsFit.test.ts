@@ -2,10 +2,11 @@
  * kindred#1912 — does this space meet the dragged family's needs?
  *
  * Advisory, never a block: the board still accepts every drop (see
- * `LodgingUnitCard`'s own comment on `useDroppable`), because every cabin is
- * unconfirmed until staff walk the property and staff routinely place families
- * against the machine's opinion and are right to. Deliberately a DIFFERENT
- * mechanism from #2087's hard block on a held space, which is a refusal.
+ * `LodgingUnitCard`'s own comment on `useDroppable`) — not because cabins are
+ * unconfirmed (measured against the production snapshot of 2026-08-06, cabins
+ * were 118/118 confirmed) but because staff routinely place families against
+ * the machine's opinion and are right to. Deliberately a DIFFERENT mechanism
+ * from #2087's hard block on a held space, which is a refusal.
  *
  * Fictional data throughout.
  */

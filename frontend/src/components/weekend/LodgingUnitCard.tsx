@@ -421,9 +421,12 @@ export function LodgingUnitCard({
   })
 
   // Every room accepts a drop while placement is live, including a full or
-  // unsuitable one. The fit check is advisory and every cabin is unconfirmed
-  // until staff walk the property, so refusing here would block nearly every
-  // placement for a reason that is really "nobody has checked yet".
+  // unsuitable one. The fit check is advisory by design: a misfit is surfaced
+  // on the board's hatch channel (#1912), never refused at the door, so
+  // refusing here would turn an advisory signal into a hard block. This once
+  // read "every cabin is unconfirmed until staff walk the property" — no longer
+  // true, 118 of 118 confirmed in the production snapshot of 2026-08-06 — but
+  // the rule never depended on it.
   //
   // Disabled for every card while a MERGE drag is in flight: without this, a
   // card being dragged onto a sibling would sit over two overlapping,
