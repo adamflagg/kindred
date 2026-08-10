@@ -15,7 +15,7 @@ import type { RosterPartyRow } from '../../types/lodging'
 import { FloatingQueueBadge } from '../ui'
 import { UNPLACED_DROPPABLE_ID } from './dragPlacement'
 import { FamilyCard } from './FamilyCard'
-import { partyIdentityLabel } from './householdIdentity'
+import { partyIdentityLabel, partySearchText } from './householdIdentity'
 import { partyKey } from './partyKey'
 
 export interface FloatingUnplacedBadgeProps {
@@ -38,18 +38,6 @@ const sortKey = (party: RosterPartyRow): string[] => [
   party.sort_name ?? '',
   partyIdentityLabel(party),
 ]
-
-// Children and adults included so a household can be found by the name of
-// whoever the staff member happens to remember. The leading element is the
-// SAME identity the card shows (kindred#2084), not the salutation -- a
-// search for the stale salutation's wording should not resurrect it here
-// when the card itself no longer shows it.
-const getSearchText = (party: RosterPartyRow): string =>
-  [
-    partyIdentityLabel(party),
-    ...(party.adults ?? []).map((adult) => adult.display_name ?? ''),
-    ...(party.children ?? []).map((child) => child.display_name ?? ''),
-  ].join(' ')
 
 const EMPTY_STATE = (
   <div className="flex h-full flex-col items-center justify-center py-8 text-center">
@@ -75,7 +63,7 @@ export function FloatingUnplacedBadge({
     <FloatingQueueBadge
       items={parties}
       sortKey={sortKey}
-      getSearchText={getSearchText}
+      getSearchText={partySearchText}
       renderList={(visible) => (
         <div className="flex flex-col gap-1.5">
           {visible.map((party) => (

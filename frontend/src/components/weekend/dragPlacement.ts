@@ -242,6 +242,45 @@ export function resolveDrop({
   }
 }
 
+export interface ResolvePickerPlacementArgs {
+  /** The row the staff member clicked, as the list rendered it. */
+  party: RosterPartyRow
+  /** The card the picker is mounted on. */
+  unitCode: string
+  parties: RosterPartyRow[]
+  units: LodgingUnitRow[]
+}
+
+/**
+ * The unit card's picker (kindred#2080), resolved through the DROP path.
+ *
+ * A thin adapter and nothing more, and that is the whole design: the second
+ * placement path must not be a second set of rules. Everything that makes a
+ * drop a no-op or a refusal — a held space (#2087), a non-combined container,
+ * a party carrying neither CampMinder id, a party already alone in this room —
+ * is inherited here for free because the answer is literally `resolveDrop`'s.
+ * A picker-layer copy of any of them is the drift this exists to prevent.
+ *
+ * The party is re-resolved out of `parties` by its own key rather than trusted
+ * from the row: the list renders from a snapshot, and a refetch landing
+ * between render and click would otherwise write a placement for a party the
+ * roster no longer carries. `resolveDrop` does that lookup already, so passing
+ * the KEY rather than the object is what gets it.
+ */
+export function resolvePickerPlacement({
+  party,
+  unitCode,
+  parties,
+  units,
+}: ResolvePickerPlacementArgs): PlacementIntent | null {
+  return resolveDrop({
+    activeId: partyKey(party),
+    overId: unitDroppableId(unitCode),
+    parties,
+    units,
+  })
+}
+
 /**
  * The roster payload as it will look once the write lands — the optimistic
  * update.

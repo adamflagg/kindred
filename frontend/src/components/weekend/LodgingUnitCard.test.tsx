@@ -1841,3 +1841,109 @@ describe('LodgingUnitCard — the needs-misfit hatch (#1912)', () => {
     expect(hatchClass(container)).not.toBe('')
   })
 })
+
+describe('LodgingUnitCard — placing a family from the space itself (kindred#2080)', () => {
+  const HUE = 'hsl(160 45% 42%)'
+  const unplaced = party({
+    household_cm_id: 202,
+    display_name: 'Garcia',
+    sort_name: 'Garcia',
+    adults: [{ adult_number: 1, display_name: 'Liam Garcia', relationship: 'Father' }],
+    children: [],
+    unit_code: '',
+    unit_name: '',
+    unit_codes: [],
+  })
+
+  function renderCard(props: Record<string, unknown> = {}) {
+    const onPlaceParty = vi.fn()
+    const view = render(
+      <LodgingUnitCard
+        slot={slot()}
+        hue={HUE}
+        canPlace={true}
+        unplacedParties={[unplaced]}
+        onPlaceParty={onPlaceParty}
+        onOpenParty={vi.fn()}
+        {...props}
+      />
+    )
+    return { ...view, onPlaceParty }
+  }
+
+  it('offers the control on an empty, available space while placement is live', () => {
+    renderCard()
+    expect(screen.getByRole('combobox', { name: /place a family in cedar 1/i })).toBeInTheDocument()
+  })
+
+  it('does not grow the card until the search box is engaged', () => {
+    /*
+     * Option A's only real cost, and the owner's answer to it: the list is
+     * not rendered until a staff member clicks into the typeahead, so the
+     * card — and therefore the whole grid row of up to ~82 cards — stays put.
+     *
+     * jsdom has no layout engine, so the claim is pinned STRUCTURALLY rather
+     * than in pixels: at rest the card contains no listbox and no rows.
+     */
+    renderCard()
+    expect(screen.queryByRole('listbox')).not.toBeInTheDocument()
+    expect(screen.queryAllByRole('option')).toHaveLength(0)
+    expect(screen.queryByText('Liam Garcia')).not.toBeInTheDocument()
+  })
+
+  it('grows only once the staff member clicks in', async () => {
+    const user = userEvent.setup()
+    renderCard()
+    await user.click(screen.getByRole('combobox', { name: /place a family in cedar 1/i }))
+    expect(screen.getByRole('listbox')).toBeInTheDocument()
+    expect(screen.getByRole('option', { name: /Liam Garcia/ })).toBeInTheDocument()
+  })
+
+  it('writes the placement through the board', async () => {
+    const user = userEvent.setup()
+    const { onPlaceParty } = renderCard()
+    await user.click(screen.getByRole('combobox', { name: /place a family in cedar 1/i }))
+    await user.click(screen.getByRole('option', { name: /Liam Garcia/ }))
+    expect(onPlaceParty).toHaveBeenCalledTimes(1)
+    expect(onPlaceParty.mock.calls[0]?.[0]).toMatchObject({ code: 'cedar-1' })
+    expect(onPlaceParty.mock.calls[0]?.[1]).toEqual(unplaced)
+  })
+
+  it('is ABSENT on a held space, not dimmed', () => {
+    /*
+     * A hold refuses placement outright (#2087/#2090), and Hold's own control
+     * vanishes rather than dimming in the same situation. Absent adds no
+     * fifth meaning to the board's ruled signal vocabulary — `opacity-40` is
+     * REFUSAL and is spoken for by the invalid merge target.
+     */
+    const { container } = renderCard({
+      slot: slot({ unit: unit({ family_available_override: false }) }),
+    })
+    expect(screen.queryByRole('combobox')).not.toBeInTheDocument()
+    expect(container.querySelector('.opacity-40')).toBeNull()
+  })
+
+  it('is absent on an occupied space, mirroring Hold', () => {
+    renderCard({ slot: slot({ parties: [party()] }) })
+    expect(screen.queryByRole('combobox')).not.toBeInTheDocument()
+  })
+
+  it('is absent without a scenario or without the permission to place', () => {
+    renderCard({ canPlace: false })
+    expect(screen.queryByRole('combobox')).not.toBeInTheDocument()
+  })
+
+  it('is absent when the board wires no writer', () => {
+    // `undefined` is how the board spells "not writable right now" under
+    // `exactOptionalPropertyTypes`, matching `onSetAvailability`.
+    renderCard({ onPlaceParty: undefined })
+    expect(screen.queryByRole('combobox')).not.toBeInTheDocument()
+  })
+
+  it('is absent on a container the tree has not combined', () => {
+    // `resolveDrop` refuses one as a target, so offering the control would
+    // name an action that writes nothing.
+    renderCard({ slot: slot({ unit: unit({ is_container: true, is_combined: false }) }) })
+    expect(screen.queryByRole('combobox')).not.toBeInTheDocument()
+  })
+})

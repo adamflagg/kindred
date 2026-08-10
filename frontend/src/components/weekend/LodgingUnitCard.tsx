@@ -24,6 +24,7 @@ import {
 import { isValidMergeTarget, mergeDragId, unitDroppableId } from './dragPlacement'
 import { FamilyCard } from './FamilyCard'
 import { resolveNeedsFit } from './needsFit'
+import { PlaceFamilyPicker } from './PlaceFamilyPicker'
 import { resolveRingPrecedence } from './ringPrecedence'
 import { partyKey } from './partyKey'
 import { reservationBadge, shareabilityBadge, sharingConflictBadge } from './unitBadges'
@@ -216,6 +217,26 @@ export interface LodgingUnitCardProps {
   onMerge?: (unit: LodgingUnitRow) => void
   /** True while THIS unit's merge/split write is in flight. */
   savingMerge?: boolean
+  /**
+   * Every UNPLACED party on the weekend — the picker's list (kindred#2080).
+   *
+   * NEVER pre-filtered by fit, on the owner's ruling: 6 of 118 units carry a
+   * private bathroom against 63 parties asking for one, so a list narrowed to
+   * "what fits" would be empty most of the time. `placementCandidates`
+   * annotates and orders them instead.
+   */
+  unplacedParties?: RosterPartyRow[]
+  /**
+   * Place a family in THIS space — the activation path for the write the drag
+   * gesture makes, for a staff member who has the space on screen and not the
+   * family.
+   *
+   * `undefined` is how the board spells "not writable right now" under
+   * `exactOptionalPropertyTypes`, matching `onSetAvailability` and `onSplit`
+   * above. The board resolves the intent through `resolvePickerPlacement`,
+   * which is `resolveDrop` — there is one placement path, not two.
+   */
+  onPlaceParty?: (unit: LodgingUnitRow, party: RosterPartyRow) => void
   onOpenParty: (party: RosterPartyRow) => void
 }
 
@@ -233,6 +254,8 @@ export function LodgingUnitCard({
   onSplit,
   onMerge,
   savingMerge = false,
+  unplacedParties = [],
+  onPlaceParty,
   onOpenParty,
 }: LodgingUnitCardProps) {
   const { unit, parties, consent } = slot
@@ -462,6 +485,36 @@ export function LodgingUnitCard({
    */
   const sharingConflict = isSplitContainer ? null : sharingConflictBadge(unit, overlappingKeys.size)
 
+  /*
+   * Whether this card offers to place a family from itself (kindred#2080).
+   *
+   * ABSENT, NOT DIMMED, in every negative case — mirroring how Hold itself
+   * vanishes on an occupied card rather than greying out. That is a signal
+   * decision, not a style one: under the board's ruled vocabulary
+   * (2026-08-09) `opacity-40` MEANS refusal and is spoken for by the invalid
+   * merge target and by a held space. An absent control adds no fifth
+   * meaning to any channel.
+   *
+   * The four gates, and why each is a gate rather than a fit judgement:
+   *
+   *   - `held` — a hold blocks placement outright (#2087/#2090), and
+   *     `resolveDrop` refuses the write. Offering the control would name an
+   *     action that writes nothing.
+   *   - occupied — Hold's own rule, and the same reasoning: the card that
+   *     already holds a family is not the card staff are looking to fill.
+   *     A SECOND family still reaches a shareable space by drag, which
+   *     remains the path for a share that has to be looked at deliberately.
+   *   - `isSplitContainer` — `resolveDrop` rejects one as a target, and it
+   *     gets no card anyway; belt-and-braces, exactly as `sharing` above.
+   *   - no writer / no `canPlace` — no scenario, or no `bunking.manage`.
+   *
+   * NOT gated on the list being empty. "Everyone has a cabin" is a real
+   * answer to the question the control asks, and the picker says it; hiding
+   * the control instead would leave staff wondering where it went.
+   */
+  const canPickFamily =
+    canPlace && onPlaceParty !== undefined && !held && !isSplitContainer && parties.length === 0
+
   const cardStateClassName = [
     RING_CLASSES[ringState],
     dashed ? 'border-dashed' : '',
@@ -660,6 +713,27 @@ export function LodgingUnitCard({
             onSetAvailability?.(unit, write)
           }}
         />
+        {/* kindred#2080 — the space's own placement path, for the staff
+            member who has the cabin on screen and not the family.
+
+            Inline and in this row on the owner's ruling (option A): no
+            popover, no second surface, literally Hold's shape. Like Hold's
+            reason form it carries `w-full`, so it wraps onto its own line of
+            this flex row; unlike Hold, it renders its LIST only once the
+            search box is engaged, which is what keeps ~82 resting cards from
+            growing. */}
+        {canPickFamily && (
+          <PlaceFamilyPicker
+            unit={unit}
+            parties={unplacedParties}
+            // The registry, only so a combined house is judged by its
+            // whole-house capacity rather than by its container row's delta.
+            units={units}
+            onSelect={(party) => {
+              onPlaceParty(unit, party)
+            }}
+          />
+        )}
         {/* Merging is promotion to the parent: dragging this handle onto a
             sibling's card writes `combined: true` on the shared parent. Absent
             entirely on a parentless room — there is nothing to promote it to —

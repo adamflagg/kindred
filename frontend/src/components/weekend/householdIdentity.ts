@@ -85,6 +85,30 @@ export function partyIdentityLabel(party: RosterPartyRow): string {
 }
 
 /**
+ * Text a staff member might type to find this party.
+ *
+ * Children and adults both, so a household can be found by whoever the staff
+ * member happens to remember. The LEADING element is `partyIdentityLabel`,
+ * the same identity the card shows (kindred#2084) -- `display_name` is
+ * CampMinder's `mailing_title` salutation, which disagreed with the real
+ * attending-adult list on 26.7% of 2026's rostered households, and a search
+ * that still matched it would resurrect wording the card deliberately
+ * stopped showing.
+ *
+ * ONE construction, shared, for the same reason the identity label above is
+ * shared: `FloatingUnplacedBadge`'s queue and the unit card's placement
+ * picker (kindred#2080) search the SAME list of unplaced parties. Two copies
+ * that drifted would leave a household findable in one and not the other.
+ */
+export function partySearchText(party: RosterPartyRow): string {
+  return [
+    partyIdentityLabel(party),
+    ...(party.adults ?? []).map((adult) => adult.display_name ?? ''),
+    ...(party.children ?? []).map((child) => child.display_name ?? ''),
+  ].join(' ')
+}
+
+/**
  * `party.adults`, with any blank or placeholder `family_camp_adults` slot
  * dropped -- for every OTHER place that lists or counts a party's adults, not
  * just the identity label.
