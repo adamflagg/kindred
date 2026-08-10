@@ -512,6 +512,15 @@ function areaName(unit: LodgingUnitRow): string {
 }
 
 /**
+ * The Manage screen's area rank (kindred#2076) — `lodging_areas.sort_order`,
+ * carried through on every unit in the area. 0 for a unit with no expanded
+ * area, the same value an unranked area's `sort_order` reads as.
+ */
+function areaSortOrder(unit: LodgingUnitRow): number {
+  return unit.area_sort_order ?? 0
+}
+
+/**
  * Which of these parties share an occupied LEAF code with at least one
  * OTHER party in the list — keyed by `partyKey`, the project's one stable
  * identity for a roster party.
@@ -862,7 +871,10 @@ export function buildBoard(parties: RosterPartyRow[], units: LodgingUnitRow[]): 
   // `partyKeys` rather than a running total: a family holding four rooms sits
   // on four slots, and the header says "families", not cards. Counting the
   // slot entries would report four families standing where one is.
-  const buckets = new Map<string, { name: string; slots: BoardSlot[]; partyKeys: Set<string> }>()
+  const buckets = new Map<
+    string,
+    { name: string; sortOrder: number; slots: BoardSlot[]; partyKeys: Set<string> }
+  >()
   let flaggedCount = 0
   for (const unit of drawn) {
     const slotParties = partiesByCode.get(unit.code) ?? []
@@ -872,21 +884,36 @@ export function buildBoard(parties: RosterPartyRow[], units: LodgingUnitRow[]): 
     const key = areaKey(unit)
     const bucket = buckets.get(key) ?? {
       name: areaName(unit),
+      sortOrder: areaSortOrder(unit),
       slots: [],
       partyKeys: new Set<string>(),
     }
+    // Units are pushed in the PAYLOAD's order and never re-sorted here — the
+    // repository's own query already sorts `area.sort_order,name`, so a
+    // unit's position within its area stays alphabetical without this
+    // function touching it (owner ruling, kindred#2076: "intra unit remains
+    // alpha"). Only which AREA a unit's slot lands in, and where that area
+    // falls below, changes.
     bucket.slots.push({ unit, parties: slotParties, consent })
     for (const slotParty of slotParties) bucket.partyKeys.add(partyKey(slotParty))
     buckets.set(key, bucket)
   }
 
-  // Sorted so a hue is stable for an area regardless of the payload's unit
-  // order — the map (Step 6) and the board must agree about which area is
-  // which colour, and both read this.
+  // Ordered by the Manage screen's area rank (kindred#2076) — the board
+  // must key off the SAME order staff set there (`LodgingAreasDrawer`'s
+  // reorder), not off the area name. Areas tied on rank, including two
+  // areas that both carry no rank (0), fall back to the name so the order
+  // is always fully determined — never left depending on payload order.
+  // The hue assignment below rides this same order; the owner has ruled the
+  // resulting recolour on a reorder is expected and not to be protected
+  // against (area colour carries no meaning staff read).
   const orderedKeys = [...buckets.keys()].sort((a, b) => {
-    const left = buckets.get(a)?.name ?? ''
-    const right = buckets.get(b)?.name ?? ''
-    return left.localeCompare(right)
+    const left = buckets.get(a)
+    const right = buckets.get(b)
+    const leftOrder = left?.sortOrder ?? 0
+    const rightOrder = right?.sortOrder ?? 0
+    if (leftOrder !== rightOrder) return leftOrder - rightOrder
+    return (left?.name ?? '').localeCompare(right?.name ?? '')
   })
 
   const areas: BoardArea[] = orderedKeys.map((key, index) => {
