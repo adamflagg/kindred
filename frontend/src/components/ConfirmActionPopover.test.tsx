@@ -1,6 +1,9 @@
 import { render, screen, fireEvent } from '@testing-library/react'
+import { useState } from 'react'
 import { describe, it, expect, vi } from 'vitest'
 import { ConfirmActionPopover } from './ConfirmActionPopover'
+import { Modal } from './ui/Modal'
+import { hasOpenModal } from './ui/modalStack'
 
 describe('ConfirmActionPopover', () => {
   const defaultProps = {
@@ -164,5 +167,147 @@ describe('ConfirmActionPopover', () => {
     // Scroll would desync the popover from its captured anchor; dismiss instead.
     fireEvent.scroll(document, {})
     expect(onCancel).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe('ConfirmActionPopover — over a ui/Modal (kindred#2205)', () => {
+  // `AllCamperRequestsModal.tsx` and `RequestReviewPanel.tsx` both render
+  // exactly this composition: `<Modal>…{confirming && <ConfirmActionPopover
+  // />}</Modal>`. The popover portals independently of the Modal, so both
+  // attach their own `keydown` Escape listener to `document` — without the
+  // shared overlay token stack, one press fires both, and the popover
+  // cancelling itself takes the whole modal down with it.
+  //
+  // The popover mounts CONDITIONALLY, after a later click — not alongside
+  // the Modal in its first render — matching the real host exactly. That
+  // ordering matters: React fires mount effects bottom-up, so a popover
+  // mounted in the SAME commit as its parent Modal would register its token
+  // before the Modal's own, inverting who is "topmost". Only a popover that
+  // opens in a later, separate commit is guaranteed to land on top of an
+  // already-registered Modal, which is what every real caller does.
+  function ModalWithPopover({
+    onCloseModal,
+    onCancelPopover,
+  }: {
+    onCloseModal: () => void
+    onCancelPopover: () => void
+  }) {
+    const [confirming, setConfirming] = useState(false)
+    return (
+      <Modal isOpen={true} onClose={onCloseModal} title="Camper requests">
+        <button onClick={() => setConfirming(true)}>Decline</button>
+        {confirming && (
+          <ConfirmActionPopover
+            isOpen
+            anchorRect={{ top: 200, left: 300, width: 40, height: 40 }}
+            action="approve"
+            onConfirm={vi.fn()}
+            onCancel={() => {
+              setConfirming(false)
+              onCancelPopover()
+            }}
+          />
+        )}
+      </Modal>
+    )
+  }
+
+  it('one Escape closes only the popover, never the modal beneath it', () => {
+    const onCloseModal = vi.fn()
+    const onCancelPopover = vi.fn()
+    render(<ModalWithPopover onCloseModal={onCloseModal} onCancelPopover={onCancelPopover} />)
+    fireEvent.click(screen.getByRole('button', { name: 'Decline' }))
+
+    fireEvent.keyDown(document, { key: 'Escape' })
+
+    expect(onCancelPopover).toHaveBeenCalledTimes(1)
+    expect(onCloseModal).not.toHaveBeenCalled()
+  })
+
+  it('a second Escape, once the popover is gone, closes the modal', () => {
+    const onCloseModal = vi.fn()
+    const onCancelPopover = vi.fn()
+    render(<ModalWithPopover onCloseModal={onCloseModal} onCancelPopover={onCancelPopover} />)
+    fireEvent.click(screen.getByRole('button', { name: 'Decline' }))
+
+    fireEvent.keyDown(document, { key: 'Escape' })
+    expect(onCancelPopover).toHaveBeenCalledTimes(1)
+
+    fireEvent.keyDown(document, { key: 'Escape' })
+
+    expect(onCloseModal).toHaveBeenCalledTimes(1)
+  })
+
+  it('does NOT act on Escape when a further overlay opens on top of it', () => {
+    // The popover's own `isTopOverlay` gate, isolated from the Modal's — a
+    // second overlay (e.g. another `ui/Modal`) opened after the popover must
+    // own the key instead. Nothing in the app stacks a third overlay on a
+    // popover today, but the popover registers in the SAME shared stack as
+    // everything else, so it has to honour "am I topmost?" too, not just
+    // "is a Modal open somewhere below me?".
+    function Scene({
+      onCancelPopover,
+      onCloseNested,
+    }: {
+      onCancelPopover: () => void
+      onCloseNested: () => void
+    }) {
+      const [nested, setNested] = useState(false)
+      return (
+        <>
+          <ConfirmActionPopover
+            isOpen
+            anchorRect={{ top: 200, left: 300, width: 40, height: 40 }}
+            action="approve"
+            onConfirm={vi.fn()}
+            onCancel={onCancelPopover}
+          />
+          <button onClick={() => setNested(true)}>Open nested</button>
+          <Modal isOpen={nested} onClose={onCloseNested} title="Nested">
+            <p>Nested content</p>
+          </Modal>
+        </>
+      )
+    }
+
+    const onCancelPopover = vi.fn()
+    const onCloseNested = vi.fn()
+    render(<Scene onCancelPopover={onCancelPopover} onCloseNested={onCloseNested} />)
+    fireEvent.click(screen.getByRole('button', { name: 'Open nested' }))
+
+    fireEvent.keyDown(document, { key: 'Escape' })
+
+    expect(onCloseNested).toHaveBeenCalledTimes(1)
+    expect(onCancelPopover).not.toHaveBeenCalled()
+  })
+
+  it('releases its overlay token on unmount, so the stack does not leak', () => {
+    const { unmount } = render(
+      <ConfirmActionPopover
+        isOpen={true}
+        anchorRect={{ top: 200, left: 300, width: 40, height: 40 }}
+        action="approve"
+        onConfirm={vi.fn()}
+        onCancel={vi.fn()}
+      />
+    )
+    unmount()
+
+    // The direct assertion — see Modal.test.tsx's equivalent leak test for
+    // why the "fresh overlay is still topmost" check below cannot catch a
+    // leak on its own (a newly-acquired token is always last in the stack).
+    expect(hasOpenModal()).toBe(false)
+
+    // A fresh Modal opening afterward must be topmost immediately — a leaked
+    // popover token would silently no-op its Escape.
+    const onClose = vi.fn()
+    render(
+      <Modal isOpen={true} onClose={onClose} title="Fresh">
+        <p>Content</p>
+      </Modal>
+    )
+    fireEvent.keyDown(document, { key: 'Escape' })
+
+    expect(onClose).toHaveBeenCalledTimes(1)
   })
 })

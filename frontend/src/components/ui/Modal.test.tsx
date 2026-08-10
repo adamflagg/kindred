@@ -1,6 +1,7 @@
 import { render, screen, fireEvent } from '@testing-library/react'
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { Modal } from './Modal'
+import { hasOpenModal } from './modalStack'
 
 describe('Modal', () => {
   describe('when isOpen is false', () => {
@@ -567,6 +568,106 @@ describe('Modal', () => {
       )
 
       expect(screen.queryByTestId('modal-body')).not.toBeInTheDocument()
+    })
+  })
+
+  describe('Escape ownership when a second `ui/Modal` opens on top (kindred#2205)', () => {
+    // `ScenarioManagementModal.tsx` renders exactly this: an outer Modal that
+    // is always open, plus a confirmation/edit/create Modal opened on top of
+    // it. Both attach their Escape listener to `document`, so without the
+    // overlay token stack, one press closed the child AND the parent
+    // underneath it in three separate places in that one file.
+    function StackedModals({
+      onCloseOuter,
+      onCloseInner,
+    }: {
+      onCloseOuter: () => void
+      onCloseInner: () => void
+    }) {
+      return (
+        <>
+          <Modal isOpen={true} onClose={onCloseOuter} title="Outer">
+            <p>Outer content</p>
+          </Modal>
+          <Modal isOpen={true} onClose={onCloseInner} title="Inner">
+            <p>Inner content</p>
+          </Modal>
+        </>
+      )
+    }
+
+    it('one Escape closes only the topmost (later-mounted) modal', () => {
+      const onCloseOuter = vi.fn()
+      const onCloseInner = vi.fn()
+      render(<StackedModals onCloseOuter={onCloseOuter} onCloseInner={onCloseInner} />)
+
+      fireEvent.keyDown(document, { key: 'Escape' })
+
+      expect(onCloseInner).toHaveBeenCalledTimes(1)
+      expect(onCloseOuter).not.toHaveBeenCalled()
+    })
+
+    it('a second Escape, after the inner modal is gone, closes the one beneath it', () => {
+      const onCloseOuter = vi.fn()
+      const onCloseInner = vi.fn()
+      const { rerender } = render(
+        <StackedModals onCloseOuter={onCloseOuter} onCloseInner={onCloseInner} />
+      )
+
+      fireEvent.keyDown(document, { key: 'Escape' })
+      expect(onCloseInner).toHaveBeenCalledTimes(1)
+
+      // The real component would stop rendering the inner Modal once its
+      // `onClose` fires and the parent flips its `isOpen` state; simulate
+      // that here rather than pulling in ScenarioManagementModal's own state.
+      rerender(
+        <>
+          <Modal isOpen={true} onClose={onCloseOuter} title="Outer">
+            <p>Outer content</p>
+          </Modal>
+          <Modal isOpen={false} onClose={onCloseInner} title="Inner">
+            <p>Inner content</p>
+          </Modal>
+        </>
+      )
+
+      fireEvent.keyDown(document, { key: 'Escape' })
+
+      expect(onCloseOuter).toHaveBeenCalledTimes(1)
+      expect(onCloseInner).toHaveBeenCalledTimes(1)
+    })
+
+    it('releases its overlay token on unmount, so the stack does not leak', () => {
+      // A leaked token would leave `hasOpenModal()` permanently true, which
+      // silently disables Escape for every container that stands down while
+      // "a modal" is open (`weekend/FamilyDetailsPanel`) — worse than the bug
+      // this stack exists to fix.
+      const { unmount } = render(
+        <Modal isOpen={true} onClose={() => {}} title="Solo">
+          <p>Content</p>
+        </Modal>
+      )
+      unmount()
+
+      // The direct assertion: a leaked token leaves the stack non-empty even
+      // with nothing open. LIFO ordering means the "fresh modal is still
+      // topmost" check below would pass even with a leak underneath it — a
+      // newly-acquired token is always last — so it cannot catch a leak on
+      // its own; this is the one that actually pins "does not leak".
+      expect(hasOpenModal()).toBe(false)
+
+      // A fresh modal opening afterward must be topmost immediately — if the
+      // old token were still in the stack, this one's Escape would silently
+      // no-op.
+      const onClose = vi.fn()
+      render(
+        <Modal isOpen={true} onClose={onClose} title="Fresh">
+          <p>Content</p>
+        </Modal>
+      )
+      fireEvent.keyDown(document, { key: 'Escape' })
+
+      expect(onClose).toHaveBeenCalledTimes(1)
     })
   })
 })

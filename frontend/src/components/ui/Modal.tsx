@@ -3,7 +3,14 @@ import { useEffect, useRef } from 'react'
 import type { ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 
-import { acquireBackgroundInert, releaseBackgroundInert } from './modalStack'
+import {
+  acquireBackgroundInert,
+  acquireOverlayToken,
+  isTopOverlay,
+  releaseBackgroundInert,
+  releaseOverlayToken,
+  type OverlayToken,
+} from './modalStack'
 
 interface ModalProps {
   isOpen: boolean
@@ -105,12 +112,26 @@ export function Modal({
 }: ModalProps) {
   const contentRef = useRef<HTMLDivElement>(null)
   const previouslyFocusedRef = useRef<HTMLElement | null>(null)
+  // kindred#2205: which of possibly several stacked overlays this instance
+  // is. Read by the Escape branch below, written by the mount effect that
+  // acquires it — see that effect for why they're split.
+  const overlayTokenRef = useRef<OverlayToken | null>(null)
 
   useEffect(() => {
     if (!isOpen) return
 
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
+        // Only the topmost overlay acts on a given Escape press. Without
+        // this, a second `ui/Modal` (or any other overlay participating in
+        // the same stack — `ConfirmActionPopover`, `ui/Tooltip`) opened on
+        // top of this one would still leave THIS listener firing too, and
+        // one keypress would close both — `ScenarioManagementModal.tsx` hits
+        // this three times over (its confirm dialog, `ScenarioEditModal`,
+        // `NewScenarioModal`, all opened on top of its always-open outer
+        // Modal).
+        const token = overlayTokenRef.current
+        if (token !== null && !isTopOverlay(token)) return
         onClose()
         return
       }
@@ -152,6 +173,8 @@ export function Modal({
 
     previouslyFocusedRef.current = document.activeElement as HTMLElement | null
     acquireBackgroundInert()
+    const token = acquireOverlayToken()
+    overlayTokenRef.current = token
 
     const container = contentRef.current
     const focusable = container ? getFocusable(container) : []
@@ -159,6 +182,8 @@ export function Modal({
 
     return () => {
       releaseBackgroundInert()
+      releaseOverlayToken(token)
+      overlayTokenRef.current = null
       previouslyFocusedRef.current?.focus()
       previouslyFocusedRef.current = null
     }
