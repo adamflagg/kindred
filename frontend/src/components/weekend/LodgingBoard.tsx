@@ -51,7 +51,12 @@ import { useUnitAvailability } from '../../hooks/useUnitAvailability'
 import { useUnitMerge } from '../../hooks/useUnitMerge'
 import type { LodgingUnitRow, RosterPartyRow } from '../../types/lodging'
 import { areaTokens, buildBoard } from './boardLayout'
-import { mergeDragUnit, resolveDrop, resolveMergeDrop } from './dragPlacement'
+import {
+  mergeDragUnit,
+  resolveDrop,
+  resolveMergeDrop,
+  resolvePickerPlacement,
+} from './dragPlacement'
 import { FamilyCard, FamilyCardPreview } from './FamilyCard'
 import { FamilyDetailsPanel } from './FamilyDetailsPanel'
 import { FloatingUnplacedBadge } from './FloatingUnplacedBadge'
@@ -305,6 +310,33 @@ export function LodgingBoard({
     [setCombined, unitsByCode]
   )
 
+  /*
+   * kindred#2080 — the unit card's picker, resolved through the DROP path.
+   *
+   * `resolvePickerPlacement` IS `resolveDrop`, so this branch inherits every
+   * refusal the drag has (a held space, a non-combined container, a party
+   * carrying neither CampMinder id, a party already alone in the room) rather
+   * than restating any of them, and produces the same `PlacementIntent` for
+   * the same `move`. One placement path with two affordances, not two paths.
+   *
+   * `canPlace` is re-checked here for the same reason `handleDragEnd`
+   * re-checks it: the card's own gate is the affordance half, and a write
+   * gate that lives only in an affordance is one prop away from being
+   * bypassed.
+   */
+  const placeParty = useCallback(
+    (unit: LodgingUnitRow, party: RosterPartyRow) => {
+      if (!canPlace) return
+      const intent = resolvePickerPlacement({ party, unitCode: unit.code, parties, units })
+      if (intent === null) return
+      // The rejection path is the hook's — it rolls the optimistic move back
+      // and raises the toast. Catching keeps the rejected promise from
+      // surfacing as an unhandled rejection, exactly as the drop handler does.
+      void move(intent).catch(() => undefined)
+    },
+    [canPlace, move, parties, units]
+  )
+
   const writeAvailability = useCallback(
     (unit: LodgingUnitRow, write: { familyAvailable: boolean | null; reason: string }) => {
       // The rejection path is the hook's: it raises the toast. Catching here
@@ -499,6 +531,15 @@ export function LodgingBoard({
                                 pendingMergeUnitId ===
                                   unitsByCode.get(slot.unit.parent_code ?? '')?.unit_id)
                             }
+                            // kindred#2080. The board's unplaced queue,
+                            // whole and unfiltered — the picker annotates and
+                            // orders it per card rather than hiding rows, on
+                            // the owner's ruling. `board.unplaced` is the
+                            // same list `FloatingUnplacedBadge` shows, so the
+                            // two can never disagree about who still needs a
+                            // cabin.
+                            unplacedParties={board.unplaced}
+                            onPlaceParty={placeParty}
                             onOpenParty={openParty}
                           />
                         ))}

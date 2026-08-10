@@ -14,7 +14,8 @@
  * Fictional data throughout.
  */
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { act, render } from '@testing-library/react'
+import { act, render, screen } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import type { ReactNode } from 'react'
 import { MemoryRouter } from 'react-router'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
@@ -321,5 +322,78 @@ describe('LodgingBoard — threading the dragged family for the needs hatch (#19
     })
     startDrag('merge:cedar-2')
     expect(cards(container).dark).not.toHaveAttribute('data-needs-fit')
+  })
+})
+
+describe('LodgingBoard — placing a family from the space itself (kindred#2080)', () => {
+  /*
+   * The board's half of the second placement path. What is pinned here is the
+   * WIRING — that the picker's choice reaches the same mutation a drop does,
+   * carrying the intent `resolveDrop` would have produced. Which placements
+   * are refused is pure and lives in `dragPlacement.test.ts`.
+   */
+  const GARCIA = party({
+    household_cm_id: 202,
+    display_name: 'Garcia',
+    sort_name: 'Garcia',
+    adults: [{ adult_number: 1, display_name: 'Liam Garcia', relationship: 'Father' }],
+  })
+
+  function boardWithUnplaced(props: Partial<Parameters<typeof LodgingBoard>[0]> = {}) {
+    return renderBoard({
+      parties: [
+        party({ unit_code: 'cedar-1', unit_name: 'Cedar 1', unit_codes: ['cedar-1'] }),
+        GARCIA,
+      ],
+      ...props,
+    })
+  }
+
+  function pickerFor(name: string) {
+    return screen.getByRole('combobox', { name: new RegExp(`place a family in ${name}`, 'i') })
+  }
+
+  it('mounts the control on an empty space while placement is live', () => {
+    boardWithUnplaced()
+    expect(pickerFor('Cedar 2')).toBeInTheDocument()
+    // Cedar 1 already holds a family, so it offers nothing — the same rule
+    // that hides Hold on an occupied card.
+    expect(
+      screen.queryByRole('combobox', { name: /place a family in cedar 1/i })
+    ).not.toBeInTheDocument()
+  })
+
+  it('offers nothing without a scenario', () => {
+    boardWithUnplaced({ scenario: '' })
+    expect(screen.queryByRole('combobox', { name: /place a family/i })).not.toBeInTheDocument()
+  })
+
+  it('offers nothing without the permission to place', () => {
+    boardWithUnplaced({ canManage: false })
+    expect(screen.queryByRole('combobox', { name: /place a family/i })).not.toBeInTheDocument()
+  })
+
+  it('lists the UNPLACED parties, never one already in a cabin', async () => {
+    const user = userEvent.setup()
+    boardWithUnplaced()
+    await user.click(pickerFor('Cedar 2'))
+    const options = screen.getAllByRole('option')
+    expect(options).toHaveLength(1)
+    expect(options[0]).toHaveTextContent('Liam Garcia')
+  })
+
+  it('writes the same intent the equivalent drop would', async () => {
+    const user = userEvent.setup()
+    boardWithUnplaced()
+    await user.click(pickerFor('Cedar 2'))
+    await user.click(screen.getByRole('option', { name: /Liam Garcia/ }))
+    expect(move).toHaveBeenCalledTimes(1)
+    expect(move.mock.calls[0]?.[0]).toEqual({
+      kind: 'place',
+      party: GARCIA,
+      unitId: 'u2',
+      unitCode: 'cedar-2',
+      unitName: 'Cedar 2',
+    })
   })
 })
