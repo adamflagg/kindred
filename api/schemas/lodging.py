@@ -383,6 +383,27 @@ class RosterParty(BaseModel):
     arrival_eta: str = ""
     # The household's cm_id was seen in an earlier year.
     is_returning: bool = False
+    # Where this household slept in the DIRECTLY PRIOR year, verbatim as staff
+    # wrote it -- kindred#2075, ruled Option A ("only the directly prior year
+    # just like summer"). "" means we do not know, which is the common case
+    # (202 of 2026's 459 registered households) and covers three different
+    # facts the card must not distinguish between: a genuine first-timer, a
+    # family who skipped last year, and a family whose last visit predates
+    # 2022 -- `family_camp_registrations.cabin_assignment` is blank on all
+    # 1,433 rows from 2017-2021. So "" is NOT "nobody assigned them", and no
+    # consumer should render a placeholder or a dash for it.
+    #
+    # FREE TEXT out of `cabin_assignment`, deliberately NOT resolved against
+    # `lodging_units` -- see `fetch_cabin_assignments_by_household_cm_id` for
+    # why (the registry holds only the current year, and 3 of the 88 distinct
+    # strings across 2022-2025 resolve to no alias at all). It may therefore
+    # name something no card on the board is called. Never match it against a
+    # `unit_code`.
+    #
+    # Only ever populated on the ROSTER, and only for household-grain parties:
+    # `build_summary` keeps nothing but counts, and an adult-weekend guest is
+    # person-grain with no household to key on.
+    last_year_cabin: str = ""
     share: ShareRequestSummary = Field(default_factory=ShareRequestSummary)
     flags: AccessibilityFlagSummary = Field(default_factory=AccessibilityFlagSummary)
 
