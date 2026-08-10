@@ -45,6 +45,13 @@ sys.modules[_spec.name] = _pbb
 _spec.loader.exec_module(_pbb)
 parse_bed_bath = _pbb.parse_bed_bath
 
+# Accepted here deliberately, not moved to kindred-local (kindred#2223 offered
+# both options). A Google Sheet id is not an access grant -- access is
+# controlled by the sheet's own sharing settings and the service account in
+# config/google_sheets.json (itself private, symlinked from kindred-local),
+# not by id obscurity. Knowing this id without that grant gets a 403, same as
+# knowing any other public identifier for a private resource. The owner may
+# still prefer to relocate it for defense-in-depth; flagged in the PR.
 SHEET_ID = "1GtNje2ETlcr3JQYMF3ChXndsH9ddySujc1Yv9YCq0Gs"
 SHEET_TAB = "Master Housing Tab"
 REGISTRY = _ROOT / "config" / "lodging_registry.json"
@@ -80,80 +87,101 @@ WRITABLE = (
 # first use. This is deliberately a table and not a fuzzy matcher: a matcher
 # that runs at import time re-derives its answers on data nobody is looking at,
 # and a wrong one writes real bed data onto the wrong cabin with nothing to
-# catch it. The Wawona pair is the worked example — stripping the trailing
-# parenthetical reduces both Front and Back to "Wawona", which is the container.
+# catch it. gt-wawona-front / gt-wawona-back is the worked example — stripping
+# a shared decorated suffix from a sibling pair like that reduces both to
+# their shared container.
+#
+# PRIVACY (kindred#2223): the left-hand side of this table is real, human-
+# readable camp display-name text as it appears verbatim in the source sheet
+# cell -- the repo is public and that text must never be tracked here (spec
+# 3.8 already draws this line for config/lodging_registry.json; this table is
+# the same data shape). The keys below are unit codes standing in for the
+# real sheet text, which has been scrubbed. This table is also now provably
+# inert for a future run against the CURRENT registry: every code on the
+# right already appears among registry.aliases (added by the historical
+# --apply run that first produced this table), so build_index() resolves the
+# real sheet text through registry.get("aliases") before ever reaching this
+# table -- the "Additions win" comment below no longer has anything new to
+# win. Restoring the real sheet-name keys as an UNCOMMITTED local edit is
+# only needed to review a genuinely NEW alias against a future sheet.
 ALIAS_ADDITIONS: dict[str, list[str]] = {
-    # Health Center Upstairs: the room number is the trailing digit. Room 2
-    # being the Med Assistant room corroborates the registry note that it is
-    # real but went unused in 2024-25.
-    "Health Center Upstairs - Recovery Room 1": ["hc-upstairs-1"],
-    "Health Center Upstairs - Med Assistant Room 2": ["hc-upstairs-2"],
-    "Health Center Upstairs - Recovery Room 3": ["hc-upstairs-3"],
-    "Health Center Upstairs - Recovery Room 4": ["hc-upstairs-4"],
-    "Health Center Upstairs - Recovery Room 5": ["hc-upstairs-5"],
-    "Health Center Upstairs - Isolation Room 6": ["hc-upstairs-6"],
-    # The sheet drops the "Ridge" prefix the registry and the map both carry.
-    "Yurt 1": ["ridge-yurt-1"],
-    "Yurt 2": ["ridge-yurt-2"],
-    "Yurt 3": ["ridge-yurt-3"],
-    "Yurt 4": ["ridge-yurt-4"],
-    "Yurt 5": ["ridge-yurt-5"],
-    "Yurt 6": ["ridge-yurt-6"],
-    "Yurt 7": ["ridge-yurt-7"],
+    # One area's upstairs rooms. The room number is the trailing digit of
+    # the code.
+    "hc-upstairs-1": ["hc-upstairs-1"],
+    "hc-upstairs-2": ["hc-upstairs-2"],
+    "hc-upstairs-3": ["hc-upstairs-3"],
+    "hc-upstairs-4": ["hc-upstairs-4"],
+    "hc-upstairs-5": ["hc-upstairs-5"],
+    "hc-upstairs-6": ["hc-upstairs-6"],
+    # The sheet drops an area prefix the registry and the map both carry.
+    "ridge-yurt-1": ["ridge-yurt-1"],
+    "ridge-yurt-2": ["ridge-yurt-2"],
+    "ridge-yurt-3": ["ridge-yurt-3"],
+    "ridge-yurt-4": ["ridge-yurt-4"],
+    "ridge-yurt-5": ["ridge-yurt-5"],
+    "ridge-yurt-6": ["ridge-yurt-6"],
+    "ridge-yurt-7": ["ridge-yurt-7"],
     # Editorial suffixes the registry does not carry.
-    "River F (New 1) - closer to bathroom": ["river-f"],
-    "River J (B7) - closer to bathroom": ["river-j"],
-    "River M (B9) (older)": ["river-m"],
+    "river-f": ["river-f"],
+    "river-j": ["river-j"],
+    "river-m": ["river-m"],
     # MUST reach the leaves. See the note above.
-    "Wawona (Front)": ["gt-wawona-front"],
-    "Wawona (Back)": ["gt-wawona-back"],
+    "gt-wawona-front": ["gt-wawona-front"],
+    "gt-wawona-back": ["gt-wawona-back"],
     # Decorated names whose BARE form already resolves through the existing
     # alias table. Listed verbatim anyway, because the alternative is stripping
-    # the decoration at import time — and that strip is what turns "Wawona
-    # (Front)" into the container. A lookup that only ever succeeds on an exact
-    # string cannot make that mistake quietly.
+    # the decoration at import time -- and that strip is what collapses a
+    # sibling pair down to their shared container. A lookup that only ever
+    # succeeds on an exact string cannot make that mistake quietly.
     #
     # The trailing parenthetical is an old cabin label. Where it matches the
     # unit's `notes` (seeded from this sheet's own Notes column) that agreement
-    # is marked below; the River block has none because the sheet's two label
-    # columns are in opposite order there, which staff have confirmed is a paste
-    # artifact and not a disagreement about which cabin is which.
-    "Kitty 2 (smaller than K3)": ["gt-kitty-2"],
-    "River A (New Btent) - new": ["river-a"],
-    "River B (B3)": ["river-b"],  # notes agree
-    "River C (B4)": ["river-c"],  # notes agree
-    "River D (B5)": ["river-d"],  # notes agree
-    "River E (B6)": ["river-e"],  # notes agree
-    "River G (New 3) - new": ["river-g"],
-    "River H (New 2) - new": ["river-h"],
-    "River I (B8)": ["river-i"],
-    "River K (B10)": ["river-k"],
-    "River L (N Old B9) - new, massage": ["river-l"],
-    "Ridge A (G6)": ["ridge-a"],  # notes agree
-    "Ridge B (G7)": ["ridge-b"],  # notes agree
-    "Ridge C (G8)": ["ridge-c"],  # notes agree
-    "Ridge D (G5)": ["ridge-d"],  # notes agree
-    "Ridge E (Gnew) - new": ["ridge-e"],
-    "Ridge F (G4) - new": ["ridge-f"],
-    "Ridge G (G3) - new": ["ridge-g"],
-    "Ridge H (G2) - new": ["ridge-h"],
-    "Ridge I (G1) - new": ["ridge-i"],
-    "Ridge J (G9)": ["ridge-j"],  # notes agree
-    "Ridge K (G10)": ["ridge-k"],  # notes agree
-    "Ridge L (G11)": ["ridge-l"],  # notes agree
-    "Ridge M (G12)": ["ridge-m"],  # notes agree
-    "Manzanita 2 (updated)": ["manzanita-2"],
-    # The sheet spells these with a curly apostrophe (U+2019); the registry name
-    # uses U+0027. aliasLookupKey lowercases and trims but does not fold the
-    # two, so without these the rows simply do not resolve.
-    "L’Shack 1": ["gt-le-shack-1"],
-    "L’Shack 2": ["gt-le-shack-2"],
-    "L’Shack 3": ["gt-le-shack-3"],
+    # is marked below; the river-lettered block has none because the sheet's
+    # two label columns are in opposite order there, which staff have
+    # confirmed is a paste artifact and not a disagreement about which cabin
+    # is which.
+    "gt-kitty-2": ["gt-kitty-2"],
+    "river-a": ["river-a"],
+    "river-b": ["river-b"],  # notes agree
+    "river-c": ["river-c"],  # notes agree
+    "river-d": ["river-d"],  # notes agree
+    "river-e": ["river-e"],  # notes agree
+    "river-g": ["river-g"],
+    "river-h": ["river-h"],
+    "river-i": ["river-i"],
+    "river-k": ["river-k"],
+    "river-l": ["river-l"],
+    "ridge-a": ["ridge-a"],  # notes agree
+    "ridge-b": ["ridge-b"],  # notes agree
+    "ridge-c": ["ridge-c"],  # notes agree
+    "ridge-d": ["ridge-d"],  # notes agree
+    "ridge-e": ["ridge-e"],
+    "ridge-f": ["ridge-f"],
+    "ridge-g": ["ridge-g"],
+    "ridge-h": ["ridge-h"],
+    "ridge-i": ["ridge-i"],
+    "ridge-j": ["ridge-j"],  # notes agree
+    "ridge-k": ["ridge-k"],  # notes agree
+    "ridge-l": ["ridge-l"],  # notes agree
+    "ridge-m": ["ridge-m"],  # notes agree
+    "manzanita-2": ["manzanita-2"],
+    # The real sheet spells these with a curly apostrophe (U+2019); the
+    # registry name uses U+0027. aliasLookupKey lowercases and trims but does
+    # not fold the two, so without a real-name entry for each of these the
+    # rows simply do not resolve.
+    "gt-le-shack-1": ["gt-le-shack-1"],
+    "gt-le-shack-2": ["gt-le-shack-2"],
+    "gt-le-shack-3": ["gt-le-shack-3"],
 }
 
 # Real sheet rows that correspond to no registry unit, and why. Reporting these
 # as failures would pad the unresolved list with rows nobody needs to act on,
 # and a list that is mostly noise stops being read.
+#
+# One key below ("other-section-header") stands in for a fourth sheet-side
+# section header whose real text names a camp area (kindred#2223) -- the same
+# scrub as ALIAS_ADDITIONS above, and for the same reason: this dict is keyed
+# on real sheet cell text, and one of those cells is not safe to track here.
 NON_UNIT_ROWS: dict[str, str] = {
     "Caretaker": "staff housing (Assignment 'Staff: B&G') - not planning inventory",
     "Asst. Caretaker": "staff housing (Assignment 'Staff: B&G') - not planning inventory",
@@ -161,15 +189,17 @@ NON_UNIT_ROWS: dict[str, str] = {
     "RIVER SIDE": "section header",
     "RIDGE SIDE": "section header",
     "Tent City": "section header",
-    "Tuolumnes": "section header",
+    "other-section-header": "section header",
     "Total": "sum row - its Capacity 46050 is a sum artifact, not a bed count",
 }
 
-# Clouds Rest is the only container with its own sheet row, because it is
-# normally let as ONE whole-house booking rather than per room the way Tioga,
-# Tenaya and Kitty are. That is why its row describes four child rooms in prose
-# where every other container appears only as its leaves. The parser refuses the
-# prose; this is the reviewed reading of it.
+# One container is normally let as ONE whole-house booking rather than per
+# room, unlike most other multi-room containers in the registry, which are let
+# per leaf. That is why its row describes four child rooms in prose where
+# every other container appears only as its leaves. The parser refuses the
+# prose; this is the reviewed reading of it. Its display name has been
+# replaced with its unit code below (kindred#2223); see the ALIAS_ADDITIONS
+# header comment for why that is safe.
 #
 # The living-room futon is shared space belonging to no child, so it sits on the
 # container. Nothing a child already holds may appear here or it is counted
@@ -182,7 +212,14 @@ CLOUDS_REST_BEDS: dict[str, list[dict[str, Any]]] = {
     "gt-clouds-rest-back": [{"type": "full_twin_bunk", "count": 1}],
     "gt-clouds-rest-laundry": [{"type": "twin", "count": 1}],
 }
-CLOUDS_REST_ROW = "Clouds Rest"
+# Placeholder standing in for the real sheet row label, scrubbed for the same
+# reason as ALIAS_ADDITIONS above (kindred#2223). A real run needs this reset
+# to the literal sheet text as an uncommitted local edit -- though the real
+# registry already carries `beds` for every code in CLOUDS_REST_BEDS above
+# from the historical --apply run, so this comparison is provably inert
+# against the current registry and only matters again if that data is ever
+# cleared and re-derived.
+CLOUDS_REST_ROW = "gt-clouds-rest"
 
 
 @dataclass
@@ -210,8 +247,9 @@ class ImportPlan:
 def _norm(text: str) -> str:
     """Casefold and collapse outer whitespace, matching aliasLookupKey in Go.
 
-    Inner spacing stays significant: one seeded alias, "Health Center Downstairs
-    - Room A", genuinely carries a double space.
+    Inner spacing stays significant: one seeded alias genuinely carries a
+    double space in its middle (e.g. "Building  - Room A"), not a typo to
+    collapse.
     """
     return " ".join(str(text).split()).casefold()
 

@@ -256,10 +256,19 @@ def test_is_accessible_comes_from_the_bathroom_column() -> None:
 
 
 def test_a_reviewed_alias_resolves_a_decorated_sheet_name() -> None:
-    """'Wawona (Front)' must reach the leaf. Stripping the parenthetical would
-    reduce both Front and Back to the container and silently double-write it."""
-    assert imh.ALIAS_ADDITIONS["Wawona (Front)"] == ["gt-wawona-front"]
-    assert imh.ALIAS_ADDITIONS["Wawona (Back)"] == ["gt-wawona-back"]
+    """The Front/Back sibling pair must each reach its own leaf. Stripping a
+    shared decorated suffix from both would reduce them to the container and
+    silently double-write it.
+
+    ALIAS_ADDITIONS keys are unit-code placeholders standing in for real,
+    decorated sheet cell text that has been scrubbed from this public repo
+    (kindred#2223) -- see the header comment on ALIAS_ADDITIONS. What this
+    test still pins is that the pair resolves to two *distinct* leaf codes,
+    not to their shared container.
+    """
+    assert imh.ALIAS_ADDITIONS["gt-wawona-front"] == ["gt-wawona-front"]
+    assert imh.ALIAS_ADDITIONS["gt-wawona-back"] == ["gt-wawona-back"]
+    assert imh.ALIAS_ADDITIONS["gt-wawona-front"] != imh.ALIAS_ADDITIONS["gt-wawona-back"]
 
 
 def test_alias_additions_never_target_a_container() -> None:
@@ -293,10 +302,15 @@ def test_a_known_non_unit_row_is_classified_not_reported_as_a_failure() -> None:
 
 
 def test_clouds_rest_children_get_their_beds_from_the_hand_mapping() -> None:
-    """Clouds Rest is normally let as one whole-house booking rather than per
-    room, which is why it is the only container with its own sheet row and why
-    that row describes its four children in prose. The parser refuses the prose;
-    this table is the reviewed reading of it.
+    """This container is normally let as one whole-house booking rather than
+    per room, which is why it is the only one with its own sheet row and why
+    that row describes its four children in prose. The parser refuses the
+    prose; this table is the reviewed reading of it.
+
+    Uses `imh.CLOUDS_REST_ROW` rather than a literal string: that constant is
+    itself a scrubbed placeholder for the real sheet row label (kindred#2223),
+    and pinning the test to whatever it currently is keeps this test decoupled
+    from that real text.
     """
     registry = _registry(
         "gt-clouds-rest",
@@ -304,9 +318,9 @@ def test_clouds_rest_children_get_their_beds_from_the_hand_mapping() -> None:
         "gt-clouds-rest-loft",
         "gt-clouds-rest-back",
         "gt-clouds-rest-laundry",
-        **{"gt-clouds-rest": {"is_container": True, "name": "Clouds Rest"}},
+        **{"gt-clouds-rest": {"is_container": True}},
     )
-    sheet = [HEADER, _row("Clouds Rest", bed_bath="3+ bedrooms, 1 bath; side room w/ queen (full?)")]
+    sheet = [HEADER, _row(imh.CLOUDS_REST_ROW, bed_bath="3+ bedrooms, 1 bath; side room w/ queen (full?)")]
 
     updated = _by_code(imh.apply_plan(imh.plan_import(sheet, registry), registry))
 

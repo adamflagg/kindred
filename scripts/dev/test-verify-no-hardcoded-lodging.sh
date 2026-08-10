@@ -236,4 +236,33 @@ else
 fi
 
 echo
+echo "=== TEST 8: scripts/ must be scanned by DEFAULT (no LODGING_SCAN_ROOTS override) ==="
+# kindred#2223: SCAN_ROOTS never included scripts/, so a real leak
+# (scripts/dev/import_master_housing.py) sat on `main`, tracked and public,
+# with this guard reporting clean on every PR. This asserts the widening: a
+# needle planted under scripts/ must be caught with NO env override at all --
+# unlike TEST 6, which deliberately overrides LODGING_SCAN_ROOTS to prove a
+# *missing* root fails loudly. This test proves scripts/ is a *default* root.
+SCRIPTS_PROBE="$REPO_ROOT/scripts/dev/leak_probe_kindred2223.py"
+cleanup5() { rm -f "$SCRIPTS_PROBE"; }
+trap 'cleanup5; cleanup4; cleanup3; cleanup' EXIT INT TERM
+echo 'UNITS = ["Tuolumne 1"]' > "$SCRIPTS_PROBE"
+set +e
+OUT=$("$GUARD_SCRIPT" 2>&1)
+rc=$?
+set -e
+rm -f "$SCRIPTS_PROBE"
+if [[ $rc -ne 1 ]]; then
+  echo "FAIL: expected exit 1 for a needle under scripts/ with no override, got $rc" >&2
+  echo "$OUT" >&2
+  exit 1
+fi
+if ! grep -q "scripts/dev/leak_probe_kindred2223.py:1:" <<<"$OUT"; then
+  echo "FAIL: output missing scripts/ probe file:line" >&2
+  echo "$OUT" >&2
+  exit 1
+fi
+echo "PASS: a needle under scripts/ is caught with no env override"
+
+echo
 echo "All tests passed."
