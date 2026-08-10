@@ -29,6 +29,7 @@ import type {
 } from '../../types/lodging'
 import { displayCampMinderAge } from '../../utils/age'
 import { hasOpenModal } from '../ui/modalStack'
+import { Tooltip } from '../ui/Tooltip'
 import { AccessibilityFlagList } from './AccessibilityFlagList'
 import { HouseholdJourneyCard } from './HouseholdJourneyCard'
 import { namedAdults, partyFamilyLabel, partyHeadcount } from './householdIdentity'
@@ -196,12 +197,12 @@ export function FamilyDetailsPanel({
             <span className="text-muted-foreground text-sm italic">No cabin yet</span>
           )}
           {party.is_merged_slot === true && (
-            <span
-              title="Two rooms combined into one slot"
+            <Tooltip
+              content="Two rooms combined into one slot"
               className="bg-muted text-muted-foreground rounded-full px-2 py-0.5 text-xs font-semibold"
             >
               Merged
-            </span>
+            </Tooltip>
           )}
           {unit?.area_name !== undefined && unit.area_name.length > 0 && (
             <span className="text-muted-foreground text-xs">{unit.area_name}</span>

@@ -22,10 +22,12 @@ export interface UnitBadge {
   label: string
   className: string
   /**
-   * OPTIONAL long form, rendered as the chip's `title`. Only the warning chip
+   * OPTIONAL long form, rendered as the chip's tooltip (`ui/Tooltip` since
+   * kindred#2177, a bare `title` attribute before it). Only the warning chip
    * below carries one: the availability badges are single words whose whole
    * meaning is the word, where a warning has a COUNT to state and colour alone
-   * is never a signal (WCAG 1.4.1).
+   * is never a signal (WCAG 1.4.1). A badge without one renders as plain text
+   * rather than as a focusable trigger that reveals nothing.
    */
   title?: string
 }

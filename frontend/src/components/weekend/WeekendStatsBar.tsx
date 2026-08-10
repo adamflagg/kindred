@@ -16,6 +16,7 @@
 import { AlertCircle, BedDouble, Home, Users } from 'lucide-react'
 
 import type { RosterCountSummary } from '../../types/lodging'
+import { Tooltip } from '../ui/Tooltip'
 
 export interface WeekendStatsBarProps {
   counts: RosterCountSummary
@@ -78,12 +79,15 @@ export function WeekendStatsBar({ counts, bedsNeeded, spacesUnmeasured }: Weeken
 
         <div className="flex items-center gap-2">
           <Home className="text-bark-500 dark:text-bark-400 h-4 w-4 flex-shrink-0" />
-          <span
+          {/* kindred#2177: all three notes in this group were `title` on a
+              plain `<span>`, so a staff member on a tablet could read the
+              figure and never why it moves. */}
+          <Tooltip
+            content="Merging or splitting cabins on the board changes this count"
             className="font-semibold tabular-nums"
-            title="Merging or splitting cabins on the board changes this count"
           >
             {spaces}
-          </span>
+          </Tooltip>
           <span className="text-muted-foreground">spaces</span>
           <span className="text-muted-foreground tabular-nums">
             ({spare < 0 ? `${String(Math.abs(spare))} short` : `${String(spare)} spare`})
@@ -95,20 +99,20 @@ export function WeekendStatsBar({ counts, bedsNeeded, spacesUnmeasured }: Weeken
               it houses full-time staff who are not enrolled per session, and
               was never part of the weekend's inventory to begin with. */}
           {unitsReserved > 0 && (
-            <span
+            <Tooltip
+              content="Out of service this weekend, excluded from spaces"
               className="text-muted-foreground"
-              title="Out of service this weekend, excluded from spaces"
             >
               · {unitsReserved} held
-            </span>
+            </Tooltip>
           )}
           {unitsStaffHousing > 0 && (
-            <span
+            <Tooltip
+              content="Permanent staff housing, never part of the weekend's inventory"
               className="text-muted-foreground"
-              title="Permanent staff housing, never part of the weekend's inventory"
             >
               · {unitsStaffHousing} staff
-            </span>
+            </Tooltip>
           )}
         </div>
 

@@ -7,7 +7,7 @@
  * ONE pre-joined string — the ingest joins three source fields with "; " and
  * that join is lossy to reverse, so it is never split back apart.
  */
-import { render, screen } from '@testing-library/react'
+import { fireEvent, render, screen } from '@testing-library/react'
 import { describe, expect, it } from 'vitest'
 
 import type { ShareRequest } from '../../types/lodging'
@@ -46,13 +46,28 @@ describe('SharePreferenceChip inside ShareRequestPanel', () => {
     expect(screen.queryByText('Open to sharing')).not.toBeInTheDocument()
   })
 
-  it('shows the verbatim CampMinder answer as a tooltip so staff can audit it', () => {
+  it('shows the verbatim CampMinder answer in a tooltip keyboard and touch can reach', () => {
+    // kindred#2177: this was a bare `title`, which fires on mouse hover and
+    // nothing else — staff on a tablet saw the chip and never the answer.
     render(
       <ShareRequestPanel
         share={share({ preference: 'no_share', preference_raw: 'No, prefer not to share' })}
       />
     )
-    expect(screen.getByText('Will not share')).toHaveAttribute('title', 'No, prefer not to share')
+    const chip = screen.getByRole('button', { name: 'Will not share' })
+    expect(chip).not.toHaveAttribute('title')
+    expect(chip).toHaveAccessibleDescription('No, prefer not to share')
+    fireEvent.focus(chip)
+    expect(screen.getByRole('tooltip')).toHaveTextContent('No, prefer not to share')
+  })
+
+  it('leaves a chip with nothing to explain as plain text, not a dead tab stop', () => {
+    // An unanswered preference has no verbatim answer behind it. Making every
+    // chip focusable would put a stop in the tab order that reveals nothing —
+    // the same argument `MapUnitPopover` makes about its empty cells.
+    render(<ShareRequestPanel share={share({ preference: 'unknown', preference_raw: '' })} />)
+    expect(screen.getByText('Not answered')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Not answered' })).not.toBeInTheDocument()
   })
 })
 

@@ -432,10 +432,39 @@ describe('FamilyCard — what it shows', () => {
         onOpen={vi.fn()}
       />
     )
-    const chip = screen.getByText('Answers disagree')
-    expect(chip).toHaveAttribute('title', expect.stringContaining('will not share'))
-    expect(chip).toHaveAttribute('title', expect.stringContaining('open to sharing'))
-    expect(chip).toHaveAttribute('title', expect.stringContaining("form's answer"))
+    // kindred#2177: the detail is real text now, not a bare `title` that
+    // fires on mouse hover and nothing else.
+    const chip = screen.getByText('Answers disagree').closest('span')
+    expect(chip).not.toHaveAttribute('title')
+    expect(chip?.textContent).toMatch(/will not share/)
+    expect(chip?.textContent).toMatch(/open to sharing/)
+    expect(chip?.textContent).toMatch(/form's answer/)
+  })
+
+  it('never nests a control inside the card, which is itself a button', () => {
+    // The guard behind the chip's `sr-only` detail (kindred#2177). A nested
+    // `<button>` is invalid inside a `<button>`'s content model AND its tap
+    // would bubble into `onOpen`, so if the tooltip primitive is ever wired
+    // in here, this fails first.
+    const { container } = render(
+      <FamilyCard
+        party={party({
+          share: {
+            preference: 'no_share',
+            proximity: ['with'],
+            request_text: '',
+            needs_resolution: false,
+            eligibility: 'open',
+            eligibility_source: 'form',
+            answers_conflict: true,
+          },
+        })}
+        onOpen={vi.fn()}
+      />
+    )
+    expect(screen.getByText('Wants to share')).toBeInTheDocument()
+    expect(container.querySelectorAll('button button')).toHaveLength(0)
+    expect(container.querySelectorAll('button [tabindex]')).toHaveLength(0)
   })
 
   it('renders no "Answers disagree" chip, and no tooltip, when there is no conflict', () => {

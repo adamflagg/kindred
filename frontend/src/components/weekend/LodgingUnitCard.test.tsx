@@ -6,7 +6,7 @@
  *
  * Fictional data throughout.
  */
-import { render, screen } from '@testing-library/react'
+import { fireEvent, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -119,7 +119,26 @@ describe('LodgingUnitCard', () => {
 
   it('shows how many spaces the unit sleeps when it is known', () => {
     render(<LodgingUnitCard slot={slot()} hue="hsl(160 45% 42%)" onOpenParty={vi.fn()} />)
-    expect(screen.getByTitle(/Sleeps 5/)).toBeInTheDocument()
+    expect(screen.getByTestId('unit-occupancy')).toHaveAccessibleDescription(/Sleeps 5/)
+  })
+
+  it('puts the capacity sentence on a tooltip keyboard and touch can reach', () => {
+    // kindred#2177. The occupancy figure is the smallest trigger on the board,
+    // so the primitive's transparent 24px hit target does the tap-target work
+    // — NOT a drawn box, which would collide with the dashed empty-room edge.
+    render(<LodgingUnitCard slot={slot()} hue="hsl(160 45% 42%)" onOpenParty={vi.fn()} />)
+    const occupancy = screen.getByTestId('unit-occupancy')
+    expect(occupancy.tagName).toBe('BUTTON')
+    expect(occupancy).not.toHaveAttribute('title')
+    expect(occupancy.className).toContain('after:h-[max(100%,24px)]')
+    fireEvent.focus(occupancy)
+    expect(screen.getByRole('tooltip')).toHaveTextContent(/Sleeps 5/)
+  })
+
+  it('describes the unit NAME without turning it into a tooltip trigger', () => {
+    // The occupancy `<span>` carried the tooltip, never the `<h3>` beside it.
+    render(<LodgingUnitCard slot={slot()} hue="hsl(160 45% 42%)" onOpenParty={vi.fn()} />)
+    expect(screen.getByText('Cedar 1').tagName).toBe('H3')
   })
 
   it('invites a drop into an empty unit while placement is live', () => {
@@ -917,7 +936,9 @@ describe('LodgingUnitCard — the one-family conflict chip (#2179)', () => {
         onOpenParty={vi.fn()}
       />
     )
-    expect(screen.getByTitle(/2 families are sharing a room here/i)).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'One-family space' })).toHaveAccessibleDescription(
+      /2 families are sharing a room here/i
+    )
   })
 
   it('is silent on the same unit holding one family', () => {
@@ -1106,7 +1127,9 @@ describe('LodgingUnitCard — the one-family conflict chip (#2179)', () => {
       />
     )
     expect(screen.getByText('3 families')).toBeInTheDocument()
-    expect(screen.getByTitle(/2 families are sharing a room here/i)).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'One-family space' })).toHaveAccessibleDescription(
+      /2 families are sharing a room here/i
+    )
   })
 
   it('is silent on a SPLIT container, exactly as the sharing badge beside it is', () => {
@@ -1346,7 +1369,7 @@ describe('LodgingUnitCard — summer’s type scale', () => {
     // Matched loosely: the title gained the occupancy count alongside the
     // capacity. What this test pins is the SIZE of that element, not its
     // wording — the wording has its own tests.
-    expect(screen.getByTitle(/Sleeps 5/)).toHaveClass('text-sm')
+    expect(screen.getByTestId('unit-occupancy')).toHaveClass('text-sm')
   })
 
   it('sets the consent line at body size, not meta size', () => {

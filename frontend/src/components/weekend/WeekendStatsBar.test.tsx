@@ -5,7 +5,7 @@
  * capacity unit (not beds), and a note true of every cabin describes the
  * registry rather than warning about it.
  */
-import { render, screen } from '@testing-library/react'
+import { fireEvent, render, screen } from '@testing-library/react'
 import { describe, expect, it } from 'vitest'
 
 import type { RosterCountSummary } from '../../types/lodging'
@@ -99,8 +99,29 @@ describe('WeekendStatsBar', () => {
     // different facts with different remedies: a held cabin comes back next
     // weekend, a staff cabin never does.
     render(<WeekendStatsBar counts={counts()} bedsNeeded={223} spacesUnmeasured={0} />)
-    expect(screen.getByTitle(/excluded from spaces/i).textContent).toContain('held')
-    expect(screen.queryByTitle(/held for staff/i)).not.toBeInTheDocument()
+    const held = screen.getByRole('button', { name: /held/ })
+    expect(held).toHaveAccessibleDescription(/excluded from spaces/i)
+    expect(held).not.toHaveAccessibleDescription(/held for staff/i)
+  })
+
+  it('puts the spaces, held and staff notes on tooltips keyboard and touch can reach', () => {
+    // kindred#2177: all three were bare `title` attributes on a `<span>`.
+    render(
+      <WeekendStatsBar
+        counts={counts({ units_staff_housing: 21 })}
+        bedsNeeded={223}
+        spacesUnmeasured={0}
+      />
+    )
+    const spaces = screen.getByRole('button', { name: '79' })
+    expect(spaces).not.toHaveAttribute('title')
+    expect(spaces).toHaveAccessibleDescription(/Merging or splitting cabins/i)
+    fireEvent.focus(spaces)
+    expect(screen.getByRole('tooltip')).toHaveTextContent(/Merging or splitting cabins/i)
+
+    expect(screen.getByRole('button', { name: /staff/ })).toHaveAccessibleDescription(
+      /never part of the weekend/i
+    )
   })
 
   it('reports staff housing separately, because it was never inventory', () => {
