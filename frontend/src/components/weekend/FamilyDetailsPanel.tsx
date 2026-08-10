@@ -29,6 +29,7 @@ import type {
 } from '../../types/lodging'
 import { displayCampMinderAge } from '../../utils/age'
 import { AccessibilityFlagList } from './AccessibilityFlagList'
+import { HouseholdJourneyCard } from './HouseholdJourneyCard'
 import { namedAdults, partyFamilyLabel, partyHeadcount } from './householdIdentity'
 import { MedicalNarrative } from './MedicalNarrative'
 import { partyKey } from './partyKey'
@@ -309,6 +310,21 @@ export function FamilyDetailsPanel({
           <MedicalNarrative householdCmId={householdCmId > 0 ? householdCmId : null} year={year} />
         </div>
       </Section>
+
+      {/* kindred#2073. NOT wrapped in a `Section`: it is a sidebar CARD with
+          its own forest band, the same shape `camper/CampJourneyTimeline`
+          takes on the camper page, and a `Section` heading above it would
+          title the card twice.
+
+          The panel is the right host for the same reason `MedicalNarrative`
+          lives here rather than on a roster row: it shows ONE household at a
+          time, which is what makes a fetch on mount proportionate. A
+          person-grain party has no household, and the card renders nothing
+          and fetches nothing for it. */}
+      <HouseholdJourneyCard
+        householdCmId={householdCmId > 0 ? householdCmId : null}
+        currentYear={year}
+      />
     </div>
   )
 

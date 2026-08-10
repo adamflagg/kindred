@@ -35,9 +35,24 @@ const medicalResult = {
   },
 }
 
+const journeyResult = {
+  value: { data: undefined, isLoading: false, error: null } as {
+    data: unknown
+    isLoading: boolean
+    error: Error | null
+  },
+}
+
 vi.mock('../../hooks/useWeekendRoster', () => ({
   useHouseholdMedical: () => medicalResult.value,
+  useHouseholdJourney: (...args: unknown[]) => {
+    journeyCalls.push(args[0] as number | null)
+    return journeyResult.value
+  },
 }))
+
+/** Every `householdCmId` the journey hook was handed, in call order. */
+const journeyCalls: (number | null)[] = []
 
 // One client per TEST, built outside the render path. Constructing it inside
 // the wrapper body rebuilds it on every render, discarding the cache and
@@ -139,6 +154,8 @@ function unit(overrides: Partial<LodgingUnitRow> = {}): LodgingUnitRow {
 beforeEach(() => {
   isAdmin.value = true
   medicalResult.value = { data: undefined, isLoading: false, error: null }
+  journeyResult.value = { data: undefined, isLoading: false, error: null }
+  journeyCalls.length = 0
 })
 
 describe('FamilyDetailsPanel — the content the card omits', () => {
@@ -647,5 +664,58 @@ describe('FamilyDetailsPanel — the headcount agrees with the printed adult/chi
       { wrapper }
     )
     expect(screen.getByText('2 people')).toBeInTheDocument()
+  })
+})
+
+/**
+ * kindred#2073. The household journey is the family-camp sibling of the
+ * camper journey, and the panel is where a household is looked at one at a
+ * time — the same grain argument that lets `MedicalNarrative` fetch on mount
+ * here and never on a roster row.
+ */
+describe('the household journey', () => {
+  it('renders the year-over-year record for a household', () => {
+    journeyResult.value = {
+      data: {
+        household_cm_id: 101,
+        years: [
+          {
+            year: 2025,
+            housing: 'placed',
+            cabin_name: 'Cedar Lodge - Room 2',
+            enrollment: 'enrolled',
+            adults: [],
+            children: [],
+          },
+        ],
+      },
+      isLoading: false,
+      error: null,
+    }
+
+    render(<FamilyDetailsPanel party={party()} year={2026} onClose={vi.fn()} />, { wrapper })
+
+    expect(screen.getByTestId('household-journey')).toBeInTheDocument()
+    expect(screen.getByText('Cedar Lodge - Room 2')).toBeInTheDocument()
+  })
+
+  it('looks the journey up by the household CampMinder id', () => {
+    render(<FamilyDetailsPanel party={party()} year={2026} onClose={vi.fn()} />, { wrapper })
+
+    expect(journeyCalls).toContain(101)
+  })
+
+  it('never fetches one for an adult weekend guest, who has no household', () => {
+    render(
+      <FamilyDetailsPanel
+        party={party({ grain: 'person', household_cm_id: 0, person_cm_id: 5001 })}
+        year={2026}
+        onClose={vi.fn()}
+      />,
+      { wrapper }
+    )
+
+    expect(screen.queryByTestId('household-journey')).not.toBeInTheDocument()
+    expect(journeyCalls).toEqual([null])
   })
 })

@@ -283,6 +283,73 @@ class TestScenarioParameter:
         assert response.status_code == 200
 
 
+class TestHouseholdJourneyEndpoint:
+    """GET /api/lodging/households/{id}/journey (kindred#2073).
+
+    A READ, so it is open to any authenticated user exactly as `/roster` is.
+    It carries names, ages and grades -- the same fields the roster payload
+    already publishes for the current weekend -- and no narrative, so it sits
+    on the ordinary side of the PHI boundary.
+    """
+
+    def test_a_plain_authenticated_user_can_read_it(self, mock_pb: MagicMock) -> None:
+        """Deliberately NOT `lodging.phi`-gated, and deliberately asserted
+        with the same user the medical endpoint 403s: the two endpoints sit on
+        the same path prefix, and a copy-paste of the wrong dependency would
+        otherwise be invisible.
+        """
+        mock_pb.collection.return_value.get_full_list.return_value = []
+
+        with patch("api.routers.lodging.pb", mock_pb):
+            client = TestClient(_build_app(_plain_user(), mock_pb))
+            response = client.get("/api/lodging/households/2000001/journey")
+
+        assert response.status_code == 200
+        assert response.json() == {"household_cm_id": 2000001, "years": []}
+
+    def test_it_takes_no_year_because_the_window_is_discovered(self, mock_pb: MagicMock) -> None:
+        """The sweep spans every year the household has a trace in, so there
+        is no year to pass. A `?year=` parameter would imply the caller
+        chooses the window, which is the misunderstanding that produces a
+        journey truncated to one season.
+        """
+        seen: list[str] = []
+
+        def record_filters(**kwargs: Any) -> list[Any]:
+            seen.append(kwargs.get("query_params", {}).get("filter", ""))
+            return []
+
+        mock_pb.collection.return_value.get_full_list.side_effect = record_filters
+
+        with patch("api.routers.lodging.pb", mock_pb):
+            TestClient(_build_app(ADMIN, mock_pb)).get("/api/lodging/households/2000001/journey")
+
+        assert seen, "the endpoint issued no reads"
+        assert all("year =" not in f for f in seen), f"a year predicate reached the journey reads: {seen}"
+
+    def test_it_never_carries_medical_narrative(self, mock_pb: MagicMock) -> None:
+        """The PHI boundary, restated at the newest endpoint on this prefix.
+
+        `family_camp_medical` must not be read here at all -- not filtered
+        out downstream, not read and discarded.
+        """
+        collections: list[str] = []
+
+        def _collection(name: str) -> MagicMock:
+            collections.append(name)
+            col = MagicMock()
+            col.get_full_list.return_value = []
+            return col
+
+        mock_pb.collection.side_effect = _collection
+
+        with patch("api.routers.lodging.pb", mock_pb):
+            response = TestClient(_build_app(ADMIN, mock_pb)).get("/api/lodging/households/2000001/journey")
+
+        assert response.status_code == 200
+        assert "family_camp_medical" not in collections
+
+
 class TestMedicalEndpointIsPermissionGated:
     def test_user_without_the_permission_gets_403(self, mock_pb: MagicMock) -> None:
         with patch("api.routers.lodging.pb", mock_pb):

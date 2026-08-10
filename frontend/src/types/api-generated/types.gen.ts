@@ -1934,6 +1934,69 @@ export type HistoricalTrendsResponse = {
 }
 
 /**
+ * HouseholdJourneyResponse
+ *
+ * A household's year-over-year family-camp record, newest year first.
+ *
+ * The window is DISCOVERED, not chosen: a year appears when the household
+ * has a trace in it -- an enrolled child, an adult on file, or a
+ * registration -- so the list is empty for a first-time family rather than
+ * padded with blank years.
+ *
+ * Carries NO family name. The label is the children's deduplicated
+ * surnames, and that derivation lives in exactly one place
+ * (`frontend/src/components/weekend/householdIdentity.ts`, kindred#2180),
+ * which takes the cross-year UNION of the surnames below. A name computed
+ * here would be a second implementation of it.
+ */
+export type HouseholdJourneyResponse = {
+  /**
+   * Household Cm Id
+   */
+  household_cm_id?: number
+  /**
+   * Years
+   */
+  years?: Array<HouseholdJourneyYear>
+}
+
+/**
+ * HouseholdJourneyYear
+ *
+ * One year of a household's family-camp record.
+ *
+ * Members are the party AS IT WAS THAT YEAR and are never carried forward
+ * from an adjacent one -- children age out and adults change, so a household
+ * is not a fixed set of people (kindred#2073).
+ */
+export type HouseholdJourneyYear = {
+  /**
+   * Year
+   */
+  year?: number
+  /**
+   * Housing
+   */
+  housing?: 'placed' | 'not_placed' | 'unknown'
+  /**
+   * Cabin Name
+   */
+  cabin_name?: string
+  /**
+   * Enrollment
+   */
+  enrollment?: 'enrolled' | 'none_on_file'
+  /**
+   * Adults
+   */
+  adults?: Array<PartyAdult>
+  /**
+   * Children
+   */
+  children?: Array<PartyChild>
+}
+
+/**
  * HouseholdMedicalResponse
  *
  * PHI. Served by ONE permission-gated endpoint. Never nested elsewhere.
@@ -10157,6 +10220,38 @@ export type GetWeekendRosterApiLodgingRosterGetResponses = {
 
 export type GetWeekendRosterApiLodgingRosterGetResponse =
   GetWeekendRosterApiLodgingRosterGetResponses[keyof GetWeekendRosterApiLodgingRosterGetResponses]
+
+export type GetHouseholdJourneyApiLodgingHouseholdsHouseholdCmIdJourneyGetData = {
+  body?: never
+  path: {
+    /**
+     * Household Cm Id
+     */
+    household_cm_id: number
+  }
+  query?: never
+  url: '/api/lodging/households/{household_cm_id}/journey'
+}
+
+export type GetHouseholdJourneyApiLodgingHouseholdsHouseholdCmIdJourneyGetErrors = {
+  /**
+   * Validation Error
+   */
+  422: HttpValidationError
+}
+
+export type GetHouseholdJourneyApiLodgingHouseholdsHouseholdCmIdJourneyGetError =
+  GetHouseholdJourneyApiLodgingHouseholdsHouseholdCmIdJourneyGetErrors[keyof GetHouseholdJourneyApiLodgingHouseholdsHouseholdCmIdJourneyGetErrors]
+
+export type GetHouseholdJourneyApiLodgingHouseholdsHouseholdCmIdJourneyGetResponses = {
+  /**
+   * Successful Response
+   */
+  200: HouseholdJourneyResponse
+}
+
+export type GetHouseholdJourneyApiLodgingHouseholdsHouseholdCmIdJourneyGetResponse =
+  GetHouseholdJourneyApiLodgingHouseholdsHouseholdCmIdJourneyGetResponses[keyof GetHouseholdJourneyApiLodgingHouseholdsHouseholdCmIdJourneyGetResponses]
 
 export type GetHouseholdMedicalApiLodgingHouseholdsHouseholdCmIdMedicalGetData = {
   body?: never

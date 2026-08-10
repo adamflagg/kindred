@@ -478,6 +478,80 @@ class HouseholdMedicalResponse(BaseModel):
     accommodation_explain: str = ""
 
 
+# What is known about where a household slept in one year (kindred#2073).
+#
+# THREE STATES, NOT TWO, and flattening any pair of them is the defect this
+# vocabulary exists to prevent. Measured on the production snapshot
+# 2026-08-09:
+#
+# * "placed"     -- a staff-written `cabin_assignment` on that year's row.
+# * "not_placed" -- the year records cabins for OTHER households and none for
+#                   this one. A real absence: either a live season still
+#                   being worked (2026 is ~16% placed) or a family who was
+#                   never given one.
+# * "unknown"    -- the year records no cabin for ANYBODY, so nothing can be
+#                   said. All of 2017-2021: 1,433 family registrations and
+#                   zero cabin assignments.
+#
+# Derived from the data rather than from a hard-coded housing window, so the
+# boundary moves when the data does. The CLIENT words the middle state, which
+# is the one place the current season matters: "not yet placed" for the season
+# being worked, "no cabin on file" for a past one.
+HousingState = Literal["placed", "not_placed", "unknown"]
+
+# Whether the year has an enrolled child on file.
+#
+# "none_on_file" is NOT "a childless family", and the difference is the whole
+# reason it is a named state. 2020 has 1,264 family attendee rows and not one
+# with status_id = 2 -- the season was cancelled. 2021 has no family attendee
+# rows at all despite 247 registrations, while `family_camp_adults` carries
+# 647 rows across 351 households. Both years are real attendance the enrolment
+# tables cannot describe, and neither is an error.
+EnrollmentState = Literal["enrolled", "none_on_file"]
+
+
+class HouseholdJourneyYear(BaseModel):
+    """One year of a household's family-camp record.
+
+    Members are the party AS IT WAS THAT YEAR and are never carried forward
+    from an adjacent one -- children age out and adults change, so a household
+    is not a fixed set of people (kindred#2073).
+    """
+
+    year: int = 0
+    housing: HousingState = "unknown"
+    # The staff-written free text out of `family_camp_registrations`, NOT
+    # resolved to a `lodging_units` row: `lodging_units` holds only the
+    # current year, so a 2023 string can name a cabin that no longer exists
+    # under that name. See `fetch_cabin_assignments_by_household_cm_id`.
+    cabin_name: str = ""
+    enrollment: EnrollmentState = "none_on_file"
+    # Every `family_camp_adults` row for the year, blanks and placeholders
+    # included -- the same contract `RosterParty.adults` publishes, so the
+    # client applies one predicate (`isAttendingAdultName`) on both surfaces.
+    adults: list[PartyAdult] = Field(default_factory=list)
+    children: list[PartyChild] = Field(default_factory=list)
+
+
+class HouseholdJourneyResponse(BaseModel):
+    """A household's year-over-year family-camp record, newest year first.
+
+    The window is DISCOVERED, not chosen: a year appears when the household
+    has a trace in it -- an enrolled child, an adult on file, or a
+    registration -- so the list is empty for a first-time family rather than
+    padded with blank years.
+
+    Carries NO family name. The label is the children's deduplicated
+    surnames, and that derivation lives in exactly one place
+    (`frontend/src/components/weekend/householdIdentity.ts`, kindred#2180),
+    which takes the cross-year UNION of the surnames below. A name computed
+    here would be a second implementation of it.
+    """
+
+    household_cm_id: int = 0
+    years: list[HouseholdJourneyYear] = Field(default_factory=list)
+
+
 class WeekendSummaryEntry(BaseModel):
     """One weekend on the lander: who it is, and how its placement stands.
 

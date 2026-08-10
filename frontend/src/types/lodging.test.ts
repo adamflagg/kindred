@@ -30,7 +30,13 @@ import type {
   PlacementWriteRequest,
   SlotMergeRequest,
 } from './api-generated'
-import type { LodgingUnitRow, PartyChildRow, RosterPartyRow } from './lodging'
+import type {
+  HouseholdJourney,
+  HouseholdJourneyRow,
+  LodgingUnitRow,
+  PartyChildRow,
+  RosterPartyRow,
+} from './lodging'
 
 /**
  * kindred#2180 added `last_name` to `PartyChild`, and the board's family
@@ -50,6 +56,28 @@ const _exhaustivePartyChild: Required<PartyChildRow> = {
   grade: 4,
 }
 void _exhaustivePartyChild
+
+/**
+ * kindred#2073's journey year. Every field is a distinct fact the card reads
+ * and none can be recovered from another: `housing` and `cabin_name` disagree
+ * on purpose in the two unplaced states, and `enrollment` is what stops an
+ * empty `children` rendering as a childless family.
+ */
+const _exhaustiveHouseholdJourneyRow: Required<HouseholdJourneyRow> = {
+  year: 2025,
+  housing: 'placed',
+  cabin_name: 'Cedar Lodge - Room 2',
+  enrollment: 'enrolled',
+  adults: [],
+  children: [],
+}
+void _exhaustiveHouseholdJourneyRow
+
+const _exhaustiveHouseholdJourney: Required<HouseholdJourney> = {
+  household_cm_id: 2000001,
+  years: [],
+}
+void _exhaustiveHouseholdJourney
 
 const _exhaustiveRosterParty: Required<RosterPartyRow> = {
   grain: 'household',

@@ -12,8 +12,10 @@ export {
   householdLabel,
   nextFriendGroupColor,
 } from './friendGroups'
+export { HouseholdJourneyCard } from './HouseholdJourneyCard'
 export { HouseholdRosterRow } from './HouseholdRosterRow'
 export { HouseholdRosterTable } from './HouseholdRosterTable'
+export { HouseholdYearMembersModal } from './HouseholdYearMembersModal'
 export { LodgingUnitCard } from './LodgingUnitCard'
 export { MapUnitPopover } from './MapUnitPopover'
 export { MedicalNarrative } from './MedicalNarrative'

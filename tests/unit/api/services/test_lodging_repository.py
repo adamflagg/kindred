@@ -740,6 +740,119 @@ class TestFetchCabinAssignmentsByHouseholdCmId:
         assert len(queries["households"]) == 1
 
 
+class TestFetchHouseholdFamilyAttendees:
+    """One household's enrolled family-camp children, across EVERY year.
+
+    The cross-year read behind the household journey (kindred#2073). Three
+    things about it are load-bearing and each is silently wrong rather than
+    loud if it drifts:
+
+    * `person.household_id`, NOT `person.household`. `persons` rows are
+      themselves year-scoped and their `household` relation points at the
+      SAME year's households record, so a PB-id filter can only ever match
+      one year. `household_id` is the CampMinder id, which is the identity
+      thread across seasons (CLAUDE.md section 1).
+    * `session.session_type = "family"`. Adult weekends are person-grain and
+      enrol the adult directly; letting them through would put a parent's own
+      weekend into their children's journey.
+    * `status_id = 2`. 2020 has 1,264 family attendee rows and not one
+      enrolled -- the whole season cancelled -- and without this filter that
+      year renders as a normal one.
+    """
+
+    @pytest.mark.asyncio
+    async def test_filters_on_the_campminder_household_id_across_every_year(
+        self, repo: LodgingRepository, pb: MagicMock
+    ) -> None:
+        await repo.fetch_household_family_attendees(2000001)
+
+        pb.collection.assert_called_with("attendees")
+        params = _last_query(pb)
+        assert "person.household_id = 2000001" in params["filter"]
+        assert 'session.session_type = "family"' in params["filter"]
+        assert "status_id = 2" in params["filter"]
+        # No year predicate at all -- the sweep IS every year on file.
+        assert "year =" not in params["filter"]
+        assert params["expand"] == "person"
+
+    @pytest.mark.asyncio
+    async def test_an_unresolvable_household_reads_nothing(self, repo: LodgingRepository, pb: MagicMock) -> None:
+        """`_build_household_parties` gives an unresolvable household
+        `household_cm_id = 0`. `person.household_id = 0` is a real predicate
+        that matches whatever rows carry a zero, so this must never be issued.
+        """
+        result = await repo.fetch_household_family_attendees(0)
+
+        assert result == []
+        pb.collection.assert_not_called()
+
+
+class TestFetchHouseholdAdultsByYear:
+    """The adult half of the journey, grouped by year.
+
+    Family Camp adults have NO `persons` row -- `family_camp_adults` is their
+    only representation and its rows are year-scoped, so this is the only
+    place a past year's adults can come from. Bridged through the relation's
+    `cm_id` rather than a PB id for the same reason as everything else here:
+    `households` is year-scoped, so one PB id names one season.
+    """
+
+    @pytest.mark.asyncio
+    async def test_groups_by_year_in_adult_number_order(self, repo: LodgingRepository, pb: MagicMock) -> None:
+        pb.collection.return_value.get_full_list.return_value = [
+            _record(year=2025, adult_number=2, name="Liam Garcia"),
+            _record(year=2025, adult_number=1, name="Emma Johnson"),
+            _record(year=2021, adult_number=1, name="Emma Johnson"),
+        ]
+
+        result = await repo.fetch_household_adults_by_year(2000001)
+
+        pb.collection.assert_called_with("family_camp_adults")
+        assert "household.cm_id = 2000001" in _last_query(pb)["filter"]
+        assert [a.name for a in result[2025]] == ["Emma Johnson", "Liam Garcia"]
+        assert [a.name for a in result[2021]] == ["Emma Johnson"]
+
+    @pytest.mark.asyncio
+    async def test_an_unresolvable_household_reads_nothing(self, repo: LodgingRepository, pb: MagicMock) -> None:
+        result = await repo.fetch_household_adults_by_year(0)
+
+        assert result == {}
+        pb.collection.assert_not_called()
+
+
+class TestFetchHouseholdRegistrationYears:
+    """Which years the household registered for family camp at all.
+
+    NOT derivable from `fetch_cabin_assignments_by_household_cm_id`, which
+    drops every blank `cabin_assignment` -- and blank is all of 2017-2021.
+    Measured on the production snapshot: between 24 and 89 registrations a
+    year carry neither an enrolled child nor an adult row, so registration is
+    a trace of its own and a journey built without it silently loses those
+    years.
+    """
+
+    @pytest.mark.asyncio
+    async def test_returns_the_set_of_years(self, repo: LodgingRepository, pb: MagicMock) -> None:
+        pb.collection.return_value.get_full_list.return_value = [
+            _record(year=2024),
+            _record(year=2021),
+            _record(year=2024),
+        ]
+
+        result = await repo.fetch_household_registration_years(2000001)
+
+        pb.collection.assert_called_with("family_camp_registrations")
+        assert "household.cm_id = 2000001" in _last_query(pb)["filter"]
+        assert result == {2021, 2024}
+
+    @pytest.mark.asyncio
+    async def test_an_unresolvable_household_reads_nothing(self, repo: LodgingRepository, pb: MagicMock) -> None:
+        result = await repo.fetch_household_registration_years(0)
+
+        assert result == set()
+        pb.collection.assert_not_called()
+
+
 class TestFetchHouseholdsByIds:
     """The fresh-fetch escape hatch for kindred#2143.
 

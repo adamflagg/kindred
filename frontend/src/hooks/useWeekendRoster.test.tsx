@@ -9,6 +9,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { queryKeys } from '../utils/queryKeys'
 import {
+  useHouseholdJourney,
   useHouseholdMedical,
   useWeekendRoster,
   useWeekendSessions,
@@ -19,12 +20,14 @@ const fetchWeekendSessions = vi.fn()
 const fetchWeekendSummary = vi.fn()
 const fetchWeekendRoster = vi.fn()
 const fetchHouseholdMedical = vi.fn()
+const fetchHouseholdJourney = vi.fn()
 
 vi.mock('../services/lodgingApi', () => ({
   fetchWeekendSessions: (...args: unknown[]) => fetchWeekendSessions(...args),
   fetchWeekendSummary: (...args: unknown[]) => fetchWeekendSummary(...args),
   fetchWeekendRoster: (...args: unknown[]) => fetchWeekendRoster(...args),
   fetchHouseholdMedical: (...args: unknown[]) => fetchHouseholdMedical(...args),
+  fetchHouseholdJourney: (...args: unknown[]) => fetchHouseholdJourney(...args),
 }))
 
 vi.mock('./useApiWithAuth', () => ({
@@ -76,6 +79,7 @@ beforeEach(() => {
   fetchWeekendSummary.mockReset().mockResolvedValue({ year: 2026, weekends: [] })
   fetchWeekendRoster.mockReset().mockResolvedValue({ year: 2026, session_cm_id: 1000001 })
   fetchHouseholdMedical.mockReset().mockResolvedValue({ household_cm_id: 2000001, year: 2026 })
+  fetchHouseholdJourney.mockReset().mockResolvedValue({ household_cm_id: 2000001, years: [] })
 })
 
 describe('year gating', () => {
@@ -211,6 +215,19 @@ describe('cache parity with summer', () => {
     expect(options.refetchOnWindowFocus).toBe(false)
   })
 
+  it('lets the household journey inherit them', async () => {
+    // Nothing in this repo writes a past year's `cabin_assignment` or
+    // `family_camp_adults` — both are sync-written — so there is no writer to
+    // invalidate against and nothing bought by a shorter staleTime.
+    const { result } = renderHook(() => useHouseholdJourney(2000001), { wrapper })
+    await waitFor(() => expect(result.current.isSuccess).toBe(true))
+
+    const options = resolvedOptions(queryKeys.householdJourney(2000001))
+    expect(options.staleTime).toBe(APP_CACHE_DEFAULTS.staleTime)
+    expect(options.gcTime).toBe(APP_CACHE_DEFAULTS.gcTime)
+    expect(options.refetchOnWindowFocus).toBe(false)
+  })
+
   it('keeps PHI uncached, which is a DELIBERATE divergence and must survive', async () => {
     // The one weekend query that should not inherit: a medical narrative must
     // not sit in the cache after the panel closes.
@@ -233,6 +250,10 @@ describe('queryKeys', () => {
       '',
     ])
     expect(queryKeys.householdMedical(2026, 2000001)).toEqual(['household-medical', 2026, 2000001])
+    // NO year, unlike every other weekend key: the journey spans every year
+    // the household has a trace in, so it is the same document whichever
+    // season the board is open on (kindred#2073).
+    expect(queryKeys.householdJourney(2000001)).toEqual(['household-journey', 2000001])
     expect(queryKeys.lodgingUnits(2026)).toEqual(['lodging-units', 2026])
     expect(queryKeys.lodgingAreas(2026)).toEqual(['lodging-areas', 2026])
     expect(queryKeys.lodgingAliases()).toEqual(['lodging-aliases'])
@@ -289,5 +310,32 @@ describe('useHouseholdMedical', () => {
 
     await waitFor(() => expect(result.current.isSuccess).toBe(true))
     expect(fetchHouseholdMedical).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe('useHouseholdJourney', () => {
+  it('fetches by household CampMinder id, with no year', async () => {
+    const { result } = renderHook(() => useHouseholdJourney(2000001), { wrapper })
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true))
+    expect(fetchHouseholdJourney).toHaveBeenCalledTimes(1)
+    const args = fetchHouseholdJourney.mock.calls[0] as unknown[]
+    expect(args).toHaveLength(2)
+    expect(args[1]).toBe(2000001)
+  })
+
+  it('stays idle for a party with no household', () => {
+    renderHook(() => useHouseholdJourney(null), { wrapper })
+
+    expect(fetchHouseholdJourney).not.toHaveBeenCalled()
+  })
+
+  it('stays idle for an unresolvable household', () => {
+    // `_build_household_parties` gives an unresolvable household
+    // `household_cm_id = 0`, and the API refuses it — asking anyway would
+    // cache an empty journey under a key no real household owns.
+    renderHook(() => useHouseholdJourney(0), { wrapper })
+
+    expect(fetchHouseholdJourney).not.toHaveBeenCalled()
   })
 })

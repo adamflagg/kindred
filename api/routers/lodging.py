@@ -17,6 +17,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 
 from api.schemas.lodging import (
     AvailabilityWriteRequest,
+    HouseholdJourneyResponse,
     HouseholdMedicalResponse,
     LodgingCopyResponse,
     LodgingWriteResponse,
@@ -119,6 +120,29 @@ async def get_weekend_roster(
         return await _service().build_roster(year, session_cm_id, scenario)
     except SessionNotFoundError as exc:
         raise _weekend_404(year, session_cm_id) from exc
+
+
+@router.get("/households/{household_cm_id}/journey", response_model=HouseholdJourneyResponse)
+async def get_household_journey(
+    household_cm_id: int,
+    user: AuthUser = Depends(get_current_user),
+) -> HouseholdJourneyResponse:
+    """A household's family-camp record, year by year (kindred#2073).
+
+    TAKES NO YEAR, unlike every other read on this router, and that is the
+    contract rather than an omission: the journey's window is DISCOVERED, not
+    chosen. A year appears when the household has a trace in it -- an enrolled
+    child, an adult on file, or a registration -- and those three reach
+    different distances back. A `?year=` parameter would imply the caller
+    picks the window, which is exactly how a four-year family ends up
+    rendered as a one-year one.
+
+    Open to any authenticated user, like `/roster` and `/summary` above and
+    UNLIKE the medical endpoint directly below. It carries names, ages and
+    grades -- the same fields the roster already publishes for the current
+    weekend -- and no narrative, so the PHI boundary is untouched.
+    """
+    return await _service().build_household_journey(household_cm_id)
 
 
 @router.get("/households/{household_cm_id}/medical", response_model=HouseholdMedicalResponse)

@@ -502,6 +502,16 @@ export const queryKeys = {
    */
   weekendFriendGroups: (year: number, sessionCmId: number) =>
     ['weekend-friend-groups', year, sessionCmId] as const,
+  /**
+   * A household's year-over-year family-camp record (kindred#2073).
+   *
+   * NO `year`, unlike every other weekend key above, and the asymmetry is the
+   * contract rather than an oversight: the journey spans every year the
+   * household has a trace in, so it is the SAME document whichever season the
+   * board happens to be open on. Adding a year would mint one identical cache
+   * entry per season and re-pay a multi-year sweep for nothing.
+   */
+  householdJourney: (householdCmId: number) => ['household-journey', householdCmId] as const,
   /** PHI. Only ever fetched behind an explicit, permission-checked reveal. */
   householdMedical: (year: number, householdCmId: number) =>
     ['household-medical', year, householdCmId] as const,
