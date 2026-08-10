@@ -150,13 +150,13 @@ function Chip({
    * and this chip row is a SIBLING of the card's open control, not its
    * child, so a real interactive trigger here would no longer be invalid
    * HTML or steal the click. This chip still doesn't carry one: #2222 was
-   * the structural unblock, not the tooltip wiring — that's kindred#2212.
+   * the structural unblock, not the tooltip wiring — that's kindred#2229.
    *
    * So the detail is still REAL `sr-only` TEXT, exactly as kindred#2177
    * shipped it. That is strictly more than the `title` it replaced gave —
    * `title` on a `<span>` is not reliably announced at all — and it leaves
    * one gap, honestly stated: a touch user still cannot summon this
-   * sentence. #2212 is what closes it.
+   * sentence. #2229 is what closes it.
    */
   title?: string
 }) {
@@ -239,7 +239,7 @@ function ChildList({
  * on purpose: a `<button>`'s content model forbids an interactive
  * descendant, and the chip row is exactly where kindred#2177 left a
  * `sr-only` detail sentence waiting for a real tooltip trigger
- * (kindred#2212). Swapping the card's outer frame to a `<div>` while still
+ * (kindred#2229). Swapping the card's outer frame to a `<div>` while still
  * wrapping the WHOLE body in one inner `<button>` would just move that wall
  * one level deeper — nothing would actually be unblocked. Keeping the chip
  * row OUT of the button is what does.
@@ -530,7 +530,7 @@ export function FamilyCard({
 
   return (
     // NOT a `<button>` (kindred#2222) — a `<div>` frame, so the chip row
-    // below can host a real interactive trigger (kindred#2212) as a SIBLING
+    // below can host a real interactive trigger (kindred#2229) as a SIBLING
     // instead of a forbidden nested descendant.
     //
     // `ref`/`listeners` stay HERE, not on the inner control below: dnd-kit's

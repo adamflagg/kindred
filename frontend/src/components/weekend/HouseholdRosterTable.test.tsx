@@ -442,7 +442,7 @@ describe('HouseholdRosterTable', () => {
     // into that control's accessible name — the coupling that assertion
     // used to pin was itself a symptom of the one-big-button design this
     // issue dismantles. Giving the sentence a real accessible relationship
-    // to a trigger a touch user can reach is kindred#2212's job.
+    // to a trigger a touch user can reach is kindred#2229's job.
     expect(screen.getAllByRole('button')[0]).not.toHaveAccessibleName(/stayed with us before/)
 
     rerender(<HouseholdRosterTable year={2026} parties={[party({ is_returning: false })]} />)

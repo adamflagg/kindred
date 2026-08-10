@@ -445,11 +445,11 @@ describe('FamilyCard — what it shows', () => {
     // card's open control no longer wraps the chip row at all — the whole
     // point of this refactor is that the chip row is a SIBLING of the
     // control, not its child, so a future interactive trigger there
-    // (kindred#2212) is never nested inside another one. That means the
+    // (kindred#2229) is never nested inside another one. That means the
     // sentence is no longer folded into the control's accessible name the
     // way it was when the card was one big `<button>`. Closing THAT gap —
     // giving the sentence a real accessible relationship to a trigger a
-    // touch user can reach — is kindred#2212's job, not this one's.
+    // touch user can reach — is kindred#2229's job, not this one's.
     expect(screen.getByRole('button', { name: /Johnson/ })).not.toHaveAccessibleName(
       /form's answer/
     )
