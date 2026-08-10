@@ -422,6 +422,44 @@ describe('HouseholdRosterTable', () => {
     }
   })
 
+  it('would still catch a bare tabIndex left on the row even without a role', () => {
+    // The guard immediately above only walks INSIDE each `getAllByRole
+    // ('button')` match -- `outer.querySelectorAll('[tabindex]...')`. A
+    // `tabIndex` added directly to the wrapping `<tr>`, which never carries
+    // a "button" role itself, sits outside every button's subtree and is
+    // invisible to that loop entirely. Scanning the whole container instead
+    // is what catches it: every element actually put into the tab order by
+    // an EXPLICIT `tabindex` must also carry the button role -- a subset
+    // check, not equality, because a native `<button>` is already focusable
+    // without ever needing an explicit `tabindex` attribute at all (none of
+    // this row's buttons carry one today, unlike `FamilyCard`'s draggable
+    // control, which gets its `tabIndex` explicitly from dnd-kit).
+    const { container } = render(
+      <HouseholdRosterTable
+        year={2026}
+        parties={[
+          party({
+            is_returning: true,
+            is_merged_slot: true,
+            share: {
+              preference: 'no_share',
+              preference_raw: 'No, prefer not to share',
+              proximity: [],
+              request_text: '',
+              needs_resolution: false,
+            },
+          }),
+        ]}
+      />,
+      { wrapper }
+    )
+    const tabbable = Array.from(container.querySelectorAll('[tabindex]:not([tabindex="-1"])'))
+    const roleButtons = within(container).getAllByRole('button')
+    for (const el of tabbable) {
+      expect(roleButtons).toContain(el)
+    }
+  })
+
   it('spells out the returning and first-time badges in text, not a title', () => {
     // kindred#2177, and the one place the tooltip primitive is NOT the
     // answer YET: these two badges are a SIBLING of the row's own open

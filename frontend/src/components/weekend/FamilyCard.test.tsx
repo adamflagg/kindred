@@ -16,12 +16,31 @@
  *
  * Fictional data throughout.
  */
+import { DndContext } from '@dnd-kit/core'
 import { render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import type { ReactNode } from 'react'
 import { describe, expect, it, vi } from 'vitest'
 
 import type { LodgingUnitRow, RosterPartyRow } from '../../types/lodging'
 import { FamilyCard, FamilyCardPreview } from './FamilyCard'
+
+// Mirrors `LodgingBoard.drag.test.tsx`'s idiom: jsdom cannot perform a real
+// pointer drag, and `DndContext`'s sensor setup is irrelevant to what this
+// file checks (whether dnd-kit's ATTRIBUTES land on the right element, not
+// whether a drag completes), so `DndContext` is replaced with a pass-through.
+// `useDraggable` itself stays real — its `attributes` computation does not
+// read this context at all (verified against @dnd-kit/core 6.3.1's source:
+// `role`/`tabIndex` are hard-coded, not context-derived), so this exists only
+// to render the same tree the real board renders, not to make the
+// assertions below possible.
+vi.mock('@dnd-kit/core', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@dnd-kit/core')>()
+  return {
+    ...actual,
+    DndContext: ({ children }: { children: ReactNode }) => <>{children}</>,
+  }
+})
 
 function party(overrides: Partial<RosterPartyRow> = {}): RosterPartyRow {
   return {
@@ -630,6 +649,60 @@ describe('FamilyCard — opening the detail panel', () => {
   it('is a real button, so it is reachable by keyboard', () => {
     render(<FamilyCard party={party()} onOpen={vi.fn()} />)
     expect(screen.getByRole('button', { name: /Johnson/ })).toBeInTheDocument()
+  })
+})
+
+describe('FamilyCard — draggable state does not recreate an ARIA button on the frame (kindred#2222 residual)', () => {
+  // The guard at "never nests an interactive control..." above never actually
+  // exercises `isDraggable={true}` — every render in this file up to here
+  // leaves it at its `false` default, so `useDraggable`'s conditional spread
+  // (`{...(isDraggable ? attributes : {})}`) always evaluates to `{}`
+  // regardless of which element it's spread onto. That means the ACTUAL
+  // regression this file exists to guard against — dnd-kit's `attributes`
+  // (which carry `role: 'button'` + `tabIndex: 0` unconditionally, per
+  // `useDraggable`'s own doc) landing back on the outer frame — has never
+  // been reachable by any assertion here. This is the one render that
+  // reaches it.
+  it('keeps dnd-kit’s attributes off the frame when the card is actually draggable', () => {
+    const { container } = render(
+      <DndContext>
+        <FamilyCard party={party()} isDraggable={true} onOpen={vi.fn()} />
+      </DndContext>
+    )
+    const frame = container.querySelector('[data-family-card]')
+    expect(frame).not.toBeNull()
+    // The frame legitimately carries dnd-kit's LISTENERS while draggable (so
+    // a drag can start from anywhere on the card) -- it must not also carry
+    // dnd-kit's ATTRIBUTES. Those are two different halves of what
+    // `useDraggable` returns, and only one belongs on this element.
+    expect(frame).not.toHaveAttribute('role')
+    expect(frame).not.toHaveAttribute('tabindex')
+    // Exactly the inner control(s) are real buttons -- the frame itself
+    // never joins that count, draggable or not.
+    const roleButtons = within(container).getAllByRole('button')
+    expect(roleButtons).toHaveLength(1)
+    expect(roleButtons[0]).toBe(frame?.querySelector('button'))
+  })
+
+  it('would still catch a bare tabIndex left on the frame even without a role', () => {
+    // The role-keyed guard above only walks INSIDE each `getAllByRole
+    // ('button')` match -- `outer.querySelectorAll('[tabindex]...')`. A
+    // `tabIndex` added directly to the FRAME, which never carries a
+    // "button" role itself, sits outside every button's subtree and is
+    // invisible to that loop no matter how draggable the card is. Scanning
+    // the whole container instead is what catches it: every element that is
+    // actually in the tab order must be one of the accessible buttons, full
+    // stop -- not "every button's descendants are clean".
+    const { container } = render(
+      <DndContext>
+        <FamilyCard party={party()} isDraggable={true} onOpen={vi.fn()} />
+      </DndContext>
+    )
+    const tabbable = Array.from(container.querySelectorAll('[tabindex]:not([tabindex="-1"])'))
+    const roleButtons = within(container).getAllByRole('button')
+    for (const el of tabbable) {
+      expect(roleButtons).toContain(el)
+    }
   })
 })
 
