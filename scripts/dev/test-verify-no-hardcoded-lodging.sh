@@ -265,4 +265,32 @@ fi
 echo "PASS: a needle under scripts/ is caught with no env override"
 
 echo
+echo "=== TEST 9: a .sh file must be scanned (kindred#2223 CodeRabbit finding) ==="
+# The --include list never carried '*.sh', so a leak in a NEW shell script
+# under any scan root -- most plausibly scripts/, now that it is scanned --
+# would sail through invisibly. The guard's own two .sh files are exempted
+# BY PATH already (see GUARD_OWN_FILES above), so widening --include to *.sh
+# cannot re-trip on them.
+SH_PROBE="$REPO_ROOT/scripts/dev/leak_probe_kindred2223_sh.sh"
+cleanup6() { rm -f "$SH_PROBE"; }
+trap 'cleanup6; cleanup5; cleanup4; cleanup3; cleanup' EXIT INT TERM
+echo '# echo "Ridge Yurt 1"' > "$SH_PROBE"
+set +e
+OUT=$("$GUARD_SCRIPT" 2>&1)
+rc=$?
+set -e
+rm -f "$SH_PROBE"
+if [[ $rc -ne 1 ]]; then
+  echo "FAIL: expected exit 1 for a needle in a .sh file, got $rc" >&2
+  echo "$OUT" >&2
+  exit 1
+fi
+if ! grep -q "scripts/dev/leak_probe_kindred2223_sh.sh:1:" <<<"$OUT"; then
+  echo "FAIL: output missing .sh probe file:line" >&2
+  echo "$OUT" >&2
+  exit 1
+fi
+echo "PASS: a needle in a .sh file is caught"
+
+echo
 echo "All tests passed."

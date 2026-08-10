@@ -52,7 +52,7 @@ read -r -a SCAN_ROOTS <<<"${LODGING_SCAN_ROOTS:-pocketbase/ api/ bunking/ fronte
 # in kindred#1867 and asserted by TEST 6 in test-verify-no-hardcoded-lodging.sh.
 grep_status=0
 RAW=$(grep -rInE "$NEEDLES" \
-  --include='*.go' --include='*.py' --include='*.ts' --include='*.tsx' --include='*.js' \
+  --include='*.go' --include='*.py' --include='*.ts' --include='*.tsx' --include='*.js' --include='*.sh' \
   --exclude-dir=pb_public --exclude-dir=node_modules \
   "${SCAN_ROOTS[@]}" 2>&1) || grep_status=$?
 

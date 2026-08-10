@@ -252,6 +252,22 @@ def test_is_accessible_comes_from_the_bathroom_column() -> None:
     assert updated["b"]["is_accessible"] is False
 
 
+def test_norm_only_collapses_outer_whitespace_matching_go() -> None:
+    """_norm's own docstring claims it matches Go's aliasLookupKey
+    (pocketbase/sync/lodging_alias_resolver.go), which trims outer whitespace
+    and lowercases -- and deliberately does NOT collapse an internal run,
+    because the seed stores two real aliases verbatim with a genuine double
+    space that must stay distinct from a single-space variant.
+
+    `" ".join(text.split())` collapses every whitespace run, inner and outer
+    alike, so it silently disagreed with Go for exactly the strings its own
+    docstring describes. This pins the corrected contract: outer trim +
+    casefold only, inner spacing preserved.
+    """
+    assert imh._norm("Building  X - Room A") == "building  x - room a"
+    assert imh._norm("  Ridge A  ") == "ridge a"
+
+
 # --- resolution -----------------------------------------------------------
 
 
@@ -275,6 +291,31 @@ def test_alias_additions_never_target_a_container() -> None:
     containers = {"gt-wawona", "gt-tioga", "gt-tenaya", "gt-kitty", "gt-le-shack", "hc-downstairs"}
     for alias, codes in imh.ALIAS_ADDITIONS.items():
         assert not (set(codes) & containers), f"{alias!r} points at a container"
+
+
+def test_alias_additions_scrubbed_keys_never_propose_a_bogus_new_alias() -> None:
+    """kindred#2223 rekeyed ALIAS_ADDITIONS from real sheet display text to
+    unit-code placeholders (e.g. "gt-wawona-front" instead of "Wawona
+    (Front)"). plan_import()'s new-alias proposal dedupes a candidate against
+    registry.aliases by comparing `alias_string` verbatim -- a comparison that
+    only ever worked because the real display text was ALSO already a
+    registered alias_string from the historical --apply run. A code is never
+    itself a registered alias_string (aliases carry human sheet text, not unit
+    codes), so post-scrub every ALIAS_ADDITIONS entry now looks "new": a real
+    --apply run would silently propose writing dozens of pointless
+    code-maps-to-itself rows into the private registry. Nothing else in this
+    suite exercises new_aliases, so nothing else would have caught this.
+    """
+    registry = _registry("gt-wawona-front", "gt-wawona-back")
+    # No aliases registered under the CODE itself -- exactly the real shape,
+    # since a real alias_string is decorated sheet text, never a bare code.
+    registry["aliases"] = []
+
+    plan = imh.plan_import([HEADER], registry)
+
+    proposed = {a["alias_string"] for a in plan.new_aliases}
+    assert "gt-wawona-front" not in proposed
+    assert "gt-wawona-back" not in proposed
 
 
 def test_an_unresolved_row_is_reported_not_skipped_silently() -> None:

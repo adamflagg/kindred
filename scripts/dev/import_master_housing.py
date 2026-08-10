@@ -178,18 +178,24 @@ ALIAS_ADDITIONS: dict[str, list[str]] = {
 # as failures would pad the unresolved list with rows nobody needs to act on,
 # and a list that is mostly noise stops being read.
 #
-# One key below ("other-section-header") stands in for a fourth sheet-side
-# section header whose real text names a camp area (kindred#2223) -- the same
-# scrub as ALIAS_ADDITIONS above, and for the same reason: this dict is keyed
-# on real sheet cell text, and one of those cells is not safe to track here.
+# Two keys below ("other-section-header", "other-section-header-2") stand in
+# for sheet-side section headers whose real text names a camp area
+# (kindred#2223) -- the same scrub as ALIAS_ADDITIONS above, and for the same
+# reason: this dict is keyed on real sheet cell text, and those two cells are
+# not safe to track here. RIVER SIDE / RIDGE SIDE stay literal: "river" and
+# "ridge" alone are the same ordinary words this guard's own NEEDLES comment
+# already treats as too generic to protect (see verify-no-hardcoded-lodging.sh),
+# and the ALL-CAPS sheet text does not case-sensitively match either registry
+# area name ("River Side" / "Ridge Side"), so scrubbing them buys nothing this
+# table's other placeholders don't already buy.
 NON_UNIT_ROWS: dict[str, str] = {
     "Caretaker": "staff housing (Assignment 'Staff: B&G') - not planning inventory",
     "Asst. Caretaker": "staff housing (Assignment 'Staff: B&G') - not planning inventory",
     "Tents (BYO)": "bring-your-own tents - no capacity, no bed data",
     "RIVER SIDE": "section header",
     "RIDGE SIDE": "section header",
-    "Tent City": "section header",
     "other-section-header": "section header",
+    "other-section-header-2": "section header",
     "Total": "sum row - its Capacity 46050 is a sum artifact, not a bed count",
 }
 
@@ -245,13 +251,17 @@ class ImportPlan:
 
 
 def _norm(text: str) -> str:
-    """Casefold and collapse outer whitespace, matching aliasLookupKey in Go.
+    """Casefold and trim outer whitespace only, matching aliasLookupKey in Go
+    (pocketbase/sync/lodging_alias_resolver.go: `strings.ToLower(strings.TrimSpace(s))`).
 
-    Inner spacing stays significant: one seeded alias genuinely carries a
-    double space in its middle (e.g. "Building  - Room A"), not a typo to
-    collapse.
+    Inner spacing stays significant: two seeded aliases genuinely carry a
+    double space in their middle (e.g. "Building  - Room A"), not a typo to
+    collapse. `" ".join(text.split())` -- the previous implementation here --
+    collapses every whitespace run, inner included, which silently diverged
+    from Go for exactly those two aliases and made them unresolvable through
+    this importer (kindred#2223 code review).
     """
-    return " ".join(str(text).split()).casefold()
+    return str(text).strip().casefold()
 
 
 def _cell(row: list[Any], index: int) -> str:
@@ -279,6 +289,17 @@ def plan_import(sheet: list[list[Any]], registry: dict[str, Any]) -> ImportPlan:
 
     existing_aliases = {_norm(a["alias_string"]) for a in registry.get("aliases", [])}
     for alias_string, codes in ALIAS_ADDITIONS.items():
+        # ALIAS_ADDITIONS keys are unit-code placeholders standing in for
+        # scrubbed real sheet display text (kindred#2223) -- see the header
+        # comment above. A real alias_string is decorated human text and is
+        # never itself a bare unit code, so `alias_string in known` is a safe
+        # signal that this entry is a placeholder, not a genuinely new alias
+        # to propose. Without this guard, every placeholder entry compares
+        # unequal to any real registered alias_string and plan_import would
+        # propose writing dozens of pointless code-maps-to-itself rows into
+        # the private registry on a real --apply run.
+        if alias_string in known:
+            continue
         if _norm(alias_string) not in existing_aliases and set(codes) <= known:
             plan.new_aliases.append(
                 {
