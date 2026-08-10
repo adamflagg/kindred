@@ -3,6 +3,8 @@ import { useEffect, useRef } from 'react'
 import type { ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 
+import { acquireBackgroundInert, releaseBackgroundInert } from './modalStack'
+
 interface ModalProps {
   isOpen: boolean
   onClose: () => void
@@ -57,25 +59,10 @@ function getFocusable(container: HTMLElement): HTMLElement[] {
   return Array.from(container.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR))
 }
 
-// How many ui/Modal instances currently hold the app root inert. Tracked at
-// module scope, not per-instance state, so that if a second dialog ever
-// opens on top of a first, the first closing doesn't remove inert out from
-// under the second — it only comes off once nothing needs it.
-let inertHolders = 0
-
-function acquireBackgroundInert() {
-  inertHolders += 1
-  if (inertHolders === 1) {
-    document.getElementById('root')?.setAttribute('inert', '')
-  }
-}
-
-function releaseBackgroundInert() {
-  inertHolders = Math.max(0, inertHolders - 1)
-  if (inertHolders === 0) {
-    document.getElementById('root')?.removeAttribute('inert')
-  }
-}
+// The open-dialog counter and the background `inert` it drives live in
+// `./modalStack` — `hasOpenModal` is read from outside this file (see that
+// module), and a .tsx exporting both a component and a plain function breaks
+// Fast Refresh.
 
 /**
  * Shared modal component for consistent modal styling across the app.

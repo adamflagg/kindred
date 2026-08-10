@@ -1131,11 +1131,34 @@ class LodgingRosterService:
         )
 
         children_by_year: dict[int, list[Any]] = {}
+        # A JOURNEY ROW IS A YEAR, NOT A SESSION, and this is where that stops
+        # being a wording point. A family can book two of a season's weekends,
+        # which gives one child TWO enrolled family attendee rows in the same
+        # year -- both expanding to the SAME `persons` record, because
+        # `persons` is per-year rather than per-enrolment. Measured on the
+        # production snapshot 2026-08-09: 9 to 20 children a year from 2017
+        # on, across 64 distinct (household, year) pairs.
+        #
+        # Keyed on the CampMinder person id, which is the identity the wire
+        # already publishes the child under (`PartyChild.person_cm_id`) and
+        # the key the members modal renders each <li> with -- so a duplicate
+        # here is a duplicate name, a headcount overstated by one, and two
+        # React children under one key. The PB record id is the fallback for
+        # the rare person row with no cm_id; a row with neither is kept rather
+        # than collapsed onto every other anonymous sibling.
+        seen_by_year: dict[int, set[Any]] = {}
         for attendee in attendees:
             person = (getattr(attendee, "expand", None) or {}).get("person")
             if person is None:
                 continue
-            children_by_year.setdefault(_i(attendee, "year"), []).append(person)
+            year = _i(attendee, "year")
+            identity = _i(person, "cm_id") or str(getattr(person, "id", ""))
+            if identity:
+                seen = seen_by_year.setdefault(year, set())
+                if identity in seen:
+                    continue
+                seen.add(identity)
+            children_by_year.setdefault(year, []).append(person)
 
         # Year 0 is not a year. A row whose `year` column never populated
         # would otherwise open the journey with a blank heading.

@@ -28,6 +28,7 @@ import type {
   ShareRequest,
 } from '../../types/lodging'
 import { displayCampMinderAge } from '../../utils/age'
+import { hasOpenModal } from '../ui/modalStack'
 import { AccessibilityFlagList } from './AccessibilityFlagList'
 import { HouseholdJourneyCard } from './HouseholdJourneyCard'
 import { namedAdults, partyFamilyLabel, partyHeadcount } from './householdIdentity'
@@ -125,7 +126,15 @@ export function FamilyDetailsPanel({
   useEffect(() => {
     if (isClosing) return
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') handleClose()
+      if (event.key !== 'Escape') return
+      // A `ui/Modal` this panel HOSTS owns Escape while it is open --
+      // kindred#2073's "see members" is the first, and this panel is the
+      // first surface in the repo to host one. Both handlers sit on
+      // `document`, so propagation cannot separate them: without this the
+      // single press dismisses the dialog AND the panel behind it, and the
+      // family the staff member was reading goes with it.
+      if (hasOpenModal()) return
+      handleClose()
     }
     document.addEventListener('keydown', onKeyDown)
     return () => {

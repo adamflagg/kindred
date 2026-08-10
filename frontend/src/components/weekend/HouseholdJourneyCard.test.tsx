@@ -288,11 +288,37 @@ describe('the four query states', () => {
     expect(screen.getByText(/Loading family history/)).toBeInTheDocument()
   })
 
+  it('does not claim a count it has not loaded yet', () => {
+    // The band sits ABOVE the guard, so it renders while the read is in
+    // flight. "0 years on file" is a statement of fact, and printing it over
+    // a spinner tells a staff member a returning family is a first-timer —
+    // for the whole fetch, on every open of the panel.
+    journeyResult.value = { data: undefined, isLoading: true, error: null }
+    render(<HouseholdJourneyCard householdCmId={2000001} currentYear={2026} />)
+
+    expect(screen.queryByText(/on file/)).not.toBeInTheDocument()
+  })
+
   it('renders the error inline rather than escalating to the page boundary', () => {
     journeyResult.value = { data: undefined, isLoading: false, error: new Error('boom') }
     render(<HouseholdJourneyCard householdCmId={2000001} currentYear={2026} />)
 
     expect(screen.getByText(/boom/)).toBeInTheDocument()
+    // Same reason as the loading case: a failed read knows nothing about how
+    // many years are on file.
+    expect(screen.queryByText(/on file/)).not.toBeInTheDocument()
+  })
+
+  it('states the count once the record is in hand', () => {
+    show([_row({ year: 2025 }), _row({ year: 2023 })])
+
+    expect(screen.getByText('2 years on file')).toBeInTheDocument()
+  })
+
+  it('says "year" singular for a one-year household', () => {
+    show([_row({ year: 2025 })])
+
+    expect(screen.getByText('1 year on file')).toBeInTheDocument()
   })
 
   it('says a first-time family has no history rather than showing an empty rail', () => {

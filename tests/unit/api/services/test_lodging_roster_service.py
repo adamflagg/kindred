@@ -3855,6 +3855,36 @@ class TestHouseholdJourney:
         assert [a.display_name for a in by_year[2025].adults] == ["Sofia Martinez"]
 
     @pytest.mark.asyncio
+    async def test_a_child_enrolled_in_two_weekends_of_one_year_is_listed_once(self) -> None:
+        """A JOURNEY ROW IS A YEAR, NOT A SESSION, and this is the seam where
+        that stops being a wording point.
+
+        A family can book two of a season's weekends, which gives one child
+        TWO enrolled family attendee rows in the same year -- both expanding
+        to the same `persons` record, because `persons` is per-year rather
+        than per-enrolment. Measured on the production snapshot 2026-08-09:
+        every year from 2017 on has some, 9 to 20 children a year, across 64
+        distinct (household, year) pairs. One household alone lists three
+        children in 2026 and five attendee rows for them.
+
+        Collecting per attendee row therefore prints the child twice, adds
+        them twice to the modal's headcount, and renders two <li>s under one
+        `person_cm_id` React key. Dedupe on the CampMinder person id, which is
+        the identity the wire already keys the child by.
+        """
+        repo = _journey_repo(
+            fetch_household_family_attendees=[
+                _rec(year=2026, **vars(_child(cm_id=1000001, first="Emma", last="Johnson", age=9))),
+                _rec(year=2026, **vars(_child(cm_id=1000001, first="Emma", last="Johnson", age=9))),
+                _rec(year=2026, **vars(_child(cm_id=1000002, first="Liam", last="Johnson", age=7))),
+            ],
+        )
+
+        journey = await LodgingRosterService(repo).build_household_journey(2000001)
+
+        assert [c.person_cm_id for c in journey.years[0].children] == [1000001, 1000002]
+
+    @pytest.mark.asyncio
     async def test_years_run_newest_first_and_span_every_trace(self) -> None:
         """The window is DISCOVERED, not chosen. A hard-coded floor would
         either invent empty rows or truncate a long-standing family, and the

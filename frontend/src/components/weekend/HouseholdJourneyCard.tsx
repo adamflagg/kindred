@@ -220,10 +220,18 @@ export function HouseholdJourneyCard({ householdCmId, currentYear }: HouseholdJo
         {/* "Years on file", NOT "years at camp". A row can be a registration
             with no enrolment behind it (2020, 2021), so claiming attendance
             would overstate what the record supports — the same correction
-            kindred#2123 made to the camper journey's own count. */}
-        <p className="text-forest-200 mt-1 text-sm">
-          {`${String(years.length)} ${years.length === 1 ? 'year' : 'years'} on file`}
-        </p>
+            kindred#2123 made to the camper journey's own count.
+
+            Only once the record is actually in hand. The band sits ABOVE the
+            guard below, so it renders while the read is in flight and again
+            if it fails — and "0 years on file" is a statement of fact, not a
+            placeholder: printed over the spinner it tells a staff member a
+            four-year family is a first-timer, on every open of the panel. */}
+        {data !== undefined && (
+          <p className="text-forest-200 mt-1 text-sm">
+            {`${String(years.length)} ${years.length === 1 ? 'year' : 'years'} on file`}
+          </p>
+        )}
       </div>
 
       <div className="p-5">
