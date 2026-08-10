@@ -723,7 +723,7 @@ export function LodgingMap({ parties, units, year, sessionCmId = 0 }: LodgingMap
             {/* DEMOTED from the control bar, not deleted (kindred#1997): it
                 hides 25 of 76 marks on the busiest 2026 weekend, and it is the
                 map's LAST keyboard-reachable control — see the note at
-                `:16-26` above. Still a real `<input>` behind a real `<label>`,
+                `:29-33` above. Still a real `<input>` behind a real `<label>`,
                 per that note, not re-invented as a div. A SIBLING of the
                 `<dl>` below, not a child of it (kindred#2157): a description
                 list has no defined semantics for a live form control, so the

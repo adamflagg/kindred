@@ -179,10 +179,12 @@ function DetailCard({ entry, hue, onOpenParty, wholeBuildingKeys }: DetailCardPr
   const badge = reservationBadge(unit)
   const bedsNeeded = parties.reduce((sum, party) => sum + partyBeds(party), 0)
 
-  // Only the ACTIONABLE levels. `unverified` is the normal state of every
-  // cabin in the registry today — nothing is `is_confirmed` yet — so rendering
-  // it would put a caveat on every occupied room and stop being read.
-  // `partyAttention` owns the rule that only a confirmed cabin is evidence.
+  // Only the ACTIONABLE levels. `unverified` is a live fallback for a cabin
+  // nobody has confirmed yet, not the state of the whole registry — measured
+  // against the production snapshot of 2026-08-06, cabins were 118/118
+  // confirmed. Rendering `unverified` anyway would put a caveat on every
+  // occupied room and stop being read. `partyAttention` owns the rule that
+  // only a confirmed cabin is evidence.
   const unmet = parties
     .map((party) => ({ party, attention: partyAttention(party, unit) }))
     .filter(({ attention }) => attention.level === 'required' || attention.level === 'unmet')

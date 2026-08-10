@@ -3,9 +3,10 @@
  *
  * ADVISORY. It is not a blocker, and it must never become one: the board
  * accepts every drop on purpose (see `LodgingUnitCard`'s comment on the party
- * `useDroppable`), because no cabin is confirmed until staff walk the
- * property and staff routinely place families against the machine's opinion.
- * This says "nothing here has power", never "you may not".
+ * `useDroppable`) — not because a cabin is unconfirmed (measured against the
+ * production snapshot of 2026-08-06, cabins were 118/118 confirmed) but
+ * because staff routinely place families against the machine's opinion, and
+ * are right to. This says "nothing here has power", never "you may not".
  *
  * That distinction is carried by the MECHANISM, not only by the wording, and
  * the board's signal vocabulary (owner ruling, 2026-08-09) is what keeps the
