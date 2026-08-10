@@ -42,7 +42,7 @@ NEEDLES="Ridge Yurt|Tawonga Village|Manzanita|Tuolumne|Cloud'?s Rest|Wawona|Half
 #                ordinary US place names
 # Scan roots, overridable ONLY so the test suite can point the guard at a
 # missing directory and assert it fails rather than reporting a clean scan.
-read -r -a SCAN_ROOTS <<<"${LODGING_SCAN_ROOTS:-pocketbase/ api/ bunking/ frontend/src/}"
+read -r -a SCAN_ROOTS <<<"${LODGING_SCAN_ROOTS:-pocketbase/ api/ bunking/ frontend/src/ scripts/}"
 
 # Capture grep's OWN status before the filter pipeline swallows it. grep exits
 # 0 for matches, 1 for none, and >=2 when the scan itself failed — an
@@ -52,7 +52,7 @@ read -r -a SCAN_ROOTS <<<"${LODGING_SCAN_ROOTS:-pocketbase/ api/ bunking/ fronte
 # in kindred#1867 and asserted by TEST 6 in test-verify-no-hardcoded-lodging.sh.
 grep_status=0
 RAW=$(grep -rInE "$NEEDLES" \
-  --include='*.go' --include='*.py' --include='*.ts' --include='*.tsx' --include='*.js' \
+  --include='*.go' --include='*.py' --include='*.ts' --include='*.tsx' --include='*.js' --include='*.sh' \
   --exclude-dir=pb_public --exclude-dir=node_modules \
   "${SCAN_ROOTS[@]}" 2>&1) || grep_status=$?
 
@@ -61,6 +61,23 @@ if [[ "$grep_status" -ge 2 ]]; then
   printf '%s\n' "$RAW" >&2
   exit 2
 fi
+
+# scripts/ joined SCAN_ROOTS in kindred#2223, and these three files are the
+# guard itself: they MUST carry the needles to function (verify's own NEEDLES
+# definition, the test fixtures in test-verify-no-hardcoded-lodging.sh, and
+# the docstring examples in drop_comment_hits.py). Exempted BY PATH,
+# deliberately -- NOT via the _test./.test. filter below. That filter is a
+# known blind spot (kindred#1909: two real needle-matching literals sailed
+# through it once already) and would not even cover the two .sh files here,
+# whose names don't match `_test\.` or `\.test\.`.
+GUARD_OWN_FILES=(
+  "scripts/dev/verify-no-hardcoded-lodging.sh"
+  "scripts/dev/test-verify-no-hardcoded-lodging.sh"
+  "scripts/dev/lib/drop_comment_hits.py"
+)
+for owned in "${GUARD_OWN_FILES[@]}"; do
+  RAW=$(printf '%s\n' "$RAW" | grep -v -F "${owned}:" || true)
+done
 
 # The _test./.test. exemption below is a known blind spot, not an oversight:
 # kindred#1909 found that two NEEDLES-matching literals landed in test files
