@@ -1,13 +1,14 @@
 """Server-side cache for the weekend roster's year-scoped PocketBase reads.
 
-`LodgingRosterService.build_roster` opens a TaskGroup with six year-scoped
-reads on every single-weekend load (kindred#1963) -- identical for every
-weekend in the year, and re-issued from scratch on every load because
-`build_roster` has no cache of its own. `build_summary` already hoists this
-work out of ITS per-weekend loop, but the plain roster does not, which is
-most of why an empty weekend costs ~3s.
+`LodgingRosterService.build_roster` opens a TaskGroup with seven year-scoped
+reads on every single-weekend load (kindred#1963, plus kindred#2075's
+prior-year cabins) -- identical for every weekend in the year, and re-issued
+from scratch on every load because `build_roster` has no cache of its own.
+`build_summary` already hoists six of the seven out of ITS per-weekend loop,
+but the plain roster does not, which is most of why an empty weekend costs
+~3s.
 
-Only FOUR of the six are cached here, not six. `fetch_units` (`lodging_units`)
+Only FIVE of the seven are cached here. `fetch_units` (`lodging_units`)
 and `count_open_unresolved_aliases` (`lodging_ingest_issues`) are written
 STRAIGHT TO POCKETBASE FROM THE BROWSER by the admin panels --
 `frontend/src/services/lodgingCrud.ts`'s `createLodgingUnit` /
@@ -16,11 +17,23 @@ STRAIGHT TO POCKETBASE FROM THE BROWSER by the admin panels --
 directly and never pass through this API. Caching either one would hide an
 admin's own edit -- a cabin just confirmed, a cabin name just resolved -- for
 the whole TTL, to buy about 16ms. That trade is not worth making, so
-LodgingRepository never calls this cache for those two reads. The four it DOES
-cache (`fetch_households`, `fetch_prior_household_cm_ids`,
+LodgingRepository never calls this cache for those two reads. Four of the five
+it DOES cache (`fetch_households`, `fetch_prior_household_cm_ids`,
 `fetch_family_camp_adults`, `fetch_family_camp_registrations`) are all
 sync-written only: the CampMinder Go ingest is their sole writer, so nothing
 in the browser can produce a row a staff member is waiting to see reflected.
+
+The fifth, `fetch_cabin_assignments_by_household_cm_id` (kindred#2075), is
+DERIVED rather than read: it is a join over `fetch_family_camp_registrations`
+and `fetch_households` for the same year, and it takes an entry here for the
+join, not for round trips it would otherwise make. Its inputs are therefore
+already covered by the paragraph above, and it inherits their safety argument
+-- but note the one thing it does not inherit: an LRU eviction of either
+input would let this derived entry outlive the data it was computed from,
+until its own TTL or the next `invalidate_all()` (both of which it shares
+with them). `max_size` is 64 against a handful of reads times a handful of
+years, so that eviction does not happen in practice; if the read set ever
+grows, raise `max_size` rather than reasoning about which entry went first.
 
 Shaped like api/services/metrics_cache.py (TTL + LRU + RLock) per that
 module's own docstring pattern, but closer in spirit to
@@ -66,10 +79,14 @@ T = TypeVar("T")
 class LodgingYearCache:
     """Thread-safe in-memory cache for the roster's year-scoped reads.
 
-    Keyed by (read name, year) -- there is no third axis. These four reads
-    never vary by session or scenario, which is exactly why hoisting them
+    Keyed by (read name, year) -- there is no third axis. None of the five
+    reads varies by session or scenario, which is exactly why hoisting them
     into a cache is safe: the same answer is correct for every weekend and
     every scenario in a year.
+
+    The year is the read's OWN argument, not "the year on screen":
+    `fetch_cabin_assignments_by_household_cm_id` is called at `year - 1`, and
+    lands under that key like any other.
     """
 
     def __init__(self, ttl_seconds: int = 900, max_size: int = 64) -> None:
@@ -121,7 +138,7 @@ class LodgingYearCache:
 
         Called by `api/routers/metrics.py`'s `POST /api/metrics/cache/invalidate`
         (kindred#2142), which the frontend fires on CampMinder sync completion --
-        see the module docstring for which syncs write the four cached reads and
+        see the module docstring for which syncs write the five cached reads and
         for the residual gap the TTL still covers.
 
         Also drops the in-flight lock map (kindred#2144). `asyncio.Lock` binds

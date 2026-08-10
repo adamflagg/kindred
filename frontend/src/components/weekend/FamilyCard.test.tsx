@@ -330,7 +330,10 @@ describe('FamilyCard — what it shows', () => {
   it('marks a first-time household when is_returning is undefined', () => {
     const p = party()
     delete p.is_returning
-    render(<FamilyCard party={p as RosterPartyRow} onOpen={vi.fn()} />)
+    // No `as RosterPartyRow` here: `is_returning` is optional on the row, so
+    // `delete` leaves `p` at its declared type and the assertion only hid
+    // that from the reader (`@typescript-eslint/no-unnecessary-type-assertion`).
+    render(<FamilyCard party={p} onOpen={vi.fn()} />)
     expect(screen.getByText('First-time')).toBeInTheDocument()
     expect(screen.queryByText('Returning')).not.toBeInTheDocument()
   })
@@ -974,10 +977,15 @@ describe('FamilyCard — last year’s housing', () => {
     expect(housing).toHaveTextContent('Cedar Grove Lodge - Room 12B')
   })
 
-  // 63 of 2026's 459 registered households have no named adult row at all
-  // (kindred#1925/#1946 dropped the nameless ones), so the grey line they sit
-  // on may not exist. The cabin is real data and is not dropped to preserve a
-  // line that was never there.
+  // A household with no attending adult has no grey line for the cabin to
+  // join (kindred#1925/#1946 dropped the nameless rows). The cabin is real
+  // data and is not dropped to preserve a line that was never there.
+  //
+  // RARE, and do not re-derive it from `family_camp_adults.name` alone: 63 of
+  // 2026's 459 registered households have that column blank, but
+  // `_adult_display_name`'s first_name/last_name fallback is load-bearing, so
+  // the figure `computeAttendingAdults` produces is 35 of 459 registered and
+  // ONE of the 382 rostered households the board renders.
   it('still shows the cabin for a household with no attending adults', () => {
     render(
       <FamilyCard party={party({ adults: [], last_year_cabin: 'Pine Cabin' })} onOpen={vi.fn()} />

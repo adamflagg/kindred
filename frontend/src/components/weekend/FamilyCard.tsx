@@ -350,10 +350,19 @@ function FamilyCardBody({
                   verbatim — never resolved against the unit registry, so it
                   can legitimately name something no card on the board is
                   called (see the schema field). `ml-auto` right-anchors it
-                  whether or not adults sit beside it: 63 of 2026's 459
-                  registered households have no named adult row at all, and
+                  whether or not adults sit beside it: a household with no
+                  attending adult has no grey line for the cabin to join, and
                   the cabin is real data that is not dropped to preserve a
-                  line that was never there. */}
+                  line that was never there.
+
+                  RARE, and deliberately not quantified off the `name` column
+                  alone — 63 of 2026's 459 registered households have a blank
+                  `family_camp_adults.name`, but `_adult_display_name`'s
+                  first_name/last_name fallback is load-bearing and rescues
+                  most of them, so the figure `computeAttendingAdults`
+                  actually produces is 35 of 459 registered and ONE of the
+                  382 rostered households this card renders. The branch earns
+                  its place on that one card, not on 63. */}
               {lastYearCabin.length > 0 && (
                 <span
                   data-testid="family-card-last-year-cabin"

@@ -693,13 +693,43 @@ class TestFetchCabinAssignmentsByHouseholdCmId:
         assert result == {}
 
     @pytest.mark.asyncio
-    async def test_composes_over_the_two_cached_reads(self, repo: LodgingRepository, pb: MagicMock) -> None:
+    async def test_shares_the_round_trips_of_whoever_read_the_year_first(
+        self, repo: LodgingRepository, pb: MagicMock
+    ) -> None:
+        """A year already in hand costs this read NOTHING extra.
+
+        This is the whole reason it composes over the two existing
+        `@cached_by_year` reads instead of issuing a bespoke narrower query:
+        kindred#2073's sweep of 2022-2025 pays each year once per process,
+        and a bespoke query would have its own cache to keep coherent with
+        those two.
+
+        ⚠️ THE INNER READS ARE WHAT THIS PINS, so it must reach them --
+        calling THIS function twice would prove nothing, because its own
+        `@cached_by_year` entry serves the second call and the inner reads
+        are never touched. Mutation-checked: strip the decorator off
+        `fetch_households` or `fetch_family_camp_registrations` and the
+        counts here go to two.
+        """
+        queries = _route_by_collection(pb, {"family_camp_registrations": [], "households": []})
+
+        # Somebody else -- the same year's roster, or kindred#2073's previous
+        # year in the sweep -- got here first.
+        await repo.fetch_family_camp_registrations(2025)
+        await repo.fetch_households(2025)
+
+        await repo.fetch_cabin_assignments_by_household_cm_id(2025)
+
+        assert len(queries["family_camp_registrations"]) == 1
+        assert len(queries["households"]) == 1
+
+    @pytest.mark.asyncio
+    async def test_its_own_cache_serves_the_second_call(self, repo: LodgingRepository, pb: MagicMock) -> None:
         """Two round trips the first time, none the second.
 
-        Both halves are already `@cached_by_year`, so kindred#2073's sweep of
-        2022-2025 pays each year once per process rather than once per
-        request. A bespoke narrower query would have its own cache to keep
-        coherent with those two.
+        The join on top gets its own `@cached_by_year` entry, so a second
+        weekend loading the same year re-walks neither the registrations nor
+        the households.
         """
         queries = _route_by_collection(pb, {"family_camp_registrations": [], "households": []})
 
