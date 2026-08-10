@@ -45,6 +45,7 @@ import { useState } from 'react'
 import { useHouseholdJourney } from '../../hooks/useWeekendRoster'
 import type { HouseholdJourney, HouseholdJourneyRow } from '../../types/lodging'
 import { QueryGuard } from '../QueryGuard'
+import { Tooltip } from '../ui/Tooltip'
 import { childSurnames, familyNameLabel, isAttendingAdultName } from './householdIdentity'
 import { HouseholdYearMembersModal } from './HouseholdYearMembersModal'
 
@@ -156,13 +157,19 @@ function JourneyRows({
                   despite 247 registrations. The muted chip is the camper
                   journey's own de-emphasis treatment for a row a reader can
                   skip without losing the fact. */}
+              {/* A reachable tooltip, not a `title` (kindred#2177): the rest
+                  of the weekend surface stopped explaining itself on mouse
+                  hover alone, and this chip only kept the old pattern because
+                  it landed after that sweep's file list was drawn up. The row
+                  around it is a `<div>`, so unlike `HouseholdRosterRow`'s
+                  in-button badges this one can be a real trigger. */}
               {row.enrollment === 'none_on_file' && (
-                <span
-                  title="The household is in that season's records, but CampMinder has no enrolled child against it"
+                <Tooltip
+                  content="The household is in that season's records, but CampMinder has no enrolled child against it"
                   className="bg-muted text-muted-foreground flex-shrink-0 rounded px-1.5 py-0.5 text-[10px] font-medium"
                 >
                   No enrolment
-                </span>
+                </Tooltip>
               )}
 
               {/* No affordance for a year with nobody to show. An empty modal

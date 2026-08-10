@@ -132,19 +132,35 @@ function Chip({
   /** Optional, e.g. the "Whole building" chip's `Home` — every other chip omits it. */
   icon?: LucideIcon
   /**
-   * Native hover tooltip, e.g. the "Answers disagree" chip's per-party detail
-   * (kindred#2083) — matches `SharePreferenceChip`'s `raw` tooltip pattern
-   * rather than inventing a second affordance for the same idea.
+   * The chip's per-party detail, e.g. "Answers disagree"'s account of which
+   * two answers disagreed (kindred#2083).
+   *
+   * ## Why this is NOT `ui/Tooltip`, unlike every other chip on this surface
+   *
+   * kindred#2177 replaced the board's `title` attributes with a focusable
+   * tooltip, and this chip was named as the highest-leverage one. It cannot
+   * have it: THE WHOLE CARD IS A `<button>` (see `FamilyCard` below), and a
+   * `<button>`'s content model forbids interactive descendants. A nested
+   * trigger would be invalid HTML and its tap would bubble straight into
+   * `onOpen`, opening the details panel instead of the bubble.
+   * `HouseholdRosterRow`'s in-button badges hit the identical wall and take
+   * the identical way out.
+   *
+   * So the detail becomes REAL `sr-only` TEXT. That is strictly more than the
+   * `title` gave — `title` on a `<span>` is not reliably announced at all —
+   * and it leaves one gap, honestly stated: a touch user still cannot summon
+   * this sentence. Closing that needs the card to stop being one big button,
+   * which is a structural change with its own blast radius, not something to
+   * slip into a tooltip sweep.
    */
   title?: string
 }) {
+  const chipClassName = `inline-flex items-center rounded-full px-1.5 py-0.5 text-xs font-semibold whitespace-nowrap ${CHIP_TONE[tone]}`
   return (
-    <span
-      title={title}
-      className={`inline-flex items-center rounded-full px-1.5 py-0.5 text-xs font-semibold whitespace-nowrap ${CHIP_TONE[tone]}`}
-    >
+    <span className={chipClassName}>
       {Icon && <Icon className="mr-0.5 h-3 w-3 flex-shrink-0" aria-hidden="true" />}
       {label}
+      {title !== undefined && title.length > 0 && <span className="sr-only"> — {title}</span>}
     </span>
   )
 }

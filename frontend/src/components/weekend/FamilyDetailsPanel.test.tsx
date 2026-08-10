@@ -496,7 +496,34 @@ describe('FamilyDetailsPanel — current placement', () => {
       { wrapper }
     )
     expect(screen.getByText('Cedar 3 + Cedar 4')).toBeInTheDocument()
-    expect(screen.getByText('Merged')).toBeInTheDocument()
+    const merged = screen.getByRole('button', { name: 'Merged' })
+    expect(merged).not.toHaveAttribute('title')
+    expect(merged).toHaveAccessibleDescription('Two rooms combined into one slot')
+  })
+
+  it('closes only the tooltip on Escape, never the panel underneath it', () => {
+    // kindred#2177 x kindred#2073. The panel's own Escape handler sits on
+    // `document`; the tooltip's sits on its trigger, so it stops the event by
+    // propagation before the panel ever sees it. `ui/modalStack` exists
+    // because two `document` listeners cannot do that to each other.
+    render(
+      <FamilyDetailsPanel
+        party={party({ unit_code: '', unit_name: 'Cedar 3 + Cedar 4', is_merged_slot: true })}
+        year={2026}
+        onClose={vi.fn()}
+      />,
+      { wrapper }
+    )
+    const merged = screen.getByRole('button', { name: 'Merged' })
+    fireEvent.click(merged)
+    expect(screen.getByRole('tooltip')).toBeInTheDocument()
+
+    fireEvent.keyDown(merged, { key: 'Escape' })
+
+    expect(screen.queryByRole('tooltip')).not.toBeInTheDocument()
+    const panel = screen.getByTestId('family-details-panel')
+    expect(panel).not.toHaveClass('animate-slide-out-right')
+    expect(panel).toHaveClass('animate-slide-in-right')
   })
 
   it('says an unplaced party has no cabin yet', () => {

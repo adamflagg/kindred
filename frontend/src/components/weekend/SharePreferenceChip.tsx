@@ -12,6 +12,7 @@
  * answer is missing information, not permission.
  */
 import type { SharePreferenceValue } from '../../types/lodging'
+import { Tooltip } from '../ui/Tooltip'
 
 const CHIP: Record<SharePreferenceValue, { label: string; className: string }> = {
   no_share: {
@@ -34,7 +35,11 @@ const CHIP: Record<SharePreferenceValue, { label: string; className: string }> =
 
 export interface SharePreferenceChipProps {
   preference: SharePreferenceValue
-  /** The verbatim CampMinder answer, shown on hover so staff can audit it. */
+  /**
+   * The verbatim CampMinder answer, so staff can audit what the label is a
+   * paraphrase of. Reachable by hover, keyboard focus AND tap (kindred#2177);
+   * it used to be a `title`, which is only the first of those.
+   */
   raw?: string | undefined
 }
 
@@ -43,12 +48,23 @@ export function SharePreferenceChip({ preference, raw }: SharePreferenceChipProp
   // preference value before these types are regenerated, an unmapped key
   // would otherwise crash the whole roster on `chip.label`.
   const chip = Object.hasOwn(CHIP, preference) ? CHIP[preference] : CHIP.unknown
+  const chipClassName = `inline-flex items-center rounded-full px-2 py-0.5 text-xs font-semibold ${chip.className}`
+
+  // Only a chip with an answer behind it becomes a control. "Not answered"
+  // explains itself, and a focusable chip that reveals nothing is a dead stop
+  // in the tab order — the same argument `MapUnitPopover` makes for its empty
+  // cells.
+  // TRIMMED, unlike `FamilyCard`'s `Chip`, whose detail is built from a code
+  // template and cannot be blank: this string comes straight out of a
+  // CampMinder cell, and a whitespace-only one would otherwise mint a
+  // focusable chip whose bubble renders nothing.
+  if (raw === undefined || raw.trim().length === 0) {
+    return <span className={chipClassName}>{chip.label}</span>
+  }
+
   return (
-    <span
-      title={raw !== undefined && raw.length > 0 ? raw : undefined}
-      className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-semibold ${chip.className}`}
-    >
+    <Tooltip content={raw} className={chipClassName}>
       {chip.label}
-    </span>
+    </Tooltip>
   )
 }

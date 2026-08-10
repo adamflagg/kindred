@@ -378,7 +378,65 @@ describe('HouseholdRosterTable', () => {
       />,
       { wrapper }
     )
-    expect(screen.getByText('Merged')).toBeInTheDocument()
+    // kindred#2177: the "two rooms combined" detail is on a reachable tooltip.
+    const merged = screen.getByRole('button', { name: 'Merged' })
+    expect(merged).not.toHaveAttribute('title')
+    expect(merged).toHaveAccessibleDescription('Two rooms combined into one slot')
+    fireEvent.focus(merged)
+    expect(screen.getByRole('tooltip')).toHaveTextContent('Two rooms combined into one slot')
+  })
+
+  it('never nests a control inside the row button', () => {
+    // kindred#2177's structural guard. The name cell IS a `<button>`, whose
+    // content model forbids interactive descendants — the reason the two
+    // badges inside it carry `sr-only` text while the "Merged" chip in the
+    // next cell gets the real tooltip. A nested trigger would also eat the
+    // row's own click.
+    const { container } = render(
+      <HouseholdRosterTable
+        year={2026}
+        parties={[
+          party({
+            is_returning: true,
+            is_merged_slot: true,
+            share: {
+              preference: 'no_share',
+              preference_raw: 'No, prefer not to share',
+              proximity: [],
+              request_text: '',
+              needs_resolution: false,
+            },
+          }),
+        ]}
+      />,
+      { wrapper }
+    )
+    expect(container.querySelectorAll('button button')).toHaveLength(0)
+  })
+
+  it('spells out the returning and first-time badges in text, not a title', () => {
+    // kindred#2177, and the one place the tooltip primitive is NOT the answer:
+    // these two badges live INSIDE the row's own `<button>`, whose content
+    // model is phrasing content with no interactive descendants. A focusable
+    // trigger there would be invalid HTML and would swallow the row's click.
+    // Real `sr-only` text instead — which is strictly more than the `title`
+    // gave, since `title` on a `<span>` is not reliably announced at all.
+    const { rerender } = render(
+      <HouseholdRosterTable year={2026} parties={[party({ is_returning: true })]} />,
+      { wrapper }
+    )
+    expect(screen.getByText('Returning')).not.toHaveAttribute('title')
+    expect(screen.getByText('(stayed with us before)')).toBeInTheDocument()
+    expect(screen.getByText('Returning').tagName).toBe('SPAN')
+    // In the DOM is not the same as ANNOUNCED: the row's own `<button>` takes
+    // its name from its contents, so the sentence has to survive into that
+    // computation or it is decoration.
+    expect(screen.getAllByRole('button')[0]).toHaveAccessibleName(/stayed with us before/)
+
+    rerender(<HouseholdRosterTable year={2026} parties={[party({ is_returning: false })]} />)
+    expect(screen.getByText('First-time')).not.toHaveAttribute('title')
+    expect(screen.getByText('(first time at camp)')).toBeInTheDocument()
+    expect(screen.getAllByRole('button')[0]).toHaveAccessibleName(/first time at camp/)
   })
 
   it('flags a returning family', () => {

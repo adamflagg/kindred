@@ -24,6 +24,7 @@ import { Accessibility, Bath, Plug, Refrigerator, Snowflake } from 'lucide-react
 import { type ReactNode, useState } from 'react'
 
 import type { RosterPartyRow } from '../../types/lodging'
+import { Tooltip } from '../ui/Tooltip'
 import { namedAdults, partyIdentityLabel } from './householdIdentity'
 import { CONSENT_AMBER } from './mapColors'
 import type { MapUnit } from './mapModel'
@@ -508,9 +509,11 @@ function FootprintGrid({
           const who = first
             ? entry.parties.map((party) => partyIdentityLabel(party)).join(', ')
             : 'empty'
-          // Prefixed by the visible label so the accessible name contains it
-          // (WCAG 2.5.3), and duplicated into `title` because a tooltip alone is
-          // invisible to touch and unreliable for screen readers.
+          // Prefixed by the visible label so an accessible name built from it
+          // still contains the label (WCAG 2.5.3). It used to be duplicated
+          // into `title` as well, because a native tooltip is invisible to
+          // touch and unreliable for screen readers — kindred#2177 replaced
+          // that with `ui/Tooltip`, which is neither.
           // Always built from the FULL unit name, never the shortened cluster
           // label — a tooltip has room, and the short form is ambiguous once
           // it is out of the header's context.
@@ -570,24 +573,32 @@ function FootprintGrid({
           }
 
           return (
-            <button
+            <Tooltip
               key={entry.unit.unit_id}
               data-testid="map-popover-cell"
-              type="button"
-              title={described}
+              content={described}
+              // `aria-label` KEPT alongside the bubble, and it is the one place
+              // in this sweep where the sentence is deliberately said twice.
+              // The cell's visible label is a family name, which the detail
+              // pane below repeats as its own chip — without this, two controls
+              // in one popover answer to "Sofia Garcia" and neither says which
+              // room it is. Name disambiguates, bubble explains.
               aria-label={described}
               // PICKS the room; it no longer opens the family panel directly.
               // `aria-pressed` because that is what this control now is — a
               // toggle into the detail below, not a link out of the popover.
               aria-pressed={selectedUnitId === entry.unit.unit_id}
-              onClick={() => {
+              // The cell keeps its own action — the bubble is already open
+              // from the hover or focus the tap produced, so a tap must not be
+              // spent pinning it.
+              onActivate={() => {
                 onSelectUnit(entry.unit.unit_id)
               }}
               style={style}
               className={className}
             >
               {label}
-            </button>
+            </Tooltip>
           )
         })}
       </div>

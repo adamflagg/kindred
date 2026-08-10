@@ -21,6 +21,7 @@ import type {
   ShareRequest,
 } from '../../types/lodging'
 import { displayCampMinderAge } from '../../utils/age'
+import { Tooltip } from '../ui/Tooltip'
 import { AccessibilityFlagList } from './AccessibilityFlagList'
 import { namedAdults, partyIdentityLabel } from './householdIdentity'
 import type { AttentionLevel } from './rosterAttention'
@@ -155,13 +156,23 @@ export function HouseholdRosterRow({ party, showRequests, unit, onOpen }: Househ
             >
               {partyIdentityLabel(party)}
             </span>
+            {/* kindred#2177 converted the board's `title` tooltips to a
+                focusable `ui/Tooltip`. These two badges are the deliberate
+                exception, and the reason is three lines up: they sit INSIDE
+                the row's own `<button>`, whose content model is phrasing
+                content with no interactive descendants. A focusable trigger
+                here would be invalid HTML and would eat the row's click.
+
+                Real `sr-only` text instead. That is strictly more than the
+                `title` gave — `title` on a `<span>` is not reliably announced
+                at all — and the touch gap it leaves is the smallest on the
+                board, since the badge's visible word already IS the fact and
+                the sentence only rephrases it. */}
             {party.is_returning === true && (
-              <span
-                title="Stayed with us before"
-                className="text-forest-700 dark:text-forest-300 bg-forest-100 dark:bg-forest-900/50 inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-semibold"
-              >
+              <span className="text-forest-700 dark:text-forest-300 bg-forest-100 dark:bg-forest-900/50 inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-semibold">
                 <Repeat className="h-3 w-3 flex-shrink-0" />
                 Returning
+                <span className="sr-only">(stayed with us before)</span>
               </span>
             )}
             {/* `is_returning` is only ever computed for household-grain
@@ -172,12 +183,10 @@ export function HouseholdRosterRow({ party, showRequests, unit, onOpen }: Househ
                 "no". Gating on grain keeps this badge from calling every
                 adult weekend regular a first-timer. */}
             {showAdults && party.is_returning !== true && (
-              <span
-                title="First time at camp"
-                className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-700 dark:bg-amber-900/50 dark:text-amber-300"
-              >
+              <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-700 dark:bg-amber-900/50 dark:text-amber-300">
                 <Star className="h-3 w-3 flex-shrink-0" />
                 First-time
+                <span className="sr-only">(first time at camp)</span>
               </span>
             )}
           </span>
@@ -234,12 +243,14 @@ export function HouseholdRosterRow({ party, showRequests, unit, onOpen }: Househ
             {isAssigned ? party.unit_name : 'Unassigned'}
           </span>
           {party.is_merged_slot === true && (
-            <span
-              title="Two rooms combined into one slot"
+            // Outside the row button, so this one CAN be a real trigger
+            // (kindred#2177).
+            <Tooltip
+              content="Two rooms combined into one slot"
               className="bg-muted text-muted-foreground rounded-full px-2 py-0.5 text-xs font-semibold"
             >
               Merged
-            </span>
+            </Tooltip>
           )}
         </div>
         {(party.arrival_eta ?? '').length > 0 && (

@@ -1,7 +1,7 @@
 /**
  * The in-place peek. Fictional data throughout.
  */
-import { render, screen } from '@testing-library/react'
+import { fireEvent, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 
@@ -536,9 +536,43 @@ describe('MapUnitPopover — a cluster of rooms', () => {
       ]),
     ]
     render(<MapUnitPopover units={house} hue={HUE} onOpenParty={vi.fn()} />)
-    const flaggedCell = screen.getByTitle(/Cedar 2.*sharing not consented/i)
-    expect(flaggedCell).toBeInTheDocument()
-    expect(screen.queryByTitle(/Cedar 1.*sharing not consented/i)).not.toBeInTheDocument()
+    // kindred#2177: an occupied cell is a control, so its detail rides on the
+    // reachable tooltip rather than a `title` no tablet can open.
+    const cells = screen.getAllByTestId('map-popover-cell')
+    const flaggedCell = cells.find((cell) =>
+      (cell.getAttribute('aria-label') ?? '').includes('Cedar 2')
+    )
+    expect(flaggedCell).toBeDefined()
+    expect(flaggedCell).not.toHaveAttribute('title')
+    // The NAME, not a description: this cell is the one trigger whose bubble
+    // sentence has to double as its accessible name, so `ui/Tooltip` drops the
+    // `aria-describedby` rather than making a reader say it twice in a row.
+    expect(flaggedCell).toHaveAccessibleName(/Cedar 2.*sharing not consented/i)
+    expect(flaggedCell).not.toHaveAttribute('aria-describedby')
+    // Eyes still get it, which is the half a `title` never gave a tablet.
+    fireEvent.focus(flaggedCell as HTMLElement)
+    expect(screen.getByRole('tooltip')).toHaveTextContent(/Cedar 2.*sharing not consented/i)
+
+    const plainCell = cells.find((cell) =>
+      (cell.getAttribute('aria-label') ?? '').includes('Cedar 1')
+    )
+    expect(plainCell).not.toHaveAccessibleName(/sharing not consented/i)
+  })
+
+  it('a room cell still PICKS its room when tapped, tooltip and all', () => {
+    // The tooltip must not steal the cell's own action — it opens on hover,
+    // focus and tap, and the tap goes on doing what it always did.
+    const house = [
+      mapUnit(row({ unit_id: 'u1', code: 'cedar-1', name: 'Cedar 1' }), [party('Nguyen')]),
+      mapUnit(row({ unit_id: 'u2', code: 'cedar-2', name: 'Cedar 2' }), [party('Johnson')]),
+    ]
+    render(<MapUnitPopover units={house} hue={HUE} onOpenParty={vi.fn()} />)
+    const cell = screen
+      .getAllByTestId('map-popover-cell')
+      .find((candidate) => candidate.textContent.includes('Johnson'))
+    expect(cell).toBeDefined()
+    fireEvent.click(cell as HTMLElement)
+    expect(screen.getByText(/← All/)).toBeInTheDocument()
   })
 })
 

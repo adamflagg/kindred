@@ -15,6 +15,7 @@ import { useDraggable, useDroppable } from '@dnd-kit/core'
 import { Bath, Merge, Plug, Snowflake, Split, TriangleAlert, Users } from 'lucide-react'
 
 import type { LodgingUnitRow, RosterPartyRow } from '../../types/lodging'
+import { Tooltip } from '../ui/Tooltip'
 import {
   overlappingPartyKeys,
   slotOccupancy,
@@ -27,7 +28,12 @@ import { resolveNeedsFit } from './needsFit'
 import { PlaceFamilyPicker } from './PlaceFamilyPicker'
 import { resolveRingPrecedence } from './ringPrecedence'
 import { partyKey } from './partyKey'
-import { reservationBadge, shareabilityBadge, sharingConflictBadge } from './unitBadges'
+import {
+  reservationBadge,
+  shareabilityBadge,
+  sharingConflictBadge,
+  type UnitBadge,
+} from './unitBadges'
 import { UnitAvailabilityControl } from './UnitAvailabilityControl'
 
 /**
@@ -238,6 +244,31 @@ export interface LodgingUnitCardProps {
    */
   onPlaceParty?: (unit: LodgingUnitRow, party: RosterPartyRow) => void
   onOpenParty: (party: RosterPartyRow) => void
+}
+
+/**
+ * The one-family-space warning chip (kindred#2179), with its count reachable
+ * by keyboard and touch rather than by mouse hover alone (kindred#2177).
+ *
+ * `UnitBadge.title` is optional, so the no-detail case renders a plain
+ * `<span>`: a focusable chip that reveals nothing is a dead stop in the tab
+ * order, which is the same reason `FamilyCard`'s `Chip` and
+ * `SharePreferenceChip` branch the same way.
+ */
+function SharingConflictChip({ badge }: { badge: UnitBadge }) {
+  const className = `inline-flex items-center gap-0.5 rounded-full px-1.5 py-0.5 text-xs font-medium ${badge.className}`
+  const body = (
+    <>
+      <TriangleAlert className="h-3 w-3 flex-shrink-0" aria-hidden="true" />
+      {badge.label}
+    </>
+  )
+  if (badge.title === undefined) return <span className={className}>{body}</span>
+  return (
+    <Tooltip content={badge.title} className={className}>
+      {body}
+    </Tooltip>
+  )
 }
 
 export function LodgingUnitCard({
@@ -613,12 +644,18 @@ export function LodgingUnitCard({
             matched. `text-lg` is a utility and outranks the base rule's
             `text-2xl md:text-3xl`, so only the face and tracking carry over. */}
         <h3 className={`truncate text-lg ${openTitleClassName}`}>{unit.name}</h3>
-        <span
-          title={
+        {/* The tooltip hangs on THIS figure, never on the `<h3>` above it
+            (kindred#2177). It is also the smallest trigger on the board, which
+            is why `ui/Tooltip` grows a transparent 24px hit target around
+            whatever it wraps — a drawn box would collide with the dashed
+            border this card already spends on "empty room". */}
+        <Tooltip
+          content={
             capacityKnown
               ? `Sleeps ${String(unit.sleeps)} · ${String(occupants)} placed`
               : `Capacity not recorded · ${String(occupants)} placed`
           }
+          data-testid="unit-occupancy"
           className={`ml-auto text-sm tabular-nums ${
             overCapacity ? 'text-destructive font-semibold' : 'text-muted-foreground'
           }`}
@@ -626,7 +663,7 @@ export function LodgingUnitCard({
           {/* An unmeasured room keeps the em dash as its DENOMINATOR. `0/0`
               would be the same lie the em dash exists to refuse. */}
           {`${String(occupants)}/${capacityKnown ? String(unit.sleeps) : '—'}`}
-        </span>
+        </Tooltip>
       </div>
 
       <div className="text-muted-foreground flex flex-wrap items-center gap-1.5 text-sm">
@@ -662,18 +699,13 @@ export function LodgingUnitCard({
             A WARNING, not a refusal — the chip is the whole mark. Nothing here
             touches `useDroppable`, `opacity` or `pointer-events`: the drop
             stays accepted, and `opacity-40` is spoken for by refusal in the
-            board's ruled vocabulary. The count is in the `title` because
+            board's ruled vocabulary. The count is in the tooltip because
             colour alone is not a signal (WCAG 1.4.1) and the icon carries no
-            text. */}
-        {sharingConflict && (
-          <span
-            title={sharingConflict.title}
-            className={`inline-flex items-center gap-0.5 rounded-full px-1.5 py-0.5 text-xs font-medium ${sharingConflict.className}`}
-          >
-            <TriangleAlert className="h-3 w-3 flex-shrink-0" aria-hidden="true" />
-            {sharingConflict.label}
-          </span>
-        )}
+            text — and it is a reachable tooltip, not a `title`, since
+            kindred#2177. `UnitBadge.title` is optional, so a badge that ever
+            arrives without one stays a plain chip rather than becoming a tab
+            stop with nothing behind it. */}
+        {sharingConflict && <SharingConflictChip badge={sharingConflict} />}
         {/* The only actionable capacity state, and the only one summer's
             four-stop ramp carries that survives at these denominators — a
             room that sleeps two goes green to orange on its second occupant,
