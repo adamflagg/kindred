@@ -25,8 +25,21 @@
  *
  * What IS here: the children lead, bold, with truncated whole-year ages —
  * ages are the entire point of a "similar ages" match — the party size, the
- * attending adults one line down in grey, and the housing chips the fit
- * check actually judges.
+ * attending adults one line down in grey with last year's cabin right-anchored
+ * opposite them, and the housing chips the fit check actually judges.
+ *
+ * ## Last year's cabin shares line 2; it does not get one (kindred#2075)
+ *
+ * "Returning" is only half the fact staff act on — WHERE they stayed last year
+ * is what decides whether to repeat it. Summer already ships exactly this
+ * treatment (`CamperCard.tsx` right-anchors `historyDisplay` on its line 2
+ * beside Age/Grade), so under CLAUDE.md §4 that is the template and a third
+ * content line is the divergence. DIRECTLY PRIOR YEAR ONLY: no multi-year
+ * count, no "+2" affordance. A family placed two years ago but not last year
+ * shows nothing here, and so does a first-timer — `FamilyCard.test.tsx` pins
+ * both, because a helpful placeholder or an em dash would read as "nobody
+ * assigned them" on the 202 of 459 households where the answer is simply that
+ * we do not know.
  *
  * ## The household salutation is gone, not demoted (kindred#2074)
  *
@@ -222,6 +235,15 @@ function FamilyCardBody({
   // surfaces that replaced the salutation with this same list (kindred#2084).
   const attendingAdults = computeAttendingAdults(party)
   const { names: adultNames, sharedSurname: sharedAdultSurname } = dedupeAdultNames(attendingAdults)
+  // Last year's cabin, right-anchored on the grey line below (kindred#2075).
+  //
+  // Trimmed here rather than trusted: '' is the common case (202 of 2026's 459
+  // registered households) and a whitespace-only string must read as the same
+  // absence, not as an empty right-anchored gap. Read ONLY inside the
+  // household branch below, which is the grain gate — no second one here,
+  // because a redundant `isHousehold` guard would look like the load-bearing
+  // one and outlive the branch it duplicates.
+  const lastYearCabin = (party.last_year_cabin ?? '').trim()
   const attention = partyAttention(party, unit)
   const proximity = party.share?.proximity ?? []
   // `similar_ages` ACCOMPANIES `with`; it never replaces it. One chip covering
@@ -260,13 +282,53 @@ function FamilyCardBody({
         </span>
       </span>
 
+      {/* LINE 2, and it holds TWO things now (kindred#2075): the attending
+          adults on the left, last year's cabin right-anchored at the end.
+          Summer does exactly this at `CamperCard.tsx`'s line 2, where
+          `historyDisplay` sits opposite Age/Grade — under CLAUDE.md §4 that
+          made it the template rather than one option among two, and the
+          alternative (a third content line) the divergence.
+
+          The one place weekend cannot copy summer outright: summer's left
+          half is a fixed-width "Age 9.42 · 4th", where this one is
+          variable-length adult names, and the card is ~244 px wide inside
+          `LodgingUnitCard` (its `p-4` + `border-2` eat 36 px off the board's
+          `minmax(280px,1fr)` column). So they genuinely compete for the row,
+          and THE ADULT NAMES GIVE WAY: the cabin string is the new
+          information and the reason the line exists.
+
+          The budget, measured on 2022-2025's 1,786 placed registrations so
+          the next person does not have to: the cabin string runs 7-34
+          characters, p50 11 and p95 30. At `text-xs` even the longest fits
+          the ~220 px of card content, which is why the row carries no
+          `overflow-hidden` — clipping would eat the room number off the END
+          of the string, and there is nothing to clip.
+
+          HOUSEHOLD GRAIN ONLY, and this `isHousehold` branch is the whole
+          gate — the same one the "Returning" badge below uses, for the same
+          reason. The server keys the cabin off a household cm_id, so a
+          person-grain adult weekend guest has none to have, and the other
+          branch has no grey line to hang it on. */}
       {isHousehold
-        ? attendingAdults.length > 0 && (
-            <span
-              data-testid="family-card-adults"
-              className="text-muted-foreground text-xs leading-snug"
-            >
-              {/* A surname every adult shares is printed once at the end of
+        ? (attendingAdults.length > 0 || lastYearCabin.length > 0) && (
+            <span className="flex items-baseline gap-2">
+              {attendingAdults.length > 0 && (
+                <span
+                  data-testid="family-card-adults"
+                  // `min-w-0` is not decoration: without it a flex child
+                  // refuses to shrink below its content width and `truncate`
+                  // never fires, leaving the cabin pushed off the card.
+                  //
+                  // Truncated even when no cabin sits beside it, so line 2 is
+                  // ONE line on every card. The bold identity line above
+                  // already truncates for the same reason, and a four-adult
+                  // household that wraps here pushes the chip row down and
+                  // grows the card — the density problem this card fights
+                  // everywhere else. The full list is one click away in
+                  // `FamilyDetailsPanel`.
+                  className="text-muted-foreground min-w-0 flex-1 truncate text-xs leading-snug"
+                >
+                  {/* A surname every adult shares is printed once at the end of
                   the line, the same shape as the children's run above
                   (kindred#2180) -- but on a weaker signal, and deliberately
                   not the same rule: `family_camp_adults.last_name` is empty
@@ -275,13 +337,40 @@ function FamilyCardBody({
                   the 340 multi-adult rostered households and leaves the other
                   205 written out in full. The adults are the FILTERED list,
                   so a placeholder slot cannot suppress the dedupe. */}
-              {adultNames.map((name, index) => (
-                <Fragment key={String(attendingAdults[index]?.adult_number ?? index)}>
-                  {index > 0 && ' · '}
-                  <span>{name}</span>
-                </Fragment>
-              ))}
-              {sharedAdultSurname.length > 0 && ` ${sharedAdultSurname}`}
+                  {adultNames.map((name, index) => (
+                    <Fragment key={String(attendingAdults[index]?.adult_number ?? index)}>
+                      {index > 0 && ' · '}
+                      <span>{name}</span>
+                    </Fragment>
+                  ))}
+                  {sharedAdultSurname.length > 0 && ` ${sharedAdultSurname}`}
+                </span>
+              )}
+              {/* The staff-written string out of last year's registration,
+                  verbatim — never resolved against the unit registry, so it
+                  can legitimately name something no card on the board is
+                  called (see the schema field). `ml-auto` right-anchors it
+                  whether or not adults sit beside it: a household with no
+                  attending adult has no grey line for the cabin to join, and
+                  the cabin is real data that is not dropped to preserve a
+                  line that was never there.
+
+                  RARE, and deliberately not quantified off the `name` column
+                  alone — 63 of 2026's 459 registered households have a blank
+                  `family_camp_adults.name`, but `_adult_display_name`'s
+                  first_name/last_name fallback is load-bearing and rescues
+                  most of them, so the figure `computeAttendingAdults`
+                  actually produces is 35 of 459 registered and ONE of the
+                  382 rostered households this card renders. The branch earns
+                  its place on that one card, not on 63. */}
+              {lastYearCabin.length > 0 && (
+                <span
+                  data-testid="family-card-last-year-cabin"
+                  className="text-muted-foreground ml-auto flex-shrink-0 text-xs leading-snug whitespace-nowrap"
+                >
+                  {lastYearCabin}
+                </span>
+              )}
             </span>
           )
         : // Person-grain (adult weekend) parties are a single guest identified

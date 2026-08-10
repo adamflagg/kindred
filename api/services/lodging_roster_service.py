@@ -774,6 +774,18 @@ class LodgingRosterService:
             attendees_task = tg.create_task(self.repository.fetch_attendees_for_session(year, session_pb_id))
             households_task = tg.create_task(self.repository.fetch_households(year))
             prior_task = tg.create_task(self.repository.fetch_prior_household_cm_ids(year))
+            # kindred#2075. `year - 1` is computed HERE and nowhere else: the
+            # repository read takes a plain year, so kindred#2073's
+            # year-over-year view can sweep 2022-2025 with the same function.
+            # The ruling limits what the CARD renders, not what can be
+            # fetched.
+            #
+            # The only read in this group that is not for `year`. It lands in
+            # the same `@cached_by_year` store under a different key -- one
+            # cold fetch per year per process, not one per request -- and is
+            # deliberately absent from `build_summary`'s parallel TaskGroup,
+            # which keeps nothing but counts.
+            last_year_cabins_task = tg.create_task(self.repository.fetch_cabin_assignments_by_household_cm_id(year - 1))
             adults_task = tg.create_task(self.repository.fetch_family_camp_adults(year))
             registrations_task = tg.create_task(self.repository.fetch_family_camp_registrations(year))
             aliases_task = tg.create_task(self.repository.count_open_unresolved_aliases(year))
@@ -824,6 +836,7 @@ class LodgingRosterService:
             attendees=attendees_task.result(),
             households=households,
             prior_cm_ids=prior_task.result(),
+            last_year_cabins=last_year_cabins_task.result(),
             adults_by_household=adults_task.result(),
             registrations=registrations_task.result(),
             assignments=placements_task.result(),
@@ -844,12 +857,20 @@ class LodgingRosterService:
     async def build_summary(self, year: int, scenario: str = "") -> WeekendSummaryResponse:
         """Every weekend in the year with its counts, in one pass.
 
-        `build_roster` makes ten fetches, of which SIX are year-scoped -- the
-        unit registry, households, the prior-household set, family-camp adults,
-        registrations and the unresolved-alias count are identical for every
-        weekend in the year. Calling it once per weekend to fill the lander
-        repeats all six N times, which is why a weekend with zero parties still
-        costs about three seconds.
+        `build_roster` makes TWELVE fetches (11 concurrent + `fetch_session`
+        alone before them), of which SEVEN are year-scoped -- the unit
+        registry, households, the prior-household set, family-camp adults,
+        registrations, the unresolved-alias count and last year's cabins
+        (kindred#2075) are identical for every weekend in the year. Calling it
+        once per weekend to fill the lander would repeat all seven N times,
+        which is why a weekend with zero parties still costs about three
+        seconds.
+
+        The lander fetches only SIX of those seven. Last year's cabins feed
+        `RosterParty.last_year_cabin`, and no `WeekendSummaryEntry` carries a
+        party -- `_build_parties` runs here purely to be counted, so the
+        seventh read would buy a field nothing renders. `_build_parties` takes
+        it as a defaulted keyword for exactly that reason.
 
         kindred#1963 measures this from eleven and eight, so that issue is
         partly pre-paid: kindred#1889 deleted `has_medical_narrative`, the only
@@ -1158,6 +1179,14 @@ class LodgingRosterService:
         registrations: dict[str, Any],
         assignments: list[Any],
         unit_index: _BathroomIndex,
+        # kindred#2075, keyed by household cm_id. DEFAULTED, unlike
+        # `prior_cm_ids` beside it, because omitting it is a choice a caller
+        # legitimately makes: `build_summary` reads nothing off a party but
+        # its counts, so fetching a whole prior year to fill a field nothing
+        # renders would put back the cost kindred#1963 bought out. Every
+        # OTHER argument here is required precisely because a caller that
+        # dropped it would silently degrade the roster.
+        last_year_cabins: dict[int, str] | None = None,
     ) -> list[RosterParty]:
         placement_by_household, placement_by_person = self._index_assignments(assignments)
 
@@ -1173,6 +1202,7 @@ class LodgingRosterService:
             session_start=session_start,
             households=households,
             prior_cm_ids=prior_cm_ids,
+            last_year_cabins=last_year_cabins or {},
             adults_by_household=adults_by_household,
             registrations=registrations,
             placement_by_household=placement_by_household,
@@ -1270,6 +1300,7 @@ class LodgingRosterService:
         session_start: date | None,
         households: dict[str, Any],
         prior_cm_ids: set[int],
+        last_year_cabins: dict[int, str],
         adults_by_household: dict[str, list[Any]],
         registrations: dict[str, Any],
         placement_by_household: dict[int, _Placement],
@@ -1375,6 +1406,14 @@ class LodgingRosterService:
                     ),
                     arrival_eta=_s(registration, "arrival_eta") if registration is not None else "",
                     is_returning=household_cm_id in prior_cm_ids,
+                    # "" means UNKNOWN, and covers three different facts
+                    # (kindred#2075): a first-timer, a family who skipped last
+                    # year, and a family whose last visit predates 2022. The
+                    # card renders nothing for all three -- see the schema
+                    # field, which is where the reasoning lives. Not gated on
+                    # `is_returning`: the two derive from different tables and
+                    # a cabin we have is a cabin we can show.
+                    last_year_cabin=last_year_cabins.get(household_cm_id, ""),
                     share=self._build_share(registration),
                     flags=self._build_flags(registration),
                 )
