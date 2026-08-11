@@ -209,6 +209,12 @@ const _exhaustiveLodgingUnit: Required<LodgingUnitRow> = {
   occupant_name: '',
   reason: '',
   is_family_available: true,
+  // The write-in COVERING this space, resolved through the unit tree by the
+  // server — this unit's own row, else its nearest ancestor's, else its
+  // nearest descendant's. Distinct from the three fields above, which stay
+  // strictly this unit's own row: a room can be closed by a write-in it does
+  // not hold, which is what a merge or a split does to one.
+  write_in: null,
   map_x: 0.5,
   map_y: 0.5,
 }

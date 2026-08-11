@@ -23,6 +23,7 @@
  * burst pipe" are the same fact about availability.
  */
 import type { LodgingUnitRow } from '../../types/lodging'
+import { writeInOccupant, writeInSource } from './writeIn'
 
 export interface UnitBadge {
   label: string
@@ -84,7 +85,13 @@ export function reservationBadge(unit: LodgingUnitRow): UnitBadge | null {
   // It still does not read `occupant_name`: "written in for a caretaker" and
   // "written in for a burst pipe" are the same fact about availability, which
   // is the same reason the reason text never reached this badge.
-  if (unit.inventory_class !== 'staff_default' && unit.family_available_override === false) {
+  // Read through `writeInOccupant`, never the raw `family_available_override`.
+  // The board draws whichever level the tree resolves to, so the card carrying
+  // a write-in is often not the unit whose row it is: split a written-into
+  // building and its ROOMS carry it; merge over a written-into room and the
+  // BUILDING does. The column answers only for the unit it sits on, which is
+  // how a write-in went silent the moment somebody merged or split around it.
+  if (unit.inventory_class !== 'staff_default' && writeInOccupant(unit) !== null) {
     return {
       label: 'Write-in',
       className: 'bg-slate-200 text-slate-800 dark:bg-slate-800 dark:text-slate-200',
@@ -210,6 +217,20 @@ export interface AvailabilityAction {
   familyAvailable: boolean | null
   /** What the control collects before it may write — see `AvailabilityPrompt`. */
   prompt: AvailabilityPrompt
+  /**
+   * The unit the write NAMES, which is not always the card it is offered on.
+   *
+   * A write-in covers a space, and the board draws whichever level the tree
+   * resolves to — so a room can inherit its building's write-in, and a merged
+   * building one of its rooms'. There is exactly one `lodging_availability`
+   * row either way, and clearing it has to target the unit that HOLDS it:
+   * sending the card's own id would delete nothing, and the unit holding the
+   * row has no card to offer the clear from. Every other action names the
+   * card's own unit.
+   */
+  unitId: string
+  /** That unit's name, for the confirmation toast. */
+  unitName: string
 }
 
 /**
@@ -276,8 +297,27 @@ export function availabilityAction(
   // `!== null` and not truthiness: null (no row for this weekend) and false
   // (closed this weekend) are different answers, and collapsing them makes
   // either "Write in" or "Clear" unreachable across most of the board.
+  const own = { unitId: unit.unit_id, unitName: unit.name }
   if (unit.family_available_override !== null && unit.family_available_override !== undefined) {
-    return { kind: 'clear', label: 'Clear', familyAvailable: null, prompt: 'none' }
+    return { kind: 'clear', label: 'Clear', familyAvailable: null, prompt: 'none', ...own }
+  }
+  // A write-in this unit INHERITED — its building's, or one of its rooms'.
+  // Offered before the `occupied` gate below for the reason that gate's own
+  // comment gives: a clear only ever REDUCES the conflict, so occupancy is
+  // never the state that needs it blocked. Without this branch the card is a
+  // dead end: it badges a write-in it cannot undo, and the unit holding the
+  // row has no card at all — which is exactly what a merge or a split does to
+  // it.
+  const source = writeInSource(unit)
+  if (source !== null) {
+    return {
+      kind: 'clear',
+      label: 'Clear',
+      familyAvailable: null,
+      prompt: 'none',
+      unitId: source.unitId,
+      unitName: source.unitName,
+    }
   }
   // NO SURFACE REACHES THIS BRANCH TODAY, and that is deliberate rather than
   // an oversight. Releasing a staff cabin to families is a registry edit on the
@@ -288,12 +328,12 @@ export function availabilityAction(
   // state this branch describes. Kept, unused, because the write path behind it
   // still exists; see the design spec's §7.3 "stays, unused and noted".
   if (unit.inventory_class === 'staff_default') {
-    return { kind: 'release', label: 'Release', familyAvailable: true, prompt: 'reason' }
+    return { kind: 'release', label: 'Release', familyAvailable: true, prompt: 'reason', ...own }
   }
   // An already-occupied space offers no write-in: the fix for #2090. Only
   // reachable here, past both branches above, so an already-held unit keeps
   // its `clear` action regardless of occupancy — clearing only ever REDUCES
   // the conflict, so it is never the state that needs blocking.
   if (occupied) return null
-  return { kind: 'hold', label: 'Write in', familyAvailable: false, prompt: 'occupant' }
+  return { kind: 'hold', label: 'Write in', familyAvailable: false, prompt: 'occupant', ...own }
 }

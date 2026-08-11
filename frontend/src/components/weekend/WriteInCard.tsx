@@ -37,9 +37,19 @@ export const WRITE_IN_FRAME =
 
 export interface WriteInCardProps {
   occupant: WriteInOccupant
+  /**
+   * The unit the row is recorded at, when that is NOT the card drawing this.
+   *
+   * A write-in names one unit and closes a space: split a written-into
+   * building and its rooms carry the occupant, merge over a written-into room
+   * and the building does. Undefined on the card whose own row it is, which is
+   * the overwhelmingly common case — a line restating the card's own name on
+   * every written-into card is chrome staff learn to read past.
+   */
+  atUnitName?: string | undefined
 }
 
-export function WriteInCard({ occupant }: WriteInCardProps) {
+export function WriteInCard({ occupant, atUnitName }: WriteInCardProps) {
   const named = occupant.name !== ''
 
   return (
@@ -67,6 +77,16 @@ export function WriteInCard({ occupant }: WriteInCardProps) {
         // renders nothing at all until a write-in is recorded from that
         // migration onward. That emptiness is correct, not a bug.
         <span className="text-muted-foreground text-xs leading-tight">{occupant.note}</span>
+      )}
+      {atUnitName !== undefined && atUnitName !== '' && (
+        // WHERE the row lives, not a second occupant fact — which is why it
+        // sits under the note in the same muted key rather than beside the
+        // name. Without it the card asserts this room's own row names them,
+        // and the staff member goes looking for the Clear on a card the merge
+        // or split has taken away, when it is on this one.
+        <span className="text-muted-foreground text-xs leading-tight italic">
+          {`Written in at ${atUnitName}`}
+        </span>
       )}
     </div>
   )

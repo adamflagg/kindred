@@ -74,3 +74,26 @@ describe('WriteInCard', () => {
     expect(WRITE_IN_FRAME).toBe(match?.[1])
   })
 })
+
+describe('a write-in the card INHERITED from elsewhere in the tree', () => {
+  /*
+   * The row names one unit; it closes a SPACE. Split a written-into building
+   * and its rooms carry the occupant; merge over a written-into room and the
+   * building does. Printing the name alone on the inheriting card would say
+   * this room's own row names them — and staff would go looking on a card that
+   * no longer exists for the Clear that is right in front of them.
+   */
+  it('says which unit the write-in is recorded at', () => {
+    render(<WriteInCard occupant={{ name: 'Liam Garcia', note: '' }} atUnitName="House" />)
+
+    expect(screen.getByText('Written in at House')).toBeInTheDocument()
+  })
+
+  it('says nothing extra when the row is the card’s own', () => {
+    // The overwhelmingly common case, and the one that must stay quiet: a line
+    // on every written-into card restating the card's own name is chrome.
+    render(<WriteInCard occupant={{ name: 'Liam Garcia', note: '' }} />)
+
+    expect(screen.queryByText(/written in at/i)).not.toBeInTheDocument()
+  })
+})

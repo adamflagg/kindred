@@ -56,6 +56,20 @@ import type { LodgingUnitRow } from '../../types/lodging'
 import { availabilityAction } from './unitBadges'
 
 export interface UnitAvailabilityWrite {
+  /**
+   * The unit the write NAMES, which is not always the card it came from.
+   *
+   * A write-in covers a space and the board draws whichever level the unit
+   * tree resolves to, so a room can inherit its building's write-in and a
+   * merged building one of its rooms'. There is one `lodging_availability` row
+   * either way, and clearing it has to target the unit that HOLDS it — the
+   * card's own id would delete nothing, and the unit holding the row has no
+   * card to offer the clear from. `availabilityAction` resolves which; this
+   * only carries it.
+   */
+  unitId: string
+  /** That unit's name, for the confirmation toast. */
+  unitName: string
   familyAvailable: boolean | null
   /** Who is in the room. `''` on a release and on a clear. */
   occupantName: string
@@ -158,6 +172,8 @@ export function UnitAvailabilityControl({
               return
             }
             onSubmit({
+              unitId: action.unitId,
+              unitName: action.unitName,
               familyAvailable: action.familyAvailable,
               // The note NEVER stands in for the occupant, and the occupant
               // never doubles as the note: two fields, two facts. Collapsing
@@ -244,7 +260,13 @@ export function UnitAvailabilityControl({
             setIsOpen(true)
             return
           }
-          onSubmit({ familyAvailable: action.familyAvailable, occupantName: '', reason: '' })
+          onSubmit({
+            unitId: action.unitId,
+            unitName: action.unitName,
+            familyAvailable: action.familyAvailable,
+            occupantName: '',
+            reason: '',
+          })
         }}
         className="border-border text-muted-foreground hover:text-foreground hover:border-foreground/30 rounded-full border px-1.5 py-0.5 text-xs font-medium disabled:opacity-40"
       >

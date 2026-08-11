@@ -325,6 +325,61 @@ describe('resolveDrop', () => {
     ).toBeNull()
   })
 
+  it('refuses a drop into a ROOM of a building somebody is written into', () => {
+    // The split case. Staff wrote into the whole house while it was merged,
+    // then split it: the row still names the house, which now has no card, and
+    // without the server's resolved cover this drop went through — a family
+    // into a space somebody is already sleeping in, with nothing on screen to
+    // warn them. The refusal reads the COVER, so both directions of the tree
+    // arrive here as the same fact.
+    const room = unit({
+      code: 'house-a',
+      write_in: {
+        unit_id: 'id-house',
+        unit_code: 'house',
+        unit_name: 'House',
+        occupant_name: 'Liam Garcia',
+        note: '',
+      },
+    })
+    const p = party()
+    expect(
+      resolveDrop({
+        activeId: partyKey(p),
+        overId: unitDroppableId('house-a'),
+        parties: [p],
+        units: [room],
+      })
+    ).toBeNull()
+  })
+
+  it('refuses a whole-house drop when one of its ROOMS is written into', () => {
+    // The mirror case, and the one that predates the split fix: merge a
+    // building over a written-into room and the room stops being drawn, so the
+    // building's card said nothing about the caretaker in it and took the drop.
+    const house = unit({
+      code: 'house',
+      is_container: true,
+      is_combined: true,
+      write_in: {
+        unit_id: 'id-house-a',
+        unit_code: 'house-a',
+        unit_name: 'House A',
+        occupant_name: 'Ava Martinez',
+        note: '',
+      },
+    })
+    const p = party()
+    expect(
+      resolveDrop({
+        activeId: partyKey(p),
+        overId: unitDroppableId('house'),
+        parties: [p],
+        units: [house],
+      })
+    ).toBeNull()
+  })
+
   it('still accepts a drop onto an ordinary unheld unit (regression guard)', () => {
     const unheld = unit({ family_available_override: null, is_family_available: true })
     const p = party()

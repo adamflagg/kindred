@@ -23,7 +23,7 @@
  * string rendered as both the occupant's NAME and the card's italic reason line
  * printed twice on one card. A fallback would restore that by another route.
  */
-import type { LodgingUnitRow } from '../../types/lodging'
+import type { LodgingUnitRow, WriteInCoverRow } from '../../types/lodging'
 
 /** Who is in a room, and anything staff said about them. */
 export interface WriteInOccupant {
@@ -54,6 +54,68 @@ export interface WriteInOccupant {
  * the others is the failure `reservationBadge` documents at length.
  */
 export function writeInOccupant(unit: LodgingUnitRow): WriteInOccupant | null {
+  const cover = coveringWriteIn(unit)
+  if (cover === null) return null
+  return { name: (cover.occupant_name ?? '').trim(), note: (cover.note ?? '').trim() }
+}
+
+/** Where a unit's write-in is recorded, or `null` if none covers it. */
+export interface WriteInSource {
+  /** The unit the `lodging_availability` row belongs to — a clear's target. */
+  unitId: string
+  unitCode: string
+  unitName: string
+  /** Whether the row is this unit's own, rather than inherited through the tree. */
+  isOwn: boolean
+}
+
+/**
+ * WHICH unit holds the write-in covering this one.
+ *
+ * A SECOND function rather than more fields on `WriteInOccupant`, because the
+ * two answer different questions and only one of them is display. "Who is in
+ * this space" is what the card prints; "whose row is this" is what a CLEAR has
+ * to name, and sending the card's own id for an inherited write-in would
+ * delete nothing at all — the room has no row. Keeping them apart is also what
+ * left every existing reader of the occupant untouched.
+ */
+export function writeInSource(unit: LodgingUnitRow): WriteInSource | null {
+  const cover = coveringWriteIn(unit)
+  if (cover === null) return null
+  const unitCode = cover.unit_code ?? ''
+  return {
+    unitId: cover.unit_id ?? '',
+    unitCode,
+    unitName: cover.unit_name ?? '',
+    isOwn: unitCode === unit.code,
+  }
+}
+
+/**
+ * The server-resolved cover, else this unit's OWN row synthesised as one.
+ *
+ * ## Why the fallback is not a code smell
+ *
+ * `write_in` is resolved server-side (`write_in_covers`) and is present on
+ * every unit the current API builds, so in practice the second branch only
+ * fires for a payload from an older server — Pydantic fields with a default
+ * render OPTIONAL in TypeScript, so the key simply arrives missing.
+ *
+ * The direction of the fallback is the point. Reading a missing cover as
+ * "nobody is in it" would OPEN a cabin the row says is closed and invite a
+ * drop into an occupied room, which is the precise failure the cover exists to
+ * prevent. `shareabilityBadge` makes the same argument at its own default: on
+ * missing evidence the only wrong answer is a permissive one.
+ */
+function coveringWriteIn(unit: LodgingUnitRow): WriteInCoverRow | null {
+  const cover = unit.write_in
+  if (cover !== null && cover !== undefined) return cover
   if (unit.family_available_override !== false) return null
-  return { name: (unit.occupant_name ?? '').trim(), note: (unit.reason ?? '').trim() }
+  return {
+    unit_id: unit.unit_id,
+    unit_code: unit.code,
+    unit_name: unit.name,
+    occupant_name: unit.occupant_name ?? '',
+    note: unit.reason ?? '',
+  }
 }

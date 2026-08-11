@@ -199,6 +199,11 @@ describe('availabilityAction', () => {
       label: 'Write in',
       familyAvailable: false,
       prompt: 'occupant',
+      // The write NAMES a unit, and for every action but an inherited clear
+      // that unit is the card's own. Asserted rather than left off, so the
+      // pair cannot quietly go missing from the payload the board sends.
+      unitId: 'u1',
+      unitName: 'Cedar 1',
     })
   })
 
@@ -207,7 +212,14 @@ describe('availabilityAction', () => {
     // cabins are never released; it does not prove it, so the capability stays.
     expect(
       availabilityAction(unit({ inventory_class: 'staff_default', is_family_available: false }))
-    ).toEqual({ kind: 'release', label: 'Release', familyAvailable: true, prompt: 'reason' })
+    ).toEqual({
+      kind: 'release',
+      label: 'Release',
+      familyAvailable: true,
+      prompt: 'reason',
+      unitId: 'u1',
+      unitName: 'Cedar 1',
+    })
   })
 
   it('offers to clear a held family cabin, and asks for no reason to do it', () => {
@@ -217,7 +229,14 @@ describe('availabilityAction', () => {
       availabilityAction(
         unit({ family_available_override: false, reason: 'Burst pipe', is_family_available: false })
       )
-    ).toEqual({ kind: 'clear', label: 'Clear', familyAvailable: null, prompt: 'none' })
+    ).toEqual({
+      kind: 'clear',
+      label: 'Clear',
+      familyAvailable: null,
+      prompt: 'none',
+      unitId: 'u1',
+      unitName: 'Cedar 1',
+    })
   })
 
   it('offers to clear a released staff cabin', () => {
@@ -404,5 +423,77 @@ describe('sharingConflictBadge', () => {
     const withoutField = unit()
     delete (withoutField as Partial<LodgingUnitRow>).shareability
     expect(sharingConflictBadge(withoutField, 2)).toBeNull()
+  })
+})
+
+describe('a write-in inherited from elsewhere in the tree', () => {
+  /*
+   * The board draws whichever level the tree resolves to, so the card carrying
+   * a write-in is often not the unit the row names: split a written-into
+   * building and its rooms carry it; merge over a written-into room and the
+   * building does. Both must BADGE the fact and both must be able to CLEAR it
+   * — a card that inherits a write-in and cannot undo it is a dead end, since
+   * the unit holding the row has no card at all.
+   */
+  const coverFromBuilding = {
+    unit_id: 'id-house',
+    unit_code: 'house',
+    unit_name: 'House',
+    occupant_name: 'Liam Garcia',
+    note: '',
+  }
+
+  it('badges a room whose BUILDING was written into', () => {
+    expect(reservationBadge(unit({ code: 'house-a', write_in: coverFromBuilding }))?.label).toBe(
+      'Write-in'
+    )
+  })
+
+  it('offers to clear it, naming the unit that actually holds the row', () => {
+    const action = availabilityAction(unit({ code: 'house-a', write_in: coverFromBuilding }))
+
+    expect(action?.kind).toBe('clear')
+    // The WRITE TARGET, not the card. Sending this card's own id would delete
+    // nothing: the row belongs to the building, and the room has none.
+    expect(action?.unitId).toBe('id-house')
+    expect(action?.unitName).toBe('House')
+  })
+
+  it('clears an inherited write-in even on an occupied card', () => {
+    // Same reasoning the own-row branch already carries: a clear only ever
+    // REDUCES the conflict, so occupancy is never the state that needs it
+    // blocked.
+    expect(
+      availabilityAction(unit({ code: 'house-a', write_in: coverFromBuilding }), true)?.kind
+    ).toBe('clear')
+  })
+
+  it('names the card’s OWN unit when the write-in starts here', () => {
+    const action = availabilityAction(unit())
+
+    expect(action?.kind).toBe('hold')
+    expect(action?.unitId).toBe('u1')
+    expect(action?.unitName).toBe('Cedar 1')
+  })
+
+  it('badges a MERGED building written into through one of its rooms', () => {
+    const fromRoom = {
+      unit_id: 'id-house-a',
+      unit_code: 'house-a',
+      unit_name: 'House A',
+      occupant_name: 'Ava Martinez',
+      note: '',
+    }
+
+    expect(
+      reservationBadge(
+        unit({ code: 'house', is_container: true, is_combined: true, write_in: fromRoom })
+      )?.label
+    ).toBe('Write-in')
+    expect(
+      availabilityAction(
+        unit({ code: 'house', is_container: true, is_combined: true, write_in: fromRoom })
+      )?.unitId
+    ).toBe('id-house-a')
   })
 })
