@@ -38,7 +38,7 @@ import {
 } from './unitBadges'
 import { UnitAvailabilityControl } from './UnitAvailabilityControl'
 import type { UnitAvailabilityWrite } from './UnitAvailabilityControl'
-import { writeInOccupant } from './writeIn'
+import { writeInOccupant, writeInSource } from './writeIn'
 import { WriteInCard } from './WriteInCard'
 
 /**
@@ -163,7 +163,14 @@ export interface LodgingUnitCardProps {
   canSetAvailability?: boolean
   /** True while THIS unit's availability write is in flight. */
   savingAvailability?: boolean
-  onSetAvailability?: (unit: LodgingUnitRow, write: UnitAvailabilityWrite) => void
+  /**
+   * NO UNIT PARAMETER. The write NAMES the unit it targets (`unitId` on
+   * `UnitAvailabilityWrite`), which for an inherited write-in is this card's
+   * building or one of its rooms rather than the card itself. Passing the card
+   * alongside it would offer the caller the wrong one of the two, which is the
+   * bug this shape removes rather than documents.
+   */
+  onSetAvailability?: (write: UnitAvailabilityWrite) => void
   /**
    * Merge/split is writable: the user holds `bunking.manage` and a weekend is
    * selected.
@@ -449,6 +456,10 @@ export function LodgingUnitCard({
   // using it as a PROXY for "is somebody in this room". Naming the fact once
   // is what stops the tint being keyed on a spelling.
   const writeIn = writeInOccupant(unit)
+  // WHOSE row it is. Undefined whenever it is this card's own, so the common
+  // case says nothing extra — see `WriteInCard`'s own prop doc.
+  const writeInAt = writeInSource(unit)
+  const writeInAtName = writeInAt !== null && !writeInAt.isOwn ? writeInAt.unitName : undefined
   const held = writeIn !== null
   const { setNodeRef: setUnitDropRef, isOver: isUnitOver } = useDroppable({
     id: unitDroppableId(unit.code),
@@ -864,7 +875,7 @@ export function LodgingUnitCard({
           occupied={parties.length > 0}
           isSaving={savingAvailability}
           onSubmit={(write) => {
-            onSetAvailability?.(unit, write)
+            onSetAvailability?.(write)
           }}
         />
         {/* kindred#2080 — the space's own placement path, for the staff
@@ -1002,7 +1013,7 @@ export function LodgingUnitCard({
             below: a card carrying both is not a state any writer produces
             (#2090 rules the two mutually exclusive), but if a legacy row ever
             does, hiding one of them would drop somebody from the board. */}
-        {writeIn !== null && <WriteInCard occupant={writeIn} />}
+        {writeIn !== null && <WriteInCard occupant={writeIn} atUnitName={writeInAtName} />}
         {parties.length === 0 && writeIn === null ? (
           /* Summer's wording in family vocabulary — `BunkCard` says "Drop
              campers here". An empty slot's job is to be a target, and "Empty"

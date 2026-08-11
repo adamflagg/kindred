@@ -64,6 +64,34 @@ describe('reservationBadge', () => {
     })
   })
 
+  it('still says Building on a MERGED building nobody has written into', () => {
+    // The structural fact does not stop being true because the card is drawn.
+    // "Building" is the fallback here, not the first answer.
+    expect(reservationBadge(unit({ is_container: true, is_combined: true }))?.label).toBe(
+      'Building'
+    )
+  })
+
+  it('says Write-in on a MERGED building somebody has been written into', () => {
+    // A combined container IS the card the board draws (`drawnUnits`) and IS a
+    // drop target (`resolveDrop`), so it reads its availability like any other
+    // drawn unit. Badging it "Building" while `availabilityAction` offers to
+    // CLEAR the write-in is the exact drift this module exists to prevent.
+    expect(
+      reservationBadge(
+        unit({ is_container: true, is_combined: true, family_available_override: false })
+      )?.label
+    ).toBe('Write-in')
+  })
+
+  it('keeps saying Building on a SPLIT container carrying an override', () => {
+    // A split container gets no card at all, so there is nothing to badge and
+    // no action to agree with. Unchanged, deliberately.
+    expect(
+      reservationBadge(unit({ is_container: true, family_available_override: false }))?.label
+    ).toBe('Building')
+  })
+
   it('leaves an ordinary available family cabin unbadged', () => {
     expect(reservationBadge(unit())).toBeNull()
   })
@@ -171,6 +199,11 @@ describe('availabilityAction', () => {
       label: 'Write in',
       familyAvailable: false,
       prompt: 'occupant',
+      // The write NAMES a unit, and for every action but an inherited clear
+      // that unit is the card's own. Asserted rather than left off, so the
+      // pair cannot quietly go missing from the payload the board sends.
+      unitId: 'u1',
+      unitName: 'Cedar 1',
     })
   })
 
@@ -179,7 +212,14 @@ describe('availabilityAction', () => {
     // cabins are never released; it does not prove it, so the capability stays.
     expect(
       availabilityAction(unit({ inventory_class: 'staff_default', is_family_available: false }))
-    ).toEqual({ kind: 'release', label: 'Release', familyAvailable: true, prompt: 'reason' })
+    ).toEqual({
+      kind: 'release',
+      label: 'Release',
+      familyAvailable: true,
+      prompt: 'reason',
+      unitId: 'u1',
+      unitName: 'Cedar 1',
+    })
   })
 
   it('offers to clear a held family cabin, and asks for no reason to do it', () => {
@@ -189,7 +229,14 @@ describe('availabilityAction', () => {
       availabilityAction(
         unit({ family_available_override: false, reason: 'Burst pipe', is_family_available: false })
       )
-    ).toEqual({ kind: 'clear', label: 'Clear', familyAvailable: null, prompt: 'none' })
+    ).toEqual({
+      kind: 'clear',
+      label: 'Clear',
+      familyAvailable: null,
+      prompt: 'none',
+      unitId: 'u1',
+      unitName: 'Cedar 1',
+    })
   })
 
   it('offers to clear a released staff cabin', () => {
@@ -242,11 +289,38 @@ describe('availabilityAction', () => {
     expect(availabilityAction(unit(), false)?.kind).toBe('hold')
   })
 
-  it('offers nothing on a building row', () => {
-    // A container is a whole-building aggregate, not a bookable room. Holding
-    // one would write an availability row against a unit no family can be
-    // placed into, and the board draws no card for it anyway.
+  it('offers nothing on a SPLIT container', () => {
+    // Still nothing, and for the reason that survived: a split container gets
+    // no card (`drawnUnits` descends past it) and `resolveDrop` rejects it as
+    // a target, so an availability row written against it is one no surface
+    // could ever show or act on.
     expect(availabilityAction(unit({ is_container: true }))).toBeNull()
+  })
+
+  it('offers a write-in on a MERGED building', () => {
+    // The gate used to refuse EVERY container, on the premise that a container
+    // gets no card and no family can be placed into one. Merge-by-drag (#2012)
+    // made both halves false for a COMBINED container: it is the one card the
+    // board draws in place of its rooms, and `dragPlacement` accepts it as a
+    // drop target. Refusing it here left the four `default_combined` buildings
+    // in the 2026 registry with no write-in path at all — their rooms have no
+    // cards to carry one either.
+    expect(availabilityAction(unit({ is_container: true, is_combined: true }))?.kind).toBe('hold')
+  })
+
+  it('offers to clear a MERGED building that has been written into', () => {
+    expect(
+      availabilityAction(
+        unit({ is_container: true, is_combined: true, family_available_override: false })
+      )?.kind
+    ).toBe('clear')
+  })
+
+  it('offers nothing on a MERGED building that already holds a family (#2090)', () => {
+    // The occupancy rule is untouched: a write-in and a placement stay mutually
+    // exclusive. A combined container simply now REACHES that rule instead of
+    // being refused a step earlier for being a container.
+    expect(availabilityAction(unit({ is_container: true, is_combined: true }), true)).toBeNull()
   })
 })
 
@@ -349,5 +423,131 @@ describe('sharingConflictBadge', () => {
     const withoutField = unit()
     delete (withoutField as Partial<LodgingUnitRow>).shareability
     expect(sharingConflictBadge(withoutField, 2)).toBeNull()
+  })
+})
+
+describe('a write-in inherited from elsewhere in the tree', () => {
+  /*
+   * The board draws whichever level the tree resolves to, so the card carrying
+   * a write-in is often not the unit the row names: split a written-into
+   * building and its rooms carry it; merge over a written-into room and the
+   * building does. Both must BADGE the fact and both must be able to CLEAR it
+   * — a card that inherits a write-in and cannot undo it is a dead end, since
+   * the unit holding the row has no card at all.
+   */
+  const coverFromBuilding = {
+    unit_id: 'id-house',
+    unit_code: 'house',
+    unit_name: 'House',
+    occupant_name: 'Liam Garcia',
+    note: '',
+  }
+
+  it('badges a room whose BUILDING was written into', () => {
+    expect(reservationBadge(unit({ code: 'house-a', write_in: coverFromBuilding }))?.label).toBe(
+      'Write-in'
+    )
+  })
+
+  it('offers to clear it, naming the unit that actually holds the row', () => {
+    const action = availabilityAction(unit({ code: 'house-a', write_in: coverFromBuilding }))
+
+    expect(action?.kind).toBe('clear')
+    // The WRITE TARGET, not the card. Sending this card's own id would delete
+    // nothing: the row belongs to the building, and the room has none.
+    expect(action?.unitId).toBe('id-house')
+    expect(action?.unitName).toBe('House')
+  })
+
+  it('clears an inherited write-in even on an occupied card', () => {
+    // Same reasoning the own-row branch already carries: a clear only ever
+    // REDUCES the conflict, so occupancy is never the state that needs it
+    // blocked.
+    expect(
+      availabilityAction(unit({ code: 'house-a', write_in: coverFromBuilding }), true)?.kind
+    ).toBe('clear')
+  })
+
+  it('names the card’s OWN unit when the write-in starts here', () => {
+    const action = availabilityAction(unit())
+
+    expect(action?.kind).toBe('hold')
+    expect(action?.unitId).toBe('u1')
+    expect(action?.unitName).toBe('Cedar 1')
+  })
+
+  it('badges a MERGED building written into through one of its rooms', () => {
+    const fromRoom = {
+      unit_id: 'id-house-a',
+      unit_code: 'house-a',
+      unit_name: 'House A',
+      occupant_name: 'Ava Martinez',
+      note: '',
+    }
+
+    expect(
+      reservationBadge(
+        unit({ code: 'house', is_container: true, is_combined: true, write_in: fromRoom })
+      )?.label
+    ).toBe('Write-in')
+    expect(
+      availabilityAction(
+        unit({ code: 'house', is_container: true, is_combined: true, write_in: fromRoom })
+      )?.unitId
+    ).toBe('id-house-a')
+  })
+})
+
+describe('the badge and the clear must name the SAME row', () => {
+  /*
+   * `availabilityAction` lives beside `reservationBadge` so the two cannot
+   * drift — a card badged "Write-in" that offers to "Write in" says two things
+   * about one cabin. Once a write-in can be INHERITED, that invariant grows
+   * teeth: a card can carry its own availability row AND a relative's
+   * write-in at the same time, and one control has two rows to choose from.
+   * It must clear the one the badge is naming, or the toast reports success
+   * for a row the staff member was not looking at.
+   */
+  const coverFromBuilding = {
+    unit_id: 'id-house',
+    unit_code: 'house',
+    unit_name: 'House',
+    occupant_name: 'Liam Garcia',
+    note: '',
+  }
+
+  it('clears the BUILDING’s write-in on a room carrying a stale release of its own', () => {
+    // Reachable through the API, which does not check an override against the
+    // unit's role — `true` on a family_pool row agrees with that role and no
+    // surface writes it, but nothing deletes one either. The badge reads
+    // "Write-in" here, so the clear must be the write-in.
+    const stale = unit({
+      unit_id: 'u-room',
+      code: 'house-a',
+      name: 'House A',
+      family_available_override: true,
+      write_in: coverFromBuilding,
+    })
+
+    expect(reservationBadge(stale)?.label).toBe('Write-in')
+    expect(availabilityAction(stale)?.unitId).toBe('id-house')
+  })
+
+  it('still clears its OWN row on a released staff cabin, which is what its badge names', () => {
+    // The other side of the same rule, and why this is not simply "the cover
+    // always wins": a released staff cabin badges "Released" off its own row,
+    // so that is the row its clear has to name — even when a relative's
+    // write-in also covers it.
+    const released = unit({
+      unit_id: 'u-room',
+      code: 'house-a',
+      name: 'House A',
+      inventory_class: 'staff_default',
+      family_available_override: true,
+      write_in: coverFromBuilding,
+    })
+
+    expect(reservationBadge(released)?.label).toBe('Released')
+    expect(availabilityAction(released)?.unitId).toBe('u-room')
   })
 })

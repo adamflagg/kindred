@@ -46,6 +46,7 @@ from api.schemas.lodging import (
     WeekendSessionSummary,
     WeekendSummaryEntry,
     WeekendSummaryResponse,
+    WriteInCover,
 )
 from api.services.lodging_rules import (
     amenity_coverage,
@@ -462,6 +463,110 @@ def resolve_combined(*, default: bool, override: bool | None, session_override: 
     if session_override is not None:
         return session_override
     return default
+
+
+def write_in_covers(units: list[LodgingUnitSummary]) -> dict[str, WriteInCover]:
+    """Which units each write-in closes, keyed by unit code.
+
+    THE UNIT A ROW NAMES IS NOT THE ONLY SPACE IT CLOSES. A write-in is a fact
+    about a physical space and a building's space contains its rooms', but the
+    board draws whichever level the tree resolves to (`drawn_units`) and a
+    merge or a split moves that level under staff's feet. A write-in recorded
+    on a merged building went silent the moment somebody split it; one recorded
+    on a room said nothing on the building's card after a merge. Either way a
+    family could be dropped into a space somebody is already sleeping in.
+
+    Order, highest first: the unit's OWN row, else the nearest ANCESTOR's, else
+    the nearest DESCENDANT's. Own beats inherited because it is the more
+    specific statement about the same space; an ancestor beats a descendant
+    because a building closed whole says something about every room in it,
+    where one room says only that the building is no longer free to let whole.
+
+    RESOLVED FROM OWN ROWS ONLY, never transitively through a cover computed
+    for somebody else -- which is what keeps a caretaker in room A off room B.
+    A closes its building (a whole-house let is no longer available); the
+    building does not then close B, because that would take a lettable room off
+    the board for no reason.
+
+    Only a write-in travels. `True` is a staff cabin OPENED to families for the
+    weekend: it names no occupant and closes nothing, so inheriting it would
+    silently open every room beneath a released building.
+
+    Cycle-guarded on both walks. The server refuses to write a parent cycle
+    (#1899), but one already in the data must not spin the roster build --
+    the same backstop `drawn_units` and the frontend's `coveredCodes` carry.
+    """
+    # A blank `code` is a valid if unfortunate registry value and would occupy
+    # the same key `parent_code == ""` uses for "no parent" -- the collision
+    # `drawn_units._parent_of` guards. Excluded here and never looked up.
+    by_code = {unit.code: unit for unit in units if unit.code}
+    children: dict[str, list[LodgingUnitSummary]] = {}
+    for unit in units:
+        if unit.parent_code:
+            children.setdefault(unit.parent_code, []).append(unit)
+    # Sorted so two identical payloads never disagree about WHICH row a card
+    # names when a building has several written-into rooms beneath it.
+    for bucket in children.values():
+        bucket.sort(key=lambda child: child.code)
+
+    def _is_written_in(unit: LodgingUnitSummary) -> bool:
+        return unit.family_available_override is False
+
+    def _nearest_ancestor(unit: LodgingUnitSummary) -> LodgingUnitSummary | None:
+        seen = {unit.code}
+        cursor = by_code.get(unit.parent_code) if unit.parent_code else None
+        while cursor is not None and cursor.code not in seen:
+            if _is_written_in(cursor):
+                return cursor
+            seen.add(cursor.code)
+            cursor = by_code.get(cursor.parent_code) if cursor.parent_code else None
+        return None
+
+    def _nearest_descendant(unit: LodgingUnitSummary) -> LodgingUnitSummary | None:
+        seen = {unit.code}
+        queue = list(children.get(unit.code, []))
+        while queue:
+            node = queue.pop(0)
+            if node.code in seen:
+                continue
+            seen.add(node.code)
+            if _is_written_in(node):
+                return node
+            queue.extend(children.get(node.code, []))
+        return None
+
+    covers: dict[str, WriteInCover] = {}
+    for unit in units:
+        # Blank codes are excluded from BOTH sides, not just the lookup above.
+        # `_build_units` reads this map back by code, so one blank-coded row
+        # written into would hand its occupant to every other blank-coded row
+        # through the shared `""` key -- a unit reporting somebody sleeping in
+        # a space on the strength of a row it does not hold.
+        if not unit.code:
+            continue
+        source = unit if _is_written_in(unit) else (_nearest_ancestor(unit) or _nearest_descendant(unit))
+        if source is None:
+            continue
+        covers[unit.code] = WriteInCover(
+            unit_id=source.unit_id,
+            unit_code=source.code,
+            unit_name=source.name,
+            occupant_name=source.occupant_name,
+            note=source.reason,
+        )
+    return covers
+
+
+def _resolve_write_in_covers(units: list[LodgingUnitSummary]) -> None:
+    """Attach each unit's resolved write-in cover, in place.
+
+    The mutating counterpart to `write_in_covers`, mirroring
+    `_resolve_power_coverage`: the pure function is what the tests reason
+    about, and this is the one line the response path calls.
+    """
+    covers = write_in_covers(units)
+    for unit in units:
+        unit.write_in = covers.get(unit.code)
 
 
 def drawn_units(units: list[LodgingUnitSummary]) -> list[LodgingUnitSummary]:
@@ -903,6 +1008,16 @@ class LodgingRosterService:
         # get at the counts, but its `WeekendSummaryEntry` carries no `units`
         # -- so resolving coverage there would be work no response can read.
         _resolve_power_coverage(unit_summaries, unit_index)
+        # A SECOND PASS, and it has to be: a unit's cover can come from a row
+        # on a unit built after it, so there is no order in which one pass over
+        # `_build_units` would see every own-row it needs.
+        #
+        # Only on THIS path, for the identical reason `_resolve_power_coverage`
+        # above is: `build_summary` builds its own units to get at the counts,
+        # but its `WeekendSummaryEntry` carries no `units`, so resolving covers
+        # there would be work no response can read -- once per weekend, across
+        # every weekend of the year, on every lander request.
+        _resolve_write_in_covers(unit_summaries)
         parties = self._build_parties(
             session_type=session_type,
             session_start=_as_date(_s(session, "start_date")),

@@ -64,6 +64,7 @@ import { LodgingUnitCard } from './LodgingUnitCard'
 import { partyKey } from './partyKey'
 import { resolvePartyUnit } from './rosterAttention'
 import type { UnitAvailabilityWrite } from './UnitAvailabilityControl'
+import { writeInSource } from './writeIn'
 
 export interface LodgingBoardProps {
   parties: RosterPartyRow[]
@@ -347,13 +348,18 @@ export function LodgingBoard({
   )
 
   const writeAvailability = useCallback(
-    (unit: LodgingUnitRow, write: UnitAvailabilityWrite) => {
+    (write: UnitAvailabilityWrite) => {
       // The rejection path is the hook's: it raises the toast. Catching here
       // keeps the rejected promise from surfacing as an unhandled rejection,
       // exactly as the drop handler does.
       void setAvailability({
-        unitId: unit.unit_id,
-        unitName: unit.name,
+        // FROM THE WRITE, not from the card. An inherited write-in is cleared
+        // at the unit that holds the row, which may be this card's building or
+        // one of its rooms — and that unit has no card of its own, which is
+        // precisely why the clear is offered here. `availabilityAction`
+        // resolves the target; passing `unit` again would delete nothing.
+        unitId: write.unitId,
+        unitName: write.unitName,
         familyAvailable: write.familyAvailable,
         occupantName: write.occupantName,
         reason: write.reason,
@@ -506,7 +512,19 @@ export function LodgingBoard({
                             hue={area.hue}
                             canPlace={canPlace}
                             canSetAvailability={canSetAvailability}
-                            savingAvailability={pendingUnitId === slot.unit.unit_id}
+                            // THIS card's unit, or the one holding the
+                            // write-in it inherited. `pendingUnitId` names the
+                            // unit the WRITE targets, and for an inherited
+                            // clear that is never this card's own id — so
+                            // keying the disable on the card alone leaves the
+                            // button live for the whole write. Same shape as
+                            // `savingMerge` below, and for the same reason:
+                            // the unit written is not always the unit drawn.
+                            savingAvailability={
+                              pendingUnitId === slot.unit.unit_id ||
+                              (pendingUnitId !== '' &&
+                                pendingUnitId === writeInSource(slot.unit)?.unitId)
+                            }
                             onSetAvailability={writeAvailability}
                             canMerge={canMergeUnits}
                             mergeSourceUnit={draggingMergeUnit}

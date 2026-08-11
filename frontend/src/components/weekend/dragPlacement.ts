@@ -29,6 +29,7 @@
 import type { LodgingUnitRow, RosterPartyRow, WeekendRoster } from '../../types/lodging'
 import { occupiedCodes } from './boardLayout'
 import { partyKey } from './partyKey'
+import { writeInOccupant } from './writeIn'
 
 /**
  * The queue droppable. One id, imported by the badge that registers it and
@@ -223,7 +224,13 @@ export function resolveDrop({
   // `useDroppable`, so a refusal only on that hook's `disabled` flag would be
   // silently bypassed by it. `LodgingUnitCard` also disables its droppable
   // for the drag affordance, but this is what actually enforces it.
-  if (unit.family_available_override === false) return null
+  // Read through `writeInOccupant`, never the raw column: the row names one
+  // unit but closes a SPACE, and the board draws whichever level the tree
+  // resolves to. Split a written-into building and this drop lands in one of
+  // its rooms; merge over a written-into room and it lands on the building.
+  // The column answers only for the unit it sits on, so both of those went
+  // through — a family into a space somebody is already sleeping in.
+  if (writeInOccupant(unit) !== null) return null
   // A COMBINED container IS a card now — Task 6 draws its own row in place of
   // its rooms (unitLevel.ts, `drawnUnits`) — so it must accept a drop exactly
   // like any other drawn unit. A NON-combined container still carries only

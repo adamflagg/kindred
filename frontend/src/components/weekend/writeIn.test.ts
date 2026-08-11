@@ -13,7 +13,7 @@
 import { describe, expect, it } from 'vitest'
 
 import type { LodgingUnitRow } from '../../types/lodging'
-import { writeInOccupant } from './writeIn'
+import { writeInOccupant, writeInSource } from './writeIn'
 
 function unit(overrides: Partial<LodgingUnitRow> = {}): LodgingUnitRow {
   return {
@@ -111,5 +111,70 @@ describe('writeInOccupant', () => {
         })
       )
     ).toEqual({ name: '', note: 'Back Monday' })
+  })
+})
+
+describe('a write-in resolved through the unit tree', () => {
+  /*
+   * THE ROW NAMES ONE UNIT; IT CLOSES A SPACE. The server resolves which units
+   * a write-in covers (`write_in_covers`), because the board draws whichever
+   * level the tree resolves to and a merge or split moves that level under
+   * staff's feet. Read through this module, both directions arrive as the same
+   * fact — which is the whole reason the fact has a name.
+   */
+  const inherited = unit({
+    code: 'house-a',
+    write_in: {
+      unit_id: 'id-house',
+      unit_code: 'house',
+      unit_name: 'House',
+      occupant_name: 'Liam Garcia',
+      note: 'Back Monday',
+    },
+  })
+
+  it('names the occupant of a room its BUILDING was written into', () => {
+    expect(writeInOccupant(inherited)).toEqual({ name: 'Liam Garcia', note: 'Back Monday' })
+  })
+
+  it('reports the row it came from, and that it is not this unit’s own', () => {
+    expect(writeInSource(inherited)).toEqual({
+      unitId: 'id-house',
+      unitCode: 'house',
+      unitName: 'House',
+      isOwn: false,
+    })
+  })
+
+  it('marks a unit’s OWN row as its own, so the card does not attribute it elsewhere', () => {
+    const own = unit({
+      code: 'cedar-1',
+      family_available_override: false,
+      write_in: {
+        unit_id: 'u1',
+        unit_code: 'cedar-1',
+        unit_name: 'Cedar 1',
+        occupant_name: 'Emma Johnson',
+        note: '',
+      },
+    })
+
+    expect(writeInSource(own)?.isOwn).toBe(true)
+  })
+
+  it('falls back to the unit’s own row when the payload carries no cover at all', () => {
+    // A payload from a server older than the resolution pass has no `write_in`
+    // — Pydantic fields with a default render OPTIONAL in TypeScript. The only
+    // wrong answer to give there is a PERMISSIVE one: reading the absence as
+    // "nobody is in it" would re-open a closed cabin and invite a drop into an
+    // occupied room, which is the exact failure the cover exists to prevent.
+    expect(
+      writeInOccupant(unit({ family_available_override: false, occupant_name: 'Emma Johnson' }))
+    ).toEqual({ name: 'Emma Johnson', note: '' })
+  })
+
+  it('says nothing when neither a cover nor an own row closes the space', () => {
+    expect(writeInOccupant(unit())).toBeNull()
+    expect(writeInSource(unit())).toBeNull()
   })
 })

@@ -30,11 +30,13 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from api.schemas.lodging import LodgingUnitSummary
 from api.services.lodging_roster_service import (
     SUMMARY_ENTRY_CONCURRENCY,
     LodgingRosterService,
     SessionNotFoundError,
     _BathroomIndex,
+    write_in_covers,
 )
 
 
@@ -1023,6 +1025,70 @@ class TestUnitsAndCounts:
         assert roster.counts.units_reserved == 1
         assert roster.counts.units_staff_housing == 1
         assert roster.counts.beds_family_available == 0
+
+    @pytest.mark.asyncio
+    async def test_a_write_in_on_a_building_reaches_the_rooms_beneath_it(self) -> None:
+        # THE WIRING, not the resolver -- `TestWriteInCovers` pins the rule
+        # itself. This is the pass that puts the answer on the payload, and it
+        # is a SECOND pass over the summaries for a reason: a unit's cover can
+        # come from a row on a unit built after it, so there is no single order
+        # in which one pass sees every own-row it needs.
+        repo = _repo(
+            fetch_session=FAMILY_SESSION,
+            fetch_units=[
+                _unit("u1", "house", "House", is_container=True, default_combined=True),
+                _unit("u2", "house-a", "House A", sleeps=4, parent_unit="u1"),
+            ],
+            fetch_availability=[
+                _rec(unit="u1", family_available=False, occupant_name="Liam Garcia", note="Back Monday")
+            ],
+        )
+        roster = await LodgingRosterService(repo).build_roster(2026, 1000001)
+
+        by_code = {u.code: u for u in roster.units}
+        # The room holds no row of its own -- and is closed all the same.
+        assert by_code["house-a"].family_available_override is None
+        assert by_code["house-a"].write_in is not None
+        assert by_code["house-a"].write_in.unit_id == "u1"
+        assert by_code["house-a"].write_in.occupant_name == "Liam Garcia"
+        assert by_code["house-a"].write_in.note == "Back Monday"
+        # And the building still reads as its own, so the card that holds the
+        # row does not start attributing it elsewhere.
+        assert by_code["house"].write_in is not None
+        assert by_code["house"].write_in.unit_code == "house"
+
+    @pytest.mark.asyncio
+    async def test_a_write_in_on_a_room_reaches_the_building_over_it(self) -> None:
+        # The mirror, through the same pass: merge a building over a
+        # written-into room and the room stops being drawn, so without this the
+        # building's card said nothing about the caretaker in it.
+        repo = _repo(
+            fetch_session=FAMILY_SESSION,
+            fetch_units=[
+                _unit("u1", "house", "House", is_container=True, default_combined=True),
+                _unit("u2", "house-a", "House A", sleeps=4, parent_unit="u1"),
+            ],
+            fetch_availability=[_rec(unit="u2", family_available=False, occupant_name="Ava Martinez")],
+        )
+        roster = await LodgingRosterService(repo).build_roster(2026, 1000001)
+
+        by_code = {u.code: u for u in roster.units}
+        assert by_code["house"].write_in is not None
+        assert by_code["house"].write_in.unit_id == "u2"
+        assert by_code["house"].write_in.occupant_name == "Ava Martinez"
+
+    @pytest.mark.asyncio
+    async def test_an_ordinary_open_cabin_carries_no_cover_at_all(self) -> None:
+        # The common case by far, and the one that must stay None: a cover on
+        # every unit would close the whole board.
+        repo = _repo(
+            fetch_session=FAMILY_SESSION,
+            fetch_units=[_unit("u1", "ridge-a", "Ridge A", sleeps=5)],
+            fetch_availability=[],
+        )
+        roster = await LodgingRosterService(repo).build_roster(2026, 1000001)
+
+        assert roster.units[0].write_in is None
 
     @pytest.mark.asyncio
     async def test_a_true_override_beats_a_false_default(self) -> None:
@@ -4048,3 +4114,153 @@ class TestHouseholdJourney:
 
         assert journey.years == []
         repo.fetch_cabin_assignments_by_household_cm_id.assert_not_called()
+
+
+class TestWriteInCovers:
+    """Which space a write-in closes, once the tree is taken into account.
+
+    THE UNIT A ROW NAMES IS NOT THE ONLY SPACE IT CLOSES. A write-in is a fact
+    about a physical space, and a building's space contains its rooms'. The
+    board draws whichever level the tree currently resolves to (`drawn_units`),
+    and merging or splitting moves that level under staff's feet -- so a
+    write-in recorded on a merged building went silent the moment somebody
+    split it, and one recorded on a room said nothing on the building's card
+    after a merge. Both left the same hole: a family could be dropped into a
+    space somebody is already sleeping in.
+
+    Resolved on READ rather than cascaded on write. Writing a row per leaf
+    would duplicate a single fact across rows that then drift -- clear one room
+    and the others still close the space -- and would leave orphans behind a
+    re-merge. There is still exactly ONE row; this decides which units it
+    covers.
+
+    Fictional data throughout.
+    """
+
+    @staticmethod
+    def _unit(code: str, **kwargs: Any) -> LodgingUnitSummary:
+        return LodgingUnitSummary(unit_id=f"id-{code}", code=code, name=code.title(), **kwargs)
+
+    def test_a_room_inherits_the_write_in_of_the_building_above_it(self) -> None:
+        # The SPLIT case. Staff wrote into the whole house while it was merged,
+        # then split it back to rooms: the row still names the house, which now
+        # has no card at all.
+        house = self._unit(
+            "house",
+            is_container=True,
+            family_available_override=False,
+            occupant_name="Liam Garcia",
+            reason="Back Monday",
+        )
+        room = self._unit("house-a", parent_code="house")
+
+        covers = write_in_covers([house, room])
+
+        assert covers["house-a"].unit_code == "house"
+        assert covers["house-a"].occupant_name == "Liam Garcia"
+        assert covers["house-a"].note == "Back Monday"
+
+    def test_a_building_surfaces_the_write_in_of_a_room_beneath_it(self) -> None:
+        # The MERGE case, and the mirror of the one above: the row names a room
+        # that stopped being drawn when staff merged the building over it.
+        house = self._unit("house", is_container=True, is_combined=True)
+        written_room = self._unit(
+            "house-a", parent_code="house", family_available_override=False, occupant_name="Liam Garcia"
+        )
+        other_room = self._unit("house-b", parent_code="house")
+
+        covers = write_in_covers([house, written_room, other_room])
+
+        assert covers["house"].unit_code == "house-a"
+        assert covers["house"].occupant_name == "Liam Garcia"
+
+    def test_a_sibling_room_is_not_covered(self) -> None:
+        # The one direction that must NOT propagate. A caretaker in room A says
+        # nothing about room B, and closing B too would take a lettable room
+        # off the board for no reason. It reaches B's BUILDING (above) without
+        # reaching B, because each unit resolves from OWN rows only -- never
+        # transitively through a cover it just computed for somebody else.
+        house = self._unit("house", is_container=True)
+        written_room = self._unit(
+            "house-a", parent_code="house", family_available_override=False, occupant_name="Liam Garcia"
+        )
+        other_room = self._unit("house-b", parent_code="house")
+
+        covers = write_in_covers([house, written_room, other_room])
+
+        assert "house-b" not in covers
+        assert covers["house"].unit_code == "house-a"
+
+    def test_a_units_own_write_in_beats_an_inherited_one(self) -> None:
+        house = self._unit("house", is_container=True, family_available_override=False, occupant_name="Liam Garcia")
+        room = self._unit("house-a", parent_code="house", family_available_override=False, occupant_name="Ava Martinez")
+
+        covers = write_in_covers([house, room])
+
+        assert covers["house-a"].unit_code == "house-a"
+        assert covers["house-a"].occupant_name == "Ava Martinez"
+
+    def test_the_nearest_ancestor_wins(self) -> None:
+        block = self._unit("block", is_container=True, family_available_override=False, occupant_name="Ava Martinez")
+        house = self._unit(
+            "house",
+            parent_code="block",
+            is_container=True,
+            family_available_override=False,
+            occupant_name="Liam Garcia",
+        )
+        room = self._unit("house-a", parent_code="house")
+
+        covers = write_in_covers([block, house, room])
+
+        assert covers["house-a"].unit_code == "house"
+
+    def test_a_release_is_not_a_write_in(self) -> None:
+        # `True` is a staff cabin OPENED to families for the weekend. It names
+        # no occupant and closes nothing, so it must not travel: inheriting it
+        # would silently open every room beneath a released building.
+        house = self._unit("house", is_container=True, inventory_class="staff_default", family_available_override=True)
+        room = self._unit("house-a", parent_code="house")
+
+        covers = write_in_covers([house, room])
+
+        assert covers == {}
+
+    def test_a_unit_with_nothing_on_its_path_is_absent(self) -> None:
+        assert write_in_covers([self._unit("cedar-1")]) == {}
+
+    def test_a_parent_cycle_does_not_hang(self) -> None:
+        # The server guards against writing one (#1899), but a cycle already in
+        # the data must not spin the roster build.
+        a = self._unit("a", parent_code="b", is_container=True)
+        b = self._unit("b", parent_code="a", is_container=True)
+
+        assert write_in_covers([a, b]) == {}
+
+    def test_a_blank_coded_unit_never_lends_its_cover_to_another(self) -> None:
+        # "" is the same key `parent_code == ""` uses for "no parent", which is
+        # why `by_code` drops a blank-coded unit on the LOOKUP side. The result
+        # map has to drop it too, or two blank-coded rows share one key and the
+        # second reads the first's occupant off a row it does not hold.
+        #
+        # A blank code is a valid if unfortunate registry value, so this is bad
+        # data meeting a collision, not a state the schema forbids.
+        written = self._unit("", family_available_override=False, occupant_name="Liam Garcia")
+        other = LodgingUnitSummary(unit_id="id-other", code="", name="Other")
+
+        assert write_in_covers([written, other]) == {}
+
+    def test_several_written_rooms_pick_one_deterministically(self) -> None:
+        # A building over two written-into rooms is closed either way; the
+        # point is that two identical payloads never disagree about WHICH row
+        # the card names, which a set-ordered walk would not guarantee.
+        house = self._unit("house", is_container=True, is_combined=True)
+        room_b = self._unit(
+            "house-b", parent_code="house", family_available_override=False, occupant_name="Ava Martinez"
+        )
+        room_a = self._unit(
+            "house-a", parent_code="house", family_available_override=False, occupant_name="Liam Garcia"
+        )
+
+        assert write_in_covers([house, room_b, room_a])["house"].unit_code == "house-a"
+        assert write_in_covers([house, room_a, room_b])["house"].unit_code == "house-a"

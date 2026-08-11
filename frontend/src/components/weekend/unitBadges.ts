@@ -23,6 +23,7 @@
  * burst pipe" are the same fact about availability.
  */
 import type { LodgingUnitRow } from '../../types/lodging'
+import { writeInOccupant, writeInSource } from './writeIn'
 
 export interface UnitBadge {
   label: string
@@ -43,9 +44,20 @@ export function reservationBadge(unit: LodgingUnitRow): UnitBadge | null {
     label: 'Staff',
     className: 'bg-violet-100 text-violet-800 dark:bg-violet-950/40 dark:text-violet-300',
   }
-  if (unit.is_container === true) {
-    return { label: 'Building', className: 'bg-muted text-muted-foreground' }
-  }
+  const building = { label: 'Building', className: 'bg-muted text-muted-foreground' }
+  // A SPLIT container is pure grouping: `drawnUnits` descends past it, so
+  // nothing draws this badge for one and there is no action for it to agree
+  // with. It answers "Building" and stops.
+  //
+  // A COMBINED one does not stop here, and that is the fix. Merge-by-drag
+  // (#2012) made it the one card the board draws in place of its rooms and a
+  // legitimate drop target (`dragPlacement`), so it reads its availability
+  // like any other drawn unit. It still lands on "Building" below when it has
+  // nothing more specific to say -- being a whole building does not stop being
+  // true -- but a write-in on it now BADGES as one, because
+  // `availabilityAction` now offers to clear it and a card that says
+  // "Building" while offering "Clear" says two things about one cabin.
+  if (unit.is_container === true && unit.is_combined !== true) return building
   // Each override branch is read AGAINST the unit's role, and both compare to
   // an explicit `true`/`false` rather than testing truthiness: null (no row for
   // this weekend, so the role decides) and false (closed this weekend) are
@@ -73,12 +85,22 @@ export function reservationBadge(unit: LodgingUnitRow): UnitBadge | null {
   // It still does not read `occupant_name`: "written in for a caretaker" and
   // "written in for a burst pipe" are the same fact about availability, which
   // is the same reason the reason text never reached this badge.
-  if (unit.inventory_class !== 'staff_default' && unit.family_available_override === false) {
+  // Read through `writeInOccupant`, never the raw `family_available_override`.
+  // The board draws whichever level the tree resolves to, so the card carrying
+  // a write-in is often not the unit whose row it is: split a written-into
+  // building and its ROOMS carry it; merge over a written-into room and the
+  // BUILDING does. The column answers only for the unit it sits on, which is
+  // how a write-in went silent the moment somebody merged or split around it.
+  if (unit.inventory_class !== 'staff_default' && writeInOccupant(unit) !== null) {
     return {
       label: 'Write-in',
       className: 'bg-slate-200 text-slate-800 dark:bg-slate-800 dark:text-slate-200',
     }
   }
+  // AFTER both override branches and BEFORE `staff`, so the only behaviour a
+  // combined container gains is the two overrides. A combined staff building
+  // with no override reads "Building" exactly as it did.
+  if (unit.is_container === true) return building
   if (unit.inventory_class === 'staff_default') return staff
   return null
 }
@@ -195,6 +217,20 @@ export interface AvailabilityAction {
   familyAvailable: boolean | null
   /** What the control collects before it may write — see `AvailabilityPrompt`. */
   prompt: AvailabilityPrompt
+  /**
+   * The unit the write NAMES, which is not always the card it is offered on.
+   *
+   * A write-in covers a space, and the board draws whichever level the tree
+   * resolves to — so a room can inherit its building's write-in, and a merged
+   * building one of its rooms'. There is exactly one `lodging_availability`
+   * row either way, and clearing it has to target the unit that HOLDS it:
+   * sending the card's own id would delete nothing, and the unit holding the
+   * row has no card to offer the clear from. Every other action names the
+   * card's own unit.
+   */
+  unitId: string
+  /** That unit's name, for the confirmation toast. */
+  unitName: string
 }
 
 /**
@@ -244,13 +280,68 @@ export function availabilityAction(
   unit: LodgingUnitRow,
   occupied = false
 ): AvailabilityAction | null {
-  // A container is a whole-building aggregate, never a bookable room.
-  if (unit.is_container === true) return null
+  // A SPLIT container is a whole-building aggregate, never a bookable room:
+  // `drawnUnits` descends past it and `resolveDrop` rejects it as a target, so
+  // an availability row written against one is a row no surface could show or
+  // act on.
+  //
+  // A COMBINED one is the opposite on both counts since merge-by-drag (#2012)
+  // -- it IS the card the board draws in place of its rooms, and it IS a drop
+  // target -- so it takes a write-in like any other drawn unit. Refusing every
+  // container here left the four `default_combined` buildings in the 2026
+  // registry with no write-in path at all: not on the building's own card, and
+  // not on its rooms either, because a merge is precisely what takes their
+  // cards away. The gate is spelled exactly as `dragPlacement`'s and
+  // `LodgingUnitCard`'s `isSplitContainer` are, so the three cannot drift.
+  if (unit.is_container === true && unit.is_combined !== true) return null
   // `!== null` and not truthiness: null (no row for this weekend) and false
   // (closed this weekend) are different answers, and collapsing them makes
   // either "Write in" or "Clear" unreachable across most of the board.
+  const own = { unitId: unit.unit_id, unitName: unit.name }
+  const clear = (target: { unitId: string; unitName: string }): AvailabilityAction => ({
+    kind: 'clear',
+    label: 'Clear',
+    familyAvailable: null,
+    prompt: 'none',
+    ...target,
+  })
+  /*
+   * THE THREE CLEAR BRANCHES ARE ORDERED TO MIRROR `reservationBadge` ABOVE,
+   * and that ordering is the rule rather than an accident of writing.
+   *
+   * Once a write-in can be INHERITED, a card can carry its own availability
+   * row AND a relative's write-in at once — two rows, one control. This module
+   * already promises the badge and the action cannot drift ("a card badged
+   * 'Write-in' that offers to 'Write in' says two things about one cabin"), so
+   * the clear names whichever row the badge names. Anything else reports
+   * success for a row the staff member was not looking at, and leaves the fact
+   * they meant to remove sitting on the card.
+   */
+  // A released staff cabin badges "Released" off its OWN row, so that is the
+  // row its clear names — even when a relative's write-in also covers it.
+  if (unit.inventory_class === 'staff_default' && unit.family_available_override === true) {
+    return clear(own)
+  }
+  // The write-in COVERING this space, which badges "Write-in". Its own row
+  // when it has one — the server resolves own first — else its building's or
+  // one of its rooms'.
+  //
+  // Offered before the `occupied` gate below for the reason that gate's own
+  // comment gives: a clear only ever REDUCES the conflict, so occupancy is
+  // never the state that needs it blocked. Without this branch an inheriting
+  // card is a dead end: it badges a write-in it cannot undo, and the unit
+  // holding the row has no card at all — which is exactly what a merge or a
+  // split does to it.
+  const source = writeInSource(unit)
+  if (source !== null) {
+    return clear({ unitId: source.unitId, unitName: source.unitName })
+  }
+  // Any other override of its own. Reachable for a `true` on a family-pool
+  // row: it AGREES with that unit's role so no surface writes one and the
+  // badge stays silent, but the API does not check an override against the
+  // role, and nothing deletes one already stored.
   if (unit.family_available_override !== null && unit.family_available_override !== undefined) {
-    return { kind: 'clear', label: 'Clear', familyAvailable: null, prompt: 'none' }
+    return clear(own)
   }
   // NO SURFACE REACHES THIS BRANCH TODAY, and that is deliberate rather than
   // an oversight. Releasing a staff cabin to families is a registry edit on the
@@ -261,12 +352,12 @@ export function availabilityAction(
   // state this branch describes. Kept, unused, because the write path behind it
   // still exists; see the design spec's §7.3 "stays, unused and noted".
   if (unit.inventory_class === 'staff_default') {
-    return { kind: 'release', label: 'Release', familyAvailable: true, prompt: 'reason' }
+    return { kind: 'release', label: 'Release', familyAvailable: true, prompt: 'reason', ...own }
   }
   // An already-occupied space offers no write-in: the fix for #2090. Only
   // reachable here, past both branches above, so an already-held unit keeps
   // its `clear` action regardless of occupancy — clearing only ever REDUCES
   // the conflict, so it is never the state that needs blocking.
   if (occupied) return null
-  return { kind: 'hold', label: 'Write in', familyAvailable: false, prompt: 'occupant' }
+  return { kind: 'hold', label: 'Write in', familyAvailable: false, prompt: 'occupant', ...own }
 }

@@ -201,3 +201,46 @@ describe('LodgingBoard — the control becomes a write', () => {
     await Promise.resolve()
   })
 })
+
+describe('LodgingBoard — clearing a write-in this card inherited', () => {
+  /*
+   * The row names one unit; it closes a SPACE. Split a written-into building
+   * and its ROOMS inherit the write-in, while the building — no longer drawn —
+   * has nowhere to offer the clear from. The room offers it, and both the write
+   * and the in-flight disable have to follow the row rather than the card.
+   */
+  const COVER = {
+    unit_id: 'u-house',
+    unit_code: 'house',
+    unit_name: 'House',
+    occupant_name: 'Liam Garcia',
+    note: '',
+  }
+  const room = unit({ unit_id: 'u-room', code: 'house-a', name: 'House A', write_in: COVER })
+
+  it('sends the unit that HOLDS the row, not the card it was clicked on', async () => {
+    const user = userEvent.setup()
+    renderBoard({ units: [room] })
+
+    await user.click(screen.getByRole('button', { name: 'Clear House A' }))
+
+    expect(setAvailability).toHaveBeenCalledWith({
+      unitId: 'u-house',
+      unitName: 'House',
+      familyAvailable: null,
+      occupantName: '',
+      reason: '',
+    })
+  })
+
+  it('disables the card while the row it points at is being written', async () => {
+    // `pendingUnitId` names the unit the WRITE targets, which for an inherited
+    // clear is never this card's own id — so keying the disable on the card
+    // alone leaves the button live for the whole write and invites a second
+    // click on a row that is already going away.
+    pendingUnitId = 'u-house'
+    renderBoard({ units: [room] })
+
+    expect(screen.getByRole('button', { name: 'Clear House A' })).toBeDisabled()
+  })
+})

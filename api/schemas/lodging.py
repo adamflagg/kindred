@@ -137,6 +137,36 @@ class WeekendSessionListResponse(BaseModel):
     sessions: list[WeekendSessionSummary] = Field(default_factory=list)
 
 
+class WriteInCover(BaseModel):
+    """The write-in that closes a space, wherever in the tree it was recorded.
+
+    A write-in names ONE unit, but it is a fact about a physical space, and a
+    building's space contains its rooms'. The board draws whichever level the
+    tree currently resolves to (`drawn_units`), and merging or splitting moves
+    that level under staff's feet -- so a write-in recorded on a merged
+    building went silent the moment somebody split it back to rooms, and one
+    recorded on a room said nothing on the building's card after a merge. Both
+    left the same hole: a family could be dropped into a space somebody is
+    already sleeping in.
+
+    Resolved on READ, never cascaded on write. A row per leaf would duplicate
+    one fact across rows that then drift -- clear one room and the others still
+    close the space -- and would strand orphans behind a re-merge. There is
+    still exactly one `lodging_availability` row; this says which units it
+    covers, and `unit_id` is the row it belongs to, so a card that inherited
+    the write-in can still clear it at the source rather than dead-ending.
+    """
+
+    # The unit the row actually names -- NOT necessarily the unit carrying this
+    # cover. `unit_id` is what a clear must target; the code and name are what
+    # the card says when the write-in came from somewhere else.
+    unit_id: str = ""
+    unit_code: str = ""
+    unit_name: str = ""
+    occupant_name: str = ""
+    note: str = ""
+
+
 class LodgingUnitSummary(BaseModel):
     """One row of the lodging registry, as the roster sees it."""
 
@@ -245,6 +275,20 @@ class LodgingUnitSummary(BaseModel):
     # from 1500000148 onward.
     reason: str = ""
     is_family_available: bool = False
+    # The write-in that closes this space, resolved through the unit tree --
+    # this unit's own row, else the nearest ancestor's, else the nearest
+    # descendant's. None means no write-in covers it.
+    #
+    # The three fields above stay STRICTLY this unit's own row: they are what
+    # the write path reads back, and `family_available_override` alone is what
+    # `is_family_available` is derived from. Folding an inherited fact into any
+    # of them would make a room look like it carried a row it does not have. Ask this field "is somebody in this
+    # space", and those fields "what does this unit's own row say".
+    #
+    # Only a write-in travels. A release (`family_available_override is True`)
+    # names no occupant and closes nothing, so inheriting it would silently
+    # open every room beneath a released building.
+    write_in: WriteInCover | None = None
     map_x: float | None = None
     map_y: float | None = None
 

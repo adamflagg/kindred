@@ -34,6 +34,7 @@ import type {
   WeekendSessionSummary,
   WeekendSummaryEntry,
   WeekendSummaryResponse,
+  WriteInCover,
 } from './api-generated'
 import type { BedInventory } from './beds'
 
@@ -51,6 +52,13 @@ export type RosterPartyRow = RosterParty
 export type RosterCountSummary = RosterCounts
 /** One row of the lodging registry as the roster sees it. */
 export type LodgingUnitRow = LodgingUnitSummary
+/**
+ * The write-in covering a unit's space, resolved through the tree by the
+ * server. Read it through `writeInOccupant`/`writeInSource`, never inline: the
+ * point of naming the fact once is that the board's five consumers cannot
+ * drift onto different spellings of it.
+ */
+export type WriteInCoverRow = WriteInCover
 /** A household's cabin-sharing request, unresolved. */
 export type ShareRequest = ShareRequestSummary
 /** Derived accessibility booleans. Never narrative text. */

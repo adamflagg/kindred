@@ -2205,6 +2205,7 @@ export type LodgingUnitSummary = {
    * Is Family Available
    */
   is_family_available?: boolean
+  write_in?: WriteInCover | null
   /**
    * Map X
    */
@@ -7158,6 +7159,50 @@ export type WeeklyDataPoint = {
    * 'snapshot', 'reconstructed', or 'mixed'
    */
   data_source: string
+}
+
+/**
+ * WriteInCover
+ *
+ * The write-in that closes a space, wherever in the tree it was recorded.
+ *
+ * A write-in names ONE unit, but it is a fact about a physical space, and a
+ * building's space contains its rooms'. The board draws whichever level the
+ * tree currently resolves to (`drawn_units`), and merging or splitting moves
+ * that level under staff's feet -- so a write-in recorded on a merged
+ * building went silent the moment somebody split it back to rooms, and one
+ * recorded on a room said nothing on the building's card after a merge. Both
+ * left the same hole: a family could be dropped into a space somebody is
+ * already sleeping in.
+ *
+ * Resolved on READ, never cascaded on write. A row per leaf would duplicate
+ * one fact across rows that then drift -- clear one room and the others still
+ * close the space -- and would strand orphans behind a re-merge. There is
+ * still exactly one `lodging_availability` row; this says which units it
+ * covers, and `unit_id` is the row it belongs to, so a card that inherited
+ * the write-in can still clear it at the source rather than dead-ending.
+ */
+export type WriteInCover = {
+  /**
+   * Unit Id
+   */
+  unit_id?: string
+  /**
+   * Unit Code
+   */
+  unit_code?: string
+  /**
+   * Unit Name
+   */
+  unit_name?: string
+  /**
+   * Occupant Name
+   */
+  occupant_name?: string
+  /**
+   * Note
+   */
+  note?: string
 }
 
 /**

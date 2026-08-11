@@ -682,6 +682,7 @@ export type {
   WeekendSummaryResponse,
   WeeklyDataPoint,
   WeekOption,
+  WriteInCover,
   YearEnrollment,
   YearMetrics,
   YearsAtCampBreakdown,

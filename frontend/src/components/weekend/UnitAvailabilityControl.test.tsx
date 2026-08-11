@@ -115,6 +115,8 @@ describe('UnitAvailabilityControl', () => {
     await user.click(screen.getByRole('button', { name: /^write in$/i }))
 
     expect(onSubmit).toHaveBeenCalledWith({
+      unitId: 'u1',
+      unitName: 'Cedar 1',
       familyAvailable: false,
       occupantName: 'Emma Johnson',
       reason: '',
@@ -131,6 +133,8 @@ describe('UnitAvailabilityControl', () => {
     await user.click(screen.getByRole('button', { name: /^write in$/i }))
 
     expect(onSubmit).toHaveBeenCalledWith({
+      unitId: 'u1',
+      unitName: 'Cedar 1',
       familyAvailable: false,
       occupantName: 'Liam Garcia',
       reason: 'Back Monday',
@@ -150,6 +154,8 @@ describe('UnitAvailabilityControl', () => {
     await user.click(screen.getByRole('button', { name: /^write in$/i }))
 
     expect(onSubmit).toHaveBeenCalledWith({
+      unitId: 'u1',
+      unitName: 'Cedar 1',
       familyAvailable: false,
       occupantName: 'burst pipe',
       reason: '',
@@ -167,6 +173,8 @@ describe('UnitAvailabilityControl', () => {
     await user.click(screen.getByRole('button', { name: /^release$/i }))
 
     expect(onSubmit).toHaveBeenCalledWith({
+      unitId: 'u2',
+      unitName: 'Aspen Lodge',
       familyAvailable: true,
       occupantName: '',
       reason: 'Overflow weekend',
@@ -274,7 +282,13 @@ describe('UnitAvailabilityControl', () => {
 
     await user.click(screen.getByRole('button', { name: /clear/i }))
 
-    expect(onSubmit).toHaveBeenCalledWith({ familyAvailable: null, occupantName: '', reason: '' })
+    expect(onSubmit).toHaveBeenCalledWith({
+      unitId: 'u1',
+      unitName: 'Cedar 1',
+      familyAvailable: null,
+      occupantName: '',
+      reason: '',
+    })
     expect(screen.queryByRole('textbox', { name: /^occupant$/i })).not.toBeInTheDocument()
   })
 
@@ -327,8 +341,47 @@ describe('UnitAvailabilityControl', () => {
     expect(onSubmit).not.toHaveBeenCalled()
   })
 
-  it('offers nothing on a building row', () => {
+  it('offers nothing on a SPLIT container', () => {
+    // It gets no card, so there is nothing here to act on.
     renderControl({ unit: unit({ is_container: true }) })
+
+    expect(screen.queryByRole('button')).not.toBeInTheDocument()
+  })
+
+  it('offers to write into a MERGED building', async () => {
+    // The staff-facing half of the container fix. A merged building IS the
+    // card the board draws in place of its rooms, so it is the only surface a
+    // write-in for that building can be recorded on -- merging is exactly what
+    // takes its rooms' own cards away.
+    const user = userEvent.setup()
+    const { onSubmit } = renderControl({
+      unit: unit({
+        unit_id: 'u3',
+        code: 'clouds-rest',
+        name: 'Clouds Rest',
+        is_container: true,
+        is_combined: true,
+      }),
+    })
+
+    await user.click(screen.getByRole('button', { name: 'Write in Clouds Rest' }))
+    await user.type(screen.getByRole('textbox', { name: /^occupant$/i }), 'Liam Garcia')
+    await user.click(screen.getByRole('button', { name: /^write in$/i }))
+
+    expect(onSubmit).toHaveBeenCalledWith({
+      unitId: 'u3',
+      unitName: 'Clouds Rest',
+      familyAvailable: false,
+      occupantName: 'Liam Garcia',
+      reason: '',
+    })
+  })
+
+  it('still offers nothing on a MERGED building that holds a family (#2090)', () => {
+    renderControl({
+      unit: unit({ is_container: true, is_combined: true }),
+      occupied: true,
+    })
 
     expect(screen.queryByRole('button')).not.toBeInTheDocument()
   })
@@ -348,5 +401,42 @@ describe('UnitAvailabilityControl', () => {
 
     expect(screen.getByRole('textbox', { name: /^occupant$/i })).toHaveValue('')
     expect(screen.getByRole('textbox', { name: /note/i })).toHaveValue('')
+  })
+})
+
+describe('a write-in this unit inherited from elsewhere in the tree', () => {
+  /*
+   * The row names one unit; it closes a SPACE. Split a written-into building
+   * and its rooms inherit the write-in — and the building, having no card any
+   * more, has nowhere to offer the clear from. So the inheriting card offers
+   * it, and the write has to name the unit that HOLDS the row: sending this
+   * card's own id would delete nothing.
+   */
+  const ROOM_UNDER_A_WRITTEN_IN_HOUSE = unit({
+    unit_id: 'u-room',
+    code: 'house-a',
+    name: 'House A',
+    write_in: {
+      unit_id: 'u-house',
+      unit_code: 'house',
+      unit_name: 'House',
+      occupant_name: 'Liam Garcia',
+      note: '',
+    },
+  })
+
+  it('offers to clear it, and names the unit that actually holds the row', async () => {
+    const user = userEvent.setup()
+    const { onSubmit } = renderControl({ unit: ROOM_UNDER_A_WRITTEN_IN_HOUSE })
+
+    await user.click(screen.getByRole('button', { name: /clear/i }))
+
+    expect(onSubmit).toHaveBeenCalledWith({
+      unitId: 'u-house',
+      unitName: 'House',
+      familyAvailable: null,
+      occupantName: '',
+      reason: '',
+    })
   })
 })
