@@ -239,7 +239,10 @@ echo
 echo "=== TEST 8: scripts/ must be scanned by DEFAULT (no LODGING_SCAN_ROOTS override) ==="
 # kindred#2223: SCAN_ROOTS never included scripts/, so a real leak
 # (scripts/dev/import_master_housing.py) sat on `main`, tracked and public,
-# with this guard reporting clean on every PR. This asserts the widening: a
+# with this guard reporting clean on every PR. That file has since been
+# deleted — the widening it motivated has not, and this test is why: the next
+# script to land under scripts/ gets scanned without anyone remembering to ask.
+# This asserts the widening: a
 # needle planted under scripts/ must be caught with NO env override at all --
 # unlike TEST 6, which deliberately overrides LODGING_SCAN_ROOTS to prove a
 # *missing* root fails loudly. This test proves scripts/ is a *default* root.
