@@ -4237,6 +4237,19 @@ class TestWriteInCovers:
 
         assert write_in_covers([a, b]) == {}
 
+    def test_a_blank_coded_unit_never_lends_its_cover_to_another(self) -> None:
+        # "" is the same key `parent_code == ""` uses for "no parent", which is
+        # why `by_code` drops a blank-coded unit on the LOOKUP side. The result
+        # map has to drop it too, or two blank-coded rows share one key and the
+        # second reads the first's occupant off a row it does not hold.
+        #
+        # A blank code is a valid if unfortunate registry value, so this is bad
+        # data meeting a collision, not a state the schema forbids.
+        written = self._unit("", family_available_override=False, occupant_name="Liam Garcia")
+        other = LodgingUnitSummary(unit_id="id-other", code="", name="Other")
+
+        assert write_in_covers([written, other]) == {}
+
     def test_several_written_rooms_pick_one_deterministically(self) -> None:
         # A building over two written-into rooms is closed either way; the
         # point is that two identical payloads never disagree about WHICH row

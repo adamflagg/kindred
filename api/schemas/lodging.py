@@ -280,9 +280,9 @@ class LodgingUnitSummary(BaseModel):
     # descendant's. None means no write-in covers it.
     #
     # The three fields above stay STRICTLY this unit's own row: they are what
-    # the write path reads back and what `is_family_available` is derived from,
-    # and folding an inherited fact into them would make a room look like it
-    # carried a row it does not have. Ask this field "is somebody in this
+    # the write path reads back, and `family_available_override` alone is what
+    # `is_family_available` is derived from. Folding an inherited fact into any
+    # of them would make a room look like it carried a row it does not have. Ask this field "is somebody in this
     # space", and those fields "what does this unit's own row say".
     #
     # Only a write-in travels. A release (`family_available_override is True`)

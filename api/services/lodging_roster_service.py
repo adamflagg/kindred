@@ -537,6 +537,13 @@ def write_in_covers(units: list[LodgingUnitSummary]) -> dict[str, WriteInCover]:
 
     covers: dict[str, WriteInCover] = {}
     for unit in units:
+        # Blank codes are excluded from BOTH sides, not just the lookup above.
+        # `_build_units` reads this map back by code, so one blank-coded row
+        # written into would hand its occupant to every other blank-coded row
+        # through the shared `""` key -- a unit reporting somebody sleeping in
+        # a space on the strength of a row it does not hold.
+        if not unit.code:
+            continue
         source = unit if _is_written_in(unit) else (_nearest_ancestor(unit) or _nearest_descendant(unit))
         if source is None:
             continue
@@ -548,6 +555,18 @@ def write_in_covers(units: list[LodgingUnitSummary]) -> dict[str, WriteInCover]:
             note=source.reason,
         )
     return covers
+
+
+def _resolve_write_in_covers(units: list[LodgingUnitSummary]) -> None:
+    """Attach each unit's resolved write-in cover, in place.
+
+    The mutating counterpart to `write_in_covers`, mirroring
+    `_resolve_power_coverage`: the pure function is what the tests reason
+    about, and this is the one line the response path calls.
+    """
+    covers = write_in_covers(units)
+    for unit in units:
+        unit.write_in = covers.get(unit.code)
 
 
 def drawn_units(units: list[LodgingUnitSummary]) -> list[LodgingUnitSummary]:
@@ -989,6 +1008,16 @@ class LodgingRosterService:
         # get at the counts, but its `WeekendSummaryEntry` carries no `units`
         # -- so resolving coverage there would be work no response can read.
         _resolve_power_coverage(unit_summaries, unit_index)
+        # A SECOND PASS, and it has to be: a unit's cover can come from a row
+        # on a unit built after it, so there is no order in which one pass over
+        # `_build_units` would see every own-row it needs.
+        #
+        # Only on THIS path, for the identical reason `_resolve_power_coverage`
+        # above is: `build_summary` builds its own units to get at the counts,
+        # but its `WeekendSummaryEntry` carries no `units`, so resolving covers
+        # there would be work no response can read -- once per weekend, across
+        # every weekend of the year, on every lander request.
+        _resolve_write_in_covers(unit_summaries)
         parties = self._build_parties(
             session_type=session_type,
             session_start=_as_date(_s(session, "start_date")),
@@ -1392,12 +1421,6 @@ class LodgingRosterService:
                     map_y=map_y,
                 )
             )
-        # A SECOND PASS, and it has to be: a unit's cover can come from a row
-        # on a unit built after it, so there is no order in which one pass
-        # would see every own-row it needs.
-        covers = write_in_covers(summaries)
-        for summary in summaries:
-            summary.write_in = covers.get(summary.code)
         return summaries
 
     # -------------------------------------------------------------- parties

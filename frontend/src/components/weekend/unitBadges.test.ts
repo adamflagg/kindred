@@ -497,3 +497,57 @@ describe('a write-in inherited from elsewhere in the tree', () => {
     ).toBe('id-house-a')
   })
 })
+
+describe('the badge and the clear must name the SAME row', () => {
+  /*
+   * `availabilityAction` lives beside `reservationBadge` so the two cannot
+   * drift — a card badged "Write-in" that offers to "Write in" says two things
+   * about one cabin. Once a write-in can be INHERITED, that invariant grows
+   * teeth: a card can carry its own availability row AND a relative's
+   * write-in at the same time, and one control has two rows to choose from.
+   * It must clear the one the badge is naming, or the toast reports success
+   * for a row the staff member was not looking at.
+   */
+  const coverFromBuilding = {
+    unit_id: 'id-house',
+    unit_code: 'house',
+    unit_name: 'House',
+    occupant_name: 'Liam Garcia',
+    note: '',
+  }
+
+  it('clears the BUILDING’s write-in on a room carrying a stale release of its own', () => {
+    // Reachable through the API, which does not check an override against the
+    // unit's role — `true` on a family_pool row agrees with that role and no
+    // surface writes it, but nothing deletes one either. The badge reads
+    // "Write-in" here, so the clear must be the write-in.
+    const stale = unit({
+      unit_id: 'u-room',
+      code: 'house-a',
+      name: 'House A',
+      family_available_override: true,
+      write_in: coverFromBuilding,
+    })
+
+    expect(reservationBadge(stale)?.label).toBe('Write-in')
+    expect(availabilityAction(stale)?.unitId).toBe('id-house')
+  })
+
+  it('still clears its OWN row on a released staff cabin, which is what its badge names', () => {
+    // The other side of the same rule, and why this is not simply "the cover
+    // always wins": a released staff cabin badges "Released" off its own row,
+    // so that is the row its clear has to name — even when a relative's
+    // write-in also covers it.
+    const released = unit({
+      unit_id: 'u-room',
+      code: 'house-a',
+      name: 'House A',
+      inventory_class: 'staff_default',
+      family_available_override: true,
+      write_in: coverFromBuilding,
+    })
+
+    expect(reservationBadge(released)?.label).toBe('Released')
+    expect(availabilityAction(released)?.unitId).toBe('u-room')
+  })
+})

@@ -298,26 +298,50 @@ export function availabilityAction(
   // (closed this weekend) are different answers, and collapsing them makes
   // either "Write in" or "Clear" unreachable across most of the board.
   const own = { unitId: unit.unit_id, unitName: unit.name }
-  if (unit.family_available_override !== null && unit.family_available_override !== undefined) {
-    return { kind: 'clear', label: 'Clear', familyAvailable: null, prompt: 'none', ...own }
+  const clear = (target: { unitId: string; unitName: string }): AvailabilityAction => ({
+    kind: 'clear',
+    label: 'Clear',
+    familyAvailable: null,
+    prompt: 'none',
+    ...target,
+  })
+  /*
+   * THE THREE CLEAR BRANCHES ARE ORDERED TO MIRROR `reservationBadge` ABOVE,
+   * and that ordering is the rule rather than an accident of writing.
+   *
+   * Once a write-in can be INHERITED, a card can carry its own availability
+   * row AND a relative's write-in at once — two rows, one control. This module
+   * already promises the badge and the action cannot drift ("a card badged
+   * 'Write-in' that offers to 'Write in' says two things about one cabin"), so
+   * the clear names whichever row the badge names. Anything else reports
+   * success for a row the staff member was not looking at, and leaves the fact
+   * they meant to remove sitting on the card.
+   */
+  // A released staff cabin badges "Released" off its OWN row, so that is the
+  // row its clear names — even when a relative's write-in also covers it.
+  if (unit.inventory_class === 'staff_default' && unit.family_available_override === true) {
+    return clear(own)
   }
-  // A write-in this unit INHERITED — its building's, or one of its rooms'.
+  // The write-in COVERING this space, which badges "Write-in". Its own row
+  // when it has one — the server resolves own first — else its building's or
+  // one of its rooms'.
+  //
   // Offered before the `occupied` gate below for the reason that gate's own
   // comment gives: a clear only ever REDUCES the conflict, so occupancy is
-  // never the state that needs it blocked. Without this branch the card is a
-  // dead end: it badges a write-in it cannot undo, and the unit holding the
-  // row has no card at all — which is exactly what a merge or a split does to
-  // it.
+  // never the state that needs it blocked. Without this branch an inheriting
+  // card is a dead end: it badges a write-in it cannot undo, and the unit
+  // holding the row has no card at all — which is exactly what a merge or a
+  // split does to it.
   const source = writeInSource(unit)
   if (source !== null) {
-    return {
-      kind: 'clear',
-      label: 'Clear',
-      familyAvailable: null,
-      prompt: 'none',
-      unitId: source.unitId,
-      unitName: source.unitName,
-    }
+    return clear({ unitId: source.unitId, unitName: source.unitName })
+  }
+  // Any other override of its own. Reachable for a `true` on a family-pool
+  // row: it AGREES with that unit's role so no surface writes one and the
+  // badge stays silent, but the API does not check an override against the
+  // role, and nothing deletes one already stored.
+  if (unit.family_available_override !== null && unit.family_available_override !== undefined) {
+    return clear(own)
   }
   // NO SURFACE REACHES THIS BRANCH TODAY, and that is deliberate rather than
   // an oversight. Releasing a staff cabin to families is a registry edit on the
