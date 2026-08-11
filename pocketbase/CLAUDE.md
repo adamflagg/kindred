@@ -68,7 +68,15 @@ cd pocketbase && go test ./...
 cd pocketbase && go test ./sync/...     # one package
 ```
 
-Pre-push runs: `go build`, `golangci-lint` (config: `.golangci.yml`), `pb-js-lint` (ESLint on `pb_hooks/`/`pb_migrations/` JS).
+Pre-push runs: `go build` and `pb-js-lint` (ESLint on `pb_hooks/`/`pb_migrations/` JS).
+
+**`golangci-lint` is NOT in pre-push** — `.lefthook.yml` moved it to CI-only for speed, so a
+clean push tells you nothing about Go lint and CI goes red afterwards. Run it yourself before
+pushing Go changes:
+
+```bash
+cd pocketbase && golangci-lint run --config ../.golangci.yml   # config lives at the repo root
+```
 
 **Fresh-worktree gotcha:** if `pb-js-lint` exits 2 with an ESLint config error, `pocketbase/node_modules` is empty. Fix: `cd pocketbase && npm install`.
 

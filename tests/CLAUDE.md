@@ -40,7 +40,7 @@ uv run pytest tests/ -k "keyword"                   # by keyword
 SKIP_POCKETBASE_TESTS=true uv run pytest tests/     # explicit skip even locally
 ```
 
-Pre-push runs type checks and fast linters (mypy, tsc, ruff, golangci-lint, shellcheck, pb-js-lint) **plus the full mockable Python suite** (`SKIP_POCKETBASE_TESTS=true uv run pytest tests/ -n auto`). Vitest is still CI-only. DB/server-coupled tests (`requires_pb_db`, integration/e2e) are skipped on both pre-push and CI — run them locally with a running dev server.
+Pre-push runs type checks and fast linters (mypy, tsc, ruff, shellcheck, pb-js-lint, markdownlint) **plus the full mockable Python suite** (`SKIP_POCKETBASE_TESTS=true uv run pytest tests/ -n auto`). Vitest, eslint and golangci-lint are CI-only — a clean pre-push does not cover them. DB/server-coupled tests (`requires_pb_db`, integration/e2e) are skipped on both pre-push and CI — run them locally with a running dev server.
 
 ## Worktree gotcha
 

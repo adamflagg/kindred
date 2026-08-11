@@ -31,6 +31,10 @@ cd pocketbase && golangci-lint run --config ../.golangci.yml
 
 The config file is at the repo root (`.golangci.yml`), not in the pocketbase directory. The `--config` flag is required.
 
+**This step is the reason the checklist exists.** `.lefthook.yml` moved `golangci-lint` to
+CI-only, so the pre-push hook builds Go but never lints it — a clean push is not evidence of a
+clean lint, and the failure surfaces in CI minutes later. Running it here is what closes that gap.
+
 Common lint issues:
 - **errcheck**: Unhandled error returns. Wrap with `if err != nil { ... }`
 - **govet**: Suspicious constructs (printf arg mismatches, struct tag issues)
