@@ -194,7 +194,6 @@ export function UnitAvailabilityControl({
             // deliberate: this input only mounts when the staff member just clicked
             // "Write in"/"Release" (a modal-open equivalent), and the whole point of the
             // click is to type into it next.
-            // eslint-disable-next-line jsx-a11y/no-autofocus
             autoFocus
             aria-invalid={wantsRequired && required.trim() === ''}
             onChange={(event) => {

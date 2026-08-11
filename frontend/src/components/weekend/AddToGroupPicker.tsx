@@ -84,7 +84,7 @@ export function AddToGroupPicker({ groups, onSelect, disabled }: AddToGroupPicke
         aria-haspopup="listbox"
         aria-expanded={open}
       >
-        <Plus className="h-4 w-4" aria-hidden="true" />
+        <Plus className="h-4 w-4" />
         Add to group
       </button>
 

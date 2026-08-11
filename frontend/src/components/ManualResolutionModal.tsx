@@ -234,7 +234,6 @@ export default function ManualResolutionModal({
               // resolve", opened by an explicit staff click; focusing the search box
               // on open lets them start typing immediately instead of needing an
               // extra click.
-              // eslint-disable-next-line jsx-a11y/no-autofocus
               autoFocus
             />
           </div>

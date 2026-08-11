@@ -92,7 +92,6 @@ export function MergeDialog({ open, onClose, sourceCanonical, category, year }: 
             className="bg-muted/50 border-border focus:ring-forest-500 w-full rounded-lg border py-2 pr-4 pl-10 text-sm focus:ring-2 focus:outline-none"
             // Deliberate: this dialog's entire purpose is searching for a merge target, so
             // taking focus on open lets the user start typing immediately.
-            // eslint-disable-next-line jsx-a11y/no-autofocus
             autoFocus
           />
         </div>

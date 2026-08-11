@@ -191,7 +191,6 @@ export function FeedbackModal({ isOpen, onClose }: FeedbackModalProps) {
           type="file"
           accept="image/*"
           onChange={handleFileChange}
-          aria-label="Screenshot"
           className="text-foreground file:bg-muted file:text-foreground file:border-border w-full text-sm file:mr-3 file:rounded-lg file:border file:px-3 file:py-1.5 file:text-sm file:font-medium"
         />
         {fileSizeError && <p className="mt-1 text-sm text-red-500">Screenshot must be under 5MB</p>}
@@ -205,7 +204,6 @@ export function FeedbackModal({ isOpen, onClose }: FeedbackModalProps) {
         type="button"
         onClick={() => submitMutation.mutate()}
         disabled={!canSubmit}
-        aria-label="Submit"
         className="btn-primary w-full disabled:cursor-not-allowed disabled:opacity-50"
       >
         {submitMutation.isPending ? (

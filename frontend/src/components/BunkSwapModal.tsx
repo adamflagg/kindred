@@ -76,7 +76,6 @@ export default function BunkSwapModal({
                     value={b.id}
                     checked={isSelected}
                     onChange={() => setSelectedId(b.id)}
-                    aria-label={`${b.name} (${b.campers.length} campers)`}
                   />
                   <span className="font-medium">{b.name}</span>
                   <span className="text-muted-foreground text-sm">

@@ -126,7 +126,6 @@ export default function NewScenarioModal({
             onChange={(e) => setName(e.target.value)}
             placeholder="e.g., Option A - Mixed Age Groups"
             className="bg-background border-input focus:ring-primary w-full rounded-lg border px-4 py-2 focus:ring-2 focus:outline-none"
-            // eslint-disable-next-line jsx-a11y/no-autofocus -- deliberate: this is the first field of a create-scenario modal, so taking focus on open lets the user start typing the name immediately
             autoFocus
           />
         </div>

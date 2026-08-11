@@ -406,7 +406,6 @@ export function SyncTab() {
               <select
                 value={syncYear}
                 onChange={(e) => handleYearChange(parseInt(e.target.value))}
-                aria-label="Sync year"
                 className="bg-background focus:ring-primary/20 min-w-[100px] cursor-pointer rounded-lg border-none px-3 py-2 text-sm font-medium focus:ring-2 focus:outline-none"
                 disabled={unifiedSync.isPending || runPhaseSync.isPending}
               >
@@ -432,7 +431,6 @@ export function SyncTab() {
                       setIncludeCustomValues(false)
                     }
                   }}
-                  aria-label="Sync service"
                   className="bg-background focus:ring-primary/20 min-w-[140px] cursor-pointer rounded-lg border-none px-3 py-2 text-sm font-medium focus:ring-2 focus:outline-none"
                   disabled={unifiedSync.isPending}
                 >
@@ -447,7 +445,6 @@ export function SyncTab() {
                 <select
                   value={selectedPhase}
                   onChange={(e) => setSelectedPhase(e.target.value as SyncPhase)}
-                  aria-label="Sync phase"
                   className="bg-background focus:ring-primary/20 min-w-[140px] cursor-pointer rounded-lg border-none px-3 py-2 text-sm font-medium focus:ring-2 focus:outline-none"
                   disabled={runPhaseSync.isPending}
                 >

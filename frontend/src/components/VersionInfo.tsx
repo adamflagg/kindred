@@ -34,7 +34,6 @@ export const VersionInfo: FC<VersionInfoProps> = ({ className = '' }) => {
             target="_blank"
             rel="noopener noreferrer"
             className="flex items-center gap-1.5 text-gray-400 transition-colors hover:text-gray-500"
-            aria-label={`View Kindred ${parsed.display} on GitHub`}
           >
             <span>Kindred {parsed.display}</span>
             {!parsed.ahead && <GitHubIcon />}
@@ -45,7 +44,6 @@ export const VersionInfo: FC<VersionInfoProps> = ({ className = '' }) => {
               target="_blank"
               rel="noopener noreferrer"
               className="flex items-center gap-1.5 text-gray-400 transition-colors hover:text-gray-500"
-              aria-label={`View ${parsed.ahead.display} commits since ${parsed.display}`}
             >
               <span>{parsed.ahead.display}</span>
               <GitHubIcon />

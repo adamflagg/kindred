@@ -114,7 +114,7 @@ export function BedInventoryEditor({ beds, onChange }: BedInventoryEditorProps) 
           ))}
         </select>
         <button type="button" onClick={addBed} className={`${BUTTON_SECONDARY} px-2.5 py-1`}>
-          <Plus className="h-3.5 w-3.5" aria-hidden="true" />
+          <Plus className="h-3.5 w-3.5" />
           Add bed
         </button>
       </li>

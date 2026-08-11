@@ -71,11 +71,7 @@ export function AccessibilityFlagList({ flags }: AccessibilityFlagListProps) {
   if (needs.length === 0) return null
 
   return (
-    // NOT redundant: Tailwind Preflight sets list-style: none on every <ul>, which strips the
-    // implicit `list` role in Safari's a11y tree unless role="list" is explicit. See
-    // CamperAlertSection.tsx for the same pattern.
-    // eslint-disable-next-line jsx-a11y/no-redundant-roles
-    <ul className="space-y-1" role="list">
+    <ul className="space-y-1">
       {needs.map((need) => (
         <NeedRow key={need.key} label={need.label} icon={need.icon} tone={need.tone} />
       ))}

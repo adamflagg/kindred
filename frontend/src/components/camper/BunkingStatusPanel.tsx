@@ -45,7 +45,7 @@ function SliceLine({ label, slice }: { label: string; slice: BucketCount }) {
         {slice.satisfied}/{slice.total} met
       </span>
       {slice.total > 0 && slice.satisfied === slice.total && (
-        <CheckCircle className="h-4 w-4 text-green-500 dark:text-green-400" aria-hidden="true" />
+        <CheckCircle className="h-4 w-4 text-green-500 dark:text-green-400" />
       )}
     </div>
   )

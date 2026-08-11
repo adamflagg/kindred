@@ -177,11 +177,11 @@ export function WeekendStatusPanel() {
                             }`}
                           >
                             {pending ? (
-                              <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden="true" />
+                              <Loader2 className="h-3.5 w-3.5 animate-spin" />
                             ) : isCancelled ? (
-                              <RotateCcw className="h-3.5 w-3.5" aria-hidden="true" />
+                              <RotateCcw className="h-3.5 w-3.5" />
                             ) : (
-                              <Ban className="h-3.5 w-3.5" aria-hidden="true" />
+                              <Ban className="h-3.5 w-3.5" />
                             )}
                             {isCancelled ? 'Reinstate' : 'Cancel'}
                           </button>

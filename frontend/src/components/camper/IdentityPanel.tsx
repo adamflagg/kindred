@@ -227,7 +227,7 @@ function CohortField({
             data-cohort-kind={cohortKind}
             className="bg-muted/40 text-muted-foreground hover:bg-muted hover:text-foreground mt-1.5 inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium transition-colors"
           >
-            <Users className="h-3 w-3" aria-hidden="true" />
+            <Users className="h-3 w-3" />
             <span>
               {cohortCount} other{cohortCount === 1 ? '' : 's'} here
             </span>

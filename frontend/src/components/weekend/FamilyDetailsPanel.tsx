@@ -190,7 +190,7 @@ export function FamilyDetailsPanel({
     <div className="flex flex-col gap-4 p-4">
       <Section title="Placement">
         <div className="flex flex-wrap items-center gap-2">
-          <Home className="text-muted-foreground h-4 w-4 flex-shrink-0" aria-hidden="true" />
+          <Home className="text-muted-foreground h-4 w-4 flex-shrink-0" />
           {isPlaced ? (
             <span className="text-foreground text-sm font-medium">{party.unit_name}</span>
           ) : (
@@ -225,18 +225,18 @@ export function FamilyDetailsPanel({
       <Section title="Party">
         <div className="text-muted-foreground flex flex-wrap items-center gap-3 text-xs">
           <span className="inline-flex items-center gap-1">
-            <Users className="h-3.5 w-3.5" aria-hidden="true" />
+            <Users className="h-3.5 w-3.5" />
             {`${String(headcount)} ${headcount === 1 ? 'person' : 'people'}`}
           </span>
           {(party.arrival_eta ?? '').length > 0 && (
             <span className="inline-flex items-center gap-1">
-              <Clock className="h-3.5 w-3.5" aria-hidden="true" />
+              <Clock className="h-3.5 w-3.5" />
               {party.arrival_eta}
             </span>
           )}
           {party.is_returning === true && (
             <span className="text-forest-700 dark:text-forest-300 inline-flex items-center gap-1 font-semibold">
-              <Repeat className="h-3.5 w-3.5" aria-hidden="true" />
+              <Repeat className="h-3.5 w-3.5" />
               Returning
             </span>
           )}
@@ -248,18 +248,14 @@ export function FamilyDetailsPanel({
               calling every adult weekend regular a first-timer. */}
           {party.is_returning !== true && isHousehold && (
             <span className="inline-flex items-center gap-1 font-semibold text-amber-700 dark:text-amber-300">
-              <Star className="h-3.5 w-3.5" aria-hidden="true" />
+              <Star className="h-3.5 w-3.5" />
               First-time
             </span>
           )}
         </div>
 
         {isHousehold && adults.length > 0 && (
-          // NOT redundant: Tailwind Preflight sets list-style: none on every <ul>, which strips the
-          // implicit `list` role in Safari's a11y tree unless role="list" is explicit. See
-          // CamperAlertSection.tsx for the same pattern.
-          // eslint-disable-next-line jsx-a11y/no-redundant-roles
-          <ul data-testid="family-panel-adults" className="flex flex-col gap-0.5" role="list">
+          <ul data-testid="family-panel-adults" className="flex flex-col gap-0.5">
             {adults.map((adult, index) => (
               <li
                 key={`${String(adult.adult_number ?? index)}-${String(adult.display_name)}`}
@@ -275,11 +271,7 @@ export function FamilyDetailsPanel({
         )}
 
         {children.length > 0 && (
-          // NOT redundant: Tailwind Preflight sets list-style: none on every <ul>, which strips the
-          // implicit `list` role in Safari's a11y tree unless role="list" is explicit. See
-          // CamperAlertSection.tsx for the same pattern.
-          // eslint-disable-next-line jsx-a11y/no-redundant-roles
-          <ul className="flex flex-col gap-0.5" role="list">
+          <ul className="flex flex-col gap-0.5">
             {children.map((child, index) => (
               <li
                 key={String(child.person_cm_id ?? index)}

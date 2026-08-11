@@ -145,7 +145,6 @@ export default function RequestsPanel({
                 <div className="flex items-start space-x-3">
                   <span
                     className="text-2xl"
-                    role="img"
                     aria-label={constraint.type ?? constraint.constraint_type}
                   >
                     {getConstraintIcon(

@@ -98,7 +98,7 @@ export function LodgingUnitRow({
           {!unit.is_active && <span className={MUTED_PILL}>Inactive</span>}
           {(unit.bathroom === 'private' || unit.bathroom === 'shared') && (
             <span className="text-muted-foreground inline-flex items-center gap-1 text-xs">
-              <Bath className="h-3.5 w-3.5" aria-hidden="true" />
+              <Bath className="h-3.5 w-3.5" />
               {unit.bathroom === 'private' ? 'Private' : 'Shared'}
             </span>
           )}
@@ -106,7 +106,7 @@ export function LodgingUnitRow({
             const Icon = flag.icon
             return (
               <span key={flag.key} title={flag.label} className="text-muted-foreground">
-                <Icon className="h-3.5 w-3.5" role="img" aria-label={flag.label} />
+                <Icon className="h-3.5 w-3.5" aria-label={flag.label} />
               </span>
             )
           })}

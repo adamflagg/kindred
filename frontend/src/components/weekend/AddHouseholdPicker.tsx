@@ -148,7 +148,7 @@ export function AddHouseholdPicker({
         aria-haspopup="listbox"
         aria-expanded={open}
       >
-        <Plus className="h-3.5 w-3.5" aria-hidden="true" />
+        <Plus className="h-3.5 w-3.5" />
         Add household
       </button>
 
@@ -162,7 +162,6 @@ export function AddHouseholdPicker({
             style={{ top: dropdownPos.top, left: dropdownPos.left }}
           >
             <input
-              // eslint-disable-next-line jsx-a11y/no-autofocus -- deliberate, same as AddMemberPicker: this is a combobox-style picker opened by a button click, and the filter box is the only control in it
               autoFocus
               type="text"
               value={filter}

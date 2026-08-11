@@ -175,7 +175,7 @@ export function LodgingUnitsPanel() {
             }}
             className={BUTTON_SECONDARY}
           >
-            <Map className="h-4 w-4" aria-hidden="true" />
+            <Map className="h-4 w-4" />
             Areas
           </button>
           <button
@@ -185,7 +185,7 @@ export function LodgingUnitsPanel() {
             }}
             className={BUTTON_PRIMARY}
           >
-            <Plus className="h-4 w-4" aria-hidden="true" />
+            <Plus className="h-4 w-4" />
             New unit
           </button>
         </div>
@@ -236,7 +236,7 @@ export function LodgingUnitsPanel() {
             <div className="from-forest-700 to-forest-800 bg-gradient-to-r px-6 py-5 pr-14">
               <div className="flex items-center gap-3">
                 <div className="rounded-lg bg-white/10 p-2">
-                  <Home className="h-6 w-6 text-amber-400" aria-hidden="true" />
+                  <Home className="h-6 w-6 text-amber-400" />
                 </div>
                 <div>
                   {/* Named, and the id is threaded to Modal's ariaLabelledBy:
