@@ -2,7 +2,7 @@
 # Detect a renumbered PocketBase migration before the server fails to boot.
 #
 # kindred#2245. PocketBase's isMigrationApplied keys on the EXACT filename
-# (core/migrations_runner.go:265-272), so renaming a migration a dev database
+# (core/migrations_runner.go:265-275), so renaming a migration a dev database
 # has already applied makes PB treat it as brand new. An ALTER silently
 # re-runs; a CREATE dies with "Collection name must be unique (case
 # insensitive)", which names neither the cause nor anything searchable.
@@ -41,10 +41,17 @@ REPO_ROOT=$(cd "$HERE/../.." && pwd)
 DB=""
 MIGRATIONS_DIR=""
 
+# A dangling `--db` with no value must not fall through to `shift 2`, which
+# fails under `set -e` and exits 1 with no message — colliding with the exit
+# code that means "diagnosed problem" and reporting a real fault as a finding.
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    --db) DB="${2:-}"; shift 2 ;;
-    --migrations-dir) MIGRATIONS_DIR="${2:-}"; shift 2 ;;
+    --db)
+      [[ $# -ge 2 ]] || { echo "error: --db requires a path" >&2; exit 2; }
+      DB="$2"; shift 2 ;;
+    --migrations-dir)
+      [[ $# -ge 2 ]] || { echo "error: --migrations-dir requires a path" >&2; exit 2; }
+      MIGRATIONS_DIR="$2"; shift 2 ;;
     -h|--help) sed -n '2,30p' "${BASH_SOURCE[0]}"; exit 0 ;;
     *) echo "error: unknown argument '$1'" >&2; exit 2 ;;
   esac
@@ -59,20 +66,25 @@ if [[ -z "$DB" ]]; then
 fi
 [[ -n "$MIGRATIONS_DIR" ]] || MIGRATIONS_DIR="$REPO_ROOT/pocketbase/pb_migrations"
 
-for tool in sqlite3 python3; do
-  command -v "$tool" >/dev/null 2>&1 || { echo "error: $tool not on PATH" >&2; exit 2; }
-done
+# A checkout that has never booted has no database. That is not a fault, and
+# failing here would stop start_dev.sh on a first run.
+#
+# ORDER MATTERS: this must precede the tool check below. Otherwise a fresh
+# clone without sqlite3 exits 2, and start_dev.sh treats any non-zero as fatal
+# — so the check would introduce a hard dependency on exactly the first-run
+# path it is meant to wave through.
+if [[ ! -f "$DB" ]]; then
+  exit 0
+fi
 
 if [[ ! -d "$MIGRATIONS_DIR" ]]; then
   echo "error: migrations directory not found: $MIGRATIONS_DIR" >&2
   exit 2
 fi
 
-# A checkout that has never booted has no database. That is not a fault, and
-# failing here would stop start_dev.sh on a first run.
-if [[ ! -f "$DB" ]]; then
-  exit 0
-fi
+for tool in sqlite3 python3; do
+  command -v "$tool" >/dev/null 2>&1 || { echo "error: $tool not on PATH" >&2; exit 2; }
+done
 
 query() {
   sqlite3 "file:${DB}?mode=ro" "$1" 2>/dev/null || {
@@ -126,6 +138,15 @@ done <<<"$UNAPPLIED"
 # For every unapplied migration, the collections it CREATEs. If one already
 # exists, the boot is going to fail on it.
 #
+# KNOWN LIMITATION, accepted: this does not simulate migration ORDER. If one
+# unapplied migration drops collection X and a later unapplied one recreates
+# it, this reports a collision the boot would not actually hit. Constructible
+# (verified), but it needs a drop and a recreate split across two NEW
+# migrations rather than written as one — and the cost of simulating order to
+# suppress it is far higher than the cost of a rare, loud, easily-read false
+# positive. The ordinary drop-then-recreate shape does not reach here at all,
+# because the deleting migration is already applied.
+#
 # Both quote styles are required: 1500000139_lodging_slot_merges.js writes
 # name: 'lodging_slot_merges', and a double-quote-only pattern misses it
 # silently. This repo has already shipped one scanner that passed because it
@@ -152,7 +173,12 @@ while IFS= read -r file; do
   [[ -n "$file" ]] || continue
   while IFS= read -r coll; do
     [[ -n "$coll" ]] || continue
-    if grep -Fxq "$coll" <<<"$EXISTING"; then
+    # -i, not just -Fxq: PocketBase's uniqueness is CASE-INSENSITIVE — its own
+    # error says so — so a migration creating `Example` collides with a live
+    # `example`. Every migration in the tree is lowercase snake_case today, so
+    # this needs a convention violation to fire; it costs one flag to be right
+    # anyway, and the cost of being wrong is a false CLEAN.
+    if grep -Fxiq "$coll" <<<"$EXISTING"; then
       report "" \
         "COLLECTION ALREADY EXISTS — an unapplied migration would re-create it." \
         "" \

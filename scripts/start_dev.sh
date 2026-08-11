@@ -59,7 +59,14 @@ lsof -ti:"$CADDY_PORT" | xargs kill -9 2>/dev/null || true
 # Hard-fail rather than warn: a warning here scrolls past under ~200 lines of
 # start-up output, and PocketBase is about to fail anyway with an error that
 # names neither the cause nor anything searchable.
-if ! "$PROJECT_ROOT/scripts/dev/verify-migration-history.sh"; then
+# Both paths are explicit on purpose. The verifier otherwise honours
+# $PB_DATA_DIR, which the PocketBase binary does NOT read — it uses pb_data
+# relative to its own working directory. With PB_DATA_DIR exported (it is a
+# live variable here: api/services/metrics_sql_connection.py reads it), the
+# check would pass against one database while PocketBase booted another.
+if ! "$PROJECT_ROOT/scripts/dev/verify-migration-history.sh" \
+        --db "$PROJECT_ROOT/pocketbase/pb_data/data.db" \
+        --migrations-dir "$PROJECT_ROOT/pocketbase/pb_migrations"; then
     echo -e "${RED}Migration history check failed -- not starting PocketBase.${NC}" >&2
     exit 1
 fi

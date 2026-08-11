@@ -252,7 +252,7 @@ The numbering rule tells you to bump above HEAD when a competing PR takes your n
 
 ### The mechanism
 
-`_migrations` keys on the **exact filename**. PocketBase's `isMigrationApplied` (`core/migrations_runner.go:265-272`) is a `WHERE file = ?` lookup, so `1500000146_foo.js` is unapplied no matter what row `1500000144_foo.js` has. Renaming an applied migration makes PB see a brand new one:
+`_migrations` keys on the **exact filename**. PocketBase's `isMigrationApplied` (`core/migrations_runner.go:265-275`) is a `WHERE file = ?` lookup, so `1500000146_foo.js` is unapplied no matter what row `1500000144_foo.js` has. Renaming an applied migration makes PB see a brand new one:
 
 - an **ALTER** migration silently re-runs
 - a **CREATE** migration fails the boot with `Collection name must be unique (case insensitive)` — an error naming neither the file nor the cause
@@ -280,14 +280,27 @@ sqlite3 pocketbase/pb_data/data.db \
    VALUES ('<NEW>_<slug>.js', strftime('%s','now')*1000000);"
 ```
 
-**Case 2 — content differs.** Your database carries a schema that exists nowhere else, and only a re-apply converges it. **Count rows before you drop anything:**
+**Case 2 — content differs.** Your database carries a schema that exists nowhere else, and only a re-apply converges it. **What you do next depends on whether the migration CREATEs or ALTERs, and getting that backwards destroys data.**
+
+**Case 2a — the migration CREATEs the collections.** These are the ones that fail the boot outright. **Count rows before you drop anything:**
 
 ```bash
 sqlite3 'file:pocketbase/pb_data/data.db?mode=ro' 'SELECT count(*) FROM <collection>;'
 ```
 
-- **All zero** → drop the collections the migration creates, then boot normally.
+- **All zero** → drop the collections **that this migration creates**, then boot normally.
 - **Any non-zero** → **do not drop.** Export first, or reseed the dev database from a prod snapshot. "Drop the collection and re-run" is the recipe that works on an empty table and silently destroys a populated one.
+
+**Case 2b — the migration ALTERs an existing collection.** ⛔ **Do not drop anything.** The collection it targets was created by a *different, earlier* migration that is still recorded as applied — so dropping it destroys that migration's work and a normal boot will **not** recreate it, because PocketBase already believes it ran.
+
+An ALTER in this state has silently re-run rather than failed, so the damage is usually nil: the convention here is idempotent `fields.add()`, which converges toward whatever the file declares. Verify rather than assume — compare the live column set against the file:
+
+```bash
+sqlite3 'file:pocketbase/pb_data/data.db?mode=ro' \
+  "SELECT fields FROM _collections WHERE name='<collection>';" | python3 -m json.tool | grep '"name"'
+```
+
+If it matches the migration's declaration, record the new filename as applied per Case 1 and move on. If it does not — the usual cause is a field the file *removed*, which no re-run can undo — hand-drop that field, or reseed the dev database. There is no automatic recovery for a removal.
 
 **Re-apply by booting the server** (`./scripts/start_dev.sh`) rather than by hand. Migrations run from `apis.Serve` at `apis/serve.go:66-70`, so a normal boot applies them.
 
