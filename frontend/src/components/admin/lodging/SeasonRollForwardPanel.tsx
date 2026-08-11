@@ -194,11 +194,7 @@ export function SeasonRollForwardPanel() {
                 className={BUTTON_SECONDARY}
               >
                 Details
-                {expanded ? (
-                  <ChevronUp className="h-4 w-4" aria-hidden="true" />
-                ) : (
-                  <ChevronDown className="h-4 w-4" aria-hidden="true" />
-                )}
+                {expanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
               </button>
             </div>
 
@@ -234,14 +230,13 @@ export function SeasonRollForwardPanel() {
               >
                 {applyMutation.isPending ? (
                   <>
-                    <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> Carrying
-                    forward…
+                    <Loader2 className="h-4 w-4 animate-spin" /> Carrying forward…
                   </>
                 ) : nothingToCarry ? (
                   'Nothing to carry forward'
                 ) : (
                   <>
-                    <Check className="h-4 w-4" aria-hidden="true" /> Carry {toCreate} forward
+                    <Check className="h-4 w-4" /> Carry {toCreate} forward
                   </>
                 )}
               </button>

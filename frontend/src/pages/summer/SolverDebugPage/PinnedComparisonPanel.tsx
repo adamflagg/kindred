@@ -106,7 +106,7 @@ export function PinnedComparisonPanel({ runA, runB, onClear }: Props) {
             aria-label="Clear pins"
             className="inline-flex items-center gap-1 rounded border border-gray-200 px-2.5 py-1 text-xs font-medium text-gray-700 hover:border-gray-300 hover:bg-gray-50 hover:text-gray-900"
           >
-            <X className="h-3.5 w-3.5" aria-hidden />
+            <X className="h-3.5 w-3.5" />
             Clear pins
           </button>
         </div>
@@ -207,12 +207,12 @@ function CopyComparisonJsonButton({ runA, runB }: { runA: SolverRun; runB: Solve
     >
       {copied ? (
         <>
-          <Check className="h-3.5 w-3.5 text-green-600" aria-hidden />
+          <Check className="h-3.5 w-3.5 text-green-600" />
           Copied!
         </>
       ) : (
         <>
-          <Copy className="h-3.5 w-3.5" aria-hidden />
+          <Copy className="h-3.5 w-3.5" />
           Copy JSON
         </>
       )}

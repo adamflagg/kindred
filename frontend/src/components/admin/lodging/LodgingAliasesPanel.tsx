@@ -143,7 +143,7 @@ export function LodgingAliasesPanel() {
           }}
           className={`${BUTTON_PRIMARY} flex-shrink-0`}
         >
-          <Plus className="h-4 w-4" aria-hidden="true" />
+          <Plus className="h-4 w-4" />
           New alias
         </button>
       </div>

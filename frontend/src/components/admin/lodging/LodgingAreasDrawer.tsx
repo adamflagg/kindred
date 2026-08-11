@@ -290,7 +290,7 @@ export function LodgingAreasDrawer({ open, onClose }: LodgingAreasDrawerProps) {
               }
               className={BUTTON_PRIMARY}
             >
-              <Plus className="h-4 w-4" aria-hidden="true" />
+              <Plus className="h-4 w-4" />
               Add
             </button>
           </div>

@@ -116,12 +116,8 @@ export function HouseholdYearMembersModal({
     >
       <div className="flex flex-col gap-4 p-4">
         {adults.length > 0 && (
-          <MemberSection title="Adults" icon={<Users className="h-3.5 w-3.5" aria-hidden="true" />}>
-            {/* NOT redundant: Tailwind Preflight sets list-style: none on every <ul>, which strips
-                the implicit `list` role in Safari's a11y tree unless role="list" is explicit. Same
-                pattern as FamilyDetailsPanel. */}
-            {/* eslint-disable-next-line jsx-a11y/no-redundant-roles */}
-            <ul data-testid="year-members-adults" className="flex flex-col gap-0.5" role="list">
+          <MemberSection title="Adults" icon={<Users className="h-3.5 w-3.5" />}>
+            <ul data-testid="year-members-adults" className="flex flex-col gap-0.5">
               {adults.map((adult, index) => (
                 <li
                   key={`${String(adult.adult_number ?? index)}-${String(adult.display_name)}`}
@@ -138,12 +134,8 @@ export function HouseholdYearMembersModal({
         )}
 
         {children.length > 0 && (
-          <MemberSection
-            title="Children"
-            icon={<Baby className="h-3.5 w-3.5" aria-hidden="true" />}
-          >
-            {/* eslint-disable-next-line jsx-a11y/no-redundant-roles -- see above */}
-            <ul data-testid="year-members-children" className="flex flex-col gap-0.5" role="list">
+          <MemberSection title="Children" icon={<Baby className="h-3.5 w-3.5" />}>
+            <ul data-testid="year-members-children" className="flex flex-col gap-0.5">
               {children.map((child, index) => (
                 <li
                   key={String(child.person_cm_id ?? index)}

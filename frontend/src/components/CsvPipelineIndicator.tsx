@@ -63,19 +63,19 @@ export default function CsvPipelineIndicator() {
       >
         {data.phase === 'importing' && (
           <>
-            <Loader2 className="h-3 w-3 animate-spin text-blue-600" aria-hidden="true" />
+            <Loader2 className="h-3 w-3 animate-spin text-blue-600" />
             <span>Importing CSV…</span>
           </>
         )}
         {data.phase === 'matching' && (
           <>
-            <Loader2 className="h-3 w-3 animate-spin text-blue-600" aria-hidden="true" />
+            <Loader2 className="h-3 w-3 animate-spin text-blue-600" />
             <span>Matching CSV requests…</span>
           </>
         )}
         {data.phase === 'done' && (
           <>
-            <CheckCircle className="h-3 w-3 text-green-600" aria-hidden="true" />
+            <CheckCircle className="h-3 w-3 text-green-600" />
             <span>
               Import complete · {data.counts.total} new
               {data.counts.needReview > 0 ? <> · ⚠ {data.counts.needReview} review</> : null}
@@ -84,7 +84,7 @@ export default function CsvPipelineIndicator() {
         )}
         {data.phase === 'error' && (
           <>
-            <AlertCircle className="h-3 w-3 text-red-600" aria-hidden="true" />
+            <AlertCircle className="h-3 w-3 text-red-600" />
             <span>Import failed. Click for details.</span>
           </>
         )}
@@ -96,7 +96,7 @@ export default function CsvPipelineIndicator() {
           className="ml-1 rounded p-0.5 hover:bg-gray-200"
           aria-label="Dismiss"
         >
-          <X className="h-3 w-3" aria-hidden="true" />
+          <X className="h-3 w-3" />
         </button>
       )}
       {popoverOpen && (

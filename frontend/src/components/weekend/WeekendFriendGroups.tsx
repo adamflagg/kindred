@@ -243,7 +243,7 @@ function FriendGroupCard({
               disabled={isPending}
               className="text-destructive hover:bg-muted inline-flex items-center gap-1 rounded-lg border px-2 py-1 text-xs transition-colors disabled:opacity-50"
             >
-              <Trash2 className="h-3 w-3" aria-hidden="true" />
+              <Trash2 className="h-3 w-3" />
               Dissolve
             </button>
           </span>
@@ -289,7 +289,7 @@ function FriendGroupCard({
                       title="Remove from group"
                       aria-label={`Remove household ${String(member.household_cm_id)} from group`}
                     >
-                      <X className="h-3 w-3" aria-hidden="true" />
+                      <X className="h-3 w-3" />
                     </button>
                   )}
                 </div>
@@ -316,7 +316,7 @@ function FriendGroupCard({
                     title="Remove from group"
                     aria-label={`Remove ${label} from group`}
                   >
-                    <X className="h-3 w-3" aria-hidden="true" />
+                    <X className="h-3 w-3" />
                   </button>
                 )}
               </div>

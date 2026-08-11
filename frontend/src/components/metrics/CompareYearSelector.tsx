@@ -53,7 +53,6 @@ export function CompareYearSelector({
             a newly opened menu; without it a keyboard user who just pressed
             the button lands nowhere. */}
         <select
-          // eslint-disable-next-line jsx-a11y/no-autofocus -- deliberate, see comment above
           autoFocus
           value=""
           onChange={(e) => {

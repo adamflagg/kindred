@@ -191,7 +191,6 @@ function AddMemberPicker({
         type="button"
         onClick={() => setOpen((o) => !o)}
         className="text-muted-foreground hover:text-foreground flex items-center gap-1 text-sm"
-        aria-label="Add member"
         aria-haspopup="listbox"
         aria-expanded={open}
       >
@@ -209,7 +208,6 @@ function AddMemberPicker({
             style={{ top: dropdownPos.top, left: dropdownPos.left }}
           >
             <input
-              // eslint-disable-next-line jsx-a11y/no-autofocus -- deliberate: this is a combobox-style picker opened by a button click, and the filter box is the only control in it; autofocus lets the user start typing immediately instead of tabbing into a freshly-opened popup
               autoFocus
               type="text"
               value={filter}

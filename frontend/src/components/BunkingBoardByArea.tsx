@@ -609,7 +609,6 @@ export default function BunkingBoardByArea(props: BunkingBoardByAreaProps) {
               <p className="text-muted-foreground font-medium">No bunks in this area</p>
             </div>
           ) : (
-            // eslint-disable-next-line jsx-a11y/no-static-element-interactions, jsx-a11y/click-events-have-key-events -- background dead-space dismiss (mouse-only convenience, mirrors `useDismissOnDeadSpace`'s own document click listener above). Not the only path to close either panel: CamperDetailsPanel has its own Escape listener, and LockGroupPanel has an explicit close button — both keyboard-reachable without this div.
             <div
               data-bunk-grid
               className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4"

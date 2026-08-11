@@ -69,22 +69,23 @@ export default tseslint.config(
       'jsx-a11y': jsxA11y,
     },
     rules: {
-      // ── jsx-a11y (kindred#2063, kindred#2068) ────────────────────────
-      // The recommended set, split by what this codebase already satisfies.
+      // ── jsx-a11y ─────────────────────────────────────────────────────
+      // These rules are here to protect the TEST SUITE, not to pursue
+      // accessibility. The suite addresses the UI through the accessibility
+      // tree — 1,721 `*ByRole` and 309 `*ByLabelText` calls across 141 test
+      // files — so a malformed role or a typo'd aria-* prop breaks the query
+      // layer, silently and far from the edit. That is the whole rationale.
       //
-      // 27 of the 34 recommended rules pass on the tree TODAY, so they are
-      // errors: they cost nothing now and they cannot regress. The remaining
-      // 7 have pre-existing violations (133 at the time of writing) and are
-      // warnings, so the gate lands without turning CI red on code nobody is
-      // touching. Promote each to 'error' as its count reaches zero — that
-      // ratchet is the point; a permanent warning is a backlog, not a gate.
-      //
-      // What this plugin does NOT do: judge whether an aria-label is
-      // meaningful, or whether focus order makes sense. It catches structural
-      // mistakes only. The ~290 hand-written aria-* attributes here remain
-      // hand-maintained. The self-interested case is the test suite — it calls
-      // getByRole over 1,200 times, so a broken role breaks the query layer.
-      ...jsxA11y.flatConfigs.recommended.rules,
+      // The four rules below are the typo-net for exactly that. They are
+      // deliberately NOT `...jsxA11y.flatConfigs.recommended.rules`: that
+      // spread pulls in 34 rules, seven of which grade keyboard parity, and
+      // it is what recruited five days of a11y work into this repo. See
+      // frontend/CLAUDE.md § "Accessibility — deliberately minimal" for the
+      // policy and the reasoning. Adding a rule back needs the owner.
+      'jsx-a11y/aria-props': 'error',
+      'jsx-a11y/aria-unsupported-elements': 'error',
+      'jsx-a11y/role-has-required-aria-props': 'error',
+      'jsx-a11y/role-supports-aria-props': 'error',
 
       // React Hooks rules - core rules as errors, compiler rules as warnings
       'react-hooks/rules-of-hooks': 'error',
@@ -128,31 +129,6 @@ export default tseslint.config(
       '@typescript-eslint/prefer-string-starts-ends-with': 'warn',
       '@typescript-eslint/prefer-includes': 'warn',
       '@typescript-eslint/prefer-reduce-type-parameter': 'warn',
-    },
-  },
-
-  // jsx-a11y severity overrides — hoisted into their own config object.
-  // ESLint flat config MERGES a severity-only override onto an earlier
-  // config's rule options rather than replacing them, but only across
-  // separate config objects; a later key inside the SAME object literal
-  // replaces the earlier value outright. Keeping these in the main
-  // TypeScript config's `rules` block (alongside the
-  // `...jsxA11y.flatConfigs.recommended.rules` spread) discarded the
-  // options on rules that carry them, e.g. `no-static-element-interactions`
-  // lost `allowExpressionValues`. This object must stay separate so the
-  // 'warn' string here layers onto the recommended `[error, {options}]`
-  // value instead of clobbering it.
-  {
-    files: ['**/*.{ts,tsx}'],
-    rules: {
-      // Violated today — warn, then promote. Counts as of 2026-08-07:
-      'jsx-a11y/click-events-have-key-events': 'warn', //           44
-      'jsx-a11y/no-static-element-interactions': 'warn', //         42
-      'jsx-a11y/label-has-associated-control': 'warn', //           27
-      'jsx-a11y/no-autofocus': 'warn', //                            9
-      'jsx-a11y/no-redundant-roles': 'warn', //                      7
-      'jsx-a11y/no-noninteractive-element-interactions': 'warn', //  2
-      'jsx-a11y/no-interactive-element-to-noninteractive-role': 'warn', // 2
     },
   },
 

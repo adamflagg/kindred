@@ -273,7 +273,7 @@ function SharingConflictChip({ badge }: { badge: UnitBadge }) {
   const className = `inline-flex items-center gap-0.5 rounded-full px-1.5 py-0.5 text-xs font-medium ${badge.className}`
   const body = (
     <>
-      <TriangleAlert className="h-3 w-3 flex-shrink-0" aria-hidden="true" />
+      <TriangleAlert className="h-3 w-3 flex-shrink-0" />
       {badge.label}
     </>
   )
@@ -802,12 +802,12 @@ export function LodgingUnitCard({
       <div className="text-muted-foreground flex flex-wrap items-center gap-1.5 text-sm">
         {unit.bathroom === 'private' && (
           <span className="inline-flex items-center gap-0.5">
-            <Bath className="h-3 w-3" aria-hidden="true" /> Private
+            <Bath className="h-3 w-3" /> Private
           </span>
         )}
         {unit.bathroom === 'shared' && (
           <span className="inline-flex items-center gap-0.5">
-            <Bath className="h-3 w-3" aria-hidden="true" /> Shared
+            <Bath className="h-3 w-3" /> Shared
           </span>
         )}
         {unit.has_power === true && <Plug className="h-3 w-3" aria-label="Power" />}
@@ -937,7 +937,7 @@ export function LodgingUnitCard({
             }}
             className="border-border text-muted-foreground hover:text-foreground hover:border-foreground/30 inline-flex cursor-grab items-center gap-0.5 rounded-full border px-1.5 py-0.5 text-xs font-medium active:cursor-grabbing disabled:opacity-40"
           >
-            <Merge className="h-3 w-3" aria-hidden="true" />
+            <Merge className="h-3 w-3" />
             Merge
           </button>
         )}
@@ -963,7 +963,7 @@ export function LodgingUnitCard({
               }}
               className="border-border text-muted-foreground hover:text-foreground hover:border-foreground/30 inline-flex items-center gap-0.5 rounded-full border px-1.5 py-0.5 text-xs font-medium disabled:opacity-40"
             >
-              <Split className="h-3 w-3" aria-hidden="true" />
+              <Split className="h-3 w-3" />
               Split
             </button>
           )}
@@ -978,9 +978,9 @@ export function LodgingUnitCard({
           }`}
         >
           {consent ? (
-            <TriangleAlert className="h-3 w-3 flex-shrink-0" aria-hidden="true" />
+            <TriangleAlert className="h-3 w-3 flex-shrink-0" />
           ) : (
-            <Users className="h-3 w-3 flex-shrink-0" aria-hidden="true" />
+            <Users className="h-3 w-3 flex-shrink-0" />
           )}
           {`${String(parties.length)} families`}
         </span>

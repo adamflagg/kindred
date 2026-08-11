@@ -23,6 +23,32 @@ React + TypeScript + Vite. Dev server on `:3000` (HMR); prod served via Caddy at
 - **Custom hooks** — extract data fetching once a query has **2+ consumers** (`useSocialGraphData`, `useBunkNames`, `useSessionHierarchy`, `useLodgingAreas`, `useLodgingUnits`). A query with a single consumer is fine inline — don't extract pre-emptively.
 - **Barrel exports** — directories use `index.ts` for clean imports
 
+## Accessibility — deliberately minimal
+
+**Read this before adding any ARIA attribute, `sr-only` text, or keyboard handler. This project has opted out of accessibility work, on purpose.**
+
+The user base is **three people**, on laptops and desktop monitors, with a mouse and keyboard. There are no assistive-technology users and none planned. Mobile is rare and read-only — pulling up a camper detail or roster page. There is no legal requirement here. A default WCAG posture costs real work and buys this codebase nothing, which is how five days once went to an a11y sweep nobody asked for.
+
+**DO add `aria-label` / `role` when it is the only handle a test can query a control by.** This is a *test-infrastructure* decision, not an accessibility one, and it is why the four `jsx-a11y` rules in `eslint.config.js` are still on: the suite addresses the UI through the accessibility tree (~1,721 `*ByRole` and ~309 `*ByLabelText` calls across ~141 test files), so a malformed role breaks the query layer far from the edit. An icon-only button needs a name — give it one.
+
+**DO NOT add:**
+
+- `sr-only` text — no one here reads it
+- `aria-live` regions or `role="status"` announcements
+- `aria-hidden` on lucide icons — lucide already emits it when you pass no a11y prop
+- `role=` that merely restates the tag (`role="list"` on a `<ul>`, `role="img"` on an `<svg>`)
+- keyboard handlers on non-controls, or roving-tabindex / arrow-key navigation
+
+**DO prefer** converting `<div role="button" tabIndex={0} onKeyDown={…}>` into a plain `<button>`. That deletes three things and is the shape we want. Never go the other way.
+
+### Traps, so a future sweep doesn't re-derive them
+
+- **`sr-only` on an `<input>` or `<legend>` is a visually-hidden native control, not AT scaffolding.** The friend-group colour swatches are real radios hidden behind styled spans — delete the class and a raw grey radio button appears next to every swatch. Exclude these by hand; a classname sweep will eat them.
+- **`aria-hidden` and `sr-only` both feed testing-library's accessible-name computation.** Removing either can change what `getByRole(…, { name })` matches in a file you did not touch. Change in batches, run the suite between them.
+- **`components/ui/modalStack.ts` is overlay-ordering correctness, not accessibility**, despite the neighbourhood. `isTopOverlay()` is what stops one Escape closing two stacked overlays; `acquireBackgroundInert()` sets `inert`, which blocks **mouse clicks** through an open dialog. Escape-to-close and focus *restore* serve everyone. Do not remove any of it.
+- **`ui/SortableColumnHeader.tsx`'s `aria-hidden` on the sort arrow is load-bearing.** Remove it and ↑/↓ folds into the accessible name of every sortable column across six tables.
+- **`components/weekend/AccessibilityFlagList.tsx` has nothing to do with screen readers.** It renders families' *housing* needs — wheelchair access, CPAP power, bathroom proximity — on the weekend board. It matches every grep for "accessib".
+
 ## Error handling — non-negotiable
 
 - **Page-level `<ErrorBoundary>`** — every lazy-loaded route in `App.tsx` is wrapped with `<ErrorBoundary>` around `<Suspense>`. Isolates crashes to the affected page. New routes MUST follow this pattern.

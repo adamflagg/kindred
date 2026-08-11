@@ -175,6 +175,10 @@ Be careful with the comparison, because summer is not uniform: the bunking board
 
 When weekend genuinely must differ, say why at the divergence. `useHouseholdMedical`'s `staleTime: 0, gcTime: 0` is the model: PHI must not sit in the cache after the panel closes, and the comment says so.
 
+### Accessibility Is Opt-Out Here
+
+**Read `frontend/CLAUDE.md` § "Accessibility — deliberately minimal" before adding any ARIA attribute, `sr-only` text, or keyboard handler.** Three users, desktop, mouse and keyboard, no assistive technology and none planned. `aria-label` and `role` are added when a test needs a query handle — that is test infrastructure, not accessibility, and the distinction is the whole policy. Escape-to-close, focus restore and `ui/modalStack.ts` are *everyone's* interaction code and stay.
+
 ### A Wrong Issue Body Gets Fixed, Not Worked Around
 
 **When you find an issue body that is wrong — a renamed symbol, a moved line number, a stale count, a proposed fix that would not compile or would cause harm — edit the issue body. Do not merely note it in a PR, a comment, or a triage doc.**

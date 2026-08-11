@@ -13,11 +13,11 @@ export function ParentStaffDivider() {
     <div className="text-muted-foreground/70 my-3 flex items-center gap-2 font-mono text-[10.5px] tracking-[0.18em] uppercase">
       <span className="border-border/60 flex-1 border-t" />
       <span className="inline-flex items-center gap-1">
-        Parent <ChevronUp className="h-3 w-3" aria-hidden="true" />
+        Parent <ChevronUp className="h-3 w-3" />
       </span>
       <span className="border-border/60 h-3 border-l" aria-hidden="true" />
       <span className="inline-flex items-center gap-1">
-        <ChevronDown className="h-3 w-3" aria-hidden="true" /> Staff
+        <ChevronDown className="h-3 w-3" /> Staff
       </span>
       <span className="border-border/60 flex-1 border-t" />
     </div>

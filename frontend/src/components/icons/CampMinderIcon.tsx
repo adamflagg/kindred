@@ -9,7 +9,6 @@ export function CampMinderIcon({ className = 'w-6 h-5' }: { className?: string }
       viewBox="0 0 28 20"
       fill="currentColor"
       xmlns="http://www.w3.org/2000/svg"
-      aria-label="CampMinder"
     >
       <text
         x="14"

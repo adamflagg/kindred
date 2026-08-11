@@ -331,12 +331,12 @@ function CopyJsonButton({ run }: { run: SolverRun }) {
     >
       {copied ? (
         <>
-          <Check className="h-3.5 w-3.5 text-green-600" aria-hidden />
+          <Check className="h-3.5 w-3.5 text-green-600" />
           Copied!
         </>
       ) : (
         <>
-          <Copy className="h-3.5 w-3.5" aria-hidden />
+          <Copy className="h-3.5 w-3.5" />
           Copy JSON
         </>
       )}

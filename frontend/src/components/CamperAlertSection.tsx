@@ -45,22 +45,12 @@ function alertIcon(alert: CamperAlert) {
     case 'unsatisfied-requests':
     case 'unsatisfied-parent-requests':
       return (
-        <AlertTriangle
-          className="h-4 w-4 flex-shrink-0 text-orange-500 dark:text-orange-400"
-          aria-hidden="true"
-        />
+        <AlertTriangle className="h-4 w-4 flex-shrink-0 text-orange-500 dark:text-orange-400" />
       )
     case 'unsatisfied-staff-requests':
-      return (
-        <AlertCircle
-          className="h-4 w-4 flex-shrink-0 text-amber-500 dark:text-amber-400"
-          aria-hidden="true"
-        />
-      )
+      return <AlertCircle className="h-4 w-4 flex-shrink-0 text-amber-500 dark:text-amber-400" />
     case 'friend-group':
-      return (
-        <Lock className="h-4 w-4 flex-shrink-0 text-sky-500 dark:text-sky-400" aria-hidden="true" />
-      )
+      return <Lock className="h-4 w-4 flex-shrink-0 text-sky-500 dark:text-sky-400" />
     default:
       // Generic fallback per severity
       return (
@@ -74,7 +64,6 @@ function alertIcon(alert: CamperAlert) {
                   ? 'text-amber-500 dark:text-amber-400'
                   : 'text-sky-500 dark:text-sky-400'
           }`}
-          aria-hidden="true"
         />
       )
   }
@@ -102,8 +91,7 @@ export function CamperAlertSection({ alerts, onRequestAlertClick }: CamperAlertS
 
   return (
     <section aria-label="Alerts" className="space-y-1">
-      {/* eslint-disable-next-line jsx-a11y/no-redundant-roles -- Tailwind preflight sets `list-style: none` on every `ul`, which strips the implicit `list` role in Safari/VoiceOver; `role="list"` restores it and is not redundant there even though the rule can't see the CSS reset */}
-      <ul className="space-y-1" role="list">
+      <ul className="space-y-1">
         {sorted.map((alert) => {
           const icon = alertIcon(alert)
           const colorClasses = rowColorClasses(alert.severity)

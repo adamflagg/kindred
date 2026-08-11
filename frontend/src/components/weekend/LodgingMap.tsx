@@ -400,7 +400,6 @@ export function LodgingMap({ parties, units, year, sessionCmId = 0 }: LodgingMap
               surface is deliberately not keyboard-navigable (the accessible equivalent is Manage →
               Family Camp Lodging). This click is background-dismiss only, and Escape already closes
               the same popover via the keydown listener registered above. */}
-          {/* eslint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions */}
           <div
             ref={canvasRef}
             data-testid="map-canvas"
@@ -605,7 +604,6 @@ export function LodgingMap({ parties, units, year, sessionCmId = 0 }: LodgingMap
                 // at the top of this file. A role this mark cannot honour with real keyboard/focus
                 // support (82 unreachable tab stops) is a worse lie than an honest non-control; the
                 // accessible equivalent is Manage → Family Camp Lodging.
-                // eslint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions
                 <div
                   key={key}
                   data-testid="map-mark"
@@ -811,7 +809,7 @@ export function LodgingMap({ parties, units, year, sessionCmId = 0 }: LodgingMap
           {model.offMap.length > 0 && (
             <section data-testid="map-offmap-section">
               <h3 className="text-muted-foreground mb-2 flex items-center gap-1.5 text-[11px] font-bold tracking-wider uppercase">
-                <Info className="h-3.5 w-3.5 flex-shrink-0" aria-hidden="true" />
+                <Info className="h-3.5 w-3.5 flex-shrink-0" />
                 Placed, off the map
               </h3>
               <p className="text-muted-foreground mb-2 text-xs">

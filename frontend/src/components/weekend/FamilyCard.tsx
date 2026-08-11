@@ -283,7 +283,7 @@ function FamilyCardIdentity({ party }: { party: RosterPartyRow }) {
           )}
         </span>
         <span className="text-muted-foreground ml-auto inline-flex items-center gap-0.5 text-xs tabular-nums">
-          <Users className="h-3 w-3 flex-shrink-0" aria-hidden="true" />
+          <Users className="h-3 w-3 flex-shrink-0" />
           {/* `party.party_size` is a BED count since kindred#1925/#2046 (it
               drops blank/placeholder adult slots and discounts an infant),
               which can legitimately disagree with the names printed below --
@@ -473,7 +473,7 @@ function FamilyCardChips({
 
       {party.is_returning === true && (
         <span className="text-forest-700 dark:text-forest-300 inline-flex items-center gap-0.5 text-xs font-semibold">
-          <Repeat className="h-2.5 w-2.5 flex-shrink-0" aria-hidden="true" />
+          <Repeat className="h-2.5 w-2.5 flex-shrink-0" />
           Returning
         </span>
       )}
@@ -485,7 +485,7 @@ function FamilyCardChips({
             adult weekend regular a first-timer. */}
       {isHousehold && party.is_returning !== true && (
         <span className="inline-flex items-center gap-0.5 text-xs font-semibold text-amber-700 dark:text-amber-300">
-          <Star className="h-2.5 w-2.5 flex-shrink-0" aria-hidden="true" />
+          <Star className="h-2.5 w-2.5 flex-shrink-0" />
           First-time
         </span>
       )}

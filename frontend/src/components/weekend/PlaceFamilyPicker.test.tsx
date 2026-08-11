@@ -303,7 +303,6 @@ describe('PlaceFamilyPicker — closing', () => {
     render(
       // A bare listener is the point: this stands in for the board behind the
       // card, which is not an interactive element either.
-      // eslint-disable-next-line jsx-a11y/no-static-element-interactions
       <div onKeyDown={onKeyDown}>
         <PlaceFamilyPicker unit={unit()} parties={[JOHNSON]} units={[]} onSelect={vi.fn()} />
       </div>

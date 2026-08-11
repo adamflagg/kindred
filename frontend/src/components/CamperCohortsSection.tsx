@@ -76,7 +76,7 @@ export function CamperCohortsSection({
               data-testid="cohort-row"
               data-cohort-kind={row.kind}
             >
-              <Users className="h-3 w-3 flex-shrink-0" aria-hidden="true" />
+              <Users className="h-3 w-3 flex-shrink-0" />
               <span data-cohort-label={row.label}>
                 {`Also from ${row.label}: ${row.count} ${camperWord}`}
               </span>

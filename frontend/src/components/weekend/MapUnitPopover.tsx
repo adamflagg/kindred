@@ -84,7 +84,7 @@ const NO_WHOLE_BUILDING_HOLDERS: Set<string> = new Set()
 function WholeBuildingBadge() {
   return (
     <span className="inline-flex items-center gap-0.5 rounded-full bg-indigo-100 px-1.5 py-0.5 text-[10px] font-semibold whitespace-nowrap text-indigo-800 dark:bg-indigo-950/50 dark:text-indigo-300">
-      <Home className="h-2.5 w-2.5 flex-shrink-0" aria-hidden="true" />
+      <Home className="h-2.5 w-2.5 flex-shrink-0" />
       Whole building
     </span>
   )
@@ -93,9 +93,9 @@ function WholeBuildingBadge() {
 /**
  * What the registry records about the room.
  *
- * Icons carry `role="img"` and a label rather than bare `aria-hidden` glyphs:
- * an amenity that exists only as a shape is invisible to AT, and this is the
- * only place on the map that reports them. Same icon grammar as
+ * Icons keep their `aria-label` — not for AT, but because it is the only handle
+ * `MapUnitPopover.test.tsx` has to assert an amenity rendered (`getByLabelText`
+ * at :219-222); the glyph itself carries no queryable text. Same icon grammar as
  * `LodgingUnitCard`, so an amenity reads the same on both surfaces.
  */
 function Amenities({ unit }: { unit: MapUnit['unit'] }): ReactNode {
@@ -112,7 +112,7 @@ function Amenities({ unit }: { unit: MapUnit['unit'] }): ReactNode {
     <ul className="text-muted-foreground flex flex-wrap items-center gap-1.5">
       {items.map(({ label, icon: Icon }) => (
         <li key={label}>
-          <Icon role="img" aria-label={label} className="h-3 w-3" />
+          <Icon aria-label={label} className="h-3 w-3" />
         </li>
       ))}
     </ul>

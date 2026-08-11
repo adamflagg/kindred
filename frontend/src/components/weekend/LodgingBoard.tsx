@@ -417,7 +417,7 @@ export function LodgingBoard({
         {board.flaggedCount > 0 && (
           <div className="flex flex-wrap items-center gap-2">
             <span className="inline-flex items-center gap-1.5 rounded-full bg-amber-100 px-2.5 py-1 text-xs font-semibold text-amber-800 dark:bg-amber-950/50 dark:text-amber-300">
-              <TriangleAlert className="h-3.5 w-3.5 flex-shrink-0" aria-hidden="true" />
+              <TriangleAlert className="h-3.5 w-3.5 flex-shrink-0" />
               {board.flaggedCount === 1
                 ? '1 shared cabin needs a look'
                 : `${String(board.flaggedCount)} shared cabins need a look`}
@@ -593,7 +593,7 @@ export function LodgingBoard({
             {board.offBoard.length > 0 && (
               <section>
                 <h3 className="text-muted-foreground mb-2 flex items-center gap-1.5 text-[11px] font-bold tracking-wider uppercase">
-                  <Info className="h-3.5 w-3.5 flex-shrink-0" aria-hidden="true" />
+                  <Info className="h-3.5 w-3.5 flex-shrink-0" />
                   Placed outside the board
                 </h3>
                 <p className="text-muted-foreground mb-2 text-xs">

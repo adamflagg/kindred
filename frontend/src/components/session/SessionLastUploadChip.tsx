@@ -25,7 +25,7 @@ export default function SessionLastUploadChip({ sessionCmId, agSessionCmIds, ses
         className="ml-auto flex items-center gap-1.5 rounded-lg border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-sm text-emerald-800 hover:bg-emerald-100 dark:border-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-300"
         aria-label="View last upload changes for this session"
       >
-        <Download className="h-3.5 w-3.5" aria-hidden="true" />
+        <Download className="h-3.5 w-3.5" />
         <span className="font-semibold">{session.total} new</span>
         {session.needReview > 0 && (
           <span className="font-semibold text-amber-700 dark:text-amber-400">

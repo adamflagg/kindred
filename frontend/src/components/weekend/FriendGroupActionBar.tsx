@@ -141,7 +141,7 @@ export function FriendGroupActionBar({
         <div className="flex flex-wrap items-center justify-between gap-4">
           <div className="flex items-center gap-4">
             <div className="flex items-center gap-2">
-              <Users className="text-primary h-5 w-5" aria-hidden="true" />
+              <Users className="text-primary h-5 w-5" />
               <span className="font-medium">
                 {selected.length} household{selected.length === 1 ? '' : 's'} selected
               </span>
@@ -200,7 +200,7 @@ export function FriendGroupActionBar({
               disabled={!canCreate}
               className="bg-primary text-primary-foreground hover:bg-primary/90 inline-flex items-center gap-2 rounded-lg px-4 py-1.5 text-sm transition-colors disabled:cursor-not-allowed disabled:opacity-50"
             >
-              <Heart className="h-4 w-4" aria-hidden="true" />
+              <Heart className="h-4 w-4" />
               {isPending ? 'Creating…' : 'Create Group'}
             </button>
           </div>
