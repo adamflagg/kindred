@@ -64,6 +64,34 @@ describe('reservationBadge', () => {
     })
   })
 
+  it('still says Building on a MERGED building nobody has written into', () => {
+    // The structural fact does not stop being true because the card is drawn.
+    // "Building" is the fallback here, not the first answer.
+    expect(reservationBadge(unit({ is_container: true, is_combined: true }))?.label).toBe(
+      'Building'
+    )
+  })
+
+  it('says Write-in on a MERGED building somebody has been written into', () => {
+    // A combined container IS the card the board draws (`drawnUnits`) and IS a
+    // drop target (`resolveDrop`), so it reads its availability like any other
+    // drawn unit. Badging it "Building" while `availabilityAction` offers to
+    // CLEAR the write-in is the exact drift this module exists to prevent.
+    expect(
+      reservationBadge(
+        unit({ is_container: true, is_combined: true, family_available_override: false })
+      )?.label
+    ).toBe('Write-in')
+  })
+
+  it('keeps saying Building on a SPLIT container carrying an override', () => {
+    // A split container gets no card at all, so there is nothing to badge and
+    // no action to agree with. Unchanged, deliberately.
+    expect(
+      reservationBadge(unit({ is_container: true, family_available_override: false }))?.label
+    ).toBe('Building')
+  })
+
   it('leaves an ordinary available family cabin unbadged', () => {
     expect(reservationBadge(unit())).toBeNull()
   })
@@ -242,11 +270,38 @@ describe('availabilityAction', () => {
     expect(availabilityAction(unit(), false)?.kind).toBe('hold')
   })
 
-  it('offers nothing on a building row', () => {
-    // A container is a whole-building aggregate, not a bookable room. Holding
-    // one would write an availability row against a unit no family can be
-    // placed into, and the board draws no card for it anyway.
+  it('offers nothing on a SPLIT container', () => {
+    // Still nothing, and for the reason that survived: a split container gets
+    // no card (`drawnUnits` descends past it) and `resolveDrop` rejects it as
+    // a target, so an availability row written against it is one no surface
+    // could ever show or act on.
     expect(availabilityAction(unit({ is_container: true }))).toBeNull()
+  })
+
+  it('offers a write-in on a MERGED building', () => {
+    // The gate used to refuse EVERY container, on the premise that a container
+    // gets no card and no family can be placed into one. Merge-by-drag (#2012)
+    // made both halves false for a COMBINED container: it is the one card the
+    // board draws in place of its rooms, and `dragPlacement` accepts it as a
+    // drop target. Refusing it here left the four `default_combined` buildings
+    // in the 2026 registry with no write-in path at all — their rooms have no
+    // cards to carry one either.
+    expect(availabilityAction(unit({ is_container: true, is_combined: true }))?.kind).toBe('hold')
+  })
+
+  it('offers to clear a MERGED building that has been written into', () => {
+    expect(
+      availabilityAction(
+        unit({ is_container: true, is_combined: true, family_available_override: false })
+      )?.kind
+    ).toBe('clear')
+  })
+
+  it('offers nothing on a MERGED building that already holds a family (#2090)', () => {
+    // The occupancy rule is untouched: a write-in and a placement stay mutually
+    // exclusive. A combined container simply now REACHES that rule instead of
+    // being refused a step earlier for being a container.
+    expect(availabilityAction(unit({ is_container: true, is_combined: true }), true)).toBeNull()
   })
 })
 

@@ -327,8 +327,45 @@ describe('UnitAvailabilityControl', () => {
     expect(onSubmit).not.toHaveBeenCalled()
   })
 
-  it('offers nothing on a building row', () => {
+  it('offers nothing on a SPLIT container', () => {
+    // It gets no card, so there is nothing here to act on.
     renderControl({ unit: unit({ is_container: true }) })
+
+    expect(screen.queryByRole('button')).not.toBeInTheDocument()
+  })
+
+  it('offers to write into a MERGED building', async () => {
+    // The staff-facing half of the container fix. A merged building IS the
+    // card the board draws in place of its rooms, so it is the only surface a
+    // write-in for that building can be recorded on -- merging is exactly what
+    // takes its rooms' own cards away.
+    const user = userEvent.setup()
+    const { onSubmit } = renderControl({
+      unit: unit({
+        unit_id: 'u3',
+        code: 'clouds-rest',
+        name: 'Clouds Rest',
+        is_container: true,
+        is_combined: true,
+      }),
+    })
+
+    await user.click(screen.getByRole('button', { name: 'Write in Clouds Rest' }))
+    await user.type(screen.getByRole('textbox', { name: /^occupant$/i }), 'Liam Garcia')
+    await user.click(screen.getByRole('button', { name: /^write in$/i }))
+
+    expect(onSubmit).toHaveBeenCalledWith({
+      familyAvailable: false,
+      occupantName: 'Liam Garcia',
+      reason: '',
+    })
+  })
+
+  it('still offers nothing on a MERGED building that holds a family (#2090)', () => {
+    renderControl({
+      unit: unit({ is_container: true, is_combined: true }),
+      occupied: true,
+    })
 
     expect(screen.queryByRole('button')).not.toBeInTheDocument()
   })

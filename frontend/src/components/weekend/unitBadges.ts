@@ -43,9 +43,20 @@ export function reservationBadge(unit: LodgingUnitRow): UnitBadge | null {
     label: 'Staff',
     className: 'bg-violet-100 text-violet-800 dark:bg-violet-950/40 dark:text-violet-300',
   }
-  if (unit.is_container === true) {
-    return { label: 'Building', className: 'bg-muted text-muted-foreground' }
-  }
+  const building = { label: 'Building', className: 'bg-muted text-muted-foreground' }
+  // A SPLIT container is pure grouping: `drawnUnits` descends past it, so
+  // nothing draws this badge for one and there is no action for it to agree
+  // with. It answers "Building" and stops.
+  //
+  // A COMBINED one does not stop here, and that is the fix. Merge-by-drag
+  // (#2012) made it the one card the board draws in place of its rooms and a
+  // legitimate drop target (`dragPlacement`), so it reads its availability
+  // like any other drawn unit. It still lands on "Building" below when it has
+  // nothing more specific to say -- being a whole building does not stop being
+  // true -- but a write-in on it now BADGES as one, because
+  // `availabilityAction` now offers to clear it and a card that says
+  // "Building" while offering "Clear" says two things about one cabin.
+  if (unit.is_container === true && unit.is_combined !== true) return building
   // Each override branch is read AGAINST the unit's role, and both compare to
   // an explicit `true`/`false` rather than testing truthiness: null (no row for
   // this weekend, so the role decides) and false (closed this weekend) are
@@ -79,6 +90,10 @@ export function reservationBadge(unit: LodgingUnitRow): UnitBadge | null {
       className: 'bg-slate-200 text-slate-800 dark:bg-slate-800 dark:text-slate-200',
     }
   }
+  // AFTER both override branches and BEFORE `staff`, so the only behaviour a
+  // combined container gains is the two overrides. A combined staff building
+  // with no override reads "Building" exactly as it did.
+  if (unit.is_container === true) return building
   if (unit.inventory_class === 'staff_default') return staff
   return null
 }
@@ -244,8 +259,20 @@ export function availabilityAction(
   unit: LodgingUnitRow,
   occupied = false
 ): AvailabilityAction | null {
-  // A container is a whole-building aggregate, never a bookable room.
-  if (unit.is_container === true) return null
+  // A SPLIT container is a whole-building aggregate, never a bookable room:
+  // `drawnUnits` descends past it and `resolveDrop` rejects it as a target, so
+  // an availability row written against one is a row no surface could show or
+  // act on.
+  //
+  // A COMBINED one is the opposite on both counts since merge-by-drag (#2012)
+  // -- it IS the card the board draws in place of its rooms, and it IS a drop
+  // target -- so it takes a write-in like any other drawn unit. Refusing every
+  // container here left the four `default_combined` buildings in the 2026
+  // registry with no write-in path at all: not on the building's own card, and
+  // not on its rooms either, because a merge is precisely what takes their
+  // cards away. The gate is spelled exactly as `dragPlacement`'s and
+  // `LodgingUnitCard`'s `isSplitContainer` are, so the three cannot drift.
+  if (unit.is_container === true && unit.is_combined !== true) return null
   // `!== null` and not truthiness: null (no row for this weekend) and false
   // (closed this weekend) are different answers, and collapsing them makes
   // either "Write in" or "Clear" unreachable across most of the board.
