@@ -1,6 +1,15 @@
 ---
 name: pocketbase-migrations
-description: Use when creating, modifying, or debugging PocketBase migrations (pb_migrations/*.js), adding/removing collection fields, or changing schema. Triggers on any schema change work.
+description: >
+  Use whenever PocketBase schema changes shape — writing or debugging a migration in
+  `pb_migrations/*.js`, adding/removing/renaming a collection field, changing a field's
+  type or limits, creating a collection, or backfilling data inside a migration.
+  Trigger on the intent even when nobody says the word "migration": "add a notes field
+  to persons", "make that column longer", "why is my field still capped at 5000",
+  "create a table for the lodging units", "my migration didn't apply", "PocketBase won't
+  boot after my schema change". Reach for it BEFORE writing the file — v0.23 ignores a
+  guessed `options: {}` wrapper without any error, so the cost of skipping it is a field
+  that silently holds the wrong limits until data is rejected in production.
 ---
 
 # PocketBase Migration Skill (v0.23+)
