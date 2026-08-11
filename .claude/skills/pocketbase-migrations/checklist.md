@@ -32,4 +32,4 @@ Run through this before committing any migration file.
 - [ ] `cd pocketbase && go build .` passes
 - [ ] Fresh DB test: delete `pb_data/` and verify schema creates correctly from all migrations
 - [ ] If adding/removing a collection: check `scripts/setup/seed_from_prod.py` skip lists
-- [ ] If modifying an enum: verify the migration actually updates values (use `scripts/fix_request_type_enum.py` if needed)
+- [ ] If modifying an enum: verify the migration actually updates existing values, not just the field definition — a changed `values` list leaves rows holding the old string

@@ -46,7 +46,7 @@ See `/docs`:
 - `architecture/` — sync-layer, bunk-request-pipeline, session-types, metrics-module, data-model, solver-internals
 - `guides/` — solver-configuration, csv-preparation, dev-database-seeding, troubleshooting, docker-deployment
 - `api/` — solver-api
-- `reference/` — cli-commands, configuration, tables, commit-conventions, git-workflow, oauth2-setup, pocketbase-migrations, issue-triage, lodging-registry, lodging-board-vs-summer, lodging-inventory-sheet, objective-sensitivity, weekend-go-live-sequence
+- `reference/` — cli-commands, configuration, tables, commit-conventions, git-workflow, oauth2-setup, pocketbase-migrations, go-sync-patterns, sync-id-conventions, issue-triage, lodging-registry, lodging-board-vs-summer, lodging-inventory-sheet, objective-sensitivity, weekend-go-live-sequence
 
 `docs/reference/` also holds four large working documents that churn — read them for current
 state, not as stable reference: `solver-roadmap.md`, `solver-config-decisions.md`,
@@ -104,9 +104,13 @@ Managed via `.lefthook.yml`. Setup once after cloning: `./scripts/setup-git-hook
 
 **`golangci-lint` and `eslint` are CI-only** — `.lefthook.yml` moved them out of pre-push for
 speed, along with `hadolint` and `caddy-validate`. A clean pre-push therefore says nothing about
-Go lint or frontend lint; those go red in CI after you push. Run them yourself before pushing Go
-or frontend changes (`cd pocketbase && golangci-lint run --config ../.golangci.yml`,
-`cd frontend && npm run lint`).
+Go lint or frontend lint; those go red in CI after you push. `scripts/pre-push-verify.sh` runs
+the full superset scoped to what you changed — use it before pushing Go or frontend work:
+
+```bash
+bash scripts/pre-push-verify.sh          # scoped to changed files
+bash scripts/pre-push-verify.sh --all    # everything
+```
 
 Escape hatches and manual runs: `docs/reference/git-workflow.md`
 

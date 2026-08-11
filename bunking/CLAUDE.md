@@ -25,7 +25,7 @@ Core Python package: solver, data processing, satisfaction policy, social graphs
 ## Python conventions
 
 - **Python 3.14+**, invoke via `uv run <cmd>`. Verify the interpreter with `uv run python` — NOT the system `python3` (often 3.12, which can misflag valid 3.14 syntax).
-- **mypy strict mode** — `pyproject.toml` runs mypy with `strict = true`. All new Python must be fully type-annotated; pre-push fails otherwise.
+- **mypy strict mode** — `pyproject.toml` runs mypy with `strict = true`. All new Python must be fully type-annotated; pre-push fails otherwise. Invoke it the way the hook and CI do: `uv run mypy . --explicit-package-bases`. **The flag is not optional** — without it mypy cannot resolve cross-package imports in this layout, so a bare `uv run mypy .` reports errors the gates do not.
 - **Line length 120** — configured in `ruff.toml`, enforced by `ruff format`.
 
 ## Logging

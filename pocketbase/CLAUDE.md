@@ -91,13 +91,24 @@ Format: `2026-01-06T14:05:52Z [pocketbase] LEVEL message key=value...`. `LOG_LEV
 
 ## Sync invariants
 
-1. **Sync order matters:** sessions → attendees → persons → bunks → plans → assignments → requests
+1. **Sync order matters.** `orderedJobs` in `sync/orchestrator.go` is the source of truth; the
+   source phase runs `session_groups → sessions → attendees → persons → bunks → bunk_plans →
+   bunk_assignments → staff → financial_transactions`, then the transform phase (derived tables),
+   then `process_requests`. **`session_groups` runs first** — `sessions` reads it for the
+   group-ID mapping, so a job inserted ahead of it sees no groups. Full phase table:
+   `docs/architecture/sync-layer.md` § "Sync Dependencies".
 2. **Year-aware:** sync filters by `CAMPMINDER_SEASON_ID` env var (set in `.env`; see "Year invariant" above)
 3. **Sessions 1–4 run sequentially** with independent history
 4. **WAL checkpoint required** after database modifications — this scopes to the Go sync layer (e.g. `forceWALCheckpoint()` in `family_camp_derived.go`); migrations don't need their own, since `runHistorySync` in `main.go` checkpoints on every boot after migrations apply (see `pb_migrations/*.js` in `.coderabbit.yaml`)
 5. **Family-camp data syncs alongside summer data** — summer-camp views must filter `session_type` against the configured valid-summer-session-types list
 
-See `docs/architecture/sync-layer.md` before adding or modifying sync jobs.
+Read before touching sync code:
+
+| Doc | Covers |
+|-----|--------|
+| `docs/architecture/sync-layer.md` | Architecture, phase/job order, the add-a-new-sync-job checklist |
+| `docs/reference/go-sync-patterns.md` | Service structure, `BaseSyncService`, idempotent upserts, orphan-deletion safety, year-scoped vs global collections |
+| `docs/reference/sync-id-conventions.md` | `PopulateRelations`, composite keys, why data fields hold CampMinder IDs and relation fields hold PocketBase IDs |
 
 ## DB file access
 

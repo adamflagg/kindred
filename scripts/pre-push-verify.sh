@@ -1,16 +1,22 @@
 #!/usr/bin/env bash
-# verify.sh — Detect changed files and run relevant pre-push checks.
+# pre-push-verify.sh — Detect changed files and run the checks the push hook does not.
 #
 # Usage:
-#   bash verify.sh          # Auto-detect changes, run relevant checks
-#   bash verify.sh --all    # Run all checks regardless of changes
+#   bash scripts/pre-push-verify.sh          # Auto-detect changes, run relevant checks
+#   bash scripts/pre-push-verify.sh --all    # Run all checks regardless of changes
 #
 # Exit codes:
 #   0 — All checks passed
 #   1 — One or more checks failed
 #
-# This script mirrors the lefthook pre-push configuration in .lefthook.yml.
-# It runs checks sequentially within each area but reports ALL failures.
+# Why this exists: .lefthook.yml moved `golangci-lint`, `eslint`, `hadolint` and
+# `caddy-validate` to CI-only for push speed. The pre-push hook therefore builds Go and
+# type-checks the frontend but never lints either — a clean push is not evidence of a clean
+# lint, and the failure surfaces in CI minutes later. Running this first turns that
+# round-trip into a local failure.
+#
+# It is a SUPERSET of the hook, not a mirror of it. Checks run sequentially within each
+# area and ALL failures are reported, not just the first.
 
 set -euo pipefail
 
@@ -107,9 +113,9 @@ else
         case "$file" in
             *.py|pyproject.toml|ruff.toml)
                 HAS_PYTHON=true ;;
-            pocketbase/*.go|pocketbase/**/*.go|.golangci.yml|pocketbase/go.mod|pocketbase/go.sum)
+            pocketbase/*.go|.golangci.yml|pocketbase/go.mod|pocketbase/go.sum)
                 HAS_GO=true ;;
-            frontend/src/*.ts|frontend/src/*.tsx|frontend/src/**/*.ts|frontend/src/**/*.tsx|frontend/src/**/*.css|frontend/eslint.config.js|frontend/tsconfig.json|frontend/tsconfig.node.json|frontend/vitest.config.ts)
+            frontend/src/*.ts|frontend/src/*.tsx|frontend/src/*.css|frontend/eslint.config.js|frontend/tsconfig.json|frontend/tsconfig.node.json|frontend/vitest.config.ts)
                 HAS_FRONTEND=true ;;
             pocketbase/pb_migrations/*.js)
                 HAS_MIGRATIONS=true
