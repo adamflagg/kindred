@@ -28,6 +28,8 @@ NEXT=$((HIGHEST + 1))
 
 Do not backfill gaps left by past consolidation runs — those numbers are "burned" to preserve a monotonically increasing record. Once merged to `main`, the file is frozen; if a competing PR landed and took your number, bump above the new HEAD.
 
+⚠️ **Renumber BEFORE you first boot the branch, not after.** `_migrations` keys on the exact filename, so renaming a migration your dev database already applied makes PocketBase treat it as brand new: an ALTER silently re-runs and a CREATE fails the boot with `Collection name must be unique`. `scripts/dev/verify-migration-history.sh` catches it (and `start_dev.sh` runs it before every boot), but the recovery is manual and depends on whether the file's content changed too — see `docs/reference/pocketbase-migrations.md` § "Renumbering a migration you have already applied locally". Do not reach for the obvious drop-and-re-run; it destroys local data when the table is not empty.
+
 ### History-sync (why consolidation is safe)
 
 `main.go` registers an `OnServe` hook that runs `migrate history-sync` on every server boot. It reconciles prod's `_migrations` table against the on-disk file list automatically — no per-round helper migrations needed when consolidating. Skill: `consolidate-migrations`.
