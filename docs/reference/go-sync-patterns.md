@@ -1,4 +1,8 @@
-# Go Coding Patterns for Sync Services
+# Go Sync Service Patterns
+
+Structural patterns for the Go sync services in `pocketbase/sync/`. Companion to
+`docs/architecture/sync-layer.md` (architecture, job order, adding a new job) and
+`docs/reference/sync-id-conventions.md` (CampMinder ID vs PocketBase ID).
 
 ## Service Struct Template
 
@@ -326,3 +330,37 @@ Key linter configurations from `.golangci.yml`:
 - **Exhaustive switches**: Required by `exhaustive` linter
 - **Misspell**: US locale, with `cancelled` allowed as an exception
 - **Build tags**: `pocketbase` tag required
+
+
+## Year-scoped vs global collections
+
+`PaginateRecords()` auto-adds a year filter for the collections that carry a `year` field, and
+using the wrong helper for a collection silently reads or writes across years.
+
+- **Year-scoped** (auto-filtered): `persons`, `camp_sessions`, `bunks`, `bunk_plans`,
+  `bunk_assignments`, `attendees`
+- **Global** (no `year` field): `session_groups`, `person_tag_definitions`,
+  `custom_field_definitions` — use `PreloadRecordsGlobal()` and `ProcessSimpleRecordGlobal()`
+  for these.
+
+Year flows from the season env var and must be set on every year-scoped record:
+
+```go
+year := s.Client.GetSeasonID()  // From CAMPMINDER_SEASON_ID
+recordData["year"] = year       // MUST be set on every record
+```
+
+## Orphan deletion is gated on a successful fetch
+
+Orphan detection deletes records that were not seen during the sync. If the sync fails partway,
+every record it had not yet reached looks like an orphan — so deletion is gated behind the
+`SyncSuccessful` flag, which is only set once real data has come back:
+
+```go
+if page == 1 && len(results) > 0 {
+    s.SyncSuccessful = true
+}
+```
+
+Set it nowhere else. Setting it before the first successful page turns a transient API failure
+into mass deletion.

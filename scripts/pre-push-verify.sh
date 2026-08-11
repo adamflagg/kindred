@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# pre-push-verify.sh — Detect changed files and run relevant pre-push checks.
+# pre-push-verify.sh — Detect changed files and run the checks the push hook does not.
 #
 # Usage:
 #   bash scripts/pre-push-verify.sh          # Auto-detect changes, run relevant checks
@@ -9,10 +9,24 @@
 #   0 — All checks passed
 #   1 — One or more checks failed
 #
-# This script mirrors the lefthook pre-push configuration in .lefthook.yml.
-# It runs checks sequentially within each area but reports ALL failures.
+# Why this exists: .lefthook.yml moved `golangci-lint`, `eslint`, `hadolint` and
+# `caddy-validate` to CI-only for push speed. The pre-push hook therefore builds Go and
+# type-checks the frontend but never lints either — a clean push is not evidence of a clean
+# lint, and the failure surfaces in CI minutes later. Running this first turns that
+# round-trip into a local failure.
+#
+# It is a SUPERSET of the hook, not a mirror of it. Checks run sequentially within each
+# area and ALL failures are reported, not just the first.
 
 set -euo pipefail
+
+# Associative arrays (declare -A) below require bash 4+. macOS ships 3.2 by
+# default — recommend `brew install bash` for contributors on that platform.
+if ((BASH_VERSINFO[0] < 4)); then
+    echo "Error: bash 4+ required (you have $BASH_VERSION)." >&2
+    echo "On macOS, install via Homebrew: brew install bash" >&2
+    exit 1
+fi
 
 # ── Find repo root ──────────────────────────────────────────────────────
 REPO_ROOT="$(git rev-parse --show-toplevel)"
@@ -38,8 +52,13 @@ if [[ "${1:-}" == "--all" ]]; then
 fi
 
 # ── Detect changed files ───────────────────────────────────────────────
-# Compare against the merge-base with origin/main (or HEAD if no remote)
-if git rev-parse --verify origin/main &>/dev/null; then
+# Prefer @{push} — the upstream-tracked branch tip — so subsequent pushes
+# only verify *new* unpushed commits, not the whole PR diff. Falls back to
+# merge-base with origin/main for the first push (no upstream yet) or to
+# HEAD~1 outside any remote-tracking branch.
+if BASE=$(git rev-parse --verify --quiet '@{push}' 2>/dev/null); then
+    :  # @{push} found
+elif git rev-parse --verify origin/main &>/dev/null; then
     BASE=$(git merge-base HEAD origin/main 2>/dev/null || echo "HEAD~1")
 else
     BASE="HEAD~1"
@@ -53,6 +72,19 @@ CHANGED_FILES="$CHANGED_FILES"$'\n'$(git diff --diff-filter=ACMRT --name-only --
 CHANGED_FILES="$CHANGED_FILES"$'\n'$(git diff --diff-filter=ACMRT --name-only 2>/dev/null || true)
 # Deduplicate
 CHANGED_FILES=$(echo "$CHANGED_FILES" | sort -u | grep -v '^$' || true)
+
+# Pre-extract frontend/src changed files (relative to frontend/) for the
+# per-check file filter. Two lists because prettier covers .css/.json too
+# but eslint is configured only for .ts/.tsx (--ext ts,tsx in package.json).
+# Empty list → that check is skipped (tsc + vitest still cover the area).
+CHANGED_FRONTEND_PRETTIER=$(echo "$CHANGED_FILES" \
+    | grep -E '^frontend/src/.*\.(ts|tsx|js|jsx|css|json)$' \
+    | sed 's|^frontend/||' \
+    | grep -v '^$' || true)
+CHANGED_FRONTEND_ESLINT=$(echo "$CHANGED_FILES" \
+    | grep -E '^frontend/src/.*\.(ts|tsx)$' \
+    | sed 's|^frontend/||' \
+    | grep -v '^$' || true)
 
 if [[ -z "$CHANGED_FILES" ]] && [[ "$RUN_ALL" == false ]]; then
     echo -e "${GREEN}No changed files detected. Nothing to verify.${NC}"
@@ -76,6 +108,26 @@ if [[ "$RUN_ALL" == true ]]; then
     HAS_SHELL=true
     HAS_PB_JS=true
 else
+    while IFS= read -r file; do
+        [[ -z "$file" ]] && continue
+        case "$file" in
+            *.py|pyproject.toml|ruff.toml)
+                HAS_PYTHON=true ;;
+            pocketbase/*.go|.golangci.yml|pocketbase/go.mod|pocketbase/go.sum)
+                HAS_GO=true ;;
+            frontend/src/*.ts|frontend/src/*.tsx|frontend/src/*.css|frontend/eslint.config.js|frontend/tsconfig.json|frontend/tsconfig.node.json|frontend/vitest.config.ts)
+                HAS_FRONTEND=true ;;
+            pocketbase/pb_migrations/*.js)
+                HAS_MIGRATIONS=true
+                HAS_PB_JS=true ;;
+            pocketbase/pb_hooks/*.js)
+                HAS_PB_JS=true ;;
+            *.sh)
+                HAS_SHELL=true ;;
+        esac
+    done <<< "$CHANGED_FILES"
+
+    # Broader pattern matching for paths that don't match simple globs
     if echo "$CHANGED_FILES" | grep -qE '\.py$|pyproject\.toml|ruff\.toml'; then
         HAS_PYTHON=true
     fi
@@ -159,21 +211,68 @@ if $HAS_GO; then
     run_check "go test" bash -c "cd pocketbase && go test -race ./... -v"
 fi
 
-# ── Frontend checks ────────────────────────────────────────────────────
+# ── Frontend checks (parallel, file-scoped) ────────────────────────────
+# All four tools run concurrently; stdout+stderr captured per-tool and
+# replayed in stable order so output stays readable. prettier + eslint are
+# scoped to CHANGED_FRONTEND_REL (the files actually touched since BASE);
+# tsc keeps full-project scope (signature changes propagate); vitest uses
+# --changed BASE to run only test files whose dependency graph saw a
+# change. Mirrors the lefthook `pre-push` philosophy.
 if $HAS_FRONTEND; then
-    header "Frontend"
+    header "Frontend (parallel)"
 
-    # Format
-    run_check "prettier" bash -c "cd frontend && npx prettier --check 'src/**/*.{ts,tsx,js,jsx,json,css}'"
+    LOGDIR=$(mktemp -d)
+    trap 'rm -rf "$LOGDIR"' EXIT
 
-    # Lint
-    run_check "eslint" bash -c "cd frontend && npm run lint"
+    declare -A PIDS=()
 
-    # Type check (both tsconfigs)
-    run_check "tsc type-check" bash -c "cd frontend && npm run type-check"
+    if [[ "$RUN_ALL" == true ]]; then
+        ( cd frontend && npx prettier --check 'src/**/*.{ts,tsx,js,jsx,css,json}' ) \
+            >"$LOGDIR/prettier.log" 2>&1 &
+        PIDS[prettier]=$!
+    elif [[ -n "$CHANGED_FRONTEND_PRETTIER" ]]; then
+        # shellcheck disable=SC2086  # word-split is the intent: pass each path
+        ( cd frontend && npx prettier --check $CHANGED_FRONTEND_PRETTIER ) \
+            >"$LOGDIR/prettier.log" 2>&1 &
+        PIDS[prettier]=$!
+    else
+        echo "  (no prettier-eligible frontend/src files changed — skipping prettier)"
+    fi
 
-    # Tests
-    run_check "vitest" bash -c "cd frontend && npx vitest run"
+    if [[ "$RUN_ALL" == true ]]; then
+        ( cd frontend && npm run lint ) >"$LOGDIR/eslint.log" 2>&1 &
+        PIDS[eslint]=$!
+    elif [[ -n "$CHANGED_FRONTEND_ESLINT" ]]; then
+        # shellcheck disable=SC2086
+        ( cd frontend && npx eslint --report-unused-disable-directives $CHANGED_FRONTEND_ESLINT ) \
+            >"$LOGDIR/eslint.log" 2>&1 &
+        PIDS[eslint]=$!
+    else
+        echo "  (no .ts/.tsx files changed — skipping eslint)"
+    fi
+
+    ( cd frontend && npm run type-check ) >"$LOGDIR/tsc.log" 2>&1 &
+    PIDS[tsc]=$!
+
+    if [[ "$RUN_ALL" == true ]]; then
+        ( cd frontend && npx vitest run ) >"$LOGDIR/vitest.log" 2>&1 &
+    else
+        ( cd frontend && npx vitest run --changed "$BASE" ) >"$LOGDIR/vitest.log" 2>&1 &
+    fi
+    PIDS[vitest]=$!
+
+    for name in prettier eslint tsc vitest; do
+        pid="${PIDS[$name]:-}"
+        [[ -z "$pid" ]] && continue
+        if wait "$pid"; then
+            pass "$name"
+        else
+            fail "$name"
+            FAILURES+=("$name")
+            echo "── $name output ──"
+            cat "$LOGDIR/$name.log"
+        fi
+    done
 fi
 
 # ── Migration checks ───────────────────────────────────────────────────
@@ -202,9 +301,16 @@ if $HAS_MIGRATIONS; then
     while IFS= read -r file; do
         [[ -z "$file" ]] && continue
         [[ "$file" != pocketbase/pb_migrations/*.js ]] && continue
-        if grep -n 'options\s*:' "$file" | grep -v '//.*options' | grep -q .; then
-            echo "    Found 'options:' wrapper (v0.23+ anti-pattern): $file"
-            grep -n 'options\s*:' "$file" | grep -v '//.*options' | head -5 | while read -r line; do
+        # Match only the object-form field wrapper `options: {`. Seed-data
+        # `options: [ ... ]` arrays (e.g. select-option values in config.js) are
+        # legitimate and must NOT be flagged — same object-vs-array distinction
+        # the eslint no-restricted-syntax rule makes.
+        # Filter only full-line `//` comments. grep -n prefixes each hit with
+        # `LINENUM:`, so anchor on that prefix; a bare `^[[:space:]]*//` would
+        # never match. Keeps real `options: {` hits that carry an inline comment.
+        if grep -n 'options\s*:\s*{' "$file" | grep -vE '^[0-9]+:[[:space:]]*//' | grep -q .; then
+            echo "    Found 'options: {}' field wrapper (v0.23+ anti-pattern): $file"
+            grep -n 'options\s*:\s*{' "$file" | grep -vE '^[0-9]+:[[:space:]]*//' | head -5 | while read -r line; do
                 echo "      $line"
             done
             OPTIONS_OK=false

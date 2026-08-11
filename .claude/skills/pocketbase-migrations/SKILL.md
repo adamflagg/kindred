@@ -1,13 +1,38 @@
 ---
 name: pocketbase-migrations
-description: Use when creating, modifying, or debugging PocketBase migrations (pb_migrations/*.js), adding/removing collection fields, or changing schema. Triggers on any schema change work.
+description: >
+  Use whenever PocketBase schema changes shape — writing or debugging a migration in
+  `pb_migrations/*.js`, adding/removing/renaming a collection field, changing a field's
+  type or limits, creating a collection, or backfilling data inside a migration.
+  Trigger on the intent even when nobody says the word "migration": "add a notes field
+  to persons", "make that column longer", "why is my field still capped at 5000",
+  "create a table for the lodging units", "my migration didn't apply", "PocketBase won't
+  boot after my schema change". Reach for it BEFORE writing the file — v0.23 ignores a
+  guessed `options: {}` wrapper without any error, so the cost of skipping it is a field
+  that silently holds the wrong limits until data is rejected in production.
 ---
 
 # PocketBase Migration Skill (v0.23+)
 
+`docs/reference/pocketbase-migrations.md` is the canonical reference and is mandatory reading per
+`pocketbase/CLAUDE.md`. The gotchas below are the working copy kept next to the templates — if you
+correct one, correct the doc too, or they drift.
+
 ## Workflow
 
-1. **Check the latest migration number**: `ls pocketbase/pb_migrations/ | sort | tail -5` — new files use `1500000NNN_descriptive_name.js` with NNN incremented from the highest existing number.
+1. **Pick the number from `origin/main`, not from your local tree.** A sibling PR may already have
+   merged the number your working copy thinks is free, and the collision is only found at boot.
+
+   ```bash
+   HIGHEST=$(git ls-tree -r origin/main pocketbase/pb_migrations/ \
+     | awk '{print $4}' | grep -oE '15000[0-9]{5}' | sort -u | tail -1)
+   NEXT=$((HIGHEST + 1))
+   ```
+
+   Do not backfill gaps left by consolidation — those numbers are burned deliberately. And
+   **renumber before you first boot the branch**: `_migrations` keys on the exact filename, so
+   renaming a migration your dev DB already applied makes PocketBase treat it as brand new. Full
+   rule and recovery: `pocketbase/CLAUDE.md` § "Numbering rule".
 2. **Read reference files** below as needed for field syntax and patterns.
 3. **Pick a template** from `templates/` that matches your task. Compose from it — don't generate from scratch.
 4. **Write the migration** with both `up` and `down` functions.

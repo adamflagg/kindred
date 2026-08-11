@@ -44,11 +44,13 @@ Subdir `CLAUDE.md` files load automatically when you work in that area — they 
 
 See `/docs`:
 - `architecture/` — sync-layer, bunk-request-pipeline, session-types, metrics-module, data-model, solver-internals
-- `guides/` — solver-configuration, csv-preparation, request-management, troubleshooting, docker-deployment
-- `api/` — solver-api, response-examples
-- `reference/` — cli-commands, issue-triage, pocketbase-migrations, tables, commit-conventions, git-workflow, oauth2-setup, lodging-registry, weekend-go-live-sequence
+- `guides/` — solver-configuration, csv-preparation, dev-database-seeding, troubleshooting, docker-deployment
+- `api/` — solver-api
+- `reference/` — cli-commands, configuration, tables, commit-conventions, git-workflow, oauth2-setup, pocketbase-migrations, go-sync-patterns, sync-id-conventions, issue-triage, lodging-registry, lodging-board-vs-summer, lodging-inventory-sheet, objective-sensitivity, weekend-go-live-sequence
 
-Harness improvements roadmap: `docs/reference/claude-harness-improvements.md`.
+`docs/reference/` also holds four large working documents that churn — read them for current
+state, not as stable reference: `solver-roadmap.md`, `solver-config-decisions.md`,
+`modernization-backlog.md`, and `claude-harness-improvements.md` (harness roadmap).
 
 ---
 
@@ -97,8 +99,18 @@ Managed via `.lefthook.yml`. Setup once after cloning: `./scripts/setup-git-hook
 |-------|-----------|-------|
 | **pre-commit** | Formatters on staged files (prettier, ruff format, gofmt) | <1s |
 | **commit-msg** | commitlint validation | Instant |
-| **pre-push** | Type checks (mypy, tsc), go build, fast linters (ruff, shellcheck, pb-js-lint), full mockable pytest | ~40s |
+| **pre-push** | Type checks (mypy, tsc), go build, fast linters (ruff, shellcheck, pb-js-lint, markdownlint), api-types freshness, full mockable pytest | ~40s |
 | **post-merge** | Worktree cleanup notifications | ~5s |
+
+**`golangci-lint` and `eslint` are CI-only** — `.lefthook.yml` moved them out of pre-push for
+speed, along with `hadolint` and `caddy-validate`. A clean pre-push therefore says nothing about
+Go lint or frontend lint; those go red in CI after you push. `scripts/pre-push-verify.sh` runs
+the full superset scoped to what you changed — use it before pushing Go or frontend work:
+
+```bash
+bash scripts/pre-push-verify.sh          # scoped to changed files
+bash scripts/pre-push-verify.sh --all    # everything
+```
 
 Escape hatches and manual runs: `docs/reference/git-workflow.md`
 

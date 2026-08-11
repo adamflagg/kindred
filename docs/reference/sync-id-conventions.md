@@ -1,5 +1,8 @@
 # CampMinder ID vs PocketBase ID Conventions
 
+Companion to `docs/reference/go-sync-patterns.md` (service structure) and
+`docs/architecture/sync-layer.md` (job order, adding a new sync job).
+
 ## The Core Principle
 
 **CampMinder IDs are the identity layer. PocketBase IDs are implementation details.**
