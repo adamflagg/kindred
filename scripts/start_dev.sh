@@ -49,6 +49,28 @@ lsof -ti:"$VITE_PORT" | xargs kill -9 2>/dev/null || true
 lsof -ti:"$FASTAPI_PORT" | xargs kill -9 2>/dev/null || true
 lsof -ti:"$CADDY_PORT" | xargs kill -9 2>/dev/null || true
 
+# Migration-history check, BEFORE the boot (kindred#2245).
+#
+# Order matters and is not cosmetic. A successful boot fires our OnServe
+# history-sync hook, which deletes _migrations rows for files no longer on
+# disk -- i.e. it destroys the evidence that a migration was renumbered. Run
+# after the boot and the check has nothing left to find.
+#
+# Hard-fail rather than warn: a warning here scrolls past under ~200 lines of
+# start-up output, and PocketBase is about to fail anyway with an error that
+# names neither the cause nor anything searchable.
+# Both paths are explicit on purpose. The verifier otherwise honours
+# $PB_DATA_DIR, which the PocketBase binary does NOT read — it uses pb_data
+# relative to its own working directory. With PB_DATA_DIR exported (it is a
+# live variable here: api/services/metrics_sql_connection.py reads it), the
+# check would pass against one database while PocketBase booted another.
+if ! "$PROJECT_ROOT/scripts/dev/verify-migration-history.sh" \
+        --db "$PROJECT_ROOT/pocketbase/pb_data/data.db" \
+        --migrations-dir "$PROJECT_ROOT/pocketbase/pb_migrations"; then
+    echo -e "${RED}Migration history check failed -- not starting PocketBase.${NC}" >&2
+    exit 1
+fi
+
 # Start PocketBase
 echo -e "${BLUE}Starting PocketBase on port ${POCKETBASE_PORT:-8090}...${NC}"
 cd "$PROJECT_ROOT/pocketbase"

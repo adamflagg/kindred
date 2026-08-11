@@ -245,3 +245,69 @@ Skill artifacts:
 Cleanup mechanism: PB v0.23 has a built-in `migrate history-sync` subcommand (`RemoveMissingAppliedMigrations` in `core/migrations_runner.go`) that DELETEs every `_migrations` row whose file is no longer on disk. `pocketbase/main.go` registers an `OnServe` hook that calls this on every server boot, so prod's `_migrations` self-heals after each consolidation merge. Idempotent — no-op on clean DBs.
 
 Numbering: gaps may appear in `pb_migrations/` numbering after consolidation. Per CLAUDE.md "PocketBase Migration Numbering Rule", new migrations must use a number greater than the highest existing filename on `origin/main` — never fill consolidation gaps.
+
+## Renumbering a migration you have already applied locally
+
+The numbering rule tells you to bump above HEAD when a competing PR takes your number. Do that **before you first boot the branch.** If you renumber a migration your dev database has already applied, that database is now broken in a way nothing else in this repo will catch — and `scripts/dev/verify-migration-history.sh` exists because of it (kindred#2245).
+
+### The mechanism
+
+`_migrations` keys on the **exact filename**. PocketBase's `isMigrationApplied` (`core/migrations_runner.go:265-275`) is a `WHERE file = ?` lookup, so `1500000146_foo.js` is unapplied no matter what row `1500000144_foo.js` has. Renaming an applied migration makes PB see a brand new one:
+
+- an **ALTER** migration silently re-runs
+- a **CREATE** migration fails the boot with `Collection name must be unique (case insensitive)` — an error naming neither the file nor the cause
+
+**history-sync is not what breaks this, and believing it is will send you to the wrong place.** `apis.Serve` runs `RunAllMigrations()` and returns on error at `apis/serve.go:66-70`, before the router is built and before `OnServe` fires — so on a *failing* boot, history-sync never runs at all. What it does is erase the evidence on every *successful* boot: `RemoveMissingAppliedMigrations` is `DELETE FROM _migrations WHERE file NOT IN (on-disk names)`, so any boot taken while the renamed file is absent from your branch removes the old row. Afterwards `_migrations` looks perfectly clean and the only remaining signal is that a collection exists which no applied migration created.
+
+There is a second, quieter half. If the file's **content** also changed after you applied it — a stripped field, a changed rule — that edit never reaches your database either, for the same filename-keyed reason. You end up with a schema that exists in no other database and in no version of the file on `main`. The fresh-DB verifiers (`verify-consolidation.sh`, `verify-lodging-schema.sh`) run against empty throwaway databases and cannot observe it.
+
+### Recovery
+
+**Work out which case you are in first. Do not skip this — the two fixes are different, and the obvious one destroys data.**
+
+```bash
+# Find the old name and diff it against the new file
+git log --all --diff-filter=A --oneline -- 'pocketbase/pb_migrations/*_<slug>.js'
+git show <old-sha>:pocketbase/pb_migrations/<OLD>_<slug>.js \
+  | diff - pocketbase/pb_migrations/<NEW>_<slug>.js
+```
+
+**Case 1 — content identical (a pure renumber).** Your database already holds exactly what the new file creates. Record the new name as applied; nothing needs to run:
+
+```bash
+sqlite3 pocketbase/pb_data/data.db \
+  "INSERT OR IGNORE INTO _migrations (file, applied)
+   VALUES ('<NEW>_<slug>.js', strftime('%s','now')*1000000);"
+```
+
+**Case 2 — content differs.** Your database carries a schema that exists nowhere else, and only a re-apply converges it. **What you do next depends on whether the migration CREATEs or ALTERs, and getting that backwards destroys data.**
+
+**Case 2a — the migration CREATEs the collections.** These are the ones that fail the boot outright. **Count rows before you drop anything:**
+
+```bash
+sqlite3 'file:pocketbase/pb_data/data.db?mode=ro' 'SELECT count(*) FROM <collection>;'
+```
+
+- **All zero** → drop the collections **that this migration creates**, then boot normally.
+- **Any non-zero** → **do not drop.** Export first, or reseed the dev database from a prod snapshot. "Drop the collection and re-run" is the recipe that works on an empty table and silently destroys a populated one.
+
+**Case 2b — the migration ALTERs an existing collection.** ⛔ **Do not drop anything.** The collection it targets was created by a *different, earlier* migration that is still recorded as applied — so dropping it destroys that migration's work and a normal boot will **not** recreate it, because PocketBase already believes it ran.
+
+An ALTER in this state has silently re-run rather than failed, so the damage is usually nil: the convention here is idempotent `fields.add()`, which converges toward whatever the file declares. Verify rather than assume — compare the live column set against the file:
+
+```bash
+sqlite3 'file:pocketbase/pb_data/data.db?mode=ro' \
+  "SELECT fields FROM _collections WHERE name='<collection>';" | python3 -m json.tool | grep '"name"'
+```
+
+If it matches the migration's declaration, record the new filename as applied per Case 1 and move on. If it does not — the usual cause is a field the file *removed*, which no re-run can undo — hand-drop that field, or reseed the dev database. There is no automatic recovery for a removal.
+
+**Re-apply by booting the server** (`./scripts/start_dev.sh`) rather than by hand. Migrations run from `apis.Serve` at `apis/serve.go:66-70`, so a normal boot applies them.
+
+> ⚠️ **Do not pass `--migrationsDir` to `pocketbase migrate up`.** `main.go:203-209` hands `migrationsDir` to `jsvm.MustRegister` while it still holds its `""` default — cobra does not parse argv until `app.Start()` runs, much later. An explicitly-passed directory is therefore ignored and **JS migrations are silently skipped**, which reads as "nothing to apply". The unflagged default resolves correctly; leave it alone.
+
+### Why an idempotent CREATE is the wrong fix
+
+The tempting fix is a skip-if-exists guard on the `CREATE`. It is worse than the failure it prevents. The boot would succeed, `_migrations` would record the migration as applied, and a divergent schema would stay in place permanently with nothing left to reveal it. Prod and CI apply from scratch and would never show the difference.
+
+Note the asymmetry, because it does not condemn idempotency in general: an idempotent `fields.add()` on an ALTER **converges** toward the file's declaration — it adds what is missing. A skip-if-exists CREATE **diverges** — it accepts whatever shape is already there. Keep the former; it is the documented convention. Reject the latter.
