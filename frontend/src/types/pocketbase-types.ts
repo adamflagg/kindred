@@ -44,6 +44,19 @@ export const Collections = {
   Households: 'households',
   LockedGroupMembers: 'locked_group_members',
   LockedGroups: 'locked_groups',
+  LodgingAreas: 'lodging_areas',
+  LodgingAssignmentHistory: 'lodging_assignment_history',
+  LodgingAssignments: 'lodging_assignments',
+  LodgingAssignmentsDraft: 'lodging_assignments_draft',
+  LodgingAvailability: 'lodging_availability',
+  LodgingFieldMappings: 'lodging_field_mappings',
+  LodgingFriendGroupMembers: 'lodging_friend_group_members',
+  LodgingFriendGroups: 'lodging_friend_groups',
+  LodgingIngestIssues: 'lodging_ingest_issues',
+  LodgingSessionStatus: 'lodging_session_status',
+  LodgingSlotMerges: 'lodging_slot_merges',
+  LodgingUnitAliases: 'lodging_unit_aliases',
+  LodgingUnits: 'lodging_units',
   NormalizedMappings: 'normalized_mappings',
   OriginalBunkRequests: 'original_bunk_requests',
   PaymentMethods: 'payment_methods',
@@ -442,7 +455,7 @@ export type CamperHistoryRecord = {
   session?: RecordIdString
   session_cm_id: number
   session_name?: string
-  session_type?: CamperHistorySessionTypeOptions
+  session_type: CamperHistorySessionTypeOptions
   state?: string
   status?: string
   synagogue?: string
@@ -550,7 +563,18 @@ export type DebugParseResultsRecord<Tai_raw_response = unknown, Tparsed_intents 
   updated: IsoAutoDateString
 }
 
-export type DebugPipelineRunsRecord<Tsource_fields = unknown, Tstatus_breakdown = unknown> = {
+export const DebugPipelineRunsTriggerOptions = {
+  upload: 'upload',
+  scheduled: 'scheduled',
+  manual: 'manual',
+} as const
+export type DebugPipelineRunsTriggerOptions =
+  (typeof DebugPipelineRunsTriggerOptions)[keyof typeof DebugPipelineRunsTriggerOptions]
+export type DebugPipelineRunsRecord<
+  Tsession_breakdown = unknown,
+  Tsource_fields = unknown,
+  Tstatus_breakdown = unknown,
+> = {
   created: IsoAutoDateString
   force?: boolean
   id: string
@@ -558,9 +582,11 @@ export type DebugPipelineRunsRecord<Tsource_fields = unknown, Tstatus_breakdown 
   pinned?: boolean
   run_id: string
   session?: string
+  session_breakdown?: null | Tsession_breakdown
   source_fields?: null | Tsource_fields
   status_breakdown?: null | Tstatus_breakdown
   trace_count?: number
+  trigger?: DebugPipelineRunsTriggerOptions
   updated: IsoAutoDateString
   year: number
 }
@@ -677,6 +703,23 @@ export const FamilyCampRegistrationsShareCabinGateOptions = {
 } as const
 export type FamilyCampRegistrationsShareCabinGateOptions =
   (typeof FamilyCampRegistrationsShareCabinGateOptions)[keyof typeof FamilyCampRegistrationsShareCabinGateOptions]
+
+export const FamilyCampRegistrationsShareEligibilityOptions = {
+  open: 'open',
+  named: 'named',
+  declined: 'declined',
+  unknown: 'unknown',
+} as const
+export type FamilyCampRegistrationsShareEligibilityOptions =
+  (typeof FamilyCampRegistrationsShareEligibilityOptions)[keyof typeof FamilyCampRegistrationsShareEligibilityOptions]
+
+export const FamilyCampRegistrationsShareEligibilitySourceOptions = {
+  form: 'form',
+  registration: 'registration',
+  none: 'none',
+} as const
+export type FamilyCampRegistrationsShareEligibilitySourceOptions =
+  (typeof FamilyCampRegistrationsShareEligibilitySourceOptions)[keyof typeof FamilyCampRegistrationsShareEligibilitySourceOptions]
 export type FamilyCampRegistrationsRecord = {
   accommodation_is_mandatory?: boolean
   arrival_eta?: string
@@ -694,12 +737,16 @@ export type FamilyCampRegistrationsRecord = {
   request_last_updated?: IsoDateString
   request_source_field?: string
   request_text?: string
+  share_answers_conflict?: boolean
   share_cabin_gate?: FamilyCampRegistrationsShareCabinGateOptions
   share_cabin_preference?: string
+  share_eligibility?: FamilyCampRegistrationsShareEligibilityOptions
+  share_eligibility_source?: FamilyCampRegistrationsShareEligibilitySourceOptions
   shared_cabin_modes_raw?: string
   special_occasions?: string
   updated: IsoAutoDateString
   wants_near?: boolean
+  wants_similar_ages?: boolean
   wants_with?: boolean
   year: number
 }
@@ -942,6 +989,272 @@ export type LockedGroupsRecord = {
   name?: string
   scenario: RecordIdString
   session: RecordIdString
+  updated: IsoAutoDateString
+  year: number
+}
+
+export type LodgingAreasRecord = {
+  code: string
+  created: IsoAutoDateString
+  id: string
+  map_x?: number
+  map_y?: number
+  name: string
+  sort_order?: number
+  updated: IsoAutoDateString
+  year: number
+}
+
+export type LodgingAssignmentHistoryRecord = {
+  created: IsoAutoDateString
+  detected_at: IsoDateString
+  household_cm_id?: number
+  id: string
+  new_unit?: string
+  old_unit?: string
+  person_cm_id?: number
+  session?: RecordIdString
+  session_cm_id?: number
+  source_field?: string
+  year: number
+}
+
+export const LodgingAssignmentsSourceOptions = {
+  campminder_sync: 'campminder_sync',
+  jotform_sync: 'jotform_sync',
+  staff_manual: 'staff_manual',
+} as const
+export type LodgingAssignmentsSourceOptions =
+  (typeof LodgingAssignmentsSourceOptions)[keyof typeof LodgingAssignmentsSourceOptions]
+export type LodgingAssignmentsRecord = {
+  created: IsoAutoDateString
+  household_cm_id?: number
+  id: string
+  party_size?: number
+  person_cm_id?: number
+  session: RecordIdString
+  session_cm_id: number
+  source?: LodgingAssignmentsSourceOptions
+  staff_touched?: boolean
+  units?: RecordIdString[]
+  updated: IsoAutoDateString
+  year: number
+}
+
+export const LodgingAssignmentsDraftSourceOptions = {
+  campminder_sync: 'campminder_sync',
+  jotform_sync: 'jotform_sync',
+  staff_manual: 'staff_manual',
+} as const
+export type LodgingAssignmentsDraftSourceOptions =
+  (typeof LodgingAssignmentsDraftSourceOptions)[keyof typeof LodgingAssignmentsDraftSourceOptions]
+export type LodgingAssignmentsDraftRecord = {
+  created: IsoAutoDateString
+  household_cm_id?: number
+  id: string
+  party_size?: number
+  person_cm_id?: number
+  scenario: RecordIdString
+  session: RecordIdString
+  session_cm_id: number
+  source?: LodgingAssignmentsDraftSourceOptions
+  staff_touched?: boolean
+  units?: RecordIdString[]
+  updated: IsoAutoDateString
+  year: number
+}
+
+export type LodgingAvailabilityRecord = {
+  created: IsoAutoDateString
+  family_available?: boolean
+  id: string
+  note?: string
+  occupant_name?: string
+  session: RecordIdString
+  session_cm_id: number
+  unit: RecordIdString
+  updated: IsoAutoDateString
+  year: number
+}
+
+export type LodgingFieldMappingsRecord = {
+  created: IsoAutoDateString
+  field_cm_id: number
+  field_name?: string
+  id: string
+  is_enabled?: boolean
+  last_seen_count?: number
+  last_seen_year?: number
+  note?: string
+  prior_year_count?: number
+  target?: string
+  updated: IsoAutoDateString
+}
+
+export type LodgingFriendGroupMembersRecord = {
+  added_by?: string
+  created: IsoAutoDateString
+  group: RecordIdString
+  household_cm_id: number
+  id: string
+}
+
+export const LodgingFriendGroupsSourceOptions = {
+  staff_manual: 'staff_manual',
+  proposed: 'proposed',
+} as const
+export type LodgingFriendGroupsSourceOptions =
+  (typeof LodgingFriendGroupsSourceOptions)[keyof typeof LodgingFriendGroupsSourceOptions]
+export type LodgingFriendGroupsRecord = {
+  color: string
+  created: IsoAutoDateString
+  created_by?: string
+  id: string
+  name?: string
+  session: RecordIdString
+  session_cm_id: number
+  source: LodgingFriendGroupsSourceOptions
+  updated: IsoAutoDateString
+  year: number
+}
+
+export const LodgingIngestIssuesKindOptions = {
+  unresolved_alias: 'unresolved_alias',
+  ambiguous_alias: 'ambiguous_alias',
+  ambiguous_session: 'ambiguous_session',
+  no_session: 'no_session',
+  field_zero_values: 'field_zero_values',
+  unknown_party: 'unknown_party',
+  write_failed: 'write_failed',
+} as const
+export type LodgingIngestIssuesKindOptions =
+  (typeof LodgingIngestIssuesKindOptions)[keyof typeof LodgingIngestIssuesKindOptions]
+export type LodgingIngestIssuesRecord<Tcandidate_session_cm_ids = unknown> = {
+  candidate_session_cm_ids?: null | Tcandidate_session_cm_ids
+  created: IsoAutoDateString
+  first_seen?: IsoDateString
+  household_cm_id?: number
+  id: string
+  is_resolved?: boolean
+  kind: LodgingIngestIssuesKindOptions
+  last_seen?: IsoDateString
+  occurrences?: number
+  person_cm_id?: number
+  raw_value?: string
+  resolution_note?: string
+  resolved_alias?: RecordIdString
+  source_field?: string
+  suggested_session?: RecordIdString
+  updated: IsoAutoDateString
+  year: number
+}
+
+export const LodgingSessionStatusStatusOptions = {
+  active: 'active',
+  cancelled: 'cancelled',
+} as const
+export type LodgingSessionStatusStatusOptions =
+  (typeof LodgingSessionStatusStatusOptions)[keyof typeof LodgingSessionStatusStatusOptions]
+export type LodgingSessionStatusRecord = {
+  created: IsoAutoDateString
+  id: string
+  session_cm_id: number
+  status: LodgingSessionStatusStatusOptions
+  updated: IsoAutoDateString
+  year: number
+}
+
+export type LodgingSlotMergesRecord = {
+  combined?: boolean
+  id: string
+  scenario?: RecordIdString
+  session: RecordIdString
+  session_cm_id: number
+  unit: RecordIdString
+  year: number
+}
+
+export type LodgingUnitAliasesRecord = {
+  alias_string: string
+  created: IsoAutoDateString
+  id: string
+  member_units: RecordIdString[]
+  notes?: string
+  source_field?: string
+  updated: IsoAutoDateString
+  valid_from_year?: number
+  valid_to_year?: number
+}
+
+export const LodgingUnitsBathroomOptions = {
+  none: 'none',
+  private: 'private',
+  shared: 'shared',
+} as const
+export type LodgingUnitsBathroomOptions =
+  (typeof LodgingUnitsBathroomOptions)[keyof typeof LodgingUnitsBathroomOptions]
+
+export const LodgingUnitsInventoryClassOptions = {
+  family_pool: 'family_pool',
+  staff_default: 'staff_default',
+} as const
+export type LodgingUnitsInventoryClassOptions =
+  (typeof LodgingUnitsInventoryClassOptions)[keyof typeof LodgingUnitsInventoryClassOptions]
+
+export const LodgingUnitsHasRampOptions = {
+  yes: 'yes',
+  no: 'no',
+  partial: 'partial',
+} as const
+export type LodgingUnitsHasRampOptions =
+  (typeof LodgingUnitsHasRampOptions)[keyof typeof LodgingUnitsHasRampOptions]
+
+export const LodgingUnitsShareabilityOptions = {
+  shareable: 'shareable',
+  single_party: 'single_party',
+} as const
+export type LodgingUnitsShareabilityOptions =
+  (typeof LodgingUnitsShareabilityOptions)[keyof typeof LodgingUnitsShareabilityOptions]
+export type LodgingUnitsRecord<Tbeds = unknown> = {
+  area: RecordIdString
+  bathroom?: LodgingUnitsBathroomOptions
+  bathroom_group?: string
+  beds?: null | Tbeds
+  code: string
+  created: IsoAutoDateString
+  default_combined?: boolean
+  has_ac?: boolean
+  has_changing_table?: boolean
+  has_crib?: boolean
+  has_fridge?: boolean
+  has_heat?: boolean
+  has_kitchen?: boolean
+  has_kitchenette?: boolean
+  has_lights?: boolean
+  has_living_room?: boolean
+  has_pack_play_space?: boolean
+  has_plumbing?: boolean
+  has_power?: boolean
+  has_ramp?: LodgingUnitsHasRampOptions
+  has_shared_fridge?: boolean
+  has_space_heater?: boolean
+  has_tub?: boolean
+  id: string
+  inventory_class?: LodgingUnitsInventoryClassOptions
+  is_accessible?: boolean
+  is_active?: boolean
+  is_confirmed?: boolean
+  is_container?: boolean
+  is_weatherized?: boolean
+  map_x?: number
+  map_y?: number
+  max_beds?: number
+  name: string
+  near_bathhouse?: boolean
+  notes?: string
+  parent_unit?: RecordIdString
+  shareability?: LodgingUnitsShareabilityOptions
+  sleeps?: number
   updated: IsoAutoDateString
   year: number
 }
@@ -1204,12 +1517,15 @@ export type SolverRunsRecord<
   Tstats = unknown,
 > = {
   assignment_counts?: null | Tassignment_counts
+  break_glass_used?: boolean
   completed_at?: IsoDateString
   created: IsoAutoDateString
   details?: null | Tdetails
   error?: null | Terror
   id: string
+  infeasibility_diagnosis?: string
   logs?: null | Tlogs
+  overflow_used?: number
   progress?: number
   result?: null | Tresult
   run_id: string
@@ -1358,7 +1674,7 @@ export type StaffSkillsRecord = {
 }
 
 export type StaffVehicleInfoRecord = {
-  can_bring_others?: boolean
+  can_bring_others?: string
   created: IsoAutoDateString
   driver_name?: string
   driving_to_camp?: boolean
@@ -1366,7 +1682,9 @@ export type StaffVehicleInfoRecord = {
   id: string
   license_plate?: string
   person_id: number
+  ride_from?: string
   staff: RecordIdString
+  transport_notes?: string
   updated: IsoAutoDateString
   vehicle_make?: string
   vehicle_model?: string
@@ -1461,10 +1779,12 @@ export type DebugParseResultsResponse<
   Texpand = unknown,
 > = Required<DebugParseResultsRecord<Tai_raw_response, Tparsed_intents>> & BaseSystemFields<Texpand>
 export type DebugPipelineRunsResponse<
+  Tsession_breakdown = unknown,
   Tsource_fields = unknown,
   Tstatus_breakdown = unknown,
   Texpand = unknown,
-> = Required<DebugPipelineRunsRecord<Tsource_fields, Tstatus_breakdown>> & BaseSystemFields<Texpand>
+> = Required<DebugPipelineRunsRecord<Tsession_breakdown, Tsource_fields, Tstatus_breakdown>> &
+  BaseSystemFields<Texpand>
 export type DebugPipelineSummaryResponse<Texpand = unknown> = Required<DebugPipelineSummaryRecord> &
   BaseSystemFields<Texpand>
 export type DebugPipelineTracesResponse<Ttrace_data = unknown, Texpand = unknown> = Required<
@@ -1498,6 +1818,36 @@ export type HouseholdsResponse<Texpand = unknown> = Required<HouseholdsRecord> &
 export type LockedGroupMembersResponse<Texpand = unknown> = Required<LockedGroupMembersRecord> &
   BaseSystemFields<Texpand>
 export type LockedGroupsResponse<Texpand = unknown> = Required<LockedGroupsRecord> &
+  BaseSystemFields<Texpand>
+export type LodgingAreasResponse<Texpand = unknown> = Required<LodgingAreasRecord> &
+  BaseSystemFields<Texpand>
+export type LodgingAssignmentHistoryResponse<Texpand = unknown> =
+  Required<LodgingAssignmentHistoryRecord> & BaseSystemFields<Texpand>
+export type LodgingAssignmentsResponse<Texpand = unknown> = Required<LodgingAssignmentsRecord> &
+  BaseSystemFields<Texpand>
+export type LodgingAssignmentsDraftResponse<Texpand = unknown> =
+  Required<LodgingAssignmentsDraftRecord> & BaseSystemFields<Texpand>
+export type LodgingAvailabilityResponse<Texpand = unknown> = Required<LodgingAvailabilityRecord> &
+  BaseSystemFields<Texpand>
+export type LodgingFieldMappingsResponse<Texpand = unknown> = Required<LodgingFieldMappingsRecord> &
+  BaseSystemFields<Texpand>
+export type LodgingFriendGroupMembersResponse<Texpand = unknown> =
+  Required<LodgingFriendGroupMembersRecord> & BaseSystemFields<Texpand>
+export type LodgingFriendGroupsResponse<Texpand = unknown> = Required<LodgingFriendGroupsRecord> &
+  BaseSystemFields<Texpand>
+export type LodgingIngestIssuesResponse<
+  Tcandidate_session_cm_ids = unknown,
+  Texpand = unknown,
+> = Required<LodgingIngestIssuesRecord<Tcandidate_session_cm_ids>> & BaseSystemFields<Texpand>
+export type LodgingSessionStatusResponse<Texpand = unknown> = Required<LodgingSessionStatusRecord> &
+  BaseSystemFields<Texpand>
+export type LodgingSlotMergesResponse<Texpand = unknown> = Required<LodgingSlotMergesRecord> &
+  BaseSystemFields<Texpand>
+export type LodgingUnitAliasesResponse<Texpand = unknown> = Required<LodgingUnitAliasesRecord> &
+  BaseSystemFields<Texpand>
+export type LodgingUnitsResponse<Tbeds = unknown, Texpand = unknown> = Required<
+  LodgingUnitsRecord<Tbeds>
+> &
   BaseSystemFields<Texpand>
 export type NormalizedMappingsResponse<Texpand = unknown> = Required<NormalizedMappingsRecord> &
   BaseSystemFields<Texpand>
@@ -1599,6 +1949,19 @@ export type CollectionRecords = {
   households: HouseholdsRecord
   locked_group_members: LockedGroupMembersRecord
   locked_groups: LockedGroupsRecord
+  lodging_areas: LodgingAreasRecord
+  lodging_assignment_history: LodgingAssignmentHistoryRecord
+  lodging_assignments: LodgingAssignmentsRecord
+  lodging_assignments_draft: LodgingAssignmentsDraftRecord
+  lodging_availability: LodgingAvailabilityRecord
+  lodging_field_mappings: LodgingFieldMappingsRecord
+  lodging_friend_group_members: LodgingFriendGroupMembersRecord
+  lodging_friend_groups: LodgingFriendGroupsRecord
+  lodging_ingest_issues: LodgingIngestIssuesRecord
+  lodging_session_status: LodgingSessionStatusRecord
+  lodging_slot_merges: LodgingSlotMergesRecord
+  lodging_unit_aliases: LodgingUnitAliasesRecord
+  lodging_units: LodgingUnitsRecord
   normalized_mappings: NormalizedMappingsRecord
   original_bunk_requests: OriginalBunkRequestsRecord
   payment_methods: PaymentMethodsRecord
@@ -1661,6 +2024,19 @@ export type CollectionResponses = {
   households: HouseholdsResponse
   locked_group_members: LockedGroupMembersResponse
   locked_groups: LockedGroupsResponse
+  lodging_areas: LodgingAreasResponse
+  lodging_assignment_history: LodgingAssignmentHistoryResponse
+  lodging_assignments: LodgingAssignmentsResponse
+  lodging_assignments_draft: LodgingAssignmentsDraftResponse
+  lodging_availability: LodgingAvailabilityResponse
+  lodging_field_mappings: LodgingFieldMappingsResponse
+  lodging_friend_group_members: LodgingFriendGroupMembersResponse
+  lodging_friend_groups: LodgingFriendGroupsResponse
+  lodging_ingest_issues: LodgingIngestIssuesResponse
+  lodging_session_status: LodgingSessionStatusResponse
+  lodging_slot_merges: LodgingSlotMergesResponse
+  lodging_unit_aliases: LodgingUnitAliasesResponse
+  lodging_units: LodgingUnitsResponse
   normalized_mappings: NormalizedMappingsResponse
   original_bunk_requests: OriginalBunkRequestsResponse
   payment_methods: PaymentMethodsResponse
@@ -1690,8 +2066,8 @@ type ProcessCreateAndUpdateFields<T> = Omit<
   {
     // Omit AutoDate fields
     [
-      K in keyof T as Extract<T[K], IsoAutoDateString> extends never ? K : never
-    ]: T[K] extends infer U // Convert FileNameString to File
+      K in keyof T as Extract<T[K], IsoAutoDateString> extends never ? K : never // Convert FileNameString to File
+    ]: T[K] extends infer U
       ? U extends FileNameString | FileNameString[]
         ? U extends any[]
           ? File[]
