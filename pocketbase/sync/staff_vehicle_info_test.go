@@ -206,6 +206,17 @@ func TestMapSVIFieldToRecordLeavesDrivingToCampABool(t *testing.T) {
 // newStaffVehicleTestApp builds the five collections this service reads and
 // writes. Fields are the minimum the code under test touches, not a mirror of
 // production -- see kindred#1921 for why that distinction matters.
+//
+// THIS FIXTURE IS LAXER THAN PRODUCTION, DELIBERATELY. `staff` is a plain
+// text field here, but production declares it
+// `{type: "relation", required: true, cascadeDelete: true}` against col_staff
+// (pb_migrations/1500000047_staff_vehicle_info.js:26-34). So a row with no
+// staff value SAVES here and would be REJECTED there.
+//
+// That trade is accepted because these tests exercise drop-COUNTING logic, not
+// save validation. It has one consequence a future reader must not miss:
+// a green test in this file is NOT evidence that production writes succeed.
+// Real write validation comes from running the sync against the actual schema.
 func newStaffVehicleTestApp(t *testing.T) core.App {
 	t.Helper()
 	app, err := pbtests.NewTestApp()
