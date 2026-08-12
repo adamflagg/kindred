@@ -2,6 +2,7 @@ package sync
 
 import (
 	"context"
+	"strings"
 	"testing"
 
 	"github.com/pocketbase/pocketbase/core"
@@ -440,10 +441,13 @@ func TestDeleteOrphansRefusesEmptyComputedSet(t *testing.T) {
 
 	existing := map[string]string{makeStaffVehicleKey(1001, 2026): rec.Id}
 	deleted, err := s.deleteOrphans(context.Background(),
-		map[string]*staffVehicleInfoRecord{}, existing)
+		map[string]*staffVehicleInfoRecord{}, existing, 2026)
 
 	if err == nil {
 		t.Fatal("expected an error when the computed set is empty and rows exist, got nil")
+	}
+	if !strings.Contains(err.Error(), "2026") {
+		t.Errorf("error %q does not name the year -- an operator has no way to tell which season refused", err.Error())
 	}
 	if deleted != 0 {
 		t.Errorf("deleted = %d, want 0 -- nothing may be removed on the refusal path", deleted)
@@ -481,7 +485,7 @@ func TestDeleteOrphansStillSweepsGenuineOrphans(t *testing.T) {
 	}
 	existing := map[string]string{makeStaffVehicleKey(1002, 2026): orphan.Id}
 
-	deleted, err := s.deleteOrphans(context.Background(), records, existing)
+	deleted, err := s.deleteOrphans(context.Background(), records, existing, 2026)
 	if err != nil {
 		t.Fatalf("deleteOrphans: %v", err)
 	}

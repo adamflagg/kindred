@@ -2,6 +2,7 @@ package sync
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"strings"
@@ -151,15 +152,18 @@ func (s *StaffVehicleInfoSync) Sync(ctx context.Context) error {
 	slog.Info("Loaded existing records", "count", len(existingRecords))
 
 	// Step 5: Upsert records
-	created, updated, errors := s.upsertRecords(ctx, records, existingRecords, year)
+	created, updated, upsertErrors := s.upsertRecords(ctx, records, existingRecords, year)
 	s.Stats.Created = created
 	s.Stats.Updated = updated
-	s.Stats.Errors = errors
+	s.Stats.Errors = upsertErrors
 
 	// Step 6: Delete orphans
-	deleted, err := s.deleteOrphans(ctx, records, existingRecords)
+	deleted, err := s.deleteOrphans(ctx, records, existingRecords, year)
 	s.Stats.Deleted = deleted
 	if err != nil {
+		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+			return fmt.Errorf("orphan sweep interrupted: %w", err)
+		}
 		return fmt.Errorf("orphan sweep refused: %w", err)
 	}
 
@@ -558,7 +562,6 @@ func (s *StaffVehicleInfoSync) upsertRecords(
 	return created, updated, errors
 }
 
-// deleteOrphans removes records that exist in DB but not in computed set
 // deleteOrphans removes records that exist in DB but not in computed set.
 //
 // Refuses when the computed set is empty and rows exist for the year: that
@@ -569,11 +572,13 @@ func (s *StaffVehicleInfoSync) deleteOrphans(
 	ctx context.Context,
 	records map[string]*staffVehicleInfoRecord,
 	existingRecords map[string]string,
+	year int,
 ) (int, error) {
 	if len(records) == 0 && len(existingRecords) > 0 {
 		return 0, fmt.Errorf(
-			"refusing to sweep %d existing staff_vehicle_info rows against an empty computed set "+
-				"(is the staff table populated for this year?)", len(existingRecords))
+			"refusing to sweep %d existing staff_vehicle_info rows for year %d against an "+
+				"empty computed set (is the staff table populated for that year?)",
+			len(existingRecords), year)
 	}
 
 	deleted := 0
