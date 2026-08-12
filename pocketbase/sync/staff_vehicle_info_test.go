@@ -2,6 +2,9 @@ package sync
 
 import (
 	"context"
+	"os"
+	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -491,5 +494,43 @@ func TestDeleteOrphansStillSweepsGenuineOrphans(t *testing.T) {
 	}
 	if deleted != 1 {
 		t.Errorf("deleted = %d, want 1", deleted)
+	}
+}
+
+// TestSVIRoutingReportAgainstRealFieldNames is the guard that would have
+// caught kindred#2258 on the day it was written. Every target column must be
+// reachable from at least one field name CampMinder actually publishes.
+//
+// Per COLUMN, not per literal: an extra defensive spelling is allowed to match
+// nothing, but a column that matches nothing is a dead switch arm.
+//
+// One-way only. The reverse -- every SVI definition must have a column --
+// fails by design: "SVI- who are you driving to camp" and
+// "SVI-Unit Head Training" are deliberately unrouted and carry no rows.
+func TestSVIRoutingReportAgainstRealFieldNames(t *testing.T) {
+	raw, err := os.ReadFile(filepath.Join("testdata", "svi_field_names.txt"))
+	if err != nil {
+		t.Fatalf("read testdata: %v", err)
+	}
+	var names []string
+	for _, line := range strings.Split(string(raw), "\n") {
+		if line = strings.TrimRight(line, "\r"); line != "" {
+			names = append(names, line)
+		}
+	}
+	if len(names) != 12 {
+		t.Fatalf("expected 12 SVI field names in testdata, got %d", len(names))
+	}
+
+	unrouted, unmapped := sviRoutingReport(names)
+
+	if len(unrouted) != 0 {
+		t.Errorf("columns reachable from no CampMinder field: %v -- "+
+			"a literal in MapSVIFieldToColumnImpl does not match any published name", unrouted)
+	}
+
+	wantUnmapped := []string{"SVI- who are you driving to camp", "SVI-Unit Head Training"}
+	if !slices.Equal(unmapped, wantUnmapped) {
+		t.Errorf("unmapped fields = %v, want %v", unmapped, wantUnmapped)
 	}
 }

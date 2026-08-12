@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"slices"
 	"strings"
 
 	"github.com/pocketbase/pocketbase/core"
@@ -120,6 +121,28 @@ func (s *StaffVehicleInfoSync) Sync(ctx context.Context) error {
 		return fmt.Errorf("loading field definitions: %w", err)
 	}
 	slog.Info("Loaded field definitions", "count", len(fieldNameMap))
+
+	// Layer 1 of the kindred#2258 guard: compare the mapper against what
+	// CampMinder published THIS RUN, so an upstream rename surfaces in the log
+	// rather than as an empty column found by audit years later.
+	defNames := make([]string, 0, len(fieldNameMap))
+	for _, name := range fieldNameMap {
+		defNames = append(defNames, name)
+	}
+	unrouted, unmapped := sviRoutingReport(defNames)
+	slog.Info("SVI field routing",
+		"admitted", len(fieldNameMap),
+		"routable", len(fieldNameMap)-len(unmapped),
+	)
+	for _, column := range unrouted {
+		slog.Warn("SVI column is reachable from no CampMinder field -- renamed upstream?",
+			"column", column)
+	}
+	// Once per field NAME per run, never per value: per-value would emit
+	// ~1,700 lines per full backfill for fields working as intended.
+	for _, name := range unmapped {
+		slog.Warn("SVI field is admitted but routes to no column", "field", name)
+	}
 
 	// Step 2: Load person -> staff mapping
 	personToStaff, err := s.loadPersonStaffMapping(ctx, year)
@@ -411,6 +434,60 @@ func mapSVIFieldToRecord(rec *staffVehicleInfoRecord, fieldName, value string) {
 			rec.transportNotes = value
 		}
 	}
+}
+
+// sviTargetColumns lists every column MapSVIFieldToColumnImpl can return. It
+// is the guard's subject: each of these must be reachable from at least one
+// field name CampMinder publishes.
+var sviTargetColumns = []string{
+	colDrivingToCamp,
+	"how_getting_to_camp",
+	colCanBringOthers,
+	"driver_name",
+	"which_friend",
+	"vehicle_make",
+	"vehicle_model",
+	"license_plate",
+	"ride_from",
+	"transport_notes",
+}
+
+// sviRoutingReport compares the mapper against the field names CampMinder
+// actually published.
+//
+// unroutedColumns: target columns no published name routes to. A non-empty
+// result means a literal in MapSVIFieldToColumnImpl is misspelled or the field
+// was renamed upstream -- this is the kindred#2258 failure, and it is the
+// reason this function exists.
+//
+// unmappedFields: published SVI names that route nowhere. Expected to be
+// non-empty -- two definitions are deliberately unrouted -- so this is for
+// logging, not for failing.
+//
+// Both slices are sorted so callers and tests are deterministic.
+func sviRoutingReport(defNames []string) (unroutedColumns, unmappedFields []string) {
+	reached := make(map[string]bool, len(sviTargetColumns))
+
+	for _, name := range defNames {
+		column := MapSVIFieldToColumnImpl(normalizeFieldName(name))
+		if column == "" {
+			if isStaffVehicleInfoField(normalizeFieldName(name)) {
+				unmappedFields = append(unmappedFields, name)
+			}
+			continue
+		}
+		reached[column] = true
+	}
+
+	for _, column := range sviTargetColumns {
+		if !reached[column] {
+			unroutedColumns = append(unroutedColumns, column)
+		}
+	}
+
+	slices.Sort(unroutedColumns)
+	slices.Sort(unmappedFields)
+	return unroutedColumns, unmappedFields
 }
 
 // MapSVIFieldToColumnImpl maps CampMinder field names to database column names
