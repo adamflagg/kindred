@@ -2,7 +2,6 @@ package sync
 
 import (
 	"context"
-	"fmt"
 	"testing"
 )
 
@@ -79,36 +78,49 @@ func TestMapSVIFieldToColumn(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.cmField, func(t *testing.T) {
-			got := MapSVIFieldToColumn(tt.cmField)
+			got := MapSVIFieldToColumnImpl(tt.cmField)
 			if got != tt.expected {
-				t.Errorf("MapSVIFieldToColumn(%q) = %q, want %q", tt.cmField, got, tt.expected)
+				t.Errorf("MapSVIFieldToColumnImpl(%q) = %q, want %q", tt.cmField, got, tt.expected)
 			}
 		})
 	}
 }
 
-// TestParseSVIBool tests boolean parsing for staff vehicle info fields
-func TestParseSVIBool(t *testing.T) {
-	tests := []struct {
-		input    string
-		expected bool
-	}{
-		{"Yes", true},
-		{"yes", true},
-		{"YES", true},
-		{"No", false},
-		{"no", false},
-		{"NO", false},
-		{"", false},
-		{"Maybe", false},
-		{"1", false}, // Only "Yes" variants are true
+// TestParseSVIBoolImpl is the first real test of this parser. The function it
+// replaces tested a shadow copy declared in this file, so production went
+// unexercised.
+//
+// After the can_bring_others change, parseSVIBoolImpl has exactly ONE caller:
+// driving_to_camp, fed by "SVI-are you driving to camp". That field holds 1,780
+// answers with exactly two distinct values -- "Yes" and "No" -- so the tolerant
+// arms below ("1", "y", "true") match nothing in the live data. They are pinned
+// deliberately: this parser reads a CampMinder field, and a form that starts
+// emitting 1/0 must not silently read as all-false. Narrowing this set is a
+// behaviour change, not a cleanup.
+func TestParseSVIBoolImpl(t *testing.T) {
+	cases := map[string]bool{
+		// The only two values the live field actually contains.
+		"Yes": true,
+		"No":  false,
+		// Case and whitespace tolerance.
+		"yes":   true,
+		"YES":   true,
+		"  yes": true,
+		"no":    false,
+		// Tolerant arms, pinned so they cannot be dropped silently.
+		"1":    true,
+		"y":    true,
+		"true": true,
+		// Everything else is false, including the unanswered case.
+		"":      false,
+		"Maybe": false,
+		"0":     false,
 	}
 
-	for _, tt := range tests {
-		t.Run(tt.input, func(t *testing.T) {
-			got := parseSVIBool(tt.input)
-			if got != tt.expected {
-				t.Errorf("parseSVIBool(%q) = %v, want %v", tt.input, got, tt.expected)
+	for in, want := range cases {
+		t.Run(in, func(t *testing.T) {
+			if got := parseSVIBoolImpl(in); got != want {
+				t.Errorf("parseSVIBoolImpl(%q) = %v, want %v", in, got, want)
 			}
 		})
 	}
@@ -129,133 +141,11 @@ func TestStaffVehicleInfoCompositeKey(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.expected, func(t *testing.T) {
-			got := makeStaffVehicleInfoKey(tt.personID, tt.year)
+			got := makeStaffVehicleKey(tt.personID, tt.year)
 			if got != tt.expected {
-				t.Errorf("makeStaffVehicleInfoKey(%d, %d) = %q, want %q",
+				t.Errorf("makeStaffVehicleKey(%d, %d) = %q, want %q",
 					tt.personID, tt.year, got, tt.expected)
 			}
 		})
 	}
-}
-
-// TestStaffVehicleInfoFieldMapping tests that all expected fields are present
-func TestStaffVehicleInfoFieldMapping(t *testing.T) {
-	expectedFields := []string{
-		"driving_to_camp",
-		"how_getting_to_camp",
-		"can_bring_others",
-		"driver_name",
-		"which_friend",
-		"vehicle_make",
-		"vehicle_model",
-		"license_plate",
-	}
-
-	// Verify we have all 8 expected columns (excluding staff, person_id, year, created, updated)
-	if len(expectedFields) != 8 {
-		t.Errorf("Expected 8 custom fields, got %d", len(expectedFields))
-	}
-
-	// Test each field has a valid CM field mapping back
-	for _, field := range expectedFields {
-		cmField := getSVICMFieldForColumn(field)
-		if cmField == "" {
-			t.Errorf("Column %q has no CampMinder field mapping", field)
-		}
-
-		// Verify round-trip
-		backToColumn := MapSVIFieldToColumn(cmField)
-		if backToColumn != field {
-			t.Errorf("Round-trip failed: column %q -> cmField %q -> column %q",
-				field, cmField, backToColumn)
-		}
-	}
-}
-
-// TestStaffVehicleInfoBooleanFields tests that we correctly identify boolean fields
-func TestStaffVehicleInfoBooleanFields(t *testing.T) {
-	boolFields := []string{
-		"driving_to_camp",
-		"can_bring_others",
-	}
-
-	textFields := []string{
-		"how_getting_to_camp",
-		"driver_name",
-		"which_friend",
-		"vehicle_make",
-		"vehicle_model",
-		"license_plate",
-	}
-
-	for _, field := range boolFields {
-		if !isSVIBoolField(field) {
-			t.Errorf("Expected %q to be a boolean field", field)
-		}
-	}
-
-	for _, field := range textFields {
-		if isSVIBoolField(field) {
-			t.Errorf("Expected %q to be a text field, not boolean", field)
-		}
-	}
-}
-
-// Helper functions that define expected behavior - implementation must match these
-
-// MapSVIFieldToColumn maps CampMinder custom field names to database column names
-func MapSVIFieldToColumn(cmField string) string {
-	mapping := map[string]string{
-		"SVI-are you driving to camp":     "driving_to_camp",
-		"SVI-how are you get to camp":     "how_getting_to_camp",
-		"SVI - bring others":              "can_bring_others",
-		"SVI- Who is driving you to camp": "driver_name",
-		"SVI-which friend":                "which_friend",
-		"SVI-make of vehicle":             "vehicle_make",
-		"SVI-model vehicle":               "vehicle_model",
-		"SVI-license plate number":        "license_plate",
-	}
-
-	return mapping[cmField]
-}
-
-// getSVICMFieldForColumn is the reverse mapping
-func getSVICMFieldForColumn(column string) string {
-	mapping := map[string]string{
-		"driving_to_camp":     "SVI-are you driving to camp",
-		"how_getting_to_camp": "SVI-how are you get to camp",
-		"can_bring_others":    "SVI - bring others",
-		"driver_name":         "SVI- Who is driving you to camp",
-		"which_friend":        "SVI-which friend",
-		"vehicle_make":        "SVI-make of vehicle",
-		"vehicle_model":       "SVI-model vehicle",
-		"license_plate":       "SVI-license plate number",
-	}
-
-	return mapping[column]
-}
-
-// parseSVIBool parses Yes/No values to boolean
-func parseSVIBool(value string) bool {
-	switch value {
-	case "Yes", "yes", "YES":
-		return true
-	default:
-		return false
-	}
-}
-
-// isSVIBoolField returns true if the column should be parsed as boolean
-func isSVIBoolField(column string) bool {
-	switch column {
-	case "driving_to_camp", "can_bring_others":
-		return true
-	default:
-		return false
-	}
-}
-
-// makeStaffVehicleInfoKey creates the composite key for upsert logic
-func makeStaffVehicleInfoKey(personID, year int) string {
-	return fmt.Sprintf("%d|%d", personID, year)
 }
