@@ -575,7 +575,7 @@ func (s *StaffVehicleInfoSync) upsertRecords(
 	records map[string]*staffVehicleInfoRecord,
 	existingRecords map[string]string,
 	year int,
-) (created, updated, errors int) {
+) (created, updated, errCount int) {
 	col, err := s.App.FindCollectionByNameOrId("staff_vehicle_info")
 	if err != nil {
 		slog.Error("Error finding staff_vehicle_info collection", "error", err)
@@ -585,7 +585,7 @@ func (s *StaffVehicleInfoSync) upsertRecords(
 	for _, rec := range records {
 		select {
 		case <-ctx.Done():
-			return created, updated, errors
+			return created, updated, errCount
 		default:
 		}
 
@@ -597,7 +597,7 @@ func (s *StaffVehicleInfoSync) upsertRecords(
 			record, err = s.App.FindRecordById("staff_vehicle_info", existingID)
 			if err != nil {
 				slog.Error("Error finding existing record", "id", existingID, "error", err)
-				errors++
+				errCount++
 				continue
 			}
 		} else {
@@ -625,7 +625,7 @@ func (s *StaffVehicleInfoSync) upsertRecords(
 				"year", rec.year,
 				"error", err,
 			)
-			errors++
+			errCount++
 			continue
 		}
 
@@ -636,7 +636,7 @@ func (s *StaffVehicleInfoSync) upsertRecords(
 		}
 	}
 
-	return created, updated, errors
+	return created, updated, errCount
 }
 
 // deleteOrphans removes records that exist in DB but not in computed set.

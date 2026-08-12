@@ -111,7 +111,7 @@ func TestMapSVIFieldToColumn(t *testing.T) {
 // arms below ("1", "y", "true") match nothing in the live data. They are pinned
 // deliberately: this parser reads a CampMinder field, and a form that starts
 // emitting 1/0 must not silently read as all-false. Narrowing this set is a
-// behaviour change, not a cleanup.
+// behavior change, not a cleanup.
 func TestParseSVIBoolImpl(t *testing.T) {
 	cases := map[string]bool{
 		// The only two values the live field actually contains.
@@ -292,20 +292,20 @@ func seedSVI(t *testing.T, app core.App, cmID, year int, hasStaff bool, values m
 	person := core.NewRecord(personCol)
 	person.Set("cm_id", cmID)
 	person.Set("year", year)
-	if err := app.Save(person); err != nil {
-		t.Fatalf("save person %d: %v", cmID, err)
+	if saveErr := app.Save(person); saveErr != nil {
+		t.Fatalf("save person %d: %v", cmID, saveErr)
 	}
 
 	if hasStaff {
-		staffCol, err := app.FindCollectionByNameOrId("staff")
-		if err != nil {
-			t.Fatalf("find staff: %v", err)
+		staffCol, staffErr := app.FindCollectionByNameOrId("staff")
+		if staffErr != nil {
+			t.Fatalf("find staff: %v", staffErr)
 		}
 		s := core.NewRecord(staffCol)
 		s.Set("person_id", cmID)
 		s.Set("year", year)
-		if err := app.Save(s); err != nil {
-			t.Fatalf("save staff %d: %v", cmID, err)
+		if saveErr := app.Save(s); saveErr != nil {
+			t.Fatalf("save staff %d: %v", cmID, saveErr)
 		}
 	}
 
@@ -435,8 +435,8 @@ func TestDeleteOrphansRefusesEmptyComputedSet(t *testing.T) {
 	rec := core.NewRecord(col)
 	rec.Set("person_id", 1001)
 	rec.Set("year", 2026)
-	if err := app.Save(rec); err != nil {
-		t.Fatalf("save existing row: %v", err)
+	if saveErr := app.Save(rec); saveErr != nil {
+		t.Fatalf("save existing row: %v", saveErr)
 	}
 
 	s := NewStaffVehicleInfoSync(app)
@@ -476,8 +476,8 @@ func TestDeleteOrphansStillSweepsGenuineOrphans(t *testing.T) {
 	orphan := core.NewRecord(col)
 	orphan.Set("person_id", 1002)
 	orphan.Set("year", 2026)
-	if err := app.Save(orphan); err != nil {
-		t.Fatalf("save orphan: %v", err)
+	if saveErr := app.Save(orphan); saveErr != nil {
+		t.Fatalf("save orphan: %v", saveErr)
 	}
 
 	s := NewStaffVehicleInfoSync(app)
