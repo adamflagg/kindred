@@ -69,7 +69,15 @@ func TestMapSVIFieldToColumn(t *testing.T) {
 		// Vehicle info
 		{"SVI-make of vehicle", "vehicle_make"},
 		{"SVI-model vehicle", "vehicle_model"},
-		{"SVI-license plate number", "license_plate"},
+		// British spelling -- this is how CampMinder publishes it (kindred#2258).
+		{"SVI-licence plate number", "license_plate"},
+
+		// Transport detail that previously had no destination (kindred#2268)
+		{"SVI- Where do you need a ride from", "ride_from"},
+		{"SVI - other", "transport_notes"},
+
+		// The American spelling is NOT a CampMinder field and must not route.
+		{"SVI-license plate number", ""},
 
 		// Unknown field should return empty
 		{"Unknown-Field", ""},

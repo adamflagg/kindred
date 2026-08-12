@@ -84,6 +84,8 @@ type staffVehicleInfoRecord struct {
 	vehicleMake      string
 	vehicleModel     string
 	licensePlate     string
+	rideFrom         string
+	transportNotes   string
 }
 
 // Sync executes the staff vehicle info extraction
@@ -380,6 +382,14 @@ func mapSVIFieldToRecord(rec *staffVehicleInfoRecord, fieldName, value string) {
 		if rec.licensePlate == "" {
 			rec.licensePlate = value
 		}
+	case "ride_from":
+		if rec.rideFrom == "" {
+			rec.rideFrom = value
+		}
+	case "transport_notes":
+		if rec.transportNotes == "" {
+			rec.transportNotes = value
+		}
 	}
 }
 
@@ -400,8 +410,14 @@ func MapSVIFieldToColumnImpl(fieldName string) string {
 		return "vehicle_make"
 	case "SVI-model vehicle":
 		return "vehicle_model"
-	case "SVI-license plate number":
+	// British spelling: this is how CampMinder publishes it. The American
+	// spelling matched nothing for the table's entire history (kindred#2258).
+	case "SVI-licence plate number":
 		return "license_plate"
+	case "SVI- Where do you need a ride from":
+		return "ride_from"
+	case "SVI - other":
+		return "transport_notes"
 	}
 	return ""
 }
@@ -503,6 +519,8 @@ func (s *StaffVehicleInfoSync) upsertRecords(
 		record.Set("vehicle_make", rec.vehicleMake)
 		record.Set("vehicle_model", rec.vehicleModel)
 		record.Set("license_plate", rec.licensePlate)
+		record.Set("ride_from", rec.rideFrom)
+		record.Set("transport_notes", rec.transportNotes)
 
 		if err := s.App.Save(record); err != nil {
 			slog.Error("Error saving staff_vehicle_info record",
