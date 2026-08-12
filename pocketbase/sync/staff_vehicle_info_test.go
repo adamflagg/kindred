@@ -3,6 +3,9 @@ package sync
 import (
 	"context"
 	"testing"
+
+	"github.com/pocketbase/pocketbase/core"
+	pbtests "github.com/pocketbase/pocketbase/tests"
 )
 
 // TestStaffVehicleInfoLoadFieldDefinitionsTrimsNames is a regression test for
@@ -197,5 +200,209 @@ func TestMapSVIFieldToRecordLeavesDrivingToCampABool(t *testing.T) {
 		if rec.drivingToCamp != want {
 			t.Errorf("drivingToCamp for %q = %v, want %v", value, rec.drivingToCamp, want)
 		}
+	}
+}
+
+// newStaffVehicleTestApp builds the five collections this service reads and
+// writes. Fields are the minimum the code under test touches, not a mirror of
+// production -- see kindred#1921 for why that distinction matters.
+func newStaffVehicleTestApp(t *testing.T) core.App {
+	t.Helper()
+	app, err := pbtests.NewTestApp()
+	if err != nil {
+		t.Fatalf("NewTestApp: %v", err)
+	}
+	t.Cleanup(app.Cleanup)
+
+	defs := core.NewBaseCollection("custom_field_defs")
+	defs.Fields.Add(&core.NumberField{Name: "cm_id"})
+	defs.Fields.Add(&core.TextField{Name: "name"})
+	if err := app.Save(defs); err != nil {
+		t.Fatalf("save custom_field_defs: %v", err)
+	}
+
+	persons := core.NewBaseCollection("persons")
+	persons.Fields.Add(&core.NumberField{Name: "cm_id"})
+	persons.Fields.Add(&core.NumberField{Name: "year"})
+	if err := app.Save(persons); err != nil {
+		t.Fatalf("save persons: %v", err)
+	}
+
+	staff := core.NewBaseCollection("staff")
+	staff.Fields.Add(&core.NumberField{Name: "person_id"})
+	staff.Fields.Add(&core.NumberField{Name: "year"})
+	if err := app.Save(staff); err != nil {
+		t.Fatalf("save staff: %v", err)
+	}
+
+	pcv := core.NewBaseCollection("person_custom_values")
+	pcv.Fields.Add(&core.TextField{Name: "person"})
+	pcv.Fields.Add(&core.TextField{Name: "field_definition"})
+	pcv.Fields.Add(&core.TextField{Name: "value", Max: 5000})
+	pcv.Fields.Add(&core.NumberField{Name: "year"})
+	if err := app.Save(pcv); err != nil {
+		t.Fatalf("save person_custom_values: %v", err)
+	}
+
+	svi := core.NewBaseCollection("staff_vehicle_info")
+	svi.Fields.Add(&core.TextField{Name: "staff"})
+	svi.Fields.Add(&core.NumberField{Name: "person_id"})
+	svi.Fields.Add(&core.NumberField{Name: "year"})
+	svi.Fields.Add(&core.BoolField{Name: "driving_to_camp"})
+	svi.Fields.Add(&core.TextField{Name: "how_getting_to_camp", Max: 500})
+	svi.Fields.Add(&core.TextField{Name: "can_bring_others", Max: 1000})
+	svi.Fields.Add(&core.TextField{Name: "driver_name", Max: 200})
+	svi.Fields.Add(&core.TextField{Name: "which_friend", Max: 200})
+	svi.Fields.Add(&core.TextField{Name: "vehicle_make", Max: 100})
+	svi.Fields.Add(&core.TextField{Name: "vehicle_model", Max: 100})
+	svi.Fields.Add(&core.TextField{Name: "license_plate", Max: 100})
+	svi.Fields.Add(&core.TextField{Name: "ride_from", Max: 1000})
+	svi.Fields.Add(&core.TextField{Name: "transport_notes", Max: 1000})
+	if err := app.Save(svi); err != nil {
+		t.Fatalf("save staff_vehicle_info: %v", err)
+	}
+
+	return app
+}
+
+// seedSVI writes one person, optionally a staff row for the same year, and one
+// custom value per field name given.
+func seedSVI(t *testing.T, app core.App, cmID, year int, hasStaff bool, values map[string]string) {
+	t.Helper()
+
+	personCol, err := app.FindCollectionByNameOrId("persons")
+	if err != nil {
+		t.Fatalf("find persons: %v", err)
+	}
+	person := core.NewRecord(personCol)
+	person.Set("cm_id", cmID)
+	person.Set("year", year)
+	if err := app.Save(person); err != nil {
+		t.Fatalf("save person %d: %v", cmID, err)
+	}
+
+	if hasStaff {
+		staffCol, err := app.FindCollectionByNameOrId("staff")
+		if err != nil {
+			t.Fatalf("find staff: %v", err)
+		}
+		s := core.NewRecord(staffCol)
+		s.Set("person_id", cmID)
+		s.Set("year", year)
+		if err := app.Save(s); err != nil {
+			t.Fatalf("save staff %d: %v", cmID, err)
+		}
+	}
+
+	defsCol, err := app.FindCollectionByNameOrId("custom_field_defs")
+	if err != nil {
+		t.Fatalf("find custom_field_defs: %v", err)
+	}
+	pcvCol, err := app.FindCollectionByNameOrId("person_custom_values")
+	if err != nil {
+		t.Fatalf("find person_custom_values: %v", err)
+	}
+	for name, value := range values {
+		// Listed rather than filtered: this mirrors loadFieldDefinitions' own
+		// FindRecordsByFilter(col, "", "", 0, 0) call and needs no dbx import.
+		// A test fixture holds a dozen defs at most.
+		existing, err := app.FindRecordsByFilter("custom_field_defs", "", "", 0, 0)
+		if err != nil {
+			t.Fatalf("list field defs: %v", err)
+		}
+		var def *core.Record
+		for _, d := range existing {
+			if d.GetString("name") == name {
+				def = d
+				break
+			}
+		}
+		if def == nil {
+			def = core.NewRecord(defsCol)
+			def.Set("name", name)
+			if err := app.Save(def); err != nil {
+				t.Fatalf("save field def %q: %v", name, err)
+			}
+		}
+		v := core.NewRecord(pcvCol)
+		v.Set("person", person.Id)
+		v.Set("field_definition", def.Id)
+		v.Set("value", value)
+		v.Set("year", year)
+		if err := app.Save(v); err != nil {
+			t.Fatalf("save custom value %q: %v", name, err)
+		}
+	}
+}
+
+// TestLoadPersonCustomValuesCountsStaffGateDrops pins kindred#2273. A person
+// who answered the SVI form but has no staff row for that year has every value
+// discarded by a bare `continue`. The gate itself is correct -- `staff` is a
+// required relation, so the row cannot be written -- but a partial extraction
+// and a complete one currently produce identical output.
+func TestLoadPersonCustomValuesCountsStaffGateDrops(t *testing.T) {
+	app := newStaffVehicleTestApp(t)
+	seedSVI(t, app, 1001, 2026, true, map[string]string{
+		"SVI-are you driving to camp": "Yes",
+		"SVI-make of vehicle":         "Toyota",
+	})
+	seedSVI(t, app, 1002, 2026, false, map[string]string{
+		"SVI-are you driving to camp": "Yes",
+	})
+
+	s := NewStaffVehicleInfoSync(app)
+	s.Year = 2026
+
+	fieldNames, err := s.loadFieldDefinitions(context.Background())
+	if err != nil {
+		t.Fatalf("loadFieldDefinitions: %v", err)
+	}
+	personToStaff, err := s.loadPersonStaffMapping(context.Background(), 2026)
+	if err != nil {
+		t.Fatalf("loadPersonStaffMapping: %v", err)
+	}
+	records, err := s.loadPersonCustomValues(context.Background(), 2026, fieldNames, personToStaff)
+	if err != nil {
+		t.Fatalf("loadPersonCustomValues: %v", err)
+	}
+
+	if len(records) != 1 {
+		t.Errorf("got %d records, want 1 -- the person with no staff row must be excluded", len(records))
+	}
+	if _, ok := records[makeStaffVehicleKey(1002, 2026)]; ok {
+		t.Error("person 1002 has no staff row for 2026 and must not produce a record")
+	}
+	if s.Stats.Skipped != 1 {
+		t.Errorf("Stats.Skipped = %d, want 1 -- the gate drop must be counted", s.Stats.Skipped)
+	}
+}
+
+// TestLoadPersonCustomValuesCountsUnmappedFields pins the second silent drop
+// site. A field admitted by the SVI- prefix but routed to no column is
+// discarded with no counter and no log line.
+func TestLoadPersonCustomValuesCountsUnmappedFields(t *testing.T) {
+	app := newStaffVehicleTestApp(t)
+	seedSVI(t, app, 1001, 2026, true, map[string]string{
+		"SVI-are you driving to camp": "Yes",
+		"SVI-Unit Head Training":      "Session A", // admitted by prefix, routes nowhere
+	})
+
+	s := NewStaffVehicleInfoSync(app)
+	s.Year = 2026
+
+	fieldNames, err := s.loadFieldDefinitions(context.Background())
+	if err != nil {
+		t.Fatalf("loadFieldDefinitions: %v", err)
+	}
+	personToStaff, err := s.loadPersonStaffMapping(context.Background(), 2026)
+	if err != nil {
+		t.Fatalf("loadPersonStaffMapping: %v", err)
+	}
+	if _, err := s.loadPersonCustomValues(context.Background(), 2026, fieldNames, personToStaff); err != nil {
+		t.Fatalf("loadPersonCustomValues: %v", err)
+	}
+
+	if s.Stats.Skipped != 1 {
+		t.Errorf("Stats.Skipped = %d, want 1 -- the unmapped field must be counted", s.Stats.Skipped)
 	}
 }

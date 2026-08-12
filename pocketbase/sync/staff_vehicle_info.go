@@ -173,6 +173,7 @@ func (s *StaffVehicleInfoSync) Sync(ctx context.Context) error {
 		"created", s.Stats.Created,
 		"updated", s.Stats.Updated,
 		"deleted", s.Stats.Deleted,
+		"skipped", s.Stats.Skipped,
 		"errors", s.Stats.Errors,
 	)
 
@@ -326,6 +327,10 @@ func (s *StaffVehicleInfoSync) loadPersonCustomValues(
 	for _, entry := range entries {
 		staffID, hasStaff := personToStaff[entry.personID]
 		if !hasStaff {
+			// Structurally correct -- `staff` is a required relation, so a row
+			// cannot be written without one -- but it must not be silent
+			// (kindred#2273).
+			s.Stats.Skipped++
 			continue
 		}
 
@@ -340,6 +345,10 @@ func (s *StaffVehicleInfoSync) loadPersonCustomValues(
 			result[key] = rec
 		}
 
+		if MapSVIFieldToColumnImpl(entry.fieldName) == "" {
+			s.Stats.Skipped++
+			continue
+		}
 		mapSVIFieldToRecord(rec, entry.fieldName, entry.value)
 	}
 
