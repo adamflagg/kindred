@@ -157,3 +157,45 @@ func TestStaffVehicleInfoCompositeKey(t *testing.T) {
 		})
 	}
 }
+
+// TestMapSVIFieldToRecordKeepsBringOthersVerbatim pins kindred#2262. The
+// CampMinder field behind can_bring_others is an open-ended String question --
+// 1,044 answers, 629 distinct, longest 328 characters -- and routing it
+// through parseSVIBoolImpl stored `false` for 1,022 people who answered.
+// Prefix rules do not rescue it: 34% of real answers begin with neither "yes"
+// nor "no", so the sentence itself is the only honest storage.
+func TestMapSVIFieldToRecordKeepsBringOthersVerbatim(t *testing.T) {
+	cases := []struct {
+		name  string
+		value string
+	}{
+		{"affirmative prose", "Yes, I can take 2 people from Oakland if they pack light"},
+		{"bare no", "No"},
+		{"seat count", "3"},
+		{"conditional", "Maybe -- depends on luggage"},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			rec := &staffVehicleInfoRecord{}
+			mapSVIFieldToRecord(rec, "SVI - bring others", tc.value)
+			if rec.canBringOthers != tc.value {
+				t.Errorf("canBringOthers = %q, want the raw answer %q", rec.canBringOthers, tc.value)
+			}
+		})
+	}
+}
+
+// TestMapSVIFieldToRecordLeavesDrivingToCampABool is the guardrail. The same
+// parser serves driving_to_camp, whose source really is a two-valued enum
+// (1,780 answers, exactly 2 distinct values, 793 rows true). Nothing in
+// kindred#2262 may change it.
+func TestMapSVIFieldToRecordLeavesDrivingToCampABool(t *testing.T) {
+	for value, want := range map[string]bool{"Yes": true, "No": false, "yes": true} {
+		rec := &staffVehicleInfoRecord{}
+		mapSVIFieldToRecord(rec, "SVI-are you driving to camp", value)
+		if rec.drivingToCamp != want {
+			t.Errorf("drivingToCamp for %q = %v, want %v", value, rec.drivingToCamp, want)
+		}
+	}
+}

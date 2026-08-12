@@ -78,7 +78,7 @@ type staffVehicleInfoRecord struct {
 
 	drivingToCamp    bool
 	howGettingToCamp string
-	canBringOthers   bool
+	canBringOthers   string
 	driverName       string
 	whichFriend      string
 	vehicleMake      string
@@ -361,7 +361,11 @@ func mapSVIFieldToRecord(rec *staffVehicleInfoRecord, fieldName, value string) {
 			rec.howGettingToCamp = value
 		}
 	case colCanBringOthers:
-		rec.canBringOthers = parseSVIBoolImpl(value)
+		// Raw answer, first-non-empty-wins like every other text column.
+		// NOT parseSVIBoolImpl -- see kindred#2262.
+		if rec.canBringOthers == "" {
+			rec.canBringOthers = value
+		}
 	case "driver_name":
 		if rec.driverName == "" {
 			rec.driverName = value
