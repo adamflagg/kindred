@@ -157,8 +157,11 @@ func (s *StaffVehicleInfoSync) Sync(ctx context.Context) error {
 	s.Stats.Errors = errors
 
 	// Step 6: Delete orphans
-	deleted := s.deleteOrphans(ctx, records, existingRecords)
+	deleted, err := s.deleteOrphans(ctx, records, existingRecords)
 	s.Stats.Deleted = deleted
+	if err != nil {
+		return fmt.Errorf("orphan sweep refused: %w", err)
+	}
 
 	// WAL checkpoint
 	if s.Stats.Created > 0 || s.Stats.Updated > 0 || s.Stats.Deleted > 0 {
@@ -556,17 +559,29 @@ func (s *StaffVehicleInfoSync) upsertRecords(
 }
 
 // deleteOrphans removes records that exist in DB but not in computed set
+// deleteOrphans removes records that exist in DB but not in computed set.
+//
+// Refuses when the computed set is empty and rows exist for the year: that
+// combination is always a broken input -- an empty personToStaff mapping makes
+// every value fail the staff gate -- and sweeping on it deletes the whole year
+// and reports success (kindred#2273).
 func (s *StaffVehicleInfoSync) deleteOrphans(
 	ctx context.Context,
 	records map[string]*staffVehicleInfoRecord,
 	existingRecords map[string]string,
-) int {
+) (int, error) {
+	if len(records) == 0 && len(existingRecords) > 0 {
+		return 0, fmt.Errorf(
+			"refusing to sweep %d existing staff_vehicle_info rows against an empty computed set "+
+				"(is the staff table populated for this year?)", len(existingRecords))
+	}
+
 	deleted := 0
 
 	for key, recordID := range existingRecords {
 		select {
 		case <-ctx.Done():
-			return deleted
+			return deleted, ctx.Err()
 		default:
 		}
 
@@ -585,7 +600,7 @@ func (s *StaffVehicleInfoSync) deleteOrphans(
 		}
 	}
 
-	return deleted
+	return deleted, nil
 }
 
 // forceWALCheckpoint forces a SQLite WAL checkpoint

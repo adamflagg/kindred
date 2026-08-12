@@ -417,3 +417,75 @@ func TestLoadPersonCustomValuesCountsUnmappedFields(t *testing.T) {
 		t.Errorf("Stats.Skipped = %d, want 1 -- the unmapped field must be counted", s.Stats.Skipped)
 	}
 }
+
+// TestDeleteOrphansRefusesEmptyComputedSet pins the destructive path in
+// kindred#2273. An empty computed record set against a populated year is
+// always a broken input, never a legitimate "everything was removed" -- and
+// the current code deletes the year and reports success.
+func TestDeleteOrphansRefusesEmptyComputedSet(t *testing.T) {
+	app := newStaffVehicleTestApp(t)
+	col, err := app.FindCollectionByNameOrId("staff_vehicle_info")
+	if err != nil {
+		t.Fatalf("find staff_vehicle_info: %v", err)
+	}
+	rec := core.NewRecord(col)
+	rec.Set("person_id", 1001)
+	rec.Set("year", 2026)
+	if err := app.Save(rec); err != nil {
+		t.Fatalf("save existing row: %v", err)
+	}
+
+	s := NewStaffVehicleInfoSync(app)
+	s.Year = 2026
+
+	existing := map[string]string{makeStaffVehicleKey(1001, 2026): rec.Id}
+	deleted, err := s.deleteOrphans(context.Background(),
+		map[string]*staffVehicleInfoRecord{}, existing)
+
+	if err == nil {
+		t.Fatal("expected an error when the computed set is empty and rows exist, got nil")
+	}
+	if deleted != 0 {
+		t.Errorf("deleted = %d, want 0 -- nothing may be removed on the refusal path", deleted)
+	}
+
+	remaining, err := app.FindRecordsByFilter("staff_vehicle_info", "year = 2026", "", 0, 0)
+	if err != nil {
+		t.Fatalf("re-query: %v", err)
+	}
+	if len(remaining) != 1 {
+		t.Errorf("%d rows survived, want 1 -- the guard must not delete", len(remaining))
+	}
+}
+
+// TestDeleteOrphansStillSweepsGenuineOrphans proves the guard did not disable
+// orphan deletion for the normal case.
+func TestDeleteOrphansStillSweepsGenuineOrphans(t *testing.T) {
+	app := newStaffVehicleTestApp(t)
+	col, err := app.FindCollectionByNameOrId("staff_vehicle_info")
+	if err != nil {
+		t.Fatalf("find staff_vehicle_info: %v", err)
+	}
+	orphan := core.NewRecord(col)
+	orphan.Set("person_id", 1002)
+	orphan.Set("year", 2026)
+	if err := app.Save(orphan); err != nil {
+		t.Fatalf("save orphan: %v", err)
+	}
+
+	s := NewStaffVehicleInfoSync(app)
+	s.Year = 2026
+
+	records := map[string]*staffVehicleInfoRecord{
+		makeStaffVehicleKey(1001, 2026): {personID: 1001, year: 2026},
+	}
+	existing := map[string]string{makeStaffVehicleKey(1002, 2026): orphan.Id}
+
+	deleted, err := s.deleteOrphans(context.Background(), records, existing)
+	if err != nil {
+		t.Fatalf("deleteOrphans: %v", err)
+	}
+	if deleted != 1 {
+		t.Errorf("deleted = %d, want 1", deleted)
+	}
+}
