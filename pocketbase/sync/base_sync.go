@@ -191,7 +191,8 @@ func (b *BaseSyncService) DeleteOrphansGuarded(
 // a rejecting service owns, PersonsSync.deleteHouseholdOrphans, is structurally
 // exempt rather than overlooked -- it builds its key set upstream of the transform
 // that rejects, so nothing is ever missing from it. The reasoning is at that
-// function.
+// function. Nine OTHER services carry their own deleteOrphans without embedding
+// this type at all and are out of reach entirely; see OrphanSweepGuard's doc.
 //
 // The count is service-scoped, not collection-scoped, so in a service that syncs
 // several collections from one Stats -- staff_lookups syncs three, financial_lookups
@@ -199,6 +200,9 @@ func (b *BaseSyncService) DeleteOrphansGuarded(
 // blunter than it needs to be and it is deliberate: it can only ever skip more
 // sweeps, never delete more rows, and per-collection counters are a much larger
 // change than the defect warrants.
+//
+// This answers only "did we reject". Whether a Check refusal survives the rejection
+// is a separate question, decided by RejectionsExplainShortfall in deleteOrphans.
 func (b *BaseSyncService) skipSweepForRejections(entityName string, guard *OrphanSweepGuard) bool {
 	skip := OrphanSweepGuard{Entity: entityName, Rejected: b.Stats.Rejected}
 	if guard != nil {
@@ -260,7 +264,11 @@ func (b *BaseSyncService) deleteOrphans(
 		return nil
 	}
 
-	if b.skipSweepForRejections(entityName, guard) {
+	// The unguarded entry point vouches for no computed set, so there is no
+	// shortfall to do arithmetic on and no Check to mask. A rejection skips
+	// outright, and it does so before the scan because nothing below can change
+	// the answer.
+	if guard == nil && b.skipSweepForRejections(entityName, nil) {
 		return nil
 	}
 
@@ -270,8 +278,19 @@ func (b *BaseSyncService) deleteOrphans(
 	}
 
 	if guard != nil {
-		if guardErr := guard.Check(inspected); guardErr != nil {
+		// Check still runs, and its refusal still stands -- UNLESS the rejections
+		// account for the whole shortfall. Skipping ahead of Check would let one
+		// rejection turn an unrelated collapse into a warning; failing on Check
+		// first would turn warn-only rejections into a red run. The accounting is
+		// what separates the two, with no threshold guessed (kindred#2299).
+		guard.Rejected = b.Stats.Rejected
+		if guardErr := guard.Check(inspected); guardErr != nil &&
+			!guard.RejectionsExplainShortfall(inspected) {
 			return guardErr
+		}
+
+		if b.skipSweepForRejections(entityName, guard) {
+			return nil
 		}
 	}
 

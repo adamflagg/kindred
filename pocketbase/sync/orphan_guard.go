@@ -46,6 +46,15 @@ const (
 // copy each (kindred#2273, kindred#2279 Gap 2), and rather than write a
 // fifteenth, every guarded service now fills in this struct.
 //
+// It reaches every sweep that routes through BaseSyncService, and ONLY those.
+// Nine services -- camper_dietary, camper_history, camper_transportation,
+// household_demographics, normalize_geographic, quest_registrations, staff_skills,
+// staff_applications and staff_vehicle_info -- do not embed BaseSyncService at all
+// and carry their own deleteOrphans, so neither this guard nor the rejection arm
+// below applies to them. That is harmless today because none of them counts a
+// rejection, and nothing pins it: a future reclassification into one of those files
+// gets no protection and no warning.
+//
 // Computed is the size of the set this run built from CampMinder, NOT the number
 // of rows on disk it happens to match. The distinction matters: a healthy run can
 // legitimately share no keys at all with what is stored -- one person leaves and
@@ -115,10 +124,16 @@ func (g OrphanSweepGuard) Check(existing int) error {
 //
 // Check answers "is the computed set believable" and reports a collapse as an
 // error, which fails the run. SkipReason answers "do we already know the computed
-// set is short", and the honest answer to that must not fail anything:
-// Stats.Rejected is warn-only for its first season (kindred#2284), and a returned
-// error would also abort the rest of a multi-collection service -- one malformed
-// program area would stop staff positions and org categories syncing at all.
+// set is short", and the honest answer to that must not fail anything, because
+// Stats.Rejected is warn-only for its first season (kindred#2284): one malformed
+// record out of 156,669 must not turn a run red.
+//
+// That is the whole justification, and it is worth being precise about what it is
+// NOT. An earlier revision of this comment also claimed a returned error would
+// abort the rest of a multi-collection service. It would not: staff_lookups and
+// financial_lookups log a DeleteOrphans error and `return nil`, so the later
+// collections sync regardless (staff_lookups.go, syncProgramAreas). The warn-only
+// grounds stand on their own; that second argument was false.
 //
 // Why a rejection is a skip rather than a smaller sweep. A rejected record's key
 // never reaches TrackProcessedKey: the counter bump and its `continue` both
@@ -138,8 +153,37 @@ func (g OrphanSweepGuard) SkipReason() string {
 		return ""
 	}
 
+	// Year is unset on the unguarded entry points -- DeleteOrphans and
+	// DeleteOrphansFromPreloaded take no year -- so five per-year services would
+	// otherwise be told their sweep stopped "for year 0". Naming no season is
+	// honest; naming a wrong one sends an operator to the wrong data.
+	season := ""
+	if g.Year != 0 {
+		season = fmt.Sprintf(" for year %d", g.Year)
+	}
+
 	return fmt.Sprintf(
-		"skipping the %s sweep for year %d: %d record(s) were rejected this run, so their keys "+
+		"skipping the %s sweep%s: %d record(s) were rejected this run, so their keys "+
 			"are missing from the computed set and their stored rows would be read as orphans",
-		g.Entity, g.Year, g.Rejected)
+		g.Entity, season, g.Rejected)
+}
+
+// RejectionsExplainShortfall reports whether this run's rejections are enough to
+// account for every stored row the computed set fails to cover. It decides whether
+// a Check refusal is REAL, and it needs no guessed threshold -- either the
+// arithmetic works out or it does not (kindred#2299).
+//
+// The problem it solves: skipping on Rejected > 0 alone, ahead of Check, means one
+// rejection alongside an entirely unrelated collapse turns a run-failing error into
+// a benign warning. Running Check first instead is no better -- it fails the run
+// whenever the rejections themselves are what made the computed set short, which is
+// precisely what warn-only forbids.
+//
+// So Check still runs and its refusal still stands, unless the rejections account
+// for the whole shortfall. Each rejection removes exactly one key from the computed
+// set, so `Rejected` is an exact upper bound on how much of the shortfall they can
+// explain. A shortfall of zero or less -- a computed set at least as large as the
+// rows on disk -- is trivially explained.
+func (g OrphanSweepGuard) RejectionsExplainShortfall(existing int) bool {
+	return existing-g.Computed <= g.Rejected
 }

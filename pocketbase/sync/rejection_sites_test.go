@@ -96,11 +96,21 @@ type countedSite struct {
 	line    int
 }
 
-// collectCountedSites finds every `<something>.Errors++` / `<something>.Rejected++`
-// whose immediately preceding statement is an slog call with a literal message.
-// That shape is the whole reject-site idiom -- log the reason, count it, continue
-// -- so keying on it needs no per-site line numbers, which is what made the
-// tables in kindred#2284 go stale.
+// collectCountedSites finds EVERY `<something>.Errors++` / `<something>.Rejected++`
+// in the package, and classifies each by the slog call immediately above it.
+//
+// Collecting every bump, rather than only the ones it can classify, is the whole
+// point (kindred#2299 row 3). The earlier version skipped a bump whose preceding
+// statement was not an slog call with a string-literal message -- so an
+// infrastructure failure counted as Rejected passed the census silently if it had
+// no log line, or a fmt.Sprintf message, or logged at Info. Verified by injecting
+// all three shapes at base_sync.go's failed-orphan-delete: the census stayed green.
+//
+// An allowlist that ignores what it cannot understand is the same false-green shape
+// this campaign exists to remove, and this census is the only safety net over all 30
+// sites. So a bump it cannot classify gets an empty message and is REPORTED, not
+// dropped. Keying on the message rather than a line number is what keeps it from
+// going stale the way kindred#2284's tables did.
 func collectCountedSites(t *testing.T) []countedSite {
 	t.Helper()
 
@@ -127,16 +137,15 @@ func collectCountedSites(t *testing.T) []countedSite {
 				return true
 			}
 			for i, stmt := range block.List {
-				if i == 0 {
-					continue
-				}
 				counter, isCount := statsCounterBump(stmt)
 				if !isCount {
 					continue
 				}
-				message, hasMessage := slogMessage(block.List[i-1])
-				if !hasMessage {
-					continue
+				// An unclassifiable bump keeps an empty message and is reported by
+				// TestNoUnexpectedSiteUsesTheRejectedCounter rather than skipped.
+				var message string
+				if i > 0 {
+					message, _ = slogMessage(block.List[i-1])
 				}
 				found = append(found, countedSite{
 					rejectSite: rejectSite{file: name, message: message},
@@ -232,8 +241,10 @@ func TestPerRecordRejectionsUseTheRejectedCounter(t *testing.T) {
 // TestNoUnexpectedSiteUsesTheRejectedCounter is the other half. Rejected is
 // warn-only AND it suppresses a collection's orphan sweep for the whole run, so
 // moving an infrastructure failure onto it buys silence twice: the run reports
-// green and the sweep stops. base_sync.go:200 -- a failed orphan delete -- is the
-// site this exists to keep out.
+// green and the sweep stops. base_sync.go's "Failed to delete orphaned record" --
+// a failed App.Delete -- is the site this exists to keep out. Cited by message
+// rather than line number on purpose: the line it used to name has already moved
+// once within this PR.
 func TestNoUnexpectedSiteUsesTheRejectedCounter(t *testing.T) {
 	t.Parallel()
 
@@ -244,17 +255,24 @@ func TestNoUnexpectedSiteUsesTheRejectedCounter(t *testing.T) {
 
 	var unexpected []string
 	for _, site := range collectCountedSites(t) {
-		if site.counter == counterRejected && !expected[site.rejectSite] {
-			unexpected = append(unexpected,
-				site.file+":"+strconv.Itoa(site.line)+": "+site.message)
+		if site.counter != counterRejected || expected[site.rejectSite] {
+			continue
 		}
+		what := site.message
+		if what == "" {
+			what = "<unclassifiable: no slog.Error/Warn with a literal message above it>"
+		}
+		unexpected = append(unexpected,
+			site.file+":"+strconv.Itoa(site.line)+": "+what)
 	}
 	sort.Strings(unexpected)
 
 	if len(unexpected) > 0 {
 		t.Errorf("%d site(s) count as Stats.Rejected without being listed as per-record "+
 			"rejections.\nAdd them to expectedRejectSites with the reasoning, or move them "+
-			"back to Stats.Errors:\n  %s", len(unexpected), strings.Join(unexpected, "\n  "))
+			"back to Stats.Errors. A site reported as <unclassifiable> is not exempt -- the "+
+			"census refuses to ignore a bump it cannot read:\n  %s",
+			len(unexpected), strings.Join(unexpected, "\n  "))
 	}
 }
 

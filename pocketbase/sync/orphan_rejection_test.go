@@ -95,7 +95,12 @@ func rejectingSweepFixture(t *testing.T, rejected int) (core.App, BaseSyncServic
 }
 
 // TestBaseDeleteOrphansKeepsTheRejectedRecordsRow is the headline. This is the
-// path 11 of the 13 rejecting services sweep through.
+// path NINE of the thirteen rejecting services sweep through -- bunks,
+// custom_field_definitions, divisions, financial_lookups, person_tag_definitions,
+// session_groups, sessions, staff and staff_lookups. Two more
+// (person_custom_field_values, household_custom_field_values) opt into the guarded
+// variant, financial_transactions sweeps from preloaded records, and persons is
+// structurally exempt. An earlier revision of this comment said eleven.
 func TestBaseDeleteOrphansKeepsTheRejectedRecordsRow(t *testing.T) {
 	t.Parallel()
 
@@ -396,44 +401,131 @@ func TestPersonsHouseholdSweepStillCollectsOrphansWhenAHouseholdWasRejected(t *t
 // exception above rests on, so that the exception cannot rot into a defect.
 //
 // extractUniqueHouseholds and the tracking loop in processBatchPersons share one
-// `id > 0` gate, and that gate is exactly what transformHouseholdToPB validates. So
-// every household the transform is ever handed has already been tracked. Move the
-// tracking below the transform, or gate it on the transform succeeding, and persons
-// silently joins the other twelve -- with no guard to catch it.
+// gate -- `data["ID"].(float64)` must succeed and be > 0 -- and that gate is
+// LOGICALLY IDENTICAL to the only thing transformHouseholdToPB validates. So the
+// transform cannot fail for a household that reached it, and every household it is
+// handed has already been tracked. Move the tracking below the transform, or widen
+// what the transform rejects on, and persons silently joins the other twelve -- with
+// no guard to catch it.
+//
+// The fixture is deliberately wide: every shape that could make the two gates
+// disagree, driven through the real processBatchPersons and the real transform.
 func TestPersonsTracksEveryHouseholdItWillLaterTransform(t *testing.T) {
 	t.Parallel()
+
+	// Each entry is one household slot on one person, covering the ways an ID can
+	// be absent, unusable, or fine. None may end up handed to the transform without
+	// having been tracked first.
+	households := []struct {
+		name      string
+		slot      string
+		household map[string]any
+	}{
+		{"a normal household", "PrincipalHousehold",
+			map[string]any{"ID": float64(100), "Greeting": "kept"}},
+		{"id zero", "PrimaryChildhoodHousehold",
+			map[string]any{"ID": float64(0), "Greeting": "no id"}},
+		{"id negative", "AlternateChildhoodHousehold",
+			map[string]any{"ID": float64(-5)}},
+		{"id missing entirely", "PrincipalHousehold",
+			map[string]any{"Greeting": "no id key at all"}},
+		{"id as a string, the JSON shape that would not assert", "PrincipalHousehold",
+			map[string]any{"ID": "100"}},
+		{"id as an int rather than float64", "PrincipalHousehold",
+			map[string]any{"ID": 100}},
+		{"a household with nothing but an id", "PrincipalHousehold",
+			map[string]any{"ID": float64(700)}},
+		{"a large id", "PrincipalHousehold",
+			map[string]any{"ID": float64(2147483647)}},
+	}
+
+	for _, tc := range households {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			s := &PersonsSync{
+				BaseSyncService:  BaseSyncService{ProcessedKeys: map[string]bool{}},
+				missingDataStats: map[string]int{},
+			}
+			result := &personBatchResult{
+				extractedHouseholds:   map[int]map[string]any{},
+				processedHouseholdIDs: map[int]bool{},
+				personHouseholdMap:    map[int]personHouseholdIDs{},
+			}
+
+			// No CamperDetails, so processPerson returns early and touches no
+			// database -- the household extraction below it runs either way, which
+			// is the point.
+			s.processBatchPersons([]map[string]any{{
+				"ID":         float64(1),
+				"Households": map[string]any{tc.slot: tc.household},
+			}}, map[int]bool{}, nil, nil, nil, 2026, result)
+
+			for id, household := range result.extractedHouseholds {
+				if !result.processedHouseholdIDs[id] {
+					t.Errorf("household %d will be handed to transformHouseholdToPB but was "+
+						"never tracked -- the sweep would read its row as an orphan", id)
+				}
+				if _, err := s.transformHouseholdToPB(household, 2026); err != nil {
+					t.Errorf("household %d was extracted but rejects at transform (%v) -- the "+
+						"two id gates have drifted apart, which is what made the other twelve "+
+						"unsafe", id, err)
+				}
+			}
+		})
+	}
+}
+
+// TestPersonsExtractedHouseholdsAlwaysTransform states the exemption as the property
+// it actually is, rather than by example, and drives the two gates directly against
+// each other so a change to either is caught even if processBatchPersons is
+// refactored away.
+//
+// The property is an IMPLICATION, not an equivalence, and the distinction is worth
+// stating because the two gates are NOT identical. Extraction requires
+// `data["ID"].(float64)` to succeed AND be > 0; transformHouseholdToPB rejects only
+// when that assertion fails or the value is == 0. A NEGATIVE id therefore passes the
+// transform while failing extraction.
+//
+// That asymmetry is in the safe direction and cannot hurt anything: extraction is
+// what feeds the transform, so a household extraction rejects is never handed to it
+// at all. What must never happen is the converse -- a household that IS extracted
+// (and therefore tracked, in the same loop) failing the transform. That is the only
+// way a household could reach the reject site, and it is what this asserts.
+func TestPersonsExtractedHouseholdsAlwaysTransform(t *testing.T) {
+	t.Parallel()
+
+	payloads := []map[string]any{
+		{"ID": float64(1)},
+		{"ID": float64(0)},
+		{"ID": float64(-1)},
+		{"ID": "1"},
+		{"ID": 1},
+		{"ID": nil},
+		{},
+		{"Greeting": "only a greeting"},
+		{"ID": float64(1), "BillingAddress": map[string]any{"City": "Springfield"}},
+	}
 
 	s := &PersonsSync{
 		BaseSyncService:  BaseSyncService{ProcessedKeys: map[string]bool{}},
 		missingDataStats: map[string]int{},
 	}
-	result := &personBatchResult{
-		extractedHouseholds:   map[int]map[string]any{},
-		processedHouseholdIDs: map[int]bool{},
-		personHouseholdMap:    map[int]personHouseholdIDs{},
-	}
 
-	// No CamperDetails, so processPerson returns early and touches no database --
-	// the household extraction below it runs either way, which is the point.
-	s.processBatchPersons([]map[string]any{{
-		"ID": float64(1),
-		"Households": map[string]any{
-			"PrincipalHousehold":        map[string]any{"ID": float64(100), "Greeting": "kept"},
-			"PrimaryChildhoodHousehold": map[string]any{"ID": float64(0)},
-		},
-	}}, map[int]bool{}, nil, nil, nil, 2026, result)
-
-	if len(result.extractedHouseholds) == 0 {
-		t.Fatal("fixture extracted no households")
-	}
-	for id, household := range result.extractedHouseholds {
-		if !result.processedHouseholdIDs[id] {
-			t.Errorf("household %d will be handed to transformHouseholdToPB but was never "+
-				"tracked -- the sweep would read its row as an orphan", id)
+	for i, payload := range payloads {
+		// The extraction gate, verbatim from extractUniqueHouseholds/processBatchPersons.
+		// Passing it is exactly what also writes processedHouseholdIDs[id].
+		id, ok := payload["ID"].(float64)
+		extracted := ok && id > 0
+		if !extracted {
+			continue // never handed to the transform, so it cannot be the untracked one
 		}
-		if _, err := s.transformHouseholdToPB(household, 2026); err != nil {
-			t.Errorf("household %d was extracted but rejects at transform (%v) -- the two "+
-				"id gates have drifted apart, which is what made the other twelve unsafe", id, err)
+
+		if _, err := s.transformHouseholdToPB(payload, 2026); err != nil {
+			t.Errorf("payload %d was extracted -- and therefore tracked -- but fails the "+
+				"transform (%v). The reject site at persons.go is now reachable, so a "+
+				"rejected household's row becomes sweepable and persons.go needs the "+
+				"rejection guard the other twelve have.", i, err)
 		}
 	}
 }

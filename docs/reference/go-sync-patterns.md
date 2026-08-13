@@ -316,12 +316,36 @@ The decision lives in one place, `applyCompletionStatus` in `orchestrator.go`, w
 normal completion paths route through. It sums `Errors` across the service *and* its
 `SubStats`, so a combined sync cannot hide a failing sub-entity.
 
-**`Stats.Rejected` is declared but not yet wired to any call site.** Every site still
-increments `Stats.Errors` today, including pure transform failures. That is deliberate: a
-rejected record skips `TrackProcessedKey` via the same `continue`, so the orphan sweep
-deletes its existing row in the same run — failing loud beats quietly losing a row. The
-reclassification ships with the sweep guard in **kindred#2295**. Until it lands, do not move
-a site to `Rejected` on your own.
+**`Stats.Rejected` is wired, and the site list is machine-enforced — do not extend it by
+hand.** kindred#2295 shipped the reclassification together with the sweep guard that makes it
+safe, because a rejected record skips `TrackProcessedKey` via the same `continue` and the
+orphan sweep would otherwise delete its existing row in the same run.
+
+There are exactly **30** per-record rejection sites, and two AST census tests in
+`pocketbase/sync/rejection_sites_test.go` hold that number in both directions:
+
+| Test | Fails when |
+|------|-----------|
+| `TestPerRecordRejectionsUseTheRejectedCounter` | a declared site slips back to `Stats.Errors` |
+| `TestNoUnexpectedSiteUsesTheRejectedCounter` | any `Rejected++` appears that is not on the declared list — **including one the census cannot classify** |
+
+So adding a site means adding it to `expectedRejectSites` with the reasoning, in the same
+change. Do not count the sites with `grep "Stats.Rejected++"`: that returns 32, because two
+hits are prose in the census tests' own comments and because `householdStats.Rejected++`
+contains the same substring.
+
+**Before you reclassify a site, check that its sweep is actually guarded.** The guard reaches
+`DeleteOrphans`, `DeleteOrphansGuarded` and `DeleteOrphansFromPreloaded` — every sweep that
+routes through `BaseSyncService`. Nine services (`camper_dietary`, `camper_history`,
+`camper_transportation`, `household_demographics`, `normalize_geographic`,
+`quest_registrations`, `staff_skills`, `staff_applications`, `staff_vehicle_info`) do not
+embed `BaseSyncService` at all and carry their own `deleteOrphans`, so a site reclassified in
+one of those gets **no protection and no warning**.
+
+`persons.go` is the documented exception in the other direction: its household sweep needs no
+guard, because `processBatchPersons` tracks a household from the same `id > 0` gate that
+`transformHouseholdToPB` validates, upstream of the transform. See
+`PersonsSync.deleteHouseholdOrphans`.
 
 ```go
 // Wrap errors with context using fmt.Errorf and %w
@@ -337,11 +361,12 @@ if err := s.App.Save(record); err != nil {
 }
 
 // PER-RECORD TRANSFORM failure: bad upstream data, no local fault. Warn-only.
-// NOTE: blocked on kindred#2295 (orphan sweep guard) — keep these on Stats.Errors
-// until that lands, or the sweep deletes the record's existing row.
+// The `continue` skips TrackProcessedKey below, which is why the sweep has to
+// refuse on Rejected > 0 (kindred#2295). Add the site to expectedRejectSites in
+// rejection_sites_test.go in the same change, or the census fails.
 if pbData, err := s.transformWidgetToPB(widgetData); err != nil {
     slog.Error("Error transforming widget", "error", err, "cm_id", cmID)
-    s.Stats.Errors++ // will become s.Stats.Rejected++ in kindred#2295
+    s.Stats.Rejected++
     continue
 }
 
