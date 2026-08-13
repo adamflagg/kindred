@@ -668,7 +668,9 @@ func TestMarkSyncRunningPreservesStatus(t *testing.T) {
 	mock := &MockService{name: "test_service"}
 	o.RegisterService("test", mock)
 
-	// Set a year context
+	// A historical backfill holding the process-global year. MarkSyncRunning is reached only
+	// from the process_requests handlers, which are operator actions against the current
+	// season, so an unrelated sync's year must not reach this run (kindred#2297, finding 4).
 	o.mu.Lock()
 	o.currentSyncYear = 2024
 	o.mu.Unlock()
@@ -697,8 +699,9 @@ func TestMarkSyncRunningPreservesStatus(t *testing.T) {
 		t.Errorf("expected Status='running', got %q", status.Status)
 	}
 
-	if status.Year != 2024 {
-		t.Errorf("expected Year=2024, got %d", status.Year)
+	if status.Year != 0 {
+		t.Errorf("expected Year=0 (the current season), got %d — the run adopted a "+
+			"concurrent backfill's year", status.Year)
 	}
 
 	if status.StartTime.IsZero() {
@@ -3372,7 +3375,7 @@ func TestRunSyncAndWaitMatchesToken(t *testing.T) {
 
 	errCh := make(chan error, 1)
 	go func() {
-		errCh <- o.runSyncAndWait(ctx, "test")
+		errCh <- o.runSyncAndWait(ctx, "test", newBatch(triggerManual))
 	}()
 
 	// 3. Wait for it to complete - it should wait for the NEW run, not return immediately
@@ -3417,7 +3420,7 @@ func TestRunSyncAndWaitZeroDelayNoDeadlock(t *testing.T) {
 			ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 			defer cancel()
 
-			err := o.runSyncAndWait(ctx, "test")
+			err := o.runSyncAndWait(ctx, "test", newBatch(triggerManual))
 			if err != nil {
 				t.Fatalf("runSyncAndWait failed: %v (likely deadlocked and hit timeout)", err)
 			}
@@ -3537,7 +3540,8 @@ func TestRunSingleSyncWithServiceIgnoresRegisteredSingleton(t *testing.T) {
 		// exactly what a fixed handler does with e.g. NewCamperHistorySync(e.App).
 		requestScoped := &mockYearService{name: "test", year: 2027, stats: Stats{Created: 5}}
 
-		if err := o.RunSingleSyncWithService(context.Background(), "test", requestScoped); err != nil {
+		origin := newBatch(triggerManual)
+		if err := o.RunSingleSyncWithService(context.Background(), "test", requestScoped, origin); err != nil {
 			t.Fatalf("RunSingleSyncWithService failed: %v", err)
 		}
 
@@ -3582,12 +3586,12 @@ func TestRunSingleSyncWithServiceRejectsConcurrentRunForSameType(t *testing.T) {
 		o := NewOrchestrator(nil)
 
 		first := &mockYearService{name: "test", year: 2026, delay: 100 * time.Millisecond}
-		if err := o.RunSingleSyncWithService(context.Background(), "test", first); err != nil {
+		if err := o.RunSingleSyncWithService(context.Background(), "test", first, newBatch(triggerManual)); err != nil {
 			t.Fatalf("first call should succeed, got: %v", err)
 		}
 
 		second := &mockYearService{name: "test", year: 2027}
-		err := o.RunSingleSyncWithService(context.Background(), "test", second)
+		err := o.RunSingleSyncWithService(context.Background(), "test", second, newBatch(triggerManual))
 		if err == nil {
 			t.Fatal("expected the second concurrent call for the same syncType to be rejected")
 		}
@@ -3628,7 +3632,7 @@ func TestRunSingleSyncWithServiceConcurrentCallsExactlyOneWins(t *testing.T) {
 		go func(i int) {
 			defer done.Done()
 			start.Wait() // release all goroutines together to maximize interleaving
-			errs[i] = o.RunSingleSyncWithService(context.Background(), "test", services[i])
+			errs[i] = o.RunSingleSyncWithService(context.Background(), "test", services[i], newBatch(triggerManual))
 		}(i)
 	}
 	start.Done()

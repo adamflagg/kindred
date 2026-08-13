@@ -748,7 +748,7 @@ func determineUploadYear(yearParam string) (int, error) {
 		return 0, fmt.Errorf("year resolution failed: %w", err)
 	}
 	if yearParam != "" {
-		if y, err := strconv.Atoi(yearParam); err == nil && y >= 2017 && y <= 2050 {
+		if y, err := strconv.Atoi(yearParam); err == nil && ValidSyncYear(y) {
 			uploadYear = y
 		}
 	}
@@ -858,8 +858,9 @@ func handleBunkRequestsUpload(e *core.RequestEvent, scheduler *Scheduler) error 
 				ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
 				defer cancel()
 
-				// Run bunk_requests sync first and wait for completion
-				syncErr := orchestrator.runSyncAndWait(ctx, "bunk_requests")
+				// Run bunk_requests sync first and wait for completion. A CSV upload is an
+				// operator action, so this is a manual batch of one.
+				syncErr := orchestrator.runSyncAndWait(ctx, "bunk_requests", newBatch(triggerManual))
 				if syncErr != nil {
 					slog.Warn("Error running bunk_requests sync", "error", syncErr)
 					return // Don't run process_requests if sync failed
@@ -1042,10 +1043,21 @@ func handleUnifiedSync(e *core.RequestEvent, scheduler *Scheduler) error {
 		})
 	}
 
+	// Bounded at both ends. An unbounded upper end is not permissive, it is a silent
+	// failure: ?year=99999 was accepted, and then every sync_runs row of that run failed the
+	// column's max check and was swallowed by the write path's slog.Error — a green sync and
+	// an empty table.
+	//
+	// ValidSyncYear is the single spelling of that range for every year-taking handler in
+	// this file. The one deliberate exception is handleFinancialTransactionsSync, which caps
+	// at the current year for a reason stated at the site. (Five service-level validators in
+	// sync/ still say 2017-2099 by hand; they are unreachable above 2050 because the
+	// handlers reject first, so they are left alone rather than widened here.)
 	year, err := strconv.Atoi(yearStr)
-	if err != nil || year < 2017 {
+	if err != nil || !ValidSyncYear(year) {
 		return e.JSON(http.StatusBadRequest, map[string]any{
-			"error": "Invalid year parameter. Must be 2017 or later.",
+			"error": fmt.Sprintf("Invalid year parameter. Must be between %d and %d.",
+				syncYearMin, syncYearMax),
 		})
 	}
 
@@ -1209,6 +1221,11 @@ func processQueuedSyncs(orchestrator *Orchestrator) {
 		slog.Info("Queued phase sync: Running jobs",
 			"phase", phase, "year", qs.Year, "jobs", jobs, "debug", qs.Debug)
 
+		// The phase's jobs are one queue and so one batch, filed under the year the
+		// operator asked for. currentSyncYear below is process-global and only feeds
+		// GetStatus's "pending" rendering; the runs themselves take their year from here.
+		batch := newBatch(triggerManual).forYear(qs.Year)
+
 		// Set the current sync year so services use correct year
 		orchestrator.mu.Lock()
 		orchestrator.currentSyncYear = qs.Year
@@ -1248,7 +1265,7 @@ func processQueuedSyncs(orchestrator *Orchestrator) {
 			}
 
 			slog.Info("Queued phase sync: Running job", "phase", phase, "job", jobID, "year", qs.Year)
-			if err := orchestrator.runSyncAndWait(ctx, jobID); err != nil {
+			if err := orchestrator.runSyncAndWait(ctx, jobID, batch); err != nil {
 				slog.Error("Queued phase sync: job failed",
 					"phase", phase, "job", jobID, "error", err)
 				// Continue with next job even if one fails
@@ -1284,7 +1301,8 @@ func processQueuedSyncs(orchestrator *Orchestrator) {
 			}
 		}
 
-		if err := orchestrator.runSyncAndWait(ctx, qs.Service); err != nil {
+		origin := newBatch(triggerManual).forYear(qs.Year)
+		if err := orchestrator.runSyncAndWait(ctx, qs.Service, origin); err != nil {
 			slog.Error("Queued individual sync failed",
 				"id", qs.ID, "job", qs.Service, "year", qs.Year, "error", err)
 		} else {
@@ -1644,7 +1662,8 @@ func handlePersonCustomFieldValuesSync(e *core.RequestEvent, scheduler *Schedule
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Minute)
 	defer cancel()
 
-	if err := orchestrator.RunSingleSyncWithService(ctx, syncType, service); err != nil {
+	origin := newBatch(triggerManual)
+	if err := orchestrator.RunSingleSyncWithService(ctx, syncType, service, origin); err != nil {
 		return e.JSON(http.StatusConflict, map[string]any{
 			"error":    err.Error(),
 			"status":   "running",
@@ -1703,7 +1722,8 @@ func handleHouseholdCustomFieldValuesSync(e *core.RequestEvent, scheduler *Sched
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Minute)
 	defer cancel()
 
-	if err := orchestrator.RunSingleSyncWithService(ctx, syncType, service); err != nil {
+	origin := newBatch(triggerManual)
+	if err := orchestrator.RunSingleSyncWithService(ctx, syncType, service, origin); err != nil {
 		return e.JSON(http.StatusConflict, map[string]any{
 			"error":    err.Error(),
 			"status":   "running",
@@ -1744,11 +1764,16 @@ func handleFinancialTransactionsSync(e *core.RequestEvent, scheduler *Scheduler)
 	yearParam := e.Request.URL.Query().Get("year")
 	year := 0 // Default: current year from env
 	if yearParam != "" {
-		if y, err := strconv.Atoi(yearParam); err == nil && y >= 2017 && y <= time.Now().Year() {
+		// Deliberately stricter than ValidSyncYear at the top end, and the one handler here
+		// that is: this backfills financial transactions FROM CampMinder, and a year that
+		// has not happened has none. syncYearMax (2050) is a schema bound, not a claim that
+		// 2049's ledger is fetchable. The floor stays shared.
+		if y, err := strconv.Atoi(yearParam); err == nil && ValidSyncYear(y) && y <= time.Now().Year() {
 			year = y
 		} else {
 			return e.JSON(http.StatusBadRequest, map[string]any{
-				"error": "Invalid year parameter. Must be between 2017 and current year.",
+				"error": fmt.Sprintf("Invalid year parameter. Must be between %d and the current year.",
+					syncYearMin),
 			})
 		}
 	}
@@ -1838,9 +1863,10 @@ func handleCamperHistorySync(e *core.RequestEvent, scheduler *Scheduler) error {
 	}
 
 	year, err := strconv.Atoi(yearParam)
-	if err != nil || year < 2017 || year > 2050 {
+	if err != nil || !ValidSyncYear(year) {
 		return e.JSON(http.StatusBadRequest, map[string]any{
-			"error": "Invalid year parameter. Must be between 2017 and 2050.",
+			"error": fmt.Sprintf("Invalid year parameter. Must be between %d and %d.",
+				syncYearMin, syncYearMax),
 		})
 	}
 
@@ -1859,7 +1885,8 @@ func handleCamperHistorySync(e *core.RequestEvent, scheduler *Scheduler) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
 	defer cancel()
 
-	if err := orchestrator.RunSingleSyncWithService(ctx, syncType, service); err != nil {
+	origin := newBatch(triggerManual).forYear(year)
+	if err := orchestrator.RunSingleSyncWithService(ctx, syncType, service, origin); err != nil {
 		return e.JSON(http.StatusConflict, map[string]any{
 			"error":    "Camper history computation already in progress",
 			"status":   "running",
@@ -1893,9 +1920,10 @@ func handleFamilyCampDerivedSync(e *core.RequestEvent, scheduler *Scheduler) err
 	}
 
 	year, err := strconv.Atoi(yearParam)
-	if err != nil || year < 2017 || year > 2050 {
+	if err != nil || !ValidSyncYear(year) {
 		return e.JSON(http.StatusBadRequest, map[string]any{
-			"error": "Invalid year parameter. Must be between 2017 and 2050.",
+			"error": fmt.Sprintf("Invalid year parameter. Must be between %d and %d.",
+				syncYearMin, syncYearMax),
 		})
 	}
 
@@ -1911,7 +1939,8 @@ func handleFamilyCampDerivedSync(e *core.RequestEvent, scheduler *Scheduler) err
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
 	defer cancel()
 
-	if err := orchestrator.RunSingleSyncWithService(ctx, syncType, service); err != nil {
+	origin := newBatch(triggerManual).forYear(year)
+	if err := orchestrator.RunSingleSyncWithService(ctx, syncType, service, origin); err != nil {
 		return e.JSON(http.StatusConflict, map[string]any{
 			"error":    "Family camp derived computation already in progress",
 			"status":   "running",
@@ -1943,9 +1972,10 @@ func handleLodgingAssignmentsSync(e *core.RequestEvent, scheduler *Scheduler) er
 		})
 	}
 	year, err := strconv.Atoi(yearParam)
-	if err != nil || year < 2017 || year > 2050 {
+	if err != nil || !ValidSyncYear(year) {
 		return e.JSON(http.StatusBadRequest, map[string]any{
-			"error": "Invalid year parameter. Must be between 2017 and 2050.",
+			"error": fmt.Sprintf("Invalid year parameter. Must be between %d and %d.",
+				syncYearMin, syncYearMax),
 		})
 	}
 
@@ -1960,7 +1990,8 @@ func handleLodgingAssignmentsSync(e *core.RequestEvent, scheduler *Scheduler) er
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
 	defer cancel()
 
-	if err := orchestrator.RunSingleSyncWithService(ctx, syncType, service); err != nil {
+	origin := newBatch(triggerManual).forYear(year)
+	if err := orchestrator.RunSingleSyncWithService(ctx, syncType, service, origin); err != nil {
 		return e.JSON(http.StatusConflict, map[string]any{
 			"error":    "Lodging assignment ingest already in progress",
 			"status":   "running",
@@ -1994,9 +2025,10 @@ func handleStaffSkillsSync(e *core.RequestEvent, scheduler *Scheduler) error {
 	}
 
 	year, err := strconv.Atoi(yearParam)
-	if err != nil || year < 2017 || year > 2050 {
+	if err != nil || !ValidSyncYear(year) {
 		return e.JSON(http.StatusBadRequest, map[string]any{
-			"error": "Invalid year parameter. Must be between 2017 and 2050.",
+			"error": fmt.Sprintf("Invalid year parameter. Must be between %d and %d.",
+				syncYearMin, syncYearMax),
 		})
 	}
 
@@ -2012,7 +2044,8 @@ func handleStaffSkillsSync(e *core.RequestEvent, scheduler *Scheduler) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
 	defer cancel()
 
-	if err := orchestrator.RunSingleSyncWithService(ctx, syncType, service); err != nil {
+	origin := newBatch(triggerManual).forYear(year)
+	if err := orchestrator.RunSingleSyncWithService(ctx, syncType, service, origin); err != nil {
 		return e.JSON(http.StatusConflict, map[string]any{
 			"error":    "Staff skills sync already in progress",
 			"status":   "running",
@@ -2046,9 +2079,10 @@ func handleFinancialAidApplicationsSync(e *core.RequestEvent, scheduler *Schedul
 	}
 
 	year, err := strconv.Atoi(yearParam)
-	if err != nil || year < 2017 || year > 2050 {
+	if err != nil || !ValidSyncYear(year) {
 		return e.JSON(http.StatusBadRequest, map[string]any{
-			"error": "Invalid year parameter. Must be between 2017 and 2050.",
+			"error": fmt.Sprintf("Invalid year parameter. Must be between %d and %d.",
+				syncYearMin, syncYearMax),
 		})
 	}
 
@@ -2064,7 +2098,8 @@ func handleFinancialAidApplicationsSync(e *core.RequestEvent, scheduler *Schedul
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
 	defer cancel()
 
-	if err := orchestrator.RunSingleSyncWithService(ctx, syncType, service); err != nil {
+	origin := newBatch(triggerManual).forYear(year)
+	if err := orchestrator.RunSingleSyncWithService(ctx, syncType, service, origin); err != nil {
 		return e.JSON(http.StatusConflict, map[string]any{
 			"error":    "Financial aid applications sync already in progress",
 			"status":   "running",
@@ -2098,9 +2133,10 @@ func handleHouseholdDemographicsSync(e *core.RequestEvent, scheduler *Scheduler)
 	}
 
 	year, err := strconv.Atoi(yearParam)
-	if err != nil || year < 2017 || year > 2050 {
+	if err != nil || !ValidSyncYear(year) {
 		return e.JSON(http.StatusBadRequest, map[string]any{
-			"error": "Invalid year parameter. Must be between 2017 and 2050.",
+			"error": fmt.Sprintf("Invalid year parameter. Must be between %d and %d.",
+				syncYearMin, syncYearMax),
 		})
 	}
 
@@ -2116,7 +2152,8 @@ func handleHouseholdDemographicsSync(e *core.RequestEvent, scheduler *Scheduler)
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
 	defer cancel()
 
-	if err := orchestrator.RunSingleSyncWithService(ctx, syncType, service); err != nil {
+	origin := newBatch(triggerManual).forYear(year)
+	if err := orchestrator.RunSingleSyncWithService(ctx, syncType, service, origin); err != nil {
 		return e.JSON(http.StatusConflict, map[string]any{
 			"error":    "Household demographics computation already in progress",
 			"status":   "running",
@@ -2193,9 +2230,10 @@ func handleRunPhase(e *core.RequestEvent, scheduler *Scheduler) error {
 	}
 
 	year, err := strconv.Atoi(yearParam)
-	if err != nil || year < 2017 || year > 2050 {
+	if err != nil || !ValidSyncYear(year) {
 		return e.JSON(http.StatusBadRequest, map[string]any{
-			"error": "Invalid year parameter. Must be between 2017 and 2050.",
+			"error": fmt.Sprintf("Invalid year parameter. Must be between %d and %d.",
+				syncYearMin, syncYearMax),
 		})
 	}
 
@@ -2271,6 +2309,10 @@ func handleRunPhase(e *core.RequestEvent, scheduler *Scheduler) error {
 		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Hour)
 		defer cancel()
 
+		// One phase is one queue and so one batch, filed under the requested year rather
+		// than read back off the process-global currentSyncYear below.
+		batch := newBatch(triggerManual).forYear(year)
+
 		// Set the current sync year so services use correct year
 		// (same pattern as RunSyncWithOptions)
 		orchestrator.mu.Lock()
@@ -2314,7 +2356,7 @@ func handleRunPhase(e *core.RequestEvent, scheduler *Scheduler) error {
 			}
 
 			slog.Info("Running phase job", "phase", phase, "job", jobID, "year", year)
-			if err := orchestrator.runSyncAndWait(ctx, jobID); err != nil {
+			if err := orchestrator.runSyncAndWait(ctx, jobID, batch); err != nil {
 				slog.Error("Phase job failed", "phase", phase, "job", jobID, "error", err)
 				// Continue with next job even if one fails
 			}
@@ -2361,9 +2403,10 @@ func handleCamperDietarySync(e *core.RequestEvent, scheduler *Scheduler) error {
 	}
 
 	year, err := strconv.Atoi(yearParam)
-	if err != nil || year < 2017 || year > 2050 {
+	if err != nil || !ValidSyncYear(year) {
 		return e.JSON(http.StatusBadRequest, map[string]any{
-			"error": "Invalid year parameter. Must be between 2017 and 2050.",
+			"error": fmt.Sprintf("Invalid year parameter. Must be between %d and %d.",
+				syncYearMin, syncYearMax),
 		})
 	}
 
@@ -2374,7 +2417,8 @@ func handleCamperDietarySync(e *core.RequestEvent, scheduler *Scheduler) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
 	defer cancel()
 
-	if err := orchestrator.RunSingleSyncWithService(ctx, syncType, service); err != nil {
+	origin := newBatch(triggerManual).forYear(year)
+	if err := orchestrator.RunSingleSyncWithService(ctx, syncType, service, origin); err != nil {
 		return e.JSON(http.StatusConflict, map[string]any{
 			"error":    "Camper dietary sync already in progress",
 			"status":   "running",
@@ -2407,9 +2451,10 @@ func handleCamperTransportationSync(e *core.RequestEvent, scheduler *Scheduler) 
 	}
 
 	year, err := strconv.Atoi(yearParam)
-	if err != nil || year < 2017 || year > 2050 {
+	if err != nil || !ValidSyncYear(year) {
 		return e.JSON(http.StatusBadRequest, map[string]any{
-			"error": "Invalid year parameter. Must be between 2017 and 2050.",
+			"error": fmt.Sprintf("Invalid year parameter. Must be between %d and %d.",
+				syncYearMin, syncYearMax),
 		})
 	}
 
@@ -2420,7 +2465,8 @@ func handleCamperTransportationSync(e *core.RequestEvent, scheduler *Scheduler) 
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
 	defer cancel()
 
-	if err := orchestrator.RunSingleSyncWithService(ctx, syncType, service); err != nil {
+	origin := newBatch(triggerManual).forYear(year)
+	if err := orchestrator.RunSingleSyncWithService(ctx, syncType, service, origin); err != nil {
 		return e.JSON(http.StatusConflict, map[string]any{
 			"error":    "Camper transportation sync already in progress",
 			"status":   "running",
@@ -2453,9 +2499,10 @@ func handleQuestRegistrationsSync(e *core.RequestEvent, scheduler *Scheduler) er
 	}
 
 	year, err := strconv.Atoi(yearParam)
-	if err != nil || year < 2017 || year > 2050 {
+	if err != nil || !ValidSyncYear(year) {
 		return e.JSON(http.StatusBadRequest, map[string]any{
-			"error": "Invalid year parameter. Must be between 2017 and 2050.",
+			"error": fmt.Sprintf("Invalid year parameter. Must be between %d and %d.",
+				syncYearMin, syncYearMax),
 		})
 	}
 
@@ -2466,7 +2513,8 @@ func handleQuestRegistrationsSync(e *core.RequestEvent, scheduler *Scheduler) er
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
 	defer cancel()
 
-	if err := orchestrator.RunSingleSyncWithService(ctx, syncType, service); err != nil {
+	origin := newBatch(triggerManual).forYear(year)
+	if err := orchestrator.RunSingleSyncWithService(ctx, syncType, service, origin); err != nil {
 		return e.JSON(http.StatusConflict, map[string]any{
 			"error":    "Quest registrations sync already in progress",
 			"status":   "running",
@@ -2499,9 +2547,10 @@ func handleStaffApplicationsSync(e *core.RequestEvent, scheduler *Scheduler) err
 	}
 
 	year, err := strconv.Atoi(yearParam)
-	if err != nil || year < 2017 || year > 2050 {
+	if err != nil || !ValidSyncYear(year) {
 		return e.JSON(http.StatusBadRequest, map[string]any{
-			"error": "Invalid year parameter. Must be between 2017 and 2050.",
+			"error": fmt.Sprintf("Invalid year parameter. Must be between %d and %d.",
+				syncYearMin, syncYearMax),
 		})
 	}
 
@@ -2512,7 +2561,8 @@ func handleStaffApplicationsSync(e *core.RequestEvent, scheduler *Scheduler) err
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
 	defer cancel()
 
-	if err := orchestrator.RunSingleSyncWithService(ctx, syncType, service); err != nil {
+	origin := newBatch(triggerManual).forYear(year)
+	if err := orchestrator.RunSingleSyncWithService(ctx, syncType, service, origin); err != nil {
 		return e.JSON(http.StatusConflict, map[string]any{
 			"error":    "Staff applications sync already in progress",
 			"status":   "running",
@@ -2545,9 +2595,10 @@ func handleStaffVehicleInfoSync(e *core.RequestEvent, scheduler *Scheduler) erro
 	}
 
 	year, err := strconv.Atoi(yearParam)
-	if err != nil || year < 2017 || year > 2050 {
+	if err != nil || !ValidSyncYear(year) {
 		return e.JSON(http.StatusBadRequest, map[string]any{
-			"error": "Invalid year parameter. Must be between 2017 and 2050.",
+			"error": fmt.Sprintf("Invalid year parameter. Must be between %d and %d.",
+				syncYearMin, syncYearMax),
 		})
 	}
 
@@ -2558,7 +2609,8 @@ func handleStaffVehicleInfoSync(e *core.RequestEvent, scheduler *Scheduler) erro
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
 	defer cancel()
 
-	if err := orchestrator.RunSingleSyncWithService(ctx, syncType, service); err != nil {
+	origin := newBatch(triggerManual).forYear(year)
+	if err := orchestrator.RunSingleSyncWithService(ctx, syncType, service, origin); err != nil {
 		return e.JSON(http.StatusConflict, map[string]any{
 			"error":    "Staff vehicle info sync already in progress",
 			"status":   "running",
