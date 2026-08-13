@@ -15,6 +15,9 @@ import (
 // congregation name is exactly the kind of identifying detail the rule covers.
 const testCongregation = "Riverside Synagogue"
 
+// testAffiliation is shared by the aggregation tests and the setColumn tests.
+const testAffiliation = "Reform"
+
 // Every test in this file calls the PRODUCTION functions.
 //
 // The suite that shipped here did not. `aggregatePersonValuesByHousehold`,
@@ -370,7 +373,7 @@ func TestAggregateKeepsEveryPersonAnswer(t *testing.T) {
 	s := NewHouseholdDemographicsSync(nil)
 
 	values := []hhCustomValueEntry{
-		hhPersonEntry("hh1", "p1", 101, "HH-Jewish Affiliation", "Reform"),
+		hhPersonEntry("hh1", "p1", 101, "HH-Jewish Affiliation", testAffiliation),
 		hhPersonEntry("hh1", "p2", 102, "HH-Jewish Affiliation", "Prefer not to answer"),
 	}
 
@@ -384,8 +387,8 @@ func TestAggregateKeepsEveryPersonAnswer(t *testing.T) {
 	if first == nil || second == nil {
 		t.Fatalf("rows are not keyed per person: got keys %v", rowKeys(rows))
 	}
-	if first.jewishAffiliation != "Reform" {
-		t.Errorf("camper 101 jewish_affiliation = %q, want %q", first.jewishAffiliation, "Reform")
+	if first.jewishAffiliation != testAffiliation {
+		t.Errorf("camper 101 jewish_affiliation = %q, want %q", first.jewishAffiliation, testAffiliation)
 	}
 	if second.jewishAffiliation != "Prefer not to answer" {
 		t.Errorf("camper 102 jewish_affiliation = %q, want %q", second.jewishAffiliation, "Prefer not to answer")
@@ -544,7 +547,7 @@ func TestAggregateFullRecord(t *testing.T) {
 	personValues := []hhCustomValueEntry{
 		hhPersonEntry("hh1", "p1", 101, "HH-Family Description", "LGBTQ|Interfaith"),
 		hhPersonEntry("hh1", "p1", 101, "HH-Family Description Other", "Multigenerational"),
-		hhPersonEntry("hh1", "p1", 101, "HH-Jewish Affiliation", "Reform"),
+		hhPersonEntry("hh1", "p1", 101, "HH-Jewish Affiliation", testAffiliation),
 		hhPersonEntry("hh1", "p1", 101, "HH-Jewish Affiliation Other", "Renewal"),
 		hhPersonEntry("hh1", "p1", 101, "HH-Jewish Identities", "Ashkenazi|Sephardi"),
 		hhPersonEntry("hh1", "p1", 101, "HH-Name of Congregation", testCongregation),
@@ -581,7 +584,7 @@ func TestAggregateFullRecord(t *testing.T) {
 		year:                     2026,
 		familyDescription:        "LGBTQ|Interfaith",
 		familyDescriptionOther:   "Multigenerational",
-		jewishAffiliation:        "Reform",
+		jewishAffiliation:        testAffiliation,
 		jewishAffiliationOther:   "Renewal",
 		jewishIdentities:         "Ashkenazi|Sephardi",
 		congregationSummer:       testCongregation,
@@ -714,7 +717,7 @@ func TestUpsertAndOrphanSweepAgreeOnGrain(t *testing.T) {
 
 	s := NewHouseholdDemographicsSync(app)
 	both := []hhCustomValueEntry{
-		hhPersonEntry(hh.Id, personPBIDs[101], 101, "HH-Jewish Affiliation", "Reform"),
+		hhPersonEntry(hh.Id, personPBIDs[101], 101, "HH-Jewish Affiliation", testAffiliation),
 		hhPersonEntry(hh.Id, personPBIDs[102], 102, "HH-Jewish Affiliation", "Prefer not to answer"),
 	}
 
@@ -796,7 +799,7 @@ func TestDeleteOrphansRefusesToEmptyTheTable(t *testing.T) {
 
 	s := NewHouseholdDemographicsSync(app)
 	rows := s.aggregateToRows([]hhCustomValueEntry{
-		hhPersonEntry(hh.Id, p.Id, 101, "HH-Jewish Affiliation", "Reform"),
+		hhPersonEntry(hh.Id, p.Id, 101, "HH-Jewish Affiliation", testAffiliation),
 	}, nil, 2026)
 	existing, err := s.loadExistingRecords(ctx, 2026)
 	if err != nil {
@@ -833,7 +836,7 @@ func countDemographicsRows(t *testing.T, app core.App) int {
 }
 
 // setColumn is the must-be-unique rule that REPLACED first-non-empty-wins, and
-// it is the behavioural core of kindred#2260. Nothing covered it, so a refactor
+// it is the behavioral core of kindred#2260. Nothing covered it, so a refactor
 // restoring `if *dst == "" { *dst = value }` -- the exact shape that discarded
 // 7,781 answers over ten years -- passed the whole suite green.
 //
@@ -844,10 +847,10 @@ func TestSetColumnIsMustBeUniqueNotFirstWins(t *testing.T) {
 		s := &HouseholdDemographicsSync{}
 		rec := &householdDemographicsRecord{householdPBID: "hh1", personCMID: 11, year: 2026}
 
-		s.setColumn(rec, &rec.jewishAffiliation, "jewish_affiliation", "Reform")
+		s.setColumn(rec, &rec.jewishAffiliation, "jewish_affiliation", testAffiliation)
 
-		if rec.jewishAffiliation != "Reform" {
-			t.Errorf("column = %q, want %q", rec.jewishAffiliation, "Reform")
+		if rec.jewishAffiliation != testAffiliation {
+			t.Errorf("column = %q, want %q", rec.jewishAffiliation, testAffiliation)
 		}
 		if s.columnConflicts != 0 {
 			t.Errorf("conflicts = %d, want 0 -- a first write is not a conflict", s.columnConflicts)
@@ -858,8 +861,8 @@ func TestSetColumnIsMustBeUniqueNotFirstWins(t *testing.T) {
 		s := &HouseholdDemographicsSync{}
 		rec := &householdDemographicsRecord{householdPBID: "hh1", personCMID: 11, year: 2026}
 
-		s.setColumn(rec, &rec.jewishAffiliation, "jewish_affiliation", "Reform")
-		s.setColumn(rec, &rec.jewishAffiliation, "jewish_affiliation", "Reform")
+		s.setColumn(rec, &rec.jewishAffiliation, "jewish_affiliation", testAffiliation)
+		s.setColumn(rec, &rec.jewishAffiliation, "jewish_affiliation", testAffiliation)
 
 		if s.columnConflicts != 0 {
 			t.Errorf("conflicts = %d, want 0 -- an identical repeat discards nothing", s.columnConflicts)
@@ -874,14 +877,14 @@ func TestSetColumnIsMustBeUniqueNotFirstWins(t *testing.T) {
 		s := &HouseholdDemographicsSync{}
 		rec := &householdDemographicsRecord{householdPBID: "hh1", personCMID: 11, year: 2026}
 
-		s.setColumn(rec, &rec.jewishAffiliation, "jewish_affiliation", "Reform")
+		s.setColumn(rec, &rec.jewishAffiliation, "jewish_affiliation", testAffiliation)
 		s.setColumn(rec, &rec.jewishAffiliation, "jewish_affiliation", "Just Jewish")
 
 		if s.columnConflicts != 1 {
 			t.Errorf("conflicts = %d, want 1 -- a disagreement must be audible", s.columnConflicts)
 		}
-		if rec.jewishAffiliation != "Reform" {
-			t.Errorf("column = %q, want %q -- the refusal must not overwrite", rec.jewishAffiliation, "Reform")
+		if rec.jewishAffiliation != testAffiliation {
+			t.Errorf("column = %q, want %q -- the refusal must not overwrite", rec.jewishAffiliation, testAffiliation)
 		}
 	})
 
@@ -889,7 +892,7 @@ func TestSetColumnIsMustBeUniqueNotFirstWins(t *testing.T) {
 		s := &HouseholdDemographicsSync{}
 		rec := &householdDemographicsRecord{householdPBID: "hh1", personCMID: 11, year: 2026}
 
-		s.setColumn(rec, &rec.jewishAffiliation, "jewish_affiliation", "Reform")
+		s.setColumn(rec, &rec.jewishAffiliation, "jewish_affiliation", testAffiliation)
 		s.setColumn(rec, &rec.jewishAffiliation, "jewish_affiliation", "Just Jewish")
 		s.setColumn(rec, &rec.familyDescription, "family_description", "Interfaith")
 		s.setColumn(rec, &rec.familyDescription, "family_description", "Multicultural")
