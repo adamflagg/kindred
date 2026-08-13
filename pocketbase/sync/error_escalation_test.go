@@ -85,6 +85,8 @@ func completedStatus(t *testing.T, o *Orchestrator, syncType string) *Status {
 // TestInfrastructureErrorsFailTheRun is the core guard. A service that returns nil but
 // counted database failures must not land on statusSuccess.
 func TestInfrastructureErrorsFailTheRun(t *testing.T) {
+	t.Parallel()
+
 	for _, path := range completionPaths() {
 		t.Run(path.name, func(t *testing.T) {
 			synctest.Test(t, func(t *testing.T) {
@@ -109,6 +111,8 @@ func TestInfrastructureErrorsFailTheRun(t *testing.T) {
 // upstream data quality and is warn-only for its first season — one bad record out of
 // 156,669 must not abort the run.
 func TestRejectedRecordsDoNotFailTheRun(t *testing.T) {
+	t.Parallel()
+
 	for _, path := range completionPaths() {
 		t.Run(path.name, func(t *testing.T) {
 			synctest.Test(t, func(t *testing.T) {
@@ -135,6 +139,8 @@ func TestRejectedRecordsDoNotFailTheRun(t *testing.T) {
 // real failure. A service that returns an error must surface that error's message, not a
 // generic count, even when it also counted database failures on the way out.
 func TestReturnedErrorTakesPrecedenceOverErrorCount(t *testing.T) {
+	t.Parallel()
+
 	sentinel := errors.New("upstream token expired")
 
 	for _, path := range completionPaths() {
@@ -167,6 +173,8 @@ func TestReturnedErrorTakesPrecedenceOverErrorCount(t *testing.T) {
 // sync would still report success — the exact bug kindred#2284 exists to fix, surviving
 // inside the fix. The escalation has to see every counter, not just the top-level one.
 func TestSubStatsErrorsFailTheRun(t *testing.T) {
+	t.Parallel()
+
 	for _, path := range completionPaths() {
 		t.Run(path.name, func(t *testing.T) {
 			synctest.Test(t, func(t *testing.T) {
@@ -195,6 +203,8 @@ func TestSubStatsErrorsFailTheRun(t *testing.T) {
 // TestSubStatsRejectedDoesNotFailTheRun mirrors the parent-level rule one layer down: a
 // sub-entity's rejected records are warn-only too.
 func TestSubStatsRejectedDoesNotFailTheRun(t *testing.T) {
+	t.Parallel()
+
 	synctest.Test(t, func(t *testing.T) {
 		o := NewOrchestrator(nil)
 		svc := &MockService{name: "svc", stats: Stats{
@@ -217,6 +227,8 @@ func TestSubStatsRejectedDoesNotFailTheRun(t *testing.T) {
 // TestCleanRunStillSucceeds is the negative control: with both counters at zero a run must
 // still report success. Without it, "always fail" would pass every test above.
 func TestCleanRunStillSucceeds(t *testing.T) {
+	t.Parallel()
+
 	for _, path := range completionPaths() {
 		t.Run(path.name, func(t *testing.T) {
 			synctest.Test(t, func(t *testing.T) {
