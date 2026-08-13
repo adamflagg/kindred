@@ -146,3 +146,50 @@ describe('SyncTab lodging prod audit warnings badge (#2161)', () => {
     expect(within(card as HTMLElement).getByText('3 lodging⚠')).toBeInTheDocument()
   })
 })
+
+// Regression test for #2284: Stats.Rejected is the new counter for per-record transform
+// failures — one upstream record that could not be turned into a PocketBase row. It is
+// warn-only for its first season, so it never fails a run; that makes surfacing it the ONLY
+// way an operator learns it is climbing. A counter nobody can see is the bug this campaign
+// is about, one level up.
+describe('SyncTab rejected-records badge (#2284)', () => {
+  afterEach(() => {
+    strandedAssignmentCleanupStatus = idleStatus
+  })
+
+  it('renders a rejected badge when rejected is positive, on a run that otherwise succeeded', () => {
+    strandedAssignmentCleanupStatus = {
+      status: 'success',
+      summary: {
+        created: 12,
+        updated: 0,
+        skipped: 0,
+        errors: 0,
+        rejected: 7,
+      },
+    }
+
+    renderSyncTab()
+
+    const heading = screen.getByText('Stranded Assignment Cleanup', { selector: 'div' })
+    const card = heading.closest('.flex.flex-col')
+    if (!card) throw new Error('could not find Stranded Assignment Cleanup card')
+
+    expect(within(card as HTMLElement).getByText('7 rejected')).toBeInTheDocument()
+  })
+
+  it('renders no rejected badge when rejected is zero', () => {
+    strandedAssignmentCleanupStatus = {
+      status: 'success',
+      summary: { created: 12, updated: 0, skipped: 0, errors: 0, rejected: 0 },
+    }
+
+    renderSyncTab()
+
+    const heading = screen.getByText('Stranded Assignment Cleanup', { selector: 'div' })
+    const card = heading.closest('.flex.flex-col')
+    if (!card) throw new Error('could not find Stranded Assignment Cleanup card')
+
+    expect(within(card as HTMLElement).queryByText(/rejected/)).not.toBeInTheDocument()
+  })
+})

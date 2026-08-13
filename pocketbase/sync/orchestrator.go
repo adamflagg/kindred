@@ -228,7 +228,44 @@ type Stats struct {
 	Updated int `json:"updated"`
 	Deleted int `json:"deleted,omitempty"` // For tracking deletions (e.g., removed bunk requests)
 	Skipped int `json:"skipped"`
-	Errors  int `json:"errors"`
+	// Errors counts INFRASTRUCTURE failures only — local SQLite operations that did not
+	// complete (App.Save, App.Delete, App.Create, FindRecordsByFilter). There is no healthy
+	// run in which this is non-zero, so its tolerance is zero: any non-zero count fails the
+	// run. Do not use it for a rejected upstream record — that is Rejected (kindred#2284).
+	//
+	// Every site currently increments this counter, including per-record transform failures
+	// that belong on Rejected. That is temporary and deliberate: a rejected record skips
+	// TrackProcessedKey via the same `continue`, so the orphan sweep deletes its existing
+	// row in the same run. Until that guard lands, leaving these sites here means the run
+	// fails loud rather than quietly losing a row. Reclassification and the sweep guard are
+	// one unit and ship together in kindred#2295.
+	//
+	// Some sites will still belong here afterwards, because the function they call returns
+	// both classes of error and the call site cannot tell them apart. attendees.go's
+	// processEnrollment is the type case: it returns `invalid or missing SessionID` (a
+	// rejected record) and also the result of ProcessCompositeRecord's App.Save. Note this
+	// is processEnrollment, NOT its caller processAttendee — processAttendee returns only
+	// `invalid or missing PersonID` or nil, counting and swallowing processEnrollment's
+	// errors itself, so the outer site at attendees.go:113 is unambiguously a rejection.
+	// ProcessSimpleRecord is genuinely mixed too, returning `recordData missing required
+	// 'year' field` alongside its App.Save.
+	//
+	// Splitting the genuinely mixed ones needs typed errors from the wrappers — kindred#2292.
+	Errors int `json:"errors"`
+	// Rejected counts per-record transform failures: one upstream record could not be
+	// turned into a PocketBase row, so it was counted and skipped. This is upstream data
+	// quality, not a local fault, and it is WARN-ONLY for its first season — surfaced on the
+	// Sync tab, never failing a run.
+	//
+	// Nothing writes this counter yet; the sites that will are held back with the orphan
+	// sweep guard in kindred#2295. It is declared here so the escalation, the status JSON
+	// and the badge all land together rather than in three separate PRs.
+	//
+	// "Surfaced" is the whole of it today — stats are NOT persisted. lastCompletedStatus is
+	// an in-memory map wiped on restart, and there is no sync_runs table yet. That is why
+	// warn-only: any threshold picked now would be a guess, and the distribution needed to
+	// set one honestly cannot be collected until run history is stored (kindred#2284).
+	Rejected int `json:"rejected,omitempty"`
 	// Expanded tracks many-to-many expansions (e.g., bunk plans)
 	Expanded int `json:"expanded,omitempty"`
 	// AlreadyProcessed tracks records already processed (for process_requests)
@@ -249,6 +286,66 @@ type Stats struct {
 // Skipped records don't affect the data, so they're not considered changes.
 func (s *Stats) IsNoOp() bool {
 	return s.Created == 0 && s.Updated == 0 && s.Deleted == 0 && s.Errors == 0
+}
+
+// applyCompletionStatus decides a finished sync's Status and Error from what the service
+// returned and what it counted. All three paths that complete a run normally —
+// runSingleSyncInternal, RunSingleSyncWithService and FinalizeSyncStatus — must route
+// through it.
+//
+// "Normally" is load-bearing. The two panic-recovery blocks in runSingleSyncInternal and
+// RunSingleSyncWithService set statusFailed directly and deliberately do not call this:
+// a panic has no stats to weigh and only one possible verdict. So this is the single place
+// that WEIGHS a run, not the only place that ever sets Status.
+//
+// That routing is the point of the function existing rather than the branch being inlined.
+// Before kindred#2284 the three paths each carried their own copy of this decision, so a fix
+// applied to one of them left services reached through the other two still reporting green.
+//
+// The precedence is deliberate:
+//
+//   - A returned error wins. It carries a real diagnosis; replacing it with a generic count
+//     would hide why the run failed.
+//   - Otherwise any Stats.Errors fails the run. These are local SQLite operations that did
+//     not complete, and there is no healthy run in which that count is non-zero. Before this,
+//     PocketBase could refuse to delete a row, the sync would count it, and the operator got
+//     a green checkmark.
+//   - Stats.Rejected is deliberately absent. Rejected records are upstream data quality and
+//     are warn-only for their first season; they are surfaced, never fatal.
+func applyCompletionStatus(completed *Status, stats *Stats, err error) {
+	dbFailures := totalInfrastructureErrors(stats)
+
+	switch {
+	case err != nil:
+		completed.Status = statusFailed
+		completed.Error = err.Error()
+	case dbFailures > 0:
+		completed.Status = statusFailed
+		completed.Error = fmt.Sprintf("%d database operations failed", dbFailures)
+	default:
+		completed.Status = statusSuccess
+		completed.Error = ""
+	}
+}
+
+// totalInfrastructureErrors sums a run's Errors count across the service and every
+// sub-entity it reports.
+//
+// Sub-entities are not decorative. `persons` is a combined sync that also populates
+// households, and it reports the household half through SubStats (persons.go GetStats).
+// Nothing folds that nested count into the parent's, so an escalation that read only
+// stats.Errors would let households fail every write it attempted while the run reported
+// success — kindred#2284's own bug, reintroduced one layer down.
+//
+// Summing here rather than inside GetStats keeps the reported stats honest about which layer
+// counted what, and keeps the "did this run pass" decision in one place.
+func totalInfrastructureErrors(stats *Stats) int {
+	total := stats.Errors
+	for _, sub := range stats.SubStats {
+		// One level deep: SubStats is populated by combined syncs and is not nested further.
+		total += sub.Errors
+	}
+	return total
 }
 
 // Options configures how syncs are executed
@@ -604,15 +701,12 @@ func (o *Orchestrator) runSingleSyncInternal(parentCtx context.Context, syncType
 		stats.Duration = duration
 		completed.Summary = stats
 
-		if err != nil {
-			completed.Status = statusFailed
-			completed.Error = err.Error()
-			if completed.Year == 0 {
-				slog.Error("Sync failed", "syncType", syncType, "error", err)
-			}
-		} else {
-			completed.Status = statusSuccess
-			if completed.Year == 0 {
+		applyCompletionStatus(&completed, &stats, err)
+
+		if completed.Year == 0 {
+			if completed.Status == statusFailed {
+				slog.Error("Sync failed", "syncType", syncType, "error", completed.Error)
+			} else {
 				slog.Info("Sync completed successfully", "syncType", syncType)
 			}
 		}
@@ -701,15 +795,15 @@ func (o *Orchestrator) RunSingleSyncWithService(parentCtx context.Context, syncT
 		stats.Duration = duration
 		completed.Summary = stats
 
-		if err != nil {
-			completed.Status = statusFailed
-			completed.Error = err.Error()
-			slog.Error("Sync failed", "syncType", syncType, "error", err)
+		applyCompletionStatus(&completed, &stats, err)
+
+		if completed.Status == statusFailed {
+			slog.Error("Sync failed", "syncType", syncType, "error", completed.Error)
 		} else {
-			completed.Status = statusSuccess
 			slog.Info("Sync completed successfully", "syncType", syncType,
 				"created", stats.Created, "updated", stats.Updated,
-				"deleted", stats.Deleted, "errors", stats.Errors)
+				"deleted", stats.Deleted, "errors", stats.Errors,
+				"rejected", stats.Rejected)
 		}
 
 		o.mu.Lock()
@@ -777,20 +871,18 @@ func (o *Orchestrator) FinalizeSyncStatus(syncType string, stats Stats, err erro
 	completed.EndTime = &endTime
 	stats.Duration = int(endTime.Sub(completed.StartTime).Seconds())
 	completed.Summary = stats
-	if err != nil {
-		completed.Status = statusFailed
-		completed.Error = err.Error()
-	} else {
-		completed.Status = statusSuccess
-		completed.Error = ""
-	}
+	applyCompletionStatus(&completed, &stats, err)
+
+	// Snapshot before unlocking: &completed goes into the map, so reading its fields after
+	// the unlock would be reading memory other goroutines can reach.
+	finalStatus, finalError := completed.Status, completed.Error
 
 	o.lastCompletedStatus[syncType] = &completed
 	delete(o.runningJobs, syncType)
 	o.mu.Unlock()
 
-	if err != nil {
-		slog.Error("Sync failed", "syncType", syncType, "error", err)
+	if finalStatus == statusFailed {
+		slog.Error("Sync failed", "syncType", syncType, "error", finalError)
 	} else {
 		slog.Info("Sync completed successfully", "syncType", syncType)
 	}

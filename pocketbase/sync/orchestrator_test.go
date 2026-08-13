@@ -17,9 +17,13 @@ import (
 
 // MockService implements Service interface for testing
 type MockService struct {
-	name       string
-	stats      Stats
+	name  string
+	stats Stats
+	// shouldFail makes Sync return an error. Which error is failWith, defaulting to
+	// context.DeadlineExceeded when it is nil — tests that only care THAT it failed leave
+	// failWith unset, tests that assert on the message set it to their own sentinel.
 	shouldFail bool
+	failWith   error
 	delay      time.Duration
 	callCount  atomic.Int32
 }
@@ -67,6 +71,9 @@ func (m *MockService) Sync(ctx context.Context) error {
 	}
 
 	if m.shouldFail {
+		if m.failWith != nil {
+			return m.failWith
+		}
 		return context.DeadlineExceeded
 	}
 	return nil

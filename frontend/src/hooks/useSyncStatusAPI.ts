@@ -41,6 +41,9 @@ export interface SyncStatus {
     updated: number
     skipped: number
     errors: number
+    // Per-record transform failures: an upstream record could not be turned into a row.
+    // Warn-only for its first season (#2284) — surfaced here, never failing a run.
+    rejected?: number
     already_processed?: number // For process_requests: records already processed
     prod_audit_warnings?: number // For stranded_assignment_cleanup: stranded prod assignments (observe-only)
     lodging_prod_audit_warnings?: number // For stranded_assignment_cleanup: stranded lodging prod assignments (observe-only)
