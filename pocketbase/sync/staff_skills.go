@@ -150,6 +150,14 @@ func (s *StaffSkillsSync) Sync(ctx context.Context) error {
 		return fmt.Errorf("loading skill values: %w", err)
 	}
 
+	// An empty source is not a collapse, so this returns BEFORE loading existing
+	// rows and before the sweep: nothing is deleted and the run succeeds. That is
+	// the same policy the four records-map syncs got in kindred#2283 rows 3+4 and
+	// the one BaseSyncService.DeleteOrphans applies -- expressed here as an early
+	// return rather than a SyncSuccessful gate, because this file has nothing
+	// left to do once there are no values. Leaving the sweep to refuse instead
+	// would wedge the table: a refused sweep never clears the rows it refused
+	// over, so the condition would not resolve on its own.
 	if len(skillValues) == 0 {
 		slog.Info("No skill values found for year", "year", year)
 		s.SyncSuccessful = true

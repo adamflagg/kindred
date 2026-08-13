@@ -503,6 +503,12 @@ func TestCamperDietaryRecordNeedsUpdateUsesCompareFields(t *testing.T) {
 // kindred#2283 adds. Before this fix deleteOrphans returned a bare int and had
 // no channel to refuse a sweep at all -- an empty computed set against a
 // populated year deleted the whole year and reported success.
+//
+// NOTE since kindred#2283 rows 3+4: this pins the guard's CONTRACT, not a state
+// Sync() can now produce. Sync() sets SyncSuccessful from len(records), so an
+// empty computed set skips the sweep before the guard is consulted. The arm
+// that stays live on this path is the ratio one -- a source that came back
+// short rather than empty.
 func TestCamperDietaryDeleteOrphansRefusesCollapsedComputedSet(t *testing.T) {
 	t.Parallel()
 	app := newOrphanSweepTestApp(t, "camper_dietary", "person_id")
@@ -518,6 +524,11 @@ func TestCamperDietaryDeleteOrphansRefusesCollapsedComputedSet(t *testing.T) {
 	}
 
 	s := NewCamperDietarySync(app)
+	// Set explicitly because this drives deleteOrphans directly rather than
+	// through Sync(), which is what normally sets it from the size of the
+	// extraction (kindred#2283 rows 3+4). The three ProcessedKeys-based syncs
+	// have always required this of their tests; these four now match.
+	s.SyncSuccessful = true
 	existing := map[string]string{makeCamperDietaryKey(8001, 2026): rec.Id}
 
 	deleted, err := s.deleteOrphans(context.Background(),
@@ -556,6 +567,11 @@ func TestCamperDietaryDeleteOrphansStillSweepsGenuineOrphans(t *testing.T) {
 	}
 
 	s := NewCamperDietarySync(app)
+	// Set explicitly because this drives deleteOrphans directly rather than
+	// through Sync(), which is what normally sets it from the size of the
+	// extraction (kindred#2283 rows 3+4). The three ProcessedKeys-based syncs
+	// have always required this of their tests; these four now match.
+	s.SyncSuccessful = true
 	records := map[string]*camperDietaryRecord{
 		makeCamperDietaryKey(8001, 2026): {personID: 8001, year: 2026},
 	}

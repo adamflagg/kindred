@@ -49,11 +49,14 @@ const (
 // years. See "Reading Derived Informational Tables (Active-Enrolment Filtering)" in
 // docs/architecture/sync-layer.md.
 type CamperDietarySync struct {
-	App            core.App
-	Year           int
-	DryRun         bool
-	Debug          bool
-	Stats          Stats
+	App    core.App
+	Year   int
+	DryRun bool
+	Debug  bool
+	Stats  Stats
+	// SyncSuccessful reports whether this run's extraction produced any rows.
+	// Set immediately after extraction, NOT at the end of Sync(), because its
+	// one consumer is the orphan sweep, which runs before Sync() returns.
 	SyncSuccessful bool
 }
 
@@ -153,12 +156,23 @@ func (s *CamperDietarySync) Sync(ctx context.Context) error {
 	}
 	slog.Info("Extracted camper dietary records", "count", len(records))
 
+	// The extraction finished without error, so len(records) is now a fact about
+	// the SOURCE rather than about whether this run worked. Gate the sweep on it:
+	// a year in which nobody answered is a legitimately empty upstream, not a
+	// collapse, and refusing there wedged the table -- a refused sweep never
+	// clears the rows, so `existing` stayed high and every later run refused
+	// again. This is the policy BaseSyncService.DeleteOrphans already applies
+	// ("Only delete orphans if the sync was successful", with SyncSuccessful set
+	// mid-fetch and gated on rows arriving); these four declared their own
+	// SyncSuccessful at the END of Sync(), where it was always false during
+	// their own sweep and nothing ever read it (kindred#2283).
+	s.SyncSuccessful = len(records) > 0
+
 	if s.DryRun {
 		slog.Info("Dry run mode - extracted but not writing",
 			"records", len(records),
 		)
 		s.Stats.Created = len(records)
-		s.SyncSuccessful = true
 		return nil
 	}
 
@@ -194,7 +208,6 @@ func (s *CamperDietarySync) Sync(ctx context.Context) error {
 		return wrapOrphanSweepError(orphanErr)
 	}
 
-	s.SyncSuccessful = true
 	slog.Info("Camper dietary extraction completed",
 		"year", year,
 		"created", s.Stats.Created,
@@ -580,6 +593,16 @@ func (s *CamperDietarySync) deleteOrphans(
 	existingRecords map[string]string,
 	year int,
 ) (int, error) {
+	// An empty source is not a collapse. Sync() sets SyncSuccessful from the
+	// size of this run's extraction, so a year nobody answered skips the sweep
+	// and succeeds rather than refusing forever (kindred#2283). The guard below
+	// still owns the case that matters: a source that came back SHORT.
+	if !s.SyncSuccessful {
+		slog.Info("Skipping orphan deletion: the source returned no rows for this year",
+			"entity", "camper_dietary", "year", year)
+		return 0, nil
+	}
+
 	guard := OrphanSweepGuard{
 		Entity:   "camper_dietary",
 		Year:     year,

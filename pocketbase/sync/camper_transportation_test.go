@@ -513,6 +513,12 @@ func TestAttendeeKeyRequiresValidSessionID(t *testing.T) {
 // guard kindred#2283 adds. Before this fix deleteOrphans returned a bare int
 // and had no channel to refuse a sweep at all -- an empty computed set against
 // a populated year deleted the whole year and reported success.
+//
+// NOTE since kindred#2283 rows 3+4: this pins the guard's CONTRACT, not a state
+// Sync() can now produce. Sync() sets SyncSuccessful from len(records), so an
+// empty computed set skips the sweep before the guard is consulted. The arm
+// that stays live on this path is the ratio one -- a source that came back
+// short rather than empty.
 func TestCamperTransportationDeleteOrphansRefusesCollapsedComputedSet(t *testing.T) {
 	t.Parallel()
 	app := newOrphanSweepTestApp(t, "camper_transportation", "person_id", "session_id")
@@ -529,6 +535,11 @@ func TestCamperTransportationDeleteOrphansRefusesCollapsedComputedSet(t *testing
 	}
 
 	s := NewCamperTransportationSync(app)
+	// Set explicitly because this drives deleteOrphans directly rather than
+	// through Sync(), which is what normally sets it from the size of the
+	// extraction (kindred#2283 rows 3+4). The three ProcessedKeys-based syncs
+	// have always required this of their tests; these four now match.
+	s.SyncSuccessful = true
 	existing := map[string]string{makeTransportationKey(7001, 300, 2026): rec.Id}
 
 	deleted, err := s.deleteOrphans(context.Background(),
@@ -568,6 +579,11 @@ func TestCamperTransportationDeleteOrphansStillSweepsGenuineOrphans(t *testing.T
 	}
 
 	s := NewCamperTransportationSync(app)
+	// Set explicitly because this drives deleteOrphans directly rather than
+	// through Sync(), which is what normally sets it from the size of the
+	// extraction (kindred#2283 rows 3+4). The three ProcessedKeys-based syncs
+	// have always required this of their tests; these four now match.
+	s.SyncSuccessful = true
 	records := map[string]*camperTransportationRecord{
 		makeTransportationKey(7001, 300, 2026): {personID: 7001, sessionID: 300, year: 2026},
 	}

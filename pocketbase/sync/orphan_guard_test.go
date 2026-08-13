@@ -425,9 +425,20 @@ func newCustomValuesSyncTestApp(t *testing.T, target string, targetFields ...str
 		t.Fatalf("create persons: %v", err)
 	}
 
+	// camper_transportation reads the session CM ID by EXPANDING this relation,
+	// not from a session_id column, so the relation has to be real.
+	campSessions := core.NewBaseCollection("camp_sessions")
+	campSessions.Fields.Add(&core.NumberField{Name: "cm_id"})
+	campSessions.Fields.Add(&core.TextField{Name: "name"})
+	created(campSessions)
+	if err := app.Save(campSessions); err != nil {
+		t.Fatalf("create camp_sessions: %v", err)
+	}
+
 	attendees := core.NewBaseCollection("attendees")
 	attendees.Fields.Add(&core.NumberField{Name: "person_id"})
 	attendees.Fields.Add(&core.NumberField{Name: "session_id"})
+	attendees.Fields.Add(&core.RelationField{Name: "session", CollectionId: campSessions.Id, MaxSelect: 1})
 	attendees.Fields.Add(&core.NumberField{Name: "year"})
 	created(attendees)
 	if err := app.Save(attendees); err != nil {
@@ -497,6 +508,14 @@ func seedCustomValuesRun(t *testing.T, app core.App, target, fieldName, partitio
 	personsCol, _ := app.FindCollectionByNameOrId("persons")
 	attendeesCol, _ := app.FindCollectionByNameOrId("attendees")
 	valuesCol, _ := app.FindCollectionByNameOrId("person_custom_values")
+	sessionsCol, _ := app.FindCollectionByNameOrId("camp_sessions")
+
+	sess := core.NewRecord(sessionsCol)
+	sess.Set("cm_id", 200)
+	sess.Set("name", "Session A")
+	if saveErr := app.Save(sess); saveErr != nil {
+		t.Fatalf("save camp session: %v", saveErr)
+	}
 	for i := range computed {
 		cmID := 101 + i
 		p := core.NewRecord(personsCol)
@@ -508,6 +527,7 @@ func seedCustomValuesRun(t *testing.T, app core.App, target, fieldName, partitio
 		a := core.NewRecord(attendeesCol)
 		a.Set("person_id", cmID)
 		a.Set("session_id", 200)
+		a.Set("session", sess.Id)
 		a.Set("year", 2026)
 		if saveErr := app.Save(a); saveErr != nil {
 			t.Fatalf("save attendee %d: %v", cmID, saveErr)
@@ -633,6 +653,11 @@ func TestDeleteOrphansReturnsContextErrorOnCancellation(t *testing.T) {
 	cancel()
 
 	s := NewCamperDietarySync(app)
+	// Set explicitly because this drives deleteOrphans directly rather than
+	// through Sync(), which is what normally sets it from the size of the
+	// extraction (kindred#2283 rows 3+4). The three ProcessedKeys-based syncs
+	// have always required this of their tests; these four now match.
+	s.SyncSuccessful = true
 	deleted, err := s.deleteOrphans(ctx, computed, existing, 2026)
 
 	if !errors.Is(err, context.Canceled) {
@@ -645,4 +670,138 @@ func TestDeleteOrphansReturnsContextErrorOnCancellation(t *testing.T) {
 	if got := wrapOrphanSweepError(err).Error(); !strings.HasPrefix(got, "orphan sweep interrupted: ") {
 		t.Errorf("a cancelled sweep is reported as %q, want it classified as interrupted", got)
 	}
+}
+
+// ---------------------------------------------------------------------------
+// kindred#2283 rows 3+4 -- a genuinely empty upstream must not wedge the sweep
+// ---------------------------------------------------------------------------
+
+// assertEmptyUpstreamSkipsSweep pins the policy BaseSyncService.DeleteOrphans
+// already implements (base_sync.go: "Only delete orphans if the sync was
+// successful", with SyncSuccessful gated on rows actually arriving): a source
+// that legitimately returns nothing is not a collapse, so the sweep is SKIPPED
+// and the run succeeds, leaving what is on disk alone.
+//
+// Before this, these four refused instead -- and because a refused sweep never
+// clears the rows, `existing` stayed high and the refusal repeated on every
+// subsequent run. The table could not drain and the sync could not go green.
+//
+// Asserted against the database, not the return value: "reported success" and
+// "deleted nothing" are separate claims and the interesting failure satisfies
+// only the first.
+func assertEmptyUpstreamSkipsSweep(t *testing.T, app core.App, target string, wantRows int, syncErr error) {
+	t.Helper()
+
+	if syncErr != nil {
+		t.Fatalf("Sync on an empty upstream returned %v, want nil -- an empty source is not a collapse", syncErr)
+	}
+	remaining, err := app.FindRecordsByFilter(target, "year = 2026", "", 0, 0)
+	if err != nil {
+		t.Fatalf("re-query %s: %v", target, err)
+	}
+	if len(remaining) != wantRows {
+		t.Errorf("%d rows survived, want %d -- an empty upstream must skip the sweep, not run it",
+			len(remaining), wantRows)
+	}
+}
+
+func TestCamperDietaryEmptyUpstreamSkipsSweep(t *testing.T) {
+	t.Parallel()
+	app := newCustomValuesSyncTestApp(t, "camper_dietary", "allergy_info")
+	seedCustomValuesRun(t, app, "camper_dietary", "Family Medical-Allergy Info", "", 0, OrphanSweepMinRows+5)
+
+	s := NewCamperDietarySync(app)
+	s.Year = 2026
+	assertEmptyUpstreamSkipsSweep(t, app, "camper_dietary", OrphanSweepMinRows+5, s.Sync(context.Background()))
+}
+
+func TestCamperTransportationEmptyUpstreamSkipsSweep(t *testing.T) {
+	t.Parallel()
+	app := newCustomValuesSyncTestApp(t, "camper_transportation", "to_camp_method")
+	seedCustomValuesRun(t, app, "camper_transportation", "BUS-To Camp", "", 0, OrphanSweepMinRows+5)
+
+	s := NewCamperTransportationSync(app)
+	s.Year = 2026
+	assertEmptyUpstreamSkipsSweep(t, app, "camper_transportation", OrphanSweepMinRows+5, s.Sync(context.Background()))
+}
+
+func TestQuestRegistrationsEmptyUpstreamSkipsSweep(t *testing.T) {
+	t.Parallel()
+	app := newCustomValuesSyncTestApp(t, "quest_registrations", "quest_status")
+	seedCustomValuesRun(t, app, "quest_registrations", "Quest-Status", "", 0, OrphanSweepMinRows+5)
+
+	s := NewQuestRegistrationsSync(app)
+	s.Year = 2026
+	assertEmptyUpstreamSkipsSweep(t, app, "quest_registrations", OrphanSweepMinRows+5, s.Sync(context.Background()))
+}
+
+// --- negative controls: the gate must not disable orphan deletion ------------
+
+// assertNonEmptyUpstreamStillSweeps is the other half. A gate that skips the
+// sweep whenever it is unsure would pass every test above and quietly stop
+// deleting anything, which is the failure the guard exists to avoid in reverse.
+func assertNonEmptyUpstreamStillSweeps(t *testing.T, app core.App, target string, syncErr error) {
+	t.Helper()
+
+	if syncErr != nil {
+		t.Fatalf("Sync on a healthy run returned %v, want nil", syncErr)
+	}
+	orphans, err := app.FindRecordsByFilter(target, "year = 2026 && person_id = 999", "", 0, 0)
+	if err != nil {
+		t.Fatalf("re-query %s: %v", target, err)
+	}
+	if len(orphans) != 0 {
+		t.Errorf("the genuine orphan survived -- a non-empty upstream must still sweep")
+	}
+}
+
+// seedOrphanOnly writes a single row this run will not account for, small enough
+// that the ratio arm does not apply and only the sweep itself is under test.
+func seedOrphanOnly(t *testing.T, app core.App, target string) {
+	t.Helper()
+	col, err := app.FindCollectionByNameOrId(target)
+	if err != nil {
+		t.Fatalf("find %s: %v", target, err)
+	}
+	rec := core.NewRecord(col)
+	rec.Set("person_id", 999)
+	rec.Set("session_id", 200)
+	rec.Set("skill_cm_id", 999)
+	rec.Set("year", 2026)
+	if saveErr := app.Save(rec); saveErr != nil {
+		t.Fatalf("save orphan: %v", saveErr)
+	}
+}
+
+func TestCamperDietaryNonEmptyUpstreamStillSweeps(t *testing.T) {
+	t.Parallel()
+	app := newCustomValuesSyncTestApp(t, "camper_dietary", "allergy_info")
+	seedCustomValuesRun(t, app, "camper_dietary", "Family Medical-Allergy Info", "", 3, 0)
+	seedOrphanOnly(t, app, "camper_dietary")
+
+	s := NewCamperDietarySync(app)
+	s.Year = 2026
+	assertNonEmptyUpstreamStillSweeps(t, app, "camper_dietary", s.Sync(context.Background()))
+}
+
+func TestCamperTransportationNonEmptyUpstreamStillSweeps(t *testing.T) {
+	t.Parallel()
+	app := newCustomValuesSyncTestApp(t, "camper_transportation", "to_camp_method")
+	seedCustomValuesRun(t, app, "camper_transportation", "BUS-To Camp", "", 3, 0)
+	seedOrphanOnly(t, app, "camper_transportation")
+
+	s := NewCamperTransportationSync(app)
+	s.Year = 2026
+	assertNonEmptyUpstreamStillSweeps(t, app, "camper_transportation", s.Sync(context.Background()))
+}
+
+func TestQuestRegistrationsNonEmptyUpstreamStillSweeps(t *testing.T) {
+	t.Parallel()
+	app := newCustomValuesSyncTestApp(t, "quest_registrations", "quest_status")
+	seedCustomValuesRun(t, app, "quest_registrations", "Quest-Status", "", 3, 0)
+	seedOrphanOnly(t, app, "quest_registrations")
+
+	s := NewQuestRegistrationsSync(app)
+	s.Year = 2026
+	assertNonEmptyUpstreamStillSweeps(t, app, "quest_registrations", s.Sync(context.Background()))
 }
