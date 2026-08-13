@@ -68,6 +68,24 @@ cd pocketbase && go test ./...
 cd pocketbase && go test ./sync/...     # one package
 ```
 
+**Add `-race` only when you mean it.** The race detector costs about **10x** here — the full
+suite is 43s without it and ~300s with it — because there is exactly one `t.Parallel()` in the
+tree, so every test in a package runs serially. `sync` (297s) and `lodging` (143s) are
+effectively the whole bill; the other nine packages total ~15s. Reach for `-race` when you
+touch `sync/orchestrator.go`, `sync/api.go`, `sync/scheduler.go`, or anything else that spawns
+a goroutine, and leave it off for the ordinary edit-test loop.
+
+CI does run `-race` over everything, split across a four-way matrix so no single shard is the
+critical path. To reproduce one shard locally:
+
+```bash
+python3 scripts/ci/go_test_shard.py --shard 0 --total 4 -- -race -v   # from the repo root
+```
+
+The sharder reads its inventory live from `go test -list` and fails a shard if any test it
+selected produced no result, so a `-run` regex can't silently drop coverage. kindred#2281
+tracks adding `t.Parallel()`, which would make the shards unnecessary.
+
 Pre-push runs: `go build` and `pb-js-lint` (ESLint on `pb_hooks/`/`pb_migrations/` JS).
 
 **`golangci-lint` is NOT in pre-push** — `.lefthook.yml` moved it to CI-only for speed, so a

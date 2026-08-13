@@ -475,12 +475,33 @@ jobs:
         SKIP_POCKETBASE_TESTS: true
       run: uv run pytest tests/ -v --tb=short
 
-  # Go tests (parallel)
+  # Go tests (sharded across a matrix)
+  #
+  # This was a single ~390s job and the whole critical path -- the next-slowest
+  # job was ~156s. Almost none of that is test volume: the same suite runs in 43s
+  # without -race and ~300s with it, because the race detector costs ~10x and the
+  # Go tree has exactly one t.Parallel() in it, so no two tests in a package ever
+  # overlap. Two packages carry it all (sync ~297s, lodging ~143s; the other nine
+  # total ~15s), which is why this shards by individual test function rather than
+  # by package -- a per-package split would leave sync as a 297s shard.
+  #
+  # Sharding at this level makes a coverage hole possible, so scripts/ci/
+  # go_test_shard.py reads the inventory live from `go test -list` and fails the
+  # shard if anything it selected produced no result. See its module docstring.
+  #
+  # The durable fix is t.Parallel() in sync and lodging (kindred#2281),
+  # which would buy the same wall-clock without 4x the runner minutes.
   tests-go:
     name: Go Tests
     needs: detect-changes
     if: needs.detect-changes.outputs.go == 'true'
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # Editing this list is the only change needed to re-shard: --total comes
+        # from strategy.job-total, so the two can never drift apart.
+        shard: [0, 1, 2, 3]
     steps:
     - name: Checkout code
       uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -495,9 +516,12 @@ jobs:
         cache: true
         cache-dependency-path: pocketbase/go.sum
 
-    - name: Run Go tests
-      working-directory: ./pocketbase
-      run: go test -race ./... -v
+    - name: Run Go tests (shard ${{ matrix.shard }}/${{ strategy.job-total }})
+      run: |
+        python3 scripts/ci/go_test_shard.py \
+          --shard ${{ matrix.shard }} \
+          --total ${{ strategy.job-total }} \
+          -- -race -v
 
   # Migration smoke test — catches schema/binary issues against a fresh DB
   tests-migrations:
