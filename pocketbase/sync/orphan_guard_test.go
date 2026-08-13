@@ -1,11 +1,14 @@
 package sync
 
 import (
+	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"testing"
 
 	"github.com/pocketbase/pocketbase/core"
+	pbtests "github.com/pocketbase/pocketbase/tests"
 )
 
 // ---------------------------------------------------------------------------
@@ -325,4 +328,480 @@ func TestHouseholdCustomFieldValuesDeleteOrphansIgnoresHouseholdsThisRunDidNotFe
 		t.Fatalf("%d of household 1's rows survived, want %d -- the genuine orphan must still go",
 			swept, household1Rows-1)
 	}
+}
+
+// ---------------------------------------------------------------------------
+// kindred#2283 row 2 -- classifying a sweep failure
+// ---------------------------------------------------------------------------
+
+// TestWrapOrphanSweepError pins the distinction kindred#2280 settled on
+// staff_vehicle_info.go and staff_applications.go: a guard refusal and a
+// cancelled context are different operational facts and must not share a
+// message. "Refused" tells an operator the CampMinder feed is not to be
+// trusted; "interrupted" tells them the run ran out of time. Reporting the
+// second as the first sends them to look at data that is fine.
+//
+// The wording here is copied from those two files deliberately -- the value is
+// that every guarded sweep in the package reads the same, so this helper is the
+// one place the phrasing lives rather than a seventh hand-written copy.
+func TestWrapOrphanSweepError(t *testing.T) {
+	t.Parallel()
+
+	guardErr := OrphanSweepGuard{Entity: "widgets", Year: 2026, Computed: 0}.Check(50)
+	if guardErr == nil {
+		t.Fatal("fixture is wrong: an empty computed set against 50 rows must refuse")
+	}
+
+	tests := []struct {
+		name       string
+		in         error
+		wantPrefix string
+	}{
+		{"a guard refusal is a refusal", guardErr, "orphan sweep refused: "},
+		{"a cancelled context is an interruption", context.Canceled, "orphan sweep interrupted: "},
+		{"an expired deadline is an interruption", context.DeadlineExceeded, "orphan sweep interrupted: "},
+		{
+			"a wrapped cancellation is still an interruption",
+			fmt.Errorf("deleting row 12: %w", context.Canceled),
+			"orphan sweep interrupted: ",
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			got := wrapOrphanSweepError(tc.in)
+			if got == nil {
+				t.Fatalf("wrapOrphanSweepError(%v) = nil, want an error", tc.in)
+			}
+			if !strings.HasPrefix(got.Error(), tc.wantPrefix) {
+				t.Errorf("wrapOrphanSweepError(%v) = %q, want prefix %q", tc.in, got.Error(), tc.wantPrefix)
+			}
+			// The cause must survive wrapping, or callers upstream lose the
+			// ability to tell cancellation from refusal themselves.
+			if !errors.Is(got, tc.in) {
+				t.Errorf("wrapOrphanSweepError(%v) does not unwrap to its cause", tc.in)
+			}
+		})
+	}
+
+	t.Run("nil in, nil out", func(t *testing.T) {
+		t.Parallel()
+		if got := wrapOrphanSweepError(nil); got != nil {
+			t.Errorf("wrapOrphanSweepError(nil) = %v, want nil", got)
+		}
+	})
+}
+
+// ---------------------------------------------------------------------------
+// kindred#2283 row 1 -- caller propagation for the person_custom_values syncs
+// ---------------------------------------------------------------------------
+
+// newCustomValuesSyncTestApp builds the collections the four
+// person_custom_values-driven syncs read on their way to the orphan sweep.
+// Shared because those four load the same shape: a field definition, the values
+// pointing at it, the persons those values belong to, and an attendee row per
+// person to hang the relation on.
+func newCustomValuesSyncTestApp(t *testing.T, target string, targetFields ...string) core.App {
+	t.Helper()
+	app, err := pbtests.NewTestApp()
+	if err != nil {
+		t.Fatalf("NewTestApp: %v", err)
+	}
+	t.Cleanup(app.Cleanup)
+
+	created := func(col *core.Collection) {
+		col.Fields.Add(&core.AutodateField{Name: "created", OnCreate: true})
+	}
+
+	persons := core.NewBaseCollection("persons")
+	persons.Fields.Add(&core.NumberField{Name: "cm_id"})
+	persons.Fields.Add(&core.NumberField{Name: "year"})
+	for _, f := range []string{"first_name", "last_name"} {
+		persons.Fields.Add(&core.TextField{Name: f})
+	}
+	created(persons)
+	if err := app.Save(persons); err != nil {
+		t.Fatalf("create persons: %v", err)
+	}
+
+	// camper_transportation reads the session CM ID by EXPANDING this relation,
+	// not from a session_id column, so the relation has to be real.
+	campSessions := core.NewBaseCollection("camp_sessions")
+	campSessions.Fields.Add(&core.NumberField{Name: "cm_id"})
+	campSessions.Fields.Add(&core.TextField{Name: "name"})
+	created(campSessions)
+	if err := app.Save(campSessions); err != nil {
+		t.Fatalf("create camp_sessions: %v", err)
+	}
+
+	attendees := core.NewBaseCollection("attendees")
+	attendees.Fields.Add(&core.NumberField{Name: "person_id"})
+	attendees.Fields.Add(&core.NumberField{Name: "session_id"})
+	attendees.Fields.Add(&core.RelationField{Name: "session", CollectionId: campSessions.Id, MaxSelect: 1})
+	attendees.Fields.Add(&core.NumberField{Name: "year"})
+	created(attendees)
+	if err := app.Save(attendees); err != nil {
+		t.Fatalf("create attendees: %v", err)
+	}
+
+	defs := core.NewBaseCollection("custom_field_defs")
+	defs.Fields.Add(&core.TextField{Name: "name"})
+	defs.Fields.Add(&core.TextField{Name: "partition"})
+	// staff_skills skips any definition whose cm_id is 0, so the fixture needs
+	// a real one or its Sync() bails before it ever reaches the sweep.
+	defs.Fields.Add(&core.NumberField{Name: "cm_id"})
+	defs.Fields.Add(&core.NumberField{Name: "year"})
+	created(defs)
+	if err := app.Save(defs); err != nil {
+		t.Fatalf("create custom_field_defs: %v", err)
+	}
+
+	values := core.NewBaseCollection("person_custom_values")
+	values.Fields.Add(&core.TextField{Name: "person"})
+	values.Fields.Add(&core.TextField{Name: "field_definition"})
+	values.Fields.Add(&core.TextField{Name: "value"})
+	values.Fields.Add(&core.NumberField{Name: "year"})
+	created(values)
+	if err := app.Save(values); err != nil {
+		t.Fatalf("create person_custom_values: %v", err)
+	}
+
+	col := core.NewBaseCollection(target)
+	col.Fields.Add(&core.NumberField{Name: "person_id"})
+	col.Fields.Add(&core.NumberField{Name: "session_id"})
+	col.Fields.Add(&core.NumberField{Name: "skill_cm_id"})
+	// Required, per the year invariant every CampMinder-derived table carries.
+	col.Fields.Add(&core.NumberField{Name: "year", Required: true})
+	for _, f := range targetFields {
+		col.Fields.Add(&core.TextField{Name: f})
+	}
+	col.Fields.Add(&core.TextField{Name: "person"})
+	col.Fields.Add(&core.TextField{Name: "attendee"})
+	created(col)
+	if err := app.Save(col); err != nil {
+		t.Fatalf("create %s: %v", target, err)
+	}
+
+	return app
+}
+
+// seedCustomValuesRun writes `computed` campers who each answered `fieldName`
+// this year, plus `existing` rows already stored in `target` that this run does
+// not account for. The ratio is what trips OrphanSweepGuard.
+func seedCustomValuesRun(t *testing.T, app core.App, target, fieldName, partition string, computed, existing int) {
+	t.Helper()
+
+	defs, err := app.FindCollectionByNameOrId("custom_field_defs")
+	if err != nil {
+		t.Fatalf("find custom_field_defs: %v", err)
+	}
+	def := core.NewRecord(defs)
+	def.Set("name", fieldName)
+	def.Set("partition", partition)
+	def.Set("cm_id", 77)
+	def.Set("year", 2026)
+	if saveErr := app.Save(def); saveErr != nil {
+		t.Fatalf("save field def: %v", saveErr)
+	}
+
+	personsCol, _ := app.FindCollectionByNameOrId("persons")
+	attendeesCol, _ := app.FindCollectionByNameOrId("attendees")
+	valuesCol, _ := app.FindCollectionByNameOrId("person_custom_values")
+	sessionsCol, _ := app.FindCollectionByNameOrId("camp_sessions")
+
+	sess := core.NewRecord(sessionsCol)
+	sess.Set("cm_id", 200)
+	sess.Set("name", "Session A")
+	if saveErr := app.Save(sess); saveErr != nil {
+		t.Fatalf("save camp session: %v", saveErr)
+	}
+	for i := range computed {
+		cmID := 101 + i
+		p := core.NewRecord(personsCol)
+		p.Set("cm_id", cmID)
+		p.Set("year", 2026)
+		if saveErr := app.Save(p); saveErr != nil {
+			t.Fatalf("save person %d: %v", cmID, saveErr)
+		}
+		a := core.NewRecord(attendeesCol)
+		a.Set("person_id", cmID)
+		a.Set("session_id", 200)
+		a.Set("session", sess.Id)
+		a.Set("year", 2026)
+		if saveErr := app.Save(a); saveErr != nil {
+			t.Fatalf("save attendee %d: %v", cmID, saveErr)
+		}
+		v := core.NewRecord(valuesCol)
+		v.Set("person", p.Id)
+		v.Set("field_definition", def.Id)
+		v.Set("value", "Yes")
+		v.Set("year", 2026)
+		if saveErr := app.Save(v); saveErr != nil {
+			t.Fatalf("save custom value %d: %v", cmID, saveErr)
+		}
+	}
+
+	targetCol, err := app.FindCollectionByNameOrId(target)
+	if err != nil {
+		t.Fatalf("find %s: %v", target, err)
+	}
+	for i := range existing {
+		rec := core.NewRecord(targetCol)
+		rec.Set("person_id", 900+i)
+		rec.Set("session_id", 200)
+		rec.Set("skill_cm_id", 300+i)
+		rec.Set("year", 2026)
+		if err := app.Save(rec); err != nil {
+			t.Fatalf("save existing row %d: %v", i, err)
+		}
+	}
+}
+
+// assertSweepRefusalReachesCaller runs syncFn and requires the sweep refusal to
+// come back out of it, with nothing deleted. This is the kindred#2294 gap: the
+// guard tests prove deleteOrphans REFUSES, and prove nothing about whether the
+// caller listens.
+func assertSweepRefusalReachesCaller(t *testing.T, app core.App, target string, wantRows int, syncErr error) {
+	t.Helper()
+
+	if syncErr == nil {
+		t.Fatal("Sync returned nil on a refused sweep -- the refusal never reached the caller")
+	}
+	if !strings.Contains(syncErr.Error(), "orphan sweep refused") {
+		t.Errorf("Sync error = %q, want it to carry the sweep refusal", syncErr.Error())
+	}
+	remaining, err := app.FindRecordsByFilter(target, "year = 2026 && person_id >= 900", "", 0, 0)
+	if err != nil {
+		t.Fatalf("re-query %s: %v", target, err)
+	}
+	if len(remaining) != wantRows {
+		t.Errorf("%d seeded rows survived, want %d -- a refused sweep must delete nothing",
+			len(remaining), wantRows)
+	}
+}
+
+func TestCamperDietarySyncPropagatesSweepRefusal(t *testing.T) {
+	t.Parallel()
+	app := newCustomValuesSyncTestApp(t, "camper_dietary", "allergy_info")
+	seedCustomValuesRun(t, app, "camper_dietary", "Family Medical-Allergy Info", "", 3, OrphanSweepMinRows+5)
+
+	s := NewCamperDietarySync(app)
+	s.Year = 2026
+	assertSweepRefusalReachesCaller(t, app, "camper_dietary", OrphanSweepMinRows+5, s.Sync(context.Background()))
+}
+
+func TestCamperTransportationSyncPropagatesSweepRefusal(t *testing.T) {
+	t.Parallel()
+	app := newCustomValuesSyncTestApp(t, "camper_transportation", "to_camp_method")
+	seedCustomValuesRun(t, app, "camper_transportation", "BUS-To Camp", "", 3, OrphanSweepMinRows+5)
+
+	s := NewCamperTransportationSync(app)
+	s.Year = 2026
+	assertSweepRefusalReachesCaller(t, app, "camper_transportation", OrphanSweepMinRows+5, s.Sync(context.Background()))
+}
+
+func TestQuestRegistrationsSyncPropagatesSweepRefusal(t *testing.T) {
+	t.Parallel()
+	app := newCustomValuesSyncTestApp(t, "quest_registrations", "quest_status")
+	seedCustomValuesRun(t, app, "quest_registrations", "Quest-Status", "", 3, OrphanSweepMinRows+5)
+
+	s := NewQuestRegistrationsSync(app)
+	s.Year = 2026
+	assertSweepRefusalReachesCaller(t, app, "quest_registrations", OrphanSweepMinRows+5, s.Sync(context.Background()))
+}
+
+func TestStaffSkillsSyncPropagatesSweepRefusal(t *testing.T) {
+	t.Parallel()
+	app := newCustomValuesSyncTestApp(t, "staff_skills", "skill_name", "raw_value")
+	seedCustomValuesRun(t, app, "staff_skills", "Skills-Archery", partitionStaff, 3, OrphanSweepMinRows+5)
+
+	s := NewStaffSkillsSync(app)
+	s.Year = 2026
+	assertSweepRefusalReachesCaller(t, app, "staff_skills", OrphanSweepMinRows+5, s.Sync(context.Background()))
+}
+
+// TestDeleteOrphansReturnsContextErrorOnCancellation closes the loop on the
+// classification above. wrapOrphanSweepError only reports "interrupted" if what
+// reaches it is genuinely a context error, so this pins the other half: a
+// cancelled sweep returns ctx.Err() rather than a nil error and a short count.
+// Together the two mean a cancelled run cannot be reported as a data refusal.
+func TestDeleteOrphansReturnsContextErrorOnCancellation(t *testing.T) {
+	t.Parallel()
+	app := newCustomValuesSyncTestApp(t, "camper_dietary", "allergy_info")
+	col, err := app.FindCollectionByNameOrId("camper_dietary")
+	if err != nil {
+		t.Fatalf("find camper_dietary: %v", err)
+	}
+
+	// Enough rows on disk, and a computed set large enough to clear the guard,
+	// so the only thing that can stop the sweep is the cancellation.
+	existing := make(map[string]string, OrphanSweepMinRows+5)
+	computed := make(map[string]*camperDietaryRecord, OrphanSweepMinRows+5)
+	for i := range OrphanSweepMinRows + 5 {
+		rec := core.NewRecord(col)
+		rec.Set("person_id", 900+i)
+		rec.Set("year", 2026)
+		if saveErr := app.Save(rec); saveErr != nil {
+			t.Fatalf("save row %d: %v", i, saveErr)
+		}
+		existing[makeCamperDietaryKey(900+i, 2026)] = rec.Id
+		computed[makeCamperDietaryKey(900+i, 2026)] = &camperDietaryRecord{personID: 900 + i}
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	s := NewCamperDietarySync(app)
+	// Set explicitly because this drives deleteOrphans directly rather than
+	// through Sync(), which is what normally sets it from the size of the
+	// extraction (kindred#2283 rows 3+4). The three ProcessedKeys-based syncs
+	// have always required this of their tests; these four now match.
+	s.SyncSuccessful = true
+	deleted, err := s.deleteOrphans(ctx, computed, existing, 2026)
+
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("deleteOrphans on a cancelled context returned %v, want context.Canceled", err)
+	}
+	if deleted != 0 {
+		t.Errorf("deleted = %d, want 0 -- a cancelled sweep should stop before deleting", deleted)
+	}
+	// And the caller's wrapping must call that an interruption, not a refusal.
+	if got := wrapOrphanSweepError(err).Error(); !strings.HasPrefix(got, "orphan sweep interrupted: ") {
+		t.Errorf("a cancelled sweep is reported as %q, want it classified as interrupted", got)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// kindred#2283 rows 3+4 -- a genuinely empty upstream must not wedge the sweep
+// ---------------------------------------------------------------------------
+
+// assertEmptyUpstreamSkipsSweep pins the policy BaseSyncService.DeleteOrphans
+// already implements (base_sync.go: "Only delete orphans if the sync was
+// successful", with SyncSuccessful gated on rows actually arriving): a source
+// that legitimately returns nothing is not a collapse, so the sweep is SKIPPED
+// and the run succeeds, leaving what is on disk alone.
+//
+// Before this, these four refused instead -- and because a refused sweep never
+// clears the rows, `existing` stayed high and the refusal repeated on every
+// subsequent run. The table could not drain and the sync could not go green.
+//
+// Asserted against the database, not the return value: "reported success" and
+// "deleted nothing" are separate claims and the interesting failure satisfies
+// only the first.
+func assertEmptyUpstreamSkipsSweep(t *testing.T, app core.App, target string, wantRows int, syncErr error) {
+	t.Helper()
+
+	if syncErr != nil {
+		t.Fatalf("Sync on an empty upstream returned %v, want nil -- an empty source is not a collapse", syncErr)
+	}
+	remaining, err := app.FindRecordsByFilter(target, "year = 2026", "", 0, 0)
+	if err != nil {
+		t.Fatalf("re-query %s: %v", target, err)
+	}
+	if len(remaining) != wantRows {
+		t.Errorf("%d rows survived, want %d -- an empty upstream must skip the sweep, not run it",
+			len(remaining), wantRows)
+	}
+}
+
+func TestCamperDietaryEmptyUpstreamSkipsSweep(t *testing.T) {
+	t.Parallel()
+	app := newCustomValuesSyncTestApp(t, "camper_dietary", "allergy_info")
+	seedCustomValuesRun(t, app, "camper_dietary", "Family Medical-Allergy Info", "", 0, OrphanSweepMinRows+5)
+
+	s := NewCamperDietarySync(app)
+	s.Year = 2026
+	assertEmptyUpstreamSkipsSweep(t, app, "camper_dietary", OrphanSweepMinRows+5, s.Sync(context.Background()))
+}
+
+func TestCamperTransportationEmptyUpstreamSkipsSweep(t *testing.T) {
+	t.Parallel()
+	app := newCustomValuesSyncTestApp(t, "camper_transportation", "to_camp_method")
+	seedCustomValuesRun(t, app, "camper_transportation", "BUS-To Camp", "", 0, OrphanSweepMinRows+5)
+
+	s := NewCamperTransportationSync(app)
+	s.Year = 2026
+	assertEmptyUpstreamSkipsSweep(t, app, "camper_transportation", OrphanSweepMinRows+5, s.Sync(context.Background()))
+}
+
+func TestQuestRegistrationsEmptyUpstreamSkipsSweep(t *testing.T) {
+	t.Parallel()
+	app := newCustomValuesSyncTestApp(t, "quest_registrations", "quest_status")
+	seedCustomValuesRun(t, app, "quest_registrations", "Quest-Status", "", 0, OrphanSweepMinRows+5)
+
+	s := NewQuestRegistrationsSync(app)
+	s.Year = 2026
+	assertEmptyUpstreamSkipsSweep(t, app, "quest_registrations", OrphanSweepMinRows+5, s.Sync(context.Background()))
+}
+
+// --- negative controls: the gate must not disable orphan deletion ------------
+
+// assertNonEmptyUpstreamStillSweeps is the other half. A gate that skips the
+// sweep whenever it is unsure would pass every test above and quietly stop
+// deleting anything, which is the failure the guard exists to avoid in reverse.
+func assertNonEmptyUpstreamStillSweeps(t *testing.T, app core.App, target string, syncErr error) {
+	t.Helper()
+
+	if syncErr != nil {
+		t.Fatalf("Sync on a healthy run returned %v, want nil", syncErr)
+	}
+	orphans, err := app.FindRecordsByFilter(target, "year = 2026 && person_id = 999", "", 0, 0)
+	if err != nil {
+		t.Fatalf("re-query %s: %v", target, err)
+	}
+	if len(orphans) != 0 {
+		t.Errorf("the genuine orphan survived -- a non-empty upstream must still sweep")
+	}
+}
+
+// seedOrphanOnly writes a single row this run will not account for, small enough
+// that the ratio arm does not apply and only the sweep itself is under test.
+func seedOrphanOnly(t *testing.T, app core.App, target string) {
+	t.Helper()
+	col, err := app.FindCollectionByNameOrId(target)
+	if err != nil {
+		t.Fatalf("find %s: %v", target, err)
+	}
+	rec := core.NewRecord(col)
+	rec.Set("person_id", 999)
+	rec.Set("session_id", 200)
+	rec.Set("skill_cm_id", 999)
+	rec.Set("year", 2026)
+	if saveErr := app.Save(rec); saveErr != nil {
+		t.Fatalf("save orphan: %v", saveErr)
+	}
+}
+
+func TestCamperDietaryNonEmptyUpstreamStillSweeps(t *testing.T) {
+	t.Parallel()
+	app := newCustomValuesSyncTestApp(t, "camper_dietary", "allergy_info")
+	seedCustomValuesRun(t, app, "camper_dietary", "Family Medical-Allergy Info", "", 3, 0)
+	seedOrphanOnly(t, app, "camper_dietary")
+
+	s := NewCamperDietarySync(app)
+	s.Year = 2026
+	assertNonEmptyUpstreamStillSweeps(t, app, "camper_dietary", s.Sync(context.Background()))
+}
+
+func TestCamperTransportationNonEmptyUpstreamStillSweeps(t *testing.T) {
+	t.Parallel()
+	app := newCustomValuesSyncTestApp(t, "camper_transportation", "to_camp_method")
+	seedCustomValuesRun(t, app, "camper_transportation", "BUS-To Camp", "", 3, 0)
+	seedOrphanOnly(t, app, "camper_transportation")
+
+	s := NewCamperTransportationSync(app)
+	s.Year = 2026
+	assertNonEmptyUpstreamStillSweeps(t, app, "camper_transportation", s.Sync(context.Background()))
+}
+
+func TestQuestRegistrationsNonEmptyUpstreamStillSweeps(t *testing.T) {
+	t.Parallel()
+	app := newCustomValuesSyncTestApp(t, "quest_registrations", "quest_status")
+	seedCustomValuesRun(t, app, "quest_registrations", "Quest-Status", "", 3, 0)
+	seedOrphanOnly(t, app, "quest_registrations")
+
+	s := NewQuestRegistrationsSync(app)
+	s.Year = 2026
+	assertNonEmptyUpstreamStillSweeps(t, app, "quest_registrations", s.Sync(context.Background()))
 }
