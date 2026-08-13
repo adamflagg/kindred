@@ -200,8 +200,10 @@ func (s *StaffApplicationsSync) Sync(ctx context.Context) error {
 	s.Stats.Deleted = deleted
 
 	// WAL checkpoint BEFORE the error return below: upsertRecords has already
-	// written by this point, and the cancellation path returns with those
-	// writes still in the WAL.
+	// written by this point, and both error paths return with those writes still
+	// in the WAL. That includes the refusal path -- widening the guard to catch a
+	// PARTIAL collapse (kindred#2279) means it can refuse on a non-empty computed
+	// set, which is exactly the case where upsertRecords did write.
 	if s.Stats.Created > 0 || s.Stats.Updated > 0 || s.Stats.Deleted > 0 {
 		if cpErr := s.forceWALCheckpoint(); cpErr != nil {
 			slog.Warn("WAL checkpoint failed", "error", cpErr)
@@ -847,27 +849,32 @@ func (s *StaffApplicationsSync) upsertRecords(
 
 // deleteOrphans removes records that exist in DB but not in computed set.
 //
-// Refuses when the computed set is empty and rows exist for the year: that
-// combination is always a broken input, and sweeping on it deletes the whole
-// year and reports success (kindred#2279 Gap 2).
+// Refuses when the computed set is too small to be believed against the rows on
+// disk: that combination is always a broken input, and sweeping on it deletes
+// the year and reports success (kindred#2279 Gap 2). The rule itself lives in
+// OrphanSweepGuard -- this was one of two hand-written copies, and it now shares
+// the one implementation, which also widened it from "empty" to "suspiciously
+// small" (kindred#2279 Gap 1).
 //
 // This service shares staff_vehicle_info's loadPersonStaffMapping(ctx, year)
 // gate exactly, so it has the identical year-wipe path and the same two
-// upstream causes: an empty personToStaff mapping (every value fails the staff
-// gate), or an empty fieldNameMap after an upstream rename of the App-*
-// definitions (every value routes nowhere).
+// upstream causes: a collapsed personToStaff mapping (values fail the staff
+// gate), or a collapsed fieldNameMap after an upstream rename of the App-*
+// definitions (values route nowhere).
 func (s *StaffApplicationsSync) deleteOrphans(
 	ctx context.Context,
 	records map[string]*staffApplicationRecord,
 	existingRecords map[string]string,
 	year int,
 ) (int, error) {
-	if len(records) == 0 && len(existingRecords) > 0 {
-		return 0, fmt.Errorf(
-			"refusing to sweep %d existing staff_applications rows for year %d against an "+
-				"empty computed set (check the staff table for that year, and that the App-* "+
-				"field definitions still exist upstream)",
-			len(existingRecords), year)
+	guard := OrphanSweepGuard{
+		Entity:   "staff_applications",
+		Year:     year,
+		Computed: len(records),
+		Hint:     "check the staff table for that year, and that the App-* field definitions still exist upstream",
+	}
+	if err := guard.Check(len(existingRecords)); err != nil {
+		return 0, err
 	}
 
 	deleted := 0

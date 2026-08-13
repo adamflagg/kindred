@@ -474,7 +474,7 @@ func (s *BunkPlansSync) deleteOrphans() error {
 		return fmt.Errorf("loading mappings for orphan detection: %w", err)
 	}
 
-	return s.DeleteOrphans(
+	return s.DeleteOrphansGuarded(
 		"bunk_plans",
 		func(record *core.Record) (string, bool) {
 			mapping := planMappings[record.Id]
@@ -498,5 +498,13 @@ func (s *BunkPlansSync) deleteOrphans() error {
 		},
 		"bunk plan",
 		filter,
+		OrphanSweepGuard{
+			Entity:   "bunk_plans",
+			Year:     year,
+			Computed: len(s.ProcessedKeys),
+			Hint: "check that the CampMinder bunk-plan feed returned this season (a collapsed " +
+				"bunks or camp_sessions table shows up as the unkeyable-record warning " +
+				"above, not here)",
+		},
 	)
 }

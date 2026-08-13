@@ -1084,7 +1084,7 @@ func (s *PersonsSync) printDataQualitySummary() {
 func (s *PersonsSync) deleteOrphans(year int) error {
 	filter := fmt.Sprintf("year = %d", year)
 
-	return s.DeleteOrphans(
+	return s.DeleteOrphansGuarded(
 		"persons",
 		func(record *core.Record) (string, bool) {
 			cmID, ok := record.Get("cm_id").(float64)
@@ -1097,6 +1097,12 @@ func (s *PersonsSync) deleteOrphans(year int) error {
 		},
 		"person",
 		filter,
+		OrphanSweepGuard{
+			Entity:   "persons",
+			Year:     year,
+			Computed: len(s.ProcessedKeys),
+			Hint:     "check that the CampMinder person feed returned this season",
+		},
 	)
 }
 

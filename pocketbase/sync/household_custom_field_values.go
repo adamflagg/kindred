@@ -130,6 +130,12 @@ func (s *HouseholdCustomFieldValuesSync) Sync(ctx context.Context) error {
 
 	s.SyncSuccessful = true
 
+	// Only households whose values this run actually fetched may be judged by the
+	// orphan sweep. A ?session= filter narrows the run to one session's households
+	// while the sweep's filter is the whole year, so without this set a
+	// session-scoped run would delete every other session's values as orphans.
+	sweptOwners := make(map[string]bool, len(householdIDs))
+
 	// Process each household
 	for i, householdCMID := range householdIDs {
 		select {
@@ -162,11 +168,16 @@ func (s *HouseholdCustomFieldValuesSync) Sync(ctx context.Context) error {
 				"household_cm_id", householdCMID,
 				"error", err)
 			s.Stats.Errors++
+			// A household whose fetch failed was not fully seen; leaving them out of
+			// sweptOwners keeps the sweep from reading a partial fetch as deletions.
+			continue
 		}
+
+		sweptOwners[householdPBId] = true
 	}
 
 	// Delete orphans
-	if err := s.deleteOrphans(year); err != nil {
+	if err := s.deleteOrphans(year, sweptOwners); err != nil {
 		slog.Error("Error deleting orphan custom field values", "error", err)
 	}
 
@@ -182,7 +193,12 @@ func (s *HouseholdCustomFieldValuesSync) Sync(ctx context.Context) error {
 // preloadHouseholdMapping loads CM ID -> PB ID mapping for households in the given year
 func (s *HouseholdCustomFieldValuesSync) preloadHouseholdMapping(year int) (map[int]string, error) {
 	filter := fmt.Sprintf("year = %d", year)
-	households, err := s.App.FindRecordsByFilter("households", filter, "", 10000, 0, nil)
+	// Unlimited (0), not a 10,000 cap. PocketBase treats limit=0 as no limit
+	// (core/record_query.go applies Limit only when limit > 0), and a bare
+	// number there is a silent truncation cliff, not a page size: kindred#2266
+	// was exactly this literal on the orphan sweep, where it hid 94% of a year.
+	// Year-scoped; the largest year on record holds 2,563 households.
+	households, err := s.App.FindRecordsByFilter("households", filter, "", 0, 0, nil)
 	if err != nil {
 		return nil, fmt.Errorf("finding households: %w", err)
 	}
@@ -202,7 +218,12 @@ func (s *HouseholdCustomFieldValuesSync) preloadHouseholdMapping(year int) (map[
 // preloadFieldDefMapping loads CM ID -> PB ID mapping for custom field definitions
 func (s *HouseholdCustomFieldValuesSync) preloadFieldDefMapping() (map[int]string, error) {
 	// Field definitions are global (no year filter)
-	fieldDefs, err := s.App.FindRecordsByFilter("custom_field_defs", "", "", 10000, 0, nil)
+	// Unlimited (0), not a 10,000 cap. PocketBase treats limit=0 as no limit
+	// (core/record_query.go applies Limit only when limit > 0), and a bare
+	// number there is a silent truncation cliff, not a page size: kindred#2266
+	// was exactly this literal on the orphan sweep, where it hid 94% of a year.
+	// custom_field_defs is NOT year-scoped: all 1,270 rows load every time.
+	fieldDefs, err := s.App.FindRecordsByFilter("custom_field_defs", "", "", 0, 0, nil)
 	if err != nil {
 		return nil, fmt.Errorf("finding field definitions: %w", err)
 	}
@@ -239,7 +260,13 @@ func (s *HouseholdCustomFieldValuesSync) getHouseholdIDsToSync(year int) ([]int,
 
 	// No session filter - get all households synced for this year
 	filter := fmt.Sprintf("year = %d", year)
-	households, err := s.App.FindRecordsByFilter("households", filter, "", 10000, 0, nil)
+	// Unlimited (0), not a 10,000 cap. PocketBase treats limit=0 as no limit
+	// (core/record_query.go applies Limit only when limit > 0), and a bare
+	// number there is a silent truncation cliff, not a page size: kindred#2266
+	// was exactly this literal on the orphan sweep, where it hid 94% of a year.
+	// Feeds sweptOwners, which is what narrows the orphan sweep. A silent
+	// truncation here would shrink the sweep's computed set as well.
+	households, err := s.App.FindRecordsByFilter("households", filter, "", 0, 0, nil)
 	if err != nil {
 		return nil, fmt.Errorf("finding households: %w", err)
 	}
@@ -393,40 +420,51 @@ func (s *HouseholdCustomFieldValuesSync) syncHouseholdCustomFieldValues(
 	return nil
 }
 
-// deleteOrphans removes custom field values that were not seen in this sync
-func (s *HouseholdCustomFieldValuesSync) deleteOrphans(year int) error {
-	filter := fmt.Sprintf("year = %d", year)
-	records, err := s.App.FindRecordsByFilter("household_custom_values", filter, "", 10000, 0, nil)
-	if err != nil {
-		return fmt.Errorf("finding records for orphan check: %w", err)
-	}
-
-	deleted := 0
-	for _, record := range records {
-		householdPBId := record.GetString("household")
-		fieldDefPBId := record.GetString("field_definition")
-		recordYear := record.GetInt("year")
-
-		// Use yearScopedKey format to match TrackProcessedKey
-		yearScopedKey := fmt.Sprintf("%s:%s|%d", householdPBId, fieldDefPBId, recordYear)
-
-		if !s.ProcessedKeys[yearScopedKey] {
-			if err := s.App.Delete(record); err != nil {
-				slog.Error("Error deleting orphan custom field value",
-					"household", householdPBId,
-					"field_definition", fieldDefPBId,
-					"error", err)
-			} else {
-				deleted++
+// deleteOrphans removes custom field values that were not seen in this sync.
+//
+// This used to be a hand-rolled loop over a single FindRecordsByFilter capped at
+// 10,000 rows with no surrounding pagination -- the latent twin in kindred#2266.
+// 10,000 is a hard cap, not a page size. It has not bitten here only because the
+// table is small: the largest year holds 1,773 rows against person_custom_values'
+// 128,606-184,458. The cap would start silently dropping this table's orphans the
+// moment a year crossed it, so it goes now rather than later. Routing through the
+// shared guarded sweep replaces the cap with keyset pagination and picks up the
+// collapse guard, so there is one implementation instead of a local copy.
+//
+// sweptOwners is the set of household PB IDs whose values were successfully
+// fetched during THIS run, and it is what makes the fix safe rather than
+// catastrophic. The sweep's filter is the whole year, but the computed set is
+// only ever as wide as the run: this service takes a ?session= filter (api.go),
+// and getHouseholdIDsToSync resolves that session through
+// GetHouseholdIDsForSession to the households with someone enrolled in it --
+// a fraction of the year. Uncapping the read without narrowing the judgement
+// would have let one session-scoped run delete every other session's households'
+// values as orphans. A row is a candidate only if this run actually fetched that
+// household's values; anything else is invisible to the sweep, exactly as it
+// should be.
+func (s *HouseholdCustomFieldValuesSync) deleteOrphans(year int, sweptOwners map[string]bool) error {
+	return s.DeleteOrphansGuarded(
+		"household_custom_values",
+		func(record *core.Record) (string, bool) {
+			householdPBId := record.GetString("household")
+			if !sweptOwners[householdPBId] {
+				return "", false
 			}
-		}
-	}
 
-	if deleted > 0 {
-		slog.Info("Deleted orphan household custom field values", "count", deleted)
-	}
-
-	return nil
+			// Matches TrackProcessedCompositeKey's "<identity>|<year>" format
+			return fmt.Sprintf("%s:%s|%d",
+				householdPBId, record.GetString("field_definition"), record.GetInt("year")), true
+		},
+		"household custom field value",
+		fmt.Sprintf("year = %d", year),
+		OrphanSweepGuard{
+			Entity:   "household_custom_values",
+			Year:     year,
+			Computed: len(s.ProcessedKeys),
+			Hint: "check that the households sync ran for that year, and that " +
+				"custom_field_defs still holds these field definitions",
+		},
+	)
 }
 
 // transformHouseholdCustomFieldValueToPB transforms CampMinder custom field value data to PocketBase format
