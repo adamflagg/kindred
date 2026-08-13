@@ -91,7 +91,7 @@ func (s *CustomFieldDefinitionsSync) Sync(ctx context.Context) error {
 			pbData, err := s.transformCustomFieldDefinitionToPB(defData)
 			if err != nil {
 				slog.Error("Error transforming custom field definition", "error", err)
-				s.Stats.Errors++
+				s.Stats.Rejected++
 				continue
 			}
 
@@ -99,7 +99,7 @@ func (s *CustomFieldDefinitionsSync) Sync(ctx context.Context) error {
 			cmID, ok := pbData["cm_id"].(int)
 			if !ok || cmID == 0 {
 				slog.Error("Invalid custom field definition cm_id")
-				s.Stats.Errors++
+				s.Stats.Rejected++
 				continue
 			}
 

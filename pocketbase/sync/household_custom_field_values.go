@@ -323,7 +323,7 @@ func (s *HouseholdCustomFieldValuesSync) syncHouseholdCustomFieldValues(
 			if !ok || fieldCMIDFloat == 0 {
 				slog.Warn("Invalid or missing field id in custom field value",
 					"household_cm_id", householdCMID)
-				s.Stats.Errors++
+				s.Stats.Rejected++
 				continue
 			}
 			fieldCMID := int(fieldCMIDFloat)

@@ -215,7 +215,7 @@ func (s *SessionsSync) Sync(ctx context.Context) error {
 		pbData, err := s.transformSessionToPBWithParent(sessionData, mainSessions, correctedTypes, overrideParentIDs)
 		if err != nil {
 			slog.Error("Error transforming session", "error", err)
-			s.Stats.Errors++
+			s.Stats.Rejected++
 			continue
 		}
 
@@ -223,7 +223,7 @@ func (s *SessionsSync) Sync(ctx context.Context) error {
 		sessionID, ok := sessionData["ID"].(float64)
 		if !ok {
 			slog.Error("Invalid session ID type")
-			s.Stats.Errors++
+			s.Stats.Rejected++
 			continue
 		}
 		key := int(sessionID)
@@ -233,7 +233,7 @@ func (s *SessionsSync) Sync(ctx context.Context) error {
 		year, ok := yearValue.(int)
 		if !ok {
 			slog.Error("Invalid year type in pbData")
-			s.Stats.Errors++
+			s.Stats.Rejected++
 			continue
 		}
 		s.TrackProcessedKey(key, year)
