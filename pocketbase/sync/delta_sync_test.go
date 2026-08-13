@@ -7,6 +7,7 @@ import (
 // TestTransformPersonCustomFieldValue_CapturesLastUpdated verifies that
 // lastUpdated from API response is captured in the transformed data
 func TestTransformPersonCustomFieldValue_CapturesLastUpdated(t *testing.T) {
+	t.Parallel()
 	s := &PersonCustomFieldValuesSync{}
 
 	// Mock CampMinder API response with lastUpdated
@@ -29,6 +30,7 @@ func TestTransformPersonCustomFieldValue_CapturesLastUpdated(t *testing.T) {
 // TestTransformPersonCustomFieldValue_MissingLastUpdated verifies that
 // transform handles missing lastUpdated gracefully (field not set)
 func TestTransformPersonCustomFieldValue_MissingLastUpdated(t *testing.T) {
+	t.Parallel()
 	s := &PersonCustomFieldValuesSync{}
 
 	// Mock CampMinder API response WITHOUT lastUpdated
@@ -50,6 +52,7 @@ func TestTransformPersonCustomFieldValue_MissingLastUpdated(t *testing.T) {
 // TestTransformPersonCustomFieldValue_EmptyLastUpdated verifies that
 // empty lastUpdated strings are handled (treated as missing)
 func TestTransformPersonCustomFieldValue_EmptyLastUpdated(t *testing.T) {
+	t.Parallel()
 	s := &PersonCustomFieldValuesSync{}
 
 	data := map[string]any{
@@ -69,6 +72,7 @@ func TestTransformPersonCustomFieldValue_EmptyLastUpdated(t *testing.T) {
 // TestTransformHouseholdCustomFieldValue_CapturesLastUpdated verifies that
 // lastUpdated from API response is captured for household sync
 func TestTransformHouseholdCustomFieldValue_CapturesLastUpdated(t *testing.T) {
+	t.Parallel()
 	s := &HouseholdCustomFieldValuesSync{}
 
 	data := map[string]any{
@@ -90,6 +94,7 @@ func TestTransformHouseholdCustomFieldValue_CapturesLastUpdated(t *testing.T) {
 // TestTransformHouseholdCustomFieldValue_MissingLastUpdated verifies that
 // transform handles missing lastUpdated gracefully for household sync
 func TestTransformHouseholdCustomFieldValue_MissingLastUpdated(t *testing.T) {
+	t.Parallel()
 	s := &HouseholdCustomFieldValuesSync{}
 
 	data := map[string]any{

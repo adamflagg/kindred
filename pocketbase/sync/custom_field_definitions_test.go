@@ -6,6 +6,7 @@ import (
 )
 
 func TestCustomFieldDefinitionsSync_Name(t *testing.T) {
+	t.Parallel()
 	s := &CustomFieldDefinitionsSync{}
 
 	got := s.Name()
@@ -19,6 +20,7 @@ func TestCustomFieldDefinitionsSync_Name(t *testing.T) {
 // TestTransformCustomFieldDefinitionToPB tests transformation to PocketBase format
 // Note: CampMinder API uses camelCase field names for this endpoint
 func TestTransformCustomFieldDefinitionToPB(t *testing.T) {
+	t.Parallel()
 	s := &CustomFieldDefinitionsSync{}
 
 	// Mock CampMinder API response (camelCase field names)
@@ -103,6 +105,7 @@ func TestTransformCustomFieldDefinitionToPB(t *testing.T) {
 
 // TestTransformCustomFieldDefinitionHandlesMissingFields tests handling of optional fields
 func TestTransformCustomFieldDefinitionHandlesMissingFields(t *testing.T) {
+	t.Parallel()
 	s := &CustomFieldDefinitionsSync{}
 
 	// Minimal data with only required fields (camelCase)
@@ -154,6 +157,7 @@ func TestTransformCustomFieldDefinitionHandlesMissingFields(t *testing.T) {
 
 // TestTransformCustomFieldDefinitionRequiredIDError tests error on missing ID
 func TestTransformCustomFieldDefinitionRequiredIDError(t *testing.T) {
+	t.Parallel()
 	s := &CustomFieldDefinitionsSync{}
 
 	// Missing ID field
@@ -169,6 +173,7 @@ func TestTransformCustomFieldDefinitionRequiredIDError(t *testing.T) {
 
 // TestTransformCustomFieldDefinitionRequiredNameError tests error on missing Name
 func TestTransformCustomFieldDefinitionRequiredNameError(t *testing.T) {
+	t.Parallel()
 	s := &CustomFieldDefinitionsSync{}
 
 	// Missing Name field
@@ -184,6 +189,7 @@ func TestTransformCustomFieldDefinitionRequiredNameError(t *testing.T) {
 
 // TestTransformCustomFieldDefinitionZeroIDError tests error on ID=0
 func TestTransformCustomFieldDefinitionZeroIDError(t *testing.T) {
+	t.Parallel()
 	s := &CustomFieldDefinitionsSync{}
 
 	// ID=0 (invalid)
@@ -200,6 +206,7 @@ func TestTransformCustomFieldDefinitionZeroIDError(t *testing.T) {
 
 // TestTransformCustomFieldDefinitionEmptyNameError tests error on empty Name
 func TestTransformCustomFieldDefinitionEmptyNameError(t *testing.T) {
+	t.Parallel()
 	s := &CustomFieldDefinitionsSync{}
 
 	// Empty Name
@@ -216,6 +223,7 @@ func TestTransformCustomFieldDefinitionEmptyNameError(t *testing.T) {
 
 // TestTransformCustomFieldDefinitionValidDataTypes tests all valid data types
 func TestTransformCustomFieldDefinitionValidDataTypes(t *testing.T) {
+	t.Parallel()
 	s := &CustomFieldDefinitionsSync{}
 
 	validDataTypes := []string{"None", "String", "Integer", "Decimal", "Date", "Time", "DateTime", "Boolean"}
@@ -246,6 +254,7 @@ func TestTransformCustomFieldDefinitionValidDataTypes(t *testing.T) {
 
 // TestTransformCustomFieldDefinitionValidPartitions tests all valid partitions
 func TestTransformCustomFieldDefinitionValidPartitions(t *testing.T) {
+	t.Parallel()
 	s := &CustomFieldDefinitionsSync{}
 
 	validPartitions := []string{"None", "Family", "Alumnus", "Staff", "Camper", "Parent", "Adult"}
@@ -278,6 +287,7 @@ func TestTransformCustomFieldDefinitionValidPartitions(t *testing.T) {
 
 // TestTransformCustomFieldDefinitionMultiValuePartition tests handling of multi-value partitions
 func TestTransformCustomFieldDefinitionMultiValuePartition(t *testing.T) {
+	t.Parallel()
 	s := &CustomFieldDefinitionsSync{}
 
 	// Test multi-value partition (as returned by CampMinder API)
@@ -301,6 +311,7 @@ func TestTransformCustomFieldDefinitionMultiValuePartition(t *testing.T) {
 
 // TestTransformCustomFieldDefinitionTripleValuePartition tests handling of three-value partitions
 func TestTransformCustomFieldDefinitionTripleValuePartition(t *testing.T) {
+	t.Parallel()
 	s := &CustomFieldDefinitionsSync{}
 
 	// Test three-value partition

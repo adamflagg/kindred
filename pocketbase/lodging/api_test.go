@@ -30,6 +30,7 @@ func yearsFor(t *testing.T, query string) (from, to int, err error) {
 // is inside no sane season but inside the field range, so it would succeed and
 // create exactly the phantom season registry.go's own doc comment warns about.
 func TestYearsFromQueryRejectsYearsOutsideTheFieldRange(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct{ name, query, wantIn string }{
 		{"zero to", "from=2026&to=0", "to"},
 		{"below the field minimum", "from=2026&to=1999", "to"},
@@ -48,6 +49,7 @@ func TestYearsFromQueryRejectsYearsOutsideTheFieldRange(t *testing.T) {
 }
 
 func TestYearsFromQueryAcceptsARealSeasonPair(t *testing.T) {
+	t.Parallel()
 	from, to, err := yearsFor(t, "from=2026&to=2027")
 	if err != nil {
 		t.Fatalf("yearsFromQuery: %v", err)

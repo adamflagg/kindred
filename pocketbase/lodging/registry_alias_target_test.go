@@ -117,6 +117,7 @@ func findMisdirectedAliases(units []registryUnit, aliases []registryAlias) []mis
 }
 
 func TestFindMisdirectedAliasesCatchesTheNewTrailerClass(t *testing.T) {
+	t.Parallel()
 	units := []registryUnit{
 		{Code: "manzanita-7", Name: "Manzanita 7"},
 		{Code: "manzanita-new-trailer", Name: "New Trailer (Manzanitas)"},
@@ -136,6 +137,7 @@ func TestFindMisdirectedAliasesCatchesTheNewTrailerClass(t *testing.T) {
 }
 
 func TestFindMisdirectedAliasesAllowsACorrectlyTargetedAlias(t *testing.T) {
+	t.Parallel()
 	units := []registryUnit{{Code: "manzanita-new-trailer", Name: "New Trailer (Manzanitas)"}}
 	aliases := []registryAlias{
 		{AliasString: "New Trailer (Manzanitas)", MemberUnits: []string{"manzanita-new-trailer"}},
@@ -147,6 +149,7 @@ func TestFindMisdirectedAliasesAllowsACorrectlyTargetedAlias(t *testing.T) {
 }
 
 func TestFindMisdirectedAliasesAllowsASynonymThatNamesNoUnit(t *testing.T) {
+	t.Parallel()
 	// "Teen Village 1" is the CampMinder spelling; the unit is "Forest Village
 	// 1". The string matches no unit name, so the check must stay silent.
 	units := []registryUnit{{Code: "forest-village-1", Name: "Forest Village 1"}}
@@ -160,6 +163,7 @@ func TestFindMisdirectedAliasesAllowsASynonymThatNamesNoUnit(t *testing.T) {
 }
 
 func TestFindMisdirectedAliasesAllowsAMergeThatIncludesTheUnitItNames(t *testing.T) {
+	t.Parallel()
 	units := []registryUnit{
 		{Code: "gt-tioga-1", Name: "Tioga 1"},
 		{Code: "gt-tioga-2", Name: "Tioga 2"},
@@ -174,6 +178,7 @@ func TestFindMisdirectedAliasesAllowsAMergeThatIncludesTheUnitItNames(t *testing
 }
 
 func TestFindMisdirectedAliasesFlagsAMergeThatExcludesTheUnitItNames(t *testing.T) {
+	t.Parallel()
 	units := []registryUnit{
 		{Code: "gt-tioga-1", Name: "Tioga 1"},
 		{Code: "gt-tioga-2", Name: "Tioga 2"},
@@ -189,6 +194,7 @@ func TestFindMisdirectedAliasesFlagsAMergeThatExcludesTheUnitItNames(t *testing.
 }
 
 func TestFindMisdirectedAliasesAllowsAContainerNamingItsOwnRooms(t *testing.T) {
+	t.Parallel()
 	// The real case: "Health Center Downstairs" is a container, so booking it
 	// has to mean booking the rooms inside it.
 	units := []registryUnit{
@@ -207,6 +213,7 @@ func TestFindMisdirectedAliasesAllowsAContainerNamingItsOwnRooms(t *testing.T) {
 }
 
 func TestFindMisdirectedAliasesStillFlagsAContainerPointedOutsideItself(t *testing.T) {
+	t.Parallel()
 	// One room belongs to a different building. That is the New Trailer defect
 	// wearing a container's clothes, and the descendant exception must not
 	// swallow it.
@@ -226,6 +233,7 @@ func TestFindMisdirectedAliasesStillFlagsAContainerPointedOutsideItself(t *testi
 }
 
 func TestFindMisdirectedAliasesIgnoresCaseAndOuterSpace(t *testing.T) {
+	t.Parallel()
 	units := []registryUnit{{Code: "gt-lofty", Name: "Lofty"}}
 	aliases := []registryAlias{{AliasString: "  lofty ", MemberUnits: []string{"gt-lofty"}}}
 
@@ -235,6 +243,7 @@ func TestFindMisdirectedAliasesIgnoresCaseAndOuterSpace(t *testing.T) {
 }
 
 func TestPrivateRegistryHasNoMisdirectedAliases(t *testing.T) {
+	t.Parallel()
 	// Runs against the real file when kindred-local is linked, and skips
 	// cleanly otherwise -- matching TestPrivateRegistryHasNoStrandedContainers.
 	path := filepath.Join("..", "..", "config", "lodging_registry.json")

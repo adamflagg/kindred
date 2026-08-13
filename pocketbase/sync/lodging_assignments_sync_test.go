@@ -32,6 +32,7 @@ func seedOneWeekendHousehold(t *testing.T, app core.App) (sessionID, unitID stri
 }
 
 func TestLodgingAssignmentsSyncName(t *testing.T) {
+	t.Parallel()
 	s := NewLodgingAssignmentsSync(nil)
 	if s.Name() != serviceNameLodgingAssignments {
 		t.Errorf("Name() = %q, want %q", s.Name(), serviceNameLodgingAssignments)
@@ -40,6 +41,7 @@ func TestLodgingAssignmentsSyncName(t *testing.T) {
 
 // TestLodgingAssignmentsSyncHouseholdGrain: the whole happy path end to end.
 func TestLodgingAssignmentsSyncHouseholdGrain(t *testing.T) {
+	t.Parallel()
 	app := newLodgingTestApp(t)
 	sessionID, unitID := seedOneWeekendHousehold(t, app)
 
@@ -116,6 +118,7 @@ func TestLodgingAssignmentsSyncHouseholdGrain(t *testing.T) {
 // "units" relation must hold the 2027 row, never the 2026 one the alias
 // happens to store.
 func TestLodgingAssignmentsSyncWritesTheSyncedYearsUnitIDs(t *testing.T) {
+	t.Parallel()
 	app := newLodgingTestApp(t)
 	id2026 := addUnit(t, app, "test-unit-a", 2026)
 	id2027 := addUnit(t, app, "test-unit-a", 2027)
@@ -154,6 +157,7 @@ func TestLodgingAssignmentsSyncWritesTheSyncedYearsUnitIDs(t *testing.T) {
 // TestLodgingAssignmentsSyncIsIdempotent: a second run must not duplicate the
 // assignment or append a spurious history row.
 func TestLodgingAssignmentsSyncIsIdempotent(t *testing.T) {
+	t.Parallel()
 	app := newLodgingTestApp(t)
 	seedOneWeekendHousehold(t, app)
 
@@ -179,6 +183,7 @@ func TestLodgingAssignmentsSyncIsIdempotent(t *testing.T) {
 // 3.6 relies on to recover multi-weekend households whose earlier assignment
 // CampMinder overwrote.
 func TestLodgingAssignmentsSyncAppendsHistoryOnChange(t *testing.T) {
+	t.Parallel()
 	app := newLodgingTestApp(t)
 	seedOneWeekendHousehold(t, app)
 	ridgeB := addUnit(t, app, "ridge-b", 2025)
@@ -230,6 +235,7 @@ func TestLodgingAssignmentsSyncAppendsHistoryOnChange(t *testing.T) {
 // TestLodgingAssignmentsSyncRespectsStaffTouched: a placement a human moved on
 // the board is not reverted by the next CampMinder sync.
 func TestLodgingAssignmentsSyncRespectsStaffTouched(t *testing.T) {
+	t.Parallel()
 	app := newLodgingTestApp(t)
 	seedOneWeekendHousehold(t, app)
 	ridgeB := addUnit(t, app, "ridge-b", 2025)
@@ -267,6 +273,7 @@ func TestLodgingAssignmentsSyncRespectsStaffTouched(t *testing.T) {
 // -- one of four such strings in the real 2022/2023 data. It must become a work
 // queue item and must not be dropped, and must not stop the run.
 func TestLodgingAssignmentsSyncQueuesUnresolvedAlias(t *testing.T) {
+	t.Parallel()
 	app := newLodgingTestApp(t)
 	sess := addSession(t, app, cmIDFamilyCamp1, "Family Camp 1", "family",
 		"2025-05-23 07:00:00.000Z", "2025-05-26 07:00:00.000Z", 2025)
@@ -314,6 +321,7 @@ func TestLodgingAssignmentsSyncQueuesUnresolvedAlias(t *testing.T) {
 // attend more than one weekend against one CampMinder value. Spec 3.6 says flag
 // them for manual entry.
 func TestLodgingAssignmentsSyncQueuesAmbiguousSession(t *testing.T) {
+	t.Parallel()
 	app := newLodgingTestApp(t)
 	fc1 := addSession(t, app, cmIDFamilyCamp1, "Family Camp 1", "family",
 		"2025-05-23 07:00:00.000Z", "2025-05-26 07:00:00.000Z", 2025)
@@ -357,6 +365,7 @@ func TestLodgingAssignmentsSyncQueuesAmbiguousSession(t *testing.T) {
 // so a two-room alias lands as one assignment naming both -- see placementFor.
 // A merged slot is the alias's own member set, not a row pointing at it.
 func TestIngestWritesAMultiRoomPlacementAsOneRow(t *testing.T) {
+	t.Parallel()
 	app := newLodgingTestApp(t)
 	sess := addSession(t, app, cmIDFamilyCamp1, "Family Camp 1", "family",
 		"2025-05-23 07:00:00.000Z", "2025-05-26 07:00:00.000Z", 2025)
@@ -404,6 +413,7 @@ const testAdultSessionEnd = "2025-10-19 07:00:00.000Z"
 // TestLodgingAssignmentsSyncPersonGrain: adult weekends enroll real persons, so
 // the placement keys on person_cm_id and household_cm_id stays 0.
 func TestLodgingAssignmentsSyncPersonGrain(t *testing.T) {
+	t.Parallel()
 	app := newLodgingTestApp(t)
 	womens := addSession(t, app, cmIDWomensWeekend, "Women's Weekend", "adult",
 		testAdultSessionStart, testAdultSessionEnd, 2025)
@@ -447,6 +457,7 @@ func TestLodgingAssignmentsSyncPersonGrain(t *testing.T) {
 // `> 0`, every person row (household_cm_id = 0) would have collided and only
 // ONE could exist.
 func TestLodgingAssignmentsSyncPersonGrainManyPerSession(t *testing.T) {
+	t.Parallel()
 	app := newLodgingTestApp(t)
 	womens := addSession(t, app, cmIDWomensWeekend, "Women's Weekend", "adult",
 		testAdultSessionStart, testAdultSessionEnd, 2025)
@@ -477,6 +488,7 @@ func TestLodgingAssignmentsSyncPersonGrainManyPerSession(t *testing.T) {
 // Reportable Family Camp Cabin values belong to persons with no active
 // enrollment. Queue them; never drop them.
 func TestLodgingAssignmentsSyncPersonGrainNoEnrolment(t *testing.T) {
+	t.Parallel()
 	app := newLodgingTestApp(t)
 	addSession(t, app, cmIDWomensWeekend, "Women's Weekend", "adult",
 		testAdultSessionStart, testAdultSessionEnd, 2025)
@@ -513,6 +525,7 @@ func TestLodgingAssignmentsSyncPersonGrainNoEnrolment(t *testing.T) {
 // (docs/architecture/sync-layer.md's own "Common Mistakes" table). Each miss is
 // silent -- the job simply never runs, or the GUI shows "idle" forever.
 func TestLodgingAssignmentsRegisteredEverywhere(t *testing.T) {
+	t.Parallel()
 	var inMeta bool
 	for _, m := range syncJobMeta {
 		if m.ID == serviceNameLodgingAssignments {
@@ -552,6 +565,7 @@ func TestLodgingAssignmentsRegisteredEverywhere(t *testing.T) {
 // the pass-through: still just the alias's own set, which is why it needs no
 // App on the struct above.
 func TestPlacementForPassesASingleRoomStraightThrough(t *testing.T) {
+	t.Parallel()
 	s := &LodgingAssignmentsSync{}
 	res := AliasResolution{Raw: "Room 1", UnitIDs: []string{"r1"}, Resolved: true}
 
@@ -564,6 +578,7 @@ func TestPlacementForPassesASingleRoomStraightThrough(t *testing.T) {
 // TestPlacementForPassesTheAliasSetThrough pins the collapse: a multi-room
 // alias no longer materializes a row, it simply IS the placement.
 func TestPlacementForPassesTheAliasSetThrough(t *testing.T) {
+	t.Parallel()
 	s := &LodgingAssignmentsSync{}
 	got := s.placementFor(AliasResolution{UnitIDs: []string{"u1", "u2"}, Resolved: true})
 	if len(got) != 2 || got[0] != "u1" || got[1] != "u2" {
@@ -577,6 +592,7 @@ func TestPlacementForPassesTheAliasSetThrough(t *testing.T) {
 // placed just before upsertAssignment would leave rows behind in that table
 // even though it never mentions it.
 func TestLodgingAssignmentsSyncDryRunWritesNothing(t *testing.T) {
+	t.Parallel()
 	app := newLodgingTestApp(t)
 	sess := addSession(t, app, cmIDFamilyCamp1, "Family Camp 1", "family",
 		testSessionStart, testSessionEnd, 2025)
@@ -622,6 +638,7 @@ func TestLodgingAssignmentsSyncDryRunWritesNothing(t *testing.T) {
 // cabin must still have the new count persisted. The label is the MOVE
 // detector; it is not the change detector.
 func TestLodgingAssignmentsSyncUpdatesPartySizeInSameCabin(t *testing.T) {
+	t.Parallel()
 	app := newLodgingTestApp(t)
 	seedOneWeekendHousehold(t, app)
 
@@ -671,6 +688,7 @@ func TestLodgingAssignmentsSyncUpdatesPartySizeInSameCabin(t *testing.T) {
 // observation entirely -- and because the value is counted before the skip, even
 // the field_zero_values warning stays quiet.
 func TestLodgingAssignmentsSyncQueuesUnknownHousehold(t *testing.T) {
+	t.Parallel()
 	app := newLodgingTestApp(t)
 	addSession(t, app, cmIDFamilyCamp1, "Family Camp 1", "family",
 		testSessionStart, testSessionEnd, 2025)
@@ -703,6 +721,7 @@ func TestLodgingAssignmentsSyncQueuesUnknownHousehold(t *testing.T) {
 // TestLodgingAssignmentsSyncQueuesUnknownPerson: the person-grain twin of
 // TestLodgingAssignmentsSyncQueuesUnknownHousehold.
 func TestLodgingAssignmentsSyncQueuesUnknownPerson(t *testing.T) {
+	t.Parallel()
 	app := newLodgingTestApp(t)
 	addSession(t, app, cmIDWomensWeekend, "Women's Weekend", "adult",
 		testAdultSessionStart, testAdultSessionEnd, 2025)
@@ -740,6 +759,7 @@ func TestLodgingAssignmentsSyncQueuesUnknownPerson(t *testing.T) {
 // read as a move on every run: a re-save and a history row for a household
 // that never left its cabin.
 func TestLodgingAssignmentsSyncMergeLabelIgnoresMemberOrder(t *testing.T) {
+	t.Parallel()
 	app := newLodgingTestApp(t)
 	sess := addSession(t, app, cmIDFamilyCamp1, "Family Camp 1", "family",
 		testSessionStart, testSessionEnd, 2025)
@@ -811,6 +831,7 @@ func TestLodgingAssignmentsSyncMergeLabelIgnoresMemberOrder(t *testing.T) {
 // audit trail is a record of MOVES, and dropping an id the database was
 // already entitled to hold is not one.
 func TestLodgingAssignmentsSyncLabelDropsUnresolvableUnits(t *testing.T) {
+	t.Parallel()
 	app := newLodgingTestApp(t)
 	sess := addSession(t, app, cmIDFamilyCamp1, "Family Camp 1", "family",
 		testSessionStart, testSessionEnd, 2025)
@@ -1232,6 +1253,7 @@ func TestLodgingAssignmentsSyncWritesHistoryOnOrphanDelete(t *testing.T) {
 // production the stale row is gone and the placement's relation dangles; here
 // it stands in for the record the placement was written against.
 func TestFindAssignmentMatchesOnTheCampMinderSessionID(t *testing.T) {
+	t.Parallel()
 	app := newLodgingTestApp(t)
 	sessOld := addSession(t, app, cmIDFamilyCamp1, "Family Camp 1", "family",
 		testSessionStart, testSessionEnd, 2025)
@@ -1266,6 +1288,7 @@ func TestFindAssignmentMatchesOnTheCampMinderSessionID(t *testing.T) {
 // not widen the lookup. Two weekends in the same year hold a placement for the
 // same household, and asking for one must never return the other's row.
 func TestFindAssignmentStillSeparatesWeekends(t *testing.T) {
+	t.Parallel()
 	app := newLodgingTestApp(t)
 	sessA := addSession(t, app, cmIDFamilyCamp1, "Family Camp 1", "family",
 		testSessionStart, testSessionEnd, 2025)
