@@ -148,6 +148,30 @@ jobs:
             - 'pocketbase/main.go'
             - 'scripts/ci/validate_migrations.py'
             - '.python-version'
+            # The four below are the remaining inputs to the pocketbase-types
+            # freshness check (kindred#2278), which runs in tests-migrations.
+            # Same reasoning as scripts/ci/validate_migrations.py above and
+            # scripts/ci/go_test_shard.py under `go`: this job's `if:` reads
+            # only `migrations` and `go`, and the summary gate counts a
+            # skipped job as OK, so anything that can change the check's
+            # verdict has to be able to trigger it. A migration is only the
+            # most obvious way pocketbase-types.ts goes stale, not the only
+            # one.
+            #
+            #   generate-types.js  -- implements the check; without this line
+            #                         it ships having never once been run
+            #   .prettierrc.json   -- feeds the fixed-point formatting, so it
+            #                         decides the expected bytes
+            #   package-lock.json  -- pins pocketbase-typegen and prettier; a
+            #                         bump to either rewrites generated output
+            #                         for every collection at once
+            #   pocketbase-types.ts -- the guarded artifact; editing a
+            #                          @generated file by hand IS the drift
+            #                          this gate exists to catch
+            - 'frontend/scripts/generate-types.js'
+            - 'frontend/.prettierrc.json'
+            - 'frontend/package-lock.json'
+            - 'frontend/src/types/pocketbase-types.ts'
           frontend:
             - 'frontend/**'
             - 'package*.json'
@@ -568,9 +592,17 @@ jobs:
         python-version-file: '.python-version'
 
     # Needed only for the pocketbase-types freshness check below (pocketbase-typegen
-    # + prettier live in frontend/'s devDependencies). Installed up front so it
-    # overlaps with the Go build/migration steps' own runtime instead of adding
-    # a second serial wait after them.
+    # + prettier live in frontend/'s devDependencies).
+    #
+    # Placement buys nothing either way: steps within a job are strictly
+    # serial, so setup-node + npm ci cost the same ~19s before the Go steps as
+    # after them. They sit here because setup belongs with setup.
+    #
+    # What makes that ~19s affordable is that tests-migrations is not the
+    # critical path -- measured on this PR's own run it finishes in ~63s
+    # against tests-go's ~3m, so the cost lands in runner-seconds, not in
+    # wall-clock to a green CI Summary. If that ever inverts, the fix is to
+    # split the freshness check into its own job, not to move these two steps.
     - name: Setup Node.js
       uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v6
       with:
@@ -746,19 +778,48 @@ jobs:
     # pass 1 and pass 2 land on different, otherwise-equivalent comment
     # placements. A single pass would make this check flap between "stale"
     # and "fresh" on zero actual schema drift.
+    #
+    # That script exits non-zero if prettier fails or if the output never
+    # settles, rather than emitting its last attempt. Both used to be
+    # warn-and-continue, which meant a tooling failure reached this step
+    # disguised as schema drift and sent someone to "fix" a schema that was
+    # fine. Anything that reaches the diff below has been normalized; a red
+    # here therefore means drift and nothing else.
     - name: PocketBase types freshness (kindred#2278)
       run: |
+        # --suffix=.ts is load-bearing, not cosmetic: prettier infers its
+        # parser from the file extension and exits 2 with "No parser could be
+        # inferred" on a bare mktemp name, which would fail this step on every
+        # run. mktemp over a fixed /tmp path follows the same regen-and-diff
+        # check in .lefthook.yml (api-types-freshness).
+        FRESH=$(mktemp --suffix=.ts)
+        trap 'rm -f "$FRESH"' EXIT
+
         node frontend/scripts/generate-types.js \
           --db pocketbase/pb_test_data/data.db \
-          --output /tmp/pocketbase-types-fresh.ts
+          --output "$FRESH"
 
-        if ! diff -u /tmp/pocketbase-types-fresh.ts frontend/src/types/pocketbase-types.ts; then
+        if ! diff -u "$FRESH" frontend/src/types/pocketbase-types.ts; then
           echo ""
           echo "❌  frontend/src/types/pocketbase-types.ts is stale -- it doesn't match the schema produced by pocketbase/pb_migrations/."
-          echo "   Regenerate it against a live PocketBase and commit the result:"
-          echo "     cd frontend && npm run generate-types"
-          echo "   (npm run generate-types reads ../pocketbase/pb_data/data.db by default -- make sure that"
-          echo "   local database has every migration in this branch applied first, e.g. via ./scripts/start_dev.sh.)"
+          echo ""
+          echo "   Regenerate it against a database built from THIS BRANCH's migrations:"
+          echo ""
+          echo "     cd pocketbase && go build -o pocketbase . \\"
+          echo "       && rm -rf ./pb_types_tmp \\"
+          echo "       && ./pocketbase migrate up --dir ./pb_types_tmp \\"
+          echo "       && node ../frontend/scripts/generate-types.js \\"
+          echo "            --db ./pb_types_tmp/data.db \\"
+          echo "            --output ../frontend/src/types/pocketbase-types.ts \\"
+          echo "       && rm -rf ./pb_types_tmp"
+          echo ""
+          echo "   Do NOT reach for a plain 'npm run generate-types' to fix this. That reads"
+          echo "   pocketbase/pb_data/data.db -- your long-lived local dev database, which lags"
+          echo "   behind main whenever you haven't started dev since a schema change merged."
+          echo "   Regenerating from it does not just fail to fix the drift, it writes NEW drift:"
+          echo "   fields that migrations already added get deleted from the types file."
+          echo "   The scratch database above is built from pb_migrations/ alone, so it matches"
+          echo "   what this check regenerates byte for byte."
           echo ""
           exit 1
         fi
