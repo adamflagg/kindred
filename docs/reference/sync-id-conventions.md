@@ -16,13 +16,46 @@ Every record synced from CampMinder has two IDs:
 | Field | Type | Purpose |
 |-------|------|---------|
 | `cm_id` | int | The CampMinder ID for this record's primary entity |
-| `person_id` | int | CampMinder person ID (on attendees, bunk_assignments, etc.) |
+| `person_id` | int | CampMinder person ID. On most person-scoped tables (`attendees`, `staff`, `camper_history`, `quest_registrations`, …) but **not all** — notably **not** on `bunk_assignments`. Check that collection's migration before filtering on it |
 | `person` | relation | PocketBase relation field pointing to persons table (resolved from CM ID) |
 | `session` | relation | PocketBase relation field pointing to camp_sessions table |
 | `bunk` | relation | PocketBase relation field pointing to bunks table |
 | `year` | int | Season/year identifier (from `CAMPMINDER_SEASON_ID`) |
 
 **Pattern:** Data fields store CM IDs (`person_id = 12345`). Relation fields store PB IDs (`person = "abc123def456789"`). The relation fields are populated by resolving CM IDs at write time.
+
+### ⚠️ `person_id` is not universal — `bunk_assignments` does not have it
+
+**`bunk_assignments` links to a person only through the `person` relation.** There is no
+`person_id` column on that collection; its fields are `cm_id`, `person`, `session`, `bunk`,
+`bunk_plan`, `year`, `created`, `updated` (`pb_migrations/1500000019_bunk_assignments.js`).
+`cm_id` there is the **assignment's** own CampMinder id, not the person's.
+
+This row of the table previously read "on attendees, bunk_assignments, etc.", and that sentence
+is the likely origin of kindred#2287: `protectNonActiveStaffAssignments` filtered
+`bunk_assignments` on `person_id = %d` for its entire life, `FindRecordsByFilter` errored on every
+iteration, and a `slog.Warn` swallowed it — so the function reported success while protecting
+nothing, for months.
+
+**A second trap corroborates the first, so check the field list rather than the index list.** That
+migration declares:
+
+```js
+"CREATE INDEX `idx_bunk_assignments_person_id` ON `bunk_assignments` (`cm_id`)"
+```
+
+The index is *named* `person_id` but is actually **on `cm_id`**. Anyone verifying the column's
+existence by grepping the migration for `person_id` finds this line and concludes the column is
+real. It is not.
+
+To filter `bunk_assignments` by person, resolve the CampMinder id to a PocketBase id first and
+filter on the relation:
+
+```go
+people, err := s.App.FindRecordsByFilter("persons",
+    fmt.Sprintf("cm_id = %d && year = %d", personCMID, year), "", 1, 0)
+// ...then: fmt.Sprintf("year = %d && person = '%s'", year, people[0].Id)
+```
 
 ## How Relations Are Resolved
 
