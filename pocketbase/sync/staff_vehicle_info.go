@@ -646,28 +646,34 @@ func (s *StaffVehicleInfoSync) upsertRecords(
 
 // deleteOrphans removes records that exist in DB but not in computed set.
 //
-// Refuses when the computed set is empty and rows exist for the year: that
-// combination is always a broken input, and sweeping on it deletes the whole
-// year and reports success (kindred#2273).
+// Refuses when the computed set is too small to be believed against the rows on
+// disk: that combination is always a broken input, and sweeping on it deletes
+// the year and reports success (kindred#2273). The rule itself lives in
+// OrphanSweepGuard -- this was one of two hand-written copies, and it now shares
+// the one implementation, which also widened it from "empty" to "suspiciously
+// small" (kindred#2279 Gap 1). A staff sync that times out partway leaves a
+// SHORT personToStaff mapping far more often than an empty one.
 //
-// TWO upstream faults produce it, and the error names both because they surface
-// in different places: an empty personToStaff mapping (every value fails the
-// staff gate), or an empty fieldNameMap after an upstream rename of the SVI-*
-// namespace (every value routes nowhere). The second is the kindred#2258 class
-// and shows up in the "SVI field routing" warnings Layer 1 logs earlier in the
-// same run -- naming only the staff table sends an operator to the wrong place.
+// TWO upstream faults produce it, and the hint names both because they surface
+// in different places: a collapsed personToStaff mapping (values fail the staff
+// gate), or a collapsed fieldNameMap after an upstream rename of the SVI-*
+// namespace (values route nowhere). The second is the kindred#2258 class and
+// shows up in the "SVI field routing" warnings Layer 1 logs earlier in the same
+// run -- naming only the staff table sends an operator to the wrong place.
 func (s *StaffVehicleInfoSync) deleteOrphans(
 	ctx context.Context,
 	records map[string]*staffVehicleInfoRecord,
 	existingRecords map[string]string,
 	year int,
 ) (int, error) {
-	if len(records) == 0 && len(existingRecords) > 0 {
-		return 0, fmt.Errorf(
-			"refusing to sweep %d existing staff_vehicle_info rows for year %d against an "+
-				"empty computed set (check the staff table for that year, and the SVI field "+
-				"routing warnings above for an upstream rename)",
-			len(existingRecords), year)
+	guard := OrphanSweepGuard{
+		Entity:   "staff_vehicle_info",
+		Year:     year,
+		Computed: len(records),
+		Hint:     "check the staff table for that year, and the SVI field routing warnings above for an upstream rename",
+	}
+	if err := guard.Check(len(existingRecords)); err != nil {
+		return 0, err
 	}
 
 	deleted := 0

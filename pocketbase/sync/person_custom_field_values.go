@@ -130,6 +130,12 @@ func (s *PersonCustomFieldValuesSync) Sync(ctx context.Context) error {
 
 	s.SyncSuccessful = true
 
+	// Only persons whose values this run actually fetched may be judged by the
+	// orphan sweep. A ?session= filter narrows the run to one session's persons
+	// while the sweep's filter is the whole year, so without this set a
+	// session-scoped run would delete every other session's values as orphans.
+	sweptOwners := make(map[string]bool, len(personIDs))
+
 	// Process each person
 	for i, personCMID := range personIDs {
 		select {
@@ -162,11 +168,16 @@ func (s *PersonCustomFieldValuesSync) Sync(ctx context.Context) error {
 				"person_cm_id", personCMID,
 				"error", err)
 			s.Stats.Errors++
+			// A person whose fetch failed was not fully seen; leaving them out of
+			// sweptOwners keeps the sweep from reading a partial fetch as deletions.
+			continue
 		}
+
+		sweptOwners[personPBId] = true
 	}
 
 	// Delete orphans (values no longer present in API response)
-	if err := s.deleteOrphans(year); err != nil {
+	if err := s.deleteOrphans(year, sweptOwners); err != nil {
 		slog.Error("Error deleting orphan custom field values", "error", err)
 	}
 
@@ -395,41 +406,49 @@ func (s *PersonCustomFieldValuesSync) syncPersonCustomFieldValues(
 	return nil
 }
 
-// deleteOrphans removes custom field values that were not seen in this sync
-func (s *PersonCustomFieldValuesSync) deleteOrphans(year int) error {
-	filter := fmt.Sprintf("year = %d", year)
-	records, err := s.App.FindRecordsByFilter("person_custom_values", filter, "", 10000, 0, nil)
-	if err != nil {
-		return fmt.Errorf("finding records for orphan check: %w", err)
-	}
-
-	deleted := 0
-	for _, record := range records {
-		personPBId := record.GetString("person")
-		fieldDefPBId := record.GetString("field_definition")
-		recordYear := record.GetInt("year")
-
-		// Use yearScopedKey format to match TrackProcessedKey
-		yearScopedKey := fmt.Sprintf("%s:%s|%d", personPBId, fieldDefPBId, recordYear)
-
-		if !s.ProcessedKeys[yearScopedKey] {
-			// This value was not seen in the sync, delete it
-			if err := s.App.Delete(record); err != nil {
-				slog.Error("Error deleting orphan custom field value",
-					"person", personPBId,
-					"field_definition", fieldDefPBId,
-					"error", err)
-			} else {
-				deleted++
+// deleteOrphans removes custom field values that were not seen in this sync.
+//
+// This used to be a hand-rolled loop over a single FindRecordsByFilter capped at
+// 10,000 rows with no surrounding pagination (kindred#2266). 10,000 is a hard
+// cap, not a page size: production years hold 128,606-184,458 rows, so the sweep
+// inspected 5.4-7.8% of the year and a value deleted in CampMinder simply
+// survived, feeding every derived table that reads this one. Routing through the
+// shared guarded sweep replaces the cap with keyset pagination and picks up the
+// collapse guard, so there is one implementation instead of a local copy.
+//
+// sweptOwners is the set of person PB IDs whose values were successfully fetched
+// during THIS run, and it is what makes the fix safe rather than catastrophic.
+// The sweep's filter is the whole year, but the computed set is only ever as
+// wide as the run: this service takes a ?session= filter (api.go), and a
+// session resolves to the persons enrolled in it -- in the current season the
+// largest single session covers about 11% of the people who hold custom values.
+// Uncapping the read without narrowing the judgement would have let one
+// session-scoped run delete the other ~89% of the year as orphans. A row is a
+// candidate only if this run actually fetched that person's values; anything else
+// is invisible to the sweep, exactly as it should be.
+func (s *PersonCustomFieldValuesSync) deleteOrphans(year int, sweptOwners map[string]bool) error {
+	return s.DeleteOrphansGuarded(
+		"person_custom_values",
+		func(record *core.Record) (string, bool) {
+			personPBId := record.GetString("person")
+			if !sweptOwners[personPBId] {
+				return "", false
 			}
-		}
-	}
 
-	if deleted > 0 {
-		slog.Info("Deleted orphan custom field values", "count", deleted)
-	}
-
-	return nil
+			// Matches TrackProcessedCompositeKey's "<identity>|<year>" format
+			return fmt.Sprintf("%s:%s|%d",
+				personPBId, record.GetString("field_definition"), record.GetInt("year")), true
+		},
+		"person custom field value",
+		fmt.Sprintf("year = %d", year),
+		OrphanSweepGuard{
+			Entity:   "person_custom_values",
+			Year:     year,
+			Computed: len(s.ProcessedKeys),
+			Hint: "check that the persons sync ran for that year, and that " +
+				"custom_field_defs still holds these field definitions",
+		},
+	)
 }
 
 // transformPersonCustomFieldValueToPB transforms CampMinder custom field value data to PocketBase format

@@ -370,7 +370,7 @@ func (s *AttendeesSync) deleteOrphans() error {
 		return fmt.Errorf("loading session mappings for orphan detection: %w", err)
 	}
 
-	return s.DeleteOrphans(
+	return s.DeleteOrphansGuarded(
 		"attendees",
 		func(record *core.Record) (string, bool) {
 			personCMID, _ := record.Get("person_id").(float64)
@@ -392,5 +392,11 @@ func (s *AttendeesSync) deleteOrphans() error {
 		},
 		"attendee",
 		filter,
+		OrphanSweepGuard{
+			Entity:   "attendees",
+			Year:     year,
+			Computed: len(s.ProcessedKeys),
+			Hint:     "check that the sessions sync ran for that year -- an empty session table empties every attendee key",
+		},
 	)
 }

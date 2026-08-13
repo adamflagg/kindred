@@ -564,7 +564,7 @@ func (s *BunkAssignmentsSync) deleteOrphans() error {
 		return fmt.Errorf("loading mappings for orphan detection: %w", err)
 	}
 
-	return s.DeleteOrphans(
+	return s.DeleteOrphansGuarded(
 		"bunk_assignments",
 		func(record *core.Record) (string, bool) {
 			mapping := assignmentMappings[record.Id]
@@ -586,5 +586,11 @@ func (s *BunkAssignmentsSync) deleteOrphans() error {
 		},
 		"bunk assignment",
 		filter,
+		OrphanSweepGuard{
+			Entity:   "bunk_assignments",
+			Year:     year,
+			Computed: len(s.ProcessedKeys),
+			Hint:     "check the persons and camp_sessions tables for that year -- the assignment keys are built from both",
+		},
 	)
 }

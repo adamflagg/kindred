@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/camp/kindred/pocketbase/campminder"
+	"github.com/pocketbase/dbx"
 	"github.com/pocketbase/pocketbase/core"
 )
 
@@ -154,58 +155,98 @@ func (b *BaseSyncService) DeleteOrphans(
 	entityName string,
 	filter string,
 ) error {
+	return b.deleteOrphans(collection, getIDFunc, entityName, filter, nil)
+}
+
+// DeleteOrphansGuarded is DeleteOrphans with a collapse guard in front of the
+// deletes: the sweep is abandoned, and an error returned, when this run's
+// computed set is too small to be believed (see OrphanSweepGuard).
+//
+// It is a separate entry point rather than a change to DeleteOrphans because the
+// guard needs the caller to vouch that len(ProcessedKeys) is comparable to the
+// rows the filter selects. That holds for the services that clear the tracker
+// per run and key it to exactly one collection and one year; it does not hold
+// for a caller that sweeps several collections from one tracker, or one that
+// sweeps every year from a single season's keys. Opting in keeps the guard's
+// denominator honest.
+func (b *BaseSyncService) DeleteOrphansGuarded(
+	collection string,
+	getIDFunc func(record *core.Record) (string, bool),
+	entityName string,
+	filter string,
+	guard OrphanSweepGuard,
+) error {
+	return b.deleteOrphans(collection, getIDFunc, entityName, filter, &guard)
+}
+
+// orphanCandidate is the minimum needed to delete and log one orphan later.
+// Deliberately not the *core.Record: a year of person_custom_values is ~157k
+// rows, and holding them all to delete a handful is how a sweep turns into an
+// OOM.
+type orphanCandidate struct {
+	id   string
+	key  string
+	name string
+}
+
+// deleteOrphans runs the sweep in two phases: a read-only scan that collects the
+// orphans, then the deletes.
+//
+// The split is not stylistic. It fixes two defects at once:
+//
+//  1. The scan used OFFSET pagination -- page N read at offset (N-1)*perPage --
+//     while deleting inside the loop. Every delete shrinks the result set the
+//     next offset is measured against, so k deletes on a page slide k unread
+//     records past the cursor, permanently. With a full page of orphans the
+//     sweep skipped a whole page each time round. The scan is now KEYSET
+//     (cursor) paginated: ordered by id, each page asking for id > the last id
+//     seen. A cursor over a stable ordering cannot be moved by anything the
+//     sweep does, and since phase 1 writes nothing, nothing moves it at all.
+//
+//  2. The guard has to see the whole picture before the first delete. A ratio
+//     over rows-inspected-so-far is meaningless mid-scan; by the time a partial
+//     collapse became visible, a delete-as-you-go loop would already have
+//     deleted most of the year.
+func (b *BaseSyncService) deleteOrphans(
+	collection string,
+	getIDFunc func(record *core.Record) (string, bool),
+	entityName string,
+	filter string,
+	guard *OrphanSweepGuard,
+) error {
 	// Only delete orphans if the sync was successful
 	if !b.SyncSuccessful {
 		slog.Info("Skipping orphan deletion due to sync failure", "entity", entityName)
 		return nil
 	}
 
+	orphans, inspected, err := b.collectOrphans(collection, getIDFunc, entityName, filter)
+	if err != nil {
+		return err
+	}
+
+	if guard != nil {
+		if guardErr := guard.Check(inspected); guardErr != nil {
+			return guardErr
+		}
+	}
+
 	orphanCount := 0
-	page := 1
-	perPage := DefaultPageSize
-
-	for {
-		// Get records from PocketBase
-		records, err := b.App.FindRecordsByFilter(
-			collection,
-			filter,
-			"-created",
-			perPage,
-			(page-1)*perPage,
-		)
-		if err != nil {
-			return fmt.Errorf("loading %ss for orphan check: %w", entityName, err)
+	for _, candidate := range orphans {
+		record, findErr := b.App.FindRecordById(collection, candidate.id)
+		if findErr != nil {
+			slog.Warn("Orphaned record vanished before deletion",
+				"entity", entityName, "id", candidate.key, "error", findErr)
+			continue
 		}
 
-		// Check each record
-		for _, record := range records {
-			idKey, ok := getIDFunc(record)
-			if !ok {
-				continue
-			}
+		orphanCount++
+		slog.Info("Deleting orphaned record", "entity", entityName, "name", candidate.name, "id", candidate.key)
 
-			// Check if this record was processed using base class tracking
-			wasProcessed := b.ProcessedKeys[idKey]
-
-			if !wasProcessed {
-				// This record exists in PocketBase but not in CampMinder
-				orphanCount++
-
-				// Try to get a descriptive name for logging
-				name := b.getRecordName(record, entityName)
-				slog.Info("Deleting orphaned record", "entity", entityName, "name", name, "id", idKey)
-
-				if err := b.App.Delete(record); err != nil {
-					slog.Error("Failed to delete orphaned record", "entity", entityName, "id", idKey, "error", err)
-					b.Stats.Errors++
-				}
-			}
+		if err := b.App.Delete(record); err != nil {
+			slog.Error("Failed to delete orphaned record", "entity", entityName, "id", candidate.key, "error", err)
+			b.Stats.Errors++
 		}
-
-		if len(records) < perPage {
-			break
-		}
-		page++
 	}
 
 	if orphanCount > 0 {
@@ -215,6 +256,76 @@ func (b *BaseSyncService) DeleteOrphans(
 	}
 
 	return nil
+}
+
+// collectOrphans walks the whole filtered set read-only and returns the records
+// that this run did not process, plus the number of records it was able to key
+// (the sweep's denominator -- records getIDFunc rejects are never deletion
+// candidates and must not count towards the guard's ratio).
+func (b *BaseSyncService) collectOrphans(
+	collection string,
+	getIDFunc func(record *core.Record) (string, bool),
+	entityName string,
+	filter string,
+) ([]orphanCandidate, int, error) {
+	var orphans []orphanCandidate
+	inspected := 0
+	cursor := ""
+	perPage := DefaultPageSize
+
+	for {
+		pageFilter, params := keysetPage(filter, cursor)
+
+		records, err := b.App.FindRecordsByFilter(collection, pageFilter, "id", perPage, 0, params)
+		if err != nil {
+			return nil, 0, fmt.Errorf("loading %ss for orphan check: %w", entityName, err)
+		}
+		if len(records) == 0 {
+			break
+		}
+
+		for _, record := range records {
+			cursor = record.Id
+
+			idKey, ok := getIDFunc(record)
+			if !ok {
+				continue
+			}
+			inspected++
+
+			if b.ProcessedKeys[idKey] {
+				continue
+			}
+
+			orphans = append(orphans, orphanCandidate{
+				id:   record.Id,
+				key:  idKey,
+				name: b.getRecordName(record, entityName),
+			})
+		}
+
+		if len(records) < perPage {
+			break
+		}
+	}
+
+	return orphans, inspected, nil
+}
+
+// keysetPage composes a caller filter with the keyset cursor. The cursor is
+// bound as a query parameter rather than interpolated, so a record ID can never
+// be read as filter syntax.
+func keysetPage(filter, cursor string) (string, dbx.Params) {
+	if cursor == "" {
+		return filter, nil
+	}
+
+	params := dbx.Params{"orphanCursor": cursor}
+	if filter == "" {
+		return "id > {:orphanCursor}", params
+	}
+
+	return "(" + filter + ") && id > {:orphanCursor}", params
 }
 
 // FindOrphansFromPreloaded identifies orphan keys from preloaded records.
