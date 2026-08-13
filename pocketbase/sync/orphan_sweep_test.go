@@ -223,3 +223,47 @@ func TestHouseholdCustomFieldValuesDeleteOrphansSweepsPastTheTenThousandCap(t *t
 			remaining, computed)
 	}
 }
+
+// TestBaseDeleteOrphansDeletesNothingWhenNoRecordCanBeKeyed pins the blind spot
+// behind the unkeyable-record warning. Several getIDFuncs build their key from a
+// lookup map -- attendees from camp_sessions, bunk_plans from bunks and
+// camp_sessions -- so a collapsed lookup makes EVERY row unkeyable rather than
+// orphaned. Unkeyable is not orphaned: nothing may be deleted, and the guard
+// never sees these rows because they were never deletion candidates.
+func TestBaseDeleteOrphansDeletesNothingWhenNoRecordCanBeKeyed(t *testing.T) {
+	const seeded = 50
+
+	app := newOrphanSweepTestApp(t, "widgets", "name")
+	col, err := app.FindCollectionByNameOrId("widgets")
+	if err != nil {
+		t.Fatalf("find widgets: %v", err)
+	}
+	for i := 1; i <= seeded; i++ {
+		rec := core.NewRecord(col)
+		rec.Id = orphanTestID(i)
+		rec.Set("name", fmt.Sprintf("widget-%03d", i))
+		rec.Set("year", 2026)
+		if saveErr := app.Save(rec); saveErr != nil {
+			t.Fatalf("seed widget %d: %v", i, saveErr)
+		}
+	}
+
+	b := BaseSyncService{App: app, ProcessedKeys: map[string]bool{}, SyncSuccessful: true}
+
+	err = b.DeleteOrphansGuarded(
+		"widgets",
+		// The lookup this key depends on came back empty.
+		func(*core.Record) (string, bool) { return "", false },
+		"widget",
+		"year = 2026",
+		OrphanSweepGuard{Entity: "widgets", Year: 2026, Computed: 0},
+	)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if remaining := countRows(t, app, "widgets", "year = 2026"); remaining != seeded {
+		t.Fatalf("%d rows survived, want %d -- a record the sweep cannot key is not an orphan "+
+			"and must never be deleted", remaining, seeded)
+	}
+}

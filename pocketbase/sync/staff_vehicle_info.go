@@ -186,9 +186,11 @@ func (s *StaffVehicleInfoSync) Sync(ctx context.Context) error {
 	s.Stats.Deleted = deleted
 
 	// WAL checkpoint BEFORE the error return below. upsertRecords has already
-	// written by this point, and the cancellation path returns with those writes
-	// still in the WAL. (The refusal path cannot strand writes -- it requires an
-	// empty computed set, so nothing was upserted -- but cancellation can.)
+	// written by this point, and both error paths return with those writes still
+	// in the WAL. That now includes the refusal path: widening the guard to catch
+	// a PARTIAL collapse (kindred#2279) means it can refuse on a non-empty
+	// computed set, which is exactly the case where upsertRecords did write. The
+	// checkpoint therefore has to precede the error return, not follow it.
 	if s.Stats.Created > 0 || s.Stats.Updated > 0 || s.Stats.Deleted > 0 {
 		if cpErr := s.forceWALCheckpoint(); cpErr != nil {
 			slog.Warn("WAL checkpoint failed", "error", cpErr)

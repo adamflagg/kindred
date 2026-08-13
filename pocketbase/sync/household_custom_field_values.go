@@ -407,23 +407,25 @@ func (s *HouseholdCustomFieldValuesSync) syncHouseholdCustomFieldValues(
 // deleteOrphans removes custom field values that were not seen in this sync.
 //
 // This used to be a hand-rolled loop over a single FindRecordsByFilter capped at
-// 10,000 rows with no surrounding pagination (kindred#2266). 10,000 is a hard
-// cap, not a page size: production years hold 128,606-184,458 rows, so the sweep
-// inspected 5.4-7.8% of the year and a value deleted in CampMinder simply
-// survived, feeding every derived table that reads this one. Routing through the
+// 10,000 rows with no surrounding pagination -- the latent twin in kindred#2266.
+// 10,000 is a hard cap, not a page size. It has not bitten here only because the
+// table is small: the largest year holds 1,773 rows against person_custom_values'
+// 128,606-184,458. The cap would start silently dropping this table's orphans the
+// moment a year crossed it, so it goes now rather than later. Routing through the
 // shared guarded sweep replaces the cap with keyset pagination and picks up the
 // collapse guard, so there is one implementation instead of a local copy.
 //
-// sweptOwners is the set of household PB IDs whose values were successfully fetched
-// during THIS run, and it is what makes the fix safe rather than catastrophic.
-// The sweep's filter is the whole year, but the computed set is only ever as
-// wide as the run: this service takes a ?session= filter (api.go), and a
-// session resolves to the persons enrolled in it -- in the current season the
-// largest single session covers about 11% of the people who hold custom values.
-// Uncapping the read without narrowing the judgement would have let one
-// session-scoped run delete the other ~89% of the year as orphans. A row is a
-// candidate only if this run actually fetched that household's values; anything else
-// is invisible to the sweep, exactly as it should be.
+// sweptOwners is the set of household PB IDs whose values were successfully
+// fetched during THIS run, and it is what makes the fix safe rather than
+// catastrophic. The sweep's filter is the whole year, but the computed set is
+// only ever as wide as the run: this service takes a ?session= filter (api.go),
+// and getHouseholdIDsToSync resolves that session through
+// GetHouseholdIDsForSession to the households with someone enrolled in it --
+// a fraction of the year. Uncapping the read without narrowing the judgement
+// would have let one session-scoped run delete every other session's households'
+// values as orphans. A row is a candidate only if this run actually fetched that
+// household's values; anything else is invisible to the sweep, exactly as it
+// should be.
 func (s *HouseholdCustomFieldValuesSync) deleteOrphans(year int, sweptOwners map[string]bool) error {
 	return s.DeleteOrphansGuarded(
 		"household_custom_values",

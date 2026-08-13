@@ -396,7 +396,8 @@ func (s *AttendeesSync) deleteOrphans() error {
 			Entity:   "attendees",
 			Year:     year,
 			Computed: len(s.ProcessedKeys),
-			Hint:     "check that the sessions sync ran for that year -- an empty session table empties every attendee key",
+			Hint: "check that the CampMinder attendee feed returned this season (a collapsed " +
+				"camp_sessions table shows up as the unkeyable-record warning above, not here)",
 		},
 	)
 }

@@ -590,7 +590,9 @@ func (s *BunkAssignmentsSync) deleteOrphans() error {
 			Entity:   "bunk_assignments",
 			Year:     year,
 			Computed: len(s.ProcessedKeys),
-			Hint:     "check the persons and camp_sessions tables for that year -- the assignment keys are built from both",
+			Hint: "check that the CampMinder bunk-assignment feed returned this season (a " +
+				"collapsed persons or camp_sessions table shows up as the unkeyable-record " +
+				"warning above, not here)",
 		},
 	)
 }
