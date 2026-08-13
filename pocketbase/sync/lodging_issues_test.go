@@ -14,6 +14,7 @@ var testNow = time.Date(2026, 7, 30, 12, 0, 0, 0, time.UTC)
 // golangci-lint runs with `unused` enabled and would otherwise flag the ones no
 // code path has reached yet.
 func TestIssueKindsMatchTheMigration(t *testing.T) {
+	t.Parallel()
 	want := []string{
 		"unresolved_alias",
 		"ambiguous_alias",
@@ -40,6 +41,7 @@ func TestIssueKindsMatchTheMigration(t *testing.T) {
 // row. That is ONE thing for staff to fix, so it must be one queue item with an
 // occurrence count -- not five rows to wade through.
 func TestIssueRecorderCollapsesRepeats(t *testing.T) {
+	t.Parallel()
 	app := newLodgingTestApp(t)
 	r := NewIssueRecorder(app, 2022)
 
@@ -86,6 +88,7 @@ func TestIssueRecorderCollapsesRepeats(t *testing.T) {
 // TestIssueRecorderFlushIsIdempotent: re-running the sync must not double the
 // counts or add rows. occurrences is SET to what this run observed, not added to.
 func TestIssueRecorderFlushIsIdempotent(t *testing.T) {
+	t.Parallel()
 	app := newLodgingTestApp(t)
 
 	for pass := 0; pass < 2; pass++ {
@@ -126,6 +129,7 @@ func TestIssueRecorderFlushIsIdempotent(t *testing.T) {
 // per-household problem, so two households must produce two rows even though the
 // raw value and source field are identical.
 func TestIssueRecorderKeepsPerHouseholdIssuesSeparate(t *testing.T) {
+	t.Parallel()
 	app := newLodgingTestApp(t)
 	r := NewIssueRecorder(app, 2025)
 
@@ -151,6 +155,7 @@ func TestIssueRecorderKeepsPerHouseholdIssuesSeparate(t *testing.T) {
 // re-run whose last_updated stops parsing produces no suggestion; writing that
 // emptiness over an open queue item takes its one-click confirmation with it.
 func TestIssueRecorderFlushKeepsAnEarlierSuggestion(t *testing.T) {
+	t.Parallel()
 	app := newLodgingTestApp(t)
 	sess := addSession(t, app, 1309514, "Family Camp 1", "family",
 		"2025-05-23 07:00:00.000Z", "2025-05-26 07:00:00.000Z", 2025)
@@ -192,6 +197,7 @@ func TestIssueRecorderFlushKeepsAnEarlierSuggestion(t *testing.T) {
 // filter built by string concatenation would be a syntax error here, which is
 // exactly the class of bug that made Plan 1's alias verifier unable to pass.
 func TestIssueRecorderHandlesApostrophes(t *testing.T) {
+	t.Parallel()
 	app := newLodgingTestApp(t)
 	r := NewIssueRecorder(app, 2024)
 	r.Record(Issue{Kind: issueUnresolvedAlias, RawValue: "Golden Triangle - Doctor's House",

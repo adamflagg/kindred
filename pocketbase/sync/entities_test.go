@@ -10,6 +10,7 @@ const genderMixed = "Mixed"
 
 // TestStatusEndTime tests status end time handling
 func TestStatusEndTime(t *testing.T) {
+	t.Parallel()
 	now := time.Now()
 	status := Status{
 		Type:      "test",
@@ -31,6 +32,7 @@ func TestStatusEndTime(t *testing.T) {
 
 // TestSyncServiceOrdering tests the expected ordering of sync services
 func TestSyncServiceOrdering(t *testing.T) {
+	t.Parallel()
 	// The correct order based on dependencies
 	expectedOrder := []string{
 		"sessions",         // No dependencies
@@ -87,6 +89,7 @@ func TestSyncServiceOrdering(t *testing.T) {
 
 // TestGenderMapping tests gender value mapping
 func TestGenderMapping(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		input    string
 		expected string
@@ -135,6 +138,7 @@ func normalizeGender(gender string) string {
 
 // TestSessionTypeFromName tests session type extraction
 func TestSessionTypeFromName(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name     string
 		expected string
@@ -194,6 +198,7 @@ func getSessionTypeForTest(name string) string {
 
 // TestYearExtraction tests year extraction from various formats
 func TestYearExtraction(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		input    string
 		expected int
@@ -262,6 +267,7 @@ func (e *yearError) Error() string {
 
 // TestCMIDValidation tests CampMinder ID validation
 func TestCMIDValidation(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		cmid    int
 		isValid bool
@@ -291,6 +297,7 @@ func isValidCMID(cmid int) bool {
 
 // TestBunkNameParsing tests bunk name parsing
 func TestBunkNameParsing(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name       string
 		wantGender string
@@ -343,6 +350,7 @@ func parseBunkName(name string) (gender, number string) {
 
 // TestRequestTypeValidation tests bunk request type validation
 func TestRequestTypeValidation(t *testing.T) {
+	t.Parallel()
 	validTypes := []string{
 		"bunk_with",
 		"not_bunk_with",
@@ -385,6 +393,7 @@ func isValidRequestType(rt string) bool {
 
 // TestPageSizeSelection tests page size selection logic
 func TestPageSizeSelection(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name         string
 		entityCount  int

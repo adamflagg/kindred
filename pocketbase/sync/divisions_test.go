@@ -5,6 +5,7 @@ import (
 )
 
 func TestDivisionsSync_Name(t *testing.T) {
+	t.Parallel()
 	s := &DivisionsSync{}
 
 	got := s.Name()
@@ -17,6 +18,7 @@ func TestDivisionsSync_Name(t *testing.T) {
 
 // TestTransformDivisionToPB tests that all CampMinder division fields are extracted
 func TestTransformDivisionToPB(t *testing.T) {
+	t.Parallel()
 	s := &DivisionsSync{}
 
 	// Mock CampMinder API response based on divisions endpoint schema
@@ -80,6 +82,7 @@ func TestTransformDivisionToPB(t *testing.T) {
 
 // TestTransformDivisionToPB_MinimalData tests with only required fields
 func TestTransformDivisionToPB_MinimalData(t *testing.T) {
+	t.Parallel()
 	s := &DivisionsSync{}
 
 	// Minimal data with only required fields
@@ -109,6 +112,7 @@ func TestTransformDivisionToPB_MinimalData(t *testing.T) {
 
 // TestTransformDivisionToPB_MissingID tests that missing ID returns error
 func TestTransformDivisionToPB_MissingID(t *testing.T) {
+	t.Parallel()
 	s := &DivisionsSync{}
 
 	divisionData := map[string]any{
@@ -123,6 +127,7 @@ func TestTransformDivisionToPB_MissingID(t *testing.T) {
 
 // TestTransformDivisionToPB_MissingName tests that missing Name returns error
 func TestTransformDivisionToPB_MissingName(t *testing.T) {
+	t.Parallel()
 	s := &DivisionsSync{}
 
 	divisionData := map[string]any{
@@ -137,6 +142,7 @@ func TestTransformDivisionToPB_MissingName(t *testing.T) {
 
 // TestTransformDivisionToPB_ZeroID tests that zero ID returns error
 func TestTransformDivisionToPB_ZeroID(t *testing.T) {
+	t.Parallel()
 	s := &DivisionsSync{}
 
 	divisionData := map[string]any{
@@ -152,6 +158,7 @@ func TestTransformDivisionToPB_ZeroID(t *testing.T) {
 
 // TestTransformDivisionToPB_EmptyName tests that empty Name returns error
 func TestTransformDivisionToPB_EmptyName(t *testing.T) {
+	t.Parallel()
 	s := &DivisionsSync{}
 
 	divisionData := map[string]any{

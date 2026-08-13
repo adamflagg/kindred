@@ -10,6 +10,7 @@ import (
 // lodging_field_mappings has a UNIQUE index on field_cm_id that would reject the
 // second row at sync time rather than at review time.
 func TestLodgingSourceFieldsAreUnique(t *testing.T) {
+	t.Parallel()
 	seenCMID := map[int]string{}
 	for _, f := range lodgingSourceFields {
 		if prev, dup := seenCMID[f.CMID]; dup {
@@ -35,6 +36,7 @@ func TestLodgingSourceFieldsAreUnique(t *testing.T) {
 // -- so a request field appearing in that slice would file a work-queue issue
 // every single run, for a field that is being read correctly by somebody else.
 func TestLodgingRequestFieldsAreWellFormed(t *testing.T) {
+	t.Parallel()
 	assignment := map[int]string{}
 	for _, f := range lodgingSourceFields {
 		assignment[f.CMID] = f.Name
@@ -67,6 +69,7 @@ func TestLodgingRequestFieldsAreWellFormed(t *testing.T) {
 // display name. Resolving the name back from the cm_id is what stops a rename
 // from silently disconnecting an answer from its column.
 func TestLodgingRequestFieldNamesResolveThroughCMID(t *testing.T) {
+	t.Parallel()
 	app := newLodgingTestApp(t)
 
 	renamed := addFieldDef(t, app, cmIDShareCabinsRegistration, "FC Cabin Sharing 2027")
@@ -93,6 +96,7 @@ func TestLodgingRequestFieldNamesResolveThroughCMID(t *testing.T) {
 // display name (spec 4.4). The fixture renames a field to something the name
 // would never match; the mapping must still be found.
 func TestLodgingFieldDefIDsMapsByCMID(t *testing.T) {
+	t.Parallel()
 	app := newLodgingTestApp(t)
 
 	cabinDefID := addFieldDef(t, app, cmIDFamilyCampCabin, "Renamed By Staff In 2027")
@@ -119,6 +123,7 @@ func TestLodgingFieldDefIDsMapsByCMID(t *testing.T) {
 // a mapping stays active until a person turns it off, and once off the sync must
 // stop reading that field.
 func TestLodgingFieldDefIDsHonoursDisabledMapping(t *testing.T) {
+	t.Parallel()
 	app := newLodgingTestApp(t)
 	cabinDefID := addFieldDef(t, app, cmIDFamilyCampCabin, "Family Camp Cabin")
 
@@ -141,6 +146,7 @@ func TestLodgingFieldDefIDsHonoursDisabledMapping(t *testing.T) {
 // half of spec 4.4: "Retirement is never auto-inferred. A field with zero values
 // this year may simply have a form that hasn't been sent yet."
 func TestUpsertFieldMappingStatusIsIdempotentAndNeverAutoDisables(t *testing.T) {
+	t.Parallel()
 	app := newLodgingTestApp(t)
 	addFieldDef(t, app, cmIDFamilyCampCabin, "Family Camp Cabin")
 
@@ -182,6 +188,7 @@ func TestUpsertFieldMappingStatusIsIdempotentAndNeverAutoDisables(t *testing.T) 
 // wrong season -- "0 values in 2024" where staff expect "0 values in 2026, 171
 // in 2025". last_seen_* means MOST RECENT, so an older run must leave it alone.
 func TestUpsertFieldMappingStatusDoesNotRegressOnOlderYearBackfill(t *testing.T) {
+	t.Parallel()
 	app := newLodgingTestApp(t)
 	addFieldDef(t, app, cmIDFamilyCampCabin, "Family Camp Cabin")
 
@@ -224,6 +231,7 @@ func TestUpsertFieldMappingStatusDoesNotRegressOnOlderYearBackfill(t *testing.T)
 // year must still move the counters, or the warning freezes at whatever season
 // happened to run first.
 func TestUpsertFieldMappingStatusAdvancesOnNewerYear(t *testing.T) {
+	t.Parallel()
 	app := newLodgingTestApp(t)
 	addFieldDef(t, app, cmIDFamilyCampCabin, "Family Camp Cabin")
 

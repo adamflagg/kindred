@@ -20,6 +20,7 @@ import (
 
 // TestNormalizeGeographicSync_Name verifies the service name is correct
 func TestNormalizeGeographicSync_Name(t *testing.T) {
+	t.Parallel()
 	// The service name must be "normalize_geographic" for orchestrator integration
 	expectedName := "normalize_geographic"
 
@@ -36,6 +37,7 @@ func TestNormalizeGeographicSync_Name(t *testing.T) {
 
 // TestNormalizeGeographicYearValidation tests year parameter validation
 func TestNormalizeGeographicYearValidation(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name      string
 		year      int
@@ -67,6 +69,7 @@ func TestNormalizeGeographicYearValidation(t *testing.T) {
 
 // TestNormalizedMappingCompositeKey tests the composite key format for normalized_mappings
 func TestNormalizedMappingCompositeKey(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name          string
 		category      string
@@ -138,6 +141,7 @@ type testNormStats struct {
 // TestConfidenceEpsilonComparison tests that float64 confidence values are compared
 // with epsilon tolerance to ensure idempotent updates
 func TestConfidenceEpsilonComparison(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name        string
 		existing    float64
@@ -201,6 +205,7 @@ func TestConfidenceEpsilonComparison(t *testing.T) {
 
 // TestMappingNeedsUpdateWithEpsilon tests the full update detection with epsilon comparison
 func TestMappingNeedsUpdateWithEpsilon(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name          string
 		existingConf  float64
@@ -276,6 +281,7 @@ func TestMappingNeedsUpdateWithEpsilon(t *testing.T) {
 
 // TestIdempotentSyncRuns tests that running sync twice produces 0 updates on second run
 func TestIdempotentSyncRuns(t *testing.T) {
+	t.Parallel()
 	// Simulate first run creating records
 	mappings := []*testNormalizedMapping{
 		{
@@ -361,6 +367,7 @@ func simulateUpsertWithEpsilon(
 
 // TestUpsertNormalizedMappingsIdempotency verifies idempotent upsert behavior
 func TestUpsertNormalizedMappingsIdempotency(t *testing.T) {
+	t.Parallel()
 	// Simulate computed mappings from source data
 	mappings := []*testNormalizedMapping{
 		{
@@ -404,6 +411,7 @@ func TestUpsertNormalizedMappingsIdempotency(t *testing.T) {
 
 // TestUpsertNormalizedMappingsUpdateDetection verifies update detection
 func TestUpsertNormalizedMappingsUpdateDetection(t *testing.T) {
+	t.Parallel()
 	// Existing records in database
 	existingMappings := []*testNormalizedMapping{
 		{Category: "city", OriginalValue: "Oakland", NormalizedValue: "Oakland", OccurrenceCount: 10, Year: 2025},
@@ -430,6 +438,7 @@ func TestUpsertNormalizedMappingsUpdateDetection(t *testing.T) {
 
 // TestUpsertNormalizedMappingsOrphanDeletion verifies orphan cleanup
 func TestUpsertNormalizedMappingsOrphanDeletion(t *testing.T) {
+	t.Parallel()
 	// Existing records in database
 	existingMappings := []*testNormalizedMapping{
 		{
@@ -476,6 +485,7 @@ func TestUpsertNormalizedMappingsOrphanDeletion(t *testing.T) {
 
 // TestNormalizationCategories verifies category constants are correct
 func TestNormalizationCategories(t *testing.T) {
+	t.Parallel()
 	expected := []string{"city", "school", "congregation"}
 	categories := getNormalizationCategories()
 
@@ -660,6 +670,7 @@ func buildPersonSessionMappingKey(personPBID, sessionPBID, category string) stri
 
 // TestPersonSessionMappingKey tests the composite key format for person+session mappings
 func TestPersonSessionMappingKey(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name        string
 		personPBID  string
@@ -704,6 +715,7 @@ func TestPersonSessionMappingKey(t *testing.T) {
 // TestPersonSessionMappingUniquePerPersonSession tests that each person+session+category
 // combination produces exactly one mapping record
 func TestPersonSessionMappingUniquePerPersonSession(t *testing.T) {
+	t.Parallel()
 	// Simulate attendee geo data for two campers in different sessions
 	attendeeData := []testAttendeeGeoData{
 		{
@@ -791,6 +803,7 @@ func TestPersonSessionMappingUniquePerPersonSession(t *testing.T) {
 // TestSessionFilterCountsMatchMainList tests that filtering by session returns
 // counts that match the main registration list (fixes the "show sources" mismatch bug)
 func TestSessionFilterCountsMatchMainList(t *testing.T) {
+	t.Parallel()
 	// Create mappings for 2 persons in session 2001, 1 person in session 2002
 	mappings := []*testPersonSessionMapping{
 		// Person 101 in session 2001: school = "Riverside Elementary"
@@ -851,6 +864,7 @@ func countByNormalizedValue(mappings []*testPersonSessionMapping) map[string]int
 // TestCongregationUsesPersonLevelData verifies that congregation comes from
 // person_custom_values (HH-Name of Congregation) not household_custom_values (Synagogue)
 func TestCongregationUsesPersonLevelData(t *testing.T) {
+	t.Parallel()
 	// Simulate person_custom_values data (person-level congregation)
 	personCongregations := map[int]string{
 		101: "Temple Beth El - Oakland",         // Person 101
@@ -890,6 +904,7 @@ func TestCongregationUsesPersonLevelData(t *testing.T) {
 // TestPersonSessionUpsertIdempotency tests that upserting the same person+session
 // mapping twice results in skip (not update or create)
 func TestPersonSessionUpsertIdempotency(t *testing.T) {
+	t.Parallel()
 	// First run: create mappings
 	mappings := []*testPersonSessionMapping{
 		{
@@ -979,6 +994,7 @@ func personSessionMappingNeedsUpdate(existing, newMapping *testPersonSessionMapp
 // - Waitlisted campers get clean data for review and seamless enrollment transitions
 // - More data points improve canonical value selection via frequency-based clustering
 func TestAllAttendeesForYearInNormalizedMappings(t *testing.T) {
+	t.Parallel()
 	type testAttendee struct {
 		PersonID int
 		StatusID int
@@ -1032,6 +1048,7 @@ func TestAllAttendeesForYearInNormalizedMappings(t *testing.T) {
 // The JSON address field was removed in the Phase 3 migration (PR #208).
 // loadAttendeeGeoData must use personRecord.GetString("address_city").
 func TestCityUsesDiscreteColumn(t *testing.T) {
+	t.Parallel()
 	// This test verifies the expected data flow:
 	// persons.address_city (text column) → attendeeGeoData.City
 	//
@@ -1067,6 +1084,7 @@ func TestCityUsesDiscreteColumn(t *testing.T) {
 // helper is no longer needed. The normalize_geographic.go loadAttendeeGeoData
 // function should read address_city directly, not parse JSON.
 func TestExtractCityFromAddressNotUsed(t *testing.T) {
+	t.Parallel()
 	// After the fix, extractCityFromAddress should not exist on NormalizeGeographicSync.
 	// This test serves as documentation that city comes from a discrete column.
 	//
@@ -1080,6 +1098,7 @@ func TestExtractCityFromAddressNotUsed(t *testing.T) {
 // ============================================================================
 
 func TestCallGeoNormalizeAPI(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name           string
 		responseStatus int
@@ -1155,6 +1174,7 @@ const testCityOakland = "Oakland"
 // take priority over fuzzy match results. When a raw value has an alias
 // override, it should return the alias canonical with confidence 1.0.
 func TestResolveValueAliasOverrideTakesPriority(t *testing.T) {
+	t.Parallel()
 	// Fuzzy match lookup maps a raw value to a normalized entry
 	fuzzyLookup := map[string]normalizedEntry{
 		"Oaklnd": {Canonical: testCityOakland, Confidence: 0.9}, // fuzzy match would normalize to "Oakland"
@@ -1189,6 +1209,7 @@ func TestResolveValueAliasOverrideTakesPriority(t *testing.T) {
 // TestResolveValueAliasIsCaseInsensitive verifies that alias lookup is
 // case-insensitive (raw values are lowercased before lookup).
 func TestResolveValueAliasIsCaseInsensitive(t *testing.T) {
+	t.Parallel()
 	fuzzyLookup := map[string]normalizedEntry{}
 
 	aliasOverrides := map[string]map[string]string{
@@ -1220,6 +1241,7 @@ func TestResolveValueAliasIsCaseInsensitive(t *testing.T) {
 // are followed after fuzzy match resolution. If fuzzy matches "A" and a merge
 // says A -> B, the final result should be B.
 func TestResolveValueMergeRedirectAfterFuzzyMatch(t *testing.T) {
+	t.Parallel()
 	// Fuzzy match normalizes "Temple Beth-El" -> "Temple Beth El"
 	fuzzyLookup := map[string]normalizedEntry{
 		"Temple Beth-El": {Canonical: "Temple Beth El", Confidence: 0.9},
@@ -1257,6 +1279,7 @@ func TestResolveValueMergeRedirectAfterFuzzyMatch(t *testing.T) {
 // raw -> A, then merge redirects A -> B. Final result should be B with
 // confidence 1.0 (because the alias itself is a manual override).
 func TestResolveValueAliasPlusMerge(t *testing.T) {
+	t.Parallel()
 	fuzzyLookup := map[string]normalizedEntry{} // empty, alias should handle it
 
 	aliasOverrides := map[string]map[string]string{
@@ -1288,6 +1311,7 @@ func TestResolveValueAliasPlusMerge(t *testing.T) {
 // TestResolveValueEmptyOverridesFallBackToFuzzy verifies that when alias/merge
 // overrides are empty, the function falls back to fuzzy match as before.
 func TestResolveValueEmptyOverridesFallBackToFuzzy(t *testing.T) {
+	t.Parallel()
 	fuzzyLookup := map[string]normalizedEntry{
 		"San Fran": {Canonical: "San Francisco", Confidence: 0.9},
 	}
@@ -1318,6 +1342,7 @@ func TestResolveValueEmptyOverridesFallBackToFuzzy(t *testing.T) {
 // TestResolveValueFuzzyMatchExactCaseConfidence verifies that when fuzzy match
 // returns a case-equal result, confidence is 1.0.
 func TestResolveValueFuzzyMatchExactCaseConfidence(t *testing.T) {
+	t.Parallel()
 	fuzzyLookup := map[string]normalizedEntry{
 		testCityOakland: {Canonical: testCityOakland, Confidence: 1.0}, // exact match
 	}
@@ -1347,6 +1372,7 @@ func TestResolveValueFuzzyMatchExactCaseConfidence(t *testing.T) {
 // TestResolveValueNoMatchReturnsEmpty verifies that when no alias override
 // and no fuzzy match exist, resolveValue returns empty string and 0 confidence.
 func TestResolveValueNoMatchReturnsEmpty(t *testing.T) {
+	t.Parallel()
 	fuzzyLookup := map[string]normalizedEntry{} // no matches
 
 	aliasOverrides := map[string]map[string]string{
@@ -1374,6 +1400,7 @@ func TestResolveValueNoMatchReturnsEmpty(t *testing.T) {
 // TestResolveValueNilOverrideMapsDoNotPanic verifies that nil maps in the
 // overrides don't cause panics (defensive coding).
 func TestResolveValueNilOverrideMapsDoNotPanic(t *testing.T) {
+	t.Parallel()
 	fuzzyLookup := map[string]normalizedEntry{
 		testCityOakland: {Canonical: testCityOakland, Confidence: 1.0},
 	}
@@ -1397,6 +1424,7 @@ func TestResolveValueNilOverrideMapsDoNotPanic(t *testing.T) {
 // even when there are no alias overrides for a category. The fuzzy match
 // result is redirected by the merge.
 func TestResolveValueMergeOnlyNoAlias(t *testing.T) {
+	t.Parallel()
 	fuzzyLookup := map[string]normalizedEntry{
 		"Oak Valley Middle School": {Canonical: "Oak Valley Middle School", Confidence: 1.0},
 	}
@@ -1431,6 +1459,7 @@ func TestResolveValueMergeOnlyNoAlias(t *testing.T) {
 // TestResolveValueCategoryIsolation verifies that overrides for one category
 // do not affect resolution in another category.
 func TestResolveValueCategoryIsolation(t *testing.T) {
+	t.Parallel()
 	fuzzyLookup := map[string]normalizedEntry{
 		testCityOakland: {Canonical: testCityOakland, Confidence: 1.0},
 	}
@@ -1471,6 +1500,7 @@ func TestResolveValueCategoryIsolation(t *testing.T) {
 // TestAttendeeGeoDataHasAddressFields verifies the attendeeGeoData struct
 // carries address_state and address_country fields from the household join.
 func TestAttendeeGeoDataHasAddressFields(t *testing.T) {
+	t.Parallel()
 	data := attendeeGeoData{
 		PersonPBID:     "person_101",
 		PersonCMID:     101,
@@ -1494,6 +1524,7 @@ func TestAttendeeGeoDataHasAddressFields(t *testing.T) {
 // TestAttendeeGeoDataEmptyHousehold verifies that address fields default to
 // empty strings when no household is linked (nil expanded record).
 func TestAttendeeGeoDataEmptyHousehold(t *testing.T) {
+	t.Parallel()
 	data := attendeeGeoData{
 		PersonPBID:  "person_102",
 		PersonCMID:  102,
@@ -1515,6 +1546,7 @@ func TestAttendeeGeoDataEmptyHousehold(t *testing.T) {
 // TestPersonSessionMappingCarriesAddressFields verifies the personSessionMapping
 // struct carries address_state and address_country through the mapping pipeline.
 func TestPersonSessionMappingCarriesAddressFields(t *testing.T) {
+	t.Parallel()
 	m := personSessionMapping{
 		personPBID:      "person_101",
 		sessionPBID:     "session_2001",
@@ -1538,6 +1570,7 @@ func TestPersonSessionMappingCarriesAddressFields(t *testing.T) {
 // TestPersonSessionMappingNeedsUpdateDetectsAddressStateChange verifies that
 // a change to address_state triggers an update.
 func TestPersonSessionMappingNeedsUpdateDetectsAddressStateChange(t *testing.T) {
+	t.Parallel()
 	existing := &testPersonSessionMapping{
 		PersonPBID: "p101", SessionPBID: "s2001", Category: "city",
 		OriginalValue: "Oakland", NormalizedValue: "Oakland",
@@ -1560,6 +1593,7 @@ func TestPersonSessionMappingNeedsUpdateDetectsAddressStateChange(t *testing.T) 
 // TestPersonSessionMappingNeedsUpdateDetectsAddressCountryChange verifies that
 // a change to address_country triggers an update.
 func TestPersonSessionMappingNeedsUpdateDetectsAddressCountryChange(t *testing.T) {
+	t.Parallel()
 	existing := &testPersonSessionMapping{
 		PersonPBID: "p101", SessionPBID: "s2001", Category: "school",
 		OriginalValue: "Riverside Elementary", NormalizedValue: "Riverside Elementary",
@@ -1582,6 +1616,7 @@ func TestPersonSessionMappingNeedsUpdateDetectsAddressCountryChange(t *testing.T
 // TestPersonSessionMappingNeedsUpdateNoChangeWithAddress verifies that
 // identical address fields do not trigger a spurious update.
 func TestPersonSessionMappingNeedsUpdateNoChangeWithAddress(t *testing.T) {
+	t.Parallel()
 	existing := &testPersonSessionMapping{
 		PersonPBID: "p101", SessionPBID: "s2001", Category: "city",
 		OriginalValue: "Oakland", NormalizedValue: "Oakland",
@@ -1605,6 +1640,7 @@ func TestPersonSessionMappingNeedsUpdateNoChangeWithAddress(t *testing.T) {
 // address_country from attendeeGeoData flow through to personSessionMapping
 // for all three categories (school, city, congregation).
 func TestAddressFieldsPropagateToMappings(t *testing.T) {
+	t.Parallel()
 	attendeeData := []testAttendeeGeoData{
 		{
 			PersonPBID: "p101", PersonCMID: 101,
@@ -1667,6 +1703,7 @@ func TestAddressFieldsPropagateToMappings(t *testing.T) {
 // TestValueWithContextJSON verifies that valueWithContext serializes to the
 // JSON format expected by the Python normalizer: {"value": "x", "state": "CA", "country": "US"}
 func TestValueWithContextJSON(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name     string
 		input    valueWithContext
@@ -1705,6 +1742,7 @@ func TestValueWithContextJSON(t *testing.T) {
 // TestValueWithContextSliceJSON verifies that a slice of valueWithContext
 // serializes to the array format sent to Python normalizer.
 func TestValueWithContextSliceJSON(t *testing.T) {
+	t.Parallel()
 	values := []valueWithContext{
 		{Value: "Oakland", State: "CA", Country: "US"},
 		{Value: "London", State: "", Country: "GB"},
@@ -1740,6 +1778,7 @@ func TestValueWithContextSliceJSON(t *testing.T) {
 
 // TestGeoContextStruct verifies geoContext stores state and country.
 func TestGeoContextStruct(t *testing.T) {
+	t.Parallel()
 	ctx := geoContext{State: "CA", Country: "US"}
 	if ctx.State != "CA" {
 		t.Errorf("State = %q, want %q", ctx.State, "CA")
@@ -1757,6 +1796,7 @@ func TestGeoContextStruct(t *testing.T) {
 // collects the first-seen state/country context for each unique value, and passes
 // context tuples (not bare strings) to the normalizer.
 func TestBuildNormalizationLookupCollectsContext(t *testing.T) {
+	t.Parallel()
 	// This test verifies the internal collection logic without calling Python.
 	// We test that unique values are collected with first-seen context.
 
@@ -1825,6 +1865,7 @@ func TestBuildNormalizationLookupCollectsContext(t *testing.T) {
 // TestBuildContextValuesFromMap verifies that converting a map[string]geoContext
 // to []valueWithContext produces the expected entries.
 func TestBuildContextValuesFromMap(t *testing.T) {
+	t.Parallel()
 	valuesWithContext := map[string]geoContext{
 		"Oakland": {State: "CA", Country: "US"},
 		"London":  {State: "", Country: "GB"},
@@ -1975,6 +2016,7 @@ func TestBuildNormalizationLookupCompositeKeyDedup(t *testing.T) {
 // TestGeoLookupKeyCompositeEquality verifies that geoLookupKey uses
 // all three fields (Value, State, Country) for equality comparison.
 func TestGeoLookupKeyCompositeEquality(t *testing.T) {
+	t.Parallel()
 	k1 := geoLookupKey{Value: "Springfield", State: "IL", Country: "US"}
 	k2 := geoLookupKey{Value: "Springfield", State: "MO", Country: "US"}
 	k3 := geoLookupKey{Value: "Springfield", State: "IL", Country: "US"}
@@ -2002,6 +2044,7 @@ func TestGeoLookupKeyCompositeEquality(t *testing.T) {
 // TestRejectedOverridesSkipsMappings verifies that canonicals in the rejected
 // blocklist are silently skipped during upsert.
 func TestRejectedOverridesSkipsMappings(t *testing.T) {
+	t.Parallel()
 	rejectedOverrides := map[string]map[string]bool{
 		categoryCity:         {"springfield": true},
 		categorySchool:       {},
@@ -2050,6 +2093,7 @@ func TestRejectedOverridesSkipsMappings(t *testing.T) {
 // TestRejectedOverridesCaseInsensitive verifies that rejection matching
 // is case-insensitive.
 func TestRejectedOverridesCaseInsensitive(t *testing.T) {
+	t.Parallel()
 	rejectedOverrides := map[string]map[string]bool{
 		categoryCity: {"springfield": true},
 	}
@@ -2078,6 +2122,7 @@ func TestRejectedOverridesCaseInsensitive(t *testing.T) {
 // TestAddressCityPopulatedInMappings verifies that address_city is populated
 // from the attendee's City field for all category mappings.
 func TestAddressCityPopulatedInMappings(t *testing.T) {
+	t.Parallel()
 	data := []attendeeGeoData{
 		{
 			PersonPBID: "p1", PersonCMID: 1001, SessionPBID: "s1", SessionCMID: 2001,
@@ -2124,6 +2169,7 @@ func TestAddressCityPopulatedInMappings(t *testing.T) {
 // TestOverrideMapDedup_AliasNewestYearWins verifies that when the same alias key
 // is assigned from records sorted by year ASC, the newest year's value wins.
 func TestOverrideMapDedup_AliasNewestYearWins(t *testing.T) {
+	t.Parallel()
 	aliasOverrides := map[string]map[string]string{
 		categoryCity: {}, categorySchool: {}, categoryCongregation: {},
 	}
@@ -2140,6 +2186,7 @@ func TestOverrideMapDedup_AliasNewestYearWins(t *testing.T) {
 
 // TestOverrideMapDedup_MergeNewestYearWins verifies merge override dedup.
 func TestOverrideMapDedup_MergeNewestYearWins(t *testing.T) {
+	t.Parallel()
 	mergeOverrides := map[string]map[string]string{
 		categoryCity: {}, categorySchool: {}, categoryCongregation: {},
 	}
@@ -2157,6 +2204,7 @@ func TestOverrideMapDedup_MergeNewestYearWins(t *testing.T) {
 
 // TestOverrideMapDedup_RejectedCarriesForward verifies rejected overrides persist across years.
 func TestOverrideMapDedup_RejectedCarriesForward(t *testing.T) {
+	t.Parallel()
 	rejectedOverrides := map[string]map[string]bool{
 		categoryCity: {}, categorySchool: {}, categoryCongregation: {},
 	}

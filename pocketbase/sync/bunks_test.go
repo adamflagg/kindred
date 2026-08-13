@@ -5,6 +5,7 @@ import (
 )
 
 func TestBunksSync_transformBunkToPB_WithNewFields(t *testing.T) {
+	t.Parallel()
 	// Test the field extraction logic that should be in transformBunkToPB
 	// Since we can't easily mock the full service, we test the transformation logic directly
 
@@ -158,6 +159,7 @@ func TestBunksSync_transformBunkToPB_WithNewFields(t *testing.T) {
 }
 
 func TestBunksSync_CompareFieldsUpdated(t *testing.T) {
+	t.Parallel()
 	// This test verifies that the compareFields list in Sync() includes the new fields
 	// Since we can't easily test the actual Sync() method without a full integration test,
 	// this is a documentation test to ensure developers know these fields should be compared

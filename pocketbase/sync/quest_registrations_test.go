@@ -16,6 +16,7 @@ import (
 // into the map and then silently fail to route. No untrimmed name exists in
 // this table today; this pins the fix against a future one.
 func TestQuestRegistrationsLoadFieldDefinitionsTrimsNames(t *testing.T) {
+	t.Parallel()
 	app := newFieldDefsTestApp(t, map[int]string{
 		1: "Q-Why come? ",           // trailing space
 		2: "Quest-Parent Signature", // already clean, must be unaffected
@@ -48,6 +49,7 @@ func TestQuestRegistrationsLoadFieldDefinitionsTrimsNames(t *testing.T) {
 
 // TestQuestRegistrationsSync_Name verifies the service name is correct
 func TestQuestRegistrationsSync_Name(t *testing.T) {
+	t.Parallel()
 	expectedName := "quest_registrations"
 	if serviceNameQuestRegistrations != expectedName {
 		t.Errorf("expected service name %q, got %q", expectedName, serviceNameQuestRegistrations)
@@ -56,6 +58,7 @@ func TestQuestRegistrationsSync_Name(t *testing.T) {
 
 // TestQuestRegistrationsYearValidation tests year parameter validation
 func TestQuestRegistrationsYearValidation(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name      string
 		year      int
@@ -83,6 +86,7 @@ func TestQuestRegistrationsYearValidation(t *testing.T) {
 
 // TestQuestFieldMapping tests CampMinder field to column mapping
 func TestQuestFieldMapping(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		fieldName  string
 		wantColumn string
@@ -155,6 +159,7 @@ func TestQuestFieldMapping(t *testing.T) {
 
 // TestQuestCompositeKeyFormat tests composite key generation
 func TestQuestCompositeKeyFormat(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name     string
 		personID int
@@ -178,6 +183,7 @@ func TestQuestCompositeKeyFormat(t *testing.T) {
 
 // TestIsQuestField tests identification of Quest fields
 func TestIsQuestField(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		fieldName   string
 		wantIsQuest bool
@@ -205,6 +211,7 @@ func TestIsQuestField(t *testing.T) {
 
 // TestQuestBooleanParsing tests parsing Bar/Bat Mitzvah year field
 func TestQuestBooleanParsing(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name     string
 		rawValue string
@@ -230,6 +237,7 @@ func TestQuestBooleanParsing(t *testing.T) {
 
 // TestQuestRecordBuilding tests building quest records from source data
 func TestQuestRecordBuilding(t *testing.T) {
+	t.Parallel()
 	fieldValues := []testQuestFieldValue{
 		{PersonID: 12345, FieldName: "Quest-Parent Signature", Value: "John Smith", Year: 2025},
 		{PersonID: 12345, FieldName: "Quest-biggest hope", Value: "Make new friends", Year: 2025},
@@ -267,6 +275,7 @@ func TestQuestRecordBuilding(t *testing.T) {
 
 // TestQuestEmptyDataHandling tests graceful handling of empty input
 func TestQuestEmptyDataHandling(t *testing.T) {
+	t.Parallel()
 	fieldValues := []testQuestFieldValue{}
 
 	records := buildQuestRecords(fieldValues)
@@ -278,6 +287,7 @@ func TestQuestEmptyDataHandling(t *testing.T) {
 
 // TestQuestFieldCount tests that we map all expected fields
 func TestQuestFieldCount(t *testing.T) {
+	t.Parallel()
 	// From the plan: 45 Quest-/Q- fields total
 	// We should map at least the key ones
 	knownFields := []string{

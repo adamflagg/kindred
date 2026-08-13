@@ -5,6 +5,7 @@ import (
 )
 
 func TestStaffLookupsSync_Name(t *testing.T) {
+	t.Parallel()
 	s := &StaffLookupsSync{}
 
 	got := s.Name()
@@ -20,6 +21,7 @@ func TestStaffLookupsSync_Name(t *testing.T) {
 // =============================================================================
 
 func TestTransformProgramAreaToPB(t *testing.T) {
+	t.Parallel()
 	s := &StaffLookupsSync{}
 
 	// Mock CampMinder API response
@@ -48,6 +50,7 @@ func TestTransformProgramAreaToPB(t *testing.T) {
 }
 
 func TestTransformProgramAreaToPB_MissingID(t *testing.T) {
+	t.Parallel()
 	s := &StaffLookupsSync{}
 
 	data := map[string]any{
@@ -61,6 +64,7 @@ func TestTransformProgramAreaToPB_MissingID(t *testing.T) {
 }
 
 func TestTransformProgramAreaToPB_ZeroID(t *testing.T) {
+	t.Parallel()
 	s := &StaffLookupsSync{}
 
 	data := map[string]any{
@@ -75,6 +79,7 @@ func TestTransformProgramAreaToPB_ZeroID(t *testing.T) {
 }
 
 func TestTransformProgramAreaToPB_MissingName(t *testing.T) {
+	t.Parallel()
 	s := &StaffLookupsSync{}
 
 	data := map[string]any{
@@ -88,6 +93,7 @@ func TestTransformProgramAreaToPB_MissingName(t *testing.T) {
 }
 
 func TestTransformProgramAreaToPB_EmptyName(t *testing.T) {
+	t.Parallel()
 	s := &StaffLookupsSync{}
 
 	data := map[string]any{
@@ -106,6 +112,7 @@ func TestTransformProgramAreaToPB_EmptyName(t *testing.T) {
 // =============================================================================
 
 func TestTransformOrgCategoryToPB(t *testing.T) {
+	t.Parallel()
 	s := &StaffLookupsSync{}
 
 	// Mock CampMinder API response
@@ -134,6 +141,7 @@ func TestTransformOrgCategoryToPB(t *testing.T) {
 }
 
 func TestTransformOrgCategoryToPB_MissingID(t *testing.T) {
+	t.Parallel()
 	s := &StaffLookupsSync{}
 
 	data := map[string]any{
@@ -147,6 +155,7 @@ func TestTransformOrgCategoryToPB_MissingID(t *testing.T) {
 }
 
 func TestTransformOrgCategoryToPB_ZeroID(t *testing.T) {
+	t.Parallel()
 	s := &StaffLookupsSync{}
 
 	data := map[string]any{
@@ -161,6 +170,7 @@ func TestTransformOrgCategoryToPB_ZeroID(t *testing.T) {
 }
 
 func TestTransformOrgCategoryToPB_MissingName(t *testing.T) {
+	t.Parallel()
 	s := &StaffLookupsSync{}
 
 	data := map[string]any{
@@ -174,6 +184,7 @@ func TestTransformOrgCategoryToPB_MissingName(t *testing.T) {
 }
 
 func TestTransformOrgCategoryToPB_EmptyName(t *testing.T) {
+	t.Parallel()
 	s := &StaffLookupsSync{}
 
 	data := map[string]any{
@@ -192,6 +203,7 @@ func TestTransformOrgCategoryToPB_EmptyName(t *testing.T) {
 // =============================================================================
 
 func TestTransformPositionToPB(t *testing.T) {
+	t.Parallel()
 	s := &StaffLookupsSync{}
 
 	// Program area lookup map
@@ -224,6 +236,7 @@ func TestTransformPositionToPB(t *testing.T) {
 }
 
 func TestTransformPositionToPB_NoProgramArea(t *testing.T) {
+	t.Parallel()
 	s := &StaffLookupsSync{}
 
 	programAreaMap := map[int]string{}
@@ -254,6 +267,7 @@ func TestTransformPositionToPB_NoProgramArea(t *testing.T) {
 }
 
 func TestTransformPositionToPB_UnknownProgramArea(t *testing.T) {
+	t.Parallel()
 	s := &StaffLookupsSync{}
 
 	// Program area map doesn't include the referenced ID
@@ -283,6 +297,7 @@ func TestTransformPositionToPB_UnknownProgramArea(t *testing.T) {
 }
 
 func TestTransformPositionToPB_MissingID(t *testing.T) {
+	t.Parallel()
 	s := &StaffLookupsSync{}
 
 	programAreaMap := map[int]string{}
@@ -298,6 +313,7 @@ func TestTransformPositionToPB_MissingID(t *testing.T) {
 }
 
 func TestTransformPositionToPB_ZeroID(t *testing.T) {
+	t.Parallel()
 	s := &StaffLookupsSync{}
 
 	programAreaMap := map[int]string{}
@@ -314,6 +330,7 @@ func TestTransformPositionToPB_ZeroID(t *testing.T) {
 }
 
 func TestTransformPositionToPB_MissingName(t *testing.T) {
+	t.Parallel()
 	s := &StaffLookupsSync{}
 
 	programAreaMap := map[int]string{}
@@ -329,6 +346,7 @@ func TestTransformPositionToPB_MissingName(t *testing.T) {
 }
 
 func TestTransformPositionToPB_EmptyName(t *testing.T) {
+	t.Parallel()
 	s := &StaffLookupsSync{}
 
 	programAreaMap := map[int]string{}

@@ -16,6 +16,7 @@ import (
 // be admitted into the map and then silently fail to route. No untrimmed name
 // exists in this table today; this pins the fix against a future one.
 func TestCamperTransportationLoadFieldDefinitionsTrimsNames(t *testing.T) {
+	t.Parallel()
 	app := newFieldDefsTestApp(t, map[int]string{
 		1: "BUS-who is dropping off ", // trailing space
 		2: "BUS-to camp",              // already clean, must be unaffected
@@ -48,6 +49,7 @@ func TestCamperTransportationLoadFieldDefinitionsTrimsNames(t *testing.T) {
 
 // TestCamperTransportationSync_Name verifies the service name is correct
 func TestCamperTransportationSync_Name(t *testing.T) {
+	t.Parallel()
 	expectedName := "camper_transportation"
 	if serviceNameCamperTransportation != expectedName {
 		t.Errorf("expected service name %q, got %q", expectedName, serviceNameCamperTransportation)
@@ -56,6 +58,7 @@ func TestCamperTransportationSync_Name(t *testing.T) {
 
 // TestCamperTransportationYearValidation tests year parameter validation
 func TestCamperTransportationYearValidation(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name      string
 		year      int
@@ -83,6 +86,7 @@ func TestCamperTransportationYearValidation(t *testing.T) {
 
 // TestTransportationMethodParsing tests parsing of transportation method values
 func TestTransportationMethodParsing(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name     string
 		rawValue string
@@ -111,6 +115,7 @@ func TestTransportationMethodParsing(t *testing.T) {
 
 // TestTransportationFieldMapping tests CampMinder field to column mapping
 func TestTransportationFieldMapping(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		fieldName  string
 		wantColumn string
@@ -148,6 +153,7 @@ func TestTransportationFieldMapping(t *testing.T) {
 
 // TestTransportationCompositeKeyFormat tests composite key generation
 func TestTransportationCompositeKeyFormat(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name      string
 		personID  int
@@ -172,6 +178,7 @@ func TestTransportationCompositeKeyFormat(t *testing.T) {
 
 // TestIsTransportationField tests identification of transportation fields
 func TestIsTransportationField(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		fieldName            string
 		wantIsTransportation bool
@@ -199,6 +206,7 @@ func TestIsTransportationField(t *testing.T) {
 
 // TestLegacyFieldFallback tests that legacy fields are used when modern fields are empty
 func TestLegacyFieldFallback(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name           string
 		modernValue    string
@@ -227,6 +235,7 @@ func TestLegacyFieldFallback(t *testing.T) {
 
 // TestTransportationRecordBuilding tests building transportation records from source data
 func TestTransportationRecordBuilding(t *testing.T) {
+	t.Parallel()
 	fieldValues := []testTransportFieldValue{
 		{PersonID: 12345, SessionID: 1000001, FieldName: "BUS-to camp", Value: "Bus-SF", Year: 2025},
 		{PersonID: 12345, SessionID: 1000001, FieldName: "BUS-home from camp", Value: "Flying", Year: 2025},
@@ -260,6 +269,7 @@ func TestTransportationRecordBuilding(t *testing.T) {
 
 // TestTransportationEmptyDataHandling tests graceful handling of empty input
 func TestTransportationEmptyDataHandling(t *testing.T) {
+	t.Parallel()
 	fieldValues := []testTransportFieldValue{}
 
 	records := buildTransportationRecords(fieldValues)
@@ -424,6 +434,7 @@ func findTransportRecord(records []*testTransportRecord, personID, sessionID int
 // only has a "session" relation field (PB ID), not "session_id" (CM ID).
 // The fix uses ExpandRecords() to expand the session relation and get cm_id.
 func TestExtractSessionCMIDFromExpanded(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name            string
 		sessionCMID     int
@@ -473,6 +484,7 @@ func extractSessionCMID(cmID int) int {
 // created when both person_id AND session_id (CM ID) are valid.
 // This ensures the fixed loadAttendeeMapping won't add entries with session_id=0.
 func TestAttendeeKeyRequiresValidSessionID(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name      string
 		personID  int

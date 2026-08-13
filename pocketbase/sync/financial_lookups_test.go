@@ -5,6 +5,7 @@ import (
 )
 
 func TestFinancialLookupsSync_Name(t *testing.T) {
+	t.Parallel()
 	s := &FinancialLookupsSync{}
 
 	got := s.Name()
@@ -20,6 +21,7 @@ func TestFinancialLookupsSync_Name(t *testing.T) {
 // =============================================================================
 
 func TestTransformFinancialCategoryToPB(t *testing.T) {
+	t.Parallel()
 	s := &FinancialLookupsSync{}
 
 	// Mock CampMinder API response (lowercase field names per OpenAPI spec)
@@ -47,6 +49,7 @@ func TestTransformFinancialCategoryToPB(t *testing.T) {
 }
 
 func TestTransformFinancialCategoryToPB_Archived(t *testing.T) {
+	t.Parallel()
 	s := &FinancialLookupsSync{}
 
 	categoryData := map[string]any{
@@ -66,6 +69,7 @@ func TestTransformFinancialCategoryToPB_Archived(t *testing.T) {
 }
 
 func TestTransformFinancialCategoryToPB_NullName(t *testing.T) {
+	t.Parallel()
 	s := &FinancialLookupsSync{}
 
 	// API allows nullable name
@@ -87,6 +91,7 @@ func TestTransformFinancialCategoryToPB_NullName(t *testing.T) {
 }
 
 func TestTransformFinancialCategoryToPB_MissingName(t *testing.T) {
+	t.Parallel()
 	s := &FinancialLookupsSync{}
 
 	// No name key at all
@@ -107,6 +112,7 @@ func TestTransformFinancialCategoryToPB_MissingName(t *testing.T) {
 }
 
 func TestTransformFinancialCategoryToPB_MissingID(t *testing.T) {
+	t.Parallel()
 	s := &FinancialLookupsSync{}
 
 	data := map[string]any{
@@ -121,6 +127,7 @@ func TestTransformFinancialCategoryToPB_MissingID(t *testing.T) {
 }
 
 func TestTransformFinancialCategoryToPB_ZeroID(t *testing.T) {
+	t.Parallel()
 	s := &FinancialLookupsSync{}
 
 	data := map[string]any{
@@ -140,6 +147,7 @@ func TestTransformFinancialCategoryToPB_ZeroID(t *testing.T) {
 // =============================================================================
 
 func TestTransformPaymentMethodToPB(t *testing.T) {
+	t.Parallel()
 	s := &FinancialLookupsSync{}
 
 	// Mock CampMinder API response (lowercase field names per OpenAPI spec)
@@ -168,6 +176,7 @@ func TestTransformPaymentMethodToPB(t *testing.T) {
 }
 
 func TestTransformPaymentMethodToPB_NullName(t *testing.T) {
+	t.Parallel()
 	s := &FinancialLookupsSync{}
 
 	// API allows nullable name
@@ -188,6 +197,7 @@ func TestTransformPaymentMethodToPB_NullName(t *testing.T) {
 }
 
 func TestTransformPaymentMethodToPB_MissingName(t *testing.T) {
+	t.Parallel()
 	s := &FinancialLookupsSync{}
 
 	// No name key at all
@@ -207,6 +217,7 @@ func TestTransformPaymentMethodToPB_MissingName(t *testing.T) {
 }
 
 func TestTransformPaymentMethodToPB_MissingID(t *testing.T) {
+	t.Parallel()
 	s := &FinancialLookupsSync{}
 
 	data := map[string]any{
@@ -220,6 +231,7 @@ func TestTransformPaymentMethodToPB_MissingID(t *testing.T) {
 }
 
 func TestTransformPaymentMethodToPB_ZeroID(t *testing.T) {
+	t.Parallel()
 	s := &FinancialLookupsSync{}
 
 	data := map[string]any{

@@ -37,6 +37,7 @@ const testAffiliation = "Reform"
 // untrimmed name there would fail admission itself. No untrimmed name exists
 // in this table today; this pins the fix against a future one.
 func TestHouseholdDemographicsLoadFieldDefinitionsTrimsNames(t *testing.T) {
+	t.Parallel()
 	app := newFieldDefsTestApp(t, map[int]string{
 		1: "HH-Family Description ", // trailing space
 		2: "Board ",                 // trailing space, exact-match admission
@@ -80,6 +81,7 @@ func TestHouseholdDemographicsLoadFieldDefinitionsTrimsNames(t *testing.T) {
 
 // TestHouseholdDemographicsSync_Name verifies the service name is correct
 func TestHouseholdDemographicsSync_Name(t *testing.T) {
+	t.Parallel()
 	// The orchestrator registers and looks this service up by name; a rename
 	// that missed one of the two registration paths would strand the job.
 	if got := NewHouseholdDemographicsSync(nil).Name(); got != "household_demographics" {
@@ -89,6 +91,7 @@ func TestHouseholdDemographicsSync_Name(t *testing.T) {
 
 // TestHouseholdDemographicsSync_YearValidation tests year parameter validation
 func TestHouseholdDemographicsSync_YearValidation(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name      string
 		year      int
@@ -120,6 +123,7 @@ func TestHouseholdDemographicsSync_YearValidation(t *testing.T) {
 
 // TestHouseholdDemographicsFieldMapping tests mapping from HH- fields to demographic columns
 func TestHouseholdDemographicsFieldMapping(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		fieldName      string
 		expectedColumn string
@@ -171,6 +175,7 @@ func TestHouseholdDemographicsFieldMapping(t *testing.T) {
 
 // TestHouseholdCustomFieldMapping tests mapping from household custom fields
 func TestHouseholdCustomFieldMapping(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		fieldName      string
 		expectedColumn string
@@ -205,6 +210,7 @@ func TestHouseholdCustomFieldMapping(t *testing.T) {
 
 // TestHouseholdDemographicsBooleanParsing tests parsing of boolean custom field values
 func TestHouseholdDemographicsBooleanParsing(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		value    string
 		expected bool
@@ -249,6 +255,7 @@ func TestHouseholdDemographicsBooleanParsing(t *testing.T) {
 
 // TestIsHHField tests detection of HH- prefixed fields
 func TestIsHHField(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		fieldName string
 		isHHField bool
@@ -370,6 +377,7 @@ func rowKeys(rows map[string]*householdDemographicsRecord) []string {
 // answer was discarded with no log line and no counter. Both answers must now
 // survive, on their own row.
 func TestAggregateKeepsEveryPersonAnswer(t *testing.T) {
+	t.Parallel()
 	s := NewHouseholdDemographicsSync(nil)
 
 	values := []hhCustomValueEntry{
@@ -403,6 +411,7 @@ func TestAggregateKeepsEveryPersonAnswer(t *testing.T) {
 // artifact of whichever index the planner picked; the same input supplied in a
 // different order must produce byte-identical rows.
 func TestAggregateIsOrderIndependent(t *testing.T) {
+	t.Parallel()
 	s := NewHouseholdDemographicsSync(nil)
 
 	values := []hhCustomValueEntry{
@@ -440,6 +449,7 @@ func TestAggregateIsOrderIndependent(t *testing.T) {
 // still order-independent within one camper's answers, and one camper's "No"
 // no longer speaks for a sibling who said "Yes".
 func TestAggregateBooleanArmsStillOR(t *testing.T) {
+	t.Parallel()
 	s := NewHouseholdDemographicsSync(nil)
 
 	// Same camper, two contributing values -- the OR must win either way round.
@@ -478,6 +488,7 @@ func TestAggregateBooleanArmsStillOR(t *testing.T) {
 // camper's row. They land on the person-less row (person_id 0), which coexists
 // with the camper rows for the same household-year.
 func TestAggregateHouseholdValuesGetTheirOwnRow(t *testing.T) {
+	t.Parallel()
 	s := NewHouseholdDemographicsSync(nil)
 
 	personValues := []hhCustomValueEntry{
@@ -542,6 +553,7 @@ func TestAggregateHouseholdValuesGetTheirOwnRow(t *testing.T) {
 // single camper, so a case arm dropped or mis-wired during the re-grain shows
 // up as a wrong column rather than as a missing test.
 func TestAggregateFullRecord(t *testing.T) {
+	t.Parallel()
 	s := NewHouseholdDemographicsSync(nil)
 
 	personValues := []hhCustomValueEntry{
@@ -629,6 +641,7 @@ func TestAggregateFullRecord(t *testing.T) {
 // affiliation cannot be unioned coherently. Each camper's string is stored as
 // given, untouched.
 func TestAggregatePreservesMultiSelectVerbatim(t *testing.T) {
+	t.Parallel()
 	s := NewHouseholdDemographicsSync(nil)
 
 	rows := s.aggregateToRows([]hhCustomValueEntry{
@@ -660,6 +673,7 @@ func TestAggregatePreservesMultiSelectVerbatim(t *testing.T) {
 // key. A key that omits the person collapses siblings back together no matter
 // what the index says.
 func TestMakeCompositeKeyCarriesPerson(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		household string
 		personCM  int
@@ -694,6 +708,7 @@ func TestMakeCompositeKeyCarriesPerson(t *testing.T) {
 // against a fixture carrying the real unique index, so a key that disagrees
 // with either of the other two legs fails here rather than in production.
 func TestUpsertAndOrphanSweepAgreeOnGrain(t *testing.T) {
+	t.Parallel()
 	app, households, persons := newHouseholdDemographicsTestApp(t)
 	ctx := context.Background()
 
@@ -780,6 +795,7 @@ func TestUpsertAndOrphanSweepAgreeOnGrain(t *testing.T) {
 // to be a failed read than a year in which nobody answered anything -- and the
 // sweep is the one step of this sync that a re-run cannot undo.
 func TestDeleteOrphansRefusesToEmptyTheTable(t *testing.T) {
+	t.Parallel()
 	app, households, persons := newHouseholdDemographicsTestApp(t)
 	ctx := context.Background()
 
@@ -843,6 +859,7 @@ func countDemographicsRows(t *testing.T, app core.App) int {
 // The three arms are pinned separately because only the third one distinguishes
 // the new rule from the old one.
 func TestSetColumnIsMustBeUniqueNotFirstWins(t *testing.T) {
+	t.Parallel()
 	t.Run("writes into an empty column", func(t *testing.T) {
 		s := &HouseholdDemographicsSync{}
 		rec := &householdDemographicsRecord{householdPBID: "hh1", personCMID: 11, year: 2026}

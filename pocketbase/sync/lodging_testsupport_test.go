@@ -403,6 +403,7 @@ func assertLodgingCollectionsEmpty(t *testing.T, app core.App) {
 // season nobody has loaded a registry for at all. Sync must skip the lodging
 // portion and return nil, not fail the whole run.
 func TestLodgingAssignmentsSyncSkipsWhenRegistryNeverLoaded(t *testing.T) {
+	t.Parallel()
 	app := newLodgingTestApp(t)
 	// No addUnit call anywhere: lodging_units is empty for every year.
 
@@ -433,6 +434,7 @@ func TestLodgingAssignmentsSyncSkipsWhenRegistryNeverLoaded(t *testing.T) {
 // for the new year and every cabin unresolves unless the guard catches it
 // first.
 func TestLodgingAssignmentsSyncSkipsWhenSeasonNotRolledForward(t *testing.T) {
+	t.Parallel()
 	app := newLodgingTestApp(t)
 	priorYearUnit := addUnit(t, app, "ridge-a", 2026)
 	addAlias(t, app, "Ridge A", []string{priorYearUnit}, 0, 0)
@@ -457,6 +459,7 @@ func TestLodgingAssignmentsSyncSkipsWhenSeasonNotRolledForward(t *testing.T) {
 // TestAliasResolverHasUnitsForYear exercises the two lookups Sync's year guard
 // depends on, distinguishing "never loaded" from "not this year".
 func TestAliasResolverHasUnitsForYear(t *testing.T) {
+	t.Parallel()
 	app := newLodgingTestApp(t)
 	addUnit(t, app, "ridge-a", 2026)
 
@@ -478,6 +481,7 @@ func TestAliasResolverHasUnitsForYear(t *testing.T) {
 // TestAliasResolverHasAnyUnitsFalseWhenEmpty covers the other guard branch:
 // no registry loaded for any season at all.
 func TestAliasResolverHasAnyUnitsFalseWhenEmpty(t *testing.T) {
+	t.Parallel()
 	app := newLodgingTestApp(t)
 
 	r, err := NewAliasResolver(app)

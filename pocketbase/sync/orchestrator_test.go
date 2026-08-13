@@ -86,6 +86,7 @@ func (m *MockService) GetCallCount() int {
 
 // TestOrchestratorCreation tests orchestrator initialization
 func TestOrchestratorCreation(t *testing.T) {
+	t.Parallel()
 	o := NewOrchestrator(nil)
 
 	if o == nil {
@@ -112,6 +113,7 @@ func TestOrchestratorCreation(t *testing.T) {
 
 // TestRegisterService tests service registration
 func TestRegisterService(t *testing.T) {
+	t.Parallel()
 	o := NewOrchestrator(nil)
 
 	mock := &MockService{name: "test_service"}
@@ -128,6 +130,7 @@ func TestRegisterService(t *testing.T) {
 
 // TestRegisterMultipleServices tests registering multiple services
 func TestRegisterMultipleServices(t *testing.T) {
+	t.Parallel()
 	o := NewOrchestrator(nil)
 
 	services := []string{"sessions", "attendees", "persons", "bunks"}
@@ -144,6 +147,7 @@ func TestRegisterMultipleServices(t *testing.T) {
 
 // TestIsRunning tests running status checks
 func TestIsRunning(t *testing.T) {
+	t.Parallel()
 	o := NewOrchestrator(nil)
 
 	// Initially nothing should be running
@@ -171,6 +175,7 @@ func TestIsRunning(t *testing.T) {
 
 // TestGetStatus tests status retrieval
 func TestGetStatus(t *testing.T) {
+	t.Parallel()
 	o := NewOrchestrator(nil)
 
 	// Get status for non-existent job
@@ -211,6 +216,7 @@ func TestGetStatus(t *testing.T) {
 
 // TestIsAnyJobRunning tests checking if any sync job is currently running
 func TestIsAnyJobRunning(t *testing.T) {
+	t.Parallel()
 	t.Run("returns false when no jobs", func(t *testing.T) {
 		o := NewOrchestrator(nil)
 		if o.IsAnyJobRunning() {
@@ -265,6 +271,7 @@ func TestIsAnyJobRunning(t *testing.T) {
 
 // TestGetRunningJobs tests getting list of running jobs
 func TestGetRunningJobs(t *testing.T) {
+	t.Parallel()
 	o := NewOrchestrator(nil)
 
 	// Initially no jobs running
@@ -296,6 +303,7 @@ func TestGetRunningJobs(t *testing.T) {
 
 // TestIsDailySyncRunning tests daily sync running check
 func TestIsDailySyncRunning(t *testing.T) {
+	t.Parallel()
 	o := NewOrchestrator(nil)
 
 	if o.IsDailySyncRunning() {
@@ -313,6 +321,7 @@ func TestIsDailySyncRunning(t *testing.T) {
 
 // TestIsHistoricalSyncRunning tests historical sync running check
 func TestIsHistoricalSyncRunning(t *testing.T) {
+	t.Parallel()
 	o := NewOrchestrator(nil)
 
 	if o.IsHistoricalSyncRunning() {
@@ -335,6 +344,7 @@ func TestIsHistoricalSyncRunning(t *testing.T) {
 
 // TestSyncOrder tests that services are registered in correct dependency order
 func TestSyncOrder(t *testing.T) {
+	t.Parallel()
 	// Expected sync order for daily sync
 	expectedOrder := []string{
 		"sessions",
@@ -390,7 +400,9 @@ func TestSyncOrder(t *testing.T) {
 }
 
 // TestConcurrentAccess tests thread safety of orchestrator operations
-func TestConcurrentAccess(_ *testing.T) {
+func TestConcurrentAccess(t *testing.T) {
+	t.Parallel()
+
 	o := NewOrchestrator(nil)
 
 	// Register a service
@@ -427,6 +439,7 @@ func TestConcurrentAccess(_ *testing.T) {
 
 // TestIsWeeklySyncRunning tests weekly sync running check
 func TestIsWeeklySyncRunning(t *testing.T) {
+	t.Parallel()
 	o := NewOrchestrator(nil)
 
 	if o.IsWeeklySyncRunning() {
@@ -444,6 +457,7 @@ func TestIsWeeklySyncRunning(t *testing.T) {
 
 // TestWeeklySyncServices tests that weekly sync includes expected global services
 func TestWeeklySyncServices(t *testing.T) {
+	t.Parallel()
 	// Weekly sync should include global definition tables that rarely change
 	// Divisions is included here since it's a global table (no year field)
 	expectedServices := []string{
@@ -476,6 +490,7 @@ func TestWeeklySyncServices(t *testing.T) {
 
 // TestWeeklySyncNotInDailySync verifies weekly services are NOT in daily sync
 func TestWeeklySyncNotInDailySync(t *testing.T) {
+	t.Parallel()
 	// Daily sync jobs - these should NOT include weekly sync services
 	// (person_tag_defs, custom_field_defs, staff_lookups, financial_lookups, divisions are weekly)
 	dailyJobs := []string{
@@ -507,6 +522,7 @@ func TestWeeklySyncNotInDailySync(t *testing.T) {
 
 // TestStatsWithSubStats tests Stats struct with SubStats for combined syncs
 func TestStatsWithSubStats(t *testing.T) {
+	t.Parallel()
 	stats := Stats{
 		Created:  10,
 		Updated:  5,
@@ -573,6 +589,7 @@ func TestStatsWithSubStats(t *testing.T) {
 
 // TestStatsWithoutSubStats tests Stats struct backwards compatibility without SubStats
 func TestStatsWithoutSubStats(t *testing.T) {
+	t.Parallel()
 	stats := Stats{
 		Created:  10,
 		Updated:  5,
@@ -594,6 +611,7 @@ func TestStatsWithoutSubStats(t *testing.T) {
 
 // TestMarkSyncRunning tests the MarkSyncRunning method
 func TestMarkSyncRunning(t *testing.T) {
+	t.Parallel()
 	o := NewOrchestrator(nil)
 
 	// Register a mock service
@@ -636,6 +654,7 @@ func TestMarkSyncRunning(t *testing.T) {
 
 // TestMarkSyncRunningPreservesStatus tests that MarkSyncRunning sets correct status fields
 func TestMarkSyncRunningPreservesStatus(t *testing.T) {
+	t.Parallel()
 	o := NewOrchestrator(nil)
 
 	// Register a mock service
@@ -683,6 +702,7 @@ func TestMarkSyncRunningPreservesStatus(t *testing.T) {
 // TestRunSingleSyncRespectsPreMarkedStatus tests that RunSingleSync uses existing status
 // if MarkSyncRunning was called first
 func TestRunSingleSyncRespectsPreMarkedStatus(t *testing.T) {
+	t.Parallel()
 	synctest.Test(t, func(t *testing.T) {
 		o := NewOrchestrator(nil)
 
@@ -735,6 +755,7 @@ func TestRunSingleSyncRespectsPreMarkedStatus(t *testing.T) {
 // TestHistoricalSyncIncludesCustomValueServices verifies custom value services are
 // re-registered with year-specific client during historical syncs
 func TestHistoricalSyncIncludesCustomValueServices(t *testing.T) {
+	t.Parallel()
 	// This test verifies the historical sync services list includes custom value services
 	// The actual services list in RunSyncWithOptions should include:
 	// - person_custom_values
@@ -783,6 +804,7 @@ func TestHistoricalSyncIncludesCustomValueServices(t *testing.T) {
 
 // TestCustomValuesSyncServicesCount verifies the count of custom value services
 func TestCustomValuesSyncServicesCount(t *testing.T) {
+	t.Parallel()
 	jobs := GetCustomValuesSyncJobs()
 
 	if len(jobs) != 2 {
@@ -803,6 +825,7 @@ func TestCustomValuesSyncServicesCount(t *testing.T) {
 
 // TestWeeklySyncIncludesDivisions verifies divisions is in weekly sync (global table)
 func TestWeeklySyncIncludesDivisions(t *testing.T) {
+	t.Parallel()
 	jobs := GetWeeklySyncJobs()
 
 	found := false
@@ -824,6 +847,7 @@ func TestWeeklySyncIncludesDivisions(t *testing.T) {
 // stranded drafts, so a regression that drops it or moves it earlier must fail
 // this test.
 func TestGetDailySyncJobsStrandedAssignmentCleanupOrdering(t *testing.T) {
+	t.Parallel()
 	jobs := getDailySyncJobs()
 
 	pos := make(map[string]int, len(jobs))
@@ -850,6 +874,7 @@ func TestGetDailySyncJobsStrandedAssignmentCleanupOrdering(t *testing.T) {
 
 // TestDailySyncExcludesDivisions verifies divisions is NOT in daily sync
 func TestDailySyncExcludesDivisions(t *testing.T) {
+	t.Parallel()
 	// Daily sync jobs that would be in orderedJobs (excluding divisions)
 	// Note: This tests the expected behavior - divisions should NOT be here
 	dailyJobs := []string{
@@ -876,6 +901,7 @@ func TestDailySyncExcludesDivisions(t *testing.T) {
 
 // TestDailySyncIncludesFamilyCampDerived verifies family_camp_derived is in daily sync
 func TestDailySyncIncludesFamilyCampDerived(t *testing.T) {
+	t.Parallel()
 	// This test verifies family_camp_derived is part of expected daily sync jobs
 	expectedDailyJobs := []string{
 		"session_groups",
@@ -907,6 +933,7 @@ func TestDailySyncIncludesFamilyCampDerived(t *testing.T) {
 
 // TestHistoricalSyncIncludesFamilyCampDerived verifies family_camp_derived is in historical syncs
 func TestHistoricalSyncIncludesFamilyCampDerived(t *testing.T) {
+	t.Parallel()
 	// Get the list of services that SHOULD be re-registered for historical syncs
 	// These are the services registered in RunSyncWithOptions when opts.Year > 0
 	expectedHistoricalServices := []string{
@@ -943,6 +970,7 @@ func TestHistoricalSyncIncludesFamilyCampDerived(t *testing.T) {
 // TestHistoricalSyncExcludesDivisions verifies divisions is NOT in historical sync
 // (divisions is global - not year-specific)
 func TestHistoricalSyncExcludesDivisions(t *testing.T) {
+	t.Parallel()
 	// The list of services re-registered for historical syncs should NOT include divisions
 	// since divisions is a global table (no year field)
 	historicalServices := []string{
@@ -972,6 +1000,7 @@ func TestHistoricalSyncExcludesDivisions(t *testing.T) {
 
 // TestWeeklySyncJobsCount verifies the expected count of weekly sync jobs
 func TestWeeklySyncJobsCount(t *testing.T) {
+	t.Parallel()
 	jobs := GetWeeklySyncJobs()
 
 	// Weekly sync should have: person_tag_defs, custom_field_defs, staff_lookups,
@@ -985,6 +1014,7 @@ func TestWeeklySyncJobsCount(t *testing.T) {
 // TestRunSingleSyncContextDeadlineHandling verifies RunSingleSync respects parent context
 // deadlines appropriately, fixing the "rate limiter wait: context deadline exceeded" issue.
 func TestRunSingleSyncContextDeadlineHandling(t *testing.T) {
+	t.Parallel()
 	t.Run("uses parent context when deadline is generous", func(t *testing.T) {
 		synctest.Test(t, func(t *testing.T) {
 			o := NewOrchestrator(nil)
@@ -1163,6 +1193,7 @@ func (c *contextCaptureMockService) Sync(ctx context.Context) error {
 // This ensures fresh DB setups triggered via API (not just RunDailySync)
 // get required global definitions before any year-specific syncs.
 func TestRunSyncWithOptionsChecksGlobalTables(t *testing.T) {
+	t.Parallel()
 	t.Run("documents that global check should run for API-triggered syncs", func(t *testing.T) {
 		// This test verifies the expected behavior: RunSyncWithOptions should
 		// call checkGlobalTablesEmpty() at the start, just like RunDailySync does.
@@ -1192,6 +1223,7 @@ func TestRunSyncWithOptionsChecksGlobalTables(t *testing.T) {
 
 // TestGetStatusWeeklySyncPending tests that queued weekly sync jobs show pending status
 func TestGetStatusWeeklySyncPending(t *testing.T) {
+	t.Parallel()
 	o := NewOrchestrator(nil)
 
 	// Set up weekly sync as running with jobs queued
@@ -1222,6 +1254,7 @@ func TestGetStatusWeeklySyncPending(t *testing.T) {
 
 // TestGetStatusWeeklySyncCompleted tests that completed weekly sync jobs show completed status
 func TestGetStatusWeeklySyncCompleted(t *testing.T) {
+	t.Parallel()
 	o := NewOrchestrator(nil)
 
 	// Set up weekly sync as running with jobs queued
@@ -1261,6 +1294,7 @@ func TestGetStatusWeeklySyncCompleted(t *testing.T) {
 
 // TestGetStatusCustomValuesSyncPending tests that queued custom values sync jobs show pending status
 func TestGetStatusCustomValuesSyncPending(t *testing.T) {
+	t.Parallel()
 	o := NewOrchestrator(nil)
 
 	// Set up custom values sync as running with jobs queued
@@ -1292,6 +1326,7 @@ func TestGetStatusCustomValuesSyncPending(t *testing.T) {
 
 // TestGetStatusCustomValuesSyncCompleted tests that completed custom values sync jobs show completed status
 func TestGetStatusCustomValuesSyncCompleted(t *testing.T) {
+	t.Parallel()
 	o := NewOrchestrator(nil)
 
 	// Set up custom values sync as running with jobs queued
@@ -1332,6 +1367,7 @@ func TestGetStatusCustomValuesSyncCompleted(t *testing.T) {
 
 // TestGlobalTablesCheckBehavior documents the expected behavior of checkGlobalTablesEmpty
 func TestGlobalTablesCheckBehavior(t *testing.T) {
+	t.Parallel()
 	// The checkGlobalTablesEmpty method:
 	// 1. Queries person_tag_defs table with limit 1
 	// 2. Returns true if no records found (global tables empty)
@@ -1371,6 +1407,7 @@ func TestGlobalTablesCheckBehavior(t *testing.T) {
 
 // TestEnqueueUnifiedSync tests basic enqueueing functionality
 func TestEnqueueUnifiedSync(t *testing.T) {
+	t.Parallel()
 	o := NewOrchestrator(nil)
 
 	// Enqueue first item
@@ -1401,6 +1438,7 @@ func TestEnqueueUnifiedSync(t *testing.T) {
 
 // TestEnqueueUnifiedSyncPosition tests queue position assignment
 func TestEnqueueUnifiedSyncPosition(t *testing.T) {
+	t.Parallel()
 	o := NewOrchestrator(nil)
 
 	// Enqueue multiple items
@@ -1427,6 +1465,7 @@ func TestEnqueueUnifiedSyncPosition(t *testing.T) {
 
 // TestEnqueueUnifiedSyncDuplicateDetection tests that duplicate requests return existing queue item
 func TestEnqueueUnifiedSyncDuplicateDetection(t *testing.T) {
+	t.Parallel()
 	o := NewOrchestrator(nil)
 
 	// Enqueue first item (without custom values)
@@ -1472,6 +1511,7 @@ func TestEnqueueUnifiedSyncDuplicateDetection(t *testing.T) {
 
 // TestDequeueUnifiedSync tests basic dequeue functionality
 func TestDequeueUnifiedSync(t *testing.T) {
+	t.Parallel()
 	o := NewOrchestrator(nil)
 
 	// Enqueue items
@@ -1497,6 +1537,7 @@ func TestDequeueUnifiedSync(t *testing.T) {
 
 // TestDequeueUnifiedSyncEmpty tests dequeue on empty queue
 func TestDequeueUnifiedSyncEmpty(t *testing.T) {
+	t.Parallel()
 	o := NewOrchestrator(nil)
 
 	// Dequeue from empty queue should return nil
@@ -1508,6 +1549,7 @@ func TestDequeueUnifiedSyncEmpty(t *testing.T) {
 
 // TestCancelQueuedSync tests canceling a queued sync
 func TestCancelQueuedSync(t *testing.T) {
+	t.Parallel()
 	o := NewOrchestrator(nil)
 
 	// Enqueue items
@@ -1538,6 +1580,7 @@ func TestCancelQueuedSync(t *testing.T) {
 
 // TestCancelQueuedSyncNotFound tests canceling a non-existent sync
 func TestCancelQueuedSyncNotFound(t *testing.T) {
+	t.Parallel()
 	o := NewOrchestrator(nil)
 
 	// Enqueue an item
@@ -1558,6 +1601,7 @@ func TestCancelQueuedSyncNotFound(t *testing.T) {
 
 // TestGetQueuedSyncsReturnsCopy tests that GetQueuedSyncs returns a copy
 func TestGetQueuedSyncsReturnsCopy(t *testing.T) {
+	t.Parallel()
 	o := NewOrchestrator(nil)
 
 	_, _ = o.EnqueueUnifiedSync(2025, "all", false, false, "user1")
@@ -1580,6 +1624,7 @@ func TestGetQueuedSyncsReturnsCopy(t *testing.T) {
 
 // TestGetQueuePositionByID tests getting position of a queued item
 func TestGetQueuePositionByID(t *testing.T) {
+	t.Parallel()
 	o := NewOrchestrator(nil)
 
 	qs1, _ := o.EnqueueUnifiedSync(2025, "all", false, false, "user1")
@@ -1611,6 +1656,7 @@ func TestGetQueuePositionByID(t *testing.T) {
 
 // TestQueueConcurrentAccess tests thread safety of queue operations
 func TestQueueConcurrentAccess(t *testing.T) {
+	t.Parallel()
 	o := NewOrchestrator(nil)
 
 	done := make(chan bool)
@@ -1658,6 +1704,7 @@ func TestQueueConcurrentAccess(t *testing.T) {
 
 // TestIsUnifiedSyncQueued tests checking if a unified sync is already queued
 func TestIsUnifiedSyncQueued(t *testing.T) {
+	t.Parallel()
 	o := NewOrchestrator(nil)
 
 	// Nothing queued initially
@@ -1687,6 +1734,7 @@ func TestIsUnifiedSyncQueued(t *testing.T) {
 
 // TestQueueLengthMethod tests the GetQueueLength method
 func TestQueueLengthMethod(t *testing.T) {
+	t.Parallel()
 	o := NewOrchestrator(nil)
 
 	// Empty queue
@@ -1718,6 +1766,7 @@ func TestQueueLengthMethod(t *testing.T) {
 
 // TestStats_IsNoOp tests the IsNoOp method on Stats
 func TestStats_IsNoOp(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name     string
 		stats    Stats
@@ -1785,6 +1834,7 @@ func TestStats_IsNoOp(t *testing.T) {
 
 // TestJobMeta_AllJobsHavePhase tests that all sync jobs have a phase assigned
 func TestJobMeta_AllJobsHavePhase(t *testing.T) {
+	t.Parallel()
 	meta := GetJobMeta()
 
 	if len(meta) == 0 {
@@ -1818,6 +1868,7 @@ func TestJobMeta_AllJobsHavePhase(t *testing.T) {
 
 // TestJobMeta_SourcePhaseJobs tests that expected source jobs are in source phase
 func TestJobMeta_SourcePhaseJobs(t *testing.T) {
+	t.Parallel()
 	expectedSourceJobs := []string{
 		"session_groups",
 		"sessions",
@@ -1850,6 +1901,7 @@ func TestJobMeta_SourcePhaseJobs(t *testing.T) {
 
 // TestJobMeta_ExpensivePhaseJobs tests that custom values jobs are in expensive phase
 func TestJobMeta_ExpensivePhaseJobs(t *testing.T) {
+	t.Parallel()
 	expectedExpensiveJobs := []string{
 		"person_custom_values",
 		"household_custom_values",
@@ -1875,6 +1927,7 @@ func TestJobMeta_ExpensivePhaseJobs(t *testing.T) {
 
 // TestJobMeta_TransformPhaseJobs tests that derived tables are in transform phase
 func TestJobMeta_TransformPhaseJobs(t *testing.T) {
+	t.Parallel()
 	expectedTransformJobs := []string{
 		"camper_history",
 		"family_camp_derived",
@@ -1905,6 +1958,7 @@ func TestJobMeta_TransformPhaseJobs(t *testing.T) {
 // reconcile_request_lifecycle is registered there; stranded_assignment_cleanup
 // must be too.
 func TestJobMeta_IncludesStrandedAssignmentCleanup(t *testing.T) {
+	t.Parallel()
 	if got := GetPhaseForJob("stranded_assignment_cleanup"); got != PhaseTransform {
 		t.Errorf("GetPhaseForJob(\"stranded_assignment_cleanup\") = %q, want %q", got, PhaseTransform)
 	}
@@ -1924,6 +1978,7 @@ func TestJobMeta_IncludesStrandedAssignmentCleanup(t *testing.T) {
 
 // TestJobMeta_ProcessPhaseJobs tests that CSV/AI jobs are in process phase
 func TestJobMeta_ProcessPhaseJobs(t *testing.T) {
+	t.Parallel()
 	expectedProcessJobs := []string{
 		"bunk_requests",
 		"process_requests",
@@ -1949,6 +2004,7 @@ func TestJobMeta_ProcessPhaseJobs(t *testing.T) {
 
 // TestJobMeta_ExportPhaseJobs tests that export jobs are in export phase
 func TestJobMeta_ExportPhaseJobs(t *testing.T) {
+	t.Parallel()
 	expectedExportJobs := []string{
 		"multi_workbook_export",
 	}
@@ -1973,6 +2029,7 @@ func TestJobMeta_ExportPhaseJobs(t *testing.T) {
 
 // TestGetJobsForPhase_ReturnsCorrectJobs tests that GetJobsForPhase returns jobs for specified phase
 func TestGetJobsForPhase_ReturnsCorrectJobs(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		phase         Phase
 		expectedCount int // Minimum expected count
@@ -2030,6 +2087,7 @@ func TestGetJobsForPhase_ReturnsCorrectJobs(t *testing.T) {
 
 // TestGetJobsForPhase_InvalidPhase tests that GetJobsForPhase returns empty for invalid phase
 func TestGetJobsForPhase_InvalidPhase(t *testing.T) {
+	t.Parallel()
 	jobs := GetJobsForPhase("invalid_phase")
 	if len(jobs) != 0 {
 		t.Errorf("expected empty slice for invalid phase, got %v", jobs)
@@ -2038,6 +2096,7 @@ func TestGetJobsForPhase_InvalidPhase(t *testing.T) {
 
 // TestGetJobsForPhase_PreservesOrder tests that GetJobsForPhase returns jobs in definition order
 func TestGetJobsForPhase_PreservesOrder(t *testing.T) {
+	t.Parallel()
 	// Source jobs should be in a sensible order (sessions before attendees, etc.)
 	sourceJobs := GetJobsForPhase(PhaseSource)
 
@@ -2068,6 +2127,7 @@ func TestGetJobsForPhase_PreservesOrder(t *testing.T) {
 
 // TestGetAllPhases tests that GetAllPhases returns all valid phases
 func TestGetAllPhases(t *testing.T) {
+	t.Parallel()
 	phases := GetAllPhases()
 
 	if len(phases) != 5 {
@@ -2096,6 +2156,7 @@ func TestGetAllPhases(t *testing.T) {
 
 // TestGetPhaseForJob tests that GetPhaseForJob returns correct phase for each job
 func TestGetPhaseForJob(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		jobID    string
 		expected Phase
@@ -2124,6 +2185,7 @@ func TestGetPhaseForJob(t *testing.T) {
 
 // TestGetPhaseForJob_UnknownJob tests that GetPhaseForJob returns empty for unknown job
 func TestGetPhaseForJob_UnknownJob(t *testing.T) {
+	t.Parallel()
 	phase := GetPhaseForJob("unknown_job")
 	if phase != "" {
 		t.Errorf("expected empty phase for unknown job, got %q", phase)
@@ -2132,6 +2194,7 @@ func TestGetPhaseForJob_UnknownJob(t *testing.T) {
 
 // TestPhaseExecutionOrder tests that phases follow correct execution order
 func TestPhaseExecutionOrder(t *testing.T) {
+	t.Parallel()
 	// Expected order: source -> expensive -> transform -> process -> export
 	phases := GetAllPhases()
 
@@ -2156,6 +2219,7 @@ func TestPhaseExecutionOrder(t *testing.T) {
 
 // TestJobMeta_HouseholdDemographicsIncluded tests that household_demographics is in metadata
 func TestJobMeta_HouseholdDemographicsIncluded(t *testing.T) {
+	t.Parallel()
 	meta := GetJobMeta()
 
 	found := false
@@ -2179,6 +2243,7 @@ func TestJobMeta_HouseholdDemographicsIncluded(t *testing.T) {
 
 // TestJobMeta_NoDuplicateIDs tests that all job IDs are unique
 func TestJobMeta_NoDuplicateIDs(t *testing.T) {
+	t.Parallel()
 	meta := GetJobMeta()
 
 	seen := make(map[string]bool)
@@ -2196,6 +2261,7 @@ func TestJobMeta_NoDuplicateIDs(t *testing.T) {
 
 // TestOrchestrator_GetChangedCollections tests the GetChangedCollections method
 func TestOrchestrator_GetChangedCollections(t *testing.T) {
+	t.Parallel()
 	t.Run("empty when no completed syncs", func(t *testing.T) {
 		o := NewOrchestrator(nil)
 
@@ -2342,6 +2408,7 @@ func TestOrchestrator_GetChangedCollections(t *testing.T) {
 
 // TestDailySyncDoesNotIncludeTransformPhase tests that daily sync excludes all transform jobs
 func TestUnifiedSyncAlwaysIncludesTransformPhase(t *testing.T) {
+	t.Parallel()
 	// Transform jobs should ALWAYS be included in unified sync,
 	// regardless of IncludeCustomValues setting.
 	// They run against existing custom values data (same as daily sync).
@@ -2378,6 +2445,7 @@ func TestUnifiedSyncAlwaysIncludesTransformPhase(t *testing.T) {
 
 // TestRunSyncWithOptionsPhaseOrdering tests that phase ordering is correct
 func TestRunSyncWithOptionsPhaseOrdering(t *testing.T) {
+	t.Parallel()
 	t.Run("with custom values - CV before transform", func(t *testing.T) {
 		// When IncludeCustomValues=true, phases should be:
 		// Source → Expensive (CV) → Transform → (Process added separately)
@@ -2460,6 +2528,7 @@ func TestRunSyncWithOptionsPhaseOrdering(t *testing.T) {
 // only controls whether person_custom_values and household_custom_values run,
 // not whether transform phase runs.
 func TestUnifiedSyncCustomValuesOnlyAffectsCVJobs(t *testing.T) {
+	t.Parallel()
 	withCV := GetDefaultUnifiedSyncJobs(true)
 	withoutCV := GetDefaultUnifiedSyncJobs(false)
 
@@ -2507,6 +2576,7 @@ func TestUnifiedSyncCustomValuesOnlyAffectsCVJobs(t *testing.T) {
 // Historical syncs always include transform phase (same as current year).
 // They skip process phase (bunk_requests, process_requests) since those are current-year only.
 func TestRunSyncWithOptionsHistoricalMode(t *testing.T) {
+	t.Parallel()
 	t.Run("transform phase runs regardless of CV flag", func(t *testing.T) {
 		// Both with and without CV, transform jobs should be present
 		withCV := GetDefaultUnifiedSyncJobs(true)
@@ -2542,6 +2612,7 @@ func TestRunSyncWithOptionsHistoricalMode(t *testing.T) {
 
 // TestEnqueuePhaseSyncWithDebug tests that EnqueuePhaseSync accepts and stores debug flag
 func TestEnqueuePhaseSyncWithDebug(t *testing.T) {
+	t.Parallel()
 	o := NewOrchestrator(nil)
 
 	t.Run("debug flag is stored in queued sync", func(t *testing.T) {
@@ -2582,6 +2653,7 @@ func TestEnqueuePhaseSyncWithDebug(t *testing.T) {
 
 // TestEnqueueIndividualSyncWithDebug tests that EnqueueIndividualSync accepts and stores debug flag
 func TestEnqueueIndividualSyncWithDebug(t *testing.T) {
+	t.Parallel()
 	o := NewOrchestrator(nil)
 
 	t.Run("debug flag is stored in queued sync", func(t *testing.T) {
@@ -2633,6 +2705,7 @@ func (d *DebuggableMockService) IsDebugEnabled() bool {
 // TestProcessQueuedSyncsPhaseDebugPropagation tests that processQueuedSyncs
 // propagates the debug flag to services when processing phase syncs
 func TestProcessQueuedSyncsPhaseDebugPropagation(t *testing.T) {
+	t.Parallel()
 	// This test verifies the fix for the bug where debug flag was not
 	// being set on services when processing queued phase syncs
 
@@ -2677,6 +2750,7 @@ func TestProcessQueuedSyncsPhaseDebugPropagation(t *testing.T) {
 // TestProcessQueuedSyncsIndividualDebugPropagation tests that processQueuedSyncs
 // propagates the debug flag to services when processing individual syncs
 func TestProcessQueuedSyncsIndividualDebugPropagation(t *testing.T) {
+	t.Parallel()
 	t.Run("debug flag should be set on services for queued individual sync", func(t *testing.T) {
 		o := NewOrchestrator(nil)
 
@@ -2713,6 +2787,7 @@ func TestProcessQueuedSyncsIndividualDebugPropagation(t *testing.T) {
 
 // TestQueuedSyncDebugFieldSerialization tests that Debug field serializes correctly
 func TestQueuedSyncDebugFieldSerialization(t *testing.T) {
+	t.Parallel()
 	qs := QueuedSync{
 		ID:      "test-123",
 		Year:    2025,
@@ -2733,6 +2808,7 @@ func TestQueuedSyncDebugFieldSerialization(t *testing.T) {
 
 // TestGetCurrentRunProgress_NoSyncRunning tests that no progress is returned when nothing runs
 func TestGetCurrentRunProgress_NoSyncRunning(t *testing.T) {
+	t.Parallel()
 	o := NewOrchestrator(nil)
 
 	runType, remaining, total, completed := o.GetCurrentRunProgress()
@@ -2753,6 +2829,7 @@ func TestGetCurrentRunProgress_NoSyncRunning(t *testing.T) {
 
 // TestGetCurrentRunProgress_DailySyncRunning tests progress tracking during daily sync
 func TestGetCurrentRunProgress_DailySyncRunning(t *testing.T) {
+	t.Parallel()
 	o := NewOrchestrator(nil)
 
 	// Simulate daily sync in progress with 5 jobs, currently on job 2 (index 1)
@@ -2787,6 +2864,7 @@ func TestGetCurrentRunProgress_DailySyncRunning(t *testing.T) {
 
 // TestGetCurrentRunProgress_HistoricalSyncRunning tests progress tracking during historical sync
 func TestGetCurrentRunProgress_HistoricalSyncRunning(t *testing.T) {
+	t.Parallel()
 	o := NewOrchestrator(nil)
 
 	// Simulate historical sync in progress
@@ -2818,6 +2896,7 @@ func TestGetCurrentRunProgress_HistoricalSyncRunning(t *testing.T) {
 
 // TestGetCurrentRunProgress_WeeklySyncRunning tests progress tracking during weekly sync
 func TestGetCurrentRunProgress_WeeklySyncRunning(t *testing.T) {
+	t.Parallel()
 	o := NewOrchestrator(nil)
 
 	// Simulate weekly sync in progress
@@ -2846,6 +2925,7 @@ func TestGetCurrentRunProgress_WeeklySyncRunning(t *testing.T) {
 
 // TestGetCurrentRunProgress_CustomValuesSyncRunning tests progress tracking during CV sync
 func TestGetCurrentRunProgress_CustomValuesSyncRunning(t *testing.T) {
+	t.Parallel()
 	o := NewOrchestrator(nil)
 
 	// Simulate custom values sync in progress
@@ -2877,6 +2957,7 @@ func TestGetCurrentRunProgress_CustomValuesSyncRunning(t *testing.T) {
 
 // TestGetCurrentRunProgress_IndexOutOfBounds tests handling when index exceeds queue
 func TestGetCurrentRunProgress_IndexOutOfBounds(t *testing.T) {
+	t.Parallel()
 	o := NewOrchestrator(nil)
 
 	// Simulate edge case where index is at queue length
@@ -2908,6 +2989,7 @@ func TestGetCurrentRunProgress_IndexOutOfBounds(t *testing.T) {
 
 // TestGetCurrentRunProgress_PriorityOrder tests which sync type takes precedence
 func TestGetCurrentRunProgress_PriorityOrder(t *testing.T) {
+	t.Parallel()
 	o := NewOrchestrator(nil)
 
 	// Set multiple sync flags (shouldn't happen in practice, but tests priority)
@@ -2928,6 +3010,7 @@ func TestGetCurrentRunProgress_PriorityOrder(t *testing.T) {
 }
 
 func TestFinalizeSyncStatusSuccess(t *testing.T) {
+	t.Parallel()
 	synctest.Test(t, func(t *testing.T) {
 		o := NewOrchestrator(nil)
 		mock := &MockService{name: "test", delay: 0}
@@ -2975,6 +3058,7 @@ func TestFinalizeSyncStatusSuccess(t *testing.T) {
 }
 
 func TestFinalizeSyncStatusError(t *testing.T) {
+	t.Parallel()
 	o := NewOrchestrator(nil)
 	mock := &MockService{name: "test", delay: 0}
 	o.RegisterService("test", mock)
@@ -3008,6 +3092,7 @@ func TestFinalizeSyncStatusError(t *testing.T) {
 }
 
 func TestFinalizeSyncStatusNoopWhenNotTracked(t *testing.T) {
+	t.Parallel()
 	o := NewOrchestrator(nil)
 	mock := &MockService{name: "test", delay: 0}
 	o.RegisterService("test", mock)
@@ -3028,6 +3113,7 @@ func TestFinalizeSyncStatusNoopWhenNotTracked(t *testing.T) {
 }
 
 func TestFinalizeSyncStatusCalledFromPanicRecovery(t *testing.T) {
+	t.Parallel()
 	o := NewOrchestrator(nil)
 	mock := &MockService{name: "test", delay: 0}
 	o.RegisterService("test", mock)
@@ -3063,6 +3149,7 @@ func TestFinalizeSyncStatusCalledFromPanicRecovery(t *testing.T) {
 // TestFinalizeSyncStatusAtomicTransition tests that concurrent readers never see
 // a partially-written status during FinalizeSyncStatus.
 func TestFinalizeSyncStatusAtomicTransition(t *testing.T) {
+	t.Parallel()
 	o := NewOrchestrator(nil)
 	mock := &MockService{name: "test", delay: 0}
 	o.RegisterService("test", mock)
@@ -3112,6 +3199,7 @@ func TestFinalizeSyncStatusAtomicTransition(t *testing.T) {
 // TestRunSingleSyncAtomicStatusTransition tests that RunSingleSync's goroutine
 // produces consistent status — no partial writes visible to concurrent readers.
 func TestRunSingleSyncAtomicStatusTransition(t *testing.T) {
+	t.Parallel()
 	o := NewOrchestrator(nil)
 	mock := &MockService{name: "test", delay: 10 * time.Millisecond}
 	o.RegisterService("test", mock)
@@ -3154,6 +3242,7 @@ func TestRunSingleSyncAtomicStatusTransition(t *testing.T) {
 
 // TestRunTokenPopulated tests that RunSingleSync populates RunToken on the status
 func TestRunTokenPopulated(t *testing.T) {
+	t.Parallel()
 	synctest.Test(t, func(t *testing.T) {
 		o := NewOrchestrator(nil)
 
@@ -3208,6 +3297,7 @@ func TestRunTokenPopulated(t *testing.T) {
 // TestRunTokenPreservedByFinalizeSyncStatus tests that FinalizeSyncStatus preserves
 // the RunToken from the running status
 func TestRunTokenPreservedByFinalizeSyncStatus(t *testing.T) {
+	t.Parallel()
 	o := NewOrchestrator(nil)
 
 	mock := &MockService{name: "test_service"}
@@ -3251,6 +3341,7 @@ func TestRunTokenPreservedByFinalizeSyncStatus(t *testing.T) {
 // runSyncAndWait should only unblock when the completed status has a matching token,
 // not when a different run of the same syncType completes.
 func TestRunSyncAndWaitMatchesToken(t *testing.T) {
+	t.Parallel()
 	o := NewOrchestrator(nil)
 
 	// Register a slow service
@@ -3307,6 +3398,7 @@ func TestRunSyncAndWaitMatchesToken(t *testing.T) {
 // The goroutine may complete before the token is captured from runningJobs,
 // leaving expectedToken="" which never matches — causing an infinite loop.
 func TestRunSyncAndWaitZeroDelayNoDeadlock(t *testing.T) {
+	t.Parallel()
 	// Run multiple iterations to increase race likelihood
 	for i := range 5 {
 		t.Run(fmt.Sprintf("iteration_%d", i), func(t *testing.T) {
@@ -3334,6 +3426,7 @@ func TestRunSyncAndWaitZeroDelayNoDeadlock(t *testing.T) {
 // with a random hex suffix. Regression test for #853 — same collision vulnerability
 // as #833 fixed in generateRunToken.
 func TestGenerateQueueID(t *testing.T) {
+	t.Parallel()
 	t.Run("returns non-empty string", func(t *testing.T) {
 		id := generateQueueID()
 		if id == "" {
@@ -3375,6 +3468,7 @@ func TestGenerateQueueID(t *testing.T) {
 // Regression test for #791 — two inline fmt.Sprintf("%d", time.Now().UnixNano()) calls
 // are consolidated into this single helper.
 func TestGenerateRunToken(t *testing.T) {
+	t.Parallel()
 	t.Run("returns non-empty string", func(t *testing.T) {
 		token := generateRunToken()
 		if token == "" {
@@ -3423,6 +3517,7 @@ func TestGenerateRunToken(t *testing.T) {
 // RunSingleSyncWithService, which must run *that* instance and never touch (or even require)
 // a registered singleton.
 func TestRunSingleSyncWithServiceIgnoresRegisteredSingleton(t *testing.T) {
+	t.Parallel()
 	synctest.Test(t, func(t *testing.T) {
 		o := NewOrchestrator(nil)
 
@@ -3475,6 +3570,7 @@ func TestRunSingleSyncWithServiceIgnoresRegisteredSingleton(t *testing.T) {
 // case: once a run for syncType has been reserved, a later call for the same syncType is
 // rejected outright and its service instance is never executed.
 func TestRunSingleSyncWithServiceRejectsConcurrentRunForSameType(t *testing.T) {
+	t.Parallel()
 	synctest.Test(t, func(t *testing.T) {
 		o := NewOrchestrator(nil)
 
@@ -3508,6 +3604,7 @@ func TestRunSingleSyncWithServiceRejectsConcurrentRunForSameType(t *testing.T) {
 // many goroutines race to start the same syncType at once, exactly one may win and execute —
 // everyone else must be rejected before their service instance ever runs.
 func TestRunSingleSyncWithServiceConcurrentCallsExactlyOneWins(t *testing.T) {
+	t.Parallel()
 	o := NewOrchestrator(nil)
 
 	const attempts = 50
@@ -3569,6 +3666,7 @@ func TestRunSingleSyncWithServiceConcurrentCallsExactlyOneWins(t *testing.T) {
 // asserts the registered singleton's Session field is untouched by B, no matter how B is
 // rejected.
 func TestCustomFieldValuesHandlersReserveBeforeMutatingSharedState(t *testing.T) {
+	t.Parallel()
 	cases := []struct {
 		name     string
 		syncType string
