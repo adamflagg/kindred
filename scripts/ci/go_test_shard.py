@@ -3,10 +3,13 @@
 
 `go test -race ./...` was the longest job in CI by a wide margin -- ~390s of a
 ~400s critical path, against ~156s for the next-slowest job. Almost none of that
-is test volume. Measured on this tree, the same suite runs in 43s without
-`-race` and ~300s with it: the race detector costs about 10x, and it pays that
-tax serially: the Go tree has exactly one `t.Parallel()` in it, and it sits inside
-a subtest (`sync/orchestrator_test.go`), so no two top-level tests ever overlap. Two packages carry it all -- `sync` at 297s and
+is test volume. The race detector costs about **4.5x** -- measured back-to-back on
+one machine, `sync` goes 60.8s -> 298.2s and `lodging` 35.1s -> 136.6s -- and it
+pays that serially: the Go tree has exactly one `t.Parallel()` in it, and it sits
+inside a subtest (`sync/orchestrator_test.go`), so no two top-level tests ever
+overlap. (A ~10x figure appears in earlier notes on this work; that was the
+`TestLodgingAssignmentsSync*` slice, which is schema-build heavy and not
+representative of the suite.) Two packages carry it all -- `sync` at 297s and
 `lodging` at 143s, with the other nine adding up to ~15s.
 
 This script splits that serial run across a CI matrix. It deliberately does NOT

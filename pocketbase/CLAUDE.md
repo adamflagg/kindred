@@ -68,9 +68,11 @@ cd pocketbase && go test ./...
 cd pocketbase && go test ./sync/...     # one package
 ```
 
-**Add `-race` only when you mean it.** The race detector costs about **10x** here — the full
-suite is 43s without it and ~300s with it — because there is exactly one `t.Parallel()` in the
-tree, so every test in a package runs serially. `sync` (297s) and `lodging` (143s) are
+**Add `-race` only when you mean it.** The race detector costs about **4.5x** here — measured
+back-to-back on one machine, `sync` goes 60.8s → 298.2s and `lodging` 35.1s → 136.6s — because
+there is exactly one `t.Parallel()` in the tree, so every test in a package runs serially.
+Schema-heavy tests are worse than the average: the `TestLodgingAssignmentsSync*` slice is
+~10x on its own. `sync` (297s) and `lodging` (143s) are
 effectively the whole bill; the other nine packages total ~15s. Reach for `-race` when you
 touch `sync/orchestrator.go`, `sync/api.go`, `sync/scheduler.go`, or anything else that spawns
 a goroutine, and leave it off for the ordinary edit-test loop.

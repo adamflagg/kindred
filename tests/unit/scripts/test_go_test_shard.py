@@ -1,7 +1,7 @@
 """Tests for the Go test sharder.
 
 `go test -race ./...` is the longest job in CI (~390s of a ~400s critical path),
-and ~90% of that is the race detector's ~10x multiplier over 2729 serial tests.
+and most of that is the race detector's ~4.5x multiplier over 2729 serial tests.
 Sharding the run across a matrix splits the wall clock, but it introduces the one
 failure mode this repo has been bitten by before (the paths-filter incident of
 March 2026): a partition that silently stops covering some tests still reports

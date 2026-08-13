@@ -482,12 +482,13 @@ jobs:
   # Go tests (sharded across a matrix)
   #
   # This was a single ~390s job and the whole critical path -- the next-slowest
-  # job was ~156s. Almost none of that is test volume: the same suite runs in 43s
-  # without -race and ~300s with it, because the race detector costs ~10x and the
-  # Go tree has exactly one t.Parallel() in it -- inside a subtest, at that -- so
-  # no two top-level tests ever overlap. Two packages carry it all (sync ~297s, lodging ~143s; the other nine
-  # total ~15s), which is why this shards by individual test function rather than
-  # by package -- a per-package split would leave sync as a 297s shard.
+  # job was ~156s. Almost none of that is test volume: the race detector costs
+  # ~4.5x (measured back-to-back on one machine -- sync 60.8s -> 298.2s, lodging
+  # 35.1s -> 136.6s), and it pays that serially, because the Go tree has exactly
+  # one t.Parallel() in it -- inside a subtest, at that -- so no two top-level
+  # tests ever overlap. Two packages carry it all (sync ~297s, lodging ~143s; the
+  # other nine total ~15s), which is why this shards by individual test function
+  # rather than by package -- a per-package split would leave sync as a 297s shard.
   #
   # Sharding at this level makes a coverage hole possible, so scripts/ci/
   # go_test_shard.py reads the inventory live from `go test -list` and fails the
@@ -503,8 +504,13 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # Editing this list is the only change needed to re-shard: --total comes
-        # from strategy.job-total, so the two can never drift apart.
+        # Re-shard by editing this list and nothing else -- --total comes from
+        # strategy.job-total, so the count cannot drift from the list. The list
+        # must stay 0-based and contiguous, though: the values are passed through
+        # as --shard, and the script rejects an index outside [0, total). A list
+        # like [1,2,3,4] fails the last job loudly rather than skipping tests, and
+        # test_tests_go_job_shards_and_derives_total_from_the_matrix catches it
+        # before CI does.
         shard: [0, 1, 2, 3]
     steps:
     - name: Checkout code
