@@ -80,7 +80,7 @@ func (s *SessionGroupsSync) Sync(ctx context.Context) error {
 		pbData, err := s.transformSessionGroupToPB(groupData, year)
 		if err != nil {
 			slog.Error("Error transforming session group", "error", err)
-			s.Stats.Rejected++
+			s.Stats.Errors++
 			continue
 		}
 
@@ -88,7 +88,7 @@ func (s *SessionGroupsSync) Sync(ctx context.Context) error {
 		groupID, ok := groupData["ID"].(float64)
 		if !ok {
 			slog.Error("Invalid session group ID type")
-			s.Stats.Rejected++
+			s.Stats.Errors++
 			continue
 		}
 		key := int(groupID)

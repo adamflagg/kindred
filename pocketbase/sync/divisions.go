@@ -84,7 +84,7 @@ func (s *DivisionsSync) Sync(ctx context.Context) error {
 		pbData, err := s.transformDivisionToPB(divisionData)
 		if err != nil {
 			slog.Error("Error transforming division", "error", err)
-			s.Stats.Rejected++
+			s.Stats.Errors++
 			continue
 		}
 
@@ -92,7 +92,7 @@ func (s *DivisionsSync) Sync(ctx context.Context) error {
 		cmID, ok := pbData["cm_id"].(int)
 		if !ok || cmID == 0 {
 			slog.Error("Invalid division cm_id")
-			s.Stats.Rejected++
+			s.Stats.Errors++
 			continue
 		}
 
