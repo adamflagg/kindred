@@ -191,6 +191,10 @@ type householdDemographicsRecord struct {
 func (s *HouseholdDemographicsSync) Sync(ctx context.Context) error {
 	s.Stats = Stats{}
 	s.SyncSuccessful = false
+	// Reset alongside Stats: orchestrator.go registers this service as a
+	// singleton, so a counter left standing would be reported against the next
+	// year's run as well as its own.
+	s.columnConflicts = 0
 
 	// Determine year
 	year := s.Year
