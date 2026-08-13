@@ -928,6 +928,7 @@ func TestSetColumnIsMustBeUniqueNotFirstWins(t *testing.T) {
 // small"; this test only passes once that guard is wired in, because the old
 // local check (`len(records) == 0`) does not fire when records has 3 entries.
 func TestHouseholdDemographicsDeleteOrphansRefusesPartialCollapse(t *testing.T) {
+	t.Parallel()
 	app := newOrphanSweepTestApp(t, "household_demographics", "household", "person_id")
 	col, err := app.FindCollectionByNameOrId("household_demographics")
 	if err != nil {

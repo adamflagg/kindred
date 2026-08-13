@@ -1033,6 +1033,7 @@ func newStaffSkillsOrphanTestApp(t *testing.T) core.App {
 // no channel to refuse a sweep at all -- an empty ProcessedKeys map against a
 // populated year deleted the whole year and reported success.
 func TestStaffSkillsDeleteOrphansRefusesCollapsedComputedSet(t *testing.T) {
+	t.Parallel()
 	app := newStaffSkillsOrphanTestApp(t)
 	col, err := app.FindCollectionByNameOrId("staff_skills")
 	if err != nil {
@@ -1072,6 +1073,7 @@ func TestStaffSkillsDeleteOrphansRefusesCollapsedComputedSet(t *testing.T) {
 // TestStaffSkillsDeleteOrphansStillSweepsGenuineOrphans proves the guard did
 // not disable orphan deletion for the normal case.
 func TestStaffSkillsDeleteOrphansStillSweepsGenuineOrphans(t *testing.T) {
+	t.Parallel()
 	app := newStaffSkillsOrphanTestApp(t)
 	col, err := app.FindCollectionByNameOrId("staff_skills")
 	if err != nil {

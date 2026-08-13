@@ -2521,6 +2521,7 @@ func TestCamperHistoryRecordNeedsUpdateUsesCompareFields(t *testing.T) {
 // no channel to refuse a sweep at all -- an empty ProcessedKeys map against a
 // populated year deleted the whole year and reported success.
 func TestCamperHistoryDeleteOrphansRefusesCollapsedComputedSet(t *testing.T) {
+	t.Parallel()
 	app := newOrphanSweepTestApp(t, "camper_history", "person_id", "session_cm_id")
 	col, err := app.FindCollectionByNameOrId("camper_history")
 	if err != nil {
@@ -2561,6 +2562,7 @@ func TestCamperHistoryDeleteOrphansRefusesCollapsedComputedSet(t *testing.T) {
 // not disable orphan deletion for the normal case (a camper unenrolled from a
 // session).
 func TestCamperHistoryDeleteOrphansStillSweepsGenuineOrphans(t *testing.T) {
+	t.Parallel()
 	app := newOrphanSweepTestApp(t, "camper_history", "person_id", "session_cm_id")
 	col, err := app.FindCollectionByNameOrId("camper_history")
 	if err != nil {

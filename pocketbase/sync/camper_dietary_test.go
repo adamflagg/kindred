@@ -504,6 +504,7 @@ func TestCamperDietaryRecordNeedsUpdateUsesCompareFields(t *testing.T) {
 // no channel to refuse a sweep at all -- an empty computed set against a
 // populated year deleted the whole year and reported success.
 func TestCamperDietaryDeleteOrphansRefusesCollapsedComputedSet(t *testing.T) {
+	t.Parallel()
 	app := newOrphanSweepTestApp(t, "camper_dietary", "person_id")
 	col, err := app.FindCollectionByNameOrId("camper_dietary")
 	if err != nil {
@@ -541,6 +542,7 @@ func TestCamperDietaryDeleteOrphansRefusesCollapsedComputedSet(t *testing.T) {
 // TestCamperDietaryDeleteOrphansStillSweepsGenuineOrphans proves the guard did
 // not disable orphan deletion for the normal case.
 func TestCamperDietaryDeleteOrphansStillSweepsGenuineOrphans(t *testing.T) {
+	t.Parallel()
 	app := newOrphanSweepTestApp(t, "camper_dietary", "person_id")
 	col, err := app.FindCollectionByNameOrId("camper_dietary")
 	if err != nil {

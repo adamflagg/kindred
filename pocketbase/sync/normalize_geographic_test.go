@@ -2225,6 +2225,7 @@ func TestOverrideMapDedup_RejectedCarriesForward(t *testing.T) {
 // against a populated year deleted every normalized mapping and reported
 // success.
 func TestNormalizeGeographicDeleteOrphansRefusesCollapsedComputedSet(t *testing.T) {
+	t.Parallel()
 	app := newOrphanSweepTestApp(t, "normalized_mappings", "category", "person", "session")
 	col, err := app.FindCollectionByNameOrId("normalized_mappings")
 	if err != nil {
@@ -2266,6 +2267,7 @@ func TestNormalizeGeographicDeleteOrphansRefusesCollapsedComputedSet(t *testing.
 // TestNormalizeGeographicDeleteOrphansStillSweepsGenuineOrphans proves the
 // guard did not disable orphan deletion for the normal case.
 func TestNormalizeGeographicDeleteOrphansStillSweepsGenuineOrphans(t *testing.T) {
+	t.Parallel()
 	app := newOrphanSweepTestApp(t, "normalized_mappings", "category", "person", "session")
 	col, err := app.FindCollectionByNameOrId("normalized_mappings")
 	if err != nil {

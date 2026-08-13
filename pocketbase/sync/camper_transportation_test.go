@@ -514,6 +514,7 @@ func TestAttendeeKeyRequiresValidSessionID(t *testing.T) {
 // and had no channel to refuse a sweep at all -- an empty computed set against
 // a populated year deleted the whole year and reported success.
 func TestCamperTransportationDeleteOrphansRefusesCollapsedComputedSet(t *testing.T) {
+	t.Parallel()
 	app := newOrphanSweepTestApp(t, "camper_transportation", "person_id", "session_id")
 	col, err := app.FindCollectionByNameOrId("camper_transportation")
 	if err != nil {
@@ -552,6 +553,7 @@ func TestCamperTransportationDeleteOrphansRefusesCollapsedComputedSet(t *testing
 // TestCamperTransportationDeleteOrphansStillSweepsGenuineOrphans proves the
 // guard did not disable orphan deletion for the normal case.
 func TestCamperTransportationDeleteOrphansStillSweepsGenuineOrphans(t *testing.T) {
+	t.Parallel()
 	app := newOrphanSweepTestApp(t, "camper_transportation", "person_id", "session_id")
 	col, err := app.FindCollectionByNameOrId("camper_transportation")
 	if err != nil {

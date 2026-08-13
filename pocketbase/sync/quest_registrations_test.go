@@ -473,6 +473,7 @@ func findQuestRecord(records []*testQuestRecord, personID, year int) *testQuestR
 // and had no channel to refuse a sweep at all -- an empty computed set against
 // a populated year deleted the whole year and reported success.
 func TestQuestRegistrationsDeleteOrphansRefusesCollapsedComputedSet(t *testing.T) {
+	t.Parallel()
 	app := newOrphanSweepTestApp(t, "quest_registrations", "person_id")
 	col, err := app.FindCollectionByNameOrId("quest_registrations")
 	if err != nil {
@@ -510,6 +511,7 @@ func TestQuestRegistrationsDeleteOrphansRefusesCollapsedComputedSet(t *testing.T
 // TestQuestRegistrationsDeleteOrphansStillSweepsGenuineOrphans proves the
 // guard did not disable orphan deletion for the normal case.
 func TestQuestRegistrationsDeleteOrphansStillSweepsGenuineOrphans(t *testing.T) {
+	t.Parallel()
 	app := newOrphanSweepTestApp(t, "quest_registrations", "person_id")
 	col, err := app.FindCollectionByNameOrId("quest_registrations")
 	if err != nil {
