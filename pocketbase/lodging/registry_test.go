@@ -286,6 +286,7 @@ func TestSeedRegistryAbsentFileIsANoOp(t *testing.T) {
 }
 
 func TestSeedRegistryCreatesAreasUnitsAndAliases(t *testing.T) {
+	t.Parallel()
 	app := newRegistryTestApp(t)
 
 	if err := seedRegistryFromFile(app, writeRegistry(t, fixtureRegistry), testYear); err != nil {
@@ -359,6 +360,7 @@ func TestSeedRegistryCreatesAreasUnitsAndAliases(t *testing.T) {
 // has never been meaningful. A loader that ignored these fields would carry
 // the sheet's answers into the file and drop them on the way to the database.
 func TestSeedRegistryWritesAmenities(t *testing.T) {
+	t.Parallel()
 	app := newRegistryTestApp(t)
 
 	body := `{"areas": [{"code": "AREA1", "name": "First Area"}], "units": [
@@ -413,6 +415,7 @@ func TestSeedRegistryWritesAmenities(t *testing.T) {
 // invisible on both sides: the file says `true`, the column says false, and
 // nothing anywhere complains.
 func TestSeedRegistryWritesDefaultCombined(t *testing.T) {
+	t.Parallel()
 	app := newRegistryTestApp(t)
 
 	body := `{"areas": [{"code": "AREA1", "name": "First Area"}], "units": [
@@ -440,6 +443,7 @@ func TestSeedRegistryWritesDefaultCombined(t *testing.T) {
 // A blank has_ramp is "not assessed", and it must reach the database blank
 // rather than as a confident "no".
 func TestSeedRegistryUnassessedRampStaysBlank(t *testing.T) {
+	t.Parallel()
 	app := newRegistryTestApp(t)
 
 	body := `{"areas": [{"code": "AREA1", "name": "First Area"}], "units": [
@@ -457,6 +461,7 @@ func TestSeedRegistryUnassessedRampStaysBlank(t *testing.T) {
 }
 
 func TestSeedRegistryWiresParentDeclaredAfterChild(t *testing.T) {
+	t.Parallel()
 	app := newRegistryTestApp(t)
 
 	if err := seedRegistryFromFile(app, writeRegistry(t, fixtureRegistry), testYear); err != nil {
@@ -481,6 +486,7 @@ func TestSeedRegistryWiresParentDeclaredAfterChild(t *testing.T) {
 // through some other path would be indistinguishable here, but a loader that
 // rejected null or wrote garbage would not.
 func TestSeedRegistryNullSleepsStoresZero(t *testing.T) {
+	t.Parallel()
 	app := newRegistryTestApp(t)
 
 	if err := seedRegistryFromFile(app, writeRegistry(t, fixtureRegistry), testYear); err != nil {
@@ -496,6 +502,7 @@ func TestSeedRegistryNullSleepsStoresZero(t *testing.T) {
 // unbounded must therefore be written and re-found as 0 — the trap 1500000121
 // documents, and the reason a re-run would otherwise die on the unique index.
 func TestSeedRegistryUnboundedAliasYearsStoreZero(t *testing.T) {
+	t.Parallel()
 	app := newRegistryTestApp(t)
 
 	if err := seedRegistryFromFile(app, writeRegistry(t, fixtureRegistry), testYear); err != nil {
@@ -527,6 +534,7 @@ func TestSeedRegistryUnboundedAliasYearsStoreZero(t *testing.T) {
 }
 
 func TestSeedRegistryAliasMembersResolveToUnitIDs(t *testing.T) {
+	t.Parallel()
 	app := newRegistryTestApp(t)
 
 	if err := seedRegistryFromFile(app, writeRegistry(t, fixtureRegistry), testYear); err != nil {
@@ -556,6 +564,7 @@ func TestSeedRegistryAliasMembersResolveToUnitIDs(t *testing.T) {
 }
 
 func TestSeedRegistryIsIdempotent(t *testing.T) {
+	t.Parallel()
 	app := newRegistryTestApp(t)
 	path := writeRegistry(t, fixtureRegistry)
 
@@ -582,6 +591,7 @@ func TestSeedRegistryIsIdempotent(t *testing.T) {
 // coordinate on the next restart, which is why this is create-if-absent and
 // not a full upsert.
 func TestSeedRegistryPreservesStaffEdits(t *testing.T) {
+	t.Parallel()
 	app := newRegistryTestApp(t)
 	path := writeRegistry(t, fixtureRegistry)
 
@@ -620,6 +630,7 @@ func TestSeedRegistryPreservesStaffEdits(t *testing.T) {
 // A parent_unit staff cleared deliberately must not be silently re-wired on the
 // next boot, for the same reason as the field edits above.
 func TestSeedRegistryDoesNotRewireAnExistingParent(t *testing.T) {
+	t.Parallel()
 	app := newRegistryTestApp(t)
 	path := writeRegistry(t, fixtureRegistry)
 
@@ -643,6 +654,7 @@ func TestSeedRegistryDoesNotRewireAnExistingParent(t *testing.T) {
 }
 
 func TestSeedRegistryMalformedJSONErrorsWithoutWriting(t *testing.T) {
+	t.Parallel()
 	app := newRegistryTestApp(t)
 
 	err := seedRegistryFromFile(app, writeRegistry(t, `{"areas": [ NOT JSON`), testYear)
@@ -658,6 +670,7 @@ func TestSeedRegistryMalformedJSONErrorsWithoutWriting(t *testing.T) {
 // unit to create area-less: `area` is a REQUIRED relation, so the alternative
 // is a save that fails deep in the loop with no useful message.
 func TestSeedRegistryUnknownAreaCodeIsAnError(t *testing.T) {
+	t.Parallel()
 	app := newRegistryTestApp(t)
 
 	body := `{"areas": [], "units": [
@@ -675,6 +688,7 @@ func TestSeedRegistryUnknownAreaCodeIsAnError(t *testing.T) {
 }
 
 func TestSeedRegistryUnknownParentCodeIsAnError(t *testing.T) {
+	t.Parallel()
 	app := newRegistryTestApp(t)
 
 	body := `{"areas": [{"code": "AREA1", "name": "First Area"}], "units": [
@@ -690,6 +704,7 @@ func TestSeedRegistryUnknownParentCodeIsAnError(t *testing.T) {
 // An alias pointing at a unit code the file does not define would otherwise
 // save with a short member list — a merge quietly missing a room.
 func TestSeedRegistryUnknownAliasMemberIsAnError(t *testing.T) {
+	t.Parallel()
 	app := newRegistryTestApp(t)
 
 	body := `{"areas": [{"code": "AREA1", "name": "First Area"}], "units": [
@@ -710,6 +725,7 @@ func TestSeedRegistryUnknownAliasMemberIsAnError(t *testing.T) {
 // Two alias rows may share a string when their windows differ (a rename), so
 // idempotency has to key on the pair the unique index keys on.
 func TestSeedRegistrySameAliasStringDifferentWindowsBothLand(t *testing.T) {
+	t.Parallel()
 	app := newRegistryTestApp(t)
 
 	body := `{"areas": [{"code": "AREA1", "name": "First Area"}], "units": [
@@ -749,6 +765,7 @@ func TestSeedRegistrySameAliasStringDifferentWindowsBothLand(t *testing.T) {
 // bug. Validation runs before any write, so a bad file changes nothing.
 
 func TestSeedRegistryDuplicateUnitCodeIsAnError(t *testing.T) {
+	t.Parallel()
 	app := newRegistryTestApp(t)
 
 	body := `{"areas": [{"code": "AREA1", "name": "First Area"}], "units": [
@@ -768,6 +785,7 @@ func TestSeedRegistryDuplicateUnitCodeIsAnError(t *testing.T) {
 }
 
 func TestSeedRegistryDuplicateAreaCodeIsAnError(t *testing.T) {
+	t.Parallel()
 	app := newRegistryTestApp(t)
 
 	body := `{"areas": [
@@ -789,6 +807,7 @@ func TestSeedRegistryDuplicateAreaCodeIsAnError(t *testing.T) {
 // the same pair TestSeedRegistrySameAliasStringDifferentWindowsBothLand
 // requires to stay legal.
 func TestSeedRegistryDuplicateAliasWindowIsAnError(t *testing.T) {
+	t.Parallel()
 	app := newRegistryTestApp(t)
 
 	body := `{"areas": [{"code": "AREA1", "name": "First Area"}], "units": [
@@ -820,6 +839,7 @@ func TestSeedRegistryDuplicateAliasWindowIsAnError(t *testing.T) {
 // the container was never deleted and the cleared parent is a staff decision
 // the loader must respect.
 func TestSeedRegistryRewiresChildrenOfARecreatedContainer(t *testing.T) {
+	t.Parallel()
 	app := newRegistryTestApp(t)
 	path := writeRegistry(t, fixtureRegistry)
 
@@ -962,6 +982,7 @@ func withYearFixtureRegistry(t *testing.T) {
 }
 
 func TestSeedRegistryStampsTheSeason(t *testing.T) {
+	t.Parallel()
 	app := newRegistryTestApp(t)
 	withYearFixtureRegistry(t)
 
@@ -978,6 +999,7 @@ func TestSeedRegistryStampsTheSeason(t *testing.T) {
 }
 
 func TestFindByCodeAndYearIgnoresOtherYears(t *testing.T) {
+	t.Parallel()
 	app := newRegistryTestApp(t)
 	withYearFixtureRegistry(t)
 
@@ -1004,6 +1026,7 @@ func TestFindByCodeAndYearIgnoresOtherYears(t *testing.T) {
 // field, rather than by id equality with something seeded once, is what makes
 // a regression here fail loudly instead of flaking.
 func TestFindByCodeIsScopedToItsYear(t *testing.T) {
+	t.Parallel()
 	app := newRegistryTestApp(t)
 
 	if err := seedRegistryFromFile(app, writeRegistry(t, fixtureRegistry), 2026); err != nil {
@@ -1033,6 +1056,7 @@ func TestFindByCodeIsScopedToItsYear(t *testing.T) {
 // OnlyInt here; without Min/Max too, a test could store year: 1 and pass on
 // data the real database would reject.
 func TestRegistryFixtureRejectsYearOutsideProductionRange(t *testing.T) {
+	t.Parallel()
 	app := newRegistryTestApp(t)
 
 	area, err := app.FindCollectionByNameOrId("lodging_areas")
@@ -1133,6 +1157,7 @@ func TestSeedRegistrySecondSeasonIsANoOpOnceOneSeasonHasRows(t *testing.T) {
 // to land all-or-nothing instead, so a failed bootstrap leaves an empty
 // registry the next boot will retry from scratch.
 func TestSeedRegistryLeavesNothingBehindWhenAPassFails(t *testing.T) {
+	t.Parallel()
 	app := newRegistryTestApp(t)
 	withYearFixtureRegistry(t)
 	lift := failUnitCreate(app, "test-unit-a-room-1") // the second of two units
@@ -1172,6 +1197,7 @@ func TestSeedRegistryLeavesNothingBehindWhenAPassFails(t *testing.T) {
 // down. Tagging only the row-check failure is what lets main.go tell them
 // apart without inspecting error strings.
 func TestSeedRegistryRowCheckFailureIsTaggedAsSuch(t *testing.T) {
+	t.Parallel()
 	app, err := tests.NewTestApp()
 	if err != nil {
 		t.Fatalf("NewTestApp: %v", err)

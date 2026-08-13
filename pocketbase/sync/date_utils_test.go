@@ -9,6 +9,7 @@ import (
 // All 4 services previously had their own parseDate with inconsistent format lists,
 // output formats, and error handling.
 func TestParseDate_SharedFunction(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name     string
 		input    string
@@ -112,6 +113,7 @@ func TestParseDate_SharedFunction(t *testing.T) {
 
 // TestParseDateValue tests the interface{}-accepting wrapper used by financial_transactions.go
 func TestParseDateValue(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name     string
 		input    any
@@ -157,6 +159,7 @@ func TestParseDateValue(t *testing.T) {
 // TestParseDate_ConsistentOutputFormat ensures all parseable inputs produce
 // the same output format: "2006-01-02 15:04:05Z" (PocketBase DateTime without millis)
 func TestParseDate_ConsistentOutputFormat(t *testing.T) {
+	t.Parallel()
 	inputs := []string{
 		"2024-06-15T10:30:00Z",
 		"2024-06-15T10:30:00.000Z",

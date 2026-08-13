@@ -10,6 +10,7 @@ import (
 )
 
 func TestEnrollmentSnapshotsName(t *testing.T) {
+	t.Parallel()
 	svc := NewEnrollmentSnapshotsSync(nil)
 	if svc.Name() != "enrollment_snapshots" {
 		t.Errorf("expected name enrollment_snapshots, got %s", svc.Name())
@@ -17,6 +18,7 @@ func TestEnrollmentSnapshotsName(t *testing.T) {
 }
 
 func TestEnrollmentSnapshotsStats(t *testing.T) {
+	t.Parallel()
 	svc := NewEnrollmentSnapshotsSync(nil)
 	stats := svc.GetStats()
 	if stats.Created != 0 || stats.Updated != 0 || stats.Errors != 0 {
@@ -25,6 +27,7 @@ func TestEnrollmentSnapshotsStats(t *testing.T) {
 }
 
 func TestEnrollmentSnapshotsSetYear(t *testing.T) {
+	t.Parallel()
 	svc := NewEnrollmentSnapshotsSync(nil)
 	svc.SetYear(2025)
 	if svc.Year != 2025 {
@@ -33,6 +36,7 @@ func TestEnrollmentSnapshotsSetYear(t *testing.T) {
 }
 
 func TestEnrollmentSnapshotsSetDebug(t *testing.T) {
+	t.Parallel()
 	svc := NewEnrollmentSnapshotsSync(nil)
 	svc.SetDebug(true)
 	if !svc.Debug {
@@ -45,6 +49,7 @@ func TestEnrollmentSnapshotsSetDebug(t *testing.T) {
 }
 
 func TestCountByGender(t *testing.T) {
+	t.Parallel()
 	app, err := tests.NewTestApp()
 	if err != nil {
 		t.Fatal(err)
@@ -147,6 +152,7 @@ func TestCountByGender(t *testing.T) {
 }
 
 func TestSnapshotCancelledFilterUsesBritishSpelling(t *testing.T) {
+	t.Parallel()
 	// Bug 1: The snapshot sync used 'canceled' (American) but attendees.go
 	// stores 'cancelled' (British, from CampMinder). This test verifies the
 	// filter matches actual attendee records with status = 'cancelled'.
@@ -203,6 +209,7 @@ func TestSnapshotCancelledFilterUsesBritishSpelling(t *testing.T) {
 }
 
 func TestSnapshotUsesFullTimestamp(t *testing.T) {
+	t.Parallel()
 	// Verify the format string produces a full datetime (not date-only or midnight-truncated).
 	// Use a known non-midnight time to confirm the time component is preserved.
 	sample := time.Date(2026, 6, 15, 14, 30, 45, 0, time.UTC)

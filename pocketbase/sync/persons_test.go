@@ -9,6 +9,7 @@ const testAlumniTagID = "rec_alumni_001"
 const testFirstName = "Emma"
 
 func TestPersonsSync_Name(t *testing.T) {
+	t.Parallel()
 	s := &PersonsSync{}
 
 	got := s.Name()
@@ -21,6 +22,7 @@ func TestPersonsSync_Name(t *testing.T) {
 
 // TestTransformPersonToPB_CamperDetailsExpanded tests that all CamperDetails fields are extracted
 func TestTransformPersonToPB_CamperDetailsExpanded(t *testing.T) {
+	t.Parallel()
 	s := &PersonsSync{
 		missingDataStats: make(map[string]int),
 	}
@@ -92,6 +94,7 @@ func TestTransformPersonToPB_CamperDetailsExpanded(t *testing.T) {
 
 // TestTransformPersonToPB_MissingCamperDetailsFields tests graceful handling of missing CamperDetails fields
 func TestTransformPersonToPB_MissingCamperDetailsFields(t *testing.T) {
+	t.Parallel()
 	s := &PersonsSync{
 		missingDataStats: make(map[string]int),
 	}
@@ -136,6 +139,7 @@ func TestTransformPersonToPB_MissingCamperDetailsFields(t *testing.T) {
 
 // TestExtractHouseholdsFromPersonData tests household extraction during combined sync
 func TestExtractHouseholdsFromPersonData(t *testing.T) {
+	t.Parallel()
 	s := &PersonsSync{
 		missingDataStats: make(map[string]int),
 	}
@@ -169,6 +173,7 @@ func TestExtractHouseholdsFromPersonData(t *testing.T) {
 
 // TestExtractHouseholdsFromPersonData_NoHouseholds tests handling when Households is missing
 func TestExtractHouseholdsFromPersonData_NoHouseholds(t *testing.T) {
+	t.Parallel()
 	s := &PersonsSync{
 		missingDataStats: make(map[string]int),
 	}
@@ -187,6 +192,7 @@ func TestExtractHouseholdsFromPersonData_NoHouseholds(t *testing.T) {
 
 // TestPersonsSync_TransformHouseholdToPB tests household transformation for combined sync
 func TestPersonsSync_TransformHouseholdToPB(t *testing.T) {
+	t.Parallel()
 	s := &PersonsSync{
 		missingDataStats: make(map[string]int),
 	}
@@ -229,6 +235,7 @@ func TestPersonsSync_TransformHouseholdToPB(t *testing.T) {
 
 // TestPersonsCompareFields tests that compareFields includes new CamperDetails fields and household relations
 func TestPersonsCompareFields(t *testing.T) {
+	t.Parallel()
 	// This verifies that the fields used in processPerson include the discrete address
 	// and email columns (added in Phase 2) and don't include removed JSON fields.
 	expectedNewFields := []string{
@@ -267,6 +274,7 @@ func TestPersonsCompareFields(t *testing.T) {
 
 // TestExtractHouseholdIDsFromPerson tests extraction of household CampMinder IDs
 func TestExtractHouseholdIDsFromPerson(t *testing.T) {
+	t.Parallel()
 	s := &PersonsSync{}
 
 	personData := map[string]any{
@@ -302,6 +310,7 @@ func TestExtractHouseholdIDsFromPerson(t *testing.T) {
 
 // TestExtractHouseholdIDsFromPerson_Partial tests with only some households present
 func TestExtractHouseholdIDsFromPerson_Partial(t *testing.T) {
+	t.Parallel()
 	s := &PersonsSync{}
 
 	// Child with only primary childhood household
@@ -330,6 +339,7 @@ func TestExtractHouseholdIDsFromPerson_Partial(t *testing.T) {
 
 // TestAllCapsNameFix tests ALL CAPS name conversion
 func TestAllCapsNameFix(t *testing.T) {
+	t.Parallel()
 	s := &PersonsSync{}
 
 	tests := []struct {
@@ -356,6 +366,7 @@ func TestAllCapsNameFix(t *testing.T) {
 // including households sub-entity stats from combined sync
 // Note: person_tags stats removed - tags are now a multi-select relation on persons
 func TestPersonsSync_GetStats_WithSubStats(t *testing.T) {
+	t.Parallel()
 	s := &PersonsSync{
 		missingDataStats: make(map[string]int),
 	}
@@ -411,6 +422,7 @@ func TestPersonsSync_GetStats_WithSubStats(t *testing.T) {
 // TestPersonsSync_GetStats_WithoutSubStats tests backwards compatibility
 // when sub-entity stats are not set (not a combined sync)
 func TestPersonsSync_GetStats_WithoutSubStats(t *testing.T) {
+	t.Parallel()
 	s := &PersonsSync{
 		missingDataStats: make(map[string]int),
 	}
@@ -439,6 +451,7 @@ func TestPersonsSync_GetStats_WithoutSubStats(t *testing.T) {
 
 // TestPersonsSync_GetStats_PartialSubStats tests when only some sub-entity stats are set
 func TestPersonsSync_GetStats_PartialSubStats(t *testing.T) {
+	t.Parallel()
 	s := &PersonsSync{
 		missingDataStats: make(map[string]int),
 	}
@@ -486,6 +499,7 @@ func TestPersonsSync_GetStats_PartialSubStats(t *testing.T) {
 
 // TestExtractTagIDs tests extracting PocketBase tag definition IDs from person data
 func TestExtractTagIDs(t *testing.T) {
+	t.Parallel()
 	s := &PersonsSync{}
 
 	// Mock tag definitions map (name -> PocketBase ID)
@@ -537,6 +551,7 @@ func TestExtractTagIDs(t *testing.T) {
 
 // TestExtractTagIDs_NoTags tests handling when Tags is missing
 func TestExtractTagIDs_NoTags(t *testing.T) {
+	t.Parallel()
 	s := &PersonsSync{}
 
 	tagDefsByName := map[string]string{
@@ -556,6 +571,7 @@ func TestExtractTagIDs_NoTags(t *testing.T) {
 
 // TestExtractTagIDs_EmptyTags tests handling when Tags is empty array
 func TestExtractTagIDs_EmptyTags(t *testing.T) {
+	t.Parallel()
 	s := &PersonsSync{}
 
 	tagDefsByName := map[string]string{
@@ -576,6 +592,7 @@ func TestExtractTagIDs_EmptyTags(t *testing.T) {
 
 // TestExtractTagIDs_NilTags tests handling when Tags is nil
 func TestExtractTagIDs_NilTags(t *testing.T) {
+	t.Parallel()
 	s := &PersonsSync{}
 
 	tagDefsByName := map[string]string{
@@ -596,6 +613,7 @@ func TestExtractTagIDs_NilTags(t *testing.T) {
 
 // TestExtractTagIDs_UnknownTag tests handling when tag name not in definitions
 func TestExtractTagIDs_UnknownTag(t *testing.T) {
+	t.Parallel()
 	s := &PersonsSync{}
 
 	tagDefsByName := map[string]string{
@@ -627,6 +645,7 @@ func TestExtractTagIDs_UnknownTag(t *testing.T) {
 
 // TestExtractTagIDs_EmptyTagName tests handling when tag Name is empty
 func TestExtractTagIDs_EmptyTagName(t *testing.T) {
+	t.Parallel()
 	s := &PersonsSync{}
 
 	tagDefsByName := map[string]string{
@@ -662,6 +681,7 @@ func TestExtractTagIDs_EmptyTagName(t *testing.T) {
 
 // TestExtractPersonIDsFromStaffRecords tests extraction of person IDs from staff records
 func TestExtractPersonIDsFromStaffRecords(t *testing.T) {
+	t.Parallel()
 	s := &PersonsSync{}
 
 	staffRecords := []map[string]any{
@@ -692,6 +712,7 @@ func TestExtractPersonIDsFromStaffRecords(t *testing.T) {
 
 // TestExtractPersonIDsFromStaffRecords_SkipsInvalidIDs tests that invalid person IDs are skipped
 func TestExtractPersonIDsFromStaffRecords_SkipsInvalidIDs(t *testing.T) {
+	t.Parallel()
 	s := &PersonsSync{}
 
 	staffRecords := []map[string]any{
@@ -722,6 +743,7 @@ func TestExtractPersonIDsFromStaffRecords_SkipsInvalidIDs(t *testing.T) {
 
 // TestExtractPersonIDsFromStaffRecords_EmptyInput tests handling of empty input
 func TestExtractPersonIDsFromStaffRecords_EmptyInput(t *testing.T) {
+	t.Parallel()
 	s := &PersonsSync{}
 
 	personIDs := s.extractPersonIDsFromStaffRecords(nil)
@@ -737,6 +759,7 @@ func TestExtractPersonIDsFromStaffRecords_EmptyInput(t *testing.T) {
 
 // TestExtractPersonIDsFromStaffRecords_Deduplicates tests that duplicate IDs are removed
 func TestExtractPersonIDsFromStaffRecords_Deduplicates(t *testing.T) {
+	t.Parallel()
 	s := &PersonsSync{}
 
 	// Staff member appears in multiple records (e.g., different status pages)
@@ -760,6 +783,7 @@ func TestExtractPersonIDsFromStaffRecords_Deduplicates(t *testing.T) {
 
 // TestMergePersonIDs tests merging of attendee and staff person IDs
 func TestMergePersonIDs(t *testing.T) {
+	t.Parallel()
 	s := &PersonsSync{}
 
 	attendeeIDs := []int{1001, 1002, 1003}
@@ -787,6 +811,7 @@ func TestMergePersonIDs(t *testing.T) {
 
 // TestMergePersonIDs_WithOverlap tests merging when some IDs appear in both lists
 func TestMergePersonIDs_WithOverlap(t *testing.T) {
+	t.Parallel()
 	s := &PersonsSync{}
 
 	// Former campers who are now staff (appear in both lists)
@@ -818,6 +843,7 @@ func TestMergePersonIDs_WithOverlap(t *testing.T) {
 
 // TestMergePersonIDs_EmptyInputs tests merging with empty or nil inputs
 func TestMergePersonIDs_EmptyInputs(t *testing.T) {
+	t.Parallel()
 	s := &PersonsSync{}
 
 	// Both empty
@@ -851,6 +877,7 @@ func TestMergePersonIDs_EmptyInputs(t *testing.T) {
 
 // TestShouldExcludeTag_FutureYear tests that tags with future years are excluded
 func TestShouldExcludeTag_FutureYear(t *testing.T) {
+	t.Parallel()
 	s := &PersonsSync{}
 	syncYear := 2025
 
@@ -895,6 +922,7 @@ func TestShouldExcludeTag_FutureYear(t *testing.T) {
 
 // TestShouldExcludeTag_DifferentSyncYears tests tag filtering with different sync years
 func TestShouldExcludeTag_DifferentSyncYears(t *testing.T) {
+	t.Parallel()
 	s := &PersonsSync{}
 
 	// When syncing 2024, 2025 tags should be excluded
@@ -913,6 +941,7 @@ func TestShouldExcludeTag_DifferentSyncYears(t *testing.T) {
 
 // TestExtractTagIDs_FiltersFutureTags tests that extractTagIDs filters out future-year tags
 func TestExtractTagIDs_FiltersFutureTags(t *testing.T) {
+	t.Parallel()
 	s := &PersonsSync{}
 
 	// Tag definitions - pretend these are in the database
@@ -971,6 +1000,7 @@ func TestExtractTagIDs_FiltersFutureTags(t *testing.T) {
 // TestTransformPersonToPB_CMLeadDateExtracted tests that cm_lead_date is extracted from CamperDetails
 // Note: cm_years_at_camp and cm_last_year_attended were removed (they duplicated years_at_camp/last_year_attended)
 func TestTransformPersonToPB_CMLeadDateExtracted(t *testing.T) {
+	t.Parallel()
 	s := &PersonsSync{
 		missingDataStats: make(map[string]int),
 	}
@@ -1017,6 +1047,7 @@ func TestTransformPersonToPB_CMLeadDateExtracted(t *testing.T) {
 // TestTransformPersonToPB_CMLeadDateMissing tests graceful handling of missing cm_lead_date
 // Note: cm_years_at_camp and cm_last_year_attended were removed (they duplicated years_at_camp/last_year_attended)
 func TestTransformPersonToPB_CMLeadDateMissing(t *testing.T) {
+	t.Parallel()
 	s := &PersonsSync{
 		missingDataStats: make(map[string]int),
 	}
@@ -1065,6 +1096,7 @@ func TestTransformPersonToPB_CMLeadDateMissing(t *testing.T) {
 // relation is populated from household_id when principal household is not available
 // This tests the fix for the bug where persons have household_id but empty household relation
 func TestUpdatePersonHouseholdRelations_UsesHouseholdID(t *testing.T) {
+	t.Parallel()
 	// This test verifies the expected behavior:
 	// When a person has household_id (CM ID) but no principal household in Households object,
 	// the household relation should still be populated by looking up the household by CM ID
@@ -1104,6 +1136,7 @@ func TestUpdatePersonHouseholdRelations_UsesHouseholdID(t *testing.T) {
 // TestTransformPersonToPB_IsCamperFlag tests that is_camper is set based on the isCamper parameter
 // Previously this was hardcoded to true, which incorrectly marked staff-only persons as campers
 func TestTransformPersonToPB_IsCamperFlag(t *testing.T) {
+	t.Parallel()
 	s := &PersonsSync{
 		missingDataStats: make(map[string]int),
 	}
@@ -1144,6 +1177,7 @@ func TestTransformPersonToPB_IsCamperFlag(t *testing.T) {
 
 // TestGatherPersonIDs_TracksCamperStatus tests that gatherPersonIDs returns camper status info
 func TestGatherPersonIDs_TracksCamperStatus(t *testing.T) {
+	t.Parallel()
 	// This test documents the expected behavior:
 	// gatherPersonIDs should return both the list of person IDs AND a set indicating
 	// which IDs are campers (from attendees) vs staff-only
@@ -1159,6 +1193,7 @@ func TestGatherPersonIDs_TracksCamperStatus(t *testing.T) {
 // TestMergePersonIDs_PreservesCamperInfo tests that merging preserves camper identification
 // When staff and attendee IDs overlap, the person should still be marked as a camper
 func TestMergePersonIDs_PreservesCamperInfo(t *testing.T) {
+	t.Parallel()
 	// Former campers who are now staff should still be marked as campers
 	// because they appear in the attendees list
 
@@ -1191,6 +1226,7 @@ func TestMergePersonIDs_PreservesCamperInfo(t *testing.T) {
 
 // TestExtractAddressCity tests extraction of city from address for the new address_city field
 func TestExtractAddressCity(t *testing.T) {
+	t.Parallel()
 	s := &PersonsSync{
 		missingDataStats: make(map[string]int),
 	}
@@ -1239,6 +1275,7 @@ func TestExtractAddressCity(t *testing.T) {
 
 // TestExtractAddressCity_StateField tests extraction when State field is used instead of StateProvince
 func TestExtractAddressCity_StateField(t *testing.T) {
+	t.Parallel()
 	s := &PersonsSync{
 		missingDataStats: make(map[string]int),
 	}
@@ -1285,6 +1322,7 @@ func TestExtractAddressCity_StateField(t *testing.T) {
 
 // TestExtractAddressCity_NoHouseholds tests graceful handling when no household data
 func TestExtractAddressCity_NoHouseholds(t *testing.T) {
+	t.Parallel()
 	s := &PersonsSync{
 		missingDataStats: make(map[string]int),
 	}
@@ -1327,6 +1365,7 @@ func TestExtractAddressCity_NoHouseholds(t *testing.T) {
 
 // TestExtractPrimaryEmail tests extraction of primary email (IsLogin: true)
 func TestExtractPrimaryEmail(t *testing.T) {
+	t.Parallel()
 	s := &PersonsSync{
 		missingDataStats: make(map[string]int),
 	}
@@ -1376,6 +1415,7 @@ func TestExtractPrimaryEmail(t *testing.T) {
 
 // TestExtractPrimaryEmail_FirstEntryFallback tests that first entry is used when no IsLogin
 func TestExtractPrimaryEmail_FirstEntryFallback(t *testing.T) {
+	t.Parallel()
 	s := &PersonsSync{
 		missingDataStats: make(map[string]int),
 	}
@@ -1423,6 +1463,7 @@ func TestExtractPrimaryEmail_FirstEntryFallback(t *testing.T) {
 
 // TestExtractPrimaryEmail_SingleEmail tests handling when only one email exists
 func TestExtractPrimaryEmail_SingleEmail(t *testing.T) {
+	t.Parallel()
 	s := &PersonsSync{
 		missingDataStats: make(map[string]int),
 	}
@@ -1467,6 +1508,7 @@ func TestExtractPrimaryEmail_SingleEmail(t *testing.T) {
 
 // TestExtractPrimaryEmail_NoEmails tests handling when no emails exist
 func TestExtractPrimaryEmail_NoEmails(t *testing.T) {
+	t.Parallel()
 	s := &PersonsSync{
 		missingDataStats: make(map[string]int),
 	}
@@ -1509,6 +1551,7 @@ func TestExtractPrimaryEmail_NoEmails(t *testing.T) {
 
 // TestPhoneNumbersRemoved tests that phone_numbers field is no longer populated
 func TestPhoneNumbersRemoved(t *testing.T) {
+	t.Parallel()
 	s := &PersonsSync{
 		missingDataStats: make(map[string]int),
 	}
@@ -1548,6 +1591,7 @@ func TestPhoneNumbersRemoved(t *testing.T) {
 }
 
 func TestParseHouseholdSalutation(t *testing.T) {
+	t.Parallel()
 	s := &PersonsSync{}
 
 	type want struct {
@@ -1681,6 +1725,7 @@ func TestParseHouseholdSalutation(t *testing.T) {
 // Relatives array (which only carries IDs) and produced parent_names=null for
 // every record — see #1393.
 func TestTransformPersonToPB_ParentNamesFromMailingTitle(t *testing.T) {
+	t.Parallel()
 	s := &PersonsSync{missingDataStats: make(map[string]int)}
 
 	personData := map[string]any{
@@ -1728,6 +1773,7 @@ func contains(haystack, needle string) bool {
 // this, the upsert path skips the field (only fields present in pbData are
 // compared/written), and stale guardian data persists indefinitely.
 func TestTransformPersonToPB_ParentNamesClearedOnParseFail(t *testing.T) {
+	t.Parallel()
 	cases := []struct {
 		name        string
 		households  any

@@ -5,6 +5,7 @@ import (
 )
 
 func TestPersonTagDefinitionsSync_Name(t *testing.T) {
+	t.Parallel()
 	s := &PersonTagDefinitionsSync{}
 
 	got := s.Name()
@@ -17,6 +18,7 @@ func TestPersonTagDefinitionsSync_Name(t *testing.T) {
 
 // TestTransformPersonTagDefinitionToPB tests that all CampMinder tag definition fields are extracted
 func TestTransformPersonTagDefinitionToPB(t *testing.T) {
+	t.Parallel()
 	s := &PersonTagDefinitionsSync{}
 
 	// Mock CampMinder API response (based on TagDef schema in persons.yaml)
@@ -54,6 +56,7 @@ func TestTransformPersonTagDefinitionToPB(t *testing.T) {
 
 // TestTransformPersonTagDefinitionHandlesMissingFields tests that nil/missing fields don't cause errors
 func TestTransformPersonTagDefinitionHandlesMissingFields(t *testing.T) {
+	t.Parallel()
 	s := &PersonTagDefinitionsSync{}
 
 	// Minimal data with only required fields
@@ -82,6 +85,7 @@ func TestTransformPersonTagDefinitionHandlesMissingFields(t *testing.T) {
 
 // TestTransformPersonTagDefinitionRequiredNameError tests that missing Name returns error
 func TestTransformPersonTagDefinitionRequiredNameError(t *testing.T) {
+	t.Parallel()
 	s := &PersonTagDefinitionsSync{}
 
 	// Missing Name field
@@ -97,6 +101,7 @@ func TestTransformPersonTagDefinitionRequiredNameError(t *testing.T) {
 
 // TestTransformPersonTagDefinitionEmptyNameError tests that empty Name returns error
 func TestTransformPersonTagDefinitionEmptyNameError(t *testing.T) {
+	t.Parallel()
 	s := &PersonTagDefinitionsSync{}
 
 	// Empty Name field

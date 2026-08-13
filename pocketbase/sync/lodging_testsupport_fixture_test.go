@@ -19,6 +19,7 @@ import (
 // surfaced because lodging/registry_test.go's twin fixture carries the index;
 // this package's did not.
 func TestLodgingUnitsFixtureRejectsDuplicateCodeYear(t *testing.T) {
+	t.Parallel()
 	app := newLodgingTestApp(t)
 	addUnit(t, app, "dup-code", 2026)
 
@@ -44,6 +45,7 @@ func TestLodgingUnitsFixtureRejectsDuplicateCodeYear(t *testing.T) {
 // the range too, a test can store year: 1 or year: 2025.5 and pass on data
 // the real database would reject.
 func TestLodgingUnitsFixtureRejectsYearOutsideProductionRange(t *testing.T) {
+	t.Parallel()
 	app := newLodgingTestApp(t)
 	col, err := app.FindCollectionByNameOrId("lodging_units")
 	if err != nil {
@@ -159,6 +161,7 @@ func loadProductionSchema(path string) (map[string]map[string]bool, error) {
 // contract itself, separate from TestLodgingTestsupportFixtureFieldsExist...
 // below, which needs the full CI boot to exercise the comparison it guards.
 func TestLoadProductionSchema(t *testing.T) {
+	t.Parallel()
 	write := func(t *testing.T, body string) string {
 		t.Helper()
 		path := filepath.Join(t.TempDir(), "collections.json")
@@ -231,6 +234,7 @@ func TestLoadProductionSchema(t *testing.T) {
 // produces that today, so this test SKIPS everywhere else -- including a
 // plain `go test ./...` -- rather than reimplementing the boot a second time.
 func TestLodgingTestsupportFixtureFieldsExistInProductionSchema(t *testing.T) {
+	t.Parallel()
 	schemaPath := os.Getenv("KINDRED_PROD_SCHEMA_JSON")
 	if schemaPath == "" {
 		t.Skip("KINDRED_PROD_SCHEMA_JSON not set -- this check runs in CI's " +

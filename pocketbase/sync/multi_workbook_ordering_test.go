@@ -13,6 +13,7 @@ const testTabNameAttendees = "Attendees"
 // =============================================================================
 
 func TestSortGlobalsWorkbookTabs_IndexFirst(t *testing.T) {
+	t.Parallel()
 	// Index sheet should always be first in globals workbook
 	tabs := []string{
 		"Tag Definitions",
@@ -29,6 +30,7 @@ func TestSortGlobalsWorkbookTabs_IndexFirst(t *testing.T) {
 }
 
 func TestSortGlobalsWorkbookTabs_AlphabetizedAfterIndex(t *testing.T) {
+	t.Parallel()
 	// After Index, other tabs should be alphabetized
 	tabs := []string{
 		"Tag Definitions",
@@ -60,6 +62,7 @@ func TestSortGlobalsWorkbookTabs_AlphabetizedAfterIndex(t *testing.T) {
 }
 
 func TestSortGlobalsWorkbookTabs_NoIndex(t *testing.T) {
+	t.Parallel()
 	// If Index is not present, should just alphabetize
 	tabs := []string{
 		"Tag Definitions",
@@ -83,6 +86,7 @@ func TestSortGlobalsWorkbookTabs_NoIndex(t *testing.T) {
 }
 
 func TestSortYearWorkbookTabs_Alphabetized(t *testing.T) {
+	t.Parallel()
 	// Year workbook tabs should be alphabetized
 	tabs := []string{
 		"Staff",
@@ -113,6 +117,7 @@ func TestSortYearWorkbookTabs_Alphabetized(t *testing.T) {
 // =============================================================================
 
 func TestGetMultiWorkbookTabColor_Index(t *testing.T) {
+	t.Parallel()
 	// Index tab should be gold
 	color := GetMultiWorkbookTabColor("Index")
 
@@ -122,6 +127,7 @@ func TestGetMultiWorkbookTabColor_Index(t *testing.T) {
 }
 
 func TestGetMultiWorkbookTabColor_CMSourcedTables(t *testing.T) {
+	t.Parallel()
 	// CampMinder-sourced tables should be orange
 	cmTabs := []string{
 		testTabNameAttendees, "Persons", "Households",
@@ -141,6 +147,7 @@ func TestGetMultiWorkbookTabColor_CMSourcedTables(t *testing.T) {
 }
 
 func TestGetMultiWorkbookTabColor_GlobalTables(t *testing.T) {
+	t.Parallel()
 	// Global tables should be grey
 	globalTabsList := []string{"Tag Definitions", "Custom Field Definitions", "Divisions", "Financial Categories"}
 
@@ -155,6 +162,7 @@ func TestGetMultiWorkbookTabColor_GlobalTables(t *testing.T) {
 }
 
 func TestGetMultiWorkbookTabColor_DerivedTables(t *testing.T) {
+	t.Parallel()
 	// Derived/computed tables should be grey
 	derivedTabsList := []string{"Camper History"}
 
@@ -169,6 +177,7 @@ func TestGetMultiWorkbookTabColor_DerivedTables(t *testing.T) {
 }
 
 func TestGetMultiWorkbookTabColor_Unknown(t *testing.T) {
+	t.Parallel()
 	// Unknown tabs in year workbook default to CM-sourced (orange)
 	color := GetMultiWorkbookTabColor("New CM Table")
 
@@ -182,6 +191,7 @@ func TestGetMultiWorkbookTabColor_Unknown(t *testing.T) {
 // =============================================================================
 
 func TestReorderGlobalsWorkbookTabs_AppliesColorsAndOrder(t *testing.T) {
+	t.Parallel()
 	// Test that reordering applies correct colors and positions
 	mockWriter := NewMockSheetsWriter()
 
@@ -205,6 +215,7 @@ func TestReorderGlobalsWorkbookTabs_AppliesColorsAndOrder(t *testing.T) {
 }
 
 func TestReorderYearWorkbookTabs_AppliesColorsAndOrder(t *testing.T) {
+	t.Parallel()
 	// Test that year workbook tabs are alphabetized
 	mockWriter := NewMockSheetsWriter()
 

@@ -16,6 +16,7 @@ import (
 // fix, loadFieldDefinitions stored the untrimmed name, so the switch never
 // matched and 3,492 answers across the three columns were silently dropped.
 func TestStaffApplicationsLoadFieldDefinitionsTrimsNames(t *testing.T) {
+	t.Parallel()
 	app := newFieldDefsTestApp(t, map[int]string{
 		1: "App-I responded to my stress ",  // trailing space, verbatim from CampMinder
 		2: "App-Someone whose work I ",      // trailing space, verbatim from CampMinder
@@ -61,6 +62,7 @@ func TestStaffApplicationsLoadFieldDefinitionsTrimsNames(t *testing.T) {
 
 // TestStaffApplicationsServiceName verifies the service name constant
 func TestStaffApplicationsServiceName(t *testing.T) {
+	t.Parallel()
 	expected := "staff_applications"
 	if serviceNameStaffApplications != expected {
 		t.Errorf("serviceNameStaffApplications = %q, want %q", serviceNameStaffApplications, expected)
@@ -70,6 +72,7 @@ func TestStaffApplicationsServiceName(t *testing.T) {
 // TestMapAppFieldToColumn tests the CampMinder field name to column mapping
 // for the 39 App- fields used in staff applications
 func TestMapAppFieldToColumn(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		cmField  string
 		expected string
@@ -144,6 +147,7 @@ func TestMapAppFieldToColumn(t *testing.T) {
 
 // TestParseAppBool tests boolean parsing for staff application fields
 func TestParseAppBool(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		input    string
 		expected bool
@@ -172,6 +176,7 @@ func TestParseAppBool(t *testing.T) {
 // TestStaffApplicationsCompositeKey tests the unique key generation
 // Key format: personID|year
 func TestStaffApplicationsCompositeKey(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		personID int
 		year     int
@@ -195,6 +200,7 @@ func TestStaffApplicationsCompositeKey(t *testing.T) {
 
 // TestStaffApplicationsFieldMapping tests that all expected fields are present
 func TestStaffApplicationsFieldMapping(t *testing.T) {
+	t.Parallel()
 	expectedFields := []string{
 		// Work availability
 		"can_work_dates",
@@ -390,6 +396,7 @@ func seedStaffApplication(t *testing.T, app core.App, cmID, year int) string {
 // gate, the computed set comes back empty, and the unguarded sweep deletes the
 // whole year and then sets SyncSuccessful = true.
 func TestStaffApplicationsDeleteOrphansRefusesEmptyComputedSet(t *testing.T) {
+	t.Parallel()
 	app := newStaffApplicationsTestApp(t)
 	recID := seedStaffApplication(t, app, 1001, 2026)
 
@@ -422,6 +429,7 @@ func TestStaffApplicationsDeleteOrphansRefusesEmptyComputedSet(t *testing.T) {
 // TestStaffApplicationsDeleteOrphansStillSweepsGenuineOrphans proves the guard
 // did not disable orphan deletion for the normal case.
 func TestStaffApplicationsDeleteOrphansStillSweepsGenuineOrphans(t *testing.T) {
+	t.Parallel()
 	app := newStaffApplicationsTestApp(t)
 	keepID := seedStaffApplication(t, app, 1001, 2026)
 	orphanID := seedStaffApplication(t, app, 1002, 2026)

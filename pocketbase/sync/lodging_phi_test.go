@@ -37,6 +37,7 @@ var phiColumns = []string{
 
 // TestPHICollectionsAreNotExported is the assertion spec 5.4 asks for.
 func TestPHICollectionsAreNotExported(t *testing.T) {
+	t.Parallel()
 	configs := append(GetReadableYearExports(), GetReadableGlobalExports()...)
 
 	// Without this the test passes by looking at nothing: every assertion below
@@ -87,6 +88,7 @@ func TestPHICollectionsAreNotExported(t *testing.T) {
 // so the prefix scan below covers every lodging collection including ones not
 // yet written, and the manifest half is live rather than inert.
 func TestLodgingCollectionsAreNeverExported(t *testing.T) {
+	t.Parallel()
 	exported := map[string]string{}
 	for _, cfg := range GetReadableYearExports() {
 		exported[cfg.Collection] = "GetReadableYearExports"
@@ -130,6 +132,7 @@ func TestLodgingCollectionsAreNeverExported(t *testing.T) {
 // Kept as a separate test rather than folded into the merge from #1880: that one
 // is scoped to serviceNameLodgingAssignments and would not notice this.
 func TestFamilyCampDerivedManifestIsNotAnExportList(t *testing.T) {
+	t.Parallel()
 	exported := map[string]string{}
 	for _, cfg := range GetReadableYearExports() {
 		exported[cfg.Collection] = "GetReadableYearExports"
@@ -173,6 +176,7 @@ func TestFamilyCampDerivedManifestIsNotAnExportList(t *testing.T) {
 // stream, which on this deployment goes to the container log and from there
 // wherever logs go.
 func TestPHINarrativeIsNeverLogged(t *testing.T) {
+	t.Parallel()
 	for _, file := range []string{"family_camp_derived.go", "lodging_requests.go"} {
 		for _, v := range phiLogViolations(readSourceFile(t, file)) {
 			t.Errorf("%s: %s", file, v)
@@ -239,6 +243,7 @@ func parenDepth(s string) int {
 // covers is not hypothetical: the line-anchored version passed on every input
 // below except the first.
 func TestPHILogScannerCatchesWrappedCalls(t *testing.T) {
+	t.Parallel()
 	cases := map[string]bool{
 		`slog.Info("x", "v", med.bathroomExplain)`:                                      true,
 		"slog.Info(\"x\",\n\t\"v\", med.bathroomExplain,\n)":                            true,
