@@ -901,15 +901,17 @@ func GetReadableYearExports() []ExportConfig {
 		// so a sheet without it reads as duplicated households. Person ID 0 is
 		// the household-level row carrying the _family columns.
 		//
-		// PERSON ID, DELIBERATELY NOT THE NAME. This endpoint is gated on
-		// `sheets.export`, which Finance and Executive hold -- a wider audience
-		// than the collection's own admin-only API rules. These columns carry
-		// Jewish identity and affiliation, family description and custody
-		// answers, and putting a camper's name beside them here would narrow
-		// the attribution from a family to a named child for a non-admin role.
-		// The Persons sheet in the same workbook exports `cm_id` under the same
-		// "Person ID" header, so anyone entitled to resolve the id to a name
-		// still can, through a gate that already exists.
+		// Person ID rather than the camper's name is a readability choice, not a
+		// privacy control, and an earlier version of this comment claimed
+		// otherwise. It argued that omitting the name kept the attribution
+		// behind "a gate that already exists" -- but the Persons sheet in THIS
+		// workbook maps the same "Person ID" header to first_name/last_name, so
+		// the two are one lookup apart for anyone already holding the file.
+		// There is no gate. Owner ruling 2026-08-13: the export's contents are
+		// not a concern here, because the staff who can pull this workbook can
+		// already read the same answers in CampMinder directly. Do not
+		// reintroduce a privacy rationale for this column without revisiting
+		// that ruling.
 		{
 			Collection: "household_demographics",
 			SheetName:  "Household Demographics",
