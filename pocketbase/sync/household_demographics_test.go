@@ -831,3 +831,71 @@ func countDemographicsRows(t *testing.T, app core.App) int {
 	}
 	return len(records)
 }
+
+// setColumn is the must-be-unique rule that REPLACED first-non-empty-wins, and
+// it is the behavioural core of kindred#2260. Nothing covered it, so a refactor
+// restoring `if *dst == "" { *dst = value }` -- the exact shape that discarded
+// 7,781 answers over ten years -- passed the whole suite green.
+//
+// The three arms are pinned separately because only the third one distinguishes
+// the new rule from the old one.
+func TestSetColumnIsMustBeUniqueNotFirstWins(t *testing.T) {
+	t.Run("writes into an empty column", func(t *testing.T) {
+		s := &HouseholdDemographicsSync{}
+		rec := &householdDemographicsRecord{householdPBID: "hh1", personCMID: 11, year: 2026}
+
+		s.setColumn(rec, &rec.jewishAffiliation, "jewish_affiliation", "Reform")
+
+		if rec.jewishAffiliation != "Reform" {
+			t.Errorf("column = %q, want %q", rec.jewishAffiliation, "Reform")
+		}
+		if s.columnConflicts != 0 {
+			t.Errorf("conflicts = %d, want 0 -- a first write is not a conflict", s.columnConflicts)
+		}
+	})
+
+	t.Run("the same answer twice is not a conflict", func(t *testing.T) {
+		s := &HouseholdDemographicsSync{}
+		rec := &householdDemographicsRecord{householdPBID: "hh1", personCMID: 11, year: 2026}
+
+		s.setColumn(rec, &rec.jewishAffiliation, "jewish_affiliation", "Reform")
+		s.setColumn(rec, &rec.jewishAffiliation, "jewish_affiliation", "Reform")
+
+		if s.columnConflicts != 0 {
+			t.Errorf("conflicts = %d, want 0 -- an identical repeat discards nothing", s.columnConflicts)
+		}
+	})
+
+	// The arm that matters. Under the old first-non-empty-wins code this case was
+	// silent: the second value vanished and nothing counted it. It must now be
+	// counted, and the stored value must not flip -- a silent overwrite would be
+	// the same defect pointing the other way.
+	t.Run("a genuinely different answer is counted, not swallowed", func(t *testing.T) {
+		s := &HouseholdDemographicsSync{}
+		rec := &householdDemographicsRecord{householdPBID: "hh1", personCMID: 11, year: 2026}
+
+		s.setColumn(rec, &rec.jewishAffiliation, "jewish_affiliation", "Reform")
+		s.setColumn(rec, &rec.jewishAffiliation, "jewish_affiliation", "Just Jewish")
+
+		if s.columnConflicts != 1 {
+			t.Errorf("conflicts = %d, want 1 -- a disagreement must be audible", s.columnConflicts)
+		}
+		if rec.jewishAffiliation != "Reform" {
+			t.Errorf("column = %q, want %q -- the refusal must not overwrite", rec.jewishAffiliation, "Reform")
+		}
+	})
+
+	t.Run("conflicts accumulate across columns", func(t *testing.T) {
+		s := &HouseholdDemographicsSync{}
+		rec := &householdDemographicsRecord{householdPBID: "hh1", personCMID: 11, year: 2026}
+
+		s.setColumn(rec, &rec.jewishAffiliation, "jewish_affiliation", "Reform")
+		s.setColumn(rec, &rec.jewishAffiliation, "jewish_affiliation", "Just Jewish")
+		s.setColumn(rec, &rec.familyDescription, "family_description", "Interfaith")
+		s.setColumn(rec, &rec.familyDescription, "family_description", "Multicultural")
+
+		if s.columnConflicts != 2 {
+			t.Errorf("conflicts = %d, want 2", s.columnConflicts)
+		}
+	})
+}
