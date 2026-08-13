@@ -330,9 +330,63 @@ func isQuestRegistrationField(name string) bool {
 // Membership is order-independent by construction: a set has no first element,
 // so the empty `sort` argument below can no longer decide anything. That is the
 // order-independence probe kindred#2257 asks for, satisfied structurally.
+// isCountableQuestEnrollment decides whether one attendees row counts toward the
+// multi-Quest tripwire. Pure so the rule is testable without a database -- the
+// bug it exists to prevent (counting every session type, not just Quest) would
+// have fired on 201-338 people a year instead of 0, i.e. on every single run.
+func isCountableQuestEnrollment(statusID int, sessionID string, questSessionIDs map[string]bool) bool {
+	// Only ACTIVE enrollments: a cancelled Quest followed by a different one is
+	// one Quest, not two.
+	if statusID != statusIDActiveEnrolled {
+		return false
+	}
+	if sessionID == "" {
+		return false
+	}
+	return questSessionIDs[sessionID]
+}
+
+// loadQuestSessionIDs returns the PB ids of every Quest session, across all years.
+//
+// Two deliberate choices, both about not coupling an observational tripwire to
+// things it does not need:
+//
+//   - NOT year-filtered. A session PB id is unique per row and the attendees rows
+//     this set is matched against are already scoped to one year, so a year
+//     predicate would change nothing.
+//   - Filtered in Go rather than in the query. The shared test fixtures for
+//     camp_sessions declare neither `year` nor `session_type`, and a filter naming
+//     an undeclared field is a hard error in PocketBase, not an empty result. In a
+//     fixture without the field every GetString returns "", so the Quest set comes
+//     back empty and the tripwire simply never fires -- which is the right failure
+//     mode for a counter that only warns. The rule itself is unit-tested directly
+//     in isCountableQuestEnrollment, so nothing goes uncovered.
+//
+// A few hundred rows all-time; read once per run.
+// sessionTypeQuest is the camp_sessions.session_type value for a Quest session.
+const sessionTypeQuest = "quest"
+
+func (s *QuestRegistrationsSync) loadQuestSessionIDs() (map[string]bool, error) {
+	ids := make(map[string]bool)
+	records, err := s.App.FindRecordsByFilter("camp_sessions", "", "id", 0, 0)
+	if err != nil {
+		return nil, fmt.Errorf("querying camp sessions: %w", err)
+	}
+	for _, r := range records {
+		if r.GetString("session_type") == sessionTypeQuest {
+			ids[r.Id] = true
+		}
+	}
+	return ids, nil
+}
+
 func (s *QuestRegistrationsSync) loadPersonsWithAttendee(
 	ctx context.Context, year int,
 ) (hasAttendee map[int]bool, multiEnrolled int, err error) {
+	questSessionIDs, err := s.loadQuestSessionIDs()
+	if err != nil {
+		return nil, 0, err
+	}
 	hasAttendee = make(map[int]bool)
 	// person CM ID -> the distinct quest sessions they are ACTIVELY enrolled in
 	questSessions := make(map[int][]string)
@@ -360,13 +414,8 @@ func (s *QuestRegistrationsSync) loadPersonsWithAttendee(
 			}
 			hasAttendee[personID] = true
 
-			// Only ACTIVE enrollments count toward the multi-quest guard: a
-			// cancelled Quest followed by a different one is one Quest, not two.
-			if record.GetInt("status_id") != statusIDActiveEnrolled {
-				continue
-			}
 			sessionID := record.GetString("session")
-			if sessionID == "" {
+			if !isCountableQuestEnrollment(record.GetInt("status_id"), sessionID, questSessionIDs) {
 				continue
 			}
 			if !slices.Contains(questSessions[personID], sessionID) {

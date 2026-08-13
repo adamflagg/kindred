@@ -108,7 +108,17 @@ migrate((app) => {
         cascadeDelete: true,
         maxSelect: 1,
         minSelect: 0,
-        required: true,
+        // required: FALSE on the way back, deliberately, and this is not a
+        // slip. The column was `required: true` going out, but a rollback
+        // cannot repopulate it: the values are gone and the reverted sync no
+        // longer computes them. Re-adding it as required would make every
+        // subsequent save fail validation on rows that legitimately hold no
+        // attendee -- turning a rollback into an outage. A re-sync after the
+        // rollback repopulates nothing either, because the reverted code is
+        // what stopped writing it. Restoring the data needs the pre-#2261 sync
+        // AND a full re-run; the schema is all this `down` can honestly give
+        // back.
+        required: false,
         presentable: false,
         hidden: false,
         system: false,

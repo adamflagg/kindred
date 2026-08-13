@@ -650,3 +650,37 @@ func TestCountMultiQuestEnrollments(t *testing.T) {
 		})
 	}
 }
+
+// TestIsCountableQuestEnrollment pins the session-type filter on the multi-Quest
+// tripwire. Without it the counter walked every attendees row for the year and
+// counted ANY session, so a camper doing two summer sessions tripped a warning
+// about Quest capacity: 201 (2026), 248 (2025) and 338 (2024) people would have
+// warned, against a true count of 0 in every year. A tripwire that fires on
+// every run is worse than none, because it teaches people to ignore it.
+func TestIsCountableQuestEnrollment(t *testing.T) {
+	t.Parallel()
+	quest := map[string]bool{"qs1": true, "qs2": true}
+
+	tests := []struct {
+		name      string
+		statusID  int
+		sessionID string
+		want      bool
+	}{
+		{"active quest session counts", statusIDActiveEnrolled, "qs1", true},
+		{"a second quest session counts", statusIDActiveEnrolled, "qs2", true},
+		{"a SUMMER session does not", statusIDActiveEnrolled, "summer1", false},
+		{"cancelled quest does not", 8, "qs1", false},
+		{"waitlisted quest does not", 32, "qs1", false},
+		{"empty session id does not", statusIDActiveEnrolled, "", false},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			if got := isCountableQuestEnrollment(tc.statusID, tc.sessionID, quest); got != tc.want {
+				t.Errorf("isCountableQuestEnrollment(%d, %q) = %v, want %v",
+					tc.statusID, tc.sessionID, got, tc.want)
+			}
+		})
+	}
+}
