@@ -26,7 +26,8 @@ const (
 // Unique key: (person_id, year) - one record per staff member per year
 // Links to: staff
 //
-// Field mapping: 8 SVI-* prefixed fields covering driving plans and vehicle details.
+// Field mapping: 10 SVI-* prefixed fields covering driving plans, vehicle details
+// and transport logistics.
 type StaffVehicleInfoSync struct {
 	App            core.App
 	Year           int
@@ -183,18 +184,22 @@ func (s *StaffVehicleInfoSync) Sync(ctx context.Context) error {
 	// Step 6: Delete orphans
 	deleted, err := s.deleteOrphans(ctx, records, existingRecords, year)
 	s.Stats.Deleted = deleted
+
+	// WAL checkpoint BEFORE the error return below. upsertRecords has already
+	// written by this point, and the cancellation path returns with those writes
+	// still in the WAL. (The refusal path cannot strand writes -- it requires an
+	// empty computed set, so nothing was upserted -- but cancellation can.)
+	if s.Stats.Created > 0 || s.Stats.Updated > 0 || s.Stats.Deleted > 0 {
+		if cpErr := s.forceWALCheckpoint(); cpErr != nil {
+			slog.Warn("WAL checkpoint failed", "error", cpErr)
+		}
+	}
+
 	if err != nil {
 		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
 			return fmt.Errorf("orphan sweep interrupted: %w", err)
 		}
 		return fmt.Errorf("orphan sweep refused: %w", err)
-	}
-
-	// WAL checkpoint
-	if s.Stats.Created > 0 || s.Stats.Updated > 0 || s.Stats.Deleted > 0 {
-		if err := s.forceWALCheckpoint(); err != nil {
-			slog.Warn("WAL checkpoint failed", "error", err)
-		}
 	}
 
 	s.SyncSuccessful = true
@@ -642,9 +647,15 @@ func (s *StaffVehicleInfoSync) upsertRecords(
 // deleteOrphans removes records that exist in DB but not in computed set.
 //
 // Refuses when the computed set is empty and rows exist for the year: that
-// combination is always a broken input -- an empty personToStaff mapping makes
-// every value fail the staff gate -- and sweeping on it deletes the whole year
-// and reports success (kindred#2273).
+// combination is always a broken input, and sweeping on it deletes the whole
+// year and reports success (kindred#2273).
+//
+// TWO upstream faults produce it, and the error names both because they surface
+// in different places: an empty personToStaff mapping (every value fails the
+// staff gate), or an empty fieldNameMap after an upstream rename of the SVI-*
+// namespace (every value routes nowhere). The second is the kindred#2258 class
+// and shows up in the "SVI field routing" warnings Layer 1 logs earlier in the
+// same run -- naming only the staff table sends an operator to the wrong place.
 func (s *StaffVehicleInfoSync) deleteOrphans(
 	ctx context.Context,
 	records map[string]*staffVehicleInfoRecord,
@@ -654,7 +665,8 @@ func (s *StaffVehicleInfoSync) deleteOrphans(
 	if len(records) == 0 && len(existingRecords) > 0 {
 		return 0, fmt.Errorf(
 			"refusing to sweep %d existing staff_vehicle_info rows for year %d against an "+
-				"empty computed set (is the staff table populated for that year?)",
+				"empty computed set (check the staff table for that year, and the SVI field "+
+				"routing warnings above for an upstream rename)",
 			len(existingRecords), year)
 	}
 

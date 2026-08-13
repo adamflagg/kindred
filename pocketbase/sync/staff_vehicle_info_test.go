@@ -58,7 +58,8 @@ func TestStaffVehicleInfoServiceName(t *testing.T) {
 }
 
 // TestMapSVIFieldToColumn tests the CampMinder field name to column mapping
-// for the 8 SVI- fields used in staff vehicle info
+// for the 10 SVI- fields used in staff vehicle info, plus the two literals that
+// must NOT route: the American plate spelling and an unknown field.
 func TestMapSVIFieldToColumn(t *testing.T) {
 	tests := []struct {
 		cmField  string
@@ -451,6 +452,15 @@ func TestDeleteOrphansRefusesEmptyComputedSet(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "2026") {
 		t.Errorf("error %q does not name the year -- an operator has no way to tell which season refused", err.Error())
+	}
+	// An empty computed set has more than one cause. An upstream rename of the
+	// whole SVI-* namespace empties fieldNameMap, which empties the computed set
+	// with the staff table perfectly healthy -- that is the kindred#2258 failure
+	// class Layer 1 exists to catch. Naming only the staff table sends an
+	// operator to the wrong place.
+	if !strings.Contains(err.Error(), "routing") {
+		t.Errorf("error %q points only at the staff table -- it must also point at the "+
+			"SVI field routing report, which is where an upstream field rename shows up", err.Error())
 	}
 	if deleted != 0 {
 		t.Errorf("deleted = %d, want 0 -- nothing may be removed on the refusal path", deleted)
