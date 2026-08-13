@@ -2,6 +2,7 @@ package sync
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"strings"
@@ -189,20 +190,29 @@ func (s *StaffApplicationsSync) Sync(ctx context.Context) error {
 	slog.Info("Loaded existing records", "count", len(existingRecords))
 
 	// Step 5: Upsert records
-	created, updated, errors := s.upsertRecords(ctx, records, existingRecords, year)
+	created, updated, upsertErrors := s.upsertRecords(ctx, records, existingRecords, year)
 	s.Stats.Created = created
 	s.Stats.Updated = updated
-	s.Stats.Errors = errors
+	s.Stats.Errors = upsertErrors
 
 	// Step 6: Delete orphans
-	deleted := s.deleteOrphans(ctx, records, existingRecords)
+	deleted, err := s.deleteOrphans(ctx, records, existingRecords, year)
 	s.Stats.Deleted = deleted
 
-	// WAL checkpoint
+	// WAL checkpoint BEFORE the error return below: upsertRecords has already
+	// written by this point, and the cancellation path returns with those
+	// writes still in the WAL.
 	if s.Stats.Created > 0 || s.Stats.Updated > 0 || s.Stats.Deleted > 0 {
-		if err := s.forceWALCheckpoint(); err != nil {
-			slog.Warn("WAL checkpoint failed", "error", err)
+		if cpErr := s.forceWALCheckpoint(); cpErr != nil {
+			slog.Warn("WAL checkpoint failed", "error", cpErr)
 		}
+	}
+
+	if err != nil {
+		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+			return fmt.Errorf("orphan sweep interrupted: %w", err)
+		}
+		return fmt.Errorf("orphan sweep refused: %w", err)
 	}
 
 	s.SyncSuccessful = true
@@ -727,7 +737,7 @@ func (s *StaffApplicationsSync) upsertRecords(
 	records map[string]*staffApplicationRecord,
 	existingRecords map[string]string,
 	year int,
-) (created, updated, errors int) {
+) (created, updated, errCount int) {
 	col, err := s.App.FindCollectionByNameOrId("staff_applications")
 	if err != nil {
 		slog.Error("Error finding staff_applications collection", "error", err)
@@ -737,7 +747,7 @@ func (s *StaffApplicationsSync) upsertRecords(
 	for _, rec := range records {
 		select {
 		case <-ctx.Done():
-			return created, updated, errors
+			return created, updated, errCount
 		default:
 		}
 
@@ -749,7 +759,7 @@ func (s *StaffApplicationsSync) upsertRecords(
 			record, err = s.App.FindRecordById("staff_applications", existingID)
 			if err != nil {
 				slog.Error("Error finding existing record", "id", existingID, "error", err)
-				errors++
+				errCount++
 				continue
 			}
 		} else {
@@ -821,7 +831,7 @@ func (s *StaffApplicationsSync) upsertRecords(
 				"year", rec.year,
 				"error", err,
 			)
-			errors++
+			errCount++
 			continue
 		}
 
@@ -832,21 +842,40 @@ func (s *StaffApplicationsSync) upsertRecords(
 		}
 	}
 
-	return created, updated, errors
+	return created, updated, errCount
 }
 
-// deleteOrphans removes records that exist in DB but not in computed set
+// deleteOrphans removes records that exist in DB but not in computed set.
+//
+// Refuses when the computed set is empty and rows exist for the year: that
+// combination is always a broken input, and sweeping on it deletes the whole
+// year and reports success (kindred#2279 Gap 2).
+//
+// This service shares staff_vehicle_info's loadPersonStaffMapping(ctx, year)
+// gate exactly, so it has the identical year-wipe path and the same two
+// upstream causes: an empty personToStaff mapping (every value fails the staff
+// gate), or an empty fieldNameMap after an upstream rename of the App-*
+// definitions (every value routes nowhere).
 func (s *StaffApplicationsSync) deleteOrphans(
 	ctx context.Context,
 	records map[string]*staffApplicationRecord,
 	existingRecords map[string]string,
-) int {
+	year int,
+) (int, error) {
+	if len(records) == 0 && len(existingRecords) > 0 {
+		return 0, fmt.Errorf(
+			"refusing to sweep %d existing staff_applications rows for year %d against an "+
+				"empty computed set (check the staff table for that year, and that the App-* "+
+				"field definitions still exist upstream)",
+			len(existingRecords), year)
+	}
+
 	deleted := 0
 
 	for key, recordID := range existingRecords {
 		select {
 		case <-ctx.Done():
-			return deleted
+			return deleted, ctx.Err()
 		default:
 		}
 
@@ -865,7 +894,7 @@ func (s *StaffApplicationsSync) deleteOrphans(
 		}
 	}
 
-	return deleted
+	return deleted, nil
 }
 
 // forceWALCheckpoint forces a SQLite WAL checkpoint
