@@ -364,7 +364,7 @@ func (s *PersonsSync) processHouseholds(
 		pbData, err := s.transformHouseholdToPB(householdData, year)
 		if err != nil {
 			slog.Error("Error transforming household", "id", householdID, "error", err)
-			householdStats.Rejected++
+			householdStats.Errors++
 			continue
 		}
 

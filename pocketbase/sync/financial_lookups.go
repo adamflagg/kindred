@@ -96,14 +96,14 @@ func (s *FinancialLookupsSync) syncFinancialCategories(ctx context.Context) erro
 		pbData, err := s.transformFinancialCategoryToPB(data)
 		if err != nil {
 			slog.Error("Error transforming financial category", "error", err)
-			s.Stats.Rejected++
+			s.Stats.Errors++
 			continue
 		}
 
 		cmID, ok := pbData["cm_id"].(int)
 		if !ok || cmID == 0 {
 			slog.Error("Invalid financial category cm_id")
-			s.Stats.Rejected++
+			s.Stats.Errors++
 			continue
 		}
 
@@ -176,14 +176,14 @@ func (s *FinancialLookupsSync) syncPaymentMethods(ctx context.Context) error {
 		pbData, err := s.transformPaymentMethodToPB(data)
 		if err != nil {
 			slog.Error("Error transforming payment method", "error", err)
-			s.Stats.Rejected++
+			s.Stats.Errors++
 			continue
 		}
 
 		cmID, ok := pbData["cm_id"].(int)
 		if !ok || cmID == 0 {
 			slog.Error("Invalid payment method cm_id")
-			s.Stats.Rejected++
+			s.Stats.Errors++
 			continue
 		}
 

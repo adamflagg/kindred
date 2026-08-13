@@ -115,7 +115,7 @@ func (s *StaffSync) syncStaff(ctx context.Context) error {
 				pbData, err := s.transformStaffToPB(data, year, orgCategoryMap, positionMap, divisionMap, bunkMap, personMap)
 				if err != nil {
 					slog.Error("Error transforming staff record", "error", err)
-					s.Stats.Rejected++
+					s.Stats.Errors++
 					continue
 				}
 

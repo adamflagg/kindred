@@ -82,7 +82,7 @@ func (s *PersonTagDefinitionsSync) Sync(ctx context.Context) error {
 		pbData, err := s.transformPersonTagDefinitionToPB(tagData)
 		if err != nil {
 			slog.Error("Error transforming person tag definition", "error", err)
-			s.Stats.Rejected++
+			s.Stats.Errors++
 			continue
 		}
 
@@ -90,7 +90,7 @@ func (s *PersonTagDefinitionsSync) Sync(ctx context.Context) error {
 		name, ok := pbData["name"].(string)
 		if !ok || name == "" {
 			slog.Error("Invalid person tag definition name")
-			s.Stats.Rejected++
+			s.Stats.Errors++
 			continue
 		}
 

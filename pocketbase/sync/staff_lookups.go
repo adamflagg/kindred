@@ -103,7 +103,7 @@ func (s *StaffLookupsSync) syncProgramAreas(ctx context.Context) error {
 		pbData, err := s.transformProgramAreaToPB(data)
 		if err != nil {
 			slog.Error("Error transforming program area", "error", err)
-			s.Stats.Rejected++
+			s.Stats.Errors++
 			continue
 		}
 
@@ -184,7 +184,7 @@ func (s *StaffLookupsSync) syncOrgCategories(ctx context.Context) error {
 		pbData, err := s.transformOrgCategoryToPB(data)
 		if err != nil {
 			slog.Error("Error transforming org category", "error", err)
-			s.Stats.Rejected++
+			s.Stats.Errors++
 			continue
 		}
 
@@ -275,7 +275,7 @@ func (s *StaffLookupsSync) syncPositions(ctx context.Context) error {
 		pbData, err := s.transformPositionToPB(data, programAreaMap)
 		if err != nil {
 			slog.Error("Error transforming position", "error", err)
-			s.Stats.Rejected++
+			s.Stats.Errors++
 			continue
 		}
 
