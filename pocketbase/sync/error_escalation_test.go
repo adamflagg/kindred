@@ -36,7 +36,11 @@ func completionPaths() []completionPath {
 			name: "runSingleSyncInternal",
 			run: func(t *testing.T, o *Orchestrator, syncType string, svc *MockService, syncErr error) {
 				t.Helper()
+				// failWith, not just shouldFail: the caller's own error has to reach
+				// applyCompletionStatus, or a test asserting on the message is really
+				// asserting on MockService's default and passes against a broken precedence.
 				svc.shouldFail = syncErr != nil
+				svc.failWith = syncErr
 				o.RegisterService(syncType, svc)
 				if err := o.RunSingleSync(context.Background(), syncType); err != nil {
 					t.Fatalf("RunSingleSync: %v", err)
@@ -50,6 +54,7 @@ func completionPaths() []completionPath {
 			run: func(t *testing.T, o *Orchestrator, syncType string, svc *MockService, syncErr error) {
 				t.Helper()
 				svc.shouldFail = syncErr != nil
+				svc.failWith = syncErr
 				if err := o.RunSingleSyncWithService(context.Background(), syncType, svc); err != nil {
 					t.Fatalf("RunSingleSyncWithService: %v", err)
 				}
@@ -155,6 +160,14 @@ func TestReturnedErrorTakesPrecedenceOverErrorCount(t *testing.T) {
 				if status.Status != statusFailed {
 					t.Fatalf("status = %q, want %q", status.Status, statusFailed)
 				}
+				// Assert positively. A negative assertion alone passes against any
+				// implementation that drops the diagnosis, including one that hardcodes a
+				// generic string — the whole point of the precedence is that THIS message
+				// survives.
+				if !strings.Contains(status.Error, sentinel.Error()) {
+					t.Errorf("status error %q does not surface the returned error %q",
+						status.Error, sentinel)
+				}
 				if strings.Contains(status.Error, "database operations failed") {
 					t.Errorf("status error %q masked the returned error with the generic count",
 						status.Error)
@@ -195,6 +208,14 @@ func TestSubStatsErrorsFailTheRun(t *testing.T) {
 						"SubStats errors must not be invisible to the escalation",
 						status.Status, statusFailed)
 				}
+				// The count, not just the verdict — matching the parent-level test above.
+				// Asserting only "failed" leaves the sum untested: a loop that counted one
+				// per failing sub-entity instead of summing Errors would still be red here,
+				// while quietly reporting "1 database operations failed" to the operator.
+				if !strings.Contains(status.Error, "6") {
+					t.Errorf("status error %q does not report the summed failure count 6",
+						status.Error)
+				}
 			})
 		})
 	}
@@ -205,23 +226,24 @@ func TestSubStatsErrorsFailTheRun(t *testing.T) {
 func TestSubStatsRejectedDoesNotFailTheRun(t *testing.T) {
 	t.Parallel()
 
-	synctest.Test(t, func(t *testing.T) {
-		o := NewOrchestrator(nil)
-		svc := &MockService{name: "svc", stats: Stats{
-			Created:  10,
-			SubStats: map[string]Stats{"households": {Rejected: 300}},
-		}}
-		o.RegisterService("svc", svc)
-		if err := o.RunSingleSync(context.Background(), "svc"); err != nil {
-			t.Fatalf("RunSingleSync: %v", err)
-		}
-		time.Sleep(50 * time.Millisecond)
+	for _, path := range completionPaths() {
+		t.Run(path.name, func(t *testing.T) {
+			synctest.Test(t, func(t *testing.T) {
+				o := NewOrchestrator(nil)
+				svc := &MockService{name: "svc", stats: Stats{
+					Created:  10,
+					SubStats: map[string]Stats{"households": {Rejected: 300}},
+				}}
 
-		if status := completedStatus(t, o, "svc"); status.Status != statusSuccess {
-			t.Errorf("300 rejected sub-entity records reported %q, want %q",
-				status.Status, statusSuccess)
-		}
-	})
+				path.run(t, o, "svc", svc, nil)
+
+				if status := completedStatus(t, o, "svc"); status.Status != statusSuccess {
+					t.Errorf("300 rejected sub-entity records reported %q, want %q",
+						status.Status, statusSuccess)
+				}
+			})
+		})
+	}
 }
 
 // TestCleanRunStillSucceeds is the negative control: with both counters at zero a run must

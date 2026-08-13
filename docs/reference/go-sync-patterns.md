@@ -76,6 +76,9 @@ func (s *WidgetsSync) Sync(ctx context.Context) error {
         default:
         }
 
+        // Errors vs Rejected: see "Error Handling" below. processWidget both transforms
+        // AND writes, so its failures are indistinguishable at this call site and belong
+        // on Errors. Split the transform out if you want its failures to be warn-only.
         if err := s.processWidget(widgetData, existingRecords); err != nil {
             slog.Error("Error processing widget", "error", err)
             s.Stats.Errors++
@@ -300,18 +303,52 @@ func TestWidgetsSync_Transform(t *testing.T) {
 
 ## Error Handling
 
+**`Stats.Errors` is not a general-purpose "something went wrong" counter — it fails the
+run.** kindred#2284 split the two kinds of failure a sync can count, because conflating them
+is how a sync that could not write to SQLite still handed the operator a green checkmark:
+
+| Counter | Means | Tolerance |
+|---------|-------|-----------|
+| `Stats.Errors` | **Infrastructure** — a local SQLite operation did not complete (`App.Save`, `App.Delete`, `App.Create`, `FindRecordsByFilter`) | **Zero. Any non-zero count fails the run.** There is no healthy run in which this is non-zero. |
+| `Stats.Rejected` | **Per-record transform** — one upstream record could not be turned into a PocketBase row, so it was counted and skipped | Warn-only for its first season. Surfaced on the Sync tab, never fatal. |
+
+The decision lives in one place, `applyCompletionStatus` in `orchestrator.go`, which all three
+normal completion paths route through. It sums `Errors` across the service *and* its
+`SubStats`, so a combined sync cannot hide a failing sub-entity.
+
+**`Stats.Rejected` is declared but not yet wired to any call site.** Every site still
+increments `Stats.Errors` today, including pure transform failures. That is deliberate: a
+rejected record skips `TrackProcessedKey` via the same `continue`, so the orphan sweep
+deletes its existing row in the same run — failing loud beats quietly losing a row. The
+reclassification ships with the sweep guard in **kindred#2295**. Until it lands, do not move
+a site to `Rejected` on your own.
+
 ```go
 // Wrap errors with context using fmt.Errorf and %w
 if err != nil {
     return fmt.Errorf("fetching widgets page %d: %w", page, err)
 }
 
-// Non-fatal errors: log and increment error counter
-if err := s.processWidget(data); err != nil {
-    slog.Error("Error processing widget", "error", err, "cm_id", cmID)
+// INFRASTRUCTURE failure: a database operation did not complete. Fails the run.
+if err := s.App.Save(record); err != nil {
+    slog.Error("Saving widget failed", "error", err, "cm_id", cmID)
     s.Stats.Errors++
-    // Continue processing other records
+    // Continue processing other records — but the run will report failed.
 }
+
+// PER-RECORD TRANSFORM failure: bad upstream data, no local fault. Warn-only.
+// NOTE: blocked on kindred#2295 (orphan sweep guard) — keep these on Stats.Errors
+// until that lands, or the sweep deletes the record's existing row.
+if pbData, err := s.transformWidgetToPB(widgetData); err != nil {
+    slog.Error("Error transforming widget", "error", err, "cm_id", cmID)
+    s.Stats.Errors++ // will become s.Stats.Rejected++ in kindred#2295
+    continue
+}
+
+// A wrapper that does BOTH stays on Errors: the call site cannot tell the two apart.
+// processEnrollment (attendees.go) is the type case — it returns both
+// `invalid or missing SessionID` and the result of ProcessCompositeRecord's App.Save.
+// Splitting these needs typed errors from the wrappers — kindred#2292.
 
 // wrapcheck linter exceptions in .golangci.yml:
 // - github.com/pocketbase/pocketbase/tools/router (terminal HTTP responses)
