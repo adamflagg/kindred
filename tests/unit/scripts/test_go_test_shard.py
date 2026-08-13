@@ -375,3 +375,26 @@ def test_tests_go_job_shards_and_derives_total_from_the_matrix():
     run = job["steps"][-1]["run"]
     assert "strategy.job-total" in run, "--total must come from the matrix, not a literal"
     assert "-race" in run
+
+
+# --- the inventory must not build a second variant -------------------------
+
+
+def test_inventory_command_forwards_the_go_args():
+    """`-list` builds test binaries, so it must build the ones the run will use.
+
+    Without the flags forwarded, `-list` compiles a whole non-race copy of every
+    test binary and the runs then compile the race copies from scratch -- two
+    full builds per shard, and the first one is thrown away. Measured on the
+    runner: ~22s of the shard's 262s.
+    """
+    argv = mod.inventory_argv(["-race", "-v"])
+    assert argv[:2] == ["go", "test"]
+    assert "-race" in argv
+    assert argv[-1] == "./..."
+
+
+def test_inventory_command_keeps_list_and_json():
+    argv = mod.inventory_argv(["-race"])
+    assert "-list" in argv
+    assert "-json" in argv

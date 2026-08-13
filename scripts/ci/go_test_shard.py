@@ -77,15 +77,25 @@ def parse_list_output(raw: str) -> list[str]:
     return names
 
 
-def collect_inventory(go_dir: Path) -> list[tuple[str, str]]:
-    """Enumerate every (package, test) pair in the tree.
+def inventory_argv(go_args: list[str]) -> list[str]:
+    """The `go test -list` command used to enumerate tests.
+
+    `go_args` is forwarded because `-list` has to *build* every test binary to
+    read its test names, and a build is per-flag-set. Omitting `-race` here means
+    compiling a full non-race copy of the tree, throwing it away, and then
+    compiling the race copy for the actual run -- two builds per shard.
 
     Uses `-json` rather than plain `-list` because plain output only separates
     packages by a trailing `ok <pkg>` line, which interleaves unusably once Go
     lists packages in parallel. The JSON stream tags every line with its package.
     """
+    return ["go", "test", *go_args, "-list", ".*", "-json", "./..."]
+
+
+def collect_inventory(go_dir: Path, go_args: list[str] | None = None) -> list[tuple[str, str]]:
+    """Enumerate every (package, test) pair in the tree."""
     proc = subprocess.run(
-        ["go", "test", "-list", ".*", "-json", "./..."],
+        inventory_argv(go_args or []),
         cwd=go_dir,
         capture_output=True,
         text=True,
@@ -290,7 +300,7 @@ def main(argv: list[str] | None = None) -> int:
             raw = sys.stdin.read() if args.from_json == "-" else Path(args.from_json).read_text()
             inventory = [(row["package"], row["test"]) for row in json.loads(raw)]
         else:
-            inventory = collect_inventory(args.dir)
+            inventory = collect_inventory(args.dir, args.go_args)
     except ShardError as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 2
