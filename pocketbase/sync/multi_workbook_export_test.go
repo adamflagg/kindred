@@ -85,6 +85,7 @@ func (m *MockWorkbookManager) UpdateMasterIndex(_ context.Context) error {
 // =============================================================================
 
 func TestGetReadableGlobalExports_HasIndexSheet(t *testing.T) {
+	t.Parallel()
 	// The globals workbook should include an Index sheet as the first tab
 	configs := GetReadableGlobalExports()
 
@@ -109,6 +110,7 @@ func TestGetReadableGlobalExports_HasIndexSheet(t *testing.T) {
 }
 
 func TestGetReadableYearExports_HasCustomValues(t *testing.T) {
+	t.Parallel()
 	// Year exports should now include custom values (person + household)
 	configs := GetReadableYearExports()
 
@@ -133,6 +135,7 @@ func TestGetReadableYearExports_HasCustomValues(t *testing.T) {
 }
 
 func TestGetReadableExports_NoYearPrefixes(t *testing.T) {
+	t.Parallel()
 	// Readable exports should NOT have year prefixes - they go to separate workbooks
 	yearConfigs := GetReadableYearExports()
 
@@ -148,6 +151,7 @@ func TestGetReadableExports_NoYearPrefixes(t *testing.T) {
 }
 
 func TestGetReadableGlobalExports_NoGPrefix(t *testing.T) {
+	t.Parallel()
 	// Readable global exports should NOT have "g-" prefix - they go to separate workbook
 	configs := GetReadableGlobalExports()
 
@@ -163,6 +167,7 @@ func TestGetReadableGlobalExports_NoGPrefix(t *testing.T) {
 // =============================================================================
 
 func TestReadableYearExportSheetNames(t *testing.T) {
+	t.Parallel()
 	// Verify all expected year-specific sheets are included
 	names := GetReadableYearExportSheetNames()
 
@@ -194,6 +199,7 @@ func TestReadableYearExportSheetNames(t *testing.T) {
 }
 
 func TestReadableGlobalExportSheetNames(t *testing.T) {
+	t.Parallel()
 	// Verify all expected global sheets are included
 	names := GetReadableGlobalExportSheetNames()
 
@@ -224,6 +230,7 @@ func TestReadableGlobalExportSheetNames(t *testing.T) {
 var _ WorkbookManagerInterface = (*MockWorkbookManager)(nil)
 
 func TestMockWorkbookManager_GetOrCreateGlobalsWorkbook(t *testing.T) {
+	t.Parallel()
 	mock := NewMockWorkbookManager()
 	mock.GlobalsWorkbookID = "test-globals-id"
 
@@ -237,6 +244,7 @@ func TestMockWorkbookManager_GetOrCreateGlobalsWorkbook(t *testing.T) {
 }
 
 func TestMockWorkbookManager_GetOrCreateYearWorkbook(t *testing.T) {
+	t.Parallel()
 	mock := NewMockWorkbookManager()
 	mock.YearWorkbookIDs[2025] = "test-2025-id"
 
@@ -250,6 +258,7 @@ func TestMockWorkbookManager_GetOrCreateYearWorkbook(t *testing.T) {
 }
 
 func TestMockWorkbookManager_UpdateMasterIndex(t *testing.T) {
+	t.Parallel()
 	mock := NewMockWorkbookManager()
 
 	err := mock.UpdateMasterIndex(context.Background())
@@ -266,6 +275,7 @@ func TestMockWorkbookManager_UpdateMasterIndex(t *testing.T) {
 // =============================================================================
 
 func TestMultiWorkbookExport_GlobalsToGlobalsWorkbook(t *testing.T) {
+	t.Parallel()
 	// Test that global exports go to the globals workbook (not year workbooks)
 	mockWriter := NewMockSheetsWriter()
 	mockManager := NewMockWorkbookManager()
@@ -299,6 +309,7 @@ func TestMultiWorkbookExport_GlobalsToGlobalsWorkbook(t *testing.T) {
 }
 
 func TestMultiWorkbookExport_YearDataToYearWorkbook(t *testing.T) {
+	t.Parallel()
 	// Test that year data goes to the year workbook (not globals)
 	mockWriter := NewMockSheetsWriter()
 	mockManager := NewMockWorkbookManager()
@@ -331,6 +342,7 @@ func TestMultiWorkbookExport_YearDataToYearWorkbook(t *testing.T) {
 }
 
 func TestMultiWorkbookExport_IndexUpdatedAfterSync(t *testing.T) {
+	t.Parallel()
 	// Test that master index is updated after sync completes
 	mockManager := NewMockWorkbookManager()
 
@@ -348,6 +360,7 @@ func TestMultiWorkbookExport_IndexUpdatedAfterSync(t *testing.T) {
 }
 
 func TestMultiWorkbookExport_DifferentYearsGoToDifferentWorkbooks(t *testing.T) {
+	t.Parallel()
 	// Test that different years go to different workbooks
 	mockManager := NewMockWorkbookManager()
 	mockManager.YearWorkbookIDs[2024] = "year-2024-spreadsheet-id"
@@ -380,6 +393,7 @@ func TestMultiWorkbookExport_DifferentYearsGoToDifferentWorkbooks(t *testing.T) 
 }
 
 func TestReadableExportsExist(t *testing.T) {
+	t.Parallel()
 	// Verify readable exports exist and are non-empty
 	readableYear := GetReadableYearExports()
 	readableGlobal := GetReadableGlobalExports()
@@ -412,6 +426,7 @@ func TestReadableExportsExist(t *testing.T) {
 // =============================================================================
 
 func TestMultiWorkbookExport_StructHasWorkbookManager(t *testing.T) {
+	t.Parallel()
 	// MultiWorkbookExport should have a workbookManager field
 	// This replaces the single spreadsheetID in GoogleSheetsExport
 	mockWriter := NewMockSheetsWriter()
@@ -434,6 +449,7 @@ func TestMultiWorkbookExport_StructHasWorkbookManager(t *testing.T) {
 }
 
 func TestMultiWorkbookExport_Name(t *testing.T) {
+	t.Parallel()
 	// MultiWorkbookExport should have a Name() method
 	mockWriter := NewMockSheetsWriter()
 	mockManager := NewMockWorkbookManager()
@@ -450,6 +466,7 @@ func TestMultiWorkbookExport_Name(t *testing.T) {
 }
 
 func TestMultiWorkbookExport_SyncGlobalsToGlobalsWorkbook(t *testing.T) {
+	t.Parallel()
 	// SyncGlobalsOnly should:
 	// 1. Get/create globals workbook via WorkbookManager
 	// 2. Export to globals workbook using readable names
@@ -485,6 +502,7 @@ func TestMultiWorkbookExport_SyncGlobalsToGlobalsWorkbook(t *testing.T) {
 }
 
 func TestMultiWorkbookExport_SyncYearDataToYearWorkbook(t *testing.T) {
+	t.Parallel()
 	// SyncYearData should:
 	// 1. Get/create year workbook via WorkbookManager
 	// 2. Export to year workbook using readable names
@@ -512,6 +530,7 @@ func TestMultiWorkbookExport_SyncYearDataToYearWorkbook(t *testing.T) {
 }
 
 func TestMultiWorkbookExport_SyncUpdatesIndex(t *testing.T) {
+	t.Parallel()
 	// Full Sync should:
 	// 1. Export globals
 	// 2. Export year data
@@ -538,6 +557,7 @@ func TestMultiWorkbookExport_SyncUpdatesIndex(t *testing.T) {
 }
 
 func TestMultiWorkbookExport_SyncForYearsUsesMultipleWorkbooks(t *testing.T) {
+	t.Parallel()
 	// SyncForYears should use different workbooks for different years
 	mockWriter := NewMockSheetsWriter()
 	mockManager := NewMockWorkbookManager()
@@ -566,6 +586,7 @@ func TestMultiWorkbookExport_SyncForYearsUsesMultipleWorkbooks(t *testing.T) {
 // =============================================================================
 
 func TestSyncJobToCollections_HasExpectedMappings(t *testing.T) {
+	t.Parallel()
 	// Verify the SyncJobToCollections map has all expected mappings
 	expectedMappings := map[string][]string{
 		// Year-scoped
@@ -611,6 +632,7 @@ func TestSyncJobToCollections_HasExpectedMappings(t *testing.T) {
 }
 
 func TestSyncJobToCollections_PersonsMapsToMultipleCollections(t *testing.T) {
+	t.Parallel()
 	// persons sync populates both persons and households tables
 	collections, ok := SyncJobToCollections["persons"]
 	if !ok {
@@ -638,6 +660,7 @@ func TestSyncJobToCollections_PersonsMapsToMultipleCollections(t *testing.T) {
 }
 
 func TestSyncYearData_SkipsUnchangedCollections(t *testing.T) {
+	t.Parallel()
 	// This test verifies that SyncYearData skips collections that had no changes
 	// when changedCollections map is provided
 
@@ -658,6 +681,7 @@ func TestSyncYearData_SkipsUnchangedCollections(t *testing.T) {
 }
 
 func TestSyncGlobalsOnly_SkipsUnchangedCollections(t *testing.T) {
+	t.Parallel()
 	// Similar to year data, globals should also support skip optimization
 	t.Run("documents skip behavior for global exports", func(t *testing.T) {
 		// When changedCollections is provided:
@@ -667,6 +691,7 @@ func TestSyncGlobalsOnly_SkipsUnchangedCollections(t *testing.T) {
 }
 
 func TestSyncForYears_PassesChangedCollections(t *testing.T) {
+	t.Parallel()
 	// SyncForYears should accept and pass changedCollections to SyncYearData
 	t.Run("documents changedCollections parameter", func(t *testing.T) {
 		// SyncForYears(ctx, years, includeGlobals, changedCollections)

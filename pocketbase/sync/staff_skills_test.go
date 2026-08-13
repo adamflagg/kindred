@@ -57,6 +57,7 @@ func newSkillDefsTestApp(t *testing.T, defs map[int]string) core.App {
 // that column. No untrimmed name exists in this table today; this pins the
 // fix against a future one.
 func TestStaffSkillsLoadSkillDefinitionsTrimsNames(t *testing.T) {
+	t.Parallel()
 	app := newSkillDefsTestApp(t, map[int]string{
 		1: "Skills-Archery ", // trailing space
 		2: "Skills-Riflery",  // already clean, must be unaffected
@@ -90,6 +91,7 @@ func TestStaffSkillsLoadSkillDefinitionsTrimsNames(t *testing.T) {
 
 // TestStaffSkillsSync_Name verifies the service name is correct
 func TestStaffSkillsSync_Name(t *testing.T) {
+	t.Parallel()
 	// The service name must be "staff_skills" for orchestrator integration
 	expectedName := serviceNameStaffSkills
 
@@ -101,6 +103,7 @@ func TestStaffSkillsSync_Name(t *testing.T) {
 
 // TestStaffSkillsYearValidation tests year parameter validation
 func TestStaffSkillsYearValidation(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name      string
 		year      int
@@ -128,6 +131,7 @@ func TestStaffSkillsYearValidation(t *testing.T) {
 
 // TestParseProficiency tests parsing of pipe-delimited proficiency values
 func TestParseProficiency(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name             string
 		rawValue         string
@@ -223,6 +227,7 @@ func TestParseProficiency(t *testing.T) {
 
 // TestExtractSkillName tests stripping "Skills-" prefix from field names
 func TestExtractSkillName(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		fieldName     string
 		wantSkillName string
@@ -253,6 +258,7 @@ func TestExtractSkillName(t *testing.T) {
 
 // TestIsSkillsField tests identification of Skills- fields
 func TestIsSkillsField(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		fieldName    string
 		wantIsSkills bool
@@ -280,6 +286,7 @@ func TestIsSkillsField(t *testing.T) {
 
 // TestIsStaffPartition tests identification of Staff partition
 func TestIsStaffPartition(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		partition   string
 		wantIsStaff bool
@@ -309,6 +316,7 @@ func TestIsStaffPartition(t *testing.T) {
 // PocketBase stores select fields as JSON arrays, but GetString returns ""
 // or a stringified JSON like ["Staff"]. The fix should handle this correctly.
 func TestContainsStaffPartitionWithJSONArray(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name        string
 		rawValue    any
@@ -402,6 +410,7 @@ func containsStaffPartitionFromRaw(rawValue any) bool {
 
 // TestStaffSkillsCompositeKeyFormat tests the composite key format used for upsert
 func TestStaffSkillsCompositeKeyFormat(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name       string
 		personCMID int
@@ -444,6 +453,7 @@ func TestStaffSkillsCompositeKeyFormat(t *testing.T) {
 
 // TestStaffSkillsCompositeKeyDeterministic tests that the same input produces the same key
 func TestStaffSkillsCompositeKeyDeterministic(t *testing.T) {
+	t.Parallel()
 	keys := make([]string, 10)
 	for i := range 10 {
 		keys[i] = formatStaffSkillsCompositeKey(12345, 100, 2025)
@@ -458,6 +468,7 @@ func TestStaffSkillsCompositeKeyDeterministic(t *testing.T) {
 
 // TestStaffSkillsOrphanDetection tests that records not in processed keys are identified as orphans
 func TestStaffSkillsOrphanDetection(t *testing.T) {
+	t.Parallel()
 	existingKeys := map[string]bool{
 		"12345:100|2025": true,
 		"12345:101|2025": true,
@@ -484,6 +495,7 @@ func TestStaffSkillsOrphanDetection(t *testing.T) {
 
 // TestStaffSkillsUpsertDecision tests the create vs update decision logic
 func TestStaffSkillsUpsertDecision(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name         string
 		existingKeys map[string]bool
@@ -556,6 +568,7 @@ type testStaffSkillRecord struct {
 
 // TestStaffSkillsRecordBuilding tests that records are correctly built from source data
 func TestStaffSkillsRecordBuilding(t *testing.T) {
+	t.Parallel()
 	// Simulate person custom value data
 	personValues := []testPersonSkillValue{
 		{PersonCMID: 12345, SkillCMID: 100, SkillName: "Archery", Value: "Int.|Exp.", Year: 2025},
@@ -607,6 +620,7 @@ func TestStaffSkillsRecordBuilding(t *testing.T) {
 
 // TestStaffSkillsDeduplication tests that duplicate records are handled correctly
 func TestStaffSkillsDeduplication(t *testing.T) {
+	t.Parallel()
 	personValues := []testPersonSkillValue{
 		// Duplicate entries for same person-skill-year (should deduplicate)
 		{PersonCMID: 12345, SkillCMID: 100, SkillName: "Archery", Value: "Int.", Year: 2025},
@@ -638,6 +652,7 @@ func TestStaffSkillsDeduplication(t *testing.T) {
 
 // TestStaffSkillsNotesFieldHandling tests that notes fields (non-structured) are handled correctly
 func TestStaffSkillsNotesFieldHandling(t *testing.T) {
+	t.Parallel()
 	// Notes fields should have booleans set to false and raw_value containing the text
 	personValues := []testPersonSkillValue{
 		{
@@ -676,6 +691,7 @@ func TestStaffSkillsNotesFieldHandling(t *testing.T) {
 
 // TestStaffSkillsEmptyDataHandling tests graceful handling of empty input
 func TestStaffSkillsEmptyDataHandling(t *testing.T) {
+	t.Parallel()
 	personValues := []testPersonSkillValue{}
 	personDemographics := map[int]testStaffDemographics{}
 
@@ -688,6 +704,7 @@ func TestStaffSkillsEmptyDataHandling(t *testing.T) {
 
 // TestStaffSkillsEmptyValueSkipped tests that empty values are skipped
 func TestStaffSkillsEmptyValueSkipped(t *testing.T) {
+	t.Parallel()
 	personValues := []testPersonSkillValue{
 		{PersonCMID: 12345, SkillCMID: 100, SkillName: "Archery", Value: "", Year: 2025},
 		{PersonCMID: 12345, SkillCMID: 101, SkillName: "Backpacking", Value: "Int.", Year: 2025},
@@ -711,6 +728,7 @@ func TestStaffSkillsEmptyValueSkipped(t *testing.T) {
 
 // TestStaffSkillsMissingDemographics tests handling when person demographics are missing
 func TestStaffSkillsMissingDemographics(t *testing.T) {
+	t.Parallel()
 	personValues := []testPersonSkillValue{
 		{PersonCMID: 12345, SkillCMID: 100, SkillName: "Archery", Value: "Int.", Year: 2025},
 	}
@@ -868,6 +886,7 @@ func findStaffSkillRecord(records []*testStaffSkillRecord, personCMID, skillCMID
 // TestStaffSkillsCompareFields verifies that the compareFields list for staff_skills
 // contains exactly the expected fields (inclusion list pattern, not skipFields exclusion).
 func TestStaffSkillsCompareFields(t *testing.T) {
+	t.Parallel()
 	// staffSkillsCompareFields should list all fields that matter for idempotency checks,
 	// excluding PocketBase-managed fields (id, created, updated, collectionId, collectionName)
 	// and the unique key fields (person_id, skill_cm_id, year) which don't change.
@@ -914,6 +933,7 @@ func TestStaffSkillsCompareFields(t *testing.T) {
 // TestStaffSkillsRecordNeedsUpdateUsesCompareFields verifies that recordNeedsUpdate
 // correctly detects when fields match (no update) and when they differ (needs update).
 func TestStaffSkillsRecordNeedsUpdateUsesCompareFields(t *testing.T) {
+	t.Parallel()
 	s := &StaffSkillsSync{}
 
 	// Create a minimal collection with the fields used in comparison

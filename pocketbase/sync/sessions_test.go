@@ -7,6 +7,7 @@ import (
 const testSessionName = "Session 2"
 
 func TestSessionsSync_Name(t *testing.T) {
+	t.Parallel()
 	// Create a SessionsSync without dependencies for this simple test
 	s := &SessionsSync{}
 
@@ -20,6 +21,7 @@ func TestSessionsSync_Name(t *testing.T) {
 
 // TestTransformSessionExtractsAllFields tests that all CampMinder fields are extracted to PocketBase format
 func TestTransformSessionExtractsAllFields(t *testing.T) {
+	t.Parallel()
 	// Create SessionsSync with groupIDMap populated for session_group relation
 	s := &SessionsSync{
 		groupIDMap: map[int]string{
@@ -111,6 +113,7 @@ func TestTransformSessionExtractsAllFields(t *testing.T) {
 
 // TestTransformSessionHandlesMissingFields tests that nil/missing fields don't cause errors
 func TestTransformSessionHandlesMissingFields(t *testing.T) {
+	t.Parallel()
 	s := &SessionsSync{}
 
 	// Minimal session data with only required fields
@@ -159,6 +162,7 @@ func TestTransformSessionHandlesMissingFields(t *testing.T) {
 
 // TestTransformSessionHandlesNullFields tests that explicit null values are handled
 func TestTransformSessionHandlesNullFields(t *testing.T) {
+	t.Parallel()
 	s := &SessionsSync{}
 
 	// Session data with explicit nil values (as might come from JSON null)
@@ -204,6 +208,7 @@ func TestTransformSessionHandlesNullFields(t *testing.T) {
 // TestReclassifyOverlappingSessions_SharedStartDate tests that sessions sharing a start date
 // are reclassified so the longer session stays "main" and shorter ones become "embedded"
 func TestReclassifyOverlappingSessions_SharedStartDate(t *testing.T) {
+	t.Parallel()
 	s := &SessionsSync{}
 
 	// Session 2 (June 15 - July 13) and Taste of Camp 2 (June 15 - June 20)
@@ -255,6 +260,7 @@ func TestReclassifyOverlappingSessions_SharedStartDate(t *testing.T) {
 // TestReclassifyOverlappingSessions_SharedEndDate tests that sessions sharing an end date
 // are reclassified correctly
 func TestReclassifyOverlappingSessions_SharedEndDate(t *testing.T) {
+	t.Parallel()
 	s := &SessionsSync{}
 
 	// Session 3 (July 14 - Aug 10) and Session 3a (Aug 1 - Aug 10)
@@ -300,6 +306,7 @@ func TestReclassifyOverlappingSessions_SharedEndDate(t *testing.T) {
 
 // TestReclassifyOverlappingSessions_AGSessionsExempt tests that AG sessions are never reclassified
 func TestReclassifyOverlappingSessions_AGSessionsExempt(t *testing.T) {
+	t.Parallel()
 	s := &SessionsSync{}
 
 	// AG session with same dates as main session
@@ -345,6 +352,7 @@ func TestReclassifyOverlappingSessions_AGSessionsExempt(t *testing.T) {
 // TestReclassifyOverlappingSessions_EqualDurationAlphabetical tests that sessions with
 // equal duration are decided by alphabetical name (first stays main)
 func TestReclassifyOverlappingSessions_EqualDurationAlphabetical(t *testing.T) {
+	t.Parallel()
 	s := &SessionsSync{}
 
 	// "Session A" and "Session B" with identical dates
@@ -389,6 +397,7 @@ func TestReclassifyOverlappingSessions_EqualDurationAlphabetical(t *testing.T) {
 // TestReclassifyOverlappingSessions_MultipleOverlaps tests that multiple sessions sharing
 // a start date are all reclassified correctly
 func TestReclassifyOverlappingSessions_MultipleOverlaps(t *testing.T) {
+	t.Parallel()
 	s := &SessionsSync{}
 
 	// Session 2, ToC2, and Session 2b all share June 15 start
@@ -448,6 +457,7 @@ func TestReclassifyOverlappingSessions_MultipleOverlaps(t *testing.T) {
 // TestReclassifyOverlappingSessions_NoOverlap tests that sessions with unique dates
 // retain their original types
 func TestReclassifyOverlappingSessions_NoOverlap(t *testing.T) {
+	t.Parallel()
 	s := &SessionsSync{}
 
 	sessions := []map[string]any{
@@ -489,6 +499,7 @@ func TestReclassifyOverlappingSessions_NoOverlap(t *testing.T) {
 // TestReclassifyOverlappingSessions_NonMainUnchanged tests that non-main types
 // (family, tli, etc.) are not reclassified even if dates overlap
 func TestReclassifyOverlappingSessions_NonMainUnchanged(t *testing.T) {
+	t.Parallel()
 	s := &SessionsSync{}
 
 	// Family camp with same dates as a main session
@@ -533,6 +544,7 @@ func TestReclassifyOverlappingSessions_NonMainUnchanged(t *testing.T) {
 // TestReclassifyOverlappingSessions_MissingDates tests that sessions without dates
 // are skipped in reclassification
 func TestReclassifyOverlappingSessions_MissingDates(t *testing.T) {
+	t.Parallel()
 	s := &SessionsSync{}
 
 	sessions := []map[string]any{
@@ -573,6 +585,7 @@ func TestReclassifyOverlappingSessions_MissingDates(t *testing.T) {
 }
 
 func TestGetSessionTypeFromName(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name     string
 		input    string
@@ -666,6 +679,7 @@ func TestGetSessionTypeFromName(t *testing.T) {
 // TestGetSessionTypeFromGroupID tests that session group cm_ids map to correct session types
 // Session groups are stable across all years, making this classification reliable for historical data
 func TestGetSessionTypeFromGroupID(t *testing.T) {
+	t.Parallel()
 	s := &SessionsSync{}
 
 	tests := []struct {
@@ -788,6 +802,7 @@ func TestGetSessionTypeFromGroupID(t *testing.T) {
 // accepted as-is. A *mapped* group's result is never overridden - it only equals
 // sessionTypeOther when the switch actually hit its default arm.
 func TestClassifySessionType_UnmappedGroupFallsThroughToNameRules(t *testing.T) {
+	t.Parallel()
 	s := &SessionsSync{}
 
 	// cm_id 3062 ("Camp Sessions") is the real, historically stable unmapped group ID
@@ -922,6 +937,7 @@ func TestClassifySessionType_UnmappedGroupFallsThroughToNameRules(t *testing.T) 
 // TestRefineSummerSessionType tests that summer camp sessions are correctly classified
 // as main, ag, or embedded based on name and date patterns
 func TestRefineSummerSessionType(t *testing.T) {
+	t.Parallel()
 	s := &SessionsSync{}
 
 	// Build a list of all sessions for AG detection (AG needs matching dates with another session)
@@ -1027,6 +1043,7 @@ func TestRefineSummerSessionType(t *testing.T) {
 
 // TestIsAGSession tests the AG session detection logic using date matching + "gender" keyword
 func TestIsAGSession(t *testing.T) {
+	t.Parallel()
 	s := &SessionsSync{}
 
 	// Sessions for date matching

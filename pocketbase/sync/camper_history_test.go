@@ -16,6 +16,7 @@ const testSynagogue = "Temple Beth El"
 // is_deleted has been dropped from the bunk_assignments schema; the filter
 // must not reference it.
 func TestBunkAssignmentsHistoryFilter(t *testing.T) {
+	t.Parallel()
 	got := bunkAssignmentsHistoryFilter(2025)
 	want := "year = 2025"
 	if got != want {
@@ -25,6 +26,7 @@ func TestBunkAssignmentsHistoryFilter(t *testing.T) {
 
 // TestCamperHistorySync_Name verifies the service name is correct
 func TestCamperHistorySync_Name(t *testing.T) {
+	t.Parallel()
 	// The service name must be "camper_history" for orchestrator integration
 	expectedName := serviceNameCamperHistory
 
@@ -38,6 +40,7 @@ func TestCamperHistorySync_Name(t *testing.T) {
 // TestCamperHistoryDeduplicatesMultiSessionCampers tests that persons enrolled in
 // multiple sessions produce exactly one camper_history record per year
 func TestCamperHistoryDeduplicatesMultiSessionCampers(t *testing.T) {
+	t.Parallel()
 	// Simulate attendee records for the same person in different sessions
 	attendees := []testAttendee{
 		{PersonID: 1001, SessionID: 100, SessionName: "Session 1", Year: 2025, Status: "enrolled"},
@@ -74,6 +77,7 @@ func TestCamperHistoryDeduplicatesMultiSessionCampers(t *testing.T) {
 
 // TestCamperHistoryComputesReturningStatus tests is_returning calculation
 func TestCamperHistoryComputesReturningStatus(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name                string
 		currentYear         int
@@ -136,6 +140,7 @@ func TestCamperHistoryComputesReturningStatus(t *testing.T) {
 // TestCamperHistoryIncludesAllStatuses tests that all enrollment statuses are included
 // (not just enrolled) per user requirement
 func TestCamperHistoryIncludesAllStatuses(t *testing.T) {
+	t.Parallel()
 	// All status types that should be included
 	allStatuses := []string{
 		"enrolled",
@@ -179,6 +184,7 @@ func TestCamperHistoryIncludesAllStatuses(t *testing.T) {
 
 // TestCamperHistoryAggregatesBunkAssignments tests bunk aggregation
 func TestCamperHistoryAggregatesBunkAssignments(t *testing.T) {
+	t.Parallel()
 	assignments := []testBunkAssignment{
 		{PersonID: 1001, BunkName: "B-12", SessionID: 100},
 		{PersonID: 1001, BunkName: "B-14", SessionID: 101}, // Different session
@@ -207,6 +213,7 @@ func TestCamperHistoryAggregatesBunkAssignments(t *testing.T) {
 
 // TestCamperHistoryPriorYearData tests prior year session/bunk retrieval
 func TestCamperHistoryPriorYearData(t *testing.T) {
+	t.Parallel()
 	currentYear := 2025
 	priorYear := 2024
 
@@ -258,6 +265,7 @@ func TestCamperHistoryPriorYearData(t *testing.T) {
 
 // TestCamperHistoryHandlesEmptyData tests graceful handling of no attendees
 func TestCamperHistoryHandlesEmptyData(t *testing.T) {
+	t.Parallel()
 	attendees := []testAttendee{}
 
 	personData := aggregateByPerson(attendees)
@@ -269,6 +277,7 @@ func TestCamperHistoryHandlesEmptyData(t *testing.T) {
 
 // TestCamperHistoryYearValidation tests year parameter validation
 func TestCamperHistoryYearValidation(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name      string
 		year      int
@@ -296,6 +305,7 @@ func TestCamperHistoryYearValidation(t *testing.T) {
 
 // TestCamperHistoryStatusPriority tests status priority for multi-status campers
 func TestCamperHistoryStatusPriority(t *testing.T) {
+	t.Parallel()
 	// When a camper has multiple statuses across sessions,
 	// we should prefer the "best" status (enrolled > others)
 	tests := []struct {
@@ -520,6 +530,7 @@ func joinSorted(strs []string) string {
 // TestCamperHistoryExtendedDemographics tests extraction of new demographic fields
 // (household_id, gender, division_name) from person records
 func TestCamperHistoryExtendedDemographics(t *testing.T) {
+	t.Parallel()
 	// Simulate extended person data with new fields
 	persons := []testExtendedPerson{
 		{
@@ -603,6 +614,7 @@ func TestCamperHistoryExtendedDemographics(t *testing.T) {
 // TestCamperHistoryEnrollmentDateAggregation tests that enrollment_date uses the
 // earliest date when a camper is enrolled in multiple sessions
 func TestCamperHistoryEnrollmentDateAggregation(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name             string
 		enrollmentDates  []string
@@ -654,6 +666,7 @@ func TestCamperHistoryEnrollmentDateAggregation(t *testing.T) {
 // TestCamperHistoryStatusAggregation tests status aggregation logic across sessions
 // Rule: "enrolled" if ANY session is enrolled, otherwise first non-empty status
 func TestCamperHistoryStatusAggregation(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name           string
 		statuses       []string
@@ -719,6 +732,7 @@ func TestCamperHistoryStatusAggregation(t *testing.T) {
 
 // TestCamperHistorySynagogueLookup tests synagogue lookup from household custom values
 func TestCamperHistorySynagogueLookup(t *testing.T) {
+	t.Parallel()
 	// Simulate household_custom_values data
 	// Key: household_id, Value: synagogue name (or empty if not set)
 	synagogueByHousehold := map[int]string{
@@ -774,6 +788,7 @@ func TestCamperHistorySynagogueLookup(t *testing.T) {
 // TestCamperHistoryExtendedAttendeeAggregation tests aggregation of attendee data
 // including enrollment_date and status for multi-session campers
 func TestCamperHistoryExtendedAttendeeAggregation(t *testing.T) {
+	t.Parallel()
 	// Camper 1001 enrolled in 3 sessions with different dates and all enrolled
 	// Camper 1002 enrolled in 2 sessions, one enrolled one canceled
 	// Camper 1003 single session, waitlisted
@@ -831,6 +846,7 @@ func TestCamperHistoryExtendedAttendeeAggregation(t *testing.T) {
 // TestCamperHistoryFullRecordWithNewFields tests a complete camper history record
 // with all 6 new fields populated
 func TestCamperHistoryFullRecordWithNewFields(t *testing.T) {
+	t.Parallel()
 	// This test verifies that all fields are correctly combined into a record
 	record := testCamperHistoryRecord{
 		// Existing fields
@@ -1024,6 +1040,7 @@ func lookupSynagogue(synagogueByHousehold map[int]string, householdID int) strin
 // authoritative value from the persons table instead of computing from historical data.
 // This fixes the issue where production only has current year data, so computed value is always 1.
 func TestCamperHistoryUsesCMYearsAtCamp(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name                string
 		cmYearsAtCamp       int   // CampMinder's value from persons table
@@ -1094,6 +1111,7 @@ func TestCamperHistoryUsesCMYearsAtCamp(t *testing.T) {
 // TestCamperHistoryComputeFirstYearAttended tests first_year_attended calculation
 // This field stores the first year a camper ever attended summer camp (for onramp analysis)
 func TestCamperHistoryComputeFirstYearAttended(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name                      string
 		currentYear               int
@@ -1172,6 +1190,7 @@ func computeFirstYearAttended(currentYear int, enrolledYears []int) int {
 // TestCamperHistorySessionTypesField tests that session_types field is populated
 // correctly from attendee sessions
 func TestCamperHistorySessionTypesField(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name                 string
 		sessionTypes         []string // Session types from camp_sessions
@@ -1228,6 +1247,7 @@ func TestCamperHistorySessionTypesField(t *testing.T) {
 // TestCamperHistoryMultiSessionWithDifferentTypes tests that multi-session campers
 // correctly aggregate all their session types
 func TestCamperHistoryMultiSessionWithDifferentTypes(t *testing.T) {
+	t.Parallel()
 	// Simulate attendee records for a camper in main and AG sessions
 	attendees := []testAttendeeWithSessionType{
 		{PersonID: 1001, SessionID: 100, SessionName: "Session 2", SessionType: "main"},
@@ -1254,6 +1274,7 @@ func TestCamperHistoryMultiSessionWithDifferentTypes(t *testing.T) {
 // TestCamperHistorySessionTypesFilteringSummerOnly tests the filter logic
 // that excludes non-summer sessions from metrics
 func TestCamperHistorySessionTypesFilteringSummerOnly(t *testing.T) {
+	t.Parallel()
 	// Sample camper history records with various session types
 	records := []testCamperHistoryWithSessionTypes{
 		{PersonID: 1001, SessionTypes: "main", Grade: 6},           // Summer - include
@@ -1502,6 +1523,7 @@ type testCamperHistoryV2 struct {
 // TestV2_OneRecordPerAttendee tests that v2 creates one record per attendee,
 // not one record per person (the key behavior change from v1)
 func TestV2_OneRecordPerAttendee(t *testing.T) {
+	t.Parallel()
 	attendees := []testAttendeeV2{
 		{PersonID: 1001, SessionCMID: 100, SessionName: "Session 1", SessionType: "main", Year: 2025},
 		{PersonID: 1001, SessionCMID: 101, SessionName: "Session 2", SessionType: "main", Year: 2025},
@@ -1531,6 +1553,7 @@ func TestV2_OneRecordPerAttendee(t *testing.T) {
 
 // TestV2_UniqueConstraint tests the unique key is (person_id, session_cm_id, year)
 func TestV2_UniqueConstraint(t *testing.T) {
+	t.Parallel()
 	attendees := []testAttendeeV2{
 		{PersonID: 1001, SessionCMID: 100, Year: 2025},
 		{PersonID: 1001, SessionCMID: 100, Year: 2025}, // Duplicate - should be deduplicated
@@ -1559,6 +1582,7 @@ func TestV2_UniqueConstraint(t *testing.T) {
 
 // TestV2_BunkLookupBySession tests that bunk assignment matches the specific session
 func TestV2_BunkLookupBySession(t *testing.T) {
+	t.Parallel()
 	attendees := []testAttendeeV2{
 		{PersonID: 1001, PersonPBID: "p1001", SessionCMID: 100, SessionPBID: "s100", SessionName: "Session 1", Year: 2025},
 		{PersonID: 1001, PersonPBID: "p1001", SessionCMID: 101, SessionPBID: "s101", SessionName: "Session 2", Year: 2025},
@@ -1599,6 +1623,7 @@ func TestV2_BunkLookupBySession(t *testing.T) {
 // TestV2_IsReturningSummerOnlyConsidersSummerTypes tests that is_returning_summer
 // only considers summer session types in the prior year
 func TestV2_IsReturningSummerOnlyConsidersSummerTypes(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name                 string
 		currentYear          int
@@ -1709,6 +1734,7 @@ func TestV2_IsReturningSummerOnlyConsidersSummerTypes(t *testing.T) {
 // TestV2_IsReturningFamilyOnlyConsidersFamilyTypes tests that is_returning_family
 // only considers family/adult session types in the prior year
 func TestV2_IsReturningFamilyOnlyConsidersFamilyTypes(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name                 string
 		currentYear          int
@@ -1778,6 +1804,7 @@ func TestV2_IsReturningFamilyOnlyConsidersFamilyTypes(t *testing.T) {
 
 // TestV2_SessionTypeSelectValues tests that session_type field uses correct enum values
 func TestV2_SessionTypeSelectValues(t *testing.T) {
+	t.Parallel()
 	// These are all the valid session types from camp_sessions enum
 	validTypes := []string{
 		"main", "embedded", "ag", "family", "quest", "scit",
@@ -1824,6 +1851,7 @@ func TestV2_SessionTypeSelectValues(t *testing.T) {
 
 // TestV2_SessionTypeFieldPresent tests that each record has session_type
 func TestV2_SessionTypeFieldPresent(t *testing.T) {
+	t.Parallel()
 	attendees := []testAttendeeV2{
 		{PersonID: 1001, SessionCMID: 100, SessionName: "Session 1", SessionType: "main", Year: 2025},
 		{PersonID: 1001, SessionCMID: 101, SessionName: "Family Camp", SessionType: "family", Year: 2025},
@@ -1977,6 +2005,7 @@ func isFamilySessionType(sessionType string) bool {
 // TestCamperHistoryAddressDiscreteColumns tests that city/state are read
 // directly from address_city and address_state columns (not JSON parsing)
 func TestCamperHistoryAddressDiscreteColumns(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name          string
 		addressCity   string
@@ -2052,6 +2081,7 @@ func TestCamperHistoryAddressDiscreteColumns(t *testing.T) {
 // from person_custom_values (HH-Name of Congregation) as primary source,
 // with household_custom_values (Synagogue) as fallback
 func TestCamperHistoryCongregationSourcePriority(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name                   string
 		personCongregation     string // From person_custom_values "HH-Name of Congregation"
@@ -2114,6 +2144,7 @@ func mergeCongregationSources(personCongregation, householdSynagogue string) (re
 
 // TestCamperHistoryCongregationFieldNames tests the correct custom field names
 func TestCamperHistoryCongregationFieldNames(t *testing.T) {
+	t.Parallel()
 	// These are the expected field names in CampMinder custom values
 	personFieldName := "HH-Name of Congregation" // person_custom_values - rich data (2376 records)
 	householdFieldName := "Synagogue"            // household_custom_values - sparse data (29 records)
@@ -2138,6 +2169,7 @@ func TestCamperHistoryCongregationFieldNames(t *testing.T) {
 
 // TestCamperHistoryCompositeKeyFormat tests the composite key format used for upsert
 func TestCamperHistoryCompositeKeyFormat(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name        string
 		personCMID  int
@@ -2180,6 +2212,7 @@ func TestCamperHistoryCompositeKeyFormat(t *testing.T) {
 
 // TestCamperHistoryCompositeKeyDeterministic tests that the same input always produces the same key
 func TestCamperHistoryCompositeKeyDeterministic(t *testing.T) {
+	t.Parallel()
 	// Generate key multiple times
 	keys := make([]string, 10)
 	for i := range 10 {
@@ -2196,6 +2229,7 @@ func TestCamperHistoryCompositeKeyDeterministic(t *testing.T) {
 
 // TestCamperHistoryOrphanDetection tests that records not in processed keys are identified as orphans
 func TestCamperHistoryOrphanDetection(t *testing.T) {
+	t.Parallel()
 	// Simulate existing records
 	existingKeys := map[string]bool{
 		"1001:100|2025": true, // Will be processed
@@ -2225,6 +2259,7 @@ func TestCamperHistoryOrphanDetection(t *testing.T) {
 
 // TestCamperHistoryUpsertDecision tests the create vs update decision logic
 func TestCamperHistoryUpsertDecision(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name         string
 		existingKeys map[string]bool
@@ -2282,6 +2317,7 @@ func TestCamperHistoryUpsertDecision(t *testing.T) {
 // TestCamperHistoryCompareFields verifies that the compareFields list for camper_history
 // contains exactly the expected fields (inclusion list pattern, not skipFields exclusion).
 func TestCamperHistoryCompareFields(t *testing.T) {
+	t.Parallel()
 	// camperHistoryCompareFields should list all fields that matter for idempotency checks,
 	// excluding PocketBase-managed fields (id, created, updated, collectionId, collectionName)
 	// and the unique key fields (person_id, session_cm_id, year) which don't change.
@@ -2341,6 +2377,7 @@ func TestCamperHistoryCompareFields(t *testing.T) {
 // TestCamperHistoryRecordNeedsUpdateUsesCompareFields verifies that recordNeedsUpdate
 // correctly detects when fields match (no update) and when they differ (needs update).
 func TestCamperHistoryRecordNeedsUpdateUsesCompareFields(t *testing.T) {
+	t.Parallel()
 	c := &CamperHistorySync{}
 
 	// Create a minimal collection with the fields used in comparison

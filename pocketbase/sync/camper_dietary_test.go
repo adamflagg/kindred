@@ -17,6 +17,7 @@ import (
 // prevents CampMinder from adding one -- this pins the fix so a future
 // occurrence is caught here instead of live.
 func TestCamperDietaryLoadFieldDefinitionsTrimsNames(t *testing.T) {
+	t.Parallel()
 	app := newFieldDefsTestApp(t, map[int]string{
 		1: "Family Medical-Dietary Needs ", // trailing space
 		2: "Family Medical-Additional",     // already clean, must be unaffected
@@ -49,6 +50,7 @@ func TestCamperDietaryLoadFieldDefinitionsTrimsNames(t *testing.T) {
 
 // TestCamperDietarySync_Name verifies the service name is correct
 func TestCamperDietarySync_Name(t *testing.T) {
+	t.Parallel()
 	expectedName := "camper_dietary"
 	if serviceNameCamperDietary != expectedName {
 		t.Errorf("expected service name %q, got %q", expectedName, serviceNameCamperDietary)
@@ -57,6 +59,7 @@ func TestCamperDietarySync_Name(t *testing.T) {
 
 // TestCamperDietaryYearValidation tests year parameter validation
 func TestCamperDietaryYearValidation(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name      string
 		year      int
@@ -84,6 +87,7 @@ func TestCamperDietaryYearValidation(t *testing.T) {
 
 // TestDietaryBooleanParsing tests parsing Yes/No values to boolean
 func TestDietaryBooleanParsing(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name     string
 		rawValue string
@@ -115,6 +119,7 @@ func TestDietaryBooleanParsing(t *testing.T) {
 
 // TestDietaryFieldMapping tests CampMinder field to column mapping
 func TestDietaryFieldMapping(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		fieldName  string
 		wantColumn string
@@ -141,6 +146,7 @@ func TestDietaryFieldMapping(t *testing.T) {
 
 // TestDietaryCompositeKeyFormat tests composite key generation
 func TestDietaryCompositeKeyFormat(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name     string
 		personID int
@@ -164,6 +170,7 @@ func TestDietaryCompositeKeyFormat(t *testing.T) {
 
 // TestIsDietaryField tests identification of dietary fields
 func TestIsDietaryField(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		fieldName     string
 		wantIsDietary bool
@@ -191,6 +198,7 @@ func TestIsDietaryField(t *testing.T) {
 
 // TestDietaryRecordBuilding tests building dietary records from source data
 func TestDietaryRecordBuilding(t *testing.T) {
+	t.Parallel()
 	fieldValues := []testDietaryFieldValue{
 		{PersonID: 12345, FieldName: "Family Medical-Dietary Needs", Value: "Yes", Year: 2025},
 		{PersonID: 12345, FieldName: "Family Medical-Dietary Explain", Value: "Vegetarian, no peanuts", Year: 2025},
@@ -238,6 +246,7 @@ func TestDietaryRecordBuilding(t *testing.T) {
 
 // TestDietaryEmptyDataHandling tests graceful handling of empty input
 func TestDietaryEmptyDataHandling(t *testing.T) {
+	t.Parallel()
 	fieldValues := []testDietaryFieldValue{}
 
 	records := buildDietaryRecords(fieldValues)
@@ -249,6 +258,7 @@ func TestDietaryEmptyDataHandling(t *testing.T) {
 
 // TestDietaryTextFieldMaxLength tests that text fields respect max length constraints
 func TestDietaryTextFieldMaxLength(t *testing.T) {
+	t.Parallel()
 	// dietary_explanation max observed: 304 chars
 	// allergy_info max observed: 605 chars
 	// additional_medical max observed: 786 chars
@@ -373,6 +383,7 @@ func findDietaryRecord(records []*testDietaryRecord, personID, year int) *testDi
 // TestCamperDietaryCompareFields verifies that the compareFields list for camper_dietary
 // contains exactly the expected fields (inclusion list pattern, not skipFields exclusion).
 func TestCamperDietaryCompareFields(t *testing.T) {
+	t.Parallel()
 	// camperDietaryCompareFields should list all fields that matter for idempotency checks,
 	// excluding PocketBase-managed fields (id, created, updated, collectionId, collectionName).
 	// Unlike other services, this includes person_id and year since the original skipFields
@@ -419,6 +430,7 @@ func TestCamperDietaryCompareFields(t *testing.T) {
 // TestCamperDietaryRecordNeedsUpdateUsesCompareFields verifies that recordNeedsUpdate
 // correctly detects when fields match (no update) and when they differ (needs update).
 func TestCamperDietaryRecordNeedsUpdateUsesCompareFields(t *testing.T) {
+	t.Parallel()
 	s := &CamperDietarySync{}
 
 	// Create a minimal collection with the fields used in comparison

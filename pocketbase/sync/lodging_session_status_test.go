@@ -34,6 +34,7 @@ const statusCollection = "lodging_session_status"
 // lodging_phi_test.go: cheap, and it fails at the moment someone adds the
 // reference rather than in production.
 func TestSyncNeverWritesTheStaffOwnedWeekendStatus(t *testing.T) {
+	t.Parallel()
 	entries, err := os.ReadDir(".")
 	if err != nil {
 		t.Fatalf("reading the sync package directory: %v", err)

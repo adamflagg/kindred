@@ -5,6 +5,7 @@ import (
 )
 
 func TestBunkRequestsSync_PurgeOrphanedRequests_Logic(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name               string
 		csvPersonIDs       map[int]bool
@@ -62,6 +63,7 @@ func TestBunkRequestsSync_PurgeOrphanedRequests_Logic(t *testing.T) {
 }
 
 func TestFindZombieBRPersonIDs(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name           string
 		csvPersonIDs   map[int]bool
@@ -128,6 +130,7 @@ func TestFindZombieBRPersonIDs(t *testing.T) {
 }
 
 func TestBunkRequestsSync_TrackCSVPersonIDs(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name           string
 		validPersonIDs map[int]string

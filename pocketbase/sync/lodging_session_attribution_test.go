@@ -13,6 +13,7 @@ import (
 // back a time.Time. It returns a whole-second string, and AttributeSession
 // compares against session start dates, so the typed parse is the point.
 func TestParseCampMinderTimestamp(t *testing.T) {
+	t.Parallel()
 	got, ok := ParseCampMinderTimestamp("2025-04-21T17:51:11.5964281+00:00")
 	if !ok {
 		t.Fatal("failed to parse the CampMinder last_updated format")
@@ -34,6 +35,7 @@ func TestParseCampMinderTimestamp(t *testing.T) {
 // matches none of date_utils.go's DateFormats -- verified by running all eight
 // against it -- so it must be read via GetDateTime, not ParseDate.
 func TestLoadSessionWindowsReadsDateFields(t *testing.T) {
+	t.Parallel()
 	app := newLodgingTestApp(t)
 	addSession(t, app, 1309514, "Family Camp 1", "family",
 		"2025-05-23 07:00:00.000Z", "2025-05-26 07:00:00.000Z", 2025)
@@ -66,6 +68,7 @@ func TestLoadSessionWindowsReadsDateFields(t *testing.T) {
 // "active enrolled". Any other status is not attending, and counting them would
 // manufacture ambiguity where there is none.
 func TestBuildHouseholdSessionIndexUsesActiveEnrolmentOnly(t *testing.T) {
+	t.Parallel()
 	app := newLodgingTestApp(t)
 	fc1 := addSession(t, app, 1309514, "Family Camp 1", "family",
 		"2025-05-23 07:00:00.000Z", "2025-05-26 07:00:00.000Z", 2025)
@@ -92,6 +95,7 @@ func TestBuildHouseholdSessionIndexUsesActiveEnrolmentOnly(t *testing.T) {
 // TestBuildHouseholdSessionIndexDedupesSiblings: two enrolled children in one
 // household attending the same weekend is ONE household-weekend, not two.
 func TestBuildHouseholdSessionIndexDedupesSiblings(t *testing.T) {
+	t.Parallel()
 	app := newLodgingTestApp(t)
 	fc1 := addSession(t, app, 1309514, "Family Camp 1", "family",
 		"2025-05-23 07:00:00.000Z", "2025-05-26 07:00:00.000Z", 2025)
@@ -116,6 +120,7 @@ func TestBuildHouseholdSessionIndexDedupesSiblings(t *testing.T) {
 // agree, so this asserts the filtered result is exactly the slice the full
 // index holds for that party -- not merely non-empty.
 func TestBuildSessionIndexFilteredToOnePartyMatchesTheFullIndex(t *testing.T) {
+	t.Parallel()
 	app := newLodgingTestApp(t)
 	fc1 := addSession(t, app, cmIDFamilyCamp1, "Family Camp 1", "family",
 		"2025-05-23 07:00:00.000Z", "2025-05-26 07:00:00.000Z", 2025)
@@ -162,6 +167,7 @@ func TestBuildSessionIndexFilteredToOnePartyMatchesTheFullIndex(t *testing.T) {
 
 // TestAttributeSessionSingle: the 98% case.
 func TestAttributeSessionSingle(t *testing.T) {
+	t.Parallel()
 	only := SessionWindow{ID: "s1", CMID: 1309514, Name: "Family Camp 1",
 		Start: time.Date(2025, 5, 23, 7, 0, 0, 0, time.UTC),
 		End:   time.Date(2025, 5, 26, 7, 0, 0, 0, time.UTC)}
@@ -178,6 +184,7 @@ func TestAttributeSessionSingle(t *testing.T) {
 // TestAttributeSessionNone: 53 cabin values in 2025 belong to households with no
 // active family enrolment. They are queue items, not drops and not errors.
 func TestAttributeSessionNone(t *testing.T) {
+	t.Parallel()
 	got := AttributeSession(nil, time.Time{})
 	if got.Reason != attrNoSession {
 		t.Errorf("Reason = %q, want %q", got.Reason, attrNoSession)
@@ -195,6 +202,7 @@ func TestAttributeSessionNone(t *testing.T) {
 // Spec 3.6 says flag these for manual entry rather than guess, so SessionID
 // stays empty and only BestGuess carries the heuristic.
 func TestAttributeSessionAmbiguousSuggestsButDoesNotAssign(t *testing.T) {
+	t.Parallel()
 	mk := func(id string, cmID int, month, day int) SessionWindow {
 		return SessionWindow{ID: id, CMID: cmID,
 			Start: time.Date(2025, time.Month(month), day, 7, 0, 0, 0, time.UTC),
@@ -227,6 +235,7 @@ func TestAttributeSessionAmbiguousSuggestsButDoesNotAssign(t *testing.T) {
 // weekend has ended -- staff tidying records at season close -- suggests the
 // LAST weekend, since that is the one the value most plausibly describes.
 func TestAttributeSessionAmbiguousAfterAllSessions(t *testing.T) {
+	t.Parallel()
 	candidates := []SessionWindow{
 		{ID: "s1", CMID: 1309514, Start: time.Date(2025, 5, 23, 7, 0, 0, 0, time.UTC)},
 		{ID: "s3", CMID: 1356527, Start: time.Date(2025, 8, 28, 7, 0, 0, 0, time.UTC)},
@@ -243,6 +252,7 @@ func TestAttributeSessionAmbiguousAfterAllSessions(t *testing.T) {
 // TestAttributeSessionAmbiguousWithoutTimestamp: no timestamp, no suggestion --
 // but still a queue item rather than a drop.
 func TestAttributeSessionAmbiguousWithoutTimestamp(t *testing.T) {
+	t.Parallel()
 	candidates := []SessionWindow{
 		{ID: "s1", CMID: 1309514, Start: time.Date(2025, 5, 23, 7, 0, 0, 0, time.UTC)},
 		{ID: "s3", CMID: 1356527, Start: time.Date(2025, 8, 28, 7, 0, 0, 0, time.UTC)},

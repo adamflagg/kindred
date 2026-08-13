@@ -5,6 +5,7 @@ import (
 )
 
 func TestBaseSyncService_TrackProcessedKey(t *testing.T) {
+	t.Parallel()
 	service := BaseSyncService{
 		ProcessedKeys: make(map[string]bool),
 	}
@@ -28,6 +29,7 @@ func TestBaseSyncService_TrackProcessedKey(t *testing.T) {
 }
 
 func TestBaseSyncService_IsKeyProcessed(t *testing.T) {
+	t.Parallel()
 	service := BaseSyncService{
 		ProcessedKeys: make(map[string]bool),
 	}
@@ -57,6 +59,7 @@ func TestBaseSyncService_IsKeyProcessed(t *testing.T) {
 }
 
 func TestBaseSyncService_TrackProcessedCompositeKey(t *testing.T) {
+	t.Parallel()
 	service := BaseSyncService{
 		ProcessedKeys: make(map[string]bool),
 	}
@@ -75,6 +78,7 @@ func TestBaseSyncService_TrackProcessedCompositeKey(t *testing.T) {
 }
 
 func TestBaseSyncService_ClearProcessedKeys(t *testing.T) {
+	t.Parallel()
 	service := BaseSyncService{
 		ProcessedKeys: make(map[string]bool),
 	}
@@ -109,6 +113,7 @@ func TestBaseSyncService_ClearProcessedKeys(t *testing.T) {
 }
 
 func TestBaseSyncService_ClearFieldDiffStats(t *testing.T) {
+	t.Parallel()
 	service := BaseSyncService{
 		FieldDiffStats: map[string]int{"name": 3, "email": 5},
 	}
@@ -130,6 +135,7 @@ func TestBaseSyncService_ClearFieldDiffStats(t *testing.T) {
 }
 
 func TestBaseSyncService_FindOrphansFromPreloaded(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name           string
 		syncSuccessful bool

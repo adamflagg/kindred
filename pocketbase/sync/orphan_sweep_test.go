@@ -98,6 +98,7 @@ func countRows(t *testing.T, app core.App, collection, filter string) int {
 // keeps 1. The offset implementation deletes the first page, then asks for
 // offset 100 of a 50-row table, gets nothing back, and stops.
 func TestBaseDeleteOrphansInspectsEveryRecordWhileDeleting(t *testing.T) {
+	t.Parallel()
 	const seeded = 150
 
 	app := newOrphanSweepTestApp(t, "widgets", "name")
@@ -166,6 +167,7 @@ func TestBaseDeleteOrphansInspectsEveryRecordWhileDeleting(t *testing.T) {
 // The fixture is 10,050 rows for one person: the first 10,000 are still
 // computed, the last 50 are orphans that only a paginated sweep can reach.
 func TestPersonCustomFieldValuesDeleteOrphansSweepsPastTheTenThousandCap(t *testing.T) {
+	t.Parallel()
 	const (
 		seeded   = 10050
 		computed = 10000
@@ -199,6 +201,7 @@ func TestPersonCustomFieldValuesDeleteOrphansSweepsPastTheTenThousandCap(t *test
 // latent twin from kindred#2266: identical statement, identical cap, smaller
 // table today.
 func TestHouseholdCustomFieldValuesDeleteOrphansSweepsPastTheTenThousandCap(t *testing.T) {
+	t.Parallel()
 	const (
 		seeded   = 10050
 		computed = 10000
@@ -234,6 +237,7 @@ func TestHouseholdCustomFieldValuesDeleteOrphansSweepsPastTheTenThousandCap(t *t
 // orphaned. Unkeyable is not orphaned: nothing may be deleted, and the guard
 // never sees these rows because they were never deletion candidates.
 func TestBaseDeleteOrphansDeletesNothingWhenNoRecordCanBeKeyed(t *testing.T) {
+	t.Parallel()
 	const seeded = 50
 
 	app := newOrphanSweepTestApp(t, "widgets", "name")
@@ -296,6 +300,7 @@ func captureSweepLogs(t *testing.T) *strings.Builder {
 // (attendees, bunk_assignments, bunk_plans) tell the reader to look for an
 // unkeyable-record warning, so one has to exist.
 func TestBaseDeleteOrphansWarnsWhenNothingCanBeKeyed(t *testing.T) {
+	t.Parallel()
 	const seeded = 30
 
 	app := newOrphanSweepTestApp(t, "widgets", "name")
@@ -345,6 +350,7 @@ func TestBaseDeleteOrphansWarnsWhenNothingCanBeKeyed(t *testing.T) {
 // told the opposite of the truth. A blocking relation is the cheapest way to
 // make App.Delete fail for real rather than mocking it.
 func TestBaseDeleteOrphansCountsOnlyCompletedDeletes(t *testing.T) {
+	t.Parallel()
 	app := newOrphanSweepTestApp(t, "widgets", "name")
 	widgets, err := app.FindCollectionByNameOrId("widgets")
 	if err != nil {
@@ -431,6 +437,7 @@ func (a *filterSpyApp) FindRecordsByFilter(
 //
 // The paging cursor therefore must not travel in the filter string.
 func TestSweepDoesNotMintAFilterStringPerPage(t *testing.T) {
+	t.Parallel()
 	const seeded = 1200
 
 	base := newOrphanSweepTestApp(t, "person_custom_values", "person", "field_definition", "value")

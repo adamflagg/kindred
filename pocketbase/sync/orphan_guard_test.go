@@ -13,6 +13,7 @@ import (
 // ---------------------------------------------------------------------------
 
 func TestOrphanSweepGuardCheck(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name       string
 		computed   int
@@ -57,6 +58,7 @@ func TestOrphanSweepGuardCheck(t *testing.T) {
 // TestOrphanSweepGuardCheckCarriesTheHint proves a service can point the
 // operator at its own upstream, which is what the two shipped guards do.
 func TestOrphanSweepGuardCheckCarriesTheHint(t *testing.T) {
+	t.Parallel()
 	g := OrphanSweepGuard{
 		Entity:   "staff_vehicle_info",
 		Year:     2026,
@@ -82,6 +84,7 @@ func TestOrphanSweepGuardCheckCarriesTheHint(t *testing.T) {
 // entries when hundreds were expected, and the unwidened guard -- which only
 // asked "is it empty?" -- waved it through and deleted the rest.
 func TestBaseDeleteOrphansGuardedRefusesPartialCollapse(t *testing.T) {
+	t.Parallel()
 	const (
 		seeded   = 300
 		computed = 5
@@ -133,6 +136,7 @@ func TestBaseDeleteOrphansGuardedRefusesPartialCollapse(t *testing.T) {
 // TestBaseDeleteOrphansGuardedStillSweepsNormalChurn proves the widened guard
 // did not turn ordinary attrition into a failed sync.
 func TestBaseDeleteOrphansGuardedStillSweepsNormalChurn(t *testing.T) {
+	t.Parallel()
 	const (
 		seeded   = 300
 		computed = 290
@@ -181,6 +185,7 @@ func TestBaseDeleteOrphansGuardedStillSweepsNormalChurn(t *testing.T) {
 }
 
 func TestPersonCustomFieldValuesDeleteOrphansRefusesPartialCollapse(t *testing.T) {
+	t.Parallel()
 	const seeded = 300
 
 	app := newOrphanSweepTestApp(t, "person_custom_values", "person", "field_definition", "value")
@@ -214,6 +219,7 @@ func TestPersonCustomFieldValuesDeleteOrphansRefusesPartialCollapse(t *testing.T
 // the sweep's own filter is the whole year. Reading the whole year and judging
 // it against one session's keys would delete every other session's values.
 func TestPersonCustomFieldValuesDeleteOrphansIgnoresPersonsThisRunDidNotFetch(t *testing.T) {
+	t.Parallel()
 	// Person 2 holds far fewer rows than person 1 on purpose: dropping the
 	// scoping has to fail THIS test on the surviving-row count, not by tripping
 	// the collapse guard, or the test would not be pinning the scoping at all.
@@ -257,6 +263,7 @@ func TestPersonCustomFieldValuesDeleteOrphansIgnoresPersonsThisRunDidNotFetch(t 
 }
 
 func TestHouseholdCustomFieldValuesDeleteOrphansRefusesPartialCollapse(t *testing.T) {
+	t.Parallel()
 	const seeded = 300
 
 	app := newOrphanSweepTestApp(t, "household_custom_values", "household", "field_definition", "value")
@@ -284,6 +291,7 @@ func TestHouseholdCustomFieldValuesDeleteOrphansRefusesPartialCollapse(t *testin
 // mirrors the person case: getHouseholdIDsToSync takes the same ?session=
 // filter.
 func TestHouseholdCustomFieldValuesDeleteOrphansIgnoresHouseholdsThisRunDidNotFetch(t *testing.T) {
+	t.Parallel()
 	const (
 		household1Rows = 40
 		household2Rows = 10

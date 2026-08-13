@@ -12,6 +12,7 @@ import (
 
 // TestCallAPIProcessor tests the HTTP-based process-requests API call
 func TestCallAPIProcessor(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name           string
 		responseStatus int
@@ -103,6 +104,7 @@ func TestCallAPIProcessor(t *testing.T) {
 
 // TestCallAPIProcessor_ForceField verifies the force field is serialized in the request body
 func TestCallAPIProcessor_ForceField(t *testing.T) {
+	t.Parallel()
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		var reqBody map[string]any
 		if err := json.NewDecoder(r.Body).Decode(&reqBody); err != nil {
@@ -140,6 +142,7 @@ func TestCallAPIProcessor_ForceField(t *testing.T) {
 
 // TestCallAPIProcessor_CollectTracesField verifies collect_traces is serialized in the request body
 func TestCallAPIProcessor_CollectTracesField(t *testing.T) {
+	t.Parallel()
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		var reqBody map[string]any
 		if err := json.NewDecoder(r.Body).Decode(&reqBody); err != nil {
@@ -221,6 +224,7 @@ func TestGetProcessRequestsTimeout(t *testing.T) {
 
 // TestApiProcessorRequestSerializesTrigger verifies that the trigger field is serialized in the JSON body
 func TestApiProcessorRequestSerializesTrigger(t *testing.T) {
+	t.Parallel()
 	b, err := json.Marshal(apiProcessorRequest{Year: 2026, Session: "all", Trigger: "upload"})
 	if err != nil {
 		t.Fatalf("marshal: %v", err)
@@ -232,6 +236,7 @@ func TestApiProcessorRequestSerializesTrigger(t *testing.T) {
 
 // TestApiProcessorRequestOmitsEmptyTrigger verifies that an empty trigger is omitted from the JSON body
 func TestApiProcessorRequestOmitsEmptyTrigger(t *testing.T) {
+	t.Parallel()
 	b, err := json.Marshal(apiProcessorRequest{Year: 2026, Session: "all"})
 	if err != nil {
 		t.Fatalf("marshal: %v", err)
@@ -245,6 +250,7 @@ func TestApiProcessorRequestOmitsEmptyTrigger(t *testing.T) {
 // non-numeric strings after the migration from friendly session names.
 // Regression test for #807.
 func TestIsValidSessionWithCMIDs(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name    string
 		session string

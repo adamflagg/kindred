@@ -5,6 +5,7 @@ import (
 )
 
 func TestSessionGroupsSync_Name(t *testing.T) {
+	t.Parallel()
 	s := &SessionGroupsSync{}
 
 	got := s.Name()
@@ -17,6 +18,7 @@ func TestSessionGroupsSync_Name(t *testing.T) {
 
 // TestTransformSessionGroupToPB tests that all CampMinder session group fields are extracted
 func TestTransformSessionGroupToPB(t *testing.T) {
+	t.Parallel()
 	s := &SessionGroupsSync{}
 
 	// Mock CampMinder API response
@@ -58,6 +60,7 @@ func TestTransformSessionGroupToPB(t *testing.T) {
 
 // TestTransformSessionGroupHandlesMissingFields tests that nil/missing fields don't cause errors
 func TestTransformSessionGroupHandlesMissingFields(t *testing.T) {
+	t.Parallel()
 	s := &SessionGroupsSync{}
 
 	// Minimal data with only required fields
@@ -92,6 +95,7 @@ func TestTransformSessionGroupHandlesMissingFields(t *testing.T) {
 
 // TestTransformSessionGroupRequiredIDError tests that missing ID returns error
 func TestTransformSessionGroupRequiredIDError(t *testing.T) {
+	t.Parallel()
 	s := &SessionGroupsSync{}
 
 	// Missing ID field

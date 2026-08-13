@@ -8,6 +8,7 @@ import (
 
 // TestStaffServiceName verifies the service name constant
 func TestStaffServiceName(t *testing.T) {
+	t.Parallel()
 	expected := "staff"
 	if serviceNameStaff != expected {
 		t.Errorf("serviceNameStaff = %q, want %q", serviceNameStaff, expected)
@@ -18,6 +19,7 @@ func TestStaffServiceName(t *testing.T) {
 // This is a critical fix - the person_id field was missing, causing staff_applications
 // and staff_vehicle_info syncs to fail to match records.
 func TestTransformStaffToPB_PersonID(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name           string
 		personID       float64
@@ -116,6 +118,7 @@ func testTransformStaffPersonID(data map[string]any, personMap map[int]string) (
 
 // TestAllStaffStatuses verifies the allStaffStatuses constant includes all 4 CampMinder statuses
 func TestAllStaffStatuses(t *testing.T) {
+	t.Parallel()
 	expected := []int{1, 2, 3, 4} // Active, Resigned, Dismissed, Cancelled
 	if !reflect.DeepEqual(allStaffStatuses, expected) {
 		t.Errorf("allStaffStatuses = %v, want %v", allStaffStatuses, expected)
@@ -124,6 +127,7 @@ func TestAllStaffStatuses(t *testing.T) {
 
 // TestSetStatusFields_AllStatuses verifies setStatusFields handles all 4 CampMinder staff statuses
 func TestSetStatusFields_AllStatuses(t *testing.T) {
+	t.Parallel()
 	s := &StaffSync{}
 
 	tests := []struct {
@@ -198,6 +202,7 @@ func TestSetStatusFields_AllStatuses(t *testing.T) {
 // CampMinder clears BunkAssignments from dismissed/resigned staff API responses,
 // but we want to keep the last-known bunk assignments in PocketBase.
 func TestShouldPreserveBunkData(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name              string
 		statusID          int
@@ -271,6 +276,7 @@ func TestShouldPreserveBunkData(t *testing.T) {
 // the bunks and bunk_staff fields are removed from pbData so ProcessSimpleRecord
 // skips comparing them (preserving the existing values).
 func TestPreserveBunkDataDeletesFields(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name           string
 		statusID       int
@@ -339,6 +345,7 @@ func TestPreserveBunkDataDeletesFields(t *testing.T) {
 
 // TestTransformStaffToPB_MissingPersonID tests error handling for missing PersonID
 func TestTransformStaffToPB_MissingPersonID(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name    string
 		data    map[string]any

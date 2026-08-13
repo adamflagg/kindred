@@ -7,6 +7,7 @@ import (
 )
 
 func TestReadBunkRequestsUploadMetadata_Missing(t *testing.T) {
+	t.Parallel()
 	tmp := t.TempDir()
 	got, err := readBunkRequestsUploadMetadata(tmp)
 	if err != nil {
@@ -18,6 +19,7 @@ func TestReadBunkRequestsUploadMetadata_Missing(t *testing.T) {
 }
 
 func TestReadBunkRequestsUploadMetadata_Valid(t *testing.T) {
+	t.Parallel()
 	tmp := t.TempDir()
 	csvDir := filepath.Join(tmp, "bunk_requests")
 	if err := os.MkdirAll(csvDir, 0750); err != nil {
@@ -51,6 +53,7 @@ func TestReadBunkRequestsUploadMetadata_Valid(t *testing.T) {
 }
 
 func TestReadBunkRequestsUploadMetadata_InvalidJSON(t *testing.T) {
+	t.Parallel()
 	tmp := t.TempDir()
 	csvDir := filepath.Join(tmp, "bunk_requests")
 	if err := os.MkdirAll(csvDir, 0750); err != nil {

@@ -9,6 +9,7 @@ import (
 )
 
 func TestWorkbookManager_GetOrCreateGlobalsWorkbook_NewWorkbook(t *testing.T) {
+	t.Parallel()
 	// Test that GetOrCreateGlobalsWorkbook creates a new workbook when none exists
 	// This tests the database interaction and workbook creation flow
 
@@ -36,6 +37,7 @@ func TestWorkbookManager_GetOrCreateGlobalsWorkbook_NewWorkbook(t *testing.T) {
 }
 
 func TestWorkbookManager_GetOrCreateYearWorkbook_NewWorkbook(t *testing.T) {
+	t.Parallel()
 	// Test that GetOrCreateYearWorkbook creates a new workbook when none exists
 
 	app, err := tests.NewTestApp()
@@ -58,6 +60,7 @@ func TestWorkbookManager_GetOrCreateYearWorkbook_NewWorkbook(t *testing.T) {
 }
 
 func TestWorkbookManager_SaveWorkbookRecord(t *testing.T) {
+	t.Parallel()
 	// Test saving a workbook record to the database
 	// This is an integration test that requires the sheets_workbooks collection
 
@@ -111,6 +114,7 @@ func TestWorkbookManager_SaveWorkbookRecord(t *testing.T) {
 }
 
 func TestWorkbookManager_SaveWorkbookRecord_YearWorkbook(t *testing.T) {
+	t.Parallel()
 	// Test saving a year-specific workbook record
 	// This is an integration test that requires the sheets_workbooks collection
 
@@ -159,6 +163,7 @@ func TestWorkbookManager_SaveWorkbookRecord_YearWorkbook(t *testing.T) {
 }
 
 func TestWorkbookManager_UpdateWorkbookStats(t *testing.T) {
+	t.Parallel()
 	// Test updating stats for an existing workbook
 	// This is an integration test that requires the sheets_workbooks collection
 
@@ -214,6 +219,7 @@ func TestWorkbookManager_UpdateWorkbookStats(t *testing.T) {
 }
 
 func TestWorkbookManager_ListAllWorkbooks(t *testing.T) {
+	t.Parallel()
 	// Test listing all workbooks
 	// This is an integration test that requires the sheets_workbooks collection
 
@@ -279,6 +285,7 @@ func TestWorkbookManager_ListAllWorkbooks(t *testing.T) {
 }
 
 func TestBuildIndexSheetData(t *testing.T) {
+	t.Parallel()
 	// Test building the index sheet data matrix
 
 	workbooks := []WorkbookRecord{
@@ -377,6 +384,7 @@ func (m *MockDriveSearcher) FindSpreadsheetByName(_ context.Context, name string
 // =============================================================================
 
 func TestGetOrCreateGlobalsWorkbook_RecoverFromDrive(t *testing.T) {
+	t.Parallel()
 	// Test that when DB is empty but Drive has the workbook,
 	// we recover by linking the existing Drive workbook to the DB
 
@@ -443,6 +451,7 @@ func TestGetOrCreateGlobalsWorkbook_RecoverFromDrive(t *testing.T) {
 }
 
 func TestGetOrCreateGlobalsWorkbook_DriveSearchFails_ContinuesToCreate(t *testing.T) {
+	t.Parallel()
 	// Test that when Drive search fails, we log a warning and continue to create new
 	// This ensures resilience - Drive API failures don't block the sync
 
@@ -484,6 +493,7 @@ func TestGetOrCreateGlobalsWorkbook_DriveSearchFails_ContinuesToCreate(t *testin
 }
 
 func TestGetOrCreateGlobalsWorkbook_DriveSearcherNil_SkipsSearch(t *testing.T) {
+	t.Parallel()
 	// Test backward compatibility - when driveSearcher is nil, skip Drive search entirely
 
 	app, err := tests.NewTestApp()
@@ -517,6 +527,7 @@ func TestGetOrCreateGlobalsWorkbook_DriveSearcherNil_SkipsSearch(t *testing.T) {
 }
 
 func TestGetOrCreateYearWorkbook_RecoverFromDrive(t *testing.T) {
+	t.Parallel()
 	// Same pattern for year workbook recovery
 
 	app, err := tests.NewTestApp()
@@ -573,6 +584,7 @@ func TestGetOrCreateYearWorkbook_RecoverFromDrive(t *testing.T) {
 }
 
 func TestGetOrCreateGlobalsWorkbook_NotInDrive_CreatesNew(t *testing.T) {
+	t.Parallel()
 	// Test that when neither DB nor Drive has the workbook, we create new
 
 	app, err := tests.NewTestApp()

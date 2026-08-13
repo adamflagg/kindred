@@ -5,6 +5,7 @@ import (
 )
 
 func TestHouseholdsSync_Name(t *testing.T) {
+	t.Parallel()
 	s := &HouseholdsSync{}
 
 	got := s.Name()
@@ -17,6 +18,7 @@ func TestHouseholdsSync_Name(t *testing.T) {
 
 // TestTransformHouseholdToPB tests that all CampMinder household fields are extracted
 func TestTransformHouseholdToPB(t *testing.T) {
+	t.Parallel()
 	s := &HouseholdsSync{}
 
 	// Mock CampMinder API response (based on HouseholdDetails schema in persons.yaml)
@@ -86,6 +88,7 @@ func TestTransformHouseholdToPB(t *testing.T) {
 
 // TestTransformHouseholdHandlesMissingFields tests that nil/missing fields don't cause errors
 func TestTransformHouseholdHandlesMissingFields(t *testing.T) {
+	t.Parallel()
 	s := &HouseholdsSync{}
 
 	// Minimal data with only required fields
@@ -122,6 +125,7 @@ func TestTransformHouseholdHandlesMissingFields(t *testing.T) {
 
 // TestTransformHouseholdRequiredIDError tests that missing ID returns error
 func TestTransformHouseholdRequiredIDError(t *testing.T) {
+	t.Parallel()
 	s := &HouseholdsSync{}
 
 	// Missing ID field
@@ -137,6 +141,7 @@ func TestTransformHouseholdRequiredIDError(t *testing.T) {
 
 // TestTransformHouseholdZeroIDError tests that ID=0 returns error
 func TestTransformHouseholdZeroIDError(t *testing.T) {
+	t.Parallel()
 	s := &HouseholdsSync{}
 
 	// ID=0 (invalid)
@@ -152,6 +157,7 @@ func TestTransformHouseholdZeroIDError(t *testing.T) {
 
 // TestExtractHouseholdsFromPersons tests extraction of unique households from persons data
 func TestExtractHouseholdsFromPersons(t *testing.T) {
+	t.Parallel()
 	s := &HouseholdsSync{}
 
 	// Mock persons data with households
@@ -217,6 +223,7 @@ func TestExtractHouseholdsFromPersons(t *testing.T) {
 
 // TestTransformHouseholdToPB_BillingAddressFields tests extraction of individual billing address fields
 func TestTransformHouseholdToPB_BillingAddressFields(t *testing.T) {
+	t.Parallel()
 	s := &HouseholdsSync{}
 
 	householdData := map[string]any{
@@ -261,6 +268,7 @@ func TestTransformHouseholdToPB_BillingAddressFields(t *testing.T) {
 
 // TestTransformHouseholdToPB_BillingAddressFields_StateFieldFallback tests State field when StateProvince is missing
 func TestTransformHouseholdToPB_BillingAddressFields_StateFieldFallback(t *testing.T) {
+	t.Parallel()
 	s := &HouseholdsSync{}
 
 	householdData := map[string]any{
@@ -288,6 +296,7 @@ func TestTransformHouseholdToPB_BillingAddressFields_StateFieldFallback(t *testi
 
 // TestTransformHouseholdToPB_BillingAddressFields_ZipFieldFallback tests Zip field when PostalCode is missing
 func TestTransformHouseholdToPB_BillingAddressFields_ZipFieldFallback(t *testing.T) {
+	t.Parallel()
 	s := &HouseholdsSync{}
 
 	householdData := map[string]any{
@@ -315,6 +324,7 @@ func TestTransformHouseholdToPB_BillingAddressFields_ZipFieldFallback(t *testing
 
 // TestTransformHouseholdToPB_BillingAddressFields_MissingAddress tests graceful handling when no billing address
 func TestTransformHouseholdToPB_BillingAddressFields_MissingAddress(t *testing.T) {
+	t.Parallel()
 	s := &HouseholdsSync{}
 
 	householdData := map[string]any{
@@ -343,6 +353,7 @@ func TestTransformHouseholdToPB_BillingAddressFields_MissingAddress(t *testing.T
 
 // TestTransformHouseholdToPB_BillingAddressFields_CountryDefault tests country is empty when not specified
 func TestTransformHouseholdToPB_BillingAddressFields_CountryDefault(t *testing.T) {
+	t.Parallel()
 	s := &HouseholdsSync{}
 
 	householdData := map[string]any{
