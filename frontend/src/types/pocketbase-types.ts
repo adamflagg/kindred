@@ -403,7 +403,6 @@ export type CampSessionsRecord = {
 export type CamperDietaryRecord = {
   additional_medical?: string
   allergy_info?: string
-  attendee: RecordIdString
   created: IsoAutoDateString
   dietary_explanation?: string
   has_allergies?: boolean
@@ -1382,7 +1381,6 @@ export type PersonsRecord<Tparent_names = unknown, Traw_data = unknown> = {
 export type QuestRegistrationsRecord = {
   any_medications?: string
   anything_else?: string
-  attendee: RecordIdString
   away_before?: string
   away_explain?: string
   backpack_info?: string

@@ -554,3 +554,99 @@ func TestQuestRegistrationsDeleteOrphansStillSweepsGenuineOrphans(t *testing.T) 
 		t.Errorf("deleted = %d, want 1", deleted)
 	}
 }
+
+// --- kindred#2261: the stored attendee link is dropped ---------------------
+//
+// These exercise the PRODUCTION aggregation, unlike TestQuestRecordBuilding
+// above, which drives a reimplementation local to this file (buildQuestRecords)
+// and therefore cannot fail when the real code changes.
+
+// TestAggregateQuestEntriesKeepsAdmissionFilter pins the behavior that must
+// NOT change when the attendee relation is removed: a person holding Quest
+// values but carrying no attendees row for the year is still excluded.
+// Measured on the production snapshot this is a no-op today (0 such people in
+// 2024-2026) -- which is exactly why it needs a test rather than an assumption.
+func TestAggregateQuestEntriesKeepsAdmissionFilter(t *testing.T) {
+	t.Parallel()
+	entries := []questValueEntry{
+		{personID: 100, fieldName: "Q-Why come?", value: "adventure"},
+		{personID: 200, fieldName: "Q-Why come?", value: "friends"},
+	}
+	// 100 is enrolled somewhere this year; 200 is not.
+	hasAttendee := map[int]bool{100: true}
+
+	got := aggregateQuestEntries(entries, 2026, hasAttendee)
+
+	if len(got) != 1 {
+		t.Fatalf("expected 1 admitted record, got %d", len(got))
+	}
+	if _, ok := got[makeQuestRegistrationKey(100, 2026)]; !ok {
+		t.Error("person 100 has an attendee row and must be admitted")
+	}
+	if _, ok := got[makeQuestRegistrationKey(200, 2026)]; ok {
+		t.Error("person 200 has no attendee row and must NOT be admitted")
+	}
+}
+
+// TestAggregateQuestEntriesIsOrderIndependent is the probe kindred#2257 calls
+// for. The old code kept whichever attendees row the query plan yielded first
+// (sort was ""), so output depended on input order. Permuting the input must
+// now produce identical output.
+func TestAggregateQuestEntriesIsOrderIndependent(t *testing.T) {
+	t.Parallel()
+	forward := []questValueEntry{
+		{personID: 100, fieldName: "Q-Why come?", value: "adventure"},
+		{personID: 100, fieldName: "Q-biggest hope", value: "new friends"},
+		{personID: 200, fieldName: "Q-Why come?", value: "friends"},
+	}
+	reversed := make([]questValueEntry, len(forward))
+	for i, e := range forward {
+		reversed[len(forward)-1-i] = e
+	}
+	hasAttendee := map[int]bool{100: true, 200: true}
+
+	a := aggregateQuestEntries(forward, 2026, hasAttendee)
+	b := aggregateQuestEntries(reversed, 2026, hasAttendee)
+
+	if len(a) != len(b) {
+		t.Fatalf("record count differs by input order: %d vs %d", len(a), len(b))
+	}
+	for key, ra := range a {
+		rb, ok := b[key]
+		if !ok {
+			t.Fatalf("key %q present in one ordering only", key)
+			return
+		}
+		if ra.whyCome != rb.whyCome || ra.biggestHope != rb.biggestHope {
+			t.Errorf("key %q resolved differently by input order: %+v vs %+v", key, ra, rb)
+		}
+	}
+}
+
+// TestCountMultiQuestEnrollments guards the assumption this change rests on.
+// Nobody has ever held two Quest enrollments in one year (max 1 in every year
+// 2021-2026), and the questionnaire is person x year at the source -- one value
+// per (year, person, field), enforced by UNIQUE(year, person, field_definition).
+// So a session dimension would duplicate rather than recover. If the form ever
+// starts allowing two, we must hear about it instead of silently picking.
+func TestCountMultiQuestEnrollments(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name           string
+		sessionsByCMID map[int][]string
+		want           int
+	}{
+		{"nobody doubles", map[int][]string{100: {"s1"}, 200: {"s2"}}, 0},
+		{"one person doubles", map[int][]string{100: {"s1", "s2"}, 200: {"s2"}}, 1},
+		{"two people double", map[int][]string{100: {"s1", "s2"}, 200: {"s2", "s3"}}, 2},
+		{"empty", map[int][]string{}, 0},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			if got := countMultiQuestEnrollments(tc.sessionsByCMID); got != tc.want {
+				t.Errorf("countMultiQuestEnrollments = %d, want %d", got, tc.want)
+			}
+		})
+	}
+}
