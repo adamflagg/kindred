@@ -192,21 +192,25 @@ type orphanCandidate struct {
 // deleteOrphans runs the sweep in two phases: a read-only scan that collects the
 // orphans, then the deletes.
 //
-// The split is not stylistic. It fixes two defects at once:
+// The split is what fixes the skipping. The old loop paginated with OFFSET --
+// page N read at offset (N-1)*perPage -- while deleting inside the loop, so
+// every delete shrank the result set the next offset was measured against and
+// slid that many unread records past the cursor, permanently. A full page of
+// orphans skipped a whole page each time round. A scan that writes nothing
+// cannot move its own cursor, whatever the paging scheme.
 //
-//  1. The scan used OFFSET pagination -- page N read at offset (N-1)*perPage --
-//     while deleting inside the loop. Every delete shrinks the result set the
-//     next offset is measured against, so k deletes on a page slide k unread
-//     records past the cursor, permanently. With a full page of orphans the
-//     sweep skipped a whole page each time round. The scan is now KEYSET
-//     (cursor) paginated: ordered by id, each page asking for id > the last id
-//     seen. A cursor over a stable ordering cannot be moved by anything the
-//     sweep does, and since phase 1 writes nothing, nothing moves it at all.
+// The split is also what makes the guard possible: a ratio over
+// rows-inspected-so-far means nothing mid-scan, and by the time a partial
+// collapse became visible a delete-as-you-go loop would already have deleted
+// most of the year.
 //
-//  2. The guard has to see the whole picture before the first delete. A ratio
-//     over rows-inspected-so-far is meaningless mid-scan; by the time a partial
-//     collapse became visible, a delete-as-you-go loop would already have
-//     deleted most of the year.
+// The scan is additionally KEYSET (cursor) paginated -- ordered by id, each page
+// asking for id > the last id seen -- rather than by offset. That is a separate
+// point and worth keeping: the old sort was "-created", which is not a unique
+// ordering, and LIMIT/OFFSET over a non-unique ORDER BY may repeat or skip rows
+// across page boundaries entirely on its own. Keyset over the primary key has no
+// such boundary, and it keeps the sweep correct if anyone ever moves a delete
+// back inside the scan.
 func (b *BaseSyncService) deleteOrphans(
 	collection string,
 	getIDFunc func(record *core.Record) (string, bool),

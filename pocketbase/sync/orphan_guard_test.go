@@ -214,11 +214,18 @@ func TestPersonCustomFieldValuesDeleteOrphansRefusesPartialCollapse(t *testing.T
 // the sweep's own filter is the whole year. Reading the whole year and judging
 // it against one session's keys would delete every other session's values.
 func TestPersonCustomFieldValuesDeleteOrphansIgnoresPersonsThisRunDidNotFetch(t *testing.T) {
-	const perPerson = 40
+	// Person 2 holds far fewer rows than person 1 on purpose: dropping the
+	// scoping has to fail THIS test on the surviving-row count, not by tripping
+	// the collapse guard, or the test would not be pinning the scoping at all.
+	const (
+		person1Rows = 40
+		person2Rows = 10
+	)
 
 	app := newOrphanSweepTestApp(t, "person_custom_values", "person", "field_definition", "value")
-	bulkInsertRows(t, app, "person_custom_values", "person", "pers_0000000001", 2026, perPerson)
-	bulkInsertRowsFrom(t, app, "person_custom_values", "person", "pers_0000000002", 2026, perPerson+1, perPerson*2)
+	bulkInsertRows(t, app, "person_custom_values", "person", "pers_0000000001", 2026, person1Rows)
+	bulkInsertRowsFrom(t, app, "person_custom_values", "person", "pers_0000000002", 2026,
+		person1Rows+1, person1Rows+person2Rows)
 
 	s := &PersonCustomFieldValuesSync{BaseSyncService: BaseSyncService{
 		App:            app,
@@ -227,7 +234,7 @@ func TestPersonCustomFieldValuesDeleteOrphansIgnoresPersonsThisRunDidNotFetch(t 
 	}}
 	// Person 1 was fetched this run and every one of their values came back
 	// except the last, which CampMinder really did delete.
-	for i := 1; i < perPerson; i++ {
+	for i := 1; i < person1Rows; i++ {
 		s.ProcessedKeys[fmt.Sprintf("pers_0000000001:fd%06d|2026", i)] = true
 	}
 
@@ -237,15 +244,15 @@ func TestPersonCustomFieldValuesDeleteOrphansIgnoresPersonsThisRunDidNotFetch(t 
 	}
 
 	survivors := countRows(t, app, "person_custom_values", "person = 'pers_0000000002'")
-	if survivors != perPerson {
+	if survivors != person2Rows {
 		t.Fatalf("%d of person 2's rows survived, want %d -- a run that never fetched a person "+
-			"must not delete that person's values as orphans", survivors, perPerson)
+			"must not delete that person's values as orphans", survivors, person2Rows)
 	}
 
 	swept := countRows(t, app, "person_custom_values", "person = 'pers_0000000001'")
-	if swept != perPerson-1 {
+	if swept != person1Rows-1 {
 		t.Fatalf("%d of person 1's rows survived, want %d -- the genuine orphan must still go",
-			swept, perPerson-1)
+			swept, person1Rows-1)
 	}
 }
 
@@ -277,19 +284,22 @@ func TestHouseholdCustomFieldValuesDeleteOrphansRefusesPartialCollapse(t *testin
 // mirrors the person case: getHouseholdIDsToSync takes the same ?session=
 // filter.
 func TestHouseholdCustomFieldValuesDeleteOrphansIgnoresHouseholdsThisRunDidNotFetch(t *testing.T) {
-	const perHousehold = 40
+	const (
+		household1Rows = 40
+		household2Rows = 10
+	)
 
 	app := newOrphanSweepTestApp(t, "household_custom_values", "household", "field_definition", "value")
-	bulkInsertRows(t, app, "household_custom_values", "household", "hh_00000000001", 2026, perHousehold)
+	bulkInsertRows(t, app, "household_custom_values", "household", "hh_00000000001", 2026, household1Rows)
 	bulkInsertRowsFrom(t, app, "household_custom_values", "household", "hh_00000000002", 2026,
-		perHousehold+1, perHousehold*2)
+		household1Rows+1, household1Rows+household2Rows)
 
 	s := &HouseholdCustomFieldValuesSync{BaseSyncService: BaseSyncService{
 		App:            app,
 		ProcessedKeys:  map[string]bool{},
 		SyncSuccessful: true,
 	}}
-	for i := 1; i < perHousehold; i++ {
+	for i := 1; i < household1Rows; i++ {
 		s.ProcessedKeys[fmt.Sprintf("hh_00000000001:fd%06d|2026", i)] = true
 	}
 
@@ -298,7 +308,13 @@ func TestHouseholdCustomFieldValuesDeleteOrphansIgnoresHouseholdsThisRunDidNotFe
 	}
 
 	survivors := countRows(t, app, "household_custom_values", "household = 'hh_00000000002'")
-	if survivors != perHousehold {
-		t.Fatalf("%d of household 2's rows survived, want %d", survivors, perHousehold)
+	if survivors != household2Rows {
+		t.Fatalf("%d of household 2's rows survived, want %d", survivors, household2Rows)
+	}
+
+	swept := countRows(t, app, "household_custom_values", "household = 'hh_00000000001'")
+	if swept != household1Rows-1 {
+		t.Fatalf("%d of household 1's rows survived, want %d -- the genuine orphan must still go",
+			swept, household1Rows-1)
 	}
 }
