@@ -3,6 +3,7 @@ package sync
 import (
 	"context"
 	"sort"
+	"strings"
 	"testing"
 
 	"github.com/pocketbase/pocketbase/core"
@@ -970,5 +971,133 @@ func TestHouseholdDemographicsDeleteOrphansRefusesPartialCollapse(t *testing.T) 
 	}
 	if len(remaining) != OrphanSweepMinRows+5 {
 		t.Errorf("%d rows survived, want %d -- the guard must not delete", len(remaining), OrphanSweepMinRows+5)
+	}
+}
+
+// newHouseholdDemographicsSyncTestApp extends newHouseholdDemographicsTestApp
+// with the three collections Sync() reads on its way to the sweep, so a test
+// can drive the whole run rather than calling deleteOrphans directly.
+func newHouseholdDemographicsSyncTestApp(t *testing.T) (core.App, *core.Collection, *core.Collection) {
+	t.Helper()
+	app, households, persons := newHouseholdDemographicsTestApp(t)
+
+	defs := core.NewBaseCollection("custom_field_defs")
+	defs.Fields.Add(&core.TextField{Name: "name"})
+	if err := app.Save(defs); err != nil {
+		t.Fatalf("create custom_field_defs: %v", err)
+	}
+
+	pcv := core.NewBaseCollection("person_custom_values")
+	pcv.Fields.Add(&core.TextField{Name: "person"})
+	pcv.Fields.Add(&core.TextField{Name: "field_definition"})
+	pcv.Fields.Add(&core.TextField{Name: "value"})
+	pcv.Fields.Add(&core.NumberField{Name: "year"})
+	if err := app.Save(pcv); err != nil {
+		t.Fatalf("create person_custom_values: %v", err)
+	}
+
+	hcv := core.NewBaseCollection("household_custom_values")
+	hcv.Fields.Add(&core.TextField{Name: "household"})
+	hcv.Fields.Add(&core.TextField{Name: "field_definition"})
+	hcv.Fields.Add(&core.TextField{Name: "value"})
+	hcv.Fields.Add(&core.NumberField{Name: "year"})
+	if err := app.Save(hcv); err != nil {
+		t.Fatalf("create household_custom_values: %v", err)
+	}
+
+	return app, households, persons
+}
+
+// TestHouseholdDemographicsSyncPropagatesSweepRefusal is the caller-propagation
+// test for kindred#2283. The guard tests above prove deleteOrphans REFUSES; on
+// their own they prove nothing about whether anyone listens. Sibling PR
+// kindred#2294 shipped exactly that gap -- a counted failure that never reached
+// the returned error, so the run went green on a broken sweep.
+//
+// This drives the real Sync() and asserts the refusal comes back out of it.
+// Deleting the `if orphanErr != nil` return in household_demographics.go makes
+// this test fail; without it the whole sync suite stays green.
+func TestHouseholdDemographicsSyncPropagatesSweepRefusal(t *testing.T) {
+	t.Parallel()
+	app, households, persons := newHouseholdDemographicsSyncTestApp(t)
+
+	hh := core.NewRecord(households)
+	hh.Set("cm_id", 9001)
+	hh.Set("year", 2026)
+	if err := app.Save(hh); err != nil {
+		t.Fatalf("save household: %v", err)
+	}
+
+	defs, err := app.FindCollectionByNameOrId("custom_field_defs")
+	if err != nil {
+		t.Fatalf("find custom_field_defs: %v", err)
+	}
+	def := core.NewRecord(defs)
+	def.Set("name", "HH-Jewish Affiliation")
+	if err := app.Save(def); err != nil {
+		t.Fatalf("save field def: %v", err)
+	}
+
+	pcvCol, err := app.FindCollectionByNameOrId("person_custom_values")
+	if err != nil {
+		t.Fatalf("find person_custom_values: %v", err)
+	}
+	// Three campers answered this year -- a believable computed set on its own,
+	// but a collapse against what is already stored.
+	for _, cmID := range []int{101, 102, 103} {
+		p := core.NewRecord(persons)
+		p.Set("cm_id", cmID)
+		p.Set("household", hh.Id)
+		p.Set("year", 2026)
+		if err := app.Save(p); err != nil {
+			t.Fatalf("save person %d: %v", cmID, err)
+		}
+		v := core.NewRecord(pcvCol)
+		v.Set("person", p.Id)
+		v.Set("field_definition", def.Id)
+		v.Set("value", testAffiliation)
+		v.Set("year", 2026)
+		if err := app.Save(v); err != nil {
+			t.Fatalf("save custom value for %d: %v", cmID, err)
+		}
+	}
+
+	// OrphanSweepMinRows+5 rows already on disk that this run does not compute.
+	demoCol, err := app.FindCollectionByNameOrId("household_demographics")
+	if err != nil {
+		t.Fatalf("find household_demographics: %v", err)
+	}
+	for i := range OrphanSweepMinRows + 5 {
+		rec := core.NewRecord(demoCol)
+		rec.Set("household", hh.Id)
+		rec.Set("person_id", 900+i)
+		rec.Set("year", 2026)
+		if err := app.Save(rec); err != nil {
+			t.Fatalf("save existing row %d: %v", i, err)
+		}
+	}
+
+	s := NewHouseholdDemographicsSync(app)
+	s.Year = 2026
+	syncErr := s.Sync(context.Background())
+
+	if syncErr == nil {
+		t.Fatal("Sync returned nil on a refused sweep -- the refusal never reached the caller")
+	}
+	if !strings.Contains(syncErr.Error(), "orphan sweep refused") {
+		t.Errorf("Sync error = %q, want it to carry the sweep refusal", syncErr.Error())
+	}
+	if s.SyncSuccessful {
+		t.Error("SyncSuccessful is true after a refused sweep")
+	}
+
+	// The refusal must not have deleted: the seeded rows plus the three this
+	// run wrote before the sweep.
+	remaining, err := app.FindRecordsByFilter("household_demographics", "year = 2026", "", 0, 0)
+	if err != nil {
+		t.Fatalf("re-query: %v", err)
+	}
+	if want := OrphanSweepMinRows + 5 + 3; len(remaining) != want {
+		t.Errorf("%d rows survived, want %d -- a refused sweep must delete nothing", len(remaining), want)
 	}
 }

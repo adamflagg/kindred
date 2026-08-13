@@ -1021,7 +1021,10 @@ func newStaffSkillsOrphanTestApp(t *testing.T) core.App {
 	col := core.NewBaseCollection("staff_skills")
 	col.Fields.Add(&core.NumberField{Name: "person_id"})
 	col.Fields.Add(&core.NumberField{Name: "skill_cm_id"})
-	col.Fields.Add(&core.NumberField{Name: "year"})
+	// Required, because every CampMinder-derived table carries a required year
+	// (CLAUDE.md) -- a fixture that accepts a yearless row lets a test pass
+	// against data production would reject.
+	col.Fields.Add(&core.NumberField{Name: "year", Required: true})
 	if err := app.Save(col); err != nil {
 		t.Fatalf("save staff_skills: %v", err)
 	}

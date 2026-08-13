@@ -275,8 +275,8 @@ func (s *StaffSkillsSync) Sync(ctx context.Context) error {
 	deleted, orphanErr := s.deleteOrphans(existingRecords, year)
 	s.Stats.Deleted = deleted
 
-	// WAL checkpoint BEFORE the error return below -- upsertRecords has already
-	// written by this point, and the refusal path can fire on a non-empty
+	// WAL checkpoint BEFORE the error return below -- the upsert loop above has
+	// already written by this point, and the refusal path can fire on a non-empty
 	// computed set (a PARTIAL collapse), which is exactly the case where writes
 	// already happened.
 	if s.Stats.Created > 0 || s.Stats.Updated > 0 || s.Stats.Deleted > 0 {
@@ -286,7 +286,7 @@ func (s *StaffSkillsSync) Sync(ctx context.Context) error {
 	}
 
 	if orphanErr != nil {
-		return fmt.Errorf("orphan sweep refused: %w", orphanErr)
+		return wrapOrphanSweepError(orphanErr)
 	}
 
 	slog.Info("Staff skills extraction completed",
@@ -644,7 +644,12 @@ func (s *StaffSkillsSync) recordNeedsUpdate(
 	return compareRecordNeedsUpdate(existing, newData, compareFields)
 }
 
-// deleteOrphans removes records that weren't processed
+// deleteOrphans removes records that weren't processed.
+//
+// Refuses when the computed set is too small to be believed against the rows
+// on disk: that combination is always a broken input, and sweeping on it
+// deletes the year and reports success (kindred#2257, kindred#2283). The rule
+// lives in OrphanSweepGuard so there is one implementation, not an eighth copy.
 func (s *StaffSkillsSync) deleteOrphans(existingRecords map[string]*core.Record, year int) (int, error) {
 	if !s.SyncSuccessful {
 		slog.Info("Skipping orphan deletion due to sync failure")

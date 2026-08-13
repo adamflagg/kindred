@@ -202,7 +202,7 @@ func (s *CamperTransportationSync) Sync(ctx context.Context) error {
 	}
 
 	if orphanErr != nil {
-		return fmt.Errorf("orphan sweep refused: %w", orphanErr)
+		return wrapOrphanSweepError(orphanErr)
 	}
 
 	s.SyncSuccessful = true

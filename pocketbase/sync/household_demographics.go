@@ -286,7 +286,7 @@ func (s *HouseholdDemographicsSync) Sync(ctx context.Context) error {
 	}
 
 	if orphanErr != nil {
-		return fmt.Errorf("orphan sweep refused: %w", orphanErr)
+		return wrapOrphanSweepError(orphanErr)
 	}
 
 	s.SyncSuccessful = true
@@ -940,6 +940,14 @@ func (s *HouseholdDemographicsSync) upsertRecords(
 // (kindred#2283). The rule now lives in the shared OrphanSweepGuard, which
 // widens "empty" to "suspiciously small" and is the one implementation behind
 // every guarded sweep in this package rather than an eighth local copy.
+//
+// The old check also did `s.Stats.Errors++` on refusal, and that increment was
+// deliberately NOT carried over. Stats.Errors counts infrastructure failures --
+// a save that did not land, a query that broke -- and kindred#2293 makes a
+// non-zero count fail the run outright. A refusal is not an infrastructure
+// failure: it is this guard working, and it already reaches the operator as
+// the error Sync() returns. Counting it as well would report one event twice
+// and make a healthy refusal indistinguishable from a broken database.
 func (s *HouseholdDemographicsSync) deleteOrphans(
 	ctx context.Context,
 	records map[string]*householdDemographicsRecord,

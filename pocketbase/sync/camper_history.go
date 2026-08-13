@@ -407,7 +407,7 @@ func (c *CamperHistorySync) Sync(ctx context.Context) error {
 	}
 
 	if orphanErr != nil {
-		return fmt.Errorf("orphan sweep refused: %w", orphanErr)
+		return wrapOrphanSweepError(orphanErr)
 	}
 
 	slog.Info("Camper history v2 computation completed",
@@ -1125,7 +1125,13 @@ func (c *CamperHistorySync) recordNeedsUpdate(
 	return compareRecordNeedsUpdate(existing, newData, compareFields)
 }
 
-// deleteOrphans removes records that weren't processed (campers unenrolled from sessions)
+// deleteOrphans removes records that weren't processed (campers unenrolled from
+// sessions).
+//
+// Refuses when the computed set is too small to be believed against the rows
+// on disk: that combination is always a broken input, and sweeping on it
+// deletes the year and reports success (kindred#2257, kindred#2283). The rule
+// lives in OrphanSweepGuard so there is one implementation, not an eighth copy.
 func (c *CamperHistorySync) deleteOrphans(existingRecords map[string]*core.Record, year int) (int, error) {
 	if !c.SyncSuccessful {
 		slog.Info("Skipping orphan deletion due to sync failure")

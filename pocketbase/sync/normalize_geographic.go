@@ -231,7 +231,7 @@ func (n *NormalizeGeographicSync) Sync(ctx context.Context) error {
 	}
 
 	if orphanErr != nil {
-		return fmt.Errorf("orphan sweep refused: %w", orphanErr)
+		return wrapOrphanSweepError(orphanErr)
 	}
 
 	slog.Info("Geographic normalization completed",
