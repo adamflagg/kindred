@@ -896,11 +896,20 @@ func GetReadableYearExports() []ExportConfig {
 			},
 		},
 		// Household Demographics - HH- fields from custom values, one row per
-		// (household, person, year). The person columns are not decoration:
-		// since kindred#2260 a household contributes one row per camper who
-		// answered, so a sheet without them reads as duplicated households.
-		// Person ID 0 with no name is the household-level row carrying the
-		// _family columns.
+		// (household, person, year). Person ID is not decoration: since
+		// kindred#2260 a household contributes one row per camper who answered,
+		// so a sheet without it reads as duplicated households. Person ID 0 is
+		// the household-level row carrying the _family columns.
+		//
+		// PERSON ID, DELIBERATELY NOT THE NAME. This endpoint is gated on
+		// `sheets.export`, which Finance and Executive hold -- a wider audience
+		// than the collection's own admin-only API rules. These columns carry
+		// Jewish identity and affiliation, family description and custody
+		// answers, and putting a camper's name beside them here would narrow
+		// the attribution from a family to a named child for a non-admin role.
+		// The Persons sheet in the same workbook exports `cm_id` under the same
+		// "Person ID" header, so anyone entitled to resolve the id to a name
+		// still can, through a gate that already exists.
 		{
 			Collection: "household_demographics",
 			SheetName:  "Household Demographics",
@@ -912,14 +921,6 @@ func GetReadableYearExports() []ExportConfig {
 					RelatedCol: "households", RelatedField: "mailing_title",
 				},
 				{Field: "person_id", Header: "Person ID", Type: FieldTypeNumber},
-				{
-					Field: "person", Header: "First Name", Type: FieldTypeNestedField,
-					RelatedCol: "persons", NestedField: "first_name",
-				},
-				{
-					Field: "person", Header: "Last Name", Type: FieldTypeNestedField,
-					RelatedCol: "persons", NestedField: "last_name",
-				},
 				{Field: "year", Header: "Year", Type: FieldTypeNumber},
 				// Family description
 				{Field: "family_description", Header: "Family Description", Type: FieldTypeText},
