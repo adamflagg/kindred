@@ -3,6 +3,7 @@ package sync
 import (
 	"context"
 	"sort"
+	"strings"
 	"testing"
 
 	"github.com/pocketbase/pocketbase/core"
@@ -731,6 +732,11 @@ func TestUpsertAndOrphanSweepAgreeOnGrain(t *testing.T) {
 	}
 
 	s := NewHouseholdDemographicsSync(app)
+	// Set explicitly because this drives deleteOrphans directly rather than
+	// through Sync(), which is what normally sets it from the size of the
+	// extraction (kindred#2283 rows 3+4). The three ProcessedKeys-based syncs
+	// have always required this of their tests; these four now match.
+	s.SyncSuccessful = true
 	both := []hhCustomValueEntry{
 		hhPersonEntry(hh.Id, personPBIDs[101], 101, "HH-Jewish Affiliation", testAffiliation),
 		hhPersonEntry(hh.Id, personPBIDs[102], 102, "HH-Jewish Affiliation", "Prefer not to answer"),
@@ -758,8 +764,8 @@ func TestUpsertAndOrphanSweepAgreeOnGrain(t *testing.T) {
 	if len(existing) != 2 {
 		t.Fatalf("loadExistingRecords keyed %d rows, want 2 -- a household-grain key hides a sibling", len(existing))
 	}
-	if deleted := s.deleteOrphans(ctx, rows, existing); deleted != 0 {
-		t.Fatalf("deleteOrphans removed %d of the rows the write path just created", deleted)
+	if deleted, sweepErr := s.deleteOrphans(ctx, rows, existing, 2026); sweepErr != nil || deleted != 0 {
+		t.Fatalf("deleteOrphans removed %d of the rows the write path just created (err=%v)", deleted, sweepErr)
 	}
 	if n := countDemographicsRows(t, app); n != 2 {
 		t.Fatalf("household_demographics holds %d rows after a no-op sweep, want 2", n)
@@ -771,8 +777,8 @@ func TestUpsertAndOrphanSweepAgreeOnGrain(t *testing.T) {
 	if err != nil {
 		t.Fatalf("loadExistingRecords before sweep: %v", err)
 	}
-	if deleted := s.deleteOrphans(ctx, onlyFirst, existing); deleted != 1 {
-		t.Fatalf("deleteOrphans removed %d rows, want 1", deleted)
+	if deleted, sweepErr := s.deleteOrphans(ctx, onlyFirst, existing, 2026); sweepErr != nil || deleted != 1 {
+		t.Fatalf("deleteOrphans removed %d rows, want 1 (err=%v)", deleted, sweepErr)
 	}
 	if n := countDemographicsRows(t, app); n != 1 {
 		t.Fatalf("household_demographics holds %d rows, want 1", n)
@@ -794,6 +800,12 @@ func TestUpsertAndOrphanSweepAgreeOnGrain(t *testing.T) {
 // person_custom_values on each run, so an empty computed set is far more likely
 // to be a failed read than a year in which nobody answered anything -- and the
 // sweep is the one step of this sync that a re-run cannot undo.
+//
+// NOTE since kindred#2283 rows 3+4: this pins the guard's CONTRACT, not a state
+// Sync() can now produce. Sync() sets SyncSuccessful from len(records), so an
+// empty computed set skips the sweep before the guard is consulted. The arm
+// that stays live on this path is the ratio one -- a source that came back
+// short rather than empty.
 func TestDeleteOrphansRefusesToEmptyTheTable(t *testing.T) {
 	t.Parallel()
 	app, households, persons := newHouseholdDemographicsTestApp(t)
@@ -814,6 +826,11 @@ func TestDeleteOrphansRefusesToEmptyTheTable(t *testing.T) {
 	}
 
 	s := NewHouseholdDemographicsSync(app)
+	// Set explicitly because this drives deleteOrphans directly rather than
+	// through Sync(), which is what normally sets it from the size of the
+	// extraction (kindred#2283 rows 3+4). The three ProcessedKeys-based syncs
+	// have always required this of their tests; these four now match.
+	s.SyncSuccessful = true
 	rows := s.aggregateToRows([]hhCustomValueEntry{
 		hhPersonEntry(hh.Id, p.Id, 101, "HH-Jewish Affiliation", testAffiliation),
 	}, nil, 2026)
@@ -829,15 +846,15 @@ func TestDeleteOrphansRefusesToEmptyTheTable(t *testing.T) {
 		t.Fatalf("loadExistingRecords after upsert: %v", err)
 	}
 
-	deleted := s.deleteOrphans(ctx, map[string]*householdDemographicsRecord{}, existing)
+	deleted, err := s.deleteOrphans(ctx, map[string]*householdDemographicsRecord{}, existing, 2026)
+	if err == nil {
+		t.Error("deleteOrphans against an empty computed set returned nil; want a refusal error")
+	}
 	if deleted != 0 {
 		t.Errorf("deleteOrphans removed %d rows against an empty computed set; want a refusal", deleted)
 	}
 	if n := countDemographicsRows(t, app); n != 1 {
 		t.Errorf("household_demographics holds %d rows, want 1 (nothing swept)", n)
-	}
-	if s.Stats.Errors == 0 {
-		t.Error("a refused sweep must be audible in Stats.Errors, got 0")
 	}
 }
 
@@ -918,4 +935,320 @@ func TestSetColumnIsMustBeUniqueNotFirstWins(t *testing.T) {
 			t.Errorf("conflicts = %d, want 2", s.columnConflicts)
 		}
 	})
+}
+
+// TestHouseholdDemographicsDeleteOrphansRefusesPartialCollapse is the point of
+// kindred#2283: this file carried its OWN hand-rolled guard that caught only a
+// TOTAL collapse (computed set empty). A PARTIAL collapse -- a handful of rows
+// computed against hundreds on disk -- sailed straight past it and swept
+// everything else. The shared OrphanSweepGuard widens "empty" to "suspiciously
+// small"; this test only passes once that guard is wired in, because the old
+// local check (`len(records) == 0`) does not fire when records has 3 entries.
+func TestHouseholdDemographicsDeleteOrphansRefusesPartialCollapse(t *testing.T) {
+	t.Parallel()
+	app := newOrphanSweepTestApp(t, "household_demographics", "household", "person_id")
+	col, err := app.FindCollectionByNameOrId("household_demographics")
+	if err != nil {
+		t.Fatalf("find household_demographics: %v", err)
+	}
+
+	existing := make(map[string]string, OrphanSweepMinRows+5)
+	for i := range OrphanSweepMinRows + 5 {
+		rec := core.NewRecord(col)
+		rec.Set("household", "hh_fixed")
+		rec.Set("person_id", i+1)
+		rec.Set("year", 2026)
+		if saveErr := app.Save(rec); saveErr != nil {
+			t.Fatalf("save existing row %d: %v", i, saveErr)
+		}
+		existing[MakeCompositeKey("hh_fixed", i+1, 2026)] = rec.Id
+	}
+
+	s := NewHouseholdDemographicsSync(app)
+	// Set explicitly because this drives deleteOrphans directly rather than
+	// through Sync(), which is what normally sets it from the size of the
+	// extraction (kindred#2283 rows 3+4). The three ProcessedKeys-based syncs
+	// have always required this of their tests; these four now match.
+	s.SyncSuccessful = true
+	// Only 3 computed against 25 on disk -- well under the 50% floor, and well
+	// past the old hand-rolled guard's "== 0" check.
+	computed := map[string]*householdDemographicsRecord{
+		MakeCompositeKey("hh_fixed", 1, 2026): {householdPBID: "hh_fixed", personCMID: 1, year: 2026},
+		MakeCompositeKey("hh_fixed", 2, 2026): {householdPBID: "hh_fixed", personCMID: 2, year: 2026},
+		MakeCompositeKey("hh_fixed", 3, 2026): {householdPBID: "hh_fixed", personCMID: 3, year: 2026},
+	}
+
+	deleted, err := s.deleteOrphans(context.Background(), computed, existing, 2026)
+	if err == nil {
+		t.Fatal("expected an error when the computed set covers a fraction of what is on disk, got nil")
+	}
+	if deleted != 0 {
+		t.Errorf("deleted = %d, want 0 -- nothing may be removed on the refusal path", deleted)
+	}
+
+	remaining, err := app.FindRecordsByFilter("household_demographics", "year = 2026", "", 0, 0)
+	if err != nil {
+		t.Fatalf("re-query: %v", err)
+	}
+	if len(remaining) != OrphanSweepMinRows+5 {
+		t.Errorf("%d rows survived, want %d -- the guard must not delete", len(remaining), OrphanSweepMinRows+5)
+	}
+}
+
+// newHouseholdDemographicsSyncTestApp extends newHouseholdDemographicsTestApp
+// with the three collections Sync() reads on its way to the sweep, so a test
+// can drive the whole run rather than calling deleteOrphans directly.
+func newHouseholdDemographicsSyncTestApp(t *testing.T) (app core.App, households, persons *core.Collection) {
+	t.Helper()
+	app, households, persons = newHouseholdDemographicsTestApp(t)
+
+	defs := core.NewBaseCollection("custom_field_defs")
+	defs.Fields.Add(&core.TextField{Name: "name"})
+	if err := app.Save(defs); err != nil {
+		t.Fatalf("create custom_field_defs: %v", err)
+	}
+
+	pcv := core.NewBaseCollection("person_custom_values")
+	pcv.Fields.Add(&core.TextField{Name: "person"})
+	pcv.Fields.Add(&core.TextField{Name: "field_definition"})
+	pcv.Fields.Add(&core.TextField{Name: "value"})
+	pcv.Fields.Add(&core.NumberField{Name: "year"})
+	if err := app.Save(pcv); err != nil {
+		t.Fatalf("create person_custom_values: %v", err)
+	}
+
+	hcv := core.NewBaseCollection("household_custom_values")
+	hcv.Fields.Add(&core.TextField{Name: "household"})
+	hcv.Fields.Add(&core.TextField{Name: "field_definition"})
+	hcv.Fields.Add(&core.TextField{Name: "value"})
+	hcv.Fields.Add(&core.NumberField{Name: "year"})
+	if err := app.Save(hcv); err != nil {
+		t.Fatalf("create household_custom_values: %v", err)
+	}
+
+	return app, households, persons
+}
+
+// TestHouseholdDemographicsSyncPropagatesSweepRefusal is the caller-propagation
+// test for kindred#2283. The guard tests above prove deleteOrphans REFUSES; on
+// their own they prove nothing about whether anyone listens. Sibling PR
+// kindred#2294 shipped exactly that gap -- a counted failure that never reached
+// the returned error, so the run went green on a broken sweep.
+//
+// This drives the real Sync() and asserts the refusal comes back out of it.
+// Deleting the `if orphanErr != nil` return in household_demographics.go makes
+// this test fail; without it the whole sync suite stays green.
+func TestHouseholdDemographicsSyncPropagatesSweepRefusal(t *testing.T) {
+	t.Parallel()
+	app, households, persons := newHouseholdDemographicsSyncTestApp(t)
+
+	hh := core.NewRecord(households)
+	hh.Set("cm_id", 9001)
+	hh.Set("year", 2026)
+	if err := app.Save(hh); err != nil {
+		t.Fatalf("save household: %v", err)
+	}
+
+	defs, err := app.FindCollectionByNameOrId("custom_field_defs")
+	if err != nil {
+		t.Fatalf("find custom_field_defs: %v", err)
+	}
+	def := core.NewRecord(defs)
+	def.Set("name", "HH-Jewish Affiliation")
+	if saveErr := app.Save(def); saveErr != nil {
+		t.Fatalf("save field def: %v", saveErr)
+	}
+
+	pcvCol, err := app.FindCollectionByNameOrId("person_custom_values")
+	if err != nil {
+		t.Fatalf("find person_custom_values: %v", err)
+	}
+	// Three campers answered this year -- a believable computed set on its own,
+	// but a collapse against what is already stored.
+	for _, cmID := range []int{101, 102, 103} {
+		p := core.NewRecord(persons)
+		p.Set("cm_id", cmID)
+		p.Set("household", hh.Id)
+		p.Set("year", 2026)
+		if saveErr := app.Save(p); saveErr != nil {
+			t.Fatalf("save person %d: %v", cmID, saveErr)
+		}
+		v := core.NewRecord(pcvCol)
+		v.Set("person", p.Id)
+		v.Set("field_definition", def.Id)
+		v.Set("value", testAffiliation)
+		v.Set("year", 2026)
+		if saveErr := app.Save(v); saveErr != nil {
+			t.Fatalf("save custom value for %d: %v", cmID, saveErr)
+		}
+	}
+
+	// OrphanSweepMinRows+5 rows already on disk that this run does not compute.
+	demoCol, err := app.FindCollectionByNameOrId("household_demographics")
+	if err != nil {
+		t.Fatalf("find household_demographics: %v", err)
+	}
+	for i := range OrphanSweepMinRows + 5 {
+		rec := core.NewRecord(demoCol)
+		rec.Set("household", hh.Id)
+		rec.Set("person_id", 900+i)
+		rec.Set("year", 2026)
+		if saveErr := app.Save(rec); saveErr != nil {
+			t.Fatalf("save existing row %d: %v", i, saveErr)
+		}
+	}
+
+	s := NewHouseholdDemographicsSync(app)
+	s.Year = 2026
+	syncErr := s.Sync(context.Background())
+
+	if syncErr == nil {
+		t.Fatal("Sync returned nil on a refused sweep -- the refusal never reached the caller")
+	}
+	if !strings.Contains(syncErr.Error(), "orphan sweep refused") {
+		t.Errorf("Sync error = %q, want it to carry the sweep refusal", syncErr.Error())
+	}
+	// Deliberately NOT asserting anything about s.SyncSuccessful here. Since
+	// kindred#2283 rows 3+4 it reports whether the EXTRACTION produced rows, not
+	// whether the run succeeded, so it is true on this path -- the extraction
+	// did produce three rows; it was the sweep that refused. The returned error
+	// is the signal, and it is asserted above.
+
+	// The refusal must not have deleted: the seeded rows plus the three this
+	// run wrote before the sweep.
+	remaining, err := app.FindRecordsByFilter("household_demographics", "year = 2026", "", 0, 0)
+	if err != nil {
+		t.Fatalf("re-query: %v", err)
+	}
+	if want := OrphanSweepMinRows + 5 + 3; len(remaining) != want {
+		t.Errorf("%d rows survived, want %d -- a refused sweep must delete nothing", len(remaining), want)
+	}
+}
+
+// seedHouseholdDemographicsRun writes `computed` campers who answered an HH-
+// field this year plus `existing` stored rows this run does not account for.
+func seedHouseholdDemographicsRun(
+	t *testing.T, app core.App, households, persons *core.Collection, computed, existing int,
+) {
+	t.Helper()
+
+	hh := core.NewRecord(households)
+	hh.Set("cm_id", 9001)
+	hh.Set("year", 2026)
+	if err := app.Save(hh); err != nil {
+		t.Fatalf("save household: %v", err)
+	}
+
+	defs, err := app.FindCollectionByNameOrId("custom_field_defs")
+	if err != nil {
+		t.Fatalf("find custom_field_defs: %v", err)
+	}
+	def := core.NewRecord(defs)
+	def.Set("name", "HH-Jewish Affiliation")
+	if saveErr := app.Save(def); saveErr != nil {
+		t.Fatalf("save field def: %v", saveErr)
+	}
+
+	pcvCol, err := app.FindCollectionByNameOrId("person_custom_values")
+	if err != nil {
+		t.Fatalf("find person_custom_values: %v", err)
+	}
+	for i := range computed {
+		p := core.NewRecord(persons)
+		p.Set("cm_id", 101+i)
+		p.Set("household", hh.Id)
+		p.Set("year", 2026)
+		if saveErr := app.Save(p); saveErr != nil {
+			t.Fatalf("save person %d: %v", 101+i, saveErr)
+		}
+		v := core.NewRecord(pcvCol)
+		v.Set("person", p.Id)
+		v.Set("field_definition", def.Id)
+		v.Set("value", testAffiliation)
+		v.Set("year", 2026)
+		if saveErr := app.Save(v); saveErr != nil {
+			t.Fatalf("save custom value %d: %v", 101+i, saveErr)
+		}
+	}
+
+	demoCol, err := app.FindCollectionByNameOrId("household_demographics")
+	if err != nil {
+		t.Fatalf("find household_demographics: %v", err)
+	}
+	for i := range existing {
+		rec := core.NewRecord(demoCol)
+		rec.Set("household", hh.Id)
+		rec.Set("person_id", 900+i)
+		rec.Set("year", 2026)
+		if saveErr := app.Save(rec); saveErr != nil {
+			t.Fatalf("save existing row %d: %v", i, saveErr)
+		}
+	}
+}
+
+// TestHouseholdDemographicsEmptyUpstreamSkipsSweep pins the kindred#2283
+// rows 3+4 policy for this file: a year in which nobody answered an HH- field
+// is a legitimately empty source, not a collapse. The sweep is skipped, the run
+// succeeds, and what is on disk is left alone. Refusing instead wedged the
+// table -- the rows were never cleared, so `existing` stayed high and every
+// later run refused again.
+func TestHouseholdDemographicsEmptyUpstreamSkipsSweep(t *testing.T) {
+	t.Parallel()
+	app, households, persons := newHouseholdDemographicsSyncTestApp(t)
+	seedHouseholdDemographicsRun(t, app, households, persons, 0, OrphanSweepMinRows+5)
+
+	s := NewHouseholdDemographicsSync(app)
+	s.Year = 2026
+	if err := s.Sync(context.Background()); err != nil {
+		t.Fatalf("Sync on an empty upstream returned %v, want nil -- an empty source is not a collapse", err)
+	}
+
+	remaining, err := app.FindRecordsByFilter("household_demographics", "year = 2026", "", 0, 0)
+	if err != nil {
+		t.Fatalf("re-query: %v", err)
+	}
+	if len(remaining) != OrphanSweepMinRows+5 {
+		t.Errorf("%d rows survived, want %d -- an empty upstream must skip the sweep, not run it",
+			len(remaining), OrphanSweepMinRows+5)
+	}
+}
+
+// TestHouseholdDemographicsNonEmptyUpstreamStillSweeps is the negative control:
+// the skip must not become "never sweep".
+func TestHouseholdDemographicsNonEmptyUpstreamStillSweeps(t *testing.T) {
+	t.Parallel()
+	app, households, persons := newHouseholdDemographicsSyncTestApp(t)
+	seedHouseholdDemographicsRun(t, app, households, persons, 3, 0)
+
+	// One stored row this run does not compute, and few enough on disk that the
+	// ratio arm does not apply -- only the sweep itself is under test.
+	demoCol, err := app.FindCollectionByNameOrId("household_demographics")
+	if err != nil {
+		t.Fatalf("find household_demographics: %v", err)
+	}
+	hhs, err := app.FindRecordsByFilter("households", "cm_id = 9001", "", 1, 0)
+	if err != nil || len(hhs) == 0 {
+		t.Fatalf("find seeded household: %v", err)
+	}
+	orphan := core.NewRecord(demoCol)
+	orphan.Set("household", hhs[0].Id)
+	orphan.Set("person_id", 999)
+	orphan.Set("year", 2026)
+	if saveErr := app.Save(orphan); saveErr != nil {
+		t.Fatalf("save orphan: %v", saveErr)
+	}
+
+	s := NewHouseholdDemographicsSync(app)
+	s.Year = 2026
+	if syncErr := s.Sync(context.Background()); syncErr != nil {
+		t.Fatalf("Sync on a healthy run returned %v, want nil", syncErr)
+	}
+
+	survivors, err := app.FindRecordsByFilter("household_demographics", "year = 2026 && person_id = 999", "", 0, 0)
+	if err != nil {
+		t.Fatalf("re-query: %v", err)
+	}
+	if len(survivors) != 0 {
+		t.Error("the genuine orphan survived -- a non-empty upstream must still sweep")
+	}
 }

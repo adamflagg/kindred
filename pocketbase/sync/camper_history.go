@@ -171,6 +171,14 @@ func (c *CamperHistorySync) Sync(ctx context.Context) error {
 		return fmt.Errorf("loading attendees: %w", err)
 	}
 
+	// An empty source is not a collapse, so this returns BEFORE loading existing
+	// rows and before the sweep: nothing is deleted and the run succeeds. That is
+	// the same policy the four records-map syncs got in kindred#2283 rows 3+4 and
+	// the one BaseSyncService.DeleteOrphans applies -- expressed here as an early
+	// return rather than a SyncSuccessful gate, because this file has nothing
+	// left to do once there are no attendees. Leaving the sweep to refuse instead
+	// would wedge the table: a refused sweep never clears the rows it refused
+	// over, so the condition would not resolve on its own.
 	if len(attendees) == 0 {
 		slog.Info("No attendees found for year", "year", year)
 		c.SyncSuccessful = true
@@ -393,13 +401,21 @@ func (c *CamperHistorySync) Sync(ctx context.Context) error {
 	c.SyncSuccessful = true
 
 	// Delete orphaned records (campers unenrolled from sessions)
-	c.deleteOrphans(existingRecords)
+	deleted, orphanErr := c.deleteOrphans(existingRecords, year)
+	c.Stats.Deleted = deleted
 
-	// WAL checkpoint
+	// WAL checkpoint BEFORE the error return below -- the upsert loop above has
+	// already written by this point, and the refusal path can fire on a
+	// non-empty computed set (a PARTIAL collapse), which is exactly the case
+	// where writes already happened.
 	if c.Stats.Created > 0 || c.Stats.Updated > 0 || c.Stats.Deleted > 0 {
 		if err := c.forceWALCheckpoint(); err != nil {
 			slog.Warn("WAL checkpoint failed", "error", err)
 		}
+	}
+
+	if orphanErr != nil {
+		return wrapOrphanSweepError(orphanErr)
 	}
 
 	slog.Info("Camper history v2 computation completed",
@@ -1117,11 +1133,27 @@ func (c *CamperHistorySync) recordNeedsUpdate(
 	return compareRecordNeedsUpdate(existing, newData, compareFields)
 }
 
-// deleteOrphans removes records that weren't processed (campers unenrolled from sessions)
-func (c *CamperHistorySync) deleteOrphans(existingRecords map[string]*core.Record) int {
+// deleteOrphans removes records that weren't processed (campers unenrolled from
+// sessions).
+//
+// Refuses when the computed set is too small to be believed against the rows
+// on disk: that combination is always a broken input, and sweeping on it
+// deletes the year and reports success (kindred#2257, kindred#2283). The rule
+// lives in OrphanSweepGuard so there is one implementation, not an eighth copy.
+func (c *CamperHistorySync) deleteOrphans(existingRecords map[string]*core.Record, year int) (int, error) {
 	if !c.SyncSuccessful {
 		slog.Info("Skipping orphan deletion due to sync failure")
-		return 0
+		return 0, nil
+	}
+
+	guard := OrphanSweepGuard{
+		Entity:   "camper_history",
+		Year:     year,
+		Computed: len(c.ProcessedKeys),
+		Hint:     "check that the CampMinder attendee feed returned this season",
+	}
+	if err := guard.Check(len(existingRecords)); err != nil {
+		return 0, err
 	}
 
 	orphanCount := 0
@@ -1145,9 +1177,8 @@ func (c *CamperHistorySync) deleteOrphans(existingRecords map[string]*core.Recor
 	}
 
 	if orphanCount > 0 {
-		c.Stats.Deleted = orphanCount
 		slog.Info("Deleted orphaned camper_history records", "count", orphanCount)
 	}
 
-	return orphanCount
+	return orphanCount, nil
 }

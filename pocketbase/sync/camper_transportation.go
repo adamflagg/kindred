@@ -51,11 +51,14 @@ const (
 // years. See "Reading Derived Informational Tables (Active-Enrolment Filtering)" in
 // docs/architecture/sync-layer.md.
 type CamperTransportationSync struct {
-	App            core.App
-	Year           int
-	DryRun         bool
-	Debug          bool
-	Stats          Stats
+	App    core.App
+	Year   int
+	DryRun bool
+	Debug  bool
+	Stats  Stats
+	// SyncSuccessful reports whether this run's extraction produced any rows.
+	// Set immediately after extraction, NOT at the end of Sync(), because its
+	// one consumer is the orphan sweep, which runs before Sync() returns.
 	SyncSuccessful bool
 }
 
@@ -165,12 +168,23 @@ func (s *CamperTransportationSync) Sync(ctx context.Context) error {
 	}
 	slog.Info("Extracted camper transportation records", "count", len(records))
 
+	// The extraction finished without error, so len(records) is now a fact about
+	// the SOURCE rather than about whether this run worked. Gate the sweep on it:
+	// a year in which nobody answered is a legitimately empty upstream, not a
+	// collapse, and refusing there wedged the table -- a refused sweep never
+	// clears the rows, so `existing` stayed high and every later run refused
+	// again. This is the policy BaseSyncService.DeleteOrphans already applies
+	// ("Only delete orphans if the sync was successful", with SyncSuccessful set
+	// mid-fetch and gated on rows arriving); these four declared their own
+	// SyncSuccessful at the END of Sync(), where it was always false during
+	// their own sweep and nothing ever read it (kindred#2283).
+	s.SyncSuccessful = len(records) > 0
+
 	if s.DryRun {
 		slog.Info("Dry run mode - extracted but not writing",
 			"records", len(records),
 		)
 		s.Stats.Created = len(records)
-		s.SyncSuccessful = true
 		return nil
 	}
 
@@ -188,17 +202,23 @@ func (s *CamperTransportationSync) Sync(ctx context.Context) error {
 	s.Stats.Errors = errors
 
 	// Step 6: Delete orphans
-	deleted := s.deleteOrphans(ctx, records, existingRecords)
+	deleted, orphanErr := s.deleteOrphans(ctx, records, existingRecords, year)
 	s.Stats.Deleted = deleted
 
-	// WAL checkpoint
+	// WAL checkpoint BEFORE the error return below -- upsertRecords has already
+	// written by this point, and the refusal path can fire on a non-empty
+	// computed set (a PARTIAL collapse), which is exactly the case where writes
+	// already happened.
 	if s.Stats.Created > 0 || s.Stats.Updated > 0 || s.Stats.Deleted > 0 {
 		if err := s.forceWALCheckpoint(); err != nil {
 			slog.Warn("WAL checkpoint failed", "error", err)
 		}
 	}
 
-	s.SyncSuccessful = true
+	if orphanErr != nil {
+		return wrapOrphanSweepError(orphanErr)
+	}
+
 	slog.Info("Camper transportation extraction completed",
 		"year", year,
 		"created", s.Stats.Created,
@@ -653,18 +673,44 @@ func (s *CamperTransportationSync) upsertRecords(
 	return created, updated, errors
 }
 
-// deleteOrphans removes records that exist in DB but not in computed set
+// deleteOrphans removes records that exist in DB but not in computed set.
+//
+// Refuses when the computed set is too small to be believed against the rows
+// on disk: that combination is always a broken input, and sweeping on it
+// deletes the year and reports success (kindred#2257, kindred#2283). The rule
+// lives in OrphanSweepGuard so there is one implementation, not an eighth copy.
 func (s *CamperTransportationSync) deleteOrphans(
 	ctx context.Context,
 	records map[string]*camperTransportationRecord,
 	existingRecords map[string]string,
-) int {
+	year int,
+) (int, error) {
+	// An empty source is not a collapse. Sync() sets SyncSuccessful from the
+	// size of this run's extraction, so a year nobody answered skips the sweep
+	// and succeeds rather than refusing forever (kindred#2283). The guard below
+	// still owns the case that matters: a source that came back SHORT.
+	if !s.SyncSuccessful {
+		slog.Info("Skipping orphan deletion: the source returned no rows for this year",
+			"entity", "camper_transportation", "year", year)
+		return 0, nil
+	}
+
+	guard := OrphanSweepGuard{
+		Entity:   "camper_transportation",
+		Year:     year,
+		Computed: len(records),
+		Hint:     "check that the attendee mapping and the BUS-* field definitions still exist upstream",
+	}
+	if err := guard.Check(len(existingRecords)); err != nil {
+		return 0, err
+	}
+
 	deleted := 0
 
 	for key, recordID := range existingRecords {
 		select {
 		case <-ctx.Done():
-			return deleted
+			return deleted, ctx.Err()
 		default:
 		}
 
@@ -683,7 +729,7 @@ func (s *CamperTransportationSync) deleteOrphans(
 		}
 	}
 
-	return deleted
+	return deleted, nil
 }
 
 // forceWALCheckpoint forces a SQLite WAL checkpoint
