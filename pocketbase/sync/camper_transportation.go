@@ -33,7 +33,6 @@ const (
 	colAltPickup1Relationship = "alt_pickup_1_relationship"
 	colAltPickup2Name         = "alt_pickup_2_name"
 	colAltPickup2Phone        = "alt_pickup_2_phone"
-	colAltPickup2Relationship = "alt_pickup_2_relationship"
 )
 
 // CamperTransportationSync extracts BUS-* custom fields for camper transportation.
@@ -224,6 +223,7 @@ func (s *CamperTransportationSync) Sync(ctx context.Context) error {
 		"created", s.Stats.Created,
 		"updated", s.Stats.Updated,
 		"deleted", s.Stats.Deleted,
+		"skipped", s.Stats.Skipped,
 		"errors", s.Stats.Errors,
 	)
 
@@ -416,6 +416,14 @@ func (s *CamperTransportationSync) loadPersonCustomValues(
 
 	// Aggregate to person-session level
 	result := make(map[string]*camperTransportationRecord)
+	// unmappedCounts tracks discard events: a "BUS-*" field accepted by
+	// isCamperTransportationField (the prefix test) that has no case in
+	// MapTransportationFieldToColumn. Keyed by field name so the eventual log
+	// line names what was dropped, not just how much (kindred#2272). This
+	// counts per (person, session) entry -- i.e. discard EVENTS, not source
+	// values: a value on a person enrolled in two sessions fans out to two
+	// entries here, same as it does for a routed field.
+	unmappedCounts := make(map[string]int)
 
 	for _, entry := range entries {
 		key := attendeeKey{personID: entry.personID, sessionID: entry.sessionID}
@@ -436,18 +444,50 @@ func (s *CamperTransportationSync) loadPersonCustomValues(
 			result[compositeKey] = rec
 		}
 
-		// Map field to record
-		mapTransportFieldToRecord(rec, entry.fieldName, entry.value)
+		// Map field to record. A field with no case in
+		// MapTransportationFieldToColumn used to be dropped here with no
+		// counter and no log line -- the sync reported success either way.
+		if column := mapTransportFieldToRecord(rec, entry.fieldName, entry.value); column == "" {
+			unmappedCounts[entry.fieldName]++
+		}
+	}
+
+	if len(unmappedCounts) > 0 {
+		known, unexpected := classifyUnmappedBusFields(unmappedCounts)
+		total := 0
+		for _, n := range unmappedCounts {
+			total += n
+		}
+		s.Stats.Skipped += total
+
+		// One aggregated warning per run, not one per discarded value -- a
+		// historical backfill over 2017-2020 would otherwise log 1,628 lines.
+		// unexpected is the bucket that actually needs a human: a name not in
+		// retiredBusFieldReasons is either a new CampMinder "BUS-*" field with
+		// no routing case yet, or a retired field this list has not been told
+		// about.
+		slog.Warn("Camper transportation: discarding values for unmapped BUS-* fields",
+			"year", year,
+			"discard_events", total,
+			"known_retired_fields", known,
+			"unrecognized_fields", unexpected,
+		)
 	}
 
 	return result, nil
 }
 
-// mapTransportFieldToRecord maps a BUS-* field to the record
-func mapTransportFieldToRecord(rec *camperTransportationRecord, fieldName, value string) {
+// mapTransportFieldToRecord maps a BUS-* field to the record. It returns the
+// column the value was written to, or "" if MapTransportationFieldToColumn
+// has no case for fieldName. mapTransportFieldToRecord is a package-level
+// function with no receiver and no access to Stats, so the caller --
+// loadPersonCustomValues' aggregation loop, which does have the receiver --
+// is where an empty return gets counted and logged instead of silently
+// dropped (kindred#2272).
+func mapTransportFieldToRecord(rec *camperTransportationRecord, fieldName, value string) string {
 	column := MapTransportationFieldToColumn(fieldName)
 	if column == "" {
-		return
+		return ""
 	}
 
 	switch column {
@@ -512,9 +552,66 @@ func mapTransportFieldToRecord(rec *camperTransportationRecord, fieldName, value
 			rec.altPickup2Phone = value
 		}
 	}
+
+	return column
 }
 
-// MapTransportationFieldToColumn maps CampMinder field names to database column names
+// retiredBusFieldReasons documents the eleven CampMinder "BUS-*" custom field
+// definitions that MapTransportationFieldToColumn deliberately has no case
+// for. They belonged to an airport/flight-transfer form retired after the
+// 2020 season: kindred#2272 measured 1,299 discarded source values (1,628
+// discard events once fanned out per multi-session camper) across 188
+// people, every one of them dated 2017-2020, and zero in every year since
+// 2021 -- nothing has been lost since, and nothing is being lost today. A
+// name landing in this map is a closed question, not an oversight; do not
+// add a routing case for one without first checking whether CampMinder
+// actually resumed collecting it.
+//
+// "BUS-phone number of person dropping off" is the odd one out: it has zero
+// rows in person_custom_values in ANY year. It is the abandoned Integer-typed
+// predecessor of the routed, String-typed
+// "BUS-Phone number of person dropping off-correct" -- do not confuse the two
+// when reading a diff; they differ only by a capital P and the "-correct"
+// suffix.
+var retiredBusFieldReasons = map[string]string{
+	"BUS-From camp-traveling without grownup":  "retired flight-transfer form field, no values since 2020",
+	"BUS-Departure airport-from camp":          "retired flight-transfer form field, no values since 2020",
+	"BUS-Airport arriving to home from camp":   "retired flight-transfer form field, no values since 2020",
+	"BUS-Flight # from camp":                   "retired flight-transfer form field, no values since 2020",
+	"BUS-Departing time of return home flight": "retired flight-transfer form field, no values since 2020",
+	"BUS-To camp-traveling without adult":      "retired flight-transfer form field, no values since 2020",
+	"BUS-Departure airport to camp":            "retired flight-transfer form field, no values since 2020",
+	"BUS-Arriving airport to camp":             "retired flight-transfer form field, no values since 2020",
+	"BUS-Flight # to camp":                     "retired flight-transfer form field, no values since 2020",
+	"BUS-Arrival time to camp":                 "retired flight-transfer form field, no values since 2020",
+	"BUS-phone number of person dropping off":  "abandoned predecessor of the routed \"-correct\" field; zero rows ever",
+}
+
+// classifyUnmappedBusFields splits per-field discard counts (fields
+// MapTransportationFieldToColumn returned "" for) into the eleven names
+// retiredBusFieldReasons already explains, and everything else. The second
+// bucket is the one an operator needs to act on: it is either a brand-new
+// CampMinder "BUS-*" field with no routing case yet, or a retired field this
+// map has not been told about.
+func classifyUnmappedBusFields(counts map[string]int) (known, unexpected map[string]int) {
+	known = make(map[string]int, len(counts))
+	unexpected = make(map[string]int, len(counts))
+	for name, n := range counts {
+		if _, ok := retiredBusFieldReasons[name]; ok {
+			known[name] = n
+		} else {
+			unexpected[name] = n
+		}
+	}
+	return known, unexpected
+}
+
+// MapTransportationFieldToColumn maps CampMinder field names to database
+// column names. Eleven "BUS-*" definitions are deliberately absent from this
+// switch -- see retiredBusFieldReasons immediately above for which ones and
+// why. Adding a case here removes a field from that map's coverage too, so
+// keep them in sync (TestRetiredBusFieldReasonsCoversExactlyTheElevenUnroutedNames
+// checks this).
 func MapTransportationFieldToColumn(fieldName string) string {
 	switch fieldName {
 	// To/From camp method

@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/pocketbase/pocketbase/core"
+	pbtests "github.com/pocketbase/pocketbase/tests"
 )
 
 // TestCamperTransportationLoadFieldDefinitionsTrimsNames is a regression test
@@ -139,6 +140,21 @@ func TestTransportationFieldMapping(t *testing.T) {
 		{"Bus From Camp", "from_camp_method"},
 		// Unknown field
 		{"Unknown-Field", ""},
+		// The eleven retired airport/flight-transfer fields (kindred#2272) --
+		// deliberately unrouted, not an oversight. Before this addition nothing
+		// in this table asserted that a "BUS-*" name maps to "", so a case
+		// accidentally added for one of these would not have failed a test.
+		{"BUS-From camp-traveling without grownup", ""},
+		{"BUS-Departure airport-from camp", ""},
+		{"BUS-Airport arriving to home from camp", ""},
+		{"BUS-Flight # from camp", ""},
+		{"BUS-Departing time of return home flight", ""},
+		{"BUS-To camp-traveling without adult", ""},
+		{"BUS-Departure airport to camp", ""},
+		{"BUS-Arriving airport to camp", ""},
+		{"BUS-Flight # to camp", ""},
+		{"BUS-Arrival time to camp", ""},
+		{"BUS-phone number of person dropping off", ""},
 	}
 
 	for _, tt := range tests {
@@ -149,6 +165,118 @@ func TestTransportationFieldMapping(t *testing.T) {
 			}
 		})
 	}
+}
+
+// TestRetiredBusFieldReasonsCoversExactlyTheElevenUnroutedNames pins
+// kindred#2272's inventory: 26 "BUS-*"/legacy definitions accepted, 15 names
+// routed to 13 columns, 11 names with no case at all. Every one of those
+// eleven must carry an explicit reason in retiredBusFieldReasons -- and
+// MapTransportationFieldToColumn must agree that none of them route anywhere,
+// or the "known-retired" bucket in classifyUnmappedBusFields would silently
+// swallow a field that actually needs a routing case added.
+func TestRetiredBusFieldReasonsCoversExactlyTheElevenUnroutedNames(t *testing.T) {
+	t.Parallel()
+	names := []string{
+		"BUS-From camp-traveling without grownup",
+		"BUS-Departure airport-from camp",
+		"BUS-Airport arriving to home from camp",
+		"BUS-Flight # from camp",
+		"BUS-Departing time of return home flight",
+		"BUS-To camp-traveling without adult",
+		"BUS-Departure airport to camp",
+		"BUS-Arriving airport to camp",
+		"BUS-Flight # to camp",
+		"BUS-Arrival time to camp",
+		"BUS-phone number of person dropping off",
+	}
+
+	if len(retiredBusFieldReasons) != len(names) {
+		t.Errorf("retiredBusFieldReasons has %d entries, want %d -- a name was added or dropped without updating this test",
+			len(retiredBusFieldReasons), len(names))
+	}
+
+	for _, name := range names {
+		reason, ok := retiredBusFieldReasons[name]
+		if !ok {
+			t.Errorf("retiredBusFieldReasons is missing %q", name)
+			continue
+		}
+		if strings.TrimSpace(reason) == "" {
+			t.Errorf("retiredBusFieldReasons[%q] has an empty reason", name)
+		}
+		if col := MapTransportationFieldToColumn(name); col != "" {
+			t.Errorf("%q is listed in retiredBusFieldReasons but MapTransportationFieldToColumn routes it to %q -- "+
+				"remove it from the retired list or the switch, not both", name, col)
+		}
+	}
+}
+
+// TestClassifyUnmappedBusFields pins the split classifyUnmappedBusFields makes
+// between discards the eleven-name retired list already explains and any name
+// that is not on that list -- the second bucket is the one that should worry
+// an operator, because it means either a new CampMinder "BUS-*" field showed
+// up with no routing case, or a retired field this list has not been told
+// about yet.
+func TestClassifyUnmappedBusFields(t *testing.T) {
+	t.Parallel()
+	counts := map[string]int{
+		"BUS-Departure airport-from camp": 3, // known-retired
+		"BUS-Space Rocket to Camp":        1, // not on any list
+	}
+
+	known, unexpected := classifyUnmappedBusFields(counts)
+
+	if got := known["BUS-Departure airport-from camp"]; got != 3 {
+		t.Errorf("known[%q] = %d, want 3", "BUS-Departure airport-from camp", got)
+	}
+	if _, leaked := unexpected["BUS-Departure airport-from camp"]; leaked {
+		t.Error("a known-retired field leaked into the unexpected bucket")
+	}
+	if got := unexpected["BUS-Space Rocket to Camp"]; got != 1 {
+		t.Errorf("unexpected[%q] = %d, want 1", "BUS-Space Rocket to Camp", got)
+	}
+	if _, leaked := known["BUS-Space Rocket to Camp"]; leaked {
+		t.Error("a field with no retired-field reason must not land in the known bucket")
+	}
+}
+
+// testRoutedBusValue is a routed transportation value reused across
+// kindred#2272's new tests below. Named to satisfy goconst (min-occurrences:
+// 3) without touching the table-driven tests elsewhere in this file that
+// already repeat "Bus-SF" as anonymous struct fields -- goconst does not
+// count those the same way, so they were never flagged.
+const testRoutedBusValue = "Bus-SF"
+
+// TestMapTransportFieldToRecordReturnsColumnWritten pins the return-value
+// contract kindred#2272 adds: mapTransportFieldToRecord now reports which
+// column (if any) it wrote to, so its caller -- the aggregation loop in
+// loadPersonCustomValues, the only place with access to the receiver and
+// therefore to Stats -- can count and log an unmapped field instead of
+// discarding it in silence.
+func TestMapTransportFieldToRecordReturnsColumnWritten(t *testing.T) {
+	t.Parallel()
+
+	t.Run("mapped field returns its column and writes the value", func(t *testing.T) {
+		rec := &camperTransportationRecord{}
+		column := mapTransportFieldToRecord(rec, "BUS-to camp", testRoutedBusValue)
+		if column != colToCampMethod {
+			t.Errorf("column = %q, want %q", column, colToCampMethod)
+		}
+		if rec.toCampMethod != testRoutedBusValue {
+			t.Errorf("rec.toCampMethod = %q, want %q", rec.toCampMethod, testRoutedBusValue)
+		}
+	})
+
+	t.Run("unmapped retired field returns empty and leaves the record untouched", func(t *testing.T) {
+		rec := &camperTransportationRecord{}
+		column := mapTransportFieldToRecord(rec, "BUS-Departure airport-from camp", "SFO")
+		if column != "" {
+			t.Errorf("column = %q, want \"\"", column)
+		}
+		if *rec != (camperTransportationRecord{}) {
+			t.Errorf("rec was mutated by an unmapped field: %+v", rec)
+		}
+	})
 }
 
 // TestTransportationCompositeKeyFormat tests composite key generation
@@ -595,5 +723,177 @@ func TestCamperTransportationDeleteOrphansStillSweepsGenuineOrphans(t *testing.T
 	}
 	if deleted != 1 {
 		t.Errorf("deleted = %d, want 1", deleted)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// kindred#2272: the silent-discard mechanism itself
+// ---------------------------------------------------------------------------
+
+// newTransportValuesTestApp returns a throwaway app holding just the two
+// collections loadPersonCustomValues actually queries: person_custom_values
+// (the source rows) and persons (person PB ID -> CampMinder person ID).
+// loadPersonCustomValues takes fieldNameMap and attendeeMap as plain Go map
+// parameters rather than loading them itself, so a fake custom_field_defs or
+// attendees collection would test plumbing this function does not use.
+func newTransportValuesTestApp(t *testing.T) core.App {
+	t.Helper()
+	app, err := pbtests.NewTestApp()
+	if err != nil {
+		t.Fatalf("NewTestApp: %v", err)
+	}
+	t.Cleanup(app.Cleanup)
+
+	pcv := core.NewBaseCollection("person_custom_values")
+	pcv.Fields.Add(&core.TextField{Name: "field_definition"})
+	pcv.Fields.Add(&core.TextField{Name: "person"})
+	pcv.Fields.Add(&core.TextField{Name: "value"})
+	pcv.Fields.Add(&core.NumberField{Name: "year"})
+	if saveErr := app.Save(pcv); saveErr != nil {
+		t.Fatalf("save person_custom_values: %v", saveErr)
+	}
+
+	persons := core.NewBaseCollection("persons")
+	persons.Fields.Add(&core.NumberField{Name: "cm_id"})
+	if saveErr := app.Save(persons); saveErr != nil {
+		t.Fatalf("save persons: %v", saveErr)
+	}
+
+	return app
+}
+
+// addPersonCustomValue writes one person_custom_values row.
+func addPersonCustomValue(t *testing.T, app core.App, fieldDefID, personPBID, value string, year int) {
+	t.Helper()
+	col, err := app.FindCollectionByNameOrId("person_custom_values")
+	if err != nil {
+		t.Fatalf("find person_custom_values: %v", err)
+	}
+	rec := core.NewRecord(col)
+	rec.Set("field_definition", fieldDefID)
+	rec.Set("person", personPBID)
+	rec.Set("value", value)
+	rec.Set("year", year)
+	if saveErr := app.Save(rec); saveErr != nil {
+		t.Fatalf("save person_custom_values row: %v", saveErr)
+	}
+}
+
+// TestLoadPersonCustomValuesCountsAndLogsUnmappedFields is the end-to-end pin
+// for kindred#2272's actual fix: before this, a "BUS-*" field accepted by
+// isCamperTransportationField but missing a case in
+// MapTransportationFieldToColumn was discarded with no counter and no log
+// line. It now must increment Stats.Skipped once per discard event and log
+// the field name, split into the known-retired bucket (documented in
+// retiredBusFieldReasons) and the unrecognized bucket (a name this run has
+// never been told about -- the signal that matters if CampMinder ever adds a
+// new "BUS-*" field).
+func TestLoadPersonCustomValuesCountsAndLogsUnmappedFields(t *testing.T) {
+	t.Parallel()
+	app := newTransportValuesTestApp(t)
+
+	personsCol, err := app.FindCollectionByNameOrId("persons")
+	if err != nil {
+		t.Fatalf("find persons: %v", err)
+	}
+	person := core.NewRecord(personsCol)
+	person.Set("cm_id", 7001)
+	if saveErr := app.Save(person); saveErr != nil {
+		t.Fatalf("save person: %v", saveErr)
+	}
+
+	const year = 2019
+	// One routed field (must still work), one known-retired unrouted field,
+	// and one field this run has never seen before (simulates a hypothetical
+	// new CampMinder "BUS-*" definition).
+	addPersonCustomValue(t, app, "fd_routed", person.Id, testRoutedBusValue, year)
+	addPersonCustomValue(t, app, "fd_retired", person.Id, "SFO", year)
+	addPersonCustomValue(t, app, "fd_novel", person.Id, "unexpected value", year)
+
+	fieldNameMap := map[string]string{
+		"fd_routed":  "BUS-to camp",
+		"fd_retired": "BUS-Departure airport-from camp",
+		"fd_novel":   "BUS-Space Rocket to Camp",
+	}
+	attendeeMap := map[attendeeKey]string{
+		{personID: 7001, sessionID: 9001}: "att1",
+	}
+
+	logs := captureSweepLogs(t)
+
+	s := NewCamperTransportationSync(app)
+	records, err := s.loadPersonCustomValues(context.Background(), year, fieldNameMap, attendeeMap)
+	if err != nil {
+		t.Fatalf("loadPersonCustomValues: %v", err)
+	}
+
+	compositeKey := makeTransportationKey(7001, 9001, year)
+	rec, ok := records[compositeKey]
+	if !ok {
+		t.Fatalf("no record for composite key %q; got %d records", compositeKey, len(records))
+	}
+	if rec.toCampMethod != testRoutedBusValue {
+		t.Errorf("routed field was not written: toCampMethod = %q, want %q", rec.toCampMethod, testRoutedBusValue)
+	}
+
+	if s.Stats.Skipped != 2 {
+		t.Errorf("Stats.Skipped = %d, want 2 -- one discard event each for the retired and the novel field",
+			s.Stats.Skipped)
+	}
+
+	logged := logs.String()
+	if !strings.Contains(logged, "BUS-Departure airport-from camp") {
+		t.Errorf("known-retired field name missing from logs:\n%s", logged)
+	}
+	if !strings.Contains(logged, "BUS-Space Rocket to Camp") {
+		t.Errorf("unrecognized field name missing from logs:\n%s", logged)
+	}
+	if !strings.Contains(logged, "level=WARN") {
+		t.Errorf("expected the discard to be logged at WARN level:\n%s", logged)
+	}
+	// The routed field must never appear as a discard.
+	if strings.Contains(logged, "BUS-to camp") {
+		t.Errorf("a successfully routed field was logged as a discard:\n%s", logged)
+	}
+}
+
+// TestLoadPersonCustomValuesNoDiscardsMeansNoWarnLog proves the fix does not
+// spam every ordinary sync run: a year with nothing unmapped must not log at
+// all and must leave Stats.Skipped at zero, matching the actual 2021+ data
+// (kindred#2272 measured zero discards in every year since 2021).
+func TestLoadPersonCustomValuesNoDiscardsMeansNoWarnLog(t *testing.T) {
+	t.Parallel()
+	app := newTransportValuesTestApp(t)
+
+	personsCol, err := app.FindCollectionByNameOrId("persons")
+	if err != nil {
+		t.Fatalf("find persons: %v", err)
+	}
+	person := core.NewRecord(personsCol)
+	person.Set("cm_id", 7002)
+	if saveErr := app.Save(person); saveErr != nil {
+		t.Fatalf("save person: %v", saveErr)
+	}
+
+	const year = 2026
+	addPersonCustomValue(t, app, "fd_routed", person.Id, testRoutedBusValue, year)
+
+	fieldNameMap := map[string]string{"fd_routed": "BUS-to camp"}
+	attendeeMap := map[attendeeKey]string{
+		{personID: 7002, sessionID: 9002}: "att2",
+	}
+
+	logs := captureSweepLogs(t)
+
+	s := NewCamperTransportationSync(app)
+	if _, err := s.loadPersonCustomValues(context.Background(), year, fieldNameMap, attendeeMap); err != nil {
+		t.Fatalf("loadPersonCustomValues: %v", err)
+	}
+
+	if s.Stats.Skipped != 0 {
+		t.Errorf("Stats.Skipped = %d, want 0", s.Stats.Skipped)
+	}
+	if logged := logs.String(); logged != "" {
+		t.Errorf("expected no log output when nothing was discarded, got:\n%s", logged)
 	}
 }
