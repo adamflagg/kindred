@@ -83,10 +83,16 @@ func (o *Orchestrator) recordSyncRun(completed *Status) {
 		return
 	}
 
-	seasonYear, seasonErr := ParseSeasonYear()
-	if completed.Year == 0 && seasonErr != nil {
-		slog.Warn("Recording sync run against the wall-clock year",
-			"syncType", completed.Type, "error", seasonErr)
+	// Only consulted when the run does not name its own year: resolveRunYear discards the
+	// season outright whenever Year > 0, and ParseSeasonYear reads the environment on every
+	// write for a value that is then thrown away.
+	seasonYear := 0
+	if completed.Year == 0 {
+		var seasonErr error
+		if seasonYear, seasonErr = ParseSeasonYear(); seasonErr != nil {
+			slog.Warn("Recording sync run against the wall-clock year",
+				"syncType", completed.Type, "error", seasonErr)
+		}
 	}
 
 	stats := completed.Summary
@@ -122,6 +128,11 @@ func (o *Orchestrator) recordSyncRun(completed *Status) {
 		return
 	}
 
+	// Deliberately no forceWALCheckpoint here, unlike the data syncs (pocketbase/CLAUDE.md
+	// § "Sync invariants" 4). That rule exists so a sync's output is visible to the readers
+	// waiting on it; this table is orchestrator telemetry with no reader waiting, read
+	// weeks later to fit a threshold. A wal_checkpoint(FULL) on every one of ~100 writes a
+	// day would be cost bought for nothing.
 	o.pruneSyncRuns()
 }
 
@@ -133,9 +144,14 @@ func (o *Orchestrator) recordSyncRun(completed *Status) {
 func (o *Orchestrator) pruneSyncRuns() {
 	cutoff := syncRunPruneCutoff(time.Now())
 
+	// `started != ''` is not redundant. The column is NOT NULL DEFAULT '' and SQLite
+	// compares '' as less than any date string, so "started < cutoff" on its own also
+	// matches every row with no start time, at any age. The write path always sets it, so
+	// nothing reaches that state today — but the filter has to say what it means, or the
+	// first row that does is deleted on the next write with nothing to show for it.
 	stale, err := o.app.FindRecordsByFilter(
 		syncRunsCollection,
-		"started < {:cutoff}",
+		"started != '' && started < {:cutoff}",
 		"started",
 		syncRunPruneBatch,
 		0,

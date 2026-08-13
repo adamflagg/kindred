@@ -668,7 +668,9 @@ func TestMarkSyncRunningPreservesStatus(t *testing.T) {
 	mock := &MockService{name: "test_service"}
 	o.RegisterService("test", mock)
 
-	// Set a year context
+	// A historical backfill holding the process-global year. MarkSyncRunning is reached only
+	// from the process_requests handlers, which are operator actions against the current
+	// season, so an unrelated sync's year must not reach this run (kindred#2297, finding 4).
 	o.mu.Lock()
 	o.currentSyncYear = 2024
 	o.mu.Unlock()
@@ -697,8 +699,9 @@ func TestMarkSyncRunningPreservesStatus(t *testing.T) {
 		t.Errorf("expected Status='running', got %q", status.Status)
 	}
 
-	if status.Year != 2024 {
-		t.Errorf("expected Year=2024, got %d", status.Year)
+	if status.Year != 0 {
+		t.Errorf("expected Year=0 (the current season), got %d — the run adopted a "+
+			"concurrent backfill's year", status.Year)
 	}
 
 	if status.StartTime.IsZero() {
@@ -3372,7 +3375,7 @@ func TestRunSyncAndWaitMatchesToken(t *testing.T) {
 
 	errCh := make(chan error, 1)
 	go func() {
-		errCh <- o.runSyncAndWait(ctx, "test")
+		errCh <- o.runSyncAndWait(ctx, "test", newBatch(triggerManual))
 	}()
 
 	// 3. Wait for it to complete - it should wait for the NEW run, not return immediately
@@ -3417,7 +3420,7 @@ func TestRunSyncAndWaitZeroDelayNoDeadlock(t *testing.T) {
 			ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 			defer cancel()
 
-			err := o.runSyncAndWait(ctx, "test")
+			err := o.runSyncAndWait(ctx, "test", newBatch(triggerManual))
 			if err != nil {
 				t.Fatalf("runSyncAndWait failed: %v (likely deadlocked and hit timeout)", err)
 			}

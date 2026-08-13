@@ -65,6 +65,12 @@ migrate((app) => {
         // Required per the repo-wide year invariant. Note PocketBase's `required` check
         // rejects 0, which is how the orchestrator spells "the current season" — the writer
         // resolves it (sync.resolveRunYear) rather than copying Status.Year across.
+        //
+        // 2000-2100 is a storage sanity bound and is deliberately WIDER than the range the
+        // sync layer accepts (2017-2050, sync.ValidSyncYear). It must strictly contain it: a
+        // year that passes the handler and fails here is not rejected at the request, it is
+        // accepted and then drops every row of that run, because recordSyncRun logs the
+        // rejection and swallows it. Narrow this and the handler has to be narrowed first.
         type: "number",
         name: "year",
         required: true,

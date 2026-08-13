@@ -3,6 +3,9 @@ package sync
 import (
 	"context"
 	"fmt"
+	"os"
+	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 	"time"
@@ -374,37 +377,53 @@ func TestHourlySyncRecordsHourlyTrigger(t *testing.T) {
 	}
 }
 
-// TestNestedBatchRestoresTheOuterBatch guards a real nesting: RunDailySync calls
-// RunWeeklySync first when the global tables are empty. If the inner batch cleared the
-// state instead of restoring it, every job after that point in the nightly run would be
-// filed as an unrelated manual run.
-func TestNestedBatchRestoresTheOuterBatch(t *testing.T) {
+// TestBatchesAreSequentialNotNested corrects a false premise this file used to encode.
+//
+// The shared trigger/batch slot was justified by "these genuinely nest: RunDailySync calls
+// RunWeeklySync first when the global tables are empty, and RunSyncWithOptions does the
+// same". Neither nests. Both call RunWeeklySync *before* opening their own batch — the calls
+// are at orchestrator.go's weekly-prologue and the batch is minted after it — and no nesting
+// existed anywhere else in the tree either. The two queues are sequential, and each files its
+// own jobs under its own trigger and its own batch id.
+func TestBatchesAreSequentialNotNested(t *testing.T) {
 	t.Parallel()
 
-	o := NewOrchestrator(nil)
+	app := newSyncRunsApp(t)
+	o := NewOrchestrator(app)
+	o.SetJobSpacing(0)
 
-	endOuter := o.beginBatch(triggerDaily)
-	outerTrigger, outerBatch := o.runOrigin()
-
-	endInner := o.beginBatch(triggerWeekly)
-	innerTrigger, innerBatch := o.runOrigin()
-	if innerTrigger != triggerWeekly {
-		t.Errorf("inner trigger = %q, want %q", innerTrigger, triggerWeekly)
+	weekly := GetWeeklySyncJobs()
+	for _, name := range weekly {
+		o.RegisterService(name, &MockService{name: name})
 	}
-	if innerBatch == outerBatch {
-		t.Error("inner batch reused the outer batch id — the two runs are not one run")
+	if err := o.RunWeeklySync(context.Background()); err != nil {
+		t.Fatalf("RunWeeklySync: %v", err)
 	}
-	endInner()
 
-	gotTrigger, gotBatch := o.runOrigin()
-	if gotTrigger != outerTrigger || gotBatch != outerBatch {
-		t.Errorf("after the inner batch ended: trigger/batch = %q/%q, want %q/%q",
-			gotTrigger, gotBatch, outerTrigger, outerBatch)
+	o.RegisterService(hourlySyncJob, &MockService{name: hourlySyncJob})
+	if err := o.RunHourlySync(context.Background()); err != nil {
+		t.Fatalf("RunHourlySync: %v", err)
 	}
-	endOuter()
 
-	if trigger, _ := o.runOrigin(); trigger != triggerManual {
-		t.Errorf("with no batch in progress trigger = %q, want %q", trigger, triggerManual)
+	recs := waitForSyncRuns(t, app, len(weekly)+1)
+
+	batches := map[string]string{} // trigger -> batch id
+	for _, rec := range recs {
+		trigger, batch := rec.GetString("trigger"), rec.GetString("batch_id")
+		if seen, ok := batches[trigger]; ok && seen != batch {
+			t.Errorf("%s rows carry two batch ids, %q and %q — one queue is one batch",
+				trigger, seen, batch)
+		}
+		batches[trigger] = batch
+	}
+	if batches[triggerWeekly] == "" {
+		t.Error("no weekly rows")
+	}
+	if batches[triggerHourly] == "" {
+		t.Error("no hourly row")
+	}
+	if batches[triggerWeekly] == batches[triggerHourly] {
+		t.Error("the second queue reused the first queue's batch id")
 	}
 }
 
@@ -912,5 +931,184 @@ func TestSyncRunPruneKeepsRowsWithNoStartTime(t *testing.T) {
 
 	if _, err := app.FindRecordById(syncRunsCollection, rec.Id); err != nil {
 		t.Errorf("the row with no start time was pruned: %v", err)
+	}
+}
+
+// TestSyncRunsFixtureMatchesMigration is the guard for review finding 6.
+//
+// newSyncRunsApp hand-mirrors pb_migrations/1500000152_sync_runs.js because PocketBase's JS
+// migrations do not run under `go test`. A comment asking the next person to keep the two in
+// step is not a mechanism: a column dropped from the migration but left in the fixture keeps
+// the whole suite green while every production write of it is rejected, and a column added to
+// the migration is never exercised at all.
+func TestSyncRunsFixtureMatchesMigration(t *testing.T) {
+	t.Parallel()
+
+	app := newSyncRunsApp(t)
+	col, err := app.FindCollectionByNameOrId(syncRunsCollection)
+	if err != nil {
+		t.Fatalf("FindCollectionByNameOrId: %v", err)
+	}
+
+	fixture := map[string]string{}
+	for _, f := range col.Fields {
+		if f.GetName() == "id" {
+			continue // PocketBase's own, not declared by either side
+		}
+		fixture[f.GetName()] = f.Type()
+	}
+
+	migration := migrationFields(t)
+
+	for name, typ := range migration {
+		got, ok := fixture[name]
+		if !ok {
+			t.Errorf("migration declares %q (%s) and the Go fixture does not — every test "+
+				"in this file runs against a schema production does not have", name, typ)
+			continue
+		}
+		if got != typ {
+			t.Errorf("%q is %s in the migration and %s in the Go fixture", name, typ, got)
+		}
+	}
+	for name, typ := range fixture {
+		if _, ok := migration[name]; !ok {
+			t.Errorf("the Go fixture declares %q (%s) and the migration does not — writes to "+
+				"it pass here and are rejected in production", name, typ)
+		}
+	}
+}
+
+// migrationFields parses the sync_runs migration's field declarations into name -> type.
+// Every field in that file is written `type: "..."` then `name: "..."`, which is what this
+// relies on; a field that breaks the convention shows up as a missing name and fails the
+// comparison rather than being skipped silently.
+func migrationFields(t *testing.T) map[string]string {
+	t.Helper()
+
+	matches, err := filepath.Glob("../pb_migrations/*_sync_runs.js")
+	if err != nil || len(matches) != 1 {
+		t.Fatalf("expected exactly one sync_runs migration, found %v (err %v)", matches, err)
+	}
+	body, err := os.ReadFile(matches[0])
+	if err != nil {
+		t.Fatalf("read %s: %v", matches[0], err)
+	}
+
+	src := string(body)
+	from := strings.Index(src, "fields: [")
+	to := strings.Index(src, "indexes: [")
+	if from < 0 || to < from {
+		t.Fatalf("could not find the fields array in %s", matches[0])
+	}
+
+	declared := map[string]string{}
+	re := regexp.MustCompile(`type:\s*"(\w+)",\s*\n\s*name:\s*"(\w+)"`)
+	for _, m := range re.FindAllStringSubmatch(src[from:to], -1) {
+		declared[m[2]] = m[1]
+	}
+	if len(declared) == 0 {
+		t.Fatalf("parsed no fields out of %s — the parser, not the schema, is what broke",
+			matches[0])
+	}
+	return declared
+}
+
+// TestSyncRunsMigrationLimitsMatchTheWriter pins the three limits the Go side depends on. A
+// text field's max is enforced by rejecting the write, not by truncating it, so a migration
+// that drifts below maxSyncRunErrorLen loses whole rows rather than clipping a message; and a
+// trigger value the select does not list is rejected the same way.
+func TestSyncRunsMigrationLimitsMatchTheWriter(t *testing.T) {
+	t.Parallel()
+
+	matches, err := filepath.Glob("../pb_migrations/*_sync_runs.js")
+	if err != nil || len(matches) != 1 {
+		t.Fatalf("expected exactly one sync_runs migration, found %v (err %v)", matches, err)
+	}
+	body, err := os.ReadFile(matches[0])
+	if err != nil {
+		t.Fatalf("read %s: %v", matches[0], err)
+	}
+	src := string(body)
+
+	if want := fmt.Sprintf("max: %d", maxSyncRunErrorLen); !strings.Contains(src, want) {
+		t.Errorf("the migration does not declare %q — the error column and "+
+			"maxSyncRunErrorLen have drifted, so an over-cap message loses the whole row", want)
+	}
+
+	for _, trigger := range []string{
+		triggerHourly, triggerDaily, triggerWeekly,
+		triggerCustomValues, triggerHistorical, triggerManual,
+	} {
+		if !strings.Contains(src, `"`+trigger+`"`) {
+			t.Errorf("the migration's trigger select does not list %q — every run carrying "+
+				"it is rejected", trigger)
+		}
+	}
+
+	// The column range must strictly contain the range the sync layer accepts, or a year the
+	// handler allows silently drops every row of its run.
+	if !strings.Contains(src, "min: 2000") || !strings.Contains(src, "max: 2100") {
+		t.Error("the year column's bounds moved; check they still contain " +
+			"syncYearMin..syncYearMax before updating this test")
+	}
+	if syncYearMin < 2000 || syncYearMax > 2100 {
+		t.Errorf("sync layer accepts %d-%d, outside the year column's 2000-2100",
+			syncYearMin, syncYearMax)
+	}
+}
+
+// TestValidSyncYearRejectsOutOfRange is the guard for review finding 7. The unified sync
+// handler accepted any year from 2017 up, so ?year=99999 was a 200 whose every row then
+// failed the column's max check and was swallowed — a green sync and an empty table.
+func TestValidSyncYearRejectsOutOfRange(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range []struct {
+		year int
+		want bool
+	}{
+		{2016, false},
+		{2017, true},
+		{2026, true},
+		{2050, true},
+		{2051, false},
+		{99999, false},
+	} {
+		if got := ValidSyncYear(tc.year); got != tc.want {
+			t.Errorf("ValidSyncYear(%d) = %v, want %v", tc.year, got, tc.want)
+		}
+	}
+}
+
+// TestSnapshotStatusSharesNoMutableMemory is the guard for review finding 8. The completed
+// Status is published into lastCompletedStatus, where other goroutines can reach it, while
+// the snapshot travels on to the sync_runs write. A plain struct copy leaves the two sharing
+// Summary.SubStats and EndTime.
+func TestSnapshotStatusSharesNoMutableMemory(t *testing.T) {
+	t.Parallel()
+
+	end := time.Now()
+	original := &Status{
+		Type:    "persons",
+		EndTime: &end,
+		Summary: Stats{Created: 3, SubStats: map[string]Stats{"households": {Created: 9}}},
+	}
+
+	snap := snapshotStatus(original)
+
+	original.Summary.SubStats["households"] = Stats{Created: 999}
+	original.Summary.SubStats["injected"] = Stats{Created: 1}
+	want := end
+	*original.EndTime = end.Add(time.Hour)
+
+	if got := snap.Summary.SubStats["households"].Created; got != 9 {
+		t.Errorf("SubStats[households].Created = %d, want 9 — the snapshot aliases the map", got)
+	}
+	if _, ok := snap.Summary.SubStats["injected"]; ok {
+		t.Error("a key added to the published Status appeared in the snapshot")
+	}
+	if !snap.EndTime.Equal(want) {
+		t.Errorf("EndTime = %v, want %v — the snapshot aliases the pointer", snap.EndTime, want)
 	}
 }

@@ -858,8 +858,9 @@ func handleBunkRequestsUpload(e *core.RequestEvent, scheduler *Scheduler) error 
 				ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
 				defer cancel()
 
-				// Run bunk_requests sync first and wait for completion
-				syncErr := orchestrator.runSyncAndWait(ctx, "bunk_requests")
+				// Run bunk_requests sync first and wait for completion. A CSV upload is an
+				// operator action, so this is a manual batch of one.
+				syncErr := orchestrator.runSyncAndWait(ctx, "bunk_requests", newBatch(triggerManual))
 				if syncErr != nil {
 					slog.Warn("Error running bunk_requests sync", "error", syncErr)
 					return // Don't run process_requests if sync failed
@@ -1042,10 +1043,15 @@ func handleUnifiedSync(e *core.RequestEvent, scheduler *Scheduler) error {
 		})
 	}
 
+	// Bounded at both ends, matching every other year-taking handler here. An unbounded
+	// upper end is not permissive, it is a silent failure: ?year=99999 was accepted, and
+	// then every sync_runs row of that run failed the column's max check and was swallowed
+	// by the write path's slog.Error — a green sync and an empty table.
 	year, err := strconv.Atoi(yearStr)
-	if err != nil || year < 2017 {
+	if err != nil || !ValidSyncYear(year) {
 		return e.JSON(http.StatusBadRequest, map[string]any{
-			"error": "Invalid year parameter. Must be 2017 or later.",
+			"error": fmt.Sprintf("Invalid year parameter. Must be between %d and %d.",
+				syncYearMin, syncYearMax),
 		})
 	}
 
@@ -1209,6 +1215,11 @@ func processQueuedSyncs(orchestrator *Orchestrator) {
 		slog.Info("Queued phase sync: Running jobs",
 			"phase", phase, "year", qs.Year, "jobs", jobs, "debug", qs.Debug)
 
+		// The phase's jobs are one queue and so one batch, filed under the year the
+		// operator asked for. currentSyncYear below is process-global and only feeds
+		// GetStatus's "pending" rendering; the runs themselves take their year from here.
+		batch := newBatch(triggerManual).forYear(qs.Year)
+
 		// Set the current sync year so services use correct year
 		orchestrator.mu.Lock()
 		orchestrator.currentSyncYear = qs.Year
@@ -1248,7 +1259,7 @@ func processQueuedSyncs(orchestrator *Orchestrator) {
 			}
 
 			slog.Info("Queued phase sync: Running job", "phase", phase, "job", jobID, "year", qs.Year)
-			if err := orchestrator.runSyncAndWait(ctx, jobID); err != nil {
+			if err := orchestrator.runSyncAndWait(ctx, jobID, batch); err != nil {
 				slog.Error("Queued phase sync: job failed",
 					"phase", phase, "job", jobID, "error", err)
 				// Continue with next job even if one fails
@@ -1284,7 +1295,8 @@ func processQueuedSyncs(orchestrator *Orchestrator) {
 			}
 		}
 
-		if err := orchestrator.runSyncAndWait(ctx, qs.Service); err != nil {
+		origin := newBatch(triggerManual).forYear(qs.Year)
+		if err := orchestrator.runSyncAndWait(ctx, qs.Service, origin); err != nil {
 			slog.Error("Queued individual sync failed",
 				"id", qs.ID, "job", qs.Service, "year", qs.Year, "error", err)
 		} else {
@@ -2271,6 +2283,10 @@ func handleRunPhase(e *core.RequestEvent, scheduler *Scheduler) error {
 		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Hour)
 		defer cancel()
 
+		// One phase is one queue and so one batch, filed under the requested year rather
+		// than read back off the process-global currentSyncYear below.
+		batch := newBatch(triggerManual).forYear(year)
+
 		// Set the current sync year so services use correct year
 		// (same pattern as RunSyncWithOptions)
 		orchestrator.mu.Lock()
@@ -2314,7 +2330,7 @@ func handleRunPhase(e *core.RequestEvent, scheduler *Scheduler) error {
 			}
 
 			slog.Info("Running phase job", "phase", phase, "job", jobID, "year", year)
-			if err := orchestrator.runSyncAndWait(ctx, jobID); err != nil {
+			if err := orchestrator.runSyncAndWait(ctx, jobID, batch); err != nil {
 				slog.Error("Phase job failed", "phase", phase, "job", jobID, "error", err)
 				// Continue with next job even if one fails
 			}

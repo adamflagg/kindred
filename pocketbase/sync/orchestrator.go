@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"maps"
 	"math/rand/v2"
 	"os"
 	"strconv"
@@ -418,8 +419,6 @@ type Orchestrator struct {
 	pendingUnifiedSyncs     []QueuedSync       // Queue of pending unified sync requests (FIFO)
 	activeSyncCancel        context.CancelFunc // Cancel function for the currently running sync
 	currentRunIndex         int                // 0-based index of currently running job in active queue
-	currentTrigger          string             // Trigger label of the batch in progress ("" = no batch)
-	currentBatchID          string             // Batch id of the batch in progress ("" = no batch)
 }
 
 // NewOrchestrator creates a new orchestrator
@@ -433,42 +432,46 @@ func NewOrchestrator(app core.App) *Orchestrator {
 	}
 }
 
-// beginBatch marks the start of a grouped run and returns the function that ends it. Every
-// Status created while it is in effect carries the batch's trigger and id, so a whole
-// nightly run is recoverable from sync_runs as one thing.
+// runOrigin says which grouped run a Status belongs to: the trigger that started it, the
+// batch id that groups every service execution of that one queue, and the year the run is
+// for. It is passed down from whatever started the run.
 //
-// The returned function restores the *previous* batch rather than clearing to empty, because
-// these genuinely nest: RunDailySync calls RunWeeklySync first when the global tables are
-// empty, and RunSyncWithOptions does the same. Clearing instead of restoring would file every
-// job after that point in the nightly run as an unrelated manual run.
-func (o *Orchestrator) beginBatch(trigger string) func() {
-	o.mu.Lock()
-	prevTrigger, prevBatch := o.currentTrigger, o.currentBatchID
-	o.currentTrigger, o.currentBatchID = trigger, generateBatchID()
-	o.mu.Unlock()
-
-	return func() {
-		o.mu.Lock()
-		o.currentTrigger, o.currentBatchID = prevTrigger, prevBatch
-		o.mu.Unlock()
-	}
+// It is a parameter and not orchestrator state because concurrent runs are guaranteed, not
+// merely possible. robfig/cron runs each entry on its own goroutine and the four schedules
+// overlap by construction: "0 * * * *" fires alongside "0 3 * * *" every day, and alongside
+// both "0 2 * * 0" and "0 4 * * 0" on Sunday. A single shared slot saved and restored around
+// each run has those runs overwrite each other — the queue that ends first restores the value
+// it captured before the other queue started, so the survivor's remaining jobs are filed as
+// unrelated manual runs, and the queue that ends second writes back a trigger that is by then
+// stale and leaves it stuck there permanently.
+//
+// A previous revision justified restore-over-clear by citing two nesting sites. Neither
+// nests: RunDailySync calls RunWeeklySync *before* opening its own batch, and
+// RunSyncWithOptions does the same. No beginBatch nesting existed anywhere in the tree, so
+// the only thing the shared slot ever did was let concurrent runs corrupt each other.
+type runOrigin struct {
+	// trigger is one of the trigger constants above. Persisted verbatim to
+	// sync_runs.trigger, whose select values must match that list exactly.
+	trigger string
+	// batchID groups every service execution of one queue under one id.
+	batchID string
+	// year is the year the run is for; 0 means the current season. A historical backfill
+	// names its year here so a run started by an unrelated queue while it is in flight
+	// cannot be filed under it.
+	year int
 }
 
-// runOrigin returns the trigger and batch id a run starting now belongs to. With no batch in
-// progress the run was started by an operator against a single service, so it is manual and
-// forms a batch of one — every row gets a batch id, which keeps grouping queries uniform.
-func (o *Orchestrator) runOrigin() (trigger, batchID string) {
-	o.mu.RLock()
-	defer o.mu.RUnlock()
-	return o.runOriginLocked()
+// newBatch mints the origin for one grouped run. Every run gets a batch id, a batch of one
+// included, so grouping queries over the table stay uniform.
+func newBatch(trigger string) runOrigin {
+	return runOrigin{trigger: trigger, batchID: generateBatchID()}
 }
 
-// runOriginLocked is runOrigin for callers already holding o.mu.
-func (o *Orchestrator) runOriginLocked() (trigger, batchID string) {
-	if o.currentTrigger == "" {
-		return triggerManual, generateBatchID()
-	}
-	return o.currentTrigger, o.currentBatchID
+// forYear returns a copy of the origin filed under an explicit year, for the queues that name
+// one — a historical backfill, or a phase sync run against a chosen year.
+func (r runOrigin) forYear(year int) runOrigin {
+	r.year = year
+	return r
 }
 
 // storeCompletedRun publishes a finished run: it swaps the status maps and persists the run
@@ -482,19 +485,49 @@ func (o *Orchestrator) runOriginLocked() (trigger, batchID string) {
 // Before kindred#2284 the completion decision was copied into three functions, and a fix
 // applied to one left the other two reporting green; a persistence call copied into three
 // functions would fail the same way, silently omitting whichever path nobody remembered.
-//
-// The row is written after the map swap and outside the lock. A DB write is far too long to
-// hold a mutex that every status read contends on, and the caller's Status is snapshotted
-// first so the persist never touches memory another goroutine can now reach.
 func (o *Orchestrator) storeCompletedRun(completed *Status) {
-	snapshot := *completed
-
 	o.mu.Lock()
-	o.lastCompletedStatus[completed.Type] = completed
-	delete(o.runningJobs, completed.Type)
+	snapshot := o.publishCompletedLocked(completed)
 	o.mu.Unlock()
 
 	o.recordSyncRun(&snapshot)
+}
+
+// publishCompletedLocked moves a finished run from runningJobs to lastCompletedStatus and
+// returns the snapshot the sync_runs write needs. The caller must hold o.mu for writing, and
+// must do the DB write after releasing it — a write is far too long to hold a mutex every
+// status read contends on.
+//
+// The swap and the delete are ONE critical section on purpose. Split apart, there is a window
+// in which the service is neither running nor completed; MarkSyncRunning succeeds in it,
+// because IsRunning is already false, and installs a new Status that the delete then erases.
+// That run goes on to find no entry in FinalizeSyncStatus, return early, and produce no
+// sync_runs row at all.
+func (o *Orchestrator) publishCompletedLocked(completed *Status) Status {
+	snapshot := snapshotStatus(completed)
+	o.lastCompletedStatus[completed.Type] = completed
+	delete(o.runningJobs, completed.Type)
+	return snapshot
+}
+
+// snapshotStatus copies s deeply enough that the result shares no mutable memory with it.
+//
+// A plain struct copy is not enough: Summary.SubStats is a map and EndTime is a pointer, so
+// both would still alias the Status published into lastCompletedStatus, where other
+// goroutines can reach it. That is safe today only because every GetStats implementation
+// happens to allocate a fresh map per call — an invariant nothing states or tests.
+func snapshotStatus(s *Status) Status {
+	out := *s
+	if s.EndTime != nil {
+		end := *s.EndTime
+		out.EndTime = &end
+	}
+	if s.Summary.SubStats != nil {
+		subs := make(map[string]Stats, len(s.Summary.SubStats))
+		maps.Copy(subs, s.Summary.SubStats)
+		out.Summary.SubStats = subs
+	}
+	return out
 }
 
 // RegisterService registers a sync service
@@ -699,24 +732,29 @@ func GetCustomValuesSyncJobs() []string {
 func (o *Orchestrator) RunSyncSequence(ctx context.Context, services []string) error {
 	// A targeted refresh is still a queue, so its jobs are grouped as one batch. It carries
 	// no run-type flag and is only ever reached from an operator action, hence manual.
-	defer o.beginBatch(triggerManual)()
+	batch := newBatch(triggerManual)
 
 	for _, svc := range services {
-		if err := o.runSyncAndWait(ctx, svc); err != nil {
+		if err := o.runSyncAndWait(ctx, svc, batch); err != nil {
 			return fmt.Errorf("sync sequence failed on %s: %w", svc, err)
 		}
 	}
 	return nil
 }
 
-// RunSingleSync runs a single sync service
+// RunSingleSync runs a single sync service.
+//
+// Every caller is an operator action against one service — an API handler, or a test — so the
+// run is manual and forms a batch of one. A queue that wants its jobs grouped calls
+// runSyncAndWait with its own batch instead.
 func (o *Orchestrator) RunSingleSync(parentCtx context.Context, syncType string) error {
-	_, err := o.runSingleSyncInternal(parentCtx, syncType)
+	_, err := o.runSingleSyncInternal(parentCtx, syncType, newBatch(triggerManual))
 	return err
 }
 
-// runSingleSyncInternal runs a single sync service and returns the run token.
-func (o *Orchestrator) runSingleSyncInternal(parentCtx context.Context, syncType string) (string, error) {
+// runSingleSyncInternal runs a single sync service and returns the run token. `origin` names
+// the grouped run this execution belongs to; see runOrigin for why it is a parameter.
+func (o *Orchestrator) runSingleSyncInternal(parentCtx context.Context, syncType string, origin runOrigin) (string, error) {
 	// Check if service exists
 	o.mu.RLock()
 	service, exists := o.services[syncType]
@@ -736,12 +774,12 @@ func (o *Orchestrator) runSingleSyncInternal(parentCtx context.Context, syncType
 	if existingStatus != nil {
 		// Reuse pre-marked status (set by MarkSyncRunning before goroutine started)
 		status = existingStatus
-		// Overwrite the token so runSyncAndWait can track this specific execution, and
-		// re-read the origin so the row reflects the batch this execution actually ran in
-		// rather than the one in effect when the status was pre-marked.
+		// Overwrite the token so runSyncAndWait can track this specific execution, and take
+		// the origin from the caller that is actually starting the work — the pre-mark only
+		// reserved the slot.
 		o.mu.Lock()
 		status.RunToken = runToken
-		status.Trigger, status.BatchID = o.runOriginLocked()
+		status.Trigger, status.BatchID, status.Year = origin.trigger, origin.batchID, origin.year
 		o.mu.Unlock()
 	} else {
 		// No pre-marked status - check if something else is running
@@ -749,21 +787,19 @@ func (o *Orchestrator) runSingleSyncInternal(parentCtx context.Context, syncType
 			return "", fmt.Errorf("sync already in progress: %s", syncType)
 		}
 
-		o.mu.Lock()
-		trigger, batchID := o.runOriginLocked()
-
 		// Create status entry
 		status = &Status{
 			Type:      syncType,
 			Status:    statusRunning,
 			StartTime: time.Now(),
 			Summary:   Stats{},
-			Year:      o.currentSyncYear,
+			Year:      origin.year,
 			RunToken:  runToken,
-			Trigger:   trigger,
-			BatchID:   batchID,
+			Trigger:   origin.trigger,
+			BatchID:   origin.batchID,
 		}
 
+		o.mu.Lock()
 		o.runningJobs[syncType] = status
 		o.mu.Unlock()
 	}
@@ -852,16 +888,18 @@ func (o *Orchestrator) RunSingleSyncWithService(parentCtx context.Context, syncT
 		return fmt.Errorf("sync already in progress: %s", syncType)
 	}
 
-	trigger, batchID := o.runOriginLocked()
+	// Only ever reached from an API handler running one caller-built service instance, so
+	// this is an operator's run and a batch of one.
+	origin := newBatch(triggerManual)
 	status := &Status{
 		Type:      syncType,
 		Status:    statusRunning,
 		StartTime: time.Now(),
 		Summary:   Stats{},
-		Year:      o.currentSyncYear,
+		Year:      origin.year,
 		RunToken:  generateRunToken(),
-		Trigger:   trigger,
-		BatchID:   batchID,
+		Trigger:   origin.trigger,
+		BatchID:   origin.batchID,
 	}
 	o.runningJobs[syncType] = status
 	o.mu.Unlock()
@@ -938,8 +976,11 @@ func (o *Orchestrator) MarkSyncRunning(syncType string) error {
 		return fmt.Errorf("sync already in progress: %s", syncType)
 	}
 
-	o.mu.Lock()
-	trigger, batchID := o.runOriginLocked()
+	// Both production callers are the process_requests API handlers, which run the service
+	// themselves and finish through FinalizeSyncStatus: an operator's run, for the current
+	// season. Taking the year from o.currentSyncYear instead would let a historical backfill
+	// that happens to be in flight stamp its year onto this run.
+	origin := newBatch(triggerManual)
 
 	// Create status entry with a unique run token
 	status := &Status{
@@ -947,12 +988,13 @@ func (o *Orchestrator) MarkSyncRunning(syncType string) error {
 		Status:    statusRunning,
 		StartTime: time.Now(),
 		Summary:   Stats{},
-		Year:      o.currentSyncYear,
+		Year:      origin.year,
 		RunToken:  generateRunToken(),
-		Trigger:   trigger,
-		BatchID:   batchID,
+		Trigger:   origin.trigger,
+		BatchID:   origin.batchID,
 	}
 
+	o.mu.Lock()
 	o.runningJobs[syncType] = status
 	o.mu.Unlock()
 
@@ -979,24 +1021,28 @@ func (o *Orchestrator) FinalizeSyncStatus(syncType string, stats Stats, err erro
 	// Copy struct so readers of the old pointer see a consistent snapshot
 	completed := *status
 
-	// Claim the run before releasing the lock. The check above used to be atomic with the
-	// map swap below, and that is what makes a second call for the same syncType a no-op —
-	// api.go's process_requests handlers call this both normally and from a deferred panic
-	// recovery, and two rows for one run would corrupt the very counts sync_runs exists to
-	// collect. Deleting here keeps that true now that the swap happens outside the lock.
-	delete(o.runningJobs, syncType)
-	o.mu.Unlock()
-
 	completed.EndTime = &endTime
 	stats.Duration = int(endTime.Sub(completed.StartTime).Seconds())
 	completed.Summary = stats
 	applyCompletionStatus(&completed, &stats, err)
 
-	// Snapshot before publishing: &completed goes into the map, so reading its fields
-	// afterwards would be reading memory other goroutines can reach.
-	finalStatus, finalError := completed.Status, completed.Error
+	// The lookup above, the map swap and the delete are one critical section. That is what
+	// makes a second call for the same syncType a no-op — api.go's process_requests handlers
+	// call this both normally and from a deferred panic recovery, and two rows for one run
+	// would corrupt the very counts sync_runs exists to collect. It is also what stops a run
+	// started in between from being erased; see publishCompletedLocked.
+	//
+	// Everything above is arithmetic on a local copy, so the section stays short. The
+	// sync_runs write is the one slow part and it happens below, outside the lock, from the
+	// snapshot.
+	snapshot := o.publishCompletedLocked(&completed)
+	o.mu.Unlock()
 
-	o.storeCompletedRun(&completed)
+	o.recordSyncRun(&snapshot)
+
+	// Read the outcome off the snapshot: &completed is in the map now, so reading its
+	// fields would be reading memory other goroutines can reach.
+	finalStatus, finalError := snapshot.Status, snapshot.Error
 
 	if finalStatus == statusFailed {
 		slog.Error("Sync failed", "syncType", syncType, "error", finalError)
@@ -1089,9 +1135,7 @@ func getDailySyncJobs() []string {
 // Unlike RunSingleSync this blocks until the run completes, matching every other Run*Sync
 // method here. Both callers already run it on their own goroutine.
 func (o *Orchestrator) RunHourlySync(ctx context.Context) error {
-	defer o.beginBatch(triggerHourly)()
-
-	return o.runSyncAndWait(ctx, hourlySyncJob)
+	return o.runSyncAndWait(ctx, hourlySyncJob, newBatch(triggerHourly))
 }
 
 // RunDailySync runs all base data syncs in the correct order
@@ -1107,7 +1151,9 @@ func (o *Orchestrator) RunDailySync(ctx context.Context) error {
 
 	orderedJobs := getDailySyncJobs()
 
-	defer o.beginBatch(triggerDaily)()
+	// Minted here, after the weekly prologue above: the two are sequential queues, not
+	// nested ones, and each files its own jobs under its own trigger.
+	batch := newBatch(triggerDaily)
 
 	// Set daily sync flag and queue
 	o.mu.Lock()
@@ -1149,7 +1195,7 @@ func (o *Orchestrator) RunDailySync(ctx context.Context) error {
 		slog.Info("Daily sync: Starting service", "service", jobName, "current", i+1, "total", len(orderedJobs))
 
 		// Run sync and wait for completion
-		if err := o.runSyncAndWait(ctx, jobName); err != nil {
+		if err := o.runSyncAndWait(ctx, jobName, batch); err != nil {
 			slog.Error("Daily sync: service failed", "service", jobName, "error", err)
 			// Continue with other syncs even if one fails
 		} else {
@@ -1169,7 +1215,7 @@ func (o *Orchestrator) RunWeeklySync(ctx context.Context) error {
 	// Get the weekly sync jobs
 	weeklyJobs := GetWeeklySyncJobs()
 
-	defer o.beginBatch(triggerWeekly)()
+	batch := newBatch(triggerWeekly)
 
 	// Set weekly sync flag and queue
 	o.mu.Lock()
@@ -1211,7 +1257,7 @@ func (o *Orchestrator) RunWeeklySync(ctx context.Context) error {
 		slog.Info("Weekly sync: Starting service", "service", jobName, "current", i+1, "total", len(weeklyJobs))
 
 		// Run sync and wait for completion
-		if err := o.runSyncAndWait(ctx, jobName); err != nil {
+		if err := o.runSyncAndWait(ctx, jobName, batch); err != nil {
 			slog.Error("Weekly sync: service failed", "service", jobName, "error", err)
 			// Continue with other syncs even if one fails
 		} else {
@@ -1231,7 +1277,7 @@ func (o *Orchestrator) RunCustomValuesSync(ctx context.Context) error {
 	// Get the custom values sync jobs
 	customValuesJobs := GetCustomValuesSyncJobs()
 
-	defer o.beginBatch(triggerCustomValues)()
+	batch := newBatch(triggerCustomValues)
 
 	// Set custom values sync flag and queue
 	// Note: currentRunIndex is 0 for parallel syncs (all jobs run simultaneously)
@@ -1270,7 +1316,7 @@ func (o *Orchestrator) RunCustomValuesSync(ctx context.Context) error {
 
 			slog.Info("Custom values sync: Starting service", "service", name)
 
-			if err := o.runSyncAndWait(ctx, name); err != nil {
+			if err := o.runSyncAndWait(ctx, name, batch); err != nil {
 				slog.Error("Custom values sync: service failed", "service", name, "error", err)
 				errChan <- err
 			} else {
@@ -1292,12 +1338,12 @@ func (o *Orchestrator) RunCustomValuesSync(ctx context.Context) error {
 	return errors.Join(errs...)
 }
 
-// runSyncAndWait runs a sync and waits for it to complete
-func (o *Orchestrator) runSyncAndWait(ctx context.Context, syncType string) error {
+// runSyncAndWait runs a sync as part of `origin`'s batch and waits for it to complete.
+func (o *Orchestrator) runSyncAndWait(ctx context.Context, syncType string, origin runOrigin) error {
 	// Start the sync and capture the token directly from the return value.
 	// This eliminates the race where the goroutine completes before we can
 	// read the token from runningJobs (issue #789).
-	expectedToken, err := o.runSingleSyncInternal(ctx, syncType)
+	expectedToken, err := o.runSingleSyncInternal(ctx, syncType, origin)
 	if err != nil {
 		return err
 	}
@@ -1496,9 +1542,13 @@ func (o *Orchestrator) RunSyncWithOptions(ctx context.Context, opts Options) err
 		}
 	}
 
-	// Set up sync tracking based on year mode
+	// Set up sync tracking based on year mode. The batch carries the year explicitly:
+	// o.currentSyncYear below is process-global and stays set for this sync's whole
+	// duration, so a run started by any other queue in the meantime would otherwise be
+	// filed under a backfill's year.
+	var batch runOrigin
 	if opts.Year > 0 {
-		defer o.beginBatch(triggerHistorical)()
+		batch = newBatch(triggerHistorical).forYear(opts.Year)
 
 		// Historical sync tracking
 		o.mu.Lock()
@@ -1517,7 +1567,7 @@ func (o *Orchestrator) RunSyncWithOptions(ctx context.Context, opts Options) err
 			o.mu.Unlock()
 		}()
 	} else {
-		defer o.beginBatch(triggerDaily)()
+		batch = newBatch(triggerDaily)
 
 		// Current year sync - use daily sync tracking so UI shows progress
 		o.mu.Lock()
@@ -1732,7 +1782,7 @@ func (o *Orchestrator) RunSyncWithOptions(ctx context.Context, opts Options) err
 		}
 
 		// Run sync and wait for completion
-		if err := o.runSyncAndWait(ctx, serviceName); err != nil {
+		if err := o.runSyncAndWait(ctx, serviceName, batch); err != nil {
 			if opts.Year > 0 {
 				slog.Error("Historical sync: service failed", "year", opts.Year, "service", serviceName, "error", err)
 			} else {

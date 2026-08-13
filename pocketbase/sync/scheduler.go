@@ -167,9 +167,9 @@ func (s *Scheduler) runCustomValuesSync() {
 	defer cancel()
 
 	// The orchestrator's own RunCustomValuesSync is not used here (it runs the jobs in
-	// parallel), so the batch has to be opened directly or these runs would be recorded as
+	// parallel), so the batch has to be minted directly or these runs would be recorded as
 	// manual.
-	defer s.orchestrator.beginBatch(triggerCustomValues)()
+	batch := newBatch(triggerCustomValues)
 
 	jobs := GetCustomValuesSyncJobs()
 	slog.Info("Custom values sync starting (sequential)", "services", jobs)
@@ -177,7 +177,7 @@ func (s *Scheduler) runCustomValuesSync() {
 	for _, job := range jobs {
 		// Use runSyncAndWait to ensure each sync completes before starting the next.
 		// This prevents concurrent API calls that would double rate limiter pressure.
-		if err := s.orchestrator.runSyncAndWait(ctx, job); err != nil {
+		if err := s.orchestrator.runSyncAndWait(ctx, job, batch); err != nil {
 			slog.Error("Custom values sync failed", "job", job, "error", err)
 		} else {
 			slog.Info("Custom values sync completed", "job", job)
