@@ -19,6 +19,13 @@ type AttendeesSync struct {
 
 	// Caches for validation
 	sessionCMIDs map[string]bool
+
+	// DuplicateSessionEnrollments counts, across the whole run, how many "extra" entries
+	// appeared beyond the first for a given attendee's (person, session) pair — see
+	// duplicateSessionEnrollments below and kindred#2263. Zero over a real season answers
+	// the open question; non-zero gives it data. This is observation only: it does not
+	// change dedup behavior, the composite key, or idx_attendees_unique.
+	DuplicateSessionEnrollments int
 }
 
 // NewAttendeesSync creates a new attendees sync service
@@ -37,9 +44,10 @@ func (s *AttendeesSync) Name() string {
 // Sync performs the attendees sync
 func (s *AttendeesSync) Sync(ctx context.Context) error {
 	s.LogSyncStart("attendees")
-	s.Stats = Stats{}        // Reset stats
-	s.SyncSuccessful = false // Reset sync status
-	s.ClearProcessedKeys()   // Reset processed tracking
+	s.Stats = Stats{}                 // Reset stats
+	s.SyncSuccessful = false          // Reset sync status
+	s.ClearProcessedKeys()            // Reset processed tracking
+	s.DuplicateSessionEnrollments = 0 // Reset kindred#2263 observation counter
 
 	// Load session CampMinder IDs for validation
 	if err := s.loadSessionIDs(); err != nil {
@@ -180,6 +188,10 @@ func (s *AttendeesSync) processAttendee(
 		return nil
 	}
 
+	// kindred#2263 observation: does this attendee's own array ever repeat a SessionID? See
+	// duplicateSessionEnrollments below for what this catches and why it matters.
+	duplicateSessions := s.duplicateSessionEnrollments(personCMID, sessionStatuses)
+
 	// Process each enrollment
 	for _, enrollmentData := range sessionStatuses {
 		enrollment, ok := enrollmentData.(map[string]any)
@@ -188,12 +200,76 @@ func (s *AttendeesSync) processAttendee(
 		}
 
 		if err := s.processEnrollment(personCMID, enrollment, existingAttendees); err != nil {
-			slog.Error("Error processing enrollment", "person_cm_id", personCMID, "error", err)
+			// A duplicate SessionID in the source data makes the *second* entry's error
+			// attributable: it's the entry that loses the (person, session) key collision,
+			// either overwriting the first (idempotent upsert) or — on a first-ever sync,
+			// before existingAttendees has an entry for the key — taking the create branch
+			// and hitting idx_attendees_unique. Tag it so that failure mode is legible in
+			// the logs rather than reading as an unexplained local DB fault.
+			if sessionIDFloat, ok := enrollment["SessionID"].(float64); ok &&
+				duplicateSessions[int(sessionIDFloat)] != nil {
+				slog.Error("Error processing enrollment (duplicate SessionID within this "+
+					"attendee's SessionProgramStatus — see kindred#2263)",
+					"person_cm_id", personCMID, "session_cm_id", int(sessionIDFloat), "error", err)
+			} else {
+				slog.Error("Error processing enrollment", "person_cm_id", personCMID, "error", err)
+			}
 			s.Stats.Errors++
 		}
 	}
 
 	return nil
+}
+
+// duplicateSessionEnrollments scans a single attendee's SessionProgramStatus entries for
+// SessionIDs that appear more than once, and returns them keyed by SessionID with each
+// occurrence's ProgramID (or nil, if the entry has none) in encounter order.
+//
+// This is the identity question kindred#2263 asks, made observable. processEnrollment keys
+// an enrollment on (person, session) only — fmt.Sprintf("%d:%d", personCMID, sessionCMID) —
+// never reading ProgramID. If CampMinder's vendor API ever returns two SessionProgramStatus
+// entries for the same person+session (one per program, say), the second one collapses onto
+// the first: whichever is processed last wins the upsert. Nobody can currently see that
+// happen without inspecting a live API response, which needs credentials this sync doesn't
+// have reason to spend. This function only observes and logs; it changes no identity, no
+// key, and no schema — see the scope note on kindred#2263 for why that split is deliberate.
+//
+// Every duplicated SessionID found logs one slog.Warn naming every ProgramID seen (or its
+// absence), and s.DuplicateSessionEnrollments accumulates the "extra" entries (len-1 per
+// duplicated session) across the whole run, so a season's worth of runs can answer whether
+// this ever actually happens.
+func (s *AttendeesSync) duplicateSessionEnrollments(personCMID int, sessionStatuses []any) map[int][]any {
+	bySession := make(map[int][]any)
+	for _, raw := range sessionStatuses {
+		enrollment, ok := raw.(map[string]any)
+		if !ok {
+			continue
+		}
+		sessionIDFloat, ok := enrollment["SessionID"].(float64)
+		if !ok {
+			continue
+		}
+		sessionCMID := int(sessionIDFloat)
+		// enrollment["ProgramID"] is nil when the key is absent, which is exactly the
+		// "or their absence" the counter needs to record.
+		bySession[sessionCMID] = append(bySession[sessionCMID], enrollment["ProgramID"])
+	}
+
+	duplicates := make(map[int][]any)
+	for sessionCMID, programIDs := range bySession {
+		if len(programIDs) < 2 {
+			continue
+		}
+		duplicates[sessionCMID] = programIDs
+		s.DuplicateSessionEnrollments += len(programIDs) - 1
+		slog.Warn("Duplicate SessionID within one attendee's SessionProgramStatus "+
+			"(kindred#2263 — observation only, no identity change)",
+			"person_cm_id", personCMID,
+			"session_cm_id", sessionCMID,
+			"count", len(programIDs),
+			"program_ids", programIDs)
+	}
+	return duplicates
 }
 
 // processEnrollment processes a single enrollment using pre-loaded existing attendees
