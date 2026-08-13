@@ -12,7 +12,6 @@ import (
 	"time"
 
 	"github.com/camp/kindred/pocketbase/campminder"
-	"github.com/pocketbase/dbx"
 	"github.com/pocketbase/pocketbase/core"
 )
 
@@ -289,26 +288,45 @@ func (b *BaseSyncService) collectOrphans(
 	getIDFunc func(record *core.Record) (string, bool),
 	entityName string,
 	filter string,
-) ([]orphanCandidate, int, int, error) {
-	var orphans []orphanCandidate
-	inspected := 0
-	seen := 0
-	cursor := ""
-	perPage := DefaultPageSize
+) (orphans []orphanCandidate, inspected, seen int, err error) {
+	offset := 0
+	perPage := LargePageSize
 
 	for {
-		pageFilter, params := keysetPage(filter, cursor)
-
-		records, err := b.App.FindRecordsByFilter(collection, pageFilter, "id", perPage, 0, params)
+		// OFFSET paging, and the caller's filter passed through UNCHANGED and
+		// parameter-free. Both halves are deliberate.
+		//
+		// Offset is safe here and was not safe before, because this scan writes
+		// nothing. The original defect was a loop that deleted while paging by
+		// offset: each delete shrank the result set the next offset was measured
+		// against and slid that many unread rows past the cursor permanently.
+		// Splitting collect from delete removed the mutation, and with it the
+		// reason a cursor was needed. What remains of the risk is a concurrent
+		// writer shifting the window, and its only failure mode is UNDER-reading:
+		// a row missed this run is simply swept on the next one. It cannot
+		// over-delete, because a candidate has to be read and rejected by
+		// getIDFunc's key lookup to become an orphan at all, and a row read twice
+		// is deleted once (the second FindRecordById finds nothing and skips).
+		//
+		// The filter must stay parameter-free because PocketBase substitutes
+		// {:params} into the raw filter BEFORE deriving its parse-cache key
+		// (tools/search/filter.go:78 then :82) and stores it in a package-level
+		// cache capped at 500 entries that never evicts (tools/store/store.go:218).
+		// A per-page cursor in the filter therefore mints one dead entry per page
+		// -- roughly 1,553 for a single year of person_custom_values -- and once
+		// 500 accumulate, no filter expression anywhere in the process can be
+		// cached again for the life of the container. Sorting by id keeps the
+		// window stable without putting anything per-page into the filter.
+		records, err := b.App.FindRecordsByFilter(collection, filter, "id", perPage, offset)
 		if err != nil {
 			return nil, 0, 0, fmt.Errorf("loading %ss for orphan check: %w", entityName, err)
 		}
 		if len(records) == 0 {
 			break
 		}
+		offset += len(records)
 
 		for _, record := range records {
-			cursor = record.Id
 			seen++
 
 			idKey, ok := getIDFunc(record)
@@ -334,22 +352,6 @@ func (b *BaseSyncService) collectOrphans(
 	}
 
 	return orphans, inspected, seen, nil
-}
-
-// keysetPage composes a caller filter with the keyset cursor. The cursor is
-// bound as a query parameter rather than interpolated, so a record ID can never
-// be read as filter syntax.
-func keysetPage(filter, cursor string) (string, dbx.Params) {
-	if cursor == "" {
-		return filter, nil
-	}
-
-	params := dbx.Params{"orphanCursor": cursor}
-	if filter == "" {
-		return "id > {:orphanCursor}", params
-	}
-
-	return "(" + filter + ") && id > {:orphanCursor}", params
 }
 
 // FindOrphansFromPreloaded identifies orphan keys from preloaded records.

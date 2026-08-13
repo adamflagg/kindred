@@ -6,6 +6,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/pocketbase/dbx"
+
 	"github.com/pocketbase/pocketbase/core"
 	pbtests "github.com/pocketbase/pocketbase/tests"
 )
@@ -275,7 +277,7 @@ func TestBaseDeleteOrphansDeletesNothingWhenNoRecordCanBeKeyed(t *testing.T) {
 
 // captureSweepLogs redirects slog for the duration of one test and returns the
 // buffer. The sweep's only operator-facing signal is its log line, so the log IS
-// the behaviour under test here, not an incidental side effect.
+// the behavior under test here, not an incidental side effect.
 func captureSweepLogs(t *testing.T) *strings.Builder {
 	t.Helper()
 
@@ -391,5 +393,87 @@ func TestBaseDeleteOrphansCountsOnlyCompletedDeletes(t *testing.T) {
 
 	if got := logs.String(); strings.Contains(got, "Deleted orphaned records") {
 		t.Errorf("a failed delete was counted as deleted; got:\n%s", got)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// The scan must not mint a new filter string per page (kindred#2279 follow-up)
+// ---------------------------------------------------------------------------
+
+// filterSpyApp records every filter string the sweep issues. Embedding core.App
+// means only the one method is overridden and everything else behaves normally.
+type filterSpyApp struct {
+	core.App
+	filters []string
+}
+
+func (a *filterSpyApp) FindRecordsByFilter(
+	collectionModelOrIdentifier any,
+	filter string,
+	sort string,
+	limit int,
+	offset int,
+	params ...dbx.Params,
+) ([]*core.Record, error) {
+	a.filters = append(a.filters, filter)
+	//nolint:wrapcheck // a transparent test double: wrapping would change what the caller sees
+	return a.App.FindRecordsByFilter(collectionModelOrIdentifier, filter, sort, limit, offset, params...)
+}
+
+// PocketBase substitutes {:params} into the filter string BEFORE parsing it and
+// then uses the substituted string as a cache key (tools/search/filter.go:78,82),
+// storing it in the package-level parsedFilterData store with a hard cap of 500
+// and no eviction (tools/store/store.go:218). So a scan that puts a per-page
+// cursor in the filter mints one dead cache entry per page: ~1,553 of them for a
+// single year of person_custom_values. Once 500 accumulate, NO filter expression
+// anywhere in the process can be cached again for the life of the container --
+// every API list request re-parses from scratch.
+//
+// The paging cursor therefore must not travel in the filter string.
+func TestSweepDoesNotMintAFilterStringPerPage(t *testing.T) {
+	const seeded = 1200
+
+	base := newOrphanSweepTestApp(t, "person_custom_values", "person", "field_definition", "value")
+	bulkInsertRows(t, base, "person_custom_values", "person", "pers_0000000001", 2026, seeded)
+
+	spy := &filterSpyApp{App: base}
+
+	s := &PersonCustomFieldValuesSync{BaseSyncService: BaseSyncService{
+		App:            spy,
+		ProcessedKeys:  make(map[string]bool),
+		SyncSuccessful: true,
+	}}
+	for i := 1; i <= seeded; i++ {
+		s.ProcessedKeys[fmt.Sprintf("pers_0000000001:fd%06d|2026", i)] = true
+	}
+
+	if err := s.deleteOrphans(2026, map[string]bool{"pers_0000000001": true}); err != nil {
+		t.Fatalf("deleteOrphans: %v", err)
+	}
+
+	distinct := map[string]bool{}
+	for _, f := range spy.filters {
+		distinct[f] = true
+	}
+
+	if len(spy.filters) < 2 {
+		t.Fatalf("fixture is wrong: the scan issued %d queries, so it never paged", len(spy.filters))
+	}
+	if len(distinct) != 1 {
+		t.Errorf("the scan issued %d queries using %d DISTINCT filter strings; want 1. "+
+			"Filters seen: %v", len(spy.filters), len(distinct), distinct)
+	}
+
+	// The stricter half, and the one that actually bites. PocketBase substitutes
+	// {:params} into the raw filter BEFORE deriving the cache key, so a filter
+	// carrying a per-page placeholder yields a DIFFERENT key on every page even
+	// though the string handed to FindRecordsByFilter never changes. A constant
+	// filter is only safe if it is also placeholder-free.
+	for f := range distinct {
+		if strings.Contains(f, "{:") {
+			t.Errorf("the scan's filter carries a parameter placeholder (%q). PocketBase "+
+				"substitutes it before building the cache key, so each page still mints a "+
+				"distinct permanent cache entry -- the cursor must not travel in the filter", f)
+		}
 	}
 }

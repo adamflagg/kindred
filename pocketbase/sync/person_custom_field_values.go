@@ -193,7 +193,14 @@ func (s *PersonCustomFieldValuesSync) Sync(ctx context.Context) error {
 // preloadPersonMapping loads CM ID -> PB ID mapping for persons in the given year
 func (s *PersonCustomFieldValuesSync) preloadPersonMapping(year int) (map[int]string, error) {
 	filter := fmt.Sprintf("year = %d", year)
-	persons, err := s.App.FindRecordsByFilter("persons", filter, "", 10000, 0, nil)
+	// Unlimited (0), not a 10,000 cap. PocketBase treats limit=0 as no limit
+	// (core/record_query.go applies Limit only when limit > 0), and a bare
+	// number there is a silent truncation cliff, not a page size: kindred#2266
+	// was exactly this literal on the orphan sweep, where it hid 94% of a year.
+	// This lookup is year-scoped and the largest year on record holds 3,383
+	// persons, so the old cap had headroom -- but headroom is not a guarantee,
+	// and the failure mode is a narrowed sweep rather than an error.
+	persons, err := s.App.FindRecordsByFilter("persons", filter, "", 0, 0, nil)
 	if err != nil {
 		return nil, fmt.Errorf("finding persons: %w", err)
 	}
@@ -213,7 +220,14 @@ func (s *PersonCustomFieldValuesSync) preloadPersonMapping(year int) (map[int]st
 // preloadFieldDefMapping loads CM ID -> PB ID mapping for custom field definitions
 func (s *PersonCustomFieldValuesSync) preloadFieldDefMapping() (map[int]string, error) {
 	// Field definitions are global (no year filter)
-	fieldDefs, err := s.App.FindRecordsByFilter("custom_field_defs", "", "", 10000, 0, nil)
+	// Unlimited (0), not a 10,000 cap. PocketBase treats limit=0 as no limit
+	// (core/record_query.go applies Limit only when limit > 0), and a bare
+	// number there is a silent truncation cliff, not a page size: kindred#2266
+	// was exactly this literal on the orphan sweep, where it hid 94% of a year.
+	// custom_field_defs is NOT year-scoped: all 1,270 rows load every time. That
+	// is the one here with no year to bound it, so it is the one that would
+	// creep up on the cap first.
+	fieldDefs, err := s.App.FindRecordsByFilter("custom_field_defs", "", "", 0, 0, nil)
 	if err != nil {
 		return nil, fmt.Errorf("finding field definitions: %w", err)
 	}
@@ -250,7 +264,14 @@ func (s *PersonCustomFieldValuesSync) getPersonIDsToSync(year int) ([]int, error
 
 	// No session filter - get all persons synced for this year
 	filter := fmt.Sprintf("year = %d", year)
-	persons, err := s.App.FindRecordsByFilter("persons", filter, "", 10000, 0, nil)
+	// Unlimited (0), not a 10,000 cap. PocketBase treats limit=0 as no limit
+	// (core/record_query.go applies Limit only when limit > 0), and a bare
+	// number there is a silent truncation cliff, not a page size: kindred#2266
+	// was exactly this literal on the orphan sweep, where it hid 94% of a year.
+	// Feeds sweptOwners, which is what narrows the orphan sweep. A silent
+	// truncation here would shrink the sweep's computed set as well, so the
+	// two defects would compound rather than cancel.
+	persons, err := s.App.FindRecordsByFilter("persons", filter, "", 0, 0, nil)
 	if err != nil {
 		return nil, fmt.Errorf("finding persons: %w", err)
 	}
