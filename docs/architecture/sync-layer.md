@@ -203,7 +203,7 @@ as measured on that date, not re-derived live):
 | `camper_transportation` | person × session | 1661 | 10 (0.6%) | 11 / 1969 |
 | `quest_registrations` | person × year | 69 | 1 | 0 / 64 |
 | `staff_skills` | person, not enrolment | 401 | predicate does not apply — staff are not attendees | — |
-| `household_demographics` | household, not enrolment | 1603 | predicate does not apply — household-grain | — |
+| `household_demographics` | **(household, person, year)** — re-grained by kindred#2260 | ~2210 projected | **predicate DOES apply** to the person-attributed rows (~2181 of ~2210 for 2026); the ~29 `person_id = 0` rows carry genuinely household-level answers and are outside it | — |
 
 **The point worth stating plainly: a dashboard that reads `camper_dietary` unfiltered ships a 7.2%
 (2026) / 13.4% (2025) error.** That gap is the whole reason this rule exists: the three
@@ -214,11 +214,19 @@ carry stale rows for people no longer actively enrolled, at the percentages meas
 `table_exporter.go`'s `SyncJobToCollections` map is *not* a reader — its own comment says it exists
 only so the export-skip optimisation knows which collections a sync job writes; nothing there touches
 a row. The one real live reader, `GetReadableYearExports()`, covers `staff_skills` and
-`household_demographics` — the two tables above where the predicate does **not** apply, since staff
-are not attendees and the household grain has no per-person enrolment to check. This rule is written
-down for whoever builds the first reader of `camper_dietary`, `camper_transportation`, or
-`quest_registrations` — a future staff dashboard or PDF export — so that reader doesn't inherit the
-error above silently.
+`household_demographics`. ⚠️ **Only the first of those is now outside the predicate.** Staff are not
+attendees, so `staff_skills` genuinely has no enrolment to check. `household_demographics` used to be
+in the same position and **is not any more**: kindred#2260 re-grained it to one row per (household,
+person, year), so all but ~29 of its ~2210 2026 rows are attributed to a specific camper.
+`loadPersonHouseholdMapping` admits any person with a household that year **regardless of enrolment
+status**, so a cancelled camper keeps a row — and that row is exported, unfiltered, beside Jewish
+identity, family description and custody answers. Anyone adding or changing a reader of this table
+must decide the enrolment question deliberately rather than inheriting the old "household-grain, does
+not apply" answer, which was true before that change and is false now.
+
+This rule is written down for whoever builds the first reader of `camper_dietary`,
+`camper_transportation`, or `quest_registrations` — a future staff dashboard or PDF export — so that
+reader doesn't inherit the error above silently.
 
 ## Python Request Processor (`bunking/sync/bunk_request_processor/`)
 Unified processor for all 5 bunk request field types:

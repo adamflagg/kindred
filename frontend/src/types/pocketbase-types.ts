@@ -951,6 +951,8 @@ export type HouseholdDemographicsRecord = {
   military_family?: boolean
   parent_immigrant?: boolean
   parent_immigrant_origin?: string
+  person?: RecordIdString
+  person_id?: number
   updated: IsoAutoDateString
   year: number
 }

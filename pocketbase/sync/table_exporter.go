@@ -895,7 +895,23 @@ func GetReadableYearExports() []ExportConfig {
 				{Field: "value", Header: "Value", Type: FieldTypeText},
 			},
 		},
-		// Household Demographics - consolidated HH- fields from custom values
+		// Household Demographics - HH- fields from custom values, one row per
+		// (household, person, year). Person ID is not decoration: since
+		// kindred#2260 a household contributes one row per camper who answered,
+		// so a sheet without it reads as duplicated households. Person ID 0 is
+		// the household-level row carrying the _family columns.
+		//
+		// Person ID rather than the camper's name is a readability choice, not a
+		// privacy control, and an earlier version of this comment claimed
+		// otherwise. It argued that omitting the name kept the attribution
+		// behind "a gate that already exists" -- but the Persons sheet in THIS
+		// workbook maps the same "Person ID" header to first_name/last_name, so
+		// the two are one lookup apart for anyone already holding the file.
+		// There is no gate. Owner ruling 2026-08-13: the export's contents are
+		// not a concern here, because the staff who can pull this workbook can
+		// already read the same answers in CampMinder directly. Do not
+		// reintroduce a privacy rationale for this column without revisiting
+		// that ruling.
 		{
 			Collection: "household_demographics",
 			SheetName:  "Household Demographics",
@@ -906,6 +922,7 @@ func GetReadableYearExports() []ExportConfig {
 					Field: "household", Header: "Household", Type: FieldTypeRelation,
 					RelatedCol: "households", RelatedField: "mailing_title",
 				},
+				{Field: "person_id", Header: "Person ID", Type: FieldTypeNumber},
 				{Field: "year", Header: "Year", Type: FieldTypeNumber},
 				// Family description
 				{Field: "family_description", Header: "Family Description", Type: FieldTypeText},

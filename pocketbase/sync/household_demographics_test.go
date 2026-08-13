@@ -2,11 +2,31 @@ package sync
 
 import (
 	"context"
+	"sort"
 	"testing"
+
+	"github.com/pocketbase/pocketbase/core"
+	pbtests "github.com/pocketbase/pocketbase/tests"
 )
 
 // Test constants for fictional data
-const testCongregation = "Temple Beth El"
+// Fictional, and verified absent from the production snapshot. tests/CLAUDE.md:
+// values that appear in real data do not belong in a public test file, and a
+// congregation name is exactly the kind of identifying detail the rule covers.
+const testCongregation = "Riverside Synagogue"
+
+// testAffiliation is shared by the aggregation tests and the setColumn tests.
+const testAffiliation = "Reform"
+
+// Every test in this file calls the PRODUCTION functions.
+//
+// The suite that shipped here did not. `aggregatePersonValuesByHousehold`,
+// `buildDemographicRecord`, `buildDemographicsCompositeKey`,
+// `mapHHFieldToColumn`, `mapHouseholdFieldToColumn`, `parseBooleanCustomValue`
+// and `isHHField` were test-local reimplementations that production never
+// called, so the ten years of answers `mapPersonFieldToRecord` was discarding
+// (kindred#2260) never turned a test red. They are gone; nothing in this file
+// asserts against a copy of the code under test.
 
 // TestHouseholdDemographicsLoadFieldDefinitionsTrimsNames is a regression test
 // for kindred#1873. HH- prefixed fields are admitted by prefix, which a
@@ -60,13 +80,10 @@ func TestHouseholdDemographicsLoadFieldDefinitionsTrimsNames(t *testing.T) {
 
 // TestHouseholdDemographicsSync_Name verifies the service name is correct
 func TestHouseholdDemographicsSync_Name(t *testing.T) {
-	// The service name must be "household_demographics" for orchestrator integration
-	expectedName := serviceNameHouseholdDemographics
-
-	// Test the constant/expected name matches what the service should return
-	// (actual instance test requires PocketBase app)
-	if expectedName != serviceNameHouseholdDemographics {
-		t.Errorf("expected service name %q", expectedName)
+	// The orchestrator registers and looks this service up by name; a rename
+	// that missed one of the two registration paths would strand the job.
+	if got := NewHouseholdDemographicsSync(nil).Name(); got != "household_demographics" {
+		t.Errorf("Name() = %q, want %q", got, "household_demographics")
 	}
 }
 
@@ -89,9 +106,9 @@ func TestHouseholdDemographicsSync_YearValidation(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			valid := isValidYearForDemographics(tt.year)
+			valid := isValidDemographicsYear(tt.year)
 			if valid != tt.wantValid {
-				t.Errorf("isValidYearForDemographics(%d) = %v, want %v", tt.year, valid, tt.wantValid)
+				t.Errorf("isValidDemographicsYear(%d) = %v, want %v", tt.year, valid, tt.wantValid)
 			}
 		})
 	}
@@ -144,9 +161,9 @@ func TestHouseholdDemographicsFieldMapping(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.fieldName, func(t *testing.T) {
-			column := mapHHFieldToColumn(tt.fieldName)
+			column := MapHHFieldToColumn(tt.fieldName)
 			if column != tt.expectedColumn {
-				t.Errorf("mapHHFieldToColumn(%q) = %q, want %q", tt.fieldName, column, tt.expectedColumn)
+				t.Errorf("MapHHFieldToColumn(%q) = %q, want %q", tt.fieldName, column, tt.expectedColumn)
 			}
 		})
 	}
@@ -159,7 +176,7 @@ func TestHouseholdCustomFieldMapping(t *testing.T) {
 		expectedColumn string
 	}{
 		// These come from household_custom_values, not person_custom_values
-		{"Synagogue", "congregation_family"},
+		{customFieldNameSynagogue, "congregation_family"},
 		{"Center", "jcc_family"},
 		{"Custody Issues", "custody_family"},
 		{"Board", "board_member"},
@@ -174,129 +191,11 @@ func TestHouseholdCustomFieldMapping(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.fieldName, func(t *testing.T) {
-			column := mapHouseholdFieldToColumn(tt.fieldName)
+			column := MapHouseholdFieldToColumn(tt.fieldName)
 			if column != tt.expectedColumn {
-				t.Errorf("mapHouseholdFieldToColumn(%q) = %q, want %q", tt.fieldName, column, tt.expectedColumn)
+				t.Errorf("MapHouseholdFieldToColumn(%q) = %q, want %q", tt.fieldName, column, tt.expectedColumn)
 			}
 		})
-	}
-}
-
-// ============================================================================
-// Aggregation Tests
-// ============================================================================
-
-// TestHouseholdDemographicsAggregation tests aggregation of person values by household
-func TestHouseholdDemographicsAggregation(t *testing.T) {
-	// Simulate person custom values for multiple family members
-	personValues := []testHHPersonCustomValue{
-		// Person 1 in household 5001 - has most fields filled
-		{HouseholdID: 5001, FieldName: "HH-Family Description", Value: "LGBTQ"},
-		{HouseholdID: 5001, FieldName: "HH-Jewish Affiliation", Value: "Reform"},
-		{HouseholdID: 5001, FieldName: "HH-Name of Congregation", Value: testCongregation},
-
-		// Person 2 in same household 5001 - some fields overlap, some empty
-		{HouseholdID: 5001, FieldName: "HH-Family Description", Value: "LGBTQ"}, // Same value (expected)
-		{HouseholdID: 5001, FieldName: "HH-Jewish Affiliation", Value: ""},      // Empty
-		{HouseholdID: 5001, FieldName: "HH-Name of Congregation", Value: ""},    // Empty
-
-		// Person 3 in different household 5002
-		{HouseholdID: 5002, FieldName: "HH-Family Description", Value: "Interfaith"},
-		{HouseholdID: 5002, FieldName: "HH-Military", Value: "Yes"},
-	}
-
-	aggregated := aggregatePersonValuesByHousehold(personValues)
-
-	// Household 5001 should have all values from the first person (first non-empty wins)
-	hh5001 := aggregated[5001]
-	if hh5001 == nil {
-		t.Fatal("household 5001 not found in aggregated data")
-		return
-	}
-	if hh5001["HH-Family Description"] != "LGBTQ" {
-		t.Errorf("household 5001 family description = %q, want %q", hh5001["HH-Family Description"], "LGBTQ")
-	}
-	if hh5001["HH-Jewish Affiliation"] != "Reform" {
-		t.Errorf("household 5001 jewish affiliation = %q, want %q", hh5001["HH-Jewish Affiliation"], "Reform")
-	}
-	if hh5001["HH-Name of Congregation"] != testCongregation {
-		t.Errorf("household 5001 congregation = %q, want %q", hh5001["HH-Name of Congregation"], testCongregation)
-	}
-
-	// Household 5002 should have its own values
-	hh5002 := aggregated[5002]
-	if hh5002 == nil {
-		t.Fatal("household 5002 not found in aggregated data")
-		return
-	}
-	if hh5002["HH-Family Description"] != "Interfaith" {
-		t.Errorf("household 5002 family description = %q, want %q", hh5002["HH-Family Description"], "Interfaith")
-	}
-	if hh5002["HH-Military"] != "Yes" {
-		t.Errorf("household 5002 military = %q, want %q", hh5002["HH-Military"], "Yes")
-	}
-}
-
-// TestHouseholdDemographicsFirstNonEmptyWins tests that first non-empty value is taken
-func TestHouseholdDemographicsFirstNonEmptyWins(t *testing.T) {
-	values := []testHHPersonCustomValue{
-		{HouseholdID: 5001, FieldName: "HH-Family Description", Value: ""},             // Empty
-		{HouseholdID: 5001, FieldName: "HH-Family Description", Value: ""},             // Empty
-		{HouseholdID: 5001, FieldName: "HH-Family Description", Value: "LGBTQ"},        // First non-empty
-		{HouseholdID: 5001, FieldName: "HH-Family Description", Value: "Kindred Alum"}, // Should be ignored
-	}
-
-	aggregated := aggregatePersonValuesByHousehold(values)
-
-	hh5001 := aggregated[5001]
-	if hh5001["HH-Family Description"] != "LGBTQ" {
-		t.Errorf("expected first non-empty value %q, got %q", "LGBTQ", hh5001["HH-Family Description"])
-	}
-}
-
-// ============================================================================
-// Summer vs Family Camp Overlap Tests
-// ============================================================================
-
-// TestHouseholdDemographicsSummerVsFamily tests that overlapping fields are stored separately
-func TestHouseholdDemographicsSummerVsFamily(t *testing.T) {
-	// Person-level HH- fields (summer camp registration)
-	personValues := []testHHPersonCustomValue{
-		{HouseholdID: 5001, FieldName: "HH-Name of Congregation", Value: testCongregation},
-		{HouseholdID: 5001, FieldName: "HH-Name of JCC", Value: "SF JCC"},
-		{HouseholdID: 5001, FieldName: "HH-special living arrangements", Value: "Shared custody"},
-	}
-
-	// Household-level custom fields (family camp registration)
-	householdValues := []testHHHouseholdCustomValue{
-		{HouseholdID: 5001, FieldName: "Synagogue", Value: "Beth Sholom"},
-		{HouseholdID: 5001, FieldName: "Center", Value: "Oakland JCC"},
-		{HouseholdID: 5001, FieldName: "Custody Issues", Value: "Week on/week off"},
-	}
-
-	// Build demographic record
-	demo := buildDemographicRecord(5001, personValues, householdValues)
-
-	// Verify summer camp fields (from person)
-	if demo.CongregationSummer != testCongregation {
-		t.Errorf("congregation_summer = %q, want %q", demo.CongregationSummer, testCongregation)
-	}
-	if demo.JCCSummer != "SF JCC" {
-		t.Errorf("jcc_summer = %q, want %q", demo.JCCSummer, "SF JCC")
-	}
-	if demo.CustodySummer != "Shared custody" {
-		t.Errorf("custody_summer = %q, want %q", demo.CustodySummer, "Shared custody")
-	}
-
-	// Verify family camp fields (from household)
-	if demo.CongregationFamily != "Beth Sholom" {
-		t.Errorf("congregation_family = %q, want %q", demo.CongregationFamily, "Beth Sholom")
-	}
-	if demo.JCCFamily != "Oakland JCC" {
-		t.Errorf("jcc_family = %q, want %q", demo.JCCFamily, "Oakland JCC")
-	}
-	if demo.CustodyFamily != "Week on/week off" {
-		t.Errorf("custody_family = %q, want %q", demo.CustodyFamily, "Week on/week off")
 	}
 }
 
@@ -336,242 +235,9 @@ func TestHouseholdDemographicsBooleanParsing(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.value, func(t *testing.T) {
-			result := parseBooleanCustomValue(tt.value)
+			result := ParseBoolValue(tt.value)
 			if result != tt.expected {
-				t.Errorf("parseBooleanCustomValue(%q) = %v, want %v", tt.value, result, tt.expected)
-			}
-		})
-	}
-}
-
-// TestHouseholdDemographicsMilitaryField tests military_family boolean field
-func TestHouseholdDemographicsMilitaryField(t *testing.T) {
-	personValues := []testHHPersonCustomValue{
-		{HouseholdID: 5001, FieldName: "HH-Military", Value: "Yes"},
-		{HouseholdID: 5002, FieldName: "HH-Military", Value: "No"},
-		{HouseholdID: 5003, FieldName: "HH-Military", Value: ""},
-	}
-
-	for _, pv := range personValues {
-		var expected bool
-		switch pv.HouseholdID {
-		case 5001:
-			expected = true
-		case 5002, 5003:
-			expected = false
-		}
-
-		result := parseBooleanCustomValue(pv.Value)
-		if result != expected {
-			t.Errorf("household %d: military = %v, want %v", pv.HouseholdID, result, expected)
-		}
-	}
-}
-
-// ============================================================================
-// Multi-Select Field Tests
-// ============================================================================
-
-// TestHouseholdDemographicsMultiSelectAggregation tests aggregation of multi-select fields
-func TestHouseholdDemographicsMultiSelectAggregation(t *testing.T) {
-	// Family Description is a multi-select field
-	// Values should be preserved as pipe-separated
-	personValues := []testHHPersonCustomValue{
-		// Multiple values for same field (different family members selecting different options)
-		{HouseholdID: 5001, FieldName: "HH-Family Description", Value: "LGBTQ|Interfaith"},
-		{HouseholdID: 5002, FieldName: "HH-Family Description", Value: "Kindred Alum"},
-		{HouseholdID: 5003, FieldName: "HH-Family Description", Value: "Single Parent|LGBTQ"},
-	}
-
-	aggregated := aggregatePersonValuesByHousehold(personValues)
-
-	// Multi-select values should be preserved as-is (first non-empty wins)
-	if aggregated[5001]["HH-Family Description"] != "LGBTQ|Interfaith" {
-		t.Errorf("household 5001: got %q", aggregated[5001]["HH-Family Description"])
-	}
-	if aggregated[5002]["HH-Family Description"] != "Kindred Alum" {
-		t.Errorf("household 5002: got %q", aggregated[5002]["HH-Family Description"])
-	}
-	if aggregated[5003]["HH-Family Description"] != "Single Parent|LGBTQ" {
-		t.Errorf("household 5003: got %q", aggregated[5003]["HH-Family Description"])
-	}
-}
-
-// ============================================================================
-// Composite Key Tests
-// ============================================================================
-
-// TestHouseholdDemographicsCompositeKey tests the unique key format
-func TestHouseholdDemographicsCompositeKey(t *testing.T) {
-	tests := []struct {
-		householdPBID string
-		year          int
-		expected      string
-	}{
-		{"abc123", 2025, "abc123|2025"},
-		{"xyz789", 2024, "xyz789|2024"},
-		{"", 2025, "|2025"}, // Edge case: empty ID
-	}
-
-	for _, tt := range tests {
-		key := buildDemographicsCompositeKey(tt.householdPBID, tt.year)
-		if key != tt.expected {
-			t.Errorf("buildDemographicsCompositeKey(%q, %d) = %q, want %q",
-				tt.householdPBID, tt.year, key, tt.expected)
-		}
-	}
-}
-
-// ============================================================================
-// Orphan Detection Tests
-// ============================================================================
-
-// TestHouseholdDemographicsOrphanDetection tests detection of orphaned records
-func TestHouseholdDemographicsOrphanDetection(t *testing.T) {
-	// Existing records in database
-	existingKeys := map[string]bool{
-		"hh001|2025": true, // Will be processed
-		"hh002|2025": true, // Will be processed
-		"hh003|2025": true, // NOT processed = orphan (household removed from year)
-	}
-
-	// Records processed from source data
-	processedKeys := map[string]bool{
-		"hh001|2025": true,
-		"hh002|2025": true,
-		// hh003 no longer has campers enrolled in 2025
-	}
-
-	// Count orphans
-	orphanCount := 0
-	for key := range existingKeys {
-		if !processedKeys[key] {
-			orphanCount++
-		}
-	}
-
-	if orphanCount != 1 {
-		t.Errorf("expected 1 orphan, got %d", orphanCount)
-	}
-}
-
-// ============================================================================
-// Full Record Construction Tests
-// ============================================================================
-
-// TestHouseholdDemographicsFullRecord tests construction of a complete demographic record
-func TestHouseholdDemographicsFullRecord(t *testing.T) {
-	personValues := []testHHPersonCustomValue{
-		{HouseholdID: 5001, FieldName: "HH-Family Description", Value: "LGBTQ|Interfaith"},
-		{HouseholdID: 5001, FieldName: "HH-Jewish Affiliation", Value: "Reform"},
-		{HouseholdID: 5001, FieldName: "HH-Name of Congregation", Value: testCongregation},
-		{HouseholdID: 5001, FieldName: "HH-Name of JCC", Value: "SF JCC"},
-		{HouseholdID: 5001, FieldName: "HH-Military", Value: "No"},
-		{HouseholdID: 5001, FieldName: "HH-parent born outside US", Value: "Yes"},
-		{HouseholdID: 5001, FieldName: "HH-if yes parent born outside US, where", Value: "Israel"},
-		{HouseholdID: 5001, FieldName: "HH-special living arrangements", Value: "Shared custody"},
-		{HouseholdID: 5001, FieldName: "HH-special living arrange-yes", Value: "Yes"},
-		{HouseholdID: 5001, FieldName: "HH-Home or Away", Value: "Home"},
-	}
-
-	householdValues := []testHHHouseholdCustomValue{
-		{HouseholdID: 5001, FieldName: "Synagogue", Value: "Beth Sholom"},
-		{HouseholdID: 5001, FieldName: "Center", Value: "Oakland JCC"},
-		{HouseholdID: 5001, FieldName: "Board", Value: "Yes"},
-	}
-
-	demo := buildDemographicRecord(5001, personValues, householdValues)
-
-	// Verify all fields
-	if demo.FamilyDescription != "LGBTQ|Interfaith" {
-		t.Errorf("family_description = %q", demo.FamilyDescription)
-	}
-	if demo.JewishAffiliation != "Reform" {
-		t.Errorf("jewish_affiliation = %q", demo.JewishAffiliation)
-	}
-	if demo.CongregationSummer != testCongregation {
-		t.Errorf("congregation_summer = %q", demo.CongregationSummer)
-	}
-	if demo.CongregationFamily != "Beth Sholom" {
-		t.Errorf("congregation_family = %q", demo.CongregationFamily)
-	}
-	if demo.JCCSummer != "SF JCC" {
-		t.Errorf("jcc_summer = %q", demo.JCCSummer)
-	}
-	if demo.JCCFamily != "Oakland JCC" {
-		t.Errorf("jcc_family = %q", demo.JCCFamily)
-	}
-	if demo.MilitaryFamily != false {
-		t.Errorf("military_family = %v", demo.MilitaryFamily)
-	}
-	if demo.ParentImmigrant != true {
-		t.Errorf("parent_immigrant = %v", demo.ParentImmigrant)
-	}
-	if demo.ParentImmigrantOrigin != "Israel" {
-		t.Errorf("parent_immigrant_origin = %q", demo.ParentImmigrantOrigin)
-	}
-	if demo.CustodySummer != "Shared custody" {
-		t.Errorf("custody_summer = %q", demo.CustodySummer)
-	}
-	if demo.HasCustodyConsiderations != true {
-		t.Errorf("has_custody_considerations = %v", demo.HasCustodyConsiderations)
-	}
-	if demo.AwayDuringCamp != false { // "Home" means not away
-		t.Errorf("away_during_camp = %v", demo.AwayDuringCamp)
-	}
-	if demo.BoardMember != true {
-		t.Errorf("board_member = %v", demo.BoardMember)
-	}
-}
-
-// ============================================================================
-// Upsert Decision Tests
-// ============================================================================
-
-// TestHouseholdDemographicsUpsertDecision tests create vs update decision
-func TestHouseholdDemographicsUpsertDecision(t *testing.T) {
-	tests := []struct {
-		name         string
-		existingKeys map[string]bool
-		newKey       string
-		expectCreate bool
-		expectUpdate bool
-	}{
-		{
-			name:         "new record - not in existing",
-			existingKeys: map[string]bool{},
-			newKey:       "hh001|2025",
-			expectCreate: true,
-			expectUpdate: false,
-		},
-		{
-			name:         "existing record - should update",
-			existingKeys: map[string]bool{"hh001|2025": true},
-			newKey:       "hh001|2025",
-			expectCreate: false,
-			expectUpdate: true,
-		},
-		{
-			name:         "different year - new record",
-			existingKeys: map[string]bool{"hh001|2025": true},
-			newKey:       "hh001|2026",
-			expectCreate: true,
-			expectUpdate: false,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			exists := tt.existingKeys[tt.newKey]
-
-			isCreate := !exists
-			isUpdate := exists
-
-			if isCreate != tt.expectCreate {
-				t.Errorf("create decision = %v, want %v", isCreate, tt.expectCreate)
-			}
-			if isUpdate != tt.expectUpdate {
-				t.Errorf("update decision = %v, want %v", isUpdate, tt.expectUpdate)
+				t.Errorf("ParseBoolValue(%q) = %v, want %v", tt.value, result, tt.expected)
 			}
 		})
 	}
@@ -591,7 +257,7 @@ func TestIsHHField(t *testing.T) {
 		{"HH-Jewish Affiliation", true},
 		{"HH-Military", true},
 		{"Family Camp Adult 1", false},
-		{"Synagogue", false},
+		{customFieldNameSynagogue, false},
 		{"Board", false},
 		{"hh-lowercase", false}, // Case sensitive
 		{"", false},
@@ -599,234 +265,640 @@ func TestIsHHField(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.fieldName, func(t *testing.T) {
-			result := isHHField(tt.fieldName)
+			result := IsHHField(tt.fieldName)
 			if result != tt.isHHField {
-				t.Errorf("isHHField(%q) = %v, want %v", tt.fieldName, result, tt.isHHField)
+				t.Errorf("IsHHField(%q) = %v, want %v", tt.fieldName, result, tt.isHHField)
 			}
 		})
 	}
 }
 
 // ============================================================================
-// Test Helper Types
+// Grain tests (kindred#2260) -- one row per person per household per year
 // ============================================================================
 
-type testHHPersonCustomValue struct {
-	HouseholdID int
-	FieldName   string
-	Value       string
-}
-
-type testHHHouseholdCustomValue struct {
-	HouseholdID int
-	FieldName   string
-	Value       string
-}
-
-type testDemographicRecord struct {
-	HouseholdID              int
-	Year                     int
-	FamilyDescription        string
-	FamilyDescriptionOther   string
-	JewishAffiliation        string
-	JewishAffiliationOther   string
-	JewishIdentities         string
-	CongregationSummer       string
-	CongregationFamily       string
-	JCCSummer                string
-	JCCFamily                string
-	MilitaryFamily           bool
-	ParentImmigrant          bool
-	ParentImmigrantOrigin    string
-	CustodySummer            string
-	CustodyFamily            string
-	HasCustodyConsiderations bool
-	AwayDuringCamp           bool
-	AwayLocation             string
-	AwayPhone                string
-	AwayFromDate             string
-	AwayReturnDate           string
-	FormFiller               string
-	BoardMember              bool
-}
-
-// ============================================================================
-// Test Helper Functions
-// ============================================================================
-
-// isValidYearForDemographics validates year parameter
-func isValidYearForDemographics(year int) bool {
-	return year >= 2017 && year <= 2050
-}
-
-// isHHField checks if a field name starts with "HH-"
-func isHHField(fieldName string) bool {
-	return len(fieldName) >= 3 && fieldName[:3] == "HH-"
-}
-
-// mapHHFieldToColumn maps HH- field names to demographic column names
-func mapHHFieldToColumn(fieldName string) string {
-	mapping := map[string]string{
-		"HH-Family Description":                   "family_description",
-		"HH-Family Description Other":             "family_description_other",
-		"HH-Jewish Affiliation":                   "jewish_affiliation",
-		"HH-Jewish Affiliation Other":             "jewish_affiliation_other",
-		"HH-Jewish Identities":                    "jewish_identities",
-		"HH-Name of Congregation":                 "congregation_summer",
-		"HH-Name of JCC":                          "jcc_summer",
-		"HH-Military":                             "military_family",
-		"HH-parent born outside US":               "parent_immigrant",
-		"HH-if yes parent born outside US, where": "parent_immigrant_origin",
-		"HH-special living arrangements":          "custody_summer",
-		"HH-special living arrange-yes":           "has_custody_considerations",
-		"HH-Home or Away":                         "away_during_camp",
-		"HH-Away location":                        "away_location",
-		"HH-Phone number while away":              "away_phone",
-		"HH-Away From (mm/dd/yy)":                 "away_from_date",
-		"HH-Returning (mm/dd/yy)":                 "away_return_date",
-		"HH-Who is filling out info":              "form_filler",
+// newHouseholdDemographicsTestApp returns a throwaway PocketBase app carrying
+// the three collections this service reads and writes, with
+// household_demographics shaped at the person grain.
+//
+// The unique index is declared here on purpose. It is the third leg of the
+// grain triple, and a fixture that left it off would let a household-grain
+// write key save two colliding rows and look correct doing it.
+func newHouseholdDemographicsTestApp(t *testing.T) (app core.App, households, persons *core.Collection) {
+	t.Helper()
+	testApp, err := pbtests.NewTestApp()
+	if err != nil {
+		t.Fatalf("NewTestApp: %v", err)
 	}
-	return mapping[fieldName]
-}
+	t.Cleanup(testApp.Cleanup)
+	app = testApp
 
-// mapHouseholdFieldToColumn maps household custom field names to demographic column names
-func mapHouseholdFieldToColumn(fieldName string) string {
-	mapping := map[string]string{
-		"Synagogue":      "congregation_family",
-		"Center":         "jcc_family",
-		"Custody Issues": "custody_family",
-		"Board":          "board_member",
-	}
-	return mapping[fieldName]
-}
-
-// parseBooleanCustomValue parses boolean values from custom field strings
-func parseBooleanCustomValue(value string) bool {
-	if value == "" {
-		return false
-	}
-	// Trim whitespace
-	trimmed := value
-	for trimmed != "" && (trimmed[0] == ' ' || trimmed[0] == '\t') {
-		trimmed = trimmed[1:]
-	}
-	for trimmed != "" && (trimmed[len(trimmed)-1] == ' ' || trimmed[len(trimmed)-1] == '\t') {
-		trimmed = trimmed[:len(trimmed)-1]
-	}
-	if trimmed == "" {
-		return false
+	households = core.NewBaseCollection("households")
+	households.Fields.Add(&core.NumberField{Name: "cm_id"})
+	households.Fields.Add(&core.NumberField{Name: "year"})
+	if err := app.Save(households); err != nil {
+		t.Fatalf("create households: %v", err)
 	}
 
-	// Check for true values (case insensitive)
-	lower := toLowerASCII(trimmed)
-	return lower == "yes" || lower == "true" || lower == "1" || lower == "y"
+	persons = core.NewBaseCollection("persons")
+	persons.Fields.Add(&core.NumberField{Name: "cm_id"})
+	persons.Fields.Add(&core.RelationField{Name: "household", CollectionId: households.Id, MaxSelect: 1})
+	persons.Fields.Add(&core.NumberField{Name: "year"})
+	if err := app.Save(persons); err != nil {
+		t.Fatalf("create persons: %v", err)
+	}
+
+	demo := core.NewBaseCollection("household_demographics")
+	demo.Fields.Add(&core.RelationField{Name: "household", CollectionId: households.Id, MaxSelect: 1})
+	demo.Fields.Add(&core.RelationField{Name: "person", CollectionId: persons.Id, MaxSelect: 1})
+	demo.Fields.Add(&core.NumberField{Name: "person_id"})
+	demo.Fields.Add(&core.NumberField{Name: "year"})
+	for _, name := range []string{
+		"family_description", "family_description_other", "jewish_affiliation",
+		"jewish_affiliation_other", "jewish_identities", "congregation_summer",
+		"congregation_family", "jcc_summer", "jcc_family", "parent_immigrant_origin",
+		"custody_summer", "custody_family", "away_location", "away_phone",
+		"away_from_date", "away_return_date", "form_filler",
+	} {
+		demo.Fields.Add(&core.TextField{Name: name})
+	}
+	for _, name := range []string{
+		"military_family", "parent_immigrant", "has_custody_considerations",
+		"away_during_camp", "board_member",
+	} {
+		demo.Fields.Add(&core.BoolField{Name: name})
+	}
+	demo.AddIndex("idx_household_demographics_hh_person_year", true,
+		"`household`, `person_id`, `year`", "")
+	if err := app.Save(demo); err != nil {
+		t.Fatalf("create household_demographics: %v", err)
+	}
+
+	return app, households, persons
 }
 
-// toLowerASCII converts ASCII letters to lowercase
-func toLowerASCII(s string) string {
-	result := make([]byte, len(s))
-	for i := range len(s) {
-		c := s[i]
-		if c >= 'A' && c <= 'Z' {
-			c += 'a' - 'A'
+// hhPersonEntry is a shorthand for a person-level HH- answer in these tests.
+func hhPersonEntry(householdPBID, personPBID string, personCMID int, field, value string) hhCustomValueEntry {
+	return hhCustomValueEntry{
+		householdPBID: householdPBID,
+		personPBID:    personPBID,
+		personCMID:    personCMID,
+		fieldName:     field,
+		value:         value,
+	}
+}
+
+// hhHouseholdEntry is a shorthand for a household-level (family camp) answer.
+// Household answers carry no person, which is what puts them on their own row.
+func hhHouseholdEntry(householdPBID, field, value string) hhCustomValueEntry {
+	return hhCustomValueEntry{householdPBID: householdPBID, fieldName: field, value: value}
+}
+
+// rowKeys returns the sorted keys of a row map, for failure messages.
+func rowKeys(rows map[string]*householdDemographicsRecord) []string {
+	keys := make([]string, 0, len(rows))
+	for k := range rows {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	return keys
+}
+
+// TestAggregateKeepsEveryPersonAnswer is the regression test for kindred#2260.
+// Two campers in one household answering the same HH- question differently used
+// to collapse to whichever row the SQLite planner yielded first; every later
+// answer was discarded with no log line and no counter. Both answers must now
+// survive, on their own row.
+func TestAggregateKeepsEveryPersonAnswer(t *testing.T) {
+	s := NewHouseholdDemographicsSync(nil)
+
+	values := []hhCustomValueEntry{
+		hhPersonEntry("hh1", "p1", 101, "HH-Jewish Affiliation", testAffiliation),
+		hhPersonEntry("hh1", "p2", 102, "HH-Jewish Affiliation", "Prefer not to answer"),
+	}
+
+	rows := s.aggregateToRows(values, nil, 2026)
+
+	if len(rows) != 2 {
+		t.Fatalf("aggregateToRows produced %d rows, want 2 (one per camper): %v", len(rows), rowKeys(rows))
+	}
+	first := rows[MakeCompositeKey("hh1", 101, 2026)]
+	second := rows[MakeCompositeKey("hh1", 102, 2026)]
+	if first == nil || second == nil {
+		t.Fatalf("rows are not keyed per person: got keys %v", rowKeys(rows))
+	}
+	if first.jewishAffiliation != testAffiliation {
+		t.Errorf("camper 101 jewish_affiliation = %q, want %q", first.jewishAffiliation, testAffiliation)
+	}
+	if second.jewishAffiliation != "Prefer not to answer" {
+		t.Errorf("camper 102 jewish_affiliation = %q, want %q", second.jewishAffiliation, "Prefer not to answer")
+	}
+	if first.personPBID != "p1" || second.personPBID != "p2" {
+		t.Errorf("person relation not carried: %q / %q", first.personPBID, second.personPBID)
+	}
+}
+
+// TestAggregateIsOrderIndependent pins the property the old code could not
+// hold. loadPersonCustomValues pages with no ORDER BY, so the input order is an
+// artifact of whichever index the planner picked; the same input supplied in a
+// different order must produce byte-identical rows.
+func TestAggregateIsOrderIndependent(t *testing.T) {
+	s := NewHouseholdDemographicsSync(nil)
+
+	values := []hhCustomValueEntry{
+		hhPersonEntry("hh1", "p1", 101, "HH-Family Description", "Interfaith"),
+		hhPersonEntry("hh1", "p1", 101, "HH-Name of Congregation", testCongregation),
+		hhPersonEntry("hh1", "p2", 102, "HH-Family Description", "Single Parent|LGBTQ"),
+		hhPersonEntry("hh1", "p2", 102, "HH-Military", "Yes"),
+		hhPersonEntry("hh2", "p3", 103, "HH-Family Description", "Kindred Alum"),
+	}
+	reversed := make([]hhCustomValueEntry, len(values))
+	for i, v := range values {
+		reversed[len(values)-1-i] = v
+	}
+
+	forward := s.aggregateToRows(values, nil, 2026)
+	backward := s.aggregateToRows(reversed, nil, 2026)
+
+	if len(forward) != len(backward) {
+		t.Fatalf("row count differs by input order: %d vs %d", len(forward), len(backward))
+	}
+	for key, want := range forward {
+		got, ok := backward[key]
+		if !ok {
+			t.Fatalf("key %q missing when the same input is supplied in reverse", key)
 		}
-		result[i] = c
-	}
-	return string(result)
-}
-
-// aggregatePersonValuesByHousehold groups person custom values by household ID
-// First non-empty value wins for each field
-func aggregatePersonValuesByHousehold(values []testHHPersonCustomValue) map[int]map[string]string {
-	result := make(map[int]map[string]string)
-
-	for _, v := range values {
-		if v.Value == "" {
-			continue
-		}
-
-		if result[v.HouseholdID] == nil {
-			result[v.HouseholdID] = make(map[string]string)
-		}
-
-		// First non-empty wins
-		if _, exists := result[v.HouseholdID][v.FieldName]; !exists {
-			result[v.HouseholdID][v.FieldName] = v.Value
-		}
-	}
-
-	return result
-}
-
-// buildDemographicsCompositeKey builds the composite key for upsert
-func buildDemographicsCompositeKey(householdPBID string, year int) string {
-	return householdPBID + "|" + itoa(year)
-}
-
-// itoa is defined in financial_aid_applications_test.go
-
-// buildDemographicRecord constructs a demographic record from custom values
-func buildDemographicRecord(
-	householdID int,
-	personValues []testHHPersonCustomValue,
-	householdValues []testHHHouseholdCustomValue,
-) testDemographicRecord {
-	// Aggregate person values
-	personAgg := make(map[string]string)
-	for _, v := range personValues {
-		if v.HouseholdID != householdID || v.Value == "" {
-			continue
-		}
-		if _, exists := personAgg[v.FieldName]; !exists {
-			personAgg[v.FieldName] = v.Value
+		if *got != *want {
+			t.Errorf("key %q differs by input order:\n forward  = %+v\n backward = %+v", key, *want, *got)
 		}
 	}
+}
 
-	// Aggregate household values
-	householdAgg := make(map[string]string)
-	for _, v := range householdValues {
-		if v.HouseholdID != householdID || v.Value == "" {
-			continue
-		}
-		if _, exists := householdAgg[v.FieldName]; !exists {
-			householdAgg[v.FieldName] = v.Value
-		}
+// TestAggregateBooleanArmsStillOR covers the five boolean arms under the
+// re-grain. They are logical ORs, not first-wins, and kindred#2260 is explicit
+// that they were never part of the defect. Two things must hold: the OR is
+// still order-independent within one camper's answers, and one camper's "No"
+// no longer speaks for a sibling who said "Yes".
+func TestAggregateBooleanArmsStillOR(t *testing.T) {
+	s := NewHouseholdDemographicsSync(nil)
+
+	// Same camper, two contributing values -- the OR must win either way round.
+	within := []hhCustomValueEntry{
+		hhPersonEntry("hh1", "p1", 101, "HH-Military", "No"),
+		hhPersonEntry("hh1", "p1", 101, "HH-Military", "Yes"),
+	}
+	key := MakeCompositeKey("hh1", 101, 2026)
+	forward := s.aggregateToRows(within, nil, 2026)[key]
+	backward := s.aggregateToRows([]hhCustomValueEntry{within[1], within[0]}, nil, 2026)[key]
+	if forward == nil || backward == nil {
+		t.Fatal("expected a row for camper 101 in both orders")
+	}
+	if !forward.militaryFamily || !backward.militaryFamily {
+		t.Errorf("military_family OR regressed: forward=%v backward=%v",
+			forward.militaryFamily, backward.militaryFamily)
 	}
 
-	// Build record
-	demo := testDemographicRecord{
-		HouseholdID: householdID,
+	// Two campers disagreeing: each keeps their own answer.
+	across := []hhCustomValueEntry{
+		hhPersonEntry("hh1", "p1", 101, "HH-Military", "No"),
+		hhPersonEntry("hh1", "p2", 102, "HH-Military", "Yes"),
+	}
+	rows := s.aggregateToRows(across, nil, 2026)
+	if got := rows[MakeCompositeKey("hh1", 101, 2026)]; got == nil || got.militaryFamily {
+		t.Errorf("camper 101 answered No; military_family = %v", got != nil && got.militaryFamily)
+	}
+	if got := rows[MakeCompositeKey("hh1", 102, 2026)]; got == nil || !got.militaryFamily {
+		t.Errorf("camper 102 answered Yes; military_family = %v", got != nil && got.militaryFamily)
+	}
+}
+
+// TestAggregateHouseholdValuesGetTheirOwnRow covers the _family columns. They
+// come from household_custom_values, which is one row per household per field,
+// so they are already at household grain and must not be duplicated onto every
+// camper's row. They land on the person-less row (person_id 0), which coexists
+// with the camper rows for the same household-year.
+func TestAggregateHouseholdValuesGetTheirOwnRow(t *testing.T) {
+	s := NewHouseholdDemographicsSync(nil)
+
+	personValues := []hhCustomValueEntry{
+		hhPersonEntry("hh1", "p1", 101, "HH-Name of Congregation", testCongregation),
+		hhPersonEntry("hh1", "p1", 101, "HH-Name of JCC", "Bayside JCC"),
+		hhPersonEntry("hh1", "p1", 101, "HH-special living arrangements", "Shared custody"),
+	}
+	householdValues := []hhCustomValueEntry{
+		hhHouseholdEntry("hh1", customFieldNameSynagogue, "Oak Valley Synagogue"),
+		hhHouseholdEntry("hh1", "Center", "Lakeside JCC"),
+		hhHouseholdEntry("hh1", "Custody Issues", "Week on/week off"),
+		hhHouseholdEntry("hh1", "Board", "Yes"),
 	}
 
-	// Map person fields (summer camp)
-	demo.FamilyDescription = personAgg["HH-Family Description"]
-	demo.FamilyDescriptionOther = personAgg["HH-Family Description Other"]
-	demo.JewishAffiliation = personAgg["HH-Jewish Affiliation"]
-	demo.JewishAffiliationOther = personAgg["HH-Jewish Affiliation Other"]
-	demo.JewishIdentities = personAgg["HH-Jewish Identities"]
-	demo.CongregationSummer = personAgg["HH-Name of Congregation"]
-	demo.JCCSummer = personAgg["HH-Name of JCC"]
-	demo.MilitaryFamily = parseBooleanCustomValue(personAgg["HH-Military"])
-	demo.ParentImmigrant = parseBooleanCustomValue(personAgg["HH-parent born outside US"])
-	demo.ParentImmigrantOrigin = personAgg["HH-if yes parent born outside US, where"]
-	demo.CustodySummer = personAgg["HH-special living arrangements"]
-	demo.HasCustodyConsiderations = parseBooleanCustomValue(personAgg["HH-special living arrange-yes"])
-	demo.FormFiller = personAgg["HH-Who is filling out info"]
+	rows := s.aggregateToRows(personValues, householdValues, 2026)
+	if len(rows) != 2 {
+		t.Fatalf("got %d rows, want 2 (one camper row + one household row): %v", len(rows), rowKeys(rows))
+	}
 
-	// Away info
-	homeOrAway := personAgg["HH-Home or Away"]
-	// "Away" means away_during_camp = true, anything else = false
-	demo.AwayDuringCamp = toLowerASCII(homeOrAway) == "away"
-	demo.AwayLocation = personAgg["HH-Away location"]
-	demo.AwayPhone = personAgg["HH-Phone number while away"]
-	demo.AwayFromDate = personAgg["HH-Away From (mm/dd/yy)"]
-	demo.AwayReturnDate = personAgg["HH-Returning (mm/dd/yy)"]
+	camper := rows[MakeCompositeKey("hh1", 101, 2026)]
+	household := rows[MakeCompositeKey("hh1", 0, 2026)]
+	if camper == nil || household == nil {
+		t.Fatalf("expected a camper row and a household row, got keys %v", rowKeys(rows))
+	}
 
-	// Map household fields (family camp)
-	demo.CongregationFamily = householdAgg["Synagogue"]
-	demo.JCCFamily = householdAgg["Center"]
-	demo.CustodyFamily = householdAgg["Custody Issues"]
-	demo.BoardMember = parseBooleanCustomValue(householdAgg["Board"])
+	// Summer answers stay on the camper who gave them.
+	if camper.congregationSummer != testCongregation {
+		t.Errorf("camper congregation_summer = %q, want %q", camper.congregationSummer, testCongregation)
+	}
+	if camper.jccSummer != "Bayside JCC" {
+		t.Errorf("camper jcc_summer = %q, want %q", camper.jccSummer, "Bayside JCC")
+	}
+	if camper.custodySummer != "Shared custody" {
+		t.Errorf("camper custody_summer = %q, want %q", camper.custodySummer, "Shared custody")
+	}
+	if camper.congregationFamily != "" || camper.jccFamily != "" || camper.custodyFamily != "" || camper.boardMember {
+		t.Errorf("family columns leaked onto the camper row: %+v", *camper)
+	}
 
-	return demo
+	// Family answers stay on the household row.
+	if household.congregationFamily != "Oak Valley Synagogue" {
+		t.Errorf("household congregation_family = %q", household.congregationFamily)
+	}
+	if household.jccFamily != "Lakeside JCC" {
+		t.Errorf("household jcc_family = %q", household.jccFamily)
+	}
+	if household.custodyFamily != "Week on/week off" {
+		t.Errorf("household custody_family = %q", household.custodyFamily)
+	}
+	if !household.boardMember {
+		t.Error("household board_member = false, want true")
+	}
+	if household.congregationSummer != "" || household.jccSummer != "" || household.custodySummer != "" {
+		t.Errorf("summer columns leaked onto the household row: %+v", *household)
+	}
+	if household.personPBID != "" || household.personCMID != 0 {
+		t.Errorf("household row carries a person: %q / %d", household.personPBID, household.personCMID)
+	}
+}
+
+// TestAggregateFullRecord drives every arm of both mapping switches for a
+// single camper, so a case arm dropped or mis-wired during the re-grain shows
+// up as a wrong column rather than as a missing test.
+func TestAggregateFullRecord(t *testing.T) {
+	s := NewHouseholdDemographicsSync(nil)
+
+	personValues := []hhCustomValueEntry{
+		hhPersonEntry("hh1", "p1", 101, "HH-Family Description", "LGBTQ|Interfaith"),
+		hhPersonEntry("hh1", "p1", 101, "HH-Family Description Other", "Multigenerational"),
+		hhPersonEntry("hh1", "p1", 101, "HH-Jewish Affiliation", testAffiliation),
+		hhPersonEntry("hh1", "p1", 101, "HH-Jewish Affiliation Other", "Renewal"),
+		hhPersonEntry("hh1", "p1", 101, "HH-Jewish Identities", "Ashkenazi|Sephardi"),
+		hhPersonEntry("hh1", "p1", 101, "HH-Name of Congregation", testCongregation),
+		hhPersonEntry("hh1", "p1", 101, "HH-Name of JCC", "Bayside JCC"),
+		hhPersonEntry("hh1", "p1", 101, "HH-Military", "No"),
+		hhPersonEntry("hh1", "p1", 101, "HH-parent born outside US", "Yes"),
+		hhPersonEntry("hh1", "p1", 101, "HH-if yes parent born outside US, where", "Israel"),
+		hhPersonEntry("hh1", "p1", 101, "HH-special living arrangements", "Shared custody"),
+		hhPersonEntry("hh1", "p1", 101, "HH-special living arrange-yes", "Yes"),
+		hhPersonEntry("hh1", "p1", 101, "HH-Home or Away", "Yes"),
+		hhPersonEntry("hh1", "p1", 101, "HH-Away location", "Cape Cod"),
+		hhPersonEntry("hh1", "p1", 101, "HH-Phone number while away", "555-0100"),
+		hhPersonEntry("hh1", "p1", 101, "HH-Away From (mm/dd/yy)", "07/01/26"),
+		hhPersonEntry("hh1", "p1", 101, "HH-Returning (mm/dd/yy)", "07/15/26"),
+		hhPersonEntry("hh1", "p1", 101, "HH-Who is filling out info", "Parent"),
+	}
+	householdValues := []hhCustomValueEntry{
+		hhHouseholdEntry("hh1", customFieldNameSynagogue, "Oak Valley Synagogue"),
+		hhHouseholdEntry("hh1", "Center", "Lakeside JCC"),
+		hhHouseholdEntry("hh1", "Custody Issues", "Week on/week off"),
+		hhHouseholdEntry("hh1", "Board", "Yes"),
+	}
+
+	rows := s.aggregateToRows(personValues, householdValues, 2026)
+	camper := rows[MakeCompositeKey("hh1", 101, 2026)]
+	if camper == nil {
+		t.Fatalf("no camper row, got keys %v", rowKeys(rows))
+	}
+
+	want := householdDemographicsRecord{
+		householdPBID:            "hh1",
+		personPBID:               "p1",
+		personCMID:               101,
+		year:                     2026,
+		familyDescription:        "LGBTQ|Interfaith",
+		familyDescriptionOther:   "Multigenerational",
+		jewishAffiliation:        testAffiliation,
+		jewishAffiliationOther:   "Renewal",
+		jewishIdentities:         "Ashkenazi|Sephardi",
+		congregationSummer:       testCongregation,
+		jccSummer:                "Bayside JCC",
+		militaryFamily:           false,
+		parentImmigrant:          true,
+		parentImmigrantOrigin:    "Israel",
+		custodySummer:            "Shared custody",
+		hasCustodyConsiderations: true,
+		awayDuringCamp:           true,
+		awayLocation:             "Cape Cod",
+		awayPhone:                "555-0100",
+		awayFromDate:             "07/01/26",
+		awayReturnDate:           "07/15/26",
+		formFiller:               "Parent",
+	}
+	if *camper != want {
+		t.Errorf("camper row =\n %+v\nwant\n %+v", *camper, want)
+	}
+
+	household := rows[MakeCompositeKey("hh1", 0, 2026)]
+	if household == nil {
+		t.Fatalf("no household row, got keys %v", rowKeys(rows))
+	}
+	wantHousehold := householdDemographicsRecord{
+		householdPBID:      "hh1",
+		year:               2026,
+		congregationFamily: "Oak Valley Synagogue",
+		jccFamily:          "Lakeside JCC",
+		custodyFamily:      "Week on/week off",
+		boardMember:        true,
+	}
+	if *household != wantHousehold {
+		t.Errorf("household row =\n %+v\nwant\n %+v", *household, wantHousehold)
+	}
+}
+
+// TestAggregatePreservesMultiSelectVerbatim covers the pipe-delimited
+// multi-selects, which is why kindred#2260 rejected both a newest-wins collapse
+// and a union: the newest answer is missing a token a sibling carries in 86% of
+// colliding cells, and pairs like "Prefer not to answer" against a named
+// affiliation cannot be unioned coherently. Each camper's string is stored as
+// given, untouched.
+func TestAggregatePreservesMultiSelectVerbatim(t *testing.T) {
+	s := NewHouseholdDemographicsSync(nil)
+
+	rows := s.aggregateToRows([]hhCustomValueEntry{
+		hhPersonEntry("hh1", "p1", 101, "HH-Family Description", "LGBTQ|Interfaith"),
+		hhPersonEntry("hh1", "p2", 102, "HH-Family Description", "Single Parent|LGBTQ"),
+		hhPersonEntry("hh2", "p3", 103, "HH-Family Description", "Kindred Alum"),
+	}, nil, 2026)
+
+	want := map[string]string{
+		MakeCompositeKey("hh1", 101, 2026): "LGBTQ|Interfaith",
+		MakeCompositeKey("hh1", 102, 2026): "Single Parent|LGBTQ",
+		MakeCompositeKey("hh2", 103, 2026): "Kindred Alum",
+	}
+	if len(rows) != len(want) {
+		t.Fatalf("got %d rows, want %d: %v", len(rows), len(want), rowKeys(rows))
+	}
+	for key, value := range want {
+		got := rows[key]
+		if got == nil {
+			t.Fatalf("row %q missing, got keys %v", key, rowKeys(rows))
+		}
+		if got.familyDescription != value {
+			t.Errorf("row %q family_description = %q, want %q", key, got.familyDescription, value)
+		}
+	}
+}
+
+// TestMakeCompositeKeyCarriesPerson pins leg one of the grain triple, the write
+// key. A key that omits the person collapses siblings back together no matter
+// what the index says.
+func TestMakeCompositeKeyCarriesPerson(t *testing.T) {
+	tests := []struct {
+		household string
+		personCM  int
+		year      int
+		want      string
+	}{
+		{"abc123", 5001, 2026, "abc123|5001|2026"},
+		{"abc123", 5002, 2026, "abc123|5002|2026"},
+		{"abc123", 0, 2026, "abc123|0|2026"}, // the household-level row
+		{"abc123", 5001, 2025, "abc123|5001|2025"},
+		{"xyz789", 5001, 2026, "xyz789|5001|2026"},
+	}
+
+	seen := make(map[string]bool, len(tests))
+	for _, tt := range tests {
+		got := MakeCompositeKey(tt.household, tt.personCM, tt.year)
+		if got != tt.want {
+			t.Errorf("MakeCompositeKey(%q, %d, %d) = %q, want %q",
+				tt.household, tt.personCM, tt.year, got, tt.want)
+		}
+		if seen[got] {
+			t.Errorf("MakeCompositeKey collided on %q", got)
+		}
+		seen[got] = true
+	}
+}
+
+// TestUpsertAndOrphanSweepAgreeOnGrain is the grain-triple test. kindred#2257
+// states the trap plainly: widen the write key and the unique index but not the
+// orphan key, and the next sync run deletes the rows the widening just created
+// and reports success. This drives the real write path and the real sweep
+// against a fixture carrying the real unique index, so a key that disagrees
+// with either of the other two legs fails here rather than in production.
+func TestUpsertAndOrphanSweepAgreeOnGrain(t *testing.T) {
+	app, households, persons := newHouseholdDemographicsTestApp(t)
+	ctx := context.Background()
+
+	hh := core.NewRecord(households)
+	hh.Set("cm_id", 9001)
+	hh.Set("year", 2026)
+	if err := app.Save(hh); err != nil {
+		t.Fatalf("save household: %v", err)
+	}
+	personPBIDs := make(map[int]string, 2)
+	for _, cmID := range []int{101, 102} {
+		p := core.NewRecord(persons)
+		p.Set("cm_id", cmID)
+		p.Set("household", hh.Id)
+		p.Set("year", 2026)
+		if err := app.Save(p); err != nil {
+			t.Fatalf("save person %d: %v", cmID, err)
+		}
+		personPBIDs[cmID] = p.Id
+	}
+
+	s := NewHouseholdDemographicsSync(app)
+	both := []hhCustomValueEntry{
+		hhPersonEntry(hh.Id, personPBIDs[101], 101, "HH-Jewish Affiliation", testAffiliation),
+		hhPersonEntry(hh.Id, personPBIDs[102], 102, "HH-Jewish Affiliation", "Prefer not to answer"),
+	}
+
+	rows := s.aggregateToRows(both, nil, 2026)
+	existing, err := s.loadExistingRecords(ctx, 2026)
+	if err != nil {
+		t.Fatalf("loadExistingRecords: %v", err)
+	}
+	created, _, _, errs := s.upsertRecords(ctx, rows, existing, 2026)
+	if errs != 0 {
+		t.Fatalf("upsertRecords reported %d errors", errs)
+	}
+	if created != 2 {
+		t.Fatalf("upsertRecords created %d rows, want 2 (one per camper)", created)
+	}
+
+	// Leg two: the sweep must recognize both rows as computed. A household-grain
+	// orphan key matches neither and deletes the pair it just wrote.
+	existing, err = s.loadExistingRecords(ctx, 2026)
+	if err != nil {
+		t.Fatalf("loadExistingRecords after upsert: %v", err)
+	}
+	if len(existing) != 2 {
+		t.Fatalf("loadExistingRecords keyed %d rows, want 2 -- a household-grain key hides a sibling", len(existing))
+	}
+	if deleted := s.deleteOrphans(ctx, rows, existing); deleted != 0 {
+		t.Fatalf("deleteOrphans removed %d of the rows the write path just created", deleted)
+	}
+	if n := countDemographicsRows(t, app); n != 2 {
+		t.Fatalf("household_demographics holds %d rows after a no-op sweep, want 2", n)
+	}
+
+	// A camper who stops answering is a real orphan -- exactly one row goes.
+	onlyFirst := s.aggregateToRows(both[:1], nil, 2026)
+	existing, err = s.loadExistingRecords(ctx, 2026)
+	if err != nil {
+		t.Fatalf("loadExistingRecords before sweep: %v", err)
+	}
+	if deleted := s.deleteOrphans(ctx, onlyFirst, existing); deleted != 1 {
+		t.Fatalf("deleteOrphans removed %d rows, want 1", deleted)
+	}
+	if n := countDemographicsRows(t, app); n != 1 {
+		t.Fatalf("household_demographics holds %d rows, want 1", n)
+	}
+	survivor, err := app.FindFirstRecordByFilter("household_demographics", "year = 2026")
+	if err != nil {
+		t.Fatalf("find survivor: %v", err)
+	}
+	if survivor.GetInt("person_id") != 101 {
+		t.Errorf("survivor person_id = %d, want 101", survivor.GetInt("person_id"))
+	}
+	if survivor.GetString("person") != personPBIDs[101] {
+		t.Errorf("survivor person relation = %q, want %q", survivor.GetString("person"), personPBIDs[101])
+	}
+}
+
+// TestDeleteOrphansRefusesToEmptyTheTable guards the sweep against an upstream
+// load that came back empty. Every row here is recomputed from
+// person_custom_values on each run, so an empty computed set is far more likely
+// to be a failed read than a year in which nobody answered anything -- and the
+// sweep is the one step of this sync that a re-run cannot undo.
+func TestDeleteOrphansRefusesToEmptyTheTable(t *testing.T) {
+	app, households, persons := newHouseholdDemographicsTestApp(t)
+	ctx := context.Background()
+
+	hh := core.NewRecord(households)
+	hh.Set("cm_id", 9001)
+	hh.Set("year", 2026)
+	if err := app.Save(hh); err != nil {
+		t.Fatalf("save household: %v", err)
+	}
+	p := core.NewRecord(persons)
+	p.Set("cm_id", 101)
+	p.Set("household", hh.Id)
+	p.Set("year", 2026)
+	if err := app.Save(p); err != nil {
+		t.Fatalf("save person: %v", err)
+	}
+
+	s := NewHouseholdDemographicsSync(app)
+	rows := s.aggregateToRows([]hhCustomValueEntry{
+		hhPersonEntry(hh.Id, p.Id, 101, "HH-Jewish Affiliation", testAffiliation),
+	}, nil, 2026)
+	existing, err := s.loadExistingRecords(ctx, 2026)
+	if err != nil {
+		t.Fatalf("loadExistingRecords: %v", err)
+	}
+	if _, _, _, errs := s.upsertRecords(ctx, rows, existing, 2026); errs != 0 {
+		t.Fatalf("upsertRecords reported %d errors", errs)
+	}
+	existing, err = s.loadExistingRecords(ctx, 2026)
+	if err != nil {
+		t.Fatalf("loadExistingRecords after upsert: %v", err)
+	}
+
+	deleted := s.deleteOrphans(ctx, map[string]*householdDemographicsRecord{}, existing)
+	if deleted != 0 {
+		t.Errorf("deleteOrphans removed %d rows against an empty computed set; want a refusal", deleted)
+	}
+	if n := countDemographicsRows(t, app); n != 1 {
+		t.Errorf("household_demographics holds %d rows, want 1 (nothing swept)", n)
+	}
+	if s.Stats.Errors == 0 {
+		t.Error("a refused sweep must be audible in Stats.Errors, got 0")
+	}
+}
+
+// countDemographicsRows returns the number of household_demographics rows.
+func countDemographicsRows(t *testing.T, app core.App) int {
+	t.Helper()
+	records, err := app.FindRecordsByFilter("household_demographics", "year > 0", "", 0, 0)
+	if err != nil {
+		t.Fatalf("count household_demographics: %v", err)
+	}
+	return len(records)
+}
+
+// setColumn is the must-be-unique rule that REPLACED first-non-empty-wins, and
+// it is the behavioral core of kindred#2260. Nothing covered it, so a refactor
+// restoring `if *dst == "" { *dst = value }` -- the exact shape that discarded
+// 7,781 answers over ten years -- passed the whole suite green.
+//
+// The three arms are pinned separately because only the third one distinguishes
+// the new rule from the old one.
+func TestSetColumnIsMustBeUniqueNotFirstWins(t *testing.T) {
+	t.Run("writes into an empty column", func(t *testing.T) {
+		s := &HouseholdDemographicsSync{}
+		rec := &householdDemographicsRecord{householdPBID: "hh1", personCMID: 11, year: 2026}
+
+		s.setColumn(rec, &rec.jewishAffiliation, "jewish_affiliation", testAffiliation)
+
+		if rec.jewishAffiliation != testAffiliation {
+			t.Errorf("column = %q, want %q", rec.jewishAffiliation, testAffiliation)
+		}
+		if s.columnConflicts != 0 {
+			t.Errorf("conflicts = %d, want 0 -- a first write is not a conflict", s.columnConflicts)
+		}
+	})
+
+	t.Run("the same answer twice is not a conflict", func(t *testing.T) {
+		s := &HouseholdDemographicsSync{}
+		rec := &householdDemographicsRecord{householdPBID: "hh1", personCMID: 11, year: 2026}
+
+		s.setColumn(rec, &rec.jewishAffiliation, "jewish_affiliation", testAffiliation)
+		s.setColumn(rec, &rec.jewishAffiliation, "jewish_affiliation", testAffiliation)
+
+		if s.columnConflicts != 0 {
+			t.Errorf("conflicts = %d, want 0 -- an identical repeat discards nothing", s.columnConflicts)
+		}
+	})
+
+	// The arm that matters. Under the old first-non-empty-wins code this case was
+	// silent: the second value vanished and nothing counted it. It must now be
+	// counted, and the stored value must not flip -- a silent overwrite would be
+	// the same defect pointing the other way.
+	t.Run("a genuinely different answer is counted, not swallowed", func(t *testing.T) {
+		s := &HouseholdDemographicsSync{}
+		rec := &householdDemographicsRecord{householdPBID: "hh1", personCMID: 11, year: 2026}
+
+		s.setColumn(rec, &rec.jewishAffiliation, "jewish_affiliation", testAffiliation)
+		s.setColumn(rec, &rec.jewishAffiliation, "jewish_affiliation", "Just Jewish")
+
+		if s.columnConflicts != 1 {
+			t.Errorf("conflicts = %d, want 1 -- a disagreement must be audible", s.columnConflicts)
+		}
+		if rec.jewishAffiliation != testAffiliation {
+			t.Errorf("column = %q, want %q -- the refusal must not overwrite", rec.jewishAffiliation, testAffiliation)
+		}
+	})
+
+	t.Run("conflicts accumulate across columns", func(t *testing.T) {
+		s := &HouseholdDemographicsSync{}
+		rec := &householdDemographicsRecord{householdPBID: "hh1", personCMID: 11, year: 2026}
+
+		s.setColumn(rec, &rec.jewishAffiliation, "jewish_affiliation", testAffiliation)
+		s.setColumn(rec, &rec.jewishAffiliation, "jewish_affiliation", "Just Jewish")
+		s.setColumn(rec, &rec.familyDescription, "family_description", "Interfaith")
+		s.setColumn(rec, &rec.familyDescription, "family_description", "Multicultural")
+
+		if s.columnConflicts != 2 {
+			t.Errorf("conflicts = %d, want 2", s.columnConflicts)
+		}
+	})
 }
