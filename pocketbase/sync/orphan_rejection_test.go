@@ -333,17 +333,22 @@ func TestPersonsHouseholdRejectionIsNotAnInfrastructureError(t *testing.T) {
 	}
 }
 
-// TestPersonsHouseholdSweepSkippedWhenAHouseholdWasRejected covers the fourth and
-// last sweep a rejecting service reaches: deleteHouseholdOrphans, which is
-// hand-rolled and does not go through BaseSyncService at all.
+// TestPersonsHouseholdSweepStillCollectsOrphansWhenAHouseholdWasRejected is the
+// exception, and it asserts the OPPOSITE of every other test in this file.
 //
-// One detail is worth stating because it is genuinely different here. The
-// rejected household's OWN row is protected twice over: Sync builds
-// processedHouseholdIDs in processPersonBatches, upstream of the transform, so it
-// contains the rejected id already. What this test pins is the sweep as a whole
-// -- with a rejection present, the collection is not swept, so the genuine orphan
-// survives too. That is the same known cost as everywhere else.
-func TestPersonsHouseholdSweepSkippedWhenAHouseholdWasRejected(t *testing.T) {
+// persons is the one rejecting service whose sweep is not endangered by its own
+// rejections, and the reason is structural: processedHouseholdIDs is built in
+// processBatchPersons, from the same `id > 0` gate as extractedHouseholds and
+// UPSTREAM of transformHouseholdToPB. The sweep's key set is therefore never short
+// of what the transform saw. A rejected household is already tracked, its row is
+// never read as an orphan, and there is nothing for a guard to protect.
+//
+// So deleteHouseholdOrphans takes no rejection guard, and this test pins that
+// deliberately. Adding one here would suppress a legitimate sweep on every run
+// carrying a rejection, for no benefit -- genuine orphans would simply accumulate.
+// An earlier revision of kindred#2295, and the revert commit on PR #2293, both said
+// the deletion held across all thirteen files. It is twelve.
+func TestPersonsHouseholdSweepStillCollectsOrphansWhenAHouseholdWasRejected(t *testing.T) {
 	t.Parallel()
 
 	app := newHouseholdsTestApp(t)
@@ -365,47 +370,70 @@ func TestPersonsHouseholdSweepSkippedWhenAHouseholdWasRejected(t *testing.T) {
 		t.Fatalf("fixture did not reject: Rejected = %d", stats.Rejected)
 	}
 
-	// processedIDs the production shape: built before the transform, so it holds
-	// both extracted households and not the orphan.
+	// processedIDs the production shape: built before the transform ran, so the
+	// rejected household is in it and the orphan is not.
 	processedIDs := map[int]bool{100: true, 200: true}
 
-	if err := s.deleteHouseholdOrphans(2026, processedIDs, stats.Rejected); err != nil {
+	if err := s.deleteHouseholdOrphans(2026, processedIDs); err != nil {
 		t.Fatalf("deleteHouseholdOrphans: %v", err)
 	}
 
 	survivors := householdCMIDs(t, app, 2026)
-	for _, cmID := range []int{100, 200, 900} {
-		if !survivors[cmID] {
-			t.Errorf("household %d was deleted on a run that rejected a record -- "+
-				"the computed set is known-incomplete, so this collection may not be swept", cmID)
-		}
-	}
-}
-
-// TestPersonsHouseholdSweepStillCollectsOrphansOnACleanRun is the negative
-// control for the hand-rolled sweep.
-func TestPersonsHouseholdSweepStillCollectsOrphansOnACleanRun(t *testing.T) {
-	t.Parallel()
-
-	app := newHouseholdsTestApp(t)
-	seedHousehold(t, app, 100, 2026)
-	seedHousehold(t, app, 900, 2026)
-
-	s := &PersonsSync{BaseSyncService: BaseSyncService{
-		App:            app,
-		ProcessedKeys:  map[string]bool{},
-		FieldDiffStats: map[string]int{},
-	}}
-
-	if err := s.deleteHouseholdOrphans(2026, map[int]bool{100: true}, 0); err != nil {
-		t.Fatalf("deleteHouseholdOrphans: %v", err)
-	}
-
-	survivors := householdCMIDs(t, app, 2026)
-	if survivors[900] {
-		t.Error("household 900 survived a clean run -- a genuine orphan must still be collected")
+	if !survivors[200] {
+		t.Error("the rejected household's row was deleted -- upstream tracking is what " +
+			"protects it here, and it has stopped working")
 	}
 	if !survivors[100] {
 		t.Error("household 100 was deleted -- it is still upstream")
+	}
+	if survivors[900] {
+		t.Error("the genuine orphan survived a run that merely rejected a household -- " +
+			"persons needs no rejection guard, and adding one only leaves real orphans behind")
+	}
+}
+
+// TestPersonsTracksEveryHouseholdItWillLaterTransform pins the structural fact the
+// exception above rests on, so that the exception cannot rot into a defect.
+//
+// extractUniqueHouseholds and the tracking loop in processBatchPersons share one
+// `id > 0` gate, and that gate is exactly what transformHouseholdToPB validates. So
+// every household the transform is ever handed has already been tracked. Move the
+// tracking below the transform, or gate it on the transform succeeding, and persons
+// silently joins the other twelve -- with no guard to catch it.
+func TestPersonsTracksEveryHouseholdItWillLaterTransform(t *testing.T) {
+	t.Parallel()
+
+	s := &PersonsSync{
+		BaseSyncService:  BaseSyncService{ProcessedKeys: map[string]bool{}},
+		missingDataStats: map[string]int{},
+	}
+	result := &personBatchResult{
+		extractedHouseholds:   map[int]map[string]any{},
+		processedHouseholdIDs: map[int]bool{},
+		personHouseholdMap:    map[int]personHouseholdIDs{},
+	}
+
+	// No CamperDetails, so processPerson returns early and touches no database --
+	// the household extraction below it runs either way, which is the point.
+	s.processBatchPersons([]map[string]any{{
+		"ID": float64(1),
+		"Households": map[string]any{
+			"PrincipalHousehold":        map[string]any{"ID": float64(100), "Greeting": "kept"},
+			"PrimaryChildhoodHousehold": map[string]any{"ID": float64(0)},
+		},
+	}}, map[int]bool{}, nil, nil, nil, 2026, result)
+
+	if len(result.extractedHouseholds) == 0 {
+		t.Fatal("fixture extracted no households")
+	}
+	for id, household := range result.extractedHouseholds {
+		if !result.processedHouseholdIDs[id] {
+			t.Errorf("household %d will be handed to transformHouseholdToPB but was never "+
+				"tracked -- the sweep would read its row as an orphan", id)
+		}
+		if _, err := s.transformHouseholdToPB(household, 2026); err != nil {
+			t.Errorf("household %d was extracted but rejects at transform (%v) -- the two "+
+				"id gates have drifted apart, which is what made the other twelve unsafe", id, err)
+		}
 	}
 }

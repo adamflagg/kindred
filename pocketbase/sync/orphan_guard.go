@@ -63,10 +63,12 @@ type OrphanSweepGuard struct {
 	// Non-zero means the computed set is known-incomplete for a reason that has
 	// nothing to do with CampMinder, and SkipReason abandons the sweep on it.
 	//
-	// BaseSyncService fills this in from its own Stats, so the sweeps that route
-	// through DeleteOrphans / DeleteOrphansGuarded / DeleteOrphansFromPreloaded
-	// get it without a call site having to remember. A hand-rolled sweep -- there
-	// is one, PersonsSync.deleteHouseholdOrphans -- has to set it itself.
+	// BaseSyncService fills this in from its own Stats, so every sweep that routes
+	// through DeleteOrphans / DeleteOrphansGuarded / DeleteOrphansFromPreloaded gets
+	// it without a call site having to remember -- which is every sweep a rejecting
+	// service performs today. A hand-rolled sweep would have to set it itself, after
+	// checking it is actually exposed: PersonsSync.deleteHouseholdOrphans is not,
+	// because it builds its key set upstream of the transform that rejects.
 	Rejected int
 	// Hint points at the upstream that produces this service's computed set --
 	// the place an operator has to look. Optional.

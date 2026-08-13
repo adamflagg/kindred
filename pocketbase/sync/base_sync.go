@@ -183,9 +183,15 @@ func (b *BaseSyncService) DeleteOrphansGuarded(
 //
 // It reads b.Stats rather than taking a count, so it holds for every caller of
 // every entry point on this type -- including sweeps written after it. The
-// alternative, a Rejected field each call site fills in, is a line thirteen
-// services have to remember, and forgetting it is silent: the sweep runs and the
-// row is gone (kindred#2295).
+// alternative, a Rejected field each call site fills in, is a line every rejecting
+// service has to remember, and forgetting it is silent: the sweep runs and the row
+// is gone (kindred#2295).
+//
+// These three entry points are the whole exposed surface. The one hand-rolled sweep
+// a rejecting service owns, PersonsSync.deleteHouseholdOrphans, is structurally
+// exempt rather than overlooked -- it builds its key set upstream of the transform
+// that rejects, so nothing is ever missing from it. The reasoning is at that
+// function.
 //
 // The count is service-scoped, not collection-scoped, so in a service that syncs
 // several collections from one Stats -- staff_lookups syncs three, financial_lookups
