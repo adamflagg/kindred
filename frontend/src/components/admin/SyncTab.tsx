@@ -299,6 +299,11 @@ export function SyncTab() {
                     {rejected} rejected
                   </span>
                 )}
+                {(status.summary.duplicate_staff_status ?? 0) > 0 && (
+                  <span className="font-medium text-amber-600 dark:text-amber-400">
+                    {status.summary.duplicate_staff_status} dup status
+                  </span>
+                )}
                 {(status.summary.prod_audit_warnings ?? 0) > 0 && (
                   <span className="font-medium text-amber-600 dark:text-amber-400">
                     {status.summary.prod_audit_warnings} prod⚠
@@ -870,6 +875,11 @@ export function SyncTab() {
                           {rejected > 0 && (
                             <span className="font-medium text-amber-600 dark:text-amber-400">
                               {rejected} rejected
+                            </span>
+                          )}
+                          {(status.summary.duplicate_staff_status ?? 0) > 0 && (
+                            <span className="font-medium text-amber-600 dark:text-amber-400">
+                              {status.summary.duplicate_staff_status} dup status
                             </span>
                           )}
                         </div>

@@ -29,6 +29,10 @@ let strandedAssignmentCleanupStatus: unknown = idleStatus
 let personsStatus: unknown = idleStatus
 let staffLookupsStatus: unknown = idleStatus
 
+// #2267 needs its own injectable status: `staff` is a year sync (renderSyncCard) and is not
+// covered by any existing entry above. Reset in afterEach.
+let staffStatus: unknown = idleStatus
+
 vi.mock('../../hooks/useSyncCompletionToasts', () => ({
   useSyncCompletionToasts: () => ({
     camper_history: idleStatus,
@@ -50,6 +54,9 @@ vi.mock('../../hooks/useSyncCompletionToasts', () => ({
     },
     get staff_lookups() {
       return staffLookupsStatus
+    },
+    get staff() {
+      return staffStatus
     },
   }),
 }))
@@ -313,5 +320,51 @@ describe('SyncTab nested rejected records (#2295)', () => {
     fireEvent.click(screen.getByText('Global Definitions'))
 
     expect(within(cardByTitle('Staff Lookups', 'span')).getByText('7 rejected')).toBeInTheDocument()
+  })
+})
+
+// Regression test for #2267: Stats.DuplicateStaffStatus (pocketbase/sync/orchestrator.go) is
+// the new counter for staff records dropped because the same person appeared under more than
+// one CampMinder status in one run. Before the fix there was no counter at all and the only
+// trace was a slog.Debug line invisible at the default LOG_LEVEL=INFO — a counter nobody can
+// see on the Sync tab is the same class of bug #2284's rejected badge fixed, one field over.
+describe('SyncTab duplicate staff status badge (#2267)', () => {
+  afterEach(() => {
+    staffStatus = idleStatus
+  })
+
+  function staffCard() {
+    const heading = screen.getByText('Staff', { selector: 'div' })
+    const card = heading.closest('.flex.flex-col')
+    if (!card) throw new Error('could not find Staff card')
+    return card as HTMLElement
+  }
+
+  it('renders a duplicate-status badge when duplicate_staff_status is positive', () => {
+    staffStatus = {
+      status: 'success',
+      summary: {
+        created: 5,
+        updated: 0,
+        skipped: 0,
+        errors: 0,
+        duplicate_staff_status: 2,
+      },
+    }
+
+    renderSyncTab()
+
+    expect(within(staffCard()).getByText('2 dup status')).toBeInTheDocument()
+  })
+
+  it('renders no duplicate-status badge when duplicate_staff_status is zero or absent', () => {
+    staffStatus = {
+      status: 'success',
+      summary: { created: 5, updated: 0, skipped: 0, errors: 0 },
+    }
+
+    renderSyncTab()
+
+    expect(within(staffCard()).queryByText(/dup status/)).not.toBeInTheDocument()
   })
 })

@@ -3,6 +3,7 @@ package sync
 import (
 	"fmt"
 	"reflect"
+	"strings"
 	"testing"
 )
 
@@ -116,12 +117,73 @@ func testTransformStaffPersonID(data map[string]any, personMap map[int]string) (
 	return pbData, nil
 }
 
-// TestAllStaffStatuses verifies the allStaffStatuses constant includes all 4 CampMinder statuses
+// TestAllStaffStatuses verifies the allStaffStatuses constant includes all 4 CampMinder statuses.
+//
+// This is also, less obviously, an ORDER check, not just a membership check (kindred#2267):
+// syncStaff iterates allStaffStatuses in slice order and the first status seen for a
+// person-year wins when the same person appears under more than one status in one run
+// (isDuplicateStaffStatus below). Reordering this slice silently changes which status wins
+// a collapse -- Active(1) beats Resigned(2) beats Dismissed(3) beats Cancelled(4) -- and this
+// DeepEqual is what would catch that. Do not "tidy" it into a sorted or set-like comparison.
 func TestAllStaffStatuses(t *testing.T) {
 	t.Parallel()
-	expected := []int{1, 2, 3, 4} // Active, Resigned, Dismissed, Cancelled
+	expected := []int{1, 2, 3, 4} // Active, Resigned, Dismissed, Cancelled -- order is precedence
 	if !reflect.DeepEqual(allStaffStatuses, expected) {
 		t.Errorf("allStaffStatuses = %v, want %v", allStaffStatuses, expected)
+	}
+}
+
+// TestIsDuplicateStaffStatus pins kindred#2267: when the same person appears under more than
+// one CampMinder status in a single sync run, the first status seen (Active, per
+// allStaffStatuses' order) must win, and every later duplicate must be counted
+// (Stats.DuplicateStaffStatus) and logged at a level visible at the default LOG_LEVEL=INFO.
+//
+// Before the fix, the duplicate branch did neither: no counter existed at all, and the only
+// trace was a slog.Debug line invisible at INFO. Contrast the branch immediately above it in
+// syncStaff ("no matching person"), which already does both -- this test is the mirror of
+// that precedent.
+func TestIsDuplicateStaffStatus(t *testing.T) {
+	t.Parallel()
+	s := &StaffSync{BaseSyncService: BaseSyncService{ProcessedKeys: map[string]bool{}}}
+	buf := captureSweepLogs(t)
+
+	// Active (status 1) is the first sighting for this person-year -- allStaffStatuses
+	// processes it first, so it must NOT be treated as a duplicate.
+	if dup := s.isDuplicateStaffStatus("pb_person_1", 2026, 1); dup {
+		t.Fatalf("first sighting under Active reported as a duplicate")
+	}
+	if s.Stats.DuplicateStaffStatus != 0 {
+		t.Fatalf("Stats.DuplicateStaffStatus = %d after first sighting, want 0", s.Stats.DuplicateStaffStatus)
+	}
+
+	// Resigned (status 2) arrives later in the same run for the same person-year -- this
+	// is the duplicate that must be counted and logged, and Active must still be the
+	// record that survives (the caller's `continue` on a true return is what enforces
+	// that; this test only pins the reporting half).
+	if dup := s.isDuplicateStaffStatus("pb_person_1", 2026, 2); !dup {
+		t.Fatalf("second sighting under Resigned was not reported as a duplicate")
+	}
+	if s.Stats.DuplicateStaffStatus != 1 {
+		t.Fatalf("Stats.DuplicateStaffStatus = %d after duplicate, want 1", s.Stats.DuplicateStaffStatus)
+	}
+
+	// A different person-year must be unaffected by the first person's dedup state.
+	if dup := s.isDuplicateStaffStatus("pb_person_2", 2026, 1); dup {
+		t.Fatalf("unrelated person reported as a duplicate")
+	}
+	if s.Stats.DuplicateStaffStatus != 1 {
+		t.Fatalf("Stats.DuplicateStaffStatus = %d after unrelated person, want unchanged at 1", s.Stats.DuplicateStaffStatus)
+	}
+
+	logged := buf.String()
+	if !strings.Contains(logged, "level=WARN") {
+		t.Fatalf("expected a WARN-level log line for the dropped duplicate, got: %s", logged)
+	}
+	if !strings.Contains(logged, "pb_person_1") {
+		t.Fatalf("expected the log line to name the dropped person, got: %s", logged)
+	}
+	if strings.Contains(logged, "level=DEBUG") {
+		t.Fatalf("must not log the drop at Debug (invisible at default LOG_LEVEL=INFO), got: %s", logged)
 	}
 }
 

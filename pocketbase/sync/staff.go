@@ -16,6 +16,17 @@ const serviceNameStaff = "staff"
 
 // allStaffStatuses defines all CampMinder staff statuses to sync.
 // 1=Active, 2=Resigned, 3=Dismissed, 4=Cancelled
+//
+// Precedence policy (kindred#2267): a person can come back from CampMinder under more than
+// one status in a single run (e.g. active this season, still returned as a resigned record
+// from a prior one). syncStaff writes at most one `staff` row per person per year, so when
+// that happens the FIRST status seen wins -- and "first" is exactly this slice's iteration
+// order. That makes Active > Resigned > Dismissed > Cancelled the effective precedence, and
+// it is a deliberate, stated policy now, not an accident of slice order. It is provisional:
+// nothing has evaluated whether Active-wins is the right call, only that it must be legible
+// and every collapse it causes counted (isDuplicateStaffStatus, Stats.DuplicateStaffStatus)
+// rather than silent. Do not reorder this slice to change precedence without updating this
+// comment and TestAllStaffStatuses, which pins the order.
 var allStaffStatuses = []int{1, 2, 3, 4}
 
 // StaffSync handles syncing year-scoped staff records from CampMinder
@@ -130,13 +141,13 @@ func (s *StaffSync) syncStaff(ctx context.Context) error {
 					continue
 				}
 
-				// Skip duplicates (same person appearing multiple times across statuses)
-				if s.IsKeyProcessed(personPBID, year) {
-					slog.Debug("Skipping duplicate staff record in API response", "person_pb_id", personPBID)
+				// Skip duplicates: see allStaffStatuses above for the precedence policy this
+				// implements (first status seen this run wins). isDuplicateStaffStatus does
+				// the bookkeeping for both outcomes -- tracking a first sighting, or counting
+				// and logging a later one dropped.
+				if s.isDuplicateStaffStatus(personPBID, year, status) {
 					continue
 				}
-
-				s.TrackProcessedKey(personPBID, year)
 
 				// Preserve bunk data for non-active staff — CampMinder clears
 				// BunkAssignments on dismissal, but we keep last-known assignments.
@@ -175,7 +186,8 @@ func (s *StaffSync) syncStaff(ctx context.Context) error {
 
 	slog.Info("Processed staff records", "total", totalProcessed,
 		"active", statusCounts[1], "resigned", statusCounts[2],
-		"dismissed", statusCounts[3], "cancelled", statusCounts[4])
+		"dismissed", statusCounts[3], "cancelled", statusCounts[4],
+		"duplicate_status_dropped", s.Stats.DuplicateStaffStatus)
 
 	// Mark sync as successful before orphan deletion (DeleteOrphans checks this flag)
 	s.SyncSuccessful = true
@@ -381,6 +393,23 @@ func (s *StaffSync) setStaffFloatField(pbData, data map[string]any, srcKey, dstK
 	if val, ok := data[srcKey].(float64); ok {
 		pbData[dstKey] = val
 	}
+}
+
+// isDuplicateStaffStatus reports whether personPBID has already been synced this run under a
+// higher-precedence status (see allStaffStatuses for the policy) and does the bookkeeping for
+// either outcome. A first sighting is tracked so a later status for the same person this run
+// is recognized as the duplicate. A duplicate is counted (Stats.DuplicateStaffStatus) and
+// logged at Warn -- visible at the default LOG_LEVEL=INFO -- mirroring the "no matching
+// person" branch immediately above its call site, which already does both (kindred#2267).
+func (s *StaffSync) isDuplicateStaffStatus(personPBID string, year, status int) bool {
+	if s.IsKeyProcessed(personPBID, year) {
+		s.Stats.DuplicateStaffStatus++
+		slog.Warn("Dropping duplicate staff record: person already synced this run under a higher-precedence status",
+			"person_pb_id", personPBID, "year", year, "dropped_status_id", status)
+		return true
+	}
+	s.TrackProcessedKey(personPBID, year)
+	return false
 }
 
 // shouldPreserveBunkData returns true when existing bunk data should be kept
