@@ -319,7 +319,16 @@ jobs:
     - name: Setup Go
       uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
       with:
-        go-version: '1.26.x'
+        # go-version-file, not a literal: setup-go pins GOTOOLCHAIN=local, so the
+        # runner CANNOT fetch a newer toolchain the way a developer's machine
+        # does. Whatever this step installs is the only toolchain the job has,
+        # and if go.mod declares a higher minimum every Go command hard-fails
+        # with "requires go >= X (running Y; GOTOOLCHAIN=local)". A floating
+        # '1.26.x' therefore silently breaks the build the moment go.mod is
+        # bumped ahead of the newest release the manifest happens to serve.
+        # Reading the version from go.mod keeps ONE source of truth and makes a
+        # future bump a one-line change there.
+        go-version-file: pocketbase/go.mod
         check-latest: true
         cache: true
         cache-dependency-path: pocketbase/go.sum
@@ -578,7 +587,16 @@ jobs:
     - name: Setup Go
       uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
       with:
-        go-version: '1.26.x'
+        # go-version-file, not a literal: setup-go pins GOTOOLCHAIN=local, so the
+        # runner CANNOT fetch a newer toolchain the way a developer's machine
+        # does. Whatever this step installs is the only toolchain the job has,
+        # and if go.mod declares a higher minimum every Go command hard-fails
+        # with "requires go >= X (running Y; GOTOOLCHAIN=local)". A floating
+        # '1.26.x' therefore silently breaks the build the moment go.mod is
+        # bumped ahead of the newest release the manifest happens to serve.
+        # Reading the version from go.mod keeps ONE source of truth and makes a
+        # future bump a one-line change there.
+        go-version-file: pocketbase/go.mod
         check-latest: true
         cache: true
         cache-dependency-path: pocketbase/go.sum
@@ -607,7 +625,16 @@ jobs:
     - name: Setup Go
       uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
       with:
-        go-version: '1.26.x'
+        # go-version-file, not a literal: setup-go pins GOTOOLCHAIN=local, so the
+        # runner CANNOT fetch a newer toolchain the way a developer's machine
+        # does. Whatever this step installs is the only toolchain the job has,
+        # and if go.mod declares a higher minimum every Go command hard-fails
+        # with "requires go >= X (running Y; GOTOOLCHAIN=local)". A floating
+        # '1.26.x' therefore silently breaks the build the moment go.mod is
+        # bumped ahead of the newest release the manifest happens to serve.
+        # Reading the version from go.mod keeps ONE source of truth and makes a
+        # future bump a one-line change there.
+        go-version-file: pocketbase/go.mod
         check-latest: true
         cache: true
         cache-dependency-path: pocketbase/go.sum
