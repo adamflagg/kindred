@@ -326,3 +326,78 @@ func TestHouseholdCustomFieldValuesDeleteOrphansIgnoresHouseholdsThisRunDidNotFe
 			swept, household1Rows-1)
 	}
 }
+
+// ---------------------------------------------------------------------------
+// kindred#2295 -- rejections make the computed set known-incomplete
+// ---------------------------------------------------------------------------
+
+// TestOrphanSweepGuardSkipsWhenRecordsWereRejected pins the new arm. A rejected
+// record's key never reaches TrackProcessedKey -- the counter bump and its
+// `continue` both happen first -- so it is missing from the computed set for a
+// reason that has nothing to do with CampMinder having deleted it. Sweeping
+// against that set deletes the row the last good run stored.
+func TestOrphanSweepGuardSkipsWhenRecordsWereRejected(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name     string
+		rejected int
+		wantSkip bool
+	}{
+		{"a clean run sweeps", 0, false},
+		{"one rejected record stops the sweep", 1, true},
+		{"a season of rejected records stops the sweep", 412, true},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			g := OrphanSweepGuard{Entity: "widgets", Year: 2026, Computed: 5000, Rejected: tc.rejected}
+			reason := g.SkipReason()
+
+			if tc.wantSkip && reason == "" {
+				t.Fatalf("SkipReason() with rejected=%d returned \"\", want a skip", tc.rejected)
+			}
+			if !tc.wantSkip && reason != "" {
+				t.Fatalf("SkipReason() with rejected=%d skipped the sweep: %s", tc.rejected, reason)
+			}
+			if reason == "" {
+				return
+			}
+			for _, want := range []string{"widgets", "2026", fmt.Sprint(tc.rejected)} {
+				if !strings.Contains(reason, want) {
+					t.Errorf("skip reason %q does not name %q -- an operator cannot tell "+
+						"which sweep stopped or how big the hole is", reason, want)
+				}
+			}
+		})
+	}
+}
+
+// TestOrphanSweepGuardCheckIgnoresRejections keeps the two verdicts separate.
+// A collapse is a failure and Check reports it as an error; a rejection is
+// upstream data quality, warn-only for its first season (kindred#2284), and must
+// never turn into a returned error. Folding the rejection arm into Check would
+// fail the run on one malformed record -- and, worse, abort the rest of a
+// multi-collection service before it had synced anything else.
+func TestOrphanSweepGuardCheckIgnoresRejections(t *testing.T) {
+	t.Parallel()
+	g := OrphanSweepGuard{Entity: "widgets", Year: 2026, Computed: 5000, Rejected: 9}
+
+	if err := g.Check(5000); err != nil {
+		t.Fatalf("Check refused a healthy computed set because records were rejected: %v -- "+
+			"Rejected is warn-only and must not fail a run", err)
+	}
+}
+
+// TestOrphanSweepGuardSkipsBeforeItRefuses fixes the precedence for a run that
+// is both short AND carrying rejections. Skipping is the weaker, non-failing
+// verdict, and it is the correct one here: the computed set is short *because*
+// records were rejected, so reporting a collapse would blame the upstream feed
+// for a fault the transform introduced.
+func TestOrphanSweepGuardSkipsBeforeItRefuses(t *testing.T) {
+	t.Parallel()
+	g := OrphanSweepGuard{Entity: "widgets", Year: 2026, Computed: 5, Rejected: 295}
+
+	if g.SkipReason() == "" {
+		t.Fatal("a run with 295 rejections did not skip its sweep")
+	}
+}

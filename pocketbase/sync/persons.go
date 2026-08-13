@@ -141,7 +141,7 @@ func (s *PersonsSync) Sync(ctx context.Context) error {
 
 	// Update relations and cleanup
 	s.updateRelationsAndCleanup(year, householdsByID, processResult.personHouseholdMap,
-		processResult.processedHouseholdIDs)
+		processResult.processedHouseholdIDs, householdStats.Rejected)
 
 	// Final reporting
 	s.householdStats = &householdStats
@@ -364,7 +364,7 @@ func (s *PersonsSync) processHouseholds(
 		pbData, err := s.transformHouseholdToPB(householdData, year)
 		if err != nil {
 			slog.Error("Error transforming household", "id", householdID, "error", err)
-			householdStats.Errors++
+			householdStats.Rejected++
 			continue
 		}
 
@@ -384,6 +384,7 @@ func (s *PersonsSync) updateRelationsAndCleanup(
 	householdsByID map[int]*core.Record,
 	personHouseholdMap map[int]personHouseholdIDs,
 	processedHouseholdIDs map[int]bool,
+	householdRejected int,
 ) {
 	if err := s.updatePersonHouseholdRelations(year, householdsByID, personHouseholdMap); err != nil {
 		slog.Warn("Failed to update person-household relations", "error", err)
@@ -393,7 +394,7 @@ func (s *PersonsSync) updateRelationsAndCleanup(
 		slog.Warn("Failed to delete orphaned persons", "error", err)
 	}
 
-	if err := s.deleteHouseholdOrphans(year, processedHouseholdIDs); err != nil {
+	if err := s.deleteHouseholdOrphans(year, processedHouseholdIDs, householdRejected); err != nil {
 		slog.Warn("Failed to delete orphaned households", "error", err)
 	}
 
@@ -1568,8 +1569,29 @@ func (s *PersonsSync) updatePersonHouseholdRelations(
 }
 
 // deleteHouseholdOrphans deletes households that exist in PocketBase but weren't processed from CampMinder
-func (s *PersonsSync) deleteHouseholdOrphans(year int, processedIDs map[int]bool) error {
+//
+// This is the one sweep in the package that does not route through
+// BaseSyncService, so it applies the rejection guard itself (kindred#2295). The
+// count it needs is the sub-entity's, not the service's: households are processed
+// into their own Stats and reported through SubStats["households"], so
+// s.Stats.Rejected knows nothing about them.
+//
+// Worth stating what this does and does not buy, because households is not shaped
+// like the other twelve. The rejected household's OWN row is already safe:
+// processedHouseholdIDs is built in processPersonBatches, upstream of
+// transformHouseholdToPB, so a household that later fails to transform is still
+// tracked and never looks like an orphan. What the guard adds here is the rest of
+// the collection — with the transform demonstrably failing on this run, nothing
+// in households may be swept, which is the same rule everywhere else.
+func (s *PersonsSync) deleteHouseholdOrphans(year int, processedIDs map[int]bool, rejected int) error {
 	slog.Info("Checking for orphaned households")
+
+	guard := OrphanSweepGuard{Entity: "households", Year: year, Rejected: rejected}
+	if reason := guard.SkipReason(); reason != "" {
+		slog.Warn("Orphan sweep skipped: records were rejected, so the computed set is incomplete",
+			"entity", "household", "rejected", rejected, "detail", reason)
+		return nil
+	}
 
 	filter := fmt.Sprintf("year = %d", year)
 	records, err := s.App.FindRecordsByFilter("households", filter, "", 0, 0)

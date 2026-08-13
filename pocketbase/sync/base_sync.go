@@ -178,6 +178,37 @@ func (b *BaseSyncService) DeleteOrphansGuarded(
 	return b.deleteOrphans(collection, getIDFunc, entityName, filter, &guard)
 }
 
+// skipSweepForRejections reports whether this run rejected a record, which makes
+// every sweep the service performs unsafe, and logs the reason when it did.
+//
+// It reads b.Stats rather than taking a count, so it holds for every caller of
+// every entry point on this type -- including sweeps written after it. The
+// alternative, a Rejected field each call site fills in, is a line thirteen
+// services have to remember, and forgetting it is silent: the sweep runs and the
+// row is gone (kindred#2295).
+//
+// The count is service-scoped, not collection-scoped, so in a service that syncs
+// several collections from one Stats -- staff_lookups syncs three, financial_lookups
+// two -- a rejection in the first also stops the sweeps of the later ones. That is
+// blunter than it needs to be and it is deliberate: it can only ever skip more
+// sweeps, never delete more rows, and per-collection counters are a much larger
+// change than the defect warrants.
+func (b *BaseSyncService) skipSweepForRejections(entityName string, guard *OrphanSweepGuard) bool {
+	skip := OrphanSweepGuard{Entity: entityName, Rejected: b.Stats.Rejected}
+	if guard != nil {
+		skip.Year = guard.Year
+	}
+
+	reason := skip.SkipReason()
+	if reason == "" {
+		return false
+	}
+
+	slog.Warn("Orphan sweep skipped: records were rejected, so the computed set is incomplete",
+		"entity", entityName, "rejected", b.Stats.Rejected, "detail", reason)
+	return true
+}
+
 // orphanCandidate is the minimum needed to delete and log one orphan later.
 // Deliberately not the *core.Record: a year of person_custom_values is ~157k
 // rows, and holding them all to delete a handful is how a sweep turns into an
@@ -220,6 +251,10 @@ func (b *BaseSyncService) deleteOrphans(
 	// Only delete orphans if the sync was successful
 	if !b.SyncSuccessful {
 		slog.Info("Skipping orphan deletion due to sync failure", "entity", entityName)
+		return nil
+	}
+
+	if b.skipSweepForRejections(entityName, guard) {
 		return nil
 	}
 
@@ -387,6 +422,10 @@ func (b *BaseSyncService) DeleteOrphansFromPreloaded(
 ) error {
 	if !b.SyncSuccessful {
 		slog.Info("Skipping orphan deletion due to sync failure", "entity", entityName)
+		return nil
+	}
+
+	if b.skipSweepForRejections(entityName, nil) {
 		return nil
 	}
 

@@ -10,6 +10,10 @@ export interface SubStats {
   updated: number
   skipped: number
   errors: number
+  // Per-record transform failures inside this sub-entity. This is where #2284's counter
+  // actually shows up first: `persons` is a combined sync and its reclassified reject site
+  // is in the household half, which reports here and nowhere else.
+  rejected?: number
 }
 
 // Queued sync item from the sync queue
@@ -51,6 +55,33 @@ export interface SyncStatus {
     sub_stats?: Record<string, SubStats> // For combined syncs (e.g., persons includes households)
   }
   year?: number // Year being synced (0 or undefined = current year)
+}
+
+/**
+ * Total rejected records for one run: the service's own count plus every sub-entity's.
+ *
+ * The sum is not decorative. `Stats.Rejected` can exist ONLY in a sub-entity — a persons
+ * sync rejecting a household reports it as `sub_stats.households.rejected` and leaves the
+ * parent's count at zero (pocketbase/sync/persons.go GetStats). Rendering the top-level
+ * number alone therefore shows nothing at all for the first service the campaign makes
+ * reject anything.
+ *
+ * It matters more here than for the other counters because Rejected is warn-only for its
+ * first season (#2284): it never fails a run, so this badge is the only thing that tells an
+ * operator it is climbing — and a service sitting at rejected > 0 run after run is also the
+ * signal that its orphan sweep has been skipping (#2295).
+ *
+ * One level deep, matching the backend's totalInfrastructureErrors: SubStats is populated by
+ * combined syncs and is never nested further.
+ */
+export function totalRejected(summary: SyncStatus['summary']): number {
+  if (!summary) return 0
+
+  const nested = Object.values(summary.sub_stats ?? {}).reduce(
+    (sum, sub) => sum + (sub.rejected ?? 0),
+    0
+  )
+  return (summary.rejected ?? 0) + nested
 }
 
 // Note: "persons" is a combined sync that populates persons and households tables

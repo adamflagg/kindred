@@ -14,7 +14,7 @@ import {
 import toast from 'react-hot-toast'
 import { useYear } from '../../hooks/useCurrentYear'
 import { EARLIEST_AVAILABLE_YEAR } from '../../contexts/CurrentYearContext'
-import { type SyncStatus, type QueuedSyncItem } from '../../hooks/useSyncStatusAPI'
+import { totalRejected, type SyncStatus, type QueuedSyncItem } from '../../hooks/useSyncStatusAPI'
 import { useSyncCompletionToasts } from '../../hooks/useSyncCompletionToasts'
 import { useRunIndividualSync } from '../../hooks/useRunIndividualSync'
 import { useRunOnDemandSync } from '../../hooks/useRunOnDemandSync'
@@ -194,6 +194,7 @@ export function SyncTab() {
     const isRunning = status.status === 'running'
     const isPending = status.status === 'pending'
     const isTypeSyncPending = typeSyncPendingById[syncType.id] ?? false
+    const rejected = totalRejected(status.summary)
 
     // Determine which hook to use based on sync type
     const handleRun = () => {
@@ -293,9 +294,9 @@ export function SyncTab() {
                     {status.summary.errors} err
                   </span>
                 )}
-                {(status.summary.rejected ?? 0) > 0 && (
+                {rejected > 0 && (
                   <span className="font-medium text-amber-600 dark:text-amber-400">
-                    {status.summary.rejected} rejected
+                    {rejected} rejected
                   </span>
                 )}
                 {(status.summary.prod_audit_warnings ?? 0) > 0 && (
@@ -824,6 +825,7 @@ export function SyncTab() {
               const Icon = syncType.icon
               const isRunning = status.status === 'running'
               const isPending = status.status === 'pending'
+              const rejected = totalRejected(status.summary)
 
               return (
                 <div
@@ -865,9 +867,9 @@ export function SyncTab() {
                               {status.summary.errors} err
                             </span>
                           )}
-                          {(status.summary.rejected ?? 0) > 0 && (
+                          {rejected > 0 && (
                             <span className="font-medium text-amber-600 dark:text-amber-400">
-                              {status.summary.rejected} rejected
+                              {rejected} rejected
                             </span>
                           )}
                         </div>
