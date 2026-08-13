@@ -2,6 +2,7 @@ package sync
 
 import (
 	"fmt"
+	"log/slog"
 	"strings"
 	"testing"
 
@@ -265,5 +266,130 @@ func TestBaseDeleteOrphansDeletesNothingWhenNoRecordCanBeKeyed(t *testing.T) {
 	if remaining := countRows(t, app, "widgets", "year = 2026"); remaining != seeded {
 		t.Fatalf("%d rows survived, want %d -- a record the sweep cannot key is not an orphan "+
 			"and must never be deleted", remaining, seeded)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Observability of a collapsed sweep (kindred#2279 follow-up)
+// ---------------------------------------------------------------------------
+
+// captureSweepLogs redirects slog for the duration of one test and returns the
+// buffer. The sweep's only operator-facing signal is its log line, so the log IS
+// the behaviour under test here, not an incidental side effect.
+func captureSweepLogs(t *testing.T) *strings.Builder {
+	t.Helper()
+
+	buf := &strings.Builder{}
+	prev := slog.Default()
+	slog.SetDefault(slog.New(slog.NewTextHandler(buf, &slog.HandlerOptions{Level: slog.LevelDebug})))
+	t.Cleanup(func() { slog.SetDefault(prev) })
+
+	return buf
+}
+
+// A sweep whose getIDFunc can key nothing at all is a collapsed upstream, not a
+// clean year. It currently logs "No orphaned records found" -- identical to a
+// healthy run -- and the guard cannot fire, because the guard's denominator only
+// counts rows that WERE keyable and so is zero. Three services' operator hints
+// (attendees, bunk_assignments, bunk_plans) tell the reader to look for an
+// unkeyable-record warning, so one has to exist.
+func TestBaseDeleteOrphansWarnsWhenNothingCanBeKeyed(t *testing.T) {
+	const seeded = 30
+
+	app := newOrphanSweepTestApp(t, "widgets", "name")
+	col, err := app.FindCollectionByNameOrId("widgets")
+	if err != nil {
+		t.Fatalf("find widgets: %v", err)
+	}
+	for i := 1; i <= seeded; i++ {
+		rec := core.NewRecord(col)
+		rec.Id = orphanTestID(i)
+		rec.Set("name", fmt.Sprintf("widget-%03d", i))
+		rec.Set("year", 2026)
+		if saveErr := app.Save(rec); saveErr != nil {
+			t.Fatalf("seed widget %d: %v", i, saveErr)
+		}
+	}
+
+	logs := captureSweepLogs(t)
+
+	b := BaseSyncService{App: app, ProcessedKeys: map[string]bool{}, SyncSuccessful: true}
+	err = b.DeleteOrphansGuarded(
+		"widgets",
+		func(*core.Record) (string, bool) { return "", false },
+		"widget",
+		"year = 2026",
+		OrphanSweepGuard{Entity: "widgets", Year: 2026, Computed: 0},
+	)
+	if err != nil {
+		t.Fatalf("sweep returned an error: %v", err)
+	}
+
+	got := logs.String()
+	if !strings.Contains(got, "unkeyable") {
+		t.Errorf("expected an unkeyable-record warning naming the collapse; got:\n%s", got)
+	}
+	if !strings.Contains(got, "level=WARN") {
+		t.Errorf("the unkeyable case must be a WARN, not an Info; got:\n%s", got)
+	}
+	if strings.Contains(got, "No orphaned records found") {
+		t.Errorf("a collapsed sweep must not report the healthy-run message; got:\n%s", got)
+	}
+}
+
+// orphanCount is what the completion log reports as deleted. A delete that FAILS
+// must not be counted: the row is still on disk, and an operator reading
+// "Deleted orphaned records count=1" against a row that still exists has been
+// told the opposite of the truth. A blocking relation is the cheapest way to
+// make App.Delete fail for real rather than mocking it.
+func TestBaseDeleteOrphansCountsOnlyCompletedDeletes(t *testing.T) {
+	app := newOrphanSweepTestApp(t, "widgets", "name")
+	widgets, err := app.FindCollectionByNameOrId("widgets")
+	if err != nil {
+		t.Fatalf("find widgets: %v", err)
+	}
+
+	orphan := core.NewRecord(widgets)
+	orphan.Id = orphanTestID(1)
+	orphan.Set("name", "widget-001")
+	orphan.Set("year", 2026)
+	if saveErr := app.Save(orphan); saveErr != nil {
+		t.Fatalf("seed orphan: %v", saveErr)
+	}
+
+	// A non-cascading relation pointing at the orphan blocks its deletion.
+	holders := core.NewBaseCollection("holders")
+	holders.Fields.Add(&core.RelationField{
+		Name: "widget", CollectionId: widgets.Id, CascadeDelete: false, Required: true,
+	})
+	if saveErr := app.Save(holders); saveErr != nil {
+		t.Fatalf("save holders: %v", saveErr)
+	}
+	holder := core.NewRecord(holders)
+	holder.Set("widget", orphan.Id)
+	if saveErr := app.Save(holder); saveErr != nil {
+		t.Fatalf("seed holder: %v", saveErr)
+	}
+
+	logs := captureSweepLogs(t)
+
+	b := BaseSyncService{App: app, ProcessedKeys: map[string]bool{}, SyncSuccessful: true}
+	if sweepErr := b.DeleteOrphans(
+		"widgets",
+		func(r *core.Record) (string, bool) { return r.Id, true },
+		"widget",
+		"year = 2026",
+	); sweepErr != nil {
+		t.Fatalf("sweep returned an error: %v", sweepErr)
+	}
+
+	// The row must still be there -- otherwise the fixture did not block anything
+	// and the assertion below would pass for the wrong reason.
+	if _, findErr := app.FindRecordById("widgets", orphan.Id); findErr != nil {
+		t.Fatalf("fixture is wrong: the delete was not blocked (%v)", findErr)
+	}
+
+	if got := logs.String(); strings.Contains(got, "Deleted orphaned records") {
+		t.Errorf("a failed delete was counted as deleted; got:\n%s", got)
 	}
 }

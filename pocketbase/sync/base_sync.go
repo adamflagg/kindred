@@ -224,7 +224,7 @@ func (b *BaseSyncService) deleteOrphans(
 		return nil
 	}
 
-	orphans, inspected, err := b.collectOrphans(collection, getIDFunc, entityName, filter)
+	orphans, inspected, seen, err := b.collectOrphans(collection, getIDFunc, entityName, filter)
 	if err != nil {
 		return err
 	}
@@ -233,6 +233,21 @@ func (b *BaseSyncService) deleteOrphans(
 		if guardErr := guard.Check(inspected); guardErr != nil {
 			return guardErr
 		}
+	}
+
+	// Rows were read but NONE could be keyed. This is the one collapse the guard
+	// structurally cannot catch: its denominator is `inspected`, which counts only
+	// keyable rows, so a total mapping failure presents to Check as an empty table
+	// rather than as a collapse. The sweep is safe -- `orphans` is empty, nothing
+	// is deleted -- but without this line it is indistinguishable in the log from
+	// a healthy year with no orphans, and three services' operator hints point
+	// here by name. Warn and stop: the "no orphans found" message below would be
+	// a lie about a run that inspected nothing.
+	if seen > 0 && inspected == 0 {
+		slog.Warn("Orphan sweep skipped: no record could be keyed, so the upstream mapping has collapsed",
+			"entity", entityName, "collection", collection, "records_read", seen,
+			"detail", "unkeyable records -- deleting nothing; check the sync that builds this key")
+		return nil
 	}
 
 	orphanCount := 0
@@ -244,13 +259,16 @@ func (b *BaseSyncService) deleteOrphans(
 			continue
 		}
 
-		orphanCount++
 		slog.Info("Deleting orphaned record", "entity", entityName, "name", candidate.name, "id", candidate.key)
 
+		// Counted AFTER the delete lands. A failed delete leaves the row on disk,
+		// and reporting it as deleted tells an operator the opposite of the truth.
 		if err := b.App.Delete(record); err != nil {
 			slog.Error("Failed to delete orphaned record", "entity", entityName, "id", candidate.key, "error", err)
 			b.Stats.Errors++
+			continue
 		}
+		orphanCount++
 	}
 
 	if orphanCount > 0 {
@@ -271,9 +289,10 @@ func (b *BaseSyncService) collectOrphans(
 	getIDFunc func(record *core.Record) (string, bool),
 	entityName string,
 	filter string,
-) ([]orphanCandidate, int, error) {
+) ([]orphanCandidate, int, int, error) {
 	var orphans []orphanCandidate
 	inspected := 0
+	seen := 0
 	cursor := ""
 	perPage := DefaultPageSize
 
@@ -282,7 +301,7 @@ func (b *BaseSyncService) collectOrphans(
 
 		records, err := b.App.FindRecordsByFilter(collection, pageFilter, "id", perPage, 0, params)
 		if err != nil {
-			return nil, 0, fmt.Errorf("loading %ss for orphan check: %w", entityName, err)
+			return nil, 0, 0, fmt.Errorf("loading %ss for orphan check: %w", entityName, err)
 		}
 		if len(records) == 0 {
 			break
@@ -290,6 +309,7 @@ func (b *BaseSyncService) collectOrphans(
 
 		for _, record := range records {
 			cursor = record.Id
+			seen++
 
 			idKey, ok := getIDFunc(record)
 			if !ok {
@@ -313,7 +333,7 @@ func (b *BaseSyncService) collectOrphans(
 		}
 	}
 
-	return orphans, inspected, nil
+	return orphans, inspected, seen, nil
 }
 
 // keysetPage composes a caller filter with the keyset cursor. The cursor is
