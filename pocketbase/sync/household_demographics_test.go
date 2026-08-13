@@ -10,7 +10,10 @@ import (
 )
 
 // Test constants for fictional data
-const testCongregation = "Temple Beth El"
+// Fictional, and verified absent from the production snapshot. tests/CLAUDE.md:
+// values that appear in real data do not belong in a public test file, and a
+// congregation name is exactly the kind of identifying detail the rule covers.
+const testCongregation = "Riverside Synagogue"
 
 // Every test in this file calls the PRODUCTION functions.
 //
@@ -480,7 +483,7 @@ func TestAggregateHouseholdValuesGetTheirOwnRow(t *testing.T) {
 		hhPersonEntry("hh1", "p1", 101, "HH-special living arrangements", "Shared custody"),
 	}
 	householdValues := []hhCustomValueEntry{
-		hhHouseholdEntry("hh1", customFieldNameSynagogue, "Congregation Beth Shalom"),
+		hhHouseholdEntry("hh1", customFieldNameSynagogue, "Oak Valley Synagogue"),
 		hhHouseholdEntry("hh1", "Center", "Lakeside JCC"),
 		hhHouseholdEntry("hh1", "Custody Issues", "Week on/week off"),
 		hhHouseholdEntry("hh1", "Board", "Yes"),
@@ -512,7 +515,7 @@ func TestAggregateHouseholdValuesGetTheirOwnRow(t *testing.T) {
 	}
 
 	// Family answers stay on the household row.
-	if household.congregationFamily != "Congregation Beth Shalom" {
+	if household.congregationFamily != "Oak Valley Synagogue" {
 		t.Errorf("household congregation_family = %q", household.congregationFamily)
 	}
 	if household.jccFamily != "Lakeside JCC" {
@@ -559,7 +562,7 @@ func TestAggregateFullRecord(t *testing.T) {
 		hhPersonEntry("hh1", "p1", 101, "HH-Who is filling out info", "Parent"),
 	}
 	householdValues := []hhCustomValueEntry{
-		hhHouseholdEntry("hh1", customFieldNameSynagogue, "Congregation Beth Shalom"),
+		hhHouseholdEntry("hh1", customFieldNameSynagogue, "Oak Valley Synagogue"),
 		hhHouseholdEntry("hh1", "Center", "Lakeside JCC"),
 		hhHouseholdEntry("hh1", "Custody Issues", "Week on/week off"),
 		hhHouseholdEntry("hh1", "Board", "Yes"),
@@ -606,7 +609,7 @@ func TestAggregateFullRecord(t *testing.T) {
 	wantHousehold := householdDemographicsRecord{
 		householdPBID:      "hh1",
 		year:               2026,
-		congregationFamily: "Congregation Beth Shalom",
+		congregationFamily: "Oak Valley Synagogue",
 		jccFamily:          "Lakeside JCC",
 		custodyFamily:      "Week on/week off",
 		boardMember:        true,
