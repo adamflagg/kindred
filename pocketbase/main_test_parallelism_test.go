@@ -104,6 +104,30 @@ var serialGroups = []struct {
 		tests:  []string{"TestBuildNormalizationLookupCompositeKeyDedup"},
 	},
 	{
+		// These four drive deleteOrphans, which reads the season through
+		// s.Client.GetSeasonID(). Client is a concrete *campminder.Client and
+		// campminder.NewClient reads CAMPMINDER_PRIMARY_KEY from the
+		// environment, so building one costs a t.Setenv.
+		//
+		// The guard's own advice applies here -- threading the key through
+		// NewClient instead of reading os.Getenv would parallelise all four --
+		// but that is an edit to the production CampMinder constructor, and it
+		// does not belong in a bunk-assignment protection fix. Tracked rather
+		// than smuggled in.
+		//
+		// The three tests in this file that do NOT sweep need no client and
+		// are parallel.
+		pkg:    "sync",
+		reason: "t.Setenv: campminder.NewClient reads CAMPMINDER_PRIMARY_KEY",
+		tests: []string{
+			"TestProtectThenSweepOrphans_DismissedStaffAssignmentSurvivesSweep",
+			"TestProtectThenSweepOrphans_ProtectionFailureAbortsSweep",
+			"TestProtectThenSweepOrphans_ProtectionSuccessStillSweeps",
+			"TestProtectThenSweepOrphans_SessionLookupFailureAbortsSweep",
+			"TestProtectThenSweepOrphans_SweepRefusalIsCountedAndReturned",
+		},
+	},
+	{
 		// registryBasePath / registryAbsoluteRoots (lodging/registry.go) are
 		// the only true data races the detector found when the whole tree was
 		// made parallel at once: withRegistryBasePath writes them, and every
