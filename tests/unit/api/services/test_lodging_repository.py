@@ -176,6 +176,156 @@ class TestNarrowPhiReads:
         pb.collection.return_value.get_full_list.assert_not_called()
 
 
+class TestFamilyCampMedicalIsScopedToFamilyOrAdultAttendance:
+    """kindred#2306. `processMedical` reads `Family Medical-*` /
+    `Family Camp-Physician*` custom values, which summer households answer
+    too -- 310 of 886 2026 `family_camp_medical` rows belong to a household
+    that never touched a family or adult session at all. Owner ruling
+    2026-08-13 (campaign decision D3): filter at READ, leave `processMedical`
+    and the write path untouched -- reversible, where narrowing the write
+    plus an unguarded sweep would not be.
+
+    "Touched" is ANY attendee row on a family/adult session that year,
+    regardless of status -- deliberately NOT narrowed to
+    `ACTIVE_ENROLLED_FILTER`. The 71-of-886 households that registered but
+    had nobody actively enrolled are kindred#2305's separate problem;
+    narrowing to status_id = 2 here would silently do that fix too and
+    conflate the two issues the campaign is keeping apart.
+    """
+
+    @pytest.mark.asyncio
+    async def test_bulk_read_drops_a_household_that_never_touched_a_weekend_session(
+        self, repo: LodgingRepository, pb: MagicMock
+    ) -> None:
+        _route_by_collection(
+            pb,
+            {
+                "family_camp_medical": [_record(household="hh_untouched", cpap_info="Uses a CPAP nightly")],
+                "attendees": [],
+            },
+        )
+
+        result = await repo.fetch_family_camp_medical(2026)
+
+        assert result == {}
+
+    @pytest.mark.asyncio
+    async def test_bulk_read_keeps_a_household_that_touched_a_weekend_session(
+        self, repo: LodgingRepository, pb: MagicMock
+    ) -> None:
+        touched_attendee = _record()
+        touched_attendee.expand = {"person": _record(household="hh_touched")}
+        _route_by_collection(
+            pb,
+            {
+                "family_camp_medical": [_record(household="hh_touched", cpap_info="Uses a CPAP nightly")],
+                "attendees": [touched_attendee],
+            },
+        )
+
+        result = await repo.fetch_family_camp_medical(2026)
+
+        assert "hh_touched" in result
+        assert result["hh_touched"].cpap_info == "Uses a CPAP nightly"
+
+    @pytest.mark.asyncio
+    async def test_bulk_read_keeps_a_household_registered_but_never_actively_enrolled(
+        self, repo: LodgingRepository, pb: MagicMock
+    ) -> None:
+        """The kindred#2305 population -- registered, nobody enrolled -- must
+        stay in scope here. Only zero-connection households (kindred#2306)
+        are excluded.
+        """
+        not_enrolled_attendee = _record(status_id=7)
+        not_enrolled_attendee.expand = {"person": _record(household="hh_registered_only")}
+        _route_by_collection(
+            pb,
+            {
+                "family_camp_medical": [_record(household="hh_registered_only", cpap_info="Uses a CPAP nightly")],
+                "attendees": [not_enrolled_attendee],
+            },
+        )
+
+        result = await repo.fetch_family_camp_medical(2026)
+
+        assert "hh_registered_only" in result
+
+    @pytest.mark.asyncio
+    async def test_bulk_touched_check_is_scoped_to_family_and_adult_sessions_and_the_year(
+        self, repo: LodgingRepository, pb: MagicMock
+    ) -> None:
+        queries = _route_by_collection(pb, {"family_camp_medical": [], "attendees": []})
+
+        await repo.fetch_family_camp_medical(2026)
+
+        filter_str = queries["attendees"][0]["filter"]
+        assert "year = 2026" in filter_str
+        assert 'session.session_type = "family"' in filter_str
+        assert 'session.session_type = "adult"' in filter_str
+        assert "status_id" not in filter_str
+
+    @pytest.mark.asyncio
+    async def test_single_household_read_returns_none_for_an_untouched_household(
+        self, repo: LodgingRepository, pb: MagicMock
+    ) -> None:
+        _route_by_collection(
+            pb,
+            {
+                "family_camp_medical": [_record(household="hh_1", cpap_info="Uses a CPAP nightly")],
+                "attendees": [],
+            },
+        )
+
+        result = await repo.fetch_medical_for_household(2026, "hh_1")
+
+        assert result is None
+
+    @pytest.mark.asyncio
+    async def test_single_household_read_returns_the_row_for_a_touched_household(
+        self, repo: LodgingRepository, pb: MagicMock
+    ) -> None:
+        _route_by_collection(
+            pb,
+            {
+                "family_camp_medical": [_record(household="hh_1", cpap_info="Uses a CPAP nightly")],
+                "attendees": [_record()],
+            },
+        )
+
+        result = await repo.fetch_medical_for_household(2026, "hh_1")
+
+        assert result is not None
+        assert result.cpap_info == "Uses a CPAP nightly"
+
+    @pytest.mark.asyncio
+    async def test_single_household_touched_check_never_reads_family_camp_medical_when_untouched(
+        self, repo: LodgingRepository, pb: MagicMock
+    ) -> None:
+        """PHI minimization: an untouched household's medical row is never
+        read off PocketBase at all, not merely filtered out afterward.
+        """
+        queries = _route_by_collection(pb, {"family_camp_medical": [], "attendees": []})
+
+        await repo.fetch_medical_for_household(2026, "hh_1")
+
+        assert "family_camp_medical" not in queries
+
+    @pytest.mark.asyncio
+    async def test_single_household_touched_check_filters_on_the_person_household_relation(
+        self, repo: LodgingRepository, pb: MagicMock
+    ) -> None:
+        queries = _route_by_collection(pb, {"family_camp_medical": [], "attendees": []})
+
+        await repo.fetch_medical_for_household(2026, "hh_1")
+
+        filter_str = queries["attendees"][0]["filter"]
+        assert "year = 2026" in filter_str
+        assert 'person.household = "hh_1"' in filter_str
+        assert 'session.session_type = "family"' in filter_str
+        assert 'session.session_type = "adult"' in filter_str
+        assert "status_id" not in filter_str
+
+
 class TestLodgingReadsKeyOnTheCampMinderSessionId:
     """Every lodging read names the weekend by `session_cm_id` (kindred#2042).
 
