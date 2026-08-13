@@ -468,6 +468,36 @@ func TestSyncRunPruneDropsRowsPastRetention(t *testing.T) {
 	t.Fatal("timed out waiting for the prune to drop the out-of-retention row")
 }
 
+// TestSyncRunPruneCutoffUsesPocketBaseDateFormat guards a silent off-by-a-day.
+//
+// PocketBase stores dates as "2026-05-15 10:00:00.000Z" and SQLite compares the bound cutoff
+// lexicographically. time.RFC3339 writes a `T` where PocketBase writes a space, and ' ' sorts
+// before 'T' — so every row sharing the cutoff's calendar date compares less than the cutoff
+// and is pruned up to a day early, whatever the time on it.
+func TestSyncRunPruneCutoffUsesPocketBaseDateFormat(t *testing.T) {
+	t.Parallel()
+
+	now := time.Date(2026, 8, 13, 10, 0, 0, 0, time.UTC)
+	got := syncRunPruneCutoff(now)
+	want := "2026-05-15 10:00:00.000Z" // now - 90 days, in PocketBase's stored layout
+
+	if got != want {
+		t.Errorf("syncRunPruneCutoff = %q, want %q", got, want)
+	}
+
+	// The comparison the prune actually makes: a row written at the cutoff instant is inside
+	// the window and must not sort below it.
+	stored, err := types.ParseDateTime(now.AddDate(0, 0, -SyncRunRetentionDays))
+	if err != nil {
+		t.Fatalf("ParseDateTime: %v", err)
+	}
+	if stored.String() < got {
+		t.Errorf("a row stored at the cutoff (%q) sorts below the cutoff (%q) — "+
+			"the prune would delete rows still inside the retention window",
+			stored.String(), got)
+	}
+}
+
 // TestSyncRunTruncatesLongError guards the write itself. PocketBase rejects an over-cap text
 // write rather than truncating it, so an unbounded error string does not produce a clipped
 // row — it produces no row at all, losing the counters of the one run most worth keeping.

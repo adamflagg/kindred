@@ -6,6 +6,7 @@ import (
 
 	"github.com/pocketbase/dbx"
 	"github.com/pocketbase/pocketbase/core"
+	"github.com/pocketbase/pocketbase/tools/types"
 )
 
 // This file persists one row per completed sync run to the `sync_runs` collection.
@@ -130,7 +131,7 @@ func (o *Orchestrator) recordSyncRun(completed *Status) {
 // anything having to be scheduled — a deployment that never runs the daily cron still cannot
 // grow this table without bound.
 func (o *Orchestrator) pruneSyncRuns() {
-	cutoff := time.Now().AddDate(0, 0, -SyncRunRetentionDays).UTC().Format(time.RFC3339)
+	cutoff := syncRunPruneCutoff(time.Now())
 
 	stale, err := o.app.FindRecordsByFilter(
 		syncRunsCollection,
@@ -159,6 +160,19 @@ func (o *Orchestrator) pruneSyncRuns() {
 
 	slog.Info("Pruned old sync runs",
 		"deleted", deleted, "found", len(stale), "retentionDays", SyncRunRetentionDays)
+}
+
+// syncRunPruneCutoff renders the retention cutoff in the layout PocketBase stores dates in.
+//
+// The filter binds this as a string and SQLite compares it lexicographically, so the layout is
+// load-bearing rather than cosmetic. PocketBase writes "2026-05-15 10:00:00.000Z"; time.RFC3339
+// writes a `T` where that has a space, and ' ' sorts before 'T' — so an RFC3339 cutoff makes
+// every row sharing its calendar date compare less than it, pruning up to a day early
+// regardless of the time on those rows.
+func syncRunPruneCutoff(now time.Time) string {
+	// types.DefaultDateLayout is exactly what DateTime.String() formats with, so this cannot
+	// drift from what the writes produce.
+	return now.AddDate(0, 0, -SyncRunRetentionDays).UTC().Format(types.DefaultDateLayout)
 }
 
 // resolveRunYear picks the year a persisted run is filed under.
