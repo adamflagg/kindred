@@ -124,6 +124,29 @@ describe('the housing states', () => {
 
     expect(rowFor(2026).textContent).not.toEqual(rowFor(2019).textContent)
   })
+
+  it('lets a long lodging name wrap instead of clipping it with an ellipsis', () => {
+    // kindred#2253. A unit name with a wing or sub-unit suffix loses exactly
+    // that suffix to `truncate`'s ellipsis — the half that distinguishes it
+    // from a same-building sibling.
+    show([
+      _row({
+        year: 2025,
+        housing: 'placed',
+        cabin_name: 'Clouds Rest Lodge - West Wing Room 12B',
+      }),
+    ])
+
+    const housing = screen.getByTestId('household-journey-housing')
+    // `truncate` is Tailwind's `overflow-hidden` + ellipsis + `nowrap`
+    // combined into one class. `min-w-0` is the OTHER half of the mechanism
+    // — it is what lets this flex child shrink below its content width at
+    // all — and it stays: dropping only `truncate` is what lets the name
+    // wrap instead of overflowing its row.
+    expect(housing).toHaveClass('min-w-0')
+    expect(housing).not.toHaveClass('truncate')
+    expect(housing).toHaveTextContent('Clouds Rest Lodge - West Wing Room 12B')
+  })
 })
 
 describe('the enrolment states', () => {
@@ -239,6 +262,46 @@ describe('the family name', () => {
     expect(screen.getByTestId('household-journey-title').textContent).toBe(
       'The Garcia-Lopez Family'
     )
+  })
+
+  it('lets a long family name wrap instead of clipping it with an ellipsis', () => {
+    // kindred#2253's second anchor: the header carries the same `truncate`
+    // as the year row, and a multi-surname household is exactly as likely to
+    // overflow it as a long unit name is to overflow the row.
+    show([
+      _row({
+        year: 2025,
+        children: [
+          { person_cm_id: 1, display_name: 'Emma Johnson', last_name: 'Johnson', age: 9, grade: 4 },
+        ],
+      }),
+      _row({
+        year: 2023,
+        children: [
+          {
+            person_cm_id: 2,
+            display_name: 'Liam Garcia-Lopez',
+            last_name: 'Garcia-Lopez',
+            age: 7,
+            grade: 2,
+          },
+        ],
+      }),
+      _row({
+        year: 2021,
+        children: [
+          {
+            person_cm_id: 3,
+            display_name: 'Ava Martinez',
+            last_name: 'Martinez',
+            age: 6,
+            grade: 1,
+          },
+        ],
+      }),
+    ])
+
+    expect(screen.getByTestId('household-journey-title')).not.toHaveClass('truncate')
   })
 
   it('falls back to a neutral heading when no child on any year carries a surname', () => {

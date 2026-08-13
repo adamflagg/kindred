@@ -143,8 +143,17 @@ function JourneyRows({
                 {year}
               </span>
 
+              {/* Wraps rather than truncates (kindred#2253): a unit name with
+                  a wing or sub-unit suffix lost exactly that suffix to
+                  `truncate`'s ellipsis — the half that distinguishes it from
+                  a same-building sibling. The card is a fixed-width panel and
+                  the rows are short, so a second line costs little. `min-w-0`
+                  stays: it is what lets this flex child shrink below its
+                  content width at all, which is what makes the wrap happen
+                  instead of the row overflowing its card. */}
               <span
-                className={`flex min-w-0 items-center gap-1 truncate text-sm ${
+                data-testid="household-journey-housing"
+                className={`flex min-w-0 items-center gap-1 text-sm ${
                   isPlaced ? 'text-foreground font-medium' : 'text-muted-foreground italic'
                 }`}
               >
@@ -217,9 +226,13 @@ export function HouseholdJourneyCard({ householdCmId, currentYear }: HouseholdJo
       className="bg-card border-border overflow-hidden rounded-2xl border shadow-sm"
     >
       <div className="from-forest-600 to-forest-700 bg-gradient-to-r px-5 py-4">
+        {/* Wraps rather than truncates, same reasoning as the housing name
+            below (kindred#2253): a multi-surname household is exactly as
+            likely to overflow this heading as a long unit name is to
+            overflow a year row, and the card has room to grow. */}
         <h2
           data-testid="household-journey-title"
-          className="font-display flex items-center gap-2 truncate text-lg font-bold text-white"
+          className="font-display flex items-center gap-2 text-lg font-bold text-white"
         >
           <TreePine className="h-5 w-5 flex-shrink-0" />
           {familyLabel.length > 0 ? familyLabel : NO_NAME_HEADING}
