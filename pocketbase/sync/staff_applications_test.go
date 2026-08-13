@@ -2,7 +2,11 @@ package sync
 
 import (
 	"context"
+	"strings"
 	"testing"
+
+	"github.com/pocketbase/pocketbase/core"
+	pbtests "github.com/pocketbase/pocketbase/tests"
 )
 
 // TestStaffApplicationsLoadFieldDefinitionsTrimsNames is a regression test for
@@ -337,4 +341,116 @@ func parseAppBool(value string) bool {
 // Note: makeStaffApplicationsKey calls implementation function makeStaffAppKey
 func makeStaffApplicationsKey(personID, year int) string {
 	return makeStaffAppKey(personID, year)
+}
+
+// newStaffApplicationsTestApp builds the one collection deleteOrphans touches.
+// Like newStaffVehicleTestApp, this fixture is LAXER than production -- it
+// carries only the fields the guard reads -- so a green test here is not
+// evidence that production writes validate.
+func newStaffApplicationsTestApp(t *testing.T) core.App {
+	t.Helper()
+	app, err := pbtests.NewTestApp()
+	if err != nil {
+		t.Fatalf("NewTestApp: %v", err)
+	}
+	t.Cleanup(app.Cleanup)
+
+	apps := core.NewBaseCollection("staff_applications")
+	apps.Fields.Add(&core.TextField{Name: "staff"})
+	apps.Fields.Add(&core.NumberField{Name: "person_id"})
+	apps.Fields.Add(&core.NumberField{Name: "year"})
+	if saveErr := app.Save(apps); saveErr != nil {
+		t.Fatalf("save staff_applications: %v", saveErr)
+	}
+
+	return app
+}
+
+// seedStaffApplication writes one staff_applications row and returns its PB ID.
+func seedStaffApplication(t *testing.T, app core.App, cmID, year int) string {
+	t.Helper()
+
+	col, err := app.FindCollectionByNameOrId("staff_applications")
+	if err != nil {
+		t.Fatalf("find staff_applications: %v", err)
+	}
+	rec := core.NewRecord(col)
+	rec.Set("person_id", cmID)
+	rec.Set("year", year)
+	if saveErr := app.Save(rec); saveErr != nil {
+		t.Fatalf("save staff_applications row: %v", saveErr)
+	}
+	return rec.Id
+}
+
+// TestStaffApplicationsDeleteOrphansRefusesEmptyComputedSet is kindred#2279
+// Gap 2. staff_applications builds its computed set from the SAME
+// loadPersonStaffMapping(ctx, year) gate as staff_vehicle_info, so it has the
+// identical year-wipe path: an empty staff mapping makes every value fail the
+// gate, the computed set comes back empty, and the unguarded sweep deletes the
+// whole year and then sets SyncSuccessful = true.
+func TestStaffApplicationsDeleteOrphansRefusesEmptyComputedSet(t *testing.T) {
+	app := newStaffApplicationsTestApp(t)
+	recID := seedStaffApplication(t, app, 1001, 2026)
+
+	s := NewStaffApplicationsSync(app)
+	s.Year = 2026
+
+	existing := map[string]string{makeStaffAppKey(1001, 2026): recID}
+	deleted, err := s.deleteOrphans(context.Background(),
+		map[string]*staffApplicationRecord{}, existing, 2026)
+
+	if err == nil {
+		t.Fatal("expected an error when the computed set is empty and rows exist, got nil")
+	}
+	if !strings.Contains(err.Error(), "2026") {
+		t.Errorf("error %q does not name the year -- an operator has no way to tell which season refused", err.Error())
+	}
+	if deleted != 0 {
+		t.Errorf("deleted = %d, want 0 -- nothing may be removed on the refusal path", deleted)
+	}
+
+	remaining, err := app.FindRecordsByFilter("staff_applications", "year = 2026", "", 0, 0)
+	if err != nil {
+		t.Fatalf("re-query: %v", err)
+	}
+	if len(remaining) != 1 {
+		t.Errorf("%d rows survived, want 1 -- the guard must not delete", len(remaining))
+	}
+}
+
+// TestStaffApplicationsDeleteOrphansStillSweepsGenuineOrphans proves the guard
+// did not disable orphan deletion for the normal case.
+func TestStaffApplicationsDeleteOrphansStillSweepsGenuineOrphans(t *testing.T) {
+	app := newStaffApplicationsTestApp(t)
+	keepID := seedStaffApplication(t, app, 1001, 2026)
+	orphanID := seedStaffApplication(t, app, 1002, 2026)
+
+	s := NewStaffApplicationsSync(app)
+	s.Year = 2026
+
+	// 1001 is still computed; 1002 is not, and must be swept.
+	computed := map[string]*staffApplicationRecord{
+		makeStaffAppKey(1001, 2026): {personID: 1001, year: 2026},
+	}
+	existing := map[string]string{
+		makeStaffAppKey(1001, 2026): keepID,
+		makeStaffAppKey(1002, 2026): orphanID,
+	}
+
+	deleted, err := s.deleteOrphans(context.Background(), computed, existing, 2026)
+	if err != nil {
+		t.Fatalf("unexpected error on a non-empty computed set: %v", err)
+	}
+	if deleted != 1 {
+		t.Errorf("deleted = %d, want 1 -- the guard must not block a genuine sweep", deleted)
+	}
+
+	remaining, err := app.FindRecordsByFilter("staff_applications", "year = 2026", "", 0, 0)
+	if err != nil {
+		t.Fatalf("re-query: %v", err)
+	}
+	if len(remaining) != 1 {
+		t.Errorf("%d rows survived, want 1", len(remaining))
+	}
 }

@@ -2,8 +2,10 @@ package sync
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
+	"slices"
 	"strings"
 
 	"github.com/pocketbase/pocketbase/core"
@@ -24,7 +26,8 @@ const (
 // Unique key: (person_id, year) - one record per staff member per year
 // Links to: staff
 //
-// Field mapping: 8 SVI-* prefixed fields covering driving plans and vehicle details.
+// Field mapping: 10 SVI-* prefixed fields covering driving plans, vehicle details
+// and transport logistics.
 type StaffVehicleInfoSync struct {
 	App            core.App
 	Year           int
@@ -78,12 +81,14 @@ type staffVehicleInfoRecord struct {
 
 	drivingToCamp    bool
 	howGettingToCamp string
-	canBringOthers   bool
+	canBringOthers   string
 	driverName       string
 	whichFriend      string
 	vehicleMake      string
 	vehicleModel     string
 	licensePlate     string
+	rideFrom         string
+	transportNotes   string
 }
 
 // Sync executes the staff vehicle info extraction
@@ -118,6 +123,28 @@ func (s *StaffVehicleInfoSync) Sync(ctx context.Context) error {
 	}
 	slog.Info("Loaded field definitions", "count", len(fieldNameMap))
 
+	// Layer 1 of the kindred#2258 guard: compare the mapper against what
+	// CampMinder published THIS RUN, so an upstream rename surfaces in the log
+	// rather than as an empty column found by audit years later.
+	defNames := make([]string, 0, len(fieldNameMap))
+	for _, name := range fieldNameMap {
+		defNames = append(defNames, name)
+	}
+	unrouted, unmapped := sviRoutingReport(defNames)
+	slog.Info("SVI field routing",
+		"admitted", len(fieldNameMap),
+		"routable", len(fieldNameMap)-len(unmapped),
+	)
+	for _, column := range unrouted {
+		slog.Warn("SVI column is reachable from no CampMinder field -- renamed upstream?",
+			"column", column)
+	}
+	// Once per field NAME per run, never per value: per-value would emit
+	// ~1,700 lines per full backfill for fields working as intended.
+	for _, name := range unmapped {
+		slog.Warn("SVI field is admitted but routes to no column", "field", name)
+	}
+
 	// Step 2: Load person -> staff mapping
 	personToStaff, err := s.loadPersonStaffMapping(ctx, year)
 	if err != nil {
@@ -149,20 +176,30 @@ func (s *StaffVehicleInfoSync) Sync(ctx context.Context) error {
 	slog.Info("Loaded existing records", "count", len(existingRecords))
 
 	// Step 5: Upsert records
-	created, updated, errors := s.upsertRecords(ctx, records, existingRecords, year)
+	created, updated, upsertErrors := s.upsertRecords(ctx, records, existingRecords, year)
 	s.Stats.Created = created
 	s.Stats.Updated = updated
-	s.Stats.Errors = errors
+	s.Stats.Errors = upsertErrors
 
 	// Step 6: Delete orphans
-	deleted := s.deleteOrphans(ctx, records, existingRecords)
+	deleted, err := s.deleteOrphans(ctx, records, existingRecords, year)
 	s.Stats.Deleted = deleted
 
-	// WAL checkpoint
+	// WAL checkpoint BEFORE the error return below. upsertRecords has already
+	// written by this point, and the cancellation path returns with those writes
+	// still in the WAL. (The refusal path cannot strand writes -- it requires an
+	// empty computed set, so nothing was upserted -- but cancellation can.)
 	if s.Stats.Created > 0 || s.Stats.Updated > 0 || s.Stats.Deleted > 0 {
-		if err := s.forceWALCheckpoint(); err != nil {
-			slog.Warn("WAL checkpoint failed", "error", err)
+		if cpErr := s.forceWALCheckpoint(); cpErr != nil {
+			slog.Warn("WAL checkpoint failed", "error", cpErr)
 		}
+	}
+
+	if err != nil {
+		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+			return fmt.Errorf("orphan sweep interrupted: %w", err)
+		}
+		return fmt.Errorf("orphan sweep refused: %w", err)
 	}
 
 	s.SyncSuccessful = true
@@ -171,6 +208,7 @@ func (s *StaffVehicleInfoSync) Sync(ctx context.Context) error {
 		"created", s.Stats.Created,
 		"updated", s.Stats.Updated,
 		"deleted", s.Stats.Deleted,
+		"skipped", s.Stats.Skipped,
 		"errors", s.Stats.Errors,
 	)
 
@@ -324,6 +362,10 @@ func (s *StaffVehicleInfoSync) loadPersonCustomValues(
 	for _, entry := range entries {
 		staffID, hasStaff := personToStaff[entry.personID]
 		if !hasStaff {
+			// Structurally correct -- `staff` is a required relation, so a row
+			// cannot be written without one -- but it must not be silent
+			// (kindred#2273).
+			s.Stats.Skipped++
 			continue
 		}
 
@@ -338,6 +380,10 @@ func (s *StaffVehicleInfoSync) loadPersonCustomValues(
 			result[key] = rec
 		}
 
+		if MapSVIFieldToColumnImpl(entry.fieldName) == "" {
+			s.Stats.Skipped++
+			continue
+		}
 		mapSVIFieldToRecord(rec, entry.fieldName, entry.value)
 	}
 
@@ -359,7 +405,11 @@ func mapSVIFieldToRecord(rec *staffVehicleInfoRecord, fieldName, value string) {
 			rec.howGettingToCamp = value
 		}
 	case colCanBringOthers:
-		rec.canBringOthers = parseSVIBoolImpl(value)
+		// Raw answer, first-non-empty-wins like every other text column.
+		// NOT parseSVIBoolImpl -- see kindred#2262.
+		if rec.canBringOthers == "" {
+			rec.canBringOthers = value
+		}
 	case "driver_name":
 		if rec.driverName == "" {
 			rec.driverName = value
@@ -380,7 +430,69 @@ func mapSVIFieldToRecord(rec *staffVehicleInfoRecord, fieldName, value string) {
 		if rec.licensePlate == "" {
 			rec.licensePlate = value
 		}
+	case "ride_from":
+		if rec.rideFrom == "" {
+			rec.rideFrom = value
+		}
+	case "transport_notes":
+		if rec.transportNotes == "" {
+			rec.transportNotes = value
+		}
 	}
+}
+
+// sviTargetColumns lists every column MapSVIFieldToColumnImpl can return. It
+// is the guard's subject: each of these must be reachable from at least one
+// field name CampMinder publishes.
+var sviTargetColumns = []string{
+	colDrivingToCamp,
+	"how_getting_to_camp",
+	colCanBringOthers,
+	"driver_name",
+	"which_friend",
+	"vehicle_make",
+	"vehicle_model",
+	"license_plate",
+	"ride_from",
+	"transport_notes",
+}
+
+// sviRoutingReport compares the mapper against the field names CampMinder
+// actually published.
+//
+// unroutedColumns: target columns no published name routes to. A non-empty
+// result means a literal in MapSVIFieldToColumnImpl is misspelled or the field
+// was renamed upstream -- this is the kindred#2258 failure, and it is the
+// reason this function exists.
+//
+// unmappedFields: published SVI names that route nowhere. Expected to be
+// non-empty -- two definitions are deliberately unrouted -- so this is for
+// logging, not for failing.
+//
+// Both slices are sorted so callers and tests are deterministic.
+func sviRoutingReport(defNames []string) (unroutedColumns, unmappedFields []string) {
+	reached := make(map[string]bool, len(sviTargetColumns))
+
+	for _, name := range defNames {
+		column := MapSVIFieldToColumnImpl(normalizeFieldName(name))
+		if column == "" {
+			if isStaffVehicleInfoField(normalizeFieldName(name)) {
+				unmappedFields = append(unmappedFields, name)
+			}
+			continue
+		}
+		reached[column] = true
+	}
+
+	for _, column := range sviTargetColumns {
+		if !reached[column] {
+			unroutedColumns = append(unroutedColumns, column)
+		}
+	}
+
+	slices.Sort(unroutedColumns)
+	slices.Sort(unmappedFields)
+	return unroutedColumns, unmappedFields
 }
 
 // MapSVIFieldToColumnImpl maps CampMinder field names to database column names
@@ -400,8 +512,14 @@ func MapSVIFieldToColumnImpl(fieldName string) string {
 		return "vehicle_make"
 	case "SVI-model vehicle":
 		return "vehicle_model"
-	case "SVI-license plate number":
+	// British spelling: this is how CampMinder publishes it. The American
+	// spelling matched nothing for the table's entire history (kindred#2258).
+	case "SVI-licence plate number":
 		return "license_plate"
+	case "SVI- Where do you need a ride from":
+		return "ride_from"
+	case "SVI - other":
+		return "transport_notes"
 	}
 	return ""
 }
@@ -462,7 +580,7 @@ func (s *StaffVehicleInfoSync) upsertRecords(
 	records map[string]*staffVehicleInfoRecord,
 	existingRecords map[string]string,
 	year int,
-) (created, updated, errors int) {
+) (created, updated, errCount int) {
 	col, err := s.App.FindCollectionByNameOrId("staff_vehicle_info")
 	if err != nil {
 		slog.Error("Error finding staff_vehicle_info collection", "error", err)
@@ -472,7 +590,7 @@ func (s *StaffVehicleInfoSync) upsertRecords(
 	for _, rec := range records {
 		select {
 		case <-ctx.Done():
-			return created, updated, errors
+			return created, updated, errCount
 		default:
 		}
 
@@ -484,7 +602,7 @@ func (s *StaffVehicleInfoSync) upsertRecords(
 			record, err = s.App.FindRecordById("staff_vehicle_info", existingID)
 			if err != nil {
 				slog.Error("Error finding existing record", "id", existingID, "error", err)
-				errors++
+				errCount++
 				continue
 			}
 		} else {
@@ -503,6 +621,8 @@ func (s *StaffVehicleInfoSync) upsertRecords(
 		record.Set("vehicle_make", rec.vehicleMake)
 		record.Set("vehicle_model", rec.vehicleModel)
 		record.Set("license_plate", rec.licensePlate)
+		record.Set("ride_from", rec.rideFrom)
+		record.Set("transport_notes", rec.transportNotes)
 
 		if err := s.App.Save(record); err != nil {
 			slog.Error("Error saving staff_vehicle_info record",
@@ -510,7 +630,7 @@ func (s *StaffVehicleInfoSync) upsertRecords(
 				"year", rec.year,
 				"error", err,
 			)
-			errors++
+			errCount++
 			continue
 		}
 
@@ -521,21 +641,41 @@ func (s *StaffVehicleInfoSync) upsertRecords(
 		}
 	}
 
-	return created, updated, errors
+	return created, updated, errCount
 }
 
-// deleteOrphans removes records that exist in DB but not in computed set
+// deleteOrphans removes records that exist in DB but not in computed set.
+//
+// Refuses when the computed set is empty and rows exist for the year: that
+// combination is always a broken input, and sweeping on it deletes the whole
+// year and reports success (kindred#2273).
+//
+// TWO upstream faults produce it, and the error names both because they surface
+// in different places: an empty personToStaff mapping (every value fails the
+// staff gate), or an empty fieldNameMap after an upstream rename of the SVI-*
+// namespace (every value routes nowhere). The second is the kindred#2258 class
+// and shows up in the "SVI field routing" warnings Layer 1 logs earlier in the
+// same run -- naming only the staff table sends an operator to the wrong place.
 func (s *StaffVehicleInfoSync) deleteOrphans(
 	ctx context.Context,
 	records map[string]*staffVehicleInfoRecord,
 	existingRecords map[string]string,
-) int {
+	year int,
+) (int, error) {
+	if len(records) == 0 && len(existingRecords) > 0 {
+		return 0, fmt.Errorf(
+			"refusing to sweep %d existing staff_vehicle_info rows for year %d against an "+
+				"empty computed set (check the staff table for that year, and the SVI field "+
+				"routing warnings above for an upstream rename)",
+			len(existingRecords), year)
+	}
+
 	deleted := 0
 
 	for key, recordID := range existingRecords {
 		select {
 		case <-ctx.Done():
-			return deleted
+			return deleted, ctx.Err()
 		default:
 		}
 
@@ -554,7 +694,7 @@ func (s *StaffVehicleInfoSync) deleteOrphans(
 		}
 	}
 
-	return deleted
+	return deleted, nil
 }
 
 // forceWALCheckpoint forces a SQLite WAL checkpoint

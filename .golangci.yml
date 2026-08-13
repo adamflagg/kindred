@@ -59,6 +59,13 @@ linters:
         # are real field names we must match on, so the typo is data, not a bug.
         - typo: "accomodation"
           correction: "accomodation"
+        # CampMinder ships the SVI plate field under the British spelling
+        # "SVI-licence plate number" (kindred#2258). The American spelling
+        # matched nothing for the table's entire history, so the field name
+        # is data, not a bug -- matched literally in staff_vehicle_info.go
+        # and pinned by staff_vehicle_info_test.go.
+        - typo: "licence"
+          correction: "licence"
     lll:
       line-length: 120
     nakedret:
