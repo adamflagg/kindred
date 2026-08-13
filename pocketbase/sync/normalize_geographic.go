@@ -217,13 +217,21 @@ func (n *NormalizeGeographicSync) Sync(ctx context.Context) error {
 	n.SyncSuccessful = true
 
 	// Step 7: Delete orphaned mappings
-	n.deleteOrphans(existingMappings)
+	deleted, orphanErr := n.deleteOrphans(existingMappings, year)
+	n.Stats.Deleted = deleted
 
-	// WAL checkpoint
+	// WAL checkpoint BEFORE the error return below -- the upserts above have
+	// already written by this point, and the refusal path can fire on a
+	// non-empty computed set (a PARTIAL collapse), which is exactly the case
+	// where writes already happened.
 	if n.Stats.Created > 0 || n.Stats.Updated > 0 || n.Stats.Deleted > 0 {
 		if err := n.forceWALCheckpoint(); err != nil {
 			slog.Warn("WAL checkpoint failed", "error", err)
 		}
+	}
+
+	if orphanErr != nil {
+		return fmt.Errorf("orphan sweep refused: %w", orphanErr)
 	}
 
 	slog.Info("Geographic normalization completed",
@@ -1145,11 +1153,27 @@ func (n *NormalizeGeographicSync) updatePersonsNormalized(
 	return nil
 }
 
-// deleteOrphans removes mappings that weren't processed (no longer in source data)
-func (n *NormalizeGeographicSync) deleteOrphans(existingMappings map[string]*core.Record) int {
+// deleteOrphans removes mappings that weren't processed (no longer in source data).
+//
+// Refuses when the computed set is too small to be believed against the rows
+// on disk: that combination is always a broken input, and sweeping on it
+// deletes the season's mappings and reports success (kindred#2257,
+// kindred#2283). The rule lives in OrphanSweepGuard so there is one
+// implementation, not an eighth copy.
+func (n *NormalizeGeographicSync) deleteOrphans(existingMappings map[string]*core.Record, year int) (int, error) {
 	if !n.SyncSuccessful {
 		slog.Info("Skipping orphan deletion due to sync failure")
-		return 0
+		return 0, nil
+	}
+
+	guard := OrphanSweepGuard{
+		Entity:   "normalized_mappings",
+		Year:     year,
+		Computed: len(n.ProcessedKeys),
+		Hint:     "check that the attendees sync returned this season",
+	}
+	if err := guard.Check(len(existingMappings)); err != nil {
+		return 0, err
 	}
 
 	orphanCount := 0
@@ -1176,11 +1200,10 @@ func (n *NormalizeGeographicSync) deleteOrphans(existingMappings map[string]*cor
 	}
 
 	if orphanCount > 0 {
-		n.Stats.Deleted = orphanCount
 		slog.Info("Deleted orphaned normalized_mappings", "count", orphanCount)
 	}
 
-	return orphanCount
+	return orphanCount, nil
 }
 
 // resolveValue checks alias overrides first, then fuzzy match, then merge redirects.

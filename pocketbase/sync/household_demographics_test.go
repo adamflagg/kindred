@@ -743,8 +743,8 @@ func TestUpsertAndOrphanSweepAgreeOnGrain(t *testing.T) {
 	if len(existing) != 2 {
 		t.Fatalf("loadExistingRecords keyed %d rows, want 2 -- a household-grain key hides a sibling", len(existing))
 	}
-	if deleted := s.deleteOrphans(ctx, rows, existing); deleted != 0 {
-		t.Fatalf("deleteOrphans removed %d of the rows the write path just created", deleted)
+	if deleted, sweepErr := s.deleteOrphans(ctx, rows, existing, 2026); sweepErr != nil || deleted != 0 {
+		t.Fatalf("deleteOrphans removed %d of the rows the write path just created (err=%v)", deleted, sweepErr)
 	}
 	if n := countDemographicsRows(t, app); n != 2 {
 		t.Fatalf("household_demographics holds %d rows after a no-op sweep, want 2", n)
@@ -756,8 +756,8 @@ func TestUpsertAndOrphanSweepAgreeOnGrain(t *testing.T) {
 	if err != nil {
 		t.Fatalf("loadExistingRecords before sweep: %v", err)
 	}
-	if deleted := s.deleteOrphans(ctx, onlyFirst, existing); deleted != 1 {
-		t.Fatalf("deleteOrphans removed %d rows, want 1", deleted)
+	if deleted, sweepErr := s.deleteOrphans(ctx, onlyFirst, existing, 2026); sweepErr != nil || deleted != 1 {
+		t.Fatalf("deleteOrphans removed %d rows, want 1 (err=%v)", deleted, sweepErr)
 	}
 	if n := countDemographicsRows(t, app); n != 1 {
 		t.Fatalf("household_demographics holds %d rows, want 1", n)
@@ -813,15 +813,15 @@ func TestDeleteOrphansRefusesToEmptyTheTable(t *testing.T) {
 		t.Fatalf("loadExistingRecords after upsert: %v", err)
 	}
 
-	deleted := s.deleteOrphans(ctx, map[string]*householdDemographicsRecord{}, existing)
+	deleted, err := s.deleteOrphans(ctx, map[string]*householdDemographicsRecord{}, existing, 2026)
+	if err == nil {
+		t.Error("deleteOrphans against an empty computed set returned nil; want a refusal error")
+	}
 	if deleted != 0 {
 		t.Errorf("deleteOrphans removed %d rows against an empty computed set; want a refusal", deleted)
 	}
 	if n := countDemographicsRows(t, app); n != 1 {
 		t.Errorf("household_demographics holds %d rows, want 1 (nothing swept)", n)
-	}
-	if s.Stats.Errors == 0 {
-		t.Error("a refused sweep must be audible in Stats.Errors, got 0")
 	}
 }
 
@@ -901,4 +901,56 @@ func TestSetColumnIsMustBeUniqueNotFirstWins(t *testing.T) {
 			t.Errorf("conflicts = %d, want 2", s.columnConflicts)
 		}
 	})
+}
+
+// TestHouseholdDemographicsDeleteOrphansRefusesPartialCollapse is the point of
+// kindred#2283: this file carried its OWN hand-rolled guard that caught only a
+// TOTAL collapse (computed set empty). A PARTIAL collapse -- a handful of rows
+// computed against hundreds on disk -- sailed straight past it and swept
+// everything else. The shared OrphanSweepGuard widens "empty" to "suspiciously
+// small"; this test only passes once that guard is wired in, because the old
+// local check (`len(records) == 0`) does not fire when records has 3 entries.
+func TestHouseholdDemographicsDeleteOrphansRefusesPartialCollapse(t *testing.T) {
+	app := newOrphanSweepTestApp(t, "household_demographics", "household", "person_id")
+	col, err := app.FindCollectionByNameOrId("household_demographics")
+	if err != nil {
+		t.Fatalf("find household_demographics: %v", err)
+	}
+
+	existing := make(map[string]string, OrphanSweepMinRows+5)
+	for i := range OrphanSweepMinRows + 5 {
+		rec := core.NewRecord(col)
+		rec.Set("household", "hh_fixed")
+		rec.Set("person_id", i+1)
+		rec.Set("year", 2026)
+		if saveErr := app.Save(rec); saveErr != nil {
+			t.Fatalf("save existing row %d: %v", i, saveErr)
+		}
+		existing[MakeCompositeKey("hh_fixed", i+1, 2026)] = rec.Id
+	}
+
+	s := NewHouseholdDemographicsSync(app)
+	// Only 3 computed against 25 on disk -- well under the 50% floor, and well
+	// past the old hand-rolled guard's "== 0" check.
+	computed := map[string]*householdDemographicsRecord{
+		MakeCompositeKey("hh_fixed", 1, 2026): {householdPBID: "hh_fixed", personCMID: 1, year: 2026},
+		MakeCompositeKey("hh_fixed", 2, 2026): {householdPBID: "hh_fixed", personCMID: 2, year: 2026},
+		MakeCompositeKey("hh_fixed", 3, 2026): {householdPBID: "hh_fixed", personCMID: 3, year: 2026},
+	}
+
+	deleted, err := s.deleteOrphans(context.Background(), computed, existing, 2026)
+	if err == nil {
+		t.Fatal("expected an error when the computed set covers a fraction of what is on disk, got nil")
+	}
+	if deleted != 0 {
+		t.Errorf("deleted = %d, want 0 -- nothing may be removed on the refusal path", deleted)
+	}
+
+	remaining, err := app.FindRecordsByFilter("household_demographics", "year = 2026", "", 0, 0)
+	if err != nil {
+		t.Fatalf("re-query: %v", err)
+	}
+	if len(remaining) != OrphanSweepMinRows+5 {
+		t.Errorf("%d rows survived, want %d -- the guard must not delete", len(remaining), OrphanSweepMinRows+5)
+	}
 }

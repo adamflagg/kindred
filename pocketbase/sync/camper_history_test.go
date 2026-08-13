@@ -2478,3 +2478,75 @@ func TestCamperHistoryRecordNeedsUpdateUsesCompareFields(t *testing.T) {
 		}
 	})
 }
+
+// TestCamperHistoryDeleteOrphansRefusesCollapsedComputedSet pins the guard
+// kindred#2283 adds. Before this fix deleteOrphans returned a bare int and had
+// no channel to refuse a sweep at all -- an empty ProcessedKeys map against a
+// populated year deleted the whole year and reported success.
+func TestCamperHistoryDeleteOrphansRefusesCollapsedComputedSet(t *testing.T) {
+	app := newOrphanSweepTestApp(t, "camper_history", "person_id", "session_cm_id")
+	col, err := app.FindCollectionByNameOrId("camper_history")
+	if err != nil {
+		t.Fatalf("find camper_history: %v", err)
+	}
+	rec := core.NewRecord(col)
+	rec.Set("person_id", 5001)
+	rec.Set("session_cm_id", 200)
+	rec.Set("year", 2026)
+	if saveErr := app.Save(rec); saveErr != nil {
+		t.Fatalf("save existing row: %v", saveErr)
+	}
+
+	c := NewCamperHistorySync(app)
+	c.SyncSuccessful = true
+	c.ProcessedKeys = make(map[string]bool) // nothing processed this run
+
+	existing := map[string]*core.Record{"5001:200|2026": rec}
+	deleted, err := c.deleteOrphans(existing, 2026)
+
+	if err == nil {
+		t.Fatal("expected an error when nothing was processed and rows exist, got nil")
+	}
+	if deleted != 0 {
+		t.Errorf("deleted = %d, want 0 -- nothing may be removed on the refusal path", deleted)
+	}
+
+	remaining, err := app.FindRecordsByFilter("camper_history", "year = 2026", "", 0, 0)
+	if err != nil {
+		t.Fatalf("re-query: %v", err)
+	}
+	if len(remaining) != 1 {
+		t.Errorf("%d rows survived, want 1 -- the guard must not delete", len(remaining))
+	}
+}
+
+// TestCamperHistoryDeleteOrphansStillSweepsGenuineOrphans proves the guard did
+// not disable orphan deletion for the normal case (a camper unenrolled from a
+// session).
+func TestCamperHistoryDeleteOrphansStillSweepsGenuineOrphans(t *testing.T) {
+	app := newOrphanSweepTestApp(t, "camper_history", "person_id", "session_cm_id")
+	col, err := app.FindCollectionByNameOrId("camper_history")
+	if err != nil {
+		t.Fatalf("find camper_history: %v", err)
+	}
+	orphan := core.NewRecord(col)
+	orphan.Set("person_id", 5002)
+	orphan.Set("session_cm_id", 200)
+	orphan.Set("year", 2026)
+	if saveErr := app.Save(orphan); saveErr != nil {
+		t.Fatalf("save orphan: %v", saveErr)
+	}
+
+	c := NewCamperHistorySync(app)
+	c.SyncSuccessful = true
+	c.ProcessedKeys = map[string]bool{"5001:200|2026": true}
+
+	existing := map[string]*core.Record{"5002:200|2026": orphan}
+	deleted, err := c.deleteOrphans(existing, 2026)
+	if err != nil {
+		t.Fatalf("deleteOrphans: %v", err)
+	}
+	if deleted != 1 {
+		t.Errorf("deleted = %d, want 1", deleted)
+	}
+}

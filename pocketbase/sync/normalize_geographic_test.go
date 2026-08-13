@@ -10,6 +10,8 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+
+	"github.com/pocketbase/pocketbase/core"
 )
 
 // ============================================================================
@@ -2166,5 +2168,81 @@ func TestOverrideMapDedup_RejectedCarriesForward(t *testing.T) {
 
 	if !rejectedOverrides[categoryCity]["springfield"] {
 		t.Error("expected springfield to remain rejected")
+	}
+}
+
+// TestNormalizeGeographicDeleteOrphansRefusesCollapsedComputedSet pins the
+// guard kindred#2283 adds. Before this fix deleteOrphans returned a bare int
+// and had no channel to refuse a sweep at all -- an empty ProcessedKeys map
+// against a populated year deleted every normalized mapping and reported
+// success.
+func TestNormalizeGeographicDeleteOrphansRefusesCollapsedComputedSet(t *testing.T) {
+	app := newOrphanSweepTestApp(t, "normalized_mappings", "category", "person", "session")
+	col, err := app.FindCollectionByNameOrId("normalized_mappings")
+	if err != nil {
+		t.Fatalf("find normalized_mappings: %v", err)
+	}
+	rec := core.NewRecord(col)
+	rec.Set("category", categoryCity)
+	rec.Set("person", "pers_001")
+	rec.Set("session", "sess_001")
+	rec.Set("year", 2026)
+	if saveErr := app.Save(rec); saveErr != nil {
+		t.Fatalf("save existing row: %v", saveErr)
+	}
+
+	n := NewNormalizeGeographicSync(app)
+	n.SyncSuccessful = true
+	n.ProcessedKeys = make(map[string]bool) // nothing processed this run
+
+	key := "pers_001:sess_001:" + categoryCity
+	existing := map[string]*core.Record{key: rec}
+	deleted, err := n.deleteOrphans(existing, 2026)
+
+	if err == nil {
+		t.Fatal("expected an error when nothing was processed and rows exist, got nil")
+	}
+	if deleted != 0 {
+		t.Errorf("deleted = %d, want 0 -- nothing may be removed on the refusal path", deleted)
+	}
+
+	remaining, err := app.FindRecordsByFilter("normalized_mappings", "year = 2026", "", 0, 0)
+	if err != nil {
+		t.Fatalf("re-query: %v", err)
+	}
+	if len(remaining) != 1 {
+		t.Errorf("%d rows survived, want 1 -- the guard must not delete", len(remaining))
+	}
+}
+
+// TestNormalizeGeographicDeleteOrphansStillSweepsGenuineOrphans proves the
+// guard did not disable orphan deletion for the normal case.
+func TestNormalizeGeographicDeleteOrphansStillSweepsGenuineOrphans(t *testing.T) {
+	app := newOrphanSweepTestApp(t, "normalized_mappings", "category", "person", "session")
+	col, err := app.FindCollectionByNameOrId("normalized_mappings")
+	if err != nil {
+		t.Fatalf("find normalized_mappings: %v", err)
+	}
+	orphan := core.NewRecord(col)
+	orphan.Set("category", categoryCity)
+	orphan.Set("person", "pers_002")
+	orphan.Set("session", "sess_001")
+	orphan.Set("year", 2026)
+	if saveErr := app.Save(orphan); saveErr != nil {
+		t.Fatalf("save orphan: %v", saveErr)
+	}
+
+	n := NewNormalizeGeographicSync(app)
+	n.SyncSuccessful = true
+	n.ProcessedKeys = map[string]bool{"pers_001:sess_001:" + categoryCity: true}
+
+	orphanKey := "pers_002:sess_001:" + categoryCity
+	existing := map[string]*core.Record{orphanKey: orphan}
+	deleted, err := n.deleteOrphans(existing, 2026)
+	if err != nil {
+		t.Fatalf("deleteOrphans: %v", err)
+	}
+	if deleted != 1 {
+		t.Errorf("deleted = %d, want 1", deleted)
 	}
 }

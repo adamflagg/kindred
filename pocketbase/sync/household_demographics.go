@@ -272,14 +272,21 @@ func (s *HouseholdDemographicsSync) Sync(ctx context.Context) error {
 	s.Stats.Errors = errors
 
 	// Step 8: Delete orphans (records in DB but not in computed set)
-	deleted := s.deleteOrphans(ctx, records, existingRecords)
+	deleted, orphanErr := s.deleteOrphans(ctx, records, existingRecords, year)
 	s.Stats.Deleted = deleted
 
-	// WAL checkpoint
+	// WAL checkpoint BEFORE the error return below -- upsertRecords has already
+	// written by this point, and the refusal path can fire on a non-empty
+	// computed set (a PARTIAL collapse), which is exactly the case where writes
+	// already happened.
 	if s.Stats.Created > 0 || s.Stats.Updated > 0 || s.Stats.Deleted > 0 {
 		if err := s.forceWALCheckpoint(); err != nil {
 			slog.Warn("WAL checkpoint failed", "error", err)
 		}
+	}
+
+	if orphanErr != nil {
+		return fmt.Errorf("orphan sweep refused: %w", orphanErr)
 	}
 
 	s.SyncSuccessful = true
@@ -925,25 +932,31 @@ func (s *HouseholdDemographicsSync) upsertRecords(
 // upsertRecords exactly. Widen one without the other and the next run sweeps
 // away the rows the other just wrote, reporting success as it goes
 // (kindred#2257).
+//
+// Refuses when the computed set is too small to be believed against the rows
+// on disk. This USED to be a hand-rolled `len(records) == 0` check that caught
+// only a TOTAL collapse -- a load that returned a handful of rows against
+// hundreds on disk sailed straight past it and the sweep deleted the rest
+// (kindred#2283). The rule now lives in the shared OrphanSweepGuard, which
+// widens "empty" to "suspiciously small" and is the one implementation behind
+// every guarded sweep in this package rather than an eighth local copy.
 func (s *HouseholdDemographicsSync) deleteOrphans(
 	ctx context.Context,
 	records map[string]*householdDemographicsRecord,
 	existingRecords map[string]string,
-) int {
-	deleted := 0
-
-	// Refuse to empty the table. Every row is recomputed from
-	// person_custom_values on each run, so an empty computed set standing
-	// against a populated table is far more likely to be a load that came back
-	// empty than a year in which nobody answered anything -- and this sweep is
-	// the one step of this sync a re-run cannot undo.
-	if len(records) == 0 && len(existingRecords) > 0 {
-		slog.Error("Refusing to delete household_demographics orphans: nothing was computed",
-			"existing_records", len(existingRecords),
-		)
-		s.Stats.Errors++
-		return 0
+	year int,
+) (int, error) {
+	guard := OrphanSweepGuard{
+		Entity:   "household_demographics",
+		Year:     year,
+		Computed: len(records),
+		Hint:     "check that the persons sync ran for that year and that person_custom_values loaded",
 	}
+	if err := guard.Check(len(existingRecords)); err != nil {
+		return 0, err
+	}
+
+	deleted := 0
 
 	// Build set of computed keys
 	computedKeys := make(map[string]bool)
@@ -956,7 +969,7 @@ func (s *HouseholdDemographicsSync) deleteOrphans(
 	for key, recordID := range existingRecords {
 		select {
 		case <-ctx.Done():
-			return deleted
+			return deleted, ctx.Err()
 		default:
 		}
 
@@ -975,7 +988,7 @@ func (s *HouseholdDemographicsSync) deleteOrphans(
 		}
 	}
 
-	return deleted
+	return deleted, nil
 }
 
 // forceWALCheckpoint forces a SQLite WAL checkpoint

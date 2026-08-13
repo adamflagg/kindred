@@ -177,14 +177,21 @@ func (s *CamperDietarySync) Sync(ctx context.Context) error {
 	s.Stats.Errors = errors
 
 	// Step 6: Delete orphans
-	deleted := s.deleteOrphans(ctx, records, existingRecords)
+	deleted, orphanErr := s.deleteOrphans(ctx, records, existingRecords, year)
 	s.Stats.Deleted = deleted
 
-	// WAL checkpoint
+	// WAL checkpoint BEFORE the error return below -- upsertRecords has already
+	// written by this point, and the refusal path can fire on a non-empty
+	// computed set (a PARTIAL collapse), which is exactly the case where writes
+	// already happened.
 	if s.Stats.Created > 0 || s.Stats.Updated > 0 || s.Stats.Deleted > 0 {
 		if err := s.forceWALCheckpoint(); err != nil {
 			slog.Warn("WAL checkpoint failed", "error", err)
 		}
+	}
+
+	if orphanErr != nil {
+		return fmt.Errorf("orphan sweep refused: %w", orphanErr)
 	}
 
 	s.SyncSuccessful = true
@@ -561,18 +568,34 @@ func (s *CamperDietarySync) upsertRecords(
 	return created, updated, skipped, errors
 }
 
-// deleteOrphans removes records that exist in DB but not in computed set
+// deleteOrphans removes records that exist in DB but not in computed set.
+//
+// Refuses when the computed set is too small to be believed against the rows
+// on disk: that combination is always a broken input, and sweeping on it
+// deletes the year and reports success (kindred#2257, kindred#2283). The rule
+// lives in OrphanSweepGuard so there is one implementation, not an eighth copy.
 func (s *CamperDietarySync) deleteOrphans(
 	ctx context.Context,
 	records map[string]*camperDietaryRecord,
 	existingRecords map[string]string,
-) int {
+	year int,
+) (int, error) {
+	guard := OrphanSweepGuard{
+		Entity:   "camper_dietary",
+		Year:     year,
+		Computed: len(records),
+		Hint:     "check that the attendee mapping and the dietary field definitions still exist upstream",
+	}
+	if err := guard.Check(len(existingRecords)); err != nil {
+		return 0, err
+	}
+
 	deleted := 0
 
 	for key, recordID := range existingRecords {
 		select {
 		case <-ctx.Done():
-			return deleted
+			return deleted, ctx.Err()
 		default:
 		}
 
@@ -591,7 +614,7 @@ func (s *CamperDietarySync) deleteOrphans(
 		}
 	}
 
-	return deleted
+	return deleted, nil
 }
 
 // forceWALCheckpoint forces a SQLite WAL checkpoint
