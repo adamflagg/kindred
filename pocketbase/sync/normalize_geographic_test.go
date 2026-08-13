@@ -4,12 +4,16 @@ import (
 	"cmp"
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"slices"
 	"strconv"
 	"strings"
 	"testing"
+
+	"github.com/pocketbase/pocketbase/core"
+	pbtests "github.com/pocketbase/pocketbase/tests"
 )
 
 // ============================================================================
@@ -2214,5 +2218,279 @@ func TestOverrideMapDedup_RejectedCarriesForward(t *testing.T) {
 
 	if !rejectedOverrides[categoryCity]["springfield"] {
 		t.Error("expected springfield to remain rejected")
+	}
+}
+
+// TestNormalizeGeographicDeleteOrphansRefusesCollapsedComputedSet pins the
+// guard kindred#2283 adds. Before this fix deleteOrphans returned a bare int
+// and had no channel to refuse a sweep at all -- an empty ProcessedKeys map
+// against a populated year deleted every normalized mapping and reported
+// success.
+func TestNormalizeGeographicDeleteOrphansRefusesCollapsedComputedSet(t *testing.T) {
+	t.Parallel()
+	app := newOrphanSweepTestApp(t, "normalized_mappings", "category", "person", "session")
+	col, err := app.FindCollectionByNameOrId("normalized_mappings")
+	if err != nil {
+		t.Fatalf("find normalized_mappings: %v", err)
+	}
+	rec := core.NewRecord(col)
+	rec.Set("category", categoryCity)
+	rec.Set("person", "pers_001")
+	rec.Set("session", "sess_001")
+	rec.Set("year", 2026)
+	if saveErr := app.Save(rec); saveErr != nil {
+		t.Fatalf("save existing row: %v", saveErr)
+	}
+
+	n := NewNormalizeGeographicSync(app)
+	n.SyncSuccessful = true
+	n.ProcessedKeys = make(map[string]bool) // nothing processed this run
+
+	key := "pers_001:sess_001:" + categoryCity
+	existing := map[string]*core.Record{key: rec}
+	deleted, err := n.deleteOrphans(existing, 2026)
+
+	if err == nil {
+		t.Fatal("expected an error when nothing was processed and rows exist, got nil")
+	}
+	if deleted != 0 {
+		t.Errorf("deleted = %d, want 0 -- nothing may be removed on the refusal path", deleted)
+	}
+
+	remaining, err := app.FindRecordsByFilter("normalized_mappings", "year = 2026", "", 0, 0)
+	if err != nil {
+		t.Fatalf("re-query: %v", err)
+	}
+	if len(remaining) != 1 {
+		t.Errorf("%d rows survived, want 1 -- the guard must not delete", len(remaining))
+	}
+}
+
+// TestNormalizeGeographicDeleteOrphansStillSweepsGenuineOrphans proves the
+// guard did not disable orphan deletion for the normal case.
+func TestNormalizeGeographicDeleteOrphansStillSweepsGenuineOrphans(t *testing.T) {
+	t.Parallel()
+	app := newOrphanSweepTestApp(t, "normalized_mappings", "category", "person", "session")
+	col, err := app.FindCollectionByNameOrId("normalized_mappings")
+	if err != nil {
+		t.Fatalf("find normalized_mappings: %v", err)
+	}
+	orphan := core.NewRecord(col)
+	orphan.Set("category", categoryCity)
+	orphan.Set("person", "pers_002")
+	orphan.Set("session", "sess_001")
+	orphan.Set("year", 2026)
+	if saveErr := app.Save(orphan); saveErr != nil {
+		t.Fatalf("save orphan: %v", saveErr)
+	}
+
+	n := NewNormalizeGeographicSync(app)
+	n.SyncSuccessful = true
+	n.ProcessedKeys = map[string]bool{"pers_001:sess_001:" + categoryCity: true}
+
+	orphanKey := "pers_002:sess_001:" + categoryCity
+	existing := map[string]*core.Record{orphanKey: orphan}
+	deleted, err := n.deleteOrphans(existing, 2026)
+	if err != nil {
+		t.Fatalf("deleteOrphans: %v", err)
+	}
+	if deleted != 1 {
+		t.Errorf("deleted = %d, want 1", deleted)
+	}
+}
+
+// newNormalizeGeographicSyncTestApp builds the collections
+// NormalizeGeographicSync.Sync() reads on its way to the orphan sweep.
+// `attendees.person` and `attendees.session` must be real relations because
+// Sync() expands them; the rest only have to exist.
+func newNormalizeGeographicSyncTestApp(t *testing.T) core.App {
+	t.Helper()
+	app, err := pbtests.NewTestApp()
+	if err != nil {
+		t.Fatalf("NewTestApp: %v", err)
+	}
+	t.Cleanup(app.Cleanup)
+
+	created := func(col *core.Collection) {
+		col.Fields.Add(&core.AutodateField{Name: "created", OnCreate: true})
+	}
+
+	households := core.NewBaseCollection("households")
+	households.Fields.Add(&core.NumberField{Name: "cm_id"})
+	households.Fields.Add(&core.TextField{Name: "billing_state"})
+	households.Fields.Add(&core.TextField{Name: "billing_country"})
+	created(households)
+	if err := app.Save(households); err != nil {
+		t.Fatalf("create households: %v", err)
+	}
+
+	sessions := core.NewBaseCollection("camp_sessions")
+	sessions.Fields.Add(&core.NumberField{Name: "cm_id"})
+	sessions.Fields.Add(&core.TextField{Name: "name"})
+	created(sessions)
+	if err := app.Save(sessions); err != nil {
+		t.Fatalf("create camp_sessions: %v", err)
+	}
+
+	persons := core.NewBaseCollection("persons")
+	persons.Fields.Add(&core.NumberField{Name: "cm_id"})
+	persons.Fields.Add(&core.TextField{Name: "school"})
+	persons.Fields.Add(&core.TextField{Name: "address_city"})
+	persons.Fields.Add(&core.TextField{Name: "normalized_city"})
+	persons.Fields.Add(&core.TextField{Name: "normalized_school"})
+	persons.Fields.Add(&core.TextField{Name: "normalized_congregation"})
+	persons.Fields.Add(&core.NumberField{Name: "year"})
+	persons.Fields.Add(&core.RelationField{
+		Name: "primary_childhood_household", CollectionId: households.Id, MaxSelect: 1,
+	})
+	created(persons)
+	if err := app.Save(persons); err != nil {
+		t.Fatalf("create persons: %v", err)
+	}
+
+	attendees := core.NewBaseCollection("attendees")
+	attendees.Fields.Add(&core.RelationField{Name: "person", CollectionId: persons.Id, MaxSelect: 1})
+	attendees.Fields.Add(&core.RelationField{Name: "session", CollectionId: sessions.Id, MaxSelect: 1})
+	attendees.Fields.Add(&core.NumberField{Name: "year"})
+	created(attendees)
+	if err := app.Save(attendees); err != nil {
+		t.Fatalf("create attendees: %v", err)
+	}
+
+	for _, name := range []string{"custom_field_defs", "person_custom_values", "geo_overrides"} {
+		col := core.NewBaseCollection(name)
+		for _, f := range []string{
+			"name", "person", "field_definition", "value",
+			"type", "category", "canonical_name", "merged_into", "raw_value",
+		} {
+			col.Fields.Add(&core.TextField{Name: f})
+		}
+		col.Fields.Add(&core.NumberField{Name: "year"})
+		created(col)
+		if err := app.Save(col); err != nil {
+			t.Fatalf("create %s: %v", name, err)
+		}
+	}
+
+	// Sync() also rewrites the *_normalized columns on camper_history before it
+	// reaches the sweep; the collection has to exist for that step to run.
+	hist := core.NewBaseCollection("camper_history")
+	for _, f := range []string{
+		"city", "school", "congregation",
+		"city_normalized", "school_normalized", "congregation_normalized",
+	} {
+		hist.Fields.Add(&core.TextField{Name: f})
+	}
+	hist.Fields.Add(&core.NumberField{Name: "person_id"})
+	hist.Fields.Add(&core.NumberField{Name: "year"})
+	created(hist)
+	if err := app.Save(hist); err != nil {
+		t.Fatalf("create camper_history: %v", err)
+	}
+
+	mappings := core.NewBaseCollection("normalized_mappings")
+	for _, f := range []string{
+		"person", "session", "category", "original_value", "normalized_value",
+		"address_state", "address_country", "address_city",
+	} {
+		mappings.Fields.Add(&core.TextField{Name: f})
+	}
+	mappings.Fields.Add(&core.NumberField{Name: "confidence"})
+	mappings.Fields.Add(&core.NumberField{Name: "year"})
+	created(mappings)
+	if err := app.Save(mappings); err != nil {
+		t.Fatalf("create normalized_mappings: %v", err)
+	}
+
+	return app
+}
+
+// TestNormalizeGeographicSyncPropagatesSweepRefusal is the caller-propagation
+// test for kindred#2283. normalize_geographic.go is the other file that
+// previously called deleteOrphans without capturing its return value at all, so
+// "the caller now uses the error" is the whole point of the change here, and the
+// guard tests alone prove nothing about it. Sibling PR kindred#2294 shipped
+// exactly this gap: a counted failure that never reached the returned error.
+//
+// The attendees here carry no city, school or congregation, which keeps the
+// fixture hermetic -- populating any of them sends buildNormalizationLookup to
+// the geo-normalize HTTP API, and pointing that at an httptest server needs
+// t.Setenv, which cannot coexist with the t.Parallel() kindred#2288 requires.
+// The refusal therefore comes from the empty-computed-set arm.
+//
+// Deleting the `if orphanErr != nil` return in normalize_geographic.go makes
+// this test fail; without it the whole sync suite stays green.
+func TestNormalizeGeographicSyncPropagatesSweepRefusal(t *testing.T) {
+	t.Parallel()
+	app := newNormalizeGeographicSyncTestApp(t)
+
+	sessions, err := app.FindCollectionByNameOrId("camp_sessions")
+	if err != nil {
+		t.Fatalf("find camp_sessions: %v", err)
+	}
+	sess := core.NewRecord(sessions)
+	sess.Set("cm_id", 200)
+	sess.Set("name", "Session A")
+	if saveErr := app.Save(sess); saveErr != nil {
+		t.Fatalf("save session: %v", saveErr)
+	}
+
+	personsCol, err := app.FindCollectionByNameOrId("persons")
+	if err != nil {
+		t.Fatalf("find persons: %v", err)
+	}
+	attendeesCol, err := app.FindCollectionByNameOrId("attendees")
+	if err != nil {
+		t.Fatalf("find attendees: %v", err)
+	}
+	for _, cmID := range []int{101, 102, 103} {
+		p := core.NewRecord(personsCol)
+		p.Set("cm_id", cmID)
+		p.Set("year", 2026)
+		if saveErr := app.Save(p); saveErr != nil {
+			t.Fatalf("save person %d: %v", cmID, saveErr)
+		}
+		a := core.NewRecord(attendeesCol)
+		a.Set("person", p.Id)
+		a.Set("session", sess.Id)
+		a.Set("year", 2026)
+		if saveErr := app.Save(a); saveErr != nil {
+			t.Fatalf("save attendee %d: %v", cmID, saveErr)
+		}
+	}
+
+	mappingsCol, err := app.FindCollectionByNameOrId("normalized_mappings")
+	if err != nil {
+		t.Fatalf("find normalized_mappings: %v", err)
+	}
+	for i := range OrphanSweepMinRows + 5 {
+		rec := core.NewRecord(mappingsCol)
+		rec.Set("person", fmt.Sprintf("pers_%06d", i))
+		rec.Set("session", sess.Id)
+		rec.Set("category", categoryCity)
+		rec.Set("year", 2026)
+		if saveErr := app.Save(rec); saveErr != nil {
+			t.Fatalf("save existing mapping %d: %v", i, saveErr)
+		}
+	}
+
+	n := NewNormalizeGeographicSync(app)
+	n.Year = 2026
+	syncErr := n.Sync(context.Background())
+
+	if syncErr == nil {
+		t.Fatal("Sync returned nil on a refused sweep -- the refusal never reached the caller")
+	}
+	if !strings.Contains(syncErr.Error(), "orphan sweep refused") {
+		t.Errorf("Sync error = %q, want it to carry the sweep refusal", syncErr.Error())
+	}
+
+	remaining, err := app.FindRecordsByFilter("normalized_mappings", "year = 2026", "", 0, 0)
+	if err != nil {
+		t.Fatalf("re-query: %v", err)
+	}
+	if len(remaining) != OrphanSweepMinRows+5 {
+		t.Errorf("%d rows survived, want %d -- a refused sweep must delete nothing",
+			len(remaining), OrphanSweepMinRows+5)
 	}
 }

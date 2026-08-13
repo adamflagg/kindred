@@ -498,3 +498,90 @@ func TestCamperDietaryRecordNeedsUpdateUsesCompareFields(t *testing.T) {
 		}
 	})
 }
+
+// TestCamperDietaryDeleteOrphansRefusesCollapsedComputedSet pins the guard
+// kindred#2283 adds. Before this fix deleteOrphans returned a bare int and had
+// no channel to refuse a sweep at all -- an empty computed set against a
+// populated year deleted the whole year and reported success.
+//
+// NOTE since kindred#2283 rows 3+4: this pins the guard's CONTRACT, not a state
+// Sync() can now produce. Sync() sets SyncSuccessful from len(records), so an
+// empty computed set skips the sweep before the guard is consulted. The arm
+// that stays live on this path is the ratio one -- a source that came back
+// short rather than empty.
+func TestCamperDietaryDeleteOrphansRefusesCollapsedComputedSet(t *testing.T) {
+	t.Parallel()
+	app := newOrphanSweepTestApp(t, "camper_dietary", "person_id")
+	col, err := app.FindCollectionByNameOrId("camper_dietary")
+	if err != nil {
+		t.Fatalf("find camper_dietary: %v", err)
+	}
+	rec := core.NewRecord(col)
+	rec.Set("person_id", 8001)
+	rec.Set("year", 2026)
+	if saveErr := app.Save(rec); saveErr != nil {
+		t.Fatalf("save existing row: %v", saveErr)
+	}
+
+	s := NewCamperDietarySync(app)
+	// Set explicitly because this drives deleteOrphans directly rather than
+	// through Sync(), which is what normally sets it from the size of the
+	// extraction (kindred#2283 rows 3+4). The three ProcessedKeys-based syncs
+	// have always required this of their tests; these four now match.
+	s.SyncSuccessful = true
+	existing := map[string]string{makeCamperDietaryKey(8001, 2026): rec.Id}
+
+	deleted, err := s.deleteOrphans(context.Background(),
+		map[string]*camperDietaryRecord{}, existing, 2026)
+
+	if err == nil {
+		t.Fatal("expected an error when the computed set is empty and rows exist, got nil")
+	}
+	if deleted != 0 {
+		t.Errorf("deleted = %d, want 0 -- nothing may be removed on the refusal path", deleted)
+	}
+
+	remaining, err := app.FindRecordsByFilter("camper_dietary", "year = 2026", "", 0, 0)
+	if err != nil {
+		t.Fatalf("re-query: %v", err)
+	}
+	if len(remaining) != 1 {
+		t.Errorf("%d rows survived, want 1 -- the guard must not delete", len(remaining))
+	}
+}
+
+// TestCamperDietaryDeleteOrphansStillSweepsGenuineOrphans proves the guard did
+// not disable orphan deletion for the normal case.
+func TestCamperDietaryDeleteOrphansStillSweepsGenuineOrphans(t *testing.T) {
+	t.Parallel()
+	app := newOrphanSweepTestApp(t, "camper_dietary", "person_id")
+	col, err := app.FindCollectionByNameOrId("camper_dietary")
+	if err != nil {
+		t.Fatalf("find camper_dietary: %v", err)
+	}
+	orphan := core.NewRecord(col)
+	orphan.Set("person_id", 8002)
+	orphan.Set("year", 2026)
+	if saveErr := app.Save(orphan); saveErr != nil {
+		t.Fatalf("save orphan: %v", saveErr)
+	}
+
+	s := NewCamperDietarySync(app)
+	// Set explicitly because this drives deleteOrphans directly rather than
+	// through Sync(), which is what normally sets it from the size of the
+	// extraction (kindred#2283 rows 3+4). The three ProcessedKeys-based syncs
+	// have always required this of their tests; these four now match.
+	s.SyncSuccessful = true
+	records := map[string]*camperDietaryRecord{
+		makeCamperDietaryKey(8001, 2026): {personID: 8001, year: 2026},
+	}
+	existing := map[string]string{makeCamperDietaryKey(8002, 2026): orphan.Id}
+
+	deleted, err := s.deleteOrphans(context.Background(), records, existing, 2026)
+	if err != nil {
+		t.Fatalf("deleteOrphans: %v", err)
+	}
+	if deleted != 1 {
+		t.Errorf("deleted = %d, want 1", deleted)
+	}
+}

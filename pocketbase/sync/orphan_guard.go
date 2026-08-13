@@ -1,6 +1,10 @@
 package sync
 
-import "fmt"
+import (
+	"context"
+	"errors"
+	"fmt"
+)
 
 // Orphan-sweep thresholds (kindred#2279).
 //
@@ -96,4 +100,27 @@ func (g OrphanSweepGuard) Check(existing int) error {
 	}
 
 	return fmt.Errorf("%s", msg)
+}
+
+// wrapOrphanSweepError classifies a failed orphan sweep for the caller's return.
+//
+// A guard refusal and a cancelled context are different operational facts and
+// must not share a message: "refused" says the computed set is not to be
+// trusted and points an operator at the CampMinder feed, while "interrupted"
+// says the run simply ran out of time and the data is probably fine. Reporting
+// the second as the first sends them to investigate something that is not
+// broken.
+//
+// kindred#2280 settled this wording on staff_vehicle_info.go and
+// staff_applications.go; it lives here so every guarded sweep in the package
+// reads the same rather than carrying its own copy. Returns nil for nil so it
+// is safe to call unconditionally.
+func wrapOrphanSweepError(err error) error {
+	if err == nil {
+		return nil
+	}
+	if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+		return fmt.Errorf("orphan sweep interrupted: %w", err)
+	}
+	return fmt.Errorf("orphan sweep refused: %w", err)
 }
