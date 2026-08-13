@@ -132,6 +132,17 @@ jobs:
             - 'go.mod'
             - 'go.sum'
             - '.golangci.yml'
+            # The sharder decides which tests run at all, so a change to it must
+            # run them -- otherwise it ships without ever executing a Go test.
+            # Same reasoning as validate_migrations.py under `migrations` below.
+            - 'scripts/ci/go_test_shard.py'
+            # And the same again for this file, which holds the shard count, the
+            # shard args and the go flags. Without it, a PR that only widens the
+            # matrix or edits `-race` leaves tests-go *skipped* -- and the summary
+            # gate counts skipped as OK, so the new config ships having run zero
+            # Go tests. Costs ~22 extra runs a quarter (measured over 90 days:
+            # 24 commits touched ci.yml, only 2 of them alongside a .go change).
+            - '.github/workflows/ci.yml'
           migrations:
             - 'pocketbase/pb_migrations/**'
             - 'pocketbase/main.go'
@@ -475,12 +486,39 @@ jobs:
         SKIP_POCKETBASE_TESTS: true
       run: uv run pytest tests/ -v --tb=short
 
-  # Go tests (parallel)
+  # Go tests (sharded across a matrix)
+  #
+  # This was a single ~390s job and the whole critical path -- the next-slowest
+  # job was ~156s. Almost none of that is test volume: the race detector costs
+  # ~4.5x (measured back-to-back on one machine -- sync 60.8s -> 298.2s, lodging
+  # 35.1s -> 136.6s), and it pays that serially, because the Go tree has exactly
+  # one t.Parallel() in it -- inside a subtest, at that -- so no two top-level
+  # tests ever overlap. Two packages carry it all (sync ~297s, lodging ~143s; the
+  # other nine total ~15s), which is why this shards by individual test function
+  # rather than by package -- a per-package split would leave sync as a 297s shard.
+  #
+  # Sharding at this level makes a coverage hole possible, so scripts/ci/
+  # go_test_shard.py reads the inventory live from `go test -list` and fails the
+  # shard if anything it selected produced no result. See its module docstring.
+  #
+  # The durable fix is t.Parallel() in sync and lodging (kindred#2281),
+  # which would buy the same wall-clock without 4x the runner minutes.
   tests-go:
     name: Go Tests
     needs: detect-changes
     if: needs.detect-changes.outputs.go == 'true'
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # Re-shard by editing this list and nothing else -- --total comes from
+        # strategy.job-total, so the count cannot drift from the list. The list
+        # must stay 0-based and contiguous, though: the values are passed through
+        # as --shard, and the script rejects an index outside [0, total). A list
+        # like [1,2,3,4] fails the last job loudly rather than skipping tests, and
+        # test_tests_go_job_shards_and_derives_total_from_the_matrix catches it
+        # before CI does.
+        shard: [0, 1, 2, 3]
     steps:
     - name: Checkout code
       uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -495,9 +533,12 @@ jobs:
         cache: true
         cache-dependency-path: pocketbase/go.sum
 
-    - name: Run Go tests
-      working-directory: ./pocketbase
-      run: go test -race ./... -v
+    - name: Run Go tests (shard ${{ matrix.shard }}/${{ strategy.job-total }})
+      run: |
+        python3 scripts/ci/go_test_shard.py \
+          --shard ${{ matrix.shard }} \
+          --total ${{ strategy.job-total }} \
+          -- -race
 
   # Migration smoke test — catches schema/binary issues against a fresh DB
   tests-migrations:
