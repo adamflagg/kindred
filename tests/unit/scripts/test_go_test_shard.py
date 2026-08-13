@@ -448,3 +448,15 @@ def test_resolve_workers_never_returns_zero():
 
 def test_run_shard_on_an_empty_selection_succeeds_without_running_go(tmp_path: Path) -> None:
     assert mod.run_shard(tmp_path, [], ["-race"]) == 0
+
+
+def test_go_filter_covers_the_workflow_that_configures_the_shards():
+    """The shard count, the shard args and the go flags all live in ci.yml.
+
+    Without this, a PR that only edits the matrix -- widening `shard:` to six, or
+    changing `-race` -- touches no .go file and no sharder, so `tests-go` is
+    *skipped*, and the summary gate treats skipped as OK. The new configuration
+    ships having run zero Go tests. Same class as the sharder entry above, and as
+    the paths-filter incident of March 2026 the whole job comment is about.
+    """
+    assert ".github/workflows/ci.yml" in _go_filter()

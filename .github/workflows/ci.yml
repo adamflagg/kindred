@@ -136,6 +136,13 @@ jobs:
             # run them -- otherwise it ships without ever executing a Go test.
             # Same reasoning as validate_migrations.py under `migrations` below.
             - 'scripts/ci/go_test_shard.py'
+            # And the same again for this file, which holds the shard count, the
+            # shard args and the go flags. Without it, a PR that only widens the
+            # matrix or edits `-race` leaves tests-go *skipped* -- and the summary
+            # gate counts skipped as OK, so the new config ships having run zero
+            # Go tests. Costs ~22 extra runs a quarter (measured over 90 days:
+            # 24 commits touched ci.yml, only 2 of them alongside a .go change).
+            - '.github/workflows/ci.yml'
           migrations:
             - 'pocketbase/pb_migrations/**'
             - 'pocketbase/main.go'
