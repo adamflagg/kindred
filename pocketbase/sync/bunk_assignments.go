@@ -237,14 +237,10 @@ func (s *BunkAssignmentsSync) Sync(ctx context.Context) error {
 
 	slog.Info("Fetched bunk assignments from CampMinder", "count", totalAssignments)
 
-	// Protect bunk_assignments for non-active staff from orphan deletion.
-	// CampMinder removes assignments on dismissal, but we preserve them.
-	s.protectNonActiveStaffAssignments(year)
-
-	// Delete orphaned assignments
-	if err := s.deleteOrphans(); err != nil {
-		slog.Error("Error deleting orphans", "error", err)
-	}
+	// Protect bunk_assignments for non-active staff from orphan deletion, then
+	// sweep orphans -- in that order, and only if protection succeeded. See
+	// protectThenSweepOrphans.
+	s.protectThenSweepOrphans(year)
 
 	// Force WAL checkpoint to ensure data is flushed
 	if err := s.ForceWALCheckpoint(); err != nil {
@@ -498,10 +494,38 @@ func (s *BunkAssignmentsSync) processAssignment(
 	return s.ProcessCompositeRecord("bunk_assignments", key, recordData, existingAssignments, []string{"year"})
 }
 
+// protectThenSweepOrphans marks non-active staff assignments as protected
+// before running the orphan sweep, and only runs the sweep if protection
+// succeeded.
+//
+// The ordering is load-bearing, not cosmetic: deleteOrphans removes every
+// bunk_assignment this run did not mark as processed. If protection fails
+// partway through, the tracking it was building is incomplete -- so running
+// the sweep anyway would delete precisely the assignments protection exists
+// to save, and only afterward would the run report a failure. That reports
+// the damage instead of preventing it. Aborting here means a protection
+// failure costs a sync cycle, not the data. See kindred#2287.
+func (s *BunkAssignmentsSync) protectThenSweepOrphans(year int) {
+	if _, err := s.protectNonActiveStaffAssignments(year); err != nil {
+		slog.Error("Error protecting non-active staff bunk assignments", "error", err)
+		s.Stats.Errors++
+		return
+	}
+
+	if err := s.deleteOrphans(); err != nil {
+		slog.Error("Error deleting orphans", "error", err)
+	}
+}
+
 // protectNonActiveStaffAssignments marks existing bunk_assignments for non-active
 // bunk staff as processed so DeleteOrphans won't remove them. CampMinder strips
 // assignments from dismissed/resigned staff API responses, but we preserve them.
-func (s *BunkAssignmentsSync) protectNonActiveStaffAssignments(year int) {
+//
+// bunk_assignments has no person_id column -- the person link is the `person`
+// relation, resolved from the CampMinder id (docs/reference/sync-id-conventions.md).
+// It returns the number of assignments protected and any error encountered;
+// the caller decides how to surface a failure instead of it being swallowed.
+func (s *BunkAssignmentsSync) protectNonActiveStaffAssignments(year int) (int, error) {
 	nonActiveFilter := fmt.Sprintf("status != 'active' && bunk_staff = true && year = %d", year)
 	protectedCount := 0
 
@@ -512,8 +536,20 @@ func (s *BunkAssignmentsSync) protectNonActiveStaffAssignments(year int) {
 		}
 		personCMID := int(personID)
 
+		// Resolve the person's CampMinder id to their persons PB id so we can
+		// filter bunk_assignments on the `person` relation.
+		personFilter := fmt.Sprintf("cm_id = %d && year = %d", personCMID, year)
+		people, err := s.App.FindRecordsByFilter("persons", personFilter, "", 1, 0)
+		if err != nil {
+			return fmt.Errorf("resolving person %d: %w", personCMID, err)
+		}
+		if len(people) == 0 {
+			return nil
+		}
+		personPBID := people[0].Id
+
 		// Find this person's existing bunk_assignments and mark as processed
-		baFilter := fmt.Sprintf("year = %d && person_id = %d", year, personCMID)
+		baFilter := fmt.Sprintf("year = %d && person = '%s'", year, personPBID)
 		bas, err := s.App.FindRecordsByFilter("bunk_assignments", baFilter, "", 0, 0)
 		if err != nil {
 			return fmt.Errorf("finding bunk assignments for person %d: %w", personCMID, err)
@@ -542,12 +578,14 @@ func (s *BunkAssignmentsSync) protectNonActiveStaffAssignments(year int) {
 
 		return nil
 	}); err != nil {
-		slog.Warn("Error loading non-active staff for bunk assignment protection", "error", err)
+		return protectedCount, fmt.Errorf("loading non-active staff for bunk assignment protection: %w", err)
 	}
 
 	if protectedCount > 0 {
 		slog.Info("Protected bunk assignments for non-active staff", "count", protectedCount)
 	}
+
+	return protectedCount, nil
 }
 
 // deleteOrphans deletes assignments that exist in PocketBase but weren't in CampMinder

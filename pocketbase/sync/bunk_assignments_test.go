@@ -152,6 +152,14 @@ func TestBunkAssignmentsSync_StaffSessionLookup(t *testing.T) {
 // bunk_assignments for non-active bunk staff are pre-tracked as processed,
 // so DeleteOrphans won't remove them. CampMinder strips assignments from
 // dismissed/resigned staff, but we preserve them in PocketBase.
+//
+// NOTE: this only replicates the tracking logic inline -- it never calls
+// protectNonActiveStaffAssignments, so it could not have caught kindred#2287
+// (the real function's bunk_assignments filter named a nonexistent column
+// and errored on every iteration). For a test that exercises the actual
+// function against a live PocketBase app, see
+// TestProtectNonActiveStaffAssignments_ProtectsDismissedStaff in
+// bunk_assignments_protection_test.go.
 func TestBunkAssignmentsSync_NonActiveStaffOrphanProtection(t *testing.T) {
 	tests := []struct {
 		name             string
