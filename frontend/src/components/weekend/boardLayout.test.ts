@@ -960,6 +960,31 @@ describe('answersConflictDetail — which two answers disagreed, and which one w
       })
     ).not.toThrow()
   })
+
+  it('does not name a maybe_mutual registration answer as the side that disagrees (kindred#2269)', () => {
+    // As of kindred#2269, DeriveShareEligibility raises answers_conflict off
+    // the UNION of every sibling's no_share/yes_share answer, not just the
+    // winning gate -- so a household can now conflict with maybe_mutual as
+    // the winning share_cabin_gate, because the actual contradiction is a
+    // sibling answer that lost the recency race and isn't in this payload at
+    // all. REGISTRATION_ANSWER['maybe_mutual'] is "only if a mutual match",
+    // which does not read as a disagreement against any resolved verdict --
+    // naming it here would have the chip pair two answers that look like
+    // they agree, on a tooltip whose whole job is to say they don't.
+    const detail = answersConflictDetail(
+      shareBlock({
+        preference: 'maybe_mutual',
+        eligibility: 'declined',
+        eligibility_source: 'form',
+        answers_conflict: true,
+      })
+    )
+    expect(detail).not.toBeNull()
+    expect(detail).not.toMatch(/only if a mutual match/i)
+    expect(detail).not.toMatch(/^Registration said/)
+    // Still says what actually won, so the chip stays informative.
+    expect(detail).toMatch(SHARE_WORDING.declined)
+  })
 })
 
 describe('buildBoard — area grouping and colour', () => {

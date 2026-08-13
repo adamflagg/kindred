@@ -337,6 +337,20 @@ function wordingFor<T extends string>(
  * can defend either way, matching `consentFlag`'s own rule of reporting only
  * what was recorded.
  *
+ * `preference` (`share_cabin_gate`) is the registration answer that WON
+ * `winsGate`'s newest-wins race, not necessarily the answer that disagrees
+ * (kindred#2269). `DeriveShareEligibility` raises the conflict off the UNION
+ * of every sibling's recorded no_share/yes_share answer, so a household can
+ * conflict with `maybe_mutual` as the winning gate -- the actual
+ * contradiction is a sibling answer that lost recency and never reaches this
+ * payload. `REGISTRATION_ANSWER['maybe_mutual']` ("only if a mutual match")
+ * does not itself read as a disagreement against any resolved verdict, so
+ * naming it as "Registration said …" would have the tooltip pair two answers
+ * that look like they agree, on a chip whose whole job is to say they don't.
+ * `no_share` and `yes_share` don't have this problem: DeriveShareEligibility
+ * can only raise a conflict off one of those FROM `preference` itself when
+ * `preference` IS one of them, so naming it stays honest.
+ *
  * Returns null when there is nothing to report: no conflict, or no share
  * block at all — the shape of an adult-weekend guest, who has no share
  * question to disagree on (`_build_person_parties` attaches no share data).
@@ -345,16 +359,19 @@ function wordingFor<T extends string>(
  */
 export function answersConflictDetail(share: ShareRequest | undefined): string | null {
   if (share?.answers_conflict !== true) return null
-  const registration = wordingFor(
-    REGISTRATION_ANSWER,
-    share.preference ?? 'unknown',
-    'not answered'
-  )
   const resolved = wordingFor(FORM_ANSWER, share.eligibility ?? 'unknown', 'not answered')
   const winner =
     share.eligibility_source === 'form'
       ? `the Family Camp form said ${resolved} — staff use the form's answer`
       : `the answer on file is ${resolved} — staff use that answer`
+  if (share.preference === 'maybe_mutual') {
+    return `A registration answer on file disagrees with this: ${winner}.`
+  }
+  const registration = wordingFor(
+    REGISTRATION_ANSWER,
+    share.preference ?? 'unknown',
+    'not answered'
+  )
   return `Registration said ${registration}; ${winner}.`
 }
 
