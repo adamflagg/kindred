@@ -1112,3 +1112,45 @@ func TestSnapshotStatusSharesNoMutableMemory(t *testing.T) {
 		t.Errorf("EndTime = %v, want %v — the snapshot aliases the pointer", snap.EndTime, want)
 	}
 }
+
+// TestYearTakingHandlersPassTheirYear closes the gap the finding-2 fix would otherwise leave.
+//
+// RunSingleSyncWithService now takes the year, but nothing at the orchestrator level can see
+// whether the eleven handlers actually pass it — dropping `.forYear(year)` from all of them
+// still compiles and still passes every behavioral test. This walks api.go instead: any
+// handler that parses a ?year= and then starts a run must file that run under it.
+func TestYearTakingHandlersPassTheirYear(t *testing.T) {
+	t.Parallel()
+
+	body, err := os.ReadFile("api.go")
+	if err != nil {
+		t.Fatalf("read api.go: %v", err)
+	}
+
+	const call = "RunSingleSyncWithService("
+	checked := 0
+	for _, fn := range strings.Split(string(body), "\nfunc ") {
+		if !strings.Contains(fn, call) {
+			continue
+		}
+		name, _, _ := strings.Cut(fn, "(")
+		parsesYear := strings.Contains(fn, "year, err := strconv.Atoi(yearParam)")
+		passesYear := strings.Contains(fn, ".forYear(year)")
+
+		switch {
+		case parsesYear && !passesYear:
+			t.Errorf("%s parses a ?year= and starts a run without forYear(year) — the "+
+				"service reads that year and the sync_runs row claims the current season",
+				name)
+		case !parsesYear && passesYear:
+			t.Errorf("%s passes forYear(year) but parses no year parameter", name)
+		}
+		checked++
+	}
+
+	// A rename that stops matching would otherwise make this test vacuously green.
+	if checked < 13 {
+		t.Errorf("only %d handlers matched %q; the call was renamed or moved, so this guard "+
+			"stopped covering the rest", checked, call)
+	}
+}

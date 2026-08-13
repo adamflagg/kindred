@@ -121,7 +121,7 @@ Format: `2026-01-06T14:05:52Z [pocketbase] LEVEL message key=value...`. `LOG_LEV
    `docs/architecture/sync-layer.md` § "Sync Dependencies".
 2. **Year-aware:** sync filters by `CAMPMINDER_SEASON_ID` env var (set in `.env`; see "Year invariant" above)
 3. **Sessions 1–4 run sequentially** with independent history
-4. **WAL checkpoint required** after database modifications — this scopes to the Go sync layer (e.g. `forceWALCheckpoint()` in `family_camp_derived.go`); migrations don't need their own, since `runHistorySync` in `main.go` checkpoints on every boot after migrations apply (see `pb_migrations/*.js` in `.coderabbit.yaml`)
+4. **WAL checkpoint required** after database modifications — this scopes to the Go sync layer (e.g. `forceWALCheckpoint()` in `family_camp_derived.go`); migrations don't need their own, since `runHistorySync` in `main.go` checkpoints on every boot after migrations apply (see `pb_migrations/*.js` in `.coderabbit.yaml`). The rationale is durability across a `docker stop`/`start`, not reader visibility. **One deliberate exception:** `sync_runs` (`sync/sync_runs.go`) — orchestrator telemetry read weeks later to fit a threshold, whose write path already swallows its own failures. Losing the last rows to an unclean shutdown costs a few points on a distribution of thousands, against a checkpoint on every one of ~100 writes a day. Nothing else in the sync layer is exempt
 5. **Family-camp data syncs alongside summer data** — summer-camp views must filter `session_type` against the configured valid-summer-session-types list
 
 Read before touching sync code:

@@ -55,7 +55,7 @@ func completionPaths() []completionPath {
 				t.Helper()
 				svc.shouldFail = syncErr != nil
 				svc.failWith = syncErr
-				if err := o.RunSingleSyncWithService(context.Background(), syncType, svc); err != nil {
+				if err := o.RunSingleSyncWithService(context.Background(), syncType, svc, newBatch(triggerManual)); err != nil {
 					t.Fatalf("RunSingleSyncWithService: %v", err)
 				}
 				time.Sleep(50 * time.Millisecond)

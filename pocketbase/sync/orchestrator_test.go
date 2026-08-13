@@ -3540,7 +3540,8 @@ func TestRunSingleSyncWithServiceIgnoresRegisteredSingleton(t *testing.T) {
 		// exactly what a fixed handler does with e.g. NewCamperHistorySync(e.App).
 		requestScoped := &mockYearService{name: "test", year: 2027, stats: Stats{Created: 5}}
 
-		if err := o.RunSingleSyncWithService(context.Background(), "test", requestScoped); err != nil {
+		origin := newBatch(triggerManual)
+		if err := o.RunSingleSyncWithService(context.Background(), "test", requestScoped, origin); err != nil {
 			t.Fatalf("RunSingleSyncWithService failed: %v", err)
 		}
 
@@ -3585,12 +3586,12 @@ func TestRunSingleSyncWithServiceRejectsConcurrentRunForSameType(t *testing.T) {
 		o := NewOrchestrator(nil)
 
 		first := &mockYearService{name: "test", year: 2026, delay: 100 * time.Millisecond}
-		if err := o.RunSingleSyncWithService(context.Background(), "test", first); err != nil {
+		if err := o.RunSingleSyncWithService(context.Background(), "test", first, newBatch(triggerManual)); err != nil {
 			t.Fatalf("first call should succeed, got: %v", err)
 		}
 
 		second := &mockYearService{name: "test", year: 2027}
-		err := o.RunSingleSyncWithService(context.Background(), "test", second)
+		err := o.RunSingleSyncWithService(context.Background(), "test", second, newBatch(triggerManual))
 		if err == nil {
 			t.Fatal("expected the second concurrent call for the same syncType to be rejected")
 		}
@@ -3631,7 +3632,7 @@ func TestRunSingleSyncWithServiceConcurrentCallsExactlyOneWins(t *testing.T) {
 		go func(i int) {
 			defer done.Done()
 			start.Wait() // release all goroutines together to maximize interleaving
-			errs[i] = o.RunSingleSyncWithService(context.Background(), "test", services[i])
+			errs[i] = o.RunSingleSyncWithService(context.Background(), "test", services[i], newBatch(triggerManual))
 		}(i)
 	}
 	start.Done()

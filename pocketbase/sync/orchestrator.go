@@ -474,14 +474,21 @@ func (r runOrigin) forYear(year int) runOrigin {
 	return r
 }
 
-// storeCompletedRun publishes a finished run: it swaps the status maps and persists the run
-// to sync_runs.
+// storeCompletedRun publishes a finished run from a caller holding no lock: it takes o.mu,
+// swaps the status maps, releases, and persists the run to sync_runs.
 //
-// All five places that produce a completed status — the three completion paths and the two
-// panic recoveries — route through here, for the same reason applyCompletionStatus exists.
-// Note the membership differs from that function's on purpose: applyCompletionStatus WEIGHS a
+// Four of the five places that produce a completed status use it — two normal completions and
+// the two panic recoveries. The fifth, FinalizeSyncStatus, does the same two steps inline,
+// because it is already inside the critical section that found the run and cannot call this
+// without releasing and re-taking o.mu; that gap is exactly the bug publishCompletedLocked
+// exists to prevent. So the invariant to hold is one step down, not here: every completion
+// path publishes through publishCompletedLocked and then calls recordSyncRun. Adding a sixth
+// path means wiring both, in that order.
+//
+// Note the membership differs from applyCompletionStatus's on purpose: that function WEIGHS a
 // run and the panic blocks skip it, having nothing to weigh. A panicked run is still a run
 // that happened, so it is still recorded.
+//
 // Before kindred#2284 the completion decision was copied into three functions, and a fix
 // applied to one left the other two reporting green; a persistence call copied into three
 // functions would fail the same way, silently omitting whichever path nobody remembered.
@@ -504,18 +511,25 @@ func (o *Orchestrator) storeCompletedRun(completed *Status) {
 // That run goes on to find no entry in FinalizeSyncStatus, return early, and produce no
 // sync_runs row at all.
 func (o *Orchestrator) publishCompletedLocked(completed *Status) Status {
-	snapshot := snapshotStatus(completed)
-	o.lastCompletedStatus[completed.Type] = completed
+	// Two independent deep copies, and neither is the caller's own Status. The published one
+	// is what every GetStatus caller reads (as `statusCopy := *status`, which re-shares a map
+	// and a pointer), and the returned one travels to the sync_runs write. Storing the
+	// caller's pointer left both of those aliasing whatever produced Summary — a Service that
+	// kept a reference to the map it returned from GetStats could rewrite a finished run's
+	// counters. That was safe only because every GetStats happens to allocate a fresh map,
+	// which nothing states and nothing tests.
+	published := snapshotStatus(completed)
+	o.lastCompletedStatus[completed.Type] = &published
 	delete(o.runningJobs, completed.Type)
-	return snapshot
+	return snapshotStatus(completed)
 }
 
 // snapshotStatus copies s deeply enough that the result shares no mutable memory with it.
 //
-// A plain struct copy is not enough: Summary.SubStats is a map and EndTime is a pointer, so
-// both would still alias the Status published into lastCompletedStatus, where other
-// goroutines can reach it. That is safe today only because every GetStats implementation
-// happens to allocate a fresh map per call — an invariant nothing states or tests.
+// A plain struct copy is not enough: Summary.SubStats is a map and EndTime is a pointer, so a
+// copy still reaches back into whatever produced them. Both of the copies publishCompletedLocked
+// makes go somewhere a later mutation must not be able to follow — one into
+// lastCompletedStatus, one into the sync_runs write.
 func snapshotStatus(s *Status) Status {
 	out := *s
 	if s.EndTime != nil {
@@ -883,16 +897,21 @@ func (o *Orchestrator) runSingleSyncInternal(
 // lock, so two concurrent callers for the same syncType can never both pass.
 //
 // Returns an error immediately, before starting anything, if syncType is already running.
-func (o *Orchestrator) RunSingleSyncWithService(parentCtx context.Context, syncType string, service Service) error {
+//
+// `origin` names the run: every caller is an API handler, so the trigger is manual and the
+// batch is one of one, but most of these endpoints take a ?year= and configure the service
+// for it. That year has to arrive here too — the service reading 2019 while the row says
+// 2026 makes the run unfindable from the year it belongs to, and `year` is what this table is
+// grouped and filtered by.
+func (o *Orchestrator) RunSingleSyncWithService(
+	parentCtx context.Context, syncType string, service Service, origin runOrigin,
+) error {
 	o.mu.Lock()
 	if existing, exists := o.runningJobs[syncType]; exists && existing.Status == statusRunning {
 		o.mu.Unlock()
 		return fmt.Errorf("sync already in progress: %s", syncType)
 	}
 
-	// Only ever reached from an API handler running one caller-built service instance, so
-	// this is an operator's run and a batch of one.
-	origin := newBatch(triggerManual)
 	status := &Status{
 		Type:      syncType,
 		Status:    statusRunning,

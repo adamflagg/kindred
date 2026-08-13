@@ -128,11 +128,18 @@ func (o *Orchestrator) recordSyncRun(completed *Status) {
 		return
 	}
 
-	// Deliberately no forceWALCheckpoint here, unlike the data syncs (pocketbase/CLAUDE.md
-	// § "Sync invariants" 4). That rule exists so a sync's output is visible to the readers
-	// waiting on it; this table is orchestrator telemetry with no reader waiting, read
-	// weeks later to fit a threshold. A wal_checkpoint(FULL) on every one of ~100 writes a
-	// day would be cost bought for nothing.
+	// Deliberately no forceWALCheckpoint here, and this is a judgment call rather than an
+	// exemption the existing rule already grants. pocketbase/CLAUDE.md § "Sync invariants" 4
+	// requires one after database modifications in the Go sync layer and excuses only
+	// migrations; its rationale (main.go:372) is durability across a docker stop/start, not
+	// reader visibility.
+	//
+	// The call: this table is orchestrator telemetry, read weeks later to fit a threshold,
+	// and the whole write path already swallows its own failures for that reason. Losing the
+	// last few rows to an unclean shutdown costs a handful of points on a distribution of
+	// thousands, against a wal_checkpoint(FULL) on every one of ~100 writes a day. The
+	// exception is recorded in pocketbase/CLAUDE.md so this reads as a decision and not an
+	// omission — if that entry goes, this comment is wrong and the checkpoint belongs here.
 	o.pruneSyncRuns()
 }
 
