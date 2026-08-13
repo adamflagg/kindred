@@ -85,7 +85,7 @@ reviews:
 
     - path: "pocketbase/**/*.go"
       instructions: |
-        Go 1.26+ codebase (pocketbase/go.mod declares `go 1.26.4`). Idiomatic baseline:
+        Go 1.26+ codebase (pocketbase/go.mod declares `go 1.26.6`). Idiomatic baseline:
         - `any` (not `interface{}`); `map[string]any` (not `map[string]interface{}`)
         - `slices`, `maps`, `cmp` packages over legacy `sort.*`
         - `min`/`max`/`clear` builtins; `cmp.Or` for first-non-zero
