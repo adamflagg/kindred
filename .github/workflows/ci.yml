@@ -567,6 +567,21 @@ jobs:
       with:
         python-version-file: '.python-version'
 
+    # Needed only for the pocketbase-types freshness check below (pocketbase-typegen
+    # + prettier live in frontend/'s devDependencies). Installed up front so it
+    # overlaps with the Go build/migration steps' own runtime instead of adding
+    # a second serial wait after them.
+    - name: Setup Node.js
+      uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v6
+      with:
+        node-version: '26'
+        cache: 'npm'
+        cache-dependency-path: frontend/package-lock.json
+
+    - name: Install frontend dependencies
+      working-directory: ./frontend
+      run: npm ci
+
     - name: Migration smoke test (fresh database)
       working-directory: ./pocketbase
       run: |
@@ -671,9 +686,11 @@ jobs:
           exit 1
         fi
 
-        # Cleanup on success
+        # Stop the server on success, but leave ./pb_test_data/data.db on disk --
+        # the pocketbase-types freshness check below reads the migrated schema
+        # straight out of it. A trailing always() step removes it once that
+        # check has run.
         kill $PB_PID 2>/dev/null || true
-        rm -rf ./pb_test_data
 
         echo "✅ Migration smoke test passed"
 
@@ -702,6 +719,54 @@ jobs:
       env:
         KINDRED_PROD_SCHEMA_JSON: /tmp/collections.json
       run: go test -count=1 ./sync/... -run TestLodgingTestsupportFixtureFieldsExistInProductionSchema -v
+
+    # kindred#2278: frontend/src/types/pocketbase-types.ts is @generated from
+    # live PocketBase schema introspection (pocketbase-typegen), and nothing
+    # else in this repo regenerates or diffs it -- a migration can add,
+    # remove, or reshape a collection and the checked-in types silently fall
+    # behind (13 collections' worth, before this check existed). This step
+    # regenerates against the SAME migrated ./pb_test_data/data.db the smoke
+    # test above just produced (no second boot) and diffs against the
+    # checked-in file.
+    #
+    # Deliberately reads the SQLite file directly (pocketbase-typegen --db)
+    # rather than hitting a live PocketBase over HTTP: introspecting the file
+    # needs no running server, so this avoids a second boot entirely (the
+    # migrate step above already produced a fully-migrated data.db) and
+    # sidesteps app.OnServe() hooks -- notably the lodging-registry hook,
+    # which errors without CAMPMINDER_SEASON_ID set (a local-dev-only
+    # concern in this repo's normal boot path; CI carries no private
+    # config, so the file the hook checks for never exists here, but staying
+    # off the serve path removes the dependency entirely rather than relying
+    # on that).
+    #
+    # frontend/scripts/generate-types.js formats to a fixed point (up to 5
+    # prettier passes) rather than one --write: pocketbase-typegen's static
+    # utility-type boilerplate hits a real prettier non-idempotency where
+    # pass 1 and pass 2 land on different, otherwise-equivalent comment
+    # placements. A single pass would make this check flap between "stale"
+    # and "fresh" on zero actual schema drift.
+    - name: PocketBase types freshness (kindred#2278)
+      run: |
+        node frontend/scripts/generate-types.js \
+          --db pocketbase/pb_test_data/data.db \
+          --output /tmp/pocketbase-types-fresh.ts
+
+        if ! diff -u /tmp/pocketbase-types-fresh.ts frontend/src/types/pocketbase-types.ts; then
+          echo ""
+          echo "❌  frontend/src/types/pocketbase-types.ts is stale -- it doesn't match the schema produced by pocketbase/pb_migrations/."
+          echo "   Regenerate it against a live PocketBase and commit the result:"
+          echo "     cd frontend && npm run generate-types"
+          echo "   (npm run generate-types reads ../pocketbase/pb_data/data.db by default -- make sure that"
+          echo "   local database has every migration in this branch applied first, e.g. via ./scripts/start_dev.sh.)"
+          echo ""
+          exit 1
+        fi
+        echo "✅ pocketbase-types.ts is current"
+
+    - name: Clean up scratch database
+      if: always()
+      run: rm -rf pocketbase/pb_test_data
 
   # Frontend tests — sharded across 2 matrix jobs to cut wall-clock
   # (vitest --shard splits files; matrix gives each shard its own runner)
