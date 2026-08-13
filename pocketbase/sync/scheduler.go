@@ -120,7 +120,7 @@ func (s *Scheduler) runHourlySync() {
 	ctx := context.Background()
 
 	// Run bunk assignments sync only
-	if err := s.orchestrator.RunSingleSync(ctx, "bunk_assignments"); err != nil {
+	if err := s.orchestrator.RunHourlySync(ctx); err != nil {
 		slog.Error("Hourly sync failed", "error", err)
 	} else {
 		slog.Info("Hourly sync completed successfully")
@@ -165,6 +165,11 @@ func (s *Scheduler) runWeeklySync() {
 func (s *Scheduler) runCustomValuesSync() {
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Minute)
 	defer cancel()
+
+	// The orchestrator's own RunCustomValuesSync is not used here (it runs the jobs in
+	// parallel), so the batch has to be opened directly or these runs would be recorded as
+	// manual.
+	defer s.orchestrator.beginBatch(triggerCustomValues)()
 
 	jobs := GetCustomValuesSyncJobs()
 	slog.Info("Custom values sync starting (sequential)", "services", jobs)
@@ -243,8 +248,8 @@ func (s *Scheduler) TriggerSync(ctx context.Context, syncType string) error {
 		return s.orchestrator.RunSyncSequence(ctx, GetRefreshBunkingJobs())
 	case runTypeDaily:
 		return s.orchestrator.RunDailySync(ctx)
-	case "hourly":
-		return s.orchestrator.RunSingleSync(ctx, "bunk_assignments")
+	case triggerHourly:
+		return s.orchestrator.RunHourlySync(ctx)
 	case runTypeWeekly:
 		return s.orchestrator.RunWeeklySync(ctx)
 	case "custom-values":

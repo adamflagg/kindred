@@ -76,6 +76,7 @@ export const Collections = {
   StaffProgramAreas: 'staff_program_areas',
   StaffSkills: 'staff_skills',
   StaffVehicleInfo: 'staff_vehicle_info',
+  SyncRuns: 'sync_runs',
   UserRoles: 'user_roles',
   Users: 'users',
 } as const
@@ -1694,6 +1695,49 @@ export type StaffVehicleInfoRecord = {
   year: number
 }
 
+export const SyncRunsStatusOptions = {
+  success: 'success',
+  failed: 'failed',
+} as const
+export type SyncRunsStatusOptions =
+  (typeof SyncRunsStatusOptions)[keyof typeof SyncRunsStatusOptions]
+
+export const SyncRunsTriggerOptions = {
+  hourly: 'hourly',
+  daily: 'daily',
+  weekly: 'weekly',
+  custom_values: 'custom_values',
+  historical: 'historical',
+  manual: 'manual',
+} as const
+export type SyncRunsTriggerOptions =
+  (typeof SyncRunsTriggerOptions)[keyof typeof SyncRunsTriggerOptions]
+export type SyncRunsRecord<Tsub_stats = unknown> = {
+  already_processed_count?: number
+  batch_id: string
+  created: IsoAutoDateString
+  created_count?: number
+  deleted_count?: number
+  duration?: number
+  ended?: IsoDateString
+  error?: string
+  errors_count?: number
+  expanded_count?: number
+  id: string
+  lodging_prod_audit_warnings_count?: number
+  prod_audit_warnings_count?: number
+  rejected_count?: number
+  service: string
+  skipped_count?: number
+  started?: IsoDateString
+  status: SyncRunsStatusOptions
+  sub_stats?: null | Tsub_stats
+  trigger: SyncRunsTriggerOptions
+  updated: IsoAutoDateString
+  updated_count?: number
+  year: number
+}
+
 export type UserRolesRecord = {
   created: IsoAutoDateString
   id: string
@@ -1903,6 +1947,10 @@ export type StaffSkillsResponse<Texpand = unknown> = Required<StaffSkillsRecord>
   BaseSystemFields<Texpand>
 export type StaffVehicleInfoResponse<Texpand = unknown> = Required<StaffVehicleInfoRecord> &
   BaseSystemFields<Texpand>
+export type SyncRunsResponse<Tsub_stats = unknown, Texpand = unknown> = Required<
+  SyncRunsRecord<Tsub_stats>
+> &
+  BaseSystemFields<Texpand>
 export type UserRolesResponse<Texpand = unknown> = Required<UserRolesRecord> &
   BaseSystemFields<Texpand>
 export type UsersResponse<Tcached_permissions = unknown, Texpand = unknown> = Required<
@@ -1983,6 +2031,7 @@ export type CollectionRecords = {
   staff_program_areas: StaffProgramAreasRecord
   staff_skills: StaffSkillsRecord
   staff_vehicle_info: StaffVehicleInfoRecord
+  sync_runs: SyncRunsRecord
   user_roles: UserRolesRecord
   users: UsersRecord
 }
@@ -2058,6 +2107,7 @@ export type CollectionResponses = {
   staff_program_areas: StaffProgramAreasResponse
   staff_skills: StaffSkillsResponse
   staff_vehicle_info: StaffVehicleInfoResponse
+  sync_runs: SyncRunsResponse
   user_roles: UserRolesResponse
   users: UsersResponse
 }

@@ -1,0 +1,199 @@
+package sync
+
+import (
+	"log/slog"
+	"time"
+
+	"github.com/pocketbase/dbx"
+	"github.com/pocketbase/pocketbase/core"
+)
+
+// This file persists one row per completed sync run to the `sync_runs` collection.
+//
+// It exists because of the decision on kindred#2284. Stats.Rejected — a per-record transform
+// failure, upstream data quality rather than a local fault — is warn-only for its first
+// season *specifically so a real distribution can be collected and a threshold set from
+// evidence later*. That is only true if the numbers survive: before this, the orchestrator's
+// lastCompletedStatus was an in-memory map wiped on every container restart, and no table
+// recorded sync history at all.
+//
+// One table, not one per job type. Every job — CampMinder API syncs, custom-value syncs,
+// internal transforms, the request processor — satisfies the same three-method Service
+// interface and returns the same Stats struct. The job-type distinction is a *scheduling*
+// one; there is no kind/category concept anywhere in this package. Stats already carries the
+// job-type-specific counters as omitempty fields, and the columns mirror that exactly.
+//
+// The rule for what gets a column is: store what cannot be reconstructed, derive what can.
+// So there is deliberately no `kind` column — `household_demographics` is always a transform
+// and `bunks` is always an API sync, so storing it would duplicate a static fact and create a
+// second place for it to be wrong. `trigger` gets a column for the opposite reason: nothing
+// in a finished row says whether it came from the 3am cron or an operator pressing a button.
+
+const (
+	// syncRunsCollection holds one row per completed run.
+	// Schema: pb_migrations/1500000152_sync_runs.js.
+	syncRunsCollection = "sync_runs"
+
+	// SyncRunRetentionDays is how long a row is kept before the write path prunes it.
+	//
+	// Hardcoded rather than a `config` table knob, matching LogRetentionDays above it: this
+	// is infrastructure retention, not a business rule anyone should be tuning from a GUI.
+	//
+	// The window is sized from real volume. The hourly cron runs a single service, the 3am
+	// daily sweeps ~26, and two small weeklies run on Sunday — roughly 100 rows a day, so 90
+	// days is about 9,000 rows. That spans a whole summer season plus the shoulder either
+	// side, which is the period the Rejected distribution has to be read over.
+	SyncRunRetentionDays = 90
+
+	// maxSyncRunErrorLen caps the stored error message, in runes, and matches the `error`
+	// field's declared max in the migration.
+	//
+	// The write path truncates to it rather than trusting the message to be short.
+	// PocketBase *rejects* an over-cap text write instead of truncating it, so an unusually
+	// long message — an errors.Join of many failures, say — would not produce a clipped row,
+	// it would produce no row at all. That loses the counters of exactly the run most worth
+	// keeping.
+	maxSyncRunErrorLen = 20000
+
+	// syncRunPruneBatch caps how many out-of-retention rows a single write may delete.
+	//
+	// The prune runs on every write, which sounds excessive and is not: on an indexed
+	// `started` column it returns nothing on all but the first write of the day. The cap is
+	// there for the other case — a deployment that has been down long enough to accumulate a
+	// backlog converges over several runs instead of stalling one sync behind a huge delete.
+	syncRunPruneBatch = 500
+)
+
+// recordSyncRun persists one completed run.
+//
+// Every failure here is logged and swallowed. This table is observability for a warn-only
+// counter, and a sync that ran correctly must not be reported as failed because its telemetry
+// row could not be written — by this point the run's own stats are final and could not absorb
+// the failure anyway.
+func (o *Orchestrator) recordSyncRun(completed *Status) {
+	if o.app == nil {
+		return
+	}
+
+	col, err := o.app.FindCollectionByNameOrId(syncRunsCollection)
+	if err != nil {
+		slog.Warn("sync_runs collection unavailable, run not recorded",
+			"syncType", completed.Type, "error", err)
+		return
+	}
+
+	seasonYear, seasonErr := ParseSeasonYear()
+	if completed.Year == 0 && seasonErr != nil {
+		slog.Warn("Recording sync run against the wall-clock year",
+			"syncType", completed.Type, "error", seasonErr)
+	}
+
+	stats := completed.Summary
+
+	rec := core.NewRecord(col)
+	rec.Set("service", completed.Type)
+	rec.Set("year", resolveRunYear(completed.Year, seasonYear, time.Now().Year()))
+	rec.Set("status", completed.Status)
+	rec.Set("trigger", completed.Trigger)
+	rec.Set("batch_id", completed.BatchID)
+	rec.Set("created_count", stats.Created)
+	rec.Set("updated_count", stats.Updated)
+	rec.Set("deleted_count", stats.Deleted)
+	rec.Set("skipped_count", stats.Skipped)
+	rec.Set("errors_count", stats.Errors)
+	rec.Set("rejected_count", stats.Rejected)
+	rec.Set("expanded_count", stats.Expanded)
+	rec.Set("already_processed_count", stats.AlreadyProcessed)
+	rec.Set("prod_audit_warnings_count", stats.ProdAuditWarnings)
+	rec.Set("lodging_prod_audit_warnings_count", stats.LodgingProdAuditWarnings)
+	rec.Set("duration", stats.Duration)
+	rec.Set("started", completed.StartTime)
+	if completed.EndTime != nil {
+		rec.Set("ended", *completed.EndTime)
+	}
+	rec.Set("error", truncateRunes(completed.Error, maxSyncRunErrorLen))
+	if len(stats.SubStats) > 0 {
+		rec.Set("sub_stats", stats.SubStats)
+	}
+
+	if err := o.app.Save(rec); err != nil {
+		slog.Error("Failed to record sync run", "syncType", completed.Type, "error", err)
+		return
+	}
+
+	o.pruneSyncRuns()
+}
+
+// pruneSyncRuns deletes rows whose run started before the retention cutoff.
+//
+// It lives in the write path rather than on the scheduler so that retention holds without
+// anything having to be scheduled — a deployment that never runs the daily cron still cannot
+// grow this table without bound.
+func (o *Orchestrator) pruneSyncRuns() {
+	cutoff := time.Now().AddDate(0, 0, -SyncRunRetentionDays).UTC().Format(time.RFC3339)
+
+	stale, err := o.app.FindRecordsByFilter(
+		syncRunsCollection,
+		"started < {:cutoff}",
+		"started",
+		syncRunPruneBatch,
+		0,
+		dbx.Params{"cutoff": cutoff},
+	)
+	if err != nil {
+		slog.Warn("Failed to scan sync_runs for pruning", "cutoff", cutoff, "error", err)
+		return
+	}
+	if len(stale) == 0 {
+		return
+	}
+
+	deleted := 0
+	for _, rec := range stale {
+		if err := o.app.Delete(rec); err != nil {
+			slog.Warn("Failed to prune sync_run", "recordId", rec.Id, "error", err)
+			continue
+		}
+		deleted++
+	}
+
+	slog.Info("Pruned old sync runs",
+		"deleted", deleted, "found", len(stale), "retentionDays", SyncRunRetentionDays)
+}
+
+// resolveRunYear picks the year a persisted run is filed under.
+//
+// sync_runs.year is a required PocketBase number field, and PocketBase's required check
+// rejects 0 (core/field_number.go, ValidateValue) — which is exactly how the orchestrator
+// spells "the current season" on Status.Year. So the value has to be resolved rather than
+// copied.
+//
+// Order: the run's own year, since a historical sync names its year explicitly; then the
+// configured season; then the wall clock. The last is a guess and the caller logs when it is
+// reached, but losing the row outright would be worse for a table whose only job is to
+// accumulate a distribution.
+//
+// The season and wall-clock years are passed in rather than read here so this stays a pure
+// function. Reading CAMPMINDER_SEASON_ID inside it would force every test that touches it to
+// t.Setenv, and the package's parallelism guard (pocketbase/main_test_parallelism_test.go)
+// exists to stop that spreading.
+func resolveRunYear(statusYear, seasonYear, wallClockYear int) int {
+	if statusYear > 0 {
+		return statusYear
+	}
+	if seasonYear > 0 {
+		return seasonYear
+	}
+	return wallClockYear
+}
+
+// truncateRunes clips s to at most n runes. Runes, not bytes, because that is what
+// PocketBase's text field measures (utf8.RuneCountInString in TextField.ValidateValue) — a
+// byte-wise cut would both under-fill the field and risk splitting a multi-byte character.
+func truncateRunes(s string, n int) string {
+	runes := []rune(s)
+	if len(runes) <= n {
+		return s
+	}
+	return string(runes[:n])
+}

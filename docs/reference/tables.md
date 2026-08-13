@@ -51,6 +51,7 @@ Kindred uses PocketBase as its database layer. All collections follow these patt
 | `family_camp_medical` | Computed | Go Sync | Family camp medical/dietary info |
 | `users` | System | PocketBase | User authentication records |
 | `debug_parse_results` | System | Computed | AI parsing debug data |
+| `sync_runs` | System | Go Sync | Per-run sync history and counters |
 
 ---
 
@@ -778,6 +779,41 @@ Stores Phase 1 AI parsing results for debugging and prompt iteration.
 **Indexes**: `original_request`, `session`, `created`
 
 **Purpose**: Separate from production bunk_requests for safe debugging and prompt development.
+
+### sync_runs
+
+One row per completed sync run, written by the orchestrator's shared completion store
+(`pocketbase/sync/sync_runs.go`) and pruned in the same write path after
+`sync.SyncRunRetentionDays` (90 days).
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `service` | text | Sync job name, e.g. `bunk_assignments` |
+| `year` | number | Season the run covered |
+| `status` | select | success/failed |
+| `trigger` | select | hourly/daily/weekly/custom_values/historical/manual |
+| `batch_id` | text | Groups every job of one queue as a single run |
+| `created_count` | number | Records created |
+| `updated_count` | number | Records updated |
+| `deleted_count` | number | Records deleted |
+| `skipped_count` | number | Records skipped |
+| `errors_count` | number | Infrastructure failures (zero tolerance) |
+| `rejected_count` | number | Per-record transform failures (warn-only) |
+| `expanded_count` | number | Many-to-many expansions (bunk_plans) |
+| `already_processed_count` | number | Already-processed records (process_requests) |
+| `prod_audit_warnings_count` | number | Stranded bunk_assignments found, not cleared |
+| `lodging_prod_audit_warnings_count` | number | Orphaned lodging_assignments found, not cleared |
+| `duration` | number | Run length in seconds |
+| `started` / `ended` | date | Run window |
+| `error` | text | Failure reason, truncated to 20,000 runes |
+| `sub_stats` | json | Per-sub-entity counters for combined syncs |
+
+**Indexes**: `started`, `(service, started)`, `batch_id`, `year`
+
+**Purpose**: `rejected_count` is warn-only for its first season so a distribution can be
+collected and a threshold set from evidence later (#2284) — which requires the counts to
+outlive the process. There is deliberately no `kind` column: a job's kind is derivable from
+`service`, and storing it would create a second place for it to be wrong.
 
 ---
 
