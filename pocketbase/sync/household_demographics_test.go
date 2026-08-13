@@ -977,9 +977,9 @@ func TestHouseholdDemographicsDeleteOrphansRefusesPartialCollapse(t *testing.T) 
 // newHouseholdDemographicsSyncTestApp extends newHouseholdDemographicsTestApp
 // with the three collections Sync() reads on its way to the sweep, so a test
 // can drive the whole run rather than calling deleteOrphans directly.
-func newHouseholdDemographicsSyncTestApp(t *testing.T) (core.App, *core.Collection, *core.Collection) {
+func newHouseholdDemographicsSyncTestApp(t *testing.T) (app core.App, households, persons *core.Collection) {
 	t.Helper()
-	app, households, persons := newHouseholdDemographicsTestApp(t)
+	app, households, persons = newHouseholdDemographicsTestApp(t)
 
 	defs := core.NewBaseCollection("custom_field_defs")
 	defs.Fields.Add(&core.TextField{Name: "name"})
@@ -1034,8 +1034,8 @@ func TestHouseholdDemographicsSyncPropagatesSweepRefusal(t *testing.T) {
 	}
 	def := core.NewRecord(defs)
 	def.Set("name", "HH-Jewish Affiliation")
-	if err := app.Save(def); err != nil {
-		t.Fatalf("save field def: %v", err)
+	if saveErr := app.Save(def); saveErr != nil {
+		t.Fatalf("save field def: %v", saveErr)
 	}
 
 	pcvCol, err := app.FindCollectionByNameOrId("person_custom_values")
@@ -1049,16 +1049,16 @@ func TestHouseholdDemographicsSyncPropagatesSweepRefusal(t *testing.T) {
 		p.Set("cm_id", cmID)
 		p.Set("household", hh.Id)
 		p.Set("year", 2026)
-		if err := app.Save(p); err != nil {
-			t.Fatalf("save person %d: %v", cmID, err)
+		if saveErr := app.Save(p); saveErr != nil {
+			t.Fatalf("save person %d: %v", cmID, saveErr)
 		}
 		v := core.NewRecord(pcvCol)
 		v.Set("person", p.Id)
 		v.Set("field_definition", def.Id)
 		v.Set("value", testAffiliation)
 		v.Set("year", 2026)
-		if err := app.Save(v); err != nil {
-			t.Fatalf("save custom value for %d: %v", cmID, err)
+		if saveErr := app.Save(v); saveErr != nil {
+			t.Fatalf("save custom value for %d: %v", cmID, saveErr)
 		}
 	}
 
@@ -1072,8 +1072,8 @@ func TestHouseholdDemographicsSyncPropagatesSweepRefusal(t *testing.T) {
 		rec.Set("household", hh.Id)
 		rec.Set("person_id", 900+i)
 		rec.Set("year", 2026)
-		if err := app.Save(rec); err != nil {
-			t.Fatalf("save existing row %d: %v", i, err)
+		if saveErr := app.Save(rec); saveErr != nil {
+			t.Fatalf("save existing row %d: %v", i, saveErr)
 		}
 	}
 

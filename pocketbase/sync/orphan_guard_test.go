@@ -490,8 +490,8 @@ func seedCustomValuesRun(t *testing.T, app core.App, target, fieldName, partitio
 	def.Set("partition", partition)
 	def.Set("cm_id", 77)
 	def.Set("year", 2026)
-	if err := app.Save(def); err != nil {
-		t.Fatalf("save field def: %v", err)
+	if saveErr := app.Save(def); saveErr != nil {
+		t.Fatalf("save field def: %v", saveErr)
 	}
 
 	personsCol, _ := app.FindCollectionByNameOrId("persons")
@@ -502,23 +502,23 @@ func seedCustomValuesRun(t *testing.T, app core.App, target, fieldName, partitio
 		p := core.NewRecord(personsCol)
 		p.Set("cm_id", cmID)
 		p.Set("year", 2026)
-		if err := app.Save(p); err != nil {
-			t.Fatalf("save person %d: %v", cmID, err)
+		if saveErr := app.Save(p); saveErr != nil {
+			t.Fatalf("save person %d: %v", cmID, saveErr)
 		}
 		a := core.NewRecord(attendeesCol)
 		a.Set("person_id", cmID)
 		a.Set("session_id", 200)
 		a.Set("year", 2026)
-		if err := app.Save(a); err != nil {
-			t.Fatalf("save attendee %d: %v", cmID, err)
+		if saveErr := app.Save(a); saveErr != nil {
+			t.Fatalf("save attendee %d: %v", cmID, saveErr)
 		}
 		v := core.NewRecord(valuesCol)
 		v.Set("person", p.Id)
 		v.Set("field_definition", def.Id)
 		v.Set("value", "Yes")
 		v.Set("year", 2026)
-		if err := app.Save(v); err != nil {
-			t.Fatalf("save custom value %d: %v", cmID, err)
+		if saveErr := app.Save(v); saveErr != nil {
+			t.Fatalf("save custom value %d: %v", cmID, saveErr)
 		}
 	}
 

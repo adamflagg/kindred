@@ -2668,8 +2668,8 @@ func TestCamperHistorySyncPropagatesSweepRefusal(t *testing.T) {
 		a := core.NewRecord(attendees)
 		a.Set("person_id", cmID)
 		a.Set("year", 2026)
-		if err := app.Save(a); err != nil {
-			t.Fatalf("save attendee %d: %v", cmID, err)
+		if saveErr := app.Save(a); saveErr != nil {
+			t.Fatalf("save attendee %d: %v", cmID, saveErr)
 		}
 	}
 
@@ -2682,8 +2682,8 @@ func TestCamperHistorySyncPropagatesSweepRefusal(t *testing.T) {
 		rec.Set("person_id", 900+i)
 		rec.Set("session_cm_id", 200)
 		rec.Set("year", 2026)
-		if err := app.Save(rec); err != nil {
-			t.Fatalf("save existing row %d: %v", i, err)
+		if saveErr := app.Save(rec); saveErr != nil {
+			t.Fatalf("save existing row %d: %v", i, saveErr)
 		}
 	}
 

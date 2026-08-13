@@ -2431,8 +2431,8 @@ func TestNormalizeGeographicSyncPropagatesSweepRefusal(t *testing.T) {
 	sess := core.NewRecord(sessions)
 	sess.Set("cm_id", 200)
 	sess.Set("name", "Session A")
-	if err := app.Save(sess); err != nil {
-		t.Fatalf("save session: %v", err)
+	if saveErr := app.Save(sess); saveErr != nil {
+		t.Fatalf("save session: %v", saveErr)
 	}
 
 	personsCol, err := app.FindCollectionByNameOrId("persons")
@@ -2447,15 +2447,15 @@ func TestNormalizeGeographicSyncPropagatesSweepRefusal(t *testing.T) {
 		p := core.NewRecord(personsCol)
 		p.Set("cm_id", cmID)
 		p.Set("year", 2026)
-		if err := app.Save(p); err != nil {
-			t.Fatalf("save person %d: %v", cmID, err)
+		if saveErr := app.Save(p); saveErr != nil {
+			t.Fatalf("save person %d: %v", cmID, saveErr)
 		}
 		a := core.NewRecord(attendeesCol)
 		a.Set("person", p.Id)
 		a.Set("session", sess.Id)
 		a.Set("year", 2026)
-		if err := app.Save(a); err != nil {
-			t.Fatalf("save attendee %d: %v", cmID, err)
+		if saveErr := app.Save(a); saveErr != nil {
+			t.Fatalf("save attendee %d: %v", cmID, saveErr)
 		}
 	}
 
@@ -2469,8 +2469,8 @@ func TestNormalizeGeographicSyncPropagatesSweepRefusal(t *testing.T) {
 		rec.Set("session", sess.Id)
 		rec.Set("category", categoryCity)
 		rec.Set("year", 2026)
-		if err := app.Save(rec); err != nil {
-			t.Fatalf("save existing mapping %d: %v", i, err)
+		if saveErr := app.Save(rec); saveErr != nil {
+			t.Fatalf("save existing mapping %d: %v", i, saveErr)
 		}
 	}
 
