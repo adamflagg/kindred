@@ -15,6 +15,14 @@ const serviceNameHouseholdDemographics = "household_demographics"
 // customFieldNameSynagogue is the custom field name for synagogue data
 const customFieldNameSynagogue = "Synagogue"
 
+// sortByID is the sort argument every paged read in this service passes.
+// PocketBase adds an ORDER BY only when the sort argument is non-empty
+// (core/record_query.go), so an empty one leaves the row order up to whichever
+// index the SQLite planner picks -- which is not stable ACROSS the separate
+// per-page queries a paged read issues, so a plan change between pages can skip
+// or repeat rows. `id` is unique, so it is a total order.
+const sortByID = "id"
+
 // HouseholdDemographicsSync computes household demographics from custom values.
 // This service reads from person_custom_values (HH- prefixed fields) and
 // household_custom_values, then populates the household_demographics table.
@@ -22,10 +30,21 @@ const customFieldNameSynagogue = "Synagogue"
 // Unlike CampMinder API syncs, this doesn't call external APIs - it computes
 // derived/aggregated data from existing PocketBase records.
 //
+// Grain: one row per (household, person, year).
+//
+// The table used to hold one row per (household, year), and the HH- answers of
+// every camper in a household were folded into it first-non-empty-wins. That
+// discarded 7,781 answers across ten years (627 in 2026) and the survivor was
+// whichever row SQLite's planner happened to yield first -- kindred#2260. The
+// answers are given per camper, so the table now stores them per camper.
+//
 // Field mapping:
-// - HH- prefixed person fields go to _summer columns (from summer camp registration)
-// - Household custom fields go to _family columns (from family camp registration)
-// - First non-empty value wins for multi-camper households
+//   - HH- prefixed person fields go to _summer columns (from summer camp
+//     registration) on the answering camper's row.
+//   - Household custom fields go to _family columns (from family camp
+//     registration). They are already one row per household per field, so they
+//     land on a person-less row (person_id 0) rather than being copied onto
+//     every camper.
 type HouseholdDemographicsSync struct {
 	App            core.App
 	Year           int  // Year to compute for (0 = current year from env)
@@ -33,6 +52,11 @@ type HouseholdDemographicsSync struct {
 	Debug          bool // Enable verbose debug logging
 	Stats          Stats
 	SyncSuccessful bool
+
+	// columnConflicts counts values setColumn refused to overwrite. Zero on
+	// every year of the production snapshot; a non-zero count means two field
+	// definitions share a trimmed name.
+	columnConflicts int
 }
 
 // NewHouseholdDemographicsSync creates a new household demographics sync service
@@ -114,9 +138,14 @@ func (s *HouseholdDemographicsSync) fieldEquals(existing, newVal any) bool {
 	return fmt.Sprintf("%v", existing) == fmt.Sprintf("%v", newVal)
 }
 
-// householdDemographicsRecord holds the computed demographics for a household
+// householdDemographicsRecord holds the computed demographics for one row.
+//
+// personPBID/personCMID are empty/zero on the household-level row that carries
+// the _family columns; every other row belongs to the camper who answered.
 type householdDemographicsRecord struct {
 	householdPBID string
+	personPBID    string
+	personCMID    int
 	year          int
 
 	// Family description (multi-select, pipe-separated)
@@ -174,7 +203,7 @@ func (s *HouseholdDemographicsSync) Sync(ctx context.Context) error {
 	}
 
 	// Validate year (minimum 2017 per test spec)
-	if year < 2017 || year > 2050 {
+	if !isValidDemographicsYear(year) {
 		return fmt.Errorf("invalid year %d: must be between 2017 and 2050", year)
 	}
 
@@ -211,13 +240,13 @@ func (s *HouseholdDemographicsSync) Sync(ctx context.Context) error {
 	}
 	slog.Info("Loaded household custom values", "count", len(householdValues))
 
-	// Step 5: Aggregate to household level
-	records := s.aggregateToHouseholdLevel(personValues, householdValues, year)
-	slog.Info("Aggregated to household level", "count", len(records))
+	// Step 5: Aggregate to one row per (household, person, year)
+	records := s.aggregateToRows(personValues, householdValues, year)
+	slog.Info("Aggregated to person grain", "rows", len(records), "conflicts", s.columnConflicts)
 
 	if s.DryRun {
 		slog.Info("Dry run mode - computed but not writing",
-			"households", len(records),
+			"rows", len(records),
 		)
 		s.Stats.Created = len(records)
 		s.SyncSuccessful = true
@@ -252,6 +281,7 @@ func (s *HouseholdDemographicsSync) Sync(ctx context.Context) error {
 	s.SyncSuccessful = true
 	slog.Info("Household demographics computation completed",
 		"year", year,
+		"column_conflicts", s.columnConflicts,
 		"created", s.Stats.Created,
 		"updated", s.Stats.Updated,
 		"deleted", s.Stats.Deleted,
@@ -259,6 +289,12 @@ func (s *HouseholdDemographicsSync) Sync(ctx context.Context) error {
 	)
 
 	return nil
+}
+
+// isValidDemographicsYear reports whether a year is in the range this service
+// will compute for. 2017 is the first year CampMinder data was imported.
+func isValidDemographicsYear(year int) bool {
+	return year >= 2017 && year <= 2050
 }
 
 // loadFieldDefinitions builds a map of field_definition PB ID -> field name
@@ -304,11 +340,20 @@ func IsHHField(name string) bool {
 	return strings.HasPrefix(name, "HH-")
 }
 
-// loadPersonHouseholdMapping builds a map of person PB ID -> household PB ID
+// personRef is what a person PB ID resolves to: the household that person
+// belongs to, and the CampMinder id that keys their row. CampMinder ids are the
+// identity layer here (CLAUDE.md section 1) -- the PB id is carried alongside
+// only to populate the `person` relation.
+type personRef struct {
+	householdPBID string
+	cmID          int
+}
+
+// loadPersonHouseholdMapping builds a map of person PB ID -> personRef
 func (s *HouseholdDemographicsSync) loadPersonHouseholdMapping(
 	ctx context.Context, year int,
-) (map[string]string, error) {
-	result := make(map[string]string)
+) (map[string]personRef, error) {
+	result := make(map[string]personRef)
 
 	filter := fmt.Sprintf("year = %d && household != ''", year)
 	page := 1
@@ -321,7 +366,7 @@ func (s *HouseholdDemographicsSync) loadPersonHouseholdMapping(
 		default:
 		}
 
-		records, err := s.App.FindRecordsByFilter("persons", filter, "", perPage, (page-1)*perPage)
+		records, err := s.App.FindRecordsByFilter("persons", filter, sortByID, perPage, (page-1)*perPage)
 		if err != nil {
 			return nil, fmt.Errorf("querying persons page %d: %w", page, err)
 		}
@@ -329,7 +374,7 @@ func (s *HouseholdDemographicsSync) loadPersonHouseholdMapping(
 		for _, record := range records {
 			householdID := record.GetString("household")
 			if householdID != "" {
-				result[record.Id] = householdID
+				result[record.Id] = personRef{householdPBID: householdID, cmID: record.GetInt("cm_id")}
 			}
 		}
 
@@ -342,16 +387,21 @@ func (s *HouseholdDemographicsSync) loadPersonHouseholdMapping(
 	return result, nil
 }
 
-// hhCustomValueEntry represents a loaded HH custom value
+// hhCustomValueEntry represents a loaded HH custom value.
+//
+// personPBID/personCMID identify the camper who gave the answer, and are
+// empty/zero for household-level (family camp) values, which have no camper.
 type hhCustomValueEntry struct {
 	householdPBID string
+	personPBID    string
+	personCMID    int
 	fieldName     string
 	value         string
 }
 
 // loadPersonCustomValues loads person custom values for HH- prefixed fields
 func (s *HouseholdDemographicsSync) loadPersonCustomValues(
-	ctx context.Context, year int, fieldNameMap map[string]string, personToHousehold map[string]string,
+	ctx context.Context, year int, fieldNameMap map[string]string, personToHousehold map[string]personRef,
 ) ([]hhCustomValueEntry, error) {
 	var result []hhCustomValueEntry
 
@@ -366,7 +416,7 @@ func (s *HouseholdDemographicsSync) loadPersonCustomValues(
 		default:
 		}
 
-		records, err := s.App.FindRecordsByFilter("person_custom_values", filter, "", perPage, (page-1)*perPage)
+		records, err := s.App.FindRecordsByFilter("person_custom_values", filter, sortByID, perPage, (page-1)*perPage)
 		if err != nil {
 			return nil, fmt.Errorf("querying person custom values page %d: %w", page, err)
 		}
@@ -379,12 +429,14 @@ func (s *HouseholdDemographicsSync) loadPersonCustomValues(
 			}
 
 			personID := record.GetString("person")
-			householdID := personToHousehold[personID]
+			ref := personToHousehold[personID]
 			value := record.GetString("value")
 
-			if householdID != "" && value != "" {
+			if ref.householdPBID != "" && value != "" {
 				result = append(result, hhCustomValueEntry{
-					householdPBID: householdID,
+					householdPBID: ref.householdPBID,
+					personPBID:    personID,
+					personCMID:    ref.cmID,
 					fieldName:     fieldName,
 					value:         value,
 				})
@@ -417,7 +469,7 @@ func (s *HouseholdDemographicsSync) loadHouseholdCustomValues(
 		default:
 		}
 
-		records, err := s.App.FindRecordsByFilter("household_custom_values", filter, "", perPage, (page-1)*perPage)
+		records, err := s.App.FindRecordsByFilter("household_custom_values", filter, sortByID, perPage, (page-1)*perPage)
 		if err != nil {
 			return nil, fmt.Errorf("querying household custom values page %d: %w", page, err)
 		}
@@ -454,43 +506,100 @@ func (s *HouseholdDemographicsSync) loadHouseholdCustomValues(
 	return result, nil
 }
 
-// aggregateToHouseholdLevel aggregates custom values to household level
-// First non-empty value wins for multi-camper households
-func (s *HouseholdDemographicsSync) aggregateToHouseholdLevel(
+// aggregateToRows groups custom values into rows at the table's grain:
+// (household, person, year) for the HH- answers a camper gave, and
+// (household, 0, year) for the household-level family camp answers.
+//
+// The map is keyed by MakeCompositeKey, the same write key upsertRecords and
+// deleteOrphans use -- the three must agree or a sweep deletes what a write
+// just created (kindred#2257, "the grain triple").
+//
+// Order-independent by construction: at this grain each column has at most one
+// contributing value, so nothing here depends on the order the loaders read
+// rows in.
+func (s *HouseholdDemographicsSync) aggregateToRows(
 	personValues []hhCustomValueEntry,
 	householdValues []hhCustomValueEntry,
 	year int,
 ) map[string]*householdDemographicsRecord {
 	records := make(map[string]*householdDemographicsRecord)
 
-	// Helper to get or create record
-	getRecord := func(householdID string) *householdDemographicsRecord {
-		if records[householdID] == nil {
-			records[householdID] = &householdDemographicsRecord{
-				householdPBID: householdID,
+	// Helper to get or create the row for one grain key
+	getRecord := func(v hhCustomValueEntry) *householdDemographicsRecord {
+		key := MakeCompositeKey(v.householdPBID, v.personCMID, year)
+		if records[key] == nil {
+			records[key] = &householdDemographicsRecord{
+				householdPBID: v.householdPBID,
+				personPBID:    v.personPBID,
+				personCMID:    v.personCMID,
 				year:          year,
 			}
 		}
-		return records[householdID]
+		return records[key]
 	}
 
 	// Process person custom values (HH- fields) -> _summer columns
 	for _, v := range personValues {
-		rec := getRecord(v.householdPBID)
+		rec := getRecord(v)
 		s.mapPersonFieldToRecord(rec, v.fieldName, v.value)
 	}
 
 	// Process household custom values -> _family columns
 	for _, v := range householdValues {
-		rec := getRecord(v.householdPBID)
+		rec := getRecord(v)
 		s.mapHouseholdFieldToRecord(rec, v.fieldName, v.value)
 	}
 
 	return records
 }
 
-// mapPersonFieldToRecord maps a HH- person field to the appropriate record field
-// Uses "first non-empty wins" strategy
+// setColumn writes a text column, and refuses to overwrite it with a different
+// value.
+//
+// At this grain a second value cannot legitimately arrive: person_custom_values
+// is UNIQUE(year, person, field_definition), household_custom_values is
+// UNIQUE(year, household, field_definition), and both mapping switches are
+// injective, so one row contributes at most one value per column. The only way
+// here is two field definitions sharing a trimmed name -- zero exist today.
+//
+// That makes this a must-be-unique rule rather than a collapse rule, and the
+// difference from the code it replaces is the whole point of kindred#2260: the
+// old `if rec.X == ""` guard silently dropped a real disagreement between two
+// campers. There is no disagreement left to drop, so anything reaching the
+// refusal below is a data fault worth hearing about rather than a routine
+// collision to resolve.
+func (s *HouseholdDemographicsSync) setColumn(rec *householdDemographicsRecord, dst *string, column, value string) {
+	if *dst == "" {
+		*dst = value
+		return
+	}
+	if *dst == value {
+		return // the same answer twice discards nothing
+	}
+	s.columnConflicts++
+	// Identifiers only. These columns hold sensitive-category answers (Jewish
+	// identity and affiliation, LGBTQ and interfaith family description, custody
+	// arrangements) and a log is a wider audience than the table's admin-only
+	// API rules; both values are recoverable from person_custom_values by
+	// anyone entitled to see them.
+	slog.Warn("Conflicting values for one demographics column at (household, person, year)",
+		"household", rec.householdPBID,
+		"person", rec.personPBID,
+		"year", rec.year,
+		"column", column,
+	)
+}
+
+// mapPersonFieldToRecord maps a HH- person field onto the answering camper's row.
+//
+// The 14 text columns go through setColumn, which is a must-be-unique rule --
+// see its comment. It replaces the `if rec.X == ""` first-non-empty-wins guard
+// that gave kindred#2260 its name: at household grain that guard let the first
+// camper read speak for the family and threw the rest away.
+//
+// The four boolean arms are unchanged. They are logical ORs over the
+// contributing values, never first-wins, so they were never part of the defect;
+// at this grain they OR over one camper's answers instead of the household's.
 func (s *HouseholdDemographicsSync) mapPersonFieldToRecord(rec *householdDemographicsRecord, fieldName, value string) {
 	// Use MapHHFieldToColumn for the field mapping
 	column := MapHHFieldToColumn(fieldName)
@@ -498,38 +607,23 @@ func (s *HouseholdDemographicsSync) mapPersonFieldToRecord(rec *householdDemogra
 		return // Unknown field
 	}
 
-	// First non-empty wins
 	switch column {
 	case "family_description":
-		if rec.familyDescription == "" {
-			rec.familyDescription = value
-		}
+		s.setColumn(rec, &rec.familyDescription, column, value)
 	case "family_description_other":
-		if rec.familyDescriptionOther == "" {
-			rec.familyDescriptionOther = value
-		}
+		s.setColumn(rec, &rec.familyDescriptionOther, column, value)
 	case "jewish_affiliation":
-		if rec.jewishAffiliation == "" {
-			rec.jewishAffiliation = value
-		}
+		s.setColumn(rec, &rec.jewishAffiliation, column, value)
 	case "jewish_affiliation_other":
-		if rec.jewishAffiliationOther == "" {
-			rec.jewishAffiliationOther = value
-		}
+		s.setColumn(rec, &rec.jewishAffiliationOther, column, value)
 	case "jewish_identities":
-		if rec.jewishIdentities == "" {
-			rec.jewishIdentities = value
-		}
+		s.setColumn(rec, &rec.jewishIdentities, column, value)
 	case "congregation_summer":
-		if rec.congregationSummer == "" {
-			rec.congregationSummer = value
-		}
+		s.setColumn(rec, &rec.congregationSummer, column, value)
 	case "jcc_summer":
-		if rec.jccSummer == "" {
-			rec.jccSummer = value
-		}
+		s.setColumn(rec, &rec.jccSummer, column, value)
 	case "military_family":
-		// Parse boolean, first true wins
+		// Logical OR over the contributing values -- order-independent
 		if !rec.militaryFamily && ParseBoolValue(value) {
 			rec.militaryFamily = true
 		}
@@ -538,13 +632,9 @@ func (s *HouseholdDemographicsSync) mapPersonFieldToRecord(rec *householdDemogra
 			rec.parentImmigrant = true
 		}
 	case "parent_immigrant_origin":
-		if rec.parentImmigrantOrigin == "" {
-			rec.parentImmigrantOrigin = value
-		}
+		s.setColumn(rec, &rec.parentImmigrantOrigin, column, value)
 	case "custody_summer":
-		if rec.custodySummer == "" {
-			rec.custodySummer = value
-		}
+		s.setColumn(rec, &rec.custodySummer, column, value)
 	case "has_custody_considerations":
 		if !rec.hasCustodyConsiderations && ParseBoolValue(value) {
 			rec.hasCustodyConsiderations = true
@@ -554,29 +644,26 @@ func (s *HouseholdDemographicsSync) mapPersonFieldToRecord(rec *householdDemogra
 			rec.awayDuringCamp = true
 		}
 	case "away_location":
-		if rec.awayLocation == "" {
-			rec.awayLocation = value
-		}
+		s.setColumn(rec, &rec.awayLocation, column, value)
 	case "away_phone":
-		if rec.awayPhone == "" {
-			rec.awayPhone = value
-		}
+		s.setColumn(rec, &rec.awayPhone, column, value)
 	case "away_from_date":
-		if rec.awayFromDate == "" {
-			rec.awayFromDate = value
-		}
+		s.setColumn(rec, &rec.awayFromDate, column, value)
 	case "away_return_date":
-		if rec.awayReturnDate == "" {
-			rec.awayReturnDate = value
-		}
+		s.setColumn(rec, &rec.awayReturnDate, column, value)
 	case "form_filler":
-		if rec.formFiller == "" {
-			rec.formFiller = value
-		}
+		s.setColumn(rec, &rec.formFiller, column, value)
 	}
 }
 
-// mapHouseholdFieldToRecord maps a household custom field to the appropriate record field
+// mapHouseholdFieldToRecord maps a household custom field onto the
+// household-level row.
+//
+// These three text columns were never part of kindred#2260 -- household_custom_values
+// is one row per household per field, so no second value could ever arrive and
+// the old first-wins guard was unreachable. They use setColumn for the same
+// reason the person arms do: one rule in this file, and a data fault that
+// cannot happen becomes audible rather than silent if it ever does.
 func (s *HouseholdDemographicsSync) mapHouseholdFieldToRecord(
 	rec *householdDemographicsRecord, fieldName, value string,
 ) {
@@ -585,21 +672,15 @@ func (s *HouseholdDemographicsSync) mapHouseholdFieldToRecord(
 		return
 	}
 
-	// First non-empty wins
 	switch column {
 	case "congregation_family":
-		if rec.congregationFamily == "" {
-			rec.congregationFamily = value
-		}
+		s.setColumn(rec, &rec.congregationFamily, column, value)
 	case "jcc_family":
-		if rec.jccFamily == "" {
-			rec.jccFamily = value
-		}
+		s.setColumn(rec, &rec.jccFamily, column, value)
 	case "custody_family":
-		if rec.custodyFamily == "" {
-			rec.custodyFamily = value
-		}
+		s.setColumn(rec, &rec.custodyFamily, column, value)
 	case "board_member":
+		// Logical OR, as on the person side
 		if !rec.boardMember && ParseBoolValue(value) {
 			rec.boardMember = true
 		}
@@ -677,11 +758,12 @@ func ParseBoolValue(value string) bool {
 	return false
 }
 
-// MakeCompositeKey creates a composite key from household PB ID and year
-// Format: "householdPBID|year"
+// MakeCompositeKey creates a composite key from household PB ID, person
+// CampMinder ID and year.
+// Format: "householdPBID|personCMID|year"
 // Exported for testing
-func MakeCompositeKey(householdPBID string, year int) string {
-	return fmt.Sprintf("%s|%d", householdPBID, year)
+func MakeCompositeKey(householdPBID string, personCMID, year int) string {
+	return fmt.Sprintf("%s|%d|%d", householdPBID, personCMID, year)
 }
 
 // loadExistingRecords loads existing household_demographics records for a year
@@ -699,14 +781,14 @@ func (s *HouseholdDemographicsSync) loadExistingRecords(ctx context.Context, yea
 		default:
 		}
 
-		records, err := s.App.FindRecordsByFilter("household_demographics", filter, "", perPage, (page-1)*perPage)
+		records, err := s.App.FindRecordsByFilter("household_demographics", filter, sortByID, perPage, (page-1)*perPage)
 		if err != nil {
 			return nil, fmt.Errorf("querying household_demographics page %d: %w", page, err)
 		}
 
 		for _, record := range records {
 			householdID := record.GetString("household")
-			key := MakeCompositeKey(householdID, year)
+			key := MakeCompositeKey(householdID, record.GetInt("person_id"), year)
 			result[key] = record.Id
 		}
 
@@ -739,12 +821,14 @@ func (s *HouseholdDemographicsSync) upsertRecords(
 		default:
 		}
 
-		key := MakeCompositeKey(rec.householdPBID, year)
+		key := MakeCompositeKey(rec.householdPBID, rec.personCMID, year)
 		existingID, exists := existingRecords[key]
 
 		// Build data map for comparison and setting
 		data := map[string]any{
 			"household":                  rec.householdPBID,
+			"person":                     rec.personPBID,
+			"person_id":                  rec.personCMID,
 			"year":                       rec.year,
 			"family_description":         rec.familyDescription,
 			"family_description_other":   rec.familyDescriptionOther,
@@ -782,7 +866,10 @@ func (s *HouseholdDemographicsSync) upsertRecords(
 
 			// Check if update is needed
 			needsUpdate := false
-			skipFields := map[string]bool{"id": true, "created": true, "updated": true, "household": true, "year": true}
+			skipFields := map[string]bool{
+				"id": true, "created": true, "updated": true,
+				"household": true, "person": true, "person_id": true, "year": true,
+			}
 			for field, newValue := range data {
 				if skipFields[field] {
 					continue
@@ -810,6 +897,7 @@ func (s *HouseholdDemographicsSync) upsertRecords(
 		if err := s.App.Save(record); err != nil {
 			slog.Error("Error saving household_demographics record",
 				"household", rec.householdPBID,
+				"person", rec.personPBID,
 				"year", rec.year,
 				"error", err,
 			)
@@ -827,7 +915,12 @@ func (s *HouseholdDemographicsSync) upsertRecords(
 	return created, updated, skipped, errors
 }
 
-// deleteOrphans removes records that exist in DB but not in computed set
+// deleteOrphans removes records that exist in DB but not in computed set.
+//
+// The key here is leg three of the grain triple and must match the write key in
+// upsertRecords exactly. Widen one without the other and the next run sweeps
+// away the rows the other just wrote, reporting success as it goes
+// (kindred#2257).
 func (s *HouseholdDemographicsSync) deleteOrphans(
 	ctx context.Context,
 	records map[string]*householdDemographicsRecord,
@@ -835,10 +928,23 @@ func (s *HouseholdDemographicsSync) deleteOrphans(
 ) int {
 	deleted := 0
 
+	// Refuse to empty the table. Every row is recomputed from
+	// person_custom_values on each run, so an empty computed set standing
+	// against a populated table is far more likely to be a load that came back
+	// empty than a year in which nobody answered anything -- and this sweep is
+	// the one step of this sync a re-run cannot undo.
+	if len(records) == 0 && len(existingRecords) > 0 {
+		slog.Error("Refusing to delete household_demographics orphans: nothing was computed",
+			"existing_records", len(existingRecords),
+		)
+		s.Stats.Errors++
+		return 0
+	}
+
 	// Build set of computed keys
 	computedKeys := make(map[string]bool)
 	for _, rec := range records {
-		key := MakeCompositeKey(rec.householdPBID, rec.year)
+		key := MakeCompositeKey(rec.householdPBID, rec.personCMID, rec.year)
 		computedKeys[key] = true
 	}
 

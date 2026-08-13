@@ -895,7 +895,12 @@ func GetReadableYearExports() []ExportConfig {
 				{Field: "value", Header: "Value", Type: FieldTypeText},
 			},
 		},
-		// Household Demographics - consolidated HH- fields from custom values
+		// Household Demographics - HH- fields from custom values, one row per
+		// (household, person, year). The person columns are not decoration:
+		// since kindred#2260 a household contributes one row per camper who
+		// answered, so a sheet without them reads as duplicated households.
+		// Person ID 0 with no name is the household-level row carrying the
+		// _family columns.
 		{
 			Collection: "household_demographics",
 			SheetName:  "Household Demographics",
@@ -905,6 +910,15 @@ func GetReadableYearExports() []ExportConfig {
 				{
 					Field: "household", Header: "Household", Type: FieldTypeRelation,
 					RelatedCol: "households", RelatedField: "mailing_title",
+				},
+				{Field: "person_id", Header: "Person ID", Type: FieldTypeNumber},
+				{
+					Field: "person", Header: "First Name", Type: FieldTypeNestedField,
+					RelatedCol: "persons", NestedField: "first_name",
+				},
+				{
+					Field: "person", Header: "Last Name", Type: FieldTypeNestedField,
+					RelatedCol: "persons", NestedField: "last_name",
 				},
 				{Field: "year", Header: "Year", Type: FieldTypeNumber},
 				// Family description
