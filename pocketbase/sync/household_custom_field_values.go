@@ -318,96 +318,9 @@ func (s *HouseholdCustomFieldValuesSync) syncHouseholdCustomFieldValues(
 		}
 
 		for _, valueData := range values {
-			// Extract field ID from API response
-			fieldCMIDFloat, ok := valueData["id"].(float64)
-			if !ok || fieldCMIDFloat == 0 {
-				slog.Warn("Invalid or missing field id in custom field value",
-					"household_cm_id", householdCMID)
-				s.Stats.Rejected++
-				continue
-			}
-			fieldCMID := int(fieldCMIDFloat)
-
-			// Look up field definition PB ID
-			fieldDefPBId, found := fieldDefMapping[fieldCMID]
-			if !found {
-				// Field definition not synced, skip
-				s.DebugLog("Field definition not found, skipping",
-					"field_cm_id", fieldCMID,
-					"household_cm_id", householdCMID)
-				continue
-			}
-
-			// Transform to PB format (simplified: only value and year)
-			pbData := s.transformHouseholdCustomFieldValueToPB(valueData, householdPBId, fieldDefPBId, year)
-
-			// Build composite key: identity only (no year)
-			// yearScopedKey matches format from PreloadCompositeRecords
-			compositeKey := fmt.Sprintf("%s:%s", householdPBId, fieldDefPBId)
-			yearScopedKey := fmt.Sprintf("%s|%d", compositeKey, year)
-
-			// Track as processed using yearScopedKey format
-			// Use TrackProcessedCompositeKey to avoid double year suffix:
-			// TrackProcessedKey(yearScopedKey, 0) would create "key|year|0"
-			// but deleteOrphans looks for "key|year"
-			s.TrackProcessedCompositeKey(compositeKey, year)
-
-			// Check for existing record using yearScopedKey
-			if existing, found := existingRecords[yearScopedKey]; found {
-				// Fast path: if lastUpdated unchanged, skip entirely
-				existingLastUpdated := existing.GetString("last_updated")
-				newLastUpdated, hasNewLastUpdated := pbData["last_updated"].(string)
-
-				if existingLastUpdated != "" && hasNewLastUpdated && existingLastUpdated == newLastUpdated {
-					// lastUpdated matches - no changes, skip update
-					s.Stats.Skipped++
-					continue
-				}
-
-				// Value or lastUpdated changed - update record
-				newValue, _ := pbData["value"].(string)
-				if existing.GetString("value") != newValue || existingLastUpdated != newLastUpdated {
-					for key, val := range pbData {
-						existing.Set(key, val)
-					}
-					if err := s.App.Save(existing); err != nil {
-						valueStr, _ := pbData["value"].(string)
-						slog.Error("Error updating household custom field value",
-							"error", err,
-							"household_cm_id", householdCMID,
-							"field_cm_id", fieldCMID,
-							"value_length", len(valueStr))
-						s.Stats.Errors++
-					} else {
-						s.Stats.Updated++
-					}
-				} else {
-					s.Stats.Skipped++
-				}
-			} else {
-				collection, err := s.App.FindCollectionByNameOrId("household_custom_values")
-				if err != nil {
-					return fmt.Errorf("finding collection: %w", err)
-				}
-
-				record := core.NewRecord(collection)
-				for key, val := range pbData {
-					record.Set(key, val)
-				}
-
-				if err := s.App.Save(record); err != nil {
-					valueStr, _ := pbData["value"].(string)
-					slog.Error("Error creating household custom field value",
-						"error", err,
-						"household_cm_id", householdCMID,
-						"field_cm_id", fieldCMID,
-						"value_length", len(valueStr))
-					s.Stats.Errors++
-				} else {
-					s.Stats.Created++
-					// Add to existingRecords to prevent duplicate creation if API returns duplicates
-					existingRecords[yearScopedKey] = record
-				}
+			if err := s.processHouseholdCustomFieldValue(
+				valueData, householdCMID, householdPBId, year, fieldDefMapping, existingRecords); err != nil {
+				return err
 			}
 		}
 
@@ -415,6 +328,137 @@ func (s *HouseholdCustomFieldValuesSync) syncHouseholdCustomFieldValues(
 			break
 		}
 		page++
+	}
+
+	return nil
+}
+
+// processHouseholdCustomFieldValue handles one API-returned custom field value entry for
+// a household: resolves the field definition, applies the same-run duplicate guard, and
+// creates/updates/skips the row accordingly. Split out of syncHouseholdCustomFieldValues
+// (which needs a live CampMinder HTTP round trip via s.Client) purely so the guard below
+// can be exercised directly in tests.
+func (s *HouseholdCustomFieldValuesSync) processHouseholdCustomFieldValue(
+	valueData map[string]any,
+	householdCMID int,
+	householdPBId string,
+	year int,
+	fieldDefMapping map[int]string,
+	existingRecords map[string]*core.Record,
+) error {
+	// Extract field ID from API response
+	fieldCMIDFloat, ok := valueData["id"].(float64)
+	if !ok || fieldCMIDFloat == 0 {
+		slog.Warn("Invalid or missing field id in custom field value",
+			"household_cm_id", householdCMID)
+		s.Stats.Rejected++
+		return nil
+	}
+	fieldCMID := int(fieldCMIDFloat)
+
+	// Look up field definition PB ID
+	fieldDefPBId, found := fieldDefMapping[fieldCMID]
+	if !found {
+		// Field definition not synced, skip
+		s.DebugLog("Field definition not found, skipping",
+			"field_cm_id", fieldCMID,
+			"household_cm_id", householdCMID)
+		return nil
+	}
+
+	// Transform to PB format (simplified: only value and year)
+	pbData := s.transformHouseholdCustomFieldValueToPB(valueData, householdPBId, fieldDefPBId, year)
+
+	// Build composite key: identity only (no year)
+	// yearScopedKey matches format from PreloadCompositeRecords
+	compositeKey := fmt.Sprintf("%s:%s", householdPBId, fieldDefPBId)
+	yearScopedKey := fmt.Sprintf("%s|%d", compositeKey, year)
+
+	// Duplicate-in-run guard (kindred#2270). See the identical comment in
+	// person_custom_field_values.go's processPersonCustomFieldValue -- this is the
+	// household twin of the same defect and the same fix. persons/households/{id}/custom-
+	// fields is documented as one entry per field definition, and CampMinder packs
+	// multi-selects into a single delimited value string rather than repeating the field
+	// id, so a second entry for a key this run has already tracked is not today's shape.
+	// Before this guard it silently collapsed onto the first with no diagnostic. This does
+	// NOT change the storage grain -- still one row per (household, field_definition,
+	// year) -- it only makes that collapse loud.
+	if s.IsKeyProcessed(compositeKey, year) {
+		valueStr, _ := pbData["value"].(string)
+		slog.Warn("Duplicate custom field value entry in this sync run, discarding",
+			"household_cm_id", householdCMID,
+			"field_cm_id", fieldCMID,
+			"field_definition_pb_id", fieldDefPBId,
+			"year", year,
+			"value_length", len(valueStr))
+		s.Stats.Rejected++
+		return nil
+	}
+
+	// Track as processed using yearScopedKey format
+	// Use TrackProcessedCompositeKey to avoid double year suffix:
+	// TrackProcessedKey(yearScopedKey, 0) would create "key|year|0"
+	// but deleteOrphans looks for "key|year"
+	s.TrackProcessedCompositeKey(compositeKey, year)
+
+	// Check for existing record using yearScopedKey
+	if existing, found := existingRecords[yearScopedKey]; found {
+		// Fast path: if lastUpdated unchanged, skip entirely
+		existingLastUpdated := existing.GetString("last_updated")
+		newLastUpdated, hasNewLastUpdated := pbData["last_updated"].(string)
+
+		if existingLastUpdated != "" && hasNewLastUpdated && existingLastUpdated == newLastUpdated {
+			// lastUpdated matches - no changes, skip update
+			s.Stats.Skipped++
+			return nil
+		}
+
+		// Value or lastUpdated changed - update record
+		newValue, _ := pbData["value"].(string)
+		if existing.GetString("value") != newValue || existingLastUpdated != newLastUpdated {
+			for key, val := range pbData {
+				existing.Set(key, val)
+			}
+			if err := s.App.Save(existing); err != nil {
+				valueStr, _ := pbData["value"].(string)
+				slog.Error("Error updating household custom field value",
+					"error", err,
+					"household_cm_id", householdCMID,
+					"field_cm_id", fieldCMID,
+					"value_length", len(valueStr))
+				s.Stats.Errors++
+			} else {
+				s.Stats.Updated++
+			}
+		} else {
+			s.Stats.Skipped++
+		}
+	} else {
+		collection, err := s.App.FindCollectionByNameOrId("household_custom_values")
+		if err != nil {
+			return fmt.Errorf("finding collection: %w", err)
+		}
+
+		record := core.NewRecord(collection)
+		for key, val := range pbData {
+			record.Set(key, val)
+		}
+
+		if err := s.App.Save(record); err != nil {
+			valueStr, _ := pbData["value"].(string)
+			slog.Error("Error creating household custom field value",
+				"error", err,
+				"household_cm_id", householdCMID,
+				"field_cm_id", fieldCMID,
+				"value_length", len(valueStr))
+			s.Stats.Errors++
+		} else {
+			s.Stats.Created++
+			// Add to existingRecords so a later record within this same run for the
+			// same key hits the "existing" branch (which the guard above now also
+			// short-circuits before it can be reached by a true duplicate).
+			existingRecords[yearScopedKey] = record
+		}
 	}
 
 	return nil
