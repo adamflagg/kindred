@@ -46,7 +46,7 @@ See `/docs`:
 - `architecture/` — sync-layer, bunk-request-pipeline, session-types, metrics-module, data-model, solver-internals
 - `guides/` — solver-configuration, csv-preparation, dev-database-seeding, troubleshooting, docker-deployment
 - `api/` — solver-api
-- `reference/` — cli-commands, configuration, tables, commit-conventions, git-workflow, oauth2-setup, pocketbase-migrations, go-sync-patterns, sync-id-conventions, family-camp-field-provenance, issue-triage, lodging-registry, lodging-board-vs-summer, lodging-inventory-sheet, objective-sensitivity, weekend-go-live-sequence
+- `reference/` — cli-commands, configuration, tables, commit-conventions, git-workflow, oauth2-setup, pocketbase-migrations, go-sync-patterns, sync-id-conventions, family-camp-field-provenance, family-camp-grain-collapse, issue-triage, lodging-registry, lodging-board-vs-summer, lodging-inventory-sheet, objective-sensitivity, weekend-go-live-sequence
 
 `docs/reference/` also holds four large working documents that churn — read them for current
 state, not as stable reference: `solver-roadmap.md`, `solver-config-decisions.md`,

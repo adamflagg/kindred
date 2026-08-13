@@ -132,6 +132,7 @@ Read before touching sync code:
 | `docs/reference/go-sync-patterns.md` | Service structure, `BaseSyncService`, idempotent upserts, orphan-deletion safety, year-scoped vs global collections |
 | `docs/reference/sync-id-conventions.md` | `PopulateRelations`, composite keys, why data fields hold CampMinder IDs and relation fields hold PocketBase IDs |
 | `docs/reference/family-camp-field-provenance.md` | Which form asks each family-camp housing field, the question families read, what the CampMinder API can and cannot tell you, and why the adult slots drift |
+| `docs/reference/family-camp-grain-collapse.md` | The 26 sites where family-camp person answers collapse to household grain, what each discards, and how #2257 and its siblings map onto them |
 
 ## DB file access
 
