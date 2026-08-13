@@ -754,7 +754,9 @@ func (o *Orchestrator) RunSingleSync(parentCtx context.Context, syncType string)
 
 // runSingleSyncInternal runs a single sync service and returns the run token. `origin` names
 // the grouped run this execution belongs to; see runOrigin for why it is a parameter.
-func (o *Orchestrator) runSingleSyncInternal(parentCtx context.Context, syncType string, origin runOrigin) (string, error) {
+func (o *Orchestrator) runSingleSyncInternal(
+	parentCtx context.Context, syncType string, origin runOrigin,
+) (string, error) {
 	// Check if service exists
 	o.mu.RLock()
 	service, exists := o.services[syncType]
