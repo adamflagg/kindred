@@ -150,7 +150,18 @@ function JourneyRows({
                   the rows are short, so a second line costs little. `min-w-0`
                   stays: it is what lets this flex child shrink below its
                   content width at all, which is what makes the wrap happen
-                  instead of the row overflowing its card. */}
+                  instead of the row overflowing its card.
+
+                  A DELIBERATE divergence from summer, per the root CLAUDE.md
+                  §4 rule: CampJourneyTimeline's own bunk span — this row's
+                  direct analog — still truncates
+                  (`camper/CampJourneyTimeline.tsx`, the `record.bunkName`
+                  span). That surface's cabin names are short, fixed-format
+                  callsigns with nothing meaningful to lose to an ellipsis.
+                  Family-camp lodging names are staff-typed strings that can
+                  carry a wing or sub-unit suffix — exactly the substring
+                  `truncate` chops — so summer's treatment does not transfer
+                  here and this row earns its own. */}
               <span
                 data-testid="household-journey-housing"
                 className={`flex min-w-0 items-center gap-1 text-sm ${
