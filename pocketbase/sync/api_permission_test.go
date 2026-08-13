@@ -7,6 +7,7 @@ import (
 )
 
 func TestPermissionCheckExactMatch(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name      string
 		perms     any

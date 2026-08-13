@@ -20,6 +20,7 @@ func testTree() map[string]UnitNode {
 // The two shapes a cycle takes: a unit pointing at itself, and a unit adopting
 // something already beneath it.
 func TestHasParentCycleDetectsSelfAndDescendants(t *testing.T) {
+	t.Parallel()
 	tree := testTree()
 	if !HasParentCycle(tree, "up", "up") {
 		t.Error("a unit cannot be its own parent")
@@ -37,6 +38,7 @@ func TestHasParentCycleDetectsSelfAndDescendants(t *testing.T) {
 // so it closes no loop for r1 -- the tree may already be corrupt, but that
 // is a separate problem from the one this function answers.
 func TestHasParentCycleIgnoresAnUnrelatedPreExistingCycle(t *testing.T) {
+	t.Parallel()
 	tree := map[string]UnitNode{
 		"a": {ID: "a", ParentID: "b"}, "b": {ID: "b", ParentID: "a"}, // loop, unrelated to r1
 		"bldg": {ID: "bldg", IsContainer: true},

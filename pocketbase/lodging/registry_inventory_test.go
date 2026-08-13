@@ -155,6 +155,7 @@ func findStrandedContainers(units []registryUnit) []strandedContainer {
 }
 
 func TestFindStrandedContainersFlagsAWholeBuildingRowItsRoomsNeverReceived(t *testing.T) {
+	t.Parallel()
 	units := []registryUnit{
 		{Code: "house", Name: "House", IsContainer: true},
 		{Code: "house-a", Name: "House A", ParentUnit: "house"},
@@ -173,6 +174,7 @@ func TestFindStrandedContainersFlagsAWholeBuildingRowItsRoomsNeverReceived(t *te
 }
 
 func TestFindStrandedContainersAllowsACapacityOnlyAggregate(t *testing.T) {
+	t.Parallel()
 	// The intended shape: the container carries the whole-building bed count and
 	// the rooms carry the amenities. A guard keyed on capacity would flag this.
 	beds := 7
@@ -190,6 +192,7 @@ func TestFindStrandedContainersAllowsACapacityOnlyAggregate(t *testing.T) {
 }
 
 func TestFindStrandedContainersTreatsCapacityAsNotAnAmenity(t *testing.T) {
+	t.Parallel()
 	// The sharp version of the case above. There, the rooms carry amenities, so
 	// the guard short-circuits on "a room received the data" and never has to
 	// decide whether capacity counts -- it passes either way, which makes it
@@ -212,6 +215,7 @@ func TestFindStrandedContainersTreatsCapacityAsNotAnAmenity(t *testing.T) {
 }
 
 func TestFindStrandedContainersWalksNestedContainers(t *testing.T) {
+	t.Parallel()
 	// building -> per-floor containers -> rooms. A single-level check sees only
 	// the floor containers, finds no non-container children carrying data on the
 	// building itself, and reports nothing.
@@ -233,6 +237,7 @@ func TestFindStrandedContainersWalksNestedContainers(t *testing.T) {
 }
 
 func TestFindStrandedContainersIgnoresAContainerWithNoRooms(t *testing.T) {
+	t.Parallel()
 	units := []registryUnit{{Code: "house", Name: "House", IsContainer: true}}
 	units[0].HasPower = true
 
@@ -242,6 +247,7 @@ func TestFindStrandedContainersIgnoresAContainerWithNoRooms(t *testing.T) {
 }
 
 func TestFindStrandedContainersPassesWhenOneRoomCarriesTheData(t *testing.T) {
+	t.Parallel()
 	// Partial is not this defect. One room carrying the data means the row
 	// reached the rooms; whether every sibling should have it too is a data
 	// question staff own, not a structural one.
@@ -259,6 +265,7 @@ func TestFindStrandedContainersPassesWhenOneRoomCarriesTheData(t *testing.T) {
 }
 
 func TestFindStrandedContainersToleratesAParentCycle(t *testing.T) {
+	t.Parallel()
 	// validateRegistry does not reject a cycle. An unguarded descendant walk
 	// would hang the suite rather than fail it, which is the worse failure.
 	units := []registryUnit{
@@ -271,6 +278,7 @@ func TestFindStrandedContainersToleratesAParentCycle(t *testing.T) {
 }
 
 func TestPrivateRegistryHasNoStrandedContainers(t *testing.T) {
+	t.Parallel()
 	// Runs against the real file when kindred-local is linked, and skips
 	// cleanly otherwise -- the same graceful degradation SeedRegistry and
 	// verify-lodging-seed.sh already have for a clone without the private repo.

@@ -11,6 +11,7 @@ import (
 // The actual logStatusChange method requires PocketBase, but the detection
 // logic can be tested by simulating the comparison.
 func TestAttendeesSync_StatusChangeDetection(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name           string
 		oldStatus      string
@@ -111,6 +112,7 @@ func TestAttendeesSync_StatusChangeDetection(t *testing.T) {
 // TestAttendeesSync_StatusMapCompleteness verifies all CampMinder status IDs
 // are mapped, ensuring the status history will always have valid status values.
 func TestAttendeesSync_StatusMapCompleteness(t *testing.T) {
+	t.Parallel()
 	statusMap := map[int]string{
 		1:   "none",
 		2:   "enrolled",
@@ -152,6 +154,7 @@ func TestAttendeesSync_StatusMapCompleteness(t *testing.T) {
 // PreloadCompositeRecords stores keys as "{person}:{session}|{year}" (base_sync.go:630),
 // so the status change detection must use the same format for lookups to match.
 func TestAttendeesSync_CompositeKeyWithYear(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name      string
 		personID  int
@@ -211,6 +214,7 @@ func TestAttendeesSync_CompositeKeyWithYear(t *testing.T) {
 // extracts EffectiveDate and LastUpdatedUTC from CampMinder enrollment data
 // and includes them in the record data map.
 func TestAttendeesSync_EffectiveDateExtraction(t *testing.T) {
+	t.Parallel()
 	// Simulate the date extraction logic from processEnrollment.
 	// We test the pattern, not the full method (which needs PocketBase app).
 	tests := []struct {
@@ -303,6 +307,7 @@ func TestAttendeesSync_EffectiveDateExtraction(t *testing.T) {
 // TestAttendeesSync_RecordDataContainsEffectiveDate verifies the full recordData map
 // built in processEnrollment would contain effective_date and last_updated_utc fields.
 func TestAttendeesSync_RecordDataContainsEffectiveDate(t *testing.T) {
+	t.Parallel()
 	enrollment := map[string]any{
 		"SessionID":      float64(1001),
 		"StatusID":       float64(32), // cancelled

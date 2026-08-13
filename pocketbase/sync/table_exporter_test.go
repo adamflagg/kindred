@@ -14,6 +14,7 @@ const testCollectionAttendees = "attendees"
 // =============================================================================
 
 func TestFieldType_Constants(t *testing.T) {
+	t.Parallel()
 	// Test that field type constants are defined
 	tests := []struct {
 		name     string
@@ -39,6 +40,7 @@ func TestFieldType_Constants(t *testing.T) {
 }
 
 func TestColumnConfig_BasicFields(t *testing.T) {
+	t.Parallel()
 	// Test ColumnConfig struct fields
 	col := ColumnConfig{
 		Field:        "person",
@@ -60,6 +62,7 @@ func TestColumnConfig_BasicFields(t *testing.T) {
 }
 
 func TestExportConfig_YearPlaceholder(t *testing.T) {
+	t.Parallel()
 	// Test that sheet name supports {year} placeholder
 	config := ExportConfig{
 		Collection: testCollectionAttendees,
@@ -77,6 +80,7 @@ func TestExportConfig_YearPlaceholder(t *testing.T) {
 }
 
 func TestExportConfig_GlobalSheetName(t *testing.T) {
+	t.Parallel()
 	// Test that global exports don't use year prefix
 	config := ExportConfig{
 		Collection: "person_tag_defs",
@@ -94,6 +98,7 @@ func TestExportConfig_GlobalSheetName(t *testing.T) {
 }
 
 func TestFieldResolver_ResolveValue_Text(t *testing.T) {
+	t.Parallel()
 	// Test resolving a simple text field
 	resolver := NewFieldResolver()
 
@@ -111,6 +116,7 @@ func TestFieldResolver_ResolveValue_Text(t *testing.T) {
 }
 
 func TestFieldResolver_ResolveValue_Number(t *testing.T) {
+	t.Parallel()
 	// Test resolving a number field
 	resolver := NewFieldResolver()
 
@@ -128,6 +134,7 @@ func TestFieldResolver_ResolveValue_Number(t *testing.T) {
 }
 
 func TestFieldResolver_ResolveValue_NilValue(t *testing.T) {
+	t.Parallel()
 	// Test resolving nil values
 	resolver := NewFieldResolver()
 
@@ -144,6 +151,7 @@ func TestFieldResolver_ResolveValue_NilValue(t *testing.T) {
 }
 
 func TestFieldResolver_PreloadLookup(t *testing.T) {
+	t.Parallel()
 	// Test preloading lookup data
 	resolver := NewFieldResolver()
 
@@ -167,6 +175,7 @@ func TestFieldResolver_PreloadLookup(t *testing.T) {
 }
 
 func TestFieldResolver_ResolveMultiRelation(t *testing.T) {
+	t.Parallel()
 	// Test resolving multi-relation fields to comma-separated values
 	resolver := NewFieldResolver()
 
@@ -201,6 +210,7 @@ func TestFieldResolver_ResolveMultiRelation(t *testing.T) {
 }
 
 func TestFieldResolver_ResolveMultiRelation_Empty(t *testing.T) {
+	t.Parallel()
 	// Test resolving empty multi-relation
 	resolver := NewFieldResolver()
 	resolver.SetLookupData("bunks", map[string]string{})
@@ -227,6 +237,7 @@ func TestFieldResolver_ResolveMultiRelation_Empty(t *testing.T) {
 }
 
 func TestFieldResolver_ResolveSingleRelation(t *testing.T) {
+	t.Parallel()
 	// Test resolving single relation field
 	resolver := NewFieldResolver()
 
@@ -250,6 +261,7 @@ func TestFieldResolver_ResolveSingleRelation(t *testing.T) {
 }
 
 func TestBuildDataMatrix_Headers(t *testing.T) {
+	t.Parallel()
 	// Test that headers are correctly generated from column configs
 	columns := []ColumnConfig{
 		{Field: "first_name", Header: "First Name", Type: FieldTypeText},
@@ -282,6 +294,7 @@ func TestBuildDataMatrix_Headers(t *testing.T) {
 }
 
 func TestBuildDataMatrix_DataRows(t *testing.T) {
+	t.Parallel()
 	// Test that data rows are correctly built
 	columns := []ColumnConfig{
 		{Field: "first_name", Header: "First Name", Type: FieldTypeText},
@@ -316,6 +329,7 @@ func TestBuildDataMatrix_DataRows(t *testing.T) {
 }
 
 func TestGetReadableYearExports(t *testing.T) {
+	t.Parallel()
 	// Test that readable year export configs are defined
 	configs := GetReadableYearExports()
 
@@ -348,6 +362,7 @@ func TestGetReadableYearExports(t *testing.T) {
 }
 
 func TestGetReadableGlobalExports(t *testing.T) {
+	t.Parallel()
 	// Test that readable global export configs are defined
 	configs := GetReadableGlobalExports()
 
@@ -365,6 +380,7 @@ func TestGetReadableGlobalExports(t *testing.T) {
 }
 
 func TestTableExporter_ExportCallsEnsureSheet(t *testing.T) {
+	t.Parallel()
 	// Test that TableExporter calls EnsureSheet before writing
 	mock := NewMockSheetsWriter()
 	resolver := NewFieldResolver()
@@ -413,6 +429,7 @@ func TestTableExporter_ExportCallsEnsureSheet(t *testing.T) {
 // =============================================================================
 
 func TestFieldType_NewConstants(t *testing.T) {
+	t.Parallel()
 	// Test that new field type constants are defined and unique
 	types := []struct {
 		name string
@@ -444,6 +461,7 @@ func TestFieldType_NewConstants(t *testing.T) {
 }
 
 func TestFieldResolver_ResolveForeignKeyID(t *testing.T) {
+	t.Parallel()
 	// Test resolving a relation field to its cm_id (not display name)
 	resolver := NewFieldResolver()
 
@@ -474,6 +492,7 @@ func TestFieldResolver_ResolveForeignKeyID(t *testing.T) {
 }
 
 func TestFieldResolver_ResolveNestedField(t *testing.T) {
+	t.Parallel()
 	// Test resolving a relation field to a specific nested property (e.g., person → first_name)
 	resolver := NewFieldResolver()
 
@@ -516,6 +535,7 @@ func TestFieldResolver_ResolveNestedField(t *testing.T) {
 }
 
 func TestFieldResolver_ResolveWriteInOverride(t *testing.T) {
+	t.Parallel()
 	// Test resolving write-in override fields (write_in takes precedence over standard)
 	resolver := NewFieldResolver()
 
@@ -569,6 +589,7 @@ func TestFieldResolver_ResolveWriteInOverride(t *testing.T) {
 }
 
 func TestFieldResolver_ResolveDoubleFKResolve(t *testing.T) {
+	t.Parallel()
 	// Test resolving through two relations (staff.position1 → position.program_area → name)
 	resolver := NewFieldResolver()
 
@@ -613,6 +634,7 @@ func TestFieldResolver_ResolveDoubleFKResolve(t *testing.T) {
 }
 
 func TestFieldResolver_ResolveCMIDLookup(t *testing.T) {
+	t.Parallel()
 	// Test looking up by CM ID rather than PB ID (for session parent_id)
 	resolver := NewFieldResolver()
 
@@ -656,6 +678,7 @@ func TestFieldResolver_ResolveCMIDLookup(t *testing.T) {
 }
 
 func TestColumnConfig_NewFields(t *testing.T) {
+	t.Parallel()
 	// Test that ColumnConfig has new fields for advanced resolution
 	col := ColumnConfig{
 		Field:            "position1",
@@ -684,6 +707,7 @@ func TestColumnConfig_NewFields(t *testing.T) {
 }
 
 func TestGetReadableGlobalExports_DivisionsIncluded(t *testing.T) {
+	t.Parallel()
 	// Test that globals include divisions and NOT staff_positions
 	// staff_positions data is already inlined in staff export
 	configs := GetReadableGlobalExports()
@@ -707,6 +731,7 @@ func TestGetReadableGlobalExports_DivisionsIncluded(t *testing.T) {
 }
 
 func TestGetReadableGlobalExports_Count(t *testing.T) {
+	t.Parallel()
 	// Test that we have exactly 4 global exports (staff_positions removed)
 	configs := GetReadableGlobalExports()
 
@@ -719,6 +744,7 @@ func TestGetReadableGlobalExports_Count(t *testing.T) {
 }
 
 func TestFieldResolver_ResolveBool(t *testing.T) {
+	t.Parallel()
 	// Test resolving boolean fields
 	resolver := NewFieldResolver()
 
@@ -748,6 +774,7 @@ func TestFieldResolver_ResolveBool(t *testing.T) {
 }
 
 func TestBuildDataMatrix_WriteInOverride(t *testing.T) {
+	t.Parallel()
 	// Test that BuildDataMatrix handles WriteInOverride correctly
 	resolver := NewFieldResolver()
 
@@ -793,6 +820,7 @@ func TestBuildDataMatrix_WriteInOverride(t *testing.T) {
 // =============================================================================
 
 func TestGetReadableYearExports_HasReadableNames(t *testing.T) {
+	t.Parallel()
 	// Test that readable year exports use human-readable tab names (no year prefix)
 	configs := GetReadableYearExports()
 
@@ -810,6 +838,7 @@ func TestGetReadableYearExports_HasReadableNames(t *testing.T) {
 }
 
 func TestGetReadableYearExports_AttendeesHasReadableName(t *testing.T) {
+	t.Parallel()
 	// Test attendees config has readable name
 	configs := GetReadableYearExports()
 
@@ -832,6 +861,7 @@ func TestGetReadableYearExports_AttendeesHasReadableName(t *testing.T) {
 }
 
 func TestGetReadableYearExports_IncludesCustomValues(t *testing.T) {
+	t.Parallel()
 	// Test that readable exports include person_custom_values and household_custom_values
 	configs := GetReadableYearExports()
 
@@ -860,6 +890,7 @@ func TestGetReadableYearExports_IncludesCustomValues(t *testing.T) {
 }
 
 func TestGetReadableGlobalExports_HasReadableNames(t *testing.T) {
+	t.Parallel()
 	// Test that readable global exports use human-readable tab names (no g- prefix)
 	configs := GetReadableGlobalExports()
 
@@ -877,6 +908,7 @@ func TestGetReadableGlobalExports_HasReadableNames(t *testing.T) {
 }
 
 func TestGetReadableGlobalExports_TagDefsHasReadableName(t *testing.T) {
+	t.Parallel()
 	// Test person_tag_defs config has readable name
 	configs := GetReadableGlobalExports()
 
@@ -899,6 +931,7 @@ func TestGetReadableGlobalExports_TagDefsHasReadableName(t *testing.T) {
 }
 
 func TestGetReadableExportSheetNames(t *testing.T) {
+	t.Parallel()
 	// Test getting all readable sheet names (no year needed since names are static)
 	yearNames := GetReadableYearExportSheetNames()
 	globalNames := GetReadableGlobalExportSheetNames()

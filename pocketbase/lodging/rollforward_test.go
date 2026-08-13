@@ -88,6 +88,7 @@ func seedYear(t *testing.T, app core.App, year int) {
 }
 
 func TestApplyRollForwardCopiesEveryUnitAndArea(t *testing.T) {
+	t.Parallel()
 	app := newRollForwardTestApp(t)
 	seedYear(t, app, 2026) // 2 areas, 3 units, one with a parent
 
@@ -120,6 +121,7 @@ func TestApplyRollForwardCopiesEveryUnitAndArea(t *testing.T) {
 // every other roll-forward test would still pass, because none of them
 // resolve the relation, only compare ids against the row they expect.
 func TestApplyRollForwardUnitAreaPointsAtItsOwnYear(t *testing.T) {
+	t.Parallel()
 	app := newRollForwardTestApp(t)
 	seedYear(t, app, 2026)
 
@@ -160,6 +162,7 @@ func TestApplyRollForwardUnitAreaPointsAtItsOwnYear(t *testing.T) {
 }
 
 func TestApplyRollForwardIsIdempotent(t *testing.T) {
+	t.Parallel()
 	app := newRollForwardTestApp(t)
 	seedYear(t, app, 2026)
 
@@ -179,6 +182,7 @@ func TestApplyRollForwardIsIdempotent(t *testing.T) {
 }
 
 func TestApplyRollForwardLinksParentsWithinTheNewYear(t *testing.T) {
+	t.Parallel()
 	app := newRollForwardTestApp(t)
 	seedYear(t, app, 2026)
 
@@ -196,6 +200,7 @@ func TestApplyRollForwardLinksParentsWithinTheNewYear(t *testing.T) {
 }
 
 func TestApplyRollForwardPreservesCodeAcrossARename(t *testing.T) {
+	t.Parallel()
 	app := newRollForwardTestApp(t)
 	seedYear(t, app, 2026)
 
@@ -237,6 +242,7 @@ func TestApplyRollForwardPreservesCodeAcrossARename(t *testing.T) {
 }
 
 func TestPreviewRollForwardWritesNothing(t *testing.T) {
+	t.Parallel()
 	app := newRollForwardTestApp(t)
 	seedYear(t, app, 2026)
 
@@ -258,6 +264,7 @@ func TestPreviewRollForwardWritesNothing(t *testing.T) {
 // on the struct fields would NOT catch this -- nil and []string{} are both
 // falsy-empty and indistinguishable there. Only json.Marshal exposes the bug.
 func TestPreviewRollForwardEmptySourceMarshalsEmptyArraysNotNull(t *testing.T) {
+	t.Parallel()
 	app := newRollForwardTestApp(t)
 	// Deliberately no seedYear call: 2030 has no registry at all, so both
 	// passes iterate zero source rows and neither append ever runs.
@@ -293,6 +300,7 @@ func TestPreviewRollForwardEmptySourceMarshalsEmptyArraysNotNull(t *testing.T) {
 // mine to wire" -- so it would attach 2026's parent to the hand-added row
 // anyway, even though the row was reported as skipped.
 func TestApplyRollForwardDoesNotRelinkAHandAddedStandaloneUnit(t *testing.T) {
+	t.Parallel()
 	app := newRollForwardTestApp(t)
 	seedYear(t, app, 2026)
 
@@ -370,6 +378,7 @@ func failUnitCreate(app core.App, code string) (lift func()) {
 // apply must leave the target season exactly as it found it, so the retry
 // starts from a clean slate rather than from a half-built registry.
 func TestApplyRollForwardLeavesNothingBehindWhenAPassFails(t *testing.T) {
+	t.Parallel()
 	app := newRollForwardTestApp(t)
 	seedYear(t, app, 2026)
 	failUnitCreate(app, "test-unit-b") // the third unit; two are created first
@@ -412,6 +421,7 @@ func TestApplyRollForwardLeavesNothingBehindWhenAPassFails(t *testing.T) {
 // fixed by loosening the relink filter without reintroducing the hand-added-row
 // bug that filter exists to prevent (see the test above this one).
 func TestApplyRollForwardRetryAfterAFailureLinksParents(t *testing.T) {
+	t.Parallel()
 	app := newRollForwardTestApp(t)
 	seedYear(t, app, 2026)
 	lift := failUnitCreate(app, "test-unit-b")
@@ -453,6 +463,7 @@ func TestApplyRollForwardRetryAfterAFailureLinksParents(t *testing.T) {
 //
 // GREEN BEFORE AND AFTER kindred#2039: a regression guard, not a red-first test.
 func TestApplyRollForwardSurvivesTheUnitYearGuard(t *testing.T) {
+	t.Parallel()
 	app := newRollForwardTestApp(t)
 	seedYear(t, app, 2026)
 

@@ -542,7 +542,33 @@ jobs:
         # like [1,2,3,4] fails the last job loudly rather than skipping tests, and
         # test_tests_go_job_shards_and_derives_total_from_the_matrix catches it
         # before CI does.
-        shard: [0, 1, 2, 3]
+        #
+        # Three. Every shard pays the same ~88s `-race` compile plus ~12s of
+        # checkout and setup-go, and none of that shards -- the setup-go cache
+        # key derives from go.sum alone, so it holds whichever build variant
+        # saved it first (a non-race one), Actions cache entries are immutable,
+        # and the race objects are therefore recompiled every run. That ~100s
+        # is a floor under every job in the matrix.
+        #
+        # With the suite parallelised (kindred#2281) the execution either side
+        # of that floor is small, so returns collapse. Measured on this repo,
+        # same tree, one afternoon:
+        #
+        #   shards   shard times (s)        wall    runner-seconds
+        #   1x4      (serial, pre-2281)     ~191    ~764
+        #   2        199, 199                199     398
+        #   3        176, 173, 167           176     516
+        #   4        158, 162, 131, 152      162     603
+        #
+        # 2 -> 3 buys 23s; 3 -> 4 buys 14s, which is inside the spread a single
+        # 4-shard run already shows (131-162s, from uneven splits). Past 4 you
+        # spend ~100s of runner time per job to shave seconds. Three is the
+        # knee.
+        #
+        # Do not re-derive this from the pre-2281 numbers: those were measured
+        # when the suite ran serially, and sharding was then buying real
+        # execution time rather than mostly duplicating a compile.
+        shard: [0, 1, 2]
     steps:
     - name: Checkout code
       uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1

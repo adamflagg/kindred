@@ -9,6 +9,7 @@ import (
 // =============================================================================
 
 func TestGoogleSheetsExportOptions_DefaultValues(t *testing.T) {
+	t.Parallel()
 	// Test default export options
 	opts := NewGoogleSheetsExportOptions()
 
@@ -24,6 +25,7 @@ func TestGoogleSheetsExportOptions_DefaultValues(t *testing.T) {
 }
 
 func TestGoogleSheetsExportOptions_WithYears(t *testing.T) {
+	t.Parallel()
 	// Test setting specific years
 	opts := NewGoogleSheetsExportOptions()
 	opts.Years = []int{2024, 2023, 2022}
@@ -37,6 +39,7 @@ func TestGoogleSheetsExportOptions_WithYears(t *testing.T) {
 }
 
 func TestGoogleSheetsExportOptions_GlobalsOnlyMode(t *testing.T) {
+	t.Parallel()
 	// Test globals-only export mode
 	opts := NewGoogleSheetsExportOptions()
 	opts.IncludeGlobals = true
@@ -51,6 +54,7 @@ func TestGoogleSheetsExportOptions_GlobalsOnlyMode(t *testing.T) {
 }
 
 func TestGoogleSheetsExportOptions_DailyOnlyMode(t *testing.T) {
+	t.Parallel()
 	// Test daily-only export mode (year data only)
 	opts := NewGoogleSheetsExportOptions()
 	opts.IncludeGlobals = false
@@ -65,6 +69,7 @@ func TestGoogleSheetsExportOptions_DailyOnlyMode(t *testing.T) {
 }
 
 func TestParseExportYearsParam(t *testing.T) {
+	t.Parallel()
 	// Test parsing years parameter from API request
 	tests := []struct {
 		input   string
@@ -96,6 +101,7 @@ func TestParseExportYearsParam(t *testing.T) {
 }
 
 func TestValidateExportYears(t *testing.T) {
+	t.Parallel()
 	// Test year validation (reasonable range)
 	tests := []struct {
 		years   []int

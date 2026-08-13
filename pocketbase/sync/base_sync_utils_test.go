@@ -7,6 +7,7 @@ import (
 
 // TestCompositeKey tests the CompositeKey function
 func TestCompositeKey(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name     string
 		id       any
@@ -34,6 +35,7 @@ func TestCompositeKey(t *testing.T) {
 
 // TestFieldEquals tests field value comparison
 func TestFieldEquals(t *testing.T) {
+	t.Parallel()
 	b := &BaseSyncService{}
 
 	tests := []struct {
@@ -102,6 +104,7 @@ func TestFieldEquals(t *testing.T) {
 
 // TestParseRateLimitWait tests rate limit message parsing
 func TestParseRateLimitWait(t *testing.T) {
+	t.Parallel()
 	b := &BaseSyncService{}
 
 	tests := []struct {
@@ -154,6 +157,7 @@ func TestParseRateLimitWait(t *testing.T) {
 
 // TestNormalizeDateString tests date normalization indirectly via FieldEquals
 func TestNormalizeDateString(t *testing.T) {
+	t.Parallel()
 	b := &BaseSyncService{}
 
 	// These test cases verify date normalization through FieldEquals
@@ -182,6 +186,7 @@ func TestNormalizeDateString(t *testing.T) {
 
 // TestByteSliceHandling tests FieldEquals with byte slices (types.JSONRaw)
 func TestByteSliceHandling(t *testing.T) {
+	t.Parallel()
 	b := &BaseSyncService{}
 
 	tests := []struct {
@@ -217,6 +222,7 @@ func TestByteSliceHandling(t *testing.T) {
 
 // TestNormalizeToStringSlice tests the normalizeToStringSlice helper function
 func TestNormalizeToStringSlice(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name     string
 		input    any
@@ -264,6 +270,7 @@ func TestNormalizeToStringSlice(t *testing.T) {
 
 // TestFieldEqualsSliceComparison tests FieldEquals with slice types (multi-select relation fields)
 func TestFieldEqualsSliceComparison(t *testing.T) {
+	t.Parallel()
 	b := &BaseSyncService{}
 
 	tests := []struct {

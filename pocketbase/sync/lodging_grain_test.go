@@ -11,6 +11,7 @@ import (
 // numbers, so all three illegal shapes save with a 200. This function is the
 // only place the invariant exists.
 func TestValidateAssignmentGrain(t *testing.T) {
+	t.Parallel()
 	cases := []struct {
 		name string
 		in   AssignmentGrain
@@ -58,6 +59,7 @@ func TestValidateAssignmentGrain(t *testing.T) {
 }
 
 func TestValidateAssignmentGrainAcceptsMultipleUnits(t *testing.T) {
+	t.Parallel()
 	err := ValidateAssignmentGrain(AssignmentGrain{
 		HouseholdCMID: 1001, UnitIDs: []string{"u1", "u2"},
 	})
@@ -67,6 +69,7 @@ func TestValidateAssignmentGrainAcceptsMultipleUnits(t *testing.T) {
 }
 
 func TestValidateAssignmentGrainRejectsEmptyUnits(t *testing.T) {
+	t.Parallel()
 	err := ValidateAssignmentGrain(AssignmentGrain{HouseholdCMID: 1001, UnitIDs: nil})
 	if !errors.Is(err, ErrGrainNoPlacement) {
 		t.Fatalf("want ErrGrainNoPlacement, got %v", err)
@@ -78,6 +81,7 @@ func TestValidateAssignmentGrainRejectsEmptyUnits(t *testing.T) {
 // these, this test fails and the guard can be reconsidered -- but until then the
 // invariant has no database backing.
 func TestAssignmentGrainIllegalStatesReallySaveInPocketBase(t *testing.T) {
+	t.Parallel()
 	app := newLodgingTestApp(t)
 	sess := addSession(t, app, cmIDFamilyCamp1, "Family Camp 1", "family",
 		"2025-05-23 07:00:00.000Z", "2025-05-26 07:00:00.000Z", 2025)

@@ -520,6 +520,7 @@ func assertUnitDeleteRefused(t *testing.T, err error, wantCount int) {
 }
 
 func TestDeletingAUnitWithAnAssignmentIsBlocked(t *testing.T) {
+	t.Parallel()
 	app, err := tests.NewTestApp()
 	if err != nil {
 		t.Fatalf("NewTestApp: %v", err)
@@ -550,6 +551,7 @@ func TestDeletingAUnitWithAnAssignmentIsBlocked(t *testing.T) {
 // cleanup strips this id out of each one and re-saves it unvalidated, leaving
 // parties sitting in a scenario with no cabin and nothing to say why.
 func TestGuardUnitDeleteSeesDraftPlacements(t *testing.T) {
+	t.Parallel()
 	app, err := tests.NewTestApp()
 	if err != nil {
 		t.Fatalf("NewTestApp: %v", err)
@@ -574,6 +576,7 @@ func TestGuardUnitDeleteSeesDraftPlacements(t *testing.T) {
 // the message distinguishes it — and staff acting on "1 placement" when there
 // are two would go looking in the wrong place.
 func TestDeletingAUnitCountsBothGrainsTogether(t *testing.T) {
+	t.Parallel()
 	app, err := tests.NewTestApp()
 	if err != nil {
 		t.Fatalf("NewTestApp: %v", err)
@@ -596,6 +599,7 @@ func TestDeletingAUnitCountsBothGrainsTogether(t *testing.T) {
 // member of the set would silently drop, releasing a room out from under an
 // occupied two-room slot (spec §3.4).
 func TestDeletingAUnitHeldAsALaterMemberIsBlocked(t *testing.T) {
+	t.Parallel()
 	app, err := tests.NewTestApp()
 	if err != nil {
 		t.Fatalf("NewTestApp: %v", err)
@@ -621,6 +625,7 @@ func TestDeletingAUnitHeldAsALaterMemberIsBlocked(t *testing.T) {
 // that errors — the exact state guardUnitDelete was in against a real database
 // before this change, where every unit was undeletable for the wrong reason.
 func TestDeletingAnUnusedUnitIsAllowed(t *testing.T) {
+	t.Parallel()
 	app, err := tests.NewTestApp()
 	if err != nil {
 		t.Fatalf("NewTestApp: %v", err)
@@ -664,6 +669,7 @@ func newUnits(t *testing.T, app core.App, n int) []string {
 // the writes that never pass through the sync package — a POST straight at the
 // PocketBase REST API, and 1500000134's own backfill.
 func TestAssignmentGrainXor(t *testing.T) {
+	t.Parallel()
 	cases := []struct {
 		name          string
 		unitCount     int
@@ -730,6 +736,7 @@ func TestAssignmentGrainXor(t *testing.T) {
 // party grain and no units, exactly as the pre-134 rows did, and `units` is
 // added by a second save. The table-driven case above only ever creates.
 func TestABackfillShapedRowPassesTheGrainGuard(t *testing.T) {
+	t.Parallel()
 	app, err := tests.NewTestApp()
 	if err != nil {
 		t.Fatalf("NewTestApp: %v", err)
@@ -778,6 +785,7 @@ func TestABackfillShapedRowPassesTheGrainGuard(t *testing.T) {
 // premise the migration's backfill is written around, not something this test
 // can close.
 func TestABackfillShapedDraftRowPassesTheGrainGuard(t *testing.T) {
+	t.Parallel()
 	app, err := tests.NewTestApp()
 	if err != nil {
 		t.Fatalf("NewTestApp: %v", err)
@@ -815,6 +823,7 @@ func TestABackfillShapedDraftRowPassesTheGrainGuard(t *testing.T) {
 // deleteRefRecords both produce the shape, so rejecting it would break paths
 // this guard does not own. Only the party grain is enforced.
 func TestDraftAssignmentGrainXor(t *testing.T) {
+	t.Parallel()
 	cases := []struct {
 		name          string
 		unitCount     int
@@ -871,6 +880,7 @@ func TestDraftAssignmentGrainXor(t *testing.T) {
 // the existing row without reopening it — the string never returns to the
 // queue, and the placement never resolves again.
 func TestDeletingAnAliasBehindAResolvedIssueIsBlocked(t *testing.T) {
+	t.Parallel()
 	app, err := tests.NewTestApp()
 	if err != nil {
 		t.Fatalf("NewTestApp: %v", err)
@@ -892,6 +902,7 @@ func TestDeletingAnAliasBehindAResolvedIssueIsBlocked(t *testing.T) {
 }
 
 func TestDeletingAnAliasNoIssuePointsAtIsAllowed(t *testing.T) {
+	t.Parallel()
 	app, err := tests.NewTestApp()
 	if err != nil {
 		t.Fatalf("NewTestApp: %v", err)
@@ -912,6 +923,7 @@ func TestDeletingAnAliasNoIssuePointsAtIsAllowed(t *testing.T) {
 // work item and clears the reference. That sequence must be permitted, or the
 // UI's own delete path is unreachable.
 func TestDeletingAnAliasIsAllowedOnceItsIssueIsReopened(t *testing.T) {
+	t.Parallel()
 	app, err := tests.NewTestApp()
 	if err != nil {
 		t.Fatalf("NewTestApp: %v", err)
@@ -940,6 +952,7 @@ func TestDeletingAnAliasIsAllowedOnceItsIssueIsReopened(t *testing.T) {
 // walk, and the only two walks that exist -- HasParentCycle here and
 // descendantIds in unitTree.ts -- both carry visited guards.
 func TestSelfParentingAUnitIsBlocked(t *testing.T) {
+	t.Parallel()
 	app, err := tests.NewTestApp()
 	if err != nil {
 		t.Fatalf("NewTestApp: %v", err)
@@ -958,6 +971,7 @@ func TestSelfParentingAUnitIsBlocked(t *testing.T) {
 }
 
 func TestAdoptingADescendantAsParentIsBlocked(t *testing.T) {
+	t.Parallel()
 	app, err := tests.NewTestApp()
 	if err != nil {
 		t.Fatalf("NewTestApp: %v", err)
@@ -982,6 +996,7 @@ func TestAdoptingADescendantAsParentIsBlocked(t *testing.T) {
 }
 
 func TestALegalReparentStillSaves(t *testing.T) {
+	t.Parallel()
 	app, err := tests.NewTestApp()
 	if err != nil {
 		t.Fatalf("NewTestApp: %v", err)
@@ -1015,6 +1030,7 @@ func TestALegalReparentStillSaves(t *testing.T) {
 // confirm then reports "Confirmed N of M" with no way to see why, and the only
 // escape is clearing parent_unit by hand.
 func TestAnEditThatLeavesParentUnitAloneSurvivesAPreExistingCycle(t *testing.T) {
+	t.Parallel()
 	app, err := tests.NewTestApp()
 	if err != nil {
 		t.Fatalf("NewTestApp: %v", err)
@@ -1279,6 +1295,7 @@ func TestMappingAPartylessRowStillAttemptsAReplay(t *testing.T) {
 // could point its `unit`/`units` relation at a building from a different
 // season with no error anywhere.
 func TestGuardUnitYearRejectsACrossYearRow(t *testing.T) {
+	t.Parallel()
 	app := newHooksTestApp(t)
 	unit2026 := seedUnit(t, app, "test-unit-a", 2026)
 
@@ -1307,6 +1324,7 @@ func TestGuardUnitYearRejectsACrossYearRow(t *testing.T) {
 // behavior -- it catches the binding going missing, which is a one-line edit
 // away and would otherwise be silent (kindred#2035).
 func TestGuardUnitYearRejectsACrossYearRowOnUpdate(t *testing.T) {
+	t.Parallel()
 	app := newHooksTestApp(t)
 	same := seedUnit(t, app, "test-unit-a", 2027)
 	stale := seedUnit(t, app, "test-unit-b", 2026)
@@ -1338,6 +1356,7 @@ func TestGuardUnitYearRejectsACrossYearRowOnUpdate(t *testing.T) {
 // `stale` second, so a guard that only inspected index 0 would pass this row
 // and miss the bug entirely.
 func TestGuardUnitYearChecksEveryMemberOfTheMultiRelation(t *testing.T) {
+	t.Parallel()
 	app := newHooksTestApp(t)
 	good := seedUnit(t, app, "test-unit-a", 2027)
 	stale := seedUnit(t, app, "test-unit-b", 2026)
@@ -1364,6 +1383,7 @@ func TestGuardUnitYearChecksEveryMemberOfTheMultiRelation(t *testing.T) {
 // Without this, a guard that rejected EVERY save regardless of years would
 // also pass the two refusal tests above.
 func TestGuardUnitYearAllowsAMatchingRow(t *testing.T) {
+	t.Parallel()
 	app := newHooksTestApp(t)
 	unit := seedUnit(t, app, "test-unit-a", 2027)
 
@@ -1425,6 +1445,7 @@ func TestGuardUnitYearSkipsAnAbsentCollection(t *testing.T) {
 // renders the wrong name and the wrong sort_order on the board and the map with
 // no error anywhere.
 func TestGuardUnitYearRejectsACrossYearArea(t *testing.T) {
+	t.Parallel()
 	app := newHooksTestApp(t)
 	area2026 := seedArea(t, app, "test-area-a", 2026)
 
@@ -1454,6 +1475,7 @@ func TestGuardUnitYearRejectsACrossYearArea(t *testing.T) {
 // unit tree.") says nothing about years -- so a test that accepted any error
 // would pass against a guard that never looked at the season at all.
 func TestGuardUnitYearRejectsACrossYearParentUnit(t *testing.T) {
+	t.Parallel()
 	app := newHooksTestApp(t)
 	parent2026 := seedUnit(t, app, "test-unit-a", 2026)
 	childID := seedUnit(t, app, "test-unit-b", 2027)
@@ -1479,6 +1501,7 @@ func TestGuardUnitYearRejectsACrossYearParentUnit(t *testing.T) {
 // lodging_units is the one table where that mistake would be catastrophic
 // rather than merely wrong, because it is the table the roll-forward writes.
 func TestGuardUnitYearAllowsAUnitWhoseParentAndAreaShareItsYear(t *testing.T) {
+	t.Parallel()
 	app := newHooksTestApp(t)
 	area := seedArea(t, app, "test-area-a", 2027)
 	parent := seedUnit(t, app, "test-unit-a", 2027)
@@ -1509,6 +1532,7 @@ func TestGuardUnitYearAllowsAUnitWhoseParentAndAreaShareItsYear(t *testing.T) {
 // app.FindRecordById(ref.target, rec.GetString(ref.field)) and this test goes
 // red with `resolving parent_unit ""`, while every other test here stays green.
 func TestGuardUnitYearIgnoresAnEmptyParentUnit(t *testing.T) {
+	t.Parallel()
 	app := newHooksTestApp(t)
 	area := seedArea(t, app, "test-area-a", 2027)
 
@@ -1539,6 +1563,7 @@ func TestGuardUnitYearIgnoresAnEmptyParentUnit(t *testing.T) {
 // MUTATION-CHECK: delete the `if id == rec.Id { continue }` line in
 // guardUnitYear and this test goes red; nothing else does.
 func TestGuardUnitYearSkipsAUnitsSelfReference(t *testing.T) {
+	t.Parallel()
 	app, err := tests.NewTestApp()
 	if err != nil {
 		t.Fatalf("NewTestApp: %v", err)
@@ -1581,6 +1606,7 @@ func TestGuardUnitYearSkipsAUnitsSelfReference(t *testing.T) {
 // unit's unchanged year while a real dependent (the availability row) exists,
 // which is exactly the shape a presence test would wrongly refuse.
 func TestGuardYearImmutableAllowsARoutineEditThatResendsTheSameYear(t *testing.T) {
+	t.Parallel()
 	app := newHooksTestApp(t)
 	unit := seedUnit(t, app, "test-unit-a", 2027)
 	seedAvailability(t, app, unit, 2027)
@@ -1602,6 +1628,7 @@ func TestGuardYearImmutableAllowsARoutineEditThatResendsTheSameYear(t *testing.T
 // kindred#2067's second gap: guardUnitYear checks a unit's own OUTGOING
 // relations (area, parent_unit) but never the rows pointing back AT it.
 func TestGuardYearImmutableRejectsAUnitYearChangeWithAnAvailabilityDependent(t *testing.T) {
+	t.Parallel()
 	app := newHooksTestApp(t)
 	unit := seedUnit(t, app, "test-unit-a", 2027)
 	seedAvailability(t, app, unit, 2027)
@@ -1625,6 +1652,7 @@ func TestGuardYearImmutableRejectsAUnitYearChangeWithAnAvailabilityDependent(t *
 // yearImmutableRefs getting that filter wrong for lodging_units' dependents,
 // the same way TestMultiRelationAnyMatchFilter guards countAssignments.
 func TestGuardYearImmutableRejectsAUnitYearChangeWithAnAssignmentDependent(t *testing.T) {
+	t.Parallel()
 	app := newHooksTestApp(t)
 	unit := seedUnit(t, app, "test-unit-a", 2027)
 
@@ -1657,6 +1685,7 @@ func TestGuardYearImmutableRejectsAUnitYearChangeWithAnAssignmentDependent(t *te
 // it to the bare, silently-zero-matching "units = {:id}" -- left the suite
 // green before this test existed.
 func TestGuardYearImmutableRejectsAUnitYearChangeWithADraftAssignmentDependent(t *testing.T) {
+	t.Parallel()
 	app := newHooksTestApp(t)
 	unit := seedUnit(t, app, "test-unit-a", 2027)
 
@@ -1691,6 +1720,7 @@ func TestGuardYearImmutableRejectsAUnitYearChangeWithADraftAssignmentDependent(t
 // entry's filter, so a mutation that broke ONLY it left the suite green
 // before this test existed.
 func TestGuardYearImmutableRejectsAUnitYearChangeWithASlotMergeDependent(t *testing.T) {
+	t.Parallel()
 	app := newSlotMergesTestApp(t)
 	unit := seedUnit(t, app, "test-unit-a", 2027)
 
@@ -1719,6 +1749,7 @@ func TestGuardYearImmutableRejectsAUnitYearChangeWithASlotMergeDependent(t *test
 // no check while lodging_units rows already pointing at it went silently
 // cross-season.
 func TestGuardYearImmutableRejectsAnAreaYearChangeWithAUnitDependent(t *testing.T) {
+	t.Parallel()
 	app := newHooksTestApp(t)
 	area := seedArea(t, app, "test-area-a", 2027)
 
@@ -1748,6 +1779,7 @@ func TestGuardYearImmutableRejectsAnAreaYearChangeWithAUnitDependent(t *testing.
 // guard that refused every lodging_units update would also pass every
 // refusal test in this section.
 func TestGuardYearImmutableAllowsAYearChangeWithNoDependents(t *testing.T) {
+	t.Parallel()
 	app := newHooksTestApp(t)
 	unit := seedUnit(t, app, "test-unit-a", 2027)
 
@@ -1805,6 +1837,7 @@ var unmirroredPairs = map[relationPair]string{
 // naming a dependent that no longer references the target at all, which is the
 // same drift pointing the other way.
 func TestYearRefMapsAgreeOnEveryRelation(t *testing.T) {
+	t.Parallel()
 	seenExceptions := make(map[relationPair]bool, len(unmirroredPairs))
 
 	// Forward: everything yearScopedRefs says a row points AT must appear in

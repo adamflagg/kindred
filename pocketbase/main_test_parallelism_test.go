@@ -1,0 +1,329 @@
+package main
+
+import (
+	"fmt"
+	"go/ast"
+	"go/parser"
+	"go/token"
+	"os"
+	"path/filepath"
+	"sort"
+	"strings"
+	"testing"
+)
+
+// The Go suite was, for its whole history, the longest job in CI: `go test
+// -race ./...` ran ~390s of a ~400s critical path. Almost none of that was test
+// volume. The race detector costs ~4.5x and it used to pay that entirely
+// serially -- the tree had exactly one t.Parallel() in it, inside a subtest, so
+// no two top-level tests ever overlapped.
+//
+// This guard is what keeps that from coming back one test at a time. A newly
+// added serial test does not fail anything, does not show up in review, and
+// costs a few seconds forever; a hundred of them put the job back where it
+// started. So sync/ and lodging/ -- the two packages that carried ~430s of the
+// ~470s -- are held to the rule here, and the tests that genuinely cannot be
+// parallel are listed below with the reason rather than left to look like an
+// oversight.
+var parallelGuardPackages = []string{"sync", "lodging"}
+
+// serialGroups names every top-level test allowed to skip t.Parallel(),
+// grouped by the reason it cannot be parallel.
+//
+// Adding a line here is a real cost, so it needs a real reason. Only two
+// exist:
+//
+//   - t.Setenv: the testing package panics outright on Setenv+Parallel, since
+//     the environment is process-global and a parallel test would leak its
+//     value into whatever else is running. Threading the value through the
+//     code under test instead of reading os.Getenv is the fix, not this list.
+//   - a package-level variable the test swaps: same problem, caught by -race
+//     rather than by a panic.
+//
+// Grouping rather than one entry per test is not only shorter -- it puts the
+// reason somewhere a reader will actually read it, and makes a group that has
+// grown suspiciously long visible as such.
+var serialGroups = []struct {
+	pkg    string
+	reason string
+	tests  []string
+}{
+	{
+		pkg:    "sync",
+		reason: "t.Setenv: exercises CAMPMINDER_SEASON_ID parsing itself",
+		tests: []string{
+			"TestParseSeasonYear_Valid",
+			"TestParseSeasonYear_Missing",
+			"TestParseSeasonYear_NonNumeric",
+			"TestParseSeasonYear_BelowRange",
+			"TestParseSeasonYear_AboveRange",
+			"TestParseSeasonYear_Boundaries",
+		},
+	},
+	{
+		// LodgingAssignmentsSync.activeSeasonYear() calls ParseSeasonYear()
+		// unconditionally to gate the #2028 orphan sweep, so these eight can
+		// only reach the sweep through the environment.
+		//
+		// They are also the most expensive tests left serial -- ~22s of the
+		// ~25s serial prefix, because each builds a fresh ~15-collection
+		// schema and that is pure CPU under the race detector. Injecting the
+		// active season instead of reading the env would recover most of it.
+		// Deliberately not done here: that is an edit to a deletion gate, and
+		// it should not ride inside a thousand-line mechanical diff where no
+		// reviewer will find it.
+		pkg:    "sync",
+		reason: "t.Setenv: orphan sweep gates on CAMPMINDER_SEASON_ID",
+		tests: []string{
+			"TestLodgingAssignmentsSyncDeletesOrphanedHouseholdMirrorRow",
+			"TestLodgingAssignmentsSyncDeletesOrphanedPersonGrainMirrorRow",
+			"TestLodgingAssignmentsSyncDeletesStaffTouchedOrphanedMirrorRow",
+			"TestLodgingAssignmentsSyncDryRunDoesNotDeleteOrphans",
+			"TestLodgingAssignmentsSyncKeepsMirrorRowForStillEnrolledHousehold",
+			"TestLodgingAssignmentsSyncSkipsMirrorDeletionWhenSessionHasZeroEnrolled",
+			"TestLodgingAssignmentsSyncSkipsOrphanSweepForHistoricalYear",
+			"TestLodgingAssignmentsSyncWritesHistoryOnOrphanDelete",
+		},
+	},
+	{
+		pkg:    "sync",
+		reason: "t.Setenv: asserts the CAMPMINDER_SEASON_ID fallback specifically",
+		tests: []string{
+			"TestReconcileLifecycleSync_FallsBackToSeasonEnv",
+			"TestReconcileLifecycleSync_RejectsMissingYearEnv",
+		},
+	},
+	{
+		pkg:    "sync",
+		reason: "t.Setenv: PROCESS_REQUESTS_TIMEOUT_MINUTES",
+		tests:  []string{"TestGetProcessRequestsTimeout"},
+	},
+	{
+		pkg:    "sync",
+		reason: "t.Setenv: API_URL points at a per-test httptest server",
+		tests:  []string{"TestBuildNormalizationLookupCompositeKeyDedup"},
+	},
+	{
+		// These four drive deleteOrphans, which reads the season through
+		// s.Client.GetSeasonID(). Client is a concrete *campminder.Client and
+		// campminder.NewClient reads CAMPMINDER_PRIMARY_KEY from the
+		// environment, so building one costs a t.Setenv.
+		//
+		// The guard's own advice applies here -- threading the key through
+		// NewClient instead of reading os.Getenv would parallelise all four --
+		// but that is an edit to the production CampMinder constructor, and it
+		// does not belong in a bunk-assignment protection fix. Tracked rather
+		// than smuggled in.
+		//
+		// The three tests in this file that do NOT sweep need no client and
+		// are parallel.
+		pkg:    "sync",
+		reason: "t.Setenv: campminder.NewClient reads CAMPMINDER_PRIMARY_KEY",
+		tests: []string{
+			"TestProtectThenSweepOrphans_DismissedStaffAssignmentSurvivesSweep",
+			"TestProtectThenSweepOrphans_ProtectionFailureAbortsSweep",
+			"TestProtectThenSweepOrphans_ProtectionSuccessStillSweeps",
+			"TestProtectThenSweepOrphans_SessionLookupFailureAbortsSweep",
+			"TestProtectThenSweepOrphans_SweepRefusalIsCountedAndReturned",
+		},
+	},
+	{
+		// registryBasePath / registryAbsoluteRoots (lodging/registry.go) are
+		// the only true data races the detector found when the whole tree was
+		// made parallel at once: withRegistryBasePath writes them, and every
+		// other registry test reads them through the path resolver.
+		//
+		// Leaving the writers serial is enough to fix it, and costs nothing:
+		// Go runs every non-parallel test to completion before releasing the
+		// parallel ones, so these finish and restore the globals before any
+		// reader starts.
+		pkg:    "lodging",
+		reason: "swaps the registryBasePath / registryAbsoluteRoots globals",
+		tests: []string{
+			"TestRegistryFilePresentTrueWhenFileExistsUnderWorkingDirectory",
+			"TestRegistryFilePresentTrueViaAbsoluteRoot",
+			"TestRegistryFilePresentFalseWhenNoConfigAnywhere",
+			"TestSeedRegistryResolvesConfigUnderTheWorkingDirectory",
+			"TestSeedRegistryResolvesAbsoluteConfigRoot",
+			"TestSeedRegistryWithNoConfigAnywhereIsANoOp",
+			"TestSeedRegistryFileErrorIsNotTaggedAsARowCheckFailure",
+			"TestClassifyShareability",
+		},
+	},
+	{
+		// captureStdout redirects the process's os.Stdout; captureLogs swaps
+		// slog's default handler. Both are process-global, so a parallel test
+		// would capture some other test's output instead of its own.
+		pkg:    "lodging",
+		reason: "captureStdout / captureLogs swap process-global output",
+		tests: []string{
+			"TestGuardUnitYearSkipsAnAbsentCollection",
+			"TestIgnoringAPartylessRowDoesNotAttemptAReplay",
+			"TestMappingAPartylessRowStillAttemptsAReplay",
+			"TestMultiRelationAnyMatchFilter",
+			"TestReplayOnResolveFiresOnceNotOnItsOwnResave",
+			"TestReplayRefusalDoesNotBlockTheTick",
+			"TestSeedRegistryAbsentFileIsANoOp",
+			"TestSeedRegistrySecondSeasonIsANoOpOnceOneSeasonHasRows",
+		},
+	},
+}
+
+// serialTests flattens serialGroups to "<package>.<TestName>" -> reason.
+func serialTests() map[string]string {
+	flat := map[string]string{}
+	for _, group := range serialGroups {
+		for _, name := range group.tests {
+			flat[group.pkg+"."+name] = group.reason
+		}
+	}
+	return flat
+}
+
+// topLevelTest is one `func TestX(t *testing.T)` and whether its body calls
+// t.Parallel() directly (a call inside a subtest closure does not count -- that
+// is what the tree already had, and it parallelised nothing).
+type topLevelTest struct {
+	key      string
+	file     string
+	line     int
+	parallel bool
+}
+
+func collectTopLevelTests(t *testing.T) []topLevelTest {
+	t.Helper()
+
+	var found []topLevelTest
+	for _, pkg := range parallelGuardPackages {
+		entries, err := os.ReadDir(pkg)
+		if err != nil {
+			t.Fatalf("read %s: %v", pkg, err)
+		}
+		for _, entry := range entries {
+			if !strings.HasSuffix(entry.Name(), "_test.go") {
+				continue
+			}
+			path := filepath.Join(pkg, entry.Name())
+			fset := token.NewFileSet()
+			parsed, err := parser.ParseFile(fset, path, nil, 0)
+			if err != nil {
+				t.Fatalf("parse %s: %v", path, err)
+			}
+			for _, decl := range parsed.Decls {
+				fn, ok := decl.(*ast.FuncDecl)
+				if !ok || fn.Recv != nil || !strings.HasPrefix(fn.Name.Name, "Test") {
+					continue
+				}
+				if !takesTestingT(fn) {
+					continue
+				}
+				found = append(found, topLevelTest{
+					key:      pkg + "." + fn.Name.Name,
+					file:     path,
+					line:     fset.Position(fn.Pos()).Line,
+					parallel: bodyCallsParallel(fn),
+				})
+			}
+		}
+	}
+	return found
+}
+
+// takesTestingT keeps benchmarks, fuzz targets and helpers out of the census.
+func takesTestingT(fn *ast.FuncDecl) bool {
+	params := fn.Type.Params.List
+	if len(params) != 1 {
+		return false
+	}
+	star, ok := params[0].Type.(*ast.StarExpr)
+	if !ok {
+		return false
+	}
+	sel, ok := star.X.(*ast.SelectorExpr)
+	if !ok {
+		return false
+	}
+	pkg, ok := sel.X.(*ast.Ident)
+	return ok && pkg.Name == "testing" && sel.Sel.Name == "T"
+}
+
+// bodyCallsParallel looks only at the function's own statement list, so a
+// t.Parallel() inside a t.Run closure is correctly not counted.
+func bodyCallsParallel(fn *ast.FuncDecl) bool {
+	if fn.Body == nil {
+		return false
+	}
+	for _, stmt := range fn.Body.List {
+		expr, ok := stmt.(*ast.ExprStmt)
+		if !ok {
+			continue
+		}
+		call, ok := expr.X.(*ast.CallExpr)
+		if !ok {
+			continue
+		}
+		sel, ok := call.Fun.(*ast.SelectorExpr)
+		if !ok || sel.Sel.Name != "Parallel" {
+			continue
+		}
+		if recv, ok := sel.X.(*ast.Ident); ok && recv.Name == "t" {
+			return true
+		}
+	}
+	return false
+}
+
+func TestSyncAndLodgingTestsRunInParallel(t *testing.T) {
+	t.Parallel()
+
+	var missing []string
+	for _, tc := range collectTopLevelTests(t) {
+		if tc.parallel {
+			continue
+		}
+		if _, exempt := serialTests()[tc.key]; exempt {
+			continue
+		}
+		missing = append(missing, fmt.Sprintf("%s:%d: %s", tc.file, tc.line, tc.key))
+	}
+	sort.Strings(missing)
+
+	if len(missing) > 0 {
+		t.Errorf(
+			"%d top-level test(s) in %s do not call t.Parallel().\n"+
+				"Add t.Parallel() as the first statement, or -- if the test genuinely "+
+				"cannot be parallel -- add it to serialTests with the reason:\n  %s",
+			len(missing), strings.Join(parallelGuardPackages, "/"), strings.Join(missing, "\n  "),
+		)
+	}
+}
+
+// A stale exemption is worse than none: it reads as "this test cannot be
+// parallel" long after whatever blocked it was fixed, and nothing ever
+// rechecks it. So the list has to stay exactly as long as its reasons.
+func TestSerialTestExemptionsAreAllStillNeeded(t *testing.T) {
+	t.Parallel()
+
+	byKey := map[string]topLevelTest{}
+	for _, tc := range collectTopLevelTests(t) {
+		byKey[tc.key] = tc
+	}
+
+	var stale []string
+	for key, reason := range serialTests() {
+		tc, exists := byKey[key]
+		switch {
+		case !exists:
+			stale = append(stale, fmt.Sprintf("%s: no such test (renamed or deleted) -- reason was %q", key, reason))
+		case tc.parallel:
+			stale = append(stale, fmt.Sprintf("%s: now calls t.Parallel(), drop the exemption", key))
+		case strings.TrimSpace(reason) == "":
+			stale = append(stale, fmt.Sprintf("%s: exemption has no reason", key))
+		}
+	}
+	sort.Strings(stale)
+
+	if len(stale) > 0 {
+		t.Errorf("%d stale entr(ies) in serialTests:\n  %s", len(stale), strings.Join(stale, "\n  "))
+	}
+}

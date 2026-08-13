@@ -18,6 +18,7 @@ const (
 // whose current attendees.session differs from the session_id stored on any
 // of their existing bunk_requests rows.
 func TestFindMovedRequesters(t *testing.T) {
+	t.Parallel()
 	cases := []struct {
 		name             string
 		currentSessions  map[int]int
@@ -266,6 +267,7 @@ func saveBR(t *testing.T, app core.App, requesterCMID, requesteeCMID, sessionCMI
 // session_id stored on their bunk_requests rows has all their OBRs flipped to
 // processed=” so process_requests will re-build them.
 func TestReconcileRequestLifecycle_MarksMovedRequestersOBRsUnprocessed(t *testing.T) {
+	t.Parallel()
 	app, err := pbtests.NewTestApp()
 	if err != nil {
 		t.Fatal(err)
@@ -317,6 +319,7 @@ func TestReconcileRequestLifecycle_MarksMovedRequestersOBRsUnprocessed(t *testin
 // requesters whose status_id != 2 are NOT touched here — the orphan purge
 // in bunk_requests sync handles their cleanup by deleting OBRs entirely.
 func TestReconcileRequestLifecycle_IgnoresInactiveRequesters(t *testing.T) {
+	t.Parallel()
 	app, err := pbtests.NewTestApp()
 	if err != nil {
 		t.Fatal(err)
@@ -353,6 +356,7 @@ func TestReconcileRequestLifecycle_IgnoresInactiveRequesters(t *testing.T) {
 // TestReconcileRequestLifecycle_NoOpWhenNoStaleRows verifies that the function
 // is a no-op when no requesters have moved.
 func TestReconcileRequestLifecycle_NoOpWhenNoStaleRows(t *testing.T) {
+	t.Parallel()
 	app, err := pbtests.NewTestApp()
 	if err != nil {
 		t.Fatal(err)
@@ -385,6 +389,7 @@ func TestReconcileRequestLifecycle_NoOpWhenNoStaleRows(t *testing.T) {
 // TestReconcileRequestLifecycle_YearScoped verifies that the function only
 // touches OBRs in the requested year, not other years.
 func TestReconcileRequestLifecycle_YearScoped(t *testing.T) {
+	t.Parallel()
 	app, err := pbtests.NewTestApp()
 	if err != nil {
 		t.Fatal(err)
@@ -476,6 +481,7 @@ func TestReconcileLifecycleSync_RejectsMissingYearEnv(t *testing.T) {
 // fails, markErrors gets incremented (covered by code-path correctness; the
 // PB test harness does not have a clean way to force a per-record save error).
 func TestReconcileRequestLifecycle_SuccessPathReturnsZeroMarkErrors(t *testing.T) {
+	t.Parallel()
 	app, err := pbtests.NewTestApp()
 	if err != nil {
 		t.Fatal(err)
