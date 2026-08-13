@@ -103,14 +103,14 @@ func (s *StaffLookupsSync) syncProgramAreas(ctx context.Context) error {
 		pbData, err := s.transformProgramAreaToPB(data)
 		if err != nil {
 			slog.Error("Error transforming program area", "error", err)
-			s.Stats.Errors++
+			s.Stats.Rejected++
 			continue
 		}
 
 		cmID, ok := pbData["cm_id"].(int)
 		if !ok || cmID == 0 {
 			slog.Error("Invalid program area cm_id")
-			s.Stats.Errors++
+			s.Stats.Rejected++
 			continue
 		}
 
@@ -184,14 +184,14 @@ func (s *StaffLookupsSync) syncOrgCategories(ctx context.Context) error {
 		pbData, err := s.transformOrgCategoryToPB(data)
 		if err != nil {
 			slog.Error("Error transforming org category", "error", err)
-			s.Stats.Errors++
+			s.Stats.Rejected++
 			continue
 		}
 
 		cmID, ok := pbData["cm_id"].(int)
 		if !ok || cmID == 0 {
 			slog.Error("Invalid org category cm_id")
-			s.Stats.Errors++
+			s.Stats.Rejected++
 			continue
 		}
 
@@ -275,14 +275,14 @@ func (s *StaffLookupsSync) syncPositions(ctx context.Context) error {
 		pbData, err := s.transformPositionToPB(data, programAreaMap)
 		if err != nil {
 			slog.Error("Error transforming position", "error", err)
-			s.Stats.Errors++
+			s.Stats.Rejected++
 			continue
 		}
 
 		cmID, ok := pbData["cm_id"].(int)
 		if !ok || cmID == 0 {
 			slog.Error("Invalid position cm_id")
-			s.Stats.Errors++
+			s.Stats.Rejected++
 			continue
 		}
 
