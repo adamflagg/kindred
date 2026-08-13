@@ -32,7 +32,7 @@ const (
 // This service reads from person_custom_values and populates the quest_registrations table.
 //
 // Unique key: (person_id, year) - one record per Quest participant per year
-// Links to: attendees
+// No stored attendee link -- see loadPersonsWithAttendee (kindred#2261).
 //
 // Field mapping: 45+ Quest-* and Q-* prefixed fields covering signatures, preferences,
 // parent questionnaires, and transportation details.
@@ -201,7 +201,10 @@ func (s *QuestRegistrationsSync) Sync(ctx context.Context) error {
 	}
 	slog.Info("Loaded admission set", "count", len(personHasAttendee))
 	if multiQuest > 0 {
-		// Zero on every year 2021-2026. If this ever fires, the assumption behind
+		// Zero on every year 2021-2026 -- but NOT on every year this sync can be
+		// asked for. 2017 has one person with two active Quest sessions, and
+		// quest_registrations holds 72 rows for 2017, so a pre-2021 backfill fires
+		// this benignly. For a CURRENT season it means the assumption behind
 		// kindred#2261 -- that the questionnaire is person x year -- has changed
 		// upstream, and the table needs a session dimension before anyone trusts it.
 		// Deliberately a log line and not a Stats counter. Adding a field to Stats
@@ -307,29 +310,6 @@ func isQuestRegistrationField(name string) bool {
 		strings.HasPrefix(name, "Quest ")
 }
 
-// loadPersonsWithAttendee returns the set of person CM IDs holding at least one
-// `attendees` row for the year, plus a count of people holding two or more
-// ACTIVE (status_id = 2) Quest enrollments.
-//
-// It used to return person -> attendee PB ID, and that map did two jobs: it
-// admitted a person into the table, and it supplied a stored `attendee`
-// relation. The relation is gone (kindred#2261) because it could never answer
-// the question a reader would ask it -- kindred#2159 requires enrollment to be
-// established by joining `(person_id, year)` on `status_id = 2`, not by
-// traversing a link. Picking one of a person's several attendee rows to store
-// was therefore arbitrary AND unusable; measured on the production snapshot,
-// 125 of 679 rows pointed at a non-enrolled attendee and 71 of those discarded
-// an enrolled candidate.
-//
-// The ADMISSION half is preserved exactly. A person with Quest values but no
-// attendees row for the year is still excluded. On the production snapshot that
-// exclusion currently admits everyone (0 people in 2024-2026 hold Quest values
-// without an attendees row), which is precisely why it is pinned by a test
-// rather than left as an assumption.
-//
-// Membership is order-independent by construction: a set has no first element,
-// so the empty `sort` argument below can no longer decide anything. That is the
-// order-independence probe kindred#2257 asks for, satisfied structurally.
 // isCountableQuestEnrollment decides whether one attendees row counts toward the
 // multi-Quest tripwire. Pure so the rule is testable without a database -- the
 // bug it exists to prevent (counting every session type, not just Quest) would
@@ -363,9 +343,6 @@ func isCountableQuestEnrollment(statusID int, sessionID string, questSessionIDs 
 //     in isCountableQuestEnrollment, so nothing goes uncovered.
 //
 // A few hundred rows all-time; read once per run.
-// sessionTypeQuest is the camp_sessions.session_type value for a Quest session.
-const sessionTypeQuest = "quest"
-
 func (s *QuestRegistrationsSync) loadQuestSessionIDs() (map[string]bool, error) {
 	ids := make(map[string]bool)
 	records, err := s.App.FindRecordsByFilter("camp_sessions", "", "id", 0, 0)
@@ -380,12 +357,43 @@ func (s *QuestRegistrationsSync) loadQuestSessionIDs() (map[string]bool, error) 
 	return ids, nil
 }
 
+// loadPersonsWithAttendee returns the set of person CM IDs holding at least one
+// `attendees` row for the year, plus a count of people holding two or more
+// ACTIVE (status_id = 2) Quest enrollments.
+//
+// It used to return person -> attendee PB ID, and that map did two jobs: it
+// admitted a person into the table, and it supplied a stored `attendee`
+// relation. The relation is gone (kindred#2261) because it could never answer
+// the question a reader would ask it -- kindred#2159 requires enrollment to be
+// established by joining `(person_id, year)` on `status_id = 2`, not by
+// traversing a link. Picking one of a person's several attendee rows to store
+// was therefore arbitrary AND unusable; measured on the production snapshot,
+// 125 of 679 rows pointed at a non-enrolled attendee and 71 of those discarded
+// an enrolled candidate.
+//
+// The ADMISSION half is preserved exactly. A person with Quest values but no
+// attendees row for the year is still excluded. On the production snapshot that
+// exclusion currently admits everyone (0 people in 2024-2026 hold Quest values
+// without an attendees row), which is precisely why it is pinned by a test
+// rather than left as an assumption.
+//
+// Membership is order-independent by construction: a set has no first element,
+// so the empty `sort` argument below can no longer decide anything. That is the
+// order-independence probe kindred#2257 asks for, satisfied structurally.
 func (s *QuestRegistrationsSync) loadPersonsWithAttendee(
 	ctx context.Context, year int,
 ) (hasAttendee map[int]bool, multiEnrolled int, err error) {
+	// DEGRADE, do not abort. The Quest-session set feeds only the observational
+	// tripwire; the admission set below does not use it. Before this code existed
+	// nothing about camp_sessions could fail this sync, and letting a transient
+	// read failure block the whole questionnaire refresh would trade a real
+	// refresh for a counter that has never fired. Warn and carry on with an empty
+	// set: the tripwire goes quiet, everything else is unaffected.
 	questSessionIDs, err := s.loadQuestSessionIDs()
 	if err != nil {
-		return nil, 0, err
+		slog.Warn("could not load Quest sessions; the multi-Quest tripwire is disabled for this run",
+			"year", year, "error", err)
+		questSessionIDs = map[string]bool{}
 	}
 	hasAttendee = make(map[int]bool)
 	// person CM ID -> the distinct quest sessions they are ACTIVELY enrolled in
@@ -433,7 +441,9 @@ func (s *QuestRegistrationsSync) loadPersonsWithAttendee(
 }
 
 // countMultiQuestEnrollments counts people holding two or more distinct active
-// enrollments in one year.
+// QUEST enrollments in one year. The caller pre-filters every row through
+// isCountableQuestEnrollment, so a person doing two summer sessions must never
+// reach this map -- broadening the caller restores 201-338 false fires a year.
 //
 // This guards the assumption the kindred#2261 fix rests on, and it exists
 // because "has never happened" is not "cannot happen". Nobody has held two
@@ -1113,7 +1123,7 @@ func (s *QuestRegistrationsSync) deleteOrphans(
 		Entity:   "quest_registrations",
 		Year:     year,
 		Computed: len(records),
-		Hint:     "check that the attendee mapping and the Quest-/Q-* field definitions still exist upstream",
+		Hint:     "check that the Quest-/Q-* field definitions and the attendees rows for this year still exist upstream",
 	}
 	if err := guard.Check(len(existingRecords)); err != nil {
 		return 0, err

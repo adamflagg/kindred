@@ -34,7 +34,7 @@ const (
 // This service reads from person_custom_values and populates the camper_dietary table.
 //
 // Unique key: (person_id, year) - one record per camper per year
-// Links to: attendees (any attendee record for this person-year)
+// No stored attendee link -- see loadPersonsWithAttendee (kindred#2265).
 //
 // Field mapping:
 // - Family Medical-Dietary Needs -> has_dietary_needs (bool)

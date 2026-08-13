@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/pocketbase/pocketbase/core"
+	pbtests "github.com/pocketbase/pocketbase/tests"
 )
 
 // TestQuestRegistrationsLoadFieldDefinitionsTrimsNames is a regression test
@@ -682,5 +683,62 @@ func TestIsCountableQuestEnrollment(t *testing.T) {
 					tc.statusID, tc.sessionID, got, tc.want)
 			}
 		})
+	}
+}
+
+// TestLoadQuestSessionIDsPinsTheSchemaIdentifiers is the coverage the scan of
+// PR #2308 found missing. loadQuestSessionIDs filters in Go rather than in the
+// query, which is deliberate -- but it makes a broken read indistinguishable
+// from an empty one: rename the `session_type` field or change the enum value
+// and GetString returns "" for every row, the Quest set is empty,
+// isCountableQuestEnrollment refuses everything, and the tripwire goes
+// permanently dark with a green suite. That is precisely the "silently never
+// fires" mode the tripwire exists to avoid.
+//
+// This pins all four identifiers at once: the collection name `camp_sessions`,
+// the field `session_type`, the literal value `quest`, and that a non-Quest
+// session is excluded.
+func TestLoadQuestSessionIDsPinsTheSchemaIdentifiers(t *testing.T) {
+	t.Parallel()
+	app, err := pbtests.NewTestApp()
+	if err != nil {
+		t.Fatal(err)
+		return
+	}
+	defer app.Cleanup()
+
+	col := core.NewBaseCollection("camp_sessions")
+	col.Fields.Add(&core.TextField{Name: "session_type"})
+	if saveErr := app.Save(col); saveErr != nil {
+		t.Fatal(saveErr)
+		return
+	}
+
+	save := func(sessionType string) string {
+		r := core.NewRecord(col)
+		r.Set("session_type", sessionType)
+		if saveErr := app.Save(r); saveErr != nil {
+			t.Fatal(saveErr)
+		}
+		return r.Id
+	}
+	questID := save(sessionTypeQuest)
+	summerID := save(sessionTypeMain)
+
+	s := &QuestRegistrationsSync{App: app}
+	ids, err := s.loadQuestSessionIDs()
+	if err != nil {
+		t.Fatalf("loadQuestSessionIDs returned %v, want nil", err)
+		return
+	}
+
+	if !ids[questID] {
+		t.Error("quest session missing — check the collection name, the `session_type` field, and the `quest` value")
+	}
+	if ids[summerID] {
+		t.Error("a non-Quest session was returned; the tripwire would fire on summer enrollments")
+	}
+	if len(ids) != 1 {
+		t.Errorf("got %d session ids, want exactly 1", len(ids))
 	}
 }
