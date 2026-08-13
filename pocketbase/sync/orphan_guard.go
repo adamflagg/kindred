@@ -1,6 +1,10 @@
 package sync
 
-import "fmt"
+import (
+	"context"
+	"errors"
+	"fmt"
+)
 
 // Orphan-sweep thresholds (kindred#2279).
 //
@@ -46,14 +50,18 @@ const (
 // copy each (kindred#2273, kindred#2279 Gap 2), and rather than write a
 // fifteenth, every guarded service now fills in this struct.
 //
-// It reaches every sweep that routes through BaseSyncService, and ONLY those.
-// Nine services -- camper_dietary, camper_history, camper_transportation,
-// household_demographics, normalize_geographic, quest_registrations, staff_skills,
-// staff_applications and staff_vehicle_info -- do not embed BaseSyncService at all
-// and carry their own deleteOrphans, so neither this guard nor the rejection arm
-// below applies to them. That is harmless today because none of them counts a
-// rejection, and nothing pins it: a future reclassification into one of those files
-// gets no protection and no warning.
+// The COLLAPSE arm reaches every sweep in the package. BaseSyncService fills this
+// struct in for the sweeps it owns, and the nine services that do not embed it --
+// camper_dietary, camper_history, camper_transportation, household_demographics,
+// normalize_geographic, quest_registrations, staff_skills, staff_applications and
+// staff_vehicle_info -- each construct one inside their own deleteOrphans
+// (kindred#2280, kindred#2296).
+//
+// The REJECTION arm is narrower, and that is the part to watch. Only BaseSyncService
+// fills in Rejected, so for those nine SkipReason and RejectionsExplainShortfall can
+// never fire -- they build the guard without it. That is harmless today because none
+// of them counts a rejection, and nothing pins it: a future reclassification into one
+// of those files gets the collapse guard but no rejection protection and no warning.
 //
 // Computed is the size of the set this run built from CampMinder, NOT the number
 // of rows on disk it happens to match. The distinction matters: a healthy run can
@@ -186,4 +194,27 @@ func (g OrphanSweepGuard) SkipReason() string {
 // rows on disk -- is trivially explained.
 func (g OrphanSweepGuard) RejectionsExplainShortfall(existing int) bool {
 	return existing-g.Computed <= g.Rejected
+}
+
+// wrapOrphanSweepError classifies a failed orphan sweep for the caller's return.
+//
+// A guard refusal and a cancelled context are different operational facts and
+// must not share a message: "refused" says the computed set is not to be
+// trusted and points an operator at the CampMinder feed, while "interrupted"
+// says the run simply ran out of time and the data is probably fine. Reporting
+// the second as the first sends them to investigate something that is not
+// broken.
+//
+// kindred#2280 settled this wording on staff_vehicle_info.go and
+// staff_applications.go; it lives here so every guarded sweep in the package
+// reads the same rather than carrying its own copy. Returns nil for nil so it
+// is safe to call unconditionally.
+func wrapOrphanSweepError(err error) error {
+	if err == nil {
+		return nil
+	}
+	if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+		return fmt.Errorf("orphan sweep interrupted: %w", err)
+	}
+	return fmt.Errorf("orphan sweep refused: %w", err)
 }

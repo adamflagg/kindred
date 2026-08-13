@@ -1006,3 +1006,100 @@ func TestStaffSkillsRecordNeedsUpdateUsesCompareFields(t *testing.T) {
 		}
 	})
 }
+
+// newStaffSkillsOrphanTestApp returns a throwaway app holding only the
+// staff_skills collection -- the minimum deleteOrphans touches (it looks up
+// by ID and deletes; it does not read any other collection).
+func newStaffSkillsOrphanTestApp(t *testing.T) core.App {
+	t.Helper()
+	app, err := pbtests.NewTestApp()
+	if err != nil {
+		t.Fatalf("NewTestApp: %v", err)
+	}
+	t.Cleanup(app.Cleanup)
+
+	col := core.NewBaseCollection("staff_skills")
+	col.Fields.Add(&core.NumberField{Name: "person_id"})
+	col.Fields.Add(&core.NumberField{Name: "skill_cm_id"})
+	// Required, because every CampMinder-derived table carries a required year
+	// (CLAUDE.md) -- a fixture that accepts a yearless row lets a test pass
+	// against data production would reject.
+	col.Fields.Add(&core.NumberField{Name: "year", Required: true})
+	if err := app.Save(col); err != nil {
+		t.Fatalf("save staff_skills: %v", err)
+	}
+	return app
+}
+
+// TestStaffSkillsDeleteOrphansRefusesCollapsedComputedSet pins the guard
+// kindred#2283 adds. Before this fix deleteOrphans returned a bare int and had
+// no channel to refuse a sweep at all -- an empty ProcessedKeys map against a
+// populated year deleted the whole year and reported success.
+func TestStaffSkillsDeleteOrphansRefusesCollapsedComputedSet(t *testing.T) {
+	t.Parallel()
+	app := newStaffSkillsOrphanTestApp(t)
+	col, err := app.FindCollectionByNameOrId("staff_skills")
+	if err != nil {
+		t.Fatalf("find staff_skills: %v", err)
+	}
+	rec := core.NewRecord(col)
+	rec.Set("person_id", 12345)
+	rec.Set("skill_cm_id", 100)
+	rec.Set("year", 2026)
+	if saveErr := app.Save(rec); saveErr != nil {
+		t.Fatalf("save existing row: %v", saveErr)
+	}
+
+	s := NewStaffSkillsSync(app)
+	s.SyncSuccessful = true
+	s.ProcessedKeys = make(map[string]bool) // nothing processed this run
+
+	existing := map[string]*core.Record{"12345:100|2026": rec}
+	deleted, err := s.deleteOrphans(existing, 2026)
+
+	if err == nil {
+		t.Fatal("expected an error when nothing was processed and rows exist, got nil")
+	}
+	if deleted != 0 {
+		t.Errorf("deleted = %d, want 0 -- nothing may be removed on the refusal path", deleted)
+	}
+
+	remaining, err := app.FindRecordsByFilter("staff_skills", "year = 2026", "", 0, 0)
+	if err != nil {
+		t.Fatalf("re-query: %v", err)
+	}
+	if len(remaining) != 1 {
+		t.Errorf("%d rows survived, want 1 -- the guard must not delete", len(remaining))
+	}
+}
+
+// TestStaffSkillsDeleteOrphansStillSweepsGenuineOrphans proves the guard did
+// not disable orphan deletion for the normal case.
+func TestStaffSkillsDeleteOrphansStillSweepsGenuineOrphans(t *testing.T) {
+	t.Parallel()
+	app := newStaffSkillsOrphanTestApp(t)
+	col, err := app.FindCollectionByNameOrId("staff_skills")
+	if err != nil {
+		t.Fatalf("find staff_skills: %v", err)
+	}
+	orphan := core.NewRecord(col)
+	orphan.Set("person_id", 12346)
+	orphan.Set("skill_cm_id", 100)
+	orphan.Set("year", 2026)
+	if saveErr := app.Save(orphan); saveErr != nil {
+		t.Fatalf("save orphan: %v", saveErr)
+	}
+
+	s := NewStaffSkillsSync(app)
+	s.SyncSuccessful = true
+	s.ProcessedKeys = map[string]bool{"12345:100|2026": true}
+
+	existing := map[string]*core.Record{"12346:100|2026": orphan}
+	deleted, err := s.deleteOrphans(existing, 2026)
+	if err != nil {
+		t.Fatalf("deleteOrphans: %v", err)
+	}
+	if deleted != 1 {
+		t.Errorf("deleted = %d, want 1", deleted)
+	}
+}

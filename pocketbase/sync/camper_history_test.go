@@ -1,12 +1,14 @@
 package sync
 
 import (
+	"context"
 	"fmt"
 	"slices"
 	"strings"
 	"testing"
 
 	"github.com/pocketbase/pocketbase/core"
+	pbtests "github.com/pocketbase/pocketbase/tests"
 )
 
 // Test constants for fictional data
@@ -2514,4 +2516,194 @@ func TestCamperHistoryRecordNeedsUpdateUsesCompareFields(t *testing.T) {
 			t.Error("expected update needed when school differs")
 		}
 	})
+}
+
+// TestCamperHistoryDeleteOrphansRefusesCollapsedComputedSet pins the guard
+// kindred#2283 adds. Before this fix deleteOrphans returned a bare int and had
+// no channel to refuse a sweep at all -- an empty ProcessedKeys map against a
+// populated year deleted the whole year and reported success.
+func TestCamperHistoryDeleteOrphansRefusesCollapsedComputedSet(t *testing.T) {
+	t.Parallel()
+	app := newOrphanSweepTestApp(t, "camper_history", "person_id", "session_cm_id")
+	col, err := app.FindCollectionByNameOrId("camper_history")
+	if err != nil {
+		t.Fatalf("find camper_history: %v", err)
+	}
+	rec := core.NewRecord(col)
+	rec.Set("person_id", 5001)
+	rec.Set("session_cm_id", 200)
+	rec.Set("year", 2026)
+	if saveErr := app.Save(rec); saveErr != nil {
+		t.Fatalf("save existing row: %v", saveErr)
+	}
+
+	c := NewCamperHistorySync(app)
+	c.SyncSuccessful = true
+	c.ProcessedKeys = make(map[string]bool) // nothing processed this run
+
+	existing := map[string]*core.Record{"5001:200|2026": rec}
+	deleted, err := c.deleteOrphans(existing, 2026)
+
+	if err == nil {
+		t.Fatal("expected an error when nothing was processed and rows exist, got nil")
+	}
+	if deleted != 0 {
+		t.Errorf("deleted = %d, want 0 -- nothing may be removed on the refusal path", deleted)
+	}
+
+	remaining, err := app.FindRecordsByFilter("camper_history", "year = 2026", "", 0, 0)
+	if err != nil {
+		t.Fatalf("re-query: %v", err)
+	}
+	if len(remaining) != 1 {
+		t.Errorf("%d rows survived, want 1 -- the guard must not delete", len(remaining))
+	}
+}
+
+// TestCamperHistoryDeleteOrphansStillSweepsGenuineOrphans proves the guard did
+// not disable orphan deletion for the normal case (a camper unenrolled from a
+// session).
+func TestCamperHistoryDeleteOrphansStillSweepsGenuineOrphans(t *testing.T) {
+	t.Parallel()
+	app := newOrphanSweepTestApp(t, "camper_history", "person_id", "session_cm_id")
+	col, err := app.FindCollectionByNameOrId("camper_history")
+	if err != nil {
+		t.Fatalf("find camper_history: %v", err)
+	}
+	orphan := core.NewRecord(col)
+	orphan.Set("person_id", 5002)
+	orphan.Set("session_cm_id", 200)
+	orphan.Set("year", 2026)
+	if saveErr := app.Save(orphan); saveErr != nil {
+		t.Fatalf("save orphan: %v", saveErr)
+	}
+
+	c := NewCamperHistorySync(app)
+	c.SyncSuccessful = true
+	c.ProcessedKeys = map[string]bool{"5001:200|2026": true}
+
+	existing := map[string]*core.Record{"5002:200|2026": orphan}
+	deleted, err := c.deleteOrphans(existing, 2026)
+	if err != nil {
+		t.Fatalf("deleteOrphans: %v", err)
+	}
+	if deleted != 1 {
+		t.Errorf("deleted = %d, want 1", deleted)
+	}
+}
+
+// newCamperHistorySyncTestApp builds the collections CamperHistorySync.Sync()
+// reads on its way to the orphan sweep. Most are empty -- the loaders tolerate
+// that -- but they must exist, because a query against a missing collection is
+// an error that would abort Sync() long before the sweep.
+func newCamperHistorySyncTestApp(t *testing.T) core.App {
+	t.Helper()
+	app, err := pbtests.NewTestApp()
+	if err != nil {
+		t.Fatalf("NewTestApp: %v", err)
+	}
+	t.Cleanup(app.Cleanup)
+
+	simple := map[string][]string{
+		"camp_sessions":           {"name", "session_type"},
+		"bunks":                   {"name"},
+		"divisions":               {"name"},
+		"custom_field_defs":       {"name"},
+		"households":              {},
+		"persons":                 {"first_name", "last_name", "gender"},
+		"person_custom_values":    {"person", "field_definition", "value"},
+		"household_custom_values": {"household", "field_definition", "value"},
+		"bunk_assignments":        {"person", "session", "bunk"},
+		"attendees":               {"person", "session", "status", "session_type"},
+	}
+	for name, textFields := range simple {
+		col := core.NewBaseCollection(name)
+		for _, f := range textFields {
+			col.Fields.Add(&core.TextField{Name: f})
+		}
+		col.Fields.Add(&core.NumberField{Name: "cm_id"})
+		col.Fields.Add(&core.NumberField{Name: "person_id"})
+		col.Fields.Add(&core.NumberField{Name: "status_id"})
+		col.Fields.Add(&core.NumberField{Name: "year"})
+		// The loaders page with a "-created" sort; the field has to exist.
+		col.Fields.Add(&core.AutodateField{Name: "created", OnCreate: true})
+		if err := app.Save(col); err != nil {
+			t.Fatalf("create %s: %v", name, err)
+		}
+	}
+
+	hist := core.NewBaseCollection("camper_history")
+	hist.Fields.Add(&core.NumberField{Name: "person_id"})
+	hist.Fields.Add(&core.NumberField{Name: "session_cm_id"})
+	hist.Fields.Add(&core.NumberField{Name: "year"})
+	for _, f := range []string{"name", "session_name", "session_type", "gender", "status"} {
+		hist.Fields.Add(&core.TextField{Name: f})
+	}
+	hist.Fields.Add(&core.AutodateField{Name: "created", OnCreate: true})
+	if err := app.Save(hist); err != nil {
+		t.Fatalf("create camper_history: %v", err)
+	}
+	return app
+}
+
+// TestCamperHistorySyncPropagatesSweepRefusal is the caller-propagation test for
+// kindred#2283. camper_history.go is one of the two files that previously called
+// deleteOrphans without even capturing its return value, so "the caller now uses
+// the error" is the whole point of the change here -- and the guard tests alone
+// prove nothing about it. Sibling PR kindred#2294 shipped exactly this gap.
+//
+// Deleting the `if orphanErr != nil` return in camper_history.go makes this test
+// fail; without it the whole sync suite stays green.
+func TestCamperHistorySyncPropagatesSweepRefusal(t *testing.T) {
+	t.Parallel()
+	app := newCamperHistorySyncTestApp(t)
+
+	attendees, err := app.FindCollectionByNameOrId("attendees")
+	if err != nil {
+		t.Fatalf("find attendees: %v", err)
+	}
+	// Three attendees this run -- believable on its own, a collapse against
+	// what is already stored.
+	for _, cmID := range []int{101, 102, 103} {
+		a := core.NewRecord(attendees)
+		a.Set("person_id", cmID)
+		a.Set("year", 2026)
+		if saveErr := app.Save(a); saveErr != nil {
+			t.Fatalf("save attendee %d: %v", cmID, saveErr)
+		}
+	}
+
+	hist, err := app.FindCollectionByNameOrId("camper_history")
+	if err != nil {
+		t.Fatalf("find camper_history: %v", err)
+	}
+	for i := range OrphanSweepMinRows + 5 {
+		rec := core.NewRecord(hist)
+		rec.Set("person_id", 900+i)
+		rec.Set("session_cm_id", 200)
+		rec.Set("year", 2026)
+		if saveErr := app.Save(rec); saveErr != nil {
+			t.Fatalf("save existing row %d: %v", i, saveErr)
+		}
+	}
+
+	c := NewCamperHistorySync(app)
+	c.Year = 2026
+	syncErr := c.Sync(context.Background())
+
+	if syncErr == nil {
+		t.Fatal("Sync returned nil on a refused sweep -- the refusal never reached the caller")
+	}
+	if !strings.Contains(syncErr.Error(), "orphan sweep refused") {
+		t.Errorf("Sync error = %q, want it to carry the sweep refusal", syncErr.Error())
+	}
+
+	remaining, err := app.FindRecordsByFilter("camper_history", "year = 2026 && person_id >= 900", "", 0, 0)
+	if err != nil {
+		t.Fatalf("re-query: %v", err)
+	}
+	if len(remaining) != OrphanSweepMinRows+5 {
+		t.Errorf("%d seeded rows survived, want %d -- a refused sweep must delete nothing",
+			len(remaining), OrphanSweepMinRows+5)
+	}
 }

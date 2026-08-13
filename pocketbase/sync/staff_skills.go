@@ -150,6 +150,14 @@ func (s *StaffSkillsSync) Sync(ctx context.Context) error {
 		return fmt.Errorf("loading skill values: %w", err)
 	}
 
+	// An empty source is not a collapse, so this returns BEFORE loading existing
+	// rows and before the sweep: nothing is deleted and the run succeeds. That is
+	// the same policy the four records-map syncs got in kindred#2283 rows 3+4 and
+	// the one BaseSyncService.DeleteOrphans applies -- expressed here as an early
+	// return rather than a SyncSuccessful gate, because this file has nothing
+	// left to do once there are no values. Leaving the sweep to refuse instead
+	// would wedge the table: a refused sweep never clears the rows it refused
+	// over, so the condition would not resolve on its own.
 	if len(skillValues) == 0 {
 		slog.Info("No skill values found for year", "year", year)
 		s.SyncSuccessful = true
@@ -272,13 +280,21 @@ func (s *StaffSkillsSync) Sync(ctx context.Context) error {
 	s.SyncSuccessful = true
 
 	// Delete orphans
-	s.deleteOrphans(existingRecords)
+	deleted, orphanErr := s.deleteOrphans(existingRecords, year)
+	s.Stats.Deleted = deleted
 
-	// WAL checkpoint
+	// WAL checkpoint BEFORE the error return below -- the upsert loop above has
+	// already written by this point, and the refusal path can fire on a non-empty
+	// computed set (a PARTIAL collapse), which is exactly the case where writes
+	// already happened.
 	if s.Stats.Created > 0 || s.Stats.Updated > 0 || s.Stats.Deleted > 0 {
 		if err := s.forceWALCheckpoint(); err != nil {
 			slog.Warn("WAL checkpoint failed", "error", err)
 		}
+	}
+
+	if orphanErr != nil {
+		return wrapOrphanSweepError(orphanErr)
 	}
 
 	slog.Info("Staff skills extraction completed",
@@ -636,11 +652,26 @@ func (s *StaffSkillsSync) recordNeedsUpdate(
 	return compareRecordNeedsUpdate(existing, newData, compareFields)
 }
 
-// deleteOrphans removes records that weren't processed
-func (s *StaffSkillsSync) deleteOrphans(existingRecords map[string]*core.Record) int {
+// deleteOrphans removes records that weren't processed.
+//
+// Refuses when the computed set is too small to be believed against the rows
+// on disk: that combination is always a broken input, and sweeping on it
+// deletes the year and reports success (kindred#2257, kindred#2283). The rule
+// lives in OrphanSweepGuard so there is one implementation, not an eighth copy.
+func (s *StaffSkillsSync) deleteOrphans(existingRecords map[string]*core.Record, year int) (int, error) {
 	if !s.SyncSuccessful {
 		slog.Info("Skipping orphan deletion due to sync failure")
-		return 0
+		return 0, nil
+	}
+
+	guard := OrphanSweepGuard{
+		Entity:   "staff_skills",
+		Year:     year,
+		Computed: len(s.ProcessedKeys),
+		Hint:     "check that the CampMinder Skills- field feed returned this season",
+	}
+	if err := guard.Check(len(existingRecords)); err != nil {
+		return 0, err
 	}
 
 	orphanCount := 0
@@ -664,11 +695,10 @@ func (s *StaffSkillsSync) deleteOrphans(existingRecords map[string]*core.Record)
 	}
 
 	if orphanCount > 0 {
-		s.Stats.Deleted = orphanCount
 		slog.Info("Deleted orphaned staff_skills records", "count", orphanCount)
 	}
 
-	return orphanCount
+	return orphanCount, nil
 }
 
 // forceWALCheckpoint forces a SQLite WAL checkpoint
