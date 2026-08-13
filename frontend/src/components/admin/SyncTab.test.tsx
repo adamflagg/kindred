@@ -7,7 +7,7 @@
  * quest_registrations, staff_applications, staff_vehicle_info). A double-click on one of those
  * cards could submit a second request before status polling flipped the card to "running".
  */
-import { render, screen, within } from '@testing-library/react'
+import { fireEvent, render, screen, within } from '@testing-library/react'
 import { describe, it, expect, vi, afterEach } from 'vitest'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { SyncTab } from './SyncTab'
@@ -22,6 +22,12 @@ const idleStatus = { status: 'idle' } as const
 // single test (#2161's lodging⚠ badge) can inject a status without re-declaring the whole mock.
 // Reset in `beforeEach` so tests stay isolated.
 let strandedAssignmentCleanupStatus: unknown = idleStatus
+
+// #2295 needs two more injectable statuses, one per card path: `persons` is a
+// year sync (renderSyncCard) and `staff_lookups` is a global one (the second,
+// inlined card block further down SyncTab). Both are reset in afterEach.
+let personsStatus: unknown = idleStatus
+let staffLookupsStatus: unknown = idleStatus
 
 vi.mock('../../hooks/useSyncCompletionToasts', () => ({
   useSyncCompletionToasts: () => ({
@@ -38,6 +44,12 @@ vi.mock('../../hooks/useSyncCompletionToasts', () => ({
     staff_vehicle_info: idleStatus,
     get stranded_assignment_cleanup() {
       return strandedAssignmentCleanupStatus
+    },
+    get persons() {
+      return personsStatus
+    },
+    get staff_lookups() {
+      return staffLookupsStatus
     },
   }),
 }))
@@ -191,5 +203,115 @@ describe('SyncTab rejected-records badge (#2284)', () => {
     if (!card) throw new Error('could not find Stranded Assignment Cleanup card')
 
     expect(within(card as HTMLElement).queryByText(/rejected/)).not.toBeInTheDocument()
+  })
+})
+
+// Regression test for #2295. Stats.Rejected can exist ONLY inside SubStats: `persons` is a
+// combined sync that populates households through its own Stats and reports them as
+// sub_stats.households (persons.go GetStats), and the household half is where the
+// reclassified reject site lives. Nothing folds that nested count into the parent's, so a
+// card that renders summary.rejected alone shows no badge at all for the one service whose
+// rejections the campaign actually produces first.
+//
+// This is the same hole the backend closed in totalInfrastructureErrors, one layer out: the
+// count exists, it is warn-only so nothing else surfaces it, and the operator never sees it.
+describe('SyncTab nested rejected records (#2295)', () => {
+  afterEach(() => {
+    personsStatus = idleStatus
+    staffLookupsStatus = idleStatus
+  })
+
+  function cardByTitle(name: string, selector: 'div' | 'span') {
+    const heading = screen.getByText(name, { selector })
+    const card = heading.closest('.flex.flex-col')
+    if (!card) throw new Error(`could not find card for ${name}`)
+    return card as HTMLElement
+  }
+
+  it('renders a sub-entity rejected count the parent never counted', () => {
+    personsStatus = {
+      status: 'success',
+      summary: {
+        created: 120,
+        updated: 0,
+        skipped: 0,
+        errors: 0,
+        rejected: 0,
+        sub_stats: {
+          households: { created: 40, updated: 0, skipped: 0, errors: 0, rejected: 4 },
+        },
+      },
+    }
+
+    renderSyncTab()
+
+    expect(within(cardByTitle('Persons', 'div')).getByText('4 rejected')).toBeInTheDocument()
+  })
+
+  it('adds the parent and sub-entity counts together', () => {
+    personsStatus = {
+      status: 'success',
+      summary: {
+        created: 120,
+        updated: 0,
+        skipped: 0,
+        errors: 0,
+        rejected: 3,
+        sub_stats: {
+          households: { created: 40, updated: 0, skipped: 0, errors: 0, rejected: 4 },
+        },
+      },
+    }
+
+    renderSyncTab()
+
+    expect(within(cardByTitle('Persons', 'div')).getByText('7 rejected')).toBeInTheDocument()
+  })
+
+  it('renders no badge when the parent and every sub-entity are clean', () => {
+    personsStatus = {
+      status: 'success',
+      summary: {
+        created: 120,
+        updated: 0,
+        skipped: 0,
+        errors: 0,
+        rejected: 0,
+        sub_stats: {
+          households: { created: 40, updated: 0, skipped: 0, errors: 0, rejected: 0 },
+        },
+      },
+    }
+
+    renderSyncTab()
+
+    expect(within(cardByTitle('Persons', 'div')).queryByText(/rejected/)).not.toBeInTheDocument()
+  })
+
+  // The global-sync-type block is a second, separately written card with its own copy of the
+  // badge markup. staff_lookups is one of the services this PR reclassifies, and it sweeps
+  // three collections, so leaving the aggregate out of this path would hide exactly the
+  // counts #2295 exists to surface.
+  it('aggregates on the global sync card path too', () => {
+    staffLookupsStatus = {
+      status: 'success',
+      summary: {
+        created: 6,
+        updated: 0,
+        skipped: 0,
+        errors: 0,
+        rejected: 2,
+        sub_stats: {
+          positions: { created: 3, updated: 0, skipped: 0, errors: 0, rejected: 5 },
+        },
+      },
+    }
+
+    renderSyncTab()
+    // The global block ships collapsed, so the second card path only mounts once
+    // "Global Definitions" is open.
+    fireEvent.click(screen.getByText('Global Definitions'))
+
+    expect(within(cardByTitle('Staff Lookups', 'span')).getByText('7 rejected')).toBeInTheDocument()
   })
 })

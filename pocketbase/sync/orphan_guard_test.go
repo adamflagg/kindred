@@ -331,6 +331,194 @@ func TestHouseholdCustomFieldValuesDeleteOrphansIgnoresHouseholdsThisRunDidNotFe
 }
 
 // ---------------------------------------------------------------------------
+// kindred#2295 -- rejections make the computed set known-incomplete
+// ---------------------------------------------------------------------------
+
+// TestOrphanSweepGuardSkipsWhenRecordsWereRejected pins the new arm. A rejected
+// record's key never reaches TrackProcessedKey -- the counter bump and its
+// `continue` both happen first -- so it is missing from the computed set for a
+// reason that has nothing to do with CampMinder having deleted it. Sweeping
+// against that set deletes the row the last good run stored.
+func TestOrphanSweepGuardSkipsWhenRecordsWereRejected(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name     string
+		rejected int
+		wantSkip bool
+	}{
+		{"a clean run sweeps", 0, false},
+		{"one rejected record stops the sweep", 1, true},
+		{"a season of rejected records stops the sweep", 412, true},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			g := OrphanSweepGuard{Entity: "widgets", Year: 2026, Computed: 5000, Rejected: tc.rejected}
+			reason := g.SkipReason()
+
+			if tc.wantSkip && reason == "" {
+				t.Fatalf("SkipReason() with rejected=%d returned \"\", want a skip", tc.rejected)
+			}
+			if !tc.wantSkip && reason != "" {
+				t.Fatalf("SkipReason() with rejected=%d skipped the sweep: %s", tc.rejected, reason)
+			}
+			if reason == "" {
+				return
+			}
+			for _, want := range []string{"widgets", "2026", fmt.Sprint(tc.rejected)} {
+				if !strings.Contains(reason, want) {
+					t.Errorf("skip reason %q does not name %q -- an operator cannot tell "+
+						"which sweep stopped or how big the hole is", reason, want)
+				}
+			}
+		})
+	}
+}
+
+// TestOrphanSweepGuardSkipReasonOmitsAnUnknownYear pins kindred#2299 row 1. The
+// unguarded entry points -- DeleteOrphans and DeleteOrphansFromPreloaded -- have
+// no year to pass, so Year is zero for the five per-year services that sweep
+// through them (bunks, sessions, session_groups, staff, financial_transactions).
+// Printing "for year 0" names a season that does not exist, which is worse than
+// naming none: Year's own doc says it is there so an operator knows which sweep
+// stopped, and a wrong one sends them looking at the wrong data.
+func TestOrphanSweepGuardSkipReasonOmitsAnUnknownYear(t *testing.T) {
+	t.Parallel()
+	g := OrphanSweepGuard{Entity: "widgets", Rejected: 3} // Year deliberately unset
+
+	reason := g.SkipReason()
+	if reason == "" {
+		t.Fatal("SkipReason() returned \"\" for a run with rejections")
+	}
+	if strings.Contains(reason, "year 0") {
+		t.Errorf("skip reason %q prints a season that does not exist", reason)
+	}
+	if !strings.Contains(reason, "widgets") {
+		t.Errorf("skip reason %q dropped the entity along with the year", reason)
+	}
+}
+
+// TestOrphanSweepGuardRejectionsExplainShortfall pins the accounting that decides
+// whether a collapse refusal is real (kindred#2299 row 2).
+//
+// The shortfall is the number of stored rows this run's computed set fails to
+// cover. Rejections remove exactly one key each, so they can account for at most
+// `Rejected` of it. No threshold is guessed anywhere -- either the arithmetic
+// works out or it does not.
+func TestOrphanSweepGuardRejectionsExplainShortfall(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name     string
+		computed int
+		rejected int
+		existing int
+		want     bool
+	}{
+		{"the rejections are exactly the shortfall", 49, 1, 50, true},
+		{"more rejections than shortfall", 40, 50, 50, true},
+		{"a computed set larger than disk has no shortfall", 60, 0, 50, true},
+		{"one rejection cannot explain a 45-row hole", 5, 1, 50, false},
+		{"no rejections explain nothing", 5, 0, 50, false},
+		{"half a season rejected explains half a season missing", 200, 300, 500, true},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			g := OrphanSweepGuard{Entity: "widgets", Year: 2026,
+				Computed: tc.computed, Rejected: tc.rejected}
+			if got := g.RejectionsExplainShortfall(tc.existing); got != tc.want {
+				t.Errorf("RejectionsExplainShortfall(%d) = %v, want %v "+
+					"(computed=%d rejected=%d)", tc.existing, got, tc.want, tc.computed, tc.rejected)
+			}
+		})
+	}
+}
+
+// TestOrphanSweepGuardCheckIgnoresRejections keeps the two verdicts separate.
+// A collapse is a failure and Check reports it as an error; a rejection is
+// upstream data quality, warn-only for its first season (kindred#2284), and must
+// never turn into a returned error. Folding the rejection arm into Check would
+// fail the run on one malformed record -- and, worse, abort the rest of a
+// multi-collection service before it had synced anything else.
+func TestOrphanSweepGuardCheckIgnoresRejections(t *testing.T) {
+	t.Parallel()
+	g := OrphanSweepGuard{Entity: "widgets", Year: 2026, Computed: 5000, Rejected: 9}
+
+	if err := g.Check(5000); err != nil {
+		t.Fatalf("Check refused a healthy computed set because records were rejected: %v -- "+
+			"Rejected is warn-only and must not fail a run", err)
+	}
+}
+
+// TestOrphanSweepRejectionDoesNotMaskACollapse drives the precedence through
+// BaseSyncService.deleteOrphans, which is the only place the two verdicts meet.
+// The previous version of this test called neither Check nor the sweep, so it
+// asserted a precedence it never exercised (kindred#2299 rows 2 and 10).
+//
+// The rule: Check still runs, and its refusal is fatal UNLESS the rejections can
+// account for the whole shortfall. That satisfies both halves at once -- an
+// unrelated collapse still fails the run, and a shortfall the rejections do
+// explain stays warn-only, as kindred#2284 requires.
+func TestOrphanSweepRejectionDoesNotMaskACollapse(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name      string
+		computed  int
+		rejected  int
+		wantErr   bool
+		wantAlive int
+	}{
+		{
+			// Check passes; the rejection alone stops the deletes.
+			name:     "a rejection on a healthy run skips the sweep",
+			computed: seededWidgets - 2, rejected: 1,
+			wantErr: false, wantAlive: seededWidgets,
+		},
+		{
+			// The kindred#2279 collapse, with one unrelated rejection alongside it.
+			// One rejection cannot account for 45 missing keys, so the refusal stands.
+			name:     "one rejection does not excuse a collapse it cannot explain",
+			computed: 5, rejected: 1,
+			wantErr: true, wantAlive: seededWidgets,
+		},
+		{
+			// The same shortfall, but now the rejections account for all of it.
+			// Failing here would fail a run on warn-only rejections.
+			name:     "rejections that explain the whole shortfall stay warn-only",
+			computed: 5, rejected: seededWidgets,
+			wantErr: false, wantAlive: seededWidgets,
+		},
+		{
+			// Negative control: no rejections, healthy computed set, sweep proceeds.
+			name:     "a clean run still collects its orphans",
+			computed: seededWidgets - 2, rejected: 0,
+			wantErr: false, wantAlive: seededWidgets - 2,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			app, b := rejectingSweepFixture(t, tc.rejected)
+
+			err := b.DeleteOrphansGuarded("widgets", widgetIDFunc, "widget", "year = 2026",
+				OrphanSweepGuard{Entity: "widgets", Year: 2026, Computed: tc.computed})
+
+			if tc.wantErr && err == nil {
+				t.Fatal("no error -- a collapse the rejections cannot explain was reported as a " +
+					"benign skip, which is exactly the masking this guard must not do")
+			}
+			if !tc.wantErr && err != nil {
+				t.Fatalf("returned %v, want nil", err)
+			}
+			if alive := countRows(t, app, "widgets", "year = 2026"); alive != tc.wantAlive {
+				t.Fatalf("%d rows survived, want %d", alive, tc.wantAlive)
+			}
+		})
+	}
+}
+
+// ---------------------------------------------------------------------------
 // kindred#2283 row 2 -- classifying a sweep failure
 // ---------------------------------------------------------------------------
 

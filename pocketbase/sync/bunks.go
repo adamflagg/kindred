@@ -79,7 +79,7 @@ func (s *BunksSync) Sync(ctx context.Context) error {
 		pbData, err := s.transformBunkToPB(bunkData)
 		if err != nil {
 			slog.Error("Error transforming bunk", "error", err)
-			s.Stats.Errors++
+			s.Stats.Rejected++
 			continue
 		}
 
@@ -87,7 +87,7 @@ func (s *BunksSync) Sync(ctx context.Context) error {
 		bunkID, ok := bunkData["ID"].(float64)
 		if !ok {
 			slog.Error("Invalid bunk ID type")
-			s.Stats.Errors++
+			s.Stats.Rejected++
 			continue
 		}
 		key := int(bunkID)
@@ -97,7 +97,7 @@ func (s *BunksSync) Sync(ctx context.Context) error {
 		year, ok := yearValue.(int)
 		if !ok {
 			slog.Error("Invalid year type in pbData")
-			s.Stats.Errors++
+			s.Stats.Rejected++
 			continue
 		}
 		s.TrackProcessedKey(key, year)

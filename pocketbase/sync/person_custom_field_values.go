@@ -329,7 +329,7 @@ func (s *PersonCustomFieldValuesSync) syncPersonCustomFieldValues(
 			if !ok || fieldCMIDFloat == 0 {
 				slog.Warn("Invalid or missing field id in custom field value",
 					"person_cm_id", personCMID)
-				s.Stats.Errors++
+				s.Stats.Rejected++
 				continue
 			}
 			fieldCMID := int(fieldCMIDFloat)

@@ -110,14 +110,14 @@ func (s *FinancialTransactionsSync) SyncForYear(ctx context.Context, year int) e
 		pbData, err := s.transformTransactionToPB(data, year, lookupMaps)
 		if err != nil {
 			slog.Error("Error transforming transaction", "error", err)
-			s.Stats.Errors++
+			s.Stats.Rejected++
 			continue
 		}
 
 		cmID, ok := pbData["cm_id"].(int)
 		if !ok || cmID == 0 {
 			slog.Error("Invalid transaction cm_id")
-			s.Stats.Errors++
+			s.Stats.Rejected++
 			continue
 		}
 

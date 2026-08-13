@@ -364,7 +364,7 @@ func (s *PersonsSync) processHouseholds(
 		pbData, err := s.transformHouseholdToPB(householdData, year)
 		if err != nil {
 			slog.Error("Error transforming household", "id", householdID, "error", err)
-			householdStats.Errors++
+			householdStats.Rejected++
 			continue
 		}
 
@@ -1568,6 +1568,22 @@ func (s *PersonsSync) updatePersonHouseholdRelations(
 }
 
 // deleteHouseholdOrphans deletes households that exist in PocketBase but weren't processed from CampMinder
+//
+// This sweep takes NO rejection guard, and that is the deliberate exception to
+// kindred#2295 rather than an omission.
+//
+// Everywhere else a rejected record is missing from the computed set, because the
+// counter bump and its `continue` both run before TrackProcessedKey. Here the
+// computed set is processedIDs, and processBatchPersons builds it from the same
+// `id > 0` gate as extractedHouseholds — UPSTREAM of transformHouseholdToPB. So a
+// household that fails to transform is still tracked, its row is never read as an
+// orphan, and there is nothing for a guard to protect. Adding one would suppress a
+// legitimate sweep on every run carrying a rejection and let genuine orphans
+// accumulate for no benefit.
+//
+// The property is not free — it holds only while the tracking stays above the
+// transform, which is what TestPersonsTracksEveryHouseholdItWillLaterTransform
+// pins. Move it below and persons silently joins the other twelve.
 func (s *PersonsSync) deleteHouseholdOrphans(year int, processedIDs map[int]bool) error {
 	slog.Info("Checking for orphaned households")
 
