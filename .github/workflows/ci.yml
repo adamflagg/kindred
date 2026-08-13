@@ -148,6 +148,30 @@ jobs:
             - 'pocketbase/main.go'
             - 'scripts/ci/validate_migrations.py'
             - '.python-version'
+            # The four below are the remaining inputs to the pocketbase-types
+            # freshness check (kindred#2278), which runs in tests-migrations.
+            # Same reasoning as scripts/ci/validate_migrations.py above and
+            # scripts/ci/go_test_shard.py under `go`: this job's `if:` reads
+            # only `migrations` and `go`, and the summary gate counts a
+            # skipped job as OK, so anything that can change the check's
+            # verdict has to be able to trigger it. A migration is only the
+            # most obvious way pocketbase-types.ts goes stale, not the only
+            # one.
+            #
+            #   generate-types.js  -- implements the check; without this line
+            #                         it ships having never once been run
+            #   .prettierrc.json   -- feeds the fixed-point formatting, so it
+            #                         decides the expected bytes
+            #   package-lock.json  -- pins pocketbase-typegen and prettier; a
+            #                         bump to either rewrites generated output
+            #                         for every collection at once
+            #   pocketbase-types.ts -- the guarded artifact; editing a
+            #                          @generated file by hand IS the drift
+            #                          this gate exists to catch
+            - 'frontend/scripts/generate-types.js'
+            - 'frontend/.prettierrc.json'
+            - 'frontend/package-lock.json'
+            - 'frontend/src/types/pocketbase-types.ts'
           frontend:
             - 'frontend/**'
             - 'package*.json'
@@ -593,6 +617,29 @@ jobs:
       with:
         python-version-file: '.python-version'
 
+    # Needed only for the pocketbase-types freshness check below (pocketbase-typegen
+    # + prettier live in frontend/'s devDependencies).
+    #
+    # Placement buys nothing either way: steps within a job are strictly
+    # serial, so setup-node + npm ci cost the same ~19s before the Go steps as
+    # after them. They sit here because setup belongs with setup.
+    #
+    # What makes that ~19s affordable is that tests-migrations is not the
+    # critical path -- measured on this PR's own run it finishes in ~63s
+    # against tests-go's ~3m, so the cost lands in runner-seconds, not in
+    # wall-clock to a green CI Summary. If that ever inverts, the fix is to
+    # split the freshness check into its own job, not to move these two steps.
+    - name: Setup Node.js
+      uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v6
+      with:
+        node-version: '26'
+        cache: 'npm'
+        cache-dependency-path: frontend/package-lock.json
+
+    - name: Install frontend dependencies
+      working-directory: ./frontend
+      run: npm ci
+
     - name: Migration smoke test (fresh database)
       working-directory: ./pocketbase
       run: |
@@ -697,9 +744,11 @@ jobs:
           exit 1
         fi
 
-        # Cleanup on success
+        # Stop the server on success, but leave ./pb_test_data/data.db on disk --
+        # the pocketbase-types freshness check below reads the migrated schema
+        # straight out of it. A trailing always() step removes it once that
+        # check has run.
         kill $PB_PID 2>/dev/null || true
-        rm -rf ./pb_test_data
 
         echo "✅ Migration smoke test passed"
 
@@ -728,6 +777,83 @@ jobs:
       env:
         KINDRED_PROD_SCHEMA_JSON: /tmp/collections.json
       run: go test -count=1 ./sync/... -run TestLodgingTestsupportFixtureFieldsExistInProductionSchema -v
+
+    # kindred#2278: frontend/src/types/pocketbase-types.ts is @generated from
+    # live PocketBase schema introspection (pocketbase-typegen), and nothing
+    # else in this repo regenerates or diffs it -- a migration can add,
+    # remove, or reshape a collection and the checked-in types silently fall
+    # behind (13 collections' worth, before this check existed). This step
+    # regenerates against the SAME migrated ./pb_test_data/data.db the smoke
+    # test above just produced (no second boot) and diffs against the
+    # checked-in file.
+    #
+    # Deliberately reads the SQLite file directly (pocketbase-typegen --db)
+    # rather than hitting a live PocketBase over HTTP: introspecting the file
+    # needs no running server, so this avoids a second boot entirely (the
+    # migrate step above already produced a fully-migrated data.db) and
+    # sidesteps app.OnServe() hooks -- notably the lodging-registry hook,
+    # which errors without CAMPMINDER_SEASON_ID set (a local-dev-only
+    # concern in this repo's normal boot path; CI carries no private
+    # config, so the file the hook checks for never exists here, but staying
+    # off the serve path removes the dependency entirely rather than relying
+    # on that).
+    #
+    # frontend/scripts/generate-types.js formats to a fixed point (up to 5
+    # prettier passes) rather than one --write: pocketbase-typegen's static
+    # utility-type boilerplate hits a real prettier non-idempotency where
+    # pass 1 and pass 2 land on different, otherwise-equivalent comment
+    # placements. A single pass would make this check flap between "stale"
+    # and "fresh" on zero actual schema drift.
+    #
+    # That script exits non-zero if prettier fails or if the output never
+    # settles, rather than emitting its last attempt. Both used to be
+    # warn-and-continue, which meant a tooling failure reached this step
+    # disguised as schema drift and sent someone to "fix" a schema that was
+    # fine. Anything that reaches the diff below has been normalized; a red
+    # here therefore means drift and nothing else.
+    - name: PocketBase types freshness (kindred#2278)
+      run: |
+        # --suffix=.ts is load-bearing, not cosmetic: prettier infers its
+        # parser from the file extension and exits 2 with "No parser could be
+        # inferred" on a bare mktemp name, which would fail this step on every
+        # run. mktemp over a fixed /tmp path follows the same regen-and-diff
+        # check in .lefthook.yml (api-types-freshness).
+        FRESH=$(mktemp --suffix=.ts)
+        trap 'rm -f "$FRESH"' EXIT
+
+        node frontend/scripts/generate-types.js \
+          --db pocketbase/pb_test_data/data.db \
+          --output "$FRESH"
+
+        if ! diff -u "$FRESH" frontend/src/types/pocketbase-types.ts; then
+          echo ""
+          echo "❌  frontend/src/types/pocketbase-types.ts is stale -- it doesn't match the schema produced by pocketbase/pb_migrations/."
+          echo ""
+          echo "   Regenerate it against a database built from THIS BRANCH's migrations:"
+          echo ""
+          echo "     cd pocketbase && go build -o pocketbase . \\"
+          echo "       && rm -rf ./pb_types_tmp \\"
+          echo "       && ./pocketbase migrate up --dir ./pb_types_tmp \\"
+          echo "       && node ../frontend/scripts/generate-types.js \\"
+          echo "            --db ./pb_types_tmp/data.db \\"
+          echo "            --output ../frontend/src/types/pocketbase-types.ts \\"
+          echo "       && rm -rf ./pb_types_tmp"
+          echo ""
+          echo "   Do NOT reach for a plain 'npm run generate-types' to fix this. That reads"
+          echo "   pocketbase/pb_data/data.db -- your long-lived local dev database, which lags"
+          echo "   behind main whenever you haven't started dev since a schema change merged."
+          echo "   Regenerating from it does not just fail to fix the drift, it writes NEW drift:"
+          echo "   fields that migrations already added get deleted from the types file."
+          echo "   The scratch database above is built from pb_migrations/ alone, so it matches"
+          echo "   what this check regenerates byte for byte."
+          echo ""
+          exit 1
+        fi
+        echo "✅ pocketbase-types.ts is current"
+
+    - name: Clean up scratch database
+      if: always()
+      run: rm -rf pocketbase/pb_test_data
 
   # Frontend tests — sharded across 2 matrix jobs to cut wall-clock
   # (vitest --shard splits files; matrix gives each shard its own runner)
