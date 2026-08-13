@@ -484,8 +484,8 @@ jobs:
   # This was a single ~390s job and the whole critical path -- the next-slowest
   # job was ~156s. Almost none of that is test volume: the same suite runs in 43s
   # without -race and ~300s with it, because the race detector costs ~10x and the
-  # Go tree has exactly one t.Parallel() in it, so no two tests in a package ever
-  # overlap. Two packages carry it all (sync ~297s, lodging ~143s; the other nine
+  # Go tree has exactly one t.Parallel() in it -- inside a subtest, at that -- so
+  # no two top-level tests ever overlap. Two packages carry it all (sync ~297s, lodging ~143s; the other nine
   # total ~15s), which is why this shards by individual test function rather than
   # by package -- a per-package split would leave sync as a 297s shard.
   #
@@ -525,7 +525,7 @@ jobs:
         python3 scripts/ci/go_test_shard.py \
           --shard ${{ matrix.shard }} \
           --total ${{ strategy.job-total }} \
-          -- -race -v
+          -- -race
 
   # Migration smoke test — catches schema/binary issues against a fresh DB
   tests-migrations:

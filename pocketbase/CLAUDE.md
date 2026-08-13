@@ -79,11 +79,13 @@ CI does run `-race` over everything, split across a four-way matrix so no single
 critical path. To reproduce one shard locally:
 
 ```bash
-python3 scripts/ci/go_test_shard.py --shard 0 --total 4 -- -race -v   # from the repo root
+python3 scripts/ci/go_test_shard.py --shard 0 --total 4 -- -race   # from the repo root
 ```
 
 The sharder reads its inventory live from `go test -list` and fails a shard if any test it
-selected produced no result, so a `-run` regex can't silently drop coverage. kindred#2281
+selected produced no result, so a `-run` regex can't silently drop coverage. It runs `go test
+-json` and reads the structured per-test events, so that check does not depend on `-v`; the
+readable transcript is rebuilt from the stream. kindred#2281
 tracks adding `t.Parallel()`, which would make the shards unnecessary.
 
 Pre-push runs: `go build` and `pb-js-lint` (ESLint on `pb_hooks/`/`pb_migrations/` JS).

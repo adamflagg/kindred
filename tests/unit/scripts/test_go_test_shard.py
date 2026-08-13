@@ -1,7 +1,7 @@
 """Tests for the Go test sharder.
 
 `go test -race ./...` is the longest job in CI (~390s of a ~400s critical path),
-and ~90% of that is the race detector's ~10x multiplier over 2717 serial tests.
+and ~90% of that is the race detector's ~10x multiplier over 2729 serial tests.
 Sharding the run across a matrix splits the wall clock, but it introduces the one
 failure mode this repo has been bitten by before (the paths-filter incident of
 March 2026): a partition that silently stops covering some tests still reports
@@ -164,49 +164,6 @@ def test_run_regex_anchoring_still_admits_subtests():
 # --- reading back what actually ran ---------------------------------------
 
 
-def test_parse_reported_tests_reads_top_level_results():
-    output = "\n".join(
-        [
-            "=== RUN   TestAlpha",
-            "--- PASS: TestAlpha (0.10s)",
-            "--- FAIL: TestBeta (1.00s)",
-            "--- SKIP: TestGamma (0.00s)",
-            "ok  \tgithub.com/camp/kindred/pocketbase/sync\t1.234s",
-        ]
-    )
-    assert mod.parse_reported_tests(output) == {"TestAlpha", "TestBeta", "TestGamma"}
-
-
-def test_parse_reported_tests_ignores_indented_subtests():
-    output = "\n".join(
-        [
-            "--- PASS: TestAlpha (0.10s)",
-            "    --- PASS: TestAlpha/sub_case (0.01s)",
-            "        --- PASS: TestAlpha/sub_case/deeper (0.00s)",
-        ]
-    )
-    assert mod.parse_reported_tests(output) == {"TestAlpha"}
-
-
-def test_parse_reported_tests_on_empty_output():
-    assert mod.parse_reported_tests("") == set()
-
-
-def test_verify_reported_accepts_an_exact_match():
-    mod.verify_reported(PKG, {"TestA", "TestB"}, {"TestA", "TestB"})
-
-
-def test_verify_reported_rejects_a_missing_test():
-    """A `-run` regex that quietly matches nothing is the false-green case."""
-    with pytest.raises(mod.ShardError, match="TestB"):
-        mod.verify_reported(PKG, {"TestA", "TestB"}, {"TestA"})
-
-
-def test_verify_reported_tolerates_extra_reported_tests():
-    """Go may report a parent the sharder did not select; that is not a shortfall."""
-    mod.verify_reported(PKG, {"TestA"}, {"TestA", "TestSomethingElse"})
-
-
 # --- inventory parsing ----------------------------------------------------
 
 
@@ -308,39 +265,6 @@ def test_cli_rejects_a_nonpositive_jobs_value():
     assert "jobs" in err.lower()
 
 
-# --- Go's own test-result cache -------------------------------------------
-
-
-def test_is_cached_result_detects_the_cached_marker():
-    assert mod.is_cached_result("ok  \tgithub.com/camp/kindred/pocketbase/sync\t(cached)\n")
-
-
-def test_is_cached_result_is_false_for_a_real_run():
-    assert not mod.is_cached_result("ok  \tgithub.com/camp/kindred/pocketbase/sync\t1.234s\n")
-
-
-def test_is_cached_result_ignores_the_word_elsewhere():
-    assert not mod.is_cached_result("--- PASS: TestCachedTokenIsReused (0.01s)\n")
-
-
-def test_verify_reported_skips_the_check_on_a_cached_result():
-    """A cached `ok` prints no per-test lines, but it is not a coverage hole.
-
-    Go keys its test cache on the test binary *and* the command line, `-run`
-    regex included, so a cache hit is a genuine prior pass of exactly this
-    selection. Treating the missing `--- PASS` lines as a shortfall would turn a
-    warm GOCACHE into a red shard.
-    """
-    output = "ok  \tgithub.com/camp/kindred/pocketbase/sync\t(cached)\n"
-    mod.verify_reported(PKG, {"TestA", "TestB"}, mod.parse_reported_tests(output), output=output)
-
-
-def test_verify_reported_still_fails_a_shortfall_on_an_uncached_run():
-    output = "--- PASS: TestA (0.10s)\nok  \tpkg\t0.400s\n"
-    with pytest.raises(mod.ShardError, match="TestB"):
-        mod.verify_reported(PKG, {"TestA", "TestB"}, mod.parse_reported_tests(output), output=output)
-
-
 # --- the workflow wiring --------------------------------------------------
 #
 # The sharder only runs when the `go` paths-filter fires. Left out of that
@@ -398,3 +322,129 @@ def test_inventory_command_keeps_list_and_json():
     argv = mod.inventory_argv(["-race"])
     assert "-list" in argv
     assert "-json" in argv
+
+
+# --- reading back what actually ran, from -json events ---------------------
+#
+# This used to parse `--- PASS:` lines out of the human transcript, which Go only
+# emits under `-v`. That made the coverage guard silently dependent on a flag
+# nobody was enforcing: drop `-v` and every *passing* package reported as a
+# coverage hole -- a 100% false failure wearing the costume of the exact bug this
+# script exists to catch. `go test -json` emits a structured pass/fail/skip event
+# per test regardless of `-v`, and on a cache hit too, so the dependency is gone
+# and the cached-result special case with it.
+
+
+def ev(action: str, test: str | None = None, output: str | None = None) -> dict[str, str]:
+    e: dict[str, str] = {"Action": action, "Package": PKG}
+    if test is not None:
+        e["Test"] = test
+    if output is not None:
+        e["Output"] = output
+    return e
+
+
+def stream(*evs: dict[str, str]) -> str:
+    return "\n".join(json.dumps(e) for e in evs)
+
+
+def test_parse_reported_tests_reads_pass_fail_skip_events():
+    out = stream(ev("pass", "TestAlpha"), ev("fail", "TestBeta"), ev("skip", "TestGamma"))
+    assert mod.parse_reported_tests(out) == {"TestAlpha", "TestBeta", "TestGamma"}
+
+
+def test_parse_reported_tests_works_without_v():
+    """The whole point: no `-v`, still a result per test."""
+    out = stream(ev("run", "TestAlpha"), ev("pass", "TestAlpha"))
+    assert mod.parse_reported_tests(out) == {"TestAlpha"}
+
+
+def test_parse_reported_tests_ignores_subtest_events():
+    out = stream(ev("pass", "TestAlpha"), ev("pass", "TestAlpha/sub_case"))
+    assert mod.parse_reported_tests(out) == {"TestAlpha"}
+
+
+def test_parse_reported_tests_ignores_package_level_events():
+    """A package-level pass carries no Test field and is not a test result."""
+    out = stream(ev("pass"), ev("pass", "TestAlpha"))
+    assert mod.parse_reported_tests(out) == {"TestAlpha"}
+
+
+def test_parse_reported_tests_ignores_non_result_actions():
+    out = stream(ev("run", "TestAlpha"), ev("output", "TestAlpha", "=== RUN\n"))
+    assert mod.parse_reported_tests(out) == set()
+
+
+def test_parse_reported_tests_counts_a_cache_hit_normally():
+    """A cache hit replays the same events, so it needs no special case."""
+    out = stream(ev("output", output="ok  \tpkg\t(cached)\n"), ev("pass", "TestAlpha"))
+    assert mod.parse_reported_tests(out) == {"TestAlpha"}
+
+
+def test_parse_reported_tests_tolerates_non_json_lines():
+    """Build errors and toolchain notices are interleaved as bare text."""
+    out = "go: downloading something\n" + stream(ev("pass", "TestAlpha")) + "\nnot json\n"
+    assert mod.parse_reported_tests(out) == {"TestAlpha"}
+
+
+def test_parse_reported_tests_on_empty_output():
+    assert mod.parse_reported_tests("") == set()
+
+
+def test_render_output_reconstructs_the_transcript_in_order():
+    """The JSON stream is unreadable in a CI log; the Output fields are the log."""
+    out = stream(
+        ev("output", "TestAlpha", "=== RUN   TestAlpha\n"),
+        ev("output", "TestAlpha", "--- PASS: TestAlpha (0.10s)\n"),
+        ev("output", output="ok  \tpkg\t0.4s\n"),
+    )
+    assert mod.render_output(out) == "=== RUN   TestAlpha\n--- PASS: TestAlpha (0.10s)\nok  \tpkg\t0.4s\n"
+
+
+def test_render_output_passes_through_non_json_lines():
+    out = "# github.com/camp/kindred/pocketbase/sync\nsync/x.go:1:1: syntax error\n"
+    assert "syntax error" in mod.render_output(out)
+
+
+# --- verify_reported, now flag-independent ---------------------------------
+
+
+def test_verify_reported_accepts_an_exact_match():
+    mod.verify_reported(PKG, {"TestA", "TestB"}, {"TestA", "TestB"})
+
+
+def test_verify_reported_rejects_a_missing_test():
+    with pytest.raises(mod.ShardError, match="TestB"):
+        mod.verify_reported(PKG, {"TestA", "TestB"}, {"TestA"})
+
+
+def test_verify_reported_tolerates_extra_reported_tests():
+    mod.verify_reported(PKG, {"TestA"}, {"TestA", "TestSomethingElse"})
+
+
+# --- the run command -------------------------------------------------------
+
+
+def test_build_commands_requests_json_output():
+    """`-json` is what makes the coverage check independent of `-v`."""
+    assert "-json" in mod.build_commands([(PKG, "TestA")], ["-race"])[0].argv
+
+
+def test_build_commands_does_not_duplicate_json_if_caller_passed_it():
+    argv = mod.build_commands([(PKG, "TestA")], ["-race", "-json"])[0].argv
+    assert argv.count("-json") == 1
+
+
+# --- an empty shard is not a crash -----------------------------------------
+
+
+def test_resolve_workers_never_returns_zero():
+    """`--total` above the test count leaves trailing shards empty; a bucket of
+    zero packages made ThreadPoolExecutor raise ValueError."""
+    assert mod.resolve_workers(0, None) >= 1
+    assert mod.resolve_workers(3, None) >= 1
+    assert mod.resolve_workers(3, 2) == 2
+
+
+def test_run_shard_on_an_empty_selection_succeeds_without_running_go(tmp_path: Path) -> None:
+    assert mod.run_shard(tmp_path, [], ["-race"]) == 0

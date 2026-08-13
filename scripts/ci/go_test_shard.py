@@ -5,8 +5,8 @@
 ~400s critical path, against ~156s for the next-slowest job. Almost none of that
 is test volume. Measured on this tree, the same suite runs in 43s without
 `-race` and ~300s with it: the race detector costs about 10x, and it pays that
-tax serially, because the Go tree has exactly one `t.Parallel()` in it, so no two
-tests in a package ever overlap. Two packages carry it all -- `sync` at 297s and
+tax serially: the Go tree has exactly one `t.Parallel()` in it, and it sits inside
+a subtest (`sync/orchestrator_test.go`), so no two top-level tests ever overlap. Two packages carry it all -- `sync` at 297s and
 `lodging` at 143s, with the other nine adding up to ~15s.
 
 This script splits that serial run across a CI matrix. It deliberately does NOT
@@ -42,8 +42,10 @@ import os
 import re
 import subprocess
 import sys
+from collections.abc import Iterator
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_GO_DIR = REPO_ROOT / "pocketbase"
@@ -54,11 +56,8 @@ DEFAULT_GO_DIR = REPO_ROOT / "pocketbase"
 # and examples with output comments *do* run and must stay in.
 RUNNABLE_PREFIXES = ("Test", "Fuzz", "Example")
 
-# Top-level results start at column 0; subtests are indented by Go.
-RESULT_LINE = re.compile(r"^--- (?:PASS|FAIL|SKIP): (\S+)")
-
-# A cache hit replaces the whole per-test transcript with a single summary line.
-CACHED_LINE = re.compile(r"^ok\s+\S+\s+\(cached\)\s*$", re.MULTILINE)
+# `go test -json` reports one of these per test when it finishes.
+RESULT_ACTIONS = frozenset({"pass", "fail", "skip"})
 
 
 class ShardError(Exception):
@@ -141,36 +140,68 @@ def build_run_regex(names: list[str]) -> str:
     return "^(" + "|".join(re.escape(n) for n in names) + ")$"
 
 
+def iter_events(output: str) -> Iterator[dict[str, Any]]:
+    """Yield the JSON events in a `go test -json` stream, skipping bare text.
+
+    Build errors, toolchain notices and `go: downloading ...` lines are emitted
+    as plain text alongside the stream, so a strict parse would throw on them.
+    """
+    for line in output.splitlines():
+        try:
+            event = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if isinstance(event, dict):
+            yield event
+
+
 def parse_reported_tests(output: str) -> set[str]:
-    """Collect the top-level test names that produced a result line."""
-    return {m.group(1) for line in output.splitlines() if (m := RESULT_LINE.match(line))}
+    """Collect the top-level tests that produced a result.
+
+    Reads `-json` events rather than `--- PASS:` lines because Go only prints
+    those under `-v`. Parsing the transcript made this check silently depend on a
+    flag nothing enforced: without `-v`, every *passing* test looked like it never
+    ran, and the guard failed the shard 100% of the time -- a false alarm shaped
+    exactly like the coverage hole it exists to catch. `-json` emits a result per
+    test either way, and on a cache hit too, so there is no special case for that
+    either.
+
+    Subtests are excluded: Go names them `Parent/child`, and the sharder selects
+    and verifies at top level.
+    """
+    return {
+        name
+        for event in iter_events(output)
+        if event.get("Action") in RESULT_ACTIONS and (name := event.get("Test")) and "/" not in name
+    }
 
 
-def is_cached_result(output: str) -> bool:
-    """True when Go served this package from its test-result cache."""
-    return CACHED_LINE.search(output) is not None
+def render_output(output: str) -> str:
+    """Rebuild the human-readable transcript from a `-json` stream.
+
+    The raw stream is unreadable in a CI log, and the `Output` fields concatenated
+    in order are byte-for-byte what `go test -v` would have printed. Non-JSON
+    lines (build errors) pass through, since those are the ones worth reading.
+    """
+    parts = []
+    for line in output.splitlines(keepends=True):
+        try:
+            event = json.loads(line)
+        except json.JSONDecodeError:
+            parts.append(line)
+            continue
+        if isinstance(event, dict) and event.get("Action") == "output":
+            parts.append(event.get("Output", ""))
+    return "".join(parts)
 
 
-def verify_reported(
-    package: str,
-    selected: set[str],
-    reported: set[str],
-    output: str = "",
-) -> None:
+def verify_reported(package: str, selected: set[str], reported: set[str]) -> None:
     """Fail if a selected test produced no result.
 
     Extra reported names are fine -- Go can surface a parent this shard did not
     explicitly select. A *missing* one means the `-run` regex silently dropped
     coverage, which would otherwise pass as green.
-
-    A cache hit is exempt, because it prints one `ok ... (cached)` line and no
-    per-test transcript at all. That is not a coverage hole: Go keys the test
-    cache on the test binary *and* the command line, `-run` regex included, so a
-    hit is a real prior pass of exactly this selection. Without the exemption a
-    warm GOCACHE would turn every unchanged package red.
     """
-    if is_cached_result(output):
-        return
     missing = sorted(selected - reported)
     if missing:
         raise ShardError(
@@ -206,14 +237,28 @@ def build_commands(selected: list[tuple[str, str]], go_args: list[str]) -> list[
     """
     grouped = group_by_package(selected)
     ordered = sorted(grouped.items(), key=lambda kv: (-len(kv[1]), kv[0]))
+    # `-json` is what makes the coverage check independent of `-v`; see
+    # parse_reported_tests. It also carries the human transcript in its Output
+    # fields, so nothing is lost from the CI log.
+    flags = [*go_args] if "-json" in go_args else [*go_args, "-json"]
     return [
         PackageRun(
             package=package,
             names=tuple(sorted(names)),
-            argv=["go", "test", *go_args, "-run", build_run_regex(sorted(names)), package],
+            argv=["go", "test", *flags, "-run", build_run_regex(sorted(names)), package],
         )
         for package, names in ordered
     ]
+
+
+def resolve_workers(command_count: int, jobs: int | None) -> int:
+    """Concurrency for the package pool, never zero.
+
+    `min(0, cpu_count)` made ThreadPoolExecutor raise ValueError on an empty
+    shard. run_shard returns early in that case now, but the floor stays here so
+    the arithmetic cannot produce an invalid pool size again.
+    """
+    return max(1, jobs or min(command_count, os.cpu_count() or 1))
 
 
 def run_shard(
@@ -232,7 +277,13 @@ def run_shard(
     so concurrency does not interleave the logs.
     """
     commands = build_commands(selected, go_args)
-    workers = jobs or min(len(commands), os.cpu_count() or 1)
+    if not commands:
+        # `--total` above the test count leaves trailing shards empty. The other
+        # shards still cover the whole inventory, so this is success, not a hole.
+        print("no tests selected for this shard -- nothing to run", file=sys.stderr)
+        return 0
+
+    workers = resolve_workers(len(commands), jobs)
     failed = False
 
     with concurrent.futures.ThreadPoolExecutor(max_workers=workers) as pool:
@@ -243,19 +294,14 @@ def run_shard(
             run = futures[future]
             proc = future.result()
             print(f"::group::{run.package} ({len(run.names)} tests)", flush=True)
-            sys.stdout.write(proc.stdout)
+            sys.stdout.write(render_output(proc.stdout))
             sys.stderr.write(proc.stderr)
             print("::endgroup::", flush=True)
 
             if proc.returncode != 0:
                 failed = True
             try:
-                verify_reported(
-                    run.package,
-                    set(run.names),
-                    parse_reported_tests(proc.stdout),
-                    output=proc.stdout,
-                )
+                verify_reported(run.package, set(run.names), parse_reported_tests(proc.stdout))
             except ShardError as exc:
                 print(f"::error::{exc}", file=sys.stderr)
                 failed = True
