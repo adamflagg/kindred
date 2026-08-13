@@ -240,12 +240,22 @@ func (s *BunkAssignmentsSync) Sync(ctx context.Context) error {
 	// Protect bunk_assignments for non-active staff from orphan deletion, then
 	// sweep orphans -- in that order, and only if protection succeeded. See
 	// protectThenSweepOrphans.
-	s.protectThenSweepOrphans(year)
+	sweepErr := s.protectThenSweepOrphans(year)
 
-	// Force WAL checkpoint to ensure data is flushed
+	// Force WAL checkpoint to ensure data is flushed.
+	//
+	// This precedes the sweepErr return deliberately: the fetch loop above has
+	// already written this run's assignments, and those writes are still in the
+	// WAL on the failure path too. Checkpointing after the return would strand
+	// them. staff_applications.go and staff_vehicle_info.go order it the same
+	// way, for the same reason.
 	if err := s.ForceWALCheckpoint(); err != nil {
 		slog.Warn("WAL checkpoint failed", "error", err)
 		// Don't fail the sync if checkpoint fails
+	}
+
+	if sweepErr != nil {
+		return sweepErr
 	}
 
 	// Use extra stats to show fetched count
@@ -498,23 +508,39 @@ func (s *BunkAssignmentsSync) processAssignment(
 // before running the orphan sweep, and only runs the sweep if protection
 // succeeded.
 //
-// The ordering is load-bearing, not cosmetic: deleteOrphans removes every
-// bunk_assignment this run did not mark as processed. If protection fails
-// partway through, the tracking it was building is incomplete -- so running
-// the sweep anyway would delete precisely the assignments protection exists
-// to save, and only afterward would the run report a failure. That reports
-// the damage instead of preventing it. Aborting here means a protection
-// failure costs a sync cycle, not the data. See kindred#2287.
-func (s *BunkAssignmentsSync) protectThenSweepOrphans(year int) {
+// The ordering is load-bearing, not cosmetic: deleteOrphans removes the
+// bunk_assignments this run did not mark as processed, unless OrphanSweepGuard
+// refuses the sweep outright for having too small a computed set to believe
+// (kindred#2279). If protection fails partway through, the tracking it was
+// building is incomplete -- so running the sweep anyway would delete precisely
+// the assignments protection exists to save, and only afterward would the run
+// report a failure. That reports the damage instead of preventing it. Aborting
+// here means a protection failure costs a sync cycle, not the data. See
+// kindred#2287.
+//
+// Both failure branches below are counted and returned, not logged and
+// dropped. They are the same event from an operator's point of view -- an
+// upstream step came back untrustworthy and rows were therefore not swept --
+// and a returned error is what makes Sync() report the run as failed. Counting
+// alone does not: the orchestrator derives a run's status from the returned
+// error, so a protection failure that only incremented Stats.Errors reported
+// success until kindred#2293 lands, and would silently depend on that PR's
+// merge order afterwards. staff_applications.go and staff_vehicle_info.go
+// return their sweep refusals the same way.
+func (s *BunkAssignmentsSync) protectThenSweepOrphans(year int) error {
 	if _, err := s.protectNonActiveStaffAssignments(year); err != nil {
 		slog.Error("Error protecting non-active staff bunk assignments", "error", err)
 		s.Stats.Errors++
-		return
+		return fmt.Errorf("protecting non-active staff bunk assignments: %w", err)
 	}
 
 	if err := s.deleteOrphans(); err != nil {
 		slog.Error("Error deleting orphans", "error", err)
+		s.Stats.Errors++
+		return fmt.Errorf("orphan sweep refused: %w", err)
 	}
+
+	return nil
 }
 
 // protectNonActiveStaffAssignments marks existing bunk_assignments for non-active
@@ -563,8 +589,18 @@ func (s *BunkAssignmentsSync) protectNonActiveStaffAssignments(year int) (int, e
 			if sessionPBID == "" {
 				continue
 			}
+			// A query failure and a genuinely absent session are not the same
+			// event and must not share a branch. Collapsing them is how this
+			// function silently dropped an assignment it was meant to protect:
+			// the key was never tracked, protection still reported success, and
+			// the sweep below then deleted the row. A missing session stays a
+			// non-destructive skip -- deleteOrphans cannot derive a composite
+			// key for such a record either, so it is not at risk.
 			sessions, err := s.App.FindRecordsByFilter("camp_sessions", fmt.Sprintf("id = '%s'", sessionPBID), "", 1, 0)
-			if err != nil || len(sessions) == 0 {
+			if err != nil {
+				return fmt.Errorf("resolving session %q for person %d: %w", sessionPBID, personCMID, err)
+			}
+			if len(sessions) == 0 {
 				continue
 			}
 			sessionCMID, ok := sessions[0].Get("cm_id").(float64)
