@@ -300,10 +300,10 @@ type Stats struct {
 	// sweep guard in kindred#2295. It is declared here so the escalation, the status JSON
 	// and the badge all land together rather than in three separate PRs.
 	//
-	// "Surfaced" is the whole of it today — stats are NOT persisted. lastCompletedStatus is
-	// an in-memory map wiped on restart, and there is no sync_runs table yet. That is why
-	// warn-only: any threshold picked now would be a guess, and the distribution needed to
-	// set one honestly cannot be collected until run history is stored (kindred#2284).
+	// Every completed run is now persisted to sync_runs, including this counter, which is
+	// what makes warn-only a plan rather than a shrug: a threshold picked today would be a
+	// guess, and the season exists to accumulate the distribution to set one from. Until the
+	// #2295 sites land the column records honest zeroes (kindred#2284).
 	Rejected int `json:"rejected,omitempty"`
 	// Expanded tracks many-to-many expansions (e.g., bunk plans)
 	Expanded int `json:"expanded,omitempty"`
@@ -476,6 +476,9 @@ func (o *Orchestrator) runOriginLocked() (trigger, batchID string) {
 //
 // All five places that produce a completed status — the three completion paths and the two
 // panic recoveries — route through here, for the same reason applyCompletionStatus exists.
+// Note the membership differs from that function's on purpose: applyCompletionStatus WEIGHS a
+// run and the panic blocks skip it, having nothing to weigh. A panicked run is still a run
+// that happened, so it is still recorded.
 // Before kindred#2284 the completion decision was copied into three functions, and a fix
 // applied to one left the other two reporting green; a persistence call copied into three
 // functions would fail the same way, silently omitting whichever path nobody remembered.
