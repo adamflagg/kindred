@@ -10,6 +10,7 @@ import (
 
 // TestCSVValidation tests CSV parsing and validation logic
 func TestCSVValidation_ValidCSV(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name           string
 		csvContent     string
@@ -154,6 +155,7 @@ func validateCSVStructure(content string) CSVValidationResult {
 
 // TestStripUTF8BOM tests UTF-8 BOM stripping
 func TestStripUTF8BOM(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name     string
 		input    []byte
@@ -211,6 +213,7 @@ func stripUTF8BOM(data []byte) ([]byte, bool) {
 
 // TestSessionParameterValidation tests session parameter parsing
 func TestSessionParameterValidation(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name        string
 		param       string
@@ -268,6 +271,7 @@ func parseSessionParameter(param string) (int, bool) {
 
 // TestYearParameterValidation tests year parameter parsing for historical sync
 func TestYearParameterValidation(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name      string
 		yearStr   string
@@ -324,6 +328,7 @@ func parseYearParameter(yearStr string, maxYear int) (int, bool) {
 
 // TestSyncTypeValidation tests sync type validation
 func TestSyncTypeValidation(t *testing.T) {
+	t.Parallel()
 	validSyncTypes := map[string]bool{
 		"session_groups":   true,
 		"sessions":         true,
@@ -374,6 +379,7 @@ func TestSyncTypeValidation(t *testing.T) {
 
 // TestStatusResponseFormat tests that status responses have expected format
 func TestStatusResponseFormat(t *testing.T) {
+	t.Parallel()
 	syncTypes := []string{
 		"session_groups",
 		"sessions",
@@ -423,6 +429,7 @@ func TestStatusResponseFormat(t *testing.T) {
 // Note: Actual session validation happens in Python via SessionRepository.resolve_session_cm_ids()
 // which accepts "all" or a numeric cm_id string. Go just passes the string through.
 func TestSessionParameterPassthrough(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name        string
 		param       string
@@ -460,6 +467,7 @@ func TestSessionParameterPassthrough(t *testing.T) {
 
 // TestSourceFieldParameterValidation tests source_field query parameter parsing
 func TestSourceFieldParameterValidation(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name       string
 		param      string
@@ -529,6 +537,7 @@ func TestSourceFieldParameterValidation(t *testing.T) {
 
 // TestCustomValuesSyncServices tests that custom values sync services are defined
 func TestCustomValuesSyncServices(t *testing.T) {
+	t.Parallel()
 	// Verify GetCustomValuesSyncJobs returns the expected services
 	expected := []string{"person_custom_values", "household_custom_values"}
 	jobs := GetCustomValuesSyncJobs()
@@ -550,6 +559,7 @@ func TestCustomValuesSyncServices(t *testing.T) {
 
 // TestCustomValuesSyncEndpointResponse tests expected response format
 func TestCustomValuesSyncEndpointResponse(t *testing.T) {
+	t.Parallel()
 	// Test the expected response structure from the custom-values endpoint
 	// The endpoint should return:
 	// - message: string describing action taken
@@ -581,6 +591,7 @@ func TestCustomValuesSyncEndpointResponse(t *testing.T) {
 
 // TestGetConfiguredYear tests the getConfiguredYear function
 func TestGetConfiguredYear(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name        string
 		envValue    string
@@ -640,6 +651,7 @@ func parseConfiguredYear(envValue string) int {
 
 // TestYearPrefixedCSVPath tests the year-prefixed CSV path generation
 func TestYearPrefixedCSVPath(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name     string
 		year     int
@@ -679,6 +691,7 @@ func getYearPrefixedCSVFilename(year int) string {
 
 // TestYearPrefixedBackupFilename tests backup filename generation with year
 func TestYearPrefixedBackupFilename(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name      string
 		year      int
@@ -717,6 +730,7 @@ func getYearPrefixedBackupFilename(year int, timestamp string) string {
 
 // TestRunProcessRequestsParameterParsing tests the run_process_requests query parameter
 func TestRunProcessRequestsParameterParsing(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name      string
 		param     string
@@ -755,6 +769,7 @@ func parseRunProcessRequestsParam(param string) bool {
 // and run_process_requests=true are provided, the upload response should indicate
 // both sync jobs will be triggered
 func TestBunkRequestsUploadWithProcessRequests(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name                  string
 		runSync               bool
@@ -810,6 +825,7 @@ func TestBunkRequestsUploadWithProcessRequests(t *testing.T) {
 
 // TestUploadYearParameterParsing tests year query parameter parsing for uploads
 func TestUploadYearParameterParsing(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name           string
 		yearParam      string
@@ -893,6 +909,7 @@ func parseUploadYearParam(yearParam string, defaultYear int) (int, bool) {
 
 // TestSyncStatusIncludesConfiguredYear tests that sync status response includes configured year
 func TestSyncStatusIncludesConfiguredYear(t *testing.T) {
+	t.Parallel()
 	// This test validates the expected response format
 	// The actual handleSyncStatus function should include _configured_year
 
@@ -933,6 +950,7 @@ func TestSyncStatusIncludesConfiguredYear(t *testing.T) {
 
 // TestSyncStatusIncludesQueue tests that sync status response includes queue info
 func TestSyncStatusIncludesQueue(t *testing.T) {
+	t.Parallel()
 	// Expected queue-related keys in status response
 	expectedKeys := []string{
 		"_queue",        // Array of queued syncs
@@ -966,6 +984,7 @@ func TestSyncStatusIncludesQueue(t *testing.T) {
 
 // TestUnifiedSyncQueueResponse tests the expected 202 response structure
 func TestUnifiedSyncQueueResponse(t *testing.T) {
+	t.Parallel()
 	// When a sync is already running and a new request comes in,
 	// the API should return 202 Accepted with queue info
 
@@ -1000,6 +1019,7 @@ func TestUnifiedSyncQueueResponse(t *testing.T) {
 
 // TestCancelQueuedSyncEndpoint tests the expected behavior of the cancel endpoint
 func TestCancelQueuedSyncEndpoint(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name           string
 		queueID        string
@@ -1044,6 +1064,7 @@ func TestCancelQueuedSyncEndpoint(t *testing.T) {
 
 // TestUnifiedSyncEnqueueBehavior tests the expected queuing behavior
 func TestUnifiedSyncEnqueueBehavior(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name             string
 		syncRunning      bool
@@ -1106,6 +1127,7 @@ func TestUnifiedSyncEnqueueBehavior(t *testing.T) {
 
 // TestDuplicateQueueRequest tests that duplicate requests return existing queue position
 func TestDuplicateQueueRequest(t *testing.T) {
+	t.Parallel()
 	o := NewOrchestrator(nil)
 
 	// Enqueue a sync (without custom values)
@@ -1159,6 +1181,7 @@ func TestDuplicateQueueRequest(t *testing.T) {
 
 // TestGetPhasesEndpointResponse tests the expected response from GET /api/custom/sync/phases
 func TestGetPhasesEndpointResponse(t *testing.T) {
+	t.Parallel()
 	// Expected response structure: {id, name, description, jobs[]}
 	// (PhaseInfo type defined in api.go handleGetPhases)
 
@@ -1187,6 +1210,7 @@ func TestGetPhasesEndpointResponse(t *testing.T) {
 
 // TestPhaseParameterValidation tests phase query parameter parsing
 func TestPhaseParameterValidation(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name      string
 		param     string
@@ -1239,6 +1263,7 @@ func parsePhaseParameter(param string) (Phase, bool) {
 
 // TestRunPhaseEndpointValidation tests run-phase endpoint parameter validation
 func TestRunPhaseEndpointValidation(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name           string
 		yearParam      string
@@ -1323,6 +1348,7 @@ func TestRunPhaseEndpointValidation(t *testing.T) {
 
 // TestRunPhaseResponseStructure tests the expected response from POST /api/custom/sync/run-phase
 func TestRunPhaseResponseStructure(t *testing.T) {
+	t.Parallel()
 	// Expected response when phase starts successfully
 	type RunPhaseResponse struct {
 		Message string   `json:"message"`
@@ -1356,6 +1382,7 @@ func TestRunPhaseResponseStructure(t *testing.T) {
 
 // TestRunPhaseBlockedWhenSyncRunning tests that phase sync is blocked when other sync running
 func TestRunPhaseBlockedWhenSyncRunning(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name              string
 		dailyRunning      bool
@@ -1412,6 +1439,7 @@ func TestRunPhaseBlockedWhenSyncRunning(t *testing.T) {
 
 // TestPhaseJobsInOrder tests that jobs returned by GetJobsForPhase maintain dependency order
 func TestPhaseJobsInOrder(t *testing.T) {
+	t.Parallel()
 	// Source phase jobs should be in dependency order
 	sourceJobs := GetJobsForPhase(PhaseSource)
 
@@ -1456,6 +1484,7 @@ func TestPhaseJobsInOrder(t *testing.T) {
 // when an individual job is running (not just daily/weekly/historical syncs).
 // This was a bug: handleRunPhase was missing IsAnyJobRunning() check.
 func TestRunPhaseQueuedWhenIndividualJobRunning(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name               string
 		dailyRunning       bool
@@ -1527,6 +1556,7 @@ func TestRunPhaseQueuedWhenIndividualJobRunning(t *testing.T) {
 // AFTER sync completes, not immediately after goroutine starts.
 // This was a race condition: debug was reset to false before sync ran.
 func TestDebugResetTimingSimulation(t *testing.T) {
+	t.Parallel()
 	// Simulate the incorrect behavior vs correct behavior
 
 	// Incorrect behavior (before fix):
@@ -1577,6 +1607,7 @@ func TestDebugResetTimingSimulation(t *testing.T) {
 
 // TestDebugFlagInGoroutineDefer tests the pattern of resetting debug in goroutine defer
 func TestDebugFlagInGoroutineDefer(t *testing.T) {
+	t.Parallel()
 	// This test documents the expected code pattern for the fix
 	// The debug reset should be inside the goroutine's defer, not after go func(){}()
 
@@ -1614,6 +1645,7 @@ func TestDebugFlagInGoroutineDefer(t *testing.T) {
 // This was a bug: handleRunPhase parsed the year parameter but never set it
 // on the orchestrator, causing transform jobs to use environment fallback (wrong year).
 func TestRunPhaseYearMustBeSetOnOrchestrator(t *testing.T) {
+	t.Parallel()
 	o := NewOrchestrator(nil)
 
 	// Verify initial state: currentSyncYear should be 0
@@ -1671,6 +1703,7 @@ func TestRunPhaseYearMustBeSetOnOrchestrator(t *testing.T) {
 // TestRunPhaseYearPropagationToJobs tests that when handleRunPhase sets
 // currentSyncYear, the RunSingleSync will use that year for job status.
 func TestRunPhaseYearPropagationToJobs(t *testing.T) {
+	t.Parallel()
 	o := NewOrchestrator(nil)
 
 	// Set the sync year (simulating handleRunPhase fix)
@@ -1702,6 +1735,7 @@ func TestRunPhaseYearPropagationToJobs(t *testing.T) {
 // TestRunPhaseYearNotSetBugExplanation documents the bug:
 // handleRunPhase parses year but never sets it on orchestrator.
 func TestRunPhaseYearNotSetBugExplanation(t *testing.T) {
+	t.Parallel()
 	// BEFORE FIX (BUG):
 	// Line ~2074: year, err := strconv.Atoi(yearParam)  // Parses year correctly
 	// Line ~2192: orchestrator.runSyncAndWait(ctx, jobID)  // Runs job
@@ -1729,6 +1763,7 @@ func TestRunPhaseYearNotSetBugExplanation(t *testing.T) {
 // BUG: currentSyncYear only affects status.Year, NOT what year the services query.
 // Services read their own .Year field which defaults to env var CAMPMINDER_SEASON_ID.
 func TestRunPhaseYearMustPropagateToServices(t *testing.T) {
+	t.Parallel()
 	// This test demonstrates that YearSetter interface is needed.
 	// Services have .Year field that controls which year's data they query.
 	// Setting orchestrator.currentSyncYear does NOT set service.Year.
@@ -1760,6 +1795,7 @@ func TestRunPhaseYearMustPropagateToServices(t *testing.T) {
 // safeguard. This test catches one related regression: forgetting to register the job in
 // syncJobMeta before adding it to the status list or routes.
 func TestSyncStatusListIncludesStrandedAssignmentCleanup(t *testing.T) {
+	t.Parallel()
 	// Required jobs that must be registered in syncJobMeta. handleSyncStatus's
 	// local syncTypes slice can't be inspected here; placement in the diff is
 	// the human-readable guard for that path.
@@ -1792,6 +1828,7 @@ func TestSyncStatusListIncludesStrandedAssignmentCleanup(t *testing.T) {
 // matching the behavior of the other two endpoints that already handle this case.
 // Regression test for #806.
 func TestNormalizeSession(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name  string
 		input string

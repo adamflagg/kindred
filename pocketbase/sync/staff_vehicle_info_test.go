@@ -19,6 +19,7 @@ import (
 // into the map and then silently fail to route. No untrimmed name exists in
 // this table today; this pins the fix against a future one.
 func TestStaffVehicleInfoLoadFieldDefinitionsTrimsNames(t *testing.T) {
+	t.Parallel()
 	app := newFieldDefsTestApp(t, map[int]string{
 		1: "SVI-are you driving to camp ", // trailing space
 		2: "SVI-which friend",             // already clean, must be unaffected
@@ -51,6 +52,7 @@ func TestStaffVehicleInfoLoadFieldDefinitionsTrimsNames(t *testing.T) {
 
 // TestStaffVehicleInfoServiceName verifies the service name constant
 func TestStaffVehicleInfoServiceName(t *testing.T) {
+	t.Parallel()
 	expected := "staff_vehicle_info"
 	if serviceNameStaffVehicleInfo != expected {
 		t.Errorf("serviceNameStaffVehicleInfo = %q, want %q", serviceNameStaffVehicleInfo, expected)
@@ -61,6 +63,7 @@ func TestStaffVehicleInfoServiceName(t *testing.T) {
 // for the 10 SVI- fields used in staff vehicle info, plus the two literals that
 // must NOT route: the American plate spelling and an unknown field.
 func TestMapSVIFieldToColumn(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		cmField  string
 		expected string
@@ -114,6 +117,7 @@ func TestMapSVIFieldToColumn(t *testing.T) {
 // emitting 1/0 must not silently read as all-false. Narrowing this set is a
 // behavior change, not a cleanup.
 func TestParseSVIBoolImpl(t *testing.T) {
+	t.Parallel()
 	cases := map[string]bool{
 		// The only two values the live field actually contains.
 		"Yes": true,
@@ -145,6 +149,7 @@ func TestParseSVIBoolImpl(t *testing.T) {
 // TestStaffVehicleInfoCompositeKey tests the unique key generation
 // Key format: personID|year
 func TestStaffVehicleInfoCompositeKey(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		personID int
 		year     int
@@ -173,6 +178,7 @@ func TestStaffVehicleInfoCompositeKey(t *testing.T) {
 // Prefix rules do not rescue it: 34% of real answers begin with neither "yes"
 // nor "no", so the sentence itself is the only honest storage.
 func TestMapSVIFieldToRecordKeepsBringOthersVerbatim(t *testing.T) {
+	t.Parallel()
 	cases := []struct {
 		name  string
 		value string
@@ -199,6 +205,7 @@ func TestMapSVIFieldToRecordKeepsBringOthersVerbatim(t *testing.T) {
 // (1,780 answers, exactly 2 distinct values, 793 rows true). Nothing in
 // kindred#2262 may change it.
 func TestMapSVIFieldToRecordLeavesDrivingToCampABool(t *testing.T) {
+	t.Parallel()
 	for value, want := range map[string]bool{"Yes": true, "No": false, "yes": true} {
 		rec := &staffVehicleInfoRecord{}
 		mapSVIFieldToRecord(rec, "SVI-are you driving to camp", value)
@@ -357,6 +364,7 @@ func seedSVI(t *testing.T, app core.App, cmID, year int, hasStaff bool, values m
 // required relation, so the row cannot be written -- but a partial extraction
 // and a complete one currently produce identical output.
 func TestLoadPersonCustomValuesCountsStaffGateDrops(t *testing.T) {
+	t.Parallel()
 	app := newStaffVehicleTestApp(t)
 	seedSVI(t, app, 1001, 2026, true, map[string]string{
 		"SVI-are you driving to camp": "Yes",
@@ -397,6 +405,7 @@ func TestLoadPersonCustomValuesCountsStaffGateDrops(t *testing.T) {
 // site. A field admitted by the SVI- prefix but routed to no column is
 // discarded with no counter and no log line.
 func TestLoadPersonCustomValuesCountsUnmappedFields(t *testing.T) {
+	t.Parallel()
 	app := newStaffVehicleTestApp(t)
 	seedSVI(t, app, 1001, 2026, true, map[string]string{
 		"SVI-are you driving to camp": "Yes",
@@ -428,6 +437,7 @@ func TestLoadPersonCustomValuesCountsUnmappedFields(t *testing.T) {
 // always a broken input, never a legitimate "everything was removed" -- and
 // the current code deletes the year and reports success.
 func TestDeleteOrphansRefusesEmptyComputedSet(t *testing.T) {
+	t.Parallel()
 	app := newStaffVehicleTestApp(t)
 	col, err := app.FindCollectionByNameOrId("staff_vehicle_info")
 	if err != nil {
@@ -478,6 +488,7 @@ func TestDeleteOrphansRefusesEmptyComputedSet(t *testing.T) {
 // TestDeleteOrphansStillSweepsGenuineOrphans proves the guard did not disable
 // orphan deletion for the normal case.
 func TestDeleteOrphansStillSweepsGenuineOrphans(t *testing.T) {
+	t.Parallel()
 	app := newStaffVehicleTestApp(t)
 	col, err := app.FindCollectionByNameOrId("staff_vehicle_info")
 	if err != nil {
@@ -518,6 +529,7 @@ func TestDeleteOrphansStillSweepsGenuineOrphans(t *testing.T) {
 // fails by design: "SVI- who are you driving to camp" and
 // "SVI-Unit Head Training" are deliberately unrouted and carry no rows.
 func TestSVIRoutingReportAgainstRealFieldNames(t *testing.T) {
+	t.Parallel()
 	raw, err := os.ReadFile(filepath.Join("testdata", "svi_field_names.txt"))
 	if err != nil {
 		t.Fatalf("read testdata: %v", err)

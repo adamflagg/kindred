@@ -22,6 +22,7 @@ const (
 // sharing-sentence guard, because that is the only thing separating a gate
 // answer from a mode option that happens to start with "No".
 func TestNormalizeShareGate(t *testing.T) {
+	t.Parallel()
 	cases := map[string]string{
 		"No, we would prefer not to share a camper cabin.": gateNoShare,
 		"Maybe, I am open to sharing a large camper cabin if a specific family that I know " +
@@ -51,6 +52,7 @@ func TestNormalizeShareGate(t *testing.T) {
 // requests" on it overwrote a genuine "Yes, I would like to share" with a hard
 // decline. 269 of 2025's rows carry that exact value.
 func TestCollapseNoRequestsDoesNotVetoTheGate(t *testing.T) {
+	t.Parallel()
 	const yesShare = "Yes, I would like to share a large camper cabin with a family that I " +
 		"request or with a family with similarly aged kid(s) that I can meet at Camp."
 	registration := time.Date(2025, 1, 10, 0, 0, 0, 0, time.UTC)
@@ -93,6 +95,7 @@ func TestCollapseNoRequestsDoesNotVetoTheGate(t *testing.T) {
 // observed "No requests + real request" combinations exist at all (design
 // doc §10).
 func TestCollapseSiblingDisagreementSurvivesANoRequestsSibling(t *testing.T) {
+	t.Parallel()
 	ts := time.Date(2025, 4, 21, 17, 51, 0, 0, time.UTC)
 	const withNamed = "Share a cabin WITH a specific family that I know (please include names " +
 		"below and ensure that the request is mutual)."
@@ -121,6 +124,7 @@ func TestCollapseSiblingDisagreementSurvivesANoRequestsSibling(t *testing.T) {
 // unrelated question was getting a fresh-looking request timestamp beside an
 // empty gate and empty text.
 func TestCollapseDoesNotStampUnrelatedFields(t *testing.T) {
+	t.Parallel()
 	ts := time.Date(2025, 6, 2, 11, 0, 0, 0, time.UTC)
 
 	got := CollapseToHouseholdGrain([]PersonRequestValue{
@@ -149,6 +153,7 @@ func TestCollapseDoesNotStampUnrelatedFields(t *testing.T) {
 // and WITH are different edge types. Note the sixth case: "No requests"
 // co-occurs with a real request in six rows, so it must not veto.
 func TestParseSharedCabinModes(t *testing.T) {
+	t.Parallel()
 	const near = "House my family NEAR a specific family that I know (please include names below)"
 	const with = "Share a cabin WITH a specific family that I know (please include names below " +
 		"and ensure that the request is mutual)."
@@ -203,6 +208,7 @@ func TestParseSharedCabinModes(t *testing.T) {
 // to survive the person-to-household collapse like the other two modes, or the
 // staff-matchable pool is empty on the board no matter what families answered.
 func TestCollapseCarriesSimilarAgesToHouseholdGrain(t *testing.T) {
+	t.Parallel()
 	ts := time.Date(2025, 4, 21, 17, 51, 0, 0, time.UTC)
 	const withOpen = "Share a cabin WITH a family with similarly aged kid(s) that I can meet at " +
 		"Camp (we will make this happen if we have others interested as well)."
@@ -228,6 +234,7 @@ func TestCollapseCarriesSimilarAgesToHouseholdGrain(t *testing.T) {
 // the SAME text twice. Without collapsing first, every request is
 // double-counted.
 func TestCollapseToHouseholdGrainDedupes(t *testing.T) {
+	t.Parallel()
 	ts := time.Date(2025, 4, 21, 17, 51, 0, 0, time.UTC)
 	// Emma and Liam Garcia are siblings; the parent answered once and CampMinder
 	// wrote the answer onto both children's records.
@@ -248,6 +255,7 @@ func TestCollapseToHouseholdGrainDedupes(t *testing.T) {
 
 // TestCollapseToHouseholdGrainThreeChildren: observed at n=3 too.
 func TestCollapseToHouseholdGrainThreeChildren(t *testing.T) {
+	t.Parallel()
 	ts := time.Date(2025, 4, 21, 17, 51, 0, 0, time.UTC)
 	var values []PersonRequestValue
 	for i := 0; i < 3; i++ {
@@ -267,6 +275,7 @@ func TestCollapseToHouseholdGrainThreeChildren(t *testing.T) {
 // genuinely DIFFERENT answers is not a duplicate. Both survive, joined, because
 // dropping one would lose a real request.
 func TestCollapseKeepsDistinctTextFromDifferentChildren(t *testing.T) {
+	t.Parallel()
 	ts := time.Date(2025, 4, 21, 17, 51, 0, 0, time.UTC)
 	values := []PersonRequestValue{
 		{HouseholdKey: hhA, FieldName: "Shared-request", Value: "the Johnson family", LastUpdated: ts},
@@ -286,6 +295,7 @@ func TestCollapseKeepsDistinctTextFromDifferentChildren(t *testing.T) {
 // answers disagree, take the form's -- it is updated more often. Resolve by
 // comparing last_updated, not by field name precedence alone."
 func TestCollapsePrefersMoreRecentGate(t *testing.T) {
+	t.Parallel()
 	older := time.Date(2025, 1, 10, 0, 0, 0, 0, time.UTC)
 	newer := time.Date(2025, 6, 2, 0, 0, 0, 0, time.UTC)
 
@@ -319,6 +329,7 @@ func TestCollapsePrefersMoreRecentGate(t *testing.T) {
 // registration answers disagree", and a rule with no test is a rule that breaks
 // silently the first time the form is rewritten.
 func TestCollapseFormWinsOnTimestampTie(t *testing.T) {
+	t.Parallel()
 	ts := time.Date(2025, 6, 2, 0, 0, 0, 0, time.UTC)
 	values := []PersonRequestValue{
 		{HouseholdKey: hhA, FieldName: "FAM CAMP-Share Cabins",
@@ -340,6 +351,7 @@ func TestCollapseFormWinsOnTimestampTie(t *testing.T) {
 // as the field auto-inferred retirement would have dropped -- 0 values in 2023,
 // 112 in 2024, 171 in 2025, 0 in 2026, and still live.
 func TestCollapseKeepsShareCommentsActive(t *testing.T) {
+	t.Parallel()
 	ts := time.Date(2025, 4, 21, 0, 0, 0, 0, time.UTC)
 	values := []PersonRequestValue{
 		{HouseholdKey: hhA, FieldName: "FAM CAMP-Share Comments",
@@ -353,6 +365,7 @@ func TestCollapseKeepsShareCommentsActive(t *testing.T) {
 
 // TestCollapseSeparatesHouseholds: no cross-household bleed.
 func TestCollapseSeparatesHouseholds(t *testing.T) {
+	t.Parallel()
 	ts := time.Date(2025, 4, 21, 0, 0, 0, 0, time.UTC)
 	values := []PersonRequestValue{
 		{HouseholdKey: hhA, FieldName: "Shared-request", Value: "the Johnson family", LastUpdated: ts},
@@ -387,6 +400,7 @@ func TestCollapseSeparatesHouseholds(t *testing.T) {
 // unknown -- which places as no-share but is a different fact from declining,
 // exactly as partyAttention separates "unverified" from "unmet".
 func TestDeriveShareEligibility(t *testing.T) {
+	t.Parallel()
 	cases := []struct {
 		name         string
 		gate         string
@@ -463,6 +477,7 @@ func TestDeriveShareEligibility(t *testing.T) {
 // NEAR is a SEPARATE AXIS, so it is expressible alongside a real share request
 // and must not suppress one either -- 29 households selected both.
 func TestDeriveShareEligibilityIgnoresNearOnly(t *testing.T) {
+	t.Parallel()
 	// NEAR alone reaches this function as "form answered, wants_with false".
 	got, source, conflict := DeriveShareEligibility(gateMaybeMutual, true, false, false, false)
 	if got != shareEligibilityDeclined {
@@ -487,6 +502,7 @@ func TestDeriveShareEligibilityIgnoresNearOnly(t *testing.T) {
 // nothing calls. formAnswered is the presence of the modes field, which is
 // what separates "declined" from "never answered".
 func TestCollapseCarriesShareEligibility(t *testing.T) {
+	t.Parallel()
 	const withNamed = "Share a cabin WITH a specific family that I know (please include names " +
 		"below and ensure that the request is mutual)."
 	const noShare = "No, we would prefer not to share a camper cabin."
@@ -539,6 +555,7 @@ func TestCollapseCarriesShareEligibility(t *testing.T) {
 // 35 households. Every consumer already reads "" as unknown, which is exactly
 // what makes this latent rather than visible -- the same shape as kindred#1921.
 func TestNormalizeShareEligibilityGivesUnknownOneSpelling(t *testing.T) {
+	t.Parallel()
 	eligibility, source := NormalizeShareEligibility("", "")
 	if eligibility != shareEligibilityUnknown || source != shareSourceNone {
 		t.Errorf("unwritten verdict = (%q, %q), want (%q, %q)",
@@ -573,6 +590,7 @@ func TestNormalizeShareEligibilityGivesUnknownOneSpelling(t *testing.T) {
 // against a form answer of open would report conflict=false, hiding exactly
 // the disagreement staff need to see.
 func TestDeriveShareEligibilityConflictTracksTheVerdict(t *testing.T) {
+	t.Parallel()
 	// similarAges WITHOUT with -- the state ParseSharedCabinModes prevents.
 	// Reached directly, the verdict is open, so a no_share gate conflicts.
 	_, _, conflict := DeriveShareEligibility(gateNoShare, true, false, true, false)
@@ -602,6 +620,7 @@ func TestDeriveShareEligibilityConflictTracksTheVerdict(t *testing.T) {
 // scoped to the FALLBACK only -- when the authoritative form answered, it wins,
 // which is the whole precedence rule.
 func TestDeriveShareEligibilityFallbackFailsSafeOnASiblingDecline(t *testing.T) {
+	t.Parallel()
 	for _, gate := range []string{gateYesShare, gateMaybeMutual} {
 		eligibility, source, conflict := DeriveShareEligibility(gate, false, false, false, true)
 		if eligibility != shareEligibilityDeclined {
@@ -629,6 +648,7 @@ func TestDeriveShareEligibilityFallbackFailsSafeOnASiblingDecline(t *testing.T) 
 // actually computed from the household's values rather than being a parameter
 // nothing supplies.
 func TestCollapseCarriesASiblingDeclineIntoTheFallback(t *testing.T) {
+	t.Parallel()
 	const noShare = "No, we would prefer not to share a camper cabin."
 	const yesShare = "Yes, I would like to share a large camper cabin with a family that I " +
 		"request or with a family with similarly aged kid(s) that I can meet at Camp."

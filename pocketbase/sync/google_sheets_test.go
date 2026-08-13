@@ -147,6 +147,7 @@ func (m *MockSheetsWriter) DeleteSheet(_ context.Context, _, sheetTab string) er
 }
 
 func TestMockSheetsWriter_EnsureSheetIsIdempotent(t *testing.T) {
+	t.Parallel()
 	// Test that calling EnsureSheet multiple times works (idempotent)
 	mock := NewMockSheetsWriter()
 	ctx := context.Background()
@@ -178,6 +179,7 @@ func TestMockSheetsWriter_EnsureSheetIsIdempotent(t *testing.T) {
 // =============================================================================
 
 func TestGetTabColor_GlobalTabs(t *testing.T) {
+	t.Parallel()
 	// Global tabs (g-*) should get light blue color
 	tests := []string{
 		"g-tag-def",
@@ -197,6 +199,7 @@ func TestGetTabColor_GlobalTabs(t *testing.T) {
 }
 
 func TestGetTabColor_YearTabs(t *testing.T) {
+	t.Parallel()
 	// Year tabs should get year-specific colors
 	tests := []struct {
 		tab      string
@@ -220,6 +223,7 @@ func TestGetTabColor_YearTabs(t *testing.T) {
 }
 
 func TestGetTabColor_FutureYears(t *testing.T) {
+	t.Parallel()
 	// Future years (2027+) should cycle through palette
 	color2027 := GetTabColor("2027-attendees")
 	color2028 := GetTabColor("2028-attendees")
@@ -234,6 +238,7 @@ func TestGetTabColor_FutureYears(t *testing.T) {
 }
 
 func TestGetTabColor_UnknownTabs(t *testing.T) {
+	t.Parallel()
 	// Tabs that don't match g-* or YYYY-* should get default color
 	color := GetTabColor("random-sheet")
 	if color != TabColorDefault {
@@ -242,6 +247,7 @@ func TestGetTabColor_UnknownTabs(t *testing.T) {
 }
 
 func TestTabColorConstants(t *testing.T) {
+	t.Parallel()
 	// Verify color constants are defined with valid RGB values
 	colors := map[string]TabColor{
 		"TabColorGlobal":  TabColorGlobal,
@@ -272,6 +278,7 @@ func TestTabColorConstants(t *testing.T) {
 // =============================================================================
 
 func TestBatchUpdateTabProperties_CombinesAllUpdates(t *testing.T) {
+	t.Parallel()
 	// Test that BatchUpdateTabProperties accepts multiple tab updates
 	// and applies them all in a single call
 	mock := NewMockSheetsWriter()
@@ -320,6 +327,7 @@ func TestBatchUpdateTabProperties_CombinesAllUpdates(t *testing.T) {
 }
 
 func TestBatchUpdateTabProperties_PartialUpdates(t *testing.T) {
+	t.Parallel()
 	// Test that we can update only color or only index for individual tabs
 	mock := NewMockSheetsWriter()
 	ctx := context.Background()
@@ -355,6 +363,7 @@ func TestBatchUpdateTabProperties_PartialUpdates(t *testing.T) {
 }
 
 func TestBatchUpdateTabProperties_EmptyUpdates(t *testing.T) {
+	t.Parallel()
 	// Test that empty updates list doesn't cause errors
 	mock := NewMockSheetsWriter()
 	ctx := context.Background()
@@ -370,6 +379,7 @@ func TestBatchUpdateTabProperties_EmptyUpdates(t *testing.T) {
 }
 
 func TestBatchUpdateTabProperties_PreservesSheetID(t *testing.T) {
+	t.Parallel()
 	// Verify that SheetID is correctly passed through for each update
 	mock := NewMockSheetsWriter()
 	ctx := context.Background()
@@ -397,6 +407,7 @@ func TestBatchUpdateTabProperties_PreservesSheetID(t *testing.T) {
 }
 
 func TestBatchUpdateTabProperties_ErrorHandling(t *testing.T) {
+	t.Parallel()
 	// Test that errors are properly propagated
 	mock := NewMockSheetsWriter()
 	mock.BatchUpdateError = context.DeadlineExceeded
@@ -416,6 +427,7 @@ func TestBatchUpdateTabProperties_ErrorHandling(t *testing.T) {
 }
 
 func TestBatchUpdateTabProperties_LargeBatch(t *testing.T) {
+	t.Parallel()
 	// Test that a large batch (similar to real 16+ tabs) works correctly
 	mock := NewMockSheetsWriter()
 	ctx := context.Background()
@@ -472,6 +484,7 @@ func TestBatchUpdateTabProperties_LargeBatch(t *testing.T) {
 // =============================================================================
 
 func TestDeleteSheet_TracksDeletedSheets(t *testing.T) {
+	t.Parallel()
 	// Test that DeleteSheet tracks which sheets were deleted
 	mock := NewMockSheetsWriter()
 	ctx := context.Background()
@@ -503,6 +516,7 @@ func TestDeleteSheet_TracksDeletedSheets(t *testing.T) {
 }
 
 func TestDeleteSheet_Idempotent(t *testing.T) {
+	t.Parallel()
 	// Test that DeleteSheet is idempotent - can be called for non-existent sheets
 	mock := NewMockSheetsWriter()
 	ctx := context.Background()
@@ -520,6 +534,7 @@ func TestDeleteSheet_Idempotent(t *testing.T) {
 }
 
 func TestDeleteSheet_MultipleDeletes(t *testing.T) {
+	t.Parallel()
 	// Test deleting multiple sheets
 	mock := NewMockSheetsWriter()
 	ctx := context.Background()
@@ -537,6 +552,7 @@ func TestDeleteSheet_MultipleDeletes(t *testing.T) {
 }
 
 func TestDeleteSheet_ErrorHandling(t *testing.T) {
+	t.Parallel()
 	// Test that errors are properly propagated
 	mock := NewMockSheetsWriter()
 	mock.DeleteError = context.DeadlineExceeded

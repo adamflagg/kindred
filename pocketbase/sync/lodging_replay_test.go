@@ -21,6 +21,7 @@ func seedIssue(t *testing.T, app core.App, values map[string]any) string {
 // would re-run the same failing resolution and bump occurrences, making the
 // queue look busier while nothing was repaired.
 func TestReplayIssueRefusesAnUnresolvedRow(t *testing.T) {
+	t.Parallel()
 	app := newLodgingTestApp(t)
 	id := seedIssue(t, app, map[string]any{
 		"kind":            issueWriteFailed,
@@ -39,6 +40,7 @@ func TestReplayIssueRefusesAnUnresolvedRow(t *testing.T) {
 // The grain guard: a row carrying neither a household nor a person cannot be
 // replayed, because ingestValue has nothing to attribute the placement to.
 func TestReplayIssueRefusesARowWithNoParty(t *testing.T) {
+	t.Parallel()
 	app := newLodgingTestApp(t)
 	id := seedIssue(t, app, map[string]any{
 		"kind":            issueWriteFailed,
@@ -58,6 +60,7 @@ func TestReplayIssueRefusesARowWithNoParty(t *testing.T) {
 // scoped to one season, and year 0 would silently build empty ones and then
 // queue a no_session item -- a repair that reports itself as a fresh problem.
 func TestReplayIssueRefusesARowWithNoYear(t *testing.T) {
+	t.Parallel()
 	app := newLodgingTestApp(t)
 	id := seedIssue(t, app, map[string]any{
 		"kind":            issueWriteFailed,
@@ -77,6 +80,7 @@ func TestReplayIssueRefusesARowWithNoYear(t *testing.T) {
 // per run -- resolver, unit tree, party-size indexes, session windows -- is
 // rebuilt here for one household.
 func TestReplayIssuePlacesAHouseholdWithoutASync(t *testing.T) {
+	t.Parallel()
 	app := newLodgingTestApp(t)
 	sessionID, unitID := seedOneWeekendHousehold(t, app)
 
@@ -133,6 +137,7 @@ func TestReplayIssuePlacesAHouseholdWithoutASync(t *testing.T) {
 // asked for family weekends would find no candidate for an adult-weekend person
 // and queue a no_session item -- the repair reporting itself as a new problem.
 func TestReplayIssuePlacesAPersonOnAnAdultWeekend(t *testing.T) {
+	t.Parallel()
 	app := newLodgingTestApp(t)
 	womens := addSession(t, app, cmIDWomensWeekend, "Women's Weekend", "adult",
 		testAdultSessionStart, testAdultSessionEnd, 2025)
@@ -181,6 +186,7 @@ func TestReplayIssuePlacesAPersonOnAnAdultWeekend(t *testing.T) {
 // docs/architecture/lodging-occupancy.md -- so this covers the mechanics:
 // resolver, unit tree and placementFor all reached from a replay.
 func TestReplayIssuePlacesAMultiRoomAliasAsOneRow(t *testing.T) {
+	t.Parallel()
 	app := newLodgingTestApp(t)
 	sess := addSession(t, app, cmIDFamilyCamp1, "Family Camp 1", "family",
 		testSessionStart, testSessionEnd, 2025)
@@ -230,6 +236,7 @@ func TestReplayIssuePlacesAMultiRoomAliasAsOneRow(t *testing.T) {
 // conditional on failure; a blanket un-tick would bounce every repaired item
 // straight back into the queue.
 func TestReplayIssueLeavesAPlacedRowResolved(t *testing.T) {
+	t.Parallel()
 	app := newLodgingTestApp(t)
 	seedOneWeekendHousehold(t, app)
 
@@ -295,6 +302,7 @@ func seedThreeWeekendHousehold(
 // correct guess with the final weekend of the year. This asserts replay
 // reproduces the sync's answer: the weekend the real last_updated points at.
 func TestReplayIssueKeepsTheSuggestionTheSyncWouldHaveMade(t *testing.T) {
+	t.Parallel()
 	app := newLodgingTestApp(t)
 	// Edited between the first and second weekends, so the sync suggests the
 	// second. Now would suggest the third; a zero timestamp would suggest none.
@@ -336,6 +344,7 @@ func TestReplayIssueKeepsTheSuggestionTheSyncWouldHaveMade(t *testing.T) {
 // rather than blanking it, which is the same contract a re-run of the sync has
 // when last_updated stops parsing.
 func TestReplayIssuePreservesTheSuggestionWhenTheObservationIsGone(t *testing.T) {
+	t.Parallel()
 	app := newLodgingTestApp(t)
 	first, _, _ := seedThreeWeekendHousehold(t, app,
 		"Ridge A", "2025-06-10T09:00:00.0000000+00:00")
@@ -375,6 +384,7 @@ func TestReplayIssuePreservesTheSuggestionWhenTheObservationIsGone(t *testing.T)
 // row carries the remaining work, and Placed still tells the caller the click
 // did not finish the job.
 func TestReplayIssueTicksARowWhoseBlockerIsGoneAndOpensTheNewOne(t *testing.T) {
+	t.Parallel()
 	app := newLodgingTestApp(t)
 	fc1 := addSession(t, app, cmIDFamilyCamp1, "Family Camp 1", "family",
 		"2025-05-23 07:00:00.000Z", "2025-05-26 07:00:00.000Z", 2025)
@@ -462,6 +472,7 @@ func TestReplayIssueTicksARowWhoseBlockerIsGoneAndOpensTheNewOne(t *testing.T) {
 // all, so the party-less fan-out that will replay those can. This pins the rule
 // directly rather than waiting for that caller to discover it.
 func TestFindExistingMatchesOnTheWholeDedupTuple(t *testing.T) {
+	t.Parallel()
 	app := newLodgingTestApp(t)
 	stored := Issue{
 		Kind: issueWriteFailed, RawValue: "Ridge 1and2",
@@ -531,6 +542,7 @@ func TestFindExistingMatchesOnTheWholeDedupTuple(t *testing.T) {
 // no placement, no open row anywhere, and a nil error: the work item vanishes,
 // which is the invariant this whole wave exists to establish.
 func TestReplayIssueReopensAnotherTickedRowItRehit(t *testing.T) {
+	t.Parallel()
 	app := newLodgingTestApp(t)
 	fc1 := addSession(t, app, cmIDFamilyCamp1, "Family Camp 1", "family",
 		"2025-05-23 07:00:00.000Z", "2025-05-26 07:00:00.000Z", 2025)
@@ -669,6 +681,7 @@ func seedFanOutWithOneAmbiguousHousehold(
 // placements, so without an error a caller cannot tell "there was nothing to
 // place" from "this row was never replayable in the first place".
 func TestReplayPartylessIssueRefusesRowsItCannotFanOut(t *testing.T) {
+	t.Parallel()
 	app := newLodgingTestApp(t)
 
 	cases := []struct {
@@ -757,6 +770,7 @@ func TestReplayPartylessIssueRefusesRowsItCannotFanOut(t *testing.T) {
 // stopping the replay. Reporting a quiet zero would tick the row on the
 // strength of a mapping nobody restored.
 func TestReplayPartylessIssueRefusesARowWhoseSourceFieldIsDisabled(t *testing.T) {
+	t.Parallel()
 	app := newLodgingTestApp(t)
 	seedTwoHouseholdsSharingACabinString(t, app, "Ridge Cabin 9", 2026)
 	addAlias(t, app, "Ridge Cabin 9", []string{addUnit(t, app, "ridge-9", 2026)}, 0, 0)
@@ -790,6 +804,7 @@ func TestReplayPartylessIssueRefusesARowWhoseSourceFieldIsDisabled(t *testing.T)
 // to one placement per household that wrote the string. This is the assertion
 // that fails if the function silently does nothing.
 func TestReplayPartylessIssueFansOutToEveryPartyThatWroteTheString(t *testing.T) {
+	t.Parallel()
 	app := newLodgingTestApp(t)
 	sessionID, parties := seedTwoHouseholdsSharingACabinString(t, app, "Ridge Cabin 9", 2026)
 	// The staff repair this replay follows: the string now has an alias.
@@ -852,6 +867,7 @@ func TestReplayPartylessIssueFansOutToEveryPartyThatWroteTheString(t *testing.T)
 // only the first party would silently rewrite a 2-household string as a
 // 1-household one.
 func TestReplayPartylessIssueReopensARowWhoseStringStillDoesNotResolve(t *testing.T) {
+	t.Parallel()
 	app := newLodgingTestApp(t)
 	seedTwoHouseholdsSharingACabinString(t, app, "Nowhere Cabin", 2026)
 	// A REAL mapping exists -- resolved_alias is set, as production always
@@ -909,6 +925,7 @@ func TestReplayPartylessIssueReopensARowWhoseStringStillDoesNotResolve(t *testin
 // cabin name" -- and a fan-out that re-fails identically for every party who
 // wrote the string must not undo that decision.
 func TestReplayPartylessIssueDoesNotReopenAnIgnoredRow(t *testing.T) {
+	t.Parallel()
 	app := newLodgingTestApp(t)
 	seedTwoHouseholdsSharingACabinString(t, app, "Not A Cabin", 2026)
 	// No alias, and none is coming: staff said this string is not a cabin
@@ -945,6 +962,7 @@ func TestReplayPartylessIssueDoesNotReopenAnIgnoredRow(t *testing.T) {
 // could not tell that collision apart from a genuine re-observation of the
 // row it was meant to touch.
 func TestReopenRecordedDoesNotReopenAnUnrelatedIgnoredRowDuringAPartyScopedReplay(t *testing.T) {
+	t.Parallel()
 	app := newLodgingTestApp(t)
 	_, parties := seedTwoHouseholdsSharingACabinString(t, app, "Not A Cabin", 2026)
 	// Nobody ever mapped "Not A Cabin" -- staff ignored it once, and it is
@@ -991,6 +1009,7 @@ func TestReopenRecordedDoesNotReopenAnUnrelatedIgnoredRowDuringAPartyScopedRepla
 // would report "placed 2" for a click that wrote one assignment and left a
 // household in the queue.
 func TestReplayPartylessIssueCountsOnlyThePartiesItPlaced(t *testing.T) {
+	t.Parallel()
 	app := newLodgingTestApp(t)
 	_, _, _, parties := seedFanOutWithOneAmbiguousHousehold(t, app, "Ridge Cabin 9")
 	addAlias(t, app, "Ridge Cabin 9", []string{addUnit(t, app, "ridge-9", 2025)}, 0, 0)
@@ -1059,6 +1078,7 @@ func TestReplayPartylessIssueCountsOnlyThePartiesItPlaced(t *testing.T) {
 // is the case that does discriminate, and
 // TestFindExistingMatchesOnTheWholeDedupTuple pins the lookup itself.
 func TestReplayPartylessIssueLeavesAnotherHouseholdsTickedRowAlone(t *testing.T) {
+	t.Parallel()
 	app := newLodgingTestApp(t)
 	_, _, _, parties := seedFanOutWithOneAmbiguousHousehold(t, app, "Ridge Cabin 9")
 	addAlias(t, app, "Ridge Cabin 9", []string{addUnit(t, app, "ridge-9", 2025)}, 0, 0)
@@ -1123,6 +1143,7 @@ func TestReplayPartylessIssueLeavesAnotherHouseholdsTickedRowAlone(t *testing.T)
 // holds whichever of the two the scan returns first, which is what makes this
 // order-independent where a stranger row is not.
 func TestReplayPartylessIssueReopensEveryBlockedPartysRow(t *testing.T) {
+	t.Parallel()
 	app := newLodgingTestApp(t)
 	_, parties := seedTwoHouseholdsSharingACabinString(t, app, "Ridge Cabin 9", 2025)
 	// The string resolves, so the alias row's own blocker is genuinely gone and
@@ -1198,6 +1219,7 @@ func TestReplayPartylessIssueReopensEveryBlockedPartysRow(t *testing.T) {
 // the final weekend of the year. Flush overwrites a non-empty suggestion, so
 // the damage lands in the database.
 func TestReplayPartylessIssueAttributesWithTheObservationTimestamp(t *testing.T) {
+	t.Parallel()
 	app := newLodgingTestApp(t)
 	_, second, third, _ := seedFanOutWithOneAmbiguousHousehold(t, app, "Ridge Cabin 9")
 	addAlias(t, app, "Ridge Cabin 9", []string{addUnit(t, app, "ridge-9", 2025)}, 0, 0)
@@ -1238,6 +1260,7 @@ func TestReplayPartylessIssueAttributesWithTheObservationTimestamp(t *testing.T)
 // always read household_custom_values would find nobody here and report a
 // successful replay of nothing.
 func TestReplayPartylessIssueFansOutAcrossThePersonGrain(t *testing.T) {
+	t.Parallel()
 	app := newLodgingTestApp(t)
 	womens := addSession(t, app, cmIDWomensWeekend, "Women's Weekend", "adult",
 		testAdultSessionStart, testAdultSessionEnd, 2025)

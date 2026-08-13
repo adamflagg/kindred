@@ -151,6 +151,7 @@ func testConfig() *SheetsRateLimitConfig {
 // =============================================================================
 
 func TestRateLimitedWriter_DelegatesAllMethods(t *testing.T) {
+	t.Parallel()
 	mock := newTrackingMock()
 	writer := NewRateLimitedSheetsWriter(mock, testConfig())
 	ctx := context.Background()
@@ -226,6 +227,7 @@ func TestRateLimitedWriter_DelegatesAllMethods(t *testing.T) {
 // =============================================================================
 
 func TestRateLimitedWriter_RetriesWriteOn429(t *testing.T) {
+	t.Parallel()
 	mock := newTrackingMock()
 	mock.writeErrFn = failNTimes(2) // fail twice then succeed
 	writer := NewRateLimitedSheetsWriter(mock, testConfig())
@@ -240,6 +242,7 @@ func TestRateLimitedWriter_RetriesWriteOn429(t *testing.T) {
 }
 
 func TestRateLimitedWriter_RetriesClearOn429(t *testing.T) {
+	t.Parallel()
 	mock := newTrackingMock()
 	mock.clearErrFn = failNTimes(1)
 	writer := NewRateLimitedSheetsWriter(mock, testConfig())
@@ -254,6 +257,7 @@ func TestRateLimitedWriter_RetriesClearOn429(t *testing.T) {
 }
 
 func TestRateLimitedWriter_RetriesBatchUpdateOn429(t *testing.T) {
+	t.Parallel()
 	mock := newTrackingMock()
 	mock.batchUpdateErrFn = failNTimes(1)
 	writer := NewRateLimitedSheetsWriter(mock, testConfig())
@@ -272,6 +276,7 @@ func TestRateLimitedWriter_RetriesBatchUpdateOn429(t *testing.T) {
 // =============================================================================
 
 func TestRateLimitedWriter_RetriesGetMetadataOn429(t *testing.T) {
+	t.Parallel()
 	mock := newTrackingMock()
 	mock.getMetadataErrFn = failNTimes(2)
 	writer := NewRateLimitedSheetsWriter(mock, testConfig())
@@ -286,6 +291,7 @@ func TestRateLimitedWriter_RetriesGetMetadataOn429(t *testing.T) {
 }
 
 func TestRateLimitedWriter_RetriesEnsureSheetOn429(t *testing.T) {
+	t.Parallel()
 	mock := newTrackingMock()
 	mock.ensureErrFn = failNTimes(1)
 	writer := NewRateLimitedSheetsWriter(mock, testConfig())
@@ -304,6 +310,7 @@ func TestRateLimitedWriter_RetriesEnsureSheetOn429(t *testing.T) {
 // =============================================================================
 
 func TestRateLimitedWriter_GivesUpAfterMaxRetries(t *testing.T) {
+	t.Parallel()
 	mock := newTrackingMock()
 	// fail more times than max retries (config has MaxRetries=3)
 	mock.writeErrFn = failNTimes(10)
@@ -332,6 +339,7 @@ func TestRateLimitedWriter_GivesUpAfterMaxRetries(t *testing.T) {
 // =============================================================================
 
 func TestRateLimitedWriter_DoesNotRetryNon429Errors(t *testing.T) {
+	t.Parallel()
 	mock := newTrackingMock()
 	permErr := fmt.Errorf("permission denied")
 	mock.writeErrFn = func() error { return permErr }
@@ -353,6 +361,7 @@ func TestRateLimitedWriter_DoesNotRetryNon429Errors(t *testing.T) {
 }
 
 func TestRateLimitedWriter_DoesNotRetryGoogleAPINon429(t *testing.T) {
+	t.Parallel()
 	mock := newTrackingMock()
 	mock.writeErrFn = func() error {
 		return &googleapi.Error{Code: 403, Message: "forbidden"}
@@ -375,6 +384,7 @@ func TestRateLimitedWriter_DoesNotRetryGoogleAPINon429(t *testing.T) {
 // =============================================================================
 
 func TestRateLimitedWriter_RespectsContextCancellation(t *testing.T) {
+	t.Parallel()
 	synctest.Test(t, func(t *testing.T) {
 		mock := newTrackingMock()
 		mock.writeErrFn = failNTimes(10) // always fail
@@ -408,6 +418,7 @@ func TestRateLimitedWriter_RespectsContextCancellation(t *testing.T) {
 // =============================================================================
 
 func TestRateLimitedWriter_UsesSeparateReadWriteLimiters(t *testing.T) {
+	t.Parallel()
 	// Verify that the rate limited writer has separate read and write limiters
 	// by checking it's structurally different (not nil, not same pointer)
 	mock := newTrackingMock()
@@ -437,6 +448,7 @@ func TestRateLimitedWriter_UsesSeparateReadWriteLimiters(t *testing.T) {
 // =============================================================================
 
 func TestDefaultSheetsRateLimitConfig(t *testing.T) {
+	t.Parallel()
 	cfg := DefaultSheetsRateLimitConfig()
 
 	if cfg.ReadsPerMinute != 50 {
@@ -467,6 +479,7 @@ func TestDefaultSheetsRateLimitConfig(t *testing.T) {
 // =============================================================================
 
 func TestRateLimitedWriter_NilConfigUsesDefaults(t *testing.T) {
+	t.Parallel()
 	mock := newTrackingMock()
 	writer := NewRateLimitedSheetsWriter(mock, nil)
 
@@ -486,6 +499,7 @@ func TestRateLimitedWriter_NilConfigUsesDefaults(t *testing.T) {
 // =============================================================================
 
 func TestRateLimitedWriter_Retries429WrappedInFmtErrorf(t *testing.T) {
+	t.Parallel()
 	mock := newTrackingMock()
 	var count atomic.Int32
 	mock.writeErrFn = func() error {
@@ -511,6 +525,7 @@ func TestRateLimitedWriter_Retries429WrappedInFmtErrorf(t *testing.T) {
 // =============================================================================
 
 func TestRateLimitedWriter_RetriesSetTabColorOn429(t *testing.T) {
+	t.Parallel()
 	mock := newTrackingMock()
 	mock.setColorErrFn = failNTimes(1)
 	writer := NewRateLimitedSheetsWriter(mock, testConfig())
@@ -525,6 +540,7 @@ func TestRateLimitedWriter_RetriesSetTabColorOn429(t *testing.T) {
 }
 
 func TestRateLimitedWriter_RetriesSetTabIndexOn429(t *testing.T) {
+	t.Parallel()
 	mock := newTrackingMock()
 	mock.setIndexErrFn = failNTimes(1)
 	writer := NewRateLimitedSheetsWriter(mock, testConfig())
@@ -539,6 +555,7 @@ func TestRateLimitedWriter_RetriesSetTabIndexOn429(t *testing.T) {
 }
 
 func TestRateLimitedWriter_RetriesDeleteSheetOn429(t *testing.T) {
+	t.Parallel()
 	mock := newTrackingMock()
 	mock.deleteErrFn = failNTimes(1)
 	writer := NewRateLimitedSheetsWriter(mock, testConfig())

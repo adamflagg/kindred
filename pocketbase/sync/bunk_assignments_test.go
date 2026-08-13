@@ -8,6 +8,7 @@ import (
 // --- Staff inclusion tests (v3 — session-level staff in bunk_assignments) ---
 
 func TestBunkAssignmentsSync_findMatchingSession(t *testing.T) {
+	t.Parallel()
 	s := &BunkAssignmentsSync{}
 
 	tests := []struct {
@@ -65,6 +66,7 @@ func TestBunkAssignmentsSync_findMatchingSession(t *testing.T) {
 }
 
 func TestBunkAssignmentsSync_StaffSessionLookup(t *testing.T) {
+	t.Parallel()
 	// Tests the (bunkPlanCMID, bunkCMID) → sessionCMID lookup pattern
 	// used to resolve staff assignments to exact sessions.
 	//
@@ -161,6 +163,7 @@ func TestBunkAssignmentsSync_StaffSessionLookup(t *testing.T) {
 // TestProtectNonActiveStaffAssignments_ProtectsDismissedStaff in
 // bunk_assignments_protection_test.go.
 func TestBunkAssignmentsSync_NonActiveStaffOrphanProtection(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name             string
 		staffStatus      string
@@ -251,6 +254,7 @@ func TestBunkAssignmentsSync_NonActiveStaffOrphanProtection(t *testing.T) {
 // TestBunkAssignmentsSync_OrphanProtectionKeyFormat verifies that the composite
 // key format used for orphan protection matches the format used by deleteOrphans.
 func TestBunkAssignmentsSync_OrphanProtectionKeyFormat(t *testing.T) {
+	t.Parallel()
 	// The protection code uses TrackProcessedCompositeKey("personCMID:sessionCMID", year)
 	// which produces "personCMID:sessionCMID|year".
 	// The deleteOrphans code produces keys as "personCMID:sessionCMID|year".
@@ -278,6 +282,7 @@ func TestBunkAssignmentsSync_OrphanProtectionKeyFormat(t *testing.T) {
 }
 
 func TestBunkAssignmentsSync_StaffSkipLogicIntegration(t *testing.T) {
+	t.Parallel()
 	// Integration test: verifies the complete staff assignment resolution flow.
 	//
 	// When findMatchingSession returns 0 (person not in attendees),

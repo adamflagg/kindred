@@ -13,6 +13,7 @@ import (
 // the map and then silently fail to route. No untrimmed name exists in this
 // table today; this pins the fix against a future one.
 func TestFinancialAidApplicationsLoadFieldDefinitionsTrimsNames(t *testing.T) {
+	t.Parallel()
 	app := newFieldDefsTestApp(t, map[int]string{
 		1: "FA-Contact Parent Name ", // trailing space
 		2: "FA-Contact Parent Email", // already clean, must be unaffected
@@ -48,6 +49,7 @@ func TestFinancialAidApplicationsLoadFieldDefinitionsTrimsNames(t *testing.T) {
 
 // TestFinancialAidApplicationsSync_Name verifies the service name is correct
 func TestFinancialAidApplicationsSync_Name(t *testing.T) {
+	t.Parallel()
 	// The service name must be "financial_aid_applications" for orchestrator integration
 	expectedName := "financial_aid_applications"
 
@@ -59,6 +61,7 @@ func TestFinancialAidApplicationsSync_Name(t *testing.T) {
 
 // TestFAYearValidation tests year parameter validation
 func TestFAYearValidation(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name      string
 		year      int
@@ -86,6 +89,7 @@ func TestFAYearValidation(t *testing.T) {
 
 // TestIsFAField tests the field name matching patterns for FA fields
 func TestIsFAField(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		fieldName string
 		wantMatch bool
@@ -136,6 +140,7 @@ func TestIsFAField(t *testing.T) {
 
 // TestFAFieldMapping tests the mapping from CampMinder field names to column names
 func TestFAFieldMapping(t *testing.T) {
+	t.Parallel()
 	// Test a representative sample of field mappings
 	tests := []struct {
 		cmFieldName    string
@@ -247,6 +252,7 @@ func TestFAFieldMapping(t *testing.T) {
 
 // TestFABoolFieldParsing tests parsing of boolean custom field values
 func TestFABoolFieldParsing(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		value    string
 		expected bool
@@ -287,6 +293,7 @@ func TestFABoolFieldParsing(t *testing.T) {
 
 // TestFANumberParsing tests parsing of numeric values from text fields
 func TestFANumberParsing(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		value    string
 		expected float64
@@ -325,6 +332,7 @@ func TestFANumberParsing(t *testing.T) {
 
 // TestFACompositeKeyGeneration tests the unique key generation for upsert
 func TestFACompositeKeyGeneration(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		personID string
 		year     int
@@ -348,6 +356,7 @@ func TestFACompositeKeyGeneration(t *testing.T) {
 
 // TestFAInterestExpressionDetection tests detection of interest expression
 func TestFAInterestExpressionDetection(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		value    string
 		expected bool
@@ -379,6 +388,7 @@ func TestFAInterestExpressionDetection(t *testing.T) {
 
 // TestFADataAggregation tests that multiple custom values for the same person are aggregated correctly
 func TestFADataAggregation(t *testing.T) {
+	t.Parallel()
 	// Simulate custom values for the same person
 	values := []testFACustomValue{
 		{PersonPBID: "person1", FieldName: "FA-Contact Parent Name", Value: "John"},
@@ -417,6 +427,7 @@ func TestFADataAggregation(t *testing.T) {
 
 // TestFAEmptyDataHandling tests graceful handling of empty input
 func TestFAEmptyDataHandling(t *testing.T) {
+	t.Parallel()
 	values := []testFACustomValue{}
 	apps := aggregateFAApplications(values, 2025)
 
@@ -427,6 +438,7 @@ func TestFAEmptyDataHandling(t *testing.T) {
 
 // TestFAFieldTypeDetection tests detection of field types (bool, number, text)
 func TestFAFieldTypeDetection(t *testing.T) {
+	t.Parallel()
 	boolFields := []string{
 		"unemployment", "still_unemployed", "owns_home", "single_parent",
 		"affiliated_jcc", "russian_speaking", "gov_subsidies",
@@ -471,6 +483,7 @@ func TestFAFieldTypeDetection(t *testing.T) {
 
 // TestFAFirstNonEmptyWins tests that when a person has duplicate field values, first non-empty wins
 func TestFAFirstNonEmptyWins(t *testing.T) {
+	t.Parallel()
 	values := []testFACustomValue{
 		// First record has empty email
 		{PersonPBID: "person1", FieldName: "FA-Contact Parent Email", Value: ""},
@@ -872,6 +885,7 @@ func isFANumberColumn(column string) bool {
 
 // TestFAFieldEquals tests field equality comparisons for idempotency checking
 func TestFAFieldEquals(t *testing.T) {
+	t.Parallel()
 	s := &FinancialAidApplicationsSync{}
 
 	tests := []struct {
@@ -926,6 +940,7 @@ func TestFAFieldEquals(t *testing.T) {
 
 // TestFARecordNeedsUpdate tests the record comparison logic for idempotency
 func TestFARecordNeedsUpdate(t *testing.T) {
+	t.Parallel()
 	s := &FinancialAidApplicationsSync{}
 
 	tests := []struct {
@@ -1038,6 +1053,7 @@ func TestFARecordNeedsUpdate(t *testing.T) {
 
 // TestFAApplicationToRecordData tests conversion of faApplicationData to map
 func TestFAApplicationToRecordData(t *testing.T) {
+	t.Parallel()
 	app := &faApplicationData{
 		personPBID:        "person123",
 		householdPBID:     "household456",
@@ -1081,6 +1097,7 @@ func TestFAApplicationToRecordData(t *testing.T) {
 // TestFAUpsertIdempotencyBehavior tests that unchanged records are skipped
 // This documents the expected behavior for the idempotency fix
 func TestFAUpsertIdempotencyBehavior(t *testing.T) {
+	t.Parallel()
 	// Document the expected behavior:
 	// 1. New records → Stats.Created++
 	// 2. Existing records with no changes → Stats.Skipped++

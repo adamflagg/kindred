@@ -10,6 +10,7 @@ import (
 // Pairing must never interpret it as one. See kindred#1749: AG-6 hosting the
 // 7th/8th-grade AG session was silently dropped by the old grade heuristic.
 func TestPairAGBunksToSessions_SingleAGSession_AllAGBunksMap(t *testing.T) {
+	t.Parallel()
 	// 2026 regression case: the AG-6 cabin must map to the 7th/8th-grade AG
 	// session even though its cabin number is 6.
 	bunkNames := map[int]string{
@@ -35,6 +36,7 @@ func TestPairAGBunksToSessions_SingleAGSession_AllAGBunksMap(t *testing.T) {
 }
 
 func TestPairAGBunksToSessions_NoAGSession_EmptyPairing(t *testing.T) {
+	t.Parallel()
 	bunkNames := map[int]string{
 		104: "Aleph",
 		106: "AG-6",
@@ -51,6 +53,7 @@ func TestPairAGBunksToSessions_NoAGSession_EmptyPairing(t *testing.T) {
 }
 
 func TestPairAGBunksToSessions_TwoAGSessions_DeterministicZip(t *testing.T) {
+	t.Parallel()
 	// 2025-shaped case: two AG sessions under one plan, two AG bunks.
 	// Pairing is sorted bunk cm_id ⇄ sorted session cm_id — deterministic,
 	// no grade semantics. Sibling AG sessions share the same parent board, so
@@ -85,6 +88,7 @@ func TestPairAGBunksToSessions_TwoAGSessions_DeterministicZip(t *testing.T) {
 }
 
 func TestPairAGBunksToSessions_MoreBunksThanSessions_LeftoverToLastSession(t *testing.T) {
+	t.Parallel()
 	bunkNames := map[int]string{
 		100: "AG-3",
 		200: "AG-7",
@@ -108,6 +112,7 @@ func TestPairAGBunksToSessions_MoreBunksThanSessions_LeftoverToLastSession(t *te
 }
 
 func TestPairAGBunksToSessions_MoreSessionsThanBunks_FirstSessionsPaired(t *testing.T) {
+	t.Parallel()
 	bunkNames := map[int]string{100: "AG-5"}
 	sessionInfo := map[int]sessionInfoData{
 		1000: {Name: "AG A", SessionType: "ag"},
@@ -123,6 +128,7 @@ func TestPairAGBunksToSessions_MoreSessionsThanBunks_FirstSessionsPaired(t *test
 }
 
 func TestPairAGBunksToSessions_UnknownBunksAndSessions_Ignored(t *testing.T) {
+	t.Parallel()
 	// Bunks with no known name and sessions with no metadata (not in PB) must
 	// not participate in pairing.
 	bunkNames := map[int]string{106: "AG-6"}
@@ -143,6 +149,7 @@ func TestPairAGBunksToSessions_UnknownBunksAndSessions_Ignored(t *testing.T) {
 }
 
 func TestBunkPlansSync_createBunkPlan_WithIsActive(t *testing.T) {
+	t.Parallel()
 	// This test verifies that is_active field is extracted and stored correctly
 	// Since createBunkPlan requires a full PocketBase app, we test the data preparation logic
 
@@ -227,6 +234,7 @@ func TestBunkPlansSync_createBunkPlan_WithIsActive(t *testing.T) {
 }
 
 func TestBunkPlansSync_processBunkPlan_ExtractsIsActive(t *testing.T) {
+	t.Parallel()
 	// Test that processBunkPlan correctly passes IsActive to createBunkPlan
 	// This is a unit test for the field extraction logic
 
@@ -288,6 +296,7 @@ func TestBunkPlansSync_processBunkPlan_ExtractsIsActive(t *testing.T) {
 }
 
 func TestBunkPlansSync_CompareFieldsExcludeYear(t *testing.T) {
+	t.Parallel()
 	// Document that skipFields in createBunkPlan should only contain "year"
 	// and that is_active should be compared for idempotency
 

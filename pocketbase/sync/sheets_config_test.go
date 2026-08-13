@@ -11,6 +11,7 @@ import (
 // =============================================================================
 
 func TestSheetsConfig_DefaultSheetName(t *testing.T) {
+	t.Parallel()
 	// Test that default sheet names use lowercase with hyphens
 	tests := []struct {
 		collection string
@@ -34,6 +35,7 @@ func TestSheetsConfig_DefaultSheetName(t *testing.T) {
 }
 
 func TestSheetsConfig_GetSheetName_YearPrefixed(t *testing.T) {
+	t.Parallel()
 	// Test that year-specific tables get year prefix
 	config := &SheetsConfig{
 		Tables: map[string]*TableConfig{
@@ -71,6 +73,7 @@ func TestSheetsConfig_GetSheetName_YearPrefixed(t *testing.T) {
 }
 
 func TestSheetsConfig_GetSheetName_GlobalPrefixed(t *testing.T) {
+	t.Parallel()
 	// Test that global tables get short "g-" prefix (not "globals-")
 	config := &SheetsConfig{
 		Tables: map[string]*TableConfig{
@@ -107,6 +110,7 @@ func TestSheetsConfig_GetSheetName_GlobalPrefixed(t *testing.T) {
 }
 
 func TestSheetsConfig_GetSheetName_FallbackToDefault(t *testing.T) {
+	t.Parallel()
 	// Test that unknown collections fall back to default naming
 	config := &SheetsConfig{
 		Tables: map[string]*TableConfig{},
@@ -121,6 +125,7 @@ func TestSheetsConfig_GetSheetName_FallbackToDefault(t *testing.T) {
 }
 
 func TestSheetsConfig_LoadConfig_AutoGeneratesDefaults(t *testing.T) {
+	t.Parallel()
 	// Test that loading a missing config file auto-generates defaults
 	tmpDir := t.TempDir()
 	configPath := filepath.Join(tmpDir, "sheets_export.json")
@@ -148,6 +153,7 @@ func TestSheetsConfig_LoadConfig_AutoGeneratesDefaults(t *testing.T) {
 }
 
 func TestSheetsConfig_LoadConfig_ReadsExistingFile(t *testing.T) {
+	t.Parallel()
 	// Test that loading an existing config file works
 	tmpDir := t.TempDir()
 	configPath := filepath.Join(tmpDir, "sheets_export.json")
@@ -183,6 +189,7 @@ func TestSheetsConfig_LoadConfig_ReadsExistingFile(t *testing.T) {
 }
 
 func TestSheetsConfig_IsTableEnabled(t *testing.T) {
+	t.Parallel()
 	// Test enabled/disabled table checks
 	config := &SheetsConfig{
 		Tables: map[string]*TableConfig{
@@ -212,6 +219,7 @@ func TestSheetsConfig_IsTableEnabled(t *testing.T) {
 }
 
 func TestSheetsConfig_GetGlobalTables(t *testing.T) {
+	t.Parallel()
 	// Test getting only global tables
 	config := &SheetsConfig{
 		Tables: map[string]*TableConfig{
@@ -265,6 +273,7 @@ func TestSheetsConfig_GetGlobalTables(t *testing.T) {
 }
 
 func TestSheetsConfig_GetYearTables(t *testing.T) {
+	t.Parallel()
 	// Test getting only year-specific tables
 	config := &SheetsConfig{
 		Tables: map[string]*TableConfig{

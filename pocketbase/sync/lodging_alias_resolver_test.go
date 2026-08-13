@@ -15,6 +15,7 @@ import (
 // stays unbounded throughout: this test is about the ALIAS STRING resolving at
 // any year, not about one unit id surviving across years.
 func TestAliasResolverUnboundedWindows(t *testing.T) {
+	t.Parallel()
 	app := newLodgingTestApp(t)
 	years := []int{2017, 2022, 2025, 2026, 2030}
 	ridgeAByYear := make(map[int]string, len(years))
@@ -47,6 +48,7 @@ func TestAliasResolverUnboundedWindows(t *testing.T) {
 // in 2025. Resolving either side into the other silently relocates a household
 // across camp, and nothing downstream would notice.
 func TestAliasResolverRespectsRenameWindows(t *testing.T) {
+	t.Parallel()
 	app := newLodgingTestApp(t)
 	// Every building here gets a row in EVERY year the test resolves against,
 	// including the years its own alias window excludes. A rename retires the
@@ -136,6 +138,7 @@ func TestAliasResolverRespectsRenameWindows(t *testing.T) {
 // TestAliasResolverMergeDenotingAlias: 2+ members means the string denotes a
 // merge of that many rooms (spec 3.4). Six seeded aliases are of this shape.
 func TestAliasResolverMergeDenotingAlias(t *testing.T) {
+	t.Parallel()
 	app := newLodgingTestApp(t)
 	tioga1 := addUnit(t, app, "gt-tioga-1", 2025)
 	tioga2 := addUnit(t, app, "gt-tioga-2", 2025)
@@ -166,6 +169,7 @@ func TestAliasResolverMergeDenotingAlias(t *testing.T) {
 // "Tuolumne 7". They must come back unresolved, with the raw string preserved,
 // and must not panic or error.
 func TestAliasResolverUnresolvedIsNotAnError(t *testing.T) {
+	t.Parallel()
 	app := newLodgingTestApp(t)
 	addUnit(t, app, "ridge-a", 2022)
 
@@ -193,6 +197,7 @@ func TestAliasResolverUnresolvedIsNotAnError(t *testing.T) {
 // CampMinder values are hand-entered. Lookup normalises case and outer
 // whitespace; inner spacing stays significant because the seed relies on it.
 func TestAliasResolverToleratesWhitespaceAndCase(t *testing.T) {
+	t.Parallel()
 	app := newLodgingTestApp(t)
 	dsA := addUnit(t, app, "hc-downstairs-a", 2025)
 	addAlias(t, app, "Health Center Downstairs  - Room A", []string{dsA}, 0, 0)
@@ -223,6 +228,7 @@ func TestAliasResolverToleratesWhitespaceAndCase(t *testing.T) {
 // is on (alias_string, valid_from_year), not alias_string alone. Overlapping
 // windows are a data problem for staff, not something to resolve arbitrarily.
 func TestAliasResolverFlagsOverlappingWindows(t *testing.T) {
+	t.Parallel()
 	app := newLodgingTestApp(t)
 	a := addUnit(t, app, "ridge-a", 2025)
 	b := addUnit(t, app, "ridge-b", 2025)
@@ -249,6 +255,7 @@ func TestAliasResolverFlagsOverlappingWindows(t *testing.T) {
 // UnitIDs straight into a placement's relation, so resolving 2027 must not
 // hand back 2026's ids.
 func TestResolveReturnsTheRequestedYearsUnitIDs(t *testing.T) {
+	t.Parallel()
 	app := newLodgingTestApp(t)
 	id2026 := addUnit(t, app, "test-unit-a", 2026)
 	id2027 := addUnit(t, app, "test-unit-a", 2027)
@@ -276,6 +283,7 @@ func TestResolveReturnsTheRequestedYearsUnitIDs(t *testing.T) {
 // alias is unresolved. A partial member set would silently shrink a family's
 // rooms, which is worse than a name that does not resolve.
 func TestResolveIsUnresolvedWhenAMemberIsMissingThatYear(t *testing.T) {
+	t.Parallel()
 	app := newLodgingTestApp(t)
 	a2026 := addUnit(t, app, "test-unit-a", 2026)
 	b2026 := addUnit(t, app, "test-unit-b", 2026)
@@ -308,6 +316,7 @@ func TestResolveIsUnresolvedWhenAMemberIsMissingThatYear(t *testing.T) {
 // RelationField.ValidateValue cannot resolve; skipping the dangling member
 // here means only real ids ever reach that write, and the failure vanishes.
 func TestResolveIsUnresolvedWhenAMemberIsDangling(t *testing.T) {
+	t.Parallel()
 	app := newLodgingTestApp(t)
 	a2027 := addUnit(t, app, "test-unit-a", 2027)
 	addAliasWithDanglingMember(t, app, "Test Pair", []string{a2027, "missingunit0001"}, 0, 0)

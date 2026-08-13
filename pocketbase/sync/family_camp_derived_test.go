@@ -19,6 +19,7 @@ const testEmailJohn = "john@example.com"
 
 // TestFamilyCampDerivedSync_Name verifies the service name is correct
 func TestFamilyCampDerivedSync_Name(t *testing.T) {
+	t.Parallel()
 	// The service name must be "family_camp_derived" for orchestrator integration
 	expectedName := serviceNameFamilyCampDerived
 
@@ -30,6 +31,7 @@ func TestFamilyCampDerivedSync_Name(t *testing.T) {
 
 // TestFamilyCampYearValidation tests year parameter validation
 func TestFamilyCampYearValidation(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name      string
 		year      int
@@ -57,6 +59,7 @@ func TestFamilyCampYearValidation(t *testing.T) {
 
 // TestAdultFieldMapping tests mapping of custom field names to adult attributes
 func TestAdultFieldMapping(t *testing.T) {
+	t.Parallel()
 	// Field mappings from the plan
 	fieldMappings := map[string]string{
 		"Family Camp Adult 1":           "name_1",
@@ -102,6 +105,7 @@ func TestAdultFieldMapping(t *testing.T) {
 
 // TestAdultDeduplication tests that adults are deduplicated across multiple children's records
 func TestAdultDeduplication(t *testing.T) {
+	t.Parallel()
 	// Simulate person custom values for same household from multiple children
 	personValues := []testPersonCustomValue{
 		// Child 1's record for household 100
@@ -147,6 +151,7 @@ func TestAdultDeduplication(t *testing.T) {
 
 // TestMultipleAdultsPerHousehold tests that multiple adults (1-5) are correctly handled
 func TestMultipleAdultsPerHousehold(t *testing.T) {
+	t.Parallel()
 	householdValues := []testHouseholdCustomValue{
 		{HouseholdCMID: 100, FieldName: "Family Camp Adult 1", Value: "John Smith"},
 		{HouseholdCMID: 100, FieldName: "Family Camp Adult 2", Value: "Jane Smith"},
@@ -182,6 +187,7 @@ func TestMultipleAdultsPerHousehold(t *testing.T) {
 
 // TestRegistrationFieldMapping tests mapping of custom fields to registration attributes
 func TestRegistrationFieldMapping(t *testing.T) {
+	t.Parallel()
 	fieldMappings := map[string]string{
 		"Family Camp Cabin":             "cabin_assignment",
 		"FAM CAMP-Share Cabins":         "share_cabin_preference",
@@ -204,6 +210,7 @@ func TestRegistrationFieldMapping(t *testing.T) {
 
 // TestMedicalInfoBlobConcatenation tests that related medical fields are concatenated
 func TestMedicalInfoBlobConcatenation(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name     string
 		fields   map[string]string
@@ -295,6 +302,7 @@ func TestMedicalInfoBlobConcatenation(t *testing.T) {
 
 // TestMedicalDeduplicationByHousehold tests that medical info is deduplicated per household
 func TestMedicalDeduplicationByHousehold(t *testing.T) {
+	t.Parallel()
 	personValues := []testPersonCustomValue{
 		// Child 1's medical info for household 100
 		{HouseholdCMID: 100, PersonCMID: 1001, FieldName: "Family Medical-Allergies", Value: "Yes"},
@@ -329,6 +337,7 @@ func TestMedicalDeduplicationByHousehold(t *testing.T) {
 // sentence-prefixed cases below went undetected: fixing production code could
 // not have made the old test fail.
 func TestBoolFieldParsing(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		value    string
 		expected bool
@@ -379,6 +388,7 @@ func TestBoolFieldParsing(t *testing.T) {
 
 // TestEmptyDataHandling tests graceful handling of empty input
 func TestEmptyDataHandling(t *testing.T) {
+	t.Parallel()
 	// Empty person custom values
 	personValues := []testPersonCustomValue{}
 	adultsByHousehold := deduplicateAdultsByHousehold(personValues)
@@ -402,6 +412,7 @@ func TestEmptyDataHandling(t *testing.T) {
 
 // TestFirstNonEmptyValueSelection tests that when deduplicating, we take the first non-empty value
 func TestFirstNonEmptyValueSelection(t *testing.T) {
+	t.Parallel()
 	personValues := []testPersonCustomValue{
 		// Child 1 has empty email
 		{HouseholdCMID: 100, PersonCMID: 1001, FieldName: "Family Camp Adult 1 Email", Value: ""},
@@ -429,6 +440,7 @@ func TestFirstNonEmptyValueSelection(t *testing.T) {
 // how processRegistrations routes a field kept passing against the private copy.
 // The helper is gone; this is the same coverage against the real code path.
 func TestHouseholdCabinAssignment(t *testing.T) {
+	t.Parallel()
 	s := NewFamilyCampDerivedSync(nil)
 
 	regs := s.processRegistrations([]customValueEntry{
@@ -794,6 +806,7 @@ func aggregateMedicalByHousehold(values []testPersonCustomValue) map[int]*testMe
 // TestUpsertAdultsIdempotency verifies that running the sync twice with unchanged data
 // results in all records being skipped (not created) on the second run.
 func TestUpsertAdultsIdempotency(t *testing.T) {
+	t.Parallel()
 	// Simulate computed adults from source data
 	adults := []*testAdult{
 		{HouseholdCMID: 100, AdultNumber: 1, FirstName: "John", LastName: "Smith", Email: "john@example.com"},
@@ -835,6 +848,7 @@ func TestUpsertAdultsIdempotency(t *testing.T) {
 // TestUpsertAdultsUpdateDetection verifies that modified source data results in
 // the Updated stat being incremented, not Created.
 func TestUpsertAdultsUpdateDetection(t *testing.T) {
+	t.Parallel()
 	// Existing records in database (from previous sync)
 	existingAdults := []*testAdult{
 		{HouseholdCMID: 100, AdultNumber: 1, FirstName: "John", LastName: "Smith", Email: "john@example.com"},
@@ -867,6 +881,7 @@ func TestUpsertAdultsUpdateDetection(t *testing.T) {
 // TestUpsertAdultsOrphanDeletion verifies that records removed from source data
 // are deleted (orphan cleanup).
 func TestUpsertAdultsOrphanDeletion(t *testing.T) {
+	t.Parallel()
 	// Existing records in database (from previous sync)
 	existingAdults := []*testAdult{
 		{HouseholdCMID: 100, AdultNumber: 1, FirstName: "John", LastName: "Smith", Email: "john@example.com"},
@@ -900,6 +915,7 @@ func TestUpsertAdultsOrphanDeletion(t *testing.T) {
 
 // TestUpsertRegistrationsIdempotency verifies registration upsert idempotency
 func TestUpsertRegistrationsIdempotency(t *testing.T) {
+	t.Parallel()
 	registrations := []*testRegistration{
 		{HouseholdCMID: 100, CabinAssignment: "Cabin 12", ShareCabinPreference: "Yes"},
 		{HouseholdCMID: 200, CabinAssignment: "Cabin 14", Goals: "Family bonding"},
@@ -927,6 +943,7 @@ func TestUpsertRegistrationsIdempotency(t *testing.T) {
 
 // TestUpsertMedicalIdempotency verifies medical upsert idempotency
 func TestUpsertMedicalIdempotency(t *testing.T) {
+	t.Parallel()
 	medical := []*testMedical{
 		{HouseholdCMID: 100, AllergyInfo: "Peanuts", DietaryInfo: "Vegetarian"},
 		{HouseholdCMID: 200, CPAPInfo: "Yes; needs outlet"},
@@ -954,6 +971,7 @@ func TestUpsertMedicalIdempotency(t *testing.T) {
 
 // TestCompositeKeyFormats verifies the composite key format for each table
 func TestCompositeKeyFormats(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name        string
 		tableName   string
@@ -1333,6 +1351,7 @@ func newFieldDefsTestApp(t *testing.T, defs map[int]string) core.App {
 // space, while processMedical looks it up as "Family Camp-Physician". Before the
 // fix the exact-match lookup missed every Physician answer ever recorded.
 func TestLoadFieldDefinitionsTrimsNames(t *testing.T) {
+	t.Parallel()
 	app := newFieldDefsTestApp(t, map[int]string{
 		39680: "Family Camp-Physician ", // trailing space, verbatim from CampMinder
 		39681: "Family Camp-Physician If Yes",
@@ -1365,6 +1384,7 @@ func TestLoadFieldDefinitionsTrimsNames(t *testing.T) {
 // loadFieldDefinitions can rely on it — Phase B's lodging_fields.go registry
 // will be the second one. That file does not exist yet.
 func TestNormalizeFieldName(t *testing.T) {
+	t.Parallel()
 	cases := map[string]string{
 		"Family Camp-Physician ":   "Family Camp-Physician",
 		" Family Camp Cabin":       "Family Camp Cabin",
@@ -1387,6 +1407,7 @@ func TestNormalizeFieldName(t *testing.T) {
 // user-editable and CampMinder's own spelling is inconsistent ("Housing
 // Accomodation", one m, is the Adult-partition twin).
 func TestLoadFieldDefinitionsIncludesCMIDAllowlist(t *testing.T) {
+	t.Parallel()
 	app := newFieldDefsTestApp(t, map[int]string{
 		223999: "FAM Camp-Accommodation", // retired but kept for 2023/2024 backfill
 		274057: "Housing Accommodation",  // Camper successor, name heuristic misses it
@@ -1432,6 +1453,7 @@ func TestLoadFieldDefinitionsIncludesCMIDAllowlist(t *testing.T) {
 // request-layer registry in lodging_fields.go resolves the canonical name from
 // the cm_id, so the switch sees the name it was written against.
 func TestLoadFieldDefinitionsRoutesRenamedRequestFieldByCMID(t *testing.T) {
+	t.Parallel()
 	app := newFieldDefsTestApp(t, map[int]string{
 		// Staff renamed both in CampMinder. Neither new name matches anything
 		// family_camp_derived.go's switch knows about.
@@ -1466,6 +1488,7 @@ func TestLoadFieldDefinitionsRoutesRenamedRequestFieldByCMID(t *testing.T) {
 // question, so those two still collapse to one; Adult-CPAP is a different
 // person and is always additive.
 func TestProcessMedicalKeepsBothCamperAndAdultCPAPNarratives(t *testing.T) {
+	t.Parallel()
 	s := NewFamilyCampDerivedSync(nil)
 	ts := time.Date(2025, 4, 21, 0, 0, 0, 0, time.UTC)
 
@@ -1502,6 +1525,7 @@ func TestProcessMedicalKeepsBothCamperAndAdultCPAPNarratives(t *testing.T) {
 // Camper-partition names are the same question asked twice, so answering both
 // must not duplicate the sentence in the medical record.
 func TestProcessMedicalCollapsesCamperCPAPGenerations(t *testing.T) {
+	t.Parallel()
 	s := NewFamilyCampDerivedSync(nil)
 	ts := time.Date(2025, 4, 21, 0, 0, 0, 0, time.UTC)
 
@@ -1524,6 +1548,7 @@ func TestProcessMedicalCollapsesCamperCPAPGenerations(t *testing.T) {
 // read as one), so a household whose ONLY answer is the blocker cannot be the one
 // row that gets dropped before it is ever written.
 func TestProcessRegistrationsMandatoryOnlyHouseholdSurvives(t *testing.T) {
+	t.Parallel()
 	s := NewFamilyCampDerivedSync(nil)
 	ts := time.Date(2025, 4, 21, 0, 0, 0, 0, time.UTC)
 
@@ -1542,6 +1567,7 @@ func TestProcessRegistrationsMandatoryOnlyHouseholdSurvives(t *testing.T) {
 // TestProcessRegistrationsAccommodationSuccessor proves the successor field
 // actually reaches the needs_accommodation column, not merely the field map.
 func TestProcessRegistrationsAccommodationSuccessor(t *testing.T) {
+	t.Parallel()
 	s := NewFamilyCampDerivedSync(nil)
 
 	// 2026-shaped input: only the successor field is answered.
@@ -1585,6 +1611,7 @@ func TestProcessRegistrationsAccommodationSuccessor(t *testing.T) {
 // iterates person values, and a household has several people, so disagreement
 // between household members is the normal case, not an edge case.
 func TestProcessRegistrationsBoolFieldsOrAcrossPersons(t *testing.T) {
+	t.Parallel()
 	s := NewFamilyCampDerivedSync(nil)
 
 	t.Run("accommodation ORs across household members", func(t *testing.T) {
@@ -1689,6 +1716,7 @@ const testRequestText = "the Johnson family"
 // integration point. The request fields are person-partition, so two enrolled
 // children carry one parent's answer twice.
 func TestProcessRegistrationsCollapsesDuplicateRequests(t *testing.T) {
+	t.Parallel()
 	s := NewFamilyCampDerivedSync(nil)
 	ts := time.Date(2025, 4, 21, 17, 51, 0, 0, time.UTC)
 
@@ -1712,6 +1740,7 @@ func TestProcessRegistrationsCollapsesDuplicateRequests(t *testing.T) {
 // TestProcessRegistrationsParsesGateAndModes: the 3-state gate and the two edge
 // types, from the real option sentences.
 func TestProcessRegistrationsParsesGateAndModes(t *testing.T) {
+	t.Parallel()
 	s := NewFamilyCampDerivedSync(nil)
 	ts := time.Date(2025, 4, 21, 0, 0, 0, 0, time.UTC)
 
@@ -1741,6 +1770,7 @@ func TestProcessRegistrationsParsesGateAndModes(t *testing.T) {
 // TestProcessRegistrationsDerivedAccessibilityFlags: the board gets booleans,
 // never the narrative (spec 5.3).
 func TestProcessRegistrationsDerivedAccessibilityFlags(t *testing.T) {
+	t.Parallel()
 	s := NewFamilyCampDerivedSync(nil)
 	ts := time.Date(2025, 4, 21, 0, 0, 0, 0, time.UTC)
 
@@ -1776,6 +1806,7 @@ func TestProcessRegistrationsDerivedAccessibilityFlags(t *testing.T) {
 // CPAP fields are multi-option selects, and parseBoolFieldValue reads every
 // option below as true.
 func TestClassifyCPAPAnswer(t *testing.T) {
+	t.Parallel()
 	cases := []struct {
 		name         string
 		value        string
@@ -1809,6 +1840,7 @@ func TestClassifyCPAPAnswer(t *testing.T) {
 // integration point: the household asked for a bathroom and said so in the
 // same breath as "not CPAP related". It must not be given an outlet cabin.
 func TestProcessRegistrationsCPAPBathroomIsNotPower(t *testing.T) {
+	t.Parallel()
 	s := NewFamilyCampDerivedSync(nil)
 	ts := time.Date(2025, 4, 21, 0, 0, 0, 0, time.UTC)
 
@@ -1830,6 +1862,7 @@ func TestProcessRegistrationsCPAPBathroomIsNotPower(t *testing.T) {
 // consumer in any phase (kindred#1876). It is a housing signal, so it gets one.
 // The N/A option must not read as yes, and must not be special-cased either.
 func TestProcessRegistrationsHasInfant(t *testing.T) {
+	t.Parallel()
 	ts := time.Date(2025, 4, 21, 0, 0, 0, 0, time.UTC)
 
 	cases := []struct {
@@ -1865,6 +1898,7 @@ func TestProcessRegistrationsHasInfant(t *testing.T) {
 // TestProcessRegistrationsHasInfantORsAcrossHousehold: unlike opt_out_vip, OR
 // is fail-SAFE here -- one adult bringing an infant means the household has one.
 func TestProcessRegistrationsHasInfantORsAcrossHousehold(t *testing.T) {
+	t.Parallel()
 	s := NewFamilyCampDerivedSync(nil)
 	ts := time.Date(2025, 4, 21, 0, 0, 0, 0, time.UTC)
 
@@ -1884,6 +1918,7 @@ func TestProcessRegistrationsHasInfantORsAcrossHousehold(t *testing.T) {
 // extraFieldCMIDs but processMedical never read it, so a household where only
 // the accompanying adult answers produced an empty cpap_info. kindred#1875.
 func TestProcessMedicalCPAPIncludesAdultField(t *testing.T) {
+	t.Parallel()
 	s := NewFamilyCampDerivedSync(nil)
 	ts := time.Date(2025, 4, 21, 0, 0, 0, 0, time.UTC)
 
@@ -1901,6 +1936,7 @@ func TestProcessMedicalCPAPIncludesAdultField(t *testing.T) {
 
 // TestProcessRegistrationsOptOutMakesTheNeedAWarning: the other polarity.
 func TestProcessRegistrationsOptOutMakesTheNeedAWarning(t *testing.T) {
+	t.Parallel()
 	s := NewFamilyCampDerivedSync(nil)
 	ts := time.Date(2025, 4, 21, 0, 0, 0, 0, time.UTC)
 
@@ -1932,6 +1968,7 @@ func TestProcessRegistrationsOptOutMakesTheNeedAWarning(t *testing.T) {
 // Order is varied because a running OR is order-sensitive and a finalization
 // pass is not; asserting only one order would pass on a fix that works by luck.
 func TestProcessRegistrationsOptOutLosesToABlockerInTheSameHousehold(t *testing.T) {
+	t.Parallel()
 	ts := time.Date(2025, 4, 21, 0, 0, 0, 0, time.UTC)
 	const optOut = "Yes, please register regardless of cabin type"
 	const blocker = "No, I am only able to attend with this accommodation in place"
@@ -1969,6 +2006,7 @@ func TestProcessRegistrationsOptOutLosesToABlockerInTheSameHousehold(t *testing.
 // TestProcessRegistrationsUnansweredOptOutIsNotMandatory: the default must be
 // the softer reading, or every household with no answer becomes a blocker.
 func TestProcessRegistrationsUnansweredOptOutIsNotMandatory(t *testing.T) {
+	t.Parallel()
 	s := NewFamilyCampDerivedSync(nil)
 	ts := time.Date(2025, 4, 21, 0, 0, 0, 0, time.UTC)
 
@@ -1987,6 +2025,7 @@ func TestProcessRegistrationsUnansweredOptOutIsNotMandatory(t *testing.T) {
 // a bathroom or accommodation need are PHI and belong only in
 // family_camp_medical (spec 5.1).
 func TestProcessMedicalRoutesNarrativeToTheAdminGatedTable(t *testing.T) {
+	t.Parallel()
 	s := NewFamilyCampDerivedSync(nil)
 	ts := time.Date(2025, 4, 21, 0, 0, 0, 0, time.UTC)
 
@@ -2043,6 +2082,7 @@ func TestProcessMedicalRoutesNarrativeToTheAdminGatedTable(t *testing.T) {
 // every pass and be re-saved forever -- 35 rows on 2026 alone. Verified by hand
 // against a real sync (a third pass touched 0 rows); this pins it.
 func TestRegistrationNeedsUpdateIgnoresTheUnknownSpelling(t *testing.T) {
+	t.Parallel()
 	col := core.NewBaseCollection("family_camp_registrations")
 	col.Fields.Add(&core.TextField{Name: "share_eligibility"})
 	col.Fields.Add(&core.TextField{Name: "share_eligibility_source"})
@@ -2100,6 +2140,7 @@ func TestRegistrationNeedsUpdateIgnoresTheUnknownSpelling(t *testing.T) {
 // whether gender/date_of_birth/email/pronouns are kept. Do not "fix" this test
 // by changing the merge until that ruling lands.
 func TestProcessAdultsPersonFieldsTakeTheFirstLoadedSibling(t *testing.T) {
+	t.Parallel()
 	s := &FamilyCampDerivedSync{}
 
 	// A local constant rather than the literal twice: goconst counts repeated
@@ -2153,6 +2194,7 @@ func TestProcessAdultsPersonFieldsTakeTheFirstLoadedSibling(t *testing.T) {
 // row is real would drop them -- 196 real adults across 2022-2026 are blank in
 // first_name/last_name and populated in `name` (kindred#1945).
 func TestProcessAdultsKeepsANameOnlyAdult(t *testing.T) {
+	t.Parallel()
 	s := &FamilyCampDerivedSync{}
 
 	householdValues := []customValueEntry{
@@ -2179,6 +2221,7 @@ func TestProcessAdultsKeepsANameOnlyAdult(t *testing.T) {
 // `name` with blank split columns is the OPPOSITE case (kindred#1945/#1946
 // safety point, ~196 real adults across 2022-2026) and must still survive.
 func TestProcessAdultsDropsNamelessRows(t *testing.T) {
+	t.Parallel()
 	cases := []struct {
 		name            string
 		householdValues []customValueEntry
@@ -2239,6 +2282,7 @@ func TestProcessAdultsDropsNamelessRows(t *testing.T) {
 // first would pass against the OLD, buggy code too (first-non-empty already
 // gets it right by luck in that order) and would prove nothing.
 func TestProcessAdultsEmailMergePrefersWellFormedValue(t *testing.T) {
+	t.Parallel()
 	cases := []struct {
 		name       string
 		malformed  string
@@ -2297,6 +2341,7 @@ func TestProcessAdultsEmailMergePrefersWellFormedValue(t *testing.T) {
 // first-loaded-sibling behavior, not get silently overwritten just because
 // email now has a validity notion.
 func TestProcessAdultsEmailBothWellFormedKeepsFirstLoaded(t *testing.T) {
+	t.Parallel()
 	const first = "amy.johnson@example.com"
 	const second = "amy.j.johnson@example.org"
 
@@ -2325,6 +2370,7 @@ func TestProcessAdultsEmailBothWellFormedKeepsFirstLoaded(t *testing.T) {
 // what the merge does across the dataset, and a validity change that broke
 // it would be a regression, not a fix.
 func TestProcessAdultsEmailGapFillStillWins(t *testing.T) {
+	t.Parallel()
 	const filled = "amy.johnson@example.com"
 
 	for _, order := range []string{"blank-first", "filled-first"} {

@@ -10,6 +10,7 @@ const testFieldDefPBID = "pb_field_100"
 const testHouseholdPBID = "pb_household_123"
 
 func TestHouseholdCustomFieldValuesSync_Name(t *testing.T) {
+	t.Parallel()
 	s := &HouseholdCustomFieldValuesSync{}
 
 	got := s.Name()
@@ -22,6 +23,7 @@ func TestHouseholdCustomFieldValuesSync_Name(t *testing.T) {
 
 // TestTransformHouseholdCustomFieldValueToPB tests transformation to PocketBase format
 func TestTransformHouseholdCustomFieldValueToPB(t *testing.T) {
+	t.Parallel()
 	s := &HouseholdCustomFieldValuesSync{}
 
 	// Mock CampMinder API response for a custom field value
@@ -68,6 +70,7 @@ func TestTransformHouseholdCustomFieldValueToPB(t *testing.T) {
 
 // TestTransformHouseholdCustomFieldValueEmptyValue tests that empty values are allowed
 func TestTransformHouseholdCustomFieldValueEmptyValue(t *testing.T) {
+	t.Parallel()
 	s := &HouseholdCustomFieldValuesSync{}
 
 	data := map[string]any{
@@ -84,6 +87,7 @@ func TestTransformHouseholdCustomFieldValueEmptyValue(t *testing.T) {
 
 // TestTransformHouseholdCustomFieldValueNilValue tests handling of nil Value
 func TestTransformHouseholdCustomFieldValueNilValue(t *testing.T) {
+	t.Parallel()
 	s := &HouseholdCustomFieldValuesSync{}
 
 	data := map[string]any{
@@ -104,6 +108,7 @@ func TestTransformHouseholdCustomFieldValueNilValue(t *testing.T) {
 // The PreloadCompositeRecords function appends "|year" to the keyBuilder result,
 // so the keyBuilder must NOT include year, and all lookups must use "key|year" format.
 func TestHouseholdCustomFieldValuesCompositeKeyFormat(t *testing.T) {
+	t.Parallel()
 	householdPBId := testHouseholdPBID
 	fieldDefPBId := testFieldDefPBID
 	year := 2025
@@ -143,6 +148,7 @@ func TestHouseholdCustomFieldValuesCompositeKeyFormat(t *testing.T) {
 // the keyBuilder closure should return identity only (no year),
 // because PreloadCompositeRecords will append "|year" to it.
 func TestHouseholdCustomFieldValuesKeyBuilderShouldNotIncludeYear(t *testing.T) {
+	t.Parallel()
 	// Simulate what the keyBuilder closure does
 	householdPBId := "abc123"
 	fieldDefPBId := "def456"
@@ -187,6 +193,7 @@ func TestHouseholdCustomFieldValuesKeyBuilderShouldNotIncludeYear(t *testing.T) 
 // This is the actual bug: TrackProcessedKey(yearScopedKey, 0) creates "key|0" but
 // orphan deletion looks for "key" without the trailing "|0".
 func TestHouseholdCustomFieldValuesTrackingMatchesOrphanLookup(t *testing.T) {
+	t.Parallel()
 	s := &HouseholdCustomFieldValuesSync{
 		BaseSyncService: BaseSyncService{
 			ProcessedKeys: make(map[string]bool),

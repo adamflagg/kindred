@@ -65,6 +65,7 @@ func newCascadeProbeApp(t *testing.T, cascade bool) (app core.App, sessionID, as
 // PocketBase refuse the parent delete instead -- the sync reports an error and
 // no lodging row is lost.
 func TestSessionDeleteIsBlockedWhileAssignmentsExist(t *testing.T) {
+	t.Parallel()
 	app, sessionID, assignID := newCascadeProbeApp(t, false)
 
 	sess, err := app.FindRecordById("camp_sessions", sessionID)
@@ -93,6 +94,7 @@ func TestSessionDeleteIsBlockedWhileAssignmentsExist(t *testing.T) {
 // moves away from. If this ever stops passing, PocketBase changed its cascade
 // semantics and the reasoning behind 1500000124 needs revisiting.
 func TestSessionDeleteCascadesWhenCascadeIsOn(t *testing.T) {
+	t.Parallel()
 	app, sessionID, assignID := newCascadeProbeApp(t, true)
 
 	sess, err := app.FindRecordById("camp_sessions", sessionID)
@@ -116,6 +118,7 @@ func TestSessionDeleteCascadesWhenCascadeIsOn(t *testing.T) {
 // question -- "same cabin as last year" -- can only be joined on the CampMinder
 // id, which is why session_cm_id sits beside the relation instead of replacing it.
 func TestSessionCMIDSurvivesAcrossYears(t *testing.T) {
+	t.Parallel()
 	app, _, _ := newCascadeProbeApp(t, false)
 
 	sessions, err := app.FindCollectionByNameOrId("camp_sessions")

@@ -9,6 +9,7 @@ import (
 )
 
 func TestFindStrandedAssignments(t *testing.T) {
+	t.Parallel()
 	validPairs := map[string]bool{
 		strandedPairKey("sess1", "bunkA"): true,
 		strandedPairKey("sess1", "bunkB"): true,
@@ -33,6 +34,7 @@ func TestFindStrandedAssignments(t *testing.T) {
 }
 
 func TestFindEnrollmentOrphans(t *testing.T) {
+	t.Parallel()
 	enrolledPairs := map[string]bool{
 		strandedPairKey("sess1", "p1"): true,
 	}
@@ -60,6 +62,7 @@ func TestFindEnrollmentOrphans(t *testing.T) {
 // -- so that a camp_sessions record recreated rather than updated cannot turn
 // the whole sweep into a silent no-op.
 func TestFindLodgingEnrollmentOrphans(t *testing.T) {
+	t.Parallel()
 	householdIndex := map[int][]SessionWindow{
 		9001: {{ID: "pb1", CMID: 101}}, // still enrolled in weekend 101
 	}
@@ -87,6 +90,7 @@ func TestFindLodgingEnrollmentOrphans(t *testing.T) {
 }
 
 func TestReliableEnrolledSessions(t *testing.T) {
+	t.Parallel()
 	index := map[int][]SessionWindow{
 		9001: {{ID: "pb1", CMID: 101}, {ID: "pb2", CMID: 102}},
 		9002: {{ID: "pb1", CMID: 101}},
@@ -108,6 +112,7 @@ func TestReliableEnrolledSessions(t *testing.T) {
 }
 
 func TestSessionIndexHasWindow(t *testing.T) {
+	t.Parallel()
 	windows := []SessionWindow{{ID: "pb-a", CMID: 101}, {ID: "pb-b", CMID: 102}}
 	if !sessionIndexHasWindow(windows, 101) {
 		t.Error("want true for a present window CampMinder id")
@@ -273,6 +278,7 @@ func saveRec(t *testing.T, app core.App, collection string, data map[string]any)
 }
 
 func TestStrandedAssignmentCleanup_SweepsStrandedDraft(t *testing.T) {
+	t.Parallel()
 	app, err := pbtests.NewTestApp()
 	if err != nil {
 		t.Fatal(err)
@@ -312,6 +318,7 @@ func TestStrandedAssignmentCleanup_SweepsStrandedDraft(t *testing.T) {
 }
 
 func TestStrandedAssignmentCleanup_GateSkipsWhenNoBunkPlans(t *testing.T) {
+	t.Parallel()
 	app, err := pbtests.NewTestApp()
 	if err != nil {
 		t.Fatal(err)
@@ -346,6 +353,7 @@ func TestStrandedAssignmentCleanup_GateSkipsWhenNoBunkPlans(t *testing.T) {
 }
 
 func TestStrandedAssignmentCleanup_GateSkipsPerSession(t *testing.T) {
+	t.Parallel()
 	app, err := pbtests.NewTestApp()
 	if err != nil {
 		t.Fatal(err)
@@ -387,6 +395,7 @@ func TestStrandedAssignmentCleanup_GateSkipsPerSession(t *testing.T) {
 }
 
 func TestStrandedAssignmentCleanup_LeavesValidDraftUntouched(t *testing.T) {
+	t.Parallel()
 	app, err := pbtests.NewTestApp()
 	if err != nil {
 		t.Fatal(err)
@@ -423,6 +432,7 @@ func TestStrandedAssignmentCleanup_LeavesValidDraftUntouched(t *testing.T) {
 }
 
 func TestStrandedAssignmentCleanup_ProdAuditDoesNotDelete(t *testing.T) {
+	t.Parallel()
 	app, err := pbtests.NewTestApp()
 	if err != nil {
 		t.Fatal(err)
@@ -457,6 +467,7 @@ func TestStrandedAssignmentCleanup_ProdAuditDoesNotDelete(t *testing.T) {
 }
 
 func TestStrandedAssignmentCleanup_Idempotent(t *testing.T) {
+	t.Parallel()
 	app, err := pbtests.NewTestApp()
 	if err != nil {
 		t.Fatal(err)
@@ -496,6 +507,7 @@ func TestStrandedAssignmentCleanup_Idempotent(t *testing.T) {
 }
 
 func TestStrandedAssignmentCleanup_ProdAuditWarnings(t *testing.T) {
+	t.Parallel()
 	app, err := pbtests.NewTestApp()
 	if err != nil {
 		t.Fatal(err)
@@ -538,6 +550,7 @@ func TestStrandedAssignmentCleanup_ProdAuditWarnings(t *testing.T) {
 // WasSuccessful() reports false — but does NOT abort the run: the draft sweep
 // that already succeeded must still stand.
 func TestStrandedAssignmentCleanup_ProdQueryErrorIsCountedNotFatal(t *testing.T) {
+	t.Parallel()
 	app, err := pbtests.NewTestApp()
 	if err != nil {
 		t.Fatal(err)
@@ -592,6 +605,7 @@ func TestStrandedAssignmentCleanup_ProdQueryErrorIsCountedNotFatal(t *testing.T)
 }
 
 func TestStrandedAssignmentCleanup_SweepsEnrollmentOrphanDraft(t *testing.T) {
+	t.Parallel()
 	app, err := pbtests.NewTestApp()
 	if err != nil {
 		t.Fatal(err)
@@ -635,6 +649,7 @@ func TestStrandedAssignmentCleanup_SweepsEnrollmentOrphanDraft(t *testing.T) {
 }
 
 func TestStrandedAssignmentCleanup_EnrollmentGateSkipsPerSession(t *testing.T) {
+	t.Parallel()
 	app, err := pbtests.NewTestApp()
 	if err != nil {
 		t.Fatal(err)
@@ -681,6 +696,7 @@ func TestStrandedAssignmentCleanup_EnrollmentGateSkipsPerSession(t *testing.T) {
 }
 
 func TestStrandedAssignmentCleanup_EnrollmentOrphanProdAudit(t *testing.T) {
+	t.Parallel()
 	app, err := pbtests.NewTestApp()
 	if err != nil {
 		t.Fatal(err)
@@ -726,6 +742,7 @@ func TestStrandedAssignmentCleanup_EnrollmentOrphanProdAudit(t *testing.T) {
 // attendees query (see #2028's insistence on reuse over re-derivation).
 
 func TestStrandedAssignmentCleanup_SweepsLodgingEnrollmentOrphanDraftHousehold(t *testing.T) {
+	t.Parallel()
 	app, err := pbtests.NewTestApp()
 	if err != nil {
 		t.Fatal(err)
@@ -773,6 +790,7 @@ func TestStrandedAssignmentCleanup_SweepsLodgingEnrollmentOrphanDraftHousehold(t
 // and source survive, exactly like bunk+bunk_plan nulling leaves everything
 // else on the row alone.
 func TestStrandedAssignmentCleanup_LodgingDraftPreservesStaffTouchedAndSource(t *testing.T) {
+	t.Parallel()
 	app, err := pbtests.NewTestApp()
 	if err != nil {
 		t.Fatal(err)
@@ -820,6 +838,7 @@ func TestStrandedAssignmentCleanup_LodgingDraftPreservesStaffTouchedAndSource(t 
 }
 
 func TestStrandedAssignmentCleanup_LodgingEnrollmentGateSkipsPerSession(t *testing.T) {
+	t.Parallel()
 	app, err := pbtests.NewTestApp()
 	if err != nil {
 		t.Fatal(err)
@@ -864,6 +883,7 @@ func TestStrandedAssignmentCleanup_LodgingEnrollmentGateSkipsPerSession(t *testi
 // responsibility: this pass only audits lodging_assignments (the mirror) --
 // deletion is LodgingAssignmentsSync.deleteLodgingOrphans' job (#2028).
 func TestStrandedAssignmentCleanup_LodgingProdAuditDoesNotDelete(t *testing.T) {
+	t.Parallel()
 	app, err := pbtests.NewTestApp()
 	if err != nil {
 		t.Fatal(err)
@@ -909,6 +929,7 @@ func TestStrandedAssignmentCleanup_LodgingProdAuditDoesNotDelete(t *testing.T) {
 // TestStrandedAssignmentCleanup_LodgingPersonGrainOrphanDraft is the adult
 // weekend twin of the household-grain sweep.
 func TestStrandedAssignmentCleanup_LodgingPersonGrainOrphanDraft(t *testing.T) {
+	t.Parallel()
 	app, err := pbtests.NewTestApp()
 	if err != nil {
 		t.Fatal(err)
@@ -952,6 +973,7 @@ func TestStrandedAssignmentCleanup_LodgingPersonGrainOrphanDraft(t *testing.T) {
 // TestStrandedAssignmentCleanup_LeavesEnrolledLodgingDraftUntouched is the
 // obvious regression: a household still enrolled keeps its draft placement.
 func TestStrandedAssignmentCleanup_LeavesEnrolledLodgingDraftUntouched(t *testing.T) {
+	t.Parallel()
 	app, err := pbtests.NewTestApp()
 	if err != nil {
 		t.Fatal(err)
@@ -997,6 +1019,7 @@ func TestStrandedAssignmentCleanup_LeavesEnrolledLodgingDraftUntouched(t *testin
 // prod row; run 2 has nothing left to sweep, so Updated must be 0, and the
 // still-present prod row must warn exactly once again — not twice.
 func TestStrandedAssignmentCleanup_StatsResetBetweenRuns(t *testing.T) {
+	t.Parallel()
 	app, err := pbtests.NewTestApp()
 	if err != nil {
 		t.Fatal(err)
@@ -1048,6 +1071,7 @@ func TestStrandedAssignmentCleanup_StatsResetBetweenRuns(t *testing.T) {
 // audits nothing at all; without a per-run reset it keeps reporting run 1's
 // warning count, describing an audit that never happened.
 func TestStrandedAssignmentCleanup_ProdAuditWarningsClearWhenRunGatesOut(t *testing.T) {
+	t.Parallel()
 	app, err := pbtests.NewTestApp()
 	if err != nil {
 		t.Fatal(err)
@@ -1105,6 +1129,7 @@ func TestStrandedAssignmentCleanup_ProdAuditWarningsClearWhenRunGatesOut(t *test
 // reaches is this: two records, same CampMinder id, different PocketBase id --
 // the attendees on the new one, the placement still on the old.
 func TestStrandedAssignmentCleanup_LodgingOrphanPassKeysOnTheCampMinderSessionID(t *testing.T) {
+	t.Parallel()
 	app, err := pbtests.NewTestApp()
 	if err != nil {
 		t.Fatal(err)

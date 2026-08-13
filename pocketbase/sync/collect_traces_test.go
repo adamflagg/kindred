@@ -27,6 +27,7 @@ import (
 // must be false so that manual/ad-hoc runs don't collect traces unless
 // requested.
 func TestNewRequestProcessor_CollectTracesDefaultsFalse(t *testing.T) {
+	t.Parallel()
 	processor := NewRequestProcessor(nil)
 
 	if processor.CollectTraces {
@@ -38,6 +39,7 @@ func TestNewRequestProcessor_CollectTracesDefaultsFalse(t *testing.T) {
 // and historical sync registration patterns create a RequestProcessor with
 // CollectTraces=true and register it as "process_requests" in the orchestrator.
 func TestSyncRegistration_SetsCollectTracesTrue(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name string
 	}{
@@ -80,6 +82,7 @@ func TestSyncRegistration_SetsCollectTracesTrue(t *testing.T) {
 //	collectTraces := collectTracesParam == "true" || collectTracesParam == "1"
 //	processor.CollectTraces = collectTraces
 func TestManualProcessRequests_CollectTracesFromParam(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name  string
 		query string
@@ -110,6 +113,7 @@ func TestManualProcessRequests_CollectTracesFromParam(t *testing.T) {
 // is correctly serialized in the JSON body sent to the Python API. This is
 // the actual wire format that Python reads.
 func TestCollectTraces_JSONSerialization(t *testing.T) {
+	t.Parallel()
 	t.Run("collect_traces=true appears in JSON", func(t *testing.T) {
 		req := apiProcessorRequest{
 			Year:          2025,
@@ -175,6 +179,7 @@ func TestCollectTraces_JSONSerialization(t *testing.T) {
 // Note: The collect_traces=true case is covered by
 // TestCallAPIProcessor_CollectTracesField in process_requests_test.go.
 func TestCollectTraces_EndToEndFalseViaCallAPIProcessor(t *testing.T) {
+	t.Parallel()
 	var receivedCollectTraces bool
 	var fieldPresent bool
 
@@ -220,6 +225,7 @@ func TestCollectTraces_EndToEndFalseViaCallAPIProcessor(t *testing.T) {
 // RunSyncWithOptions switches from current-year to historical-year),
 // the new processor's CollectTraces value replaces the old one.
 func TestCollectTraces_OverwriteOnReRegistration(t *testing.T) {
+	t.Parallel()
 	o := NewOrchestrator(nil)
 
 	// First registration with CollectTraces=false

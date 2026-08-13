@@ -12,6 +12,7 @@ import (
 // TestPersonCustomFieldValuesSync_HasRateLimiter verifies that the sync service
 // initializes with a rate limiter for API calls
 func TestPersonCustomFieldValuesSync_HasRateLimiter(t *testing.T) {
+	t.Parallel()
 	s := &PersonCustomFieldValuesSync{}
 
 	// Rate limiter should be nil by default on zero-value struct
@@ -26,6 +27,7 @@ func TestPersonCustomFieldValuesSync_HasRateLimiter(t *testing.T) {
 // TestPersonCustomFieldValuesSync_RateLimiterConfig verifies the rate limiter is configured
 // with appropriate settings for CampMinder's aggressive rate limits
 func TestPersonCustomFieldValuesSync_RateLimiterConfig(t *testing.T) {
+	t.Parallel()
 	// Create a rate limiter with our expected config
 	cfg := &ratelimit.Config{
 		APIDelay:          300 * time.Millisecond, // ~3 req/sec
@@ -51,6 +53,7 @@ func TestPersonCustomFieldValuesSync_RateLimiterConfig(t *testing.T) {
 
 // TestRateLimiterRetryOn429 verifies that rate limit errors (429) trigger retry behavior
 func TestRateLimiterRetryOn429(t *testing.T) {
+	t.Parallel()
 	cfg := &ratelimit.Config{
 		APIDelay:          10 * time.Millisecond, // Fast for testing
 		BackoffMultiplier: 2.0,
@@ -83,6 +86,7 @@ func TestRateLimiterRetryOn429(t *testing.T) {
 
 // TestRateLimiterMaxAttemptsExceeded verifies that persistent rate limits eventually fail
 func TestRateLimiterMaxAttemptsExceeded(t *testing.T) {
+	t.Parallel()
 	cfg := &ratelimit.Config{
 		APIDelay:          10 * time.Millisecond,
 		BackoffMultiplier: 2.0,
@@ -112,6 +116,7 @@ func TestRateLimiterMaxAttemptsExceeded(t *testing.T) {
 
 // TestRateLimiterSuccessfulRecovery verifies that the rate limiter resets after success
 func TestRateLimiterSuccessfulRecovery(t *testing.T) {
+	t.Parallel()
 	cfg := &ratelimit.Config{
 		APIDelay:          10 * time.Millisecond,
 		BackoffMultiplier: 2.0,
@@ -156,6 +161,7 @@ func TestRateLimiterSuccessfulRecovery(t *testing.T) {
 
 // TestRateLimiterNon429ErrorNotRetried verifies that non-rate-limit errors fail immediately
 func TestRateLimiterNon429ErrorNotRetried(t *testing.T) {
+	t.Parallel()
 	cfg := &ratelimit.Config{
 		APIDelay:          10 * time.Millisecond,
 		BackoffMultiplier: 2.0,
@@ -186,6 +192,7 @@ func TestRateLimiterNon429ErrorNotRetried(t *testing.T) {
 
 // TestRateLimiterContextCancellation verifies that context cancellation stops retries
 func TestRateLimiterContextCancellation(t *testing.T) {
+	t.Parallel()
 	cfg := &ratelimit.Config{
 		APIDelay:          10 * time.Millisecond,
 		BackoffMultiplier: 2.0,
@@ -240,6 +247,7 @@ func (m *MockCustomFieldFetcher) GetPersonCustomFieldValuesPage(
 // TestSyncWithRateLimiter_Integration tests that the sync logic properly wraps API calls
 // This tests the integration pattern we expect to implement
 func TestSyncWithRateLimiter_Integration(t *testing.T) {
+	t.Parallel()
 	cfg := &ratelimit.Config{
 		APIDelay:          10 * time.Millisecond,
 		BackoffMultiplier: 2.0,
@@ -286,6 +294,7 @@ func TestSyncWithRateLimiter_Integration(t *testing.T) {
 
 // TestSyncWithRateLimiter_PersistentFailure tests behavior when API keeps failing
 func TestSyncWithRateLimiter_PersistentFailure(t *testing.T) {
+	t.Parallel()
 	cfg := &ratelimit.Config{
 		APIDelay:          10 * time.Millisecond,
 		BackoffMultiplier: 2.0,
@@ -331,6 +340,7 @@ func TestSyncWithRateLimiter_PersistentFailure(t *testing.T) {
 // TestHouseholdCustomFieldValuesSync_HasRateLimiter verifies that the household sync service
 // also has a rate limiter field
 func TestHouseholdCustomFieldValuesSync_HasRateLimiter(t *testing.T) {
+	t.Parallel()
 	s := &HouseholdCustomFieldValuesSync{}
 
 	// Rate limiter should be nil by default on zero-value struct
@@ -362,6 +372,7 @@ func (m *MockHouseholdCustomFieldFetcher) GetHouseholdCustomFieldValuesPage(
 
 // TestHouseholdSyncWithRateLimiter_Integration tests household sync rate limiting
 func TestHouseholdSyncWithRateLimiter_Integration(t *testing.T) {
+	t.Parallel()
 	cfg := &ratelimit.Config{
 		APIDelay:          10 * time.Millisecond,
 		BackoffMultiplier: 2.0,

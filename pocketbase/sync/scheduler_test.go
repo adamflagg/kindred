@@ -11,6 +11,7 @@ import (
 
 // TestSchedulerCreation tests scheduler initialization
 func TestSchedulerCreation(t *testing.T) {
+	t.Parallel()
 	s := NewScheduler(nil)
 
 	if s == nil {
@@ -29,6 +30,7 @@ func TestSchedulerCreation(t *testing.T) {
 
 // TestSchedulerTriggerSyncTypes tests that TriggerSync handles all expected types
 func TestSchedulerTriggerSyncTypes(t *testing.T) {
+	t.Parallel()
 	// Valid sync types that should be handled
 	validTypes := []string{
 		"refresh-bunking",
@@ -60,6 +62,7 @@ func TestSchedulerTriggerSyncTypes(t *testing.T) {
 
 // TestSchedulerUnknownSyncType tests that unknown sync types return an error
 func TestSchedulerUnknownSyncType(t *testing.T) {
+	t.Parallel()
 	s := NewScheduler(nil)
 
 	err := s.TriggerSync(context.Background(), "invalid-type")
@@ -74,6 +77,7 @@ func TestSchedulerUnknownSyncType(t *testing.T) {
 
 // TestIsWeeklySyncRunning tests weekly sync status check via scheduler
 func TestSchedulerIsWeeklySyncRunning(t *testing.T) {
+	t.Parallel()
 	s := NewScheduler(nil)
 
 	if s.IsWeeklySyncRunning() {
@@ -83,6 +87,7 @@ func TestSchedulerIsWeeklySyncRunning(t *testing.T) {
 
 // TestIsCustomValuesSyncRunning tests custom values sync status check via scheduler
 func TestSchedulerIsCustomValuesSyncRunning(t *testing.T) {
+	t.Parallel()
 	s := NewScheduler(nil)
 
 	if s.IsCustomValuesSyncRunning() {
@@ -92,6 +97,7 @@ func TestSchedulerIsCustomValuesSyncRunning(t *testing.T) {
 
 // TestTriggerSyncCustomValues tests that TriggerSync handles custom-values type
 func TestSchedulerTriggerSyncCustomValues(t *testing.T) {
+	t.Parallel()
 	s := NewScheduler(nil)
 
 	// Register mock services for custom values sync
@@ -109,6 +115,7 @@ func TestSchedulerTriggerSyncCustomValues(t *testing.T) {
 
 // TestGetCustomValuesSyncJobs tests that custom values sync jobs are returned correctly
 func TestGetCustomValuesSyncJobs(t *testing.T) {
+	t.Parallel()
 	jobs := GetCustomValuesSyncJobs()
 
 	expected := []string{"person_custom_values", "household_custom_values"}
@@ -128,6 +135,7 @@ func TestGetCustomValuesSyncJobs(t *testing.T) {
 // This is a regression test for the "rate limiter wait: context deadline exceeded" issue
 // that occurred when both custom values syncs ran concurrently, doubling API pressure.
 func TestCustomValuesSyncRunsSequentially(t *testing.T) {
+	t.Parallel()
 	synctest.Test(t, func(t *testing.T) {
 		s := NewScheduler(nil)
 
@@ -205,6 +213,7 @@ func TestCustomValuesSyncRunsSequentially(t *testing.T) {
 
 // TestGetRefreshBunkingJobs tests that refresh bunking returns the correct services in order
 func TestGetRefreshBunkingJobs(t *testing.T) {
+	t.Parallel()
 	jobs := GetRefreshBunkingJobs()
 
 	// stranded_assignment_cleanup runs last: refresh-bunking rewrites bunk_plans,
@@ -226,6 +235,7 @@ func TestGetRefreshBunkingJobs(t *testing.T) {
 // bunks, bunk_plans, bunk_assignments, and stranded_assignment_cleanup in
 // sequence (not just bunk_assignments)
 func TestRefreshBunkingRunsAllServices(t *testing.T) {
+	t.Parallel()
 	synctest.Test(t, func(t *testing.T) {
 		s := NewScheduler(nil)
 
@@ -277,6 +287,7 @@ func TestRefreshBunkingRunsAllServices(t *testing.T) {
 // TestRefreshBunkingRegistersRequiredServices verifies that TriggerSync for
 // refresh-bunking requires every bunking sync job to be registered
 func TestRefreshBunkingRegistersRequiredServices(t *testing.T) {
+	t.Parallel()
 	s := NewScheduler(nil)
 
 	// Only register bunk_assignments (old behavior) — should fail with new code

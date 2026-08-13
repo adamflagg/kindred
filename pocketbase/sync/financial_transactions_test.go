@@ -5,6 +5,7 @@ import (
 )
 
 func TestFinancialTransactionsSync_Name(t *testing.T) {
+	t.Parallel()
 	s := &FinancialTransactionsSync{}
 
 	got := s.Name()
@@ -20,6 +21,7 @@ func TestFinancialTransactionsSync_Name(t *testing.T) {
 // =============================================================================
 
 func TestTransformTransactionToPB(t *testing.T) {
+	t.Parallel()
 	s := &FinancialTransactionsSync{}
 
 	// Build lookup maps for relation resolution
@@ -175,6 +177,7 @@ func verifyFieldEmpty(t *testing.T, data map[string]any, field string) {
 }
 
 func TestTransformTransactionToPB_Reversed(t *testing.T) {
+	t.Parallel()
 	s := &FinancialTransactionsSync{}
 	lookupMaps := TransactionLookupMaps{}
 
@@ -201,6 +204,7 @@ func TestTransformTransactionToPB_Reversed(t *testing.T) {
 }
 
 func TestTransformTransactionToPB_MissingTransactionID(t *testing.T) {
+	t.Parallel()
 	s := &FinancialTransactionsSync{}
 	lookupMaps := TransactionLookupMaps{}
 
@@ -217,6 +221,7 @@ func TestTransformTransactionToPB_MissingTransactionID(t *testing.T) {
 }
 
 func TestTransformTransactionToPB_ZeroTransactionID(t *testing.T) {
+	t.Parallel()
 	s := &FinancialTransactionsSync{}
 	lookupMaps := TransactionLookupMaps{}
 
@@ -234,6 +239,7 @@ func TestTransformTransactionToPB_ZeroTransactionID(t *testing.T) {
 }
 
 func TestTransformTransactionToPB_NullOptionalFields(t *testing.T) {
+	t.Parallel()
 	s := &FinancialTransactionsSync{}
 	lookupMaps := TransactionLookupMaps{}
 
@@ -287,6 +293,7 @@ func TestTransformTransactionToPB_NullOptionalFields(t *testing.T) {
 }
 
 func TestTransformTransactionToPB_UnknownRelations(t *testing.T) {
+	t.Parallel()
 	s := &FinancialTransactionsSync{}
 
 	// Empty lookup maps - relations won't be resolvable
@@ -323,6 +330,7 @@ func TestTransformTransactionToPB_UnknownRelations(t *testing.T) {
 }
 
 func TestTransformTransactionToPB_NegativeAmount(t *testing.T) {
+	t.Parallel()
 	s := &FinancialTransactionsSync{}
 	lookupMaps := TransactionLookupMaps{}
 
