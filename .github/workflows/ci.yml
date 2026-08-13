@@ -132,6 +132,10 @@ jobs:
             - 'go.mod'
             - 'go.sum'
             - '.golangci.yml'
+            # The sharder decides which tests run at all, so a change to it must
+            # run them -- otherwise it ships without ever executing a Go test.
+            # Same reasoning as validate_migrations.py under `migrations` below.
+            - 'scripts/ci/go_test_shard.py'
           migrations:
             - 'pocketbase/pb_migrations/**'
             - 'pocketbase/main.go'

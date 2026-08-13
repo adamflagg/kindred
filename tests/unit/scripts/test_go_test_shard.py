@@ -23,10 +23,13 @@ import subprocess
 import sys
 from pathlib import Path
 from types import ModuleType
+from typing import Any
 
 import pytest
+import yaml
 
-SCRIPT_PATH = Path(__file__).parents[3] / "scripts" / "ci" / "go_test_shard.py"
+REPO_ROOT = Path(__file__).parents[3]
+SCRIPT_PATH = REPO_ROOT / "scripts" / "ci" / "go_test_shard.py"
 
 
 def _load_module() -> ModuleType:
@@ -336,3 +339,39 @@ def test_verify_reported_still_fails_a_shortfall_on_an_uncached_run():
     output = "--- PASS: TestA (0.10s)\nok  \tpkg\t0.400s\n"
     with pytest.raises(mod.ShardError, match="TestB"):
         mod.verify_reported(PKG, {"TestA", "TestB"}, mod.parse_reported_tests(output), output=output)
+
+
+# --- the workflow wiring --------------------------------------------------
+#
+# The sharder only runs when the `go` paths-filter fires. Left out of that
+# filter, a change to the sharder itself ships without ever running a Go test --
+# which is the exact false-green class the rest of this file exists to prevent,
+# and it happened on this PR's own first CI run.
+
+
+def _ci_workflow() -> dict[str, Any]:
+    workflow = yaml.safe_load((REPO_ROOT / ".github/workflows/ci.yml").read_text())
+    assert isinstance(workflow, dict)
+    return workflow
+
+
+def _go_filter() -> list[str]:
+    filters = _ci_workflow()["jobs"]["detect-changes"]["steps"][1]["with"]["filters"]
+    patterns = yaml.safe_load(filters)["go"]
+    assert isinstance(patterns, list)
+    return patterns
+
+
+def test_go_filter_covers_the_sharder():
+    assert "scripts/ci/go_test_shard.py" in _go_filter()
+
+
+def test_tests_go_job_shards_and_derives_total_from_the_matrix():
+    """A hardcoded --total that drifts from the matrix is a silent coverage hole."""
+    job = _ci_workflow()["jobs"]["tests-go"]
+    shards = job["strategy"]["matrix"]["shard"]
+    assert shards == list(range(len(shards))), "shard indices must be 0-based and contiguous"
+
+    run = job["steps"][-1]["run"]
+    assert "strategy.job-total" in run, "--total must come from the matrix, not a literal"
+    assert "-race" in run
