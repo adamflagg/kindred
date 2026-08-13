@@ -2,6 +2,7 @@ package sync
 
 import (
 	"context"
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -581,5 +582,335 @@ func TestResolveRunYear(t *testing.T) {
 					tc.statusYear, tc.seasonYear, tc.wallYear, got, tc.want)
 			}
 		})
+	}
+}
+
+// gateService blocks inside Sync until the test releases it, so a test can hold one batch
+// open across another batch's whole lifetime. The cron schedule makes that overlap a
+// certainty rather than a hazard — "0 * * * *" fires alongside "0 3 * * *" every day and
+// alongside both "0 2 * * 0" and "0 4 * * 0" on Sunday — and robfig/cron runs every entry on
+// its own goroutine.
+type gateService struct {
+	name    string
+	entered chan struct{} // closed once Sync is running
+	release chan struct{} // closed by the test to let Sync return
+}
+
+func newGateService(name string) *gateService {
+	return &gateService{
+		name:    name,
+		entered: make(chan struct{}),
+		release: make(chan struct{}),
+	}
+}
+
+func (g *gateService) Sync(context.Context) error {
+	close(g.entered)
+	<-g.release
+	return nil
+}
+func (g *gateService) Name() string    { return g.name }
+func (g *gateService) GetStats() Stats { return Stats{} }
+
+// TestConcurrentBatchesKeepTheirOwnOrigin is the guard for kindred#2297's review finding 1.
+//
+// The trigger and batch id used to live in a single pair of orchestrator fields that
+// beginBatch saved and restored around a run. That is safe only if runs nest, and they do
+// not: the four cron entries overlap by construction, three times a week at minimum and once
+// every day. This test drives exactly that interleaving — the hourly batch opens first, the
+// weekly batch opens inside it, and the hourly ends first, mid-weekly.
+//
+// A shared slot fails it three ways at once. The hourly's restore puts the slot back to the
+// empty value it captured, so every weekly job after that point is filed as an unrelated
+// manual run with a fresh batch id of its own; and the weekly's own restore then writes back
+// the stale "hourly" it captured, leaving the orchestrator stuck reporting hourly for every
+// run afterwards. It never self-heals.
+func TestConcurrentBatchesKeepTheirOwnOrigin(t *testing.T) {
+	t.Parallel()
+
+	app := newSyncRunsApp(t)
+	o := NewOrchestrator(app)
+	o.SetJobSpacing(0)
+
+	hourlyGate := newGateService(hourlySyncJob)
+	o.RegisterService(hourlySyncJob, hourlyGate)
+
+	weekly := GetWeeklySyncJobs()
+	weeklyGate := newGateService(weekly[0])
+	o.RegisterService(weekly[0], weeklyGate)
+	for _, name := range weekly[1:] {
+		o.RegisterService(name, &MockService{name: name})
+	}
+
+	hourlyDone := make(chan error, 1)
+	go func() { hourlyDone <- o.RunHourlySync(context.Background()) }()
+	<-hourlyGate.entered
+
+	weeklyDone := make(chan error, 1)
+	go func() { weeklyDone <- o.RunWeeklySync(context.Background()) }()
+	<-weeklyGate.entered
+
+	// The hourly finishes while the weekly is still working through its queue.
+	close(hourlyGate.release)
+	if err := <-hourlyDone; err != nil {
+		t.Fatalf("RunHourlySync: %v", err)
+	}
+	close(weeklyGate.release)
+	if err := <-weeklyDone; err != nil {
+		t.Fatalf("RunWeeklySync: %v", err)
+	}
+
+	// One row per weekly job plus the hourly's.
+	recs := waitForSyncRuns(t, app, len(weekly)+1)
+
+	byService := map[string]*core.Record{}
+	for _, rec := range recs {
+		byService[rec.GetString("service")] = rec
+	}
+
+	hourlyRec := byService[hourlySyncJob]
+	if hourlyRec == nil {
+		t.Fatalf("no row for %s", hourlySyncJob)
+	}
+	if got := hourlyRec.GetString("trigger"); got != triggerHourly {
+		t.Errorf("%s trigger = %q, want %q", hourlySyncJob, got, triggerHourly)
+	}
+
+	var weeklyBatch string
+	for _, name := range weekly {
+		rec := byService[name]
+		if rec == nil {
+			t.Fatalf("no row for weekly job %s", name)
+		}
+		if got := rec.GetString("trigger"); got != triggerWeekly {
+			t.Errorf("%s trigger = %q, want %q — a concurrent batch overwrote it",
+				name, got, triggerWeekly)
+		}
+		batch := rec.GetString("batch_id")
+		if weeklyBatch == "" {
+			weeklyBatch = batch
+			continue
+		}
+		if batch != weeklyBatch {
+			t.Errorf("%s batch_id = %q, want %q — one queue is one batch",
+				name, batch, weeklyBatch)
+		}
+	}
+	if weeklyBatch != "" && weeklyBatch == hourlyRec.GetString("batch_id") {
+		t.Error("the hourly run and the weekly queue share a batch id — they are two runs")
+	}
+
+	// Both batches are over, so a plain single-service run is an operator's. A slot that is
+	// restored rather than owned per run is left holding the last writer's trigger here.
+	o.RegisterService("svc", &MockService{name: "svc"})
+	if err := o.RunSingleSync(context.Background(), "svc"); err != nil {
+		t.Fatalf("RunSingleSync: %v", err)
+	}
+	rec := waitForSyncRunByService(t, app, "svc")
+	if got := rec.GetString("trigger"); got != triggerManual {
+		t.Errorf("after both batches ended, trigger = %q, want %q — the shared slot never "+
+			"recovered", got, triggerManual)
+	}
+}
+
+// waitForSyncRunByService polls until a row exists for the given service and returns it.
+func waitForSyncRunByService(t *testing.T, app core.App, service string) *core.Record {
+	t.Helper()
+
+	deadline := time.Now().Add(10 * time.Second)
+	for time.Now().Before(deadline) {
+		recs, err := app.FindAllRecords(syncRunsCollection)
+		if err != nil {
+			t.Fatalf("FindAllRecords(%s): %v", syncRunsCollection, err)
+		}
+		for _, rec := range recs {
+			if rec.GetString("service") == service {
+				return rec
+			}
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	t.Fatalf("timed out waiting for a %s row for %q", syncRunsCollection, service)
+	return nil
+}
+
+// TestOperatorRunDuringABatchIsStillManual is the guard for review finding 3.
+//
+// `trigger` is the one column on this table that cannot be reconstructed after the fact, and
+// the 3am sweep runs for the better part of an hour. An operator refreshing a single service
+// at 03:05 must not have their run filed as part of that sweep, or the distinction the column
+// exists for is exactly backwards for the runs most likely to be looked at.
+func TestOperatorRunDuringABatchIsStillManual(t *testing.T) {
+	t.Parallel()
+
+	app := newSyncRunsApp(t)
+	o := NewOrchestrator(app)
+	o.SetJobSpacing(0)
+
+	weekly := GetWeeklySyncJobs()
+	weeklyGate := newGateService(weekly[0])
+	o.RegisterService(weekly[0], weeklyGate)
+	for _, name := range weekly[1:] {
+		o.RegisterService(name, &MockService{name: name})
+	}
+	o.RegisterService("svc", &MockService{name: "svc"})
+
+	weeklyDone := make(chan error, 1)
+	go func() { weeklyDone <- o.RunWeeklySync(context.Background()) }()
+	<-weeklyGate.entered
+
+	// The operator's run, started while the sweep holds the queue open.
+	if err := o.RunSingleSync(context.Background(), "svc"); err != nil {
+		t.Fatalf("RunSingleSync: %v", err)
+	}
+	rec := waitForSyncRunByService(t, app, "svc")
+	if got := rec.GetString("trigger"); got != triggerManual {
+		t.Errorf("trigger = %q, want %q — an operator's run was filed as the sweep's",
+			got, triggerManual)
+	}
+
+	close(weeklyGate.release)
+	if err := <-weeklyDone; err != nil {
+		t.Fatalf("RunWeeklySync: %v", err)
+	}
+}
+
+// TestFinalizeSyncStatusPublishesAtomically is the guard for review finding 2.
+//
+// Splitting the completion into two critical sections opened a window in which a sync is
+// neither in runningJobs nor in lastCompletedStatus. That is not just an odd read: it is
+// exactly the state in which MarkSyncRunning succeeds — IsRunning is already false — and
+// installs a *new* Status for the same service, which the second, unconditional
+// delete(runningJobs, ...) then erases. That run becomes invisible; its own
+// FinalizeSyncStatus finds no entry, returns early, and it never reaches sync_runs at all.
+//
+// The reader below is guaranteed to observe the window if there is one. sync.RWMutex releases
+// every reader parked on RLock before it lets another writer in, and a writer re-acquiring
+// must then wait for those readers to drain — so a reader parked when the first section
+// unlocks reads the maps inside the gap, before the second section can close it.
+func TestFinalizeSyncStatusPublishesAtomically(t *testing.T) {
+	t.Parallel()
+
+	o := NewOrchestrator(nil) // no app: this is about the maps, not the row
+
+	// A fresh service per round: lastCompletedStatus being empty is the signal, so a
+	// previous round's completion must not be sitting in it.
+	for i := range 50 {
+		syncType := fmt.Sprintf("svc%d", i)
+		o.RegisterService(syncType, &MockService{name: syncType})
+		if err := o.MarkSyncRunning(syncType); err != nil {
+			t.Fatalf("round %d: MarkSyncRunning: %v", i, err)
+		}
+
+		gap := make(chan struct{}, 1)
+		stop := make(chan struct{})
+		done := make(chan struct{})
+		go func() {
+			defer close(done)
+			sawRunning := false
+			for {
+				o.mu.RLock()
+				_, running := o.runningJobs[syncType]
+				completed := o.lastCompletedStatus[syncType]
+				o.mu.RUnlock()
+
+				switch {
+				case running:
+					sawRunning = true
+				case !sawRunning:
+					// The finalize has not started yet.
+				case completed == nil:
+					gap <- struct{}{}
+					return
+				default:
+					return // the transition was atomic
+				}
+
+				select {
+				case <-stop:
+					return
+				default:
+				}
+			}
+		}()
+
+		time.Sleep(time.Millisecond) // let the reader reach a steady spin
+		o.FinalizeSyncStatus(syncType, Stats{}, nil)
+		close(stop)
+		<-done
+
+		select {
+		case <-gap:
+			t.Fatalf("round %d: a reader saw %q neither running nor completed. "+
+				"MarkSyncRunning succeeds in that window and installs a new Status, which "+
+				"the second delete(runningJobs) then erases — that run never gets a "+
+				"sync_runs row", i, syncType)
+		default:
+		}
+	}
+}
+
+// TestSyncRunYearComesFromTheRunNotTheProcess is the guard for review finding 4.
+//
+// o.currentSyncYear is process-global and RunSyncWithOptions holds it at the backfill's year
+// for the whole duration of a historical sync. The hourly cron fires every hour regardless, so
+// a backfill of 2019 running across the hour used to stamp 2019 onto a run that read this
+// season's data.
+func TestSyncRunYearComesFromTheRunNotTheProcess(t *testing.T) {
+	t.Parallel()
+
+	app := newSyncRunsApp(t)
+	o := NewOrchestrator(app)
+	o.RegisterService(hourlySyncJob, &MockService{name: hourlySyncJob})
+
+	// Stand in for a historical backfill holding the process-global year.
+	o.mu.Lock()
+	o.currentSyncYear = 2019
+	o.mu.Unlock()
+
+	if err := o.RunHourlySync(context.Background()); err != nil {
+		t.Fatalf("RunHourlySync: %v", err)
+	}
+
+	rec := waitForSyncRunByService(t, app, hourlySyncJob)
+	if got := rec.GetInt("year"); got == 2019 {
+		t.Error("year = 2019 — the hourly run adopted a concurrent backfill's year")
+	}
+}
+
+// TestSyncRunPruneKeepsRowsWithNoStartTime is the guard for review finding 12.
+//
+// `started` is NOT NULL DEFAULT ” and SQLite evaluates ” < <cutoff> as true, so a filter of
+// "started < {:cutoff}" matches every row with no start time whatever its age. The write path
+// always sets `started`, so nothing reaches that state today — but the filter has to say what
+// it means, or the first row that does gets deleted on the next write with no trace.
+func TestSyncRunPruneKeepsRowsWithNoStartTime(t *testing.T) {
+	t.Parallel()
+
+	app := newSyncRunsApp(t)
+	col, err := app.FindCollectionByNameOrId(syncRunsCollection)
+	if err != nil {
+		t.Fatalf("FindCollectionByNameOrId: %v", err)
+	}
+
+	rec := core.NewRecord(col)
+	rec.Set("service", "no_start_time")
+	rec.Set("year", 2026)
+	rec.Set("status", statusSuccess)
+	rec.Set("trigger", triggerManual)
+	rec.Set("batch_id", "seed")
+	if err := app.Save(rec); err != nil {
+		t.Fatalf("seed row without started: %v", err)
+	}
+
+	o := NewOrchestrator(app)
+	o.RegisterService("svc", &MockService{name: "svc"})
+	if err := o.RunSingleSync(context.Background(), "svc"); err != nil {
+		t.Fatalf("RunSingleSync: %v", err)
+	}
+	waitForSyncRunByService(t, app, "svc") // the write, and the prune that follows it, are done
+
+	if _, err := app.FindRecordById(syncRunsCollection, rec.Id); err != nil {
+		t.Errorf("the row with no start time was pruned: %v", err)
 	}
 }
