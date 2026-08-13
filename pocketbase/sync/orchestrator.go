@@ -233,22 +233,38 @@ type Stats struct {
 	// run in which this is non-zero, so its tolerance is zero: any non-zero count fails the
 	// run. Do not use it for a rejected upstream record — that is Rejected (kindred#2284).
 	//
-	// Some sites still on this counter are WRAPPER sites, deliberately: the function they
-	// call returns both classes of error, so the call site cannot tell them apart.
-	// processAttendee returns `invalid or missing PersonID` (a rejected record) and also
-	// performs database writes; even ProcessSimpleRecord returns `recordData missing
-	// required 'year' field` alongside its App.Save. Those stay here on purpose. Failing
-	// loud on a malformed record is noisy but recoverable and informative, where the
-	// alternative is the silent green this whole issue exists to end — and the first run
-	// they turn red tells us which to reclassify with evidence instead of a guess.
-	// Splitting them properly needs typed errors from the wrappers — kindred#2292.
+	// Every site currently increments this counter, including per-record transform failures
+	// that belong on Rejected. That is temporary and deliberate: a rejected record skips
+	// TrackProcessedKey via the same `continue`, so the orphan sweep deletes its existing
+	// row in the same run. Until that guard lands, leaving these sites here means the run
+	// fails loud rather than quietly losing a row. Reclassification and the sweep guard are
+	// one unit and ship together in kindred#2295.
+	//
+	// Some sites will still belong here afterwards, because the function they call returns
+	// both classes of error and the call site cannot tell them apart. attendees.go's
+	// processEnrollment is the type case: it returns `invalid or missing SessionID` (a
+	// rejected record) and also the result of ProcessCompositeRecord's App.Save. Note this
+	// is processEnrollment, NOT its caller processAttendee — processAttendee returns only
+	// `invalid or missing PersonID` or nil, counting and swallowing processEnrollment's
+	// errors itself, so the outer site at attendees.go:113 is unambiguously a rejection.
+	// ProcessSimpleRecord is genuinely mixed too, returning `recordData missing required
+	// 'year' field` alongside its App.Save.
+	//
+	// Splitting the genuinely mixed ones needs typed errors from the wrappers — kindred#2292.
 	Errors int `json:"errors"`
 	// Rejected counts per-record transform failures: one upstream record could not be
 	// turned into a PocketBase row, so it was counted and skipped. This is upstream data
-	// quality, not a local fault, and it is WARN-ONLY for its first season — surfaced and
-	// persisted, never failing a run. Nothing records historical sync stats yet, so any
-	// threshold picked today would be a guess; the season exists to produce a distribution
-	// to set one from (kindred#2284).
+	// quality, not a local fault, and it is WARN-ONLY for its first season — surfaced on the
+	// Sync tab, never failing a run.
+	//
+	// Nothing writes this counter yet; the sites that will are held back with the orphan
+	// sweep guard in kindred#2295. It is declared here so the escalation, the status JSON
+	// and the badge all land together rather than in three separate PRs.
+	//
+	// "Surfaced" is the whole of it today — stats are NOT persisted. lastCompletedStatus is
+	// an in-memory map wiped on restart, and there is no sync_runs table yet. That is why
+	// warn-only: any threshold picked now would be a guess, and the distribution needed to
+	// set one honestly cannot be collected until run history is stored (kindred#2284).
 	Rejected int `json:"rejected,omitempty"`
 	// Expanded tracks many-to-many expansions (e.g., bunk plans)
 	Expanded int `json:"expanded,omitempty"`
@@ -273,11 +289,16 @@ func (s *Stats) IsNoOp() bool {
 }
 
 // applyCompletionStatus decides a finished sync's Status and Error from what the service
-// returned and what it counted. It is the single place that answers "did this run pass",
-// and all three completion paths — runSingleSyncInternal, RunSingleSyncWithService and
-// FinalizeSyncStatus — must route through it.
+// returned and what it counted. All three paths that complete a run normally —
+// runSingleSyncInternal, RunSingleSyncWithService and FinalizeSyncStatus — must route
+// through it.
 //
-// That last part is the point of the function existing rather than the branch being inlined.
+// "Normally" is load-bearing. The two panic-recovery blocks in runSingleSyncInternal and
+// RunSingleSyncWithService set statusFailed directly and deliberately do not call this:
+// a panic has no stats to weigh and only one possible verdict. So this is the single place
+// that WEIGHS a run, not the only place that ever sets Status.
+//
+// That routing is the point of the function existing rather than the branch being inlined.
 // Before kindred#2284 the three paths each carried their own copy of this decision, so a fix
 // applied to one of them left services reached through the other two still reporting green.
 //
