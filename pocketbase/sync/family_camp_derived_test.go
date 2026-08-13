@@ -2135,10 +2135,11 @@ func TestRegistrationNeedsUpdateIgnoresTheUnknownSpelling(t *testing.T) {
 // first+last` coalesce, which fires for 5 of 382 households). gender,
 // date_of_birth, email and pronouns have zero readers anywhere.
 //
-// PENDING, deliberately (owner ruling on kindred#1945): which sibling should
-// win is a product decision, and it is coupled to the still-open question of
-// whether gender/date_of_birth/email/pronouns are kept. Do not "fix" this test
-// by changing the merge until that ruling lands.
+// PENDING, deliberately: which sibling should win is a product decision, and
+// it is kindred#2275's subject. It is NOT coupled to whether the columns are
+// kept -- kindred#1945 closed 2026-08-09 refusing deletion, so that half is
+// settled and A6 is unblocked. Do not "fix" this test by changing the merge
+// until kindred#2275 rules on the per-attribute policy.
 func TestProcessAdultsPersonFieldsTakeTheFirstLoadedSibling(t *testing.T) {
 	t.Parallel()
 	s := &FamilyCampDerivedSync{}

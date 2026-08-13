@@ -156,7 +156,8 @@ function Chip({
    * shipped it. That is strictly more than the `title` it replaced gave —
    * `title` on a `<span>` is not reliably announced at all — and it leaves
    * one gap, honestly stated: a touch user still cannot summon this
-   * sentence. #2229 is what closes it.
+   * sentence. #2250 is what closes it -- #2229 was closed NOT_PLANNED, and
+   * the live issue is the desktop-visibility one staff actually reported.
    */
   title?: string
 }) {

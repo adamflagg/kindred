@@ -158,6 +158,55 @@ Two corrections that have both bitten already:
 
 ---
 
+> ## ⚠️ SUPERSEDED IN PART, 2026-08-13 — the Registration form has now been read
+>
+> Camp staff read the live Camper Registration form on 2026-08-13. Four things in §3 and §3b
+> above are now settled or corrected, and one mechanism is new:
+>
+> **1. A field can live on BOTH forms.** A CampMinder custom form can point at a backend field
+> and allow *update*, so the same stored field is offered on the Registration form and again on
+> the Family Camp Information form. This resolves the P1/P2 puzzle — the adult block appears on
+> both while writing **one** stored field — and it means §3b's *"**Not** the adult block"* is
+> **wrong**. It is on the Registration form, and also on the Information form.
+>
+> **2. This gives §3c a second drift mechanism it does not have.** §3c attributes sibling
+> divergence to the Information form being re-submittable. With the same fields exposed on two
+> forms, drift also arises from *two different forms writing one field at different times* —
+> which fits the bimodal timestamps at least as well and requires nobody to have filled one form
+> twice. Treat §3c's mechanism as **one of two**, not the explanation.
+>
+> **3. The four fields §3 lists as "inferred from stored values only" are now confirmed**, with
+> question text and gating:
+> - `FAM CAMP-bathroom` (274056) — *"Does your family require access to a bathroom that doesn't
+>   require you to leave your cabin for a medical or accessibility-related reason?"*, boolean
+> - `Housing-Bathroom` (274059) — *"If yes, please explain the medical condition or accessibility
+>   need:"*, conditional free text
+> - `Housing Accommodation` (274057) — *"Does your family need another housing accommodation for
+>   a medical or accessibility-related reason?"*, boolean
+> - `Housing Accommodation-Yes` (274058) — *"Please explain the medical condition or
+>   accessibility need:"*, conditional free text
+> - `FAM CAMP-Opt Out VIP` (256927) — *"If there is a waitlist for cabins with bathrooms and/or
+>   electricity, and a cabin is available that does not meet your needs … do you still want to
+>   register for this program?"* → *"Yes, please register regardless of cabin type"* /
+>   *"No, I am only able to attend with this accommodation in place"*. **Gated on the
+>   ACCOMMODATION boolean (274057)**, not the bathroom one.
+>
+> **4. The share gate's three options, verbatim** — `FAM CAMP-Share Cabins` (240877) is a
+> pick-one radio, not the four-checkbox `FAM CAMP-Shared Cabin` (263379):
+> - *"Yes, I would like to share a large camper cabin with a family that I request or with a
+>   family with similarly aged kid(s) that I can meet at Camp."*
+> - *"Maybe, I am open to sharing a large camper cabin if a specific family that I know wants to
+>   share a cabin with my family."*
+> - *"No, we would prefer not to share a camper cabin."*
+>
+> The "Maybe" wording is narrower than the word suggests — it means *only with a family I already
+> know*. `NormalizeShareGate` already encodes this correctly (`lodging_requests.go:214`,
+> `gateMaybeMutual` → `share_eligibility = "named"`).
+>
+> **5. Not a form, but recorded here because nothing else says it:** the *"family/adult
+> registration form"* is a misnomer — it is used only for individuals attending Women's and
+> Men's weekend.
+
 ## 3b. The Camper Registration form — housing block
 
 Recovered 2026-08-13 from a single camper's registration **confirmation PDF** (one real
@@ -392,7 +441,23 @@ re-derived when a form changes. Counts are lifetime unless noted.
 > question" and uses that to justify a `break` letting 171577 win the `cpap_info`
 > narrative slot.
 >
-> **256582's question text is unknown** — it sits on the Registration form, which has not
+> **CORRECTED 2026-08-13 — 256582's question text is now known, and the real shape is a DATED
+> SPLIT.** The live Registration form asks *"Is anyone in your family bringing a CPAP machine to
+> Camp **that requires an outlet**?"* as a plain boolean. The multi-option vocabulary below is
+> **historical**: it ran in 2025, when 256582 was one combined question covering CPAP *and*
+> bathroom *and* accommodation. Measured by year — 2025: 56 "outlet needed", 51 "bathroom or
+> other housing accommodation", 12 "outlet AND bathroom", 757 `No`. 2026: 623 `No`, 44 plain
+> `Yes`, and one residual of each multi-option string. The bathroom and accommodation gates were
+> split out into `FAM CAMP-bathroom` (274056) and `Housing Accommodation` (274057), whose first
+> values are 2025, with their explain twins arriving in 2026.
+>
+> **Consequence for `classifyCPAPAnswer`: a 2026 `Yes` means outlet-only, while a 2025
+> "Yes, bathroom or other housing accommodation…" means no CPAP at all.** Code that treats 256582
+> uniformly across years is reading two different questions. The conclusion below — that the
+> `break` is wrong — still holds; the reasoning is now the split rather than "concurrent
+> questions of differing scope".
+>
+> *(Original note, retained because its evidence stands:)* 256582's question text was unknown — it sits on the Registration form, which had not
 > been located (see [§3](#3-the-family-camp-information-form)). Two observations settle
 > the precedence anyway, without it:
 >

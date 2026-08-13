@@ -238,8 +238,15 @@ every site above. Both `#2255` and `#2275` name it.
 **No backfill, no data migration, no CampMinder re-fetch.** `person_custom_values` holds
 1,608,513 rows under `UNIQUE(year, person, field_definition)` with **zero** duplicate key
 groups; `household_custom_values` likewise. The three `family_camp_*` tables are
-sync-owned, have no `staff_touched` column and no GUI write path. Every value is recovered
-by re-running `family_camp_derived` against data already on disk.
+sync-owned and have no `staff_touched` column. Two caveats on the write path, added 2026-08-13:
+all three collections carry `@request.auth.is_admin = true` for create/update/delete, so a
+superuser *can* write through the admin UI or REST — that is the house norm rather than a
+GUI, and any such edit is silently overwritten by the next upsert. And "every value is
+recovered" is verified for **2026 only**: the 4,618 `family_camp_adults` rows for 2017-2021
+were written by an earlier code generation off person-level `Family Camp-P1/P2 *` fields
+(`name` empty, `first_name` populated), and whether today's `processAdults` reproduces them
+at all has **never been tested**. With the sweep unguarded, "does not reproduce" means
+"deletes".
 
 ---
 
@@ -249,20 +256,61 @@ by re-running `family_camp_derived` against data already on disk.
   allergy narratives name a household member other than the record holder. Any UI built on
   the per-answer table must say **"reported by"**, never "about". This is the single
   easiest way to turn a data fix into a clinical error.
-- **`family_camp_medical` has no enrolment filter** — 381 of 886 2026 rows are out of
-  family-camp scope, because `processMedical` reads `Family Medical-*` fields that summer
-  campers also answer. Narrowing it is a behaviour change; confirm with staff before
-  assuming it is a bug.
+- **`family_camp_medical` holds rows it should not, and "381 of 886" is TWO defects, not one.**
+  Corrected 2026-08-13 — the figure silently merged them, which would have produced one fix
+  for two problems:
+  - **310** rows belong to households that never touched a family or adult session at all,
+    because `processMedical` reads `Family Medical-*` fields that summer campers also answer.
+    That is **kindred#2306**. Corroborated from the source side: 663 households hold a value on
+    those fields in 2026, only 398 touched a family/adult session, so 265 never did.
+  - **71** rows belong to households that registered but had nobody actively enrolled — the
+    enrollment-status defect, which also affects `family_camp_registrations` (51) and
+    `family_camp_adults` (46). That is **kindred#2305**.
+  Owner ruling 2026-08-13 on the first: **filter at read, do not narrow the write.** It matches
+  kindred#2159's precedent — a read-side filter is scoped to the view's own year and leaves the
+  record intact — and it is reversible, where narrowing plus an unguarded sweep is not.
 - **`relationship_to_camper` is void at household-adult grain** and only becomes
-  well-defined keyed by the reporting person. Whether the household rollup should carry any
-  version of it is open.
-- **`date_of_birth` / `gender` / `pronouns` on adults** — kindred#1945's parked decision
-  (whether these columns are kept at all) now gates the single largest loss site (A6, 92
-  answers in 2026). Worth resolving before step 2, not after.
+  well-defined keyed by the reporting person. **Settled 2026-08-13: KEEP the column.** It is
+  not hypothetical — it is rendered in two live surfaces, `FamilyDetailsPanel.tsx:265-266` and
+  `HouseholdYearMembersModal.tsx:127-128`.
+- **`date_of_birth` / `gender` / `pronouns` / `email` on adults — the hold stands, and A6 is
+  NOT blocked.** Corrected 2026-08-13; this bullet previously said the decision was "parked"
+  and "gates" A6, and both were false. The 2026-08-07 ruling holds all four columns ("kept for
+  now. Not deleted, not deprecated"), and the 2026-08-09 ruling that **closed** kindred#1945
+  re-affirmed it: *"No deletion of the `gender` / `date_of_birth` / `email` / `pronouns`
+  columns — the 2026-08-07 hold stands."* #1945 closed `COMPLETED` via PR #2194, which shipped
+  a validity-preferring merge for **email only** and explicitly left `first_name`, `last_name`,
+  `pronouns`, `gender`, `date_of_birth` and `relationship` at first-non-empty-wins, because no
+  defensible validity notion exists for them. **A6 is live, unblocked, and squarely inside the
+  re-grain (kindred#2275) rather than gated by a column decision.** What #1945 left open is the
+  per-attribute *merge policy*, which is #2275's subject. Note the columns' state: zero readers
+  in `api/`, `bunking/` or `frontend/` — `PartyAdult` (`api/schemas/lodging.py:296-303`) exposes
+  only `adult_number`, `display_name` and `relationship`.
 - **Which years to replay** is a real decision, not a detail. Only 2026 has been through a
-  current run. A re-grain that also backfills 2024-2025 changes thousands of historical
-  rows written by three code generations. The only known reader of those years is the
-  year-over-year card, which reads `cabin_assignment` only.
+  current run. **Owner ruling 2026-08-13: 2026 only for now, re-evaluate later** — and the
+  re-evaluation is a live commitment, not a cancellation. Revisit once a real dry-run diff
+  exists (see below).
+
+  ⚠️ **This bullet previously claimed "the only known reader of those years is the
+  year-over-year card, which reads `cabin_assignment` only". That is false**, and it understated
+  the blast radius by two columns plus row-existence. `build_household_journey` makes **three**
+  cross-year reads:
+
+  | Read | Table | Year scope | Renders, 2017-2025 |
+  |---|---|---|---|
+  | `fetch_household_adults_by_year` (`lodging_repository.py:420-453`) | `family_camp_adults` | **all years, no bound** | **8,955** adult names, **5,214** relationship labels |
+  | `fetch_household_registration_years` (`:455-476`) | `family_camp_registrations` | **all years** | **3,459** rows whose mere *existence* puts a year on a family's timeline |
+  | `fetch_cabin_assignments_by_household_cm_id(year)` (`:597-650`) | `.cabin_assignment` | per traced year | 1,786 cabin strings — the only one this bullet named |
+
+  **Two hazards must be cleared before any replay wider than 2026:**
+  1. `family_camp_derived`'s three orphan sweeps are **unguarded**. `orphan_guard.go:54-58`
+     enumerates nine guarded services and this one is not among them;
+     `deleteOrphanedAdults`/`…Registrations`/`…Medical` (`:1606`, `:1640`, `:1672`) return a bare
+     `int`. It is the last unguarded sweep in the package, guarding exactly the three tables a
+     replay rewrites.
+  2. `DryRun` reports counts, not a diff. It fires at `:232` immediately after `processMedical`
+     and returns **before** any `preloadExisting*`, so a replay cannot be measured before it is
+     done — which is what makes the wider question unanswerable today rather than merely open.
 
 ---
 
@@ -285,11 +333,27 @@ Three things in it to correct before relying on it:
    alone is behind M1-M8. The family-camp path holds **26** sites, 20 of them lossy. Its
    per-site figure and this file's path-wide figure are different measurements, not
    competing ones.
-3. **Several of its items have shipped.** Closed since it was written: the licence-plate
-   spelling (`#2258`), the summer household first-wins (`#2260`), `can_bring_others`
-   (`#2262`), the person-custom-value orphan-sweep cap (`#2266`), and its **step 0** — a
-   counted database failure now fails the run (`#2284`, PR `#2293`). Its remaining
-   guardrail steps 1-5 are unshipped and still the recommended order.
+3. **Several of its items have shipped, and its step 0 only HALF shipped.** Closed since it was
+   written: the licence-plate spelling (`#2258`), the summer household first-wins (`#2260`),
+   `can_bring_others` (`#2262`), the person-custom-value orphan-sweep cap (`#2266`), and
+   `staff_vehicle_info`'s routing (`#2268`).
+
+   **Step 0 split.** `#2284` closed via PR `#2293`, but only the infrastructure half landed —
+   `totalInfrastructureErrors` now fails a run. The other half is **`#2292`, still open**:
+   wrapper sites return both classes of error through one value, so `Stats.Rejected` cannot be
+   populated without typed errors. `Stats.Rejected` is therefore **blocked, not declined**, and
+   `orchestrator.go:353` says so verbatim. **`#2292` is a hard predecessor of the audit's steps
+   2 and 3** — any per-site loss counter that must distinguish *rejected* from *errored* waits
+   on it. The escalation-policy question is separately filed as `#2298` (reviewed, deliberately
+   kept, to revisit on evidence); do not re-open it as a fresh question.
+
+4. **Its counts are superseded — do not size this campaign from it.** Re-measured 2026-08-13:
+   `quest_registrations` 358 → **430** discarded links; bunk_assignments' "23 lost" → **97
+   hazard pairs / 74 ceiling**; "1,213 map entries" → **1,146** (1,213 is *sessions discarded*,
+   a different quantity). Its inventory also still advertises `household_demographics.go:494`
+   — its largest mechanism-A site — and all four `staff_vehicle_info` sites as open. **All of
+   those shipped.** Where the audit and an issue body disagree on a number, the body has usually
+   been re-measured and the audit has not.
 
 What this file adds that the wider audit could not see, because it predates reading the
 forms: the semantics in `family-camp-field-provenance.md`, and in particular that the

@@ -597,9 +597,13 @@ func (s *FamilyCampDerivedSync) loadPersonCustomValues(
 // stands, unchanged, because none of them has a validity notion as crisp as
 // "syntactically valid email" -- inventing one to feel consistent would be
 // guessing, not fixing. Which sibling should win there remains a product
-// decision, coupled to the still-open question of whether
-// gender/date_of_birth/pronouns are kept at all, so today's behavior for
-// those fields is pinned by test instead of changed on a guess.
+// decision. It is NOT coupled to whether the columns exist: kindred#1945
+// closed 2026-08-09 refusing deletion ("No deletion of the gender /
+// date_of_birth / email / pronouns columns -- the 2026-08-07 hold stands"),
+// so column existence blocks nothing here. What #1945 left open is exactly
+// this per-attribute merge policy, and that is kindred#2275's subject.
+// Today's behavior for those fields is pinned by test instead of changed on
+// a guess.
 func (s *FamilyCampDerivedSync) processAdults(
 	householdValues []customValueEntry, personValues []customValueEntry,
 ) []*adultData {

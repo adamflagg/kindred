@@ -124,7 +124,8 @@ export function HouseholdRosterRow({ party, showRequests, unit, onOpen }: Househ
             First-time badges — a `<button>`'s content model forbids an
             interactive descendant, so those badges' `sr-only` detail
             (kindred#2177) could never become a real, touch-reachable
-            tooltip trigger (kindred#2229) without first breaking that wall.
+            tooltip trigger (kindred#2250; #2229 closed NOT_PLANNED) without
+            first breaking that wall.
             The badges are laid out here as siblings of the control rather
             than a shrunken click target, using the "stretched link" trick:
             `hover:bg-muted/30` lives on THIS `relative` wrapper (so the
@@ -135,7 +136,7 @@ export function HouseholdRosterRow({ party, showRequests, unit, onOpen }: Househ
             content below is a plain, non-positioned sibling — which a
             positioned `absolute` box always paints ABOVE regardless of DOM
             order. Nothing in the content is interactive today, so that
-            ordering is invisible; the day kindred#2229 wires a real tooltip
+            ordering is invisible; the day kindred#2250 wires a real tooltip
             trigger into a badge, that trigger needs its own `relative z-10`
             (or similar) to sit above this layer and receive its own clicks
             — the standard caveat of this pattern, not a defect on its own. */}
