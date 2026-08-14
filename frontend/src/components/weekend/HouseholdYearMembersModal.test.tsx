@@ -117,6 +117,30 @@ describe('the party for one year', () => {
     expect(children).not.toContain('Grade 0')
     expect(children).not.toContain('Age')
   })
+
+  // CampMinder stores 13 for a camper past 12th grade: 224 persons carry it
+  // and nothing above it. It is a real value but a nonsensical label, so it
+  // is suppressed the same way an absent grade is -- the age still prints.
+  it('omits a grade above 12 rather than printing a nonsensical one', () => {
+    open(
+      _row({
+        children: [
+          {
+            display_name: 'Emma Johnson',
+            last_name: 'Johnson',
+            person_cm_id: 1000001,
+            age: 18,
+            grade: 13,
+          },
+        ],
+      })
+    )
+
+    const children = screen.getByRole('dialog').textContent
+    expect(children).not.toContain('Grade 13')
+    expect(children).not.toContain('Grade')
+    expect(children).toContain('Age 18')
+  })
 })
 
 describe('a year with no enrolment on file', () => {
@@ -186,6 +210,16 @@ describe('linking a member to their camper page for that year (kindred#2329)', (
 
     const link = screen.getByRole('link', { name: /Emma Johnson/ })
     expect(link).toHaveAttribute('href', '/camper/1000001?year=2019')
+  })
+
+  it('opens the camper page in a NEW TAB, safely rel-ed', () => {
+    open(_row({ year: 2019 }))
+
+    const link = screen.getByRole('link', { name: /Emma Johnson/ })
+    expect(link).toHaveAttribute('target', '_blank')
+    // Without noopener the opened tab gets a live `window.opener` handle
+    // back into this one.
+    expect(link).toHaveAttribute('rel', expect.stringContaining('noopener'))
   })
 
   it('renders a child with no person_cm_id as plain text, never a broken link', () => {
@@ -273,27 +307,26 @@ describe('navigating to a linked camper unwinds the modal stack (kindred#2329)',
     )
   }
 
-  it('closes the dialog, empties the overlay stack, and clears background inert on click', () => {
+  // The link opens a NEW TAB, so THIS tab must not move and the modal must
+  // stay exactly as it was. The previous behaviour closed the modal on click,
+  // which is wrong here: the user returns to this tab and finds their place
+  // gone. `target="_blank"` also means react-router hands the click to the
+  // browser rather than navigating in place, so no route change happens.
+  it('leaves this tab untouched: modal open, stack intact, no navigation', () => {
     renderAtWeekendRoute()
 
-    // Sanity: the dialog is actually open and registered before the click —
-    // otherwise the assertions below would trivially pass on an unmounted
-    // modal that never mounted in the first place.
     expect(screen.getByRole('dialog')).toBeInTheDocument()
     expect(document.getElementById('root')).toHaveAttribute('inert')
     expect(hasOpenModal()).toBe(true)
 
     fireEvent.click(screen.getByRole('link', { name: /Emma Johnson/ }))
 
-    // Real navigation happened — proves this isn't just `onClose` firing
-    // while still parked on the weekend route.
-    expect(screen.getByTestId('camper-page')).toBeInTheDocument()
+    // This tab did NOT navigate -- the camper page belongs to the new tab.
+    expect(screen.queryByTestId('camper-page')).not.toBeInTheDocument()
 
-    // The unwind: the stack must not believe a modal is still mounted once
-    // the route has moved on, or the NEXT overlay opened anywhere in the
-    // app inherits a stuck `inert` background / wrong Escape ownership.
-    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
-    expect(document.getElementById('root')).not.toHaveAttribute('inert')
-    expect(hasOpenModal()).toBe(false)
+    // And the modal is still standing, with the overlay stack still owning it.
+    expect(screen.getByRole('dialog')).toBeInTheDocument()
+    expect(document.getElementById('root')).toHaveAttribute('inert')
+    expect(hasOpenModal()).toBe(true)
   })
 })

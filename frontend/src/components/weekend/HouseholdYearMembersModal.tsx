@@ -23,15 +23,14 @@
  * mt-0.5 text-xs` sub-line. A sibling surface, not a new visual language.
  *
  * A child's name links to their camper detail page FOR THIS ROW'S YEAR
- * (kindred#2329) — `/camper/:id?year=N`, same tab, same `<Link>` +
- * `onClick={onClose}` pattern `CamperDetailsPanel`'s sibling links already
- * use. Adults never link: `PartyAdult` (from `family_camp_adults`, a
- * name-only scrape) carries no `person_cm_id` to link with, unlike
- * `PartyChild`. The unwind itself needs no new plumbing — navigating to
- * `/camper/:id` swaps to a sibling Route, unmounting this Modal, and
- * `ui/Modal`'s own effect cleanup (see that file) already releases the
- * background inert and its `modalStack` overlay token on unmount. Nothing
- * here talks to `modalStack` directly.
+ * (kindred#2329) — `/camper/:id?year=N`, opened in a NEW TAB. Adults never
+ * link: `PartyAdult` (from `family_camp_adults`, a name-only scrape) carries
+ * no `person_cm_id` to link with, unlike `PartyChild`.
+ *
+ * Because the link opens elsewhere, THIS tab does not navigate and the modal
+ * deliberately stays open — there is no unwind to perform and nothing here
+ * talks to `modalStack`. `ui/Modal` still owns the background inert and the
+ * overlay token for as long as the modal is mounted, exactly as before.
  */
 import { Baby, Users } from 'lucide-react'
 import { Link } from 'react-router'
@@ -71,11 +70,23 @@ export interface HouseholdYearMembersModalProps {
 
 const TITLE_ID = 'household-year-members-title'
 
-/** An age or grade we do not have is omitted, never printed as zero. */
+/**
+ * An age or grade we do not have is omitted, never printed as zero.
+ *
+ * A grade above 12 is omitted too. CampMinder stores 13 for a camper past
+ * 12th grade -- 224 `persons` rows carry it and nothing carries more -- so
+ * it is a real value with no sensible label. School grades stop at 12; past
+ * that we show the age alone rather than inventing a "Grade 13".
+ */
+const HIGHEST_SCHOOL_GRADE = 12
+
 function childDetail(age: number | null | undefined, grade: number | null | undefined): string {
+  const gradeIsShowable =
+    grade !== null && grade !== undefined && grade > 0 && grade <= HIGHEST_SCHOOL_GRADE
+
   return [
     age === null || age === undefined ? '' : `Age ${displayCampMinderAge(age)}`,
-    grade === null || grade === undefined || grade === 0 ? '' : `Grade ${String(grade)}`,
+    gradeIsShowable ? `Grade ${String(grade)}` : '',
   ]
     .filter((part) => part.length > 0)
     .join(' · ')
@@ -173,18 +184,20 @@ export function HouseholdYearMembersModal({
                       dropping the surname from each line would make a mixed-surname household
                       unreadable. */}
                   {hasValidPersonCmId(child.person_cm_id) ? (
-                    // Same tab, this row's own year travels with the link —
-                    // NOT the app's current year (kindred#2329). `onClose`
-                    // closes the modal the same way its own close button
-                    // does; the route change (a sibling Route, not this
-                    // one) unmounts it regardless, but calling it too keeps
-                    // this in step with `CamperDetailsPanel`'s sibling
-                    // links rather than relying on unmount alone.
+                    // NEW TAB, and this row's own year travels with the
+                    // link — NOT the app's current year (kindred#2329).
+                    // Deliberately NO `onClick={onClose}`: this tab does not
+                    // move, so closing the modal here would drop the reader's
+                    // place in the roster for a page they are reading
+                    // elsewhere. `target="_blank"` also hands the click to
+                    // the browser rather than react-router, so no route
+                    // change happens in this tab at all.
                     <Link
                       to={`/camper/${String(child.person_cm_id)}${
                         row.year != null ? `?year=${String(row.year)}` : ''
                       }`}
-                      onClick={onClose}
+                      target="_blank"
+                      rel="noopener noreferrer"
                       className="text-foreground hover:text-primary font-medium transition-colors hover:underline"
                     >
                       {child.display_name}
