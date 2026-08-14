@@ -242,11 +242,24 @@ every site above. Both `#2255` and `#2275` name it.
    probe belongs.
 3. **Re-derive the three existing tables** from the new person tables rather than from
    `personValues`, adding dedup-and-join plus a single `answer_conflicts` JSON array naming
-   which fields disagreed — one column, not four booleans, so adding a field later needs no
-   migration. `#2255` and `#2275` close here. **`#2274` did not wait for step 2** — it closed
-   2026-08-13 by adding the dedup-and-join directly to `processRegistrations`, since its six
-   columns are plain free text with no gate/narrative split to unpick. Step 0 shipped with it:
-   `customValueEntry` now carries `personPBID`.
+   which free-text fields disagreed — one column, not four booleans, so adding a field later
+   needs no migration. **`answer_conflicts` and `#2255`'s per-gate columns are different
+   things, not competing proposals for the same slot:** a conflict entry is a *signal* — "these
+   answers disagreed" — while a gate column is a *value* — what the household's stored answer
+   to that gate actually is. A table can carry both at once, and neither substitutes for the
+   other; read them as contradictory only if you assume there is one JSON-or-columns decision
+   to make, and there is not. `#2275` closes here.
+
+   **`#2255` does not wait for step 2 or this step.** Like `#2274`, it ships its fix directly
+   against the existing collapse function rather than through the per-answer dual-write table
+   this step's ordering implies: it makes each medical gate column nullable (three states —
+   answered Yes, answered No, never reached that question block, since families reach
+   different question blocks rather than uniformly declining) and binds each gate to its
+   explain as one non-selecting collapse in `processMedical` — the same "bind the pair, never
+   select" rule `#2274` applied to `processRegistrations`. **`#2274` did not wait for step 2
+   either** — it closed 2026-08-13 by adding the dedup-and-join directly to
+   `processRegistrations`, since its six columns are plain free text with no gate/narrative
+   split to unpick. Step 0 shipped with it: `customValueEntry` now carries `personPBID`.
 4. **Add `session_cm_id`** to `family_camp_registrations`. **The grain triple must move in
    one PR:** the write key in `upsertRegistrations`, the orphan key `ProcessedRegKeys`
    (`family_camp_derived.go:45`), and `idx_fc_reg_unique` (migration `1500000035:288`).
