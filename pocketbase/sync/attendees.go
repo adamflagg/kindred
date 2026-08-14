@@ -142,7 +142,8 @@ func (s *AttendeesSync) Sync(ctx context.Context) error {
 		// Don't fail the sync if checkpoint fails
 	}
 
-	s.LogSyncComplete("Attendees")
+	s.LogSyncComplete("Attendees",
+		fmt.Sprintf("duplicate_session_enrollments=%d", s.DuplicateSessionEnrollments))
 
 	return nil
 }
