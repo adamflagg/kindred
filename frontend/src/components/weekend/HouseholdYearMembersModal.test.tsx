@@ -211,6 +211,22 @@ describe('linking a member to their camper page for that year (kindred#2329)', (
     expect(screen.queryByRole('link', { name: /Olivia Johnson/ })).not.toBeInTheDocument()
     expect(screen.getByTestId('year-members-adults').textContent).toContain('Olivia Johnson')
   })
+
+  it('renders a fractional person_cm_id as plain text rather than a link to a truncated (wrong) camper', () => {
+    // CodeRabbit review on PR #2345: `parseInt('1000001.5', 10)` truncates to
+    // 1000001 — a link built from a non-integer id can silently land on a
+    // DIFFERENT camper record than the one that was actually being shown.
+    open(
+      _row({
+        children: [
+          { person_cm_id: 1000001.5, display_name: 'Ava Martinez', last_name: 'Martinez' },
+        ],
+      })
+    )
+
+    expect(screen.queryByRole('link', { name: /Ava Martinez/ })).not.toBeInTheDocument()
+    expect(screen.getByTestId('year-members-children').textContent).toContain('Ava Martinez')
+  })
 })
 
 describe('navigating to a linked camper unwinds the modal stack (kindred#2329)', () => {

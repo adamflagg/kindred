@@ -41,10 +41,18 @@ import { displayCampMinderAge } from '../../utils/age'
 import { Modal } from '../ui/Modal'
 import { isAttendingAdultName } from './householdIdentity'
 
-/** Mirrors `CamperLink.tsx`'s own validity check — a CampMinder ID is only
- *  ever a positive integer, so this also rules out a stray `0`. */
+/**
+ * Mirrors `CamperLink.tsx`'s own validity check — a CampMinder ID is only
+ * ever a positive integer, so this also rules out a stray `0`.
+ *
+ * `Number.isInteger` matters, not just `> 0` (CodeRabbit review on
+ * kindred#2329's PR): `CamperDetail` resolves the id with `parseInt`, which
+ * TRUNCATES rather than rejects a fractional value — a link built from
+ * `1000001.5` would silently land on person 1000001, a different camper
+ * than the one this row is actually showing.
+ */
 function hasValidPersonCmId(personCmId: number | null | undefined): personCmId is number {
-  return personCmId != null && personCmId > 0
+  return personCmId != null && Number.isInteger(personCmId) && personCmId > 0
 }
 
 export interface HouseholdYearMembersModalProps {
