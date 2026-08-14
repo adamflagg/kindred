@@ -137,7 +137,8 @@ def test_roster_exposes_presence_flags_not_narrative() -> None:
     # Deleting it rather than fixing it is what removes the year's medical map
     # from the roster read entirely -- see
     # `test_the_roster_never_reads_the_years_medical_narratives`. Nothing is
-    # lost on the surface: a `lodging.phi` holder sees the narrative itself,
+    # lost on the surface: a `bunking.manage` holder sees the narrative itself
+    # (kindred#2312 retargeted the gate from the now-removed `lodging.phi`),
     # and a non-holder was only ever being told that a disclosure they cannot
     # read exists.
     assert "has_medical_narrative" not in names
@@ -154,7 +155,8 @@ def test_every_model_in_the_module_is_walked_not_just_the_named_roots() -> None:
     to the module and returned by a new endpoint is checked by nothing until
     somebody remembers to add a fourth test. This closes that: every BaseModel
     declared in api.schemas.lodging is walked, and the only one permitted to
-    carry narrative is the response of the endpoint gated on `lodging.phi`.
+    carry narrative is the response of the endpoint gated on `bunking.manage`
+    (kindred#2312 retargeted the gate from the now-removed `lodging.phi`).
 
     The write layer (1500000132) is the first thing this catches that the named
     roots do not -- its request models are reachable from no response payload

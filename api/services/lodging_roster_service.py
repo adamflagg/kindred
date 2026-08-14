@@ -9,7 +9,8 @@ PHI: the roster and summary reads do not touch family_camp_medical at all.
 They used to, to derive a boolean from the presence of a value -- see
 `_build_flags` for why that boolean is gone (kindred#1889). The narrative has
 one reader, get_household_medical, which fetches ONE household behind
-Permission.LODGING_PHI at the router.
+Permission.BUNKING_MANAGE at the router (kindred#2312 retargeted the gate
+from the now-removed Permission.LODGING_PHI).
 """
 
 from __future__ import annotations
@@ -1186,7 +1187,7 @@ class LodgingRosterService:
         return WeekendSummaryResponse(year=year, weekends=[task.result() for task in entry_tasks])
 
     async def get_household_medical(self, year: int, household_cm_id: int) -> HouseholdMedicalResponse:
-        """PHI. The router gates this on Permission.LODGING_PHI.
+        """PHI. The router gates this on Permission.BUNKING_MANAGE.
 
         Two narrow reads, deliberately sequential: the household resolves the
         PB id that the medical read is anchored to. The whole-year maps this
@@ -1779,7 +1780,7 @@ class LodgingRosterService:
         Deleting it took the whole-year `family_camp_medical` read out of both
         `build_roster` and `build_summary`. The narrative now has exactly one
         reader, `get_household_medical`, which fetches ONE household behind
-        `Permission.LODGING_PHI`.
+        `Permission.BUNKING_MANAGE`.
 
         This method used to compute all three from raw sources, which was
         correct only while the columns did not exist. Phase C of the ingest

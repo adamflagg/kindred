@@ -166,7 +166,7 @@ describe('FamilyDetailsPanel — the content the card omits', () => {
 
   it('renders the medical narrative without a reveal click', () => {
     // kindred#1889 removed the click-to-reveal: it was gated on a flag true
-    // for every household, so it gated nothing. A `lodging.phi` holder now
+    // for every household, so it gated nothing. A `bunking.manage` holder now
     // sees the text directly (`isAdmin` is true for this suite).
     medicalResult.value = {
       data: { allergy_info: 'Peanuts' },

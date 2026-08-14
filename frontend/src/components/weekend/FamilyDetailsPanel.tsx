@@ -306,7 +306,7 @@ export function FamilyDetailsPanel({
           <AccessibilityFlagList flags={party.flags ?? NO_FLAGS} />
           {/* Kept in this section rather than given its own, because it is
               where the narrative already appeared and staff know to look here.
-              It self-hides for a viewer without `lodging.phi` and for a
+              It self-hides for a viewer without `bunking.manage` and for a
               household with nothing on file, so no empty block is left
               behind. */}
           <MedicalNarrative householdCmId={householdCmId > 0 ? householdCmId : null} year={year} />
