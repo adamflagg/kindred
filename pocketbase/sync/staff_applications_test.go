@@ -613,10 +613,24 @@ func TestMapAppFieldToRecordReturnsColumnWritten(t *testing.T) {
 func TestMapAppFieldToRecordRoutesTheFourLive2026Fields(t *testing.T) {
 	t.Parallel()
 
+	// Named once and referenced by variable everywhere below, not repeated as
+	// raw literals -- same reasoning as wantColumn in
+	// TestMapAppFieldToRecordReturnsColumnWritten: this file and
+	// staff_applications.go's switch/return/Set already spell each of these
+	// column names three times each, so a second raw literal per name here
+	// trips goconst (min-occurrences: 3).
+	const (
+		colOver18             = "over_18"
+		colKitchenSupervisor  = "work_dates_kitchen_supervisor"
+		colJediReturner       = "jedi_returner"
+		colJediNewStaff       = "jedi_new_staff"
+		fieldJediReturnerName = "App-JEDIreturner"
+	)
+
 	t.Run("over 18 Yes parses true", func(t *testing.T) {
 		rec := &staffApplicationRecord{}
-		if got := mapAppFieldToRecord(rec, "App-over 18", "Yes"); got != "over_18" {
-			t.Errorf("mapAppFieldToRecord returned %q, want %q", got, "over_18")
+		if got := mapAppFieldToRecord(rec, "App-over 18", "Yes"); got != colOver18 {
+			t.Errorf("mapAppFieldToRecord returned %q, want %q", got, colOver18)
 		}
 		if !rec.over18 {
 			t.Error("over18 = false, want true for a Yes value")
@@ -625,8 +639,8 @@ func TestMapAppFieldToRecordRoutesTheFourLive2026Fields(t *testing.T) {
 
 	t.Run("over 18 No parses false", func(t *testing.T) {
 		rec := &staffApplicationRecord{}
-		if got := mapAppFieldToRecord(rec, "App-over 18", "No"); got != "over_18" {
-			t.Errorf("mapAppFieldToRecord returned %q, want %q", got, "over_18")
+		if got := mapAppFieldToRecord(rec, "App-over 18", "No"); got != colOver18 {
+			t.Errorf("mapAppFieldToRecord returned %q, want %q", got, colOver18)
 		}
 		if rec.over18 {
 			t.Error("over18 = true, want false for a No value")
@@ -636,8 +650,8 @@ func TestMapAppFieldToRecordRoutesTheFourLive2026Fields(t *testing.T) {
 	t.Run("kitchen supervisor Yes parses true", func(t *testing.T) {
 		rec := &staffApplicationRecord{}
 		got := mapAppFieldToRecord(rec, "App-Work Camp Dates Kitchen Supervisor", "Yes")
-		if got != "work_dates_kitchen_supervisor" {
-			t.Errorf("mapAppFieldToRecord returned %q, want %q", got, "work_dates_kitchen_supervisor")
+		if got != colKitchenSupervisor {
+			t.Errorf("mapAppFieldToRecord returned %q, want %q", got, colKitchenSupervisor)
 		}
 		if !rec.workDatesKitchenSupervisor {
 			t.Error("workDatesKitchenSupervisor = false, want true for a Yes value")
@@ -647,8 +661,8 @@ func TestMapAppFieldToRecordRoutesTheFourLive2026Fields(t *testing.T) {
 	t.Run("kitchen supervisor No parses false", func(t *testing.T) {
 		rec := &staffApplicationRecord{}
 		got := mapAppFieldToRecord(rec, "App-Work Camp Dates Kitchen Supervisor", "No")
-		if got != "work_dates_kitchen_supervisor" {
-			t.Errorf("mapAppFieldToRecord returned %q, want %q", got, "work_dates_kitchen_supervisor")
+		if got != colKitchenSupervisor {
+			t.Errorf("mapAppFieldToRecord returned %q, want %q", got, colKitchenSupervisor)
 		}
 		if rec.workDatesKitchenSupervisor {
 			t.Error("workDatesKitchenSupervisor = true, want false for a No value")
@@ -657,9 +671,9 @@ func TestMapAppFieldToRecordRoutesTheFourLive2026Fields(t *testing.T) {
 
 	t.Run("JEDI returner free text is written verbatim", func(t *testing.T) {
 		rec := &staffApplicationRecord{}
-		got := mapAppFieldToRecord(rec, "App-JEDIreturner", "a returner's reflection")
-		if got != "jedi_returner" {
-			t.Errorf("mapAppFieldToRecord returned %q, want %q", got, "jedi_returner")
+		got := mapAppFieldToRecord(rec, fieldJediReturnerName, "a returner's reflection")
+		if got != colJediReturner {
+			t.Errorf("mapAppFieldToRecord returned %q, want %q", got, colJediReturner)
 		}
 		if rec.jediReturner != "a returner's reflection" {
 			t.Errorf("jediReturner = %q, want %q", rec.jediReturner, "a returner's reflection")
@@ -669,8 +683,8 @@ func TestMapAppFieldToRecordRoutesTheFourLive2026Fields(t *testing.T) {
 	t.Run("JEDI new-staff free text is written verbatim", func(t *testing.T) {
 		rec := &staffApplicationRecord{}
 		got := mapAppFieldToRecord(rec, "App-JEDInewstaff", "a new applicant's reflection")
-		if got != "jedi_new_staff" {
-			t.Errorf("mapAppFieldToRecord returned %q, want %q", got, "jedi_new_staff")
+		if got != colJediNewStaff {
+			t.Errorf("mapAppFieldToRecord returned %q, want %q", got, colJediNewStaff)
 		}
 		if rec.jediNewStaff != "a new applicant's reflection" {
 			t.Errorf("jediNewStaff = %q, want %q", rec.jediNewStaff, "a new applicant's reflection")
@@ -679,8 +693,8 @@ func TestMapAppFieldToRecordRoutesTheFourLive2026Fields(t *testing.T) {
 
 	t.Run("first-write-wins like every other text column", func(t *testing.T) {
 		rec := &staffApplicationRecord{}
-		mapAppFieldToRecord(rec, "App-JEDIreturner", "first")
-		mapAppFieldToRecord(rec, "App-JEDIreturner", "second")
+		mapAppFieldToRecord(rec, fieldJediReturnerName, "first")
+		mapAppFieldToRecord(rec, fieldJediReturnerName, "second")
 		if rec.jediReturner != "first" {
 			t.Errorf("jediReturner = %q, want %q (first write should win)", rec.jediReturner, "first")
 		}

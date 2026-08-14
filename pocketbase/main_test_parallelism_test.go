@@ -165,6 +165,7 @@ var serialGroups = []struct {
 			"TestLoadPersonCustomValuesCountsAndLogsUnmappedFields",
 			"TestLoadPersonCustomValuesNoDiscardsMeansNoWarnAppLog",
 			"TestLoadPersonCustomValuesNoDiscardsMeansNoWarnLog",
+			"TestLoadPersonCustomValuesRoutesTheFourLive2026FieldsAndDoesNotSkipThem",
 		},
 	},
 	{
