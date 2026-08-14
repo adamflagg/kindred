@@ -16,10 +16,13 @@
  *   was cancelled outright and 2021 has no family attendee rows at all
  *   despite 247 registrations — while adults exist for both years.
  */
-import { render, screen } from '@testing-library/react'
-import { describe, expect, it, vi } from 'vitest'
+import { useState } from 'react'
+import { fireEvent, render, screen } from '@testing-library/react'
+import { describe, expect, it, vi, afterEach, beforeEach } from 'vitest'
+import { MemoryRouter, Route, Routes } from 'react-router'
 
 import type { HouseholdJourneyRow } from '../../types/lodging'
+import { hasOpenModal } from '../ui/modalStack'
 import { HouseholdYearMembersModal } from './HouseholdYearMembersModal'
 
 function _row(overrides: Partial<HouseholdJourneyRow> = {}): HouseholdJourneyRow {
@@ -42,9 +45,13 @@ function _row(overrides: Partial<HouseholdJourneyRow> = {}): HouseholdJourneyRow
   }
 }
 
+// A child's name is a `<Link>` (kindred#2329), which throws outside a Router
+// context — every caller needs one now, not just the navigation tests below.
 function open(row: HouseholdJourneyRow | null, familyLabel = 'The Johnson Family') {
   return render(
-    <HouseholdYearMembersModal isOpen onClose={vi.fn()} row={row} familyLabel={familyLabel} />
+    <MemoryRouter>
+      <HouseholdYearMembersModal isOpen onClose={vi.fn()} row={row} familyLabel={familyLabel} />
+    </MemoryRouter>
   )
 }
 
@@ -170,5 +177,107 @@ describe('nothing to show', () => {
     open(null)
 
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+  })
+})
+
+describe('linking a member to their camper page for that year (kindred#2329)', () => {
+  it("links a child with a person_cm_id to /camper/:id, carrying THIS row's year", () => {
+    open(_row({ year: 2019 }))
+
+    const link = screen.getByRole('link', { name: /Emma Johnson/ })
+    expect(link).toHaveAttribute('href', '/camper/1000001?year=2019')
+  })
+
+  it('renders a child with no person_cm_id as plain text, never a broken link', () => {
+    open(
+      _row({
+        children: [
+          // No `person_cm_id` at all — the data-completeness case, distinct
+          // from the resolvability question the corrected issue body
+          // settles (own-year resolution is 100% BY CONSTRUCTION once a
+          // person_cm_id exists; this row simply doesn't have one).
+          { display_name: 'Noah Smith', last_name: 'Smith', age: 7, grade: 2 },
+        ],
+      })
+    )
+
+    expect(screen.queryByRole('link', { name: /Noah Smith/ })).not.toBeInTheDocument()
+    expect(screen.getByTestId('year-members-children').textContent).toContain('Noah Smith')
+  })
+
+  it('never links an adult — PartyAdult carries no person_cm_id to link with', () => {
+    open(_row())
+
+    expect(screen.queryByRole('link', { name: /Olivia Johnson/ })).not.toBeInTheDocument()
+    expect(screen.getByTestId('year-members-adults').textContent).toContain('Olivia Johnson')
+  })
+})
+
+describe('navigating to a linked camper unwinds the modal stack (kindred#2329)', () => {
+  // `ui/Modal` targets `#root` for background inert; jsdom doesn't load
+  // index.html, so tests recreate that element — same pattern as
+  // `ui/Modal.test.tsx`'s "background inert" describe block.
+  beforeEach(() => {
+    const root = document.createElement('div')
+    root.id = 'root'
+    document.body.appendChild(root)
+  })
+
+  afterEach(() => {
+    document.getElementById('root')?.remove()
+  })
+
+  // Mimics `HouseholdJourneyCard`'s own `openRow` state exactly: `onClose`
+  // clears it, which is what flips the `Modal`'s `isOpen` prop to false.
+  function Harness() {
+    const [isOpen, setIsOpen] = useState(true)
+    return (
+      <HouseholdYearMembersModal
+        isOpen={isOpen}
+        onClose={() => {
+          setIsOpen(false)
+        }}
+        row={_row({ year: 2019 })}
+        familyLabel="The Johnson Family"
+      />
+    )
+  }
+
+  function renderAtWeekendRoute() {
+    return render(
+      <MemoryRouter initialEntries={['/weekend/roster']}>
+        <Routes>
+          <Route path="/weekend/roster" element={<Harness />} />
+          <Route
+            path="/camper/:camperId"
+            element={<p data-testid="camper-page">Camper detail page</p>}
+          />
+        </Routes>
+      </MemoryRouter>
+    )
+  }
+
+  it('closes the dialog, empties the overlay stack, and clears background inert on click', () => {
+    renderAtWeekendRoute()
+
+    // Sanity: the dialog is actually open and registered before the click —
+    // otherwise the assertions below would trivially pass on an unmounted
+    // modal that never mounted in the first place.
+    expect(screen.getByRole('dialog')).toBeInTheDocument()
+    expect(document.getElementById('root')).toHaveAttribute('inert')
+    expect(hasOpenModal()).toBe(true)
+
+    fireEvent.click(screen.getByRole('link', { name: /Emma Johnson/ }))
+
+    // Real navigation happened — proves this isn't just `onClose` firing
+    // while still parked on the weekend route.
+    expect(screen.getByTestId('camper-page')).toBeInTheDocument()
+
+    // The unwind: the stack must not believe a modal is still mounted once
+    // the route has moved on, or the NEXT overlay opened anywhere in the
+    // app inherits a stuck `inert` background / wrong Escape ownership.
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+    expect(document.getElementById('root')).not.toHaveAttribute('inert')
+    expect(hasOpenModal()).toBe(false)
   })
 })

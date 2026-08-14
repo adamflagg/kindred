@@ -21,13 +21,31 @@
  * `FamilyDetailsPanel`'s, and this imitates it deliberately: same forest
  * gradient, same `truncate text-lg font-bold` heading, same `text-forest-100
  * mt-0.5 text-xs` sub-line. A sibling surface, not a new visual language.
+ *
+ * A child's name links to their camper detail page FOR THIS ROW'S YEAR
+ * (kindred#2329) — `/camper/:id?year=N`, same tab, same `<Link>` +
+ * `onClick={onClose}` pattern `CamperDetailsPanel`'s sibling links already
+ * use. Adults never link: `PartyAdult` (from `family_camp_adults`, a
+ * name-only scrape) carries no `person_cm_id` to link with, unlike
+ * `PartyChild`. The unwind itself needs no new plumbing — navigating to
+ * `/camper/:id` swaps to a sibling Route, unmounting this Modal, and
+ * `ui/Modal`'s own effect cleanup (see that file) already releases the
+ * background inert and its `modalStack` overlay token on unmount. Nothing
+ * here talks to `modalStack` directly.
  */
 import { Baby, Users } from 'lucide-react'
+import { Link } from 'react-router'
 
 import type { HouseholdJourneyRow } from '../../types/lodging'
 import { displayCampMinderAge } from '../../utils/age'
 import { Modal } from '../ui/Modal'
 import { isAttendingAdultName } from './householdIdentity'
+
+/** Mirrors `CamperLink.tsx`'s own validity check — a CampMinder ID is only
+ *  ever a positive integer, so this also rules out a stray `0`. */
+function hasValidPersonCmId(personCmId: number | null | undefined): personCmId is number {
+  return personCmId != null && personCmId > 0
+}
 
 export interface HouseholdYearMembersModalProps {
   isOpen: boolean
@@ -146,7 +164,32 @@ export function HouseholdYearMembersModal({
                       is the card's treatment. A vertical list has no run to factor out, and
                       dropping the surname from each line would make a mixed-surname household
                       unreadable. */}
-                  <span className="text-foreground">{child.display_name}</span>
+                  {hasValidPersonCmId(child.person_cm_id) ? (
+                    // Same tab, this row's own year travels with the link —
+                    // NOT the app's current year (kindred#2329). `onClose`
+                    // closes the modal the same way its own close button
+                    // does; the route change (a sibling Route, not this
+                    // one) unmounts it regardless, but calling it too keeps
+                    // this in step with `CamperDetailsPanel`'s sibling
+                    // links rather than relying on unmount alone.
+                    <Link
+                      to={`/camper/${String(child.person_cm_id)}${
+                        row.year != null ? `?year=${String(row.year)}` : ''
+                      }`}
+                      onClick={onClose}
+                      className="text-foreground hover:text-primary font-medium transition-colors hover:underline"
+                    >
+                      {child.display_name}
+                    </Link>
+                  ) : (
+                    // No `person_cm_id` on file for this child — render as
+                    // plain text rather than a link that would 404. Per the
+                    // corrected issue body, a valid `person_cm_id` always
+                    // resolves for ITS OWN year by construction, so the only
+                    // reason to fall back here is a missing id, never an
+                    // unresolvable one.
+                    <span className="text-foreground">{child.display_name}</span>
+                  )}
                   <span className="text-muted-foreground text-xs">
                     {childDetail(child.age, child.grade)}
                   </span>
