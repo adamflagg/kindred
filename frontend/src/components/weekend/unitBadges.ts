@@ -182,11 +182,10 @@ export function shareabilityBadge(unit: LodgingUnitRow): UnitBadge | null {
  * either room. `overlappingPartyKeys` guards exactly that: it will not read
  * such a pair as sharing a room with EACH OTHER while the number of
  * households claiming that set is no bigger than the set itself (H <= N).
- * This badge takes
- * `overlappingParties` as given and needs no guard of its own — it only ever
- * sees the count after that ambiguity has already been resolved upstream.
+ * This badge takes `overlappingParties` as given and needs no guard of its
+ * own — it only ever sees the count after that ambiguity has already been
+ * resolved upstream.
  *
-
  * Silent on an unclassified unit for the reason the doc gives: a unit nobody
  * has classified has no rule to violate, and nagging there teaches dismissal.
  * This reads the STORED value and re-states the classification rule nowhere —

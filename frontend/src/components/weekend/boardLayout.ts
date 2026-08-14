@@ -550,6 +550,26 @@ function areaSortOrder(unit: LodgingUnitRow): number {
 }
 
 /**
+ * The exact multi-code set a party names, as a stable grouping key — the input
+ * to `overlappingPartyKeys`'s `H <= N` guard, which is described in full on
+ * that function below.
+ */
+function mergeGroupSignature(party: RosterPartyRow): string | null {
+  const codes = occupiedCodes(party)
+  // A SINGLE named code (including a container) is one confirmed claim, not a
+  // multi-unit alias resolution, and must never enter this grouping — see
+  // `occupiedCodes`'s own doc comment for why a container name stays as itself.
+  if (codes.length < 2) return null
+  // U+0000 joins, never a space: it cannot occur inside a unit code, so two
+  // different code sets can never collide on one signature. Written as the
+  // ESCAPE and never as a raw byte — a literal NUL in the file makes grep
+  // classify this whole source as binary, and
+  // `scripts/dev/verify-no-hardcoded-lodging.sh` passes `-I`, so the lodging
+  // name guard would skip every line of this file without reporting anything.
+  return [...codes].sort().join('\u0000')
+}
+
+/**
  * Which of these parties share an occupied LEAF code with at least one
  * OTHER party in the list — keyed by `partyKey`, the project's one stable
  * identity for a roster party.
@@ -596,22 +616,13 @@ function areaSortOrder(unit: LodgingUnitRow): number {
  * households all claiming the same N-unit set is only evidence of a real
  * double-booking once H exceeds N. At H <= N the assignment is ambiguous — one
  * household per unit fits, staff just have not said which — and must not read
- * as a confirmed share. `mergeGroupSignature`/`isAmbiguousMergePair` below
- * apply this ONLY to a pair drawn from the identical multi-code group; a third
+ * as a confirmed share. `mergeGroupSignature` (above) and
+ * `isAmbiguousMergePair` (inside this function) apply this ONLY to a pair drawn from the identical multi-code group; a third
  * party outside the group sharing one of those same leaves still flags
  * normally, on either side of the pair — failing permissive is what the rest of
  * this function already does, and the guard narrows nothing beyond the exact
  * ambiguous case.
  */
-function mergeGroupSignature(party: RosterPartyRow): string | null {
-  const codes = occupiedCodes(party)
-  // A SINGLE named code (including a container) is one confirmed claim, not a
-  // multi-unit alias resolution, and must never enter this grouping — see
-  // `occupiedCodes`'s own doc comment for why a container name stays as itself.
-  if (codes.length < 2) return null
-  return [...codes].sort().join(' ')
-}
-
 export function overlappingPartyKeys(
   parties: RosterPartyRow[],
   units: LodgingUnitRow[]
