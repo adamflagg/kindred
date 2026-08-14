@@ -37,13 +37,14 @@
  * Summer's gender filter does not come across: weekends do not split by
  * gender (see `FriendGroupActionBar.tsx`'s header).
  */
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { Plus } from 'lucide-react'
 
 import type { FriendGroupRow } from '../../types/friendGroups'
 import type { RosterPartyRow } from '../../types/lodging'
 import { householdLabel, pickableHouseholds } from './friendGroups'
+import { useOverlayEscape } from '../../hooks/useOverlayEscape'
 
 export interface AddHouseholdPickerProps {
   groupName: string
@@ -113,20 +114,17 @@ export function AddHouseholdPicker({
     return () => document.removeEventListener('mousedown', handler)
   }, [open])
 
-  // Escape dismisses the picker. Capture phase, same reason AddMemberPicker
-  // gives: stop it before an outer modal listener reacts.
-  useEffect(() => {
-    if (!open) return
-    const handler = (e: KeyboardEvent) => {
-      if (e.key !== 'Escape') return
-      e.stopPropagation()
-      setOpen(false)
-      setFilter('')
-      triggerRef.current?.focus()
-    }
-    document.addEventListener('keydown', handler, true)
-    return () => document.removeEventListener('keydown', handler, true)
-  }, [open])
+  // kindred#2237: Escape now goes through the shared overlay token stack
+  // (kindred#2205) via `useOverlayEscape` — still a capture-phase `document`
+  // listener, but one that acts, and swallows the key, only while this
+  // picker is the topmost registered overlay. See that hook for why the
+  // phase stays and why the `stopPropagation` became conditional.
+  const closeOnEscape = useCallback(() => {
+    setOpen(false)
+    setFilter('')
+    triggerRef.current?.focus()
+  }, [])
+  useOverlayEscape(open, closeOnEscape)
 
   const handleSelect = (party: RosterPartyRow) => {
     onAdd(party)

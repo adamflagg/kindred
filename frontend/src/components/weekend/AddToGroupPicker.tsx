@@ -8,11 +8,12 @@
  * to select a group from, so the target is picked here instead, through the
  * same portal + filter-free listbox mechanics `AddHouseholdPicker` uses.
  */
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { Plus } from 'lucide-react'
 
 import type { FriendGroupRow } from '../../types/friendGroups'
+import { useOverlayEscape } from '../../hooks/useOverlayEscape'
 
 export interface AddToGroupPickerProps {
   groups: FriendGroupRow[]
@@ -54,17 +55,16 @@ export function AddToGroupPicker({ groups, onSelect, disabled }: AddToGroupPicke
     return () => document.removeEventListener('mousedown', handler)
   }, [open])
 
-  useEffect(() => {
-    if (!open) return
-    const handler = (e: KeyboardEvent) => {
-      if (e.key !== 'Escape') return
-      e.stopPropagation()
-      setOpen(false)
-      triggerRef.current?.focus()
-    }
-    document.addEventListener('keydown', handler, true)
-    return () => document.removeEventListener('keydown', handler, true)
-  }, [open])
+  // kindred#2237: Escape now goes through the shared overlay token stack
+  // (kindred#2205) via `useOverlayEscape` — still a capture-phase `document`
+  // listener, but one that acts, and swallows the key, only while this
+  // picker is the topmost registered overlay. See that hook for why the
+  // phase stays and why the `stopPropagation` became conditional.
+  const closeOnEscape = useCallback(() => {
+    setOpen(false)
+    triggerRef.current?.focus()
+  }, [])
+  useOverlayEscape(open, closeOnEscape)
 
   const handleSelect = (groupId: string) => {
     onSelect(groupId)

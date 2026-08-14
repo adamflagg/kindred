@@ -1,4 +1,5 @@
 import { useState, useCallback, useMemo, useRef, useEffect } from 'react'
+import { useOverlayEscape } from '../hooks/useOverlayEscape'
 import { createPortal } from 'react-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { X, Trash2, Users, ChevronRight, AlertTriangle, Plus } from 'lucide-react'
@@ -163,20 +164,28 @@ function AddMemberPicker({
     return () => document.removeEventListener('mousedown', handler)
   }, [open])
 
-  // Escape dismisses the picker. Capture phase so we stop it before outer
-  // modal listeners (e.g. CamperDetailsPanel) react.
-  useEffect(() => {
-    if (!open) return
-    const handler = (e: KeyboardEvent) => {
-      if (e.key !== 'Escape') return
-      e.stopPropagation()
-      setOpen(false)
-      setFilter('')
-      triggerRef.current?.focus()
-    }
-    document.addEventListener('keydown', handler, true)
-    return () => document.removeEventListener('keydown', handler, true)
-  }, [open])
+  // kindred#2237: Escape now goes through the shared overlay token stack
+  // (kindred#2205) via `useOverlayEscape`. Still a capture-phase `document`
+  // listener — see that hook for why the phase has to stay — but it acts,
+  // and swallows the key, only while this picker is the TOPMOST registered
+  // overlay. What that buys over the hand-rolled listener this replaces is
+  // deference to overlays opened ON TOP of the picker, which
+  // capture-phase-plus-unconditional-`stopPropagation` could never give.
+  //
+  // It does NOT fix the pairing the old comment named. `CamperDetailsPanel`
+  // is one of kindred#2237's twelve still-unconverted overlays and installs
+  // its own capture-phase `document` listener with an unconditional
+  // `stopPropagation` (`CamperDetailsPanel.tsx:546-555`); registered first,
+  // it still fires first, so one Escape with both open still closes both —
+  // exactly as before this change, no better and no worse. Only converting
+  // that panel closes that gap, and kindred#2237 is explicit that each
+  // component is its own call.
+  const closeOnEscape = useCallback(() => {
+    setOpen(false)
+    setFilter('')
+    triggerRef.current?.focus()
+  }, [])
+  useOverlayEscape(open, closeOnEscape)
 
   const handleSelect = (camper: Camper) => {
     void addCamperToGroup(camper, groupId)

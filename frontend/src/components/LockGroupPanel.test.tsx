@@ -94,6 +94,7 @@ vi.mock('../contexts/LockGroupContext', () => ({
 }))
 
 import LockGroupPanel from './LockGroupPanel'
+import { acquireOverlayToken, hasOpenModal, releaseOverlayToken } from './ui/modalStack'
 
 beforeEach(() => {
   mockQueryData = []
@@ -509,6 +510,56 @@ describe('LockGroupPanel — AddMemberPicker a11y + portal tagging (#1499 issues
     expect(screen.getByPlaceholderText(/filter campers/i)).toBeInTheDocument()
     fireEvent.keyDown(document, { key: 'Escape' })
     expect(screen.queryByPlaceholderText(/filter campers/i)).not.toBeInTheDocument()
+  })
+
+  it('kindred#2237: does NOT close on Escape once a further overlay has opened on top of it', () => {
+    // AddMemberPicker used a capture-phase `document` listener with
+    // `stopPropagation` "to stop it before an outer modal listener reacts"
+    // (its own comment) — precisely the shape kindred#2237 flags: it wins
+    // against the ONE outer listener it names, but a genuine second overlay
+    // (registered in the same kindred#2205 token stack) opened on top of
+    // THIS picker still needs the key, not the picker underneath it.
+    mockGroups = [testGroup]
+    mockContext.getCamperLockGroup = () => null
+    render(
+      <LockGroupPanel
+        isOpen={true}
+        onClose={() => {}}
+        sessionPbId="sess-1"
+        scenarioId="scn-1"
+        selectedGroupId="group-abc"
+        sessionCampers={[{ id: 'pb-1', person_cm_id: 1000001, name: 'Emma Johnson' } as never]}
+      />
+    )
+    fireEvent.click(screen.getByRole('button', { name: /add member/i }))
+    expect(screen.getByPlaceholderText(/filter campers/i)).toBeInTheDocument()
+
+    const topToken = acquireOverlayToken()
+    fireEvent.keyDown(document, { key: 'Escape' })
+    expect(screen.getByPlaceholderText(/filter campers/i)).toBeInTheDocument()
+
+    releaseOverlayToken(topToken)
+  })
+
+  it('kindred#2237: releases its overlay token on unmount, so the stack does not leak', () => {
+    mockGroups = [testGroup]
+    mockContext.getCamperLockGroup = () => null
+    const { unmount } = render(
+      <LockGroupPanel
+        isOpen={true}
+        onClose={() => {}}
+        sessionPbId="sess-1"
+        scenarioId="scn-1"
+        selectedGroupId="group-abc"
+        sessionCampers={[{ id: 'pb-1', person_cm_id: 1000001, name: 'Emma Johnson' } as never]}
+      />
+    )
+    fireEvent.click(screen.getByRole('button', { name: /add member/i }))
+    expect(screen.getByPlaceholderText(/filter campers/i)).toBeInTheDocument()
+
+    unmount()
+
+    expect(hasOpenModal()).toBe(false)
   })
 
   it('portaled dropdown carries data-panel="lock-group-picker" so the board click-outside whitelists it', () => {
