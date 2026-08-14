@@ -1862,9 +1862,9 @@ func TestUnsupportedDryRunServices(t *testing.T) {
 // blast radius of the incident in #2334: household_demographics/family_camp_derived are exactly
 // the services that swapped medical narratives and adult attributes and deleted family_camp_adults
 // rows. A DryRunnable mechanism that only a test double satisfies would leave every one of these
-// rejecting dry_run=true with a 400 in production, contradicting the issue's ruled fix direction
-// ("Honour dry_run end to end ... every service reachable through the unified endpoint supports
-// it. Not a 400."). This list -- and the compile-time assertions below -- exist so a future
+// rejecting dry_run=true with a 400 in production, contradicting the issue's ruled fix direction:
+// honor dry_run end to end, for every service reachable through the unified endpoint -- not a
+// 400. This list -- and the compile-time assertions below -- exist so a future
 // service losing its SetDryRun method (e.g. during a refactor) fails a test instead of silently
 // falling back to rejection.
 var dryRunCapableRealServices = []string{
@@ -1916,15 +1916,15 @@ func TestRealServicesHonorDryRunThroughUnifiedEndpoint(t *testing.T) {
 	o.RegisterService("family_camp_derived", NewFamilyCampDerivedSync(nil))
 	o.RegisterService("staff_applications", NewStaffApplicationsSync(nil))
 	o.RegisterService("staff_skills", NewStaffSkillsSync(nil))
-	o.RegisterService("session_groups", &notDryRunnableService{name: "session_groups"})
+	o.RegisterService(serviceNameSessionGroups, &notDryRunnableService{name: serviceNameSessionGroups})
 
 	if got := o.UnsupportedDryRunServices(dryRunCapableRealServices); len(got) != 0 {
 		t.Errorf("expected every real dry-run-capable service to be supported, got unsupported=%v", got)
 	}
 
-	got := o.UnsupportedDryRunServices(append(append([]string{}, dryRunCapableRealServices...), "session_groups"))
-	if len(got) != 1 || got[0] != "session_groups" {
-		t.Errorf("expected only [session_groups] unsupported alongside the real services, got %v", got)
+	got := o.UnsupportedDryRunServices(append(append([]string{}, dryRunCapableRealServices...), serviceNameSessionGroups))
+	if len(got) != 1 || got[0] != serviceNameSessionGroups {
+		t.Errorf("expected only [%s] unsupported alongside the real services, got %v", serviceNameSessionGroups, got)
 	}
 }
 
