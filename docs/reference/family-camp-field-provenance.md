@@ -394,9 +394,8 @@ Known pairs — housing plus the medical forms that use the same convention:
 | `Family Camp-Physician ` (39680) | `Family Camp-Physician If Yes` (39681) |
 
 > `Family Camp-Physician ` carries a **trailing space** in its own name — that is not a
-> typo here or in the CampMinder admin UI. See [§7](#7-standing-traps): it is the field
-> `normalizeFieldName` exists to work around, and the adult pipeline currently ignores the
-> lesson and routes on display-name substrings instead of `cm_id`.
+> typo here or in the CampMinder admin UI. It is the field `normalizeFieldName` exists to
+> work around; see [§7](#7-standing-traps).
 
 ### The splice: a gate and its explanation can survive from different children
 
@@ -415,22 +414,28 @@ id-min explain row belong to different children**:
 | Housing Accommodation | — | — | 11 / 30 · 36.7% |
 | Bathroom | — | — | 17 / 45 · 37.8% |
 
-**This is worse than losing a sibling's text for Special Needs and CPAP only.** Those two
-pairs concatenate a **stored gate string** with a stored explanation, so the two halves of
-one question get spliced across two children and the explanation staff read does not
-necessarily describe the need that raised the flag.
+**Of the four rows above, this is worse than losing a sibling's text for Special Needs and
+CPAP only.** Those two pairs concatenate a **stored gate string** with a stored explanation
+in `processMedical`, so the two halves of one question get spliced across two children and
+the explanation staff read does not necessarily describe the need that raised the flag.
 
 **Housing Accommodation and Bathroom are not the same claim, and their rows should not be
-read against the other two.** Both gates are stored as household-wide OR booleans, and
-`family_camp_medical` stores no gate string for either — there is no second *stored* half
-to splice against, so their rows above measure winner provenance only: whether the
-household's stored explanation came from a child other than the id-min child who answered
-the gate Yes. Measured 2026: **0 of 30** and **0 of 45** households have a stored
-explanation from a child who did not themselves answer the gate Yes. Their residual defect
-is narrative **loss** — an answering child's explanation can still be dropped in favor of
-another answering child's — not splice; the loss is kindred#2255.
+read against the other two.** Both gates are stored as household-wide OR booleans by
+`processRegistrations`, and `family_camp_medical` stores no gate string for either — there
+is no second *stored* half to splice against, so their rows above measure winner provenance
+only, exactly as the heading says: the id-min gate row and the id-min explain row belong to
+different children.
 
-**The highest actual stored splice is CPAP 2025 at 33.3% (13 of 39), not the ~38% the
+**That is a different quantity from harm, and the second does not replace the first.**
+Winner provenance is the 11 / 30 and 17 / 45 in the table. *Harm* — households whose stored
+explanation came from a child who did not themselves answer the gate Yes — is **0 of 30**
+and **0 of 45** for 2026, and is zero structurally, because the gate is an OR across the
+whole household and no gate string is stored for it to disagree with. Re-running the first
+measurement will keep giving 11 / 30; that is not a contradiction of the zero. Their
+residual defect is narrative **loss** — an answering child's explanation can still be
+dropped in favor of another answering child's — not splice; the loss is kindred#2255.
+
+**The highest measured stored splice is CPAP 2025 at 33.3% (13 of 39), not the ~38% the
 Bathroom row implies if all four rows are read as one measurement.** Housing Accommodation
 and Bathroom have 2026-only rows because their derived columns have only ever been computed
 for 2026.
@@ -450,9 +455,12 @@ fanned onto three children still collapses to a single value while two members w
 answered keep both explanations beside the gate that member gave. The other four pairs
 measured above (Special Needs, CPAP, Housing Accommodation, Bathroom) still collapse
 independently in `processMedical` — that is kindred#2255. Allergies, Dietary Needs and
-`Family Camp-Physician ` (added to the pair table above but not separately measured here)
-are the same gate/explain shape on the same medical forms; Adult-Bathroom's collapse
-behavior has not been measured here either.
+`Family Camp-Physician ` are not merely the same shape on the form: `processMedical`
+concatenates each one's stored gate string with its stored explanation exactly as it does
+for Special Needs and CPAP, so they are in the same splice class and any fix has to cover
+them. They are not measured in the table above — which is why the ceiling is stated as the
+highest *measured* one. Adult-Bathroom's collapse behavior has not been measured here
+either.
 
 ---
 

@@ -243,7 +243,7 @@ every site above. Both `#2255` and `#2275` name it.
 3. **Re-derive the three existing tables** from the new person tables rather than from
    `personValues`, adding dedup-and-join plus a single `answer_conflicts` JSON array naming
    which free-text fields disagreed — one column, not four booleans, so adding a field later
-   needs no migration. **`answer_conflicts` and #2255's per-gate boolean columns are different
+   needs no migration. **`answer_conflicts` and `#2255`'s per-gate columns are different
    things, not competing proposals for the same slot:** a conflict entry is a *signal* — "these
    answers disagreed" — while a gate column is a *value* — what the household's stored answer
    to that gate actually is. A table can carry both at once, and neither substitutes for the
