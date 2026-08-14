@@ -16,9 +16,9 @@ Measured against the production snapshot at `pocketbase/pb_data/data.db`, tree `
 
 **1. It is not random, and three issue bodies say it is.** `#2255` (and text echoed into
 siblings) warns that the collapse is "random-wins" and implies a flaky test. It is not.
-Every map range on this path (`family_camp_derived.go:684`, `:838`, `:994`,
+Every map range on this path (`family_camp_derived.go:811`, `:965`, `:1121`,
 `lodging_requests.go:377`) affects only *output slice order*, never which value wins. The
-winner is fixed by the input slice, and `loadPersonCustomValues` sorts by `id` (`:523`,
+winner is fixed by the input slice, and `loadPersonCustomValues` sorts by `id` (`:646`,
 with a comment saying why). So the sites are **deterministic against a given database** —
 arbitrary, uncorrelated with recency or completeness, unstable across a delete/recreate of
 a source row, but *not* a per-run coin flip. A flakiness test will chase a ghost. The
@@ -56,22 +56,22 @@ silently · **OR** = boolean or, fail-safe · **join** = dedup-and-join, lossles
 No site anywhere counts its loss: no `Stats` field, no `slog.Warn`, no
 `lodging_ingest_issues` row, no conflict column, for any of the 20 lossy sites.
 
-### `processAdults` — `family_camp_derived.go:636-676`
+### `processAdults` — `family_camp_derived.go:763-802`
 
 Group key `(household, adult_slot)`. All arms are `Contains(fieldName, X) && field == ""`.
 
 | # | Column | Source cm_id | Rule | Notes |
 |---|---|---|---|---|
-| A1 | `first_name` | 34160 / 34161 | first-wins | documented at `:603-635`; holds a full typed name |
+| A1 | `first_name` | 34160 / 34161 | first-wins | documented at `:682-729`; holds a full typed name |
 | A2 | `last_name` | 216785 / 216786 | first-wins | dead — 0 conflicts, unfilled after 2022 |
-| A3 | `email` | 224590 / 224591 | `preferEmail` `:716-726` then first-wins | only site with a validity tie-break |
+| A3 | `email` | 224590 / 224591 | `preferEmail` `:836-851` then first-wins | only site with a validity tie-break |
 | A4 | `pronouns` | 241038 / 241039 | first-wins | |
 | A5 | `gender` | 34163 / 34164 | first-wins | |
 | A6 | `date_of_birth` | 34166 / 34167 | first-wins | **largest single loss in the file** |
 | A7 | `relationship_to_camper` | 36523 / 36524 | first-wins | **semantically void** once separated from the child it is relative to |
 | A8 | `name` | 219270-219272, 221653/221654 | none | household grain; `UNIQUE(year,household,field)` means no collapse occurs |
 
-### `processRegistrations` — `family_camp_derived.go:749-836`
+### `processRegistrations` — `family_camp_derived.go:876-959`
 
 Exact-name switch, `if reg.X == ""` guards.
 
@@ -88,12 +88,12 @@ replaced; the rest of this section is unchanged and still current.
 | R4 | `special_occasions` | 60413 | ~~first-wins~~ → **join, collapsed as a PAIR per answering person** with `Family Camp-describe special occasion` (kindred#2276's live gap). The gate is a bare Yes/No — 3,665 No / 344 Yes — so the column used to store "Yes" and discard what the occasion was |
 | R5 | `goals` | 36526 | ~~first-wins~~ → **join** (retired after 2024) |
 | R6 | `notes` | 36528 | ~~first-wins~~ → **join** |
-| R7 | `cabin_assignment` | 218072 | `:734-745` | household grain, no collapse |
-| B1 | `needs_private_bathroom` | 274056 / 274053 | `:815-816` | **OR — correct** |
-| B2 | `has_infant` | 257248 | `:823-830` | **OR — correct** |
-| B3 | `needs_accommodation` | 223999 / 274057 / 274055 | `:794-795` | **OR — correct** |
-| B4 | `opt_out_vip` + `accommodation_is_mandatory` | 256927 / 256935 | `:796-814` + `:838-853` | **OR plus an order-independent blocker override.** The best-designed site on this path and the model for what a conflict rule should look like |
-| B5 | `needs_power` + bathroom arm | 256582 / 171577 / 256933 | `:817-822` | OR of two independently-tested needs via `classifyCPAPAnswer` — correct |
+| R7 | `cabin_assignment` | 218072 | household grain, no collapse (`:861-873`) |
+| B1 | `needs_private_bathroom` | 274056 / 274053 | **OR — correct** (`:942-943`) |
+| B2 | `has_infant` | 257248 | **OR — correct** (`:950-957`) |
+| B3 | `needs_accommodation` | 223999 / 274057 / 274055 | **OR — correct** (`:921-922`) |
+| B4 | `opt_out_vip` + `accommodation_is_mandatory` | 256927 / 256935 | **OR plus an order-independent blocker override** (`:923-939` + `:966-983`). The best-designed site on this path and the model for what a conflict rule should look like |
+| B5 | `needs_power` + bathroom arm | 256582 / 171577 / 256933 | OR of two independently-tested needs via `classifyCPAPAnswer`, `:944-949` — correct |
 
 ### `CollapseToHouseholdGrain` — `lodging_requests.go:291-390`
 
@@ -106,14 +106,14 @@ The only site with a written-down, reviewed policy.
 | C3 | `wants_near/with/similar_ages` | `:358-364` | OR — correct |
 | C4 | `share_eligibility`, `share_answers_conflict` | `:377-386` | derived from the collapsed set; the conflict flag is computed against the **winner only**, which is `#2269` |
 
-### `processMedical` — `family_camp_derived.go:981-992`, then `:994-1095`
+### `processMedical` — `family_camp_derived.go:1104-1117`, then `:1119-1220`
 
 | # | Column | Line | Rule |
 |---|---|---|---|
-| M0 | *the flatten itself* | `:986-988` | first-wins across **every** field name, before any per-field logic. **This one site is behind M1-M8** |
-| M1 | `cpap_info` | `:1010-1021` | first-wins, **plus a `break` at `:1015`** keeping the older camper generation (171577) over the newer (256582). Adult-CPAP (256933) is correctly additive |
-| M2-M5 | `physician_info`, `special_needs_info`, `allergy_info`, `dietary_info` | `:1024-1065` | each concatenates a **gate token with a narrative**, chosen independently by M0 — so the two halves can come from different people |
-| M6-M8 | `additional_info`, `bathroom_explain`, `accommodation_explain` | `:1068-1084` | first-wins |
+| M0 | *the flatten itself* | `:1113-1115` | first-wins across **every** field name, before any per-field logic. **This one site is behind M1-M8** |
+| M1 | `cpap_info` | `:1137-1150` | first-wins, **plus a `break` at `:1141`** keeping the older camper generation (171577) over the newer (256582). Adult-CPAP (256933) is correctly additive |
+| M2-M5 | `physician_info`, `special_needs_info`, `allergy_info`, `dietary_info` | `:1152-1190` | each concatenates a **gate token with a narrative**, chosen independently by M0 — so the two halves can come from different people |
+| M6-M8 | `additional_info`, `bathroom_explain`, `accommodation_explain` | `:1192-1211` | first-wins |
 
 ---
 
@@ -215,7 +215,7 @@ changed. See `CLAUDE.md` §4.
 - **`#2255`** and the siblings echoing it — the "random-wins / flaky" framing. Replace with
   deterministic-but-arbitrary, and swap the proposed flakiness test for an
   order-independence probe.
-- **`#2274`** — anchor `:757` → `:749`; loss table omits the share fields.
+- **`#2274`** — anchor `:757` → `:876`; loss table omits the share fields.
 - **`#2275`** — add that slots 3-5 carry *no* attributes in any year, so the entire
   attribute loss is a slots-1-and-2 phenomenon.
 - **`#2276`** — claims three unrouted questions; the live population is **35** admitted-
@@ -229,7 +229,7 @@ changed. See `CLAUDE.md` §4.
 ## 5. Recommended order
 
 **Step 0 is a hard prerequisite and nothing can start without it:** widen
-`customValueEntry` (`family_camp_derived.go:437-445`) to carry the person PB id and cm id.
+`customValueEntry` (`family_camp_derived.go:560-568`) to carry the person PB id and cm id.
 It currently discards the person id at load, which is the root architectural cause of
 every site above. Both `#2255` and `#2275` name it.
 
@@ -246,7 +246,7 @@ every site above. Both `#2255` and `#2275` name it.
    `customValueEntry` now carries `personPBID`.
 4. **Add `session_cm_id`** to `family_camp_registrations`. **The grain triple must move in
    one PR:** the write key in `upsertRegistrations`, the orphan key `ProcessedRegKeys`
-   (`family_camp_derived.go:34`), and `idx_fc_reg_unique` (migration `1500000035:288`).
+   (`family_camp_derived.go:45`), and `idx_fc_reg_unique` (migration `1500000035:288`).
    Then switch `fetch_family_camp_registrations(year)` → `(year, session_cm_id)`.
 5. **Point the weekend medical panel** at the per-answer table and wire
    `original_bunk_requests` into the roster — the two things staff asked for directly.
@@ -323,19 +323,30 @@ which of the two it is before anything is written.
   2026-08-13** — they were the whole content of the first family-camp grain PR, and the
   re-evaluation above is what they unblock:
   1. ~~`family_camp_derived`'s three orphan sweeps are **unguarded**.~~ **Fixed.**
-     `deleteOrphanedAdults`/`…Registrations`/`…Medical` (`family_camp_derived.go:1840`, `:1889`,
-     `:1934`) now each construct an `OrphanSweepGuard` and return `(int, error)`, and `Sync`
+     `deleteOrphanedAdults`/`…Registrations`/`…Medical` (`family_camp_derived.go:1915`, `:1961`,
+     `:2005`) now each construct an `OrphanSweepGuard` and return `(int, error)`, and `Sync`
      joins the three refusals and returns them through `wrapOrphanSweepError`. It was the last
      unguarded sweep in the package; `orphan_guard.go` now enumerates **ten** services that build
      their own guard. `Rejected` is left unset, as it is for the other nine — this service counts
      no rejections.
   2. ~~`DryRun` reports counts, not a diff.~~ **Fixed.** The dry-run return moved past the three
-     `preloadExisting*` calls (`family_camp_derived.go:301`), and `reportDryRun` (`:1292`) now
+     `preloadExisting*` calls (`family_camp_derived.go:301`), and `reportDryRun` (`:1351`) now
      records a per-table `DryRunDiff` — would-create / would-update / unchanged / would-delete,
      judged by the SAME `needsUpdate` comparisons the writing path uses — on `s.DryRunDiff`, logs
-     it, and mirrors it into `Stats`. It also reports `GuardWouldRefuse`, so a diff promising
-     3,000 deletions says whether hazard 1's guard would then block them. **A dry run still
-     writes nothing**, which is pinned by test.
+     it, and mirrors would-create / would-update / unchanged into `Stats`. It also reports
+     `GuardWouldRefuse`, so a diff promising 3,000 deletions says whether hazard 1's guard would
+     then block them. **A dry run still writes nothing**, which is pinned by test.
+
+     **`Stats.Deleted` is deliberately left at 0 on a dry run**, and would-delete is read off
+     `DryRunDiff` instead. `recordSyncRun` writes `Stats.Deleted` straight into
+     `sync_runs.deleted_count` with `status=completed`, and `sync_runs` carries no dry-run
+     marker, so mirroring it would leave one completed run row per dry run asserting deletions
+     that never happened — nine of them once the 2017-2025 dry runs below are done, and
+     afterwards indistinguishable from nine real sweeps. **Residual, unchanged by this work:**
+     a dry run still populates `created_count`, `updated_count` and `skipped_count` in
+     `sync_runs`. Those overstate a harmless act rather than a destructive one, and predate
+     this PR; recording any of it honestly needs a dry-run column or status on `sync_runs`,
+     which is a schema change and a separate decision.
 
      What this does NOT do: it does not answer the replay question, it makes it answerable. Run
      `family_camp_derived` with `DryRun` against 2017-2025 and read the diff before deciding.
@@ -355,9 +366,9 @@ Three things in it to correct before relying on it:
 
 1. **"Random / SQLite paging order" over-generalises.** It is accurate for
    `household_demographics.go:494`, which passes `""` for sort. It is **wrong** for
-   `family_camp_derived.go`, which sorts by `id` at `:523`. Deterministic-but-arbitrary,
+   `family_camp_derived.go`, which sorts by `id` at `:646`. Deterministic-but-arbitrary,
    as §1 above sets out. Its *remedy* — the order-independence probe — is right either way.
-2. **It counts `family_camp_derived.go:988` as one site.** That is site M0 here, and M0
+2. **It counts `family_camp_derived.go:1114` as one site.** That is site M0 here, and M0
    alone is behind M1-M8. The family-camp path holds **26** sites, 20 of them lossy. Its
    per-site figure and this file's path-wide figure are different measurements, not
    competing ones.

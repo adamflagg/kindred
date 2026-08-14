@@ -333,7 +333,12 @@ func (s *FamilyCampDerivedSync) Sync(ctx context.Context) error {
 
 	// Step 12: Delete orphaned records (no longer in source data).
 	//
-	// A CANCELLED RUN SWEEPS NOTHING, and this check is what makes that true.
+	// A RUN CANCELLED BEFORE STEP 12 SWEEPS NOTHING, and this check is what
+	// makes that true. The claim is deliberately no stronger than that: none of
+	// the three sweeps below takes a context, so a cancellation landing partway
+	// THROUGH Step 12 is a separate case, handled by the re-checks between the
+	// sweep calls rather than here.
+	//
 	// The three upsert loops above break on ctx.Done() and return their partial
 	// counts with no error -- unlike staff_skills.go, whose loop returns
 	// ctx.Err() up so its sweep is never reached. So an interruption arrives
@@ -360,13 +365,43 @@ func (s *FamilyCampDerivedSync) Sync(ctx context.Context) error {
 		// nothing about whether the medical computation is trustworthy. The
 		// refusals are joined and returned together so an operator sees every
 		// table that stopped, not just the first.
-		deletedAdults, adultsErr := s.deleteOrphanedAdults(existingAdults, year)
-		s.Stats.Deleted += deletedAdults
-		deletedRegs, regsErr := s.deleteOrphanedRegistrations(existingRegs, year)
-		s.Stats.Deleted += deletedRegs
-		deletedMedical, medicalErr := s.deleteOrphanedMedical(existingMedical, year)
-		s.Stats.Deleted += deletedMedical
-		sweepErr = errors.Join(adultsErr, regsErr, medicalErr)
+		//
+		// Cancellation is the one thing that DOES stop the sequence early, and
+		// it is re-checked between tables because the sweeps take no context of
+		// their own. Without these checks a cancellation landing on the adults
+		// sweep still ran registrations and medical to completion and then
+		// reported a clean run.
+		//
+		// What is already swept stands, and that is correct rather than merely
+		// convenient: the check above passed, so no upsert loop broke early, so
+		// the computed set is complete and every row deleted was a genuine
+		// orphan an uninterrupted run would also have deleted. The defect being
+		// fixed is that the run kept working after it was told to stop and then
+		// did not say so -- which is why this re-checks here instead of
+		// propagating ctx.Err() out of the three upserts.
+		var adultsErr, regsErr, medicalErr, ctxErr error
+		var deleted int
+
+		deleted, adultsErr = s.deleteOrphanedAdults(existingAdults, year)
+		s.Stats.Deleted += deleted
+
+		if ctxErr = ctx.Err(); ctxErr == nil {
+			deleted, regsErr = s.deleteOrphanedRegistrations(existingRegs, year)
+			s.Stats.Deleted += deleted
+			ctxErr = ctx.Err()
+		}
+
+		if ctxErr == nil {
+			deleted, medicalErr = s.deleteOrphanedMedical(existingMedical, year)
+			s.Stats.Deleted += deleted
+			ctxErr = ctx.Err()
+		}
+
+		// Joined alongside the refusals, so an interrupted run that also hit a
+		// refusal reports both -- and so the cancellation reaches
+		// wrapOrphanSweepError, which is what keeps "interrupted" from being
+		// reported as "refused".
+		sweepErr = errors.Join(adultsErr, regsErr, medicalErr, ctxErr)
 	}
 
 	// WAL checkpoint BEFORE the refusal return below: the upsert steps above
@@ -1327,8 +1362,9 @@ func parseBoolFieldValue(value string) bool {
 // The upsert path, the preload and the dry-run diff must agree on these
 // EXACTLY: a preload keyed differently from the upsert reads every stored row
 // as an orphan, and a dry run keyed differently from either reports a diff that
-// describes nothing real. They were three separate fmt.Sprintf calls until the
-// dry-run diff needed a fourth.
+// describes nothing real. They were SIX separate fmt.Sprintf calls across two
+// format strings -- one per table in the preloads and one per table in the
+// upserts -- until the dry-run diff needed three more.
 // ============================================================================
 
 // familyCampAdultKey keys one family_camp_adults row.
@@ -1421,7 +1457,23 @@ func (s *FamilyCampDerivedSync) reportDryRun(
 		s.Stats.Created += t.diff.WouldCreate
 		s.Stats.Updated += t.diff.WouldUpdate
 		s.Stats.Skipped += t.diff.Unchanged
-		s.Stats.Deleted += t.diff.WouldDelete
+
+		// Stats.Deleted is deliberately NOT mirrored from WouldDelete.
+		//
+		// recordSyncRun writes Stats.Deleted straight into
+		// sync_runs.deleted_count with status=completed, and sync_runs carries
+		// no dry-run marker of any kind. Mirroring here would leave a completed
+		// run row asserting deletions that never happened -- nine of them once
+		// the planned 2017-2025 replay dry runs are done, and afterwards
+		// indistinguishable from nine real sweeps.
+		//
+		// Deleted is singled out because it is the only one of the four that
+		// describes a DESTRUCTIVE act; an overstated created/updated/skipped is
+		// a harmless overcount and predates this. The would-be count is not
+		// lost -- it stays on DryRunDiff.WouldDelete and in the log line above,
+		// which is where a dry run's answer belongs. Recording it in sync_runs
+		// honestly would need a dry-run column or status there, which is a
+		// schema change and a separate decision.
 	}
 }
 

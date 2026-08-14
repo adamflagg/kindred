@@ -526,11 +526,29 @@ func TestFamilyCampDryRunReportsAPerTableDiff(t *testing.T) {
 		}
 	}
 
-	// Stats must carry the same verdict, because that is what a run row records
-	// and what an operator reads back afterwards.
-	if s.Stats.Created != 4 || s.Stats.Updated != 1 || s.Stats.Skipped != 1 || s.Stats.Deleted != 1 {
-		t.Errorf("Stats = created:%d updated:%d skipped:%d deleted:%d; want 4/1/1/1",
+	// Stats carries the same verdict, because that is what a run row records and
+	// what an operator reads back afterwards -- with ONE deliberate exception.
+	//
+	// Deleted stays 0 on a dry run. recordSyncRun writes Stats.Deleted straight
+	// into sync_runs.deleted_count with status=completed, and sync_runs has no
+	// dry-run marker of any kind, so mirroring WouldDelete into Stats leaves a
+	// row asserting deletions that never happened -- nine such rows once the
+	// planned 2017-2025 replay dry runs are done, indistinguishable afterwards
+	// from nine real sweeps. The count is not lost: it stays on
+	// DryRunDiff.WouldDelete and in the "Dry run diff" log line, which is where
+	// a dry run's output belongs. Deleted is singled out because it is the only
+	// one of the four that describes a DESTRUCTIVE act; created/updated/skipped
+	// overstate a harmless one and predate this behavior.
+	if s.Stats.Created != 4 || s.Stats.Updated != 1 || s.Stats.Skipped != 1 || s.Stats.Deleted != 0 {
+		t.Errorf("Stats = created:%d updated:%d skipped:%d deleted:%d; want 4/1/1/0",
 			s.Stats.Created, s.Stats.Updated, s.Stats.Skipped, s.Stats.Deleted)
+	}
+	// ...and the would-be count is still reported, on the diff rather than in
+	// Stats. Asserting both together is the point: dropping it from Stats must
+	// not quietly drop it from the dry run's answer.
+	if got := s.DryRunDiff["family_camp_adults"].WouldDelete; got != 1 {
+		t.Errorf("adults WouldDelete = %d, want 1 -- Stats.Deleted is what a dry run "+
+			"must not claim, not the diff", got)
 	}
 	if !s.SyncSuccessful {
 		t.Error("a completed dry run is a successful run")
@@ -659,5 +677,89 @@ func TestFamilyCampSyncDoesNotSweepAfterACancelledRun(t *testing.T) {
 	}
 	if got := countCollection(t, app, "family_camp_registrations", year); got != 40 {
 		t.Errorf("family_camp_registrations holds %d rows, want 40", got)
+	}
+}
+
+// TestFamilyCampSyncStopsSweepingWhenCancelledMidStep12 covers the half the
+// single pre-sweep check cannot see. ctx.Err() is evaluated once, before the
+// three sweeps, and none of deleteOrphanedAdults/...Registrations/...Medical
+// takes a context of its own -- so a cancellation landing BETWEEN two tables
+// ran the remaining ones to completion and then reported a clean sweep.
+//
+// This is an interruptibility and honesty defect, NOT data loss, and the
+// distinction is worth stating because it decides the fix. The check above
+// passed, so no upsert loop broke early, so the computed set is complete and
+// every row these sweeps delete is a genuine orphan that an uninterrupted run
+// would also have deleted. Nothing is lost. What is wrong is that a run told to
+// stop keeps working, and then does not say it was interrupted -- so the fix is
+// to re-check between tables, not to propagate ctx.Err() out of the upserts.
+func TestFamilyCampSyncStopsSweepingWhenCancelledMidStep12(t *testing.T) {
+	t.Parallel()
+
+	const year = 2026
+
+	app := newFamilyCampReplayTestApp(t)
+	seedDryRunFixture(t, app, year)
+
+	// One orphan in each of the two tables swept AFTER adults. The fixture
+	// computes registrations for hhA/hhB and medical for hhA only, so neither
+	// of these keys is accounted for: a sweep that reaches them deletes them.
+	seedRow(t, app, "family_camp_registrations", map[string]any{
+		"year": year, "household": "hhz000000000009",
+	})
+	seedRow(t, app, "family_camp_medical", map[string]any{
+		"year": year, "household": "hhy000000000008", "additional_info": "orphan",
+	})
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	// Cancel on the adults sweep's OWN delete -- hhC, the fixture's orphan.
+	// That places the cancellation strictly between the first sweep and the
+	// second, which is the window a single check ahead of all three misses.
+	app.OnRecordAfterDeleteSuccess("family_camp_adults").BindFunc(func(e *core.RecordEvent) error {
+		cancel()
+		return e.Next()
+	})
+
+	s := NewFamilyCampDerivedSync(app)
+	s.Year = year
+
+	err := s.Sync(ctx)
+	if err == nil {
+		t.Fatal("Sync reported success for a run cancelled during its orphan sweeps")
+	}
+	if !errors.Is(err, context.Canceled) {
+		t.Errorf("error does not carry the cancellation: %v", err)
+	}
+	if !strings.Contains(err.Error(), "interrupted") {
+		t.Errorf("error does not report an interruption: %v", err)
+	}
+	if strings.Contains(err.Error(), "refused") {
+		t.Errorf("an interrupted sweep must not be reported as a guard refusal: %v", err)
+	}
+
+	// The sweep that had already run stands. hhC was a genuine orphan and the
+	// adults sweep completed before the cancellation landed; re-creating it
+	// would be a different bug, and this pins that the fix does not undo work.
+	adultRows, findErr := app.FindRecordsByFilter("family_camp_adults",
+		fmt.Sprintf("year = %d && household = 'hhc000000000003'", year), "", 0, 0)
+	if findErr != nil {
+		t.Fatalf("query hhC: %v", findErr)
+	}
+	if len(adultRows) != 0 {
+		t.Errorf("hhC survived -- the adults sweep should have completed before the cancel")
+	}
+
+	// The two sweeps that had NOT yet run must not have run. Three
+	// registrations (hhA and hhB written by this run, plus the seeded orphan)
+	// and two medical rows (hhA plus the seeded orphan).
+	if got := countCollection(t, app, "family_camp_registrations", year); got != 3 {
+		t.Errorf("family_camp_registrations holds %d rows, want 3 -- the registrations "+
+			"sweep ran after the run was cancelled", got)
+	}
+	if got := countCollection(t, app, "family_camp_medical", year); got != 2 {
+		t.Errorf("family_camp_medical holds %d rows, want 2 -- the medical sweep ran "+
+			"after the run was cancelled", got)
 	}
 }
