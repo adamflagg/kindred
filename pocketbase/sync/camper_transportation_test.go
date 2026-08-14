@@ -789,7 +789,6 @@ func addPersonCustomValue(t *testing.T, app core.App, fieldDefID, personPBID, va
 // never been told about -- the signal that matters if CampMinder ever adds a
 // new "BUS-*" field).
 func TestLoadPersonCustomValuesCountsAndLogsUnmappedFields(t *testing.T) {
-	t.Parallel()
 	app := newTransportValuesTestApp(t)
 
 	personsCol, err := app.FindCollectionByNameOrId("persons")
@@ -862,7 +861,6 @@ func TestLoadPersonCustomValuesCountsAndLogsUnmappedFields(t *testing.T) {
 // all and must leave Stats.Skipped at zero, matching the actual 2021+ data
 // (kindred#2272 measured zero discards in every year since 2021).
 func TestLoadPersonCustomValuesNoDiscardsMeansNoWarnLog(t *testing.T) {
-	t.Parallel()
 	app := newTransportValuesTestApp(t)
 
 	personsCol, err := app.FindCollectionByNameOrId("persons")

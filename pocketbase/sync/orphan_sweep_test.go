@@ -282,6 +282,12 @@ func TestBaseDeleteOrphansDeletesNothingWhenNoRecordCanBeKeyed(t *testing.T) {
 // captureSweepLogs redirects slog for the duration of one test and returns the
 // buffer. The sweep's only operator-facing signal is its log line, so the log IS
 // the behavior under test here, not an incidental side effect.
+//
+// A caller MUST NOT be parallel. slog's default handler is process-global, so a
+// parallel sibling swaps it mid-run and the buffer fills with someone else's
+// output. -race does not catch it (slog.SetDefault is internally atomic), so the
+// guard in main_test_parallelism_test.go carries the list instead -- add any new
+// caller there and leave t.Parallel() off.
 func captureSweepLogs(t *testing.T) *strings.Builder {
 	t.Helper()
 
@@ -300,7 +306,6 @@ func captureSweepLogs(t *testing.T) *strings.Builder {
 // (attendees, bunk_assignments, bunk_plans) tell the reader to look for an
 // unkeyable-record warning, so one has to exist.
 func TestBaseDeleteOrphansWarnsWhenNothingCanBeKeyed(t *testing.T) {
-	t.Parallel()
 	const seeded = 30
 
 	app := newOrphanSweepTestApp(t, "widgets", "name")
@@ -350,7 +355,6 @@ func TestBaseDeleteOrphansWarnsWhenNothingCanBeKeyed(t *testing.T) {
 // told the opposite of the truth. A blocking relation is the cheapest way to
 // make App.Delete fail for real rather than mocking it.
 func TestBaseDeleteOrphansCountsOnlyCompletedDeletes(t *testing.T) {
-	t.Parallel()
 	app := newOrphanSweepTestApp(t, "widgets", "name")
 	widgets, err := app.FindCollectionByNameOrId("widgets")
 	if err != nil {
@@ -407,7 +411,6 @@ func TestBaseDeleteOrphansCountsOnlyCompletedDeletes(t *testing.T) {
 // entry point (kindred#2302) -- financial_transactions is the one production
 // caller. A delete that FAILS must not be counted: the row is still on disk.
 func TestBaseDeleteOrphansFromPreloadedCountsOnlyCompletedDeletes(t *testing.T) {
-	t.Parallel()
 	app := newOrphanSweepTestApp(t, "widgets", "name")
 	widgets, err := app.FindCollectionByNameOrId("widgets")
 	if err != nil {
@@ -450,7 +453,21 @@ func TestBaseDeleteOrphansFromPreloadedCountsOnlyCompletedDeletes(t *testing.T) 
 		t.Fatalf("fixture is wrong: the delete was not blocked (%v)", findErr)
 	}
 
-	if got := logs.String(); strings.Contains(got, "Deleted orphaned records") {
+	got := logs.String()
+
+	// Positive half first. Without it the assertion below is satisfied by a sweep
+	// that returned early and never reached App.Delete at all -- a future guard
+	// added ahead of the loop would leave this test green while pinning nothing.
+	if !strings.Contains(got, "Failed to delete orphaned record") {
+		t.Fatalf("the delete was never attempted, so the count assertion proves nothing; got:\n%s", got)
+	}
+	// kindred#2302 scope item 3: the two counters must tell one story. The row is
+	// not counted as deleted, and the same row IS counted as an error.
+	if b.Stats.Errors != 1 {
+		t.Errorf("Stats.Errors = %d, want 1 -- a failed delete must still fail the run", b.Stats.Errors)
+	}
+
+	if strings.Contains(got, "Deleted orphaned records") {
 		t.Errorf("a failed delete was counted as deleted; got:\n%s", got)
 	}
 }
