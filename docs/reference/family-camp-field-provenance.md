@@ -379,7 +379,7 @@ every such pair lands as an ordinary **per-child custom value**.
 <Gate> Yes      free text, shown only when the gate is Yes
 ```
 
-Known pairs in the housing set:
+Known pairs — housing plus the medical forms that use the same convention:
 
 | Gate | Explain |
 |------|---------|
@@ -388,6 +388,15 @@ Known pairs in the housing set:
 | `Housing Accommodation` (274057) | `Housing Accommodation-Yes` (274058) |
 | `FAM CAMP-bathroom` (274056) | `Housing-Bathroom` (274059) |
 | `Family Camp-Special occasions` (60413) | `Family Camp-describe special occasion` |
+| `Adult-Bathroom` (274053) | `Bathroom-Yes` (274054) |
+| `Family Medical-Allergies` (36870) | `Family Medical-Allergy Info` (36871) |
+| `Family Medical-Dietary Needs` (36872) | `Family Medical-Dietary Explain` (36873) |
+| `Family Camp-Physician ` (39680) | `Family Camp-Physician If Yes` (39681) |
+
+> `Family Camp-Physician ` carries a **trailing space** in its own name — that is not a
+> typo here or in the CampMinder admin UI. See [§7](#7-standing-traps): it is the field
+> `normalizeFieldName` exists to work around, and the adult pipeline currently ignores the
+> lesson and routes on display-name substrings instead of `cm_id`.
 
 ### The splice: a gate and its explanation can survive from different children
 
@@ -396,8 +405,8 @@ Known pairs in the housing set:
 values. Because the two halves of a pair are separate fields, their winners can be
 different children.
 
-Measured share of households (where both halves have a value) whose stored gate and
-stored explanation come from **different children**:
+Measured share of households (where both halves have a value) whose **id-min gate row and
+id-min explain row belong to different children**:
 
 | Pair | 2024 | 2025 | 2026 |
 |------|------|------|------|
@@ -406,21 +415,44 @@ stored explanation come from **different children**:
 | Housing Accommodation | — | — | 11 / 30 · 36.7% |
 | Bathroom | — | — | 17 / 45 · 37.8% |
 
-This is worse than losing a sibling's text: the two halves of one question get spliced
-across two children, so the explanation staff read does not necessarily describe the need
-that raised the flag. Housing Accommodation and Bathroom have 2026-only rows because their
-derived columns have only ever been computed for 2026.
+**This is worse than losing a sibling's text for Special Needs and CPAP only.** Those two
+pairs concatenate a **stored gate string** with a stored explanation, so the two halves of
+one question get spliced across two children and the explanation staff read does not
+necessarily describe the need that raised the flag.
+
+**Housing Accommodation and Bathroom are not the same claim, and their rows should not be
+read against the other two.** Both gates are stored as household-wide OR booleans, and
+`family_camp_medical` stores no gate string for either — there is no second *stored* half
+to splice against, so their rows above measure winner provenance only: whether the
+household's stored explanation came from a child other than the id-min child who answered
+the gate Yes. Measured 2026: **0 of 30** and **0 of 45** households have a stored
+explanation from a child who did not themselves answer the gate Yes. Their residual defect
+is narrative **loss** — an answering child's explanation can still be dropped in favor of
+another answering child's — not splice; the loss is kindred#2255.
+
+**The highest actual stored splice is CPAP 2025 at 33.3% (13 of 39), not the ~38% the
+Bathroom row implies if all four rows are read as one measurement.** Housing Accommodation
+and Bathroom have 2026-only rows because their derived columns have only ever been computed
+for 2026.
 
 **Design rule that follows:** a gate and its explain must stay bound to the same person
 through any transform. In a per-answer layer that is automatic. In any household rollup it
-has to be explicit — collapse the *pair*, never the two fields independently.
+has to be explicit — collapse the *pair*, never the two fields independently. This is a rule
+about **not selecting a winner**, not about the two fields sitting next to each other on the
+form — so a future change that gives a gate its own column does not, by itself, satisfy it
+unless the collapse rule for both halves moves together, in the same change, from
+first-non-empty-wins to something that never picks a winner.
 
 The special-occasion pair is the first one collapsed that way (2026-08-13,
 `registrationText.specialOccasions` in `family_camp_registration_text.go`): the two fields
 are accumulated per answering person and deduplicated as one unit, so one parent's answer
 fanned onto three children still collapses to a single value while two members who each
-answered keep both explanations beside the gate that member gave. The other four pairs in
-the table above still collapse independently in `processMedical` — that is kindred#2255.
+answered keep both explanations beside the gate that member gave. The other four pairs
+measured above (Special Needs, CPAP, Housing Accommodation, Bathroom) still collapse
+independently in `processMedical` — that is kindred#2255. Allergies, Dietary Needs and
+`Family Camp-Physician ` (added to the pair table above but not separately measured here)
+are the same gate/explain shape on the same medical forms; Adult-Bathroom's collapse
+behavior has not been measured here either.
 
 ---
 
