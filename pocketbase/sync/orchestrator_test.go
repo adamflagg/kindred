@@ -1822,6 +1822,13 @@ func TestStats_IsNoOp(t *testing.T) {
 			stats:    Stats{Created: 0, Updated: 0, Deleted: 0, Errors: 0, Duration: 60, Expanded: 50},
 			expected: true,
 		},
+		{
+			// kindred#2267: a run that only dropped duplicate-status staff records made
+			// no data change and must still report as a no-op.
+			name:     "duplicate staff status only is still no-op",
+			stats:    Stats{Created: 0, Updated: 0, Deleted: 0, Errors: 0, DuplicateStaffStatus: 3},
+			expected: true,
+		},
 	}
 
 	for _, tt := range tests {

@@ -48,6 +48,11 @@ export interface SyncStatus {
     // Per-record transform failures: an upstream record could not be turned into a row.
     // Warn-only for its first season (#2284) — surfaced here, never failing a run.
     rejected?: number
+    // Staff records dropped because the same person appeared under more than one
+    // CampMinder status in one run (#2267). Only ever set by the `staff` service — the
+    // first status seen wins (see pocketbase/sync/staff.go's allStaffStatuses), and this
+    // is the count of every later status that lost that collapse.
+    duplicate_staff_status?: number
     already_processed?: number // For process_requests: records already processed
     prod_audit_warnings?: number // For stranded_assignment_cleanup: stranded prod assignments (observe-only)
     lodging_prod_audit_warnings?: number // For stranded_assignment_cleanup: stranded lodging prod assignments (observe-only)
