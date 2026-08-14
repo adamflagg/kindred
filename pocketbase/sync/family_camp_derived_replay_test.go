@@ -2,6 +2,7 @@ package sync
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"testing"
@@ -570,5 +571,93 @@ func TestFamilyCampDryRunFlagsASweepTheGuardWouldRefuse(t *testing.T) {
 	}
 	if adults := s.DryRunDiff["family_camp_adults"]; adults.GuardWouldRefuse {
 		t.Errorf("adults diff = %+v; that sweep is healthy and must not be flagged", adults)
+	}
+}
+
+// TestFamilyCampSyncDoesNotSweepAfterACancelledRun is the case the guard alone
+// does not cover, and the one where it does the wrong thing.
+//
+// The three upsert loops break on ctx.Done() and return their PARTIAL counts
+// with no error -- unlike staff_skills.go, the file this service's sweep
+// ordering is modeled on, which returns ctx.Err() up so its sweep is never
+// reached at all. So an interrupted run arrives at Step 12 with a computed set
+// that is short for a reason that has nothing to do with the upstream, and two
+// things go wrong:
+//
+//   - Below OrphanSweepMinRows the ratio arm does not apply, so the guard does
+//     NOT refuse: the sweep proceeds and deletes rows the run simply never got
+//     to. family_camp_adults here holds three rows, one of which (hhA) is
+//     current and correct, and it is deleted.
+//   - Above it the guard DOES refuse, and the run reports "orphan sweep
+//     refused ... check that person_custom_values ... hold this season's
+//     family-camp rows" -- sending an operator to investigate a feed that is
+//     fine. Keeping that apart from an interruption is the entire job of
+//     wrapOrphanSweepError, whose doc comment says so in as many words.
+func TestFamilyCampSyncDoesNotSweepAfterACancelledRun(t *testing.T) {
+	t.Parallel()
+
+	const year = 2026
+
+	app := newFamilyCampReplayTestApp(t)
+	seedDryRunFixture(t, app, year)
+	// Two tables, deliberately on opposite sides of OrphanSweepMinRows:
+	// family_camp_adults holds the fixture's 3 rows (the guard cannot help),
+	// family_camp_registrations holds 40 (the guard refuses and misattributes).
+	seedDerivedRows(t, app, "family_camp_registrations", year, 40)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	// Cancel on the first derived write. Whichever adult the transform reaches
+	// first, one of these two fires: hhD is a create and hhB an update.
+	cancelOnWrite := func(e *core.RecordEvent) error {
+		cancel()
+		return e.Next()
+	}
+	app.OnRecordAfterCreateSuccess("family_camp_adults").BindFunc(cancelOnWrite)
+	app.OnRecordAfterUpdateSuccess("family_camp_adults").BindFunc(cancelOnWrite)
+
+	s := NewFamilyCampDerivedSync(app)
+	s.Year = year
+
+	err := s.Sync(ctx)
+	if err == nil {
+		t.Fatal("Sync reported success for a cancelled run")
+	}
+	if !errors.Is(err, context.Canceled) {
+		t.Errorf("error does not carry the cancellation: %v", err)
+	}
+	if !strings.Contains(err.Error(), "interrupted") {
+		t.Errorf("error does not report an interruption: %v", err)
+	}
+	if strings.Contains(err.Error(), "refused") {
+		t.Errorf("a cancelled run must not be reported as a guard refusal -- that hint "+
+			"points at person_custom_values, and the feed is not what stopped: %v", err)
+	}
+
+	// Nothing was swept. The adults table is the one that matters: at three
+	// rows it is under OrphanSweepMinRows, so the guard's ratio arm is silent
+	// and only skipping the sweep outright keeps these alive.
+	//
+	// Asserted per household rather than as a row COUNT, because the run
+	// legitimately creates hhD's row before the cancellation lands -- a write
+	// that already happened is not the defect. The defect is deletion: hhA is
+	// current and correct, hhB is merely stale, and hhC is a genuine orphan
+	// that a run which never reached it has no business sweeping.
+	for _, household := range []string{
+		"hha000000000001", "hhb000000000002", "hhc000000000003",
+	} {
+		rows, findErr := app.FindRecordsByFilter("family_camp_adults",
+			fmt.Sprintf("year = %d && household = '%s'", year, household), "", 0, 0)
+		if findErr != nil {
+			t.Fatalf("query %s: %v", household, findErr)
+		}
+		if len(rows) != 1 {
+			t.Errorf("family_camp_adults row for %s is gone -- a cancelled run swept a row "+
+				"it never reached, and this table is too small for the guard to catch it", household)
+		}
+	}
+	if got := countCollection(t, app, "family_camp_registrations", year); got != 40 {
+		t.Errorf("family_camp_registrations holds %d rows, want 40", got)
 	}
 }

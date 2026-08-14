@@ -333,18 +333,41 @@ func (s *FamilyCampDerivedSync) Sync(ctx context.Context) error {
 
 	// Step 12: Delete orphaned records (no longer in source data).
 	//
-	// All three sweeps run even when an earlier one refuses: they guard three
-	// independent tables, and a collapsed adults computation says nothing about
-	// whether the medical computation is trustworthy. The refusals are joined
-	// and returned together so an operator sees every table that stopped, not
-	// just the first.
-	deletedAdults, adultsErr := s.deleteOrphanedAdults(existingAdults, year)
-	s.Stats.Deleted += deletedAdults
-	deletedRegs, regsErr := s.deleteOrphanedRegistrations(existingRegs, year)
-	s.Stats.Deleted += deletedRegs
-	deletedMedical, medicalErr := s.deleteOrphanedMedical(existingMedical, year)
-	s.Stats.Deleted += deletedMedical
-	sweepErr := errors.Join(adultsErr, regsErr, medicalErr)
+	// A CANCELLED RUN SWEEPS NOTHING, and this check is what makes that true.
+	// The three upsert loops above break on ctx.Done() and return their partial
+	// counts with no error -- unlike staff_skills.go, whose loop returns
+	// ctx.Err() up so its sweep is never reached. So an interruption arrives
+	// here looking exactly like a collapsed upstream, and the guard alone
+	// handles neither half of that well:
+	//
+	//   - Below OrphanSweepMinRows the ratio arm is silent, so the guard does
+	//     not refuse and the sweep deletes every row the run never got to. A
+	//     year holding three family_camp_adults rows loses all three to a
+	//     cancellation that fired after the first write.
+	//   - Above it the guard does refuse, but reports "refused ... check that
+	//     person_custom_values ... hold this season's rows" -- sending an
+	//     operator after a feed that was never the problem. Keeping those two
+	//     facts apart is the whole job of wrapOrphanSweepError.
+	//
+	// Reported through the same wrapper rather than returned bare, so an
+	// interrupted run still says which phase it stopped in.
+	var sweepErr error
+	if ctxErr := ctx.Err(); ctxErr != nil {
+		sweepErr = ctxErr
+	} else {
+		// All three sweeps run even when an earlier one refuses: they guard
+		// three independent tables, and a collapsed adults computation says
+		// nothing about whether the medical computation is trustworthy. The
+		// refusals are joined and returned together so an operator sees every
+		// table that stopped, not just the first.
+		deletedAdults, adultsErr := s.deleteOrphanedAdults(existingAdults, year)
+		s.Stats.Deleted += deletedAdults
+		deletedRegs, regsErr := s.deleteOrphanedRegistrations(existingRegs, year)
+		s.Stats.Deleted += deletedRegs
+		deletedMedical, medicalErr := s.deleteOrphanedMedical(existingMedical, year)
+		s.Stats.Deleted += deletedMedical
+		sweepErr = errors.Join(adultsErr, regsErr, medicalErr)
+	}
 
 	// WAL checkpoint BEFORE the refusal return below: the upsert steps above
 	// have already written by this point, and a guard refusal can fire on a
