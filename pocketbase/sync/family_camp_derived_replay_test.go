@@ -785,9 +785,11 @@ func TestFamilyCampSyncStopsSweepingWhenCancelledMidStep12(t *testing.T) {
 // ============================================================================
 
 // TestFamilyCampSweepProtectsNamelessButAttributedAdults exercises all five
-// protected attributes individually, plus the two cases that must NOT be
-// protected: an ordinary named row (still tracked normally) and a genuinely
-// empty orphan (no name, no attribute at all -- still swept).
+// protected attributes individually, plus the three cases that must NOT be
+// protected: an ordinary named row (still tracked normally), a genuinely empty
+// orphan (no name, no attribute at all -- still swept), and a NAMED orphan
+// carrying every one of the five attributes (still swept -- the half of the
+// predicate that keeps this from disabling the sweep outright).
 func TestFamilyCampSweepProtectsNamelessButAttributedAdults(t *testing.T) {
 	t.Parallel()
 
@@ -825,6 +827,20 @@ func TestFamilyCampSweepProtectsNamelessButAttributedAdults(t *testing.T) {
 		"household": "hh_empty_0001", "year": year, "adult_number": 1,
 	})
 
+	// One NAMED orphan that also carries every protected attribute. This is the
+	// row that pins the "wholly nameless" half of the predicate: drop the name
+	// check from isNamelessButAttributedAdult and this row becomes protected
+	// too, which would neuter the family_camp_adults sweep entirely -- a real
+	// adult who left the source data carries a name AND a gender, so nothing
+	// would ever be swept again. #2335 protects rows with no label, not rows
+	// with attributes.
+	seedRow(t, app, "family_camp_adults", map[string]any{
+		"household": "hh_orphan_named_0001", "year": year, "adult_number": 1,
+		"name": "Olivia Chen", "first_name": "Olivia", "last_name": "Chen",
+		"date_of_birth": "1982-07-04", "email": "test@example.com",
+		"gender": "female", "pronouns": "she/her", "relationship_to_camper": "parent",
+	})
+
 	s := NewFamilyCampDerivedSync(app)
 	s.SyncSuccessful = true
 
@@ -832,15 +848,18 @@ func TestFamilyCampSweepProtectsNamelessButAttributedAdults(t *testing.T) {
 	if err != nil {
 		t.Fatalf("preload: %v", err)
 	}
-	if len(existing) != 96 {
-		t.Fatalf("preloaded %d rows, want 96", len(existing))
+	if len(existing) != 97 {
+		t.Fatalf("preloaded %d rows, want 97", len(existing))
 	}
 
-	// Mark only the 90 named rows processed. The 5 protected rows and the 1
-	// empty orphan look, to key-matching alone, identical to orphans -- that
-	// is the whole point of the test.
+	// Mark only the 90 ordinary rows processed, keyed on the household prefix
+	// rather than on the name column: the named orphan above must stay
+	// UNprocessed, and marking by name would have quietly excluded it from the
+	// sweep and pinned nothing. The 5 protected rows, the empty orphan and the
+	// named orphan all look, to key-matching alone, identical to each other --
+	// that is the whole point of the test.
 	for key, record := range existing {
-		if record.GetString("name") != "" {
+		if strings.HasPrefix(record.GetString("household"), "hh_named_") {
 			s.ProcessedAdultKeys[key] = true
 		}
 	}
@@ -849,8 +868,8 @@ func TestFamilyCampSweepProtectsNamelessButAttributedAdults(t *testing.T) {
 	if sweepErr != nil {
 		t.Fatalf("guard refused an ordinary sweep: %v", sweepErr)
 	}
-	if deleted != 1 {
-		t.Errorf("deleted = %d, want 1 -- only the genuinely empty orphan", deleted)
+	if deleted != 2 {
+		t.Errorf("deleted = %d, want 2 -- the genuinely empty orphan and the named orphan", deleted)
 	}
 
 	for i, pa := range protectedAttrs {
@@ -875,6 +894,17 @@ func TestFamilyCampSweepProtectsNamelessButAttributedAdults(t *testing.T) {
 			"protect it")
 	}
 
+	named, findErr := app.FindRecordsByFilter("family_camp_adults",
+		fmt.Sprintf("year = %d && household = 'hh_orphan_named_0001'", year), "", 0, 0)
+	if findErr != nil {
+		t.Fatalf("query named orphan: %v", findErr)
+	}
+	if len(named) != 0 {
+		t.Errorf("the named orphan survived -- #2335 protects rows with no name, not rows " +
+			"that merely carry attributes, and protecting this one would stop the sweep " +
+			"deleting anything at all")
+	}
+
 	if got := countCollection(t, app, "family_camp_adults", year); got != 95 {
 		t.Errorf("family_camp_adults holds %d rows, want 95 (90 named + 5 protected)", got)
 	}
@@ -893,7 +923,13 @@ func TestFamilyCampSweepLogsProtectedNamelessAdultsFor2018(t *testing.T) {
 	const (
 		year          = 2018
 		protectedRows = 89
-		namedRows     = 90
+		// 200 rather than a bare 90: the guard refuses a sweep whose computed
+		// set is below OrphanSweepRatioFloor of what is on disk, and 90 against
+		// 90+89 lands at 50.3% -- half a row above the floor. The real 2018
+		// replay sits at 965 computed against 1,054 existing (91.6%), so the
+		// tight version was neither realistic nor stable against a floor
+		// change. 200 against 289 is 69.2%.
+		namedRows = 200
 	)
 
 	app := newFamilyCampReplayTestApp(t)
@@ -941,12 +977,27 @@ func TestFamilyCampSweepLogsProtectedNamelessAdultsFor2018(t *testing.T) {
 			"must survive", got, namedRows+protectedRows)
 	}
 
-	logged := logs.String()
-	if !strings.Contains(logged, "count=89") {
-		t.Errorf("protected count not logged (want count=89):\n%s", logged)
+	// Assert against the PROTECTION line specifically, not the whole buffer.
+	// A whole-buffer strings.Contains(logged, "count=89") passes on the
+	// "Deleted orphaned family_camp_adults records count=89" line a run with no
+	// protection at all emits -- i.e. it is satisfied by exactly the regression
+	// it is supposed to catch.
+	const protectedMsg = "Protected nameless-but-attributed family_camp_adults from sweep"
+	protectedLine := ""
+	for _, line := range strings.Split(logs.String(), "\n") {
+		if strings.Contains(line, protectedMsg) {
+			protectedLine = line
+			break
+		}
 	}
-	if !strings.Contains(logged, "year=2018") {
-		t.Errorf("protected-row log line does not name the year:\n%s", logged)
+	if protectedLine == "" {
+		t.Fatalf("no %q log line at all:\n%s", protectedMsg, logs.String())
+	}
+	if !strings.Contains(protectedLine, "count=89") {
+		t.Errorf("protected count not logged (want count=89): %s", protectedLine)
+	}
+	if !strings.Contains(protectedLine, "year=2018") {
+		t.Errorf("protected-row log line does not name the year: %s", protectedLine)
 	}
 }
 
