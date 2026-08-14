@@ -2,6 +2,7 @@ package sync
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"regexp"
@@ -15,6 +16,15 @@ import (
 
 // serviceNameFamilyCampDerived is the canonical name for this sync service
 const serviceNameFamilyCampDerived = "family_camp_derived"
+
+// familyCampSweepHint points an operator at the upstream behind all three
+// computed sets. Unlike the CampMinder-backed services, nothing here is fetched
+// from the vendor: every one of these tables is derived from custom values
+// already in PocketBase, so a collapse means the custom-value sync or the
+// field-definition map is what came back short, not the API.
+const familyCampSweepHint = "check that person_custom_values, household_custom_values and " +
+	"custom_field_defs hold this season's family-camp rows -- these tables are derived " +
+	"from PocketBase, not fetched from CampMinder"
 
 // FamilyCampDerivedSync computes derived family camp tables from custom values.
 // This service reads from person_custom_values and household_custom_values
@@ -34,6 +44,38 @@ type FamilyCampDerivedSync struct {
 	ProcessedAdultKeys   map[string]bool
 	ProcessedRegKeys     map[string]bool
 	ProcessedMedicalKeys map[string]bool
+
+	// DryRunDiff holds the last DryRun pass's verdict, keyed by collection name.
+	// It is populated only by a dry run and reset at the top of every Sync, so a
+	// writing run never leaves a stale diff behind for a caller to misread.
+	DryRunDiff map[string]DryRunDiff
+}
+
+// DryRunDiff is one table's answer to "what would a real run do here", produced
+// without doing any of it.
+//
+// Why WouldDelete and GuardWouldRefuse are separate fields: a replay's danger is
+// concentrated in its deletions, and counting them is only half the answer. The
+// orphan sweep may REFUSE the whole thing (see OrphanSweepGuard), in which case
+// those rows survive and the run fails instead -- an operationally different
+// outcome from the same number of deletions actually happening.
+type DryRunDiff struct {
+	// WouldCreate counts computed rows with nothing stored under their key.
+	WouldCreate int
+	// WouldUpdate counts computed rows whose stored row differs, judged by the
+	// SAME needsUpdate comparison the writing path uses -- not a second opinion
+	// that could drift from it.
+	WouldUpdate int
+	// Unchanged counts rows a real run would leave exactly as they are. It is
+	// the denominator that makes the other three readable: "40 updates" means
+	// something different against 45 rows than against 4,500.
+	Unchanged int
+	// WouldDelete counts stored rows this run's computed set does not account
+	// for -- what the orphan sweep would TARGET.
+	WouldDelete int
+	// GuardWouldRefuse reports that the sweep would be refused rather than
+	// performed, so WouldDelete describes an intention, not an outcome.
+	GuardWouldRefuse bool
 }
 
 // NewFamilyCampDerivedSync creates a new family camp derived sync service
@@ -168,6 +210,7 @@ func (s *FamilyCampDerivedSync) Sync(ctx context.Context) error {
 	s.ProcessedAdultKeys = make(map[string]bool)
 	s.ProcessedRegKeys = make(map[string]bool)
 	s.ProcessedMedicalKeys = make(map[string]bool)
+	s.DryRunDiff = nil
 
 	// Determine year
 	year := s.Year
@@ -229,18 +272,14 @@ func (s *FamilyCampDerivedSync) Sync(ctx context.Context) error {
 	medical := s.processMedical(personValues)
 	slog.Info("Processed medical", "count", len(medical))
 
-	if s.DryRun {
-		slog.Info("Dry run mode - computed but not writing",
-			"adults", len(adults),
-			"registrations", len(registrations),
-			"medical", len(medical),
-		)
-		s.Stats.Created = len(adults) + len(registrations) + len(medical)
-		s.SyncSuccessful = true
-		return nil
-	}
-
-	// Step 8: Preload existing records for upsert
+	// Step 8: Preload existing records for upsert.
+	//
+	// A dry run reaches this too, and that is the whole point of where it
+	// returns. It used to return above, having seen only the computed set, and
+	// so reported len(adults)+len(registrations)+len(medical) as "created" --
+	// counts, not a diff. That made a replay unmeasurable before it was done,
+	// which is what turned "should we replay 2017-2025" into an unanswerable
+	// question rather than merely an open one. The preloads are reads.
 	existingAdults, err := s.preloadExistingAdults(year)
 	if err != nil {
 		return fmt.Errorf("preloading existing adults: %w", err)
@@ -259,40 +298,124 @@ func (s *FamilyCampDerivedSync) Sync(ctx context.Context) error {
 		"medical", len(existingMedical),
 	)
 
-	// Step 9: Upsert adults
-	created, updated, skipped, errors := s.upsertAdults(ctx, adults, year, existingAdults)
+	if s.DryRun {
+		s.reportDryRun(year, adults, registrations, medical,
+			existingAdults, existingRegs, existingMedical)
+		s.SyncSuccessful = true
+		return nil
+	}
+
+	// Step 9: Upsert adults. The error COUNT is deliberately not named `errors`
+	// -- the orphan sweeps below join real error values, and a local of that
+	// name would shadow the stdlib package.
+	created, updated, skipped, errCount := s.upsertAdults(ctx, adults, year, existingAdults)
 	s.Stats.Created += created
 	s.Stats.Updated += updated
 	s.Stats.Skipped += skipped
-	s.Stats.Errors += errors
+	s.Stats.Errors += errCount
 
 	// Step 10: Upsert registrations
-	created, updated, skipped, errors = s.upsertRegistrations(ctx, registrations, year, existingRegs)
+	created, updated, skipped, errCount = s.upsertRegistrations(ctx, registrations, year, existingRegs)
 	s.Stats.Created += created
 	s.Stats.Updated += updated
 	s.Stats.Skipped += skipped
-	s.Stats.Errors += errors
+	s.Stats.Errors += errCount
 
 	// Step 11: Upsert medical
-	created, updated, skipped, errors = s.upsertMedical(ctx, medical, year, existingMedical)
+	created, updated, skipped, errCount = s.upsertMedical(ctx, medical, year, existingMedical)
 	s.Stats.Created += created
 	s.Stats.Updated += updated
 	s.Stats.Skipped += skipped
-	s.Stats.Errors += errors
+	s.Stats.Errors += errCount
 
 	// Mark sync as successful before orphan deletion
 	s.SyncSuccessful = true
 
-	// Step 12: Delete orphaned records (no longer in source data)
-	s.Stats.Deleted += s.deleteOrphanedAdults(existingAdults)
-	s.Stats.Deleted += s.deleteOrphanedRegistrations(existingRegs)
-	s.Stats.Deleted += s.deleteOrphanedMedical(existingMedical)
+	// Step 12: Delete orphaned records (no longer in source data).
+	//
+	// A RUN CANCELLED BEFORE STEP 12 SWEEPS NOTHING, and this check is what
+	// makes that true. The claim is deliberately no stronger than that: none of
+	// the three sweeps below takes a context, so a cancellation landing partway
+	// THROUGH Step 12 is a separate case, handled by the re-checks between the
+	// sweep calls rather than here.
+	//
+	// The three upsert loops above break on ctx.Done() and return their partial
+	// counts with no error -- unlike staff_skills.go, whose loop returns
+	// ctx.Err() up so its sweep is never reached. So an interruption arrives
+	// here looking exactly like a collapsed upstream, and the guard alone
+	// handles neither half of that well:
+	//
+	//   - Below OrphanSweepMinRows the ratio arm is silent, so the guard does
+	//     not refuse and the sweep deletes every row the run never got to. A
+	//     year holding three family_camp_adults rows loses all three to a
+	//     cancellation that fired after the first write.
+	//   - Above it the guard does refuse, but reports "refused ... check that
+	//     person_custom_values ... hold this season's rows" -- sending an
+	//     operator after a feed that was never the problem. Keeping those two
+	//     facts apart is the whole job of wrapOrphanSweepError.
+	//
+	// Reported through the same wrapper rather than returned bare, so an
+	// interrupted run still says which phase it stopped in.
+	var sweepErr error
+	if ctxErr := ctx.Err(); ctxErr != nil {
+		sweepErr = ctxErr
+	} else {
+		// All three sweeps run even when an earlier one refuses: they guard
+		// three independent tables, and a collapsed adults computation says
+		// nothing about whether the medical computation is trustworthy. The
+		// refusals are joined and returned together so an operator sees every
+		// table that stopped, not just the first.
+		//
+		// Cancellation is the one thing that DOES stop the sequence early, and
+		// it is re-checked between tables because the sweeps take no context of
+		// their own. Without these checks a cancellation landing on the adults
+		// sweep still ran registrations and medical to completion and then
+		// reported a clean run.
+		//
+		// What is already swept stands, and that is correct rather than merely
+		// convenient: the check above passed, so no upsert loop broke early, so
+		// the computed set is complete and every row deleted was a genuine
+		// orphan an uninterrupted run would also have deleted. The defect being
+		// fixed is that the run kept working after it was told to stop and then
+		// did not say so -- which is why this re-checks here instead of
+		// propagating ctx.Err() out of the three upserts.
+		var adultsErr, regsErr, medicalErr, ctxErr error
+		var deleted int
 
-	// WAL checkpoint
+		deleted, adultsErr = s.deleteOrphanedAdults(existingAdults, year)
+		s.Stats.Deleted += deleted
+
+		if ctxErr = ctx.Err(); ctxErr == nil {
+			deleted, regsErr = s.deleteOrphanedRegistrations(existingRegs, year)
+			s.Stats.Deleted += deleted
+			ctxErr = ctx.Err()
+		}
+
+		if ctxErr == nil {
+			deleted, medicalErr = s.deleteOrphanedMedical(existingMedical, year)
+			s.Stats.Deleted += deleted
+			ctxErr = ctx.Err()
+		}
+
+		// Joined alongside the refusals, so an interrupted run that also hit a
+		// refusal reports both -- and so the cancellation reaches
+		// wrapOrphanSweepError, which is what keeps "interrupted" from being
+		// reported as "refused".
+		sweepErr = errors.Join(adultsErr, regsErr, medicalErr, ctxErr)
+	}
+
+	// WAL checkpoint BEFORE the refusal return below: the upsert steps above
+	// have already written by this point, and a guard refusal can fire on a
+	// non-empty computed set (a PARTIAL collapse), which is precisely the case
+	// where writes already happened. Same ordering as staff_skills.go.
 	if s.Stats.Created > 0 || s.Stats.Updated > 0 || s.Stats.Deleted > 0 {
 		if err := s.forceWALCheckpoint(); err != nil {
 			slog.Warn("WAL checkpoint failed", "error", err)
 		}
+	}
+
+	if sweepErr != nil {
+		return wrapOrphanSweepError(sweepErr)
 	}
 
 	slog.Info("Family camp derived computation completed",
@@ -1192,6 +1315,179 @@ func parseBoolFieldValue(value string) bool {
 }
 
 // ============================================================================
+// Row keys
+//
+// The upsert path, the preload and the dry-run diff must agree on these
+// EXACTLY: a preload keyed differently from the upsert reads every stored row
+// as an orphan, and a dry run keyed differently from either reports a diff that
+// describes nothing real. They were SIX separate fmt.Sprintf calls across two
+// format strings -- one per table in the preloads and one per table in the
+// upserts -- until the dry-run diff needed three more.
+// ============================================================================
+
+// familyCampAdultKey keys one family_camp_adults row.
+func familyCampAdultKey(householdPBID string, year, adultNumber int) string {
+	return fmt.Sprintf("%s:%d:%d", householdPBID, year, adultNumber)
+}
+
+// familyCampHouseholdYearKey keys one family_camp_registrations or
+// family_camp_medical row -- both are one row per household per year.
+func familyCampHouseholdYearKey(householdPBID string, year int) string {
+	return fmt.Sprintf("%s:%d", householdPBID, year)
+}
+
+// ============================================================================
+// Dry run
+// ============================================================================
+
+// reportDryRun computes what a real run would do to each of the three tables
+// and records it on s.DryRunDiff, without writing anything.
+//
+// Stats carries the same verdict rather than the old row counts. A dry run's
+// Stats are a FORECAST -- "would create", not "created" -- and the numbers are
+// only useful if they are the honest ones: reporting every computed row as a
+// creation, as this did before, told an operator that a replay of an already
+// derived year would create 4,000 rows when it would in fact change none.
+func (s *FamilyCampDerivedSync) reportDryRun(
+	year int,
+	adults []*adultData, registrations []*registrationData, medical []*medicalData,
+	existingAdults, existingRegs, existingMedical map[string]*core.Record,
+) {
+	// A fixed slice rather than a map range, so the log reads the same way on
+	// every run.
+	tables := []struct {
+		name     string
+		existing map[string]*core.Record
+		diff     DryRunDiff
+	}{
+		{
+			name:     "family_camp_adults",
+			existing: existingAdults,
+			diff: computeDryRunDiff("family_camp_adults", year, adults, existingAdults,
+				func(a *adultData) string {
+					return familyCampAdultKey(a.householdPBID, year, a.adultNumber)
+				},
+				s.adultNeedsUpdate),
+		},
+		{
+			name:     "family_camp_registrations",
+			existing: existingRegs,
+			diff: computeDryRunDiff("family_camp_registrations", year, registrations, existingRegs,
+				func(r *registrationData) string {
+					return familyCampHouseholdYearKey(r.householdPBID, year)
+				},
+				s.registrationNeedsUpdate),
+		},
+		{
+			name:     "family_camp_medical",
+			existing: existingMedical,
+			diff: computeDryRunDiff("family_camp_medical", year, medical, existingMedical,
+				func(m *medicalData) string {
+					return familyCampHouseholdYearKey(m.householdPBID, year)
+				},
+				s.medicalNeedsUpdate),
+		},
+	}
+
+	s.DryRunDiff = make(map[string]DryRunDiff, len(tables))
+	for _, t := range tables {
+		s.DryRunDiff[t.name] = t.diff
+
+		slog.Info("Dry run diff",
+			"table", t.name,
+			"year", year,
+			"would_create", t.diff.WouldCreate,
+			"would_update", t.diff.WouldUpdate,
+			"unchanged", t.diff.Unchanged,
+			"would_delete", t.diff.WouldDelete,
+			"existing", len(t.existing),
+		)
+		if t.diff.GuardWouldRefuse {
+			slog.Warn("Dry run: this table's orphan sweep would be REFUSED, not performed",
+				"table", t.name,
+				"year", year,
+				"computed", t.diff.WouldCreate+t.diff.WouldUpdate+t.diff.Unchanged,
+				"existing", len(t.existing),
+				"hint", familyCampSweepHint,
+			)
+		}
+
+		s.Stats.Created += t.diff.WouldCreate
+		s.Stats.Updated += t.diff.WouldUpdate
+		s.Stats.Skipped += t.diff.Unchanged
+
+		// Stats.Deleted is deliberately NOT mirrored from WouldDelete.
+		//
+		// recordSyncRun writes Stats.Deleted straight into
+		// sync_runs.deleted_count with status=completed, and sync_runs carries
+		// no dry-run marker of any kind. Mirroring here would leave a completed
+		// run row asserting deletions that never happened -- nine of them once
+		// the planned 2017-2025 replay dry runs are done, and afterwards
+		// indistinguishable from nine real sweeps.
+		//
+		// Deleted is singled out because it is the only one of the four that
+		// describes a DESTRUCTIVE act; an overstated created/updated/skipped is
+		// a harmless overcount and predates this. The would-be count is not
+		// lost -- it stays on DryRunDiff.WouldDelete and in the log line above,
+		// which is where a dry run's answer belongs. Recording it in sync_runs
+		// honestly would need a dry-run column or status there, which is a
+		// schema change and a separate decision.
+	}
+}
+
+// computeDryRunDiff classifies every computed row against what is stored, then
+// asks the same OrphanSweepGuard the real sweep would ask.
+//
+// needsUpdate is the production comparison function, passed in rather than
+// reimplemented: a dry run that judged "changed" by its own rule would drift
+// from the writing path silently, and a forecast nobody can trust is worse than
+// no forecast.
+func computeDryRunDiff[T any](
+	entity string,
+	year int,
+	items []T,
+	existing map[string]*core.Record,
+	key func(T) string,
+	needsUpdate func(*core.Record, T) bool,
+) DryRunDiff {
+	var diff DryRunDiff
+
+	computed := make(map[string]bool, len(items))
+	for _, item := range items {
+		k := key(item)
+		computed[k] = true
+
+		record, ok := existing[k]
+		switch {
+		case !ok:
+			diff.WouldCreate++
+		case needsUpdate(record, item):
+			diff.WouldUpdate++
+		default:
+			diff.Unchanged++
+		}
+	}
+
+	for k := range existing {
+		if !computed[k] {
+			diff.WouldDelete++
+		}
+	}
+
+	// Computed is the size of the key set, matching what the real sweep passes
+	// (len(s.Processed*Keys) after the upsert loop has run).
+	guard := OrphanSweepGuard{
+		Entity:   entity,
+		Year:     year,
+		Computed: len(computed),
+		Hint:     familyCampSweepHint,
+	}
+	diff.GuardWouldRefuse = guard.Check(len(existing)) != nil
+
+	return diff
+}
+
+// ============================================================================
 // Upsert helpers: preload existing records
 // ============================================================================
 
@@ -1216,8 +1512,7 @@ func (s *FamilyCampDerivedSync) preloadExistingAdults(year int) (map[string]*cor
 				adultNum = int(num)
 			}
 			if householdID != "" && adultNum > 0 {
-				key := fmt.Sprintf("%s:%d:%d", householdID, year, adultNum)
-				result[key] = record
+				result[familyCampAdultKey(householdID, year, adultNum)] = record
 			}
 		}
 
@@ -1247,8 +1542,7 @@ func (s *FamilyCampDerivedSync) preloadExistingRegistrations(year int) (map[stri
 		for _, record := range records {
 			householdID := record.GetString("household")
 			if householdID != "" {
-				key := fmt.Sprintf("%s:%d", householdID, year)
-				result[key] = record
+				result[familyCampHouseholdYearKey(householdID, year)] = record
 			}
 		}
 
@@ -1278,8 +1572,7 @@ func (s *FamilyCampDerivedSync) preloadExistingMedical(year int) (map[string]*co
 		for _, record := range records {
 			householdID := record.GetString("household")
 			if householdID != "" {
-				key := fmt.Sprintf("%s:%d", householdID, year)
-				result[key] = record
+				result[familyCampHouseholdYearKey(householdID, year)] = record
 			}
 		}
 
@@ -1399,7 +1692,7 @@ func (s *FamilyCampDerivedSync) medicalNeedsUpdate(existing *core.Record, med *m
 // upsertAdults performs upsert for adult records
 func (s *FamilyCampDerivedSync) upsertAdults(
 	ctx context.Context, adults []*adultData, year int, existing map[string]*core.Record,
-) (created, updated, skipped, errors int) {
+) (created, updated, skipped, errCount int) {
 	col, err := s.App.FindCollectionByNameOrId("family_camp_adults")
 	if err != nil {
 		slog.Error("Error finding family_camp_adults collection", "error", err)
@@ -1409,11 +1702,11 @@ func (s *FamilyCampDerivedSync) upsertAdults(
 	for _, adult := range adults {
 		select {
 		case <-ctx.Done():
-			return created, updated, skipped, errors
+			return created, updated, skipped, errCount
 		default:
 		}
 
-		key := fmt.Sprintf("%s:%d:%d", adult.householdPBID, year, adult.adultNumber)
+		key := familyCampAdultKey(adult.householdPBID, year, adult.adultNumber)
 		s.ProcessedAdultKeys[key] = true
 
 		if existingRecord, ok := existing[key]; ok {
@@ -1430,7 +1723,7 @@ func (s *FamilyCampDerivedSync) upsertAdults(
 
 				if err := s.App.Save(existingRecord); err != nil {
 					slog.Error("Error updating adult record", "household", adult.householdPBID, "error", err)
-					errors++
+					errCount++
 					continue
 				}
 				updated++
@@ -1454,20 +1747,20 @@ func (s *FamilyCampDerivedSync) upsertAdults(
 
 			if err := s.App.Save(record); err != nil {
 				slog.Error("Error creating adult record", "household", adult.householdPBID, "error", err)
-				errors++
+				errCount++
 				continue
 			}
 			created++
 		}
 	}
 
-	return created, updated, skipped, errors
+	return created, updated, skipped, errCount
 }
 
 // upsertRegistrations performs upsert for registration records
 func (s *FamilyCampDerivedSync) upsertRegistrations(
 	ctx context.Context, registrations []*registrationData, year int, existing map[string]*core.Record,
-) (created, updated, skipped, errors int) {
+) (created, updated, skipped, errCount int) {
 	col, err := s.App.FindCollectionByNameOrId("family_camp_registrations")
 	if err != nil {
 		slog.Error("Error finding family_camp_registrations collection", "error", err)
@@ -1477,11 +1770,11 @@ func (s *FamilyCampDerivedSync) upsertRegistrations(
 	for _, reg := range registrations {
 		select {
 		case <-ctx.Done():
-			return created, updated, skipped, errors
+			return created, updated, skipped, errCount
 		default:
 		}
 
-		key := fmt.Sprintf("%s:%d", reg.householdPBID, year)
+		key := familyCampHouseholdYearKey(reg.householdPBID, year)
 		s.ProcessedRegKeys[key] = true
 
 		if existingRecord, ok := existing[key]; ok {
@@ -1500,7 +1793,7 @@ func (s *FamilyCampDerivedSync) upsertRegistrations(
 
 				if err := s.App.Save(existingRecord); err != nil {
 					slog.Error("Error updating registration record", "household", reg.householdPBID, "error", err)
-					errors++
+					errCount++
 					continue
 				}
 				updated++
@@ -1525,20 +1818,20 @@ func (s *FamilyCampDerivedSync) upsertRegistrations(
 
 			if err := s.App.Save(record); err != nil {
 				slog.Error("Error creating registration record", "household", reg.householdPBID, "error", err)
-				errors++
+				errCount++
 				continue
 			}
 			created++
 		}
 	}
 
-	return created, updated, skipped, errors
+	return created, updated, skipped, errCount
 }
 
 // upsertMedical performs upsert for medical records
 func (s *FamilyCampDerivedSync) upsertMedical(
 	ctx context.Context, medical []*medicalData, year int, existing map[string]*core.Record,
-) (created, updated, skipped, errors int) {
+) (created, updated, skipped, errCount int) {
 	col, err := s.App.FindCollectionByNameOrId("family_camp_medical")
 	if err != nil {
 		slog.Error("Error finding family_camp_medical collection", "error", err)
@@ -1548,11 +1841,11 @@ func (s *FamilyCampDerivedSync) upsertMedical(
 	for _, med := range medical {
 		select {
 		case <-ctx.Done():
-			return created, updated, skipped, errors
+			return created, updated, skipped, errCount
 		default:
 		}
 
-		key := fmt.Sprintf("%s:%d", med.householdPBID, year)
+		key := familyCampHouseholdYearKey(med.householdPBID, year)
 		s.ProcessedMedicalKeys[key] = true
 
 		if existingRecord, ok := existing[key]; ok {
@@ -1569,7 +1862,7 @@ func (s *FamilyCampDerivedSync) upsertMedical(
 
 				if err := s.App.Save(existingRecord); err != nil {
 					slog.Error("Error updating medical record", "household", med.householdPBID, "error", err)
-					errors++
+					errCount++
 					continue
 				}
 				updated++
@@ -1592,25 +1885,49 @@ func (s *FamilyCampDerivedSync) upsertMedical(
 
 			if err := s.App.Save(record); err != nil {
 				slog.Error("Error creating medical record", "household", med.householdPBID, "error", err)
-				errors++
+				errCount++
 				continue
 			}
 			created++
 		}
 	}
 
-	return created, updated, skipped, errors
+	return created, updated, skipped, errCount
 }
 
 // ============================================================================
 // Orphan deletion functions
+//
+// All three refuse to sweep when this run's computed set is too small to be
+// believed against the rows already on disk (kindred#2257, kindred#2279). These
+// were the last unguarded sweeps in the package, and they guard exactly the
+// three tables a replay of an older season rewrites -- none of which has a
+// history table behind it, so a wrong delete here has no way back.
+//
+// Computed is the size of the key set THIS RUN built, not the number of stored
+// rows it happens to match; see OrphanSweepGuard's doc comment. Rejected is
+// deliberately left unset, matching the nine other services that construct
+// their own guard: this service counts no rejections, so the REJECTION arm
+// cannot fire and there is nothing for it to fire on.
 // ============================================================================
 
-// deleteOrphanedAdults removes adult records that weren't processed
-func (s *FamilyCampDerivedSync) deleteOrphanedAdults(existing map[string]*core.Record) int {
+// deleteOrphanedAdults removes adult records that weren't processed.
+func (s *FamilyCampDerivedSync) deleteOrphanedAdults(
+	existing map[string]*core.Record, year int,
+) (int, error) {
 	if !s.SyncSuccessful {
 		slog.Info("Skipping orphan deletion for adults due to sync failure")
-		return 0
+		return 0, nil
+	}
+
+	guard := OrphanSweepGuard{
+		Entity:   "family_camp_adults",
+		Year:     year,
+		Computed: len(s.ProcessedAdultKeys),
+		Hint:     familyCampSweepHint,
+	}
+	if err := guard.Check(len(existing)); err != nil {
+		return 0, err
 	}
 
 	orphanCount := 0
@@ -1637,14 +1954,26 @@ func (s *FamilyCampDerivedSync) deleteOrphanedAdults(existing map[string]*core.R
 		slog.Info("Deleted orphaned family_camp_adults records", "count", orphanCount)
 	}
 
-	return orphanCount
+	return orphanCount, nil
 }
 
-// deleteOrphanedRegistrations removes registration records that weren't processed
-func (s *FamilyCampDerivedSync) deleteOrphanedRegistrations(existing map[string]*core.Record) int {
+// deleteOrphanedRegistrations removes registration records that weren't processed.
+func (s *FamilyCampDerivedSync) deleteOrphanedRegistrations(
+	existing map[string]*core.Record, year int,
+) (int, error) {
 	if !s.SyncSuccessful {
 		slog.Info("Skipping orphan deletion for registrations due to sync failure")
-		return 0
+		return 0, nil
+	}
+
+	guard := OrphanSweepGuard{
+		Entity:   "family_camp_registrations",
+		Year:     year,
+		Computed: len(s.ProcessedRegKeys),
+		Hint:     familyCampSweepHint,
+	}
+	if err := guard.Check(len(existing)); err != nil {
+		return 0, err
 	}
 
 	orphanCount := 0
@@ -1669,14 +1998,26 @@ func (s *FamilyCampDerivedSync) deleteOrphanedRegistrations(existing map[string]
 		slog.Info("Deleted orphaned family_camp_registrations records", "count", orphanCount)
 	}
 
-	return orphanCount
+	return orphanCount, nil
 }
 
-// deleteOrphanedMedical removes medical records that weren't processed
-func (s *FamilyCampDerivedSync) deleteOrphanedMedical(existing map[string]*core.Record) int {
+// deleteOrphanedMedical removes medical records that weren't processed.
+func (s *FamilyCampDerivedSync) deleteOrphanedMedical(
+	existing map[string]*core.Record, year int,
+) (int, error) {
 	if !s.SyncSuccessful {
 		slog.Info("Skipping orphan deletion for medical due to sync failure")
-		return 0
+		return 0, nil
+	}
+
+	guard := OrphanSweepGuard{
+		Entity:   "family_camp_medical",
+		Year:     year,
+		Computed: len(s.ProcessedMedicalKeys),
+		Hint:     familyCampSweepHint,
+	}
+	if err := guard.Check(len(existing)); err != nil {
+		return 0, err
 	}
 
 	orphanCount := 0
@@ -1701,5 +2042,5 @@ func (s *FamilyCampDerivedSync) deleteOrphanedMedical(existing map[string]*core.
 		slog.Info("Deleted orphaned family_camp_medical records", "count", orphanCount)
 	}
 
-	return orphanCount
+	return orphanCount, nil
 }
