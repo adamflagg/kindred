@@ -256,7 +256,25 @@ func (s *StaffApplicationsSync) loadFieldDefinitions(_ context.Context) (map[str
 	return result, nil
 }
 
-// isStaffApplicationField checks if a field is relevant for staff applications
+// isStaffApplicationField checks if a field is relevant for staff applications.
+//
+// This gate is deliberately wider than the routing switch: it admits 88
+// definitions in the production snapshot, of which MapStaffAppFieldToColumn
+// routes 40. The other 48 are enumerated with a reason each in
+// retiredAppFieldReasons, and loadPersonCustomValues counts and logs every
+// discard rather than dropping it in silence (kindred#2271).
+//
+// The gap is intentional, and the reason it is safe to leave it that way is
+// that no downstream consumer reads staff_applications: `grep -rn
+// "staff_applications" bunking/ api/` returns no hits, and every frontend
+// reference is sync-admin plumbing (SyncTab.tsx, syncTypes.ts,
+// useRunIndividualSync.ts, useSyncStatusAPI.ts, useSyncCompletionToasts.ts,
+// useStaffApplicationsSync.ts) plus the generated pocketbase-types.ts -- no
+// component reads a column. Nothing may assume that an absent answer here
+// means the applicant did not answer; the source values all survive in
+// person_custom_values. If a reader is ever added that does need to make that
+// assumption, the four fields still receiving 2026 answers (see category G in
+// retiredAppFieldReasons) are the ones that would need columns first.
 func isStaffApplicationField(name string) bool {
 	// App-* prefixed fields
 	if strings.HasPrefix(name, "App-") {
