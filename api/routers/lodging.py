@@ -149,16 +149,23 @@ async def get_household_journey(
 async def get_household_medical(
     household_cm_id: int,
     year: int = Query(..., description="Year of the registration", ge=2000, le=2100),
-    user: AuthUser = Depends(require_permission(Permission.LODGING_PHI)),
+    user: AuthUser = Depends(require_permission(Permission.BUNKING_MANAGE)),
 ) -> HouseholdMedicalResponse:
     """PHI. The narrative behind the roster's accessibility flags.
 
     Spec §5: this text is a detailed medical disclosure about named
     individuals. It is served only here, only to a caller holding
-    `lodging.phi`, and never appears in the roster payload or any export.
+    `bunking.manage`, and never appears in the roster payload or any export.
+
+    kindred#2312: this used to gate on a separate `lodging.phi` permission,
+    removed because RBAC in this product is screen-reduction, not a data
+    boundary -- every user of the tool can already see this data in
+    CampMinder, and every sibling endpoint on this router already gates on
+    `bunking.manage`. The one thing that stays a real boundary is internal
+    notes, gated on `bunking.manage` already and untouched by that change.
 
     RBAC is the control, and there is deliberately NO access log. One existed
-    and was deleted: `lodging.phi` is what decides who may read this, and a
+    and was deleted: `bunking.manage` is what decides who may read this, and a
     log line is not a second gate. It also stopped meaning what it said once
     kindred#1889 removed the reveal button -- the panel fetches on mount, so
     the event fired on every panel open, including households with nothing on

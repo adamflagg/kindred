@@ -1,8 +1,12 @@
-"""The lodging surface's collection names and PHI permission must exist.
+"""The lodging surface's collection names must exist.
 
 Collection names are centralised (never inlined as string literals) so a
-rename is one edit, and the PHI permission must exist in BOTH permission
-files — the TypeScript file's own docstring says it mirrors the Python one.
+rename is one edit. kindred#2312 removed the separate `lodging.phi`
+permission (RBAC here is screen-reduction, not a data boundary; the one
+endpoint it gated now gates on `bunking.manage` like every sibling on its
+router) — this file pins that it stays gone from both permission files, the
+TypeScript one included since its own docstring says it mirrors the Python
+one.
 
 Note on the work queue: the unresolved-cabin-string work queue is
 ``lodging_ingest_issues`` (created by the ingest plan), filtered to
@@ -69,21 +73,26 @@ def test_supporting_collection_constants_exist() -> None:
     assert collections.CUSTOM_FIELD_DEFS == "custom_field_defs"
 
 
-def test_lodging_phi_permission_is_registered() -> None:
-    assert Permission.LODGING_PHI == "lodging.phi"
-    assert Permission.LODGING_PHI in ALL_PERMISSIONS
-    assert Permission.LODGING_PHI in PERMISSION_DESCRIPTIONS
+def test_lodging_phi_permission_stays_removed() -> None:
+    """kindred#2312: the separate `lodging.phi` permission is gone for good.
+
+    `ALL_PERMISSIONS` is derived from `Permission`'s own attributes, so
+    removing the class attribute already dropped it from the set and the
+    description map — this pins that nothing re-adds either independently.
+    """
+    assert not hasattr(Permission, "LODGING_PHI")
+    assert "lodging.phi" not in ALL_PERMISSIONS
+    assert "lodging.phi" not in PERMISSION_DESCRIPTIONS
 
 
-def test_typescript_permission_file_mirrors_python() -> None:
+def test_typescript_permission_file_has_no_lodging_phi() -> None:
     """frontend/src/constants/permissions.ts declares it mirrors permissions.py.
 
-    Matched by pattern rather than literal: the guarantee is that the key
-    and value are both present, and pinning the quote style and trailing
-    comma makes prettier's formatting a test failure.
+    kindred#2312 removed `LODGING_PHI` from the Python side; this pins that
+    the TypeScript mirror does not resurrect it independently.
     """
     ts = (REPO_ROOT / "frontend" / "src" / "constants" / "permissions.ts").read_text()
-    assert re.search(r"""LODGING_PHI:\s*['"]lodging\.phi['"]""", ts)
+    assert not re.search(r"""LODGING_PHI\s*:\s*['"]lodging\.phi['"]""", ts)
 
 
 def test_infant_bed_exemption_is_eighteen_months_hardcoded() -> None:

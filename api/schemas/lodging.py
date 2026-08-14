@@ -9,7 +9,8 @@ deleted both collections outright.
 
 PHI boundary: HouseholdMedicalResponse is the ONLY model here that carries
 medical narrative text, and it is reachable from exactly one endpoint, which
-is gated on Permission.LODGING_PHI. Every other model exposes booleans
+is gated on Permission.BUNKING_MANAGE (kindred#2312 retargeted the gate from
+the now-removed Permission.LODGING_PHI). Every other model exposes booleans
 derived from PRESENCE of a value, never its content (spec §5).
 
 Vocabularies below mirror the Go ingest's, not a second set invented here. The

@@ -64,18 +64,6 @@ def _plain_user() -> AuthUser:
     return user
 
 
-def _phi_user() -> AuthUser:
-    user = AuthUser(
-        username="TestNurse",
-        email="nurse@example.com",
-        display_name="Test Nurse",
-        groups=[],
-        is_admin=False,
-    )
-    user.permissions = {Permission.LODGING_PHI}
-    return user
-
-
 def _manage_user() -> AuthUser:
     """Bunking staff: holds bunking.manage, is not an admin.
 
@@ -293,7 +281,7 @@ class TestHouseholdJourneyEndpoint:
     """
 
     def test_a_plain_authenticated_user_can_read_it(self, mock_pb: MagicMock) -> None:
-        """Deliberately NOT `lodging.phi`-gated, and deliberately asserted
+        """Deliberately NOT `bunking.manage`-gated, and deliberately asserted
         with the same user the medical endpoint 403s: the two endpoints sit on
         the same path prefix, and a copy-paste of the wrong dependency would
         otherwise be invisible.
@@ -359,13 +347,13 @@ class TestMedicalEndpointIsPermissionGated:
             response = client.get("/api/lodging/households/2000001/medical", params={"year": 2026})
 
         assert response.status_code == 403
-        assert Permission.LODGING_PHI in response.json()["detail"]
+        assert Permission.BUNKING_MANAGE in response.json()["detail"]
 
     def test_user_with_the_permission_gets_the_narrative(self, mock_pb: MagicMock) -> None:
         mock_pb.collection.return_value.get_full_list.side_effect = _medical_reads
 
         with patch("api.routers.lodging.pb", mock_pb):
-            app = _build_app(_phi_user(), mock_pb)
+            app = _build_app(_manage_user(), mock_pb)
             client = TestClient(app)
             response = client.get("/api/lodging/households/2000001/medical", params={"year": 2026})
 
@@ -379,8 +367,9 @@ class TestMedicalEndpointIsPermissionGated:
 
         One existed, recording the caller by `username` so the log store
         would not inherit an email address. The ruling is that it should not
-        exist at all: `lodging.phi` decides who may read this, and a log line
-        is not a second gate.
+        exist at all: `bunking.manage` decides who may read this (kindred#2312
+        retargeted the gate from the now-removed `lodging.phi`), and a log
+        line is not a second gate.
 
         kindred#1889 is what made it actively wrong rather than merely
         unused. With the reveal button gone the panel fetches on mount, so
@@ -397,7 +386,7 @@ class TestMedicalEndpointIsPermissionGated:
         mock_pb.collection.return_value.get_full_list.side_effect = _medical_reads
 
         with patch("api.routers.lodging.pb", mock_pb):
-            app = _build_app(_phi_user(), mock_pb)
+            app = _build_app(_manage_user(), mock_pb)
             response = TestClient(app).get("/api/lodging/households/2000001/medical", params={"year": 2026})
             import api.routers.lodging as lodging_module
 
@@ -419,7 +408,7 @@ class TestMedicalEndpointIsPermissionGated:
         mock_pb.collection.return_value.get_full_list.side_effect = record_filters
 
         with patch("api.routers.lodging.pb", mock_pb):
-            app = _build_app(_phi_user(), mock_pb)
+            app = _build_app(_manage_user(), mock_pb)
             TestClient(app).get("/api/lodging/households/2000001/medical", params={"year": 2026})
 
         assert seen, "the endpoint issued no reads"

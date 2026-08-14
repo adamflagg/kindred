@@ -3,7 +3,8 @@
  * component is.
  *
  * It used to carry the medical narrative too, behind a click-to-reveal gated
- * on `lodging.phi`. kindred#1889 split that out: the narrative lives in
+ * on `bunking.manage` (kindred#2312 retargeted the gate from the now-removed
+ * `lodging.phi`). kindred#1889 split that out: the narrative lives in
  * `MedicalNarrative`, which `FamilyDetailsPanel` renders and
  * `HouseholdRosterRow` does not. The reason is grain — the roster row is a
  * `<tr>` and 62 of them are on screen at once, while the panel shows one

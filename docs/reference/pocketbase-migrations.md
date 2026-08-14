@@ -218,6 +218,55 @@ recorded in #1731 (Formalize the existing convention; do not retrofit).
 **Do not** put the mutation *inside* the catch — that swallows FK/permission/
 runtime errors on the write itself, which are real failures you want to see.
 
+### When the broad catch stops being safe: a loop guarded by `continue`
+
+**The ruling above holds for the shape it was written for.** Every example in
+this section pairs the catch with a mutating call that runs immediately after
+it — `app.delete()`, `app.save()` — so a real DB failure (not just "no rows")
+still surfaces, just one line later than the lookup that hid it. That is the
+"mutating op surfaces real errors one line later" argument from #1731, and it
+is correct for that shape.
+
+It does not hold when the catch's failure path is `continue` inside a loop
+rather than an adjacent mutating call. Nothing runs after a `continue` for
+that iteration — a broadly-caught real error (a corrupted index, the DB gone
+away) is indistinguishable from "this row legitimately doesn't exist yet,"
+and the loop moves on as if the lookup had succeeded.
+`recomputeCachedPermissions` in
+`pocketbase/pb_migrations/1500000154_drop_lodging_phi_permission.js` (#2323)
+is this shape: each iteration looks up a role or a user by id inside a loop,
+and a broad catch there would let a real failure silently write a
+too-small `cached_permissions` blob instead of aborting.
+
+`1500000135_lodging_availability_no_scenario.js` (#2001, merged 2026-08-04 —
+four weeks after #1731 closed) hit the same problem from the other
+direction: its `refuseIfPopulated` guard treats an unreadable table as
+grounds to proceed with a destructive column drop unless the failure is
+narrowed first, so a broad catch there would turn "the DB is unreachable"
+into "the table is empty, go ahead." Both migrations independently landed on
+a narrow check against the literal substring `"no rows in result set"`, with
+everything else propagated as a thrown error (`1500000135` wraps it with
+`{ cause: err }` for context; `1500000154` rethrows it directly via a shared
+`isNotFoundError(err)` helper local to that file) so the migration — and the
+boot it runs during — aborts instead of continuing on a false "not found."
+
+**Current guidance:** keep the broad catch for the immediate
+lookup-then-mutate shape above — do not retrofit it there, per #1731. For a
+catch whose failure path is `continue`, or anything else that is not an
+adjacent mutating call, narrow it with an `isNotFoundError(err)` check on
+`"no rows in result set"` and re-throw everything else. The "no
+shared-import mechanism between `pb_migrations/` files" reason from #1731
+still applies — each migration defines its own copy of the helper rather
+than importing one, same as `1500000135` and `1500000154` both do.
+
+One asymmetry worth flagging rather than fixing here: `1500000154`'s
+`findRoleBySlug` re-throws a non-not-found error (fails closed — aborts the
+migration), while the `1500000130` helper it mirrors swallowed every error
+unconditionally and returned `null` (failed safe — the rule change proceeds
+even if the role lookup broke for an unrelated reason). The narrower
+behavior is the one to write going forward; `1500000130` is not being
+revisited for it.
+
 ## Migration Checklist
 
 Before committing any migration:

@@ -1,5 +1,5 @@
 /**
- * The medical narrative for one household, for a holder of `lodging.phi`.
+ * The medical narrative for one household, for a holder of `bunking.manage`.
  *
  * Rendered by `FamilyDetailsPanel` and deliberately NOT by
  * `HouseholdRosterRow` — the same split summer makes between a camper card
@@ -10,15 +10,20 @@
  * behind a click, driven by a `has_medical_narrative` flag that was true for
  * every household — so the button appeared on every row and gated nothing.
  * With that flag deleted the rule is the one the API already enforces:
- * `lodging.phi` holders see the text, everyone else sees no trace of it. The
- * old "Medical detail on file" line shown to non-holders is gone with it,
+ * `bunking.manage` holders see the text, everyone else sees no trace of it.
+ * The old "Medical detail on file" line shown to non-holders is gone with it,
  * because telling someone a disclosure exists that they may not read is not
  * information they can act on.
  *
+ * kindred#2312: this used to read a separate `lodging.phi` permission,
+ * removed because RBAC here is screen-reduction, not a data boundary, and
+ * every sibling endpoint on this router already gated on `bunking.manage`.
+ *
  * The API is the real boundary — /api/lodging/households/{id}/medical requires
- * `lodging.phi` and 403s otherwise. This UI gate exists so the request is not
- * made on behalf of a user who cannot have the answer, and a 403 that arrives
- * anyway renders inline rather than escalating to the page ErrorBoundary.
+ * `bunking.manage` and 403s otherwise. This UI gate exists so the request is
+ * not made on behalf of a user who cannot have the answer, and a 403 that
+ * arrives anyway renders inline rather than escalating to the page
+ * ErrorBoundary.
  */
 import { Loader2 } from 'lucide-react'
 
@@ -51,7 +56,7 @@ const FIELDS = [
 export function MedicalNarrative({ householdCmId, year }: MedicalNarrativeProps) {
   const { hasPermission } = usePermissions()
   // Both halves are required: the permission, and a household to fetch by.
-  const canRead = hasPermission(Permission.LODGING_PHI) && householdCmId !== null
+  const canRead = hasPermission(Permission.BUNKING_MANAGE) && householdCmId !== null
   const { data, isLoading, error } = useHouseholdMedical(year, householdCmId, canRead)
 
   if (!canRead) return null
