@@ -1079,4 +1079,31 @@ describe('HouseholdRosterTable — filters by housing need (kindred#2251)', () =
     expect(visibleRowNames()).toEqual(['Infant Parent'])
     expect(screen.getByText(/2026 season/)).toBeInTheDocument()
   })
+
+  // The companion trap to the kindred#2138 panel-reset tests above
+  // (:850-919): a filter chosen on one weekend must not silently keep
+  // narrowing the roster after staff switch to a different weekend.
+  // `sessionCmId` is the only thing that changes across the rerender --
+  // same component instance, same `parties` shape -- mirroring how those
+  // tests isolate the session-change path from a household dropping out of
+  // `parties` entirely.
+  it('clears the selected-needs filter on a session change (kindred#2138 companion)', async () => {
+    const rosterForEitherWeekend = () => [powerFamily, noNeedsFamily]
+    const { rerender } = render(
+      <HouseholdRosterTable year={2026} sessionCmId={101} parties={rosterForEitherWeekend()} />,
+      { wrapper }
+    )
+    const powerToggle = screen.getByRole('button', { name: 'Power' })
+    await userEvent.click(powerToggle)
+    expect(powerToggle).toHaveAttribute('aria-pressed', 'true')
+    expect(visibleRowNames()).toEqual(['Power Parent'])
+
+    // A weekend switch -- staff picks a different session from the switcher.
+    rerender(
+      <HouseholdRosterTable year={2026} sessionCmId={202} parties={rosterForEitherWeekend()} />
+    )
+
+    expect(screen.getByRole('button', { name: 'Power' })).toHaveAttribute('aria-pressed', 'false')
+    expect(visibleRowNames().sort()).toEqual(['No Needs Parent', 'Power Parent'])
+  })
 })

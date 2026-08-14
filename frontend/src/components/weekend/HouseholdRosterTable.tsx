@@ -83,6 +83,19 @@ export function HouseholdRosterTable({
   const { panelParty, requestClose, openParty, closePanel, requestPanelClose } =
     usePanelParty(parties)
 
+  // Filter by housing need (kindred#2251) -- OR across whatever is selected,
+  // matching the standard "broaden as you add a chip" reading of a
+  // multi-select filter group. An AND reading would frequently show zero
+  // rows, since the four flags name unrelated needs rather than degrees of
+  // one need. Local state, not the URL: this narrows an in-page scan rather
+  // than picking a view, so it does not need to survive a reload or be
+  // linked, unlike the weekend TAB itself (CLAUDE.md §4 "URL style").
+  //
+  // Declared ABOVE the session-reset block below so its setter is in scope
+  // there. Both `useState` calls stay above the `parties.length === 0` early
+  // return -- rules of hooks.
+  const [selectedNeeds, setSelectedNeeds] = useState<Set<NeedFilterKey>>(() => new Set())
+
   // RESET, not filtered (kindred#2138) — the owner's ruling was explicit: a
   // session change closes the panel outright, it does not merely stop
   // rendering it while the selection quietly survives underneath.
@@ -90,7 +103,10 @@ export function HouseholdRosterTable({
   // `parties`; a household enrolled in two weekends never does that, since
   // `partyKey` (deliberately — see partyKey.ts) carries no session
   // dimension, so the same key still matches after the switch and the panel
-  // would keep rendering the PREVIOUS weekend's placement data.
+  // would keep rendering the PREVIOUS weekend's placement data. The needs
+  // filter above gets the same treatment for the same reason: a filter
+  // chosen on one weekend must not quietly keep narrowing a different
+  // weekend's roster after staff switch sessions.
   //
   // This is React's own "storing information from previous renders"
   // pattern: compare this render's prop against the last one seen, and if
@@ -103,18 +119,10 @@ export function HouseholdRosterTable({
   if (sessionCmId !== lastSessionCmId) {
     setLastSessionCmId(sessionCmId)
     closePanel()
+    setSelectedNeeds(new Set())
   }
 
   useDismissOnDeadSpace(panelParty !== null, requestPanelClose)
-
-  // Filter by housing need (kindred#2251) -- OR across whatever is selected,
-  // matching the standard "broaden as you add a chip" reading of a
-  // multi-select filter group. An AND reading would frequently show zero
-  // rows, since the four flags name unrelated needs rather than degrees of
-  // one need. Local state, not the URL: this narrows an in-page scan rather
-  // than picking a view, so it does not need to survive a reload or be
-  // linked, unlike the weekend TAB itself (CLAUDE.md §4 "URL style").
-  const [selectedNeeds, setSelectedNeeds] = useState<Set<NeedFilterKey>>(() => new Set())
 
   if (parties.length === 0) {
     return (
