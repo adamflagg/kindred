@@ -45,6 +45,15 @@ def filter_to_enrolled(member_cm_ids: list[int], enrolled_cm_ids: set[int]) -> l
     return [cm_id for cm_id in member_cm_ids if cm_id in enrolled_cm_ids]
 
 
+# Session types eligible to populate a bunk-graph node's last-year history
+# (`last_year_session`/`last_year_bunk`). Deliberately NOT the same set as
+# `VALID_BUNKING_SESSION_TYPES` (which excludes "taste") -- that constant
+# scopes a different check (staff-enrollment rescue, #1791) with different
+# requirements. Keep these in sync only if a future change means they should
+# actually mean the same thing; today they don't.
+LAST_YEAR_HISTORY_SESSION_TYPES = ("main", "taste", "embedded", "ag")
+
+
 @dataclass
 class SocialEdge:
     """Represents a relationship between two campers"""
@@ -336,25 +345,60 @@ class SocialGraphBuilder:
                 last_year_bunk = None
                 last_year = year - 1  # bind before inner try so except handler can reference it
                 try:
-                    # Query bunk_assignments with expanded relations
+                    # Push the session-type filter INTO the query, so the
+                    # database returns only eligible rows for (person, year)
+                    # rather than an ARBITRARY row that then gets a post-hoc
+                    # type check in Python. The old code fetched whichever row
+                    # get_first_list_item happened to return first and only
+                    # THEN checked its type -- so a person who held BOTH a
+                    # family-camp row AND a main-session row last year could
+                    # have the family row win the pick, fail the type check,
+                    # and silently lose their real main-session history
+                    # (indistinguishable from "no history at all", since both
+                    # land in this file's `except`/no-op path). #2350 widened
+                    # bunk_assignments' write key so a person can hold MORE
+                    # rows per year than before, raising the odds an arbitrary
+                    # pick returns the wrong one (see #2259, #2358).
+                    #
+                    # `session` is a single-select relation (maxSelect=1), so
+                    # dot-notation into `session.session_type` reaches the
+                    # related row's field directly -- same pattern already
+                    # used by `_enrolled_member_cm_ids` above against
+                    # `attendees`. Verified against the local dev DB: with the
+                    # unfiltered (old) query, a real person/year pair returned
+                    # a "family" row first; with this filter added, the same
+                    # pair returns only the "main" row.
+                    #
+                    # `sort: "id"` breaks ties deterministically for the rarer
+                    # case where more than one ELIGIBLE row exists for the
+                    # year (e.g. two main-session assignments) -- same
+                    # STABLE_SORT convention as `api/routers/scenarios.py` /
+                    # `api/services/lodging_repository.py`: the PocketBase
+                    # record id is stable and indexed, so repeated queries
+                    # return the same row instead of depending on SQLite's
+                    # unordered LIMIT/OFFSET result order.
+                    type_clause = " || ".join(f'session.session_type = "{t}"' for t in LAST_YEAR_HISTORY_SESSION_TYPES)
                     historical = self.pb.collection(BUNK_ASSIGNMENTS).get_first_list_item(
-                        f"person.cm_id = {person_cm_id} && year = {last_year}", query_params={"expand": "session,bunk"}
+                        f"person.cm_id = {person_cm_id} && year = {last_year} && ({type_clause})",
+                        query_params={"expand": "session,bunk", "sort": "id"},
                     )
                     # Access expanded data safely
                     expand = getattr(historical, "expand", {}) or {}
                     session_data = get_session_from_expand(historical)
                     bunk_data = expand.get("bunk")
 
-                    # Only include if it's a valid session type
-                    session_type = getattr(session_data, "session_type", None) if session_data else None
-                    if session_type in ["main", "taste", "embedded", "ag"]:
-                        last_year_session = getattr(session_data, "name", None) if session_data else None
-                        last_year_bunk = getattr(bunk_data, "name", None) if bunk_data else None
-                        logger.debug(
-                            f"Found {last_year} history for {person_cm_id}: {last_year_session} - {last_year_bunk}"
-                        )
+                    # The query already scoped this to an eligible session
+                    # type, so the returned row (if any) is always usable.
+                    last_year_session = getattr(session_data, "name", None) if session_data else None
+                    last_year_bunk = getattr(bunk_data, "name", None) if bunk_data else None
+                    logger.debug(
+                        f"Found {last_year} history for {person_cm_id}: {last_year_session} - {last_year_bunk}"
+                    )
                 except Exception as e:
-                    # No historical data is fine
+                    # No eligible historical data is fine -- either no row at
+                    # all for (person, year), or the person's only row(s) that
+                    # year were a non-eligible type (e.g. family camp), which
+                    # the query above already excluded.
                     logger.debug(f"No historical data for {person_cm_id} in {last_year}: {e}")
 
                 # Add node with attributes
