@@ -65,83 +65,186 @@ func TestBunkAssignmentsSync_findMatchingSession(t *testing.T) {
 	}
 }
 
+// TestBunkAssignmentsSync_StaffSessionLookup exercises the PRODUCTION
+// resolveStaffSession method against the PRODUCTION s.bunkPlanBunkToSession
+// field -- not a locally reimplemented map -- so a change to either one
+// makes this test fail. kindred#2264: (bunkPlanCMID, bunkCMID) does NOT map
+// to exactly one session; bunk_plans can legitimately list a bunk under
+// several sessions of the same plan (e.g. the family plan's 12 bunks, each
+// present in all 8 of its sessions), and the old code silently kept
+// whichever bunk_plans row PaginateRecords visited last. The field is
+// therefore map[string][]int: every candidate session survives, and
+// resolveStaffSession reports ambiguity instead of guessing.
 func TestBunkAssignmentsSync_StaffSessionLookup(t *testing.T) {
 	t.Parallel()
-	// Tests the (bunkPlanCMID, bunkCMID) → sessionCMID lookup pattern
-	// used to resolve staff assignments to exact sessions.
-	//
-	// Key insight: A bunk plan can span main+AG sessions (e.g., plan 12424 = Session 2 + AG-Session 2),
-	// but each individual bunk disambiguates: AG-8 → AG-Session 2, B-3 → Session 2.
 
 	tests := []struct {
-		name         string
-		bpBunkToSess map[string]int
-		bunkPlanCMID int
-		bunkCMID     int
-		wantSession  int
-		wantOK       bool
+		name          string
+		bpBunkToSess  map[string][]int
+		bunkPlanCMID  int
+		bunkCMID      int
+		wantSession   int
+		wantAmbiguous bool
 	}{
 		{
 			name: "regular bunk resolves to main session",
-			bpBunkToSess: map[string]int{
-				"12424:200": 5001, // B-3 in plan 12424 → Session 2
-				"12424:300": 5002, // AG-8 in plan 12424 → AG-Session 2
+			bpBunkToSess: map[string][]int{
+				"12424:200": {5001}, // B-3 in plan 12424 → Session 2
+				"12424:300": {5002}, // AG-8 in plan 12424 → AG-Session 2
 			},
 			bunkPlanCMID: 12424,
 			bunkCMID:     200,
 			wantSession:  5001,
-			wantOK:       true,
 		},
 		{
 			name: "AG bunk resolves to AG session from same plan",
-			bpBunkToSess: map[string]int{
-				"12424:200": 5001,
-				"12424:300": 5002,
+			bpBunkToSess: map[string][]int{
+				"12424:200": {5001},
+				"12424:300": {5002},
 			},
 			bunkPlanCMID: 12424,
 			bunkCMID:     300,
 			wantSession:  5002,
-			wantOK:       true,
 		},
 		{
 			name: "embedded session bunk resolves correctly",
-			bpBunkToSess: map[string]int{
-				"12500:200": 5010, // B-3 in plan 12500 → Session 2a (embedded)
+			bpBunkToSess: map[string][]int{
+				"12500:200": {5010}, // B-3 in plan 12500 → Session 2a (embedded)
 			},
 			bunkPlanCMID: 12500,
 			bunkCMID:     200,
 			wantSession:  5010,
-			wantOK:       true,
 		},
 		{
-			name: "unknown bunk plan returns not found",
-			bpBunkToSess: map[string]int{
-				"12424:200": 5001,
+			name: "unknown bunk plan returns not found, not ambiguous",
+			bpBunkToSess: map[string][]int{
+				"12424:200": {5001},
 			},
 			bunkPlanCMID: 99999,
 			bunkCMID:     200,
 			wantSession:  0,
-			wantOK:       false,
 		},
 		{
-			name: "unknown bunk in known plan returns not found",
-			bpBunkToSess: map[string]int{
-				"12424:200": 5001,
+			name: "unknown bunk in known plan returns not found, not ambiguous",
+			bpBunkToSess: map[string][]int{
+				"12424:200": {5001},
 			},
 			bunkPlanCMID: 12424,
 			bunkCMID:     999,
 			wantSession:  0,
-			wantOK:       false,
+		},
+		{
+			name: "bunk shared across several sessions of one plan is ambiguous",
+			bpBunkToSess: map[string][]int{
+				// The family plan pattern (kindred#2264): one bunk, every
+				// session of the plan.
+				"20001:200": {5001, 5002, 5003},
+			},
+			bunkPlanCMID:  20001,
+			bunkCMID:      200,
+			wantSession:   0,
+			wantAmbiguous: true,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			key := fmt.Sprintf("%d:%d", tt.bunkPlanCMID, tt.bunkCMID)
-			sessionCMID, ok := tt.bpBunkToSess[key]
+			s := &BunkAssignmentsSync{bunkPlanBunkToSession: tt.bpBunkToSess}
+			sessionCMID, ambiguous := s.resolveStaffSession(tt.bunkPlanCMID, tt.bunkCMID)
+
+			if ambiguous != tt.wantAmbiguous {
+				t.Errorf("ambiguous = %v, want %v", ambiguous, tt.wantAmbiguous)
+			}
+			if sessionCMID != tt.wantSession {
+				t.Errorf("sessionCMID = %d, want %d", sessionCMID, tt.wantSession)
+			}
+		})
+	}
+}
+
+// TestBunkAssignmentsSync_resolveViaBunk exercises the PRODUCTION
+// resolveViaBunk method, which narrows a camper's session candidates to the
+// ones the SPECIFIC bunk on this assignment is used for under the plan,
+// intersected with the sessions the person is actually enrolled in
+// (kindred#2259). It is precise exactly when the bunk pins to fewer
+// sessions than the whole plan -- e.g. a main+AG plan where main and AG
+// bunks are disjoint sets. When a bunk is shared across every session of
+// its plan (the family plan), narrowing by bunk alone still leaves as many
+// candidates as the person has weekends, and resolveViaBunk deliberately
+// reports no match so the caller falls back to the plan-wide
+// findMatchingSession instead of guessing.
+func TestBunkAssignmentsSync_resolveViaBunk(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name           string
+		bpBunkToSess   map[string][]int
+		personSessions []int
+		bunkPlanCMID   int
+		bunkCMID       int
+		wantSession    int
+		wantOK         bool
+	}{
+		{
+			name: "bunk pins to a single session the person is enrolled in",
+			bpBunkToSess: map[string][]int{
+				"12424:200": {5001}, // a main-only bunk
+			},
+			personSessions: []int{5001, 5002},
+			bunkPlanCMID:   12424,
+			bunkCMID:       200,
+			wantSession:    5001,
+			wantOK:         true,
+		},
+		{
+			name: "second bunk of the same plan pins to the other session",
+			bpBunkToSess: map[string][]int{
+				"12424:300": {5002}, // an AG-only bunk
+			},
+			personSessions: []int{5001, 5002},
+			bunkPlanCMID:   12424,
+			bunkCMID:       300,
+			wantSession:    5002,
+			wantOK:         true,
+		},
+		{
+			name: "bunk shared across every session of the plan is not narrowed",
+			bpBunkToSess: map[string][]int{
+				// family-plan shape: one bunk, all 3 (of the plan's) sessions
+				"20001:200": {5001, 5002, 5003},
+			},
+			personSessions: []int{5001, 5002}, // enrolled in two family weekends
+			bunkPlanCMID:   20001,
+			bunkCMID:       200,
+			wantOK:         false,
+		},
+		{
+			name:           "bunk not present in the map at all",
+			bpBunkToSess:   map[string][]int{},
+			personSessions: []int{5001},
+			bunkPlanCMID:   99999,
+			bunkCMID:       200,
+			wantOK:         false,
+		},
+		{
+			name: "candidate session the person is not enrolled in",
+			bpBunkToSess: map[string][]int{
+				"12424:200": {5001},
+			},
+			personSessions: []int{5002},
+			bunkPlanCMID:   12424,
+			bunkCMID:       200,
+			wantOK:         false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			s := &BunkAssignmentsSync{bunkPlanBunkToSession: tt.bpBunkToSess}
+			sessionCMID, ok := s.resolveViaBunk(tt.personSessions, tt.bunkPlanCMID, tt.bunkCMID)
 
 			if ok != tt.wantOK {
-				t.Errorf("lookup ok = %v, want %v", ok, tt.wantOK)
+				t.Errorf("ok = %v, want %v", ok, tt.wantOK)
 			}
 			if sessionCMID != tt.wantSession {
 				t.Errorf("sessionCMID = %d, want %d", sessionCMID, tt.wantSession)
@@ -281,32 +384,28 @@ func TestBunkAssignmentsSync_OrphanProtectionKeyFormat(t *testing.T) {
 	}
 }
 
+// TestBunkAssignmentsSync_StaffSkipLogicIntegration exercises the
+// PRODUCTION resolution ladder, resolveAssignmentSession, end to end --
+// against the production personEnrollments, bunkPlanBunkToSession and
+// staffPersonCMIDs fields, not a locally reimplemented copy. Two tests in
+// this file used to rebuild the lookup inline (kindred#2264's Traps: "the
+// false invariant is not pinned... changing the production map's type
+// leaves both compiling and green while testing nothing"); this drives the
+// real method so a change to the resolution rule fails this test.
 func TestBunkAssignmentsSync_StaffSkipLogicIntegration(t *testing.T) {
 	t.Parallel()
-	// Integration test: verifies the complete staff assignment resolution flow.
-	//
-	// When findMatchingSession returns 0 (person not in attendees),
-	// the staff fallback path should use bunkPlanBunkToSession to resolve the session.
-	// Non-staff, non-enrolled persons should be skipped.
-
-	staffPersonCMIDs := map[int]bool{
-		3000001: true, // Bunk staff (fictional)
-	}
-	bunkPlanBunkToSession := map[string]int{
-		"12424:200": 5001, // Plan 12424 + Bunk 200 → Session 5001
-	}
-
-	s := &BunkAssignmentsSync{}
 
 	tests := []struct {
-		name              string
-		personCMID        int
-		bunkPlanID        int
-		bunkID            int
-		personEnrollments map[int][]int
-		bpSessionsList    map[int][]int
-		wantSessionID     int
-		wantSkipped       bool
+		name                  string
+		personCMID            int
+		bunkPlanID            int
+		bunkID                int
+		personEnrollments     map[int][]int
+		staffPersonCMIDs      map[int]bool
+		bunkPlanBunkToSession map[string][]int
+		bpSessionsList        map[int][]int
+		wantSessionID         int
+		wantSkipped           bool
 	}{
 		{
 			name:       "camper resolved via enrollment intersection",
@@ -328,6 +427,10 @@ func TestBunkAssignmentsSync_StaffSkipLogicIntegration(t *testing.T) {
 			bunkPlanID:        12424,
 			bunkID:            200,
 			personEnrollments: map[int][]int{}, // Staff not in attendees
+			staffPersonCMIDs:  map[int]bool{3000001: true},
+			bunkPlanBunkToSession: map[string][]int{
+				"12424:200": {5001}, // Plan 12424 + Bunk 200 → Session 5001
+			},
 			bpSessionsList: map[int][]int{
 				12424: {5001, 5003},
 			},
@@ -352,8 +455,25 @@ func TestBunkAssignmentsSync_StaffSkipLogicIntegration(t *testing.T) {
 			bunkPlanID:        99999,
 			bunkID:            999,
 			personEnrollments: map[int][]int{},
+			staffPersonCMIDs:  map[int]bool{3000001: true},
 			bpSessionsList: map[int][]int{
 				99999: {5001},
+			},
+			wantSessionID: 0,
+			wantSkipped:   true,
+		},
+		{
+			name:              "staff on an ambiguous bunk+plan combo is skipped, not guessed",
+			personCMID:        3000001,
+			bunkPlanID:        20001,
+			bunkID:            200,
+			personEnrollments: map[int][]int{},
+			staffPersonCMIDs:  map[int]bool{3000001: true},
+			bunkPlanBunkToSession: map[string][]int{
+				"20001:200": {5001, 5002, 5003}, // family-plan shape: shared across every session
+			},
+			bpSessionsList: map[int][]int{
+				20001: {5001, 5002, 5003},
 			},
 			wantSessionID: 0,
 			wantSkipped:   true,
@@ -362,22 +482,15 @@ func TestBunkAssignmentsSync_StaffSkipLogicIntegration(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			// Replicate the resolution logic from the Sync loop
-			personSessions := tt.personEnrollments[tt.personCMID]
+			s := &BunkAssignmentsSync{
+				personEnrollments:     tt.personEnrollments,
+				staffPersonCMIDs:      tt.staffPersonCMIDs,
+				bunkPlanBunkToSession: tt.bunkPlanBunkToSession,
+			}
 			bunkPlanSessions := tt.bpSessionsList[tt.bunkPlanID]
 
-			// Step 1: Camper path (enrollment intersection)
-			sessionID := s.findMatchingSession(personSessions, bunkPlanSessions)
-
-			// Step 2: Staff fallback via (bunkPlan, bunk) → session
-			if sessionID == 0 && staffPersonCMIDs[tt.personCMID] {
-				key := fmt.Sprintf("%d:%d", tt.bunkPlanID, tt.bunkID)
-				if sid, ok := bunkPlanBunkToSession[key]; ok {
-					sessionID = sid
-				}
-			}
-
-			skipped := sessionID == 0
+			sessionID, ambiguous := s.resolveAssignmentSession(tt.personCMID, tt.bunkPlanID, tt.bunkID, bunkPlanSessions)
+			skipped := sessionID == 0 || ambiguous
 
 			if sessionID != tt.wantSessionID {
 				t.Errorf("sessionID = %d, want %d", sessionID, tt.wantSessionID)
