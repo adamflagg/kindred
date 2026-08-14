@@ -47,9 +47,16 @@ type rejectSite struct {
 //     SQLite operations that did not complete: infrastructure, zero tolerance.
 //   - household_demographics.go's sweep refusal -- a refusal is not a counted
 //     failure at all; kindred#2283 moves it onto the returned-error channel.
-//   - wrapper sites whose callee returns both classes (processAttendee,
-//     ProcessSimpleRecord) -- they stay loud until kindred#2292 gives them typed
-//     errors to tell apart.
+//   - wrapper sites whose callee returns both a transform rejection and an
+//     App.Save error through one return value, so the call site cannot tell them
+//     apart: processEnrollment (attendees.go), processAssignment
+//     (bunk_assignments.go), processRow (bunk_requests.go), processPerson
+//     (persons.go) and ProcessSimpleRecord (base_sync.go). They stay loud until
+//     kindred#2292 gives them typed errors. processAttendee is NOT one of them,
+//     despite an earlier revision of this comment saying so: it returns only
+//     `invalid or missing PersonID` or nil, counting and swallowing
+//     processEnrollment's errors itself, so its call site is a pure rejection
+//     that needs no sentinel.
 func expectedRejectSites() []rejectSite {
 	return []rejectSite{
 		{"bunks.go", "Error transforming bunk"},

@@ -39,16 +39,48 @@ const (
 // This service reads from person_custom_values and populates the camper_transportation table.
 //
 // Unique key: (person_id, session_id, year) - one record per camper per session
-// Links to: attendees
+// Links to: attendees, via a relation field that is `required: true` and carries
+// `cascadeDelete: true` (pb_migrations/1500000043_camper_transportation.js). That cascade is
+// KEPT DELIBERATELY -- reviewed and re-affirmed under kindred#2311, whatever the original author
+// weighed: transportation is enrolment-scoped, so a bus pickup contact is meaningless once
+// CampMinder no longer lists the attendee for that session, and taking the row with the attendee
+// is the behavior we want.
+//
+// kindred#2261/#2265 reached the opposite conclusion, and the remedy there was NOT a cascade
+// flag flip: migration 1500000153 dropped the whole `attendee` column from quest_registrations
+// and camper_dietary, because those tables are person x year and the stored link was one
+// arbitrarily-chosen attendee row that could never answer the enrolment question. This table's
+// link is sound -- idx_camper_transportation_unique is (person_id, session_id, year), so exactly
+// one attendee row can match, and on the production snapshot EVERY row's stored attendee is for
+// that row's own session, with zero exceptions (measured under kindred#2311 and re-measured at
+// review; the count moves between snapshots, the zero does not). Do not carry #2261's remedy
+// over here: dropping this column would remove a link that works.
+//
+// Dropping the cascade instead would preserve nothing. Two reasons, either one sufficient:
+//   - `required: true` means PocketBase refuses to delete the referenced attendee at all when
+//     the relation does not cascade (core.deleteRefRecords returns "part of a required
+//     reference"), so that change alone turns a silent row deletion into a failing attendees
+//     sweep rather than into a surviving row.
+//   - This table runs its own orphan sweep (deleteOrphans, below), which removes a row whenever
+//     its (person_id, session_id) has no attendeeMap hit in loadAttendeeMapping -- exactly the
+//     condition that holds once CampMinder drops the attendee. The row dies on this sync's own
+//     next run either way; the cascade only makes it happen one run sooner.
+//
+// The row is what is lost, not the content: this table is fully derived from
+// person_custom_values, with no staff_touched column and no GUI write path, so an attendee that
+// reappears upstream is recomputed with the same values. See kindred#2311 for the full analysis
+// and the options considered.
 //
 // Field mapping handles both new BUS-* fields and legacy "Bus to/From Camp" fields.
 // New fields take priority; legacy fields are used as fallback.
 //
-// Rows persist after a camper cancels; this table is never swept by deletion. A future reader
-// (e.g. a staff dashboard) must filter by active enrolment for the view's own year -- an
-// `attendees` row with status_id = 2 for that person and year -- and must not filter across
-// years. See "Reading Derived Informational Tables (Active-Enrolment Filtering)" in
-// docs/architecture/sync-layer.md.
+// Rows persist after a camper CANCELS: loadAttendeeMapping applies no status filter, so a
+// cancelled camper's attendees row -- and therefore this table's row -- survives cancellation
+// untouched. That is not the same claim as "never swept by deletion": deleteOrphans below does
+// delete rows, just not merely for a status change. A future reader (e.g. a staff dashboard)
+// must filter by active enrolment for the view's own year -- an `attendees` row with
+// status_id = 2 for that person and year -- and must not filter across years. See "Reading
+// Derived Informational Tables (Active-Enrolment Filtering)" in docs/architecture/sync-layer.md.
 type CamperTransportationSync struct {
 	App    core.App
 	Year   int

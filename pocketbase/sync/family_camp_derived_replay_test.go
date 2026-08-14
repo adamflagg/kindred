@@ -766,3 +766,282 @@ func TestFamilyCampSyncStopsSweepingWhenCancelledMidStep12(t *testing.T) {
 			"after the run was cancelled", got)
 	}
 }
+
+// ============================================================================
+// P3 -- nameless-but-attributed family_camp_adults rows survive a sweep
+// (kindred#2335)
+//
+// A replay measured 188 family_camp_adults rows across 2017-2025 (plus 6 in
+// 2026) with name, first_name and last_name ALL empty -- the class kindred#2198
+// stopped ADMITTING -- but 137 of them carry a date_of_birth and 36 carry an
+// email. These are real adults whose name answer never made it in, not the
+// wholly-empty rows #2198 targeted, and the owner ruled they must survive a
+// sweep until their names are rescued (separate, out-of-scope work).
+//
+// Every test below proves survival against the REAL sweep function against a
+// real PocketBase app, not a standalone helper: #2335 is explicit that a
+// helper-level test is not sufficient evidence one line from a production
+// data replay.
+// ============================================================================
+
+// TestFamilyCampSweepProtectsNamelessButAttributedAdults exercises all five
+// protected attributes individually, plus the three cases that must NOT be
+// protected: an ordinary named row (still tracked normally), a genuinely empty
+// orphan (no name, no attribute at all -- still swept), and a NAMED orphan
+// carrying every one of the five attributes (still swept -- the half of the
+// predicate that keeps this from disabling the sweep outright).
+func TestFamilyCampSweepProtectsNamelessButAttributedAdults(t *testing.T) {
+	t.Parallel()
+
+	const year = 2026
+
+	app := newFamilyCampReplayTestApp(t)
+
+	// 90 ordinary named rows this run recomputes (marked processed below) --
+	// keeps the guard's ratio comfortably satisfied regardless of how the
+	// other rows are classified.
+	for i := 1; i <= 90; i++ {
+		seedRow(t, app, "family_camp_adults", map[string]any{
+			"household": fmt.Sprintf("hh_named_%04d", i), "year": year,
+			"adult_number": 1, "name": fmt.Sprintf("Adult %04d", i),
+		})
+	}
+
+	// One nameless row per protected attribute.
+	protectedAttrs := []struct{ field, value string }{
+		{"date_of_birth", "1980-01-01"},
+		{"email", "adult@example.com"},
+		{"gender", "female"},
+		{"pronouns", "she/her"},
+		{"relationship_to_camper", "parent"},
+	}
+	for i, pa := range protectedAttrs {
+		seedRow(t, app, "family_camp_adults", map[string]any{
+			"household": fmt.Sprintf("hh_protected_%04d", i), "year": year,
+			"adult_number": 1, pa.field: pa.value,
+		})
+	}
+
+	// One genuinely empty orphan: no name, no attribute at all.
+	seedRow(t, app, "family_camp_adults", map[string]any{
+		"household": "hh_empty_0001", "year": year, "adult_number": 1,
+	})
+
+	// One NAMED orphan that also carries every protected attribute. This is the
+	// row that pins the "wholly nameless" half of the predicate: drop the name
+	// check from isNamelessButAttributedAdult and this row becomes protected
+	// too, which would neuter the family_camp_adults sweep entirely -- a real
+	// adult who left the source data carries a name AND a gender, so nothing
+	// would ever be swept again. #2335 protects rows with no label, not rows
+	// with attributes.
+	seedRow(t, app, "family_camp_adults", map[string]any{
+		"household": "hh_orphan_named_0001", "year": year, "adult_number": 1,
+		"name": "Olivia Chen", "first_name": "Olivia", "last_name": "Chen",
+		"date_of_birth": "1982-07-04", "email": "test@example.com",
+		"gender": "female", "pronouns": "she/her", "relationship_to_camper": "parent",
+	})
+
+	s := NewFamilyCampDerivedSync(app)
+	s.SyncSuccessful = true
+
+	existing, err := s.preloadExistingAdults(year)
+	if err != nil {
+		t.Fatalf("preload: %v", err)
+	}
+	if len(existing) != 97 {
+		t.Fatalf("preloaded %d rows, want 97", len(existing))
+	}
+
+	// Mark only the 90 ordinary rows processed, keyed on the household prefix
+	// rather than on the name column: the named orphan above must stay
+	// UNprocessed, and marking by name would have quietly excluded it from the
+	// sweep and pinned nothing. The 5 protected rows, the empty orphan and the
+	// named orphan all look, to key-matching alone, identical to each other --
+	// that is the whole point of the test.
+	for key, record := range existing {
+		if strings.HasPrefix(record.GetString("household"), "hh_named_") {
+			s.ProcessedAdultKeys[key] = true
+		}
+	}
+
+	deleted, sweepErr := s.deleteOrphanedAdults(existing, year)
+	if sweepErr != nil {
+		t.Fatalf("guard refused an ordinary sweep: %v", sweepErr)
+	}
+	if deleted != 2 {
+		t.Errorf("deleted = %d, want 2 -- the genuinely empty orphan and the named orphan", deleted)
+	}
+
+	for i, pa := range protectedAttrs {
+		rows, findErr := app.FindRecordsByFilter("family_camp_adults",
+			fmt.Sprintf("year = %d && household = 'hh_protected_%04d'", year, i), "", 0, 0)
+		if findErr != nil {
+			t.Fatalf("query protected row %d: %v", i, findErr)
+		}
+		if len(rows) != 1 {
+			t.Errorf("protected row %d (carrying %s) was swept -- it must survive", i, pa.field)
+		}
+	}
+
+	empty, findErr := app.FindRecordsByFilter("family_camp_adults",
+		fmt.Sprintf("year = %d && household = 'hh_empty_0001'", year), "", 0, 0)
+	if findErr != nil {
+		t.Fatalf("query empty orphan: %v", findErr)
+	}
+	if len(empty) != 0 {
+		t.Errorf("the genuinely empty orphan survived -- it carries no name and no attribute, " +
+			"so #2198's admission rule says it should never have existed and #2335 does not " +
+			"protect it")
+	}
+
+	named, findErr := app.FindRecordsByFilter("family_camp_adults",
+		fmt.Sprintf("year = %d && household = 'hh_orphan_named_0001'", year), "", 0, 0)
+	if findErr != nil {
+		t.Fatalf("query named orphan: %v", findErr)
+	}
+	if len(named) != 0 {
+		t.Errorf("the named orphan survived -- #2335 protects rows with no name, not rows " +
+			"that merely carry attributes, and protecting this one would stop the sweep " +
+			"deleting anything at all")
+	}
+
+	if got := countCollection(t, app, "family_camp_adults", year); got != 95 {
+		t.Errorf("family_camp_adults holds %d rows, want 95 (90 named + 5 protected)", got)
+	}
+}
+
+// TestFamilyCampSweepLogsProtectedNamelessAdultsFor2018 pins the year that
+// carries half of #2335's measured population -- 89 of the 188 -- rather than
+// only asserting an aggregate count, and pins that the protected count is
+// LOGGED per run rather than merely correct on disk (the issue's fix
+// direction: "count and log what was protected... so the population is
+// visible rather than silent").
+//
+// Not parallel: it uses captureSweepLogs (orphan_sweep_test.go), which
+// redirects the process-global slog default for the duration of the test.
+func TestFamilyCampSweepLogsProtectedNamelessAdultsFor2018(t *testing.T) {
+	const (
+		year          = 2018
+		protectedRows = 89
+		// 200 rather than a bare 90: the guard refuses a sweep whose computed
+		// set is below OrphanSweepRatioFloor of what is on disk, and 90 against
+		// 90+89 lands at 50.3% -- half a row above the floor. The real 2018
+		// replay sits at 965 computed against 1,054 existing (91.6%), so the
+		// tight version was neither realistic nor stable against a floor
+		// change. 200 against 289 is 69.2%.
+		namedRows = 200
+	)
+
+	app := newFamilyCampReplayTestApp(t)
+
+	for i := 1; i <= namedRows; i++ {
+		seedRow(t, app, "family_camp_adults", map[string]any{
+			"household": fmt.Sprintf("hh_2018_named_%04d", i), "year": year,
+			"adult_number": 1, "name": fmt.Sprintf("Adult %04d", i),
+		})
+	}
+	for i := 1; i <= protectedRows; i++ {
+		seedRow(t, app, "family_camp_adults", map[string]any{
+			"household": fmt.Sprintf("hh_2018_nameless_%04d", i), "year": year,
+			"adult_number": 1, "date_of_birth": "1975-06-01",
+		})
+	}
+
+	s := NewFamilyCampDerivedSync(app)
+	s.SyncSuccessful = true
+
+	existing, err := s.preloadExistingAdults(year)
+	if err != nil {
+		t.Fatalf("preload: %v", err)
+	}
+	if len(existing) != namedRows+protectedRows {
+		t.Fatalf("preloaded %d rows, want %d", len(existing), namedRows+protectedRows)
+	}
+	for key, record := range existing {
+		if record.GetString("name") != "" {
+			s.ProcessedAdultKeys[key] = true
+		}
+	}
+
+	logs := captureSweepLogs(t)
+
+	deleted, sweepErr := s.deleteOrphanedAdults(existing, year)
+	if sweepErr != nil {
+		t.Fatalf("guard refused an ordinary sweep: %v", sweepErr)
+	}
+	if deleted != 0 {
+		t.Errorf("deleted = %d, want 0 -- every unmatched 2018 row here is protected", deleted)
+	}
+	if got := countCollection(t, app, "family_camp_adults", year); got != namedRows+protectedRows {
+		t.Errorf("family_camp_adults 2018 holds %d rows, want %d -- all 89 protected rows "+
+			"must survive", got, namedRows+protectedRows)
+	}
+
+	// Assert against the PROTECTION line specifically, not the whole buffer.
+	// A whole-buffer strings.Contains(logged, "count=89") passes on the
+	// "Deleted orphaned family_camp_adults records count=89" line a run with no
+	// protection at all emits -- i.e. it is satisfied by exactly the regression
+	// it is supposed to catch.
+	const protectedMsg = "Protected nameless-but-attributed family_camp_adults from sweep"
+	protectedLine := ""
+	for _, line := range strings.Split(logs.String(), "\n") {
+		if strings.Contains(line, protectedMsg) {
+			protectedLine = line
+			break
+		}
+	}
+	if protectedLine == "" {
+		t.Fatalf("no %q log line at all:\n%s", protectedMsg, logs.String())
+	}
+	if !strings.Contains(protectedLine, "count=89") {
+		t.Errorf("protected count not logged (want count=89): %s", protectedLine)
+	}
+	if !strings.Contains(protectedLine, "year=2018") {
+		t.Errorf("protected-row log line does not name the year: %s", protectedLine)
+	}
+}
+
+// TestFamilyCampDryRunDoesNotForecastDeletingProtectedNamelessAdults keeps the
+// dry-run diff honest for the case #2335 protects. Dry-running a replay year
+// and reading the diff before deciding is the documented predecessor step
+// (docs/reference/family-camp-grain-collapse.md) -- a diff that still counted
+// a protected row toward WouldDelete would tell an operator a real replay
+// destroys data it will not actually touch.
+func TestFamilyCampDryRunDoesNotForecastDeletingProtectedNamelessAdults(t *testing.T) {
+	t.Parallel()
+
+	const year = 2026
+
+	app := newFamilyCampReplayTestApp(t)
+	seedDryRunFixture(t, app, year)
+
+	// A nameless row with no source values behind it at all -- by key-matching
+	// alone this looks exactly like hhC, the fixture's genuine orphan. It
+	// carries a date_of_birth, so #2335 protects it.
+	seedRow(t, app, "family_camp_adults", map[string]any{
+		"year": year, "household": "hhe000000000005",
+		"adult_number": 1, "date_of_birth": "1990-03-14",
+	})
+
+	s := NewFamilyCampDerivedSync(app)
+	s.Year = year
+	s.DryRun = true
+
+	if err := s.Sync(context.Background()); err != nil {
+		t.Fatalf("dry run failed: %v", err)
+	}
+
+	adults := s.DryRunDiff["family_camp_adults"]
+	if adults.WouldDelete != 1 {
+		t.Errorf("adults.WouldDelete = %d, want 1 (hhC only) -- the protected nameless row "+
+			"must not be forecast as a deletion", adults.WouldDelete)
+	}
+	if adults.Protected != 1 {
+		t.Errorf("adults.Protected = %d, want 1", adults.Protected)
+	}
+
+	// A dry run writes nothing either way.
+	if got := countCollection(t, app, "family_camp_adults", year); got != 4 {
+		t.Errorf("family_camp_adults holds %d rows, want 4 -- the dry run wrote", got)
+	}
+}

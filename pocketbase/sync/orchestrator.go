@@ -306,22 +306,20 @@ type Stats struct {
 	// run in which this is non-zero, so its tolerance is zero: any non-zero count fails the
 	// run. Do not use it for a rejected upstream record — that is Rejected (kindred#2284).
 	//
-	// Every site currently increments this counter, including per-record transform failures
-	// that belong on Rejected. That is temporary and deliberate: a rejected record skips
-	// TrackProcessedKey via the same `continue`, so the orphan sweep deletes its existing
-	// row in the same run. Until that guard lands, leaving these sites here means the run
-	// fails loud rather than quietly losing a row. Reclassification and the sweep guard are
-	// one unit and ship together in kindred#2295.
+	// The reclassification has shipped (kindred#2295, PR #2299): per-record transform
+	// failures now increment Rejected instead, and base_sync.go's skipSweepForRejections
+	// stops the orphan sweep for any service that rejected a record, so a rejection no
+	// longer costs that record its existing row.
 	//
-	// Some sites will still belong here afterwards, because the function they call returns
-	// both classes of error and the call site cannot tell them apart. attendees.go's
-	// processEnrollment is the type case: it returns `invalid or missing SessionID` (a
-	// rejected record) and also the result of ProcessCompositeRecord's App.Save. Note this
-	// is processEnrollment, NOT its caller processAttendee — processAttendee returns only
-	// `invalid or missing PersonID` or nil, counting and swallowing processEnrollment's
-	// errors itself, so the outer site at attendees.go:121 is unambiguously a rejection.
-	// ProcessSimpleRecord is genuinely mixed too, returning `recordData missing required
-	// 'year' field` alongside its App.Save.
+	// Some sites deliberately stay here, because the function they call returns both
+	// classes of error through one return value and the call site cannot tell them apart.
+	// attendees.go's processEnrollment is the type case: it returns `invalid or missing
+	// SessionID` (a rejected record) and also the result of ProcessCompositeRecord's
+	// App.Save. Note this is processEnrollment, NOT its caller processAttendee —
+	// processAttendee returns only `invalid or missing PersonID` or nil, counting and
+	// swallowing processEnrollment's errors itself, so the outer site in attendees.go is
+	// unambiguously a rejection. processAssignment, processRow, processPerson and
+	// ProcessSimpleRecord are mixed the same way; rejection_sites_test.go names all five.
 	//
 	// Splitting the genuinely mixed ones needs typed errors from the wrappers — kindred#2292.
 	Errors int `json:"errors"`
@@ -330,14 +328,17 @@ type Stats struct {
 	// quality, not a local fault, and it is WARN-ONLY for its first season — surfaced on the
 	// Sync tab, never failing a run.
 	//
-	// Nothing writes this counter yet; the sites that will are held back with the orphan
-	// sweep guard in kindred#2295. It is declared here so the escalation, the status JSON
-	// and the badge all land together rather than in three separate PRs.
+	// The sites that write it shipped in PR #2299 (kindred#2295) alongside the orphan-sweep
+	// guard that made rejecting safe, and the duplicate custom-field-value check added four
+	// more in PR #2320 (kindred#2270). Deliberately not hand-counted here:
+	// rejection_sites_test.go enumerates every site and fails in both directions when one
+	// moves, so that census is the list which stays true — a number in this comment would
+	// not.
 	//
 	// Every completed run is now persisted to sync_runs, including this counter, which is
 	// what makes warn-only a plan rather than a shrug: a threshold picked today would be a
-	// guess, and the season exists to accumulate the distribution to set one from. Until the
-	// #2295 sites land the column records honest zeroes (kindred#2284).
+	// guess, and the season exists to accumulate the distribution to set one from
+	// (kindred#2284).
 	Rejected int `json:"rejected,omitempty"`
 	// DuplicateStaffStatus counts staff records dropped because the same person appeared
 	// under more than one CampMinder status in one sync run (kindred#2267). staff.go's
