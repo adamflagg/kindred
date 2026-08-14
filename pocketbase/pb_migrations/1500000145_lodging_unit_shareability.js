@@ -17,7 +17,25 @@
  * warns about exactly that: "a rule encoded early and wrongly is worse than no
  * rule".
  *
- * ── THE RULE ────────────────────────────────────────────────────────────────
+ * ── SUPERSEDED IN PART, kindred#2331 (owner ruling D17, 2026-08-14) ─────────
+ *
+ * THE LEAF LEG BELOW IS HISTORY, NOT THE LIVE RULE. `sleeps >= 12` on leaves
+ * did not reproduce the owner's enumeration after all: no unit in the
+ * inventory reaches 12, so every family-pool leaf was stamped `single_party`
+ * and the board warned on correct multi-family placements. A LEAF's
+ * shareability is now a CURATED per-unit fact carried in the registry file and
+ * read straight through by `classifyShareability` (pocketbase/lodging/
+ * registry.go); `frontend/.../shareabilityDrift.ts` no longer re-derives it.
+ *
+ * This header stays as written because it is the accurate record of what
+ * production's existing rows were classified from when this migration ran, and
+ * the file is already applied. Do not read the leaf line below as current, and
+ * do not treat this file as one of the places to change when the leaf rule
+ * changes. The CONTAINER and staff_default legs ARE unchanged and still live,
+ * so the reasoning below about why a container is never tested against a
+ * capacity number remains the canonical explanation.
+ *
+ * ── THE RULE, AS IT STOOD WHEN THIS MIGRATION RAN ───────────────────────────
  *
  *   family_pool  + leaf      + sleeps >= 12  ->  shareable
  *   family_pool  + leaf      + sleeps 1..11  ->  single_party
@@ -78,8 +96,9 @@
  * databases: migrations run before SeedRegistry (main.go), so on a new
  * worktree or a rebuilt CD seed the UPDATEs below hit an empty table and
  * `classifyShareability` in registry.go supplies the value instead. The two
- * implementations state the same rule and `registry_shareability_test.go`
- * pins the Go half.
+ * implementations stated the same rule when this ran; since kindred#2331 they
+ * agree on containers and staff housing only, and the leaf leg here is frozen
+ * history. `registry_shareability_test.go` pins the current Go half.
  *
  * A FRESH DATABASE STILL WILL NOT MATCH PRODUCTION, because its INPUTS do not:
  * the registry file's `sleeps` disagrees with production on 77 of 118 units and

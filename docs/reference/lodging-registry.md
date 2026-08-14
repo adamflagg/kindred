@@ -210,7 +210,9 @@ loud on purpose, rather than a silently empty registry.
       "has_lights": true,
 
       "has_ramp": "partial",    // yes | no | partial; "" or absent = NOT ASSESSED
-      "max_beds": 14            // total sleeping spots. NOT sleeps — see below
+      "max_beds": 14,           // total sleeping spots. NOT sleeps — see below
+
+      "shareability": "shareable"  // shareable | single_party; absent = not curated
     }
   ],
   "aliases": [
@@ -234,6 +236,26 @@ CampMinder-id discipline used across the rest of the schema.
 - `is_confirmed` — always `false` on create. Every seeded value is a guess until
   staff verify it against the actual cabin, so nothing the loader writes may
   claim otherwise. Staff confirm through `/manage/lodging`.
+
+### `shareability` is CURATED, not derived
+
+Whether more than one party may sleep in a unit is a fact staff maintain per
+unit, not something any formula produces (kindred#2331, owner ruling D17,
+2026-08-14). It used to be derived on a family-pool leaf from `sleeps >= 12` —
+a threshold no leaf in the inventory reaches, so every leaf came out
+`single_party` and the board warned on correct multi-family placements.
+
+- **Vocabulary**: exactly `"shareable"` or `"single_party"`. Anything else
+  **fails the file load**, before any row is written — a typo must not degrade
+  into "not classified".
+- **Absent, `null`, or `""` all mean NOT YET CURATED** and land the unit blank.
+  A leaf the file says nothing about never becomes shareable by default.
+- **Only meaningful on a family-pool LEAF.** A container classifies from
+  `is_container` alone and a `staff_default` row is always `single_party`; both
+  ignore the key, so there is no need to set it on either.
+
+Like every other field here, the loader is create-if-absent, so the key reaches
+**new rows only** — see the section below.
 
 ### `max_beds` is not `sleeps`, and neither may overwrite the other
 
