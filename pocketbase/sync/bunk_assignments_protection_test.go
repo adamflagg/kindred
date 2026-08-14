@@ -70,9 +70,19 @@ func setupBunkAssignmentProtectionCollections(t *testing.T, app core.App) {
 		t.Fatalf("create persons: %v", err)
 	}
 
+	// bunk is part of the bunk_assignments grain alongside person and
+	// session (kindred#2259) -- protectNonActiveStaffAssignments and
+	// deleteOrphans both resolve it into their composite keys.
+	bunks := core.NewBaseCollection("bunks")
+	bunks.Fields.Add(&core.NumberField{Name: "cm_id", Required: true})
+	if err := app.Save(bunks); err != nil {
+		t.Fatalf("create bunks: %v", err)
+	}
+
 	assignments := core.NewBaseCollection("bunk_assignments")
 	assignments.Fields.Add(&core.RelationField{Name: "person", CollectionId: persons.Id, MaxSelect: 1})
 	assignments.Fields.Add(&core.RelationField{Name: "session", CollectionId: sessions.Id, MaxSelect: 1})
+	assignments.Fields.Add(&core.RelationField{Name: "bunk", CollectionId: bunks.Id, MaxSelect: 1})
 	assignments.Fields.Add(&core.NumberField{Name: "year", Required: true})
 	// PaginateRecords sorts by "-created" unconditionally, and deleteOrphans's
 	// call to BuildRecordCMIDMappings goes through it.
@@ -116,11 +126,13 @@ func TestProtectNonActiveStaffAssignments_ProtectsDismissedStaff(t *testing.T) {
 	const year = 2025
 	const personCMID = 3000001
 	const sessionCMID = 5001
+	const bunkCMID = 7001
 
 	person := saveRec(t, app, "persons", map[string]any{"cm_id": personCMID, "year": year})
 	session := saveRec(t, app, "camp_sessions", map[string]any{"cm_id": sessionCMID, "year": year})
+	bunk := saveRec(t, app, "bunks", map[string]any{"cm_id": bunkCMID})
 	saveRec(t, app, "bunk_assignments", map[string]any{
-		"person": person.Id, "session": session.Id, "year": year,
+		"person": person.Id, "session": session.Id, "bunk": bunk.Id, "year": year,
 	})
 	saveRec(t, app, "staff", map[string]any{
 		"person_id": personCMID, "status": "dismissed", "bunk_staff": true, "year": year,
@@ -136,7 +148,7 @@ func TestProtectNonActiveStaffAssignments_ProtectsDismissedStaff(t *testing.T) {
 		t.Fatal("protectedCount = 0, want > 0 for a year with a known non-active bunk staff assignment")
 	}
 
-	wantKey := fmt.Sprintf("%d:%d|%d", personCMID, sessionCMID, year)
+	wantKey := fmt.Sprintf("%d:%d:%d|%d", personCMID, sessionCMID, bunkCMID, year)
 	if !s.ProcessedKeys[wantKey] {
 		t.Errorf("ProcessedKeys[%q] missing -- assignment was not protected from orphan deletion", wantKey)
 	}
@@ -171,9 +183,16 @@ func setupBunkAssignmentSweepCollections(t *testing.T, app core.App) {
 		t.Fatalf("create persons: %v", err)
 	}
 
+	bunks := core.NewBaseCollection("bunks")
+	bunks.Fields.Add(&core.NumberField{Name: "cm_id", Required: true})
+	if err := app.Save(bunks); err != nil {
+		t.Fatalf("create bunks: %v", err)
+	}
+
 	assignments := core.NewBaseCollection("bunk_assignments")
 	assignments.Fields.Add(&core.RelationField{Name: "person", CollectionId: persons.Id, MaxSelect: 1})
 	assignments.Fields.Add(&core.RelationField{Name: "session", CollectionId: sessions.Id, MaxSelect: 1})
+	assignments.Fields.Add(&core.RelationField{Name: "bunk", CollectionId: bunks.Id, MaxSelect: 1})
 	assignments.Fields.Add(&core.NumberField{Name: "year", Required: true})
 	assignments.Fields.Add(&core.AutodateField{Name: "created", OnCreate: true})
 	if err := app.Save(assignments); err != nil {
@@ -216,24 +235,26 @@ func TestProtectThenSweepOrphans_ProtectionFailureAbortsSweep(t *testing.T) {
 	// orphan-sweep guard sees a non-empty computed set and does not refuse the
 	// sweep as a total collapse (which would pass this test for the wrong
 	// reason).
+	keptBunk := saveRec(t, app, "bunks", map[string]any{"cm_id": 7101})
 	keptPerson := saveRec(t, app, "persons", map[string]any{"cm_id": 4000001, "year": year})
 	keptSession := saveRec(t, app, "camp_sessions", map[string]any{"cm_id": 6001, "year": year})
 	saveRec(t, app, "bunk_assignments", map[string]any{
-		"person": keptPerson.Id, "session": keptSession.Id, "year": year,
+		"person": keptPerson.Id, "session": keptSession.Id, "bunk": keptBunk.Id, "year": year,
 	})
 
 	// An orphan: NOT in ProcessedKeys. If the sweep runs, this gets deleted.
+	orphanBunk := saveRec(t, app, "bunks", map[string]any{"cm_id": 7102})
 	orphanPerson := saveRec(t, app, "persons", map[string]any{"cm_id": 4000002, "year": year})
 	orphanSession := saveRec(t, app, "camp_sessions", map[string]any{"cm_id": 6002, "year": year})
 	orphanAssignment := saveRec(t, app, "bunk_assignments", map[string]any{
-		"person": orphanPerson.Id, "session": orphanSession.Id, "year": year,
+		"person": orphanPerson.Id, "session": orphanSession.Id, "bunk": orphanBunk.Id, "year": year,
 	})
 
 	s := &BunkAssignmentsSync{BaseSyncService: BaseSyncService{
 		App: app, Client: newTestCampMinderClient(t, year), ProcessedKeys: make(map[string]bool),
 	}}
 	s.SyncSuccessful = true // arms deleteOrphans; otherwise it no-ops regardless of ordering
-	s.TrackProcessedCompositeKey(fmt.Sprintf("%d:%d", 4000001, 6001), year)
+	s.TrackProcessedCompositeKey(fmt.Sprintf("%d:%d:%d", 4000001, 6001, 7101), year)
 
 	s.protectThenSweepOrphans(year)
 
@@ -260,23 +281,25 @@ func TestProtectThenSweepOrphans_ProtectionSuccessStillSweeps(t *testing.T) {
 
 	const year = 2025
 
+	keptBunk := saveRec(t, app, "bunks", map[string]any{"cm_id": 7103})
 	keptPerson := saveRec(t, app, "persons", map[string]any{"cm_id": 4000003, "year": year})
 	keptSession := saveRec(t, app, "camp_sessions", map[string]any{"cm_id": 6003, "year": year})
 	saveRec(t, app, "bunk_assignments", map[string]any{
-		"person": keptPerson.Id, "session": keptSession.Id, "year": year,
+		"person": keptPerson.Id, "session": keptSession.Id, "bunk": keptBunk.Id, "year": year,
 	})
 
+	orphanBunk := saveRec(t, app, "bunks", map[string]any{"cm_id": 7104})
 	orphanPerson := saveRec(t, app, "persons", map[string]any{"cm_id": 4000004, "year": year})
 	orphanSession := saveRec(t, app, "camp_sessions", map[string]any{"cm_id": 6004, "year": year})
 	orphanAssignment := saveRec(t, app, "bunk_assignments", map[string]any{
-		"person": orphanPerson.Id, "session": orphanSession.Id, "year": year,
+		"person": orphanPerson.Id, "session": orphanSession.Id, "bunk": orphanBunk.Id, "year": year,
 	})
 
 	s := &BunkAssignmentsSync{BaseSyncService: BaseSyncService{
 		App: app, Client: newTestCampMinderClient(t, year), ProcessedKeys: make(map[string]bool),
 	}}
 	s.SyncSuccessful = true
-	s.TrackProcessedCompositeKey(fmt.Sprintf("%d:%d", 4000003, 6003), year)
+	s.TrackProcessedCompositeKey(fmt.Sprintf("%d:%d:%d", 4000003, 6003, 7103), year)
 
 	s.protectThenSweepOrphans(year)
 
@@ -305,11 +328,13 @@ func TestProtectNonActiveStaffAssignments_ActiveStaffUntouched(t *testing.T) {
 	const year = 2025
 	const personCMID = 3000002
 	const sessionCMID = 5002
+	const bunkCMID = 7002
 
 	person := saveRec(t, app, "persons", map[string]any{"cm_id": personCMID, "year": year})
 	session := saveRec(t, app, "camp_sessions", map[string]any{"cm_id": sessionCMID, "year": year})
+	bunk := saveRec(t, app, "bunks", map[string]any{"cm_id": bunkCMID})
 	saveRec(t, app, "bunk_assignments", map[string]any{
-		"person": person.Id, "session": session.Id, "year": year,
+		"person": person.Id, "session": session.Id, "bunk": bunk.Id, "year": year,
 	})
 	saveRec(t, app, "staff", map[string]any{
 		"person_id": personCMID, "status": "active", "bunk_staff": true, "year": year,
@@ -349,14 +374,16 @@ func TestProtectThenSweepOrphans_DismissedStaffAssignmentSurvivesSweep(t *testin
 	const year = 2025
 	const dismissedCMID = 3000004
 	const dismissedSessionCMID = 5004
+	const dismissedBunkCMID = 7004
 
 	// The dismissed staff member: CampMinder has stopped reporting the
 	// assignment, so nothing in this run marks it processed. Only protection
 	// can save it.
 	dismissedPerson := saveRec(t, app, "persons", map[string]any{"cm_id": dismissedCMID, "year": year})
 	dismissedSession := saveRec(t, app, "camp_sessions", map[string]any{"cm_id": dismissedSessionCMID, "year": year})
+	dismissedBunk := saveRec(t, app, "bunks", map[string]any{"cm_id": dismissedBunkCMID})
 	dismissedAssignment := saveRec(t, app, "bunk_assignments", map[string]any{
-		"person": dismissedPerson.Id, "session": dismissedSession.Id, "year": year,
+		"person": dismissedPerson.Id, "session": dismissedSession.Id, "bunk": dismissedBunk.Id, "year": year,
 	})
 	saveRec(t, app, "staff", map[string]any{
 		"person_id": dismissedCMID, "status": "dismissed", "bunk_staff": true, "year": year,
@@ -365,10 +392,11 @@ func TestProtectThenSweepOrphans_DismissedStaffAssignmentSurvivesSweep(t *testin
 	// A genuine orphan: nobody's staff record, never marked processed. The
 	// sweep must still delete this, or the test would pass simply because the
 	// sweep did nothing at all.
+	orphanBunk := saveRec(t, app, "bunks", map[string]any{"cm_id": 7005})
 	orphanPerson := saveRec(t, app, "persons", map[string]any{"cm_id": 4000005, "year": year})
 	orphanSession := saveRec(t, app, "camp_sessions", map[string]any{"cm_id": 6005, "year": year})
 	orphanAssignment := saveRec(t, app, "bunk_assignments", map[string]any{
-		"person": orphanPerson.Id, "session": orphanSession.Id, "year": year,
+		"person": orphanPerson.Id, "session": orphanSession.Id, "bunk": orphanBunk.Id, "year": year,
 	})
 
 	s := &BunkAssignmentsSync{BaseSyncService: BaseSyncService{
@@ -385,7 +413,7 @@ func TestProtectThenSweepOrphans_DismissedStaffAssignmentSurvivesSweep(t *testin
 	}
 
 	// protectedCount > 0, observed through the key protection wrote.
-	wantKey := fmt.Sprintf("%d:%d|%d", dismissedCMID, dismissedSessionCMID, year)
+	wantKey := fmt.Sprintf("%d:%d:%d|%d", dismissedCMID, dismissedSessionCMID, dismissedBunkCMID, year)
 	if !s.ProcessedKeys[wantKey] {
 		t.Errorf("ProcessedKeys[%q] missing -- protection did not run or used a different key format", wantKey)
 	}
@@ -425,11 +453,13 @@ func TestProtectThenSweepOrphans_SessionLookupFailureAbortsSweep(t *testing.T) {
 	const year = 2025
 	const dismissedCMID = 3000005
 	const dismissedSessionCMID = 5005
+	const dismissedBunkCMID = 7006
 
 	dismissedPerson := saveRec(t, app, "persons", map[string]any{"cm_id": dismissedCMID, "year": year})
 	dismissedSession := saveRec(t, app, "camp_sessions", map[string]any{"cm_id": dismissedSessionCMID, "year": year})
+	dismissedBunk := saveRec(t, app, "bunks", map[string]any{"cm_id": dismissedBunkCMID})
 	dismissedAssignment := saveRec(t, app, "bunk_assignments", map[string]any{
-		"person": dismissedPerson.Id, "session": dismissedSession.Id, "year": year,
+		"person": dismissedPerson.Id, "session": dismissedSession.Id, "bunk": dismissedBunk.Id, "year": year,
 	})
 	saveRec(t, app, "staff", map[string]any{
 		"person_id": dismissedCMID, "status": "dismissed", "bunk_staff": true, "year": year,
@@ -438,10 +468,11 @@ func TestProtectThenSweepOrphans_SessionLookupFailureAbortsSweep(t *testing.T) {
 	// A second assignment whose key IS tracked, so the computed set is
 	// non-empty and OrphanSweepGuard does not refuse the sweep as a total
 	// collapse -- which would make this test pass without proving anything.
+	keptBunk := saveRec(t, app, "bunks", map[string]any{"cm_id": 7007})
 	keptPerson := saveRec(t, app, "persons", map[string]any{"cm_id": 4000006, "year": year})
 	keptSession := saveRec(t, app, "camp_sessions", map[string]any{"cm_id": 6006, "year": year})
 	saveRec(t, app, "bunk_assignments", map[string]any{
-		"person": keptPerson.Id, "session": keptSession.Id, "year": year,
+		"person": keptPerson.Id, "session": keptSession.Id, "bunk": keptBunk.Id, "year": year,
 	})
 
 	// Fail exactly one camp_sessions lookup: the single one protection makes
@@ -455,7 +486,7 @@ func TestProtectThenSweepOrphans_SessionLookupFailureAbortsSweep(t *testing.T) {
 		App: flaky, Client: newTestCampMinderClient(t, year), ProcessedKeys: make(map[string]bool),
 	}}
 	s.SyncSuccessful = true
-	s.TrackProcessedCompositeKey(fmt.Sprintf("%d:%d", 4000006, 6006), year)
+	s.TrackProcessedCompositeKey(fmt.Sprintf("%d:%d:%d", 4000006, 6006, 7007), year)
 
 	err = s.protectThenSweepOrphans(year)
 	if err == nil {
@@ -500,8 +531,9 @@ func TestProtectThenSweepOrphans_SweepRefusalIsCountedAndReturned(t *testing.T) 
 
 	person := saveRec(t, app, "persons", map[string]any{"cm_id": 4000007, "year": year})
 	session := saveRec(t, app, "camp_sessions", map[string]any{"cm_id": 6007, "year": year})
+	bunk := saveRec(t, app, "bunks", map[string]any{"cm_id": 7008})
 	assignment := saveRec(t, app, "bunk_assignments", map[string]any{
-		"person": person.Id, "session": session.Id, "year": year,
+		"person": person.Id, "session": session.Id, "bunk": bunk.Id, "year": year,
 	})
 
 	s := &BunkAssignmentsSync{BaseSyncService: BaseSyncService{
@@ -525,6 +557,60 @@ func TestProtectThenSweepOrphans_SweepRefusalIsCountedAndReturned(t *testing.T) 
 	}
 }
 
+// TestProtectNonActiveStaffAssignments_MissingBunkIsNonDestructiveSkip is the
+// bunk-shaped twin of the session case below, added when bunk joined the
+// bunk_assignments grain (kindred#2259): protection now has to resolve a bunk
+// as well as a session before it can build a composite key, which is a second
+// place the function can fail to protect a row.
+//
+// A row with no bunk relation is a skip and NOT an error, for the same reason a
+// missing session is: deleteOrphans cannot derive a composite key for such a
+// record either (its keyFunc requires bunkCMID > 0), so the sweep will not
+// touch it and there is nothing to protect it from. What must not happen is an
+// abort, which would take protection down for every other non-active staff
+// member in the year.
+//
+// The row is asserted to still exist afterwards so the test cannot pass
+// vacuously by the assignment having disappeared.
+func TestProtectNonActiveStaffAssignments_MissingBunkIsNonDestructiveSkip(t *testing.T) {
+	t.Parallel()
+
+	app, err := pbtests.NewTestApp()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer app.Cleanup()
+	setupBunkAssignmentProtectionCollections(t, app)
+
+	const year = 2025
+	const dismissedCMID = 3000007
+
+	dismissedPerson := saveRec(t, app, "persons", map[string]any{"cm_id": dismissedCMID, "year": year})
+	session := saveRec(t, app, "camp_sessions", map[string]any{"cm_id": 5007, "year": year})
+	assignment := saveRec(t, app, "bunk_assignments", map[string]any{
+		"person": dismissedPerson.Id, "session": session.Id, "year": year,
+	})
+	saveRec(t, app, "staff", map[string]any{
+		"person_id": dismissedCMID, "status": "dismissed", "bunk_staff": true, "year": year,
+	})
+
+	s := &BunkAssignmentsSync{BaseSyncService: BaseSyncService{App: app, ProcessedKeys: make(map[string]bool)}}
+
+	protectedCount, err := s.protectNonActiveStaffAssignments(year)
+	if err != nil {
+		t.Fatalf("a missing bunk must be a skip, not an error: %v", err)
+	}
+	if protectedCount != 0 {
+		t.Errorf("protectedCount = %d, want 0 -- there is no bunk to build a composite key from", protectedCount)
+	}
+	if len(s.ProcessedKeys) != 0 {
+		t.Errorf("ProcessedKeys = %v, want empty -- a key that omits bunk would never match deleteOrphans", s.ProcessedKeys)
+	}
+	if _, findErr := app.FindRecordById("bunk_assignments", assignment.Id); findErr != nil {
+		t.Fatalf("the assignment row must still exist for this test to mean anything: %v", findErr)
+	}
+}
+
 // TestProtectNonActiveStaffAssignments_MissingSessionIsNonDestructiveSkip is the
 // other half of the test above: a session record that is genuinely absent is not
 // an error, and must not abort protection or the sweep for everyone else.
@@ -543,8 +629,9 @@ func TestProtectNonActiveStaffAssignments_MissingSessionIsNonDestructiveSkip(t *
 
 	dismissedPerson := saveRec(t, app, "persons", map[string]any{"cm_id": dismissedCMID, "year": year})
 	session := saveRec(t, app, "camp_sessions", map[string]any{"cm_id": 5006, "year": year})
+	bunk := saveRec(t, app, "bunks", map[string]any{"cm_id": 7009})
 	saveRec(t, app, "bunk_assignments", map[string]any{
-		"person": dismissedPerson.Id, "session": session.Id, "year": year,
+		"person": dismissedPerson.Id, "session": session.Id, "bunk": bunk.Id, "year": year,
 	})
 	saveRec(t, app, "staff", map[string]any{
 		"person_id": dismissedCMID, "status": "resigned", "bunk_staff": true, "year": year,
