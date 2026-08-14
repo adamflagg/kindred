@@ -71,3 +71,45 @@ func TestDropLodgingPHIMigrationReadsPermissionsAsGetString(t *testing.T) {
 			dropLodgingPHIMigration)
 	}
 }
+
+// TestDropLodgingPHIMigrationFiltersNonStringPermissions guards against a
+// corrupted or hand-edited `permissions` array feeding a non-string entry
+// into the cached_permissions union, where it would mint a garbage
+// permission key on every affected user (CodeRabbit finding on kindred#2312).
+func TestDropLodgingPHIMigrationFiltersNonStringPermissions(t *testing.T) {
+	body := readDropLodgingPHIMigration(t)
+
+	if !strings.Contains(body, `parsed.filter((p) => typeof p === "string")`) {
+		t.Errorf("migration %s must filter parsed permissions to strings before use",
+			dropLodgingPHIMigration)
+	}
+}
+
+// TestDropLodgingPHIMigrationRethrowsUnexpectedErrors guards against
+// findRoleBySlug/recomputeCachedPermissions silently swallowing a real
+// database error (a malformed filter, a corrupted index) under the same
+// catch that is meant only for "this role/user does not exist yet" -- that
+// would let the migration report success while doing less than it claims
+// (CodeRabbit finding on kindred#2312). Verified empirically against a copy
+// of prod: the only error shape either lookup has ever produced there is the
+// not-found sentinel, from three orphaned user_roles rows on bunking-staff.
+func TestDropLodgingPHIMigrationRethrowsUnexpectedErrors(t *testing.T) {
+	body := readDropLodgingPHIMigration(t)
+
+	if !strings.Contains(body, "function isNotFoundError(err)") {
+		t.Errorf("migration %s must distinguish the not-found sentinel from other errors",
+			dropLodgingPHIMigration)
+	}
+	if !strings.Contains(body, "no rows in result set") {
+		t.Errorf("migration %s must match PocketBase's not-found error text",
+			dropLodgingPHIMigration)
+	}
+	// Every catch that reads a role or user by id must consult the sentinel
+	// rather than swallow unconditionally -- a bare `catch (_err) {` here
+	// would be exactly the regression this test exists to catch.
+	if strings.Contains(body, "catch (_err) {\n        continue") ||
+		strings.Contains(body, "catch (_err) {\n      continue") {
+		t.Errorf("migration %s must not unconditionally swallow errors in the recompute loop",
+			dropLodgingPHIMigration)
+	}
+}

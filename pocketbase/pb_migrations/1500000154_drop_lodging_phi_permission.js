@@ -35,6 +35,11 @@
  * answers TRUE and iterating it yields BYTE VALUES, not permissions: writing
  * that straight back turns ["bunking.manage"] into [34,98,117,...].
  * `getString()` is the honest accessor — it returns the stored JSON text.
+ *
+ * Filtered to strings rather than trusting the parsed shape: a hand-edited
+ * or corrupted `permissions` array containing a non-string entry would
+ * otherwise flow straight into `recomputeCachedPermissions`'s `seen` map and
+ * mint a garbage permission key on every affected user's cached blob.
  */
 function readRolePermissions(role) {
   const text = role.getString("permissions")
@@ -43,16 +48,32 @@ function readRolePermissions(role) {
   }
   try {
     const parsed = JSON.parse(text)
-    return Array.isArray(parsed) ? parsed : []
+    return Array.isArray(parsed) ? parsed.filter((p) => typeof p === "string") : []
   } catch (_err) {
     return []
   }
 }
 
+/**
+ * True when `err` is PocketBase's "no matching record" not-found error.
+ *
+ * Distinguishing this from every other failure matters: a query that fails
+ * for a REAL reason (a malformed filter, a corrupted index, the DB gone
+ * away) must not be swallowed and treated the same as "this role/user
+ * legitimately does not exist yet" -- that would let the migration report
+ * success while silently doing less than it claims.
+ */
+function isNotFoundError(err) {
+  return String(err).indexOf("no rows in result set") !== -1
+}
+
 function findRoleBySlug(app, slug) {
   try {
     return app.findFirstRecordByFilter("roles", "slug = {:slug}", { slug: slug })
-  } catch (_err) {
+  } catch (err) {
+    if (!isNotFoundError(err)) {
+      throw err
+    }
     // A deployment that never seeded the system roles is not a reason to fail
     // the rule change, which is the load-bearing half of this migration.
     return null
@@ -96,7 +117,10 @@ function recomputeCachedPermissions(app, roleId) {
       let held
       try {
         held = app.findRecordById("roles", m.getString("role"))
-      } catch (_err) {
+      } catch (err) {
+        if (!isNotFoundError(err)) {
+          throw err
+        }
         continue
       }
       for (const p of readRolePermissions(held)) {
@@ -107,7 +131,13 @@ function recomputeCachedPermissions(app, roleId) {
     let user
     try {
       user = app.findRecordById("_pb_users_auth_", userId)
-    } catch (_err) {
+    } catch (err) {
+      if (!isNotFoundError(err)) {
+        throw err
+      }
+      // Orphaned user_roles row: the membership survives a deleted user.
+      // Confirmed against a copy of prod (three such rows on bunking-staff),
+      // where this is the ONLY error shape this loop has ever produced.
       continue
     }
     user.set("cached_permissions", Object.keys(seen).sort())
