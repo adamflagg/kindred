@@ -884,7 +884,7 @@ func TestGetDailySyncJobsStrandedAssignmentCleanupOrdering(t *testing.T) {
 }
 
 // TestCamperHistoryServiceFullyRemoved pins the removal of the camper_history table and its
-// writer (see #2301): the orchestrator must not schedule, register, or advertise a
+// writer (see #2369): the orchestrator must not schedule, register, or advertise a
 // "camper_history" job through any path a caller could reach it by. A regression here means
 // either the collection got resurrected in the daily/unified job lists with nothing left to
 // write to it, or the old registration silently survived after the table was already gone.

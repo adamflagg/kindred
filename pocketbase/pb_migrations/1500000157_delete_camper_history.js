@@ -2,7 +2,7 @@
 /**
  * Migration: drop the `camper_history` collection.
  * Dependencies: 1500000033 (created it), 1500000108 (renamed the `training`
- * session_type value to `scit` on it). See kindred#2301.
+ * session_type value to `scit` on it). See kindred#2369.
  *
  * WHAT THE TABLE WAS. A denormalized, computed camper-history table: one row
  * per person/session/year, pre-joined from attendees + persons + bunk
@@ -11,7 +11,7 @@
  * Written by pocketbase/sync/camper_history.go and exported to the
  * "{year}-camper-history" Google Sheets tab.
  *
- * WHY IT IS SAFE TO DROP. An audit for kindred#2301 confirmed zero live
+ * WHY IT IS SAFE TO DROP. An audit for kindred#2369 confirmed zero live
  * consumers outside the writer's own blast radius: no product surface, API
  * endpoint, UI component, reporting query, or solver path reads this
  * collection, and no other collection carries a schema relation into it. The

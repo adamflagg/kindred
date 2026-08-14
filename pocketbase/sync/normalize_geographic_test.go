@@ -2372,7 +2372,7 @@ func newNormalizeGeographicSyncTestApp(t *testing.T) core.App {
 		}
 	}
 
-	// camper_history is gone (see #2301) -- Sync() must reach the persons-normalized
+	// camper_history is gone (see #2369) -- Sync() must reach the persons-normalized
 	// step and the sweep without that collection existing at all.
 	mappings := core.NewBaseCollection("normalized_mappings")
 	for _, f := range []string{
