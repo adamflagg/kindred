@@ -368,9 +368,9 @@ describe('fetchHouseholdMedical', () => {
     const mockFetch = vi.fn().mockResolvedValue({
       ok: false,
       status: 403,
-      json: async () => ({ detail: 'Permission required: lodging.phi' }),
+      json: async () => ({ detail: 'Permission required: bunking.manage' }),
     })
 
-    await expect(fetchHouseholdMedical(mockFetch, 2026, 2000001)).rejects.toThrow(/lodging\.phi/)
+    await expect(fetchHouseholdMedical(mockFetch, 2026, 2000001)).rejects.toThrow(/bunking\.manage/)
   })
 })

@@ -123,7 +123,7 @@ export function useHouseholdJourney(householdCmId: number | null) {
 
 /**
  * PHI. Deliberately opt-in: `enabled` is false unless the caller both holds
- * `lodging.phi` and has a household to look up, so the narrative is never
+ * `bunking.manage` and has a household to look up, so the narrative is never
  * fetched speculatively and never sits in the query cache for someone who
  * only ever looked at the roster.
  *
@@ -133,10 +133,12 @@ export function useHouseholdJourney(householdCmId: number | null) {
  * mount acceptable. `staleTime: 0, gcTime: 0` is what keeps this honest: the
  * narrative leaves the cache the moment the panel closes.
  *
- * `lodging.phi` is held by admins and the Bunking Staff role. The roster
- * itself is readable by any authenticated user, so this 403s for most of the
- * people who can see the page it sits on — callers must degrade gracefully
- * rather than treat the error as a page failure.
+ * `bunking.manage` is held by admins and the Bunking Staff role (kindred#2312
+ * retargeted the gate from the now-removed `lodging.phi`, which gated only
+ * this one endpoint). The roster itself is readable by any authenticated
+ * user, so this 403s for most of the people who can see the page it sits on
+ * — callers must degrade gracefully rather than treat the error as a page
+ * failure.
  */
 export function useHouseholdMedical(year: number, householdCmId: number | null, enabled: boolean) {
   const { fetchWithAuth } = useApiWithAuth()

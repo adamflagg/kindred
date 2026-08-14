@@ -16,9 +16,9 @@ Measured against the production snapshot at `pocketbase/pb_data/data.db`, tree `
 
 **1. It is not random, and three issue bodies say it is.** `#2255` (and text echoed into
 siblings) warns that the collapse is "random-wins" and implies a flaky test. It is not.
-Every map range on this path (`family_camp_derived.go:684`, `:838`, `:994`,
+Every map range on this path (`family_camp_derived.go:827`, `:1003`, `:1163`,
 `lodging_requests.go:377`) affects only *output slice order*, never which value wins. The
-winner is fixed by the input slice, and `loadPersonCustomValues` sorts by `id` (`:523`,
+winner is fixed by the input slice, and `loadPersonCustomValues` sorts by `id` (`:661`,
 with a comment saying why). So the sites are **deterministic against a given database** —
 arbitrary, uncorrelated with recency or completeness, unstable across a delete/recreate of
 a source row, but *not* a per-run coin flip. A flakiness test will chase a ghost. The
@@ -56,39 +56,44 @@ silently · **OR** = boolean or, fail-safe · **join** = dedup-and-join, lossles
 No site anywhere counts its loss: no `Stats` field, no `slog.Warn`, no
 `lodging_ingest_issues` row, no conflict column, for any of the 20 lossy sites.
 
-### `processAdults` — `family_camp_derived.go:636-676`
+### `processAdults` — `family_camp_derived.go:779-818`
 
 Group key `(household, adult_slot)`. All arms are `Contains(fieldName, X) && field == ""`.
 
 | # | Column | Source cm_id | Rule | Notes |
 |---|---|---|---|---|
-| A1 | `first_name` | 34160 / 34161 | first-wins | documented at `:603-635`; holds a full typed name |
+| A1 | `first_name` | 34160 / 34161 | first-wins | documented at `:698-745`; holds a full typed name |
 | A2 | `last_name` | 216785 / 216786 | first-wins | dead — 0 conflicts, unfilled after 2022 |
-| A3 | `email` | 224590 / 224591 | `preferEmail` `:716-726` then first-wins | only site with a validity tie-break |
+| A3 | `email` | 224590 / 224591 | `preferEmail` `:852-867` then first-wins | only site with a validity tie-break |
 | A4 | `pronouns` | 241038 / 241039 | first-wins | |
 | A5 | `gender` | 34163 / 34164 | first-wins | |
 | A6 | `date_of_birth` | 34166 / 34167 | first-wins | **largest single loss in the file** |
 | A7 | `relationship_to_camper` | 36523 / 36524 | first-wins | **semantically void** once separated from the child it is relative to |
 | A8 | `name` | 219270-219272, 221653/221654 | none | household grain; `UNIQUE(year,household,field)` means no collapse occurs |
 
-### `processRegistrations` — `family_camp_derived.go:749-836`
+### `processRegistrations` — `family_camp_derived.go:907-997`
 
 Exact-name switch, `if reg.X == ""` guards.
 
-| # | Column | cm_id | Line | Rule |
-|---|---|---|---|---|
-| R1 | `share_cabin_preference` | 240877 | `:760-763` | first-wins — **resolved by a different rule than `share_cabin_gate` on the same row** |
-| R2 | `shared_cabin_modes_raw` | 263379 | `:764-767` | first-wins (no readers) |
-| R3 | `arrival_eta` | 36529 | `:768-771` | first-wins |
-| R4 | `special_occasions` | 60413 | `:772-775` | first-wins |
-| R5 | `goals` | 36526 | `:781-784` | first-wins (retired after 2024) |
-| R6 | `notes` | 36528 | `:785-788` | first-wins |
-| R7 | `cabin_assignment` | 218072 | `:734-745` | household grain, no collapse |
-| B1 | `needs_private_bathroom` | 274056 / 274053 | `:815-816` | **OR — correct** |
-| B2 | `has_infant` | 257248 | `:823-830` | **OR — correct** |
-| B3 | `needs_accommodation` | 223999 / 274057 / 274055 | `:794-795` | **OR — correct** |
-| B4 | `opt_out_vip` + `accommodation_is_mandatory` | 256927 / 256935 | `:796-814` + `:838-853` | **OR plus an order-independent blocker override.** The best-designed site on this path and the model for what a conflict rule should look like |
-| B5 | `needs_power` + bathroom arm | 256582 / 171577 / 256933 | `:817-822` | OR of two independently-tested needs via `classifyCPAPAnswer` — correct |
+**R1-R6 shipped 2026-08-13** — all six now **dedup-and-join**, in
+`family_camp_registration_text.go`. Five of the six are lossless; **R3 is not, and the
+difference matters** — see its row. The rules below are the historical first-wins ones they
+replaced; the rest of this section is unchanged and still current.
+
+| # | Column | cm_id | Rule |
+|---|---|---|---|
+| R1 | `share_cabin_preference` | 240877 | ~~first-wins~~ → **join**. Still **resolved by a different rule than `share_cabin_gate` on the same row**, deliberately: this is the RAW profile value, `share_cabin_gate` is the board's verdict and stays newest-wins in `CollapseToHouseholdGrain` |
+| R2 | `shared_cabin_modes_raw` | 263379 | ~~first-wins~~ → **join** (no readers) |
+| R3 | `arrival_eta` | 36529 | ~~first-wins~~ → **join, BOUNDED**. The column caps at 200 chars and 3 household-years join past it, so this remains a loss site — whole answers dropped at the cap, never half a sentence, and `slog.Warn`ed with the household and the count. It is the only *counted* loss anywhere on this path, and the only one of the six that can still discard an answer |
+| R4 | `special_occasions` | 60413 | ~~first-wins~~ → **join, collapsed as a PAIR per answering person** with `Family Camp-describe special occasion` (kindred#2276's live gap). The gate is a bare Yes/No — 3,665 No / 344 Yes — so the column used to store "Yes" and discard what the occasion was |
+| R5 | `goals` | 36526 | ~~first-wins~~ → **join** (retired after 2024) |
+| R6 | `notes` | 36528 | ~~first-wins~~ → **join** |
+| R7 | `cabin_assignment` | 218072 | household grain, no collapse (`:877-889`) |
+| B1 | `needs_private_bathroom` | 274056 / 274053 | **OR — correct** (`:980-981`) |
+| B2 | `has_infant` | 257248 | **OR — correct** (`:988-995`) |
+| B3 | `needs_accommodation` | 223999 / 274057 / 274055 | **OR — correct** (`:959-960`) |
+| B4 | `opt_out_vip` + `accommodation_is_mandatory` | 256927 / 256935 | **OR plus an order-independent blocker override** (`:961-977` + `:1008-1025`). The best-designed site on this path and the model for what a conflict rule should look like |
+| B5 | `needs_power` + bathroom arm | 256582 / 171577 / 256933 | OR of two independently-tested needs via `classifyCPAPAnswer`, `:982-987` — correct |
 
 ### `CollapseToHouseholdGrain` — `lodging_requests.go:291-390`
 
@@ -101,14 +106,14 @@ The only site with a written-down, reviewed policy.
 | C3 | `wants_near/with/similar_ages` | `:358-364` | OR — correct |
 | C4 | `share_eligibility`, `share_answers_conflict` | `:377-386` | derived from the collapsed set; the conflict flag is computed against the **winner only**, which is `#2269` |
 
-### `processMedical` — `family_camp_derived.go:981-992`, then `:994-1095`
+### `processMedical` — `family_camp_derived.go:1146-1159`, then `:1161-1262`
 
 | # | Column | Line | Rule |
 |---|---|---|---|
-| M0 | *the flatten itself* | `:986-988` | first-wins across **every** field name, before any per-field logic. **This one site is behind M1-M8** |
-| M1 | `cpap_info` | `:1010-1021` | first-wins, **plus a `break` at `:1015`** keeping the older camper generation (171577) over the newer (256582). Adult-CPAP (256933) is correctly additive |
-| M2-M5 | `physician_info`, `special_needs_info`, `allergy_info`, `dietary_info` | `:1024-1065` | each concatenates a **gate token with a narrative**, chosen independently by M0 — so the two halves can come from different people |
-| M6-M8 | `additional_info`, `bathroom_explain`, `accommodation_explain` | `:1068-1084` | first-wins |
+| M0 | *the flatten itself* | `:1155-1157` | first-wins across **every** field name, before any per-field logic. **This one site is behind M1-M8** |
+| M1 | `cpap_info` | `:1179-1192` | first-wins, **plus a `break` at `:1183`** keeping the older camper generation (171577) over the newer (256582). Adult-CPAP (256933) is correctly additive |
+| M2-M5 | `physician_info`, `special_needs_info`, `allergy_info`, `dietary_info` | `:1194-1232` | each concatenates a **gate token with a narrative**, chosen independently by M0 — so the two halves can come from different people |
+| M6-M8 | `additional_info`, `bathroom_explain`, `accommodation_explain` | `:1234-1253` | first-wins |
 
 ---
 
@@ -118,6 +123,11 @@ Method: group by `(year, household, cm_id)`. A group with ≥2 non-empty person 
 **sparsity** if all values are equal, **conflict** if ≥2 distinct. Only conflict is loss.
 Sparsity outruns conflict roughly **5:1** — most of the flatten is legitimately collapsing
 one parent's answer copied onto several children's forms.
+
+⚠️ Every figure in the rest of this section is the loss as it stood BEFORE R1-R6 shipped —
+the table immediately below, and the per-site list under it. Re-measure before quoting
+them: 810 of the discarded answers over all years, 195 of them since 2025, belong to R1-R6,
+and all but R3's share no longer go anywhere.
 
 | Cut | 2024 | 2025 | 2026 |
 |---|---|---|---|
@@ -129,9 +139,14 @@ Top sites by 2026 loss, rostered cut: DOB 92 · dietary narrative 75 · allergy 
 · email 60 · first name 57 · additional medical 44 · arrival ETA 38 · bathroom explain 22
 · gender 20 · relationship 17.
 
-Two sites are lossless and confirmed by measurement: **C2** (57-87 second answers *survive*
-per year that the other sites would discard) and the five OR sites **B1-B5** (0-6 conflicts
-a year, ORing to the fail-safe direction rather than discarding).
+Lossless sites, confirmed by measurement: **C2** (57-87 second answers *survive* per year
+that the other sites would discard), the five OR sites **B1-B5** (0-6 conflicts a year,
+ORing to the fail-safe direction rather than discarding), and — since 2026-08-13 —
+**R1, R2 and R4-R6**, which recover **382** of the 810 answers counted in the note above.
+The other **428** are R3's, and R3 is the one of the six that is not lossless:
+**`arrival_eta` is bounded rather than lossless**: 3 household-years across all years join
+past its 200-char column, and those answers are dropped at the cap and logged. It is the
+only site in the file that counts what it discards.
 
 ### Reproducing it
 
@@ -188,7 +203,7 @@ decision).
 |---|---|---|
 | `#2257` | tracking | Says "20 sites, three mechanisms". The catalogue finds **26 sites**; 20 lossy is right |
 | `#2255` | M0 + the M1 `break` | Anchors correct. Reproduced: 330 rows reading `"No; <narrative>"` (243 with 2+ answerers); 703 household-years hold both camper CPAP generations, **70 disagreeing** |
-| `#2274` | R1-R6 | **Every cell reproduced exactly:** Trans ETA 420/428/121 · Goals 240/247/0 · Anything else 73/75/29 · Share Cabins 30/30/24 · Shared Cabin 16/16/16 · Special occasions 14/14/5. One anchor wrong: "the person loop at `:757`" — it opens at **`:749`** |
+| `#2274` | R1-R6 | **SHIPPED 2026-08-13** (dedup-and-join, plus kindred#2276's occasion detail routed into R4). **Every cell had been reproduced exactly:** Trans ETA 420/428/121 · Goals 240/247/0 · Anything else 73/75/29 · Share Cabins 30/30/24 · Shared Cabin 16/16/16 · Special occasions 14/14/5. Its one wrong anchor — "the person loop at `:757`" — was corrected in the body before implementation; cite the **person loop inside `processRegistrations`** by name rather than by line, since it has moved three times in a week |
 | `#2275` | A1-A7 | **Reproduced exactly:** DOB 1,124 colliding / **1,151 lost** · first name 791/801 · gender 511/513 · relationship 315/323 · email 326 colliding. Its latent-collision warning is real and confirmed: `FAM CAMP Adult 1/2 Gender-Other` (240871/240872) and `FAM Camp Adult 1/2-Pronouns other` (241040/241042) would funnel into the `gender`/`pronouns` arms and carry zero values in every year |
 | `#2269` | C4 | Not a data-loss site — C1's collapse is correct; the review flag is what is missing. Correctly scoped |
 | `#2270` | ingest upsert, not a transform | Latent — 0 duplicate key groups today. The household twin at `household_custom_field_values.go:319-320`/`:329` has the identical shape |
@@ -202,7 +217,8 @@ changed. See `CLAUDE.md` §4.
 - **`#2255`** and the siblings echoing it — the "random-wins / flaky" framing. Replace with
   deterministic-but-arbitrary, and swap the proposed flakiness test for an
   order-independence probe.
-- **`#2274`** — anchor `:757` → `:749`; loss table omits the share fields.
+- **`#2274`** — anchor `:757` is wrong; cite the **person loop inside `processRegistrations`** by
+  name rather than by line, per the row above. Loss table omits the share fields.
 - **`#2275`** — add that slots 3-5 carry *no* attributes in any year, so the entire
   attribute loss is a slots-1-and-2 phenomenon.
 - **`#2276`** — claims three unrouted questions; the live population is **35** admitted-
@@ -216,7 +232,7 @@ changed. See `CLAUDE.md` §4.
 ## 5. Recommended order
 
 **Step 0 is a hard prerequisite and nothing can start without it:** widen
-`customValueEntry` (`family_camp_derived.go:437-445`) to carry the person PB id and cm id.
+`customValueEntry` (`family_camp_derived.go:560-583`) to carry the person PB id and cm id.
 It currently discards the person id at load, which is the root architectural cause of
 every site above. Both `#2255` and `#2275` name it.
 
@@ -227,10 +243,13 @@ every site above. Both `#2255` and `#2275` name it.
 3. **Re-derive the three existing tables** from the new person tables rather than from
    `personValues`, adding dedup-and-join plus a single `answer_conflicts` JSON array naming
    which fields disagreed — one column, not four booleans, so adding a field later needs no
-   migration. `#2255`, `#2274`, `#2275` all close here.
+   migration. `#2255` and `#2275` close here. **`#2274` did not wait for step 2** — it closed
+   2026-08-13 by adding the dedup-and-join directly to `processRegistrations`, since its six
+   columns are plain free text with no gate/narrative split to unpick. Step 0 shipped with it:
+   `customValueEntry` now carries `personPBID`.
 4. **Add `session_cm_id`** to `family_camp_registrations`. **The grain triple must move in
    one PR:** the write key in `upsertRegistrations`, the orphan key `ProcessedRegKeys`
-   (`family_camp_derived.go:34`), and `idx_fc_reg_unique` (migration `1500000035:288`).
+   (`family_camp_derived.go:45`), and `idx_fc_reg_unique` (migration `1500000035:288`).
    Then switch `fetch_family_camp_registrations(year)` → `(year, session_cm_id)`.
 5. **Point the weekend medical panel** at the per-answer table and wire
    `original_bunk_requests` into the roster — the two things staff asked for directly.
@@ -245,8 +264,9 @@ GUI, and any such edit is silently overwritten by the next upsert. And "every va
 recovered" is verified for **2026 only**: the 4,618 `family_camp_adults` rows for 2017-2021
 were written by an earlier code generation off person-level `Family Camp-P1/P2 *` fields
 (`name` empty, `first_name` populated), and whether today's `processAdults` reproduces them
-at all has **never been tested**. With the sweep unguarded, "does not reproduce" means
-"deletes".
+at all has **never been tested**. Until 2026-08-13 the sweep was unguarded, which made "does
+not reproduce" mean "deletes"; it now refuses instead (see §6), and a `DryRun` diff will say
+which of the two it is before anything is written.
 
 ---
 
@@ -302,15 +322,37 @@ at all has **never been tested**. With the sweep unguarded, "does not reproduce"
   | `fetch_household_registration_years` (`:455-476`) | `family_camp_registrations` | **all years** | **3,459** rows whose mere *existence* puts a year on a family's timeline |
   | `fetch_cabin_assignments_by_household_cm_id(year)` (`:597-650`) | `.cabin_assignment` | per traced year | 1,786 cabin strings — the only one this bullet named |
 
-  **Two hazards must be cleared before any replay wider than 2026:**
-  1. `family_camp_derived`'s three orphan sweeps are **unguarded**. `orphan_guard.go:54-58`
-     enumerates nine guarded services and this one is not among them;
-     `deleteOrphanedAdults`/`…Registrations`/`…Medical` (`:1606`, `:1640`, `:1672`) return a bare
-     `int`. It is the last unguarded sweep in the package, guarding exactly the three tables a
-     replay rewrites.
-  2. `DryRun` reports counts, not a diff. It fires at `:232` immediately after `processMedical`
-     and returns **before** any `preloadExisting*`, so a replay cannot be measured before it is
-     done — which is what makes the wider question unanswerable today rather than merely open.
+  **Two hazards had to be cleared before any replay wider than 2026. Both are CLEARED as of
+  2026-08-13** — they were the whole content of the first family-camp grain PR, and the
+  re-evaluation above is what they unblock:
+  1. ~~`family_camp_derived`'s three orphan sweeps are **unguarded**.~~ **Fixed.**
+     `deleteOrphanedAdults`/`…Registrations`/`…Medical` (`family_camp_derived.go:1957`, `:2003`,
+     `:2047`) now each construct an `OrphanSweepGuard` and return `(int, error)`, and `Sync`
+     joins the three refusals and returns them through `wrapOrphanSweepError`. It was the last
+     unguarded sweep in the package; `orphan_guard.go` now enumerates **ten** services that build
+     their own guard. `Rejected` is left unset, as it is for the other nine — this service counts
+     no rejections.
+  2. ~~`DryRun` reports counts, not a diff.~~ **Fixed.** The dry-run return moved past the three
+     `preloadExisting*` calls (`family_camp_derived.go:301`), and `reportDryRun` (`:1393`) now
+     records a per-table `DryRunDiff` — would-create / would-update / unchanged / would-delete,
+     judged by the SAME `needsUpdate` comparisons the writing path uses — on `s.DryRunDiff`, logs
+     it, and mirrors would-create / would-update / unchanged into `Stats`. It also reports
+     `GuardWouldRefuse`, so a diff promising 3,000 deletions says whether hazard 1's guard would
+     then block them. **A dry run still writes nothing**, which is pinned by test.
+
+     **`Stats.Deleted` is deliberately left at 0 on a dry run**, and would-delete is read off
+     `DryRunDiff` instead. `recordSyncRun` writes `Stats.Deleted` straight into
+     `sync_runs.deleted_count` with `status=completed`, and `sync_runs` carries no dry-run
+     marker, so mirroring it would leave one completed run row per dry run asserting deletions
+     that never happened — nine of them once the 2017-2025 dry runs below are done, and
+     afterwards indistinguishable from nine real sweeps. **Residual, unchanged by this work:**
+     a dry run still populates `created_count`, `updated_count` and `skipped_count` in
+     `sync_runs`. Those overstate a harmless act rather than a destructive one, and predate
+     this PR; recording any of it honestly needs a dry-run column or status on `sync_runs`,
+     which is a schema change and a separate decision.
+
+     What this does NOT do: it does not answer the replay question, it makes it answerable. Run
+     `family_camp_derived` with `DryRun` against 2017-2025 and read the diff before deciding.
 
 ---
 
@@ -327,9 +369,9 @@ Three things in it to correct before relying on it:
 
 1. **"Random / SQLite paging order" over-generalises.** It is accurate for
    `household_demographics.go:494`, which passes `""` for sort. It is **wrong** for
-   `family_camp_derived.go`, which sorts by `id` at `:523`. Deterministic-but-arbitrary,
+   `family_camp_derived.go`, which sorts by `id` at `:661`. Deterministic-but-arbitrary,
    as §1 above sets out. Its *remedy* — the order-independence probe — is right either way.
-2. **It counts `family_camp_derived.go:988` as one site.** That is site M0 here, and M0
+2. **It counts `family_camp_derived.go:1156` as one site.** That is site M0 here, and M0
    alone is behind M1-M8. The family-camp path holds **26** sites, 20 of them lossy. Its
    per-site figure and this file's path-wide figure are different measurements, not
    competing ones.

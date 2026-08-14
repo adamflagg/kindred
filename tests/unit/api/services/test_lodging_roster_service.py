@@ -2618,7 +2618,8 @@ class TestMedicalFlagsAndNarrative:
 
         The gated endpoint is unaffected: `get_household_medical` reads ONE
         household through `fetch_medical_for_household`, which is a different
-        repository call and is what `Permission.LODGING_PHI` actually guards.
+        repository call and is what `Permission.BUNKING_MANAGE` actually guards
+        (kindred#2312 retargeted the gate from the now-removed `lodging.phi`).
         """
         repo = _repo(
             fetch_session=FAMILY_SESSION,

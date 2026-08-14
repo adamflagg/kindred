@@ -59,6 +59,7 @@ import { Fragment } from 'react'
 
 import type { LodgingUnitRow, PartyChildRow, RosterPartyRow } from '../../types/lodging'
 import { displayCampMinderAge, displayTruncatedAge } from '../../utils/age'
+import { Tooltip } from '../ui/Tooltip'
 import { answersConflictDetail, SHARE_WORDING, shareWordingChip } from './boardLayout'
 import {
   attendingAdults as computeAttendingAdults,
@@ -135,67 +136,113 @@ function Chip({
    * The chip's per-party detail, e.g. "Answers disagree"'s account of which
    * two answers disagreed (kindred#2083).
    *
-   * ## Why this is still NOT `ui/Tooltip`, unlike every other chip on this surface
+   * ## Now a real `ui/Tooltip` trigger, not `sr-only` text (kindred#2250)
    *
    * kindred#2177 replaced the board's `title` attributes with a focusable
-   * tooltip, and this chip was named as the highest-leverage one. It
-   * couldn't have it: THE WHOLE CARD WAS A `<button>` (see `FamilyCard`
-   * below), and a `<button>`'s content model forbids interactive
-   * descendants. A nested trigger would have been invalid HTML and its tap
-   * would have bubbled straight into `onOpen`, opening the details panel
-   * instead of the bubble. `HouseholdRosterRow`'s in-button badges hit the
-   * identical wall and took the identical way out.
+   * tooltip everywhere except here: THE WHOLE CARD WAS A `<button>` at the
+   * time, and a `<button>`'s content model forbids interactive descendants
+   * — a nested trigger would have been invalid HTML and its tap would have
+   * bubbled straight into `onOpen`, opening the details panel instead of
+   * the bubble. `HouseholdRosterRow`'s in-button badges hit the identical
+   * wall and took the identical `sr-only` way out.
    *
    * kindred#2222 removed that wall — `FamilyCard`'s frame is a `<div>` now,
    * and this chip row is a SIBLING of the card's open control, not its
-   * child, so a real interactive trigger here would no longer be invalid
-   * HTML or steal the click. This chip still doesn't carry one: #2222 was
-   * the structural unblock, not the tooltip wiring — that's kindred#2229.
-   *
-   * So the detail is still REAL `sr-only` TEXT, exactly as kindred#2177
-   * shipped it. That is strictly more than the `title` it replaced gave —
-   * `title` on a `<span>` is not reliably announced at all — and it leaves
-   * one gap, honestly stated: a touch user still cannot summon this
-   * sentence. #2250 is what closes it -- #2229 was closed NOT_PLANNED, and
-   * the live issue is the desktop-visibility one staff actually reported.
+   * child — but left the trigger unwired. A real staff member could not
+   * read a real answer-conflict explanation because it was parked in
+   * `sr-only` text nothing on this desktop-only board ever announces
+   * (kindred#2250's field report). Same trigger primitive as
+   * `SharePreferenceChip`, the other chip on this surface with a per-party
+   * detail behind it: `Tooltip` when there's a `title` to show, a plain
+   * `<span>` when there isn't, so a chip with nothing to explain never
+   * becomes a dead stop in the tab order.
    */
   title?: string
 }) {
   const chipClassName = `inline-flex items-center rounded-full px-1.5 py-0.5 text-xs font-semibold whitespace-nowrap ${CHIP_TONE[tone]}`
-  return (
-    <span className={chipClassName}>
+  const content = (
+    <>
       {Icon && <Icon className="mr-0.5 h-3 w-3 flex-shrink-0" aria-hidden="true" />}
       {label}
-      {title !== undefined && title.length > 0 && <span className="sr-only"> — {title}</span>}
-    </span>
+    </>
   )
+  if (title !== undefined && title.length > 0) {
+    return (
+      <Tooltip content={title} className={chipClassName}>
+        {content}
+      </Tooltip>
+    )
+  }
+  return <span className={chipClassName}>{content}</span>
 }
 
 /**
- * A party's children as one `Name (age) · Name (age)` run.
+ * Youngest-first display order for one party's children (kindred#2254).
+ *
+ * A COPY, never the input array sorted in place: `party.children` is the
+ * frontend's own copy of the server's `_children_oldest_first` — the order
+ * `lodging_roster_service.py` computes once and every surface prints in —
+ * and `FamilyCardIdentity` reads it twice (this component is rendered for
+ * both the bold and grey lines from the SAME `children` array). Sorting in
+ * place on the first render would leave the second render, and any sibling
+ * component still holding that reference, reading an order nobody asked it
+ * to have.
+ *
+ * Unknown age (`null` — this field's already-converted form of the raw
+ * `0.0` sentinel the API collapses before the wire, kindred#2088) is not a
+ * fact about how young a child is, so it cannot take part in the
+ * comparison at all. A comparator naive enough to do
+ * `(a.age ?? 0) - (b.age ?? 0)` coerces it to 0 and sorts it FIRST under an
+ * ascending youngest-first order — the exact opposite of the intent, and
+ * wrong in a way that looks right. Unknown-age children go in their own
+ * trailing bucket instead, in their original relative order (`Array.sort`
+ * is stable, so ties within the known-age bucket keep theirs too) — the
+ * same place the server's own descending sort already puts them, since its
+ * raw-float sentinel sorts last there too.
+ */
+function youngestFirst(children: readonly PartyChildRow[]): PartyChildRow[] {
+  const known: PartyChildRow[] = []
+  const unknown: PartyChildRow[] = []
+  for (const child of children) {
+    ;(child.age === null || child.age === undefined ? unknown : known).push(child)
+  }
+  known.sort((a, b) => (a.age as number) - (b.age as number))
+  return [...known, ...unknown]
+}
+
+/**
+ * A party's children as one `Name (age) · Name (age)` run, youngest first.
  *
  * `FamilyCardIdentity` renders a child list TWICE — the household bold
  * identity line and the person-grain grey secondary line — and the two
  * differ only in which age formatter they call and what wraps them.
- * Everything else (the key strategy, the separator, the missing-age
- * omission, the blank-name fallback) is one decision each, and each was
- * drifting toward being made in two places: the blank-name fallback had to
- * be hand-applied to both copies in kindred#2074. Shared for the same reason
- * `FamilyCardPreview` shares `FamilyCardIdentity`/`FamilyCardChips`
- * (kindred#2222, formerly one `FamilyCardBody`) — so the copies cannot drift
- * apart (kindred#2153).
+ * Everything else (the ordering, the key strategy, the separator, the
+ * missing-age omission, the blank-name fallback) is one decision each, and
+ * each was drifting toward being made in two places: the blank-name
+ * fallback had to be hand-applied to both copies in kindred#2074. Shared
+ * for the same reason `FamilyCardPreview` shares
+ * `FamilyCardIdentity`/`FamilyCardChips` (kindred#2222, formerly one
+ * `FamilyCardBody`) — so the copies cannot drift apart (kindred#2153).
  *
  * The caller supplies the wrapper, because the two sites want different ones:
  * the bold line's span is also the non-household branch's, and the grey line's
  * exists only when there are children to put in it.
  *
- * A surname every child shares is lifted off the individual names and printed
- * ONCE, after the run — `Noah (8) · Ava (5) Johnson` (kindred#2180). The
- * derivation is `dedupeChildNames`, which reads the structured `last_name`
- * the API sends rather than splitting `display_name`: 4.7% of 2026's rostered
- * children have a surname containing a space and 10.6% a hyphenated one, and
- * both break under a token split. Nothing is lifted unless every child shares
- * it, so a two-surname household still prints in full.
+ * Youngest child leads because that is the one housing decisions turn on —
+ * crib, ground floor, proximity (kindred#2254's field report). This also
+ * decides which children the CSS `truncate` on the bold line clips away on
+ * a large family: the OLDEST now vanish first, the reverse of before. That
+ * is the deliberate trade the ordering makes, not an accident of it.
+ *
+ * A surname every child shares is lifted off the individual names and
+ * printed ONCE, after the run — `Ava (5) · Noah (8) Johnson` (kindred#2180).
+ * The derivation is `dedupeChildNames`, which reads the structured
+ * `last_name` the API sends rather than splitting `display_name`: 4.7% of
+ * 2026's rostered children have a surname containing a space and 10.6% a
+ * hyphenated one, and both break under a token split. Nothing is lifted
+ * unless every child shares it, so a two-surname household still prints in
+ * full. Fed the ALREADY-SORTED order below, not the raw prop, so the names
+ * returned line up index-for-index with what actually renders.
  *
  * @param formatAge - `displayTruncatedAge` on the bold line (whole years are
  *   the point of a similar-ages match), `displayCampMinderAge` on the grey one.
@@ -207,10 +254,11 @@ function ChildList({
   children: PartyChildRow[]
   formatAge: (age: number) => string
 }) {
-  const { names, sharedSurname } = dedupeChildNames(children)
+  const ordered = youngestFirst(children)
+  const { names, sharedSurname } = dedupeChildNames(ordered)
   return (
     <>
-      {children.map((child, index) => (
+      {ordered.map((child, index) => (
         <Fragment key={String(child.person_cm_id ?? index)}>
           {index > 0 && ' · '}
           {/* An age we do not have is omitted, never rendered as 0.
@@ -240,7 +288,7 @@ function ChildList({
  * on purpose: a `<button>`'s content model forbids an interactive
  * descendant, and the chip row is exactly where kindred#2177 left a
  * `sr-only` detail sentence waiting for a real tooltip trigger
- * (kindred#2229). Swapping the card's outer frame to a `<div>` while still
+ * (kindred#2250). Swapping the card's outer frame to a `<div>` while still
  * wrapping the WHOLE body in one inner `<button>` would just move that wall
  * one level deeper — nothing would actually be unblocked. Keeping the chip
  * row OUT of the button is what does.
@@ -404,9 +452,10 @@ function FamilyCardIdentity({ party }: { party: RosterPartyRow }) {
  *
  * A SIBLING of `FamilyCardIdentity`'s `<button>` (kindred#2222), never its
  * child — see that component's doc for why. The one chip carrying a `title`
- * today (`Chip`'s "Answers disagree" detail, kindred#2083) still renders it
- * as `sr-only` text, exactly as kindred#2177 shipped: this refactor
- * unblocks a real `ui/Tooltip` trigger here, it does not wire one in.
+ * today (`Chip`'s "Answers disagree" detail, kindred#2083) is a real
+ * `ui/Tooltip` trigger now, not `sr-only` text (kindred#2250) — the sibling
+ * relationship this refactor set up is what makes that trigger valid HTML
+ * here at all.
  */
 function FamilyCardChips({
   party,
@@ -531,7 +580,7 @@ export function FamilyCard({
 
   return (
     // NOT a `<button>` (kindred#2222) — a `<div>` frame, so the chip row
-    // below can host a real interactive trigger (kindred#2229) as a SIBLING
+    // below can host a real interactive trigger (kindred#2250) as a SIBLING
     // instead of a forbidden nested descendant.
     //
     // `ref`/`listeners` stay HERE, not on the inner control below: dnd-kit's

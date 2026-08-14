@@ -16,16 +16,20 @@
  * uses for parent request text, so a request reads the same wherever staff
  * meet one. It arrives pre-joined from three source fields and is never split.
  *
- * ## No lodging.phi gate
+ * ## No permission gate on request_text
  *
- * `request_text` has no permission check, while `MedicalNarrative` (rendered
- * beside it in `FamilyDetailsPanel`) is gated on `lodging.phi`. The split is
- * intentional: `bunking.manage` is the placement role, and `request_text` is a
- * placement input—why a household wants a particular cabin or setting is a
- * legitimate placement concern. The field is not modelled as PHI (it is free
- * text, not a structured medical disclosure), even though it sometimes contains
- * health detail. The gate on `MedicalNarrative` covers the field that IS
- * structured PHI: the formal medical accommodations questionnaire.
+ * `request_text` has no permission check at all, while `MedicalNarrative`
+ * (rendered beside it in `FamilyDetailsPanel`) is gated on `bunking.manage`.
+ * The split is intentional: `request_text` is a placement input — why a
+ * household wants a particular cabin or setting is a legitimate placement
+ * concern for any authenticated user to see, the same way the rest of the
+ * roster is. The field is not modelled as PHI (it is free text, not a
+ * structured medical disclosure), even though it sometimes contains health
+ * detail. `MedicalNarrative` covers the field that IS structured PHI: the
+ * formal medical accommodations questionnaire (kindred#2312: that gate used
+ * to be a separate `lodging.phi` permission, removed because RBAC here is
+ * screen-reduction, not a data boundary, and every sibling endpoint on the
+ * lodging router already gated on `bunking.manage`).
  */
 import { AlertCircle, MapPin, Users } from 'lucide-react'
 

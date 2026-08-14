@@ -286,7 +286,7 @@ type Stats struct {
 	// rejected record) and also the result of ProcessCompositeRecord's App.Save. Note this
 	// is processEnrollment, NOT its caller processAttendee — processAttendee returns only
 	// `invalid or missing PersonID` or nil, counting and swallowing processEnrollment's
-	// errors itself, so the outer site at attendees.go:113 is unambiguously a rejection.
+	// errors itself, so the outer site at attendees.go:121 is unambiguously a rejection.
 	// ProcessSimpleRecord is genuinely mixed too, returning `recordData missing required
 	// 'year' field` alongside its App.Save.
 	//
@@ -306,6 +306,19 @@ type Stats struct {
 	// guess, and the season exists to accumulate the distribution to set one from. Until the
 	// #2295 sites land the column records honest zeroes (kindred#2284).
 	Rejected int `json:"rejected,omitempty"`
+	// DuplicateStaffStatus counts staff records dropped because the same person appeared
+	// under more than one CampMinder status in one sync run (kindred#2267). staff.go's
+	// allStaffStatuses is iterated in a fixed order and the first status seen for a
+	// person-year wins that collapse; this counts every later duplicate it drops. Nothing
+	// but staff.go increments this.
+	//
+	// Deliberately its own field rather than folded into Skipped: base_sync.go's
+	// ProcessSimpleRecord no-change branch already increments Skipped for every unchanged
+	// row, so on a steady-state run Skipped is roughly the whole roster and a duplicate
+	// drop would be invisible inside it. Not persisted to the sync_runs table (sync_runs.go)
+	// -- that would need a new migration column, which is out of scope here; the counter
+	// still reaches the live Sync tab via this JSON field.
+	DuplicateStaffStatus int `json:"duplicate_staff_status,omitempty"`
 	// Expanded tracks many-to-many expansions (e.g., bunk plans)
 	Expanded int `json:"expanded,omitempty"`
 	// AlreadyProcessed tracks records already processed (for process_requests)

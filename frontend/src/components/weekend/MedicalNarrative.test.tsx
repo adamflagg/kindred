@@ -7,7 +7,7 @@
  * `has_medical_narrative` claimed was worth gating — a flag true for 745/745
  * households, so the button was on every row and gated nothing. With the flag
  * deleted, the honest rule is the one the API already enforces: a
- * `lodging.phi` holder sees the narrative, and everyone else sees no trace
+ * `bunking.manage` holder sees the narrative, and everyone else sees no trace
  * that one exists. Telling a non-holder "there is a disclosure you cannot
  * read" is the only thing the old copy achieved.
  *
@@ -55,19 +55,19 @@ beforeEach(() => {
 })
 
 describe('the permission gate', () => {
-  it('renders nothing for a user without lodging.phi', () => {
+  it('renders nothing for a user without bunking.manage', () => {
     medicalResult.value = { data: { allergy_info: 'Peanuts' }, isLoading: false, error: null }
     const { container } = render(<MedicalNarrative householdCmId={2000001} year={2026} />)
     expect(container.textContent).toBe('')
   })
 
-  it('does not fetch for a user without lodging.phi', () => {
+  it('does not fetch for a user without bunking.manage', () => {
     render(<MedicalNarrative householdCmId={2000001} year={2026} />)
     expect(useHouseholdMedical).toHaveBeenCalledWith(2026, 2000001, false)
   })
 
-  it('renders for a holder of lodging.phi', () => {
-    permissions.value = new Set(['lodging.phi'])
+  it('renders for a holder of bunking.manage', () => {
+    permissions.value = new Set(['bunking.manage'])
     medicalResult.value = { data: { allergy_info: 'Peanuts' }, isLoading: false, error: null }
     render(<MedicalNarrative householdCmId={2000001} year={2026} />)
     expect(screen.getByText('Peanuts')).toBeInTheDocument()
@@ -75,7 +75,7 @@ describe('the permission gate', () => {
 
   it('renders for an admin, who bypasses the permission check', () => {
     // An admin holds no explicit permissions; hasPermission short-circuits on
-    // is_admin, so this must render without lodging.phi in the set.
+    // is_admin, so this must render without bunking.manage in the set.
     isAdmin.value = true
     medicalResult.value = { data: { allergy_info: 'Peanuts' }, isLoading: false, error: null }
     render(<MedicalNarrative householdCmId={2000001} year={2026} />)
@@ -153,17 +153,17 @@ describe('the narrative itself', () => {
   })
 
   it('renders a failure inline rather than failing the page', () => {
-    // The roster is readable by any authenticated user while lodging.phi is
+    // The roster is readable by any authenticated user while bunking.manage is
     // held by admins and Bunking Staff, so a 403 here is a common case even
     // after the gate above — permissions can change between page load and
     // fetch. It must read as a sentence, not escalate to the ErrorBoundary.
     medicalResult.value = {
       data: undefined,
       isLoading: false,
-      error: new Error('Forbidden: lodging.phi required'),
+      error: new Error('Forbidden: bunking.manage required'),
     }
     render(<MedicalNarrative householdCmId={2000001} year={2026} />)
 
-    expect(screen.getByText('Forbidden: lodging.phi required')).toBeInTheDocument()
+    expect(screen.getByText('Forbidden: bunking.manage required')).toBeInTheDocument()
   })
 })

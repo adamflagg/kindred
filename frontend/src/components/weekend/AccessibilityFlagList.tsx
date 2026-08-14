@@ -19,6 +19,52 @@ export interface AccessibilityFlagListProps {
   flags: AccessibilityFlags
 }
 
+/**
+ * The four flags this file renders, as a filter vocabulary (kindred#2251).
+ * One definition feeding both the per-row chips below and
+ * `HouseholdRosterTable`'s roster-level filter, so a fifth need can never
+ * exist in one without the other. `accommodation_is_mandatory` only changes
+ * a CHIP's label/tone below — it plays no part in whether the accommodation
+ * need matches, since the filter asks "does this household need one" and a
+ * staff member can already see mandatory-vs-preferred once they open a row.
+ */
+export type NeedFilterKey = 'accommodation' | 'bathroom' | 'power' | 'infant'
+
+export interface NeedFilterOption {
+  key: NeedFilterKey
+  label: string
+  icon: typeof Bath
+  matches: (flags: AccessibilityFlags) => boolean
+}
+
+// eslint-disable-next-line react-refresh/only-export-components -- Shared filter vocabulary, not a component
+export const NEED_FILTER_OPTIONS: NeedFilterOption[] = [
+  {
+    key: 'accommodation',
+    label: 'Accommodation',
+    icon: Accessibility,
+    matches: (flags) => flags.needs_accommodation === true,
+  },
+  {
+    key: 'bathroom',
+    label: 'Private bathroom',
+    icon: Bath,
+    matches: (flags) => flags.needs_private_bathroom === true,
+  },
+  {
+    key: 'power',
+    label: 'Power',
+    icon: Plug,
+    matches: (flags) => flags.needs_power === true,
+  },
+  {
+    key: 'infant',
+    label: 'Infant in party',
+    icon: Baby,
+    matches: (flags) => flags.has_infant === true,
+  },
+]
+
 type Tone = 'red' | 'amber' | 'neutral'
 
 const TONE_ROW: Record<Tone, string> = {
