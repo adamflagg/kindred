@@ -382,6 +382,7 @@ func (s *BunkRequestsSync) purgeOrphanedRequests(year int) (map[int]bool, error)
 		for _, obr := range obrsByPerson[cmID] {
 			if err := s.App.Delete(obr); err != nil {
 				slog.Error("Failed to delete orphaned OBR", "person_cm_id", cmID, "error", err)
+				s.Stats.Errors++
 				continue
 			}
 			totalOBRs++
@@ -400,6 +401,7 @@ func (s *BunkRequestsSync) purgeOrphanedRequests(year int) (map[int]bool, error)
 		for _, br := range brs {
 			if err := s.App.Delete(br); err != nil {
 				slog.Error("Failed to delete orphaned BR", "person_cm_id", cmID, "error", err)
+				s.Stats.Errors++
 				continue
 			}
 			totalBRs++
@@ -476,6 +478,7 @@ func (s *BunkRequestsSync) purgeZombieBRs(year int, obrPersonIDs map[int]bool) e
 		for _, br := range brsByRequester[cmID] {
 			if err := s.App.Delete(br); err != nil {
 				slog.Error("Failed to delete zombie BR", "requester_cm_id", cmID, "error", err)
+				s.Stats.Errors++
 				continue
 			}
 			totalBRs++

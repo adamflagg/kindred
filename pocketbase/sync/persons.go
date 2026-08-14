@@ -397,11 +397,13 @@ func (s *PersonsSync) updateRelationsAndCleanup(
 	}
 
 	if err := s.deleteOrphans(year); err != nil {
-		slog.Warn("Failed to delete orphaned persons", "error", err)
+		slog.Error("Failed to delete orphaned persons", "error", err)
+		s.Stats.Errors++
 	}
 
 	if err := s.deleteHouseholdOrphans(year, processedHouseholdIDs); err != nil {
-		slog.Warn("Failed to delete orphaned households", "error", err)
+		slog.Error("Failed to delete orphaned households", "error", err)
+		s.Stats.Errors++
 	}
 
 	if err := s.ForceWALCheckpoint(); err != nil {
@@ -1610,6 +1612,7 @@ func (s *PersonsSync) deleteHouseholdOrphans(year int, processedIDs map[int]bool
 		if !processedIDs[int(cmID)] {
 			if err := s.App.Delete(record); err != nil {
 				slog.Error("Error deleting orphaned household", "cm_id", int(cmID), "error", err)
+				s.Stats.Errors++
 			} else {
 				deleted++
 			}
