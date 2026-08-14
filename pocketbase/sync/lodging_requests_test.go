@@ -453,8 +453,11 @@ func TestDeriveShareEligibility(t *testing.T) {
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
+			// Every case here models a single-source gate answer, so the
+			// union-across-siblings signal equals the (only) gate directly.
 			gotEligibility, gotSource, gotConflict := DeriveShareEligibility(
-				tc.gate, tc.formAnswered, tc.wantsWith, tc.similarAges, false)
+				tc.gate, tc.formAnswered, tc.wantsWith, tc.similarAges,
+				tc.gate == gateNoShare, tc.gate == gateYesShare)
 			if gotEligibility != tc.eligibility {
 				t.Errorf("eligibility = %q, want %q", gotEligibility, tc.eligibility)
 			}
@@ -479,7 +482,7 @@ func TestDeriveShareEligibility(t *testing.T) {
 func TestDeriveShareEligibilityIgnoresNearOnly(t *testing.T) {
 	t.Parallel()
 	// NEAR alone reaches this function as "form answered, wants_with false".
-	got, source, conflict := DeriveShareEligibility(gateMaybeMutual, true, false, false, false)
+	got, source, conflict := DeriveShareEligibility(gateMaybeMutual, true, false, false, false, false)
 	if got != shareEligibilityDeclined {
 		t.Errorf("NEAR-only eligibility = %q, want %q", got, shareEligibilityDeclined)
 	}
@@ -491,7 +494,7 @@ func TestDeriveShareEligibilityIgnoresNearOnly(t *testing.T) {
 	}
 
 	// WITH + NEAR together: the share request survives the proximity request.
-	got, _, _ = DeriveShareEligibility("", true, true, false, false)
+	got, _, _ = DeriveShareEligibility("", true, true, false, false, false)
 	if got != shareEligibilityNamed {
 		t.Errorf("WITH+NEAR eligibility = %q, want %q", got, shareEligibilityNamed)
 	}
@@ -593,13 +596,16 @@ func TestDeriveShareEligibilityConflictTracksTheVerdict(t *testing.T) {
 	t.Parallel()
 	// similarAges WITHOUT with -- the state ParseSharedCabinModes prevents.
 	// Reached directly, the verdict is open, so a no_share gate conflicts.
-	_, _, conflict := DeriveShareEligibility(gateNoShare, true, false, true, false)
+	// anySiblingDeclined=true stands in for "this no_share is the (only)
+	// sibling gate answer" -- see TestDeriveShareEligibilityConflictSurvivesALostSiblingDecline
+	// for the case where it lost recency instead.
+	_, _, conflict := DeriveShareEligibility(gateNoShare, true, false, true, true, false)
 	if !conflict {
 		t.Error("no_share gate against an open verdict is a conflict, whatever wantsWith says")
 	}
 
 	// And the mirror: a yes_share gate against an open verdict is agreement.
-	_, _, conflict = DeriveShareEligibility(gateYesShare, true, false, true, false)
+	_, _, conflict = DeriveShareEligibility(gateYesShare, true, false, true, false, true)
 	if conflict {
 		t.Error("yes_share gate against an open verdict agrees")
 	}
@@ -622,7 +628,7 @@ func TestDeriveShareEligibilityConflictTracksTheVerdict(t *testing.T) {
 func TestDeriveShareEligibilityFallbackFailsSafeOnASiblingDecline(t *testing.T) {
 	t.Parallel()
 	for _, gate := range []string{gateYesShare, gateMaybeMutual} {
-		eligibility, source, conflict := DeriveShareEligibility(gate, false, false, false, true)
+		eligibility, source, conflict := DeriveShareEligibility(gate, false, false, false, true, false)
 		if eligibility != shareEligibilityDeclined {
 			t.Errorf("gate %q with a declining sibling = %q, want %q",
 				gate, eligibility, shareEligibilityDeclined)
@@ -637,7 +643,7 @@ func TestDeriveShareEligibilityFallbackFailsSafeOnASiblingDecline(t *testing.T) 
 
 	// The form still wins. A declining sibling does NOT override an answered
 	// form -- that would invert the precedence rule.
-	eligibility, source, _ := DeriveShareEligibility(gateNoShare, true, true, false, true)
+	eligibility, source, _ := DeriveShareEligibility(gateNoShare, true, true, false, true, false)
 	if eligibility != shareEligibilityNamed || source != shareSourceForm {
 		t.Errorf("form answer = (%q, %q), want (%q, %q) -- the form outranks a sibling gate",
 			eligibility, source, shareEligibilityNamed, shareSourceForm)
@@ -672,5 +678,113 @@ func TestCollapseCarriesASiblingDeclineIntoTheFallback(t *testing.T) {
 	if a.ShareEligibility != shareEligibilityDeclined {
 		t.Errorf("eligibility = %q, want %q -- a recorded decline outranks a later yes in the fallback",
 			a.ShareEligibility, shareEligibilityDeclined)
+	}
+}
+
+// TestDeriveShareEligibilityConflictSurvivesALostSiblingDecline pins
+// kindred#2269: on the FORM-ANSWERED path, the conflict test was keyed off
+// `gate` -- the single answer that WON the recency race -- so a sibling's
+// no_share that lost to a later, more permissive gate never raised a
+// conflict, even though anySiblingDeclined already carried that fact into
+// this function. The parameter existed; the form-answered branch just never
+// read it.
+func TestDeriveShareEligibilityConflictSurvivesALostSiblingDecline(t *testing.T) {
+	t.Parallel()
+	// A sibling recorded no_share but lost the recency race to a gate that
+	// isn't even no_share or yes_share -- maybe_mutual -- and the form
+	// resolves to an open verdict. The lost decline must still surface.
+	_, _, conflict := DeriveShareEligibility(gateMaybeMutual, true, true, true, true, false)
+	if !conflict {
+		t.Error("a lost sibling no_share against an open verdict must still raise a conflict")
+	}
+
+	// Negative control: no sibling ever declined, so no conflict.
+	_, _, conflict = DeriveShareEligibility(gateMaybeMutual, true, true, true, false, false)
+	if conflict {
+		t.Error("no sibling declined, so nothing should conflict")
+	}
+}
+
+// TestDeriveShareEligibilityConflictSurvivesALostSiblingYesShare is the
+// mirror of the decline case above, and the half of kindred#2269 that had NO
+// signal at all: there was no anySiblingYesShare parameter to wire in. A
+// sibling recorded yes_share but lost the recency race -- again to
+// maybe_mutual, the gate that matches neither the old no_share arm nor the
+// old yes_share arm -- and the form declines. That lost yes_share must still
+// surface as a conflict.
+func TestDeriveShareEligibilityConflictSurvivesALostSiblingYesShare(t *testing.T) {
+	t.Parallel()
+	_, _, conflict := DeriveShareEligibility(gateMaybeMutual, true, false, false, false, true)
+	if !conflict {
+		t.Error("a lost sibling yes_share against a declined verdict must still raise a conflict")
+	}
+
+	// Negative control: no sibling ever said yes, so no conflict.
+	_, _, conflict = DeriveShareEligibility(gateMaybeMutual, true, false, false, false, false)
+	if conflict {
+		t.Error("no sibling said yes_share, so nothing should conflict")
+	}
+}
+
+// TestCollapseSurfacesALostSiblingGateAsAConflict is the household-grain
+// integration proof for kindred#2269: CollapseToHouseholdGrain must actually
+// compute and pass BOTH union signals, not just expose functions that could.
+// Both households below have a maybe_mutual gate WIN the recency race --
+// deliberately, since every observed miss had maybe_mutual as the winner, the
+// one gate the old two-arm expression never named on its own.
+func TestCollapseSurfacesALostSiblingGateAsAConflict(t *testing.T) {
+	t.Parallel()
+	const yesShare = "Yes, I would like to share a large camper cabin with a family that I " +
+		"request or with a family with similarly aged kid(s) that I can meet at Camp."
+	const noShare = "No, we would prefer not to share a camper cabin."
+	const maybeMutual = "Maybe, I am open to sharing a large camper cabin if a specific family " +
+		"that I know wants to share a cabin with my family."
+	const withNamed = "Share a cabin WITH a specific family that I know (please include names " +
+		"below and ensure that the request is mutual)."
+	older := time.Now().Add(-time.Hour)
+	newer := time.Now()
+
+	// hhA: one child said yes_share; a later sibling's maybe_mutual WINS the
+	// gate; the form (answered) declines. The lost yes_share must surface.
+	outA := CollapseToHouseholdGrain([]PersonRequestValue{
+		{HouseholdKey: hhA, FieldName: fieldShareCabinsRegistration, Value: yesShare, LastUpdated: older},
+		{HouseholdKey: hhA, FieldName: fieldShareCabinsRegistration, Value: maybeMutual, LastUpdated: newer},
+		{HouseholdKey: hhA, FieldName: fieldSharedCabinForm, Value: "No requests", LastUpdated: newer},
+	})
+	a := outA[hhA]
+	if a == nil {
+		t.Fatal("household A missing from collapse")
+	}
+	if a.Gate != gateMaybeMutual {
+		t.Fatalf("gate = %q, want %q -- winsGate's newest-wins resolution is unchanged by this fix",
+			a.Gate, gateMaybeMutual)
+	}
+	if a.ShareEligibility != shareEligibilityDeclined {
+		t.Fatalf("eligibility = %q, want %q", a.ShareEligibility, shareEligibilityDeclined)
+	}
+	if !a.ShareAnswersConflict {
+		t.Error("a sibling's yes_share lost the recency race to maybe_mutual but must still raise a conflict")
+	}
+
+	// hhB: the mirror -- one child said no_share; a later sibling's
+	// maybe_mutual WINS the gate; the form names a partner (shareable).
+	outB := CollapseToHouseholdGrain([]PersonRequestValue{
+		{HouseholdKey: hhB, FieldName: fieldShareCabinsRegistration, Value: noShare, LastUpdated: older},
+		{HouseholdKey: hhB, FieldName: fieldShareCabinsRegistration, Value: maybeMutual, LastUpdated: newer},
+		{HouseholdKey: hhB, FieldName: fieldSharedCabinForm, Value: withNamed, LastUpdated: newer},
+	})
+	b := outB[hhB]
+	if b == nil {
+		t.Fatal("household B missing from collapse")
+	}
+	if b.Gate != gateMaybeMutual {
+		t.Fatalf("gate = %q, want %q -- winsGate's newest-wins resolution is unchanged by this fix",
+			b.Gate, gateMaybeMutual)
+	}
+	if b.ShareEligibility != shareEligibilityNamed {
+		t.Fatalf("eligibility = %q, want %q", b.ShareEligibility, shareEligibilityNamed)
+	}
+	if !b.ShareAnswersConflict {
+		t.Error("a sibling's no_share lost the recency race to maybe_mutual but must still raise a conflict")
 	}
 }

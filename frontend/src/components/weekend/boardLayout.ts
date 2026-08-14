@@ -324,9 +324,13 @@ function wordingFor<T extends string>(
  * resolved verdict) directly rather than re-deriving either from `proximity`.
  * `DeriveShareEligibility` only ever sets `answers_conflict` true on its
  * form-answered branch (Go, `lodging_requests.go`), so whenever this returns
- * non-null, `eligibility` already IS the Family Camp form's own answer,
- * confirmed against 2026 production: all 16 conflicting households carry
- * `eligibility_source: 'form'`.
+ * non-null, `eligibility` already IS the Family Camp form's own answer --
+ * confirmed against 2026 production PRE-kindred#2269: all 16 conflicting
+ * households then carried `eligibility_source: 'form'`. That count is stale
+ * -- kindred#2269's union conflict test is a strict superset of the one it
+ * was measured against, so the true count can only be equal or higher now --
+ * but the invariant itself (raised only off the form-answered branch) is
+ * structural, not a property of the count, and still holds.
  *
  * That invariant is enforced only in a separate Go file, with nothing here
  * to catch a future change or a stale mid-`family_camp_derived`-recompute
@@ -337,6 +341,25 @@ function wordingFor<T extends string>(
  * can defend either way, matching `consentFlag`'s own rule of reporting only
  * what was recorded.
  *
+ * `preference` (`share_cabin_gate`) is the registration answer that WON
+ * `winsGate`'s newest-wins race, not necessarily the answer that disagrees
+ * (kindred#2269). `DeriveShareEligibility` raises the conflict off the UNION
+ * of every sibling's recorded no_share/yes_share answer, so a household can
+ * conflict with a WINNING gate that itself agrees with the resolved verdict
+ * -- the actual contradiction is a *different* sibling's answer that lost
+ * recency and never reaches this payload at all. This is not only a
+ * `maybe_mutual` shape: the winning gate can be `no_share` while eligibility
+ * is ALSO `declined` (a hidden lost `yes_share` sibling is the real
+ * conflict), or `yes_share` while eligibility is ALSO non-declined (a hidden
+ * lost `no_share` sibling). `preferenceDisagrees` below reruns the same
+ * two-arm test `DeriveShareEligibility` used before kindred#2269 introduced
+ * the union signals -- the one case where `preference` itself, taken alone,
+ * actually contradicts `eligibility`. Only then is it safe to name; every
+ * other case falls back to the generic "a registration answer on file
+ * disagrees" sentence, because naming an agreeing pair would have the
+ * tooltip look like agreement on a chip whose whole job is to say they
+ * don't.
+ *
  * Returns null when there is nothing to report: no conflict, or no share
  * block at all — the shape of an adult-weekend guest, who has no share
  * question to disagree on (`_build_person_parties` attaches no share data).
@@ -345,16 +368,22 @@ function wordingFor<T extends string>(
  */
 export function answersConflictDetail(share: ShareRequest | undefined): string | null {
   if (share?.answers_conflict !== true) return null
-  const registration = wordingFor(
-    REGISTRATION_ANSWER,
-    share.preference ?? 'unknown',
-    'not answered'
-  )
   const resolved = wordingFor(FORM_ANSWER, share.eligibility ?? 'unknown', 'not answered')
   const winner =
     share.eligibility_source === 'form'
       ? `the Family Camp form said ${resolved} — staff use the form's answer`
       : `the answer on file is ${resolved} — staff use that answer`
+  const preferenceDisagrees =
+    (share.preference === 'no_share' && share.eligibility !== 'declined') ||
+    (share.preference === 'yes_share' && share.eligibility === 'declined')
+  if (!preferenceDisagrees) {
+    return `A registration answer on file disagrees with this: ${winner}.`
+  }
+  const registration = wordingFor(
+    REGISTRATION_ANSWER,
+    share.preference ?? 'unknown',
+    'not answered'
+  )
   return `Registration said ${registration}; ${winner}.`
 }
 

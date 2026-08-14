@@ -883,10 +883,13 @@ describe('answersConflictDetail — which two answers disagreed, and which one w
   })
 
   it('names the registration answer, the form answer, and that the form wins', () => {
-    // Measured against production 2026 data: all 16 conflicting households
-    // resolved with `eligibility_source: 'form'` — DeriveShareEligibility only
-    // ever sets `answers_conflict` true on that branch, so `eligibility` here
-    // already IS the form's own verdict, not a re-derivation of it.
+    // Measured against production 2026 data pre-kindred#2269: all 16
+    // conflicting households then resolved with `eligibility_source: 'form'`
+    // — DeriveShareEligibility only ever sets `answers_conflict` true on that
+    // branch, so `eligibility` here already IS the form's own verdict, not a
+    // re-derivation of it. kindred#2269's union widening is a strict superset
+    // of the test that count was measured against, so the true count can only
+    // be equal or higher now; the form-answered-only invariant still holds.
     const detail = answersConflictDetail(
       shareBlock({
         preference: 'no_share',
@@ -932,10 +935,13 @@ describe('answersConflictDetail — which two answers disagreed, and which one w
   it('never attributes the resolved answer to the form when eligibility_source says otherwise', () => {
     // DeriveShareEligibility (Go, lodging_requests.go) only ever sets
     // `answers_conflict` true on its form-answered branch -- measured on 2026
-    // production, all 16 conflicting rows carry `eligibility_source: 'form'`.
-    // This reads the field rather than assuming it, so a future Go change or
-    // a stale mid-recompute row can never misattribute a registration-only
-    // verdict to a form the household may not have even returned.
+    // production pre-kindred#2269, all 16 conflicting rows then carried
+    // `eligibility_source: 'form'` (stale count; kindred#2269's union
+    // widening can only raise it, though the form-answered-only invariant
+    // still holds). This reads the field rather than assuming it, so a
+    // future Go change or a stale mid-recompute row can never misattribute a
+    // registration-only verdict to a form the household may not have even
+    // returned.
     const detail = answersConflictDetail(
       shareBlock({
         preference: 'no_share',
@@ -959,6 +965,71 @@ describe('answersConflictDetail — which two answers disagreed, and which one w
         eligibility: 'bogus' as unknown as ShareEligibilityValue,
       })
     ).not.toThrow()
+  })
+
+  it('does not name a maybe_mutual registration answer as the side that disagrees (kindred#2269)', () => {
+    // As of kindred#2269, DeriveShareEligibility raises answers_conflict off
+    // the UNION of every sibling's no_share/yes_share answer, not just the
+    // winning gate -- so a household can now conflict with maybe_mutual as
+    // the winning share_cabin_gate, because the actual contradiction is a
+    // sibling answer that lost the recency race and isn't in this payload at
+    // all. REGISTRATION_ANSWER['maybe_mutual'] is "only if a mutual match",
+    // which does not read as a disagreement against any resolved verdict --
+    // naming it here would have the chip pair two answers that look like
+    // they agree, on a tooltip whose whole job is to say they don't.
+    const detail = answersConflictDetail(
+      shareBlock({
+        preference: 'maybe_mutual',
+        eligibility: 'declined',
+        eligibility_source: 'form',
+        answers_conflict: true,
+      })
+    )
+    expect(detail).not.toBeNull()
+    expect(detail).not.toMatch(/only if a mutual match/i)
+    expect(detail).not.toMatch(/^Registration said/)
+    // Still says what actually won, so the chip stays informative.
+    expect(detail).toMatch(SHARE_WORDING.declined)
+  })
+
+  it('does not name a no_share registration answer that itself AGREES with the verdict (kindred#2269)', () => {
+    // The winning gate can be no_share while eligibility is ALSO declined --
+    // they agree -- and the union fix can still raise answers_conflict, because
+    // a DIFFERENT sibling recorded yes_share and lost the recency race (Go
+    // CollapseToHouseholdGrain's sawYesGate, consulted by DeriveShareEligibility
+    // regardless of which gate won). Pairing "will not share" against a
+    // declined verdict reads as agreement, not disagreement, so naming
+    // `preference` here would be exactly the misleading pairing kindred#2269
+    // exists to prevent -- the maybe_mutual case is not the only shape of it.
+    const detail = answersConflictDetail(
+      shareBlock({
+        preference: 'no_share',
+        eligibility: 'declined',
+        eligibility_source: 'form',
+        answers_conflict: true,
+      })
+    )
+    expect(detail).not.toBeNull()
+    expect(detail).not.toMatch(/will not share/i)
+    expect(detail).not.toMatch(/^Registration said/)
+    expect(detail).toMatch(SHARE_WORDING.declined)
+  })
+
+  it('does not name a yes_share registration answer that itself AGREES with the verdict (kindred#2269)', () => {
+    // Mirror of the no_share case above: the winning gate is yes_share and
+    // eligibility resolves to something other than declined -- they agree --
+    // while a hidden no_share sibling that lost recency is the real conflict.
+    const detail = answersConflictDetail(
+      shareBlock({
+        preference: 'yes_share',
+        eligibility: 'open',
+        eligibility_source: 'form',
+        answers_conflict: true,
+      })
+    )
+    expect(detail).not.toBeNull()
+    expect(detail).not.toMatch(/open to sharing.*open to sharing/i)
+    expect(detail).not.toMatch(/^Registration said/)
   })
 })
 
