@@ -67,6 +67,14 @@ func expectedRejectSites() []rejectSite {
 		{"financial_transactions.go", "Invalid transaction cm_id"},
 		{"household_custom_field_values.go", "Invalid or missing field id in custom field value"},
 		{"person_custom_field_values.go", "Invalid or missing field id in custom field value"},
+		// kindred#2270: a second API entry for a (person|household, field_definition, year)
+		// already tracked this run. Today's API shape makes this latent -- CampMinder packs
+		// multi-selects into one delimited value string -- but before this guard the second
+		// entry silently collapsed onto the first (Skipped/Updated/Errors depending on
+		// timing) with nothing attributable. Same per-record upstream-shape rejection as the
+		// "Invalid or missing field id" pair directly above; belongs on the same counter.
+		{"household_custom_field_values.go", "Duplicate custom field value entry in this sync run, discarding"},
+		{"person_custom_field_values.go", "Duplicate custom field value entry in this sync run, discarding"},
 		{"person_tag_definitions.go", "Error transforming person tag definition"},
 		{"person_tag_definitions.go", "Invalid person tag definition name"},
 		{"persons.go", "Error transforming household"},
