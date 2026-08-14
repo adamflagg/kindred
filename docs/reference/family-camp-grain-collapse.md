@@ -245,8 +245,9 @@ GUI, and any such edit is silently overwritten by the next upsert. And "every va
 recovered" is verified for **2026 only**: the 4,618 `family_camp_adults` rows for 2017-2021
 were written by an earlier code generation off person-level `Family Camp-P1/P2 *` fields
 (`name` empty, `first_name` populated), and whether today's `processAdults` reproduces them
-at all has **never been tested**. With the sweep unguarded, "does not reproduce" means
-"deletes".
+at all has **never been tested**. Until 2026-08-13 the sweep was unguarded, which made "does
+not reproduce" mean "deletes"; it now refuses instead (see §6), and a `DryRun` diff will say
+which of the two it is before anything is written.
 
 ---
 
@@ -302,15 +303,26 @@ at all has **never been tested**. With the sweep unguarded, "does not reproduce"
   | `fetch_household_registration_years` (`:455-476`) | `family_camp_registrations` | **all years** | **3,459** rows whose mere *existence* puts a year on a family's timeline |
   | `fetch_cabin_assignments_by_household_cm_id(year)` (`:597-650`) | `.cabin_assignment` | per traced year | 1,786 cabin strings — the only one this bullet named |
 
-  **Two hazards must be cleared before any replay wider than 2026:**
-  1. `family_camp_derived`'s three orphan sweeps are **unguarded**. `orphan_guard.go:54-58`
-     enumerates nine guarded services and this one is not among them;
-     `deleteOrphanedAdults`/`…Registrations`/`…Medical` (`:1606`, `:1640`, `:1672`) return a bare
-     `int`. It is the last unguarded sweep in the package, guarding exactly the three tables a
-     replay rewrites.
-  2. `DryRun` reports counts, not a diff. It fires at `:232` immediately after `processMedical`
-     and returns **before** any `preloadExisting*`, so a replay cannot be measured before it is
-     done — which is what makes the wider question unanswerable today rather than merely open.
+  **Two hazards had to be cleared before any replay wider than 2026. Both are CLEARED as of
+  2026-08-13** — they were the whole content of the first family-camp grain PR, and the
+  re-evaluation above is what they unblock:
+  1. ~~`family_camp_derived`'s three orphan sweeps are **unguarded**.~~ **Fixed.**
+     `deleteOrphanedAdults`/`…Registrations`/`…Medical` (`family_camp_derived.go:1840`, `:1889`,
+     `:1934`) now each construct an `OrphanSweepGuard` and return `(int, error)`, and `Sync`
+     joins the three refusals and returns them through `wrapOrphanSweepError`. It was the last
+     unguarded sweep in the package; `orphan_guard.go` now enumerates **ten** services that build
+     their own guard. `Rejected` is left unset, as it is for the other nine — this service counts
+     no rejections.
+  2. ~~`DryRun` reports counts, not a diff.~~ **Fixed.** The dry-run return moved past the three
+     `preloadExisting*` calls (`family_camp_derived.go:301`), and `reportDryRun` (`:1292`) now
+     records a per-table `DryRunDiff` — would-create / would-update / unchanged / would-delete,
+     judged by the SAME `needsUpdate` comparisons the writing path uses — on `s.DryRunDiff`, logs
+     it, and mirrors it into `Stats`. It also reports `GuardWouldRefuse`, so a diff promising
+     3,000 deletions says whether hazard 1's guard would then block them. **A dry run still
+     writes nothing**, which is pinned by test.
+
+     What this does NOT do: it does not answer the replay question, it makes it answerable. Run
+     `family_camp_derived` with `DryRun` against 2017-2025 and read the diff before deciding.
 
 ---
 
