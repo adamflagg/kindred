@@ -587,6 +587,14 @@ var retiredBusFieldReasons = map[string]string{
 	"BUS-phone number of person dropping off":  "abandoned predecessor of the routed \"-correct\" field; zero rows ever",
 }
 
+// Separate from the above: alt_pickup_2_name, alt_pickup_2_phone and
+// alt_pickup_1_relationship ARE routed (colAltPickup2Name, colAltPickup2Phone,
+// colAltPickup1Relationship all have switch cases below) but have never held
+// a value in any year 2017-2026. kindred#2272 decided KEEP AS-IS: dropping
+// them needs a migration and is only worth it inside a wider
+// camper_transportation cleanup, none of which is in flight. Do not touch
+// these three columns on their own.
+
 // classifyUnmappedBusFields splits per-field discard counts (fields
 // MapTransportationFieldToColumn returned "" for) into the eleven names
 // retiredBusFieldReasons already explains, and everything else. The second
