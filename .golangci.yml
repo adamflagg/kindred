@@ -66,6 +66,12 @@ linters:
         # and pinned by staff_vehicle_info_test.go.
         - typo: "licence"
           correction: "licence"
+        # CampMinder ships a staff-application custom field literally named
+        # "App-Weakensses" (kindred#2271). It is a retired-2025 field, matched
+        # literally in staff_applications.go's retiredAppFieldReasons and
+        # pinned by staff_applications_test.go, so the typo is data, not a bug.
+        - typo: "weakensses"
+          correction: "weakensses"
     lll:
       line-length: 120
     nakedret:

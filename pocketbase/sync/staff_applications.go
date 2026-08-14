@@ -230,6 +230,7 @@ func (s *StaffApplicationsSync) Sync(ctx context.Context) error {
 		"created", s.Stats.Created,
 		"updated", s.Stats.Updated,
 		"deleted", s.Stats.Deleted,
+		"skipped", s.Stats.Skipped,
 		"errors", s.Stats.Errors,
 	)
 
@@ -387,6 +388,11 @@ func (s *StaffApplicationsSync) loadPersonCustomValues(
 
 	// Aggregate to person level
 	result := make(map[string]*staffApplicationRecord)
+	// unmappedCounts tracks discard events: an App-*/Position Preference field
+	// accepted by isStaffApplicationField (the prefix test) that has no case in
+	// MapStaffAppFieldToColumn. Keyed by field name so the eventual log line
+	// names what was dropped, not just how much (kindred#2271).
+	unmappedCounts := make(map[string]int)
 
 	for _, entry := range entries {
 		staffID, hasStaff := personToStaff[entry.personID]
@@ -405,17 +411,44 @@ func (s *StaffApplicationsSync) loadPersonCustomValues(
 			result[key] = rec
 		}
 
-		mapAppFieldToRecord(rec, entry.fieldName, entry.value)
+		if column := mapAppFieldToRecord(rec, entry.fieldName, entry.value); column == "" {
+			unmappedCounts[entry.fieldName]++
+		}
+	}
+
+	if len(unmappedCounts) > 0 {
+		known, unexpected := classifyUnmappedAppFields(unmappedCounts)
+		total := 0
+		for _, n := range unmappedCounts {
+			total += n
+		}
+		s.Stats.Skipped += total
+
+		// One aggregated warning per run, not one per discarded value. unexpected
+		// is the bucket that actually needs a human: a name not in
+		// retiredAppFieldReasons is either a new CampMinder App-* field with no
+		// routing case yet, or a retired one this list has not been told about.
+		slog.Warn("Staff applications: discarding values for unmapped App-* fields",
+			"year", year,
+			"discard_events", total,
+			"known_unmapped_fields", known,
+			"unrecognized_fields", unexpected,
+		)
 	}
 
 	return result, nil
 }
 
-// mapAppFieldToRecord maps an App-* field to the record
-func mapAppFieldToRecord(rec *staffApplicationRecord, fieldName, value string) {
+// mapAppFieldToRecord maps an App-* field to the record. It returns the
+// column the value was written to, or "" if MapStaffAppFieldToColumn has no
+// case for fieldName. mapAppFieldToRecord is a package-level function with no
+// receiver and no access to Stats, so the caller -- loadPersonCustomValues'
+// aggregation loop, which does have the receiver -- is where an empty return
+// gets counted and logged instead of silently dropped (kindred#2271).
+func mapAppFieldToRecord(rec *staffApplicationRecord, fieldName, value string) string {
 	column := MapStaffAppFieldToColumn(fieldName)
 	if column == "" {
-		return
+		return ""
 	}
 
 	switch column {
@@ -591,9 +624,126 @@ func mapAppFieldToRecord(rec *staffApplicationRecord, fieldName, value string) {
 			rec.howLookAtCamp = value
 		}
 	}
+
+	return column
 }
 
-// MapStaffAppFieldToColumn maps CampMinder field names to database column names
+// retiredAppFieldReasons documents the 48 App-*/Position Preference custom
+// field definitions that MapStaffAppFieldToColumn deliberately has no case
+// for, out of the 88 isStaffApplicationField admits (kindred#2271). A name
+// landing in this map is a closed question, not an oversight; do not add a
+// routing case for one without first checking whether CampMinder actually
+// resumed collecting it.
+//
+// The 48 fall into seven groups, verified against the production snapshot:
+//   - 22 retired-2023 long-form essay prompts. The routing switch already
+//     carries a replacement set of 13 essay prompts, which is the strongest
+//     evidence the drop is deliberate.
+//   - 9 prior-camp-employment-history fields ("Previous Camp 1/2/3" x
+//     name/type/years). Camp 1 and Camp 2 carried data through 2023; all
+//     three Camp 3 fields are is_active = 0 and never populated.
+//   - 5 Reference #2 fields, never populated -- the five Reference #1
+//     equivalents ARE mapped, so the form only ever collected one reference.
+//   - 2 other retired-2023 gates (a COVID-policy yes/no, an "additional
+//     responsibilities" free text truncated upstream by CampMinder to 30
+//     chars with no trailing "...").
+//   - 2 retired-2025 fields (a "weaknesses" free text, misspelled upstream as
+//     "Weakensses"; a WILD-dates explanation whose companion gate IS mapped).
+//   - 4 never-populated leftovers.
+//   - 4 fields still receiving 2026 answers ("over 18", "JEDIreturner",
+//     "JEDInewstaff", "Work Camp Dates Kitchen Supervisor"). kindred#2271
+//     decided against adding columns for these: nothing downstream reads
+//     staff_applications (`grep -rn "staff_applications" bunking/ api/`
+//     exits 1), and a column empty on every historical row (2017-2025) would
+//     look like data that was lost rather than a question never asked.
+var retiredAppFieldReasons = map[string]string{
+	// Retired 2023 essay prompts (22)
+	"App-85th Birthday...":       "retired 2023 essay prompt, no values since 2023",
+	"App-Admire...":              "retired 2023 essay prompt, no values since 2023",
+	"App-Angry When...":          "retired 2023 essay prompt, no values since 2023",
+	"App-Camp Goals":             "retired 2023 essay prompt, no values since 2023",
+	"App-Center By...":           "retired 2023 essay prompt, no values since 2023",
+	"App-Friends Say...":         "retired 2023 essay prompt, no values since 2023",
+	"App-Future Profession...":   "retired 2023 essay prompt, no values since 2023",
+	"App-Great At...":            "retired 2023 essay prompt, no values since 2023",
+	"App-Hours Alone...":         "retired 2023 essay prompt, no values since 2023",
+	"App-Kids Are...":            "retired 2023 essay prompt, no values since 2023",
+	"App-Life Lesson":            "retired 2023 essay prompt, no values since 2023",
+	"App-Memorable Travel...":    "retired 2023 essay prompt, no values since 2023",
+	"App-Nature Moment...":       "retired 2023 essay prompt, no values since 2023",
+	"App-Original Because...":    "retired 2023 essay prompt, no values since 2023",
+	"App-Respond to Anger...":    "retired 2023 essay prompt, no values since 2023",
+	"App-Rustic Living...":       "retired 2023 essay prompt, no values since 2023",
+	"App-Spiritual Highlight...": "retired 2023 essay prompt, no values since 2023",
+	"App-Still Learning...":      "retired 2023 essay prompt, no values since 2023",
+	"App-Strengths":              "retired 2023 essay prompt, no values since 2023",
+	"App-When Alone...":          "retired 2023 essay prompt, no values since 2023",
+	"App-Work Ethic":             "retired 2023 essay prompt, no values since 2023",
+	"App-Worked Hardest At...":   "retired 2023 essay prompt, no values since 2023",
+
+	// Prior-camp employment history (9)
+	"App-Previous Camp 1":       "retired 2023 prior-camp-employment field, no values since 2023",
+	"App-Previous Camp 1 Type":  "retired 2023 prior-camp-employment field, no values since 2023",
+	"App-Previous Camp 1 Years": "retired 2023 prior-camp-employment field, no values since 2023",
+	"App-Previous Camp 2":       "retired 2023 prior-camp-employment field, no values since 2023",
+	"App-Previous Camp 2 Type":  "retired 2023 prior-camp-employment field, no values since 2023",
+	"App-Previous Camp 2 Years": "retired 2023 prior-camp-employment field, no values since 2023",
+	"App-Previous Camp 3":       "never populated -- Camp 3 slot of the retired prior-camp-employment block",
+	"App-Previous Camp 3 Type":  "never populated -- Camp 3 slot of the retired prior-camp-employment block",
+	"App-Previous Camp 3 Years": "never populated -- Camp 3 slot of the retired prior-camp-employment block",
+
+	// Reference #2 block, never populated (5)
+	"App-Ref 2 Email":               "never populated -- the form only ever collected one reference",
+	"App-Ref 2 Name":                "never populated -- the form only ever collected one reference",
+	"App-Ref 2 Phone Number":        "never populated -- the form only ever collected one reference",
+	"App-Ref 2 Relationship":        "never populated -- the form only ever collected one reference",
+	"App-Ref 2 Yrs of Acquaintance": "never populated -- the form only ever collected one reference",
+
+	// Other retired-2023 gates (2)
+	"App-COVID policies":             "retired 2023 field, no values since 2023",
+	"App-What additional responsibi": "retired 2023 field, name truncated to 30 chars upstream by CampMinder",
+
+	// Retired 2025 fields (2)
+	"App-Weakensses":         "retired 2025 field, no values since 2025 (misspelled upstream)",
+	"App-Wild Dates EXPLAIN": "retired 2025 field, no values since 2025",
+
+	// Never-populated leftovers (4)
+	"App-Assess specific strengths": "never populated in any year",
+	"App-Help Meet Goals":           "never populated in any year",
+	"App-Hobbies/Interests/Skills":  "never populated in any year",
+	"App-Relevant Courses":          "never populated in any year",
+
+	// Live 2026 fields, deliberately not given columns (4). See kindred#2271
+	// in the doc comment above for why: no downstream consumer.
+	"App-over 18":                            "live field, no downstream consumer",
+	"App-JEDIreturner":                       "live field, no downstream consumer",
+	"App-JEDInewstaff":                       "live field, no downstream consumer",
+	"App-Work Camp Dates Kitchen Supervisor": "live field, no downstream consumer",
+}
+
+// classifyUnmappedAppFields splits per-field discard counts (fields
+// MapStaffAppFieldToColumn returned "" for) into the 48 names
+// retiredAppFieldReasons already explains, and everything else. The second
+// bucket is the one an operator needs to act on: it is either a brand-new
+// CampMinder App-* field with no routing case yet, or a retired field this
+// map has not been told about.
+func classifyUnmappedAppFields(counts map[string]int) (known, unexpected map[string]int) {
+	known = make(map[string]int, len(counts))
+	unexpected = make(map[string]int, len(counts))
+	for name, n := range counts {
+		if _, ok := retiredAppFieldReasons[name]; ok {
+			known[name] = n
+		} else {
+			unexpected[name] = n
+		}
+	}
+	return known, unexpected
+}
+
+// MapStaffAppFieldToColumn maps CampMinder field names to database column
+// names. 48 App-*/Position Preference definitions are deliberately absent
+// from this switch -- see retiredAppFieldReasons immediately above for which
+// ones and why.
 func MapStaffAppFieldToColumn(fieldName string) string {
 	switch fieldName {
 	// Work availability

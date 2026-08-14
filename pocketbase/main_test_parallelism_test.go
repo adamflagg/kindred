@@ -162,6 +162,8 @@ var serialGroups = []struct {
 			"TestIsDuplicateStaffStatus",
 			"TestLoadPersonCustomValuesCountsAndLogsUnmappedFields",
 			"TestLoadPersonCustomValuesNoDiscardsMeansNoWarnLog",
+			"TestLoadPersonCustomValuesCountsAndLogsUnmappedAppFields",
+			"TestLoadPersonCustomValuesNoDiscardsMeansNoWarnAppLog",
 		},
 	},
 	{
