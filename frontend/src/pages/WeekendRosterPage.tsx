@@ -177,6 +177,26 @@ export default function WeekendRosterPage() {
 
   const selectedSession = sessions.find((session) => session.session_cm_id === selectedCmId)
 
+  // The switcher must not OFFER a cancelled weekend (kindred#2333) — it stays
+  // reachable by URL and still resolves `selectedSession` above from the full
+  // `sessions` list, this filters only what the picker lists as destinations.
+  //
+  // Two things this deliberately does NOT do:
+  //  - Filter on `status === 'active'`. `status` is staff-owned with no
+  //    CampMinder equivalent (kindred#2092); its absence IS "active" (the
+  //    migration seeds no row), so a positive check would empty the switcher
+  //    of every weekend nobody has ever touched the status page for.
+  //  - Drop `completed` weekends too. Staff plausibly switch into a finished
+  //    weekend to look something up, which isn't true of a cancelled one —
+  //    left visible on purpose, not an oversight.
+  //
+  // The weekend you are CURRENTLY viewing is the one exception: if it is
+  // itself cancelled it stays in this list, or the control would carry a
+  // `value` matching no `option` and read as "Weekend not found".
+  const switcherSessions = sessions.filter(
+    (session) => session.status !== 'cancelled' || session.session_cm_id === selectedCmId
+  )
+
   // Memoised on the payload, not left to run per render. The `?? []` fallbacks
   // are inside the memo on purpose: a bare `?? []` mints a new array every
   // render while the roster is loading, which would defeat every dependency
@@ -270,7 +290,10 @@ export default function WeekendRosterPage() {
                     : 'Weekend not found'
               }
               value={selectedSession ? weekendRef(selectedSession, sessions) : ''}
-              options={sessions.map((session) => ({
+              options={switcherSessions.map((session) => ({
+                // Disambiguated against the FULL list, not `switcherSessions`
+                // — a slug's uniqueness must not shift depending on which
+                // other weekends happen to be cancelled this season.
                 value: weekendRef(session, sessions),
                 label: shortWeekendName(session.name),
               }))}

@@ -356,6 +356,50 @@ describe('header', () => {
   })
 })
 
+describe('the switcher and cancelled weekends (kindred#2333)', () => {
+  // Staff-owned, no CampMinder equivalent (kindred#2092). Absence of a status
+  // row — every fixture above this point — and an explicit `'active'` both
+  // mean the same thing, and only `'cancelled'` is a claim.
+  const WOMENS_CANCELLED = { ...WOMENS, status: 'cancelled' }
+
+  it('omits a cancelled weekend from the switcher options', async () => {
+    sessionsQuery.data = { year: 2026, sessions: [FAMILY_CAMP_1, WOMENS_CANCELLED] }
+    renderPage()
+    await userEvent.click(screen.getByRole('button', { name: /Family Camp 1/ }))
+    const options = (await screen.findAllByRole('option')).map((o) => o.textContent)
+    expect(options).toEqual(['Family Camp 1'])
+  })
+
+  it('still offers a weekend with no status row, or an explicit active status', async () => {
+    const FAMILY_CAMP_1_ACTIVE = { ...FAMILY_CAMP_1, status: 'active' }
+    sessionsQuery.data = { year: 2026, sessions: [FAMILY_CAMP_1_ACTIVE, WOMENS] }
+    renderPage()
+    await userEvent.click(screen.getByRole('button', { name: /Family Camp 1/ }))
+    const options = (await screen.findAllByRole('option')).map((o) => o.textContent)
+    expect(options).toEqual(['Family Camp 1', "Women's Weekend"])
+  })
+
+  it('still lists the cancelled weekend you are currently viewing, in its own switcher', async () => {
+    // Otherwise the control has a `value` matching no `option` — the one case
+    // where a cancelled entry belongs in the list.
+    sessionsQuery.data = { year: 2026, sessions: [FAMILY_CAMP_1, WOMENS_CANCELLED] }
+    rosterQuery.data = { year: 2026, session_cm_id: 1000002, parties: [], units: [], counts: {} }
+    renderPage('1000002')
+    expect(screen.getByRole('button', { name: /Women's Weekend/ })).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: /Women's Weekend/ }))
+    const options = (await screen.findAllByRole('option')).map((o) => o.textContent)
+    expect(options).toEqual(['Family Camp 1', "Women's Weekend"])
+  })
+
+  it('still reaches a cancelled weekend directly by URL', () => {
+    sessionsQuery.data = { year: 2026, sessions: [FAMILY_CAMP_1, WOMENS_CANCELLED] }
+    rosterQuery.data = { year: 2026, session_cm_id: 1000002, parties: [], units: [], counts: {} }
+    renderPage('1000002')
+    expect(screen.queryByRole('button', { name: /Weekend not found/ })).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /Women's Weekend/ })).toBeInTheDocument()
+  })
+})
+
 describe('query states', () => {
   it('shows the loading state while the roster loads', () => {
     rosterQuery.data = undefined
