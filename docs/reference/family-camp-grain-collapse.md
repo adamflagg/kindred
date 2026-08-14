@@ -75,14 +75,18 @@ Group key `(household, adult_slot)`. All arms are `Contains(fieldName, X) && fie
 
 Exact-name switch, `if reg.X == ""` guards.
 
-| # | Column | cm_id | Line | Rule |
-|---|---|---|---|---|
-| R1 | `share_cabin_preference` | 240877 | `:760-763` | first-wins — **resolved by a different rule than `share_cabin_gate` on the same row** |
-| R2 | `shared_cabin_modes_raw` | 263379 | `:764-767` | first-wins (no readers) |
-| R3 | `arrival_eta` | 36529 | `:768-771` | first-wins |
-| R4 | `special_occasions` | 60413 | `:772-775` | first-wins |
-| R5 | `goals` | 36526 | `:781-784` | first-wins (retired after 2024) |
-| R6 | `notes` | 36528 | `:785-788` | first-wins |
+**R1-R6 shipped 2026-08-13** — all six now **dedup-and-join**, in
+`family_camp_registration_text.go`, and are lossless. The rules below are the historical
+first-wins ones they replaced; the rest of this section is unchanged and still current.
+
+| # | Column | cm_id | Rule |
+|---|---|---|---|
+| R1 | `share_cabin_preference` | 240877 | ~~first-wins~~ → **join**. Still **resolved by a different rule than `share_cabin_gate` on the same row**, deliberately: this is the RAW profile value, `share_cabin_gate` is the board's verdict and stays newest-wins in `CollapseToHouseholdGrain` |
+| R2 | `shared_cabin_modes_raw` | 263379 | ~~first-wins~~ → **join** (no readers) |
+| R3 | `arrival_eta` | 36529 | ~~first-wins~~ → **join**. The one with a column cap tight enough to matter — 200 chars, and 3 household-years join past it, so whole answers are dropped at the cap and logged |
+| R4 | `special_occasions` | 60413 | ~~first-wins~~ → **join, collapsed as a PAIR per answering person** with `Family Camp-describe special occasion` (kindred#2276's live gap). The gate is a bare Yes/No — 3,665 No / 344 Yes — so the column used to store "Yes" and discard what the occasion was |
+| R5 | `goals` | 36526 | ~~first-wins~~ → **join** (retired after 2024) |
+| R6 | `notes` | 36528 | ~~first-wins~~ → **join** |
 | R7 | `cabin_assignment` | 218072 | `:734-745` | household grain, no collapse |
 | B1 | `needs_private_bathroom` | 274056 / 274053 | `:815-816` | **OR — correct** |
 | B2 | `has_infant` | 257248 | `:823-830` | **OR — correct** |
@@ -129,9 +133,14 @@ Top sites by 2026 loss, rostered cut: DOB 92 · dietary narrative 75 · allergy 
 · email 60 · first name 57 · additional medical 44 · arrival ETA 38 · bathroom explain 22
 · gender 20 · relationship 17.
 
-Two sites are lossless and confirmed by measurement: **C2** (57-87 second answers *survive*
-per year that the other sites would discard) and the five OR sites **B1-B5** (0-6 conflicts
-a year, ORing to the fail-safe direction rather than discarding).
+Lossless sites, confirmed by measurement: **C2** (57-87 second answers *survive* per year
+that the other sites would discard), the five OR sites **B1-B5** (0-6 conflicts a year,
+ORing to the fail-safe direction rather than discarding), and — since 2026-08-13 —
+**R1-R6**, which recover the 810 answers counted in the row below.
+
+⚠️ The figures below are the loss as it stood BEFORE R1-R6 shipped. Re-measure before
+quoting them: 810 of the discarded answers over all years, 195 of them since 2025, belong
+to R1-R6 and no longer go anywhere.
 
 ### Reproducing it
 
@@ -188,7 +197,7 @@ decision).
 |---|---|---|
 | `#2257` | tracking | Says "20 sites, three mechanisms". The catalogue finds **26 sites**; 20 lossy is right |
 | `#2255` | M0 + the M1 `break` | Anchors correct. Reproduced: 330 rows reading `"No; <narrative>"` (243 with 2+ answerers); 703 household-years hold both camper CPAP generations, **70 disagreeing** |
-| `#2274` | R1-R6 | **Every cell reproduced exactly:** Trans ETA 420/428/121 · Goals 240/247/0 · Anything else 73/75/29 · Share Cabins 30/30/24 · Shared Cabin 16/16/16 · Special occasions 14/14/5. One anchor wrong: "the person loop at `:757`" — it opens at **`:749`** |
+| `#2274` | R1-R6 | **SHIPPED 2026-08-13** (dedup-and-join, plus kindred#2276's occasion detail routed into R4). **Every cell had been reproduced exactly:** Trans ETA 420/428/121 · Goals 240/247/0 · Anything else 73/75/29 · Share Cabins 30/30/24 · Shared Cabin 16/16/16 · Special occasions 14/14/5. One anchor wrong: "the person loop at `:757`" — it opens at **`:749`** |
 | `#2275` | A1-A7 | **Reproduced exactly:** DOB 1,124 colliding / **1,151 lost** · first name 791/801 · gender 511/513 · relationship 315/323 · email 326 colliding. Its latent-collision warning is real and confirmed: `FAM CAMP Adult 1/2 Gender-Other` (240871/240872) and `FAM Camp Adult 1/2-Pronouns other` (241040/241042) would funnel into the `gender`/`pronouns` arms and carry zero values in every year |
 | `#2269` | C4 | Not a data-loss site — C1's collapse is correct; the review flag is what is missing. Correctly scoped |
 | `#2270` | ingest upsert, not a transform | Latent — 0 duplicate key groups today. The household twin at `household_custom_field_values.go:319-320`/`:329` has the identical shape |
@@ -227,7 +236,10 @@ every site above. Both `#2255` and `#2275` name it.
 3. **Re-derive the three existing tables** from the new person tables rather than from
    `personValues`, adding dedup-and-join plus a single `answer_conflicts` JSON array naming
    which fields disagreed — one column, not four booleans, so adding a field later needs no
-   migration. `#2255`, `#2274`, `#2275` all close here.
+   migration. `#2255` and `#2275` close here. **`#2274` did not wait for step 2** — it closed
+   2026-08-13 by adding the dedup-and-join directly to `processRegistrations`, since its six
+   columns are plain free text with no gate/narrative split to unpick. Step 0 shipped with it:
+   `customValueEntry` now carries `personPBID`.
 4. **Add `session_cm_id`** to `family_camp_registrations`. **The grain triple must move in
    one PR:** the write key in `upsertRegistrations`, the orphan key `ProcessedRegKeys`
    (`family_camp_derived.go:34`), and `idx_fc_reg_unique` (migration `1500000035:288`).

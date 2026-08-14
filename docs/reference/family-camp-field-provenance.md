@@ -387,6 +387,7 @@ Known pairs in the housing set:
 | `Family Camp-CPAP` (171577) | `Family Medical-CPAP Explain` (171578) |
 | `Housing Accommodation` (274057) | `Housing Accommodation-Yes` (274058) |
 | `FAM CAMP-bathroom` (274056) | `Housing-Bathroom` (274059) |
+| `Family Camp-Special occasions` (60413) | `Family Camp-describe special occasion` |
 
 ### The splice: a gate and its explanation can survive from different children
 
@@ -413,6 +414,13 @@ derived columns have only ever been computed for 2026.
 **Design rule that follows:** a gate and its explain must stay bound to the same person
 through any transform. In a per-answer layer that is automatic. In any household rollup it
 has to be explicit — collapse the *pair*, never the two fields independently.
+
+The special-occasion pair is the first one collapsed that way (2026-08-13,
+`registrationText.specialOccasions` in `family_camp_registration_text.go`): the two fields
+are accumulated per answering person and deduplicated as one unit, so one parent's answer
+fanned onto three children still collapses to a single value while two members who each
+answered keep both explanations beside the gate that member gave. The other four pairs in
+the table above still collapse independently in `processMedical` — that is kindred#2255.
 
 ---
 

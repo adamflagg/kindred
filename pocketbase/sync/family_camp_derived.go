@@ -503,6 +503,21 @@ type customValueEntry struct {
 	householdPBID string
 	fieldName     string
 	value         string
+	// personPBID is WHO answered: the PocketBase id of the person the value
+	// hangs off, or "" for a household-partition value that has no answering
+	// person (kindred#2257 step 0).
+	//
+	// The load used to discard it, and that is the root architectural cause of
+	// every first-wins collapse in this file: a transform that cannot see who
+	// answered cannot keep a gate bound to the explanation the SAME person
+	// wrote, which is the design rule in
+	// docs/reference/family-camp-field-provenance.md section 4. processRegistrations
+	// is the first consumer -- it groups the special-occasion pair by person --
+	// and the remaining sites (kindred#2255, kindred#2275) need it next.
+	//
+	// Nothing may treat "" as an identity: several household values sharing the
+	// empty string are not one person, they are no person.
+	personPBID string
 	// lastUpdated is CampMinder's own edit timestamp for this value. Spec 4.1
 	// resolves a form-vs-registration conflict by comparing these, not by field
 	// name precedence, so it has to survive the load.
@@ -607,6 +622,7 @@ func (s *FamilyCampDerivedSync) loadPersonCustomValues(
 					householdPBID: householdID,
 					fieldName:     fieldName,
 					value:         value,
+					personPBID:    personID,
 					lastUpdated:   parsed,
 				})
 			}
@@ -814,6 +830,21 @@ func (s *FamilyCampDerivedSync) processRegistrations(
 		}
 	}
 
+	// Free-text answers are COLLECTED rather than assigned (kindred#2274). Six
+	// columns used to keep whichever member answered first and drop the rest;
+	// they now dedup and join, in family_camp_registration_text.go. The
+	// accumulators live beside regMap rather than on registrationData because
+	// that struct is the row to be written, not the working state.
+	textByHousehold := make(map[string]*registrationText)
+	textFor := func(householdPBID string) *registrationText {
+		if txt, ok := textByHousehold[householdPBID]; ok {
+			return txt
+		}
+		txt := &registrationText{}
+		textByHousehold[householdPBID] = txt
+		return txt
+	}
+
 	// Process person values for registration details
 	for _, v := range personValues {
 		if regMap[v.householdPBID] == nil {
@@ -824,37 +855,44 @@ func (s *FamilyCampDerivedSync) processRegistrations(
 
 		reg := regMap[v.householdPBID]
 
-		// Map fields (first non-empty wins)
+		// Free-text fields dedup and join; see registrationText. The RAW share
+		// columns are collected the same way as the rest and are NOT the
+		// board's resolved verdict -- share_cabin_gate / share_eligibility are,
+		// and CollapseToHouseholdGrain still resolves those by recency in
+		// applyHouseholdRequests below. Joining the raw profile values cannot
+		// disturb that: nothing reads these two columns except as provenance
+		// (api/services/lodging_repository.py:584 says so explicitly).
 		switch v.fieldName {
 		case fieldShareCabinsRegistration:
-			if reg.shareCabinPreference == "" {
-				reg.shareCabinPreference = v.value
-			}
+			textFor(v.householdPBID).shareCabinPreference.add(v.value)
 		case fieldSharedCabinForm:
-			if reg.sharedCabinModesRaw == "" {
-				reg.sharedCabinModesRaw = v.value
-			}
+			textFor(v.householdPBID).sharedCabinModesRaw.add(v.value)
 		case "Family Camp-Trans ETA":
-			if reg.arrivalETA == "" {
-				reg.arrivalETA = v.value
-			}
+			textFor(v.householdPBID).arrivalETA.add(v.value)
+		// The special-occasion gate and the sentence explaining it are ONE
+		// question in two fields, so they are accumulated per answering person
+		// and collapsed as a pair (kindred#2276, and the design rule in
+		// docs/reference/family-camp-field-provenance.md section 4). The gate is a
+		// bare Yes/No -- 3,665 No against 344 Yes lifetime -- so before this the
+		// column stored "Yes" and discarded what the occasion actually was.
 		case "Family Camp-Special occasions":
-			if reg.specialOccasions == "" {
-				reg.specialOccasions = v.value
-			}
+			textFor(v.householdPBID).occasionFor(v.personPBID).gate.add(v.value)
+		case "Family Camp-describe special occasion":
+			textFor(v.householdPBID).occasionFor(v.personPBID).describe.add(v.value)
 		// Retired after 2024 (645 values that year, 0 since) and no successor
 		// exists. Kept because spec 4.4 forbids auto-inferring retirement and
 		// because this plan backfills 2024. The passive "0 values this year"
 		// warning lives in lodging_field_mappings (migration 1500000122), which
 		// UpsertFieldMappingStatus in lodging_fields.go populates.
+		//
+		// Its sibling Family Camp-Goals Other is NOT routed and must not be:
+		// it died after 2018 (58 lifetime values), as did
+		// Family Camp-Share Cabin With after 2024 (867). kindred#2276 lists all
+		// three and only the occasion detail above is live.
 		case "Family Camp-Goals Attending":
-			if reg.goals == "" {
-				reg.goals = v.value
-			}
+			textFor(v.householdPBID).goals.add(v.value)
 		case "Family Camp-Anything else":
-			if reg.notes == "" {
-				reg.notes = v.value
-			}
+			textFor(v.householdPBID).notes.add(v.value)
 		// Three generations of the same question. FAM Camp-Accommodation retired
 		// after 2024 (5 values in 2025, 0 in 2026); Housing Accommodation is the
 		// Camper successor and Housing Accomodation (one m) the Adult twin. Any
@@ -905,6 +943,10 @@ func (s *FamilyCampDerivedSync) processRegistrations(
 	// Convert to slice
 	var result []*registrationData
 	for _, reg := range regMap {
+		// Collapse the collected free text last, so every household member has
+		// been seen. Doing it inside the loop above is what made it first-wins.
+		s.applyRegistrationText(reg, textByHousehold[reg.householdPBID])
+
 		// A blocker anywhere in the household outranks another member's opt-out
 		// (kindred#1874). Resolving it here rather than in the switch is what
 		// makes it order-independent: the switch sees one member at a time and
