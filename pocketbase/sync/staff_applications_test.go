@@ -366,10 +366,17 @@ func makeStaffApplicationsKey(personID, year int) string {
 	return makeStaffAppKey(personID, year)
 }
 
-// newStaffApplicationsTestApp builds the one collection deleteOrphans touches.
+// newStaffApplicationsTestApp builds the one collection deleteOrphans touches,
+// plus the four columns added for the live 2026 App-* fields (see #2271) so
+// that TestUpsertRecordsWritesTheFourLive2026Columns can read them back.
+//
 // Like newStaffVehicleTestApp, this fixture is LAXER than production -- it
-// carries only the fields the guard reads -- so a green test here is not
-// evidence that production writes validate.
+// carries only the fields the tests below read, not all 44 routed columns --
+// so a green test here is not evidence that production writes validate. It is
+// evidence that upsertRecords writes THESE columns under THESE names, which is
+// the part nothing else pins: record.Set on a name the collection does not
+// carry is a silent no-op in PocketBase, so a dropped or misspelled setter
+// leaves the whole package green.
 func newStaffApplicationsTestApp(t *testing.T) core.App {
 	t.Helper()
 	app, err := pbtests.NewTestApp()
@@ -382,6 +389,12 @@ func newStaffApplicationsTestApp(t *testing.T) core.App {
 	apps.Fields.Add(&core.TextField{Name: "staff"})
 	apps.Fields.Add(&core.NumberField{Name: "person_id"})
 	apps.Fields.Add(&core.NumberField{Name: "year"})
+	// Live 2026 fields (see #2271). Types mirror
+	// 1500000156_staff_applications_live_2026_fields.js.
+	apps.Fields.Add(&core.BoolField{Name: "over_18"})
+	apps.Fields.Add(&core.BoolField{Name: "work_dates_kitchen_supervisor"})
+	apps.Fields.Add(&core.TextField{Name: "jedi_returner", Max: 5000})
+	apps.Fields.Add(&core.TextField{Name: "jedi_new_staff", Max: 5000})
 	if saveErr := app.Save(apps); saveErr != nil {
 		t.Fatalf("save staff_applications: %v", saveErr)
 	}
@@ -881,6 +894,88 @@ func TestLoadPersonCustomValuesRoutesTheFourLive2026FieldsAndDoesNotSkipThem(t *
 	}
 	if logged := logs.String(); logged != "" {
 		t.Errorf("expected no discard log for fields that now route to columns, got:\n%s", logged)
+	}
+}
+
+// TestUpsertRecordsWritesTheFourLive2026Columns closes the last gap in the
+// #2271 routing chain. Extraction is pinned above (MapStaffAppFieldToColumn ->
+// mapAppFieldToRecord -> loadPersonCustomValues), but the value only becomes
+// data when upsertRecords writes it, and PocketBase's record.Set is a silent
+// no-op for a name the collection does not carry. So a dropped setter, or one
+// whose column name does not match the migration's, produces four columns that
+// are added, populated in memory and never persisted -- with every other test
+// in this package still green. Measured: deleting all four record.Set lines
+// left `go test ./sync/` passing before this test existed.
+//
+// The reciprocal risk this canNOT cover is a Go/migration name disagreement:
+// the fixture declares these column names by hand rather than replaying
+// pb_migrations. CI's Migration Smoke Test + PocketBase types freshness step
+// is what ties the migration's names to the checked-in
+// frontend/src/types/pocketbase-types.ts.
+func TestUpsertRecordsWritesTheFourLive2026Columns(t *testing.T) {
+	t.Parallel()
+
+	const (
+		colOver18            = "over_18"
+		colKitchenSupervisor = "work_dates_kitchen_supervisor"
+		colJediReturner      = "jedi_returner"
+		colJediNewStaff      = "jedi_new_staff"
+
+		wantReturner = "a returner reflection"
+		wantNewStaff = "a new-staff reflection"
+	)
+
+	app := newStaffApplicationsTestApp(t)
+	s := NewStaffApplicationsSync(app)
+
+	const (
+		personID = 9101
+		year     = 2026
+	)
+	records := map[string]*staffApplicationRecord{
+		makeStaffAppKey(personID, year): {
+			personID: personID,
+			year:     year,
+			// over18 true / workDatesKitchenSupervisor false is deliberate: a
+			// setter that never runs leaves a bool column false, so only the
+			// true one proves the write happened. The false one proves the
+			// column is real rather than swallowed as unknown custom data.
+			over18:                     true,
+			workDatesKitchenSupervisor: false,
+			jediReturner:               wantReturner,
+			jediNewStaff:               wantNewStaff,
+		},
+	}
+
+	created, updated, errCount := s.upsertRecords(
+		context.Background(), records, map[string]string{}, year)
+	if errCount != 0 {
+		t.Fatalf("upsertRecords reported %d errors, want 0", errCount)
+	}
+	if created != 1 || updated != 0 {
+		t.Fatalf("created=%d updated=%d, want created=1 updated=0", created, updated)
+	}
+
+	saved, err := app.FindRecordsByFilter("staff_applications", "year = 2026", "", 0, 0)
+	if err != nil {
+		t.Fatalf("re-query: %v", err)
+	}
+	if len(saved) != 1 {
+		t.Fatalf("%d rows persisted, want 1", len(saved))
+	}
+	rec := saved[0]
+
+	if !rec.GetBool(colOver18) {
+		t.Errorf("%s = false on the persisted row, want true", colOver18)
+	}
+	if rec.GetBool(colKitchenSupervisor) {
+		t.Errorf("%s = true on the persisted row, want false", colKitchenSupervisor)
+	}
+	if got := rec.GetString(colJediReturner); got != wantReturner {
+		t.Errorf("%s = %q, want %q", colJediReturner, got, wantReturner)
+	}
+	if got := rec.GetString(colJediNewStaff); got != wantNewStaff {
+		t.Errorf("%s = %q, want %q", colJediNewStaff, got, wantNewStaff)
 	}
 }
 
