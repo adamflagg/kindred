@@ -426,6 +426,282 @@ func TestStaffApplicationsDeleteOrphansRefusesEmptyComputedSet(t *testing.T) {
 	}
 }
 
+// unroutedAppFieldNames is the 48 App-* / Position Preference field names
+// admitted by isStaffApplicationField that have no case in
+// MapStaffAppFieldToColumn, byte-verified against the production snapshot at
+// kindred#2271: 22 retired-2023 essay prompts, 9 prior-camp-employment-history
+// fields (6 of which carried data through 2023, 3 of which -- the "Previous
+// Camp 3" trio -- never held a value), 5 Reference #2 fields that never held a
+// value (the form only ever collected one reference), 2 other retired-2023
+// gates, 2 retired-2025 fields, 4 never-populated leftovers, and 4 fields
+// still receiving 2026 answers that kindred#2271 decided against adding
+// columns for.
+var unroutedAppFieldNames = []string{
+	// Category A: retired 2023 essay prompts (22)
+	"App-85th Birthday...",
+	"App-Admire...",
+	"App-Angry When...",
+	"App-Camp Goals",
+	"App-Center By...",
+	"App-Friends Say...",
+	"App-Future Profession...",
+	"App-Great At...",
+	"App-Hours Alone...",
+	"App-Kids Are...",
+	"App-Life Lesson",
+	"App-Memorable Travel...",
+	"App-Nature Moment...",
+	"App-Original Because...",
+	"App-Respond to Anger...",
+	"App-Rustic Living...",
+	"App-Spiritual Highlight...",
+	"App-Still Learning...",
+	"App-Strengths",
+	"App-When Alone...",
+	"App-Work Ethic",
+	"App-Worked Hardest At...",
+	// Category B: prior-camp employment history (9)
+	"App-Previous Camp 1",
+	"App-Previous Camp 1 Type",
+	"App-Previous Camp 1 Years",
+	"App-Previous Camp 2",
+	"App-Previous Camp 2 Type",
+	"App-Previous Camp 2 Years",
+	"App-Previous Camp 3",
+	"App-Previous Camp 3 Type",
+	"App-Previous Camp 3 Years",
+	// Category C: Reference #2 block, never populated (5)
+	"App-Ref 2 Email",
+	"App-Ref 2 Name",
+	"App-Ref 2 Phone Number",
+	"App-Ref 2 Relationship",
+	"App-Ref 2 Yrs of Acquaintance",
+	// Category D: other retired-2023 gates (2)
+	"App-COVID policies",
+	"App-What additional responsibi",
+	// Category E: retired-2025 fields (2)
+	"App-Weakensses",
+	"App-Wild Dates EXPLAIN",
+	// Category F: never-populated leftovers (4)
+	"App-Assess specific strengths",
+	"App-Help Meet Goals",
+	"App-Hobbies/Interests/Skills",
+	"App-Relevant Courses",
+	// Category G: live 2026 fields, deliberately not given columns (4)
+	"App-over 18",
+	"App-JEDIreturner",
+	"App-JEDInewstaff",
+	"App-Work Camp Dates Kitchen Supervisor",
+}
+
+// TestRetiredAppFieldReasonsCoversExactlyTheFortyEightUnroutedNames pins
+// kindred#2271's inventory: 88 App-*/Position-Preference definitions
+// admitted, 40 routed, 48 with no case in MapStaffAppFieldToColumn. Every one
+// of those 48 must carry an explicit reason in retiredAppFieldReasons, and
+// MapStaffAppFieldToColumn must agree that none of them route anywhere -- or
+// the "known" bucket in classifyUnmappedAppFields would silently swallow a
+// field that actually needs a routing case added.
+func TestRetiredAppFieldReasonsCoversExactlyTheFortyEightUnroutedNames(t *testing.T) {
+	t.Parallel()
+
+	if len(retiredAppFieldReasons) != len(unroutedAppFieldNames) {
+		t.Errorf("retiredAppFieldReasons has %d entries, want %d -- a name was added or dropped without updating this test",
+			len(retiredAppFieldReasons), len(unroutedAppFieldNames))
+	}
+
+	for _, name := range unroutedAppFieldNames {
+		reason, ok := retiredAppFieldReasons[name]
+		if !ok {
+			t.Errorf("retiredAppFieldReasons is missing %q", name)
+			continue
+		}
+		if strings.TrimSpace(reason) == "" {
+			t.Errorf("retiredAppFieldReasons[%q] has an empty reason", name)
+		}
+		if col := MapStaffAppFieldToColumn(name); col != "" {
+			t.Errorf("%q is listed in retiredAppFieldReasons but MapStaffAppFieldToColumn routes it to %q -- "+
+				"remove it from the retired list or the switch, not both", name, col)
+		}
+	}
+}
+
+// TestClassifyUnmappedAppFields pins the split classifyUnmappedAppFields makes
+// between discards retiredAppFieldReasons already explains and any name that
+// is not on that list -- the second bucket is the one that should worry an
+// operator, because it means a new CampMinder App-* field showed up with no
+// routing case and no documented reason to leave it that way.
+func TestClassifyUnmappedAppFields(t *testing.T) {
+	t.Parallel()
+	counts := map[string]int{
+		"App-over 18":             3, // known -- live field, deliberately uncolumned
+		"App-Space Rocket Camper": 1, // not on any list
+	}
+
+	known, unexpected := classifyUnmappedAppFields(counts)
+
+	if got := known["App-over 18"]; got != 3 {
+		t.Errorf("known[%q] = %d, want 3", "App-over 18", got)
+	}
+	if _, leaked := unexpected["App-over 18"]; leaked {
+		t.Error("a known-unmapped field leaked into the unexpected bucket")
+	}
+	if got := unexpected["App-Space Rocket Camper"]; got != 1 {
+		t.Errorf("unexpected[%q] = %d, want 1", "App-Space Rocket Camper", got)
+	}
+	if _, leaked := known["App-Space Rocket Camper"]; leaked {
+		t.Error("a field with no retired-field reason must not land in the known bucket")
+	}
+}
+
+// TestMapAppFieldToRecordReturnsColumnWritten pins the return-value contract
+// kindred#2271 adds: mapAppFieldToRecord now reports which column (if any) it
+// wrote to, so its caller -- the aggregation loop in loadPersonCustomValues,
+// the only place with access to the receiver and therefore to Stats -- can
+// count and log an unmapped field instead of discarding it in silence.
+func TestMapAppFieldToRecordReturnsColumnWritten(t *testing.T) {
+	t.Parallel()
+
+	t.Run("mapped field returns its column and writes the value", func(t *testing.T) {
+		// wantColumn is a var, not a second "why_tawonga" literal, so this
+		// doesn't trip goconst (min-occurrences: 3) against the two switch
+		// cases in MapStaffAppFieldToColumn/mapAppFieldToRecord that already
+		// spell that column name.
+		const wantColumn = "why_tawonga"
+		rec := &staffApplicationRecord{}
+		got := mapAppFieldToRecord(rec, "App-Why Tawonga?", "because it's home")
+		if got != wantColumn {
+			t.Errorf("mapAppFieldToRecord returned %q, want %q", got, wantColumn)
+		}
+		if rec.whyTawonga != "because it's home" {
+			t.Errorf("value not written: whyTawonga = %q", rec.whyTawonga)
+		}
+	})
+
+	t.Run("unmapped field returns empty string and writes nothing", func(t *testing.T) {
+		rec := &staffApplicationRecord{}
+		got := mapAppFieldToRecord(rec, "App-over 18", "Yes")
+		if got != "" {
+			t.Errorf("mapAppFieldToRecord returned %q, want \"\"", got)
+		}
+	})
+}
+
+// TestLoadPersonCustomValuesCountsAndLogsUnmappedAppFields is the end-to-end
+// pin for kindred#2271's actual fix: before this, an App-* field accepted by
+// isStaffApplicationField but missing a case in MapStaffAppFieldToColumn was
+// discarded with no counter and no log line. It now must increment
+// Stats.Skipped once per discard and log the field name, split into the known
+// bucket (documented in retiredAppFieldReasons) and the unrecognized bucket (a
+// name this run has never been told about).
+//
+// Reuses newTransportValuesTestApp/addPersonCustomValue from
+// camper_transportation_test.go -- same package, same person_custom_values +
+// persons fixture, and loadPersonCustomValues here takes fieldNameMap and
+// personToStaff as plain maps rather than deriving them, so no staff
+// collection is needed.
+func TestLoadPersonCustomValuesCountsAndLogsUnmappedAppFields(t *testing.T) {
+	app := newTransportValuesTestApp(t)
+
+	personsCol, err := app.FindCollectionByNameOrId("persons")
+	if err != nil {
+		t.Fatalf("find persons: %v", err)
+	}
+	person := core.NewRecord(personsCol)
+	person.Set("cm_id", 8001)
+	if saveErr := app.Save(person); saveErr != nil {
+		t.Fatalf("save person: %v", saveErr)
+	}
+
+	const year = 2023
+	// One routed field (must still work), one known-unmapped field, and one
+	// field this run has never seen before (simulates a hypothetical new
+	// CampMinder App-* definition).
+	addPersonCustomValue(t, app, "fd_routed", person.Id, "because it's home", year)
+	addPersonCustomValue(t, app, "fd_retired", person.Id, "essay text", year)
+	addPersonCustomValue(t, app, "fd_novel", person.Id, "unexpected value", year)
+
+	fieldNameMap := map[string]string{
+		"fd_routed":  "App-Why Tawonga?",
+		"fd_retired": "App-Camp Goals",
+		"fd_novel":   "App-Space Rocket Camper",
+	}
+	personToStaff := map[int]string{8001: "staffpbid1"}
+
+	logs := captureSweepLogs(t)
+
+	s := NewStaffApplicationsSync(app)
+	records, err := s.loadPersonCustomValues(context.Background(), year, fieldNameMap, personToStaff)
+	if err != nil {
+		t.Fatalf("loadPersonCustomValues: %v", err)
+	}
+
+	key := makeStaffAppKey(8001, year)
+	rec, ok := records[key]
+	if !ok {
+		t.Fatalf("no record for key %q; got %d records", key, len(records))
+	}
+	if rec.whyTawonga != "because it's home" {
+		t.Errorf("routed field was not written: whyTawonga = %q, want %q", rec.whyTawonga, "because it's home")
+	}
+
+	if s.Stats.Skipped != 2 {
+		t.Errorf("Stats.Skipped = %d, want 2 -- one discard event each for the known-unmapped and the novel field",
+			s.Stats.Skipped)
+	}
+
+	logged := logs.String()
+	if !strings.Contains(logged, "App-Camp Goals") {
+		t.Errorf("known-unmapped field name missing from logs:\n%s", logged)
+	}
+	if !strings.Contains(logged, "App-Space Rocket Camper") {
+		t.Errorf("unrecognized field name missing from logs:\n%s", logged)
+	}
+	if !strings.Contains(logged, "level=WARN") {
+		t.Errorf("expected the discard to be logged at WARN level:\n%s", logged)
+	}
+	// The routed field must never appear as a discard.
+	if strings.Contains(logged, "App-Why Tawonga?") {
+		t.Errorf("a successfully routed field was logged as a discard:\n%s", logged)
+	}
+}
+
+// TestLoadPersonCustomValuesNoDiscardsMeansNoWarnAppLog proves the fix does
+// not spam every ordinary sync run: a year with nothing unmapped must not log
+// at all and must leave Stats.Skipped at zero.
+func TestLoadPersonCustomValuesNoDiscardsMeansNoWarnAppLog(t *testing.T) {
+	app := newTransportValuesTestApp(t)
+
+	personsCol, err := app.FindCollectionByNameOrId("persons")
+	if err != nil {
+		t.Fatalf("find persons: %v", err)
+	}
+	person := core.NewRecord(personsCol)
+	person.Set("cm_id", 8002)
+	if saveErr := app.Save(person); saveErr != nil {
+		t.Fatalf("save person: %v", saveErr)
+	}
+
+	const year = 2026
+	addPersonCustomValue(t, app, "fd_routed", person.Id, "because it's home", year)
+
+	fieldNameMap := map[string]string{"fd_routed": "App-Why Tawonga?"}
+	personToStaff := map[int]string{8002: "staffpbid2"}
+
+	logs := captureSweepLogs(t)
+
+	s := NewStaffApplicationsSync(app)
+	if _, err := s.loadPersonCustomValues(context.Background(), year, fieldNameMap, personToStaff); err != nil {
+		t.Fatalf("loadPersonCustomValues: %v", err)
+	}
+
+	if s.Stats.Skipped != 0 {
+		t.Errorf("Stats.Skipped = %d, want 0", s.Stats.Skipped)
+	}
+	if logged := logs.String(); logged != "" {
+		t.Errorf("expected no log output when nothing was discarded, got:\n%s", logged)
+	}
+}
+
 // TestStaffApplicationsDeleteOrphansStillSweepsGenuineOrphans proves the guard
 // did not disable orphan deletion for the normal case.
 func TestStaffApplicationsDeleteOrphansStillSweepsGenuineOrphans(t *testing.T) {
