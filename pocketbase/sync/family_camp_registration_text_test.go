@@ -83,9 +83,9 @@ func TestProcessRegistrationsJoinsDistinctFreeTextAnswers(t *testing.T) {
 			t.Parallel()
 
 			reg := oneRegistration(t, []customValueEntry{
-				{householdPBID: "hh_johnson", personPBID: "p_one",
+				{householdPBID: "hh_001", personPBID: "person_001",
 					fieldName: tc.field, value: "answer alpha"},
-				{householdPBID: "hh_johnson", personPBID: "p_two",
+				{householdPBID: "hh_001", personPBID: "person_002",
 					fieldName: tc.field, value: "answer beta"},
 			})
 
@@ -105,9 +105,9 @@ func TestProcessRegistrationsDedupsRepeatedAnswers(t *testing.T) {
 	t.Parallel()
 
 	reg := oneRegistration(t, []customValueEntry{
-		{householdPBID: "hh_johnson", personPBID: "p_one",
+		{householdPBID: "hh_001", personPBID: "person_001",
 			fieldName: "Family Camp-Trans ETA", value: "Friday around 4pm"},
-		{householdPBID: "hh_johnson", personPBID: "p_two",
+		{householdPBID: "hh_001", personPBID: "person_002",
 			fieldName: "Family Camp-Trans ETA", value: "  friday around 4PM "},
 	})
 
@@ -125,17 +125,17 @@ func TestProcessRegistrationsFreeTextIsOrderIndependent(t *testing.T) {
 	t.Parallel()
 
 	fixture := []customValueEntry{
-		{householdPBID: "hh_garcia", personPBID: "p_one",
+		{householdPBID: "hh_002", personPBID: "person_001",
 			fieldName: "Family Camp-Trans ETA", value: "Saturday morning"},
-		{householdPBID: "hh_garcia", personPBID: "p_two",
+		{householdPBID: "hh_002", personPBID: "person_002",
 			fieldName: "Family Camp-Trans ETA", value: "Friday night"},
-		{householdPBID: "hh_garcia", personPBID: "p_two",
+		{householdPBID: "hh_002", personPBID: "person_002",
 			fieldName: "Family Camp-Anything else", value: "We are driving up together"},
-		{householdPBID: "hh_garcia", personPBID: "p_one",
+		{householdPBID: "hh_002", personPBID: "person_001",
 			fieldName: "Family Camp-Special occasions", value: "Yes"},
-		{householdPBID: "hh_garcia", personPBID: "p_one",
+		{householdPBID: "hh_002", personPBID: "person_001",
 			fieldName: "Family Camp-describe special occasion", value: "A big birthday"},
-		{householdPBID: "hh_garcia", personPBID: "p_two",
+		{householdPBID: "hh_002", personPBID: "person_002",
 			fieldName: fieldSharedCabinForm, value: "Share a cabin with a specific family"},
 	}
 
@@ -162,9 +162,9 @@ func TestProcessRegistrationsRoutesTheSpecialOccasionDescription(t *testing.T) {
 	t.Parallel()
 
 	reg := oneRegistration(t, []customValueEntry{
-		{householdPBID: "hh_martinez", personPBID: "p_one",
+		{householdPBID: "hh_003", personPBID: "person_001",
 			fieldName: "Family Camp-Special occasions", value: "Yes"},
-		{householdPBID: "hh_martinez", personPBID: "p_one",
+		{householdPBID: "hh_003", personPBID: "person_001",
 			fieldName: "Family Camp-describe special occasion", value: "Our tenth anniversary"},
 	})
 
@@ -187,16 +187,16 @@ func TestProcessRegistrationsKeepsTheOccasionGateBoundToItsDescription(t *testin
 
 	reg := oneRegistration(t, []customValueEntry{
 		// Two people, each answering the pair for themselves.
-		{householdPBID: "hh_wilson", personPBID: "p_one",
+		{householdPBID: "hh_004", personPBID: "person_001",
 			fieldName: "Family Camp-Special occasions", value: "Yes"},
-		{householdPBID: "hh_wilson", personPBID: "p_one",
+		{householdPBID: "hh_004", personPBID: "person_001",
 			fieldName: "Family Camp-describe special occasion", value: "A big birthday"},
-		{householdPBID: "hh_wilson", personPBID: "p_two",
+		{householdPBID: "hh_004", personPBID: "person_002",
 			fieldName: "Family Camp-Special occasions", value: "Yes"},
-		{householdPBID: "hh_wilson", personPBID: "p_two",
+		{householdPBID: "hh_004", personPBID: "person_002",
 			fieldName: "Family Camp-describe special occasion", value: "First trip since a loss"},
 		// A third member answered only the gate, with the opposite answer.
-		{householdPBID: "hh_wilson", personPBID: "p_three",
+		{householdPBID: "hh_004", personPBID: "person_003",
 			fieldName: "Family Camp-Special occasions", value: "No"},
 	})
 
@@ -228,11 +228,11 @@ func TestProcessRegistrationsCapsAJoinAtTheColumnLimit(t *testing.T) {
 
 	long := strings.Repeat("a", 90)
 	reg := oneRegistration(t, []customValueEntry{
-		{householdPBID: "hh_brown", personPBID: "p_one",
+		{householdPBID: "hh_005", personPBID: "person_001",
 			fieldName: "Family Camp-Trans ETA", value: long},
-		{householdPBID: "hh_brown", personPBID: "p_two",
+		{householdPBID: "hh_005", personPBID: "person_002",
 			fieldName: "Family Camp-Trans ETA", value: strings.Repeat("b", 90)},
-		{householdPBID: "hh_brown", personPBID: "p_three",
+		{householdPBID: "hh_005", personPBID: "person_003",
 			fieldName: "Family Camp-Trans ETA", value: strings.Repeat("c", 90)},
 	})
 
@@ -259,9 +259,9 @@ func TestProcessRegistrationsIgnoresTheTwoRetiredQuestions(t *testing.T) {
 
 	s := NewFamilyCampDerivedSync(nil)
 	regs := s.processRegistrations(nil, []customValueEntry{
-		{householdPBID: "hh_lee", personPBID: "p_one",
-			fieldName: "Family Camp-Share Cabin With", value: "the Johnson family"},
-		{householdPBID: "hh_lee", personPBID: "p_one",
+		{householdPBID: "hh_006", personPBID: "person_001",
+			fieldName: "Family Camp-Share Cabin With", value: "a family we know"},
+		{householdPBID: "hh_006", personPBID: "person_001",
 			fieldName: "Family Camp-Goals Other", value: "some retired answer"},
 	})
 

@@ -76,14 +76,15 @@ Group key `(household, adult_slot)`. All arms are `Contains(fieldName, X) && fie
 Exact-name switch, `if reg.X == ""` guards.
 
 **R1-R6 shipped 2026-08-13** — all six now **dedup-and-join**, in
-`family_camp_registration_text.go`, and are lossless. The rules below are the historical
-first-wins ones they replaced; the rest of this section is unchanged and still current.
+`family_camp_registration_text.go`. Five of the six are lossless; **R3 is not, and the
+difference matters** — see its row. The rules below are the historical first-wins ones they
+replaced; the rest of this section is unchanged and still current.
 
 | # | Column | cm_id | Rule |
 |---|---|---|---|
 | R1 | `share_cabin_preference` | 240877 | ~~first-wins~~ → **join**. Still **resolved by a different rule than `share_cabin_gate` on the same row**, deliberately: this is the RAW profile value, `share_cabin_gate` is the board's verdict and stays newest-wins in `CollapseToHouseholdGrain` |
 | R2 | `shared_cabin_modes_raw` | 263379 | ~~first-wins~~ → **join** (no readers) |
-| R3 | `arrival_eta` | 36529 | ~~first-wins~~ → **join**. The one with a column cap tight enough to matter — 200 chars, and 3 household-years join past it, so whole answers are dropped at the cap and logged |
+| R3 | `arrival_eta` | 36529 | ~~first-wins~~ → **join, BOUNDED**. The column caps at 200 chars and 3 household-years join past it, so this remains a loss site — whole answers dropped at the cap, never half a sentence, and `slog.Warn`ed with the household and the count. It is the only *counted* loss anywhere on this path, and the only one of the six that can still discard an answer |
 | R4 | `special_occasions` | 60413 | ~~first-wins~~ → **join, collapsed as a PAIR per answering person** with `Family Camp-describe special occasion` (kindred#2276's live gap). The gate is a bare Yes/No — 3,665 No / 344 Yes — so the column used to store "Yes" and discard what the occasion was |
 | R5 | `goals` | 36526 | ~~first-wins~~ → **join** (retired after 2024) |
 | R6 | `notes` | 36528 | ~~first-wins~~ → **join** |
@@ -136,7 +137,10 @@ Top sites by 2026 loss, rostered cut: DOB 92 · dietary narrative 75 · allergy 
 Lossless sites, confirmed by measurement: **C2** (57-87 second answers *survive* per year
 that the other sites would discard), the five OR sites **B1-B5** (0-6 conflicts a year,
 ORing to the fail-safe direction rather than discarding), and — since 2026-08-13 —
-**R1-R6**, which recover the 810 answers counted in the row below.
+**R1, R2 and R4-R6**, which recover the 810 answers counted in the row below.
+**R3 (`arrival_eta`) is bounded rather than lossless**: 3 household-years across all years
+join past its 200-char column, and those answers are dropped at the cap and logged. It is
+the only site in the file that counts what it discards.
 
 ⚠️ The figures below are the loss as it stood BEFORE R1-R6 shipped. Re-measure before
 quoting them: 810 of the discarded answers over all years, 195 of them since 2025, belong
@@ -197,7 +201,7 @@ decision).
 |---|---|---|
 | `#2257` | tracking | Says "20 sites, three mechanisms". The catalogue finds **26 sites**; 20 lossy is right |
 | `#2255` | M0 + the M1 `break` | Anchors correct. Reproduced: 330 rows reading `"No; <narrative>"` (243 with 2+ answerers); 703 household-years hold both camper CPAP generations, **70 disagreeing** |
-| `#2274` | R1-R6 | **SHIPPED 2026-08-13** (dedup-and-join, plus kindred#2276's occasion detail routed into R4). **Every cell had been reproduced exactly:** Trans ETA 420/428/121 · Goals 240/247/0 · Anything else 73/75/29 · Share Cabins 30/30/24 · Shared Cabin 16/16/16 · Special occasions 14/14/5. One anchor wrong: "the person loop at `:757`" — it opens at **`:749`** |
+| `#2274` | R1-R6 | **SHIPPED 2026-08-13** (dedup-and-join, plus kindred#2276's occasion detail routed into R4). **Every cell had been reproduced exactly:** Trans ETA 420/428/121 · Goals 240/247/0 · Anything else 73/75/29 · Share Cabins 30/30/24 · Shared Cabin 16/16/16 · Special occasions 14/14/5. Its one wrong anchor — "the person loop at `:757`" — was corrected in the body before implementation; cite the **person loop inside `processRegistrations`** by name rather than by line, since it has moved three times in a week |
 | `#2275` | A1-A7 | **Reproduced exactly:** DOB 1,124 colliding / **1,151 lost** · first name 791/801 · gender 511/513 · relationship 315/323 · email 326 colliding. Its latent-collision warning is real and confirmed: `FAM CAMP Adult 1/2 Gender-Other` (240871/240872) and `FAM Camp Adult 1/2-Pronouns other` (241040/241042) would funnel into the `gender`/`pronouns` arms and carry zero values in every year |
 | `#2269` | C4 | Not a data-loss site — C1's collapse is correct; the review flag is what is missing. Correctly scoped |
 | `#2270` | ingest upsert, not a transform | Latent — 0 duplicate key groups today. The household twin at `household_custom_field_values.go:319-320`/`:329` has the identical shape |
