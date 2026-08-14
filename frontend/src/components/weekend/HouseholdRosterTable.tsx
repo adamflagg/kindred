@@ -24,13 +24,30 @@ import { attentionSections, indexUnitsByCode, resolvePartyUnit } from './rosterA
  * First season `needs_private_bathroom`/`needs_power` carry real signal.
  * family-camp-grain-campaign.md Trap 1 / decision D2: these are 2 of eight
  * columns the sync only started populating in 2026 — every earlier row reads
- * `false`, not "unknown". `needs_accommodation` and `has_infant` are excluded
- * on purpose: both are sourced from fields that existed in earlier seasons
- * too (an older "FAM Camp-Accommodation" generation, and the adult-weekend
- * infant question), so they carry real, if sparser, historical signal.
+ * `false`, not "unknown". `needs_accommodation` is excluded on purpose: it is
+ * sourced from a field that existed in earlier seasons too (an older "FAM
+ * Camp-Accommodation" generation), so it carries real, if sparser, historical
+ * signal.
+ *
+ * `infant`, by contrast, is IN this set (kindred#2251 ruling D18). In the
+ * production snapshot `has_infant` is `0` on all 3,923
+ * `family_camp_registrations` rows across all ten years 2017-2026, so
+ * `flags.has_infant` is false on every party the API can emit there and the
+ * chip lands on the zero-match empty state. The cause is not a 2026-only
+ * column the way bathroom/power are — the underlying raw field
+ * (`Adult-Infant`, cm_id 257248) is answered exclusively by
+ * `session_type='adult'` attendees, so on family weekends it is dead by
+ * construction, and every 2026 adult-weekend answer so far reads "No" or an
+ * unrelated write-in.
+ *
+ * Deliberately NOT stated as "no true row exists at any year": a local 2025
+ * replay derives exactly 3 true rows (all adult-session), and some dev
+ * databases carry one, so the banner copy below is scoped to the pre-2026
+ * seasons this set already gates on rather than claiming the filter can
+ * never match anything.
  */
 const NEEDS_DATA_FIRST_YEAR = 2026
-const HISTORICAL_GAP_KEYS: ReadonlySet<NeedFilterKey> = new Set(['bathroom', 'power'])
+const HISTORICAL_GAP_KEYS: ReadonlySet<NeedFilterKey> = new Set(['bathroom', 'power', 'infant'])
 
 export interface HouseholdRosterTableProps {
   parties: RosterPartyRow[]
@@ -154,15 +171,23 @@ export function HouseholdRosterTable({
   const showRequests = hasAnyRequest(parties)
 
   // needs_private_bathroom/needs_power are 0 for every pre-2026 row (Trap 1 /
-  // D2 — see the constant above), so an empty or thin result here can read as
+  // D2 — see the constant above), and has_infant is 0 for every pre-2026 row
+  // as well (kindred#2251 D18), so an empty or thin result here can read as
   // "nobody needed it" when the true answer is "we never asked". Shown
-  // whenever either flag is part of the ACTIVE filter on a season before the
+  // whenever any gap flag is part of the ACTIVE filter on a season before the
   // data exists, even if the OR combination still finds matches through a
-  // different flag — the bathroom/power signal itself stays silently
-  // incomplete in that result too.
-  const showHistoricalGapWarning =
-    year < NEEDS_DATA_FIRST_YEAR &&
-    activeNeeds.some((option) => HISTORICAL_GAP_KEYS.has(option.key))
+  // different flag — the gapped signal itself stays silently incomplete in
+  // that result too.
+  const activeGapNeeds = activeNeeds.filter((option) => HISTORICAL_GAP_KEYS.has(option.key))
+  const showHistoricalGapWarning = year < NEEDS_DATA_FIRST_YEAR && activeGapNeeds.length > 0
+  // The two gaps are not the same gap, so they do not get the same sentence.
+  // Bathroom and power are 2026-onward columns and start carrying signal that
+  // season; has_infant is 0 in 2026 too, so "only recorded starting the 2026
+  // season" is not a true statement about it and must not be shown to someone
+  // who filtered on infants alone. When a 2026-column flag is also active its
+  // as-shipped wording wins — that sentence is still the accurate one for the
+  // flag the roster is mostly being narrowed by.
+  const gapIsInfantOnly = activeGapNeeds.every((option) => option.key === 'infant')
 
   const toggleNeed = (key: NeedFilterKey) => {
     setSelectedNeeds((previous) => {
@@ -209,8 +234,17 @@ export function HouseholdRosterTable({
 
       {showHistoricalGapWarning && (
         <p className="mb-3 rounded border border-amber-200 bg-amber-100 p-2 text-sm text-amber-800 dark:border-amber-900/50 dark:bg-amber-900/50 dark:text-amber-300">
-          Private bathroom and power needs are only recorded starting the 2026 season. A result for{' '}
-          {year} reflects missing data, not that nobody needed one.
+          {gapIsInfantOnly ? (
+            <>
+              Infant in party is not recorded before the 2026 season. A result for {year} reflects
+              missing data, not that nobody had an infant.
+            </>
+          ) : (
+            <>
+              Private bathroom and power needs are only recorded starting the 2026 season. A result
+              for {year} reflects missing data, not that nobody needed one.
+            </>
+          )}
         </p>
       )}
 
