@@ -35,37 +35,36 @@ const (
 // classifyShareability decides whether a unit about to be CREATED may hold
 // more than one party. Returns "" when it cannot honestly answer.
 //
-// The rule, and why each leg is what it is, is documented in full on
-// pb_migrations/1500000145 -- read that header before changing this, because
-// the two implementations have to agree. In short: a family LEAF sleeping 12
-// or more is shareable (this reproduces the owner's own enumeration of the
-// shared cabins exactly); a family CONTAINER is shareable at its own level,
-// because two households on one container occupy different rooms beneath it
-// and that is a legitimate share rather than a violation (owner ruling); staff
-// housing is not family-camp inventory, so multi-family occupancy is not a
-// question it answers.
+// RE-RULED by kindred#2331 (owner ruling D17, 2026-08-14). The LEAF leg used
+// to derive from `sleeps >= 12`. It never worked: no leaf in the inventory
+// ever reaches 12, so every family-pool leaf classified `single_party`
+// regardless of the owner's actual multi-family enumeration -- exactly 30
+// leaves, named in the private registry, not a capacity threshold. A LEAF's
+// shareability is now a CURATED fact the registry file supplies per unit
+// (`curated` below), never derived. See registryUnit.Shareability for the
+// JSON shape.
 //
-// A container is deliberately NOT tested against `sleeps`. A container's
-// `sleeps` is a DELTA over its rooms (kindred#2041), not a whole-house total,
-// and the whole-house total is not the right input either -- the container
-// carrying the most historical two-household shares totals 9 across its rooms.
-// What makes a container shareable is having rooms, not having capacity.
+// The CONTAINER leg is UNCHANGED by this ruling and takes no input from
+// `curated`: a family CONTAINER is shareable at its own level, because two
+// households on one container occupy different rooms beneath it and that is
+// a legitimate share rather than a violation (owner ruling, 2026-08-07). A
+// container is deliberately NOT tested against any capacity number either --
+// see pb_migrations/1500000145's header for why `sleeps` and `max_beds` both
+// fail as a container-level test. What makes a container shareable is having
+// rooms, not having capacity.
 //
-// NEVER `max_beds`: it disagrees with the unit's own recorded bed inventory on
-// roughly a third of rows, including rows where it falls BELOW the bed count.
+// Staff housing is not family-camp inventory, so multi-family occupancy is
+// not a question it answers, and no curated value can override that.
 //
-// A FRESH DATABASE CARRIES A SUBSET OF PRODUCTION'S CLASSIFICATION, never a
-// contradicting one, and that is enforced at the CALL SITE rather than here:
-// `seedUnits` passes nil for `sleeps` because the registry file's capacities
-// are a pre-inventory guess (77 of 118 disagree with production, and no leaf in
-// the file reaches 12). Read the note there before changing either.
-//
-// This function stays a total, honest rule over whatever it is given. Do not
-// "fix" the fresh-database gap by loosening the thresholds here or by seeding
-// from a second column; the fix, if one is wanted, is to refresh `sleeps` in
-// the private registry file, which is a data decision for the owner rather
-// than a code change.
-func classifyShareability(inventoryClass string, isContainer bool, sleeps *int) string {
+// This function stays a total, honest rule over whatever it is given: an
+// absent or empty curated value on a leaf returns "" rather than guessing in
+// either direction. THIS IS THE SAFETY REQUIREMENT -- a leaf the registry
+// says nothing about must never silently become shareable. A malformed
+// curated string (anything other than the two DB values) falls through to
+// "" for the same reason; validateRegistry is what fails the file loudly
+// before this is ever called, so this is defense-in-depth, not the
+// validation layer.
+func classifyShareability(inventoryClass string, isContainer bool, curated *string) string {
 	switch inventoryClass {
 	case "staff_default":
 		return shareabilitySingleParty
@@ -73,16 +72,18 @@ func classifyShareability(inventoryClass string, isContainer bool, sleeps *int) 
 		if isContainer {
 			return shareabilityShareable
 		}
-		// nil is "never observed" and 0 is how PocketBase stores that, so both
-		// mean UNMEASURED -- never "zero capacity". An unmeasured leaf cannot
-		// be classified, and guessing would be wrong in both directions.
-		if sleeps == nil || *sleeps < 1 {
+		if curated == nil {
 			return ""
 		}
-		if *sleeps >= 12 {
-			return shareabilityShareable
+		switch *curated {
+		case shareabilityShareable, shareabilitySingleParty:
+			return *curated
+		default:
+			// Empty string ("registry says nothing", the JSON-explicit form
+			// of nil) and anything malformed both mean the same thing here:
+			// no honest answer, so decline rather than guess.
+			return ""
 		}
-		return shareabilitySingleParty
 	default:
 		// No role recorded, so a role-dependent question has no answer.
 		return ""
@@ -144,6 +145,20 @@ type registryUnit struct {
 	NearBathhouse  bool   `json:"near_bathhouse"`
 	InventoryClass string `json:"inventory_class"`
 	IsContainer    bool   `json:"is_container"`
+	// Shareability is the CURATED answer to "may more than one party sleep
+	// here" for a family_pool LEAF (kindred#2331, owner ruling D17). It
+	// replaced the retired `sleeps >= 12` derivation, which never fired: no
+	// leaf in the inventory reaches 12. Nil means "not yet curated" -- the
+	// honest unclassified state, never treated as shareable. When set, the
+	// value must be exactly one of shareabilityShareable /
+	// shareabilitySingleParty (validateRegistry rejects anything else);
+	// classifyShareability also falls back to "" defensively if it ever sees
+	// something else.
+	//
+	// Ignored on a CONTAINER row (classifies from IsContainer alone) and on a
+	// staff_default row (always single_party) -- both unchanged by this
+	// ruling, so the file need not carry it there.
+	Shareability *string `json:"shareability"`
 	// DefaultCombined is the registry default draw level, meaningful on
 	// CONTAINER rows only: true means "draw the board's card at this node and
 	// stop descending" — the whole-house let.
@@ -414,7 +429,33 @@ func validateRegistry(doc *registryDoc) error {
 	if err := validateUnitReferences(doc.Units, areaCodes, unitCodes); err != nil {
 		return err
 	}
+	if err := validateUnitShareability(doc.Units); err != nil {
+		return err
+	}
 	return validateAliases(doc.Aliases, unitCodes)
+}
+
+// validateUnitShareability rejects a curated `shareability` value that is not
+// exactly one of the two DB select options (kindred#2331). classifyShareability
+// falls back to "" for anything malformed as a second line of defense, but
+// letting a typo silently become "unclassified" here would hide a mistake in
+// the very file this loader treats as canonical — the same "no silent
+// fallback for a curated fact" discipline the rest of this file follows.
+// nil (the key absent) and "" (the key explicitly blank) are both legal: both
+// mean "not yet curated", not a typo.
+func validateUnitShareability(units []registryUnit) error {
+	for i := range units {
+		u := &units[i]
+		if u.Shareability == nil || *u.Shareability == "" {
+			continue
+		}
+		if *u.Shareability != shareabilityShareable && *u.Shareability != shareabilitySingleParty {
+			return fmt.Errorf(
+				"unit %q has shareability %q, which is not %q or %q",
+				u.Code, *u.Shareability, shareabilityShareable, shareabilitySingleParty)
+		}
+	}
+	return nil
 }
 
 func validateAreaCodes(areas []registryArea) (map[string]bool, error) {
@@ -570,37 +611,29 @@ func seedUnits(
 		rec.Set("near_bathhouse", u.NearBathhouse)
 		rec.Set("inventory_class", u.InventoryClass)
 		rec.Set("is_container", u.IsContainer)
-		// NOTE THE `nil`: the loader deliberately declines to classify from the
-		// file's `sleeps`.
-		//
-		// Measured 2026-08-08, the registry file disagrees with production on
-		// `sleeps` for 77 of 118 units and NO leaf in it reaches 12, while it
-		// disagrees on `is_container` for 0 and on `inventory_class` for 2.
-		// So the file is authoritative for the two structural fields and is a
-		// pre-inventory guess for the capacity one -- production's capacities
-		// arrived later, from the Master Housing import and from staff editing
-		// confirmed rows, neither of which writes back to the file.
-		//
-		// Feeding that guess in would stamp every family leaf `single_party`
-		// off a number known to be wrong, on a row this same loop marks
-		// `is_confirmed: false` three lines below precisely because "every
-		// seeded value is a guess until staff confirm it". Unlike the amenity
-		// flags, nothing downstream discounts shareability for being
-		// unconfirmed, so that stamp would be read as settled. Passing nil
-		// makes the leaf legs return "" -- the honest "nobody has classified
-		// this" the select exists to represent -- while the container and
-		// staff-housing legs, which need no capacity, still classify.
+		// The leaf leg now reads `u.Shareability` straight through
+		// (kindred#2331, owner ruling D17) instead of guessing from `sleeps`.
+		// Unlike the retired capacity guess, this IS the owner's actual
+		// enumeration -- a curated fact staff maintain in the file, not a
+		// pre-inventory placeholder -- so there is no reason to withhold it
+		// the way `nil` used to withhold `sleeps` here. A leaf the file has
+		// not yet curated still lands unclassified: `classifyShareability`
+		// returns "" for a nil or malformed curated value on a leaf, and
+		// this `if` only ever writes a non-empty answer.
 		//
 		// The RULE is not forked to achieve this: `classifyShareability` has
-		// one definition, shared with 1500000145, and only the input differs.
-		// A fresh database therefore classifies strictly FEWER units than
-		// production -- measured, 14 containers and 23 staff rows against
-		// production's 44 and 74, with all 81 family leaves left honestly
-		// blank. It is not literally a subset: the file also disagrees with
-		// production on `inventory_class` for TWO units, so those two can land
-		// differently. That is an inventory_class data divergence rather than
-		// anything this rule does, and it predates this feature.
-		if s := classifyShareability(u.InventoryClass, u.IsContainer, nil); s != "" {
+		// one definition. Containers and staff housing are unaffected by this
+		// ruling and still classify without consulting `u.Shareability` at
+		// all.
+		//
+		// This loader is CREATE-ONLY (skips any existing code+year), so it
+		// only ever reaches a genuinely fresh database -- a worktree, a new
+		// deployment, a rebuilt CD seed. Production's 118 existing rows are
+		// untouched by this path; carrying a newly-curated value onto a row
+		// that already exists is the same "existing row" gap every other
+		// registry field has (`apply_lodging_inventory.py`'s whole reason for
+		// existing), and is not solved here.
+		if s := classifyShareability(u.InventoryClass, u.IsContainer, u.Shareability); s != "" {
 			rec.Set("shareability", s)
 		}
 		rec.Set("default_combined", u.DefaultCombined)

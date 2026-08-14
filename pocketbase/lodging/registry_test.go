@@ -86,6 +86,13 @@ func setupRegistryCollections(t *testing.T, app core.App) {
 		Name: "has_ramp", Values: []string{"yes", "no", "partial"}, MaxSelect: 1,
 	})
 	units.Fields.Add(&core.NumberField{Name: "max_beds", OnlyInt: true})
+	// 1500000145. The loader writes this from classifyShareability's result —
+	// see registry_shareability_test.go for the pure-function coverage and the
+	// TestSeedRegistryWritesCuratedLeafShareability family below for the
+	// seed-time write path kindred#2331 changed.
+	units.Fields.Add(&core.SelectField{
+		Name: "shareability", Values: []string{"shareable", "single_party"}, MaxSelect: 1,
+	})
 	// Required, same reason as lodging_areas' year field above.
 	units.Fields.Add(&core.NumberField{
 		Name: "year", Required: true, OnlyInt: true,
@@ -399,6 +406,108 @@ func TestSeedRegistryWritesAmenities(t *testing.T) {
 	}
 	if got := unit.GetInt("sleeps"); got != 0 {
 		t.Errorf("sleeps = %d, want 0 — max_beds must not leak into sleeps", got)
+	}
+}
+
+// The seed-time half of kindred#2331 (owner ruling D17): a LEAF's
+// `shareability` is read straight from the registry file's curated
+// `shareability` key, not derived from `sleeps`.
+func TestSeedRegistryWritesCuratedLeafShareability(t *testing.T) {
+	t.Parallel()
+	app := newRegistryTestApp(t)
+
+	body := `{"areas": [{"code": "AREA1", "name": "First Area"}], "units": [
+	  {"area": "AREA1", "code": "curated-shareable", "name": "Curated Shareable",
+	   "bathroom": "none", "inventory_class": "family_pool", "sleeps": 4,
+	   "shareability": "shareable"},
+	  {"area": "AREA1", "code": "curated-single", "name": "Curated Single",
+	   "bathroom": "none", "inventory_class": "family_pool", "sleeps": 4,
+	   "shareability": "single_party"}
+	], "aliases": []}`
+
+	if err := seedRegistryFromFile(app, writeRegistry(t, body), testYear); err != nil {
+		t.Fatalf("seedRegistryFromFile: %v", err)
+	}
+
+	// A small `sleeps: 4` leaf the file curates shareable must land shareable
+	// — the whole point of retiring the `sleeps >= 12` floor, which would have
+	// classified this row single_party no matter what the file said.
+	shareableUnit := findByCode(t, app, "lodging_units", "curated-shareable", testYear)
+	if got := shareableUnit.GetString("shareability"); got != "shareable" {
+		t.Errorf("shareability = %q for a curated-shareable leaf, want %q", got, "shareable")
+	}
+	singleUnit := findByCode(t, app, "lodging_units", "curated-single", testYear)
+	if got := singleUnit.GetString("shareability"); got != "single_party" {
+		t.Errorf("shareability = %q for a curated-single_party leaf, want %q", got, "single_party")
+	}
+}
+
+// THE SAFETY REQUIREMENT (kindred#2331): a leaf the file has not curated must
+// land unclassified, never silently shareable.
+func TestSeedRegistryLeafWithNoCuratedShareabilityStaysUnclassified(t *testing.T) {
+	t.Parallel()
+	app := newRegistryTestApp(t)
+
+	body := `{"areas": [{"code": "AREA1", "name": "First Area"}], "units": [
+	  {"area": "AREA1", "code": "not-yet-curated", "name": "Not Yet Curated",
+	   "bathroom": "none", "inventory_class": "family_pool", "sleeps": 15}
+	], "aliases": []}`
+
+	if err := seedRegistryFromFile(app, writeRegistry(t, body), testYear); err != nil {
+		t.Fatalf("seedRegistryFromFile: %v", err)
+	}
+
+	// sleeps: 15 would have cleared the retired >= 12 floor. It must have NO
+	// effect now — the row stays unclassified because the file names no
+	// curated value, not because of its capacity.
+	if got := findByCode(t, app, "lodging_units", "not-yet-curated", testYear).GetString("shareability"); got != "" {
+		t.Errorf("shareability = %q for an uncurated leaf, want blank (unclassified)", got)
+	}
+}
+
+// A CONTAINER classifies from `is_container` alone, unchanged by kindred#2331
+// — a curated value in the file, if one is ever present on a container row,
+// is not consulted.
+func TestSeedRegistryContainerShareabilityIgnoresCuratedField(t *testing.T) {
+	t.Parallel()
+	app := newRegistryTestApp(t)
+
+	body := `{"areas": [{"code": "AREA1", "name": "First Area"}], "units": [
+	  {"area": "AREA1", "code": "container-ignores-curated", "name": "Container",
+	   "bathroom": "none", "inventory_class": "family_pool", "is_container": true,
+	   "shareability": "single_party"}
+	], "aliases": []}`
+
+	if err := seedRegistryFromFile(app, writeRegistry(t, body), testYear); err != nil {
+		t.Fatalf("seedRegistryFromFile: %v", err)
+	}
+
+	unit := findByCode(t, app, "lodging_units", "container-ignores-curated", testYear)
+	if got := unit.GetString("shareability"); got != "shareable" {
+		t.Errorf("shareability = %q for a container curated single_party in the file, want %q (isContainer wins)",
+			got, "shareable")
+	}
+}
+
+// validateRegistry rejects a malformed curated value loudly, at load time,
+// rather than letting classifyShareability's own defense-in-depth silently
+// swallow a typo into "unclassified" — the same "fail loud on a bad file"
+// discipline every other cross-reference check here follows.
+func TestSeedRegistryInvalidCuratedShareabilityIsAnError(t *testing.T) {
+	t.Parallel()
+	app := newRegistryTestApp(t)
+
+	body := `{"areas": [{"code": "AREA1", "name": "First Area"}], "units": [
+	  {"area": "AREA1", "code": "typo-shareability", "name": "Typo",
+	   "bathroom": "none", "inventory_class": "family_pool", "shareability": "sometimes"}
+	], "aliases": []}`
+
+	err := seedRegistryFromFile(app, writeRegistry(t, body), testYear)
+	if err == nil {
+		t.Fatal("expected an error for a malformed shareability value, got nil")
+	}
+	if n := countRecords(t, app, "lodging_units"); n != 0 {
+		t.Errorf("a rejected file left %d units written, want 0 (nothing written on a bad file)", n)
 	}
 }
 

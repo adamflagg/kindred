@@ -154,11 +154,13 @@ describe('LodgingUnitForm — create', () => {
     }
   )
 
-  it('warns when a shareable unit is edited below the capacity threshold', async () => {
-    // The staleness this feature can create: shareability is derived once and
-    // then human-owned, so correcting `sleeps` downward leaves an affirmative
-    // "Shared OK" chip on the board endorsing a double-booking. Advisory only
-    // — settling it is the staffer's ruling, not the form's.
+  it('stays quiet on a leaf regardless of sleeps — the comparison is retired (kindred#2331)', async () => {
+    // Before owner ruling D17 (2026-08-14) this warned at sleeps: 8, because
+    // the advisory re-derived `sleeps >= 12` here. It no longer does: a
+    // LEAF's shareability is now a curated registry fact this form has no
+    // formula for, so there is nothing left to compare `Sharing` against.
+    // The retired threshold never matched the owner's real enumeration
+    // anyway — no leaf in the inventory ever reached 12.
     const user = userEvent.setup()
     render(
       <LodgingUnitForm areas={AREAS} units={[]} year={2026} onSaved={vi.fn()} onCancel={vi.fn()} />
@@ -167,18 +169,21 @@ describe('LodgingUnitForm — create', () => {
     await user.selectOptions(screen.getByLabelText('Sharing'), 'shareable')
     await user.type(screen.getByLabelText('Sleeps'), '8')
 
-    expect(
-      await screen.findByText(/but the unit as edited reads one family only/)
-    ).toBeInTheDocument()
+    expect(screen.queryByText(/but the unit as edited reads/)).not.toBeInTheDocument()
   })
 
-  it('stays quiet while the unit still agrees with its classification', async () => {
+  it('stays quiet on a leaf in the OTHER direction too — one-family at a large capacity', async () => {
+    // The mirror of the test above, and the half that actually distinguishes
+    // the two rules: under the retired `sleeps >= 12` derivation a leaf stored
+    // `single_party` at sleeps 15 derived `shareable` and warned. A leaf
+    // curated one-family is now the registry's answer at any capacity, so
+    // nothing here has an opinion about it.
     const user = userEvent.setup()
     render(
       <LodgingUnitForm areas={AREAS} units={[]} year={2026} onSaved={vi.fn()} onCancel={vi.fn()} />
     )
 
-    await user.selectOptions(screen.getByLabelText('Sharing'), 'shareable')
+    await user.selectOptions(screen.getByLabelText('Sharing'), 'single_party')
     await user.type(screen.getByLabelText('Sleeps'), '15')
 
     expect(screen.queryByText(/but the unit as edited reads/)).not.toBeInTheDocument()
