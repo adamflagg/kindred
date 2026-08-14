@@ -19,7 +19,7 @@ const serviceNameStaffApplications = "staff_applications"
 // Unique key: (person_id, year) - one record per staff applicant per year
 // Links to: staff
 //
-// Field mapping: 40 App-* prefixed fields covering work availability, qualifications,
+// Field mapping: 44 App-* prefixed fields covering work availability, qualifications,
 // position preferences, essays, references, and reflection prompts.
 type StaffApplicationsSync struct {
 	App            core.App
@@ -132,6 +132,12 @@ type staffApplicationRecord struct {
 	tawongaMakesThink    string
 	adviceWouldGive      string
 	howLookAtCamp        string
+
+	// Live 2026 fields, routed per owner ruling 2026-08-14 (see #2271)
+	over18                     bool
+	workDatesKitchenSupervisor bool
+	jediReturner               string
+	jediNewStaff               string
 }
 
 // Sync executes the staff applications extraction
@@ -260,21 +266,21 @@ func (s *StaffApplicationsSync) loadFieldDefinitions(_ context.Context) (map[str
 //
 // This gate is deliberately wider than the routing switch: it admits 88
 // definitions in the production snapshot, of which MapStaffAppFieldToColumn
-// routes 40. The other 48 are enumerated with a reason each in
+// routes 44. The other 44 are enumerated with a reason each in
 // retiredAppFieldReasons, and loadPersonCustomValues counts and logs every
 // discard rather than dropping it in silence (kindred#2271).
 //
-// The gap is intentional, and the reason it is safe to leave it that way is
-// that no downstream consumer reads staff_applications: `grep -rn
+// The gap is intentional for those 44, and the reason it is safe to leave it
+// that way is that no downstream consumer reads staff_applications: `grep -rn
 // "staff_applications" bunking/ api/` returns no hits, and every frontend
 // reference is sync-admin plumbing (SyncTab.tsx, syncTypes.ts,
 // useRunIndividualSync.ts, useSyncStatusAPI.ts, useSyncCompletionToasts.ts,
 // useStaffApplicationsSync.ts) plus the generated pocketbase-types.ts -- no
 // component reads a column. Nothing may assume that an absent answer here
 // means the applicant did not answer; the source values all survive in
-// person_custom_values. If a reader is ever added that does need to make that
-// assumption, the four fields still receiving 2026 answers (see category G in
-// retiredAppFieldReasons) are the ones that would need columns first.
+// person_custom_values. A former fourth group of 4 fields still receiving
+// 2026 answers was in this bucket too; the owner reversed that call
+// 2026-08-14 (see #2271) and they are routed columns now.
 func isStaffApplicationField(name string) bool {
 	// App-* prefixed fields
 	if strings.HasPrefix(name, "App-") {
@@ -641,19 +647,33 @@ func mapAppFieldToRecord(rec *staffApplicationRecord, fieldName, value string) s
 		if rec.howLookAtCamp == "" {
 			rec.howLookAtCamp = value
 		}
+
+	// Live 2026 fields (kindred#2271, owner ruling 2026-08-14)
+	case "over_18":
+		rec.over18 = parseStaffAppBool(value)
+	case "work_dates_kitchen_supervisor":
+		rec.workDatesKitchenSupervisor = parseStaffAppBool(value)
+	case "jedi_returner":
+		if rec.jediReturner == "" {
+			rec.jediReturner = value
+		}
+	case "jedi_new_staff":
+		if rec.jediNewStaff == "" {
+			rec.jediNewStaff = value
+		}
 	}
 
 	return column
 }
 
-// retiredAppFieldReasons documents the 48 App-*/Position Preference custom
+// retiredAppFieldReasons documents the 44 App-*/Position Preference custom
 // field definitions that MapStaffAppFieldToColumn deliberately has no case
 // for, out of the 88 isStaffApplicationField admits (kindred#2271). A name
 // landing in this map is a closed question, not an oversight; do not add a
 // routing case for one without first checking whether CampMinder actually
 // resumed collecting it.
 //
-// The 48 fall into seven groups, verified against the production snapshot:
+// The 44 fall into six groups, verified against the production snapshot:
 //   - 22 retired-2023 long-form essay prompts. The routing switch already
 //     carries a replacement set of 13 essay prompts, which is the strongest
 //     evidence the drop is deliberate.
@@ -668,12 +688,18 @@ func mapAppFieldToRecord(rec *staffApplicationRecord, fieldName, value string) s
 //   - 2 retired-2025 fields (a "weaknesses" free text, misspelled upstream as
 //     "Weakensses"; a WILD-dates explanation whose companion gate IS mapped).
 //   - 4 never-populated leftovers.
-//   - 4 fields still receiving 2026 answers ("over 18", "JEDIreturner",
-//     "JEDInewstaff", "Work Camp Dates Kitchen Supervisor"). kindred#2271
-//     decided against adding columns for these: nothing downstream reads
-//     staff_applications (`grep -rn "staff_applications" bunking/ api/`
-//     exits 1), and a column empty on every historical row (2017-2025) would
-//     look like data that was lost rather than a question never asked.
+//
+// A former seventh group held the 4 fields still receiving 2026 answers
+// ("over 18", "JEDIreturner", "JEDInewstaff", "Work Camp Dates Kitchen
+// Supervisor"). kindred#2271 originally decided against columns for these on
+// the grounds that nothing downstream read staff_applications. The owner
+// reversed that call 2026-08-14 for these four specifically (see #2271):
+// MapStaffAppFieldToColumn now routes them to over_18, jedi_returner,
+// jedi_new_staff and work_dates_kitchen_supervisor. The sibling family
+// work_dates_supervisor/work_dates_wild/work_dates_driver stays TEXT despite
+// also holding Yes/No -- that inconsistency is deliberate, not an oversight:
+// the owner ruled work_dates_kitchen_supervisor BOOLEAN anyway, and the three
+// existing siblings are left untouched rather than retyped to match.
 var retiredAppFieldReasons = map[string]string{
 	// Retired 2023 essay prompts (22)
 	"App-85th Birthday...":       "retired 2023 essay prompt, no values since 2023",
@@ -731,16 +757,16 @@ var retiredAppFieldReasons = map[string]string{
 	"App-Hobbies/Interests/Skills":  "never populated in any year",
 	"App-Relevant Courses":          "never populated in any year",
 
-	// Live 2026 fields, deliberately not given columns (4). See kindred#2271
-	// in the doc comment above for why: no downstream consumer.
-	"App-over 18":                            "live field, no downstream consumer",
-	"App-JEDIreturner":                       "live field, no downstream consumer",
-	"App-JEDInewstaff":                       "live field, no downstream consumer",
-	"App-Work Camp Dates Kitchen Supervisor": "live field, no downstream consumer",
+	// A former "live 2026 fields, deliberately not given columns" group of 4
+	// lived here. kindred#2271's original call (no downstream consumer) was
+	// reversed by the owner 2026-08-14 for these four specifically -- see
+	// #2271 -- and MapStaffAppFieldToColumn now routes App-over 18,
+	// App-JEDIreturner, App-JEDInewstaff and App-Work Camp Dates Kitchen
+	// Supervisor to real columns instead.
 }
 
 // classifyUnmappedAppFields splits per-field discard counts (fields
-// MapStaffAppFieldToColumn returned "" for) into the 48 names
+// MapStaffAppFieldToColumn returned "" for) into the 44 names
 // retiredAppFieldReasons already explains, and everything else. The second
 // bucket is the one an operator needs to act on: it is either a brand-new
 // CampMinder App-* field with no routing case yet, or a retired field this
@@ -759,7 +785,7 @@ func classifyUnmappedAppFields(counts map[string]int) (known, unexpected map[str
 }
 
 // MapStaffAppFieldToColumn maps CampMinder field names to database column
-// names. 48 App-*/Position Preference definitions are deliberately absent
+// names. 44 App-*/Position Preference definitions are deliberately absent
 // from this switch -- see retiredAppFieldReasons immediately above for which
 // ones and why.
 func MapStaffAppFieldToColumn(fieldName string) string {
@@ -857,6 +883,16 @@ func MapStaffAppFieldToColumn(fieldName string) string {
 		return "advice_would_give"
 	case "App-How do you look at camp":
 		return "how_look_at_camp"
+
+	// Live 2026 fields (kindred#2271, owner ruling 2026-08-14). See #2271.
+	case "App-over 18":
+		return "over_18"
+	case "App-Work Camp Dates Kitchen Supervisor":
+		return "work_dates_kitchen_supervisor"
+	case "App-JEDIreturner":
+		return "jedi_returner"
+	case "App-JEDInewstaff":
+		return "jedi_new_staff"
 	}
 	return ""
 }
@@ -1001,6 +1037,12 @@ func (s *StaffApplicationsSync) upsertRecords(
 		record.Set("tawonga_makes_think", rec.tawongaMakesThink)
 		record.Set("advice_would_give", rec.adviceWouldGive)
 		record.Set("how_look_at_camp", rec.howLookAtCamp)
+
+		// Live 2026 fields (kindred#2271, owner ruling 2026-08-14)
+		record.Set("over_18", rec.over18)
+		record.Set("work_dates_kitchen_supervisor", rec.workDatesKitchenSupervisor)
+		record.Set("jedi_returner", rec.jediReturner)
+		record.Set("jedi_new_staff", rec.jediNewStaff)
 
 		if err := s.App.Save(record); err != nil {
 			slog.Error("Error saving staff_applications record",
