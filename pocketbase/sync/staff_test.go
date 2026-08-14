@@ -143,7 +143,6 @@ func TestAllStaffStatuses(t *testing.T) {
 // syncStaff ("no matching person"), which already does both -- this test is the mirror of
 // that precedent.
 func TestIsDuplicateStaffStatus(t *testing.T) {
-	t.Parallel()
 	s := &StaffSync{BaseSyncService: BaseSyncService{ProcessedKeys: map[string]bool{}}}
 	buf := captureSweepLogs(t)
 

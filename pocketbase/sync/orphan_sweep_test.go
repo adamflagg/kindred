@@ -282,6 +282,12 @@ func TestBaseDeleteOrphansDeletesNothingWhenNoRecordCanBeKeyed(t *testing.T) {
 // captureSweepLogs redirects slog for the duration of one test and returns the
 // buffer. The sweep's only operator-facing signal is its log line, so the log IS
 // the behavior under test here, not an incidental side effect.
+//
+// A caller MUST NOT be parallel. slog's default handler is process-global, so a
+// parallel sibling swaps it mid-run and the buffer fills with someone else's
+// output. -race does not catch it (slog.SetDefault is internally atomic), so the
+// guard in main_test_parallelism_test.go carries the list instead -- add any new
+// caller there and leave t.Parallel() off.
 func captureSweepLogs(t *testing.T) *strings.Builder {
 	t.Helper()
 
@@ -300,7 +306,6 @@ func captureSweepLogs(t *testing.T) *strings.Builder {
 // (attendees, bunk_assignments, bunk_plans) tell the reader to look for an
 // unkeyable-record warning, so one has to exist.
 func TestBaseDeleteOrphansWarnsWhenNothingCanBeKeyed(t *testing.T) {
-	t.Parallel()
 	const seeded = 30
 
 	app := newOrphanSweepTestApp(t, "widgets", "name")
@@ -350,7 +355,6 @@ func TestBaseDeleteOrphansWarnsWhenNothingCanBeKeyed(t *testing.T) {
 // told the opposite of the truth. A blocking relation is the cheapest way to
 // make App.Delete fail for real rather than mocking it.
 func TestBaseDeleteOrphansCountsOnlyCompletedDeletes(t *testing.T) {
-	t.Parallel()
 	app := newOrphanSweepTestApp(t, "widgets", "name")
 	widgets, err := app.FindCollectionByNameOrId("widgets")
 	if err != nil {
@@ -398,6 +402,72 @@ func TestBaseDeleteOrphansCountsOnlyCompletedDeletes(t *testing.T) {
 	}
 
 	if got := logs.String(); strings.Contains(got, "Deleted orphaned records") {
+		t.Errorf("a failed delete was counted as deleted; got:\n%s", got)
+	}
+}
+
+// orphanCount is what the completion log reports as deleted, same property as
+// TestBaseDeleteOrphansCountsOnlyCompletedDeletes above but for the preloaded
+// entry point (kindred#2302) -- financial_transactions is the one production
+// caller. A delete that FAILS must not be counted: the row is still on disk.
+func TestBaseDeleteOrphansFromPreloadedCountsOnlyCompletedDeletes(t *testing.T) {
+	app := newOrphanSweepTestApp(t, "widgets", "name")
+	widgets, err := app.FindCollectionByNameOrId("widgets")
+	if err != nil {
+		t.Fatalf("find widgets: %v", err)
+	}
+
+	orphan := core.NewRecord(widgets)
+	orphan.Id = orphanTestID(1)
+	orphan.Set("name", "widget-001")
+	orphan.Set("year", 2026)
+	if saveErr := app.Save(orphan); saveErr != nil {
+		t.Fatalf("seed orphan: %v", saveErr)
+	}
+
+	// A non-cascading relation pointing at the orphan blocks its deletion.
+	holders := core.NewBaseCollection("holders")
+	holders.Fields.Add(&core.RelationField{
+		Name: "widget", CollectionId: widgets.Id, CascadeDelete: false, Required: true,
+	})
+	if saveErr := app.Save(holders); saveErr != nil {
+		t.Fatalf("save holders: %v", saveErr)
+	}
+	holder := core.NewRecord(holders)
+	holder.Set("widget", orphan.Id)
+	if saveErr := app.Save(holder); saveErr != nil {
+		t.Fatalf("seed holder: %v", saveErr)
+	}
+
+	logs := captureSweepLogs(t)
+
+	b := BaseSyncService{App: app, ProcessedKeys: map[string]bool{}, SyncSuccessful: true}
+	preloaded := map[any]*core.Record{orphan.Id: orphan}
+	if sweepErr := b.DeleteOrphansFromPreloaded(preloaded, "widget"); sweepErr != nil {
+		t.Fatalf("sweep returned an error: %v", sweepErr)
+	}
+
+	// The row must still be there -- otherwise the fixture did not block anything
+	// and the assertion below would pass for the wrong reason.
+	if _, findErr := app.FindRecordById("widgets", orphan.Id); findErr != nil {
+		t.Fatalf("fixture is wrong: the delete was not blocked (%v)", findErr)
+	}
+
+	got := logs.String()
+
+	// Positive half first. Without it the assertion below is satisfied by a sweep
+	// that returned early and never reached App.Delete at all -- a future guard
+	// added ahead of the loop would leave this test green while pinning nothing.
+	if !strings.Contains(got, "Failed to delete orphaned record") {
+		t.Fatalf("the delete was never attempted, so the count assertion proves nothing; got:\n%s", got)
+	}
+	// kindred#2302 scope item 3: the two counters must tell one story. The row is
+	// not counted as deleted, and the same row IS counted as an error.
+	if b.Stats.Errors != 1 {
+		t.Errorf("Stats.Errors = %d, want 1 -- a failed delete must still fail the run", b.Stats.Errors)
+	}
+
+	if strings.Contains(got, "Deleted orphaned records") {
 		t.Errorf("a failed delete was counted as deleted; got:\n%s", got)
 	}
 }
