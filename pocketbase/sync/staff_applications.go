@@ -278,7 +278,7 @@ func (s *StaffApplicationsSync) loadPersonStaffMapping(
 		default:
 		}
 
-		records, err := s.App.FindRecordsByFilter("staff", filter, "", perPage, (page-1)*perPage)
+		records, err := s.App.FindRecordsByFilter("staff", filter, sortByID, perPage, (page-1)*perPage)
 		if err != nil {
 			return nil, fmt.Errorf("querying staff page %d: %w", page, err)
 		}
@@ -328,7 +328,7 @@ func (s *StaffApplicationsSync) loadPersonCustomValues(
 		default:
 		}
 
-		records, err := s.App.FindRecordsByFilter("person_custom_values", filter, "", perPage, (page-1)*perPage)
+		records, err := s.App.FindRecordsByFilter("person_custom_values", filter, sortByID, perPage, (page-1)*perPage)
 		if err != nil {
 			return nil, fmt.Errorf("querying person custom values page %d: %w", page, err)
 		}
@@ -713,7 +713,7 @@ func (s *StaffApplicationsSync) loadExistingRecords(ctx context.Context, year in
 		default:
 		}
 
-		records, err := s.App.FindRecordsByFilter("staff_applications", filter, "", perPage, (page-1)*perPage)
+		records, err := s.App.FindRecordsByFilter("staff_applications", filter, sortByID, perPage, (page-1)*perPage)
 		if err != nil {
 			return nil, fmt.Errorf("querying staff_applications page %d: %w", page, err)
 		}

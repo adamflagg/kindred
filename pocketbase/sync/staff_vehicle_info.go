@@ -258,7 +258,7 @@ func (s *StaffVehicleInfoSync) loadPersonStaffMapping(
 		default:
 		}
 
-		records, err := s.App.FindRecordsByFilter("staff", filter, "", perPage, (page-1)*perPage)
+		records, err := s.App.FindRecordsByFilter("staff", filter, sortByID, perPage, (page-1)*perPage)
 		if err != nil {
 			return nil, fmt.Errorf("querying staff page %d: %w", page, err)
 		}
@@ -308,7 +308,7 @@ func (s *StaffVehicleInfoSync) loadPersonCustomValues(
 		default:
 		}
 
-		records, err := s.App.FindRecordsByFilter("person_custom_values", filter, "", perPage, (page-1)*perPage)
+		records, err := s.App.FindRecordsByFilter("person_custom_values", filter, sortByID, perPage, (page-1)*perPage)
 		if err != nil {
 			return nil, fmt.Errorf("querying person custom values page %d: %w", page, err)
 		}
@@ -556,7 +556,7 @@ func (s *StaffVehicleInfoSync) loadExistingRecords(ctx context.Context, year int
 		default:
 		}
 
-		records, err := s.App.FindRecordsByFilter("staff_vehicle_info", filter, "", perPage, (page-1)*perPage)
+		records, err := s.App.FindRecordsByFilter("staff_vehicle_info", filter, sortByID, perPage, (page-1)*perPage)
 		if err != nil {
 			return nil, fmt.Errorf("querying staff_vehicle_info page %d: %w", page, err)
 		}

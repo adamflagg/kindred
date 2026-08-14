@@ -33,6 +33,18 @@ const (
 	LargePageSize = 500
 )
 
+// sortByID is the sort argument every paged FindRecordsByFilter read in this
+// package should pass. PocketBase adds an ORDER BY only when the sort argument
+// is non-empty (core/record_query.go), so an empty one leaves the row order up
+// to whichever index the SQLite planner picks -- which is not stable ACROSS the
+// separate per-page queries a paged read issues, so a plan change between pages
+// can skip or repeat rows. `id` is unique, so it is a total order.
+//
+// Promoted from household_demographics.go (kindred#2286) to here in kindred#2338,
+// so every service in the package can use one constant instead of redeclaring it
+// (or worse, a bare "id" string literal) per file.
+const sortByID = "id"
+
 // JSON null string representation for field comparison
 const jsonNullString = "null"
 

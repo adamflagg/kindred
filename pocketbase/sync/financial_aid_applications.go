@@ -333,7 +333,7 @@ func (s *FinancialAidApplicationsSync) loadPersonInfo(
 		default:
 		}
 
-		records, err := s.App.FindRecordsByFilter("persons", filter, "", perPage, (page-1)*perPage)
+		records, err := s.App.FindRecordsByFilter("persons", filter, sortByID, perPage, (page-1)*perPage)
 		if err != nil {
 			return nil, fmt.Errorf("querying persons page %d: %w", page, err)
 		}
@@ -379,7 +379,7 @@ func (s *FinancialAidApplicationsSync) loadPersonCustomValues(
 		default:
 		}
 
-		records, err := s.App.FindRecordsByFilter("person_custom_values", filter, "", perPage, (page-1)*perPage)
+		records, err := s.App.FindRecordsByFilter("person_custom_values", filter, sortByID, perPage, (page-1)*perPage)
 		if err != nil {
 			return nil, fmt.Errorf("querying person custom values page %d: %w", page, err)
 		}
@@ -987,7 +987,7 @@ func (s *FinancialAidApplicationsSync) loadExistingApplications(
 		default:
 		}
 
-		records, err := s.App.FindRecordsByFilter("financial_aid_applications", filter, "", perPage, (page-1)*perPage)
+		records, err := s.App.FindRecordsByFilter("financial_aid_applications", filter, sortByID, perPage, (page-1)*perPage)
 		if err != nil {
 			return nil, fmt.Errorf("querying existing applications page %d: %w", page, err)
 		}

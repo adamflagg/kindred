@@ -410,7 +410,7 @@ func (s *QuestRegistrationsSync) loadPersonsWithAttendee(
 		default:
 		}
 
-		records, err := s.App.FindRecordsByFilter("attendees", filter, "", perPage, (page-1)*perPage)
+		records, err := s.App.FindRecordsByFilter("attendees", filter, sortByID, perPage, (page-1)*perPage)
 		if err != nil {
 			return nil, 0, fmt.Errorf("querying attendees page %d: %w", page, err)
 		}
@@ -494,7 +494,7 @@ func (s *QuestRegistrationsSync) loadPersonCustomValues(
 		default:
 		}
 
-		records, err := s.App.FindRecordsByFilter("person_custom_values", filter, "", perPage, (page-1)*perPage)
+		records, err := s.App.FindRecordsByFilter("person_custom_values", filter, sortByID, perPage, (page-1)*perPage)
 		if err != nil {
 			return nil, fmt.Errorf("querying person custom values page %d: %w", page, err)
 		}
@@ -953,7 +953,7 @@ func (s *QuestRegistrationsSync) loadExistingRecords(ctx context.Context, year i
 		default:
 		}
 
-		records, err := s.App.FindRecordsByFilter("quest_registrations", filter, "", perPage, (page-1)*perPage)
+		records, err := s.App.FindRecordsByFilter("quest_registrations", filter, sortByID, perPage, (page-1)*perPage)
 		if err != nil {
 			return nil, fmt.Errorf("querying quest_registrations page %d: %w", page, err)
 		}

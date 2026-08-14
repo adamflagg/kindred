@@ -535,7 +535,7 @@ func (s *FamilyCampDerivedSync) loadPersonHouseholdMapping(ctx context.Context, 
 		default:
 		}
 
-		records, err := s.App.FindRecordsByFilter("persons", filter, "", perPage, (page-1)*perPage)
+		records, err := s.App.FindRecordsByFilter("persons", filter, sortByID, perPage, (page-1)*perPage)
 		if err != nil {
 			return nil, fmt.Errorf("querying persons page %d: %w", page, err)
 		}
@@ -1542,7 +1542,7 @@ func (s *FamilyCampDerivedSync) preloadExistingAdults(year int) (map[string]*cor
 	perPage := 500
 
 	for {
-		records, err := s.App.FindRecordsByFilter("family_camp_adults", filter, "", perPage, (page-1)*perPage)
+		records, err := s.App.FindRecordsByFilter("family_camp_adults", filter, sortByID, perPage, (page-1)*perPage)
 		if err != nil {
 			return nil, fmt.Errorf("querying family_camp_adults page %d: %w", page, err)
 		}
@@ -1576,7 +1576,7 @@ func (s *FamilyCampDerivedSync) preloadExistingRegistrations(year int) (map[stri
 	perPage := 500
 
 	for {
-		records, err := s.App.FindRecordsByFilter("family_camp_registrations", filter, "", perPage, (page-1)*perPage)
+		records, err := s.App.FindRecordsByFilter("family_camp_registrations", filter, sortByID, perPage, (page-1)*perPage)
 		if err != nil {
 			return nil, fmt.Errorf("querying family_camp_registrations page %d: %w", page, err)
 		}
@@ -1606,7 +1606,7 @@ func (s *FamilyCampDerivedSync) preloadExistingMedical(year int) (map[string]*co
 	perPage := 500
 
 	for {
-		records, err := s.App.FindRecordsByFilter("family_camp_medical", filter, "", perPage, (page-1)*perPage)
+		records, err := s.App.FindRecordsByFilter("family_camp_medical", filter, sortByID, perPage, (page-1)*perPage)
 		if err != nil {
 			return nil, fmt.Errorf("querying family_camp_medical page %d: %w", page, err)
 		}
