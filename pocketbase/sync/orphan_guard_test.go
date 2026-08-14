@@ -518,6 +518,47 @@ func TestOrphanSweepRejectionDoesNotMaskACollapse(t *testing.T) {
 	}
 }
 
+// TestDuplicateInflatedRejectionsCannotDeleteDespiteMaskingACollapse pins the
+// residual risk documented on RejectionsExplainShortfall (kindred#2325): a
+// duplicate-in-run rejection (kindred#2320) increments Rejected without
+// shrinking Computed, so it can inflate the shortfall budget enough to wave
+// through a Check refusal that is real and unrelated.
+//
+// This test drives that exact masking -- Computed is far below the 50%-of-disk
+// floor, so Check refuses on its own, and Rejected is set high enough to
+// "explain" the whole shortfall even though none of it actually corresponds to
+// a missing key. What it proves is the other half of the story: the same
+// Rejected > 0 that produced the mask also drives skipSweepForRejections
+// (base_sync.go), which abandons the sweep unconditionally. So the masked
+// refusal never reaches a delete -- not even the one genuine orphan
+// (orphanWidget) sitting in this fixture, untracked, ready to be swept if the
+// guard ever let the run proceed. If this ever goes red, the one-way,
+// benign-for-data property the issue relies on has broken -- reach for a
+// second counter (RejectedButKeyRetained) at that point, not before.
+func TestDuplicateInflatedRejectionsCannotDeleteDespiteMaskingACollapse(t *testing.T) {
+	t.Parallel()
+
+	const inflatedRejected = 45 // >= the shortfall below, none of it a real missing key
+	app, b := rejectingSweepFixture(t, inflatedRejected)
+
+	err := b.DeleteOrphansGuarded("widgets", widgetIDFunc, "widget", "year = 2026",
+		OrphanSweepGuard{Entity: "widgets", Year: 2026, Computed: 5})
+
+	if err != nil {
+		t.Fatalf("DeleteOrphansGuarded returned %v, want nil -- the inflated Rejected count "+
+			"masks the Check refusal (that is the defect kindred#2325 documents), so the run "+
+			"must still come back as a benign skip, not an error", err)
+	}
+	if alive := countRows(t, app, "widgets", "year = 2026"); alive != seededWidgets {
+		t.Fatalf("%d rows survived, want %d -- a masked collapse must never delete a row, "+
+			"including the genuine orphan this fixture seeds untracked", alive, seededWidgets)
+	}
+	if _, findErr := app.FindRecordById("widgets", orphanTestID(orphanWidget)); findErr != nil {
+		t.Fatalf("the untracked orphan was deleted despite the masked refusal: %v -- "+
+			"this is exactly the data-loss direction kindred#2325 rules out", findErr)
+	}
+}
+
 // ---------------------------------------------------------------------------
 // kindred#2283 row 2 -- classifying a sweep failure
 // ---------------------------------------------------------------------------

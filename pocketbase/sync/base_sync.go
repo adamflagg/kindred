@@ -301,6 +301,13 @@ func (b *BaseSyncService) deleteOrphans(
 			return guardErr
 		}
 
+		// RejectionsExplainShortfall's arithmetic can be fooled by a
+		// duplicate-in-run rejection that never shrank Computed (kindred#2325,
+		// documented on that method). It does not matter here: whatever the
+		// arithmetic decided above, a Rejected > 0 still routes through
+		// skipSweepForRejections below, which abandons the sweep outright. A
+		// masked refusal can only turn a failed run into a warned one -- it can
+		// never reach the delete loop past this point.
 		if b.skipSweepForRejections(entityName, guard) {
 			return nil
 		}

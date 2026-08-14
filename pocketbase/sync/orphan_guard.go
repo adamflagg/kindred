@@ -194,6 +194,29 @@ func (g OrphanSweepGuard) SkipReason() string {
 // set, so `Rejected` is an exact upper bound on how much of the shortfall they can
 // explain. A shortfall of zero or less -- a computed set at least as large as the
 // rows on disk -- is trivially explained.
+//
+// KNOWN RESIDUAL RISK (kindred#2325): "each rejection removes exactly one key"
+// stopped being universally true the moment person_custom_field_values.go and
+// household_custom_field_values.go started rejecting a SECOND entry for a key
+// already tracked this run (kindred#2320's duplicate-in-run guard). That
+// rejection bumps Rejected without shrinking Computed -- the key it
+// "corresponds to" was never missing. Enough of those landing in the same run
+// as an unrelated genuine shortfall of comparable size could make this
+// arithmetic wave through a refusal it should not.
+//
+// This is left as documented risk rather than a second counter that tracks
+// "rejections that did / didn't remove a key" (which would have to reach all
+// 12 guarded services, not just the two kindred#2320 touched), because the
+// failure is ONE-WAY and cannot delete anything: deleteOrphans (base_sync.go)
+// never acts on a masked refusal directly -- skipSweepForRejections runs right
+// after, unconditionally on Rejected > 0, and IT decides whether the sweep
+// proceeds. A duplicate-inflated mask can only turn a run that should fail
+// loud into one that logs a warning; it can never turn into a delete.
+// TestDuplicateInflatedRejectionsCannotDeleteDespiteMaskingACollapse
+// (orphan_guard_test.go) pins that half of the property. Today Rejected from
+// the duplicate guard is 0 in every real run -- CampMinder packs multi-selects
+// into one delimited value rather than repeating a field id -- so the compound
+// precondition this needs has never actually occurred.
 func (g OrphanSweepGuard) RejectionsExplainShortfall(existing int) bool {
 	return existing-g.Computed <= g.Rejected
 }
