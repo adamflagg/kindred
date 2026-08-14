@@ -557,6 +557,60 @@ func TestProtectThenSweepOrphans_SweepRefusalIsCountedAndReturned(t *testing.T) 
 	}
 }
 
+// TestProtectNonActiveStaffAssignments_MissingBunkIsNonDestructiveSkip is the
+// bunk-shaped twin of the session case below, added when bunk joined the
+// bunk_assignments grain (kindred#2259): protection now has to resolve a bunk
+// as well as a session before it can build a composite key, which is a second
+// place the function can fail to protect a row.
+//
+// A row with no bunk relation is a skip and NOT an error, for the same reason a
+// missing session is: deleteOrphans cannot derive a composite key for such a
+// record either (its keyFunc requires bunkCMID > 0), so the sweep will not
+// touch it and there is nothing to protect it from. What must not happen is an
+// abort, which would take protection down for every other non-active staff
+// member in the year.
+//
+// The row is asserted to still exist afterwards so the test cannot pass
+// vacuously by the assignment having disappeared.
+func TestProtectNonActiveStaffAssignments_MissingBunkIsNonDestructiveSkip(t *testing.T) {
+	t.Parallel()
+
+	app, err := pbtests.NewTestApp()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer app.Cleanup()
+	setupBunkAssignmentProtectionCollections(t, app)
+
+	const year = 2025
+	const dismissedCMID = 3000007
+
+	dismissedPerson := saveRec(t, app, "persons", map[string]any{"cm_id": dismissedCMID, "year": year})
+	session := saveRec(t, app, "camp_sessions", map[string]any{"cm_id": 5007, "year": year})
+	assignment := saveRec(t, app, "bunk_assignments", map[string]any{
+		"person": dismissedPerson.Id, "session": session.Id, "year": year,
+	})
+	saveRec(t, app, "staff", map[string]any{
+		"person_id": dismissedCMID, "status": "dismissed", "bunk_staff": true, "year": year,
+	})
+
+	s := &BunkAssignmentsSync{BaseSyncService: BaseSyncService{App: app, ProcessedKeys: make(map[string]bool)}}
+
+	protectedCount, err := s.protectNonActiveStaffAssignments(year)
+	if err != nil {
+		t.Fatalf("a missing bunk must be a skip, not an error: %v", err)
+	}
+	if protectedCount != 0 {
+		t.Errorf("protectedCount = %d, want 0 -- there is no bunk to build a composite key from", protectedCount)
+	}
+	if len(s.ProcessedKeys) != 0 {
+		t.Errorf("ProcessedKeys = %v, want empty -- a key that omits bunk would never match deleteOrphans", s.ProcessedKeys)
+	}
+	if _, findErr := app.FindRecordById("bunk_assignments", assignment.Id); findErr != nil {
+		t.Fatalf("the assignment row must still exist for this test to mean anything: %v", findErr)
+	}
+}
+
 // TestProtectNonActiveStaffAssignments_MissingSessionIsNonDestructiveSkip is the
 // other half of the test above: a session record that is genuinely absent is not
 // an error, and must not abort protection or the sweep for everyone else.
