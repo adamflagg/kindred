@@ -33,16 +33,16 @@ const filterYearParam = "year = {:year}"
 //
 // Orchestrates normalization by:
 //  1. Loading attendees with person+session data (school/city from persons,
-//     congregation from person_custom_values, state/country from household)
-//  2. Loading geo_overrides (alias, merge, rejected) up to the current year
-//  3. Building normalization lookup via Python geo_normalizer (RapidFuzz, static lookups)
-//  4. Creating person+session mappings (applying alias/merge overrides)
-//  5. Preloading existing normalized_mappings for upsert comparison
-//  6. Upserting to normalized_mappings with (person, session, category) keys,
+//     congregation from person_custom_values, state/country from household),
+//     then geo_overrides (alias, merge, rejected) up to the current year
+//  2. Building normalization lookup via Python geo_normalizer (RapidFuzz, static lookups)
+//  3. Creating person+session mappings (applying alias/merge overrides)
+//  4. Preloading existing normalized_mappings for upsert comparison
+//  5. Upserting to normalized_mappings with (person, session, category) keys,
 //     skipping rejected overrides
-//  7. Updating persons.normalized_* columns for drilldown consistency
-//  8. Deleting orphaned mappings no longer in source data
-//  9. Running WAL checkpoint if any records were modified
+//  6. Updating persons.normalized_* columns for drilldown consistency
+//  7. Deleting orphaned mappings no longer in source data
+//  8. Running WAL checkpoint if any records were modified
 type NormalizeGeographicSync struct {
 	App            core.App
 	Year           int
@@ -220,7 +220,7 @@ func (n *NormalizeGeographicSync) Sync(ctx context.Context) error {
 	deleted, orphanErr := n.deleteOrphans(existingMappings, year)
 	n.Stats.Deleted = deleted
 
-	// WAL checkpoint BEFORE the error return below -- the upserts above have
+	// Step 8: WAL checkpoint BEFORE the error return below -- the upserts above have
 	// already written by this point, and the refusal path can fire on a
 	// non-empty computed set (a PARTIAL collapse), which is exactly the case
 	// where writes already happened.
