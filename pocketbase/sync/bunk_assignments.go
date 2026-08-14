@@ -190,8 +190,10 @@ func (s *BunkAssignmentsSync) Sync(ctx context.Context) error {
 				// session and guessing would be worse than skipping (kindred#2264).
 				sessionID, ambiguous := s.resolveAssignmentSession(personCMID, bunkPlanID, bunkID, bunkPlanSessions)
 				if ambiguous {
+					candidateCount := len(s.bunkPlanBunkToSession[fmt.Sprintf("%d:%d", bunkPlanID, bunkID)])
 					slog.Warn("Ambiguous (bunkPlan, bunk) staff session lookup, skipping assignment",
-						"bunkPlanCMID", bunkPlanID, "bunkCMID", bunkID, "personCMID", personCMID)
+						"bunkPlanCMID", bunkPlanID, "bunkCMID", bunkID, "personCMID", personCMID,
+						"candidateCount", candidateCount)
 					s.Stats.Skipped++
 					continue
 				}
