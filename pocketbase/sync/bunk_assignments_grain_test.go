@@ -3,6 +3,8 @@ package sync
 import (
 	"fmt"
 	"os"
+	"slices"
+	"sort"
 	"testing"
 
 	"github.com/camp/kindred/pocketbase/campminder"
@@ -31,18 +33,22 @@ func newParallelTestCampMinderClient(t *testing.T, year int) *campminder.Client 
 }
 
 // setupBunkAssignmentGrainCollections builds the schema needed to drive
-// processAssignment and preloadExistingAssignments directly against a live
-// PocketBase app: persons, camp_sessions, bunks (all year-scoped, matching
-// LookupRelation's year filter for these collections), an empty bunk_plans
-// (LookupBunkPlan queries it even when the optional bunk_plan relation
-// cannot be resolved), bunk_assignments itself, and an empty staff
-// collection (protectThenSweepOrphans's protection pass needs it to exist).
+// processAssignment, preloadExistingAssignments and loadMappings directly
+// against a live PocketBase app: persons, camp_sessions, bunks (all
+// year-scoped, matching LookupRelation's year filter for these
+// collections), bunk_plans (LookupBunkPlan queries it even when the
+// optional bunk_plan relation cannot be resolved, and loadMappings walks it
+// to build bunkPlanBunkToSession), bunk_assignments itself, attendees
+// (loadMappings reads person enrollments from it) and staff
+// (protectThenSweepOrphans's protection pass and loadMappings both need it
+// to exist).
 func setupBunkAssignmentGrainCollections(t *testing.T, app core.App) {
 	t.Helper()
 
 	persons := core.NewBaseCollection("persons")
 	persons.Fields.Add(&core.NumberField{Name: "cm_id", Required: true})
 	persons.Fields.Add(&core.NumberField{Name: "year", Required: true})
+	persons.Fields.Add(&core.AutodateField{Name: "created", OnCreate: true})
 	if err := app.Save(persons); err != nil {
 		t.Fatalf("create persons: %v", err)
 	}
@@ -50,6 +56,7 @@ func setupBunkAssignmentGrainCollections(t *testing.T, app core.App) {
 	sessions := core.NewBaseCollection("camp_sessions")
 	sessions.Fields.Add(&core.NumberField{Name: "cm_id", Required: true})
 	sessions.Fields.Add(&core.NumberField{Name: "year", Required: true})
+	sessions.Fields.Add(&core.AutodateField{Name: "created", OnCreate: true})
 	if err := app.Save(sessions); err != nil {
 		t.Fatalf("create camp_sessions: %v", err)
 	}
@@ -57,6 +64,7 @@ func setupBunkAssignmentGrainCollections(t *testing.T, app core.App) {
 	bunks := core.NewBaseCollection("bunks")
 	bunks.Fields.Add(&core.NumberField{Name: "cm_id", Required: true})
 	bunks.Fields.Add(&core.NumberField{Name: "year", Required: true})
+	bunks.Fields.Add(&core.AutodateField{Name: "created", OnCreate: true})
 	if err := app.Save(bunks); err != nil {
 		t.Fatalf("create bunks: %v", err)
 	}
@@ -66,6 +74,7 @@ func setupBunkAssignmentGrainCollections(t *testing.T, app core.App) {
 	bunkPlans.Fields.Add(&core.RelationField{Name: "bunk", CollectionId: bunks.Id, MaxSelect: 1})
 	bunkPlans.Fields.Add(&core.RelationField{Name: "session", CollectionId: sessions.Id, MaxSelect: 1})
 	bunkPlans.Fields.Add(&core.NumberField{Name: "year", Required: true})
+	bunkPlans.Fields.Add(&core.AutodateField{Name: "created", OnCreate: true})
 	if err := app.Save(bunkPlans); err != nil {
 		t.Fatalf("create bunk_plans: %v", err)
 	}
@@ -91,6 +100,16 @@ func setupBunkAssignmentGrainCollections(t *testing.T, app core.App) {
 	}
 	if err := app.Save(assignments); err != nil {
 		t.Fatalf("create bunk_assignments: %v", err)
+	}
+
+	attendees := core.NewBaseCollection("attendees")
+	attendees.Fields.Add(&core.NumberField{Name: "person_id", Required: true})
+	attendees.Fields.Add(&core.RelationField{Name: "session", CollectionId: sessions.Id, MaxSelect: 1})
+	attendees.Fields.Add(&core.NumberField{Name: "status_id"})
+	attendees.Fields.Add(&core.NumberField{Name: "year", Required: true})
+	attendees.Fields.Add(&core.AutodateField{Name: "created", OnCreate: true})
+	if err := app.Save(attendees); err != nil {
+		t.Fatalf("create attendees: %v", err)
 	}
 
 	staff := core.NewBaseCollection("staff")
@@ -464,5 +483,98 @@ func TestBunkAssignmentGrain_SecondSyncRunNeitherLosesNorDuplicates(t *testing.T
 	if len(rows) != 2 {
 		t.Fatalf("after run 2: bunk_assignments rows = %d, want 2 -- an unwidened orphan key would delete both "+
 			"rows the widening exists to keep, silently", len(rows))
+	}
+}
+
+// TestLoadMappings_KeepsEveryCandidateSessionForASharedBunk drives the
+// PRODUCTION map-building path -- loadMappings walking real bunk_plans
+// records -- rather than hand-assembling s.bunkPlanBunkToSession the way
+// every other test in this package does.
+//
+// That distinction is the whole point of the test. kindred#2264's defect
+// lived in the ASSIGNMENT in loadMappings, not in the read sites: two
+// bunk_plans rows sharing a plan cm_id and a bunk cm_id but naming
+// different sessions used to overwrite each other, so whichever row
+// PaginateRecords visited last became the only surviving candidate. Every
+// test that builds the map itself starts from candidates that already
+// survived, so reverting that one line to an overwrite left the entire sync
+// package green -- verified by mutation before this test was written. This
+// is the acceptance checklist's "feed the map-building path two bunk_plans
+// records sharing plan cm_id and bunk cm_id with different session cm_ids,
+// and assert both survive".
+func TestLoadMappings_KeepsEveryCandidateSessionForASharedBunk(t *testing.T) {
+	t.Parallel()
+
+	app, err := pbtests.NewTestApp()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer app.Cleanup()
+	setupBunkAssignmentGrainCollections(t, app)
+
+	const year = 2026
+	const planCMID = 8401
+	const sessionACMID = 5401 // family weekend 1
+	const sessionBCMID = 5402 // family weekend 2
+	const sharedBunkCMID = 6401
+	const soloBunkCMID = 6402
+
+	sessionA := saveRec(t, app, "camp_sessions", map[string]any{"cm_id": sessionACMID, "year": year})
+	sessionB := saveRec(t, app, "camp_sessions", map[string]any{"cm_id": sessionBCMID, "year": year})
+	sharedBunk := saveRec(t, app, "bunks", map[string]any{"cm_id": sharedBunkCMID, "year": year})
+	soloBunk := saveRec(t, app, "bunks", map[string]any{"cm_id": soloBunkCMID, "year": year})
+
+	// The family-camp shape: one plan, one bunk, listed under BOTH of the
+	// plan's sessions. bunk_plans' own unique index is (year, bunk, session,
+	// cm_id), so these two rows are legitimate, not duplicates.
+	saveRec(t, app, "bunk_plans", map[string]any{
+		"cm_id": planCMID, "bunk": sharedBunk.Id, "session": sessionA.Id, "year": year,
+	})
+	saveRec(t, app, "bunk_plans", map[string]any{
+		"cm_id": planCMID, "bunk": sharedBunk.Id, "session": sessionB.Id, "year": year,
+	})
+	// A bunk of the same plan that appears under exactly one session -- the
+	// main+AG shape -- so the test also pins that the unambiguous case is
+	// still a single candidate and still resolves.
+	saveRec(t, app, "bunk_plans", map[string]any{
+		"cm_id": planCMID, "bunk": soloBunk.Id, "session": sessionA.Id, "year": year,
+	})
+
+	s := NewBunkAssignmentsSync(app, newParallelTestCampMinderClient(t, year))
+	if err := s.loadMappings(); err != nil {
+		t.Fatalf("loadMappings: %v", err)
+	}
+
+	sharedKey := fmt.Sprintf("%d:%d", planCMID, sharedBunkCMID)
+	gotShared := append([]int(nil), s.bunkPlanBunkToSession[sharedKey]...)
+	sort.Ints(gotShared)
+	wantShared := []int{sessionACMID, sessionBCMID}
+	if !slices.Equal(gotShared, wantShared) {
+		t.Errorf("bunkPlanBunkToSession[%q] = %v, want %v -- kindred#2264: a bunk listed under several "+
+			"sessions of one plan must keep EVERY candidate, not just the last bunk_plans row read",
+			sharedKey, gotShared, wantShared)
+	}
+
+	soloKey := fmt.Sprintf("%d:%d", planCMID, soloBunkCMID)
+	if got := s.bunkPlanBunkToSession[soloKey]; !slices.Equal(got, []int{sessionACMID}) {
+		t.Errorf("bunkPlanBunkToSession[%q] = %v, want [%d] -- a bunk under one session must stay one candidate",
+			soloKey, got, sessionACMID)
+	}
+
+	// The plan-level list is built by the sibling block that always appended;
+	// pinning it here keeps a future "simplification" from collapsing it too.
+	gotPlan := append([]int(nil), s.bunkPlanSessionsList[planCMID]...)
+	sort.Ints(gotPlan)
+	if !slices.Equal(gotPlan, []int{sessionACMID, sessionACMID, sessionBCMID}) {
+		t.Errorf("bunkPlanSessionsList[%d] = %v, want one entry per bunk_plans row", planCMID, gotPlan)
+	}
+
+	// And the read site sees the ambiguity the build site preserved: this is
+	// what turns the kept candidates into a skip-and-warn instead of a guess.
+	if sessionCMID, ambiguous := s.resolveStaffSession(planCMID, sharedBunkCMID); !ambiguous || sessionCMID != 0 {
+		t.Errorf("resolveStaffSession(shared bunk) = (%d, %v), want (0, true)", sessionCMID, ambiguous)
+	}
+	if sessionCMID, ambiguous := s.resolveStaffSession(planCMID, soloBunkCMID); ambiguous || sessionCMID != sessionACMID {
+		t.Errorf("resolveStaffSession(solo bunk) = (%d, %v), want (%d, false)", sessionCMID, ambiguous, sessionACMID)
 	}
 }

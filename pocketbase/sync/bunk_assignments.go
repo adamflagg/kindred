@@ -311,8 +311,10 @@ func (s *BunkAssignmentsSync) loadMappings() error {
 
 	// Load bunk plan sessions: bunkPlanCMID -> list of sessionCMIDs
 	// A bunk plan can apply to multiple sessions (e.g., main + AG sessions)
-	// Also build bunkPlanBunkToSession: "bunkPlanCMID:bunkCMID" → sessionCMID
-	// for resolving staff assignments to exact sessions.
+	// Also build bunkPlanBunkToSession: "bunkPlanCMID:bunkCMID" -> the list of
+	// candidate sessionCMIDs, used to narrow a camper's session by the bunk the
+	// assignment names and to resolve (or report as ambiguous) a staff
+	// assignment's session. Both mappings are lists, not single values.
 	slog.Info("Loading bunk plan to sessions mapping")
 	bpFilter := fmt.Sprintf("year = %d", year)
 	if err := s.PaginateRecords("bunk_plans", bpFilter, func(record *core.Record) error {

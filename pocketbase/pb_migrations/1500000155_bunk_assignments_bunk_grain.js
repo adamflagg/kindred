@@ -63,6 +63,15 @@
  * column and had to refuse the migration if any row could not be keyed by
  * the new column), this migration needs no pre-flight harm check.
  *
+ * THE DOWN DIRECTION IS NOT SYMMETRICALLY SAFE, and that is inherent to any
+ * narrowing rather than a defect in this file. Once a sync has run under the
+ * wider index, a person can hold two rows for one session that differ only
+ * by bunk -- which is the entire point of the widening. Re-creating the old
+ * (year, person, session) unique index over that data fails on the duplicate,
+ * so `migrate down` succeeds only while no such pair exists yet. If a
+ * rollback is ever genuinely needed after a sync, the duplicate rows have to
+ * be resolved first, deliberately -- do not assume down is a free undo.
+ *
  * NEXT FREE MIGRATION NUMBER, RE-DERIVED. The campaign plan claimed 153 was
  * next; 1500000153 (kindred#2308) and 1500000154 (kindred#2323) were both
  * already taken by the time this shipped. Re-derived from `origin/main` at
