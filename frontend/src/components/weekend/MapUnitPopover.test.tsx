@@ -543,8 +543,12 @@ describe('MapUnitPopover — a cluster of rooms', () => {
     expect(flaggedCell).toBeDefined()
     expect(flaggedCell).not.toHaveAttribute('title')
     // The NAME, not a description: this cell is the one trigger whose bubble
-    // sentence has to double as its accessible name, so `ui/Tooltip` drops the
-    // `aria-describedby` rather than making a reader say it twice in a row.
+    // sentence has to double as its accessible name, because the family name
+    // it shows is repeated by a second control in the same popover. There is
+    // no `aria-describedby` to double it with any more — kindred#2348 deleted
+    // that wiring from `ui/Tooltip` outright, for every trigger, along with
+    // the closed-state `sr-only` mirror it needed to resolve against. The
+    // assertion below stays as the guard against it coming back.
     expect(flaggedCell).toHaveAccessibleName(/Cedar 2.*sharing not consented/i)
     expect(flaggedCell).not.toHaveAttribute('aria-describedby')
     // Eyes still get it, which is the half a `title` never gave a tablet.
