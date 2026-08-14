@@ -350,7 +350,10 @@ class ShareRequestSummary(BaseModel):
     eligibility: ShareEligibility = "unknown"
     eligibility_source: ShareEligibilitySource = "none"
     # The two forms point opposite ways -- a staff-review signal, not a
-    # placement rule. Measured at 7.5% of form answerers for 2026.
+    # placement rule. Measured at 7.5% of form answerers for 2026, pre-
+    # kindred#2269; that PR's union conflict test is a strict superset of the
+    # one this was measured against, so the true rate can only be equal or
+    # higher now.
     answers_conflict: bool = False
 
 

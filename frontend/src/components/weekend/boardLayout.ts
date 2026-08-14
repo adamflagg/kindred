@@ -324,9 +324,13 @@ function wordingFor<T extends string>(
  * resolved verdict) directly rather than re-deriving either from `proximity`.
  * `DeriveShareEligibility` only ever sets `answers_conflict` true on its
  * form-answered branch (Go, `lodging_requests.go`), so whenever this returns
- * non-null, `eligibility` already IS the Family Camp form's own answer,
- * confirmed against 2026 production: all 16 conflicting households carry
- * `eligibility_source: 'form'`.
+ * non-null, `eligibility` already IS the Family Camp form's own answer --
+ * confirmed against 2026 production PRE-kindred#2269: all 16 conflicting
+ * households then carried `eligibility_source: 'form'`. That count is stale
+ * -- kindred#2269's union conflict test is a strict superset of the one it
+ * was measured against, so the true count can only be equal or higher now --
+ * but the invariant itself (raised only off the form-answered branch) is
+ * structural, not a property of the count, and still holds.
  *
  * That invariant is enforced only in a separate Go file, with nothing here
  * to catch a future change or a stale mid-`family_camp_derived`-recompute

@@ -162,7 +162,9 @@ func ParseSharedCabinModes(raw string) (near, with, similarAges bool) {
 // A conflict is a HARD contradiction only: the two forms point opposite ways.
 // maybe_mutual resolving into anything is the answer arriving, not a conflict --
 // counting refinements would put a third of respondents in the review queue
-// instead of the measured 7.5%.
+// instead of the measured 7.5% (pre-kindred#2269; the union widening below is
+// a strict superset of the test that rate was measured against, so the true
+// rate can only be equal or higher now).
 //
 // anySiblingDeclined and anySiblingYesShare report whether ANY of the
 // household's person-partition gate answers normalised to no_share /
@@ -203,7 +205,10 @@ func DeriveShareEligibility(
 		return eligibility, shareSourceForm, conflict
 	}
 
-	// FALLBACK. One answer cannot contradict anything, so conflict stays false.
+	// FALLBACK. conflict is hardcoded false on every return below -- the
+	// fallback never raises share_answers_conflict itself, no matter how many
+	// sibling registration gate answers disagree with each other; evaluating
+	// a conflict is the form-answered branch's job, above.
 	//
 	// A recorded decline anywhere in the household outranks a later permissive
 	// sibling answer. winsGate resolves the gate by newest-wins with no
@@ -318,9 +323,16 @@ func CollapseToHouseholdGrain(values []PersonRequestValue) map[string]*Household
 		// DeriveShareEligibility.
 		sawDeclineGate bool
 		// The symmetric union for yes_share -- kindred#2269. Consulted only by
-		// the form-answered conflict test: the fallback path has no
-		// permissive-verdict fail-safe to buy, since a sibling yes_share can
-		// only make the fallback verdict MORE restrictive than it already is.
+		// the form-answered conflict test. On DeriveShareEligibility's
+		// FALLBACK path (above), the only reachable case where this signal
+		// could change the answer is a winning maybe_mutual gate with a lost
+		// yes_share sibling: a winning no_share gate already sets
+		// sawDeclineGate and returns declined before this is ever read, and a
+		// winning yes_share gate already returns the fallback's most
+		// permissive verdict, open. Honoring sawYesGate there would turn
+		// maybe_mutual's `named` into `open` -- MORE permissive, not less --
+		// and the fallback deliberately does not buy that fail-safe, unlike
+		// the restrictive one anySiblingDeclined buys above.
 		sawYesGate bool
 	}
 

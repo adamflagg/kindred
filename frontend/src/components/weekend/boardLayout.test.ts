@@ -883,10 +883,13 @@ describe('answersConflictDetail — which two answers disagreed, and which one w
   })
 
   it('names the registration answer, the form answer, and that the form wins', () => {
-    // Measured against production 2026 data: all 16 conflicting households
-    // resolved with `eligibility_source: 'form'` — DeriveShareEligibility only
-    // ever sets `answers_conflict` true on that branch, so `eligibility` here
-    // already IS the form's own verdict, not a re-derivation of it.
+    // Measured against production 2026 data pre-kindred#2269: all 16
+    // conflicting households then resolved with `eligibility_source: 'form'`
+    // — DeriveShareEligibility only ever sets `answers_conflict` true on that
+    // branch, so `eligibility` here already IS the form's own verdict, not a
+    // re-derivation of it. kindred#2269's union widening is a strict superset
+    // of the test that count was measured against, so the true count can only
+    // be equal or higher now; the form-answered-only invariant still holds.
     const detail = answersConflictDetail(
       shareBlock({
         preference: 'no_share',
@@ -932,10 +935,13 @@ describe('answersConflictDetail — which two answers disagreed, and which one w
   it('never attributes the resolved answer to the form when eligibility_source says otherwise', () => {
     // DeriveShareEligibility (Go, lodging_requests.go) only ever sets
     // `answers_conflict` true on its form-answered branch -- measured on 2026
-    // production, all 16 conflicting rows carry `eligibility_source: 'form'`.
-    // This reads the field rather than assuming it, so a future Go change or
-    // a stale mid-recompute row can never misattribute a registration-only
-    // verdict to a form the household may not have even returned.
+    // production pre-kindred#2269, all 16 conflicting rows then carried
+    // `eligibility_source: 'form'` (stale count; kindred#2269's union
+    // widening can only raise it, though the form-answered-only invariant
+    // still holds). This reads the field rather than assuming it, so a
+    // future Go change or a stale mid-recompute row can never misattribute a
+    // registration-only verdict to a form the household may not have even
+    // returned.
     const detail = answersConflictDetail(
       shareBlock({
         preference: 'no_share',
