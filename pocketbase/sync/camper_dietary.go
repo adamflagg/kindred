@@ -16,7 +16,7 @@ const serviceNameCamperDietary = "camper_dietary"
 // Only these fields are checked when deciding whether an existing record needs updating.
 // Excludes PocketBase-managed fields (id, created, updated, collectionId, collectionName).
 var camperDietaryCompareFields = []string{
-	"attendee", "person_id", "year",
+	"person_id", "year",
 	"has_dietary_needs", "dietary_explanation",
 	"has_allergies", "allergy_info", "additional_medical",
 }
@@ -34,7 +34,7 @@ const (
 // This service reads from person_custom_values and populates the camper_dietary table.
 //
 // Unique key: (person_id, year) - one record per camper per year
-// Links to: attendees (any attendee record for this person-year)
+// No stored attendee link -- see loadPersonsWithAttendee (kindred#2265).
 //
 // Field mapping:
 // - Family Medical-Dietary Needs -> has_dietary_needs (bool)
@@ -44,9 +44,9 @@ const (
 // - Family Medical-Additional -> additional_medical
 //
 // Rows persist after a camper cancels; this table is never swept by deletion. A future reader
-// (e.g. a staff dashboard) must filter by active enrolment for the view's own year -- an
+// (e.g. a staff dashboard) must filter by active enrollment for the view's own year -- an
 // `attendees` row with status_id = 2 for that person and year -- and must not filter across
-// years. See "Reading Derived Informational Tables (Active-Enrolment Filtering)" in
+// years. See "Reading Derived Informational Tables (Active-Enrollment Filtering)" in
 // docs/architecture/sync-layer.md.
 type CamperDietarySync struct {
 	App    core.App
@@ -98,9 +98,8 @@ func (s *CamperDietarySync) DebugLog(msg string, args ...any) {
 
 // camperDietaryRecord holds the extracted dietary info for a camper
 type camperDietaryRecord struct {
-	personID   int
-	year       int
-	attendeeID string // PocketBase ID of an attendee record
+	personID int
+	year     int
 
 	hasDietaryNeeds    bool
 	dietaryExplanation string
@@ -142,15 +141,15 @@ func (s *CamperDietarySync) Sync(ctx context.Context) error {
 	}
 	slog.Info("Loaded field definitions", "count", len(fieldNameMap))
 
-	// Step 2: Load person -> attendee mapping (person CM ID -> attendee PB ID)
-	personToAttendee, err := s.loadPersonAttendeeMapping(ctx, year)
+	// Step 2: Load the admission set (person CM IDs with any attendees row this year)
+	personHasAttendee, err := s.loadPersonsWithAttendee(ctx, year)
 	if err != nil {
-		return fmt.Errorf("loading person-attendee mapping: %w", err)
+		return fmt.Errorf("loading persons with an attendee row: %w", err)
 	}
-	slog.Info("Loaded person-attendee mapping", "count", len(personToAttendee))
+	slog.Info("Loaded admission set", "count", len(personHasAttendee))
 
 	// Step 3: Load person custom values (Family Medical-* fields)
-	records, err := s.loadPersonCustomValues(ctx, year, fieldNameMap, personToAttendee)
+	records, err := s.loadPersonCustomValues(ctx, year, fieldNameMap, personHasAttendee)
 	if err != nil {
 		return fmt.Errorf("loading person custom values: %w", err)
 	}
@@ -253,12 +252,30 @@ func isCamperDietaryField(name string) bool {
 	return false
 }
 
-// loadPersonAttendeeMapping builds a map of person CM ID -> attendee PB ID
-// We use the first attendee record found for each person-year combination
-func (s *CamperDietarySync) loadPersonAttendeeMapping(
+// loadPersonsWithAttendee returns the set of person CM IDs holding at least one
+// `attendees` row for the year.
+//
+// It used to return person -> attendee PB ID, and that map did two jobs: admit a
+// person into the table, and supply a stored `attendee` relation. The relation is
+// gone (kindred#2265). It could never answer the question a reader would ask it --
+// kindred#2159 requires enrollment to be established by joining `(person_id, year)`
+// on `status_id = 2`, not by traversing a link -- so picking one of a camper's
+// several attendee rows was both arbitrary and unusable. Measured on the
+// production snapshot: 2,641 of 9,531 rows pointed at a non-enrolled attendee and
+// 530 of those discarded an enrolled candidate.
+//
+// The ADMISSION half is preserved exactly, and here that matters more than it does
+// for Quest: 19-35 people per year (2024-2026) hold Family Medical-* values with no
+// attendees row, so dropping the filter alongside the link would silently widen this
+// table. Whether they belong here is a real question, but it is kindred#2306's
+// question and not this change's.
+//
+// Membership is order-independent by construction: a set has no first element, so
+// the empty `sort` argument below can no longer decide anything.
+func (s *CamperDietarySync) loadPersonsWithAttendee(
 	ctx context.Context, year int,
-) (map[int]string, error) {
-	result := make(map[int]string)
+) (map[int]bool, error) {
+	hasAttendee := make(map[int]bool)
 
 	filter := fmt.Sprintf("year = %d", year)
 	page := 1
@@ -267,7 +284,7 @@ func (s *CamperDietarySync) loadPersonAttendeeMapping(
 	for {
 		select {
 		case <-ctx.Done():
-			return nil, fmt.Errorf("dietary needs query cancelled: %w", ctx.Err())
+			return nil, ctx.Err()
 		default:
 		}
 
@@ -277,12 +294,8 @@ func (s *CamperDietarySync) loadPersonAttendeeMapping(
 		}
 
 		for _, record := range records {
-			personID := record.GetInt("person_id")
-			if personID > 0 {
-				// First one wins (we just need any attendee for the relation)
-				if _, exists := result[personID]; !exists {
-					result[personID] = record.Id
-				}
+			if personID := record.GetInt("person_id"); personID > 0 {
+				hasAttendee[personID] = true
 			}
 		}
 
@@ -292,10 +305,9 @@ func (s *CamperDietarySync) loadPersonAttendeeMapping(
 		page++
 	}
 
-	return result, nil
+	return hasAttendee, nil
 }
 
-// dietaryValueEntry represents a loaded dietary custom value
 type dietaryValueEntry struct {
 	personID  int
 	fieldName string
@@ -304,7 +316,7 @@ type dietaryValueEntry struct {
 
 // loadPersonCustomValues loads person custom values for Family Medical-* fields
 func (s *CamperDietarySync) loadPersonCustomValues(
-	ctx context.Context, year int, fieldNameMap map[string]string, personToAttendee map[int]string,
+	ctx context.Context, year int, fieldNameMap map[string]string, personHasAttendee map[int]bool,
 ) (map[string]*camperDietaryRecord, error) {
 	// Collect all values first
 	var entries []dietaryValueEntry
@@ -373,31 +385,43 @@ func (s *CamperDietarySync) loadPersonCustomValues(
 		page++
 	}
 
-	// Aggregate to person level
+	return aggregateDietaryEntries(entries, year, personHasAttendee), nil
+}
+
+// aggregateDietaryEntries folds Family Medical-* custom values into one record
+// per person-year.
+//
+// Pure, and the real seam: the tests that previously covered this shape drove
+// buildDietaryRecords, a reimplementation living in the _test file, so they could
+// not fail when this code changed.
+//
+// `personHasAttendee` is an ADMISSION filter and nothing more -- see
+// loadPersonsWithAttendee. Because it is a set rather than a chosen row, the result
+// cannot depend on the order entries arrive in.
+func aggregateDietaryEntries(
+	entries []dietaryValueEntry, year int, personHasAttendee map[int]bool,
+) map[string]*camperDietaryRecord {
 	result := make(map[string]*camperDietaryRecord)
 
 	for _, entry := range entries {
-		attendeeID, hasAttendee := personToAttendee[entry.personID]
-		if !hasAttendee {
-			continue // Skip if no attendee record for this person
+		if !personHasAttendee[entry.personID] {
+			continue
 		}
 
 		key := makeCamperDietaryKey(entry.personID, year)
 		rec := result[key]
 		if rec == nil {
 			rec = &camperDietaryRecord{
-				personID:   entry.personID,
-				year:       year,
-				attendeeID: attendeeID,
+				personID: entry.personID,
+				year:     year,
 			}
 			result[key] = rec
 		}
 
-		// Map field to record
 		mapDietaryFieldToRecord(rec, entry.fieldName, entry.value)
 	}
 
-	return result, nil
+	return result
 }
 
 // mapDietaryFieldToRecord maps a Family Medical-* field to the record
@@ -526,7 +550,6 @@ func (s *CamperDietarySync) upsertRecords(
 
 		// Build data map for comparison
 		data := map[string]any{
-			"attendee":            rec.attendeeID,
 			"person_id":           rec.personID,
 			"year":                rec.year,
 			"has_dietary_needs":   rec.hasDietaryNeeds,
