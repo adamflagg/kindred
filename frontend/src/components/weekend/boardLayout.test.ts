@@ -1619,4 +1619,52 @@ describe('overlappingPartyKeys — a two-unit alias is ambiguous, not a confirme
       new Set([partyKey(alpha), partyKey(beta)])
     )
   })
+
+  // Through `buildBoard`, the real entry point the board renders from --
+  // `overlappingPartyKeys` is not what staff see. `consentFlag` reads its
+  // output and `flaggedCount` sums the result, so the amber ring is what the
+  // guard actually silences; a test only on the helper would pass even if the
+  // wiring above it stopped reading the guarded value.
+  function aliasBoard(householdCount: number) {
+    const parties = Array.from({ length: householdCount }, (_, index) =>
+      party({
+        household_cm_id: 500101 + index,
+        display_name: `H${String(index)}`,
+        unit_code: '',
+        unit_name: 'R 1 + R 2',
+        unit_codes: ['r1', 'r2'],
+        // `is_merged_slot` is what makes `buildBoard` DRAW a multi-code
+        // placement instead of railing it as unplaced -- without it this
+        // fixture yields an empty board, which would satisfy the H <= N
+        // assertion below for entirely the wrong reason.
+        is_merged_slot: true,
+        share: {
+          preference: 'unknown',
+          proximity: [],
+          request_text: '',
+          needs_resolution: false,
+          // `declined` is the eligibility that DOES raise the flag once an
+          // overlap is found, so a silent board here is the guard working
+          // rather than the fixture having nothing to report.
+          eligibility: 'declined',
+          eligibility_source: 'form',
+          answers_conflict: false,
+        },
+      })
+    )
+    return buildBoard(parties, twoUnitAlias)
+  }
+
+  it('raises no amber flag on the BOARD for two households on one two-unit alias', () => {
+    const board = aliasBoard(2)
+    expect(board.flaggedCount).toBe(0)
+    expect(board.areas.flatMap((area) => area.slots).map((slot) => slot.consent)).toEqual([
+      null,
+      null,
+    ])
+  })
+
+  it('still raises the board flag once a third household claims the same two units', () => {
+    expect(aliasBoard(3).flaggedCount).toBeGreaterThan(0)
+  })
 })
