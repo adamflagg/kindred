@@ -8,33 +8,42 @@ import type { SatisfactionResponse } from '../types/satisfaction'
 let mockSessionYear = 2026
 let mockAttendeeYear = 2026
 let mockSessionType = 'main'
+// kindred#2329: which year `CamperDetail` actually asked the enrollment
+// hook for. A journey-year link (`?year=2019`) must win over the app's
+// global year (mocked at 2026 below) — this is how the tests below tell
+// "resolved the query param" apart from "resolved the global default"
+// without needing the hook itself to do any real filtering.
+let lastEnrollmentYearArg: number | null = null
 
 // Mock the camper data hooks to return a minimal fixture.
 vi.mock('../hooks/camper', () => ({
-  useCamperEnrollment: () => ({
-    enrolledCampers: [
-      {
-        id: 'att1',
-        person_cm_id: 1000001,
-        session_cm_id: 2,
-        attendee_status: 'enrolled',
-        year: mockAttendeeYear,
-        first_name: 'Emma',
-        last_name: 'Johnson',
-        expand: {
-          session: {
-            cm_id: 2,
-            name: 'Session 2',
-            year: mockSessionYear,
-            session_type: mockSessionType,
+  useCamperEnrollment: (_personCmId: number | null, currentYear: number) => {
+    lastEnrollmentYearArg = currentYear
+    return {
+      enrolledCampers: [
+        {
+          id: 'att1',
+          person_cm_id: 1000001,
+          session_cm_id: 2,
+          attendee_status: 'enrolled',
+          year: mockAttendeeYear,
+          first_name: 'Emma',
+          last_name: 'Johnson',
+          expand: {
+            session: {
+              cm_id: 2,
+              name: 'Session 2',
+              year: mockSessionYear,
+              session_type: mockSessionType,
+            },
           },
         },
-      },
-    ],
-    allAttendees: [],
-    isLoading: false,
-    error: null,
-  }),
+      ],
+      allAttendees: [],
+      isLoading: false,
+      error: null,
+    }
+  },
   useCamperHistory: () => ({ camperHistory: [] }),
   useSiblings: () => ({ siblings: [], isLoading: false, error: null }),
   useOriginalBunkData: () => ({
@@ -142,11 +151,14 @@ vi.mock('../contexts/AuthContext', () => ({
   useAuth: () => mockAuthValue,
 }))
 
-function renderDetail() {
+// kindred#2329: `path` defaults to the plain route every other describe
+// block in this file exercises, so those callers are unaffected; the
+// year-query-param tests pass an explicit `?year=` path.
+function renderDetail(path = '/camper/1000001') {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   return render(
     <QueryClientProvider client={qc}>
-      <MemoryRouter initialEntries={['/camper/1000001']}>
+      <MemoryRouter initialEntries={[path]}>
         <Routes>
           <Route path="/camper/:camperId" element={<CamperDetail />} />
         </Routes>
@@ -160,6 +172,7 @@ beforeEach(() => {
   mockSessionYear = 2026
   mockAttendeeYear = 2026
   mockSessionType = 'main'
+  lastEnrollmentYearArg = null
   // Finding #19: tests below mutate `mockFetchWithAuth`; reset to default so
   // a later test doesn't inherit a prior suite's stub state.
   mockFetchWithAuth = _defaultMockFetchWithAuth
@@ -313,5 +326,52 @@ describe('CamperDetail teen programs', () => {
     mockSessionType = 'main'
     renderDetail()
     expect(await screen.findByText(/Parsed Bunk Requests/i)).toBeTruthy()
+  })
+})
+
+describe('CamperDetail ?year= query param (kindred#2329)', () => {
+  beforeEach(() => {
+    mockAuthValue = { user: { is_admin: true, cached_permissions: [] }, isLoading: false }
+  })
+
+  it('prefers the ?year= query param over the app-global year when fetching enrollment', async () => {
+    renderDetail('/camper/1000001?year=2019')
+    await screen.findByText(/Emma/i).catch(() => null)
+
+    // The global year is mocked at 2026 (see `useYear` mock above) — 2019
+    // proves the query param won, not the fallback.
+    expect(lastEnrollmentYearArg).toBe(2019)
+  })
+
+  it('falls back to the app-global year when no ?year= param is present', async () => {
+    renderDetail('/camper/1000001')
+    await screen.findByText(/Emma/i).catch(() => null)
+
+    expect(lastEnrollmentYearArg).toBe(2026)
+  })
+
+  it('ignores a malformed ?year= and falls back to the global year rather than fetching NaN', async () => {
+    renderDetail('/camper/1000001?year=not-a-year')
+    await screen.findByText(/Emma/i).catch(() => null)
+
+    expect(lastEnrollmentYearArg).toBe(2026)
+  })
+
+  it('shows the historical-data banner when the requested year differs from the global year', async () => {
+    // Simulates what a real, year-filtered fetch would return for a 2019
+    // link: an attendee row whose own session year is 2019, against the
+    // app's global year of 2026.
+    mockSessionYear = 2019
+    mockAttendeeYear = 2019
+    renderDetail('/camper/1000001?year=2019')
+
+    expect(await screen.findByText(/viewing historical data from 2019/i)).toBeInTheDocument()
+  })
+
+  it('does not show the historical-data banner on the plain (no query param) route', async () => {
+    renderDetail('/camper/1000001')
+    await screen.findByText(/Emma/i).catch(() => null)
+
+    expect(screen.queryByText(/viewing historical data/i)).toBeNull()
   })
 })

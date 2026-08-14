@@ -5,7 +5,7 @@
  * delegates rendering to extracted UI components.
  */
 import { useContext, useEffect, useMemo } from 'react'
-import { Link, useParams } from 'react-router'
+import { Link, useParams, useSearchParams } from 'react-router'
 import { useQuery } from '@tanstack/react-query'
 import { Calendar } from 'lucide-react'
 import { pb } from '../lib/pocketbase'
@@ -68,6 +68,16 @@ interface CamperDetailBodyProps {
   camper: Camper
   enrolledCampers: Camper[]
   currentYear: number
+  /**
+   * The app's real global year (`useYear()`), independent of `currentYear`
+   * above — which, since kindred#2329, can instead be an explicit
+   * `?year=` from a journey-year link. Only the historical-data banner
+   * needs this: it must fire whenever a requested year differs from what
+   * the app currently considers "now", even though `camper`'s own fetched
+   * `session.year` always equals `currentYear` by construction (that's the
+   * exact-match filter every enrollment query uses).
+   */
+  appCurrentYear: number
   person: PersonsResponse | undefined
   allBunkRequests: EnhancedBunkRequest[]
   originalBunkData: OriginalBunkData | null | undefined
@@ -87,6 +97,7 @@ function CamperDetailBody({
   camper,
   enrolledCampers,
   currentYear,
+  appCurrentYear,
   person,
   allBunkRequests,
   originalBunkData,
@@ -142,8 +153,11 @@ function CamperDetailBody({
 
   return (
     <div className="space-y-6">
-      {/* Historical Data Notice */}
-      {camper.expand?.session?.year && camper.expand.session.year !== currentYear && (
+      {/* Historical Data Notice. Compares against the app's actual global
+          year, NOT `currentYear` — `currentYear` here can itself be the
+          requested historical year (kindred#2329), which the fetched
+          `camper.expand.session.year` will always equal by construction. */}
+      {camper.expand?.session?.year && camper.expand.session.year !== appCurrentYear && (
         <div className="rounded-2xl border-2 border-amber-200 bg-amber-50 p-4 dark:border-amber-800 dark:bg-amber-900/20">
           <div className="flex items-center gap-2">
             <Calendar className="h-5 w-5 text-amber-600 dark:text-amber-400" />
@@ -239,7 +253,17 @@ function CamperDetailBody({
 
 export default function CamperDetail() {
   const { camperId } = useParams<{ camperId: string }>()
-  const currentYear = useYear()
+  const appCurrentYear = useYear()
+  const [searchParams] = useSearchParams()
+  // A journey-year link needs the record as it stood THAT year, not as the
+  // app's global year currently sees it (kindred#2329) — `?year=` wins over
+  // the global context when present and a valid positive integer; every
+  // existing caller (no param, or a malformed one) falls straight back to
+  // the global year, same as before this param existed.
+  const yearParam = searchParams.get('year')
+  const parsedYearParam = yearParam !== null ? Number(yearParam) : NaN
+  const currentYear =
+    Number.isInteger(parsedYearParam) && parsedYearParam > 0 ? parsedYearParam : appCurrentYear
   const { hasPermission, isAdmin } = usePermissions()
   const canManageBunking = hasPermission(Permission.BUNKING_MANAGE)
 
@@ -384,6 +408,7 @@ export default function CamperDetail() {
         camper={camper}
         enrolledCampers={enrolledCampers}
         currentYear={currentYear}
+        appCurrentYear={appCurrentYear}
         person={person}
         allBunkRequests={allBunkRequests}
         originalBunkData={originalBunkData}

@@ -21,13 +21,38 @@
  * `FamilyDetailsPanel`'s, and this imitates it deliberately: same forest
  * gradient, same `truncate text-lg font-bold` heading, same `text-forest-100
  * mt-0.5 text-xs` sub-line. A sibling surface, not a new visual language.
+ *
+ * A child's name links to their camper detail page FOR THIS ROW'S YEAR
+ * (kindred#2329) — `/camper/:id?year=N`, opened in a NEW TAB. Adults never
+ * link: `PartyAdult` (from `family_camp_adults`, a name-only scrape) carries
+ * no `person_cm_id` to link with, unlike `PartyChild`.
+ *
+ * Because the link opens elsewhere, THIS tab does not navigate and the modal
+ * deliberately stays open — there is no unwind to perform and nothing here
+ * talks to `modalStack`. `ui/Modal` still owns the background inert and the
+ * overlay token for as long as the modal is mounted, exactly as before.
  */
 import { Baby, Users } from 'lucide-react'
+import { Link } from 'react-router'
 
 import type { HouseholdJourneyRow } from '../../types/lodging'
 import { displayCampMinderAge } from '../../utils/age'
 import { Modal } from '../ui/Modal'
 import { isAttendingAdultName } from './householdIdentity'
+
+/**
+ * Mirrors `CamperLink.tsx`'s own validity check — a CampMinder ID is only
+ * ever a positive integer, so this also rules out a stray `0`.
+ *
+ * `Number.isInteger` matters, not just `> 0` (CodeRabbit review on
+ * kindred#2329's PR): `CamperDetail` resolves the id with `parseInt`, which
+ * TRUNCATES rather than rejects a fractional value — a link built from
+ * `1000001.5` would silently land on person 1000001, a different camper
+ * than the one this row is actually showing.
+ */
+function hasValidPersonCmId(personCmId: number | null | undefined): personCmId is number {
+  return personCmId != null && Number.isInteger(personCmId) && personCmId > 0
+}
 
 export interface HouseholdYearMembersModalProps {
   isOpen: boolean
@@ -45,11 +70,23 @@ export interface HouseholdYearMembersModalProps {
 
 const TITLE_ID = 'household-year-members-title'
 
-/** An age or grade we do not have is omitted, never printed as zero. */
+/**
+ * An age or grade we do not have is omitted, never printed as zero.
+ *
+ * A grade above 12 is omitted too. CampMinder stores 13 for a camper past
+ * 12th grade -- 224 `persons` rows carry it and nothing carries more -- so
+ * it is a real value with no sensible label. School grades stop at 12; past
+ * that we show the age alone rather than inventing a "Grade 13".
+ */
+const HIGHEST_SCHOOL_GRADE = 12
+
 function childDetail(age: number | null | undefined, grade: number | null | undefined): string {
+  const gradeIsShowable =
+    grade !== null && grade !== undefined && grade > 0 && grade <= HIGHEST_SCHOOL_GRADE
+
   return [
     age === null || age === undefined ? '' : `Age ${displayCampMinderAge(age)}`,
-    grade === null || grade === undefined || grade === 0 ? '' : `Grade ${String(grade)}`,
+    gradeIsShowable ? `Grade ${String(grade)}` : '',
   ]
     .filter((part) => part.length > 0)
     .join(' · ')
@@ -146,7 +183,34 @@ export function HouseholdYearMembersModal({
                       is the card's treatment. A vertical list has no run to factor out, and
                       dropping the surname from each line would make a mixed-surname household
                       unreadable. */}
-                  <span className="text-foreground">{child.display_name}</span>
+                  {hasValidPersonCmId(child.person_cm_id) ? (
+                    // NEW TAB, and this row's own year travels with the
+                    // link — NOT the app's current year (kindred#2329).
+                    // Deliberately NO `onClick={onClose}`: this tab does not
+                    // move, so closing the modal here would drop the reader's
+                    // place in the roster for a page they are reading
+                    // elsewhere. `target="_blank"` also hands the click to
+                    // the browser rather than react-router, so no route
+                    // change happens in this tab at all.
+                    <Link
+                      to={`/camper/${String(child.person_cm_id)}${
+                        row.year != null ? `?year=${String(row.year)}` : ''
+                      }`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-foreground hover:text-primary font-medium transition-colors hover:underline"
+                    >
+                      {child.display_name}
+                    </Link>
+                  ) : (
+                    // No `person_cm_id` on file for this child — render as
+                    // plain text rather than a link that would 404. Per the
+                    // corrected issue body, a valid `person_cm_id` always
+                    // resolves for ITS OWN year by construction, so the only
+                    // reason to fall back here is a missing id, never an
+                    // unresolvable one.
+                    <span className="text-foreground">{child.display_name}</span>
+                  )}
                   <span className="text-muted-foreground text-xs">
                     {childDetail(child.age, child.grade)}
                   </span>

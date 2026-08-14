@@ -20,9 +20,21 @@
  */
 import { fireEvent, render, screen, within } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { MemoryRouter } from 'react-router'
 
 import type { HouseholdJourney, HouseholdJourneyRow } from '../../types/lodging'
 import { HouseholdJourneyCard } from './HouseholdJourneyCard'
+
+// A linked child's name is a `<Link>` (kindred#2329), which throws outside a
+// Router context — the modal is closed by default in most of these tests,
+// so it wouldn't render, but "see members" tests below open it.
+function renderCard(props: Parameters<typeof HouseholdJourneyCard>[0]) {
+  return render(
+    <MemoryRouter>
+      <HouseholdJourneyCard {...props} />
+    </MemoryRouter>
+  )
+}
 
 const journeyResult = {
   value: { data: undefined, isLoading: false, error: null } as {
@@ -69,7 +81,7 @@ function show(years: HouseholdJourneyRow[], currentYear = 2026) {
     isLoading: false,
     error: null,
   }
-  return render(<HouseholdJourneyCard householdCmId={2000001} currentYear={currentYear} />)
+  return renderCard({ householdCmId: 2000001, currentYear })
 }
 
 function rowFor(year: number): HTMLElement {
@@ -362,7 +374,7 @@ describe('see members', () => {
 describe('the four query states', () => {
   it('renders a loading state', () => {
     journeyResult.value = { data: undefined, isLoading: true, error: null }
-    render(<HouseholdJourneyCard householdCmId={2000001} currentYear={2026} />)
+    renderCard({ householdCmId: 2000001, currentYear: 2026 })
 
     expect(screen.getByText(/Loading family history/)).toBeInTheDocument()
   })
@@ -373,14 +385,14 @@ describe('the four query states', () => {
     // a spinner tells a staff member a returning family is a first-timer —
     // for the whole fetch, on every open of the panel.
     journeyResult.value = { data: undefined, isLoading: true, error: null }
-    render(<HouseholdJourneyCard householdCmId={2000001} currentYear={2026} />)
+    renderCard({ householdCmId: 2000001, currentYear: 2026 })
 
     expect(screen.queryByText(/on file/)).not.toBeInTheDocument()
   })
 
   it('renders the error inline rather than escalating to the page boundary', () => {
     journeyResult.value = { data: undefined, isLoading: false, error: new Error('boom') }
-    render(<HouseholdJourneyCard householdCmId={2000001} currentYear={2026} />)
+    renderCard({ householdCmId: 2000001, currentYear: 2026 })
 
     expect(screen.getByText(/boom/)).toBeInTheDocument()
     // Same reason as the loading case: a failed read knows nothing about how
@@ -418,7 +430,7 @@ describe('the four query states', () => {
 
 describe('a party with no household', () => {
   it('renders nothing and never fetches', () => {
-    const { container } = render(<HouseholdJourneyCard householdCmId={null} currentYear={2026} />)
+    const { container } = renderCard({ householdCmId: null, currentYear: 2026 })
 
     expect(container.textContent).toBe('')
     expect(useHouseholdJourney).toHaveBeenCalledWith(null)
