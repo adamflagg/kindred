@@ -51,9 +51,10 @@ const (
 // and camper_dietary, because those tables are person x year and the stored link was one
 // arbitrarily-chosen attendee row that could never answer the enrolment question. This table's
 // link is sound -- idx_camper_transportation_unique is (person_id, session_id, year), so exactly
-// one attendee row can match, and every production row (17,628 of 17,628, measured under
-// kindred#2311) points at an attendee whose session matches the row. Do not carry #2261's
-// remedy over here: dropping this column would remove a link that works.
+// one attendee row can match, and on the production snapshot EVERY row's stored attendee is for
+// that row's own session, with zero exceptions (measured under kindred#2311 and re-measured at
+// review; the count moves between snapshots, the zero does not). Do not carry #2261's remedy
+// over here: dropping this column would remove a link that works.
 //
 // Dropping the cascade instead would preserve nothing. Two reasons, either one sufficient:
 //   - `required: true` means PocketBase refuses to delete the referenced attendee at all when
