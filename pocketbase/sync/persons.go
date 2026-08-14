@@ -396,12 +396,31 @@ func (s *PersonsSync) updateRelationsAndCleanup(
 		slog.Warn("Failed to update person-household relations", "error", err)
 	}
 
+	// COUNT rather than propagate, decided deliberately per kindred#2347 rather
+	// than left as the slog.Warn that reached nothing. This function has no error
+	// return, and giving it one would abort the rest of Sync -- the household
+	// stats, the data-quality summary and updateAttendeeRelations -- on a sweep
+	// problem that has already left the data intact.
+	//
+	// One caveat, recorded so the next reader does not think it was overlooked:
+	// deleteOrphans returns the collapse guard's REFUSAL as well as real query
+	// failures, and household_demographics.go's deleteOrphans doc argues a refusal
+	// is not an infrastructure failure and must not be counted (kindred#2293).
+	// That argument rests on the refusal already reaching the operator as the error
+	// Sync() returns, which is true there and false here. So it is counted, and the
+	// refusal's own message -- thresholds, ratio and hint -- is preserved in the
+	// Error log line below; only the run's summary string generalises to
+	// "N database operations failed".
 	if err := s.deleteOrphans(year); err != nil {
-		slog.Warn("Failed to delete orphaned persons", "error", err)
+		slog.Error("Failed to delete orphaned persons", "error", err)
+		s.Stats.Errors++
 	}
 
+	// deleteHouseholdOrphans has no guard, so its error is only ever a real query
+	// failure; the caveat above does not apply to this one.
 	if err := s.deleteHouseholdOrphans(year, processedHouseholdIDs); err != nil {
-		slog.Warn("Failed to delete orphaned households", "error", err)
+		slog.Error("Failed to delete orphaned households", "error", err)
+		s.Stats.Errors++
 	}
 
 	if err := s.ForceWALCheckpoint(); err != nil {
@@ -1610,6 +1629,7 @@ func (s *PersonsSync) deleteHouseholdOrphans(year int, processedIDs map[int]bool
 		if !processedIDs[int(cmID)] {
 			if err := s.App.Delete(record); err != nil {
 				slog.Error("Error deleting orphaned household", "cm_id", int(cmID), "error", err)
+				s.Stats.Errors++
 			} else {
 				deleted++
 			}

@@ -1112,6 +1112,7 @@ func (s *StaffApplicationsSync) deleteOrphans(
 
 			if err := s.App.Delete(record); err != nil {
 				slog.Error("Error deleting orphan record", "id", recordID, "error", err)
+				s.Stats.Errors++
 				continue
 			}
 			deleted++
