@@ -180,8 +180,9 @@ export function shareabilityBadge(unit: LodgingUnitRow): UnitBadge | null {
  * DIFFERENT households independently resolving through the same alias can
  * each claim the identical two-code set without ever having agreed to share
  * either room. `overlappingPartyKeys` guards exactly that: it will not read
- * such a pair as sharing a room with EACH OTHER while their claimed set is no
- * bigger than the number of households claiming it (H <= N). This badge takes
+ * such a pair as sharing a room with EACH OTHER while the number of
+ * households claiming that set is no bigger than the set itself (H <= N).
+ * This badge takes
  * `overlappingParties` as given and needs no guard of its own — it only ever
  * sees the count after that ambiguity has already been resolved upstream.
  *

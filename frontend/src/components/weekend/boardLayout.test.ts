@@ -1608,10 +1608,11 @@ describe('overlappingPartyKeys — a two-unit alias is ambiguous, not a confirme
   })
 
   it('still flags an alias household against a household confirmed in one of its rooms', () => {
-    // The ambiguous pair covers `alpha` alone here (H == N == 1 signature
-    // member for `alpha`'s own set is irrelevant -- what matters is `beta` is
-    // NOT in the same signature group, so the pair is never ambiguous between
-    // them), and `beta`'s single-leaf placement is a confirmed claim on `r1`.
+    // `alpha`'s own signature group has H = 1 household claiming its N = 2
+    // codes -- ambiguous on its own, but irrelevant here, because `beta` is
+    // NOT in that same signature group (`beta` names one code, not two), so
+    // the pair between them is never treated as ambiguous. `beta`'s
+    // single-leaf placement is a confirmed claim on `r1`.
     const alpha = party({ household_cm_id: 500001, unit_code: '', unit_codes: ['r1', 'r2'] })
     const beta = party({ household_cm_id: 500002, unit_code: 'r1', unit_codes: ['r1'] })
     expect(overlappingPartyKeys([alpha, beta], twoUnitAlias)).toEqual(
