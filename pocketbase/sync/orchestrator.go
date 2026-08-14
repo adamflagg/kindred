@@ -330,14 +330,14 @@ type Stats struct {
 	// quality, not a local fault, and it is WARN-ONLY for its first season — surfaced on the
 	// Sync tab, never failing a run.
 	//
-	// Nothing writes this counter yet; the sites that will are held back with the orphan
-	// sweep guard in kindred#2295. It is declared here so the escalation, the status JSON
-	// and the badge all land together rather than in three separate PRs.
+	// The counter is written by 32 sites across the sync pipeline (household_custom_field_values,
+	// financial_lookups, staff, bunks, divisions, person_tag_definitions, custom_field_definitions,
+	// staff_lookups, person_custom_field_values, persons, sessions, session_groups, and
+	// financial_transactions). These were added in kindred#2295, now closed.
 	//
 	// Every completed run is now persisted to sync_runs, including this counter, which is
 	// what makes warn-only a plan rather than a shrug: a threshold picked today would be a
-	// guess, and the season exists to accumulate the distribution to set one from. Until the
-	// #2295 sites land the column records honest zeroes (kindred#2284).
+	// guess, and the season exists to accumulate the distribution to set one from. See kindred#2284.
 	Rejected int `json:"rejected,omitempty"`
 	// DuplicateStaffStatus counts staff records dropped because the same person appeared
 	// under more than one CampMinder status in one sync run (kindred#2267). staff.go's
