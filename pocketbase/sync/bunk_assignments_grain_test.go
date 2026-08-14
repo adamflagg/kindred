@@ -2,11 +2,33 @@ package sync
 
 import (
 	"fmt"
+	"os"
 	"testing"
 
+	"github.com/camp/kindred/pocketbase/campminder"
 	"github.com/pocketbase/pocketbase/core"
 	pbtests "github.com/pocketbase/pocketbase/tests"
 )
+
+// newParallelTestCampMinderClient is newTestCampMinderClient
+// (bunk_assignments_protection_test.go), adapted for a t.Parallel() caller.
+// t.Setenv panics under Parallel because it cannot be safely undone once
+// sibling tests are running concurrently; os.Setenv has no such restriction,
+// and every caller wants the identical constant value, so leaving it set for
+// the rest of the test binary's life is harmless.
+func newParallelTestCampMinderClient(t *testing.T, year int) *campminder.Client {
+	t.Helper()
+	//nolint:usetesting // t.Setenv panics under t.Parallel(); every caller wants
+	// this identical constant value, so os.Setenv with no cleanup is deliberate.
+	if err := os.Setenv("CAMPMINDER_PRIMARY_KEY", "test-subscription-key"); err != nil {
+		t.Fatalf("os.Setenv: %v", err)
+	}
+	client, err := campminder.NewClient(&campminder.Config{APIKey: "test-key", ClientID: "test-client", SeasonID: year})
+	if err != nil {
+		t.Fatalf("campminder.NewClient: %v", err)
+	}
+	return client
+}
 
 // setupBunkAssignmentGrainCollections builds the schema needed to drive
 // processAssignment and preloadExistingAssignments directly against a live
@@ -119,6 +141,8 @@ func bunkAssignmentsForYear(t *testing.T, app core.App, year int) []*core.Record
 // index rejects. Widening the key is what lets a second, distinct row
 // exist at all; resolveViaBunk is what makes it land on the RIGHT session.
 func TestProcessAssignment_MultiSessionPlanDisambiguatedByBunk(t *testing.T) {
+	t.Parallel()
+
 	app, err := pbtests.NewTestApp()
 	if err != nil {
 		t.Fatal(err)
@@ -141,7 +165,7 @@ func TestProcessAssignment_MultiSessionPlanDisambiguatedByBunk(t *testing.T) {
 	saveRec(t, app, "bunks", map[string]any{"cm_id": bunkBCMID, "year": year})
 
 	s := &BunkAssignmentsSync{BaseSyncService: BaseSyncService{
-		App: app, Client: newTestCampMinderClient(t, year), ProcessedKeys: make(map[string]bool),
+		App: app, Client: newParallelTestCampMinderClient(t, year), ProcessedKeys: make(map[string]bool),
 	}}
 	s.personEnrollments = map[int][]int{personCMID: {sessionACMID, sessionBCMID}}
 	s.bunkPlanSessionsList = map[int][]int{planCMID: {sessionACMID, sessionBCMID}}
@@ -238,6 +262,8 @@ func TestProcessAssignment_MultiSessionPlanDisambiguatedByBunk(t *testing.T) {
 // kindred#2259 (95 of 97 measured collisions): before the fix, this exact
 // scenario silently dropped one of the two rows.
 func TestProcessAssignment_FamilyStylePlanPreservesBothRowsImprecisely(t *testing.T) {
+	t.Parallel()
+
 	app, err := pbtests.NewTestApp()
 	if err != nil {
 		t.Fatal(err)
@@ -260,7 +286,7 @@ func TestProcessAssignment_FamilyStylePlanPreservesBothRowsImprecisely(t *testin
 	saveRec(t, app, "bunks", map[string]any{"cm_id": bunkYCMID, "year": year})
 
 	s := &BunkAssignmentsSync{BaseSyncService: BaseSyncService{
-		App: app, Client: newTestCampMinderClient(t, year), ProcessedKeys: make(map[string]bool),
+		App: app, Client: newParallelTestCampMinderClient(t, year), ProcessedKeys: make(map[string]bool),
 	}}
 	s.personEnrollments = map[int][]int{personCMID: {sessionACMID, sessionBCMID}}
 	s.bunkPlanSessionsList = map[int][]int{planCMID: {sessionACMID, sessionBCMID}}
@@ -278,7 +304,7 @@ func TestProcessAssignment_FamilyStylePlanPreservesBothRowsImprecisely(t *testin
 		t.Fatalf("preloadExistingAssignments: %v", err)
 	}
 
-	var resolvedSessions []int
+	resolvedSessions := make([]int, 0, 2)
 	for _, bunkCMID := range []int{bunkXCMID, bunkYCMID} {
 		sessionID, ambiguous := s.resolveAssignmentSession(personCMID, planCMID, bunkCMID, s.bunkPlanSessionsList[planCMID])
 		if ambiguous {
@@ -341,6 +367,8 @@ func TestProcessAssignment_FamilyStylePlanPreservesBothRowsImprecisely(t *testin
 // does not match it, and the sweep would delete both rows the widening
 // exists to keep, without reporting a single error.
 func TestBunkAssignmentGrain_SecondSyncRunNeitherLosesNorDuplicates(t *testing.T) {
+	t.Parallel()
+
 	app, err := pbtests.NewTestApp()
 	if err != nil {
 		t.Fatal(err)
@@ -364,7 +392,7 @@ func TestBunkAssignmentGrain_SecondSyncRunNeitherLosesNorDuplicates(t *testing.T
 
 	newSync := func() *BunkAssignmentsSync {
 		s := &BunkAssignmentsSync{BaseSyncService: BaseSyncService{
-			App: app, Client: newTestCampMinderClient(t, year), ProcessedKeys: make(map[string]bool),
+			App: app, Client: newParallelTestCampMinderClient(t, year), ProcessedKeys: make(map[string]bool),
 		}}
 		s.personEnrollments = map[int][]int{personCMID: {sessionACMID, sessionBCMID}}
 		s.bunkPlanSessionsList = map[int][]int{planCMID: {sessionACMID, sessionBCMID}}
@@ -424,10 +452,12 @@ func TestBunkAssignmentGrain_SecondSyncRunNeitherLosesNorDuplicates(t *testing.T
 
 	run2 := runOnce(t)
 	if run2.Stats.Errors != 0 {
-		t.Errorf("run 2: Stats.Errors = %d, want 0 -- a widened preload/orphan key mismatch surfaces here first", run2.Stats.Errors)
+		t.Errorf("run 2: Stats.Errors = %d, want 0 -- a widened preload/orphan key mismatch "+
+			"surfaces here first", run2.Stats.Errors)
 	}
 	if run2.Stats.Created != 0 {
-		t.Errorf("run 2: Stats.Created = %d, want 0 -- preloadExistingAssignments must find both rows run 1 wrote", run2.Stats.Created)
+		t.Errorf("run 2: Stats.Created = %d, want 0 -- preloadExistingAssignments must find "+
+			"both rows run 1 wrote", run2.Stats.Created)
 	}
 
 	rows := bunkAssignmentsForYear(t, app, year)
