@@ -107,6 +107,13 @@ func (n *NormalizeGeographicSync) SetDebug(debug bool) {
 	n.Debug = debug
 }
 
+// SetDryRun implements the orchestrator's DryRunnable interface (kindred#2334) so a
+// unified sync run with dry_run=true reaches the DryRun field that this service's
+// Sync() already checks before it writes.
+func (n *NormalizeGeographicSync) SetDryRun(dryRun bool) {
+	n.DryRun = dryRun
+}
+
 // SetYear sets the year for this sync service
 func (n *NormalizeGeographicSync) SetYear(year int) {
 	n.Year = year

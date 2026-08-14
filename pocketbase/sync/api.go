@@ -1009,6 +1009,7 @@ func handleSyncStatus(e *core.RequestEvent, scheduler *Scheduler) error {
 			"type":                  qs.Type, // "unified", "phase", "individual"
 			"service":               qs.Service,
 			"include_custom_values": qs.IncludeCustomValues,
+			"dry_run":               qs.DryRun,
 			"position":              i + 1, // 1-based position
 			"queued_at":             qs.QueuedAt.Format(time.RFC3339),
 		}
@@ -1080,20 +1081,46 @@ func handleUnifiedSync(e *core.RequestEvent, scheduler *Scheduler) error {
 	debugParam := e.Request.URL.Query().Get("debug")
 	debug := debugParam == boolTrueStr || debugParam == "1"
 
+	// dry_run=true must compute without writing, on both the immediate path below and the
+	// queued one (EnqueueUnifiedSync / processQueuedSyncs's "unified" case). Before this fix
+	// the parameter was parsed nowhere in this handler at all: it was accepted, echoed
+	// nowhere, and discarded, so a documented dry-run request performed a real write
+	// (kindred#2334).
+	dryRunParam := e.Request.URL.Query().Get("dry_run")
+	dryRun := dryRunParam == boolTrueStr || dryRunParam == "1"
+
 	// Get user info for queue tracking
 	requestedBy := ""
 	if e.Auth != nil {
 		requestedBy = e.Auth.GetString("email")
 	}
 
-	// Get orchestrator and check if any sync is already running
-	// Check all sync flags to prevent race conditions (e.g., when global sync triggers first)
 	orchestrator := scheduler.GetOrchestrator()
+
+	// Reject up front, before either the immediate or the queued path can start, if dry_run
+	// was requested against a service that cannot honor it. This must happen synchronously
+	// here: both paths below do their real work in a goroutine after the response is already
+	// sent, so a check placed inside RunSyncWithOptions would only ever produce a background
+	// log line, never the 400 an operator actually needs to see (kindred#2334's ruled fix
+	// direction is "either honor it or reject the request", never a silent partial write).
+	if dryRun {
+		services := ResolveUnifiedSyncServices(service, includeCustomValues, year == currentYear)
+		if unsupported := orchestrator.UnsupportedDryRunServices(services); len(unsupported) > 0 {
+			return e.JSON(http.StatusBadRequest, map[string]any{
+				"error": fmt.Sprintf("dry_run is not supported for: %s",
+					strings.Join(unsupported, ", ")),
+				"unsupported_services": unsupported,
+			})
+		}
+	}
+
+	// Check if any sync is already running.
+	// Check all sync flags to prevent race conditions (e.g., when global sync triggers first)
 	if orchestrator.IsDailySyncRunning() || orchestrator.IsWeeklySyncRunning() ||
 		orchestrator.IsHistoricalSyncRunning() || orchestrator.IsCustomValuesSyncRunning() ||
 		orchestrator.IsAnyJobRunning() {
 		// Sync is running - try to enqueue
-		qs, err := orchestrator.EnqueueUnifiedSync(year, service, includeCustomValues, debug, requestedBy)
+		qs, err := orchestrator.EnqueueUnifiedSync(year, service, includeCustomValues, debug, dryRun, requestedBy)
 		if err != nil {
 			// Queue is full
 			return e.JSON(http.StatusConflict, map[string]any{
@@ -1101,7 +1128,9 @@ func handleUnifiedSync(e *core.RequestEvent, scheduler *Scheduler) error {
 			})
 		}
 
-		// Successfully queued - return 202 Accepted
+		// Successfully queued - return 202 Accepted. dry_run is echoed from the stored queue
+		// item (qs.DryRun), not the local dryRun variable, so a duplicate request that
+		// deduped onto an existing item reports what that item will actually do.
 		position := orchestrator.GetQueuePositionByID(qs.ID)
 		return e.JSON(http.StatusAccepted, map[string]any{
 			"status":              "queued",
@@ -1111,6 +1140,7 @@ func handleUnifiedSync(e *core.RequestEvent, scheduler *Scheduler) error {
 			"service":             service,
 			"includeCustomValues": includeCustomValues,
 			"debug":               debug,
+			"dry_run":             qs.DryRun,
 		})
 	}
 
@@ -1127,6 +1157,7 @@ func handleUnifiedSync(e *core.RequestEvent, scheduler *Scheduler) error {
 		Year:                optsYear,
 		IncludeCustomValues: includeCustomValues,
 		Debug:               debug,
+		DryRun:              dryRun,
 	}
 
 	// Set services to sync
@@ -1153,6 +1184,7 @@ func handleUnifiedSync(e *core.RequestEvent, scheduler *Scheduler) error {
 			"service", service,
 			"includeCustomValues", includeCustomValues,
 			"debug", debug,
+			"dry_run", dryRun,
 			"isCurrentYear", year == currentYear,
 		)
 
@@ -1177,6 +1209,7 @@ func handleUnifiedSync(e *core.RequestEvent, scheduler *Scheduler) error {
 		"service":             service,
 		"includeCustomValues": includeCustomValues,
 		"debug":               debug,
+		"dry_run":             dryRun,
 	})
 }
 
@@ -1332,11 +1365,15 @@ func processQueuedSyncs(orchestrator *Orchestrator) {
 			optsYear = 0 // Current year mode
 		}
 
-		// Create sync options
+		// Create sync options. DryRun: qs.DryRun is the queued path's half of kindred#2334 --
+		// EnqueueUnifiedSync stored the operator's dry_run request on the queue item, and this
+		// is where it has to survive into the actual run or the flag is lost between the 202
+		// response and the write.
 		opts := Options{
 			Year:                optsYear,
 			IncludeCustomValues: qs.IncludeCustomValues,
 			Debug:               qs.Debug,
+			DryRun:              qs.DryRun,
 		}
 
 		// Set services to sync
@@ -1346,10 +1383,10 @@ func processQueuedSyncs(orchestrator *Orchestrator) {
 
 		if err := orchestrator.RunSyncWithOptions(ctx, opts); err != nil {
 			slog.Error("Queued unified sync failed",
-				"id", qs.ID, "year", qs.Year, "service", qs.Service, "error", err)
+				"id", qs.ID, "year", qs.Year, "service", qs.Service, "dry_run", qs.DryRun, "error", err)
 		} else {
 			slog.Info("Queued unified sync completed",
-				"id", qs.ID, "year", qs.Year, "service", qs.Service)
+				"id", qs.ID, "year", qs.Year, "service", qs.Service, "dry_run", qs.DryRun)
 		}
 
 	default:

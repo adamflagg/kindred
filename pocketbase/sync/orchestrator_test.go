@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"reflect"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -13,6 +14,7 @@ import (
 	"time"
 
 	"github.com/pocketbase/pocketbase/core"
+	pbtests "github.com/pocketbase/pocketbase/tests"
 )
 
 // MockService implements Service interface for testing
@@ -1421,7 +1423,7 @@ func TestEnqueueUnifiedSync(t *testing.T) {
 	o := NewOrchestrator(nil)
 
 	// Enqueue first item
-	qs, err := o.EnqueueUnifiedSync(2025, "all", false, false, "user1@example.com")
+	qs, err := o.EnqueueUnifiedSync(2025, "all", false, false, false, "user1@example.com")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -1452,9 +1454,9 @@ func TestEnqueueUnifiedSyncPosition(t *testing.T) {
 	o := NewOrchestrator(nil)
 
 	// Enqueue multiple items
-	qs1, _ := o.EnqueueUnifiedSync(2025, "all", false, false, "user1")
-	qs2, _ := o.EnqueueUnifiedSync(2024, "all", false, false, "user2")
-	qs3, _ := o.EnqueueUnifiedSync(2023, "all", false, false, "user3")
+	qs1, _ := o.EnqueueUnifiedSync(2025, "all", false, false, false, "user1")
+	qs2, _ := o.EnqueueUnifiedSync(2024, "all", false, false, false, "user2")
+	qs3, _ := o.EnqueueUnifiedSync(2023, "all", false, false, false, "user3")
 
 	queue := o.GetQueuedSyncs()
 	if len(queue) != 3 {
@@ -1479,13 +1481,13 @@ func TestEnqueueUnifiedSyncDuplicateDetection(t *testing.T) {
 	o := NewOrchestrator(nil)
 
 	// Enqueue first item (without custom values)
-	qs1, err := o.EnqueueUnifiedSync(2025, "all", false, false, "user1")
+	qs1, err := o.EnqueueUnifiedSync(2025, "all", false, false, false, "user1")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
 	// Try to enqueue duplicate (same year + service + includeCustomValues)
-	qs2, err := o.EnqueueUnifiedSync(2025, "all", false, true, "user2") // Same includeCustomValues, different debug
+	qs2, err := o.EnqueueUnifiedSync(2025, "all", false, true, false, "user2") // Same includeCustomValues, different debug
 	if err != nil {
 		t.Fatalf("unexpected error for duplicate: %v", err)
 	}
@@ -1502,7 +1504,7 @@ func TestEnqueueUnifiedSyncDuplicateDetection(t *testing.T) {
 	}
 
 	// Now enqueue with different includeCustomValues - should create new item
-	qs3, err := o.EnqueueUnifiedSync(2025, "all", true, false, "user3") // Different includeCustomValues
+	qs3, err := o.EnqueueUnifiedSync(2025, "all", true, false, false, "user3") // Different includeCustomValues
 	if err != nil {
 		t.Fatalf("unexpected error for different includeCustomValues: %v", err)
 	}
@@ -1519,14 +1521,568 @@ func TestEnqueueUnifiedSyncDuplicateDetection(t *testing.T) {
 	}
 }
 
+// =============================================================================
+// dry_run propagation (kindred#2334)
+//
+// handleUnifiedSync parsed year/service/includeCustomValues/debug but never dry_run: the
+// parameter was accepted, echoed nowhere, and discarded, so ?dry_run=true against the unified
+// endpoint performed a real write. The queued path (EnqueueUnifiedSync + the QueuedSync it
+// stores) is a second, independently-broken carrier for the same flag — a test that only
+// exercises the immediate path is not evidence the queued path works, so the two are covered
+// by separate tests below rather than one shared one.
+// =============================================================================
+
+// TestEnqueueUnifiedSyncCarriesDryRun pins that DryRun survives onto the QueuedSync record
+// EnqueueUnifiedSync returns and stores — the field a queued run reads back later.
+func TestEnqueueUnifiedSyncCarriesDryRun(t *testing.T) {
+	t.Parallel()
+	o := NewOrchestrator(nil)
+
+	wet, err := o.EnqueueUnifiedSync(2025, "all", false, false, false, "user1")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if wet.DryRun {
+		t.Error("expected DryRun=false to be stored for a wet request")
+	}
+
+	dry, err := o.EnqueueUnifiedSync(2024, "all", false, false, true, "user2")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !dry.DryRun {
+		t.Error("expected DryRun=true to be stored for a dry_run=true request")
+	}
+
+	// Stored queue state (not just the returned pointer) must also carry it -- GetQueuedSyncs
+	// backs the /status response's queue listing an operator actually reads.
+	found := false
+	for _, qs := range o.GetQueuedSyncs() {
+		if qs.ID == dry.ID {
+			found = true
+			if !qs.DryRun {
+				t.Error("GetQueuedSyncs lost DryRun=true for the queued item")
+			}
+		}
+	}
+	if !found {
+		t.Fatal("queued dry-run item not found via GetQueuedSyncs")
+	}
+}
+
+// TestEnqueueUnifiedSyncDedupRespectsDryRun is the queue-collision trap: without DryRun in the
+// duplicate match, a dry_run=true request for the same year+service+includeCustomValues as an
+// already-queued wet request would silently merge into that wet item and inherit its
+// DryRun=false -- the operator asked for a dry run, got back a queue position, and the queued
+// run would still write for real.
+func TestEnqueueUnifiedSyncDedupRespectsDryRun(t *testing.T) {
+	t.Parallel()
+	o := NewOrchestrator(nil)
+
+	wet, err := o.EnqueueUnifiedSync(2025, "all", false, false, false, "user1")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	dry, err := o.EnqueueUnifiedSync(2025, "all", false, false, true, "user2")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if dry.ID == wet.ID {
+		t.Fatal("dry_run=true request merged into an already-queued wet request -- it would run wet")
+	}
+	if !dry.DryRun {
+		t.Error("expected the new queued item to carry DryRun=true")
+	}
+	if o.GetQueueLength() != 2 {
+		t.Errorf("expected 2 distinct queue items (wet + dry), got %d", o.GetQueueLength())
+	}
+
+	// A second dry_run=true request for the same parameters must still dedup against the
+	// first dry one, not create a third item.
+	dry2, err := o.EnqueueUnifiedSync(2025, "all", false, false, true, "user3")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if dry2.ID != dry.ID {
+		t.Error("expected a second identical dry_run=true request to dedup against the first")
+	}
+	if o.GetQueueLength() != 2 {
+		t.Errorf("expected queue length to stay 2 after a duplicate dry request, got %d", o.GetQueueLength())
+	}
+}
+
+// dryRunAwareService is a Service + DryRunnable double that records, for every Sync() call,
+// whether DryRun was set at that moment -- and only counts a "write" when it was not. This is
+// the sharpest available proxy for the acceptance criterion "writes nothing": a boolean flag
+// being set is not itself evidence anything downstream honored it.
+type dryRunAwareService struct {
+	name string
+
+	mu               sync.Mutex
+	dryRun           bool
+	dryRunAtSyncTime []bool
+	wroteCount       int
+}
+
+func (s *dryRunAwareService) SetDryRun(dryRun bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.dryRun = dryRun
+}
+
+func (s *dryRunAwareService) Sync(_ context.Context) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.dryRunAtSyncTime = append(s.dryRunAtSyncTime, s.dryRun)
+	if !s.dryRun {
+		s.wroteCount++
+	}
+	return nil
+}
+
+func (s *dryRunAwareService) Name() string    { return s.name }
+func (s *dryRunAwareService) GetStats() Stats { return Stats{} }
+
+func (s *dryRunAwareService) snapshot() (calls []bool, wrote int) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return append([]bool(nil), s.dryRunAtSyncTime...), s.wroteCount
+}
+
+// notDryRunnableService is a plain Service with no DryRunnable support, standing in for the
+// real services (session_groups, stranded_assignment_cleanup, ...) that cannot honor dry_run.
+type notDryRunnableService struct {
+	name      string
+	callCount atomic.Int32
+}
+
+func (s *notDryRunnableService) Sync(_ context.Context) error {
+	s.callCount.Add(1)
+	return nil
+}
+func (s *notDryRunnableService) Name() string    { return s.name }
+func (s *notDryRunnableService) GetStats() Stats { return Stats{} }
+
+// newDryRunTestApp returns a test app with one person_tag_defs row already present, so
+// RunSyncWithOptions's checkGlobalTablesEmpty() takes the "globals already ran" branch instead
+// of kicking off a full weekly-sync bootstrap that these tests have no interest in.
+func newDryRunTestApp(t *testing.T) *pbtests.TestApp {
+	t.Helper()
+	app, err := pbtests.NewTestApp()
+	if err != nil {
+		t.Fatalf("NewTestApp: %v", err)
+	}
+	t.Cleanup(app.Cleanup)
+
+	col := core.NewBaseCollection("person_tag_defs")
+	if err := app.Save(col); err != nil {
+		t.Fatalf("save person_tag_defs collection: %v", err)
+	}
+	if err := app.Save(core.NewRecord(col)); err != nil {
+		t.Fatalf("seed person_tag_defs record: %v", err)
+	}
+	return app
+}
+
+// TestRunSyncWithOptionsHonorsDryRun is the immediate-path mechanism test: DryRun=true must
+// reach the service via SetDryRun before Sync runs, and Sync must not "write". DryRun=false is
+// exercised as a control in the same test so a no-op SetDryRun implementation can't pass by
+// always leaving wroteCount at zero.
+func TestRunSyncWithOptionsHonorsDryRun(t *testing.T) {
+	t.Parallel()
+	app := newDryRunTestApp(t)
+	o := NewOrchestrator(app)
+
+	dry := &dryRunAwareService{name: "family_camp_derived"}
+	o.RegisterService("family_camp_derived", dry)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	if err := o.RunSyncWithOptions(ctx, Options{
+		Year:     0, // current-year mode: skips the nil-baseClient year-override branch
+		Services: []string{"family_camp_derived"},
+		DryRun:   true,
+	}); err != nil {
+		t.Fatalf("RunSyncWithOptions (dry): %v", err)
+	}
+
+	calls, wrote := dry.snapshot()
+	if len(calls) != 1 {
+		t.Fatalf("expected Sync to run exactly once, ran %d times", len(calls))
+	}
+	if !calls[0] {
+		t.Error("Sync ran with DryRun=false even though the request asked for dry_run=true")
+	}
+	if wrote != 0 {
+		t.Errorf("expected 0 writes for a dry run, got %d", wrote)
+	}
+
+	// Control: a wet request against the same service must actually write, proving the
+	// dry-run branch above is measuring something real.
+	if err := o.RunSyncWithOptions(ctx, Options{
+		Year:     0,
+		Services: []string{"family_camp_derived"},
+		DryRun:   false,
+	}); err != nil {
+		t.Fatalf("RunSyncWithOptions (wet): %v", err)
+	}
+	calls, wrote = dry.snapshot()
+	if len(calls) != 2 || calls[1] {
+		t.Fatalf("expected the second, wet run to run with DryRun=false; calls=%v", calls)
+	}
+	if wrote != 1 {
+		t.Errorf("expected the wet control run to write once, got %d", wrote)
+	}
+}
+
+// TestRunSyncWithOptionsRejectsUnsupportedDryRun is the defense-in-depth backstop: even if a
+// caller other than handleUnifiedSync's pre-flight check ever invokes RunSyncWithOptions with
+// DryRun=true against a service that cannot honor it, the run must refuse outright rather than
+// silently execute Sync() wet (kindred#2334's "either honor it or reject the request").
+func TestRunSyncWithOptionsRejectsUnsupportedDryRun(t *testing.T) {
+	t.Parallel()
+	app := newDryRunTestApp(t)
+	o := NewOrchestrator(app)
+
+	svc := &notDryRunnableService{name: "session_groups"}
+	o.RegisterService("session_groups", svc)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	err := o.RunSyncWithOptions(ctx, Options{
+		Year:     0,
+		Services: []string{"session_groups"},
+		DryRun:   true,
+	})
+	if err == nil {
+		t.Fatal("expected an error rejecting dry_run against an unsupported service, got nil")
+	}
+	if !strings.Contains(err.Error(), "session_groups") {
+		t.Errorf("expected the error to name the unsupported service, got: %v", err)
+	}
+	if got := svc.callCount.Load(); got != 0 {
+		t.Errorf("expected Sync to never run against a rejected dry_run request, ran %d times", got)
+	}
+}
+
+// TestProcessQueuedSyncsUnifiedHonorsDryRun is the queued-path mechanism test -- the half the
+// issue calls out as the one that will be missed. It exercises the real dequeue-and-run path
+// (processQueuedSyncs), not just the struct field EnqueueUnifiedSync stores, so a bug in wiring
+// QueuedSync.DryRun through to Options.DryRun inside the "unified" case would fail this test
+// even though TestRunSyncWithOptionsHonorsDryRun (the immediate path) passes clean.
+func TestProcessQueuedSyncsUnifiedHonorsDryRun(t *testing.T) {
+	// Not t.Parallel(): t.Setenv is incompatible with it.
+	t.Setenv("CAMPMINDER_SEASON_ID", "2025")
+
+	app := newDryRunTestApp(t)
+	o := NewOrchestrator(app)
+
+	dry := &dryRunAwareService{name: "family_camp_derived"}
+	o.RegisterService("family_camp_derived", dry)
+
+	o.mu.Lock()
+	o.pendingUnifiedSyncs = append(o.pendingUnifiedSyncs, QueuedSync{
+		ID:      "test-queued-dry-run",
+		Year:    2025, // == CAMPMINDER_SEASON_ID, so this resolves to current-year mode
+		Type:    "unified",
+		Service: "family_camp_derived",
+		DryRun:  true,
+	})
+	o.mu.Unlock()
+
+	processQueuedSyncs(o)
+
+	calls, wrote := dry.snapshot()
+	if len(calls) != 1 {
+		t.Fatalf("expected Sync to run exactly once via the queue, ran %d times", len(calls))
+	}
+	if !calls[0] {
+		t.Error("queued sync ran with DryRun=false even though QueuedSync.DryRun was true -- " +
+			"the flag was lost somewhere between the queue and RunSyncWithOptions")
+	}
+	if wrote != 0 {
+		t.Errorf("expected 0 writes for a queued dry run, got %d", wrote)
+	}
+
+	// Control: a queued item with DryRun=false must still write, same reasoning as the
+	// immediate-path control above.
+	o.mu.Lock()
+	o.pendingUnifiedSyncs = append(o.pendingUnifiedSyncs, QueuedSync{
+		ID:      "test-queued-wet-run",
+		Year:    2025,
+		Type:    "unified",
+		Service: "family_camp_derived",
+		DryRun:  false,
+	})
+	o.mu.Unlock()
+
+	processQueuedSyncs(o)
+
+	calls, wrote = dry.snapshot()
+	if len(calls) != 2 || calls[1] {
+		t.Fatalf("expected the second, queued wet run to run with DryRun=false; calls=%v", calls)
+	}
+	if wrote != 1 {
+		t.Errorf("expected the queued wet control run to write once, got %d", wrote)
+	}
+}
+
+// TestUnsupportedDryRunServices pins the helper both handleUnifiedSync's pre-flight check and
+// RunSyncWithOptions's defense-in-depth backstop share.
+func TestUnsupportedDryRunServices(t *testing.T) {
+	t.Parallel()
+	o := NewOrchestrator(nil)
+
+	o.RegisterService("family_camp_derived", &dryRunAwareService{name: "family_camp_derived"})
+	o.RegisterService("session_groups", &notDryRunnableService{name: "session_groups"})
+
+	got := o.UnsupportedDryRunServices([]string{"family_camp_derived", "session_groups"})
+	if len(got) != 1 || got[0] != "session_groups" {
+		t.Errorf("expected [session_groups], got %v", got)
+	}
+
+	// A fully-supported list returns nothing.
+	if got := o.UnsupportedDryRunServices([]string{"family_camp_derived"}); len(got) != 0 {
+		t.Errorf("expected no unsupported services, got %v", got)
+	}
+
+	// An unregistered name is not this helper's concern -- that is the caller's existing
+	// "unknown service" handling, not a dry_run compatibility question.
+	if got := o.UnsupportedDryRunServices([]string{"does_not_exist"}); len(got) != 0 {
+		t.Errorf("expected an unregistered service to be silently skipped, got %v", got)
+	}
+}
+
+// dryRunCapableRealServices are the concrete production types that already had a working
+// DryRun field and internal skip-write logic before kindred#2334. Six of them were already
+// reachable with it: handleCamperHistorySync, handleFamilyCampDerivedSync,
+// handleLodgingAssignmentsSync, handleStaffSkillsSync, handleFinancialAidApplicationsSync and
+// handleHouseholdDemographicsSync each parse ?dry_run= on their own dedicated endpoint. The
+// other seven had the field and the skip-write branch but no caller that could set it -- the
+// unified endpoint is their first. This list is the actual
+// blast radius of the incident in #2334: household_demographics/family_camp_derived are exactly
+// the services that swapped medical narratives and adult attributes and deleted family_camp_adults
+// rows. A DryRunnable mechanism that only a test double satisfies would leave every one of these
+// rejecting dry_run=true with a 400 in production, contradicting the issue's ruled fix direction:
+// honor dry_run end to end, for every service reachable through the unified endpoint -- not a
+// 400. This list -- and the compile-time assertions below -- exist so a future
+// service losing its SetDryRun method (e.g. during a refactor) fails a test instead of silently
+// falling back to rejection.
+var dryRunCapableRealServices = []string{
+	"camper_dietary", "camper_history", "quest_registrations", "household_demographics",
+	"financial_aid_applications", "lodging_assignments", "camper_transportation",
+	"staff_vehicle_info", "enrollment_snapshots", "normalize_geographic", "family_camp_derived",
+	"staff_applications", "staff_skills",
+}
+
+// Compile-time guarantee that the real production types stay wired to DryRunnable. If any of
+// these stops compiling, a refactor silently dropped SetDryRun and dry_run=true for that
+// service would start being rejected in production instead of honored.
+var (
+	_ DryRunnable = (*CamperDietarySync)(nil)
+	_ DryRunnable = (*CamperHistorySync)(nil)
+	_ DryRunnable = (*QuestRegistrationsSync)(nil)
+	_ DryRunnable = (*HouseholdDemographicsSync)(nil)
+	_ DryRunnable = (*FinancialAidApplicationsSync)(nil)
+	_ DryRunnable = (*LodgingAssignmentsSync)(nil)
+	_ DryRunnable = (*CamperTransportationSync)(nil)
+	_ DryRunnable = (*StaffVehicleInfoSync)(nil)
+	_ DryRunnable = (*EnrollmentSnapshotsSync)(nil)
+	_ DryRunnable = (*NormalizeGeographicSync)(nil)
+	_ DryRunnable = (*FamilyCampDerivedSync)(nil)
+	_ DryRunnable = (*StaffApplicationsSync)(nil)
+	_ DryRunnable = (*StaffSkillsSync)(nil)
+)
+
+// TestRealServicesHonorDryRunThroughUnifiedEndpoint proves the wiring against the actual
+// registered production types (not dryRunAwareService test doubles): every service in
+// dryRunCapableRealServices must be absent from UnsupportedDryRunServices' verdict on that
+// list, while a service known to have no such logic (session_groups) must still be rejected.
+// Without this, TestUnsupportedDryRunServices above could stay green forever while every real
+// service in production silently lost its DryRunnable implementation.
+//
+// Interface satisfaction is all this proves. TestRealServicesSetDryRunStoresTheFlag below is
+// the half that proves the setter actually stores anything -- a no-op SetDryRun passes this
+// test and is worse than no support at all.
+func TestRealServicesHonorDryRunThroughUnifiedEndpoint(t *testing.T) {
+	t.Parallel()
+	o := NewOrchestrator(nil)
+
+	o.RegisterService("camper_dietary", NewCamperDietarySync(nil))
+	o.RegisterService("camper_history", NewCamperHistorySync(nil))
+	o.RegisterService("quest_registrations", NewQuestRegistrationsSync(nil))
+	o.RegisterService("household_demographics", NewHouseholdDemographicsSync(nil))
+	o.RegisterService("financial_aid_applications", NewFinancialAidApplicationsSync(nil))
+	o.RegisterService("lodging_assignments", NewLodgingAssignmentsSync(nil))
+	o.RegisterService("camper_transportation", NewCamperTransportationSync(nil))
+	o.RegisterService("staff_vehicle_info", NewStaffVehicleInfoSync(nil))
+	o.RegisterService("enrollment_snapshots", NewEnrollmentSnapshotsSync(nil))
+	o.RegisterService("normalize_geographic", NewNormalizeGeographicSync(nil))
+	o.RegisterService("family_camp_derived", NewFamilyCampDerivedSync(nil))
+	o.RegisterService("staff_applications", NewStaffApplicationsSync(nil))
+	o.RegisterService("staff_skills", NewStaffSkillsSync(nil))
+	// The real production type, not a double: the rejection path has to be proven against a
+	// service that genuinely has no dry-run support, or nothing in the suite shows that a
+	// wet-only service is actually caught. If session_groups ever gains a real SetDryRun and
+	// a skip-write branch, this failing is the correct signal to move it into
+	// dryRunCapableRealServices rather than to swap a double back in here.
+	o.RegisterService(serviceNameSessionGroups, NewSessionGroupsSync(nil, nil))
+
+	if got := o.UnsupportedDryRunServices(dryRunCapableRealServices); len(got) != 0 {
+		t.Errorf("expected every real dry-run-capable service to be supported, got unsupported=%v", got)
+	}
+
+	got := o.UnsupportedDryRunServices(append(append([]string{}, dryRunCapableRealServices...), serviceNameSessionGroups))
+	if len(got) != 1 || got[0] != serviceNameSessionGroups {
+		t.Errorf("expected only [%s] unsupported alongside the real services, got %v", serviceNameSessionGroups, got)
+	}
+}
+
+// TestRunSyncWithOptionsDryRunSkipsTheWeeklyBootstrap covers the one write inside
+// RunSyncWithOptions that the DryRunnable plumbing never sees. Before any service runs,
+// RunSyncWithOptions checks whether the global tables are empty and, if so, runs a full
+// weekly sync -- real CampMinder fetches, real writes to person_tag_defs / custom_field_defs
+// / divisions -- through RunWeeklySync, which takes no Options and so cannot know a dry run
+// was asked for. A dry_run=true request landing on an unseeded database therefore wrote,
+// while the 200 body told the operator "dry_run": true (kindred#2334).
+func TestRunSyncWithOptionsDryRunSkipsTheWeeklyBootstrap(t *testing.T) {
+	t.Parallel()
+
+	// Deliberately NOT newDryRunTestApp: this test needs the empty-globals branch that
+	// helper's person_tag_defs seed exists to avoid.
+	app, err := pbtests.NewTestApp()
+	if err != nil {
+		t.Fatalf("NewTestApp: %v", err)
+	}
+	t.Cleanup(app.Cleanup)
+
+	o := NewOrchestrator(app)
+	o.SetJobSpacing(0)
+
+	// person_tag_defs is the first job of the weekly bootstrap and is not part of the
+	// requested run, so any call to it can only have come from that bootstrap.
+	bootstrap := &notDryRunnableService{name: "person_tag_defs"}
+	o.RegisterService("person_tag_defs", bootstrap)
+	dry := &dryRunAwareService{name: "family_camp_derived"}
+	o.RegisterService("family_camp_derived", dry)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	if err := o.RunSyncWithOptions(ctx, Options{
+		Year:     0,
+		Services: []string{"family_camp_derived"},
+		DryRun:   true,
+	}); err != nil {
+		t.Fatalf("RunSyncWithOptions (dry): %v", err)
+	}
+
+	if got := bootstrap.callCount.Load(); got != 0 {
+		t.Errorf("dry run ran the weekly bootstrap %d time(s) -- it writes for real", got)
+	}
+	if calls, wrote := dry.snapshot(); len(calls) != 1 || !calls[0] || wrote != 0 {
+		t.Errorf("expected one dry Sync and no writes; calls=%v wrote=%d", calls, wrote)
+	}
+
+	// Control: the bootstrap must still run for a wet request on the same empty database,
+	// so the guard above is a dry-run gate and not an accidental removal of the bootstrap.
+	if err := o.RunSyncWithOptions(ctx, Options{
+		Year:     0,
+		Services: []string{"family_camp_derived"},
+		DryRun:   false,
+	}); err != nil {
+		t.Fatalf("RunSyncWithOptions (wet): %v", err)
+	}
+	if got := bootstrap.callCount.Load(); got == 0 {
+		t.Error("wet run skipped the weekly bootstrap on an empty database")
+	}
+}
+
+// TestRealServicesSetDryRunStoresTheFlag closes the gap the DryRunnable interface leaves open
+// on its own: satisfying it is a compile-time property, and a SetDryRun whose body stores
+// nothing satisfies it exactly as well as one that works. That mutant is strictly worse than
+// having no dry-run support at all -- UnsupportedDryRunServices reports the service as
+// supported, so handleUnifiedSync answers 200 with "dry_run": true, and the service then runs
+// wet. That is the kindred#2334 incident again with an operator-visible "dry run" label on it.
+//
+// Verified by mutation while this test was written: with FamilyCampDerivedSync.SetDryRun's
+// body replaced by a no-op, `go test ./sync/` stayed entirely green -- the compile-time
+// DryRunnable assertions below still held, TestRealServicesHonorDryRunThroughUnifiedEndpoint
+// still passed, and every existing per-service dry-run test set the field directly rather than
+// through the setter, so nothing anywhere reached the production entry point.
+//
+// Reflection reads the same exported DryRun field each Sync() branches on before it writes, so
+// a service that renames or drops that field fails here loudly instead of quietly ceasing to
+// honor dry runs.
+func TestRealServicesSetDryRunStoresTheFlag(t *testing.T) {
+	t.Parallel()
+
+	services := map[string]DryRunnable{
+		"camper_dietary":             NewCamperDietarySync(nil),
+		"camper_history":             NewCamperHistorySync(nil),
+		"quest_registrations":        NewQuestRegistrationsSync(nil),
+		"household_demographics":     NewHouseholdDemographicsSync(nil),
+		"financial_aid_applications": NewFinancialAidApplicationsSync(nil),
+		"lodging_assignments":        NewLodgingAssignmentsSync(nil),
+		"camper_transportation":      NewCamperTransportationSync(nil),
+		"staff_vehicle_info":         NewStaffVehicleInfoSync(nil),
+		"enrollment_snapshots":       NewEnrollmentSnapshotsSync(nil),
+		"normalize_geographic":       NewNormalizeGeographicSync(nil),
+		"family_camp_derived":        NewFamilyCampDerivedSync(nil),
+		"staff_applications":         NewStaffApplicationsSync(nil),
+		"staff_skills":               NewStaffSkillsSync(nil),
+	}
+
+	// Every name the orchestrator will hand SetDryRun(true) must be covered here, or a
+	// service could be added to the wired list and never checked.
+	if len(services) != len(dryRunCapableRealServices) {
+		t.Fatalf("this test covers %d services but %d are wired to DryRunnable",
+			len(services), len(dryRunCapableRealServices))
+	}
+	for _, name := range dryRunCapableRealServices {
+		if _, ok := services[name]; !ok {
+			t.Fatalf("%s is wired to DryRunnable but not covered here", name)
+		}
+	}
+
+	for name, svc := range services {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			field := reflect.ValueOf(svc).Elem().FieldByName("DryRun")
+			if !field.IsValid() || field.Kind() != reflect.Bool {
+				t.Fatalf("%s has no exported bool DryRun field for SetDryRun to reach", name)
+			}
+
+			svc.SetDryRun(true)
+			if !field.Bool() {
+				t.Fatalf("%s.SetDryRun(true) left DryRun false -- the unified endpoint would "+
+					"report dry_run=true and the service would write for real", name)
+			}
+
+			// The orchestrator resets the flag on the registered singleton after a dry run;
+			// a setter that only ever stores true would leak it into the next, wet run.
+			svc.SetDryRun(false)
+			if field.Bool() {
+				t.Fatalf("%s.SetDryRun(false) left DryRun true -- a later wet run would "+
+					"silently write nothing", name)
+			}
+		})
+	}
+}
+
 // TestDequeueUnifiedSync tests basic dequeue functionality
 func TestDequeueUnifiedSync(t *testing.T) {
 	t.Parallel()
 	o := NewOrchestrator(nil)
 
 	// Enqueue items
-	qs1, _ := o.EnqueueUnifiedSync(2025, "all", false, false, "user1")
-	_, _ = o.EnqueueUnifiedSync(2024, "all", false, false, "user2")
+	qs1, _ := o.EnqueueUnifiedSync(2025, "all", false, false, false, "user1")
+	_, _ = o.EnqueueUnifiedSync(2024, "all", false, false, false, "user2")
 
 	// Dequeue should return first item (FIFO)
 	dequeued := o.DequeueUnifiedSync()
@@ -1563,9 +2119,9 @@ func TestCancelQueuedSync(t *testing.T) {
 	o := NewOrchestrator(nil)
 
 	// Enqueue items
-	qs1, _ := o.EnqueueUnifiedSync(2025, "all", false, false, "user1")
-	qs2, _ := o.EnqueueUnifiedSync(2024, "all", false, false, "user2")
-	qs3, _ := o.EnqueueUnifiedSync(2023, "all", false, false, "user3")
+	qs1, _ := o.EnqueueUnifiedSync(2025, "all", false, false, false, "user1")
+	qs2, _ := o.EnqueueUnifiedSync(2024, "all", false, false, false, "user2")
+	qs3, _ := o.EnqueueUnifiedSync(2023, "all", false, false, false, "user3")
 
 	// Cancel the middle item
 	ok := o.CancelQueuedSync(qs2.ID)
@@ -1594,7 +2150,7 @@ func TestCancelQueuedSyncNotFound(t *testing.T) {
 	o := NewOrchestrator(nil)
 
 	// Enqueue an item
-	_, _ = o.EnqueueUnifiedSync(2025, "all", false, false, "user1")
+	_, _ = o.EnqueueUnifiedSync(2025, "all", false, false, false, "user1")
 
 	// Try to cancel non-existent ID
 	ok := o.CancelQueuedSync("non-existent-id")
@@ -1614,7 +2170,7 @@ func TestGetQueuedSyncsReturnsCopy(t *testing.T) {
 	t.Parallel()
 	o := NewOrchestrator(nil)
 
-	_, _ = o.EnqueueUnifiedSync(2025, "all", false, false, "user1")
+	_, _ = o.EnqueueUnifiedSync(2025, "all", false, false, false, "user1")
 
 	// Get queue and modify it
 	queue1 := o.GetQueuedSyncs()
@@ -1637,9 +2193,9 @@ func TestGetQueuePositionByID(t *testing.T) {
 	t.Parallel()
 	o := NewOrchestrator(nil)
 
-	qs1, _ := o.EnqueueUnifiedSync(2025, "all", false, false, "user1")
-	qs2, _ := o.EnqueueUnifiedSync(2024, "all", false, false, "user2")
-	qs3, _ := o.EnqueueUnifiedSync(2023, "all", false, false, "user3")
+	qs1, _ := o.EnqueueUnifiedSync(2025, "all", false, false, false, "user1")
+	qs2, _ := o.EnqueueUnifiedSync(2024, "all", false, false, false, "user2")
+	qs3, _ := o.EnqueueUnifiedSync(2023, "all", false, false, false, "user3")
 
 	// Position is 1-based for user display
 	pos1 := o.GetQueuePositionByID(qs1.ID)
@@ -1675,7 +2231,7 @@ func TestQueueConcurrentAccess(t *testing.T) {
 	// Writer goroutine - enqueue items
 	go func() {
 		for i := range 50 {
-			_, err := o.EnqueueUnifiedSync(2020+i%10, "all", false, false, "writer")
+			_, err := o.EnqueueUnifiedSync(2020+i%10, "all", false, false, false, "writer")
 			if err != nil {
 				errChan <- err
 			}
@@ -1723,7 +2279,7 @@ func TestIsUnifiedSyncQueued(t *testing.T) {
 	}
 
 	// Enqueue a sync
-	_, _ = o.EnqueueUnifiedSync(2025, "all", false, false, "user1")
+	_, _ = o.EnqueueUnifiedSync(2025, "all", false, false, false, "user1")
 
 	// Now it should be queued
 	if !o.IsUnifiedSyncQueued(2025, "all") {
@@ -1753,12 +2309,12 @@ func TestQueueLengthMethod(t *testing.T) {
 	}
 
 	// Add items
-	_, _ = o.EnqueueUnifiedSync(2025, "all", false, false, "user1")
+	_, _ = o.EnqueueUnifiedSync(2025, "all", false, false, false, "user1")
 	if o.GetQueueLength() != 1 {
 		t.Errorf("expected queue length 1, got %d", o.GetQueueLength())
 	}
 
-	_, _ = o.EnqueueUnifiedSync(2024, "all", false, false, "user2")
+	_, _ = o.EnqueueUnifiedSync(2024, "all", false, false, false, "user2")
 	if o.GetQueueLength() != 2 {
 		t.Errorf("expected queue length 2, got %d", o.GetQueueLength())
 	}

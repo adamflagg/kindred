@@ -61,6 +61,13 @@ func (s *StaffVehicleInfoSync) SetDebug(debug bool) {
 	s.Debug = debug
 }
 
+// SetDryRun implements the orchestrator's DryRunnable interface (kindred#2334) so a
+// unified sync run with dry_run=true reaches the DryRun field that this service's
+// Sync() already checks before it writes.
+func (s *StaffVehicleInfoSync) SetDryRun(dryRun bool) {
+	s.DryRun = dryRun
+}
+
 // SetYear sets the year for this sync service
 func (s *StaffVehicleInfoSync) SetYear(year int) {
 	s.Year = year

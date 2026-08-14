@@ -128,6 +128,20 @@ var serialGroups = []struct {
 		},
 	},
 	{
+		// handleUnifiedSync and processQueuedSyncs both call ParseSeasonYear(), which reads
+		// CAMPMINDER_SEASON_ID directly via os.Getenv -- these HTTP- and queue-level dry_run
+		// tests (kindred#2334) need a deterministic season to resolve their year=2025 requests
+		// against, so each sets it with t.Setenv.
+		pkg:    "sync",
+		reason: "t.Setenv: CAMPMINDER_SEASON_ID makes handleUnifiedSync's year resolution deterministic",
+		tests: []string{
+			"TestHandleUnifiedSyncRejectsUnsupportedDryRun",
+			"TestHandleUnifiedSyncImmediatePathEchoesDryRun",
+			"TestHandleUnifiedSyncQueuedPathEchoesDryRun",
+			"TestProcessQueuedSyncsUnifiedHonorsDryRun",
+		},
+	},
+	{
 		// captureSweepLogs (orphan_sweep_test.go) swaps slog's default handler,
 		// which is process-global -- the exact second reason this list exists,
 		// and the same one already recorded for lodging's captureLogs below.
