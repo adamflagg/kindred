@@ -295,7 +295,7 @@ func (s *CamperDietarySync) loadPersonsWithAttendee(
 		default:
 		}
 
-		records, err := s.App.FindRecordsByFilter("attendees", filter, "", perPage, (page-1)*perPage)
+		records, err := s.App.FindRecordsByFilter("attendees", filter, sortByID, perPage, (page-1)*perPage)
 		if err != nil {
 			return nil, fmt.Errorf("querying attendees page %d: %w", page, err)
 		}
@@ -342,7 +342,7 @@ func (s *CamperDietarySync) loadPersonCustomValues(
 		default:
 		}
 
-		records, err := s.App.FindRecordsByFilter("person_custom_values", filter, "", perPage, (page-1)*perPage)
+		records, err := s.App.FindRecordsByFilter("person_custom_values", filter, sortByID, perPage, (page-1)*perPage)
 		if err != nil {
 			return nil, fmt.Errorf("querying person custom values page %d: %w", page, err)
 		}
@@ -512,7 +512,7 @@ func (s *CamperDietarySync) loadExistingRecords(ctx context.Context, year int) (
 		default:
 		}
 
-		records, err := s.App.FindRecordsByFilter("camper_dietary", filter, "", perPage, (page-1)*perPage)
+		records, err := s.App.FindRecordsByFilter("camper_dietary", filter, sortByID, perPage, (page-1)*perPage)
 		if err != nil {
 			return nil, fmt.Errorf("querying camper_dietary page %d: %w", page, err)
 		}

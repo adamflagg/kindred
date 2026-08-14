@@ -142,6 +142,29 @@ var serialGroups = []struct {
 		},
 	},
 	{
+		// captureSweepLogs (orphan_sweep_test.go) swaps slog's default handler,
+		// which is process-global -- the exact second reason this list exists,
+		// and the same one already recorded for lodging's captureLogs below.
+		//
+		// It slipped through because slog.SetDefault is internally atomic, so
+		// -race sees nothing: the corruption is logical, not a data race. Two
+		// of these tests assert on the ABSENCE of a log line, so a parallel
+		// sibling that grabs the global mid-run writes its output into the
+		// wrong buffer and the assertion reads someone else's sweep. Measured
+		// on `go test ./sync/ -run TestBaseDeleteOrphans`: 2 failures in 12
+		// runs with three parallel capturers, 0 in 36 with these serial.
+		pkg:    "sync",
+		reason: "captureSweepLogs swaps the process-global slog default",
+		tests: []string{
+			"TestBaseDeleteOrphansCountsOnlyCompletedDeletes",
+			"TestBaseDeleteOrphansFromPreloadedCountsOnlyCompletedDeletes",
+			"TestBaseDeleteOrphansWarnsWhenNothingCanBeKeyed",
+			"TestIsDuplicateStaffStatus",
+			"TestLoadPersonCustomValuesCountsAndLogsUnmappedFields",
+			"TestLoadPersonCustomValuesNoDiscardsMeansNoWarnLog",
+		},
+	},
+	{
 		// registryBasePath / registryAbsoluteRoots (lodging/registry.go) are
 		// the only true data races the detector found when the whole tree was
 		// made parallel at once: withRegistryBasePath writes them, and every

@@ -866,7 +866,7 @@ func (c *CamperHistorySync) loadSynagogueByHousehold(ctx context.Context, year i
 		records, err := c.App.FindRecordsByFilter(
 			"household_custom_values",
 			filter,
-			"",
+			sortByID,
 			perPage,
 			(page-1)*perPage,
 		)
@@ -950,7 +950,7 @@ func (c *CamperHistorySync) loadCongregationByPerson(ctx context.Context, year i
 		records, err := c.App.FindRecordsByFilter(
 			"person_custom_values",
 			filter,
-			"",
+			sortByID,
 			perPage,
 			(page-1)*perPage,
 		)

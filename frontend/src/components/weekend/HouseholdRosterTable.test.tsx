@@ -1070,6 +1070,40 @@ describe('HouseholdRosterTable — filters by housing need (kindred#2251)', () =
     expect(screen.getByText(/missing data/i)).toBeInTheDocument()
   })
 
+  it('warns that the infant chip has no historical data either, since it can only ever be empty (kindred#2251 D18)', async () => {
+    // D18: has_infant is 0 on all 3,923 family_camp_registrations rows across
+    // all ten years -- the chip is a permanent no-match, not a bathroom/power-
+    // style 2026-only gap. Folding it into the same caveat set means a pre-
+    // 2026 click explains itself instead of silently landing on the generic
+    // zero-match empty state with no context.
+    render(<HouseholdRosterTable year={2024} parties={[noNeedsFamily]} />, { wrapper })
+    await userEvent.click(screen.getByRole('button', { name: 'Infant in party' }))
+    expect(screen.getByText(/missing data/i)).toBeInTheDocument()
+  })
+
+  it('names the infant question in that caveat, not the bathroom/power one it did not filter on', async () => {
+    // Routing infant through the banner is only worth anything if the banner
+    // says something true about infants. The bathroom/power sentence is both
+    // irrelevant to a click on this chip and wrong about it -- has_infant is
+    // 0 in 2026 as well, so "only recorded starting the 2026 season" does not
+    // describe this flag at any year.
+    render(<HouseholdRosterTable year={2024} parties={[noNeedsFamily]} />, { wrapper })
+    await userEvent.click(screen.getByRole('button', { name: 'Infant in party' }))
+    const caveat = screen.getByText(/missing data/i)
+    expect(caveat.textContent).toMatch(/infant/i)
+    expect(caveat.textContent).not.toMatch(/private bathroom/i)
+  })
+
+  it('keeps the bathroom/power caveat wording when one of those is selected alongside infant', async () => {
+    // The 2026-column sentence is the approved copy for the flags it was
+    // written for, and stays exactly as it shipped whenever one of them is
+    // active -- the infant branch must not swallow it.
+    render(<HouseholdRosterTable year={2024} parties={[noNeedsFamily]} />, { wrapper })
+    await userEvent.click(screen.getByRole('button', { name: 'Power' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Infant in party' }))
+    expect(screen.getByText(/2026 season/)).toBeInTheDocument()
+  })
+
   it('warns on a historical season even when the OR filter still finds matches', async () => {
     // The caveat is about the BATHROOM/POWER signal specifically, which is
     // silently incomplete even when the combined OR result is non-empty.
