@@ -2240,3 +2240,51 @@ describe('LodgingUnitCard — placing a family from the space itself (kindred#20
     expect(screen.queryByRole('combobox')).not.toBeInTheDocument()
   })
 })
+
+describe('LodgingUnitCard — no sr-only text of any kind (kindred#2348)', () => {
+  /*
+   * The site kindred#2249's sweep MISSED: kindred#2230 shipped a
+   * `role="status" aria-live="polite" className="sr-only"` placement
+   * announcement on 2026-08-09, and the DO-NOT-ADD policy landed one day
+   * later without removing it. Pinned NEGATIVELY here, the way every other
+   * site in this sweep is pinned, so the region cannot come back unnoticed
+   * a third time.
+   *
+   * Asserted on a card holding a party whose headcount exceeds its recorded
+   * beds — the exact shape whose occupancy sentence was the Cmd+F hit in the
+   * field report — so this also guards the `ui/Tooltip` mirror from
+   * reappearing THROUGH this card.
+   */
+  const infantSlot = slot({
+    parties: [
+      party({
+        adults: [{ adult_number: 1, display_name: 'Emma Johnson', relationship: 'Mother' }],
+        children: [
+          { person_cm_id: 9001, display_name: 'Noah Johnson', age: 8, grade: 3 },
+          { person_cm_id: 9002, display_name: 'Ivy Johnson', age: 0.11, grade: 0 },
+        ],
+        party_size: 2,
+      }),
+    ],
+  })
+
+  it('renders no sr-only node and no aria-live region at rest', () => {
+    const { container } = render(
+      <LodgingUnitCard slot={infantSlot} hue="hsl(160 45% 42%)" onOpenParty={vi.fn()} />
+    )
+    expect(container.querySelectorAll('.sr-only')).toHaveLength(0)
+    expect(container.querySelectorAll('[aria-live]')).toHaveLength(0)
+  })
+
+  it('keeps the occupancy sentence OUT of the DOM until the bubble is opened', () => {
+    // The measured defect: find-in-page matched `infant` four times on the
+    // Housing tab and highlighted nothing, because `ui/Tooltip` mirrored
+    // every closed bubble's sentence into an `sr-only` span.
+    render(<LodgingUnitCard slot={infantSlot} hue="hsl(160 45% 42%)" onOpenParty={vi.fn()} />)
+    expect(screen.queryByText(/exempt from the bed count/)).not.toBeInTheDocument()
+    fireEvent.focus(screen.getByTestId('unit-occupancy'))
+    expect(screen.getByRole('tooltip')).toHaveTextContent(
+      'Sleeps 5 · 2 placed · an infant is exempt from the bed count'
+    )
+  })
+})

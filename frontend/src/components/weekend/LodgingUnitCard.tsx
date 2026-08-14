@@ -247,18 +247,16 @@ export interface LodgingUnitCardProps {
    * above. The board resolves the intent through `resolvePickerPlacement`,
    * which is `resolveDrop` — there is one placement path, not two.
    *
-   * Returns whether the placement actually landed (kindred#2219 round 6,
-   * CodeRabbit finding). `resolvePickerPlacement` can refuse a stale picker
-   * row synchronously, and the optimistic mutation behind it
-   * (`useLodgingPlacement.move`) can still reject and roll itself back —
-   * this component no longer reads the result (kindred#2348 deleted the
-   * `sr-only` announcement it fed), but the signature stays as-is rather
-   * than churning `LodgingBoard`'s `placeParty` for a caller with nothing
-   * left to gain from the change. An `undefined` return (no signal either
-   * way) is treated as success for backward compatibility with callers that
-   * predate this contract.
+   * Returns NOTHING, deliberately. It used to hand back whether the write
+   * actually landed (kindred#2219 round 6, CodeRabbit finding) so the card
+   * could hold back an `sr-only` announcement on a refused intent or a
+   * rolled-back mutation. kindred#2348 deleted that announcement, and with
+   * it the only reader the boolean ever had — a return value nobody reads is
+   * a contract that drifts, so it goes with the feature rather than sitting
+   * here inviting a future caller to trust it. Both failure paths are still
+   * handled where they always were, inside `LodgingBoard.placeParty`.
    */
-  onPlaceParty?: (unit: LodgingUnitRow, party: RosterPartyRow) => Promise<boolean> | undefined
+  onPlaceParty?: (unit: LodgingUnitRow, party: RosterPartyRow) => void
   onOpenParty: (party: RosterPartyRow) => void
 }
 
@@ -852,7 +850,7 @@ export function LodgingUnitCard({
             // whole-house capacity rather than by its container row's delta.
             units={units}
             onSelect={(party) => {
-              void onPlaceParty(unit, party)
+              onPlaceParty(unit, party)
             }}
           />
         )}
