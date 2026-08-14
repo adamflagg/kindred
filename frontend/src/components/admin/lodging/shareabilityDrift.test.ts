@@ -33,24 +33,22 @@ import { shareabilityDrift } from './shareabilityDrift'
 const leafBase = {
   inventoryClass: 'family_pool',
   isContainer: false,
-  sleeps: '15',
   stored: 'shareable',
 } as const
 
 describe('shareabilityDrift', () => {
   describe('a LEAF (retired comparison)', () => {
-    it('says nothing for a curated-shareable leaf, whatever sleeps reads', () => {
+    it('says nothing for a curated-shareable leaf', () => {
       // THE case kindred#2331 exists to fix: a leaf staff curated shareable
-      // at any capacity must never be nagged back toward single_party by a
-      // `sleeps` number the rule no longer consults.
+      // must never be nagged back toward single_party. Capacity cannot even
+      // be expressed here any more — `sleeps` is off the input type — so the
+      // end-to-end proof that typing a capacity raises nothing lives at the
+      // form level, in LodgingUnitForm.test.tsx.
       expect(shareabilityDrift(leafBase)).toBeNull()
-      expect(shareabilityDrift({ ...leafBase, sleeps: '4' })).toBeNull()
-      expect(shareabilityDrift({ ...leafBase, sleeps: '' })).toBeNull()
     })
 
-    it('says nothing for a curated-single_party leaf, whatever sleeps reads', () => {
-      expect(shareabilityDrift({ ...leafBase, stored: 'single_party', sleeps: '15' })).toBeNull()
-      expect(shareabilityDrift({ ...leafBase, stored: 'single_party', sleeps: '' })).toBeNull()
+    it('says nothing for a curated-single_party leaf', () => {
+      expect(shareabilityDrift({ ...leafBase, stored: 'single_party' })).toBeNull()
     })
 
     it('says nothing on an UNCLASSIFIED leaf', () => {
@@ -68,12 +66,12 @@ describe('shareabilityDrift', () => {
       expect(drift?.derived).toBe('shareable')
     })
 
-    it('ignores capacity entirely on a container, as the rule does', () => {
+    it('is silent on a container that already agrees with the rule', () => {
       // A container's `sleeps` is a DELTA over its rooms (kindred#2041), so a
-      // small number on one is not evidence of anything. A shareable
-      // container must not be nagged about its delta.
-      expect(shareabilityDrift({ ...leafBase, isContainer: true, sleeps: '1' })).toBeNull()
-      expect(shareabilityDrift({ ...leafBase, isContainer: true, sleeps: '' })).toBeNull()
+      // small number on one was never evidence of anything — which is why the
+      // container leg never read capacity, and why removing `sleeps` from the
+      // input took nothing away from it.
+      expect(shareabilityDrift({ ...leafBase, isContainer: true })).toBeNull()
     })
   })
 

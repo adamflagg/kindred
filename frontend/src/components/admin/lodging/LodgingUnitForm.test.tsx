@@ -172,13 +172,18 @@ describe('LodgingUnitForm — create', () => {
     expect(screen.queryByText(/but the unit as edited reads/)).not.toBeInTheDocument()
   })
 
-  it('stays quiet on a leaf at any other sleeps value too', async () => {
+  it('stays quiet on a leaf in the OTHER direction too — one-family at a large capacity', async () => {
+    // The mirror of the test above, and the half that actually distinguishes
+    // the two rules: under the retired `sleeps >= 12` derivation a leaf stored
+    // `single_party` at sleeps 15 derived `shareable` and warned. A leaf
+    // curated one-family is now the registry's answer at any capacity, so
+    // nothing here has an opinion about it.
     const user = userEvent.setup()
     render(
       <LodgingUnitForm areas={AREAS} units={[]} year={2026} onSaved={vi.fn()} onCancel={vi.fn()} />
     )
 
-    await user.selectOptions(screen.getByLabelText('Sharing'), 'shareable')
+    await user.selectOptions(screen.getByLabelText('Sharing'), 'single_party')
     await user.type(screen.getByLabelText('Sleeps'), '15')
 
     expect(screen.queryByText(/but the unit as edited reads/)).not.toBeInTheDocument()

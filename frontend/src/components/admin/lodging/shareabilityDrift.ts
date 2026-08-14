@@ -37,9 +37,15 @@
  *
  * SILENT on the states where there is nothing honest to say: an unclassified
  * unit (no answer has drifted — the board already badges that), any LEAF
- * (retired, above), an unrecorded role, and a container's capacity (a
- * container's `sleeps` is a DELTA over its rooms, kindred#2041, so a small
- * number on one is not evidence).
+ * (retired, above), and an unrecorded role.
+ *
+ * `sleeps` IS NO LONGER AN INPUT AT ALL, and that is structural rather than
+ * conventional. The leaf leg was its only reader; the container leg never
+ * consulted it (a container's `sleeps` is a DELTA over its rooms,
+ * kindred#2041, so a small number on one is not evidence) and staff_default
+ * answers from the role. Taking it off `ShareabilityDriftInput` is what stops
+ * the retired threshold being reintroduced here by someone who reads the
+ * field as an invitation.
  *
  * THE RULE ITSELF IS NOT RESTATED HERE AS A NEW SOURCE OF TRUTH for the two
  * legs that remain — it is the second live expression of the one in
@@ -52,8 +58,6 @@ import type { InventoryClassValue, ShareabilityStoredValue } from '../../../type
 export interface ShareabilityDriftInput {
   inventoryClass: InventoryClassValue | ''
   isContainer: boolean
-  /** The raw form string. Unused for a LEAF — see the retirement note above. */
-  sleeps: string
   stored: ShareabilityStoredValue
 }
 

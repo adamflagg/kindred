@@ -389,7 +389,6 @@ export function LodgingUnitForm({
         onShareabilityChange={setShareability}
         inventoryClass={inventoryClass}
         isContainer={isContainer}
-        sleeps={capacity.sleeps}
       />
 
       <div className="flex flex-col justify-end gap-2 pb-1 text-sm">

@@ -76,7 +76,6 @@ export interface UnitAmenityFieldsetProps {
    */
   inventoryClass: InventoryClassValue | ''
   isContainer: boolean
-  sleeps: string
 }
 
 export function UnitAmenityFieldset({
@@ -92,9 +91,8 @@ export function UnitAmenityFieldset({
   onShareabilityChange,
   inventoryClass,
   isContainer,
-  sleeps,
 }: UnitAmenityFieldsetProps) {
-  const drift = shareabilityDrift({ inventoryClass, isContainer, sleeps, stored: shareability })
+  const drift = shareabilityDrift({ inventoryClass, isContainer, stored: shareability })
   const [pendingPeer, setPendingPeer] = useState('')
   // The candidate list SHRINKS as rooms are added, so a held selection goes
   // stale — and a `<select>` whose value is not among its options renders
