@@ -941,3 +941,142 @@ describe('HouseholdRosterTable — the actual PHI fetch (kindred#2139)', () => {
     expect(mockFetchHouseholdMedical).not.toHaveBeenCalled()
   })
 })
+
+/** The row's own identity label (kindred#2084: attending adults, not `display_name`). */
+function visibleRowNames(): Array<string | null> {
+  return screen.getAllByTestId('household-row-name').map((el) => el.textContent)
+}
+
+describe('HouseholdRosterTable — filters by housing need (kindred#2251)', () => {
+  // Each override carries its own `adults` entry with a name distinct from
+  // the household `display_name` -- `partyIdentityLabel` renders the
+  // ATTENDING ADULTS, not `display_name` (kindred#2084), so `visibleRowNames`
+  // above is what these tests assert against.
+  const bathroomFamily = party({
+    display_name: 'Bathroom Family',
+    household_cm_id: 2000010,
+    adults: [{ adult_number: 1, display_name: 'Bathroom Parent', relationship: 'Parent' }],
+    flags: {
+      needs_private_bathroom: true,
+      needs_power: false,
+      needs_accommodation: false,
+      accommodation_is_mandatory: false,
+      has_infant: false,
+    },
+  })
+  const powerFamily = party({
+    display_name: 'Power Family',
+    household_cm_id: 2000011,
+    adults: [{ adult_number: 1, display_name: 'Power Parent', relationship: 'Parent' }],
+    flags: {
+      needs_private_bathroom: false,
+      needs_power: true,
+      needs_accommodation: false,
+      accommodation_is_mandatory: false,
+      has_infant: false,
+    },
+  })
+  const infantFamily = party({
+    display_name: 'Infant Family',
+    household_cm_id: 2000012,
+    adults: [{ adult_number: 1, display_name: 'Infant Parent', relationship: 'Parent' }],
+    flags: {
+      needs_private_bathroom: false,
+      needs_power: false,
+      needs_accommodation: false,
+      accommodation_is_mandatory: false,
+      has_infant: true,
+    },
+  })
+  const noNeedsFamily = party({
+    display_name: 'No Needs Family',
+    household_cm_id: 2000013,
+    adults: [{ adult_number: 1, display_name: 'No Needs Parent', relationship: 'Parent' }],
+  })
+
+  it('offers one toggle per flag AccessibilityFlagList already renders', () => {
+    render(<HouseholdRosterTable year={2026} parties={[bathroomFamily, powerFamily]} />, {
+      wrapper,
+    })
+    expect(screen.getByRole('button', { name: 'Accommodation' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Private bathroom' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Power' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Infant in party' })).toBeInTheDocument()
+  })
+
+  it('narrows the roster to parties matching the selected need', async () => {
+    render(
+      <HouseholdRosterTable year={2026} parties={[bathroomFamily, powerFamily, noNeedsFamily]} />,
+      { wrapper }
+    )
+    await userEvent.click(screen.getByRole('button', { name: 'Power' }))
+    expect(visibleRowNames()).toEqual(['Power Parent'])
+  })
+
+  it('marks the active toggle pressed, and clears it back to the full roster on a second click', async () => {
+    render(<HouseholdRosterTable year={2026} parties={[powerFamily, noNeedsFamily]} />, {
+      wrapper,
+    })
+    const powerToggle = screen.getByRole('button', { name: 'Power' })
+    expect(powerToggle).toHaveAttribute('aria-pressed', 'false')
+
+    await userEvent.click(powerToggle)
+    expect(powerToggle).toHaveAttribute('aria-pressed', 'true')
+    expect(visibleRowNames()).toEqual(['Power Parent'])
+
+    await userEvent.click(powerToggle)
+    expect(powerToggle).toHaveAttribute('aria-pressed', 'false')
+    expect(visibleRowNames().sort()).toEqual(['No Needs Parent', 'Power Parent'])
+  })
+
+  it('is an OR across two selected needs, not an AND', async () => {
+    render(
+      <HouseholdRosterTable year={2026} parties={[powerFamily, infantFamily, noNeedsFamily]} />,
+      { wrapper }
+    )
+    await userEvent.click(screen.getByRole('button', { name: 'Power' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Infant in party' }))
+
+    // Neither family has BOTH flags -- an AND filter would show zero rows.
+    expect(visibleRowNames().sort()).toEqual(['Infant Parent', 'Power Parent'])
+  })
+
+  it('reports a filtered-empty roster distinctly from an actually-empty one', async () => {
+    render(<HouseholdRosterTable year={2026} parties={[noNeedsFamily]} />, { wrapper })
+    await userEvent.click(screen.getByRole('button', { name: 'Power' }))
+    expect(screen.queryByText('No one is enrolled for this weekend.')).not.toBeInTheDocument()
+    expect(screen.getByText(/No one matches the selected housing needs/)).toBeInTheDocument()
+  })
+
+  it('does not warn about historical data on the current season', async () => {
+    render(<HouseholdRosterTable year={2026} parties={[powerFamily]} />, { wrapper })
+    await userEvent.click(screen.getByRole('button', { name: 'Power' }))
+    expect(screen.queryByText(/2026 season/)).not.toBeInTheDocument()
+  })
+
+  it('does not warn on a historical season when the selected need has real history (accommodation)', async () => {
+    render(<HouseholdRosterTable year={2024} parties={[noNeedsFamily]} />, { wrapper })
+    await userEvent.click(screen.getByRole('button', { name: 'Accommodation' }))
+    expect(screen.queryByText(/2026 season/)).not.toBeInTheDocument()
+  })
+
+  it('warns that private-bathroom/power data does not exist before the 2026 season (kindred#2251 caveat)', async () => {
+    // family-camp-grain-campaign.md Trap 1 / D2: needs_private_bathroom and
+    // needs_power are 0 for every pre-2026 row. An empty result here must not
+    // read as "nobody needed it" -- it is "we never asked the question yet."
+    render(<HouseholdRosterTable year={2024} parties={[noNeedsFamily]} />, { wrapper })
+    await userEvent.click(screen.getByRole('button', { name: 'Power' }))
+    expect(screen.getByText(/2026 season/)).toBeInTheDocument()
+    expect(screen.getByText(/missing data/i)).toBeInTheDocument()
+  })
+
+  it('warns on a historical season even when the OR filter still finds matches', async () => {
+    // The caveat is about the BATHROOM/POWER signal specifically, which is
+    // silently incomplete even when the combined OR result is non-empty.
+    render(<HouseholdRosterTable year={2025} parties={[infantFamily]} />, { wrapper })
+    await userEvent.click(screen.getByRole('button', { name: 'Power' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Infant in party' }))
+    expect(visibleRowNames()).toEqual(['Infant Parent'])
+    expect(screen.getByText(/2026 season/)).toBeInTheDocument()
+  })
+})

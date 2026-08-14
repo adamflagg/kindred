@@ -13,10 +13,24 @@ import { useState } from 'react'
 import { useDismissOnDeadSpace } from '../../hooks/useDismissOnDeadSpace'
 import { usePanelParty } from '../../hooks/usePanelParty'
 import type { LodgingUnitRow, RosterPartyRow } from '../../types/lodging'
+import type { NeedFilterKey } from './AccessibilityFlagList'
+import { NEED_FILTER_OPTIONS } from './AccessibilityFlagList'
 import { FamilyDetailsPanel } from './FamilyDetailsPanel'
 import { HouseholdRosterRow } from './HouseholdRosterRow'
 import { partyKey } from './partyKey'
 import { attentionSections, indexUnitsByCode, resolvePartyUnit } from './rosterAttention'
+
+/**
+ * First season `needs_private_bathroom`/`needs_power` carry real signal.
+ * family-camp-grain-campaign.md Trap 1 / decision D2: these are 2 of eight
+ * columns the sync only started populating in 2026 — every earlier row reads
+ * `false`, not "unknown". `needs_accommodation` and `has_infant` are excluded
+ * on purpose: both are sourced from fields that existed in earlier seasons
+ * too (an older "FAM Camp-Accommodation" generation, and the adult-weekend
+ * infant question), so they carry real, if sparser, historical signal.
+ */
+const NEEDS_DATA_FIRST_YEAR = 2026
+const HISTORICAL_GAP_KEYS: ReadonlySet<NeedFilterKey> = new Set(['bathroom', 'power'])
 
 export interface HouseholdRosterTableProps {
   parties: RosterPartyRow[]
@@ -93,6 +107,15 @@ export function HouseholdRosterTable({
 
   useDismissOnDeadSpace(panelParty !== null, requestPanelClose)
 
+  // Filter by housing need (kindred#2251) -- OR across whatever is selected,
+  // matching the standard "broaden as you add a chip" reading of a
+  // multi-select filter group. An AND reading would frequently show zero
+  // rows, since the four flags name unrelated needs rather than degrees of
+  // one need. Local state, not the URL: this narrows an in-page scan rather
+  // than picking a view, so it does not need to survive a reload or be
+  // linked, unlike the weekend TAB itself (CLAUDE.md §4 "URL style").
+  const [selectedNeeds, setSelectedNeeds] = useState<Set<NeedFilterKey>>(() => new Set())
+
   if (parties.length === 0) {
     return (
       <div className="dark:bg-card rounded-xl border border-dashed border-stone-300 bg-white p-8 text-center dark:border-stone-600">
@@ -104,64 +127,141 @@ export function HouseholdRosterTable({
     )
   }
 
+  const activeNeeds = NEED_FILTER_OPTIONS.filter((option) => selectedNeeds.has(option.key))
+  const filteredParties =
+    activeNeeds.length === 0
+      ? parties
+      : parties.filter((p) => activeNeeds.some((option) => option.matches(p.flags ?? {})))
+
   const unitsByCode = indexUnitsByCode(units)
-  const sections = attentionSections(parties, unitsByCode)
+  const sections = attentionSections(filteredParties, unitsByCode)
   // An untouched adult weekend is 123 parties all in one state; heading that
   // with "Needs a cabin (123)" repeats what the banner already said.
   const showSectionHeads = sections.length > 1
   // Adult weekends carry no share requests — don't render a dead column.
+  // Keyed off the FULL roster, not the filtered one: the column set is a
+  // property of the weekend, not of whatever is currently toggled, and
+  // letting it flicker in and out as a filter narrows the rows would be a
+  // second, unrelated thing changing on every click.
   const showRequests = hasAnyRequest(parties)
+
+  // needs_private_bathroom/needs_power are 0 for every pre-2026 row (Trap 1 /
+  // D2 — see the constant above), so an empty or thin result here can read as
+  // "nobody needed it" when the true answer is "we never asked". Shown
+  // whenever either flag is part of the ACTIVE filter on a season before the
+  // data exists, even if the OR combination still finds matches through a
+  // different flag — the bathroom/power signal itself stays silently
+  // incomplete in that result too.
+  const showHistoricalGapWarning =
+    year < NEEDS_DATA_FIRST_YEAR &&
+    activeNeeds.some((option) => HISTORICAL_GAP_KEYS.has(option.key))
+
+  const toggleNeed = (key: NeedFilterKey) => {
+    setSelectedNeeds((previous) => {
+      const next = new Set(previous)
+      if (next.has(key)) next.delete(key)
+      else next.add(key)
+      return next
+    })
+  }
 
   return (
     <>
-      <div className="dark:bg-card overflow-x-auto rounded-xl border border-stone-200 bg-white shadow-sm dark:border-stone-700">
-        <table className="w-full min-w-3xl text-left">
-          <thead>
-            <tr className="border-border border-b">
-              <th className={`${HEAD_CELL} pt-4 pl-3`}>Party</th>
-              <th className={`${HEAD_CELL} pt-4`}>Cabin</th>
-              {showRequests && <th className={`${HEAD_CELL} pt-4`}>Requests</th>}
-              <th className={`${HEAD_CELL} pt-4 pr-3`}>Housing needs</th>
-            </tr>
-          </thead>
-
-          {sections.map((section) => (
-            <tbody key={section.level}>
-              {showSectionHeads && (
-                <tr>
-                  <th
-                    scope="colgroup"
-                    colSpan={showRequests ? 4 : 3}
-                    className="bg-forest-50/70 dark:bg-forest-900/40 text-forest-800 dark:text-forest-200 border-border/60 border-y px-3 py-2 text-left text-xs font-bold tracking-wider uppercase"
-                  >
-                    {section.label}
-                    <span className="text-muted-foreground ml-2 font-semibold normal-case tabular-nums">
-                      {section.parties.length}
-                    </span>
-                  </th>
-                </tr>
-              )}
-              {section.parties.map((party) => (
-                // `partyKey`, not a hand-rolled string (kindred#2139): the two
-                // used to disagree on an unresolved household (both ids 0),
-                // where this file's own inline key collapsed two different
-                // households into one React key and `partyKey` did not, by
-                // falling through to `display_name`. No live incidence — see
-                // `partyKey.ts`'s own docstring — but importing `partyKey`
-                // into this file and then hand-rolling a second, weaker
-                // definition beside it was the inconsistency worth fixing.
-                <HouseholdRosterRow
-                  key={partyKey(party)}
-                  party={party}
-                  showRequests={showRequests}
-                  unit={resolvePartyUnit(party, unitsByCode)}
-                  onOpen={openParty}
-                />
-              ))}
-            </tbody>
-          ))}
-        </table>
+      <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+        <div className="bg-muted/50 dark:bg-muted/30 border-border/50 flex flex-wrap items-center gap-1 rounded-xl border p-1">
+          {NEED_FILTER_OPTIONS.map((option) => {
+            const Icon = option.icon
+            const isSelected = selectedNeeds.has(option.key)
+            return (
+              <button
+                key={option.key}
+                type="button"
+                aria-pressed={isSelected}
+                onClick={() => {
+                  toggleNeed(option.key)
+                }}
+                className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium transition-all duration-200 ${
+                  isSelected
+                    ? 'bg-primary text-primary-foreground shadow-lodge-sm'
+                    : 'text-muted-foreground hover:text-foreground hover:bg-muted dark:hover:bg-muted/80'
+                }`}
+              >
+                <Icon className="h-3.5 w-3.5 flex-shrink-0" />
+                {option.label}
+              </button>
+            )
+          })}
+        </div>
+        {activeNeeds.length > 0 && (
+          <span className="text-muted-foreground text-sm tabular-nums">
+            {filteredParties.length} of {parties.length}
+          </span>
+        )}
       </div>
+
+      {showHistoricalGapWarning && (
+        <p className="mb-3 rounded border border-amber-200 bg-amber-100 p-2 text-sm text-amber-800 dark:border-amber-900/50 dark:bg-amber-900/50 dark:text-amber-300">
+          Private bathroom and power needs are only recorded starting the 2026 season. A result for{' '}
+          {year} reflects missing data, not that nobody needed one.
+        </p>
+      )}
+
+      {filteredParties.length === 0 ? (
+        <div className="dark:bg-card rounded-xl border border-dashed border-stone-300 bg-white p-8 text-center dark:border-stone-600">
+          <p className="text-foreground text-sm font-medium">
+            No one matches the selected housing needs.
+          </p>
+        </div>
+      ) : (
+        <div className="dark:bg-card overflow-x-auto rounded-xl border border-stone-200 bg-white shadow-sm dark:border-stone-700">
+          <table className="w-full min-w-3xl text-left">
+            <thead>
+              <tr className="border-border border-b">
+                <th className={`${HEAD_CELL} pt-4 pl-3`}>Party</th>
+                <th className={`${HEAD_CELL} pt-4`}>Cabin</th>
+                {showRequests && <th className={`${HEAD_CELL} pt-4`}>Requests</th>}
+                <th className={`${HEAD_CELL} pt-4 pr-3`}>Housing needs</th>
+              </tr>
+            </thead>
+
+            {sections.map((section) => (
+              <tbody key={section.level}>
+                {showSectionHeads && (
+                  <tr>
+                    <th
+                      scope="colgroup"
+                      colSpan={showRequests ? 4 : 3}
+                      className="bg-forest-50/70 dark:bg-forest-900/40 text-forest-800 dark:text-forest-200 border-border/60 border-y px-3 py-2 text-left text-xs font-bold tracking-wider uppercase"
+                    >
+                      {section.label}
+                      <span className="text-muted-foreground ml-2 font-semibold normal-case tabular-nums">
+                        {section.parties.length}
+                      </span>
+                    </th>
+                  </tr>
+                )}
+                {section.parties.map((party) => (
+                  // `partyKey`, not a hand-rolled string (kindred#2139): the two
+                  // used to disagree on an unresolved household (both ids 0),
+                  // where this file's own inline key collapsed two different
+                  // households into one React key and `partyKey` did not, by
+                  // falling through to `display_name`. No live incidence — see
+                  // `partyKey.ts`'s own docstring — but importing `partyKey`
+                  // into this file and then hand-rolling a second, weaker
+                  // definition beside it was the inconsistency worth fixing.
+                  <HouseholdRosterRow
+                    key={partyKey(party)}
+                    party={party}
+                    showRequests={showRequests}
+                    unit={resolvePartyUnit(party, unitsByCode)}
+                    onOpen={openParty}
+                  />
+                ))}
+              </tbody>
+            ))}
+          </table>
+        </div>
+      )}
 
       {panelParty !== null && (
         <FamilyDetailsPanel
