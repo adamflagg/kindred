@@ -275,10 +275,12 @@ describe('FamilyCard — what it shows', () => {
 
   it('separates multiple children with a middot on both child lines', () => {
     // The separator is the one piece of the child list with no other test
-    // holding it, and it is shared by both lines.
+    // holding it, and it is shared by both lines. Order is youngest-first
+    // (kindred#2254), so the default fixture's Noah(8)/Ava(5) prints Ava
+    // before Noah — see the dedicated ordering tests below for that half.
     const { unmount } = render(<FamilyCard party={party()} onOpen={vi.fn()} />)
     expect(screen.getByTestId('family-card-name')).toHaveTextContent(
-      'Noah Johnson (8) · Ava Johnson (5)'
+      'Ava Johnson (5) · Noah Johnson (8)'
     )
     unmount()
 
@@ -296,8 +298,8 @@ describe('FamilyCard — what it shows', () => {
         onOpen={vi.fn()}
       />
     )
-    expect(screen.getByText('Kai Patel (6.11)').parentElement).toHaveTextContent(
-      'Kai Patel (6.11) · Mia Patel (4.02)'
+    expect(screen.getByText('Mia Patel (4.02)').parentElement).toHaveTextContent(
+      'Mia Patel (4.02) · Kai Patel (6.11)'
     )
   })
 
@@ -312,6 +314,62 @@ describe('FamilyCard — what it shows', () => {
     )
     expect(screen.getByText(/Noah/)).toBeInTheDocument()
     expect(screen.queryByText(/Noah \(0\)/)).not.toBeInTheDocument()
+  })
+
+  describe('children order is youngest-first (kindred#2254)', () => {
+    it('orders three children youngest to oldest on the bold identity line', () => {
+      render(
+        <FamilyCard
+          party={party({
+            children: [
+              { person_cm_id: 9001, display_name: 'Noah', age: 8, grade: 3 },
+              { person_cm_id: 9002, display_name: 'Ava', age: 5, grade: 0 },
+              { person_cm_id: 9003, display_name: 'Mia', age: 2, grade: null },
+            ],
+          })}
+          onOpen={vi.fn()}
+        />
+      )
+      expect(screen.getByTestId('family-card-name')).toHaveTextContent(
+        'Mia (2) · Ava (5) · Noah (8)'
+      )
+    })
+
+    it('trails an unknown-age child rather than sorting it first', () => {
+      // `age: null` is this field's already-converted unknown-age sentinel
+      // (the API collapses the raw `0.0` -- kindred#2088 -- before it ever
+      // reaches the wire). A comparator naive enough to do
+      // `(a.age ?? 0) - (b.age ?? 0)` would treat that null as "age 0" and
+      // sort it FIRST under an ascending youngest-first order -- the exact
+      // opposite of the intent, and wrong in a way that looks right. It
+      // belongs in its own bucket at the end instead.
+      render(
+        <FamilyCard
+          party={party({
+            children: [
+              { person_cm_id: 9001, display_name: 'Noah', age: 8, grade: 3 },
+              { person_cm_id: 9002, display_name: 'NoBirthdate', age: null, grade: null },
+              { person_cm_id: 9003, display_name: 'Ava', age: 5, grade: 0 },
+            ],
+          })}
+          onOpen={vi.fn()}
+        />
+      )
+      expect(screen.getByTestId('family-card-name')).toHaveTextContent(
+        'Ava (5) · Noah (8) · NoBirthdate'
+      )
+    })
+
+    it('never mutates the children array the API sent — other surfaces read the same reference', () => {
+      const children = [
+        { person_cm_id: 9001, display_name: 'Noah', age: 8, grade: 3 },
+        { person_cm_id: 9002, display_name: 'Ava', age: 5, grade: 0 },
+      ]
+      render(<FamilyCard party={party({ children })} onOpen={vi.fn()} />)
+      // Still oldest-first, exactly as passed in — a display-only reorder
+      // must produce its own copy, never `Array.prototype.sort` in place.
+      expect(children.map((c) => c.person_cm_id)).toEqual([9001, 9002])
+    })
   })
 
   it('chips the housing needs the fit check judges', () => {
@@ -883,7 +941,7 @@ describe('FamilyCard — a shared surname is not repeated', () => {
         onOpen={vi.fn()}
       />
     )
-    expect(screen.getByTestId('family-card-name')).toHaveTextContent('Noah (8) · Ava (5) Johnson')
+    expect(screen.getByTestId('family-card-name')).toHaveTextContent('Ava (5) · Noah (8) Johnson')
   })
 
   // ⚠️ A hyphenated surname is ONE name. 72 of 2026's 680 distinct rostered
@@ -912,7 +970,7 @@ describe('FamilyCard — a shared surname is not repeated', () => {
       />
     )
     expect(screen.getByTestId('family-card-name')).toHaveTextContent(
-      'Noah (8) · Ava (5) Garcia-Lopez'
+      'Ava (5) · Noah (8) Garcia-Lopez'
     )
   })
 
@@ -942,7 +1000,7 @@ describe('FamilyCard — a shared surname is not repeated', () => {
       />
     )
     expect(screen.getByTestId('family-card-name')).toHaveTextContent(
-      'Noah (8) · Ava (5) Martinez Garcia'
+      'Ava (5) · Noah (8) Martinez Garcia'
     )
   })
 
@@ -959,7 +1017,7 @@ describe('FamilyCard — a shared surname is not repeated', () => {
       />
     )
     expect(screen.getByTestId('family-card-name')).toHaveTextContent(
-      'Noah Johnson (8) · Ava Garcia (5)'
+      'Ava Garcia (5) · Noah Johnson (8)'
     )
   })
 
