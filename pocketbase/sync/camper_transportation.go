@@ -39,18 +39,36 @@ const (
 // This service reads from person_custom_values and populates the camper_transportation table.
 //
 // Unique key: (person_id, session_id, year) - one record per camper per session
-// Links to: attendees, via a relation field that carries cascadeDelete: true. That cascade is
-// KEPT DELIBERATELY: transportation is enrolment-scoped, so a bus pickup contact is meaningless
-// once CampMinder no longer lists the attendee for that session -- removing it with the attendee
-// row is correct, not an accident. This is the opposite conclusion from kindred#2261/#2265, where
-// the cascaded relation was an arbitrarily-chosen row that could never answer the enrolment
-// question; dropping the cascade there was the fix. Do not apply that fix here.
+// Links to: attendees, via a relation field that is `required: true` and carries
+// `cascadeDelete: true` (pb_migrations/1500000043_camper_transportation.js). That cascade is
+// KEPT DELIBERATELY -- reviewed and re-affirmed under kindred#2311, whatever the original author
+// weighed: transportation is enrolment-scoped, so a bus pickup contact is meaningless once
+// CampMinder no longer lists the attendee for that session, and taking the row with the attendee
+// is the behavior we want.
 //
-// Dropping the cascade would not preserve anything anyway: this table runs its own orphan sweep
-// (deleteOrphans, below), which removes a row whenever its (person_id, session_id) has no
-// attendeeMap hit in loadAttendeeMapping -- exactly the condition that holds once CampMinder
-// drops the attendee. So the row already dies on this sync's own next run; the cascade only
-// makes it happen one run sooner. See kindred#2311 for the full analysis and options considered.
+// kindred#2261/#2265 reached the opposite conclusion, and the remedy there was NOT a cascade
+// flag flip: migration 1500000153 dropped the whole `attendee` column from quest_registrations
+// and camper_dietary, because those tables are person x year and the stored link was one
+// arbitrarily-chosen attendee row that could never answer the enrolment question. This table's
+// link is sound -- idx_camper_transportation_unique is (person_id, session_id, year), so exactly
+// one attendee row can match, and every production row (17,628 of 17,628, measured under
+// kindred#2311) points at an attendee whose session matches the row. Do not carry #2261's
+// remedy over here: dropping this column would remove a link that works.
+//
+// Dropping the cascade instead would preserve nothing. Two reasons, either one sufficient:
+//   - `required: true` means PocketBase refuses to delete the referenced attendee at all when
+//     the relation does not cascade (core.deleteRefRecords returns "part of a required
+//     reference"), so that change alone turns a silent row deletion into a failing attendees
+//     sweep rather than into a surviving row.
+//   - This table runs its own orphan sweep (deleteOrphans, below), which removes a row whenever
+//     its (person_id, session_id) has no attendeeMap hit in loadAttendeeMapping -- exactly the
+//     condition that holds once CampMinder drops the attendee. The row dies on this sync's own
+//     next run either way; the cascade only makes it happen one run sooner.
+//
+// The row is what is lost, not the content: this table is fully derived from
+// person_custom_values, with no staff_touched column and no GUI write path, so an attendee that
+// reappears upstream is recomputed with the same values. See kindred#2311 for the full analysis
+// and the options considered.
 //
 // Field mapping handles both new BUS-* fields and legacy "Bus to/From Camp" fields.
 // New fields take priority; legacy fields are used as fallback.

@@ -895,3 +895,70 @@ func TestLoadPersonCustomValuesNoDiscardsMeansNoWarnLog(t *testing.T) {
 		t.Errorf("expected no log output when nothing was discarded, got:\n%s", logged)
 	}
 }
+
+// TestLoadPersonCustomValuesDropsAPersonWithNoAttendeeRow pins the claim the
+// CamperTransportationSync doc comment makes about the cascade (kindred#2311):
+// that dropping the cascade would preserve nothing, because this table's own
+// sweep removes the same row anyway. That argument only holds if a person with
+// no attendeeMap hit falls OUT of the computed set -- deleteOrphans deletes
+// whatever is on disk but not in that set, and TestCamperTransportation-
+// DeleteOrphansStillSweepsGenuineOrphans already pins the second half.
+//
+// The gate is implicit and doubled, which is why it is worth a named test:
+// loadPersonCustomValues fans each person's values across personSessions (built
+// only from attendeeMap, so a person with no entry emits no entries), and its
+// aggregation loop then drops any entry whose (person, session) misses
+// attendeeMap a second time. Defeating either one alone changes nothing
+// observable, so neither is individually load-bearing and neither reads as
+// load-bearing to someone editing it; only the pair is. This test pins the
+// OUTCOME rather than either mechanism, and goes red when both go.
+func TestLoadPersonCustomValuesDropsAPersonWithNoAttendeeRow(t *testing.T) {
+	t.Parallel()
+	app := newTransportValuesTestApp(t)
+
+	personsCol, err := app.FindCollectionByNameOrId("persons")
+	if err != nil {
+		t.Fatalf("find persons: %v", err)
+	}
+	// Two campers with identical BUS-* answers. Only the first still has an
+	// attendees row for the year; CampMinder has dropped the second's.
+	stillEnrolled := core.NewRecord(personsCol)
+	stillEnrolled.Set("cm_id", 7101)
+	if saveErr := app.Save(stillEnrolled); saveErr != nil {
+		t.Fatalf("save person: %v", saveErr)
+	}
+	attendeeGone := core.NewRecord(personsCol)
+	attendeeGone.Set("cm_id", 7102)
+	if saveErr := app.Save(attendeeGone); saveErr != nil {
+		t.Fatalf("save person: %v", saveErr)
+	}
+
+	const year = 2026
+	addPersonCustomValue(t, app, "fd_routed", stillEnrolled.Id, testRoutedBusValue, year)
+	addPersonCustomValue(t, app, "fd_routed", attendeeGone.Id, testRoutedBusValue, year)
+
+	fieldNameMap := map[string]string{"fd_routed": "BUS-to camp"}
+	attendeeMap := map[attendeeKey]string{
+		{personID: 7101, sessionID: 9101}: "att1",
+	}
+
+	s := NewCamperTransportationSync(app)
+	records, err := s.loadPersonCustomValues(context.Background(), year, fieldNameMap, attendeeMap)
+	if err != nil {
+		t.Fatalf("loadPersonCustomValues: %v", err)
+	}
+
+	if _, ok := records[makeTransportationKey(7101, 9101, year)]; !ok {
+		t.Errorf("the still-enrolled camper is missing from the computed set; got %d records", len(records))
+	}
+	for key := range records {
+		if strings.HasPrefix(key, "7102:") {
+			t.Errorf("a camper with no attendees row reached the computed set under key %q; "+
+				"the doc comment's 'the row dies on this sync's own next run either way' no longer holds",
+				key)
+		}
+	}
+	if len(records) != 1 {
+		t.Errorf("computed set has %d records, want exactly 1 (only the still-enrolled camper)", len(records))
+	}
+}
