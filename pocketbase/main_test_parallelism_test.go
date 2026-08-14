@@ -162,6 +162,7 @@ var serialGroups = []struct {
 			"TestIsDuplicateStaffStatus",
 			"TestLoadPersonCustomValuesCountsAndLogsUnmappedFields",
 			"TestLoadPersonCustomValuesNoDiscardsMeansNoWarnLog",
+			"TestFamilyCampSweepLogsProtectedNamelessAdultsFor2018",
 		},
 	},
 	{
