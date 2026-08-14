@@ -271,8 +271,12 @@ ambiguous only in *which* unit, never confirmed as a shared room.
 evidence of over-occupancy. At `H <= N` the households fit one per unit and
 the assignment is ambiguous rather than shared.
 
-Six alias rows in the current registry map one string to two units, matching
-this shape. A consumer that credits an occupancy count to every member unit
+Eight alias rows in the current registry map one string to two units, matching
+this shape — seven of them valid for 2026, the eighth expired after 2024.
+(kindred#2339's prose says "six"; that was a miscount of its own by-shape
+enumeration, which described only six of the eight. The issue's other figure,
+"8 alias strings resolve to more than one unit", is the one that matches the
+registry file.) A consumer that credits an occupancy count to every member unit
 for every household resolving through the alias, without applying `H > N`,
 overstates multi-family occupancy — one building's apparent 18 multi-household
 occupancies collapsed to 2 once the `H <= N` cases were excluded.
