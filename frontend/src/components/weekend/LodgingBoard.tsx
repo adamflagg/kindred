@@ -326,10 +326,12 @@ export function LodgingBoard({
    * gate that lives only in an affordance is one prop away from being
    * bypassed.
    *
-   * Returns whether the placement landed, so `LodgingUnitCard`'s sr-only
-   * announcement (kindred#2219 round 6) fires only on a real move —
-   * `false` for a refused intent (stale picker row) or a rejected mutation
-   * (the rollback path below), never for the ones that never happened.
+   * Returns whether the placement landed — `false` for a refused intent
+   * (stale picker row) or a rejected mutation (the rollback path below),
+   * never for the ones that never happened. `LodgingUnitCard` no longer
+   * reads this (kindred#2348 deleted the `sr-only` announcement it was
+   * built to gate, kindred#2219 round 6); the signature is unchanged so as
+   * not to churn this hook for a caller with nothing left to gain from it.
    */
   const placeParty = useCallback(
     (unit: LodgingUnitRow, party: RosterPartyRow): Promise<boolean> => {

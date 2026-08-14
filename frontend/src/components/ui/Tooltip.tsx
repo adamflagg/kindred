@@ -21,10 +21,15 @@
  *    any ancestor is transformed. `BunkCellTooltip` portals for the same
  *    reason.
  *
- * 2. **The description is in the DOM even when the bubble is not.** While
- *    closed, the text renders as an `sr-only` span carrying the same id, so
- *    `aria-describedby` always resolves. Setting the relationship only on open
- *    races the screen reader, which computes the description at focus time.
+ * 2. **No `aria-describedby` relationship at all — the bubble IS the
+ *    description.** An earlier version mirrored `content` into a closed-state
+ *    `sr-only` span so the attribute always resolved. `sr-only` clips
+ *    visually but leaves the text rendered, so browser find-in-page matched
+ *    every closed tooltip's sentence and scrolled to an invisible box
+ *    (kindred#2348). No assistive tech reads this app (kindred#2249's
+ *    `frontend/CLAUDE.md` policy) and the visible bubble already carries the
+ *    text for anyone who opens it, so there is nothing left for the
+ *    attribute to buy.
  *
  * 3. **A tap PINS the bubble; nothing dismisses it on a timer.** WCAG 2.2
  *    §1.4.13 requires hover/focus content to be persistent — visible until
@@ -63,7 +68,6 @@
  */
 import {
   useEffect,
-  useId,
   useLayoutEffect,
   useRef,
   useState,
@@ -75,7 +79,7 @@ import { createPortal } from 'react-dom'
 import { acquireOverlayToken, isTopOverlay, releaseOverlayToken } from './modalStack'
 
 export interface TooltipProps {
-  /** The sentence the bubble carries. Also the trigger's accessible description. */
+  /** The sentence the bubble carries when opened by hover, focus, or tap. */
   content: string
   /** The visible trigger content — a chip label, a count, a room name. */
   children: ReactNode
@@ -124,7 +128,6 @@ export function Tooltip({
   'data-testid': testId,
   onActivate,
 }: TooltipProps) {
-  const describedById = useId()
   const triggerRef = useRef<HTMLButtonElement>(null)
   const bubbleRef = useRef<HTMLDivElement>(null)
 
@@ -137,13 +140,6 @@ export function Tooltip({
   const [dismissed, setDismissed] = useState(false)
 
   const open = !dismissed && (hovering || focused || pinned)
-
-  // A description identical to the accessible NAME is read out twice in a row.
-  // `MapUnitPopover`'s room cell is the one trigger that has to carry the
-  // whole sentence as its name — the family name it shows is repeated by a
-  // second control in the same popover — so there the bubble is for eyes only
-  // and the `aria-describedby` relationship is dropped rather than doubled.
-  const namedByContent = ariaLabel === content
 
   const [coords, setCoords] = useState<{ top: number; left: number }>({ top: 0, left: 0 })
 
@@ -232,7 +228,6 @@ export function Tooltip({
       <button
         ref={triggerRef}
         type="button"
-        aria-describedby={namedByContent ? undefined : describedById}
         aria-label={ariaLabel}
         aria-pressed={ariaPressed}
         data-testid={testId}
@@ -283,7 +278,6 @@ export function Tooltip({
         createPortal(
           <div
             ref={bubbleRef}
-            id={describedById}
             role="tooltip"
             style={{ top: coords.top, left: coords.left }}
             // `py-1.5` is transparent bridge, not spacing — see `place`.
@@ -303,12 +297,6 @@ export function Tooltip({
           </div>,
           document.body
         )}
-
-      {!open && !namedByContent && (
-        <span id={describedById} className="sr-only">
-          {content}
-        </span>
-      )}
     </>
   )
 }

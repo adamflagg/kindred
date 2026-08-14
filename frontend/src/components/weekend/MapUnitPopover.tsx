@@ -625,15 +625,6 @@ function FootprintGrid({
                 className={className}
               >
                 {label}
-                {/* REAL TEXT, not an aria-label. This div's implicit role is
-                    `generic`, which ARIA 1.2 marks name-prohibited, so an
-                    aria-label here is silently ignored by screen readers.
-                    Worse, testing-library's accessible-name helper DOES return
-                    it, so a test asserting the name would pass while real AT
-                    announced nothing. `sr-only` puts the status in the DOM
-                    where it is exposed regardless of role — the same pattern
-                    SessionAvailability.tsx already uses. */}
-                <span className="sr-only"> — empty</span>
               </div>
             )
           }

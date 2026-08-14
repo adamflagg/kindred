@@ -403,17 +403,12 @@ describe('MapUnitPopover — a cluster of rooms', () => {
     expect(screen.queryAllByRole('button')).toHaveLength(0)
   })
 
-  it('announces an empty room as empty without relying on aria-label', () => {
+  it('marks an empty room "empty" in its title, readable by a mouse', () => {
     const empty = [
       mapUnit(row({ unit_id: 'u1', code: 'cedar-1', name: 'Cedar 1' })),
       mapUnit(row({ unit_id: 'u2', code: 'cedar-2', name: 'Cedar 2' })),
     ]
     render(<MapUnitPopover units={empty} hue={HUE} onOpenParty={vi.fn()} />)
-    // Asserted as TEXT CONTENT, deliberately. An accessible-name assertion
-    // would pass here even if the name were unreachable to real AT.
-    for (const cell of screen.getAllByTestId('map-popover-cell')) {
-      expect(cell).toHaveTextContent(/empty/i)
-    }
     // The tooltip carries the FULL name — it appears with no surrounding
     // context, so the shortened form would be ambiguous. Regression: a
     // shortened label leaking into `title` reads as "1 — empty", not
@@ -742,10 +737,23 @@ describe('MapUnitPopover — a container, master-detail (kindred#2183)', () => {
     ]
     render(<MapUnitPopover units={vacant} hue={HUE} onOpenParty={vi.fn()} />)
     expect(screen.getByText('2 · 0 taken, 2 open')).toBeInTheDocument()
-    // Exact, not `/empty/i`: each cell carries its own sr-only " — empty",
-    // and this is asserting the SUMMARY says so once for the building.
+    // Exact, not `/empty/i`: this is the SUMMARY's stand-alone "empty" text.
     expect(screen.getByText('empty')).toBeInTheDocument()
     expect(screen.queryAllByTestId('map-popover-family')).toHaveLength(0)
+  })
+
+  it('renders no sr-only " — empty" text beside an unoccupied room cell (kindred#2348)', () => {
+    // Regression: a closed cell used to carry `{label}<span class="sr-only">
+    // — empty</span>`, invisible text browser find-in-page still matched.
+    // The cell's `title` attribute already says so for a mouse; no
+    // assistive tech reads this app (`frontend/CLAUDE.md`), so nothing
+    // further belongs in the DOM.
+    const vacant = [
+      mapUnit(row({ unit_id: 'u1', code: 'cedar-1', name: 'Cedar 1' })),
+      mapUnit(row({ unit_id: 'u2', code: 'cedar-2', name: 'Cedar 2' })),
+    ]
+    render(<MapUnitPopover units={vacant} hue={HUE} onOpenParty={vi.fn()} />)
+    expect(screen.queryByText('— empty')).not.toBeInTheDocument()
   })
 
   it('swaps the detail to one room when its cell is picked, and back again', async () => {

@@ -723,12 +723,13 @@ export function LodgingMap({ parties, units, year, sessionCmId = 0 }: LodgingMap
                 map's LAST keyboard-reachable control — see the note at
                 `:29-33` above. Still a real `<input>` behind a real `<label>`,
                 per that note, not re-invented as a div. A SIBLING of the
-                `<dl>` below, not a child of it (kindred#2157): a description
-                list has no defined semantics for a live form control, so the
-                `<dl>` keeps only its dt/dd term-definition pairs and this
-                `role="group"` carries the checkbox instead. No wrapping div
-                around the label either; the label already declares the same
-                `inline-flex items-center gap-1.5` a wrapper would add. */}
+                legend strip below, not a child of it (kindred#2157), so the
+                checkbox stays out of whatever the strip's own markup does —
+                this `role="group"` carries it instead, and is how the test
+                suite addresses it (`getByRole('group', { name: 'Map
+                controls' })`). No wrapping div around the label either; the
+                label already declares the same `inline-flex items-center
+                gap-1.5` a wrapper would add. */}
             <div role="group" aria-label="Map controls">
               <label className="inline-flex cursor-pointer items-center gap-1.5">
                 <input
@@ -745,22 +746,25 @@ export function LodgingMap({ parties, units, year, sessionCmId = 0 }: LodgingMap
                 Empty rooms
               </label>
             </div>
-            {/* `contents`: the `<dl>` still owns these dt/dd pairs in the DOM
-                (and the accessibility tree) so the definition-list semantics
-                stay correct, but it generates no box of its own — its
-                children lay out as direct items of the flex-wrap row above,
-                unchanged from before kindred#2157, `ml-auto` on Counts
-                included. */}
-            <dl data-testid="map-legend" className="contents">
+            {/* `contents`: this legend strip generates no box of its own —
+                its children lay out as direct items of the flex-wrap row
+                above, unchanged from before kindred#2157, `ml-auto` on
+                Counts included. A plain `<div>`, not a `<dl>`: each row used
+                to pair a visible `<dd>` with a `<dt className="sr-only">`
+                restating it (kindred#2348) — invisible-but-rendered text
+                nothing here reads, since the mark beside each `<dd>` already
+                carries the same fact for a sighted user. Deleting only the
+                `<dt>`s would have left an orphaned `<dd>` with no `<dt>`, an
+                invalid list either way, so the wrapper and every row's
+                definition became plain elements together. */}
+            <div data-testid="map-legend" className="contents">
               <div className="flex items-center gap-1.5">
                 <span className="border-muted-foreground/70 h-3 w-3 rounded-full border-2 bg-transparent" />
-                <dt className="sr-only">Hollow mark</dt>
-                <dd>empty</dd>
+                <span>empty</span>
               </div>
               <div className="flex items-center gap-1.5">
                 <span className="bg-muted-foreground/70 border-muted-foreground/70 h-3 w-3 rounded-full border-2" />
-                <dt className="sr-only">Solid mark</dt>
-                <dd>one party</dd>
+                <span>one party</span>
               </div>
               {/* The ringed "shared" row is GONE with the halo it keyed
                   (kindred#2179). A legend entry for a mark the surface no
@@ -768,8 +772,7 @@ export function LodgingMap({ parties, units, year, sessionCmId = 0 }: LodgingMap
                   for a ring that cannot appear. */}
               <div className="flex items-center gap-1.5">
                 <span className="text-foreground font-bold">?</span>
-                <dt className="sr-only">Question mark</dt>
-                <dd>capacity unknown (never 0)</dd>
+                <span>capacity unknown (never 0)</span>
               </div>
               {/* A cluster's mark GROWS with what is under it and wears the
                   count on its face. Without this, a big numbered mark reads as
@@ -781,21 +784,19 @@ export function LodgingMap({ parties, units, year, sessionCmId = 0 }: LodgingMap
                 >
                   3
                 </span>
-                <dt className="sr-only">Bigger numbered mark</dt>
-                <dd>bigger mark, more rooms under it</dd>
+                <span>bigger mark, more rooms under it</span>
               </div>
               <div className="ml-auto flex items-center gap-1.5">
-                <dt className="sr-only">Counts</dt>
-                <dd className="tabular-nums">
+                <span className="tabular-nums">
                   <b className="text-foreground font-semibold">{roomCount}</b>{' '}
                   {roomCount === 1 ? 'room' : 'rooms'} ·{' '}
                   <b className="text-foreground font-semibold">{containerCount}</b>{' '}
                   {containerCount === 1 ? 'container' : 'containers'} not drawn ·{' '}
                   <b className="text-foreground font-semibold">{clusterCount}</b>{' '}
                   {clusterCount === 1 ? 'cluster' : 'clusters'} at this zoom
-                </dd>
+                </span>
               </div>
-            </dl>
+            </div>
           </div>
 
           {/* A merge carries no unit code, and an assignment can name a

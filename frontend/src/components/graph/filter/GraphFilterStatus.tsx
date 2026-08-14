@@ -18,17 +18,12 @@ export default function GraphFilterStatus({
   const text = `Filtered: ${parts.join(', ')}`
 
   return (
-    <>
-      <div role="status" aria-live="polite" className="sr-only">
-        {text}
-      </div>
-      <button
-        type="button"
-        onClick={onClick}
-        className="bg-primary text-primary-foreground absolute top-2 left-1/2 z-20 -translate-x-1/2 rounded-full px-3 py-1 text-xs font-semibold shadow-md transition hover:opacity-90"
-      >
-        {text}
-      </button>
-    </>
+    <button
+      type="button"
+      onClick={onClick}
+      className="bg-primary text-primary-foreground absolute top-2 left-1/2 z-20 -translate-x-1/2 rounded-full px-3 py-1 text-xs font-semibold shadow-md transition hover:opacity-90"
+    >
+      {text}
+    </button>
   )
 }

@@ -30,12 +30,13 @@ describe('GraphFilterStatus', () => {
     expect(screen.getByRole('button')).toHaveTextContent(/Filtered: 1 bunk/)
   })
 
-  it('uses an aria-live=polite region for screen reader announcements', () => {
+  it('renders no aria-live region — no assistive tech reads this app (kindred#2348)', () => {
+    // Regression: a `role="status" aria-live="polite"` div used to sit
+    // beside the button, carrying the SAME string verbatim. Nothing here
+    // reads it (`frontend/CLAUDE.md` §Accessibility), so the visible
+    // button is now the only place the text lives.
     render(<GraphFilterStatus unitCount={1} bunkCount={0} onClick={() => {}} />)
-    const liveRegion = screen.getByRole('status')
-    expect(liveRegion).toHaveAttribute('aria-live', 'polite')
-    // live region is separate from the interactive button
-    expect(liveRegion.tagName).not.toBe('BUTTON')
+    expect(screen.queryByRole('status')).not.toBeInTheDocument()
   })
 
   it('calls onClick when clicked', () => {

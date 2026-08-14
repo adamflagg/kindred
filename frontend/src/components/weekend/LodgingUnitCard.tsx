@@ -13,7 +13,6 @@
  */
 import { useDraggable, useDroppable } from '@dnd-kit/core'
 import { Bath, Merge, Plug, Snowflake, Split, TriangleAlert, Users } from 'lucide-react'
-import { useState } from 'react'
 
 import type { LodgingUnitRow, RosterPartyRow } from '../../types/lodging'
 import { Tooltip } from '../ui/Tooltip'
@@ -25,7 +24,7 @@ import {
 } from './boardLayout'
 import { isValidMergeTarget, mergeDragId, unitDroppableId } from './dragPlacement'
 import { FamilyCard } from './FamilyCard'
-import { partyHeadcount, partyIdentityLabel } from './householdIdentity'
+import { partyHeadcount } from './householdIdentity'
 import { resolveNeedsFit } from './needsFit'
 import { PlaceFamilyPicker } from './PlaceFamilyPicker'
 import { resolveRingPrecedence } from './ringPrecedence'
@@ -252,9 +251,12 @@ export interface LodgingUnitCardProps {
    * CodeRabbit finding). `resolvePickerPlacement` can refuse a stale picker
    * row synchronously, and the optimistic mutation behind it
    * (`useLodgingPlacement.move`) can still reject and roll itself back —
-   * either way nothing moved, so the sr-only announcement below must not
-   * fire. An `undefined` return (no signal either way) is treated as success
-   * for backward compatibility with callers that predate this contract.
+   * this component no longer reads the result (kindred#2348 deleted the
+   * `sr-only` announcement it fed), but the signature stays as-is rather
+   * than churning `LodgingBoard`'s `placeParty` for a caller with nothing
+   * left to gain from the change. An `undefined` return (no signal either
+   * way) is treated as success for backward compatibility with callers that
+   * predate this contract.
    */
   onPlaceParty?: (unit: LodgingUnitRow, party: RosterPartyRow) => Promise<boolean> | undefined
   onOpenParty: (party: RosterPartyRow) => void
@@ -285,30 +287,6 @@ function SharingConflictChip({ badge }: { badge: UnitBadge }) {
   )
 }
 
-/**
- * The sr-only placement announcement (kindred#2219, round 6 — the
- * ANNOUNCEMENT half only; where focus should land stays an open owner
- * question no agent may decide).
- *
- * `partyIdentityLabel`/`partyHeadcount` are the SAME derivations the card
- * and the picker's own rows already read a party's name and count through
- * (`householdIdentity.ts`) — a third naming rule here would drift from what
- * the card prints, the exact trap kindred#2180 fixed once already.
- *
- * `partyIdentityLabel` can still return '' (an empty `family_camp_adults`
- * scrape AND a blank `display_name`), so this falls back the way
- * `FamilyCard`'s `ChildList` falls back to "Unnamed camper" rather than
- * shipping a screen reader an empty sentence.
- */
-function placementAnnouncementText(unit: LodgingUnitRow, party: RosterPartyRow): string {
-  const name =
-    partyIdentityLabel(party).trim() ||
-    (party.grain === 'household' ? 'Unnamed family' : 'Unnamed guest')
-  const count = partyHeadcount(party)
-  const people = `${String(count)} ${count === 1 ? 'person' : 'people'}`
-  return `${name} (${people}) placed in ${unit.name}`
-}
-
 export function LodgingUnitCard({
   slot,
   units = [],
@@ -328,16 +306,6 @@ export function LodgingUnitCard({
   onOpenParty,
 }: LodgingUnitCardProps) {
   const { unit, parties, consent } = slot
-  /*
-   * The announcement's own text — kindred#2219, round 6. Local rather than
-   * derived from props: the picker unmounts the instant `parties.length`
-   * goes from 0 to 1 (the optimistic update this issue was filed against),
-   * so nothing about a completed placement survives in props to read the
-   * sentence back from. State on THIS component does, because placing a
-   * family never remounts its card — same `unit.code`, same React instance,
-   * before and after the write.
-   */
-  const [announcement, setAnnouncement] = useState('')
   const badge = reservationBadge(unit)
   // On every unit this card can be a SLOT for, which includes a COMBINED
   // container and excludes a split one.
@@ -749,17 +717,6 @@ export function LodgingUnitCard({
        */
       className={`card-lodge flex flex-col gap-3 border-t-[3px] p-4 ${cardStateClassName}`}
     >
-      {/* kindred#2219, round 6 — the announcement half only. Present and
-          EMPTY unconditionally, never behind `announcement !== ''`: an
-          `aria-live` region has to already be in the DOM before its text
-          changes, or a screen reader misses the update entirely. Copies
-          `components/graph/filter/GraphFilterStatus.tsx:22`'s shape exactly
-          — the only other `aria-live` region in this codebase — rather than
-          inventing a variant, since there was none anywhere under
-          `components/weekend/` before this. */}
-      <div role="status" aria-live="polite" className="sr-only">
-        {announcement}
-      </div>
       <div className="flex items-baseline gap-1.5">
         {/* Summer's scale, not a parallel one (CLAUDE.md §4): `text-lg` title
             over `text-sm` body over `text-xs` meta, the same three steps
@@ -895,23 +852,7 @@ export function LodgingUnitCard({
             // whole-house capacity rather than by its container row's delta.
             units={units}
             onSelect={(party) => {
-              // Announce only once the placement actually lands (kindred#2219
-              // round 6, CodeRabbit finding). `onPlaceParty` can refuse a
-              // stale picker row synchronously (`resolvePickerPlacement`
-              // returning null) or roll itself back after an async failure
-              // (`useLodgingPlacement.move` rejecting) — a screen reader told
-              // "placed in Cedar 1" in either case would be told a lie. A
-              // `void` return (no signal) is treated as success, for callers
-              // that predate this contract.
-              const text = placementAnnouncementText(unit, party)
-              const result = onPlaceParty(unit, party)
-              if (result === undefined) {
-                setAnnouncement(text)
-              } else {
-                void result.then((succeeded) => {
-                  if (succeeded) setAnnouncement(text)
-                })
-              }
+              void onPlaceParty(unit, party)
             }}
           />
         )}

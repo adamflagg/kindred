@@ -122,10 +122,8 @@ export function HouseholdRosterRow({ party, showRequests, unit, onOpen }: Househ
         {/* THE EXPLICIT OPEN CONTROL (kindred#2222). The cell used to be one
             `<button>` wrapping every line, including the Returning/
             First-time badges — a `<button>`'s content model forbids an
-            interactive descendant, so those badges' `sr-only` detail
-            (kindred#2177) could never become a real, touch-reachable
-            tooltip trigger (kindred#2250; #2229 closed NOT_PLANNED) without
-            first breaking that wall.
+            interactive descendant, so the open action moved to a separate
+            control rather than staying the wrapping element.
             The badges are laid out here as siblings of the control rather
             than a shrunken click target, using the "stretched link" trick:
             `hover:bg-muted/30` lives on THIS `relative` wrapper (so the
@@ -135,11 +133,11 @@ export function HouseholdRosterRow({ party, showRequests, unit, onOpen }: Househ
             click/keyboard activation and the focus ring, and the visible
             content below is a plain, non-positioned sibling — which a
             positioned `absolute` box always paints ABOVE regardless of DOM
-            order. Nothing in the content is interactive today, so that
-            ordering is invisible; the day kindred#2250 wires a real tooltip
-            trigger into a badge, that trigger needs its own `relative z-10`
-            (or similar) to sit above this layer and receive its own clicks
-            — the standard caveat of this pattern, not a defect on its own. */}
+            order. Nothing in the content is interactive today; a future
+            interactive addition inside a badge would need its own
+            `relative z-10` (or similar) to sit above this layer and receive
+            its own clicks — the standard caveat of this pattern, not a
+            defect on its own. */}
         <div className="hover:bg-muted/30 relative transition-colors">
           <button
             type="button"
@@ -177,21 +175,10 @@ export function HouseholdRosterRow({ party, showRequests, unit, onOpen }: Househ
               >
                 {partyIdentityLabel(party)}
               </span>
-              {/* kindred#2177 converted the board's `title` tooltips to a
-                  focusable `ui/Tooltip`. These two badges are the deliberate
-                  exception — see the cell-level comment above for the wall and
-                  the escape from it.
-
-                  Real `sr-only` text instead. That is strictly more than the
-                  `title` gave — `title` on a `<span>` is not reliably announced
-                  at all — and the touch gap it leaves is the smallest on the
-                  board, since the badge's visible word already IS the fact and
-                  the sentence only rephrases it. */}
               {party.is_returning === true && (
                 <span className="text-forest-700 dark:text-forest-300 bg-forest-100 dark:bg-forest-900/50 inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-semibold">
                   <Repeat className="h-3 w-3 flex-shrink-0" />
                   Returning
-                  <span className="sr-only">(stayed with us before)</span>
                 </span>
               )}
               {/* `is_returning` is only ever computed for household-grain
@@ -205,7 +192,6 @@ export function HouseholdRosterRow({ party, showRequests, unit, onOpen }: Househ
                 <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-700 dark:bg-amber-900/50 dark:text-amber-300">
                   <Star className="h-3 w-3 flex-shrink-0" />
                   First-time
-                  <span className="sr-only">(first time at camp)</span>
                 </span>
               )}
             </span>

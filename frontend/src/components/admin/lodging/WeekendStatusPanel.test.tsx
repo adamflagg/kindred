@@ -85,6 +85,15 @@ describe('WeekendStatusPanel', () => {
     expect(names).toEqual(['Family Camp 1', "Women's Weekend"])
   })
 
+  it('renders the action column header with no sr-only "Action" text (kindred#2348)', () => {
+    // Regression: the otherwise-empty `<th>` over the cancel/reinstate
+    // buttons used to carry `<span className="sr-only">Action</span>`. No
+    // assistive tech reads this app (`frontend/CLAUDE.md`); the column was
+    // already visually empty on purpose, so it stays that way.
+    renderPanel(<WeekendStatusPanel />)
+    expect(screen.queryByText('Action')).not.toBeInTheDocument()
+  })
+
   it('cancels one weekend, naming the season as well as the weekend', async () => {
     const user = userEvent.setup()
     renderPanel(<WeekendStatusPanel />)
