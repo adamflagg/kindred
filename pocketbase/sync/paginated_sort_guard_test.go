@@ -28,46 +28,22 @@ import (
 // is no second page to disagree with the first about row order -- which is why
 // this guard keys specifically on "offset is not the literal 0", not on
 // "perPage looks large" or any other proxy for pagination.
+//
+// The guard deliberately carries no allowlist: every paginated read in this
+// package passes an explicit sort, so a new violation is always a new mistake.
 
-// paginatedSortSite identifies one offending FindRecordsByFilter call by the
-// file it lives in and the literal collection name it queries. Within a single
-// file, each walked collection is queried by at most one such call, so this
-// pair is a stable key -- unlike a line number, it survives the file being
-// edited above the call.
+// paginatedSortSite is one offending FindRecordsByFilter call.
 type paginatedSortSite struct {
 	file       string
 	collection string
-}
-
-// preexistingSortGuardExemptions are real instances of the kindred#2338 defect
-// -- a paginated FindRecordsByFilter walk with an empty sort -- that are
-// DELIBERATELY NOT fixed by kindred#2338. That issue enumerated exactly 22
-// sites across 7 files (camper_dietary.go, camper_transportation.go,
-// quest_registrations.go, staff_applications.go, staff_vehicle_info.go,
-// financial_aid_applications.go, family_camp_derived.go); these 2 sites in an
-// 8th file, camper_history.go, carry the identical defect but were not among
-// the counted 22, and fixing them here would be scope creep on a campaign-wide
-// prerequisite other issues are waiting on.
-//
-// They are exempted here -- rather than left to pass silently because the
-// guard only ever checked the 7 named files -- so the guard covers the whole
-// package (and so catches a brand-new file copied from a sibling, which is the
-// whole point) while staying honest that these two are known and still open.
-var preexistingSortGuardExemptions = map[paginatedSortSite]string{
-	{"camper_history.go", "household_custom_values"}: "loadSynagogueByHousehold's page walk; " +
-		"same defect as kindred#2338's 22, not one of them",
-	{"camper_history.go", "person_custom_values"}: "the parallel HH- custom value page walk " +
-		"a few hundred lines below; same story",
+	line       int
 }
 
 // collectPaginatedSortSites walks every non-test .go file in this package and
 // returns one entry per FindRecordsByFilter call whose sort argument is the
 // empty string literal AND whose offset argument (5th positional arg) is
 // anything other than the literal 0.
-func collectPaginatedSortSites(t *testing.T) []struct {
-	paginatedSortSite
-	line int
-} {
+func collectPaginatedSortSites(t *testing.T) []paginatedSortSite {
 	t.Helper()
 
 	entries, err := os.ReadDir(".")
@@ -75,10 +51,7 @@ func collectPaginatedSortSites(t *testing.T) []struct {
 		t.Fatalf("read package dir: %v", err)
 	}
 
-	var found []struct {
-		paginatedSortSite
-		line int
-	}
+	var found []paginatedSortSite
 	for _, entry := range entries {
 		name := entry.Name()
 		if entry.IsDir() || !strings.HasSuffix(name, ".go") || strings.HasSuffix(name, "_test.go") {
@@ -109,16 +82,14 @@ func collectPaginatedSortSites(t *testing.T) []struct {
 			if isZeroIntLit(call.Args[4]) {
 				return true
 			}
-			collection, _ := stringLitValue(call.Args[0])
-			if collection == "" {
+			collection, ok := stringLitValue(call.Args[0])
+			if !ok {
 				collection = "<non-literal collection expr>"
 			}
-			found = append(found, struct {
-				paginatedSortSite
-				line int
-			}{
-				paginatedSortSite: paginatedSortSite{file: name, collection: collection},
-				line:              fset.Position(call.Pos()).Line,
+			found = append(found, paginatedSortSite{
+				file:       name,
+				collection: collection,
+				line:       fset.Position(call.Pos()).Line,
 			})
 			return true
 		})
@@ -160,11 +131,9 @@ func stringLitValue(e ast.Expr) (string, bool) {
 func TestNoPaginatedReadWalksWithAnEmptySort(t *testing.T) {
 	t.Parallel()
 
-	var unexpected []string
-	for _, site := range collectPaginatedSortSites(t) {
-		if _, exempt := preexistingSortGuardExemptions[site.paginatedSortSite]; exempt {
-			continue
-		}
+	sites := collectPaginatedSortSites(t)
+	unexpected := make([]string, 0, len(sites))
+	for _, site := range sites {
 		unexpected = append(unexpected, site.file+":"+strconv.Itoa(site.line)+
 			": FindRecordsByFilter(\""+site.collection+"\", ..., \"\", perPage, offset) walks "+
 			"pages with no ORDER BY -- pass sortByID (base_sync.go)")
@@ -174,32 +143,5 @@ func TestNoPaginatedReadWalksWithAnEmptySort(t *testing.T) {
 	if len(unexpected) > 0 {
 		t.Errorf("%d paginated read(s) walk LIMIT/OFFSET with an empty sort (kindred#2338):\n  %s",
 			len(unexpected), strings.Join(unexpected, "\n  "))
-	}
-}
-
-// TestSortGuardExemptionsAreStillNeeded keeps preexistingSortGuardExemptions
-// from going stale the way a forgotten allowlist entry always eventually does:
-// if one of the two sites gets fixed (or removed) without its exemption being
-// dropped, this fails and says so -- exactly the shape of
-// TestSerialTestExemptionsAreAllStillNeeded in main_test_parallelism_test.go.
-func TestSortGuardExemptionsAreStillNeeded(t *testing.T) {
-	t.Parallel()
-
-	stillViolating := map[paginatedSortSite]bool{}
-	for _, site := range collectPaginatedSortSites(t) {
-		stillViolating[site.paginatedSortSite] = true
-	}
-
-	var stale []string
-	for site, reason := range preexistingSortGuardExemptions {
-		if !stillViolating[site] {
-			stale = append(stale, site.file+" / \""+site.collection+"\": no longer violates "+
-				"(fixed or removed) -- drop the exemption. Reason was: "+reason)
-		}
-	}
-	sort.Strings(stale)
-
-	if len(stale) > 0 {
-		t.Errorf("%d stale sort-guard exemption(s):\n  %s", len(stale), strings.Join(stale, "\n  "))
 	}
 }
