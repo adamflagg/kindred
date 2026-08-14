@@ -15,14 +15,6 @@ const serviceNameHouseholdDemographics = "household_demographics"
 // customFieldNameSynagogue is the custom field name for synagogue data
 const customFieldNameSynagogue = "Synagogue"
 
-// sortByID is the sort argument every paged read in this service passes.
-// PocketBase adds an ORDER BY only when the sort argument is non-empty
-// (core/record_query.go), so an empty one leaves the row order up to whichever
-// index the SQLite planner picks -- which is not stable ACROSS the separate
-// per-page queries a paged read issues, so a plan change between pages can skip
-// or repeat rows. `id` is unique, so it is a total order.
-const sortByID = "id"
-
 // HouseholdDemographicsSync computes household demographics from custom values.
 // This service reads from person_custom_values (HH- prefixed fields) and
 // household_custom_values, then populates the household_demographics table.
