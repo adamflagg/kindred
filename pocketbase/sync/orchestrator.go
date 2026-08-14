@@ -286,7 +286,7 @@ type Stats struct {
 	// rejected record) and also the result of ProcessCompositeRecord's App.Save. Note this
 	// is processEnrollment, NOT its caller processAttendee — processAttendee returns only
 	// `invalid or missing PersonID` or nil, counting and swallowing processEnrollment's
-	// errors itself, so the outer site at attendees.go:113 is unambiguously a rejection.
+	// errors itself, so the outer site at attendees.go:121 is unambiguously a rejection.
 	// ProcessSimpleRecord is genuinely mixed too, returning `recordData missing required
 	// 'year' field` alongside its App.Save.
 	//

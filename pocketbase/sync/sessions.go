@@ -22,6 +22,7 @@ const (
 	sessionTypeTLI      = "tli"
 	sessionTypeSCIT     = "scit"
 	sessionTypeOther    = "other"
+	sessionTypeQuest    = "quest"
 )
 
 // Session group cm_ids - these are stable across all years in CampMinder

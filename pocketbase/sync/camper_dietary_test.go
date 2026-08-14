@@ -388,8 +388,13 @@ func TestCamperDietaryCompareFields(t *testing.T) {
 	// excluding PocketBase-managed fields (id, created, updated, collectionId, collectionName).
 	// Unlike other services, this includes person_id and year since the original skipFields
 	// only excluded PB-managed fields (id, created, updated).
+	//
+	// `attendee` was removed here by kindred#2265, not because the implementation
+	// stopped writing it but because the column itself is gone: it stored one
+	// arbitrarily chosen attendee row per person-year, which kindred#2159 forbids any
+	// reader from using as an enrollment filter. Leaving it in this list after the
+	// column was dropped would mark every row dirty on every run.
 	expected := map[string]bool{
-		"attendee":            true,
 		"person_id":           true,
 		"year":                true,
 		"has_dietary_needs":   true,
@@ -435,7 +440,6 @@ func TestCamperDietaryRecordNeedsUpdateUsesCompareFields(t *testing.T) {
 
 	// Create a minimal collection with the fields used in comparison
 	col := core.NewBaseCollection("test_camper_dietary")
-	col.Fields.Add(&core.TextField{Name: "attendee"})
 	col.Fields.Add(&core.NumberField{Name: "person_id"})
 	col.Fields.Add(&core.NumberField{Name: "year"})
 	col.Fields.Add(&core.BoolField{Name: "has_dietary_needs"})
@@ -446,7 +450,6 @@ func TestCamperDietaryRecordNeedsUpdateUsesCompareFields(t *testing.T) {
 
 	t.Run("no update when all fields match", func(t *testing.T) {
 		existing := core.NewRecord(col)
-		existing.Set("attendee", "abc123")
 		existing.Set("person_id", 12345)
 		existing.Set("year", 2025)
 		existing.Set("has_dietary_needs", true)
@@ -456,7 +459,6 @@ func TestCamperDietaryRecordNeedsUpdateUsesCompareFields(t *testing.T) {
 		existing.Set("additional_medical", "")
 
 		newData := map[string]any{
-			"attendee":            "abc123",
 			"person_id":           12345,
 			"year":                2025,
 			"has_dietary_needs":   true,
@@ -473,7 +475,6 @@ func TestCamperDietaryRecordNeedsUpdateUsesCompareFields(t *testing.T) {
 
 	t.Run("needs update when a compare field differs", func(t *testing.T) {
 		existing := core.NewRecord(col)
-		existing.Set("attendee", "abc123")
 		existing.Set("person_id", 12345)
 		existing.Set("year", 2025)
 		existing.Set("has_dietary_needs", true)
@@ -483,7 +484,6 @@ func TestCamperDietaryRecordNeedsUpdateUsesCompareFields(t *testing.T) {
 		existing.Set("additional_medical", "")
 
 		newData := map[string]any{
-			"attendee":            "abc123",
 			"person_id":           12345,
 			"year":                2025,
 			"has_dietary_needs":   true,
@@ -583,5 +583,82 @@ func TestCamperDietaryDeleteOrphansStillSweepsGenuineOrphans(t *testing.T) {
 	}
 	if deleted != 1 {
 		t.Errorf("deleted = %d, want 1", deleted)
+	}
+}
+
+// --- kindred#2265: the stored attendee link is dropped ---------------------
+//
+// These drive the PRODUCTION aggregation. TestDietaryRecordBuilding above
+// drives buildDietaryRecords, a reimplementation local to this _test file, so
+// it cannot fail when the real code changes.
+
+// TestAggregateDietaryEntriesKeepsAdmissionFilter pins the behavior that must
+// NOT change: a person holding Family Medical-* values but no attendees row for
+// the year stays excluded. Unlike Quest this is NOT a no-op -- on the production
+// snapshot 19-35 such people exist per year (2024-2026), so dropping the filter
+// with the link would silently widen the table. That is a separate decision
+// (kindred#2306's shape) and is not this change.
+func TestAggregateDietaryEntriesKeepsAdmissionFilter(t *testing.T) {
+	t.Parallel()
+	entries := []dietaryValueEntry{
+		{personID: 100, fieldName: "Family Medical-Allergies", value: "Yes"},
+		{personID: 200, fieldName: "Family Medical-Allergies", value: "Yes"},
+	}
+	hasAttendee := map[int]bool{100: true}
+
+	got := aggregateDietaryEntries(entries, 2026, hasAttendee)
+
+	if len(got) != 1 {
+		t.Fatalf("expected 1 admitted record, got %d", len(got))
+	}
+	if _, ok := got[makeCamperDietaryKey(100, 2026)]; !ok {
+		t.Error("person 100 has an attendee row and must be admitted")
+	}
+	if _, ok := got[makeCamperDietaryKey(200, 2026)]; ok {
+		t.Error("person 200 has no attendee row and must NOT be admitted")
+	}
+}
+
+// TestAggregateDietaryEntriesIsOrderIndependent is kindred#2257's probe.
+func TestAggregateDietaryEntriesIsOrderIndependent(t *testing.T) {
+	t.Parallel()
+	forward := []dietaryValueEntry{
+		{personID: 100, fieldName: "Family Medical-Allergies", value: "Yes"},
+		{personID: 100, fieldName: "Family Medical-Allergy Info", value: "peanuts"},
+		{personID: 200, fieldName: "Family Medical-Allergies", value: "No"},
+	}
+	reversed := make([]dietaryValueEntry, len(forward))
+	for i, e := range forward {
+		reversed[len(forward)-1-i] = e
+	}
+	hasAttendee := map[int]bool{100: true, 200: true}
+
+	a := aggregateDietaryEntries(forward, 2026, hasAttendee)
+	b := aggregateDietaryEntries(reversed, 2026, hasAttendee)
+
+	if len(a) != len(b) {
+		t.Fatalf("record count differs by input order: %d vs %d", len(a), len(b))
+	}
+	for key, ra := range a {
+		rb, ok := b[key]
+		if !ok {
+			t.Fatalf("key %q present in one ordering only", key)
+			return
+		}
+		if ra.hasAllergies != rb.hasAllergies || ra.allergyInfo != rb.allergyInfo {
+			t.Errorf("key %q resolved differently by input order", key)
+		}
+	}
+}
+
+// TestCamperDietaryCompareFieldsHasNoAttendee stops the dropped column being
+// reintroduced through the idempotency comparison, which would make every row
+// look dirty on every run.
+func TestCamperDietaryCompareFieldsHasNoAttendee(t *testing.T) {
+	t.Parallel()
+	for _, f := range camperDietaryCompareFields {
+		if f == "attendee" {
+			t.Error("camperDietaryCompareFields still lists the dropped `attendee` column")
+		}
 	}
 }

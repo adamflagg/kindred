@@ -105,6 +105,16 @@ def _weekend_type_filter() -> str:
     return " || ".join(f'session_type = "{t}"' for t in WEEKEND_SESSION_TYPES)
 
 
+def _attendee_weekend_session_filter() -> str:
+    """Same weekend types as `_weekend_type_filter`, but through the relation.
+
+    This one filters `attendees` (via its `session` relation), which needs
+    the `session.` prefix; `_weekend_type_filter` filters `camp_sessions`
+    directly and would produce the wrong field name if reused here.
+    """
+    return " || ".join(f'session.session_type = "{t}"' for t in WEEKEND_SESSION_TYPES)
+
+
 class LodgingRepository:
     """PocketBase access layer for the weekend lodging surface."""
 
@@ -649,6 +659,72 @@ class LodgingRepository:
                 assignments[household_cm_id] = cabin
         return assignments
 
+    async def _fetch_weekend_touched_household_ids(self, year: int) -> set[str]:
+        """PB ids of households with ANY attendee on a family/adult session
+        this year (kindred#2306).
+
+        `processMedical` (`family_camp_derived.go:981-1095`) reads
+        `Family Medical-*` / `Family Camp-Physician*` custom values, and those
+        fields are answered by summer households too -- so `family_camp_medical`
+        holds rows for households with no family-camp connection at all: 310 of
+        886 in the 2026 production snapshot. Owner ruling 2026-08-13 (campaign
+        decision D3): filter at READ, leave `processMedical` and the write path
+        alone -- reversible, where narrowing the write plus an unguarded sweep
+        would not be.
+
+        ANY status, deliberately NOT `ACTIVE_ENROLLED_FILTER`: a cancelled or
+        waitlisted attendee still means the household touched a weekend
+        session. Narrowing to status_id = 2 would ALSO drop the 71-of-886
+        households that registered but had nobody actively enrolled -- that
+        population is kindred#2305's separate problem, not this one, and the
+        two issues are being kept apart deliberately.
+
+        `person.household`, the PocketBase relation -- NOT `person.household_id`
+        (the CampMinder int used elsewhere in this file for a cross-YEAR
+        bridge). `family_camp_medical.household` is that same relation,
+        already scoped to this year's `households` row, so no cm_id bridge is
+        needed the way a cross-year read needs one.
+        """
+        rows = await self._page(
+            ATTENDEES,
+            query_params={
+                "filter": (f"year = {year} && ({_attendee_weekend_session_filter()})"),
+                "expand": "person",
+                "sort": STABLE_SORT,
+            },
+        )
+        touched: set[str] = set()
+        for row in rows:
+            expand = getattr(row, "expand", None) or {}
+            person = expand.get("person") if isinstance(expand, dict) else None
+            household_pb_id = str(getattr(person, "household", "") or "") if person is not None else ""
+            if household_pb_id:
+                touched.add(household_pb_id)
+        return touched
+
+    async def _household_touched_weekend_session(self, year: int, household_pb_id: str) -> bool:
+        """One household's version of `_fetch_weekend_touched_household_ids`.
+
+        A targeted existence check rather than the bulk helper, so the single-
+        household PHI read below never has to pull the whole year's attendee
+        roster into memory to answer one household's question. Same predicate
+        (ANY status, family/adult session, this year) -- see that method's
+        docstring for why.
+        """
+        if not household_pb_id:
+            return False
+        rows = await self._page(
+            ATTENDEES,
+            query_params={
+                "filter": (
+                    f'year = {year} && person.household = "{pb_escape(household_pb_id)}" '
+                    f"&& ({_attendee_weekend_session_filter()})"
+                ),
+                "sort": STABLE_SORT,
+            },
+        )
+        return bool(rows)
+
     async def fetch_family_camp_medical(self, year: int) -> dict[str, Any]:
         """PHI, keyed by household PB id. NO PRODUCTION CALLER.
 
@@ -663,12 +739,19 @@ class LodgingRepository:
         household's disclosure into API memory is the cost that deletion
         bought back, and presence is not a signal. Two tests in
         test_lodging_roster_service.py assert this is never called.
+
+        Family-camp scoped (kindred#2306): rows for a household that never
+        touched a family or adult session this year are dropped. See
+        `_fetch_weekend_touched_household_ids` for the predicate.
         """
         rows = await self._page(
             FAMILY_CAMP_MEDICAL,
             query_params={"filter": f"year = {year}", "sort": STABLE_SORT},
         )
-        return {str(getattr(row, "household", "")): row for row in rows}
+        touched = await self._fetch_weekend_touched_household_ids(year)
+        return {
+            household_pb_id: row for row in rows if (household_pb_id := str(getattr(row, "household", ""))) in touched
+        }
 
     async def fetch_medical_for_household(self, year: int, household_pb_id: str) -> Any | None:
         """PHI for ONE household, or None.
@@ -676,6 +759,12 @@ class LodgingRepository:
         A blank id means the household did not resolve, and is never turned
         into a query: an unanchored filter is how one family's narrative
         reaches another family's request.
+
+        Family-camp scoped (kindred#2306), and checked BEFORE the PHI read
+        below: a household that never touched a family or adult session this
+        year gets None without `family_camp_medical` ever being queried, not
+        merely filtered out of a result that already carried its narrative.
+        See `_household_touched_weekend_session` for the predicate.
 
         `pb_escape` for the same reason, and it is the same anchor: a quote in
         the id closes the literal, and PocketBase binds `&&` tighter than
@@ -686,6 +775,8 @@ class LodgingRepository:
         last place to leave the odd one out.
         """
         if not household_pb_id:
+            return None
+        if not await self._household_touched_weekend_session(year, household_pb_id):
             return None
         rows = await self._page(
             FAMILY_CAMP_MEDICAL,
