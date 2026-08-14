@@ -131,6 +131,12 @@ func TestMapAppFieldToColumn(t *testing.T) {
 		{"App-what advice would you", "advice_would_give"},
 		{"App-How do you look at camp", "how_look_at_camp"},
 
+		// Live 2026 fields, routed per owner ruling (see #2271)
+		{"App-over 18", "over_18"},
+		{"App-Work Camp Dates Kitchen Supervisor", "work_dates_kitchen_supervisor"},
+		{"App-JEDIreturner", "jedi_returner"},
+		{"App-JEDInewstaff", "jedi_new_staff"},
+
 		// Unknown field should return empty
 		{"Unknown-Field", ""},
 	}
@@ -249,12 +255,17 @@ func TestStaffApplicationsFieldMapping(t *testing.T) {
 		"tawonga_makes_think",
 		"advice_would_give",
 		"how_look_at_camp",
+		// Live 2026 fields, routed per owner ruling (see #2271)
+		"over_18",
+		"work_dates_kitchen_supervisor",
+		"jedi_returner",
+		"jedi_new_staff",
 	}
 
-	// Verify we have all 40 expected columns (excluding staff, person_id, year, created, updated)
-	// Note: Plan said 39, but actual count from CampMinder fields is 40
-	if len(expectedFields) != 40 {
-		t.Errorf("Expected 40 custom fields, got %d", len(expectedFields))
+	// Verify we have all 44 expected columns (excluding staff, person_id, year, created, updated)
+	// Note: Plan said 39, then 40; four more were routed 2026-08-14 (see #2271)
+	if len(expectedFields) != 44 {
+		t.Errorf("Expected 44 custom fields, got %d", len(expectedFields))
 	}
 
 	// Test each field has a valid CM field mapping back
@@ -334,6 +345,12 @@ func getAppCMFieldForColumn(column string) string {
 		"tawonga_makes_think":    "App-Tawonga makes me think of",
 		"advice_would_give":      "App-what advice would you",
 		"how_look_at_camp":       "App-How do you look at camp",
+
+		// Live 2026 fields, routed per owner ruling (see #2271)
+		"over_18":                       "App-over 18",
+		"work_dates_kitchen_supervisor": "App-Work Camp Dates Kitchen Supervisor",
+		"jedi_returner":                 "App-JEDIreturner",
+		"jedi_new_staff":                "App-JEDInewstaff",
 	}
 
 	return mapping[column]
@@ -349,10 +366,17 @@ func makeStaffApplicationsKey(personID, year int) string {
 	return makeStaffAppKey(personID, year)
 }
 
-// newStaffApplicationsTestApp builds the one collection deleteOrphans touches.
+// newStaffApplicationsTestApp builds the one collection deleteOrphans touches,
+// plus the four columns added for the live 2026 App-* fields (see #2271) so
+// that TestUpsertRecordsWritesTheFourLive2026Columns can read them back.
+//
 // Like newStaffVehicleTestApp, this fixture is LAXER than production -- it
-// carries only the fields the guard reads -- so a green test here is not
-// evidence that production writes validate.
+// carries only the fields the tests below read, not all 44 routed columns --
+// so a green test here is not evidence that production writes validate. It is
+// evidence that upsertRecords writes THESE columns under THESE names, which is
+// the part nothing else pins: record.Set on a name the collection does not
+// carry is a silent no-op in PocketBase, so a dropped or misspelled setter
+// leaves the whole package green.
 func newStaffApplicationsTestApp(t *testing.T) core.App {
 	t.Helper()
 	app, err := pbtests.NewTestApp()
@@ -365,6 +389,12 @@ func newStaffApplicationsTestApp(t *testing.T) core.App {
 	apps.Fields.Add(&core.TextField{Name: "staff"})
 	apps.Fields.Add(&core.NumberField{Name: "person_id"})
 	apps.Fields.Add(&core.NumberField{Name: "year"})
+	// Live 2026 fields (see #2271). Types mirror
+	// 1500000156_staff_applications_live_2026_fields.js.
+	apps.Fields.Add(&core.BoolField{Name: "over_18"})
+	apps.Fields.Add(&core.BoolField{Name: "work_dates_kitchen_supervisor"})
+	apps.Fields.Add(&core.TextField{Name: "jedi_returner", Max: 5000})
+	apps.Fields.Add(&core.TextField{Name: "jedi_new_staff", Max: 5000})
 	if saveErr := app.Save(apps); saveErr != nil {
 		t.Fatalf("save staff_applications: %v", saveErr)
 	}
@@ -426,16 +456,21 @@ func TestStaffApplicationsDeleteOrphansRefusesEmptyComputedSet(t *testing.T) {
 	}
 }
 
-// unroutedAppFieldNames is the 48 App-* / Position Preference field names
+// unroutedAppFieldNames is the 44 App-* / Position Preference field names
 // admitted by isStaffApplicationField that have no case in
 // MapStaffAppFieldToColumn, byte-verified against the production snapshot at
 // kindred#2271: 22 retired-2023 essay prompts, 9 prior-camp-employment-history
 // fields (6 of which carried data through 2023, 3 of which -- the "Previous
 // Camp 3" trio -- never held a value), 5 Reference #2 fields that never held a
 // value (the form only ever collected one reference), 2 other retired-2023
-// gates, 2 retired-2025 fields, 4 never-populated leftovers, and 4 fields
-// still receiving 2026 answers that kindred#2271 decided against adding
-// columns for.
+// gates, 2 retired-2025 fields, and 4 never-populated leftovers.
+//
+// A former Category G held the four fields still receiving 2026 answers
+// ("App-over 18", "App-JEDIreturner", "App-JEDInewstaff", "App-Work Camp
+// Dates Kitchen Supervisor"). kindred#2271 originally decided against columns
+// for them; the owner reversed that call for these four specifically (see
+// #2271), so they are routed by MapStaffAppFieldToColumn now instead of
+// appearing here.
 var unroutedAppFieldNames = []string{
 	// Category A: retired 2023 essay prompts (22)
 	"App-85th Birthday...",
@@ -487,21 +522,16 @@ var unroutedAppFieldNames = []string{
 	"App-Help Meet Goals",
 	"App-Hobbies/Interests/Skills",
 	"App-Relevant Courses",
-	// Category G: live 2026 fields, deliberately not given columns (4)
-	"App-over 18",
-	"App-JEDIreturner",
-	"App-JEDInewstaff",
-	"App-Work Camp Dates Kitchen Supervisor",
 }
 
-// TestRetiredAppFieldReasonsCoversExactlyTheFortyEightUnroutedNames pins
+// TestRetiredAppFieldReasonsCoversExactlyTheFortyFourUnroutedNames pins
 // kindred#2271's inventory: 88 App-*/Position-Preference definitions
-// admitted, 40 routed, 48 with no case in MapStaffAppFieldToColumn. Every one
-// of those 48 must carry an explicit reason in retiredAppFieldReasons, and
+// admitted, 44 routed, 44 with no case in MapStaffAppFieldToColumn. Every one
+// of those 44 must carry an explicit reason in retiredAppFieldReasons, and
 // MapStaffAppFieldToColumn must agree that none of them route anywhere -- or
 // the "known" bucket in classifyUnmappedAppFields would silently swallow a
 // field that actually needs a routing case added.
-func TestRetiredAppFieldReasonsCoversExactlyTheFortyEightUnroutedNames(t *testing.T) {
+func TestRetiredAppFieldReasonsCoversExactlyTheFortyFourUnroutedNames(t *testing.T) {
 	t.Parallel()
 
 	if len(retiredAppFieldReasons) != len(unroutedAppFieldNames) {
@@ -533,16 +563,16 @@ func TestRetiredAppFieldReasonsCoversExactlyTheFortyEightUnroutedNames(t *testin
 func TestClassifyUnmappedAppFields(t *testing.T) {
 	t.Parallel()
 	counts := map[string]int{
-		"App-over 18":             3, // known -- live field, deliberately uncolumned
+		"App-Camp Goals":          3, // known -- retired 2023 essay prompt
 		"App-Space Rocket Camper": 1, // not on any list
 	}
 
 	known, unexpected := classifyUnmappedAppFields(counts)
 
-	if got := known["App-over 18"]; got != 3 {
-		t.Errorf("known[%q] = %d, want 3", "App-over 18", got)
+	if got := known["App-Camp Goals"]; got != 3 {
+		t.Errorf("known[%q] = %d, want 3", "App-Camp Goals", got)
 	}
-	if _, leaked := unexpected["App-over 18"]; leaked {
+	if _, leaked := unexpected["App-Camp Goals"]; leaked {
 		t.Error("a known-unmapped field leaked into the unexpected bucket")
 	}
 	if got := unexpected["App-Space Rocket Camper"]; got != 1 {
@@ -579,9 +609,107 @@ func TestMapAppFieldToRecordReturnsColumnWritten(t *testing.T) {
 
 	t.Run("unmapped field returns empty string and writes nothing", func(t *testing.T) {
 		rec := &staffApplicationRecord{}
-		got := mapAppFieldToRecord(rec, "App-over 18", "Yes")
+		got := mapAppFieldToRecord(rec, "App-Camp Goals", "Yes")
 		if got != "" {
 			t.Errorf("mapAppFieldToRecord returned %q, want \"\"", got)
+		}
+	})
+}
+
+// TestMapAppFieldToRecordRoutesTheFourLive2026Fields pins the owner's
+// 2026-08-14 reversal of kindred#2271's original "no columns" call for these
+// four fields specifically (see #2271). App-over 18 and App-Work Camp Dates
+// Kitchen Supervisor are boolean gates parsed the same way as the existing
+// over_21 column; App-JEDIreturner and App-JEDInewstaff are free text, split
+// returner/new-staff halves of the single retired "App- Working Across
+// Differences" question rather than a new topic.
+func TestMapAppFieldToRecordRoutesTheFourLive2026Fields(t *testing.T) {
+	t.Parallel()
+
+	// Named once and referenced by variable everywhere below, not repeated as
+	// raw literals -- same reasoning as wantColumn in
+	// TestMapAppFieldToRecordReturnsColumnWritten: this file and
+	// staff_applications.go's switch/return/Set already spell each of these
+	// column names three times each, so a second raw literal per name here
+	// trips goconst (min-occurrences: 3).
+	const (
+		colOver18             = "over_18"
+		colKitchenSupervisor  = "work_dates_kitchen_supervisor"
+		colJediReturner       = "jedi_returner"
+		colJediNewStaff       = "jedi_new_staff"
+		fieldJediReturnerName = "App-JEDIreturner"
+	)
+
+	t.Run("over 18 Yes parses true", func(t *testing.T) {
+		rec := &staffApplicationRecord{}
+		if got := mapAppFieldToRecord(rec, "App-over 18", "Yes"); got != colOver18 {
+			t.Errorf("mapAppFieldToRecord returned %q, want %q", got, colOver18)
+		}
+		if !rec.over18 {
+			t.Error("over18 = false, want true for a Yes value")
+		}
+	})
+
+	t.Run("over 18 No parses false", func(t *testing.T) {
+		rec := &staffApplicationRecord{}
+		if got := mapAppFieldToRecord(rec, "App-over 18", "No"); got != colOver18 {
+			t.Errorf("mapAppFieldToRecord returned %q, want %q", got, colOver18)
+		}
+		if rec.over18 {
+			t.Error("over18 = true, want false for a No value")
+		}
+	})
+
+	t.Run("kitchen supervisor Yes parses true", func(t *testing.T) {
+		rec := &staffApplicationRecord{}
+		got := mapAppFieldToRecord(rec, "App-Work Camp Dates Kitchen Supervisor", "Yes")
+		if got != colKitchenSupervisor {
+			t.Errorf("mapAppFieldToRecord returned %q, want %q", got, colKitchenSupervisor)
+		}
+		if !rec.workDatesKitchenSupervisor {
+			t.Error("workDatesKitchenSupervisor = false, want true for a Yes value")
+		}
+	})
+
+	t.Run("kitchen supervisor No parses false", func(t *testing.T) {
+		rec := &staffApplicationRecord{}
+		got := mapAppFieldToRecord(rec, "App-Work Camp Dates Kitchen Supervisor", "No")
+		if got != colKitchenSupervisor {
+			t.Errorf("mapAppFieldToRecord returned %q, want %q", got, colKitchenSupervisor)
+		}
+		if rec.workDatesKitchenSupervisor {
+			t.Error("workDatesKitchenSupervisor = true, want false for a No value")
+		}
+	})
+
+	t.Run("JEDI returner free text is written verbatim", func(t *testing.T) {
+		rec := &staffApplicationRecord{}
+		got := mapAppFieldToRecord(rec, fieldJediReturnerName, "a returner's reflection")
+		if got != colJediReturner {
+			t.Errorf("mapAppFieldToRecord returned %q, want %q", got, colJediReturner)
+		}
+		if rec.jediReturner != "a returner's reflection" {
+			t.Errorf("jediReturner = %q, want %q", rec.jediReturner, "a returner's reflection")
+		}
+	})
+
+	t.Run("JEDI new-staff free text is written verbatim", func(t *testing.T) {
+		rec := &staffApplicationRecord{}
+		got := mapAppFieldToRecord(rec, "App-JEDInewstaff", "a new applicant's reflection")
+		if got != colJediNewStaff {
+			t.Errorf("mapAppFieldToRecord returned %q, want %q", got, colJediNewStaff)
+		}
+		if rec.jediNewStaff != "a new applicant's reflection" {
+			t.Errorf("jediNewStaff = %q, want %q", rec.jediNewStaff, "a new applicant's reflection")
+		}
+	})
+
+	t.Run("first-write-wins like every other text column", func(t *testing.T) {
+		rec := &staffApplicationRecord{}
+		mapAppFieldToRecord(rec, fieldJediReturnerName, "first")
+		mapAppFieldToRecord(rec, fieldJediReturnerName, "second")
+		if rec.jediReturner != "first" {
+			t.Errorf("jediReturner = %q, want %q (first write should win)", rec.jediReturner, "first")
 		}
 	})
 }
@@ -699,6 +827,155 @@ func TestLoadPersonCustomValuesNoDiscardsMeansNoWarnAppLog(t *testing.T) {
 	}
 	if logged := logs.String(); logged != "" {
 		t.Errorf("expected no log output when nothing was discarded, got:\n%s", logged)
+	}
+}
+
+// TestLoadPersonCustomValuesRoutesTheFourLive2026FieldsAndDoesNotSkipThem is
+// the end-to-end pin for the owner's reversal on #2271: before this change
+// these four field names had no case in MapStaffAppFieldToColumn, so each one
+// present in a year's person_custom_values counted as a Stats.Skipped
+// discard event. Now all four must land on the record and Stats.Skipped must
+// stay zero.
+func TestLoadPersonCustomValuesRoutesTheFourLive2026FieldsAndDoesNotSkipThem(t *testing.T) {
+	app := newTransportValuesTestApp(t)
+
+	personsCol, err := app.FindCollectionByNameOrId("persons")
+	if err != nil {
+		t.Fatalf("find persons: %v", err)
+	}
+	person := core.NewRecord(personsCol)
+	person.Set("cm_id", 8003)
+	if saveErr := app.Save(person); saveErr != nil {
+		t.Fatalf("save person: %v", saveErr)
+	}
+
+	const year = 2026
+	addPersonCustomValue(t, app, "fd_over18", person.Id, "Yes", year)
+	addPersonCustomValue(t, app, "fd_kitchen", person.Id, "No", year)
+	addPersonCustomValue(t, app, "fd_jedi_returner", person.Id, "a returner reflection", year)
+	addPersonCustomValue(t, app, "fd_jedi_new", person.Id, "a new-staff reflection", year)
+
+	fieldNameMap := map[string]string{
+		"fd_over18":        "App-over 18",
+		"fd_kitchen":       "App-Work Camp Dates Kitchen Supervisor",
+		"fd_jedi_returner": "App-JEDIreturner",
+		"fd_jedi_new":      "App-JEDInewstaff",
+	}
+	personToStaff := map[int]string{8003: "staffpbid3"}
+
+	logs := captureSweepLogs(t)
+
+	s := NewStaffApplicationsSync(app)
+	records, err := s.loadPersonCustomValues(context.Background(), year, fieldNameMap, personToStaff)
+	if err != nil {
+		t.Fatalf("loadPersonCustomValues: %v", err)
+	}
+
+	key := makeStaffAppKey(8003, year)
+	rec, ok := records[key]
+	if !ok {
+		t.Fatalf("no record for key %q; got %d records", key, len(records))
+	}
+	if !rec.over18 {
+		t.Error("over18 = false, want true")
+	}
+	if rec.workDatesKitchenSupervisor {
+		t.Error("workDatesKitchenSupervisor = true, want false")
+	}
+	if rec.jediReturner != "a returner reflection" {
+		t.Errorf("jediReturner = %q, want %q", rec.jediReturner, "a returner reflection")
+	}
+	if rec.jediNewStaff != "a new-staff reflection" {
+		t.Errorf("jediNewStaff = %q, want %q", rec.jediNewStaff, "a new-staff reflection")
+	}
+
+	if s.Stats.Skipped != 0 {
+		t.Errorf("Stats.Skipped = %d, want 0 -- these four fields must no longer be discarded", s.Stats.Skipped)
+	}
+	if logged := logs.String(); logged != "" {
+		t.Errorf("expected no discard log for fields that now route to columns, got:\n%s", logged)
+	}
+}
+
+// TestUpsertRecordsWritesTheFourLive2026Columns closes the last gap in the
+// #2271 routing chain. Extraction is pinned above (MapStaffAppFieldToColumn ->
+// mapAppFieldToRecord -> loadPersonCustomValues), but the value only becomes
+// data when upsertRecords writes it, and PocketBase's record.Set is a silent
+// no-op for a name the collection does not carry. So a dropped setter, or one
+// whose column name does not match the migration's, produces four columns that
+// are added, populated in memory and never persisted -- with every other test
+// in this package still green. Measured: deleting all four record.Set lines
+// left `go test ./sync/` passing before this test existed.
+//
+// The reciprocal risk this canNOT cover is a Go/migration name disagreement:
+// the fixture declares these column names by hand rather than replaying
+// pb_migrations. CI's Migration Smoke Test + PocketBase types freshness step
+// is what ties the migration's names to the checked-in
+// frontend/src/types/pocketbase-types.ts.
+func TestUpsertRecordsWritesTheFourLive2026Columns(t *testing.T) {
+	t.Parallel()
+
+	const (
+		colOver18            = "over_18"
+		colKitchenSupervisor = "work_dates_kitchen_supervisor"
+		colJediReturner      = "jedi_returner"
+		colJediNewStaff      = "jedi_new_staff"
+
+		wantReturner = "a returner reflection"
+		wantNewStaff = "a new-staff reflection"
+	)
+
+	app := newStaffApplicationsTestApp(t)
+	s := NewStaffApplicationsSync(app)
+
+	const (
+		personID = 9101
+		year     = 2026
+	)
+	records := map[string]*staffApplicationRecord{
+		makeStaffAppKey(personID, year): {
+			personID: personID,
+			year:     year,
+			// over18 true / workDatesKitchenSupervisor false is deliberate: a
+			// setter that never runs leaves a bool column false, so only the
+			// true one proves the write happened. The false one proves the
+			// column is real rather than swallowed as unknown custom data.
+			over18:                     true,
+			workDatesKitchenSupervisor: false,
+			jediReturner:               wantReturner,
+			jediNewStaff:               wantNewStaff,
+		},
+	}
+
+	created, updated, errCount := s.upsertRecords(
+		context.Background(), records, map[string]string{}, year)
+	if errCount != 0 {
+		t.Fatalf("upsertRecords reported %d errors, want 0", errCount)
+	}
+	if created != 1 || updated != 0 {
+		t.Fatalf("created=%d updated=%d, want created=1 updated=0", created, updated)
+	}
+
+	saved, err := app.FindRecordsByFilter("staff_applications", "year = 2026", "", 0, 0)
+	if err != nil {
+		t.Fatalf("re-query: %v", err)
+	}
+	if len(saved) != 1 {
+		t.Fatalf("%d rows persisted, want 1", len(saved))
+	}
+	rec := saved[0]
+
+	if !rec.GetBool(colOver18) {
+		t.Errorf("%s = false on the persisted row, want true", colOver18)
+	}
+	if rec.GetBool(colKitchenSupervisor) {
+		t.Errorf("%s = true on the persisted row, want false", colKitchenSupervisor)
+	}
+	if got := rec.GetString(colJediReturner); got != wantReturner {
+		t.Errorf("%s = %q, want %q", colJediReturner, got, wantReturner)
+	}
+	if got := rec.GetString(colJediNewStaff); got != wantNewStaff {
+		t.Errorf("%s = %q, want %q", colJediNewStaff, got, wantNewStaff)
 	}
 }
 

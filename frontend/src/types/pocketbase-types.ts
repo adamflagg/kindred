@@ -1596,9 +1596,12 @@ export type StaffApplicationsRecord = {
   favorite_camper_moment?: string
   how_look_at_camp?: string
   id: string
+  jedi_new_staff?: string
+  jedi_returner?: string
   jewish_community?: string
   languages?: string
   last_summer_learned?: string
+  over_18?: boolean
   over_21?: boolean
   person_id: number
   position_pref_1?: string
@@ -1624,6 +1627,7 @@ export type StaffApplicationsRecord = {
   why_work_again?: string
   wish_knew?: string
   work_dates_driver?: string
+  work_dates_kitchen_supervisor?: boolean
   work_dates_supervisor?: string
   work_dates_wild?: string
   work_expectations?: string
