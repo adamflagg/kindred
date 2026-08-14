@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"reflect"
 	"strings"
 	"sync"
@@ -912,9 +913,23 @@ func TestCamperHistoryServiceFullyRemoved(t *testing.T) {
 		}
 	}
 
-	o := NewOrchestrator(nil)
-	if svc := o.GetService(removedID); svc != nil {
-		t.Error("a fresh orchestrator should never have camper_history pre-registered")
+	// The registration half needs a source-level guard, not a live orchestrator: both
+	// registration paths (InitializeSyncServices, RunSyncWithOptions) need a real
+	// core.App and a CampMinder client to run, and NewOrchestrator registers nothing at
+	// all -- so `GetService("camper_history") != nil` on a fresh orchestrator can never
+	// fire and would pass unchanged if either path re-registered the job. Walking
+	// orchestrator.go is the same technique TestYearTakingHandlersPassTheirYear uses on
+	// api.go for the identical reason.
+	body, err := os.ReadFile("orchestrator.go")
+	if err != nil {
+		t.Fatalf("read orchestrator.go: %v", err)
+	}
+	if strings.Contains(string(body), removedID) {
+		t.Errorf("orchestrator.go still mentions %q -- a registration or job-list entry "+
+			"came back for a collection that no longer exists", removedID)
+	}
+	if strings.Contains(string(body), "CamperHistorySync") {
+		t.Error("orchestrator.go still references CamperHistorySync")
 	}
 }
 
