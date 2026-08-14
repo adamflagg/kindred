@@ -1,4 +1,5 @@
 import { useState, useCallback, useMemo, useRef, useEffect } from 'react'
+import { useOverlayEscape } from '../hooks/useOverlayEscape'
 import { createPortal } from 'react-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { X, Trash2, Users, ChevronRight, AlertTriangle, Plus } from 'lucide-react'
@@ -163,20 +164,18 @@ function AddMemberPicker({
     return () => document.removeEventListener('mousedown', handler)
   }, [open])
 
-  // Escape dismisses the picker. Capture phase so we stop it before outer
-  // modal listeners (e.g. CamperDetailsPanel) react.
-  useEffect(() => {
-    if (!open) return
-    const handler = (e: KeyboardEvent) => {
-      if (e.key !== 'Escape') return
-      e.stopPropagation()
-      setOpen(false)
-      setFilter('')
-      triggerRef.current?.focus()
-    }
-    document.addEventListener('keydown', handler, true)
-    return () => document.removeEventListener('keydown', handler, true)
-  }, [open])
+  // kindred#2237: gated by the shared overlay token stack (kindred#2205)
+  // rather than a capture-phase listener racing to beat an outer one — see
+  // `useOverlayEscape` for why. Only the topmost registered overlay acts,
+  // which still covers the case this used to name explicitly (an outer
+  // `CamperDetailsPanel`), and also every OTHER overlay opened on top of
+  // this picker, which capture-phase-vs-one-named-listener never could.
+  const closeOnEscape = useCallback(() => {
+    setOpen(false)
+    setFilter('')
+    triggerRef.current?.focus()
+  }, [])
+  useOverlayEscape(open, closeOnEscape)
 
   const handleSelect = (camper: Camper) => {
     void addCamperToGroup(camper, groupId)
