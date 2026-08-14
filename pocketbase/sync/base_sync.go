@@ -461,14 +461,17 @@ func (b *BaseSyncService) DeleteOrphansFromPreloaded(
 			continue
 		}
 		if !b.ProcessedKeys[keyStr] {
-			orphanCount++
 			name := b.getRecordName(record, entityName)
 			slog.Info("Deleting orphaned record", "entity", entityName, "name", name, "key", keyStr)
 
+			// Counted AFTER the delete lands. A failed delete leaves the row on disk,
+			// and reporting it as deleted tells an operator the opposite of the truth.
 			if err := b.App.Delete(record); err != nil {
 				slog.Error("Failed to delete orphaned record", "entity", entityName, "key", keyStr, "error", err)
 				b.Stats.Errors++
+				continue
 			}
+			orphanCount++
 		}
 	}
 

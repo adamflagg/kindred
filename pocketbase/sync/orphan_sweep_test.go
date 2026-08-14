@@ -402,6 +402,59 @@ func TestBaseDeleteOrphansCountsOnlyCompletedDeletes(t *testing.T) {
 	}
 }
 
+// orphanCount is what the completion log reports as deleted, same property as
+// TestBaseDeleteOrphansCountsOnlyCompletedDeletes above but for the preloaded
+// entry point (kindred#2302) -- financial_transactions is the one production
+// caller. A delete that FAILS must not be counted: the row is still on disk.
+func TestBaseDeleteOrphansFromPreloadedCountsOnlyCompletedDeletes(t *testing.T) {
+	t.Parallel()
+	app := newOrphanSweepTestApp(t, "widgets", "name")
+	widgets, err := app.FindCollectionByNameOrId("widgets")
+	if err != nil {
+		t.Fatalf("find widgets: %v", err)
+	}
+
+	orphan := core.NewRecord(widgets)
+	orphan.Id = orphanTestID(1)
+	orphan.Set("name", "widget-001")
+	orphan.Set("year", 2026)
+	if saveErr := app.Save(orphan); saveErr != nil {
+		t.Fatalf("seed orphan: %v", saveErr)
+	}
+
+	// A non-cascading relation pointing at the orphan blocks its deletion.
+	holders := core.NewBaseCollection("holders")
+	holders.Fields.Add(&core.RelationField{
+		Name: "widget", CollectionId: widgets.Id, CascadeDelete: false, Required: true,
+	})
+	if saveErr := app.Save(holders); saveErr != nil {
+		t.Fatalf("save holders: %v", saveErr)
+	}
+	holder := core.NewRecord(holders)
+	holder.Set("widget", orphan.Id)
+	if saveErr := app.Save(holder); saveErr != nil {
+		t.Fatalf("seed holder: %v", saveErr)
+	}
+
+	logs := captureSweepLogs(t)
+
+	b := BaseSyncService{App: app, ProcessedKeys: map[string]bool{}, SyncSuccessful: true}
+	preloaded := map[any]*core.Record{orphan.Id: orphan}
+	if sweepErr := b.DeleteOrphansFromPreloaded(preloaded, "widget"); sweepErr != nil {
+		t.Fatalf("sweep returned an error: %v", sweepErr)
+	}
+
+	// The row must still be there -- otherwise the fixture did not block anything
+	// and the assertion below would pass for the wrong reason.
+	if _, findErr := app.FindRecordById("widgets", orphan.Id); findErr != nil {
+		t.Fatalf("fixture is wrong: the delete was not blocked (%v)", findErr)
+	}
+
+	if got := logs.String(); strings.Contains(got, "Deleted orphaned records") {
+		t.Errorf("a failed delete was counted as deleted; got:\n%s", got)
+	}
+}
+
 // ---------------------------------------------------------------------------
 // The scan must not mint a new filter string per page (kindred#2279 follow-up)
 // ---------------------------------------------------------------------------
