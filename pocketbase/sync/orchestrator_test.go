@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"reflect"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -1857,8 +1858,12 @@ func TestUnsupportedDryRunServices(t *testing.T) {
 }
 
 // dryRunCapableRealServices are the concrete production types that already had a working
-// DryRun field and internal skip-write logic before kindred#2334 (each is exercised standalone
-// via its own dedicated endpoint, e.g. handleFamilyCampDerivedSync). This list is the actual
+// DryRun field and internal skip-write logic before kindred#2334. Six of them were already
+// reachable with it: handleCamperHistorySync, handleFamilyCampDerivedSync,
+// handleLodgingAssignmentsSync, handleStaffSkillsSync, handleFinancialAidApplicationsSync and
+// handleHouseholdDemographicsSync each parse ?dry_run= on their own dedicated endpoint. The
+// other seven had the field and the skip-write branch but no caller that could set it -- the
+// unified endpoint is their first. This list is the actual
 // blast radius of the incident in #2334: household_demographics/family_camp_derived are exactly
 // the services that swapped medical narratives and adult attributes and deleted family_camp_adults
 // rows. A DryRunnable mechanism that only a test double satisfies would leave every one of these
@@ -1894,11 +1899,15 @@ var (
 )
 
 // TestRealServicesHonorDryRunThroughUnifiedEndpoint proves the wiring against the actual
-// registered production types (not dryRunAwareService test doubles): every service that already
-// has DryRun-aware Sync() logic must be absent from UnsupportedDryRunServices' verdict on the
-// full default job list, while a service known to have no such logic (session_groups) must
-// still be rejected. Without this, TestUnsupportedDryRunServices above could stay green forever
-// while every real service in production silently lost its DryRunnable implementation.
+// registered production types (not dryRunAwareService test doubles): every service in
+// dryRunCapableRealServices must be absent from UnsupportedDryRunServices' verdict on that
+// list, while a service known to have no such logic (session_groups) must still be rejected.
+// Without this, TestUnsupportedDryRunServices above could stay green forever while every real
+// service in production silently lost its DryRunnable implementation.
+//
+// Interface satisfaction is all this proves. TestRealServicesSetDryRunStoresTheFlag below is
+// the half that proves the setter actually stores anything -- a no-op SetDryRun passes this
+// test and is worse than no support at all.
 func TestRealServicesHonorDryRunThroughUnifiedEndpoint(t *testing.T) {
 	t.Parallel()
 	o := NewOrchestrator(nil)
@@ -1916,7 +1925,12 @@ func TestRealServicesHonorDryRunThroughUnifiedEndpoint(t *testing.T) {
 	o.RegisterService("family_camp_derived", NewFamilyCampDerivedSync(nil))
 	o.RegisterService("staff_applications", NewStaffApplicationsSync(nil))
 	o.RegisterService("staff_skills", NewStaffSkillsSync(nil))
-	o.RegisterService(serviceNameSessionGroups, &notDryRunnableService{name: serviceNameSessionGroups})
+	// The real production type, not a double: the rejection path has to be proven against a
+	// service that genuinely has no dry-run support, or nothing in the suite shows that a
+	// wet-only service is actually caught. If session_groups ever gains a real SetDryRun and
+	// a skip-write branch, this failing is the correct signal to move it into
+	// dryRunCapableRealServices rather than to swap a double back in here.
+	o.RegisterService(serviceNameSessionGroups, NewSessionGroupsSync(nil, nil))
 
 	if got := o.UnsupportedDryRunServices(dryRunCapableRealServices); len(got) != 0 {
 		t.Errorf("expected every real dry-run-capable service to be supported, got unsupported=%v", got)
@@ -1925,6 +1939,139 @@ func TestRealServicesHonorDryRunThroughUnifiedEndpoint(t *testing.T) {
 	got := o.UnsupportedDryRunServices(append(append([]string{}, dryRunCapableRealServices...), serviceNameSessionGroups))
 	if len(got) != 1 || got[0] != serviceNameSessionGroups {
 		t.Errorf("expected only [%s] unsupported alongside the real services, got %v", serviceNameSessionGroups, got)
+	}
+}
+
+// TestRunSyncWithOptionsDryRunSkipsTheWeeklyBootstrap covers the one write inside
+// RunSyncWithOptions that the DryRunnable plumbing never sees. Before any service runs,
+// RunSyncWithOptions checks whether the global tables are empty and, if so, runs a full
+// weekly sync -- real CampMinder fetches, real writes to person_tag_defs / custom_field_defs
+// / divisions -- through RunWeeklySync, which takes no Options and so cannot know a dry run
+// was asked for. A dry_run=true request landing on an unseeded database therefore wrote,
+// while the 200 body told the operator "dry_run": true (kindred#2334).
+func TestRunSyncWithOptionsDryRunSkipsTheWeeklyBootstrap(t *testing.T) {
+	t.Parallel()
+
+	// Deliberately NOT newDryRunTestApp: this test needs the empty-globals branch that
+	// helper's person_tag_defs seed exists to avoid.
+	app, err := pbtests.NewTestApp()
+	if err != nil {
+		t.Fatalf("NewTestApp: %v", err)
+	}
+	t.Cleanup(app.Cleanup)
+
+	o := NewOrchestrator(app)
+	o.SetJobSpacing(0)
+
+	// person_tag_defs is the first job of the weekly bootstrap and is not part of the
+	// requested run, so any call to it can only have come from that bootstrap.
+	bootstrap := &notDryRunnableService{name: "person_tag_defs"}
+	o.RegisterService("person_tag_defs", bootstrap)
+	dry := &dryRunAwareService{name: "family_camp_derived"}
+	o.RegisterService("family_camp_derived", dry)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	if err := o.RunSyncWithOptions(ctx, Options{
+		Year:     0,
+		Services: []string{"family_camp_derived"},
+		DryRun:   true,
+	}); err != nil {
+		t.Fatalf("RunSyncWithOptions (dry): %v", err)
+	}
+
+	if got := bootstrap.callCount.Load(); got != 0 {
+		t.Errorf("dry run ran the weekly bootstrap %d time(s) -- it writes for real", got)
+	}
+	if calls, wrote := dry.snapshot(); len(calls) != 1 || !calls[0] || wrote != 0 {
+		t.Errorf("expected one dry Sync and no writes; calls=%v wrote=%d", calls, wrote)
+	}
+
+	// Control: the bootstrap must still run for a wet request on the same empty database,
+	// so the guard above is a dry-run gate and not an accidental removal of the bootstrap.
+	if err := o.RunSyncWithOptions(ctx, Options{
+		Year:     0,
+		Services: []string{"family_camp_derived"},
+		DryRun:   false,
+	}); err != nil {
+		t.Fatalf("RunSyncWithOptions (wet): %v", err)
+	}
+	if got := bootstrap.callCount.Load(); got == 0 {
+		t.Error("wet run skipped the weekly bootstrap on an empty database")
+	}
+}
+
+// TestRealServicesSetDryRunStoresTheFlag closes the gap the DryRunnable interface leaves open
+// on its own: satisfying it is a compile-time property, and a SetDryRun whose body stores
+// nothing satisfies it exactly as well as one that works. That mutant is strictly worse than
+// having no dry-run support at all -- UnsupportedDryRunServices reports the service as
+// supported, so handleUnifiedSync answers 200 with "dry_run": true, and the service then runs
+// wet. That is the kindred#2334 incident again with an operator-visible "dry run" label on it.
+//
+// Verified by mutation while this test was written: with FamilyCampDerivedSync.SetDryRun's
+// body replaced by a no-op, `go test ./sync/` stayed entirely green -- the compile-time
+// DryRunnable assertions below still held, TestRealServicesHonorDryRunThroughUnifiedEndpoint
+// still passed, and every existing per-service dry-run test set the field directly rather than
+// through the setter, so nothing anywhere reached the production entry point.
+//
+// Reflection reads the same exported DryRun field each Sync() branches on before it writes, so
+// a service that renames or drops that field fails here loudly instead of quietly ceasing to
+// honor dry runs.
+func TestRealServicesSetDryRunStoresTheFlag(t *testing.T) {
+	t.Parallel()
+
+	services := map[string]DryRunnable{
+		"camper_dietary":             NewCamperDietarySync(nil),
+		"camper_history":             NewCamperHistorySync(nil),
+		"quest_registrations":        NewQuestRegistrationsSync(nil),
+		"household_demographics":     NewHouseholdDemographicsSync(nil),
+		"financial_aid_applications": NewFinancialAidApplicationsSync(nil),
+		"lodging_assignments":        NewLodgingAssignmentsSync(nil),
+		"camper_transportation":      NewCamperTransportationSync(nil),
+		"staff_vehicle_info":         NewStaffVehicleInfoSync(nil),
+		"enrollment_snapshots":       NewEnrollmentSnapshotsSync(nil),
+		"normalize_geographic":       NewNormalizeGeographicSync(nil),
+		"family_camp_derived":        NewFamilyCampDerivedSync(nil),
+		"staff_applications":         NewStaffApplicationsSync(nil),
+		"staff_skills":               NewStaffSkillsSync(nil),
+	}
+
+	// Every name the orchestrator will hand SetDryRun(true) must be covered here, or a
+	// service could be added to the wired list and never checked.
+	if len(services) != len(dryRunCapableRealServices) {
+		t.Fatalf("this test covers %d services but %d are wired to DryRunnable",
+			len(services), len(dryRunCapableRealServices))
+	}
+	for _, name := range dryRunCapableRealServices {
+		if _, ok := services[name]; !ok {
+			t.Fatalf("%s is wired to DryRunnable but not covered here", name)
+		}
+	}
+
+	for name, svc := range services {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			field := reflect.ValueOf(svc).Elem().FieldByName("DryRun")
+			if !field.IsValid() || field.Kind() != reflect.Bool {
+				t.Fatalf("%s has no exported bool DryRun field for SetDryRun to reach", name)
+			}
+
+			svc.SetDryRun(true)
+			if !field.Bool() {
+				t.Fatalf("%s.SetDryRun(true) left DryRun false -- the unified endpoint would "+
+					"report dry_run=true and the service would write for real", name)
+			}
+
+			// The orchestrator resets the flag on the registered singleton after a dry run;
+			// a setter that only ever stores true would leak it into the next, wet run.
+			svc.SetDryRun(false)
+			if field.Bool() {
+				t.Fatalf("%s.SetDryRun(false) left DryRun true -- a later wet run would "+
+					"silently write nothing", name)
+			}
+		})
 	}
 }
 

@@ -615,7 +615,9 @@ func TestLodgingAssignmentsSyncDryRunWritesNothing(t *testing.T) {
 
 	s := NewLodgingAssignmentsSync(app)
 	s.Year = 2025
-	s.DryRun = true
+	// Through the DryRunnable setter the orchestrator actually calls, not the field
+	// directly, so SetDryRun -> no writes is pinned end to end (kindred#2334).
+	s.SetDryRun(true)
 	if err := s.Sync(context.Background()); err != nil {
 		t.Fatalf("Sync: %v", err)
 	}

@@ -443,7 +443,10 @@ func TestFamilyCampDryRunWritesNothing(t *testing.T) {
 
 	s := NewFamilyCampDerivedSync(app)
 	s.Year = year
-	s.DryRun = true
+	// Through the DryRunnable setter the orchestrator actually calls, not the field
+	// directly: this is the only test that pins SetDryRun -> no writes end to end for
+	// one of the two services in the kindred#2334 incident.
+	s.SetDryRun(true)
 
 	if err := s.Sync(context.Background()); err != nil {
 		t.Fatalf("dry run failed: %v", err)

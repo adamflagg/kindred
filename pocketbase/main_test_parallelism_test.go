@@ -128,6 +128,20 @@ var serialGroups = []struct {
 		},
 	},
 	{
+		// handleUnifiedSync and processQueuedSyncs both call ParseSeasonYear(), which reads
+		// CAMPMINDER_SEASON_ID directly via os.Getenv -- these HTTP- and queue-level dry_run
+		// tests (kindred#2334) need a deterministic season to resolve their year=2025 requests
+		// against, so each sets it with t.Setenv.
+		pkg:    "sync",
+		reason: "t.Setenv: CAMPMINDER_SEASON_ID makes handleUnifiedSync's year resolution deterministic",
+		tests: []string{
+			"TestHandleUnifiedSyncRejectsUnsupportedDryRun",
+			"TestHandleUnifiedSyncImmediatePathEchoesDryRun",
+			"TestHandleUnifiedSyncQueuedPathEchoesDryRun",
+			"TestProcessQueuedSyncsUnifiedHonorsDryRun",
+		},
+	},
+	{
 		// registryBasePath / registryAbsoluteRoots (lodging/registry.go) are
 		// the only true data races the detector found when the whole tree was
 		// made parallel at once: withRegistryBasePath writes them, and every
@@ -165,20 +179,6 @@ var serialGroups = []struct {
 			"TestReplayRefusalDoesNotBlockTheTick",
 			"TestSeedRegistryAbsentFileIsANoOp",
 			"TestSeedRegistrySecondSeasonIsANoOpOnceOneSeasonHasRows",
-		},
-	},
-	{
-		// handleUnifiedSync and processQueuedSyncs both call ParseSeasonYear(), which reads
-		// CAMPMINDER_SEASON_ID directly via os.Getenv -- these HTTP- and queue-level dry_run
-		// tests (kindred#2334) need a deterministic season to resolve their year=2025 requests
-		// against, so each sets it with t.Setenv.
-		pkg:    "sync",
-		reason: "t.Setenv: CAMPMINDER_SEASON_ID makes handleUnifiedSync's year resolution deterministic",
-		tests: []string{
-			"TestHandleUnifiedSyncRejectsUnsupportedDryRun",
-			"TestHandleUnifiedSyncImmediatePathEchoesDryRun",
-			"TestHandleUnifiedSyncQueuedPathEchoesDryRun",
-			"TestProcessQueuedSyncsUnifiedHonorsDryRun",
 		},
 	},
 }

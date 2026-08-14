@@ -1602,11 +1602,24 @@ func (o *Orchestrator) RunSyncWithOptions(ctx context.Context, opts Options) err
 
 	// Check if global tables are empty - if so, run weekly sync first
 	// This ensures fresh DB setups have required global definitions before any sync
-	// The check is quick (1 DB query) so we do it regardless of year
+	// The check is quick (1 DB query) so we do it regardless of year.
+	//
+	// Never on a dry run. RunWeeklySync fetches and writes person_tag_defs,
+	// custom_field_defs and divisions for real, and it does not go through the
+	// DryRunnable plumbing below, so a dry_run=true request that happened to land on an
+	// unseeded database would write anyway -- an operator told "dry_run": true while the
+	// database changed under them is the whole of kindred#2334. Skipping leaves the run
+	// computing against what is actually there, which is the honest answer to "what would
+	// this do", and the warning says so rather than leaving it to be inferred.
 	if o.checkGlobalTablesEmpty() {
-		slog.Info("Global tables empty - running weekly sync first")
-		if err := o.RunWeeklySync(ctx); err != nil {
-			slog.Error("Weekly sync failed, continuing with sync", "error", err)
+		if opts.DryRun {
+			slog.Warn("Dry run: global tables are empty and the weekly-sync bootstrap is " +
+				"skipped -- results are computed against an unseeded database")
+		} else {
+			slog.Info("Global tables empty - running weekly sync first")
+			if err := o.RunWeeklySync(ctx); err != nil {
+				slog.Error("Weekly sync failed, continuing with sync", "error", err)
+			}
 		}
 	}
 
@@ -1904,8 +1917,13 @@ func (o *Orchestrator) RunSyncWithOptions(ctx context.Context, opts Options) err
 		}
 	}
 
-	// After historical sync completes, trigger Google Sheets export for that year only (no globals)
-	if opts.Year > 0 && google.IsEnabled() {
+	// After historical sync completes, trigger Google Sheets export for that year only (no globals).
+	//
+	// Not on a dry run: SyncForYears writes spreadsheets and the master index for real, and
+	// GetChangedCollections would happily nominate collections a dry run only *computed*
+	// (the dry-run branches still populate Stats.Created, so IsNoOp() is false). "dry_run
+	// writes nothing" has to mean the Google side too (kindred#2334).
+	if opts.Year > 0 && !opts.DryRun && google.IsEnabled() {
 		o.mu.RLock()
 		sheetsService := o.services["multi_workbook_export"]
 		o.mu.RUnlock()
@@ -1926,8 +1944,9 @@ func (o *Orchestrator) RunSyncWithOptions(ctx context.Context, opts Options) err
 		}
 	}
 
-	// After current year sync completes, trigger Google Sheets export (globals + current year)
-	if opts.Year == 0 && google.IsEnabled() {
+	// After current year sync completes, trigger Google Sheets export (globals + current year).
+	// Skipped on a dry run for the same reason as the historical export above.
+	if opts.Year == 0 && !opts.DryRun && google.IsEnabled() {
 		o.mu.RLock()
 		sheetsService := o.services["multi_workbook_export"]
 		o.mu.RUnlock()

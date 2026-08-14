@@ -79,8 +79,8 @@ func (s *QuestRegistrationsSync) SetDebug(debug bool) {
 }
 
 // SetDryRun implements the orchestrator's DryRunnable interface (kindred#2334) so a
-// unified sync run with dry_run=true reaches this field the same way the dedicated
-// per-service endpoint already does.
+// unified sync run with dry_run=true reaches the DryRun field that this service's
+// Sync() already checks before it writes.
 func (s *QuestRegistrationsSync) SetDryRun(dryRun bool) {
 	s.DryRun = dryRun
 }
