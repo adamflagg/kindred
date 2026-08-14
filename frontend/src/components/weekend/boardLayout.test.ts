@@ -1340,9 +1340,12 @@ describe('buildBoard — consent flag follows leaf overlap, not the card (task-1
   /**
    * A combined container: `house` draws ONE card, and both `r1` and `r2` roll
    * up onto it (the roll-up `indexPayload` already does for a merged
-   * building). Modelled on the real report: two households in Wawona Front
-   * and Wawona Back went unflagged split, then flagged the moment the card
-   * was merged, though nothing about either household changed.
+   * building). Modelled on the real report: two households in the front and
+   * back halves of one combined building went unflagged split, then flagged
+   * the moment the card was merged, though nothing about either household
+   * changed. (Unit named structurally, not literally -- the Lodging Name
+   * Guard drops comments and exempts test files, so a real name here would
+   * never be caught. See the sweep issue for the rest.)
    */
   const combinedHouse = [
     unit({ code: 'house', is_container: true, is_combined: true, sleeps: 8 }),
