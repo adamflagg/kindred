@@ -71,8 +71,19 @@ type DryRunDiff struct {
 	// something different against 45 rows than against 4,500.
 	Unchanged int
 	// WouldDelete counts stored rows this run's computed set does not account
-	// for -- what the orphan sweep would TARGET.
+	// for -- what the orphan sweep would TARGET. A row protected by kindred#2335
+	// (see Protected) is excluded from this count: the real sweep never targets
+	// it either, and a forecast that counted it anyway would tell an operator a
+	// replay destroys data it will not actually touch.
 	WouldDelete int
+	// Protected counts stored rows this run's computed set does not account for
+	// but that the sweep will not delete anyway, because they are wholly
+	// nameless (name, first_name, last_name all empty) yet carry another
+	// attribute -- date_of_birth, email, gender, pronouns or
+	// relationship_to_camper (kindred#2335). Only family_camp_adults has these
+	// columns, so this is always 0 for family_camp_registrations and
+	// family_camp_medical.
+	Protected int
 	// GuardWouldRefuse reports that the sweep would be refused rather than
 	// performed, so WouldDelete describes an intention, not an outcome.
 	GuardWouldRefuse bool
@@ -1416,7 +1427,7 @@ func (s *FamilyCampDerivedSync) reportDryRun(
 				func(a *adultData) string {
 					return familyCampAdultKey(a.householdPBID, year, a.adultNumber)
 				},
-				s.adultNeedsUpdate),
+				s.adultNeedsUpdate, isNamelessButAttributedAdult),
 		},
 		{
 			name:     "family_camp_registrations",
@@ -1425,7 +1436,7 @@ func (s *FamilyCampDerivedSync) reportDryRun(
 				func(r *registrationData) string {
 					return familyCampHouseholdYearKey(r.householdPBID, year)
 				},
-				s.registrationNeedsUpdate),
+				s.registrationNeedsUpdate, nil),
 		},
 		{
 			name:     "family_camp_medical",
@@ -1434,7 +1445,7 @@ func (s *FamilyCampDerivedSync) reportDryRun(
 				func(m *medicalData) string {
 					return familyCampHouseholdYearKey(m.householdPBID, year)
 				},
-				s.medicalNeedsUpdate),
+				s.medicalNeedsUpdate, nil),
 		},
 	}
 
@@ -1449,6 +1460,7 @@ func (s *FamilyCampDerivedSync) reportDryRun(
 			"would_update", t.diff.WouldUpdate,
 			"unchanged", t.diff.Unchanged,
 			"would_delete", t.diff.WouldDelete,
+			"protected", t.diff.Protected,
 			"existing", len(t.existing),
 		)
 		if t.diff.GuardWouldRefuse {
@@ -1491,6 +1503,12 @@ func (s *FamilyCampDerivedSync) reportDryRun(
 // reimplemented: a dry run that judged "changed" by its own rule would drift
 // from the writing path silently, and a forecast nobody can trust is worse than
 // no forecast.
+//
+// protected classifies a stored row this run's computed set does not account
+// for: true means the real sweep would leave it alone (kindred#2335), so it
+// belongs on diff.Protected rather than diff.WouldDelete. Pass nil for tables
+// with no such rule -- family_camp_registrations and family_camp_medical carry
+// no name column, so nothing on them is ever "wholly nameless".
 func computeDryRunDiff[T any](
 	entity string,
 	year int,
@@ -1498,6 +1516,7 @@ func computeDryRunDiff[T any](
 	existing map[string]*core.Record,
 	key func(T) string,
 	needsUpdate func(*core.Record, T) bool,
+	protected func(*core.Record) bool,
 ) DryRunDiff {
 	var diff DryRunDiff
 
@@ -1517,10 +1536,15 @@ func computeDryRunDiff[T any](
 		}
 	}
 
-	for k := range existing {
-		if !computed[k] {
-			diff.WouldDelete++
+	for k, record := range existing {
+		if computed[k] {
+			continue
 		}
+		if protected != nil && protected(record) {
+			diff.Protected++
+			continue
+		}
+		diff.WouldDelete++
 	}
 
 	// Computed is the size of the key set, matching what the real sweep passes
@@ -1960,7 +1984,43 @@ func (s *FamilyCampDerivedSync) upsertMedical(
 // cannot fire and there is nothing for it to fire on.
 // ============================================================================
 
+// isNamelessButAttributedAdult reports whether a family_camp_adults row has no
+// name at all (name, first_name and last_name all empty) but carries at least
+// one of the other adult attributes: date_of_birth, email, gender, pronouns or
+// relationship_to_camper.
+//
+// kindred#2335 measured 188 such rows across 2017-2025 (plus 6 more in 2026),
+// 137 of them holding a date_of_birth and 36 an email. They are households
+// that answered the gender or date-of-birth question for an adult but never
+// the name question -- a real adult with real attributes and no label, not the
+// wholly-empty junk row kindred#2198 stopped ADMITTING. The owner's ruling
+// (2026-08-14) is to protect the ones that already exist until their names can
+// be rescued, which is separate, out-of-scope work: this function decides only
+// whether a row survives a sweep, and recovers nothing.
+//
+// This deliberately does NOT change what gets CREATED -- #2198's admission
+// rule is untouched, so a new wholly-nameless row still cannot come into
+// existence. This only stops an existing one from being deleted.
+func isNamelessButAttributedAdult(record *core.Record) bool {
+	if record.GetString("name") != "" ||
+		record.GetString("first_name") != "" ||
+		record.GetString("last_name") != "" {
+		return false
+	}
+	return record.GetString("date_of_birth") != "" ||
+		record.GetString("email") != "" ||
+		record.GetString("gender") != "" ||
+		record.GetString("pronouns") != "" ||
+		record.GetString("relationship_to_camper") != ""
+}
+
 // deleteOrphanedAdults removes adult records that weren't processed.
+//
+// A row that is wholly nameless but carries another attribute is protected
+// rather than deleted (kindred#2335, isNamelessButAttributedAdult) -- the
+// OrphanSweepGuard above does not catch this: the shortfall it measures is
+// comfortably inside the guard's budget, so the guard is not a backstop for
+// this class of row at all.
 func (s *FamilyCampDerivedSync) deleteOrphanedAdults(
 	existing map[string]*core.Record, year int,
 ) (int, error) {
@@ -1980,8 +2040,14 @@ func (s *FamilyCampDerivedSync) deleteOrphanedAdults(
 	}
 
 	orphanCount := 0
+	protectedCount := 0
 	for key, record := range existing {
 		if s.ProcessedAdultKeys[key] {
+			continue
+		}
+
+		if isNamelessButAttributedAdult(record) {
+			protectedCount++
 			continue
 		}
 
@@ -1997,6 +2063,11 @@ func (s *FamilyCampDerivedSync) deleteOrphanedAdults(
 			continue
 		}
 		orphanCount++
+	}
+
+	if protectedCount > 0 {
+		slog.Info("Protected nameless-but-attributed family_camp_adults from sweep",
+			"count", protectedCount, "year", year)
 	}
 
 	if orphanCount > 0 {
