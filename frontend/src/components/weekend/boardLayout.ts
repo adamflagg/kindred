@@ -341,15 +341,20 @@ function wordingFor<T extends string>(
  * `winsGate`'s newest-wins race, not necessarily the answer that disagrees
  * (kindred#2269). `DeriveShareEligibility` raises the conflict off the UNION
  * of every sibling's recorded no_share/yes_share answer, so a household can
- * conflict with `maybe_mutual` as the winning gate -- the actual
- * contradiction is a sibling answer that lost recency and never reaches this
- * payload. `REGISTRATION_ANSWER['maybe_mutual']` ("only if a mutual match")
- * does not itself read as a disagreement against any resolved verdict, so
- * naming it as "Registration said …" would have the tooltip pair two answers
- * that look like they agree, on a chip whose whole job is to say they don't.
- * `no_share` and `yes_share` don't have this problem: DeriveShareEligibility
- * can only raise a conflict off one of those FROM `preference` itself when
- * `preference` IS one of them, so naming it stays honest.
+ * conflict with a WINNING gate that itself agrees with the resolved verdict
+ * -- the actual contradiction is a *different* sibling's answer that lost
+ * recency and never reaches this payload at all. This is not only a
+ * `maybe_mutual` shape: the winning gate can be `no_share` while eligibility
+ * is ALSO `declined` (a hidden lost `yes_share` sibling is the real
+ * conflict), or `yes_share` while eligibility is ALSO non-declined (a hidden
+ * lost `no_share` sibling). `preferenceDisagrees` below reruns the same
+ * two-arm test `DeriveShareEligibility` used before kindred#2269 introduced
+ * the union signals -- the one case where `preference` itself, taken alone,
+ * actually contradicts `eligibility`. Only then is it safe to name; every
+ * other case falls back to the generic "a registration answer on file
+ * disagrees" sentence, because naming an agreeing pair would have the
+ * tooltip look like agreement on a chip whose whole job is to say they
+ * don't.
  *
  * Returns null when there is nothing to report: no conflict, or no share
  * block at all — the shape of an adult-weekend guest, who has no share
@@ -364,7 +369,10 @@ export function answersConflictDetail(share: ShareRequest | undefined): string |
     share.eligibility_source === 'form'
       ? `the Family Camp form said ${resolved} — staff use the form's answer`
       : `the answer on file is ${resolved} — staff use that answer`
-  if (share.preference === 'maybe_mutual') {
+  const preferenceDisagrees =
+    (share.preference === 'no_share' && share.eligibility !== 'declined') ||
+    (share.preference === 'yes_share' && share.eligibility === 'declined')
+  if (!preferenceDisagrees) {
     return `A registration answer on file disagrees with this: ${winner}.`
   }
   const registration = wordingFor(

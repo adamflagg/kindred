@@ -985,6 +985,46 @@ describe('answersConflictDetail — which two answers disagreed, and which one w
     // Still says what actually won, so the chip stays informative.
     expect(detail).toMatch(SHARE_WORDING.declined)
   })
+
+  it('does not name a no_share registration answer that itself AGREES with the verdict (kindred#2269)', () => {
+    // The winning gate can be no_share while eligibility is ALSO declined --
+    // they agree -- and the union fix can still raise answers_conflict, because
+    // a DIFFERENT sibling recorded yes_share and lost the recency race (Go
+    // CollapseToHouseholdGrain's sawYesGate, consulted by DeriveShareEligibility
+    // regardless of which gate won). Pairing "will not share" against a
+    // declined verdict reads as agreement, not disagreement, so naming
+    // `preference` here would be exactly the misleading pairing kindred#2269
+    // exists to prevent -- the maybe_mutual case is not the only shape of it.
+    const detail = answersConflictDetail(
+      shareBlock({
+        preference: 'no_share',
+        eligibility: 'declined',
+        eligibility_source: 'form',
+        answers_conflict: true,
+      })
+    )
+    expect(detail).not.toBeNull()
+    expect(detail).not.toMatch(/will not share/i)
+    expect(detail).not.toMatch(/^Registration said/)
+    expect(detail).toMatch(SHARE_WORDING.declined)
+  })
+
+  it('does not name a yes_share registration answer that itself AGREES with the verdict (kindred#2269)', () => {
+    // Mirror of the no_share case above: the winning gate is yes_share and
+    // eligibility resolves to something other than declined -- they agree --
+    // while a hidden no_share sibling that lost recency is the real conflict.
+    const detail = answersConflictDetail(
+      shareBlock({
+        preference: 'yes_share',
+        eligibility: 'open',
+        eligibility_source: 'form',
+        answers_conflict: true,
+      })
+    )
+    expect(detail).not.toBeNull()
+    expect(detail).not.toMatch(/open to sharing.*open to sharing/i)
+    expect(detail).not.toMatch(/^Registration said/)
+  })
 })
 
 describe('buildBoard — area grouping and colour', () => {
