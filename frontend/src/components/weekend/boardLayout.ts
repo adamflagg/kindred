@@ -582,12 +582,65 @@ function areaSortOrder(unit: LodgingUnitRow): number {
  * party in that building's room. A plain leaf slot is unaffected either way —
  * its parties all name that one leaf code, which expands to itself and
  * trivially overlaps every other party there, exactly as before this existed.
+ *
+ * GUARDS the two-unit-alias case (kindred#2339). A `lodging_unit_aliases` row
+ * mapping one alias string to two-or-more units writes the WHOLE member set
+ * onto every household that resolves through it — `lodging_assignments_sync.go`
+ * (`placementFor`) records an alias's member set verbatim and deliberately does
+ * not judge it (`docs/architecture/lodging-occupancy.md`: that judgement
+ * belongs where a human chooses, not the ingest). Two DIFFERENT households
+ * independently resolving through the SAME alias then each claim the identical
+ * N-code set, which reads exactly like both parties sharing every one of those
+ * rooms unless this is guarded — the rule this function applies (also stated at
+ * `lodging_unit_aliases` and in `docs/reference/lodging-registry.md`): H
+ * households all claiming the same N-unit set is only evidence of a real
+ * double-booking once H exceeds N. At H <= N the assignment is ambiguous — one
+ * household per unit fits, staff just have not said which — and must not read
+ * as a confirmed share. `mergeGroupSignature`/`isAmbiguousMergePair` below
+ * apply this ONLY to a pair drawn from the identical multi-code group; a third
+ * party outside the group sharing one of those same leaves still flags
+ * normally, on either side of the pair — failing permissive is what the rest of
+ * this function already does, and the guard narrows nothing beyond the exact
+ * ambiguous case.
  */
+function mergeGroupSignature(party: RosterPartyRow): string | null {
+  const codes = occupiedCodes(party)
+  // A SINGLE named code (including a container) is one confirmed claim, not a
+  // multi-unit alias resolution, and must never enter this grouping — see
+  // `occupiedCodes`'s own doc comment for why a container name stays as itself.
+  if (codes.length < 2) return null
+  return [...codes].sort().join(' ')
+}
+
 export function overlappingPartyKeys(
   parties: RosterPartyRow[],
   units: LodgingUnitRow[]
 ): Set<string> {
   const unitsByCode = new Map(units.map((unit) => [unit.code, unit]))
+
+  // Group parties by the exact multi-code set they themselves name. A group
+  // no larger than the set it names (H <= N) is the ambiguous alias case;
+  // `isAmbiguousMergePair` below reads this to skip mutual attribution WITHIN
+  // one such group only.
+  const partySignature = new Map<string, string>()
+  const groupMembers = new Map<string, Set<string>>()
+  const groupSize = new Map<string, number>()
+  for (const party of parties) {
+    const signature = mergeGroupSignature(party)
+    if (signature === null) continue
+    const key = partyKey(party)
+    partySignature.set(key, signature)
+    groupSize.set(signature, occupiedCodes(party).length)
+    const members = groupMembers.get(signature) ?? new Set<string>()
+    members.add(key)
+    groupMembers.set(signature, members)
+  }
+  const isAmbiguousMergePair = (keyA: string, keyB: string): boolean => {
+    const signature = partySignature.get(keyA)
+    if (signature === undefined || signature !== partySignature.get(keyB)) return false
+    return (groupMembers.get(signature)?.size ?? 0) <= (groupSize.get(signature) ?? 0)
+  }
+
   const ownersByCode = new Map<string, RosterPartyRow[]>()
   for (const party of parties) {
     for (const code of occupiedLeafCodes(party, units, unitsByCode)) {
@@ -600,7 +653,17 @@ export function overlappingPartyKeys(
   const overlapping = new Set<string>()
   for (const owners of ownersByCode.values()) {
     if (owners.length < 2) continue
-    for (const owner of owners) overlapping.add(partyKey(owner))
+    for (let i = 0; i < owners.length; i++) {
+      const ownerA = owners[i]
+      if (ownerA === undefined) continue
+      for (const ownerB of owners.slice(i + 1)) {
+        const keyA = partyKey(ownerA)
+        const keyB = partyKey(ownerB)
+        if (isAmbiguousMergePair(keyA, keyB)) continue
+        overlapping.add(keyA)
+        overlapping.add(keyB)
+      }
+    }
   }
   return overlapping
 }

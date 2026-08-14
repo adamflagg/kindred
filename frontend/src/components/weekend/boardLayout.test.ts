@@ -20,6 +20,7 @@ import {
   areaTokens,
   buildBoard,
   countBoardSlots,
+  overlappingPartyKeys,
   partySize,
   SHARE_WORDING,
   slotOccupancy,
@@ -1568,5 +1569,53 @@ describe("wholeBuildingHolders — #2008's placement marker, keyed by party", ()
   it('never marks a party alone in a freestanding room with no registry parent', () => {
     const alpha = party({ household_cm_id: 500001, unit_code: 'cedar-1', unit_codes: ['cedar-1'] })
     expect(wholeBuildingHolders([alpha], [unit()]).size).toBe(0)
+  })
+})
+
+describe('overlappingPartyKeys — a two-unit alias is ambiguous, not a confirmed share (kindred#2339)', () => {
+  // A `lodging_unit_aliases` row mapping one alias string to TWO units writes
+  // BOTH member codes onto every household that resolves through it
+  // (`lodging_assignments_sync.go`'s `placementFor` records the alias's own
+  // member set verbatim, deliberately unjudged). Two DIFFERENT households
+  // independently resolving through the same alias then each claim the
+  // identical two-code set -- which reads exactly like a shared room unless
+  // this is guarded, even though the honest state is "one per unit,
+  // unconfirmed which". The rule: H households on an N-unit alias is only
+  // evidence of a real double-booking once H > N.
+  const twoUnitAlias = [unit({ unit_id: 'u1', code: 'r1' }), unit({ unit_id: 'u2', code: 'r2' })]
+
+  it('does not flag two households who each resolved to the same two-unit alias (H == N)', () => {
+    const alpha = party({ household_cm_id: 500001, unit_code: '', unit_codes: ['r1', 'r2'] })
+    const beta = party({ household_cm_id: 500002, unit_code: '', unit_codes: ['r1', 'r2'] })
+    expect(overlappingPartyKeys([alpha, beta], twoUnitAlias).size).toBe(0)
+  })
+
+  it('flags all three once a two-unit alias is claimed by a third household (H > N)', () => {
+    const alpha = party({ household_cm_id: 500001, unit_code: '', unit_codes: ['r1', 'r2'] })
+    const beta = party({ household_cm_id: 500002, unit_code: '', unit_codes: ['r1', 'r2'] })
+    const gamma = party({ household_cm_id: 500003, unit_code: '', unit_codes: ['r1', 'r2'] })
+    expect(overlappingPartyKeys([alpha, beta, gamma], twoUnitAlias)).toEqual(
+      new Set([partyKey(alpha), partyKey(beta), partyKey(gamma)])
+    )
+  })
+
+  it('still flags a genuine same-room share unrelated to any alias', () => {
+    const alpha = party({ household_cm_id: 500001, unit_code: 'r1', unit_codes: ['r1'] })
+    const beta = party({ household_cm_id: 500002, unit_code: 'r1', unit_codes: ['r1'] })
+    expect(overlappingPartyKeys([alpha, beta], twoUnitAlias)).toEqual(
+      new Set([partyKey(alpha), partyKey(beta)])
+    )
+  })
+
+  it('still flags an alias household against a household confirmed in one of its rooms', () => {
+    // The ambiguous pair covers `alpha` alone here (H == N == 1 signature
+    // member for `alpha`'s own set is irrelevant -- what matters is `beta` is
+    // NOT in the same signature group, so the pair is never ambiguous between
+    // them), and `beta`'s single-leaf placement is a confirmed claim on `r1`.
+    const alpha = party({ household_cm_id: 500001, unit_code: '', unit_codes: ['r1', 'r2'] })
+    const beta = party({ household_cm_id: 500002, unit_code: 'r1', unit_codes: ['r1'] })
+    expect(overlappingPartyKeys([alpha, beta], twoUnitAlias)).toEqual(
+      new Set([partyKey(alpha), partyKey(beta)])
+    )
   })
 })
