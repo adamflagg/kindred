@@ -59,6 +59,7 @@ import { Fragment } from 'react'
 
 import type { LodgingUnitRow, PartyChildRow, RosterPartyRow } from '../../types/lodging'
 import { displayCampMinderAge, displayTruncatedAge } from '../../utils/age'
+import { Tooltip } from '../ui/Tooltip'
 import { answersConflictDetail, SHARE_WORDING, shareWordingChip } from './boardLayout'
 import {
   attendingAdults as computeAttendingAdults,
@@ -135,40 +136,44 @@ function Chip({
    * The chip's per-party detail, e.g. "Answers disagree"'s account of which
    * two answers disagreed (kindred#2083).
    *
-   * ## Why this is still NOT `ui/Tooltip`, unlike every other chip on this surface
+   * ## Now a real `ui/Tooltip` trigger, not `sr-only` text (kindred#2250)
    *
    * kindred#2177 replaced the board's `title` attributes with a focusable
-   * tooltip, and this chip was named as the highest-leverage one. It
-   * couldn't have it: THE WHOLE CARD WAS A `<button>` (see `FamilyCard`
-   * below), and a `<button>`'s content model forbids interactive
-   * descendants. A nested trigger would have been invalid HTML and its tap
-   * would have bubbled straight into `onOpen`, opening the details panel
-   * instead of the bubble. `HouseholdRosterRow`'s in-button badges hit the
-   * identical wall and took the identical way out.
+   * tooltip everywhere except here: THE WHOLE CARD WAS A `<button>` at the
+   * time, and a `<button>`'s content model forbids interactive descendants
+   * — a nested trigger would have been invalid HTML and its tap would have
+   * bubbled straight into `onOpen`, opening the details panel instead of
+   * the bubble. `HouseholdRosterRow`'s in-button badges hit the identical
+   * wall and took the identical `sr-only` way out.
    *
    * kindred#2222 removed that wall — `FamilyCard`'s frame is a `<div>` now,
    * and this chip row is a SIBLING of the card's open control, not its
-   * child, so a real interactive trigger here would no longer be invalid
-   * HTML or steal the click. This chip still doesn't carry one: #2222 was
-   * the structural unblock, not the tooltip wiring — that's kindred#2229.
-   *
-   * So the detail is still REAL `sr-only` TEXT, exactly as kindred#2177
-   * shipped it. That is strictly more than the `title` it replaced gave —
-   * `title` on a `<span>` is not reliably announced at all — and it leaves
-   * one gap, honestly stated: a touch user still cannot summon this
-   * sentence. #2250 is what closes it -- #2229 was closed NOT_PLANNED, and
-   * the live issue is the desktop-visibility one staff actually reported.
+   * child — but left the trigger unwired. A real staff member could not
+   * read a real answer-conflict explanation because it was parked in
+   * `sr-only` text nothing on this desktop-only board ever announces
+   * (kindred#2250's field report). Same trigger primitive as
+   * `SharePreferenceChip`, the other chip on this surface with a per-party
+   * detail behind it: `Tooltip` when there's a `title` to show, a plain
+   * `<span>` when there isn't, so a chip with nothing to explain never
+   * becomes a dead stop in the tab order.
    */
   title?: string
 }) {
   const chipClassName = `inline-flex items-center rounded-full px-1.5 py-0.5 text-xs font-semibold whitespace-nowrap ${CHIP_TONE[tone]}`
-  return (
-    <span className={chipClassName}>
+  const content = (
+    <>
       {Icon && <Icon className="mr-0.5 h-3 w-3 flex-shrink-0" aria-hidden="true" />}
       {label}
-      {title !== undefined && title.length > 0 && <span className="sr-only"> — {title}</span>}
-    </span>
+    </>
   )
+  if (title !== undefined && title.length > 0) {
+    return (
+      <Tooltip content={title} className={chipClassName}>
+        {content}
+      </Tooltip>
+    )
+  }
+  return <span className={chipClassName}>{content}</span>
 }
 
 /**
@@ -240,7 +245,7 @@ function ChildList({
  * on purpose: a `<button>`'s content model forbids an interactive
  * descendant, and the chip row is exactly where kindred#2177 left a
  * `sr-only` detail sentence waiting for a real tooltip trigger
- * (kindred#2229). Swapping the card's outer frame to a `<div>` while still
+ * (kindred#2250). Swapping the card's outer frame to a `<div>` while still
  * wrapping the WHOLE body in one inner `<button>` would just move that wall
  * one level deeper — nothing would actually be unblocked. Keeping the chip
  * row OUT of the button is what does.
@@ -404,9 +409,10 @@ function FamilyCardIdentity({ party }: { party: RosterPartyRow }) {
  *
  * A SIBLING of `FamilyCardIdentity`'s `<button>` (kindred#2222), never its
  * child — see that component's doc for why. The one chip carrying a `title`
- * today (`Chip`'s "Answers disagree" detail, kindred#2083) still renders it
- * as `sr-only` text, exactly as kindred#2177 shipped: this refactor
- * unblocks a real `ui/Tooltip` trigger here, it does not wire one in.
+ * today (`Chip`'s "Answers disagree" detail, kindred#2083) is a real
+ * `ui/Tooltip` trigger now, not `sr-only` text (kindred#2250) — the sibling
+ * relationship this refactor set up is what makes that trigger valid HTML
+ * here at all.
  */
 function FamilyCardChips({
   party,
@@ -531,7 +537,7 @@ export function FamilyCard({
 
   return (
     // NOT a `<button>` (kindred#2222) — a `<div>` frame, so the chip row
-    // below can host a real interactive trigger (kindred#2229) as a SIBLING
+    // below can host a real interactive trigger (kindred#2250) as a SIBLING
     // instead of a forbidden nested descendant.
     //
     // `ref`/`listeners` stay HERE, not on the inner control below: dnd-kit's

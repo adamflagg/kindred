@@ -17,7 +17,7 @@
  * Fictional data throughout.
  */
 import { DndContext } from '@dnd-kit/core'
-import { render, screen, within } from '@testing-library/react'
+import { fireEvent, render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import type { ReactNode } from 'react'
 import { describe, expect, it, vi } from 'vitest'
@@ -434,7 +434,7 @@ describe('FamilyCard — what it shows', () => {
     expect(screen.queryByText('Declined sharing')).not.toBeInTheDocument()
   })
 
-  it('says which two answers disagreed, and that the form wins, on the "Answers disagree" chip (kindred#2083)', () => {
+  it('says which two answers disagreed, and that the form wins, on the "Answers disagree" chip\'s tooltip (kindred#2250)', () => {
     render(
       <FamilyCard
         party={party({
@@ -451,27 +451,26 @@ describe('FamilyCard — what it shows', () => {
         onOpen={vi.fn()}
       />
     )
-    // kindred#2177: the detail is real text now, not a bare `title` that
-    // fires on mouse hover and nothing else.
-    const chip = screen.getByText('Answers disagree').closest('span')
+    // kindred#2250: the detail is now a real, keyboard- and touch-reachable
+    // `ui/Tooltip` trigger, not the `sr-only` text kindred#2177 shipped as a
+    // stopgap while the card's outer `<button>` still forbade a nested
+    // interactive descendant (kindred#2222 lifted that wall; this chip is
+    // what actually uses the opening).
+    const chip = screen.getByText('Answers disagree').closest('button')
+    expect(chip).not.toBeNull()
     expect(chip).not.toHaveAttribute('title')
-    expect(chip?.textContent).toMatch(/will not share/)
-    expect(chip?.textContent).toMatch(/open to sharing/)
-    expect(chip?.textContent).toMatch(/form's answer/)
-    // kindred#2222: the sr-only sentence is still in the DOM (asserted above
-    // via `chip?.textContent`, and jsdom does not hide `sr-only` text any
-    // more than a screen reader's ordinary reading cursor does), but the
-    // card's open control no longer wraps the chip row at all — the whole
-    // point of this refactor is that the chip row is a SIBLING of the
-    // control, not its child, so a future interactive trigger there
-    // (kindred#2229) is never nested inside another one. That means the
-    // sentence is no longer folded into the control's accessible name the
-    // way it was when the card was one big `<button>`. Closing THAT gap —
-    // giving the sentence a real accessible relationship to a trigger a
-    // touch user can reach — is kindred#2229's job, not this one's.
-    expect(screen.getByRole('button', { name: /Johnson/ })).not.toHaveAccessibleName(
-      /form's answer/
-    )
+    // Closed by default — the detail sentence is not sitting on the page
+    // until a staff member actually summons it.
+    expect(screen.queryByRole('tooltip')).not.toBeInTheDocument()
+    fireEvent.focus(chip as HTMLElement)
+    const tooltip = screen.getByRole('tooltip')
+    expect(tooltip).toHaveTextContent(/will not share/)
+    expect(tooltip).toHaveTextContent(/open to sharing/)
+    expect(tooltip).toHaveTextContent(/form's answer/)
+    // Still a SIBLING of the card's own open control, never nested inside
+    // it (kindred#2222) — a nested interactive trigger would be invalid
+    // HTML and its tap would bubble into `onOpen` instead of the bubble.
+    expect(screen.getByRole('button', { name: /Johnson/ })).not.toContainElement(chip)
   })
 
   it('never nests an interactive control inside another one — checked by ROLE, not TAG (kindred#2222)', () => {
