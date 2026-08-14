@@ -257,6 +257,42 @@ a threshold no leaf in the inventory reaches, so every leaf came out
 Like every other field here, the loader is create-if-absent, so the key reaches
 **new rows only** — see the section below.
 
+### A multi-unit alias is ambiguous, not automatically a share (kindred#2339)
+
+`member_units` with 2+ codes denotes a merge — **one** household occupying
+every named unit at once, a whole-house let. It is not evidence that *every*
+household who ever resolves through that alias occupies all of them: the same
+alias string routinely gets reused by different households, on different
+weekends or in different years, for what is really one unit per household —
+ambiguous only in *which* unit, never confirmed as a shared room.
+
+**The rule:** for H households observed resolving through an alias whose
+`member_units` names N units, `H > N` is the earliest point that is provable
+evidence of over-occupancy. At `H <= N` the households fit one per unit and
+the assignment is ambiguous rather than shared.
+
+Six alias rows in the current registry map one string to two units, matching
+this shape. A consumer that credits an occupancy count to every member unit
+for every household resolving through the alias, without applying `H > N`,
+overstates multi-family occupancy — one building's apparent 18 multi-household
+occupancies collapsed to 2 once the `H <= N` cases were excluded.
+
+**Audited consumers**, in case a new one is added:
+
+- The PocketBase loader (`seedAliases`) and the sync-time resolver
+  (`AliasResolver.Resolve`) never tally occupancy across households — the
+  first writes the table, the second resolves one household's own placement —
+  so `H > N` does not apply to either.
+- The sync ingest (`LodgingAssignmentsSync.placementFor`) writes an alias's
+  full member set onto one household's own `lodging_assignments.units` row,
+  deliberately unjudged by design (see "Where enforcement belongs" in
+  `docs/architecture/lodging-occupancy.md`). It is the source of the ambiguous
+  data, not itself an occupancy count.
+- The weekend board's conflict warning (`overlappingPartyKeys` in
+  `frontend/src/components/weekend/boardLayout.ts`) **is** an occupancy count,
+  and needed the guard: two households resolving to the same alias are no
+  longer read as sharing a room with each other while `H <= N`.
+
 ### `max_beds` is not `sleeps`, and neither may overwrite the other
 
 `max_beds` is the total number of sleeping spots in the room. `sleeps` is the
