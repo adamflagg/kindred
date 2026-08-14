@@ -55,9 +55,11 @@ export function AddToGroupPicker({ groups, onSelect, disabled }: AddToGroupPicke
     return () => document.removeEventListener('mousedown', handler)
   }, [open])
 
-  // kindred#2237: gated by the shared overlay token stack (kindred#2205)
-  // rather than a capture-phase listener racing to beat an outer one — see
-  // `useOverlayEscape` for why. Only the topmost registered overlay acts.
+  // kindred#2237: Escape now goes through the shared overlay token stack
+  // (kindred#2205) via `useOverlayEscape` — still a capture-phase `document`
+  // listener, but one that acts, and swallows the key, only while this
+  // picker is the topmost registered overlay. See that hook for why the
+  // phase stays and why the `stopPropagation` became conditional.
   const closeOnEscape = useCallback(() => {
     setOpen(false)
     triggerRef.current?.focus()

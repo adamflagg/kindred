@@ -20,7 +20,7 @@ function group(overrides: Partial<FriendGroupRow> = {}): FriendGroupRow {
     group_id: 'group-1',
     year: 2026,
     session_cm_id: 5001,
-    name: 'The Riveras',
+    name: 'The Chen Family',
     color: '#84cc16',
     source: 'staff_manual',
     ...overrides,

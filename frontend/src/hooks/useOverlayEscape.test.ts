@@ -89,6 +89,114 @@ describe('useOverlayEscape', () => {
     expect(hasOpenModal()).toBe(false)
   })
 
+  it('still acts when an UNCONVERTED overlay stops propagation in the capture phase', () => {
+    // Twelve of kindred#2237's overlays are not token-gated yet, and one of
+    // them — `CamperDetailsPanel` — installs a capture-phase `document`
+    // listener that calls `stopPropagation()` unconditionally. A capture-phase
+    // stop at `document` halts the event before it ever reaches the bubble
+    // phase, so a bubble-phase listener on `document` never runs at all. An
+    // overlay stacked ABOVE such a listener must therefore not depend on the
+    // bubble phase to receive Escape, or the gate silently costs it the key
+    // it is supposed to own.
+    const onEscape = vi.fn()
+    const legacyCapture = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') e.stopPropagation()
+    }
+    // Registered BEFORE the hook, mirroring reality: the outer panel opens
+    // first, then the picker inside it.
+    document.addEventListener('keydown', legacyCapture, true)
+    const { unmount } = renderHook(() => useOverlayEscape(true, onEscape))
+
+    // Dispatch from a descendant, not from `document` itself — an event whose
+    // target IS `document` runs every listener in the at-target phase and so
+    // cannot tell capture from bubble.
+    const target = document.createElement('div')
+    document.body.appendChild(target)
+    fireEvent.keyDown(target, { key: 'Escape' })
+
+    document.removeEventListener('keydown', legacyCapture, true)
+    target.remove()
+    unmount()
+
+    expect(onEscape).toHaveBeenCalledTimes(1)
+  })
+
+  it('swallows the key while topmost, so an unconverted listener below does not also fire', () => {
+    const onEscape = vi.fn()
+    const below = vi.fn()
+    document.addEventListener('keydown', below)
+    const { unmount } = renderHook(() => useOverlayEscape(true, onEscape))
+
+    const target = document.createElement('div')
+    document.body.appendChild(target)
+    fireEvent.keyDown(target, { key: 'Escape' })
+
+    document.removeEventListener('keydown', below)
+    target.remove()
+    unmount()
+
+    expect(onEscape).toHaveBeenCalledTimes(1)
+    expect(below).not.toHaveBeenCalled()
+  })
+
+  it('lets the key through untouched while NOT topmost', () => {
+    const onEscape = vi.fn()
+    const other = vi.fn()
+    document.addEventListener('keydown', other)
+    const { unmount } = renderHook(() => useOverlayEscape(true, onEscape))
+    const topToken = acquireOverlayToken()
+
+    const target = document.createElement('div')
+    document.body.appendChild(target)
+    fireEvent.keyDown(target, { key: 'Escape' })
+
+    document.removeEventListener('keydown', other)
+    target.remove()
+    releaseOverlayToken(topToken)
+    unmount()
+
+    expect(onEscape).not.toHaveBeenCalled()
+    expect(other).toHaveBeenCalledTimes(1)
+  })
+
+  it('does not re-acquire (and so jump back to the top) when the caller re-renders', () => {
+    // A caller that passes an inline arrow gets a new `onEscape` identity on
+    // every render. If the token is tied to that identity, an ordinary
+    // re-render of a BACKGROUND overlay — a query refetch, a parent state
+    // change — silently republishes it as the topmost overlay and steals
+    // Escape from whatever genuinely is on top.
+    const onEscape = vi.fn()
+    const { rerender, unmount } = renderHook(
+      ({ cb }: { cb: () => void }) => useOverlayEscape(true, () => cb()),
+      { initialProps: { cb: onEscape } }
+    )
+
+    const topToken = acquireOverlayToken()
+    rerender({ cb: onEscape })
+    fireEvent.keyDown(document, { key: 'Escape' })
+
+    releaseOverlayToken(topToken)
+    unmount()
+
+    expect(onEscape).not.toHaveBeenCalled()
+  })
+
+  it('invokes the LATEST callback after a re-render, not the one captured on open', () => {
+    const first = vi.fn()
+    const second = vi.fn()
+    const { rerender, unmount } = renderHook(
+      ({ cb }: { cb: () => void }) => useOverlayEscape(true, cb),
+      { initialProps: { cb: first } }
+    )
+
+    rerender({ cb: second })
+    fireEvent.keyDown(document, { key: 'Escape' })
+    unmount()
+
+    expect(first).not.toHaveBeenCalled()
+    expect(second).toHaveBeenCalledTimes(1)
+  })
+
   it('releases its overlay token when isOpen flips back to false, not only on unmount', () => {
     const { result, rerender, unmount } = renderHook(
       ({ isOpen }: { isOpen: boolean }) => {

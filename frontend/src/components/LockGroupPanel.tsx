@@ -164,12 +164,22 @@ function AddMemberPicker({
     return () => document.removeEventListener('mousedown', handler)
   }, [open])
 
-  // kindred#2237: gated by the shared overlay token stack (kindred#2205)
-  // rather than a capture-phase listener racing to beat an outer one — see
-  // `useOverlayEscape` for why. Only the topmost registered overlay acts,
-  // which still covers the case this used to name explicitly (an outer
-  // `CamperDetailsPanel`), and also every OTHER overlay opened on top of
-  // this picker, which capture-phase-vs-one-named-listener never could.
+  // kindred#2237: Escape now goes through the shared overlay token stack
+  // (kindred#2205) via `useOverlayEscape`. Still a capture-phase `document`
+  // listener — see that hook for why the phase has to stay — but it acts,
+  // and swallows the key, only while this picker is the TOPMOST registered
+  // overlay. What that buys over the hand-rolled listener this replaces is
+  // deference to overlays opened ON TOP of the picker, which
+  // capture-phase-plus-unconditional-`stopPropagation` could never give.
+  //
+  // It does NOT fix the pairing the old comment named. `CamperDetailsPanel`
+  // is one of kindred#2237's twelve still-unconverted overlays and installs
+  // its own capture-phase `document` listener with an unconditional
+  // `stopPropagation` (`CamperDetailsPanel.tsx:546-555`); registered first,
+  // it still fires first, so one Escape with both open still closes both —
+  // exactly as before this change, no better and no worse. Only converting
+  // that panel closes that gap, and kindred#2237 is explicit that each
+  // component is its own call.
   const closeOnEscape = useCallback(() => {
     setOpen(false)
     setFilter('')

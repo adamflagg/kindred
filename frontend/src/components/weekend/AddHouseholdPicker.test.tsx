@@ -20,9 +20,9 @@ function party(overrides: Partial<RosterPartyRow> = {}): RosterPartyRow {
     grain: 'household',
     household_cm_id: 201,
     person_cm_id: 0,
-    display_name: 'Rivera',
-    sort_name: 'Rivera',
-    adults: [{ adult_number: 1, display_name: 'Maria Rivera', relationship: 'Mother' }],
+    display_name: 'The Chen Family',
+    sort_name: 'Chen',
+    adults: [{ adult_number: 1, display_name: 'Olivia Chen', relationship: 'Mother' }],
     children: [],
     party_size: 1,
     unit_code: '',
@@ -38,7 +38,7 @@ function party(overrides: Partial<RosterPartyRow> = {}): RosterPartyRow {
 function renderPicker() {
   return render(
     <AddHouseholdPicker
-      groupName="The Riveras"
+      groupName="The Chen Family"
       households={[party()]}
       memberCmIds={new Set()}
       householdToGroup={new Map()}
