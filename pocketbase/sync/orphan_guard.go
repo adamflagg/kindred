@@ -205,13 +205,14 @@ func (g OrphanSweepGuard) SkipReason() string {
 // arithmetic wave through a refusal it should not.
 //
 // This is left as documented risk rather than a second counter that tracks
-// "rejections that did / didn't remove a key" (which would have to reach all
-// 12 guarded services, not just the two kindred#2320 touched), because the
-// failure is ONE-WAY and cannot delete anything: deleteOrphans (base_sync.go)
-// never acts on a masked refusal directly -- skipSweepForRejections runs right
-// after, unconditionally on Rejected > 0, and IT decides whether the sweep
-// proceeds. A duplicate-inflated mask can only turn a run that should fail
-// loud into one that logs a warning; it can never turn into a delete.
+// "rejections that did / didn't remove a key" (which means reopening the shared
+// contract every guarded sweep reads, not just the two files kindred#2320
+// touched), because the failure is ONE-WAY and cannot delete anything:
+// deleteOrphans (base_sync.go) never acts on a masked refusal directly --
+// skipSweepForRejections runs right after, unconditionally on Rejected > 0, and
+// IT decides whether the sweep proceeds. A duplicate-inflated mask can only
+// turn a run that should fail loud into one that logs a warning; it can never
+// turn into a delete.
 // TestDuplicateInflatedRejectionsCannotDeleteDespiteMaskingACollapse
 // (orphan_guard_test.go) pins that half of the property. Today Rejected from
 // the duplicate guard is 0 in every real run -- CampMinder packs multi-selects
