@@ -20,9 +20,10 @@ import (
 const personsCollection = "persons"
 
 // householdsCollection is the PocketBase collection name for households.
-// Households have no independent sync service (they are extracted from the
-// persons response, see PersonsSync above) — this constant exists only for
-// lodging_replay.go, which needs the collection name as a string.
+// Households have no independent sync service — they are extracted from the
+// persons response and written by PersonsSync in this file. This constant
+// exists only for lodging_replay.go, which needs the collection name as a
+// string.
 const householdsCollection = "households"
 
 // PersonsSync handles syncing person records from CampMinder
