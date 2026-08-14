@@ -370,7 +370,7 @@ func (s *LodgingAssignmentsSync) partiesWritingValue(
 	byHousehold := field.Grain == grainHousehold
 	valueCollection, partyCollection := serviceNamePersonCustomValues, personsCollection
 	if byHousehold {
-		valueCollection, partyCollection = serviceNameHouseholdCustomValues, serviceNameHouseholds
+		valueCollection, partyCollection = serviceNameHouseholdCustomValues, householdsCollection
 	}
 
 	params := dbx.Params{"raw": raw}
@@ -541,7 +541,7 @@ func (s *LodgingAssignmentsSync) observationTimestampFor(
 	partyColumn, target := "person", targetCabinAssignmentPerson
 	partyCMID := personCMID
 	if householdCMID > 0 {
-		partyCollection, valueCollection = serviceNameHouseholds, serviceNameHouseholdCustomValues
+		partyCollection, valueCollection = householdsCollection, serviceNameHouseholdCustomValues
 		partyColumn, target = "household", targetCabinAssignmentHousehold
 		partyCMID = householdCMID
 	}
