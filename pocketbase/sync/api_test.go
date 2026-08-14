@@ -2,10 +2,15 @@ package sync
 
 import (
 	"bytes"
+	"encoding/json"
 	"fmt"
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/pocketbase/pocketbase/core"
 )
 
 // TestCSVValidation tests CSV parsing and validation logic
@@ -1131,13 +1136,13 @@ func TestDuplicateQueueRequest(t *testing.T) {
 	o := NewOrchestrator(nil)
 
 	// Enqueue a sync (without custom values)
-	qs1, err := o.EnqueueUnifiedSync(2025, "all", false, false, "user1")
+	qs1, err := o.EnqueueUnifiedSync(2025, "all", false, false, false, "user1")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
 	// Try to enqueue the same year+service+includeCustomValues again
-	qs2, err := o.EnqueueUnifiedSync(2025, "all", false, true, "user2") // Same includeCustomValues, different debug
+	qs2, err := o.EnqueueUnifiedSync(2025, "all", false, true, false, "user2") // Same includeCustomValues, different debug
 	if err != nil {
 		t.Fatalf("unexpected error for duplicate: %v", err)
 	}
@@ -1159,7 +1164,7 @@ func TestDuplicateQueueRequest(t *testing.T) {
 	}
 
 	// Different includeCustomValues should create a new queue item
-	qs3, err := o.EnqueueUnifiedSync(2025, "all", true, false, "user3") // Different includeCustomValues
+	qs3, err := o.EnqueueUnifiedSync(2025, "all", true, false, false, "user3") // Different includeCustomValues
 	if err != nil {
 		t.Fatalf("unexpected error for different includeCustomValues: %v", err)
 	}
@@ -1172,6 +1177,146 @@ func TestDuplicateQueueRequest(t *testing.T) {
 	// Queue should now have 2 items
 	if o.GetQueueLength() != 2 {
 		t.Errorf("expected queue length 2, got %d", o.GetQueueLength())
+	}
+}
+
+// =============================================================================
+// handleUnifiedSync dry_run tests (kindred#2334)
+//
+// Unlike the queue-response tests above (which document expected JSON shapes without calling
+// the handler), these three actually invoke handleUnifiedSync via httptest -- the mechanism
+// that let dry_run go unparsed and undiscovered: the parameter was accepted, echoed nowhere,
+// and discarded, so nothing here could previously fail even though production would have
+// written for real. TestProcessQueuedSyncsUnifiedHonoursDryRun and
+// TestRunSyncWithOptionsHonoursDryRun (orchestrator_test.go) cover the actual
+// write-suppression mechanism beneath these; these three cover what an operator sees at the
+// HTTP boundary.
+// =============================================================================
+
+// TestHandleUnifiedSyncRejectsUnsupportedDryRun proves dry_run=true against a service with no
+// DryRunnable support is rejected with 400, before either the immediate or the queued path
+// ever touches it -- not run wet silently (kindred#2334's ruled fix direction: "either honour
+// it or reject the request").
+func TestHandleUnifiedSyncRejectsUnsupportedDryRun(t *testing.T) {
+	// Not t.Parallel(): t.Setenv is incompatible with it.
+	t.Setenv("CAMPMINDER_SEASON_ID", "2025")
+
+	scheduler := NewScheduler(nil)
+	orchestrator := scheduler.GetOrchestrator()
+	svc := &notDryRunnableService{name: "session_groups"}
+	orchestrator.RegisterService("session_groups", svc)
+
+	re := &core.RequestEvent{}
+	re.Request = httptest.NewRequest(http.MethodPost,
+		"/?year=2025&service=session_groups&dry_run=true", http.NoBody)
+	rec := httptest.NewRecorder()
+	re.Response = rec
+
+	if err := handleUnifiedSync(re, scheduler); err != nil {
+		t.Fatalf("handler returned error: %v", err)
+	}
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d: %s", rec.Code, rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), "session_groups") {
+		t.Errorf("expected the 400 body to name the unsupported service, got: %s", rec.Body.String())
+	}
+	if got := svc.callCount.Load(); got != 0 {
+		t.Errorf("expected the rejected service to never run, ran %d times", got)
+	}
+}
+
+// TestHandleUnifiedSyncImmediatePathEchoesDryRun proves the 200 response for the immediate
+// path echoes dry_run -- the only reliable confirmation an operator gets that they actually
+// got a dry run, and the property that let the original bug go unnoticed until the 200 body
+// was compared against handleFamilyCampDerivedSync's, which already had it.
+func TestHandleUnifiedSyncImmediatePathEchoesDryRun(t *testing.T) {
+	// Not t.Parallel(): t.Setenv is incompatible with it.
+	t.Setenv("CAMPMINDER_SEASON_ID", "2025")
+
+	scheduler := NewScheduler(nil)
+	orchestrator := scheduler.GetOrchestrator()
+	orchestrator.RegisterService("family_camp_derived", &dryRunAwareService{name: "family_camp_derived"})
+
+	re := &core.RequestEvent{}
+	re.Request = httptest.NewRequest(http.MethodPost,
+		"/?year=2025&service=family_camp_derived&dry_run=true", http.NoBody)
+	rec := httptest.NewRecorder()
+	re.Response = rec
+
+	if err := handleUnifiedSync(re, scheduler); err != nil {
+		t.Fatalf("handler returned error: %v", err)
+	}
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	var body map[string]any
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	dryRun, ok := body["dry_run"].(bool)
+	if !ok {
+		t.Fatalf("expected a boolean dry_run field in the 200 body, got: %v", body["dry_run"])
+	}
+	if !dryRun {
+		t.Error("expected dry_run=true to be echoed back")
+	}
+}
+
+// TestHandleUnifiedSyncQueuedPathEchoesDryRun proves the 202 response for the queued path
+// echoes dry_run too -- the immediate path echoing it is not evidence the queued path does;
+// the two are wired through entirely separate code (EnqueueUnifiedSync vs. the inline opts
+// construction), which is exactly how kindred#2334 could have been "fixed" for one and not
+// the other.
+func TestHandleUnifiedSyncQueuedPathEchoesDryRun(t *testing.T) {
+	// Not t.Parallel(): t.Setenv is incompatible with it.
+	t.Setenv("CAMPMINDER_SEASON_ID", "2025")
+
+	scheduler := NewScheduler(nil)
+	orchestrator := scheduler.GetOrchestrator()
+	orchestrator.RegisterService("family_camp_derived", &dryRunAwareService{name: "family_camp_derived"})
+
+	// Force the enqueue branch: something else must already be running.
+	orchestrator.RegisterService("placeholder", &notDryRunnableService{name: "placeholder"})
+	if err := orchestrator.MarkSyncRunning("placeholder"); err != nil {
+		t.Fatalf("MarkSyncRunning: %v", err)
+	}
+
+	re := &core.RequestEvent{}
+	re.Request = httptest.NewRequest(http.MethodPost,
+		"/?year=2025&service=family_camp_derived&dry_run=true", http.NoBody)
+	rec := httptest.NewRecorder()
+	re.Response = rec
+
+	if err := handleUnifiedSync(re, scheduler); err != nil {
+		t.Fatalf("handler returned error: %v", err)
+	}
+
+	if rec.Code != http.StatusAccepted {
+		t.Fatalf("expected 202, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	var body map[string]any
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	dryRun, ok := body["dry_run"].(bool)
+	if !ok {
+		t.Fatalf("expected a boolean dry_run field in the 202 body, got: %v", body["dry_run"])
+	}
+	if !dryRun {
+		t.Error("expected dry_run=true to be echoed back on the 202 response")
+	}
+
+	// And the mechanism that will eventually run it must have actually stored the flag --
+	// echoing a local variable back would pass this test's response check while leaving the
+	// queued item itself wet.
+	queue := orchestrator.GetQueuedSyncs()
+	if len(queue) != 1 || !queue[0].DryRun {
+		t.Errorf("expected the queued item to carry DryRun=true, got %+v", queue)
 	}
 }
 

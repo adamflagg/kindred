@@ -10,6 +10,7 @@ import (
 	"math/rand/v2"
 	"os"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -202,6 +203,30 @@ func GetDefaultUnifiedSyncJobs(includeCustomValues bool) []string {
 	return jobs
 }
 
+// ResolveUnifiedSyncServices returns the concrete service names a unified sync with these
+// parameters will run. handleUnifiedSync calls this to validate dry_run support *before*
+// responding, and RunSyncWithOptions calls it to decide what to actually run -- one function so
+// the two can never quietly drift apart (kindred#2334: a validator that resolves a different
+// list than the one that actually runs is worse than no validator).
+//
+// isCurrentYear must mean what RunSyncWithOptions's opts.Year == 0 means: true for the
+// live/current-year run (which also picks up reconcile_request_lifecycle, bunk_requests, and,
+// in Docker, process_requests), false for a historical replay.
+func ResolveUnifiedSyncServices(service string, includeCustomValues, isCurrentYear bool) []string {
+	if service != DefaultService {
+		return []string{service}
+	}
+
+	services := GetDefaultUnifiedSyncJobs(includeCustomValues)
+	if isCurrentYear {
+		services = append(services, "reconcile_request_lifecycle", "bunk_requests")
+		if os.Getenv("IS_DOCKER") == boolTrueStr {
+			services = append(services, "process_requests")
+		}
+	}
+	return services
+}
+
 // Service defines the interface for sync services
 type Service interface {
 	Sync(ctx context.Context) error
@@ -212,6 +237,13 @@ type Service interface {
 // Debuggable is an optional interface for services that support debug logging
 type Debuggable interface {
 	SetDebug(debug bool)
+}
+
+// DryRunnable is an optional interface for services that can compute their result without
+// writing it. dry_run=true against a service that does not implement this must be rejected
+// (see UnsupportedDryRunServices) rather than silently running wet (kindred#2334).
+type DryRunnable interface {
+	SetDryRun(dryRun bool)
 }
 
 // YearSetter is an optional interface for services that need year configuration.
@@ -254,6 +286,7 @@ type QueuedSync struct {
 	Service             string         `json:"service"` // unified: "all"; phase: phase name; individual: job name
 	IncludeCustomValues bool           `json:"include_custom_values"`
 	Debug               bool           `json:"debug"`
+	DryRun              bool           `json:"dry_run"`
 	Options             map[string]any `json:"options,omitempty"`
 	QueuedAt            time.Time      `json:"queued_at"`
 	RequestedBy         string         `json:"requested_by"`
@@ -408,6 +441,10 @@ type Options struct {
 	Concurrent          bool     // Run services in parallel
 	IncludeCustomValues bool     // Include custom field values in historical sync
 	Debug               bool     // Enable debug logging for custom values sync
+	// DryRun computes but does not write, for every service in the run. RunSyncWithOptions
+	// refuses to run at all (see UnsupportedDryRunServices) rather than silently write through
+	// a service that does not implement DryRunnable (kindred#2334).
+	DryRun bool
 }
 
 // Orchestrator manages sync service execution
@@ -570,6 +607,24 @@ func (o *Orchestrator) GetService(name string) Service {
 	o.mu.RLock()
 	defer o.mu.RUnlock()
 	return o.services[name]
+}
+
+// UnsupportedDryRunServices returns, in the given order, the names in services that are
+// registered but do not implement DryRunnable. dry_run=true must be rejected rather than run
+// wet against any of them (kindred#2334). A name that is not registered at all is left for the
+// caller's existing "unknown service" handling -- it is not this helper's job to report it.
+func (o *Orchestrator) UnsupportedDryRunServices(services []string) []string {
+	var unsupported []string
+	for _, name := range services {
+		svc := o.GetService(name)
+		if svc == nil {
+			continue
+		}
+		if _, ok := svc.(DryRunnable); !ok {
+			unsupported = append(unsupported, name)
+		}
+	}
+	return unsupported
 }
 
 // BaseClient returns the orchestrator's base CampMinder client (set by InitializeSyncServices).
@@ -1555,25 +1610,13 @@ func (o *Orchestrator) RunSyncWithOptions(ctx context.Context, opts Options) err
 		}
 	}
 
-	// Determine which services to run
+	// Determine which services to run. Run all services in dependency order
+	// (source → [CV] → transform), same order as RunDailySync, with optional CV phase
+	// inserted before transform. opts.Year == 0 means the live/current-year run (see
+	// ResolveUnifiedSyncServices); opts.Year > 0 is a historical replay of a specific year.
 	servicesToRun := opts.Services
 	if len(servicesToRun) == 0 {
-		// Run all services in dependency order (source → [CV] → transform)
-		// Same order as RunDailySync, with optional CV phase inserted before transform
-		servicesToRun = GetDefaultUnifiedSyncJobs(opts.IncludeCustomValues)
-
-		// Only include bunk_requests and process_requests for current year syncs (not historical)
-		// Bunk requests are populated during the current year's processing
-		// and there's no need to re-process them for historical years
-		// opts.Year > 0 means this is a historical sync with a specific year
-		if opts.Year == 0 {
-			servicesToRun = append(servicesToRun, "reconcile_request_lifecycle", "bunk_requests")
-			// Only include process_requests in production (Docker) mode
-			// In development, skip AI processing to avoid unnecessary API costs
-			if os.Getenv("IS_DOCKER") == boolTrueStr {
-				servicesToRun = append(servicesToRun, "process_requests")
-			}
-		}
+		servicesToRun = ResolveUnifiedSyncServices(DefaultService, opts.IncludeCustomValues, opts.Year == 0)
 	}
 
 	// Set up sync tracking based on year mode. The batch carries the year explicitly:
@@ -1785,6 +1828,35 @@ func (o *Orchestrator) RunSyncWithOptions(ctx context.Context, opts Options) err
 		}()
 	}
 
+	// Apply dry_run to every service about to run. handleUnifiedSync already rejected the
+	// request synchronously, before ever calling here, if any resolved service lacked
+	// DryRunnable support -- this check is the defense-in-depth backstop for any other caller
+	// of RunSyncWithOptions, and it fails closed: if it ever fires, nothing below has run yet
+	// (kindred#2334 was exactly a silent-write path with no backstop like this one).
+	if opts.DryRun {
+		if unsupported := o.UnsupportedDryRunServices(servicesToRun); len(unsupported) > 0 {
+			return fmt.Errorf("dry_run requested but not supported by: %s", strings.Join(unsupported, ", "))
+		}
+		for _, serviceName := range servicesToRun {
+			if svc := o.GetService(serviceName); svc != nil {
+				if dryRunnable, ok := svc.(DryRunnable); ok {
+					dryRunnable.SetDryRun(true)
+				}
+			}
+		}
+		// Reset dry_run after sync completes so the registered singleton doesn't leak the
+		// flag into the next, unrelated run (same reasoning as the debug reset above).
+		defer func() {
+			for _, serviceName := range servicesToRun {
+				if svc := o.GetService(serviceName); svc != nil {
+					if dryRunnable, ok := svc.(DryRunnable); ok {
+						dryRunnable.SetDryRun(false)
+					}
+				}
+			}
+		}()
+	}
+
 	// Run sequentially - custom values syncs run in order to prevent context deadline issues
 	// from concurrent API rate limiting during historical syncs
 	for i, serviceName := range servicesToRun {
@@ -1906,17 +1978,22 @@ func generateQueueID() string {
 // EnqueueUnifiedSync adds a unified sync request to the queue.
 // If a sync with the same year+type+service is already queued, returns the existing item.
 func (o *Orchestrator) EnqueueUnifiedSync(
-	year int, service string, includeCustomValues, debug bool, requestedBy string,
+	year int, service string, includeCustomValues, debug, dryRun bool, requestedBy string,
 ) (*QueuedSync, error) {
 	o.mu.Lock()
 	defer o.mu.Unlock()
 
-	// Check for duplicate (same year + type + service + includeCustomValues already queued)
+	// Check for duplicate (same year + type + service + includeCustomValues + dry_run already
+	// queued). DryRun is part of the match deliberately: without it, a dry_run=true request
+	// for the same year/service as an already-queued wet request would silently merge into
+	// that wet item and inherit its DryRun=false -- the caller would be handed a queue
+	// position for what they asked to be a dry run, and it would run wet anyway (kindred#2334).
 	for i := range o.pendingUnifiedSyncs {
 		if o.pendingUnifiedSyncs[i].Year == year &&
 			o.pendingUnifiedSyncs[i].Type == "unified" &&
 			o.pendingUnifiedSyncs[i].Service == service &&
-			o.pendingUnifiedSyncs[i].IncludeCustomValues == includeCustomValues {
+			o.pendingUnifiedSyncs[i].IncludeCustomValues == includeCustomValues &&
+			o.pendingUnifiedSyncs[i].DryRun == dryRun {
 			// Return existing item instead of creating duplicate
 			return &o.pendingUnifiedSyncs[i], nil
 		}
@@ -1930,6 +2007,7 @@ func (o *Orchestrator) EnqueueUnifiedSync(
 		Service:             service,
 		IncludeCustomValues: includeCustomValues,
 		Debug:               debug,
+		DryRun:              dryRun,
 		QueuedAt:            time.Now(),
 		RequestedBy:         requestedBy,
 	}
