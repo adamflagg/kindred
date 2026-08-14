@@ -1098,11 +1098,11 @@ func handleUnifiedSync(e *core.RequestEvent, scheduler *Scheduler) error {
 	orchestrator := scheduler.GetOrchestrator()
 
 	// Reject up front, before either the immediate or the queued path can start, if dry_run
-	// was requested against a service that cannot honour it. This must happen synchronously
+	// was requested against a service that cannot honor it. This must happen synchronously
 	// here: both paths below do their real work in a goroutine after the response is already
 	// sent, so a check placed inside RunSyncWithOptions would only ever produce a background
 	// log line, never the 400 an operator actually needs to see (kindred#2334's ruled fix
-	// direction is "either honour it or reject the request", never a silent partial write).
+	// direction is "either honor it or reject the request", never a silent partial write).
 	if dryRun {
 		services := ResolveUnifiedSyncServices(service, includeCustomValues, year == currentYear)
 		if unsupported := orchestrator.UnsupportedDryRunServices(services); len(unsupported) > 0 {

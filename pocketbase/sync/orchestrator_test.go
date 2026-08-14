@@ -13,7 +13,7 @@ import (
 	"time"
 
 	"github.com/pocketbase/pocketbase/core"
-	"github.com/pocketbase/pocketbase/tests"
+	pbtests "github.com/pocketbase/pocketbase/tests"
 )
 
 // MockService implements Service interface for testing
@@ -1615,7 +1615,7 @@ func TestEnqueueUnifiedSyncDedupRespectsDryRun(t *testing.T) {
 // dryRunAwareService is a Service + DryRunnable double that records, for every Sync() call,
 // whether DryRun was set at that moment -- and only counts a "write" when it was not. This is
 // the sharpest available proxy for the acceptance criterion "writes nothing": a boolean flag
-// being set is not itself evidence anything downstream honoured it.
+// being set is not itself evidence anything downstream honored it.
 type dryRunAwareService struct {
 	name string
 
@@ -1651,7 +1651,7 @@ func (s *dryRunAwareService) snapshot() (calls []bool, wrote int) {
 }
 
 // notDryRunnableService is a plain Service with no DryRunnable support, standing in for the
-// real services (session_groups, stranded_assignment_cleanup, ...) that cannot honour dry_run.
+// real services (session_groups, stranded_assignment_cleanup, ...) that cannot honor dry_run.
 type notDryRunnableService struct {
 	name      string
 	callCount atomic.Int32
@@ -1667,9 +1667,9 @@ func (s *notDryRunnableService) GetStats() Stats { return Stats{} }
 // newDryRunTestApp returns a test app with one person_tag_defs row already present, so
 // RunSyncWithOptions's checkGlobalTablesEmpty() takes the "globals already ran" branch instead
 // of kicking off a full weekly-sync bootstrap that these tests have no interest in.
-func newDryRunTestApp(t *testing.T) *tests.TestApp {
+func newDryRunTestApp(t *testing.T) *pbtests.TestApp {
 	t.Helper()
-	app, err := tests.NewTestApp()
+	app, err := pbtests.NewTestApp()
 	if err != nil {
 		t.Fatalf("NewTestApp: %v", err)
 	}
@@ -1685,11 +1685,11 @@ func newDryRunTestApp(t *testing.T) *tests.TestApp {
 	return app
 }
 
-// TestRunSyncWithOptionsHonoursDryRun is the immediate-path mechanism test: DryRun=true must
+// TestRunSyncWithOptionsHonorsDryRun is the immediate-path mechanism test: DryRun=true must
 // reach the service via SetDryRun before Sync runs, and Sync must not "write". DryRun=false is
 // exercised as a control in the same test so a no-op SetDryRun implementation can't pass by
 // always leaving wroteCount at zero.
-func TestRunSyncWithOptionsHonoursDryRun(t *testing.T) {
+func TestRunSyncWithOptionsHonorsDryRun(t *testing.T) {
 	t.Parallel()
 	app := newDryRunTestApp(t)
 	o := NewOrchestrator(app)
@@ -1739,8 +1739,8 @@ func TestRunSyncWithOptionsHonoursDryRun(t *testing.T) {
 
 // TestRunSyncWithOptionsRejectsUnsupportedDryRun is the defense-in-depth backstop: even if a
 // caller other than handleUnifiedSync's pre-flight check ever invokes RunSyncWithOptions with
-// DryRun=true against a service that cannot honour it, the run must refuse outright rather than
-// silently execute Sync() wet (kindred#2334's "either honour it or reject the request").
+// DryRun=true against a service that cannot honor it, the run must refuse outright rather than
+// silently execute Sync() wet (kindred#2334's "either honor it or reject the request").
 func TestRunSyncWithOptionsRejectsUnsupportedDryRun(t *testing.T) {
 	t.Parallel()
 	app := newDryRunTestApp(t)
@@ -1768,12 +1768,12 @@ func TestRunSyncWithOptionsRejectsUnsupportedDryRun(t *testing.T) {
 	}
 }
 
-// TestProcessQueuedSyncsUnifiedHonoursDryRun is the queued-path mechanism test -- the half the
+// TestProcessQueuedSyncsUnifiedHonorsDryRun is the queued-path mechanism test -- the half the
 // issue calls out as the one that will be missed. It exercises the real dequeue-and-run path
 // (processQueuedSyncs), not just the struct field EnqueueUnifiedSync stores, so a bug in wiring
 // QueuedSync.DryRun through to Options.DryRun inside the "unified" case would fail this test
-// even though TestRunSyncWithOptionsHonoursDryRun (the immediate path) passes clean.
-func TestProcessQueuedSyncsUnifiedHonoursDryRun(t *testing.T) {
+// even though TestRunSyncWithOptionsHonorsDryRun (the immediate path) passes clean.
+func TestProcessQueuedSyncsUnifiedHonorsDryRun(t *testing.T) {
 	// Not t.Parallel(): t.Setenv is incompatible with it.
 	t.Setenv("CAMPMINDER_SEASON_ID", "2025")
 
@@ -1853,6 +1853,78 @@ func TestUnsupportedDryRunServices(t *testing.T) {
 	// "unknown service" handling, not a dry_run compatibility question.
 	if got := o.UnsupportedDryRunServices([]string{"does_not_exist"}); len(got) != 0 {
 		t.Errorf("expected an unregistered service to be silently skipped, got %v", got)
+	}
+}
+
+// dryRunCapableRealServices are the concrete production types that already had a working
+// DryRun field and internal skip-write logic before kindred#2334 (each is exercised standalone
+// via its own dedicated endpoint, e.g. handleFamilyCampDerivedSync). This list is the actual
+// blast radius of the incident in #2334: household_demographics/family_camp_derived are exactly
+// the services that swapped medical narratives and adult attributes and deleted family_camp_adults
+// rows. A DryRunnable mechanism that only a test double satisfies would leave every one of these
+// rejecting dry_run=true with a 400 in production, contradicting the issue's ruled fix direction
+// ("Honour dry_run end to end ... every service reachable through the unified endpoint supports
+// it. Not a 400."). This list -- and the compile-time assertions below -- exist so a future
+// service losing its SetDryRun method (e.g. during a refactor) fails a test instead of silently
+// falling back to rejection.
+var dryRunCapableRealServices = []string{
+	"camper_dietary", "camper_history", "quest_registrations", "household_demographics",
+	"financial_aid_applications", "lodging_assignments", "camper_transportation",
+	"staff_vehicle_info", "enrollment_snapshots", "normalize_geographic", "family_camp_derived",
+	"staff_applications", "staff_skills",
+}
+
+// Compile-time guarantee that the real production types stay wired to DryRunnable. If any of
+// these stops compiling, a refactor silently dropped SetDryRun and dry_run=true for that
+// service would start being rejected in production instead of honored.
+var (
+	_ DryRunnable = (*CamperDietarySync)(nil)
+	_ DryRunnable = (*CamperHistorySync)(nil)
+	_ DryRunnable = (*QuestRegistrationsSync)(nil)
+	_ DryRunnable = (*HouseholdDemographicsSync)(nil)
+	_ DryRunnable = (*FinancialAidApplicationsSync)(nil)
+	_ DryRunnable = (*LodgingAssignmentsSync)(nil)
+	_ DryRunnable = (*CamperTransportationSync)(nil)
+	_ DryRunnable = (*StaffVehicleInfoSync)(nil)
+	_ DryRunnable = (*EnrollmentSnapshotsSync)(nil)
+	_ DryRunnable = (*NormalizeGeographicSync)(nil)
+	_ DryRunnable = (*FamilyCampDerivedSync)(nil)
+	_ DryRunnable = (*StaffApplicationsSync)(nil)
+	_ DryRunnable = (*StaffSkillsSync)(nil)
+)
+
+// TestRealServicesHonorDryRunThroughUnifiedEndpoint proves the wiring against the actual
+// registered production types (not dryRunAwareService test doubles): every service that already
+// has DryRun-aware Sync() logic must be absent from UnsupportedDryRunServices' verdict on the
+// full default job list, while a service known to have no such logic (session_groups) must
+// still be rejected. Without this, TestUnsupportedDryRunServices above could stay green forever
+// while every real service in production silently lost its DryRunnable implementation.
+func TestRealServicesHonorDryRunThroughUnifiedEndpoint(t *testing.T) {
+	t.Parallel()
+	o := NewOrchestrator(nil)
+
+	o.RegisterService("camper_dietary", NewCamperDietarySync(nil))
+	o.RegisterService("camper_history", NewCamperHistorySync(nil))
+	o.RegisterService("quest_registrations", NewQuestRegistrationsSync(nil))
+	o.RegisterService("household_demographics", NewHouseholdDemographicsSync(nil))
+	o.RegisterService("financial_aid_applications", NewFinancialAidApplicationsSync(nil))
+	o.RegisterService("lodging_assignments", NewLodgingAssignmentsSync(nil))
+	o.RegisterService("camper_transportation", NewCamperTransportationSync(nil))
+	o.RegisterService("staff_vehicle_info", NewStaffVehicleInfoSync(nil))
+	o.RegisterService("enrollment_snapshots", NewEnrollmentSnapshotsSync(nil))
+	o.RegisterService("normalize_geographic", NewNormalizeGeographicSync(nil))
+	o.RegisterService("family_camp_derived", NewFamilyCampDerivedSync(nil))
+	o.RegisterService("staff_applications", NewStaffApplicationsSync(nil))
+	o.RegisterService("staff_skills", NewStaffSkillsSync(nil))
+	o.RegisterService("session_groups", &notDryRunnableService{name: "session_groups"})
+
+	if got := o.UnsupportedDryRunServices(dryRunCapableRealServices); len(got) != 0 {
+		t.Errorf("expected every real dry-run-capable service to be supported, got unsupported=%v", got)
+	}
+
+	got := o.UnsupportedDryRunServices(append(append([]string{}, dryRunCapableRealServices...), "session_groups"))
+	if len(got) != 1 || got[0] != "session_groups" {
+		t.Errorf("expected only [session_groups] unsupported alongside the real services, got %v", got)
 	}
 }
 

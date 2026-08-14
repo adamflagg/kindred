@@ -1187,15 +1187,15 @@ func TestDuplicateQueueRequest(t *testing.T) {
 // the handler), these three actually invoke handleUnifiedSync via httptest -- the mechanism
 // that let dry_run go unparsed and undiscovered: the parameter was accepted, echoed nowhere,
 // and discarded, so nothing here could previously fail even though production would have
-// written for real. TestProcessQueuedSyncsUnifiedHonoursDryRun and
-// TestRunSyncWithOptionsHonoursDryRun (orchestrator_test.go) cover the actual
+// written for real. TestProcessQueuedSyncsUnifiedHonorsDryRun and
+// TestRunSyncWithOptionsHonorsDryRun (orchestrator_test.go) cover the actual
 // write-suppression mechanism beneath these; these three cover what an operator sees at the
 // HTTP boundary.
 // =============================================================================
 
 // TestHandleUnifiedSyncRejectsUnsupportedDryRun proves dry_run=true against a service with no
 // DryRunnable support is rejected with 400, before either the immediate or the queued path
-// ever touches it -- not run wet silently (kindred#2334's ruled fix direction: "either honour
+// ever touches it -- not run wet silently (kindred#2334's ruled fix direction: "either honor
 // it or reject the request").
 func TestHandleUnifiedSyncRejectsUnsupportedDryRun(t *testing.T) {
 	// Not t.Parallel(): t.Setenv is incompatible with it.
