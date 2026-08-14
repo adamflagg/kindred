@@ -201,16 +201,20 @@ func (s *AttendeesSync) processAttendee(
 		}
 
 		if err := s.processEnrollment(personCMID, enrollment, existingAttendees); err != nil {
-			// A duplicate SessionID in the source data makes the *second* entry's error
-			// attributable: it's the entry that loses the (person, session) key collision,
-			// either overwriting the first (idempotent upsert) or — on a first-ever sync,
-			// before existingAttendees has an entry for the key — taking the create branch
-			// and hitting idx_attendees_unique. Tag it so that failure mode is legible in
-			// the logs rather than reading as an unexplained local DB fault.
+			// duplicateSessions is keyed by SessionID and holds every entry that shares a
+			// SessionID with another entry in this attendee's array — first, second, or
+			// later; it doesn't identify which one is "the duplicate". So this only tells
+			// us the group fact: this SessionID appears more than once. A (person, session)
+			// key collision — overwriting the first entry on an idempotent upsert, or, on a
+			// first-ever sync before existingAttendees has an entry for the key, taking the
+			// create branch and hitting idx_attendees_unique — is one plausible cause of
+			// this failure, but not the only one; this entry could equally be failing for a
+			// reason unrelated to the collision. Tag it so the possible collision is legible
+			// in the logs rather than the error reading as an unexplained local DB fault.
 			if sessionIDFloat, ok := enrollment["SessionID"].(float64); ok &&
 				duplicateSessions[int(sessionIDFloat)] != nil {
-				slog.Error("Error processing enrollment (duplicate SessionID within this "+
-					"attendee's SessionProgramStatus — see kindred#2263)",
+				slog.Error("Error processing enrollment (this SessionID appears more than "+
+					"once in this attendee's SessionProgramStatus — see kindred#2263)",
 					"person_cm_id", personCMID, "session_cm_id", int(sessionIDFloat), "error", err)
 			} else {
 				slog.Error("Error processing enrollment", "person_cm_id", personCMID, "error", err)
