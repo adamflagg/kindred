@@ -518,6 +518,116 @@ func TestOrphanSweepRejectionDoesNotMaskACollapse(t *testing.T) {
 	}
 }
 
+// TestDuplicateInflatedRejectionsCannotDeleteDespiteMaskingACollapse pins the
+// residual risk documented on RejectionsExplainShortfall (kindred#2325): a
+// duplicate-in-run rejection (kindred#2320) increments Rejected without
+// shrinking Computed, so it can inflate the shortfall budget enough to wave
+// through a Check refusal that is real and unrelated.
+//
+// The inflation is produced HERE, not asserted into place. An earlier revision
+// of this test set Stats.Rejected to a synthetic int on the widget fixture,
+// which made it a re-run of TestOrphanSweepRejectionDoesNotMaskACollapse's
+// "rejections that explain the whole shortfall" row -- every mutation it caught,
+// that row already caught -- and it never touched the rejection flavor the
+// issue is actually about. So this drives the production entry point:
+// processPersonCustomFieldValue, called twice for a key it has already tracked,
+// which is the one code path that bumps Rejected while ProcessedKeys (and
+// therefore Computed) stands still.
+//
+// The fixture is sized so the two arms meet. 50 rows on disk against a computed
+// set of 5 is a genuine Check refusal at 10% of the 50% floor, and the 45
+// duplicate rejections exactly cover the 45-row shortfall -- none of which they
+// explain, since all five tracked keys are present.
+//
+// What it proves is the other half of the story: the same Rejected > 0 that
+// produced the mask also drives skipSweepForRejections (base_sync.go), which
+// abandons the sweep unconditionally. So the masked refusal never reaches a
+// delete -- not even the 45 genuine orphans this fixture leaves untracked on
+// disk. If this ever goes red, the one-way, benign-for-data property the issue
+// relies on has broken -- reach for a second counter (RejectedButKeyRetained) at
+// that point, not before.
+func TestDuplicateInflatedRejectionsCannotDeleteDespiteMaskingACollapse(t *testing.T) {
+	t.Parallel()
+
+	const (
+		owner        = "pers_0000000001"
+		year         = 2026
+		trackedKeys  = 5  // the computed set this run legitimately builds
+		orphanRows   = 45 // untracked rows on disk: the shortfall, and real sweep candidates
+		duplicates   = 45 // == orphanRows, so the inflated budget exactly covers it
+		rowsOnDisk   = trackedKeys + orphanRows
+		firstFieldCM = 901
+	)
+
+	app := newOrphanSweepTestApp(t, "person_custom_values",
+		"person", "field_definition", "value", "last_updated")
+	// Rows this run never accounts for. They are keyable and owned by a swept
+	// owner, so a sweep that proceeded would delete every one of them.
+	bulkInsertRows(t, app, "person_custom_values", "person", owner, year, orphanRows)
+
+	s := &PersonCustomFieldValuesSync{BaseSyncService: BaseSyncService{
+		App:            app,
+		ProcessedKeys:  map[string]bool{},
+		SyncSuccessful: true,
+	}}
+
+	fieldDefMapping := map[int]string{}
+	for i := 0; i < trackedKeys; i++ {
+		fieldDefMapping[firstFieldCM+i] = fmt.Sprintf("fdtracked%02d", i)
+	}
+	existingRecords := map[string]*core.Record{}
+
+	// One real entry per field definition: creates the row and tracks the key.
+	for i := 0; i < trackedKeys; i++ {
+		entry := map[string]any{"id": float64(firstFieldCM + i), "value": "first"}
+		if err := s.processPersonCustomFieldValue(
+			entry, 12345, owner, year, fieldDefMapping, existingRecords); err != nil {
+			t.Fatalf("tracked entry %d: %v", i, err)
+		}
+	}
+
+	// Now the duplicates, through the same entry point. Each one hits the
+	// kindred#2320 guard, bumps Rejected, and leaves ProcessedKeys alone.
+	for i := 0; i < duplicates; i++ {
+		entry := map[string]any{
+			"id":    float64(firstFieldCM + i%trackedKeys),
+			"value": fmt.Sprintf("duplicate-%d", i),
+		}
+		if err := s.processPersonCustomFieldValue(
+			entry, 12345, owner, year, fieldDefMapping, existingRecords); err != nil {
+			t.Fatalf("duplicate entry %d: %v", i, err)
+		}
+	}
+
+	// Fixture preconditions. Without these a drift in the duplicate guard would
+	// quietly turn this into a test of nothing rather than a failure.
+	if s.Stats.Rejected != duplicates {
+		t.Fatalf("Stats.Rejected = %d, want %d -- the duplicate guard is what has to "+
+			"produce the inflation this test is about, not the test itself",
+			s.Stats.Rejected, duplicates)
+	}
+	if len(s.ProcessedKeys) != trackedKeys {
+		t.Fatalf("Computed = %d, want %d -- the whole defect is that a duplicate "+
+			"rejection does NOT shrink the computed set", len(s.ProcessedKeys), trackedKeys)
+	}
+	if seeded := countRows(t, app, "person_custom_values", "year = 2026"); seeded != rowsOnDisk {
+		t.Fatalf("fixture holds %d rows, want %d", seeded, rowsOnDisk)
+	}
+
+	err := s.deleteOrphans(year, map[string]bool{owner: true})
+
+	if err != nil {
+		t.Fatalf("deleteOrphans returned %v, want nil -- the inflated Rejected count "+
+			"masks the Check refusal (that is the defect kindred#2325 documents), so the run "+
+			"must still come back as a benign skip, not an error", err)
+	}
+	if alive := countRows(t, app, "person_custom_values", "year = 2026"); alive != rowsOnDisk {
+		t.Fatalf("%d rows survived, want %d -- a masked collapse must never delete a row, "+
+			"including the %d genuine orphans this fixture leaves untracked",
+			alive, rowsOnDisk, orphanRows)
+	}
+}
+
 // ---------------------------------------------------------------------------
 // kindred#2283 row 2 -- classifying a sweep failure
 // ---------------------------------------------------------------------------
