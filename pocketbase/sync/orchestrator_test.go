@@ -31,7 +31,7 @@ type MockService struct {
 }
 
 // mockYearService is a Service that carries a Year field, mirroring the shape of the real
-// per-type sync structs (CamperHistorySync, StaffSkillsSync, ...) that #1881 found being
+// per-type sync structs (FamilyCampDerivedSync, StaffSkillsSync, ...) that #1881 found being
 // mutated in place on the orchestrator's registered singleton. Used to prove that
 // RunSingleSyncWithService runs the caller's own instance and never touches the registry.
 type mockYearService struct {
@@ -511,7 +511,6 @@ func TestWeeklySyncNotInDailySync(t *testing.T) {
 		"bunk_plans",
 		"bunk_assignments",
 		"staff",
-		"camper_history",
 		"financial_transactions",
 		"family_camp_derived",
 		"bunk_requests",
@@ -788,7 +787,6 @@ func TestHistoricalSyncIncludesCustomValueServices(t *testing.T) {
 		"bunk_requests",
 		"process_requests",
 		"staff",
-		"camper_history",
 		"financial_transactions",
 		"family_camp_derived", // Derived table (depends on custom values)
 		// Custom value services - must be included for historical sync support
@@ -884,6 +882,42 @@ func TestGetDailySyncJobsStrandedAssignmentCleanupOrdering(t *testing.T) {
 	}
 }
 
+// TestCamperHistoryServiceFullyRemoved pins the removal of the camper_history table and its
+// writer (see #2301): the orchestrator must not schedule, register, or advertise a
+// "camper_history" job through any path a caller could reach it by. A regression here means
+// either the collection got resurrected in the daily/unified job lists with nothing left to
+// write to it, or the old registration silently survived after the table was already gone.
+func TestCamperHistoryServiceFullyRemoved(t *testing.T) {
+	t.Parallel()
+
+	const removedID = "camper_history"
+
+	for _, job := range getDailySyncJobs() {
+		if job == removedID {
+			t.Error("getDailySyncJobs still includes camper_history")
+		}
+	}
+
+	for _, includeCV := range []bool{true, false} {
+		for _, job := range GetDefaultUnifiedSyncJobs(includeCV) {
+			if job == removedID {
+				t.Errorf("GetDefaultUnifiedSyncJobs(%v) still includes camper_history", includeCV)
+			}
+		}
+	}
+
+	for _, job := range GetJobMeta() {
+		if job.ID == removedID {
+			t.Error("syncJobMeta still lists camper_history")
+		}
+	}
+
+	o := NewOrchestrator(nil)
+	if svc := o.GetService(removedID); svc != nil {
+		t.Error("a fresh orchestrator should never have camper_history pre-registered")
+	}
+}
+
 // TestDailySyncExcludesDivisions verifies divisions is NOT in daily sync
 func TestDailySyncExcludesDivisions(t *testing.T) {
 	t.Parallel()
@@ -898,7 +932,6 @@ func TestDailySyncExcludesDivisions(t *testing.T) {
 		"bunk_plans",
 		"bunk_assignments",
 		"staff",
-		"camper_history",
 		"financial_transactions",
 		"family_camp_derived", // Derived table - after dependencies
 		"bunk_requests",
@@ -924,7 +957,6 @@ func TestDailySyncIncludesFamilyCampDerived(t *testing.T) {
 		"bunk_plans",
 		"bunk_assignments",
 		"staff",
-		"camper_history",
 		"financial_transactions",
 		"family_camp_derived", // Should be included!
 		"bunk_requests",
@@ -960,7 +992,6 @@ func TestHistoricalSyncIncludesFamilyCampDerived(t *testing.T) {
 		"process_requests",
 		"staff",
 		"financial_transactions",
-		"camper_history",
 		"family_camp_derived", // Should be included!
 		"person_custom_values",
 		"household_custom_values",
@@ -997,7 +1028,6 @@ func TestHistoricalSyncExcludesDivisions(t *testing.T) {
 		"process_requests",
 		"staff",
 		"financial_transactions",
-		"camper_history",
 		"family_camp_derived",
 		"person_custom_values",
 		"household_custom_values",
@@ -1858,9 +1888,9 @@ func TestUnsupportedDryRunServices(t *testing.T) {
 }
 
 // dryRunCapableRealServices are the concrete production types that already had a working
-// DryRun field and internal skip-write logic before kindred#2334. Six of them were already
-// reachable with it: handleCamperHistorySync, handleFamilyCampDerivedSync,
-// handleLodgingAssignmentsSync, handleStaffSkillsSync, handleFinancialAidApplicationsSync and
+// DryRun field and internal skip-write logic before kindred#2334. Five of them were already
+// reachable with it: handleFamilyCampDerivedSync, handleLodgingAssignmentsSync,
+// handleStaffSkillsSync, handleFinancialAidApplicationsSync and
 // handleHouseholdDemographicsSync each parse ?dry_run= on their own dedicated endpoint. The
 // other seven had the field and the skip-write branch but no caller that could set it -- the
 // unified endpoint is their first. This list is the actual
@@ -1873,7 +1903,7 @@ func TestUnsupportedDryRunServices(t *testing.T) {
 // service losing its SetDryRun method (e.g. during a refactor) fails a test instead of silently
 // falling back to rejection.
 var dryRunCapableRealServices = []string{
-	"camper_dietary", "camper_history", "quest_registrations", "household_demographics",
+	"camper_dietary", "quest_registrations", "household_demographics",
 	"financial_aid_applications", "lodging_assignments", "camper_transportation",
 	"staff_vehicle_info", "enrollment_snapshots", "normalize_geographic", "family_camp_derived",
 	"staff_applications", "staff_skills",
@@ -1884,7 +1914,6 @@ var dryRunCapableRealServices = []string{
 // service would start being rejected in production instead of honored.
 var (
 	_ DryRunnable = (*CamperDietarySync)(nil)
-	_ DryRunnable = (*CamperHistorySync)(nil)
 	_ DryRunnable = (*QuestRegistrationsSync)(nil)
 	_ DryRunnable = (*HouseholdDemographicsSync)(nil)
 	_ DryRunnable = (*FinancialAidApplicationsSync)(nil)
@@ -1913,7 +1942,6 @@ func TestRealServicesHonorDryRunThroughUnifiedEndpoint(t *testing.T) {
 	o := NewOrchestrator(nil)
 
 	o.RegisterService("camper_dietary", NewCamperDietarySync(nil))
-	o.RegisterService("camper_history", NewCamperHistorySync(nil))
 	o.RegisterService("quest_registrations", NewQuestRegistrationsSync(nil))
 	o.RegisterService("household_demographics", NewHouseholdDemographicsSync(nil))
 	o.RegisterService("financial_aid_applications", NewFinancialAidApplicationsSync(nil))
@@ -2023,7 +2051,6 @@ func TestRealServicesSetDryRunStoresTheFlag(t *testing.T) {
 
 	services := map[string]DryRunnable{
 		"camper_dietary":             NewCamperDietarySync(nil),
-		"camper_history":             NewCamperHistorySync(nil),
 		"quest_registrations":        NewQuestRegistrationsSync(nil),
 		"household_demographics":     NewHouseholdDemographicsSync(nil),
 		"financial_aid_applications": NewFinancialAidApplicationsSync(nil),
@@ -2502,7 +2529,7 @@ func TestJobMeta_ExpensivePhaseJobs(t *testing.T) {
 func TestJobMeta_TransformPhaseJobs(t *testing.T) {
 	t.Parallel()
 	expectedTransformJobs := []string{
-		"camper_history",
+		"lodging_assignments",
 		"family_camp_derived",
 		"household_demographics",
 	}
@@ -2621,7 +2648,7 @@ func TestGetJobsForPhase_ReturnsCorrectJobs(t *testing.T) {
 		{
 			phase:         PhaseTransform,
 			expectedCount: 3,
-			expectedJobs:  []string{"camper_history", "family_camp_derived", "household_demographics"},
+			expectedJobs:  []string{"lodging_assignments", "family_camp_derived", "household_demographics"},
 		},
 		{
 			phase:         PhaseProcess,
@@ -2738,7 +2765,7 @@ func TestGetPhaseForJob(t *testing.T) {
 		{"attendees", PhaseSource},
 		{"person_custom_values", PhaseExpensive},
 		{"household_custom_values", PhaseExpensive},
-		{"camper_history", PhaseTransform},
+		{"lodging_assignments", PhaseTransform},
 		{"family_camp_derived", PhaseTransform},
 		{"household_demographics", PhaseTransform},
 		{"bunk_requests", PhaseProcess},
@@ -3031,7 +3058,7 @@ func TestRunSyncWithOptionsPhaseOrdering(t *testing.T) {
 		}
 
 		cvPos := posMap["household_custom_values"]
-		firstTransformPos := posMap["camper_history"]
+		firstTransformPos := posMap["family_camp_derived"]
 
 		if cvPos >= firstTransformPos {
 			t.Errorf("custom values (pos %d) must come before transform jobs (pos %d)",
@@ -3052,7 +3079,7 @@ func TestRunSyncWithOptionsPhaseOrdering(t *testing.T) {
 		// Last source job
 		lastSourcePos := posMap["financial_transactions"]
 		// First transform job
-		firstTransformPos := posMap["camper_history"]
+		firstTransformPos := posMap["family_camp_derived"]
 
 		if lastSourcePos >= firstTransformPos {
 			t.Errorf("source jobs (last at pos %d) must come before transform (pos %d)",
@@ -3078,7 +3105,7 @@ func TestRunSyncWithOptionsPhaseOrdering(t *testing.T) {
 			"session_groups", "sessions", "attendees", "persons",
 			"bunks", "bunk_plans", "bunk_assignments", "staff", "financial_transactions",
 			// Transform phase (same order as RunDailySync)
-			"camper_history", "family_camp_derived", "lodging_assignments", "staff_skills",
+			"family_camp_derived", "lodging_assignments", "staff_skills",
 			"financial_aid_applications", "household_demographics",
 			"camper_dietary", "camper_transportation", "quest_registrations",
 			"staff_applications", "staff_vehicle_info", "normalize_geographic",
@@ -4080,8 +4107,8 @@ func TestGenerateRunToken(t *testing.T) {
 	})
 }
 
-// TestRunSingleSyncWithServiceIgnoresRegisteredSingleton pins the fix for #1881: the eleven
-// individual-sync handlers (camper_history, family_camp_derived, lodging_assignments,
+// TestRunSingleSyncWithServiceIgnoresRegisteredSingleton pins the fix for #1881: the ten
+// individual-sync handlers (family_camp_derived, lodging_assignments,
 // staff_skills, financial_aid_applications, household_demographics, camper_dietary,
 // camper_transportation, quest_registrations, staff_applications, staff_vehicle_info) used to
 // fetch the orchestrator's registered singleton and mutate its Year/DryRun fields in place —
@@ -4100,7 +4127,7 @@ func TestRunSingleSyncWithServiceIgnoresRegisteredSingleton(t *testing.T) {
 		o.RegisterService("test", registered)
 
 		// A private instance built fresh per request, carrying only this request's Year —
-		// exactly what a fixed handler does with e.g. NewCamperHistorySync(e.App).
+		// exactly what a fixed handler does with e.g. NewFamilyCampDerivedSync(e.App).
 		requestScoped := &mockYearService{name: "test", year: 2027, stats: Stats{Created: 5}}
 
 		origin := newBatch(triggerManual)

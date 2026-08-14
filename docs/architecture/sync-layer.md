@@ -88,14 +88,14 @@ asserting the daily and historical lists stay in step.
 
 ### 6. Frontend Special Handling (if needed)
 
-**REQUIRED if API endpoint requires `year` parameter** (like `camper_history`, `family_camp_derived`):
+**REQUIRED if API endpoint requires `year` parameter** (like `family_camp_derived`, `lodging_assignments`):
 
 | File | Action |
 |------|--------|
-| `hooks/use{JobName}Sync.ts` | Custom hook that passes year to endpoint (copy from `useCamperHistorySync.ts`) |
+| `hooks/use{JobName}Sync.ts` | Custom hook that passes year to endpoint (copy from `useFamilyCampDerivedSync.ts`) |
 | `components/admin/SyncTab.tsx` | Add conditional case: `syncType.id === 'job_name' ? ... : ...` with custom hook |
 
-Example pattern from `useCamperHistorySync.ts`:
+Example pattern from `useFamilyCampDerivedSync.ts`:
 - Hook accepts year, calls `/api/custom/sync/{job}?year=${year}`
 - SyncTab.tsx uses `{jobName}Sync.mutate(currentYear)` instead of `runIndividualSync`
 
@@ -265,10 +265,10 @@ uv run python -m bunking.sync.bunk_request_processor.process_requests \
 |----------|----------|-------|
 | **Source Data** | session_groups → sessions → attendees → persons → bunks → bunk_plans → bunk_assignments → staff → financial_transactions | Fetched from CampMinder API |
 | **Custom Values** | person_custom_values → household_custom_values | Expensive (1 API call per entity), run weekly or on-demand |
-| **Derived Tables** | camper_history, family_camp_derived | Computed from synced source data + custom values |
+| **Derived Tables** | family_camp_derived, lodging_assignments, staff_skills, … | Computed from synced source data + custom values |
 | **Processing** | bunk_requests → process_requests | CSV import and AI processing |
 
 **Key ordering rules:**
-1. **Source → Derived**: All derived tables (`camper_history`, `family_camp_derived`) run AFTER source data syncs
+1. **Source → Derived**: All derived tables (`family_camp_derived`, `lodging_assignments`, …) run AFTER source data syncs
 2. **Custom values → Derived**: When `IncludeCustomValues=true` (historical sync), custom values run BEFORE derived tables
 3. **Sequential custom values**: Custom values syncs run sequentially (not parallel) to prevent context deadline issues from concurrent API rate limiting

@@ -127,7 +127,6 @@ describe('useSyncStatusAPI', () => {
         staff_lookups: { status: 'idle' as const },
         financial_lookups: { status: 'idle' as const },
         google_sheets_export: { status: 'idle' as const },
-        camper_history: { status: 'idle' as const },
         family_camp_derived: { status: 'idle' as const },
         staff_skills: { status: 'idle' as const },
         financial_aid_applications: { status: 'idle' as const },

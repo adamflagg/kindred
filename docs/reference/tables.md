@@ -45,7 +45,6 @@ Kindred uses PocketBase as its database layer. All collections follow these patt
 | `locked_group_members` | Solver | Manual | Members of lock groups |
 | `person_custom_values` | Custom Fields | CampMinder | Custom field values for persons |
 | `household_custom_values` | Custom Fields | CampMinder | Custom field values for households |
-| `camper_history` | Computed | Go Sync | Denormalized camper history |
 | `family_camp_adults` | Computed | Go Sync | Family camp adult attendees |
 | `family_camp_registrations` | Computed | Go Sync | Family camp registration details |
 | `family_camp_medical` | Computed | Go Sync | Family camp medical/dietary info |
@@ -636,31 +635,6 @@ Custom field values for households.
 
 Tables computed from base data by Go sync services.
 
-### camper_history
-
-Denormalized camper history for nonprofit reporting and analytics.
-
-| Field | Type | Description |
-|-------|------|-------------|
-| `person_id` | number | CampMinder person ID |
-| `first_name` | text | First name |
-| `last_name` | text | Last name |
-| `year` | number | Camp year |
-| `sessions` | text | Comma-separated session names |
-| `bunks` | text | Comma-separated bunk names |
-| `school` | text | School name |
-| `city` | text | City |
-| `grade` | number | Grade |
-| `is_returning` | bool | Returning camper |
-| `years_at_camp` | number | Total years |
-| `prior_year_sessions` | text | Prior year sessions |
-| `prior_year_bunks` | text | Prior year bunks |
-
-**Unique**: `(person_id, year)`
-
-**Computed by**: `pocketbase/sync/camper_history.go`
-**Exported to**: Google Sheets `{year}-camper-history`
-
 ### family_camp_adults
 
 Family camp adult attendees extracted from custom values.
@@ -850,7 +824,6 @@ CampMinder API
 ┌─────────────────────────────────────────────────────────────┐
 │  Go Derived Tables (pocketbase/sync/)                       │
 │                                                             │
-│  camper_history.go ──────► camper_history                   │
 │  family_camp_derived.go ─► family_camp_adults               │
 │                          └► family_camp_registrations       │
 │                          └► family_camp_medical             │

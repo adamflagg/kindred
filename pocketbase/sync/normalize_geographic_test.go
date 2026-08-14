@@ -2372,22 +2372,8 @@ func newNormalizeGeographicSyncTestApp(t *testing.T) core.App {
 		}
 	}
 
-	// Sync() also rewrites the *_normalized columns on camper_history before it
-	// reaches the sweep; the collection has to exist for that step to run.
-	hist := core.NewBaseCollection("camper_history")
-	for _, f := range []string{
-		"city", "school", "congregation",
-		"city_normalized", "school_normalized", "congregation_normalized",
-	} {
-		hist.Fields.Add(&core.TextField{Name: f})
-	}
-	hist.Fields.Add(&core.NumberField{Name: "person_id"})
-	hist.Fields.Add(&core.NumberField{Name: "year"})
-	created(hist)
-	if err := app.Save(hist); err != nil {
-		t.Fatalf("create camper_history: %v", err)
-	}
-
+	// camper_history is gone (see #2301) -- Sync() must reach the persons-normalized
+	// step and the sweep without that collection existing at all.
 	mappings := core.NewBaseCollection("normalized_mappings")
 	for _, f := range []string{
 		"person", "session", "category", "original_value", "normalized_value",

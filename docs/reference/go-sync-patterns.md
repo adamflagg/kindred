@@ -337,7 +337,7 @@ contains the same substring.
 **Before you reclassify a site, check that its sweep is actually guarded.** The *rejection*
 arm reaches `DeleteOrphans`, `DeleteOrphansGuarded` and `DeleteOrphansFromPreloaded` — every
 sweep that routes through `BaseSyncService`, which is the only thing that fills in
-`OrphanSweepGuard.Rejected`. Nine services (`camper_dietary`, `camper_history`,
+`OrphanSweepGuard.Rejected`. Eight services (`camper_dietary`,
 `camper_transportation`, `household_demographics`, `normalize_geographic`,
 `quest_registrations`, `staff_skills`, `staff_applications`, `staff_vehicle_info`) do not
 embed `BaseSyncService` at all and build their own `OrphanSweepGuard` inside their own

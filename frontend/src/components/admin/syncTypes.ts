@@ -17,7 +17,6 @@ import {
   ClipboardList,
   DollarSign,
   Receipt,
-  History,
   Home,
   Sparkles,
   HandCoins,
@@ -194,13 +193,6 @@ export const YEAR_SYNC_TYPES = [
     phase: 'expensive' as SyncPhase,
   },
   // Transform phase - derived tables
-  {
-    id: 'camper_history',
-    name: 'Camper History',
-    icon: History,
-    color: 'text-cyan-600',
-    phase: 'transform' as SyncPhase,
-  },
   {
     id: 'family_camp_derived',
     name: 'Weekend Programs',

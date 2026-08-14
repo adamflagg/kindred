@@ -16,7 +16,7 @@ Every record synced from CampMinder has two IDs:
 | Field | Type | Purpose |
 |-------|------|---------|
 | `cm_id` | int | The CampMinder ID for this record's primary entity |
-| `person_id` | int | CampMinder person ID. On most person-scoped tables (`attendees`, `staff`, `camper_history`, `quest_registrations`, …) but **not all** — notably **not** on `bunk_assignments`. Check that collection's migration before filtering on it |
+| `person_id` | int | CampMinder person ID. On most person-scoped tables (`attendees`, `staff`, `quest_registrations`, …) but **not all** — notably **not** on `bunk_assignments`. Check that collection's migration before filtering on it |
 | `person` | relation | PocketBase relation field pointing to persons table (resolved from CM ID) |
 | `session` | relation | PocketBase relation field pointing to camp_sessions table |
 | `bunk` | relation | PocketBase relation field pointing to bunks table |

@@ -40,11 +40,9 @@ const filterYearParam = "year = {:year}"
 //  5. Preloading existing normalized_mappings for upsert comparison
 //  6. Upserting to normalized_mappings with (person, session, category) keys,
 //     skipping rejected overrides
-//  7. Updating camper_history.*_normalized columns for backwards compatibility
-//  8. Updating persons.normalized_* columns for drilldown consistency
-//  9. Deleting orphaned mappings no longer in source data
-//
-// 10. Running WAL checkpoint if any records were modified
+//  7. Updating persons.normalized_* columns for drilldown consistency
+//  8. Deleting orphaned mappings no longer in source data
+//  9. Running WAL checkpoint if any records were modified
 type NormalizeGeographicSync struct {
 	App            core.App
 	Year           int
@@ -210,12 +208,7 @@ func (n *NormalizeGeographicSync) Sync(ctx context.Context) error {
 		return fmt.Errorf("upserting normalized mappings: %w", err)
 	}
 
-	// Step 6: Update camper_history.*_normalized columns (backwards compatibility)
-	if err := n.updateCamperHistoryNormalized(ctx, normalizedLookup, year); err != nil {
-		return fmt.Errorf("updating camper history: %w", err)
-	}
-
-	// Step 6b: Update persons.normalized_* columns for drilldown consistency
+	// Step 6: Update persons.normalized_* columns for drilldown consistency
 	if err := n.updatePersonsNormalized(ctx, normalizedLookup, attendeeData, year); err != nil {
 		return fmt.Errorf("updating persons normalized: %w", err)
 	}
@@ -975,92 +968,6 @@ func (n *NormalizeGeographicSync) personSessionMappingNeedsUpdate(
 	}
 	newConf, _ := newData["confidence"].(float64)
 	return math.Abs(existingConf-newConf) > epsilon
-}
-
-// updateCamperHistoryNormalized updates the *_normalized columns in camper_history
-func (n *NormalizeGeographicSync) updateCamperHistoryNormalized(
-	ctx context.Context,
-	lookup *normalizationLookup,
-	year int,
-) error {
-	// Update camper_history records
-	filter := filterYearParam
-	filterParams := dbx.Params{"year": year}
-	page := 1
-	perPage := 500
-	updatedCount := 0
-
-	for {
-		select {
-		case <-ctx.Done():
-			return ctx.Err()
-		default:
-		}
-
-		records, err := n.App.FindRecordsByFilter(
-			"camper_history",
-			filter,
-			"-created",
-			perPage,
-			(page-1)*perPage,
-			filterParams,
-		)
-		if err != nil {
-			return fmt.Errorf("querying camper_history page %d: %w", page, err)
-		}
-
-		for _, record := range records {
-			needsUpdate := false
-
-			// City
-			if city := record.GetString("city"); city != "" {
-				if entry, ok := lookup.city[city]; ok {
-					if record.GetString("city_normalized") != entry.Canonical {
-						record.Set("city_normalized", entry.Canonical)
-						needsUpdate = true
-					}
-				}
-			}
-
-			// School
-			if school := record.GetString("school"); school != "" {
-				if entry, ok := lookup.school[school]; ok {
-					if record.GetString("school_normalized") != entry.Canonical {
-						record.Set("school_normalized", entry.Canonical)
-						needsUpdate = true
-					}
-				}
-			}
-
-			// Congregation (synagogue field in camper_history)
-			if synagogue := record.GetString("synagogue"); synagogue != "" {
-				if entry, ok := lookup.congregation[synagogue]; ok {
-					if record.GetString("congregation_normalized") != entry.Canonical {
-						record.Set("congregation_normalized", entry.Canonical)
-						needsUpdate = true
-					}
-				}
-			}
-
-			if needsUpdate {
-				if err := n.App.Save(record); err != nil {
-					slog.Error("Error updating camper_history normalized fields",
-						"id", record.Id,
-						"error", err)
-					continue
-				}
-				updatedCount++
-			}
-		}
-
-		if len(records) < perPage {
-			break
-		}
-		page++
-	}
-
-	n.DebugLog("Updated camper_history normalized fields", "count", updatedCount)
-	return nil
 }
 
 // updatePersonsNormalized updates the normalized_* columns on persons records

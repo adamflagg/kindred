@@ -355,7 +355,7 @@ class RegistrationMetricsResponse(BaseModel):
     by_session_length: list[SessionLengthBreakdown] = Field(description="Enrollment by session length")
     by_years_at_camp: list[YearsAtCampBreakdown] = Field(description="Enrollment by years at camp")
     new_vs_returning: NewVsReturning = Field(description="New vs returning breakdown")
-    # New breakdowns (from camper_history)
+    # New breakdowns (computed from persons.school/address_city/synagogue)
     by_school: list[SchoolBreakdown] = Field(default_factory=list, description="Enrollment by school")
     by_city: list[CityBreakdown] = Field(default_factory=list, description="Enrollment by city")
     by_synagogue: list[SynagogueBreakdown] = Field(default_factory=list, description="Enrollment by synagogue")

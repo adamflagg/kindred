@@ -1,8 +1,8 @@
 /**
  * Regression test for #1881: SyncTab's generic sync card computed its Run button's `disabled`
  * state from a hand-maintained list — `isRunning || isPending || runIndividualSync.isPending ||
- * runOnDemandSync.isPending` — that never referenced any of the eleven type-specific mutation
- * hooks (camper_history, family_camp_derived, lodging_assignments, staff_skills,
+ * runOnDemandSync.isPending` — that never referenced any of the ten type-specific mutation
+ * hooks (family_camp_derived, lodging_assignments, staff_skills,
  * financial_aid_applications, household_demographics, camper_dietary, camper_transportation,
  * quest_registrations, staff_applications, staff_vehicle_info). A double-click on one of those
  * cards could submit a second request before status polling flipped the card to "running".
@@ -35,7 +35,6 @@ let staffStatus: unknown = idleStatus
 
 vi.mock('../../hooks/useSyncCompletionToasts', () => ({
   useSyncCompletionToasts: () => ({
-    camper_history: idleStatus,
     family_camp_derived: idleStatus,
     lodging_assignments: idleStatus,
     staff_skills: idleStatus,
@@ -67,7 +66,6 @@ vi.mock('../../hooks/useRunIndividualSync', () => ({ useRunIndividualSync: () =>
 vi.mock('../../hooks/useRunOnDemandSync', () => ({ useRunOnDemandSync: () => notPending }))
 vi.mock('../../hooks/useUnifiedSync', () => ({ useUnifiedSync: () => notPending }))
 vi.mock('../../hooks/useProcessRequests', () => ({ useProcessRequests: () => notPending }))
-vi.mock('../../hooks/useCamperHistorySync', () => ({ useCamperHistorySync: () => notPending }))
 vi.mock('../../hooks/useFamilyCampDerivedSync', () => ({
   useFamilyCampDerivedSync: () => notPending,
 }))
@@ -81,7 +79,7 @@ vi.mock('../../hooks/useFinancialAidApplicationsSync', () => ({
 vi.mock('../../hooks/useHouseholdDemographicsSync', () => ({
   useHouseholdDemographicsSync: () => notPending,
 }))
-// The mutation under test: camper_dietary was one of the eleven hooks missing from the disabled
+// The mutation under test: camper_dietary was one of the ten hooks missing from the disabled
 // condition entirely. Marking it pending must disable ONLY the Dietary card.
 vi.mock('../../hooks/useCamperDietarySync', () => ({
   useCamperDietarySync: () => ({ mutate: vi.fn(), isPending: true }),
@@ -113,7 +111,7 @@ function renderSyncTab() {
 
 function getCardRunButton(cardName: string) {
   // The sync-year <select> also has an <option> with the same text as some card names
-  // (e.g. "Camper History"), so scope to the card's title <div> specifically.
+  // (e.g. "Lodging Assignments"), so scope to the card's title <div> specifically.
   const heading = screen.getByText(cardName, { selector: 'div' })
   const card = heading.closest('.flex.flex-col')
   if (!card) throw new Error(`could not find card for ${cardName}`)
@@ -130,7 +128,7 @@ describe('SyncTab generic card pending guard (#1881)', () => {
   it('leaves an unrelated type-specific card enabled', () => {
     renderSyncTab()
 
-    expect(getCardRunButton('Camper History')).not.toBeDisabled()
+    expect(getCardRunButton('Lodging Assignments')).not.toBeDisabled()
     expect(getCardRunButton('Staff Skills')).not.toBeDisabled()
   })
 })
