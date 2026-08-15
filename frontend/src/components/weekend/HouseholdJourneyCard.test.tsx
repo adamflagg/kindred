@@ -145,7 +145,7 @@ describe('the housing states', () => {
       _row({
         year: 2025,
         housing: 'placed',
-        cabin_name: 'Clouds Rest Lodge - West Wing Room 12B',
+        cabin_name: 'Fernwood Lodge - West Wing Room 12B',
       }),
     ])
 
@@ -157,7 +157,7 @@ describe('the housing states', () => {
     // wrap instead of overflowing its row.
     expect(housing).toHaveClass('min-w-0')
     expect(housing).not.toHaveClass('truncate')
-    expect(housing).toHaveTextContent('Clouds Rest Lodge - West Wing Room 12B')
+    expect(housing).toHaveTextContent('Fernwood Lodge - West Wing Room 12B')
   })
 })
 

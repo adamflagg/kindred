@@ -58,31 +58,22 @@ var serialGroups = []struct {
 			"TestParseSeasonYear_BelowRange",
 			"TestParseSeasonYear_AboveRange",
 			"TestParseSeasonYear_Boundaries",
+			"TestActiveSeasonYearFailsClosedWhenUnset",
 		},
 	},
 	{
-		// LodgingAssignmentsSync.activeSeasonYear() calls ParseSeasonYear()
-		// unconditionally to gate the #2028 orphan sweep, so these eight can
-		// only reach the sweep through the environment.
-		//
-		// They are also the most expensive tests left serial -- ~22s of the
-		// ~25s serial prefix, because each builds a fresh ~15-collection
-		// schema and that is pure CPU under the race detector. Injecting the
-		// active season instead of reading the env would recover most of it.
-		// Deliberately not done here: that is an edit to a deletion gate, and
-		// it should not ride inside a thousand-line mechanical diff where no
-		// reviewer will find it.
+		// #2289 review: the eight orphan-sweep tests migrated onto
+		// s.ActiveSeasonYear so they could run in parallel, but that left the
+		// #2028 year gate itself (year != active) and production's actual
+		// CAMPMINDER_SEASON_ID fallback path with zero direct coverage --
+		// s.ActiveSeasonYear always overrides both in every other test in this
+		// file. These two drive Sync() with ActiveSeasonYear left at 0, so
+		// they need the real environment variable.
 		pkg:    "sync",
-		reason: "t.Setenv: orphan sweep gates on CAMPMINDER_SEASON_ID",
+		reason: "t.Setenv: CAMPMINDER_SEASON_ID drives the #2028 gate itself, not the ActiveSeasonYear override",
 		tests: []string{
-			"TestLodgingAssignmentsSyncDeletesOrphanedHouseholdMirrorRow",
-			"TestLodgingAssignmentsSyncDeletesOrphanedPersonGrainMirrorRow",
-			"TestLodgingAssignmentsSyncDeletesStaffTouchedOrphanedMirrorRow",
-			"TestLodgingAssignmentsSyncDryRunDoesNotDeleteOrphans",
-			"TestLodgingAssignmentsSyncKeepsMirrorRowForStillEnrolledHousehold",
-			"TestLodgingAssignmentsSyncSkipsMirrorDeletionWhenSessionHasZeroEnrolled",
-			"TestLodgingAssignmentsSyncSkipsOrphanSweepForHistoricalYear",
-			"TestLodgingAssignmentsSyncWritesHistoryOnOrphanDelete",
+			"TestLodgingAssignmentsSyncSkipsOrphanSweepWhenSeasonUnresolvable",
+			"TestLodgingAssignmentsSyncDeletesOrphansViaEnvFallback",
 		},
 	},
 	{

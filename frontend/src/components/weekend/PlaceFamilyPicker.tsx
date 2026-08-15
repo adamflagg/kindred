@@ -156,6 +156,14 @@ export function PlaceFamilyPicker({ unit, parties, units = [], onSelect }: Place
     close()
   }
 
+  // CORRECT AS-IS, no overlay token (kindred#2237). This is a React SYNTHETIC
+  // handler bound to the combobox input, not a document listener: it only ever
+  // fires while that input holds focus, and the control closes on blur, so an
+  // overlay opening on top takes focus and this stops firing on its own. It
+  // also sits on the weekend roster alongside `FamilyDetailsPanel`, which
+  // stands down for anything in the token stack -- so a token here would make
+  // that panel yield Escape to a combobox, the same regression documented on
+  // `LodgingMap` above.
   const onKeyDown = (event: React.KeyboardEvent<HTMLInputElement>) => {
     if (event.key === 'Escape') {
       if (!open) return

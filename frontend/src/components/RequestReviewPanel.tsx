@@ -44,6 +44,7 @@ import MergeRequestsModal from './MergeRequestsModal'
 import SplitRequestModal from './SplitRequestModal'
 import { ConfirmActionPopover } from './ConfirmActionPopover'
 import { useOptimisticValidation } from '../hooks/useOptimisticValidation'
+import { useOverlayEscape } from '../hooks/useOverlayEscape'
 
 interface RequestReviewPanelProps {
   sessionId: number
@@ -112,23 +113,30 @@ export default function RequestReviewPanel({
   const bulkConfirmRef = useRef<HTMLDivElement>(null)
   const bulkConfirmPreviousFocusRef = useRef<HTMLElement | null>(null)
 
+  // NEEDS AN OVERLAY TOKEN (kindred#2237). This panel renders five other
+  // independently-stated overlays — CreateRequestModal, CamperDetailsPanel,
+  // MergeRequestsModal, SplitRequestModal and ConfirmActionPopover — with
+  // nothing making them mutually exclusive with this dialog. Neither
+  // `ui/Modal` nor `ConfirmActionPopover` calls `stopPropagation()`; both only
+  // gate on `isTopOverlay`. So this dialog's ungated bubble-phase listener
+  // fired alongside whichever of them was genuinely on top, and one Escape
+  // closed two overlays.
+  useOverlayEscape(!!bulkConfirm, () => setBulkConfirm(null))
+
   useEffect(() => {
     if (bulkConfirm) {
       bulkConfirmPreviousFocusRef.current = document.activeElement as HTMLElement | null
       const buttons = bulkConfirmRef.current?.querySelectorAll<HTMLElement>('button')
       buttons?.[buttons.length - 1]?.focus()
 
-      // Escape-to-close + Tab focus trap, as a document-level listener rather
-      // than an inline onKeyDown on the role="dialog" element — matching
-      // ui/Modal.tsx's own pattern. jsx-a11y/no-noninteractive-element-interactions
-      // flags an onKeyDown JSX prop on a non-interactive role like "dialog";
-      // an imperative listener sidesteps that while keeping identical behavior
+      // Tab focus trap only — Escape belongs to `useOverlayEscape` below
+      // (kindred#2237). A document-level listener rather than an inline
+      // onKeyDown on the role="dialog" element, matching ui/Modal.tsx's own
+      // pattern: jsx-a11y/no-noninteractive-element-interactions flags an
+      // onKeyDown JSX prop on a non-interactive role like "dialog", and an
+      // imperative listener sidesteps that while keeping identical behavior
       // (keydown bubbles from any focused button inside the dialog either way).
       const handleKeyDown = (e: KeyboardEvent) => {
-        if (e.key === 'Escape') {
-          setBulkConfirm(null)
-          return
-        }
         if (e.key === 'Tab') {
           const dialogButtons = Array.from(
             bulkConfirmRef.current?.querySelectorAll<HTMLElement>('button') ?? []
