@@ -104,7 +104,16 @@ done
 # pocketbase/ side for a future pass, rather than guessing at files another
 # issue may be mid-edit on. Fixture CODE in a frontend/src/** test file is
 # still exempt -- only its comment lines are newly in scope.
-FRONTEND_TEST_PATTERN='^frontend/src/.*(_test\.|\.test\.|/tests?/)'
+# The trailing alternative must anchor to a full PATH SEGMENT: '(.*/)?tests?/'
+# rather than the bare '/tests?/' used previously. The bare form only fires
+# once something has already matched before the slash, so a file directly
+# under frontend/src/test/ (frontend/src/test/mockData.ts -- no '_test.' or
+# '.test.' in the name, and 'test/' immediately follows the 'frontend/src/'
+# prefix with no preceding '/') never matched, and fell through to OTHER_RAW's
+# blanket test-file exemption instead of this comment-only scan -- the exact
+# gap this pattern exists to close. Verified by TEST 13 in
+# test-verify-no-hardcoded-lodging.sh (kindred#2367 review).
+FRONTEND_TEST_PATTERN='^frontend/src/(.*/)?tests?/|^frontend/src/.*(_test\.|\.test\.)'
 HITS=""
 if [[ -n "$RAW" ]]; then
   FRONTEND_TEST_RAW=$(printf '%s\n' "$RAW" | grep -E "$FRONTEND_TEST_PATTERN" || true)

@@ -375,4 +375,39 @@ else
 fi
 
 echo
+echo "=== TEST 13: a needle in a COMMENT under frontend/src/test/ (shared test helpers, not *.test.ts) must exit 1 too ==="
+# FRONTEND_TEST_PATTERN is '^frontend/src/.*(_test\.|\.test\.|/tests?/)'. A
+# file directly under frontend/src/test/ -- the repo's real shared test-helper
+# directory (mockData.ts, mocks/, testUtils.tsx, test-helpers.ts) -- has no
+# '_test.' or '.test.' in its filename, so it can only match via '/tests?/'.
+# It does match that alternative ('/test/' is 'tests?' with the optional s
+# absent), which routes it into OTHER_RAW's blanket exemption instead of
+# FRONTEND_TEST_RAW's comment-only scan -- so a comment leak here sails
+# through exactly the same way test-file comments used to everywhere, the gap
+# kindred#2367 exists to close for frontend/src/**.
+FE_TEST_DIR_PROBE="$REPO_ROOT/frontend/src/test/leak_probe_kindred2367_dir.ts"
+cleanup10() { rm -f "$FE_TEST_DIR_PROBE"; }
+trap 'cleanup10; cleanup9; cleanup8; cleanup7; cleanup6; cleanup5; cleanup4; cleanup3; cleanup' EXIT INT TERM
+cat > "$FE_TEST_DIR_PROBE" <<'PROBE'
+// Regression comment naming Kitty to explain a fixture below.
+export {}
+PROBE
+set +e
+OUT=$("$GUARD_SCRIPT" 2>&1)
+rc=$?
+set -e
+rm -f "$FE_TEST_DIR_PROBE"
+if [[ $rc -ne 1 ]]; then
+  echo "FAIL: expected exit 1 for a needle in a frontend/src/test/ comment, got $rc" >&2
+  echo "$OUT" >&2
+  exit 1
+fi
+if ! grep -q "frontend/src/test/leak_probe_kindred2367_dir.ts:1:" <<<"$OUT"; then
+  echo "FAIL: output missing frontend/src/test/ comment probe file:line" >&2
+  echo "$OUT" >&2
+  exit 1
+fi
+echo "PASS: a needle in a frontend/src/test/ file's comment is caught"
+
+echo
 echo "All tests passed."
