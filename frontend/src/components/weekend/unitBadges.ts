@@ -39,6 +39,21 @@ export interface UnitBadge {
   title?: string
 }
 
+/**
+ * Whether `reservationBadge` badges this unit "Write-in" — exported so a
+ * caller that shows the same fact another way can suppress the chip WITHOUT
+ * re-deriving the branch's own gate and risking drift from it (kindred#2252).
+ *
+ * `LodgingUnitCard` is that caller: the occupant already gets a `WriteInCard`
+ * in the unit's well, so the chip beside it repeated the same fact under a
+ * second name. The two other surfaces that draw this chip — `MapUnitPopover`'s
+ * header and its collapsed grid cell — carry no such card and still call
+ * `reservationBadge` directly, unaffected by this function existing.
+ */
+export function writeInBadgeApplies(unit: LodgingUnitRow): boolean {
+  return unit.inventory_class !== 'staff_default' && writeInOccupant(unit) !== null
+}
+
 export function reservationBadge(unit: LodgingUnitRow): UnitBadge | null {
   const staff = {
     label: 'Staff',
@@ -85,13 +100,14 @@ export function reservationBadge(unit: LodgingUnitRow): UnitBadge | null {
   // It still does not read `occupant_name`: "written in for a caretaker" and
   // "written in for a burst pipe" are the same fact about availability, which
   // is the same reason the reason text never reached this badge.
-  // Read through `writeInOccupant`, never the raw `family_available_override`.
-  // The board draws whichever level the tree resolves to, so the card carrying
-  // a write-in is often not the unit whose row it is: split a written-into
-  // building and its ROOMS carry it; merge over a written-into room and the
-  // BUILDING does. The column answers only for the unit it sits on, which is
-  // how a write-in went silent the moment somebody merged or split around it.
-  if (unit.inventory_class !== 'staff_default' && writeInOccupant(unit) !== null) {
+  // Read through `writeInBadgeApplies` (`writeInOccupant`, never the raw
+  // `family_available_override`). The board draws whichever level the tree
+  // resolves to, so the card carrying a write-in is often not the unit whose
+  // row it is: split a written-into building and its ROOMS carry it; merge
+  // over a written-into room and the BUILDING does. The column answers only
+  // for the unit it sits on, which is how a write-in went silent the moment
+  // somebody merged or split around it.
+  if (writeInBadgeApplies(unit)) {
     return {
       label: 'Write-in',
       className: 'bg-slate-200 text-slate-800 dark:bg-slate-800 dark:text-slate-200',
@@ -309,9 +325,20 @@ export function availabilityAction(
   // (closed this weekend) are different answers, and collapsing them makes
   // either "Write in" or "Clear" unreachable across most of the board.
   const own = { unitId: unit.unit_id, unitName: unit.name }
-  const clear = (target: { unitId: string; unitName: string }): AvailabilityAction => ({
+  // `label` defaults to the bare 'Clear' the RELEASE and the "agrees with the
+  // role" branches keep — neither of those undoes a write-in, so borrowing
+  // its wording would name a fact that is not there. The write-in branch below
+  // passes 'Clear Write-in' explicitly (kindred#2252): the chip that used to
+  // sit beside this button on `LodgingUnitCard` said "Write-in" out loud, and
+  // #2252 dropped it from that card as redundant with the well's `WriteInCard`
+  // — so the button is now the only thing left on that card naming what a
+  // click removes, and a bare 'Clear' stopped saying that.
+  const clear = (
+    target: { unitId: string; unitName: string },
+    label = 'Clear'
+  ): AvailabilityAction => ({
     kind: 'clear',
-    label: 'Clear',
+    label,
     familyAvailable: null,
     prompt: 'none',
     ...target,
@@ -345,7 +372,7 @@ export function availabilityAction(
   // split does to it.
   const source = writeInSource(unit)
   if (source !== null) {
-    return clear({ unitId: source.unitId, unitName: source.unitName })
+    return clear({ unitId: source.unitId, unitName: source.unitName }, 'Clear Write-in')
   }
   // Any other override of its own. Reachable for a `true` on a family-pool
   // row: it AGREES with that unit's role so no surface writes one and the

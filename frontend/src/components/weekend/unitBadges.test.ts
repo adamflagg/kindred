@@ -222,16 +222,22 @@ describe('availabilityAction', () => {
     })
   })
 
-  it('offers to clear a held family cabin, and asks for no reason to do it', () => {
+  it('offers to clear a held family cabin, labelled for what it actually removes (#2252)', () => {
     // `null` DELETES the row. There is no value meaning "normal": writing one
     // would pin the unit against a later change to its role.
+    //
+    // The label is 'Clear Write-in', not the bare 'Clear' this used to read.
+    // kindred#2252: the badge chip that used to sit beside this button on
+    // `LodgingUnitCard` is gone there (the well's `WriteInCard` already names
+    // the occupant), so the button is now the only thing on that card saying
+    // what a click does — and "Clear" alone does not say what it clears.
     expect(
       availabilityAction(
         unit({ family_available_override: false, reason: 'Burst pipe', is_family_available: false })
       )
     ).toEqual({
       kind: 'clear',
-      label: 'Clear',
+      label: 'Clear Write-in',
       familyAvailable: null,
       prompt: 'none',
       unitId: 'u1',
@@ -239,7 +245,12 @@ describe('availabilityAction', () => {
     })
   })
 
-  it('offers to clear a released staff cabin', () => {
+  it('offers to clear a released staff cabin, and does NOT borrow the write-in wording (#2252)', () => {
+    // This branch clears a RELEASE, not a write-in — `writeInSource` never
+    // matches a staff cabin's own release row, so it never reaches the
+    // relabelled branch. Asserted by name, not just by kind: a copy/paste that
+    // pointed this branch at the write-in label too would say "Clear
+    // Write-in" on a card that was never written into.
     expect(
       availabilityAction(
         unit({
@@ -247,8 +258,8 @@ describe('availabilityAction', () => {
           family_available_override: true,
           is_family_available: true,
         })
-      )?.kind
-    ).toBe('clear')
+      )
+    ).toMatchObject({ kind: 'clear', label: 'Clear' })
   })
 
   it('offers to clear a row that merely agrees with the unit role', () => {

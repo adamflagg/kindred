@@ -2288,3 +2288,77 @@ describe('LodgingUnitCard — no sr-only text of any kind (kindred#2348)', () =>
     )
   })
 })
+
+describe('LodgingUnitCard — the write-in chip, dropped in favour of the well (kindred#2252)', () => {
+  const HUE = 'hsl(160 45% 42%)'
+  const WRITTEN_IN = unit({
+    family_available_override: false,
+    occupant_name: 'Emma Johnson',
+    is_family_available: false,
+  })
+
+  it('drops the redundant "Write-in" chip from the badge row — WriteInCard already names the occupant', () => {
+    // Before #2252 a written-into card said the same thing twice: a slate
+    // "Write-in" chip in the badge row, and the occupant's own name in the
+    // `WriteInCard` drawn in the well below. The chip is gone from THIS card;
+    // the well is untouched.
+    render(<LodgingUnitCard slot={slot({ unit: WRITTEN_IN })} hue={HUE} onOpenParty={vi.fn()} />)
+
+    expect(screen.getByText('Emma Johnson')).toBeInTheDocument()
+    expect(screen.queryByText('Write-in')).not.toBeInTheDocument()
+  })
+
+  it('does not suppress OTHER badges on this card — the sharing badge survives untouched', () => {
+    // Regression guard: the suppression is scoped to the write-in chip only,
+    // not to `reservationBadge`'s output wholesale on this card.
+    render(
+      <LodgingUnitCard
+        slot={slot({ unit: unit({ shareability: 'shareable' }) })}
+        hue={HUE}
+        onOpenParty={vi.fn()}
+      />
+    )
+    expect(screen.getByText('Shared OK')).toBeInTheDocument()
+  })
+
+  it('does not suppress the "Staff" badge — a closed staff cabin is exempt from the gate, not just no write-in', () => {
+    // This is the case `writeInBadgeApplies`'s `inventory_class !==
+    // 'staff_default'` half exists for: a staff cabin closed for the weekend
+    // synthesises a `writeInOccupant` cover the same way a family room's
+    // write-in does (`writeIn.ts`'s `coveringWriteIn` fallback reads
+    // `family_available_override === false` for either role), so reading
+    // `writeInOccupant(unit) !== null` alone here would swallow the "Staff"
+    // chip along with the "Write-in" one. Pins both halves of the gate at
+    // once — the class check AND the scoping to this card only.
+    render(
+      <LodgingUnitCard
+        slot={slot({
+          unit: unit({
+            inventory_class: 'staff_default',
+            family_available_override: false,
+            occupant_name: 'Emma Johnson',
+            is_family_available: false,
+          }),
+        })}
+        hue={HUE}
+        onOpenParty={vi.fn()}
+      />
+    )
+    expect(screen.getByText('Staff')).toBeInTheDocument()
+  })
+
+  it('labels the availability control "Clear Write-in" rather than a bare "Clear"', () => {
+    // The chip is gone, so the button is now the ONLY thing on this card
+    // saying what a click removes. "Clear" alone stopped saying that.
+    render(
+      <LodgingUnitCard
+        slot={slot({ unit: WRITTEN_IN })}
+        hue={HUE}
+        canSetAvailability
+        onSetAvailability={vi.fn()}
+        onOpenParty={vi.fn()}
+      />
+    )
+    expect(screen.getByRole('button', { name: 'Clear Write-in Cedar 1' })).toBeInTheDocument()
+  })
+})
