@@ -4455,3 +4455,39 @@ func TestEmbeddingBaseSyncServiceDoesNotLeakDryRunnable(t *testing.T) {
 			"package cannot gate with a local flag at all")
 	}
 }
+
+// TestCurrentYearDefaultSyncStillRejectsDryRun pins the residue kindred#2351 deliberately left
+// out of scope: `dry_run=true` against the default `service=all` for the CURRENT year still
+// gets HTTP 400, because ResolveUnifiedSyncServices appends "reconcile_request_lifecycle" and
+// "bunk_requests" to the 24 default jobs whenever isCurrentYear is true, and neither
+// implements DryRunnable. #2351's own scope table names only the 24 default jobs; these two
+// were never on it (see the issue body's "Scope" section) -- wiring them is future work, not a
+// gap in this PR. Without this test, the PR body's "What" paragraph reading as "the 400 is
+// fixed" would go unchecked: a historical-replay request (year != current) genuinely gets a
+// 200 now, but the most natural invocation -- the current year, with no service specified --
+// does not.
+func TestCurrentYearDefaultSyncStillRejectsDryRun(t *testing.T) {
+	// Not t.Parallel(): t.Setenv forbids it.
+	o := NewOrchestrator(nil)
+
+	// Only the two services responsible for the residual 400 need to be registered as their
+	// real (un-wired) types -- UnsupportedDryRunServices silently skips any name in the list
+	// that isn't registered on this orchestrator instance (see TestUnsupportedDryRunServices),
+	// so the 24 default jobs themselves don't need registering to prove this specific residue.
+	o.RegisterService("reconcile_request_lifecycle", NewReconcileLifecycleSync(nil))
+	o.RegisterService("bunk_requests", NewBunkRequestsSync(nil, nil))
+
+	t.Setenv("IS_DOCKER", "")
+	services := ResolveUnifiedSyncServices(DefaultService, true, true)
+
+	got := o.UnsupportedDryRunServices(services)
+	want := []string{"reconcile_request_lifecycle", "bunk_requests"}
+	if len(got) != len(want) {
+		t.Fatalf("UnsupportedDryRunServices(current-year default) = %v, want %v", got, want)
+	}
+	for i, name := range want {
+		if got[i] != name {
+			t.Errorf("UnsupportedDryRunServices(current-year default)[%d] = %q, want %q", i, got[i], name)
+		}
+	}
+}

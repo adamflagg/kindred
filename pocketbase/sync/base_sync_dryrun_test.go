@@ -34,9 +34,17 @@ func newBaseSyncDryRunTestApp(t *testing.T, collection string) core.App {
 // production entry point 12 of the 24 default unified sync jobs share for
 // every create/update they perform (kindred#2351): with DryRun set, neither
 // branch of ProcessSimpleRecord calls App.Save, so record counts and the
-// row's own fields are untouched. This is the same shared helper
-// ProcessSimpleRecordGlobal and ProcessCompositeRecord mirror; those two are
-// covered by the sibling tests below rather than repeated here.
+// row's own fields are untouched. ProcessCompositeRecord's identically-shaped
+// guards are covered by the sibling test below.
+//
+// ProcessSimpleRecordGlobal (base_sync.go's other App.Save-guarded write
+// helper) is deliberately NOT covered here or below: none of kindred#2351's
+// twelve wired services call it -- its only callers (custom_field_definitions,
+// divisions, financial_lookups, person_tag_definitions, staff_lookups) declare
+// no SetDryRun and stay rejected with a 400, so the guard is currently dead
+// code from a coverage standpoint. TestBaseSyncServiceProcessSimpleRecordGlobalDryRunWritesNothing
+// pins it anyway, on the same "shared helper, one gap breaks every future
+// caller silently" reasoning as the other three helpers in this file.
 func TestBaseSyncServiceProcessSimpleRecordDryRunWritesNothing(t *testing.T) {
 	t.Parallel()
 	app := newBaseSyncDryRunTestApp(t, "dryrun_simple")
@@ -75,6 +83,63 @@ func TestBaseSyncServiceProcessSimpleRecordDryRunWritesNothing(t *testing.T) {
 	}
 
 	rows, queryErr := app.FindRecordsByFilter("dryrun_simple", "", "", 0, 0)
+	if queryErr != nil {
+		t.Fatalf("re-query: %v", queryErr)
+	}
+	if len(rows) != 1 {
+		t.Fatalf("dry run wrote %d rows; want 1 (only the seeded one)", len(rows))
+	}
+	if rows[0].GetString("name") != "Original" {
+		t.Fatalf("dry run persisted a name change: got %q, want %q (unchanged)",
+			rows[0].GetString("name"), "Original")
+	}
+}
+
+// TestBaseSyncServiceProcessSimpleRecordGlobalDryRunWritesNothing mirrors
+// TestBaseSyncServiceProcessSimpleRecordDryRunWritesNothing above for
+// ProcessSimpleRecordGlobal, base_sync.go's write helper for entities that
+// are NOT year-scoped (divisions, custom_field_defs, staff_lookups,
+// financial_lookups, person_tag_defs). None of those callers are wired to
+// DryRunnable today, so this guard is currently unreachable in production --
+// pinned regardless, so a future service that wires one of those five
+// callers doesn't inherit a silently-broken guard.
+func TestBaseSyncServiceProcessSimpleRecordGlobalDryRunWritesNothing(t *testing.T) {
+	t.Parallel()
+	app := newBaseSyncDryRunTestApp(t, "dryrun_global")
+
+	col, findErr := app.FindCollectionByNameOrId("dryrun_global")
+	if findErr != nil {
+		t.Fatalf("FindCollectionByNameOrId: %v", findErr)
+	}
+	existing := core.NewRecord(col)
+	existing.Set("cm_id", "1")
+	existing.Set("name", "Original")
+	if saveErr := app.Save(existing); saveErr != nil {
+		t.Fatalf("seed existing record: %v", saveErr)
+	}
+
+	b := &BaseSyncService{App: app, Stats: Stats{}, DryRun: true}
+
+	existingRecords := map[any]*core.Record{
+		"1": existing,
+	}
+
+	// Update branch: field differs, so a real run would call App.Save.
+	if updateErr := b.ProcessSimpleRecordGlobal("dryrun_global", "1",
+		map[string]any{"cm_id": "1", "name": "Changed"},
+		existingRecords, []string{"name"}); updateErr != nil {
+		t.Fatalf("ProcessSimpleRecordGlobal (update): %v", updateErr)
+	}
+
+	// Create branch: key "2" has no existing record, so a real run would
+	// call App.Save on a brand new record.
+	if createErr := b.ProcessSimpleRecordGlobal("dryrun_global", "2",
+		map[string]any{"cm_id": "2", "name": "New"},
+		existingRecords, []string{"name"}); createErr != nil {
+		t.Fatalf("ProcessSimpleRecordGlobal (create): %v", createErr)
+	}
+
+	rows, queryErr := app.FindRecordsByFilter("dryrun_global", "", "", 0, 0)
 	if queryErr != nil {
 		t.Fatalf("re-query: %v", queryErr)
 	}

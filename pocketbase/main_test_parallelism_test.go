@@ -91,6 +91,11 @@ var serialGroups = []struct {
 	},
 	{
 		pkg:    "sync",
+		reason: "t.Setenv: IS_DOCKER drives ResolveUnifiedSyncServices' process_requests append",
+		tests:  []string{"TestCurrentYearDefaultSyncStillRejectsDryRun"},
+	},
+	{
+		pkg:    "sync",
 		reason: "t.Setenv: API_URL points at a per-test httptest server",
 		tests:  []string{"TestBuildNormalizationLookupCompositeKeyDedup"},
 	},
