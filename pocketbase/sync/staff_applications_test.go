@@ -718,9 +718,11 @@ func TestMapAppFieldToRecordRoutesTheFourLive2026Fields(t *testing.T) {
 // pin for kindred#2271's actual fix: before this, an App-* field accepted by
 // isStaffApplicationField but missing a case in MapStaffAppFieldToColumn was
 // discarded with no counter and no log line. It now must increment
-// Stats.Skipped once per discard and log the field name, split into the known
-// bucket (documented in retiredAppFieldReasons) and the unrecognized bucket (a
-// name this run has never been told about).
+// Stats.SkippedValues once per discard (kindred#2356 split this off
+// Stats.Skipped -- a discarded field value is not a skipped record) and log
+// the field name, split into the known bucket (documented in
+// retiredAppFieldReasons) and the unrecognized bucket (a name this run has
+// never been told about).
 //
 // Reuses newTransportValuesTestApp/addPersonCustomValue from
 // camper_transportation_test.go -- same package, same person_custom_values +

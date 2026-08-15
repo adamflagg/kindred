@@ -783,11 +783,12 @@ func addPersonCustomValue(t *testing.T, app core.App, fieldDefID, personPBID, va
 // for kindred#2272's actual fix: before this, a "BUS-*" field accepted by
 // isCamperTransportationField but missing a case in
 // MapTransportationFieldToColumn was discarded with no counter and no log
-// line. It now must increment Stats.Skipped once per discard event and log
-// the field name, split into the known-retired bucket (documented in
-// retiredBusFieldReasons) and the unrecognized bucket (a name this run has
-// never been told about -- the signal that matters if CampMinder ever adds a
-// new "BUS-*" field).
+// line. It now must increment Stats.SkippedValues once per discard event
+// (kindred#2356 split this off Stats.Skipped -- a discarded field value is
+// not a skipped record) and log the field name, split into the known-retired
+// bucket (documented in retiredBusFieldReasons) and the unrecognized bucket
+// (a name this run has never been told about -- the signal that matters if
+// CampMinder ever adds a new "BUS-*" field).
 func TestLoadPersonCustomValuesCountsAndLogsUnmappedFields(t *testing.T) {
 	app := newTransportValuesTestApp(t)
 
