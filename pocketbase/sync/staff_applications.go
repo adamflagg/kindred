@@ -237,6 +237,7 @@ func (s *StaffApplicationsSync) Sync(ctx context.Context) error {
 		"updated", s.Stats.Updated,
 		"deleted", s.Stats.Deleted,
 		"skipped", s.Stats.Skipped,
+		"skipped_values", s.Stats.SkippedValues,
 		"errors", s.Stats.Errors,
 	)
 
@@ -446,7 +447,7 @@ func (s *StaffApplicationsSync) loadPersonCustomValues(
 		for _, n := range unmappedCounts {
 			total += n
 		}
-		s.Stats.Skipped += total
+		s.Stats.SkippedValues += total
 
 		// One aggregated warning per run, not one per discarded value. unexpected
 		// is the bucket that actually needs a human: a name not in

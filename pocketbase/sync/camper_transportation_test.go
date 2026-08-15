@@ -783,11 +783,12 @@ func addPersonCustomValue(t *testing.T, app core.App, fieldDefID, personPBID, va
 // for kindred#2272's actual fix: before this, a "BUS-*" field accepted by
 // isCamperTransportationField but missing a case in
 // MapTransportationFieldToColumn was discarded with no counter and no log
-// line. It now must increment Stats.Skipped once per discard event and log
-// the field name, split into the known-retired bucket (documented in
-// retiredBusFieldReasons) and the unrecognized bucket (a name this run has
-// never been told about -- the signal that matters if CampMinder ever adds a
-// new "BUS-*" field).
+// line. It now must increment Stats.SkippedValues once per discard event
+// (kindred#2356 split this off Stats.Skipped -- a discarded field value is
+// not a skipped record) and log the field name, split into the known-retired
+// bucket (documented in retiredBusFieldReasons) and the unrecognized bucket
+// (a name this run has never been told about -- the signal that matters if
+// CampMinder ever adds a new "BUS-*" field).
 func TestLoadPersonCustomValuesCountsAndLogsUnmappedFields(t *testing.T) {
 	app := newTransportValuesTestApp(t)
 
@@ -835,9 +836,16 @@ func TestLoadPersonCustomValuesCountsAndLogsUnmappedFields(t *testing.T) {
 		t.Errorf("routed field was not written: toCampMethod = %q, want %q", rec.toCampMethod, testRoutedBusValue)
 	}
 
-	if s.Stats.Skipped != 2 {
-		t.Errorf("Stats.Skipped = %d, want 2 -- one discard event each for the retired and the novel field",
-			s.Stats.Skipped)
+	// kindred#2356: discarded field VALUES must land on Stats.SkippedValues, not
+	// Stats.Skipped -- the record itself was still created (see rec above), so
+	// counting these two discard events against the record-level Skipped counter
+	// would misrepresent them as skipped records to a toast reader.
+	if s.Stats.SkippedValues != 2 {
+		t.Errorf("Stats.SkippedValues = %d, want 2 -- one discard event each for the retired and the novel field",
+			s.Stats.SkippedValues)
+	}
+	if s.Stats.Skipped != 0 {
+		t.Errorf("Stats.Skipped = %d, want 0 -- a discarded field value is not a skipped record", s.Stats.Skipped)
 	}
 
 	logged := logs.String()
@@ -890,6 +898,9 @@ func TestLoadPersonCustomValuesNoDiscardsMeansNoWarnLog(t *testing.T) {
 
 	if s.Stats.Skipped != 0 {
 		t.Errorf("Stats.Skipped = %d, want 0", s.Stats.Skipped)
+	}
+	if s.Stats.SkippedValues != 0 {
+		t.Errorf("Stats.SkippedValues = %d, want 0", s.Stats.SkippedValues)
 	}
 	if logged := logs.String(); logged != "" {
 		t.Errorf("expected no log output when nothing was discarded, got:\n%s", logged)

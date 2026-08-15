@@ -33,6 +33,10 @@ let staffLookupsStatus: unknown = idleStatus
 // covered by any existing entry above. Reset in afterEach.
 let staffStatus: unknown = idleStatus
 
+// kindred#2356: `camper_transportation` is a year sync (renderSyncCard) and needs its own
+// injectable status to pin the skipped_values badge. Reset in afterEach.
+let camperTransportationStatus: unknown = idleStatus
+
 vi.mock('../../hooks/useSyncCompletionToasts', () => ({
   useSyncCompletionToasts: () => ({
     family_camp_derived: idleStatus,
@@ -41,7 +45,6 @@ vi.mock('../../hooks/useSyncCompletionToasts', () => ({
     financial_aid_applications: idleStatus,
     household_demographics: idleStatus,
     camper_dietary: idleStatus,
-    camper_transportation: idleStatus,
     quest_registrations: idleStatus,
     staff_applications: idleStatus,
     staff_vehicle_info: idleStatus,
@@ -56,6 +59,9 @@ vi.mock('../../hooks/useSyncCompletionToasts', () => ({
     },
     get staff() {
       return staffStatus
+    },
+    get camper_transportation() {
+      return camperTransportationStatus
     },
   }),
 }))
@@ -364,5 +370,47 @@ describe('SyncTab duplicate staff status badge (#2267)', () => {
     renderSyncTab()
 
     expect(within(staffCard()).queryByText(/dup status/)).not.toBeInTheDocument()
+  })
+})
+
+// Regression test for kindred#2356 (review follow-up): the Sync tab's persistent per-service
+// badge row rendered every other special counter (rejected, duplicate_staff_status,
+// already_processed, prod_audit_warnings, lodging_prod_audit_warnings) but not the new
+// skipped_values -- and since the fix moved camper_transportation/staff_applications off
+// Stats.Skipped entirely, their "skip" badge went permanently blank with no replacement. An
+// operator who doesn't catch the 5-second toast has no on-screen signal at all that field
+// values were discarded.
+describe('SyncTab skipped-values badge (kindred#2356)', () => {
+  afterEach(() => {
+    camperTransportationStatus = idleStatus
+  })
+
+  function transportationCard() {
+    const heading = screen.getByText('Transportation', { selector: 'div' })
+    const card = heading.closest('.flex.flex-col')
+    if (!card) throw new Error('could not find Transportation card')
+    return card as HTMLElement
+  }
+
+  it('renders a values-skipped badge when skipped_values is positive', () => {
+    camperTransportationStatus = {
+      status: 'success',
+      summary: { created: 10, updated: 0, skipped: 0, errors: 0, skipped_values: 557 },
+    }
+
+    renderSyncTab()
+
+    expect(within(transportationCard()).getByText('557 val skip')).toBeInTheDocument()
+  })
+
+  it('renders no values-skipped badge when skipped_values is zero or absent', () => {
+    camperTransportationStatus = {
+      status: 'success',
+      summary: { created: 10, updated: 0, skipped: 0, errors: 0 },
+    }
+
+    renderSyncTab()
+
+    expect(within(transportationCard()).queryByText(/val skip/)).not.toBeInTheDocument()
   })
 })

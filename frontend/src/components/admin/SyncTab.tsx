@@ -283,6 +283,11 @@ export function SyncTab() {
                 {(status.summary.skipped || 0) > 0 && (
                   <span className="text-muted-foreground">{status.summary.skipped} skip</span>
                 )}
+                {(status.summary.skipped_values ?? 0) > 0 && (
+                  <span className="text-muted-foreground">
+                    {status.summary.skipped_values} val skip
+                  </span>
+                )}
                 {status.summary.errors > 0 && (
                   <span className="font-medium text-red-600 dark:text-red-400">
                     {status.summary.errors} err
@@ -859,6 +864,11 @@ export function SyncTab() {
                           {(status.summary.skipped || 0) > 0 && (
                             <span className="text-muted-foreground">
                               {status.summary.skipped} skip
+                            </span>
+                          )}
+                          {(status.summary.skipped_values ?? 0) > 0 && (
+                            <span className="text-muted-foreground">
+                              {status.summary.skipped_values} val skip
                             </span>
                           )}
                           {status.summary.errors > 0 && (
