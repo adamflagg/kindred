@@ -926,8 +926,15 @@ func stalePersonAssignment(
 // activeSeasonYear() must resolve to 0 -- 0 can never equal a validated
 // 2017-2050 season, so the #2028 orphan sweep's year gate blocks rather than
 // runs.
+//
+// Serial, not t.Parallel(): "unset" has to be true of the actual process
+// environment, not just of whatever this test happens to read, so it clears
+// CAMPMINDER_SEASON_ID with t.Setenv rather than assuming a clean ambient
+// env. A developer who has exported the repo's own .env (which sets
+// CAMPMINDER_SEASON_ID) into their shell would otherwise get a spurious red
+// here on correct code (kindred#2289 review).
 func TestActiveSeasonYearFailsClosedWhenUnset(t *testing.T) {
-	t.Parallel()
+	t.Setenv("CAMPMINDER_SEASON_ID", "")
 	s := NewLodgingAssignmentsSync(nil)
 	if got := s.activeSeasonYear(); got != 0 {
 		t.Errorf("activeSeasonYear() = %d, want 0 (fail closed)", got)
@@ -1202,6 +1209,99 @@ func TestLodgingAssignmentsSyncSkipsOrphanSweepForHistoricalYear(t *testing.T) {
 	}
 	if got := s.GetStats().Deleted; got != 0 {
 		t.Errorf("Stats.Deleted = %d, want 0 -- a historical sync must never lose rows to the orphan sweep", got)
+	}
+}
+
+// TestLodgingAssignmentsSyncSkipsOrphanSweepWhenSeasonUnresolvable pins the
+// #2028 year gate itself, not just activeSeasonYear()'s return value
+// (kindred#2289 review, finding 1). Every other test above sets
+// s.ActiveSeasonYear directly, so the gate's `year != active` comparison is
+// never driven with an unresolvable season -- a mutation that fail-opened the
+// gate to "no configured season means no gate" passed the entire package.
+// This leaves ActiveSeasonYear at its zero value and clears
+// CAMPMINDER_SEASON_ID with t.Setenv, matching production's actual state on
+// a deployment where the env var is missing or invalid, and asserts the
+// cancelled household's row SURVIVES: an unresolvable active season must
+// block the sweep, not accidentally allow it.
+//
+// Serial, not t.Parallel(): t.Setenv panics under Parallel.
+func TestLodgingAssignmentsSyncSkipsOrphanSweepWhenSeasonUnresolvable(t *testing.T) {
+	t.Setenv("CAMPMINDER_SEASON_ID", "")
+	app := newLodgingTestApp(t)
+	sess := addSession(t, app, cmIDFamilyCamp1, "Family Camp 1", "family",
+		testSessionStart, testSessionEnd, 2025)
+	unit := addUnit(t, app, "ridge-a", 2025)
+	addAlias(t, app, "Ridge A", []string{unit}, 0, 0)
+	cabinDef := addFieldDef(t, app, cmIDFamilyCampCabin, fieldNameFamilyCampCabin)
+
+	hh := addHousehold(t, app, 9001, 2025)
+	emma := addPerson(t, app, 5001, 9001, 2025, hh)
+	addAttendee(t, app, emma, sess, 5001, 32, 2025) // cancelled
+	addHouseholdValue(t, app, hh, cabinDef, "Ridge A", testLastUpdated, 2025)
+	staleRow := staleHouseholdAssignment(t, app, sess, cmIDFamilyCamp1, 9001, 2025, unit, false)
+
+	hh2 := addHousehold(t, app, 9002, 2025)
+	liam := addPerson(t, app, 5002, 9002, 2025, hh2)
+	addAttendee(t, app, liam, sess, 5002, 2, 2025)
+
+	s := NewLodgingAssignmentsSync(app)
+	s.Year = 2025
+	// s.ActiveSeasonYear left at 0 -- CAMPMINDER_SEASON_ID unresolvable too.
+	if err := s.Sync(context.Background()); err != nil {
+		t.Fatalf("Sync: %v", err)
+	}
+
+	if _, err := app.FindRecordById("lodging_assignments", staleRow); err != nil {
+		t.Errorf("orphan sweep ran with an unresolvable active season -- real placement deleted: %v", err)
+	}
+	if got := s.GetStats().Deleted; got != 0 {
+		t.Errorf("Stats.Deleted = %d, want 0 -- an unresolvable season must fail closed, not fail open", got)
+	}
+}
+
+// TestLodgingAssignmentsSyncDeletesOrphansViaEnvFallback covers the code
+// path production actually runs: every real deployment leaves
+// s.ActiveSeasonYear at 0 and resolves the active season from
+// CAMPMINDER_SEASON_ID via ParseSeasonYear() (kindred#2289 review, finding
+// 2). Migrating all eight sweep tests onto s.ActiveSeasonYear left that
+// fallback with no coverage at all -- a mutation that deleted the
+// ParseSeasonYear() fallback entirely still passed the whole package. This
+// test is the env-fallback twin of
+// TestLodgingAssignmentsSyncDeletesOrphanedHouseholdMirrorRow: same fixture,
+// but the active season is resolved from the environment, not injected.
+//
+// Serial, not t.Parallel(): t.Setenv panics under Parallel.
+func TestLodgingAssignmentsSyncDeletesOrphansViaEnvFallback(t *testing.T) {
+	t.Setenv("CAMPMINDER_SEASON_ID", "2025")
+	app := newLodgingTestApp(t)
+	sess := addSession(t, app, cmIDFamilyCamp1, "Family Camp 1", "family",
+		testSessionStart, testSessionEnd, 2025)
+	unit := addUnit(t, app, "ridge-a", 2025)
+	addAlias(t, app, "Ridge A", []string{unit}, 0, 0)
+	cabinDef := addFieldDef(t, app, cmIDFamilyCampCabin, fieldNameFamilyCampCabin)
+
+	hh := addHousehold(t, app, 9001, 2025)
+	emma := addPerson(t, app, 5001, 9001, 2025, hh)
+	addAttendee(t, app, emma, sess, 5001, 32, 2025) // cancelled
+	addHouseholdValue(t, app, hh, cabinDef, "Ridge A", testLastUpdated, 2025)
+	staleRow := staleHouseholdAssignment(t, app, sess, cmIDFamilyCamp1, 9001, 2025, unit, false)
+
+	hh2 := addHousehold(t, app, 9002, 2025)
+	liam := addPerson(t, app, 5002, 9002, 2025, hh2)
+	addAttendee(t, app, liam, sess, 5002, 2, 2025)
+
+	s := NewLodgingAssignmentsSync(app)
+	s.Year = 2025
+	// s.ActiveSeasonYear left at 0 -- must resolve via CAMPMINDER_SEASON_ID.
+	if err := s.Sync(context.Background()); err != nil {
+		t.Fatalf("Sync: %v", err)
+	}
+
+	if _, err := app.FindRecordById("lodging_assignments", staleRow); err == nil {
+		t.Error("cancelled household's stale mirror row still exists -- env fallback did not reach the sweep")
+	}
+	if got := s.GetStats().Deleted; got != 1 {
+		t.Errorf("Stats.Deleted = %d, want 1", got)
 	}
 }
 

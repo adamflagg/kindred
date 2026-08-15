@@ -58,6 +58,22 @@ var serialGroups = []struct {
 			"TestParseSeasonYear_BelowRange",
 			"TestParseSeasonYear_AboveRange",
 			"TestParseSeasonYear_Boundaries",
+			"TestActiveSeasonYearFailsClosedWhenUnset",
+		},
+	},
+	{
+		// #2289 review: the eight orphan-sweep tests migrated onto
+		// s.ActiveSeasonYear so they could run in parallel, but that left the
+		// #2028 year gate itself (year != active) and production's actual
+		// CAMPMINDER_SEASON_ID fallback path with zero direct coverage --
+		// s.ActiveSeasonYear always overrides both in every other test in this
+		// file. These two drive Sync() with ActiveSeasonYear left at 0, so
+		// they need the real environment variable.
+		pkg:    "sync",
+		reason: "t.Setenv: CAMPMINDER_SEASON_ID drives the #2028 gate itself, not the ActiveSeasonYear override",
+		tests: []string{
+			"TestLodgingAssignmentsSyncSkipsOrphanSweepWhenSeasonUnresolvable",
+			"TestLodgingAssignmentsSyncDeletesOrphansViaEnvFallback",
 		},
 	},
 	{
