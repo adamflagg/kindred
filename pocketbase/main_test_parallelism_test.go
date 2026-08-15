@@ -91,8 +91,21 @@ var serialGroups = []struct {
 	},
 	{
 		pkg:    "sync",
+		reason: "t.Setenv: IS_DOCKER drives ResolveUnifiedSyncServices' process_requests append",
+		tests:  []string{"TestCurrentYearDefaultSyncStillRejectsDryRun"},
+	},
+	{
+		pkg:    "sync",
 		reason: "t.Setenv: API_URL points at a per-test httptest server",
 		tests:  []string{"TestBuildNormalizationLookupCompositeKeyDedup"},
+	},
+	{
+		// campminder.NewClient reads CAMPMINDER_PRIMARY_KEY from the environment
+		// (same reason as the block below), so building the real client this
+		// test needs for GetSeasonID() costs a t.Setenv.
+		pkg:    "sync",
+		reason: "t.Setenv: campminder.NewClient reads CAMPMINDER_PRIMARY_KEY",
+		tests:  []string{"TestAttendeesLogStatusChangeDryRunWritesNothing"},
 	},
 	{
 		// These four drive deleteOrphans, which reads the season through
@@ -157,6 +170,7 @@ var serialGroups = []struct {
 			"TestLoadPersonCustomValuesNoDiscardsMeansNoWarnAppLog",
 			"TestLoadPersonCustomValuesNoDiscardsMeansNoWarnLog",
 			"TestLoadPersonCustomValuesRoutesTheFourLive2026FieldsAndDoesNotSkipThem",
+			"TestStrandedAssignmentCleanupDryRunLodgingLogReportsSimulatedSweep",
 		},
 	},
 	{

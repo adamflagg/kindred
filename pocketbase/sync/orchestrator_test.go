@@ -1917,11 +1917,31 @@ func TestUnsupportedDryRunServices(t *testing.T) {
 // 400. This list -- and the compile-time assertions below -- exist so a future
 // service losing its SetDryRun method (e.g. during a refactor) fails a test instead of silently
 // falling back to rejection.
+//
+// kindred#2351 added the next twelve. All twelve embed BaseSyncService and route their writes
+// through some mix of its eight gated App.Save/App.Delete call sites (see that field's doc
+// comment in base_sync.go) and, for four of them, write sites of their own: attendees'
+// attendee_status_history insert; persons' person/household upserts, attendee-relation and
+// household-relation backfills, and household-orphan delete; the two custom-values services'
+// fast-path upsert. Every one of the twelve declares its OWN explicit three-line SetDryRun
+// rather than inheriting one from BaseSyncService -- discovered the hard way: an exported
+// SetDryRun on BaseSyncService itself is PROMOTED to every embedder, including services this
+// issue never touches (bunk_requests, reachable through a current-year `service=all` request
+// via ResolveUnifiedSyncServices; request_processor, whose Sync() delegates to a remote FastAPI
+// call this field cannot gate at all), so it would make those silently claim DryRunnable
+// whether or not their own writes are gated -- exactly the "200 dry_run:true, runs wet anyway"
+// failure kindred#2334 was about. TestEmbeddingBaseSyncServiceDoesNotLeakDryRunnable pins that
+// bunk_requests and request_processor stay correctly unsupported. stranded_assignment_cleanup
+// does not embed BaseSyncService at all -- it is a from-scratch DryRun field and two gated
+// app.Save calls threaded through reconcileStrandedAssignments/reconcileLodgingOrphans.
 var dryRunCapableRealServices = []string{
 	"camper_dietary", "quest_registrations", "household_demographics",
 	"financial_aid_applications", "lodging_assignments", "camper_transportation",
 	"staff_vehicle_info", "enrollment_snapshots", "normalize_geographic", "family_camp_derived",
 	"staff_applications", "staff_skills",
+	"session_groups", "sessions", "bunks", "bunk_plans", "bunk_assignments", "staff",
+	"financial_transactions", "attendees", "persons", "person_custom_values",
+	"household_custom_values", "stranded_assignment_cleanup",
 }
 
 // Compile-time guarantee that the real production types stay wired to DryRunnable. If any of
@@ -1940,12 +1960,31 @@ var (
 	_ DryRunnable = (*FamilyCampDerivedSync)(nil)
 	_ DryRunnable = (*StaffApplicationsSync)(nil)
 	_ DryRunnable = (*StaffSkillsSync)(nil)
+	_ DryRunnable = (*SessionGroupsSync)(nil)
+	_ DryRunnable = (*SessionsSync)(nil)
+	_ DryRunnable = (*BunksSync)(nil)
+	_ DryRunnable = (*BunkPlansSync)(nil)
+	_ DryRunnable = (*BunkAssignmentsSync)(nil)
+	_ DryRunnable = (*StaffSync)(nil)
+	_ DryRunnable = (*FinancialTransactionsSync)(nil)
+	_ DryRunnable = (*AttendeesSync)(nil)
+	_ DryRunnable = (*PersonsSync)(nil)
+	_ DryRunnable = (*PersonCustomFieldValuesSync)(nil)
+	_ DryRunnable = (*HouseholdCustomFieldValuesSync)(nil)
+	_ DryRunnable = (*StrandedAssignmentCleanupSync)(nil)
 )
 
 // TestRealServicesHonorDryRunThroughUnifiedEndpoint proves the wiring against the actual
 // registered production types (not dryRunAwareService test doubles): every service in
 // dryRunCapableRealServices must be absent from UnsupportedDryRunServices' verdict on that
-// list, while a service known to have no such logic (session_groups) must still be rejected.
+// list, while a service known to have no such logic (bunk_requests) must still be rejected.
+// bunk_requests is the exemplar rather than persons or session_groups (both now wired) because
+// it embeds BaseSyncService -- like every service in dryRunCapableRealServices below does --
+// and still correctly stays unsupported, which is the whole point of not putting a promoted
+// SetDryRun on BaseSyncService itself (see that field's doc comment). It is also not a
+// hypothetical: ResolveUnifiedSyncServices appends bunk_requests to "all" whenever the
+// requested year is the current one, so it is genuinely reachable through the unified
+// dry_run=true endpoint, not just a name picked for the test.
 // Without this, TestUnsupportedDryRunServices above could stay green forever while every real
 // service in production silently lost its DryRunnable implementation.
 //
@@ -1968,20 +2007,32 @@ func TestRealServicesHonorDryRunThroughUnifiedEndpoint(t *testing.T) {
 	o.RegisterService("family_camp_derived", NewFamilyCampDerivedSync(nil))
 	o.RegisterService("staff_applications", NewStaffApplicationsSync(nil))
 	o.RegisterService("staff_skills", NewStaffSkillsSync(nil))
+	o.RegisterService(serviceNameSessionGroups, NewSessionGroupsSync(nil, nil))
+	o.RegisterService("sessions", NewSessionsSync(nil, nil))
+	o.RegisterService("bunks", NewBunksSync(nil, nil))
+	o.RegisterService("bunk_plans", NewBunkPlansSync(nil, nil))
+	o.RegisterService("bunk_assignments", NewBunkAssignmentsSync(nil, nil))
+	o.RegisterService("staff", NewStaffSync(nil, nil))
+	o.RegisterService("financial_transactions", NewFinancialTransactionsSync(nil, nil))
+	o.RegisterService("attendees", NewAttendeesSync(nil, nil))
+	o.RegisterService("persons", NewPersonsSync(nil, nil))
+	o.RegisterService("person_custom_values", NewPersonCustomFieldValuesSync(nil, nil))
+	o.RegisterService("household_custom_values", NewHouseholdCustomFieldValuesSync(nil, nil))
+	o.RegisterService("stranded_assignment_cleanup", NewStrandedAssignmentCleanupSync(nil))
 	// The real production type, not a double: the rejection path has to be proven against a
 	// service that genuinely has no dry-run support, or nothing in the suite shows that a
-	// wet-only service is actually caught. If session_groups ever gains a real SetDryRun and
-	// a skip-write branch, this failing is the correct signal to move it into
+	// wet-only service is actually caught. If bunk_requests ever gains a real SetDryRun and a
+	// skip-write branch of its own, this failing is the correct signal to move it into
 	// dryRunCapableRealServices rather than to swap a double back in here.
-	o.RegisterService(serviceNameSessionGroups, NewSessionGroupsSync(nil, nil))
+	o.RegisterService("bunk_requests", NewBunkRequestsSync(nil, nil))
 
 	if got := o.UnsupportedDryRunServices(dryRunCapableRealServices); len(got) != 0 {
 		t.Errorf("expected every real dry-run-capable service to be supported, got unsupported=%v", got)
 	}
 
-	got := o.UnsupportedDryRunServices(append(append([]string{}, dryRunCapableRealServices...), serviceNameSessionGroups))
-	if len(got) != 1 || got[0] != serviceNameSessionGroups {
-		t.Errorf("expected only [%s] unsupported alongside the real services, got %v", serviceNameSessionGroups, got)
+	got := o.UnsupportedDryRunServices(append(append([]string{}, dryRunCapableRealServices...), "bunk_requests"))
+	if len(got) != 1 || got[0] != "bunk_requests" {
+		t.Errorf("expected only [bunk_requests] unsupported alongside the real services, got %v", got)
 	}
 }
 
@@ -2065,18 +2116,30 @@ func TestRealServicesSetDryRunStoresTheFlag(t *testing.T) {
 	t.Parallel()
 
 	services := map[string]DryRunnable{
-		"camper_dietary":             NewCamperDietarySync(nil),
-		"quest_registrations":        NewQuestRegistrationsSync(nil),
-		"household_demographics":     NewHouseholdDemographicsSync(nil),
-		"financial_aid_applications": NewFinancialAidApplicationsSync(nil),
-		"lodging_assignments":        NewLodgingAssignmentsSync(nil),
-		"camper_transportation":      NewCamperTransportationSync(nil),
-		"staff_vehicle_info":         NewStaffVehicleInfoSync(nil),
-		"enrollment_snapshots":       NewEnrollmentSnapshotsSync(nil),
-		"normalize_geographic":       NewNormalizeGeographicSync(nil),
-		"family_camp_derived":        NewFamilyCampDerivedSync(nil),
-		"staff_applications":         NewStaffApplicationsSync(nil),
-		"staff_skills":               NewStaffSkillsSync(nil),
+		"camper_dietary":              NewCamperDietarySync(nil),
+		"quest_registrations":         NewQuestRegistrationsSync(nil),
+		"household_demographics":      NewHouseholdDemographicsSync(nil),
+		"financial_aid_applications":  NewFinancialAidApplicationsSync(nil),
+		"lodging_assignments":         NewLodgingAssignmentsSync(nil),
+		"camper_transportation":       NewCamperTransportationSync(nil),
+		"staff_vehicle_info":          NewStaffVehicleInfoSync(nil),
+		"enrollment_snapshots":        NewEnrollmentSnapshotsSync(nil),
+		"normalize_geographic":        NewNormalizeGeographicSync(nil),
+		"family_camp_derived":         NewFamilyCampDerivedSync(nil),
+		"staff_applications":          NewStaffApplicationsSync(nil),
+		"staff_skills":                NewStaffSkillsSync(nil),
+		"session_groups":              NewSessionGroupsSync(nil, nil),
+		"sessions":                    NewSessionsSync(nil, nil),
+		"bunks":                       NewBunksSync(nil, nil),
+		"bunk_plans":                  NewBunkPlansSync(nil, nil),
+		"bunk_assignments":            NewBunkAssignmentsSync(nil, nil),
+		"staff":                       NewStaffSync(nil, nil),
+		"financial_transactions":      NewFinancialTransactionsSync(nil, nil),
+		"attendees":                   NewAttendeesSync(nil, nil),
+		"persons":                     NewPersonsSync(nil, nil),
+		"person_custom_values":        NewPersonCustomFieldValuesSync(nil, nil),
+		"household_custom_values":     NewHouseholdCustomFieldValuesSync(nil, nil),
+		"stranded_assignment_cleanup": NewStrandedAssignmentCleanupSync(nil),
 	}
 
 	// Every name the orchestrator will hand SetDryRun(true) must be covered here, or a
@@ -4365,5 +4428,66 @@ func TestCustomFieldValuesHandlersReserveBeforeMutatingSharedState(t *testing.T)
 					"request A's in-flight run would silently narrow to it", sessionBefore, sessionAfter)
 			}
 		})
+	}
+}
+
+// TestEmbeddingBaseSyncServiceDoesNotLeakDryRunnable proves that BaseSyncService's write-site
+// gating does NOT automatically hand DryRunnable to every service that embeds it. This is the
+// blast-radius trap kindred#2351 found empirically: giving BaseSyncService itself an exported
+// SetDryRun method makes it PROMOTED to every embedder, including services outside this
+// issue's twelve that ResolveUnifiedSyncServices reaches for a current-year `service=all`
+// request (bunk_requests, appended whenever isCurrentYear is true) and services that delegate
+// their actual write to a remote HTTP call this package cannot gate at all
+// (RequestProcessor.Sync -> callAPIProcessor). A service must declare its OWN SetDryRun to be
+// dry-run-capable; embedding BaseSyncService alone must not be enough.
+func TestEmbeddingBaseSyncServiceDoesNotLeakDryRunnable(t *testing.T) {
+	t.Parallel()
+
+	if _, ok := any(NewBunkRequestsSync(nil, nil)).(DryRunnable); ok {
+		t.Error("BunkRequestsSync satisfies DryRunnable by embedding BaseSyncService alone " +
+			"-- it is reachable via a current-year service=all dry_run=true request " +
+			"(ResolveUnifiedSyncServices appends it) but its own six App.Save/App.Delete " +
+			"call sites are not gated")
+	}
+	if _, ok := any(NewRequestProcessor(nil)).(DryRunnable); ok {
+		t.Error("RequestProcessor satisfies DryRunnable by embedding BaseSyncService alone " +
+			"-- its Sync() delegates to a remote FastAPI call (callAPIProcessor) that this " +
+			"package cannot gate with a local flag at all")
+	}
+}
+
+// TestCurrentYearDefaultSyncStillRejectsDryRun pins the residue kindred#2351 deliberately left
+// out of scope: `dry_run=true` against the default `service=all` for the CURRENT year still
+// gets HTTP 400, because ResolveUnifiedSyncServices appends "reconcile_request_lifecycle" and
+// "bunk_requests" to the 24 default jobs whenever isCurrentYear is true, and neither
+// implements DryRunnable. #2351's own scope table names only the 24 default jobs; these two
+// were never on it (see the issue body's "Scope" section) -- wiring them is future work, not a
+// gap in this PR. Without this test, the PR body's "What" paragraph reading as "the 400 is
+// fixed" would go unchecked: a historical-replay request (year != current) genuinely gets a
+// 200 now, but the most natural invocation -- the current year, with no service specified --
+// does not.
+func TestCurrentYearDefaultSyncStillRejectsDryRun(t *testing.T) {
+	// Not t.Parallel(): t.Setenv forbids it.
+	o := NewOrchestrator(nil)
+
+	// Only the two services responsible for the residual 400 need to be registered as their
+	// real (un-wired) types -- UnsupportedDryRunServices silently skips any name in the list
+	// that isn't registered on this orchestrator instance (see TestUnsupportedDryRunServices),
+	// so the 24 default jobs themselves don't need registering to prove this specific residue.
+	o.RegisterService("reconcile_request_lifecycle", NewReconcileLifecycleSync(nil))
+	o.RegisterService("bunk_requests", NewBunkRequestsSync(nil, nil))
+
+	t.Setenv("IS_DOCKER", "")
+	services := ResolveUnifiedSyncServices(DefaultService, true, true)
+
+	got := o.UnsupportedDryRunServices(services)
+	want := []string{"reconcile_request_lifecycle", "bunk_requests"}
+	if len(got) != len(want) {
+		t.Fatalf("UnsupportedDryRunServices(current-year default) = %v, want %v", got, want)
+	}
+	for i, name := range want {
+		if got[i] != name {
+			t.Errorf("UnsupportedDryRunServices(current-year default)[%d] = %q, want %q", i, got[i], name)
+		}
 	}
 }

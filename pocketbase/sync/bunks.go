@@ -28,6 +28,13 @@ func (s *BunksSync) Name() string {
 	return "bunks"
 }
 
+// SetDryRun implements the orchestrator's DryRunnable interface (kindred#2351). Declared
+// explicitly rather than inherited by embedding BaseSyncService -- see that field's doc
+// comment for why a promoted setter is not safe here.
+func (s *BunksSync) SetDryRun(dryRun bool) {
+	s.DryRun = dryRun
+}
+
 // Sync performs the bunks synchronization
 func (s *BunksSync) Sync(ctx context.Context) error {
 	// Use StandardSync with a custom preload filter for current year

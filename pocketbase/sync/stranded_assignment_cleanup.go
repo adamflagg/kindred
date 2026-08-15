@@ -228,6 +228,12 @@ type StrandedAssignmentCleanupSync struct {
 	Year  int
 	Debug bool
 	Stats Stats
+	// DryRun, when true, computes the same stranded/orphan sets and updates
+	// Stats exactly as a normal run would, but skips both app.Save calls in
+	// reconcileStrandedAssignments/reconcileLodgingOrphans that null bunk/units
+	// on a draft (kindred#2351). The two production audits are read-only
+	// already and are unaffected either way.
+	DryRun bool
 }
 
 // NewStrandedAssignmentCleanupSync constructs the service.
@@ -246,6 +252,9 @@ func (s *StrandedAssignmentCleanupSync) SetDebug(debug bool) { s.Debug = debug }
 
 // SetYear sets the year for this run (orchestrator hook).
 func (s *StrandedAssignmentCleanupSync) SetYear(year int) { s.Year = year }
+
+// SetDryRun implements the orchestrator's DryRunnable interface (kindred#2351).
+func (s *StrandedAssignmentCleanupSync) SetDryRun(dryRun bool) { s.DryRun = dryRun }
 
 // WasSuccessful indicates whether the last run encountered no errors.
 func (s *StrandedAssignmentCleanupSync) WasSuccessful() bool { return s.Stats.Errors == 0 }
@@ -269,10 +278,10 @@ func (s *StrandedAssignmentCleanupSync) Sync(_ context.Context) error {
 			return fmt.Errorf("stranded_assignment_cleanup: year resolution failed: %w", err)
 		}
 	}
-	if err := reconcileStrandedAssignments(s.App, year, &s.Stats); err != nil {
+	if err := reconcileStrandedAssignments(s.App, year, &s.Stats, s.DryRun); err != nil {
 		return err
 	}
-	return reconcileLodgingOrphans(s.App, year, &s.Stats)
+	return reconcileLodgingOrphans(s.App, year, &s.Stats, s.DryRun)
 }
 
 // reconcileStrandedAssignments is the integration logic:
@@ -289,7 +298,7 @@ func (s *StrandedAssignmentCleanupSync) Sync(_ context.Context) error {
 //     Unassigned pool (a cancelled camper falls out of the scenario entirely).
 //  4. Audit bunk_assignments (production): log flagged rows — but do NOT
 //     delete. The bunk_assignments sync's own deleteOrphans() owns prod.
-func reconcileStrandedAssignments(app core.App, year int, stats *Stats) error {
+func reconcileStrandedAssignments(app core.App, year int, stats *Stats, dryRun bool) error {
 	yearFilter := fmt.Sprintf("year = %d", year)
 
 	plans, err := app.FindRecordsByFilter("bunk_plans", yearFilter, "", 0, 0)
@@ -349,6 +358,10 @@ func reconcileStrandedAssignments(app core.App, year int, stats *Stats) error {
 		rec := draftByID[c.RecordID]
 		rec.Set("bunk", "")
 		rec.Set("bunk_plan", "")
+		if dryRun {
+			stats.Updated++
+			continue
+		}
 		if saveErr := app.Save(rec); saveErr != nil {
 			stats.Errors++
 			slog.Error("stranded_assignment_cleanup: save draft", "id", c.RecordID, "error", saveErr)
@@ -428,7 +441,7 @@ func reconcileStrandedAssignments(app core.App, year int, stats *Stats) error {
 //     deletes. Deletion belongs to LodgingAssignmentsSync.deleteLodgingOrphans,
 //     driven by absence from the CampMinder cabin value -- the same split of
 //     responsibility bunk_assignments already has with the pass above.
-func reconcileLodgingOrphans(app core.App, year int, stats *Stats) error {
+func reconcileLodgingOrphans(app core.App, year int, stats *Stats, dryRun bool) error {
 	householdIndex, err := BuildHouseholdSessionIndex(app, year, []string{sessionTypeFamily})
 	if err != nil {
 		stats.Errors++
@@ -451,16 +464,32 @@ func reconcileLodgingOrphans(app core.App, year int, stats *Stats) error {
 	draftByID, draftCandidates := lodgingCandidatesFromRecords(drafts)
 	orphanDrafts := findLodgingEnrollmentOrphans(householdIndex, personIndex, draftCandidates)
 
+	// writes counts only persisted App.Save calls (gates the WAL checkpoint below,
+	// which has nothing to flush on a dry run). swept counts what this pass DID or
+	// WOULD sweep -- real or simulated -- and is what the completion log reports,
+	// so an operator previewing a dry run sees the household this pass found, not
+	// a misleading 0. Deliberately local rather than stats.Updated: Sync() runs
+	// reconcileStrandedAssignments before this function against the same shared
+	// *Stats, so stats.Updated already carries the bunk pass's own count by the
+	// time this one logs -- reading it here would double-count that into this
+	// pass's number.
 	writes := 0
+	swept := 0
 	for _, c := range orphanDrafts {
 		rec := draftByID[c.RecordID]
 		rec.Set("units", []string{})
+		if dryRun {
+			stats.Updated++
+			swept++
+			continue
+		}
 		if saveErr := app.Save(rec); saveErr != nil {
 			stats.Errors++
 			slog.Error("stranded_assignment_cleanup: save lodging draft", "id", c.RecordID, "error", saveErr)
 			continue
 		}
 		writes++
+		swept++
 		stats.Updated++
 	}
 
@@ -495,7 +524,7 @@ func reconcileLodgingOrphans(app core.App, year int, stats *Stats) error {
 	slog.Info("stranded_assignment_cleanup lodging pass complete",
 		"year", year,
 		"orphaned_drafts", len(orphanDrafts),
-		"drafts_swept", writes,
+		"drafts_swept", swept,
 		"lodging_prod_audit_warnings", stats.LodgingProdAuditWarnings,
 		"errors", stats.Errors,
 	)
