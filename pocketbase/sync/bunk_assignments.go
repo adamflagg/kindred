@@ -3,6 +3,7 @@ package sync
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 
@@ -215,8 +216,13 @@ func (s *BunkAssignmentsSync) Sync(ctx context.Context) error {
 				assignmentData["SessionID"] = float64(sessionID)
 
 				if err := s.processAssignment(assignmentData, existingAssignments); err != nil {
-					slog.Error("Error processing assignment", "error", err)
-					s.Stats.Errors++
+					if errors.Is(err, errRejectedRecord) {
+						slog.Warn("Rejected assignment", "error", err)
+						s.Stats.Rejected++
+					} else {
+						slog.Error("Error processing assignment", "error", err)
+						s.Stats.Errors++
+					}
 				}
 			}
 		}
@@ -565,25 +571,26 @@ func (s *BunkAssignmentsSync) processAssignment(
 	assignmentData map[string]any,
 	existingAssignments map[string]*core.Record,
 ) error {
-	// Extract required fields
+	// Extract required fields. A missing field here is malformed upstream data,
+	// not an infrastructure failure -- kindred#2292.
 	personID, ok := assignmentData["PersonID"].(float64)
 	if !ok {
-		return fmt.Errorf("missing PersonID")
+		return fmt.Errorf("%w: missing PersonID", errRejectedRecord)
 	}
 
 	sessionID, ok := assignmentData["SessionID"].(float64)
 	if !ok {
-		return fmt.Errorf("missing SessionID")
+		return fmt.Errorf("%w: missing SessionID", errRejectedRecord)
 	}
 
 	bunkID, ok := assignmentData["BunkID"].(float64)
 	if !ok {
-		return fmt.Errorf("missing BunkID")
+		return fmt.Errorf("%w: missing BunkID", errRejectedRecord)
 	}
 
 	bunkPlanID, ok := assignmentData["BunkPlanID"].(float64)
 	if !ok {
-		return fmt.Errorf("missing BunkPlanID")
+		return fmt.Errorf("%w: missing BunkPlanID", errRejectedRecord)
 	}
 
 	personCMID := int(personID)

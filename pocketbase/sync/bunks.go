@@ -3,6 +3,7 @@ package sync
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"strings"
@@ -112,8 +113,13 @@ func (s *BunksSync) Sync(ctx context.Context) error {
 		// Process the record - specify fields to compare (excluding year for idempotency)
 		compareFields := []string{"cm_id", "name", "gender", "is_active", "sort_order", "area_id"}
 		if err := s.ProcessSimpleRecord("bunks", key, pbData, existingRecords, compareFields); err != nil {
-			slog.Error("Error processing bunk", "error", err)
-			s.Stats.Errors++
+			if errors.Is(err, errRejectedRecord) {
+				slog.Warn("Rejected bunk", "error", err)
+				s.Stats.Rejected++
+			} else {
+				slog.Error("Error processing bunk", "error", err)
+				s.Stats.Errors++
+			}
 		}
 	}
 

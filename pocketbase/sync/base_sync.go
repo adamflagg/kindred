@@ -4,6 +4,7 @@ package sync
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"reflect"
@@ -14,6 +15,20 @@ import (
 	"github.com/camp/kindred/pocketbase/campminder"
 	"github.com/pocketbase/pocketbase/core"
 )
+
+// errRejectedRecord is the sentinel kindred#2292 gives to wrapper functions whose
+// callee can fail two different ways -- a per-record transform rejection
+// (malformed or missing upstream data) or an infrastructure failure (a local
+// App.Save/App.Delete that did not complete) -- through the same `error` return.
+//
+// A wrapper marks a rejection by wrapping this sentinel: `fmt.Errorf("%w: reason",
+// errRejectedRecord)`. Its call site then branches on `errors.Is(err,
+// errRejectedRecord)` to choose Stats.Rejected (warn-only, kindred#2284/#2295) over
+// Stats.Errors (zero tolerance). An error that reaches the call site WITHOUT this
+// sentinel is always infrastructure -- that is the default, not an opt-in -- so a
+// wrapper that adds a new failure path is safe by construction unless it
+// deliberately wraps errRejectedRecord.
+var errRejectedRecord = errors.New("record rejected")
 
 // RelationConfig defines configuration for populating a relation field
 type RelationConfig struct {
@@ -669,10 +684,17 @@ func (b *BaseSyncService) ProcessSimpleRecord(
 	existingRecords map[any]*core.Record,
 	compareFields []string, // Optional: specific fields to check for updates
 ) error {
-	// Extract year from recordData - required for year isolation
+	// Extract year from recordData - required for year isolation. A missing or
+	// malformed year means recordData itself is malformed -- a rejection, not an
+	// infrastructure failure -- so it's wrapped in errRejectedRecord for the call
+	// site (kindred#2292). Every one of ProcessSimpleRecord's five callers builds
+	// "year" locally from s.Client.GetSeasonID(), never from raw upstream data, so
+	// this path is defensive today rather than reachable; it is typed correctly
+	// regardless, for the same reason a function's error return is not scoped to
+	// what its current callers happen to pass.
 	yearValue, ok := recordData["year"]
 	if !ok {
-		return fmt.Errorf("recordData missing required 'year' field")
+		return fmt.Errorf("%w: recordData missing required 'year' field", errRejectedRecord)
 	}
 
 	var year int
@@ -682,7 +704,7 @@ func (b *BaseSyncService) ProcessSimpleRecord(
 	case int:
 		year = v
 	default:
-		return fmt.Errorf("'year' field must be numeric, got %T", yearValue)
+		return fmt.Errorf("%w: 'year' field must be numeric, got %T", errRejectedRecord, yearValue)
 	}
 
 	// Use composite key for lookup to ensure year isolation
@@ -913,7 +935,12 @@ func (b *BaseSyncService) ProcessCompositeRecord(
 	existingRecords map[string]*core.Record,
 	skipFields []string, // Fields to skip during comparison (like "year" for idempotency)
 ) error {
-	// Extract year from recordData - required for year isolation
+	// Extract year from recordData - required for year isolation. Deliberately
+	// NOT wrapped in errRejectedRecord: ProcessCompositeRecord is not one of
+	// kindred#2292's five named mixed wrappers (processEnrollment and
+	// processAssignment are, and both call this as their final write step), so
+	// this stays out of scope for this issue and keeps its pre-existing
+	// classification (Errors).
 	yearValue, ok := recordData["year"]
 	if !ok {
 		return fmt.Errorf("recordData missing required 'year' field")

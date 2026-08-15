@@ -4,6 +4,7 @@ package sync
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"regexp"
@@ -344,8 +345,13 @@ func (s *PersonsSync) processBatchPersons(
 		isCamper := hasID && camperIDsSet[int(personID)]
 
 		if err := s.processPerson(personData, isCamper, existingPersons, tagDefsByName, divisionsByID, year); err != nil {
-			slog.Error("Error processing person", "error", err)
-			s.Stats.Errors++
+			if errors.Is(err, errRejectedRecord) {
+				slog.Warn("Rejected person", "error", err)
+				s.Stats.Rejected++
+			} else {
+				slog.Error("Error processing person", "error", err)
+				s.Stats.Errors++
+			}
 		}
 
 		batchHouseholds := s.extractUniqueHouseholds([]map[string]any{personData})
@@ -490,10 +496,11 @@ func (s *PersonsSync) processPerson(
 	// Remove temporary field
 	delete(pbData, "division_cm_id")
 
-	// Get person ID
+	// Get person ID. Missing here is malformed upstream data, not an
+	// infrastructure failure -- kindred#2292.
 	personID, ok := personData["ID"].(float64)
 	if !ok {
-		return fmt.Errorf("missing person ID")
+		return fmt.Errorf("%w: missing person ID", errRejectedRecord)
 	}
 	personIDInt := int(personID)
 
@@ -1169,7 +1176,9 @@ func (s *PersonsSync) updateAttendeeRelations(year int) error {
 	}
 
 	updated := 0
-	errors := 0
+	// Named errCount, not errors -- kindred#2292 added the errors package import to
+	// this file, and gocritic's importShadow flags a local var shadowing it.
+	errCount := 0
 	for _, attendee := range records {
 		personCMID, _ := attendee.Get("person_id").(float64)
 		if personCMID > 0 {
@@ -1184,7 +1193,7 @@ func (s *PersonsSync) updateAttendeeRelations(year int) error {
 				}
 				if err := s.App.Save(attendee); err != nil {
 					slog.Error("Error updating attendee relation", "personCMID", int(personCMID), "error", err)
-					errors++
+					errCount++
 				} else {
 					updated++
 				}
@@ -1192,7 +1201,7 @@ func (s *PersonsSync) updateAttendeeRelations(year int) error {
 		}
 	}
 
-	slog.Info("Updated attendee person relations", "updated", updated, "errors", errors)
+	slog.Info("Updated attendee person relations", "updated", updated, "errors", errCount)
 	return nil
 }
 

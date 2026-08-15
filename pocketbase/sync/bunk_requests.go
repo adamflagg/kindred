@@ -5,6 +5,7 @@ import (
 	"crypto/md5" //nolint:gosec // G501: MD5 used for change detection, not security
 	"encoding/csv"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"log/slog"
 	"os"
@@ -138,8 +139,13 @@ func (s *BunkRequestsSync) RunSync(csvPath string, _ int) error {
 
 		// Process row
 		if rowErr := s.processRow(row, columnIndex, currentYear); rowErr != nil {
-			slog.Error("Error processing row", "row", rowNumber, "error", rowErr)
-			s.Stats.Errors++
+			if errors.Is(rowErr, errRejectedRecord) {
+				slog.Warn("Rejected bunk request row", "row", rowNumber, "error", rowErr)
+				s.Stats.Rejected++
+			} else {
+				slog.Error("Error processing row", "row", rowNumber, "error", rowErr)
+				s.Stats.Errors++
+			}
 		}
 	}
 
@@ -202,15 +208,16 @@ func (s *BunkRequestsSync) loadValidPersonIDs() error {
 
 // processRow processes a single CSV row
 func (s *BunkRequestsSync) processRow(row []string, columnIndex map[string]int, year int) error {
-	// Extract PersonID
+	// Extract PersonID. A missing or malformed value here is a bad CSV row, not
+	// an infrastructure failure -- kindred#2292.
 	personIDStr := s.getColumn(row, columnIndex, "PersonID")
 	if personIDStr == "" {
-		return fmt.Errorf("missing PersonID")
+		return fmt.Errorf("%w: missing PersonID", errRejectedRecord)
 	}
 
 	personID, err := strconv.Atoi(personIDStr)
 	if err != nil {
-		return fmt.Errorf("invalid PersonID: %s", personIDStr)
+		return fmt.Errorf("%w: invalid PersonID: %s", errRejectedRecord, personIDStr)
 	}
 
 	// Validate person is enrolled and get their PocketBase ID

@@ -2,6 +2,7 @@ package sync
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"regexp"
@@ -254,8 +255,13 @@ func (s *SessionsSync) Sync(ctx context.Context) error {
 			"start_grade_id", "end_grade_id", "gender_id",
 		}
 		if err := s.ProcessSimpleRecord("camp_sessions", key, pbData, existingRecords, compareFields); err != nil {
-			slog.Error("Error processing session", "error", err)
-			s.Stats.Errors++
+			if errors.Is(err, errRejectedRecord) {
+				slog.Warn("Rejected session", "error", err)
+				s.Stats.Rejected++
+			} else {
+				slog.Error("Error processing session", "error", err)
+				s.Stats.Errors++
+			}
 		}
 	}
 

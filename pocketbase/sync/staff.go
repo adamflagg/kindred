@@ -2,6 +2,7 @@ package sync
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"strings"
@@ -176,8 +177,13 @@ func (s *StaffSync) syncStaff(ctx context.Context) error {
 					"international", "years", "salary",
 				}
 				if err := s.ProcessSimpleRecord("staff", personPBID, pbData, existingRecords, compareFields); err != nil {
-					slog.Error("Error processing staff record", "person_pb_id", personPBID, "error", err)
-					s.Stats.Errors++
+					if errors.Is(err, errRejectedRecord) {
+						slog.Warn("Rejected staff record", "person_pb_id", personPBID, "error", err)
+						s.Stats.Rejected++
+					} else {
+						slog.Error("Error processing staff record", "person_pb_id", personPBID, "error", err)
+						s.Stats.Errors++
+					}
 				}
 
 				statusCounts[status]++

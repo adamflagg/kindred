@@ -105,7 +105,13 @@ var serialGroups = []struct {
 		// test needs for GetSeasonID() costs a t.Setenv.
 		pkg:    "sync",
 		reason: "t.Setenv: campminder.NewClient reads CAMPMINDER_PRIMARY_KEY",
-		tests:  []string{"TestAttendeesLogStatusChangeDryRunWritesNothing"},
+		tests: []string{
+			"TestAttendeesLogStatusChangeDryRunWritesNothing",
+			"TestProcessAssignment_MissingPersonID_IsRejected",
+			"TestProcessAssignment_SaveFailure_IsInfraError",
+			"TestProcessEnrollment_MissingSessionID_IsRejected",
+			"TestProcessEnrollment_SaveFailure_IsInfraError",
+		},
 	},
 	{
 		// These four drive deleteOrphans, which reads the season through

@@ -3,6 +3,7 @@ package sync
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"strconv"
@@ -209,25 +210,34 @@ func (s *AttendeesSync) processAttendee(
 		}
 
 		if err := s.processEnrollment(personCMID, enrollment, existingAttendees); err != nil {
-			// duplicateSessions is keyed by SessionID and holds every entry that shares a
-			// SessionID with another entry in this attendee's array — first, second, or
-			// later; it doesn't identify which one is "the duplicate". So this only tells
-			// us the group fact: this SessionID appears more than once. A (person, session)
-			// key collision — overwriting the first entry on an idempotent upsert, or, on a
-			// first-ever sync before existingAttendees has an entry for the key, taking the
-			// create branch and hitting idx_attendees_unique — is one plausible cause of
-			// this failure, but not the only one; this entry could equally be failing for a
-			// reason unrelated to the collision. Tag it so the possible collision is legible
-			// in the logs rather than the error reading as an unexplained local DB fault.
-			if sessionIDFloat, ok := enrollment["SessionID"].(float64); ok &&
+			// processEnrollment now distinguishes its two failure classes with
+			// errRejectedRecord (kindred#2292): a malformed enrollment (e.g. a
+			// missing SessionID) never reaches App.Save, so the idx_attendees_unique
+			// collision diagnostic below -- which is specifically about a DB write
+			// colliding -- only applies to the non-rejection branch.
+			if errors.Is(err, errRejectedRecord) {
+				slog.Warn("Rejected enrollment", "person_cm_id", personCMID, "error", err)
+				s.Stats.Rejected++
+			} else if sessionIDFloat, ok := enrollment["SessionID"].(float64); ok &&
 				duplicateSessions[int(sessionIDFloat)] != nil {
+				// duplicateSessions is keyed by SessionID and holds every entry that shares a
+				// SessionID with another entry in this attendee's array — first, second, or
+				// later; it doesn't identify which one is "the duplicate". So this only tells
+				// us the group fact: this SessionID appears more than once. A (person, session)
+				// key collision — overwriting the first entry on an idempotent upsert, or, on a
+				// first-ever sync before existingAttendees has an entry for the key, taking the
+				// create branch and hitting idx_attendees_unique — is one plausible cause of
+				// this failure, but not the only one; this entry could equally be failing for a
+				// reason unrelated to the collision. Tag it so the possible collision is legible
+				// in the logs rather than the error reading as an unexplained local DB fault.
 				slog.Error("Error processing enrollment (this SessionID appears more than "+
 					"once in this attendee's SessionProgramStatus — see kindred#2263)",
 					"person_cm_id", personCMID, "session_cm_id", int(sessionIDFloat), "error", err)
+				s.Stats.Errors++
 			} else {
 				slog.Error("Error processing enrollment", "person_cm_id", personCMID, "error", err)
+				s.Stats.Errors++
 			}
-			s.Stats.Errors++
 		}
 	}
 
@@ -294,7 +304,7 @@ func (s *AttendeesSync) processEnrollment(
 	// Extract session ID
 	sessionID, ok := enrollment["SessionID"].(float64)
 	if !ok {
-		return fmt.Errorf("invalid or missing SessionID")
+		return fmt.Errorf("%w: invalid or missing SessionID", errRejectedRecord)
 	}
 	sessionCMID := int(sessionID)
 
