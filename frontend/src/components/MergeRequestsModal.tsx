@@ -189,6 +189,11 @@ export default function MergeRequestsModal({
                     : 'border-border hover:border-primary/50'
                 }`}
               >
+                {/* KEPT (kindred#2379): a real native radio, not AT
+                    scaffolding — `sr-only` hides its default browser
+                    rendering while the card `<label>` stays the visible,
+                    clickable control. Deleting the class puts a raw radio
+                    button next to the card. */}
                 <input
                   type="radio"
                   name="targetRequest"

@@ -353,9 +353,17 @@ function FriendGroupCard({
             className="bg-background focus:ring-primary/50 w-44 rounded-lg border px-3 py-1.5 text-sm focus:ring-2 focus:outline-none"
           />
           <fieldset className="flex items-center gap-1.5">
+            {/* KEPT (kindred#2379): frontend/CLAUDE.md's own trap note groups
+                `sr-only` on a `<legend>` with `<input>` as a native-control
+                case, not AT scaffolding to sweep. */}
             <legend className="sr-only">Group colour</legend>
             {FRIEND_GROUP_COLORS.map((candidate) => (
               <label key={candidate} className="cursor-pointer">
+                {/* KEPT (kindred#2379): a real native radio — `sr-only`
+                    hides its default browser rendering while the coloured
+                    span below is the visible, clickable affordance. Delete
+                    the class and a raw grey radio button appears next to
+                    every swatch. */}
                 <input
                   type="radio"
                   name={`friend-group-color-${group.group_id}`}
@@ -374,6 +382,9 @@ function FriendGroupCard({
                   )}
                   style={{ backgroundColor: candidate }}
                 />
+                {/* KEPT (kindred#2379): this is the radio's only accessible
+                    name and `WeekendFriendGroups.test.tsx`'s query handle —
+                    `within(card).getByRole('radio', { name: 'Indigo' })`. */}
                 <span className="sr-only">{FRIEND_GROUP_COLOR_NAMES[candidate] ?? candidate}</span>
               </label>
             ))}

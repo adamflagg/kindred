@@ -114,27 +114,10 @@ export function UnitCapacityFields({
             onChange({ ...value, beds })
           }}
         />
-        {/* ALWAYS MOUNTED, and that is the whole point: a live region is only
-            announced when its contents change while it is ALREADY in the
-            document. Rendering the region together with its text — the obvious
-            one-liner — is missed by several screen readers, so this one has to
-            outlive the advisory it carries.
-
-            It WRAPS the visible text rather than duplicating it into an
-            sr-only copy. Two copies would be read twice by anyone navigating
-            the form linearly, and hiding the visible one is worse still: a
-            region announces on CHANGE, never on mount, so a form opened on an
-            existing conflict would then report it to nobody at all.
-
-            The button lives inside, which is the one compromise. Keeping it
-            out would mean breaking the text and its action onto separate rows;
-            the cost is that the announcement ends with the control's label. */}
-        {/* NAMED, because this form now has two live regions (the sharing
-            advisory in UnitAmenityFieldset is the other). Two unnamed `status`
-            regions are indistinguishable to a screen-reader user moving
-            between landmarks — the announcement arrives with no indication of
-            which control it belongs to. */}
-        <div role="status" aria-live="polite" aria-label="Capacity advisory">
+        {/* No AT users here (frontend/CLAUDE.md "Accessibility —
+            deliberately minimal"), so this stays plain text — no
+            aria-live/role="status" (kindred#2379). */}
+        <div>
           {flag.kind === 'suggestion' && (
             <div className="text-muted-foreground mt-1.5 flex items-center gap-2 text-xs">
               <span>Suggested: sleeps {flag.derived}</span>
