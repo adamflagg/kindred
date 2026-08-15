@@ -2,6 +2,7 @@
  * Tests for useSyncCompletionToasts hook - sub_stats formatting
  */
 import { describe, it, expect } from 'vitest'
+import { formatStatsText } from './useSyncCompletionToasts'
 
 // Helper function to format stats (should match implementation)
 interface SubStats {
@@ -149,5 +150,41 @@ describe('formatPersonsSyncMessage', () => {
     expect(result).toBe(
       'Persons: 10 created, 5 updated, 85 skipped, 1 errors\nHouseholds: 3 created, 2 updated, 45 skipped'
     )
+  })
+})
+
+// kindred#2356: the toast's "N skipped" segment counted discarded custom-field
+// VALUES for camper_transportation and staff_applications, not skipped RECORDS
+// -- "274 created, 557 skipped" read as 557 skipped applications when it was
+// really 557 individual field answers discarded across the 274 rows that WERE
+// created. These tests drive the REAL production formatStatsText (exported
+// from useSyncCompletionToasts.ts), not a local reimplementation, so a
+// regression that re-merges the two counters fails here.
+describe('formatStatsText (real production function) - skipped_values segment', () => {
+  it('renders skipped_values as its own "N values skipped" segment, distinct from the record-level skipped segment', () => {
+    const result = formatStatsText(
+      { created: 274, updated: 0, skipped: 0, skipped_values: 557, errors: 0 },
+      'Staff Applications'
+    )
+    expect(result).toBe('Staff Applications: 274 created, 557 values skipped')
+  })
+
+  it('keeps both segments when a run has BOTH skipped records and skipped values', () => {
+    const result = formatStatsText(
+      { created: 10, updated: 0, skipped: 2, skipped_values: 557, errors: 0 },
+      'Transportation'
+    )
+    // Must show two distinct segments -- never collapsed into a combined 559.
+    expect(result).toBe('Transportation: 10 created, 2 skipped, 557 values skipped')
+    expect(result).not.toContain('559 skipped')
+  })
+
+  it('omits the values-skipped segment entirely when skipped_values is zero or absent', () => {
+    const result = formatStatsText(
+      { created: 5, updated: 0, skipped: 0, errors: 0 },
+      'Transportation'
+    )
+    expect(result).toBe('Transportation: 5 created')
+    expect(result).not.toContain('values skipped')
   })
 })

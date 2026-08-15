@@ -48,15 +48,26 @@ const SYNC_DISPLAY_NAMES: Record<string, string> = {
   household_custom_values: 'Household Custom Values',
 }
 
-// Helper to format stats for a single entity
-function formatStatsText(stats: SubStats, label: string): string {
+// Helper to format stats for a single entity. Exported so kindred#2356's fix can be
+// pinned against the real production function rather than a test-local reimplementation.
+//
+// `skipped` and `skipped_values` are deliberately separate segments, never merged: `skipped`
+// is a RECORD count (matches `created`/`updated`/`errors`' unit), while `skipped_values`
+// counts discarded custom-field VALUES within records that were still created. Only
+// camper_transportation and staff_applications ever set `skipped_values` -- collapsing the
+// two made "274 created, 557 skipped" read as 557 dropped applications when it was really
+// 557 dropped field answers across the 274 rows that WERE created.
+export function formatStatsText(stats: SubStats, label: string): string {
   const parts: string[] = []
   if (stats.created > 0) parts.push(`${stats.created} created`)
   if (stats.updated > 0) parts.push(`${stats.updated} updated`)
   if (stats.skipped > 0) parts.push(`${stats.skipped} skipped`)
+  if (stats.skipped_values && stats.skipped_values > 0) {
+    parts.push(`${stats.skipped_values} values skipped`)
+  }
   if (stats.errors > 0) parts.push(`${stats.errors} errors`)
   if (parts.length === 0) return ''
-  return `${label}: ${parts.join(', ')}`
+  return label ? `${label}: ${parts.join(', ')}` : parts.join(', ')
 }
 
 // Track previous statuses to detect transitions
@@ -124,13 +135,13 @@ export function useSyncCompletionToasts(): SyncStatusResponse | null | undefined
 
             statsText = statsParts.length > 0 ? statsParts.join('\n') : 'no changes'
           } else {
-            // Standard stats formatting for other syncs
-            const parts: string[] = []
-            if (summary.created > 0) parts.push(`${summary.created} created`)
-            if (summary.updated > 0) parts.push(`${summary.updated} updated`)
-            if (summary.skipped > 0) parts.push(`${summary.skipped} skipped`)
-            if (summary.errors > 0) parts.push(`${summary.errors} errors`)
-            statsText = parts.length > 0 ? parts.join(', ') : 'no changes'
+            // Standard stats formatting for other syncs -- including camper_transportation
+            // and staff_applications, kindred#2356's reason for routing this through the
+            // same formatStatsText the persons/households branch above uses rather than a
+            // second hand-copied field list that could re-diverge on the next counter added.
+            // No label (''): the outer toast message already prefixes displayName.
+            const text = formatStatsText(summary, '')
+            statsText = text || 'no changes'
           }
 
           const hasErrors = summary.errors > 0
