@@ -156,6 +156,22 @@ extract_created_collections() {
 import re, sys
 
 src = open(sys.argv[1], encoding="utf-8").read()
+
+# ONLY the up arm. A migration that DROPS a collection has to recreate it in
+# its down arm to be reversible, so scanning the whole file reads that down
+# arm as a create and reports a collision the boot would never hit -- the up
+# arm is what runs. Measured when 1500000157_delete_camper_history.js hit
+# exactly this: the guard refused a boot the migration would have completed
+# cleanly. Splitting here changes the result for that file alone; the other
+# 116 migrations in the tree extract identically either way.
+#
+# All three down-arm forms in this tree are covered: `}, (app) => {` (111
+# files), `}, (other) => {` (1), and `}, function (` (1). Four migrations have
+# no down arm at all, and for those the whole file is the up arm.
+boundary = re.search(r"\}\s*,\s*(?:\(\s*\w*\s*\)\s*=>|function\s*\()", src)
+if boundary:
+    src = src[: boundary.start()]
+
 # Each `new Collection({ ... })` literal: the collection's own name is the
 # first `name:` appearing before the `fields:` array, since every field also
 # carries a `name:` of its own.
