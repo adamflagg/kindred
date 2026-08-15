@@ -199,9 +199,19 @@ jobs:
           # must still be able to trigger it. Without this line, that PR
           # would ship a job whose own CI run never proves it runs at all,
           # which is the exact failure kindred#2370 is about.
+          # `pocketbase/pb_migrations/**` is included because
+          # test-verify-consolidation.sh (wired into this same job) runs
+          # end-to-end against the REAL migration tree, not a fixture --
+          # a migrations-only PR can add a schema-free tail migration
+          # (a pure data/RBAC rewrite like 1500000154) that breaks the
+          # suite's drift assertion. Without this line, that PR would not
+          # trigger guard-self-tests and would merge green; the red would
+          # then surface on some later, unrelated PR that happens to touch
+          # scripts/dev/ or ci.yml, misattributed to the wrong change.
           guardSelfTests:
             - 'scripts/dev/**'
             - '.github/workflows/ci.yml'
+            - 'pocketbase/pb_migrations/**'
           docker:
             - 'docker/**'
             - 'docker-compose*.yml'
