@@ -8,6 +8,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, fireEvent, waitFor } from '../test/testUtils'
 import CamperDetailsPanel from './CamperDetailsPanel'
+import { acquireOverlayToken, hasOpenModal, releaseOverlayToken } from './ui/modalStack'
 import { mockPerson } from '../test/mockData'
 import { SourceField } from '../types/sourceField'
 import type { CamperSatisfaction, PerRequestStatus } from '../types/satisfaction'
@@ -417,6 +418,73 @@ describe('CamperDetailsPanel', () => {
       } finally {
         document.removeEventListener('keydown', outerHandler)
       }
+    })
+
+    // kindred#2237. The panel used to install its capture-phase listener with
+    // an UNCONDITIONAL `stopPropagation()`, which beat the one outer listener
+    // it was written against but also beat every overlay stacked ABOVE it --
+    // including `AllCamperRequestsModal`, a token-gated `ui/Modal` this very
+    // panel opens. One Escape closed the panel and left the dialog on top of
+    // it open: the wrong overlay, not merely an extra one.
+    describe('overlay token (kindred#2237)', () => {
+      async function renderOpenPanel() {
+        const result = render(<CamperDetailsPanel camperId="12345" onClose={mockOnClose} />)
+        await waitFor(() => {
+          expect(document.querySelector('[data-testid="panel-backdrop"]')).toBeInTheDocument()
+        })
+        return result
+      }
+
+      it('does NOT close once an overlay has opened on top of it', async () => {
+        await renderOpenPanel()
+
+        const topToken = acquireOverlayToken()
+        try {
+          fireEvent.keyDown(document, { key: 'Escape' })
+          expect(document.querySelectorAll('.animate-slide-out-right')).toHaveLength(0)
+        } finally {
+          releaseOverlayToken(topToken)
+        }
+      })
+
+      // The half that the unconditional `stopPropagation` broke: the overlay
+      // above must actually RECEIVE the key the panel stood down from. Without
+      // this the panel merely stops closing and nothing closes at all.
+      it('lets Escape reach the overlay stacked above it', async () => {
+        await renderOpenPanel()
+
+        const outerHandler = vi.fn()
+        document.addEventListener('keydown', outerHandler)
+        const topToken = acquireOverlayToken()
+        try {
+          fireEvent.keyDown(document, { key: 'Escape' })
+          const escapeCalls = outerHandler.mock.calls.filter(
+            ([event]) => (event as KeyboardEvent).key === 'Escape'
+          )
+          expect(escapeCalls).toHaveLength(1)
+        } finally {
+          releaseOverlayToken(topToken)
+          document.removeEventListener('keydown', outerHandler)
+        }
+      })
+
+      it('releases its overlay token on unmount, so the stack does not leak', async () => {
+        const { unmount } = await renderOpenPanel()
+        expect(hasOpenModal()).toBe(true)
+
+        unmount()
+
+        expect(hasOpenModal()).toBe(false)
+      })
+
+      it('registers no token in embedded mode, which handles no Escape at all', async () => {
+        render(<CamperDetailsPanel camperId="12345" onClose={mockOnClose} embedded={true} />)
+        await waitFor(() => {
+          expect(screen.getByText('Camper not found')).toBeInTheDocument()
+        })
+
+        expect(hasOpenModal()).toBe(false)
+      })
     })
   })
 

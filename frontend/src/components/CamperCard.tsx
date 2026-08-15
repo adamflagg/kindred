@@ -16,6 +16,7 @@ import { useYear } from '../hooks/useCurrentYear'
 import type { Camper } from '../types/app-types'
 import { useBunkRequestContext, useCamperHistoryContext } from '../hooks'
 import { useLockGroupContext } from '../contexts/LockGroupContext'
+import { useOverlayEscape } from '../hooks/useOverlayEscape'
 import { emptyCamperSatisfaction } from '../types/satisfaction'
 
 interface CamperCardProps {
@@ -95,16 +96,17 @@ function CamperCard({
 
   // Escape dismisses the context menu — the keyboard equivalent for the
   // full-viewport backdrop's click-to-close (see the backdrop's own
-  // eslint-disable below). Matches the pattern already used for the social
-  // graph's expand overlay and several other dismissible surfaces.
-  useEffect(() => {
-    if (!showContextMenu) return
-    const handleEscape = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') setShowContextMenu(false)
-    }
-    document.addEventListener('keydown', handleEscape)
-    return () => document.removeEventListener('keydown', handleEscape)
-  }, [showContextMenu])
+  // eslint-disable below).
+  //
+  // NEEDS AN OVERLAY TOKEN (kindred#2237): these cards are rendered INSIDE the
+  // expanded `ui/FloatingQueueBadge` queue (`FloatingUnassignedBadge`), which
+  // closes itself on Escape from its own ungated `document` listener. Two
+  // bubble-phase handlers, neither stopping propagation, meant one press
+  // dismissed the menu AND collapsed the queue it was opened from. The menu is
+  // the overlay on TOP, so it is the one that takes the token; once it
+  // swallows the key while topmost the badge beneath never sees the press,
+  // which is why the badge needs no token of its own.
+  useOverlayEscape(showContextMenu, () => setShowContextMenu(false))
 
   const {
     attributes,

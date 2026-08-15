@@ -16,6 +16,7 @@ import { screen, fireEvent, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { render, waitFor } from '../test/testUtils'
 import RequestReviewPanel from './RequestReviewPanel'
+import { acquireOverlayToken, hasOpenModal, releaseOverlayToken } from './ui/modalStack'
 import type { BunkRequestsResponse, PersonsResponse } from '../types/pocketbase-types'
 
 /**
@@ -2369,5 +2370,139 @@ describe('RequestReviewPanel', () => {
       const mobileRowPath = resolve(__dirname, 'RequestRowMobile.tsx')
       expect(existsSync(mobileRowPath)).toBe(false)
     })
+  })
+})
+
+/**
+ * kindred#2237 — the bulk-confirm dialog's Escape handler.
+ *
+ * This panel renders FIVE independently-stated overlays (`CreateRequestModal`,
+ * `CamperDetailsPanel`, `MergeRequestsModal`, `SplitRequestModal`,
+ * `ConfirmActionPopover`) plus this `role="dialog"` bulk-confirm. Nothing
+ * makes them mutually exclusive, and neither `ui/Modal` nor
+ * `ConfirmActionPopover` calls `stopPropagation()` — both merely gate on
+ * `isTopOverlay`. So an ungated bubble-phase listener here fired ALONGSIDE
+ * whichever of them was genuinely on top: the original kindred#2205
+ * double-close, reachable from this panel six different ways.
+ *
+ * Fictional data throughout.
+ */
+describe('RequestReviewPanel — bulk-confirm overlay token (kindred#2237)', () => {
+  async function openBulkConfirmDialog() {
+    window.localStorage.setItem(
+      'kindred-requests-filters-1001',
+      JSON.stringify({
+        filters: { requestTypes: [], statuses: ['pending'], searchQuery: '' },
+        sort: { sortBy: 'requester', sortOrder: 'asc' },
+      })
+    )
+
+    const records: BunkRequestsResponse[] = [
+      {
+        id: 'esc-rec-1',
+        requester_id: 610,
+        requestee_id: 611,
+        session_id: 1001,
+        year: 2025,
+        status: 'pending',
+        request_type: 'bunk_with',
+        confidence_score: 0.8,
+      } as BunkRequestsResponse,
+    ]
+
+    const { pb } = (await import('../lib/pocketbase')) as unknown as {
+      pb: { collection: ReturnType<typeof vi.fn> }
+    }
+    pb.collection.mockImplementation((name: string) => {
+      if (name === 'bunk_requests') {
+        return {
+          getFullList: vi.fn(async () => records.map((r) => ({ ...r }))),
+          getList: vi.fn(async () => ({
+            items: records.map((r) => ({ ...r })),
+            totalItems: records.length,
+          })),
+          update: vi.fn().mockResolvedValue({}),
+        }
+      }
+      return {
+        getFullList: vi.fn().mockResolvedValue([]),
+        getList: vi.fn().mockResolvedValue({ items: [], totalItems: 0 }),
+        update: vi.fn().mockResolvedValue({}),
+      }
+    })
+
+    const view = render(<RequestReviewPanel sessionId={1001} year={2025} />)
+    const user = userEvent.setup()
+
+    await waitFor(() => expect(screen.getAllByText('Pending').length).toBeGreaterThanOrEqual(1), {
+      timeout: 3000,
+    })
+
+    for (const cb of screen.getAllByRole('checkbox')) {
+      if ((cb as HTMLInputElement).checked) continue
+      fireEvent.click(cb)
+      const bar = screen.queryByRole('toolbar', { name: /bulk actions/i })
+      if (bar && within(bar).queryByText(/^1 selected$/)) break
+    }
+
+    const toolbar = await waitFor(
+      () => {
+        const t = screen.queryByRole('toolbar', { name: /bulk actions/i })
+        if (!t) throw new Error('no toolbar yet')
+        if (!within(t).queryByText(/^1 selected$/)) throw new Error('not 1 selected yet')
+        return t
+      },
+      { timeout: 3000 }
+    )
+    await user.click(within(toolbar).getByRole('button', { name: /reject/i }))
+    await screen.findByRole('dialog')
+
+    return view
+  }
+
+  it('closes the dialog on Escape when it is the topmost overlay', async () => {
+    await openBulkConfirmDialog()
+
+    fireEvent.keyDown(document, { key: 'Escape' })
+
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+  })
+
+  it('does NOT close once an overlay has opened on top of it', async () => {
+    await openBulkConfirmDialog()
+
+    const topToken = acquireOverlayToken()
+    try {
+      fireEvent.keyDown(document, { key: 'Escape' })
+      expect(screen.getByRole('dialog')).toBeInTheDocument()
+    } finally {
+      releaseOverlayToken(topToken)
+    }
+  })
+
+  // A leaked token is invisible to a "does it still close?" test, because a
+  // newly acquired token is always last in the stack. Only stack emptiness
+  // catches it — kindred#2205 shipped exactly that false-green.
+  it('releases its overlay token on unmount, so the stack does not leak', async () => {
+    const { unmount } = await openBulkConfirmDialog()
+    expect(hasOpenModal()).toBe(true)
+
+    unmount()
+
+    expect(hasOpenModal()).toBe(false)
+  })
+
+  it('registers no token while the bulk-confirm dialog is closed', async () => {
+    await renderPanelWithRequest({
+      id: 'esc-none',
+      requester_id: 620,
+      requestee_id: 621,
+      session_id: 1001,
+      year: 2025,
+      status: 'pending',
+      request_type: 'bunk_with',
+    })
+
+    expect(hasOpenModal()).toBe(false)
   })
 })

@@ -199,7 +199,13 @@ export default function OptimizeBunksButton({
     }
   }, [isOpen])
 
-  // Handle escape key to close dropdown
+  // Handle escape key to close dropdown.
+  //
+  // CORRECT AS-IS, no overlay token (kindred#2237): same self-limiting shape
+  // as `CsvPipelineIndicator` -- the portal dropdown below IS an overlay
+  // surface, but it's dismissed by the outside-mousedown listener directly
+  // above, and no other Escape-handling surface is expected to coexist with
+  // it open.
   useEffect(() => {
     function handleEscape(event: KeyboardEvent) {
       if (event.key === 'Escape') {
