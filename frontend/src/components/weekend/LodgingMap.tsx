@@ -297,6 +297,16 @@ export function LodgingMap({ parties, units, year, sessionCmId = 0 }: LodgingMap
         )
       )
     }
+    // CORRECT AS-IS, and deliberately so (kindred#2237): taking a token here
+    // would REGRESS the panel beside it. `FamilyDetailsPanel` stands down for
+    // any overlay in the stack via `hasOpenModal()`, which is a "is anything
+    // else open" test, not a LIFO one. A peek can be open BEHIND that panel --
+    // `MapUnitPopover` passes `onOpenParty` straight through and nothing on
+    // that path calls `closePeek()` -- so a peek token would make the panel
+    // yield Escape to a transient hover popover underneath it, and the family
+    // the staff member was reading would stop closing on the key entirely.
+    // Fixing this pair properly means converting `FamilyDetailsPanel` too,
+    // which kindred#2237 pre-classifies as correct as-is and out of scope.
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === 'Escape') closePeek()
     }

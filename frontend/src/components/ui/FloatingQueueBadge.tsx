@@ -125,6 +125,16 @@ export function FloatingQueueBadge<T>({
   )
 
   // ESC clears an active filter first, and only closes on the second press.
+  //
+  // CORRECT AS-IS, no overlay token (kindred#2237). Another CONTAINER: the
+  // expanded queue is never the overlay ON TOP. The two things that stack
+  // above it both hold tokens now -- the `CamperCard` context menu opened from
+  // a row in this very list, and the `CamperDetailsPanel` that `isPanelOpen`
+  // deliberately keeps this list open beside -- and each swallows Escape in
+  // the document capture phase while topmost, before this bubble listener
+  // runs. The double-close this badge was part of (menu open inside the queue,
+  // one press dismissed the menu AND collapsed the queue) is fixed from the
+  // card's side.
   const handleKeyDown = useCallback(
     (event: KeyboardEvent) => {
       if (event.key === 'Escape' && isExpanded) {

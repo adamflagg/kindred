@@ -199,7 +199,11 @@ export default function OptimizeBunksButton({
     }
   }, [isOpen])
 
-  // Handle escape key to close dropdown
+  // Handle escape key to close dropdown.
+  //
+  // CORRECT AS-IS, no overlay token (kindred#2237): same self-limiting shape
+  // as `CsvPipelineIndicator` -- a header dropdown dismissed by the
+  // outside-mousedown listener directly above, hosting no overlay of its own.
   useEffect(() => {
     function handleEscape(event: KeyboardEvent) {
       if (event.key === 'Escape') {

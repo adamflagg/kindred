@@ -33,6 +33,11 @@ export function WaitlistGradePopover({
   persons,
   onClose,
 }: WaitlistGradePopoverProps) {
+  // CORRECT AS-IS, no overlay token (kindred#2237): this component is not
+  // rendered by any production surface. The only non-test reference anywhere
+  // in `src/` is to `transformWaitlistGradeData`, a same-prefixed function in
+  // `pages/metrics/registration/WaitlistAnalysis.tsx`. It cannot co-occur with
+  // another overlay because nothing mounts it.
   useEffect(() => {
     if (!isOpen) return
 

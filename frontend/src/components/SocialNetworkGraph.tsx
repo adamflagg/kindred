@@ -280,7 +280,18 @@ export default function SocialNetworkGraph({ sessionCmId }: SocialNetworkGraphPr
       .map((n) => ({ cmId: n.id, grade: n.grade }))
   }, [graphData, selectedNodeId])
 
-  // Handle escape key for expanded mode
+  // Handle escape key for expanded mode.
+  //
+  // CORRECT AS-IS, no overlay token (kindred#2237). This is a CONTAINER: the
+  // expanded graph is the bottom of its own stack and never sits on top of
+  // another Escape-handling surface. The two overlays it hosts --
+  // `GraphFilterPopover` and `CamperDetailsPanel` -- both went through
+  // `useOverlayEscape` in kindred#2237, and that hook stops propagation in the
+  // document CAPTURE phase while topmost, which lands before this `window`
+  // bubble listener ever runs. So the pairing that used to double-close (open
+  // the filter inside the expanded graph, press Escape, watch the graph
+  // collapse out from under it) is already fixed from the child's side. Giving
+  // this a token would add a lifetime to get wrong for no behaviour gained.
   useEffect(() => {
     const handleEscape = (e: KeyboardEvent) => {
       if (e.key === 'Escape' && isExpanded) {

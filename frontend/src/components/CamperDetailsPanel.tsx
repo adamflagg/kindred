@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect, useMemo } from 'react'
+import { useState, useCallback, useMemo } from 'react'
 import { Link } from 'react-router'
 import { useQuery } from '@tanstack/react-query'
 import {
@@ -55,6 +55,7 @@ import { useOriginalBunkData } from '../hooks/camper/useOriginalBunkData'
 import { fetchCamperJourney, fetchParentMainSessions } from '../hooks/camper/fetchCamperJourney'
 import { collapseAgEnrollments, buildAgParentPairs } from '../hooks/camper/agCollapse'
 import type { HistoricalRecord } from '../hooks/camper/types'
+import { useOverlayEscape } from '../hooks/useOverlayEscape'
 import { useYear } from '../hooks/useCurrentYear'
 import { getDisplayAgeForYear } from '../utils/displayAge'
 import { CampMinderIcon } from './icons'
@@ -539,20 +540,24 @@ export default function CamperDetailsPanel({
     }
   }, [embedded, onClose])
 
-  // Dismiss overlay with Escape key (non-embedded mode only). When mounted
-  // inside a Modal, both listen on `document` for Escape — we register in
-  // the capture phase and stop propagation so the panel closes first and
-  // the underlying modal stays open (LIFO close behaviour).
-  useEffect(() => {
-    if (embedded || isClosing) return
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key !== 'Escape') return
-      e.stopPropagation()
-      handleClose()
-    }
-    document.addEventListener('keydown', handleKeyDown, true)
-    return () => document.removeEventListener('keydown', handleKeyDown, true)
-  }, [embedded, isClosing, handleClose])
+  // Dismiss overlay with Escape key (non-embedded mode only).
+  //
+  // NEEDS AN OVERLAY TOKEN (kindred#2237), and this was the worst of the
+  // twelve. It used to install a capture-phase `document` listener that called
+  // `stopPropagation()` UNCONDITIONALLY. That beat the one outer listener it
+  // was written against, but a capture-phase stop at `document` halts the
+  // event before the bubble phase begins -- so it also beat every overlay
+  // stacked ABOVE it, all of which (`ui/Modal`, `ConfirmActionPopover`) listen
+  // in the bubble phase and gate on `isTopOverlay` without stopping anything.
+  // `AllCamperRequestsModal`, a `ui/Modal` THIS PANEL ITSELF OPENS, was the
+  // concrete casualty: one Escape closed the panel out from under the dialog
+  // and left the dialog open. Not an extra close -- the wrong one.
+  //
+  // `useOverlayEscape` keeps the capture phase (it must, to stay ahead of the
+  // still-unconverted bubble-phase listeners beneath) but makes the stop
+  // CONDITIONAL on being topmost, so an overlay above this panel now receives
+  // the key it owns.
+  useOverlayEscape(!embedded && !isClosing, handleClose)
 
   // Helper: get location from person's discrete address columns
   const location = getLocationDisplay(
