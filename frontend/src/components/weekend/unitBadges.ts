@@ -175,6 +175,17 @@ export function shareabilityBadge(unit: LodgingUnitRow): UnitBadge | null {
  * container `shareable`, a whole-house let cannot fire this. That is the ruling
  * working, not a gap.
  *
+ * AUDITED against kindred#2339 — a two-unit `lodging_unit_aliases` row writes
+ * its whole member set onto every household that resolves through it, so two
+ * DIFFERENT households independently resolving through the same alias can
+ * each claim the identical two-code set without ever having agreed to share
+ * either room. `overlappingPartyKeys` guards exactly that: it will not read
+ * such a pair as sharing a room with EACH OTHER while the number of
+ * households claiming that set is no bigger than the set itself (H <= N).
+ * This badge takes `overlappingParties` as given and needs no guard of its
+ * own — it only ever sees the count after that ambiguity has already been
+ * resolved upstream.
+ *
  * Silent on an unclassified unit for the reason the doc gives: a unit nobody
  * has classified has no rule to violate, and nagging there teaches dismissal.
  * This reads the STORED value and re-states the classification rule nowhere —

@@ -20,6 +20,7 @@ import {
   areaTokens,
   buildBoard,
   countBoardSlots,
+  overlappingPartyKeys,
   partySize,
   SHARE_WORDING,
   slotOccupancy,
@@ -1339,9 +1340,12 @@ describe('buildBoard — consent flag follows leaf overlap, not the card (task-1
   /**
    * A combined container: `house` draws ONE card, and both `r1` and `r2` roll
    * up onto it (the roll-up `indexPayload` already does for a merged
-   * building). Modelled on the real report: two households in Wawona Front
-   * and Wawona Back went unflagged split, then flagged the moment the card
-   * was merged, though nothing about either household changed.
+   * building). Modelled on the real report: two households in the front and
+   * back halves of one combined building went unflagged split, then flagged
+   * the moment the card was merged, though nothing about either household
+   * changed. (Unit named structurally, not literally -- the Lodging Name
+   * Guard drops comments and exempts test files, so a real name here would
+   * never be caught. See the sweep issue for the rest.)
    */
   const combinedHouse = [
     unit({ code: 'house', is_container: true, is_combined: true, sleeps: 8 }),
@@ -1568,5 +1572,102 @@ describe("wholeBuildingHolders — #2008's placement marker, keyed by party", ()
   it('never marks a party alone in a freestanding room with no registry parent', () => {
     const alpha = party({ household_cm_id: 500001, unit_code: 'cedar-1', unit_codes: ['cedar-1'] })
     expect(wholeBuildingHolders([alpha], [unit()]).size).toBe(0)
+  })
+})
+
+describe('overlappingPartyKeys — a two-unit alias is ambiguous, not a confirmed share (kindred#2339)', () => {
+  // A `lodging_unit_aliases` row mapping one alias string to TWO units writes
+  // BOTH member codes onto every household that resolves through it
+  // (`lodging_assignments_sync.go`'s `placementFor` records the alias's own
+  // member set verbatim, deliberately unjudged). Two DIFFERENT households
+  // independently resolving through the same alias then each claim the
+  // identical two-code set -- which reads exactly like a shared room unless
+  // this is guarded, even though the honest state is "one per unit,
+  // unconfirmed which". The rule: H households on an N-unit alias is only
+  // evidence of a real double-booking once H > N.
+  const twoUnitAlias = [unit({ unit_id: 'u1', code: 'r1' }), unit({ unit_id: 'u2', code: 'r2' })]
+
+  it('does not flag two households who each resolved to the same two-unit alias (H == N)', () => {
+    const alpha = party({ household_cm_id: 500001, unit_code: '', unit_codes: ['r1', 'r2'] })
+    const beta = party({ household_cm_id: 500002, unit_code: '', unit_codes: ['r1', 'r2'] })
+    expect(overlappingPartyKeys([alpha, beta], twoUnitAlias).size).toBe(0)
+  })
+
+  it('flags all three once a two-unit alias is claimed by a third household (H > N)', () => {
+    const alpha = party({ household_cm_id: 500001, unit_code: '', unit_codes: ['r1', 'r2'] })
+    const beta = party({ household_cm_id: 500002, unit_code: '', unit_codes: ['r1', 'r2'] })
+    const gamma = party({ household_cm_id: 500003, unit_code: '', unit_codes: ['r1', 'r2'] })
+    expect(overlappingPartyKeys([alpha, beta, gamma], twoUnitAlias)).toEqual(
+      new Set([partyKey(alpha), partyKey(beta), partyKey(gamma)])
+    )
+  })
+
+  it('still flags a genuine same-room share unrelated to any alias', () => {
+    const alpha = party({ household_cm_id: 500001, unit_code: 'r1', unit_codes: ['r1'] })
+    const beta = party({ household_cm_id: 500002, unit_code: 'r1', unit_codes: ['r1'] })
+    expect(overlappingPartyKeys([alpha, beta], twoUnitAlias)).toEqual(
+      new Set([partyKey(alpha), partyKey(beta)])
+    )
+  })
+
+  it('still flags an alias household against a household confirmed in one of its rooms', () => {
+    // `alpha`'s own signature group has H = 1 household claiming its N = 2
+    // codes -- ambiguous on its own, but irrelevant here, because `beta` is
+    // NOT in that same signature group (`beta` names one code, not two), so
+    // the pair between them is never treated as ambiguous. `beta`'s
+    // single-leaf placement is a confirmed claim on `r1`.
+    const alpha = party({ household_cm_id: 500001, unit_code: '', unit_codes: ['r1', 'r2'] })
+    const beta = party({ household_cm_id: 500002, unit_code: 'r1', unit_codes: ['r1'] })
+    expect(overlappingPartyKeys([alpha, beta], twoUnitAlias)).toEqual(
+      new Set([partyKey(alpha), partyKey(beta)])
+    )
+  })
+
+  // Through `buildBoard`, the real entry point the board renders from --
+  // `overlappingPartyKeys` is not what staff see. `consentFlag` reads its
+  // output and `flaggedCount` sums the result, so the amber ring is what the
+  // guard actually silences; a test only on the helper would pass even if the
+  // wiring above it stopped reading the guarded value.
+  function aliasBoard(householdCount: number) {
+    const parties = Array.from({ length: householdCount }, (_, index) =>
+      party({
+        household_cm_id: 500101 + index,
+        display_name: `H${String(index)}`,
+        unit_code: '',
+        unit_name: 'R 1 + R 2',
+        unit_codes: ['r1', 'r2'],
+        // `is_merged_slot` is what makes `buildBoard` DRAW a multi-code
+        // placement instead of railing it as unplaced -- without it this
+        // fixture yields an empty board, which would satisfy the H <= N
+        // assertion below for entirely the wrong reason.
+        is_merged_slot: true,
+        share: {
+          preference: 'unknown',
+          proximity: [],
+          request_text: '',
+          needs_resolution: false,
+          // `declined` is the eligibility that DOES raise the flag once an
+          // overlap is found, so a silent board here is the guard working
+          // rather than the fixture having nothing to report.
+          eligibility: 'declined',
+          eligibility_source: 'form',
+          answers_conflict: false,
+        },
+      })
+    )
+    return buildBoard(parties, twoUnitAlias)
+  }
+
+  it('raises no amber flag on the BOARD for two households on one two-unit alias', () => {
+    const board = aliasBoard(2)
+    expect(board.flaggedCount).toBe(0)
+    expect(board.areas.flatMap((area) => area.slots).map((slot) => slot.consent)).toEqual([
+      null,
+      null,
+    ])
+  })
+
+  it('still raises the board flag once a third household claims the same two units', () => {
+    expect(aliasBoard(3).flaggedCount).toBeGreaterThan(0)
   })
 })

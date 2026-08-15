@@ -221,6 +221,39 @@ type registryBed struct {
 	Count int    `json:"count"`
 }
 
+// registryAlias is one row of lodging_unit_aliases: a free-text cabin string
+// CampMinder stores, mapped onto one or more current units.
+//
+// MemberUnits with 2+ codes denotes a merge -- ONE household occupying every
+// named unit at once, which is rare and deliberate (a whole-house let). It is
+// NOT evidence that every household who ever resolves through this alias
+// occupies all N units: the same alias string commonly gets reused by
+// DIFFERENT households across different weekends/years for what is really one
+// room per household, ambiguous only in which. kindred#2339's rule for
+// telling the two apart: for H households observed resolving through an
+// N-member alias, H > N is the earliest point over-occupancy is provable --
+// at H <= N, one household per unit fits and nothing says otherwise. A
+// consumer that credits an occupancy count to every member unit for every
+// household resolving through the alias, without applying this H > N test,
+// will overstate multi-family occupancy -- one area's apparent 18
+// multi-household occupancies collapsed to 2 once the H <= N cases were
+// excluded (kindred#2339). `docs/reference/lodging-registry.md` carries the
+// same rule for anyone editing the JSON file directly.
+//
+// Audited consumers (kindred#2339):
+//   - seedAliases (this file) writes the table from the registry file; it does
+//     not count occupancy, so H > N does not apply.
+//   - sync.AliasResolver.Resolve resolves ONE household's own raw cabin
+//     string to its own placement; it never tallies across households, so
+//     H > N does not apply there either.
+//   - sync.LodgingAssignmentsSync.placementFor writes an alias's member set
+//     onto ONE household's own lodging_assignments.units row, unjudged by
+//     design (docs/architecture/lodging-occupancy.md: "Not in the ingest").
+//     It is the source of the ambiguous data, not itself an occupancy count.
+//   - frontend's overlappingPartyKeys (boardLayout.ts) IS an occupancy count
+//     -- the board's own conflict warning -- and is the one that needed the
+//     guard. Fixed there: two households resolving to the same alias are no
+//     longer read as sharing a room with each other while H <= N.
 type registryAlias struct {
 	AliasString string   `json:"alias_string"`
 	MemberUnits []string `json:"member_units"` // unit codes; 2+ denotes a merge
