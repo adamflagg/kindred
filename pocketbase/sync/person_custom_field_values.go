@@ -43,6 +43,15 @@ func (s *PersonCustomFieldValuesSync) Name() string {
 	return serviceNamePersonCustomValues
 }
 
+// SetDryRun implements the orchestrator's DryRunnable interface (kindred#2351). Declared
+// explicitly rather than inherited by embedding BaseSyncService -- see that field's doc
+// comment on BaseSyncService for why a promoted setter is not safe. Setting it also gates
+// processPersonCustomFieldValue's own two App.Save call sites (a fast-path upsert that does
+// not go through BaseSyncService.ProcessSimpleRecord).
+func (s *PersonCustomFieldValuesSync) SetDryRun(dryRun bool) {
+	s.DryRun = dryRun
+}
+
 // SetSession sets the session filter for this sync (e.g., "1", "2", "2a", "all")
 func (s *PersonCustomFieldValuesSync) SetSession(session string) {
 	s.Session = session
@@ -428,6 +437,10 @@ func (s *PersonCustomFieldValuesSync) processPersonCustomFieldValue(
 			for key, val := range pbData {
 				existing.Set(key, val)
 			}
+			if s.DryRun {
+				s.Stats.Updated++
+				return nil
+			}
 			if err := s.App.Save(existing); err != nil {
 				valueStr, _ := pbData["value"].(string)
 				slog.Error("Error updating custom field value",
@@ -452,6 +465,11 @@ func (s *PersonCustomFieldValuesSync) processPersonCustomFieldValue(
 		record := core.NewRecord(collection)
 		for key, val := range pbData {
 			record.Set(key, val)
+		}
+
+		if s.DryRun {
+			s.Stats.Created++
+			return nil
 		}
 
 		if err := s.App.Save(record); err != nil {

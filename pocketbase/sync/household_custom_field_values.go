@@ -43,6 +43,15 @@ func (s *HouseholdCustomFieldValuesSync) Name() string {
 	return serviceNameHouseholdCustomValues
 }
 
+// SetDryRun implements the orchestrator's DryRunnable interface (kindred#2351). Declared
+// explicitly rather than inherited by embedding BaseSyncService -- see that field's doc
+// comment on BaseSyncService for why a promoted setter is not safe. Setting it also gates
+// processHouseholdCustomFieldValue's own two App.Save call sites (a fast-path upsert that
+// does not go through BaseSyncService.ProcessSimpleRecord).
+func (s *HouseholdCustomFieldValuesSync) SetDryRun(dryRun bool) {
+	s.DryRun = dryRun
+}
+
 // SetSession sets the session filter for this sync (e.g., "1", "2", "2a", "all")
 func (s *HouseholdCustomFieldValuesSync) SetSession(session string) {
 	s.Session = session
@@ -419,6 +428,10 @@ func (s *HouseholdCustomFieldValuesSync) processHouseholdCustomFieldValue(
 			for key, val := range pbData {
 				existing.Set(key, val)
 			}
+			if s.DryRun {
+				s.Stats.Updated++
+				return nil
+			}
 			if err := s.App.Save(existing); err != nil {
 				valueStr, _ := pbData["value"].(string)
 				slog.Error("Error updating household custom field value",
@@ -442,6 +455,11 @@ func (s *HouseholdCustomFieldValuesSync) processHouseholdCustomFieldValue(
 		record := core.NewRecord(collection)
 		for key, val := range pbData {
 			record.Set(key, val)
+		}
+
+		if s.DryRun {
+			s.Stats.Created++
+			return nil
 		}
 
 		if err := s.App.Save(record); err != nil {

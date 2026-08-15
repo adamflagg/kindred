@@ -43,6 +43,13 @@ func (s *FinancialTransactionsSync) Name() string {
 	return serviceNameFinancialTransactions
 }
 
+// SetDryRun implements the orchestrator's DryRunnable interface (kindred#2351). Declared
+// explicitly rather than inherited by embedding BaseSyncService -- see that field's doc
+// comment for why a promoted setter is not safe here.
+func (s *FinancialTransactionsSync) SetDryRun(dryRun bool) {
+	s.DryRun = dryRun
+}
+
 // Sync performs the year-scoped financial transactions sync
 func (s *FinancialTransactionsSync) Sync(ctx context.Context) error {
 	return s.SyncForYear(ctx, s.Client.GetSeasonID())

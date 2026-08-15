@@ -41,6 +41,14 @@ func (s *AttendeesSync) Name() string {
 	return "attendees"
 }
 
+// SetDryRun implements the orchestrator's DryRunnable interface (kindred#2351). Declared
+// explicitly rather than inherited by embedding BaseSyncService -- see that field's doc
+// comment on BaseSyncService for why a promoted setter is not safe. Setting it also gates
+// logStatusChange's own App.Save call below, which is outside BaseSyncService's write sites.
+func (s *AttendeesSync) SetDryRun(dryRun bool) {
+	s.DryRun = dryRun
+}
+
 // Sync performs the attendees sync
 func (s *AttendeesSync) Sync(ctx context.Context) error {
 	s.LogSyncStart("attendees")
@@ -413,6 +421,10 @@ func (s *AttendeesSync) logStatusChange(
 	}
 	if personPBID, ok := recordData["person"]; ok {
 		record.Set("person", personPBID)
+	}
+
+	if s.DryRun {
+		return nil
 	}
 
 	if err := s.App.Save(record); err != nil {

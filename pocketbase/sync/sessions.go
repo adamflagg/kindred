@@ -59,6 +59,13 @@ func (s *SessionsSync) Name() string {
 	return serviceNameSessions
 }
 
+// SetDryRun implements the orchestrator's DryRunnable interface (kindred#2351). Declared
+// explicitly rather than inherited by embedding BaseSyncService -- see that field's doc
+// comment for why a promoted setter is not safe here.
+func (s *SessionsSync) SetDryRun(dryRun bool) {
+	s.DryRun = dryRun
+}
+
 // Sync performs the session sync
 func (s *SessionsSync) Sync(ctx context.Context) error {
 	// Use custom implementation like bunks for idempotency
