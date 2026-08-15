@@ -495,3 +495,22 @@ func TestAliasResolverHasAnyUnitsFalseWhenEmpty(t *testing.T) {
 		t.Error("HasUnitsForYear(2027) = true, want false")
 	}
 }
+
+// TestNewLodgingTestAppCoversBunkAssignmentGrain is kindred#2300: the shared
+// fixture builder was lodging-only, so bunk_assignments/staff/bunks/bunk_plans
+// only ever got hand-built copies scattered across
+// bunk_assignments_protection_test.go, bunk_assignments_grain_test.go and
+// stranded_assignment_cleanup_test.go -- none of them covered by
+// TestLodgingTestsupportFixtureFieldsExistInProductionSchema, which only
+// walks whatever newSyncTestApp builds. This pins that those four
+// collections are now built by the shared app, so the drift check picks
+// them up with NO edit to the check itself.
+func TestNewLodgingTestAppCoversBunkAssignmentGrain(t *testing.T) {
+	t.Parallel()
+	app := newSyncTestApp(t)
+	for _, name := range []string{"bunk_assignments", "staff", "bunks", "bunk_plans"} {
+		if _, err := app.FindCollectionByNameOrId(name); err != nil {
+			t.Errorf("newSyncTestApp does not build %q: %v", name, err)
+		}
+	}
+}
