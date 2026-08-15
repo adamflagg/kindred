@@ -273,14 +273,19 @@ describe('UnitAvailabilityControl', () => {
     expect(screen.queryByText(/say who is in it/i)).not.toBeInTheDocument()
   })
 
-  it('clears an override in one click, writing null rather than a value that agrees', async () => {
+  it('clears a write-in in one click, writing null rather than a value that agrees, and names what it clears (#2252)', async () => {
     // `null` DELETES the row. Writing "available" onto a family cabin instead
     // would pin it against a later change to its role -- the reversal-encoding
     // failure spec §5.4 rejected, arriving through the UI.
+    //
+    // The exact button name is the assertion: kindred#2252 dropped the
+    // redundant "Write-in" chip from `LodgingUnitCard`'s badge row, which
+    // made this the only thing on the card saying what a click removes. A
+    // bare "Clear" would pass the loose `/clear/i` query this used to use.
     const user = userEvent.setup()
     const { onSubmit } = renderControl({ unit: WRITTEN_IN_CABIN })
 
-    await user.click(screen.getByRole('button', { name: /clear/i }))
+    await user.click(screen.getByRole('button', { name: 'Clear Write-in Cedar 1' }))
 
     expect(onSubmit).toHaveBeenCalledWith({
       unitId: 'u1',
@@ -336,7 +341,7 @@ describe('UnitAvailabilityControl', () => {
     const user = userEvent.setup()
     const { onSubmit } = renderControl({ unit: WRITTEN_IN_CABIN, isSaving: true })
 
-    await user.click(screen.getByRole('button', { name: /clear/i }))
+    await user.click(screen.getByRole('button', { name: 'Clear Write-in Cedar 1' }))
 
     expect(onSubmit).not.toHaveBeenCalled()
   })
@@ -425,11 +430,14 @@ describe('a write-in this unit inherited from elsewhere in the tree', () => {
     },
   })
 
-  it('offers to clear it, and names the unit that actually holds the row', async () => {
+  it('offers to clear it, labelled "Clear Write-in" and naming the unit that actually holds the row (#2252)', async () => {
+    // The button reads on the INHERITING card ("House A"), and the label is
+    // still "Clear Write-in" there — the relabel is keyed on what the action
+    // clears, not on whose own row it happens to be.
     const user = userEvent.setup()
     const { onSubmit } = renderControl({ unit: ROOM_UNDER_A_WRITTEN_IN_HOUSE })
 
-    await user.click(screen.getByRole('button', { name: /clear/i }))
+    await user.click(screen.getByRole('button', { name: 'Clear Write-in House A' }))
 
     expect(onSubmit).toHaveBeenCalledWith({
       unitId: 'u-house',

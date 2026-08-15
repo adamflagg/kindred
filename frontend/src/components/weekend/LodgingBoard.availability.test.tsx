@@ -222,7 +222,7 @@ describe('LodgingBoard — clearing a write-in this card inherited', () => {
     const user = userEvent.setup()
     renderBoard({ units: [room] })
 
-    await user.click(screen.getByRole('button', { name: 'Clear House A' }))
+    await user.click(screen.getByRole('button', { name: 'Clear Write-in House A' }))
 
     expect(setAvailability).toHaveBeenCalledWith({
       unitId: 'u-house',
@@ -241,6 +241,6 @@ describe('LodgingBoard — clearing a write-in this card inherited', () => {
     pendingUnitId = 'u-house'
     renderBoard({ units: [room] })
 
-    expect(screen.getByRole('button', { name: 'Clear House A' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Clear Write-in House A' })).toBeDisabled()
   })
 })

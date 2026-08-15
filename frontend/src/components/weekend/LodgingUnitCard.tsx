@@ -33,6 +33,7 @@ import {
   reservationBadge,
   shareabilityBadge,
   sharingConflictBadge,
+  writeInBadgeApplies,
   type UnitBadge,
 } from './unitBadges'
 import { UnitAvailabilityControl } from './UnitAvailabilityControl'
@@ -304,7 +305,14 @@ export function LodgingUnitCard({
   onOpenParty,
 }: LodgingUnitCardProps) {
   const { unit, parties, consent } = slot
-  const badge = reservationBadge(unit)
+  // Suppressed for a write-in ONLY on this card (kindred#2252). The chip and
+  // the well's `WriteInCard` below said the same thing twice — the occupant's
+  // own name, once as a slate "Write-in" chip and once spelled out in the
+  // well — and the well is the one that actually names them, so the chip is
+  // redundant here. `reservationBadge` itself is untouched: `MapUnitPopover`'s
+  // header and its collapsed grid cell draw no `WriteInCard` of their own and
+  // still call it directly, so the chip is still the only signal there.
+  const badge = writeInBadgeApplies(unit) ? null : reservationBadge(unit)
   // On every unit this card can be a SLOT for, which includes a COMBINED
   // container and excludes a split one.
   //
