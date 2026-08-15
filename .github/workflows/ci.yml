@@ -90,6 +90,7 @@ jobs:
       migrations: ${{ steps.filter.outputs.migrations }}
       frontend: ${{ steps.filter.outputs.frontend }}
       scripts: ${{ steps.filter.outputs.scripts }}
+      guardSelfTests: ${{ steps.filter.outputs.guardSelfTests }}
       docker: ${{ steps.filter.outputs.docker }}
       actions: ${{ steps.filter.outputs.actions }}
     steps:
@@ -179,6 +180,38 @@ jobs:
           scripts:
             - 'scripts/**/*.sh'
             - '.shellcheckrc'
+          # kindred#2370: scripts/dev/test-*.sh are the guard scripts' own
+          # self-tests (e.g. test-verify-migration-history.sh pins the
+          # unanchored-boundary regression from PR #2366) and, before this
+          # filter existed, ran nowhere in CI -- the `scripts` filter above
+          # already matches this directory via `scripts/**/*.sh`, but the
+          # only job reading that output is go-lint's shellcheck step
+          # (syntax, not behavior). A dedicated filter makes the
+          # guard-self-tests job's gate say what it actually depends on,
+          # instead of relying on unrelated incidental coverage from a
+          # filter meant for something else. `scripts/dev/**` (not just
+          # `*.sh`) also covers scripts/dev/lib/pb-harness.sh, the shared
+          # lib every guard here delegates its tool-absence contract to.
+          # `.github/workflows/ci.yml` is included for the same reason the
+          # `go` filter above includes it: the guard-self-tests job's own
+          # shape (which scripts it runs, how) lives in this file, so a PR
+          # that only edits the job -- like the one that first added it --
+          # must still be able to trigger it. Without this line, that PR
+          # would ship a job whose own CI run never proves it runs at all,
+          # which is the exact failure kindred#2370 is about.
+          # `pocketbase/pb_migrations/**` is included because
+          # test-verify-consolidation.sh (wired into this same job) runs
+          # end-to-end against the REAL migration tree, not a fixture --
+          # a migrations-only PR can add a schema-free tail migration
+          # (a pure data/RBAC rewrite like 1500000154) that breaks the
+          # suite's drift assertion. Without this line, that PR would not
+          # trigger guard-self-tests and would merge green; the red would
+          # then surface on some later, unrelated PR that happens to touch
+          # scripts/dev/ or ci.yml, misattributed to the wrong change.
+          guardSelfTests:
+            - 'scripts/dev/**'
+            - '.github/workflows/ci.yml'
+            - 'pocketbase/pb_migrations/**'
           docker:
             - 'docker/**'
             - 'docker-compose*.yml'
@@ -231,6 +264,62 @@ jobs:
 
     - name: Guard self-test
       run: ./scripts/dev/test-verify-no-hardcoded-lodging.sh
+
+  # kindred#2370: scripts/dev/verify-migration-history.sh gates local
+  # start_dev.sh boots and stands between a renumbered migration and a
+  # corrupted local DB, but its own 15-test self-test
+  # (test-verify-migration-history.sh) ran nowhere -- CI only wired
+  # test-verify-no-hardcoded-lodging.sh above. TEST 14/15 there pin a real
+  # defect PR #2366 introduced and fixed: an unanchored boundary regex that
+  # made the guard report silently CLEAN on a real collision, the one
+  # direction a collision predictor must never fail in.
+  #
+  # Gated on `guardSelfTests` (scripts/dev/**), not `migrations` or `go` --
+  # a change to only a script under scripts/dev/ (the guard, its suite, or
+  # the shared pb-harness.sh lib) touches none of those, so gating this job
+  # on either would leave it exactly as unwired as the absence this issue
+  # is about. See the `guardSelfTests` filter comment above.
+  #
+  # The other three self-tests found under scripts/dev/test-*.sh
+  # (test-verify-consolidation.sh, test-migration-schema-diff.sh,
+  # test-pb-harness.sh) were audited the same way and are wired here too --
+  # all three pass standalone against a scratch Go build and a scratch
+  # sqlite3 DB, with no live PocketBase server or seeded dev DB required, so
+  # none of them carry the flake risk that would make wiring them a mistake.
+  guard-self-tests:
+    name: Dev Guard Self-Tests
+    needs: detect-changes
+    if: needs.detect-changes.outputs.guardSelfTests == 'true'
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      with:
+        persist-credentials: false
+
+    # migration-history's suite needs only sqlite3/python3 (both preinstalled
+    # on ubuntu-latest), but the consolidation and pb-harness suites build a
+    # scratch pocketbase binary via pb_harness_build_binary, so Go is a real
+    # dependency of this job, not an unused setup step.
+    - name: Setup Go
+      uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+      with:
+        go-version-file: pocketbase/go.mod
+        check-latest: true
+        cache: true
+        cache-dependency-path: pocketbase/go.sum
+
+    - name: Migration history guard self-test
+      run: ./scripts/dev/test-verify-migration-history.sh
+
+    - name: Consolidation guard self-test
+      run: ./scripts/dev/test-verify-consolidation.sh
+
+    - name: Migration schema-diff guard self-test
+      run: ./scripts/dev/test-migration-schema-diff.sh
+
+    - name: PB harness lib self-test
+      run: ./scripts/dev/test-pb-harness.sh
 
   # Python linting (parallel with other lint jobs)
   python-lint:
@@ -917,7 +1006,7 @@ jobs:
   # Summary job - gate for PR merges
   summary:
     name: CI Summary
-    needs: [pr-title-lint, detect-changes, secret-scan, lodging-guard, python-lint, go-lint, frontend-lint, docker-lint, security-lint, tests-python, tests-go, tests-migrations, tests-frontend]
+    needs: [pr-title-lint, detect-changes, secret-scan, lodging-guard, guard-self-tests, python-lint, go-lint, frontend-lint, docker-lint, security-lint, tests-python, tests-go, tests-migrations, tests-frontend]
     if: always()
     runs-on: ubuntu-latest
     steps:
@@ -927,6 +1016,7 @@ jobs:
         PR_TITLE_LINT: ${{ needs.pr-title-lint.result }}
         SECRET_SCAN: ${{ needs.secret-scan.result }}
         LODGING_GUARD: ${{ needs.lodging-guard.result }}
+        GUARD_SELF_TESTS: ${{ needs.guard-self-tests.result }}
         PYTHON_LINT: ${{ needs.python-lint.result }}
         GO_LINT: ${{ needs.go-lint.result }}
         FRONTEND_LINT: ${{ needs.frontend-lint.result }}
@@ -955,6 +1045,10 @@ jobs:
         fi
         if [ "$LODGING_GUARD" != "success" ]; then
           echo "::error::Lodging name guard failed! A camp unit name may have landed in source -- see docs/reference/lodging-registry.md."
+          exit 1
+        fi
+        if [ "$GUARD_SELF_TESTS" != "success" ] && [ "$GUARD_SELF_TESTS" != "skipped" ]; then
+          echo "::error::A scripts/dev/ guard self-test failed! See the guard-self-tests job."
           exit 1
         fi
         # Lint jobs: success or skipped (when no relevant changes)
