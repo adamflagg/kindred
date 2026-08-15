@@ -92,11 +92,33 @@ done
 # file only ever proved "no unit name outside a test file", never "no unit
 # name in test fixtures either" -- treat a future NEEDLES hit inside one as
 # worth a look, not an automatic pass.
+#
+# kindred#2367 narrows that blind spot for COMMENTS ONLY, and only under
+# frontend/src/**: catching needle terms in comments is strictly better than
+# catching them only in production code, and a repo-wide measurement found 14
+# comment hits across 6 files, split between frontend/src/** (3 hits, 2 files
+# -- both fixed at the source in this same change) and pocketbase/ Go test
+# files (11 hits, 4 files) that this branch has no reason to touch and did
+# not verify against sibling in-flight PRs. Narrowing to frontend/src/** ships
+# the improvement where it was already fully paid for and leaves the
+# pocketbase/ side for a future pass, rather than guessing at files another
+# issue may be mid-edit on. Fixture CODE in a frontend/src/** test file is
+# still exempt -- only its comment lines are newly in scope.
+FRONTEND_TEST_PATTERN='^frontend/src/.*(_test\.|\.test\.|/tests?/)'
 HITS=""
 if [[ -n "$RAW" ]]; then
-  HITS=$(printf '%s\n' "$RAW" \
+  FRONTEND_TEST_RAW=$(printf '%s\n' "$RAW" | grep -E "$FRONTEND_TEST_PATTERN" || true)
+  OTHER_RAW=$(printf '%s\n' "$RAW" | grep -vE "$FRONTEND_TEST_PATTERN" || true)
+
+  HITS=$(printf '%s\n' "$OTHER_RAW" \
     | grep -v '_test\.\|\.test\.\|/tests\?/' \
     | grep -v 'frontend/src/data/cityGeo\.ts\|frontend/src/data/schoolGeo\.ts' || true)
+
+  FRONTEND_TEST_COMMENT_HITS=""
+  if [[ -n "$FRONTEND_TEST_RAW" ]]; then
+    FRONTEND_TEST_COMMENT_HITS=$(printf '%s\n' "$FRONTEND_TEST_RAW" \
+      | python3 "$REPO_ROOT/scripts/dev/lib/drop_comment_hits.py" --only-comments)
+  fi
 fi
 
 # Prose that names a unit to explain a rule is documentation, not the registry
@@ -111,6 +133,14 @@ fi
 # (a different feature) that coincidentally contain place-name substrings
 # ("Manzanita, OR", "El Capitan, AZ", "Wawona, CA", "Tuolumne City, CA") — not
 # the lodging registry. Excluded to keep this guard meaningful.
+
+# FRONTEND_TEST_COMMENT_HITS is already comment-only (produced by
+# --only-comments above) -- append it here, AFTER the drop-comments step
+# above, not before: running it back through that filter would drop the very
+# comment hits it exists to report.
+if [[ -n "${FRONTEND_TEST_COMMENT_HITS:-}" ]]; then
+  HITS=$(printf '%s\n%s\n' "$HITS" "$FRONTEND_TEST_COMMENT_HITS" | sed '/^$/d')
+fi
 
 if [[ -n "$HITS" ]]; then
   echo "FAIL: lodging unit names found in application source (spec 3.8 — registry is data, not code):" >&2

@@ -296,4 +296,83 @@ fi
 echo "PASS: a needle in a .sh file is caught"
 
 echo
+echo "=== TEST 10: a needle in a COMMENT inside a frontend/src/** test file should exit 1 ==="
+# kindred#2367: the blanket test-file exemption (TEST 4's grep -v pattern)
+# used to drop every hit in a test file, comment prose and fixture code alike
+# -- so a real unit name in a test's explanatory comment sailed through the
+# same way a fixture literal legitimately does. Catching needle terms in
+# comments is strictly better than catching them only in production code;
+# this asserts the widening for frontend/src/**, the surface it was scoped to
+# (see the guard's own comment on why it stops there).
+FE_TEST_PROBE="$REPO_ROOT/frontend/src/leak_probe_kindred2367.test.ts"
+cleanup7() { rm -f "$FE_TEST_PROBE"; }
+trap 'cleanup7; cleanup6; cleanup5; cleanup4; cleanup3; cleanup' EXIT INT TERM
+cat > "$FE_TEST_PROBE" <<'PROBE'
+// Regression comment naming Kitty to explain a fixture below.
+export {}
+PROBE
+set +e
+OUT=$("$GUARD_SCRIPT" 2>&1)
+rc=$?
+set -e
+rm -f "$FE_TEST_PROBE"
+if [[ $rc -ne 1 ]]; then
+  echo "FAIL: expected exit 1 for a needle in a frontend/src/** test comment, got $rc" >&2
+  echo "$OUT" >&2
+  exit 1
+fi
+if ! grep -q "frontend/src/leak_probe_kindred2367.test.ts:1:" <<<"$OUT"; then
+  echo "FAIL: output missing frontend test-comment probe file:line" >&2
+  echo "$OUT" >&2
+  exit 1
+fi
+echo "PASS: a needle in a frontend/src/** test file's comment is caught"
+
+echo
+echo "=== TEST 11: a needle in FIXTURE CODE inside a frontend/src/** test file must still exit 0 ==="
+# The widening in TEST 10 targets comments only. A real unit name as a
+# fixture literal is the exact, deliberate case the test-file exemption
+# exists for (lodging_alias_resolver_test.go, LodgingUnitForm.test.tsx, and
+# others hardcode real unit names on purpose) -- this proves TEST 10 did not
+# also start failing that.
+FE_TEST_CODE_PROBE="$REPO_ROOT/frontend/src/leak_probe_kindred2367_code.test.ts"
+cleanup8() { rm -f "$FE_TEST_CODE_PROBE"; }
+trap 'cleanup8; cleanup7; cleanup6; cleanup5; cleanup4; cleanup3; cleanup' EXIT INT TERM
+echo 'export const UNIT = "Kitty"' > "$FE_TEST_CODE_PROBE"
+set +e
+OUT=$("$GUARD_SCRIPT" 2>&1)
+rc=$?
+set -e
+rm -f "$FE_TEST_CODE_PROBE"
+if [[ $rc -eq 0 ]]; then
+  echo "PASS: a needle as fixture code in a frontend/src/** test file is still exempt"
+else
+  echo "FAIL: expected exit 0 for a needle as fixture code, got $rc" >&2
+  echo "$OUT" >&2
+  exit 1
+fi
+
+echo
+echo "=== TEST 12: a needle in a COMMENT inside a non-frontend test file must still exit 0 ==="
+# The comment-scanning widening is deliberately scoped to frontend/src/**
+# (measured blast radius: kindred#2367 PR body). A Go test file's comment
+# stays exempted -- narrowing this far, not repo-wide, is the point.
+GO_TEST_PROBE="$REPO_ROOT/pocketbase/leak_probe_kindred2367_test.go"
+cleanup9() { rm -f "$GO_TEST_PROBE"; }
+trap 'cleanup9; cleanup8; cleanup7; cleanup6; cleanup5; cleanup4; cleanup3; cleanup' EXIT INT TERM
+printf 'package pocketbase\n\n// Regression comment naming Kitty to explain a fixture below.\n' > "$GO_TEST_PROBE"
+set +e
+OUT=$("$GUARD_SCRIPT" 2>&1)
+rc=$?
+set -e
+rm -f "$GO_TEST_PROBE"
+if [[ $rc -eq 0 ]]; then
+  echo "PASS: a needle in a non-frontend test file's comment is still exempt"
+else
+  echo "FAIL: expected exit 0 for a needle in a non-frontend test comment, got $rc" >&2
+  echo "$OUT" >&2
+  exit 1
+fi
+
+echo
 echo "All tests passed."

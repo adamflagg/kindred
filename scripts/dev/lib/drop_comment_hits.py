@@ -1,6 +1,14 @@
 #!/usr/bin/env python3
 """Drop grep hits that sit in a comment or a docstring.
 
+With `--only-comments`, the filter inverts: it keeps ONLY the hits that sit
+in a comment or docstring and drops everything else. verify-no-hardcoded-
+lodging.sh uses this second mode for frontend/src/** test files, where a
+fixture literal (code) is a deliberate, exempted case but a needle named in
+an explanatory comment is not (kindred#2367) -- so a test file's hits split
+into "genuine leak" (comment) and "known-legitimate fixture" (code) instead
+of the normal code/comment split going the other way.
+
 Spec 3.8 forbids the lodging registry from living in source. A registry lives
 in *code* -- string literals, lists, maps. Prose that names a unit to explain a
 rule is documentation, and failing on it made the guard red on `main` for a
@@ -176,6 +184,7 @@ def noncode_lines(path: Path) -> set[int]:
 
 
 def main() -> int:
+    only_comments = "--only-comments" in sys.argv[1:]
     cache: dict[str, set[int]] = {}
     for raw in sys.stdin:
         hit = raw.rstrip("\n")
@@ -183,13 +192,16 @@ def main() -> int:
             continue
         parts = hit.split(":", 2)
         if len(parts) < 3 or not parts[1].isdigit():
-            # Not a path:lineno:text hit -- pass it through rather than eat it.
+            # Not a path:lineno:text hit -- pass it through rather than eat
+            # it, in either mode: unparseable input means we learned nothing,
+            # so keep it reportable rather than silently dropping it.
             print(hit)
             continue
         path, lineno = parts[0], int(parts[1])
         if path not in cache:
             cache[path] = noncode_lines(Path(path))
-        if lineno not in cache[path]:
+        is_comment = lineno in cache[path]
+        if is_comment == only_comments:
             print(hit)
     return 0
 
