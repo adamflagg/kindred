@@ -116,9 +116,11 @@ export function DrillDownModal({
 
   // Handle escape key to close modal.
   //
-  // CORRECT AS-IS, no overlay token (kindred#2237): it renders no overlay of
-  // its own, and its single mount site (`hooks/useDrilldown.tsx`, on the
-  // metrics pages) puts no other Escape-handling surface on screen with it.
+  // CORRECT AS-IS, no overlay token (kindred#2237): it IS a full-viewport
+  // modal (the fixed backdrop below), but its single mount site
+  // (`hooks/useDrilldown.tsx`, on the metrics pages) puts no other
+  // Escape-handling surface on screen with it — nothing to yield to, and
+  // nothing that needs to yield to it.
   useEffect(() => {
     if (!filter) return
 

@@ -21,8 +21,9 @@ export default function CsvPipelineIndicator() {
 
   // CORRECT AS-IS, no overlay token (kindred#2237): a trigger popover in the
   // app shell that `useClickOutside` above dismisses on any outside pointer
-  // press, so opening anything else closes it first. It hosts no overlay and
-  // has no host relationship with one.
+  // press, so opening anything else closes it first. It IS an overlay, but
+  // no other Escape-handling surface is expected to coexist with it open --
+  // nothing to yield to, nothing that yields to it.
   useEffect(() => {
     if (!popoverOpen) return
     const handleKeyDown = (event: KeyboardEvent) => {
