@@ -369,8 +369,9 @@ func (s *StaffVehicleInfoSync) loadPersonCustomValues(
 	result := make(map[string]*staffVehicleInfoRecord)
 	// gatedPeople tracks the staff-row gate drops by PERSON, not by value
 	// (kindred#2277). A person who substantially completed the SVI form
-	// (production: 11-26 fields, mean 15.8) would otherwise inflate a single
-	// dropped record into a dozen-plus Stats.Skipped increments.
+	// (production: 2-10 fields, mean 4.8 -- the SVI form has only 10 fields
+	// total, far smaller than the App-* onboarding form) would otherwise
+	// inflate a single dropped record into up to ten Stats.Skipped increments.
 	gatedPeople := make(map[int]bool)
 
 	for _, entry := range entries {
@@ -395,7 +396,11 @@ func (s *StaffVehicleInfoSync) loadPersonCustomValues(
 		}
 
 		if MapSVIFieldToColumnImpl(entry.fieldName) == "" {
-			s.Stats.Skipped++
+			// A VALUE discard, not a record one -- rec was already created
+			// above, so this person's row IS written. Counting it into
+			// Stats.Skipped would mix units with the staff-gate drop above,
+			// which discards whole records (kindred#2277 review).
+			s.Stats.SkippedValues++
 			continue
 		}
 		mapSVIFieldToRecord(rec, entry.fieldName, entry.value)

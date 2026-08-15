@@ -14,11 +14,14 @@ export interface SubStats {
   // actually shows up first: `persons` is a combined sync and its reclassified reject site
   // is in the household half, which reports here and nowhere else.
   rejected?: number
-  // Discarded custom-field VALUES, not records (kindred#2356). Only camper_transportation
-  // and staff_applications set this -- one unmapped BUS-*/App-* answer discarded while the
-  // record it belongs to is still created. Deliberately separate from `skipped`, which stays
-  // a record count everywhere else: folding this in made "N skipped" read as N dropped
-  // records when it was really N dropped answers across some smaller set of created rows.
+  // Discarded custom-field VALUES, not records (kindred#2356). Only camper_transportation,
+  // staff_applications, and staff_vehicle_info set this -- usually one unmapped BUS-*/
+  // App-*/SVI-* answer discarded while the record it belongs to is still created;
+  // staff_applications also counts a gated person's dropped App-* answers here even
+  // though their record was never created (kindred#2277). Deliberately separate from
+  // `skipped`, which stays a record count everywhere else: folding this in made
+  // "N skipped" read as N dropped records when it was really N dropped answers across
+  // some smaller, partly-overlapping set of rows.
   skipped_values?: number
 }
 
@@ -52,7 +55,8 @@ export interface SyncStatus {
     skipped: number
     errors: number
     // Discarded custom-field VALUES, not records (kindred#2356). See SubStats above --
-    // camper_transportation and staff_applications are the only services that set this.
+    // camper_transportation, staff_applications, and staff_vehicle_info are the only
+    // services that set this.
     skipped_values?: number
     // Per-record transform failures: an upstream record could not be turned into a row.
     // Warn-only for its first season (#2284) — surfaced here, never failing a run.

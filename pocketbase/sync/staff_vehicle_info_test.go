@@ -403,7 +403,7 @@ func TestLoadPersonCustomValuesCountsStaffGateDrops(t *testing.T) {
 
 // TestLoadPersonCustomValuesCountsStaffGateDropsByPersonNotByValue pins
 // kindred#2277. A person who has no staff row but answered MULTIPLE SVI-*
-// fields (11-26 fields per person in the production snapshot) must count as
+// fields (2-10 fields per person in the production snapshot) must count as
 // ONE dropped record on Stats.Skipped, not one per value -- Stats.Skipped is
 // a record count, and this gate drop is exactly one record this sync would
 // otherwise have written.
@@ -477,7 +477,12 @@ func TestStaffVehicleInfoSyncLogsStaffGateDropsOnce(t *testing.T) {
 
 // TestLoadPersonCustomValuesCountsUnmappedFields pins the second silent drop
 // site. A field admitted by the SVI- prefix but routed to no column is
-// discarded with no counter and no log line.
+// discarded with no counter and no log line. The person HAS a staff row, so
+// the record itself is still created -- this is a VALUE-level discard, not a
+// record-level one, and must land on Stats.SkippedValues (kindred#2277
+// review), not Stats.Skipped, or a single new unmapped SVI field answered by
+// every SVI respondent renders as that many "skipped" records on the sync
+// admin badge/toast when zero records were actually dropped.
 func TestLoadPersonCustomValuesCountsUnmappedFields(t *testing.T) {
 	t.Parallel()
 	app := newStaffVehicleTestApp(t)
@@ -497,12 +502,20 @@ func TestLoadPersonCustomValuesCountsUnmappedFields(t *testing.T) {
 	if err != nil {
 		t.Fatalf("loadPersonStaffMapping: %v", err)
 	}
-	if _, err := s.loadPersonCustomValues(context.Background(), 2026, fieldNames, personToStaff); err != nil {
+	records, err := s.loadPersonCustomValues(context.Background(), 2026, fieldNames, personToStaff)
+	if err != nil {
 		t.Fatalf("loadPersonCustomValues: %v", err)
 	}
 
-	if s.Stats.Skipped != 1 {
-		t.Errorf("Stats.Skipped = %d, want 1 -- the unmapped field must be counted", s.Stats.Skipped)
+	if len(records) != 1 {
+		t.Fatalf("len(records) = %d, want 1 -- the record IS created despite the unmapped field", len(records))
+	}
+	if s.Stats.Skipped != 0 {
+		t.Errorf("Stats.Skipped = %d, want 0 -- no record was dropped", s.Stats.Skipped)
+	}
+	if s.Stats.SkippedValues != 1 {
+		t.Errorf("Stats.SkippedValues = %d, want 1 -- the unmapped field is a discarded value, not a record",
+			s.Stats.SkippedValues)
 	}
 }
 

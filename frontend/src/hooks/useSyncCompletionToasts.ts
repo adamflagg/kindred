@@ -53,10 +53,14 @@ const SYNC_DISPLAY_NAMES: Record<string, string> = {
 //
 // `skipped` and `skipped_values` are deliberately separate segments, never merged: `skipped`
 // is a RECORD count (matches `created`/`updated`/`errors`' unit), while `skipped_values`
-// counts discarded custom-field VALUES within records that were still created. Only
-// camper_transportation and staff_applications ever set `skipped_values` -- collapsing the
-// two made "274 created, 557 skipped" read as 557 dropped applications when it was really
-// 557 dropped field answers across the 274 rows that WERE created.
+// counts discarded custom-field VALUES. Usually those values belong to a record that WAS
+// still created (an unmapped field, camper_transportation/staff_applications/
+// staff_vehicle_info); staff_applications also has one gate (kindred#2277) where the
+// record was NEVER created and the person's dropped answers still land here, alongside
+// their own single `skipped` increment for the record. Only those three services ever
+// set `skipped_values` -- collapsing the two made "274 created, 557 skipped" read as 557
+// dropped applications when it was really 557 dropped field answers across a smaller set
+// of rows, some created and some not.
 export function formatStatsText(stats: SubStats, label: string): string {
   const parts: string[] = []
   if (stats.created > 0) parts.push(`${stats.created} created`)
