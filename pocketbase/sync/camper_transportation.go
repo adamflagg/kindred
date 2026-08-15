@@ -263,6 +263,7 @@ func (s *CamperTransportationSync) Sync(ctx context.Context) error {
 		"updated", s.Stats.Updated,
 		"deleted", s.Stats.Deleted,
 		"skipped", s.Stats.Skipped,
+		"skipped_values", s.Stats.SkippedValues,
 		"errors", s.Stats.Errors,
 	)
 
@@ -497,7 +498,7 @@ func (s *CamperTransportationSync) loadPersonCustomValues(
 		for _, n := range unmappedCounts {
 			total += n
 		}
-		s.Stats.Skipped += total
+		s.Stats.SkippedValues += total
 
 		// One aggregated warning per run, not one per discarded value -- a
 		// historical backfill over 2017-2020 would otherwise log 1,628 lines.
