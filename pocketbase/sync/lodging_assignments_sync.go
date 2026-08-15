@@ -31,12 +31,19 @@ const sourceFieldOrphanSweep = "orphan_sweep"
 // household_custom_values / person_custom_values / attendees / persons /
 // camp_sessions and the lodging registry, all from PocketBase.
 type LodgingAssignmentsSync struct {
-	App            core.App
-	Year           int  // 0 = current year from env
-	DryRun         bool // compute but do not write
-	Debug          bool
-	Stats          Stats
-	SyncSuccessful bool
+	App    core.App
+	Year   int  // 0 = current year from env
+	DryRun bool // compute but do not write
+	Debug  bool
+	// ActiveSeasonYear injects the value activeSeasonYear() returns, bypassing
+	// CAMPMINDER_SEASON_ID entirely. 0 (the zero value) means "resolve from
+	// the environment via ParseSeasonYear() at Sync time", matching Year's
+	// existing convention. Set directly by tests exercising the #2028 orphan
+	// sweep so they need not reach for t.Setenv, which cannot be combined with
+	// t.Parallel() (#2289).
+	ActiveSeasonYear int
+	Stats            Stats
+	SyncSuccessful   bool
 
 	resolver *AliasResolver
 	issues   *IssueRecorder
@@ -867,16 +874,23 @@ func (s *LodgingAssignmentsSync) partySize(in *ingestContext, sessionID string) 
 	return enrolled + adultCount
 }
 
-// activeSeasonYear resolves CAMPMINDER_SEASON_ID -- the year this deployment
-// is actively maintaining right now, independent of s.Year. deleteLodgingOrphans
-// must run for THAT year alone; any other caller (an explicit ?year= sync, a
-// historical re-registration) is asking this ingest to compute placements for
-// a year it is not currently responsible for, and must get create/update only.
-// A resolution failure fails closed: 0 can never equal a validated 2017-2050
-// year (Sync already rejected anything outside that range), so an
-// unset/invalid CAMPMINDER_SEASON_ID blocks the sweep rather than accidentally
-// allowing it.
+// activeSeasonYear resolves the year this deployment is actively maintaining
+// right now, independent of s.Year. deleteLodgingOrphans must run for THAT
+// year alone; any other caller (an explicit ?year= sync, a historical
+// re-registration) is asking this ingest to compute placements for a year it
+// is not currently responsible for, and must get create/update only.
+//
+// s.ActiveSeasonYear, when set, is returned directly -- the injection point
+// tests use instead of t.Setenv (#2289). When it is unset (the zero value),
+// this falls back to CAMPMINDER_SEASON_ID via ParseSeasonYear(), same as
+// before. Either way, a resolution failure fails closed: 0 can never equal a
+// validated 2017-2050 year (Sync already rejected anything outside that
+// range), so an unset/invalid season blocks the sweep rather than
+// accidentally allowing it.
 func (s *LodgingAssignmentsSync) activeSeasonYear() int {
+	if s.ActiveSeasonYear != 0 {
+		return s.ActiveSeasonYear
+	}
 	active, err := ParseSeasonYear()
 	if err != nil {
 		return 0
