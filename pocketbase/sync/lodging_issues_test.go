@@ -42,7 +42,7 @@ func TestIssueKindsMatchTheMigration(t *testing.T) {
 // occurrence count -- not five rows to wade through.
 func TestIssueRecorderCollapsesRepeats(t *testing.T) {
 	t.Parallel()
-	app := newLodgingTestApp(t)
+	app := newSyncTestApp(t)
 	r := NewIssueRecorder(app, 2022)
 
 	// Five different households hit the same unmapped string.
@@ -89,7 +89,7 @@ func TestIssueRecorderCollapsesRepeats(t *testing.T) {
 // counts or add rows. occurrences is SET to what this run observed, not added to.
 func TestIssueRecorderFlushIsIdempotent(t *testing.T) {
 	t.Parallel()
-	app := newLodgingTestApp(t)
+	app := newSyncTestApp(t)
 
 	for pass := 0; pass < 2; pass++ {
 		r := NewIssueRecorder(app, 2022)
@@ -130,7 +130,7 @@ func TestIssueRecorderFlushIsIdempotent(t *testing.T) {
 // raw value and source field are identical.
 func TestIssueRecorderKeepsPerHouseholdIssuesSeparate(t *testing.T) {
 	t.Parallel()
-	app := newLodgingTestApp(t)
+	app := newSyncTestApp(t)
 	r := NewIssueRecorder(app, 2025)
 
 	r.Record(Issue{Kind: issueAmbiguousSession, RawValue: "Ridge A",
@@ -156,7 +156,7 @@ func TestIssueRecorderKeepsPerHouseholdIssuesSeparate(t *testing.T) {
 // emptiness over an open queue item takes its one-click confirmation with it.
 func TestIssueRecorderFlushKeepsAnEarlierSuggestion(t *testing.T) {
 	t.Parallel()
-	app := newLodgingTestApp(t)
+	app := newSyncTestApp(t)
 	sess := addSession(t, app, 1309514, "Family Camp 1", "family",
 		"2025-05-23 07:00:00.000Z", "2025-05-26 07:00:00.000Z", 2025)
 
@@ -198,7 +198,7 @@ func TestIssueRecorderFlushKeepsAnEarlierSuggestion(t *testing.T) {
 // exactly the class of bug that made Plan 1's alias verifier unable to pass.
 func TestIssueRecorderHandlesApostrophes(t *testing.T) {
 	t.Parallel()
-	app := newLodgingTestApp(t)
+	app := newSyncTestApp(t)
 	r := NewIssueRecorder(app, 2024)
 	r.Record(Issue{Kind: issueUnresolvedAlias, RawValue: "Golden Triangle - Doctor's House",
 		SourceField: fieldNameFamilyCampCabin, Year: 2024})

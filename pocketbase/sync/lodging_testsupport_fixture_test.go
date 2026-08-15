@@ -20,7 +20,7 @@ import (
 // this package's did not.
 func TestLodgingUnitsFixtureRejectsDuplicateCodeYear(t *testing.T) {
 	t.Parallel()
-	app := newLodgingTestApp(t)
+	app := newSyncTestApp(t)
 	addUnit(t, app, "dup-code", 2026)
 
 	col, err := app.FindCollectionByNameOrId("lodging_units")
@@ -46,7 +46,7 @@ func TestLodgingUnitsFixtureRejectsDuplicateCodeYear(t *testing.T) {
 // the real database would reject.
 func TestLodgingUnitsFixtureRejectsYearOutsideProductionRange(t *testing.T) {
 	t.Parallel()
-	app := newLodgingTestApp(t)
+	app := newSyncTestApp(t)
 	col, err := app.FindCollectionByNameOrId("lodging_units")
 	if err != nil {
 		t.Fatalf("find collection lodging_units: %v", err)
@@ -214,7 +214,7 @@ func TestLoadProductionSchema(t *testing.T) {
 
 // TestLodgingTestsupportFixtureFieldsExistInProductionSchema is kindred#1921's
 // guard against the bug class migration 1500000132 hit once already: this
-// package's fixtures (newLodgingTestApp, lodging_testsupport_test.go) build
+// package's fixtures (newSyncTestApp, sync_testsupport_test.go) build
 // every collection by hand, so a column a migration drops or renames stays
 // present in the fixture -- every filter naming it keeps resolving here while
 // production starts rejecting the write with "unknown field ...". Nothing
@@ -223,7 +223,7 @@ func TestLoadProductionSchema(t *testing.T) {
 //
 // Drop/rename direction ONLY: this fails on a field the fixture declares that
 // production's real schema does not have. The reverse -- production has a
-// field the fixture lacks -- is deliberately out of scope. newLodgingTestApp's
+// field the fixture lacks -- is deliberately out of scope. newSyncTestApp's
 // own doc comment says the fixtures are minimal on purpose, carrying only the
 // fields the code under test touches, not a full mirror of every production
 // column.
@@ -252,8 +252,8 @@ func TestLodgingTestsupportFixtureFieldsExistInProductionSchema(t *testing.T) {
 	// A bare, un-fixtured app carries tests.NewTestApp()'s own bundled
 	// testdata -- e.g. a demo "users" collection with username/file/rel,
 	// unrelated to production's staff-auth "users" collection. Diffing
-	// newLodgingTestApp's collections against THIS baseline -- rather than a
-	// hardcoded list of names newLodgingTestApp happens to build today -- is
+	// newSyncTestApp's collections against THIS baseline -- rather than a
+	// hardcoded list of names newSyncTestApp happens to build today -- is
 	// what keeps this test honest as that function grows: a collection added
 	// there later is picked up automatically, with no allowlist to remember
 	// to update. Iterating app.FindAllCollections() without this diff would
@@ -272,7 +272,7 @@ func TestLodgingTestsupportFixtureFieldsExistInProductionSchema(t *testing.T) {
 		baselineNames[c.Name] = true
 	}
 
-	app := newLodgingTestApp(t)
+	app := newSyncTestApp(t)
 	fixtureCols, err := app.FindAllCollections()
 	if err != nil {
 		t.Fatalf("list fixture collections: %v", err)
@@ -281,7 +281,7 @@ func TestLodgingTestsupportFixtureFieldsExistInProductionSchema(t *testing.T) {
 	checked := 0
 	for _, col := range fixtureCols {
 		if baselineNames[col.Name] {
-			continue // part of tests.NewTestApp()'s own bundled testdata, not something newLodgingTestApp added
+			continue // part of tests.NewTestApp()'s own bundled testdata, not something newSyncTestApp added
 		}
 		prodFields, ok := prod[col.Name]
 		if !ok {
@@ -296,13 +296,13 @@ func TestLodgingTestsupportFixtureFieldsExistInProductionSchema(t *testing.T) {
 			}
 			t.Errorf("collection %q: fixture declares field %q, which the real "+
 				"pb_migrations schema does not have -- dropped or renamed? "+
-				"update newLodgingTestApp in lodging_testsupport_test.go",
+				"update newSyncTestApp in sync_testsupport_test.go",
 				col.Name, fieldName)
 		}
 	}
 
 	if checked == 0 {
-		t.Fatalf("compared zero collections against %s -- newLodgingTestApp and the "+
+		t.Fatalf("compared zero collections against %s -- newSyncTestApp and the "+
 			"baseline test app collection sets came out identical", schemaPath)
 	}
 }

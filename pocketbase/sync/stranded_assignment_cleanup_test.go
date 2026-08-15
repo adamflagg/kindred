@@ -209,7 +209,7 @@ func setupStrandedCollections(t *testing.T, app core.App) {
 		t.Fatalf("create attendees: %v", err)
 	}
 
-	// --- lodging: #2028's tables, minimal shape (mirrors newLodgingTestApp) ---
+	// --- lodging: #2028's tables, minimal shape (mirrors newSyncTestApp) ---
 
 	units := core.NewBaseCollection("lodging_units")
 	units.Fields.Add(&core.TextField{Name: "code"})

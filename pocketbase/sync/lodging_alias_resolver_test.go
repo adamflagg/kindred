@@ -16,7 +16,7 @@ import (
 // any year, not about one unit id surviving across years.
 func TestAliasResolverUnboundedWindows(t *testing.T) {
 	t.Parallel()
-	app := newLodgingTestApp(t)
+	app := newSyncTestApp(t)
 	years := []int{2017, 2022, 2025, 2026, 2030}
 	ridgeAByYear := make(map[int]string, len(years))
 	for _, year := range years {
@@ -49,7 +49,7 @@ func TestAliasResolverUnboundedWindows(t *testing.T) {
 // across camp, and nothing downstream would notice.
 func TestAliasResolverRespectsRenameWindows(t *testing.T) {
 	t.Parallel()
-	app := newLodgingTestApp(t)
+	app := newSyncTestApp(t)
 	// Every building here gets a row in EVERY year the test resolves against,
 	// including the years its own alias window excludes. A rename retires the
 	// STRING, not the building, and the registry is year-scoped (migration
@@ -139,7 +139,7 @@ func TestAliasResolverRespectsRenameWindows(t *testing.T) {
 // merge of that many rooms (spec 3.4). Six seeded aliases are of this shape.
 func TestAliasResolverMergeDenotingAlias(t *testing.T) {
 	t.Parallel()
-	app := newLodgingTestApp(t)
+	app := newSyncTestApp(t)
 	tioga1 := addUnit(t, app, "gt-tioga-1", 2025)
 	tioga2 := addUnit(t, app, "gt-tioga-2", 2025)
 	addAlias(t, app, "Golden Triangle - Tioga 1and2", []string{tioga1, tioga2}, 0, 0)
@@ -170,7 +170,7 @@ func TestAliasResolverMergeDenotingAlias(t *testing.T) {
 // and must not panic or error.
 func TestAliasResolverUnresolvedIsNotAnError(t *testing.T) {
 	t.Parallel()
-	app := newLodgingTestApp(t)
+	app := newSyncTestApp(t)
 	addUnit(t, app, "ridge-a", 2022)
 
 	r, err := NewAliasResolver(app)
@@ -198,7 +198,7 @@ func TestAliasResolverUnresolvedIsNotAnError(t *testing.T) {
 // whitespace; inner spacing stays significant because the seed relies on it.
 func TestAliasResolverToleratesWhitespaceAndCase(t *testing.T) {
 	t.Parallel()
-	app := newLodgingTestApp(t)
+	app := newSyncTestApp(t)
 	dsA := addUnit(t, app, "hc-downstairs-a", 2025)
 	addAlias(t, app, "Health Center Downstairs  - Room A", []string{dsA}, 0, 0)
 
@@ -229,7 +229,7 @@ func TestAliasResolverToleratesWhitespaceAndCase(t *testing.T) {
 // windows are a data problem for staff, not something to resolve arbitrarily.
 func TestAliasResolverFlagsOverlappingWindows(t *testing.T) {
 	t.Parallel()
-	app := newLodgingTestApp(t)
+	app := newSyncTestApp(t)
 	a := addUnit(t, app, "ridge-a", 2025)
 	b := addUnit(t, app, "ridge-b", 2025)
 	addAlias(t, app, "Ridge A", []string{a}, 0, 0)
@@ -256,7 +256,7 @@ func TestAliasResolverFlagsOverlappingWindows(t *testing.T) {
 // hand back 2026's ids.
 func TestResolveReturnsTheRequestedYearsUnitIDs(t *testing.T) {
 	t.Parallel()
-	app := newLodgingTestApp(t)
+	app := newSyncTestApp(t)
 	id2026 := addUnit(t, app, "test-unit-a", 2026)
 	id2027 := addUnit(t, app, "test-unit-a", 2027)
 	addAlias(t, app, "Test Building A", []string{id2026}, 0, 0)
@@ -284,7 +284,7 @@ func TestResolveReturnsTheRequestedYearsUnitIDs(t *testing.T) {
 // rooms, which is worse than a name that does not resolve.
 func TestResolveIsUnresolvedWhenAMemberIsMissingThatYear(t *testing.T) {
 	t.Parallel()
-	app := newLodgingTestApp(t)
+	app := newSyncTestApp(t)
 	a2026 := addUnit(t, app, "test-unit-a", 2026)
 	b2026 := addUnit(t, app, "test-unit-b", 2026)
 	// "test-unit-a" has a 2027 row; "test-unit-b" does not -- a member code with
@@ -317,7 +317,7 @@ func TestResolveIsUnresolvedWhenAMemberIsMissingThatYear(t *testing.T) {
 // here means only real ids ever reach that write, and the failure vanishes.
 func TestResolveIsUnresolvedWhenAMemberIsDangling(t *testing.T) {
 	t.Parallel()
-	app := newLodgingTestApp(t)
+	app := newSyncTestApp(t)
 	a2027 := addUnit(t, app, "test-unit-a", 2027)
 	addAliasWithDanglingMember(t, app, "Test Pair", []string{a2027, "missingunit0001"}, 0, 0)
 

@@ -42,7 +42,7 @@ func TestLodgingAssignmentsSyncName(t *testing.T) {
 // TestLodgingAssignmentsSyncHouseholdGrain: the whole happy path end to end.
 func TestLodgingAssignmentsSyncHouseholdGrain(t *testing.T) {
 	t.Parallel()
-	app := newLodgingTestApp(t)
+	app := newSyncTestApp(t)
 	sessionID, unitID := seedOneWeekendHousehold(t, app)
 
 	s := NewLodgingAssignmentsSync(app)
@@ -119,7 +119,7 @@ func TestLodgingAssignmentsSyncHouseholdGrain(t *testing.T) {
 // happens to store.
 func TestLodgingAssignmentsSyncWritesTheSyncedYearsUnitIDs(t *testing.T) {
 	t.Parallel()
-	app := newLodgingTestApp(t)
+	app := newSyncTestApp(t)
 	id2026 := addUnit(t, app, "test-unit-a", 2026)
 	id2027 := addUnit(t, app, "test-unit-a", 2027)
 	addAlias(t, app, "Test Building A", []string{id2026}, 0, 0)
@@ -158,7 +158,7 @@ func TestLodgingAssignmentsSyncWritesTheSyncedYearsUnitIDs(t *testing.T) {
 // assignment or append a spurious history row.
 func TestLodgingAssignmentsSyncIsIdempotent(t *testing.T) {
 	t.Parallel()
-	app := newLodgingTestApp(t)
+	app := newSyncTestApp(t)
 	seedOneWeekendHousehold(t, app)
 
 	for pass := 0; pass < 2; pass++ {
@@ -184,7 +184,7 @@ func TestLodgingAssignmentsSyncIsIdempotent(t *testing.T) {
 // CampMinder overwrote.
 func TestLodgingAssignmentsSyncAppendsHistoryOnChange(t *testing.T) {
 	t.Parallel()
-	app := newLodgingTestApp(t)
+	app := newSyncTestApp(t)
 	seedOneWeekendHousehold(t, app)
 	ridgeB := addUnit(t, app, "ridge-b", 2025)
 	addAlias(t, app, "Ridge B", []string{ridgeB}, 0, 0)
@@ -236,7 +236,7 @@ func TestLodgingAssignmentsSyncAppendsHistoryOnChange(t *testing.T) {
 // the board is not reverted by the next CampMinder sync.
 func TestLodgingAssignmentsSyncRespectsStaffTouched(t *testing.T) {
 	t.Parallel()
-	app := newLodgingTestApp(t)
+	app := newSyncTestApp(t)
 	seedOneWeekendHousehold(t, app)
 	ridgeB := addUnit(t, app, "ridge-b", 2025)
 	addAlias(t, app, "Ridge B", []string{ridgeB}, 0, 0)
@@ -274,7 +274,7 @@ func TestLodgingAssignmentsSyncRespectsStaffTouched(t *testing.T) {
 // queue item and must not be dropped, and must not stop the run.
 func TestLodgingAssignmentsSyncQueuesUnresolvedAlias(t *testing.T) {
 	t.Parallel()
-	app := newLodgingTestApp(t)
+	app := newSyncTestApp(t)
 	sess := addSession(t, app, cmIDFamilyCamp1, "Family Camp 1", "family",
 		"2025-05-23 07:00:00.000Z", "2025-05-26 07:00:00.000Z", 2025)
 	// Unrelated to "Tuolumne 7" below -- this only gives 2025 a registry, so
@@ -322,7 +322,7 @@ func TestLodgingAssignmentsSyncQueuesUnresolvedAlias(t *testing.T) {
 // them for manual entry.
 func TestLodgingAssignmentsSyncQueuesAmbiguousSession(t *testing.T) {
 	t.Parallel()
-	app := newLodgingTestApp(t)
+	app := newSyncTestApp(t)
 	fc1 := addSession(t, app, cmIDFamilyCamp1, "Family Camp 1", "family",
 		"2025-05-23 07:00:00.000Z", "2025-05-26 07:00:00.000Z", 2025)
 	winter := addSession(t, app, cmIDWinterFamily, "Winter Family Camp", "family",
@@ -366,7 +366,7 @@ func TestLodgingAssignmentsSyncQueuesAmbiguousSession(t *testing.T) {
 // A merged slot is the alias's own member set, not a row pointing at it.
 func TestIngestWritesAMultiRoomPlacementAsOneRow(t *testing.T) {
 	t.Parallel()
-	app := newLodgingTestApp(t)
+	app := newSyncTestApp(t)
 	sess := addSession(t, app, cmIDFamilyCamp1, "Family Camp 1", "family",
 		"2025-05-23 07:00:00.000Z", "2025-05-26 07:00:00.000Z", 2025)
 	bldg := addContainerUnit(t, app, "gt-tioga", 2025)
@@ -414,7 +414,7 @@ const testAdultSessionEnd = "2025-10-19 07:00:00.000Z"
 // the placement keys on person_cm_id and household_cm_id stays 0.
 func TestLodgingAssignmentsSyncPersonGrain(t *testing.T) {
 	t.Parallel()
-	app := newLodgingTestApp(t)
+	app := newSyncTestApp(t)
 	womens := addSession(t, app, cmIDWomensWeekend, "Women's Weekend", "adult",
 		testAdultSessionStart, testAdultSessionEnd, 2025)
 	unit := addUnit(t, app, "river-c", 2025)
@@ -458,7 +458,7 @@ func TestLodgingAssignmentsSyncPersonGrain(t *testing.T) {
 // ONE could exist.
 func TestLodgingAssignmentsSyncPersonGrainManyPerSession(t *testing.T) {
 	t.Parallel()
-	app := newLodgingTestApp(t)
+	app := newSyncTestApp(t)
 	womens := addSession(t, app, cmIDWomensWeekend, "Women's Weekend", "adult",
 		testAdultSessionStart, testAdultSessionEnd, 2025)
 	unit := addUnit(t, app, "river-c", 2025)
@@ -489,7 +489,7 @@ func TestLodgingAssignmentsSyncPersonGrainManyPerSession(t *testing.T) {
 // enrollment. Queue them; never drop them.
 func TestLodgingAssignmentsSyncPersonGrainNoEnrolment(t *testing.T) {
 	t.Parallel()
-	app := newLodgingTestApp(t)
+	app := newSyncTestApp(t)
 	addSession(t, app, cmIDWomensWeekend, "Women's Weekend", "adult",
 		testAdultSessionStart, testAdultSessionEnd, 2025)
 	unit := addUnit(t, app, "river-c", 2025)
@@ -593,7 +593,7 @@ func TestPlacementForPassesTheAliasSetThrough(t *testing.T) {
 // even though it never mentions it.
 func TestLodgingAssignmentsSyncDryRunWritesNothing(t *testing.T) {
 	t.Parallel()
-	app := newLodgingTestApp(t)
+	app := newSyncTestApp(t)
 	sess := addSession(t, app, cmIDFamilyCamp1, "Family Camp 1", "family",
 		testSessionStart, testSessionEnd, 2025)
 	t1 := addUnit(t, app, "gt-tioga-1", 2025)
@@ -641,7 +641,7 @@ func TestLodgingAssignmentsSyncDryRunWritesNothing(t *testing.T) {
 // detector; it is not the change detector.
 func TestLodgingAssignmentsSyncUpdatesPartySizeInSameCabin(t *testing.T) {
 	t.Parallel()
-	app := newLodgingTestApp(t)
+	app := newSyncTestApp(t)
 	seedOneWeekendHousehold(t, app)
 
 	s := NewLodgingAssignmentsSync(app)
@@ -691,7 +691,7 @@ func TestLodgingAssignmentsSyncUpdatesPartySizeInSameCabin(t *testing.T) {
 // the field_zero_values warning stays quiet.
 func TestLodgingAssignmentsSyncQueuesUnknownHousehold(t *testing.T) {
 	t.Parallel()
-	app := newLodgingTestApp(t)
+	app := newSyncTestApp(t)
 	addSession(t, app, cmIDFamilyCamp1, "Family Camp 1", "family",
 		testSessionStart, testSessionEnd, 2025)
 	unit := addUnit(t, app, "ridge-a", 2025)
@@ -724,7 +724,7 @@ func TestLodgingAssignmentsSyncQueuesUnknownHousehold(t *testing.T) {
 // TestLodgingAssignmentsSyncQueuesUnknownHousehold.
 func TestLodgingAssignmentsSyncQueuesUnknownPerson(t *testing.T) {
 	t.Parallel()
-	app := newLodgingTestApp(t)
+	app := newSyncTestApp(t)
 	addSession(t, app, cmIDWomensWeekend, "Women's Weekend", "adult",
 		testAdultSessionStart, testAdultSessionEnd, 2025)
 	unit := addUnit(t, app, "ridge-a", 2025)
@@ -762,7 +762,7 @@ func TestLodgingAssignmentsSyncQueuesUnknownPerson(t *testing.T) {
 // that never left its cabin.
 func TestLodgingAssignmentsSyncMergeLabelIgnoresMemberOrder(t *testing.T) {
 	t.Parallel()
-	app := newLodgingTestApp(t)
+	app := newSyncTestApp(t)
 	sess := addSession(t, app, cmIDFamilyCamp1, "Family Camp 1", "family",
 		testSessionStart, testSessionEnd, 2025)
 	bldg := addContainerUnit(t, app, "gt-tioga", 2025)
@@ -834,7 +834,7 @@ func TestLodgingAssignmentsSyncMergeLabelIgnoresMemberOrder(t *testing.T) {
 // already entitled to hold is not one.
 func TestLodgingAssignmentsSyncLabelDropsUnresolvableUnits(t *testing.T) {
 	t.Parallel()
-	app := newLodgingTestApp(t)
+	app := newSyncTestApp(t)
 	sess := addSession(t, app, cmIDFamilyCamp1, "Family Camp 1", "family",
 		testSessionStart, testSessionEnd, 2025)
 	ridge := addUnit(t, app, "ridge-a", 2025)
@@ -959,7 +959,7 @@ func TestActiveSeasonYearFieldOverridesEnv(t *testing.T) {
 // this pass.
 func TestLodgingAssignmentsSyncDeletesOrphanedHouseholdMirrorRow(t *testing.T) {
 	t.Parallel()
-	app := newLodgingTestApp(t)
+	app := newSyncTestApp(t)
 	sess := addSession(t, app, cmIDFamilyCamp1, "Family Camp 1", "family",
 		testSessionStart, testSessionEnd, 2025)
 	unit := addUnit(t, app, "ridge-a", 2025)
@@ -998,7 +998,7 @@ func TestLodgingAssignmentsSyncDeletesOrphanedHouseholdMirrorRow(t *testing.T) {
 // obvious regression the sweep must not cause.
 func TestLodgingAssignmentsSyncKeepsMirrorRowForStillEnrolledHousehold(t *testing.T) {
 	t.Parallel()
-	app := newLodgingTestApp(t)
+	app := newSyncTestApp(t)
 	sess := addSession(t, app, cmIDFamilyCamp1, "Family Camp 1", "family",
 		testSessionStart, testSessionEnd, 2025)
 	unit := addUnit(t, app, "ridge-a", 2025)
@@ -1033,7 +1033,7 @@ func TestLodgingAssignmentsSyncKeepsMirrorRowForStillEnrolledHousehold(t *testin
 // so its placements are left untouched rather than swept.
 func TestLodgingAssignmentsSyncSkipsMirrorDeletionWhenSessionHasZeroEnrolled(t *testing.T) {
 	t.Parallel()
-	app := newLodgingTestApp(t)
+	app := newSyncTestApp(t)
 	sess := addSession(t, app, cmIDFamilyCamp1, "Family Camp 1", "family",
 		testSessionStart, testSessionEnd, 2025)
 	unit := addUnit(t, app, "ridge-a", 2025)
@@ -1060,7 +1060,7 @@ func TestLodgingAssignmentsSyncSkipsMirrorDeletionWhenSessionHasZeroEnrolled(t *
 // weekend twin: the sweep must treat person-grain rows the same way.
 func TestLodgingAssignmentsSyncDeletesOrphanedPersonGrainMirrorRow(t *testing.T) {
 	t.Parallel()
-	app := newLodgingTestApp(t)
+	app := newSyncTestApp(t)
 	sess := addSession(t, app, cmIDWomensWeekend, "Women's Weekend", "adult",
 		testAdultSessionStart, testAdultSessionEnd, 2025)
 	unit := addUnit(t, app, "river-c", 2025)
@@ -1096,7 +1096,7 @@ func TestLodgingAssignmentsSyncDeletesOrphanedPersonGrainMirrorRow(t *testing.T)
 // stranded_assignment_cleanup.go.
 func TestLodgingAssignmentsSyncDeletesStaffTouchedOrphanedMirrorRow(t *testing.T) {
 	t.Parallel()
-	app := newLodgingTestApp(t)
+	app := newSyncTestApp(t)
 	sess := addSession(t, app, cmIDFamilyCamp1, "Family Camp 1", "family",
 		testSessionStart, testSessionEnd, 2025)
 	unit := addUnit(t, app, "ridge-a", 2025)
@@ -1128,7 +1128,7 @@ func TestLodgingAssignmentsSyncDeletesStaffTouchedOrphanedMirrorRow(t *testing.T
 // does not write, full stop -- including the delete path.
 func TestLodgingAssignmentsSyncDryRunDoesNotDeleteOrphans(t *testing.T) {
 	t.Parallel()
-	app := newLodgingTestApp(t)
+	app := newSyncTestApp(t)
 	sess := addSession(t, app, cmIDFamilyCamp1, "Family Camp 1", "family",
 		testSessionStart, testSessionEnd, 2025)
 	unit := addUnit(t, app, "ridge-a", 2025)
@@ -1173,7 +1173,7 @@ func TestLodgingAssignmentsSyncDryRunDoesNotDeleteOrphans(t *testing.T) {
 // happened must never read as "everyone cancelled".
 func TestLodgingAssignmentsSyncSkipsOrphanSweepForHistoricalYear(t *testing.T) {
 	t.Parallel()
-	app := newLodgingTestApp(t)
+	app := newSyncTestApp(t)
 
 	// ...but this sync targets 2024, a season that already happened.
 	const historicalYear = 2024
@@ -1227,7 +1227,7 @@ func TestLodgingAssignmentsSyncSkipsOrphanSweepForHistoricalYear(t *testing.T) {
 // Serial, not t.Parallel(): t.Setenv panics under Parallel.
 func TestLodgingAssignmentsSyncSkipsOrphanSweepWhenSeasonUnresolvable(t *testing.T) {
 	t.Setenv("CAMPMINDER_SEASON_ID", "")
-	app := newLodgingTestApp(t)
+	app := newSyncTestApp(t)
 	sess := addSession(t, app, cmIDFamilyCamp1, "Family Camp 1", "family",
 		testSessionStart, testSessionEnd, 2025)
 	unit := addUnit(t, app, "ridge-a", 2025)
@@ -1273,7 +1273,7 @@ func TestLodgingAssignmentsSyncSkipsOrphanSweepWhenSeasonUnresolvable(t *testing
 // Serial, not t.Parallel(): t.Setenv panics under Parallel.
 func TestLodgingAssignmentsSyncDeletesOrphansViaEnvFallback(t *testing.T) {
 	t.Setenv("CAMPMINDER_SEASON_ID", "2025")
-	app := newLodgingTestApp(t)
+	app := newSyncTestApp(t)
 	sess := addSession(t, app, cmIDFamilyCamp1, "Family Camp 1", "family",
 		testSessionStart, testSessionEnd, 2025)
 	unit := addUnit(t, app, "ridge-a", 2025)
@@ -1316,7 +1316,7 @@ func TestLodgingAssignmentsSyncWritesHistoryOnOrphanDelete(t *testing.T) {
 	// call and the history assertion below in step, and avoids adding a 3rd/4th
 	// hardcoded occurrence of the string across this file (goconst).
 	const unitCode = "ridge-a"
-	app := newLodgingTestApp(t)
+	app := newSyncTestApp(t)
 	sess := addSession(t, app, cmIDFamilyCamp1, "Family Camp 1", "family",
 		testSessionStart, testSessionEnd, 2025)
 	unit := addUnit(t, app, unitCode, 2025)
@@ -1390,7 +1390,7 @@ func TestLodgingAssignmentsSyncWritesHistoryOnOrphanDelete(t *testing.T) {
 // it stands in for the record the placement was written against.
 func TestFindAssignmentMatchesOnTheCampMinderSessionID(t *testing.T) {
 	t.Parallel()
-	app := newLodgingTestApp(t)
+	app := newSyncTestApp(t)
 	sessOld := addSession(t, app, cmIDFamilyCamp1, "Family Camp 1", "family",
 		testSessionStart, testSessionEnd, 2025)
 	sessRecreated := addSession(t, app, cmIDFamilyCamp1, "Family Camp 1", "family",
@@ -1425,7 +1425,7 @@ func TestFindAssignmentMatchesOnTheCampMinderSessionID(t *testing.T) {
 // same household, and asking for one must never return the other's row.
 func TestFindAssignmentStillSeparatesWeekends(t *testing.T) {
 	t.Parallel()
-	app := newLodgingTestApp(t)
+	app := newSyncTestApp(t)
 	sessA := addSession(t, app, cmIDFamilyCamp1, "Family Camp 1", "family",
 		testSessionStart, testSessionEnd, 2025)
 	sessB := addSession(t, app, cmIDFamilyCamp6, "Family Camp 6", "family",

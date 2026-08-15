@@ -36,7 +36,7 @@ func TestParseCampMinderTimestamp(t *testing.T) {
 // against it -- so it must be read via GetDateTime, not ParseDate.
 func TestLoadSessionWindowsReadsDateFields(t *testing.T) {
 	t.Parallel()
-	app := newLodgingTestApp(t)
+	app := newSyncTestApp(t)
 	addSession(t, app, 1309514, "Family Camp 1", "family",
 		"2025-05-23 07:00:00.000Z", "2025-05-26 07:00:00.000Z", 2025)
 	addSession(t, app, 1335115, "Women's Weekend", "adult",
@@ -69,7 +69,7 @@ func TestLoadSessionWindowsReadsDateFields(t *testing.T) {
 // manufacture ambiguity where there is none.
 func TestBuildHouseholdSessionIndexUsesActiveEnrolmentOnly(t *testing.T) {
 	t.Parallel()
-	app := newLodgingTestApp(t)
+	app := newSyncTestApp(t)
 	fc1 := addSession(t, app, 1309514, "Family Camp 1", "family",
 		"2025-05-23 07:00:00.000Z", "2025-05-26 07:00:00.000Z", 2025)
 	fc6 := addSession(t, app, 1309519, "Family Camp 6", "family",
@@ -96,7 +96,7 @@ func TestBuildHouseholdSessionIndexUsesActiveEnrolmentOnly(t *testing.T) {
 // household attending the same weekend is ONE household-weekend, not two.
 func TestBuildHouseholdSessionIndexDedupesSiblings(t *testing.T) {
 	t.Parallel()
-	app := newLodgingTestApp(t)
+	app := newSyncTestApp(t)
 	fc1 := addSession(t, app, 1309514, "Family Camp 1", "family",
 		"2025-05-23 07:00:00.000Z", "2025-05-26 07:00:00.000Z", 2025)
 
@@ -121,7 +121,7 @@ func TestBuildHouseholdSessionIndexDedupesSiblings(t *testing.T) {
 // index holds for that party -- not merely non-empty.
 func TestBuildSessionIndexFilteredToOnePartyMatchesTheFullIndex(t *testing.T) {
 	t.Parallel()
-	app := newLodgingTestApp(t)
+	app := newSyncTestApp(t)
 	fc1 := addSession(t, app, cmIDFamilyCamp1, "Family Camp 1", "family",
 		"2025-05-23 07:00:00.000Z", "2025-05-26 07:00:00.000Z", 2025)
 	fc6 := addSession(t, app, cmIDFamilyCamp6, "Family Camp 6", "family",

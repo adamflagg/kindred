@@ -70,7 +70,7 @@ func TestLodgingRequestFieldsAreWellFormed(t *testing.T) {
 // from silently disconnecting an answer from its column.
 func TestLodgingRequestFieldNamesResolveThroughCMID(t *testing.T) {
 	t.Parallel()
-	app := newLodgingTestApp(t)
+	app := newSyncTestApp(t)
 
 	renamed := addFieldDef(t, app, cmIDShareCabinsRegistration, "FC Cabin Sharing 2027")
 	untouched := addFieldDef(t, app, cmIDSharedRequest, "Shared-request")
@@ -97,7 +97,7 @@ func TestLodgingRequestFieldNamesResolveThroughCMID(t *testing.T) {
 // would never match; the mapping must still be found.
 func TestLodgingFieldDefIDsMapsByCMID(t *testing.T) {
 	t.Parallel()
-	app := newLodgingTestApp(t)
+	app := newSyncTestApp(t)
 
 	cabinDefID := addFieldDef(t, app, cmIDFamilyCampCabin, "Renamed By Staff In 2027")
 	reportableDefID := addFieldDef(t, app, cmIDReportableFamilyCampCabin, "Reportable Family Camp Cabin")
@@ -124,7 +124,7 @@ func TestLodgingFieldDefIDsMapsByCMID(t *testing.T) {
 // stop reading that field.
 func TestLodgingFieldDefIDsHonoursDisabledMapping(t *testing.T) {
 	t.Parallel()
-	app := newLodgingTestApp(t)
+	app := newSyncTestApp(t)
 	cabinDefID := addFieldDef(t, app, cmIDFamilyCampCabin, "Family Camp Cabin")
 
 	saveRecord(t, app, "lodging_field_mappings", map[string]any{
@@ -147,7 +147,7 @@ func TestLodgingFieldDefIDsHonoursDisabledMapping(t *testing.T) {
 // this year may simply have a form that hasn't been sent yet."
 func TestUpsertFieldMappingStatusIsIdempotentAndNeverAutoDisables(t *testing.T) {
 	t.Parallel()
-	app := newLodgingTestApp(t)
+	app := newSyncTestApp(t)
 	addFieldDef(t, app, cmIDFamilyCampCabin, "Family Camp Cabin")
 
 	// Year with zero values for the cabin field, 464 the year before.
@@ -189,7 +189,7 @@ func TestUpsertFieldMappingStatusIsIdempotentAndNeverAutoDisables(t *testing.T) 
 // in 2025". last_seen_* means MOST RECENT, so an older run must leave it alone.
 func TestUpsertFieldMappingStatusDoesNotRegressOnOlderYearBackfill(t *testing.T) {
 	t.Parallel()
-	app := newLodgingTestApp(t)
+	app := newSyncTestApp(t)
 	addFieldDef(t, app, cmIDFamilyCampCabin, "Family Camp Cabin")
 
 	// The current season's daily sync: no values yet this year, 171 last year.
@@ -232,7 +232,7 @@ func TestUpsertFieldMappingStatusDoesNotRegressOnOlderYearBackfill(t *testing.T)
 // happened to run first.
 func TestUpsertFieldMappingStatusAdvancesOnNewerYear(t *testing.T) {
 	t.Parallel()
-	app := newLodgingTestApp(t)
+	app := newSyncTestApp(t)
 	addFieldDef(t, app, cmIDFamilyCampCabin, "Family Camp Cabin")
 
 	if err := UpsertFieldMappingStatus(app, 2025,

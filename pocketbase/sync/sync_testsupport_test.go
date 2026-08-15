@@ -24,7 +24,7 @@ const (
 const testSessionStart = "2025-05-23 07:00:00.000Z"
 const testSessionEnd = "2025-05-26 07:00:00.000Z"
 
-// newLodgingTestApp returns a throwaway PocketBase app carrying every collection
+// newSyncTestApp returns a throwaway PocketBase app carrying every collection
 // the lodging ingest reads or writes, shaped like production's.
 //
 // It deliberately builds collections in Go rather than replaying pb_migrations:
@@ -33,7 +33,7 @@ const testSessionEnd = "2025-05-26 07:00:00.000Z"
 // cannot apply them. Schema fidelity against the real migrations is the job of
 // scripts/dev/verify-lodging-schema.sh; these fixtures only need the fields the
 // code under test touches.
-func newLodgingTestApp(t *testing.T) core.App {
+func newSyncTestApp(t *testing.T) core.App {
 	t.Helper()
 	app, err := tests.NewTestApp()
 	if err != nil {
@@ -404,7 +404,7 @@ func assertLodgingCollectionsEmpty(t *testing.T, app core.App) {
 // portion and return nil, not fail the whole run.
 func TestLodgingAssignmentsSyncSkipsWhenRegistryNeverLoaded(t *testing.T) {
 	t.Parallel()
-	app := newLodgingTestApp(t)
+	app := newSyncTestApp(t)
 	// No addUnit call anywhere: lodging_units is empty for every year.
 
 	sessionID := addSession(t, app, cmIDFamilyCamp1, "Family Camp 1", "family",
@@ -435,7 +435,7 @@ func TestLodgingAssignmentsSyncSkipsWhenRegistryNeverLoaded(t *testing.T) {
 // first.
 func TestLodgingAssignmentsSyncSkipsWhenSeasonNotRolledForward(t *testing.T) {
 	t.Parallel()
-	app := newLodgingTestApp(t)
+	app := newSyncTestApp(t)
 	priorYearUnit := addUnit(t, app, "ridge-a", 2026)
 	addAlias(t, app, "Ridge A", []string{priorYearUnit}, 0, 0)
 	// No lodging_units row for 2027: roll-forward has not run yet.
@@ -460,7 +460,7 @@ func TestLodgingAssignmentsSyncSkipsWhenSeasonNotRolledForward(t *testing.T) {
 // depends on, distinguishing "never loaded" from "not this year".
 func TestAliasResolverHasUnitsForYear(t *testing.T) {
 	t.Parallel()
-	app := newLodgingTestApp(t)
+	app := newSyncTestApp(t)
 	addUnit(t, app, "ridge-a", 2026)
 
 	r, err := NewAliasResolver(app)
@@ -482,7 +482,7 @@ func TestAliasResolverHasUnitsForYear(t *testing.T) {
 // no registry loaded for any season at all.
 func TestAliasResolverHasAnyUnitsFalseWhenEmpty(t *testing.T) {
 	t.Parallel()
-	app := newLodgingTestApp(t)
+	app := newSyncTestApp(t)
 
 	r, err := NewAliasResolver(app)
 	if err != nil {
