@@ -1338,4 +1338,30 @@ func TestStaffApplicationsSyncSecondRunIsIdempotent(t *testing.T) {
 	if s.Stats.Skipped != 1 {
 		t.Errorf("second run: skipped=%d, want 1 (the unchanged record)", s.Stats.Skipped)
 	}
+
+	// Third run: a genuine edit (kindred#2384 review finding 1) must still be
+	// written. Without this, a mutant that makes recordNeedsUpdate always
+	// return false passes every assertion above -- the record would never
+	// be updated again, silently.
+	const editedValue = "Because it's the best place on earth."
+	updatePersonCustomValue(t, app, tawongaDefID, personPBID, editedValue, year)
+
+	if err := s.Sync(context.Background()); err != nil {
+		t.Fatalf("third Sync: %v", err)
+	}
+	if s.Stats.Created != 0 || s.Stats.Updated != 1 || s.Stats.Errors != 0 {
+		t.Fatalf("third run: created=%d updated=%d errors=%d, want created=0 updated=1 errors=0",
+			s.Stats.Created, s.Stats.Updated, s.Stats.Errors)
+	}
+
+	saved, err := app.FindRecordsByFilter("staff_applications", "year = 2026", "", 0, 0)
+	if err != nil {
+		t.Fatalf("re-query after third run: %v", err)
+	}
+	if len(saved) != 1 {
+		t.Fatalf("%d rows persisted after third run, want 1", len(saved))
+	}
+	if got := saved[0].GetString("why_tawonga"); got != editedValue {
+		t.Errorf("why_tawonga = %q after third run, want %q", got, editedValue)
+	}
 }
