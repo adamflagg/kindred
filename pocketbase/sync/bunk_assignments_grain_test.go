@@ -61,46 +61,18 @@ func setupBunkAssignmentGrainCollections(t *testing.T, app core.App) {
 		t.Fatalf("create camp_sessions: %v", err)
 	}
 
-	bunks := core.NewBaseCollection("bunks")
-	bunks.Fields.Add(&core.NumberField{Name: "cm_id", Required: true})
-	bunks.Fields.Add(&core.NumberField{Name: "year", Required: true})
-	bunks.Fields.Add(&core.AutodateField{Name: "created", OnCreate: true})
-	if err := app.Save(bunks); err != nil {
-		t.Fatalf("create bunks: %v", err)
-	}
-
-	bunkPlans := core.NewBaseCollection("bunk_plans")
-	bunkPlans.Fields.Add(&core.NumberField{Name: "cm_id", Required: true})
-	bunkPlans.Fields.Add(&core.RelationField{Name: "bunk", CollectionId: bunks.Id, MaxSelect: 1})
-	bunkPlans.Fields.Add(&core.RelationField{Name: "session", CollectionId: sessions.Id, MaxSelect: 1})
-	bunkPlans.Fields.Add(&core.NumberField{Name: "year", Required: true})
-	bunkPlans.Fields.Add(&core.AutodateField{Name: "created", OnCreate: true})
-	if err := app.Save(bunkPlans); err != nil {
-		t.Fatalf("create bunk_plans: %v", err)
-	}
-
-	assignments := core.NewBaseCollection("bunk_assignments")
-	assignments.Fields.Add(&core.NumberField{Name: "cm_id"})
-	assignments.Fields.Add(&core.RelationField{Name: "person", CollectionId: persons.Id, MaxSelect: 1})
-	assignments.Fields.Add(&core.RelationField{Name: "session", CollectionId: sessions.Id, MaxSelect: 1})
-	assignments.Fields.Add(&core.RelationField{Name: "bunk", CollectionId: bunks.Id, MaxSelect: 1})
-	assignments.Fields.Add(&core.RelationField{Name: "bunk_plan", CollectionId: bunkPlans.Id, MaxSelect: 1})
-	assignments.Fields.Add(&core.NumberField{Name: "year", Required: true})
-	assignments.Fields.Add(&core.AutodateField{Name: "created", OnCreate: true})
-	// The widened unique index this PR's migration adds in production
-	// (see pb_migrations/1500000155_bunk_assignments_bunk_grain.js). Pinned
-	// here too so these tests exercise the same DB-level constraint, not
-	// just the in-memory composite key -- confirmed load-bearing: reverting
-	// this to the CURRENT unmigrated (year, person, session) shape makes
+	// bunks, bunk_plans, bunk_assignments and staff are kindred#2300's shared
+	// fixture builder (sync_testsupport_test.go) -- widened there so this
+	// file's copies didn't keep drifting from production on their own.
+	// addBunkAssignmentsCollection pins production's post-kindred#2259
+	// widened unique index (year, person, session, bunk; migration
+	// 1500000155) -- confirmed still load-bearing here: reverting it to the
+	// old (year, person, session) shape makes
 	// TestProcessAssignment_FamilyStylePlanPreservesBothRowsImprecisely fail
 	// with a real uniqueness violation on the second assignment.
-	assignments.Indexes = []string{
-		"CREATE UNIQUE INDEX `idx_grain_test_person_session_bunk_year` " +
-			"ON `bunk_assignments` (`year`, `person`, `session`, `bunk`)",
-	}
-	if err := app.Save(assignments); err != nil {
-		t.Fatalf("create bunk_assignments: %v", err)
-	}
+	bunks := addBunksCollection(t, app)
+	bunkPlans := addBunkPlansCollection(t, app, bunks, sessions)
+	addBunkAssignmentsCollection(t, app, persons, sessions, bunks, bunkPlans)
 
 	attendees := core.NewBaseCollection("attendees")
 	attendees.Fields.Add(&core.NumberField{Name: "person_id", Required: true})
@@ -112,15 +84,7 @@ func setupBunkAssignmentGrainCollections(t *testing.T, app core.App) {
 		t.Fatalf("create attendees: %v", err)
 	}
 
-	staff := core.NewBaseCollection("staff")
-	staff.Fields.Add(&core.NumberField{Name: "person_id", Required: true})
-	staff.Fields.Add(&core.TextField{Name: "status"})
-	staff.Fields.Add(&core.BoolField{Name: "bunk_staff"})
-	staff.Fields.Add(&core.NumberField{Name: "year", Required: true})
-	staff.Fields.Add(&core.AutodateField{Name: "created", OnCreate: true})
-	if err := app.Save(staff); err != nil {
-		t.Fatalf("create staff: %v", err)
-	}
+	addStaffCollection(t, app)
 }
 
 // bunkAssignmentsForYear returns every bunk_assignments row for the given

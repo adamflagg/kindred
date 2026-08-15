@@ -82,7 +82,7 @@ func TestValidateAssignmentGrainRejectsEmptyUnits(t *testing.T) {
 // invariant has no database backing.
 func TestAssignmentGrainIllegalStatesReallySaveInPocketBase(t *testing.T) {
 	t.Parallel()
-	app := newLodgingTestApp(t)
+	app := newSyncTestApp(t)
 	sess := addSession(t, app, cmIDFamilyCamp1, "Family Camp 1", "family",
 		"2025-05-23 07:00:00.000Z", "2025-05-26 07:00:00.000Z", 2025)
 

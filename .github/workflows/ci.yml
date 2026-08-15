@@ -831,7 +831,7 @@ jobs:
         # REQUIRED_COLLECTIONS/REQUIRED_FIELDS happens to be an early one that
         # already fell inside the first 30 -- but kindred#1921's
         # fixture-schema-agreement step (below) walks every collection
-        # newLodgingTestApp builds, several of them late (lodging_* from
+        # newSyncTestApp builds, several of them late (lodging_* from
         # migration 1500000116+), which is what surfaced this. Pinned to
         # PocketBase's own MaxPerPage (tools/search/provider.go) rather than
         # some smaller headroom number: a perPage above MaxPerPage is
@@ -869,8 +869,8 @@ jobs:
         echo "✅ Migration smoke test passed"
 
     # kindred#1921: the sync package's fixtures build their PocketBase
-    # collections by hand (see newLodgingTestApp in
-    # pocketbase/sync/lodging_testsupport_test.go) rather than replaying
+    # collections by hand (see newSyncTestApp in
+    # pocketbase/sync/sync_testsupport_test.go) rather than replaying
     # pb_migrations, so a column a migration drops or renames can stay in the
     # fixture indefinitely -- go test ./... never notices. /tmp/collections.json
     # above is the real schema those same migrations just produced; this step

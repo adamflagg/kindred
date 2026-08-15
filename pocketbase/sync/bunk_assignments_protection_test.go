@@ -70,38 +70,15 @@ func setupBunkAssignmentProtectionCollections(t *testing.T, app core.App) {
 		t.Fatalf("create persons: %v", err)
 	}
 
+	// bunks, staff and bunk_assignments are kindred#2300's shared fixture
+	// builder (sync_testsupport_test.go) -- widened there specifically so
+	// this file's copies didn't keep drifting from production on their own.
 	// bunk is part of the bunk_assignments grain alongside person and
 	// session (kindred#2259) -- protectNonActiveStaffAssignments and
 	// deleteOrphans both resolve it into their composite keys.
-	bunks := core.NewBaseCollection("bunks")
-	bunks.Fields.Add(&core.NumberField{Name: "cm_id", Required: true})
-	if err := app.Save(bunks); err != nil {
-		t.Fatalf("create bunks: %v", err)
-	}
-
-	assignments := core.NewBaseCollection("bunk_assignments")
-	assignments.Fields.Add(&core.RelationField{Name: "person", CollectionId: persons.Id, MaxSelect: 1})
-	assignments.Fields.Add(&core.RelationField{Name: "session", CollectionId: sessions.Id, MaxSelect: 1})
-	assignments.Fields.Add(&core.RelationField{Name: "bunk", CollectionId: bunks.Id, MaxSelect: 1})
-	assignments.Fields.Add(&core.NumberField{Name: "year", Required: true})
-	// PaginateRecords sorts by "-created" unconditionally, and deleteOrphans's
-	// call to BuildRecordCMIDMappings goes through it.
-	assignments.Fields.Add(&core.AutodateField{Name: "created", OnCreate: true})
-	if err := app.Save(assignments); err != nil {
-		t.Fatalf("create bunk_assignments: %v", err)
-	}
-
-	staff := core.NewBaseCollection("staff")
-	staff.Fields.Add(&core.NumberField{Name: "person_id", Required: true})
-	staff.Fields.Add(&core.TextField{Name: "status"})
-	staff.Fields.Add(&core.BoolField{Name: "bunk_staff"})
-	staff.Fields.Add(&core.NumberField{Name: "year", Required: true})
-	// PaginateRecords sorts by "-created" unconditionally, so the staff
-	// collection needs it even though nothing else in this test reads it.
-	staff.Fields.Add(&core.AutodateField{Name: "created", OnCreate: true})
-	if err := app.Save(staff); err != nil {
-		t.Fatalf("create staff: %v", err)
-	}
+	bunks := addBunksCollection(t, app)
+	addBunkAssignmentsCollection(t, app, persons, sessions, bunks, nil)
+	addStaffCollection(t, app)
 }
 
 // TestProtectNonActiveStaffAssignments_ProtectsDismissedStaff is a regression
@@ -183,21 +160,11 @@ func setupBunkAssignmentSweepCollections(t *testing.T, app core.App) {
 		t.Fatalf("create persons: %v", err)
 	}
 
-	bunks := core.NewBaseCollection("bunks")
-	bunks.Fields.Add(&core.NumberField{Name: "cm_id", Required: true})
-	if err := app.Save(bunks); err != nil {
-		t.Fatalf("create bunks: %v", err)
-	}
-
-	assignments := core.NewBaseCollection("bunk_assignments")
-	assignments.Fields.Add(&core.RelationField{Name: "person", CollectionId: persons.Id, MaxSelect: 1})
-	assignments.Fields.Add(&core.RelationField{Name: "session", CollectionId: sessions.Id, MaxSelect: 1})
-	assignments.Fields.Add(&core.RelationField{Name: "bunk", CollectionId: bunks.Id, MaxSelect: 1})
-	assignments.Fields.Add(&core.NumberField{Name: "year", Required: true})
-	assignments.Fields.Add(&core.AutodateField{Name: "created", OnCreate: true})
-	if err := app.Save(assignments); err != nil {
-		t.Fatalf("create bunk_assignments: %v", err)
-	}
+	// See setupBunkAssignmentProtectionCollections above: bunks/bunk_assignments
+	// come from kindred#2300's shared fixture builder. The absent `staff`
+	// collection is the deliberate difference this helper exists for.
+	bunks := addBunksCollection(t, app)
+	addBunkAssignmentsCollection(t, app, persons, sessions, bunks, nil)
 }
 
 // newTestCampMinderClient builds a real *campminder.Client for tests that only
