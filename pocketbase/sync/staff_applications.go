@@ -203,9 +203,15 @@ func (s *StaffApplicationsSync) Sync(ctx context.Context) error {
 	slog.Info("Loaded existing records", "count", len(existingRecords))
 
 	// Step 5: Upsert records
-	created, updated, upsertErrors := s.upsertRecords(ctx, records, existingRecords, year)
+	created, updated, upsertSkipped, upsertErrors := s.upsertRecords(ctx, records, existingRecords, year)
 	s.Stats.Created = created
 	s.Stats.Updated = updated
+	// Stats.Skipped now carries TWO record-level meanings, same as
+	// staff_vehicle_info.go: the staff-row gate drop counted above in
+	// loadPersonCustomValues (kindred#2277) and, added here, a record that
+	// needed no write (kindred#2384). Both count RECORDS, so the unit stays
+	// consistent -- but += (not =) preserves the earlier count.
+	s.Stats.Skipped += upsertSkipped
 	s.Stats.Errors = upsertErrors
 
 	// Step 6: Delete orphans
@@ -936,6 +942,39 @@ func makeStaffAppKey(personID, year int) string {
 	return fmt.Sprintf("%d|%d", personID, year)
 }
 
+// staffApplicationsCompareFields lists the fields to compare for idempotency
+// checks (kindred#2384). Excludes the unique key fields (person_id, year)
+// since loadExistingRecords already matched on them, and PocketBase-managed
+// fields. Includes `staff` even though it is not part of the key -- unlike
+// person_id/year, it can change independently of the key if the
+// person-to-staff mapping is rebuilt.
+var staffApplicationsCompareFields = []string{
+	"staff",
+	"can_work_dates", "cant_work_explain", "work_dates_supervisor",
+	"work_dates_wild", "work_dates_driver",
+	"work_expectations", "qualifications", "qualification_changes",
+	"position_pref_1", "position_pref_2", "position_pref_3",
+	"why_tawonga", "why_work_again", "jewish_community", "three_rules",
+	"autobiography", "community_means", "working_across_differences",
+	"languages", "dietary_needs", "dietary_needs_other", "over_21",
+	"ref_1_name", "ref_1_phone", "ref_1_email", "ref_1_relationship", "ref_1_years",
+	"stress_situation", "stress_response", "spiritual_moment", "activity_program",
+	"someone_admire", "since_camp", "wish_knew", "last_summer_learned",
+	"favorite_camper_moment", "closest_friend", "tawonga_makes_think",
+	"advice_would_give", "how_look_at_camp",
+	"over_18", "work_dates_kitchen_supervisor", "jedi_returner", "jedi_new_staff",
+}
+
+// recordNeedsUpdate checks if any compared field differs between existing
+// record and new data. Uses compareFields (inclusion list): only the listed
+// fields are checked for changes. Delegates to the shared
+// compareRecordNeedsUpdate in base_sync.go.
+func (s *StaffApplicationsSync) recordNeedsUpdate(
+	existing *core.Record, newData map[string]any, compareFields []string,
+) bool {
+	return compareRecordNeedsUpdate(existing, newData, compareFields)
+}
+
 // loadExistingRecords loads existing staff_applications records for a year
 func (s *StaffApplicationsSync) loadExistingRecords(ctx context.Context, year int) (map[string]string, error) {
 	result := make(map[string]string)
@@ -977,22 +1016,88 @@ func (s *StaffApplicationsSync) upsertRecords(
 	records map[string]*staffApplicationRecord,
 	existingRecords map[string]string,
 	year int,
-) (created, updated, errCount int) {
+) (created, updated, skipped, errCount int) {
 	col, err := s.App.FindCollectionByNameOrId("staff_applications")
 	if err != nil {
 		slog.Error("Error finding staff_applications collection", "error", err)
-		return 0, 0, len(records)
+		return 0, 0, 0, len(records)
 	}
 
 	for _, rec := range records {
 		select {
 		case <-ctx.Done():
-			return created, updated, errCount
+			return created, updated, skipped, errCount
 		default:
 		}
 
 		key := makeStaffAppKey(rec.personID, year)
 		existingID, exists := existingRecords[key]
+
+		data := map[string]any{
+			"staff":     rec.staffID,
+			"person_id": rec.personID,
+			"year":      rec.year,
+
+			// Work availability
+			"can_work_dates":        rec.canWorkDates,
+			"cant_work_explain":     rec.cantWorkExplain,
+			"work_dates_supervisor": rec.workDatesSupervisor,
+			"work_dates_wild":       rec.workDatesWild,
+			"work_dates_driver":     rec.workDatesDriver,
+
+			// Qualifications
+			"work_expectations":     rec.workExpectations,
+			"qualifications":        rec.qualifications,
+			"qualification_changes": rec.qualificationChanges,
+
+			// Position preferences
+			"position_pref_1": rec.positionPref1,
+			"position_pref_2": rec.positionPref2,
+			"position_pref_3": rec.positionPref3,
+
+			// Essays
+			"why_tawonga":                rec.whyTawonga,
+			"why_work_again":             rec.whyWorkAgain,
+			"jewish_community":           rec.jewishCommunity,
+			"three_rules":                rec.threeRules,
+			"autobiography":              rec.autobiography,
+			"community_means":            rec.communityMeans,
+			"working_across_differences": rec.workingAcrossDifferences,
+
+			// Personal info
+			"languages":           rec.languages,
+			"dietary_needs":       rec.dietaryNeeds,
+			"dietary_needs_other": rec.dietaryOther,
+			"over_21":             rec.over21,
+
+			// Reference
+			"ref_1_name":         rec.ref1Name,
+			"ref_1_phone":        rec.ref1Phone,
+			"ref_1_email":        rec.ref1Email,
+			"ref_1_relationship": rec.ref1Relationship,
+			"ref_1_years":        rec.ref1Years,
+
+			// Reflection prompts
+			"stress_situation":       rec.stressSituation,
+			"stress_response":        rec.stressResponse,
+			"spiritual_moment":       rec.spiritualMoment,
+			"activity_program":       rec.activityProgram,
+			"someone_admire":         rec.someoneAdmire,
+			"since_camp":             rec.sinceCamp,
+			"wish_knew":              rec.wishKnew,
+			"last_summer_learned":    rec.lastSummerLearned,
+			"favorite_camper_moment": rec.favoriteCamperMoment,
+			"closest_friend":         rec.closestFriend,
+			"tawonga_makes_think":    rec.tawongaMakesThink,
+			"advice_would_give":      rec.adviceWouldGive,
+			"how_look_at_camp":       rec.howLookAtCamp,
+
+			// Live 2026 fields (kindred#2271, owner ruling 2026-08-14)
+			"over_18":                       rec.over18,
+			"work_dates_kitchen_supervisor": rec.workDatesKitchenSupervisor,
+			"jedi_returner":                 rec.jediReturner,
+			"jedi_new_staff":                rec.jediNewStaff,
+		}
 
 		var record *core.Record
 		if exists {
@@ -1002,74 +1107,26 @@ func (s *StaffApplicationsSync) upsertRecords(
 				errCount++
 				continue
 			}
+
+			// Check if update is actually needed (kindred#2384). An unchanged
+			// record counts as a skip, not an update. Stats.Skipped here counts
+			// records that needed no write, distinct from Stats.SkippedValues
+			// (individual unmapped App-* answers, tracked in
+			// loadPersonCustomValues above) -- both count something, but not
+			// the same thing, per kindred#2356.
+			if !s.recordNeedsUpdate(record, data, staffApplicationsCompareFields) {
+				s.DebugLog("Skipping unchanged staff_applications record",
+					"person_id", rec.personID, "year", year)
+				skipped++
+				continue
+			}
 		} else {
 			record = core.NewRecord(col)
 		}
 
-		// Set all fields
-		record.Set("staff", rec.staffID)
-		record.Set("person_id", rec.personID)
-		record.Set("year", rec.year)
-
-		// Work availability
-		record.Set("can_work_dates", rec.canWorkDates)
-		record.Set("cant_work_explain", rec.cantWorkExplain)
-		record.Set("work_dates_supervisor", rec.workDatesSupervisor)
-		record.Set("work_dates_wild", rec.workDatesWild)
-		record.Set("work_dates_driver", rec.workDatesDriver)
-
-		// Qualifications
-		record.Set("work_expectations", rec.workExpectations)
-		record.Set("qualifications", rec.qualifications)
-		record.Set("qualification_changes", rec.qualificationChanges)
-
-		// Position preferences
-		record.Set("position_pref_1", rec.positionPref1)
-		record.Set("position_pref_2", rec.positionPref2)
-		record.Set("position_pref_3", rec.positionPref3)
-
-		// Essays
-		record.Set("why_tawonga", rec.whyTawonga)
-		record.Set("why_work_again", rec.whyWorkAgain)
-		record.Set("jewish_community", rec.jewishCommunity)
-		record.Set("three_rules", rec.threeRules)
-		record.Set("autobiography", rec.autobiography)
-		record.Set("community_means", rec.communityMeans)
-		record.Set("working_across_differences", rec.workingAcrossDifferences)
-
-		// Personal info
-		record.Set("languages", rec.languages)
-		record.Set("dietary_needs", rec.dietaryNeeds)
-		record.Set("dietary_needs_other", rec.dietaryOther)
-		record.Set("over_21", rec.over21)
-
-		// Reference
-		record.Set("ref_1_name", rec.ref1Name)
-		record.Set("ref_1_phone", rec.ref1Phone)
-		record.Set("ref_1_email", rec.ref1Email)
-		record.Set("ref_1_relationship", rec.ref1Relationship)
-		record.Set("ref_1_years", rec.ref1Years)
-
-		// Reflection prompts
-		record.Set("stress_situation", rec.stressSituation)
-		record.Set("stress_response", rec.stressResponse)
-		record.Set("spiritual_moment", rec.spiritualMoment)
-		record.Set("activity_program", rec.activityProgram)
-		record.Set("someone_admire", rec.someoneAdmire)
-		record.Set("since_camp", rec.sinceCamp)
-		record.Set("wish_knew", rec.wishKnew)
-		record.Set("last_summer_learned", rec.lastSummerLearned)
-		record.Set("favorite_camper_moment", rec.favoriteCamperMoment)
-		record.Set("closest_friend", rec.closestFriend)
-		record.Set("tawonga_makes_think", rec.tawongaMakesThink)
-		record.Set("advice_would_give", rec.adviceWouldGive)
-		record.Set("how_look_at_camp", rec.howLookAtCamp)
-
-		// Live 2026 fields (kindred#2271, owner ruling 2026-08-14)
-		record.Set("over_18", rec.over18)
-		record.Set("work_dates_kitchen_supervisor", rec.workDatesKitchenSupervisor)
-		record.Set("jedi_returner", rec.jediReturner)
-		record.Set("jedi_new_staff", rec.jediNewStaff)
+		for field, value := range data {
+			record.Set(field, value)
+		}
 
 		if err := s.App.Save(record); err != nil {
 			slog.Error("Error saving staff_applications record",
@@ -1088,7 +1145,7 @@ func (s *StaffApplicationsSync) upsertRecords(
 		}
 	}
 
-	return created, updated, errCount
+	return created, updated, skipped, errCount
 }
 
 // deleteOrphans removes records that exist in DB but not in computed set.

@@ -973,3 +973,94 @@ func TestLoadPersonCustomValuesDropsAPersonWithNoAttendeeRow(t *testing.T) {
 		t.Errorf("computed set has %d records, want exactly 1 (only the still-enrolled camper)", len(records))
 	}
 }
+
+// ---------------------------------------------------------------------------
+// kindred#2384: idempotency -- a second run against unchanged source data
+// must report Updated == 0 and Skipped == <record count>, not rewrite every
+// row it already wrote.
+// ---------------------------------------------------------------------------
+
+// addCamperTransportationCollection adds the camper_transportation collection
+// on top of an app built by newSyncTestApp, with every column upsertRecords
+// writes plus the compareFields it will be checked against. A column missing
+// from this list would make compareRecordNeedsUpdate see a permanent nil ->
+// value diff on every run, which would make the idempotency assertion below
+// pass for the wrong reason (nothing was ever comparable) rather than the
+// right one (the comparison found no difference).
+func addCamperTransportationCollection(t *testing.T, app core.App) {
+	t.Helper()
+	attendees, err := app.FindCollectionByNameOrId("attendees")
+	if err != nil {
+		t.Fatalf("find attendees: %v", err)
+	}
+
+	col := core.NewBaseCollection("camper_transportation")
+	col.Fields.Add(&core.RelationField{Name: "attendee", CollectionId: attendees.Id, MaxSelect: 1})
+	col.Fields.Add(&core.NumberField{Name: "person_id"})
+	col.Fields.Add(&core.NumberField{Name: "session_id"})
+	col.Fields.Add(&core.NumberField{Name: "year"})
+	col.Fields.Add(&core.TextField{Name: colToCampMethod, Max: 5000})
+	col.Fields.Add(&core.TextField{Name: colFromCampMethod, Max: 5000})
+	col.Fields.Add(&core.TextField{Name: colDropoffName, Max: 5000})
+	col.Fields.Add(&core.TextField{Name: colDropoffPhone, Max: 5000})
+	col.Fields.Add(&core.TextField{Name: colDropoffRelationship, Max: 5000})
+	col.Fields.Add(&core.TextField{Name: colPickupName, Max: 5000})
+	col.Fields.Add(&core.TextField{Name: colPickupPhone, Max: 5000})
+	col.Fields.Add(&core.TextField{Name: colPickupRelationship, Max: 5000})
+	col.Fields.Add(&core.TextField{Name: colAltPickup1Name, Max: 5000})
+	col.Fields.Add(&core.TextField{Name: colAltPickup1Phone, Max: 5000})
+	col.Fields.Add(&core.TextField{Name: colAltPickup1Relationship, Max: 5000})
+	col.Fields.Add(&core.TextField{Name: colAltPickup2Name, Max: 5000})
+	col.Fields.Add(&core.TextField{Name: colAltPickup2Phone, Max: 5000})
+	col.Fields.Add(&core.BoolField{Name: "used_legacy_fields"})
+	if saveErr := app.Save(col); saveErr != nil {
+		t.Fatalf("save camper_transportation: %v", saveErr)
+	}
+}
+
+// TestCamperTransportationSyncSecondRunIsIdempotent drives the real Sync()
+// entry point (kindred#2384), not upsertRecords directly: asserting on the
+// helper proves the comparison function works, not that Sync() actually
+// calls it before writing. Two identical runs against the same source data
+// must produce Created=1/Updated=0 then Created=0/Updated=0/Skipped=1 -- a
+// no-op run must be visible AS a no-op, not indistinguishable from a rewrite.
+func TestCamperTransportationSyncSecondRunIsIdempotent(t *testing.T) {
+	t.Parallel()
+	app := newSyncTestApp(t)
+	addCamperTransportationCollection(t, app)
+
+	const year = 2026
+	toCampDefID := addFieldDef(t, app, 90001, "BUS-to camp")
+	dropoffDefID := addFieldDef(t, app, 90002, "BUS-who is dropping off")
+
+	sessionPBID := addSession(t, app, 5001, "Session A", "resident",
+		"2026-06-20 07:00:00.000Z", "2026-07-01 07:00:00.000Z", year)
+	householdPBID := addHousehold(t, app, 6001, year)
+	personPBID := addPerson(t, app, 7001, 6001, year, householdPBID)
+	addAttendee(t, app, personPBID, sessionPBID, 7001, 2, year)
+
+	addPersonCustomValue(t, app, toCampDefID, personPBID, "Bus", year)
+	addPersonCustomValue(t, app, dropoffDefID, personPBID, "Emma Johnson", year)
+
+	s := NewCamperTransportationSync(app)
+	s.SetYear(year)
+
+	if err := s.Sync(context.Background()); err != nil {
+		t.Fatalf("first Sync: %v", err)
+	}
+	if s.Stats.Created != 1 || s.Stats.Updated != 0 || s.Stats.Errors != 0 {
+		t.Fatalf("first run: created=%d updated=%d errors=%d, want created=1 updated=0 errors=0",
+			s.Stats.Created, s.Stats.Updated, s.Stats.Errors)
+	}
+
+	if err := s.Sync(context.Background()); err != nil {
+		t.Fatalf("second Sync: %v", err)
+	}
+	if s.Stats.Created != 0 || s.Stats.Updated != 0 || s.Stats.Errors != 0 {
+		t.Fatalf("second run: created=%d updated=%d errors=%d, want created=0 updated=0 errors=0",
+			s.Stats.Created, s.Stats.Updated, s.Stats.Errors)
+	}
+	if s.Stats.Skipped != 1 {
+		t.Errorf("second run: skipped=%d, want 1 (the unchanged record)", s.Stats.Skipped)
+	}
+}

@@ -1169,7 +1169,7 @@ func TestUpsertRecordsWritesTheFourLive2026Columns(t *testing.T) {
 		},
 	}
 
-	created, updated, errCount := s.upsertRecords(
+	created, updated, _, errCount := s.upsertRecords(
 		context.Background(), records, map[string]string{}, year)
 	if errCount != 0 {
 		t.Fatalf("upsertRecords reported %d errors, want 0", errCount)
@@ -1235,5 +1235,107 @@ func TestStaffApplicationsDeleteOrphansStillSweepsGenuineOrphans(t *testing.T) {
 	}
 	if len(remaining) != 1 {
 		t.Errorf("%d rows survived, want 1", len(remaining))
+	}
+}
+
+// ---------------------------------------------------------------------------
+// kindred#2384: idempotency -- a second run against unchanged source data
+// must report Updated == 0 and Skipped == <record count>, not rewrite every
+// row it already wrote.
+// ---------------------------------------------------------------------------
+
+// staffApplicationsTextColumns lists the string-valued columns
+// staffApplicationsCompareFields compares, matching upsertRecords' Set()
+// calls exactly. The three bool columns (over_21, over_18,
+// work_dates_kitchen_supervisor) are added separately below.
+var staffApplicationsTextColumns = []string{
+	"can_work_dates", "cant_work_explain", "work_dates_supervisor",
+	"work_dates_wild", "work_dates_driver",
+	"work_expectations", "qualifications", "qualification_changes",
+	"position_pref_1", "position_pref_2", "position_pref_3",
+	"why_tawonga", "why_work_again", "jewish_community", "three_rules",
+	"autobiography", "community_means", "working_across_differences",
+	"languages", "dietary_needs", "dietary_needs_other",
+	"ref_1_name", "ref_1_phone", "ref_1_email", "ref_1_relationship", "ref_1_years",
+	"stress_situation", "stress_response", "spiritual_moment", "activity_program",
+	"someone_admire", "since_camp", "wish_knew", "last_summer_learned",
+	"favorite_camper_moment", "closest_friend", "tawonga_makes_think",
+	"advice_would_give", "how_look_at_camp",
+	"jedi_returner", "jedi_new_staff",
+}
+
+// addStaffApplicationsFullCollection adds the staff_applications collection
+// on top of an app built by newSyncTestApp, with every column upsertRecords
+// writes plus the compareFields it will be checked against. A column missing
+// from this list would make compareRecordNeedsUpdate see a permanent nil ->
+// value diff on every run, which would make the idempotency assertion below
+// pass for the wrong reason (nothing was ever comparable) rather than the
+// right one (the comparison found no difference).
+func addStaffApplicationsFullCollection(t *testing.T, app core.App) {
+	t.Helper()
+	staff, err := app.FindCollectionByNameOrId("staff")
+	if err != nil {
+		t.Fatalf("find staff: %v", err)
+	}
+
+	col := core.NewBaseCollection("staff_applications")
+	col.Fields.Add(&core.RelationField{Name: "staff", CollectionId: staff.Id, MaxSelect: 1})
+	col.Fields.Add(&core.NumberField{Name: "person_id"})
+	col.Fields.Add(&core.NumberField{Name: "year"})
+	col.Fields.Add(&core.BoolField{Name: "over_21"})
+	col.Fields.Add(&core.BoolField{Name: "over_18"})
+	col.Fields.Add(&core.BoolField{Name: "work_dates_kitchen_supervisor"})
+	for _, name := range staffApplicationsTextColumns {
+		col.Fields.Add(&core.TextField{Name: name, Max: 5000})
+	}
+	if saveErr := app.Save(col); saveErr != nil {
+		t.Fatalf("save staff_applications: %v", saveErr)
+	}
+}
+
+// TestStaffApplicationsSyncSecondRunIsIdempotent drives the real Sync() entry
+// point (kindred#2384), not upsertRecords directly: asserting on the helper
+// proves the comparison function works, not that Sync() actually calls it
+// before writing. Two identical runs against the same source data must
+// produce Created=1/Updated=0 then Created=0/Updated=0/Skipped=1 -- a no-op
+// run must be visible AS a no-op, not indistinguishable from a rewrite.
+func TestStaffApplicationsSyncSecondRunIsIdempotent(t *testing.T) {
+	t.Parallel()
+	app := newSyncTestApp(t)
+	addStaffApplicationsFullCollection(t, app)
+
+	const year = 2026
+	tawongaDefID := addFieldDef(t, app, 92001, "App-Why Tawonga?")
+	over21DefID := addFieldDef(t, app, 92002, "App-Over 21")
+
+	householdPBID := addHousehold(t, app, 9001, year)
+	personPBID := addPerson(t, app, 9101, 9001, year, householdPBID)
+	saveRecord(t, app, "staff", map[string]any{
+		"person_id": 9101, "year": year,
+	})
+
+	addPersonCustomValue(t, app, tawongaDefID, personPBID, "Because it's home.", year)
+	addPersonCustomValue(t, app, over21DefID, personPBID, "Yes", year)
+
+	s := NewStaffApplicationsSync(app)
+	s.SetYear(year)
+
+	if err := s.Sync(context.Background()); err != nil {
+		t.Fatalf("first Sync: %v", err)
+	}
+	if s.Stats.Created != 1 || s.Stats.Updated != 0 || s.Stats.Errors != 0 {
+		t.Fatalf("first run: created=%d updated=%d errors=%d, want created=1 updated=0 errors=0",
+			s.Stats.Created, s.Stats.Updated, s.Stats.Errors)
+	}
+
+	if err := s.Sync(context.Background()); err != nil {
+		t.Fatalf("second Sync: %v", err)
+	}
+	if s.Stats.Created != 0 || s.Stats.Updated != 0 || s.Stats.Errors != 0 {
+		t.Fatalf("second run: created=%d updated=%d errors=%d, want created=0 updated=0 errors=0",
+			s.Stats.Created, s.Stats.Updated, s.Stats.Errors)
+	}
+	if s.Stats.Skipped != 1 {
+		t.Errorf("second run: skipped=%d, want 1 (the unchanged record)", s.Stats.Skipped)
 	}
 }

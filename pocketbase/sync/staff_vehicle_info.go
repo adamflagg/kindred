@@ -183,9 +183,14 @@ func (s *StaffVehicleInfoSync) Sync(ctx context.Context) error {
 	slog.Info("Loaded existing records", "count", len(existingRecords))
 
 	// Step 5: Upsert records
-	created, updated, upsertErrors := s.upsertRecords(ctx, records, existingRecords, year)
+	created, updated, upsertSkipped, upsertErrors := s.upsertRecords(ctx, records, existingRecords, year)
 	s.Stats.Created = created
 	s.Stats.Updated = updated
+	// Stats.Skipped now carries TWO record-level meanings (kindred#2384): the
+	// staff-row gate drop counted above in loadPersonCustomValues (kindred#2277)
+	// and, added here, a record that needed no write. Both count RECORDS, so
+	// the unit stays consistent -- but += (not =) preserves the earlier count.
+	s.Stats.Skipped += upsertSkipped
 	s.Stats.Errors = upsertErrors
 
 	// Step 6: Delete orphans
@@ -379,7 +384,12 @@ func (s *StaffVehicleInfoSync) loadPersonCustomValues(
 		if !hasStaff {
 			// Structurally correct -- `staff` is a required relation, so a row
 			// cannot be written without one -- but it must not be silent
-			// (kindred#2273, kindred#2277).
+			// (kindred#2273, kindred#2277). Once aggregated below, this joins
+			// a DIFFERENT meaning of Stats.Skipped from upsertRecords further
+			// down (kindred#2384): this counts a person dropped before a
+			// record was ever built, upsertRecords counts a built record that
+			// needed no write. Both are record-level counts, so the unit
+			// stays consistent.
 			gatedPeople[entry.personID] = true
 			continue
 		}
@@ -569,6 +579,29 @@ func makeStaffVehicleKey(personID, year int) string {
 	return fmt.Sprintf("%d|%d", personID, year)
 }
 
+// staffVehicleInfoCompareFields lists the fields to compare for idempotency
+// checks (kindred#2384). Excludes the unique key fields (person_id, year)
+// since loadExistingRecords already matched on them, and PocketBase-managed
+// fields. Includes `staff` even though it is not part of the key -- unlike
+// person_id/year, it can change independently of the key if the
+// person-to-staff mapping is rebuilt.
+var staffVehicleInfoCompareFields = []string{
+	"staff",
+	colDrivingToCamp, "how_getting_to_camp", colCanBringOthers,
+	"driver_name", "which_friend", "vehicle_make", "vehicle_model",
+	"license_plate", "ride_from", "transport_notes",
+}
+
+// recordNeedsUpdate checks if any compared field differs between existing
+// record and new data. Uses compareFields (inclusion list): only the listed
+// fields are checked for changes. Delegates to the shared
+// compareRecordNeedsUpdate in base_sync.go.
+func (s *StaffVehicleInfoSync) recordNeedsUpdate(
+	existing *core.Record, newData map[string]any, compareFields []string,
+) bool {
+	return compareRecordNeedsUpdate(existing, newData, compareFields)
+}
+
 // loadExistingRecords loads existing staff_vehicle_info records for a year
 func (s *StaffVehicleInfoSync) loadExistingRecords(ctx context.Context, year int) (map[string]string, error) {
 	result := make(map[string]string)
@@ -610,22 +643,38 @@ func (s *StaffVehicleInfoSync) upsertRecords(
 	records map[string]*staffVehicleInfoRecord,
 	existingRecords map[string]string,
 	year int,
-) (created, updated, errCount int) {
+) (created, updated, skipped, errCount int) {
 	col, err := s.App.FindCollectionByNameOrId("staff_vehicle_info")
 	if err != nil {
 		slog.Error("Error finding staff_vehicle_info collection", "error", err)
-		return 0, 0, len(records)
+		return 0, 0, 0, len(records)
 	}
 
 	for _, rec := range records {
 		select {
 		case <-ctx.Done():
-			return created, updated, errCount
+			return created, updated, skipped, errCount
 		default:
 		}
 
 		key := makeStaffVehicleKey(rec.personID, year)
 		existingID, exists := existingRecords[key]
+
+		data := map[string]any{
+			"staff":               rec.staffID,
+			"person_id":           rec.personID,
+			"year":                rec.year,
+			colDrivingToCamp:      rec.drivingToCamp,
+			"how_getting_to_camp": rec.howGettingToCamp,
+			colCanBringOthers:     rec.canBringOthers,
+			"driver_name":         rec.driverName,
+			"which_friend":        rec.whichFriend,
+			"vehicle_make":        rec.vehicleMake,
+			"vehicle_model":       rec.vehicleModel,
+			"license_plate":       rec.licensePlate,
+			"ride_from":           rec.rideFrom,
+			"transport_notes":     rec.transportNotes,
+		}
 
 		var record *core.Record
 		if exists {
@@ -635,24 +684,27 @@ func (s *StaffVehicleInfoSync) upsertRecords(
 				errCount++
 				continue
 			}
+
+			// Check if update is actually needed (kindred#2384). An unchanged
+			// record counts as a skip, not an update. Stats.Skipped here can
+			// also carry a SEPARATE meaning from loadPersonCustomValues above
+			// (a person dropped at the staff-row gate, kindred#2277) -- both
+			// are record-level counts, so the unit is still consistent, but a
+			// reader of the final number cannot tell which happened without
+			// this comment.
+			if !s.recordNeedsUpdate(record, data, staffVehicleInfoCompareFields) {
+				s.DebugLog("Skipping unchanged staff_vehicle_info record",
+					"person_id", rec.personID, "year", year)
+				skipped++
+				continue
+			}
 		} else {
 			record = core.NewRecord(col)
 		}
 
-		// Set all fields
-		record.Set("staff", rec.staffID)
-		record.Set("person_id", rec.personID)
-		record.Set("year", rec.year)
-		record.Set("driving_to_camp", rec.drivingToCamp)
-		record.Set("how_getting_to_camp", rec.howGettingToCamp)
-		record.Set("can_bring_others", rec.canBringOthers)
-		record.Set("driver_name", rec.driverName)
-		record.Set("which_friend", rec.whichFriend)
-		record.Set("vehicle_make", rec.vehicleMake)
-		record.Set("vehicle_model", rec.vehicleModel)
-		record.Set("license_plate", rec.licensePlate)
-		record.Set("ride_from", rec.rideFrom)
-		record.Set("transport_notes", rec.transportNotes)
+		for field, value := range data {
+			record.Set(field, value)
+		}
 
 		if err := s.App.Save(record); err != nil {
 			slog.Error("Error saving staff_vehicle_info record",
@@ -671,7 +723,7 @@ func (s *StaffVehicleInfoSync) upsertRecords(
 		}
 	}
 
-	return created, updated, errCount
+	return created, updated, skipped, errCount
 }
 
 // deleteOrphans removes records that exist in DB but not in computed set.
