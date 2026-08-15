@@ -1,8 +1,26 @@
 /**
  * Tests for useSyncCompletionToasts hook - sub_stats formatting
  */
-import { describe, it, expect } from 'vitest'
-import { formatStatsText } from './useSyncCompletionToasts'
+import { describe, it, expect, vi, beforeEach, type Mock } from 'vitest'
+import { renderHook } from '@testing-library/react'
+import toast from 'react-hot-toast'
+import { formatStatsText, useSyncCompletionToasts } from './useSyncCompletionToasts'
+import type { SyncStatusResponse } from './useSyncStatusAPI'
+
+vi.mock('react-hot-toast', () => ({
+  default: Object.assign(vi.fn(), {
+    success: vi.fn(),
+    error: vi.fn(),
+  }),
+}))
+
+// useSyncCompletionToasts reads its data straight from useSyncStatusAPI's return value, so
+// mocking that hook lets a test drive a running->success transition across two renders
+// without standing up a real QueryClient/pb network layer.
+let mockSyncStatus: Partial<SyncStatusResponse> | null = null
+vi.mock('./useSyncStatusAPI', () => ({
+  useSyncStatusAPI: () => ({ data: mockSyncStatus }),
+}))
 
 // Helper function to format stats (should match implementation)
 interface SubStats {
@@ -186,5 +204,83 @@ describe('formatStatsText (real production function) - skipped_values segment', 
     )
     expect(result).toBe('Transportation: 5 created')
     expect(result).not.toContain('values skipped')
+  })
+})
+
+// Review follow-up on kindred#2356: the tests above all drive formatStatsText directly, which
+// is only half the fix -- the toast itself is produced by useSyncCompletionToasts's "standard
+// stats" branch, which builds statsText via `formatStatsText(summary, '')` and hands it to
+// toast.success(). A regression that re-hand-copies that field list (reverting back to the
+// pre-fix `created/updated/skipped/errors` list, dropping skipped_values) leaves every test
+// above green while silently dropping the segment from the actual toast a staff member sees.
+// These tests drive the real exported hook end to end -- running->success transition,
+// mocked useSyncStatusAPI, real react-hot-toast mock -- so that regression fails here.
+describe('useSyncCompletionToasts renders the values-skipped segment in the real toast (kindred#2356)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mockSyncStatus = null
+  })
+
+  it('includes "N values skipped" in the camper_transportation completion toast, distinct from "N skipped"', () => {
+    mockSyncStatus = {
+      camper_transportation: { status: 'running' },
+    } as unknown as SyncStatusResponse
+
+    const { rerender } = renderHook(() => useSyncCompletionToasts())
+
+    mockSyncStatus = {
+      camper_transportation: {
+        status: 'success',
+        summary: { created: 10, updated: 0, skipped: 2, skipped_values: 557, errors: 0 },
+      },
+    } as unknown as SyncStatusResponse
+    rerender()
+
+    expect(toast.success).toHaveBeenCalledWith(
+      expect.stringContaining('2 skipped, 557 values skipped'),
+      expect.any(Object)
+    )
+    const [message] = (toast.success as Mock).mock.calls[0] as [string, unknown]
+    expect(message).not.toContain('559 skipped')
+  })
+
+  it('includes "N values skipped" in the staff_applications completion toast', () => {
+    mockSyncStatus = {
+      staff_applications: { status: 'running' },
+    } as unknown as SyncStatusResponse
+
+    const { rerender } = renderHook(() => useSyncCompletionToasts())
+
+    mockSyncStatus = {
+      staff_applications: {
+        status: 'success',
+        summary: { created: 274, updated: 0, skipped: 0, skipped_values: 557, errors: 0 },
+      },
+    } as unknown as SyncStatusResponse
+    rerender()
+
+    expect(toast.success).toHaveBeenCalledWith(
+      expect.stringContaining('557 values skipped'),
+      expect.any(Object)
+    )
+  })
+
+  it('omits "values skipped" from the toast when skipped_values is absent', () => {
+    mockSyncStatus = {
+      camper_transportation: { status: 'running' },
+    } as unknown as SyncStatusResponse
+
+    const { rerender } = renderHook(() => useSyncCompletionToasts())
+
+    mockSyncStatus = {
+      camper_transportation: {
+        status: 'success',
+        summary: { created: 10, updated: 0, skipped: 0, errors: 0 },
+      },
+    } as unknown as SyncStatusResponse
+    rerender()
+
+    const [message] = (toast.success as Mock).mock.calls[0] as [string, unknown]
+    expect(message).not.toContain('values skipped')
   })
 })
