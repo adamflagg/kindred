@@ -420,7 +420,7 @@ describe('MapUnitPopover — a cluster of rooms', () => {
   })
 
   it('drops the building name the cluster shares, so cells differ visibly', () => {
-    // A browser found this: every cell read "Clouds Rest Ba…" / "Clouds Rest
+    // A browser found this: every cell read "Cedar Lodge Ba…" / "Cedar Lodge
     // La…" and truncated away the distinguishing word.
     const house = [
       mapUnit(row({ unit_id: 'u1', code: 'cedar-back', name: 'Cedar Lodge Back' })),
