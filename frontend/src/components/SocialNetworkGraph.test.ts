@@ -117,5 +117,6 @@ describe('SocialNetworkGraph header layout — slim single row', () => {
     // Nobody here uses AT (frontend/CLAUDE.md "Accessibility — deliberately
     // minimal") — the banner's visible text is the whole story.
     expect(source).not.toContain('role="status"')
+    expect(source).not.toContain('aria-live')
   })
 })
