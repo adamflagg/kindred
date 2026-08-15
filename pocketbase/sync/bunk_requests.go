@@ -326,6 +326,18 @@ func findOrphanedPersonIDs(csvPersonIDs map[int]bool, existingOBRPersonIDs []int
 // Called after CSV sync to clean up data from campers who have cancelled/unenrolled.
 // Returns the set of OBR person cm_ids (post-purge) for use by the zombie BR sweep.
 func (s *BunkRequestsSync) purgeOrphanedRequests(year int) (map[int]bool, error) {
+	// This sweep is hand-rolled rather than routed through
+	// BaseSyncService.DeleteOrphansGuarded, so it does not pick up
+	// OrphanSweepGuard's Rejected arm for free -- orphan_guard.go's own doc
+	// warns this is exactly the gap a hand-rolled sweep falls into. A row
+	// this run's processRow rejected (kindred#2292) never reaches
+	// s.csvPersonIDs, which makes its still-current requester look identical
+	// to one who genuinely cancelled. Skip explicitly rather than purge on an
+	// incomplete set (kindred#2295's precondition, applied by hand here).
+	if s.skipSweepForRejections("bunk_requests", nil) {
+		return nil, nil
+	}
+
 	if len(s.csvPersonIDs) == 0 {
 		slog.Info("No CSV persons tracked, skipping orphan purge")
 		return nil, nil
