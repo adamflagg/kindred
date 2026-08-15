@@ -165,10 +165,23 @@ src = open(sys.argv[1], encoding="utf-8").read()
 # cleanly. Splitting here changes the result for that file alone; the other
 # 116 migrations in the tree extract identically either way.
 #
-# All three down-arm forms in this tree are covered: `}, (app) => {` (111
-# files), `}, (other) => {` (1), and `}, function (` (1). Four migrations have
-# no down arm at all, and for those the whole file is the up arm.
-boundary = re.search(r"\}\s*,\s*(?:\(\s*\w*\s*\)\s*=>|function\s*\()", src)
+# Every down-arm form in this tree is covered, and all 117 migrations have one:
+# `}, (app) => {` (111 files), `}, () => {` (4), `}, (_app) => {` (1), and
+# `}, function (` (1).
+#
+# ANCHORED to a line start with at most two spaces, which is where the
+# top-level boundary sits in every migration here (column 0 in 80 files,
+# column 2 in the 37 prettier wraps). An unanchored search takes the FIRST
+# match anywhere, and a nested single-argument callback inside the up arm --
+# `seedDefaults({ retention_days: 30 }, (row) => {` -- matches it, truncating a
+# real `new Collection` further down out of the scan. That is a SILENT false
+# CLEAN, the one failure direction this detector cannot afford; constructed and
+# verified before anchoring, and no migration in the tree has that shape today.
+# When nothing matches (an inline `migrate((app) => {}, (app) => {})`) the whole
+# file is scanned, which errs toward the loud false positive instead.
+boundary = re.search(
+    r"^[ \t]{0,2}\}\s*,\s*(?:\(\s*\w*\s*\)\s*=>|function\s*\()", src, re.M
+)
 if boundary:
     src = src[: boundary.start()]
 
