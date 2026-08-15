@@ -75,6 +75,11 @@ DROP_LIST_TABLES: tuple[str, ...] = (
     "person_tag_defs",
     "camper_dietary",
     "camper_transportation",
+    # camper_history was dropped from the schema in kindred#2366 (migration
+    # 1500000157), but this entry MUST stay: build_synthetic_db copies the real
+    # data.db and never runs migrations, so any prod snapshot captured before that
+    # migration is applied still carries the table with ~36.7k real camper rows.
+    # Deleting this line as a "dead reference" would let them into the artifact.
     "camper_history",
     "normalized_mappings",
     "geo_overrides",

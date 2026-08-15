@@ -21,7 +21,6 @@ export const Collections = {
   Bunks: 'bunks',
   CampSessions: 'camp_sessions',
   CamperDietary: 'camper_dietary',
-  CamperHistory: 'camper_history',
   CamperTransportation: 'camper_transportation',
   Config: 'config',
   ConfigSections: 'config_sections',
@@ -411,57 +410,6 @@ export type CamperDietaryRecord = {
   person_id: number
   updated: IsoAutoDateString
   year: number
-}
-
-export const CamperHistorySessionTypeOptions = {
-  main: 'main',
-  embedded: 'embedded',
-  ag: 'ag',
-  family: 'family',
-  quest: 'quest',
-  scit: 'scit',
-  bmitzvah: 'bmitzvah',
-  tli: 'tli',
-  adult: 'adult',
-  school: 'school',
-  hebrew: 'hebrew',
-  teen: 'teen',
-  other: 'other',
-} as const
-export type CamperHistorySessionTypeOptions =
-  (typeof CamperHistorySessionTypeOptions)[keyof typeof CamperHistorySessionTypeOptions]
-export type CamperHistoryRecord = {
-  age?: number
-  bunk_cm_id?: number
-  bunk_name?: string
-  city?: string
-  city_normalized?: string
-  congregation_normalized?: string
-  created: IsoAutoDateString
-  division_name?: string
-  enrollment_date?: string
-  first_name?: string
-  gender?: string
-  grade?: number
-  household_id?: number
-  id: string
-  is_returning_family?: boolean
-  is_returning_summer?: boolean
-  last_name?: string
-  person?: RecordIdString
-  person_id: number
-  school?: string
-  school_normalized?: string
-  session?: RecordIdString
-  session_cm_id: number
-  session_name?: string
-  session_type: CamperHistorySessionTypeOptions
-  state?: string
-  status?: string
-  synagogue?: string
-  updated: IsoAutoDateString
-  year: number
-  years_at_camp?: number
 }
 
 export type CamperTransportationRecord = {
@@ -1809,8 +1757,6 @@ export type CampSessionsResponse<Texpand = unknown> = Required<CampSessionsRecor
   BaseSystemFields<Texpand>
 export type CamperDietaryResponse<Texpand = unknown> = Required<CamperDietaryRecord> &
   BaseSystemFields<Texpand>
-export type CamperHistoryResponse<Texpand = unknown> = Required<CamperHistoryRecord> &
-  BaseSystemFields<Texpand>
 export type CamperTransportationResponse<Texpand = unknown> = Required<CamperTransportationRecord> &
   BaseSystemFields<Texpand>
 export type ConfigResponse<Tmetadata = unknown, Tvalue = unknown, Texpand = unknown> = Required<
@@ -1978,7 +1924,6 @@ export type CollectionRecords = {
   bunks: BunksRecord
   camp_sessions: CampSessionsRecord
   camper_dietary: CamperDietaryRecord
-  camper_history: CamperHistoryRecord
   camper_transportation: CamperTransportationRecord
   config: ConfigRecord
   config_sections: ConfigSectionsRecord
@@ -2054,7 +1999,6 @@ export type CollectionResponses = {
   bunks: BunksResponse
   camp_sessions: CampSessionsResponse
   camper_dietary: CamperDietaryResponse
-  camper_history: CamperHistoryResponse
   camper_transportation: CamperTransportationResponse
   config: ConfigResponse
   config_sections: ConfigSectionsResponse

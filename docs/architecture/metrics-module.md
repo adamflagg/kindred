@@ -51,7 +51,7 @@ Three sections via `MetricsLayout.tsx` with sticky two-level navigation:
 | Metric | Source Tables |
 |--------|--------------|
 | Retention | `attendees` + `persons` + `bunk_assignments` + `camp_sessions` |
-| Registration | `attendees` + `persons` + `camper_history` + `bunk_plans` |
+| Registration | `attendees` + `persons` + `bunk_plans` |
 | Velocity | `enrollment_snapshots` (fast path) or reconstructed from `attendees.enrollment_date` |
 | Waitlist/Cancellations | `attendee_status_history` + `attendees` |
 | Forecast | `attendees` + `bunk_plans` + `config` (budget goals, session fees) |

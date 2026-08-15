@@ -1650,7 +1650,7 @@ func TestRunPhaseQueuedWhenIndividualJobRunning(t *testing.T) {
 		},
 		{
 			name:               "individual job running - should queue",
-			individualJobRun:   "camper_history",
+			individualJobRun:   "lodging_assignments",
 			expectedQueueCheck: true,
 		},
 		{
@@ -1926,7 +1926,7 @@ func TestRunPhaseYearMustPropagateToServices(t *testing.T) {
 	// 3. handleRunPhase calls SetYear(year) on each service before running
 
 	// Verify that YearSetter interface exists (compilation will fail if not)
-	var _ YearSetter = (*CamperHistorySync)(nil)
+	var _ YearSetter = (*FamilyCampDerivedSync)(nil)
 	var _ YearSetter = (*StaffApplicationsSync)(nil)
 	var _ YearSetter = (*StaffVehicleInfoSync)(nil)
 	var _ YearSetter = (*QuestRegistrationsSync)(nil)

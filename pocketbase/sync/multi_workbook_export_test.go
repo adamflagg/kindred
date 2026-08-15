@@ -181,7 +181,6 @@ func TestReadableYearExportSheetNames(t *testing.T) {
 		"Bunks",
 		"Households",
 		"Session Groups",
-		"Camper History",
 		"Person Custom Values",
 		"Household Custom Values",
 	}
@@ -597,7 +596,6 @@ func TestSyncJobToCollections_HasExpectedMappings(t *testing.T) {
 		"bunk_plans":              {"bunk_plans"},
 		"bunk_assignments":        {"bunk_assignments"},
 		"staff":                   {"staff"},
-		"camper_history":          {"camper_history"},
 		"financial_transactions":  {"financial_transactions"},
 		"person_custom_values":    {"person_custom_values"},
 		"household_custom_values": {"household_custom_values"},

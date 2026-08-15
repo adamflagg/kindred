@@ -437,7 +437,7 @@ func TestBatchUpdateTabProperties_LargeBatch(t *testing.T) {
 		"g-division", "g-tag-def", "g-fin-cat", "g-cust-field-def",
 		"2025-attendee", "2025-person", "2025-session", "2025-staff",
 		"2025-bunk-assign", "2025-transactions", "2025-bunk", "2025-household",
-		"2025-sess-group", "2025-person-cv", "2025-household-cv", "2025-camper-history",
+		"2025-sess-group", "2025-person-cv", "2025-household-cv", "2025-camper-dietary",
 	}
 
 	updates := make([]TabPropertyUpdate, len(tabs))
@@ -474,8 +474,8 @@ func TestBatchUpdateTabProperties_LargeBatch(t *testing.T) {
 	if mock.TabIndices["g-division"] != 0 {
 		t.Errorf("g-division index = %d, want 0", mock.TabIndices["g-division"])
 	}
-	if mock.TabIndices["2025-camper-history"] != 15 {
-		t.Errorf("2025-camper-history index = %d, want 15", mock.TabIndices["2025-camper-history"])
+	if mock.TabIndices["2025-camper-dietary"] != 15 {
+		t.Errorf("2025-camper-dietary index = %d, want 15", mock.TabIndices["2025-camper-dietary"])
 	}
 }
 

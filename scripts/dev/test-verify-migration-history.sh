@@ -289,4 +289,68 @@ grep -q "requires a path" <<<"$OUT" || fail "a valueless --db must say what is w
 echo "PASS: dangling --db reports a harness error"
 
 echo
+echo "=== TEST 14: a DOWN-arm recreate is not a create ==="
+# A migration that drops a collection has to recreate it in its down arm to be
+# reversible. Scanning the whole file reads that down arm as a create, sees the
+# collection still live, and refuses a boot the migration would have completed
+# cleanly -- exactly what 1500000157_delete_camper_history.js hit. Only the up
+# arm runs, so only the up arm may be scanned.
+#
+# This cannot be left to TEST 1: that migration is applied on any dev DB that
+# has booted since, so the real-DB check no longer reaches the shape at all.
+# Revert the up-arm split in verify-migration-history.sh and this goes red.
+DB14="$SCRATCH/t14.db"; DIR14="$SCRATCH/t14-migrations"
+make_db "$DB14"
+make_migrations_dir "$DIR14" 1500000157_delete_camper_history.js
+add_collection_row "$DB14" "camper_history"
+set +e
+OUT=$("$VERIFY_SCRIPT" --db "$DB14" --migrations-dir "$DIR14" 2>&1)
+rc=$?
+set -e
+[[ $rc -eq 0 ]] || fail "expected exit 0 — a down-arm recreate is not a create, got $rc" "$OUT"
+echo "PASS: down-arm recreate not mistaken for a create"
+
+echo
+echo "=== TEST 15: a nested callback in the UP arm must not truncate the scan ==="
+# The up-arm split looks for the `}, (app) => {` that opens the down arm. An
+# UNANCHORED search takes the first such match anywhere, and a single-argument
+# callback preceded by an object-literal argument matches it mid-up-arm --
+# truncating the real `new Collection` below out of the scan and reporting
+# CLEAN on a boot that will fail. That is the one failure direction this
+# detector cannot afford, so it is pinned rather than argued about.
+#
+# Load-bearing: drop the `^[ \t]{0,2}` anchor (or the re.M) in
+# verify-migration-history.sh and this fixture exits 0 instead of 1.
+DB15="$SCRATCH/t15.db"; DIR15="$SCRATCH/t15-migrations"
+make_db "$DB15"
+mkdir -p "$DIR15"
+cat > "$DIR15/1900000001_nested_up_arm_callback.js" <<'FIXTURE'
+migrate(
+  (app) => {
+    seedDefaults({ retention_days: 30 }, (row) => {
+      row.set("x", 1);
+    });
+
+    const collection = new Collection({
+      type: "base",
+      name: "nested_callback_probe",
+      fields: [{ type: "text", name: "label" }],
+    });
+    app.save(collection);
+  },
+  (app) => {
+    app.delete(app.findCollectionByNameOrId("nested_callback_probe"));
+  },
+);
+FIXTURE
+add_collection_row "$DB15" "nested_callback_probe"
+set +e
+OUT=$("$VERIFY_SCRIPT" --db "$DB15" --migrations-dir "$DIR15" 2>&1)
+rc=$?
+set -e
+[[ $rc -eq 1 ]] || fail "expected exit 1 — a nested up-arm callback truncated the scan, got $rc" "$OUT"
+grep -q "nested_callback_probe" <<<"$OUT" || fail "output must name the colliding collection" "$OUT"
+echo "PASS: up-arm scan survives a nested single-argument callback"
+
+echo
 echo "All tests passed."

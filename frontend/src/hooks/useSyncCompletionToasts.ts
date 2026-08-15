@@ -29,7 +29,6 @@ const SYNC_DISPLAY_NAMES: Record<string, string> = {
   bunk_requests: 'Intake Requests',
   process_requests: 'Process Requests',
   // Transform phase (derived tables)
-  camper_history: 'Camper History',
   family_camp_derived: 'Weekend Programs',
   lodging_assignments: 'Lodging Assignments',
   staff_skills: 'Staff Skills',

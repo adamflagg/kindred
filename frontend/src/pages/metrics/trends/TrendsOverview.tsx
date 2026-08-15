@@ -205,7 +205,7 @@ export default function TrendsOverview() {
   if (!data || data.years.length === 0) {
     return (
       <div className="text-muted-foreground flex items-center justify-center py-12">
-        No historical data available. Run camper-history sync for previous years.
+        No historical data available for previous years.
       </div>
     )
   }

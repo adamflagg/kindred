@@ -89,12 +89,12 @@ Same as adding a field — `fields.add()` upserts by name. The down function res
 /// <reference path="../pb_data/types.d.ts" />
 
 migrate((app) => {
-  const collection = app.findCollectionByNameOrId("camper_history");
+  const collection = app.findCollectionByNameOrId("persons");
 
-  // synagogue: 200 -> 400
+  // school: 200 -> 400
   collection.fields.add(new Field({
     type: "text",
-    name: "synagogue",
+    name: "school",
     required: false,
     presentable: false,
     min: 0,
@@ -104,12 +104,12 @@ migrate((app) => {
 
   app.save(collection);
 }, (app) => {
-  const collection = app.findCollectionByNameOrId("camper_history");
+  const collection = app.findCollectionByNameOrId("persons");
 
-  // Restore: synagogue: 400 -> 200
+  // Restore: school: 400 -> 200
   collection.fields.add(new Field({
     type: "text",
-    name: "synagogue",
+    name: "school",
     required: false,
     presentable: false,
     min: 0,

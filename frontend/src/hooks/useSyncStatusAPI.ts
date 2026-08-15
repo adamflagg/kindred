@@ -110,7 +110,6 @@ export interface SyncStatusResponse {
   financial_lookups: SyncStatus
   google_sheets_export: SyncStatus
   // Transform phase (derived tables)
-  camper_history: SyncStatus
   family_camp_derived: SyncStatus
   lodging_assignments: SyncStatus
   staff_skills: SyncStatus

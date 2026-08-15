@@ -106,7 +106,6 @@ var syncJobMeta = []JobMeta{
 	{"household_custom_values", PhaseExpensive, "Household custom field values"},
 
 	// Transform phase - PocketBase → PocketBase
-	{"camper_history", PhaseTransform, "Compute camper history from attendees"},
 	{"family_camp_derived", PhaseTransform, "Compute family camp tables from custom values"},
 	{"lodging_assignments", PhaseTransform, "Derive lodging assignments from CampMinder cabin fields"},
 	{"staff_skills", PhaseTransform, "Extract staff skills from person_custom_values"},
@@ -194,7 +193,7 @@ func GetDefaultUnifiedSyncJobs(includeCustomValues bool) []string {
 	// Transform phase: Always run using existing custom values data
 	// (same as daily sync behavior)
 	jobs = append(jobs,
-		"camper_history", "family_camp_derived", "lodging_assignments", "staff_skills",
+		"family_camp_derived", "lodging_assignments", "staff_skills",
 		"financial_aid_applications", "household_demographics",
 		"camper_dietary", "camper_transportation", "quest_registrations",
 		"staff_applications", "staff_vehicle_info", "normalize_geographic",
@@ -957,7 +956,7 @@ func (o *Orchestrator) runSingleSyncInternal(
 // exactly the instance the caller passed in, and never registers it.
 //
 // This exists for handlers whose parameters (year, dry_run) are per-request: they build a
-// private instance — e.g. NewCamperHistorySync(app) — configured for just this request, and
+// private instance — e.g. NewFamilyCampDerivedSync(app) — configured for just this request, and
 // hand it here instead of writing those fields onto the shared singleton returned by
 // GetService. That older pattern (see #1881) let DryRun stick on the singleton after a run
 // with nothing to reset it, and let two concurrent requests race on Year, because the
@@ -1173,7 +1172,6 @@ func getDailySyncJobs() []string {
 		// Transform phase: derived tables run daily using latest source data
 		// and existing custom values from the most recent weekly sync.
 		// New enrollments, session changes, etc. are reflected immediately.
-		"camper_history",
 		"family_camp_derived",
 		"lodging_assignments", // Derived: cabin custom fields -> lodging_assignments (+ history)
 		"staff_skills",
@@ -1717,11 +1715,6 @@ func (o *Orchestrator) RunSyncWithOptions(ctx context.Context, opts Options) err
 		o.RegisterService("process_requests", yearProcessor)
 		o.RegisterService("staff", NewStaffSync(o.app, yearClient))
 
-		// Camper history computation (no CampMinder client needed - reads from PocketBase)
-		camperHistorySync := NewCamperHistorySync(o.app)
-		camperHistorySync.Year = opts.Year
-		o.RegisterService("camper_history", camperHistorySync)
-
 		o.RegisterService("financial_transactions", NewFinancialTransactionsSync(o.app, yearClient))
 
 		// Family camp derived tables (computed from custom values)
@@ -1774,7 +1767,7 @@ func (o *Orchestrator) RunSyncWithOptions(ctx context.Context, opts Options) err
 		staffVehicleInfoSync.Year = opts.Year
 		o.RegisterService("staff_vehicle_info", staffVehicleInfoSync)
 
-		// Geographic normalization (depends on camper_history)
+		// Geographic normalization (normalizes persons.school/city/congregation)
 		normalizeGeographicSync := NewNormalizeGeographicSync(o.app)
 		normalizeGeographicSync.Year = opts.Year
 		o.RegisterService("normalize_geographic", normalizeGeographicSync)
@@ -2319,8 +2312,6 @@ func (o *Orchestrator) InitializeSyncServices() error {
 	processor.CollectTraces = true // Always collect traces for scheduled/automated runs
 	processor.Trigger = "scheduled"
 	o.RegisterService("process_requests", processor)
-	// Camper history computation (no CampMinder client needed - reads from PocketBase)
-	o.RegisterService("camper_history", NewCamperHistorySync(o.app))
 	// Staff sync: year-scoped staff records (depends on staff_lookups running in weekly sync)
 	o.RegisterService("staff", NewStaffSync(o.app, client))
 	// Financial transactions: year-scoped transaction data (depends on financial_lookups running in weekly sync)
@@ -2383,7 +2374,7 @@ func (o *Orchestrator) InitializeSyncServices() error {
 	// Staff vehicle info (computes from SVI-* fields)
 	o.RegisterService("staff_vehicle_info", NewStaffVehicleInfoSync(o.app))
 
-	// Geographic normalization (computes from camper_history)
+	// Geographic normalization (normalizes persons.school/city/congregation)
 	o.RegisterService("normalize_geographic", NewNormalizeGeographicSync(o.app))
 
 	// Enrollment snapshots (captures daily enrollment counts per session)

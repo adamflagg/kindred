@@ -1149,7 +1149,7 @@ func TestYearTakingHandlersPassTheirYear(t *testing.T) {
 	}
 
 	// A rename that stops matching would otherwise make this test vacuously green.
-	if checked < 13 {
+	if checked < 12 {
 		t.Errorf("only %d handlers matched %q; the call was renamed or moved, so this guard "+
 			"stopped covering the rest", checked, call)
 	}

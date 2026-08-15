@@ -20,7 +20,6 @@ import { useRunIndividualSync } from '../../hooks/useRunIndividualSync'
 import { useRunOnDemandSync } from '../../hooks/useRunOnDemandSync'
 import { useUnifiedSync } from '../../hooks/useUnifiedSync'
 import { useProcessRequests } from '../../hooks/useProcessRequests'
-import { useCamperHistorySync } from '../../hooks/useCamperHistorySync'
 import { useFamilyCampDerivedSync } from '../../hooks/useFamilyCampDerivedSync'
 import { useLodgingAssignmentsSync } from '../../hooks/useLodgingAssignmentsSync'
 import { useStaffSkillsSync } from '../../hooks/useStaffSkillsSync'
@@ -82,7 +81,6 @@ export function SyncTab() {
   const runOnDemandSync = useRunOnDemandSync()
   const unifiedSync = useUnifiedSync()
   const processRequests = useProcessRequests()
-  const camperHistorySync = useCamperHistorySync()
   const familyCampDerivedSync = useFamilyCampDerivedSync()
   const lodgingAssignmentsSync = useLodgingAssignmentsSync()
   const staffSkillsSync = useStaffSkillsSync()
@@ -99,12 +97,11 @@ export function SyncTab() {
 
   // One derived "is this card's own type-specific mutation pending" lookup, keyed by
   // syncType.id, instead of a hand-maintained list of `.isPending` references in the disabled
-  // condition below. None of these eleven hooks had ever been wired into that condition
+  // condition below. None of these ten hooks had ever been wired into that condition
   // (#1881), so a double-click on one of their cards could submit a second request before
   // status polling flipped that card to "running". Keying by id means a newly-added per-type
   // mutation hook just needs one entry here, not a new clause at every disabled= call site.
   const typeSyncPendingById: Record<string, boolean> = {
-    camper_history: camperHistorySync.isPending,
     family_camp_derived: familyCampDerivedSync.isPending,
     lodging_assignments: lodgingAssignmentsSync.isPending,
     staff_skills: staffSkillsSync.isPending,
@@ -201,9 +198,6 @@ export function SyncTab() {
       switch (syncType.id) {
         case 'process_requests':
           runIndividualSync.mutate(syncType.id)
-          break
-        case 'camper_history':
-          camperHistorySync.mutate(syncYear)
           break
         case 'family_camp_derived':
           familyCampDerivedSync.mutate(syncYear)
