@@ -25,7 +25,11 @@ const testSessionStart = "2025-05-23 07:00:00.000Z"
 const testSessionEnd = "2025-05-26 07:00:00.000Z"
 
 // newSyncTestApp returns a throwaway PocketBase app carrying every collection
-// the lodging ingest reads or writes, shaped like production's.
+// the lodging ingest reads or writes, shaped like production's, plus (as of
+// kindred#2300) bunks/staff/bunk_plans/bunk_assignments -- the grain the
+// sync package's bunk-assignment tests need. Despite the name, this is the
+// sync package's shared fixture builder generally, not lodging-specific;
+// "Sync" is what it has meant since before that name existed.
 //
 // It deliberately builds collections in Go rather than replaying pb_migrations:
 // `pocketbase migrate up` silently skips JS migrations (jsvm captures its
@@ -220,7 +224,108 @@ func newSyncTestApp(t *testing.T) core.App {
 	mappings.Fields.Add(&core.TextField{Name: "note"})
 	saveCollection(t, app, mappings)
 
+	// kindred#2300 widened this from lodging-only: bunks/staff/bunk_plans/
+	// bunk_assignments were hand-built, separately, in
+	// bunk_assignments_protection_test.go, bunk_assignments_grain_test.go
+	// and stranded_assignment_cleanup_test.go, none of which
+	// TestLodgingTestsupportFixtureFieldsExistInProductionSchema could see --
+	// it only walks whatever THIS function builds. Exposed as addXCollection
+	// helpers rather than inlined so those three files, which each also need
+	// OTHER collections this function does not build (attendees,
+	// saved_scenarios, bunk_assignments_draft, lodging_*), can call the same
+	// field definitions onto their own narrower app instead of duplicating
+	// them.
+	bunks := addBunksCollection(t, app)
+	bunkPlans := addBunkPlansCollection(t, app, bunks, sessions)
+	addStaffCollection(t, app)
+	addBunkAssignmentsCollection(t, app, persons, sessions, bunks, bunkPlans)
+
 	return app
+}
+
+// addBunksCollection builds `bunks`. See newSyncTestApp's kindred#2300 comment.
+func addBunksCollection(t *testing.T, app core.App) *core.Collection {
+	t.Helper()
+	bunks := core.NewBaseCollection("bunks")
+	bunks.Fields.Add(&core.NumberField{Name: "cm_id", Required: true, OnlyInt: true})
+	bunks.Fields.Add(&core.TextField{Name: "name"})
+	bunks.Fields.Add(&core.NumberField{Name: "year"})
+	// PaginateRecords sorts by "-created" unconditionally (bunk_assignments.go's
+	// BuildRecordCMIDMappings goes through it), so every caller needs this even
+	// when its own test never reads it.
+	bunks.Fields.Add(&core.AutodateField{Name: "created", OnCreate: true})
+	saveCollection(t, app, bunks)
+	return bunks
+}
+
+// addStaffCollection builds `staff`, matching production's person_id/status/
+// bunk_staff/year shape (migration 1500000030) minus the lookup-table
+// relations (position, division, ...) nothing under test reads.
+func addStaffCollection(t *testing.T, app core.App) *core.Collection {
+	t.Helper()
+	staff := core.NewBaseCollection("staff")
+	staff.Fields.Add(&core.NumberField{Name: "person_id", Required: true, OnlyInt: true})
+	staff.Fields.Add(&core.TextField{Name: "status"})
+	staff.Fields.Add(&core.BoolField{Name: "bunk_staff"})
+	staff.Fields.Add(&core.NumberField{Name: "year", Required: true, OnlyInt: true})
+	// PaginateRecords sorts by "-created" unconditionally, so staff needs it
+	// even in tests that never read it directly (see addBunksCollection).
+	staff.Fields.Add(&core.AutodateField{Name: "created", OnCreate: true})
+	saveCollection(t, app, staff)
+	return staff
+}
+
+// addBunkPlansCollection builds `bunk_plans`. cm_id and year are left
+// optional despite production requiring both (migration 1500000017):
+// stranded_assignment_cleanup_test.go's fixtures never set cm_id on a
+// bunk_plans row, and a Required field here would fail every one of those
+// saves -- the drift check only asserts a field NAME exists in production,
+// not that this fixture matches its Required-ness.
+func addBunkPlansCollection(t *testing.T, app core.App, bunks, sessions *core.Collection) *core.Collection {
+	t.Helper()
+	plans := core.NewBaseCollection("bunk_plans")
+	plans.Fields.Add(&core.NumberField{Name: "cm_id", OnlyInt: true})
+	plans.Fields.Add(&core.RelationField{Name: "bunk", CollectionId: bunks.Id, MaxSelect: 1})
+	plans.Fields.Add(&core.RelationField{Name: "session", CollectionId: sessions.Id, MaxSelect: 1})
+	plans.Fields.Add(&core.NumberField{Name: "year"})
+	plans.Fields.Add(&core.AutodateField{Name: "created", OnCreate: true})
+	saveCollection(t, app, plans)
+	return plans
+}
+
+// addBunkAssignmentsCollection builds `bunk_assignments`, including
+// production's post-kindred#2259 unique index from migration 1500000155
+// (year, person, session, bunk -- see that migration's own comment for why
+// the grain widened). bunkPlans may be nil: a caller that has no bunk_plans
+// collection built (e.g. bunk_assignments_protection_test.go) gets a
+// bunk_assignments without the bunk_plan relation, matching what that
+// fixture already builds today.
+//
+// `bunk` is deliberately NOT required, unlike production: this collection's
+// own TestProtectNonActiveStaffAssignments_MissingBunkIsNonDestructiveSkip
+// fixture (bunk_assignments_protection_test.go) depends on saving a row with
+// no bunk set, to exercise the non-destructive-skip path when a bunk
+// relation cannot resolve.
+func addBunkAssignmentsCollection(
+	t *testing.T, app core.App, persons, sessions, bunks, bunkPlans *core.Collection,
+) *core.Collection {
+	t.Helper()
+	assignments := core.NewBaseCollection("bunk_assignments")
+	assignments.Fields.Add(&core.NumberField{Name: "cm_id"})
+	assignments.Fields.Add(&core.RelationField{Name: "person", CollectionId: persons.Id, MaxSelect: 1})
+	assignments.Fields.Add(&core.RelationField{Name: "session", CollectionId: sessions.Id, MaxSelect: 1})
+	assignments.Fields.Add(&core.RelationField{Name: "bunk", CollectionId: bunks.Id, MaxSelect: 1})
+	if bunkPlans != nil {
+		assignments.Fields.Add(&core.RelationField{Name: "bunk_plan", CollectionId: bunkPlans.Id, MaxSelect: 1})
+	}
+	assignments.Fields.Add(&core.NumberField{Name: "year", Required: true, OnlyInt: true})
+	assignments.Fields.Add(&core.AutodateField{Name: "created", OnCreate: true})
+	assignments.Indexes = []string{
+		"CREATE UNIQUE INDEX `idx_bunk_assignments_person_session_bunk_year` " +
+			"ON `bunk_assignments` (`year`, `person`, `session`, `bunk`)",
+	}
+	saveCollection(t, app, assignments)
+	return assignments
 }
 
 func saveCollection(t *testing.T, app core.App, col *core.Collection) {
