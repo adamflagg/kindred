@@ -7,6 +7,12 @@ import (
 	pbtests "github.com/pocketbase/pocketbase/tests"
 )
 
+// dryRunTestOriginalName is the seeded value every dry-run write test in this
+// file asserts survives untouched -- pulled into a constant (goconst) once a
+// third test pushed the literal's occurrence count past golangci-lint's
+// threshold.
+const dryRunTestOriginalName = "Original"
+
 // newBaseSyncDryRunTestApp returns a test app holding one collection shaped
 // like a year-scoped CampMinder table, for exercising BaseSyncService's write
 // helpers directly against a real database.
@@ -55,7 +61,7 @@ func TestBaseSyncServiceProcessSimpleRecordDryRunWritesNothing(t *testing.T) {
 	}
 	existing := core.NewRecord(col)
 	existing.Set("cm_id", "1")
-	existing.Set("name", "Original")
+	existing.Set("name", dryRunTestOriginalName)
 	existing.Set("year", 2025)
 	if saveErr := app.Save(existing); saveErr != nil {
 		t.Fatalf("seed existing record: %v", saveErr)
@@ -89,9 +95,9 @@ func TestBaseSyncServiceProcessSimpleRecordDryRunWritesNothing(t *testing.T) {
 	if len(rows) != 1 {
 		t.Fatalf("dry run wrote %d rows; want 1 (only the seeded one)", len(rows))
 	}
-	if rows[0].GetString("name") != "Original" {
+	if rows[0].GetString("name") != dryRunTestOriginalName {
 		t.Fatalf("dry run persisted a name change: got %q, want %q (unchanged)",
-			rows[0].GetString("name"), "Original")
+			rows[0].GetString("name"), dryRunTestOriginalName)
 	}
 }
 
@@ -113,7 +119,7 @@ func TestBaseSyncServiceProcessSimpleRecordGlobalDryRunWritesNothing(t *testing.
 	}
 	existing := core.NewRecord(col)
 	existing.Set("cm_id", "1")
-	existing.Set("name", "Original")
+	existing.Set("name", dryRunTestOriginalName)
 	if saveErr := app.Save(existing); saveErr != nil {
 		t.Fatalf("seed existing record: %v", saveErr)
 	}
@@ -146,9 +152,9 @@ func TestBaseSyncServiceProcessSimpleRecordGlobalDryRunWritesNothing(t *testing.
 	if len(rows) != 1 {
 		t.Fatalf("dry run wrote %d rows; want 1 (only the seeded one)", len(rows))
 	}
-	if rows[0].GetString("name") != "Original" {
+	if rows[0].GetString("name") != dryRunTestOriginalName {
 		t.Fatalf("dry run persisted a name change: got %q, want %q (unchanged)",
-			rows[0].GetString("name"), "Original")
+			rows[0].GetString("name"), dryRunTestOriginalName)
 	}
 }
 
@@ -248,7 +254,7 @@ func TestBaseSyncServiceProcessCompositeRecordDryRunWritesNothing(t *testing.T) 
 	}
 	existing := core.NewRecord(col)
 	existing.Set("cm_id", "1:2")
-	existing.Set("name", "Original")
+	existing.Set("name", dryRunTestOriginalName)
 	existing.Set("year", 2025)
 	if saveErr := app.Save(existing); saveErr != nil {
 		t.Fatalf("seed existing record: %v", saveErr)
@@ -279,8 +285,8 @@ func TestBaseSyncServiceProcessCompositeRecordDryRunWritesNothing(t *testing.T) 
 	if len(rows) != 1 {
 		t.Fatalf("dry run wrote %d rows; want 1 (only the seeded one)", len(rows))
 	}
-	if rows[0].GetString("name") != "Original" {
+	if rows[0].GetString("name") != dryRunTestOriginalName {
 		t.Fatalf("dry run persisted a name change: got %q, want %q (unchanged)",
-			rows[0].GetString("name"), "Original")
+			rows[0].GetString("name"), dryRunTestOriginalName)
 	}
 }
