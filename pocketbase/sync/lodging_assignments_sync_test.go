@@ -921,12 +921,38 @@ func stalePersonAssignment(
 	})
 }
 
+// TestActiveSeasonYearFailsClosedWhenUnset pins #2289's fail-closed contract
+// directly: with neither ActiveSeasonYear nor CAMPMINDER_SEASON_ID set,
+// activeSeasonYear() must resolve to 0 -- 0 can never equal a validated
+// 2017-2050 season, so the #2028 orphan sweep's year gate blocks rather than
+// runs.
+func TestActiveSeasonYearFailsClosedWhenUnset(t *testing.T) {
+	t.Parallel()
+	s := NewLodgingAssignmentsSync(nil)
+	if got := s.activeSeasonYear(); got != 0 {
+		t.Errorf("activeSeasonYear() = %d, want 0 (fail closed)", got)
+	}
+}
+
+// TestActiveSeasonYearFieldOverridesEnv pins the injection point #2289 adds:
+// with ActiveSeasonYear set directly, activeSeasonYear() returns it without
+// needing CAMPMINDER_SEASON_ID in the environment at all -- the reason the
+// eight orphan-sweep tests below no longer need t.Setenv to reach the sweep.
+func TestActiveSeasonYearFieldOverridesEnv(t *testing.T) {
+	t.Parallel()
+	s := NewLodgingAssignmentsSync(nil)
+	s.ActiveSeasonYear = 2025
+	if got := s.activeSeasonYear(); got != 2025 {
+		t.Errorf("activeSeasonYear() = %d, want 2025 (injected field)", got)
+	}
+}
+
 // TestLodgingAssignmentsSyncDeletesOrphanedHouseholdMirrorRow is #2028 itself:
 // nothing ever removed a cancelled household's lodging_assignments row before
 // this pass.
 func TestLodgingAssignmentsSyncDeletesOrphanedHouseholdMirrorRow(t *testing.T) {
+	t.Parallel()
 	app := newLodgingTestApp(t)
-	t.Setenv("CAMPMINDER_SEASON_ID", "2025") // orphan sweep only runs for the active season (#2028)
 	sess := addSession(t, app, cmIDFamilyCamp1, "Family Camp 1", "family",
 		testSessionStart, testSessionEnd, 2025)
 	unit := addUnit(t, app, "ridge-a", 2025)
@@ -948,6 +974,7 @@ func TestLodgingAssignmentsSyncDeletesOrphanedHouseholdMirrorRow(t *testing.T) {
 
 	s := NewLodgingAssignmentsSync(app)
 	s.Year = 2025
+	s.ActiveSeasonYear = 2025 // orphan sweep only runs for the active season (#2028)
 	if err := s.Sync(context.Background()); err != nil {
 		t.Fatalf("Sync: %v", err)
 	}
@@ -963,8 +990,8 @@ func TestLodgingAssignmentsSyncDeletesOrphanedHouseholdMirrorRow(t *testing.T) {
 // TestLodgingAssignmentsSyncKeepsMirrorRowForStillEnrolledHousehold is the
 // obvious regression the sweep must not cause.
 func TestLodgingAssignmentsSyncKeepsMirrorRowForStillEnrolledHousehold(t *testing.T) {
+	t.Parallel()
 	app := newLodgingTestApp(t)
-	t.Setenv("CAMPMINDER_SEASON_ID", "2025") // orphan sweep only runs for the active season (#2028)
 	sess := addSession(t, app, cmIDFamilyCamp1, "Family Camp 1", "family",
 		testSessionStart, testSessionEnd, 2025)
 	unit := addUnit(t, app, "ridge-a", 2025)
@@ -979,6 +1006,7 @@ func TestLodgingAssignmentsSyncKeepsMirrorRowForStillEnrolledHousehold(t *testin
 
 	s := NewLodgingAssignmentsSync(app)
 	s.Year = 2025
+	s.ActiveSeasonYear = 2025 // orphan sweep only runs for the active season (#2028)
 	if err := s.Sync(context.Background()); err != nil {
 		t.Fatalf("Sync: %v", err)
 	}
@@ -997,8 +1025,8 @@ func TestLodgingAssignmentsSyncKeepsMirrorRowForStillEnrolledHousehold(t *testin
 // sync" as "everyone cancelled" -- indistinguishable from inside this pass --
 // so its placements are left untouched rather than swept.
 func TestLodgingAssignmentsSyncSkipsMirrorDeletionWhenSessionHasZeroEnrolled(t *testing.T) {
+	t.Parallel()
 	app := newLodgingTestApp(t)
-	t.Setenv("CAMPMINDER_SEASON_ID", "2025") // orphan sweep only runs for the active season (#2028)
 	sess := addSession(t, app, cmIDFamilyCamp1, "Family Camp 1", "family",
 		testSessionStart, testSessionEnd, 2025)
 	unit := addUnit(t, app, "ridge-a", 2025)
@@ -1008,6 +1036,7 @@ func TestLodgingAssignmentsSyncSkipsMirrorDeletionWhenSessionHasZeroEnrolled(t *
 
 	s := NewLodgingAssignmentsSync(app)
 	s.Year = 2025
+	s.ActiveSeasonYear = 2025 // orphan sweep only runs for the active season (#2028)
 	if err := s.Sync(context.Background()); err != nil {
 		t.Fatalf("Sync: %v", err)
 	}
@@ -1023,8 +1052,8 @@ func TestLodgingAssignmentsSyncSkipsMirrorDeletionWhenSessionHasZeroEnrolled(t *
 // TestLodgingAssignmentsSyncDeletesOrphanedPersonGrainMirrorRow is the adult
 // weekend twin: the sweep must treat person-grain rows the same way.
 func TestLodgingAssignmentsSyncDeletesOrphanedPersonGrainMirrorRow(t *testing.T) {
+	t.Parallel()
 	app := newLodgingTestApp(t)
-	t.Setenv("CAMPMINDER_SEASON_ID", "2025") // orphan sweep only runs for the active season (#2028)
 	sess := addSession(t, app, cmIDWomensWeekend, "Women's Weekend", "adult",
 		testAdultSessionStart, testAdultSessionEnd, 2025)
 	unit := addUnit(t, app, "river-c", 2025)
@@ -1042,6 +1071,7 @@ func TestLodgingAssignmentsSyncDeletesOrphanedPersonGrainMirrorRow(t *testing.T)
 
 	s := NewLodgingAssignmentsSync(app)
 	s.Year = 2025
+	s.ActiveSeasonYear = 2025 // orphan sweep only runs for the active season (#2028)
 	if err := s.Sync(context.Background()); err != nil {
 		t.Fatalf("Sync: %v", err)
 	}
@@ -1058,8 +1088,8 @@ func TestLodgingAssignmentsSyncDeletesOrphanedPersonGrainMirrorRow(t *testing.T)
 // matching the ruling #2028 makes for the draft-null pass in
 // stranded_assignment_cleanup.go.
 func TestLodgingAssignmentsSyncDeletesStaffTouchedOrphanedMirrorRow(t *testing.T) {
+	t.Parallel()
 	app := newLodgingTestApp(t)
-	t.Setenv("CAMPMINDER_SEASON_ID", "2025") // orphan sweep only runs for the active season (#2028)
 	sess := addSession(t, app, cmIDFamilyCamp1, "Family Camp 1", "family",
 		testSessionStart, testSessionEnd, 2025)
 	unit := addUnit(t, app, "ridge-a", 2025)
@@ -1077,6 +1107,7 @@ func TestLodgingAssignmentsSyncDeletesStaffTouchedOrphanedMirrorRow(t *testing.T
 
 	s := NewLodgingAssignmentsSync(app)
 	s.Year = 2025
+	s.ActiveSeasonYear = 2025 // orphan sweep only runs for the active season (#2028)
 	if err := s.Sync(context.Background()); err != nil {
 		t.Fatalf("Sync: %v", err)
 	}
@@ -1089,8 +1120,8 @@ func TestLodgingAssignmentsSyncDeletesStaffTouchedOrphanedMirrorRow(t *testing.T
 // TestLodgingAssignmentsSyncDryRunDoesNotDeleteOrphans: DryRun computes but
 // does not write, full stop -- including the delete path.
 func TestLodgingAssignmentsSyncDryRunDoesNotDeleteOrphans(t *testing.T) {
+	t.Parallel()
 	app := newLodgingTestApp(t)
-	t.Setenv("CAMPMINDER_SEASON_ID", "2025") // orphan sweep only runs for the active season (#2028)
 	sess := addSession(t, app, cmIDFamilyCamp1, "Family Camp 1", "family",
 		testSessionStart, testSessionEnd, 2025)
 	unit := addUnit(t, app, "ridge-a", 2025)
@@ -1108,6 +1139,7 @@ func TestLodgingAssignmentsSyncDryRunDoesNotDeleteOrphans(t *testing.T) {
 
 	s := NewLodgingAssignmentsSync(app)
 	s.Year = 2025
+	s.ActiveSeasonYear = 2025 // orphan sweep only runs for the active season (#2028)
 	s.DryRun = true
 	if err := s.Sync(context.Background()); err != nil {
 		t.Fatalf("Sync: %v", err)
@@ -1133,8 +1165,8 @@ func TestLodgingAssignmentsSyncDryRunDoesNotDeleteOrphans(t *testing.T) {
 // not it. A stale/partial local attendees snapshot for a season that already
 // happened must never read as "everyone cancelled".
 func TestLodgingAssignmentsSyncSkipsOrphanSweepForHistoricalYear(t *testing.T) {
+	t.Parallel()
 	app := newLodgingTestApp(t)
-	t.Setenv("CAMPMINDER_SEASON_ID", "2025") // the ACTIVE season is 2025...
 
 	// ...but this sync targets 2024, a season that already happened.
 	const historicalYear = 2024
@@ -1159,7 +1191,8 @@ func TestLodgingAssignmentsSyncSkipsOrphanSweepForHistoricalYear(t *testing.T) {
 	addAttendee(t, app, liam, sess, 5002, 2, historicalYear)
 
 	s := NewLodgingAssignmentsSync(app)
-	s.Year = historicalYear // the orchestrator's historical path / API ?year=2024
+	s.Year = historicalYear   // the orchestrator's historical path / API ?year=2024
+	s.ActiveSeasonYear = 2025 // ...while the deployment's active season stays 2025
 	if err := s.Sync(context.Background()); err != nil {
 		t.Fatalf("Sync: %v", err)
 	}
@@ -1178,12 +1211,12 @@ func TestLodgingAssignmentsSyncSkipsOrphanSweepForHistoricalYear(t *testing.T) {
 // delete with no history row would be both unrecoverable and untraceable, so
 // the orphan sweep must write one too.
 func TestLodgingAssignmentsSyncWritesHistoryOnOrphanDelete(t *testing.T) {
+	t.Parallel()
 	// unit's own code, not a repeated "ridge-a" literal -- keeps the addUnit
 	// call and the history assertion below in step, and avoids adding a 3rd/4th
 	// hardcoded occurrence of the string across this file (goconst).
 	const unitCode = "ridge-a"
 	app := newLodgingTestApp(t)
-	t.Setenv("CAMPMINDER_SEASON_ID", "2025") // orphan sweep only runs for the active season (#2028)
 	sess := addSession(t, app, cmIDFamilyCamp1, "Family Camp 1", "family",
 		testSessionStart, testSessionEnd, 2025)
 	unit := addUnit(t, app, unitCode, 2025)
@@ -1203,6 +1236,7 @@ func TestLodgingAssignmentsSyncWritesHistoryOnOrphanDelete(t *testing.T) {
 
 	s := NewLodgingAssignmentsSync(app)
 	s.Year = 2025
+	s.ActiveSeasonYear = 2025 // orphan sweep only runs for the active season (#2028)
 	if err := s.Sync(context.Background()); err != nil {
 		t.Fatalf("Sync: %v", err)
 	}

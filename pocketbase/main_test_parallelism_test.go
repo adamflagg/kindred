@@ -61,31 +61,6 @@ var serialGroups = []struct {
 		},
 	},
 	{
-		// LodgingAssignmentsSync.activeSeasonYear() calls ParseSeasonYear()
-		// unconditionally to gate the #2028 orphan sweep, so these eight can
-		// only reach the sweep through the environment.
-		//
-		// They are also the most expensive tests left serial -- ~22s of the
-		// ~25s serial prefix, because each builds a fresh ~15-collection
-		// schema and that is pure CPU under the race detector. Injecting the
-		// active season instead of reading the env would recover most of it.
-		// Deliberately not done here: that is an edit to a deletion gate, and
-		// it should not ride inside a thousand-line mechanical diff where no
-		// reviewer will find it.
-		pkg:    "sync",
-		reason: "t.Setenv: orphan sweep gates on CAMPMINDER_SEASON_ID",
-		tests: []string{
-			"TestLodgingAssignmentsSyncDeletesOrphanedHouseholdMirrorRow",
-			"TestLodgingAssignmentsSyncDeletesOrphanedPersonGrainMirrorRow",
-			"TestLodgingAssignmentsSyncDeletesStaffTouchedOrphanedMirrorRow",
-			"TestLodgingAssignmentsSyncDryRunDoesNotDeleteOrphans",
-			"TestLodgingAssignmentsSyncKeepsMirrorRowForStillEnrolledHousehold",
-			"TestLodgingAssignmentsSyncSkipsMirrorDeletionWhenSessionHasZeroEnrolled",
-			"TestLodgingAssignmentsSyncSkipsOrphanSweepForHistoricalYear",
-			"TestLodgingAssignmentsSyncWritesHistoryOnOrphanDelete",
-		},
-	},
-	{
 		pkg:    "sync",
 		reason: "t.Setenv: asserts the CAMPMINDER_SEASON_ID fallback specifically",
 		tests: []string{
