@@ -170,6 +170,7 @@ var serialGroups = []struct {
 			"TestLoadPersonCustomValuesNoDiscardsMeansNoWarnAppLog",
 			"TestLoadPersonCustomValuesNoDiscardsMeansNoWarnLog",
 			"TestLoadPersonCustomValuesRoutesTheFourLive2026FieldsAndDoesNotSkipThem",
+			"TestStrandedAssignmentCleanupDryRunLodgingLogReportsSimulatedSweep",
 		},
 	},
 	{

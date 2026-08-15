@@ -464,12 +464,23 @@ func reconcileLodgingOrphans(app core.App, year int, stats *Stats, dryRun bool) 
 	draftByID, draftCandidates := lodgingCandidatesFromRecords(drafts)
 	orphanDrafts := findLodgingEnrollmentOrphans(householdIndex, personIndex, draftCandidates)
 
+	// writes counts only persisted App.Save calls (gates the WAL checkpoint below,
+	// which has nothing to flush on a dry run). swept counts what this pass DID or
+	// WOULD sweep -- real or simulated -- and is what the completion log reports,
+	// so an operator previewing a dry run sees the household this pass found, not
+	// a misleading 0. Deliberately local rather than stats.Updated: Sync() runs
+	// reconcileStrandedAssignments before this function against the same shared
+	// *Stats, so stats.Updated already carries the bunk pass's own count by the
+	// time this one logs -- reading it here would double-count that into this
+	// pass's number.
 	writes := 0
+	swept := 0
 	for _, c := range orphanDrafts {
 		rec := draftByID[c.RecordID]
 		rec.Set("units", []string{})
 		if dryRun {
 			stats.Updated++
+			swept++
 			continue
 		}
 		if saveErr := app.Save(rec); saveErr != nil {
@@ -478,6 +489,7 @@ func reconcileLodgingOrphans(app core.App, year int, stats *Stats, dryRun bool) 
 			continue
 		}
 		writes++
+		swept++
 		stats.Updated++
 	}
 
@@ -512,7 +524,7 @@ func reconcileLodgingOrphans(app core.App, year int, stats *Stats, dryRun bool) 
 	slog.Info("stranded_assignment_cleanup lodging pass complete",
 		"year", year,
 		"orphaned_drafts", len(orphanDrafts),
-		"drafts_swept", writes,
+		"drafts_swept", swept,
 		"lodging_prod_audit_warnings", stats.LodgingProdAuditWarnings,
 		"errors", stats.Errors,
 	)
