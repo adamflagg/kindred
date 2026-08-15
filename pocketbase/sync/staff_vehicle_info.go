@@ -367,14 +367,19 @@ func (s *StaffVehicleInfoSync) loadPersonCustomValues(
 
 	// Aggregate to person level
 	result := make(map[string]*staffVehicleInfoRecord)
+	// gatedPeople tracks the staff-row gate drops by PERSON, not by value
+	// (kindred#2277). A person who substantially completed the SVI form
+	// (production: 11-26 fields, mean 15.8) would otherwise inflate a single
+	// dropped record into a dozen-plus Stats.Skipped increments.
+	gatedPeople := make(map[int]bool)
 
 	for _, entry := range entries {
 		staffID, hasStaff := personToStaff[entry.personID]
 		if !hasStaff {
 			// Structurally correct -- `staff` is a required relation, so a row
 			// cannot be written without one -- but it must not be silent
-			// (kindred#2273).
-			s.Stats.Skipped++
+			// (kindred#2273, kindred#2277).
+			gatedPeople[entry.personID] = true
 			continue
 		}
 
@@ -394,6 +399,17 @@ func (s *StaffVehicleInfoSync) loadPersonCustomValues(
 			continue
 		}
 		mapSVIFieldToRecord(rec, entry.fieldName, entry.value)
+	}
+
+	if len(gatedPeople) > 0 {
+		s.Stats.Skipped += len(gatedPeople)
+		// One aggregated warning per run, not one per gated person -- a bad
+		// backfill can gate out hundreds of people in one run, and this must
+		// not become hundreds of log lines (kindred#2277).
+		slog.Warn("Staff vehicle info: discarding SVI-* answers for people with no staff row",
+			"year", year,
+			"people", len(gatedPeople),
+		)
 	}
 
 	return result, nil

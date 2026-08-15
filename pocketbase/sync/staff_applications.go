@@ -418,10 +418,23 @@ func (s *StaffApplicationsSync) loadPersonCustomValues(
 	// MapStaffAppFieldToColumn. Keyed by field name so the eventual log line
 	// names what was dropped, not just how much (kindred#2271).
 	unmappedCounts := make(map[string]int)
+	// gatedPeople tracks the staff-row gate drops by PERSON, not by value
+	// (kindred#2277). A person who substantially completed the App-*
+	// onboarding form (production: 11-26 fields, mean 15.8) would otherwise
+	// inflate a single dropped record into a dozen-plus Stats.Skipped
+	// increments. gatedValues is the companion value-level count, which
+	// lands on Stats.SkippedValues alongside the unmapped-field discards
+	// below -- the record itself was never created either way, but knowing
+	// how many answers were involved is part of the evidence this counter
+	// exists to gather.
+	gatedPeople := make(map[int]bool)
+	gatedValues := 0
 
 	for _, entry := range entries {
 		staffID, hasStaff := personToStaff[entry.personID]
 		if !hasStaff {
+			gatedPeople[entry.personID] = true
+			gatedValues++
 			continue
 		}
 
@@ -439,6 +452,19 @@ func (s *StaffApplicationsSync) loadPersonCustomValues(
 		if column := mapAppFieldToRecord(rec, entry.fieldName, entry.value); column == "" {
 			unmappedCounts[entry.fieldName]++
 		}
+	}
+
+	if len(gatedPeople) > 0 {
+		s.Stats.Skipped += len(gatedPeople)
+		s.Stats.SkippedValues += gatedValues
+		// One aggregated warning per run, not one per gated person -- a bad
+		// backfill can gate out hundreds of people in one run, and this must
+		// not become hundreds of log lines (kindred#2277).
+		slog.Warn("Staff applications: discarding App-* answers for people with no staff row",
+			"year", year,
+			"people", len(gatedPeople),
+			"values", gatedValues,
+		)
 	}
 
 	if len(unmappedCounts) > 0 {

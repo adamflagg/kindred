@@ -842,6 +842,216 @@ func TestLoadPersonCustomValuesNoDiscardsMeansNoWarnAppLog(t *testing.T) {
 	}
 }
 
+// newStaffApplicationsSyncTestApp builds every collection Sync() touches:
+// custom_field_defs, persons, staff, person_custom_values and
+// staff_applications. Modeled on newStaffVehicleTestApp in
+// staff_vehicle_info_test.go -- see that function's doc comment for why this
+// fixture is laxer than production: `staff` is a plain text field here, not
+// the required relation production declares, because these tests exercise
+// drop-COUNTING logic, not save validation.
+func newStaffApplicationsSyncTestApp(t *testing.T) core.App {
+	t.Helper()
+	app, err := pbtests.NewTestApp()
+	if err != nil {
+		t.Fatalf("NewTestApp: %v", err)
+	}
+	t.Cleanup(app.Cleanup)
+
+	defs := core.NewBaseCollection("custom_field_defs")
+	defs.Fields.Add(&core.TextField{Name: "name"})
+	if saveErr := app.Save(defs); saveErr != nil {
+		t.Fatalf("save custom_field_defs: %v", saveErr)
+	}
+
+	persons := core.NewBaseCollection("persons")
+	persons.Fields.Add(&core.NumberField{Name: "cm_id"})
+	persons.Fields.Add(&core.NumberField{Name: "year"})
+	if saveErr := app.Save(persons); saveErr != nil {
+		t.Fatalf("save persons: %v", saveErr)
+	}
+
+	staff := core.NewBaseCollection("staff")
+	staff.Fields.Add(&core.NumberField{Name: "person_id"})
+	staff.Fields.Add(&core.NumberField{Name: "year"})
+	if saveErr := app.Save(staff); saveErr != nil {
+		t.Fatalf("save staff: %v", saveErr)
+	}
+
+	pcv := core.NewBaseCollection("person_custom_values")
+	pcv.Fields.Add(&core.TextField{Name: "person"})
+	pcv.Fields.Add(&core.TextField{Name: "field_definition"})
+	pcv.Fields.Add(&core.TextField{Name: "value", Max: 5000})
+	pcv.Fields.Add(&core.NumberField{Name: "year"})
+	if saveErr := app.Save(pcv); saveErr != nil {
+		t.Fatalf("save person_custom_values: %v", saveErr)
+	}
+
+	apps := core.NewBaseCollection("staff_applications")
+	apps.Fields.Add(&core.TextField{Name: "staff"})
+	apps.Fields.Add(&core.NumberField{Name: "person_id"})
+	apps.Fields.Add(&core.NumberField{Name: "year"})
+	apps.Fields.Add(&core.TextField{Name: "why_tawonga", Max: 5000})
+	apps.Fields.Add(&core.TextField{Name: "why_work_again", Max: 5000})
+	if saveErr := app.Save(apps); saveErr != nil {
+		t.Fatalf("save staff_applications: %v", saveErr)
+	}
+
+	return app
+}
+
+// seedStaffApp writes one person, optionally a staff row for the same year,
+// and one person_custom_values row per field name given. Modeled on seedSVI
+// in staff_vehicle_info_test.go.
+func seedStaffApp(t *testing.T, app core.App, cmID, year int, hasStaff bool, values map[string]string) {
+	t.Helper()
+
+	personCol, err := app.FindCollectionByNameOrId("persons")
+	if err != nil {
+		t.Fatalf("find persons: %v", err)
+	}
+	person := core.NewRecord(personCol)
+	person.Set("cm_id", cmID)
+	person.Set("year", year)
+	if saveErr := app.Save(person); saveErr != nil {
+		t.Fatalf("save person %d: %v", cmID, saveErr)
+	}
+
+	if hasStaff {
+		staffCol, staffErr := app.FindCollectionByNameOrId("staff")
+		if staffErr != nil {
+			t.Fatalf("find staff: %v", staffErr)
+		}
+		s := core.NewRecord(staffCol)
+		s.Set("person_id", cmID)
+		s.Set("year", year)
+		if saveErr := app.Save(s); saveErr != nil {
+			t.Fatalf("save staff %d: %v", cmID, saveErr)
+		}
+	}
+
+	defsCol, err := app.FindCollectionByNameOrId("custom_field_defs")
+	if err != nil {
+		t.Fatalf("find custom_field_defs: %v", err)
+	}
+	pcvCol, err := app.FindCollectionByNameOrId("person_custom_values")
+	if err != nil {
+		t.Fatalf("find person_custom_values: %v", err)
+	}
+	for name, value := range values {
+		existing, listErr := app.FindRecordsByFilter("custom_field_defs", "", "", 0, 0)
+		if listErr != nil {
+			t.Fatalf("list field defs: %v", listErr)
+		}
+		var def *core.Record
+		for _, d := range existing {
+			if d.GetString("name") == name {
+				def = d
+				break
+			}
+		}
+		if def == nil {
+			def = core.NewRecord(defsCol)
+			def.Set("name", name)
+			if saveErr := app.Save(def); saveErr != nil {
+				t.Fatalf("save field def %q: %v", name, saveErr)
+			}
+		}
+		v := core.NewRecord(pcvCol)
+		v.Set("person", person.Id)
+		v.Set("field_definition", def.Id)
+		v.Set("value", value)
+		v.Set("year", year)
+		if saveErr := app.Save(v); saveErr != nil {
+			t.Fatalf("save custom value %q: %v", name, saveErr)
+		}
+	}
+}
+
+// TestLoadPersonCustomValuesCountsStaffGateDropsByPerson pins kindred#2277:
+// staff_applications.go's staff-row gate discarded every value with a bare
+// `continue` and counted nothing at all -- 22 of 296 people who answered the
+// 2026 App-* onboarding form in production had no staff row and vanished
+// with no counter and no log line. A gated person who answered multiple
+// App-* fields must count as ONE dropped record on Stats.Skipped (a person
+// gated out is exactly a record this sync would otherwise have written), and
+// the individual discarded VALUES land on Stats.SkippedValues -- the same
+// counter loadPersonCustomValues already uses for unmapped-field discards
+// (kindred#2356 keeps value-level discards off the record-level counter).
+func TestLoadPersonCustomValuesCountsStaffGateDropsByPerson(t *testing.T) {
+	t.Parallel()
+	app := newStaffApplicationsSyncTestApp(t)
+	seedStaffApp(t, app, 3001, 2026, false, map[string]string{
+		"App-Why Tawonga?":            "because it's home",
+		"App-Why work at camp again?": "friends",
+	})
+
+	s := NewStaffApplicationsSync(app)
+	fieldNames, err := s.loadFieldDefinitions(context.Background())
+	if err != nil {
+		t.Fatalf("loadFieldDefinitions: %v", err)
+	}
+	personToStaff, err := s.loadPersonStaffMapping(context.Background(), 2026)
+	if err != nil {
+		t.Fatalf("loadPersonStaffMapping: %v", err)
+	}
+	records, err := s.loadPersonCustomValues(context.Background(), 2026, fieldNames, personToStaff)
+	if err != nil {
+		t.Fatalf("loadPersonCustomValues: %v", err)
+	}
+
+	if len(records) != 0 {
+		t.Errorf("got %d records, want 0 -- the gated person must not produce a record", len(records))
+	}
+	if s.Stats.Skipped != 1 {
+		t.Errorf("Stats.Skipped = %d, want 1 -- one gated PERSON, not two gated values", s.Stats.Skipped)
+	}
+	if s.Stats.SkippedValues != 2 {
+		t.Errorf("Stats.SkippedValues = %d, want 2 -- the two discarded App-* answers", s.Stats.SkippedValues)
+	}
+}
+
+// TestStaffApplicationsSyncLogsStaffGateDropsOnce drives the real Sync()
+// entry point (kindred#2277). Two people completed App-* onboarding fields
+// and have no staff row for the year; one of them answered two fields. The
+// operator-facing signal must be exactly one aggregated slog.Warn line for
+// the whole run, never one per person -- a bad backfill can gate out
+// hundreds of people in one run.
+func TestStaffApplicationsSyncLogsStaffGateDropsOnce(t *testing.T) {
+	app := newStaffApplicationsSyncTestApp(t)
+	seedStaffApp(t, app, 4001, 2026, false, map[string]string{
+		"App-Why Tawonga?":            "because it's home",
+		"App-Why work at camp again?": "friends",
+	})
+	seedStaffApp(t, app, 4002, 2026, false, map[string]string{
+		"App-Why Tawonga?": "family tradition",
+	})
+
+	logs := captureSweepLogs(t)
+
+	s := NewStaffApplicationsSync(app)
+	s.Year = 2026
+	if err := s.Sync(context.Background()); err != nil {
+		t.Fatalf("Sync: %v", err)
+	}
+
+	if s.Stats.Skipped != 2 {
+		t.Errorf("Stats.Skipped = %d, want 2 -- two distinct gated people", s.Stats.Skipped)
+	}
+	if s.Stats.SkippedValues != 3 {
+		t.Errorf("Stats.SkippedValues = %d, want 3 -- the three discarded App-* answers across both people",
+			s.Stats.SkippedValues)
+	}
+	if s.Stats.Created != 0 {
+		t.Errorf("Stats.Created = %d, want 0 -- neither gated person should produce a row", s.Stats.Created)
+	}
+
+	logged := logs.String()
+	marker := "discarding App-* answers for people with no staff row"
+	if got := strings.Count(logged, marker); got != 1 {
+		t.Errorf("saw %d log lines matching %q, want exactly 1 aggregated line, got log:\n%s", got, marker, logged)
+	}
+}
+
 // TestLoadPersonCustomValuesRoutesTheFourLive2026FieldsAndDoesNotSkipThem is
 // the end-to-end pin for the owner's reversal on #2271: before this change
 // these four field names had no case in MapStaffAppFieldToColumn, so each one

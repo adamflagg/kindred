@@ -401,6 +401,80 @@ func TestLoadPersonCustomValuesCountsStaffGateDrops(t *testing.T) {
 	}
 }
 
+// TestLoadPersonCustomValuesCountsStaffGateDropsByPersonNotByValue pins
+// kindred#2277. A person who has no staff row but answered MULTIPLE SVI-*
+// fields (11-26 fields per person in the production snapshot) must count as
+// ONE dropped record on Stats.Skipped, not one per value -- Stats.Skipped is
+// a record count, and this gate drop is exactly one record this sync would
+// otherwise have written.
+func TestLoadPersonCustomValuesCountsStaffGateDropsByPersonNotByValue(t *testing.T) {
+	t.Parallel()
+	app := newStaffVehicleTestApp(t)
+	seedSVI(t, app, 1003, 2026, false, map[string]string{
+		"SVI-are you driving to camp": "Yes",
+		"SVI-make of vehicle":         "Toyota",
+		"SVI-which friend":            "Sam",
+	})
+
+	s := NewStaffVehicleInfoSync(app)
+	s.Year = 2026
+
+	fieldNames, err := s.loadFieldDefinitions(context.Background())
+	if err != nil {
+		t.Fatalf("loadFieldDefinitions: %v", err)
+	}
+	personToStaff, err := s.loadPersonStaffMapping(context.Background(), 2026)
+	if err != nil {
+		t.Fatalf("loadPersonStaffMapping: %v", err)
+	}
+	if _, err := s.loadPersonCustomValues(context.Background(), 2026, fieldNames, personToStaff); err != nil {
+		t.Fatalf("loadPersonCustomValues: %v", err)
+	}
+
+	if s.Stats.Skipped != 1 {
+		t.Errorf("Stats.Skipped = %d, want 1 -- one gated PERSON with three answers, not three gated values", s.Stats.Skipped)
+	}
+}
+
+// TestStaffVehicleInfoSyncLogsStaffGateDropsOnce drives the real Sync() entry
+// point (kindred#2277). Two people answered the SVI form and have no staff
+// row for the year; one of them answered three fields. Stats.Skipped must
+// land on the distinct-person count (2), and the operator-facing signal must
+// be exactly one aggregated slog.Warn line for the whole run, never one per
+// person -- a bad backfill can gate out hundreds of people in one run.
+func TestStaffVehicleInfoSyncLogsStaffGateDropsOnce(t *testing.T) {
+	app := newStaffVehicleTestApp(t)
+	seedSVI(t, app, 2001, 2026, false, map[string]string{
+		"SVI-are you driving to camp": "Yes",
+		"SVI-make of vehicle":         "Toyota",
+		"SVI-which friend":            "Sam",
+	})
+	seedSVI(t, app, 2002, 2026, false, map[string]string{
+		"SVI-are you driving to camp": "No",
+	})
+
+	logs := captureSweepLogs(t)
+
+	s := NewStaffVehicleInfoSync(app)
+	s.Year = 2026
+	if err := s.Sync(context.Background()); err != nil {
+		t.Fatalf("Sync: %v", err)
+	}
+
+	if s.Stats.Skipped != 2 {
+		t.Errorf("Stats.Skipped = %d, want 2 -- two distinct gated people", s.Stats.Skipped)
+	}
+	if s.Stats.Created != 0 {
+		t.Errorf("Stats.Created = %d, want 0 -- neither gated person should produce a row", s.Stats.Created)
+	}
+
+	logged := logs.String()
+	marker := "discarding SVI-* answers for people with no staff row"
+	if got := strings.Count(logged, marker); got != 1 {
+		t.Errorf("saw %d log lines matching %q, want exactly 1 aggregated line, got log:\n%s", got, marker, logged)
+	}
+}
+
 // TestLoadPersonCustomValuesCountsUnmappedFields pins the second silent drop
 // site. A field admitted by the SVI- prefix but routed to no column is
 // discarded with no counter and no log line.
