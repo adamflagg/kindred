@@ -39,19 +39,6 @@ function statusForGrade(
   return gender.status as Status
 }
 
-function CellContent({ status }: { status: Status }) {
-  switch (status) {
-    case 'open':
-      return <span className="sr-only">Open</span>
-    case 'limited':
-      return <span className="sr-only">Limited</span>
-    case 'full':
-      return <span className="sr-only">Full</span>
-    case 'na':
-      return <span className="sr-only">N/A</span>
-  }
-}
-
 function cellClass(status: Status): string {
   const base = 'min-w-[2.5rem] px-2 py-2 text-center border border-border/50'
   switch (status) {
@@ -133,12 +120,10 @@ function SessionRow({
                 : undefined
             }
           >
-            {wlCount > 0 ? (
+            {wlCount > 0 && (
               <span className="text-[10px] font-bold text-amber-800 dark:text-amber-400">
                 {wlCount}
               </span>
-            ) : (
-              <CellContent status={status} />
             )}
           </td>
         )
@@ -218,12 +203,10 @@ function AGSessionRow({
                 : undefined
             }
           >
-            {wlCount > 0 ? (
+            {wlCount > 0 && (
               <span className="text-[10px] font-bold text-amber-800 dark:text-amber-400">
                 {wlCount}
               </span>
-            ) : (
-              <CellContent status={status} />
             )}
           </td>
         )
@@ -289,12 +272,10 @@ function TeenSessionRow({
                 : undefined
             }
           >
-            {wlCount > 0 ? (
+            {wlCount > 0 && (
               <span className="text-[10px] font-bold text-amber-800 dark:text-amber-400">
                 {wlCount}
               </span>
-            ) : (
-              <CellContent status={status} />
             )}
           </td>
         )

@@ -239,20 +239,24 @@ describe('SessionAvailability', () => {
     ).not.toBeInTheDocument()
   })
 
-  it('renders full status cells', async () => {
+  it('renders a full cell with the full-status colour, not text', async () => {
     mockFetch.mockResolvedValueOnce({
       ok: true,
       json: async () => mockAvailabilityResponse,
     })
 
-    renderWithProviders(<SessionAvailability />)
+    const { container } = renderWithProviders(<SessionAvailability />)
 
     await waitFor(() => {
       expect(screen.getByText('Session 2')).toBeInTheDocument()
     })
 
-    // Session 2 girls has status='full', should have sr-only "Full" text
-    const fullCells = screen.getAllByText('Full')
+    // The grid is a VISUAL encoding: a cell's status is its background colour
+    // and nothing else (kindred#2348 removed the sr-only labels). This asserts
+    // the colour, because asserting text here is what made the previous
+    // version of this test vacuous -- `getAllByText('Full')` matched the
+    // LEGEND, so it passed identically whether or not any cell rendered.
+    const fullCells = container.querySelectorAll('td.bg-red-200')
     expect(fullCells.length).toBeGreaterThan(0)
   })
 
