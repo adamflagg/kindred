@@ -249,6 +249,11 @@ func addBunksCollection(t *testing.T, app core.App) *core.Collection {
 	bunks := core.NewBaseCollection("bunks")
 	bunks.Fields.Add(&core.NumberField{Name: "cm_id", Required: true, OnlyInt: true})
 	bunks.Fields.Add(&core.TextField{Name: "name"})
+	// year is left optional despite production requiring it (migration
+	// 1500000006): setupBunkAssignmentProtectionCollections
+	// (bunk_assignments_protection_test.go) seeds bunks with no year set,
+	// and a Required field here would fail every one of those saves
+	// (verified: making it Required fails 8 TestProtect* tests).
 	bunks.Fields.Add(&core.NumberField{Name: "year"})
 	// PaginateRecords sorts by "-created" unconditionally (bunk_assignments.go's
 	// BuildRecordCMIDMappings goes through it), so every caller needs this even
@@ -275,19 +280,24 @@ func addStaffCollection(t *testing.T, app core.App) *core.Collection {
 	return staff
 }
 
-// addBunkPlansCollection builds `bunk_plans`. cm_id and year are left
-// optional despite production requiring both (migration 1500000017):
+// addBunkPlansCollection builds `bunk_plans`. cm_id is left optional despite
+// production requiring it (migration 1500000017):
 // stranded_assignment_cleanup_test.go's fixtures never set cm_id on a
 // bunk_plans row, and a Required field here would fail every one of those
 // saves -- the drift check only asserts a field NAME exists in production,
-// not that this fixture matches its Required-ness.
+// not that this fixture matches its Required-ness. year, unlike cm_id, IS
+// Required here, matching production: base_sync.go auto-appends
+// "year = <season>" to every PaginateRecords/LookupRelation call against
+// bunk_plans, so a row saved without year would silently land at year 0,
+// invisible to every year-scoped lookup -- exactly the drift this shared
+// builder exists to close.
 func addBunkPlansCollection(t *testing.T, app core.App, bunks, sessions *core.Collection) *core.Collection {
 	t.Helper()
 	plans := core.NewBaseCollection("bunk_plans")
 	plans.Fields.Add(&core.NumberField{Name: "cm_id", OnlyInt: true})
 	plans.Fields.Add(&core.RelationField{Name: "bunk", CollectionId: bunks.Id, MaxSelect: 1})
 	plans.Fields.Add(&core.RelationField{Name: "session", CollectionId: sessions.Id, MaxSelect: 1})
-	plans.Fields.Add(&core.NumberField{Name: "year"})
+	plans.Fields.Add(&core.NumberField{Name: "year", Required: true, OnlyInt: true})
 	plans.Fields.Add(&core.AutodateField{Name: "created", OnCreate: true})
 	saveCollection(t, app, plans)
 	return plans
@@ -617,5 +627,29 @@ func TestNewLodgingTestAppCoversBunkAssignmentGrain(t *testing.T) {
 		if _, err := app.FindCollectionByNameOrId(name); err != nil {
 			t.Errorf("newSyncTestApp does not build %q: %v", name, err)
 		}
+	}
+}
+
+// TestAddBunkPlansCollectionRequiresYear pins kindred#2300 review finding
+// #2: production requires bunk_plans.year (migration 1500000017), and
+// base_sync.go auto-appends "year = <season>" to every PaginateRecords/
+// LookupRelation call against bunk_plans. A shared fixture that leaves year
+// optional lets a bunk_plans row get saved with no year (silently stored at
+// year 0), invisible to every year-scoped lookup -- the exact silent-drift
+// failure mode kindred#2300's shared builder exists to close. This asserts
+// the fixture rejects that save the same way production would.
+func TestAddBunkPlansCollectionRequiresYear(t *testing.T) {
+	t.Parallel()
+	app := newSyncTestApp(t)
+	plans, err := app.FindCollectionByNameOrId("bunk_plans")
+	if err != nil {
+		t.Fatalf("find bunk_plans: %v", err)
+	}
+
+	rec := core.NewRecord(plans)
+	rec.Set("cm_id", 12345)
+	// Deliberately not setting "year".
+	if err := app.Save(rec); err == nil {
+		t.Error("Save(bunk_plans without year) succeeded, want error -- year must be Required to match production migration 1500000017")
 	}
 }
