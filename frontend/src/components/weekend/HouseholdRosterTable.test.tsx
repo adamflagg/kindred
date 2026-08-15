@@ -410,7 +410,6 @@ describe('HouseholdRosterTable', () => {
     // kindred#2177: the "two rooms combined" detail is on a reachable tooltip.
     const merged = screen.getByRole('button', { name: 'Merged' })
     expect(merged).not.toHaveAttribute('title')
-    expect(merged).toHaveAccessibleDescription('Two rooms combined into one slot')
     fireEvent.focus(merged)
     expect(screen.getByRole('tooltip')).toHaveTextContent('Two rooms combined into one slot')
   })
@@ -489,33 +488,28 @@ describe('HouseholdRosterTable', () => {
     }
   })
 
-  it('spells out the returning and first-time badges in text, not a title', () => {
-    // kindred#2177, and the one place the tooltip primitive is NOT the
-    // answer YET: these two badges are a SIBLING of the row's own open
-    // control (kindred#2222), not its child — a focusable trigger nested
-    // inside the control would be invalid HTML and would swallow the row's
-    // click. Real `sr-only` text instead — which is strictly more than the
-    // `title` it replaced, since `title` on a `<span>` is not reliably
-    // announced at all.
+  it('spells out the returning and first-time badges as visible words, with no title and no sr-only detail', () => {
+    // kindred#2177 replaced `title` with visible text for these two badges,
+    // since a `<button>`'s content model forbids the interactive tooltip
+    // trigger used everywhere else on the board (kindred#2222: the badges
+    // are a SIBLING of the row's own open control, not its child). A
+    // closed-state `sr-only` detail sentence used to sit beside each badge
+    // as well — kindred#2348 deleted it: no assistive tech reads this app
+    // (`frontend/CLAUDE.md`), and the invisible-but-rendered text was what
+    // let browser find-in-page match a sentence nothing on screen showed.
+    // The visible word already IS the fact; nothing further belongs in the
+    // DOM.
     const { rerender } = render(
       <HouseholdRosterTable year={2026} parties={[party({ is_returning: true })]} />,
       { wrapper }
     )
     expect(screen.getByText('Returning')).not.toHaveAttribute('title')
-    expect(screen.getByText('(stayed with us before)')).toBeInTheDocument()
     expect(screen.getByText('Returning').tagName).toBe('SPAN')
-    // kindred#2222: the sentence is in the DOM (asserted above) but the
-    // badge no longer lives inside the open control, so it no longer folds
-    // into that control's accessible name — the coupling that assertion
-    // used to pin was itself a symptom of the one-big-button design this
-    // issue dismantles. Giving the sentence a real accessible relationship
-    // to a trigger a touch user can reach is kindred#2229's job.
-    expect(screen.getAllByRole('button')[0]).not.toHaveAccessibleName(/stayed with us before/)
+    expect(screen.queryByText('(stayed with us before)')).not.toBeInTheDocument()
 
     rerender(<HouseholdRosterTable year={2026} parties={[party({ is_returning: false })]} />)
     expect(screen.getByText('First-time')).not.toHaveAttribute('title')
-    expect(screen.getByText('(first time at camp)')).toBeInTheDocument()
-    expect(screen.getAllByRole('button')[0]).not.toHaveAccessibleName(/first time at camp/)
+    expect(screen.queryByText('(first time at camp)')).not.toBeInTheDocument()
   })
 
   it('flags a returning family', () => {

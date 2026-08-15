@@ -56,7 +56,6 @@ describe('SharePreferenceChip inside ShareRequestPanel', () => {
     )
     const chip = screen.getByRole('button', { name: 'Will not share' })
     expect(chip).not.toHaveAttribute('title')
-    expect(chip).toHaveAccessibleDescription('No, prefer not to share')
     fireEvent.focus(chip)
     expect(screen.getByRole('tooltip')).toHaveTextContent('No, prefer not to share')
   })

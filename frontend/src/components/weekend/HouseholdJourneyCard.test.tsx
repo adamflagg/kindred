@@ -184,7 +184,6 @@ describe('the enrolment states', () => {
 
     const chip = within(rowFor(2021)).getByRole('button', { name: 'No enrolment' })
     expect(chip).not.toHaveAttribute('title')
-    expect(chip).toHaveAccessibleDescription(/no enrolled child/i)
 
     fireEvent.focus(chip)
     expect(screen.getByRole('tooltip')).toHaveTextContent(/no enrolled child/i)

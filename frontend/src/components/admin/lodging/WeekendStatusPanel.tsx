@@ -118,9 +118,7 @@ export function WeekendStatusPanel() {
                     <th scope="col" className="py-2 pr-4 text-left">
                       Status
                     </th>
-                    <th scope="col" className="py-2 text-right">
-                      <span className="sr-only">Action</span>
-                    </th>
+                    <th scope="col" className="py-2 text-right" />
                   </tr>
                 </thead>
                 <tbody>

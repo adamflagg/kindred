@@ -748,6 +748,20 @@ describe('LodgingMap legend', () => {
     expect(legend).toHaveTextContent(/capacity unknown/i)
   })
 
+  it('carries no sr-only <dt> terms — the visible text beside each mark already says everything (kindred#2348)', () => {
+    // Regression: five `<dt className="sr-only">` terms duplicated what
+    // their sibling `<dd>` already showed on screen. Invisible-but-rendered
+    // text that only a screen reader this app does not support would read —
+    // deleted along with the `<dl>` that existed only to pair them, since an
+    // orphaned `<dd>` with no `<dt>` is an invalid list either way
+    // (`frontend/CLAUDE.md` §Accessibility).
+    const { container } = render(<LodgingMap parties={[]} units={UNITS} year={2026} />)
+    const legend = screen.getByTestId('map-legend')
+    expect(legend.tagName).not.toBe('DL')
+    expect(container.querySelectorAll('dt')).toHaveLength(0)
+    expect(container.querySelectorAll('dd')).toHaveLength(0)
+  })
+
   it('no longer keys a ringed mark as "shared" — that mark is gone (kindred#2179)', () => {
     // A legend row for a channel the surface no longer draws is worse than no
     // row: it sends staff looking for a ring that cannot appear.

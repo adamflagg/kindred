@@ -37,15 +37,18 @@ describe('Tooltip — the trigger', () => {
     expect(button).toHaveAttribute('type', 'button')
   })
 
-  it('is DESCRIBED by the bubble text even before anything is shown', () => {
-    // The `title` attribute this replaces was the whole gap: unreliable for
-    // screen readers, invisible to touch. The description has to resolve at
-    // all times, not only once the bubble is on screen, or a reader that
-    // computes it at focus time races the state update.
+  it('renders no text at all while closed, so Cmd+F cannot find an invisible bubble (kindred#2348)', () => {
+    // Regression for kindred#2348: a closed-state `sr-only` span used to
+    // mirror `content` into the DOM so `aria-describedby` always resolved.
+    // `sr-only` clips visually but leaves the text rendered, so browser
+    // find-in-page matched every closed tooltip's sentence and "found"
+    // nothing on screen. No assistive tech reads this app (kindred#2249) —
+    // the bubble itself, shown on hover/focus, is the only place the text
+    // belongs.
     renderChip()
-    expect(trigger()).toHaveAccessibleDescription(
-      'The registration form and the Family Camp form disagree.'
-    )
+    expect(
+      screen.queryByText('The registration form and the Family Camp form disagree.')
+    ).not.toBeInTheDocument()
   })
 
   it('carries the focus ring the weekend roster row uses', () => {
@@ -393,8 +396,11 @@ describe('Tooltip — a trigger the sentence already names', () => {
   /**
    * `MapUnitPopover`'s room cell needs the whole sentence as its accessible
    * NAME, because the family name it shows is repeated by a second control in
-   * the same popover. Describing it with the identical string as well makes a
-   * screen reader read the sentence out twice in a row.
+   * the same popover. `aria-describedby` is now absent from every trigger
+   * unconditionally (kindred#2348 deleted the wiring, not just this call
+   * site's branch of it) — kept here because this IS the case that wiring
+   * was originally built to protect: describing it with the identical
+   * string too would have made a screen reader read the sentence twice.
    */
   it('is not also DESCRIBED by its own accessible name', () => {
     render(

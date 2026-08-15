@@ -506,7 +506,8 @@ describe('FamilyDetailsPanel — current placement', () => {
     expect(screen.getByText('Cedar 3 + Cedar 4')).toBeInTheDocument()
     const merged = screen.getByRole('button', { name: 'Merged' })
     expect(merged).not.toHaveAttribute('title')
-    expect(merged).toHaveAccessibleDescription('Two rooms combined into one slot')
+    fireEvent.focus(merged)
+    expect(screen.getByRole('tooltip')).toHaveTextContent('Two rooms combined into one slot')
   })
 
   it('closes only the tooltip on Escape, never the panel underneath it', () => {

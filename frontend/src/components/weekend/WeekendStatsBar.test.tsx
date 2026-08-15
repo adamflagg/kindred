@@ -103,8 +103,10 @@ describe('WeekendStatsBar', () => {
     // staff cabin never does.
     render(<WeekendStatsBar counts={counts()} bedsNeeded={223} spacesUnmeasured={0} />)
     const writeIns = screen.getByRole('button', { name: '3 write-ins' })
-    expect(writeIns).toHaveAccessibleDescription(/excluded from family spaces/i)
-    expect(writeIns).not.toHaveAccessibleDescription(/staff/i)
+    fireEvent.focus(writeIns)
+    const tooltip = screen.getByRole('tooltip')
+    expect(tooltip).toHaveTextContent(/excluded from family spaces/i)
+    expect(tooltip).not.toHaveTextContent(/staff/i)
   })
 
   it('puts the spaces, write-in and staff notes on tooltips keyboard and touch can reach', () => {
@@ -123,13 +125,13 @@ describe('WeekendStatsBar', () => {
     // name still contains it (WCAG 2.5.3).
     const spaces = screen.getByRole('button', { name: '79 spaces' })
     expect(spaces).not.toHaveAttribute('title')
-    expect(spaces).toHaveAccessibleDescription(/Merging or splitting cabins/i)
     fireEvent.focus(spaces)
     expect(screen.getByRole('tooltip')).toHaveTextContent(/Merging or splitting cabins/i)
 
-    expect(screen.getByRole('button', { name: '21 staff cabins' })).toHaveAccessibleDescription(
-      /never part of the weekend/i
-    )
+    const staffCabins = screen.getByRole('button', { name: '21 staff cabins' })
+    fireEvent.blur(spaces)
+    fireEvent.focus(staffCabins)
+    expect(screen.getByRole('tooltip')).toHaveTextContent(/never part of the weekend/i)
   })
 
   it('reports staff housing separately, because it was never inventory', () => {
