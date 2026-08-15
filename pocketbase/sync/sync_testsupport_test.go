@@ -650,6 +650,7 @@ func TestAddBunkPlansCollectionRequiresYear(t *testing.T) {
 	rec.Set("cm_id", 12345)
 	// Deliberately not setting "year".
 	if err := app.Save(rec); err == nil {
-		t.Error("Save(bunk_plans without year) succeeded, want error -- year must be Required to match production migration 1500000017")
+		t.Error("Save(bunk_plans without year) succeeded, want error -- " +
+			"year must be Required to match production migration 1500000017")
 	}
 }
