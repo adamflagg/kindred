@@ -95,6 +95,14 @@ var serialGroups = []struct {
 		tests:  []string{"TestBuildNormalizationLookupCompositeKeyDedup"},
 	},
 	{
+		// campminder.NewClient reads CAMPMINDER_PRIMARY_KEY from the environment
+		// (same reason as the block below), so building the real client this
+		// test needs for GetSeasonID() costs a t.Setenv.
+		pkg:    "sync",
+		reason: "t.Setenv: campminder.NewClient reads CAMPMINDER_PRIMARY_KEY",
+		tests:  []string{"TestAttendeesLogStatusChangeDryRunWritesNothing"},
+	},
+	{
 		// These four drive deleteOrphans, which reads the season through
 		// s.Client.GetSeasonID(). Client is a concrete *campminder.Client and
 		// campminder.NewClient reads CAMPMINDER_PRIMARY_KEY from the

@@ -57,6 +57,25 @@ type BaseSyncService struct {
 	ProcessedKeys  map[string]bool // Track processed composite keys for orphan detection
 	FieldDiffStats map[string]int  // Track which fields cause updates (for debugging)
 	Debug          bool            // Enable verbose debug logging
+	// DryRun, when true, makes every write helper below (ProcessSimpleRecord,
+	// ProcessSimpleRecordGlobal, ProcessCompositeRecord, deleteOrphans,
+	// DeleteOrphansFromPreloaded) compute its result and update Stats exactly as
+	// a normal run would, but skip the App.Save / App.Delete call that would
+	// persist it (kindred#2351). Gating lives at those eight call sites.
+	//
+	// Deliberately NOT paired with a promoted SetDryRun method here. BaseSyncService is
+	// embedded by several services outside kindred#2351's twelve -- bunk_requests (which
+	// ResolveUnifiedSyncServices appends to "all" for the current year, so it IS reachable
+	// through the unified dry_run endpoint) and request_processor (whose Sync() delegates to
+	// a remote FastAPI call this field cannot gate at all) among them. An exported SetDryRun
+	// on this type would be PROMOTED to every one of those embedders automatically, making
+	// each silently satisfy DryRunnable whether or not its own writes are actually gated --
+	// the exact "compiles, therefore looks safe, but still runs wet" trap kindred#2334 was
+	// about, discovered here by TestEmbeddingBaseSyncServiceDoesNotLeakDryRunnable. Every
+	// service this issue actually wires declares its OWN three-line SetDryRun that sets this
+	// field directly (e.g. session_groups.go); a service that does not declare one stays
+	// correctly unsupported and gets the honest 400.
+	DryRun bool
 }
 
 // NewBaseSyncService creates a new base sync service
@@ -339,6 +358,11 @@ func (b *BaseSyncService) deleteOrphans(
 
 		slog.Info("Deleting orphaned record", "entity", entityName, "name", candidate.name, "id", candidate.key)
 
+		if b.DryRun {
+			orphanCount++
+			continue
+		}
+
 		// Counted AFTER the delete lands. A failed delete leaves the row on disk,
 		// and reporting it as deleted tells an operator the opposite of the truth.
 		if err := b.App.Delete(record); err != nil {
@@ -482,6 +506,11 @@ func (b *BaseSyncService) DeleteOrphansFromPreloaded(
 		if !b.ProcessedKeys[keyStr] {
 			name := b.getRecordName(record, entityName)
 			slog.Info("Deleting orphaned record", "entity", entityName, "name", name, "key", keyStr)
+
+			if b.DryRun {
+				orphanCount++
+				continue
+			}
 
 			// Counted AFTER the delete lands. A failed delete leaves the row on disk,
 			// and reporting it as deleted tells an operator the opposite of the truth.
@@ -713,6 +742,11 @@ func (b *BaseSyncService) ProcessSimpleRecord(
 				existing.Set(field, value)
 			}
 
+			if b.DryRun {
+				b.Stats.Updated++
+				return nil
+			}
+
 			if err := b.App.Save(existing); err != nil {
 				return fmt.Errorf("updating record: %w", err)
 			}
@@ -730,6 +764,11 @@ func (b *BaseSyncService) ProcessSimpleRecord(
 		record := core.NewRecord(col)
 		for field, value := range recordData {
 			record.Set(field, value)
+		}
+
+		if b.DryRun {
+			b.Stats.Created++
+			return nil
 		}
 
 		if err := b.App.Save(record); err != nil {
@@ -784,6 +823,11 @@ func (b *BaseSyncService) ProcessSimpleRecordGlobal(
 				existing.Set(field, value)
 			}
 
+			if b.DryRun {
+				b.Stats.Updated++
+				return nil
+			}
+
 			if err := b.App.Save(existing); err != nil {
 				return fmt.Errorf("updating record: %w", err)
 			}
@@ -801,6 +845,11 @@ func (b *BaseSyncService) ProcessSimpleRecordGlobal(
 		record := core.NewRecord(col)
 		for field, value := range recordData {
 			record.Set(field, value)
+		}
+
+		if b.DryRun {
+			b.Stats.Created++
+			return nil
 		}
 
 		if err := b.App.Save(record); err != nil {
@@ -912,6 +961,11 @@ func (b *BaseSyncService) ProcessCompositeRecord(
 				existing.Set(field, value)
 			}
 
+			if b.DryRun {
+				b.Stats.Updated++
+				return nil
+			}
+
 			if err := b.App.Save(existing); err != nil {
 				return fmt.Errorf("updating record: %w", err)
 			}
@@ -929,6 +983,11 @@ func (b *BaseSyncService) ProcessCompositeRecord(
 		record := core.NewRecord(col)
 		for field, value := range recordData {
 			record.Set(field, value)
+		}
+
+		if b.DryRun {
+			b.Stats.Created++
+			return nil
 		}
 
 		if err := b.App.Save(record); err != nil {

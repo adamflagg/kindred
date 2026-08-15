@@ -49,6 +49,13 @@ func (s *StaffSync) Name() string {
 	return serviceNameStaff
 }
 
+// SetDryRun implements the orchestrator's DryRunnable interface (kindred#2351). Declared
+// explicitly rather than inherited by embedding BaseSyncService -- see that field's doc
+// comment for why a promoted setter is not safe here.
+func (s *StaffSync) SetDryRun(dryRun bool) {
+	s.DryRun = dryRun
+}
+
 // Sync performs the year-scoped staff sync
 func (s *StaffSync) Sync(ctx context.Context) error {
 	s.LogSyncStart(serviceNameStaff)

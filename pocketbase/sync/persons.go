@@ -66,6 +66,16 @@ func (s *PersonsSync) Name() string {
 	return personsCollection
 }
 
+// SetDryRun implements the orchestrator's DryRunnable interface (kindred#2351). Declared
+// explicitly rather than inherited by embedding BaseSyncService -- see that field's doc
+// comment on BaseSyncService for why a promoted setter is not safe. Setting it also gates
+// this file's own App.Save/App.Delete call sites (the person and household upserts, the
+// attendee-relation and household-relation backfills, and deleteHouseholdOrphans), all of
+// which are outside BaseSyncService's write sites.
+func (s *PersonsSync) SetDryRun(dryRun bool) {
+	s.DryRun = dryRun
+}
+
 // GetStats returns stats for this sync, including sub-entity stats for combined sync
 func (s *PersonsSync) GetStats() Stats {
 	stats := s.Stats
@@ -531,6 +541,11 @@ func (s *PersonsSync) processPerson(
 				existing.Set(field, value)
 			}
 
+			if s.DryRun {
+				s.Stats.Updated++
+				return nil
+			}
+
 			if err := s.App.Save(existing); err != nil {
 				return fmt.Errorf("updating person %d: %w", personIDInt, err)
 			}
@@ -548,6 +563,11 @@ func (s *PersonsSync) processPerson(
 		record := core.NewRecord(collection)
 		for field, value := range pbData {
 			record.Set(field, value)
+		}
+
+		if s.DryRun {
+			s.Stats.Created++
+			return nil
 		}
 
 		if err := s.App.Save(record); err != nil {
@@ -1158,6 +1178,10 @@ func (s *PersonsSync) updateAttendeeRelations(year int) error {
 			personRecords, err := s.App.FindRecordsByFilter("persons", personFilter, "", 1, 0)
 			if err == nil && len(personRecords) > 0 {
 				attendee.Set("person", personRecords[0].Id)
+				if s.DryRun {
+					updated++
+					continue
+				}
 				if err := s.App.Save(attendee); err != nil {
 					slog.Error("Error updating attendee relation", "personCMID", int(personCMID), "error", err)
 					errors++
@@ -1473,6 +1497,10 @@ func (s *PersonsSync) processHouseholdRecord(
 			for field, value := range pbData {
 				existing.Set(field, value)
 			}
+			if s.DryRun {
+				stats.Updated++
+				return nil
+			}
 			if err := s.App.Save(existing); err != nil {
 				return fmt.Errorf("updating household: %w", err)
 			}
@@ -1490,6 +1518,11 @@ func (s *PersonsSync) processHouseholdRecord(
 		record := core.NewRecord(collection)
 		for field, value := range pbData {
 			record.Set(field, value)
+		}
+
+		if s.DryRun {
+			stats.Created++
+			return nil
 		}
 
 		if err := s.App.Save(record); err != nil {
@@ -1580,6 +1613,10 @@ func (s *PersonsSync) updatePersonHouseholdRelations(
 		}
 
 		if needsSave {
+			if s.DryRun {
+				updated++
+				continue
+			}
 			if err := s.App.Save(person); err != nil {
 				slog.Error("Error updating person household relations", "personID", person.Id, "error", err)
 				errCount++
@@ -1627,6 +1664,10 @@ func (s *PersonsSync) deleteHouseholdOrphans(year int, processedIDs map[int]bool
 		}
 
 		if !processedIDs[int(cmID)] {
+			if s.DryRun {
+				deleted++
+				continue
+			}
 			if err := s.App.Delete(record); err != nil {
 				slog.Error("Error deleting orphaned household", "cm_id", int(cmID), "error", err)
 				s.Stats.Errors++
