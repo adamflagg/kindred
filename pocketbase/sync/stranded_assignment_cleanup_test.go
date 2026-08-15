@@ -143,13 +143,10 @@ func setupStrandedCollections(t *testing.T, app core.App) {
 		t.Fatalf("create camp_sessions: %v", err)
 	}
 
-	bunks := core.NewBaseCollection("bunks")
-	bunks.Fields.Add(&core.NumberField{Name: "cm_id", Required: true})
-	bunks.Fields.Add(&core.TextField{Name: "name"})
-	bunks.Fields.Add(&core.NumberField{Name: "year"})
-	if err := app.Save(bunks); err != nil {
-		t.Fatalf("create bunks: %v", err)
-	}
+	// bunks and bunk_plans are kindred#2300's shared fixture builder
+	// (sync_testsupport_test.go) -- widened there so this file's copies
+	// didn't keep drifting from production on their own.
+	bunks := addBunksCollection(t, app)
 
 	persons := core.NewBaseCollection("persons")
 	persons.Fields.Add(&core.NumberField{Name: "cm_id", Required: true})
@@ -161,13 +158,7 @@ func setupStrandedCollections(t *testing.T, app core.App) {
 		t.Fatalf("create persons: %v", err)
 	}
 
-	plans := core.NewBaseCollection("bunk_plans")
-	plans.Fields.Add(&core.RelationField{Name: "bunk", CollectionId: bunks.Id, MaxSelect: 1})
-	plans.Fields.Add(&core.RelationField{Name: "session", CollectionId: sessions.Id, MaxSelect: 1})
-	plans.Fields.Add(&core.NumberField{Name: "year"})
-	if err := app.Save(plans); err != nil {
-		t.Fatalf("create bunk_plans: %v", err)
-	}
+	plans := addBunkPlansCollection(t, app, bunks, sessions)
 
 	scenarios := core.NewBaseCollection("saved_scenarios")
 	scenarios.Fields.Add(&core.TextField{Name: "name"})
@@ -188,14 +179,8 @@ func setupStrandedCollections(t *testing.T, app core.App) {
 		t.Fatalf("create bunk_assignments_draft: %v", err)
 	}
 
-	prod := core.NewBaseCollection("bunk_assignments")
-	prod.Fields.Add(&core.RelationField{Name: "person", CollectionId: persons.Id, MaxSelect: 1})
-	prod.Fields.Add(&core.RelationField{Name: "session", CollectionId: sessions.Id, MaxSelect: 1})
-	prod.Fields.Add(&core.RelationField{Name: "bunk", CollectionId: bunks.Id, MaxSelect: 1})
-	prod.Fields.Add(&core.NumberField{Name: "year"})
-	if err := app.Save(prod); err != nil {
-		t.Fatalf("create bunk_assignments: %v", err)
-	}
+	// bunk_assignments too -- see the addBunksCollection comment above.
+	addBunkAssignmentsCollection(t, app, persons, sessions, bunks, plans)
 
 	attendees := core.NewBaseCollection("attendees")
 	attendees.Fields.Add(&core.RelationField{Name: "person", CollectionId: persons.Id, MaxSelect: 1})
