@@ -367,14 +367,20 @@ func (s *StaffVehicleInfoSync) loadPersonCustomValues(
 
 	// Aggregate to person level
 	result := make(map[string]*staffVehicleInfoRecord)
+	// gatedPeople tracks the staff-row gate drops by PERSON, not by value
+	// (kindred#2277). A person who substantially completed the SVI form
+	// (production: 2-10 fields, mean 4.8 -- the SVI form has only 10 fields
+	// total, far smaller than the App-* onboarding form) would otherwise
+	// inflate a single dropped record into up to ten Stats.Skipped increments.
+	gatedPeople := make(map[int]bool)
 
 	for _, entry := range entries {
 		staffID, hasStaff := personToStaff[entry.personID]
 		if !hasStaff {
 			// Structurally correct -- `staff` is a required relation, so a row
 			// cannot be written without one -- but it must not be silent
-			// (kindred#2273).
-			s.Stats.Skipped++
+			// (kindred#2273, kindred#2277).
+			gatedPeople[entry.personID] = true
 			continue
 		}
 
@@ -390,10 +396,25 @@ func (s *StaffVehicleInfoSync) loadPersonCustomValues(
 		}
 
 		if MapSVIFieldToColumnImpl(entry.fieldName) == "" {
-			s.Stats.Skipped++
+			// A VALUE discard, not a record one -- rec was already created
+			// above, so this person's row IS written. Counting it into
+			// Stats.Skipped would mix units with the staff-gate drop above,
+			// which discards whole records (kindred#2277 review).
+			s.Stats.SkippedValues++
 			continue
 		}
 		mapSVIFieldToRecord(rec, entry.fieldName, entry.value)
+	}
+
+	if len(gatedPeople) > 0 {
+		s.Stats.Skipped += len(gatedPeople)
+		// One aggregated warning per run, not one per gated person -- a bad
+		// backfill can gate out hundreds of people in one run, and this must
+		// not become hundreds of log lines (kindred#2277).
+		slog.Warn("Staff vehicle info: discarding SVI-* answers for people with no staff row",
+			"year", year,
+			"people", len(gatedPeople),
+		)
 	}
 
 	return result, nil

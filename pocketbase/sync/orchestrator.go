@@ -301,14 +301,23 @@ type Stats struct {
 	Deleted int `json:"deleted,omitempty"` // For tracking deletions (e.g., removed bunk requests)
 	Skipped int `json:"skipped"`
 	// SkippedValues counts discarded custom-field VALUES, not records (kindred#2356).
-	// camper_transportation.go and staff_applications.go both discard individual
-	// unmapped BUS-*/App-* answers while still creating the record they belong to
-	// (see the routed-field cases in their own loadPersonCustomValues tests) -- before
-	// this counter existed, those discards were folded into Skipped, so a toast reading
-	// "274 created, 557 skipped" looked like 557 records were dropped when it was really
-	// 557 individual answers across some subset of the 274 rows that WERE created.
-	// Nothing but those two services increments this; every other Skipped site in this
-	// package counts a whole record, and must keep doing so.
+	// camper_transportation.go, staff_applications.go, and staff_vehicle_info.go all
+	// discard individual unmapped BUS-*/App-*/SVI-* answers while still creating the
+	// record they belong to (see the routed-field cases in their own
+	// loadPersonCustomValues tests) -- before this counter existed, those discards
+	// were folded into Skipped, so a toast reading "274 created, 557 skipped" looked
+	// like 557 records were dropped when it was really 557 individual answers across
+	// some subset of the 274 rows that WERE created.
+	//
+	// staff_applications.go also has a second flavor (kindred#2277): the answers
+	// belonging to a person gated out entirely by the staff-row requirement, whose
+	// record was NEVER created. Those land here too, alongside that person's single
+	// Skipped increment for the dropped record itself -- SkippedValues is a count of
+	// discarded answers regardless of whether the record they'd have populated was
+	// created or not; Skipped is what counts the row.
+	//
+	// Nothing but those three services increments this; every other Skipped site in
+	// this package counts a whole record, and must keep doing so.
 	SkippedValues int `json:"skipped_values,omitempty"`
 	// Errors counts INFRASTRUCTURE failures only — local SQLite operations that did not
 	// complete (App.Save, App.Delete, App.Create, FindRecordsByFilter). There is no healthy
