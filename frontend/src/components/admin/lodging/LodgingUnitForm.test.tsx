@@ -627,6 +627,15 @@ describe('LodgingUnitForm — the parent picker reflects a live allocation chang
 })
 
 describe('LodgingUnitForm — beds', () => {
+  it('names the bed-type picker with aria-label alone, no separate sr-only label (kindred#2379)', () => {
+    const { container } = render(
+      <LodgingUnitForm areas={AREAS} units={[]} year={2026} onSaved={vi.fn()} onCancel={vi.fn()} />
+    )
+
+    expect(container.querySelector('label[for="bed-type-picker"]')).toBeNull()
+    expect(screen.getByLabelText('Add a bed type')).toBeInTheDocument()
+  })
+
   it('shows the suggested occupancy from the bed inventory', async () => {
     const user = userEvent.setup()
     render(
@@ -778,59 +787,29 @@ describe('LodgingUnitForm — capacity flag', () => {
     expect(screen.getByRole('button', { name: 'Use suggested' })).toBeInTheDocument()
   })
 
-  it('keeps the live region mounted even with nothing to announce', () => {
-    // THE LOAD-BEARING ONE. A live region is only announced when its contents
-    // change while it is ALREADY in the document. Rendering the region and its
-    // text together — the obvious one-liner — is missed by several screen
-    // readers, so the region has to outlive the advisory it carries. A unit
-    // with nothing to say is exactly the state a staffer is in just BEFORE
-    // typing the number that creates the conflict.
-    renderUnit({ ...BUNKED, sleeps: 3 })
+  it('has no live region on the capacity advisory (kindred#2379)', () => {
+    // Nobody here uses AT (frontend/CLAUDE.md "Accessibility — deliberately
+    // minimal"), so an aria-live announcement never reaches anyone. The
+    // visible text is the whole story now — asserted directly below.
+    const { container } = renderUnit(CONFLICTED)
 
-    const region = screen.getByRole('status', { name: 'Capacity advisory' })
-    expect(region).toBeInTheDocument()
-    expect(region).toHaveAttribute('aria-live', 'polite')
-    expect(region).toHaveTextContent('')
+    expect(container.querySelector('[role="status"]')).toBeNull()
+    expect(container.querySelector('[aria-live]')).toBeNull()
   })
 
-  it('announces the conflict rather than only drawing it', () => {
-    // Focus stays in the Sleeps field when this appears, so without a live
-    // region a screen-reader user is never told. The flag's whole job is to be
-    // noticed; drawing it in amber does that for one class of user only.
+  it('shows the conflict as soon as the form renders, not only after an edit', () => {
+    // Previously guaranteed by a live region announcing on mount; with no AT
+    // users (frontend/CLAUDE.md "Accessibility — deliberately minimal") the
+    // requirement is just that the visible text is there from the start.
     renderUnit(CONFLICTED)
 
-    expect(screen.getByRole('status', { name: 'Capacity advisory' })).toHaveTextContent(
-      'Beds account for 4, but sleeps says 8.'
-    )
-  })
-
-  it('announces the suggestion too', () => {
-    renderUnit({ ...BUNKED, sleeps: 0 })
-
-    expect(screen.getByRole('status', { name: 'Capacity advisory' })).toHaveTextContent(
-      /Suggested: sleeps 4/i
-    )
+    expect(screen.getByText('Beds account for 4, but sleeps says 8.')).toBeInTheDocument()
   })
 
   it('carries the conflict once, not as a second hidden copy', () => {
-    // The other obvious implementation is an sr-only duplicate beside the
-    // visible text. It makes anyone navigating the form linearly meet the same
-    // sentence twice, so the region WRAPS the visible text instead.
     renderUnit(CONFLICTED)
 
     expect(screen.getAllByText(/beds account for 4/i)).toHaveLength(1)
-  })
-
-  it('leaves the conflict readable on mount, not only when it changes', () => {
-    // A live region announces on CHANGE and never on mount. Hiding the visible
-    // text in favour of an sr-only announcement therefore reports an ALREADY
-    // conflicting unit to nobody — the staffer who opens the form rather than
-    // creating the conflict by typing gets silence and an invisible warning.
-    renderUnit(CONFLICTED)
-
-    const text = screen.getByText(/beds account for 4, but sleeps says 8/i)
-    expect(text).not.toHaveAttribute('aria-hidden')
-    expect(screen.getByRole('status', { name: 'Capacity advisory' })).toContainElement(text)
   })
 
   it('never shows the sheet capacity, which is not a corroborating number', () => {

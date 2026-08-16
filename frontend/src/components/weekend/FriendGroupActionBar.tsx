@@ -72,7 +72,17 @@ export interface FriendGroupActionBarProps {
   isAddingToGroup: boolean
 }
 
-/** A colour swatch as a real radio, so the palette is reachable without sight. */
+/**
+ * A colour swatch as a real radio behind a styled span.
+ *
+ * KEPT (kindred#2379): `sr-only` on the `<input>` hides its default browser
+ * radio rendering while the coloured `<span>` is the visible, clickable
+ * affordance — delete the class and a raw grey radio button appears next to
+ * every swatch. The `<span className="sr-only">` naming span is the input's
+ * only accessible name, which is also `WeekendFriendGroups.test.tsx`'s query
+ * handle (`getByRole('radio', { name: 'Indigo' })`) for its own copy of this
+ * pattern — kept here too, for the same reason and for consistency.
+ */
 function ColorSwatch({
   color,
   checked,
@@ -166,6 +176,9 @@ export function FriendGroupActionBar({
             <div className="bg-border h-6 w-px" aria-hidden="true" />
 
             <fieldset className="flex items-center gap-1.5">
+              {/* KEPT (kindred#2379): frontend/CLAUDE.md's own trap note
+                  groups `sr-only` on a `<legend>` with `<input>` as a native-
+                  control case, not AT scaffolding to sweep. */}
               <legend className="sr-only">Group colour</legend>
               {FRIEND_GROUP_COLORS.map((candidate) => (
                 <ColorSwatch

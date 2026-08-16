@@ -112,4 +112,11 @@ describe('SocialNetworkGraph header layout — slim single row', () => {
     // EdgeFilters import should be removed since the component is no longer used
     expect(source).not.toMatch(/\bEdgeFilters\b/)
   })
+
+  it('has no aria-live/role="status" scaffolding on the degrade banner (kindred#2379)', () => {
+    // Nobody here uses AT (frontend/CLAUDE.md "Accessibility — deliberately
+    // minimal") — the banner's visible text is the whole story.
+    expect(source).not.toContain('role="status"')
+    expect(source).not.toContain('aria-live')
+  })
 })

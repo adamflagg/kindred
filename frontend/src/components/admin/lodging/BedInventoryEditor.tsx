@@ -95,9 +95,9 @@ export function BedInventoryEditor({ beds, onChange }: BedInventoryEditorProps) 
       {/* In the same wrap as the chips, so adding a bed reads as extending the
           set rather than operating a separate control below it. */}
       <li className="inline-flex items-center gap-1.5">
-        <label className="sr-only" htmlFor="bed-type-picker">
-          Add a bed type
-        </label>
+        {/* No standalone <label> — redundant with the select's own
+            aria-label below, which is already the query handle tests use
+            (kindred#2379). */}
         <select
           id="bed-type-picker"
           aria-label="Add a bed type"

@@ -297,14 +297,10 @@ export function UnitAmenityFieldset({
           <option value="shareable">Two or more families may share</option>
           <option value="single_party">One family only</option>
         </select>
-        {/* ALWAYS MOUNTED, and wrapping the visible text rather than duplicating
-            it — the same two constraints `UnitCapacityFields` documents at
-            length for its own advisory. A live region is only announced when
-            its contents change while it is already in the document, so
-            rendering the region together with its text is missed by several
-            screen readers; and an sr-only second copy would be read twice by
-            anyone navigating the form linearly. */}
-        <div role="status" aria-live="polite" aria-label="Sharing advisory">
+        {/* No AT users here (frontend/CLAUDE.md "Accessibility —
+            deliberately minimal"), so this stays plain text — no
+            aria-live/role="status" (kindred#2379). */}
+        <div>
           {drift && (
             <p className="mt-1.5 text-xs text-amber-700 dark:text-amber-400">
               {`This is set to ${SHAREABILITY_WORDING[drift.stored]}, but the unit as edited reads ${SHAREABILITY_WORDING[drift.derived]}.`}
