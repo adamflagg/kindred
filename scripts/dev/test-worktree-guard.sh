@@ -80,7 +80,7 @@ expect_allow() {
 
 echo "=== TEST 1-3: git worktree add stays blocked (regression) ==="
 expect_block "plain"             "git worktree add ../foo feature/bar"
-expect_block "intervening flags" "git -C /home/adam/kindred worktree add x y"
+expect_block "intervening flags" "git -C /tmp/repository worktree add x y"
 expect_block "chained"           "cd /tmp && git worktree add z"
 
 echo
@@ -104,6 +104,20 @@ expect_block "mixed short and long" "git clean -x -f --force"
 echo
 echo "=== TEST 13: chained after another command is blocked ==="
 expect_block "chained" "npm run build && git clean -xdff"
+
+echo
+echo "=== TEST 13a-13d: line continuations do not smuggle a command past ==="
+# A backslash-newline is a continuation: bash joins it into ONE command before
+# running it. A guard that splits on the raw newline first sees `git clean \`
+# and `-xdff` as unrelated segments, and neither looks destructive on its own.
+# Verified as a live bypass before this was fixed -- the command ran and
+# printed "Removing .worktrees/". Both checks are affected, because grep
+# matches line by line too.
+expect_block "clean, continued before flags"  $'git clean \\\n  -xdff'
+expect_block "clean, continued mid-flags"     $'git clean -x \\\n  -f -f'
+expect_block "worktree add, continued"        $'git worktree \\\n  add ../foo bar'
+# The join must not manufacture a block out of a safe continued command.
+expect_allow "safe clean, continued"          $'git clean \\\n  -xdf'
 
 echo
 echo "=== TEST 14-17: git clean forms that CANNOT reach .worktrees/ are allowed ==="

@@ -24,6 +24,16 @@ else
   command=$input
 fi
 
+# Join backslash-newline line continuations before anything inspects the text.
+# Bash folds them into a single command before executing, so the guard has to
+# see what will actually run. Without this both checks below are bypassable:
+# grep matches line by line, and the git-clean splitter treats a newline as a
+# command separator -- so `git clean \<newline> -xdff` arrives as `git clean \`
+# plus `-xdff`, and neither half looks destructive on its own. Verified live
+# before the fix: the command ran and printed "Removing .worktrees/".
+# Pinned by TEST 13a-13d in scripts/dev/test-worktree-guard.sh.
+command=${command//\\$'\n'/ }
+
 # ── 1. Direct `git worktree add` ────────────────────────────────────────
 # Match `git ... worktree add`, allowing intervening flags like `-C <dir>` or
 # `--git-dir=…` that would otherwise bypass the guard. Shell separators
