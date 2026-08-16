@@ -234,9 +234,13 @@ func (s *CamperTransportationSync) Sync(ctx context.Context) error {
 	slog.Info("Loaded existing records", "count", len(existingRecords))
 
 	// Step 5: Upsert records
-	created, updated, errors := s.upsertRecords(ctx, records, existingRecords, year)
+	created, updated, skipped, errors := s.upsertRecords(ctx, records, existingRecords, year)
 	s.Stats.Created = created
 	s.Stats.Updated = updated
+	// Stats.Skipped counts records that needed no write (kindred#2384). This
+	// service has no field-level staff-gate skip like the two staff syncs, so
+	// unlike them Skipped carries exactly one meaning here.
+	s.Stats.Skipped += skipped
 	s.Stats.Errors = errors
 
 	// Step 6: Delete orphans
@@ -706,6 +710,32 @@ func makeTransportationKey(personID, sessionID, year int) string {
 	return fmt.Sprintf("%d:%d|%d", personID, sessionID, year)
 }
 
+// camperTransportationCompareFields lists the fields to compare for
+// idempotency checks (kindred#2384). Excludes the unique key fields
+// (person_id, session_id, year) since loadExistingRecords already matched on
+// them, and PocketBase-managed fields. Includes `attendee` even though it is
+// not part of the key -- unlike person_id/session_id/year, it can change
+// independently of the key if the attendee mapping is rebuilt.
+var camperTransportationCompareFields = []string{
+	"attendee",
+	colToCampMethod, colFromCampMethod,
+	colDropoffName, colDropoffPhone, colDropoffRelationship,
+	colPickupName, colPickupPhone, colPickupRelationship,
+	colAltPickup1Name, colAltPickup1Phone, colAltPickup1Relationship,
+	colAltPickup2Name, colAltPickup2Phone,
+	"used_legacy_fields",
+}
+
+// recordNeedsUpdate checks if any compared field differs between existing
+// record and new data. Uses compareFields (inclusion list): only the listed
+// fields are checked for changes. Delegates to the shared
+// compareRecordNeedsUpdate in base_sync.go.
+func (s *CamperTransportationSync) recordNeedsUpdate(
+	existing *core.Record, newData map[string]any, compareFields []string,
+) bool {
+	return compareRecordNeedsUpdate(existing, newData, compareFields)
+}
+
 // loadExistingRecords loads existing camper_transportation records for a year
 func (s *CamperTransportationSync) loadExistingRecords(ctx context.Context, year int) (map[string]string, error) {
 	result := make(map[string]string) // compositeKey -> PB ID
@@ -748,22 +778,44 @@ func (s *CamperTransportationSync) upsertRecords(
 	records map[string]*camperTransportationRecord,
 	existingRecords map[string]string,
 	year int,
-) (created, updated, errors int) {
+) (created, updated, skipped, errors int) {
 	col, err := s.App.FindCollectionByNameOrId("camper_transportation")
 	if err != nil {
 		slog.Error("Error finding camper_transportation collection", "error", err)
-		return 0, 0, len(records)
+		return 0, 0, 0, len(records)
 	}
 
 	for _, rec := range records {
 		select {
 		case <-ctx.Done():
-			return created, updated, errors
+			return created, updated, skipped, errors
 		default:
 		}
 
 		key := makeTransportationKey(rec.personID, rec.sessionID, year)
 		existingID, exists := existingRecords[key]
+
+		// Build data map for comparison and for the eventual write.
+		data := map[string]any{
+			"attendee":                rec.attendeeID,
+			"person_id":               rec.personID,
+			"session_id":              rec.sessionID,
+			"year":                    rec.year,
+			colToCampMethod:           rec.toCampMethod,
+			colFromCampMethod:         rec.fromCampMethod,
+			colDropoffName:            rec.dropoffName,
+			colDropoffPhone:           rec.dropoffPhone,
+			colDropoffRelationship:    rec.dropoffRelation,
+			colPickupName:             rec.pickupName,
+			colPickupPhone:            rec.pickupPhone,
+			colPickupRelationship:     rec.pickupRelation,
+			colAltPickup1Name:         rec.altPickup1Name,
+			colAltPickup1Phone:        rec.altPickup1Phone,
+			colAltPickup1Relationship: rec.altPickup1Rel,
+			colAltPickup2Name:         rec.altPickup2Name,
+			colAltPickup2Phone:        rec.altPickup2Phone,
+			"used_legacy_fields":      rec.usedLegacyFields,
+		}
 
 		var record *core.Record
 		if exists {
@@ -773,29 +825,23 @@ func (s *CamperTransportationSync) upsertRecords(
 				errors++
 				continue
 			}
+
+			// Check if update is actually needed (kindred#2384). An unchanged
+			// record counts as a skip, not an update -- see the file-level
+			// comment on Stats.Skipped in Sync() for why that unit is safe here.
+			if !s.recordNeedsUpdate(record, data, camperTransportationCompareFields) {
+				s.DebugLog("Skipping unchanged transportation record",
+					"person_id", rec.personID, "session_id", rec.sessionID, "year", year)
+				skipped++
+				continue
+			}
 		} else {
 			record = core.NewRecord(col)
 		}
 
-		// Set all fields
-		record.Set("attendee", rec.attendeeID)
-		record.Set("person_id", rec.personID)
-		record.Set("session_id", rec.sessionID)
-		record.Set("year", rec.year)
-		record.Set("to_camp_method", rec.toCampMethod)
-		record.Set("from_camp_method", rec.fromCampMethod)
-		record.Set("dropoff_name", rec.dropoffName)
-		record.Set("dropoff_phone", rec.dropoffPhone)
-		record.Set("dropoff_relationship", rec.dropoffRelation)
-		record.Set("pickup_name", rec.pickupName)
-		record.Set("pickup_phone", rec.pickupPhone)
-		record.Set("pickup_relationship", rec.pickupRelation)
-		record.Set("alt_pickup_1_name", rec.altPickup1Name)
-		record.Set("alt_pickup_1_phone", rec.altPickup1Phone)
-		record.Set("alt_pickup_1_relationship", rec.altPickup1Rel)
-		record.Set("alt_pickup_2_name", rec.altPickup2Name)
-		record.Set("alt_pickup_2_phone", rec.altPickup2Phone)
-		record.Set("used_legacy_fields", rec.usedLegacyFields)
+		for field, value := range data {
+			record.Set(field, value)
+		}
 
 		if err := s.App.Save(record); err != nil {
 			slog.Error("Error saving camper_transportation record",
@@ -815,7 +861,7 @@ func (s *CamperTransportationSync) upsertRecords(
 		}
 	}
 
-	return created, updated, errors
+	return created, updated, skipped, errors
 }
 
 // deleteOrphans removes records that exist in DB but not in computed set.
