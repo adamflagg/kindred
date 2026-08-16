@@ -10,13 +10,14 @@
 set -e
 
 # Dynamic paths
-MAIN_REPO="$(git rev-parse --show-toplevel)"
+# --git-common-dir, not --show-toplevel: the latter names the *current*
+# worktree when run from inside one, and worktrees now nest under the main
+# repo. See scripts/worktree/new.sh for the full reasoning.
+MAIN_REPO="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")"
 
 # shellcheck source=../colors.sh
 source "$MAIN_REPO/scripts/colors.sh"
-REPO_NAME="$(basename "$MAIN_REPO")"
-REPO_PARENT="$(dirname "$MAIN_REPO")"
-WORKTREES_DIR="$REPO_PARENT/${REPO_NAME}-worktrees"
+WORKTREES_DIR="$MAIN_REPO/.worktrees"
 
 # Check if a PR for this branch was merged (the only safe heuristic)
 is_pr_merged() {

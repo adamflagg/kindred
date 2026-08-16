@@ -37,6 +37,11 @@ yarn-error.log*
 Thumbs.db
 
 # Project specific
+# Feature worktrees live in-repo at .worktrees/ and are full checkouts
+# (~1.1 GB each). CI builds from a fresh clone so they never exist there,
+# but a local `docker build .` would otherwise ship every one of them as
+# build context.
+.worktrees/
 pocketbase/pb_data/
 pocketbase/backups/
 pocketbase/*.log

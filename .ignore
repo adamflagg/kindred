@@ -1,0 +1,10 @@
+# Search-tool ignore file, read by ripgrep, fd and friends (gitignore syntax).
+#
+# .gitignore already lists .worktrees/, and that covers every default search
+# path. This file exists for one gap: `rg --no-ignore-vcs` deliberately
+# discards .gitignore but still honors .ignore, so without this line that
+# invocation reports every hit four times over -- once per worktree checkout.
+#
+# It does NOT cover `rg -uu` / `--no-ignore`, which by definition ignores
+# this file too. That is correct behavior and not worth working around.
+.worktrees/

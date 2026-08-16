@@ -149,6 +149,8 @@ Read the relevant doc before working in these areas:
 
 **Create worktrees with `./scripts/worktree/new.sh <feature-name>`** — never bare `git worktree add`, never `EnterWorktree`. The script handles port allocation (so parallel worktrees don't collide), branch naming, DB seed from main, and local-config symlinks. A `PreToolUse` hook blocks the bare command; if it denies a call, switch to `new.sh`.
 
+**Worktrees live at `.worktrees/<feature>/` inside the repo**, gitignored. They are in-repo because the harness reverts any `cd` that resolves outside the project root — so a sibling directory can never hold the session's working directory, and the statusline reports main's branch while you edit another. The same hook blocks `git clean -x -ff`, which would otherwise delete every worktree and leave `.git/worktrees/*` dangling.
+
 Working directly in the main repo folder needs the user's explicit say-so — assume a worktree otherwise, since other agents may hold uncommitted changes there.
 
 Worktree mechanics (ports, isolation, cleanup): `docs/reference/git-workflow.md`

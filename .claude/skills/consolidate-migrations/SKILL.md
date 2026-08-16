@@ -147,7 +147,7 @@ Every round happens in a worktree, even if invoked from `~/kindred`.
 ```bash
 WORKTREE_NAME="consolidate-${TABLE}-$(date +%Y%m%d)"
 "$MAIN_REPO/scripts/worktree/new.sh" "$WORKTREE_NAME"
-WORKTREE_DIR="$HOME/kindred-worktrees/$WORKTREE_NAME"
+WORKTREE_DIR="$MAIN_REPO/.worktrees/$WORKTREE_NAME"
 ```
 
 All filesystem writes from Step 7 onward target `$WORKTREE_DIR/...`, never
