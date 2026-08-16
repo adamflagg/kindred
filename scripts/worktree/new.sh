@@ -7,22 +7,27 @@
 #   ./scripts/worktree/new.sh social-graph-perf
 #
 # Creates:
-#   <repo-parent>/<repo-name>-worktrees/<feature-name>/
+#   <main-repo>/.worktrees/<feature-name>/
 #   Branch: feature/<feature-name>
 #   Ports: auto-assigned based on feature name hash
 #   Database: seeded from main
 
 set -e
 
-# Dynamic path detection
-MAIN_REPO="$(git rev-parse --show-toplevel)"
+# Dynamic path detection.
+#
+# --git-common-dir, NOT --show-toplevel. Both name the main repo when run
+# from it, but --show-toplevel names the *current* worktree when run from
+# inside one, and worktrees now nest under it: that spelling turns a
+# new.sh invoked from a worktree into .worktrees/<a>/.worktrees/<b>, a
+# worktree inside a worktree. --git-common-dir always resolves to the
+# shared .git of the main worktree, so this is pinned wherever it runs.
+MAIN_REPO="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")"
 
 # Colors
 # shellcheck source=../colors.sh
 source "$MAIN_REPO/scripts/colors.sh"
-REPO_NAME="$(basename "$MAIN_REPO")"
-REPO_PARENT="$(dirname "$MAIN_REPO")"
-WORKTREES_DIR="$REPO_PARENT/${REPO_NAME}-worktrees"
+WORKTREES_DIR="$MAIN_REPO/.worktrees"
 
 # Parse arguments
 FEATURE_NAME="${1:-}"

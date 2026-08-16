@@ -212,6 +212,11 @@ jobs:
             - 'scripts/dev/**'
             - '.github/workflows/ci.yml'
             - 'pocketbase/pb_migrations/**'
+            # test-worktree-guard.sh lives under scripts/dev/ but its subject
+            # is .claude/hooks/worktree-guard.sh. Without this line, editing
+            # the hook alone would not run the suite that pins its behavior --
+            # the exact unwired-guard shape kindred#2370 was about.
+            - '.claude/hooks/**'
           docker:
             - 'docker/**'
             - 'docker-compose*.yml'
@@ -280,12 +285,13 @@ jobs:
   # on either would leave it exactly as unwired as the absence this issue
   # is about. See the `guardSelfTests` filter comment above.
   #
-  # The other three self-tests found under scripts/dev/test-*.sh
+  # The other four self-tests found under scripts/dev/test-*.sh
   # (test-verify-consolidation.sh, test-migration-schema-diff.sh,
-  # test-pb-harness.sh) were audited the same way and are wired here too --
-  # all three pass standalone against a scratch Go build and a scratch
-  # sqlite3 DB, with no live PocketBase server or seeded dev DB required, so
-  # none of them carry the flake risk that would make wiring them a mistake.
+  # test-pb-harness.sh, test-worktree-guard.sh) were audited the same way and
+  # are wired here too -- all four pass standalone against a scratch Go build
+  # and a scratch sqlite3 DB, with no live PocketBase server or seeded dev DB
+  # required, so none of them carry the flake risk that would make wiring them
+  # a mistake. test-worktree-guard.sh needs neither: only bash and jq.
   guard-self-tests:
     name: Dev Guard Self-Tests
     needs: detect-changes
@@ -320,6 +326,9 @@ jobs:
 
     - name: PB harness lib self-test
       run: ./scripts/dev/test-pb-harness.sh
+
+    - name: Worktree guard self-test
+      run: ./scripts/dev/test-worktree-guard.sh
 
   # Python linting (parallel with other lint jobs)
   python-lint:

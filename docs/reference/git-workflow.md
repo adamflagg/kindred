@@ -18,7 +18,7 @@ git pull --rebase origin main
 ./scripts/worktree/new.sh <descriptive-feature-name>
 
 # 3. Move to the worktree
-cd ../kindred-worktrees/<feature-name>
+cd .worktrees/<feature-name>
 
 # 4. Start development
 ./scripts/start_dev.sh
@@ -29,10 +29,33 @@ cd ../kindred-worktrees/<feature-name>
 ./scripts/worktree/cleanup.sh <feature-name>
 ```
 
+### Where They Live
+Worktrees are created at `.worktrees/<feature>/` **inside** the main repo, and
+`.worktrees/` is gitignored.
+
+They sit in-repo so a shell can hold a working directory in one. The Claude
+Code harness pins the session cwd to the project root and reverts any `cd`
+that lands outside it — resolving symlinks, so a symlinked `.worktrees` does
+not satisfy it. While worktrees were siblings at `../<repo>-worktrees/`, no
+session could `cd` into one, and the statusline (which reads the session cwd)
+reported main's branch no matter which feature branch was being edited.
+
+Two consequences worth knowing:
+
+- **`git clean -xdff` deletes every worktree** and leaves `.git/worktrees/*`
+  dangling. Single `-f` is safe — git skips nested repositories itself — and
+  without `-x`/`-X` ignored files are untouched. `.claude/hooks/worktree-guard.sh`
+  blocks only the lethal combination; `scripts/dev/test-worktree-guard.sh`
+  pins the boundary.
+- **Searches are unaffected**, but because of the `.gitignore` entry, not the
+  leading dot. The `grep` shim runs with `--hidden`; `--ignore-files` reading
+  that entry is what keeps worktree copies out of results. `rg -uu`, real
+  `/usr/bin/grep -r` and `find .` still descend — all opt-in.
+
 ### How It Works
 | Main Repo | Worktree |
 |-----------|----------|
-| `<repo>/` | `<repo>-worktrees/<feature>/` |
+| `<repo>/` | `<repo>/.worktrees/<feature>/` |
 | Ports: 3000, 8000, 8080, 8090 | Ports: Vite 3110-3199, FastAPI 8210-8299, Caddy 8310-8399, PB 8410-8499 |
 | Branch: main | Branch: feature/<feature> |
 | Database: production data | Database: seeded from main |

@@ -313,6 +313,20 @@ requirements/
 claude-exports/
 pb_data_local/
 
+# Feature worktrees, created by scripts/worktree/new.sh. Each is a full
+# checkout (~1.1 GB with deps and a seeded DB) and must never be tracked.
+#
+# This entry is load-bearing beyond git: the `grep` shim Claude Code installs
+# runs with `--hidden`, so the leading dot does NOT keep worktrees out of
+# search results -- `--ignore-files` reading this line is what does. ripgrep
+# skips them for both reasons. See docs/reference/git-workflow.md.
+#
+# Left unanchored on purpose. Nothing should ever create a nested
+# .worktrees/, and scripts/worktree/new.sh pins its parent to the main
+# worktree so it cannot, but if that ever regresses the copy still stays out
+# of git and out of every search rather than silently becoming trackable.
+.worktrees/
+
 # =============================================================================
 # Private local files (not tracked)
 # These files contain camp-specific branding, credentials, or private config.

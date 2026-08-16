@@ -240,10 +240,11 @@ post-merge:
   commands:
     worktree-cleanup:
       run: |
-        MAIN_REPO="$(git rev-parse --show-toplevel)"
-        REPO_NAME="$(basename "$MAIN_REPO")"
-        REPO_PARENT="$(dirname "$MAIN_REPO")"
-        WORKTREES_DIR="$REPO_PARENT/${REPO_NAME}-worktrees"
+        # --git-common-dir, not --show-toplevel: post-merge fires in whichever
+        # worktree was merged into, and --show-toplevel would then look for
+        # sibling worktrees inside that worktree. See scripts/worktree/new.sh.
+        MAIN_REPO="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")"
+        WORKTREES_DIR="$MAIN_REPO/.worktrees"
         [ -d "$WORKTREES_DIR" ] || exit 0
         MERGED=""
         COUNT=0
