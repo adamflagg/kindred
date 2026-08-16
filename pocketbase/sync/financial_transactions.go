@@ -2,6 +2,7 @@ package sync
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"strings"
@@ -152,8 +153,13 @@ func (s *FinancialTransactionsSync) SyncForYear(ctx context.Context, year int) e
 		err = s.ProcessSimpleRecord(
 			"financial_transactions", txnKey, pbData, existingRecords, compareFields)
 		if err != nil {
-			slog.Error("Error processing transaction", "cm_id", cmID, "amount", amount, "error", err)
-			s.Stats.Errors++
+			if errors.Is(err, errRejectedRecord) {
+				slog.Warn("Rejected transaction", "cm_id", cmID, "amount", amount, "error", err)
+				s.Stats.Rejected++
+			} else {
+				slog.Error("Error processing transaction", "cm_id", cmID, "amount", amount, "error", err)
+				s.Stats.Errors++
+			}
 		}
 	}
 

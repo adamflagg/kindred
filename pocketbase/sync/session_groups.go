@@ -2,6 +2,7 @@ package sync
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 
@@ -106,8 +107,13 @@ func (s *SessionGroupsSync) Sync(ctx context.Context) error {
 		// Process the record
 		compareFields := []string{"cm_id", "name", "description", "is_active", "sort_order"}
 		if err := s.ProcessSimpleRecord("session_groups", key, pbData, existingRecords, compareFields); err != nil {
-			slog.Error("Error processing session group", "error", err)
-			s.Stats.Errors++
+			if errors.Is(err, errRejectedRecord) {
+				slog.Warn("Rejected session group", "error", err)
+				s.Stats.Rejected++
+			} else {
+				slog.Error("Error processing session group", "error", err)
+				s.Stats.Errors++
+			}
 		}
 	}
 

@@ -47,21 +47,42 @@ type rejectSite struct {
 //     SQLite operations that did not complete: infrastructure, zero tolerance.
 //   - household_demographics.go's sweep refusal -- a refusal is not a counted
 //     failure at all; kindred#2283 moves it onto the returned-error channel.
-//   - wrapper sites whose callee returns both a transform rejection and an
-//     App.Save error through one return value, so the call site cannot tell them
-//     apart: processEnrollment (attendees.go), processAssignment
-//     (bunk_assignments.go), processRow (bunk_requests.go), processPerson
-//     (persons.go) and ProcessSimpleRecord (base_sync.go). They stay loud until
-//     kindred#2292 gives them typed errors. processAttendee is NOT one of them,
-//     despite an earlier revision of this comment saying so: it returns only
-//     `invalid or missing PersonID` or nil, counting and swallowing
-//     processEnrollment's errors itself, so its call site is a pure rejection
-//     that needs no sentinel.
+//   - processAttendee (attendees.go) is NOT a mixed wrapper, despite an earlier
+//     revision of this comment saying so: it returns only `invalid or missing
+//     PersonID` or nil, counting and swallowing processEnrollment's errors
+//     itself, so its call site is a pure rejection that needs no sentinel.
+//
+// kindred#2292 gave the five wrapper sites whose callee could return EITHER a
+// transform rejection or an App.Save error through one return value --
+// processEnrollment (attendees.go), processAssignment (bunk_assignments.go),
+// processRow (bunk_requests.go), processPerson (persons.go), and
+// ProcessSimpleRecord (base_sync.go, reached by five call sites: bunks.go,
+// financial_transactions.go, session_groups.go, staff.go, sessions.go) -- a
+// shared sentinel, errRejectedRecord. Each wrapper wraps it on its own
+// pre-App.Save validation paths only; every App.Save/FindCollectionByNameOrId
+// failure inside them stays unwrapped and therefore Errors. Their call sites
+// branch on errors.Is(err, errRejectedRecord), which is why their "Rejected ..."
+// messages below are new entries rather than reclassified old ones.
 func expectedRejectSites() []rejectSite {
 	return []rejectSite{
+		// kindred#2292: processEnrollment's sentinel-wrapped validation failure,
+		// reported at its call site in processAttendee.
+		{"attendees.go", "Rejected enrollment"},
+		// kindred#2292: processAssignment's sentinel-wrapped validation failures,
+		// reported at its call site in Sync.
+		{"bunk_assignments.go", "Rejected assignment"},
+		// kindred#2292: processRow's sentinel-wrapped validation failures,
+		// reported at its call site in RunSync.
+		{"bunk_requests.go", "Rejected bunk request row"},
 		{"bunks.go", "Error transforming bunk"},
 		{"bunks.go", "Invalid bunk ID type"},
 		{"bunks.go", "Invalid year type in pbData"},
+		// kindred#2292: ProcessSimpleRecord's sentinel-wrapped year validation,
+		// reported at its call site in Sync. Defensive today -- bunks.go always
+		// builds "year" as a valid int before calling in -- but typed correctly
+		// regardless of what current callers happen to pass (base_sync.go's
+		// errRejectedRecord doc comment explains why).
+		{"bunks.go", "Rejected bunk"},
 		{"custom_field_definitions.go", "Error transforming custom field definition"},
 		{"custom_field_definitions.go", "Invalid custom field definition cm_id"},
 		{"divisions.go", "Error transforming division"},
@@ -72,6 +93,10 @@ func expectedRejectSites() []rejectSite {
 		{"financial_lookups.go", "Invalid payment method cm_id"},
 		{"financial_transactions.go", "Error transforming transaction"},
 		{"financial_transactions.go", "Invalid transaction cm_id"},
+		// kindred#2292: ProcessSimpleRecord's sentinel-wrapped year validation,
+		// reported at its call site in SyncForYear. See the "Rejected bunk" note
+		// above.
+		{"financial_transactions.go", "Rejected transaction"},
 		{"household_custom_field_values.go", "Invalid or missing field id in custom field value"},
 		{"person_custom_field_values.go", "Invalid or missing field id in custom field value"},
 		// kindred#2270: a second API entry for a (person|household, field_definition, year)
@@ -85,12 +110,25 @@ func expectedRejectSites() []rejectSite {
 		{"person_tag_definitions.go", "Error transforming person tag definition"},
 		{"person_tag_definitions.go", "Invalid person tag definition name"},
 		{"persons.go", "Error transforming household"},
+		// kindred#2292: processPerson's sentinel-wrapped validation failure,
+		// reported at its call site in processBatchPersons.
+		{"persons.go", "Rejected person"},
 		{"session_groups.go", "Error transforming session group"},
 		{"session_groups.go", "Invalid session group ID type"},
+		// kindred#2292: ProcessSimpleRecord's sentinel-wrapped year validation,
+		// reported at its call site in Sync. See the "Rejected bunk" note above.
+		{"session_groups.go", "Rejected session group"},
 		{"sessions.go", "Error transforming session"},
 		{"sessions.go", "Invalid session ID type"},
 		{"sessions.go", "Invalid year type in pbData"},
+		// kindred#2292: ProcessSimpleRecord's sentinel-wrapped year validation,
+		// reported at its call site in Sync. See the "Rejected bunk" note above.
+		{"sessions.go", "Rejected session"},
 		{"staff.go", "Error transforming staff record"},
+		// kindred#2292: ProcessSimpleRecord's sentinel-wrapped year validation,
+		// reported at its call site in syncStaff. See the "Rejected bunk" note
+		// above.
+		{"staff.go", "Rejected staff record"},
 		// The three kindred#2295 additions. Their `Error transforming ...` siblings
 		// three lines up were reclassified in the first pass and these were missed,
 		// even though they are the same per-record validation failure -- and the

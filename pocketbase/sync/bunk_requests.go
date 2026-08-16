@@ -5,6 +5,7 @@ import (
 	"crypto/md5" //nolint:gosec // G501: MD5 used for change detection, not security
 	"encoding/csv"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"log/slog"
 	"os"
@@ -138,8 +139,13 @@ func (s *BunkRequestsSync) RunSync(csvPath string, _ int) error {
 
 		// Process row
 		if rowErr := s.processRow(row, columnIndex, currentYear); rowErr != nil {
-			slog.Error("Error processing row", "row", rowNumber, "error", rowErr)
-			s.Stats.Errors++
+			if errors.Is(rowErr, errRejectedRecord) {
+				slog.Warn("Rejected bunk request row", "row", rowNumber, "error", rowErr)
+				s.Stats.Rejected++
+			} else {
+				slog.Error("Error processing row", "row", rowNumber, "error", rowErr)
+				s.Stats.Errors++
+			}
 		}
 	}
 
@@ -202,15 +208,16 @@ func (s *BunkRequestsSync) loadValidPersonIDs() error {
 
 // processRow processes a single CSV row
 func (s *BunkRequestsSync) processRow(row []string, columnIndex map[string]int, year int) error {
-	// Extract PersonID
+	// Extract PersonID. A missing or malformed value here is a bad CSV row, not
+	// an infrastructure failure -- kindred#2292.
 	personIDStr := s.getColumn(row, columnIndex, "PersonID")
 	if personIDStr == "" {
-		return fmt.Errorf("missing PersonID")
+		return fmt.Errorf("%w: missing PersonID", errRejectedRecord)
 	}
 
 	personID, err := strconv.Atoi(personIDStr)
 	if err != nil {
-		return fmt.Errorf("invalid PersonID: %s", personIDStr)
+		return fmt.Errorf("%w: invalid PersonID: %s", errRejectedRecord, personIDStr)
 	}
 
 	// Validate person is enrolled and get their PocketBase ID
@@ -319,6 +326,18 @@ func findOrphanedPersonIDs(csvPersonIDs map[int]bool, existingOBRPersonIDs []int
 // Called after CSV sync to clean up data from campers who have cancelled/unenrolled.
 // Returns the set of OBR person cm_ids (post-purge) for use by the zombie BR sweep.
 func (s *BunkRequestsSync) purgeOrphanedRequests(year int) (map[int]bool, error) {
+	// This sweep is hand-rolled rather than routed through
+	// BaseSyncService.DeleteOrphansGuarded, so it does not pick up
+	// OrphanSweepGuard's Rejected arm for free -- orphan_guard.go's own doc
+	// warns this is exactly the gap a hand-rolled sweep falls into. A row
+	// this run's processRow rejected (kindred#2292) never reaches
+	// s.csvPersonIDs, which makes its still-current requester look identical
+	// to one who genuinely cancelled. Skip explicitly rather than purge on an
+	// incomplete set (kindred#2295's precondition, applied by hand here).
+	if s.skipSweepForRejections("bunk_requests", nil) {
+		return nil, nil
+	}
+
 	if len(s.csvPersonIDs) == 0 {
 		slog.Info("No CSV persons tracked, skipping orphan purge")
 		return nil, nil
