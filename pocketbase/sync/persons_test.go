@@ -1978,3 +1978,161 @@ func seedSweepPerson(t *testing.T, app core.App, cmID, year int, first, last str
 		t.Fatalf("seed person %d: %v", cmID, saveErr)
 	}
 }
+
+// TestOrphanSweepSkippedWhenStaffFetchFailed pins the other half of kindred#2394.
+//
+// Tracking a staff-only person (above) only protects them while the run actually
+// SEES them. gatherPersonIDs swallows a getPersonIDsFromStaff failure --
+// `slog.Warn(...); staffPersonIDs = nil` -- and carries on with attendees only, so
+// on such a run every staff-only person is absent from the computed set and reads
+// as an orphan again. Neither existing guard catches it: OrphanSweepGuard.Check
+// compares a computed set still holding ~90% of the rows on disk against a 50%
+// floor, and skipSweepForRejections needs Stats.Rejected, which a swallowed fetch
+// error never bumps.
+//
+// That mattered less while person_custom_values.person blanked-and-collided,
+// because the collision aborted most of those deletes. Migration 1500000158 makes
+// that relation cascade, so the deletes would now succeed silently -- which is
+// exactly why the skip has to exist in the same change as the cascade.
+//
+// The second case is what stops the first from being vacuous: with the flag clear,
+// a genuinely untracked row is still swept.
+func TestOrphanSweepSkippedWhenStaffFetchFailed(t *testing.T) {
+	t.Parallel()
+
+	const (
+		camperCMID = 1001
+		staffCMID  = 2001
+		year       = 2026
+	)
+
+	for _, tc := range []struct {
+		name             string
+		staffFetchFailed bool
+		wantSwept        bool
+	}{
+		{
+			name:             "staff fetch failed: the sweep is abandoned, not narrowed",
+			staffFetchFailed: true,
+			wantSwept:        false,
+		},
+		{
+			name:             "staff fetch succeeded: a genuine orphan is still swept",
+			staffFetchFailed: false,
+			wantSwept:        true,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			app := newPersonsTestApp(t)
+			seedSweepPerson(t, app, camperCMID, year, testFirstName, "Johnson")
+			seedSweepPerson(t, app, staffCMID, year, "Noah", "Martinez")
+
+			s := NewPersonsSync(app, nil)
+			s.SyncSuccessful = true
+			s.staffFetchFailed = tc.staffFetchFailed
+
+			// Only the camper is tracked -- the staff-only person never reached
+			// processPerson at all, because the run never learned they existed.
+			s.TrackProcessedKey(camperCMID, year)
+
+			if err := s.deleteOrphans(year); err != nil {
+				t.Fatalf("deleteOrphans: %v", err)
+			}
+
+			_, err := app.FindFirstRecordByFilter("persons", "cm_id = 2001")
+			swept := err != nil
+
+			if swept != tc.wantSwept {
+				t.Errorf("row swept = %v, want %v (lookup err: %v)", swept, tc.wantSwept, err)
+			}
+
+			// The skip must not fail the run: updateRelationsAndCleanup turns a
+			// deleteOrphans error into Stats.Errors++, and a deliberate skip is not
+			// an error. (deleteOrphans returning nil is asserted above.)
+			if _, err := app.FindFirstRecordByFilter("persons", "cm_id = 1001"); err != nil {
+				t.Errorf("the tracked camper was swept: %v", err)
+			}
+		})
+	}
+}
+
+// TestHouseholdOrphanSweepSkippedWhenStaffFetchFailed covers the sweep sitting
+// three lines below the persons one in updateRelationsAndCleanup, which has the
+// identical exposure.
+//
+// extractUniqueHouseholds reads `Households` off the raw CampMinder payload, with
+// no reference to CamperDetails, and processBatchPersons calls it for EVERY person
+// in the batch -- staff-only people included. So a staff-only person's households
+// are tracked on a healthy run and missing on a run whose staff feed failed, and
+// any household reachable only through staff is then deleted as an orphan.
+//
+// deleteHouseholdOrphans is deliberately unguarded, but that reasoning is about
+// REJECTIONS: it builds its key set upstream of the transform that rejects, so a
+// rejection can never remove a key from it. A missing upstream feed removes keys
+// regardless of where the tracking sits, which is why this one needs the skip.
+func TestHouseholdOrphanSweepSkippedWhenStaffFetchFailed(t *testing.T) {
+	t.Parallel()
+
+	const (
+		camperHouseholdCMID = 3001
+		staffHouseholdCMID  = 3002
+		year                = 2026
+	)
+
+	for _, tc := range []struct {
+		name             string
+		staffFetchFailed bool
+		wantSwept        bool
+	}{
+		{name: "staff fetch failed: the sweep is abandoned", staffFetchFailed: true, wantSwept: false},
+		{name: "staff fetch succeeded: a genuine orphan is still swept", staffFetchFailed: false, wantSwept: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			app := newHouseholdsTestApp(t)
+			seedSweepHousehold(t, app, camperHouseholdCMID, year)
+			seedSweepHousehold(t, app, staffHouseholdCMID, year)
+
+			s := NewPersonsSync(app, nil)
+			s.SyncSuccessful = true
+			s.staffFetchFailed = tc.staffFetchFailed
+
+			// Only the camper's household was reachable this run.
+			processed := map[int]bool{camperHouseholdCMID: true}
+
+			if err := s.deleteHouseholdOrphans(year, processed); err != nil {
+				t.Fatalf("deleteHouseholdOrphans: %v", err)
+			}
+
+			_, err := app.FindFirstRecordByFilter("households", "cm_id = 3002")
+			swept := err != nil
+
+			if swept != tc.wantSwept {
+				t.Errorf("household swept = %v, want %v (lookup err: %v)", swept, tc.wantSwept, err)
+			}
+			if _, err := app.FindFirstRecordByFilter("households", "cm_id = 3001"); err != nil {
+				t.Errorf("the tracked household was swept: %v", err)
+			}
+		})
+	}
+}
+
+// seedSweepHousehold writes one households row for the sweep test above.
+func seedSweepHousehold(t *testing.T, app core.App, cmID, year int) {
+	t.Helper()
+
+	col, err := app.FindCollectionByNameOrId("households")
+	if err != nil {
+		t.Fatalf("find households: %v", err)
+	}
+
+	rec := core.NewRecord(col)
+	rec.Set("cm_id", cmID)
+	rec.Set("year", year)
+	if saveErr := app.Save(rec); saveErr != nil {
+		t.Fatalf("seed household %d: %v", cmID, saveErr)
+	}
+}
