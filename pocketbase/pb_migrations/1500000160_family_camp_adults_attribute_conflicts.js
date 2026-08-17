@@ -9,7 +9,12 @@
  * received more than one answer, mapped to the answers the merge DISCARDED.
  * The answer that won is still in the column itself, so a reader shows the
  * column value and this map's values side by side. NULL when the slot's
- * answers agreed, which is ~94% of rows.
+ * answers agreed. Measured by replaying processAdults over data-prod.db:
+ * 1,240 of 9,789 slots carry a map all years (12.7%), 92 of 834 in 2026
+ * (11.0%) -- so ~87% of rows are NULL, not the ~94% an earlier draft of this
+ * comment carried. That 94% was the residual of the two NORMALISED columns
+ * only; this column records every person-sourced attribute that merges, which
+ * is a larger population.
  *
  *   {"date_of_birth":["1981-09-02"],"relationship_to_camper":["Mother"]}
  *
@@ -34,7 +39,11 @@
  * ONLY THE RESIDUAL LIGHTS UP. The kindred#2405 normalisers run first, so the
  * 583 date_of_birth and 146 relationship_to_camper divergences that were only
  * ever two spellings of one answer (`09-02-1979` vs `9/2/1979`; `mother` vs
- * `Mom`) collapse before the comparison and record nothing.
+ * `Mom`) collapse before the comparison and record nothing. The free-text
+ * columns have no normaliser, so sameAnswer() in family_camp_derived.go folds
+ * case and whitespace at the COMPARISON only -- `Amy Johnson` vs
+ * `amy johnson` is one answer. Without it 189 of 1,429 lit slots, and 32 of
+ * 2026's 124, were nothing but capitalisation.
  *
  * NO DATA BACKFILL. The column is written by the family_camp_derived sync,
  * which recomputes every row it touches; until that runs the column is NULL,

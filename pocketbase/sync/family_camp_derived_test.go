@@ -2817,6 +2817,34 @@ func TestProcessAdultsRecordsResidualAttributeConflicts(t *testing.T) {
 			wantConflicts: `{"first_name":["Amy R Johnson"]}`,
 		},
 		{
+			// The free-text columns have no kindred#2405 normaliser, so the
+			// only thing standing between staff and 232 badges that say
+			// "Amy Johnson vs amy johnson" is the conflict comparison itself.
+			// Measured over data-prod.db, all years: 189 of 1,429 lit slots
+			// (32 of 2026's 124) light up on nothing but letter case.
+			name:          "a case-only difference is one answer, not two",
+			fieldName:     "Family Camp-P1 First Name",
+			values:        []string{"Amy Johnson", "amy johnson"},
+			wantStored:    "Amy Johnson",
+			wantConflicts: "",
+		},
+		{
+			// CampMinder does not trim these values and the loader does not
+			// either, so a stray space is a spelling, not an answer.
+			name:          "a whitespace-only difference is one answer, not two",
+			fieldName:     "Family Camp-P1 First Name",
+			values:        []string{"Amy Johnson", "Amy  Johnson "},
+			wantStored:    "Amy Johnson",
+			wantConflicts: "",
+		},
+		{
+			name:          "case folding applies to every merged column",
+			fieldName:     "Family Camp Gender 1",
+			values:        []string{"Female", "female"},
+			wantStored:    "Female",
+			wantConflicts: "",
+		},
+		{
 			name:      "the same losing answer twice is recorded once",
 			fieldName: "Family Camp Gender 1",
 			values:    []string{"Female", "F", "F"},
@@ -2947,6 +2975,75 @@ func TestProcessAdultsEmailConflictRecordsTheDisplacedValue(t *testing.T) {
 	}
 }
 
+// TestProcessAdultsEmailCaseVariantIsNotAConflict covers the column with the
+// highest case-noise rate in production: 111 of 325 recorded email conflicts,
+// before this guard, were one address typed with a capitalised first letter.
+// A mail domain is case-insensitive by RFC 1035 and every provider treats the
+// local part that way in practice, so `Amy@example.com` and `amy@example.com`
+// are one answer -- staff cannot act on the difference.
+//
+// The second case is the one that needs the guard on BOTH branches: a leading
+// space makes the value fail emailFormatPattern, so preferEmail DISPLACES it
+// with the trimmed spelling. Without the guard the displaced value is recorded
+// as a conflicting answer against itself.
+func TestProcessAdultsEmailCaseVariantIsNotAConflict(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		name       string
+		values     []string
+		wantStored string
+	}{
+		{
+			name:       "capitalisation only",
+			values:     []string{"Amy.Johnson@example.com", "amy.johnson@example.com"},
+			wantStored: "Amy.Johnson@example.com",
+		},
+		{
+			name:       "capitalisation only, reversed",
+			values:     []string{"amy.johnson@example.com", "Amy.Johnson@example.com"},
+			wantStored: "amy.johnson@example.com",
+		},
+		{
+			// preferEmail displaces the untrimmed spelling because the leading
+			// space fails emailFormatPattern. The merge is unchanged; what must
+			// not happen is a conflict against the same address.
+			name:       "leading space displaced by the trimmed spelling",
+			values:     []string{" amy.johnson@example.com", "amy.johnson@example.com"},
+			wantStored: "amy.johnson@example.com",
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			s := &FamilyCampDerivedSync{}
+			householdValues := []customValueEntry{
+				{householdPBID: "hh_1", fieldName: "Family Camp Adult 1", value: "Amy Johnson"},
+			}
+			var personValues []customValueEntry
+			for _, v := range tc.values {
+				personValues = append(personValues, customValueEntry{
+					householdPBID: "hh_1", fieldName: "Family Camp Adult 1 Email", value: v,
+				})
+			}
+
+			adults := s.processAdults(householdValues, personValues)
+
+			if len(adults) != 1 {
+				t.Fatalf("expected 1 merged adult, got %d", len(adults))
+			}
+			if adults[0].email != tc.wantStored {
+				t.Errorf("merged email = %q, want %q -- the merge policy must NOT change",
+					adults[0].email, tc.wantStored)
+			}
+			if got := adults[0].conflictsJSON(); got != "" {
+				t.Errorf("attribute_conflicts = %s, want none -- one address in two spellings", got)
+			}
+		})
+	}
+}
+
 // TestAdultConflictsJSONIsCanonical pins the stored form. The sync compares
 // before it writes, so a rendering that depended on map iteration order would
 // rewrite every conflicted row on every run.
@@ -3040,7 +3137,13 @@ func TestAdultsCollectionHasAttributeConflictsColumn(t *testing.T) {
 	if err != nil {
 		t.Fatalf("the attribute_conflicts migration must exist: %v", err)
 	}
-	for _, want := range []string{"family_camp_adults", "attribute_conflicts", "new Field(", "type: 'json'"} {
+	// maxSize is in the list because PB v0.23 accepts the field without it and
+	// silently applies its own default (1 MB for json, per
+	// docs/reference/pocketbase-migrations.md) -- the cap this column's comment
+	// justifies would then exist nowhere.
+	for _, want := range []string{
+		"family_camp_adults", "attribute_conflicts", "new Field(", "type: 'json'", "maxSize: 50000",
+	} {
 		if !strings.Contains(string(source), want) {
 			t.Errorf("migration is missing %q -- a plain fields.add({...}) is silently ignored in PB v0.23", want)
 		}

@@ -199,8 +199,33 @@ func (a *adultData) mergeFirstNonEmpty(column, current, candidate string) string
 	if current == "" {
 		return candidate
 	}
-	a.noteConflict(column, candidate)
+	if !sameAnswer(current, candidate) {
+		a.noteConflict(column, candidate)
+	}
 	return current
+}
+
+// sameAnswer reports whether two answers to one question differ only in
+// SPELLING -- letter case, or how much whitespace the typist left.
+//
+// It gates what is RECORDED, never what is stored: every return value in
+// mergeFirstNonEmpty and every assignment in the email arm is byte-identical
+// with or without this check, so the first-non-empty and preferEmail merges
+// are untouched. It exists because the free-text columns have no
+// kindred#2405 normaliser and a badge that fires on `Amy Johnson` vs
+// `amy johnson` is a badge staff learn to ignore. Measured by replaying
+// processAdults over data-prod.db, all years: 232 recorded losers and 189 of
+// 1,429 lit slots -- 32 of 2026's 124 -- differed from the winner in nothing
+// but case.
+//
+// Deliberately narrow. It folds case and collapses whitespace runs; it does
+// NOT strip punctuation, reorder tokens, or fold nicknames. `Amy Johnson` vs
+// `Amy R Johnson` is still two answers, because it is.
+func sameAnswer(a, b string) bool {
+	return strings.EqualFold(
+		strings.Join(strings.Fields(a), " "),
+		strings.Join(strings.Fields(b), " "),
+	)
 }
 
 // conflictsJSON renders the discarded answers in the canonical form stored in
@@ -894,7 +919,9 @@ func (s *FamilyCampDerivedSync) loadPersonCustomValues(
 // and mergeFirstNonEmpty. Which answer wins is still first-non-empty over
 // load order for every attribute, and still preferEmail for email; the only
 // change is that the discarded answers are kept, keyed by column, so staff
-// can see that a slot was answered twice.
+// can see that a slot was answered twice. What is NOT kept is a discarded
+// answer that differs from the winner only in case or whitespace -- see
+// sameAnswer, which gates the recording and nothing else.
 //
 // THE GRAIN QUESTION IS CLOSED. A 2026-08-15 ruling to re-key this table to
 // camper grain was REVERSED on 2026-08-17; the column above is what replaced
@@ -969,9 +996,15 @@ func (s *FamilyCampDerivedSync) processAdults(
 			if preferEmail(adult.email, v.value) {
 				// The DISPLACED value is the conflict, not the candidate:
 				// preferEmail has just ruled the candidate the better answer.
-				adult.noteConflict("email", adult.email)
+				// This branch needs the sameAnswer guard as much as the other
+				// one does: a leading space fails emailFormatPattern, so
+				// " amy@example.com" is displaced by "amy@example.com" and
+				// would otherwise be recorded as conflicting with itself.
+				if !sameAnswer(adult.email, v.value) {
+					adult.noteConflict("email", adult.email)
+				}
 				adult.email = v.value
-			} else if v.value != adult.email {
+			} else if !sameAnswer(adult.email, v.value) {
 				adult.noteConflict("email", v.value)
 			}
 		case strings.Contains(v.fieldName, "Pronouns"):
