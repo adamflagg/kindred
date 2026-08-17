@@ -26,6 +26,8 @@ import type {
   LodgingWriteResponse,
   PartyAdult,
   PartyChild,
+  RequestTextBlock,
+  RequestTextEntry,
   RosterCounts,
   RosterParty,
   ShareRequestSummary,
@@ -61,6 +63,16 @@ export type LodgingUnitRow = LodgingUnitSummary
 export type WriteInCoverRow = WriteInCover
 /** A household's cabin-sharing request, unresolved. */
 export type ShareRequest = ShareRequestSummary
+/**
+ * Every answer a household gave in ONE free-text source field (kindred#2330).
+ *
+ * `source_field` is the CampMinder field name verbatim, `COVID-19 Bunking
+ * Requests` included. Owner ruling 2026-08-17: original field names until
+ * staff have used this live and can say what they should be called.
+ */
+export type RequestTextBlockRow = RequestTextBlock
+/** One distinct answer inside a block, with the child or children who wrote it. */
+export type RequestTextEntryRow = RequestTextEntry
 /** Derived accessibility booleans. Never narrative text. */
 export type AccessibilityFlags = AccessibilityFlagSummary
 /** Every weekend in a year with its counts — the lander's single read. */

@@ -26,6 +26,7 @@ ingest never touches.
 from __future__ import annotations
 
 from collections.abc import Sequence
+from typing import Literal, NamedTuple
 
 # Values of lodging_units.bathroom. An unset PocketBase select stores as "",
 # which means "nobody has told us yet", not "no bathroom".
@@ -235,3 +236,118 @@ def container_bathroom(leaf_bathroom_groups: frozenset[str]) -> tuple[str, str]:
         if group:
             return "shared", group
     return "none", ""
+
+
+# ── Free-text bunk-request provenance (kindred#2330) ─────────────────────────
+#
+# The one place on this surface that reads RAW answers rather than a derived
+# column, and the scope note at the top of this module still holds: nothing
+# below normalises a gate, parses a NEAR/WITH mode or resolves a verdict. It
+# only says which source field an answer came from.
+#
+# It has to be raw, because the derived column cannot be un-joined.
+# `CollapseToHouseholdGrain` (pocketbase/sync/lodging_requests.go) dedupes
+# across fields and then `strings.Join(a.textParts, "; ")`, and 10 of 422
+# non-blank 2026 request values contain `'; '` themselves -- so no split of
+# `request_text` is possible on either side of the wire.
+
+RequestTextAuthorship = Literal["family", "staff"]
+
+
+class RequestTextSource(NamedTuple):
+    """One free-text bunk-request field, as it is shown to staff.
+
+    `label` is the CampMinder field name VERBATIM, including the misnamed
+    `COVID-19 Bunking Requests` -- the field that has plainly been repurposed
+    as the general bunking-request question and carries 205 of the 382
+    households rostered into a 2026 family session. Owner ruling 2026-08-17:
+    "call them the original fieldnames for now until staff can weigh in after
+    it's live". A display-names issue gets filed once they have. Do not
+    "improve" these strings.
+    """
+
+    label: str
+    authorship: RequestTextAuthorship
+
+
+# ORDERED, and the order is the panel's block order. Family-authored fields
+# first so a household's own ask leads, staff-authored notes last; within a
+# lane, by 2026 coverage, so the field staff read most often is at the top.
+#
+# Counts are rostered households on `pocketbase/pb_data/data-prod.db`,
+# denominator 382 (`status_id = 2`, 2026's eight family sessions):
+# COVID-19 Bunking Requests 205, Share Bunk With 104, Shared-request 100,
+# BunkingNotes Notes 28, Internal Bunk Notes 8.
+#
+# `FAM CAMP-Share Comments` is 0 for 2026 and is carried anyway. It is one of
+# the three fields the Go ingest already joins into `request_text` (live
+# 2024-2025), so leaving it out would make the split lose text the joined
+# column shows today for those years.
+#
+# TWO fields are deliberately ABSENT and both absences are load-bearing:
+#
+#   `Do Not Share Bunk With` (`staff_not_bunk_with`, 3 rostered households)
+#   travels this same code path and the 2026-08-17 ruling did not name it.
+#   Silence is not a yes. Adding it is one row here plus one entry in
+#   BUNKING_CSV_REQUEST_TEXT_FIELDS below.
+#
+#   `RetParent-Socializewithbest` (`socialize_with`, 107 rostered households)
+#   is NOT free text: it has exactly two distinct values in 2026, both 40
+#   characters, and `frontend/src/utils/requestBucket.ts` already classes it
+#   an immaterial source field.
+REQUEST_TEXT_SOURCES: tuple[RequestTextSource, ...] = (
+    RequestTextSource("COVID-19 Bunking Requests", "family"),
+    RequestTextSource("Share Bunk With", "family"),
+    RequestTextSource("Shared-request", "family"),
+    RequestTextSource("FAM CAMP-Share Comments", "family"),
+    RequestTextSource("BunkingNotes Notes", "staff"),
+    RequestTextSource("Internal Bunk Notes", "staff"),
+)
+
+# The family-camp lane: CampMinder custom-field ids, matching the three
+# `Target: targetRequestText` rows in pocketbase/sync/lodging_fields.go. The
+# label is pinned here rather than read from `custom_field_defs.name` for the
+# same reason the Go constants pin it: matching is on cm_id, and a CampMinder
+# rename must not silently unlabel a block or drop it out of the order above.
+FAMILY_CAMP_REQUEST_TEXT_CM_IDS: dict[int, str] = {
+    206286: "COVID-19 Bunking Requests",
+    240598: "FAM CAMP-Share Comments",
+    274133: "Shared-request",
+}
+
+# The bunking-CSV lane: `original_bunk_requests.field` slugs mapped back to the
+# CampMinder report column they were read from -- the inverse of `csvFieldMap`
+# in pocketbase/sync/bunk_requests.go. 32 rostered 2026 households carry
+# request text ONLY here, which is why the weekend surface showed them nothing
+# before kindred#2330.
+BUNKING_CSV_REQUEST_TEXT_FIELDS: dict[str, str] = {
+    "bunk_request_form": "Share Bunk With",
+    "bunking_notes": "BunkingNotes Notes",
+    "internal_notes": "Internal Bunk Notes",
+}
+
+_REQUEST_TEXT_ORDER: dict[str, int] = {source.label: position for position, source in enumerate(REQUEST_TEXT_SOURCES)}
+_REQUEST_TEXT_AUTHORSHIP: dict[str, RequestTextAuthorship] = {
+    source.label: source.authorship for source in REQUEST_TEXT_SOURCES
+}
+
+
+def request_text_source_order(label: str) -> int:
+    """Where a source field's block sits on the panel.
+
+    Total over every string, because this is a render path: one unrecognised
+    label sorts to the end rather than raising and taking the whole household
+    down with it. Same position `safeSourceFromField` takes on the TS side.
+    """
+    return _REQUEST_TEXT_ORDER.get(label, len(REQUEST_TEXT_SOURCES))
+
+
+def request_text_authorship(label: str) -> RequestTextAuthorship:
+    """Who wrote a source field's answers -- the family, or staff.
+
+    An unregistered label reads `staff`, NOT `family`. `family` is the amber
+    treatment reserved for a household's own words, and attributing an
+    unknown field to the family is the mistake that cannot be walked back
+    once a staff member has read it as a parent's ask.
+    """
+    return _REQUEST_TEXT_AUTHORSHIP.get(label, "staff")

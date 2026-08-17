@@ -16,10 +16,15 @@ Python would regress two fixes that live only on the Go side.
 import pytest
 
 from api.services.lodging_rules import (
+    BUNKING_CSV_REQUEST_TEXT_FIELDS,
+    FAMILY_CAMP_REQUEST_TEXT_CM_IDS,
+    REQUEST_TEXT_SOURCES,
     amenity_coverage,
     container_bathroom,
     effective_bathroom,
     is_family_available,
+    request_text_authorship,
+    request_text_source_order,
     unit_capacity,
 )
 
@@ -195,3 +200,83 @@ class TestAmenityCoverage:
         assert amenity_coverage([True, None]) == "unknown"
         assert amenity_coverage([False, None]) == "unknown"
         assert amenity_coverage([None]) == "unknown"
+
+
+class TestRequestTextSourceRegistry:
+    """The five free-text bunk-request source fields, and the two excluded ones.
+
+    kindred#2330. The registry is one ordered tuple rather than a map so the
+    panel's block order is a property of the rule layer, not of whichever
+    order PocketBase happened to page the rows back in.
+
+    Measured on `pocketbase/pb_data/data-prod.db`, denominator 382 households
+    rostered into one of 2026's eight family sessions (`status_id = 2`):
+    `COVID-19 Bunking Requests` 205, `Share Bunk With` 104, `Shared-request`
+    100, `BunkingNotes Notes` 28, `Internal Bunk Notes` 8.
+    `FAM CAMP-Share Comments` is 0 for 2026 and is carried anyway -- it is one
+    of the three fields the Go ingest already joins into `request_text`
+    (2024-2025 only), so dropping it here would lose those years' text.
+    """
+
+    def test_the_registry_is_the_ruled_five_plus_the_dormant_share_comments(self) -> None:
+        assert [source.label for source in REQUEST_TEXT_SOURCES] == [
+            "COVID-19 Bunking Requests",
+            "Share Bunk With",
+            "Shared-request",
+            "FAM CAMP-Share Comments",
+            "BunkingNotes Notes",
+            "Internal Bunk Notes",
+        ]
+
+    def test_family_authored_blocks_sort_ahead_of_staff_authored_ones(self) -> None:
+        """An internal note must never read as a family's own ask, so the two
+        staff fields land at the bottom of the panel as well as in grey."""
+        authorship = [source.authorship for source in REQUEST_TEXT_SOURCES]
+        assert authorship == ["family", "family", "family", "family", "staff", "staff"]
+
+    def test_the_two_staff_authored_fields_are_the_bunking_csv_notes(self) -> None:
+        """All 34 `BunkingNotes` values end in an inline staff signature and
+        timestamp; no parent-authored field does."""
+        staff = {source.label for source in REQUEST_TEXT_SOURCES if source.authorship == "staff"}
+        assert staff == {"BunkingNotes Notes", "Internal Bunk Notes"}
+
+    def test_every_storage_key_maps_onto_exactly_one_registered_label(self) -> None:
+        """The two lanes are keyed differently -- the family-camp lane by
+        CampMinder custom-field id, the bunking CSV by its own column slug --
+        and a label in one map with no row in the registry would render as an
+        unordered block at the end of the panel."""
+        labels = [source.label for source in REQUEST_TEXT_SOURCES]
+        mapped = list(FAMILY_CAMP_REQUEST_TEXT_CM_IDS.values()) + list(BUNKING_CSV_REQUEST_TEXT_FIELDS.values())
+        assert sorted(mapped) == sorted(labels)
+        assert len(labels) == len(set(labels))
+
+    def test_socialize_with_is_not_free_text_and_is_absent(self) -> None:
+        """`RetParent-Socializewithbest` has exactly two distinct values in
+        2026, both 40 characters, and `requestBucket.ts` already classes it
+        immaterial. 107 rostered households carry one."""
+        assert "RetParent-Socializewithbest" not in BUNKING_CSV_REQUEST_TEXT_FIELDS.values()
+        assert "socialize_with" not in BUNKING_CSV_REQUEST_TEXT_FIELDS
+
+    def test_the_sixth_candidate_field_is_deliberately_excluded(self) -> None:
+        """`Do Not Share Bunk With` (3 rostered households) travels the same
+        code path, and the 2026-08-17 owner ruling did not name it. Silence is
+        not a yes -- adding it is one line here plus one entry below."""
+        assert "Do Not Share Bunk With" not in [source.label for source in REQUEST_TEXT_SOURCES]
+        assert "staff_not_bunk_with" not in BUNKING_CSV_REQUEST_TEXT_FIELDS
+
+    def test_source_order_is_total_over_the_registry(self) -> None:
+        positions = [request_text_source_order(source.label) for source in REQUEST_TEXT_SOURCES]
+        assert positions == sorted(positions)
+        assert len(set(positions)) == len(positions)
+
+    def test_an_unregistered_label_sorts_last_rather_than_raising(self) -> None:
+        """A render path never raises on one unexpected row -- see
+        `safeSourceFromField`, which takes the same position on the TS side."""
+        assert request_text_source_order("Some Field We Have Never Seen") > max(
+            request_text_source_order(source.label) for source in REQUEST_TEXT_SOURCES
+        )
+
+    def test_an_unregistered_label_is_attributed_to_nobody_in_particular(self) -> None:
+        """`family` is the WRONG default for an unknown field: it would render
+        a staff note in the amber treatment reserved for a family's own ask."""
+        assert request_text_authorship("Some Field We Have Never Seen") == "staff"

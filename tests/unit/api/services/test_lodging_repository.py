@@ -1522,3 +1522,176 @@ class TestFetchSessionStatuses:
 
         pb.collection.return_value.get_full_list.return_value = []
         assert await repo.fetch_session_statuses(2026) == {}
+
+
+class TestFetchRequestTextValues:
+    """The raw per-field, per-child bunk-request answers (kindred#2330).
+
+    This is the one read on this surface that is deliberately NOT a derived
+    column, and the module docstring's "request answers are NOT re-parsed
+    here" still holds: nothing below normalises a gate, parses a mode or
+    resolves a verdict. It reads the free text exactly as it was written, in
+    the two lanes it was written in, because the household-grain
+    `request_text` column joins its sources with `'; '` and 10 of 422
+    non-blank 2026 values contain that separator themselves.
+    """
+
+    @pytest.mark.asyncio
+    async def test_the_family_camp_lane_filters_on_the_three_custom_field_ids(
+        self, repo: LodgingRepository, pb: MagicMock
+    ) -> None:
+        await repo.fetch_request_text_values(2026)
+
+        calls = {call[0][0] for call in pb.collection.call_args_list}
+        assert "person_custom_values" in calls
+        filters = [
+            call[1]["query_params"]["filter"] for call in pb.collection.return_value.get_full_list.call_args_list
+        ]
+        family_camp = next(f for f in filters if "field_definition" in f)
+        assert "year = 2026" in family_camp
+        for cm_id in (206286, 240598, 274133):
+            assert f"field_definition.cm_id = {cm_id}" in family_camp
+
+    @pytest.mark.asyncio
+    async def test_the_bunking_csv_lane_filters_on_the_three_column_slugs(
+        self, repo: LodgingRepository, pb: MagicMock
+    ) -> None:
+        """32 rostered 2026 households have request text ONLY in this lane, so
+        it is invisible on every weekend surface until this read exists."""
+        await repo.fetch_request_text_values(2026)
+
+        calls = {call[0][0] for call in pb.collection.call_args_list}
+        assert "original_bunk_requests" in calls
+        filters = [
+            call[1]["query_params"]["filter"] for call in pb.collection.return_value.get_full_list.call_args_list
+        ]
+        csv_lane = next(f for f in filters if "bunk_request_form" in f)
+        assert "year = 2026" in csv_lane
+        for slug in ("bunk_request_form", "bunking_notes", "internal_notes"):
+            assert f'field = "{slug}"' in csv_lane
+
+    @pytest.mark.asyncio
+    async def test_neither_excluded_source_field_is_ever_requested(
+        self, repo: LodgingRepository, pb: MagicMock
+    ) -> None:
+        """`staff_not_bunk_with` is the sixth candidate the 2026-08-17 ruling
+        did not name; `socialize_with` is not free text at all (two distinct
+        values in 2026, both 40 characters). Excluding them at the READ is
+        what makes them impossible to render by accident."""
+        await repo.fetch_request_text_values(2026)
+
+        filters = [
+            call[1]["query_params"]["filter"] for call in pb.collection.return_value.get_full_list.call_args_list
+        ]
+        assert not any("staff_not_bunk_with" in f for f in filters)
+        assert not any("socialize_with" in f for f in filters)
+
+    @pytest.mark.asyncio
+    async def test_a_family_camp_value_is_keyed_by_household_and_labelled_verbatim(
+        self, repo: LodgingRepository, pb: MagicMock
+    ) -> None:
+        """The label is the CampMinder field name as it stands, including the
+        misnamed `COVID-19 Bunking Requests` that carries 205 households of
+        general bunking requests (owner ruling 2026-08-17: original field
+        names until staff can weigh in after it is live)."""
+        person = _record(id="p_1", household="hh_1", first_name="Emma", last_name="Johnson", preferred_name="")
+        pb.collection.return_value.get_full_list.side_effect = [
+            [
+                _record(
+                    value="  Please put us near the Garcia family  ",
+                    expand={"person": person, "field_definition": _record(cm_id=206286)},
+                )
+            ],
+            [],
+        ]
+
+        values = await repo.fetch_request_text_values(2026)
+
+        assert list(values) == ["hh_1"]
+        assert values["hh_1"][0].source_field == "COVID-19 Bunking Requests"
+        assert values["hh_1"][0].text == "Please put us near the Garcia family"
+        assert values["hh_1"][0].person is person
+
+    @pytest.mark.asyncio
+    async def test_a_bunking_csv_row_is_keyed_through_its_requester(
+        self, repo: LodgingRepository, pb: MagicMock
+    ) -> None:
+        """`original_bunk_requests` carries no household relation at all, so
+        the only route to one is the requester person -- which is year-scoped,
+        exactly like the value rows in the other lane."""
+        person = _record(id="p_2", household="hh_2", first_name="Liam", last_name="Garcia", preferred_name="")
+        pb.collection.return_value.get_full_list.side_effect = [
+            [],
+            [_record(field="bunking_notes", content="Split the siblings.", expand={"requester": person})],
+        ]
+
+        values = await repo.fetch_request_text_values(2026)
+
+        assert values["hh_2"][0].source_field == "BunkingNotes Notes"
+        assert values["hh_2"][0].text == "Split the siblings."
+
+    @pytest.mark.asyncio
+    async def test_a_blank_answer_is_dropped_rather_than_rendered_as_an_empty_block(
+        self, repo: LodgingRepository, pb: MagicMock
+    ) -> None:
+        """kindred#2255's ruling for this same modal: a source field with no
+        text renders nothing at all, no "nothing applicable" clutter."""
+        person = _record(id="p_1", household="hh_1", first_name="Emma", last_name="Johnson", preferred_name="")
+        pb.collection.return_value.get_full_list.side_effect = [
+            [_record(value="   ", expand={"person": person, "field_definition": _record(cm_id=274133)})],
+            [_record(field="internal_notes", content="", expand={"requester": person})],
+        ]
+
+        assert await repo.fetch_request_text_values(2026) == {}
+
+    @pytest.mark.asyncio
+    async def test_a_value_whose_person_resolves_to_no_household_is_dropped(
+        self, repo: LodgingRepository, pb: MagicMock
+    ) -> None:
+        """A blank household is not an identity. Grouping several of them
+        together would invent a household holding other families' text."""
+        pb.collection.return_value.get_full_list.side_effect = [
+            [
+                _record(
+                    value="Anything",
+                    expand={"person": _record(id="p_9", household=""), "field_definition": _record(cm_id=274133)},
+                )
+            ],
+            [_record(field="internal_notes", content="Anything", expand={"requester": None})],
+        ]
+
+        assert await repo.fetch_request_text_values(2026) == {}
+
+    @pytest.mark.asyncio
+    async def test_an_unregistered_custom_field_id_is_dropped(self, repo: LodgingRepository, pb: MagicMock) -> None:
+        """The filter names three ids; a fourth arriving means the filter
+        stopped narrowing, and rendering it would put an unlabelled block on
+        the panel."""
+        person = _record(id="p_1", household="hh_1", first_name="Emma", last_name="Johnson", preferred_name="")
+        pb.collection.return_value.get_full_list.side_effect = [
+            [_record(value="Anything", expand={"person": person, "field_definition": _record(cm_id=240877)})],
+            [],
+        ]
+
+        assert await repo.fetch_request_text_values(2026) == {}
+
+    @pytest.mark.asyncio
+    async def test_is_cached_by_year(self, repo: LodgingRepository, pb: MagicMock) -> None:
+        """Year-scoped and sync-written, like the registrations read beside it
+        (kindred#1963). 422 family-camp value rows and 1,262 bunking-CSV rows
+        on 2026, re-read per weekend without this."""
+        person = _record(id="p_1", household="hh_1", first_name="Emma", last_name="Johnson", preferred_name="")
+        pb.collection.return_value.get_full_list.side_effect = [
+            [
+                _record(
+                    value="Cabin near the bathhouse",
+                    expand={"person": person, "field_definition": _record(cm_id=274133)},
+                )
+            ],
+            [],
+        ]
+        first = await repo.fetch_request_text_values(2026)
+
+        pb.collection.return_value.get_full_list.side_effect = None
+        pb.collection.return_value.get_full_list.return_value = []
+        assert await repo.fetch_request_text_values(2026) == first

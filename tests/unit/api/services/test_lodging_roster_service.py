@@ -31,6 +31,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from api.schemas.lodging import LodgingUnitSummary
+from api.services.lodging_repository import RequestValueRow
 from api.services.lodging_roster_service import (
     SUMMARY_ENTRY_CONCURRENCY,
     LodgingRosterService,
@@ -137,6 +138,11 @@ def _repo(**overrides: Any) -> MagicMock:
         "fetch_household_registration_years": set(),
         "fetch_family_camp_adults": {},
         "fetch_family_camp_registrations": {},
+        # kindred#2330: the RAW per-field, per-child request answers, keyed by
+        # household PB id. Empty by default -- 112 of 382 rostered 2026
+        # households have no free-text signal at all, and that must be the
+        # shape the panel sees.
+        "fetch_request_text_values": {},
         "fetch_family_camp_medical": {},
         # The medical read takes one household, not the whole-year maps above.
         "fetch_household_by_cm_id": None,
@@ -4265,3 +4271,214 @@ class TestWriteInCovers:
 
         assert write_in_covers([house, room_b, room_a])["house"].unit_code == "house-a"
         assert write_in_covers([house, room_a, room_b])["house"].unit_code == "house-a"
+
+
+def _person(pb_id: str = "p_1", first: str = "Emma", last: str = "Johnson") -> SimpleNamespace:
+    """The answering person on a raw request value."""
+    return _rec(id=pb_id, first_name=first, last_name=last, preferred_name="")
+
+
+def _value(source_field: str, text: str, person: SimpleNamespace | None = None) -> RequestValueRow:
+    return RequestValueRow(source_field=source_field, text=text, person=person or _person())
+
+
+class TestRequestProvenanceBlocks:
+    """kindred#2330: which FORM said it, and which CHILD said it.
+
+    `family_camp_registrations.request_text` joins its sources with `'; '` and
+    keeps no field boundary, and 10 of 422 non-blank 2026 values contain that
+    separator themselves -- so both dimensions are destroyed there and neither
+    is recoverable downstream. The blocks below are built from the raw values
+    instead, and `request_text` is left exactly as it was for the roster table
+    that still reads it.
+
+    Owner ruling 2026-08-17: one block per SOURCE FIELD, every contributing
+    child inside it, labels verbatim from CampMinder.
+    """
+
+    @pytest.mark.asyncio
+    async def test_each_source_field_becomes_its_own_block(self) -> None:
+        """128 of the 270 rostered 2026 households with any request text carry
+        it in two or more distinct source fields. That is the defect."""
+        repo = _repo(
+            fetch_session=FAMILY_SESSION,
+            fetch_households={"hh_1": _household()},
+            fetch_attendees_for_session=[_child()],
+            fetch_family_camp_registrations={"hh_1": _rec(request_text="Near the Garcia family; Cabin with a fridge")},
+            fetch_request_text_values={
+                "hh_1": [
+                    _value("COVID-19 Bunking Requests", "Near the Garcia family"),
+                    _value("Share Bunk With", "Cabin with a fridge"),
+                ]
+            },
+        )
+        roster = await LodgingRosterService(repo).build_roster(2026, 1000001)
+
+        share = roster.parties[0].share
+        assert [block.source_field for block in share.request_blocks] == [
+            "COVID-19 Bunking Requests",
+            "Share Bunk With",
+        ]
+        assert [entry.text for block in share.request_blocks for entry in block.entries] == [
+            "Near the Garcia family",
+            "Cabin with a fridge",
+        ]
+        # The joined column is untouched -- HouseholdRosterTable still reads it.
+        assert share.request_text == "Near the Garcia family; Cabin with a fridge"
+
+    @pytest.mark.asyncio
+    async def test_two_children_answering_one_field_are_sub_labelled_by_child(self) -> None:
+        """103 households have two or more children answering the same field,
+        and 83 of those 131 (household, field) groups hold DIVERGENT text --
+        `Share Bunk With` almost universally, because siblings name their own
+        friends. Picking a winner would drop a real request."""
+        repo = _repo(
+            fetch_session=FAMILY_SESSION,
+            fetch_households={"hh_1": _household()},
+            fetch_attendees_for_session=[_child()],
+            fetch_request_text_values={
+                "hh_1": [
+                    _value("Share Bunk With", "With Olivia Chen", _person("p_1", "Emma", "Johnson")),
+                    _value("Share Bunk With", "With Riley Sam", _person("p_2", "Liam", "Johnson")),
+                ]
+            },
+        )
+        roster = await LodgingRosterService(repo).build_roster(2026, 1000001)
+
+        blocks = roster.parties[0].share.request_blocks
+        assert len(blocks) == 1
+        assert [(entry.contributors, entry.text) for entry in blocks[0].entries] == [
+            (["Emma Johnson"], "With Olivia Chen"),
+            (["Liam Johnson"], "With Riley Sam"),
+        ]
+
+    @pytest.mark.asyncio
+    async def test_identical_text_from_two_children_collapses_to_one_entry_naming_both(self) -> None:
+        """48 of the 131 sibling groups are exact duplicates -- one parent's
+        answer written onto every child's record. Rendering it twice is noise;
+        dropping a contributor is a lie about who asked."""
+        repo = _repo(
+            fetch_session=FAMILY_SESSION,
+            fetch_households={"hh_1": _household()},
+            fetch_attendees_for_session=[_child()],
+            fetch_request_text_values={
+                "hh_1": [
+                    _value("Shared-request", "Please house us near a bathhouse", _person("p_2", "Liam", "Johnson")),
+                    _value("Shared-request", "please house us near a bathhouse", _person("p_1", "Emma", "Johnson")),
+                ]
+            },
+        )
+        roster = await LodgingRosterService(repo).build_roster(2026, 1000001)
+
+        entries = roster.parties[0].share.request_blocks[0].entries
+        assert len(entries) == 1
+        assert entries[0].contributors == ["Emma Johnson", "Liam Johnson"]
+        assert entries[0].text == "Please house us near a bathhouse"
+
+    @pytest.mark.asyncio
+    async def test_the_two_bunking_note_fields_are_marked_staff_authored(self) -> None:
+        """All 34 `BunkingNotes` values end in an inline staff signature and
+        timestamp; 0 of the parent-authored fields' 548 values do. The panel
+        renders these in grey so an internal note never reads as a family's
+        own ask."""
+        repo = _repo(
+            fetch_session=FAMILY_SESSION,
+            fetch_households={"hh_1": _household()},
+            fetch_attendees_for_session=[_child()],
+            fetch_request_text_values={
+                "hh_1": [
+                    _value("Internal Bunk Notes", "Watch the cabin split here."),
+                    _value("COVID-19 Bunking Requests", "We would like a quiet cabin."),
+                    _value("BunkingNotes Notes", "Called the family Tuesday."),
+                ]
+            },
+        )
+        roster = await LodgingRosterService(repo).build_roster(2026, 1000001)
+
+        blocks = roster.parties[0].share.request_blocks
+        assert [(block.source_field, block.authorship) for block in blocks] == [
+            ("COVID-19 Bunking Requests", "family"),
+            ("BunkingNotes Notes", "staff"),
+            ("Internal Bunk Notes", "staff"),
+        ]
+
+    @pytest.mark.asyncio
+    async def test_a_household_with_no_request_values_carries_no_blocks(self) -> None:
+        """112 of 382 rostered 2026 households. No block, no placeholder --
+        kindred#2255's ruling for this same modal."""
+        repo = _repo(
+            fetch_session=FAMILY_SESSION,
+            fetch_households={"hh_1": _household()},
+            fetch_attendees_for_session=[_child()],
+            fetch_family_camp_registrations={"hh_1": _rec(request_text="")},
+        )
+        roster = await LodgingRosterService(repo).build_roster(2026, 1000001)
+
+        assert roster.parties[0].share.request_blocks == []
+
+    @pytest.mark.asyncio
+    async def test_another_households_values_never_leak_onto_this_party(self) -> None:
+        repo = _repo(
+            fetch_session=FAMILY_SESSION,
+            fetch_households={"hh_1": _household()},
+            fetch_attendees_for_session=[_child()],
+            fetch_request_text_values={"hh_2": [_value("Shared-request", "Not this family's ask")]},
+        )
+        roster = await LodgingRosterService(repo).build_roster(2026, 1000001)
+
+        assert roster.parties[0].share.request_blocks == []
+
+    @pytest.mark.asyncio
+    async def test_the_excluded_sixth_field_never_reaches_the_panel(self) -> None:
+        """`Do Not Share Bunk With` (3 rostered households) was NOT named by
+        the 2026-08-17 ruling. The repository filter already excludes it; this
+        pins that a row arriving anyway is dropped rather than rendered under
+        a label nobody approved."""
+        repo = _repo(
+            fetch_session=FAMILY_SESSION,
+            fetch_households={"hh_1": _household()},
+            fetch_attendees_for_session=[_child()],
+            fetch_request_text_values={
+                "hh_1": [
+                    _value("Do Not Share Bunk With", "Anyone from Oak Valley Middle"),
+                    _value("RetParent-Socializewithbest", "Yes, my child socializes best with..."),
+                    _value("Shared-request", "A cabin on the flat, please"),
+                ]
+            },
+        )
+        roster = await LodgingRosterService(repo).build_roster(2026, 1000001)
+
+        blocks = roster.parties[0].share.request_blocks
+        assert [block.source_field for block in blocks] == ["Shared-request"]
+
+    @pytest.mark.asyncio
+    async def test_an_answering_person_with_no_name_on_file_contributes_no_label(self) -> None:
+        """A blank contributor is dropped, never rendered as an empty
+        sub-label or as the string "None" over a real request."""
+        repo = _repo(
+            fetch_session=FAMILY_SESSION,
+            fetch_households={"hh_1": _household()},
+            fetch_attendees_for_session=[_child()],
+            fetch_request_text_values={
+                "hh_1": [RequestValueRow(source_field="Shared-request", text="A quiet corner", person=None)]
+            },
+        )
+        roster = await LodgingRosterService(repo).build_roster(2026, 1000001)
+
+        entry = roster.parties[0].share.request_blocks[0].entries[0]
+        assert entry.contributors == []
+        assert entry.text == "A quiet corner"
+
+    @pytest.mark.asyncio
+    async def test_the_lander_summary_does_not_pay_for_the_raw_request_read(self) -> None:
+        """`build_summary` counts parties and renders none of them, so the
+        blocks would be work no response can read -- the same reason last
+        year's cabins are absent from its TaskGroup."""
+        repo = _repo(
+            fetch_weekend_sessions=[FAMILY_SESSION],
+            fetch_households={"hh_1": _household()},
+            fetch_attendees_for_session=[_child()],
+        )
+        await LodgingRosterService(repo).build_summary(2026)
+
+        repo.fetch_request_text_values.assert_not_called()

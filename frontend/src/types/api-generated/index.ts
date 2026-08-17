@@ -497,6 +497,8 @@ export type {
   RejectSuggestedApiGeoCanonicalsCanonicalNameRejectPostResponse,
   RejectSuggestedApiGeoCanonicalsCanonicalNameRejectPostResponses,
   RequestBucket,
+  RequestTextBlock,
+  RequestTextEntry,
   RetentionByCity,
   RetentionByFirstSummerYear,
   RetentionByGender,

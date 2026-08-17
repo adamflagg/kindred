@@ -29,6 +29,12 @@ from typing import Literal, Self
 
 from pydantic import BaseModel, Field, model_validator
 
+# The ONE import from the service layer, and it is a vocabulary rather than
+# behaviour: `lodging_rules` is the pure-rules module (no I/O, no PocketBase,
+# no FastAPI) and it owns the free-text source registry, so the family/staff
+# split is declared once and cannot drift from the registry that assigns it.
+from api.services.lodging_rules import RequestTextAuthorship
+
 # The narrative columns on family_camp_medical. Named here so the boundary test
 # can assert on them rather than on a hand-maintained list.
 #
@@ -326,6 +332,46 @@ class PartyChild(BaseModel):
     grade: int | None = None
 
 
+class RequestTextEntry(BaseModel):
+    """One distinct free-text answer inside a source-field block.
+
+    `contributors` is WHO wrote it, so the panel can sub-label by child. It is
+    a list rather than a single name because one parent's answer is routinely
+    written onto every enrolled child's record: 48 of the 131 (household,
+    source field) sibling groups in the 2026 production snapshot hold exactly
+    duplicate text. Those collapse to one entry naming both children --
+    rendering it twice is noise, and dropping a contributor misstates who
+    asked. The other 83 groups genuinely disagree and stay as separate
+    entries; `Share Bunk With` diverges almost universally, because siblings
+    name their own friends.
+
+    Empty when the answering person could not be resolved. The panel then
+    renders the text with no sub-label at all, never a blank one.
+    """
+
+    text: str = ""
+    contributors: list[str] = Field(default_factory=list)
+
+
+class RequestTextBlock(BaseModel):
+    """Every answer a household gave in ONE source field (kindred#2330).
+
+    `source_field` is the CampMinder field name VERBATIM -- see
+    `api/services/lodging_rules.REQUEST_TEXT_SOURCES` for why, including why
+    `COVID-19 Bunking Requests` keeps a name nobody would choose today.
+
+    `authorship` splits a family's own ask from a staff note. It is a fact
+    about the FIELD, not a guess from the text: all 34 `BunkingNotes` values
+    in the snapshot end in an inline staff signature and timestamp, and none
+    of the parent-authored fields' values do. The panel renders `staff` on a
+    grey rail so an internal note never reads as something the family said.
+    """
+
+    source_field: str = ""
+    authorship: RequestTextAuthorship = "family"
+    entries: list[RequestTextEntry] = Field(default_factory=list)
+
+
 class ShareRequestSummary(BaseModel):
     """The household's cabin-sharing request, unresolved.
 
@@ -348,6 +394,21 @@ class ShareRequestSummary(BaseModel):
     # True when there is request text but no resolution of the named families to
     # households. Always true in slice 1 when text is present.
     needs_resolution: bool = False
+    # The SAME free text, split by source field and by answering child
+    # (kindred#2330). Not a reformatting of `request_text` above -- it cannot
+    # be, since the join is irreversible -- but a second read of the raw
+    # values the join was built from, plus the bunking-CSV lane that never
+    # reached this surface at all.
+    #
+    # `request_text` is deliberately NOT removed. It is still what
+    # `HouseholdRosterTable` tests for a request, and it is the fallback the
+    # panel renders if these blocks ever come back empty against a non-empty
+    # join: losing a family's ask is worse than losing its provenance.
+    #
+    # Ordered by `REQUEST_TEXT_SOURCES` -- family-authored blocks first, staff
+    # notes last. A source field with no text produces NO block: kindred#2255's
+    # ruling for this same modal leaves no "nothing applicable" clutter behind.
+    request_blocks: list[RequestTextBlock] = Field(default_factory=list)
 
     # What the board actually places on. `preference` above stays the raw
     # registration answer because it is what a staff member sees when asked why
