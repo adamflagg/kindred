@@ -57,9 +57,6 @@ type personHouseholdIDs struct {
 type gatherPersonIDsResult struct {
 	personIDs    []int        // All unique person IDs (from attendees + staff)
 	camperIDsSet map[int]bool // IDs from attendees (true campers)
-	// staffFetchFailed is true when the CampMinder staff feed could not be read
-	// and the run fell back to attendees only.
-	staffFetchFailed bool
 }
 
 // NewPersonsSync creates a new persons sync service
@@ -139,7 +136,6 @@ func (s *PersonsSync) Sync(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	s.staffFetchFailed = gatherResult.staffFetchFailed
 	if len(gatherResult.personIDs) == 0 {
 		slog.Info("No attendees or staff found, skipping persons sync", "year", year)
 		s.SyncSuccessful = true
@@ -199,11 +195,13 @@ func (s *PersonsSync) gatherPersonIDs(year int) (*gatherPersonIDsResult, error) 
 	}
 
 	staffPersonIDs, err := s.getPersonIDsFromStaff()
-	staffFetchFailed := false
 	if err != nil {
 		slog.Warn("Error getting staff person IDs, continuing with attendees only", "error", err)
 		staffPersonIDs = nil
-		staffFetchFailed = true
+		// Set on the service here rather than returned and copied across by the
+		// caller: one writer, one reader, and no assignment a later refactor can
+		// drop without the compiler noticing. Sync clears it per run.
+		s.staffFetchFailed = true
 	}
 
 	personIDs := s.mergePersonIDs(attendeePersonIDs, staffPersonIDs)
@@ -214,9 +212,8 @@ func (s *PersonsSync) gatherPersonIDs(year int) (*gatherPersonIDsResult, error) 
 		"year", year)
 
 	return &gatherPersonIDsResult{
-		personIDs:        personIDs,
-		camperIDsSet:     camperIDsSet,
-		staffFetchFailed: staffFetchFailed,
+		personIDs:    personIDs,
+		camperIDsSet: camperIDsSet,
 	}, nil
 }
 
@@ -1163,6 +1160,29 @@ func (s *PersonsSync) printDataQualitySummary() {
 }
 
 // deleteOrphans deletes persons that exist in PocketBase but weren't processed from CampMinder
+// skipSweepForStaffFetchFailure reports whether a sweep must be abandoned because
+// this run could not read the CampMinder staff feed, and logs why when it must.
+//
+// The consequence differs per sweep -- persons loses the staff-only people
+// themselves, households loses whatever is reachable only through them -- so the
+// caller supplies that half of the message; everything else is shared.
+//
+// It warns rather than returning an error on purpose. updateRelationsAndCleanup
+// turns a deleteOrphans error into Stats.Errors++, and a deliberate skip is not an
+// operational failure. That is the same verdict OrphanSweepGuard.SkipReason gives a
+// rejection, and it carries the same accepted cost, stated there: a run that keeps
+// skipping lets genuine orphans accumulate, and the signal to go fix the upstream is
+// the warning repeating night after night rather than a separate alerting path.
+func (s *PersonsSync) skipSweepForStaffFetchFailure(entity, consequence string, year int) bool {
+	if !s.staffFetchFailed {
+		return false
+	}
+
+	slog.Warn("Orphan sweep skipped: the CampMinder staff feed could not be read, so "+consequence,
+		"entity", entity, "year", year)
+	return true
+}
+
 func (s *PersonsSync) deleteOrphans(year int) error {
 	// A swallowed staff-feed failure makes the computed set known-incomplete, so
 	// abandon the sweep rather than narrow it (kindred#2394). gatherPersonIDs
@@ -1179,11 +1199,9 @@ func (s *PersonsSync) deleteOrphans(year int) error {
 	// people" -- so it skips without failing the run: updateRelationsAndCleanup
 	// turns a returned error into Stats.Errors++, and a deliberate skip is not an
 	// operational error.
-	if s.staffFetchFailed {
-		slog.Warn("Orphan sweep skipped: the CampMinder staff feed could not be read, "+
-			"so every staff-only person is missing from the computed set and their stored "+
-			"rows would be read as orphans",
-			"entity", "persons", "year", year)
+	if s.skipSweepForStaffFetchFailure("persons",
+		"every staff-only person is missing from the computed set and their stored rows "+
+			"would be read as orphans", year) {
 		return nil
 	}
 
@@ -1718,10 +1736,8 @@ func (s *PersonsSync) updatePersonHouseholdRelations(
 // feed failed, and this sweep would delete it. Hence the one guard this function
 // does take.
 func (s *PersonsSync) deleteHouseholdOrphans(year int, processedIDs map[int]bool) error {
-	if s.staffFetchFailed {
-		slog.Warn("Household orphan sweep skipped: the CampMinder staff feed could not be read, "+
-			"so households reachable only through staff are missing from the computed set",
-			"entity", "households", "year", year)
+	if s.skipSweepForStaffFetchFailure("households",
+		"households reachable only through staff are missing from the computed set", year) {
 		return nil
 	}
 
