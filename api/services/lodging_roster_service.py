@@ -1251,7 +1251,7 @@ class LodgingRosterService:
         # being a wording point. A family can book two of a season's weekends,
         # which gives one child TWO enrolled family attendee rows in the same
         # year -- both expanding to the SAME `persons` record, because
-        # `persons` is per-year rather than per-enrolment. Measured on the
+        # `persons` is per-year rather than per-enrollment. Measured on the
         # production snapshot 2026-08-09: 9 to 20 children a year from 2017
         # on, across 64 distinct (household, year) pairs.
         #

@@ -71,7 +71,7 @@ export type WeekendSummaryRow = WeekendSummaryEntry
 export type HouseholdMedical = HouseholdMedicalResponse
 /** A household's year-over-year family-camp record, newest year first. */
 export type HouseholdJourney = HouseholdJourneyResponse
-/** One year of it — housing, enrolment, and that year's own party. */
+/** One year of it — housing, enrollment, and that year's own party. */
 export type HouseholdJourneyRow = HouseholdJourneyYear
 /** A registered adult on a household party. */
 export type PartyAdultRow = PartyAdult
@@ -166,7 +166,7 @@ export type HousingStateValue = NonNullable<HouseholdJourneyYear['housing']>
  * cancelled (1,264 family attendee rows, none enrolled) and 2021 has no
  * family attendee rows at all despite 247 registrations — while
  * `family_camp_adults` carries adults for both. Both are real attendance the
- * enrolment tables cannot describe, and neither is an error.
+ * enrollment tables cannot describe, and neither is an error.
  */
 export type EnrollmentStateValue = NonNullable<HouseholdJourneyYear['enrollment']>
 

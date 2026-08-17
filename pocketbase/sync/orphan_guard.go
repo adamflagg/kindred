@@ -26,7 +26,7 @@ const (
 	// any plausible collapse. A run that computes fewer than half the rows
 	// already stored is asserting that more than half of a season disappeared
 	// from CampMinder between two syncs. No product workflow does that:
-	// enrolment attrition is single-digit percentages, and a season rollover
+	// enrollment attrition is single-digit percentages, and a season rollover
 	// lands in a new `year` partition rather than shrinking an existing one.
 	// Meanwhile the failure this guards against -- a staff or person lookup that
 	// returns a fraction of its rows after a timeout or a mid-page API error --

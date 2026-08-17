@@ -226,9 +226,9 @@ export function HouseholdYearMembersModal({
             `family_camp_adults` carries adults for both. Saying so is the whole
             reason `enrollment` is a named state rather than an empty list. */}
         {row.enrollment === 'none_on_file' && (
-          <p data-testid="year-members-no-enrolment" className="text-muted-foreground text-xs">
+          <p data-testid="year-members-no-enrollment" className="text-muted-foreground text-xs">
             {`No enrolled child on file for ${String(row.year ?? 0)}. The household is in that
-              season's records, but CampMinder has no enrolment against it.`}
+              season's records, but CampMinder has no enrollment against it.`}
           </p>
         )}
 

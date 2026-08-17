@@ -143,7 +143,7 @@ describe('the party for one year', () => {
   })
 })
 
-describe('a year with no enrolment on file', () => {
+describe('a year with no enrollment on file', () => {
   it('says so instead of rendering a childless family', () => {
     open(
       _row({
@@ -154,7 +154,7 @@ describe('a year with no enrolment on file', () => {
       })
     )
 
-    expect(screen.getByTestId('year-members-no-enrolment').textContent).toContain(
+    expect(screen.getByTestId('year-members-no-enrollment').textContent).toContain(
       'No enrolled child on file for 2021'
     )
   })
@@ -172,10 +172,10 @@ describe('a year with no enrolment on file', () => {
     expect(screen.getByTestId('year-members-adults').textContent).toContain('Olivia Johnson')
   })
 
-  it('does not claim a missing enrolment on a year that has one', () => {
+  it('does not claim a missing enrollment on a year that has one', () => {
     open(_row())
 
-    expect(screen.queryByTestId('year-members-no-enrolment')).not.toBeInTheDocument()
+    expect(screen.queryByTestId('year-members-no-enrollment')).not.toBeInTheDocument()
   })
 })
 

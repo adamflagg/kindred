@@ -177,13 +177,13 @@ After implementation, verify ALL of these work:
 | Global table in historical sync | Unnecessary re-sync of static data | Check if table has `year` field - if not, it's global |
 | Missing `SyncJobToCollections` entry | Sheet always re-exported even when no changes | Add sync job to mapping in `table_exporter.go` |
 
-## Reading Derived Informational Tables (Active-Enrolment Filtering)
+## Reading Derived Informational Tables (Active-Enrollment Filtering)
 
-A derived informational table must be filtered by **active enrolment at read time** — an `attendees`
+A derived informational table must be filtered by **active enrollment at read time** — an `attendees`
 row with `status_id = 2` for that person and that year — never swept by deletion. This is a read-side
 rule, not a sync change: rows for a cancelled camper or a staffer who left mid-season stay in the
 table by design. None of these tables has a history table behind it, so a delete is unrecoverable — a
-re-registration, a correction, or a later re-enrolment cannot get a deleted row back.
+re-registration, a correction, or a later re-enrollment cannot get a deleted row back.
 
 ⚠️ **The filter is per-(person, year) and must not be applied across years.** A staffer who worked a
 prior session, or a camper attending a second session, keeps their historical rows — that is why a
@@ -197,17 +197,17 @@ is the only pre-2026 placement history anywhere in the database.
 **Which tables the predicate applies to** (measured 2026-08-08 against the production snapshot — cited
 as measured on that date, not re-derived live):
 
-| Table | Grain | 2026 rows | no active enrolment (2026) | 2025 |
+| Table | Grain | 2026 rows | no active enrollment (2026) | 2025 |
 |---|---|---|---|---|
 | `camper_dietary` | person × year | 895 | 64 (7.2%) | 145 / 1084 (13.4%) |
 | `camper_transportation` | person × session | 1661 | 10 (0.6%) | 11 / 1969 |
 | `quest_registrations` | person × year | 69 | 1 | 0 / 64 |
-| `staff_skills` | person, not enrolment | 401 | predicate does not apply — staff are not attendees | — |
+| `staff_skills` | person, not enrollment | 401 | predicate does not apply — staff are not attendees | — |
 | `household_demographics` | **(household, person, year)** — re-grained by kindred#2260 | ~2210 projected | **predicate DOES apply** to the person-attributed rows (~2181 of ~2210 for 2026); the ~29 `person_id = 0` rows carry genuinely household-level answers and are outside it | — |
 
 **The point worth stating plainly: a dashboard that reads `camper_dietary` unfiltered ships a 7.2%
 (2026) / 13.4% (2025) error.** That gap is the whole reason this rule exists: the three
-enrolment-grain tables above (`camper_dietary`, `camper_transportation`, `quest_registrations`) each
+enrollment-grain tables above (`camper_dietary`, `camper_transportation`, `quest_registrations`) each
 carry stale rows for people no longer actively enrolled, at the percentages measured.
 
 **No reader applies this filter today, because these three tables have no reader today.**
@@ -215,13 +215,13 @@ carry stale rows for people no longer actively enrolled, at the percentages meas
 only so the export-skip optimisation knows which collections a sync job writes; nothing there touches
 a row. The one real live reader, `GetReadableYearExports()`, covers `staff_skills` and
 `household_demographics`. ⚠️ **Only the first of those is now outside the predicate.** Staff are not
-attendees, so `staff_skills` genuinely has no enrolment to check. `household_demographics` used to be
+attendees, so `staff_skills` genuinely has no enrollment to check. `household_demographics` used to be
 in the same position and **is not any more**: kindred#2260 re-grained it to one row per (household,
 person, year), so all but ~29 of its ~2210 2026 rows are attributed to a specific camper.
-`loadPersonHouseholdMapping` admits any person with a household that year **regardless of enrolment
+`loadPersonHouseholdMapping` admits any person with a household that year **regardless of enrollment
 status**, so a cancelled camper keeps a row — and that row is exported, unfiltered, beside Jewish
 identity, family description and custody answers. Anyone adding or changing a reader of this table
-must decide the enrolment question deliberately rather than inheriting the old "household-grain, does
+must decide the enrollment question deliberately rather than inheriting the old "household-grain, does
 not apply" answer, which was true before that change and is false now.
 
 This rule is written down for whoever builds the first reader of `camper_dietary`,

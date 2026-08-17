@@ -365,7 +365,7 @@ class LodgingRepository:
     async def fetch_attendees_for_session(self, year: int, session_pb_id: str) -> list[Any]:
         """Active-enrolled attendees for one session, with person expanded.
 
-        status_id = 2 is the single source of truth for enrolment; filtering
+        status_id = 2 is the single source of truth for enrollment; filtering
         any other way is silently wrong.
         """
         return await self._page(

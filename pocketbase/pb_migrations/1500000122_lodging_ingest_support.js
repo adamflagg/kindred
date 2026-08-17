@@ -12,7 +12,7 @@
  * It also carries the two attribution failures, which are drops of the same kind:
  *   ambiguous_session - household attends 2+ weekends and CampMinder holds one
  *                       cabin value for the year (6-10 households per year)
- *   no_session        - a cabin value whose household has no active enrolment
+ *   no_session        - a cabin value whose household has no active enrollment
  *                       (53 such values in 2025)
  *
  * lodging_field_mappings holds ONLY the human-set status spec 4.4 asks for

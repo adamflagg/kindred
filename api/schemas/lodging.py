@@ -577,7 +577,7 @@ HousingState = Literal["placed", "not_placed", "unknown"]
 # reason it is a named state. 2020 has 1,264 family attendee rows and not one
 # with status_id = 2 -- the season was cancelled. 2021 has no family attendee
 # rows at all despite 247 registrations, while `family_camp_adults` carries
-# 647 rows across 351 households. Both years are real attendance the enrolment
+# 647 rows across 351 households. Both years are real attendance the enrollment
 # tables cannot describe, and neither is an error.
 EnrollmentState = Literal["enrolled", "none_on_file"]
 

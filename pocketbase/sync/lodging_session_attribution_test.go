@@ -64,10 +64,10 @@ func TestLoadSessionWindowsReadsDateFields(t *testing.T) {
 	}
 }
 
-// TestBuildHouseholdSessionIndexUsesActiveEnrolmentOnly: status_id = 2 is
+// TestBuildHouseholdSessionIndexUsesActiveEnrollmentOnly: status_id = 2 is
 // "active enrolled". Any other status is not attending, and counting them would
 // manufacture ambiguity where there is none.
-func TestBuildHouseholdSessionIndexUsesActiveEnrolmentOnly(t *testing.T) {
+func TestBuildHouseholdSessionIndexUsesActiveEnrollmentOnly(t *testing.T) {
 	t.Parallel()
 	app := newSyncTestApp(t)
 	fc1 := addSession(t, app, 1309514, "Family Camp 1", "family",
@@ -182,7 +182,7 @@ func TestAttributeSessionSingle(t *testing.T) {
 }
 
 // TestAttributeSessionNone: 53 cabin values in 2025 belong to households with no
-// active family enrolment. They are queue items, not drops and not errors.
+// active family enrollment. They are queue items, not drops and not errors.
 func TestAttributeSessionNone(t *testing.T) {
 	t.Parallel()
 	got := AttributeSession(nil, time.Time{})
