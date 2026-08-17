@@ -11,6 +11,7 @@ _calculate_node_metrics).
 import sys
 from collections.abc import Generator
 from pathlib import Path
+from typing import NamedTuple
 from unittest.mock import MagicMock, patch
 
 import networkx as nx
@@ -90,8 +91,23 @@ def _build_bunk_graph_with_satisfaction(person_ids: list[int]) -> nx.DiGraph:
     return g
 
 
+class BunkGraphFixture(NamedTuple):
+    """A wired TestClient plus the CampMinder ids its mocks were built around.
+
+    The ids travel alongside the client rather than as attributes on it: as of
+    openai 3.0 the environment carries httpx2, which is what starlette's
+    TestClient type-checks against, so mypy now resolves the real base class and
+    rejects ad-hoc attributes.
+    """
+
+    client: TestClient
+    bunk_cm_id: int
+    session_cm_id: int
+    year: int
+
+
 @pytest.fixture
-def bunk_graph_client() -> Generator[TestClient]:
+def bunk_graph_client() -> Generator[BunkGraphFixture]:
     """Return a TestClient for the social_graph router with all heavy deps mocked."""
     bunk_cm_id = 9001
     session_cm_id = 5001
@@ -143,23 +159,15 @@ def bunk_graph_client() -> Generator[TestClient]:
         patch("api.routers.social_graph.graph_cache", mock_cache),
         patch("api.routers.social_graph.OptimizedSocialGraphBuilder", return_value=mock_builder),
     ):
-        client = TestClient(app)
-        # Store fixture data for the test to use in the URL
-        client._bunk_cm_id = bunk_cm_id
-        client._session_cm_id = session_cm_id
-        client._year = year
-        yield client
+        yield BunkGraphFixture(TestClient(app), bunk_cm_id, session_cm_id, year)
 
 
 class TestBunkGraphSatisfactionFields:
     """#1063 Layer 1: bunk-graph endpoint must forward satisfaction fields."""
 
-    def test_bunk_graph_endpoint_includes_satisfaction_fields(self, bunk_graph_client: TestClient) -> None:
+    def test_bunk_graph_endpoint_includes_satisfaction_fields(self, bunk_graph_client: BunkGraphFixture) -> None:
         """Each node in BunkGraphResponse must carry all three satisfaction fields."""
-        client = bunk_graph_client
-        bunk_cm_id = client._bunk_cm_id
-        session_cm_id = client._session_cm_id
-        year = client._year
+        client, bunk_cm_id, session_cm_id, year = bunk_graph_client
 
         response = client.get(
             f"/api/bunks/{bunk_cm_id}/social-graph",
@@ -186,12 +194,9 @@ class TestBunkGraphSatisfactionFields:
                 "bunk-graph serializer must forward this field (#1063 Layer 1)"
             )
 
-    def test_bunk_graph_satisfaction_field_values_match_graph_attrs(self, bunk_graph_client: TestClient) -> None:
+    def test_bunk_graph_satisfaction_field_values_match_graph_attrs(self, bunk_graph_client: BunkGraphFixture) -> None:
         """Satisfaction field values must match what the graph builder set on nodes."""
-        client = bunk_graph_client
-        bunk_cm_id = client._bunk_cm_id
-        session_cm_id = client._session_cm_id
-        year = client._year
+        client, bunk_cm_id, session_cm_id, year = bunk_graph_client
 
         response = client.get(
             f"/api/bunks/{bunk_cm_id}/social-graph",
