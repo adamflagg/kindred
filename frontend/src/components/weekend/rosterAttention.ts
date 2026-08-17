@@ -248,9 +248,10 @@ export function indexUnitsByCode(units: LodgingUnitRow[]): Map<string, LodgingUn
  * `is_family_available` and drops a cabin somebody has been written into this
  * weekend. `units_capacity_unknown` asks about the planning inventory, which
  * includes that cabin because it returns next weekend. They diverge the moment
- * anything is written into — and things are: `lodging_availability` DOES hold
- * rows in production, which the old claim here ("has never held a row") got
- * wrong. It was measured against a development database and never re-checked.
+ * anything is written into — and things are: the write-in table DOES hold rows
+ * in production (all 21, moved out of `lodging_availability` by 1500000162),
+ * which the old claim here ("has never held a row") got wrong. It was measured
+ * against a development database and never re-checked.
  *
  * It sits beside the BED count on the stats bar, and beds there are
  * `beds_family_available`, so the available-only reading is the one that

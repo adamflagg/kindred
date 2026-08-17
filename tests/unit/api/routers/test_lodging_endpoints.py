@@ -7,7 +7,7 @@ produces spurious 401s elsewhere in the suite.
 
 from collections.abc import Generator
 from typing import Any
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock, call, patch
 
 import pytest
 from fastapi import FastAPI
@@ -1224,7 +1224,7 @@ class TestCopyFromMirror:
 
 
 class TestAvailabilityWrites:
-    def test_holding_a_cabin_creates_a_weekend_scoped_row(self, mock_pb: MagicMock) -> None:
+    def test_writing_somebody_in_creates_a_weekend_scoped_occupancy_row(self, mock_pb: MagicMock) -> None:
         with patch("api.routers.lodging.pb", mock_pb):
             client = _write_client(_manage_user(), mock_pb)
             response = client.put(
@@ -1239,16 +1239,20 @@ class TestAvailabilityWrites:
             )
 
         assert response.status_code == 200
-        mock_pb.collection.assert_any_call("lodging_availability")
+        # THE OCCUPANCY TABLE since kindred#2382. `family_available = false`
+        # was never a role value -- it was a write-in sharing the role
+        # column's boolean -- so it moved to a table of its own, where the ROW
+        # is the fact and no column restates it.
+        mock_pb.collection.assert_any_call("lodging_write_ins")
         payload = mock_pb.collection.return_value.create.call_args[0][0]
         assert payload["unit"] == "u1"
-        assert payload["family_available"] is False
+        assert "family_available" not in payload
         # The reason is display text and lives in the `note` COLUMN; the API
         # field is `reason`. See AvailabilityWriteRequest.
         assert payload["note"] == "Burst pipe"
-        # WEEKEND-scoped, not scenario-scoped. 1500000135 deleted the dimension
-        # -- a burst pipe closes a cabin in every plan for that weekend -- and
-        # writing one anyway would recreate the overlay from the write side.
+        # WEEKEND-scoped, and still no scenario: the live board is a scope in
+        # its own right, so this table has no scenario column at all. The
+        # draft twin behind it stays dark until PR 3 of kindred#2382.
         assert "scenario" not in payload
         assert "state" not in payload
 
@@ -1291,9 +1295,16 @@ class TestAvailabilityWrites:
 
         assert response.status_code == 200, response.text
 
-    def test_clearing_the_override_deletes_the_row(self, mock_pb: MagicMock) -> None:
+    def test_clearing_the_override_deletes_the_row_in_both_tables(self, mock_pb: MagicMock) -> None:
         """Back to whatever the unit's ROLE says, which is not the same as
-        writing an override that happens to agree with it."""
+        writing an override that happens to agree with it.
+
+        TWO tables since kindred#2382 -- the staff<->family role in
+        `lodging_availability`, the occupancy in `lodging_write_ins` -- so a
+        clear has to reach both or it silently does nothing to whichever fact
+        it missed. This fixture hands every collection the same row, so the two
+        deletes name the same id; what is pinned here is that BOTH tables are
+        addressed and BOTH are cleared."""
 
         def reads(**kwargs: Any) -> list[Any]:
             query_filter = kwargs.get("query_params", {}).get("filter", "")
@@ -1315,7 +1326,9 @@ class TestAvailabilityWrites:
             )
 
         assert response.status_code == 200
-        mock_pb.collection.return_value.delete.assert_called_once_with("avail_1")
+        mock_pb.collection.assert_any_call("lodging_write_ins")
+        mock_pb.collection.assert_any_call("lodging_availability")
+        assert mock_pb.collection.return_value.delete.call_args_list == [call("avail_1"), call("avail_1")]
 
     def test_an_availability_delete_race_is_not_an_error(self, mock_pb: MagicMock) -> None:
         """The override is found, then vanishes before the delete lands.
@@ -1464,7 +1477,11 @@ class TestAvailabilityWrites:
         catch-all handler in api/main.py -- a 500, the outcome this guard is
         for.
         """
-        reads: list[list[Any]] = [[]]
+        # TWO empty reads, not one: `set_availability` looks up BOTH facts --
+        # the role row and the occupancy row -- before it writes either
+        # (kindred#2382). The next read is the recovery's own re-read, and that
+        # is the one this test makes fail.
+        reads: list[list[Any]] = [[], []]
 
         def staged(**kwargs: Any) -> list[Any]:
             query_filter = kwargs.get("query_params", {}).get("filter", "")

@@ -383,9 +383,10 @@ class LodgingRepository:
         write-ins come from `fetch_draft_write_ins` and REPLACE these; there
         is no overlay.
 
-        NOTHING READS THIS YET. PR 1 of kindred#2382 lands the tables and this
-        CRUD dark; `write_in_covers` still resolves write-ins out of
-        `lodging_availability` until PR 2 switches it.
+        `build_roster` and `build_summary` both read this, and `_build_units`
+        is where a row becomes the occupancy half of a unit's answer. PR 2 of
+        kindred#2382 switched them over and 1500000162 moved the rows; the
+        DRAFT sibling below is still dark until PR 3.
         """
         return await self._page(
             LODGING_WRITE_INS,
@@ -411,6 +412,12 @@ class LodgingRepository:
         writes, so a shared tier costs nothing. A write-in is an occupancy,
         the same kind of fact as a placement, so it follows the placement
         rule.
+
+        NOTHING READS THIS YET, unlike its live sibling above. PR 2 of
+        kindred#2382 moved the rows and switched the readers over to the LIVE
+        table at behavioural parity; giving write-ins their scenario dimension
+        -- this read, and the seed copies in both `copy_from_mirror` and
+        `copy_scenario_to_scenario` -- is PR 3.
 
         `scenario_id` is client-supplied and escaped, for the reason
         `fetch_draft_assignments` spells out. The weekend is named by
