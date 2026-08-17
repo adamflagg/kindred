@@ -512,7 +512,7 @@ export const queryKeys = {
    * entry per season and re-pay a multi-year sweep for nothing.
    */
   householdJourney: (householdCmId: number) => ['household-journey', householdCmId] as const,
-  /** PHI. Only ever fetched behind an explicit, permission-checked reveal. */
+  /** The medical narrative. Only ever fetched behind a `bunking.manage` check. */
   householdMedical: (year: number, householdCmId: number) =>
     ['household-medical', year, householdCmId] as const,
 

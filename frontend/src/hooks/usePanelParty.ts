@@ -69,7 +69,7 @@ export interface UsePanelPartyResult {
  * `selectedKey` outlives its own party's departure from `parties` (a
  * weekend switch, a refetch), and if the SAME key re-matches later (the
  * household is enrolled in a weekend staff already had cached), the panel
- * silently reopens and re-issues a real PHI fetch for a household nobody
+ * silently reopens and re-issues a real medical fetch for a household nobody
  * asked to see. `requestClose` has the identical latch: a dead-space click
  * starts the exit animation, the party departs before the 300ms animation
  * finishes, the element unmounts before `onClose` can fire, and

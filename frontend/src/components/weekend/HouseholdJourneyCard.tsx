@@ -188,7 +188,7 @@ function JourneyRows({
                   content="The household is in that season's records, but CampMinder has no enrolled child against it"
                   className="bg-muted text-muted-foreground flex-shrink-0 rounded px-1.5 py-0.5 text-[10px] font-medium"
                 >
-                  No enrolment
+                  No enrollment
                 </Tooltip>
               )}
 
@@ -249,7 +249,7 @@ export function HouseholdJourneyCard({ householdCmId, currentYear }: HouseholdJo
           {familyLabel.length > 0 ? familyLabel : NO_NAME_HEADING}
         </h2>
         {/* "Years on file", NOT "years at camp". A row can be a registration
-            with no enrolment behind it (2020, 2021), so claiming attendance
+            with no enrollment behind it (2020, 2021), so claiming attendance
             would overstate what the record supports — the same correction
             kindred#2123 made to the camper journey's own count.
 

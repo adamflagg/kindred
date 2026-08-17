@@ -276,8 +276,8 @@ class TestHouseholdJourneyEndpoint:
 
     A READ, so it is open to any authenticated user exactly as `/roster` is.
     It carries names, ages and grades -- the same fields the roster payload
-    already publishes for the current weekend -- and no narrative, so it sits
-    on the ordinary side of the PHI boundary.
+    already publishes for the current weekend -- and no narrative, so it is
+    not one of the reads behind `bunking.manage`.
     """
 
     def test_a_plain_authenticated_user_can_read_it(self, mock_pb: MagicMock) -> None:
@@ -316,7 +316,7 @@ class TestHouseholdJourneyEndpoint:
         assert all("year =" not in f for f in seen), f"a year predicate reached the journey reads: {seen}"
 
     def test_it_never_carries_medical_narrative(self, mock_pb: MagicMock) -> None:
-        """The PHI boundary, restated at the newest endpoint on this prefix.
+        """Narrative containment, restated at the newest endpoint on this prefix.
 
         `family_camp_medical` must not be read here at all -- not filtered
         out downstream, not read and discarded.
@@ -373,7 +373,7 @@ class TestMedicalEndpointIsPermissionGated:
 
         kindred#1889 is what made it actively wrong rather than merely
         unused. With the reveal button gone the panel fetches on mount, so
-        "PHI reveal" fired on every panel open -- including households with
+        "medical reveal" fired on every panel open -- including households with
         nothing on file -- and could no longer tell a deliberate read from a
         click.
 
@@ -394,9 +394,9 @@ class TestMedicalEndpointIsPermissionGated:
         assert not hasattr(lodging_module, "logger")
 
     def test_medical_read_does_not_load_the_whole_year(self, mock_pb: MagicMock) -> None:
-        """One household in, one household's PHI out.
+        """One household in, one household's narrative out.
 
-        Loading every family's medical row to answer one is a PHI-surface
+        Loading every family's medical row to answer one is a disclosure
         problem before it is a performance one.
         """
         seen: list[str] = []
@@ -412,7 +412,7 @@ class TestMedicalEndpointIsPermissionGated:
             TestClient(app).get("/api/lodging/households/2000001/medical", params={"year": 2026})
 
         assert seen, "the endpoint issued no reads"
-        assert all(f != "year = 2026" for f in seen), f"an unanchored whole-year read reached the PHI path: {seen}"
+        assert all(f != "year = 2026" for f in seen), f"an unanchored whole-year read reached the medical path: {seen}"
 
     def test_roster_payload_never_carries_medical_narrative(self, mock_pb: MagicMock) -> None:
         """Belt and braces over the schema-level boundary test.

@@ -365,7 +365,7 @@ class LodgingRepository:
     async def fetch_attendees_for_session(self, year: int, session_pb_id: str) -> list[Any]:
         """Active-enrolled attendees for one session, with person expanded.
 
-        status_id = 2 is the single source of truth for enrolment; filtering
+        status_id = 2 is the single source of truth for enrollment; filtering
         any other way is silently wrong.
         """
         return await self._page(
@@ -528,8 +528,8 @@ class LodgingRepository:
     async def fetch_household_by_cm_id(self, year: int, household_cm_id: int) -> Any | None:
         """One household by CampMinder id, or None.
 
-        The PHI path uses this instead of fetch_households: answering one
-        household must not materialise every family in the year.
+        The medical-narrative path uses this instead of fetch_households:
+        answering one household must not materialise every family in the year.
         """
         rows = await self._page(
             HOUSEHOLDS,
@@ -590,7 +590,7 @@ class LodgingRepository:
 
         Carries the ingest-derived request layer -- share_cabin_gate,
         wants_near / wants_with / wants_similar_ages, request_text -- and the
-        four PHI-free housing flags. Read those columns; do not re-derive them
+        four narrative-free housing flags. Read those columns; do not re-derive them
         from share_cabin_preference / shared_cabin_modes_raw, which are the raw
         profile values kept for provenance.
 
@@ -706,7 +706,7 @@ class LodgingRepository:
         """One household's version of `_fetch_weekend_touched_household_ids`.
 
         A targeted existence check rather than the bulk helper, so the single-
-        household PHI read below never has to pull the whole year's attendee
+        household narrative read below never has to pull the whole year's attendee
         roster into memory to answer one household's question. Same predicate
         (ANY status, family/adult session, this year) -- see that method's
         docstring for why.
@@ -726,13 +726,13 @@ class LodgingRepository:
         return bool(rows)
 
     async def fetch_family_camp_medical(self, year: int) -> dict[str, Any]:
-        """PHI, keyed by household PB id. NO PRODUCTION CALLER.
+        """The medical narrative, keyed by household PB id. NO PRODUCTION CALLER.
 
         kindred#1889 deleted the last one. The roster used to read this whole
         map to derive `has_medical_narrative` from PRESENCE -- a boolean true
         for every household, because these questions store "No" as text -- and
         deleting the flag took the read with it. The narrative is now served
-        solely by the permission-gated medical endpoint, which reads ONE
+        solely by the medical endpoint gated on `bunking.manage`, which reads ONE
         household through fetch_medical_for_household.
 
         So there is nothing a caller here should be doing: pulling every
@@ -754,14 +754,14 @@ class LodgingRepository:
         }
 
     async def fetch_medical_for_household(self, year: int, household_pb_id: str) -> Any | None:
-        """PHI for ONE household, or None.
+        """The medical narrative for ONE household, or None.
 
         A blank id means the household did not resolve, and is never turned
         into a query: an unanchored filter is how one family's narrative
         reaches another family's request.
 
-        Family-camp scoped (kindred#2306), and checked BEFORE the PHI read
-        below: a household that never touched a family or adult session this
+        Family-camp scoped (kindred#2306), and checked BEFORE the narrative
+        read below: a household that never touched a family or adult session this
         year gets None without `family_camp_medical` ever being queried, not
         merely filtered out of a result that already carried its narrative.
         See `_household_touched_weekend_session` for the predicate.
@@ -771,8 +771,8 @@ class LodgingRepository:
         `||`, so an injected `||` widens the predicate past BOTH the year and
         the household and this returns the first row of whatever is left. The
         id is server-resolved today, so this is defence in depth -- but every
-        other id-carrying filter in this file escapes, and a PHI read is the
-        last place to leave the odd one out.
+        other id-carrying filter in this file escapes, and the narrative read
+        is the last place to leave the odd one out.
         """
         if not household_pb_id:
             return None

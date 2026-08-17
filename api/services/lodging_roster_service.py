@@ -5,12 +5,12 @@ adults come from family_camp_adults and a party is a HOUSEHOLD. Adult
 weekends enrol individuals directly, so a party is a PERSON. That mirrors
 lodging_assignments' dual grain exactly.
 
-PHI: the roster and summary reads do not touch family_camp_medical at all.
-They used to, to derive a boolean from the presence of a value -- see
-`_build_flags` for why that boolean is gone (kindred#1889). The narrative has
-one reader, get_household_medical, which fetches ONE household behind
-Permission.BUNKING_MANAGE at the router (kindred#2312 retargeted the gate
-from the now-removed Permission.LODGING_PHI).
+Medical narrative: the roster and summary reads do not touch
+family_camp_medical at all. They used to, to derive a boolean from the
+presence of a value -- see `_build_flags` for why that boolean is gone
+(kindred#1889). The narrative has one reader, get_household_medical, which
+fetches ONE household behind `bunking.manage` at the router (kindred#2312
+retargeted the gate from the now-removed Permission.LODGING_PHI).
 """
 
 from __future__ import annotations
@@ -22,7 +22,7 @@ from typing import TYPE_CHECKING, Any, NamedTuple, cast
 
 from api.constants.lodging import INFANT_BED_EXEMPT_MONTHS, is_attending_adult_name
 from api.schemas.lodging import (
-    PHI_FIELD_NAMES,
+    MEDICAL_NARRATIVE_FIELD_NAMES,
     AccessibilityFlagSummary,
     AmenityCoverage,
     EffectiveBathroom,
@@ -1187,12 +1187,12 @@ class LodgingRosterService:
         return WeekendSummaryResponse(year=year, weekends=[task.result() for task in entry_tasks])
 
     async def get_household_medical(self, year: int, household_cm_id: int) -> HouseholdMedicalResponse:
-        """PHI. The router gates this on Permission.BUNKING_MANAGE.
+        """The medical narrative. The router gates this on `bunking.manage`.
 
         Two narrow reads, deliberately sequential: the household resolves the
         PB id that the medical read is anchored to. The whole-year maps this
         used to scan would put every family's narrative in memory to answer
-        one -- a PHI-surface problem before it is a performance one.
+        one -- a disclosure problem before it is a performance one.
         """
         household = await self.repository.fetch_household_by_cm_id(year, household_cm_id)
         household_pb_id = _s(household, "id") if household is not None else ""
@@ -1202,7 +1202,7 @@ class LodgingRosterService:
         return HouseholdMedicalResponse(
             household_cm_id=household_cm_id,
             year=year,
-            **{field: _s(record, field) for field in sorted(PHI_FIELD_NAMES)},
+            **{field: _s(record, field) for field in sorted(MEDICAL_NARRATIVE_FIELD_NAMES)},
         )
 
     async def build_household_journey(self, household_cm_id: int) -> HouseholdJourneyResponse:
@@ -1251,7 +1251,7 @@ class LodgingRosterService:
         # being a wording point. A family can book two of a season's weekends,
         # which gives one child TWO enrolled family attendee rows in the same
         # year -- both expanding to the SAME `persons` record, because
-        # `persons` is per-year rather than per-enrolment. Measured on the
+        # `persons` is per-year rather than per-enrollment. Measured on the
         # production snapshot 2026-08-09: 9 to 20 children a year from 2017
         # on, across 64 distinct (household, year) pairs.
         #
@@ -1763,7 +1763,7 @@ class LodgingRosterService:
 
         No medical record reaches this method, and that is deliberate
         (kindred#1889). It used to take one to set `has_medical_narrative`
-        from the mere presence of text in any PHI column -- a flag that was
+        from the mere presence of text in any narrative column -- a flag that was
         true for 745/745 households in 2026 and 100.0% in every year measured,
         because these questions store their negative answer as the word "No".
 

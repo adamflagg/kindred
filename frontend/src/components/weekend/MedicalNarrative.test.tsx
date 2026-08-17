@@ -13,8 +13,8 @@
  *
  * **It renders in the panel, never in a row.** One household at a time, which
  * is what makes an always-on fetch acceptable: `useHouseholdMedical` keeps
- * `staleTime: 0, gcTime: 0` so PHI does not sit in the cache after the panel
- * closes.
+ * `staleTime: 0, gcTime: 0` so the narrative does not sit in the cache after
+ * the panel closes.
  */
 import { render, screen } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'

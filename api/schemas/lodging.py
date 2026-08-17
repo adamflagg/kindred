@@ -7,10 +7,15 @@ draft twin no longer exist: 1500000134 collapsed the `unit` / `merge` /
 `merge_draft` placement targets into one multi-valued `units` relation and
 deleted both collections outright.
 
-PHI boundary: HouseholdMedicalResponse is the ONLY model here that carries
-medical narrative text, and it is reachable from exactly one endpoint, which
-is gated on Permission.BUNKING_MANAGE (kindred#2312 retargeted the gate from
-the now-removed Permission.LODGING_PHI). Every other model exposes booleans
+Medical narrative: HouseholdMedicalResponse is the ONLY model here that
+carries narrative medical text, and it is reachable from exactly one endpoint,
+which is gated on `bunking.manage` -- the same permission every OTHER gated
+endpoint on its router uses (kindred#2312 retargeted it from the now-removed
+Permission.LODGING_PHI, and kindred#2398 stopped calling that a PHI boundary
+-- there is one permission here, not two). Not every endpoint on that router
+is gated: `/sessions`, `/summary`, `/roster` and the household journey are
+open to any authenticated user, which is the point -- a thing here is either
+behind `bunking.manage` or it is not. Every other model exposes booleans
 derived from PRESENCE of a value, never its content (spec §5).
 
 Vocabularies below mirror the Go ingest's, not a second set invented here. The
@@ -29,10 +34,10 @@ from pydantic import BaseModel, Field, model_validator
 #
 # This list is kept identical to `phiColumns` in
 # pocketbase/sync/lodging_phi_test.go, and a test asserts that. Go's list keeps
-# PHI out of exports and logs; this one keeps it out of API payloads. A column
-# registered in only one is protected on one side and silently exposed on the
+# the narrative out of exports and logs; this one keeps it out of API payloads.
+# A column registered in only one is screened on one side and served on the
 # other.
-PHI_FIELD_NAMES: frozenset[str] = frozenset(
+MEDICAL_NARRATIVE_FIELD_NAMES: frozenset[str] = frozenset(
     {
         "cpap_info",
         "physician_info",
@@ -536,7 +541,8 @@ class WeekendRosterResponse(BaseModel):
 
 
 class HouseholdMedicalResponse(BaseModel):
-    """PHI. Served by ONE permission-gated endpoint. Never nested elsewhere."""
+    """Narrative medical text. Served by ONE endpoint gated on
+    `bunking.manage`. Never nested elsewhere."""
 
     household_cm_id: int
     year: int
@@ -577,7 +583,7 @@ HousingState = Literal["placed", "not_placed", "unknown"]
 # reason it is a named state. 2020 has 1,264 family attendee rows and not one
 # with status_id = 2 -- the season was cancelled. 2021 has no family attendee
 # rows at all despite 247 registrations, while `family_camp_adults` carries
-# 647 rows across 351 households. Both years are real attendance the enrolment
+# 647 rows across 351 households. Both years are real attendance the enrollment
 # tables cannot describe, and neither is an error.
 EnrollmentState = Literal["enrolled", "none_on_file"]
 

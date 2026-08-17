@@ -138,7 +138,7 @@ def _repo(**overrides: Any) -> MagicMock:
         "fetch_family_camp_adults": {},
         "fetch_family_camp_registrations": {},
         "fetch_family_camp_medical": {},
-        # The PHI path reads one household, not the whole-year maps above.
+        # The medical read takes one household, not the whole-year maps above.
         "fetch_household_by_cm_id": None,
         "fetch_medical_for_household": None,
         "count_open_unresolved_aliases": 0,
@@ -3935,7 +3935,7 @@ class TestHouseholdJourney:
         assert journey.years[0].cabin_name == ""
 
     @pytest.mark.asyncio
-    async def test_a_cancelled_season_leaves_the_year_registered_with_no_enrolment(self) -> None:
+    async def test_a_cancelled_season_leaves_the_year_registered_with_no_enrollment(self) -> None:
         """State 4. Every 2020 attendee row is cancelled, so `status_id = 2`
         removes them all -- the year still happened on the registration and
         must not vanish, and it is not a childless family.
@@ -3999,7 +3999,7 @@ class TestHouseholdJourney:
         A family can book two of a season's weekends, which gives one child
         TWO enrolled family attendee rows in the same year -- both expanding
         to the same `persons` record, because `persons` is per-year rather
-        than per-enrolment. Measured on the production snapshot 2026-08-09:
+        than per-enrollment. Measured on the production snapshot 2026-08-09:
         every year from 2017 on has some, 9 to 20 children a year, across 64
         distinct (household, year) pairs. One household alone lists three
         children in 2026 and five attendee rows for them.

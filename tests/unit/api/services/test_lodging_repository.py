@@ -122,11 +122,11 @@ class TestStableSort:
         assert _last_query(pb).get("sort"), "paginated read must pin a stable sort key"
 
 
-class TestNarrowPhiReads:
-    """The PHI path reads one household, never the whole year.
+class TestNarrowMedicalReads:
+    """The medical-narrative path reads one household, never the whole year.
 
-    Loading every family's medical row to answer one is a PHI-surface
-    problem before it is a performance one.
+    Loading every family's medical row to answer one is a disclosure problem
+    before it is a performance one.
     """
 
     @pytest.mark.asyncio
@@ -301,8 +301,8 @@ class TestFamilyCampMedicalIsScopedToFamilyOrAdultAttendance:
     async def test_single_household_touched_check_never_reads_family_camp_medical_when_untouched(
         self, repo: LodgingRepository, pb: MagicMock
     ) -> None:
-        """PHI minimization: an untouched household's medical row is never
-        read off PocketBase at all, not merely filtered out afterward.
+        """Minimisation: an untouched household's medical row is never read
+        off PocketBase at all, not merely filtered out afterward.
         """
         queries = _route_by_collection(pb, {"family_camp_medical": [], "attendees": []})
 
@@ -1213,7 +1213,7 @@ class TestFilterEscaping:
     """
 
     @pytest.mark.asyncio
-    async def test_the_phi_read_escapes_the_household_id(self, repo: LodgingRepository, pb: MagicMock) -> None:
+    async def test_the_medical_read_escapes_the_household_id(self, repo: LodgingRepository, pb: MagicMock) -> None:
         """`fetch_medical_for_household` is the one that did not.
 
         It is also the worst one to leave out: an unescaped quote closes the
@@ -1221,8 +1221,9 @@ class TestFilterEscaping:
         `||`, so an injected `||` clause widens the predicate past the year
         AND the household -- and the first row of the result is returned as
         THIS family's medical narrative. The method's own docstring already
-        argues that an unanchored filter is how one family's PHI reaches
-        another family's request; escaping is the other half of that anchor.
+        argues that an unanchored filter is how one family's narrative
+        reaches another family's request; escaping is the other half of that
+        anchor.
         """
         await repo.fetch_medical_for_household(2026, 'hh_1" || id != "')
 
