@@ -9,11 +9,14 @@ deleted both collections outright.
 
 Medical narrative: HouseholdMedicalResponse is the ONLY model here that
 carries narrative medical text, and it is reachable from exactly one endpoint,
-which is gated on `bunking.manage` like every sibling endpoint on its router
-(kindred#2312 retargeted it from the now-removed Permission.LODGING_PHI, and
-kindred#2398 stopped calling that a PHI boundary -- there is one permission
-here, not two). Every other model exposes booleans derived from PRESENCE of a
-value, never its content (spec §5).
+which is gated on `bunking.manage` -- the same permission every OTHER gated
+endpoint on its router uses (kindred#2312 retargeted it from the now-removed
+Permission.LODGING_PHI, and kindred#2398 stopped calling that a PHI boundary
+-- there is one permission here, not two). Not every endpoint on that router
+is gated: `/sessions`, `/summary`, `/roster` and the household journey are
+open to any authenticated user, which is the point -- a thing here is either
+behind `bunking.manage` or it is not. Every other model exposes booleans
+derived from PRESENCE of a value, never its content (spec §5).
 
 Vocabularies below mirror the Go ingest's, not a second set invented here. The
 share gate and the NEAR/WITH/similar-ages modes are derived by

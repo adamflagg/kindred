@@ -143,9 +143,8 @@ def test_roster_exposes_presence_flags_not_narrative() -> None:
     # `test_the_roster_never_reads_the_years_medical_narratives`. Nothing is
     # lost on the surface: a `bunking.manage` holder sees the narrative itself
     # (kindred#2312 retargeted that gate from the now-removed `lodging.phi`
-    # permission),
-    # and a non-holder was only ever being told that a disclosure they cannot
-    # read exists.
+    # permission), and a non-holder was only ever being told that a disclosure
+    # they cannot read exists.
     assert "has_medical_narrative" not in names
     assert "needs_private_bathroom" in names
     assert "needs_power" in names

@@ -703,7 +703,9 @@ about named individuals. Admin-gated on all five rules, absent from every export
 config, and never logged — `pocketbase/sync/lodging_phi_test.go` asserts all
 three. The board shows the derived booleans on `family_camp_registrations`,
 never these. The API serves them from one endpoint gated on `bunking.manage`,
-the same permission every sibling endpoint on that router uses.
+the same permission every other gated endpoint on that router uses — the
+router's remaining reads (`/sessions`, `/summary`, `/roster`, the household
+journey) are open to any authenticated user.
 
 | Field | Type | Description |
 |-------|------|-------------|

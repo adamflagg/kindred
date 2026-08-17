@@ -124,9 +124,8 @@ export function useHouseholdJourney(householdCmId: number | null) {
 /**
  * The medical narrative. Deliberately opt-in: `enabled` is false unless the
  * caller both holds `bunking.manage` and has a household to look up, so it is
- * never
- * fetched speculatively and never sits in the query cache for someone who
- * only ever looked at the roster.
+ * never fetched speculatively and never sits in the query cache for someone
+ * who only ever looked at the roster.
  *
  * The click-to-reveal that used to supply `enabled` is gone (kindred#1889).
  * Its only caller is now `MedicalNarrative`, which `FamilyDetailsPanel`
@@ -136,11 +135,10 @@ export function useHouseholdJourney(householdCmId: number | null) {
  *
  * `bunking.manage` is held by admins and the Bunking Staff role (kindred#2312
  * retargeted the gate from the now-removed `lodging.phi`, which gated only
- * this one endpoint — there is one permission on this surface, not two).
- * The roster itself is readable by any authenticated
- * user, so this 403s for most of the people who can see the page it sits on
- * — callers must degrade gracefully rather than treat the error as a page
- * failure.
+ * this one endpoint — there is one permission on this surface, not two). The
+ * roster itself is readable by any authenticated user, so this 403s for most
+ * of the people who can see the page it sits on — callers must degrade
+ * gracefully rather than treat the error as a page failure.
  */
 export function useHouseholdMedical(year: number, householdCmId: number | null, enabled: boolean) {
   const { fetchWithAuth } = useApiWithAuth()
