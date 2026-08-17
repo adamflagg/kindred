@@ -27,8 +27,8 @@ func newRollForwardTestApp(t *testing.T) core.App {
 
 // seedYear seeds one self-contained season: 2 areas and 3 units, one of which
 // (test-unit-a-room-1) has a parent (test-unit-a) — the minimum shape that
-// exercises the area-index pass, the parent-relink pass, and a deny-list
-// field (is_confirmed) that must copy verbatim.
+// exercises the area-index pass, the parent-relink pass, and a deny-listed
+// field (is_confirmed) that must NOT copy across a roll-forward (kindred#2392).
 func seedYear(t *testing.T, app core.App, year int) {
 	t.Helper()
 
@@ -99,13 +99,32 @@ func TestApplyRollForwardCopiesEveryUnitAndArea(t *testing.T) {
 	if plan.UnitsToCreate != 3 || plan.AreasToCreate != 2 {
 		t.Errorf("plan = %+v, want 3 units and 2 areas", plan)
 	}
+}
+
+// TestApplyRollForwardDoesNotCarryIsConfirmedForward pins kindred#2392's fix.
+// `is_confirmed` asserts a human physically walked the cabin for THIS season
+// (docs/reference/lodging-registry.md:377) -- it is not a fact about the
+// building that outlives the season it was checked in. Before this fix
+// `notCarried` held only `year`, `area` and `parent_unit`, so is_confirmed
+// rode along with every other ordinary column through carriedFields, and
+// any roll-forward -- including a BACKWARD one onto a season nobody has
+// walked -- stamped is_confirmed = true on a row nobody confirmed.
+func TestApplyRollForwardDoesNotCarryIsConfirmedForward(t *testing.T) {
+	t.Parallel()
+	app := newRollForwardTestApp(t)
+	seedYear(t, app, 2026) // parent unit test-unit-a seeds with is_confirmed = true
+
+	if _, err := ApplyRollForward(app, 2026, 2027); err != nil {
+		t.Fatalf("ApplyRollForward: %v", err)
+	}
 
 	rec, err := findByCodeAndYear(app, "lodging_units", "test-unit-a", 2027)
 	if err != nil || rec == nil {
 		t.Fatalf("unit not carried forward: %v", err)
 	}
-	if !rec.GetBool("is_confirmed") {
-		t.Error("is_confirmed did not carry forward")
+	if rec.GetBool("is_confirmed") {
+		t.Error("is_confirmed carried forward from the source season; want false -- " +
+			"a new season's registry starts unconfirmed until staff walk it")
 	}
 }
 

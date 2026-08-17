@@ -27,9 +27,17 @@ import (
 //	year                   — set explicitly to the target
 //	area / parent_unit     — relations, re-resolved into the target year by the
 //	                         two later passes
+//	is_confirmed           — asserts a human physically walked THIS season's
+//	                         cabin (docs/reference/lodging-registry.md:377), not
+//	                         a fact that outlives the season it was checked in.
+//	                         Carrying it would let a roll-forward -- including a
+//	                         BACKWARD one onto a season nobody has walked -- stamp
+//	                         is_confirmed = true on a row nobody confirmed
+//	                         (kindred#2392).
 var notCarried = map[string]bool{
 	"id": true, "created": true, "updated": true,
 	"year": true, "area": true, "parent_unit": true,
+	"is_confirmed": true,
 }
 
 // carriedFields returns every field on the collection that should travel to the
