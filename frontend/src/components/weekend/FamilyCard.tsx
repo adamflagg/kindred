@@ -478,6 +478,14 @@ function FamilyCardChips({
   const wantsToShare = proximity.includes('with') || proximity.includes('similar_ages')
   const wantsNear = proximity.includes('near')
   const conflictDetail = answersConflictDetail(party.share)
+  // kindred#2254 half 2: single-parent, derived from the ATTENDING adult
+  // list, not `party.adults.length` or `party_size` -- both of those count
+  // listed-but-not-attending adults (kindred#1925/#2046) and would
+  // false-positive a two-parent household where one adult never RSVP'd for
+  // this session. `computeAttendingAdults` already grain-gates to household
+  // parties (an adult weekend guest IS its own identity, not a household of
+  // one), so no separate `isHousehold` check is needed here.
+  const isSingleParent = computeAttendingAdults(party).length === 1
 
   return (
     <span className="flex flex-wrap gap-1">
@@ -520,6 +528,11 @@ function FamilyCardChips({
       {/* NEAR and WITH are different requests: NEAR is satisfied by map
             distance between units, WITH by putting both in one room. */}
       {wantsNear && <Chip label="Near another family" tone="muted" />}
+      {/* #2072's own scoping ruling replaces only the two NEED chips
+            (`Private bathroom`/`Power`) with its glyph gutter -- this is not
+            a housing-need flag, so it stays a word, reusing this same
+            `Near another family` muted grammar rather than a new one. */}
+      {isSingleParent && <Chip label="Single parent" tone="muted" />}
 
       {party.is_returning === true && (
         <span className="text-forest-700 dark:text-forest-300 inline-flex items-center gap-0.5 text-xs font-semibold">
