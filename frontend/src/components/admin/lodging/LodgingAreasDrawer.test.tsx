@@ -294,8 +294,7 @@ describe('LodgingAreasDrawer — a rejected edit', () => {
 
 describe('LodgingAreasDrawer — deleting an area', () => {
   // The units table deliberately never offers delete (spec §3.8). Areas do,
-  // one click from a numeric input, and an area with no units deletes silently
-  // and unrecoverably.
+  // and an area with no units deletes silently and unrecoverably.
   it('asks before deleting', async () => {
     const user = userEvent.setup()
     render(<LodgingAreasDrawer open onClose={vi.fn()} />, { wrapper })
