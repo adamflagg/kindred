@@ -297,6 +297,15 @@ occupancies collapsed to 2 once the `H <= N` cases were excluded.
   and needed the guard: two households resolving to the same alias are no
   longer read as sharing a room with each other while `H <= N`.
 
+**The guard is not alias-only (kindred#2371).** `overlappingPartyKeys` keys
+the `H <= N` group on the ROOM set a placement resolves to
+(`occupiedLeafCodes`), not on which construct produced that set. A household
+named directly at a multi-room **container** claims the same room set as one
+resolving through an alias to those rooms, and the guard reaches both the same
+way: two households named at one two-room container are `H <= N` exactly as
+two households resolving through a two-unit alias are. "Alias" above should be
+read as one way of arriving at an N-room set, not the only one.
+
 ### `max_beds` is not `sleeps`, and neither may overwrite the other
 
 `max_beds` is the total number of sleeping spots in the room. `sleeps` is the
